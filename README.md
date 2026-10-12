@@ -91,7 +91,18 @@ cargo clippy --all-targets           # analyse statique, doit rester sans averti
 cargo fmt                            # formatage
 ```
 
-Deux sortes de tests :
+Côté interface, dans `web/` :
+
+```
+npm run test:unit -- --run           # tests Vitest (sans --run : relancés à chaque modification)
+npm run type-check                   # vérification des types, templates compris (vue-tsc)
+npm run lint                         # Oxlint et ESLint
+npm run format                       # formatage (Prettier)
+```
+
+Les types TypeScript de `web/src/api/generated/` sont régénérés depuis Rust par `cargo test` : après un changement d'une structure échangée côté Rust, relancer `cargo test` puis `npm run type-check`.
+
+Deux sortes de tests côté Rust :
 
 - **Tests unitaires**, en bas de chaque fichier `.rs`, dans un bloc `#[cfg(test)] mod tests`. Ils couvrent aussi l'API : les requêtes HTTP sont envoyées à l'application en mémoire, sur une base interne en mémoire, sans ouvrir de port.
 - **Tests d'intégration**, dans le dossier `tests/` de chaque crate. Ceux du connecteur MySQL / MariaDB démarrent de vrais serveurs dans Docker. Ils sont ignorés par défaut : il faut démarrer Docker Desktop, puis ajouter `-- --include-ignored`. Le premier lancement télécharge les images `mysql:8.1` et `mariadb:11.3`.
