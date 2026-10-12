@@ -54,6 +54,7 @@ Dérogation à la directive générale « lecture seule » : dans ce dépôt, Cl
 - **Un commit = un motif de changement**, c'est-à-dire une seule raison de modifier le dépôt. Un motif peut toucher plusieurs fichiers. Deux raisons distinctes font deux commits, même dans un seul fichier : par exemple, une nouvelle règle de travail dans `CLAUDE.md` et la documentation des tests sont deux commits. Le type de fichier (documentation, code) ne définit pas le motif.
 - Méthode : faire les modifications d'un seul motif, committer, puis passer au motif suivant. Avant chaque commit, relire `git diff --cached` : chaque ligne doit servir le motif annoncé par le message.
 - Messages en français. Le sujet dit ce que fait le changement, sans préfixe de fichier, de crate ou de module (« README : … », « V1.md : … ») : les fichiers touchés se voient déjà dans le commit.
+- Le sujet commence par un verbe conjugué à la 3e personne du singulier du présent (« Ajoute… », « Documente… », « Lit… »), jamais à l'infinitif.
 - Toujours en lecture seule pour le reste : pas de push, pas de création ou suppression de branche, pas de réécriture d'historique.
 
 ## Commandes
