@@ -181,6 +181,17 @@ pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, Con
     Ok(rows.collect::<Result<_, _>>()?)
 }
 
+/// Supprime la connexion `id` de l'utilisateur `user_id`.
+///
+/// Renvoie `false` si la connexion n'existe pas ou appartient à un autre utilisateur.
+pub fn delete(db: &Connection, user_id: i64, id: i64) -> Result<bool, ConnectionsError> {
+    let deleted = db.execute(
+        "DELETE FROM connections WHERE id = ?1 AND user_id = ?2",
+        params![id, user_id],
+    )?;
+    Ok(deleted == 1)
+}
+
 /// Charge les paramètres de connexion, mot de passe déchiffré, de la connexion `id`.
 ///
 /// Renvoie `None` si la connexion n'existe pas ou appartient à un autre utilisateur.
@@ -294,6 +305,21 @@ mod tests {
         assert!(load_target(&db, &key, bob, id).unwrap().is_none());
         // Le même nom reste libre pour un autre utilisateur.
         assert!(insert(&db, &key, bob, &new_connection("prod")).is_ok());
+    }
+
+    #[test]
+    fn delete_removes_only_the_users_connection() {
+        let db = store::open_in_memory();
+        let key = MasterKey::generate();
+        let alice = store::ensure_user(&db, "alice@example.com").unwrap();
+        let bob = store::ensure_user(&db, "bob@example.com").unwrap();
+        let id = insert(&db, &key, alice, &new_connection("prod")).unwrap();
+
+        assert!(!delete(&db, bob, id).unwrap());
+        assert_eq!(list(&db, alice).unwrap().len(), 1);
+        assert!(delete(&db, alice, id).unwrap());
+        assert!(list(&db, alice).unwrap().is_empty());
+        assert!(!delete(&db, alice, id).unwrap());
     }
 
     #[test]

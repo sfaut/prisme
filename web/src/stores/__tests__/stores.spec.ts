@@ -18,6 +18,7 @@ vi.mock('@/api/connections', () => ({
     },
   ],
   createConnection: async () => ({ id: 7 }),
+  deleteConnection: async () => undefined,
 }))
 
 vi.mock('@/api/settings', () => ({
@@ -38,6 +39,15 @@ describe('connections', () => {
     await store.create({ name: 'prod', host: 'db', port: 3306, username: 'root', password: 'x' })
     expect(store.selectedId).toBe(7)
     expect(store.selected?.name).toBe('prod')
+  })
+})
+
+describe('suppression', () => {
+  it('désélectionne la connexion supprimée', async () => {
+    const store = useConnectionsStore()
+    store.selectedId = 7
+    await store.remove(7)
+    expect(store.selectedId).toBeNull()
   })
 })
 

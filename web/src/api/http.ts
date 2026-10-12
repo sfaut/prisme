@@ -28,7 +28,7 @@ export class ApiError extends Error {
 /**
  * Méthodes HTTP utilisées par l'API.
  */
-type Method = 'GET' | 'POST' | 'PUT'
+type Method = 'GET' | 'POST' | 'PUT' | 'DELETE'
 
 /**
  * Envoie une requête à l'API et renvoie le corps JSON de la réponse.

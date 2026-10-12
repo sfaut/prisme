@@ -26,6 +26,15 @@ export function createConnection(connection: NewConnection): Promise<Created> {
 }
 
 /**
+ * Supprime une connexion.
+ *
+ * @param id Identifiant de la connexion.
+ */
+export function deleteConnection(id: number): Promise<void> {
+  return request('DELETE', `/api/connections/${id}`)
+}
+
+/**
  * Se connecte au serveur et renvoie sa variante (MySQL ou MariaDB) et sa version.
  *
  * @param id Identifiant de la connexion.

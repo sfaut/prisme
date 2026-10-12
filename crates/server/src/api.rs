@@ -7,6 +7,7 @@
 //! | `GET /api/health`                   | Vérifie que le serveur répond.                               |
 //! | `GET /api/connections`              | Liste les connexions de l'utilisateur, sans mot de passe.    |
 //! | `POST /api/connections`             | Enregistre une connexion, mot de passe chiffré.              |
+//! | `DELETE /api/connections/{id}`      | Supprime une connexion (204).                                |
 //! | `POST /api/connections/{id}/probe`  | Se connecte et renvoie la variante et la version du serveur. |
 //! | `GET /api/connections/{id}/query`   | WebSocket : session de requêtes (voir `query_session.rs`).   |
 //! | `GET /api/connections/{id}/schemas…` | Explorateur d'objets (voir `explorer.rs`).                  |
@@ -19,7 +20,7 @@ use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use prisme_connectors::mysql::{self, ServerInfo};
 use rusqlite::Connection;
@@ -95,6 +96,7 @@ pub fn router(state: AppState) -> Router {
             "/api/connections",
             get(list_connections).post(create_connection),
         )
+        .route("/api/connections/{id}", delete(delete_connection))
         .route("/api/connections/{id}/probe", post(probe_connection))
         .route("/api/connections/{id}/query", get(query_socket))
         .route("/api/settings", get(get_settings).put(put_settings))
@@ -128,6 +130,22 @@ async fn create_connection(
         .with_db(move |db, key| connections::insert(db, key, user.id, &new))
         .await?;
     Ok((StatusCode::CREATED, Json(Created { id })))
+}
+
+/// `DELETE /api/connections/{id}` : supprime une connexion de l'utilisateur courant (204).
+async fn delete_connection(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, ApiError> {
+    let deleted = state
+        .with_db(move |db, _key| connections::delete(db, user.id, id))
+        .await?;
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
 }
 
 /// `GET /api/connections/{id}/query` : ouvre une session de requêtes par WebSocket.
@@ -256,6 +274,24 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(list[0]["name"], "prod");
         assert!(!list.to_string().contains("secret"));
+    }
+
+    #[tokio::test]
+    async fn delete_then_not_found() {
+        let app = test_app();
+        let (_, created) = send(
+            &app,
+            "POST",
+            "/api/connections",
+            Some(connection_json("prod", 3306)),
+        )
+        .await;
+        let uri = format!("/api/connections/{}", created["id"]);
+
+        let (status, _) = send(&app, "DELETE", &uri, None).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (status, _) = send(&app, "DELETE", &uri, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

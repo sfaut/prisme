@@ -5,7 +5,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
-import { createConnection, listConnections } from '@/api/connections'
+import { createConnection, deleteConnection, listConnections } from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { NewConnection } from '@/api/generated/NewConnection'
 
@@ -46,5 +46,18 @@ export const useConnectionsStore = defineStore('connections', () => {
     selectedId.value = id
   }
 
-  return { connections, selectedId, selected, load, create }
+  /**
+   * Supprime une connexion et recharge la liste. Si c'était la connexion choisie, plus aucune ne l'est.
+   *
+   * @param id Identifiant de la connexion.
+   */
+  async function remove(id: number): Promise<void> {
+    await deleteConnection(id)
+    if (selectedId.value === id) {
+      selectedId.value = null
+    }
+    await load()
+  }
+
+  return { connections, selectedId, selected, load, create, remove }
 })

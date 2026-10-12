@@ -1,9 +1,9 @@
 <!--
   Choix de la connexion de travail : liste des connexions enregistrées,
-  création d'une connexion, test de la connexion choisie.
+  création d'une connexion, test et suppression de la connexion choisie.
 -->
 <script setup lang="ts">
-import { NButton, NSelect, useMessage } from 'naive-ui'
+import { NButton, NPopconfirm, NSelect, useMessage } from 'naive-ui'
 import { computed, onMounted, ref } from 'vue'
 
 import { probeConnection } from '@/api/connections'
@@ -52,6 +52,22 @@ async function probe(): Promise<void> {
   }
 }
 
+/**
+ * Supprime la connexion choisie, après confirmation.
+ */
+async function remove(): Promise<void> {
+  const connection = store.selected
+  if (connection === null) {
+    return
+  }
+  try {
+    await store.remove(connection.id)
+    message.success(`Connexion « ${connection.name} » supprimée`)
+  } catch (failure) {
+    message.error(failure instanceof Error ? failure.message : String(failure))
+  }
+}
+
 onMounted(async () => {
   try {
     await store.load()
@@ -81,6 +97,12 @@ onMounted(async () => {
       >
         Tester
       </n-button>
+      <n-popconfirm positive-text="Supprimer" negative-text="Annuler" @positive-click="remove">
+        <template #trigger>
+          <n-button size="small" :disabled="store.selectedId === null">Supprimer</n-button>
+        </template>
+        Supprimer la connexion « {{ store.selected?.name }} » ?
+      </n-popconfirm>
     </div>
     <new-connection-dialog v-model:open="creating" />
   </div>
