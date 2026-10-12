@@ -11,7 +11,7 @@
  * l'utilise pour exposer un état réactif aux composants.
  */
 
-import { onScopeDispose, reactive } from 'vue'
+import { onScopeDispose, reactive, shallowReactive } from 'vue'
 
 import type { LimitReport } from './generated/LimitReport'
 import type { QueryRequest } from './generated/QueryRequest'
@@ -183,7 +183,13 @@ export function useQuerySession(connectionId: number) {
   const socket = new WebSocket(sessionUrl(connectionId, window.location))
 
   socket.addEventListener('message', (event: MessageEvent<string>) => {
-    applyMessage(state, JSON.parse(event.data) as ServerMessage)
+    const message = JSON.parse(event.data) as ServerMessage
+    applyMessage(state, message)
+    if (message.type === 'columns' && state.result) {
+      // Réactivité superficielle : l'arrivée d'un lot rafraîchit l'affichage,
+      // sans rendre réactive chacune des milliers de lignes.
+      state.result.rows = shallowReactive([])
+    }
   })
   socket.addEventListener('close', () => {
     state.status = 'closed'
