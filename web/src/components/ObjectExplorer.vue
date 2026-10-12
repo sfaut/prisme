@@ -33,10 +33,10 @@ const emit = defineEmits<{
 const catalog = useCatalogStore()
 
 /**
- * Arbre compact : lignes de 20 pixels sans marge, texte de 11 pixels, retrait réduit.
+ * Arbre compact : lignes de 20 pixels sans marge, texte de 10 pixels, retrait réduit.
  * `nodeHeight` sert aussi au défilement virtuel de l'arbre.
  */
-const TREE_THEME = { nodeHeight: '20px', nodeWrapperPadding: '0', fontSize: '11px' }
+const TREE_THEME = { nodeHeight: '20px', nodeWrapperPadding: '0', fontSize: '10px' }
 
 /**
  * Lecture du catalogue en cours ?
