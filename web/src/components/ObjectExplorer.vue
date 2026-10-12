@@ -126,16 +126,20 @@ function renderLabel({ option }: { option: TreeOption }) {
     // (ou l'inverse) fait échouer la mise à jour de l'arbre par Vue.
     return h('span', { class: { 'current-database': node.current } }, node.label)
   }
-  return [
-    node.column.primaryKey ? keyIcon() : null,
-    node.column.foreignKey ? hashIcon() : null,
+  // Les symboles sont placés dans la marge, à gauche du nom, comme des puces :
+  // les noms de toutes les colonnes restent alignés.
+  return h('span', { class: 'column-label' }, [
+    h('span', { class: 'column-marks' }, [
+      node.column.primaryKey ? keyIcon() : null,
+      node.column.foreignKey ? hashIcon() : null,
+    ]),
     h(
       'span',
       { class: { 'primary-key': node.column.primaryKey, 'foreign-key': node.column.foreignKey } },
       node.column.name,
     ),
     h('span', { class: 'column-details' }, ` · ${node.column.details}`),
-  ]
+  ])
 }
 
 onMounted(() => load(false))
@@ -209,9 +213,18 @@ onMounted(() => load(false))
   font-weight: 700;
 }
 
-.object-tree :deep(.column-icon) {
+.object-tree :deep(.column-label) {
+  position: relative;
+}
+
+.object-tree :deep(.column-marks) {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  display: flex;
+  gap: 1px;
   margin-right: 3px;
-  vertical-align: -0.15em;
+  transform: translateY(-50%);
 }
 
 .object-tree :deep(.primary-key) {
