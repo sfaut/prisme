@@ -2,7 +2,7 @@
 
 Prisme est un client web multi-bases de données, sous forme de notebook SQL : plusieurs sources, une seule vue. On y interroge MySQL, MariaDB, PostgreSQL, SQLite et DuckDB, dans leur dialecte natif ou dans un autre dialecte que Prisme traduit.
 
-Le projet est en début de v1. Pour l'instant, Prisme prépare son dossier de données (clef maîtresse, base interne, utilisateur local) et expose une API JSON qui enregistre des connexions MySQL / MariaDB, les teste, et y exécute des requêtes en streaming par WebSocket, avec la limite de lignes par défaut. L'interface web n'existe pas encore. Le périmètre et l'avancement sont décrits dans [docs/V1.md](docs/V1.md).
+Le projet est en début de v1. Pour l'instant, Prisme prépare son dossier de données (clef maîtresse, base interne, utilisateur local) et expose une API JSON qui enregistre des connexions MySQL / MariaDB, les teste, et y exécute des requêtes en streaming par WebSocket, avec la limite de lignes par défaut. Une première interface web permet de choisir une connexion, d'explorer ses bases, tables et colonnes, et d'exécuter une cellule SQL. Le périmètre et l'avancement sont décrits dans [docs/V1.md](docs/V1.md).
 
 ## Prérequis
 
@@ -11,7 +11,7 @@ Le projet est en début de v1. Pour l'instant, Prisme prépare son dossier de do
 | Rust (via `rustup`) | Compilation du backend. La version exacte est figée par `rust-toolchain.toml` et installée automatiquement au premier `cargo`. | `winget install Rustlang.Rustup` |
 | Visual Studio Build Tools (C++) | Linker MSVC, et compilation de SQLite embarqué. | `winget install Microsoft.VisualStudio.2022.BuildTools`, avec la charge de travail « Développement Desktop en C++ » |
 | Docker Desktop | Bases MySQL, MariaDB et PostgreSQL des tests d'intégration (à venir). Le moteur doit être démarré. | `winget install Docker.DockerDesktop` |
-| Node.js et npm | Interface Vue (à venir). | `winget install OpenJS.NodeJS` |
+| Node.js et npm | Interface Vue, en développement. | `winget install OpenJS.NodeJS` |
 
 ## Lancer Prisme
 
@@ -34,6 +34,36 @@ Options (`cargo run -- --help`) :
 Les options se passent après `--`, par exemple `cargo run -- --data-dir ./tmp` pour un dossier de données jetable (ignoré par Git).
 
 Pour des journaux plus détaillés, définir `RUST_LOG` avant le lancement : `$env:RUST_LOG="debug"` sous PowerShell.
+
+## Utiliser l'interface
+
+En développement, l'interface tourne sur le serveur de Vite, qui redirige l'API vers Prisme. Il faut deux terminaux, à la racine du dépôt :
+
+```
+cargo run
+```
+
+```
+cd web
+npm install          # la première fois, ou après un changement de dépendances
+npm run dev
+```
+
+Puis ouvrir <http://localhost:5173>.
+
+- **Connexions** : « Nouvelle » enregistre une connexion, « Tester » affiche la variante et la version du serveur.
+- **Explorateur** : les bases, tables et colonnes se chargent à l'ouverture de chaque nœud. Un double clic sur une table affiche son contenu.
+- **Cellule SQL** : Ctrl-Entrée ou « Exécuter » envoie tout le texte de l'éditeur, une seule requête à la fois. La liste à côté du bouton change la limite de lignes par défaut. Seules les lectures passent pour l'instant.
+- **Grille** :
+
+| Action | Geste |
+|---|---|
+| Trier | bouton ⇅ de l'en-tête : croissant, décroissant, aucun |
+| Filtrer | champ « Filtrer », sur toutes les colonnes ou sur celle choisie à côté |
+| Sélectionner | clic sur une cellule, un numéro de ligne ou un nom de colonne ; glisser pour une plage |
+| Étendre / ajouter | Maj-clic / Ctrl-clic |
+| Tout sélectionner, vider | Ctrl-A, Échap |
+| Copier | Ctrl-C, ou Ctrl-Maj-C avec les en-têtes (texte tabulé, collable dans un tableur ; NULL copié vide) |
 
 ## Données locales
 
@@ -154,12 +184,18 @@ Pour regarder la base interne, ouvrir `./tmp/prisme.db` avec n'importe quel clie
 crates/
   connectors/      accès aux bases cibles (MySQL / MariaDB pour l'instant)
     tests/         tests d'intégration sur de vrais serveurs (Docker)
+  dialects/        analyse des requêtes : limite par défaut, lecture / écriture
   server/          exécutable prisme : configuration, clef maîtresse, base interne, API
     migrations/    migrations SQL de la base interne, numérotées
+web/               interface Vue
+  src/api/         appels de l'API et session de requêtes
+    generated/     types TypeScript générés depuis Rust (ne pas modifier)
+  src/components/  composants de l'interface
+  src/stores/      état partagé (connexions, réglages)
 docs/              décisions et réflexions de conception
 ```
 
-Les autres crates (`types`, `dialects`, `splitter`, etc.) et l'interface `web/` arrivent au fil de la v1. La cible est décrite dans [CLAUDE.md](CLAUDE.md).
+Les autres crates (`types`, `splitter`, etc.) arrivent au fil de la v1. La cible est décrite dans [CLAUDE.md](CLAUDE.md).
 
 ## Documentation
 
