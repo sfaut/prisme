@@ -12,17 +12,45 @@ import {
   NLayout,
   NLayoutContent,
   NLayoutSider,
+  NEmpty,
   NMessageProvider,
   dateFrFR,
   frFR,
 } from 'naive-ui'
+import { nextTick, ref, useTemplateRef } from 'vue'
 
 import { useConnectionsStore } from './stores/connections'
 
 import ConnectionPanel from './components/ConnectionPanel.vue'
 import ObjectExplorer from './components/ObjectExplorer.vue'
+import QueryCell from './components/QueryCell.vue'
+import { selectAllQuery } from './components/explorerNodes'
 
 const connections = useConnectionsStore()
+
+/**
+ * Texte de la cellule SQL.
+ */
+const sql = ref('')
+
+/**
+ * Nombre de reconnexions demandées : changer la clef de la cellule rouvre sa session.
+ */
+const attempt = ref(0)
+
+const cell = useTemplateRef<InstanceType<typeof QueryCell>>('cell')
+
+/**
+ * Affiche le contenu d'une table choisie dans l'explorateur.
+ *
+ * @param schema Nom de la base.
+ * @param table Nom de la table.
+ */
+async function openTable(schema: string, table: string): Promise<void> {
+  sql.value = selectAllQuery(schema, table)
+  await nextTick()
+  cell.value?.run()
+}
 </script>
 
 <template>
@@ -36,9 +64,20 @@ const connections = useConnectionsStore()
             v-if="connections.selectedId !== null"
             :key="connections.selectedId"
             :connection-id="connections.selectedId"
+            @open-table="openTable"
           />
         </n-layout-sider>
-        <n-layout-content content-class="app-content" />
+        <n-layout-content content-class="app-content">
+          <query-cell
+            v-if="connections.selected"
+            ref="cell"
+            :key="`${connections.selected.id}-${attempt}`"
+            v-model:sql="sql"
+            :connection="connections.selected"
+            @reconnect="attempt++"
+          />
+          <n-empty v-else description="Choisissez ou créez une connexion" class="app-empty" />
+        </n-layout-content>
       </n-layout>
     </n-message-provider>
   </n-config-provider>
@@ -70,6 +109,10 @@ body,
   height: 100%;
   padding: 12px;
   box-sizing: border-box;
+}
+
+.app-empty {
+  margin: auto;
 }
 
 .app-title {
