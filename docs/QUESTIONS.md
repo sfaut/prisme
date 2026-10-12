@@ -65,7 +65,7 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 
 ### Produit et v1
 
-1. **Grille de résultats** : `DataTable` virtualisée de PrimeVue ou TanStack Table + Virtual ? Essai de volumétrie à faire.
+1. **Grille de résultats** : besoins fixés (affichage compact, tri, filtre, sélection, copie). Proposition : composant propre avec `@tanstack/vue-virtual` (voir `docs/V1.md`, section 3.1). **[à confirmer]** Essai de volumétrie à faire.
 2. **`ts-rs` ou `specta`** pour générer les types TypeScript : tranché, `ts-rs`, plus simple à relire et suffisant.
 3. **MariaDB dans `sqlparser-rs`** : vérifier le support, sinon étendre le dialecte MySQL.
 4. **DDL** : le laisser en dialecte natif en v1 (proposition) ? **[à confirmer]**
