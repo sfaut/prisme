@@ -17,13 +17,16 @@
 //! ```
 //!
 //! La limite de lignes suit `docs/V1.md`, section 2.3 : `row_limit` de la
-//! requête, sinon le réglage de l'utilisateur.
+//! requête, sinon le réglage de l'utilisateur. En attendant les interrupteurs
+//! d'écriture, les écritures et les requêtes non analysables sont refusées
+//! (`docs/V1.md`, section 2.4).
 
 use std::time::Instant;
 
 use axum::extract::ws::{Message, WebSocket};
 use prisme_connectors::mysql::{self, Cell, Connection, Flavor, MysqlTarget, ServerInfo};
 use prisme_dialects::Dialect;
+use prisme_dialects::classify::{StatementKind, classify};
 use prisme_dialects::limit::{LimitOutcome, apply_default_limit};
 use serde::{Deserialize, Serialize};
 
@@ -175,6 +178,9 @@ impl Session<'_> {
 
     /// Exécute la requête et envoie son résultat en streaming.
     async fn execute(self, sql: &str, max_rows: u32) -> Result<(), SocketClosed> {
+        if let Some(refusal) = write_refusal(sql, self.dialect) {
+            return send_error(self.socket, refusal).await;
+        }
         let max_rows = max_rows as usize;
         let limited = match apply_default_limit(sql, self.dialect, max_rows as u64) {
             Ok(limited) => limited,
@@ -258,6 +264,23 @@ async fn row_limit(state: &AppState, user_id: i64, requested: Option<u32>) -> Re
         .map_err(|_| "réglages de l'utilisateur illisibles, voir le journal du serveur".to_string())
 }
 
+/// Renvoie le motif du refus si la requête n'est pas une lecture.
+///
+/// Les écritures restent refusées tant que les interrupteurs d'écriture
+/// (étape 4 de la v1) n'existent pas. Une requête non analysable est refusée
+/// aussi, car rien ne prouve qu'elle est une lecture.
+fn write_refusal(sql: &str, dialect: Dialect) -> Option<String> {
+    match classify(sql, dialect) {
+        StatementKind::Read => None,
+        StatementKind::Write => Some(
+            "écriture refusée : les écritures sont désactivées en attendant les interrupteurs d'écriture".to_string(),
+        ),
+        StatementKind::Unparsed => Some(
+            "requête refusée : Prisme ne sait pas l'analyser, donc ne peut pas vérifier qu'elle est une lecture".to_string(),
+        ),
+    }
+}
+
 /// Traduit le traitement de la limite pour le client.
 fn report(outcome: LimitOutcome) -> LimitReport {
     match outcome {
@@ -297,6 +320,7 @@ mod tests {
     use crate::connections::{self, NewConnection};
     use crate::master_key::MasterKey;
     use crate::store;
+    use prisme_dialects::Dialect;
 
     type ClientSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
@@ -350,6 +374,19 @@ mod tests {
                 _ => return (columns, received, message),
             }
         }
+    }
+
+    #[test]
+    fn refuses_writes_and_unparsable_queries() {
+        assert_eq!(super::write_refusal("SELECT 1", Dialect::MariaDb), None);
+        assert_eq!(super::write_refusal("SHOW TABLES", Dialect::MariaDb), None);
+        assert!(super::write_refusal("DELETE FROM t", Dialect::MariaDb).is_some());
+        assert!(
+            super::write_refusal("WITH x AS (SELECT 1) DELETE FROM t", Dialect::MariaDb).is_some()
+        );
+        assert!(
+            super::write_refusal("SELECT * FROM t PROCEDURE ANALYSE()", Dialect::MariaDb).is_some()
+        );
     }
 
     #[tokio::test]
