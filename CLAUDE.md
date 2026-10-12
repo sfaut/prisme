@@ -84,7 +84,7 @@ npm run format                    # Prettier
 
 `cargo test` régénère les types TypeScript de `web/src/api/generated/` (`ts-rs`) : les committer avec le changement Rust qui les modifie.
 
-Journaux plus détaillés : `$env:RUST_LOG="debug"` (PowerShell) avant `cargo run`. Les tests qui demandent Docker sont marqués `#[ignore = "nécessite Docker Desktop démarré"]`. Toujours lancer `cargo fmt` et `cargo clippy --all-targets` avant un commit.
+Journaux plus détaillés : `$env:RUST_LOG="debug"` (PowerShell) avant `cargo run`. Les tests qui demandent Docker sont marqués `#[ignore = "nécessite Docker Desktop démarré"]`. Toujours lancer `cargo fmt` et `cargo clippy --all-targets` avant un commit, et pour l'interface `npm run format`, `npm run lint`, `npm run type-check` et les tests.
 
 ## Règles à respecter
 
