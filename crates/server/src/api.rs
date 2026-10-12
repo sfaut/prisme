@@ -10,7 +10,7 @@
 //! | `DELETE /api/connections/{id}`      | Supprime une connexion (204).                                |
 //! | `POST /api/connections/{id}/probe`  | Se connecte et renvoie la variante et la version du serveur. |
 //! | `GET /api/connections/{id}/query`   | WebSocket : session de requêtes (voir `query_session.rs`).   |
-//! | `GET /api/connections/{id}/schemas…` | Explorateur d'objets (voir `explorer.rs`).                  |
+//! | `GET /api/connections/{id}/catalog` | Bases, tables et colonnes (voir `explorer.rs`).             |
 //! | `GET /api/settings`                 | Réglages de l'utilisateur, avec les choix permis.            |
 //! | `PUT /api/settings`                 | Modifie les réglages, renvoie les réglages à jour.           |
 

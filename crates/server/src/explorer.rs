@@ -1,21 +1,13 @@
-//! Explorateur d'objets : bases, tables et colonnes d'une connexion enregistrée.
+//! Explorateur d'objets : catalogue complet d'une connexion enregistrée.
 //!
-//! Routes :
-//!
-//! | Méthode et chemin                                            | Rôle                          |
-//! |--------------------------------------------------------------|-------------------------------|
-//! | `GET /api/connections/{id}/schemas`                          | Bases du serveur.             |
-//! | `GET /api/connections/{id}/schemas/{schema}/tables`          | Tables et vues d'une base.    |
-//! | `GET /api/connections/{id}/schemas/{schema}/tables/{table}/columns` | Colonnes d'une table.  |
-//!
-//! Chaque appel ouvre une connexion courte au serveur cible, lit le catalogue,
-//! puis la referme. L'interface charge l'arbre niveau par niveau, à la
-//! demande.
+//! Route : `GET /api/connections/{id}/catalog`, qui renvoie toutes les bases,
+//! avec leurs tables et leurs colonnes. L'interface charge le catalogue une
+//! fois, à l'ouverture de la connexion, puis le parcourt sans autre appel.
 
 use axum::extract::{Path, State};
 use axum::routing::get;
 use axum::{Json, Router};
-use prisme_connectors::mysql::catalog::{self, ColumnInfo, TableInfo};
+use prisme_connectors::mysql::catalog::{self, SchemaInfo};
 use prisme_connectors::mysql::{self, Connection, MysqlError};
 
 use crate::api::AppState;
@@ -25,48 +17,17 @@ use crate::connections;
 
 /// Routes de l'explorateur, à fusionner dans le routeur de l'API.
 pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/api/connections/{id}/schemas", get(list_schemas))
-        .route(
-            "/api/connections/{id}/schemas/{schema}/tables",
-            get(list_tables),
-        )
-        .route(
-            "/api/connections/{id}/schemas/{schema}/tables/{table}/columns",
-            get(list_columns),
-        )
+    Router::new().route("/api/connections/{id}/catalog", get(load_catalog))
 }
 
-/// `GET /api/connections/{id}/schemas` : bases du serveur.
-async fn list_schemas(
+/// `GET /api/connections/{id}/catalog` : bases, tables et colonnes du serveur.
+async fn load_catalog(
     State(state): State<AppState>,
     user: CurrentUser,
     Path(id): Path<i64>,
-) -> Result<Json<Vec<String>>, ApiError> {
+) -> Result<Json<Vec<SchemaInfo>>, ApiError> {
     let mut connection = open(&state, user.id, id).await?;
-    let result = catalog::schemas(&mut connection).await;
-    close(connection, result).await
-}
-
-/// `GET /api/connections/{id}/schemas/{schema}/tables` : tables et vues d'une base.
-async fn list_tables(
-    State(state): State<AppState>,
-    user: CurrentUser,
-    Path((id, schema)): Path<(i64, String)>,
-) -> Result<Json<Vec<TableInfo>>, ApiError> {
-    let mut connection = open(&state, user.id, id).await?;
-    let result = catalog::tables(&mut connection, &schema).await;
-    close(connection, result).await
-}
-
-/// `GET /api/connections/{id}/schemas/{schema}/tables/{table}/columns` : colonnes d'une table.
-async fn list_columns(
-    State(state): State<AppState>,
-    user: CurrentUser,
-    Path((id, schema, table)): Path<(i64, String, String)>,
-) -> Result<Json<Vec<ColumnInfo>>, ApiError> {
-    let mut connection = open(&state, user.id, id).await?;
-    let result = catalog::columns(&mut connection, &schema, &table).await;
+    let result = catalog::load(&mut connection).await;
     close(connection, result).await
 }
 
@@ -125,19 +86,16 @@ mod tests {
     #[tokio::test]
     async fn unknown_connection_gives_not_found() {
         assert_eq!(
-            status_of("/api/connections/42/schemas").await,
+            status_of("/api/connections/42/catalog").await,
             StatusCode::NOT_FOUND
         );
     }
 
     #[tokio::test]
     async fn unreachable_server_gives_bad_gateway() {
-        for uri in [
-            "/api/connections/1/schemas",
-            "/api/connections/1/schemas/test/tables",
-            "/api/connections/1/schemas/test/tables/t%201/columns",
-        ] {
-            assert_eq!(status_of(uri).await, StatusCode::BAD_GATEWAY, "{uri}");
-        }
+        assert_eq!(
+            status_of("/api/connections/1/catalog").await,
+            StatusCode::BAD_GATEWAY
+        );
     }
 }

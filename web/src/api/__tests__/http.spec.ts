@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError, request } from '../http'
-import { listColumns } from '../explorer'
+import { loadCatalog } from '../explorer'
 
 /**
  * Remplace `fetch` par une réponse fixe et renvoie le faux `fetch`, pour inspecter ses appels.
@@ -49,11 +49,9 @@ describe('request', () => {
 })
 
 describe('explorer', () => {
-  it('encode les noms de base et de table dans le chemin', async () => {
+  it('lit le catalogue de la connexion', async () => {
     const fake = mockFetch(200, '[]')
-    await listColumns(1, 'ma base', 't/1')
-    expect(fake.mock.calls[0]?.[0]).toBe(
-      '/api/connections/1/schemas/ma%20base/tables/t%2F1/columns',
-    )
+    await expect(loadCatalog(3)).resolves.toEqual([])
+    expect(fake.mock.calls[0]?.[0]).toBe('/api/connections/3/catalog')
   })
 })

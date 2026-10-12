@@ -1,12 +1,12 @@
 /**
  * Nœuds de l'arbre de l'explorateur d'objets : bases, tables, colonnes.
  *
- * Chaque niveau se charge à la demande, quand l'utilisateur ouvre un nœud.
- * Les fonctions de ce module construisent les nœuds à partir des réponses de
- * l'API ; elles ne dépendent pas de l'affichage.
+ * Les fonctions de ce module construisent tout l'arbre à partir du catalogue
+ * renvoyé par l'API ; elles ne dépendent pas de l'affichage.
  */
 
 import type { ColumnInfo } from '@/api/generated/ColumnInfo'
+import type { SchemaInfo } from '@/api/generated/SchemaInfo'
 import type { TableInfo } from '@/api/generated/TableInfo'
 
 /**
@@ -22,7 +22,7 @@ export interface ExplorerNode {
    */
   label: string
   /**
-   * Feuille (colonne) : rien à charger en dessous.
+   * Feuille : rien en dessous (colonne, ou base sans table).
    */
   isLeaf: boolean
   /**
@@ -34,59 +34,66 @@ export interface ExplorerNode {
    */
   table?: string
   /**
-   * Enfants, absents tant qu'ils ne sont pas chargés.
+   * Enfants : tables d'une base, colonnes d'une table.
    */
   children?: ExplorerNode[]
+  /**
+   * Nœud de table (et non de base ou de colonne).
+   */
+  isTable: boolean
 }
 
 /**
- * Nœuds des bases du serveur.
+ * Arbre complet du catalogue : bases, puis tables, puis colonnes.
  *
- * @param schemas Noms des bases.
+ * @param schemas Catalogue du serveur.
  */
-export function schemaNodes(schemas: string[]): ExplorerNode[] {
+export function catalogNodes(schemas: SchemaInfo[]): ExplorerNode[] {
   return schemas.map((schema) => ({
-    key: `schema:${schema}`,
-    label: schema,
-    isLeaf: false,
-    schema,
+    key: `schema:${schema.name}`,
+    label: schema.name,
+    isLeaf: schema.tables.length === 0,
+    isTable: false,
+    schema: schema.name,
+    children: schema.tables.map((table) => tableNode(schema.name, table)),
   }))
 }
 
 /**
- * Nœuds des tables d'une base. Les vues et tables système sont signalées dans le libellé.
+ * Nœud d'une table, avec ses colonnes. Les vues et tables système sont signalées dans le libellé.
  *
  * @param schema Nom de la base.
- * @param tables Tables de la base.
+ * @param table Table, avec ses colonnes.
  */
-export function tableNodes(schema: string, tables: TableInfo[]): ExplorerNode[] {
-  return tables.map((table) => ({
+function tableNode(schema: string, table: TableInfo): ExplorerNode {
+  return {
     key: `table:${schema}.${table.name}`,
     label: table.kind === 'table' ? table.name : `${table.name} (${kindLabel(table.kind)})`,
-    isLeaf: false,
+    isLeaf: table.columns.length === 0,
+    isTable: true,
     schema,
     table: table.name,
-  }))
+    children: table.columns.map((column) => columnNode(schema, table.name, column)),
+  }
 }
 
 /**
- * Nœuds des colonnes d'une table : nom, type, rôle dans les index, nullabilité.
+ * Nœud d'une colonne : nom, type, rôle dans les index, nullabilité.
  *
  * @param schema Nom de la base.
  * @param table Nom de la table.
- * @param columns Colonnes de la table.
+ * @param column Colonne.
  */
-export function columnNodes(schema: string, table: string, columns: ColumnInfo[]): ExplorerNode[] {
-  return columns.map((column) => {
-    const details = [column.column_type, column.key, column.nullable ? 'NULL' : ''].filter(Boolean)
-    return {
-      key: `column:${schema}.${table}.${column.name}`,
-      label: `${column.name} · ${details.join(' · ')}`,
-      isLeaf: true,
-      schema,
-      table,
-    }
-  })
+function columnNode(schema: string, table: string, column: ColumnInfo): ExplorerNode {
+  const details = [column.column_type, column.key, column.nullable ? 'NULL' : ''].filter(Boolean)
+  return {
+    key: `column:${schema}.${table}.${column.name}`,
+    label: `${column.name} · ${details.join(' · ')}`,
+    isLeaf: true,
+    isTable: false,
+    schema,
+    table,
+  }
 }
 
 /**

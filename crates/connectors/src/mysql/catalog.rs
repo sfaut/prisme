@@ -1,14 +1,27 @@
 //! Catalogue d'un serveur MySQL ou MariaDB : bases, tables et colonnes.
 //!
-//! Sert à l'explorateur d'objets. Tout est lu dans `information_schema`, avec
-//! des requêtes préparées : les noms de base et de table viennent de
-//! l'interface et ne sont jamais concaténés au texte SQL.
+//! Sert à l'explorateur d'objets, qui l'affiche en entier dès qu'une
+//! connexion est choisie. Tout le catalogue se lit en trois requêtes sur
+//! `information_schema` (bases, tables, colonnes), sur une seule connexion :
+//! c'est bien plus rapide qu'une connexion par nœud ouvert dans l'arbre.
+
+use std::collections::BTreeMap;
 
 use mysql_async::prelude::Queryable;
 use serde::Serialize;
 use ts_rs::TS;
 
 use super::{Connection, MysqlError};
+
+/// Base du serveur, avec ses tables.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct SchemaInfo {
+    /// Nom de la base.
+    pub name: String,
+    /// Tables et vues de la base, par nom.
+    pub tables: Vec<TableInfo>,
+}
 
 /// Table ou vue d'une base.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -21,6 +34,8 @@ pub struct TableInfo {
     /// Nombre de lignes estimé par le serveur (exact pour MyISAM, approché pour
     /// InnoDB), `None` pour une vue.
     pub estimated_rows: Option<u64>,
+    /// Colonnes, dans l'ordre de déclaration.
+    pub columns: Vec<ColumnInfo>,
 }
 
 /// Nature d'un objet de type table.
@@ -50,57 +65,71 @@ pub struct ColumnInfo {
     pub key: String,
 }
 
-/// Liste les bases du serveur, par nom.
-pub async fn schemas(connection: &mut Connection) -> Result<Vec<String>, MysqlError> {
-    Ok(connection
-        .query("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME")
-        .await?)
-}
+/// Ligne d'`information_schema.TABLES` : base, table, type, lignes estimées.
+type TableRow = (String, String, String, Option<u64>);
 
-/// Liste les tables et vues de la base `schema`, par nom.
-pub async fn tables(
-    connection: &mut Connection,
-    schema: &str,
-) -> Result<Vec<TableInfo>, MysqlError> {
-    let rows: Vec<(String, String, Option<u64>)> = connection
-        .exec(
-            "SELECT TABLE_NAME, TABLE_TYPE, TABLE_ROWS FROM information_schema.TABLES
-             WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME",
-            (schema,),
+/// Ligne d'`information_schema.COLUMNS` : base, table, colonne, type, nullabilité, index.
+type ColumnRow = (String, String, String, String, String, String);
+
+/// Lit tout le catalogue du serveur : bases, tables et colonnes, par nom.
+pub async fn load(connection: &mut Connection) -> Result<Vec<SchemaInfo>, MysqlError> {
+    let schemas: Vec<String> = connection
+        .query("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA")
+        .await?;
+    let tables: Vec<TableRow> = connection
+        .query(
+            "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS FROM information_schema.TABLES",
         )
         .await?;
-    Ok(rows
+    let columns: Vec<ColumnRow> = connection
+        .query(
+            "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY
+             FROM information_schema.COLUMNS ORDER BY ORDINAL_POSITION",
+        )
+        .await?;
+    Ok(assemble(schemas, tables, columns))
+}
+
+/// Range les lignes lues dans `information_schema` en arbre : bases, puis
+/// tables, puis colonnes. Bases et tables sont triées par nom ; les colonnes
+/// gardent l'ordre reçu (ordre de déclaration).
+fn assemble(
+    schemas: Vec<String>,
+    tables: Vec<TableRow>,
+    columns: Vec<ColumnRow>,
+) -> Vec<SchemaInfo> {
+    let mut tree: BTreeMap<String, BTreeMap<String, TableInfo>> = schemas
         .into_iter()
-        .map(|(name, table_type, estimated_rows)| TableInfo {
-            name,
+        .map(|schema| (schema, BTreeMap::new()))
+        .collect();
+    for (schema, name, table_type, estimated_rows) in tables {
+        let table = TableInfo {
+            name: name.clone(),
             kind: table_kind(&table_type),
             estimated_rows,
-        })
-        .collect())
-}
-
-/// Liste les colonnes de la table `schema.table`, dans l'ordre de déclaration.
-pub async fn columns(
-    connection: &mut Connection,
-    schema: &str,
-    table: &str,
-) -> Result<Vec<ColumnInfo>, MysqlError> {
-    let rows: Vec<(String, String, String, String)> = connection
-        .exec(
-            "SELECT COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY FROM information_schema.COLUMNS
-             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? ORDER BY ORDINAL_POSITION",
-            (schema, table),
-        )
-        .await?;
-    Ok(rows
-        .into_iter()
-        .map(|(name, column_type, is_nullable, key)| ColumnInfo {
+            columns: Vec::new(),
+        };
+        tree.entry(schema).or_default().insert(name, table);
+    }
+    for (schema, table, name, column_type, is_nullable, key) in columns {
+        if let Some(table) = tree
+            .get_mut(&schema)
+            .and_then(|tables| tables.get_mut(&table))
+        {
+            table.columns.push(ColumnInfo {
+                name,
+                column_type,
+                nullable: is_nullable == "YES",
+                key,
+            });
+        }
+    }
+    tree.into_iter()
+        .map(|(name, tables)| SchemaInfo {
             name,
-            column_type,
-            nullable: is_nullable == "YES",
-            key,
+            tables: tables.into_values().collect(),
         })
-        .collect())
+        .collect()
 }
 
 /// Traduit la colonne `TABLE_TYPE` d'`information_schema.TABLES`.
@@ -117,6 +146,54 @@ fn table_kind(table_type: &str) -> TableKind {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn assembles_the_tree() {
+        let schemas = vec!["vide".to_string(), "test".to_string()];
+        let tables = vec![
+            (
+                "test".to_string(),
+                "v".to_string(),
+                "VIEW".to_string(),
+                None,
+            ),
+            (
+                "test".to_string(),
+                "t".to_string(),
+                "BASE TABLE".to_string(),
+                Some(2),
+            ),
+        ];
+        let column = |table: &str, name: &str| {
+            (
+                "test".to_string(),
+                table.to_string(),
+                name.to_string(),
+                "int".to_string(),
+                "NO".to_string(),
+                String::new(),
+            )
+        };
+        let columns = vec![column("t", "id"), column("v", "id"), column("t", "label")];
+
+        let tree = assemble(schemas, tables, columns);
+
+        let names: Vec<_> = tree.iter().map(|schema| schema.name.as_str()).collect();
+        assert_eq!(names, ["test", "vide"]);
+        let tables: Vec<_> = tree[0]
+            .tables
+            .iter()
+            .map(|table| table.name.as_str())
+            .collect();
+        assert_eq!(tables, ["t", "v"]);
+        let columns: Vec<_> = tree[0].tables[0]
+            .columns
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect();
+        assert_eq!(columns, ["id", "label"]);
+        assert!(tree[1].tables.is_empty());
+    }
 
     #[test]
     fn translates_table_types() {
