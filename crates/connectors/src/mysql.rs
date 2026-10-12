@@ -9,6 +9,8 @@
 //! sans jamais charger tout le résultat en mémoire. Le catalogue (bases,
 //! tables, colonnes) est dans le sous-module `catalog`.
 
+use std::time::Duration;
+
 use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, OptsBuilder, QueryResult, TextProtocol, Value};
 use secrecy::{ExposeSecret, SecretString};
@@ -19,6 +21,10 @@ use ts_rs::TS;
 pub use mysql_async::Conn as Connection;
 
 pub mod catalog;
+mod connect_error;
+
+/// Délai maximal pour ouvrir une connexion au serveur.
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Paramètres de connexion à un serveur MySQL ou MariaDB.
 #[derive(Clone)]
@@ -59,7 +65,15 @@ pub struct ServerInfo {
 /// Erreurs du connecteur MySQL / MariaDB.
 #[derive(Debug, thiserror::Error)]
 pub enum MysqlError {
-    /// Erreur du pilote : serveur injoignable, authentification refusée, requête en échec...
+    /// Connexion impossible, avec un message qui dit quoi vérifier.
+    #[error("{0}")]
+    Connect(String),
+
+    /// Le serveur n'a pas répondu dans le délai `CONNECT_TIMEOUT`.
+    #[error("{0}")]
+    ConnectTimeout(String),
+
+    /// Erreur du pilote sur une connexion ouverte : requête en échec, connexion perdue...
     #[error("{0}")]
     Driver(#[from] mysql_async::Error),
 
@@ -77,7 +91,10 @@ pub fn detect_flavor(version: &str) -> Flavor {
     }
 }
 
-/// Ouvre une connexion au serveur.
+/// Ouvre une connexion au serveur, en `CONNECT_TIMEOUT` au plus.
+///
+/// En cas d'échec, le message dit ce qui ne va pas (serveur injoignable, accès
+/// refusé, base inconnue...) et quoi vérifier.
 pub async fn connect(target: &MysqlTarget) -> Result<Conn, MysqlError> {
     let database_name = Some(target.database_name.as_str()).filter(|name| !name.is_empty());
     let options = OptsBuilder::default()
@@ -86,7 +103,14 @@ pub async fn connect(target: &MysqlTarget) -> Result<Conn, MysqlError> {
         .user(Some(target.username.as_str()))
         .pass(Some(target.password.expose_secret()))
         .db_name(database_name);
-    Ok(Conn::new(options).await?)
+    match tokio::time::timeout(CONNECT_TIMEOUT, Conn::new(options)).await {
+        Ok(Ok(connection)) => Ok(connection),
+        Ok(Err(error)) => Err(MysqlError::Connect(connect_error::describe(target, &error))),
+        Err(_) => Err(MysqlError::ConnectTimeout(connect_error::timeout_message(
+            target,
+            CONNECT_TIMEOUT,
+        ))),
+    }
 }
 
 /// Lit l'identité du serveur sur une connexion ouverte.

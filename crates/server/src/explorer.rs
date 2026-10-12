@@ -18,7 +18,7 @@ use axum::{Json, Router};
 use prisme_connectors::mysql::catalog::{self, ColumnInfo, TableInfo};
 use prisme_connectors::mysql::{self, Connection, MysqlError};
 
-use crate::api::{AppState, CONNECT_TIMEOUT};
+use crate::api::AppState;
 use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
 use crate::connections;
@@ -76,14 +76,7 @@ async fn open(state: &AppState, user_id: i64, id: i64) -> Result<Connection, Api
         .with_db(move |db, key| connections::load_target(db, key, user_id, id))
         .await?
         .ok_or(ApiError::NotFound)?;
-    match tokio::time::timeout(CONNECT_TIMEOUT, mysql::connect(&target)).await {
-        Ok(Ok(connection)) => Ok(connection),
-        Ok(Err(error)) => Err(ApiError::BadGateway(error.to_string())),
-        Err(_) => Err(ApiError::GatewayTimeout(format!(
-            "aucune réponse du serveur en {} s",
-            CONNECT_TIMEOUT.as_secs()
-        ))),
-    }
+    Ok(mysql::connect(&target).await?)
 }
 
 /// Referme la connexion et met en forme le résultat de la lecture du catalogue.
@@ -93,9 +86,7 @@ async fn close<T>(
 ) -> Result<Json<T>, ApiError> {
     // Une erreur de déconnexion n'enlève rien au résultat déjà lu.
     let _ = connection.disconnect().await;
-    result
-        .map(Json)
-        .map_err(|error| ApiError::BadGateway(error.to_string()))
+    Ok(Json(result?))
 }
 
 #[cfg(test)]

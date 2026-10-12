@@ -10,6 +10,8 @@ use axum::response::{IntoResponse, Response};
 use serde::Serialize;
 use ts_rs::TS;
 
+use prisme_connectors::mysql::MysqlError;
+
 use crate::connections::ConnectionsError;
 use crate::settings::SettingsError;
 
@@ -61,6 +63,16 @@ impl From<SettingsError> for ApiError {
                 tracing::error!("{error}");
                 Self::Internal
             }
+        }
+    }
+}
+
+impl From<MysqlError> for ApiError {
+    /// Traduit un échec du serveur cible : 504 s'il n'a pas répondu à temps, 502 sinon.
+    fn from(error: MysqlError) -> Self {
+        match error {
+            MysqlError::ConnectTimeout(message) => Self::GatewayTimeout(message),
+            _ => Self::BadGateway(error.to_string()),
         }
     }
 }

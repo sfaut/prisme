@@ -14,7 +14,6 @@
 //! | `PUT /api/settings`                 | Modifie les réglages, renvoie les réglages à jour.           |
 
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, State};
@@ -34,9 +33,6 @@ use crate::explorer;
 use crate::master_key::MasterKey;
 use crate::query_session;
 use crate::settings::{self, Settings, SettingsUpdate};
-
-/// Délai maximal pour joindre un serveur cible.
-pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// État partagé par toutes les routes.
 #[derive(Clone)]
@@ -183,14 +179,7 @@ async fn probe_connection(
         .await?
         .ok_or(ApiError::NotFound)?;
 
-    match tokio::time::timeout(CONNECT_TIMEOUT, mysql::probe(&target)).await {
-        Ok(Ok(info)) => Ok(Json(info)),
-        Ok(Err(error)) => Err(ApiError::BadGateway(error.to_string())),
-        Err(_) => Err(ApiError::GatewayTimeout(format!(
-            "aucune réponse du serveur en {} s",
-            CONNECT_TIMEOUT.as_secs()
-        ))),
-    }
+    Ok(Json(mysql::probe(&target).await?))
 }
 
 #[cfg(test)]

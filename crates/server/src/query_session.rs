@@ -31,7 +31,7 @@ use prisme_dialects::limit::{LimitOutcome, apply_default_limit};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::api::{AppState, CONNECT_TIMEOUT};
+use crate::api::AppState;
 use crate::settings::{self, check_row_limit};
 
 /// Nombre de lignes par message `rows`.
@@ -94,19 +94,10 @@ struct SocketClosed;
 
 /// Déroule une session : connexion au serveur cible, puis requêtes jusqu'à la fermeture du WebSocket.
 pub async fn run(mut socket: WebSocket, state: AppState, user_id: i64, target: MysqlTarget) {
-    let mut connection = match tokio::time::timeout(CONNECT_TIMEOUT, mysql::connect(&target)).await
-    {
-        Ok(Ok(connection)) => connection,
-        Ok(Err(error)) => {
+    let mut connection = match mysql::connect(&target).await {
+        Ok(connection) => connection,
+        Err(error) => {
             let _ = send_error(&mut socket, error.to_string()).await;
-            return;
-        }
-        Err(_) => {
-            let message = format!(
-                "aucune réponse du serveur en {} s",
-                CONNECT_TIMEOUT.as_secs()
-            );
-            let _ = send_error(&mut socket, message).await;
             return;
         }
     };
