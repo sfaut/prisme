@@ -50,7 +50,9 @@ En développement, Vite sert l'interface et redirige l'API vers `axum`. En produ
 
 Dérogation à la directive générale « lecture seule » : dans ce dépôt, Claude Code fait les commits.
 
-- Un commit à chaque tâche réalisée, et un commit par motif de changement (documentation, fonctionnalité, outillage... jamais mélangés).
+- Un commit à chaque tâche réalisée.
+- **Un commit = un motif de changement**, c'est-à-dire une seule raison de modifier le dépôt. Un motif peut toucher plusieurs fichiers. Deux raisons distinctes font deux commits, même dans un seul fichier : par exemple, une nouvelle règle de travail dans `CLAUDE.md` et la documentation des tests sont deux commits. Le type de fichier (documentation, code) ne définit pas le motif.
+- Méthode : faire les modifications d'un seul motif, committer, puis passer au motif suivant. Avant chaque commit, relire `git diff --cached` : chaque ligne doit servir le motif annoncé par le message.
 - Messages en français.
 - Toujours en lecture seule pour le reste : pas de push, pas de création ou suppression de branche, pas de réécriture d'historique.
 
