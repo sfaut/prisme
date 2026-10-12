@@ -62,12 +62,13 @@ Dérogation à la directive générale « lecture seule » : dans ce dépôt, Cl
 cargo run                         # lance Prisme sur http://127.0.0.1:8484
 cargo run -- --help               # options (--listen, --data-dir, --user-email)
 cargo run -- --data-dir ./tmp     # dossier de données jetable, hors de %APPDATA%\Prisme
-cargo test                        # tests de tous les crates
+cargo test                        # tests de tous les crates, sans Docker
+cargo test -- --include-ignored   # en plus, tests sur de vrais serveurs (Docker Desktop démarré)
 cargo clippy --all-targets        # analyse statique, doit rester sans avertissement
 cargo fmt                         # formatage
 ```
 
-Journaux plus détaillés : `$env:RUST_LOG="debug"` (PowerShell) avant `cargo run`. Les tests d'intégration MySQL / MariaDB (à venir) demandent que Docker Desktop soit démarré.
+Journaux plus détaillés : `$env:RUST_LOG="debug"` (PowerShell) avant `cargo run`. Les tests qui demandent Docker sont marqués `#[ignore = "nécessite Docker Desktop démarré"]`.
 
 ## Règles à respecter
 
