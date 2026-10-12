@@ -1,6 +1,6 @@
 //! Base interne de Prisme : un fichier SQLite en mode WAL dans le dossier de données.
 //!
-//! Elle conserve les utilisateurs, puis les connexions et les notebooks. Le
+//! Elle conserve les utilisateurs et les connexions, puis les notebooks. Le
 //! schéma évolue par migrations SQL numérotées (dossier `migrations/`),
 //! appliquées à l'ouverture. `rusqlite` est synchrone : hors du démarrage, les
 //! accès passeront par des tâches bloquantes dédiées (`spawn_blocking`).
@@ -16,8 +16,12 @@ pub const FILE_NAME: &str = "prisme.db";
 
 /// Migrations du schéma, dans l'ordre. Une migration publiée ne se modifie plus :
 /// tout changement passe par une nouvelle migration ajoutée en fin de liste.
-static MIGRATIONS: LazyLock<Migrations<'static>> =
-    LazyLock::new(|| Migrations::new(vec![M::up(include_str!("../migrations/0001_users.sql"))]));
+static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
+    Migrations::new(vec![
+        M::up(include_str!("../migrations/0001_users.sql")),
+        M::up(include_str!("../migrations/0002_connections.sql")),
+    ])
+});
 
 /// Erreurs d'accès à la base interne.
 #[derive(Debug, thiserror::Error)]
@@ -62,15 +66,17 @@ pub fn ensure_user(connection: &Connection, email: &str) -> Result<i64, StoreErr
     Ok(id)
 }
 
+/// Ouvre une base interne en mémoire, schéma à jour, pour les tests.
+#[cfg(test)]
+pub fn open_in_memory() -> Connection {
+    let mut connection = Connection::open_in_memory().unwrap();
+    prepare(&mut connection).unwrap();
+    connection
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn memory_store() -> Connection {
-        let mut connection = Connection::open_in_memory().unwrap();
-        prepare(&mut connection).unwrap();
-        connection
-    }
 
     #[test]
     fn migrations_are_valid() {
@@ -79,7 +85,7 @@ mod tests {
 
     #[test]
     fn ensure_user_is_idempotent() {
-        let connection = memory_store();
+        let connection = open_in_memory();
         let first = ensure_user(&connection, "sebastien.faut@gmail.com").unwrap();
         let second = ensure_user(&connection, "sebastien.faut@gmail.com").unwrap();
 
@@ -92,7 +98,7 @@ mod tests {
 
     #[test]
     fn rejects_too_long_email() {
-        let connection = memory_store();
+        let connection = open_in_memory();
         let email = format!("{}@example.com", "a".repeat(250));
         assert!(ensure_user(&connection, &email).is_err());
     }

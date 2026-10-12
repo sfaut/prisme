@@ -44,10 +44,6 @@ pub struct MasterKey(SecretSlice<u8>);
 
 impl MasterKey {
     /// Construit le chiffreur AES-256-GCM associé à la clef.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "utilisé par secrets, incrément suivant")
-    )]
     pub fn cipher(&self) -> Aes256Gcm {
         // La longueur est vérifiée à la construction de MasterKey : l'échec est impossible.
         Aes256Gcm::new_from_slice(self.0.expose_secret()).expect("clef de 32 octets")

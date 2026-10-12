@@ -4,20 +4,16 @@
 //! interne, avec l'utilisateur unique du mode poste de développement), puis
 //! démarre le serveur web. Voir `docs/V1.md`, section 2.8.
 
+mod api;
+mod api_error;
+mod auth;
 mod config;
+mod connections;
 mod master_key;
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "utilisé par l'enregistrement des connexions, incrément suivant"
-    )
-)]
 mod secrets;
 mod store;
 
 use anyhow::Context;
-use axum::{Router, routing::get};
 use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
@@ -40,16 +36,14 @@ async fn main() -> anyhow::Result<()> {
         .with_context(|| format!("création du dossier de données {}", data_dir.display()))?;
     tracing::info!("dossier de données : {}", data_dir.display());
 
-    // La clef servira au chiffrement des connexions (incrément suivant).
-    let _master_key = master_key::load_or_create(&data_dir.join(master_key::FILE_NAME))?;
+    let master_key = master_key::load_or_create(&data_dir.join(master_key::FILE_NAME))?;
 
     // Au démarrage, rien d'autre ne tourne : l'accès synchrone à SQLite est sans risque ici.
-    let connection = store::open(&data_dir.join(store::FILE_NAME))?;
-    let user_id = store::ensure_user(&connection, &config.user_email)?;
+    let db = store::open(&data_dir.join(store::FILE_NAME))?;
+    let user_id = store::ensure_user(&db, &config.user_email)?;
     tracing::info!(user_id, "utilisateur local : {}", config.user_email);
-    drop(connection);
 
-    let app = Router::new().route("/api/health", get(|| async { "ok" }));
+    let app = api::router(api::AppState::new(db, master_key, user_id));
 
     let listener = tokio::net::TcpListener::bind(config.listen)
         .await
