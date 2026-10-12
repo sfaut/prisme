@@ -46,7 +46,13 @@ docs/          décisions et réflexions
 
 En développement, Vite sert l'interface et redirige l'API vers `axum`. En production, `rust-embed` embarque `web/dist`.
 
-Les commandes de build, de test et de lancement seront ajoutées ici une fois le workspace créé.
+## Git
+
+Dérogation à la directive générale « lecture seule » : dans ce dépôt, Claude Code fait les commits.
+
+- Un commit à chaque tâche réalisée, et un commit par motif de changement (documentation, fonctionnalité, outillage... jamais mélangés).
+- Messages en français.
+- Toujours en lecture seule pour le reste : pas de push, pas de création ou suppression de branche, pas de réécriture d'historique.
 
 ## Règles à respecter
 
