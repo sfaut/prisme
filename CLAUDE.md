@@ -54,6 +54,21 @@ Dérogation à la directive générale « lecture seule » : dans ce dépôt, Cl
 - Messages en français.
 - Toujours en lecture seule pour le reste : pas de push, pas de création ou suppression de branche, pas de réécriture d'historique.
 
+## Commandes
+
+À lancer à la racine du dépôt. La version de Rust est figée par `rust-toolchain.toml`.
+
+```
+cargo run                         # lance Prisme sur http://127.0.0.1:8484
+cargo run -- --help               # options (--listen, --data-dir, --user-email)
+cargo run -- --data-dir ./tmp     # dossier de données jetable, hors de %APPDATA%\Prisme
+cargo test                        # tests de tous les crates
+cargo clippy --all-targets        # analyse statique, doit rester sans avertissement
+cargo fmt                         # formatage
+```
+
+Journaux plus détaillés : `$env:RUST_LOG="debug"` (PowerShell) avant `cargo run`. Les tests d'intégration MySQL / MariaDB (à venir) demandent que Docker Desktop soit démarré.
+
 ## Règles à respecter
 
 1. **MySQL et MariaDB sont deux dialectes distincts**, avec une base commune. La version du serveur est détectée à la connexion (`SELECT VERSION()`, qui contient « MariaDB » pour ce dernier).
