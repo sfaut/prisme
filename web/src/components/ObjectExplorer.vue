@@ -32,6 +32,12 @@ const emit = defineEmits<{
 const catalog = useCatalogStore()
 
 /**
+ * Arbre compact : lignes de 20 pixels sans marge, petit texte, retrait réduit.
+ * `nodeHeight` sert aussi au défilement virtuel de l'arbre.
+ */
+const TREE_THEME = { nodeHeight: '20px', nodeWrapperPadding: '0', fontSize: '12px' }
+
+/**
  * Lecture du catalogue en cours ?
  */
 const loading = ref(false)
@@ -109,7 +115,15 @@ onMounted(() => load(false))
       {{ message }}
     </n-alert>
     <n-spin :show="loading && nodes.length === 0" class="explorer-spin">
-      <n-tree :data="nodes" :node-props="nodeProps" block-line virtual-scroll class="object-tree" />
+      <n-tree
+        :data="nodes"
+        :node-props="nodeProps"
+        :indent="12"
+        :theme-overrides="TREE_THEME"
+        block-line
+        virtual-scroll
+        class="object-tree"
+      />
     </n-spin>
   </div>
 </template>
@@ -145,6 +159,14 @@ onMounted(() => load(false))
 .object-tree {
   flex: 1;
   min-height: 0;
-  font-size: 0.85rem;
+}
+
+.object-tree :deep(.n-tree-node-switcher) {
+  width: 14px;
+  height: 20px;
+}
+
+.object-tree :deep(.n-tree-node-content) {
+  padding: 0 4px 0 2px;
 }
 </style>
