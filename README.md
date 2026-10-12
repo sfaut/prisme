@@ -94,6 +94,10 @@ Invoke-RestMethod "$api/connections"
 
 # Se connecter : renvoie la variante (mysql ou mariadb) et la version du serveur
 Invoke-RestMethod "$api/connections/1/probe" -Method Post
+
+# Limite de lignes par défaut : lire, puis changer (1000, 2000, 5000, 10000 ou 50000)
+Invoke-RestMethod "$api/settings"
+Invoke-RestMethod "$api/settings" -Method Put -ContentType "application/json" -Body '{"row_limit": 5000}'
 ```
 
 En cas d'erreur (statut 4xx ou 5xx), PowerShell lève une exception, et le message de Prisme figure dans le corps JSON `{"error": "..."}`.
@@ -104,6 +108,8 @@ En cas d'erreur (statut 4xx ou 5xx), PowerShell lève une exception, et le messa
 | `GET /api/connections` | Liste les connexions, sans mot de passe. | — |
 | `POST /api/connections` | Enregistre une connexion, renvoie `{"id": ...}` (201). | 400 saisie invalide, 409 nom déjà pris |
 | `POST /api/connections/{id}/probe` | Se connecte, renvoie `{"flavor": ..., "version": ...}`. | 404 connexion inconnue, 502 serveur injoignable ou accès refusé, 504 pas de réponse en 10 s |
+| `GET /api/settings` | Réglages : `{"row_limit": 1000, "row_limit_choices": [...]}`. | — |
+| `PUT /api/settings` | Change la limite par défaut, renvoie les réglages à jour. | 400 valeur hors des choix |
 
 Pour disposer d'un serveur jetable sans toucher à ses bases habituelles (Docker Desktop démarré) :
 
