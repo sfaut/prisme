@@ -2,7 +2,7 @@
 
 Prisme est un client web multi-bases de données, sous forme de notebook SQL : plusieurs sources, une seule vue. On y interroge MySQL, MariaDB, PostgreSQL, SQLite et DuckDB, dans leur dialecte natif ou dans un autre dialecte que Prisme traduit.
 
-Le projet est en début de V1. Pour l'instant, Prisme prépare son dossier de données (clef maîtresse, base interne, utilisateur local) et expose une API JSON qui enregistre des connexions MySQL / MariaDB et les teste. L'interface web n'existe pas encore. Le périmètre et l'avancement sont décrits dans [docs/V1.md](docs/V1.md).
+Le projet est en début de V1. Pour l'instant, Prisme prépare son dossier de données (clef maîtresse, base interne, utilisateur local) et expose une API JSON qui enregistre des connexions MySQL / MariaDB, les teste, et y exécute des requêtes en streaming par WebSocket, avec la limite de lignes par défaut. L'interface web n'existe pas encore. Le périmètre et l'avancement sont décrits dans [docs/V1.md](docs/V1.md).
 
 ## Prérequis
 
@@ -110,6 +110,30 @@ En cas d'erreur (statut 4xx ou 5xx), PowerShell lève une exception, et le messa
 | `POST /api/connections/{id}/probe` | Se connecte, renvoie `{"flavor": ..., "version": ...}`. | 404 connexion inconnue, 502 serveur injoignable ou accès refusé, 504 pas de réponse en 10 s |
 | `GET /api/settings` | Réglages : `{"row_limit": 1000, "row_limit_choices": [...]}`. | — |
 | `PUT /api/settings` | Change la limite par défaut, renvoie les réglages à jour. | 400 valeur hors des choix |
+
+### Exécuter des requêtes
+
+Les requêtes passent par un WebSocket, une session par connexion enregistrée : `ws://127.0.0.1:8484/api/connections/{id}/query`. Le plus simple pour l'essayer est `wscat`, via Node.js (le premier lancement propose de l'installer) :
+
+```
+npx wscat -c ws://127.0.0.1:8484/api/connections/1/query
+```
+
+Prisme répond `{"type":"ready",...}` une fois connecté au serveur cible. Ensuite, chaque ligne saisie est une requête, en JSON :
+
+```
+{"sql": "SELECT * FROM information_schema.COLUMNS"}
+{"sql": "SELECT * FROM information_schema.COLUMNS", "row_limit": 2000}
+{"sql": "SELECT * FROM information_schema.COLUMNS LIMIT 5"}
+```
+
+Prisme renvoie, dans l'ordre :
+
+1. `columns` : noms des colonnes, texte réellement exécuté, et traitement de la limite (`added` si Prisme a ajouté `LIMIT N + 1`, `user_limit` si la requête en avait déjà une, `not_applicable` pour `SHOW`, `EXPLAIN` ou une écriture, `unparsed` si la requête n'a pas pu être analysée) ;
+2. `rows` : les lignes, par lots de 500, chaque cellule en texte ou `null` ;
+3. `done` : nombre de lignes, `truncated` (des lignes au-delà de la limite ont été écartées), lignes modifiées, durée.
+
+En cas d'échec, un message `error` remplace la suite, et la session continue. Une seule requête par message : `SELECT 1; SELECT 2` est refusé. Attention : les écritures (`UPDATE`, `DELETE`, `DROP`...) sont exécutées, les interrupteurs d'écriture n'existant pas encore.
 
 Pour disposer d'un serveur jetable sans toucher à ses bases habituelles (Docker Desktop démarré) :
 
