@@ -71,6 +71,10 @@ export interface ExplorerNode {
      * La colonne fait partie de la clef primaire (affichée en gras).
      */
     primaryKey: boolean
+    /**
+     * La colonne fait partie d'une clef étrangère (préfixée par « # » et soulignée).
+     */
+    foreignKey: boolean
   }
 }
 
@@ -178,18 +182,24 @@ function tableFolders(schema: string, kind: TableKind, details: TableDetails): E
     isLeaf: true,
     schema,
   })
+  const foreignKeyColumns = new Set(details.foreign_keys.flatMap((key) => key.columns))
   const columns = folder(
     `columns:${base}`,
     'Colonnes',
     schema,
-    details.columns.map((column) => ({
-      ...item('column', column.name, columnLabel(column)),
-      column: {
-        name: column.name,
-        details: columnDetails(column),
-        primaryKey: column.key === 'PRI',
-      },
-    })),
+    details.columns.map((column) => {
+      const foreignKey = foreignKeyColumns.has(column.name)
+      const name = foreignKey ? `#${column.name}` : column.name
+      return {
+        ...item('column', column.name, `${name} · ${columnDetails(column)}`),
+        column: {
+          name,
+          details: columnDetails(column),
+          primaryKey: column.key === 'PRI',
+          foreignKey,
+        },
+      }
+    }),
   )
   if (kind !== 'table') {
     return [columns]
@@ -254,15 +264,6 @@ function loadingNode(parent: string, schema: string): ExplorerNode {
     schema,
     disabled: true,
   }
-}
-
-/**
- * Libellé d'une colonne : nom, type, rôle dans les index, nullabilité.
- *
- * @param column Colonne.
- */
-export function columnLabel(column: ColumnInfo): string {
-  return `${column.name} · ${columnDetails(column)}`
 }
 
 /**

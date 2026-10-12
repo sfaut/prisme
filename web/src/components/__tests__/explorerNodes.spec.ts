@@ -23,9 +23,18 @@ const catalog: CatalogSchema[] = [
           columns: [
             { name: 'id', column_type: 'int', nullable: false, key: 'PRI' },
             { name: 'note', column_type: 'varchar(20)', nullable: true, key: '' },
+            { name: 'client_id', column_type: 'int(10)', nullable: false, key: 'MUL' },
           ],
           indexes: [{ name: 'PRIMARY', columns: ['id'], unique: true }],
-          foreign_keys: [],
+          foreign_keys: [
+            {
+              name: 'fk_client',
+              columns: ['client_id'],
+              referenced_schema: 'shop',
+              referenced_table: 'clients',
+              referenced_columns: ['id'],
+            },
+          ],
           triggers: [],
         },
       },
@@ -60,17 +69,20 @@ describe('catalogNodes', () => {
     const orders = tables?.children?.[0]
     expect(orders?.table).toBe('orders')
     expect(labels(orders)).toEqual([
-      'Colonnes (2)',
+      'Colonnes (3)',
       'Index (1)',
-      'Clefs étrangères (0)',
+      'Clefs étrangères (1)',
       'Déclencheurs (0)',
     ])
-    expect(labels(orders?.children?.[0])).toEqual(['id · int · PRI', 'note · varchar(20) · NULL'])
-    expect(orders?.children?.[2]?.isLeaf).toBe(true)
-    expect(orders?.children?.[0]?.children?.map((node) => node.column?.primaryKey)).toEqual([
-      true,
-      false,
+    expect(labels(orders?.children?.[0])).toEqual([
+      'id · int · PRI',
+      'note · varchar(20) · NULL',
+      '#client_id · int · MUL',
     ])
+    expect(orders?.children?.[3]?.isLeaf).toBe(true)
+    const columns = orders?.children?.[0]?.children ?? []
+    expect(columns.map((node) => node.column?.primaryKey)).toEqual([true, false, false])
+    expect(columns.map((node) => node.column?.foreignKey)).toEqual([false, false, true])
     expect(labels(tables?.children?.[1])).toEqual(['chargement…'])
   })
 
