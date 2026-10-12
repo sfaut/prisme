@@ -10,6 +10,7 @@ mod auth;
 mod config;
 mod connections;
 mod master_key;
+mod query_session;
 mod secrets;
 mod settings;
 mod store;

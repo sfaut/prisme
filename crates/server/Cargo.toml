@@ -11,11 +11,12 @@ path = "src/main.rs"
 [dependencies]
 aes-gcm = "0.11.1"
 anyhow = "1.0.104"
-axum = "0.8.9"
+axum = { version = "0.8.9", features = ["ws"] }
 base64 = "0.23.1"
 clap = { version = "4.6.7", features = ["derive"] }
 dirs = "7.0.0"
 prisme-connectors = { version = "0.1.0", path = "../connectors" }
+prisme-dialects = { version = "0.1.0", path = "../dialects" }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 rusqlite_migration = "2.6.0"
 secrecy = { version = "0.10.3", features = ["serde"] }
@@ -27,5 +28,8 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 [dev-dependencies]
+futures-util = "0.3.34"
 tempfile = "3.27.0"
+testcontainers-modules = { version = "0.15.0", features = ["mariadb"] }
+tokio-tungstenite = "0.30.0"
 tower = { version = "0.5.3", features = ["util"] }

@@ -8,14 +8,17 @@
 //! | `GET /api/connections`              | Liste les connexions de l'utilisateur, sans mot de passe.    |
 //! | `POST /api/connections`             | Enregistre une connexion, mot de passe chiffré.              |
 //! | `POST /api/connections/{id}/probe`  | Se connecte et renvoie la variante et la version du serveur. |
+//! | `GET /api/connections/{id}/query`   | WebSocket : session de requêtes (voir `query_session.rs`).   |
 //! | `GET /api/settings`                 | Réglages de l'utilisateur, avec les choix permis.            |
 //! | `PUT /api/settings`                 | Modifie les réglages, renvoie les réglages à jour.           |
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use axum::response::Response;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use prisme_connectors::mysql::{self, ServerInfo};
@@ -26,10 +29,11 @@ use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
 use crate::connections::{self, ConnectionSummary, NewConnection};
 use crate::master_key::MasterKey;
+use crate::query_session;
 use crate::settings::{self, Settings, SettingsUpdate};
 
 /// Délai maximal pour joindre un serveur cible.
-const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// État partagé par toutes les routes.
 #[derive(Clone)]
@@ -53,7 +57,7 @@ impl AppState {
     }
 
     /// Exécute `task` sur la base interne dans une tâche bloquante, hors des threads de `tokio`.
-    async fn with_db<T, E, F>(&self, task: F) -> Result<T, ApiError>
+    pub async fn with_db<T, E, F>(&self, task: F) -> Result<T, ApiError>
     where
         F: FnOnce(&Connection, &MasterKey) -> Result<T, E> + Send + 'static,
         E: Into<ApiError>,
@@ -92,6 +96,7 @@ pub fn router(state: AppState) -> Router {
             get(list_connections).post(create_connection),
         )
         .route("/api/connections/{id}/probe", post(probe_connection))
+        .route("/api/connections/{id}/query", get(query_socket))
         .route("/api/settings", get(get_settings).put(put_settings))
         .with_state(state)
 }
@@ -122,6 +127,21 @@ async fn create_connection(
         .with_db(move |db, key| connections::insert(db, key, user.id, &new))
         .await?;
     Ok((StatusCode::CREATED, Json(Created { id })))
+}
+
+/// `GET /api/connections/{id}/query` : ouvre une session de requêtes par WebSocket.
+async fn query_socket(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<i64>,
+    upgrade: WebSocketUpgrade,
+) -> Result<Response, ApiError> {
+    let user_id = user.id;
+    let target = state
+        .with_db(move |db, key| connections::load_target(db, key, user_id, id))
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(upgrade.on_upgrade(move |socket| query_session::run(socket, state, user_id, target)))
 }
 
 /// `GET /api/settings` : réglages de l'utilisateur courant.
@@ -158,12 +178,12 @@ async fn probe_connection(
         .await?
         .ok_or(ApiError::NotFound)?;
 
-    match tokio::time::timeout(PROBE_TIMEOUT, mysql::probe(&target)).await {
+    match tokio::time::timeout(CONNECT_TIMEOUT, mysql::probe(&target)).await {
         Ok(Ok(info)) => Ok(Json(info)),
         Ok(Err(error)) => Err(ApiError::BadGateway(error.to_string())),
         Err(_) => Err(ApiError::GatewayTimeout(format!(
             "aucune réponse du serveur en {} s",
-            PROBE_TIMEOUT.as_secs()
+            CONNECT_TIMEOUT.as_secs()
         ))),
     }
 }
