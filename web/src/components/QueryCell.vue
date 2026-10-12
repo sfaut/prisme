@@ -9,12 +9,13 @@
 -->
 <script setup lang="ts">
 import { NAlert, NButton, NSelect, NTabPane, NTabs } from 'naive-ui'
-import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
+import { computed, h, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
-import { useQuerySession } from '@/api/querySession'
+import { type QueryTab, tabProgress, useQuerySession } from '@/api/querySession'
 import { useSettingsStore } from '@/stores/settings'
 
+import ProgressDot from './ProgressDot.vue'
 import QueryTabView from './QueryTabView.vue'
 import SqlEditor from './SqlEditor.vue'
 
@@ -90,6 +91,15 @@ watch(
 function tabLabel(query: number, text: string): string {
   const short = text.replace(/\s+/g, ' ')
   return `${query + 1} · ${short.length > 40 ? `${short.slice(0, 40)}…` : short}`
+}
+
+/**
+ * Titre d'un onglet : pastille d'avancement, puis libellé.
+ *
+ * @param tab Onglet de la requête.
+ */
+function tabTitle(tab: QueryTab) {
+  return () => [h(ProgressDot, { progress: tabProgress(tab) }), tabLabel(tab.query, tab.sql)]
 }
 
 /**
@@ -198,7 +208,7 @@ defineExpose({ run })
         v-for="tab in state.tabs"
         :key="tab.query"
         :name="tab.query"
-        :tab="tabLabel(tab.query, tab.sql)"
+        :tab="tabTitle(tab)"
         display-directive="show"
         class="cell-tab-pane"
       >

@@ -217,6 +217,31 @@ function tabOf(state: SessionState, query: number): QueryTab | undefined {
 }
 
 /**
+ * Avancement d'une requête, affiché par la pastille de son onglet.
+ *
+ * - `executing` : envoyée au serveur, aucun résultat reçu ;
+ * - `loading` : colonnes reçues, lignes en cours de réception ;
+ * - `done` : résultat complet ;
+ * - `error` : échec.
+ */
+export type TabProgress = 'executing' | 'loading' | 'done' | 'error'
+
+/**
+ * Avancement de la requête d'un onglet.
+ *
+ * @param tab Onglet de la requête.
+ */
+export function tabProgress(tab: QueryTab): TabProgress {
+  if (tab.error !== null) {
+    return 'error'
+  }
+  if (tab.done) {
+    return 'done'
+  }
+  return tab.result === null ? 'executing' : 'loading'
+}
+
+/**
  * Note le début d'un lot dans l'état : les onglets précédents disparaissent.
  *
  * @param state État de la session.

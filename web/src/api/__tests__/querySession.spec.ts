@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyMessage, initialState, sessionUrl, startBatch } from '../querySession'
+import { applyMessage, initialState, sessionUrl, startBatch, tabProgress } from '../querySession'
 
 /**
  * État d'une session prête, sur la base `xlist`.
@@ -108,6 +108,39 @@ describe('applyMessage', () => {
     startBatch(state)
     expect(state.error).toBeNull()
     expect(state.tabs).toEqual([])
+  })
+})
+
+describe('tabProgress', () => {
+  it('passe d’exécution à chargement, puis à terminé ou erreur', () => {
+    const state = readyState()
+    startBatch(state)
+    applyMessage(state, {
+      type: 'batch',
+      queries: [
+        { query: 0, sql: 'a', start: 0, end: 1 },
+        { query: 1, sql: 'b', start: 2, end: 3 },
+      ],
+    })
+    const [first, second] = state.tabs
+    expect(tabProgress(first!)).toBe('executing')
+
+    applyMessage(state, { type: 'columns', query: 0, columns: ['x'], sql: 'a', limit: 'added' })
+    expect(tabProgress(first!)).toBe('loading')
+
+    applyMessage(state, {
+      type: 'done',
+      query: 0,
+      row_count: 0,
+      truncated: false,
+      affected_rows: 0,
+      elapsed_ms: 1,
+      database: null,
+    })
+    expect(tabProgress(first!)).toBe('done')
+
+    applyMessage(state, { type: 'error', query: 1, message: 'refus' })
+    expect(tabProgress(second!)).toBe('error')
   })
 })
 
