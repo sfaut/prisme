@@ -16,6 +16,7 @@ Sébastien est propriétaire du projet, travaille en backend et en données (PHP
 - Un commentaire de module en tête de chaque fichier important, qui dit ce que fait le module et pourquoi il existe.
 - Des tests par module, plus la suite de conformité (voir plus bas).
 - Les échanges et les documents sont en français. Les identifiants du code sont en anglais.
+- Dans la prose (documents, commentaires, messages), une version s'écrit en minuscule : « v1 », « v2 ». Les noms de fichiers gardent leur forme (`docs/V1.md`).
 
 ## Stack (décidée)
 
