@@ -194,7 +194,7 @@ onMounted(() => load(false))
 .object-tree {
   flex: 1;
   min-height: 0;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .object-tree :deep(.n-tree-node-switcher) {
