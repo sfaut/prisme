@@ -16,6 +16,8 @@ import {
   dateFrFR,
   frFR,
 } from 'naive-ui'
+
+import ConnectionPanel from './components/ConnectionPanel.vue'
 </script>
 
 <template>
@@ -24,6 +26,7 @@ import {
       <n-layout has-sider class="app">
         <n-layout-sider bordered :width="300" content-class="app-sider">
           <h1 class="app-title">Prisme</h1>
+          <connection-panel />
         </n-layout-sider>
         <n-layout-content content-class="app-content" />
       </n-layout>
