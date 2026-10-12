@@ -77,6 +77,10 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 10. **Tutorial D en v1** : placé en dernier, en sous-ensemble sur une seule source. Convient-il ?
 11. **Langue du code** : tranché, identifiants en anglais, documentation en français.
 
+### Exécution
+
+24. **Requêtes qui changent la session dans un lot parallèle** : en Ctrl-Maj-Entrée, chaque requête a sa propre connexion, donc un `USE` ou un `SET` du lot ne touche pas les autres requêtes (`USE xlist; SELECT * FROM video;` lit `video` dans la base en cours, pas dans `xlist`). Décision provisoire de Sébastien : exécution entièrement parallèle, à affiner. Piste : exécuter d'abord, une par une, les requêtes qui changent la session, puis les autres en parallèle.
+
 ### Sécurité
 
 23. **Clef maîtresse du chiffrement** : tranché, fichier de clef `prisme.key` dans le dossier de données (voir `docs/V1.md`, section 2.8).
