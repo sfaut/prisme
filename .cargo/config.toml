@@ -1,0 +1,8 @@
+# Variables d'environnement de Cargo, communes à tout le workspace.
+[env]
+# Types TypeScript générés par ts-rs à chaque `cargo test` : ils vont dans
+# l'application web, qui les importe.
+TS_RS_EXPORT_DIR = { value = "web/src/api/generated", relative = true }
+# i64 et u64 deviennent `number` côté TypeScript : identifiants et compteurs
+# restent loin de 2^53.
+TS_RS_LARGE_INT = "number"

@@ -6,21 +6,25 @@
 
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 /// Limites de lignes proposées à l'utilisateur. Seul endroit à modifier pour changer la liste.
 pub const ROW_LIMIT_CHOICES: [u32; 5] = [1_000, 2_000, 5_000, 10_000, 50_000];
 
 /// Réglages d'un utilisateur, tels que renvoyés par l'API.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct Settings {
     /// Limite de lignes par défaut.
     pub row_limit: u32,
     /// Limites permises, pour construire la liste de choix de l'interface.
+    #[ts(type = "Array<number>")]
     pub row_limit_choices: &'static [u32],
 }
 
 /// Modification des réglages demandée par l'utilisateur.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
 pub struct SettingsUpdate {
     /// Nouvelle limite de lignes par défaut, parmi `ROW_LIMIT_CHOICES`.
     pub row_limit: u32,

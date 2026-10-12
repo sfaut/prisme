@@ -10,6 +10,7 @@ use prisme_connectors::mysql::MysqlTarget;
 use rusqlite::{Connection, OptionalExtension, ffi, params};
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::master_key::MasterKey;
 use crate::secrets::{self, SecretError};
@@ -30,7 +31,8 @@ const DATABASE_NAME_MAX_LENGTH: usize = 64;
 const ENGINE_MYSQL: &str = "mysql";
 
 /// Connexion à enregistrer, telle que saisie par l'utilisateur.
-#[derive(Deserialize)]
+#[derive(Deserialize, TS)]
+#[ts(export)]
 pub struct NewConnection {
     /// Nom choisi par l'utilisateur, unique parmi ses connexions.
     pub name: String,
@@ -41,14 +43,17 @@ pub struct NewConnection {
     /// Compte de connexion.
     pub username: String,
     /// Mot de passe du compte, chiffré avant stockage.
+    #[ts(type = "string")]
     pub password: SecretString,
     /// Base sélectionnée à la connexion. Absente ou vide : aucune.
     #[serde(default)]
+    #[ts(optional, as = "Option<String>")]
     pub database_name: String,
 }
 
 /// Connexion enregistrée, sans son mot de passe.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 pub struct ConnectionSummary {
     /// Identifiant de la connexion.
     pub id: i64,

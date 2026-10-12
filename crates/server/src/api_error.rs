@@ -7,10 +7,19 @@
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use serde_json::json;
+use serde::Serialize;
+use ts_rs::TS;
 
 use crate::connections::ConnectionsError;
 use crate::settings::SettingsError;
+
+/// Corps JSON d'une réponse en erreur.
+#[derive(Serialize, TS)]
+#[ts(export)]
+pub struct ErrorBody {
+    /// Message lisible par l'utilisateur.
+    pub error: String,
+}
 
 /// Erreur renvoyée par une route de l'API.
 #[derive(Debug)]
@@ -70,6 +79,6 @@ impl IntoResponse for ApiError {
                 "erreur interne, voir le journal du serveur".to_string(),
             ),
         };
-        (status, Json(json!({ "error": message }))).into_response()
+        (status, Json(ErrorBody { error: message })).into_response()
     }
 }

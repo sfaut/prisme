@@ -29,6 +29,7 @@ use prisme_dialects::Dialect;
 use prisme_dialects::classify::{StatementKind, classify};
 use prisme_dialects::limit::{LimitOutcome, apply_default_limit};
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use crate::api::{AppState, CONNECT_TIMEOUT};
 use crate::settings::{self, check_row_limit};
@@ -37,16 +38,19 @@ use crate::settings::{self, check_row_limit};
 const ROW_BATCH_SIZE: usize = 500;
 
 /// Requête envoyée par le client.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
 struct QueryRequest {
     /// Texte SQL, une seule requête.
     sql: String,
     /// Limite de lignes pour cette requête seule, parmi les choix permis.
+    #[ts(optional)]
     row_limit: Option<u32>,
 }
 
 /// Traitement de la limite, tel qu'annoncé au client.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 enum LimitReport {
     /// Prisme a ajouté `LIMIT N + 1`.
@@ -60,7 +64,8 @@ enum LimitReport {
 }
 
 /// Message envoyé au client.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ServerMessage<'a> {
     /// La connexion au serveur cible est ouverte.

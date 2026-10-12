@@ -13,6 +13,7 @@ use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, OptsBuilder, QueryResult, TextProtocol, Value};
 use secrecy::{ExposeSecret, SecretString};
 use serde::Serialize;
+use ts_rs::TS;
 
 /// Connexion ouverte à un serveur MySQL ou MariaDB.
 pub use mysql_async::Conn as Connection;
@@ -35,7 +36,8 @@ pub struct MysqlTarget {
 }
 
 /// Variante du serveur, détectée à la connexion.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum Flavor {
     /// Serveur MySQL (Oracle).
@@ -45,7 +47,8 @@ pub enum Flavor {
 }
 
 /// Identité d'un serveur, obtenue à la connexion.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
 pub struct ServerInfo {
     /// MySQL ou MariaDB.
     pub flavor: Flavor,

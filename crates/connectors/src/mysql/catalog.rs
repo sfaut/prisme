@@ -6,11 +6,13 @@
 
 use mysql_async::prelude::Queryable;
 use serde::Serialize;
+use ts_rs::TS;
 
 use super::{Connection, MysqlError};
 
 /// Table ou vue d'une base.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
 pub struct TableInfo {
     /// Nom de la table.
     pub name: String,
@@ -22,7 +24,8 @@ pub struct TableInfo {
 }
 
 /// Nature d'un objet de type table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum TableKind {
     /// Table de données.
@@ -34,7 +37,8 @@ pub enum TableKind {
 }
 
 /// Colonne d'une table.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
 pub struct ColumnInfo {
     /// Nom de la colonne.
     pub name: String,

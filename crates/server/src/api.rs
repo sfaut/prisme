@@ -25,6 +25,7 @@ use axum::{Json, Router};
 use prisme_connectors::mysql::{self, ServerInfo};
 use rusqlite::Connection;
 use serde::Serialize;
+use ts_rs::TS;
 
 use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
@@ -83,7 +84,8 @@ impl AppState {
 }
 
 /// Réponse à la création d'une ressource.
-#[derive(Serialize)]
+#[derive(Serialize, TS)]
+#[ts(export)]
 struct Created {
     /// Identifiant de la ressource créée.
     id: i64,
