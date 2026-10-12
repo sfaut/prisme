@@ -1,53 +1,185 @@
-//! Explorateur d'objets : catalogue complet d'une connexion enregistrée.
+//! Explorateur d'objets : catalogue d'une connexion enregistrée, envoyé au fil de l'eau.
 //!
-//! Route : `GET /api/connections/{id}/catalog`, qui renvoie toutes les bases,
-//! avec leurs tables et leurs colonnes. L'interface charge le catalogue une
-//! fois, à l'ouverture de la connexion, puis le parcourt sans autre appel.
+//! Route : `GET /api/connections/{id}/catalog`. La réponse est un flux de
+//! lignes JSON (`application/x-ndjson`), un message `CatalogEvent` par ligne,
+//! envoyé dès qu'il est prêt :
+//!
+//! 1. `schemas` : noms de toutes les bases ;
+//! 2. `tables` : tables d'une base, base par base ;
+//! 3. `columns` : colonnes des tables d'une base, base par base ;
+//! 4. `done`, ou `error` si une lecture échoue.
+//!
+//! L'interface affiche donc les bases presque aussitôt, puis les tables et
+//! les colonnes à mesure qu'elles arrivent. La base choisie dans la connexion
+//! est lue en premier, les bases système (`information_schema`, `mysql`...)
+//! en dernier.
 
+use std::convert::Infallible;
+
+use axum::Router;
+use axum::body::Body;
 use axum::extract::{Path, State};
+use axum::http::header::CONTENT_TYPE;
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use axum::{Json, Router};
-use prisme_connectors::mysql::catalog::{self, SchemaInfo};
-use prisme_connectors::mysql::{self, Connection, MysqlError};
+use futures_util::stream;
+use prisme_connectors::mysql::catalog::{self, TableColumns, TableInfo};
+use prisme_connectors::mysql::{self, Connection};
+use serde::Serialize;
+use tokio::sync::mpsc;
+use ts_rs::TS;
 
 use crate::api::AppState;
 use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
 use crate::connections;
 
-/// Routes de l'explorateur, à fusionner dans le routeur de l'API.
-pub fn routes() -> Router<AppState> {
-    Router::new().route("/api/connections/{id}/catalog", get(load_catalog))
+/// Bases fournies par le serveur lui-même, lues en dernier.
+const SYSTEM_SCHEMAS: [&str; 4] = ["information_schema", "mysql", "performance_schema", "sys"];
+
+/// Nombre de messages en attente d'envoi au-delà duquel la lecture patiente.
+const BUFFER: usize = 16;
+
+/// Message du flux du catalogue.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum CatalogEvent {
+    /// Noms de toutes les bases, par ordre alphabétique.
+    Schemas { schemas: Vec<String> },
+    /// Tables et vues d'une base.
+    Tables {
+        schema: String,
+        tables: Vec<TableInfo>,
+    },
+    /// Colonnes des tables d'une base.
+    Columns {
+        schema: String,
+        tables: Vec<TableColumns>,
+    },
+    /// Échec d'une lecture ; le flux continue avec la base suivante.
+    Error { message: String },
+    /// Fin du catalogue.
+    Done,
 }
 
-/// `GET /api/connections/{id}/catalog` : bases, tables et colonnes du serveur.
-async fn load_catalog(
+/// Routes de l'explorateur, à fusionner dans le routeur de l'API.
+pub fn routes() -> Router<AppState> {
+    Router::new().route("/api/connections/{id}/catalog", get(stream_catalog))
+}
+
+/// `GET /api/connections/{id}/catalog` : flux du catalogue du serveur.
+///
+/// La connexion au serveur cible s'ouvre avant le début du flux : un échec
+/// de connexion reste une réponse HTTP en erreur (502, 504).
+async fn stream_catalog(
     State(state): State<AppState>,
     user: CurrentUser,
     Path(id): Path<i64>,
-) -> Result<Json<Vec<SchemaInfo>>, ApiError> {
-    let mut connection = open(&state, user.id, id).await?;
-    let result = catalog::load(&mut connection).await;
-    close(connection, result).await
-}
-
-/// Ouvre une connexion au serveur de la connexion enregistrée `id`.
-async fn open(state: &AppState, user_id: i64, id: i64) -> Result<Connection, ApiError> {
+) -> Result<Response, ApiError> {
+    let user_id = user.id;
     let target = state
         .with_db(move |db, key| connections::load_target(db, key, user_id, id))
         .await?
         .ok_or(ApiError::NotFound)?;
-    Ok(mysql::connect(&target).await?)
+    let mut connection = mysql::connect(&target).await?;
+
+    let (sender, receiver) = mpsc::channel(BUFFER);
+    tokio::spawn(async move {
+        read_catalog(&mut connection, &target.database_name, &sender).await;
+        let _ = connection.disconnect().await;
+    });
+
+    let lines = stream::unfold(receiver, |mut receiver| async move {
+        let event = receiver.recv().await?;
+        let line = format!(
+            "{}
+",
+            serde_json::to_string(&event).expect("message sérialisable")
+        );
+        Some((Ok::<_, Infallible>(line), receiver))
+    });
+    Ok((
+        [(CONTENT_TYPE, "application/x-ndjson")],
+        Body::from_stream(lines),
+    )
+        .into_response())
 }
 
-/// Referme la connexion et met en forme le résultat de la lecture du catalogue.
-async fn close<T>(
-    connection: Connection,
-    result: Result<T, MysqlError>,
-) -> Result<Json<T>, ApiError> {
-    // Une erreur de déconnexion n'enlève rien au résultat déjà lu.
-    let _ = connection.disconnect().await;
-    Ok(Json(result?))
+/// Lit le catalogue base par base et envoie chaque partie dès qu'elle est lue.
+///
+/// S'arrête dès que le client a fermé la réponse.
+async fn read_catalog(
+    connection: &mut Connection,
+    preferred: &str,
+    sender: &mpsc::Sender<CatalogEvent>,
+) {
+    let schemas = match catalog::schemas(connection).await {
+        Ok(schemas) => schemas,
+        Err(error) => {
+            let _ = sender.send(error_event("bases", &error)).await;
+            return;
+        }
+    };
+    let order = reading_order(&schemas, preferred);
+    if sender
+        .send(CatalogEvent::Schemas { schemas })
+        .await
+        .is_err()
+    {
+        return;
+    }
+
+    for schema in &order {
+        let event = match catalog::tables(connection, schema).await {
+            Ok(tables) => CatalogEvent::Tables {
+                schema: schema.clone(),
+                tables,
+            },
+            Err(error) => error_event(schema, &error),
+        };
+        if sender.send(event).await.is_err() {
+            return;
+        }
+    }
+    for schema in &order {
+        let event = match catalog::columns(connection, schema).await {
+            Ok(tables) => CatalogEvent::Columns {
+                schema: schema.clone(),
+                tables,
+            },
+            Err(error) => error_event(schema, &error),
+        };
+        if sender.send(event).await.is_err() {
+            return;
+        }
+    }
+    let _ = sender.send(CatalogEvent::Done).await;
+}
+
+/// Message d'erreur pour une lecture du catalogue en échec.
+fn error_event(what: &str, error: &mysql::MysqlError) -> CatalogEvent {
+    CatalogEvent::Error {
+        message: format!("lecture du catalogue ({what}) impossible : {error}"),
+    }
+}
+
+/// Ordre de lecture des bases : la base préférée, puis les bases de
+/// l'utilisateur, puis les bases système.
+fn reading_order(schemas: &[String], preferred: &str) -> Vec<String> {
+    let rank = |schema: &String| {
+        if schema == preferred {
+            0
+        } else if SYSTEM_SCHEMAS.contains(&schema.as_str()) {
+            2
+        } else {
+            1
+        }
+    };
+    let mut order = schemas.to_vec();
+    // Tri stable : l'ordre alphabétique est conservé à rang égal.
+    order.sort_by_key(rank);
+    order
 }
 
 #[cfg(test)]
@@ -81,6 +213,17 @@ mod tests {
 
         let request = Request::get(uri).body(Body::empty()).unwrap();
         app.oneshot(request).await.unwrap().status()
+    }
+
+    #[test]
+    fn reads_the_preferred_schema_first_and_system_schemas_last() {
+        let schemas: Vec<String> = ["information_schema", "mysql", "shop", "sys", "xlist"]
+            .map(String::from)
+            .to_vec();
+        assert_eq!(
+            super::reading_order(&schemas, "xlist"),
+            ["xlist", "shop", "information_schema", "mysql", "sys"]
+        );
     }
 
     #[tokio::test]

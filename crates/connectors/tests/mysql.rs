@@ -133,7 +133,7 @@ async fn kill_query_interrupts_and_keeps_the_connection() {
 
 #[tokio::test]
 #[ignore = "nécessite Docker Desktop démarré"]
-async fn loads_the_whole_catalog() {
+async fn reads_the_catalog_schema_by_schema() {
     let server = Mariadb::default().start().await.unwrap();
     let host = server.get_host().await.unwrap().to_string();
     let port = server.get_host_port_ipv4(3306).await.unwrap();
@@ -145,20 +145,23 @@ async fn loads_the_whole_catalog() {
         execute(&mut connection, sql).await.unwrap().discard().await;
     }
 
-    let tree = catalog::load(&mut connection).await.unwrap();
-    let test = tree.iter().find(|schema| schema.name == "test").unwrap();
+    let schemas = catalog::schemas(&mut connection).await.unwrap();
+    assert!(schemas.contains(&"test".to_string()));
 
-    let kinds: Vec<_> = test
-        .tables
+    let tables = catalog::tables(&mut connection, "test").await.unwrap();
+    let kinds: Vec<_> = tables
         .iter()
         .map(|table| (table.name.as_str(), table.kind))
         .collect();
     assert_eq!(kinds, [("t", TableKind::Table), ("v", TableKind::View)]);
 
-    let columns = &test.tables[0].columns;
-    assert_eq!(columns[0].name, "id");
-    assert_eq!(columns[0].key, "PRI");
-    assert!(!columns[0].nullable);
-    assert_eq!(columns[1].column_type, "varchar(20)");
-    assert!(columns[1].nullable);
+    let columns = catalog::columns(&mut connection, "test").await.unwrap();
+    assert_eq!(columns[0].table, "t");
+    let t = &columns[0].columns;
+    assert_eq!(t[0].name, "id");
+    assert_eq!(t[0].key, "PRI");
+    assert!(!t[0].nullable);
+    assert_eq!(t[1].column_type, "varchar(20)");
+    assert!(t[1].nullable);
+    assert_eq!(columns[1].table, "v");
 }

@@ -1,13 +1,14 @@
 /**
  * Nœuds de l'arbre de l'explorateur d'objets : bases, tables, colonnes.
  *
- * Les fonctions de ce module construisent tout l'arbre à partir du catalogue
- * renvoyé par l'API ; elles ne dépendent pas de l'affichage.
+ * Les fonctions de ce module construisent l'arbre à partir du catalogue, même
+ * incomplet : une partie pas encore reçue s'affiche « chargement… ». Elles ne
+ * dépendent pas de l'affichage.
  */
 
 import type { ColumnInfo } from '@/api/generated/ColumnInfo'
-import type { SchemaInfo } from '@/api/generated/SchemaInfo'
-import type { TableInfo } from '@/api/generated/TableInfo'
+import type { TableKind } from '@/api/generated/TableKind'
+import type { CatalogSchema, CatalogTable } from '@/stores/catalog'
 
 /**
  * Nœud de l'arbre, au format attendu par `NTree` de Naive UI.
@@ -41,22 +42,46 @@ export interface ExplorerNode {
    * Nœud de table (et non de base ou de colonne).
    */
   isTable: boolean
+  /**
+   * Nœud non cliquable (« chargement… »).
+   */
+  disabled?: boolean
 }
 
 /**
- * Arbre complet du catalogue : bases, puis tables, puis colonnes.
+ * Arbre du catalogue : bases, puis tables, puis colonnes.
  *
- * @param schemas Catalogue du serveur.
+ * @param schemas Catalogue du serveur, éventuellement incomplet.
  */
-export function catalogNodes(schemas: SchemaInfo[]): ExplorerNode[] {
+export function catalogNodes(schemas: CatalogSchema[]): ExplorerNode[] {
   return schemas.map((schema) => ({
     key: `schema:${schema.name}`,
     label: schema.name,
-    isLeaf: schema.tables.length === 0,
+    isLeaf: schema.tables?.length === 0,
     isTable: false,
     schema: schema.name,
-    children: schema.tables.map((table) => tableNode(schema.name, table)),
+    children:
+      schema.tables === null
+        ? [loadingNode(`schema:${schema.name}`, schema.name)]
+        : schema.tables.map((table) => tableNode(schema.name, table)),
   }))
+}
+
+/**
+ * Nœud provisoire, affiché sous une partie du catalogue pas encore reçue.
+ *
+ * @param parent Clef du nœud parent.
+ * @param schema Nom de la base.
+ */
+function loadingNode(parent: string, schema: string): ExplorerNode {
+  return {
+    key: `${parent}:loading`,
+    label: 'chargement…',
+    isLeaf: true,
+    isTable: false,
+    schema,
+    disabled: true,
+  }
 }
 
 /**
@@ -65,15 +90,19 @@ export function catalogNodes(schemas: SchemaInfo[]): ExplorerNode[] {
  * @param schema Nom de la base.
  * @param table Table, avec ses colonnes.
  */
-function tableNode(schema: string, table: TableInfo): ExplorerNode {
+function tableNode(schema: string, table: CatalogTable): ExplorerNode {
+  const key = `table:${schema}.${table.name}`
   return {
-    key: `table:${schema}.${table.name}`,
+    key,
     label: table.kind === 'table' ? table.name : `${table.name} (${kindLabel(table.kind)})`,
-    isLeaf: table.columns.length === 0,
+    isLeaf: table.columns?.length === 0,
     isTable: true,
     schema,
     table: table.name,
-    children: table.columns.map((column) => columnNode(schema, table.name, column)),
+    children:
+      table.columns === null
+        ? [loadingNode(key, schema)]
+        : table.columns.map((column) => columnNode(schema, table.name, column)),
   }
 }
 
@@ -101,7 +130,7 @@ function columnNode(schema: string, table: string, column: ColumnInfo): Explorer
  *
  * @param kind Nature de la table.
  */
-function kindLabel(kind: TableInfo['kind']): string {
+function kindLabel(kind: TableKind): string {
   return kind === 'view' ? 'vue' : 'système'
 }
 

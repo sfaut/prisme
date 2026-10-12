@@ -1,27 +1,21 @@
 //! Catalogue d'un serveur MySQL ou MariaDB : bases, tables et colonnes.
 //!
-//! Sert à l'explorateur d'objets, qui l'affiche en entier dès qu'une
-//! connexion est choisie. Tout le catalogue se lit en trois requêtes sur
-//! `information_schema` (bases, tables, colonnes), sur une seule connexion :
-//! c'est bien plus rapide qu'une connexion par nœud ouvert dans l'arbre.
-
-use std::collections::BTreeMap;
+//! Sert à l'explorateur d'objets, qui affiche les éléments dès qu'ils
+//! arrivent : d'abord les noms des bases, puis les tables base par base, puis
+//! les colonnes base par base. Chaque lecture filtre sur une base, ce qui
+//! évite au serveur de parcourir toutes les tables à la fois.
+//!
+//! Les requêtes ne demandent que des informations du dictionnaire (noms,
+//! types) : demander aussi le nombre de lignes (`TABLE_ROWS`) obligerait le
+//! serveur à ouvrir chaque table, ce qui est très lent sur un gros serveur.
+//! Les noms de base sont passés en paramètres de requêtes préparées, jamais
+//! concaténés au texte SQL.
 
 use mysql_async::prelude::Queryable;
 use serde::Serialize;
 use ts_rs::TS;
 
 use super::{Connection, MysqlError};
-
-/// Base du serveur, avec ses tables.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export)]
-pub struct SchemaInfo {
-    /// Nom de la base.
-    pub name: String,
-    /// Tables et vues de la base, par nom.
-    pub tables: Vec<TableInfo>,
-}
 
 /// Table ou vue d'une base.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -31,11 +25,6 @@ pub struct TableInfo {
     pub name: String,
     /// Nature de l'objet.
     pub kind: TableKind,
-    /// Nombre de lignes estimé par le serveur (exact pour MyISAM, approché pour
-    /// InnoDB), `None` pour une vue.
-    pub estimated_rows: Option<u64>,
-    /// Colonnes, dans l'ordre de déclaration.
-    pub columns: Vec<ColumnInfo>,
 }
 
 /// Nature d'un objet de type table.
@@ -65,71 +54,83 @@ pub struct ColumnInfo {
     pub key: String,
 }
 
-/// Ligne d'`information_schema.TABLES` : base, table, type, lignes estimées.
-type TableRow = (String, String, String, Option<u64>);
-
-/// Ligne d'`information_schema.COLUMNS` : base, table, colonne, type, nullabilité, index.
-type ColumnRow = (String, String, String, String, String, String);
-
-/// Lit tout le catalogue du serveur : bases, tables et colonnes, par nom.
-pub async fn load(connection: &mut Connection) -> Result<Vec<SchemaInfo>, MysqlError> {
-    let schemas: Vec<String> = connection
-        .query("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA")
-        .await?;
-    let tables: Vec<TableRow> = connection
-        .query(
-            "SELECT TABLE_SCHEMA, TABLE_NAME, TABLE_TYPE, TABLE_ROWS FROM information_schema.TABLES",
-        )
-        .await?;
-    let columns: Vec<ColumnRow> = connection
-        .query(
-            "SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY
-             FROM information_schema.COLUMNS ORDER BY ORDINAL_POSITION",
-        )
-        .await?;
-    Ok(assemble(schemas, tables, columns))
+/// Colonnes d'une table.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct TableColumns {
+    /// Nom de la table.
+    pub table: String,
+    /// Colonnes, dans l'ordre de déclaration.
+    pub columns: Vec<ColumnInfo>,
 }
 
-/// Range les lignes lues dans `information_schema` en arbre : bases, puis
-/// tables, puis colonnes. Bases et tables sont triées par nom ; les colonnes
-/// gardent l'ordre reçu (ordre de déclaration).
-fn assemble(
-    schemas: Vec<String>,
-    tables: Vec<TableRow>,
-    columns: Vec<ColumnRow>,
-) -> Vec<SchemaInfo> {
-    let mut tree: BTreeMap<String, BTreeMap<String, TableInfo>> = schemas
+/// Ligne d'`information_schema.COLUMNS` : table, colonne, type, nullabilité, index.
+type ColumnRow = (String, String, String, String, String);
+
+/// Liste les bases du serveur, par nom.
+pub async fn schemas(connection: &mut Connection) -> Result<Vec<String>, MysqlError> {
+    Ok(connection
+        .query("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME")
+        .await?)
+}
+
+/// Liste les tables et vues de la base `schema`, par nom.
+pub async fn tables(
+    connection: &mut Connection,
+    schema: &str,
+) -> Result<Vec<TableInfo>, MysqlError> {
+    let rows: Vec<(String, String)> = connection
+        .exec(
+            "SELECT TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES
+             WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME",
+            (schema,),
+        )
+        .await?;
+    Ok(rows
         .into_iter()
-        .map(|schema| (schema, BTreeMap::new()))
-        .collect();
-    for (schema, name, table_type, estimated_rows) in tables {
-        let table = TableInfo {
-            name: name.clone(),
+        .map(|(name, table_type)| TableInfo {
+            name,
             kind: table_kind(&table_type),
-            estimated_rows,
-            columns: Vec::new(),
+        })
+        .collect())
+}
+
+/// Liste les colonnes de toutes les tables de la base `schema`, table par table.
+pub async fn columns(
+    connection: &mut Connection,
+    schema: &str,
+) -> Result<Vec<TableColumns>, MysqlError> {
+    let rows: Vec<ColumnRow> = connection
+        .exec(
+            "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY
+             FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, ORDINAL_POSITION",
+            (schema,),
+        )
+        .await?;
+    Ok(group_by_table(rows))
+}
+
+/// Regroupe les colonnes par table. Les lignes arrivent triées par table, puis
+/// dans l'ordre de déclaration des colonnes.
+fn group_by_table(rows: Vec<ColumnRow>) -> Vec<TableColumns> {
+    let mut tables: Vec<TableColumns> = Vec::new();
+    for (table, name, column_type, is_nullable, key) in rows {
+        let column = ColumnInfo {
+            name,
+            column_type,
+            nullable: is_nullable == "YES",
+            key,
         };
-        tree.entry(schema).or_default().insert(name, table);
-    }
-    for (schema, table, name, column_type, is_nullable, key) in columns {
-        if let Some(table) = tree
-            .get_mut(&schema)
-            .and_then(|tables| tables.get_mut(&table))
-        {
-            table.columns.push(ColumnInfo {
-                name,
-                column_type,
-                nullable: is_nullable == "YES",
-                key,
-            });
+        match tables.last_mut() {
+            Some(last) if last.table == table => last.columns.push(column),
+            _ => tables.push(TableColumns {
+                table,
+                columns: vec![column],
+            }),
         }
     }
-    tree.into_iter()
-        .map(|(name, tables)| SchemaInfo {
-            name,
-            tables: tables.into_values().collect(),
-        })
-        .collect()
+    tables
 }
 
 /// Traduit la colonne `TABLE_TYPE` d'`information_schema.TABLES`.
@@ -148,25 +149,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn assembles_the_tree() {
-        let schemas = vec!["vide".to_string(), "test".to_string()];
-        let tables = vec![
+    fn groups_columns_by_table() {
+        let row = |table: &str, name: &str| {
             (
-                "test".to_string(),
-                "v".to_string(),
-                "VIEW".to_string(),
-                None,
-            ),
-            (
-                "test".to_string(),
-                "t".to_string(),
-                "BASE TABLE".to_string(),
-                Some(2),
-            ),
-        ];
-        let column = |table: &str, name: &str| {
-            (
-                "test".to_string(),
                 table.to_string(),
                 name.to_string(),
                 "int".to_string(),
@@ -174,25 +159,14 @@ mod tests {
                 String::new(),
             )
         };
-        let columns = vec![column("t", "id"), column("v", "id"), column("t", "label")];
+        let tables = group_by_table(vec![row("t", "id"), row("t", "label"), row("u", "id")]);
 
-        let tree = assemble(schemas, tables, columns);
-
-        let names: Vec<_> = tree.iter().map(|schema| schema.name.as_str()).collect();
-        assert_eq!(names, ["test", "vide"]);
-        let tables: Vec<_> = tree[0]
-            .tables
+        let summary: Vec<_> = tables
             .iter()
-            .map(|table| table.name.as_str())
+            .map(|table| (table.table.as_str(), table.columns.len()))
             .collect();
-        assert_eq!(tables, ["t", "v"]);
-        let columns: Vec<_> = tree[0].tables[0]
-            .columns
-            .iter()
-            .map(|column| column.name.as_str())
-            .collect();
-        assert_eq!(columns, ["id", "label"]);
-        assert!(tree[1].tables.is_empty());
+        assert_eq!(summary, [("t", 2), ("u", 1)]);
+        assert_eq!(tables[0].columns[1].name, "label");
     }
 
     #[test]

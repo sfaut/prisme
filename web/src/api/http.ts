@@ -45,11 +45,20 @@ export async function request<T>(method: Method, path: string, body?: unknown): 
     headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
-  const text = await response.text()
   if (!response.ok) {
-    throw new ApiError(response.status, errorMessage(response, text))
+    throw await toApiError(response)
   }
+  const text = await response.text()
   return (text === '' ? undefined : JSON.parse(text)) as T
+}
+
+/**
+ * Transforme une réponse en erreur en `ApiError`, avec le message du serveur.
+ *
+ * @param response Réponse dont le statut est une erreur.
+ */
+export async function toApiError(response: Response): Promise<ApiError> {
+  return new ApiError(response.status, errorMessage(response, await response.text()))
 }
 
 /**

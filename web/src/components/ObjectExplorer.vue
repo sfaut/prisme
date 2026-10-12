@@ -1,10 +1,11 @@
 <!--
   Explorateur d'objets de la connexion choisie : bases, tables et colonnes.
 
-  Tout le catalogue est lu en un seul appel dès que la connexion est choisie,
-  puis gardé en mémoire : ouvrir un nœud est immédiat, et revenir sur une
-  connexion déjà explorée aussi. « Rafraîchir » relit le catalogue. Un double
-  clic sur une table émet `open-table`, pour en afficher le contenu.
+  Le catalogue arrive au fil de l'eau dès que la connexion est choisie : les
+  bases d'abord, puis les tables, puis les colonnes, chacune affichée dès sa
+  réception. Il reste ensuite en mémoire : revenir sur une connexion déjà
+  explorée est immédiat. « Rafraîchir » relit le catalogue. Un double clic
+  sur une table émet `open-table`, pour en afficher le contenu.
 -->
 <script setup lang="ts">
 import { NAlert, NButton, NSpin, NTree, type TreeOption } from 'naive-ui'
@@ -44,8 +45,21 @@ const error = ref<string | null>(null)
  * Arbre complet, construit à partir du catalogue en mémoire.
  */
 const nodes = computed(() => {
-  const schemas = catalog.catalogs[props.connectionId]
-  return (schemas ? catalogNodes(schemas) : []) as unknown as TreeOption[]
+  const current = catalog.catalogs[props.connectionId]
+  return (current ? catalogNodes(current.schemas) : []) as unknown as TreeOption[]
+})
+
+/**
+ * Erreurs de lecture signalées par le serveur pendant la réception.
+ */
+const readErrors = computed(() => catalog.catalogs[props.connectionId]?.errors ?? [])
+
+/**
+ * Le catalogue est-il encore en cours de réception ?
+ */
+const receiving = computed(() => {
+  const current = catalog.catalogs[props.connectionId]
+  return current !== undefined && !current.done
 })
 
 /**
@@ -87,10 +101,13 @@ onMounted(() => load(false))
 <template>
   <div class="object-explorer">
     <div class="explorer-toolbar">
-      <span class="explorer-title">Objets</span>
+      <span class="explorer-title">Objets<template v-if="receiving"> · chargement…</template></span>
       <n-button size="tiny" :loading="loading" @click="load(true)">Rafraîchir</n-button>
     </div>
     <n-alert v-if="error" type="error" :show-icon="false">{{ error }}</n-alert>
+    <n-alert v-for="message in readErrors" :key="message" type="warning" :show-icon="false">
+      {{ message }}
+    </n-alert>
     <n-spin :show="loading && nodes.length === 0" class="explorer-spin">
       <n-tree :data="nodes" :node-props="nodeProps" block-line virtual-scroll class="object-tree" />
     </n-spin>
