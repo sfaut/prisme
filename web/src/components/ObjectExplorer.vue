@@ -21,6 +21,10 @@ const props = defineProps<{
    * Identifiant de la connexion explorée.
    */
   connectionId: number
+  /**
+   * Base en cours de la session de requêtes, affichée en gras ; `null` si aucune.
+   */
+  currentDatabase: string | null
 }>()
 
 const emit = defineEmits<{
@@ -55,7 +59,9 @@ const error = ref<string | null>(null)
  */
 const nodes = computed(() => {
   const current = catalog.catalogs[props.connectionId]
-  return (current ? catalogNodes(current.schemas) : []) as unknown as TreeOption[]
+  return (current
+    ? catalogNodes(current.schemas, props.currentDatabase)
+    : []) as unknown as TreeOption[]
 })
 
 /**
@@ -113,6 +119,9 @@ function nodeProps({ option }: { option: TreeOption }) {
  */
 function renderLabel({ option }: { option: TreeOption }) {
   const node = option as unknown as ExplorerNode
+  if (node.current) {
+    return h('span', { class: 'current-database' }, node.label)
+  }
   if (node.column === undefined) {
     return node.label
   }
@@ -191,6 +200,10 @@ onMounted(() => load(false))
 .object-tree :deep(.n-tree-node-switcher) {
   width: 14px;
   height: 20px;
+}
+
+.object-tree :deep(.current-database) {
+  font-weight: 700;
 }
 
 .object-tree :deep(.primary-key) {

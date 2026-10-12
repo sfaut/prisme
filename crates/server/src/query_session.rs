@@ -8,13 +8,16 @@
 //! Protocole, en JSON texte :
 //!
 //! ```text
-//! serveur → client  {"type": "ready", "server": {"flavor": "mariadb", "version": "11.3.2-MariaDB"}}
+//! serveur → client  {"type": "ready", "server": {"flavor": "mariadb", "version": "11.3.2-MariaDB"}, "database": "xlist"}
 //! client → serveur  {"sql": "SELECT ...", "row_limit": 2000}     row_limit facultatif
 //! serveur → client  {"type": "columns", "columns": ["a", "b"], "sql": "SELECT ... LIMIT 2001", "limit": "added"}
 //! serveur → client  {"type": "rows", "rows": [["1", null], ...]}  autant de lots que nécessaire
-//! serveur → client  {"type": "done", "row_count": 2000, "truncated": true, "affected_rows": 0, "elapsed_ms": 42}
+//! serveur → client  {"type": "done", "row_count": 2000, "truncated": true, "affected_rows": 0, "elapsed_ms": 42, "database": "xlist"}
 //! serveur → client  {"type": "error", "message": "..."}           à la place de la suite, en cas d'échec
 //! ```
+//!
+//! `database` est la base en cours (`SELECT DATABASE()`, `null` si aucune) :
+//! celle de la connexion enregistrée au départ, puis celle choisie par `USE`.
 //!
 //! La limite de lignes suit `docs/V1.md`, section 2.3 : `row_limit` de la
 //! requête, sinon le réglage de l'utilisateur. En attendant les interrupteurs
@@ -69,7 +72,10 @@ enum LimitReport {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum ServerMessage<'a> {
     /// La connexion au serveur cible est ouverte.
-    Ready { server: &'a ServerInfo },
+    Ready {
+        server: &'a ServerInfo,
+        database: Option<String>,
+    },
     /// Début d'un résultat : colonnes, texte réellement exécuté, traitement de la limite.
     Columns {
         columns: Vec<String>,
@@ -84,6 +90,8 @@ enum ServerMessage<'a> {
         truncated: bool,
         affected_rows: u64,
         elapsed_ms: u128,
+        /// Base en cours après la requête (elle change avec `USE`).
+        database: Option<String>,
     },
     /// Échec de la requête ou de la session.
     Error { message: String },
@@ -109,15 +117,23 @@ pub async fn run(mut socket: WebSocket, state: AppState, user_id: i64, target: M
             return;
         }
     };
+    let database = match mysql::current_database(&mut connection).await {
+        Ok(database) => database,
+        Err(error) => {
+            let _ = send_error(&mut socket, error.to_string()).await;
+            return;
+        }
+    };
     let dialect = match info.flavor {
         Flavor::MySql => Dialect::MySql,
         Flavor::MariaDb => Dialect::MariaDb,
     };
 
-    if send(&mut socket, &ServerMessage::Ready { server: &info })
-        .await
-        .is_ok()
-    {
+    let ready = ServerMessage::Ready {
+        server: &info,
+        database,
+    };
+    if send(&mut socket, &ready).await.is_ok() {
         while let Some(Ok(message)) = socket.recv().await {
             let Message::Text(text) = message else {
                 // Ping, pong et binaire sont ignorés ; Close termine la boucle au tour suivant.
@@ -190,7 +206,7 @@ impl Session<'_> {
 
         let started = Instant::now();
         let connection_id = self.connection.id();
-        let mut stream = match mysql::execute(self.connection, &limited.sql).await {
+        let mut stream = match mysql::execute(&mut *self.connection, &limited.sql).await {
             Ok(stream) => stream,
             Err(error) => return send_error(self.socket, error.to_string()).await,
         };
@@ -238,11 +254,17 @@ impl Session<'_> {
 
         let affected_rows = stream.affected_rows();
         stream.discard().await;
+        let elapsed_ms = started.elapsed().as_millis();
+        let database = match mysql::current_database(self.connection).await {
+            Ok(database) => database,
+            Err(error) => return send_error(self.socket, error.to_string()).await,
+        };
         let done = ServerMessage::Done {
             row_count,
             truncated,
             affected_rows,
-            elapsed_ms: started.elapsed().as_millis(),
+            elapsed_ms,
+            database,
         };
         send(self.socket, &done).await
     }
@@ -420,6 +442,7 @@ mod tests {
         let ready = next_json(&mut socket).await;
         assert_eq!(ready["type"], "ready");
         assert_eq!(ready["server"]["flavor"], "mariadb");
+        assert_eq!(ready["database"], "test");
 
         // Pas de limite écrite : 1 000 lignes affichées sur 2 500, résultat tronqué.
         let (columns, received, done) = query(
@@ -449,5 +472,9 @@ mod tests {
         assert_eq!(error["type"], "error");
         let (_, received, done) = query(&mut socket, json!({ "sql": "SELECT 1" })).await;
         assert_eq!((received, done["type"].as_str()), (1, Some("done")));
+
+        // USE change la base en cours, annoncée à la fin de la requête.
+        let (_, _, done) = query(&mut socket, json!({ "sql": "USE mysql" })).await;
+        assert_eq!(done["database"], "mysql");
     }
 }

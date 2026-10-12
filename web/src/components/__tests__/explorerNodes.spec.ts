@@ -64,6 +64,12 @@ describe('catalogNodes', () => {
     expect(labels(pending)).toEqual(['chargement…'])
   })
 
+  it('signale la base en cours', () => {
+    const [shop, pending] = catalogNodes(catalog, 'shop')
+    expect(shop?.current).toBe(true)
+    expect(pending?.current).toBe(false)
+  })
+
   it('détaille une table, et montre ce qui reste à recevoir', () => {
     const tables = catalogNodes(catalog)[0]?.children?.[0]
     const orders = tables?.children?.[0]

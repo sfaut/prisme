@@ -17,7 +17,7 @@ import {
   dateFrFR,
   frFR,
 } from 'naive-ui'
-import { nextTick, ref, useTemplateRef } from 'vue'
+import { nextTick, ref, useTemplateRef, watch } from 'vue'
 
 import { useConnectionsStore } from './stores/connections'
 
@@ -32,6 +32,20 @@ const connections = useConnectionsStore()
  * Texte de la cellule SQL.
  */
 const sql = ref('')
+
+/**
+ * Base en cours de la session de requêtes (elle change avec `USE`), mise en
+ * gras dans l'explorateur.
+ */
+const currentDatabase = ref<string | null>(null)
+
+// Nouvelle connexion : sa base en cours n'est connue qu'à l'ouverture de sa session.
+watch(
+  () => connections.selectedId,
+  () => {
+    currentDatabase.value = null
+  },
+)
 
 /**
  * Nombre de reconnexions demandées : changer la clef de la cellule rouvre sa session.
@@ -64,6 +78,7 @@ async function openTable(schema: string, table: string): Promise<void> {
             v-if="connections.selectedId !== null"
             :key="connections.selectedId"
             :connection-id="connections.selectedId"
+            :current-database="currentDatabase"
             @open-table="openTable"
           />
         </n-layout-sider>
@@ -75,6 +90,7 @@ async function openTable(schema: string, table: string): Promise<void> {
             v-model:sql="sql"
             :connection="connections.selected"
             @reconnect="attempt++"
+            @database="currentDatabase = $event"
           />
           <n-empty v-else description="Choisissez ou créez une connexion" class="app-empty" />
         </n-layout-content>

@@ -123,6 +123,14 @@ pub async fn server_info(connection: &mut Conn) -> Result<ServerInfo, MysqlError
     })
 }
 
+/// Base en cours sur une connexion ouverte (`SELECT DATABASE()`), `None` si aucune.
+///
+/// Elle change avec `USE`, ou avec la base choisie dans la connexion enregistrée.
+pub async fn current_database(connection: &mut Conn) -> Result<Option<String>, MysqlError> {
+    let database: Option<Option<String>> = connection.query_first("SELECT DATABASE()").await?;
+    Ok(database.flatten())
+}
+
 /// Se connecte au serveur, lit son identité, puis se déconnecte.
 pub async fn probe(target: &MysqlTarget) -> Result<ServerInfo, MysqlError> {
     let mut connection = connect(target).await?;

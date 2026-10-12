@@ -84,6 +84,10 @@ export interface SessionState {
    */
   server: ServerInfo | null
   /**
+   * Base en cours sur le serveur cible (elle change avec `USE`), `null` si aucune.
+   */
+  database: string | null
+  /**
    * Résultat de la dernière requête.
    */
   result: QueryResult | null
@@ -97,7 +101,7 @@ export interface SessionState {
  * Crée l'état d'une session qui s'ouvre.
  */
 export function initialState(): SessionState {
-  return { status: 'connecting', server: null, result: null, error: null }
+  return { status: 'connecting', server: null, database: null, result: null, error: null }
 }
 
 /**
@@ -114,6 +118,7 @@ export function applyMessage(state: SessionState, message: ServerMessage): void 
     case 'ready':
       state.status = 'ready'
       state.server = message.server
+      state.database = message.database
       break
     case 'columns':
       state.result = {
@@ -137,6 +142,7 @@ export function applyMessage(state: SessionState, message: ServerMessage): void 
         state.result.affectedRows = message.affected_rows
         state.result.elapsedMs = message.elapsed_ms
       }
+      state.database = message.database
       state.status = 'ready'
       break
     case 'error':

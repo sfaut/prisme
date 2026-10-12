@@ -61,6 +61,10 @@ export interface ExplorerNode {
    */
   disabled?: boolean
   /**
+   * Base en cours de la session de requêtes (affichée en gras).
+   */
+  current?: boolean
+  /**
    * Pour une colonne : son nom et son détail (type, index, nullabilité),
    * affichés séparément pour mettre le nom en forme.
    */
@@ -82,8 +86,12 @@ export interface ExplorerNode {
  * Arbre du catalogue, une branche par base.
  *
  * @param schemas Catalogue du serveur, éventuellement incomplet.
+ * @param currentDatabase Base en cours de la session de requêtes, `null` si aucune.
  */
-export function catalogNodes(schemas: CatalogSchema[]): ExplorerNode[] {
+export function catalogNodes(
+  schemas: CatalogSchema[],
+  currentDatabase: string | null = null,
+): ExplorerNode[] {
   return schemas.map((schema) => {
     const key = `schema:${schema.name}`
     return {
@@ -91,6 +99,7 @@ export function catalogNodes(schemas: CatalogSchema[]): ExplorerNode[] {
       label: schema.name,
       isLeaf: false,
       schema: schema.name,
+      current: schema.name === currentDatabase,
       children:
         schema.tables === null || schema.routines === null
           ? [loadingNode(key, schema.name)]

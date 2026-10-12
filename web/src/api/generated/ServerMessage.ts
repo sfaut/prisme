@@ -5,4 +5,8 @@ import type { ServerInfo } from "./ServerInfo";
 /**
  * Message envoyé au client.
  */
-export type ServerMessage = { "type": "ready", server: ServerInfo, } | { "type": "columns", columns: Array<string>, sql: string, limit: LimitReport, } | { "type": "rows", rows: Array<Array<string | null>>, } | { "type": "done", row_count: number, truncated: boolean, affected_rows: number, elapsed_ms: number, } | { "type": "error", message: string, };
+export type ServerMessage = { "type": "ready", server: ServerInfo, database: string | null, } | { "type": "columns", columns: Array<string>, sql: string, limit: LimitReport, } | { "type": "rows", rows: Array<Array<string | null>>, } | { "type": "done", row_count: number, truncated: boolean, affected_rows: number, elapsed_ms: number, 
+/**
+ * Base en cours après la requête (elle change avec `USE`).
+ */
+database: string | null, } | { "type": "error", message: string, };

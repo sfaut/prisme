@@ -5,8 +5,13 @@ import { applyMessage, initialState, sessionUrl, startQuery } from '../querySess
 describe('applyMessage', () => {
   it('suit une requête du début à la fin', () => {
     const state = initialState()
-    applyMessage(state, { type: 'ready', server: { flavor: 'mariadb', version: '11.3.2' } })
+    applyMessage(state, {
+      type: 'ready',
+      server: { flavor: 'mariadb', version: '11.3.2' },
+      database: 'xlist',
+    })
     expect(state.status).toBe('ready')
+    expect(state.database).toBe('xlist')
 
     startQuery(state)
     expect(state.status).toBe('running')
@@ -25,7 +30,9 @@ describe('applyMessage', () => {
       truncated: false,
       affected_rows: 0,
       elapsed_ms: 12,
+      database: 'shop',
     })
+    expect(state.database).toBe('shop')
 
     expect(state.status).toBe('ready')
     expect(state.result).toMatchObject({
@@ -42,7 +49,11 @@ describe('applyMessage', () => {
 
   it('garde la session ouverte après une erreur de requête', () => {
     const state = initialState()
-    applyMessage(state, { type: 'ready', server: { flavor: 'mysql', version: '8.1.0' } })
+    applyMessage(state, {
+      type: 'ready',
+      server: { flavor: 'mysql', version: '8.1.0' },
+      database: null,
+    })
     startQuery(state)
     applyMessage(state, { type: 'error', message: "Table 'test.missing' doesn't exist" })
 

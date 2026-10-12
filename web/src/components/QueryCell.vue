@@ -8,7 +8,7 @@
 -->
 <script setup lang="ts">
 import { NAlert, NButton, NSelect, NTag } from 'naive-ui'
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import { useQuerySession } from '@/api/querySession'
@@ -29,6 +29,10 @@ const emit = defineEmits<{
    * La session est fermée et l'utilisateur demande à la rouvrir.
    */
   reconnect: []
+  /**
+   * La base en cours a changé (connexion, `USE`) ; `null` si aucune.
+   */
+  database: [database: string | null]
 }>()
 
 /**
@@ -92,6 +96,11 @@ onMounted(async () => {
     }
   }
 })
+
+watch(
+  () => state.database,
+  (database) => emit('database', database),
+)
 
 defineExpose({ run })
 </script>
