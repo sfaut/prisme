@@ -33,10 +33,12 @@ const emit = defineEmits<{
 const catalog = useCatalogStore()
 
 /**
- * Arbre compact : lignes de 20 pixels sans marge, texte de 10 pixels, retrait réduit.
- * `nodeHeight` sert aussi au défilement virtuel de l'arbre.
+ * Arbre compact : lignes de 20 pixels sans marge, retrait réduit.
+ * `nodeHeight` sert aussi au défilement virtuel de l'arbre. La taille du
+ * texte est fixée en CSS (`.object-tree`) : avec le défilement virtuel, Naive
+ * UI ignore la variable `fontSize` de son thème.
  */
-const TREE_THEME = { nodeHeight: '20px', nodeWrapperPadding: '0', fontSize: '10px' }
+const TREE_THEME = { nodeHeight: '20px', nodeWrapperPadding: '0' }
 
 /**
  * Lecture du catalogue en cours ?
@@ -183,6 +185,7 @@ onMounted(() => load(false))
 .object-tree {
   flex: 1;
   min-height: 0;
+  font-size: 10px;
 }
 
 .object-tree :deep(.n-tree-node-switcher) {
