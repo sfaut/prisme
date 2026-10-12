@@ -1,0 +1,70 @@
+import { createPinia, setActivePinia } from 'pinia'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import { mount } from '@vue/test-utils'
+
+import ObjectExplorer from '../ObjectExplorer.vue'
+
+vi.mock('@/api/explorer', () => ({
+  streamCatalog: async (_: number, onEvent: (event: unknown) => void) => {
+    onEvent({ type: 'schemas', schemas: ['a', 'b', 'c'] })
+  },
+}))
+
+/**
+ * Donne une taille aux éléments : sans elle, jsdom ne mesure rien et le
+ * défilement virtuel de l'arbre n'affiche aucun nœud.
+ */
+function giveLayout(): void {
+  const size = { width: 300, height: 500, top: 0, left: 0, right: 300, bottom: 500, x: 0, y: 0 }
+  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(500)
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+    ...size,
+    toJSON: () => size,
+  })
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(private readonly callback: (entries: unknown[]) => void) {}
+      observe(target: Element) {
+        this.callback([
+          { target, contentRect: size, borderBoxSize: [{ inlineSize: 300, blockSize: 500 }] },
+        ])
+      }
+      unobserve() {}
+      disconnect() {}
+    },
+  )
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }))
+}
+
+beforeEach(() => {
+  setActivePinia(createPinia())
+  giveLayout()
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+  vi.unstubAllGlobals()
+})
+
+describe('ObjectExplorer', () => {
+  it('suit la base en cours, même en revenant sur une base déjà choisie', async () => {
+    const wrapper = mount(ObjectExplorer, {
+      props: { connectionId: 1, currentDatabase: 'a' },
+      attachTo: document.body,
+    })
+    const bold = () => wrapper.findAll('.current-database').map((node) => node.text())
+    await vi.waitFor(() => expect(bold()).toEqual(['a']))
+
+    for (const database of ['b', 'a', 'c', 'a']) {
+      await wrapper.setProps({ currentDatabase: database })
+      await vi.waitFor(() => expect(bold()).toEqual([database]))
+    }
+    wrapper.unmount()
+  })
+})

@@ -121,11 +121,10 @@ function nodeProps({ option }: { option: TreeOption }) {
  */
 function renderLabel({ option }: { option: TreeOption }) {
   const node = option as unknown as ExplorerNode
-  if (node.current) {
-    return h('span', { class: 'current-database' }, node.label)
-  }
   if (node.column === undefined) {
-    return node.label
+    // Toujours un élément, en gras ou non : passer d'un texte nu à un élément
+    // (ou l'inverse) fait échouer la mise à jour de l'arbre par Vue.
+    return h('span', { class: { 'current-database': node.current } }, node.label)
   }
   return [
     node.column.primaryKey ? keyIcon() : null,
