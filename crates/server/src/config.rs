@@ -1,6 +1,6 @@
 //! Configuration de Prisme, lue sur la ligne de commande.
 //!
-//! La V1 ne connaît que le mode poste de développement : un seul utilisateur,
+//! La v1 ne connaît que le mode poste de développement : un seul utilisateur,
 //! sans authentification, donc une écoute limitée à la machine locale pour
 //! qu'aucune autre machine du réseau n'accède aux connexions enregistrées.
 

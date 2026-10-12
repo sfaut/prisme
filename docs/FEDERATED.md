@@ -1,8 +1,8 @@
-# Prisme : le moteur fédéré (après la V1)
+# Prisme : le moteur fédéré (après la v1)
 
-Ce document décrit la vision de départ du projet, qui vient après la V1. L'idée de départ : un client qui interroge **plusieurs sources à la fois** (serveurs SQL, fichiers CSV) comme s'il n'y en avait qu'une, avec un dialecte neutre. Les mentions **[à confirmer]** signalent une proposition non validée.
+Ce document décrit la vision de départ du projet, qui vient après la v1. L'idée de départ : un client qui interroge **plusieurs sources à la fois** (serveurs SQL, fichiers CSV) comme s'il n'y en avait qu'une, avec un dialecte neutre. Les mentions **[à confirmer]** signalent une proposition non validée.
 
-La V1 (voir `docs/V1.md`) construit le noyau commun : parseur, AST, émetteurs par dialecte, connecteurs, streaming, annulation. Le moteur fédéré s'y ajoute.
+La v1 (voir `docs/V1.md`) construit le noyau commun : parseur, AST, émetteurs par dialecte, connecteurs, streaming, annulation. Le moteur fédéré s'y ajoute.
 
 ## 1. Besoin
 
@@ -63,7 +63,7 @@ Une commande **EXPLAIN** est à prévoir dès le début : plan logique optimisé
 
 **Stratégie de développement**
 
-- V1 de l'optimiseur : règles fixes (filtres, projections, regroupement par source), puis agrégation avant jointure quand elle est valide, puis semi-join. Le merge join vient ensuite, puis le choix fondé sur les coûts.
+- v1 de l'optimiseur : règles fixes (filtres, projections, regroupement par source), puis agrégation avant jointure quand elle est valide, puis semi-join. Le merge join vient ensuite, puis le choix fondé sur les coûts.
 - Briques existantes à connaître : Apache DataFusion (Rust) et Calcite (Java) ont parseur, optimiseur et règles, y compris l'agrégation poussée sous les jointures ; Trino fait tout cela mais est lourd. Sébastien veut éviter les dépendances, donc le modèle de leur plan logique sert de référence. DataFusion reste une option pour l'exécuteur le moment venu.
 - Le gros du travail n'est pas l'analyse du texte (quelques millisecondes) mais le transfert et le traitement des lignes.
 
@@ -125,12 +125,12 @@ Sébastien aimerait la pureté, mais les sources sont trop hétérogènes. D'où
 - **Décimaux** : exacts, jamais en flottant.
 - **Chaînes** : `'a' = 'A'` dépend de la collation de la source. Une règle unique est à fixer. **[à décider]**
 - **Dates** : une seule convention de fuseau pour tous. **[à décider]**
-- **Valeurs imbriquées** : réserver `LIST` et `STRUCT` dans le modèle dès le départ. Sébastien a posé la question des MVA (multi-value attributes). Précision : le modèle relationnel strict (1NF classique) interdit les valeurs multiples, mais Date soutient que « atomique » dépend des opérateurs fournis et défend les attributs à valeur relation (RVA), compatibles avec le modèle relationnel. Un tableau SQL (ordonné, avec doublons) n'est pas un RVA (ensemble sans ordre ni doublons), ce qui compte pour l'équivalence des réécritures. Le « MVA » de Manticore et Sphinx est en réalité une liste d'entiers. V1 du moteur : liste (plus familière aux utilisateurs de DuckDB et ClickHouse), en gardant la porte ouverte aux relations imbriquées. Minimum à implémenter : `array_agg`, `UNNEST` et le test d'appartenance.
+- **Valeurs imbriquées** : réserver `LIST` et `STRUCT` dans le modèle dès le départ. Sébastien a posé la question des MVA (multi-value attributes). Précision : le modèle relationnel strict (1NF classique) interdit les valeurs multiples, mais Date soutient que « atomique » dépend des opérateurs fournis et défend les attributs à valeur relation (RVA), compatibles avec le modèle relationnel. Un tableau SQL (ordonné, avec doublons) n'est pas un RVA (ensemble sans ordre ni doublons), ce qui compte pour l'équivalence des réécritures. Le « MVA » de Manticore et Sphinx est en réalité une liste d'entiers. v1 du moteur : liste (plus familière aux utilisateurs de DuckDB et ClickHouse), en gardant la porte ouverte aux relations imbriquées. Minimum à implémenter : `array_agg`, `UNNEST` et le test d'appartenance.
 - MySQL et MariaDB n'ont pas de vrai type tableau : `array_agg` devient `JSON_ARRAYAGG`, `UNNEST` devient `JSON_TABLE`, `list_contains` devient `MEMBER OF` ou `JSON_CONTAINS`.
 
 ## 7. NULL : liste des points à trancher
 
-Référence en mode flex : le comportement des sources SQL. **Priorité** : les points 1 à 6 sont indispensables dès le départ (ils touchent la justesse des résultats et des jointures, et donc déjà la V1), les points 7 à 9 se décident avec le catalogue de fonctions, les points 10 à 12 avec le workspace et l'optimiseur. Aucun de ces points n'est encore tranché.
+Référence en mode flex : le comportement des sources SQL. **Priorité** : les points 1 à 6 sont indispensables dès le départ (ils touchent la justesse des résultats et des jointures, et donc déjà la v1), les points 7 à 9 se décident avec le catalogue de fonctions, les points 10 à 12 avec le workspace et l'optimiseur. Aucun de ces points n'est encore tranché.
 
 1. **Égalité** : égalité de comparaison (`=`, jointures : `NULL = NULL` donne inconnu) et égalité d'identité (« non distincts », `IS NOT DISTINCT FROM`, `<=>` en MySQL). Nommer les deux dans le plan et dire laquelle chaque nœud utilise.
 2. **Logique à trois valeurs** : tables de vérité de `AND`, `OR`, `NOT` ; `Filter` rejette l'inconnu ; `CHECK` accepte l'inconnu ; `CASE WHEN` inconnu n'est pas vrai.
@@ -151,7 +151,7 @@ Absence d'`ORDER BY` : l'ordre n'est pas garanti, comme dans n'importe quelle ba
 
 Principe : **tout est texte**, sans inférence. Sébastien préfère s'en tenir aux `CAST` écrits dans la requête plutôt qu'à une phase de modélisation (un schéma par fichier). Prévoir tout de même la déclaration de source.
 
-**Déclaration de source** (comme une connexion MySQL) : chemin (dans un dossier **autorisé par rôle**, pour empêcher `../../etc/...`), séparateur (`,` par défaut, réglable, pas d'auto-détection en V1), encodage (UTF-8 par défaut, BOM toléré, autres par option), en-tête (présent par défaut, sinon colonnes `c1`, `c2`... ; un en-tête en doublon est une erreur), guillemets `"` avec guillemet doublé (RFC 4180), fins de ligne CRLF, LF ou CR.
+**Déclaration de source** (comme une connexion MySQL) : chemin (dans un dossier **autorisé par rôle**, pour empêcher `../../etc/...`), séparateur (`,` par défaut, réglable, pas d'auto-détection en v1), encodage (UTF-8 par défaut, BOM toléré, autres par option), en-tête (présent par défaut, sinon colonnes `c1`, `c2`... ; un en-tête en doublon est une erreur), guillemets `"` avec guillemet doublé (RFC 4180), fins de ligne CRLF, LF ou CR.
 
 **Valeurs**
 

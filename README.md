@@ -2,7 +2,7 @@
 
 Prisme est un client web multi-bases de données, sous forme de notebook SQL : plusieurs sources, une seule vue. On y interroge MySQL, MariaDB, PostgreSQL, SQLite et DuckDB, dans leur dialecte natif ou dans un autre dialecte que Prisme traduit.
 
-Le projet est en début de V1. Pour l'instant, Prisme prépare son dossier de données (clef maîtresse, base interne, utilisateur local) et expose une API JSON qui enregistre des connexions MySQL / MariaDB, les teste, et y exécute des requêtes en streaming par WebSocket, avec la limite de lignes par défaut. L'interface web n'existe pas encore. Le périmètre et l'avancement sont décrits dans [docs/V1.md](docs/V1.md).
+Le projet est en début de v1. Pour l'instant, Prisme prépare son dossier de données (clef maîtresse, base interne, utilisateur local) et expose une API JSON qui enregistre des connexions MySQL / MariaDB, les teste, et y exécute des requêtes en streaming par WebSocket, avec la limite de lignes par défaut. L'interface web n'existe pas encore. Le périmètre et l'avancement sont décrits dans [docs/V1.md](docs/V1.md).
 
 ## Prérequis
 
@@ -157,12 +157,12 @@ crates/
 docs/              décisions et réflexions de conception
 ```
 
-Les autres crates (`types`, `dialects`, `splitter`, etc.) et l'interface `web/` arrivent au fil de la V1. La cible est décrite dans [CLAUDE.md](CLAUDE.md).
+Les autres crates (`types`, `dialects`, `splitter`, etc.) et l'interface `web/` arrivent au fil de la v1. La cible est décrite dans [CLAUDE.md](CLAUDE.md).
 
 ## Documentation
 
 - [docs/V1.md](docs/V1.md) : périmètre, décisions, stack Rust détaillée, ordre de développement.
-- [docs/FEDERATED.md](docs/FEDERATED.md) : le moteur fédéré, après la V1.
+- [docs/FEDERATED.md](docs/FEDERATED.md) : le moteur fédéré, après la v1.
 - [docs/QUESTIONS.md](docs/QUESTIONS.md) : pistes retenues ou écartées, questions ouvertes.
 
 ## Licence

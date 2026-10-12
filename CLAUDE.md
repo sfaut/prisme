@@ -4,8 +4,8 @@ Client web multi-bases de données : plusieurs sources, une seule vue. Prisme se
 
 Ce fichier est court. Les décisions détaillées sont dans `docs/` :
 
-- `docs/V1.md` : périmètre, décisions techniques et ordre de développement de la V1 (à lire en premier).
-- `docs/FEDERATED.md` : vision après la V1 (plan logique, optimiseur, langages, NULL, CSV, workspace).
+- `docs/V1.md` : périmètre, décisions techniques et ordre de développement de la v1 (à lire en premier).
+- `docs/FEDERATED.md` : vision après la v1 (plan logique, optimiseur, langages, NULL, CSV, workspace).
 - `docs/QUESTIONS.md` : pistes retenues, écartées ou reportées, et questions encore ouvertes.
 
 ## Qui travaille ici
@@ -86,7 +86,7 @@ Journaux plus détaillés : `$env:RUST_LOG="debug"` (PowerShell) avant `cargo ru
 8. **Suite de conformité** : une même requête est exécutée sur chaque base et les résultats sont comparés. Toute règle de traduction ajoutée doit avoir son test.
 9. **En cas de doute sur une décision de conception, demander à Sébastien.** Les points ouverts sont listés dans `docs/QUESTIONS.md`. Ne pas trancher en silence.
 
-## Ordre de développement de la V1
+## Ordre de développement de la v1
 
 1. Workspace, base interne, connexions chiffrées, connecteur MySQL/MariaDB, requête en streaming avec limite par défaut.
 2. Interface minimale : explorateur d'objets, cellule SQL, résultats paginés.

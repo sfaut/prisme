@@ -9,7 +9,7 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 3. **Première orientation technique** : zéro dépendance, tout en PHP (stack habituelle de Sébastien : PHP 8.5, Vue 3, MySQL 8, DuckDB, Git).
 4. **Extensions** : dialecte neutre sur base ANSI, autres langages d'entrée (syntaxe pipe, PRQL), matérialisation des résultats dans un workspace, écritures, rôles, valeurs imbriquées, théorie de Date et Tutorial D, NULL, CSV.
 5. **Nom** : Prisme (voir la section 4).
-6. **Recentrage de la V1** : un client multi-bases en notebook, chaque requête vers une seule base, avec traduction entre dialectes. Le moteur fédéré passe après.
+6. **Recentrage de la v1** : un client multi-bases en notebook, chaque requête vers une seule base, avec traduction entre dialectes. Le moteur fédéré passe après.
 7. **Choix de la stack** : Rust, puis frontend Vue 3 + TypeScript + Vite « selon l'industrie ».
 
 ## 2. Pistes retenues
@@ -36,7 +36,7 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 | Piste | Statut | Raison |
 |---|---|---|
 | PHP pur, zéro dépendance pour tout le moteur | Écartée | Le parsing est rapide en PHP, mais les tableaux PHP coûtent cher en mémoire, les jointures locales sont lentes, et il n'y a pas de pilote DuckDB natif. Rust est la cible. À noter : le parseur, l'optimiseur et l'orchestration étaient jugés faisables en PHP, et le parallélisme d'I/O possible (`MYSQLI_ASYNC`, `proc_open`). |
-| Python + FastAPI + SQLGlot pour la V1 | Écartée | Recommandée pour la rapidité de livraison (SQLGlot traduit entre dialectes), mais Sébastien a préféré un seul langage, Rust. SQLGlot reste la référence de conception du transpileur. |
+| Python + FastAPI + SQLGlot pour la v1 | Écartée | Recommandée pour la rapidité de livraison (SQLGlot traduit entre dialectes), mais Sébastien a préféré un seul langage, Rust. SQLGlot reste la référence de conception du transpileur. |
 | Go | Écartée | Bon pour les sessions longues, mais écosystème de parseurs fragmenté et rien d'équivalent à DataFusion pour le moteur fédéré. |
 | Frontend sans build (JavaScript + JSDoc + `@ts-check`, Vue en fichier copié) | Écartée | Sébastien tient aux types et à « l'industrie ». Navigateurs : pas de TypeScript natif (TC39 type annotations au stade 1). Sans build, les templates ne sont pas typés et presque aucune bibliothèque d'interface ne convient. |
 | DataFusion, Calcite, Trino comme base du moteur | Reportée | Sébastien veut éviter les dépendances. Leur modèle de plan sert de référence. DataFusion reste une option pour l'exécuteur. |
@@ -47,12 +47,12 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 | Mode « guillemets = chaîne vide, vide nu = NULL » | Reportée | Réalisable si le lecteur garde l'information de guillemets. |
 | Écritures vers plusieurs destinations dans une requête | Écartée | Aucun cas d'usage, complexité et non-atomicité. |
 | Mélange de langages dans une même requête | Écartée | Un langage par requête suffit. |
-| Réutilisation automatique d'un résultat matérialisé (query matching) | Écartée en V1 | Problème difficile. Enregistrement explicite sous un nom. |
+| Réutilisation automatique d'un résultat matérialisé (query matching) | Écartée en v1 | Problème difficile. Enregistrement explicite sous un nom. |
 | Parquet pour le workspace | Écartée | Écriture lourde. SQLite avec index est le meilleur compromis. |
 | `UPDATE` et `DELETE` sur CSV | Reportée | Réécriture complète du fichier et verrou ; seulement si un besoin réel apparaît. |
 | Mode strict de Tutorial D | Reportée | Non critique. Seule la nullabilité doit exister dès maintenant. |
 | Vrai système de base de données maison | Option future | Sébastien n'exclut pas d'y aller plus tard. |
-| Moteur fédéré | Après la V1 | La V1 construit le noyau commun. |
+| Moteur fédéré | Après la v1 | La v1 construit le noyau commun. |
 
 ## 4. Nom du projet
 
@@ -62,18 +62,18 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 
 ## 5. Questions ouvertes
 
-### Produit et V1
+### Produit et v1
 
 1. **Grille de résultats** : `DataTable` virtualisée de PrimeVue ou TanStack Table + Virtual ? Essai de volumétrie à faire.
 2. **`ts-rs` ou `specta`** pour générer les types TypeScript : tranché, `ts-rs`, plus simple à relire et suffisant.
 3. **MariaDB dans `sqlparser-rs`** : vérifier le support, sinon étendre le dialecte MySQL.
-4. **DDL** : le laisser en dialecte natif en V1 (proposition) ? **[à confirmer]**
-5. **Métriques de la V1** : lesquelles précisément (taille, nombre de lignes estimé, cardinalité, taux de NULL, statistiques par colonne) ? Et à quelle fréquence les rafraîchir ?
-6. **Authentification en V1** : tranché. La V1 cible le poste de développement (un utilisateur, `sebastien.faut@gmail.com`, sans authentification, écoute sur `127.0.0.1`) et doit évoluer facilement vers un serveur multi-utilisateur. Les rôles viennent après la V1 (voir `docs/V1.md`, section 2.8).
+4. **DDL** : le laisser en dialecte natif en v1 (proposition) ? **[à confirmer]**
+5. **Métriques de la v1** : lesquelles précisément (taille, nombre de lignes estimé, cardinalité, taux de NULL, statistiques par colonne) ? Et à quelle fréquence les rafraîchir ?
+6. **Authentification en v1** : tranché. La v1 cible le poste de développement (un utilisateur, `sebastien.faut@gmail.com`, sans authentification, écoute sur `127.0.0.1`) et doit évoluer facilement vers un serveur multi-utilisateur. Les rôles viennent après la v1 (voir `docs/V1.md`, section 2.8).
 7. **Persistance du notebook** : cellules, ordre, et résultats conservés ou recalculés ?
 8. **Dialectes versionnés** : la version est détectée à la connexion ; que change-t-elle (coloration, autocomplétion, avertissements de traduction) ?
 9. **Parallèle et transactions** : exécution parallèle sur des connexions distinctes, donc hors de la transaction de la session. Comportement et message à fixer.
-10. **Tutorial D en V1** : placé en dernier, en sous-ensemble sur une seule source. Convient-il ?
+10. **Tutorial D en v1** : placé en dernier, en sous-ensemble sur une seule source. Convient-il ?
 11. **Langue du code** : tranché, identifiants en anglais, documentation en français.
 
 ### Sécurité
@@ -88,7 +88,7 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 15. **`NOT IN` avec NULL** : reproduire le comportement SQL tel quel ou traduire en `AntiJoin` ?
 16. **Sémantique des frontends PRQL et pipe** : héritent-ils de la sémantique de référence ou gardent-ils la leur ?
 17. **« PSQL »** : s'agit-il bien de la syntaxe SQL en pipe ? **[à confirmer]**
-18. **Types de la V1 du moteur** : liste d'abord, ensemble ou relation imbriquée ensuite ? Comportement de `Ungroup` sur liste NULL ou vide, et de `array_agg` sur les NULL.
+18. **Types de la v1 du moteur** : liste d'abord, ensemble ou relation imbriquée ensuite ? Comportement de `Ungroup` sur liste NULL ou vide, et de `array_agg` sur les NULL.
 19. **Types entiers hors plage** : bibliothèque de grands entiers, ou erreur dans tous les cas ?
 20. **Besoin d'écritures atomiques entre sources** : écarté pour le moment, à réexaminer si un cas d'usage apparaît.
 21. **Écriture de NULL dans un CSV** (vide, `\N`, `NA`) : option à prévoir pour `Export`.
