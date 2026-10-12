@@ -11,6 +11,7 @@ mod config;
 mod connections;
 mod master_key;
 mod secrets;
+mod settings;
 mod store;
 
 use anyhow::Context;

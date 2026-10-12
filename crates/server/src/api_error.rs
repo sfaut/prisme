@@ -10,6 +10,7 @@ use axum::response::{IntoResponse, Response};
 use serde_json::json;
 
 use crate::connections::ConnectionsError;
+use crate::settings::SettingsError;
 
 /// Erreur renvoyée par une route de l'API.
 #[derive(Debug)]
@@ -35,6 +36,19 @@ impl From<ConnectionsError> for ApiError {
             ConnectionsError::Invalid(message) => Self::BadRequest(message),
             ConnectionsError::DuplicateName(_) => Self::Conflict(error.to_string()),
             ConnectionsError::Secret(_) | ConnectionsError::Sqlite(_) => {
+                tracing::error!("{error}");
+                Self::Internal
+            }
+        }
+    }
+}
+
+impl From<SettingsError> for ApiError {
+    /// Traduit une erreur de gestion des réglages en erreur HTTP.
+    fn from(error: SettingsError) -> Self {
+        match error {
+            SettingsError::InvalidRowLimit(_) => Self::BadRequest(error.to_string()),
+            SettingsError::Sqlite(_) => {
                 tracing::error!("{error}");
                 Self::Internal
             }

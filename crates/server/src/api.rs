@@ -8,6 +8,8 @@
 //! | `GET /api/connections`              | Liste les connexions de l'utilisateur, sans mot de passe.    |
 //! | `POST /api/connections`             | Enregistre une connexion, mot de passe chiffré.              |
 //! | `POST /api/connections/{id}/probe`  | Se connecte et renvoie la variante et la version du serveur. |
+//! | `GET /api/settings`                 | Réglages de l'utilisateur, avec les choix permis.            |
+//! | `PUT /api/settings`                 | Modifie les réglages, renvoie les réglages à jour.           |
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -22,8 +24,9 @@ use serde::Serialize;
 
 use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
-use crate::connections::{self, ConnectionSummary, ConnectionsError, NewConnection};
+use crate::connections::{self, ConnectionSummary, NewConnection};
 use crate::master_key::MasterKey;
+use crate::settings::{self, Settings, SettingsUpdate};
 
 /// Délai maximal pour joindre un serveur cible.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -50,9 +53,10 @@ impl AppState {
     }
 
     /// Exécute `task` sur la base interne dans une tâche bloquante, hors des threads de `tokio`.
-    async fn with_db<T, F>(&self, task: F) -> Result<T, ApiError>
+    async fn with_db<T, E, F>(&self, task: F) -> Result<T, ApiError>
     where
-        F: FnOnce(&Connection, &MasterKey) -> Result<T, ConnectionsError> + Send + 'static,
+        F: FnOnce(&Connection, &MasterKey) -> Result<T, E> + Send + 'static,
+        E: Into<ApiError>,
         T: Send + 'static,
     {
         let db = Arc::clone(&self.db);
@@ -62,7 +66,7 @@ impl AppState {
                 tracing::error!("verrou de la base interne empoisonné");
                 ApiError::Internal
             })?;
-            task(&db, &key).map_err(ApiError::from)
+            task(&db, &key).map_err(Into::into)
         })
         .await
         .map_err(|error| {
@@ -88,6 +92,7 @@ pub fn router(state: AppState) -> Router {
             get(list_connections).post(create_connection),
         )
         .route("/api/connections/{id}/probe", post(probe_connection))
+        .route("/api/settings", get(get_settings).put(put_settings))
         .with_state(state)
 }
 
@@ -117,6 +122,29 @@ async fn create_connection(
         .with_db(move |db, key| connections::insert(db, key, user.id, &new))
         .await?;
     Ok((StatusCode::CREATED, Json(Created { id })))
+}
+
+/// `GET /api/settings` : réglages de l'utilisateur courant.
+async fn get_settings(
+    State(state): State<AppState>,
+    user: CurrentUser,
+) -> Result<Json<Settings>, ApiError> {
+    let settings = state
+        .with_db(move |db, _key| settings::load(db, user.id))
+        .await?;
+    Ok(Json(settings))
+}
+
+/// `PUT /api/settings` : modifie les réglages de l'utilisateur courant et les renvoie.
+async fn put_settings(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Json(update): Json<SettingsUpdate>,
+) -> Result<Json<Settings>, ApiError> {
+    let settings = state
+        .with_db(move |db, _key| settings::update(db, user.id, &update))
+        .await?;
+    Ok(Json(settings))
 }
 
 /// `POST /api/connections/{id}/probe` : se connecte au serveur et renvoie son identité.
@@ -249,6 +277,38 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(body["error"].as_str().unwrap().starts_with("name"));
+    }
+
+    #[tokio::test]
+    async fn settings_round_trip() {
+        let app = test_app();
+
+        let (status, settings) = send(&app, "GET", "/api/settings", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(settings["row_limit"], 1000);
+        assert_eq!(
+            settings["row_limit_choices"],
+            json!([1000, 2000, 5000, 10000, 50000])
+        );
+
+        let (status, settings) = send(
+            &app,
+            "PUT",
+            "/api/settings",
+            Some(json!({ "row_limit": 10000 })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(settings["row_limit"], 10000);
+
+        let (status, _) = send(
+            &app,
+            "PUT",
+            "/api/settings",
+            Some(json!({ "row_limit": 3 })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
