@@ -43,3 +43,16 @@ export function keyIcon(): VNode {
     'M14 8V10',
   ])
 }
+
+/**
+ * Symbole de croisillon, devant une colonne de clef étrangère.
+ */
+export function hashIcon(): VNode {
+  return icon('Clef étrangère', [
+    // Deux traits penchés, deux traits horizontaux.
+    'M6.5 2L5 14',
+    'M11 2L9.5 14',
+    'M2.5 6H13.5',
+    'M2 10H13',
+  ])
+}

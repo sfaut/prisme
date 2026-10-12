@@ -76,7 +76,7 @@ export interface ExplorerNode {
      */
     primaryKey: boolean
     /**
-     * La colonne fait partie d'une clef étrangère (préfixée par « # » et soulignée).
+     * La colonne fait partie d'une clef étrangère (précédée d'un croisillon et soulignée).
      */
     foreignKey: boolean
   }
@@ -198,11 +198,10 @@ function tableFolders(schema: string, kind: TableKind, details: TableDetails): E
     schema,
     details.columns.map((column) => {
       const foreignKey = foreignKeyColumns.has(column.name)
-      const name = foreignKey ? `#${column.name}` : column.name
       return {
-        ...item('column', column.name, `${name} · ${columnDetails(column)}`),
+        ...item('column', column.name, `${column.name} · ${columnDetails(column)}`),
         column: {
-          name,
+          name: column.name,
           details: columnDetails(column),
           primaryKey: column.key === 'PRI',
           foreignKey,

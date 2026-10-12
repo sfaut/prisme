@@ -83,7 +83,7 @@ describe('catalogNodes', () => {
     expect(labels(orders?.children?.[0])).toEqual([
       'id · int',
       'note · varchar(20) · NULL',
-      '#client_id · int',
+      'client_id · int',
     ])
     expect(orders?.children?.[3]?.isLeaf).toBe(true)
     const columns = orders?.children?.[0]?.children ?? []

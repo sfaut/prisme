@@ -14,7 +14,7 @@ import { computed, h, onMounted, ref } from 'vue'
 
 import { useCatalogStore } from '@/stores/catalog'
 
-import { keyIcon } from './columnIcons'
+import { hashIcon, keyIcon } from './columnIcons'
 import { type ExplorerNode, catalogNodes } from './explorerNodes'
 
 const props = defineProps<{
@@ -114,8 +114,8 @@ function nodeProps({ option }: { option: TreeOption }) {
 /**
  * Affiche le libellé d'un nœud. Pour une colonne, le nom et le détail sont
  * séparés : le nom d'une colonne de clef primaire est en gras, précédé d'une
- * clef, celui d'une
- * colonne de clef étrangère souligné (et préfixé par « # »).
+ * clef, celui d'une colonne de clef étrangère souligné, précédé d'un
+ * croisillon.
  *
  * @param info Nœud affiché.
  */
@@ -129,6 +129,7 @@ function renderLabel({ option }: { option: TreeOption }) {
   }
   return [
     node.column.primaryKey ? keyIcon() : null,
+    node.column.foreignKey ? hashIcon() : null,
     h(
       'span',
       { class: { 'primary-key': node.column.primaryKey, 'foreign-key': node.column.foreignKey } },
