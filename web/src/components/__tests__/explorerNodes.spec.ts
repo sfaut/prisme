@@ -67,6 +67,10 @@ describe('catalogNodes', () => {
     ])
     expect(labels(orders?.children?.[0])).toEqual(['id · int · PRI', 'note · varchar(20) · NULL'])
     expect(orders?.children?.[2]?.isLeaf).toBe(true)
+    expect(orders?.children?.[0]?.children?.map((node) => node.column?.primaryKey)).toEqual([
+      true,
+      false,
+    ])
     expect(labels(tables?.children?.[1])).toEqual(['chargement…'])
   })
 

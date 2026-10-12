@@ -60,6 +60,18 @@ export interface ExplorerNode {
    * Nœud non cliquable (« chargement… »).
    */
   disabled?: boolean
+  /**
+   * Pour une colonne : son nom et son détail (type, index, nullabilité),
+   * affichés séparément pour mettre le nom en forme.
+   */
+  column?: {
+    name: string
+    details: string
+    /**
+     * La colonne fait partie de la clef primaire (affichée en gras).
+     */
+    primaryKey: boolean
+  }
 }
 
 /**
@@ -170,7 +182,14 @@ function tableFolders(schema: string, kind: TableKind, details: TableDetails): E
     `columns:${base}`,
     'Colonnes',
     schema,
-    details.columns.map((column) => item('column', column.name, columnLabel(column))),
+    details.columns.map((column) => ({
+      ...item('column', column.name, columnLabel(column)),
+      column: {
+        name: column.name,
+        details: columnDetails(column),
+        primaryKey: column.key === 'PRI',
+      },
+    })),
   )
   if (kind !== 'table') {
     return [columns]
@@ -243,12 +262,18 @@ function loadingNode(parent: string, schema: string): ExplorerNode {
  * @param column Colonne.
  */
 export function columnLabel(column: ColumnInfo): string {
-  const details = [
-    displayedType(column.column_type),
-    column.key,
-    column.nullable ? 'NULL' : '',
-  ].filter(Boolean)
-  return `${column.name} · ${details.join(' · ')}`
+  return `${column.name} · ${columnDetails(column)}`
+}
+
+/**
+ * Détail d'une colonne : type affiché, rôle dans les index, nullabilité.
+ *
+ * @param column Colonne.
+ */
+function columnDetails(column: ColumnInfo): string {
+  return [displayedType(column.column_type), column.key, column.nullable ? 'NULL' : '']
+    .filter(Boolean)
+    .join(' · ')
 }
 
 /**

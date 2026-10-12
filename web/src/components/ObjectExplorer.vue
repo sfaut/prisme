@@ -10,7 +10,7 @@
 -->
 <script setup lang="ts">
 import { NAlert, NButton, NSpin, NTree, type TreeOption } from 'naive-ui'
-import { computed, onMounted, ref } from 'vue'
+import { computed, h, onMounted, ref } from 'vue'
 
 import { useCatalogStore } from '@/stores/catalog'
 
@@ -102,6 +102,23 @@ function nodeProps({ option }: { option: TreeOption }) {
   }
 }
 
+/**
+ * Affiche le libellé d'un nœud. Pour une colonne, le nom et le détail sont
+ * séparés : le nom d'une colonne de clef primaire est en gras.
+ *
+ * @param info Nœud affiché.
+ */
+function renderLabel({ option }: { option: TreeOption }) {
+  const node = option as unknown as ExplorerNode
+  if (node.column === undefined) {
+    return node.label
+  }
+  return [
+    h('span', { class: { 'primary-key': node.column.primaryKey } }, node.column.name),
+    h('span', { class: 'column-details' }, ` · ${node.column.details}`),
+  ]
+}
+
 onMounted(() => load(false))
 </script>
 
@@ -119,6 +136,7 @@ onMounted(() => load(false))
       <n-tree
         :data="nodes"
         :node-props="nodeProps"
+        :render-label="renderLabel"
         :indent="12"
         :theme-overrides="TREE_THEME"
         block-line
@@ -165,6 +183,10 @@ onMounted(() => load(false))
 .object-tree :deep(.n-tree-node-switcher) {
   width: 14px;
   height: 20px;
+}
+
+.object-tree :deep(.primary-key) {
+  font-weight: 700;
 }
 
 .object-tree :deep(.n-tree-node-content) {
