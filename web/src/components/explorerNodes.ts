@@ -243,8 +243,24 @@ function loadingNode(parent: string, schema: string): ExplorerNode {
  * @param column Colonne.
  */
 export function columnLabel(column: ColumnInfo): string {
-  const details = [column.column_type, column.key, column.nullable ? 'NULL' : ''].filter(Boolean)
+  const details = [
+    displayedType(column.column_type),
+    column.key,
+    column.nullable ? 'NULL' : '',
+  ].filter(Boolean)
   return `${column.name} · ${details.join(' · ')}`
+}
+
+/**
+ * Type affiché d'une colonne : sans la largeur d'affichage des entiers
+ * (`int(10) unsigned` devient `int unsigned`), qui ne change rien aux valeurs
+ * stockées. La précision des décimaux (`decimal(10,2)`) et la taille des
+ * chaînes et des bits sont conservées.
+ *
+ * @param columnType Type complet, tel que déclaré.
+ */
+export function displayedType(columnType: string): string {
+  return columnType.replace(/^(tinyint|smallint|mediumint|int|integer|bigint)\(\d+\)/i, '$1')
 }
 
 /**

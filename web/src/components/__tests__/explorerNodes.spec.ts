@@ -4,6 +4,7 @@ import { type CatalogSchema, applyCatalogEvent, emptyCatalog } from '@/stores/ca
 
 import {
   catalogNodes,
+  displayedType,
   foreignKeyLabel,
   indexLabel,
   selectAllQuery,
@@ -67,6 +68,15 @@ describe('catalogNodes', () => {
     expect(labels(orders?.children?.[0])).toEqual(['id · int · PRI', 'note · varchar(20) · NULL'])
     expect(orders?.children?.[2]?.isLeaf).toBe(true)
     expect(labels(tables?.children?.[1])).toEqual(['chargement…'])
+  })
+
+  it('retire la largeur d’affichage des entiers, et seulement elle', () => {
+    expect(displayedType('int(10) unsigned')).toBe('int unsigned')
+    expect(displayedType('bigint(20)')).toBe('bigint')
+    expect(displayedType('tinyint(1)')).toBe('tinyint')
+    expect(displayedType('decimal(10,2)')).toBe('decimal(10,2)')
+    expect(displayedType('varchar(50)')).toBe('varchar(50)')
+    expect(displayedType('bit(1)')).toBe('bit(1)')
   })
 
   it('libelle index, clefs étrangères et déclencheurs', () => {
