@@ -2,10 +2,11 @@
   Explorateur d'objets de la connexion choisie : bases, tables et colonnes.
 
   Le catalogue arrive au fil de l'eau dès que la connexion est choisie : les
-  bases d'abord, puis les tables, puis les colonnes, chacune affichée dès sa
-  réception. Il reste ensuite en mémoire : revenir sur une connexion déjà
+  bases d'abord, puis leurs objets (tables, vues, procédures, fonctions), puis
+  le détail des tables (colonnes, index, clefs étrangères, déclencheurs),
+  chaque partie affichée dès sa réception. Il reste ensuite en mémoire : revenir sur une connexion déjà
   explorée est immédiat. « Rafraîchir » relit le catalogue. Un double clic
-  sur une table émet `open-table`, pour en afficher le contenu.
+  sur une table ou une vue émet `open-table`, pour en afficher le contenu.
 -->
 <script setup lang="ts">
 import { NAlert, NButton, NSpin, NTree, type TreeOption } from 'naive-ui'
@@ -94,7 +95,7 @@ function nodeProps({ option }: { option: TreeOption }) {
   const node = option as unknown as ExplorerNode
   return {
     onDblclick: () => {
-      if (node.isTable && node.table !== undefined) {
+      if (node.table !== undefined) {
         emit('open-table', node.schema, node.table)
       }
     },

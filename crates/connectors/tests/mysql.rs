@@ -6,7 +6,7 @@
 
 use std::time::{Duration, Instant};
 
-use prisme_connectors::mysql::catalog::{self, TableKind};
+use prisme_connectors::mysql::catalog::{self, RoutineKind, TableKind};
 use prisme_connectors::mysql::{Flavor, MysqlTarget, connect, execute, kill_query, probe};
 use secrecy::SecretString;
 use testcontainers_modules::mariadb::Mariadb;
@@ -139,8 +139,14 @@ async fn reads_the_catalog_schema_by_schema() {
     let port = server.get_host_port_ipv4(3306).await.unwrap();
     let mut connection = connect(&target(host, port)).await.unwrap();
     for sql in [
-        "CREATE TABLE t (id INT PRIMARY KEY, label VARCHAR(20) NULL)",
+        "CREATE TABLE p (id INT PRIMARY KEY)",
+        "CREATE TABLE t (id INT PRIMARY KEY, label VARCHAR(20) NULL, p_id INT,
+            INDEX idx_label (label),
+            CONSTRAINT fk_p FOREIGN KEY (p_id) REFERENCES p (id))",
         "CREATE VIEW v AS SELECT id FROM t",
+        "CREATE TRIGGER t_bi BEFORE INSERT ON t FOR EACH ROW SET NEW.label = UPPER(NEW.label)",
+        "CREATE PROCEDURE do_nothing() BEGIN END",
+        "CREATE FUNCTION one() RETURNS INT DETERMINISTIC RETURN 1",
     ] {
         execute(&mut connection, sql).await.unwrap().discard().await;
     }
@@ -148,20 +154,47 @@ async fn reads_the_catalog_schema_by_schema() {
     let schemas = catalog::schemas(&mut connection).await.unwrap();
     assert!(schemas.contains(&"test".to_string()));
 
-    let tables = catalog::tables(&mut connection, "test").await.unwrap();
-    let kinds: Vec<_> = tables
+    let objects = catalog::objects(&mut connection, "test").await.unwrap();
+    let kinds: Vec<_> = objects
+        .tables
         .iter()
         .map(|table| (table.name.as_str(), table.kind))
         .collect();
-    assert_eq!(kinds, [("t", TableKind::Table), ("v", TableKind::View)]);
+    assert_eq!(
+        kinds,
+        [
+            ("p", TableKind::Table),
+            ("t", TableKind::Table),
+            ("v", TableKind::View)
+        ]
+    );
+    let routines: Vec<_> = objects
+        .routines
+        .iter()
+        .map(|routine| (routine.name.as_str(), routine.kind))
+        .collect();
+    assert_eq!(
+        routines,
+        [
+            ("do_nothing", RoutineKind::Procedure),
+            ("one", RoutineKind::Function)
+        ]
+    );
 
-    let columns = catalog::columns(&mut connection, "test").await.unwrap();
-    assert_eq!(columns[0].table, "t");
-    let t = &columns[0].columns;
-    assert_eq!(t[0].name, "id");
-    assert_eq!(t[0].key, "PRI");
-    assert!(!t[0].nullable);
-    assert_eq!(t[1].column_type, "varchar(20)");
-    assert!(t[1].nullable);
-    assert_eq!(columns[1].table, "v");
+    let details = catalog::details(&mut connection, "test").await.unwrap();
+    let t = details.iter().find(|table| table.table == "t").unwrap();
+    assert_eq!(t.columns[0].name, "id");
+    assert_eq!(t.columns[0].key, "PRI");
+    assert_eq!(t.columns[1].column_type, "varchar(20)");
+    assert!(t.columns[1].nullable);
+    let indexes: Vec<_> = t.indexes.iter().map(|index| index.name.as_str()).collect();
+    assert_eq!(indexes, ["PRIMARY", "fk_p", "idx_label"]);
+    assert_eq!(t.foreign_keys[0].name, "fk_p");
+    assert_eq!(t.foreign_keys[0].referenced_table, "p");
+    assert_eq!(t.foreign_keys[0].referenced_columns, ["id"]);
+    assert_eq!(t.triggers[0].name, "t_bi");
+    assert_eq!(
+        (t.triggers[0].timing.as_str(), t.triggers[0].event.as_str()),
+        ("BEFORE", "INSERT")
+    );
 }

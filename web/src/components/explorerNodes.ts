@@ -1,13 +1,31 @@
 /**
- * Nœuds de l'arbre de l'explorateur d'objets : bases, tables, colonnes.
+ * Nœuds de l'arbre de l'explorateur d'objets.
  *
- * Les fonctions de ce module construisent l'arbre à partir du catalogue, même
- * incomplet : une partie pas encore reçue s'affiche « chargement… ». Elles ne
+ * Structure de l'arbre :
+ *
+ * ```text
+ * base
+ * ├─ Tables (n)        ── table ─┬─ Colonnes (n)
+ * │                              ├─ Index (n)
+ * │                              ├─ Clefs étrangères (n)
+ * │                              └─ Déclencheurs (n)
+ * ├─ Vues (n)          ── vue ─── Colonnes (n)
+ * ├─ Procédures (n)
+ * └─ Fonctions (n)
+ * ```
+ *
+ * L'arbre se construit à partir du catalogue, même incomplet : une partie
+ * pas encore reçue s'affiche « chargement… ». Les fonctions de ce module ne
  * dépendent pas de l'affichage.
  */
 
 import type { ColumnInfo } from '@/api/generated/ColumnInfo'
+import type { ForeignKeyInfo } from '@/api/generated/ForeignKeyInfo'
+import type { IndexInfo } from '@/api/generated/IndexInfo'
+import type { RoutineInfo } from '@/api/generated/RoutineInfo'
+import type { TableDetails } from '@/api/generated/TableDetails'
 import type { TableKind } from '@/api/generated/TableKind'
+import type { TriggerInfo } from '@/api/generated/TriggerInfo'
 import type { CatalogSchema, CatalogTable } from '@/stores/catalog'
 
 /**
@@ -23,7 +41,7 @@ export interface ExplorerNode {
    */
   label: string
   /**
-   * Feuille : rien en dessous (colonne, ou base sans table).
+   * Feuille : rien en dessous.
    */
   isLeaf: boolean
   /**
@@ -31,17 +49,13 @@ export interface ExplorerNode {
    */
   schema: string
   /**
-   * Table à laquelle appartient le nœud, absente pour une base.
+   * Table ou vue désignée par le nœud, pour l'ouvrir d'un double clic.
    */
   table?: string
   /**
-   * Enfants : tables d'une base, colonnes d'une table.
+   * Enfants.
    */
   children?: ExplorerNode[]
-  /**
-   * Nœud de table (et non de base ou de colonne).
-   */
-  isTable: boolean
   /**
    * Nœud non cliquable (« chargement… »).
    */
@@ -49,22 +63,162 @@ export interface ExplorerNode {
 }
 
 /**
- * Arbre du catalogue : bases, puis tables, puis colonnes.
+ * Arbre du catalogue, une branche par base.
  *
  * @param schemas Catalogue du serveur, éventuellement incomplet.
  */
 export function catalogNodes(schemas: CatalogSchema[]): ExplorerNode[] {
-  return schemas.map((schema) => ({
-    key: `schema:${schema.name}`,
-    label: schema.name,
-    isLeaf: schema.tables?.length === 0,
-    isTable: false,
-    schema: schema.name,
+  return schemas.map((schema) => {
+    const key = `schema:${schema.name}`
+    return {
+      key,
+      label: schema.name,
+      isLeaf: false,
+      schema: schema.name,
+      children:
+        schema.tables === null || schema.routines === null
+          ? [loadingNode(key, schema.name)]
+          : schemaFolders(schema.name, schema.tables, schema.routines),
+    }
+  })
+}
+
+/**
+ * Dossiers d'une base : tables, vues, procédures, fonctions.
+ *
+ * @param schema Nom de la base.
+ * @param tables Tables et vues de la base.
+ * @param routines Procédures et fonctions de la base.
+ */
+function schemaFolders(
+  schema: string,
+  tables: CatalogTable[],
+  routines: RoutineInfo[],
+): ExplorerNode[] {
+  const routineNode = (routine: RoutineInfo): ExplorerNode => ({
+    key: `routine:${schema}.${routine.name}:${routine.kind}`,
+    label: routine.name,
+    isLeaf: true,
+    schema,
+  })
+  return [
+    folder(
+      `tables:${schema}`,
+      'Tables',
+      schema,
+      tables.filter((table) => table.kind === 'table').map((table) => tableNode(schema, table)),
+    ),
+    folder(
+      `views:${schema}`,
+      'Vues',
+      schema,
+      tables.filter((table) => table.kind !== 'table').map((table) => tableNode(schema, table)),
+    ),
+    folder(
+      `procedures:${schema}`,
+      'Procédures',
+      schema,
+      routines.filter((routine) => routine.kind === 'procedure').map(routineNode),
+    ),
+    folder(
+      `functions:${schema}`,
+      'Fonctions',
+      schema,
+      routines.filter((routine) => routine.kind === 'function').map(routineNode),
+    ),
+  ]
+}
+
+/**
+ * Nœud d'une table ou d'une vue, avec ses dossiers de détail.
+ *
+ * @param schema Nom de la base.
+ * @param table Table ou vue.
+ */
+function tableNode(schema: string, table: CatalogTable): ExplorerNode {
+  const key = `table:${schema}.${table.name}`
+  return {
+    key,
+    label: table.kind === 'system' ? `${table.name} (système)` : table.name,
+    isLeaf: false,
+    schema,
+    table: table.name,
     children:
-      schema.tables === null
-        ? [loadingNode(`schema:${schema.name}`, schema.name)]
-        : schema.tables.map((table) => tableNode(schema.name, table)),
-  }))
+      table.details === null
+        ? [loadingNode(key, schema)]
+        : tableFolders(schema, table.kind, table.details),
+  }
+}
+
+/**
+ * Dossiers de détail d'une table : colonnes, index, clefs étrangères,
+ * déclencheurs. Une vue n'a que ses colonnes.
+ *
+ * @param schema Nom de la base.
+ * @param kind Nature de la table.
+ * @param details Détail reçu du serveur.
+ */
+function tableFolders(schema: string, kind: TableKind, details: TableDetails): ExplorerNode[] {
+  const base = `${schema}.${details.table}`
+  const item = (prefix: string, name: string, label: string): ExplorerNode => ({
+    key: `${prefix}:${base}.${name}`,
+    label,
+    isLeaf: true,
+    schema,
+  })
+  const columns = folder(
+    `columns:${base}`,
+    'Colonnes',
+    schema,
+    details.columns.map((column) => item('column', column.name, columnLabel(column))),
+  )
+  if (kind !== 'table') {
+    return [columns]
+  }
+  return [
+    columns,
+    folder(
+      `indexes:${base}`,
+      'Index',
+      schema,
+      details.indexes.map((index) => item('index', index.name, indexLabel(index))),
+    ),
+    folder(
+      `foreign-keys:${base}`,
+      'Clefs étrangères',
+      schema,
+      details.foreign_keys.map((key) => item('fk', key.name, foreignKeyLabel(schema, key))),
+    ),
+    folder(
+      `triggers:${base}`,
+      'Déclencheurs',
+      schema,
+      details.triggers.map((trigger) => item('trigger', trigger.name, triggerLabel(trigger))),
+    ),
+  ]
+}
+
+/**
+ * Dossier avec le nombre de ses éléments dans le libellé ; un dossier vide est une feuille.
+ *
+ * @param key Clef unique du dossier.
+ * @param label Nom du dossier.
+ * @param schema Nom de la base.
+ * @param children Éléments du dossier.
+ */
+function folder(
+  key: string,
+  label: string,
+  schema: string,
+  children: ExplorerNode[],
+): ExplorerNode {
+  return {
+    key: `folder:${key}`,
+    label: `${label} (${children.length})`,
+    isLeaf: children.length === 0,
+    schema,
+    children,
+  }
 }
 
 /**
@@ -78,60 +232,53 @@ function loadingNode(parent: string, schema: string): ExplorerNode {
     key: `${parent}:loading`,
     label: 'chargement…',
     isLeaf: true,
-    isTable: false,
     schema,
     disabled: true,
   }
 }
 
 /**
- * Nœud d'une table, avec ses colonnes. Les vues et tables système sont signalées dans le libellé.
+ * Libellé d'une colonne : nom, type, rôle dans les index, nullabilité.
  *
- * @param schema Nom de la base.
- * @param table Table, avec ses colonnes.
- */
-function tableNode(schema: string, table: CatalogTable): ExplorerNode {
-  const key = `table:${schema}.${table.name}`
-  return {
-    key,
-    label: table.kind === 'table' ? table.name : `${table.name} (${kindLabel(table.kind)})`,
-    isLeaf: table.columns?.length === 0,
-    isTable: true,
-    schema,
-    table: table.name,
-    children:
-      table.columns === null
-        ? [loadingNode(key, schema)]
-        : table.columns.map((column) => columnNode(schema, table.name, column)),
-  }
-}
-
-/**
- * Nœud d'une colonne : nom, type, rôle dans les index, nullabilité.
- *
- * @param schema Nom de la base.
- * @param table Nom de la table.
  * @param column Colonne.
  */
-function columnNode(schema: string, table: string, column: ColumnInfo): ExplorerNode {
+export function columnLabel(column: ColumnInfo): string {
   const details = [column.column_type, column.key, column.nullable ? 'NULL' : ''].filter(Boolean)
-  return {
-    key: `column:${schema}.${table}.${column.name}`,
-    label: `${column.name} · ${details.join(' · ')}`,
-    isLeaf: true,
-    isTable: false,
-    schema,
-    table,
-  }
+  return `${column.name} · ${details.join(' · ')}`
 }
 
 /**
- * Libellé de la nature d'une table, quand ce n'est pas une table ordinaire.
+ * Libellé d'un index : nom, colonnes, unicité.
  *
- * @param kind Nature de la table.
+ * @param index Index.
  */
-function kindLabel(kind: TableKind): string {
-  return kind === 'view' ? 'vue' : 'système'
+export function indexLabel(index: IndexInfo): string {
+  const unique = index.unique && index.name !== 'PRIMARY' ? ' · unique' : ''
+  return `${index.name} (${index.columns.join(', ')})${unique}`
+}
+
+/**
+ * Libellé d'une clef étrangère : nom, colonnes, table et colonnes référencées.
+ * La base référencée n'apparaît que si elle diffère de celle de la table.
+ *
+ * @param schema Nom de la base de la table.
+ * @param key Clef étrangère.
+ */
+export function foreignKeyLabel(schema: string, key: ForeignKeyInfo): string {
+  const target =
+    key.referenced_schema === schema
+      ? key.referenced_table
+      : `${key.referenced_schema}.${key.referenced_table}`
+  return `${key.name} (${key.columns.join(', ')}) → ${target} (${key.referenced_columns.join(', ')})`
+}
+
+/**
+ * Libellé d'un déclencheur : nom, moment et événement.
+ *
+ * @param trigger Déclencheur.
+ */
+export function triggerLabel(trigger: TriggerInfo): string {
+  return `${trigger.name} · ${trigger.timing} ${trigger.event}`
 }
 
 /**

@@ -3,7 +3,8 @@
  * et gardés en mémoire.
  *
  * Le catalogue d'une connexion se remplit à mesure que les messages du
- * serveur arrivent : les bases d'abord, puis les tables, puis les colonnes.
+ * serveur arrivent : les bases d'abord, puis leurs objets (tables, vues,
+ * procédures, fonctions), puis le détail des tables.
  * Une partie pas encore reçue vaut `null`. Revenir sur une connexion déjà
  * explorée réutilise son catalogue ; « Rafraîchir » le relit.
  */
@@ -13,19 +14,20 @@ import { reactive, ref } from 'vue'
 
 import { streamCatalog } from '@/api/explorer'
 import type { CatalogEvent } from '@/api/generated/CatalogEvent'
-import type { ColumnInfo } from '@/api/generated/ColumnInfo'
+import type { RoutineInfo } from '@/api/generated/RoutineInfo'
+import type { TableDetails } from '@/api/generated/TableDetails'
 import type { TableKind } from '@/api/generated/TableKind'
 
 /**
- * Table du catalogue.
+ * Table ou vue du catalogue.
  */
 export interface CatalogTable {
   name: string
   kind: TableKind
   /**
-   * Colonnes, `null` tant qu'elles ne sont pas reçues.
+   * Colonnes, index, clefs étrangères et déclencheurs, `null` tant qu'ils ne sont pas reçus.
    */
-  columns: ColumnInfo[] | null
+  details: TableDetails | null
 }
 
 /**
@@ -34,9 +36,13 @@ export interface CatalogTable {
 export interface CatalogSchema {
   name: string
   /**
-   * Tables, `null` tant qu'elles ne sont pas reçues.
+   * Tables et vues, `null` tant qu'elles ne sont pas reçues.
    */
   tables: CatalogTable[] | null
+  /**
+   * Procédures et fonctions, `null` tant qu'elles ne sont pas reçues.
+   */
+  routines: RoutineInfo[] | null
 }
 
 /**
@@ -62,6 +68,15 @@ export function emptyCatalog(): Catalog {
 }
 
 /**
+ * Détail vide d'une table dont le serveur n'a rien renvoyé (droits restreints...).
+ *
+ * @param table Nom de la table.
+ */
+function emptyDetails(table: string): TableDetails {
+  return { table, columns: [], indexes: [], foreign_keys: [], triggers: [] }
+}
+
+/**
  * Range un message du serveur dans le catalogue.
  *
  * @param catalog Catalogue à compléter, modifié sur place.
@@ -70,26 +85,27 @@ export function emptyCatalog(): Catalog {
 export function applyCatalogEvent(catalog: Catalog, event: CatalogEvent): void {
   switch (event.type) {
     case 'schemas':
-      catalog.schemas = event.schemas.map((name) => ({ name, tables: null }))
+      catalog.schemas = event.schemas.map((name) => ({ name, tables: null, routines: null }))
       break
-    case 'tables': {
+    case 'objects': {
       const schema = catalog.schemas.find((candidate) => candidate.name === event.schema)
       if (schema) {
-        schema.tables = event.tables.map((table) => ({ ...table, columns: null }))
+        schema.tables = event.objects.tables.map((table) => ({ ...table, details: null }))
+        schema.routines = event.objects.routines
       }
       break
     }
-    case 'columns': {
+    case 'details': {
       const tables = catalog.schemas.find((candidate) => candidate.name === event.schema)?.tables
-      for (const { table, columns } of event.tables) {
-        const target = tables?.find((candidate) => candidate.name === table)
+      for (const details of event.tables) {
+        const target = tables?.find((candidate) => candidate.name === details.table)
         if (target) {
-          target.columns = columns
+          target.details = details
         }
       }
-      // Tables sans colonne reçue (droits restreints...) : rien n'arrivera plus.
+      // Tables sans détail reçu : rien n'arrivera plus.
       for (const table of tables ?? []) {
-        table.columns ??= []
+        table.details ??= emptyDetails(table.name)
       }
       break
     }

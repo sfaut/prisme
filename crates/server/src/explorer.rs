@@ -5,12 +5,13 @@
 //! envoyé dès qu'il est prêt :
 //!
 //! 1. `schemas` : noms de toutes les bases ;
-//! 2. `tables` : tables d'une base, base par base ;
-//! 3. `columns` : colonnes des tables d'une base, base par base ;
+//! 2. `objects` : tables, vues, procédures et fonctions, base par base ;
+//! 3. `details` : colonnes, index, clefs étrangères et déclencheurs des
+//!    tables, base par base ;
 //! 4. `done`, ou `error` si une lecture échoue.
 //!
-//! L'interface affiche donc les bases presque aussitôt, puis les tables et
-//! les colonnes à mesure qu'elles arrivent. La base choisie dans la connexion
+//! L'interface affiche donc les bases presque aussitôt, puis les objets et
+//! leur détail à mesure qu'ils arrivent. La base choisie dans la connexion
 //! est lue en premier, les bases système (`information_schema`, `mysql`...)
 //! en dernier.
 
@@ -23,7 +24,7 @@ use axum::http::header::CONTENT_TYPE;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use futures_util::stream;
-use prisme_connectors::mysql::catalog::{self, TableColumns, TableInfo};
+use prisme_connectors::mysql::catalog::{self, SchemaObjects, TableDetails};
 use prisme_connectors::mysql::{self, Connection};
 use serde::Serialize;
 use tokio::sync::mpsc;
@@ -47,15 +48,15 @@ const BUFFER: usize = 16;
 pub enum CatalogEvent {
     /// Noms de toutes les bases, par ordre alphabétique.
     Schemas { schemas: Vec<String> },
-    /// Tables et vues d'une base.
-    Tables {
+    /// Objets d'une base : tables, vues, procédures et fonctions.
+    Objects {
         schema: String,
-        tables: Vec<TableInfo>,
+        objects: SchemaObjects,
     },
-    /// Colonnes des tables d'une base.
-    Columns {
+    /// Détail des tables d'une base : colonnes, index, clefs étrangères, déclencheurs.
+    Details {
         schema: String,
-        tables: Vec<TableColumns>,
+        tables: Vec<TableDetails>,
     },
     /// Échec d'une lecture ; le flux continue avec la base suivante.
     Error { message: String },
@@ -131,10 +132,10 @@ async fn read_catalog(
     }
 
     for schema in &order {
-        let event = match catalog::tables(connection, schema).await {
-            Ok(tables) => CatalogEvent::Tables {
+        let event = match catalog::objects(connection, schema).await {
+            Ok(objects) => CatalogEvent::Objects {
                 schema: schema.clone(),
-                tables,
+                objects,
             },
             Err(error) => error_event(schema, &error),
         };
@@ -143,8 +144,8 @@ async fn read_catalog(
         }
     }
     for schema in &order {
-        let event = match catalog::columns(connection, schema).await {
-            Ok(tables) => CatalogEvent::Columns {
+        let event = match catalog::details(connection, schema).await {
+            Ok(tables) => CatalogEvent::Details {
                 schema: schema.clone(),
                 tables,
             },
