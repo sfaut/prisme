@@ -1,0 +1,72 @@
+# Prisme
+
+Client web multi-bases de données : plusieurs sources, une seule vue. Prisme se présente comme un carnet de notes (notebook) SQL où l'on interroge MySQL, MariaDB, PostgreSQL, SQLite et DuckDB, dans leur dialecte natif ou dans un autre dialecte que Prisme traduit. À terme, un moteur fédéré croise plusieurs sources (bases, CSV) dans une même requête.
+
+Ce fichier est court. Les décisions détaillées sont dans `docs/` :
+
+- `docs/V1.md` : périmètre, décisions techniques et ordre de développement de la V1 (à lire en premier).
+- `docs/FEDERATED.md` : vision après la V1 (plan logique, optimiseur, langages, NULL, CSV, workspace).
+- `docs/QUESTIONS.md` : pistes retenues, écartées ou reportées, et questions encore ouvertes.
+
+## Qui travaille ici
+
+Sébastien est propriétaire du projet, travaille en backend et en données (PHP, Vue, MySQL/MariaDB), et ne pratique pas Rust. Claude Code écrit l'essentiel du code, mais Sébastien doit pouvoir le relire, le corriger et le faire évoluer sans aide. Conséquences :
+
+- Modules petits et nommés, fonctions courtes, pas d'abstraction inutile.
+- Un commentaire de module en tête de chaque fichier important, qui dit ce que fait le module et pourquoi il existe.
+- Des tests par module, plus la suite de conformité (voir plus bas).
+- Les échanges et les documents sont en français. Les identifiants du code sont en anglais.
+
+## Stack (décidée)
+
+- **Backend** : Rust, `tokio` + `axum`, WebSocket pour le streaming des résultats et l'annulation.
+- **Pilotes natifs, un par moteur** : `mysql_async` (MySQL et MariaDB), `tokio-postgres`, `rusqlite`, `duckdb` (derrière une feature Cargo, car la compilation est longue). `rusqlite` et `duckdb` sont synchrones : les mettre dans des tâches bloquantes dédiées.
+- **Parseur SQL** : `sqlparser-rs`. À vérifier : pas de dialecte MariaDB à ma connaissance, donc extension du dialecte MySQL.
+- **Base interne** : SQLite en mode WAL (connexions, notebooks, métriques, utilisateurs). Identifiants chiffrés (`aes-gcm`), mots de passe hachés (`argon2`).
+- **Frontend** : Vue 3 + TypeScript + Vite, fichiers `.vue` avec `<script setup lang="ts">`, `vue-tsc`, Pinia, Vitest, CodeMirror 6 (npm), PrimeVue, ESLint + Prettier.
+- **Types partagés** : les structures échangées entre Rust et l'interface sont définies une seule fois côté Rust, et leurs types TypeScript sont générés par `ts-rs`.
+- **Livraison** : un seul exécutable, avec `web/dist` embarqué par `rust-embed`. Pas de service externe à l'exécution. Les dépendances npm et Cargo sont acceptées au développement.
+- **Tests** : `testcontainers` pour MySQL, MariaDB et PostgreSQL, SQLite et DuckDB en mémoire.
+
+Chaque crate Rust est présenté dans la section 3.2 de `docs/V1.md` (rôle, équivalent PHP, étape). Toute dépendance ajoutée à un `Cargo.toml` y est documentée dans le même changement.
+
+## Organisation du dépôt
+
+```
+crates/        workspace Cargo
+  types/       valeurs internes, nullabilité
+  plan/        nœuds du plan logique
+  dialects/    catalogue de fonctions par dialecte et émetteurs
+  splitter/    découpage des requêtes par dialecte (Ctrl-Entrée)
+  connectors/  interface commune et une implémentation par moteur
+  server/      sessions de notebook, API, authentification
+web/           application Vue
+docs/          décisions et réflexions
+```
+
+En développement, Vite sert l'interface et redirige l'API vers `axum`. En production, `rust-embed` embarque `web/dist`.
+
+Les commandes de build, de test et de lancement seront ajoutées ici une fois le workspace créé.
+
+## Règles à respecter
+
+1. **MySQL et MariaDB sont deux dialectes distincts**, avec une base commune. La version du serveur est détectée à la connexion (`SELECT VERSION()`, qui contient « MariaDB » pour ce dernier).
+2. **Jamais de traduction approximative silencieuse.** Une fonction se traduit de façon native, par une expression équivalente (émulée), ou, en dernier recours, par une erreur explicite. L'émulation doit conserver le type du résultat et l'utilisation des index. L'aperçu de la requête traduite signale les émulations.
+3. **Limite de lignes** : si l'utilisateur n'a écrit aucune limite, l'application ajoute `LIMIT N+1` (au niveau de l'AST), affiche N lignes et signale « résultat tronqué ». Si l'utilisateur a écrit une limite, elle passe telle quelle, quelle qu'elle soit. Lecture toujours en streaming.
+4. **Interrupteurs d'écriture** (UPDATE, DELETE, CREATE, DROP, ALTER) : classification par l'AST, jamais par le texte, plus un compte de connexion en lecture seule ou une transaction `READ ONLY` côté base quand le moteur le permet.
+5. **Les NULL suivent la sémantique SQL** (logique à trois valeurs, sacs et non ensembles). La nullabilité des colonnes est portée par les types et par le plan dès le départ.
+6. **CSV : tout est texte**, sans inférence de type. Le typage passe par les `CAST` écrits par l'utilisateur.
+7. **Aucun identifiant de connexion en clair**, ni dans la base interne, ni dans les journaux.
+8. **Suite de conformité** : une même requête est exécutée sur chaque base et les résultats sont comparés. Toute règle de traduction ajoutée doit avoir son test.
+9. **En cas de doute sur une décision de conception, demander à Sébastien.** Les points ouverts sont listés dans `docs/QUESTIONS.md`. Ne pas trancher en silence.
+
+## Ordre de développement de la V1
+
+1. Workspace, base interne, connexions chiffrées, connecteur MySQL/MariaDB, requête en streaming avec limite par défaut.
+2. Interface minimale : explorateur d'objets, cellule SQL, résultats paginés.
+3. Notebook, découpeur, Ctrl-Entrée et Ctrl-Maj-Entrée, onglets de résultats, exécution successive.
+4. Transactions, annulation, exécution parallèle, interrupteurs d'écriture.
+5. PostgreSQL et SQLite, puis traduction entre dialectes avec la suite de conformité.
+6. Métriques, DuckDB, puis Tutorial D (sous-ensemble d'abord).
+
+Détail et risques de chaque étape dans `docs/V1.md`.
