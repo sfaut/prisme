@@ -36,7 +36,7 @@ Chaque crate Rust est présenté dans la section 3.2 de `docs/V1.md` (rôle, éq
 crates/        workspace Cargo
   types/       valeurs internes, nullabilité
   plan/        nœuds du plan logique
-  dialects/    catalogue de fonctions par dialecte et émetteurs
+  dialects/    analyse et réécriture par dialecte : limite par défaut, puis catalogue de fonctions et émetteurs
   splitter/    découpage des requêtes par dialecte (Ctrl-Entrée)
   connectors/  interface commune et une implémentation par moteur
   server/      sessions de notebook, API, authentification
