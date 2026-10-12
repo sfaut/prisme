@@ -52,7 +52,7 @@ npm run dev
 Puis ouvrir <http://localhost:5173>.
 
 - **Connexions** : « Nouvelle » enregistre une connexion, « Tester » affiche la variante et la version du serveur, « Supprimer » la retire après confirmation.
-- **Explorateur** : les bases, tables et colonnes se chargent à l'ouverture de chaque nœud. Un double clic sur une table affiche son contenu.
+- **Explorateur** : tout le catalogue (bases, tables, colonnes) est lu dès qu'une connexion est choisie, puis gardé en mémoire ; « Rafraîchir » le relit. Un double clic sur une table affiche son contenu.
 - **Cellule SQL** : Ctrl-Entrée ou « Exécuter » envoie tout le texte de l'éditeur, une seule requête à la fois. La liste à côté du bouton change la limite de lignes par défaut. Seules les lectures passent pour l'instant.
 - **Grille** :
 
