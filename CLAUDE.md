@@ -72,6 +72,18 @@ cargo clippy --all-targets        # analyse statique, doit rester sans avertisse
 cargo fmt                         # formatage
 ```
 
+Dans `web/` :
+
+```
+npm run dev                       # interface sur http://localhost:5173 (avec cargo run à côté)
+npm run test:unit -- --run        # tests Vitest
+npm run type-check                # vue-tsc
+npm run lint                      # Oxlint et ESLint
+npm run format                    # Prettier
+```
+
+`cargo test` régénère les types TypeScript de `web/src/api/generated/` (`ts-rs`) : les committer avec le changement Rust qui les modifie.
+
 Journaux plus détaillés : `$env:RUST_LOG="debug"` (PowerShell) avant `cargo run`. Les tests qui demandent Docker sont marqués `#[ignore = "nécessite Docker Desktop démarré"]`. Toujours lancer `cargo fmt` et `cargo clippy --all-targets` avant un commit.
 
 ## Règles à respecter
