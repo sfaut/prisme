@@ -12,5 +12,5 @@ thiserror = "2.0.21"
 
 [dev-dependencies]
 testcontainers-modules = { version = "0.15.0", features = ["mysql", "mariadb"] }
-tokio = { version = "1.53.2", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.53.2", features = ["macros", "rt-multi-thread", "time"] }
 
