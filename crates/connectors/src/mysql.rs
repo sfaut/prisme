@@ -13,6 +13,9 @@ use mysql_async::{Conn, OptsBuilder, QueryResult, TextProtocol, Value};
 use secrecy::{ExposeSecret, SecretString};
 use serde::Serialize;
 
+/// Connexion ouverte à un serveur MySQL ou MariaDB.
+pub use mysql_async::Conn as Connection;
+
 /// Paramètres de connexion à un serveur MySQL ou MariaDB.
 #[derive(Clone)]
 pub struct MysqlTarget {
