@@ -100,7 +100,7 @@ pub fn apply_default_limit(
 }
 
 /// Indique si le corps d'une requête renvoie des lignes au client.
-fn returns_rows(body: &SetExpr) -> bool {
+pub(crate) fn returns_rows(body: &SetExpr) -> bool {
     match body {
         // SELECT ... INTO écrit dans une table ou des variables : rien à limiter.
         SetExpr::Select(select) => select.into.is_none(),

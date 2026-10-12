@@ -1,9 +1,11 @@
 //! Dialectes SQL de Prisme : analyse et réécriture des requêtes selon le dialecte.
 //!
 //! S'appuie sur `sqlparser` (voir `docs/V1.md`, section 3.2). Pour l'instant :
-//! la limite de lignes par défaut (module `limit`). Le catalogue de fonctions
+//! la limite de lignes par défaut (module `limit`) et la classification
+//! lecture / écriture (module `classify`). Le catalogue de fonctions
 //! et les émetteurs par dialecte viendront avec la traduction.
 
+pub mod classify;
 pub mod limit;
 
 /// Dialecte SQL d'une requête.
