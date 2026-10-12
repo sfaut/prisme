@@ -1991,6 +1991,7 @@ dependencies = [
  "futures-util",
  "prisme-connectors",
  "prisme-dialects",
+ "prisme-splitter",
  "rusqlite",
  "rusqlite_migration",
  "secrecy",

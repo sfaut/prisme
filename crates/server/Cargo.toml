@@ -18,6 +18,7 @@ dirs = "7.0.0"
 futures-util = "0.3.34"
 prisme-connectors = { version = "0.1.0", path = "../connectors" }
 prisme-dialects = { version = "0.1.0", path = "../dialects" }
+prisme-splitter = { version = "0.1.0", path = "../splitter" }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 rusqlite_migration = "2.6.0"
 secrecy = { version = "0.10.3", features = ["serde"] }

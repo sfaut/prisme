@@ -63,7 +63,7 @@ const cell = useTemplateRef<InstanceType<typeof QueryCell>>('cell')
 async function openTable(schema: string, table: string): Promise<void> {
   sql.value = selectAllQuery(schema, table)
   await nextTick()
-  cell.value?.run()
+  cell.value?.run(0)
 }
 </script>
 

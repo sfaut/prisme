@@ -2,8 +2,9 @@
   Éditeur SQL, basé sur CodeMirror 6.
 
   Coloration selon le dialecte du serveur (MySQL ou MariaDB), numéros de
-  ligne, historique d'annulation. Ctrl-Entrée (Cmd-Entrée sur Mac) émet `run`.
-  Le texte se lie avec `v-model`.
+  ligne, historique d'annulation. Ctrl-Entrée (Cmd-Entrée sur Mac) émet `run`
+  avec la position du curseur ; Ctrl-Maj-Entrée émet `run-all`. Le texte se
+  lie avec `v-model`.
 -->
 <script setup lang="ts">
 import { MariaSQL, MySQL, sql } from '@codemirror/lang-sql'
@@ -28,9 +29,13 @@ const text = defineModel<string>({ required: true })
 
 const emit = defineEmits<{
   /**
-   * L'utilisateur demande l'exécution (Ctrl-Entrée).
+   * L'utilisateur demande l'exécution de la requête sous le curseur (Ctrl-Entrée).
    */
-  run: []
+  run: [cursor: number]
+  /**
+   * L'utilisateur demande l'exécution de toutes les requêtes (Ctrl-Maj-Entrée).
+   */
+  'run-all': []
 }>()
 
 const host = useTemplateRef<HTMLDivElement>('host')
@@ -60,8 +65,15 @@ onMounted(() => {
       keymap.of([
         {
           key: 'Mod-Enter',
+          run: (editor) => {
+            emit('run', editor.state.selection.main.head)
+            return true
+          },
+        },
+        {
+          key: 'Mod-Shift-Enter',
           run: () => {
-            emit('run')
+            emit('run-all')
             return true
           },
         },
@@ -90,6 +102,15 @@ watch(
 )
 
 onBeforeUnmount(() => view?.destroy())
+
+/**
+ * Position du curseur dans le texte, en unités UTF-16 (0 avant le montage).
+ */
+function cursor(): number {
+  return view?.state.selection.main.head ?? 0
+}
+
+defineExpose({ cursor })
 </script>
 
 <template>

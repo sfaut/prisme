@@ -1,9 +1,12 @@
 /**
  * Session de requêtes sur une connexion enregistrée, par WebSocket.
  *
- * Le serveur garde une connexion ouverte au serveur cible pendant toute la
- * session, exécute une requête à la fois et envoie le résultat en streaming :
- * `columns`, puis des lots `rows`, puis `done` (ou `error`). Le protocole est
+ * Le client envoie le texte complet de l'éditeur, avec la position du curseur
+ * pour n'exécuter que la requête qui s'y trouve (Ctrl-Entrée), ou sans curseur
+ * pour toutes les exécuter en parallèle (Ctrl-Maj-Entrée). Le serveur annonce
+ * les requêtes du lot (`batch`), puis envoie leurs résultats en streaming,
+ * chaque message portant le numéro de sa requête : `columns`, des lots
+ * `rows`, puis `done` (ou `error`). `batch_done` clôt le lot. Le protocole est
  * décrit dans `crates/server/src/query_session.rs`.
  *
  * `applyMessage` met l'état à jour message par message ; elle ne dépend ni de
@@ -27,14 +30,14 @@ export type Cell = string | null
  * Étape de la session.
  *
  * - `connecting` : ouverture du WebSocket et connexion au serveur cible ;
- * - `ready` : prête à exécuter une requête ;
- * - `running` : une requête est en cours ;
+ * - `ready` : prête à exécuter des requêtes ;
+ * - `running` : un lot de requêtes est en cours ;
  * - `closed` : WebSocket fermé, la session doit être rouverte.
  */
 export type SessionStatus = 'connecting' | 'ready' | 'running' | 'closed'
 
 /**
- * Résultat de la dernière requête, complété au fil des messages.
+ * Résultat d'une requête, complété au fil des messages.
  */
 export interface QueryResult {
   /**
@@ -54,10 +57,6 @@ export interface QueryResult {
    */
   rows: Cell[][]
   /**
-   * La requête est-elle terminée ?
-   */
-  done: boolean
-  /**
    * Des lignes au-delà de la limite ont-elles été écartées ?
    */
   truncated: boolean
@@ -69,6 +68,32 @@ export interface QueryResult {
    * Durée d'exécution, en millisecondes.
    */
   elapsedMs: number
+}
+
+/**
+ * Requête d'un lot, affichée dans son propre onglet.
+ */
+export interface QueryTab {
+  /**
+   * Numéro de la requête dans le lot.
+   */
+  query: number
+  /**
+   * Texte de la requête, tel que découpé dans l'éditeur.
+   */
+  sql: string
+  /**
+   * Résultat, `null` tant que les colonnes ne sont pas reçues.
+   */
+  result: QueryResult | null
+  /**
+   * Erreur de la requête.
+   */
+  error: string | null
+  /**
+   * La requête est-elle terminée (avec succès ou en erreur) ?
+   */
+  done: boolean
 }
 
 /**
@@ -88,11 +113,11 @@ export interface SessionState {
    */
   database: string | null
   /**
-   * Résultat de la dernière requête.
+   * Requêtes du dernier lot, une par onglet.
    */
-  result: QueryResult | null
+  tabs: QueryTab[]
   /**
-   * Dernière erreur, à afficher à l'utilisateur.
+   * Dernière erreur de la session elle-même (connexion, demande invalide).
    */
   error: string | null
 }
@@ -101,7 +126,7 @@ export interface SessionState {
  * Crée l'état d'une session qui s'ouvre.
  */
 export function initialState(): SessionState {
-  return { status: 'connecting', server: null, database: null, result: null, error: null }
+  return { status: 'connecting', server: null, database: null, tabs: [], error: null }
 }
 
 /**
@@ -120,48 +145,85 @@ export function applyMessage(state: SessionState, message: ServerMessage): void 
       state.server = message.server
       state.database = message.database
       break
-    case 'columns':
-      state.result = {
-        sql: message.sql,
-        limit: message.limit,
-        columns: message.columns,
-        rows: [],
+    case 'batch':
+      state.tabs = message.queries.map((query) => ({
+        query: query.query,
+        sql: query.sql,
+        result: null,
+        error: null,
         done: false,
-        truncated: false,
-        affectedRows: 0,
-        elapsedMs: 0,
+      }))
+      break
+    case 'columns': {
+      const tab = tabOf(state, message.query)
+      if (tab) {
+        tab.result = {
+          sql: message.sql,
+          limit: message.limit,
+          columns: message.columns,
+          rows: [],
+          truncated: false,
+          affectedRows: 0,
+          elapsedMs: 0,
+        }
       }
       break
+    }
     case 'rows':
-      state.result?.rows.push(...message.rows)
+      tabOf(state, message.query)?.result?.rows.push(...message.rows)
       break
-    case 'done':
-      if (state.result) {
-        state.result.done = true
-        state.result.truncated = message.truncated
-        state.result.affectedRows = message.affected_rows
-        state.result.elapsedMs = message.elapsed_ms
+    case 'done': {
+      const tab = tabOf(state, message.query)
+      if (tab) {
+        tab.done = true
+        if (tab.result) {
+          tab.result.truncated = message.truncated
+          tab.result.affectedRows = message.affected_rows
+          tab.result.elapsedMs = message.elapsed_ms
+        }
       }
       state.database = message.database
-      state.status = 'ready'
       break
-    case 'error':
+    }
+    case 'error': {
+      if (message.query !== null) {
+        const tab = tabOf(state, message.query)
+        if (tab) {
+          tab.error = message.message
+          tab.done = true
+        }
+        break
+      }
       state.error = message.message
       // Avant `ready`, l'erreur est celle de la connexion au serveur cible :
       // le serveur ferme alors la session.
       state.status = state.status === 'connecting' ? 'closed' : 'ready'
       break
+    }
+    case 'batch_done':
+      state.status = 'ready'
+      break
   }
 }
 
 /**
- * Note le début d'une requête dans l'état.
+ * Onglet de la requête numéro `query` du lot en cours.
+ *
+ * @param state État de la session.
+ * @param query Numéro de la requête.
+ */
+function tabOf(state: SessionState, query: number): QueryTab | undefined {
+  return state.tabs.find((tab) => tab.query === query)
+}
+
+/**
+ * Note le début d'un lot dans l'état : les onglets précédents disparaissent.
  *
  * @param state État de la session.
  */
-export function startQuery(state: SessionState): void {
+export function startBatch(state: SessionState): void {
   state.status = 'running'
-  state.result = null
+  state.tabs = []
   state.error = null
 }
 
@@ -182,7 +244,7 @@ export function sessionUrl(connectionId: number, location: Location): string {
  * La session se ferme d'elle-même quand le composant qui l'a ouverte disparaît.
  *
  * @param connectionId Identifiant de la connexion.
- * @returns L'état réactif de la session, et les fonctions pour exécuter une requête et fermer la session.
+ * @returns L'état réactif de la session, et les fonctions pour exécuter des requêtes et fermer la session.
  */
 export function useQuerySession(connectionId: number) {
   const state = reactive(initialState())
@@ -191,10 +253,13 @@ export function useQuerySession(connectionId: number) {
   socket.addEventListener('message', (event: MessageEvent<string>) => {
     const message = JSON.parse(event.data) as ServerMessage
     applyMessage(state, message)
-    if (message.type === 'columns' && state.result) {
-      // Réactivité superficielle : l'arrivée d'un lot rafraîchit l'affichage,
-      // sans rendre réactive chacune des milliers de lignes.
-      state.result.rows = shallowReactive([])
+    if (message.type === 'columns') {
+      const result = tabOf(state, message.query)?.result
+      if (result) {
+        // Réactivité superficielle : l'arrivée d'un lot rafraîchit l'affichage,
+        // sans rendre réactive chacune des milliers de lignes.
+        result.rows = shallowReactive([])
+      }
     }
   })
   socket.addEventListener('close', () => {
@@ -202,17 +267,20 @@ export function useQuerySession(connectionId: number) {
   })
 
   /**
-   * Exécute une requête, si la session est prête.
+   * Envoie le texte de l'éditeur, si la session est prête.
    *
-   * @param sql Texte SQL, une seule requête.
-   * @param rowLimit Limite de lignes pour cette requête ; absente, celle des réglages s'applique.
+   * @param sql Texte complet de l'éditeur.
+   * @param cursor
+   *     Position du curseur (unités UTF-16) : seule la requête qui s'y trouve
+   *     s'exécute. Absente : toutes, en parallèle.
+   * @param rowLimit Limite de lignes ; absente, celle des réglages s'applique.
    */
-  function run(sql: string, rowLimit?: number): void {
+  function run(sql: string, cursor?: number, rowLimit?: number): void {
     if (state.status !== 'ready') {
       return
     }
-    startQuery(state)
-    const request: QueryRequest = { sql, row_limit: rowLimit }
+    startBatch(state)
+    const request: QueryRequest = { sql, cursor, row_limit: rowLimit }
     socket.send(JSON.stringify(request))
   }
 

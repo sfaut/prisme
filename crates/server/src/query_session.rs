@@ -1,37 +1,57 @@
 //! Session de requêtes sur une connexion enregistrée, par WebSocket.
 //!
 //! Une session garde une connexion ouverte au serveur cible pendant toute la
-//! durée du WebSocket (les transactions en auront besoin). Elle exécute les
-//! requêtes une par une et envoie les résultats en streaming, par lots de
-//! lignes, sans jamais charger tout le résultat en mémoire.
+//! durée du WebSocket (les transactions en auront besoin). Le client envoie
+//! le texte complet de l'éditeur ; la session le découpe en requêtes (crate
+//! `splitter`) et exécute :
+//!
+//! - avec un curseur (Ctrl-Entrée) : la requête sous le curseur, sur la
+//!   connexion de la session ;
+//! - sans curseur (Ctrl-Maj-Entrée) : toutes les requêtes en parallèle, chacune
+//!   sur sa propre connexion, ouverte sur la base en cours de la session.
+//!   Une requête qui change l'état de sa connexion (`USE`, `SET`) n'a donc
+//!   aucun effet sur les autres, ni sur la session.
+//!
+//! Les résultats arrivent en streaming, par lots de lignes, sans jamais être
+//! chargés en entier en mémoire. Chaque message d'un résultat porte le numéro
+//! de sa requête (`query`) : les messages de requêtes parallèles s'entremêlent.
 //!
 //! Protocole, en JSON texte :
 //!
 //! ```text
 //! serveur → client  {"type": "ready", "server": {"flavor": "mariadb", "version": "11.3.2-MariaDB"}, "database": "xlist"}
-//! client → serveur  {"sql": "SELECT ...", "row_limit": 2000}     row_limit facultatif
-//! serveur → client  {"type": "columns", "columns": ["a", "b"], "sql": "SELECT ... LIMIT 2001", "limit": "added"}
-//! serveur → client  {"type": "rows", "rows": [["1", null], ...]}  autant de lots que nécessaire
-//! serveur → client  {"type": "done", "row_count": 2000, "truncated": true, "affected_rows": 0, "elapsed_ms": 42, "database": "xlist"}
-//! serveur → client  {"type": "error", "message": "..."}           à la place de la suite, en cas d'échec
+//! client → serveur  {"sql": "SELECT 1; SELECT 2", "cursor": 3, "row_limit": 2000}   cursor et row_limit facultatifs
+//! serveur → client  {"type": "batch", "queries": [{"query": 0, "sql": "SELECT 1", "start": 0, "end": 9}]}
+//! serveur → client  {"type": "columns", "query": 0, "columns": ["1"], "sql": "SELECT 1 LIMIT 1001", "limit": "added"}
+//! serveur → client  {"type": "rows", "query": 0, "rows": [["1"]]}       autant de lots que nécessaire
+//! serveur → client  {"type": "done", "query": 0, "row_count": 1, "truncated": false, "affected_rows": 0, "elapsed_ms": 2, "database": "xlist"}
+//! serveur → client  {"type": "error", "query": 0, "message": "..."}     à la place de la suite, en cas d'échec
+//! serveur → client  {"type": "batch_done"}                               toutes les requêtes sont terminées
 //! ```
 //!
-//! `database` est la base en cours (`SELECT DATABASE()`, `null` si aucune) :
-//! celle de la connexion enregistrée au départ, puis celle choisie par `USE`.
+//! Une erreur qui ne concerne aucune requête (message invalide, connexion au
+//! serveur cible impossible) a `"query": null`. `database` est la base en
+//! cours de la session (`SELECT DATABASE()`, `null` si aucune) : celle de la
+//! connexion enregistrée au départ, puis celle choisie par `USE`.
 //!
 //! La limite de lignes suit `docs/V1.md`, section 2.3 : `row_limit` de la
-//! requête, sinon le réglage de l'utilisateur. En attendant les interrupteurs
+//! demande, sinon le réglage de l'utilisateur. En attendant les interrupteurs
 //! d'écriture, les écritures et les requêtes non analysables sont refusées
 //! (`docs/V1.md`, section 2.4).
 
 use std::time::Instant;
 
 use axum::extract::ws::{Message, WebSocket};
+use futures_util::future::join_all;
+use futures_util::stream::SplitSink;
+use futures_util::{SinkExt, StreamExt};
 use prisme_connectors::mysql::{self, Cell, Connection, Flavor, MysqlTarget, ServerInfo};
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::{StatementKind, classify};
 use prisme_dialects::limit::{LimitOutcome, apply_default_limit};
+use prisme_splitter::{Statement, split, statement_at};
 use serde::{Deserialize, Serialize};
+use tokio::sync::{Semaphore, mpsc};
 use ts_rs::TS;
 
 use crate::api::AppState;
@@ -40,15 +60,39 @@ use crate::settings::{self, check_row_limit};
 /// Nombre de lignes par message `rows`.
 const ROW_BATCH_SIZE: usize = 500;
 
-/// Requête envoyée par le client.
+/// Nombre maximal de requêtes exécutées en même temps (une connexion chacune).
+const MAX_PARALLEL: usize = 8;
+
+/// Nombre de messages en attente d'envoi au-delà duquel la lecture des résultats patiente.
+const OUTBOX_SIZE: usize = 64;
+
+/// Demande d'exécution envoyée par le client.
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 struct QueryRequest {
-    /// Texte SQL, une seule requête.
+    /// Texte complet de l'éditeur, une ou plusieurs requêtes.
     sql: String,
-    /// Limite de lignes pour cette requête seule, parmi les choix permis.
+    /// Position du curseur en unités UTF-16 : seule la requête sous le
+    /// curseur s'exécute. Absent : toutes les requêtes, en parallèle.
+    #[ts(optional)]
+    cursor: Option<usize>,
+    /// Limite de lignes pour ces requêtes seules, parmi les choix permis.
     #[ts(optional)]
     row_limit: Option<u32>,
+}
+
+/// Requête d'un lot, telle qu'annoncée au client.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+struct BatchQuery {
+    /// Numéro de la requête dans le lot, repris par ses messages.
+    query: u32,
+    /// Texte de la requête, sans séparateur.
+    sql: String,
+    /// Début de la requête dans le texte de l'éditeur, en unités UTF-16.
+    start: usize,
+    /// Fin de la requête dans le texte de l'éditeur, en unités UTF-16.
+    end: usize,
 }
 
 /// Traitement de la limite, tel qu'annoncé au client.
@@ -70,133 +114,352 @@ enum LimitReport {
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum ServerMessage<'a> {
+enum ServerMessage {
     /// La connexion au serveur cible est ouverte.
     Ready {
-        server: &'a ServerInfo,
+        server: ServerInfo,
         database: Option<String>,
     },
+    /// Requêtes qui vont s'exécuter.
+    Batch { queries: Vec<BatchQuery> },
     /// Début d'un résultat : colonnes, texte réellement exécuté, traitement de la limite.
     Columns {
+        query: u32,
         columns: Vec<String>,
-        sql: &'a str,
+        sql: String,
         limit: LimitReport,
     },
     /// Lot de lignes.
-    Rows { rows: &'a [Vec<Cell>] },
-    /// Fin du résultat.
+    Rows { query: u32, rows: Vec<Vec<Cell>> },
+    /// Fin d'un résultat.
     Done {
+        query: u32,
         row_count: usize,
         truncated: bool,
         affected_rows: u64,
         elapsed_ms: u128,
-        /// Base en cours après la requête (elle change avec `USE`).
+        /// Base en cours de la session après la requête (elle change avec `USE`).
         database: Option<String>,
     },
-    /// Échec de la requête ou de la session.
-    Error { message: String },
+    /// Échec d'une requête, ou de la session si `query` est absent.
+    Error { query: Option<u32>, message: String },
+    /// Toutes les requêtes du lot sont terminées.
+    BatchDone,
 }
 
 /// Le client a fermé le WebSocket : la session s'arrête.
 struct SocketClosed;
 
-/// Déroule une session : connexion au serveur cible, puis requêtes jusqu'à la fermeture du WebSocket.
-pub async fn run(mut socket: WebSocket, state: AppState, user_id: i64, target: MysqlTarget) {
-    let mut connection = match mysql::connect(&target).await {
-        Ok(connection) => connection,
-        Err(error) => {
-            let _ = send_error(&mut socket, error.to_string()).await;
-            return;
-        }
-    };
+/// File des messages à envoyer au client, partagée par les requêtes parallèles.
+///
+/// Une tâche dédiée vide la file vers le WebSocket. La file est bornée : si
+/// le client lit lentement, la lecture des résultats patiente.
+struct Outbox(mpsc::Sender<ServerMessage>);
 
-    let info = match mysql::server_info(&mut connection).await {
-        Ok(info) => info,
-        Err(error) => {
-            let _ = send_error(&mut socket, error.to_string()).await;
-            return;
-        }
-    };
-    let database = match mysql::current_database(&mut connection).await {
-        Ok(database) => database,
-        Err(error) => {
-            let _ = send_error(&mut socket, error.to_string()).await;
-            return;
-        }
-    };
-    let dialect = match info.flavor {
-        Flavor::MySql => Dialect::MySql,
-        Flavor::MariaDb => Dialect::MariaDb,
-    };
-
-    let ready = ServerMessage::Ready {
-        server: &info,
-        database,
-    };
-    if send(&mut socket, &ready).await.is_ok() {
-        while let Some(Ok(message)) = socket.recv().await {
-            let Message::Text(text) = message else {
-                // Ping, pong et binaire sont ignorés ; Close termine la boucle au tour suivant.
-                continue;
-            };
-            let session = Session {
-                socket: &mut socket,
-                connection: &mut connection,
-                target: &target,
-                state: &state,
-                user_id,
-                dialect,
-            };
-            if session.handle(text.as_str()).await.is_err() {
-                break;
-            }
-        }
+impl Outbox {
+    /// Met un message dans la file.
+    async fn send(&self, message: ServerMessage) -> Result<(), SocketClosed> {
+        self.0.send(message).await.map_err(|_| SocketClosed)
     }
 
-    let _ = connection.disconnect().await;
+    /// Met un message d'erreur dans la file.
+    async fn error(&self, query: Option<u32>, message: String) -> Result<(), SocketClosed> {
+        self.send(ServerMessage::Error { query, message }).await
+    }
 }
 
-/// Ce dont une requête a besoin pendant son exécution.
+/// Envoie au client les messages de la file, jusqu'à ce qu'elle se ferme.
+async fn write_messages(
+    mut sink: SplitSink<WebSocket, Message>,
+    mut messages: mpsc::Receiver<ServerMessage>,
+) {
+    while let Some(message) = messages.recv().await {
+        let json = serde_json::to_string(&message).expect("message sérialisable");
+        if sink.send(Message::Text(json.into())).await.is_err() {
+            break;
+        }
+    }
+}
+
+/// Déroule une session : connexion au serveur cible, puis demandes du client
+/// jusqu'à la fermeture du WebSocket.
+pub async fn run(socket: WebSocket, state: AppState, user_id: i64, target: MysqlTarget) {
+    let (sink, mut incoming) = socket.split();
+    let (sender, receiver) = mpsc::channel(OUTBOX_SIZE);
+    let writer = tokio::spawn(write_messages(sink, receiver));
+    let outbox = Outbox(sender);
+
+    let session = Session {
+        outbox: &outbox,
+        target: &target,
+        state: &state,
+        user_id,
+    };
+    if let Some(mut connection) = session.open().await {
+        if let Ok(dialect) = session.ready(&mut connection).await {
+            while let Some(Ok(message)) = incoming.next().await {
+                let Message::Text(text) = message else {
+                    // Ping, pong et binaire sont ignorés ; Close termine la boucle au tour suivant.
+                    continue;
+                };
+                let handled = session.handle(&mut connection, dialect, text.as_str());
+                if handled.await.is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = connection.disconnect().await;
+    }
+
+    drop(outbox);
+    let _ = writer.await;
+}
+
+/// Ce dont les requêtes ont besoin pendant leur exécution.
 struct Session<'a> {
-    /// WebSocket du client.
-    socket: &'a mut WebSocket,
-    /// Connexion ouverte au serveur cible.
-    connection: &'a mut Connection,
-    /// Paramètres de connexion, pour interrompre une requête par une seconde connexion.
+    /// File des messages vers le client.
+    outbox: &'a Outbox,
+    /// Paramètres de connexion, pour les connexions supplémentaires et les interruptions.
     target: &'a MysqlTarget,
     /// État de l'application, pour lire les réglages.
     state: &'a AppState,
     /// Utilisateur de la session.
     user_id: i64,
-    /// Dialecte du serveur cible.
-    dialect: Dialect,
+}
+
+/// Résumé d'un résultat lu jusqu'au bout.
+struct Summary {
+    row_count: usize,
+    truncated: bool,
+    affected_rows: u64,
+    elapsed_ms: u128,
 }
 
 impl Session<'_> {
-    /// Traite un message du client : une requête à exécuter.
-    async fn handle(self, text: &str) -> Result<(), SocketClosed> {
+    /// Ouvre la connexion de la session ; en cas d'échec, l'erreur part au client.
+    async fn open(&self) -> Option<Connection> {
+        match mysql::connect(self.target).await {
+            Ok(connection) => Some(connection),
+            Err(error) => {
+                let _ = self.outbox.error(None, error.to_string()).await;
+                None
+            }
+        }
+    }
+
+    /// Annonce la session au client : identité du serveur et base en cours.
+    /// Renvoie le dialecte du serveur.
+    async fn ready(&self, connection: &mut Connection) -> Result<Dialect, SocketClosed> {
+        let info = match mysql::server_info(connection).await {
+            Ok(info) => info,
+            Err(error) => {
+                self.outbox.error(None, error.to_string()).await?;
+                return Err(SocketClosed);
+            }
+        };
+        let database = match mysql::current_database(connection).await {
+            Ok(database) => database,
+            Err(error) => {
+                self.outbox.error(None, error.to_string()).await?;
+                return Err(SocketClosed);
+            }
+        };
+        let dialect = match info.flavor {
+            Flavor::MySql => Dialect::MySql,
+            Flavor::MariaDb => Dialect::MariaDb,
+        };
+        self.outbox
+            .send(ServerMessage::Ready {
+                server: info,
+                database,
+            })
+            .await?;
+        Ok(dialect)
+    }
+
+    /// Traite une demande du client : découpe le texte, puis exécute la
+    /// requête sous le curseur, ou toutes les requêtes en parallèle.
+    async fn handle(
+        &self,
+        connection: &mut Connection,
+        dialect: Dialect,
+        text: &str,
+    ) -> Result<(), SocketClosed> {
         let request: QueryRequest = match serde_json::from_str(text) {
             Ok(request) => request,
             Err(error) => {
-                return send_error(self.socket, format!("message invalide : {error}")).await;
+                return self
+                    .outbox
+                    .error(None, format!("message invalide : {error}"))
+                    .await;
             }
         };
         let max_rows = match row_limit(self.state, self.user_id, request.row_limit).await {
-            Ok(max_rows) => max_rows,
-            Err(message) => return send_error(self.socket, message).await,
+            Ok(max_rows) => max_rows as usize,
+            Err(message) => return self.outbox.error(None, message).await,
         };
-        self.execute(&request.sql, max_rows).await
+        let statements = split(&request.sql);
+        let chosen = chosen_statements(&statements, request.cursor);
+        if chosen.is_empty() {
+            let message = "aucune requête à exécuter".to_string();
+            return self.outbox.error(None, message).await;
+        }
+
+        let queries = chosen
+            .iter()
+            .enumerate()
+            .map(|(index, statement)| BatchQuery {
+                query: index as u32,
+                sql: statement.sql.clone(),
+                start: statement.start,
+                end: statement.end,
+            })
+            .collect();
+        self.outbox.send(ServerMessage::Batch { queries }).await?;
+
+        if request.cursor.is_some() {
+            self.run_on_session(connection, dialect, &chosen[0].sql, max_rows)
+                .await?;
+        } else {
+            let database = match mysql::current_database(connection).await {
+                Ok(database) => database,
+                Err(error) => return self.outbox.error(None, error.to_string()).await,
+            };
+            self.run_in_parallel(&chosen, dialect, max_rows, &database)
+                .await?;
+        }
+        self.outbox.send(ServerMessage::BatchDone).await
     }
 
-    /// Exécute la requête et envoie son résultat en streaming.
-    async fn execute(self, sql: &str, max_rows: u32) -> Result<(), SocketClosed> {
-        if let Some(refusal) = write_refusal(sql, self.dialect) {
-            return send_error(self.socket, refusal).await;
+    /// Exécute une requête sur la connexion de la session.
+    async fn run_on_session(
+        &self,
+        connection: &mut Connection,
+        dialect: Dialect,
+        sql: &str,
+        max_rows: usize,
+    ) -> Result<(), SocketClosed> {
+        let Some(summary) = self
+            .run_query(connection, dialect, 0, sql, max_rows)
+            .await?
+        else {
+            return Ok(());
+        };
+        let database = match mysql::current_database(connection).await {
+            Ok(database) => database,
+            Err(error) => return self.outbox.error(Some(0), error.to_string()).await,
+        };
+        self.done(0, summary, database).await
+    }
+
+    /// Exécute toutes les requêtes en parallèle, `MAX_PARALLEL` au plus à la fois,
+    /// chacune sur sa propre connexion ouverte sur la base `database`.
+    async fn run_in_parallel(
+        &self,
+        statements: &[&Statement],
+        dialect: Dialect,
+        max_rows: usize,
+        database: &Option<String>,
+    ) -> Result<(), SocketClosed> {
+        // Les requêtes partent toutes, mais attendent un jeton avant d'ouvrir leur connexion.
+        let permits = Semaphore::new(MAX_PARALLEL);
+        let mut runs = Vec::with_capacity(statements.len());
+        for (index, statement) in statements.iter().enumerate() {
+            let query = index as u32;
+            runs.push(self.run_with_permit(
+                &permits,
+                dialect,
+                query,
+                &statement.sql,
+                max_rows,
+                database,
+            ));
         }
-        let max_rows = max_rows as usize;
-        let limited = match apply_default_limit(sql, self.dialect, max_rows as u64) {
+        let results = join_all(runs).await;
+        results.into_iter().collect()
+    }
+
+    /// Attend un jeton parmi `permits`, puis exécute la requête sur une nouvelle connexion.
+    async fn run_with_permit(
+        &self,
+        permits: &Semaphore,
+        dialect: Dialect,
+        query: u32,
+        sql: &str,
+        max_rows: usize,
+        database: &Option<String>,
+    ) -> Result<(), SocketClosed> {
+        let _permit = permits.acquire().await.map_err(|_| SocketClosed)?;
+        self.run_on_new_connection(dialect, query, sql, max_rows, database)
+            .await
+    }
+
+    /// Exécute une requête sur une nouvelle connexion, placée sur la base `database`.
+    async fn run_on_new_connection(
+        &self,
+        dialect: Dialect,
+        query: u32,
+        sql: &str,
+        max_rows: usize,
+        database: &Option<String>,
+    ) -> Result<(), SocketClosed> {
+        let mut connection = match mysql::connect(self.target).await {
+            Ok(connection) => connection,
+            Err(error) => return self.outbox.error(Some(query), error.to_string()).await,
+        };
+        let result = self
+            .run_on_connection(&mut connection, dialect, query, sql, max_rows, database)
+            .await;
+        let _ = connection.disconnect().await;
+        result
+    }
+
+    /// Place la connexion sur la base `database`, puis y exécute la requête.
+    async fn run_on_connection(
+        &self,
+        connection: &mut Connection,
+        dialect: Dialect,
+        query: u32,
+        sql: &str,
+        max_rows: usize,
+        database: &Option<String>,
+    ) -> Result<(), SocketClosed> {
+        if let Some(name) = database
+            && let Err(error) = mysql::use_database(connection, name).await
+        {
+            return self.outbox.error(Some(query), error.to_string()).await;
+        }
+        match self
+            .run_query(connection, dialect, query, sql, max_rows)
+            .await?
+        {
+            Some(summary) => self.done(query, summary, database.clone()).await,
+            None => Ok(()),
+        }
+    }
+
+    /// Exécute une requête et envoie ses colonnes et ses lignes en streaming.
+    ///
+    /// Renvoie le résumé du résultat, ou `None` si la requête a échoué (l'erreur
+    /// est alors déjà partie au client).
+    async fn run_query(
+        &self,
+        connection: &mut Connection,
+        dialect: Dialect,
+        query: u32,
+        sql: &str,
+        max_rows: usize,
+    ) -> Result<Option<Summary>, SocketClosed> {
+        if let Some(refusal) = write_refusal(sql, dialect) {
+            self.outbox.error(Some(query), refusal).await?;
+            return Ok(None);
+        }
+        let limited = match apply_default_limit(sql, dialect, max_rows as u64) {
             Ok(limited) => limited,
-            Err(error) => return send_error(self.socket, error.to_string()).await,
+            Err(error) => {
+                self.outbox.error(Some(query), error.to_string()).await?;
+                return Ok(None);
+            }
         };
         // La lecture ne s'arrête d'elle-même que si Prisme a fixé la limite.
         let capped = matches!(
@@ -205,18 +468,22 @@ impl Session<'_> {
         );
 
         let started = Instant::now();
-        let connection_id = self.connection.id();
-        let mut stream = match mysql::execute(&mut *self.connection, &limited.sql).await {
+        let connection_id = connection.id();
+        let mut stream = match mysql::execute(connection, &limited.sql).await {
             Ok(stream) => stream,
-            Err(error) => return send_error(self.socket, error.to_string()).await,
+            Err(error) => {
+                self.outbox.error(Some(query), error.to_string()).await?;
+                return Ok(None);
+            }
         };
-
-        let columns = ServerMessage::Columns {
-            columns: stream.column_names(),
-            sql: &limited.sql,
-            limit: report(limited.outcome),
-        };
-        send(self.socket, &columns).await?;
+        self.outbox
+            .send(ServerMessage::Columns {
+                query,
+                columns: stream.column_names(),
+                sql: limited.sql.clone(),
+                limit: report(limited.outcome),
+            })
+            .await?;
 
         let mut batch = Vec::with_capacity(ROW_BATCH_SIZE);
         let mut row_count = 0;
@@ -227,7 +494,8 @@ impl Session<'_> {
                 Ok(None) => break,
                 Err(error) => {
                     stream.discard().await;
-                    return send_error(self.socket, error.to_string()).await;
+                    self.outbox.error(Some(query), error.to_string()).await?;
+                    return Ok(None);
                 }
             };
             if capped && row_count == max_rows {
@@ -244,33 +512,59 @@ impl Session<'_> {
             batch.push(row);
             row_count += 1;
             if batch.len() == ROW_BATCH_SIZE {
-                send(self.socket, &ServerMessage::Rows { rows: &batch }).await?;
-                batch.clear();
+                let rows = std::mem::replace(&mut batch, Vec::with_capacity(ROW_BATCH_SIZE));
+                self.outbox
+                    .send(ServerMessage::Rows { query, rows })
+                    .await?;
             }
         }
         if !batch.is_empty() {
-            send(self.socket, &ServerMessage::Rows { rows: &batch }).await?;
+            self.outbox
+                .send(ServerMessage::Rows { query, rows: batch })
+                .await?;
         }
 
         let affected_rows = stream.affected_rows();
         stream.discard().await;
-        let elapsed_ms = started.elapsed().as_millis();
-        let database = match mysql::current_database(self.connection).await {
-            Ok(database) => database,
-            Err(error) => return send_error(self.socket, error.to_string()).await,
-        };
-        let done = ServerMessage::Done {
+        Ok(Some(Summary {
             row_count,
             truncated,
             affected_rows,
-            elapsed_ms,
-            database,
-        };
-        send(self.socket, &done).await
+            elapsed_ms: started.elapsed().as_millis(),
+        }))
+    }
+
+    /// Annonce la fin d'un résultat.
+    async fn done(
+        &self,
+        query: u32,
+        summary: Summary,
+        database: Option<String>,
+    ) -> Result<(), SocketClosed> {
+        self.outbox
+            .send(ServerMessage::Done {
+                query,
+                row_count: summary.row_count,
+                truncated: summary.truncated,
+                affected_rows: summary.affected_rows,
+                elapsed_ms: summary.elapsed_ms,
+                database,
+            })
+            .await
     }
 }
 
-/// Limite de lignes d'une requête : celle demandée, sinon le réglage de l'utilisateur.
+/// Requêtes à exécuter : celle sous le curseur, ou toutes sans curseur.
+fn chosen_statements(statements: &[Statement], cursor: Option<usize>) -> Vec<&Statement> {
+    match cursor {
+        Some(cursor) => statement_at(statements, cursor)
+            .map(|index| vec![&statements[index]])
+            .unwrap_or_default(),
+        None => statements.iter().collect(),
+    }
+}
+
+/// Limite de lignes d'une demande : celle demandée, sinon le réglage de l'utilisateur.
 async fn row_limit(state: &AppState, user_id: i64, requested: Option<u32>) -> Result<u32, String> {
     if let Some(row_limit) = requested {
         return check_row_limit(row_limit).map_err(|error| error.to_string());
@@ -307,20 +601,6 @@ fn report(outcome: LimitOutcome) -> LimitReport {
         LimitOutcome::NotApplicable => LimitReport::NotApplicable,
         LimitOutcome::Unparsed => LimitReport::Unparsed,
     }
-}
-
-/// Envoie un message au client.
-async fn send(socket: &mut WebSocket, message: &ServerMessage<'_>) -> Result<(), SocketClosed> {
-    let json = serde_json::to_string(message).expect("message sérialisable");
-    socket
-        .send(Message::Text(json.into()))
-        .await
-        .map_err(|_| SocketClosed)
-}
-
-/// Envoie un message d'erreur au client.
-async fn send_error(socket: &mut WebSocket, message: String) -> Result<(), SocketClosed> {
-    send(socket, &ServerMessage::Error { message }).await
 }
 
 #[cfg(test)]
@@ -375,23 +655,77 @@ mod tests {
         }
     }
 
-    /// Envoie une requête, puis lit les messages jusqu'à `done` ou `error`.
-    /// Renvoie le message `columns` (ou Null), le nombre de lignes reçues et le dernier message.
-    async fn query(socket: &mut ClientSocket, request: Value) -> (Value, usize, Value) {
+    /// Résultat d'une requête d'un lot, tel que reçu par le client.
+    #[derive(Debug, Default)]
+    struct Received {
+        /// Message `columns`, ou Null.
+        columns: Value,
+        /// Nombre de lignes reçues.
+        rows: usize,
+        /// Dernier message de la requête : `done` ou `error`.
+        end: Value,
+    }
+
+    /// Envoie une demande, puis lit les messages jusqu'à `batch_done`.
+    /// Renvoie le message `batch` (ou une erreur de session) et les résultats, par numéro de requête.
+    async fn run(socket: &mut ClientSocket, request: Value) -> (Value, Vec<Received>) {
         socket
             .send(ClientMessage::Text(request.to_string().into()))
             .await
             .unwrap();
-        let mut columns = Value::Null;
-        let mut received = 0;
+        let mut batch = Value::Null;
+        let mut results: Vec<Received> = Vec::new();
         loop {
             let message = next_json(socket).await;
-            match message["type"].as_str().unwrap() {
-                "columns" => columns = message,
-                "rows" => received += message["rows"].as_array().unwrap().len(),
-                _ => return (columns, received, message),
+            let kind = message["type"].as_str().unwrap().to_string();
+            if kind == "batch_done" {
+                return (batch, results);
+            }
+            if kind == "error" && message["query"].is_null() {
+                return (message, results);
+            }
+            if kind == "batch" {
+                let count = message["queries"].as_array().unwrap().len();
+                results = (0..count).map(|_| Received::default()).collect();
+                batch = message;
+                continue;
+            }
+            let result = &mut results[message["query"].as_u64().unwrap() as usize];
+            match kind.as_str() {
+                "columns" => result.columns = message,
+                "rows" => result.rows += message["rows"].as_array().unwrap().len(),
+                _ => result.end = message,
             }
         }
+    }
+
+    /// Exécute la requête sous le curseur (ici, le seul texte envoyé) et renvoie son résultat.
+    async fn run_one(socket: &mut ClientSocket, sql: &str, row_limit: Option<u32>) -> Received {
+        let mut request = json!({ "sql": sql, "cursor": 0 });
+        if let Some(row_limit) = row_limit {
+            request["row_limit"] = json!(row_limit);
+        }
+        run(socket, request).await.1.remove(0)
+    }
+
+    #[test]
+    fn chooses_the_statement_under_the_cursor_or_all_of_them() {
+        let statements = prisme_splitter::split("SELECT 1;\nSELECT 2;");
+        let sql = |chosen: Vec<&prisme_splitter::Statement>| {
+            chosen
+                .into_iter()
+                .map(|statement| statement.sql.clone())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            sql(super::chosen_statements(&statements, Some(12))),
+            ["SELECT 2"]
+        );
+        assert_eq!(
+            sql(super::chosen_statements(&statements, None)),
+            ["SELECT 1", "SELECT 2"]
+        );
+        assert!(super::chosen_statements(&[], Some(0)).is_empty());
     }
 
     #[test]
@@ -445,36 +779,55 @@ mod tests {
         assert_eq!(ready["database"], "test");
 
         // Pas de limite écrite : 1 000 lignes affichées sur 2 500, résultat tronqué.
-        let (columns, received, done) = query(
-            &mut socket,
-            json!({ "sql": "SELECT seq FROM seq_1_to_2500", "row_limit": 1000 }),
-        )
-        .await;
-        assert_eq!(columns["limit"], "added");
-        assert_eq!(columns["sql"], "SELECT seq FROM seq_1_to_2500 LIMIT 1001");
-        assert_eq!(received, 1000);
-        assert_eq!(done["truncated"], true);
+        let result = run_one(&mut socket, "SELECT seq FROM seq_1_to_2500", Some(1000)).await;
+        assert_eq!(result.columns["limit"], "added");
+        assert_eq!(
+            result.columns["sql"],
+            "SELECT seq FROM seq_1_to_2500 LIMIT 1001"
+        );
+        assert_eq!(result.rows, 1000);
+        assert_eq!(result.end["truncated"], true);
 
         // Limite écrite : elle s'applique telle quelle, au-delà de la limite par défaut.
-        let (columns, received, done) = query(
+        let result = run_one(
             &mut socket,
-            json!({ "sql": "SELECT seq FROM seq_1_to_2500 LIMIT 1500" }),
+            "SELECT seq FROM seq_1_to_2500 LIMIT 1500",
+            None,
         )
         .await;
-        assert_eq!(columns["limit"], "user_limit");
-        assert_eq!(received, 1500);
-        assert_eq!(done["truncated"], false);
+        assert_eq!(result.columns["limit"], "user_limit");
+        assert_eq!(result.rows, 1500);
+        assert_eq!(result.end["truncated"], false);
 
         // Une erreur n'interrompt pas la session.
-        let (_, _, error) = query(&mut socket, json!({ "sql": "SELECT * FROM missing" })).await;
-        assert_eq!(error["type"], "error");
-        let (_, _, error) = query(&mut socket, json!({ "sql": "SELECT 1; SELECT 2" })).await;
-        assert_eq!(error["type"], "error");
-        let (_, received, done) = query(&mut socket, json!({ "sql": "SELECT 1" })).await;
-        assert_eq!((received, done["type"].as_str()), (1, Some("done")));
+        let result = run_one(&mut socket, "SELECT * FROM missing", None).await;
+        assert_eq!(result.end["type"], "error");
+        let result = run_one(&mut socket, "SELECT 1", None).await;
+        assert_eq!(
+            (result.rows, result.end["type"].as_str()),
+            (1, Some("done"))
+        );
 
         // USE change la base en cours, annoncée à la fin de la requête.
-        let (_, _, done) = query(&mut socket, json!({ "sql": "USE mysql" })).await;
-        assert_eq!(done["database"], "mysql");
+        let result = run_one(&mut socket, "USE mysql", None).await;
+        assert_eq!(result.end["database"], "mysql");
+
+        // Curseur sur la ligne vide entre deux requêtes : la précédente s'exécute.
+        let text = "SELECT 'a';\n\nSELECT 'b', 'c';";
+        let (batch, results) = run(&mut socket, json!({ "sql": text, "cursor": 12 })).await;
+        assert_eq!(batch["queries"][0]["sql"], "SELECT 'a'");
+        assert_eq!(results.len(), 1);
+
+        // Sans curseur : toutes les requêtes, en parallèle, sur la base en cours (mysql).
+        let request = json!({ "sql": "SELECT 1; SELECT DATABASE(), 2;" });
+        let (batch, results) = run(&mut socket, request).await;
+        assert_eq!(batch["queries"].as_array().unwrap().len(), 2);
+        assert_eq!(results[0].rows, 1);
+        assert_eq!(results[1].columns["columns"], json!(["DATABASE()", "2"]));
+        assert_eq!(results[1].end["database"], "mysql");
+
+        // Rien à exécuter : erreur de session.
+        let (error, _) = run(&mut socket, json!({ "sql": " -- rien" })).await;
+        assert_eq!(error["message"], "aucune requête à exécuter");
     }
 }

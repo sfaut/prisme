@@ -131,6 +131,14 @@ pub async fn current_database(connection: &mut Conn) -> Result<Option<String>, M
     Ok(database.flatten())
 }
 
+/// Change la base en cours (`USE`), par exemple pour qu'une connexion
+/// supplémentaire reprenne la base choisie dans la session.
+pub async fn use_database(connection: &mut Conn, database: &str) -> Result<(), MysqlError> {
+    let quoted = database.replace('`', "``");
+    connection.query_drop(format!("USE `{quoted}`")).await?;
+    Ok(())
+}
+
 /// Se connecte au serveur, lit son identité, puis se déconnecte.
 pub async fn probe(target: &MysqlTarget) -> Result<ServerInfo, MysqlError> {
     let mut connection = connect(target).await?;

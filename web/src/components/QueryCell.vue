@@ -2,19 +2,20 @@
   Cellule SQL : éditeur, exécution, limite de lignes, état et résultats.
 
   La cellule ouvre une session de requêtes sur la connexion choisie et la
-  garde ouverte tant qu'elle est affichée. Ctrl-Entrée ou le bouton
-  « Exécuter » envoie tout le texte de l'éditeur. La limite de lignes choisie
-  ici devient la limite par défaut de l'utilisateur.
+  garde ouverte tant qu'elle est affichée. Ctrl-Entrée ou « Exécuter » lance
+  la requête sous le curseur ; Ctrl-Maj-Entrée ou « Tout exécuter » lance
+  toutes les requêtes en parallèle. Chaque requête a son onglet de résultat.
+  La limite de lignes choisie ici devient la limite par défaut de l'utilisateur.
 -->
 <script setup lang="ts">
-import { NAlert, NButton, NSelect, NTag } from 'naive-ui'
-import { computed, onMounted, watch } from 'vue'
+import { NAlert, NButton, NSelect, NTabPane, NTabs } from 'naive-ui'
+import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import { useQuerySession } from '@/api/querySession'
 import { useSettingsStore } from '@/stores/settings'
 
-import ResultGrid from './ResultGrid.vue'
+import QueryTabView from './QueryTabView.vue'
 import SqlEditor from './SqlEditor.vue'
 
 const props = defineProps<{
@@ -65,10 +66,47 @@ const serverLabel = computed(() => {
   return `${server.flavor === 'mariadb' ? 'MariaDB' : 'MySQL'} ${server.version}`
 })
 
+const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
+
 /**
- * Exécute le texte de l'éditeur.
+ * Onglet affiché : numéro de sa requête.
  */
-function run(): void {
+const selectedTab = ref(0)
+
+// Nouveau lot : le premier onglet s'affiche.
+watch(
+  () => state.tabs,
+  () => {
+    selectedTab.value = 0
+  },
+)
+
+/**
+ * Libellé d'un onglet : numéro et début de la requête.
+ *
+ * @param query Numéro de la requête.
+ * @param text Texte de la requête.
+ */
+function tabLabel(query: number, text: string): string {
+  const short = text.replace(/\s+/g, ' ')
+  return `${query + 1} · ${short.length > 40 ? `${short.slice(0, 40)}…` : short}`
+}
+
+/**
+ * Exécute la requête sous le curseur.
+ *
+ * @param cursor Position du curseur ; absente, celle de l'éditeur.
+ */
+function run(cursor?: number): void {
+  if (sql.value.trim() !== '') {
+    session.run(sql.value, cursor ?? editor.value?.cursor() ?? 0)
+  }
+}
+
+/**
+ * Exécute toutes les requêtes de l'éditeur, en parallèle.
+ */
+function runAll(): void {
   if (sql.value.trim() !== '') {
     session.run(sql.value)
   }
@@ -107,7 +145,13 @@ defineExpose({ run })
 
 <template>
   <div class="query-cell">
-    <sql-editor v-model="sql" :flavor="state.server?.flavor ?? 'mysql'" @run="run" />
+    <sql-editor
+      ref="editor"
+      v-model="sql"
+      :flavor="state.server?.flavor ?? 'mysql'"
+      @run="run"
+      @run-all="runAll"
+    />
 
     <div class="cell-toolbar">
       <n-button
@@ -115,9 +159,17 @@ defineExpose({ run })
         size="small"
         :disabled="state.status !== 'ready' && state.status !== 'running'"
         :loading="state.status === 'running'"
-        @click="run"
+        @click="run()"
       >
         Exécuter
+      </n-button>
+      <n-button
+        size="small"
+        :disabled="state.status !== 'ready'"
+        title="Toutes les requêtes, en parallèle (Ctrl-Maj-Entrée)"
+        @click="runAll"
+      >
+        Tout exécuter
       </n-button>
       <n-select
         :value="settings.settings?.row_limit"
@@ -135,26 +187,24 @@ defineExpose({ run })
     </n-alert>
     <n-alert v-if="state.error" type="error" :show-icon="false">{{ state.error }}</n-alert>
 
-    <template v-if="state.result">
-      <div class="cell-status">
-        <span v-if="state.result.done">
-          {{ state.result.rows.length.toLocaleString('fr-FR') }} lignes ·
-          {{ state.result.elapsedMs }} ms
-        </span>
-        <span v-else>{{ state.result.rows.length.toLocaleString('fr-FR') }} lignes reçues…</span>
-        <n-tag v-if="state.result.truncated" type="warning" size="small">
-          Résultat tronqué à {{ state.result.rows.length.toLocaleString('fr-FR') }} lignes
-        </n-tag>
-        <code v-if="state.result.limit === 'added'" class="cell-sql" :title="state.result.sql">
-          {{ state.result.sql }}
-        </code>
-      </div>
-      <result-grid
-        v-if="state.result.columns.length > 0"
-        :columns="state.result.columns"
-        :rows="state.result.rows"
-      />
-    </template>
+    <n-tabs
+      v-if="state.tabs.length > 0"
+      v-model:value="selectedTab"
+      type="line"
+      size="small"
+      class="cell-tabs"
+    >
+      <n-tab-pane
+        v-for="tab in state.tabs"
+        :key="tab.query"
+        :name="tab.query"
+        :tab="tabLabel(tab.query, tab.sql)"
+        display-directive="show"
+        class="cell-tab-pane"
+      >
+        <query-tab-view :tab="tab" />
+      </n-tab-pane>
+    </n-tabs>
   </div>
 </template>
 
@@ -167,8 +217,7 @@ defineExpose({ run })
   min-height: 0;
 }
 
-.cell-toolbar,
-.cell-status {
+.cell-toolbar {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -178,16 +227,27 @@ defineExpose({ run })
   width: 150px;
 }
 
-.cell-server,
-.cell-status {
+.cell-server {
   color: #666;
   font-size: 0.8rem;
 }
 
-.cell-sql {
-  overflow: hidden;
-  font-size: 0.75rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.cell-tabs {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.cell-tabs :deep(.n-tabs-pane-wrapper) {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.cell-tab-pane {
+  display: flex;
+  flex: 1;
+  min-height: 0;
 }
 </style>
