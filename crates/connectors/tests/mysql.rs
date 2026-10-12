@@ -6,6 +6,7 @@
 
 use std::time::{Duration, Instant};
 
+use prisme_connectors::mysql::catalog::{self, TableKind};
 use prisme_connectors::mysql::{Flavor, MysqlTarget, connect, execute, kill_query, probe};
 use secrecy::SecretString;
 use testcontainers_modules::mariadb::Mariadb;
@@ -128,4 +129,38 @@ async fn kill_query_interrupts_and_keeps_the_connection() {
         stream.next_row().await.unwrap(),
         Some(vec![Some("1".to_string())])
     );
+}
+
+#[tokio::test]
+#[ignore = "nécessite Docker Desktop démarré"]
+async fn lists_schemas_tables_and_columns() {
+    let server = Mariadb::default().start().await.unwrap();
+    let host = server.get_host().await.unwrap().to_string();
+    let port = server.get_host_port_ipv4(3306).await.unwrap();
+    let mut connection = connect(&target(host, port)).await.unwrap();
+    for sql in [
+        "CREATE TABLE t (id INT PRIMARY KEY, label VARCHAR(20) NULL)",
+        "CREATE VIEW v AS SELECT id FROM t",
+    ] {
+        execute(&mut connection, sql).await.unwrap().discard().await;
+    }
+
+    let schemas = catalog::schemas(&mut connection).await.unwrap();
+    assert!(schemas.contains(&"test".to_string()));
+
+    let tables = catalog::tables(&mut connection, "test").await.unwrap();
+    let kinds: Vec<_> = tables
+        .iter()
+        .map(|table| (table.name.as_str(), table.kind))
+        .collect();
+    assert_eq!(kinds, [("t", TableKind::Table), ("v", TableKind::View)]);
+
+    let columns = catalog::columns(&mut connection, "test", "t")
+        .await
+        .unwrap();
+    assert_eq!(columns[0].name, "id");
+    assert_eq!(columns[0].key, "PRI");
+    assert!(!columns[0].nullable);
+    assert_eq!(columns[1].column_type, "varchar(20)");
+    assert!(columns[1].nullable);
 }

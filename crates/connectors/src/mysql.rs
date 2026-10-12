@@ -6,7 +6,8 @@
 //! résultat contient « MariaDB » pour ce dernier.
 //!
 //! Les résultats se lisent ligne à ligne (`execute`, puis `ResultStream`),
-//! sans jamais charger tout le résultat en mémoire.
+//! sans jamais charger tout le résultat en mémoire. Le catalogue (bases,
+//! tables, colonnes) est dans le sous-module `catalog`.
 
 use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, OptsBuilder, QueryResult, TextProtocol, Value};
@@ -15,6 +16,8 @@ use serde::Serialize;
 
 /// Connexion ouverte à un serveur MySQL ou MariaDB.
 pub use mysql_async::Conn as Connection;
+
+pub mod catalog;
 
 /// Paramètres de connexion à un serveur MySQL ou MariaDB.
 #[derive(Clone)]
