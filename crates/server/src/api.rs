@@ -9,6 +9,7 @@
 //! | `POST /api/connections`             | Enregistre une connexion, mot de passe chiffré.              |
 //! | `POST /api/connections/{id}/probe`  | Se connecte et renvoie la variante et la version du serveur. |
 //! | `GET /api/connections/{id}/query`   | WebSocket : session de requêtes (voir `query_session.rs`).   |
+//! | `GET /api/connections/{id}/schemas…` | Explorateur d'objets (voir `explorer.rs`).                  |
 //! | `GET /api/settings`                 | Réglages de l'utilisateur, avec les choix permis.            |
 //! | `PUT /api/settings`                 | Modifie les réglages, renvoie les réglages à jour.           |
 
@@ -28,6 +29,7 @@ use serde::Serialize;
 use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
 use crate::connections::{self, ConnectionSummary, NewConnection};
+use crate::explorer;
 use crate::master_key::MasterKey;
 use crate::query_session;
 use crate::settings::{self, Settings, SettingsUpdate};
@@ -98,6 +100,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/connections/{id}/probe", post(probe_connection))
         .route("/api/connections/{id}/query", get(query_socket))
         .route("/api/settings", get(get_settings).put(put_settings))
+        .merge(explorer::routes())
         .with_state(state)
 }
 

@@ -9,6 +9,7 @@ mod api_error;
 mod auth;
 mod config;
 mod connections;
+mod explorer;
 mod master_key;
 mod query_session;
 mod secrets;
