@@ -1,0 +1,13 @@
+# Rust
+/target/
+
+# Frontend
+/web/node_modules/
+/web/dist/
+
+# Données locales, au cas où --data-dir pointerait dans le dépôt
+/tmp/
+*.key
+*.db
+*.db-shm
+*.db-wal

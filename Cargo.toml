@@ -1,0 +1,10 @@
+# Workspace Cargo de Prisme : un dossier par crate sous crates/
+# (voir CLAUDE.md, section « Organisation du dépôt »).
+
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"

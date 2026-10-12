@@ -1,0 +1,4 @@
+# Version de Rust figée pour tout le projet : rustup l'installe au besoin.
+[toolchain]
+channel = "1.99.0"
+components = ["clippy", "rustfmt"]
