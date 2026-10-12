@@ -17,7 +17,12 @@ import {
   frFR,
 } from 'naive-ui'
 
+import { useConnectionsStore } from './stores/connections'
+
 import ConnectionPanel from './components/ConnectionPanel.vue'
+import ObjectExplorer from './components/ObjectExplorer.vue'
+
+const connections = useConnectionsStore()
 </script>
 
 <template>
@@ -27,6 +32,11 @@ import ConnectionPanel from './components/ConnectionPanel.vue'
         <n-layout-sider bordered :width="300" content-class="app-sider">
           <h1 class="app-title">Prisme</h1>
           <connection-panel />
+          <object-explorer
+            v-if="connections.selectedId !== null"
+            :key="connections.selectedId"
+            :connection-id="connections.selectedId"
+          />
         </n-layout-sider>
         <n-layout-content content-class="app-content" />
       </n-layout>
