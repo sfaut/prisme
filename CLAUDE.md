@@ -68,7 +68,7 @@ cargo clippy --all-targets        # analyse statique, doit rester sans avertisse
 cargo fmt                         # formatage
 ```
 
-Journaux plus détaillés : `$env:RUST_LOG="debug"` (PowerShell) avant `cargo run`. Les tests qui demandent Docker sont marqués `#[ignore = "nécessite Docker Desktop démarré"]`.
+Journaux plus détaillés : `$env:RUST_LOG="debug"` (PowerShell) avant `cargo run`. Les tests qui demandent Docker sont marqués `#[ignore = "nécessite Docker Desktop démarré"]`. Toujours lancer `cargo fmt` et `cargo clippy --all-targets` avant un commit.
 
 ## Règles à respecter
 
