@@ -14,6 +14,7 @@ import { computed, h, onMounted, ref } from 'vue'
 
 import { useCatalogStore } from '@/stores/catalog'
 
+import { keyIcon } from './columnIcons'
 import { type ExplorerNode, catalogNodes } from './explorerNodes'
 
 const props = defineProps<{
@@ -112,7 +113,8 @@ function nodeProps({ option }: { option: TreeOption }) {
 
 /**
  * Affiche le libellé d'un nœud. Pour une colonne, le nom et le détail sont
- * séparés : le nom d'une colonne de clef primaire est en gras, celui d'une
+ * séparés : le nom d'une colonne de clef primaire est en gras, précédé d'une
+ * clef, celui d'une
  * colonne de clef étrangère souligné (et préfixé par « # »).
  *
  * @param info Nœud affiché.
@@ -126,6 +128,7 @@ function renderLabel({ option }: { option: TreeOption }) {
     return node.label
   }
   return [
+    node.column.primaryKey ? keyIcon() : null,
     h(
       'span',
       { class: { 'primary-key': node.column.primaryKey, 'foreign-key': node.column.foreignKey } },
@@ -204,6 +207,11 @@ onMounted(() => load(false))
 
 .object-tree :deep(.current-database) {
   font-weight: 700;
+}
+
+.object-tree :deep(.column-icon) {
+  margin-right: 3px;
+  vertical-align: -0.15em;
 }
 
 .object-tree :deep(.primary-key) {
