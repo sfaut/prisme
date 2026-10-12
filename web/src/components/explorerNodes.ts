@@ -267,12 +267,14 @@ function loadingNode(parent: string, schema: string): ExplorerNode {
 }
 
 /**
- * Détail d'une colonne : type affiché, rôle dans les index, nullabilité.
+ * Détail d'une colonne : type affiché et nullabilité. Le rôle dans les index
+ * (PRI, UNI, MUL) n'est pas repris : la clef primaire est en gras et les
+ * index ont leur propre dossier.
  *
  * @param column Colonne.
  */
 function columnDetails(column: ColumnInfo): string {
-  return [displayedType(column.column_type), column.key, column.nullable ? 'NULL' : '']
+  return [displayedType(column.column_type), column.nullable ? 'NULL' : '']
     .filter(Boolean)
     .join(' · ')
 }
