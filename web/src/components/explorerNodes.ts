@@ -72,9 +72,14 @@ export interface ExplorerNode {
     name: string
     details: string
     /**
-     * La colonne fait partie de la clef primaire (affichée en gras).
+     * La colonne fait partie de la clef primaire (précédée d'une clef).
      */
     primaryKey: boolean
+    /**
+     * La colonne fait partie d'au moins un index, clef primaire comprise
+     * (affichée en gras).
+     */
+    indexed: boolean
     /**
      * La colonne fait partie d'une clef étrangère (précédée d'un croisillon).
      */
@@ -192,6 +197,7 @@ function tableFolders(schema: string, kind: TableKind, details: TableDetails): E
     schema,
   })
   const foreignKeyColumns = new Set(details.foreign_keys.flatMap((key) => key.columns))
+  const indexedColumns = new Set(details.indexes.flatMap((index) => index.columns))
   const columns = folder(
     `columns:${base}`,
     'Colonnes',
@@ -204,6 +210,7 @@ function tableFolders(schema: string, kind: TableKind, details: TableDetails): E
           name: column.name,
           details: columnDetails(column),
           primaryKey: column.key === 'PRI',
+          indexed: indexedColumns.has(column.name),
           foreignKey,
         },
       }

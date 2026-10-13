@@ -25,7 +25,10 @@ const catalog: CatalogSchema[] = [
             { name: 'note', column_type: 'varchar(20)', nullable: true, key: '' },
             { name: 'client_id', column_type: 'int(10)', nullable: false, key: 'MUL' },
           ],
-          indexes: [{ name: 'PRIMARY', columns: ['id'], unique: true }],
+          indexes: [
+            { name: 'PRIMARY', columns: ['id'], unique: true },
+            { name: 'client_id', columns: ['client_id'], unique: false },
+          ],
           foreign_keys: [
             {
               name: 'fk_client',
@@ -76,7 +79,7 @@ describe('catalogNodes', () => {
     expect(orders?.table).toBe('orders')
     expect(labels(orders)).toEqual([
       'Colonnes (3)',
-      'Index (1)',
+      'Index (2)',
       'Clefs étrangères (1)',
       'Déclencheurs (0)',
     ])
@@ -89,6 +92,7 @@ describe('catalogNodes', () => {
     const columns = orders?.children?.[0]?.children ?? []
     expect(columns.map((node) => node.column?.primaryKey)).toEqual([true, false, false])
     expect(columns.map((node) => node.column?.foreignKey)).toEqual([false, false, true])
+    expect(columns.map((node) => node.column?.indexed)).toEqual([true, false, true])
     expect(labels(tables?.children?.[1])).toEqual(['chargement…'])
   })
 

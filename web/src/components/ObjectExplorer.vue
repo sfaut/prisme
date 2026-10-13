@@ -114,8 +114,9 @@ function nodeProps({ option }: { option: TreeOption }) {
 
 /**
  * Affiche le libellé d'un nœud. Pour une colonne, le nom et le détail sont
- * séparés : le nom d'une colonne de clef primaire est en gras, précédé d'une
- * clef, celui d'une colonne de clef étrangère est précédé d'un croisillon.
+ * séparés : le nom d'une colonne indexée (clef primaire comprise) est en
+ * gras ; celui d'une colonne de clef primaire est précédé d'une clef, celui
+ * d'une colonne de clef étrangère d'un croisillon.
  *
  * @param info Nœud affiché.
  */
@@ -133,7 +134,7 @@ function renderLabel({ option }: { option: TreeOption }) {
       node.column.primaryKey ? keyIcon() : null,
       node.column.foreignKey ? hashIcon() : null,
     ]),
-    h('span', { class: { 'primary-key': node.column.primaryKey } }, node.column.name),
+    h('span', { class: { indexed: node.column.indexed } }, node.column.name),
     h('span', { class: 'column-details' }, ` · ${node.column.details}`),
   ])
 }
@@ -223,7 +224,7 @@ onMounted(() => load(false))
   transform: translateY(-50%);
 }
 
-.object-tree :deep(.primary-key) {
+.object-tree :deep(.indexed) {
   font-weight: 700;
 }
 
