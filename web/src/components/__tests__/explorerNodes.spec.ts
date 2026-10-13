@@ -5,6 +5,7 @@ import { type CatalogSchema, applyCatalogEvent, emptyCatalog } from '@/stores/ca
 import {
   catalogNodes,
   displayedType,
+  explorerTree,
   foreignKeyLabel,
   indexLabel,
   indexNote,
@@ -103,6 +104,17 @@ describe('sourceNodes', () => {
     // Mêmes bases dans deux sources : des clefs distinctes, et chaque nœud connaît sa connexion.
     expect(first?.children?.[0]?.key).not.toBe(second?.children?.[0]?.key)
     expect(second?.children?.[0]?.children?.[0]?.children?.[0]?.connectionId).toBe(2)
+  })
+})
+
+describe('explorerTree', () => {
+  it('range les sources sous la racine « Sources de données »', () => {
+    const source = { connectionId: 1, name: 'Origen 2', catalog: undefined, currentDatabase: null }
+    const [root] = explorerTree([source], true)
+    expect(root?.label).toBe('Sources de données')
+    expect(root?.note).toBe('chargement…')
+    expect(labels(root)).toEqual(['Origen 2'])
+    expect(explorerTree([], false)[0]?.isLeaf).toBe(true)
   })
 })
 

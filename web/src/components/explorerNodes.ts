@@ -4,19 +4,20 @@
  * Structure de l'arbre :
  *
  * ```text
- * source (connexion)
- * └─ base
- *    ├─ Tables (n)     ── table ─┬─ Colonnes (n)
- *    │                           ├─ Index (n)
- *    │                           ├─ Clefs étrangères (n)
- *    │                           └─ Déclencheurs (n)
- *    ├─ Vues (n)       ── vue ─── Colonnes (n)
- *    ├─ Procédures (n)
- *    └─ Fonctions (n)
+ * Sources de données
+ * └─ source (connexion)
+ *    └─ base
+ *       ├─ Tables (n)     ── table ─┬─ Colonnes (n)
+ *       │                           ├─ Index (n)
+ *       │                           ├─ Clefs étrangères (n)
+ *       │                           └─ Déclencheurs (n)
+ *       ├─ Vues (n)       ── vue ─── Colonnes (n)
+ *       ├─ Procédures (n)
+ *       └─ Fonctions (n)
  * ```
  *
- * Plusieurs sources se côtoient : chaque connexion enregistrée est une racine
- * de l'arbre, et les clefs des nœuds commencent par l'identifiant de leur
+ * Plusieurs sources se côtoient : chaque connexion enregistrée est une
+ * branche sous la racine « Sources de données », et les clefs des nœuds commencent par l'identifiant de leur
  * connexion, pour rester uniques d'une source à l'autre.
  *
  * L'arbre se construit à partir du catalogue, même incomplet : une partie
@@ -38,11 +39,11 @@ import type { Catalog, CatalogSchema, CatalogTable } from '@/stores/catalog'
  */
 export interface Place {
   /**
-   * Identifiant de la connexion.
+   * Identifiant de la connexion, 0 pour la racine « Sources de données ».
    */
   connectionId: number
   /**
-   * Nom de la base, chaîne vide pour la racine d'une source.
+   * Nom de la base, chaîne vide pour la racine et pour le nœud d'une source.
    */
   schema: string
 }
@@ -85,6 +86,11 @@ export interface ExplorerNode extends Place {
    * Feuille : rien en dessous.
    */
   isLeaf: boolean
+  /**
+   * Rôle des nœuds qui portent un menu : la racine « Sources de données »
+   * (`sources`) ou une source (`source`).
+   */
+  role?: 'sources' | 'source'
   /**
    * Table ou vue désignée par le nœud, pour l'ouvrir d'un double clic.
    */
@@ -143,7 +149,33 @@ export interface ExplorerNode extends Place {
 }
 
 /**
- * Clef de la racine d'une source.
+ * Clef de la racine « Sources de données ».
+ */
+export const SOURCES_KEY = 'sources'
+
+/**
+ * Racine de l'arbre, « Sources de données », avec une branche par source.
+ *
+ * @param sources Sources, dans l'ordre d'affichage.
+ * @param receiving Un catalogue est-il en cours de réception (mention « chargement… ») ?
+ */
+export function explorerTree(sources: Source[], receiving: boolean): ExplorerNode[] {
+  return [
+    {
+      key: SOURCES_KEY,
+      label: 'Sources de données',
+      isLeaf: sources.length === 0,
+      connectionId: 0,
+      schema: '',
+      role: 'sources',
+      note: receiving ? 'chargement…' : undefined,
+      children: sourceNodes(sources),
+    },
+  ]
+}
+
+/**
+ * Clef du nœud d'une source.
  *
  * @param connectionId Identifiant de la connexion.
  */
@@ -152,7 +184,7 @@ export function sourceKey(connectionId: number): string {
 }
 
 /**
- * Arbre complet : une racine par source, ses bases en dessous. Le catalogue
+ * Nœuds des sources, leurs bases en dessous. Le catalogue
  * d'une source jamais lue, ou dont les bases ne sont pas encore reçues,
  * s'affiche « chargement… » : il se lit quand on ouvre la source.
  *
@@ -168,6 +200,7 @@ export function sourceNodes(sources: Source[]): ExplorerNode[] {
       label: source.name,
       isLeaf: false,
       ...place,
+      role: 'source' as const,
       children:
         catalog === undefined || (!catalog.done && catalog.schemas.length === 0)
           ? [loadingNode(key, place)]

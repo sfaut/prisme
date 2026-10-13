@@ -1,6 +1,7 @@
 <!--
-  Explorateur d'objets : une racine par source de données (connexion
-  enregistrée), puis ses bases, tables et colonnes.
+  Explorateur d'objets : sous la racine repliable « Sources de données »,
+  une branche par source (connexion enregistrée), puis ses bases, tables et
+  colonnes.
 
   Plusieurs sources se côtoient dans le même arbre. Le catalogue d'une source
   se lit quand on l'ouvre (celle de la connexion choisie s'ouvre d'elle-même)
@@ -19,7 +20,7 @@ import { useCatalogStore } from '@/stores/catalog'
 import { useConnectionsStore } from '@/stores/connections'
 
 import { hashIcon, keyIcon } from './columnIcons'
-import { type ExplorerNode, sourceKey, sourceNodes } from './explorerNodes'
+import { type ExplorerNode, SOURCES_KEY, explorerTree, sourceKey } from './explorerNodes'
 
 const props = defineProps<{
   /**
@@ -64,20 +65,31 @@ const failures = ref<Record<number, string>>({})
 /**
  * Clefs des nœuds ouverts.
  */
-const expandedKeys = ref<string[]>([])
+const expandedKeys = ref<string[]>([SOURCES_KEY])
+
+/**
+ * Un catalogue est-il encore en cours de réception ?
+ */
+const receiving = computed(() =>
+  connections.connections.some((connection) => {
+    const current = catalog.catalogOf(connection.id)
+    return current !== undefined && !current.done
+  }),
+)
 
 /**
  * Arbre complet, construit à partir des catalogues en mémoire.
  */
 const nodes = computed(
   () =>
-    sourceNodes(
+    explorerTree(
       connections.connections.map((connection) => ({
         connectionId: connection.id,
         name: connection.name,
         catalog: catalog.catalogOf(connection.id),
         currentDatabase: connection.id === props.selectedId ? props.currentDatabase : null,
       })),
+      receiving.value,
     ) as unknown as TreeOption[],
 )
 
@@ -92,16 +104,6 @@ const messages = computed(() =>
     return [...(failure === undefined ? [] : [failure]), ...errors].map(
       (message) => `${connection.name} : ${message}`,
     )
-  }),
-)
-
-/**
- * Un catalogue est-il encore en cours de réception ?
- */
-const receiving = computed(() =>
-  connections.connections.some((connection) => {
-    const current = catalog.catalogOf(connection.id)
-    return current !== undefined && !current.done
   }),
 )
 
@@ -221,7 +223,6 @@ function renderLabel({ option }: { option: TreeOption }) {
 <template>
   <div class="object-explorer">
     <div class="explorer-toolbar">
-      <span class="explorer-title">Objets<template v-if="receiving"> · chargement…</template></span>
       <n-button size="tiny" :loading="loadingIds.length > 0" @click="refresh">Rafraîchir</n-button>
     </div>
     <n-alert v-for="message in messages" :key="message" type="warning" :show-icon="false">
@@ -254,12 +255,7 @@ function renderLabel({ option }: { option: TreeOption }) {
 .explorer-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-}
-
-.explorer-title {
-  color: #666;
-  font-size: 0.8rem;
+  justify-content: flex-end;
 }
 
 .object-tree {

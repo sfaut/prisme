@@ -12,6 +12,7 @@ import ObjectExplorer from '../ObjectExplorer.vue'
 vi.mock('@/api/explorer', () => ({
   streamCatalog: async (_: number, onEvent: (event: unknown) => void) => {
     onEvent({ type: 'schemas', schemas: ['a', 'b', 'c'] })
+    onEvent({ type: 'done' })
   },
 }))
 
@@ -76,14 +77,16 @@ afterEach(() => {
 })
 
 describe('ObjectExplorer', () => {
-  it('affiche une racine par source et ouvre celle de la connexion choisie', async () => {
+  it('range les sources sous une racine et ouvre celle de la connexion choisie', async () => {
     useConnectionsStore().connections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
     const wrapper = mount(ObjectExplorer, {
       props: { selectedId: 1, currentDatabase: null },
       attachTo: document.body,
     })
     const texts = () => wrapper.findAll('.n-tree-node-content__text').map((node) => node.text())
-    await vi.waitFor(() => expect(texts()).toEqual(['Origen 2', 'a', 'b', 'c', 'Autre']))
+    await vi.waitFor(() =>
+      expect(texts()).toEqual(['Sources de données', 'Origen 2', 'a', 'b', 'c', 'Autre']),
+    )
     wrapper.unmount()
   })
 

@@ -1,5 +1,5 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { mount } from '@vue/test-utils'
 import App from '../App.vue'
@@ -10,6 +10,16 @@ vi.mock('@/api/connections', () => ({
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  // L'arbre de l'explorateur (défilement virtuel) interroge les media queries, absentes de jsdom.
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }))
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 describe('App', () => {
