@@ -3,6 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { mount } from '@vue/test-utils'
 
+import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
+
+import { useConnectionsStore } from '@/stores/connections'
+
 import ObjectExplorer from '../ObjectExplorer.vue'
 
 vi.mock('@/api/explorer', () => ({
@@ -42,6 +46,25 @@ function giveLayout(): void {
   }))
 }
 
+/**
+ * Connexion enregistrée, pour remplir la liste des sources.
+ *
+ * @param id Identifiant de la connexion.
+ * @param name Nom de la connexion.
+ */
+function connection(id: number, name: string): ConnectionSummary {
+  return {
+    id,
+    name,
+    engine: 'mysql',
+    host: 'localhost',
+    port: 3306,
+    username: 'root',
+    database_name: '',
+    created_at: '2026-10-13T00:00:00Z',
+  }
+}
+
 beforeEach(() => {
   setActivePinia(createPinia())
   giveLayout()
@@ -53,9 +76,21 @@ afterEach(() => {
 })
 
 describe('ObjectExplorer', () => {
-  it('suit la base en cours, même en revenant sur une base déjà choisie', async () => {
+  it('affiche une racine par source et ouvre celle de la connexion choisie', async () => {
+    useConnectionsStore().connections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
     const wrapper = mount(ObjectExplorer, {
-      props: { connectionId: 1, currentDatabase: 'a' },
+      props: { selectedId: 1, currentDatabase: null },
+      attachTo: document.body,
+    })
+    const texts = () => wrapper.findAll('.n-tree-node-content__text').map((node) => node.text())
+    await vi.waitFor(() => expect(texts()).toEqual(['Origen 2', 'a', 'b', 'c', 'Autre']))
+    wrapper.unmount()
+  })
+
+  it('suit la base en cours, même en revenant sur une base déjà choisie', async () => {
+    useConnectionsStore().connections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
+    const wrapper = mount(ObjectExplorer, {
+      props: { selectedId: 1, currentDatabase: 'a' },
       attachTo: document.body,
     })
     const bold = () => wrapper.findAll('.current-database').map((node) => node.text())

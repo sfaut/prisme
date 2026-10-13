@@ -63,13 +63,20 @@ const attempt = ref(0)
 const cell = useTemplateRef<InstanceType<typeof QueryCell>>('cell')
 
 /**
- * Affiche le contenu d'une table choisie dans l'explorateur.
+ * Affiche le contenu d'une table choisie dans l'explorateur. Une table d'une
+ * autre source choisit cette connexion et prépare la requête sans l'exécuter :
+ * la session de la nouvelle connexion n'est pas encore ouverte.
  *
+ * @param connectionId Identifiant de la connexion de la table.
  * @param schema Nom de la base.
  * @param table Nom de la table.
  */
-async function openTable(schema: string, table: string): Promise<void> {
+async function openTable(connectionId: number, schema: string, table: string): Promise<void> {
   sql.value = selectAllQuery(schema, table)
+  if (connectionId !== connections.selectedId) {
+    connections.selectedId = connectionId
+    return
+  }
   await nextTick()
   cell.value?.run(0)
 }
@@ -88,9 +95,7 @@ async function openTable(schema: string, table: string): Promise<void> {
           <h1 class="app-title">Prisme</h1>
           <connection-panel />
           <object-explorer
-            v-if="connections.selectedId !== null"
-            :key="connections.selectedId"
-            :connection-id="connections.selectedId"
+            :selected-id="connections.selectedId"
             :current-database="currentDatabase"
             @open-table="openTable"
           />

@@ -4,15 +4,20 @@
  * Structure de l'arbre :
  *
  * ```text
- * base
- * ├─ Tables (n)        ── table ─┬─ Colonnes (n)
- * │                              ├─ Index (n)
- * │                              ├─ Clefs étrangères (n)
- * │                              └─ Déclencheurs (n)
- * ├─ Vues (n)          ── vue ─── Colonnes (n)
- * ├─ Procédures (n)
- * └─ Fonctions (n)
+ * source (connexion)
+ * └─ base
+ *    ├─ Tables (n)     ── table ─┬─ Colonnes (n)
+ *    │                           ├─ Index (n)
+ *    │                           ├─ Clefs étrangères (n)
+ *    │                           └─ Déclencheurs (n)
+ *    ├─ Vues (n)       ── vue ─── Colonnes (n)
+ *    ├─ Procédures (n)
+ *    └─ Fonctions (n)
  * ```
+ *
+ * Plusieurs sources se côtoient : chaque connexion enregistrée est une racine
+ * de l'arbre, et les clefs des nœuds commencent par l'identifiant de leur
+ * connexion, pour rester uniques d'une source à l'autre.
  *
  * L'arbre se construit à partir du catalogue, même incomplet : une partie
  * pas encore reçue s'affiche « chargement… ». Les fonctions de ce module ne
@@ -26,12 +31,48 @@ import type { RoutineInfo } from '@/api/generated/RoutineInfo'
 import type { TableDetails } from '@/api/generated/TableDetails'
 import type { TableKind } from '@/api/generated/TableKind'
 import type { TriggerInfo } from '@/api/generated/TriggerInfo'
-import type { CatalogSchema, CatalogTable } from '@/stores/catalog'
+import type { Catalog, CatalogSchema, CatalogTable } from '@/stores/catalog'
+
+/**
+ * Emplacement d'un nœud : sa connexion et sa base.
+ */
+export interface Place {
+  /**
+   * Identifiant de la connexion.
+   */
+  connectionId: number
+  /**
+   * Nom de la base, chaîne vide pour la racine d'une source.
+   */
+  schema: string
+}
+
+/**
+ * Source de données affichée en racine de l'arbre.
+ */
+export interface Source {
+  /**
+   * Identifiant de la connexion.
+   */
+  connectionId: number
+  /**
+   * Nom de la connexion, choisi par l'utilisateur.
+   */
+  name: string
+  /**
+   * Catalogue de la connexion, `undefined` s'il n'a jamais été lu.
+   */
+  catalog: Catalog | undefined
+  /**
+   * Base en cours de la session de requêtes de cette source, `null` si aucune.
+   */
+  currentDatabase: string | null
+}
 
 /**
  * Nœud de l'arbre, au format attendu par `NTree` de Naive UI.
  */
-export interface ExplorerNode {
+export interface ExplorerNode extends Place {
   /**
    * Clef unique dans l'arbre.
    */
@@ -44,10 +85,6 @@ export interface ExplorerNode {
    * Feuille : rien en dessous.
    */
   isLeaf: boolean
-  /**
-   * Base à laquelle appartient le nœud.
-   */
-  schema: string
   /**
    * Table ou vue désignée par le nœud, pour l'ouvrir d'un double clic.
    */
@@ -106,72 +143,119 @@ export interface ExplorerNode {
 }
 
 /**
- * Arbre du catalogue, une branche par base.
+ * Clef de la racine d'une source.
  *
- * @param schemas Catalogue du serveur, éventuellement incomplet.
- * @param currentDatabase Base en cours de la session de requêtes, `null` si aucune.
+ * @param connectionId Identifiant de la connexion.
  */
-export function catalogNodes(
-  schemas: CatalogSchema[],
-  currentDatabase: string | null = null,
-): ExplorerNode[] {
-  return schemas.map((schema) => {
-    const key = `schema:${schema.name}`
+export function sourceKey(connectionId: number): string {
+  return `source:${connectionId}`
+}
+
+/**
+ * Arbre complet : une racine par source, ses bases en dessous. Le catalogue
+ * d'une source jamais lue, ou dont les bases ne sont pas encore reçues,
+ * s'affiche « chargement… » : il se lit quand on ouvre la source.
+ *
+ * @param sources Sources, dans l'ordre d'affichage.
+ */
+export function sourceNodes(sources: Source[]): ExplorerNode[] {
+  return sources.map((source) => {
+    const place = { connectionId: source.connectionId, schema: '' }
+    const key = sourceKey(source.connectionId)
+    const catalog = source.catalog
     return {
       key,
-      label: schema.name,
+      label: source.name,
       isLeaf: false,
-      schema: schema.name,
-      current: schema.name === currentDatabase,
+      ...place,
       children:
-        schema.tables === null || schema.routines === null
-          ? [loadingNode(key, schema.name)]
-          : schemaFolders(schema.name, schema.tables, schema.routines),
+        catalog === undefined || (!catalog.done && catalog.schemas.length === 0)
+          ? [loadingNode(key, place)]
+          : catalogNodes(source.connectionId, catalog.schemas, source.currentDatabase),
     }
   })
 }
 
 /**
+ * Arbre du catalogue d'une source, une branche par base.
+ *
+ * @param connectionId Identifiant de la connexion.
+ * @param schemas Catalogue du serveur, éventuellement incomplet.
+ * @param currentDatabase Base en cours de la session de requêtes, `null` si aucune.
+ */
+export function catalogNodes(
+  connectionId: number,
+  schemas: CatalogSchema[],
+  currentDatabase: string | null = null,
+): ExplorerNode[] {
+  return schemas.map((schema) => {
+    const place = { connectionId, schema: schema.name }
+    const key = `schema:${placeKey(place)}`
+    return {
+      key,
+      label: schema.name,
+      isLeaf: false,
+      ...place,
+      current: schema.name === currentDatabase,
+      children:
+        schema.tables === null || schema.routines === null
+          ? [loadingNode(key, place)]
+          : schemaFolders(place, schema.tables, schema.routines),
+    }
+  })
+}
+
+/**
+ * Début des clefs des nœuds d'une base : connexion et base.
+ *
+ * @param place Connexion et base.
+ */
+function placeKey(place: Place): string {
+  return `${place.connectionId}/${place.schema}`
+}
+
+/**
  * Dossiers d'une base : tables, vues, procédures, fonctions.
  *
- * @param schema Nom de la base.
+ * @param place Connexion et base.
  * @param tables Tables et vues de la base.
  * @param routines Procédures et fonctions de la base.
  */
 function schemaFolders(
-  schema: string,
+  place: Place,
   tables: CatalogTable[],
   routines: RoutineInfo[],
 ): ExplorerNode[] {
+  const base = placeKey(place)
   const routineNode = (routine: RoutineInfo): ExplorerNode => ({
-    key: `routine:${schema}.${routine.name}:${routine.kind}`,
+    key: `routine:${base}.${routine.name}:${routine.kind}`,
     label: routine.name,
     isLeaf: true,
-    schema,
+    ...place,
   })
   return [
     folder(
-      `tables:${schema}`,
+      `tables:${base}`,
       'Tables',
-      schema,
-      tables.filter((table) => table.kind === 'table').map((table) => tableNode(schema, table)),
+      place,
+      tables.filter((table) => table.kind === 'table').map((table) => tableNode(place, table)),
     ),
     folder(
-      `views:${schema}`,
+      `views:${base}`,
       'Vues',
-      schema,
-      tables.filter((table) => table.kind !== 'table').map((table) => tableNode(schema, table)),
+      place,
+      tables.filter((table) => table.kind !== 'table').map((table) => tableNode(place, table)),
     ),
     folder(
-      `procedures:${schema}`,
+      `procedures:${base}`,
       'Procédures',
-      schema,
+      place,
       routines.filter((routine) => routine.kind === 'procedure').map(routineNode),
     ),
     folder(
-      `functions:${schema}`,
+      `functions:${base}`,
       'Fonctions',
-      schema,
+      place,
       routines.filter((routine) => routine.kind === 'function').map(routineNode),
     ),
   ]
@@ -180,21 +264,21 @@ function schemaFolders(
 /**
  * Nœud d'une table ou d'une vue, avec ses dossiers de détail.
  *
- * @param schema Nom de la base.
+ * @param place Connexion et base.
  * @param table Table ou vue.
  */
-function tableNode(schema: string, table: CatalogTable): ExplorerNode {
-  const key = `table:${schema}.${table.name}`
+function tableNode(place: Place, table: CatalogTable): ExplorerNode {
+  const key = `table:${placeKey(place)}.${table.name}`
   return {
     key,
     label: table.kind === 'system' ? `${table.name} (système)` : table.name,
     isLeaf: false,
-    schema,
+    ...place,
     table: table.name,
     children:
       table.details === null
-        ? [loadingNode(key, schema)]
-        : tableFolders(schema, table.kind, table.details),
+        ? [loadingNode(key, place)]
+        : tableFolders(place, table.kind, table.details),
   }
 }
 
@@ -202,17 +286,17 @@ function tableNode(schema: string, table: CatalogTable): ExplorerNode {
  * Dossiers de détail d'une table : colonnes, index, clefs étrangères,
  * déclencheurs. Une vue n'a que ses colonnes.
  *
- * @param schema Nom de la base.
+ * @param place Connexion et base.
  * @param kind Nature de la table.
  * @param details Détail reçu du serveur.
  */
-function tableFolders(schema: string, kind: TableKind, details: TableDetails): ExplorerNode[] {
-  const base = `${schema}.${details.table}`
+function tableFolders(place: Place, kind: TableKind, details: TableDetails): ExplorerNode[] {
+  const base = `${placeKey(place)}.${details.table}`
   const item = (prefix: string, name: string, label: string): ExplorerNode => ({
     key: `${prefix}:${base}.${name}`,
     label,
     isLeaf: true,
-    schema,
+    ...place,
   })
   const foreignKeyColumns = new Set(details.foreign_keys.flatMap((key) => key.columns))
   const indexedColumns = new Set(details.indexes.flatMap((index) => index.columns))
@@ -223,7 +307,7 @@ function tableFolders(schema: string, kind: TableKind, details: TableDetails): E
   const columns = folder(
     `columns:${base}`,
     'Colonnes',
-    schema,
+    place,
     details.columns.map((column) => {
       const foreignKey = foreignKeyColumns.has(column.name)
       return {
@@ -248,7 +332,7 @@ function tableFolders(schema: string, kind: TableKind, details: TableDetails): E
     folder(
       `indexes:${base}`,
       'Index',
-      schema,
+      place,
       details.indexes.map((index) => ({
         ...item('index', index.name, indexLabel(index)),
         note: indexNote(index),
@@ -257,13 +341,13 @@ function tableFolders(schema: string, kind: TableKind, details: TableDetails): E
     folder(
       `foreign-keys:${base}`,
       'Clefs étrangères',
-      schema,
-      details.foreign_keys.map((key) => item('fk', key.name, foreignKeyLabel(schema, key))),
+      place,
+      details.foreign_keys.map((key) => item('fk', key.name, foreignKeyLabel(place.schema, key))),
     ),
     folder(
       `triggers:${base}`,
       'Déclencheurs',
-      schema,
+      place,
       details.triggers.map((trigger) => item('trigger', trigger.name, triggerLabel(trigger))),
     ),
   ]
@@ -274,20 +358,15 @@ function tableFolders(schema: string, kind: TableKind, details: TableDetails): E
  *
  * @param key Clef unique du dossier.
  * @param label Nom du dossier.
- * @param schema Nom de la base.
+ * @param place Connexion et base.
  * @param children Éléments du dossier.
  */
-function folder(
-  key: string,
-  label: string,
-  schema: string,
-  children: ExplorerNode[],
-): ExplorerNode {
+function folder(key: string, label: string, place: Place, children: ExplorerNode[]): ExplorerNode {
   return {
     key: `folder:${key}`,
     label: `${label} (${children.length})`,
     isLeaf: children.length === 0,
-    schema,
+    ...place,
     children,
   }
 }
@@ -296,14 +375,14 @@ function folder(
  * Nœud provisoire, affiché sous une partie du catalogue pas encore reçue.
  *
  * @param parent Clef du nœud parent.
- * @param schema Nom de la base.
+ * @param place Connexion et base.
  */
-function loadingNode(parent: string, schema: string): ExplorerNode {
+function loadingNode(parent: string, place: Place): ExplorerNode {
   return {
     key: `${parent}:loading`,
     label: 'chargement…',
     isLeaf: true,
-    schema,
+    ...place,
     disabled: true,
   }
 }

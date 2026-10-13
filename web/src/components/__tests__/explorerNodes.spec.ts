@@ -9,6 +9,7 @@ import {
   indexLabel,
   indexNote,
   selectAllQuery,
+  sourceNodes,
   triggerLabel,
   upperType,
 } from '../explorerNodes'
@@ -73,22 +74,54 @@ function labels(node: { children?: { label: string }[] } | undefined): string[] 
   return node?.children?.map((child) => child.label) ?? []
 }
 
+describe('sourceNodes', () => {
+  it('met une racine par source, ses bases en dessous', () => {
+    const [first, second, never] = sourceNodes([
+      {
+        connectionId: 1,
+        name: 'MariaDB Origen 2 (II)',
+        catalog: { schemas: catalog, done: true, errors: [] },
+        currentDatabase: 'shop',
+      },
+      {
+        connectionId: 2,
+        name: 'Origen 2',
+        catalog: { schemas: catalog, done: true, errors: [] },
+        currentDatabase: null,
+      },
+      { connectionId: 3, name: 'Jamais lue', catalog: undefined, currentDatabase: null },
+    ])
+    expect([first?.label, second?.label, never?.label]).toEqual([
+      'MariaDB Origen 2 (II)',
+      'Origen 2',
+      'Jamais lue',
+    ])
+    expect(labels(first)).toEqual(['shop', 'pas_encore'])
+    expect(first?.children?.[0]?.current).toBe(true)
+    expect(second?.children?.[0]?.current).toBe(false)
+    expect(labels(never)).toEqual(['chargement…'])
+    // Mêmes bases dans deux sources : des clefs distinctes, et chaque nœud connaît sa connexion.
+    expect(first?.children?.[0]?.key).not.toBe(second?.children?.[0]?.key)
+    expect(second?.children?.[0]?.children?.[0]?.children?.[0]?.connectionId).toBe(2)
+  })
+})
+
 describe('catalogNodes', () => {
   it("range les objets d'une base par dossier", () => {
-    const [shop, pending] = catalogNodes(catalog)
+    const [shop, pending] = catalogNodes(1, catalog)
     expect(labels(shop)).toEqual(['Tables (2)', 'Vues (1)', 'Procédures (1)', 'Fonctions (1)'])
     expect(labels(shop?.children?.[2])).toEqual(['purge'])
     expect(labels(pending)).toEqual(['chargement…'])
   })
 
   it('signale la base en cours', () => {
-    const [shop, pending] = catalogNodes(catalog, 'shop')
+    const [shop, pending] = catalogNodes(1, catalog, 'shop')
     expect(shop?.current).toBe(true)
     expect(pending?.current).toBe(false)
   })
 
   it('détaille une table, et montre ce qui reste à recevoir', () => {
-    const tables = catalogNodes(catalog)[0]?.children?.[0]
+    const tables = catalogNodes(1, catalog)[0]?.children?.[0]
     const orders = tables?.children?.[0]
     expect(orders?.table).toBe('orders')
     expect(labels(orders)).toEqual([

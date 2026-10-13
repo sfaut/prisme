@@ -1,29 +1,34 @@
 <!--
-  Explorateur d'objets de la connexion choisie : bases, tables et colonnes.
+  Explorateur d'objets : une racine par source de données (connexion
+  enregistrée), puis ses bases, tables et colonnes.
 
-  Le catalogue arrive au fil de l'eau dès que la connexion est choisie : les
-  bases d'abord, puis leurs objets (tables, vues, procédures, fonctions), puis
-  le détail des tables (colonnes, index, clefs étrangères, déclencheurs),
-  chaque partie affichée dès sa réception. Il reste ensuite en mémoire : revenir sur une connexion déjà
-  explorée est immédiat. « Rafraîchir » relit le catalogue. Un double clic
-  sur une table ou une vue émet `open-table`, pour en afficher le contenu.
+  Plusieurs sources se côtoient dans le même arbre. Le catalogue d'une source
+  se lit quand on l'ouvre (celle de la connexion choisie s'ouvre d'elle-même)
+  et arrive au fil de l'eau : les bases d'abord, puis leurs objets (tables,
+  vues, procédures, fonctions), puis le détail des tables (colonnes, index,
+  clefs étrangères, déclencheurs), chaque partie affichée dès sa réception.
+  Il reste ensuite en mémoire. « Rafraîchir » relit les catalogues déjà lus.
+  Un double clic sur une table ou une vue émet `open-table`, pour en afficher
+  le contenu.
 -->
 <script setup lang="ts">
-import { NAlert, NButton, NSpin, NTree, type TreeOption } from 'naive-ui'
-import { computed, h, onMounted, ref } from 'vue'
+import { NAlert, NButton, NTree, type TreeOption } from 'naive-ui'
+import { computed, h, ref, watch } from 'vue'
 
 import { useCatalogStore } from '@/stores/catalog'
+import { useConnectionsStore } from '@/stores/connections'
 
 import { hashIcon, keyIcon } from './columnIcons'
-import { type ExplorerNode, catalogNodes } from './explorerNodes'
+import { type ExplorerNode, sourceKey, sourceNodes } from './explorerNodes'
 
 const props = defineProps<{
   /**
-   * Identifiant de la connexion explorée.
+   * Identifiant de la connexion choisie, `null` si aucune.
    */
-  connectionId: number
+  selectedId: number | null
   /**
-   * Base en cours de la session de requêtes, affichée en gras ; `null` si aucune.
+   * Base en cours de la session de requêtes de la connexion choisie, affichée
+   * en gras ; `null` si aucune.
    */
   currentDatabase: string | null
 }>()
@@ -32,10 +37,11 @@ const emit = defineEmits<{
   /**
    * L'utilisateur veut voir le contenu d'une table.
    */
-  'open-table': [schema: string, table: string]
+  'open-table': [connectionId: number, schema: string, table: string]
 }>()
 
 const catalog = useCatalogStore()
+const connections = useConnectionsStore()
 
 /**
  * Arbre compact : lignes de 20 pixels sans marge, retrait et espacement horizontal réduits.
@@ -46,55 +52,115 @@ const catalog = useCatalogStore()
 const TREE_THEME = { nodeHeight: '20px', nodeWrapperPadding: '0' }
 
 /**
- * Lecture du catalogue en cours ?
+ * Connexions dont le catalogue est en cours de lecture.
  */
-const loading = ref(false)
+const loadingIds = ref<number[]>([])
 
 /**
- * Dernière erreur de lecture.
+ * Dernière erreur de lecture de chaque connexion, par identifiant.
  */
-const error = ref<string | null>(null)
+const failures = ref<Record<number, string>>({})
 
 /**
- * Arbre complet, construit à partir du catalogue en mémoire.
+ * Clefs des nœuds ouverts.
  */
-const nodes = computed(() => {
-  const current = catalog.catalogOf(props.connectionId)
-  return (current
-    ? catalogNodes(current.schemas, props.currentDatabase)
-    : []) as unknown as TreeOption[]
-})
+const expandedKeys = ref<string[]>([])
 
 /**
- * Erreurs de lecture signalées par le serveur pendant la réception.
+ * Arbre complet, construit à partir des catalogues en mémoire.
  */
-// Copie : le tableau du catalogue est brut, il garde la même référence en grandissant.
-const readErrors = computed(() => [...(catalog.catalogOf(props.connectionId)?.errors ?? [])])
+const nodes = computed(
+  () =>
+    sourceNodes(
+      connections.connections.map((connection) => ({
+        connectionId: connection.id,
+        name: connection.name,
+        catalog: catalog.catalogOf(connection.id),
+        currentDatabase: connection.id === props.selectedId ? props.currentDatabase : null,
+      })),
+    ) as unknown as TreeOption[],
+)
 
 /**
- * Le catalogue est-il encore en cours de réception ?
+ * Erreurs à afficher, précédées du nom de leur source : échecs de lecture,
+ * puis erreurs signalées par le serveur pendant la réception.
  */
-const receiving = computed(() => {
-  const current = catalog.catalogOf(props.connectionId)
-  return current !== undefined && !current.done
-})
+const messages = computed(() =>
+  connections.connections.flatMap((connection) => {
+    const failure = failures.value[connection.id]
+    const errors = catalog.catalogOf(connection.id)?.errors ?? []
+    return [...(failure === undefined ? [] : [failure]), ...errors].map(
+      (message) => `${connection.name} : ${message}`,
+    )
+  }),
+)
 
 /**
- * Lit le catalogue, depuis la mémoire ou depuis le serveur.
+ * Un catalogue est-il encore en cours de réception ?
+ */
+const receiving = computed(() =>
+  connections.connections.some((connection) => {
+    const current = catalog.catalogOf(connection.id)
+    return current !== undefined && !current.done
+  }),
+)
+
+/**
+ * Lit le catalogue d'une connexion, depuis la mémoire ou depuis le serveur.
  *
+ * @param connectionId Identifiant de la connexion.
  * @param refresh Relit le catalogue sur le serveur même s'il est en mémoire.
  */
-async function load(refresh: boolean): Promise<void> {
-  loading.value = true
-  error.value = null
+async function load(connectionId: number, refresh: boolean): Promise<void> {
+  if (loadingIds.value.includes(connectionId)) {
+    return
+  }
+  loadingIds.value.push(connectionId)
+  delete failures.value[connectionId]
   try {
-    await catalog.load(props.connectionId, refresh)
+    await catalog.load(connectionId, refresh)
   } catch (failure) {
-    error.value = failure instanceof Error ? failure.message : String(failure)
+    failures.value[connectionId] = failure instanceof Error ? failure.message : String(failure)
   } finally {
-    loading.value = false
+    loadingIds.value = loadingIds.value.filter((id) => id !== connectionId)
   }
 }
+
+/**
+ * Relit les catalogues déjà lus.
+ */
+function refresh(): void {
+  for (const connection of connections.connections) {
+    if (catalog.catalogs[connection.id] !== undefined) {
+      void load(connection.id, true)
+    }
+  }
+}
+
+/**
+ * Suit l'ouverture et la fermeture des nœuds : ouvrir une source lit son catalogue.
+ *
+ * @param keys Clefs des nœuds désormais ouverts.
+ */
+function expand(keys: string[]): void {
+  expandedKeys.value = keys
+  for (const connection of connections.connections) {
+    if (keys.includes(sourceKey(connection.id))) {
+      void load(connection.id, false)
+    }
+  }
+}
+
+// La connexion choisie ouvre sa source.
+watch(
+  () => props.selectedId,
+  (connectionId) => {
+    if (connectionId !== null && !expandedKeys.value.includes(sourceKey(connectionId))) {
+      expand([...expandedKeys.value, sourceKey(connectionId)])
+    }
+  },
+  { immediate: true },
+)
 
 /**
  * Propriétés HTML de chaque nœud : le double clic sur une table l'ouvre.
@@ -106,7 +172,7 @@ function nodeProps({ option }: { option: TreeOption }) {
   return {
     onDblclick: () => {
       if (node.table !== undefined) {
-        emit('open-table', node.schema, node.table)
+        emit('open-table', node.connectionId, node.schema, node.table)
       }
     },
   }
@@ -150,32 +216,29 @@ function renderLabel({ option }: { option: TreeOption }) {
     h('span', { class: 'column-details', title: column.details }, column.details),
   ])
 }
-
-onMounted(() => load(false))
 </script>
 
 <template>
   <div class="object-explorer">
     <div class="explorer-toolbar">
       <span class="explorer-title">Objets<template v-if="receiving"> · chargement…</template></span>
-      <n-button size="tiny" :loading="loading" @click="load(true)">Rafraîchir</n-button>
+      <n-button size="tiny" :loading="loadingIds.length > 0" @click="refresh">Rafraîchir</n-button>
     </div>
-    <n-alert v-if="error" type="error" :show-icon="false">{{ error }}</n-alert>
-    <n-alert v-for="message in readErrors" :key="message" type="warning" :show-icon="false">
+    <n-alert v-for="message in messages" :key="message" type="warning" :show-icon="false">
       {{ message }}
     </n-alert>
-    <n-spin :show="loading && nodes.length === 0" class="explorer-spin">
-      <n-tree
-        :data="nodes"
-        :node-props="nodeProps"
-        :render-label="renderLabel"
-        :indent="8"
-        :theme-overrides="TREE_THEME"
-        block-line
-        virtual-scroll
-        class="object-tree"
-      />
-    </n-spin>
+    <n-tree
+      :data="nodes"
+      :expanded-keys="expandedKeys"
+      :node-props="nodeProps"
+      :render-label="renderLabel"
+      :indent="8"
+      :theme-overrides="TREE_THEME"
+      block-line
+      virtual-scroll
+      class="object-tree"
+      @update:expanded-keys="expand"
+    />
   </div>
 </template>
 
@@ -197,14 +260,6 @@ onMounted(() => load(false))
 .explorer-title {
   color: #666;
   font-size: 0.8rem;
-}
-
-.explorer-spin,
-.explorer-spin :deep(.n-spin-content) {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-height: 0;
 }
 
 .object-tree {
