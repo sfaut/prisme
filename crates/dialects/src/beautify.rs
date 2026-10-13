@@ -10,7 +10,11 @@
 //! 2. **`AS` devant les alias** de colonne et de table qui n'en ont pas
 //!    (module `alias`).
 //!
-//! 3. **Mots-clefs en capitales.** Seuls les mots réservés de MySQL passent
+//! 3. **Noms de fonctions en capitales**, sauf les fonctions et procédures
+//!    de l'utilisateur, écrites dans la casse de leur définition (module
+//!    `functions`).
+//!
+//! 4. **Mots-clefs en capitales.** Seuls les mots réservés de MySQL passent
 //!    en capitales, plus quelques mots-clefs sans ambiguïté (`EXTRA_KEYWORDS`).
 //!    Un mot réservé ne peut jamais servir d'identifiant sans accents graves :
 //!    les noms de tables et de colonnes (`name`, `status`, `date`...) restent
@@ -20,7 +24,7 @@
 //!    `INTERVAL <valeur>` et en premier argument d'`EXTRACT`,
 //!    `TIMESTAMPADD` et `TIMESTAMPDIFF`.
 //!
-//! 4. **Mise en page** : une clause par ligne, une colonne et un prédicat
+//! 5. **Mise en page** : une clause par ligne, une colonne et un prédicat
 //!    par ligne quand il y en a plusieurs, espaces autour des opérateurs
 //!    (module `layout`).
 //!
@@ -34,6 +38,7 @@ use sqlparser::tokenizer::{Token, Tokenizer};
 
 use crate::Dialect;
 use crate::alias::add_alias_keyword;
+use crate::functions::case_function_names;
 use crate::keywords::is_keyword;
 use crate::layout::layout;
 use crate::limit::byte_offset;
@@ -56,15 +61,27 @@ const TIME_UNITS: &[&str] = &[
 /// Fonctions dont le premier argument est une unité de temps.
 const UNIT_FUNCTIONS: &[&str] = &["EXTRACT", "TIMESTAMPADD", "TIMESTAMPDIFF"];
 
-/// Enjolive `sql` : blancs normalisés, `AS` devant les alias, mots-clefs en
-/// capitales, puis mise en page (module `layout`).
+/// Enjolive `sql` sans connaître les fonctions de l'utilisateur : toutes
+/// les fonctions passent en capitales. Voir `beautify_with_routines`.
+pub fn beautify(sql: &str, dialect: Dialect) -> String {
+    beautify_with_routines(sql, dialect, &[])
+}
+
+/// Enjolive `sql` : blancs normalisés, `AS` devant les alias, noms de
+/// fonctions en capitales, mots-clefs en capitales, puis mise en page
+/// (module `layout`).
+///
+/// `routines` donne le nom, tel que défini, des fonctions et procédures de
+/// l'utilisateur (catalogue de la connexion) : elles gardent la casse de
+/// leur définition au lieu de passer en capitales.
 ///
 /// Un texte que le découpeur en jetons ne comprend pas (chaîne non fermée...)
 /// est renvoyé tel quel.
-pub fn beautify(sql: &str, dialect: Dialect) -> String {
+pub fn beautify_with_routines(sql: &str, dialect: Dialect, routines: &[String]) -> String {
     let normalized = normalize_blanks(sql);
     let aliased = add_alias_keyword(&normalized, dialect);
-    layout(&uppercase_keywords(&aliased, dialect), dialect)
+    let functions = case_function_names(&aliased, dialect, routines);
+    layout(&uppercase_keywords(&functions, dialect), dialect)
 }
 
 /// Met les mots-clefs en capitales, sans rien changer d'autre.
@@ -209,7 +226,7 @@ mod tests {
     fn adds_as_before_aliases() {
         assert_eq!(
             beautify("select count(*) n from video v", Dialect::MySql),
-            "SELECT ALL count(*) AS n\nFROM video AS v"
+            "SELECT ALL COUNT(*) AS n\nFROM video AS v"
         );
     }
 

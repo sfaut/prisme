@@ -25,7 +25,7 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use prisme_connectors::mysql::{self, ServerInfo};
 use prisme_dialects::Dialect;
-use prisme_dialects::beautify::beautify;
+use prisme_dialects::beautify::beautify_with_routines;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -167,7 +167,7 @@ async fn query_socket(
     Ok(upgrade.on_upgrade(move |socket| query_session::run(socket, state, user_id, target)))
 }
 
-/// SQL à enjoliver, ou SQL enjolivé.
+/// SQL enjolivé.
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 struct SqlText {
@@ -175,10 +175,23 @@ struct SqlText {
     sql: String,
 }
 
+/// SQL à enjoliver.
+#[derive(Deserialize, Serialize, TS)]
+#[ts(export)]
+struct BeautifyRequest {
+    /// Texte SQL, une ou plusieurs requêtes.
+    sql: String,
+    /// Noms des fonctions et procédures de l'utilisateur, tels que définis
+    /// (catalogue de la connexion) : ils gardent leur casse. Vide si le
+    /// catalogue n'est pas chargé.
+    #[serde(default)]
+    routines: Vec<String>,
+}
+
 /// `POST /api/beautify` : enjolive du SQL MySQL / MariaDB (voir `prisme_dialects::beautify`).
-async fn beautify_sql(Json(text): Json<SqlText>) -> Json<SqlText> {
+async fn beautify_sql(Json(request): Json<BeautifyRequest>) -> Json<SqlText> {
     Json(SqlText {
-        sql: beautify(&text.sql, Dialect::MySql),
+        sql: beautify_with_routines(&request.sql, Dialect::MySql, &request.routines),
     })
 }
 
@@ -359,6 +372,19 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body["sql"], "SELECT ALL a\nFROM t");
+    }
+
+    #[tokio::test]
+    async fn beautifies_user_functions_in_their_defined_case() {
+        let (status, body) = send(
+            &test_app(),
+            "POST",
+            "/api/beautify",
+            Some(json!({ "sql": "select now(), mafonction(1)", "routines": ["MaFonction"] })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["sql"], "SELECT ALL\n    NOW(),\n    MaFonction(1)");
     }
 
     #[tokio::test]

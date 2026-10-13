@@ -5,15 +5,20 @@
  */
 
 import { request } from './http'
+import type { BeautifyRequest } from './generated/BeautifyRequest'
 import type { SqlText } from './generated/SqlText'
 
 /**
  * Enjolive un texte SQL, une ou plusieurs requêtes.
  *
  * @param sql Texte à enjoliver.
+ * @param routines
+ *     Noms des fonctions et procédures de l'utilisateur, tels que définis :
+ *     ils gardent leur casse, les autres fonctions passent en capitales.
  * @returns Le texte enjolivé.
  */
-export async function beautify(sql: string): Promise<string> {
-  const result = await request<SqlText>('POST', '/api/beautify', { sql })
+export async function beautify(sql: string, routines: string[] = []): Promise<string> {
+  const body: BeautifyRequest = { sql, routines }
+  const result = await request<SqlText>('POST', '/api/beautify', body)
   return result.sql
 }

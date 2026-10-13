@@ -14,13 +14,13 @@
 
 use std::ops::ControlFlow;
 
-use sqlparser::ast::{SelectItem, Statement, TableAlias, TableFactor, Visit, Visitor};
+use sqlparser::ast::{SelectItem, TableAlias, TableFactor, Visit, Visitor};
 use sqlparser::keywords::Keyword;
-use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Location, Token, Tokenizer};
 
 use crate::Dialect;
 use crate::limit::byte_offset;
+use crate::parse::parse_each;
 
 /// Ajoute `AS` devant les alias qui n'en ont pas. Voir l'en-tête du module.
 pub(crate) fn add_alias_keyword(sql: &str, dialect: Dialect) -> String {
@@ -48,31 +48,6 @@ pub(crate) fn add_alias_keyword(sql: &str, dialect: Dialect) -> String {
         result.insert_str(offset, "AS ");
     }
     result
-}
-
-/// Analyse les requêtes du texte une à une ; une requête incomprise est
-/// sautée jusqu'au `;` suivant.
-fn parse_each(sql: &str, dialect: Dialect) -> Vec<Statement> {
-    let parser_dialect = dialect.parser_dialect();
-    let Ok(mut parser) = Parser::new(parser_dialect.as_ref()).try_with_sql(sql) else {
-        return Vec::new();
-    };
-    let mut statements = Vec::new();
-    loop {
-        while parser.consume_token(&Token::SemiColon) {}
-        if parser.peek_token().token == Token::EOF {
-            return statements;
-        }
-        match parser.parse_statement() {
-            Ok(statement) => statements.push(statement),
-            Err(_) => loop {
-                let token = parser.next_token().token;
-                if token == Token::EOF || token == Token::SemiColon {
-                    break;
-                }
-            },
-        }
-    }
 }
 
 /// Le jeton qui précède celui commençant à `start`, blancs et commentaires

@@ -16,6 +16,7 @@ import { computed, h, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { beautify } from '@/api/beautify'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import { type QueryTab, useQuerySession } from '@/api/querySession'
+import { useCatalogStore } from '@/stores/catalog'
 import { useSettingsStore } from '@/stores/settings'
 
 import ProgressDot from './ProgressDot.vue'
@@ -46,6 +47,7 @@ const emit = defineEmits<{
 const sql = defineModel<string>('sql', { required: true })
 
 const session = useQuerySession(props.connection.id)
+const catalog = useCatalogStore()
 const state = session.state
 const settings = useSettingsStore()
 
@@ -118,10 +120,11 @@ function run(cursor?: number): void {
 
 /**
  * Enjolive le texte de l'éditeur (mots-clefs en capitales...). Ctrl-Z annule.
+ * Les fonctions et procédures du catalogue gardent la casse de leur définition.
  */
 async function prettify(): Promise<void> {
   try {
-    sql.value = await beautify(sql.value)
+    sql.value = await beautify(sql.value, catalog.routineNames(props.connection.id))
   } catch (failure) {
     state.error = failure instanceof Error ? failure.message : String(failure)
   }

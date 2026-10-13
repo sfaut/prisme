@@ -194,5 +194,16 @@ export const useCatalogStore = defineStore('catalog', () => {
     return catalogs.value[connectionId]
   }
 
-  return { catalogs, revisions, load, catalogOf }
+  /**
+   * Noms des fonctions et procédures de l'utilisateur, toutes bases
+   * confondues, tels que définis ; vide si le catalogue n'est pas lu.
+   *
+   * @param connectionId Identifiant de la connexion.
+   */
+  function routineNames(connectionId: number): string[] {
+    const schemas = catalogs.value[connectionId]?.schemas ?? []
+    return schemas.flatMap((schema) => (schema.routines ?? []).map((routine) => routine.name))
+  }
+
+  return { catalogs, revisions, load, catalogOf, routineNames }
 })

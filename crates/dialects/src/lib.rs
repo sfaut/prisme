@@ -9,9 +9,11 @@
 mod alias;
 pub mod beautify;
 pub mod classify;
+mod functions;
 mod keywords;
 mod layout;
 pub mod limit;
+mod parse;
 mod whitespace;
 
 /// Dialecte SQL d'une requête.
