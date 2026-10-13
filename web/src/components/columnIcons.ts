@@ -1,5 +1,6 @@
 /**
- * Petits symboles placés devant le nom des colonnes dans l'explorateur.
+ * Petits symboles de l'explorateur : devant le nom des colonnes, et sur le
+ * bouton des menus.
  *
  * Dessinés en SVG, en `currentColor` : ils prennent la couleur et suivent la
  * taille du texte (1em), sans dépendre des polices installées.
@@ -55,4 +56,16 @@ export function hashIcon(): VNode {
     'M2.5 6H13.5',
     'M2 10H13',
   ])
+}
+
+/**
+ * Trois points verticaux, sur le bouton des menus « ⋮ ». Pleins, contrairement
+ * aux autres symboles, qui sont tracés.
+ */
+export function menuIcon(): VNode {
+  return h(
+    'svg',
+    { viewBox: '0 0 16 16', width: '1em', height: '1em', fill: 'currentColor', role: 'img' },
+    [h('title', 'Actions'), ...[3, 8, 13].map((cy) => h('circle', { cx: 8, cy, r: 1.5 }))],
+  )
 }

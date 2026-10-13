@@ -113,7 +113,7 @@ async function openTable(connectionId: number, schema: string, table: string): P
           />
           <n-empty
             v-else
-            description="Choisissez une source de données, ou ajoutez une connexion par le menu « ⋯ »"
+            description="Choisissez une source de données, ou ajoutez une connexion par le menu « ⋮ »"
             class="app-empty"
           />
         </n-layout-content>

@@ -11,7 +11,7 @@
   Il reste ensuite en mémoire. Un clic sur une source la choisit comme
   connexion de travail (émet `select`) ; elle reste surlignée.
 
-  À droite de la racine, un menu « ⋯ » ajoute une connexion ou relit tous les
+  À droite de la racine, un menu « ⋮ » ajoute une connexion ou relit tous les
   catalogues déjà lus ; à droite de chaque source, un autre modifie la
   connexion, relit son catalogue ou supprime la connexion (après
   confirmation). Un double clic sur une table ou une vue émet `open-table`,
@@ -26,7 +26,7 @@ import { useCatalogStore } from '@/stores/catalog'
 import { useConnectionsStore } from '@/stores/connections'
 
 import ConnectionDialog from './ConnectionDialog.vue'
-import { hashIcon, keyIcon } from './columnIcons'
+import { hashIcon, keyIcon, menuIcon } from './columnIcons'
 import { type ExplorerNode, SOURCES_KEY, explorerTree, sourceKey } from './explorerNodes'
 
 const props = defineProps<{
@@ -268,7 +268,7 @@ async function confirmRemove(): Promise<void> {
 }
 
 /**
- * Menu « ⋯ » affiché à droite de la racine et de chaque source. Le clic sur
+ * Menu « ⋮ » affiché à droite de la racine et de chaque source. Le clic sur
  * le bouton ne se propage pas : il n'ouvre ni ne ferme le nœud.
  *
  * @param info Nœud affiché.
@@ -297,7 +297,7 @@ function renderSuffix({ option }: { option: TreeOption }) {
             title: 'Actions',
             onClick: (event: MouseEvent) => event.stopPropagation(),
           },
-          { default: () => '⋯' },
+          { default: menuIcon },
         ),
     },
   )
