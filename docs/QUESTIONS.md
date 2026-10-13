@@ -81,6 +81,8 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 
 24. **Requêtes qui changent la session dans un lot parallèle** : en Ctrl-Maj-Entrée, chaque requête a sa propre connexion, donc un `USE` ou un `SET` du lot ne touche pas les autres requêtes (`USE xlist; SELECT * FROM video;` lit `video` dans la base en cours, pas dans `xlist`). Décision provisoire de Sébastien : exécution entièrement parallèle, à affiner. Piste : exécuter d'abord, une par une, les requêtes qui changent la session, puis les autres en parallèle.
 
+25. **Tests de bout en bout dans un vrai navigateur** (Playwright, avec Edge ou Chrome déjà installés) : scénarios de fonctionnement (connexions, explorateur, exécution sous le curseur et en parallèle, « Stopper », « Enjoliver », grille) et garde-fous de performance (nombre de lignes dessinées, délai d'un clic), sur un environnement isolé (MariaDB dans Docker, Prisme et Vite sur d'autres ports). Les tests dans jsdom ne voient ni la mise en page ni les performances d'affichage (voir `docs/PERF-RESULT-GRID.md`). Décision de Sébastien : à voir plus tard. À trancher alors : à quel moment les lancer (avant chaque commit qui touche l'interface, ou à la fin de chaque étape).
+
 ### Sécurité
 
 23. **Clef maîtresse du chiffrement** : tranché, fichier de clef `prisme.key` dans le dossier de données (voir `docs/V1.md`, section 2.8).
