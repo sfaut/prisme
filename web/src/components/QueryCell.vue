@@ -5,8 +5,9 @@
   garde ouverte tant qu'elle est affichée. Ctrl-Entrée ou « Exécuter » lance
   la requête sous le curseur ; Ctrl-Maj-Entrée ou « Tout exécuter » lance
   toutes les requêtes en parallèle. « Stopper » les arrête toutes.
-  « Enjoliver » réécrit le texte en « beau SQL ». Chaque requête a son onglet
-  de résultat.
+  « Enjoliver » réécrit le texte en « beau SQL », une fois le catalogue de la
+  connexion chargé (il donne la casse des fonctions de l'utilisateur).
+  Chaque requête a son onglet de résultat.
   La limite de lignes choisie ici devient la limite par défaut de l'utilisateur.
 -->
 <script setup lang="ts">
@@ -119,6 +120,13 @@ function run(cursor?: number): void {
 }
 
 /**
+ * Le catalogue de la connexion est-il entièrement chargé ? Sans lui,
+ * l'enjoliveur ne connaît pas les fonctions de l'utilisateur et les
+ * mettrait en capitales : « Enjoliver » attend donc la fin du chargement.
+ */
+const catalogReady = computed(() => catalog.catalogOf(props.connection.id)?.done === true)
+
+/**
  * Enjolive le texte de l'éditeur (mots-clefs en capitales...). Ctrl-Z annule.
  * Les fonctions et procédures du catalogue gardent la casse de leur définition.
  */
@@ -210,8 +218,12 @@ defineExpose({ run })
       </n-button>
       <n-button
         size="small"
-        :disabled="sql.trim() === ''"
-        title="Réécrit les requêtes en « beau SQL » : mots-clefs en capitales (Ctrl-Z annule)"
+        :disabled="sql.trim() === '' || !catalogReady"
+        :title="
+          catalogReady
+            ? 'Réécrit les requêtes en « beau SQL » : mots-clefs en capitales (Ctrl-Z annule)'
+            : 'Disponible une fois le catalogue de la connexion chargé'
+        "
         @click="prettify"
       >
         Enjoliver
