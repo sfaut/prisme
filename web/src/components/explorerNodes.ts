@@ -65,12 +65,24 @@ export interface ExplorerNode {
    */
   current?: boolean
   /**
-   * Pour une colonne : son nom et son détail (type, index, nullabilité),
-   * affichés séparément pour mettre le nom en forme.
+   * Pour une colonne : ce qu'il faut pour l'afficher en trois colonnes
+   * (symboles, nom, détail), alignées sur toutes les colonnes de la table.
    */
   column?: {
     name: string
+    /**
+     * Type et nullabilité, en capitales (`VARCHAR(20) NULL`).
+     */
     details: string
+    /**
+     * Largeur de la colonne des noms, en caractères : le nom le plus long de la table.
+     */
+    nameWidth: number
+    /**
+     * Largeur de la colonne des symboles, en symboles : 0 si aucune colonne
+     * de la table n'en a, 2 si l'une a une clef et un croisillon.
+     */
+    markSlots: number
     /**
      * La colonne fait partie de la clef primaire (précédée d'une clef).
      */
@@ -198,6 +210,10 @@ function tableFolders(schema: string, kind: TableKind, details: TableDetails): E
   })
   const foreignKeyColumns = new Set(details.foreign_keys.flatMap((key) => key.columns))
   const indexedColumns = new Set(details.indexes.flatMap((index) => index.columns))
+  const marks = (column: ColumnInfo) =>
+    Number(column.key === 'PRI') + Number(foreignKeyColumns.has(column.name))
+  const nameWidth = Math.max(0, ...details.columns.map((column) => column.name.length))
+  const markSlots = Math.max(0, ...details.columns.map(marks))
   const columns = folder(
     `columns:${base}`,
     'Colonnes',
@@ -205,10 +221,12 @@ function tableFolders(schema: string, kind: TableKind, details: TableDetails): E
     details.columns.map((column) => {
       const foreignKey = foreignKeyColumns.has(column.name)
       return {
-        ...item('column', column.name, `${column.name} · ${columnDetails(column)}`),
+        ...item('column', column.name, `${column.name} ${columnDetails(column)}`),
         column: {
           name: column.name,
           details: columnDetails(column),
+          nameWidth,
+          markSlots,
           primaryKey: column.key === 'PRI',
           indexed: indexedColumns.has(column.name),
           foreignKey,
@@ -282,16 +300,30 @@ function loadingNode(parent: string, schema: string): ExplorerNode {
 }
 
 /**
- * Détail d'une colonne : type affiché et nullabilité. Le rôle dans les index
- * (PRI, UNI, MUL) n'est pas repris : la clef primaire est en gras et les
- * index ont leur propre dossier.
+ * Détail d'une colonne, en capitales comme dans un `CREATE TABLE` : type
+ * affiché et nullabilité (`VARCHAR(20) NULL`). Le rôle dans les index
+ * (PRI, UNI, MUL) n'est pas repris : les colonnes indexées sont en gras et
+ * les index ont leur propre dossier.
  *
  * @param column Colonne.
  */
 function columnDetails(column: ColumnInfo): string {
-  return [displayedType(column.column_type), column.nullable ? 'NULL' : '']
+  return [upperType(displayedType(column.column_type)), column.nullable ? 'NULL' : '']
     .filter(Boolean)
-    .join(' · ')
+    .join(' ')
+}
+
+/**
+ * Type en capitales, sauf les valeurs entre apostrophes d'un `enum` ou d'un
+ * `set`, qui gardent leur casse (`enum('a','B')` devient `ENUM('a','B')`).
+ *
+ * @param columnType Type de la colonne.
+ */
+export function upperType(columnType: string): string {
+  return columnType
+    .split(/('(?:[^']|'')*')/)
+    .map((part) => (part.startsWith("'") ? part : part.toUpperCase()))
+    .join('')
 }
 
 /**

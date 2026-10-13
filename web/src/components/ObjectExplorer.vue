@@ -113,10 +113,14 @@ function nodeProps({ option }: { option: TreeOption }) {
 }
 
 /**
- * Affiche le libellé d'un nœud. Pour une colonne, le nom et le détail sont
- * séparés : le nom d'une colonne indexée (clef primaire comprise) est en
- * gras ; celui d'une colonne de clef primaire est précédé d'une clef, celui
- * d'une colonne de clef étrangère d'un croisillon.
+ * Affiche le libellé d'un nœud. Une colonne s'affiche en trois colonnes,
+ * alignées sur toutes les colonnes de la table : symboles (clef pour la clef
+ * primaire, croisillon pour une clef étrangère), nom (en gras si la colonne
+ * est indexée, clef primaire comprise), puis type et nullabilité, en
+ * capitales, plus petits et plus clairs. La largeur des noms se compte en
+ * caractères (`ch`), toujours en gras : la même pour tous les noms, gras ou
+ * non. Approchée pour une police proportionnelle, elle aligne les types sans
+ * mesurer le texte.
  *
  * @param info Nœud affiché.
  */
@@ -127,15 +131,18 @@ function renderLabel({ option }: { option: TreeOption }) {
     // (ou l'inverse) fait échouer la mise à jour de l'arbre par Vue.
     return h('span', { class: { 'current-database': node.current } }, node.label)
   }
-  // Les symboles sont placés dans la marge, à gauche du nom, comme des puces :
-  // les noms de toutes les colonnes restent alignés.
+  const column = node.column
   return h('span', { class: 'column-label' }, [
-    h('span', { class: 'column-marks' }, [
-      node.column.primaryKey ? keyIcon() : null,
-      node.column.foreignKey ? hashIcon() : null,
+    column.markSlots > 0
+      ? h('span', { class: 'column-marks', style: { width: `${column.markSlots}em` } }, [
+          column.primaryKey ? keyIcon() : null,
+          column.foreignKey ? hashIcon() : null,
+        ])
+      : null,
+    h('span', { class: 'column-name', style: { minWidth: `${column.nameWidth}ch` } }, [
+      h('span', { class: { unindexed: !column.indexed } }, column.name),
     ]),
-    h('span', { class: { indexed: node.column.indexed } }, node.column.name),
-    h('span', { class: 'column-details' }, ` · ${node.column.details}`),
+    h('span', { class: 'column-details' }, column.details),
   ])
 }
 
@@ -211,21 +218,31 @@ onMounted(() => load(false))
 }
 
 .object-tree :deep(.column-label) {
-  position: relative;
+  display: inline-flex;
+  align-items: center;
+  /* Aligné en haut : une colonne des symboles vide ne rehausse pas la ligne. */
+  vertical-align: top;
 }
 
 .object-tree :deep(.column-marks) {
-  position: absolute;
-  top: 50%;
-  right: 100%;
-  display: flex;
-  gap: 1px;
-  margin-right: 3px;
-  transform: translateY(-50%);
+  display: inline-flex;
+  flex: none;
 }
 
-.object-tree :deep(.indexed) {
+.object-tree :deep(.column-name) {
+  flex: none;
+  margin-right: 0.8em;
   font-weight: 700;
+}
+
+.object-tree :deep(.unindexed) {
+  font-weight: 400;
+}
+
+.object-tree :deep(.column-details) {
+  color: #999;
+  font-size: 0.85em;
+  white-space: nowrap;
 }
 
 .object-tree :deep(.n-tree-node-content) {

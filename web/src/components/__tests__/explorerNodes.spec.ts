@@ -9,6 +9,7 @@ import {
   indexLabel,
   selectAllQuery,
   triggerLabel,
+  upperType,
 } from '../explorerNodes'
 
 const catalog: CatalogSchema[] = [
@@ -84,16 +85,24 @@ describe('catalogNodes', () => {
       'Déclencheurs (0)',
     ])
     expect(labels(orders?.children?.[0])).toEqual([
-      'id · int',
-      'note · varchar(20) · NULL',
-      'client_id · int',
+      'id INT',
+      'note VARCHAR(20) NULL',
+      'client_id INT',
     ])
     expect(orders?.children?.[3]?.isLeaf).toBe(true)
     const columns = orders?.children?.[0]?.children ?? []
     expect(columns.map((node) => node.column?.primaryKey)).toEqual([true, false, false])
     expect(columns.map((node) => node.column?.foreignKey)).toEqual([false, false, true])
     expect(columns.map((node) => node.column?.indexed)).toEqual([true, false, true])
+    // Alignement : le nom le plus long (client_id) et au plus un symbole par colonne.
+    expect(columns.map((node) => node.column?.nameWidth)).toEqual([9, 9, 9])
+    expect(columns.map((node) => node.column?.markSlots)).toEqual([1, 1, 1])
     expect(labels(tables?.children?.[1])).toEqual(['chargement…'])
+  })
+
+  it('met les types en capitales, sauf les valeurs d’un enum', () => {
+    expect(upperType('int unsigned')).toBe('INT UNSIGNED')
+    expect(upperType("enum('a','B','it''s')")).toBe("ENUM('a','B','it''s')")
   })
 
   it('retire la largeur d’affichage des entiers, et seulement elle', () => {
