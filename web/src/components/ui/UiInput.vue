@@ -40,7 +40,7 @@ function onInput(event: Event): void {
     <component
       :is="icon"
       v-if="icon"
-      class="pointer-events-none absolute start-2 size-3.5 text-fg-dimmed"
+      class="pointer-events-none absolute start-2 size-icon text-fg-dimmed"
     />
     <input
       v-bind="{ ...$attrs, class: undefined }"

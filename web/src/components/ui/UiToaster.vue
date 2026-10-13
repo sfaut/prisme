@@ -27,6 +27,8 @@ const DURATION = 3000
       <CircleAlert v-else class="size-4 shrink-0 text-error" />
       <toast-title class="text-trim">{{ toast.title }}</toast-title>
     </toast-root>
-    <toast-viewport class="fixed end-4 bottom-4 z-50 flex w-72 flex-col gap-gap outline-none" />
+    <toast-viewport
+      class="fixed end-panel bottom-panel z-50 flex w-toast flex-col gap-gap outline-none"
+    />
   </toast-provider>
 </template>

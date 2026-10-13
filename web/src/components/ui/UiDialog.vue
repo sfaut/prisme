@@ -41,7 +41,7 @@ const open = defineModel<boolean>('open', { required: true })
     <dialog-portal>
       <dialog-overlay class="fixed inset-0 z-50 bg-fg-strong/40" />
       <dialog-content
-        class="fixed top-1/2 left-1/2 z-50 flex w-[calc(100vw-2rem)] max-w-md -translate-1/2 flex-col gap-panel rounded-panel border border-line bg-surface p-panel text-ui shadow-xl"
+        class="fixed top-1/2 left-1/2 z-50 flex w-[calc(100vw-2rem)] max-w-dialog -translate-1/2 flex-col gap-panel rounded-panel border border-line bg-surface p-panel text-ui shadow-xl"
         :aria-describedby="description ? undefined : ''"
       >
         <header class="flex items-start gap-gap">

@@ -88,8 +88,8 @@ const classes = computed(() => [
     class="inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-control text-ui font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50"
     :class="classes"
   >
-    <LoaderCircle v-if="loading" class="size-3.5 shrink-0 animate-spin" />
-    <component :is="icon" v-else-if="icon" class="size-3.5 shrink-0" />
+    <LoaderCircle v-if="loading" class="size-icon shrink-0 animate-spin" />
+    <component :is="icon" v-else-if="icon" class="size-icon shrink-0" />
     <span v-if="label" class="text-trim">{{ label }}</span>
   </button>
 </template>

@@ -44,6 +44,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 
 import { probeConnection, serverLabel } from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
+import { cssPixels } from '@/cssLength'
 import { useCatalogStore } from '@/stores/catalog'
 import { useConnectionsStore } from '@/stores/connections'
 
@@ -86,10 +87,10 @@ const catalog = useCatalogStore()
 const connections = useConnectionsStore()
 
 /**
- * Hauteur d'une ligne, en pixels, pour le défilement virtuel : celle de
- * `--row-height` dans `main.css` (1,5 rem, soit 24 pixels).
+ * Hauteur d'une ligne, en pixels, pour le défilement virtuel
+ * (`--row-height` du thème).
  */
-const ROW_HEIGHT = 24
+const ROW_HEIGHT = cssPixels('--row-height', 24)
 
 /**
  * Connexions dont le catalogue est en cours de lecture.
@@ -413,9 +414,9 @@ watch(
           <component
             :is="isExpanded ? ChevronDown : ChevronRight"
             v-if="item.value.children?.length"
-            class="size-3 shrink-0 text-fg-dimmed"
+            class="size-icon-sm shrink-0 text-fg-dimmed"
           />
-          <span v-else class="size-3 shrink-0" />
+          <span v-else class="size-icon-sm shrink-0" />
 
           <!-- Colonne : symboles, nom (gras si indexée), type et nullabilité. -->
           <span v-if="item.value.column" class="tree-label flex min-w-0 flex-1 items-center">

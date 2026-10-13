@@ -158,16 +158,21 @@ async function save(): Promise<void> {
   <ui-dialog v-model:open="open" :title="title">
     <form id="connection-form" class="flex flex-col gap-gap" @submit.prevent="save">
       <ui-field label="Nom">
-        <ui-input v-model="form.name" :maxlength="100" placeholder="prod, local..." class="w-60" />
+        <ui-input
+          v-model="form.name"
+          :maxlength="100"
+          placeholder="prod, local..."
+          class="w-field"
+        />
       </ui-field>
       <ui-field label="Hôte">
-        <ui-input v-model="form.host" :maxlength="253" class="w-60" />
+        <ui-input v-model="form.host" :maxlength="253" class="w-field" />
       </ui-field>
       <ui-field label="Port">
-        <ui-input v-model="form.port" type="number" :min="1" :max="65535" class="w-60" />
+        <ui-input v-model="form.port" type="number" :min="1" :max="65535" class="w-field" />
       </ui-field>
       <ui-field label="Compte">
-        <ui-input v-model="form.username" :maxlength="80" class="w-60" />
+        <ui-input v-model="form.username" :maxlength="80" class="w-field" />
       </ui-field>
       <ui-field label="Mot de passe">
         <ui-input
@@ -175,7 +180,7 @@ async function save(): Promise<void> {
           :type="showPassword ? 'text' : 'password'"
           autocomplete="new-password"
           :placeholder="connection === null ? '' : 'inchangé'"
-          class="w-60"
+          class="w-field"
         >
           <template #trailing>
             <ui-button
@@ -193,7 +198,7 @@ async function save(): Promise<void> {
           v-model="form.database_name"
           :maxlength="64"
           placeholder="facultatif"
-          class="w-60"
+          class="w-field"
         />
       </ui-field>
       <ui-alert v-if="error" tone="error" :title="error" />

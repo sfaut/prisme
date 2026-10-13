@@ -15,6 +15,13 @@ import {
 
 import type { MenuItem } from './menuItem'
 
+import { cssPixels } from '@/cssLength'
+
+/**
+ * Écart avec le déclencheur, en pixels (`--popup-offset` du thème).
+ */
+const OFFSET = cssPixels('--popup-offset', 4)
+
 defineProps<{
   /**
    * Choix du menu.
@@ -31,8 +38,8 @@ defineProps<{
     <dropdown-menu-portal>
       <dropdown-menu-content
         align="end"
-        :side-offset="4"
-        class="z-50 min-w-40 rounded-panel border border-line bg-surface p-1 text-ui shadow-lg"
+        :side-offset="OFFSET"
+        class="z-50 min-w-menu rounded-panel border border-line bg-surface p-1 text-ui shadow-lg"
       >
         <dropdown-menu-item
           v-for="item in items"
@@ -42,7 +49,7 @@ defineProps<{
           :class="item.tone === 'error' ? 'text-error' : 'text-fg data-highlighted:text-fg-strong'"
           @select="item.onSelect?.()"
         >
-          <component :is="item.icon" class="size-3.5 shrink-0" />
+          <component :is="item.icon" class="size-icon shrink-0" />
           <span class="text-trim">{{ item.label }}</span>
         </dropdown-menu-item>
       </dropdown-menu-content>

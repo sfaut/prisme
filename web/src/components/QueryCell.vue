@@ -305,7 +305,7 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
           v-for="tab in state.tabs"
           :key="tab.query"
           :value="tab.query"
-          class="-mb-px flex h-control max-w-80 min-w-0 cursor-pointer items-center gap-1.5 border-b-2 border-transparent px-control-x text-ui font-medium text-fg-muted hover:text-fg-strong data-[state=active]:border-fg-strong data-[state=active]:text-fg-strong"
+          class="-mb-px flex h-control max-w-tab min-w-0 cursor-pointer items-center gap-1.5 border-b-2 border-transparent px-control-x text-ui font-medium text-fg-muted hover:text-fg-strong data-[state=active]:border-fg-strong data-[state=active]:text-fg-strong"
         >
           <progress-dot :tab="tab" />
           <span class="truncate text-trim">{{ tabLabel(tab.query, tab.sql) }}</span>

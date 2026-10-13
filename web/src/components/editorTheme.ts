@@ -33,7 +33,7 @@ const chrome = EditorView.theme({
   '.cm-gutters': {
     backgroundColor: 'var(--surface-muted)',
     color: 'var(--fg-dimmed)',
-    borderRight: '1px solid var(--line)',
+    borderRight: 'var(--line-width) solid var(--line)',
   },
   '.cm-activeLine': { backgroundColor: tint('--fg', 4) },
   '.cm-activeLineGutter': { backgroundColor: tint('--fg', 8) },
@@ -45,7 +45,7 @@ const chrome = EditorView.theme({
   '.cm-tooltip': {
     backgroundColor: 'var(--surface-elevated)',
     color: 'var(--fg)',
-    border: '1px solid var(--line)',
+    border: 'var(--line-width) solid var(--line)',
     borderRadius: 'var(--control-radius)',
   },
   '.cm-tooltip-autocomplete > ul > li[aria-selected]': {

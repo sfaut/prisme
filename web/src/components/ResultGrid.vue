@@ -32,6 +32,7 @@ import { useVirtualizer } from '@tanstack/vue-virtual'
 import { computed, reactive, ref, shallowRef, useTemplateRef, watch } from 'vue'
 
 import type { Cell } from '@/api/querySession'
+import { cssPixels } from '@/cssLength'
 
 import {
   type GridFilter,
@@ -88,10 +89,10 @@ const props = defineProps<{
 }>()
 
 /**
- * Hauteur d'une ligne, en pixels, pour le défilement virtuel : celle de
- * `--grid-row-height` dans `main.css` (1,375 rem, soit 22 pixels).
+ * Hauteur d'une ligne, en pixels, pour le défilement virtuel
+ * (`--grid-row-height` du thème).
  */
-const ROW_HEIGHT = 22
+const ROW_HEIGHT = cssPixels('--grid-row-height', 22)
 
 const scroller = useTemplateRef<HTMLDivElement>('scroller')
 
@@ -587,11 +588,11 @@ const filterColumn = computed({
 }
 
 .grid-filter {
-  max-inline-size: 240px;
+  max-inline-size: var(--grid-filter-width);
 }
 
 .grid-filter-column {
-  max-inline-size: 200px;
+  max-inline-size: var(--grid-filter-column-width);
 }
 
 .grid-count {
@@ -603,12 +604,12 @@ const filterColumn = computed({
 .grid-scroller {
   position: relative;
   flex: 1;
-  min-block-size: 120px;
+  min-block-size: var(--grid-min-height);
   /* Garde-fou : une zone de défilement plus haute que la fenêtre dessinerait
      toutes les lignes et figerait l'interface. */
   max-block-size: 100vh;
   overflow: auto;
-  border: 1px solid var(--line);
+  border: var(--line-width) solid var(--line);
   font-size: var(--font-size-ui);
   outline: none;
   user-select: none;
@@ -672,29 +673,29 @@ const filterColumn = computed({
   position: relative;
   display: flex;
   min-inline-size: 0;
-  border-inline-start: 1px solid var(--line);
+  border-inline-start: var(--line-width) solid var(--line);
 
   /* Seule la dernière colonne porte une bordure droite : les autres sont
      fermées par la bordure gauche de leur voisine. */
   &:last-child {
-    border-inline-end: 1px solid var(--line);
+    border-inline-end: var(--line-width) solid var(--line);
   }
 
   &.drop-before {
-    box-shadow: inset 2px 0 0 var(--accent);
+    box-shadow: inset var(--focus-width) 0 0 var(--accent);
   }
 
   &.drop-after {
-    box-shadow: inset -2px 0 0 var(--accent);
+    box-shadow: inset calc(-1 * var(--focus-width)) 0 0 var(--accent);
   }
 }
 
 .grid-resizer {
   position: absolute;
   inset-block: 0;
-  inset-inline-end: -3px;
+  inset-inline-end: calc(var(--resize-handle-width) / -2);
   z-index: 1;
-  inline-size: 6px;
+  inline-size: var(--resize-handle-width);
   cursor: col-resize;
   touch-action: none;
 
@@ -725,14 +726,14 @@ const filterColumn = computed({
 .grid-cell {
   padding-inline: var(--grid-cell-padding-x);
   overflow: hidden;
-  border-block-end: 1px solid var(--line-muted);
-  border-inline-start: 1px solid var(--line-muted);
+  border-block-end: var(--line-width) solid var(--line-muted);
+  border-inline-start: var(--line-width) solid var(--line-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: cell;
 
   &:last-child {
-    border-inline-end: 1px solid var(--line-muted);
+    border-inline-end: var(--line-width) solid var(--line-muted);
   }
 
   &.right {

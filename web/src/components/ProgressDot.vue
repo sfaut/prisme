@@ -46,7 +46,7 @@ const summary = computed(() => {
 <style scoped>
 .progress-dot {
   flex: none;
-  width: 8px;
+  width: var(--status-dot-size);
   aspect-ratio: 1;
   border-radius: 50%;
 }
