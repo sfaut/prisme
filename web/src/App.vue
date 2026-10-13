@@ -101,8 +101,9 @@ async function openTable(schema: string, table: string): Promise<void> {
 
 <style>
 * {
-  box-sizing: border;
+  box-sizing: border-box;
 }
+
 html,
 body,
 #app {
