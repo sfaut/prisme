@@ -99,6 +99,15 @@ const selection = shallowRef(emptySelection())
 let dragging: 'cells' | 'rows' | null = null
 
 /**
+ * Donne le focus clavier à la grille, pour que Ctrl-C, Ctrl-A et Échap s'y
+ * appliquent. Les clics de sélection empêchent le comportement par défaut
+ * (sélection du texte de la page), qui aurait aussi donné ce focus.
+ */
+function focusGrid(): void {
+  scroller.value?.focus({ preventScroll: true })
+}
+
+/**
  * Commence un glissement, qui prend fin au relâchement du bouton.
  *
  * @param kind Ce que le glissement sélectionne.
@@ -263,6 +272,7 @@ function modeOf(event: MouseEvent): SelectMode {
  */
 function onCellDown(event: MouseEvent, row: number, column: number): void {
   selection.value = selectCell(selection.value, row, column, modeOf(event))
+  focusGrid()
   startDragging('cells')
 }
 
@@ -284,6 +294,7 @@ function onCellEnter(row: number, column: number): void {
  */
 function onRowHeader(event: MouseEvent, row: number): void {
   selection.value = selectRow(selection.value, row, props.columns.length, modeOf(event))
+  focusGrid()
   startDragging('rows')
 }
 
@@ -322,6 +333,7 @@ const dropAt = ref<number | null>(null)
  */
 function onColumnHeader(event: PointerEvent, position: number): void {
   selection.value = selectColumn(selection.value, position, view.value.length, modeOf(event))
+  focusGrid()
   ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
   moving = { from: position, x: event.clientX, started: false }
 }
@@ -413,6 +425,7 @@ async function copy(withHeaders: boolean): Promise<void> {
  */
 function selectEverything(): void {
   selection.value = selectAll(view.value.length, props.columns.length)
+  focusGrid()
 }
 
 /**
