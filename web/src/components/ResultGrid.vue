@@ -8,8 +8,9 @@
   - Copie : Ctrl-C (Ctrl-Maj-C avec les en-têtes), ou les boutons. Ctrl-A
     sélectionne tout, Échap vide la sélection.
   - Largeur : glisser le bord droit d'un en-tête change la largeur de la
-    colonne, un double clic sur ce bord rend la largeur estimée. Un texte
-    trop long est tronqué (…) et s'affiche en entier au survol.
+    colonne, un double clic sur ce bord l'ajuste à sa valeur la plus longue
+    (avec un plafond). Un texte trop long est tronqué (…) et s'affiche en
+    entier au survol.
 
   Seules les lignes visibles existent dans la page (défilement virtuel) : la
   grille reste fluide avec des dizaines de milliers de lignes. La logique
@@ -26,8 +27,11 @@ import {
   type GridFilter,
   type SelectMode,
   type SortState,
+  CHAR_WIDTH,
   NULL_TEXT,
   emptySelection,
+  estimatedWidth,
+  fittedWidth,
   isSelected,
   nextSort,
   resizedWidth,
@@ -59,16 +63,6 @@ const props = defineProps<{
  * Hauteur d'une ligne, en pixels.
  */
 const ROW_HEIGHT = 22
-
-/**
- * Largeur d'un caractère, en pixels, pour estimer la largeur des colonnes.
- */
-const CHAR_WIDTH = 7
-
-/**
- * Nombre de lignes lues pour estimer la largeur des colonnes.
- */
-const WIDTH_SAMPLE = 200
 
 const message = useMessage()
 const scroller = useTemplateRef<HTMLDivElement>('scroller')
@@ -111,13 +105,7 @@ watch(
 const estimated = computed(() => {
   // Lu pour que les largeurs se recalculent à l'arrivée de nouvelles lignes.
   void props.rowCount
-  return props.columns.map((name, column) => {
-    let longest = name.length + 2
-    for (const row of props.rows.slice(0, WIDTH_SAMPLE)) {
-      longest = Math.max(longest, (row[column] ?? NULL_TEXT).length)
-    }
-    return Math.min(360, Math.max(48, longest * CHAR_WIDTH + 16))
-  })
+  return props.columns.map((name, column) => estimatedWidth(name, props.rows, column))
 })
 
 /**
@@ -171,14 +159,13 @@ function onResizeEnd(): void {
 }
 
 /**
- * Rend à une colonne sa largeur estimée.
+ * Ajuste une colonne à sa valeur la plus longue, dans la limite d'un plafond.
  *
  * @param column Indice de la colonne.
  */
-function resetWidth(column: number): void {
-  const others = { ...resized.value }
-  delete others[column]
-  resized.value = others
+function fitWidth(column: number): void {
+  const width = fittedWidth(props.columns[column] ?? '', props.rows, column)
+  resized.value = { ...resized.value, [column]: width }
 }
 
 const filterOptions = computed(() => [
@@ -347,12 +334,12 @@ const filterColumn = computed({
           </button>
           <div
             class="grid-resizer"
-            title="Glisser pour changer la largeur, double clic pour la largeur estimée"
+            title="Glisser pour changer la largeur, double clic pour l’ajuster au contenu"
             @pointerdown.stop.prevent="onResizeStart($event, column)"
             @pointermove="onResizeMove"
             @pointerup="onResizeEnd"
             @pointercancel="onResizeEnd"
-            @dblclick="resetWidth(column)"
+            @dblclick="fitWidth(column)"
           />
         </div>
       </div>

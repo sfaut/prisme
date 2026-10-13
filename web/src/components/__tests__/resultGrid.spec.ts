@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest'
 import type { Cell } from '@/api/querySession'
 
 import {
+  MAX_ESTIMATED_WIDTH,
+  MAX_FITTED_WIDTH,
+  estimatedWidth,
+  fittedWidth,
   MIN_COLUMN_WIDTH,
   resizedWidth,
   compareCells,
@@ -135,5 +139,21 @@ describe('largeur des colonnes', () => {
     expect(resizedWidth(120, 35.6)).toBe(156)
     expect(resizedWidth(120, -30)).toBe(90)
     expect(resizedWidth(120, -500)).toBe(MIN_COLUMN_WIDTH)
+  })
+})
+
+describe('largeur estimée ou ajustée', () => {
+  const rows: Cell[][] = [['a'], ['x'.repeat(80)], ...Array.from({ length: 300 }, () => ['b'])]
+
+  it('estime sur les premières lignes, avec un plafond', () => {
+    expect(estimatedWidth('id', [['1']], 0)).toBe(48)
+    expect(estimatedWidth('texte', rows, 0)).toBe(MAX_ESTIMATED_WIDTH)
+    // Valeur longue au-delà des 200 premières lignes : ignorée par l'estimation.
+    expect(estimatedWidth('texte', [...rows.slice(2), ['x'.repeat(80)]], 0)).toBe(65)
+  })
+
+  it('ajuste sur toutes les lignes, avec un plafond plus haut', () => {
+    expect(fittedWidth('texte', [...rows.slice(2), ['x'.repeat(80)]], 0)).toBe(80 * 7 + 16)
+    expect(fittedWidth('texte', [['x'.repeat(500)]], 0)).toBe(MAX_FITTED_WIDTH)
   })
 })

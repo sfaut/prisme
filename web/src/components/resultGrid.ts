@@ -92,6 +92,68 @@ export const NULL_TEXT = 'NULL'
 export const MIN_COLUMN_WIDTH = 40
 
 /**
+ * Largeur d'un caractère, en pixels, pour estimer la largeur des colonnes.
+ */
+export const CHAR_WIDTH = 7
+
+/**
+ * Largeur maximale estimée d'une colonne, en pixels.
+ */
+export const MAX_ESTIMATED_WIDTH = 360
+
+/**
+ * Largeur maximale d'une colonne ajustée à son contenu (double clic sur le
+ * bord de son en-tête), en pixels.
+ */
+export const MAX_FITTED_WIDTH = 720
+
+/**
+ * Nombre de lignes lues pour estimer la largeur des colonnes.
+ */
+const WIDTH_SAMPLE = 200
+
+/**
+ * Largeur d'une colonne d'après son texte le plus long : en-tête (plus la
+ * place du bouton de tri) et lignes données.
+ *
+ * @param name Nom de la colonne.
+ * @param rows Lignes à mesurer.
+ * @param column Indice de la colonne.
+ * @param max Largeur maximale, en pixels.
+ */
+function contentWidth(name: string, rows: Cell[][], column: number, max: number): number {
+  let longest = name.length + 2
+  for (const row of rows) {
+    longest = Math.max(longest, (row[column] ?? NULL_TEXT).length)
+  }
+  return Math.min(max, Math.max(48, longest * CHAR_WIDTH + 16))
+}
+
+/**
+ * Largeur estimée d'une colonne, sur l'en-tête et les premières lignes,
+ * plafonnée pour qu'une seule colonne ne prenne pas tout l'écran.
+ *
+ * @param name Nom de la colonne.
+ * @param rows Lignes du résultat.
+ * @param column Indice de la colonne.
+ */
+export function estimatedWidth(name: string, rows: Cell[][], column: number): number {
+  return contentWidth(name, rows.slice(0, WIDTH_SAMPLE), column, MAX_ESTIMATED_WIDTH)
+}
+
+/**
+ * Largeur ajustée au contenu d'une colonne : sa valeur la plus longue sur
+ * toutes les lignes reçues, avec un plafond plus haut que l'estimation.
+ *
+ * @param name Nom de la colonne.
+ * @param rows Lignes du résultat.
+ * @param column Indice de la colonne.
+ */
+export function fittedWidth(name: string, rows: Cell[][], column: number): number {
+  return contentWidth(name, rows, column, MAX_FITTED_WIDTH)
+}
+
+/**
  * Largeur d'une colonne après un glissement de son bord droit.
  *
  * @param start Largeur au début du glissement, en pixels.
