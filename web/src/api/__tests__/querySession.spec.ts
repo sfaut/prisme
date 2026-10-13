@@ -48,7 +48,7 @@ describe('applyMessage', () => {
       type: 'columns',
       query: 1,
       columns: ['id'],
-      numeric: [true],
+      right_aligned: [true],
       sql: 'x',
       limit: 'added',
     })
@@ -56,7 +56,7 @@ describe('applyMessage', () => {
       type: 'columns',
       query: 0,
       columns: ['id', 'title'],
-      numeric: [true, false],
+      right_aligned: [true, false],
       sql: 'y',
       limit: 'added',
     })
@@ -151,7 +151,7 @@ describe('tabProgress', () => {
       type: 'columns',
       query: 0,
       columns: ['x'],
-      numeric: [false],
+      right_aligned: [false],
       sql: 'a',
       limit: 'added',
     })
@@ -184,7 +184,14 @@ describe('progressSummary', () => {
     applyMessage(state, { type: 'started', query: 0 }, 1000)
     applyMessage(
       state,
-      { type: 'columns', query: 0, columns: ['x'], numeric: [false], sql: 'a', limit: 'added' },
+      {
+        type: 'columns',
+        query: 0,
+        columns: ['x'],
+        right_aligned: [false],
+        sql: 'a',
+        limit: 'added',
+      },
       1100,
     )
     applyMessage(state, { type: 'rows', query: 0, rows: [['1'], ['2']] }, 1200)

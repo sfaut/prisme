@@ -57,10 +57,10 @@ const props = defineProps<{
    */
   columns: string[]
   /**
-   * Pour chaque colonne, est-elle numérique ? Ses valeurs sont alors
-   * alignées à droite.
+   * Pour chaque colonne, ses valeurs s'alignent-elles à droite (nombres,
+   * dates et heures) ?
    */
-  numeric: boolean[]
+  rightAligned: boolean[]
   /**
    * Lignes du résultat ; le tableau peut grandir pendant la réception, sans
    * être réactif : c'est `rowCount` qui signale les nouvelles lignes.
@@ -492,7 +492,7 @@ const filterColumn = computed({
             class="grid-cell"
             :class="{
               null: cellAt(item.index, column) === null,
-              numeric: numeric[column],
+              right: rightAligned[column],
               selected: isSelected(selection, item.index, position),
             }"
             :title="cellAt(item.index, column) ?? NULL_TEXT"
@@ -660,7 +660,7 @@ const filterColumn = computed({
   border-right: 1px solid #eee;
 }
 
-.grid-cell.numeric {
+.grid-cell.right {
   text-align: right;
 }
 

@@ -8,10 +8,10 @@ import type { ServerInfo } from "./ServerInfo";
  */
 export type ServerMessage = { "type": "ready", server: ServerInfo, database: string | null, } | { "type": "batch", queries: Array<BatchQuery>, } | { "type": "started", query: number, } | { "type": "columns", query: number, columns: Array<string>, 
 /**
- * Pour chaque colonne, est-elle numérique ? La grille aligne alors
- * ses valeurs à droite.
+ * Pour chaque colonne, ses valeurs s'alignent-elles à droite (nombres,
+ * dates et heures) ?
  */
-numeric: Array<boolean>, sql: string, limit: LimitReport, } | { "type": "rows", query: number, rows: Array<Array<string | null>>, } | { "type": "done", query: number, row_count: number, truncated: boolean, affected_rows: number, elapsed_ms: number, 
+right_aligned: Array<boolean>, sql: string, limit: LimitReport, } | { "type": "rows", query: number, rows: Array<Array<string | null>>, } | { "type": "done", query: number, row_count: number, truncated: boolean, affected_rows: number, elapsed_ms: number, 
 /**
  * Base en cours de la session après la requête (elle change avec `USE`).
  */

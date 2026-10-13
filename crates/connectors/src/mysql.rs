@@ -11,6 +11,7 @@
 
 use std::time::Duration;
 
+use mysql_async::consts::ColumnType;
 use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, OptsBuilder, QueryResult, TextProtocol, Value};
 use secrecy::{ExposeSecret, SecretString};
@@ -192,13 +193,14 @@ impl ResultStream<'_> {
             .collect()
     }
 
-    /// Pour chaque colonne, est-elle numérique (entier, décimal, flottant,
-    /// année) ? D'après le type annoncé par le serveur avec le résultat.
-    pub fn numeric_columns(&self) -> Vec<bool> {
+    /// Pour chaque colonne, ses valeurs s'alignent-elles à droite ? Oui pour
+    /// les nombres (entier, décimal, flottant, année), les dates et les heures,
+    /// d'après le type annoncé par le serveur avec le résultat.
+    pub fn right_aligned_columns(&self) -> Vec<bool> {
         self.result
             .columns_ref()
             .iter()
-            .map(|column| column.column_type().is_numeric_type())
+            .map(|column| is_right_aligned(column.column_type()))
             .collect()
     }
 
@@ -228,6 +230,22 @@ impl ResultStream<'_> {
         // L'erreur attendue ici est celle de l'interruption : rien à en faire.
         let _ = self.result.drop_result().await;
     }
+}
+
+/// Un type dont les valeurs s'alignent à droite : nombre, date ou heure.
+fn is_right_aligned(column_type: ColumnType) -> bool {
+    column_type.is_numeric_type()
+        || matches!(
+            column_type,
+            ColumnType::MYSQL_TYPE_DATE
+                | ColumnType::MYSQL_TYPE_NEWDATE
+                | ColumnType::MYSQL_TYPE_DATETIME
+                | ColumnType::MYSQL_TYPE_DATETIME2
+                | ColumnType::MYSQL_TYPE_TIMESTAMP
+                | ColumnType::MYSQL_TYPE_TIMESTAMP2
+                | ColumnType::MYSQL_TYPE_TIME
+                | ColumnType::MYSQL_TYPE_TIME2
+        )
 }
 
 /// Convertit une valeur du pilote en texte, ou `None` pour NULL.
@@ -264,6 +282,17 @@ fn hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn aligns_numbers_dates_and_times_to_the_right() {
+        assert!(is_right_aligned(ColumnType::MYSQL_TYPE_LONGLONG));
+        assert!(is_right_aligned(ColumnType::MYSQL_TYPE_NEWDECIMAL));
+        assert!(is_right_aligned(ColumnType::MYSQL_TYPE_DATE));
+        assert!(is_right_aligned(ColumnType::MYSQL_TYPE_DATETIME));
+        assert!(is_right_aligned(ColumnType::MYSQL_TYPE_TIME));
+        assert!(!is_right_aligned(ColumnType::MYSQL_TYPE_VAR_STRING));
+        assert!(!is_right_aligned(ColumnType::MYSQL_TYPE_BLOB));
+    }
 
     #[test]
     fn detects_mariadb() {

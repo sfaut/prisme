@@ -10,11 +10,11 @@ import ResultGrid from '../ResultGrid.vue'
  * Monte la grille dans le fournisseur de messages de Naive UI, dont elle a besoin.
  */
 function mountGrid(columns: string[], rows: (string | null)[][]) {
-  const numeric = columns.map(() => false)
+  const rightAligned = columns.map(() => false)
   return mount({
     render: () =>
       h(NMessageProvider, () =>
-        h(ResultGrid, { columns, numeric, rows, rowCount: rows.length, sql: 'SELECT 1' }),
+        h(ResultGrid, { columns, rightAligned, rows, rowCount: rows.length, sql: 'SELECT 1' }),
       ),
   })
 }
@@ -26,7 +26,7 @@ describe('ResultGrid', () => {
         h(NMessageProvider, () =>
           h(ResultGrid, {
             columns: ['texte'],
-            numeric: [false],
+            rightAligned: [false],
             rows: [['x'.repeat(100)]],
             rowCount: 1,
             sql: 'SELECT texte FROM double_clic',

@@ -153,9 +153,9 @@ enum ServerMessage {
     Columns {
         query: u32,
         columns: Vec<String>,
-        /// Pour chaque colonne, est-elle numérique ? La grille aligne alors
-        /// ses valeurs à droite.
-        numeric: Vec<bool>,
+        /// Pour chaque colonne, ses valeurs s'alignent-elles à droite (nombres,
+        /// dates et heures) ?
+        right_aligned: Vec<bool>,
         sql: String,
         limit: LimitReport,
     },
@@ -629,7 +629,7 @@ impl Session<'_> {
             .send(ServerMessage::Columns {
                 query,
                 columns: stream.column_names(),
-                numeric: stream.numeric_columns(),
+                right_aligned: stream.right_aligned_columns(),
                 sql: limited.sql.clone(),
                 limit: report(limited.outcome),
             })
@@ -996,7 +996,7 @@ mod tests {
         assert_eq!(batch["queries"].as_array().unwrap().len(), 2);
         assert_eq!(results[0].rows, 1);
         assert_eq!(results[1].columns["columns"], json!(["DATABASE()", "2"]));
-        assert_eq!(results[1].columns["numeric"], json!([false, true]));
+        assert_eq!(results[1].columns["right_aligned"], json!([false, true]));
         assert_eq!(results[1].end["database"], "mysql");
         assert!(results.iter().all(|result| result.started));
 

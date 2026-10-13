@@ -42,7 +42,7 @@ function lines(count: number): string {
     <result-grid
       v-if="tab.result && tab.result.columns.length > 0"
       :columns="tab.result.columns"
-      :numeric="tab.result.numeric"
+      :right-aligned="tab.result.rightAligned"
       :rows="tab.result.rows"
       :row-count="tab.result.rowCount"
       :sql="tab.sql"
