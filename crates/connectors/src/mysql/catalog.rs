@@ -89,6 +89,8 @@ pub struct ColumnInfo {
     pub nullable: bool,
     /// Rôle dans les index : `PRI`, `UNI`, `MUL`, ou chaîne vide.
     pub key: String,
+    /// Valeur attribuée automatiquement à l'insertion (`AUTO_INCREMENT`) ?
+    pub auto_increment: bool,
 }
 
 /// Index d'une table.
@@ -148,8 +150,9 @@ pub struct TableDetails {
     pub triggers: Vec<TriggerInfo>,
 }
 
-/// Ligne d'`information_schema.COLUMNS` : table, colonne, type, nullabilité, index.
-type ColumnRow = (String, String, String, String, String);
+/// Ligne d'`information_schema.COLUMNS` : table, colonne, type, nullabilité,
+/// index, informations complémentaires (`auto_increment`...).
+type ColumnRow = (String, String, String, String, String, String);
 
 /// Ligne d'`information_schema.STATISTICS` : table, index, non unique, colonne.
 type IndexRow = (String, String, i64, Option<String>);
@@ -216,7 +219,7 @@ pub async fn details(
 ) -> Result<Vec<TableDetails>, MysqlError> {
     let columns: Vec<ColumnRow> = connection
         .exec(
-            "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY
+            "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, EXTRA
              FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, ORDINAL_POSITION",
             (schema,),
@@ -264,12 +267,14 @@ fn assemble_details(
     triggers: Vec<TriggerRow>,
 ) -> Vec<TableDetails> {
     let mut tables: BTreeMap<String, TableDetails> = BTreeMap::new();
-    for (name, column, column_type, is_nullable, key) in columns {
+    for (name, column, column_type, is_nullable, key, extra) in columns {
         table(&mut tables, &name).columns.push(ColumnInfo {
             name: column,
             column_type,
             nullable: is_nullable == "YES",
             key,
+            // EXTRA peut cumuler plusieurs mentions (« auto_increment », « on update... »).
+            auto_increment: extra.to_lowercase().contains("auto_increment"),
         });
     }
     for (name, index, non_unique, column) in indexes {
@@ -350,15 +355,30 @@ mod tests {
     #[test]
     fn assembles_details_table_by_table() {
         let columns = vec![
-            (text("t"), text("id"), text("int"), text("NO"), text("PRI")),
+            (
+                text("t"),
+                text("id"),
+                text("int"),
+                text("NO"),
+                text("PRI"),
+                text("auto_increment"),
+            ),
             (
                 text("t"),
                 text("parent"),
                 text("int"),
                 text("YES"),
                 text("MUL"),
+                text(""),
             ),
-            (text("u"), text("id"), text("int"), text("NO"), text("PRI")),
+            (
+                text("u"),
+                text("id"),
+                text("int"),
+                text("NO"),
+                text("PRI"),
+                text(""),
+            ),
         ];
         let indexes = vec![
             (text("t"), text("idx_parent"), 1, Some(text("parent"))),
@@ -383,6 +403,8 @@ mod tests {
         let t = &tables[0];
         assert_eq!(t.table, "t");
         assert_eq!(t.columns.len(), 2);
+        assert!(t.columns[0].auto_increment);
+        assert!(!t.columns[1].auto_increment);
         let names: Vec<_> = t.indexes.iter().map(|index| index.name.as_str()).collect();
         assert_eq!(names, ["PRIMARY", "idx_parent", "uq_pair"]);
         assert_eq!(t.indexes[2].columns, ["id", "parent"]);

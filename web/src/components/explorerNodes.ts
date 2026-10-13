@@ -71,7 +71,8 @@ export interface ExplorerNode {
   column?: {
     name: string
     /**
-     * Type et nullabilité, en capitales (`VARCHAR(20) NULL`).
+     * Type, nullabilité et auto-incrément, en capitales (`VARCHAR(20) NULL`,
+     * `INT AUTO_INCREMENT`).
      */
     details: string
     /**
@@ -301,14 +302,19 @@ function loadingNode(parent: string, schema: string): ExplorerNode {
 
 /**
  * Détail d'une colonne, en capitales comme dans un `CREATE TABLE` : type
- * affiché et nullabilité (`VARCHAR(20) NULL`). Le rôle dans les index
+ * affiché, nullabilité et auto-incrément (`VARCHAR(20) NULL`,
+ * `INT AUTO_INCREMENT`). Le rôle dans les index
  * (PRI, UNI, MUL) n'est pas repris : les colonnes indexées sont en gras et
  * les index ont leur propre dossier.
  *
  * @param column Colonne.
  */
 function columnDetails(column: ColumnInfo): string {
-  return [upperType(displayedType(column.column_type)), column.nullable ? 'NULL' : '']
+  return [
+    upperType(displayedType(column.column_type)),
+    column.nullable ? 'NULL' : '',
+    column.auto_increment ? 'AUTO_INCREMENT' : '',
+  ]
     .filter(Boolean)
     .join(' ')
 }

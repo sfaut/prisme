@@ -140,7 +140,7 @@ async fn reads_the_catalog_schema_by_schema() {
     let mut connection = connect(&target(host, port)).await.unwrap();
     for sql in [
         "CREATE TABLE p (id INT PRIMARY KEY)",
-        "CREATE TABLE t (id INT PRIMARY KEY, label VARCHAR(20) NULL, p_id INT,
+        "CREATE TABLE t (id INT AUTO_INCREMENT PRIMARY KEY, label VARCHAR(20) NULL, p_id INT,
             INDEX idx_label (label),
             CONSTRAINT fk_p FOREIGN KEY (p_id) REFERENCES p (id))",
         "CREATE VIEW v AS SELECT id FROM t",
@@ -185,6 +185,8 @@ async fn reads_the_catalog_schema_by_schema() {
     let t = details.iter().find(|table| table.table == "t").unwrap();
     assert_eq!(t.columns[0].name, "id");
     assert_eq!(t.columns[0].key, "PRI");
+    assert!(t.columns[0].auto_increment);
+    assert!(!t.columns[1].auto_increment);
     assert_eq!(t.columns[1].column_type, "varchar(20)");
     assert!(t.columns[1].nullable);
     let indexes: Vec<_> = t.indexes.iter().map(|index| index.name.as_str()).collect();

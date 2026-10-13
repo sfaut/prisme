@@ -22,9 +22,21 @@ const catalog: CatalogSchema[] = [
         details: {
           table: 'orders',
           columns: [
-            { name: 'id', column_type: 'int', nullable: false, key: 'PRI' },
-            { name: 'note', column_type: 'varchar(20)', nullable: true, key: '' },
-            { name: 'client_id', column_type: 'int(10)', nullable: false, key: 'MUL' },
+            { name: 'id', column_type: 'int', nullable: false, key: 'PRI', auto_increment: true },
+            {
+              name: 'note',
+              column_type: 'varchar(20)',
+              nullable: true,
+              key: '',
+              auto_increment: false,
+            },
+            {
+              name: 'client_id',
+              column_type: 'int(10)',
+              nullable: false,
+              key: 'MUL',
+              auto_increment: false,
+            },
           ],
           indexes: [
             { name: 'PRIMARY', columns: ['id'], unique: true },
@@ -85,7 +97,7 @@ describe('catalogNodes', () => {
       'Déclencheurs (0)',
     ])
     expect(labels(orders?.children?.[0])).toEqual([
-      'id INT',
+      'id INT AUTO_INCREMENT',
       'note VARCHAR(20) NULL',
       'client_id INT',
     ])
@@ -159,7 +171,9 @@ describe('applyCatalogEvent', () => {
       tables: [
         {
           table: 't',
-          columns: [{ name: 'id', column_type: 'int', nullable: false, key: '' }],
+          columns: [
+            { name: 'id', column_type: 'int', nullable: false, key: '', auto_increment: false },
+          ],
           indexes: [],
           foreign_keys: [],
           triggers: [],

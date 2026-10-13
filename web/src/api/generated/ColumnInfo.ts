@@ -19,4 +19,8 @@ nullable: boolean,
 /**
  * Rôle dans les index : `PRI`, `UNI`, `MUL`, ou chaîne vide.
  */
-key: string, };
+key: string, 
+/**
+ * Valeur attribuée automatiquement à l'insertion (`AUTO_INCREMENT`) ?
+ */
+auto_increment: boolean, };
