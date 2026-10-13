@@ -62,6 +62,10 @@ export interface QueryResult {
    */
   columns: string[]
   /**
+   * Pour chaque colonne, est-elle numérique (valeurs alignées à droite) ?
+   */
+  numeric: boolean[]
+  /**
    * Lignes reçues jusqu'ici. Dans l'interface, ce tableau n'est pas réactif
    * (ajouter des milliers de lignes une à une coûterait cher) : c'est
    * `rowCount` qui signale l'arrivée de nouvelles lignes.
@@ -198,6 +202,7 @@ export function applyMessage(
           sql: message.sql,
           limit: message.limit,
           columns: message.columns,
+          numeric: message.numeric,
           rows: [],
           rowCount: 0,
           truncated: false,

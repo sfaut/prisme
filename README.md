@@ -174,7 +174,7 @@ Prisme répond `{"type":"ready",...}` une fois connecté au serveur cible. Ensui
 Prisme annonce d'abord les requêtes du lot (`batch`, chacune numérotée), puis, pour chaque requête, des messages portant son numéro (`query`), dans l'ordre :
 
 1. `started` : la requête part (en parallèle, elle peut attendre son tour) ;
-2. `columns` : noms des colonnes, texte réellement exécuté, et traitement de la limite (`added` si Prisme a ajouté `LIMIT N + 1`, `user_limit` si la requête en avait déjà une, `not_applicable` pour `SHOW` ou `EXPLAIN`) ;
+2. `columns` : noms des colonnes, colonnes numériques (alignées à droite par la grille, d'après le type annoncé par le serveur), texte réellement exécuté, et traitement de la limite (`added` si Prisme a ajouté `LIMIT N + 1`, `user_limit` si la requête en avait déjà une, `not_applicable` pour `SHOW` ou `EXPLAIN`) ;
 3. `rows` : les lignes, par lots de 500, chaque cellule en texte ou `null` ;
 4. `done` : nombre de lignes, `truncated` (des lignes au-delà de la limite ont été écartées), lignes modifiées, durée.
 

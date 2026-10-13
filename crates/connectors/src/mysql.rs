@@ -192,6 +192,16 @@ impl ResultStream<'_> {
             .collect()
     }
 
+    /// Pour chaque colonne, est-elle numérique (entier, décimal, flottant,
+    /// année) ? D'après le type annoncé par le serveur avec le résultat.
+    pub fn numeric_columns(&self) -> Vec<bool> {
+        self.result
+            .columns_ref()
+            .iter()
+            .map(|column| column.column_type().is_numeric_type())
+            .collect()
+    }
+
     /// Lit la ligne suivante, ou `None` à la fin du résultat.
     pub async fn next_row(&mut self) -> Result<Option<Vec<Cell>>, MysqlError> {
         let Some(row) = self.result.next().await? else {

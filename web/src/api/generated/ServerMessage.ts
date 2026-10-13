@@ -6,7 +6,12 @@ import type { ServerInfo } from "./ServerInfo";
 /**
  * Message envoyé au client.
  */
-export type ServerMessage = { "type": "ready", server: ServerInfo, database: string | null, } | { "type": "batch", queries: Array<BatchQuery>, } | { "type": "started", query: number, } | { "type": "columns", query: number, columns: Array<string>, sql: string, limit: LimitReport, } | { "type": "rows", query: number, rows: Array<Array<string | null>>, } | { "type": "done", query: number, row_count: number, truncated: boolean, affected_rows: number, elapsed_ms: number, 
+export type ServerMessage = { "type": "ready", server: ServerInfo, database: string | null, } | { "type": "batch", queries: Array<BatchQuery>, } | { "type": "started", query: number, } | { "type": "columns", query: number, columns: Array<string>, 
+/**
+ * Pour chaque colonne, est-elle numérique ? La grille aligne alors
+ * ses valeurs à droite.
+ */
+numeric: Array<boolean>, sql: string, limit: LimitReport, } | { "type": "rows", query: number, rows: Array<Array<string | null>>, } | { "type": "done", query: number, row_count: number, truncated: boolean, affected_rows: number, elapsed_ms: number, 
 /**
  * Base en cours de la session après la requête (elle change avec `USE`).
  */

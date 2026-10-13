@@ -44,11 +44,19 @@ describe('applyMessage', () => {
     ])
 
     // Les messages des deux requêtes s'entremêlent.
-    applyMessage(state, { type: 'columns', query: 1, columns: ['id'], sql: 'x', limit: 'added' })
+    applyMessage(state, {
+      type: 'columns',
+      query: 1,
+      columns: ['id'],
+      numeric: [true],
+      sql: 'x',
+      limit: 'added',
+    })
     applyMessage(state, {
       type: 'columns',
       query: 0,
       columns: ['id', 'title'],
+      numeric: [true, false],
       sql: 'y',
       limit: 'added',
     })
@@ -139,7 +147,14 @@ describe('tabProgress', () => {
     expect(tabProgress(first!)).toBe('executing')
     expect(first?.startedAt).toBe(1000)
 
-    applyMessage(state, { type: 'columns', query: 0, columns: ['x'], sql: 'a', limit: 'added' })
+    applyMessage(state, {
+      type: 'columns',
+      query: 0,
+      columns: ['x'],
+      numeric: [false],
+      sql: 'a',
+      limit: 'added',
+    })
     expect(tabProgress(first!)).toBe('loading')
 
     applyMessage(state, {
@@ -169,7 +184,7 @@ describe('progressSummary', () => {
     applyMessage(state, { type: 'started', query: 0 }, 1000)
     applyMessage(
       state,
-      { type: 'columns', query: 0, columns: ['x'], sql: 'a', limit: 'added' },
+      { type: 'columns', query: 0, columns: ['x'], numeric: [false], sql: 'a', limit: 'added' },
       1100,
     )
     applyMessage(state, { type: 'rows', query: 0, rows: [['1'], ['2']] }, 1200)
