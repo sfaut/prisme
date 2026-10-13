@@ -13,6 +13,7 @@
 //! | `GET /api/connections/{id}/catalog` | Bases, tables et colonnes (voir `explorer.rs`).             |
 //! | `GET /api/settings`                 | Réglages de l'utilisateur, avec les choix permis.            |
 //! | `PUT /api/settings`                 | Modifie les réglages, renvoie les réglages à jour.           |
+//! | `POST /api/beautify`                | Enjolive du SQL (mots-clefs en capitales...).                |
 
 use std::sync::{Arc, Mutex};
 
@@ -23,8 +24,10 @@ use axum::response::Response;
 use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use prisme_connectors::mysql::{self, ServerInfo};
+use prisme_dialects::Dialect;
+use prisme_dialects::beautify::beautify;
 use rusqlite::Connection;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::api_error::ApiError;
@@ -100,6 +103,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/connections/{id}/probe", post(probe_connection))
         .route("/api/connections/{id}/query", get(query_socket))
         .route("/api/settings", get(get_settings).put(put_settings))
+        .route("/api/beautify", post(beautify_sql))
         .merge(explorer::routes())
         .with_state(state)
 }
@@ -161,6 +165,21 @@ async fn query_socket(
         .await?
         .ok_or(ApiError::NotFound)?;
     Ok(upgrade.on_upgrade(move |socket| query_session::run(socket, state, user_id, target)))
+}
+
+/// SQL à enjoliver, ou SQL enjolivé.
+#[derive(Deserialize, Serialize, TS)]
+#[ts(export)]
+struct SqlText {
+    /// Texte SQL, une ou plusieurs requêtes.
+    sql: String,
+}
+
+/// `POST /api/beautify` : enjolive du SQL MySQL / MariaDB (voir `prisme_dialects::beautify`).
+async fn beautify_sql(Json(text): Json<SqlText>) -> Json<SqlText> {
+    Json(SqlText {
+        sql: beautify(&text.sql, Dialect::MySql),
+    })
 }
 
 /// `GET /api/settings` : réglages de l'utilisateur courant.
@@ -327,6 +346,19 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(body["error"].as_str().unwrap().starts_with("name"));
+    }
+
+    #[tokio::test]
+    async fn beautifies_sql() {
+        let (status, body) = send(
+            &test_app(),
+            "POST",
+            "/api/beautify",
+            Some(json!({ "sql": "select a from t" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["sql"], "SELECT a FROM t");
     }
 
     #[tokio::test]

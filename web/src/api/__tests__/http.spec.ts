@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError, request } from '../http'
+import { beautify } from '../beautify'
 import { streamCatalog } from '../explorer'
 import type { CatalogEvent } from '../generated/CatalogEvent'
 
@@ -77,5 +78,13 @@ describe('streamCatalog', () => {
   it('lève une ApiError si le serveur cible est injoignable', async () => {
     mockFetch(504, '{"error":"192.168.0.4:3307 ne répond pas"}')
     await expect(streamCatalog(3, () => {})).rejects.toThrow('192.168.0.4:3307 ne répond pas')
+  })
+})
+
+describe('beautify', () => {
+  it('renvoie le texte enjolivé par le serveur', async () => {
+    const fake = mockFetch(200, '{"sql":"SELECT a FROM t"}')
+    await expect(beautify('select a from t')).resolves.toBe('SELECT a FROM t')
+    expect(fake.mock.calls[0]?.[0]).toBe('/api/beautify')
   })
 })

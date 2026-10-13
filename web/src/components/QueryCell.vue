@@ -4,14 +4,16 @@
   La cellule ouvre une session de requêtes sur la connexion choisie et la
   garde ouverte tant qu'elle est affichée. Ctrl-Entrée ou « Exécuter » lance
   la requête sous le curseur ; Ctrl-Maj-Entrée ou « Tout exécuter » lance
-  toutes les requêtes en parallèle. « Stopper » les arrête toutes. Chaque
-  requête a son onglet de résultat.
+  toutes les requêtes en parallèle. « Stopper » les arrête toutes.
+  « Enjoliver » réécrit le texte en « beau SQL ». Chaque requête a son onglet
+  de résultat.
   La limite de lignes choisie ici devient la limite par défaut de l'utilisateur.
 -->
 <script setup lang="ts">
 import { NAlert, NButton, NSelect, NTabPane, NTabs } from 'naive-ui'
 import { computed, h, onMounted, ref, useTemplateRef, watch } from 'vue'
 
+import { beautify } from '@/api/beautify'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import { type QueryTab, useQuerySession } from '@/api/querySession'
 import { useSettingsStore } from '@/stores/settings'
@@ -115,6 +117,17 @@ function run(cursor?: number): void {
 }
 
 /**
+ * Enjolive le texte de l'éditeur (mots-clefs en capitales...). Ctrl-Z annule.
+ */
+async function prettify(): Promise<void> {
+  try {
+    sql.value = await beautify(sql.value)
+  } catch (failure) {
+    state.error = failure instanceof Error ? failure.message : String(failure)
+  }
+}
+
+/**
  * Exécute toutes les requêtes de l'éditeur, en parallèle.
  */
 function runAll(): void {
@@ -191,6 +204,14 @@ defineExpose({ run })
         @click="session.cancel()"
       >
         Stopper
+      </n-button>
+      <n-button
+        size="small"
+        :disabled="sql.trim() === ''"
+        title="Réécrit les requêtes en « beau SQL » : mots-clefs en capitales (Ctrl-Z annule)"
+        @click="prettify"
+      >
+        Enjoliver
       </n-button>
       <n-select
         :value="settings.settings?.row_limit"

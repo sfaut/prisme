@@ -157,7 +157,7 @@ fn lock_clause_start(tokens: &[TokenWithSpan]) -> Option<usize> {
 
 /// Convertit une position du tokenizer (ligne et colonne en caractères, à
 /// partir de 1) en position en octets dans `sql`.
-fn byte_offset(sql: &str, location: Location) -> Option<usize> {
+pub(crate) fn byte_offset(sql: &str, location: Location) -> Option<usize> {
     let line_index = usize::try_from(location.line).ok()?.checked_sub(1)?;
     let column_index = usize::try_from(location.column).ok()?.checked_sub(1)?;
 
