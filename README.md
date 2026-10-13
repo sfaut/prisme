@@ -62,7 +62,7 @@ Puis ouvrir <http://localhost:5173>.
 | Filtrer | champ « Filtrer », sur toutes les colonnes ou sur celle choisie à côté |
 | Déplacer une colonne | glisser son nom (un repère vert montre où elle sera insérée) ; l'ordre du `SELECT` revient à la prochaine exécution |
 | Élargir / rétrécir une colonne | glisser le bord droit de son en-tête ; double clic sur ce bord pour l'ajuster à sa valeur la plus longue (720 pixels au plus), un second double clic pour revenir à la largeur estimée. Les largeurs choisies reviennent quand la même requête est relancée. Un texte trop long est tronqué (…), entier au survol |
-| Sélectionner | clic sur une cellule, un numéro de ligne ou un nom de colonne ; glisser pour une plage |
+| Sélectionner | clic sur une cellule, un numéro de ligne ou un nom de colonne ; glisser pour une plage, ou sur les numéros de ligne pour un groupe de lignes ; clic sur le coin supérieur gauche pour tout sélectionner |
 | Étendre / ajouter | Maj-clic / Ctrl-clic |
 | Tout sélectionner, vider | Ctrl-A, Échap |
 | Copier | Ctrl-C, avec les noms des colonnes en première ligne (texte tabulé, collable dans un tableur ; NULL copié vide) |
