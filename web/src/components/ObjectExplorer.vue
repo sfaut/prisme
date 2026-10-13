@@ -66,20 +66,22 @@ const catalog = useCatalogStore()
 const connections = useConnectionsStore()
 
 /**
- * Arbre compact : lignes basses, peu d'espace autour du texte, libellés
+ * Arbre compact : lignes basses, toutes de la même hauteur (`h-6`, celle
+ * du bouton « ⋮ » et de sa marge, qu'il y ait un menu ou non), libellés
  * alignés à gauche (chaque ligne est un bouton, centré par défaut). `group`
  * permet d'afficher le bouton « ⋮ » au survol de la ligne.
  */
 const TREE_UI = {
-  link: 'group px-1 py-0.5 gap-1 text-xs text-start',
+  link: 'group h-6 px-1 gap-1 text-xs text-start',
   linkLabel: 'min-w-0 flex-1 truncate text-trim',
   linkTrailing: 'gap-0',
 }
 
 /**
- * Hauteur estimée d'une ligne, en pixels, pour le défilement virtuel.
+ * Hauteur d'une ligne, en pixels, pour le défilement virtuel : celle de
+ * `h-6` dans `TREE_UI`.
  */
-const ROW_HEIGHT = 22
+const ROW_HEIGHT = 24
 
 /**
  * Connexions dont le catalogue est en cours de lecture.
