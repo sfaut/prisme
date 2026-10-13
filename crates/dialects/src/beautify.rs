@@ -6,7 +6,11 @@
 //!    en capitales, plus quelques mots-clefs sans ambiguïté (`EXTRA_KEYWORDS`).
 //!    Un mot réservé ne peut jamais servir d'identifiant sans accents graves :
 //!    les noms de tables et de colonnes (`name`, `status`, `date`...) restent
-//!    donc tels quels, même quand ils ressemblent à un mot-clef.
+//!    donc tels quels, même quand ils ressemblent à un mot-clef. Les unités
+//!    de temps (`second`, `day`...) ne sont pas réservées : elles passent en
+//!    capitales seulement là où elles ne peuvent être qu'une unité, après
+//!    `INTERVAL <valeur>` et en premier argument d'`EXTRACT`,
+//!    `TIMESTAMPADD` et `TIMESTAMPDIFF`.
 //!
 //! Tout le reste du texte est conservé à l'identique : espaces, retours à la
 //! ligne, commentaires, chaînes, identifiants entre accents graves. Le texte
@@ -298,6 +302,23 @@ const EXTRA_KEYWORDS: &[&str] = &[
     "VIEW",
 ];
 
+/// Unités de temps de MySQL, en capitales dans les positions où elles ne
+/// peuvent être qu'une unité (les unités composées, `DAY_HOUR`..., sont réservées).
+const TIME_UNITS: &[&str] = &[
+    "MICROSECOND",
+    "SECOND",
+    "MINUTE",
+    "HOUR",
+    "DAY",
+    "WEEK",
+    "MONTH",
+    "QUARTER",
+    "YEAR",
+];
+
+/// Fonctions dont le premier argument est une unité de temps.
+const UNIT_FUNCTIONS: &[&str] = &["EXTRACT", "TIMESTAMPADD", "TIMESTAMPDIFF"];
+
 /// Enjolive `sql` : applique les règles de l'enjoliveur, sans rien changer d'autre.
 ///
 /// Un texte que le découpeur en jetons ne comprend pas (chaîne non fermée...)
@@ -310,11 +331,39 @@ pub fn beautify(sql: &str, dialect: Dialect) -> String {
 
     let mut result = String::with_capacity(sql.len());
     let mut copied = 0;
+    // Une unité de temps est attendue : après INTERVAL, ou en premier argument d'EXTRACT...
+    let mut unit_expected = false;
+    // Dernier mot lu, pour reconnaître EXTRACT( et ses semblables.
+    let mut previous_word = String::new();
     for token in tokens {
-        let Token::Word(word) = &token.token else {
-            continue;
+        let word = match &token.token {
+            Token::Word(word) if word.quote_style.is_none() => word,
+            Token::LParen => {
+                unit_expected |= UNIT_FUNCTIONS.contains(&previous_word.as_str());
+                previous_word.clear();
+                continue;
+            }
+            Token::SemiColon => {
+                unit_expected = false;
+                previous_word.clear();
+                continue;
+            }
+            Token::Whitespace(_) => continue,
+            _ => {
+                previous_word.clear();
+                continue;
+            }
         };
-        if word.quote_style.is_some() || !is_keyword(&word.value) {
+        let upper = word.value.to_ascii_uppercase();
+        let is_unit = unit_expected && TIME_UNITS.contains(&upper.as_str());
+        if is_unit {
+            unit_expected = false;
+        }
+        if upper == "INTERVAL" {
+            unit_expected = true;
+        }
+        previous_word = upper;
+        if !is_unit && !is_keyword(&word.value) {
             continue;
         }
         let (Some(start), Some(end)) = (
@@ -378,6 +427,24 @@ mod tests {
             pretty("select count(*), date, user from log"),
             "SELECT count(*), date, user FROM log"
         );
+    }
+
+    #[test]
+    fn uppercases_time_units_where_they_can_only_be_units() {
+        assert_eq!(
+            pretty(
+                "select all * from video where created_at >= current_date - interval 120 second order by id desc;"
+            ),
+            "SELECT ALL * FROM video WHERE created_at >= CURRENT_DATE - INTERVAL 120 SECOND ORDER BY id DESC;"
+        );
+        assert_eq!(
+            pretty(
+                "select extract(year from d), timestampdiff(day, a, b), date_add(d, interval (n + 1) month)"
+            ),
+            "SELECT extract(YEAR FROM d), timestampdiff(DAY, a, b), date_add(d, INTERVAL (n + 1) MONTH)"
+        );
+        // Ailleurs, ces mots peuvent être des noms de colonnes.
+        assert_eq!(pretty("select day, year from t"), "SELECT day, year FROM t");
     }
 
     #[test]
