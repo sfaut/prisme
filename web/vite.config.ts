@@ -37,6 +37,31 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  build: {
+    rolldownOptions: {
+      output: {
+        // Bibliothèques mises à part, un fichier par famille : chacun reste
+        // sous les 500 ko, le code de Prisme, qui change à chaque version,
+        // reste petit, et le navigateur garde en cache les bibliothèques qui
+        // n'ont pas changé. Un groupe emporte aussi les dépendances de ses
+        // modules : la priorité la plus haute se sert en premier (Vue avant
+        // Nuxt UI, qui en dépend). « vendor » recueille le reste, s'il en reste.
+        codeSplitting: {
+          groups: [
+            { name: 'vue', test: /node_modules[\\/](@vue|vue|pinia)[\\/]/, priority: 40 },
+            {
+              name: 'codemirror',
+              test: /node_modules[\\/](@codemirror|@lezer|codemirror)[\\/]/,
+              priority: 30,
+            },
+            { name: 'reka-ui', test: /node_modules[\\/](reka-ui|@floating-ui)[\\/]/, priority: 25 },
+            { name: 'nuxt-ui', test: /node_modules[\\/]@nuxt[\\/]/, priority: 20 },
+            { name: 'vendor', test: /node_modules[\\/]/, priority: 10 },
+          ],
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': { target: PRISME_SERVER, ws: true },
