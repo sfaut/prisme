@@ -17,6 +17,8 @@
 //!   fermante sur sa propre ligne ;
 //! - un espace autour des opérateurs binaires (`=`, `<`, `+`, `-`...), aucun
 //!   après un opérateur unaire (`-1`) ; un espace après une virgule ;
+//! - `ALL` suit chaque `SELECT` qui n'a ni `DISTINCT`, ni `DISTINCTROW`, ni
+//!   déjà `ALL` (sauf dans `GRANT` et `REVOKE`, où `SELECT` est un droit) ;
 //! - deux requêtes sont séparées par une ligne vide.
 //!
 //! Le texte de chaque jeton est repris tel quel (chaînes, commentaires,
@@ -102,6 +104,8 @@ enum Injection {
         connective: &'static str,
         indent: usize,
     },
+    /// `ALL` après un `SELECT` sans `DISTINCT` (`SELECT ALL` équivaut à `SELECT`).
+    All,
 }
 
 /// Jeton à placer, avec son texte d'origine.
@@ -322,6 +326,14 @@ impl Printer {
                     indent: query.indent + INDENT,
                 });
             }
+            if word == "SELECT"
+                && !matches!(self.statement_word.as_str(), "GRANT" | "REVOKE")
+                && !next.is_some_and(|next| {
+                    matches!(next.word().as_str(), "ALL" | "DISTINCT" | "DISTINCTROW")
+                })
+            {
+                self.injection = Some(Injection::All);
+            }
             let several_columns = word == "SELECT" && has_several_columns(&items[index + 1..]);
             self.place_keyword_line(&word, previous, next, several_columns);
         }
@@ -390,6 +402,7 @@ impl Printer {
                 self.newline(indent);
                 self.push_spaced(connective);
             }
+            Some(Injection::All) => self.push_spaced("ALL"),
             None => {}
         }
     }
@@ -721,7 +734,7 @@ mod tests {
                    LEFT JOIN tag t ON t.video_id = v.id WHERE v.year BETWEEN 2000 AND 2010 AND v.score>3 OR v.free";
         assert_eq!(
             laid_out(sql),
-            "SELECT v.id\nFROM video v\nJOIN person p ON TRUE\n    AND p.id = v.person_id\n    AND p.active = 1\nLEFT JOIN tag t ON t.video_id = v.id\nWHERE TRUE\n    AND v.year BETWEEN 2000 AND 2010\n    AND v.score > 3\n    OR v.free"
+            "SELECT ALL v.id\nFROM video v\nJOIN person p ON TRUE\n    AND p.id = v.person_id\n    AND p.active = 1\nLEFT JOIN tag t ON t.video_id = v.id\nWHERE TRUE\n    AND v.year BETWEEN 2000 AND 2010\n    AND v.score > 3\n    OR v.free"
         );
     }
 
@@ -729,7 +742,7 @@ mod tests {
     fn keeps_case_conditions_on_their_line() {
         assert_eq!(
             laid_out("SELECT CASE WHEN a AND b THEN 1 ELSE 0 END FROM t WHERE x AND y"),
-            "SELECT CASE WHEN a AND b THEN 1 ELSE 0 END\nFROM t\nWHERE TRUE\n    AND x\n    AND y"
+            "SELECT ALL CASE WHEN a AND b THEN 1 ELSE 0 END\nFROM t\nWHERE TRUE\n    AND x\n    AND y"
         );
     }
 
@@ -737,22 +750,37 @@ mod tests {
     fn prefixes_predicates_with_true_or_false() {
         assert_eq!(
             laid_out("SELECT * FROM t1 INNER JOIN t2 ON p1 AND p2 WHERE p3 OR p4"),
-            "SELECT *\nFROM t1\nINNER JOIN t2 ON TRUE\n    AND p1\n    AND p2\nWHERE FALSE\n    OR p3\n    OR p4"
+            "SELECT ALL *\nFROM t1\nINNER JOIN t2 ON TRUE\n    AND p1\n    AND p2\nWHERE FALSE\n    OR p3\n    OR p4"
         );
         // Un seul prédicat : rien à ajouter.
         assert_eq!(
             laid_out("SELECT * FROM t WHERE a = 1"),
-            "SELECT *\nFROM t\nWHERE a = 1"
+            "SELECT ALL *\nFROM t\nWHERE a = 1"
         );
         // Préfixe déjà présent : il n'est pas doublé.
         assert_eq!(
             laid_out("SELECT * FROM t WHERE FALSE OR a OR b"),
-            "SELECT *\nFROM t\nWHERE FALSE\n    OR a\n    OR b"
+            "SELECT ALL *\nFROM t\nWHERE FALSE\n    OR a\n    OR b"
         );
         // Les liens d'une sous-requête ou d'une fonction ne comptent pas.
         assert_eq!(
             laid_out("SELECT * FROM t WHERE a IN (SELECT x FROM u WHERE y OR z)"),
-            "SELECT *\nFROM t\nWHERE a IN (\n    SELECT x\n    FROM u\n    WHERE FALSE\n        OR y\n        OR z\n)"
+            "SELECT ALL *\nFROM t\nWHERE a IN (\n    SELECT ALL x\n    FROM u\n    WHERE FALSE\n        OR y\n        OR z\n)"
+        );
+    }
+
+    #[test]
+    fn adds_all_after_select_without_distinct() {
+        assert_eq!(laid_out("SELECT a FROM t"), "SELECT ALL a\nFROM t");
+        assert_eq!(
+            laid_out("SELECT DISTINCTROW a FROM t"),
+            "SELECT DISTINCTROW a\nFROM t"
+        );
+        assert_eq!(laid_out("SELECT ALL a FROM t"), "SELECT ALL a\nFROM t");
+        // Dans GRANT et REVOKE, SELECT est un droit : rien à ajouter.
+        assert_eq!(
+            laid_out("GRANT SELECT ON db.* TO u"),
+            "GRANT SELECT ON db.* TO u"
         );
     }
 
@@ -764,14 +792,14 @@ mod tests {
             "GRANT SELECT, INSERT ON db.* TO u"
         );
         // Un * seul ne se colle pas à ce qui le suit.
-        assert_eq!(laid_out("SELECT t.* FROM t"), "SELECT t.*\nFROM t");
+        assert_eq!(laid_out("SELECT t.* FROM t"), "SELECT ALL t.*\nFROM t");
     }
 
     #[test]
     fn indents_subqueries() {
         assert_eq!(
             laid_out("SELECT id FROM video WHERE id IN (SELECT video_id FROM fav WHERE ok = 1)"),
-            "SELECT id\nFROM video\nWHERE id IN (\n    SELECT video_id\n    FROM fav\n    WHERE ok = 1\n)"
+            "SELECT ALL id\nFROM video\nWHERE id IN (\n    SELECT ALL video_id\n    FROM fav\n    WHERE ok = 1\n)"
         );
     }
 
@@ -779,7 +807,7 @@ mod tests {
     fn spaces_binary_operators_only() {
         assert_eq!(
             laid_out("SELECT a-b, -1, a - -1, t.*, x=-1 FROM t WHERE (a+b)*2>=c"),
-            "SELECT\n    a - b,\n    -1,\n    a - -1,\n    t.*,\n    x = -1\nFROM t\nWHERE (a + b) * 2 >= c"
+            "SELECT ALL\n    a - b,\n    -1,\n    a - -1,\n    t.*,\n    x = -1\nFROM t\nWHERE (a + b) * 2 >= c"
         );
     }
 
@@ -789,13 +817,16 @@ mod tests {
             laid_out(
                 "SELECT `a  b`, 'x   y' -- note\nFROM t /* c */ WHERE f (1) = concat('a',  'b')"
             ),
-            "SELECT\n    `a  b`,\n    'x   y' -- note\nFROM t /* c */\nWHERE f (1) = concat('a', 'b')"
+            "SELECT ALL\n    `a  b`,\n    'x   y' -- note\nFROM t /* c */\nWHERE f (1) = concat('a', 'b')"
         );
     }
 
     #[test]
     fn separates_statements_with_a_blank_line() {
-        assert_eq!(laid_out("SELECT 1; select 2;"), "SELECT 1;\n\nselect 2;");
+        assert_eq!(
+            laid_out("SELECT 1; select 2;"),
+            "SELECT ALL 1;\n\nselect ALL 2;"
+        );
     }
 
     #[test]
