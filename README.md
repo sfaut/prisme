@@ -65,7 +65,7 @@ Puis ouvrir <http://localhost:5173>.
 | Sélectionner | clic sur une cellule, un numéro de ligne ou un nom de colonne ; glisser pour une plage |
 | Étendre / ajouter | Maj-clic / Ctrl-clic |
 | Tout sélectionner, vider | Ctrl-A, Échap |
-| Copier | Ctrl-C, ou Ctrl-Maj-C avec les en-têtes (texte tabulé, collable dans un tableur ; NULL copié vide) |
+| Copier | Ctrl-C, avec les noms des colonnes en première ligne (texte tabulé, collable dans un tableur ; NULL copié vide) |
 
 ## Données locales
 

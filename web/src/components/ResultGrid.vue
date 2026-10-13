@@ -6,7 +6,8 @@
   - Sélection : clic sur une cellule, sur un numéro de ligne ou sur un nom de
     colonne ; Maj-clic étend, Ctrl-clic ajoute, glisser étend aussi. Un clic
     sur le coin supérieur gauche sélectionne tout.
-  - Copie : Ctrl-C (Ctrl-Maj-C avec les en-têtes), ou les boutons. Ctrl-A
+  - Copie : Ctrl-C copie la sélection avec les noms des colonnes en première
+    ligne (un réglage du profil pourra les retirer), ou les boutons. Ctrl-A
     sélectionne tout, Échap vide la sélection.
   - Largeur : glisser le bord droit d'un en-tête change la largeur de la
     colonne, un double clic sur ce bord l'ajuste à sa valeur la plus longue
@@ -396,7 +397,9 @@ function onKeydown(event: KeyboardEvent): void {
   const command = event.ctrlKey || event.metaKey
   if (command && event.key.toLowerCase() === 'c') {
     event.preventDefault()
-    void copy(event.shiftKey)
+    // Avec les en-têtes, toujours pour l'instant : un réglage du profil
+    // de l'utilisateur pourra les retirer.
+    void copy(true)
   } else if (command && event.key.toLowerCase() === 'a') {
     event.preventDefault()
     selectEverything()
