@@ -1,13 +1,14 @@
 /**
  * Session de requêtes sur une connexion enregistrée, par WebSocket.
  *
- * Le client envoie le texte complet de l'éditeur, avec la position du curseur
+ * Le client envoie (`run`) le texte complet de l'éditeur, avec la position du curseur
  * pour n'exécuter que la requête qui s'y trouve (Ctrl-Entrée), ou sans curseur
  * pour toutes les exécuter en parallèle (Ctrl-Maj-Entrée). Le serveur annonce
  * les requêtes du lot (`batch`), puis envoie leurs résultats en streaming,
  * chaque message portant le numéro de sa requête : `started` quand elle part
  * (en parallèle, elle peut attendre son tour), `columns`, des lots
- * `rows`, puis `done` (ou `error`). `batch_done` clôt le lot. Le protocole est
+ * `rows`, puis `done` (ou `error`). `batch_done` clôt le lot. `cancel` arrête
+ * toutes les requêtes en cours. Le protocole est
  * décrit dans `crates/server/src/query_session.rs`.
  *
  * `applyMessage` met l'état à jour message par message ; elle ne dépend ni de
@@ -18,7 +19,7 @@
 import { onScopeDispose, reactive, shallowReactive } from 'vue'
 
 import type { LimitReport } from './generated/LimitReport'
-import type { QueryRequest } from './generated/QueryRequest'
+import type { ClientMessage } from './generated/ClientMessage'
 import type { ServerInfo } from './generated/ServerInfo'
 import type { ServerMessage } from './generated/ServerMessage'
 
@@ -416,8 +417,26 @@ export function useQuerySession(connectionId: number) {
       return
     }
     startBatch(state)
-    const request: QueryRequest = { sql, cursor, row_limit: rowLimit }
-    socket.send(JSON.stringify(request))
+    send({ type: 'run', sql, cursor, row_limit: rowLimit })
+  }
+
+  /**
+   * Arrête toutes les requêtes en cours : elles se terminent en erreur
+   * « requête interrompue », et celles qui attendaient leur tour ne partent pas.
+   */
+  function cancel(): void {
+    if (state.status === 'running') {
+      send({ type: 'cancel' })
+    }
+  }
+
+  /**
+   * Envoie un message au serveur.
+   *
+   * @param message Message du client.
+   */
+  function send(message: ClientMessage): void {
+    socket.send(JSON.stringify(message))
   }
 
   /**
@@ -429,5 +448,5 @@ export function useQuerySession(connectionId: number) {
 
   onScopeDispose(close)
 
-  return { state, run, close }
+  return { state, run, cancel, close }
 }

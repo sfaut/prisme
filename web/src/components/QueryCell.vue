@@ -4,7 +4,8 @@
   La cellule ouvre une session de requêtes sur la connexion choisie et la
   garde ouverte tant qu'elle est affichée. Ctrl-Entrée ou « Exécuter » lance
   la requête sous le curseur ; Ctrl-Maj-Entrée ou « Tout exécuter » lance
-  toutes les requêtes en parallèle. Chaque requête a son onglet de résultat.
+  toutes les requêtes en parallèle. « Stopper » les arrête toutes. Chaque
+  requête a son onglet de résultat.
   La limite de lignes choisie ici devient la limite par défaut de l'utilisateur.
 -->
 <script setup lang="ts">
@@ -180,6 +181,16 @@ defineExpose({ run })
         @click="runAll"
       >
         Tout exécuter
+      </n-button>
+      <n-button
+        size="small"
+        type="error"
+        ghost
+        :disabled="state.status !== 'running'"
+        title="Arrête toutes les requêtes et tous les chargements en cours"
+        @click="session.cancel()"
+      >
+        Stopper
       </n-button>
       <n-select
         :value="settings.settings?.row_limit"

@@ -20,7 +20,8 @@
 //!
 //! ```text
 //! serveur → client  {"type": "ready", "server": {"flavor": "mariadb", "version": "11.3.2-MariaDB"}, "database": "xlist"}
-//! client → serveur  {"sql": "SELECT 1; SELECT 2", "cursor": 3, "row_limit": 2000}   cursor et row_limit facultatifs
+//! client → serveur  {"type": "run", "sql": "SELECT 1; SELECT 2", "cursor": 3, "row_limit": 2000}   cursor et row_limit facultatifs
+//! client → serveur  {"type": "cancel"}                                  arrête toutes les requêtes en cours
 //! serveur → client  {"type": "batch", "queries": [{"query": 0, "sql": "SELECT 1", "start": 0, "end": 9}]}
 //! serveur → client  {"type": "started", "query": 0}                  la requête part (en parallèle, elle peut attendre son tour)
 //! serveur → client  {"type": "columns", "query": 0, "columns": ["1"], "sql": "SELECT 1 LIMIT 1001", "limit": "added"}
@@ -29,6 +30,11 @@
 //! serveur → client  {"type": "error", "query": 0, "message": "..."}     à la place de la suite, en cas d'échec
 //! serveur → client  {"type": "batch_done"}                               toutes les requêtes sont terminées
 //! ```
+//!
+//! `cancel` interrompt les requêtes en cours (`KILL QUERY` sur chacune de
+//! leurs connexions) et empêche le départ de celles qui attendent leur tour :
+//! chacune se termine par une erreur « requête interrompue ». La session lit
+//! les messages du client pendant l'exécution, pour recevoir `cancel` à temps.
 //!
 //! Une erreur qui ne concerne aucune requête (message invalide, connexion au
 //! serveur cible impossible) a `"query": null`. `database` est la base en
@@ -40,11 +46,14 @@
 //! d'écriture, les écritures et les requêtes non analysables sont refusées
 //! (`docs/V1.md`, section 2.4).
 
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::future::join_all;
-use futures_util::stream::SplitSink;
+use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use prisme_connectors::mysql::{self, Cell, Connection, Flavor, MysqlTarget, ServerInfo};
 use prisme_dialects::Dialect;
@@ -66,6 +75,20 @@ const MAX_PARALLEL: usize = 8;
 
 /// Nombre de messages en attente d'envoi au-delà duquel la lecture des résultats patiente.
 const OUTBOX_SIZE: usize = 64;
+
+/// Message envoyé par le client.
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ClientMessage {
+    /// Exécuter des requêtes.
+    Run(QueryRequest),
+    /// Arrêter toutes les requêtes en cours.
+    Cancel,
+}
+
+/// Message d'erreur des requêtes arrêtées par l'utilisateur.
+const CANCELLED: &str = "requête interrompue par l'utilisateur";
 
 /// Demande d'exécution envoyée par le client.
 #[derive(Debug, Deserialize, TS)]
@@ -158,6 +181,7 @@ struct SocketClosed;
 ///
 /// Une tâche dédiée vide la file vers le WebSocket. La file est bornée : si
 /// le client lit lentement, la lecture des résultats patiente.
+#[derive(Clone)]
 struct Outbox(mpsc::Sender<ServerMessage>);
 
 impl Outbox {
@@ -169,6 +193,105 @@ impl Outbox {
     /// Met un message d'erreur dans la file.
     async fn error(&self, query: Option<u32>, message: String) -> Result<(), SocketClosed> {
         self.send(ServerMessage::Error { query, message }).await
+    }
+}
+
+/// Arrêt des requêtes en cours, demandé par le client.
+///
+/// Garde la liste des connexions qui exécutent une requête, pour pouvoir les
+/// interrompre (`KILL QUERY`), et un drapeau que les requêtes consultent avant
+/// de partir et pendant la lecture de leurs lignes.
+#[derive(Default)]
+struct Cancellation {
+    /// L'arrêt a-t-il été demandé pour le lot en cours ?
+    cancelled: AtomicBool,
+    /// Identifiants (`Conn::id()`) des connexions qui exécutent une requête.
+    running: Mutex<Vec<u32>>,
+}
+
+impl Cancellation {
+    /// Prépare un nouveau lot : plus aucun arrêt demandé.
+    fn reset(&self) {
+        self.cancelled.store(false, Ordering::SeqCst);
+    }
+
+    /// L'arrêt a-t-il été demandé ?
+    fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::SeqCst)
+    }
+
+    /// Demande l'arrêt et interrompt toutes les requêtes en cours.
+    async fn cancel(&self, target: &MysqlTarget) {
+        self.cancelled.store(true, Ordering::SeqCst);
+        let running = self
+            .running
+            .lock()
+            .map(|ids| ids.clone())
+            .unwrap_or_default();
+        for connection_id in running {
+            if let Err(error) = mysql::kill_query(target, connection_id).await {
+                tracing::warn!("interruption de la requête impossible : {error}");
+            }
+        }
+    }
+
+    /// Note qu'une connexion exécute une requête, jusqu'à la disparition du garde renvoyé.
+    fn track(&self, connection_id: u32) -> RunningGuard<'_> {
+        if let Ok(mut ids) = self.running.lock() {
+            ids.push(connection_id);
+        }
+        RunningGuard {
+            cancellation: self,
+            connection_id,
+        }
+    }
+}
+
+/// Garde d'une requête en cours : à sa disparition, la connexion sort de la liste.
+struct RunningGuard<'a> {
+    cancellation: &'a Cancellation,
+    connection_id: u32,
+}
+
+impl Drop for RunningGuard<'_> {
+    /// Retire la connexion de la liste des requêtes en cours.
+    fn drop(&mut self) {
+        if let Ok(mut ids) = self.cancellation.running.lock() {
+            ids.retain(|&id| id != self.connection_id);
+        }
+    }
+}
+
+/// Lit les messages du client pendant toute la session.
+///
+/// Un arrêt (`cancel`) est traité aussitôt, même pendant l'exécution d'un
+/// lot ; une demande d'exécution (`run`) est transmise à la session.
+async fn read_messages(
+    mut incoming: SplitStream<WebSocket>,
+    requests: mpsc::Sender<QueryRequest>,
+    outbox: Outbox,
+    cancellation: Arc<Cancellation>,
+    target: MysqlTarget,
+) {
+    while let Some(Ok(message)) = incoming.next().await {
+        let Message::Text(text) = message else {
+            // Ping, pong et binaire sont ignorés ; Close termine la boucle au tour suivant.
+            continue;
+        };
+        match serde_json::from_str::<ClientMessage>(text.as_str()) {
+            Ok(ClientMessage::Run(request)) => {
+                if requests.send(request).await.is_err() {
+                    break;
+                }
+            }
+            Ok(ClientMessage::Cancel) => cancellation.cancel(&target).await,
+            Err(error) => {
+                let message = format!("message invalide : {error}");
+                if outbox.error(None, message).await.is_err() {
+                    break;
+                }
+            }
+        }
     }
 }
 
@@ -188,26 +311,36 @@ async fn write_messages(
 /// Déroule une session : connexion au serveur cible, puis demandes du client
 /// jusqu'à la fermeture du WebSocket.
 pub async fn run(socket: WebSocket, state: AppState, user_id: i64, target: MysqlTarget) {
-    let (sink, mut incoming) = socket.split();
+    let (sink, incoming) = socket.split();
     let (sender, receiver) = mpsc::channel(OUTBOX_SIZE);
     let writer = tokio::spawn(write_messages(sink, receiver));
     let outbox = Outbox(sender);
+    let cancellation = Arc::new(Cancellation::default());
+    let (request_sender, mut requests) = mpsc::channel(1);
+    let reader = tokio::spawn(read_messages(
+        incoming,
+        request_sender,
+        outbox.clone(),
+        Arc::clone(&cancellation),
+        target.clone(),
+    ));
 
     let session = Session {
         outbox: &outbox,
         target: &target,
         state: &state,
         user_id,
+        cancellation: &cancellation,
     };
     if let Some(mut connection) = session.open().await {
         if let Ok(dialect) = session.ready(&mut connection).await {
-            while let Some(Ok(message)) = incoming.next().await {
-                let Message::Text(text) = message else {
-                    // Ping, pong et binaire sont ignorés ; Close termine la boucle au tour suivant.
-                    continue;
-                };
-                let handled = session.handle(&mut connection, dialect, text.as_str());
-                if handled.await.is_err() {
+            while let Some(request) = requests.recv().await {
+                cancellation.reset();
+                if session
+                    .handle(&mut connection, dialect, request)
+                    .await
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -215,6 +348,7 @@ pub async fn run(socket: WebSocket, state: AppState, user_id: i64, target: Mysql
         let _ = connection.disconnect().await;
     }
 
+    reader.abort();
     drop(outbox);
     let _ = writer.await;
 }
@@ -229,6 +363,8 @@ struct Session<'a> {
     state: &'a AppState,
     /// Utilisateur de la session.
     user_id: i64,
+    /// Arrêt des requêtes en cours, demandé par le client.
+    cancellation: &'a Cancellation,
 }
 
 /// Résumé d'un résultat lu jusqu'au bout.
@@ -287,17 +423,8 @@ impl Session<'_> {
         &self,
         connection: &mut Connection,
         dialect: Dialect,
-        text: &str,
+        request: QueryRequest,
     ) -> Result<(), SocketClosed> {
-        let request: QueryRequest = match serde_json::from_str(text) {
-            Ok(request) => request,
-            Err(error) => {
-                return self
-                    .outbox
-                    .error(None, format!("message invalide : {error}"))
-                    .await;
-            }
-        };
         let max_rows = match row_limit(self.state, self.user_id, request.row_limit).await {
             Ok(max_rows) => max_rows as usize,
             Err(message) => return self.outbox.error(None, message).await,
@@ -397,6 +524,9 @@ impl Session<'_> {
         database: &Option<String>,
     ) -> Result<(), SocketClosed> {
         let _permit = permits.acquire().await.map_err(|_| SocketClosed)?;
+        if self.cancellation.is_cancelled() {
+            return self.outbox.error(Some(query), CANCELLED.to_string()).await;
+        }
         self.outbox.send(ServerMessage::Started { query }).await?;
         self.run_on_new_connection(dialect, query, sql, max_rows, database)
             .await
@@ -477,10 +607,18 @@ impl Session<'_> {
 
         let started = Instant::now();
         let connection_id = connection.id();
+        let _running = self.cancellation.track(connection_id);
+        // Arrêt demandé pendant l'ouverture de la connexion : la requête ne part pas.
+        if self.cancellation.is_cancelled() {
+            self.outbox
+                .error(Some(query), CANCELLED.to_string())
+                .await?;
+            return Ok(None);
+        }
         let mut stream = match mysql::execute(connection, &limited.sql).await {
             Ok(stream) => stream,
             Err(error) => {
-                self.outbox.error(Some(query), error.to_string()).await?;
+                self.outbox.error(Some(query), self.failure(error)).await?;
                 return Ok(None);
             }
         };
@@ -502,10 +640,18 @@ impl Session<'_> {
                 Ok(None) => break,
                 Err(error) => {
                     stream.discard().await;
-                    self.outbox.error(Some(query), error.to_string()).await?;
+                    self.outbox.error(Some(query), self.failure(error)).await?;
                     return Ok(None);
                 }
             };
+            if self.cancellation.is_cancelled() {
+                // Le serveur a déjà reçu KILL QUERY : on cesse de lire.
+                stream.discard().await;
+                self.outbox
+                    .error(Some(query), CANCELLED.to_string())
+                    .await?;
+                return Ok(None);
+            }
             if capped && row_count == max_rows {
                 // La ligne N + 1 : le résultat est tronqué, inutile de lire plus loin.
                 truncated = true;
@@ -540,6 +686,16 @@ impl Session<'_> {
             affected_rows,
             elapsed_ms: started.elapsed().as_millis(),
         }))
+    }
+
+    /// Message d'une requête en échec : « interrompue » si l'arrêt a été
+    /// demandé (l'erreur du serveur est alors celle de `KILL QUERY`).
+    fn failure(&self, error: mysql::MysqlError) -> String {
+        if self.cancellation.is_cancelled() {
+            CANCELLED.to_string()
+        } else {
+            error.to_string()
+        }
     }
 
     /// Annonce la fin d'un résultat.
@@ -678,7 +834,8 @@ mod tests {
 
     /// Envoie une demande, puis lit les messages jusqu'à `batch_done`.
     /// Renvoie le message `batch` (ou une erreur de session) et les résultats, par numéro de requête.
-    async fn run(socket: &mut ClientSocket, request: Value) -> (Value, Vec<Received>) {
+    async fn run(socket: &mut ClientSocket, mut request: Value) -> (Value, Vec<Received>) {
+        request["type"] = json!("run");
         socket
             .send(ClientMessage::Text(request.to_string().into()))
             .await
@@ -837,6 +994,34 @@ mod tests {
         assert_eq!(results[1].columns["columns"], json!(["DATABASE()", "2"]));
         assert_eq!(results[1].end["database"], "mysql");
         assert!(results.iter().all(|result| result.started));
+
+        // Stopper : les requêtes en cours sont interrompues bien avant leur fin.
+        let started = std::time::Instant::now();
+        let request = json!({ "type": "run", "sql": "SELECT SLEEP(30); SELECT SLEEP(30);" });
+        socket
+            .send(ClientMessage::Text(request.to_string().into()))
+            .await
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let cancel = json!({ "type": "cancel" }).to_string();
+        socket
+            .send(ClientMessage::Text(cancel.into()))
+            .await
+            .unwrap();
+        let mut errors = 0;
+        loop {
+            let message = next_json(&mut socket).await;
+            match message["type"].as_str().unwrap() {
+                "error" => {
+                    assert_eq!(message["message"], "requête interrompue par l'utilisateur");
+                    errors += 1;
+                }
+                "batch_done" => break,
+                _ => {}
+            }
+        }
+        assert_eq!(errors, 2);
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
 
         // Rien à exécuter : erreur de session.
         let (error, _) = run(&mut socket, json!({ "sql": " -- rien" })).await;
