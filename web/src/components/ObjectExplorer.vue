@@ -27,20 +27,24 @@
 -->
 <script setup lang="ts">
 import {
+  Cable,
   ChevronDown,
   ChevronRight,
+  Database,
   EllipsisVertical,
   Hash,
   KeyRound,
+  Notebook,
   NotebookPen,
   Pencil,
   PlugZap,
   Plus,
   RefreshCw,
+  Table,
   Trash2,
 } from 'lucide-vue-next'
 import { TreeItem, type TreeItemSelectEvent, TreeRoot, TreeVirtualizer } from 'reka-ui'
-import { computed, onMounted, ref, watch } from 'vue'
+import { type Component, computed, onMounted, ref, watch } from 'vue'
 
 import { probeConnection, serverLabel } from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
@@ -231,6 +235,25 @@ function expand(keys: string[]): void {
 }
 
 /**
+ * Icône d'un nœud, devant son libellé : source, base, table ou vue,
+ * racine des notebooks ; `null` pour les autres nœuds (dossiers, colonnes...).
+ *
+ * @param node Nœud de l'arbre.
+ */
+function nodeIcon(node: ExplorerNode): Component | null {
+  switch (node.role) {
+    case 'source':
+      return Cable
+    case 'database':
+      return Database
+    case 'notebooks':
+      return Notebook
+    default:
+      return node.table === undefined ? null : Table
+  }
+}
+
+/**
  * Choix du menu « ⋮ » d'un nœud, `null` pour un nœud sans menu.
  *
  * @param node Nœud de l'arbre.
@@ -417,6 +440,11 @@ watch(
             class="size-icon-sm shrink-0 text-fg-dimmed"
           />
           <span v-else class="size-icon-sm shrink-0" />
+          <component
+            :is="nodeIcon(item.value as ExplorerNode)"
+            v-if="nodeIcon(item.value as ExplorerNode)"
+            class="size-icon shrink-0 text-fg-muted"
+          />
 
           <!-- Colonne : symboles, nom (gras si indexée), type et nullabilité. -->
           <span v-if="item.value.column" class="tree-label flex min-w-0 flex-1 items-center">
