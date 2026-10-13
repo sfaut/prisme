@@ -2,8 +2,6 @@
   Contenu de l'onglet d'une requête : état, erreur éventuelle et grille de résultats.
 -->
 <script setup lang="ts">
-import { NAlert, NTag } from 'naive-ui'
-
 import type { QueryTab } from '@/api/querySession'
 
 import ResultGrid from './ResultGrid.vue'
@@ -26,14 +24,19 @@ function lines(count: number): string {
 </script>
 
 <template>
-  <div class="query-tab">
-    <n-alert v-if="tab.error" type="error" :show-icon="false">{{ tab.error }}</n-alert>
+  <!--
+    min-w-0 : sans lui, l'onglet (élément flexible d'une rangée) ne rétrécit
+    jamais sous la largeur de son contenu, et une grille large débordait,
+    rognée à droite, au lieu de défiler dans sa propre zone.
+  -->
+  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-1.5">
+    <u-alert v-if="tab.error" color="error" variant="subtle" :title="tab.error" />
     <div v-if="tab.result" class="tab-status">
       <span v-if="tab.done">{{ lines(tab.result.rowCount) }} · {{ tab.result.elapsedMs }} ms</span>
       <span v-else>{{ lines(tab.result.rowCount) }} reçues…</span>
-      <n-tag v-if="tab.result.truncated" type="warning" size="small">
+      <u-badge v-if="tab.result.truncated" color="warning" variant="subtle" size="sm">
         Résultat tronqué à {{ lines(tab.result.rowCount) }}
-      </n-tag>
+      </u-badge>
       <code v-if="tab.result.limit === 'added'" class="tab-sql" :title="tab.result.sql">
         {{ tab.result.sql }}
       </code>
@@ -51,38 +54,25 @@ function lines(count: number): string {
 </template>
 
 <style scoped>
-.query-tab {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 6px;
-  height: 100%;
-  min-height: 0;
-  /* Sans cela, l'onglet (élément flexible d'une rangée) ne rétrécit jamais sous
-     la largeur de son contenu : une grille large débordait, rognée à droite,
-     au lieu de défiler dans sa propre zone. */
-  min-width: 0;
-}
-
 .tab-status {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #666;
-  font-size: 0.8rem;
-}
+  color: var(--ui-text-muted);
+  font-size: var(--text-xs);
 
-/* Le nombre de lignes et la durée gardent leur largeur ; seule la requête,
-   tronquée (…), cède la place. */
-.tab-status > :not(.tab-sql) {
-  flex: none;
-  white-space: nowrap;
+  /* Le nombre de lignes et la durée gardent leur largeur ; seule la requête,
+     tronquée (…), cède la place. */
+  & > :not(.tab-sql) {
+    flex: none;
+    white-space: nowrap;
+  }
 }
 
 .tab-sql {
   min-width: 0;
   overflow: hidden;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

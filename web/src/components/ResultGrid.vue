@@ -27,8 +27,8 @@
   (tri, filtre, sélection, copie) est dans `resultGrid.ts`.
 -->
 <script setup lang="ts">
+import { useToast } from '@nuxt/ui/composables'
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import { NInput, NSelect, useMessage } from 'naive-ui'
 import { computed, reactive, ref, shallowRef, useTemplateRef, watch } from 'vue'
 
 import type { Cell } from '@/api/querySession'
@@ -88,7 +88,7 @@ const props = defineProps<{
  */
 const ROW_HEIGHT = 22
 
-const message = useMessage()
+const toast = useToast()
 const scroller = useTemplateRef<HTMLDivElement>('scroller')
 
 const filter = reactive<GridFilter>({ text: '', column: null })
@@ -417,9 +417,9 @@ async function copy(withHeaders: boolean): Promise<void> {
   )
   try {
     await navigator.clipboard.writeText(text)
-    message.success('Sélection copiée')
+    toast.add({ title: 'Sélection copiée', color: 'success', icon: 'i-lucide-clipboard-check' })
   } catch {
-    message.error('Copie refusée par le navigateur')
+    toast.add({ title: 'Copie refusée par le navigateur', color: 'error' })
   }
 }
 
@@ -463,17 +463,31 @@ const filterColumn = computed({
 <template>
   <div class="result-grid">
     <div class="grid-toolbar">
-      <n-input
-        v-model:value="filter.text"
-        size="tiny"
-        clearable
+      <u-input
+        v-model="filter.text"
+        size="xs"
+        icon="i-lucide-search"
         placeholder="Filtrer"
+        aria-label="Texte cherché"
         class="grid-filter"
-      />
-      <n-select
-        v-model:value="filterColumn"
-        :options="filterOptions"
-        size="tiny"
+        :ui="{ trailing: 'pe-1' }"
+      >
+        <template v-if="filter.text !== ''" #trailing>
+          <u-button
+            color="neutral"
+            variant="link"
+            size="xs"
+            icon="i-lucide-x"
+            aria-label="Vider le filtre"
+            @click="filter.text = ''"
+          />
+        </template>
+      </u-input>
+      <u-select
+        v-model="filterColumn"
+        :items="filterOptions"
+        size="xs"
+        aria-label="Colonne filtrée"
         class="grid-filter-column"
       />
       <span class="grid-count">{{ view.length }} / {{ rowCount }} lignes</span>
@@ -573,28 +587,28 @@ const filterColumn = computed({
 }
 
 .grid-filter {
-  max-width: 240px;
+  max-inline-size: 240px;
 }
 
 .grid-filter-column {
-  max-width: 200px;
+  max-inline-size: 200px;
 }
 
 .grid-count {
-  margin-right: auto;
-  color: #666;
-  font-size: 0.8rem;
+  margin-inline-end: auto;
+  color: var(--ui-text-muted);
+  font-size: var(--text-xs);
 }
 
 .grid-scroller {
   position: relative;
   flex: 1;
-  min-height: 120px;
+  min-block-size: 120px;
   /* Garde-fou : une zone de défilement plus haute que la fenêtre dessinerait
      toutes les lignes et figerait l'interface. */
-  max-height: 100vh;
+  max-block-size: 100vh;
   overflow: auto;
-  border: 1px solid #ddd;
+  border: 1px solid var(--ui-border);
   font-size: 12px;
   outline: none;
   user-select: none;
@@ -602,41 +616,51 @@ const filterColumn = computed({
 
 .grid-row {
   display: grid;
-  height: 22px;
-  line-height: 22px;
+  block-size: 22px;
+}
+
+/*
+ * Cellules, en-têtes et numéros de ligne : le texte est centré sur ses
+ * capitales (`text-box`) au milieu de la ligne (`align-content` sur un bloc).
+ */
+.grid-cell,
+.grid-row-header,
+.grid-column-name {
+  align-content: center;
+  text-box: trim-both cap alphabetic;
 }
 
 .grid-header {
   position: sticky;
-  top: 0;
+  inset-block-start: 0;
   z-index: 1;
-  width: max-content;
-  min-width: 100%;
-  background: #f4f4f5;
+  inline-size: max-content;
+  min-inline-size: 100%;
+  background: var(--ui-bg-elevated);
   font-weight: 600;
 }
 
 .grid-body {
   position: relative;
-}
 
-.grid-body .grid-row {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: max-content;
-  min-width: 100%;
+  & .grid-row {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    inline-size: max-content;
+    min-inline-size: 100%;
+  }
 }
 
 .grid-corner,
 .grid-row-header {
-  background: #f4f4f5;
-  color: #888;
-  text-align: right;
+  background: var(--ui-bg-elevated);
+  color: var(--ui-text-dimmed);
+  text-align: end;
 }
 
 .grid-row-header {
-  padding: 0 6px;
+  padding-inline: 6px;
   cursor: e-resize;
 }
 
@@ -647,37 +671,41 @@ const filterColumn = computed({
 .grid-column-header {
   position: relative;
   display: flex;
-  align-items: center;
-  min-width: 0;
-  border-left: 1px solid #ddd;
+  min-inline-size: 0;
+  border-inline-start: 1px solid var(--ui-border);
+
+  /* Seule la dernière colonne porte une bordure droite : les autres sont
+     fermées par la bordure gauche de leur voisine. */
+  &:last-child {
+    border-inline-end: 1px solid var(--ui-border);
+  }
+
+  &.drop-before {
+    box-shadow: inset 2px 0 0 var(--ui-primary);
+  }
+
+  &.drop-after {
+    box-shadow: inset -2px 0 0 var(--ui-primary);
+  }
 }
 
 .grid-resizer {
   position: absolute;
-  top: 0;
-  right: -3px;
-  bottom: 0;
+  inset-block: 0;
+  inset-inline-end: -3px;
   z-index: 1;
-  width: 6px;
+  inline-size: 6px;
   cursor: col-resize;
   touch-action: none;
-}
 
-.grid-resizer:hover {
-  background: rgb(24 160 88 / 30%);
-}
-
-.grid-column-header.drop-before {
-  box-shadow: inset 2px 0 0 #18a058;
-}
-
-.grid-column-header.drop-after {
-  box-shadow: inset -2px 0 0 #18a058;
+  &:hover {
+    background: color-mix(in oklab, var(--ui-primary) 30%, transparent);
+  }
 }
 
 .grid-column-name {
   flex: 1;
-  padding: 0 4px;
+  padding-inline: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -686,44 +714,38 @@ const filterColumn = computed({
 
 .grid-sort {
   flex: none;
-  padding: 0 4px;
+  padding-inline: 4px;
   border: none;
   background: none;
-  color: #888;
+  color: var(--ui-text-dimmed);
   font-size: 10px;
   cursor: pointer;
 }
 
 .grid-cell {
-  padding: 0 4px;
+  padding-inline: 4px;
   overflow: hidden;
-  border-bottom: 1px solid #eee;
-  border-left: 1px solid #eee;
+  border-block-end: 1px solid var(--ui-border-muted);
+  border-inline-start: 1px solid var(--ui-border-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: cell;
-}
 
-/* Seule la dernière colonne porte une bordure droite : les autres sont
-   fermées par la bordure gauche de leur voisine. */
-.grid-column-header:last-child {
-  border-right: 1px solid #ddd;
-}
+  &:last-child {
+    border-inline-end: 1px solid var(--ui-border-muted);
+  }
 
-.grid-cell:last-child {
-  border-right: 1px solid #eee;
-}
+  &.right {
+    text-align: end;
+  }
 
-.grid-cell.right {
-  text-align: right;
-}
-
-.grid-cell.null {
-  color: #aaa;
-  font-style: italic;
+  &.null {
+    color: var(--ui-text-dimmed);
+    font-style: italic;
+  }
 }
 
 .selected {
-  background: #dbeafe;
+  background: color-mix(in oklab, var(--ui-primary) 18%, transparent);
 }
 </style>

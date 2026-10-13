@@ -1,0 +1,38 @@
+/*
+  Feuille de style de l'application : Tailwind CSS, puis les styles et
+  jetons de thème de Nuxt UI (couleurs, clair / sombre), et les couleurs
+  de la coloration syntaxique de l'éditeur SQL (`editorTheme.ts`).
+*/
+@import 'tailwindcss';
+@import '@nuxt/ui';
+
+/*
+  Texte centré sur ses capitales : `text-box` retire l'interligne au-dessus
+  des capitales et sous la ligne de base, si bien que le texte d'un bouton,
+  d'un badge ou d'une ligne d'arbre tombe au milieu de sa boîte, à hauteur
+  de l'icône voisine. Le retrait vertical rend la place des accents et des
+  jambages (É, g, p), qu'un texte tronqué (overflow: hidden) couperait
+  sinon. Un navigateur sans `text-box` garde l'interligne habituel.
+*/
+@utility text-trim {
+  text-box: trim-both cap alphabetic;
+  padding-block: 0.25em;
+}
+
+:root {
+  --sql-keyword: #7c3aed;
+  --sql-type: #0e7490;
+  --sql-string: #b45309;
+  --sql-number: #15803d;
+  --sql-variable: #be185d;
+  --sql-comment: #71717a;
+}
+
+.dark {
+  --sql-keyword: #c4b5fd;
+  --sql-type: #67e8f9;
+  --sql-string: #fcd34d;
+  --sql-number: #86efac;
+  --sql-variable: #f9a8d4;
+  --sql-comment: #a1a1aa;
+}

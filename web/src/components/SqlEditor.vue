@@ -2,7 +2,8 @@
   Éditeur SQL, basé sur CodeMirror 6.
 
   Coloration selon le dialecte du serveur (MySQL ou MariaDB), numéros de
-  ligne, historique d'annulation, complétion des mots-clefs, des bases, des
+  ligne, thème clair ou sombre comme l'interface (`editorTheme.ts`),
+  historique d'annulation, complétion des mots-clefs, des bases, des
   tables et des colonnes (espace de noms construit à partir du catalogue,
   voir `sqlCompletion.ts`). La requête que Ctrl-Entrée exécuterait est
   surlignée (`currentStatement.ts`) et les erreurs de syntaxe sont soulignées,
@@ -23,6 +24,7 @@ import { analyzeSql } from '@/api/analyze'
 import type { Flavor } from '@/api/generated/Flavor'
 
 import { currentStatement, setStatements } from './currentStatement'
+import { editorTheme } from './editorTheme'
 
 const props = defineProps<{
   /**
@@ -146,6 +148,7 @@ onMounted(() => {
         },
       ]),
       basicSetup,
+      editorTheme(),
       language.of(currentLanguage()),
       currentStatement(),
       EditorView.updateListener.of((update) => {
@@ -196,8 +199,8 @@ defineExpose({ cursor })
 
 <style scoped>
 .sql-editor {
-  border: 1px solid var(--border-color, #ccc);
-  border-radius: 4px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius);
   overflow: hidden;
 }
 

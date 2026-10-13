@@ -1,6 +1,8 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 
+import ui from '@nuxt/ui/vue-plugin'
 import { mount } from '@vue/test-utils'
 
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
@@ -47,6 +49,14 @@ function giveLayout(): void {
       disconnect() {}
     },
   )
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
     addEventListener() {},
@@ -73,6 +83,47 @@ function connection(id: number, name: string): ConnectionSummary {
   }
 }
 
+/**
+ * Monte l'explorateur avec le plugin de Nuxt UI.
+ *
+ * @param props Propriétés de l'explorateur.
+ */
+function mountExplorer(props: { selectedId: number | null; currentDatabase: string | null }) {
+  return mount(ObjectExplorer, { props, attachTo: document.body, global: { plugins: [ui] } })
+}
+
+/**
+ * Libellés des lignes affichées.
+ *
+ * @param wrapper Explorateur monté.
+ */
+function labels(wrapper: ReturnType<typeof mountExplorer>): string[] {
+  return wrapper.findAll('[data-slot="linkLabel"]').map((node) => node.text())
+}
+
+/**
+ * Ligne de l'arbre dont le libellé est donné.
+ *
+ * @param wrapper Explorateur monté.
+ * @param label Libellé cherché.
+ */
+function row(wrapper: ReturnType<typeof mountExplorer>, label: string) {
+  return wrapper
+    .findAll('[data-slot="link"]')
+    .find((item) => item.find('[data-slot="linkLabel"]').text() === label)
+}
+
+/**
+ * Clique sur un élément. `detail` vaut 2 pour le second clic d'un double clic.
+ *
+ * @param element Élément cliqué.
+ * @param detail Rang du clic dans la série.
+ */
+async function click(element: { element: Element } | undefined, detail: number): Promise<void> {
+  element?.element.dispatchEvent(new MouseEvent('click', { bubbles: true, detail }))
+  await nextTick()
+}
+
 beforeEach(() => {
   setActivePinia(createPinia())
   giveLayout()
@@ -86,13 +137,9 @@ afterEach(() => {
 describe('ObjectExplorer', () => {
   it('range les sources sous une racine et ouvre celle de la connexion choisie', async () => {
     savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
-    const wrapper = mount(ObjectExplorer, {
-      props: { selectedId: 1, currentDatabase: null },
-      attachTo: document.body,
-    })
-    const texts = () => wrapper.findAll('.n-tree-node-content__text').map((node) => node.text())
+    const wrapper = mountExplorer({ selectedId: 1, currentDatabase: null })
     await vi.waitFor(() =>
-      expect(texts()).toEqual([
+      expect(labels(wrapper)).toEqual([
         'Sources de données',
         'Origen 2',
         'a',
@@ -107,55 +154,42 @@ describe('ObjectExplorer', () => {
 
   it('propose un menu sur la racine et un autre sur chaque source', async () => {
     savedConnections = [connection(1, 'Origen 2')]
-    const wrapper = mount(ObjectExplorer, {
-      props: { selectedId: null, currentDatabase: null },
-      attachTo: document.body,
-    })
+    const wrapper = mountExplorer({ selectedId: null, currentDatabase: null })
     await vi.waitFor(() => expect(wrapper.findAll('.node-menu')).toHaveLength(3))
     const [root, source] = wrapper.findAll('.node-menu')
-    await root?.trigger('click')
-    await vi.waitFor(() => expect(document.body.textContent).toContain('Ajouter une connexion'))
-    expect(document.body.textContent).toContain('Tout rafraîchir')
-    await source?.trigger('click')
     const options = () =>
-      [...document.querySelectorAll('.n-dropdown-option')].map((item) => item.textContent)
+      [...document.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim())
+    await click(root, 1)
+    await vi.waitFor(() => expect(options()).toEqual(['Ajouter une connexion', 'Tout rafraîchir']))
+    await click(root, 1)
+    await click(source, 1)
     await vi.waitFor(() =>
-      // Le menu de la racine reste dans la page, en tête.
-      expect(options().slice(-4)).toEqual(['Modifier', 'Rafraîchir', 'Tester', 'Supprimer']),
+      expect(options()).toEqual(['Modifier', 'Rafraîchir', 'Tester', 'Supprimer']),
     )
     wrapper.unmount()
   })
 
   it('ouvre une source d’un clic sur sa ligne et la choisit d’un double clic', async () => {
     savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
-    const wrapper = mount(ObjectExplorer, {
-      props: { selectedId: 1, currentDatabase: null },
-      attachTo: document.body,
-    })
-    const node = (label: string) =>
-      wrapper
-        .findAll('.n-tree-node')
-        .find((item) => item.find('.n-tree-node-content__text').text() === label)
-    const texts = () => wrapper.findAll('.n-tree-node-content__text').map((item) => item.text())
-    await vi.waitFor(() => expect(node('Autre')).toBeDefined())
-    await node('Autre')?.trigger('click')
+    const wrapper = mountExplorer({ selectedId: 1, currentDatabase: null })
+    await vi.waitFor(() => expect(row(wrapper, 'Autre')).toBeDefined())
+    await click(row(wrapper, 'Autre'), 1)
     expect(wrapper.emitted('select')).toBeUndefined()
     // Ouverte : sa première base suit la source.
+    const texts = () => labels(wrapper)
     await vi.waitFor(() => expect(texts()[texts().indexOf('Autre') + 1]).toBe('a'))
-    await node('Autre')?.trigger('dblclick')
+    // Second clic d'un double clic : la source est choisie.
+    await click(row(wrapper, 'Autre'), 2)
     expect(wrapper.emitted('select')).toEqual([[2]])
     // Double clic sur une base : elle devient la base en cours de sa source.
-    await node('a')?.trigger('dblclick')
+    await click(row(wrapper, 'a'), 2)
     expect(wrapper.emitted('use-database')).toEqual([[1, 'a']])
     wrapper.unmount()
   })
 
   it('suit la base en cours, même en revenant sur une base déjà choisie', async () => {
     savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
-    const wrapper = mount(ObjectExplorer, {
-      props: { selectedId: 1, currentDatabase: 'a' },
-      attachTo: document.body,
-    })
+    const wrapper = mountExplorer({ selectedId: 1, currentDatabase: 'a' })
     const bold = () => wrapper.findAll('.current-database').map((node) => node.text())
     await vi.waitFor(() => expect(bold()).toEqual(['a']))
 

@@ -1,28 +1,18 @@
 <!--
   Disposition de l'écran : à gauche, l'explorateur des sources de données,
-  dans un panneau dont on règle la largeur en faisant glisser son bord droit ;
-  à droite, la cellule SQL et ses résultats.
+  dans un panneau dont on règle la largeur en faisant glisser son bord droit,
+  avec le choix du thème (clair, sombre ou celui du système) ; à droite, la
+  cellule SQL et ses résultats. Disposition en classes Tailwind.
 
-  Les fournisseurs de Naive UI (configuration, messages) enveloppent toute
-  l'application : textes des composants en français, texte réduit des
-  fenêtres, menus et bulles (`theme.ts`), messages éphémères (`useMessage`)
-  disponibles partout.
+  `UApp` (Nuxt UI) enveloppe toute l'application : textes des composants en
+  français, messages éphémères (`useToast`) disponibles partout.
 -->
 <script setup lang="ts">
-import {
-  NConfigProvider,
-  NLayout,
-  NLayoutContent,
-  NLayoutSider,
-  NEmpty,
-  NMessageProvider,
-  dateFrFR,
-  frFR,
-} from 'naive-ui'
 import { nextTick, ref, useTemplateRef, watch } from 'vue'
 
+import { fr } from '@nuxt/ui/locale'
+
 import { useConnectionsStore } from './stores/connections'
-import { POPUP_THEME } from './theme'
 
 import ObjectExplorer from './components/ObjectExplorer.vue'
 import QueryCell from './components/QueryCell.vue'
@@ -96,93 +86,53 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
 </script>
 
 <template>
-  <n-config-provider :locale="frFR" :date-locale="dateFrFR" :theme-overrides="POPUP_THEME">
-    <n-message-provider>
-      <n-layout has-sider position="absolute" class="app">
-        <n-layout-sider
-          bordered
-          :width="siderWidth"
-          class="app-sider-panel"
-          content-class="app-sider"
-        >
-          <h1 class="app-title">Prisme</h1>
-          <object-explorer
-            :selected-id="connections.selectedId"
-            :current-database="currentDatabase"
-            @open-table="openTable"
-            @select="connections.selectedId = $event"
-            @use-database="useDatabase"
-          />
-        </n-layout-sider>
-        <sider-resizer v-model="siderWidth" />
-        <n-layout-content content-class="app-content">
-          <query-cell
-            v-if="connections.selected"
-            ref="cell"
-            :key="`${connections.selected.id}-${connections.versions[connections.selected.id] ?? 0}-${attempt}`"
-            v-model:sql="sql"
-            :connection="connections.selected"
-            @reconnect="attempt++"
-            @database="currentDatabase = $event"
-          />
-          <n-empty
-            v-else
-            description="Double-cliquez sur une source de données pour la choisir, ou ajoutez une connexion par le menu « ⋮ »"
-            class="app-empty"
-          />
-        </n-layout-content>
-      </n-layout>
-    </n-message-provider>
-  </n-config-provider>
+  <u-app :locale="fr">
+    <div class="relative flex h-full bg-default text-default">
+      <aside
+        class="flex shrink-0 flex-col gap-3 border-e border-default p-3"
+        :style="{ width: `${siderWidth}px` }"
+      >
+        <header class="flex items-center justify-between gap-2">
+          <h1 class="text-lg font-semibold">Prisme</h1>
+          <u-color-mode-select size="xs" class="w-28" />
+        </header>
+        <object-explorer
+          :selected-id="connections.selectedId"
+          :current-database="currentDatabase"
+          @open-table="openTable"
+          @select="connections.selectedId = $event"
+          @use-database="useDatabase"
+        />
+      </aside>
+      <sider-resizer v-model="siderWidth" />
+      <main class="flex h-full min-w-0 flex-1 flex-col gap-3 p-3">
+        <query-cell
+          v-if="connections.selected"
+          ref="cell"
+          :key="`${connections.selected.id}-${connections.versions[connections.selected.id] ?? 0}-${attempt}`"
+          v-model:sql="sql"
+          :connection="connections.selected"
+          @reconnect="attempt++"
+          @database="currentDatabase = $event"
+        />
+        <u-empty
+          v-else
+          icon="i-lucide-database"
+          variant="naked"
+          size="sm"
+          description="Double-cliquez sur une source de données pour la choisir, ou ajoutez une connexion par le menu « ⋮ »"
+          class="m-auto"
+        />
+      </main>
+    </div>
+  </u-app>
 </template>
 
 <style>
-* {
-  box-sizing: border-box;
-}
-
 html,
 body,
 #app {
   height: 100%;
   margin: 0;
-}
-
-.app {
-  height: 100%;
-}
-
-/* Naive UI anime la largeur de son panneau latéral (min-width et max-width,
-   0,3 s), alors que son contenu prend aussitôt la nouvelle largeur et se cale
-   à droite : pendant un redimensionnement à la souris, le contenu débordait
-   à gauche et sur la partie droite, le temps de l'animation. Le panneau suit
-   donc la poignée sans animation. */
-.app-sider-panel {
-  transition: none;
-}
-
-.app-sider {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 12px;
-}
-
-.app-content {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  height: 100%;
-  padding: 12px;
-  box-sizing: border-box;
-}
-
-.app-empty {
-  margin: auto;
-}
-
-.app-title {
-  margin: 0;
-  font-size: 1.25rem;
 }
 </style>

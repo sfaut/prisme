@@ -9,25 +9,17 @@
   Les longueurs maximales reprennent celles du serveur
   (`crates/server/src/connections.rs`). Les autres contrôles sont faits par le
   serveur, dont le message s'affiche dans la fenêtre en cas de refus.
+
+  Composants de Nuxt UI (`UModal`, `UFormField`, `UInput`...), importés
+  automatiquement par son plugin Vite.
 -->
 <script setup lang="ts">
-import {
-  NAlert,
-  NButton,
-  NConfigProvider,
-  NForm,
-  NFormItem,
-  NInput,
-  NInputNumber,
-  NModal,
-} from 'naive-ui'
 import { computed, reactive, ref, watch } from 'vue'
 
 import { probeSettings, serverLabel } from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { NewConnection } from '@/api/generated/NewConnection'
 import { useConnectionsStore } from '@/stores/connections'
-import { POPUP_CONTENT_THEME } from '@/theme'
 
 /**
  * Fenêtre ouverte ou fermée.
@@ -69,6 +61,11 @@ const saving = ref(false)
  * Test de la saisie en cours.
  */
 const probing = ref(false)
+
+/**
+ * Mot de passe affiché en clair ?
+ */
+const showPassword = ref(false)
 
 /**
  * Résultat du dernier test réussi (variante et version du serveur), `null` si aucun.
@@ -152,61 +149,88 @@ async function save(): Promise<void> {
 </script>
 
 <template>
-  <n-modal v-model:show="open" preset="card" :title="title" style="width: 420px">
-    <n-config-provider :theme-overrides="POPUP_CONTENT_THEME">
-      <n-form label-placement="left" label-width="110" @submit.prevent="save">
-        <n-form-item label="Nom">
-          <n-input v-model:value="form.name" :maxlength="100" placeholder="prod, local..." />
-        </n-form-item>
-        <n-form-item label="Hôte">
-          <n-input v-model:value="form.host" :maxlength="253" />
-        </n-form-item>
-        <n-form-item label="Port">
-          <n-input-number v-model:value="form.port" :min="1" :max="65535" :show-button="false" />
-        </n-form-item>
-        <n-form-item label="Compte">
-          <n-input v-model:value="form.username" :maxlength="80" />
-        </n-form-item>
-        <n-form-item label="Mot de passe">
-          <n-input
-            v-model:value="form.password"
-            type="password"
-            show-password-on="click"
-            :input-props="{ autocomplete: 'new-password' }"
-            :placeholder="connection === null ? '' : 'inchangé'"
+  <u-modal v-model:open="open" :title="title" :ui="{ content: 'max-w-md' }">
+    <template #body>
+      <form id="connection-form" class="flex flex-col gap-3" @submit.prevent="save">
+        <u-form-field label="Nom" orientation="horizontal" size="sm">
+          <u-input
+            v-model="form.name"
+            :maxlength="100"
+            placeholder="prod, local..."
+            size="sm"
+            class="w-60"
           />
-        </n-form-item>
-        <n-form-item label="Base">
-          <n-input v-model:value="form.database_name" :maxlength="64" placeholder="facultatif" />
-        </n-form-item>
-        <n-alert v-if="error" type="error" :show-icon="false" class="dialog-error">
-          {{ error }}
-        </n-alert>
-        <n-alert v-if="probed" type="success" :show-icon="false" class="dialog-error">
-          {{ probed }}
-        </n-alert>
-        <div class="dialog-actions">
-          <n-button :loading="probing" @click="probe">Tester</n-button>
-          <n-button type="primary" attr-type="submit" :loading="saving" class="dialog-save">
-            Enregistrer
-          </n-button>
-        </div>
-      </n-form>
-    </n-config-provider>
-  </n-modal>
+        </u-form-field>
+        <u-form-field label="Hôte" orientation="horizontal" size="sm">
+          <u-input v-model="form.host" :maxlength="253" size="sm" class="w-60" />
+        </u-form-field>
+        <u-form-field label="Port" orientation="horizontal" size="sm">
+          <u-input-number
+            v-model="form.port"
+            :min="1"
+            :max="65535"
+            :increment="false"
+            :decrement="false"
+            :format-options="{ useGrouping: false }"
+            size="sm"
+            class="w-60"
+          />
+        </u-form-field>
+        <u-form-field label="Compte" orientation="horizontal" size="sm">
+          <u-input v-model="form.username" :maxlength="80" size="sm" class="w-60" />
+        </u-form-field>
+        <u-form-field label="Mot de passe" orientation="horizontal" size="sm">
+          <u-input
+            v-model="form.password"
+            :type="showPassword ? 'text' : 'password'"
+            autocomplete="new-password"
+            :placeholder="connection === null ? '' : 'inchangé'"
+            size="sm"
+            class="w-60"
+          >
+            <template #trailing>
+              <u-button
+                :icon="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                color="neutral"
+                variant="link"
+                size="xs"
+                :aria-label="showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'"
+                @click="showPassword = !showPassword"
+              />
+            </template>
+          </u-input>
+        </u-form-field>
+        <u-form-field label="Base" orientation="horizontal" size="sm">
+          <u-input
+            v-model="form.database_name"
+            :maxlength="64"
+            placeholder="facultatif"
+            size="sm"
+            class="w-60"
+          />
+        </u-form-field>
+        <u-alert v-if="error" color="error" variant="subtle" :title="error" />
+        <u-alert v-if="probed" color="success" variant="subtle" :title="probed" />
+      </form>
+    </template>
+    <template #footer>
+      <div class="flex w-full gap-2">
+        <u-button
+          color="neutral"
+          variant="outline"
+          label="Tester"
+          :loading="probing"
+          @click="probe"
+        />
+        <u-button
+          type="submit"
+          form="connection-form"
+          label="Enregistrer"
+          :loading="saving"
+          block
+          class="flex-1"
+        />
+      </div>
+    </template>
+  </u-modal>
 </template>
-
-<style scoped>
-.dialog-error {
-  margin-bottom: 12px;
-}
-
-.dialog-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.dialog-save {
-  flex: 1;
-}
-</style>

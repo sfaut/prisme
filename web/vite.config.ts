@@ -2,6 +2,7 @@ import { fileURLToPath, URL } from 'node:url'
 
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import ui from '@nuxt/ui/vite'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
 // Adresse du serveur Prisme (cargo run) vers lequel le serveur de développement
@@ -10,7 +11,27 @@ const PRISME_SERVER = 'http://127.0.0.1:8484'
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [vue(), vueDevTools()],
+  plugins: [
+    vue(),
+    // Nuxt UI sans routeur (une seule page). Les icônes utilisées sont
+    // embarquées dans le bundle (collection @iconify-json/lucide) : aucune
+    // n'est téléchargée à l'exécution. Les fenêtres et les messages
+    // éphémères s'affichent en texte plus petit que le reste de l'interface.
+    // Les libellés sont centrés sur leurs capitales (`text-trim`, main.css).
+    ui({
+      router: false,
+      icon: { clientBundle: { scan: true } },
+      ui: {
+        colors: { primary: 'blue', neutral: 'zinc' },
+        button: { slots: { label: 'text-trim' } },
+        badge: { slots: { label: 'text-trim' } },
+        tabs: { slots: { label: 'text-trim' } },
+        modal: { slots: { title: 'text-sm', description: 'text-xs', body: 'text-xs' } },
+        toast: { slots: { title: 'text-xs', description: 'text-xs' } },
+      },
+    }),
+    vueDevTools(),
+  ],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

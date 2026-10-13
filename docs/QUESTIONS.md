@@ -42,6 +42,7 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 | Frontend sans build (JavaScript + JSDoc + `@ts-check`, Vue en fichier copié) | Écartée | Sébastien tient aux types et à « l'industrie ». Navigateurs : pas de TypeScript natif (TC39 type annotations au stade 1). Sans build, les templates ne sont pas typés et presque aucune bibliothèque d'interface ne convient. |
 | DataFusion, Calcite, Trino comme base du moteur | Reportée | Sébastien veut éviter les dépendances. Leur modèle de plan sert de référence. DataFusion reste une option pour l'exécuteur. |
 | PrimeVue comme bibliothèque de composants | Écartée | Licence commerciale à clef depuis la v5 (juillet 2026), même en version communautaire gratuite. La v4.5.5, dernière sous MIT, est figée. Remplacée par Naive UI (MIT). |
+| Naive UI comme bibliothèque de composants | Écartée | Remplacée par Nuxt UI (MIT, sur Reka UI, avec Tailwind CSS) pour la refonte de l'interface : contrôle du rendu par les classes, thème par jetons, clair / sombre sans réglage par composant. Décision de Sébastien après un essai sur l'explorateur. |
 | `sqlx` pour les accès aux bases | Écartée | Gère mal les résultats dynamiques sans schéma connu, et l'annulation est moins directe. |
 | Tri déterministe ajouté d'office | Écartée | Sébastien sait que sans `ORDER BY` l'ordre n'est pas garanti. |
 | Typage ou schéma déclaré par fichier CSV | Écartée | Compliquerait l'outil. Casts dans la requête. Seule la déclaration de source (chemin, séparateur, encodage, en-tête) est gardée. |
@@ -88,12 +89,11 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 
 27. **Copie avec ou sans en-têtes, réglage du profil.** Ctrl-C copie la sélection de la grille avec les noms des colonnes en première ligne. Décision de Sébastien : ce sera une option du profil de l'utilisateur, avec les en-têtes par défaut. À faire avec les profils (mode serveur, ou réglages de l'utilisateur unique).
 
-28. **Suites de l'éditeur SQL (CodeMirror), à faire.** Déjà en place : complétion des bases, tables et colonnes d'après le catalogue, mise en évidence de la requête sous le curseur, erreurs de syntaxe soulignées. Restent, décidés par Sébastien :
+28. **Suites de l'éditeur SQL (CodeMirror), à faire.** Déjà en place : complétion des bases, tables et colonnes d'après le catalogue, mise en évidence de la requête sous le curseur, erreurs de syntaxe soulignées, thème clair / sombre sur les jetons de l'interface. Restent, décidés par Sébastien :
     - souligner dans l'éditeur les fonctions émulées ou non traduisibles, avec la traduction entre dialectes (règle 2 de `CLAUDE.md`) ;
     - bulles d'information au survol : type et nullabilité d'une colonne, signature d'une fonction ;
     - complétion qui comprend la requête (alias, tables du `FROM`, colonnes de la bonne table), comme source de complétion propre à Prisme ;
-    - coloration et complétion des autres langages (Tutorial D, PRQL, Kusto) ;
-    - thème clair / sombre de l'éditeur, branché sur les jetons de la refonte de l'interface.
+    - coloration et complétion des autres langages (Tutorial D, PRQL, Kusto).
 
 ### Sécurité
 

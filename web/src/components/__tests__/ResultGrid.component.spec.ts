@@ -1,21 +1,22 @@
 import { describe, expect, it } from 'vitest'
 
+import ui from '@nuxt/ui/vue-plugin'
 import { mount } from '@vue/test-utils'
-import { NMessageProvider } from 'naive-ui'
-import { h } from 'vue'
 
 import ResultGrid from '../ResultGrid.vue'
 
 /**
- * Monte la grille dans le fournisseur de messages de Naive UI, dont elle a besoin.
+ * Monte la grille avec Nuxt UI (champs du filtre, messages éphémères).
+ *
+ * @param columns Noms des colonnes.
+ * @param rows Lignes du résultat.
+ * @param sql Texte de la requête.
  */
-function mountGrid(columns: string[], rows: (string | null)[][]) {
+function mountGrid(columns: string[], rows: (string | null)[][], sql = 'SELECT 1') {
   const rightAligned = columns.map(() => false)
-  return mount({
-    render: () =>
-      h(NMessageProvider, () =>
-        h(ResultGrid, { columns, rightAligned, rows, rowCount: rows.length, sql: 'SELECT 1' }),
-      ),
+  return mount(ResultGrid, {
+    props: { columns, rightAligned, rows, rowCount: rows.length, sql },
+    global: { plugins: [ui] },
   })
 }
 
@@ -28,18 +29,7 @@ describe('ResultGrid', () => {
   })
 
   it('ajuste une colonne au contenu, puis lui rend sa largeur estimée', async () => {
-    const wrapper = mount({
-      render: () =>
-        h(NMessageProvider, () =>
-          h(ResultGrid, {
-            columns: ['texte'],
-            rightAligned: [false],
-            rows: [['x'.repeat(100)]],
-            rowCount: 1,
-            sql: 'SELECT texte FROM double_clic',
-          }),
-        ),
-    })
+    const wrapper = mountGrid(['texte'], [['x'.repeat(100)]], 'SELECT texte FROM double_clic')
     const width = () =>
       (wrapper.find('.grid-header').element as HTMLElement).style.gridTemplateColumns.split(' ')[1]
     expect(width()).toBe('360px')
