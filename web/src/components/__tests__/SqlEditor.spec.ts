@@ -6,7 +6,7 @@ import SqlEditor from '../SqlEditor.vue'
 describe('SqlEditor', () => {
   it('affiche le texte lié', () => {
     const wrapper = mount(SqlEditor, {
-      props: { flavor: 'mysql', modelValue: 'SELECT 1' },
+      props: { flavor: 'mysql', schema: {}, defaultSchema: null, modelValue: 'SELECT 1' },
       attachTo: document.body,
     })
     expect(wrapper.find('.cm-content').text()).toContain('SELECT 1')
@@ -15,7 +15,7 @@ describe('SqlEditor', () => {
 
   it('remplace le contenu quand le texte change de l’extérieur', async () => {
     const wrapper = mount(SqlEditor, {
-      props: { flavor: 'mariadb', modelValue: 'SELECT 1' },
+      props: { flavor: 'mariadb', schema: {}, defaultSchema: null, modelValue: 'SELECT 1' },
       attachTo: document.body,
     })
     await wrapper.setProps({ modelValue: 'SHOW TABLES' })

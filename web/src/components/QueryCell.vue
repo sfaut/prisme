@@ -23,6 +23,7 @@ import { useSettingsStore } from '@/stores/settings'
 import ProgressDot from './ProgressDot.vue'
 import QueryTabView from './QueryTabView.vue'
 import SqlEditor from './SqlEditor.vue'
+import { completionSchema } from './sqlCompletion'
 
 const props = defineProps<{
   /**
@@ -162,6 +163,14 @@ function changeDatabaseWhenReady(database: string): void {
 }
 
 /**
+ * Bases, tables et colonnes proposées par la complétion de l'éditeur,
+ * d'après le catalogue de la connexion (chargé par l'explorateur).
+ */
+const completion = computed(() =>
+  completionSchema(catalog.catalogOf(props.connection.id)?.schemas ?? []),
+)
+
+/**
  * Le catalogue de la connexion est-il entièrement chargé ? Sans lui,
  * l'enjoliveur ne connaît pas les fonctions de l'utilisateur et les
  * mettrait en capitales : « Enjoliver » attend donc la fin du chargement.
@@ -226,6 +235,8 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
       ref="editor"
       v-model="sql"
       :flavor="state.server?.flavor ?? 'mysql'"
+      :schema="completion"
+      :default-schema="state.database"
       @run="run"
       @run-all="runAll"
     />

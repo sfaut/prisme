@@ -2,12 +2,14 @@
   Éditeur SQL, basé sur CodeMirror 6.
 
   Coloration selon le dialecte du serveur (MySQL ou MariaDB), numéros de
-  ligne, historique d'annulation. Ctrl-Entrée (Cmd-Entrée sur Mac) émet `run`
+  ligne, historique d'annulation, complétion des mots-clefs, des bases, des
+  tables et des colonnes (espace de noms construit à partir du catalogue,
+  voir `sqlCompletion.ts`). Ctrl-Entrée (Cmd-Entrée sur Mac) émet `run`
   avec la position du curseur ; Ctrl-Maj-Entrée émet `run-all`. Le texte se
   lie avec `v-model`.
 -->
 <script setup lang="ts">
-import { MariaSQL, MySQL, sql } from '@codemirror/lang-sql'
+import { MariaSQL, MySQL, type SQLNamespace, sql } from '@codemirror/lang-sql'
 import { Compartment } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
 import { EditorView, basicSetup } from 'codemirror'
@@ -20,6 +22,14 @@ const props = defineProps<{
    * Dialecte du serveur cible, pour la coloration et les mots-clefs.
    */
   flavor: Flavor
+  /**
+   * Bases, tables et colonnes proposées par la complétion.
+   */
+  schema: SQLNamespace
+  /**
+   * Base en cours : ses tables se complètent sans préfixe. `null` si aucune.
+   */
+  defaultSchema: string | null
 }>()
 
 /**
@@ -41,19 +51,22 @@ const emit = defineEmits<{
 const host = useTemplateRef<HTMLDivElement>('host')
 
 /**
- * Emplacement de la langue dans la configuration, pour la changer avec le dialecte.
+ * Emplacement de la langue dans la configuration, pour la changer avec le
+ * dialecte, le catalogue ou la base en cours.
  */
 const language = new Compartment()
 
 let view: EditorView | null = null
 
 /**
- * Langue CodeMirror du dialecte.
- *
- * @param flavor Variante du serveur.
+ * Langue CodeMirror de l'éditeur : dialecte et complétion, d'après les propriétés.
  */
-function languageOf(flavor: Flavor) {
-  return sql({ dialect: flavor === 'mariadb' ? MariaSQL : MySQL })
+function currentLanguage() {
+  return sql({
+    dialect: props.flavor === 'mariadb' ? MariaSQL : MySQL,
+    schema: props.schema,
+    defaultSchema: props.defaultSchema ?? undefined,
+  })
 }
 
 onMounted(() => {
@@ -79,7 +92,7 @@ onMounted(() => {
         },
       ]),
       basicSetup,
-      language.of(languageOf(props.flavor)),
+      language.of(currentLanguage()),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           text.value = update.state.doc.toString()
@@ -97,8 +110,8 @@ watch(text, (value) => {
 })
 
 watch(
-  () => props.flavor,
-  (flavor) => view?.dispatch({ effects: language.reconfigure(languageOf(flavor)) }),
+  () => [props.flavor, props.schema, props.defaultSchema],
+  () => view?.dispatch({ effects: language.reconfigure(currentLanguage()) }),
 )
 
 onBeforeUnmount(() => view?.destroy())
