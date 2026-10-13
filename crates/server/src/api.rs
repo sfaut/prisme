@@ -16,6 +16,7 @@
 //! | `GET /api/settings`                 | Réglages de l'utilisateur, avec les choix permis.            |
 //! | `PUT /api/settings`                 | Modifie les réglages, renvoie les réglages à jour.           |
 //! | `POST /api/beautify`                | Enjolive du SQL (mots-clefs en capitales...).                |
+//! | `POST /api/analyze`                 | Analyse le texte de l'éditeur (voir `analyze.rs`).           |
 
 use std::sync::{Arc, Mutex};
 
@@ -32,6 +33,7 @@ use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::analyze::{self, Analysis, AnalyzeRequest};
 use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
 use crate::connections::{self, ConnectionSummary, NewConnection, ProbeRequest};
@@ -110,6 +112,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/connections/{id}/query", get(query_socket))
         .route("/api/settings", get(get_settings).put(put_settings))
         .route("/api/beautify", post(beautify_sql))
+        .route("/api/analyze", post(analyze_sql))
         .merge(explorer::routes())
         .with_state(state)
 }
@@ -217,6 +220,11 @@ async fn beautify_sql(Json(request): Json<BeautifyRequest>) -> Json<SqlText> {
     Json(SqlText {
         sql: beautify_with_routines(&request.sql, Dialect::MySql, &request.routines),
     })
+}
+
+/// `POST /api/analyze` : analyse le texte de l'éditeur (voir `analyze.rs`).
+async fn analyze_sql(Json(request): Json<AnalyzeRequest>) -> Json<Analysis> {
+    Json(analyze::analyze(&request))
 }
 
 /// `GET /api/settings` : réglages de l'utilisateur courant.

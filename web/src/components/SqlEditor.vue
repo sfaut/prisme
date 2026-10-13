@@ -4,7 +4,9 @@
   Coloration selon le dialecte du serveur (MySQL ou MariaDB), numéros de
   ligne, historique d'annulation, complétion des mots-clefs, des bases, des
   tables et des colonnes (espace de noms construit à partir du catalogue,
-  voir `sqlCompletion.ts`). Ctrl-Entrée (Cmd-Entrée sur Mac) émet `run`
+  voir `sqlCompletion.ts`). La requête que Ctrl-Entrée exécuterait est
+  surlignée (`currentStatement.ts`) : le texte est analysé par le serveur
+  peu après chaque frappe. Ctrl-Entrée (Cmd-Entrée sur Mac) émet `run`
   avec la position du curseur ; Ctrl-Maj-Entrée émet `run-all`. Le texte se
   lie avec `v-model`.
 -->
@@ -15,7 +17,10 @@ import { keymap } from '@codemirror/view'
 import { EditorView, basicSetup } from 'codemirror'
 import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
 
+import { analyzeSql } from '@/api/analyze'
 import type { Flavor } from '@/api/generated/Flavor'
+
+import { currentStatement, setStatements } from './currentStatement'
 
 const props = defineProps<{
   /**
@@ -59,6 +64,44 @@ const language = new Compartment()
 let view: EditorView | null = null
 
 /**
+ * Délai entre la dernière frappe et l'analyse du texte, en millisecondes.
+ */
+const ANALYSIS_DELAY = 250
+
+/**
+ * Analyse différée en attente, absente si aucune.
+ */
+let analysisTimer: ReturnType<typeof setTimeout> | undefined
+
+/**
+ * Programme l'analyse du texte, en remplaçant celle qui attendait.
+ */
+function scheduleAnalysis(): void {
+  clearTimeout(analysisTimer)
+  analysisTimer = setTimeout(analyze, ANALYSIS_DELAY)
+}
+
+/**
+ * Fait analyser le texte par le serveur et transmet le résultat à l'éditeur,
+ * sauf si le texte a changé entre-temps (une autre analyse suivra). Un échec
+ * est sans conséquence : l'éditeur garde l'analyse précédente.
+ */
+async function analyze(): Promise<void> {
+  const doc = view?.state.doc
+  if (doc === undefined) {
+    return
+  }
+  try {
+    const analysis = await analyzeSql(doc.toString())
+    if (view?.state.doc === doc) {
+      view.dispatch({ effects: setStatements.of(analysis.statements) })
+    }
+  } catch {
+    // Serveur injoignable : l'analyse reviendra à la prochaine frappe.
+  }
+}
+
+/**
  * Langue CodeMirror de l'éditeur : dialecte et complétion, d'après les propriétés.
  */
 function currentLanguage() {
@@ -93,13 +136,16 @@ onMounted(() => {
       ]),
       basicSetup,
       language.of(currentLanguage()),
+      currentStatement(),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           text.value = update.state.doc.toString()
+          scheduleAnalysis()
         }
       }),
     ],
   })
+  scheduleAnalysis()
 })
 
 // Texte modifié de l'extérieur (et non par la frappe) : on remplace le contenu.
@@ -114,7 +160,11 @@ watch(
   () => view?.dispatch({ effects: language.reconfigure(currentLanguage()) }),
 )
 
-onBeforeUnmount(() => view?.destroy())
+onBeforeUnmount(() => {
+  clearTimeout(analysisTimer)
+  view?.destroy()
+  view = null
+})
 
 /**
  * Position du curseur dans le texte, en unités UTF-16 (0 avant le montage).

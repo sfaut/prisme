@@ -4,6 +4,7 @@
 //! interne, avec l'utilisateur unique du mode poste de développement), puis
 //! démarre le serveur web. Voir `docs/V1.md`, section 2.8.
 
+mod analyze;
 mod api;
 mod api_error;
 mod auth;

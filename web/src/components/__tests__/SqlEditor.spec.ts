@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { mount } from '@vue/test-utils'
 import SqlEditor from '../SqlEditor.vue'
+
+vi.mock('@/api/analyze', () => ({
+  analyzeSql: async () => ({ statements: [] }),
+}))
 
 describe('SqlEditor', () => {
   it('affiche le texte lié', () => {
