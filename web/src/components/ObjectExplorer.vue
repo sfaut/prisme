@@ -11,8 +11,8 @@
   Il reste ensuite en mémoire. Un clic sur une source la choisit comme
   connexion de travail (émet `select`) ; elle reste surlignée.
 
-  À droite de la racine, un menu « ⋮ » ajoute une connexion ou relit tous les
-  catalogues déjà lus ; à droite de chaque source, un autre modifie la
+  Au survol de la racine, un menu « ⋮ » à droite ajoute une connexion ou relit tous les
+  catalogues déjà lus ; au survol de chaque source, un autre modifie la
   connexion, relit son catalogue ou supprime la connexion (après
   confirmation). Un double clic sur une table ou une vue émet `open-table`,
   pour en afficher le contenu.
@@ -92,6 +92,12 @@ const editing = ref<ConnectionSummary | null>(null)
  * Connexion dont la suppression attend confirmation, `null` si aucune.
  */
 const removing = ref<ConnectionSummary | null>(null)
+
+/**
+ * Clef du nœud dont le menu est ouvert, `null` si aucun : son bouton reste
+ * affiché quand la souris quitte la ligne pour le menu.
+ */
+const menuKey = ref<string | null>(null)
 
 /**
  * Choix du menu de la racine.
@@ -268,8 +274,9 @@ async function confirmRemove(): Promise<void> {
 }
 
 /**
- * Menu « ⋮ » affiché à droite de la racine et de chaque source. Le clic sur
- * le bouton ne se propage pas : il n'ouvre ni ne ferme le nœud.
+ * Menu « ⋮ » à droite de la racine et de chaque source, affiché au survol de
+ * la ligne (règles CSS `.node-menu`). Le clic sur le bouton ne se propage
+ * pas : il n'ouvre ni ne ferme le nœud.
  *
  * @param info Nœud affiché.
  */
@@ -285,6 +292,9 @@ function renderSuffix({ option }: { option: TreeOption }) {
       size: 'small',
       options: node.role === 'sources' ? SOURCES_MENU : SOURCE_MENU,
       onSelect: (choice: string) => onMenu(node, choice),
+      onUpdateShow: (show: boolean) => {
+        menuKey.value = show ? node.key : null
+      },
     },
     {
       default: () =>
@@ -293,7 +303,7 @@ function renderSuffix({ option }: { option: TreeOption }) {
           {
             text: true,
             size: 'tiny',
-            class: 'node-menu',
+            class: { 'node-menu': true, 'node-menu-open': menuKey.value === node.key },
             title: 'Actions',
             onClick: (event: MouseEvent) => event.stopPropagation(),
           },
@@ -512,6 +522,11 @@ function renderLabel({ option }: { option: TreeOption }) {
 
 .object-tree :deep(.node-menu:hover) {
   color: #333;
+}
+
+/* Bouton visible au survol de la ligne, ou tant que son menu est ouvert. */
+.object-tree :deep(.n-tree-node:not(:hover) .node-menu:not(.node-menu-open)) {
+  visibility: hidden;
 }
 
 .object-tree :deep(.n-tree-node-content) {
