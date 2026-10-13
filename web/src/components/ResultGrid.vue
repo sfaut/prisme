@@ -9,7 +9,8 @@
     sélectionne tout, Échap vide la sélection.
   - Largeur : glisser le bord droit d'un en-tête change la largeur de la
     colonne, un double clic sur ce bord l'ajuste à sa valeur la plus longue
-    (avec un plafond). Un texte trop long est tronqué (…) et s'affiche en
+    (avec un plafond). Les largeurs choisies sont retrouvées quand la même
+    requête est relancée (`gridWidths.ts`). Un texte trop long est tronqué (…) et s'affiche en
     entier au survol.
 
   Seules les lignes visibles existent dans la page (défilement virtuel) : la
@@ -42,6 +43,7 @@ import {
   selectionToText,
   visibleRows,
 } from './resultGrid'
+import { rememberWidths, rememberedWidths } from './gridWidths'
 
 const props = defineProps<{
   /**
@@ -57,6 +59,11 @@ const props = defineProps<{
    * Nombre de lignes reçues.
    */
   rowCount: number
+  /**
+   * Texte de la requête : les largeurs choisies sont retenues pour elle, et
+   * retrouvées si elle est relancée.
+   */
+  sql: string
 }>()
 
 /**
@@ -89,15 +96,18 @@ const view = computed(() => {
  * Largeurs choisies à la souris, par indice de colonne ; les autres colonnes
  * gardent leur largeur estimée.
  */
-const resized = ref<Record<number, number>>({})
+const resized = ref<Record<number, number>>(rememberedWidths(props.sql, props.columns))
 
-// Nouveau résultat : ses colonnes n'ont plus rien à voir avec les largeurs choisies.
+// Nouveau résultat : les largeurs retenues pour lui, s'il y en a.
 watch(
   () => props.columns,
-  () => {
-    resized.value = {}
+  (columns) => {
+    resized.value = rememberedWidths(props.sql, columns)
   },
 )
+
+// Toute largeur choisie est retenue pour la requête.
+watch(resized, (widths) => rememberWidths(props.sql, props.columns, widths))
 
 /**
  * Largeurs estimées des colonnes, sur l'en-tête et les premières lignes.

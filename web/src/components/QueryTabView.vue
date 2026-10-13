@@ -44,6 +44,7 @@ function lines(count: number): string {
       :columns="tab.result.columns"
       :rows="tab.result.rows"
       :row-count="tab.result.rowCount"
+      :sql="tab.sql"
     />
   </div>
 </template>

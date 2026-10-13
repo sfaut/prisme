@@ -60,7 +60,7 @@ Puis ouvrir <http://localhost:5173>.
 |---|---|
 | Trier | bouton ⇅ de l'en-tête : croissant, décroissant, aucun |
 | Filtrer | champ « Filtrer », sur toutes les colonnes ou sur celle choisie à côté |
-| Élargir / rétrécir une colonne | glisser le bord droit de son en-tête ; double clic sur ce bord pour l'ajuster à sa valeur la plus longue (720 pixels au plus). Un texte trop long est tronqué (…), entier au survol |
+| Élargir / rétrécir une colonne | glisser le bord droit de son en-tête ; double clic sur ce bord pour l'ajuster à sa valeur la plus longue (720 pixels au plus). Les largeurs choisies reviennent quand la même requête est relancée. Un texte trop long est tronqué (…), entier au survol |
 | Sélectionner | clic sur une cellule, un numéro de ligne ou un nom de colonne ; glisser pour une plage |
 | Étendre / ajouter | Maj-clic / Ctrl-clic |
 | Tout sélectionner, vider | Ctrl-A, Échap |
