@@ -88,12 +88,11 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 
 27. **Copie avec ou sans en-têtes, réglage du profil.** Ctrl-C copie la sélection de la grille avec les noms des colonnes en première ligne. Décision de Sébastien : ce sera une option du profil de l'utilisateur, avec les en-têtes par défaut. À faire avec les profils (mode serveur, ou réglages de l'utilisateur unique).
 
-28. **Suites de l'éditeur SQL (CodeMirror), à faire.** Déjà en place : complétion des bases, tables et colonnes d'après le catalogue, mise en évidence de la requête sous le curseur, erreurs de syntaxe soulignées. Restent, décidés par Sébastien :
+28. **Suites de l'éditeur SQL (CodeMirror), à faire.** Déjà en place : complétion des bases, tables et colonnes d'après le catalogue, mise en évidence de la requête sous le curseur, erreurs de syntaxe soulignées, thème clair / sombre sur les jetons de l'interface. Restent, décidés par Sébastien :
     - souligner dans l'éditeur les fonctions émulées ou non traduisibles, avec la traduction entre dialectes (règle 2 de `CLAUDE.md`) ;
     - bulles d'information au survol : type et nullabilité d'une colonne, signature d'une fonction ;
     - complétion qui comprend la requête (alias, tables du `FROM`, colonnes de la bonne table), comme source de complétion propre à Prisme ;
-    - coloration et complétion des autres langages (Tutorial D, PRQL, Kusto) ;
-    - thème clair / sombre de l'éditeur, branché sur les jetons de la refonte de l'interface.
+    - coloration et complétion des autres langages (Tutorial D, PRQL, Kusto).
 
 ### Sécurité
 

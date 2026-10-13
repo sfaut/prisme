@@ -1,6 +1,25 @@
 /*
   Feuille de style de l'application : Tailwind CSS, puis les styles et
-  jetons de thème de Nuxt UI (couleurs, clair / sombre).
+  jetons de thème de Nuxt UI (couleurs, clair / sombre), et les couleurs
+  de la coloration syntaxique de l'éditeur SQL (`editorTheme.ts`).
 */
 @import 'tailwindcss';
 @import '@nuxt/ui';
+
+:root {
+  --sql-keyword: #7c3aed;
+  --sql-type: #0e7490;
+  --sql-string: #b45309;
+  --sql-number: #15803d;
+  --sql-variable: #be185d;
+  --sql-comment: #71717a;
+}
+
+.dark {
+  --sql-keyword: #c4b5fd;
+  --sql-type: #67e8f9;
+  --sql-string: #fcd34d;
+  --sql-number: #86efac;
+  --sql-variable: #f9a8d4;
+  --sql-comment: #a1a1aa;
+}
