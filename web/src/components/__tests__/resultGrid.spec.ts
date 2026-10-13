@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import type { Cell } from '@/api/querySession'
 
 import {
+  MIN_COLUMN_WIDTH,
+  resizedWidth,
   compareCells,
   emptySelection,
   isSelected,
@@ -125,5 +127,13 @@ describe('copie', () => {
     expect(selectionToText(selection, [0], special, columns, false)).toBe(
       '"a\tb"\t"dit ""oui"""\t"x\ny"',
     )
+  })
+})
+
+describe('largeur des colonnes', () => {
+  it('suit le pointeur sans descendre sous le minimum', () => {
+    expect(resizedWidth(120, 35.6)).toBe(156)
+    expect(resizedWidth(120, -30)).toBe(90)
+    expect(resizedWidth(120, -500)).toBe(MIN_COLUMN_WIDTH)
   })
 })

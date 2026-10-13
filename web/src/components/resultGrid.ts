@@ -86,6 +86,22 @@ export type SelectMode = 'replace' | 'extend' | 'add'
 export const NULL_TEXT = 'NULL'
 
 /**
+ * Largeur minimale d'une colonne redimensionnée, en pixels : de quoi garder
+ * le bouton de tri et un début de nom.
+ */
+export const MIN_COLUMN_WIDTH = 40
+
+/**
+ * Largeur d'une colonne après un glissement de son bord droit.
+ *
+ * @param start Largeur au début du glissement, en pixels.
+ * @param delta Déplacement horizontal du pointeur, en pixels.
+ */
+export function resizedWidth(start: number, delta: number): number {
+  return Math.max(MIN_COLUMN_WIDTH, Math.round(start + delta))
+}
+
+/**
  * Expression d'un nombre décimal, pour trier les nombres par valeur.
  */
 const NUMBER = /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/

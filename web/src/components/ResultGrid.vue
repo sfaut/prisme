@@ -7,6 +7,9 @@
     colonne ; Maj-clic étend, Ctrl-clic ajoute, glisser étend aussi.
   - Copie : Ctrl-C (Ctrl-Maj-C avec les en-têtes), ou les boutons. Ctrl-A
     sélectionne tout, Échap vide la sélection.
+  - Largeur : glisser le bord droit d'un en-tête change la largeur de la
+    colonne, un double clic sur ce bord rend la largeur estimée. Un texte
+    trop long est tronqué (…) et s'affiche en entier au survol.
 
   Seules les lignes visibles existent dans la page (défilement virtuel) : la
   grille reste fluide avec des dizaines de milliers de lignes. La logique
@@ -27,6 +30,7 @@ import {
   emptySelection,
   isSelected,
   nextSort,
+  resizedWidth,
   selectAll,
   selectCell,
   selectColumn,
@@ -88,21 +92,94 @@ const view = computed(() => {
 })
 
 /**
- * Largeurs des colonnes, estimées sur l'en-tête et les premières lignes.
+ * Largeurs choisies à la souris, par indice de colonne ; les autres colonnes
+ * gardent leur largeur estimée.
  */
-const template = computed(() => {
+const resized = ref<Record<number, number>>({})
+
+// Nouveau résultat : ses colonnes n'ont plus rien à voir avec les largeurs choisies.
+watch(
+  () => props.columns,
+  () => {
+    resized.value = {}
+  },
+)
+
+/**
+ * Largeurs estimées des colonnes, sur l'en-tête et les premières lignes.
+ */
+const estimated = computed(() => {
   // Lu pour que les largeurs se recalculent à l'arrivée de nouvelles lignes.
   void props.rowCount
-  const widths = props.columns.map((name, column) => {
+  return props.columns.map((name, column) => {
     let longest = name.length + 2
     for (const row of props.rows.slice(0, WIDTH_SAMPLE)) {
       longest = Math.max(longest, (row[column] ?? NULL_TEXT).length)
     }
     return Math.min(360, Math.max(48, longest * CHAR_WIDTH + 16))
   })
+})
+
+/**
+ * Gabarit des colonnes de la grille : numéros de ligne, puis chaque colonne,
+ * à sa largeur choisie ou estimée.
+ */
+const template = computed(() => {
+  const widths = estimated.value.map((width, column) => resized.value[column] ?? width)
   const numberWidth = String(props.rowCount).length * CHAR_WIDTH + 16
   return [numberWidth, ...widths].map((width) => `${width}px`).join(' ')
 })
+
+/**
+ * Redimensionnement en cours : colonne, position de départ du pointeur et
+ * largeur de départ.
+ */
+let resizing: { column: number; x: number; width: number } | null = null
+
+/**
+ * Commence le redimensionnement d'une colonne ; le pointeur reste capturé
+ * même hors de la poignée.
+ *
+ * @param event Appui sur la poignée.
+ * @param column Indice de la colonne.
+ */
+function onResizeStart(event: PointerEvent, column: number): void {
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  const width = resized.value[column] ?? estimated.value[column] ?? 0
+  resizing = { column, x: event.clientX, width }
+}
+
+/**
+ * Suit le pointeur pendant le redimensionnement.
+ *
+ * @param event Déplacement du pointeur.
+ */
+function onResizeMove(event: PointerEvent): void {
+  if (resizing !== null) {
+    resized.value = {
+      ...resized.value,
+      [resizing.column]: resizedWidth(resizing.width, event.clientX - resizing.x),
+    }
+  }
+}
+
+/**
+ * Termine le redimensionnement.
+ */
+function onResizeEnd(): void {
+  resizing = null
+}
+
+/**
+ * Rend à une colonne sa largeur estimée.
+ *
+ * @param column Indice de la colonne.
+ */
+function resetWidth(column: number): void {
+  const others = { ...resized.value }
+  delete others[column]
+  resized.value = others
+}
 
 const filterOptions = computed(() => [
   { label: 'Toutes les colonnes', value: -1 },
@@ -268,6 +345,15 @@ const filterColumn = computed({
           >
             {{ sort?.column === column ? (sort.direction === 'asc' ? '▲' : '▼') : '⇅' }}
           </button>
+          <div
+            class="grid-resizer"
+            title="Glisser pour changer la largeur, double clic pour la largeur estimée"
+            @pointerdown.stop.prevent="onResizeStart($event, column)"
+            @pointermove="onResizeMove"
+            @pointerup="onResizeEnd"
+            @pointercancel="onResizeEnd"
+            @dblclick="resetWidth(column)"
+          />
         </div>
       </div>
 
@@ -382,9 +468,26 @@ const filterColumn = computed({
 }
 
 .grid-column-header {
+  position: relative;
   display: flex;
   align-items: center;
+  min-width: 0;
   border-left: 1px solid #ddd;
+}
+
+.grid-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  z-index: 1;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.grid-resizer:hover {
+  background: rgb(24 160 88 / 30%);
 }
 
 .grid-column-name {
@@ -397,6 +500,7 @@ const filterColumn = computed({
 }
 
 .grid-sort {
+  flex: none;
   padding: 0 4px;
   border: none;
   background: none;
