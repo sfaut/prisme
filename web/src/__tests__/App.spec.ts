@@ -27,6 +27,6 @@ describe('App', () => {
   it("affiche le nom de l'application et invite à choisir une source", () => {
     const wrapper = mount(App)
     expect(wrapper.text()).toContain('Prisme')
-    expect(wrapper.text()).toContain('Choisissez une source de données')
+    expect(wrapper.text()).toContain('Double-cliquez sur une source de données')
   })
 })

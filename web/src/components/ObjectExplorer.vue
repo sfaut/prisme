@@ -9,7 +9,7 @@
   vues, procédures, fonctions), puis le détail des tables (colonnes, index,
   clefs étrangères, déclencheurs), chaque partie affichée dès sa réception.
   Il reste ensuite en mémoire. Un clic sur une ligne ouvre ou ferme son
-  niveau, comme le triangle. Un clic sur une source la choisit comme
+  niveau, comme le triangle. Un double clic sur une source la choisit comme
   connexion de travail (émet `select`) ; elle reste surlignée.
 
   Au survol de la racine, un menu « ⋮ » à droite ajoute une connexion ou relit tous les
@@ -367,21 +367,8 @@ watch(
 )
 
 /**
- * Suit les clics de l'arbre : un clic sur une source la choisit. Les autres
- * nœuds ne se surlignent pas, la source choisie reste surlignée.
- *
- * @param _keys Clefs que l'arbre voudrait surligner.
- * @param options Nœuds correspondants (vide quand on reclique la source surlignée).
- */
-function onSelect(_keys: string[], options: (TreeOption | null)[]): void {
-  const node = options[0] as unknown as ExplorerNode | undefined
-  if (node?.role === 'source') {
-    emit('select', node.connectionId)
-  }
-}
-
-/**
- * Propriétés HTML de chaque nœud : le double clic sur une table l'ouvre.
+ * Propriétés HTML de chaque nœud : le double clic sur une source la choisit,
+ * celui sur une table l'ouvre.
  *
  * @param info Nœud affiché.
  */
@@ -389,7 +376,9 @@ function nodeProps({ option }: { option: TreeOption }) {
   const node = option as unknown as ExplorerNode
   return {
     onDblclick: () => {
-      if (node.table !== undefined) {
+      if (node.role === 'source') {
+        emit('select', node.connectionId)
+      } else if (node.table !== undefined) {
         emit('open-table', node.connectionId, node.schema, node.table)
       }
     },
@@ -459,7 +448,6 @@ function renderLabel({ option }: { option: TreeOption }) {
       virtual-scroll
       class="object-tree"
       @update:expanded-keys="expand"
-      @update:selected-keys="onSelect"
     />
     <connection-dialog v-model:open="dialogOpen" :connection="editing" @updated="onUpdated" />
     <n-modal
