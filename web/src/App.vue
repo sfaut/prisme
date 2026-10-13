@@ -79,7 +79,12 @@ async function openTable(schema: string, table: string): Promise<void> {
   <n-config-provider :locale="frFR" :date-locale="dateFrFR">
     <n-message-provider>
       <n-layout has-sider position="absolute" class="app">
-        <n-layout-sider bordered :width="siderWidth" content-class="app-sider">
+        <n-layout-sider
+          bordered
+          :width="siderWidth"
+          class="app-sider-panel"
+          content-class="app-sider"
+        >
           <h1 class="app-title">Prisme</h1>
           <connection-panel />
           <object-explorer
@@ -122,6 +127,15 @@ body,
 
 .app {
   height: 100%;
+}
+
+/* Naive UI anime la largeur de son panneau latéral (min-width et max-width,
+   0,3 s), alors que son contenu prend aussitôt la nouvelle largeur et se cale
+   à droite : pendant un redimensionnement à la souris, le contenu débordait
+   à gauche et sur la partie droite, le temps de l'animation. Le panneau suit
+   donc la poignée sans animation. */
+.app-sider-panel {
+  transition: none;
 }
 
 .app-sider {
