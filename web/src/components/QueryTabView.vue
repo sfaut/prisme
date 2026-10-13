@@ -57,6 +57,10 @@ function lines(count: number): string {
   gap: 6px;
   height: 100%;
   min-height: 0;
+  /* Sans cela, l'onglet (élément flexible d'une rangée) ne rétrécit jamais sous
+     la largeur de son contenu : une grille large débordait, rognée à droite,
+     au lieu de défiler dans sa propre zone. */
+  min-width: 0;
 }
 
 .tab-status {
