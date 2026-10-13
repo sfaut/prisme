@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import ui from '@nuxt/ui/vue-plugin'
 import { mount } from '@vue/test-utils'
 
 import ResultGrid from '../ResultGrid.vue'
 
 /**
- * Monte la grille avec Nuxt UI (champs du filtre, messages éphémères).
+ * Monte la grille.
  *
  * @param columns Noms des colonnes.
  * @param rows Lignes du résultat.
@@ -16,7 +15,6 @@ function mountGrid(columns: string[], rows: (string | null)[][], sql = 'SELECT 1
   const rightAligned = columns.map(() => false)
   return mount(ResultGrid, {
     props: { columns, rightAligned, rows, rowCount: rows.length, sql },
-    global: { plugins: [ui] },
   })
 }
 

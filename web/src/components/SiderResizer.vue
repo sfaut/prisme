@@ -86,7 +86,7 @@ function reset(): void {
 
   &:hover,
   &.dragging {
-    background: color-mix(in oklab, var(--ui-primary) 30%, transparent);
+    background: color-mix(in oklab, var(--accent) 30%, transparent);
   }
 }
 </style>
