@@ -92,6 +92,43 @@ export const NULL_TEXT = 'NULL'
 export const MIN_COLUMN_WIDTH = 40
 
 /**
+ * Ordre d'affichage des colonnes après un déplacement.
+ *
+ * @param order Ordre actuel : indice dans le `SELECT` de chaque colonne affichée.
+ * @param from Position affichée de la colonne déplacée.
+ * @param to
+ *     Position d'insertion, comptée avant le retrait de la colonne
+ *     (0 : tout à gauche, `order.length` : tout à droite).
+ * @returns Le nouvel ordre, et la nouvelle position de la colonne déplacée.
+ */
+export function moveColumn(
+  order: number[],
+  from: number,
+  to: number,
+): { order: number[]; position: number } {
+  const moved = order[from]
+  if (moved === undefined) {
+    return { order, position: from }
+  }
+  const position = to > from ? to - 1 : to
+  const result = order.filter((_, index) => index !== from)
+  result.splice(position, 0, moved)
+  return { order: result, position }
+}
+
+/**
+ * Position d'insertion d'une colonne lâchée à l'abscisse `x` : avant la
+ * première colonne dont le milieu est à droite du pointeur.
+ *
+ * @param centers Abscisse du milieu de chaque en-tête affiché, de gauche à droite.
+ * @param x Abscisse du pointeur.
+ */
+export function dropPosition(centers: number[], x: number): number {
+  const index = centers.findIndex((center) => x < center)
+  return index < 0 ? centers.length : index
+}
+
+/**
  * Largeur d'un caractère, en pixels, pour estimer la largeur des colonnes.
  */
 export const CHAR_WIDTH = 7
@@ -401,6 +438,9 @@ export function isSelected(selection: GridSelection, row: number, column: number
  * @param rows Lignes du résultat.
  * @param columns Noms des colonnes.
  * @param withHeaders Ajoute une première ligne avec les noms des colonnes copiées.
+ * @param order
+ *     Indice dans le `SELECT` de chaque colonne affichée, quand les colonnes
+ *     ont été déplacées : la sélection porte sur les positions affichées.
  */
 export function selectionToText(
   selection: GridSelection,
@@ -408,6 +448,7 @@ export function selectionToText(
   rows: Cell[][],
   columns: string[],
   withHeaders: boolean,
+  order: number[] = columns.map((_, index) => index),
 ): string {
   const rowIndexes = coveredIndexes(selection.ranges, 'top', 'bottom')
   const columnIndexes = coveredIndexes(selection.ranges, 'left', 'right')
@@ -415,13 +456,16 @@ export function selectionToText(
     columnIndexes
       .map((column) => {
         const source = view[row]
-        const cell = source === undefined ? null : (rows[source]?.[column] ?? null)
+        const field = order[column] ?? column
+        const cell = source === undefined ? null : (rows[source]?.[field] ?? null)
         return isSelected(selection, row, column) ? escapeCell(cell ?? '') : ''
       })
       .join('\t'),
   )
   if (withHeaders && columnIndexes.length > 0) {
-    lines.unshift(columnIndexes.map((column) => escapeCell(columns[column] ?? '')).join('\t'))
+    lines.unshift(
+      columnIndexes.map((column) => escapeCell(columns[order[column] ?? column] ?? '')).join('\t'),
+    )
   }
   return lines.join('\n')
 }

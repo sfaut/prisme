@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest'
 import type { Cell } from '@/api/querySession'
 
 import {
+  dropPosition,
+  moveColumn,
   MAX_ESTIMATED_WIDTH,
   MAX_FITTED_WIDTH,
   estimatedWidth,
@@ -155,5 +157,30 @@ describe('largeur estimée ou ajustée', () => {
   it('ajuste sur toutes les lignes, avec un plafond plus haut', () => {
     expect(fittedWidth('texte', [...rows.slice(2), ['x'.repeat(80)]], 0)).toBe(80 * 7 + 16)
     expect(fittedWidth('texte', [['x'.repeat(500)]], 0)).toBe(MAX_FITTED_WIDTH)
+  })
+})
+
+describe('déplacement des colonnes', () => {
+  it('insère la colonne à la position lâchée', () => {
+    // a b c d : b lâchée tout à droite, puis tout à gauche.
+    expect(moveColumn([0, 1, 2, 3], 1, 4)).toEqual({ order: [0, 2, 3, 1], position: 3 })
+    expect(moveColumn([0, 1, 2, 3], 1, 0)).toEqual({ order: [1, 0, 2, 3], position: 0 })
+    // Lâchée juste avant ou juste après elle-même : rien ne bouge.
+    expect(moveColumn([0, 1, 2, 3], 1, 1).order).toEqual([0, 1, 2, 3])
+    expect(moveColumn([0, 1, 2, 3], 1, 2).order).toEqual([0, 1, 2, 3])
+  })
+
+  it('choisit la position d’après le milieu des en-têtes', () => {
+    const centers = [50, 150, 250]
+    expect(dropPosition(centers, 10)).toBe(0)
+    expect(dropPosition(centers, 160)).toBe(2)
+    expect(dropPosition(centers, 400)).toBe(3)
+  })
+
+  it('copie les colonnes dans l’ordre affiché', () => {
+    const selection = selectRow(emptySelection(), 0, 3, 'replace')
+    expect(selectionToText(selection, [0], rows, columns, true, [2, 0, 1])).toBe(
+      'city\tid\tname\nLyon\t10\tZoé',
+    )
   })
 })

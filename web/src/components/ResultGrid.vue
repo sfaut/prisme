@@ -10,7 +10,10 @@
   - Largeur : glisser le bord droit d'un en-tête change la largeur de la
     colonne, un double clic sur ce bord l'ajuste à sa valeur la plus longue
     (avec un plafond). Les largeurs choisies sont retrouvées quand la même
-    requête est relancée (`gridWidths.ts`). Un texte trop long est tronqué (…) et s'affiche en
+    requête est relancée (`gridWidths.ts`).
+  - Ordre : glisser un nom de colonne la déplace. Une nouvelle exécution
+    rétablit l'ordre du `SELECT`. La sélection et la copie suivent l'ordre
+    affiché ; tri, filtre et largeurs restent attachés à la colonne. Un texte trop long est tronqué (…) et s'affiche en
     entier au survol.
 
   Seules les lignes visibles existent dans la page (défilement virtuel) : la
@@ -28,11 +31,14 @@ import {
   type GridFilter,
   type SelectMode,
   type SortState,
+  MIN_COLUMN_WIDTH,
   CHAR_WIDTH,
   NULL_TEXT,
+  dropPosition,
   emptySelection,
   estimatedWidth,
   fittedWidth,
+  moveColumn,
   isSelected,
   nextSort,
   resizedWidth,
@@ -110,6 +116,21 @@ watch(
 watch(resized, (widths) => rememberWidths(props.sql, props.columns, widths))
 
 /**
+ * Ordre d'affichage : indice dans le `SELECT` de chaque colonne affichée.
+ * Les positions affichées servent à la sélection ; les indices du `SELECT`
+ * au tri, au filtre et aux largeurs.
+ */
+const order = ref(props.columns.map((_, index) => index))
+
+// Nouveau résultat : l'ordre du SELECT.
+watch(
+  () => props.columns,
+  (columns) => {
+    order.value = columns.map((_, index) => index)
+  },
+)
+
+/**
  * Largeurs estimées des colonnes, sur l'en-tête et les premières lignes.
  */
 const estimated = computed(() => {
@@ -123,7 +144,9 @@ const estimated = computed(() => {
  * à sa largeur choisie ou estimée.
  */
 const template = computed(() => {
-  const widths = estimated.value.map((width, column) => resized.value[column] ?? width)
+  const widths = order.value.map(
+    (column) => resized.value[column] ?? estimated.value[column] ?? MIN_COLUMN_WIDTH,
+  )
   const numberWidth = String(props.rowCount).length * CHAR_WIDTH + 16
   return [numberWidth, ...widths].map((width) => `${width}px`).join(' ')
 })
@@ -235,10 +258,83 @@ function onRowHeader(event: MouseEvent, row: number): void {
 }
 
 /**
- * Clic sur un nom de colonne : sélection de la colonne entière.
+ * Déplacement de colonne en cours : position affichée de la colonne prise,
+ * abscisse de départ du pointeur, et le glissement a-t-il dépassé le seuil ?
  */
-function onColumnHeader(event: MouseEvent, column: number): void {
-  selection.value = selectColumn(selection.value, column, view.value.length, modeOf(event))
+let moving: { from: number; x: number; started: boolean } | null = null
+
+/**
+ * Distance à parcourir avant qu'un appui sur un nom de colonne devienne un
+ * déplacement, en pixels : un clic un peu tremblé reste un clic.
+ */
+const MOVE_THRESHOLD = 5
+
+/**
+ * Position où la colonne déplacée serait insérée, `null` hors déplacement.
+ */
+const dropAt = ref<number | null>(null)
+
+/**
+ * Appui sur un nom de colonne : sélection de la colonne entière, et début
+ * d'un éventuel déplacement.
+ *
+ * @param event Appui sur le nom.
+ * @param position Position affichée de la colonne.
+ */
+function onColumnHeader(event: PointerEvent, position: number): void {
+  selection.value = selectColumn(selection.value, position, view.value.length, modeOf(event))
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  moving = { from: position, x: event.clientX, started: false }
+}
+
+/**
+ * Suit le pointeur pendant un déplacement de colonne.
+ *
+ * @param event Déplacement du pointeur.
+ */
+function onColumnMove(event: PointerEvent): void {
+  if (moving === null) {
+    return
+  }
+  moving.started ||= Math.abs(event.clientX - moving.x) > MOVE_THRESHOLD
+  if (moving.started) {
+    dropAt.value = dropPosition(headerCenters(), event.clientX)
+  }
+}
+
+/**
+ * Lâcher : la colonne prend sa nouvelle place et reste sélectionnée.
+ */
+function onColumnDrop(): void {
+  if (moving?.started && dropAt.value !== null) {
+    const moved = moveColumn(order.value, moving.from, dropAt.value)
+    order.value = moved.order
+    selection.value = selectColumn(emptySelection(), moved.position, view.value.length, 'replace')
+  }
+  moving = null
+  dropAt.value = null
+}
+
+/**
+ * Abscisse du milieu de chaque en-tête de colonne affiché, de gauche à droite.
+ */
+function headerCenters(): number[] {
+  const headers = scroller.value?.querySelectorAll('.grid-column-header') ?? []
+  return Array.from(headers, (header) => {
+    const rect = header.getBoundingClientRect()
+    return rect.left + rect.width / 2
+  })
+}
+
+/**
+ * Cellule d'une ligne de la vue.
+ *
+ * @param row Position de la ligne dans la vue.
+ * @param column Indice de la colonne dans le `SELECT`.
+ */
+function cellAt(row: number, column: number): Cell {
+  const source = view.value[row]
+  return source === undefined ? null : (props.rows[source]?.[column] ?? null)
 }
 
 /**
@@ -257,7 +353,14 @@ async function copy(withHeaders: boolean): Promise<void> {
   if (selection.value.ranges.length === 0) {
     return
   }
-  const text = selectionToText(selection.value, view.value, props.rows, props.columns, withHeaders)
+  const text = selectionToText(
+    selection.value,
+    view.value,
+    props.rows,
+    props.columns,
+    withHeaders,
+    order.value,
+  )
   try {
     await navigator.clipboard.writeText(text)
     message.success('Sélection copiée')
@@ -322,22 +425,29 @@ const filterColumn = computed({
       <div class="grid-row grid-header" :style="{ gridTemplateColumns: template }">
         <div class="grid-corner" />
         <div
-          v-for="(name, column) in columns"
+          v-for="(column, position) in order"
           :key="column"
           class="grid-column-header"
-          :class="{ selected: view.length > 0 && isSelected(selection, 0, column) }"
+          :class="{
+            selected: view.length > 0 && isSelected(selection, 0, position),
+            'drop-before': dropAt === position,
+            'drop-after': dropAt === order.length && position === order.length - 1,
+          }"
         >
           <span
             class="grid-column-name"
-            :title="name"
-            @mousedown.prevent="onColumnHeader($event, column)"
+            :title="`${columns[column]} (glisser pour déplacer)`"
+            @pointerdown.prevent="onColumnHeader($event, position)"
+            @pointermove="onColumnMove"
+            @pointerup="onColumnDrop"
+            @pointercancel="onColumnDrop"
           >
-            {{ name }}
+            {{ columns[column] }}
           </span>
           <button
             class="grid-sort"
             type="button"
-            :title="`Trier par ${name}`"
+            :title="`Trier par ${columns[column]}`"
             @click="toggleSort(column)"
           >
             {{ sort?.column === column ? (sort.direction === 'asc' ? '▲' : '▼') : '⇅' }}
@@ -365,15 +475,18 @@ const filterColumn = computed({
             {{ item.index + 1 }}
           </div>
           <div
-            v-for="(cell, column) in rows[view[item.index]!]"
+            v-for="(column, position) in order"
             :key="column"
             class="grid-cell"
-            :class="{ null: cell === null, selected: isSelected(selection, item.index, column) }"
-            :title="cell ?? NULL_TEXT"
-            @mousedown.prevent="onCellDown($event, item.index, column)"
-            @mouseenter="onCellEnter(item.index, column)"
+            :class="{
+              null: cellAt(item.index, column) === null,
+              selected: isSelected(selection, item.index, position),
+            }"
+            :title="cellAt(item.index, column) ?? NULL_TEXT"
+            @mousedown.prevent="onCellDown($event, item.index, position)"
+            @mouseenter="onCellEnter(item.index, position)"
           >
-            {{ cell ?? NULL_TEXT }}
+            {{ cellAt(item.index, column) ?? NULL_TEXT }}
           </div>
         </div>
       </div>
@@ -487,13 +600,21 @@ const filterColumn = computed({
   background: rgb(24 160 88 / 30%);
 }
 
+.grid-column-header.drop-before {
+  box-shadow: inset 2px 0 0 #18a058;
+}
+
+.grid-column-header.drop-after {
+  box-shadow: inset -2px 0 0 #18a058;
+}
+
 .grid-column-name {
   flex: 1;
   padding: 0 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: s-resize;
+  cursor: grab;
 }
 
 .grid-sort {
