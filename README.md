@@ -53,7 +53,7 @@ Puis ouvrir <http://localhost:5173>.
 
 - **Connexions** : « Nouvelle » enregistre une connexion, « Tester » affiche la variante et la version du serveur, « Supprimer » la retire après confirmation.
 - **Explorateur** : sous chaque base, les dossiers Tables, Vues, Procédures et Fonctions ; sous chaque table, Colonnes, Index, Clefs étrangères et Déclencheurs. Le catalogue s'affiche au fil de l'eau dès qu'une connexion est choisie (les bases, puis leurs objets, puis le détail des tables, en commençant par la base de la connexion), puis reste en mémoire ; « Rafraîchir » le relit. Un double clic sur une table ou une vue affiche son contenu. La base en cours (celle de la connexion, puis celle choisie par `USE`) est en gras ; dans les colonnes, la clef primaire est en gras et précédée d'une clef, les clefs étrangères sont soulignées et précédées d'un croisillon. Un double clic sur une procédure, une fonction ou un déclencheur ne fait rien pour l'instant.
-- **Cellule SQL** : Ctrl-Entrée ou « Exécuter » lance la requête sous le curseur (entre deux requêtes, la précédente) ; Ctrl-Maj-Entrée ou « Tout exécuter » lance toutes les requêtes de l'éditeur en parallèle. Chaque requête a son onglet de résultat, avec une pastille d'avancement à gauche du libellé : grise et pulsant très lentement tant qu'elle attend son tour (au-delà de huit requêtes en parallèle), bleue et pulsante pendant l'exécution (lentement) puis pendant la réception des lignes (vite), verte une fois le résultat complet, rouge en cas d'échec. Au survol, la pastille donne le statut, la durée (qui court pendant l'exécution) et le nombre de lignes (« tronqué » si la limite en a écarté). La liste à côté du bouton change la limite de lignes par défaut. Seules les lectures passent pour l'instant.
+- **Cellule SQL** : Ctrl-Entrée ou « Exécuter » lance la requête sous le curseur (entre deux requêtes, la précédente) ; Ctrl-Maj-Entrée ou « Tout exécuter » lance toutes les requêtes de l'éditeur en parallèle. Chaque requête a son onglet de résultat, avec une pastille d'avancement à gauche du libellé : grise et pulsant très lentement tant qu'elle attend son tour (au-delà de huit requêtes en parallèle), bleue et pulsante pendant l'exécution (lentement) puis pendant la réception des lignes (vite), verte une fois le résultat complet, rouge en cas d'échec. Au survol, la pastille donne le statut, la durée (qui court pendant l'exécution) et le nombre de lignes (« tronqué » si la limite en a écarté). « Stopper » arrête toutes les requêtes et tous les chargements en cours. La liste à côté du bouton change la limite de lignes par défaut. Seules les lectures passent pour l'instant.
 - **Grille** :
 
 | Action | Geste |
@@ -160,21 +160,23 @@ Les requêtes passent par un WebSocket, une session par connexion enregistrée :
 npx wscat -c ws://127.0.0.1:8484/api/connections/1/query
 ```
 
-Prisme répond `{"type":"ready",...}` une fois connecté au serveur cible. Ensuite, chaque ligne saisie est une demande, en JSON. `sql` contient une ou plusieurs requêtes ; avec `cursor` (position dans le texte), seule la requête sous le curseur s'exécute, sans `cursor` toutes s'exécutent en parallèle :
+Prisme répond `{"type":"ready",...}` une fois connecté au serveur cible. Ensuite, chaque ligne saisie est un message, en JSON : `run` pour exécuter, `cancel` pour arrêter toutes les requêtes en cours. `sql` contient une ou plusieurs requêtes ; avec `cursor` (position dans le texte), seule la requête sous le curseur s'exécute, sans `cursor` toutes s'exécutent en parallèle :
 
 ```
-{"sql": "SELECT * FROM information_schema.COLUMNS", "cursor": 0}
-{"sql": "SELECT * FROM information_schema.COLUMNS", "cursor": 0, "row_limit": 2000}
-{"sql": "SELECT 1; SELECT 2"}
+{"type": "run", "sql": "SELECT * FROM information_schema.COLUMNS", "cursor": 0}
+{"type": "run", "sql": "SELECT * FROM information_schema.COLUMNS", "cursor": 0, "row_limit": 2000}
+{"type": "run", "sql": "SELECT 1; SELECT 2"}
+{"type": "cancel"}
 ```
 
 Prisme annonce d'abord les requêtes du lot (`batch`, chacune numérotée), puis, pour chaque requête, des messages portant son numéro (`query`), dans l'ordre :
 
-1. `columns` : noms des colonnes, texte réellement exécuté, et traitement de la limite (`added` si Prisme a ajouté `LIMIT N + 1`, `user_limit` si la requête en avait déjà une, `not_applicable` pour `SHOW` ou `EXPLAIN`) ;
-2. `rows` : les lignes, par lots de 500, chaque cellule en texte ou `null` ;
-3. `done` : nombre de lignes, `truncated` (des lignes au-delà de la limite ont été écartées), lignes modifiées, durée.
+1. `started` : la requête part (en parallèle, elle peut attendre son tour) ;
+2. `columns` : noms des colonnes, texte réellement exécuté, et traitement de la limite (`added` si Prisme a ajouté `LIMIT N + 1`, `user_limit` si la requête en avait déjà une, `not_applicable` pour `SHOW` ou `EXPLAIN`) ;
+3. `rows` : les lignes, par lots de 500, chaque cellule en texte ou `null` ;
+4. `done` : nombre de lignes, `truncated` (des lignes au-delà de la limite ont été écartées), lignes modifiées, durée.
 
-En cas d'échec, un message `error` remplace la suite de cette requête, et la session continue. `batch_done` signale la fin du lot. En parallèle, les messages des différentes requêtes s'entremêlent.
+En cas d'échec ou d'arrêt, un message `error` remplace la suite de cette requête, et la session continue. `batch_done` signale la fin du lot. En parallèle, les messages des différentes requêtes s'entremêlent.
 
 Seules les lectures passent : `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN` et `USE`. Les écritures (`UPDATE`, `DELETE`, `DROP`, `CALL`...) sont refusées en attendant les interrupteurs d'écriture, ainsi que les requêtes que Prisme ne sait pas analyser.
 
