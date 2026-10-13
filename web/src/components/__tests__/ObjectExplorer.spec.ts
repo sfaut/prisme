@@ -92,7 +92,15 @@ describe('ObjectExplorer', () => {
     })
     const texts = () => wrapper.findAll('.n-tree-node-content__text').map((node) => node.text())
     await vi.waitFor(() =>
-      expect(texts()).toEqual(['Sources de données', 'Origen 2', 'a', 'b', 'c', 'Autre']),
+      expect(texts()).toEqual([
+        'Sources de données',
+        'Origen 2',
+        'a',
+        'b',
+        'c',
+        'Autre',
+        'Notebooks',
+      ]),
     )
     wrapper.unmount()
   })
@@ -103,7 +111,7 @@ describe('ObjectExplorer', () => {
       props: { selectedId: null, currentDatabase: null },
       attachTo: document.body,
     })
-    await vi.waitFor(() => expect(wrapper.findAll('.node-menu')).toHaveLength(2))
+    await vi.waitFor(() => expect(wrapper.findAll('.node-menu')).toHaveLength(3))
     const [root, source] = wrapper.findAll('.node-menu')
     await root?.trigger('click')
     await vi.waitFor(() => expect(document.body.textContent).toContain('Ajouter une connexion'))

@@ -108,9 +108,10 @@ describe('sourceNodes', () => {
 })
 
 describe('explorerTree', () => {
-  it('range les sources sous la racine « Sources de données »', () => {
+  it('range les sources sous « Sources de données », puis « Notebooks »', () => {
     const source = { connectionId: 1, name: 'Origen 2', catalog: undefined, currentDatabase: null }
-    const [root] = explorerTree([source], true)
+    const [root, notebooks] = explorerTree([source], true)
+    expect(notebooks?.label).toBe('Notebooks')
     expect(root?.label).toBe('Sources de données')
     expect(root?.note).toBe('chargement…')
     expect(labels(root)).toEqual(['Origen 2'])

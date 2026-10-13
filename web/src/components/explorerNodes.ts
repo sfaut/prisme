@@ -14,6 +14,7 @@
  *       ├─ Vues (n)       ── vue ─── Colonnes (n)
  *       ├─ Procédures (n)
  *       └─ Fonctions (n)
+ * Notebooks
  * ```
  *
  * Plusieurs sources se côtoient : chaque connexion enregistrée est une
@@ -39,11 +40,11 @@ import type { Catalog, CatalogSchema, CatalogTable } from '@/stores/catalog'
  */
 export interface Place {
   /**
-   * Identifiant de la connexion, 0 pour la racine « Sources de données ».
+   * Identifiant de la connexion, 0 pour les racines.
    */
   connectionId: number
   /**
-   * Nom de la base, chaîne vide pour la racine et pour le nœud d'une source.
+   * Nom de la base, chaîne vide pour les racines et pour le nœud d'une source.
    */
   schema: string
 }
@@ -87,10 +88,10 @@ export interface ExplorerNode extends Place {
    */
   isLeaf: boolean
   /**
-   * Rôle des nœuds qui portent un menu : la racine « Sources de données »
-   * (`sources`) ou une source (`source`).
+   * Rôle des nœuds qui portent un menu : les racines « Sources de données »
+   * (`sources`) et « Notebooks » (`notebooks`), ou une source (`source`).
    */
-  role?: 'sources' | 'source'
+  role?: 'sources' | 'notebooks' | 'source'
   /**
    * Table ou vue désignée par le nœud, pour l'ouvrir d'un double clic.
    */
@@ -154,7 +155,13 @@ export interface ExplorerNode extends Place {
 export const SOURCES_KEY = 'sources'
 
 /**
- * Racine de l'arbre, « Sources de données », avec une branche par source.
+ * Clef de la racine « Notebooks ».
+ */
+export const NOTEBOOKS_KEY = 'notebooks'
+
+/**
+ * Racines de l'arbre : « Sources de données », avec une branche par source,
+ * puis « Notebooks », vide pour l'instant.
  *
  * @param sources Sources, dans l'ordre d'affichage.
  * @param receiving Un catalogue est-il en cours de réception (mention « chargement… ») ?
@@ -170,6 +177,14 @@ export function explorerTree(sources: Source[], receiving: boolean): ExplorerNod
       role: 'sources',
       note: receiving ? 'chargement…' : undefined,
       children: sourceNodes(sources),
+    },
+    {
+      key: NOTEBOOKS_KEY,
+      label: 'Notebooks',
+      isLeaf: true,
+      connectionId: 0,
+      schema: '',
+      role: 'notebooks',
     },
   ]
 }

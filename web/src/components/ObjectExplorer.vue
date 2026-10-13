@@ -1,7 +1,7 @@
 <!--
   Explorateur d'objets : sous la racine repliable « Sources de données »,
   une branche par source (connexion enregistrée), puis ses bases, tables et
-  colonnes.
+  colonnes ; ensuite, la racine « Notebooks », vide pour l'instant.
 
   Plusieurs sources se côtoient dans le même arbre. Le catalogue d'une source
   se lit quand on l'ouvre (celle de la connexion choisie s'ouvre d'elle-même)
@@ -108,12 +108,18 @@ const removing = ref<ConnectionSummary | null>(null)
 const menuKey = ref<string | null>(null)
 
 /**
- * Choix du menu de la racine.
+ * Choix du menu de la racine « Sources de données ».
  */
 const SOURCES_MENU = [
   { key: 'add', label: 'Ajouter une connexion' },
   { key: 'refresh-all', label: 'Tout rafraîchir' },
 ]
+
+/**
+ * Choix du menu de la racine « Notebooks ». Les notebooks ne sont pas encore
+ * enregistrés (étape 3 de la v1) : la création est inactive en attendant.
+ */
+const NOTEBOOKS_MENU = [{ key: 'create-notebook', label: 'Créer un notebook', disabled: true }]
 
 /**
  * Choix du menu d'une source.
@@ -319,7 +325,7 @@ function renderSuffix({ option }: { option: TreeOption }) {
     {
       trigger: 'click',
       size: 'small',
-      options: node.role === 'sources' ? SOURCES_MENU : SOURCE_MENU,
+      options: { sources: SOURCES_MENU, notebooks: NOTEBOOKS_MENU, source: SOURCE_MENU }[node.role],
       onSelect: (choice: string) => onMenu(node, choice),
       onUpdateShow: (show: boolean) => {
         menuKey.value = show ? node.key : null
@@ -400,13 +406,18 @@ function nodeProps({ option }: { option: TreeOption }) {
 function renderLabel({ option }: { option: TreeOption }) {
   const node = option as unknown as ExplorerNode
   // Hors colonnes : le libellé, suivi de sa mention éventuelle (UNIQUE). La
-  // racine et la base en cours sont en gras.
+  // racines et la base en cours sont en gras.
   if (node.column === undefined) {
     // Toujours un élément, en gras ou non : passer d'un texte nu à un élément
     // (ou l'inverse) fait échouer la mise à jour de l'arbre par Vue.
     return h(
       'span',
-      { class: { 'current-database': node.current, 'tree-root': node.role === 'sources' } },
+      {
+        class: {
+          'current-database': node.current,
+          'tree-root': node.role === 'sources' || node.role === 'notebooks',
+        },
+      },
       [node.label, node.note === undefined ? null : h('span', { class: 'node-note' }, node.note)],
     )
   }
