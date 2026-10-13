@@ -3,7 +3,8 @@
   dans un panneau dont on règle la largeur en faisant glisser son bord droit ;
   à droite, la cellule SQL et ses résultats.
 
-  Les fournisseurs de Naive UI (configuration, messages) enveloppent toute
+  `UApp` (Nuxt UI, textes en français) puis les fournisseurs de Naive UI
+  (configuration, messages) enveloppent toute
   l'application : textes des composants en français, texte réduit des
   fenêtres, menus et bulles (`theme.ts`), messages éphémères (`useMessage`)
   disponibles partout.
@@ -20,6 +21,8 @@ import {
   frFR,
 } from 'naive-ui'
 import { nextTick, ref, useTemplateRef, watch } from 'vue'
+
+import { fr } from '@nuxt/ui/locale'
 
 import { useConnectionsStore } from './stores/connections'
 import { POPUP_THEME } from './theme'
@@ -96,44 +99,46 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
 </script>
 
 <template>
-  <n-config-provider :locale="frFR" :date-locale="dateFrFR" :theme-overrides="POPUP_THEME">
-    <n-message-provider>
-      <n-layout has-sider position="absolute" class="app">
-        <n-layout-sider
-          bordered
-          :width="siderWidth"
-          class="app-sider-panel"
-          content-class="app-sider"
-        >
-          <h1 class="app-title">Prisme</h1>
-          <object-explorer
-            :selected-id="connections.selectedId"
-            :current-database="currentDatabase"
-            @open-table="openTable"
-            @select="connections.selectedId = $event"
-            @use-database="useDatabase"
-          />
-        </n-layout-sider>
-        <sider-resizer v-model="siderWidth" />
-        <n-layout-content content-class="app-content">
-          <query-cell
-            v-if="connections.selected"
-            ref="cell"
-            :key="`${connections.selected.id}-${connections.versions[connections.selected.id] ?? 0}-${attempt}`"
-            v-model:sql="sql"
-            :connection="connections.selected"
-            @reconnect="attempt++"
-            @database="currentDatabase = $event"
-          />
-          <n-empty
-            v-else
-            description="Double-cliquez sur une source de données pour la choisir, ou ajoutez une connexion par le menu « ⋮ »"
-            class="app-empty"
-          />
-        </n-layout-content>
-      </n-layout>
-    </n-message-provider>
-  </n-config-provider>
+  <u-app :locale="fr">
+    <n-config-provider :locale="frFR" :date-locale="dateFrFR" :theme-overrides="POPUP_THEME">
+      <n-message-provider>
+        <n-layout has-sider position="absolute" class="app">
+          <n-layout-sider
+            bordered
+            :width="siderWidth"
+            class="app-sider-panel"
+            content-class="app-sider"
+          >
+            <h1 class="app-title">Prisme</h1>
+            <object-explorer
+              :selected-id="connections.selectedId"
+              :current-database="currentDatabase"
+              @open-table="openTable"
+              @select="connections.selectedId = $event"
+              @use-database="useDatabase"
+            />
+          </n-layout-sider>
+          <sider-resizer v-model="siderWidth" />
+          <n-layout-content content-class="app-content">
+            <query-cell
+              v-if="connections.selected"
+              ref="cell"
+              :key="`${connections.selected.id}-${connections.versions[connections.selected.id] ?? 0}-${attempt}`"
+              v-model:sql="sql"
+              :connection="connections.selected"
+              @reconnect="attempt++"
+              @database="currentDatabase = $event"
+            />
+            <n-empty
+              v-else
+              description="Double-cliquez sur une source de données pour la choisir, ou ajoutez une connexion par le menu « ⋮ »"
+              class="app-empty"
+            />
+          </n-layout-content>
+        </n-layout>
+      </n-message-provider>
+    </n-config-provider>
+  </u-app>
 </template>
 
 <style>

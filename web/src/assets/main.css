@@ -1,0 +1,6 @@
+/*
+  Feuille de style de l'application : Tailwind CSS, puis les styles et
+  jetons de thème de Nuxt UI (couleurs, clair / sombre).
+*/
+@import 'tailwindcss';
+@import '@nuxt/ui';
