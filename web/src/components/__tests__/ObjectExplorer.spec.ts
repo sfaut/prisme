@@ -5,9 +5,16 @@ import { mount } from '@vue/test-utils'
 
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 
-import { useConnectionsStore } from '@/stores/connections'
-
 import ObjectExplorer from '../ObjectExplorer.vue'
+
+/**
+ * Connexions renvoyées par le serveur simulé.
+ */
+let savedConnections: ConnectionSummary[] = []
+
+vi.mock('@/api/connections', () => ({
+  listConnections: async () => savedConnections,
+}))
 
 vi.mock('@/api/explorer', () => ({
   streamCatalog: async (_: number, onEvent: (event: unknown) => void) => {
@@ -78,7 +85,7 @@ afterEach(() => {
 
 describe('ObjectExplorer', () => {
   it('range les sources sous une racine et ouvre celle de la connexion choisie', async () => {
-    useConnectionsStore().connections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
+    savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
     const wrapper = mount(ObjectExplorer, {
       props: { selectedId: 1, currentDatabase: null },
       attachTo: document.body,
@@ -91,7 +98,7 @@ describe('ObjectExplorer', () => {
   })
 
   it('propose un menu sur la racine et un autre sur chaque source', async () => {
-    useConnectionsStore().connections = [connection(1, 'Origen 2')]
+    savedConnections = [connection(1, 'Origen 2')]
     const wrapper = mount(ObjectExplorer, {
       props: { selectedId: null, currentDatabase: null },
       attachTo: document.body,
@@ -107,8 +114,24 @@ describe('ObjectExplorer', () => {
     wrapper.unmount()
   })
 
+  it('choisit une source d’un clic', async () => {
+    savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
+    const wrapper = mount(ObjectExplorer, {
+      props: { selectedId: 1, currentDatabase: null },
+      attachTo: document.body,
+    })
+    const node = (label: string) =>
+      wrapper
+        .findAll('.n-tree-node')
+        .find((item) => item.find('.n-tree-node-content__text').text() === label)
+    await vi.waitFor(() => expect(node('Autre')).toBeDefined())
+    await node('Autre')?.trigger('click')
+    expect(wrapper.emitted('select')).toEqual([[2]])
+    wrapper.unmount()
+  })
+
   it('suit la base en cours, même en revenant sur une base déjà choisie', async () => {
-    useConnectionsStore().connections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
+    savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
     const wrapper = mount(ObjectExplorer, {
       props: { selectedId: 1, currentDatabase: 'a' },
       attachTo: document.body,

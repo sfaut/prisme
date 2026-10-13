@@ -1,5 +1,5 @@
 <!--
-  Disposition de l'écran : à gauche, les connexions et l'explorateur d'objets,
+  Disposition de l'écran : à gauche, l'explorateur des sources de données,
   dans un panneau dont on règle la largeur en faisant glisser son bord droit ;
   à droite, la cellule SQL et ses résultats.
 
@@ -22,7 +22,6 @@ import { nextTick, ref, useTemplateRef, watch } from 'vue'
 
 import { useConnectionsStore } from './stores/connections'
 
-import ConnectionPanel from './components/ConnectionPanel.vue'
 import ObjectExplorer from './components/ObjectExplorer.vue'
 import QueryCell from './components/QueryCell.vue'
 import SiderResizer from './components/SiderResizer.vue'
@@ -94,11 +93,11 @@ async function openTable(connectionId: number, schema: string, table: string): P
           content-class="app-sider"
         >
           <h1 class="app-title">Prisme</h1>
-          <connection-panel />
           <object-explorer
             :selected-id="connections.selectedId"
             :current-database="currentDatabase"
             @open-table="openTable"
+            @select="connections.selectedId = $event"
           />
         </n-layout-sider>
         <sider-resizer v-model="siderWidth" />
@@ -112,7 +111,11 @@ async function openTable(connectionId: number, schema: string, table: string): P
             @reconnect="attempt++"
             @database="currentDatabase = $event"
           />
-          <n-empty v-else description="Choisissez ou créez une connexion" class="app-empty" />
+          <n-empty
+            v-else
+            description="Choisissez une source de données, ou ajoutez une connexion par le menu « ⋯ »"
+            class="app-empty"
+          />
         </n-layout-content>
       </n-layout>
     </n-message-provider>

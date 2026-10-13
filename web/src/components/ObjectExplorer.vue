@@ -8,7 +8,8 @@
   et arrive au fil de l'eau : les bases d'abord, puis leurs objets (tables,
   vues, procédures, fonctions), puis le détail des tables (colonnes, index,
   clefs étrangères, déclencheurs), chaque partie affichée dès sa réception.
-  Il reste ensuite en mémoire.
+  Il reste ensuite en mémoire. Un clic sur une source la choisit comme
+  connexion de travail (émet `select`) ; elle reste surlignée.
 
   À droite de la racine, un menu « ⋯ » ajoute une connexion ou relit tous les
   catalogues déjà lus ; à droite de chaque source, un autre modifie la
@@ -18,7 +19,7 @@
 -->
 <script setup lang="ts">
 import { NAlert, NButton, NDropdown, NModal, NTree, type TreeOption } from 'naive-ui'
-import { computed, h, ref, watch } from 'vue'
+import { computed, h, onMounted, ref, watch } from 'vue'
 
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import { useCatalogStore } from '@/stores/catalog'
@@ -45,6 +46,10 @@ const emit = defineEmits<{
    * L'utilisateur veut voir le contenu d'une table.
    */
   'open-table': [connectionId: number, schema: string, table: string]
+  /**
+   * L'utilisateur choisit une source comme connexion de travail.
+   */
+  select: [connectionId: number]
 }>()
 
 const catalog = useCatalogStore()
@@ -62,6 +67,11 @@ const TREE_THEME = { nodeHeight: '20px', nodeWrapperPadding: '0' }
  * Connexions dont le catalogue est en cours de lecture.
  */
 const loadingIds = ref<number[]>([])
+
+/**
+ * Erreur de lecture de la liste des connexions, `null` si aucune.
+ */
+const listError = ref<string | null>(null)
 
 /**
  * Dernière erreur de lecture de chaque connexion, par identifiant.
@@ -129,6 +139,13 @@ const nodes = computed(
       })),
       receiving.value,
     ) as unknown as TreeOption[],
+)
+
+/**
+ * Nœud surligné : la source de la connexion choisie.
+ */
+const selectedKeys = computed(() =>
+  props.selectedId === null ? [] : [sourceKey(props.selectedId)],
 )
 
 /**
@@ -286,16 +303,43 @@ function renderSuffix({ option }: { option: TreeOption }) {
   )
 }
 
+onMounted(async () => {
+  try {
+    await connections.load()
+  } catch (failure) {
+    listError.value = `Connexions illisibles : ${failure instanceof Error ? failure.message : String(failure)}`
+  }
+})
+
 // La connexion choisie ouvre sa source.
 watch(
   () => props.selectedId,
   (connectionId) => {
-    if (connectionId !== null && !expandedKeys.value.includes(sourceKey(connectionId))) {
-      expand([...expandedKeys.value, sourceKey(connectionId)])
+    if (connectionId === null) {
+      return
     }
+    if (!expandedKeys.value.includes(sourceKey(connectionId))) {
+      expandedKeys.value = [...expandedKeys.value, sourceKey(connectionId)]
+    }
+    // Directement : la liste des connexions n'est peut-être pas encore reçue.
+    void load(connectionId, false)
   },
   { immediate: true },
 )
+
+/**
+ * Suit les clics de l'arbre : un clic sur une source la choisit. Les autres
+ * nœuds ne se surlignent pas, la source choisie reste surlignée.
+ *
+ * @param _keys Clefs que l'arbre voudrait surligner.
+ * @param options Nœuds correspondants (vide quand on reclique la source surlignée).
+ */
+function onSelect(_keys: string[], options: (TreeOption | null)[]): void {
+  const node = options[0] as unknown as ExplorerNode | undefined
+  if (node?.role === 'source') {
+    emit('select', node.connectionId)
+  }
+}
 
 /**
  * Propriétés HTML de chaque nœud : le double clic sur une table l'ouvre.
@@ -355,12 +399,14 @@ function renderLabel({ option }: { option: TreeOption }) {
 
 <template>
   <div class="object-explorer">
+    <n-alert v-if="listError" type="error" :show-icon="false">{{ listError }}</n-alert>
     <n-alert v-for="message in messages" :key="message" type="warning" :show-icon="false">
       {{ message }}
     </n-alert>
     <n-tree
       :data="nodes"
       :expanded-keys="expandedKeys"
+      :selected-keys="selectedKeys"
       :node-props="nodeProps"
       :render-label="renderLabel"
       :render-suffix="renderSuffix"
@@ -370,6 +416,7 @@ function renderLabel({ option }: { option: TreeOption }) {
       virtual-scroll
       class="object-tree"
       @update:expanded-keys="expand"
+      @update:selected-keys="onSelect"
     />
     <connection-dialog v-model:open="dialogOpen" :connection="editing" @updated="onUpdated" />
     <n-modal
