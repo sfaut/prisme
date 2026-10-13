@@ -2,7 +2,12 @@
 //!
 //! Règles en place :
 //!
-//! 1. **Mots-clefs en capitales.** Seuls les mots réservés de MySQL passent
+//! 1. **Blancs normalisés.** Espaces insécables, fines et autres blancs
+//!    exotiques deviennent des espaces normales, une tabulation quatre
+//!    espaces, hors chaînes et identifiants entre accents graves (module
+//!    `whitespace`).
+//!
+//! 2. **Mots-clefs en capitales.** Seuls les mots réservés de MySQL passent
 //!    en capitales, plus quelques mots-clefs sans ambiguïté (`EXTRA_KEYWORDS`).
 //!    Un mot réservé ne peut jamais servir d'identifiant sans accents graves :
 //!    les noms de tables et de colonnes (`name`, `status`, `date`...) restent
@@ -12,7 +17,7 @@
 //!    `INTERVAL <valeur>` et en premier argument d'`EXTRACT`,
 //!    `TIMESTAMPADD` et `TIMESTAMPDIFF`.
 //!
-//! 2. **Mise en page** : une clause par ligne, une colonne et un prédicat
+//! 3. **Mise en page** : une clause par ligne, une colonne et un prédicat
 //!    par ligne quand il y en a plusieurs, espaces autour des opérateurs
 //!    (module `layout`).
 //!
@@ -28,6 +33,7 @@ use crate::Dialect;
 use crate::keywords::is_keyword;
 use crate::layout::layout;
 use crate::limit::byte_offset;
+use crate::whitespace::normalize_blanks;
 
 /// Unités de temps de MySQL, en capitales dans les positions où elles ne
 /// peuvent être qu'une unité (les unités composées, `DAY_HOUR`..., sont réservées).
@@ -46,12 +52,14 @@ const TIME_UNITS: &[&str] = &[
 /// Fonctions dont le premier argument est une unité de temps.
 const UNIT_FUNCTIONS: &[&str] = &["EXTRACT", "TIMESTAMPADD", "TIMESTAMPDIFF"];
 
-/// Enjolive `sql` : mots-clefs en capitales, puis mise en page (module `layout`).
+/// Enjolive `sql` : blancs normalisés, mots-clefs en capitales, puis mise en
+/// page (module `layout`).
 ///
 /// Un texte que le découpeur en jetons ne comprend pas (chaîne non fermée...)
 /// est renvoyé tel quel.
 pub fn beautify(sql: &str, dialect: Dialect) -> String {
-    layout(&uppercase_keywords(sql, dialect), dialect)
+    let normalized = normalize_blanks(sql);
+    layout(&uppercase_keywords(&normalized, dialect), dialect)
 }
 
 /// Met les mots-clefs en capitales, sans rien changer d'autre.
@@ -178,6 +186,17 @@ mod tests {
         assert_eq!(
             beautify("select a, b from t where x=1 and y=2", Dialect::MariaDb),
             "SELECT ALL\n    a,\n    b\nFROM t\nWHERE TRUE\n    AND x = 1\n    AND y = 2"
+        );
+    }
+
+    #[test]
+    fn normalizes_exotic_blanks_before_layout() {
+        assert_eq!(
+            beautify(
+                "select\u{00A0}a\tfrom\u{202F}t where s = 'x\u{00A0}y'",
+                Dialect::MySql
+            ),
+            "SELECT ALL a\nFROM t\nWHERE s = 'x\u{00A0}y'"
         );
     }
 

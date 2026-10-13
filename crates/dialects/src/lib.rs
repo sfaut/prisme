@@ -11,6 +11,7 @@ pub mod classify;
 mod keywords;
 mod layout;
 pub mod limit;
+mod whitespace;
 
 /// Dialecte SQL d'une requête.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
