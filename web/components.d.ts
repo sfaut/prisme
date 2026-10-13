@@ -19,6 +19,16 @@ declare module 'vue' {
     ResultGrid: typeof import('./src/components/ResultGrid.vue')['default']
     SiderResizer: typeof import('./src/components/SiderResizer.vue')['default']
     SqlEditor: typeof import('./src/components/SqlEditor.vue')['default']
+    UAlert: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Alert.vue')['default']
     UApp: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/App.vue')['default']
+    UButton: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Button.vue')['default']
+    UColorModeSelect: typeof import('./node_modules/@nuxt/ui/dist/runtime/vue/components/color-mode/ColorModeSelect.vue')['default']
+    UDropdownMenu: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/DropdownMenu.vue')['default']
+    UFormField: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/FormField.vue')['default']
+    UIcon: typeof import('./node_modules/@nuxt/ui/dist/runtime/vue/components/Icon.vue')['default']
+    UInput: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Input.vue')['default']
+    UInputNumber: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/InputNumber.vue')['default']
+    UModal: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Modal.vue')['default']
+    UTree: typeof import('./node_modules/@nuxt/ui/dist/runtime/components/Tree.vue')['default']
   }
 }

@@ -9,19 +9,23 @@
   vues, procédures, fonctions), puis le détail des tables (colonnes, index,
   clefs étrangères, déclencheurs), chaque partie affichée dès sa réception.
   Il reste ensuite en mémoire. Un clic sur une ligne ouvre ou ferme son
-  niveau, comme le triangle. Un double clic sur une source la choisit comme
-  connexion de travail (émet `select`) ; elle reste surlignée. Un double clic
-  sur une base en fait la base en cours, comme `USE` (émet `use-database`).
+  niveau. Un double clic sur une source la choisit comme connexion de travail
+  (émet `select`) ; elle reste surlignée. Un double clic sur une base en fait
+  la base en cours, comme `USE` (émet `use-database`). Un double clic sur une
+  table ou une vue émet `open-table`, pour en afficher le contenu.
 
-  Au survol de la racine, un menu « ⋮ » à droite ajoute une connexion ou relit tous les
-  catalogues déjà lus ; au survol de chaque source, un autre modifie ou
-  teste la connexion, relit son catalogue ou supprime la connexion (après
-  confirmation). Un double clic sur une table ou une vue émet `open-table`,
-  pour en afficher le contenu.
+  Au survol de la racine, un menu « ⋮ » à droite ajoute une connexion ou relit
+  tous les catalogues déjà lus ; au survol de chaque source, un autre modifie
+  ou teste la connexion, relit son catalogue ou supprime la connexion (après
+  confirmation).
+
+  Composants de Nuxt UI (`UTree`, `UDropdownMenu`, `UModal`, `UAlert`),
+  importés automatiquement par son plugin Vite, et classes Tailwind.
 -->
 <script setup lang="ts">
-import { NAlert, NButton, NDropdown, NModal, NTree, type TreeOption } from 'naive-ui'
-import { computed, h, onMounted, ref, watch } from 'vue'
+import type { DropdownMenuItem, TreeItem } from '@nuxt/ui'
+import type { TreeItemSelectEvent } from 'reka-ui'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import { probeConnection, serverLabel } from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
@@ -29,7 +33,6 @@ import { useCatalogStore } from '@/stores/catalog'
 import { useConnectionsStore } from '@/stores/connections'
 
 import ConnectionDialog from './ConnectionDialog.vue'
-import { hashIcon, keyIcon, menuIcon } from './columnIcons'
 import { type ExplorerNode, SOURCES_KEY, explorerTree, sourceKey } from './explorerNodes'
 
 const props = defineProps<{
@@ -63,12 +66,20 @@ const catalog = useCatalogStore()
 const connections = useConnectionsStore()
 
 /**
- * Arbre compact : lignes de 20 pixels sans marge, retrait et espacement horizontal réduits.
- * `nodeHeight` sert aussi au défilement virtuel de l'arbre. La taille du
- * texte est fixée en CSS (`.object-tree`) : avec le défilement virtuel, Naive
- * UI ignore la variable `fontSize` de son thème.
+ * Arbre compact : lignes basses, peu d'espace autour du texte, libellés
+ * alignés à gauche (chaque ligne est un bouton, centré par défaut). `group`
+ * permet d'afficher le bouton « ⋮ » au survol de la ligne.
  */
-const TREE_THEME = { nodeHeight: '20px', nodeWrapperPadding: '0' }
+const TREE_UI = {
+  link: 'group px-1 py-0.5 gap-1 text-xs text-start',
+  linkLabel: 'min-w-0 flex-1 truncate',
+  linkTrailing: 'gap-0',
+}
+
+/**
+ * Hauteur estimée d'une ligne, en pixels, pour le défilement virtuel.
+ */
+const ROW_HEIGHT = 22
 
 /**
  * Connexions dont le catalogue est en cours de lecture.
@@ -107,34 +118,16 @@ const editing = ref<ConnectionSummary | null>(null)
 const removing = ref<ConnectionSummary | null>(null)
 
 /**
- * Clef du nœud dont le menu est ouvert, `null` si aucun : son bouton reste
- * affiché quand la souris quitte la ligne pour le menu.
+ * Fenêtre de confirmation de la suppression ouverte ?
  */
-const menuKey = ref<string | null>(null)
-
-/**
- * Choix du menu de la racine « Sources de données ».
- */
-const SOURCES_MENU = [
-  { key: 'add', label: 'Ajouter une connexion' },
-  { key: 'refresh-all', label: 'Tout rafraîchir' },
-]
-
-/**
- * Choix du menu de la racine « Notebooks ». Les notebooks ne sont pas encore
- * enregistrés (étape 3 de la v1) : la création est inactive en attendant.
- */
-const NOTEBOOKS_MENU = [{ key: 'create-notebook', label: 'Créer un notebook', disabled: true }]
-
-/**
- * Choix du menu d'une source.
- */
-const SOURCE_MENU = [
-  { key: 'edit', label: 'Modifier' },
-  { key: 'refresh', label: 'Rafraîchir' },
-  { key: 'probe', label: 'Tester' },
-  { key: 'remove', label: 'Supprimer' },
-]
+const removeOpen = computed({
+  get: () => removing.value !== null,
+  set: (open) => {
+    if (!open) {
+      removing.value = null
+    }
+  },
+})
 
 /**
  * Clefs des nœuds ouverts.
@@ -152,27 +145,26 @@ const receiving = computed(() =>
 )
 
 /**
- * Arbre complet, construit à partir des catalogues en mémoire.
+ * Arbre complet, construit à partir des catalogues en mémoire. La source de
+ * la connexion choisie est surlignée.
  */
-const nodes = computed(
-  () =>
-    explorerTree(
-      connections.connections.map((connection) => ({
-        connectionId: connection.id,
-        name: connection.name,
-        catalog: catalog.catalogOf(connection.id),
-        currentDatabase: connection.id === props.selectedId ? props.currentDatabase : null,
-      })),
-      receiving.value,
-    ) as unknown as TreeOption[],
-)
-
-/**
- * Nœud surligné : la source de la connexion choisie.
- */
-const selectedKeys = computed(() =>
-  props.selectedId === null ? [] : [sourceKey(props.selectedId)],
-)
+const nodes = computed(() => {
+  const tree = explorerTree(
+    connections.connections.map((connection) => ({
+      connectionId: connection.id,
+      name: connection.name,
+      catalog: catalog.catalogOf(connection.id),
+      currentDatabase: connection.id === props.selectedId ? props.currentDatabase : null,
+    })),
+    receiving.value,
+  )
+  for (const source of tree[0]?.children ?? []) {
+    if (source.connectionId === props.selectedId) {
+      Object.assign(source, { class: 'before:bg-elevated' })
+    }
+  }
+  return tree as (ExplorerNode & TreeItem)[]
+})
 
 /**
  * Erreurs à afficher, précédées du nom de leur source : échecs de lecture,
@@ -235,35 +227,56 @@ function expand(keys: string[]): void {
 }
 
 /**
- * Exécute un choix du menu d'un nœud.
+ * Choix du menu « ⋮ » d'un nœud, `null` pour un nœud sans menu.
  *
- * @param node Nœud dont le menu est ouvert.
- * @param choice Clef du choix.
+ * @param node Nœud de l'arbre.
  */
-function onMenu(node: ExplorerNode, choice: string): void {
+function menuItems(node: ExplorerNode): DropdownMenuItem[] | null {
   const connection = connections.connections.find((item) => item.id === node.connectionId) ?? null
-  switch (choice) {
-    case 'add':
-      editing.value = null
-      dialogOpen.value = true
-      break
-    case 'refresh-all':
-      refreshAll()
-      break
-    case 'edit':
-      editing.value = connection
-      dialogOpen.value = true
-      break
-    case 'probe':
-      void probe(node.connectionId)
-      break
-    case 'refresh':
-      void load(node.connectionId, true)
-      break
-    case 'remove':
-      removing.value = connection
-      break
+  switch (node.role) {
+    case 'sources':
+      return [
+        { label: 'Ajouter une connexion', icon: 'i-lucide-plus', onSelect: () => openDialog(null) },
+        { label: 'Tout rafraîchir', icon: 'i-lucide-refresh-cw', onSelect: refreshAll },
+      ]
+    case 'notebooks':
+      // Les notebooks ne sont pas encore enregistrés (étape 3 de la v1).
+      return [{ label: 'Créer un notebook', icon: 'i-lucide-notebook-pen', disabled: true }]
+    case 'source':
+      return [
+        { label: 'Modifier', icon: 'i-lucide-pencil', onSelect: () => openDialog(connection) },
+        {
+          label: 'Rafraîchir',
+          icon: 'i-lucide-refresh-cw',
+          onSelect: () => void load(node.connectionId, true),
+        },
+        {
+          label: 'Tester',
+          icon: 'i-lucide-plug-zap',
+          onSelect: () => void probe(node.connectionId),
+        },
+        {
+          label: 'Supprimer',
+          icon: 'i-lucide-trash-2',
+          color: 'error',
+          onSelect: () => {
+            removing.value = connection
+          },
+        },
+      ]
+    default:
+      return null
   }
+}
+
+/**
+ * Ouvre la fenêtre de connexion.
+ *
+ * @param connection Connexion à modifier, `null` pour en créer une.
+ */
+function openDialog(connection: ConnectionSummary | null): void {
+  editing.value = connection
+  dialogOpen.value = true
 }
 
 /**
@@ -314,43 +327,28 @@ async function confirmRemove(): Promise<void> {
 }
 
 /**
- * Menu « ⋮ » à droite de la racine et de chaque source, affiché au survol de
- * la ligne (règles CSS `.node-menu`). Le clic sur le bouton ne se propage
- * pas : il n'ouvre ni ne ferme le nœud.
+ * Suit les clics sur les lignes. L'arbre ne garde aucune sélection (la
+ * source surlignée est celle de la connexion choisie) ; le clic ouvre ou
+ * ferme le niveau. Le second clic d'un double clic choisit la source, change
+ * de base ou ouvre la table.
  *
- * @param info Nœud affiché.
+ * @param event Sélection demandée par l'arbre, avec le clic d'origine.
+ * @param node Nœud cliqué.
  */
-function renderSuffix({ option }: { option: TreeOption }) {
-  const node = option as unknown as ExplorerNode
-  if (node.role === undefined || node.role === 'database') {
-    return null
+function onSelect(event: TreeItemSelectEvent<TreeItem>, node: TreeItem): void {
+  event.preventDefault()
+  const original = event.detail.originalEvent
+  if (!(original instanceof MouseEvent) || original.detail !== 2) {
+    return
   }
-  return h(
-    NDropdown,
-    {
-      trigger: 'click',
-      size: 'small',
-      options: { sources: SOURCES_MENU, notebooks: NOTEBOOKS_MENU, source: SOURCE_MENU }[node.role],
-      onSelect: (choice: string) => onMenu(node, choice),
-      onUpdateShow: (show: boolean) => {
-        menuKey.value = show ? node.key : null
-      },
-    },
-    {
-      default: () =>
-        h(
-          NButton,
-          {
-            text: true,
-            size: 'tiny',
-            class: { 'node-menu': true, 'node-menu-open': menuKey.value === node.key },
-            title: 'Actions',
-            onClick: (event: MouseEvent) => event.stopPropagation(),
-          },
-          { default: menuIcon },
-        ),
-    },
-  )
+  const clicked = node as ExplorerNode
+  if (clicked.role === 'source') {
+    emit('select', clicked.connectionId)
+  } else if (clicked.role === 'database') {
+    emit('use-database', clicked.connectionId, clicked.schema)
+  } else if (clicked.table !== undefined) {
+    emit('open-table', clicked.connectionId, clicked.schema, clicked.table)
+  }
 }
 
 onMounted(async () => {
@@ -376,207 +374,167 @@ watch(
   },
   { immediate: true },
 )
-
-/**
- * Propriétés HTML de chaque nœud : le double clic sur une source la choisit,
- * celui sur une base en fait la base en cours, celui sur une table l'ouvre.
- *
- * @param info Nœud affiché.
- */
-function nodeProps({ option }: { option: TreeOption }) {
-  const node = option as unknown as ExplorerNode
-  return {
-    onDblclick: () => {
-      if (node.role === 'source') {
-        emit('select', node.connectionId)
-      } else if (node.role === 'database') {
-        emit('use-database', node.connectionId, node.schema)
-      } else if (node.table !== undefined) {
-        emit('open-table', node.connectionId, node.schema, node.table)
-      }
-    },
-  }
-}
-
-/**
- * Affiche le libellé d'un nœud. Une colonne s'affiche en trois colonnes,
- * alignées sur toutes les colonnes de la table : symboles (clef pour la clef
- * primaire, croisillon pour une clef étrangère), nom (en gras si la colonne
- * est indexée, clef primaire comprise), puis type et nullabilité, en
- * capitales, plus petits et plus clairs. La largeur des noms se compte en
- * caractères (`ch`), toujours en gras : la même pour tous les noms, gras ou
- * non. Approchée pour une police proportionnelle, elle aligne les types sans
- * mesurer le texte.
- *
- * @param info Nœud affiché.
- */
-function renderLabel({ option }: { option: TreeOption }) {
-  const node = option as unknown as ExplorerNode
-  // Hors colonnes : le libellé, suivi de sa mention éventuelle (UNIQUE). La
-  // racines et la base en cours sont en gras.
-  if (node.column === undefined) {
-    // Toujours un élément, en gras ou non : passer d'un texte nu à un élément
-    // (ou l'inverse) fait échouer la mise à jour de l'arbre par Vue.
-    return h(
-      'span',
-      {
-        class: {
-          'current-database': node.current,
-          'tree-root': node.role === 'sources' || node.role === 'notebooks',
-        },
-      },
-      [node.label, node.note === undefined ? null : h('span', { class: 'node-note' }, node.note)],
-    )
-  }
-  const column = node.column
-  return h('span', { class: 'column-label' }, [
-    column.markSlots > 0
-      ? h('span', { class: 'column-marks', style: { width: `${column.markSlots}em` } }, [
-          column.primaryKey ? keyIcon() : null,
-          column.foreignKey ? hashIcon() : null,
-        ])
-      : null,
-    h('span', { class: 'column-name', style: { minWidth: `${column.nameWidth}ch` } }, [
-      h('span', { class: { unindexed: !column.indexed } }, column.name),
-    ]),
-    // Texte complet au survol : le détail est tronqué (…) s'il déborde.
-    h('span', { class: 'column-details', title: column.details }, column.details),
-  ])
-}
 </script>
 
 <template>
-  <div class="object-explorer">
-    <n-alert v-if="probed" type="success" :show-icon="false" closable @close="probed = null">
-      {{ probed }}
-    </n-alert>
-    <n-alert v-if="listError" type="error" :show-icon="false">{{ listError }}</n-alert>
-    <n-alert v-for="message in messages" :key="message" type="warning" :show-icon="false">
-      {{ message }}
-    </n-alert>
-    <n-tree
-      :data="nodes"
-      :expanded-keys="expandedKeys"
-      :selected-keys="selectedKeys"
-      :node-props="nodeProps"
-      :render-label="renderLabel"
-      :render-suffix="renderSuffix"
-      :indent="8"
-      :theme-overrides="TREE_THEME"
-      block-line
-      expand-on-click
-      virtual-scroll
-      class="object-tree"
-      @update:expanded-keys="expand"
+  <div class="flex min-h-0 flex-1 flex-col gap-2">
+    <u-alert
+      v-if="probed"
+      color="success"
+      variant="subtle"
+      :title="probed"
+      close
+      @update:open="probed = null"
     />
+    <u-alert v-if="listError" color="error" variant="subtle" :title="listError" />
+    <u-alert
+      v-for="message in messages"
+      :key="message"
+      color="warning"
+      variant="subtle"
+      :title="message"
+    />
+    <!-- Enveloppe : la portée des styles de ce composant ne passe pas jusqu'à UTree. -->
+    <div class="object-tree flex min-h-0 flex-1 flex-col">
+      <u-tree
+        :items="nodes"
+        :get-key="(node: TreeItem) => (node as ExplorerNode).key"
+        :expanded="expandedKeys"
+        :virtualize="{ estimateSize: ROW_HEIGHT }"
+        size="xs"
+        color="neutral"
+        :ui="TREE_UI"
+        class="min-h-0 flex-1"
+        @update:expanded="expand"
+        @select="onSelect"
+      >
+        <template #item-leading="{ item, expanded }">
+          <u-icon
+            v-if="item.children?.length"
+            :name="expanded ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+            class="size-3 shrink-0 text-dimmed"
+          />
+          <span v-else class="size-3 shrink-0" />
+        </template>
+
+        <template #item-label="{ item }">
+          <!-- Colonne : symboles, nom (gras si indexée), type et nullabilité. -->
+          <span v-if="item.column" class="inline-flex max-w-full items-center align-top">
+            <span
+              v-if="item.column.markSlots > 0"
+              class="inline-flex flex-none text-muted"
+              :style="{ width: `${item.column.markSlots}em` }"
+            >
+              <u-icon
+                v-if="item.column.primaryKey"
+                name="i-lucide-key-round"
+                title="Clef primaire"
+              />
+              <u-icon v-if="item.column.foreignKey" name="i-lucide-hash" title="Clef étrangère" />
+            </span>
+            <span
+              class="me-3 flex-none font-bold"
+              :style="{ minWidth: `${item.column.nameWidth}ch` }"
+            >
+              <span :class="{ 'font-normal': !item.column.indexed }">{{ item.column.name }}</span>
+            </span>
+            <span class="truncate text-[0.85em] text-dimmed" :title="item.column.details">
+              {{ item.column.details }}
+            </span>
+          </span>
+          <!-- Autres nœuds : libellé, puis mention éventuelle (UNIQUE, chargement…). -->
+          <span
+            v-else
+            :class="{
+              'current-database': item.current,
+              'font-bold': item.current || item.role === 'sources' || item.role === 'notebooks',
+            }"
+          >
+            {{ item.label }}
+            <span v-if="item.note" class="ms-3 text-[0.85em] font-normal text-dimmed">
+              {{ item.note }}
+            </span>
+          </span>
+        </template>
+
+        <template #item-trailing="{ item }">
+          <!-- Jamais vide : un emplacement vide afficherait le chevron par défaut de Nuxt UI. -->
+          <u-dropdown-menu v-if="menuItems(item)" :items="menuItems(item) ?? []" size="sm">
+            <u-button
+              icon="i-lucide-ellipsis-vertical"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              aria-label="Actions"
+              class="node-menu invisible p-0.5 group-hover:visible data-[state=open]:visible"
+              @click.stop
+              @keydown.stop
+            />
+          </u-dropdown-menu>
+          <span v-else />
+        </template>
+      </u-tree>
+    </div>
+
     <connection-dialog v-model:open="dialogOpen" :connection="editing" @updated="onUpdated" />
-    <n-modal
-      :show="removing !== null"
-      preset="dialog"
-      type="warning"
+
+    <u-modal
+      v-model:open="removeOpen"
       title="Supprimer la connexion"
-      positive-text="Supprimer"
-      negative-text="Annuler"
-      @positive-click="confirmRemove"
-      @negative-click="removing = null"
-      @close="removing = null"
-      @mask-click="removing = null"
+      :description="`Supprimer la connexion « ${removing?.name} » ?`"
     >
-      <p>Supprimer la connexion « {{ removing?.name }} » ?</p>
-      <p>
-        Aucune donnée n'est perdue : seuls les paramètres de connexion enregistrés dans Prisme sont
-        retirés, le serveur et ses bases ne sont pas touchés. La connexion pourra être recréée
-        ultérieurement.
-      </p>
-    </n-modal>
+      <template #body>
+        <p class="text-sm text-muted">
+          Aucune donnée n'est perdue : seuls les paramètres de connexion enregistrés dans Prisme
+          sont retirés, le serveur et ses bases ne sont pas touchés. La connexion pourra être
+          recréée ultérieurement.
+        </p>
+      </template>
+      <template #footer>
+        <div class="flex w-full justify-end gap-2">
+          <u-button color="neutral" variant="outline" label="Annuler" @click="removing = null" />
+          <u-button color="error" label="Supprimer" @click="confirmRemove" />
+        </div>
+      </template>
+    </u-modal>
   </div>
 </template>
 
 <style scoped>
-.object-explorer {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 8px;
-  min-height: 0;
+/* Retrait de 12 pixels par niveau. Nuxt UI en met 22 (style en ligne, d'où
+   !important), trop pour un arbre profond dans un panneau étroit. Reka UI
+   pose le niveau de chaque ligne dans `aria-level`. */
+.object-tree :deep([data-slot='link'][aria-level='2']) {
+  padding-inline-start: 16px !important;
 }
-
-.object-tree {
-  flex: 1;
-  min-height: 0;
-  font-size: 11px;
+.object-tree :deep([data-slot='link'][aria-level='3']) {
+  padding-inline-start: 28px !important;
 }
-
-.object-tree :deep(.n-tree-node-switcher) {
-  width: 12px;
-  height: 20px;
+.object-tree :deep([data-slot='link'][aria-level='4']) {
+  padding-inline-start: 40px !important;
 }
-
-.object-tree :deep(.tree-root),
-.object-tree :deep(.current-database) {
-  font-weight: 700;
+.object-tree :deep([data-slot='link'][aria-level='5']) {
+  padding-inline-start: 52px !important;
 }
-
-.object-tree :deep(.column-label) {
-  display: inline-flex;
-  max-width: 100%;
-  align-items: center;
-  /* Aligné en haut : une colonne des symboles vide ne rehausse pas la ligne. */
-  vertical-align: top;
+.object-tree :deep([data-slot='link'][aria-level='6']) {
+  padding-inline-start: 64px !important;
 }
-
-.object-tree :deep(.column-marks) {
-  display: inline-flex;
-  flex: none;
+.object-tree :deep([data-slot='link'][aria-level='7']) {
+  padding-inline-start: 76px !important;
 }
-
-.object-tree :deep(.column-name) {
-  flex: none;
-  margin-right: 0.8em;
-  font-weight: 700;
+.object-tree :deep([data-slot='link'][aria-level='8']) {
+  padding-inline-start: 88px !important;
 }
-
-.object-tree :deep(.unindexed) {
-  font-weight: 400;
+.object-tree :deep([data-slot='link'][aria-level='9']) {
+  padding-inline-start: 100px !important;
 }
-
-.object-tree :deep(.node-note) {
-  margin-left: 0.8em;
+.object-tree :deep([data-slot='link'][aria-level='10']) {
+  padding-inline-start: 112px !important;
 }
-
-.object-tree :deep(.column-details),
-.object-tree :deep(.node-note) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: #999;
-  font-size: 0.85em;
-  white-space: nowrap;
+.object-tree :deep([data-slot='link'][aria-level='11']) {
+  padding-inline-start: 124px !important;
 }
-
-.object-tree :deep(.n-tree-node-content__text) {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.object-tree :deep(.node-menu) {
-  padding: 0 4px;
-  color: #999;
-  font-size: 13px;
-  line-height: 1;
-}
-
-.object-tree :deep(.node-menu:hover) {
-  color: #333;
-}
-
-/* Bouton visible au survol de la ligne, ou tant que son menu est ouvert. */
-.object-tree :deep(.n-tree-node:not(:hover) .node-menu:not(.node-menu-open)) {
-  visibility: hidden;
-}
-
-.object-tree :deep(.n-tree-node-content) {
-  padding: 0 2px 0 1px;
+.object-tree :deep([data-slot='link'][aria-level='12']) {
+  padding-inline-start: 136px !important;
 }
 </style>
