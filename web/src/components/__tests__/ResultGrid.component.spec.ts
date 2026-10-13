@@ -20,6 +20,13 @@ function mountGrid(columns: string[], rows: (string | null)[][]) {
 }
 
 describe('ResultGrid', () => {
+  it('sélectionne tout par un clic sur le coin supérieur gauche', async () => {
+    const wrapper = mountGrid(['id', 'name'], [['1', 'a']])
+    await wrapper.find('.grid-corner').trigger('mousedown')
+    const headers = wrapper.findAll('.grid-column-header')
+    expect(headers.map((header) => header.classes('selected'))).toEqual([true, true])
+  })
+
   it('ajuste une colonne au contenu, puis lui rend sa largeur estimée', async () => {
     const wrapper = mount({
       render: () =>

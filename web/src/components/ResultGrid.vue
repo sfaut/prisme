@@ -4,7 +4,8 @@
   - Tri : bouton ▲▼ de l'en-tête (croissant, décroissant, aucun).
   - Filtre : texte cherché dans une colonne ou dans toutes.
   - Sélection : clic sur une cellule, sur un numéro de ligne ou sur un nom de
-    colonne ; Maj-clic étend, Ctrl-clic ajoute, glisser étend aussi.
+    colonne ; Maj-clic étend, Ctrl-clic ajoute, glisser étend aussi. Un clic
+    sur le coin supérieur gauche sélectionne tout.
   - Copie : Ctrl-C (Ctrl-Maj-C avec les en-têtes), ou les boutons. Ctrl-A
     sélectionne tout, Échap vide la sélection.
   - Largeur : glisser le bord droit d'un en-tête change la largeur de la
@@ -382,6 +383,13 @@ async function copy(withHeaders: boolean): Promise<void> {
 }
 
 /**
+ * Sélectionne toutes les lignes et toutes les colonnes (Ctrl-A, clic sur le coin).
+ */
+function selectEverything(): void {
+  selection.value = selectAll(view.value.length, props.columns.length)
+}
+
+/**
  * Raccourcis clavier de la grille.
  */
 function onKeydown(event: KeyboardEvent): void {
@@ -391,7 +399,7 @@ function onKeydown(event: KeyboardEvent): void {
     void copy(event.shiftKey)
   } else if (command && event.key.toLowerCase() === 'a') {
     event.preventDefault()
-    selection.value = selectAll(view.value.length, props.columns.length)
+    selectEverything()
   } else if (event.key === 'Escape') {
     selection.value = emptySelection()
   }
@@ -435,7 +443,7 @@ const filterColumn = computed({
 
     <div ref="scroller" class="grid-scroller" tabindex="0" @keydown="onKeydown">
       <div class="grid-row grid-header" :style="{ gridTemplateColumns: template }">
-        <div class="grid-corner" />
+        <div class="grid-corner" title="Tout sélectionner" @mousedown.prevent="selectEverything" />
         <div
           v-for="(column, position) in order"
           :key="column"
@@ -588,6 +596,10 @@ const filterColumn = computed({
 .grid-row-header {
   padding: 0 6px;
   cursor: e-resize;
+}
+
+.grid-corner {
+  cursor: se-resize;
 }
 
 .grid-column-header {
