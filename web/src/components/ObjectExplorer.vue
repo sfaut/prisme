@@ -462,7 +462,12 @@ function renderLabel({ option }: { option: TreeOption }) {
       @close="removing = null"
       @mask-click="removing = null"
     >
-      Supprimer la connexion « {{ removing?.name }} » ?
+      <p>Supprimer la connexion « {{ removing?.name }} » ?</p>
+      <p>
+        Aucune donnée n'est perdue : seuls les paramètres de connexion enregistrés dans Prisme sont
+        retirés, le serveur et ses bases ne sont pas touchés. La connexion pourra être recréée
+        ultérieurement.
+      </p>
     </n-modal>
   </div>
 </template>
