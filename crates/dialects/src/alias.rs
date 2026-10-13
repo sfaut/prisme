@@ -8,9 +8,9 @@
 //! Les alias sont trouvés par l'analyseur de `sqlparser`, pas par le texte :
 //! c'est lui qui sait que `b` est un alias dans `SELECT a b`, mais pas
 //! `DAY` dans `INTERVAL 1 DAY`. Sa position dans le texte d'origine
-//! (`Ident::span`) dit où insérer `AS`. Une requête que l'analyseur ne
-//! comprend pas reste telle quelle ; les autres requêtes du texte sont
-//! traitées.
+//! (`Ident::span`) dit où insérer `AS`. Dans une partie que l'analyseur ne
+//! comprend pas, rien n'est inséré ; l'analyse reprend ensuite (module
+//! `parse`).
 
 use std::ops::ControlFlow;
 
@@ -146,6 +146,16 @@ mod tests {
         assert_eq!(
             with_as("SELECT a /* note */ `mon alias` FROM t"),
             "SELECT a /* note */ AS `mon alias` FROM t"
+        );
+    }
+
+    #[test]
+    fn handles_the_statements_of_a_procedure_body() {
+        assert_eq!(
+            with_as(
+                "CREATE PROCEDURE p() BEGIN SELECT a b FROM t; IF x THEN SELECT c d FROM u; END IF; END"
+            ),
+            "CREATE PROCEDURE p() BEGIN SELECT a AS b FROM t; IF x THEN SELECT c AS d FROM u; END IF; END"
         );
     }
 
