@@ -281,15 +281,16 @@ defineExpose({ run })
   min-height: 0;
 }
 
-.cell-tabs :deep(.n-tabs-pane-wrapper) {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
+/*
+ * La grille de résultats doit avoir une hauteur bornée : sinon sa zone de
+ * défilement grandit avec le résultat, toutes les lignes sont dessinées et
+ * l'interface se fige. Chaque niveau, jusqu'à la grille, occupe donc la place
+ * restante sans pouvoir la dépasser (flex: 1 et min-height: 0).
+ */
 .cell-tab-pane {
   display: flex;
   flex: 1;
   min-height: 0;
+  padding: 6px 0 0;
 }
 </style>

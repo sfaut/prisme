@@ -70,7 +70,7 @@ async function openTable(schema: string, table: string): Promise<void> {
 <template>
   <n-config-provider :locale="frFR" :date-locale="dateFrFR">
     <n-message-provider>
-      <n-layout has-sider class="app">
+      <n-layout has-sider position="absolute" class="app">
         <n-layout-sider bordered :width="300" content-class="app-sider">
           <h1 class="app-title">Prisme</h1>
           <connection-panel />

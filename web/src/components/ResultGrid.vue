@@ -320,6 +320,9 @@ const filterColumn = computed({
   position: relative;
   flex: 1;
   min-height: 120px;
+  /* Garde-fou : une zone de défilement plus haute que la fenêtre dessinerait
+     toutes les lignes et figerait l'interface. */
+  max-height: 100vh;
   overflow: auto;
   border: 1px solid #ddd;
   font-size: 12px;
