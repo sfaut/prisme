@@ -1,7 +1,8 @@
 <!--
   Disposition de l'écran : à gauche, l'explorateur des sources de données,
-  dans un panneau dont on règle la largeur en faisant glisser son bord droit ;
-  à droite, la cellule SQL et ses résultats.
+  dans un panneau dont on règle la largeur en faisant glisser son bord droit,
+  avec le choix du thème (clair, sombre ou celui du système) ; à droite, la
+  cellule SQL et ses résultats. Disposition en classes Tailwind.
 
   `UApp` (Nuxt UI, textes en français) puis les fournisseurs de Naive UI
   (configuration, messages) enveloppent toute
@@ -10,16 +11,7 @@
   disponibles partout.
 -->
 <script setup lang="ts">
-import {
-  NConfigProvider,
-  NLayout,
-  NLayoutContent,
-  NLayoutSider,
-  NEmpty,
-  NMessageProvider,
-  dateFrFR,
-  frFR,
-} from 'naive-ui'
+import { NConfigProvider, NEmpty, NMessageProvider, dateFrFR, frFR } from 'naive-ui'
 import { nextTick, ref, useTemplateRef, watch } from 'vue'
 
 import { fr } from '@nuxt/ui/locale'
@@ -100,16 +92,22 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
 
 <template>
   <u-app :locale="fr">
-    <n-config-provider :locale="frFR" :date-locale="dateFrFR" :theme-overrides="POPUP_THEME">
+    <n-config-provider
+      :locale="frFR"
+      :date-locale="dateFrFR"
+      :theme-overrides="POPUP_THEME"
+      class="h-full"
+    >
       <n-message-provider>
-        <n-layout has-sider position="absolute" class="app">
-          <n-layout-sider
-            bordered
-            :width="siderWidth"
-            class="app-sider-panel"
-            content-class="app-sider"
+        <div class="relative flex h-full bg-default text-default">
+          <aside
+            class="flex shrink-0 flex-col gap-3 border-e border-default p-3"
+            :style="{ width: `${siderWidth}px` }"
           >
-            <h1 class="app-title">Prisme</h1>
+            <header class="flex items-center justify-between gap-2">
+              <h1 class="text-lg font-semibold">Prisme</h1>
+              <u-color-mode-select size="xs" class="w-28" />
+            </header>
             <object-explorer
               :selected-id="connections.selectedId"
               :current-database="currentDatabase"
@@ -117,9 +115,9 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
               @select="connections.selectedId = $event"
               @use-database="useDatabase"
             />
-          </n-layout-sider>
+          </aside>
           <sider-resizer v-model="siderWidth" />
-          <n-layout-content content-class="app-content">
+          <main class="flex h-full min-w-0 flex-1 flex-col gap-3 p-3">
             <query-cell
               v-if="connections.selected"
               ref="cell"
@@ -132,62 +130,20 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
             <n-empty
               v-else
               description="Double-cliquez sur une source de données pour la choisir, ou ajoutez une connexion par le menu « ⋮ »"
-              class="app-empty"
+              class="m-auto"
             />
-          </n-layout-content>
-        </n-layout>
+          </main>
+        </div>
       </n-message-provider>
     </n-config-provider>
   </u-app>
 </template>
 
 <style>
-* {
-  box-sizing: border-box;
-}
-
 html,
 body,
 #app {
   height: 100%;
   margin: 0;
-}
-
-.app {
-  height: 100%;
-}
-
-/* Naive UI anime la largeur de son panneau latéral (min-width et max-width,
-   0,3 s), alors que son contenu prend aussitôt la nouvelle largeur et se cale
-   à droite : pendant un redimensionnement à la souris, le contenu débordait
-   à gauche et sur la partie droite, le temps de l'animation. Le panneau suit
-   donc la poignée sans animation. */
-.app-sider-panel {
-  transition: none;
-}
-
-.app-sider {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 12px;
-}
-
-.app-content {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  height: 100%;
-  padding: 12px;
-  box-sizing: border-box;
-}
-
-.app-empty {
-  margin: auto;
-}
-
-.app-title {
-  margin: 0;
-  font-size: 1.25rem;
 }
 </style>
