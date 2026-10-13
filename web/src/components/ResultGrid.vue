@@ -4,7 +4,8 @@
   - Tri : bouton ▲▼ de l'en-tête (croissant, décroissant, aucun).
   - Filtre : texte cherché dans une colonne ou dans toutes.
   - Sélection : clic sur une cellule, sur un numéro de ligne ou sur un nom de
-    colonne ; Maj-clic étend, Ctrl-clic ajoute, glisser étend aussi. Un clic
+    colonne ; Maj-clic étend, Ctrl-clic ajoute, glisser étend aussi (sur les
+    numéros de ligne, glisser sélectionne un groupe de lignes). Un clic
     sur le coin supérieur gauche sélectionne tout.
   - Copie : Ctrl-C copie la sélection avec les noms des colonnes en première
     ligne (un réglage du profil pourra les retirer). Ctrl-A
@@ -92,9 +93,20 @@ const sort = ref<SortState | null>(null)
 const selection = shallowRef(emptySelection())
 
 /**
- * Glissement de souris en cours (sélection d'une plage) ?
+ * Glissement de souris en cours : plage de cellules, ou groupe de lignes
+ * (commencé sur un numéro de ligne) ; `null` sans glissement.
  */
-let dragging = false
+let dragging: 'cells' | 'rows' | null = null
+
+/**
+ * Commence un glissement, qui prend fin au relâchement du bouton.
+ *
+ * @param kind Ce que le glissement sélectionne.
+ */
+function startDragging(kind: 'cells' | 'rows'): void {
+  dragging = kind
+  window.addEventListener('mouseup', () => (dragging = null), { once: true })
+}
 
 /**
  * Vue : indices des lignes sources, filtrées et triées.
@@ -251,24 +263,37 @@ function modeOf(event: MouseEvent): SelectMode {
  */
 function onCellDown(event: MouseEvent, row: number, column: number): void {
   selection.value = selectCell(selection.value, row, column, modeOf(event))
-  dragging = true
-  window.addEventListener('mouseup', () => (dragging = false), { once: true })
+  startDragging('cells')
 }
 
 /**
- * Glissement sur une cellule : la plage s'étend jusqu'à elle.
+ * Glissement sur une cellule : la plage s'étend jusqu'à elle, ou le groupe
+ * de lignes jusqu'à sa ligne.
  */
 function onCellEnter(row: number, column: number): void {
-  if (dragging) {
+  if (dragging === 'cells') {
     selection.value = selectCell(selection.value, row, column, 'extend')
+  } else if (dragging === 'rows') {
+    onRowEnter(row)
   }
 }
 
 /**
- * Clic sur un numéro de ligne : sélection de la ligne entière.
+ * Clic sur un numéro de ligne : sélection de la ligne entière, et début
+ * d'un éventuel glissement sur d'autres lignes.
  */
 function onRowHeader(event: MouseEvent, row: number): void {
   selection.value = selectRow(selection.value, row, props.columns.length, modeOf(event))
+  startDragging('rows')
+}
+
+/**
+ * Glissement sur un numéro de ligne : le groupe de lignes s'étend jusqu'à elle.
+ */
+function onRowEnter(row: number): void {
+  if (dragging === 'rows') {
+    selection.value = selectRow(selection.value, row, props.columns.length, 'extend')
+  }
 }
 
 /**
@@ -488,7 +513,11 @@ const filterColumn = computed({
           class="grid-row"
           :style="{ gridTemplateColumns: template, transform: `translateY(${item.start}px)` }"
         >
-          <div class="grid-row-header" @mousedown.prevent="onRowHeader($event, item.index)">
+          <div
+            class="grid-row-header"
+            @mousedown.prevent="onRowHeader($event, item.index)"
+            @mouseenter="onRowEnter(item.index)"
+          >
             {{ item.index + 1 }}
           </div>
           <div
