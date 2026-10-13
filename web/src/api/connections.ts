@@ -1,5 +1,5 @@
 /**
- * Connexions enregistrées : liste, création et test.
+ * Connexions enregistrées : liste, création, modification, suppression et test.
  */
 
 import { request } from './http'
@@ -23,6 +23,16 @@ export function listConnections(): Promise<ConnectionSummary[]> {
  */
 export function createConnection(connection: NewConnection): Promise<Created> {
   return request('POST', '/api/connections', connection)
+}
+
+/**
+ * Modifie une connexion. Un mot de passe vide garde le mot de passe enregistré.
+ *
+ * @param id Identifiant de la connexion.
+ * @param connection Connexion saisie par l'utilisateur.
+ */
+export function updateConnection(id: number, connection: NewConnection): Promise<void> {
+  return request('PUT', `/api/connections/${id}`, connection)
 }
 
 /**

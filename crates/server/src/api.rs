@@ -7,6 +7,7 @@
 //! | `GET /api/health`                   | Vérifie que le serveur répond.                               |
 //! | `GET /api/connections`              | Liste les connexions de l'utilisateur, sans mot de passe.    |
 //! | `POST /api/connections`             | Enregistre une connexion, mot de passe chiffré.              |
+//! | `PUT /api/connections/{id}`         | Modifie une connexion ; mot de passe vide : inchangé (204).  |
 //! | `DELETE /api/connections/{id}`      | Supprime une connexion (204).                                |
 //! | `POST /api/connections/{id}/probe`  | Se connecte et renvoie la variante et la version du serveur. |
 //! | `GET /api/connections/{id}/query`   | WebSocket : session de requêtes (voir `query_session.rs`).   |
@@ -21,7 +22,7 @@ use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
-use axum::routing::{delete, get, post};
+use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use prisme_connectors::mysql::{self, ServerInfo};
 use prisme_dialects::Dialect;
@@ -99,7 +100,10 @@ pub fn router(state: AppState) -> Router {
             "/api/connections",
             get(list_connections).post(create_connection),
         )
-        .route("/api/connections/{id}", delete(delete_connection))
+        .route(
+            "/api/connections/{id}",
+            put(update_connection).delete(delete_connection),
+        )
         .route("/api/connections/{id}/probe", post(probe_connection))
         .route("/api/connections/{id}/query", get(query_socket))
         .route("/api/settings", get(get_settings).put(put_settings))
@@ -134,6 +138,24 @@ async fn create_connection(
         .with_db(move |db, key| connections::insert(db, key, user.id, &new))
         .await?;
     Ok((StatusCode::CREATED, Json(Created { id })))
+}
+
+/// `PUT /api/connections/{id}` : modifie une connexion de l'utilisateur courant (204).
+/// Un mot de passe vide garde le mot de passe enregistré.
+async fn update_connection(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<i64>,
+    Json(changed): Json<NewConnection>,
+) -> Result<StatusCode, ApiError> {
+    let updated = state
+        .with_db(move |db, key| connections::update(db, key, user.id, id, &changed))
+        .await?;
+    if updated {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound)
+    }
 }
 
 /// `DELETE /api/connections/{id}` : supprime une connexion de l'utilisateur courant (204).
@@ -323,6 +345,34 @@ mod tests {
         let (status, _) = send(&app, "DELETE", &uri, None).await;
         assert_eq!(status, StatusCode::NO_CONTENT);
         let (status, _) = send(&app, "DELETE", &uri, None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn update_then_list() {
+        let app = test_app();
+        let (_, created) = send(
+            &app,
+            "POST",
+            "/api/connections",
+            Some(connection_json("prod", 3306)),
+        )
+        .await;
+        let uri = format!("/api/connections/{}", created["id"]);
+
+        let (status, _) = send(&app, "PUT", &uri, Some(connection_json("recette", 3307))).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, list) = send(&app, "GET", "/api/connections", None).await;
+        assert_eq!(list[0]["name"], "recette");
+        assert_eq!(list[0]["port"], 3307);
+
+        let (status, _) = send(
+            &app,
+            "PUT",
+            "/api/connections/999",
+            Some(connection_json("autre", 3306)),
+        )
+        .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
     }
 

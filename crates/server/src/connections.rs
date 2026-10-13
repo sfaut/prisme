@@ -8,7 +8,7 @@
 
 use prisme_connectors::mysql::MysqlTarget;
 use rusqlite::{Connection, OptionalExtension, ffi, params};
-use secrecy::SecretString;
+use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -149,14 +149,58 @@ pub fn insert(
             new.database_name,
         ],
     );
-    match result {
-        Ok(_) => Ok(db.last_insert_rowid()),
-        Err(rusqlite::Error::SqliteFailure(error, _))
-            if error.extended_code == ffi::SQLITE_CONSTRAINT_UNIQUE =>
+    result.map_err(|error| name_error(error, &new.name))?;
+    Ok(db.last_insert_rowid())
+}
+
+/// Modifie la connexion `id` de l'utilisateur `user_id`. Un mot de passe vide
+/// garde le mot de passe enregistré : l'interface ne le connaît pas, elle ne
+/// peut pas le renvoyer.
+///
+/// Renvoie `false` si la connexion n'existe pas ou appartient à un autre utilisateur.
+pub fn update(
+    db: &Connection,
+    key: &MasterKey,
+    user_id: i64,
+    id: i64,
+    changed: &NewConnection,
+) -> Result<bool, ConnectionsError> {
+    changed.validate()?;
+    let password_secret = if changed.password.expose_secret().is_empty() {
+        None
+    } else {
+        Some(secrets::encrypt(key, &changed.password)?)
+    };
+
+    let result = db.execute(
+        "UPDATE connections
+         SET name = ?3, host = ?4, port = ?5, username = ?6,
+             password_secret = COALESCE(?7, password_secret), database_name = ?8
+         WHERE id = ?1 AND user_id = ?2",
+        params![
+            id,
+            user_id,
+            changed.name,
+            changed.host,
+            changed.port,
+            changed.username,
+            password_secret,
+            changed.database_name,
+        ],
+    );
+    let updated = result.map_err(|error| name_error(error, &changed.name))?;
+    Ok(updated == 1)
+}
+
+/// Traduit la violation de l'unicité du nom en `DuplicateName`, laisse passer les autres erreurs.
+fn name_error(error: rusqlite::Error, name: &str) -> ConnectionsError {
+    match error {
+        rusqlite::Error::SqliteFailure(failure, _)
+            if failure.extended_code == ffi::SQLITE_CONSTRAINT_UNIQUE =>
         {
-            Err(ConnectionsError::DuplicateName(new.name.clone()))
+            ConnectionsError::DuplicateName(name.to_string())
         }
-        Err(error) => Err(error.into()),
+        error => error.into(),
     }
 }
 
@@ -232,8 +276,6 @@ pub fn load_target(
 
 #[cfg(test)]
 mod tests {
-    use secrecy::ExposeSecret;
-
     use super::*;
     use crate::store;
 
@@ -320,6 +362,43 @@ mod tests {
         assert!(delete(&db, alice, id).unwrap());
         assert!(list(&db, alice).unwrap().is_empty());
         assert!(!delete(&db, alice, id).unwrap());
+    }
+
+    #[test]
+    fn update_keeps_the_password_when_left_empty() {
+        let db = store::open_in_memory();
+        let key = MasterKey::generate();
+        let alice = store::ensure_user(&db, "alice@example.com").unwrap();
+        let bob = store::ensure_user(&db, "bob@example.com").unwrap();
+        let id = insert(&db, &key, alice, &new_connection("prod")).unwrap();
+
+        let mut changed = new_connection("recette");
+        changed.password = SecretString::from("");
+        assert!(update(&db, &key, alice, id, &changed).unwrap());
+        assert_eq!(list(&db, alice).unwrap()[0].name, "recette");
+        let target = load_target(&db, &key, alice, id).unwrap().unwrap();
+        assert_eq!(target.password.expose_secret(), "secret");
+
+        changed.password = SecretString::from("nouveau");
+        assert!(update(&db, &key, alice, id, &changed).unwrap());
+        let target = load_target(&db, &key, alice, id).unwrap().unwrap();
+        assert_eq!(target.password.expose_secret(), "nouveau");
+
+        assert!(!update(&db, &key, bob, id, &changed).unwrap());
+    }
+
+    #[test]
+    fn update_rejects_a_name_already_taken() {
+        let db = store::open_in_memory();
+        let key = MasterKey::generate();
+        let user_id = store::ensure_user(&db, "a@example.com").unwrap();
+        insert(&db, &key, user_id, &new_connection("prod")).unwrap();
+        let id = insert(&db, &key, user_id, &new_connection("recette")).unwrap();
+
+        assert!(matches!(
+            update(&db, &key, user_id, id, &new_connection("prod")),
+            Err(ConnectionsError::DuplicateName(_))
+        ));
     }
 
     #[test]

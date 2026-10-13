@@ -56,7 +56,8 @@ watch(
 )
 
 /**
- * Nombre de reconnexions demandées : changer la clef de la cellule rouvre sa session.
+ * Nombre de reconnexions demandées : changer la clef de la cellule rouvre sa
+ * session. Modifier la connexion la rouvre aussi.
  */
 const attempt = ref(0)
 
@@ -105,7 +106,7 @@ async function openTable(connectionId: number, schema: string, table: string): P
           <query-cell
             v-if="connections.selected"
             ref="cell"
-            :key="`${connections.selected.id}-${attempt}`"
+            :key="`${connections.selected.id}-${connections.versions[connections.selected.id] ?? 0}-${attempt}`"
             v-model:sql="sql"
             :connection="connections.selected"
             @reconnect="attempt++"

@@ -5,7 +5,12 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
-import { createConnection, deleteConnection, listConnections } from '@/api/connections'
+import {
+  createConnection,
+  deleteConnection,
+  listConnections,
+  updateConnection,
+} from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { NewConnection } from '@/api/generated/NewConnection'
 
@@ -19,6 +24,13 @@ export const useConnectionsStore = defineStore('connections', () => {
    * Identifiant de la connexion sélectionnée, `null` si aucune.
    */
   const selectedId = ref<number | null>(null)
+
+  /**
+   * Nombre de modifications de chaque connexion depuis l'ouverture de
+   * l'interface, par identifiant : une session ouverte sur une connexion
+   * modifiée doit être rouverte.
+   */
+  const versions = ref<Record<number, number>>({})
 
   /**
    * Connexion sélectionnée, `null` si aucune.
@@ -47,6 +59,19 @@ export const useConnectionsStore = defineStore('connections', () => {
   }
 
   /**
+   * Modifie une connexion et recharge la liste.
+   *
+   * @param id Identifiant de la connexion.
+   * @param connection Connexion saisie ; mot de passe vide : inchangé.
+   * @throws {ApiError} Si le serveur refuse la saisie (nom déjà pris, champ invalide...).
+   */
+  async function update(id: number, connection: NewConnection): Promise<void> {
+    await updateConnection(id, connection)
+    versions.value[id] = (versions.value[id] ?? 0) + 1
+    await load()
+  }
+
+  /**
    * Supprime une connexion et recharge la liste. Si c'était la connexion choisie, plus aucune ne l'est.
    *
    * @param id Identifiant de la connexion.
@@ -59,5 +84,5 @@ export const useConnectionsStore = defineStore('connections', () => {
     await load()
   }
 
-  return { connections, selectedId, selected, load, create, remove }
+  return { connections, selectedId, versions, selected, load, create, update, remove }
 })
