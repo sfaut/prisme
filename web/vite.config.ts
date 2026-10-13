@@ -15,11 +15,16 @@ export default defineConfig({
     vue(),
     // Nuxt UI sans routeur (une seule page). Les icônes utilisées sont
     // embarquées dans le bundle (collection @iconify-json/lucide) : aucune
-    // n'est téléchargée à l'exécution.
+    // n'est téléchargée à l'exécution. Les fenêtres et les messages
+    // éphémères s'affichent en texte plus petit que le reste de l'interface.
     ui({
       router: false,
       icon: { clientBundle: { scan: true } },
-      ui: { colors: { primary: 'blue', neutral: 'zinc' } },
+      ui: {
+        colors: { primary: 'blue', neutral: 'zinc' },
+        modal: { slots: { title: 'text-sm', description: 'text-xs', body: 'text-xs' } },
+        toast: { slots: { title: 'text-xs', description: 'text-xs' } },
+      },
     }),
     vueDevTools(),
   ],

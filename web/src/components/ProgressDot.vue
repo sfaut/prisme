@@ -8,7 +8,6 @@
   l'exécution) et le nombre de lignes.
 -->
 <script setup lang="ts">
-import { NTooltip } from 'naive-ui'
 import { computed } from 'vue'
 
 import { type QueryTab, progressSummary, tabProgress } from '@/api/querySession'
@@ -34,32 +33,33 @@ const summary = computed(() => {
 </script>
 
 <template>
-  <n-tooltip placement="bottom-start" :show-arrow="false">
-    <template #trigger>
-      <span class="progress-dot" :class="progress" role="img" :aria-label="summary[0]" />
+  <u-tooltip
+    :content="{ side: 'bottom', align: 'start' }"
+    :ui="{ content: 'h-auto flex-col items-start gap-0' }"
+  >
+    <span class="progress-dot" :class="progress" role="img" :aria-label="summary[0]" />
+    <template #content>
+      <div v-for="line in summary" :key="line">{{ line }}</div>
     </template>
-    <div v-for="line in summary" :key="line">{{ line }}</div>
-  </n-tooltip>
+  </u-tooltip>
 </template>
 
 <style scoped>
 .progress-dot {
-  display: inline-block;
+  flex: none;
   width: 8px;
-  height: 8px;
-  margin-right: 6px;
+  aspect-ratio: 1;
   border-radius: 50%;
-  vertical-align: middle;
 }
 
 .waiting {
-  background: #9ca3af;
+  background: var(--ui-text-dimmed);
   animation: pulse 3s ease-in-out infinite;
 }
 
 .executing,
 .loading {
-  background: #3b82f6;
+  background: var(--ui-primary);
   animation: pulse 1.4s ease-in-out infinite;
 }
 
@@ -68,11 +68,11 @@ const summary = computed(() => {
 }
 
 .done {
-  background: #22c55e;
+  background: var(--ui-success);
 }
 
 .error {
-  background: #ef4444;
+  background: var(--ui-error);
 }
 
 @keyframes pulse {

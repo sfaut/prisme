@@ -27,8 +27,8 @@
   (tri, filtre, sélection, copie) est dans `resultGrid.ts`.
 -->
 <script setup lang="ts">
+import { useToast } from '@nuxt/ui/composables'
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import { NInput, NSelect, useMessage } from 'naive-ui'
 import { computed, reactive, ref, shallowRef, useTemplateRef, watch } from 'vue'
 
 import type { Cell } from '@/api/querySession'
@@ -88,7 +88,7 @@ const props = defineProps<{
  */
 const ROW_HEIGHT = 22
 
-const message = useMessage()
+const toast = useToast()
 const scroller = useTemplateRef<HTMLDivElement>('scroller')
 
 const filter = reactive<GridFilter>({ text: '', column: null })
@@ -417,9 +417,9 @@ async function copy(withHeaders: boolean): Promise<void> {
   )
   try {
     await navigator.clipboard.writeText(text)
-    message.success('Sélection copiée')
+    toast.add({ title: 'Sélection copiée', color: 'success', icon: 'i-lucide-clipboard-check' })
   } catch {
-    message.error('Copie refusée par le navigateur')
+    toast.add({ title: 'Copie refusée par le navigateur', color: 'error' })
   }
 }
 
@@ -463,17 +463,31 @@ const filterColumn = computed({
 <template>
   <div class="result-grid">
     <div class="grid-toolbar">
-      <n-input
-        v-model:value="filter.text"
-        size="tiny"
-        clearable
+      <u-input
+        v-model="filter.text"
+        size="xs"
+        icon="i-lucide-search"
         placeholder="Filtrer"
+        aria-label="Texte cherché"
         class="grid-filter"
-      />
-      <n-select
-        v-model:value="filterColumn"
-        :options="filterOptions"
-        size="tiny"
+        :ui="{ trailing: 'pe-1' }"
+      >
+        <template v-if="filter.text !== ''" #trailing>
+          <u-button
+            color="neutral"
+            variant="link"
+            size="xs"
+            icon="i-lucide-x"
+            aria-label="Vider le filtre"
+            @click="filter.text = ''"
+          />
+        </template>
+      </u-input>
+      <u-select
+        v-model="filterColumn"
+        :items="filterOptions"
+        size="xs"
+        aria-label="Colonne filtrée"
         class="grid-filter-column"
       />
       <span class="grid-count">{{ view.length }} / {{ rowCount }} lignes</span>
@@ -582,7 +596,7 @@ const filterColumn = computed({
 
 .grid-count {
   margin-right: auto;
-  color: #666;
+  color: var(--ui-text-muted);
   font-size: 0.8rem;
 }
 
@@ -594,7 +608,7 @@ const filterColumn = computed({
      toutes les lignes et figerait l'interface. */
   max-height: 100vh;
   overflow: auto;
-  border: 1px solid #ddd;
+  border: 1px solid var(--ui-border);
   font-size: 12px;
   outline: none;
   user-select: none;
@@ -612,7 +626,7 @@ const filterColumn = computed({
   z-index: 1;
   width: max-content;
   min-width: 100%;
-  background: #f4f4f5;
+  background: var(--ui-bg-elevated);
   font-weight: 600;
 }
 
@@ -630,8 +644,8 @@ const filterColumn = computed({
 
 .grid-corner,
 .grid-row-header {
-  background: #f4f4f5;
-  color: #888;
+  background: var(--ui-bg-elevated);
+  color: var(--ui-text-dimmed);
   text-align: right;
 }
 
@@ -649,7 +663,7 @@ const filterColumn = computed({
   display: flex;
   align-items: center;
   min-width: 0;
-  border-left: 1px solid #ddd;
+  border-left: 1px solid var(--ui-border);
 }
 
 .grid-resizer {
@@ -664,15 +678,15 @@ const filterColumn = computed({
 }
 
 .grid-resizer:hover {
-  background: rgb(24 160 88 / 30%);
+  background: color-mix(in oklab, var(--ui-primary) 30%, transparent);
 }
 
 .grid-column-header.drop-before {
-  box-shadow: inset 2px 0 0 #18a058;
+  box-shadow: inset 2px 0 0 var(--ui-primary);
 }
 
 .grid-column-header.drop-after {
-  box-shadow: inset -2px 0 0 #18a058;
+  box-shadow: inset -2px 0 0 var(--ui-primary);
 }
 
 .grid-column-name {
@@ -689,7 +703,7 @@ const filterColumn = computed({
   padding: 0 4px;
   border: none;
   background: none;
-  color: #888;
+  color: var(--ui-text-dimmed);
   font-size: 10px;
   cursor: pointer;
 }
@@ -697,8 +711,8 @@ const filterColumn = computed({
 .grid-cell {
   padding: 0 4px;
   overflow: hidden;
-  border-bottom: 1px solid #eee;
-  border-left: 1px solid #eee;
+  border-bottom: 1px solid var(--ui-border-muted);
+  border-left: 1px solid var(--ui-border-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: cell;
@@ -707,11 +721,11 @@ const filterColumn = computed({
 /* Seule la dernière colonne porte une bordure droite : les autres sont
    fermées par la bordure gauche de leur voisine. */
 .grid-column-header:last-child {
-  border-right: 1px solid #ddd;
+  border-right: 1px solid var(--ui-border);
 }
 
 .grid-cell:last-child {
-  border-right: 1px solid #eee;
+  border-right: 1px solid var(--ui-border-muted);
 }
 
 .grid-cell.right {
@@ -719,11 +733,11 @@ const filterColumn = computed({
 }
 
 .grid-cell.null {
-  color: #aaa;
+  color: var(--ui-text-dimmed);
   font-style: italic;
 }
 
 .selected {
-  background: #dbeafe;
+  background: color-mix(in oklab, var(--ui-primary) 18%, transparent);
 }
 </style>

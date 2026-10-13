@@ -4,20 +4,15 @@
   avec le choix du thème (clair, sombre ou celui du système) ; à droite, la
   cellule SQL et ses résultats. Disposition en classes Tailwind.
 
-  `UApp` (Nuxt UI, textes en français) puis les fournisseurs de Naive UI
-  (configuration, messages) enveloppent toute
-  l'application : textes des composants en français, texte réduit des
-  fenêtres, menus et bulles (`theme.ts`), messages éphémères (`useMessage`)
-  disponibles partout.
+  `UApp` (Nuxt UI) enveloppe toute l'application : textes des composants en
+  français, messages éphémères (`useToast`) disponibles partout.
 -->
 <script setup lang="ts">
-import { NConfigProvider, NEmpty, NMessageProvider, dateFrFR, frFR } from 'naive-ui'
 import { nextTick, ref, useTemplateRef, watch } from 'vue'
 
 import { fr } from '@nuxt/ui/locale'
 
 import { useConnectionsStore } from './stores/connections'
-import { POPUP_THEME } from './theme'
 
 import ObjectExplorer from './components/ObjectExplorer.vue'
 import QueryCell from './components/QueryCell.vue'
@@ -92,50 +87,44 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
 
 <template>
   <u-app :locale="fr">
-    <n-config-provider
-      :locale="frFR"
-      :date-locale="dateFrFR"
-      :theme-overrides="POPUP_THEME"
-      class="h-full"
-    >
-      <n-message-provider>
-        <div class="relative flex h-full bg-default text-default">
-          <aside
-            class="flex shrink-0 flex-col gap-3 border-e border-default p-3"
-            :style="{ width: `${siderWidth}px` }"
-          >
-            <header class="flex items-center justify-between gap-2">
-              <h1 class="text-lg font-semibold">Prisme</h1>
-              <u-color-mode-select size="xs" class="w-28" />
-            </header>
-            <object-explorer
-              :selected-id="connections.selectedId"
-              :current-database="currentDatabase"
-              @open-table="openTable"
-              @select="connections.selectedId = $event"
-              @use-database="useDatabase"
-            />
-          </aside>
-          <sider-resizer v-model="siderWidth" />
-          <main class="flex h-full min-w-0 flex-1 flex-col gap-3 p-3">
-            <query-cell
-              v-if="connections.selected"
-              ref="cell"
-              :key="`${connections.selected.id}-${connections.versions[connections.selected.id] ?? 0}-${attempt}`"
-              v-model:sql="sql"
-              :connection="connections.selected"
-              @reconnect="attempt++"
-              @database="currentDatabase = $event"
-            />
-            <n-empty
-              v-else
-              description="Double-cliquez sur une source de données pour la choisir, ou ajoutez une connexion par le menu « ⋮ »"
-              class="m-auto"
-            />
-          </main>
-        </div>
-      </n-message-provider>
-    </n-config-provider>
+    <div class="relative flex h-full bg-default text-default">
+      <aside
+        class="flex shrink-0 flex-col gap-3 border-e border-default p-3"
+        :style="{ width: `${siderWidth}px` }"
+      >
+        <header class="flex items-center justify-between gap-2">
+          <h1 class="text-lg font-semibold">Prisme</h1>
+          <u-color-mode-select size="xs" class="w-28" />
+        </header>
+        <object-explorer
+          :selected-id="connections.selectedId"
+          :current-database="currentDatabase"
+          @open-table="openTable"
+          @select="connections.selectedId = $event"
+          @use-database="useDatabase"
+        />
+      </aside>
+      <sider-resizer v-model="siderWidth" />
+      <main class="flex h-full min-w-0 flex-1 flex-col gap-3 p-3">
+        <query-cell
+          v-if="connections.selected"
+          ref="cell"
+          :key="`${connections.selected.id}-${connections.versions[connections.selected.id] ?? 0}-${attempt}`"
+          v-model:sql="sql"
+          :connection="connections.selected"
+          @reconnect="attempt++"
+          @database="currentDatabase = $event"
+        />
+        <u-empty
+          v-else
+          icon="i-lucide-database"
+          variant="naked"
+          size="sm"
+          description="Double-cliquez sur une source de données pour la choisir, ou ajoutez une connexion par le menu « ⋮ »"
+          class="m-auto"
+        />
+      </main>
+    </div>
   </u-app>
 </template>
 

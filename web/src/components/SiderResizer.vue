@@ -88,6 +88,6 @@ function reset(): void {
 
 .sider-resizer:hover,
 .sider-resizer.dragging {
-  background: rgb(24 160 88 / 30%);
+  background: color-mix(in oklab, var(--ui-primary) 30%, transparent);
 }
 </style>
