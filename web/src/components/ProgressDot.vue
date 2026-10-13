@@ -4,36 +4,37 @@
   Grise et pulsant très lentement tant que la requête attend son tour, bleue
   et pulsante pendant l'exécution (lentement) puis pendant la réception des
   lignes (vite), verte quand le résultat est complet, rouge en cas d'échec.
+  Au survol, une info-bulle donne le statut, la durée (qui court pendant
+  l'exécution) et le nombre de lignes.
 -->
 <script setup lang="ts">
+import { NTooltip } from 'naive-ui'
 import { computed } from 'vue'
 
-import type { TabProgress } from '@/api/querySession'
+import { type QueryTab, progressSummary, tabProgress } from '@/api/querySession'
 
 const props = defineProps<{
   /**
-   * Avancement de la requête.
+   * Requête suivie.
    */
-  progress: TabProgress
+  tab: QueryTab
+  /**
+   * Instant présent, rafraîchi pendant l'exécution pour faire courir la durée.
+   */
+  now: number
 }>()
 
-/**
- * Texte d'aide au survol, lu aussi par les lecteurs d'écran.
- */
-const label = computed(
-  () =>
-    ({
-      waiting: 'En attente',
-      executing: 'Exécution',
-      loading: 'Chargement des lignes',
-      done: 'Résultat complet',
-      error: 'Échec',
-    })[props.progress],
-)
+const progress = computed(() => tabProgress(props.tab))
+const summary = computed(() => progressSummary(props.tab, props.now))
 </script>
 
 <template>
-  <span class="progress-dot" :class="progress" :title="label" role="img" :aria-label="label" />
+  <n-tooltip placement="bottom-start" :show-arrow="false">
+    <template #trigger>
+      <span class="progress-dot" :class="progress" role="img" :aria-label="summary[0]" />
+    </template>
+    <div v-for="line in summary" :key="line">{{ line }}</div>
+  </n-tooltip>
 </template>
 
 <style scoped>

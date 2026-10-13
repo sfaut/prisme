@@ -271,6 +271,56 @@ export function tabProgress(tab: QueryTab): TabProgress {
 }
 
 /**
+ * Libellé de chaque avancement.
+ */
+const PROGRESS_LABELS: Record<TabProgress, string> = {
+  waiting: 'En attente',
+  executing: 'Exécution',
+  loading: 'Chargement des lignes',
+  done: 'Terminé',
+  error: 'Échec',
+}
+
+/**
+ * Résumé d'une requête pour l'info-bulle de sa pastille : statut, durée,
+ * nombre de lignes. Pendant l'exécution, la durée court jusqu'à `now`.
+ *
+ * @param tab Onglet de la requête.
+ * @param now Instant présent (`Date.now()`).
+ * @returns Trois lignes de texte.
+ */
+export function progressSummary(tab: QueryTab, now: number): string[] {
+  const progress = tabProgress(tab)
+  let duration = '—'
+  if (progress === 'done' && tab.result) {
+    duration = formatDuration(tab.result.elapsedMs)
+  } else if (tab.startedAt !== null) {
+    duration = formatDuration((tab.endedAt ?? now) - tab.startedAt)
+  }
+  let rows = '—'
+  if (tab.result) {
+    const count = tab.result.rows.length
+    rows = `${count.toLocaleString('fr-FR')} ${count > 1 ? 'lignes' : 'ligne'}`
+    if (tab.result.truncated) {
+      rows += ' (tronqué)'
+    }
+  }
+  return [PROGRESS_LABELS[progress], duration, rows]
+}
+
+/**
+ * Formate une durée : en millisecondes sous la seconde, sinon en secondes avec une décimale.
+ *
+ * @param milliseconds Durée.
+ */
+export function formatDuration(milliseconds: number): string {
+  if (milliseconds < 1000) {
+    return `${Math.max(0, Math.round(milliseconds))} ms`
+  }
+  return `${(milliseconds / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 1, minimumFractionDigits: 1 })} s`
+}
+
+/**
  * Note le début d'un lot dans l'état : les onglets précédents disparaissent.
  *
  * @param state État de la session.

@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyMessage, initialState, sessionUrl, startBatch, tabProgress } from '../querySession'
+import {
+  applyMessage,
+  formatDuration,
+  initialState,
+  progressSummary,
+  sessionUrl,
+  startBatch,
+  tabProgress,
+} from '../querySession'
 
 /**
  * État d'une session prête, sur la base `xlist`.
@@ -147,6 +155,46 @@ describe('tabProgress', () => {
 
     applyMessage(state, { type: 'error', query: 1, message: 'refus' })
     expect(tabProgress(second!)).toBe('error')
+  })
+})
+
+describe('progressSummary', () => {
+  it('donne statut, durée qui court et nombre de lignes', () => {
+    const state = readyState()
+    startBatch(state)
+    applyMessage(state, { type: 'batch', queries: [{ query: 0, sql: 'a', start: 0, end: 1 }] })
+    const tab = state.tabs[0]!
+    expect(progressSummary(tab, 0)).toEqual(['En attente', '—', '—'])
+
+    applyMessage(state, { type: 'started', query: 0 }, 1000)
+    applyMessage(
+      state,
+      { type: 'columns', query: 0, columns: ['x'], sql: 'a', limit: 'added' },
+      1100,
+    )
+    applyMessage(state, { type: 'rows', query: 0, rows: [['1'], ['2']] }, 1200)
+    expect(progressSummary(tab, 3500)).toEqual(['Chargement des lignes', '2,5 s', '2 lignes'])
+
+    applyMessage(
+      state,
+      {
+        type: 'done',
+        query: 0,
+        row_count: 2,
+        truncated: true,
+        affected_rows: 0,
+        elapsed_ms: 420,
+        database: null,
+      },
+      1500,
+    )
+    expect(progressSummary(tab, 9999)).toEqual(['Terminé', '420 ms', '2 lignes (tronqué)'])
+  })
+
+  it('formate les durées', () => {
+    expect(formatDuration(42)).toBe('42 ms')
+    expect(formatDuration(1000)).toBe('1,0 s')
+    expect(formatDuration(12345)).toBe('12,3 s')
   })
 })
 
