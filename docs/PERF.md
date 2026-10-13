@@ -161,3 +161,88 @@ alors que seul leur nombre importe pour redessiner la grille.
 3. Lancer Vite sur un autre port, avec un proxy vers `127.0.0.1:8599`.
 4. Avec Playwright (`playwright-core`, navigateur `msedge` ou `chrome` déjà installé) : ouvrir l'interface, choisir la connexion, saisir plusieurs requêtes sur `seq_1_to_200000` (table de séquence de MariaDB), cliquer sur « Tout exécuter », puis cliquer sur les onglets pendant l'exécution en mesurant le délai, et relever les tâches longues avec un `PerformanceObserver` de type `longtask`.
 5. Indicateur le plus parlant : `document.querySelectorAll('.grid-row').length` pendant l'exécution. Il doit rester de l'ordre de quelques dizaines par onglet visible, quel que soit le nombre de lignes reçues.
+
+## 2. Explorateur figé pendant le chargement initial : le catalogue était réactif
+
+Problème rencontré en octobre 2026 dans l'explorateur d'objets.
+
+### 2.1 Symptôme
+
+Au choix d'une connexion, l'explorateur restait inerte : un clic sur la base
+connectée ne l'ouvrait pas, alors qu'elle devrait être accessible tout de
+suite. Plus le serveur comptait de bases et de tables, plus l'attente était
+longue.
+
+### 2.2 Mesure
+
+Même environnement isolé que pour le chapitre 1 (section 1.7), avec un
+catalogue volumineux : 20 bases de 50 tables, soit 1 000 tables de 15
+colonnes, chacune avec un index et une clef étrangère.
+
+Le serveur n'était pas en cause : lu directement, le flux du catalogue livre
+les bases en 48 ms, les objets de la base en cours en 49 ms, et tout le
+catalogue (1,7 Mo) en 0,5 s.
+
+| Mesure, pendant le chargement initial | Avant | Après (`9f8707a`) |
+|---|---|---|
+| Bases affichées | ~3 min, page figée | 0,5 à 0,6 s |
+| Ouverture d'une base, de « Tables », d'une table | plus de 30 s (abandon de la mesure) | 0,05 à 0,16 s |
+| Catalogue complet affiché | ~3 min | 2,6 à 2,9 s |
+| Plus longue tâche bloquante | ~3 min | 0,14 à 0,41 s |
+
+Le profil d'avant était sans ambiguïté : 98 % du temps dans le suivi des
+changements de Vue, dont 94 % dans `traverse`, la fonction qui parcourt un
+objet en profondeur pour une observation « profonde ».
+
+### 2.3 Cause
+
+```text
+ Avant : chaque message reçu relance un parcours de tout le catalogue
+
+ message 1 (bases)          ──► parcours de    20 objets
+ message 2 (objets db00)    ──► parcours de   ~70 objets
+ …
+ message 20 (détails db19)  ──► parcours de ~40 000 objets
+ …                              (et chaque message en ajoute)
+```
+
+Le catalogue (bases, tables, colonnes, index, clefs étrangères) était un objet
+réactif de Vue, rempli au fil des messages du serveur. Vue suivait chacun de
+ses dizaines de milliers d'objets. Une observation profonde du magasin
+(probablement celle des outils de développement de Vue et Pinia, actifs avec
+`npm run dev`) le reparcourait en entier à chaque message : le travail
+grossissait avec le catalogue, et le navigateur ne traitait plus les clics.
+
+Le défaut ne se voyait pas sur une base de test de quelques tables : il faut
+un catalogue de taille réelle pour qu'il apparaisse.
+
+### 2.4 Correction
+
+Le principe est le même que pour les lignes de la grille (section 1.5) :
+
+- le catalogue est un objet ordinaire (`markRaw`), hors du suivi de Vue ;
+- seul un numéro de révision par connexion est réactif. Il augmente au plus
+  toutes les 100 ms pendant la réception, puis à la fin ;
+- l'explorateur lit le catalogue par `catalogOf()`, qui lit aussi ce numéro :
+  l'arbre se reconstruit à chaque révision.
+
+### 2.5 Ce qu'il faut retenir
+
+- **Une grande structure de données reçue du serveur reste hors de la
+  réactivité de Vue.** Seul un signal léger (un compteur, une révision)
+  prévient l'interface qu'elle a changé.
+- **Tester avec un volume réaliste.** Un catalogue de quelques tables ne
+  révèle rien.
+- **Limite restante** : l'arbre entier se reconstruit à chaque révision (0,4 s
+  au plus sur 1 000 tables). Avec beaucoup de sources et de tables, il faudra
+  ne reconstruire que les bases modifiées (question 26 de `docs/QUESTIONS.md`).
+
+### 2.6 Mesurer à nouveau
+
+Comme dans la section 1.7, avec un catalogue volumineux généré par script
+(`CREATE DATABASE` et `CREATE TABLE` en boucle) puis chargé par
+`docker exec -i … mariadb < catalogue.sql`. Scénario : choisir la connexion,
+mesurer le délai d'affichage des bases, puis ouvrir la base en cours, son
+dossier « Tables » et une table pendant le chargement. Attendre la fin de
+l'animation d'ouverture d'un nœud (environ 0,5 s) avant de cliquer sur un de
+ses enfants : un clic pendant l'animation est ignoré par l'arbre.
