@@ -1,6 +1,6 @@
 import { fileURLToPath, URL } from 'node:url'
 
-import { defineConfig } from 'vite'
+import { type Plugin, defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import ui from '@nuxt/ui/vite'
 import vueDevTools from 'vite-plugin-vue-devtools'
@@ -9,10 +9,50 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 // de Vite redirige l'API et les WebSockets.
 const PRISME_SERVER = 'http://127.0.0.1:8484'
 
+/**
+ * Date et heure locales au format ISO 8601, à la seconde, avec le décalage
+ * horaire : « 2026-10-14T09:12:34+02:00 ».
+ *
+ * @param date Instant à formater.
+ */
+function localIsoDateTime(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  const offset = -date.getTimezoneOffset()
+  const sign = offset >= 0 ? '+' : '-'
+  const hours = pad(Math.floor(Math.abs(offset) / 60))
+  const minutes = pad(Math.abs(offset) % 60)
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}` +
+    `${sign}${hours}:${minutes}`
+  )
+}
+
+/**
+ * Ajoute à `index.html` la date et l'heure du build, dans
+ * `<meta name="build-time">` : on sait de quand date l'interface servie
+ * (Ctrl-U, ou les outils de développement du navigateur). Au build seulement :
+ * le serveur de développement n'en a pas.
+ */
+function buildTime(): Plugin {
+  return {
+    name: 'prisme-build-time',
+    apply: 'build',
+    transformIndexHtml: () => [
+      {
+        tag: 'meta',
+        attrs: { name: 'build-time', content: localIsoDateTime(new Date()) },
+        injectTo: 'head',
+      },
+    ],
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     vue(),
+    buildTime(),
     // Nuxt UI sans routeur (une seule page). Les icônes utilisées sont
     // embarquées dans le bundle (collection @iconify-json/lucide) : aucune
     // n'est téléchargée à l'exécution. Les fenêtres et les messages
