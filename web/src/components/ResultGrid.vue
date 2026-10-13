@@ -9,7 +9,7 @@
     sélectionne tout, Échap vide la sélection.
   - Largeur : glisser le bord droit d'un en-tête change la largeur de la
     colonne, un double clic sur ce bord l'ajuste à sa valeur la plus longue
-    (avec un plafond). Les largeurs choisies sont retrouvées quand la même
+    (avec un plafond), un second lui rend sa largeur estimée. Les largeurs choisies sont retrouvées quand la même
     requête est relancée (`gridWidths.ts`).
   - Ordre : glisser un nom de colonne la déplace. Une nouvelle exécution
     rétablit l'ordre du `SELECT`. La sélection et la copie suivent l'ordre
@@ -192,13 +192,20 @@ function onResizeEnd(): void {
 }
 
 /**
- * Ajuste une colonne à sa valeur la plus longue, dans la limite d'un plafond.
+ * Ajuste une colonne à sa valeur la plus longue, dans la limite d'un plafond ;
+ * si elle l'est déjà, lui rend sa largeur estimée.
  *
  * @param column Indice de la colonne.
  */
 function fitWidth(column: number): void {
   const width = fittedWidth(props.columns[column] ?? '', props.rows, column)
-  resized.value = { ...resized.value, [column]: width }
+  if (resized.value[column] === width) {
+    const others = { ...resized.value }
+    delete others[column]
+    resized.value = others
+  } else {
+    resized.value = { ...resized.value, [column]: width }
+  }
 }
 
 const filterOptions = computed(() => [
@@ -454,7 +461,7 @@ const filterColumn = computed({
           </button>
           <div
             class="grid-resizer"
-            title="Glisser pour changer la largeur, double clic pour l’ajuster au contenu"
+            title="Glisser pour changer la largeur, double clic pour l’ajuster au contenu ou revenir à la largeur estimée"
             @pointerdown.stop.prevent="onResizeStart($event, column)"
             @pointermove="onResizeMove"
             @pointerup="onResizeEnd"

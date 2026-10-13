@@ -19,6 +19,27 @@ function mountGrid(columns: string[], rows: (string | null)[][]) {
 }
 
 describe('ResultGrid', () => {
+  it('ajuste une colonne au contenu, puis lui rend sa largeur estimée', async () => {
+    const wrapper = mount({
+      render: () =>
+        h(NMessageProvider, () =>
+          h(ResultGrid, {
+            columns: ['texte'],
+            rows: [['x'.repeat(100)]],
+            rowCount: 1,
+            sql: 'SELECT texte FROM double_clic',
+          }),
+        ),
+    })
+    const width = () =>
+      (wrapper.find('.grid-header').element as HTMLElement).style.gridTemplateColumns.split(' ')[1]
+    expect(width()).toBe('360px')
+    await wrapper.find('.grid-resizer').trigger('dblclick')
+    expect(width()).toBe('716px')
+    await wrapper.find('.grid-resizer').trigger('dblclick')
+    expect(width()).toBe('360px')
+  })
+
   it('affiche les en-têtes et le nombre de lignes', () => {
     const wrapper = mountGrid(
       ['id', 'name'],
