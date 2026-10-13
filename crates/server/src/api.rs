@@ -17,6 +17,7 @@
 //! | `PUT /api/settings`                 | Modifie les réglages, renvoie les réglages à jour.           |
 //! | `POST /api/beautify`                | Enjolive du SQL (mots-clefs en capitales...).                |
 //! | `POST /api/analyze`                 | Analyse le texte de l'éditeur (voir `analyze.rs`).           |
+//! | `GET /` et tout autre chemin        | Fichiers de l'interface (voir `web_assets.rs`).              |
 
 use std::sync::{Arc, Mutex};
 
@@ -41,6 +42,7 @@ use crate::explorer;
 use crate::master_key::MasterKey;
 use crate::query_session;
 use crate::settings::{self, Settings, SettingsUpdate};
+use crate::web_assets;
 
 /// État partagé par toutes les routes.
 #[derive(Clone)]
@@ -114,6 +116,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/beautify", post(beautify_sql))
         .route("/api/analyze", post(analyze_sql))
         .merge(explorer::routes())
+        .fallback(web_assets::serve)
         .with_state(state)
 }
 
@@ -333,6 +336,13 @@ mod tests {
     async fn health_answers() {
         let (status, _) = send(&test_app(), "GET", "/api/health", None).await;
         assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn unknown_api_path_is_not_found() {
+        // Le repli vers les fichiers de l'interface ne masque pas une route absente.
+        let (status, _) = send(&test_app(), "GET", "/api/absent", None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

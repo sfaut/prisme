@@ -71,6 +71,7 @@ cargo test                        # tests de tous les crates, sans Docker
 cargo test -- --include-ignored   # en plus, tests sur de vrais serveurs (Docker Desktop démarré)
 cargo clippy --all-targets        # analyse statique, doit rester sans avertissement
 cargo fmt                         # formatage
+cargo build --release             # exécutable unique, interface embarquée (après npm run build)
 ```
 
 Dans `web/` :
@@ -81,6 +82,7 @@ npm run test:unit -- --run        # tests Vitest
 npm run type-check                # vue-tsc
 npm run lint                      # Oxlint et ESLint
 npm run format                    # Prettier
+npm run build                     # interface compilée dans web/dist, embarquée par rust-embed
 ```
 
 `cargo test` régénère les types TypeScript de `web/src/api/generated/` (`ts-rs`) : les committer avec le changement Rust qui les modifie.

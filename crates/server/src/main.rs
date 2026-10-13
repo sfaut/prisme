@@ -2,7 +2,8 @@
 //!
 //! Lit la configuration, prépare le dossier de données (clef maîtresse et base
 //! interne, avec l'utilisateur unique du mode poste de développement), puis
-//! démarre le serveur web. Voir `docs/V1.md`, section 2.8.
+//! démarre le serveur web : l'API et l'interface (`web_assets.rs`). Voir
+//! `docs/V1.md`, section 2.8.
 
 mod analyze;
 mod api;
@@ -16,6 +17,7 @@ mod query_session;
 mod secrets;
 mod settings;
 mod store;
+mod web_assets;
 
 use anyhow::Context;
 use clap::Parser;
