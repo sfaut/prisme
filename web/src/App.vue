@@ -1,5 +1,6 @@
 <!--
-  Disposition de l'écran : à gauche, les connexions et l'explorateur d'objets ;
+  Disposition de l'écran : à gauche, les connexions et l'explorateur d'objets,
+  dans un panneau dont on règle la largeur en faisant glisser son bord droit ;
   à droite, la cellule SQL et ses résultats.
 
   Les fournisseurs de Naive UI (configuration, messages) enveloppent toute
@@ -24,9 +25,16 @@ import { useConnectionsStore } from './stores/connections'
 import ConnectionPanel from './components/ConnectionPanel.vue'
 import ObjectExplorer from './components/ObjectExplorer.vue'
 import QueryCell from './components/QueryCell.vue'
+import SiderResizer from './components/SiderResizer.vue'
 import { selectAllQuery } from './components/explorerNodes'
+import { clampSiderWidth, loadSiderWidth } from './components/siderWidth'
 
 const connections = useConnectionsStore()
+
+/**
+ * Largeur du panneau de gauche, en pixels.
+ */
+const siderWidth = ref(clampSiderWidth(loadSiderWidth(), window.innerWidth))
 
 /**
  * Texte de la cellule SQL.
@@ -71,7 +79,7 @@ async function openTable(schema: string, table: string): Promise<void> {
   <n-config-provider :locale="frFR" :date-locale="dateFrFR">
     <n-message-provider>
       <n-layout has-sider position="absolute" class="app">
-        <n-layout-sider bordered :width="300" content-class="app-sider">
+        <n-layout-sider bordered :width="siderWidth" content-class="app-sider">
           <h1 class="app-title">Prisme</h1>
           <connection-panel />
           <object-explorer
@@ -82,6 +90,7 @@ async function openTable(schema: string, table: string): Promise<void> {
             @open-table="openTable"
           />
         </n-layout-sider>
+        <sider-resizer v-model="siderWidth" />
         <n-layout-content content-class="app-content">
           <query-cell
             v-if="connections.selected"
