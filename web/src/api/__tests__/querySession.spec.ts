@@ -222,8 +222,14 @@ describe('progressSummary', () => {
 
   it('formate les durées', () => {
     expect(formatDuration(42)).toBe('42 ms')
+    expect(formatDuration(999)).toBe('999 ms')
     expect(formatDuration(1000)).toBe('1,0 s')
     expect(formatDuration(12345)).toBe('12,3 s')
+    expect(formatDuration(59_999)).toBe('59,9 s')
+    expect(formatDuration(60_000)).toBe('1 min 00 s')
+    expect(formatDuration(187_400)).toBe('3 min 07 s')
+    expect(formatDuration(3_600_000)).toBe('1 h 00 min')
+    expect(formatDuration(3_725_000)).toBe('1 h 02 min')
   })
 })
 

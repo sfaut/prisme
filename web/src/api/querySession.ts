@@ -320,12 +320,8 @@ const PROGRESS_LABELS: Record<TabProgress, string> = {
  */
 export function progressSummary(tab: QueryTab, now: number): string[] {
   const progress = tabProgress(tab)
-  let duration = '—'
-  if (progress === 'done' && tab.result) {
-    duration = formatDuration(tab.result.elapsedMs)
-  } else if (tab.startedAt !== null) {
-    duration = formatDuration((tab.endedAt ?? now) - tab.startedAt)
-  }
+  const elapsed = tabDuration(tab, now)
+  const duration = elapsed === null ? '—' : formatDuration(elapsed)
   let rows = '—'
   if (tab.result) {
     const count = tab.result.rowCount
@@ -338,15 +334,42 @@ export function progressSummary(tab: QueryTab, now: number): string[] {
 }
 
 /**
- * Formate une durée : en millisecondes sous la seconde, sinon en secondes avec une décimale.
+ * Durée d'une requête, en millisecondes : celle mesurée par le serveur une
+ * fois le résultat complet, sinon le temps écoulé depuis son départ (qui
+ * court jusqu'à `now`) ; `null` tant qu'elle attend son tour.
+ *
+ * @param tab Onglet de la requête.
+ * @param now Instant présent (`Date.now()`).
+ */
+export function tabDuration(tab: QueryTab, now: number): number | null {
+  if (tab.done && tab.error === null && tab.result) {
+    return tab.result.elapsedMs
+  }
+  return tab.startedAt === null ? null : (tab.endedAt ?? now) - tab.startedAt
+}
+
+/**
+ * Formate une durée dans l'unité qui lui convient : millisecondes sous la
+ * seconde, secondes (une décimale) sous la minute, minutes et secondes sous
+ * l'heure, puis heures et minutes.
  *
  * @param milliseconds Durée.
  */
 export function formatDuration(milliseconds: number): string {
-  if (milliseconds < 1000) {
-    return `${Math.max(0, Math.round(milliseconds))} ms`
+  const duration = Math.max(0, milliseconds)
+  if (duration < 1000) {
+    return `${Math.round(duration)} ms`
   }
-  return `${(milliseconds / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 1, minimumFractionDigits: 1 })} s`
+  if (duration < 60_000) {
+    const seconds = Math.floor(duration / 100) / 10
+    return `${seconds.toLocaleString('fr-FR', { minimumFractionDigits: 1 })} s`
+  }
+  const pad = (value: number) => String(value).padStart(2, '0')
+  const totalSeconds = Math.floor(duration / 1000)
+  if (totalSeconds < 3600) {
+    return `${Math.floor(totalSeconds / 60)} min ${pad(totalSeconds % 60)} s`
+  }
+  return `${Math.floor(totalSeconds / 3600)} h ${pad(Math.floor(totalSeconds / 60) % 60)} min`
 }
 
 /**

@@ -2,7 +2,12 @@
   Grille de résultats compacte.
 
   - Tri : bouton ▲▼ de l'en-tête (croissant, décroissant, aucun).
-  - Filtre : texte cherché dans une colonne ou dans toutes.
+  - Filtre : texte cherché dans une colonne ou dans toutes. Le formulaire est
+    replié ; le bouton de la barre du bas le déplie (et le replie : le filtre
+    reste appliqué, le bouton le signale).
+  - Barre du bas : bouton du filtre, nombre de lignes chargées (« 120 /
+    5 000 lignes » quand un filtre est actif), puis le contenu de
+    l'emplacement `footer` (durée de la requête).
   - Sélection : clic sur une cellule, sur un numéro de ligne ou sur un nom de
     colonne ; Maj-clic étend, Ctrl-clic ajoute, glisser étend aussi (sur les
     numéros de ligne, glisser sélectionne un groupe de lignes). Un clic sur
@@ -27,9 +32,9 @@
   (tri, filtre, sélection, copie) est dans `resultGrid.ts`.
 -->
 <script setup lang="ts">
-import { Search, X } from 'lucide-vue-next'
+import { ListFilter, Search, X } from 'lucide-vue-next'
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import { computed, reactive, ref, shallowRef, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, reactive, ref, shallowRef, useTemplateRef, watch } from 'vue'
 
 import type { Cell } from '@/api/querySession'
 import { cssPixels } from '@/cssLength'
@@ -82,6 +87,11 @@ const props = defineProps<{
    */
   rowCount: number
   /**
+   * Nombre de lignes affiché dans la barre du bas, rafraîchi moins souvent
+   * que `rowCount` pendant la réception ; absent, `rowCount`.
+   */
+  shownCount?: number
+  /**
    * Texte de la requête : les largeurs choisies sont retenues pour elle, et
    * retrouvées si elle est relancée.
    */
@@ -97,6 +107,34 @@ const ROW_HEIGHT = cssPixels('--grid-row-height', 22)
 const scroller = useTemplateRef<HTMLDivElement>('scroller')
 
 const filter = reactive<GridFilter>({ text: '', column: null })
+
+/**
+ * Formulaire du filtre déplié ?
+ */
+const filterOpen = ref(false)
+
+const filterBox = useTemplateRef<HTMLDivElement>('filterBox')
+
+/**
+ * Déplie ou replie le formulaire du filtre ; déplié, son champ prend le focus.
+ */
+async function toggleFilter(): Promise<void> {
+  filterOpen.value = !filterOpen.value
+  if (filterOpen.value) {
+    await nextTick()
+    filterBox.value?.querySelector('input')?.focus()
+  }
+}
+
+/**
+ * Nombre de lignes de la barre du bas : lignes chargées, précédées des
+ * lignes retenues quand un filtre est actif.
+ */
+const countLabel = computed(() => {
+  const loaded = props.shownCount ?? props.rowCount
+  const total = `${loaded.toLocaleString('fr-FR')} ${loaded > 1 ? 'lignes' : 'ligne'}`
+  return filter.text === '' ? total : `${view.value.length.toLocaleString('fr-FR')} / ${total}`
+})
 const sort = ref<SortState | null>(null)
 const selection = shallowRef(emptySelection())
 
@@ -467,7 +505,7 @@ const filterColumn = computed({
 
 <template>
   <div class="result-grid">
-    <div class="grid-toolbar">
+    <div v-if="filterOpen" ref="filterBox" class="grid-toolbar">
       <ui-input
         v-model="filter.text"
         :icon="Search"
@@ -491,7 +529,6 @@ const filterColumn = computed({
         label="Colonne filtrée"
         class="grid-filter-column"
       />
-      <span class="grid-count">{{ view.length }} / {{ rowCount }} lignes</span>
     </div>
 
     <div ref="scroller" class="grid-scroller" tabindex="0" @keydown="onKeydown">
@@ -569,6 +606,22 @@ const filterColumn = computed({
         </div>
       </div>
     </div>
+
+    <div class="grid-footer">
+      <ui-button
+        :icon="ListFilter"
+        variant="ghost"
+        :tone="filter.text === '' ? 'neutral' : 'accent'"
+        small
+        :aria-pressed="filterOpen"
+        :aria-label="filterOpen ? 'Replier le filtre' : 'Filtrer les lignes'"
+        :title="filterOpen ? 'Replier le filtre' : 'Filtrer les lignes'"
+        class="grid-filter-toggle"
+        @click="toggleFilter"
+      />
+      <span class="grid-count">{{ countLabel }}</span>
+      <slot name="footer" />
+    </div>
   </div>
 </template>
 
@@ -595,10 +648,16 @@ const filterColumn = computed({
   max-inline-size: var(--grid-filter-column-width);
 }
 
-.grid-count {
-  margin-inline-end: auto;
+.grid-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
   color: var(--fg-muted);
   font-size: var(--font-size-ui);
+
+  & > span {
+    text-box: trim-both cap alphabetic;
+  }
 }
 
 .grid-scroller {

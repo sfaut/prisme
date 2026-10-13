@@ -9,9 +9,10 @@
 import { type Ref, onScopeDispose, ref } from 'vue'
 
 /**
- * Intervalle entre deux tics, en millisecondes.
+ * Intervalle entre deux tics, en millisecondes : les durées et les nombres
+ * de lignes en cours de réception changent une fois par seconde.
  */
-const TICK = 200
+const TICK = 1000
 
 /**
  * Instant présent (`Date.now()`), rafraîchi à chaque tic.

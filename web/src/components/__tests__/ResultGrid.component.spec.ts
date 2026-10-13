@@ -47,7 +47,7 @@ describe('ResultGrid', () => {
     )
     const headers = wrapper.findAll('.grid-column-name').map((header) => header.text())
     expect(headers).toEqual(['id', 'name'])
-    expect(wrapper.find('.grid-count').text()).toBe('2 / 2 lignes')
+    expect(wrapper.find('.grid-count').text()).toBe('2 lignes')
   })
 
   it('filtre les lignes', async () => {
@@ -58,6 +58,9 @@ describe('ResultGrid', () => {
         ['2', null],
       ],
     )
+    // Replié au départ : le bouton de la barre du bas déplie le formulaire.
+    expect(wrapper.find('.grid-filter').exists()).toBe(false)
+    await wrapper.find('.grid-filter-toggle').trigger('click')
     await wrapper.find('.grid-filter input').setValue('null')
     expect(wrapper.find('.grid-count').text()).toBe('1 / 2 lignes')
   })
