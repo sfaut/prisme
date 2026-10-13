@@ -5,19 +5,22 @@
   - Filtre : texte cherché dans une colonne ou dans toutes.
   - Sélection : clic sur une cellule, sur un numéro de ligne ou sur un nom de
     colonne ; Maj-clic étend, Ctrl-clic ajoute, glisser étend aussi (sur les
-    numéros de ligne, glisser sélectionne un groupe de lignes). Un clic
-    sur le coin supérieur gauche sélectionne tout.
+    numéros de ligne, glisser sélectionne un groupe de lignes). Un clic sur
+    le coin supérieur gauche sélectionne tout.
   - Copie : Ctrl-C copie la sélection avec les noms des colonnes en première
-    ligne (un réglage du profil pourra les retirer). Ctrl-A
-    sélectionne tout, Échap vide la sélection.
+    ligne (un réglage du profil pourra les retirer). Ctrl-A sélectionne tout,
+    Échap vide la sélection.
   - Largeur : glisser le bord droit d'un en-tête change la largeur de la
-    colonne, un double clic sur ce bord l'ajuste à sa valeur la plus longue
-    (avec un plafond), un second lui rend sa largeur estimée. Les largeurs choisies sont retrouvées quand la même
-    requête est relancée (`gridWidths.ts`).
+    colonne ; un double clic sur ce bord l'ajuste à sa valeur la plus longue
+    (avec un plafond), un second lui rend sa largeur estimée. Les largeurs
+    choisies sont retrouvées quand la même requête est relancée
+    (`gridWidths.ts`). Un texte trop long est tronqué (…) et s'affiche en
+    entier au survol.
   - Ordre : glisser un nom de colonne la déplace. Une nouvelle exécution
     rétablit l'ordre du `SELECT`. La sélection et la copie suivent l'ordre
-    affiché ; tri, filtre et largeurs restent attachés à la colonne. Un texte trop long est tronqué (…) et s'affiche en
-    entier au survol.
+    affiché ; tri, filtre et largeurs restent attachés à la colonne.
+  - Alignement : nombres, dates et heures à droite, d'après le type annoncé
+    par le serveur.
 
   Seules les lignes visibles existent dans la page (défilement virtuel) : la
   grille reste fluide avec des dizaines de milliers de lignes. La logique
