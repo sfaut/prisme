@@ -10,6 +10,9 @@
 //!   et `OR` en début de ligne, en retrait sous la clause (le `AND` d'un
 //!   `BETWEEN` et ceux d'un `CASE` restent sur la ligne) ; `ON` reste sur la
 //!   ligne de sa jointure ;
+//! - quand il y en a plusieurs, les prédicats sont précédés de `TRUE` (si le
+//!   premier lien est `AND`) ou de `FALSE` (si c'est `OR`), pour que chacun ait
+//!   sa ligne, `AND` ou `OR` en tête (voir `predicate_prefix`) ;
 //! - une sous-requête entre parenthèses est en retrait, sa parenthèse
 //!   fermante sur sa propre ligne ;
 //! - un espace autour des opérateurs binaires (`=`, `<`, `+`, `-`...), aucun
@@ -87,6 +90,19 @@ const SELECT_LIST_ENDS: &[&str] = &[
     "WINDOW",
     "FOR",
 ];
+
+/// Mots qui terminent une liste de prédicats (`WHERE`, `HAVING`, `ON`).
+const PREDICATES_ENDS: &[&str] = &["ON", "USING", "FOR", "INTO", "LOCK"];
+
+/// Texte ajouté juste après un mot-clef.
+enum Injection {
+    /// `TRUE` ou `FALSE` après `WHERE`, `HAVING` ou `ON`, puis le premier lien à la ligne.
+    Prefix {
+        constant: &'static str,
+        connective: &'static str,
+        indent: usize,
+    },
+}
 
 /// Jeton à placer, avec son texte d'origine.
 struct Item<'a> {
@@ -223,6 +239,8 @@ struct Printer {
     /// Le jeton précédent était un opérateur binaire ou une virgule : le suivant
     /// est précédé d'un espace.
     space_next: bool,
+    /// Texte à ajouter après le mot en cours de placement.
+    injection: Option<Injection>,
 }
 
 impl Printer {
@@ -283,6 +301,19 @@ impl Printer {
         }
 
         if self.at_query_level() && !word.is_empty() {
+            let query = self.queries.last().expect("requête");
+            let starts_predicates = word == "WHERE"
+                || word == "HAVING"
+                || (word == "ON" && query.joined && query.clause == Clause::Other);
+            if starts_predicates
+                && let Some((constant, connective)) = predicate_prefix(&items[index + 1..])
+            {
+                self.injection = Some(Injection::Prefix {
+                    constant,
+                    connective,
+                    indent: query.indent + INDENT,
+                });
+            }
             let several_columns = word == "SELECT" && has_several_columns(&items[index + 1..]);
             self.place_keyword_line(&word, previous, next, several_columns);
         }
@@ -338,6 +369,19 @@ impl Printer {
             self.push_spaced(item.text);
         } else {
             self.push_glued(item.text);
+        }
+
+        match self.injection.take() {
+            Some(Injection::Prefix {
+                constant,
+                connective,
+                indent,
+            }) => {
+                self.push_spaced(constant);
+                self.newline(indent);
+                self.push_spaced(connective);
+            }
+            None => {}
         }
     }
 
@@ -534,6 +578,64 @@ fn has_several_columns(items: &[Item]) -> bool {
     false
 }
 
+/// Préfixe à ajouter devant une liste de prédicats (les jetons qui suivent
+/// `WHERE`, `HAVING` ou `ON`), pour que chaque prédicat ait sa ligne :
+/// `TRUE` puis `AND` si le premier lien de la liste est `AND`, `FALSE` puis
+/// `OR` si c'est `OR`. `None` pour un seul prédicat, ou si le préfixe est déjà là.
+///
+/// Le sens de la requête ne change pas : en logique à trois valeurs,
+/// `TRUE AND x` et `FALSE OR x` valent `x`, y compris quand `x` est NULL. Et
+/// comme `AND` lie plus fort que `OR` (puis `XOR`), `TRUE AND p1 OR p2` se lit
+/// `(TRUE AND p1) OR p2`, et `FALSE OR p1 AND p2` se lit `FALSE OR (p1 AND p2)` :
+/// le préfixe ne s'attache qu'au premier terme, quel que soit le mélange.
+fn predicate_prefix(items: &[Item]) -> Option<(&'static str, &'static str)> {
+    let mut significant = items
+        .iter()
+        .filter(|item| !matches!(item.token, Token::Whitespace(_)));
+    let first = significant.next()?.word();
+    let second = significant.next().map(Item::word).unwrap_or_default();
+    if (first == "TRUE" && second == "AND") || (first == "FALSE" && second == "OR") {
+        return None;
+    }
+
+    let mut depth = 0usize;
+    let mut open_cases = 0usize;
+    let mut between_pending = false;
+    for (index, item) in items.iter().enumerate() {
+        match item.token {
+            Token::LParen => depth += 1,
+            Token::RParen if depth == 0 => return None,
+            Token::RParen => depth -= 1,
+            Token::SemiColon if depth == 0 => return None,
+            _ => {}
+        }
+        if depth > 0 {
+            continue;
+        }
+        let word = item.word();
+        let function_call = items
+            .get(index + 1)
+            .is_some_and(|next| matches!(next.token, Token::LParen) && !next.space_before);
+        let ends = CLAUSES.contains(&word.as_str())
+            || SELECT_LIST_ENDS.contains(&word.as_str())
+            || PREDICATES_ENDS.contains(&word.as_str())
+            || (JOIN_STARTS.contains(&word.as_str()) && !function_call);
+        if ends {
+            return None;
+        }
+        match word.as_str() {
+            "CASE" => open_cases += 1,
+            "END" if open_cases > 0 => open_cases -= 1,
+            "BETWEEN" => between_pending = true,
+            "AND" if between_pending => between_pending = false,
+            "AND" if open_cases == 0 => return Some(("TRUE", "AND")),
+            "OR" if open_cases == 0 => return Some(("FALSE", "OR")),
+            _ => {}
+        }
+    }
+    None
+}
+
 /// Indique si un jeton est un opérateur, binaire ou unaire.
 fn is_operator(token: &Token) -> bool {
     matches!(
@@ -610,7 +712,7 @@ mod tests {
                    LEFT JOIN tag t ON t.video_id = v.id WHERE v.year BETWEEN 2000 AND 2010 AND v.score>3 OR v.free";
         assert_eq!(
             laid_out(sql),
-            "SELECT v.id\nFROM video v\nJOIN person p ON p.id = v.person_id\n    AND p.active = 1\nLEFT JOIN tag t ON t.video_id = v.id\nWHERE v.year BETWEEN 2000 AND 2010\n    AND v.score > 3\n    OR v.free"
+            "SELECT v.id\nFROM video v\nJOIN person p ON TRUE\n    AND p.id = v.person_id\n    AND p.active = 1\nLEFT JOIN tag t ON t.video_id = v.id\nWHERE TRUE\n    AND v.year BETWEEN 2000 AND 2010\n    AND v.score > 3\n    OR v.free"
         );
     }
 
@@ -618,7 +720,30 @@ mod tests {
     fn keeps_case_conditions_on_their_line() {
         assert_eq!(
             laid_out("SELECT CASE WHEN a AND b THEN 1 ELSE 0 END FROM t WHERE x AND y"),
-            "SELECT CASE WHEN a AND b THEN 1 ELSE 0 END\nFROM t\nWHERE x\n    AND y"
+            "SELECT CASE WHEN a AND b THEN 1 ELSE 0 END\nFROM t\nWHERE TRUE\n    AND x\n    AND y"
+        );
+    }
+
+    #[test]
+    fn prefixes_predicates_with_true_or_false() {
+        assert_eq!(
+            laid_out("SELECT * FROM t1 INNER JOIN t2 ON p1 AND p2 WHERE p3 OR p4"),
+            "SELECT *\nFROM t1\nINNER JOIN t2 ON TRUE\n    AND p1\n    AND p2\nWHERE FALSE\n    OR p3\n    OR p4"
+        );
+        // Un seul prédicat : rien à ajouter.
+        assert_eq!(
+            laid_out("SELECT * FROM t WHERE a = 1"),
+            "SELECT *\nFROM t\nWHERE a = 1"
+        );
+        // Préfixe déjà présent : il n'est pas doublé.
+        assert_eq!(
+            laid_out("SELECT * FROM t WHERE FALSE OR a OR b"),
+            "SELECT *\nFROM t\nWHERE FALSE\n    OR a\n    OR b"
+        );
+        // Les liens d'une sous-requête ou d'une fonction ne comptent pas.
+        assert_eq!(
+            laid_out("SELECT * FROM t WHERE a IN (SELECT x FROM u WHERE y OR z)"),
+            "SELECT *\nFROM t\nWHERE a IN (\n    SELECT x\n    FROM u\n    WHERE FALSE\n        OR y\n        OR z\n)"
         );
     }
 

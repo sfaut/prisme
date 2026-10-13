@@ -177,8 +177,69 @@ mod tests {
     fn beautifies_with_layout() {
         assert_eq!(
             beautify("select a, b from t where x=1 and y=2", Dialect::MariaDb),
-            "SELECT\n    a,\n    b\nFROM t\nWHERE x = 1\n    AND y = 2"
+            "SELECT\n    a,\n    b\nFROM t\nWHERE TRUE\n    AND x = 1\n    AND y = 2"
         );
+    }
+
+    #[test]
+    fn beautifying_twice_changes_nothing() {
+        let sql = "select a, b from t1 join t2 on x and y where p or q and r order by a";
+        let once = beautify(sql, Dialect::MariaDb);
+        assert_eq!(beautify(&once, Dialect::MariaDb), once);
+    }
+
+    /// Exécute une requête sur une base SQLite en mémoire et renvoie ses lignes.
+    fn rows_of(db: &rusqlite::Connection, sql: &str) -> Vec<Vec<Option<i64>>> {
+        let mut statement = db.prepare(sql).unwrap();
+        let columns = statement.column_count();
+        statement
+            .query_map([], |row| (0..columns).map(|index| row.get(index)).collect())
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+
+    /// Les préfixes TRUE / FALSE ne changent pas le résultat, NULL compris :
+    /// chaque requête est exécutée telle quelle et enjolivée, sur toutes les
+    /// combinaisons de 0, 1 et NULL.
+    #[test]
+    fn prefixes_keep_query_results_identical() {
+        let db = rusqlite::Connection::open_in_memory().unwrap();
+        db.execute_batch(
+            "CREATE TABLE t (id INTEGER, a INTEGER, b INTEGER, c INTEGER);
+             WITH v(x) AS (VALUES (0), (1), (NULL))
+             INSERT INTO t SELECT row_number() OVER (), v1.x, v2.x, v3.x FROM v v1, v v2, v v3;",
+        )
+        .unwrap();
+        let filters = [
+            "a = 1 OR b = 1",
+            "a = 1 AND b = 1",
+            "a = 1 AND b = 1 OR c = 1",
+            "a = 1 OR b = 1 AND c = 1",
+            "NOT a = 1 AND b = 1 OR NOT c = 1",
+            "a BETWEEN 0 AND 1 AND b = 1 OR c IS NULL",
+            "CASE WHEN a = 1 AND b = 1 THEN 1 END = 1 OR c = 0",
+            "(a = 1 OR b = 1) AND (c = 1 OR c IS NULL)",
+        ];
+        for filter in filters {
+            let original = format!("SELECT id FROM t WHERE {filter} ORDER BY id");
+            let beautified = beautify(&original, Dialect::MariaDb);
+            assert_eq!(
+                rows_of(&db, &beautified),
+                rows_of(&db, &original),
+                "{beautified}"
+            );
+
+            let joined = format!(
+                "SELECT t.id, u.uid FROM t JOIN (SELECT id AS uid FROM t) AS u ON t.id = u.uid AND {filter} ORDER BY t.id"
+            );
+            let beautified = beautify(&joined, Dialect::MariaDb);
+            assert_eq!(
+                rows_of(&db, &beautified),
+                rows_of(&db, &joined),
+                "{beautified}"
+            );
+        }
     }
 
     #[test]
