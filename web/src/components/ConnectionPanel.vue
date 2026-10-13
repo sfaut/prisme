@@ -9,7 +9,7 @@ import { computed, onMounted, ref } from 'vue'
 import { probeConnection } from '@/api/connections'
 import { useConnectionsStore } from '@/stores/connections'
 
-import NewConnectionDialog from './NewConnectionDialog.vue'
+import ConnectionDialog from './ConnectionDialog.vue'
 
 const store = useConnectionsStore()
 const message = useMessage()
@@ -104,7 +104,7 @@ onMounted(async () => {
         Supprimer la connexion « {{ store.selected?.name }} » ?
       </n-popconfirm>
     </div>
-    <new-connection-dialog v-model:open="creating" />
+    <connection-dialog v-model:open="creating" :connection="null" />
   </div>
 </template>
 

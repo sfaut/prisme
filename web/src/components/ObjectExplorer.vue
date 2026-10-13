@@ -8,17 +8,23 @@
   et arrive au fil de l'eau : les bases d'abord, puis leurs objets (tables,
   vues, procédures, fonctions), puis le détail des tables (colonnes, index,
   clefs étrangères, déclencheurs), chaque partie affichée dès sa réception.
-  Il reste ensuite en mémoire. « Rafraîchir » relit les catalogues déjà lus.
-  Un double clic sur une table ou une vue émet `open-table`, pour en afficher
-  le contenu.
+  Il reste ensuite en mémoire.
+
+  À droite de la racine, un menu « ⋯ » ajoute une connexion ou relit tous les
+  catalogues déjà lus ; à droite de chaque source, un autre modifie la
+  connexion, relit son catalogue ou supprime la connexion (après
+  confirmation). Un double clic sur une table ou une vue émet `open-table`,
+  pour en afficher le contenu.
 -->
 <script setup lang="ts">
-import { NAlert, NButton, NTree, type TreeOption } from 'naive-ui'
+import { NAlert, NButton, NDropdown, NModal, NTree, type TreeOption } from 'naive-ui'
 import { computed, h, ref, watch } from 'vue'
 
+import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import { useCatalogStore } from '@/stores/catalog'
 import { useConnectionsStore } from '@/stores/connections'
 
+import ConnectionDialog from './ConnectionDialog.vue'
 import { hashIcon, keyIcon } from './columnIcons'
 import { type ExplorerNode, SOURCES_KEY, explorerTree, sourceKey } from './explorerNodes'
 
@@ -61,6 +67,38 @@ const loadingIds = ref<number[]>([])
  * Dernière erreur de lecture de chaque connexion, par identifiant.
  */
 const failures = ref<Record<number, string>>({})
+
+/**
+ * Fenêtre de création ou de modification ouverte ?
+ */
+const dialogOpen = ref(false)
+
+/**
+ * Connexion modifiée par la fenêtre, `null` pour en créer une.
+ */
+const editing = ref<ConnectionSummary | null>(null)
+
+/**
+ * Connexion dont la suppression attend confirmation, `null` si aucune.
+ */
+const removing = ref<ConnectionSummary | null>(null)
+
+/**
+ * Choix du menu de la racine.
+ */
+const SOURCES_MENU = [
+  { key: 'add', label: 'Ajouter une connexion' },
+  { key: 'refresh-all', label: 'Tout rafraîchir' },
+]
+
+/**
+ * Choix du menu d'une source.
+ */
+const SOURCE_MENU = [
+  { key: 'edit', label: 'Modifier la connexion' },
+  { key: 'refresh', label: 'Rafraîchir' },
+  { key: 'remove', label: 'Supprimer la connexion' },
+]
 
 /**
  * Clefs des nœuds ouverts.
@@ -131,7 +169,7 @@ async function load(connectionId: number, refresh: boolean): Promise<void> {
 /**
  * Relit les catalogues déjà lus.
  */
-function refresh(): void {
+function refreshAll(): void {
   for (const connection of connections.connections) {
     if (catalog.catalogs[connection.id] !== undefined) {
       void load(connection.id, true)
@@ -151,6 +189,101 @@ function expand(keys: string[]): void {
       void load(connection.id, false)
     }
   }
+}
+
+/**
+ * Exécute un choix du menu d'un nœud.
+ *
+ * @param node Nœud dont le menu est ouvert.
+ * @param choice Clef du choix.
+ */
+function onMenu(node: ExplorerNode, choice: string): void {
+  const connection = connections.connections.find((item) => item.id === node.connectionId) ?? null
+  switch (choice) {
+    case 'add':
+      editing.value = null
+      dialogOpen.value = true
+      break
+    case 'refresh-all':
+      refreshAll()
+      break
+    case 'edit':
+      editing.value = connection
+      dialogOpen.value = true
+      break
+    case 'refresh':
+      void load(node.connectionId, true)
+      break
+    case 'remove':
+      removing.value = connection
+      break
+  }
+}
+
+/**
+ * Relit le catalogue d'une connexion modifiée, s'il était déjà lu : la
+ * connexion peut désormais viser un autre serveur.
+ *
+ * @param connectionId Identifiant de la connexion modifiée.
+ */
+function onUpdated(connectionId: number): void {
+  if (catalog.catalogs[connectionId] !== undefined) {
+    void load(connectionId, true)
+  }
+}
+
+/**
+ * Supprime la connexion qui attendait confirmation.
+ */
+async function confirmRemove(): Promise<void> {
+  const connection = removing.value
+  removing.value = null
+  if (connection === null) {
+    return
+  }
+  try {
+    await connections.remove(connection.id)
+    expandedKeys.value = expandedKeys.value.filter((key) => key !== sourceKey(connection.id))
+    delete failures.value[connection.id]
+  } catch (failure) {
+    failures.value[connection.id] = failure instanceof Error ? failure.message : String(failure)
+  }
+}
+
+/**
+ * Menu « ⋯ » affiché à droite de la racine et de chaque source. Le clic sur
+ * le bouton ne se propage pas : il n'ouvre ni ne ferme le nœud.
+ *
+ * @param info Nœud affiché.
+ */
+function renderSuffix({ option }: { option: TreeOption }) {
+  const node = option as unknown as ExplorerNode
+  if (node.role === undefined) {
+    return null
+  }
+  return h(
+    NDropdown,
+    {
+      trigger: 'click',
+      size: 'small',
+      options: node.role === 'sources' ? SOURCES_MENU : SOURCE_MENU,
+      onSelect: (choice: string) => onMenu(node, choice),
+    },
+    {
+      default: () =>
+        h(
+          NButton,
+          {
+            text: true,
+            size: 'tiny',
+            class: 'node-menu',
+            title: 'Actions',
+            onClick: (event: MouseEvent) => event.stopPropagation(),
+          },
+          { default: () => '⋯' },
+        ),
+    },
+  )
 }
 
 // La connexion choisie ouvre sa source.
@@ -222,9 +355,6 @@ function renderLabel({ option }: { option: TreeOption }) {
 
 <template>
   <div class="object-explorer">
-    <div class="explorer-toolbar">
-      <n-button size="tiny" :loading="loadingIds.length > 0" @click="refresh">Rafraîchir</n-button>
-    </div>
     <n-alert v-for="message in messages" :key="message" type="warning" :show-icon="false">
       {{ message }}
     </n-alert>
@@ -233,6 +363,7 @@ function renderLabel({ option }: { option: TreeOption }) {
       :expanded-keys="expandedKeys"
       :node-props="nodeProps"
       :render-label="renderLabel"
+      :render-suffix="renderSuffix"
       :indent="8"
       :theme-overrides="TREE_THEME"
       block-line
@@ -240,6 +371,21 @@ function renderLabel({ option }: { option: TreeOption }) {
       class="object-tree"
       @update:expanded-keys="expand"
     />
+    <connection-dialog v-model:open="dialogOpen" :connection="editing" @updated="onUpdated" />
+    <n-modal
+      :show="removing !== null"
+      preset="dialog"
+      type="warning"
+      title="Supprimer la connexion"
+      positive-text="Supprimer"
+      negative-text="Annuler"
+      @positive-click="confirmRemove"
+      @negative-click="removing = null"
+      @close="removing = null"
+      @mask-click="removing = null"
+    >
+      Supprimer la connexion « {{ removing?.name }} » ?
+    </n-modal>
   </div>
 </template>
 
@@ -250,12 +396,6 @@ function renderLabel({ option }: { option: TreeOption }) {
   flex-direction: column;
   gap: 8px;
   min-height: 0;
-}
-
-.explorer-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
 }
 
 .object-tree {
@@ -314,6 +454,17 @@ function renderLabel({ option }: { option: TreeOption }) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.object-tree :deep(.node-menu) {
+  padding: 0 4px;
+  color: #999;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.object-tree :deep(.node-menu:hover) {
+  color: #333;
 }
 
 .object-tree :deep(.n-tree-node-content) {

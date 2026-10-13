@@ -1,5 +1,8 @@
 <!--
-  Fenêtre de création d'une connexion MySQL / MariaDB.
+  Fenêtre de création ou de modification d'une connexion MySQL / MariaDB.
+
+  En modification, la saisie part de la connexion enregistrée, sauf le mot de
+  passe, que l'interface ne connaît pas : laissé vide, il reste inchangé.
 
   Les longueurs maximales reprennent celles du serveur
   (`crates/server/src/connections.rs`). Les autres contrôles sont faits par le
@@ -7,8 +10,9 @@
 -->
 <script setup lang="ts">
 import { NAlert, NButton, NForm, NFormItem, NInput, NInputNumber, NModal } from 'naive-ui'
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 
+import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { NewConnection } from '@/api/generated/NewConnection'
 import { useConnectionsStore } from '@/stores/connections'
 
@@ -16,6 +20,20 @@ import { useConnectionsStore } from '@/stores/connections'
  * Fenêtre ouverte ou fermée.
  */
 const open = defineModel<boolean>('open', { required: true })
+
+const props = defineProps<{
+  /**
+   * Connexion à modifier, `null` pour en créer une.
+   */
+  connection: ConnectionSummary | null
+}>()
+
+const emit = defineEmits<{
+  /**
+   * La connexion modifiée est enregistrée.
+   */
+  updated: [connectionId: number]
+}>()
 
 const store = useConnectionsStore()
 
@@ -35,6 +53,13 @@ const error = ref<string | null>(null)
 const saving = ref(false)
 
 /**
+ * Titre de la fenêtre.
+ */
+const title = computed(() =>
+  props.connection === null ? 'Nouvelle connexion' : 'Modifier la connexion',
+)
+
+/**
  * Saisie vide, avec le port par défaut de MySQL.
  */
 function emptyForm(): Required<NewConnection> {
@@ -42,14 +67,39 @@ function emptyForm(): Required<NewConnection> {
 }
 
 /**
- * Enregistre la connexion, puis ferme et vide la fenêtre.
+ * Saisie de départ : la connexion à modifier, mot de passe vide, ou une saisie vide.
+ *
+ * @param connection Connexion à modifier, `null` pour en créer une.
+ */
+function initialForm(connection: ConnectionSummary | null): Required<NewConnection> {
+  if (connection === null) {
+    return emptyForm()
+  }
+  const { name, host, port, username, database_name } = connection
+  return { name, host, port, username, password: '', database_name }
+}
+
+// Chaque ouverture repart de la connexion choisie, sans l'erreur précédente.
+watch(open, (isOpen) => {
+  if (isOpen) {
+    Object.assign(form, initialForm(props.connection))
+    error.value = null
+  }
+})
+
+/**
+ * Enregistre la connexion, puis ferme la fenêtre.
  */
 async function save(): Promise<void> {
   saving.value = true
   error.value = null
   try {
-    await store.create({ ...form })
-    Object.assign(form, emptyForm())
+    if (props.connection === null) {
+      await store.create({ ...form })
+    } else {
+      await store.update(props.connection.id, { ...form })
+      emit('updated', props.connection.id)
+    }
     open.value = false
   } catch (failure) {
     error.value = failure instanceof Error ? failure.message : String(failure)
@@ -60,7 +110,7 @@ async function save(): Promise<void> {
 </script>
 
 <template>
-  <n-modal v-model:show="open" preset="card" title="Nouvelle connexion" style="width: 420px">
+  <n-modal v-model:show="open" preset="card" :title="title" style="width: 420px">
     <n-form label-placement="left" label-width="110" @submit.prevent="save">
       <n-form-item label="Nom">
         <n-input v-model:value="form.name" :maxlength="100" placeholder="prod, local..." />
@@ -80,6 +130,7 @@ async function save(): Promise<void> {
           type="password"
           show-password-on="click"
           :input-props="{ autocomplete: 'new-password' }"
+          :placeholder="connection === null ? '' : 'inchangé'"
         />
       </n-form-item>
       <n-form-item label="Base">

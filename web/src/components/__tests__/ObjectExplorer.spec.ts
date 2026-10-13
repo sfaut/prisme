@@ -90,6 +90,23 @@ describe('ObjectExplorer', () => {
     wrapper.unmount()
   })
 
+  it('propose un menu sur la racine et un autre sur chaque source', async () => {
+    useConnectionsStore().connections = [connection(1, 'Origen 2')]
+    const wrapper = mount(ObjectExplorer, {
+      props: { selectedId: null, currentDatabase: null },
+      attachTo: document.body,
+    })
+    await vi.waitFor(() => expect(wrapper.findAll('.node-menu')).toHaveLength(2))
+    const [root, source] = wrapper.findAll('.node-menu')
+    await root?.trigger('click')
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Ajouter une connexion'))
+    expect(document.body.textContent).toContain('Tout rafraîchir')
+    await source?.trigger('click')
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Modifier la connexion'))
+    expect(document.body.textContent).toContain('Supprimer la connexion')
+    wrapper.unmount()
+  })
+
   it('suit la base en cours, même en revenant sur une base déjà choisie', async () => {
     useConnectionsStore().connections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
     const wrapper = mount(ObjectExplorer, {
