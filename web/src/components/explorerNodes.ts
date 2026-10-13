@@ -76,7 +76,7 @@ export interface ExplorerNode {
      */
     primaryKey: boolean
     /**
-     * La colonne fait partie d'une clef étrangère (précédée d'un croisillon et soulignée).
+     * La colonne fait partie d'une clef étrangère (précédée d'un croisillon).
      */
     foreignKey: boolean
   }
