@@ -27,33 +27,33 @@ function tint(color: string, percent: number): string {
  * Fond, gouttière, curseur, sélection, bulles et liste de complétion.
  */
 const chrome = EditorView.theme({
-  '&': { backgroundColor: 'var(--ui-bg)', color: 'var(--ui-text-highlighted)' },
-  '.cm-content': { caretColor: 'var(--ui-text-highlighted)' },
-  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--ui-text-highlighted)' },
+  '&': { backgroundColor: 'var(--surface)', color: 'var(--fg-strong)' },
+  '.cm-content': { caretColor: 'var(--fg-strong)' },
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--fg-strong)' },
   '.cm-gutters': {
-    backgroundColor: 'var(--ui-bg-muted)',
-    color: 'var(--ui-text-dimmed)',
-    borderRight: '1px solid var(--ui-border)',
+    backgroundColor: 'var(--surface-muted)',
+    color: 'var(--fg-dimmed)',
+    borderRight: 'var(--line-width) solid var(--line)',
   },
-  '.cm-activeLine': { backgroundColor: tint('--ui-text', 4) },
-  '.cm-activeLineGutter': { backgroundColor: tint('--ui-text', 8) },
+  '.cm-activeLine': { backgroundColor: tint('--fg', 4) },
+  '.cm-activeLineGutter': { backgroundColor: tint('--fg', 8) },
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection':
-    { backgroundColor: tint('--ui-primary', 25) },
-  '.cm-selectionMatch': { backgroundColor: tint('--ui-primary', 12) },
-  '&.cm-focused .cm-matchingBracket': { backgroundColor: tint('--ui-success', 25) },
-  '&.cm-focused .cm-nonmatchingBracket': { backgroundColor: tint('--ui-error', 25) },
+    { backgroundColor: tint('--accent', 25) },
+  '.cm-selectionMatch': { backgroundColor: tint('--accent', 12) },
+  '&.cm-focused .cm-matchingBracket': { backgroundColor: tint('--success', 25) },
+  '&.cm-focused .cm-nonmatchingBracket': { backgroundColor: tint('--error', 25) },
   '.cm-tooltip': {
-    backgroundColor: 'var(--ui-bg-elevated)',
-    color: 'var(--ui-text)',
-    border: '1px solid var(--ui-border)',
-    borderRadius: 'var(--ui-radius)',
+    backgroundColor: 'var(--surface-elevated)',
+    color: 'var(--fg)',
+    border: 'var(--line-width) solid var(--line)',
+    borderRadius: 'var(--control-radius)',
   },
   '.cm-tooltip-autocomplete > ul > li[aria-selected]': {
-    backgroundColor: 'var(--ui-primary)',
-    color: 'var(--ui-bg)',
+    backgroundColor: 'var(--accent)',
+    color: 'var(--surface)',
   },
-  '.cm-completionDetail': { color: 'var(--ui-text-muted)' },
-  '.cm-panels': { backgroundColor: 'var(--ui-bg-elevated)', color: 'var(--ui-text)' },
+  '.cm-completionDetail': { color: 'var(--fg-muted)' },
+  '.cm-panels': { backgroundColor: 'var(--surface-elevated)', color: 'var(--fg)' },
 })
 
 /**
@@ -66,7 +66,7 @@ const highlight = HighlightStyle.define([
   { tag: [tags.number, tags.bool, tags.null], color: 'var(--sql-number)' },
   { tag: tags.special(tags.name), color: 'var(--sql-variable)' },
   { tag: [tags.lineComment, tags.blockComment], color: 'var(--sql-comment)', fontStyle: 'italic' },
-  { tag: [tags.operator, tags.punctuation], color: 'var(--ui-text-muted)' },
+  { tag: [tags.operator, tags.punctuation], color: 'var(--fg-muted)' },
 ])
 
 /**

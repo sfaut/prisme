@@ -19,21 +19,42 @@
   ou teste la connexion, relit son catalogue ou supprime la connexion (après
   confirmation).
 
-  Composants de Nuxt UI (`UTree`, `UDropdownMenu`, `UModal`, `UAlert`),
-  importés automatiquement par son plugin Vite, et classes Tailwind.
+  L'arbre est celui de Reka UI (`TreeRoot`, `TreeItem` : clavier, ouverture
+  des niveaux, accessibilité), en défilement virtuel (`TreeVirtualizer`) ;
+  le rendu des lignes est celui de Prisme, en classes Tailwind. Toutes les
+  lignes ont la même hauteur (`--row-height`), et chaque niveau est en
+  retrait de `--tree-indent` (variables de `main.css`).
 -->
 <script setup lang="ts">
-import type { DropdownMenuItem, TreeItem } from '@nuxt/ui'
-import type { TreeItemSelectEvent } from 'reka-ui'
+import {
+  ChevronDown,
+  ChevronRight,
+  EllipsisVertical,
+  Hash,
+  KeyRound,
+  NotebookPen,
+  Pencil,
+  PlugZap,
+  Plus,
+  RefreshCw,
+  Trash2,
+} from 'lucide-vue-next'
+import { TreeItem, type TreeItemSelectEvent, TreeRoot, TreeVirtualizer } from 'reka-ui'
 import { computed, onMounted, ref, watch } from 'vue'
 
 import { probeConnection, serverLabel } from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
+import { cssPixels } from '@/cssLength'
 import { useCatalogStore } from '@/stores/catalog'
 import { useConnectionsStore } from '@/stores/connections'
 
 import ConnectionDialog from './ConnectionDialog.vue'
 import { type ExplorerNode, SOURCES_KEY, explorerTree, sourceKey } from './explorerNodes'
+import UiAlert from './ui/UiAlert.vue'
+import UiButton from './ui/UiButton.vue'
+import UiDialog from './ui/UiDialog.vue'
+import UiDropdownMenu from './ui/UiDropdownMenu.vue'
+import type { MenuItem } from './ui/menuItem'
 
 const props = defineProps<{
   /**
@@ -66,22 +87,10 @@ const catalog = useCatalogStore()
 const connections = useConnectionsStore()
 
 /**
- * Arbre compact : lignes basses, toutes de la même hauteur (`h-6`, celle
- * du bouton « ⋮ » et de sa marge, qu'il y ait un menu ou non), libellés
- * alignés à gauche (chaque ligne est un bouton, centré par défaut). `group`
- * permet d'afficher le bouton « ⋮ » au survol de la ligne.
+ * Hauteur d'une ligne, en pixels, pour le défilement virtuel
+ * (`--row-height` du thème).
  */
-const TREE_UI = {
-  link: 'group h-6 px-1 gap-1 text-xs text-start',
-  linkLabel: 'min-w-0 flex-1 truncate text-trim',
-  linkTrailing: 'gap-0',
-}
-
-/**
- * Hauteur d'une ligne, en pixels, pour le défilement virtuel : celle de
- * `h-6` dans `TREE_UI`.
- */
-const ROW_HEIGHT = 24
+const ROW_HEIGHT = cssPixels('--row-height', 24)
 
 /**
  * Connexions dont le catalogue est en cours de lecture.
@@ -147,11 +156,10 @@ const receiving = computed(() =>
 )
 
 /**
- * Arbre complet, construit à partir des catalogues en mémoire. La source de
- * la connexion choisie est surlignée.
+ * Arbre complet, construit à partir des catalogues en mémoire.
  */
-const nodes = computed(() => {
-  const tree = explorerTree(
+const nodes = computed(() =>
+  explorerTree(
     connections.connections.map((connection) => ({
       connectionId: connection.id,
       name: connection.name,
@@ -159,14 +167,8 @@ const nodes = computed(() => {
       currentDatabase: connection.id === props.selectedId ? props.currentDatabase : null,
     })),
     receiving.value,
-  )
-  for (const source of tree[0]?.children ?? []) {
-    if (source.connectionId === props.selectedId) {
-      Object.assign(source, { class: 'before:bg-elevated' })
-    }
-  }
-  return tree as (ExplorerNode & TreeItem)[]
-})
+  ),
+)
 
 /**
  * Erreurs à afficher, précédées du nom de leur source : échecs de lecture,
@@ -233,34 +235,34 @@ function expand(keys: string[]): void {
  *
  * @param node Nœud de l'arbre.
  */
-function menuItems(node: ExplorerNode): DropdownMenuItem[] | null {
+function menuItems(node: ExplorerNode): MenuItem[] | null {
   const connection = connections.connections.find((item) => item.id === node.connectionId) ?? null
   switch (node.role) {
     case 'sources':
       return [
-        { label: 'Ajouter une connexion', icon: 'i-lucide-plus', onSelect: () => openDialog(null) },
-        { label: 'Tout rafraîchir', icon: 'i-lucide-refresh-cw', onSelect: refreshAll },
+        { label: 'Ajouter une connexion', icon: Plus, onSelect: () => openDialog(null) },
+        { label: 'Tout rafraîchir', icon: RefreshCw, onSelect: refreshAll },
       ]
     case 'notebooks':
       // Les notebooks ne sont pas encore enregistrés (étape 3 de la v1).
-      return [{ label: 'Créer un notebook', icon: 'i-lucide-notebook-pen', disabled: true }]
+      return [{ label: 'Créer un notebook', icon: NotebookPen, disabled: true }]
     case 'source':
       return [
-        { label: 'Modifier', icon: 'i-lucide-pencil', onSelect: () => openDialog(connection) },
+        { label: 'Modifier', icon: Pencil, onSelect: () => openDialog(connection) },
         {
           label: 'Rafraîchir',
-          icon: 'i-lucide-refresh-cw',
+          icon: RefreshCw,
           onSelect: () => void load(node.connectionId, true),
         },
         {
           label: 'Tester',
-          icon: 'i-lucide-plug-zap',
+          icon: PlugZap,
           onSelect: () => void probe(node.connectionId),
         },
         {
           label: 'Supprimer',
-          icon: 'i-lucide-trash-2',
-          color: 'error',
+          icon: Trash2,
+          tone: 'error',
           onSelect: () => {
             removing.value = connection
           },
@@ -337,13 +339,12 @@ async function confirmRemove(): Promise<void> {
  * @param event Sélection demandée par l'arbre, avec le clic d'origine.
  * @param node Nœud cliqué.
  */
-function onSelect(event: TreeItemSelectEvent<TreeItem>, node: TreeItem): void {
+function onSelect(event: TreeItemSelectEvent<ExplorerNode>, clicked: ExplorerNode): void {
   event.preventDefault()
   const original = event.detail.originalEvent
   if (!(original instanceof MouseEvent) || original.detail !== 2) {
     return
   }
-  const clicked = node as ExplorerNode
   if (clicked.role === 'source') {
     emit('select', clicked.connectionId)
   } else if (clicked.role === 'database') {
@@ -379,136 +380,138 @@ watch(
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col gap-2">
-    <u-alert
-      v-if="probed"
-      color="success"
-      variant="subtle"
-      :title="probed"
-      close
-      @update:open="probed = null"
-    />
-    <u-alert v-if="listError" color="error" variant="subtle" :title="listError" />
-    <u-alert
-      v-for="message in messages"
-      :key="message"
-      color="warning"
-      variant="subtle"
-      :title="message"
-    />
-    <!-- Enveloppe : la portée des styles de ce composant ne passe pas jusqu'à UTree. -->
-    <div class="object-tree flex min-h-0 flex-1 flex-col">
-      <u-tree
-        :items="nodes"
-        :get-key="(node: TreeItem) => (node as ExplorerNode).key"
-        :expanded="expandedKeys"
-        :virtualize="{ estimateSize: ROW_HEIGHT }"
-        size="xs"
-        color="neutral"
-        :ui="TREE_UI"
-        class="min-h-0 flex-1"
-        @update:expanded="expand"
-        @select="onSelect"
-      >
-        <template #item-leading="{ item, expanded }">
-          <u-icon
-            v-if="item.children?.length"
-            :name="expanded ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
-            class="size-3 shrink-0 text-dimmed"
-          />
-          <span v-else class="size-3 shrink-0" />
-        </template>
+  <div class="flex min-h-0 flex-1 flex-col gap-gap">
+    <ui-alert v-if="probed" tone="success" :title="probed" closable @close="probed = null" />
+    <ui-alert v-if="listError" tone="error" :title="listError" />
+    <ui-alert v-for="message in messages" :key="message" tone="warning" :title="message" />
 
-        <template #item-label="{ item }">
+    <tree-root
+      :items="nodes"
+      :get-key="(node: ExplorerNode) => node.key"
+      :expanded="expandedKeys"
+      class="min-h-0 flex-1 overflow-y-auto"
+      @update:expanded="expand"
+    >
+      <tree-virtualizer
+        v-slot="{ item }"
+        :estimate-size="ROW_HEIGHT"
+        :text-content="(flat) => flat.value.label"
+      >
+        <tree-item
+          v-slot="{ isExpanded }"
+          :value="item.value"
+          :level="item.level"
+          class="tree-row group flex h-row w-full cursor-pointer items-center gap-1 rounded-control pe-1 text-start outline-none select-none hover:bg-surface-muted focus-visible:bg-surface-muted"
+          :class="{
+            'bg-surface-elevated':
+              item.value.role === 'source' && item.value.connectionId === selectedId,
+          }"
+          :style="{ '--level': item.level }"
+          @select="
+            onSelect($event as TreeItemSelectEvent<ExplorerNode>, item.value as ExplorerNode)
+          "
+        >
+          <component
+            :is="isExpanded ? ChevronDown : ChevronRight"
+            v-if="item.value.children?.length"
+            class="size-icon-sm shrink-0 text-fg-dimmed"
+          />
+          <span v-else class="size-icon-sm shrink-0" />
+
           <!-- Colonne : symboles, nom (gras si indexée), type et nullabilité. -->
-          <span v-if="item.column" class="inline-flex max-w-full items-center align-top">
+          <span v-if="item.value.column" class="tree-label flex min-w-0 flex-1 items-center">
             <span
-              v-if="item.column.markSlots > 0"
-              class="inline-flex flex-none text-muted"
-              :style="{ width: `${item.column.markSlots}em` }"
+              v-if="item.value.column.markSlots > 0"
+              class="inline-flex flex-none text-fg-muted"
+              :style="{ width: `${item.value.column.markSlots}em` }"
             >
-              <u-icon
-                v-if="item.column.primaryKey"
-                name="i-lucide-key-round"
-                title="Clef primaire"
+              <KeyRound
+                v-if="item.value.column.primaryKey"
+                class="size-[1em]"
+                aria-label="Clef primaire"
               />
-              <u-icon v-if="item.column.foreignKey" name="i-lucide-hash" title="Clef étrangère" />
+              <Hash
+                v-if="item.value.column.foreignKey"
+                class="size-[1em]"
+                aria-label="Clef étrangère"
+              />
             </span>
             <span
-              class="me-3 flex-none font-bold"
-              :style="{ minWidth: `${item.column.nameWidth}ch` }"
+              class="me-3 flex-none font-bold text-trim"
+              :style="{ minWidth: `${item.value.column.nameWidth}ch` }"
             >
-              <span :class="{ 'font-normal': !item.column.indexed }">{{ item.column.name }}</span>
+              <span :class="{ 'font-normal': !item.value.column.indexed }">
+                {{ item.value.column.name }}
+              </span>
             </span>
-            <span class="truncate text-[0.85em] text-dimmed" :title="item.column.details">
-              {{ item.column.details }}
+            <span
+              class="truncate text-small text-fg-dimmed text-trim"
+              :title="item.value.column.details"
+            >
+              {{ item.value.column.details }}
             </span>
           </span>
           <!-- Autres nœuds : libellé, puis mention éventuelle (UNIQUE, chargement…). -->
           <span
             v-else
+            class="tree-label min-w-0 flex-1 truncate text-trim"
             :class="{
-              'current-database': item.current,
-              'font-bold': item.current || item.role === 'sources' || item.role === 'notebooks',
+              'current-database': item.value.current,
+              'font-bold':
+                item.value.current ||
+                item.value.role === 'sources' ||
+                item.value.role === 'notebooks',
             }"
           >
-            {{ item.label }}
-            <span v-if="item.note" class="ms-3 text-[0.85em] font-normal text-dimmed">
-              {{ item.note }}
+            {{ item.value.label }}
+            <span v-if="item.value.note" class="ms-3 text-small font-normal text-fg-dimmed">
+              {{ item.value.note }}
             </span>
           </span>
-        </template>
 
-        <template #item-trailing="{ item }">
-          <!-- Jamais vide : un emplacement vide afficherait le chevron par défaut de Nuxt UI. -->
-          <u-dropdown-menu v-if="menuItems(item)" :items="menuItems(item) ?? []" size="sm">
-            <u-button
-              icon="i-lucide-ellipsis-vertical"
-              color="neutral"
+          <ui-dropdown-menu
+            v-if="menuItems(item.value as ExplorerNode)"
+            :items="menuItems(item.value as ExplorerNode) ?? []"
+          >
+            <ui-button
+              :icon="EllipsisVertical"
               variant="ghost"
-              size="xs"
+              small
               aria-label="Actions"
-              class="node-menu invisible p-0.5 group-hover:visible data-[state=open]:visible"
+              class="node-menu invisible group-hover:visible group-focus-visible:visible data-[state=open]:visible"
               @click.stop
               @keydown.stop
             />
-          </u-dropdown-menu>
-          <span v-else />
-        </template>
-      </u-tree>
-    </div>
+          </ui-dropdown-menu>
+        </tree-item>
+      </tree-virtualizer>
+    </tree-root>
 
     <connection-dialog v-model:open="dialogOpen" :connection="editing" @updated="onUpdated" />
 
-    <u-modal
+    <ui-dialog
       v-model:open="removeOpen"
       title="Supprimer la connexion"
       :description="`Supprimer la connexion « ${removing?.name} » ?`"
     >
-      <template #body>
-        <p class="text-sm text-muted">
-          Aucune donnée n'est perdue : seuls les paramètres de connexion enregistrés dans Prisme
-          sont retirés, le serveur et ses bases ne sont pas touchés. La connexion pourra être
-          recréée ultérieurement.
-        </p>
-      </template>
+      <p class="text-fg-muted">
+        Aucune donnée n'est perdue : seuls les paramètres de connexion enregistrés dans Prisme sont
+        retirés, le serveur et ses bases ne sont pas touchés. La connexion pourra être recréée
+        ultérieurement.
+      </p>
       <template #footer>
-        <div class="flex w-full justify-end gap-2">
-          <u-button color="neutral" variant="outline" label="Annuler" @click="removing = null" />
-          <u-button color="error" label="Supprimer" @click="confirmRemove" />
+        <div class="flex w-full justify-end gap-gap">
+          <ui-button label="Annuler" @click="removing = null" />
+          <ui-button label="Supprimer" variant="solid" tone="error" @click="confirmRemove" />
         </div>
       </template>
-    </u-modal>
+    </ui-dialog>
   </div>
 </template>
 
 <style scoped>
-/* Retrait de 12 pixels par niveau. Nuxt UI en met 22 (style en ligne, d'où
-   !important), trop pour un arbre profond dans un panneau étroit. Reka UI
-   pose le niveau de chaque ligne dans `aria-level`, lu ici comme un nombre
-   par `attr()`. Un navigateur qui ne sait pas encore lire un attribut typé
-   ignore la règle et garde le retrait de Nuxt UI. */
-.object-tree :deep([data-slot='link'][aria-level]) {
-  padding-inline-start: calc(4px + 12px * (attr(aria-level type(<integer>), 1) - 1)) !important;
+/* Retrait de chaque niveau : `--level` est posé sur la ligne (1 pour les racines). */
+.tree-row {
+  padding-inline-start: calc(var(--space-unit) + var(--tree-indent) * (var(--level) - 1));
 }
 </style>

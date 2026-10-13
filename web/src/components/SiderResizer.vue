@@ -65,7 +65,7 @@ function reset(): void {
   <div
     class="sider-resizer"
     :class="{ dragging: drag !== null }"
-    :style="{ insetInlineStart: `${width - 3}px` }"
+    :style="{ insetInlineStart: `calc(${width}px - var(--resize-handle-width) / 2)` }"
     title="Glisser pour élargir, double clic pour la largeur par défaut"
     @pointerdown.prevent="start"
     @pointermove="move"
@@ -80,13 +80,13 @@ function reset(): void {
   position: absolute;
   inset-block: 0;
   z-index: 10;
-  inline-size: 6px;
+  inline-size: var(--resize-handle-width);
   cursor: col-resize;
   touch-action: none;
 
   &:hover,
   &.dragging {
-    background: color-mix(in oklab, var(--ui-primary) 30%, transparent);
+    background: color-mix(in oklab, var(--accent) 30%, transparent);
   }
 }
 </style>

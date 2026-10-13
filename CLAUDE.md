@@ -25,7 +25,7 @@ Sébastien est propriétaire du projet, travaille en backend et en données (PHP
 - **Pilotes natifs, un par moteur** : `mysql_async` (MySQL et MariaDB), `tokio-postgres`, `rusqlite`, `duckdb` (derrière une feature Cargo, car la compilation est longue). `rusqlite` et `duckdb` sont synchrones : les mettre dans des tâches bloquantes dédiées.
 - **Parseur SQL** : `sqlparser-rs`. À vérifier : pas de dialecte MariaDB à ma connaissance, donc extension du dialecte MySQL.
 - **Base interne** : SQLite en mode WAL (connexions, notebooks, métriques, utilisateurs). Identifiants chiffrés (`aes-gcm`), mots de passe hachés (`argon2`).
-- **Frontend** : Vue 3 + TypeScript + Vite, fichiers `.vue` avec `<script setup lang="ts">`, `vue-tsc`, Pinia, Vitest, CodeMirror 6 (npm), Nuxt UI (sur Reka UI) et Tailwind CSS, ESLint + Prettier.
+- **Frontend** : Vue 3 + TypeScript + Vite, fichiers `.vue` avec `<script setup lang="ts">`, `vue-tsc`, Pinia, Vitest, CodeMirror 6 (npm), Reka UI (comportement des composants) et Tailwind CSS, icônes `lucide-vue-next`, ESLint + Prettier.
 - **Types partagés** : les structures échangées entre Rust et l'interface sont définies une seule fois côté Rust, et leurs types TypeScript sont générés par `ts-rs`.
 - **Livraison** : un seul exécutable, avec `web/dist` embarqué par `rust-embed`. Pas de service externe à l'exécution. Les dépendances npm et Cargo sont acceptées au développement.
 - **Tests** : `testcontainers` pour MySQL, MariaDB et PostgreSQL, SQLite et DuckDB en mémoire.
@@ -100,6 +100,7 @@ Journaux plus détaillés : `$env:RUST_LOG="debug"` (PowerShell) avant `cargo ru
 7. **Aucun identifiant de connexion en clair**, ni dans la base interne, ni dans les journaux.
 8. **Suite de conformité** : une même requête est exécutée sur chaque base et les résultats sont comparés. Toute règle de traduction ajoutée doit avoir son test.
 9. **En cas de doute sur une décision de conception, demander à Sébastien.** Les points ouverts sont listés dans `docs/QUESTIONS.md`. Ne pas trancher en silence.
+10. **Interface : tout passe par les variables CSS du thème** (`web/src/assets/main.css`) : couleurs par rôle, tailles de police, espacements intérieurs et extérieurs, hauteurs, arrondis. Pas de valeur en dur dans un composant quand une variable existe ou a lieu d'exister. Les longueurs sont relatives (`rem`, `em`) ; seuls les traits (bordures, contour du focus) restent en pixels. Chaque couleur a sa valeur claire et sombre ; tout nouvel écran se vérifie dans les deux modes.
 
 ## Ordre de développement de la v1
 

@@ -2,7 +2,6 @@ import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
-import ui from '@nuxt/ui/vue-plugin'
 import { mount } from '@vue/test-utils'
 
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
@@ -84,12 +83,12 @@ function connection(id: number, name: string): ConnectionSummary {
 }
 
 /**
- * Monte l'explorateur avec le plugin de Nuxt UI.
+ * Monte l'explorateur, attaché à la page (les menus s'ouvrent dans `body`).
  *
  * @param props Propriétés de l'explorateur.
  */
 function mountExplorer(props: { selectedId: number | null; currentDatabase: string | null }) {
-  return mount(ObjectExplorer, { props, attachTo: document.body, global: { plugins: [ui] } })
+  return mount(ObjectExplorer, { props, attachTo: document.body })
 }
 
 /**
@@ -98,7 +97,7 @@ function mountExplorer(props: { selectedId: number | null; currentDatabase: stri
  * @param wrapper Explorateur monté.
  */
 function labels(wrapper: ReturnType<typeof mountExplorer>): string[] {
-  return wrapper.findAll('[data-slot="linkLabel"]').map((node) => node.text())
+  return wrapper.findAll('.tree-label').map((node) => node.text())
 }
 
 /**
@@ -108,9 +107,7 @@ function labels(wrapper: ReturnType<typeof mountExplorer>): string[] {
  * @param label Libellé cherché.
  */
 function row(wrapper: ReturnType<typeof mountExplorer>, label: string) {
-  return wrapper
-    .findAll('[data-slot="link"]')
-    .find((item) => item.find('[data-slot="linkLabel"]').text() === label)
+  return wrapper.findAll('.tree-row').find((item) => item.find('.tree-label').text() === label)
 }
 
 /**

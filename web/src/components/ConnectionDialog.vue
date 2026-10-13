@@ -10,16 +10,22 @@
   (`crates/server/src/connections.rs`). Les autres contrôles sont faits par le
   serveur, dont le message s'affiche dans la fenêtre en cas de refus.
 
-  Composants de Nuxt UI (`UModal`, `UFormField`, `UInput`...), importés
-  automatiquement par son plugin Vite.
+  Fenêtre, champs et boutons de Prisme (`ui/`).
 -->
 <script setup lang="ts">
+import { Eye, EyeOff } from 'lucide-vue-next'
 import { computed, reactive, ref, watch } from 'vue'
 
 import { probeSettings, serverLabel } from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { NewConnection } from '@/api/generated/NewConnection'
 import { useConnectionsStore } from '@/stores/connections'
+
+import UiAlert from './ui/UiAlert.vue'
+import UiButton from './ui/UiButton.vue'
+import UiDialog from './ui/UiDialog.vue'
+import UiField from './ui/UiField.vue'
+import UiInput from './ui/UiInput.vue'
 
 /**
  * Fenêtre ouverte ou fermée.
@@ -149,88 +155,66 @@ async function save(): Promise<void> {
 </script>
 
 <template>
-  <u-modal v-model:open="open" :title="title" :ui="{ content: 'max-w-md' }">
-    <template #body>
-      <form id="connection-form" class="flex flex-col gap-3" @submit.prevent="save">
-        <u-form-field label="Nom" orientation="horizontal" size="sm">
-          <u-input
-            v-model="form.name"
-            :maxlength="100"
-            placeholder="prod, local..."
-            size="sm"
-            class="w-60"
-          />
-        </u-form-field>
-        <u-form-field label="Hôte" orientation="horizontal" size="sm">
-          <u-input v-model="form.host" :maxlength="253" size="sm" class="w-60" />
-        </u-form-field>
-        <u-form-field label="Port" orientation="horizontal" size="sm">
-          <u-input-number
-            v-model="form.port"
-            :min="1"
-            :max="65535"
-            :increment="false"
-            :decrement="false"
-            :format-options="{ useGrouping: false }"
-            size="sm"
-            class="w-60"
-          />
-        </u-form-field>
-        <u-form-field label="Compte" orientation="horizontal" size="sm">
-          <u-input v-model="form.username" :maxlength="80" size="sm" class="w-60" />
-        </u-form-field>
-        <u-form-field label="Mot de passe" orientation="horizontal" size="sm">
-          <u-input
-            v-model="form.password"
-            :type="showPassword ? 'text' : 'password'"
-            autocomplete="new-password"
-            :placeholder="connection === null ? '' : 'inchangé'"
-            size="sm"
-            class="w-60"
-          >
-            <template #trailing>
-              <u-button
-                :icon="showPassword ? 'i-lucide-eye-off' : 'i-lucide-eye'"
-                color="neutral"
-                variant="link"
-                size="xs"
-                :aria-label="showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'"
-                @click="showPassword = !showPassword"
-              />
-            </template>
-          </u-input>
-        </u-form-field>
-        <u-form-field label="Base" orientation="horizontal" size="sm">
-          <u-input
-            v-model="form.database_name"
-            :maxlength="64"
-            placeholder="facultatif"
-            size="sm"
-            class="w-60"
-          />
-        </u-form-field>
-        <u-alert v-if="error" color="error" variant="subtle" :title="error" />
-        <u-alert v-if="probed" color="success" variant="subtle" :title="probed" />
-      </form>
-    </template>
+  <ui-dialog v-model:open="open" :title="title">
+    <form id="connection-form" class="flex flex-col gap-gap" @submit.prevent="save">
+      <ui-field label="Nom">
+        <ui-input
+          v-model="form.name"
+          :maxlength="100"
+          placeholder="prod, local..."
+          class="w-field"
+        />
+      </ui-field>
+      <ui-field label="Hôte">
+        <ui-input v-model="form.host" :maxlength="253" class="w-field" />
+      </ui-field>
+      <ui-field label="Port">
+        <ui-input v-model="form.port" type="number" :min="1" :max="65535" class="w-field" />
+      </ui-field>
+      <ui-field label="Compte">
+        <ui-input v-model="form.username" :maxlength="80" class="w-field" />
+      </ui-field>
+      <ui-field label="Mot de passe">
+        <ui-input
+          v-model="form.password"
+          :type="showPassword ? 'text' : 'password'"
+          autocomplete="new-password"
+          :placeholder="connection === null ? '' : 'inchangé'"
+          class="w-field"
+        >
+          <template #trailing>
+            <ui-button
+              :icon="showPassword ? EyeOff : Eye"
+              variant="ghost"
+              small
+              :aria-label="showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'"
+              @click="showPassword = !showPassword"
+            />
+          </template>
+        </ui-input>
+      </ui-field>
+      <ui-field label="Base">
+        <ui-input
+          v-model="form.database_name"
+          :maxlength="64"
+          placeholder="facultatif"
+          class="w-field"
+        />
+      </ui-field>
+      <ui-alert v-if="error" tone="error" :title="error" />
+      <ui-alert v-if="probed" tone="success" :title="probed" />
+    </form>
     <template #footer>
-      <div class="flex w-full gap-2">
-        <u-button
-          color="neutral"
-          variant="outline"
-          label="Tester"
-          :loading="probing"
-          @click="probe"
-        />
-        <u-button
-          type="submit"
-          form="connection-form"
-          label="Enregistrer"
-          :loading="saving"
-          block
-          class="flex-1"
-        />
-      </div>
+      <ui-button label="Tester" :loading="probing" @click="probe" />
+      <ui-button
+        type="submit"
+        form="connection-form"
+        label="Enregistrer"
+        variant="solid"
+        tone="accent"
+        :loading="saving"
+        class="flex-1"
+      />
     </template>
-  </u-modal>
+  </ui-dialog>
 </template>

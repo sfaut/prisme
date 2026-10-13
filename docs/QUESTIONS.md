@@ -43,6 +43,7 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 | DataFusion, Calcite, Trino comme base du moteur | Reportée | Sébastien veut éviter les dépendances. Leur modèle de plan sert de référence. DataFusion reste une option pour l'exécuteur. |
 | PrimeVue comme bibliothèque de composants | Écartée | Licence commerciale à clef depuis la v5 (juillet 2026), même en version communautaire gratuite. La v4.5.5, dernière sous MIT, est figée. Remplacée par Naive UI (MIT). |
 | Naive UI comme bibliothèque de composants | Écartée | Remplacée par Nuxt UI (MIT, sur Reka UI, avec Tailwind CSS) pour la refonte de l'interface : contrôle du rendu par les classes, thème par jetons, clair / sombre sans réglage par composant. Décision de Sébastien après un essai sur l'explorateur. |
+| Nuxt UI comme bibliothèque de composants | Écartée | Sa couche de thème (configuration de chaque composant, fusion de classes, tailles imposées à surcharger) gênait l'usage direct de Tailwind. Remplacée par Reka UI pour le comportement et des composants propres à Prisme pour le rendu. Décision de Sébastien. |
 | `sqlx` pour les accès aux bases | Écartée | Gère mal les résultats dynamiques sans schéma connu, et l'annulation est moins directe. |
 | Tri déterministe ajouté d'office | Écartée | Sébastien sait que sans `ORDER BY` l'ordre n'est pas garanti. |
 | Typage ou schéma déclaré par fichier CSV | Écartée | Compliquerait l'outil. Casts dans la requête. Seule la déclaration de source (chemin, séparateur, encodage, en-tête) est gardée. |

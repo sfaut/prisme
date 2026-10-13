@@ -5,6 +5,8 @@
 import type { QueryTab } from '@/api/querySession'
 
 import ResultGrid from './ResultGrid.vue'
+import UiAlert from './ui/UiAlert.vue'
+import UiBadge from './ui/UiBadge.vue'
 
 defineProps<{
   /**
@@ -29,14 +31,14 @@ function lines(count: number): string {
     jamais sous la largeur de son contenu, et une grille large débordait,
     rognée à droite, au lieu de défiler dans sa propre zone.
   -->
-  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-1.5">
-    <u-alert v-if="tab.error" color="error" variant="subtle" :title="tab.error" />
+  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-gap">
+    <ui-alert v-if="tab.error" tone="error" :title="tab.error" />
     <div v-if="tab.result" class="tab-status">
       <span v-if="tab.done">{{ lines(tab.result.rowCount) }} · {{ tab.result.elapsedMs }} ms</span>
       <span v-else>{{ lines(tab.result.rowCount) }} reçues…</span>
-      <u-badge v-if="tab.result.truncated" color="warning" variant="subtle" size="sm">
+      <ui-badge v-if="tab.result.truncated" tone="warning">
         Résultat tronqué à {{ lines(tab.result.rowCount) }}
-      </u-badge>
+      </ui-badge>
       <code v-if="tab.result.limit === 'added'" class="tab-sql" :title="tab.result.sql">
         {{ tab.result.sql }}
       </code>
@@ -57,9 +59,9 @@ function lines(count: number): string {
 .tab-status {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: var(--ui-text-muted);
-  font-size: var(--text-xs);
+  gap: var(--gap);
+  color: var(--fg-muted);
+  font-size: var(--font-size-ui);
 
   /* Le nombre de lignes et la durée gardent leur largeur ; seule la requête,
      tronquée (…), cède la place. */
@@ -72,7 +74,8 @@ function lines(count: number): string {
 .tab-sql {
   min-width: 0;
   overflow: hidden;
-  font-size: 0.7rem;
+  font-family: var(--font-code);
+  font-size: var(--font-size-small);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

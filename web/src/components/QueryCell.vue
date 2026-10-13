@@ -11,7 +11,8 @@
   La limite de lignes choisie ici devient la limite par défaut de l'utilisateur.
 -->
 <script setup lang="ts">
-import type { TabsItem } from '@nuxt/ui'
+import { Play, Square, WandSparkles } from 'lucide-vue-next'
+import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import { beautify } from '@/api/beautify'
@@ -24,6 +25,9 @@ import ProgressDot from './ProgressDot.vue'
 import QueryTabView from './QueryTabView.vue'
 import SqlEditor from './SqlEditor.vue'
 import { completionSchema } from './sqlCompletion'
+import UiAlert from './ui/UiAlert.vue'
+import UiButton from './ui/UiButton.vue'
+import UiSelect from './ui/UiSelect.vue'
 
 const props = defineProps<{
   /**
@@ -81,17 +85,6 @@ const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
  */
 const selectedTab = ref<string | number>(0)
 
-/**
- * Classes des onglets : barre des onglets compacte, à gauche, et contenu qui
- * occupe toute la place restante.
- */
-const TABS_UI = {
-  root: 'min-h-0 flex-1 gap-1',
-  list: 'p-0',
-  trigger: 'max-w-80 grow-0 justify-start',
-  content: 'flex min-h-0 flex-1',
-}
-
 // Nouveau lot : le premier onglet s'affiche.
 watch(
   () => state.tabs,
@@ -110,19 +103,6 @@ function tabLabel(query: number, text: string): string {
   const short = text.replace(/\s+/g, ' ')
   return `${query + 1} · ${short.length > 40 ? `${short.slice(0, 40)}…` : short}`
 }
-
-/**
- * Onglets de résultat, un par requête du lot ; l'onglet garde sa requête
- * pour sa pastille d'avancement et son contenu.
- */
-const tabItems = computed(
-  () =>
-    state.tabs.map((tab) => ({
-      value: tab.query,
-      label: tabLabel(tab.query, tab.sql),
-      tab,
-    })) satisfies TabsItem[],
-)
 
 /**
  * Exécute la requête sous le curseur.
@@ -245,7 +225,7 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col gap-2">
+  <div class="flex min-h-0 flex-1 flex-col gap-gap">
     <sql-editor
       ref="editor"
       v-model="sql"
@@ -256,40 +236,33 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
       @run-all="runAll"
     />
 
-    <div class="flex items-center gap-2">
-      <u-button
-        size="xs"
+    <div class="flex items-center gap-gap">
+      <ui-button
         label="Exécuter"
-        icon="i-lucide-play"
+        :icon="Play"
+        variant="solid"
+        tone="accent"
         :disabled="state.status !== 'ready' && state.status !== 'running'"
         :loading="state.status === 'running'"
         @click="run()"
       />
-      <u-button
-        size="xs"
-        color="neutral"
-        variant="outline"
+      <ui-button
         label="Tout exécuter"
         title="Toutes les requêtes, en parallèle (Ctrl-Maj-Entrée)"
         :disabled="state.status !== 'ready'"
         @click="runAll"
       />
-      <u-button
-        size="xs"
-        color="error"
-        variant="outline"
+      <ui-button
         label="Stopper"
-        icon="i-lucide-square"
+        :icon="Square"
+        tone="error"
         title="Arrête toutes les requêtes et tous les chargements en cours"
         :disabled="state.status !== 'running'"
         @click="session.cancel()"
       />
-      <u-button
-        size="xs"
-        color="neutral"
-        variant="outline"
+      <ui-button
         label="Enjoliver"
-        icon="i-lucide-wand-sparkles"
+        :icon="WandSparkles"
         :disabled="sql.trim() === '' || !catalogReady"
         :title="
           catalogReady
@@ -298,50 +271,54 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
         "
         @click="prettify"
       />
-      <u-select
+      <ui-select
         :model-value="settings.settings?.row_limit"
         :items="limitOptions"
-        size="xs"
-        class="w-36"
-        aria-label="Limite de lignes"
-        @update:model-value="changeLimit"
+        label="Limite de lignes"
+        class="w-32"
+        @update:model-value="(limit) => limit !== undefined && changeLimit(limit)"
       />
-      <span class="text-xs text-trim text-muted">{{ connection.name }} · {{ serverLabel }}</span>
+      <span class="text-trim text-fg-muted">{{ connection.name }} · {{ serverLabel }}</span>
     </div>
 
-    <u-alert
-      v-if="state.status === 'closed'"
-      color="warning"
-      variant="subtle"
-      title="Session fermée."
-      :actions="[{ label: 'Reconnecter', size: 'xs', onClick: () => emit('reconnect') }]"
-      orientation="horizontal"
-    />
-    <u-alert v-if="state.error" color="error" variant="subtle" :title="state.error" />
+    <ui-alert v-if="state.status === 'closed'" tone="warning" title="Session fermée.">
+      <ui-button label="Reconnecter" @click="emit('reconnect')" />
+    </ui-alert>
+    <ui-alert v-if="state.error" tone="error" :title="state.error" />
 
     <!--
       La grille de résultats doit avoir une hauteur bornée : sinon sa zone de
       défilement grandit avec le résultat, toutes les lignes sont dessinées et
       l'interface se fige. Chaque niveau, jusqu'à la grille, occupe donc la
       place restante sans pouvoir la dépasser (flex-1 et min-h-0). Les
-      onglets cachés restent montés : la grille garde son défilement.
+      onglets cachés restent montés (`unmount-on-hide` à faux) : la grille
+      garde son défilement.
     -->
-    <u-tabs
-      v-if="tabItems.length > 0"
+    <tabs-root
+      v-if="state.tabs.length > 0"
       v-model="selectedTab"
-      :items="tabItems"
       :unmount-on-hide="false"
-      variant="link"
-      size="xs"
-      color="neutral"
-      :ui="TABS_UI"
+      class="flex min-h-0 flex-1 flex-col gap-1"
     >
-      <template #leading="{ item }">
-        <progress-dot :tab="item.tab" />
-      </template>
-      <template #content="{ item }">
-        <query-tab-view :tab="item.tab" />
-      </template>
-    </u-tabs>
+      <tabs-list class="flex border-b border-line">
+        <tabs-trigger
+          v-for="tab in state.tabs"
+          :key="tab.query"
+          :value="tab.query"
+          class="-mb-px flex h-control max-w-tab min-w-0 cursor-pointer items-center gap-1.5 border-b-2 border-transparent px-control-x text-ui font-medium text-fg-muted hover:text-fg-strong data-[state=active]:border-fg-strong data-[state=active]:text-fg-strong"
+        >
+          <progress-dot :tab="tab" />
+          <span class="truncate text-trim">{{ tabLabel(tab.query, tab.sql) }}</span>
+        </tabs-trigger>
+      </tabs-list>
+      <tabs-content
+        v-for="tab in state.tabs"
+        :key="tab.query"
+        :value="tab.query"
+        class="flex min-h-0 flex-1 outline-none"
+      >
+        <query-tab-view :tab="tab" />
+      </tabs-content>
+    </tabs-root>
   </div>
 </template>

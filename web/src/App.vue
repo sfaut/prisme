@@ -4,23 +4,35 @@
   avec le choix du thème (clair, sombre ou celui du système) ; à droite, la
   cellule SQL et ses résultats. Disposition en classes Tailwind.
 
-  `UApp` (Nuxt UI) enveloppe toute l'application : textes des composants en
-  français, messages éphémères (`useToast`) disponibles partout.
+  Le fournisseur de bulles de Reka UI enveloppe toute l'application, et les
+  messages éphémères (`notify`) s'affichent en bas à droite (`UiToaster`).
 -->
 <script setup lang="ts">
+import { Database, Monitor, Moon, Sun } from 'lucide-vue-next'
+import { TooltipProvider } from 'reka-ui'
 import { nextTick, ref, useTemplateRef, watch } from 'vue'
 
-import { fr } from '@nuxt/ui/locale'
-
+import { type ColorMode, colorMode } from './colorMode'
 import { useConnectionsStore } from './stores/connections'
 
 import ObjectExplorer from './components/ObjectExplorer.vue'
 import QueryCell from './components/QueryCell.vue'
 import SiderResizer from './components/SiderResizer.vue'
+import UiSelect from './components/ui/UiSelect.vue'
+import UiToaster from './components/ui/UiToaster.vue'
 import { selectAllQuery } from './components/explorerNodes'
 import { clampSiderWidth, loadSiderWidth } from './components/siderWidth'
 
 const connections = useConnectionsStore()
+
+/**
+ * Choix du thème, dans la liste en tête du panneau de gauche.
+ */
+const COLOR_MODES: { label: string; value: ColorMode; icon: typeof Monitor }[] = [
+  { label: 'Système', value: 'system', icon: Monitor },
+  { label: 'Clair', value: 'light', icon: Sun },
+  { label: 'Sombre', value: 'dark', icon: Moon },
+]
 
 /**
  * Largeur du panneau de gauche, en pixels.
@@ -86,15 +98,15 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
 </script>
 
 <template>
-  <u-app :locale="fr">
-    <div class="relative flex h-full bg-default text-default">
+  <tooltip-provider :delay-duration="300">
+    <div class="relative flex h-full">
       <aside
-        class="flex shrink-0 flex-col gap-3 border-e border-default p-3"
+        class="flex shrink-0 flex-col gap-panel border-e border-line p-panel"
         :style="{ width: `${siderWidth}px` }"
       >
-        <header class="flex items-center justify-between gap-2">
-          <h1 class="text-lg font-semibold">Prisme</h1>
-          <u-color-mode-select size="xs" class="w-28" />
+        <header class="flex items-center justify-between gap-gap">
+          <h1 class="text-heading font-semibold text-fg-strong">Prisme</h1>
+          <ui-select v-model="colorMode" :items="COLOR_MODES" label="Thème" class="w-28" />
         </header>
         <object-explorer
           :selected-id="connections.selectedId"
@@ -105,7 +117,7 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
         />
       </aside>
       <sider-resizer v-model="siderWidth" />
-      <main class="flex h-full min-w-0 flex-1 flex-col gap-3 p-3">
+      <main class="flex h-full min-w-0 flex-1 flex-col gap-panel p-panel">
         <query-cell
           v-if="connections.selected"
           ref="cell"
@@ -115,24 +127,17 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
           @reconnect="attempt++"
           @database="currentDatabase = $event"
         />
-        <u-empty
-          v-else
-          icon="i-lucide-database"
-          variant="naked"
-          size="sm"
-          description="Double-cliquez sur une source de données pour la choisir, ou ajoutez une connexion par le menu « ⋮ »"
-          class="m-auto"
-        />
+        <div v-else class="m-auto flex max-w-xs flex-col items-center gap-gap text-center">
+          <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
+            <Database class="size-4 text-fg-muted" />
+          </span>
+          <p class="text-balance text-fg-muted">
+            Double-cliquez sur une source de données pour la choisir, ou ajoutez une connexion par
+            le menu « ⋮ »
+          </p>
+        </div>
       </main>
     </div>
-  </u-app>
+    <ui-toaster />
+  </tooltip-provider>
 </template>
-
-<style>
-html,
-body,
-#app {
-  height: 100%;
-  margin: 0;
-}
-</style>

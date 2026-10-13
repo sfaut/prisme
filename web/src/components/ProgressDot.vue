@@ -10,6 +10,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import UiTooltip from './ui/UiTooltip.vue'
+
 import { type QueryTab, progressSummary, tabProgress } from '@/api/querySession'
 
 import { useClock } from './clock'
@@ -33,33 +35,30 @@ const summary = computed(() => {
 </script>
 
 <template>
-  <u-tooltip
-    :content="{ side: 'bottom', align: 'start' }"
-    :ui="{ content: 'h-auto flex-col items-start gap-0' }"
-  >
+  <ui-tooltip>
     <span class="progress-dot" :class="progress" role="img" :aria-label="summary[0]" />
     <template #content>
       <div v-for="line in summary" :key="line">{{ line }}</div>
     </template>
-  </u-tooltip>
+  </ui-tooltip>
 </template>
 
 <style scoped>
 .progress-dot {
   flex: none;
-  width: 8px;
+  width: var(--status-dot-size);
   aspect-ratio: 1;
   border-radius: 50%;
 }
 
 .waiting {
-  background: var(--ui-text-dimmed);
+  background: var(--fg-dimmed);
   animation: pulse 3s ease-in-out infinite;
 }
 
 .executing,
 .loading {
-  background: var(--ui-primary);
+  background: var(--accent);
   animation: pulse 1.4s ease-in-out infinite;
 }
 
@@ -68,11 +67,11 @@ const summary = computed(() => {
 }
 
 .done {
-  background: var(--ui-success);
+  background: var(--success);
 }
 
 .error {
-  background: var(--ui-error);
+  background: var(--error);
 }
 
 @keyframes pulse {
