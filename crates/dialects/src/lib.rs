@@ -6,6 +6,7 @@
 //! Le catalogue de fonctions et les émetteurs par dialecte viendront avec la
 //! traduction.
 
+mod alias;
 pub mod beautify;
 pub mod classify;
 mod keywords;

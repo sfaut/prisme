@@ -7,7 +7,10 @@
 //!    espaces, hors chaînes et identifiants entre accents graves (module
 //!    `whitespace`).
 //!
-//! 2. **Mots-clefs en capitales.** Seuls les mots réservés de MySQL passent
+//! 2. **`AS` devant les alias** de colonne et de table qui n'en ont pas
+//!    (module `alias`).
+//!
+//! 3. **Mots-clefs en capitales.** Seuls les mots réservés de MySQL passent
 //!    en capitales, plus quelques mots-clefs sans ambiguïté (`EXTRA_KEYWORDS`).
 //!    Un mot réservé ne peut jamais servir d'identifiant sans accents graves :
 //!    les noms de tables et de colonnes (`name`, `status`, `date`...) restent
@@ -17,7 +20,7 @@
 //!    `INTERVAL <valeur>` et en premier argument d'`EXTRACT`,
 //!    `TIMESTAMPADD` et `TIMESTAMPDIFF`.
 //!
-//! 3. **Mise en page** : une clause par ligne, une colonne et un prédicat
+//! 4. **Mise en page** : une clause par ligne, une colonne et un prédicat
 //!    par ligne quand il y en a plusieurs, espaces autour des opérateurs
 //!    (module `layout`).
 //!
@@ -30,6 +33,7 @@
 use sqlparser::tokenizer::{Token, Tokenizer};
 
 use crate::Dialect;
+use crate::alias::add_alias_keyword;
 use crate::keywords::is_keyword;
 use crate::layout::layout;
 use crate::limit::byte_offset;
@@ -52,14 +56,15 @@ const TIME_UNITS: &[&str] = &[
 /// Fonctions dont le premier argument est une unité de temps.
 const UNIT_FUNCTIONS: &[&str] = &["EXTRACT", "TIMESTAMPADD", "TIMESTAMPDIFF"];
 
-/// Enjolive `sql` : blancs normalisés, mots-clefs en capitales, puis mise en
-/// page (module `layout`).
+/// Enjolive `sql` : blancs normalisés, `AS` devant les alias, mots-clefs en
+/// capitales, puis mise en page (module `layout`).
 ///
 /// Un texte que le découpeur en jetons ne comprend pas (chaîne non fermée...)
 /// est renvoyé tel quel.
 pub fn beautify(sql: &str, dialect: Dialect) -> String {
     let normalized = normalize_blanks(sql);
-    layout(&uppercase_keywords(&normalized, dialect), dialect)
+    let aliased = add_alias_keyword(&normalized, dialect);
+    layout(&uppercase_keywords(&aliased, dialect), dialect)
 }
 
 /// Met les mots-clefs en capitales, sans rien changer d'autre.
@@ -197,6 +202,14 @@ mod tests {
                 Dialect::MySql
             ),
             "SELECT ALL a\nFROM t\nWHERE s = 'x\u{00A0}y'"
+        );
+    }
+
+    #[test]
+    fn adds_as_before_aliases() {
+        assert_eq!(
+            beautify("select count(*) n from video v", Dialect::MySql),
+            "SELECT ALL count(*) AS n\nFROM video AS v"
         );
     }
 
