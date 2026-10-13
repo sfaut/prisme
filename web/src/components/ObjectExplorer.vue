@@ -126,10 +126,14 @@ function nodeProps({ option }: { option: TreeOption }) {
  */
 function renderLabel({ option }: { option: TreeOption }) {
   const node = option as unknown as ExplorerNode
+  // Hors colonnes : le libellé, suivi de sa mention éventuelle (UNIQUE).
   if (node.column === undefined) {
     // Toujours un élément, en gras ou non : passer d'un texte nu à un élément
     // (ou l'inverse) fait échouer la mise à jour de l'arbre par Vue.
-    return h('span', { class: { 'current-database': node.current } }, node.label)
+    return h('span', { class: { 'current-database': node.current } }, [
+      node.label,
+      node.note === undefined ? null : h('span', { class: 'node-note' }, node.note),
+    ])
   }
   const column = node.column
   return h('span', { class: 'column-label' }, [
@@ -239,7 +243,12 @@ onMounted(() => load(false))
   font-weight: 400;
 }
 
-.object-tree :deep(.column-details) {
+.object-tree :deep(.node-note) {
+  margin-left: 0.8em;
+}
+
+.object-tree :deep(.column-details),
+.object-tree :deep(.node-note) {
   color: #999;
   font-size: 0.85em;
   white-space: nowrap;

@@ -65,6 +65,11 @@ export interface ExplorerNode {
    */
   current?: boolean
   /**
+   * Mention affichée après le libellé, en capitales, plus petite et plus
+   * claire : `UNIQUE` pour un index unique.
+   */
+  note?: string
+  /**
    * Pour une colonne : ce qu'il faut pour l'afficher en trois colonnes
    * (symboles, nom, détail), alignées sur toutes les colonnes de la table.
    */
@@ -244,7 +249,10 @@ function tableFolders(schema: string, kind: TableKind, details: TableDetails): E
       `indexes:${base}`,
       'Index',
       schema,
-      details.indexes.map((index) => item('index', index.name, indexLabel(index))),
+      details.indexes.map((index) => ({
+        ...item('index', index.name, indexLabel(index)),
+        note: indexNote(index),
+      })),
     ),
     folder(
       `foreign-keys:${base}`,
@@ -345,13 +353,22 @@ export function displayedType(columnType: string): string {
 }
 
 /**
- * Libellé d'un index : nom, colonnes, unicité.
+ * Libellé d'un index : nom et colonnes.
  *
  * @param index Index.
  */
 export function indexLabel(index: IndexInfo): string {
-  const unique = index.unique && index.name !== 'PRIMARY' ? ' · unique' : ''
-  return `${index.name} (${index.columns.join(', ')})${unique}`
+  return `${index.name} (${index.columns.join(', ')})`
+}
+
+/**
+ * Mention d'un index : `UNIQUE` pour un index unique, rien sinon. La clef
+ * primaire, unique par nature et nommée `PRIMARY`, n'en porte pas.
+ *
+ * @param index Index.
+ */
+export function indexNote(index: IndexInfo): string | undefined {
+  return index.unique && index.name !== 'PRIMARY' ? 'UNIQUE' : undefined
 }
 
 /**

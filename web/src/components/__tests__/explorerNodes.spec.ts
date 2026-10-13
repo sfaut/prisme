@@ -7,6 +7,7 @@ import {
   displayedType,
   foreignKeyLabel,
   indexLabel,
+  indexNote,
   selectAllQuery,
   triggerLabel,
   upperType,
@@ -128,7 +129,10 @@ describe('catalogNodes', () => {
 
   it('libelle index, clefs étrangères et déclencheurs', () => {
     expect(indexLabel({ name: 'PRIMARY', columns: ['id'], unique: true })).toBe('PRIMARY (id)')
-    expect(indexLabel({ name: 'uq', columns: ['a', 'b'], unique: true })).toBe('uq (a, b) · unique')
+    expect(indexLabel({ name: 'uq', columns: ['a', 'b'], unique: true })).toBe('uq (a, b)')
+    expect(indexNote({ name: 'PRIMARY', columns: ['id'], unique: true })).toBeUndefined()
+    expect(indexNote({ name: 'uq', columns: ['a', 'b'], unique: true })).toBe('UNIQUE')
+    expect(indexNote({ name: 'idx', columns: ['a'], unique: false })).toBeUndefined()
     const key = {
       name: 'fk_customer',
       columns: ['customer_id'],
