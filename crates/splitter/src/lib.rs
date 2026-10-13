@@ -8,6 +8,10 @@
 //! change le séparateur (par exemple `//` autour d'un `CREATE PROCEDURE`) et
 //! n'est jamais envoyée au serveur.
 //!
+//! `split` donne les requêtes à exécuter ; `chunks` donne le texte entier en
+//! morceaux (commandes `DELIMITER`, requêtes avec leurs commentaires et leur
+//! séparateur), pour qui doit le réécrire sans rien perdre (l'enjoliveur).
+//!
 //! Les positions (`start`, `end`) sont comptées en unités UTF-16, comme celles
 //! de l'éditeur de l'interface (CodeMirror) : un curseur se compare
 //! directement à elles.
@@ -31,12 +35,100 @@ pub struct Statement {
     pub end: usize,
 }
 
+/// Morceau du texte, dans l'ordre : mis bout à bout, les morceaux redonnent
+/// le texte, aux blancs près autour des commandes `DELIMITER`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Chunk {
+    /// Commande `DELIMITER` du client `mysql`.
+    Command {
+        /// Ligne de la commande, sans les blancs qui l'entourent.
+        line: String,
+        /// Nouveau séparateur.
+        delimiter: String,
+    },
+    /// Texte d'une requête, avec les espaces et commentaires qui la précèdent.
+    Sql {
+        /// Texte, sans son séparateur ; parfois fait seulement de blancs et
+        /// de commentaires.
+        text: String,
+        /// Séparateur qui le termine (`;`, `//`...), vide en fin de texte.
+        delimiter: String,
+    },
+}
+
+/// Ce que le parcours du texte rencontre.
+enum Event {
+    /// Commande `DELIMITER`, de l'octet `start` à la fin de sa ligne `end`.
+    Command {
+        start: usize,
+        end: usize,
+        delimiter: String,
+    },
+    /// Requête (ou blancs et commentaires seuls) terminée par `delimiter`.
+    Statement {
+        /// Début du morceau : fin du séparateur ou de la commande précédente.
+        chunk_start: usize,
+        /// Premier octet significatif, absent s'il n'y a que blancs et commentaires.
+        first: Option<usize>,
+        /// Début du séparateur, ou fin du texte.
+        body_end: usize,
+        /// Fin du séparateur.
+        end: usize,
+        delimiter: String,
+    },
+}
+
 /// Découpe `text` en requêtes. Les morceaux vides (espaces, commentaires seuls) sont ignorés.
 pub fn split(text: &str) -> Vec<Statement> {
+    scan(text)
+        .into_iter()
+        .filter_map(|event| match event {
+            Event::Statement {
+                first: Some(first),
+                body_end,
+                end,
+                ..
+            } => Some(statement(text, first, body_end, end)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Découpe `text` en morceaux, sans rien perdre : commandes `DELIMITER`,
+/// requêtes avec leurs commentaires, blancs et commentaires de fin de texte.
+pub fn chunks(text: &str) -> Vec<Chunk> {
+    scan(text)
+        .into_iter()
+        .map(|event| match event {
+            Event::Command {
+                start,
+                end,
+                delimiter,
+            } => Chunk::Command {
+                line: text[start..end].trim().to_string(),
+                delimiter,
+            },
+            Event::Statement {
+                chunk_start,
+                body_end,
+                delimiter,
+                ..
+            } => Chunk::Sql {
+                text: text[chunk_start..body_end].to_string(),
+                delimiter,
+            },
+        })
+        .collect()
+}
+
+/// Parcourt `text` et relève, dans l'ordre, les commandes `DELIMITER` et
+/// les morceaux qui se terminent par un séparateur ou par la fin du texte.
+fn scan(text: &str) -> Vec<Event> {
     let bytes = text.as_bytes();
-    let mut statements = Vec::new();
+    let mut events = Vec::new();
     let mut delimiter = DEFAULT_DELIMITER.to_string();
-    // Premier octet significatif de la requête en cours, s'il y en a un.
+    // Début du morceau en cours, et son premier octet significatif s'il y en a un.
+    let mut chunk_start = 0;
     let mut start: Option<usize> = None;
     let mut i = 0;
 
@@ -45,15 +137,36 @@ pub fn split(text: &str) -> Vec<Statement> {
             && at_line_start(bytes, i)
             && let Some((new_delimiter, line_end)) = delimiter_command(text, i)
         {
+            // Commentaires qui précèdent la commande : un morceau à part.
+            if !text[chunk_start..i].trim().is_empty() {
+                events.push(Event::Statement {
+                    chunk_start,
+                    first: None,
+                    body_end: i,
+                    end: i,
+                    delimiter: String::new(),
+                });
+            }
+            events.push(Event::Command {
+                start: i,
+                end: line_end,
+                delimiter: new_delimiter.clone(),
+            });
             delimiter = new_delimiter;
             i = line_end;
+            chunk_start = i;
             continue;
         }
         if text[i..].starts_with(delimiter.as_str()) {
-            if let Some(first) = start.take() {
-                statements.push(statement(text, first, i, i + delimiter.len()));
-            }
+            events.push(Event::Statement {
+                chunk_start,
+                first: start.take(),
+                body_end: i,
+                end: i + delimiter.len(),
+                delimiter: delimiter.clone(),
+            });
             i += delimiter.len();
+            chunk_start = i;
             continue;
         }
         match bytes[i] {
@@ -71,10 +184,16 @@ pub fn split(text: &str) -> Vec<Statement> {
             }
         }
     }
-    if let Some(first) = start {
-        statements.push(statement(text, first, bytes.len(), bytes.len()));
+    if start.is_some() || !text[chunk_start..].trim().is_empty() {
+        events.push(Event::Statement {
+            chunk_start,
+            first: start,
+            body_end: bytes.len(),
+            end: bytes.len(),
+            delimiter: String::new(),
+        });
     }
-    statements
+    events
 }
 
 /// Indice de la requête sous le curseur `cursor` (en unités UTF-16).
@@ -232,6 +351,41 @@ mod tests {
             [
                 "CREATE PROCEDURE p() BEGIN SELECT 1; SELECT 2; END",
                 "CALL p()"
+            ]
+        );
+    }
+
+    #[test]
+    fn cuts_the_whole_text_into_chunks() {
+        let text = "-- purge\nDELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END //\n delimiter ;\nCALL p(); # fin\n";
+        assert_eq!(
+            chunks(text),
+            [
+                Chunk::Sql {
+                    text: "-- purge\n".to_string(),
+                    delimiter: String::new(),
+                },
+                Chunk::Command {
+                    line: "DELIMITER //".to_string(),
+                    delimiter: "//".to_string(),
+                },
+                Chunk::Sql {
+                    text: "\nCREATE PROCEDURE p() BEGIN SELECT 1; END ".to_string(),
+                    delimiter: "//".to_string(),
+                },
+                // Les seuls blancs avant une commande ne font pas un morceau.
+                Chunk::Command {
+                    line: "delimiter ;".to_string(),
+                    delimiter: ";".to_string(),
+                },
+                Chunk::Sql {
+                    text: "\nCALL p()".to_string(),
+                    delimiter: ";".to_string(),
+                },
+                Chunk::Sql {
+                    text: " # fin\n".to_string(),
+                    delimiter: String::new(),
+                },
             ]
         );
     }
