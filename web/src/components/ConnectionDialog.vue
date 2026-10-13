@@ -11,13 +11,23 @@
   serveur, dont le message s'affiche dans la fenêtre en cas de refus.
 -->
 <script setup lang="ts">
-import { NAlert, NButton, NForm, NFormItem, NInput, NInputNumber, NModal } from 'naive-ui'
+import {
+  NAlert,
+  NButton,
+  NConfigProvider,
+  NForm,
+  NFormItem,
+  NInput,
+  NInputNumber,
+  NModal,
+} from 'naive-ui'
 import { computed, reactive, ref, watch } from 'vue'
 
 import { probeSettings, serverLabel } from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { NewConnection } from '@/api/generated/NewConnection'
 import { useConnectionsStore } from '@/stores/connections'
+import { POPUP_CONTENT_THEME } from '@/theme'
 
 /**
  * Fenêtre ouverte ou fermée.
@@ -143,44 +153,46 @@ async function save(): Promise<void> {
 
 <template>
   <n-modal v-model:show="open" preset="card" :title="title" style="width: 420px">
-    <n-form label-placement="left" label-width="110" @submit.prevent="save">
-      <n-form-item label="Nom">
-        <n-input v-model:value="form.name" :maxlength="100" placeholder="prod, local..." />
-      </n-form-item>
-      <n-form-item label="Hôte">
-        <n-input v-model:value="form.host" :maxlength="253" />
-      </n-form-item>
-      <n-form-item label="Port">
-        <n-input-number v-model:value="form.port" :min="1" :max="65535" :show-button="false" />
-      </n-form-item>
-      <n-form-item label="Compte">
-        <n-input v-model:value="form.username" :maxlength="80" />
-      </n-form-item>
-      <n-form-item label="Mot de passe">
-        <n-input
-          v-model:value="form.password"
-          type="password"
-          show-password-on="click"
-          :input-props="{ autocomplete: 'new-password' }"
-          :placeholder="connection === null ? '' : 'inchangé'"
-        />
-      </n-form-item>
-      <n-form-item label="Base">
-        <n-input v-model:value="form.database_name" :maxlength="64" placeholder="facultatif" />
-      </n-form-item>
-      <n-alert v-if="error" type="error" :show-icon="false" class="dialog-error">
-        {{ error }}
-      </n-alert>
-      <n-alert v-if="probed" type="success" :show-icon="false" class="dialog-error">
-        {{ probed }}
-      </n-alert>
-      <div class="dialog-actions">
-        <n-button :loading="probing" @click="probe">Tester</n-button>
-        <n-button type="primary" attr-type="submit" :loading="saving" class="dialog-save">
-          Enregistrer
-        </n-button>
-      </div>
-    </n-form>
+    <n-config-provider :theme-overrides="POPUP_CONTENT_THEME">
+      <n-form label-placement="left" label-width="110" @submit.prevent="save">
+        <n-form-item label="Nom">
+          <n-input v-model:value="form.name" :maxlength="100" placeholder="prod, local..." />
+        </n-form-item>
+        <n-form-item label="Hôte">
+          <n-input v-model:value="form.host" :maxlength="253" />
+        </n-form-item>
+        <n-form-item label="Port">
+          <n-input-number v-model:value="form.port" :min="1" :max="65535" :show-button="false" />
+        </n-form-item>
+        <n-form-item label="Compte">
+          <n-input v-model:value="form.username" :maxlength="80" />
+        </n-form-item>
+        <n-form-item label="Mot de passe">
+          <n-input
+            v-model:value="form.password"
+            type="password"
+            show-password-on="click"
+            :input-props="{ autocomplete: 'new-password' }"
+            :placeholder="connection === null ? '' : 'inchangé'"
+          />
+        </n-form-item>
+        <n-form-item label="Base">
+          <n-input v-model:value="form.database_name" :maxlength="64" placeholder="facultatif" />
+        </n-form-item>
+        <n-alert v-if="error" type="error" :show-icon="false" class="dialog-error">
+          {{ error }}
+        </n-alert>
+        <n-alert v-if="probed" type="success" :show-icon="false" class="dialog-error">
+          {{ probed }}
+        </n-alert>
+        <div class="dialog-actions">
+          <n-button :loading="probing" @click="probe">Tester</n-button>
+          <n-button type="primary" attr-type="submit" :loading="saving" class="dialog-save">
+            Enregistrer
+          </n-button>
+        </div>
+      </n-form>
+    </n-config-provider>
   </n-modal>
 </template>
 

@@ -4,8 +4,9 @@
   à droite, la cellule SQL et ses résultats.
 
   Les fournisseurs de Naive UI (configuration, messages) enveloppent toute
-  l'application : textes des composants en français, messages éphémères
-  (`useMessage`) disponibles partout.
+  l'application : textes des composants en français, texte réduit des
+  fenêtres, menus et bulles (`theme.ts`), messages éphémères (`useMessage`)
+  disponibles partout.
 -->
 <script setup lang="ts">
 import {
@@ -21,6 +22,7 @@ import {
 import { nextTick, ref, useTemplateRef, watch } from 'vue'
 
 import { useConnectionsStore } from './stores/connections'
+import { POPUP_THEME } from './theme'
 
 import ObjectExplorer from './components/ObjectExplorer.vue'
 import QueryCell from './components/QueryCell.vue'
@@ -80,7 +82,7 @@ async function openTable(connectionId: number, schema: string, table: string): P
 </script>
 
 <template>
-  <n-config-provider :locale="frFR" :date-locale="dateFrFR">
+  <n-config-provider :locale="frFR" :date-locale="dateFrFR" :theme-overrides="POPUP_THEME">
     <n-message-provider>
       <n-layout has-sider position="absolute" class="app">
         <n-layout-sider
