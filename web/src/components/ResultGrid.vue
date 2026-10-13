@@ -7,7 +7,7 @@
     colonne ; Maj-clic étend, Ctrl-clic ajoute, glisser étend aussi. Un clic
     sur le coin supérieur gauche sélectionne tout.
   - Copie : Ctrl-C copie la sélection avec les noms des colonnes en première
-    ligne (un réglage du profil pourra les retirer), ou les boutons. Ctrl-A
+    ligne (un réglage du profil pourra les retirer). Ctrl-A
     sélectionne tout, Échap vide la sélection.
   - Largeur : glisser le bord droit d'un en-tête change la largeur de la
     colonne, un double clic sur ce bord l'ajuste à sa valeur la plus longue
@@ -24,7 +24,7 @@
 -->
 <script setup lang="ts">
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import { NButton, NInput, NSelect, useMessage } from 'naive-ui'
+import { NInput, NSelect, useMessage } from 'naive-ui'
 import { computed, reactive, ref, shallowRef, useTemplateRef, watch } from 'vue'
 
 import type { Cell } from '@/api/querySession'
@@ -436,12 +436,6 @@ const filterColumn = computed({
         class="grid-filter-column"
       />
       <span class="grid-count">{{ view.length }} / {{ rowCount }} lignes</span>
-      <n-button size="tiny" :disabled="selection.ranges.length === 0" @click="copy(false)">
-        Copier
-      </n-button>
-      <n-button size="tiny" :disabled="selection.ranges.length === 0" @click="copy(true)">
-        Copier avec en-têtes
-      </n-button>
     </div>
 
     <div ref="scroller" class="grid-scroller" tabindex="0" @keydown="onKeydown">
