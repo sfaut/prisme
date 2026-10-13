@@ -399,14 +399,16 @@ function nodeProps({ option }: { option: TreeOption }) {
  */
 function renderLabel({ option }: { option: TreeOption }) {
   const node = option as unknown as ExplorerNode
-  // Hors colonnes : le libellé, suivi de sa mention éventuelle (UNIQUE).
+  // Hors colonnes : le libellé, suivi de sa mention éventuelle (UNIQUE). La
+  // racine et la base en cours sont en gras.
   if (node.column === undefined) {
     // Toujours un élément, en gras ou non : passer d'un texte nu à un élément
     // (ou l'inverse) fait échouer la mise à jour de l'arbre par Vue.
-    return h('span', { class: { 'current-database': node.current } }, [
-      node.label,
-      node.note === undefined ? null : h('span', { class: 'node-note' }, node.note),
-    ])
+    return h(
+      'span',
+      { class: { 'current-database': node.current, 'tree-root': node.role === 'sources' } },
+      [node.label, node.note === undefined ? null : h('span', { class: 'node-note' }, node.note)],
+    )
   }
   const column = node.column
   return h('span', { class: 'column-label' }, [
@@ -492,6 +494,7 @@ function renderLabel({ option }: { option: TreeOption }) {
   height: 20px;
 }
 
+.object-tree :deep(.tree-root),
 .object-tree :deep(.current-database) {
   font-weight: 700;
 }
