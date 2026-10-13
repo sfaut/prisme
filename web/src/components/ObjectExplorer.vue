@@ -146,7 +146,8 @@ function renderLabel({ option }: { option: TreeOption }) {
     h('span', { class: 'column-name', style: { minWidth: `${column.nameWidth}ch` } }, [
       h('span', { class: { unindexed: !column.indexed } }, column.name),
     ]),
-    h('span', { class: 'column-details' }, column.details),
+    // Texte complet au survol : le détail est tronqué (…) s'il déborde.
+    h('span', { class: 'column-details', title: column.details }, column.details),
   ])
 }
 
@@ -223,6 +224,7 @@ onMounted(() => load(false))
 
 .object-tree :deep(.column-label) {
   display: inline-flex;
+  max-width: 100%;
   align-items: center;
   /* Aligné en haut : une colonne des symboles vide ne rehausse pas la ligne. */
   vertical-align: top;
@@ -249,8 +251,17 @@ onMounted(() => load(false))
 
 .object-tree :deep(.column-details),
 .object-tree :deep(.node-note) {
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: #999;
   font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.object-tree :deep(.n-tree-node-content__text) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
