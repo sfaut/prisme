@@ -71,7 +71,15 @@ function lines(count: number): string {
   font-size: 0.8rem;
 }
 
+/* Le nombre de lignes et la durée gardent leur largeur ; seule la requête,
+   tronquée (…), cède la place. */
+.tab-status > :not(.tab-sql) {
+  flex: none;
+  white-space: nowrap;
+}
+
 .tab-sql {
+  min-width: 0;
   overflow: hidden;
   font-size: 0.75rem;
   text-overflow: ellipsis;
