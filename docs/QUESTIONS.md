@@ -83,6 +83,8 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 
 25. **Tests de bout en bout dans un vrai navigateur** (Playwright, avec Edge ou Chrome déjà installés) : scénarios de fonctionnement (connexions, explorateur, exécution sous le curseur et en parallèle, « Stopper », « Enjoliver », grille) et garde-fous de performance (nombre de lignes dessinées, délai d'un clic), sur un environnement isolé (MariaDB dans Docker, Prisme et Vite sur d'autres ports). Les tests dans jsdom ne voient ni la mise en page ni les performances d'affichage (voir le chapitre 1 de `docs/PERF.md`). Décision de Sébastien : à voir plus tard. À trancher alors : à quel moment les lancer (avant chaque commit qui touche l'interface, ou à la fin de chaque étape).
 
+26. **Reconstruction partielle de l'arbre de l'explorateur.** L'arbre entier se reconstruit à chaque révision du catalogue (au plus 0,4 s sur 1 000 tables, voir le chapitre 2 de `docs/PERF.md`). Avec beaucoup de sources et beaucoup de tables, colonnes, index, il faudra ne reconstruire que les bases modifiées, voire construire les nœuds seulement à l'ouverture. Décision de Sébastien : à faire plus tard.
+
 ### Sécurité
 
 23. **Clef maîtresse du chiffrement** : tranché, fichier de clef `prisme.key` dans le dossier de données (voir `docs/V1.md`, section 2.8).
