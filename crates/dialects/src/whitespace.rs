@@ -7,6 +7,11 @@
 //! normales, les séparateurs de ligne Unicode des retours à la ligne, et une
 //! tabulation devient quatre espaces.
 //!
+//! Les caractères invisibles de largeur nulle (espace sans chasse, marque
+//! d'ordre des octets...) sont supprimés : ils ne sont pas des blancs au
+//! sens d'Unicode, mais ils arrivent de la même façon et font échouer une
+//! requête sans rien montrer.
+//!
 //! Les chaînes (`'...'`, `"..."`) et les identifiants entre accents graves
 //! restent intacts : un blanc y fait partie de la valeur, le changer
 //! changerait la requête. Les commentaires sont normalisés comme le reste :
@@ -95,6 +100,9 @@ fn push_normalized(result: &mut String, c: char) {
         '\u{2028}' | '\u{2029}' | '\u{0085}' => result.push('\n'),
         // Tout autre blanc hors ASCII : espaces insécables, fines, cadratin...
         c if c.is_whitespace() && !c.is_ascii() => result.push(' '),
+        // Invisibles de largeur nulle : espace sans chasse, antiliant, liant,
+        // gluon de mots, marque d'ordre des octets (BOM).
+        '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{2060}' | '\u{FEFF}' => {}
         c => result.push(c),
     }
 }
@@ -108,6 +116,14 @@ mod tests {
         assert_eq!(
             normalize_blanks("SELECT\u{00A0}a,\u{202F}b\tFROM\u{3000}t\u{2028}WHERE x"),
             "SELECT a, b    FROM t\nWHERE x"
+        );
+    }
+
+    #[test]
+    fn removes_zero_width_characters_outside_strings() {
+        assert_eq!(
+            normalize_blanks("\u{FEFF}SELECT\u{200B} a FROM t\u{2060} WHERE b = 'x\u{200B}y'"),
+            "SELECT a FROM t WHERE b = 'x\u{200B}y'"
         );
     }
 
