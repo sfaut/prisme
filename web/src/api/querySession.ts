@@ -5,7 +5,8 @@
  * pour n'exécuter que la requête qui s'y trouve (Ctrl-Entrée), ou sans curseur
  * pour toutes les exécuter en parallèle (Ctrl-Maj-Entrée). Le serveur annonce
  * les requêtes du lot (`batch`), puis envoie leurs résultats en streaming,
- * chaque message portant le numéro de sa requête : `columns`, des lots
+ * chaque message portant le numéro de sa requête : `started` quand elle part
+ * (en parallèle, elle peut attendre son tour), `columns`, des lots
  * `rows`, puis `done` (ou `error`). `batch_done` clôt le lot. Le protocole est
  * décrit dans `crates/server/src/query_session.rs`.
  *
@@ -94,6 +95,14 @@ export interface QueryTab {
    * La requête est-elle terminée (avec succès ou en erreur) ?
    */
   done: boolean
+  /**
+   * Instant du départ de la requête (`Date.now()`), `null` tant qu'elle attend son tour.
+   */
+  startedAt: number | null
+  /**
+   * Instant de la fin de la requête, `null` tant qu'elle n'est pas terminée.
+   */
+  endedAt: number | null
 }
 
 /**
@@ -137,8 +146,13 @@ export function initialState(): SessionState {
  *
  * @param state État de la session.
  * @param message Message reçu du serveur.
+ * @param now Instant de réception, pour mesurer la durée des requêtes.
  */
-export function applyMessage(state: SessionState, message: ServerMessage): void {
+export function applyMessage(
+  state: SessionState,
+  message: ServerMessage,
+  now: number = Date.now(),
+): void {
   switch (message.type) {
     case 'ready':
       state.status = 'ready'
@@ -152,8 +166,17 @@ export function applyMessage(state: SessionState, message: ServerMessage): void 
         result: null,
         error: null,
         done: false,
+        startedAt: null,
+        endedAt: null,
       }))
       break
+    case 'started': {
+      const tab = tabOf(state, message.query)
+      if (tab) {
+        tab.startedAt = now
+      }
+      break
+    }
     case 'columns': {
       const tab = tabOf(state, message.query)
       if (tab) {
@@ -176,6 +199,7 @@ export function applyMessage(state: SessionState, message: ServerMessage): void 
       const tab = tabOf(state, message.query)
       if (tab) {
         tab.done = true
+        tab.endedAt = now
         if (tab.result) {
           tab.result.truncated = message.truncated
           tab.result.affectedRows = message.affected_rows
@@ -191,6 +215,7 @@ export function applyMessage(state: SessionState, message: ServerMessage): void 
         if (tab) {
           tab.error = message.message
           tab.done = true
+          tab.endedAt = now
         }
         break
       }
@@ -219,12 +244,13 @@ function tabOf(state: SessionState, query: number): QueryTab | undefined {
 /**
  * Avancement d'une requête, affiché par la pastille de son onglet.
  *
- * - `executing` : envoyée au serveur, aucun résultat reçu ;
+ * - `waiting` : en attente de son tour (exécution parallèle limitée) ;
+ * - `executing` : partie, aucun résultat reçu ;
  * - `loading` : colonnes reçues, lignes en cours de réception ;
  * - `done` : résultat complet ;
  * - `error` : échec.
  */
-export type TabProgress = 'executing' | 'loading' | 'done' | 'error'
+export type TabProgress = 'waiting' | 'executing' | 'loading' | 'done' | 'error'
 
 /**
  * Avancement de la requête d'un onglet.
@@ -237,6 +263,9 @@ export function tabProgress(tab: QueryTab): TabProgress {
   }
   if (tab.done) {
     return 'done'
+  }
+  if (tab.startedAt === null) {
+    return 'waiting'
   }
   return tab.result === null ? 'executing' : 'loading'
 }

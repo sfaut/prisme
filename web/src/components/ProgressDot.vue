@@ -1,8 +1,9 @@
 <!--
   Pastille d'avancement d'une requête, à gauche du libellé de son onglet.
 
-  Bleue et pulsante pendant l'exécution (lentement) puis pendant la réception
-  des lignes (vite), verte quand le résultat est complet, rouge en cas d'échec.
+  Grise et pulsant très lentement tant que la requête attend son tour, bleue
+  et pulsante pendant l'exécution (lentement) puis pendant la réception des
+  lignes (vite), verte quand le résultat est complet, rouge en cas d'échec.
 -->
 <script setup lang="ts">
 import { computed } from 'vue'
@@ -22,6 +23,7 @@ const props = defineProps<{
 const label = computed(
   () =>
     ({
+      waiting: 'En attente',
       executing: 'Exécution',
       loading: 'Chargement des lignes',
       done: 'Résultat complet',
@@ -42,6 +44,11 @@ const label = computed(
   margin-right: 6px;
   border-radius: 50%;
   vertical-align: middle;
+}
+
+.waiting {
+  background: #9ca3af;
+  animation: pulse 3s ease-in-out infinite;
 }
 
 .executing,

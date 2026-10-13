@@ -22,6 +22,7 @@
 //! serveur → client  {"type": "ready", "server": {"flavor": "mariadb", "version": "11.3.2-MariaDB"}, "database": "xlist"}
 //! client → serveur  {"sql": "SELECT 1; SELECT 2", "cursor": 3, "row_limit": 2000}   cursor et row_limit facultatifs
 //! serveur → client  {"type": "batch", "queries": [{"query": 0, "sql": "SELECT 1", "start": 0, "end": 9}]}
+//! serveur → client  {"type": "started", "query": 0}                  la requête part (en parallèle, elle peut attendre son tour)
 //! serveur → client  {"type": "columns", "query": 0, "columns": ["1"], "sql": "SELECT 1 LIMIT 1001", "limit": "added"}
 //! serveur → client  {"type": "rows", "query": 0, "rows": [["1"]]}       autant de lots que nécessaire
 //! serveur → client  {"type": "done", "query": 0, "row_count": 1, "truncated": false, "affected_rows": 0, "elapsed_ms": 2, "database": "xlist"}
@@ -122,6 +123,9 @@ enum ServerMessage {
     },
     /// Requêtes qui vont s'exécuter.
     Batch { queries: Vec<BatchQuery> },
+    /// Une requête du lot démarre. En parallèle, les requêtes au-delà de
+    /// `MAX_PARALLEL` attendent leur tour avant ce message.
+    Started { query: u32 },
     /// Début d'un résultat : colonnes, texte réellement exécuté, traitement de la limite.
     Columns {
         query: u32,
@@ -339,6 +343,9 @@ impl Session<'_> {
         sql: &str,
         max_rows: usize,
     ) -> Result<(), SocketClosed> {
+        self.outbox
+            .send(ServerMessage::Started { query: 0 })
+            .await?;
         let Some(summary) = self
             .run_query(connection, dialect, 0, sql, max_rows)
             .await?
@@ -390,6 +397,7 @@ impl Session<'_> {
         database: &Option<String>,
     ) -> Result<(), SocketClosed> {
         let _permit = permits.acquire().await.map_err(|_| SocketClosed)?;
+        self.outbox.send(ServerMessage::Started { query }).await?;
         self.run_on_new_connection(dialect, query, sql, max_rows, database)
             .await
     }
@@ -664,6 +672,8 @@ mod tests {
         rows: usize,
         /// Dernier message de la requête : `done` ou `error`.
         end: Value,
+        /// Le message `started` est-il arrivé ?
+        started: bool,
     }
 
     /// Envoie une demande, puis lit les messages jusqu'à `batch_done`.
@@ -692,6 +702,7 @@ mod tests {
             }
             let result = &mut results[message["query"].as_u64().unwrap() as usize];
             match kind.as_str() {
+                "started" => result.started = true,
                 "columns" => result.columns = message,
                 "rows" => result.rows += message["rows"].as_array().unwrap().len(),
                 _ => result.end = message,
@@ -825,6 +836,7 @@ mod tests {
         assert_eq!(results[0].rows, 1);
         assert_eq!(results[1].columns["columns"], json!(["DATABASE()", "2"]));
         assert_eq!(results[1].end["database"], "mysql");
+        assert!(results.iter().all(|result| result.started));
 
         // Rien à exécuter : erreur de session.
         let (error, _) = run(&mut socket, json!({ "sql": " -- rien" })).await;

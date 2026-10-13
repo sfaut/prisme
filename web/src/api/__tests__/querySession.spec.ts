@@ -104,7 +104,9 @@ describe('applyMessage', () => {
   it('efface les onglets et l’erreur précédents au début d’un lot', () => {
     const state = readyState()
     state.error = 'ancienne erreur'
-    state.tabs = [{ query: 0, sql: 'x', result: null, error: null, done: true }]
+    state.tabs = [
+      { query: 0, sql: 'x', result: null, error: null, done: true, startedAt: 1, endedAt: 2 },
+    ]
     startBatch(state)
     expect(state.error).toBeNull()
     expect(state.tabs).toEqual([])
@@ -112,7 +114,7 @@ describe('applyMessage', () => {
 })
 
 describe('tabProgress', () => {
-  it('passe d’exécution à chargement, puis à terminé ou erreur', () => {
+  it('passe d’attente à exécution, puis chargement, puis terminé ou erreur', () => {
     const state = readyState()
     startBatch(state)
     applyMessage(state, {
@@ -123,7 +125,11 @@ describe('tabProgress', () => {
       ],
     })
     const [first, second] = state.tabs
+    expect(tabProgress(first!)).toBe('waiting')
+
+    applyMessage(state, { type: 'started', query: 0 }, 1000)
     expect(tabProgress(first!)).toBe('executing')
+    expect(first?.startedAt).toBe(1000)
 
     applyMessage(state, { type: 'columns', query: 0, columns: ['x'], sql: 'a', limit: 'added' })
     expect(tabProgress(first!)).toBe('loading')
