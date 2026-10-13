@@ -241,6 +241,8 @@ struct Printer {
     space_next: bool,
     /// Texte à ajouter après le mot en cours de placement.
     injection: Option<Injection>,
+    /// Premier mot de la requête en cours (`GRANT`, `SELECT`...).
+    statement_word: String,
 }
 
 impl Printer {
@@ -283,7 +285,11 @@ impl Printer {
             self.push_glued(item.text);
             self.out.push_str("\n\n");
             self.queries = vec![Query::new(0, 0)];
+            self.statement_word.clear();
             return;
+        }
+        if self.statement_word.is_empty() && !word.is_empty() {
+            self.statement_word.clone_from(&word);
         }
 
         if let Token::Whitespace(comment) = &item.token {
@@ -300,7 +306,9 @@ impl Printer {
             return;
         }
 
-        if self.at_query_level() && !word.is_empty() {
+        // Dans GRANT et REVOKE, SELECT, INSERT... sont des droits, pas des clauses.
+        let structured = !matches!(self.statement_word.as_str(), "GRANT" | "REVOKE");
+        if structured && self.at_query_level() && !word.is_empty() {
             let query = self.queries.last().expect("requête");
             let starts_predicates = word == "WHERE"
                 || word == "HAVING"
@@ -358,9 +366,10 @@ impl Printer {
                 self.push_spaced(item.text);
                 self.space_next = true;
             } else {
-                // Opérateur unaire (-1, *) : collé à ce qui suit.
+                // Opérateur unaire (-1) : collé à ce qui suit. Un * seul
+                // (SELECT *, t.*, db.*) reste un jeton à part entière.
                 self.push_spaced(item.text);
-                self.glue_next = true;
+                self.glue_next = !matches!(item.token, Token::Mul);
             }
             return;
         }
@@ -745,6 +754,17 @@ mod tests {
             laid_out("SELECT * FROM t WHERE a IN (SELECT x FROM u WHERE y OR z)"),
             "SELECT *\nFROM t\nWHERE a IN (\n    SELECT x\n    FROM u\n    WHERE FALSE\n        OR y\n        OR z\n)"
         );
+    }
+
+    #[test]
+    fn keeps_grant_and_star_as_written() {
+        // Dans GRANT et REVOKE, SELECT est un droit, pas une clause.
+        assert_eq!(
+            laid_out("GRANT SELECT, INSERT ON db.* TO u"),
+            "GRANT SELECT, INSERT ON db.* TO u"
+        );
+        // Un * seul ne se colle pas à ce qui le suit.
+        assert_eq!(laid_out("SELECT t.* FROM t"), "SELECT t.*\nFROM t");
     }
 
     #[test]
