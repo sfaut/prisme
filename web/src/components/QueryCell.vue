@@ -120,6 +120,31 @@ function run(cursor?: number): void {
 }
 
 /**
+ * Exécute la requête sous le curseur dès que la session est prête : tout de
+ * suite si elle l'est, sinon à la fin de son ouverture. Rien si elle se ferme
+ * avant.
+ *
+ * @param cursor Position du curseur ; absente, celle de l'éditeur.
+ */
+function runWhenReady(cursor?: number): void {
+  if (state.status === 'ready') {
+    run(cursor)
+    return
+  }
+  const stop = watch(
+    () => state.status,
+    (status) => {
+      if (status === 'ready') {
+        run(cursor)
+      }
+      if (status !== 'connecting') {
+        stop()
+      }
+    },
+  )
+}
+
+/**
  * Le catalogue de la connexion est-il entièrement chargé ? Sans lui,
  * l'enjoliveur ne connaît pas les fonctions de l'utilisateur et les
  * mettrait en capitales : « Enjoliver » attend donc la fin du chargement.
@@ -175,7 +200,7 @@ watch(
   (database) => emit('database', database),
 )
 
-defineExpose({ run })
+defineExpose({ run, runWhenReady })
 </script>
 
 <template>

@@ -64,8 +64,8 @@ const cell = useTemplateRef<InstanceType<typeof QueryCell>>('cell')
 
 /**
  * Affiche le contenu d'une table choisie dans l'explorateur. Une table d'une
- * autre source choisit cette connexion et prépare la requête sans l'exécuter :
- * la session de la nouvelle connexion n'est pas encore ouverte.
+ * autre source choisit d'abord cette connexion : la requête part dès que la
+ * session de la nouvelle cellule est ouverte.
  *
  * @param connectionId Identifiant de la connexion de la table.
  * @param schema Nom de la base.
@@ -73,12 +73,9 @@ const cell = useTemplateRef<InstanceType<typeof QueryCell>>('cell')
  */
 async function openTable(connectionId: number, schema: string, table: string): Promise<void> {
   sql.value = selectAllQuery(schema, table)
-  if (connectionId !== connections.selectedId) {
-    connections.selectedId = connectionId
-    return
-  }
+  connections.selectedId = connectionId
   await nextTick()
-  cell.value?.run(0)
+  cell.value?.runWhenReady(0)
 }
 </script>
 
