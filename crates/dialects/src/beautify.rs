@@ -28,6 +28,12 @@
 //!    par ligne quand il y en a plusieurs, espaces autour des opérateurs
 //!    (module `layout`).
 //!
+//! Un texte qui contient la commande `DELIMITER` (procédures, fonctions...)
+//! est d'abord découpé en morceaux par le découpeur de requêtes : chaque
+//! requête reçoit toutes les règles, avec son propre séparateur, et le corps
+//! d'un programme stocké est mis en page bloc par bloc (`BEGIN ... END`,
+//! `IF ... END IF`...).
+//!
 //! Le texte des jetons est conservé à l'identique : commentaires, chaînes,
 //! identifiants entre accents graves. Le texte est découpé en jetons par
 //! `sqlparser` ; les mots-clefs sont mis en capitales à leur position
@@ -36,11 +42,13 @@
 
 use sqlparser::tokenizer::{Token, Tokenizer};
 
+use prisme_splitter::{Chunk, chunks};
+
 use crate::Dialect;
 use crate::alias::add_alias_keyword;
 use crate::functions::case_function_names;
 use crate::keywords::is_keyword;
-use crate::layout::layout;
+use crate::layout::{has_delimiter_command, layout};
 use crate::limit::byte_offset;
 use crate::whitespace::normalize_blanks;
 
@@ -79,9 +87,84 @@ pub fn beautify(sql: &str, dialect: Dialect) -> String {
 /// est renvoyé tel quel.
 pub fn beautify_with_routines(sql: &str, dialect: Dialect, routines: &[String]) -> String {
     let normalized = normalize_blanks(sql);
-    let aliased = add_alias_keyword(&normalized, dialect);
+    if has_delimiter_command(&normalized) {
+        beautify_chunks(&normalized, dialect, routines)
+    } else {
+        beautify_part(&normalized, dialect, routines, false)
+    }
+}
+
+/// Enjolive un texte qui contient des commandes `DELIMITER`, morceau par
+/// morceau : chaque commande sur sa ligne, puis chaque requête avec son
+/// séparateur, une ligne vide entre deux requêtes.
+fn beautify_chunks(sql: &str, dialect: Dialect, routines: &[String]) -> String {
+    let mut result = String::new();
+    // Le morceau précédent appelle-t-il une simple fin de ligne (commande,
+    // commentaires seuls) plutôt qu'une ligne vide ? Une commande est
+    // toujours collée à ce qui la précède.
+    let mut tight = true;
+    let mut delimiter = ";".to_string();
+    for chunk in chunks(sql) {
+        let command = matches!(chunk, Chunk::Command { .. });
+        let (text, next_tight) = match chunk {
+            Chunk::Command {
+                delimiter: new_delimiter,
+                ..
+            } => {
+                let text = format!("DELIMITER {new_delimiter}");
+                delimiter = new_delimiter;
+                (text, true)
+            }
+            Chunk::Sql {
+                text,
+                delimiter: end,
+            } => {
+                if text.trim().is_empty() {
+                    continue;
+                }
+                // Hors du « ; » habituel, la requête peut être un programme stocké.
+                let program = delimiter != ";";
+                let mut part = beautify_part(&text, dialect, routines, program);
+                let only_comments = end.is_empty() && is_comment_only(&part, dialect);
+                match end.as_str() {
+                    "" => {}
+                    ";" => part.push(';'),
+                    _ => {
+                        part.push(' ');
+                        part.push_str(&end);
+                    }
+                }
+                (part, only_comments)
+            }
+        };
+        if !result.is_empty() {
+            result.push_str(if tight || command { "\n" } else { "\n\n" });
+        }
+        result.push_str(&text);
+        tight = next_tight;
+    }
+    result
+}
+
+/// Enjolive une partie de texte sans commande `DELIMITER` ; avec `program`,
+/// une seule requête terminée par un autre séparateur que `;`, qui peut être
+/// un programme stocké.
+fn beautify_part(sql: &str, dialect: Dialect, routines: &[String], program: bool) -> String {
+    let aliased = add_alias_keyword(sql, dialect);
     let functions = case_function_names(&aliased, dialect, routines);
-    layout(&uppercase_keywords(&functions, dialect), dialect)
+    layout(&uppercase_keywords(&functions, dialect), dialect, program)
+}
+
+/// Le texte n'est-il fait que de commentaires (et de blancs) ?
+fn is_comment_only(sql: &str, dialect: Dialect) -> bool {
+    let parser_dialect = dialect.parser_dialect();
+    Tokenizer::new(parser_dialect.as_ref(), sql)
+        .tokenize()
+        .is_ok_and(|tokens| {
+            tokens
+                .iter()
+                .all(|token| matches!(token, Token::Whitespace(_)))
+        })
 }
 
 /// Met les mots-clefs en capitales, sans rien changer d'autre.
@@ -228,6 +311,40 @@ mod tests {
             beautify("select count(*) n from video v", Dialect::MySql),
             "SELECT ALL COUNT(*) AS n\nFROM video AS v"
         );
+    }
+
+    #[test]
+    fn beautifies_each_chunk_around_delimiter_commands() {
+        let sql = "-- purge\ndelimiter //\ncreate procedure purge_logs()\nbegin\n  delete from logs where created_at < now() - interval 30 day;\n  select count(*) n from logs l;\nend //\ndelimiter ;\nselect id, ma_fonction(x) total from video v where a=1 and b=2;";
+        assert_eq!(
+            beautify_with_routines(sql, Dialect::MySql, &["Ma_Fonction".to_string()]),
+            "-- purge\n\
+             DELIMITER //\n\
+             CREATE PROCEDURE purge_logs()\n\
+             BEGIN\n    \
+                 DELETE\n    \
+                 FROM logs\n    \
+                 WHERE created_at < NOW() - INTERVAL 30 DAY;\n    \
+                 SELECT ALL COUNT(*) AS n\n    \
+                 FROM logs AS l;\n\
+             END //\n\
+             DELIMITER ;\n\
+             SELECT ALL\n    \
+                 id,\n    \
+                 Ma_Fonction(x) AS total\n\
+             FROM video AS v\n\
+             WHERE TRUE\n    \
+                 AND a = 1\n    \
+                 AND b = 2;"
+        );
+    }
+
+    #[test]
+    fn beautifying_a_program_twice_changes_nothing() {
+        let sql = "delimiter $$\ncreate function f(x int) returns int deterministic\nbegin\n  declare y int;\n  if x > 0 then set y = x; else set y = -x; end if;\n  return y;\nend$$\ndelimiter ;\nselect f(1) a;";
+        let once = beautify(sql, Dialect::MySql);
+        assert_eq!(beautify(&once, Dialect::MySql), once);
+        assert!(once.contains("\nEND $$\nDELIMITER ;\n"), "{once}");
     }
 
     #[test]

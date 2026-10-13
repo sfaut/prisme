@@ -26,13 +26,18 @@
 //! les retours à la ligne changent. Un nom de fonction reste collé à sa
 //! parenthèse si c'était le cas, car MySQL l'exige pour ses fonctions.
 //! Un texte qui contient la commande `DELIMITER`, ou que le découpeur en
-//! jetons ne comprend pas, est renvoyé tel quel.
+//! jetons ne comprend pas, est renvoyé tel quel : l'enjoliveur découpe d'abord
+//! le texte autour des commandes `DELIMITER`, et met en page chaque requête
+//! à part. Le corps d'un programme stocké (procédure, fonction...) suit des
+//! règles de plus (module `program`).
 
 use sqlparser::tokenizer::{Token, Tokenizer, Whitespace};
 
 use crate::Dialect;
 use crate::keywords::is_structural_keyword;
 use crate::limit::byte_offset;
+
+mod program;
 
 /// Largeur d'un niveau de retrait.
 const INDENT: usize = 4;
@@ -178,7 +183,10 @@ impl Query {
 }
 
 /// Met en page `sql`. Voir les règles en tête du module.
-pub(crate) fn layout(sql: &str, dialect: Dialect) -> String {
+///
+/// Avec `program`, `sql` est une seule requête qui peut être un programme
+/// stocké, dont les `;` séparent les instructions du corps (module `program`).
+pub(crate) fn layout(sql: &str, dialect: Dialect, program: bool) -> String {
     if has_delimiter_command(sql) {
         return sql.to_string();
     }
@@ -210,11 +218,16 @@ pub(crate) fn layout(sql: &str, dialect: Dialect) -> String {
         });
         space_before = false;
     }
-    Printer::default().print(&items)
+    Printer {
+        program,
+        statement_start: program,
+        ..Printer::default()
+    }
+    .print(&items)
 }
 
 /// Indique si le texte contient une commande `DELIMITER` du client `mysql`.
-fn has_delimiter_command(sql: &str) -> bool {
+pub(crate) fn has_delimiter_command(sql: &str) -> bool {
     sql.lines().any(|line| {
         line.split_whitespace()
             .next()
@@ -247,6 +260,16 @@ struct Printer {
     injection: Option<Injection>,
     /// Premier mot de la requête en cours (`GRANT`, `SELECT`...).
     statement_word: String,
+    /// Le texte est-il un programme stocké (terminé par un séparateur posé
+    /// par `DELIMITER`) ? Ses `;` séparent alors les instructions du corps.
+    program: bool,
+    /// Blocs ouverts du programme (`BEGIN`, `IF`, `WHILE`...).
+    blocks: Vec<program::Block>,
+    /// Le prochain mot commence-t-il une instruction du programme ?
+    statement_start: bool,
+    /// Le mot précédent était le `END` d'un bloc : `IF`, `WHILE`... qui
+    /// suivent le complètent (`END IF`).
+    end_pending: bool,
 }
 
 impl Printer {
@@ -284,6 +307,13 @@ impl Printer {
             self.newline(indent);
         }
 
+        // Fin d'une instruction du corps d'un programme : à la ligne, sans ligne vide.
+        if self.program && matches!(item.token, Token::SemiColon) && self.parens.is_empty() {
+            self.end_pending = false;
+            self.end_program_statement(item);
+            return;
+        }
+
         // Fin de requête : ligne vide avant la suivante.
         if matches!(item.token, Token::SemiColon) && self.parens.is_empty() {
             self.push_glued(item.text);
@@ -298,6 +328,13 @@ impl Printer {
 
         if let Token::Whitespace(comment) = &item.token {
             self.place_comment(item, comment);
+            return;
+        }
+
+        if self.program
+            && matches!(item.token, Token::Word(_))
+            && self.place_program_word(item, next)
+        {
             return;
         }
 
@@ -707,7 +744,70 @@ mod tests {
     use super::*;
 
     fn laid_out(sql: &str) -> String {
-        layout(sql, Dialect::MariaDb)
+        layout(sql, Dialect::MariaDb, false)
+    }
+
+    /// Met en page le corps d'un programme stocké.
+    fn program(sql: &str) -> String {
+        layout(sql, Dialect::MariaDb, true)
+    }
+
+    #[test]
+    fn indents_the_blocks_of_a_stored_program() {
+        assert_eq!(
+            program(
+                "create procedure p(n int) begin declare i int default 0; \
+                 if n > 0 then delete from logs; elseif n < 0 then select 1; else select 2; end if; \
+                 while i < n do set i = i + 1; end while; \
+                 boucle: loop leave boucle; end loop boucle; \
+                 repeat set i = i - 1; until i = 0 end repeat; \
+                 case n when 1 then select 1; else begin end; end case; end"
+            ),
+            "create procedure p(n int)\n\
+             BEGIN\n    \
+                 declare i int default 0;\n    \
+                 IF n > 0 THEN\n        \
+                     delete\n        \
+                     from logs;\n    \
+                 ELSEIF n < 0 THEN\n        \
+                     select ALL 1;\n    \
+                 ELSE\n        \
+                     select ALL 2;\n    \
+                 END IF;\n    \
+                 WHILE i < n DO\n        \
+                     set i = i + 1;\n    \
+                 END WHILE;\n    \
+                 boucle: LOOP\n        \
+                     leave boucle;\n    \
+                 END LOOP boucle;\n    \
+                 REPEAT\n        \
+                     set i = i - 1;\n    \
+                 UNTIL i = 0\n    \
+                 END REPEAT;\n    \
+                 CASE n\n        \
+                     WHEN 1 THEN\n            \
+                         select ALL 1;\n        \
+                     ELSE\n            \
+                         BEGIN\n            \
+                         END;\n    \
+                 END CASE;\n\
+             END"
+        );
+    }
+
+    #[test]
+    fn keeps_expression_case_and_do_statements_inside_a_program() {
+        assert_eq!(
+            program(
+                "begin while x do do sleep(1); set y = case when a then 1 else 2 end; end while; end"
+            ),
+            "BEGIN\n    \
+                 WHILE x DO\n        \
+                     do sleep(1);\n        \
+                     set y = case when a then 1 else 2 end;\n    \
+                 END WHILE;\n\
+             END"
+        );
     }
 
     #[test]

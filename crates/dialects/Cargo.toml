@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+prisme-splitter = { version = "0.1.0", path = "../splitter" }
 sqlparser = { version = "0.63.0", features = ["visitor"] }
 thiserror = "2.0.21"
 
