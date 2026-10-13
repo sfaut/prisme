@@ -177,12 +177,7 @@ mod tests {
     fn beautifies_with_layout() {
         assert_eq!(
             beautify("select a, b from t where x=1 and y=2", Dialect::MariaDb),
-            "SELECT
-    a,
-    b
-FROM t
-WHERE x = 1
-AND y = 2"
+            "SELECT\n    a,\n    b\nFROM t\nWHERE x = 1\n    AND y = 2"
         );
     }
 

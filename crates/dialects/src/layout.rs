@@ -7,8 +7,9 @@
 //! - une liste de plusieurs colonnes après `SELECT` met une colonne par ligne,
 //!   en retrait ; une seule colonne reste sur la ligne du `SELECT` ;
 //! - plusieurs prédicats dans `WHERE`, `HAVING` ou `ON` : un par ligne, `AND`
-//!   et `OR` en début de ligne (le `AND` d'un `BETWEEN` et ceux d'un `CASE`
-//!   restent sur la ligne) ; `ON` passe à la ligne, en retrait sous sa jointure ;
+//!   et `OR` en début de ligne, en retrait sous la clause (le `AND` d'un
+//!   `BETWEEN` et ceux d'un `CASE` restent sur la ligne) ; `ON` reste sur la
+//!   ligne de sa jointure ;
 //! - une sous-requête entre parenthèses est en retrait, sa parenthèse
 //!   fermante sur sa propre ligne ;
 //! - un espace autour des opérateurs binaires (`=`, `<`, `+`, `-`...), aucun
@@ -115,10 +116,8 @@ impl Item<'_> {
 enum Clause {
     /// Liste des colonnes d'un `SELECT`.
     Select,
-    /// `WHERE` ou `HAVING` : prédicats au retrait de la requête.
+    /// `WHERE`, `HAVING` ou `ON` d'une jointure : prédicats en retrait sous la clause.
     Filter,
-    /// `ON` d'une jointure : prédicats au retrait de la jointure, plus un niveau.
-    On,
     /// Autre clause.
     Other,
 }
@@ -373,17 +372,14 @@ impl Printer {
                 self.query().between_pending = false;
                 return;
             }
-            match self.query().clause {
-                Clause::Filter => self.newline(query_indent),
-                Clause::On => self.newline(query_indent + INDENT),
-                _ => {}
+            if self.query().clause == Clause::Filter {
+                self.newline(query_indent + INDENT);
             }
             return;
         }
 
         if word == "ON" && matches!(self.query().clause, Clause::Other) && self.after_join() {
-            self.newline(query_indent + INDENT);
-            self.query().clause = Clause::On;
+            self.query().clause = Clause::Filter;
             return;
         }
 
@@ -614,7 +610,7 @@ mod tests {
                    LEFT JOIN tag t ON t.video_id = v.id WHERE v.year BETWEEN 2000 AND 2010 AND v.score>3 OR v.free";
         assert_eq!(
             laid_out(sql),
-            "SELECT v.id\nFROM video v\nJOIN person p\n    ON p.id = v.person_id\n    AND p.active = 1\nLEFT JOIN tag t\n    ON t.video_id = v.id\nWHERE v.year BETWEEN 2000 AND 2010\nAND v.score > 3\nOR v.free"
+            "SELECT v.id\nFROM video v\nJOIN person p ON p.id = v.person_id\n    AND p.active = 1\nLEFT JOIN tag t ON t.video_id = v.id\nWHERE v.year BETWEEN 2000 AND 2010\n    AND v.score > 3\n    OR v.free"
         );
     }
 
@@ -622,7 +618,7 @@ mod tests {
     fn keeps_case_conditions_on_their_line() {
         assert_eq!(
             laid_out("SELECT CASE WHEN a AND b THEN 1 ELSE 0 END FROM t WHERE x AND y"),
-            "SELECT CASE WHEN a AND b THEN 1 ELSE 0 END\nFROM t\nWHERE x\nAND y"
+            "SELECT CASE WHEN a AND b THEN 1 ELSE 0 END\nFROM t\nWHERE x\n    AND y"
         );
     }
 
