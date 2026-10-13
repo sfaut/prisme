@@ -6,6 +6,7 @@ import { request } from './http'
 import type { ConnectionSummary } from './generated/ConnectionSummary'
 import type { Created } from './generated/Created'
 import type { NewConnection } from './generated/NewConnection'
+import type { ProbeRequest } from './generated/ProbeRequest'
 import type { ServerInfo } from './generated/ServerInfo'
 
 /**
@@ -51,4 +52,25 @@ export function deleteConnection(id: number): Promise<void> {
  */
 export function probeConnection(id: number): Promise<ServerInfo> {
   return request('POST', `/api/connections/${id}/probe`)
+}
+
+/**
+ * Se connecte avec des paramètres saisis, pas encore enregistrés, et renvoie
+ * la variante et la version du serveur.
+ *
+ * @param probe
+ *     Paramètres saisis, et connexion enregistrée en cours de modification
+ *     dont reprendre le mot de passe si le champ est vide.
+ */
+export function probeSettings(probe: ProbeRequest): Promise<ServerInfo> {
+  return request('POST', '/api/connections/probe', probe)
+}
+
+/**
+ * Variante et version du serveur, telles qu'affichées (`MariaDB 11.4.2-MariaDB`).
+ *
+ * @param info Identité du serveur.
+ */
+export function serverLabel(info: ServerInfo): string {
+  return `${info.flavor === 'mariadb' ? 'MariaDB' : 'MySQL'} ${info.version}`
 }

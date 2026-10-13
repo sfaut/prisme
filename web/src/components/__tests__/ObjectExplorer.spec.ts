@@ -111,6 +111,7 @@ describe('ObjectExplorer', () => {
     await source?.trigger('click')
     await vi.waitFor(() => expect(document.body.textContent).toContain('Modifier la connexion'))
     expect(document.body.textContent).toContain('Supprimer la connexion')
+    expect(document.body.textContent).toContain('Tester')
     wrapper.unmount()
   })
 

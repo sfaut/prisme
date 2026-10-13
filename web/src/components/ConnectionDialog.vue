@@ -3,6 +3,8 @@
 
   En modification, la saisie part de la connexion enregistrée, sauf le mot de
   passe, que l'interface ne connaît pas : laissé vide, il reste inchangé.
+  « Tester » se connecte avec la saisie en cours, sans l'enregistrer, et
+  affiche la variante et la version du serveur.
 
   Les longueurs maximales reprennent celles du serveur
   (`crates/server/src/connections.rs`). Les autres contrôles sont faits par le
@@ -12,6 +14,7 @@
 import { NAlert, NButton, NForm, NFormItem, NInput, NInputNumber, NModal } from 'naive-ui'
 import { computed, reactive, ref, watch } from 'vue'
 
+import { probeSettings, serverLabel } from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { NewConnection } from '@/api/generated/NewConnection'
 import { useConnectionsStore } from '@/stores/connections'
@@ -53,6 +56,16 @@ const error = ref<string | null>(null)
 const saving = ref(false)
 
 /**
+ * Test de la saisie en cours.
+ */
+const probing = ref(false)
+
+/**
+ * Résultat du dernier test réussi (variante et version du serveur), `null` si aucun.
+ */
+const probed = ref<string | null>(null)
+
+/**
  * Titre de la fenêtre.
  */
 const title = computed(() =>
@@ -84,8 +97,27 @@ watch(open, (isOpen) => {
   if (isOpen) {
     Object.assign(form, initialForm(props.connection))
     error.value = null
+    probed.value = null
   }
 })
+
+/**
+ * Se connecte avec la saisie en cours, sans l'enregistrer. En modification,
+ * un mot de passe vide reprend celui de la connexion enregistrée.
+ */
+async function probe(): Promise<void> {
+  probing.value = true
+  error.value = null
+  probed.value = null
+  try {
+    const info = await probeSettings({ connection: { ...form }, saved_id: props.connection?.id })
+    probed.value = serverLabel(info)
+  } catch (failure) {
+    error.value = failure instanceof Error ? failure.message : String(failure)
+  } finally {
+    probing.value = false
+  }
+}
 
 /**
  * Enregistre la connexion, puis ferme la fenêtre.
@@ -139,7 +171,15 @@ async function save(): Promise<void> {
       <n-alert v-if="error" type="error" :show-icon="false" class="dialog-error">
         {{ error }}
       </n-alert>
-      <n-button type="primary" attr-type="submit" block :loading="saving">Enregistrer</n-button>
+      <n-alert v-if="probed" type="success" :show-icon="false" class="dialog-error">
+        {{ probed }}
+      </n-alert>
+      <div class="dialog-actions">
+        <n-button :loading="probing" @click="probe">Tester</n-button>
+        <n-button type="primary" attr-type="submit" :loading="saving" class="dialog-save">
+          Enregistrer
+        </n-button>
+      </div>
     </n-form>
   </n-modal>
 </template>
@@ -147,5 +187,14 @@ async function save(): Promise<void> {
 <style scoped>
 .dialog-error {
   margin-bottom: 12px;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.dialog-save {
+  flex: 1;
 }
 </style>

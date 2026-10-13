@@ -7,6 +7,7 @@
 //! | `GET /api/health`                   | Vérifie que le serveur répond.                               |
 //! | `GET /api/connections`              | Liste les connexions de l'utilisateur, sans mot de passe.    |
 //! | `POST /api/connections`             | Enregistre une connexion, mot de passe chiffré.              |
+//! | `POST /api/connections/probe`       | Teste des paramètres saisis, avant enregistrement.           |
 //! | `PUT /api/connections/{id}`         | Modifie une connexion ; mot de passe vide : inchangé (204).  |
 //! | `DELETE /api/connections/{id}`      | Supprime une connexion (204).                                |
 //! | `POST /api/connections/{id}/probe`  | Se connecte et renvoie la variante et la version du serveur. |
@@ -33,7 +34,7 @@ use ts_rs::TS;
 
 use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
-use crate::connections::{self, ConnectionSummary, NewConnection};
+use crate::connections::{self, ConnectionSummary, NewConnection, ProbeRequest};
 use crate::explorer;
 use crate::master_key::MasterKey;
 use crate::query_session;
@@ -100,6 +101,7 @@ pub fn router(state: AppState) -> Router {
             "/api/connections",
             get(list_connections).post(create_connection),
         )
+        .route("/api/connections/probe", post(probe_settings))
         .route(
             "/api/connections/{id}",
             put(update_connection).delete(delete_connection),
@@ -240,6 +242,21 @@ async fn put_settings(
     Ok(Json(settings))
 }
 
+/// `POST /api/connections/probe` : se connecte avec des paramètres saisis,
+/// pas encore enregistrés, et renvoie l'identité du serveur.
+async fn probe_settings(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Json(request): Json<ProbeRequest>,
+) -> Result<Json<ServerInfo>, ApiError> {
+    let target = state
+        .with_db(move |db, key| connections::probe_target(db, key, user.id, request))
+        .await?
+        .ok_or(ApiError::NotFound)?;
+
+    Ok(Json(mysql::probe(&target).await?))
+}
+
 /// `POST /api/connections/{id}/probe` : se connecte au serveur et renvoie son identité.
 async fn probe_connection(
     State(state): State<AppState>,
@@ -371,6 +388,20 @@ mod tests {
             "PUT",
             "/api/connections/999",
             Some(connection_json("autre", 3306)),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn probe_of_an_unknown_saved_connection_gives_not_found() {
+        let mut connection = connection_json("prod", 3306);
+        connection["password"] = json!("");
+        let (status, _) = send(
+            &test_app(),
+            "POST",
+            "/api/connections/probe",
+            Some(json!({ "connection": connection, "saved_id": 999 })),
         )
         .await;
         assert_eq!(status, StatusCode::NOT_FOUND);

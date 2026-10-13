@@ -51,6 +51,19 @@ pub struct NewConnection {
     pub database_name: String,
 }
 
+/// Paramètres saisis à tester, avant leur enregistrement.
+#[derive(Deserialize, TS)]
+#[ts(export)]
+pub struct ProbeRequest {
+    /// Connexion telle que saisie ; seul le nom n'est pas utilisé.
+    pub connection: NewConnection,
+    /// Connexion enregistrée en cours de modification : si le mot de passe
+    /// saisi est vide, le sien est repris. Absente pour une création.
+    #[serde(default)]
+    #[ts(optional)]
+    pub saved_id: Option<i64>,
+}
+
 /// Connexion enregistrée, sans son mot de passe.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
@@ -274,6 +287,39 @@ pub fn load_target(
     }))
 }
 
+/// Paramètres de connexion d'un test de paramètres saisis. Un mot de passe
+/// vide reprend celui de la connexion enregistrée `saved_id`, s'il y en a une.
+///
+/// Renvoie `None` si `saved_id` désigne une connexion absente ou appartenant
+/// à un autre utilisateur.
+pub fn probe_target(
+    db: &Connection,
+    key: &MasterKey,
+    user_id: i64,
+    request: ProbeRequest,
+) -> Result<Option<MysqlTarget>, ConnectionsError> {
+    let ProbeRequest {
+        connection,
+        saved_id,
+    } = request;
+    let password = match saved_id {
+        Some(id) if connection.password.expose_secret().is_empty() => {
+            match load_target(db, key, user_id, id)? {
+                Some(saved) => saved.password,
+                None => return Ok(None),
+            }
+        }
+        _ => connection.password,
+    };
+    Ok(Some(MysqlTarget {
+        host: connection.host,
+        port: connection.port,
+        username: connection.username,
+        password,
+        database_name: connection.database_name,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -399,6 +445,35 @@ mod tests {
             update(&db, &key, user_id, id, &new_connection("prod")),
             Err(ConnectionsError::DuplicateName(_))
         ));
+    }
+
+    #[test]
+    fn probe_target_takes_the_saved_password_when_left_empty() {
+        let db = store::open_in_memory();
+        let key = MasterKey::generate();
+        let alice = store::ensure_user(&db, "alice@example.com").unwrap();
+        let bob = store::ensure_user(&db, "bob@example.com").unwrap();
+        let id = insert(&db, &key, alice, &new_connection("prod")).unwrap();
+        let request = |password: &str, saved_id| {
+            let mut connection = new_connection("");
+            connection.password = SecretString::from(password);
+            ProbeRequest {
+                connection,
+                saved_id,
+            }
+        };
+
+        let target = probe_target(&db, &key, alice, request("", Some(id)));
+        assert_eq!(target.unwrap().unwrap().password.expose_secret(), "secret");
+        let target = probe_target(&db, &key, alice, request("autre", Some(id)));
+        assert_eq!(target.unwrap().unwrap().password.expose_secret(), "autre");
+        let target = probe_target(&db, &key, alice, request("", None));
+        assert_eq!(target.unwrap().unwrap().password.expose_secret(), "");
+        assert!(
+            probe_target(&db, &key, bob, request("", Some(id)))
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]

@@ -13,8 +13,8 @@
   connexion de travail (émet `select`) ; elle reste surlignée.
 
   Au survol de la racine, un menu « ⋮ » à droite ajoute une connexion ou relit tous les
-  catalogues déjà lus ; au survol de chaque source, un autre modifie la
-  connexion, relit son catalogue ou supprime la connexion (après
+  catalogues déjà lus ; au survol de chaque source, un autre modifie ou
+  teste la connexion, relit son catalogue ou supprime la connexion (après
   confirmation). Un double clic sur une table ou une vue émet `open-table`,
   pour en afficher le contenu.
 -->
@@ -22,6 +22,7 @@
 import { NAlert, NButton, NDropdown, NModal, NTree, type TreeOption } from 'naive-ui'
 import { computed, h, onMounted, ref, watch } from 'vue'
 
+import { probeConnection, serverLabel } from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import { useCatalogStore } from '@/stores/catalog'
 import { useConnectionsStore } from '@/stores/connections'
@@ -75,6 +76,12 @@ const loadingIds = ref<number[]>([])
 const listError = ref<string | null>(null)
 
 /**
+ * Résultat du dernier test réussi d'une source (nom, variante et version du
+ * serveur), `null` si aucun.
+ */
+const probed = ref<string | null>(null)
+
+/**
  * Dernière erreur de lecture de chaque connexion, par identifiant.
  */
 const failures = ref<Record<number, string>>({})
@@ -113,6 +120,7 @@ const SOURCES_MENU = [
  */
 const SOURCE_MENU = [
   { key: 'edit', label: 'Modifier la connexion' },
+  { key: 'probe', label: 'Tester' },
   { key: 'refresh', label: 'Rafraîchir' },
   { key: 'remove', label: 'Supprimer la connexion' },
 ]
@@ -235,12 +243,32 @@ function onMenu(node: ExplorerNode, choice: string): void {
       editing.value = connection
       dialogOpen.value = true
       break
+    case 'probe':
+      void probe(node.connectionId)
+      break
     case 'refresh':
       void load(node.connectionId, true)
       break
     case 'remove':
       removing.value = connection
       break
+  }
+}
+
+/**
+ * Se connecte au serveur d'une source et affiche sa variante et sa version.
+ * Un échec s'affiche comme une erreur de lecture de la source.
+ *
+ * @param connectionId Identifiant de la connexion.
+ */
+async function probe(connectionId: number): Promise<void> {
+  const name = connections.connections.find((item) => item.id === connectionId)?.name
+  probed.value = null
+  delete failures.value[connectionId]
+  try {
+    probed.value = `${name} : ${serverLabel(await probeConnection(connectionId))}`
+  } catch (failure) {
+    failures.value[connectionId] = failure instanceof Error ? failure.message : String(failure)
   }
 }
 
@@ -410,6 +438,9 @@ function renderLabel({ option }: { option: TreeOption }) {
 
 <template>
   <div class="object-explorer">
+    <n-alert v-if="probed" type="success" :show-icon="false" closable @close="probed = null">
+      {{ probed }}
+    </n-alert>
     <n-alert v-if="listError" type="error" :show-icon="false">{{ listError }}</n-alert>
     <n-alert v-for="message in messages" :key="message" type="warning" :show-icon="false">
       {{ message }}
