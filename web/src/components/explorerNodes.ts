@@ -66,7 +66,7 @@ export interface ExplorerNode {
   current?: boolean
   /**
    * Mention affichée après le libellé, en capitales, plus petite et plus
-   * claire : `UNIQUE` pour un index unique.
+   * claire : `PRIMARY KEY` pour la clef primaire, `UNIQUE` pour un index unique.
    */
   note?: string
   /**
@@ -362,13 +362,16 @@ export function indexLabel(index: IndexInfo): string {
 }
 
 /**
- * Mention d'un index : `UNIQUE` pour un index unique, rien sinon. La clef
- * primaire, unique par nature et nommée `PRIMARY`, n'en porte pas.
+ * Mention d'un index : `PRIMARY KEY` pour la clef primaire (nommée `PRIMARY`),
+ * `UNIQUE` pour un autre index unique, rien sinon.
  *
  * @param index Index.
  */
 export function indexNote(index: IndexInfo): string | undefined {
-  return index.unique && index.name !== 'PRIMARY' ? 'UNIQUE' : undefined
+  if (index.name === 'PRIMARY') {
+    return 'PRIMARY KEY'
+  }
+  return index.unique ? 'UNIQUE' : undefined
 }
 
 /**
