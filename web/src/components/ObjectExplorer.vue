@@ -119,10 +119,10 @@ const SOURCES_MENU = [
  * Choix du menu d'une source.
  */
 const SOURCE_MENU = [
-  { key: 'edit', label: 'Modifier la connexion' },
-  { key: 'probe', label: 'Tester' },
+  { key: 'edit', label: 'Modifier' },
   { key: 'refresh', label: 'Rafraîchir' },
-  { key: 'remove', label: 'Supprimer la connexion' },
+  { key: 'probe', label: 'Tester' },
+  { key: 'remove', label: 'Supprimer' },
 ]
 
 /**

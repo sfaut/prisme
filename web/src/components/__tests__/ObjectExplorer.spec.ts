@@ -109,9 +109,12 @@ describe('ObjectExplorer', () => {
     await vi.waitFor(() => expect(document.body.textContent).toContain('Ajouter une connexion'))
     expect(document.body.textContent).toContain('Tout rafraîchir')
     await source?.trigger('click')
-    await vi.waitFor(() => expect(document.body.textContent).toContain('Modifier la connexion'))
-    expect(document.body.textContent).toContain('Supprimer la connexion')
-    expect(document.body.textContent).toContain('Tester')
+    const options = () =>
+      [...document.querySelectorAll('.n-dropdown-option')].map((item) => item.textContent)
+    await vi.waitFor(() =>
+      // Le menu de la racine reste dans la page, en tête.
+      expect(options().slice(-4)).toEqual(['Modifier', 'Rafraîchir', 'Tester', 'Supprimer']),
+    )
     wrapper.unmount()
   })
 
