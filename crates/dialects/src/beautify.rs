@@ -322,8 +322,7 @@ mod tests {
              DELIMITER //\n\
              CREATE PROCEDURE purge_logs()\n\
              BEGIN\n    \
-                 DELETE\n    \
-                 FROM logs\n    \
+                 DELETE FROM logs\n    \
                  WHERE created_at < NOW() - INTERVAL 30 DAY;\n    \
                  SELECT ALL COUNT(*) AS n\n    \
                  FROM logs AS l;\n\

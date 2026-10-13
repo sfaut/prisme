@@ -501,8 +501,21 @@ impl Printer {
         }
 
         if CLAUSES.contains(&word) && !function_call {
+            // FROM juste après DELETE (et ses options) reste sur sa ligne :
+            // DELETE FROM t. Après une liste de tables (DELETE t1 FROM...), il
+            // commence une ligne comme ailleurs.
+            let delete_from = word == "FROM"
+                && previous.is_some_and(|previous| {
+                    matches!(
+                        previous.word().as_str(),
+                        "DELETE" | "LOW_PRIORITY" | "QUICK" | "IGNORE"
+                    )
+                })
+                && self.statement_word == "DELETE";
             // BY suit GROUP et ORDER sur la même ligne.
-            self.newline(query_indent);
+            if !delete_from {
+                self.newline(query_indent);
+            }
             let query = self.query();
             query.between_pending = false;
             query.joined = false;
@@ -753,6 +766,23 @@ mod tests {
     }
 
     #[test]
+    fn keeps_delete_from_on_one_line() {
+        assert_eq!(
+            laid_out("DELETE FROM logs WHERE a = 1"),
+            "DELETE FROM logs\nWHERE a = 1"
+        );
+        assert_eq!(
+            laid_out("DELETE LOW_PRIORITY QUICK FROM logs"),
+            "DELETE LOW_PRIORITY QUICK FROM logs"
+        );
+        // Suppression sur plusieurs tables : FROM suit la liste des tables.
+        assert_eq!(
+            laid_out("DELETE l FROM logs l JOIN u ON u.id = l.uid"),
+            "DELETE l\nFROM logs l\nJOIN u ON u.id = l.uid"
+        );
+    }
+
+    #[test]
     fn indents_the_blocks_of_a_stored_program() {
         assert_eq!(
             program(
@@ -767,8 +797,7 @@ mod tests {
              BEGIN\n    \
                  declare i int default 0;\n    \
                  IF n > 0 THEN\n        \
-                     delete\n        \
-                     from logs;\n    \
+                     delete from logs;\n    \
                  ELSEIF n < 0 THEN\n        \
                      select ALL 1;\n    \
                  ELSE\n        \
