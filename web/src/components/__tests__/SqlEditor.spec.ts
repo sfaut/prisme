@@ -4,10 +4,26 @@ import { mount } from '@vue/test-utils'
 import SqlEditor from '../SqlEditor.vue'
 
 vi.mock('@/api/analyze', () => ({
-  analyzeSql: async () => ({ statements: [] }),
+  analyzeSql: async (sql: string) => ({
+    statements: [],
+    errors: sql.startsWith('SELEC ')
+      ? [{ start: 0, end: 5, message: 'Requête non comprise par Prisme' }]
+      : [],
+  }),
 }))
 
 describe('SqlEditor', () => {
+  it('souligne les erreurs de syntaxe signalées par le serveur', async () => {
+    const wrapper = mount(SqlEditor, {
+      props: { flavor: 'mysql', schema: {}, defaultSchema: null, modelValue: 'SELEC 1' },
+      attachTo: document.body,
+    })
+    await vi.waitFor(() => expect(wrapper.find('.cm-lintRange-error').text()).toBe('SELEC'), {
+      timeout: 2000,
+    })
+    wrapper.unmount()
+  })
+
   it('affiche le texte lié', () => {
     const wrapper = mount(SqlEditor, {
       props: { flavor: 'mysql', schema: {}, defaultSchema: null, modelValue: 'SELECT 1' },

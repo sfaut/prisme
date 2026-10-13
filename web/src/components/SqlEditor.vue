@@ -5,12 +5,14 @@
   ligne, historique d'annulation, complétion des mots-clefs, des bases, des
   tables et des colonnes (espace de noms construit à partir du catalogue,
   voir `sqlCompletion.ts`). La requête que Ctrl-Entrée exécuterait est
-  surlignée (`currentStatement.ts`) : le texte est analysé par le serveur
-  peu après chaque frappe. Ctrl-Entrée (Cmd-Entrée sur Mac) émet `run`
+  surlignée (`currentStatement.ts`) et les erreurs de syntaxe sont soulignées,
+  avec leur message au survol : le texte est analysé par le serveur peu
+  après chaque frappe. Ctrl-Entrée (Cmd-Entrée sur Mac) émet `run`
   avec la position du curseur ; Ctrl-Maj-Entrée émet `run-all`. Le texte se
   lie avec `v-model`.
 -->
 <script setup lang="ts">
+import { type Diagnostic, setDiagnostics } from '@codemirror/lint'
 import { MariaSQL, MySQL, type SQLNamespace, sql } from '@codemirror/lang-sql'
 import { Compartment } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
@@ -82,7 +84,8 @@ function scheduleAnalysis(): void {
 }
 
 /**
- * Fait analyser le texte par le serveur et transmet le résultat à l'éditeur,
+ * Fait analyser le texte par le serveur et transmet le résultat à l'éditeur
+ * (requêtes et erreurs de syntaxe),
  * sauf si le texte a changé entre-temps (une autre analyse suivra). Un échec
  * est sans conséquence : l'éditeur garde l'analyse précédente.
  */
@@ -92,9 +95,17 @@ async function analyze(): Promise<void> {
     return
   }
   try {
-    const analysis = await analyzeSql(doc.toString())
+    const analysis = await analyzeSql(doc.toString(), props.flavor)
     if (view?.state.doc === doc) {
-      view.dispatch({ effects: setStatements.of(analysis.statements) })
+      const diagnostics: Diagnostic[] = analysis.errors.map((error) => ({
+        from: error.start,
+        to: error.end,
+        severity: 'error',
+        message: error.message,
+      }))
+      view.dispatch(setDiagnostics(view.state, diagnostics), {
+        effects: setStatements.of(analysis.statements),
+      })
     }
   } catch {
     // Serveur injoignable : l'analyse reviendra à la prochaine frappe.
@@ -159,6 +170,9 @@ watch(
   () => [props.flavor, props.schema, props.defaultSchema],
   () => view?.dispatch({ effects: language.reconfigure(currentLanguage()) }),
 )
+
+// Le dialecte change à l'ouverture de la session : l'analyse est à refaire.
+watch(() => props.flavor, scheduleAnalysis)
 
 onBeforeUnmount(() => {
   clearTimeout(analysisTimer)
