@@ -8,7 +8,8 @@
   et arrive au fil de l'eau : les bases d'abord, puis leurs objets (tables,
   vues, procédures, fonctions), puis le détail des tables (colonnes, index,
   clefs étrangères, déclencheurs), chaque partie affichée dès sa réception.
-  Il reste ensuite en mémoire. Un clic sur une source la choisit comme
+  Il reste ensuite en mémoire. Un clic sur une ligne ouvre ou ferme son
+  niveau, comme le triangle. Un clic sur une source la choisit comme
   connexion de travail (émet `select`) ; elle reste surlignée.
 
   Au survol de la racine, un menu « ⋮ » à droite ajoute une connexion ou relit tous les
@@ -423,6 +424,7 @@ function renderLabel({ option }: { option: TreeOption }) {
       :indent="8"
       :theme-overrides="TREE_THEME"
       block-line
+      expand-on-click
       virtual-scroll
       class="object-tree"
       @update:expanded-keys="expand"

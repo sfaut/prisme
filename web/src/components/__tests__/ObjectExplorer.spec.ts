@@ -114,7 +114,7 @@ describe('ObjectExplorer', () => {
     wrapper.unmount()
   })
 
-  it('choisit une source d’un clic', async () => {
+  it('choisit et ouvre une source d’un clic sur sa ligne', async () => {
     savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
     const wrapper = mount(ObjectExplorer, {
       props: { selectedId: 1, currentDatabase: null },
@@ -127,6 +127,9 @@ describe('ObjectExplorer', () => {
     await vi.waitFor(() => expect(node('Autre')).toBeDefined())
     await node('Autre')?.trigger('click')
     expect(wrapper.emitted('select')).toEqual([[2]])
+    const texts = () => wrapper.findAll('.n-tree-node-content__text').map((item) => item.text())
+    // Ouverte : sa première base suit la source.
+    await vi.waitFor(() => expect(texts()[texts().indexOf('Autre') + 1]).toBe('a'))
     wrapper.unmount()
   })
 
