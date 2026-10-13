@@ -7,7 +7,7 @@ Ce fichier est court. Les décisions détaillées sont dans `docs/` :
 - `docs/V1.md` : périmètre, décisions techniques et ordre de développement de la v1 (à lire en premier).
 - `docs/FEDERATED.md` : vision après la v1 (plan logique, optimiseur, langages, NULL, CSV, workspace).
 - `docs/QUESTIONS.md` : pistes retenues, écartées ou reportées, et questions encore ouvertes.
-- `docs/PERF-RESULT-GRID.md` : gel de l'interface causé par une grille de résultats non bornée en hauteur, cause, correction et méthode de mesure.
+- `docs/PERF.md` : problèmes de performance rencontrés, avec leur cause, leur correction et la méthode de mesure.
 
 ## Qui travaille ici
 

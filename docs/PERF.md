@@ -1,11 +1,15 @@
-# Gel de l'interface pendant l'exécution : la grille dessinait toutes les lignes
+# Problèmes de performance
 
-Ce document décrit un problème de performance rencontré en octobre 2026 dans
-la grille de résultats : ce qui se voyait, comment il a été mesuré, pourquoi
-il est apparu et comment il a été corrigé. Il sert aussi de mode d'emploi
-pour mesurer à nouveau.
+Ce document décrit les problèmes de performance rencontrés dans Prisme : ce
+qui se voyait, comment ils ont été mesurés, pourquoi ils sont apparus et
+comment ils ont été corrigés. Il sert aussi de mode d'emploi pour mesurer à
+nouveau. Un chapitre par problème.
 
-## 1. Symptôme
+## 1. Gel de l'interface pendant l'exécution : la grille dessinait toutes les lignes
+
+Problème rencontré en octobre 2026 dans la grille de résultats.
+
+### 1.1 Symptôme
 
 Pendant l'exécution de plusieurs requêtes en parallèle (Ctrl-Maj-Entrée), les
 onglets de résultat se figeaient : un clic sur un onglet mettait plusieurs
@@ -17,7 +21,7 @@ serveur pour redessiner l'interface au plus une fois toutes les 100 ms. Elle
 n'a rien changé de visible : elle visait un coût réel, mais secondaire, et
 elle a été écrite sans mesure.
 
-## 2. Mesure
+### 1.2 Mesure
 
 Le problème a ensuite été mesuré dans un vrai navigateur :
 
@@ -47,9 +51,9 @@ le rendu des lignes de la grille. Le nombre d'éléments a donné la clef : la
 grille d'un seul onglet contenait 20 000 lignes dessinées, pour un résultat de
 20 000 lignes.
 
-## 3. Cause principale : le défilement virtuel était contourné
+### 1.3 Cause principale : le défilement virtuel était contourné
 
-### 3.1 Le principe du défilement virtuel
+#### 1.3.1 Le principe du défilement virtuel
 
 La grille de résultats (`web/src/components/ResultGrid.vue`) affiche des
 dizaines de milliers de lignes en n'en dessinant que quelques dizaines : celles
@@ -70,7 +74,7 @@ de défilement.
    de la bonne hauteur, pour que la barre de défilement soit juste
 ```
 
-### 3.2 Ce qui se passait
+#### 1.3.2 Ce qui se passait
 
 Le calcul suppose que la zone de défilement a une hauteur **bornée** par son
 conteneur. Or rien ne la bornait : elle prenait la hauteur de son contenu. Pour
@@ -101,7 +105,7 @@ Chaque lot de lignes reçu redessinait alors des dizaines de milliers
 d'éléments, dans chaque onglet ouvert. Le navigateur passait son temps à
 recalculer styles et mise en page, et ne traitait plus les clics.
 
-### 3.3 Pourquoi c'est arrivé
+#### 1.3.3 Pourquoi c'est arrivé
 
 Trois éléments se sont combinés :
 
@@ -123,14 +127,14 @@ Trois éléments se sont combinés :
    qu'avec beaucoup de lignes, dans un vrai navigateur. Avec une requête de
    1 000 lignes (la limite par défaut), il passait presque inaperçu.
 
-## 4. Cause secondaire : la réactivité sur chaque ligne
+### 1.4 Cause secondaire : la réactivité sur chaque ligne
 
 Une fois la grille bornée, le profil a montré un autre coût : 11 % du temps
 dans le suivi des changements de Vue (`set`). Les lignes reçues étaient
 ajoutées une à une dans un tableau réactif, et Vue interceptait chaque ajout,
 alors que seul leur nombre importe pour redessiner la grille.
 
-## 5. Corrections
+### 1.5 Corrections
 
 | Commit | Correction |
 |---|---|
@@ -138,7 +142,7 @@ alors que seul leur nombre importe pour redessiner la grille.
 | `d0534f6` | Les lignes reçues sont gardées dans un tableau ordinaire (`markRaw`), hors du suivi de Vue. Seul leur nombre (`rowCount`) est réactif : la grille et les compteurs le lisent pour se redessiner. |
 | `6176cca` | Conservé : les messages du serveur sont appliqués par paquets, toutes les 100 ms, et l'horloge des durées ne redessine que les pastilles des requêtes en cours. |
 
-## 6. Ce qu'il faut retenir
+### 1.6 Ce qu'il faut retenir
 
 - **Une grille virtualisée a besoin d'une hauteur bornée.** Tout nouveau
   conteneur placé entre la disposition et la grille doit prolonger la chaîne
@@ -150,7 +154,7 @@ alors que seul leur nombre importe pour redessiner la grille.
 - **Les tests dans jsdom valident la logique, pas l'affichage.** Pour les
   performances d'affichage, seul un vrai navigateur fait foi.
 
-## 7. Mesurer à nouveau
+### 1.7 Mesurer à nouveau
 
 1. Démarrer un MariaDB jetable : `docker run --rm -d --name prisme-perf -p 3310:3306 -e MARIADB_ROOT_PASSWORD=secret -e MARIADB_DATABASE=test mariadb:11.3`.
 2. Lancer un Prisme isolé : `cargo run -- --listen 127.0.0.1:8599 --data-dir ./tmp/perf`, puis y enregistrer une connexion vers `127.0.0.1:3310` (compte `root`, base `test`).
