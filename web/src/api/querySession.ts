@@ -23,6 +23,13 @@ import type { ServerInfo } from './generated/ServerInfo'
 import type { ServerMessage } from './generated/ServerMessage'
 
 /**
+ * Délai de regroupement des messages reçus, en millisecondes : l'interface
+ * est redessinée au plus une fois par délai, quel que soit le nombre de lots
+ * de lignes reçus, ce qui la garde réactive pendant l'exécution.
+ */
+const FLUSH_DELAY = 100
+
+/**
  * Cellule de résultat : du texte, ou `null` pour NULL.
  */
 export type Cell = string | null
@@ -354,19 +361,44 @@ export function useQuerySession(connectionId: number) {
   const state = reactive(initialState())
   const socket = new WebSocket(sessionUrl(connectionId, window.location))
 
-  socket.addEventListener('message', (event: MessageEvent<string>) => {
-    const message = JSON.parse(event.data) as ServerMessage
-    applyMessage(state, message)
-    if (message.type === 'columns') {
-      const result = tabOf(state, message.query)?.result
-      if (result) {
-        // Réactivité superficielle : l'arrivée d'un lot rafraîchit l'affichage,
-        // sans rendre réactive chacune des milliers de lignes.
-        result.rows = shallowReactive([])
+  /**
+   * Messages reçus, pas encore appliqués, avec leur instant de réception.
+   */
+  let pending: [ServerMessage, number][] = []
+
+  /**
+   * Application différée des messages en attente, absente si rien n'attend.
+   */
+  let flushTimer: ReturnType<typeof setTimeout> | undefined
+
+  /**
+   * Applique d'un coup tous les messages en attente : l'interface n'est
+   * redessinée qu'une fois pour tous les lots de lignes reçus entre-temps.
+   */
+  function flush(): void {
+    flushTimer = undefined
+    const messages = pending
+    pending = []
+    for (const [message, receivedAt] of messages) {
+      applyMessage(state, message, receivedAt)
+      if (message.type === 'columns') {
+        const result = tabOf(state, message.query)?.result
+        if (result) {
+          // Réactivité superficielle : l'arrivée d'un lot rafraîchit l'affichage,
+          // sans rendre réactive chacune des milliers de lignes.
+          result.rows = shallowReactive([])
+        }
       }
     }
+  }
+
+  socket.addEventListener('message', (event: MessageEvent<string>) => {
+    pending.push([JSON.parse(event.data) as ServerMessage, Date.now()])
+    flushTimer ??= setTimeout(flush, FLUSH_DELAY)
   })
   socket.addEventListener('close', () => {
+    clearTimeout(flushTimer)
+    flush()
     state.status = 'closed'
   })
 

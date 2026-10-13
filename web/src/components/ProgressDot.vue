@@ -13,19 +13,24 @@ import { computed } from 'vue'
 
 import { type QueryTab, progressSummary, tabProgress } from '@/api/querySession'
 
+import { useClock } from './clock'
+
 const props = defineProps<{
   /**
    * Requête suivie.
    */
   tab: QueryTab
-  /**
-   * Instant présent, rafraîchi pendant l'exécution pour faire courir la durée.
-   */
-  now: number
 }>()
 
+const clock = useClock()
 const progress = computed(() => tabProgress(props.tab))
-const summary = computed(() => progressSummary(props.tab, props.now))
+
+// L'horloge n'est lue que pendant l'exécution : une requête terminée n'est
+// plus redessinée à chaque tic.
+const summary = computed(() => {
+  const running = props.tab.startedAt !== null && !props.tab.done
+  return progressSummary(props.tab, running ? clock.value : Date.now())
+})
 </script>
 
 <template>

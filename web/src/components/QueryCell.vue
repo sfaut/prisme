@@ -9,7 +9,7 @@
 -->
 <script setup lang="ts">
 import { NAlert, NButton, NSelect, NTabPane, NTabs } from 'naive-ui'
-import { computed, h, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
+import { computed, h, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import { type QueryTab, useQuerySession } from '@/api/querySession'
@@ -99,31 +99,8 @@ function tabLabel(query: number, text: string): string {
  * @param tab Onglet de la requête.
  */
 function tabTitle(tab: QueryTab) {
-  return () => [h(ProgressDot, { tab, now: now.value }), tabLabel(tab.query, tab.sql)]
+  return () => [h(ProgressDot, { tab }), tabLabel(tab.query, tab.sql)]
 }
-
-/**
- * Instant présent, rafraîchi pendant l'exécution pour faire courir les durées affichées.
- */
-const now = ref(Date.now())
-
-/**
- * Minuteur qui rafraîchit `now`, actif seulement pendant un lot.
- */
-let clock: ReturnType<typeof setInterval> | undefined
-
-watch(
-  () => state.status === 'running',
-  (running) => {
-    clearInterval(clock)
-    now.value = Date.now()
-    if (running) {
-      clock = setInterval(() => (now.value = Date.now()), 200)
-    }
-  },
-)
-
-onBeforeUnmount(() => clearInterval(clock))
 
 /**
  * Exécute la requête sous le curseur.
