@@ -358,8 +358,7 @@ mod tests {
         )
         .await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(body["sql"], "SELECT a
-FROM t");
+        assert_eq!(body["sql"], "SELECT a\nFROM t");
     }
 
     #[tokio::test]
