@@ -519,6 +519,16 @@ const filterColumn = computed({
   cursor: cell;
 }
 
+/* Seule la dernière colonne porte une bordure droite : les autres sont
+   fermées par la bordure gauche de leur voisine. */
+.grid-column-header:last-child {
+  border-right: 1px solid #ddd;
+}
+
+.grid-cell:last-child {
+  border-right: 1px solid #eee;
+}
+
 .grid-cell.null {
   color: #aaa;
   font-style: italic;
