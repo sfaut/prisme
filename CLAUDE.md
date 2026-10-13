@@ -100,6 +100,7 @@ Journaux plus détaillés : `$env:RUST_LOG="debug"` (PowerShell) avant `cargo ru
 7. **Aucun identifiant de connexion en clair**, ni dans la base interne, ni dans les journaux.
 8. **Suite de conformité** : une même requête est exécutée sur chaque base et les résultats sont comparés. Toute règle de traduction ajoutée doit avoir son test.
 9. **En cas de doute sur une décision de conception, demander à Sébastien.** Les points ouverts sont listés dans `docs/QUESTIONS.md`. Ne pas trancher en silence.
+10. **Interface : tout passe par les variables CSS du thème** (`web/src/assets/main.css`) : couleurs par rôle, tailles de police, espacements intérieurs et extérieurs, hauteurs, arrondis. Pas de valeur en dur dans un composant quand une variable existe ou a lieu d'exister. Chaque couleur a sa valeur claire et sombre ; tout nouvel écran se vérifie dans les deux modes.
 
 ## Ordre de développement de la v1
 
