@@ -15,4 +15,4 @@ right_aligned: Array<boolean>, sql: string, limit: LimitReport, } | { "type": "r
 /**
  * Base en cours de la session après la requête (elle change avec `USE`).
  */
-database: string | null, } | { "type": "error", query: number | null, message: string, } | { "type": "batch_done" };
+database: string | null, } | { "type": "error", query: number | null, message: string, } | { "type": "batch_done" } | { "type": "database", database: string | null, };

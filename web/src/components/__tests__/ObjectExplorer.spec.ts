@@ -144,6 +144,9 @@ describe('ObjectExplorer', () => {
     await vi.waitFor(() => expect(texts()[texts().indexOf('Autre') + 1]).toBe('a'))
     await node('Autre')?.trigger('dblclick')
     expect(wrapper.emitted('select')).toEqual([[2]])
+    // Double clic sur une base : elle devient la base en cours de sa source.
+    await node('a')?.trigger('dblclick')
+    expect(wrapper.emitted('use-database')).toEqual([[1, 'a']])
     wrapper.unmount()
   })
 

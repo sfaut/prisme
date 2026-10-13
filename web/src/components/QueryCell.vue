@@ -120,28 +120,45 @@ function run(cursor?: number): void {
 }
 
 /**
- * Exécute la requête sous le curseur dès que la session est prête : tout de
- * suite si elle l'est, sinon à la fin de son ouverture. Rien si elle se ferme
- * avant.
+ * Lance une action dès que la session est prête : tout de suite si elle
+ * l'est, sinon à la fin de son ouverture. Rien si elle se ferme avant.
  *
- * @param cursor Position du curseur ; absente, celle de l'éditeur.
+ * @param action Action à lancer.
  */
-function runWhenReady(cursor?: number): void {
+function whenReady(action: () => void): void {
   if (state.status === 'ready') {
-    run(cursor)
+    action()
     return
   }
   const stop = watch(
     () => state.status,
     (status) => {
       if (status === 'ready') {
-        run(cursor)
+        action()
       }
       if (status !== 'connecting') {
         stop()
       }
     },
   )
+}
+
+/**
+ * Exécute la requête sous le curseur dès que la session est prête.
+ *
+ * @param cursor Position du curseur ; absente, celle de l'éditeur.
+ */
+function runWhenReady(cursor?: number): void {
+  whenReady(() => run(cursor))
+}
+
+/**
+ * Change la base en cours de la session (comme `USE`) dès qu'elle est prête.
+ *
+ * @param database Nom de la base.
+ */
+function changeDatabaseWhenReady(database: string): void {
+  whenReady(() => session.changeDatabase(database))
 }
 
 /**
@@ -200,7 +217,7 @@ watch(
   (database) => emit('database', database),
 )
 
-defineExpose({ run, runWhenReady })
+defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
 </script>
 
 <template>

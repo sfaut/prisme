@@ -103,6 +103,13 @@ describe('applyMessage', () => {
     expect(state.database).toBe('shop')
   })
 
+  it('suit la base choisie par une demande use', () => {
+    const state = readyState()
+    applyMessage(state, { type: 'database', database: 'shop' })
+    expect(state.database).toBe('shop')
+    expect(state.status).toBe('ready')
+  })
+
   it('garde la session ouverte après une erreur de session', () => {
     const state = readyState()
     startBatch(state)

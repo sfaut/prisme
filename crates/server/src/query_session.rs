@@ -22,6 +22,8 @@
 //! serveur → client  {"type": "ready", "server": {"flavor": "mariadb", "version": "11.3.2-MariaDB"}, "database": "xlist"}
 //! client → serveur  {"type": "run", "sql": "SELECT 1; SELECT 2", "cursor": 3, "row_limit": 2000}   cursor et row_limit facultatifs
 //! client → serveur  {"type": "cancel"}                                  arrête toutes les requêtes en cours
+//! client → serveur  {"type": "use", "database": "xlist"}               change la base en cours de la session
+//! serveur → client  {"type": "database", "database": "xlist"}          réponse à use : la base en cours
 //! serveur → client  {"type": "batch", "queries": [{"query": 0, "sql": "SELECT 1", "start": 0, "end": 9}]}
 //! serveur → client  {"type": "started", "query": 0}                  la requête part (en parallèle, elle peut attendre son tour)
 //! serveur → client  {"type": "columns", "query": 0, "columns": ["1"], "sql": "SELECT 1 LIMIT 1001", "limit": "added"}
@@ -85,6 +87,16 @@ enum ClientMessage {
     Run(QueryRequest),
     /// Arrêter toutes les requêtes en cours.
     Cancel,
+    /// Changer la base en cours de la session, comme `USE`, sans résultat à afficher.
+    Use { database: String },
+}
+
+/// Demande transmise à la session par la lecture des messages du client.
+enum SessionRequest {
+    /// Exécuter des requêtes.
+    Run(QueryRequest),
+    /// Changer la base en cours.
+    Use(String),
 }
 
 /// Message d'erreur des requêtes arrêtées par l'utilisateur.
@@ -175,6 +187,8 @@ enum ServerMessage {
     Error { query: Option<u32>, message: String },
     /// Toutes les requêtes du lot sont terminées.
     BatchDone,
+    /// Base en cours de la session, après une demande `use` réussie.
+    Database { database: Option<String> },
 }
 
 /// Le client a fermé le WebSocket : la session s'arrête.
@@ -268,10 +282,11 @@ impl Drop for RunningGuard<'_> {
 /// Lit les messages du client pendant toute la session.
 ///
 /// Un arrêt (`cancel`) est traité aussitôt, même pendant l'exécution d'un
-/// lot ; une demande d'exécution (`run`) est transmise à la session.
+/// lot ; une demande d'exécution (`run`) ou de changement de base (`use`)
+/// est transmise à la session.
 async fn read_messages(
     mut incoming: SplitStream<WebSocket>,
-    requests: mpsc::Sender<QueryRequest>,
+    requests: mpsc::Sender<SessionRequest>,
     outbox: Outbox,
     cancellation: Arc<Cancellation>,
     target: MysqlTarget,
@@ -283,7 +298,12 @@ async fn read_messages(
         };
         match serde_json::from_str::<ClientMessage>(text.as_str()) {
             Ok(ClientMessage::Run(request)) => {
-                if requests.send(request).await.is_err() {
+                if requests.send(SessionRequest::Run(request)).await.is_err() {
+                    break;
+                }
+            }
+            Ok(ClientMessage::Use { database }) => {
+                if requests.send(SessionRequest::Use(database)).await.is_err() {
                     break;
                 }
             }
@@ -338,12 +358,16 @@ pub async fn run(socket: WebSocket, state: AppState, user_id: i64, target: Mysql
     if let Some(mut connection) = session.open().await {
         if let Ok(dialect) = session.ready(&mut connection).await {
             while let Some(request) = requests.recv().await {
-                cancellation.reset();
-                if session
-                    .handle(&mut connection, dialect, request)
-                    .await
-                    .is_err()
-                {
+                let handled = match request {
+                    SessionRequest::Run(request) => {
+                        cancellation.reset();
+                        session.handle(&mut connection, dialect, request).await
+                    }
+                    SessionRequest::Use(database) => {
+                        session.use_database(&mut connection, &database).await
+                    }
+                };
+                if handled.is_err() {
                     break;
                 }
             }
@@ -418,6 +442,23 @@ impl Session<'_> {
             })
             .await?;
         Ok(dialect)
+    }
+
+    /// Change la base en cours de la session et annonce la nouvelle base au
+    /// client ; un échec (base inconnue, droits) part comme erreur de session.
+    async fn use_database(
+        &self,
+        connection: &mut Connection,
+        database: &str,
+    ) -> Result<(), SocketClosed> {
+        let changed = match mysql::use_database(connection, database).await {
+            Ok(()) => mysql::current_database(connection).await,
+            Err(error) => Err(error),
+        };
+        match changed {
+            Ok(database) => self.outbox.send(ServerMessage::Database { database }).await,
+            Err(error) => self.outbox.error(None, error.to_string()).await,
+        }
     }
 
     /// Traite une demande du client : découpe le texte, puis exécute la
@@ -983,6 +1024,24 @@ mod tests {
         // USE change la base en cours, annoncée à la fin de la requête.
         let result = run_one(&mut socket, "USE mysql", None).await;
         assert_eq!(result.end["database"], "mysql");
+
+        // use change la base en cours sans résultat ; une base inconnue donne une erreur de session.
+        for database in ["test", "missing", "mysql"] {
+            let request = json!({ "type": "use", "database": database });
+            socket
+                .send(ClientMessage::Text(request.to_string().into()))
+                .await
+                .unwrap();
+            let answer = next_json(&mut socket).await;
+            if database == "missing" {
+                assert_eq!(
+                    (answer["type"].as_str(), answer["query"].is_null()),
+                    (Some("error"), true)
+                );
+            } else {
+                assert_eq!(answer, json!({ "type": "database", "database": database }));
+            }
+        }
 
         // Curseur sur la ligne vide entre deux requêtes : la précédente s'exécute.
         let text = "SELECT 'a';\n\nSELECT 'b', 'c';";

@@ -10,7 +10,8 @@
   clefs étrangères, déclencheurs), chaque partie affichée dès sa réception.
   Il reste ensuite en mémoire. Un clic sur une ligne ouvre ou ferme son
   niveau, comme le triangle. Un double clic sur une source la choisit comme
-  connexion de travail (émet `select`) ; elle reste surlignée.
+  connexion de travail (émet `select`) ; elle reste surlignée. Un double clic
+  sur une base en fait la base en cours, comme `USE` (émet `use-database`).
 
   Au survol de la racine, un menu « ⋮ » à droite ajoute une connexion ou relit tous les
   catalogues déjà lus ; au survol de chaque source, un autre modifie ou
@@ -52,6 +53,10 @@ const emit = defineEmits<{
    * L'utilisateur choisit une source comme connexion de travail.
    */
   select: [connectionId: number]
+  /**
+   * L'utilisateur choisit une base comme base en cours (`USE`).
+   */
+  'use-database': [connectionId: number, schema: string]
 }>()
 
 const catalog = useCatalogStore()
@@ -317,7 +322,7 @@ async function confirmRemove(): Promise<void> {
  */
 function renderSuffix({ option }: { option: TreeOption }) {
   const node = option as unknown as ExplorerNode
-  if (node.role === undefined) {
+  if (node.role === undefined || node.role === 'database') {
     return null
   }
   return h(
@@ -374,7 +379,7 @@ watch(
 
 /**
  * Propriétés HTML de chaque nœud : le double clic sur une source la choisit,
- * celui sur une table l'ouvre.
+ * celui sur une base en fait la base en cours, celui sur une table l'ouvre.
  *
  * @param info Nœud affiché.
  */
@@ -384,6 +389,8 @@ function nodeProps({ option }: { option: TreeOption }) {
     onDblclick: () => {
       if (node.role === 'source') {
         emit('select', node.connectionId)
+      } else if (node.role === 'database') {
+        emit('use-database', node.connectionId, node.schema)
       } else if (node.table !== undefined) {
         emit('open-table', node.connectionId, node.schema, node.table)
       }

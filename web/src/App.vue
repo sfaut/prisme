@@ -79,6 +79,20 @@ async function openTable(connectionId: number, schema: string, table: string): P
   await nextTick()
   cell.value?.runWhenReady(0)
 }
+
+/**
+ * Fait d'une base choisie dans l'explorateur la base en cours de la session
+ * (comme `USE`). Une base d'une autre source choisit d'abord cette connexion :
+ * le changement part dès que la session de la nouvelle cellule est ouverte.
+ *
+ * @param connectionId Identifiant de la connexion de la base.
+ * @param schema Nom de la base.
+ */
+async function useDatabase(connectionId: number, schema: string): Promise<void> {
+  connections.selectedId = connectionId
+  await nextTick()
+  cell.value?.changeDatabaseWhenReady(schema)
+}
 </script>
 
 <template>
@@ -97,6 +111,7 @@ async function openTable(connectionId: number, schema: string, table: string): P
             :current-database="currentDatabase"
             @open-table="openTable"
             @select="connections.selectedId = $event"
+            @use-database="useDatabase"
           />
         </n-layout-sider>
         <sider-resizer v-model="siderWidth" />

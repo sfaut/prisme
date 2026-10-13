@@ -254,6 +254,9 @@ export function applyMessage(
     case 'batch_done':
       state.status = 'ready'
       break
+    case 'database':
+      state.database = message.database
+      break
   }
 }
 
@@ -438,6 +441,19 @@ export function useQuerySession(connectionId: number) {
   }
 
   /**
+   * Change la base en cours de la session, comme `USE`, sans onglet de
+   * résultat. Pendant un lot, le changement attend sa fin. Un échec arrive
+   * comme erreur de session.
+   *
+   * @param database Nom de la base.
+   */
+  function changeDatabase(database: string): void {
+    if (state.status === 'ready' || state.status === 'running') {
+      send({ type: 'use', database })
+    }
+  }
+
+  /**
    * Arrête toutes les requêtes en cours : elles se terminent en erreur
    * « requête interrompue », et celles qui attendaient leur tour ne partent pas.
    */
@@ -465,5 +481,5 @@ export function useQuerySession(connectionId: number) {
 
   onScopeDispose(close)
 
-  return { state, run, cancel, close }
+  return { state, run, changeDatabase, cancel, close }
 }

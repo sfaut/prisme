@@ -88,10 +88,11 @@ export interface ExplorerNode extends Place {
    */
   isLeaf: boolean
   /**
-   * Rôle des nœuds qui portent un menu : les racines « Sources de données »
-   * (`sources`) et « Notebooks » (`notebooks`), ou une source (`source`).
+   * Rôle des nœuds sur lesquels on agit (menu, double clic) : les racines
+   * « Sources de données » (`sources`) et « Notebooks » (`notebooks`), une
+   * source (`source`) ou une base (`database`).
    */
-  role?: 'sources' | 'notebooks' | 'source'
+  role?: 'sources' | 'notebooks' | 'source' | 'database'
   /**
    * Table ou vue désignée par le nœud, pour l'ouvrir d'un double clic.
    */
@@ -244,6 +245,7 @@ export function catalogNodes(
       label: schema.name,
       isLeaf: false,
       ...place,
+      role: 'database' as const,
       current: schema.name === currentDatabase,
       children:
         schema.tables === null || schema.routines === null
