@@ -16,6 +16,7 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 
 - **Pipeline à plan logique pivot** : frontends vers plan, un optimiseur écrit une fois, émetteurs par source.
 - **Un langage par requête**, choisi par l'utilisateur.
+- **Autres langages à implémenter**, notés par Sébastien en octobre 2026 : Kusto (KQL, https://learn.microsoft.com/fr-fr/kusto/) et PRQL (https://prql-lang.org/). Leur place reste à fixer : langage d'entrée traduit vers le plan, ou dialecte d'une source (Kusto est aussi le langage d'Azure Data Explorer).
 - **ANSI strict comme noyau** du dialecte neutre, enrichi par emprunts (DuckDB, ClickHouse).
 - **Noms explicites pour les doublons** : `UnionAll`, `UnionDistinct`, `MinusAll`, `MinusDistinct`, `IntersectAll`, `IntersectDistinct`.
 - **Théorie de Date** pour le plan : `Group` et `Ungroup` comme nœuds, `SemiJoin` et `AntiJoin` de première classe.
