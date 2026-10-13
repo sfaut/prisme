@@ -25,7 +25,7 @@ Sébastien est propriétaire du projet, travaille en backend et en données (PHP
 - **Pilotes natifs, un par moteur** : `mysql_async` (MySQL et MariaDB), `tokio-postgres`, `rusqlite`, `duckdb` (derrière une feature Cargo, car la compilation est longue). `rusqlite` et `duckdb` sont synchrones : les mettre dans des tâches bloquantes dédiées.
 - **Parseur SQL** : `sqlparser-rs`. À vérifier : pas de dialecte MariaDB à ma connaissance, donc extension du dialecte MySQL.
 - **Base interne** : SQLite en mode WAL (connexions, notebooks, métriques, utilisateurs). Identifiants chiffrés (`aes-gcm`), mots de passe hachés (`argon2`).
-- **Frontend** : Vue 3 + TypeScript + Vite, fichiers `.vue` avec `<script setup lang="ts">`, `vue-tsc`, Pinia, Vitest, CodeMirror 6 (npm), Naive UI, ESLint + Prettier.
+- **Frontend** : Vue 3 + TypeScript + Vite, fichiers `.vue` avec `<script setup lang="ts">`, `vue-tsc`, Pinia, Vitest, CodeMirror 6 (npm), Nuxt UI (sur Reka UI) et Tailwind CSS, ESLint + Prettier.
 - **Types partagés** : les structures échangées entre Rust et l'interface sont définies une seule fois côté Rust, et leurs types TypeScript sont générés par `ts-rs`.
 - **Livraison** : un seul exécutable, avec `web/dist` embarqué par `rust-embed`. Pas de service externe à l'exécution. Les dépendances npm et Cargo sont acceptées au développement.
 - **Tests** : `testcontainers` pour MySQL, MariaDB et PostgreSQL, SQLite et DuckDB en mémoire.

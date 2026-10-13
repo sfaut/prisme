@@ -42,6 +42,7 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 | Frontend sans build (JavaScript + JSDoc + `@ts-check`, Vue en fichier copié) | Écartée | Sébastien tient aux types et à « l'industrie ». Navigateurs : pas de TypeScript natif (TC39 type annotations au stade 1). Sans build, les templates ne sont pas typés et presque aucune bibliothèque d'interface ne convient. |
 | DataFusion, Calcite, Trino comme base du moteur | Reportée | Sébastien veut éviter les dépendances. Leur modèle de plan sert de référence. DataFusion reste une option pour l'exécuteur. |
 | PrimeVue comme bibliothèque de composants | Écartée | Licence commerciale à clef depuis la v5 (juillet 2026), même en version communautaire gratuite. La v4.5.5, dernière sous MIT, est figée. Remplacée par Naive UI (MIT). |
+| Naive UI comme bibliothèque de composants | Écartée | Remplacée par Nuxt UI (MIT, sur Reka UI, avec Tailwind CSS) pour la refonte de l'interface : contrôle du rendu par les classes, thème par jetons, clair / sombre sans réglage par composant. Décision de Sébastien après un essai sur l'explorateur. |
 | `sqlx` pour les accès aux bases | Écartée | Gère mal les résultats dynamiques sans schéma connu, et l'annulation est moins directe. |
 | Tri déterministe ajouté d'office | Écartée | Sébastien sait que sans `ORDER BY` l'ordre n'est pas garanti. |
 | Typage ou schéma déclaré par fichier CSV | Écartée | Compliquerait l'outil. Casts dans la requête. Seule la déclaration de source (chemin, séparateur, encodage, en-tête) est gardée. |
