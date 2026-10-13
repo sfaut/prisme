@@ -306,7 +306,7 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
         aria-label="Limite de lignes"
         @update:model-value="changeLimit"
       />
-      <span class="text-xs text-muted">{{ connection.name }} · {{ serverLabel }}</span>
+      <span class="text-xs text-trim text-muted">{{ connection.name }} · {{ serverLabel }}</span>
     </div>
 
     <u-alert

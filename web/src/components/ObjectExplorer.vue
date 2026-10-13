@@ -72,7 +72,7 @@ const connections = useConnectionsStore()
  */
 const TREE_UI = {
   link: 'group px-1 py-0.5 gap-1 text-xs text-start',
-  linkLabel: 'min-w-0 flex-1 truncate',
+  linkLabel: 'min-w-0 flex-1 truncate text-trim',
   linkTrailing: 'gap-0',
 }
 
@@ -503,38 +503,10 @@ watch(
 <style scoped>
 /* Retrait de 12 pixels par niveau. Nuxt UI en met 22 (style en ligne, d'où
    !important), trop pour un arbre profond dans un panneau étroit. Reka UI
-   pose le niveau de chaque ligne dans `aria-level`. */
-.object-tree :deep([data-slot='link'][aria-level='2']) {
-  padding-inline-start: 16px !important;
-}
-.object-tree :deep([data-slot='link'][aria-level='3']) {
-  padding-inline-start: 28px !important;
-}
-.object-tree :deep([data-slot='link'][aria-level='4']) {
-  padding-inline-start: 40px !important;
-}
-.object-tree :deep([data-slot='link'][aria-level='5']) {
-  padding-inline-start: 52px !important;
-}
-.object-tree :deep([data-slot='link'][aria-level='6']) {
-  padding-inline-start: 64px !important;
-}
-.object-tree :deep([data-slot='link'][aria-level='7']) {
-  padding-inline-start: 76px !important;
-}
-.object-tree :deep([data-slot='link'][aria-level='8']) {
-  padding-inline-start: 88px !important;
-}
-.object-tree :deep([data-slot='link'][aria-level='9']) {
-  padding-inline-start: 100px !important;
-}
-.object-tree :deep([data-slot='link'][aria-level='10']) {
-  padding-inline-start: 112px !important;
-}
-.object-tree :deep([data-slot='link'][aria-level='11']) {
-  padding-inline-start: 124px !important;
-}
-.object-tree :deep([data-slot='link'][aria-level='12']) {
-  padding-inline-start: 136px !important;
+   pose le niveau de chaque ligne dans `aria-level`, lu ici comme un nombre
+   par `attr()`. Un navigateur qui ne sait pas encore lire un attribut typé
+   ignore la règle et garde le retrait de Nuxt UI. */
+.object-tree :deep([data-slot='link'][aria-level]) {
+  padding-inline-start: calc(4px + 12px * (attr(aria-level type(<integer>), 1) - 1)) !important;
 }
 </style>

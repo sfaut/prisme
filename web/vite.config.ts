@@ -17,11 +17,15 @@ export default defineConfig({
     // embarquées dans le bundle (collection @iconify-json/lucide) : aucune
     // n'est téléchargée à l'exécution. Les fenêtres et les messages
     // éphémères s'affichent en texte plus petit que le reste de l'interface.
+    // Les libellés sont centrés sur leurs capitales (`text-trim`, main.css).
     ui({
       router: false,
       icon: { clientBundle: { scan: true } },
       ui: {
         colors: { primary: 'blue', neutral: 'zinc' },
+        button: { slots: { label: 'text-trim' } },
+        badge: { slots: { label: 'text-trim' } },
+        tabs: { slots: { label: 'text-trim' } },
         modal: { slots: { title: 'text-sm', description: 'text-xs', body: 'text-xs' } },
         toast: { slots: { title: 'text-xs', description: 'text-xs' } },
       },
