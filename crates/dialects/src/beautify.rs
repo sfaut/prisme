@@ -1,6 +1,6 @@
 //! Enjoliveur : réécrit le SQL saisi en « beau SQL », règle par règle.
 //!
-//! Règle en place :
+//! Règles en place :
 //!
 //! 1. **Mots-clefs en capitales.** Seuls les mots réservés de MySQL passent
 //!    en capitales, plus quelques mots-clefs sans ambiguïté (`EXTRA_KEYWORDS`).
@@ -12,295 +12,22 @@
 //!    `INTERVAL <valeur>` et en premier argument d'`EXTRACT`,
 //!    `TIMESTAMPADD` et `TIMESTAMPDIFF`.
 //!
-//! Tout le reste du texte est conservé à l'identique : espaces, retours à la
-//! ligne, commentaires, chaînes, identifiants entre accents graves. Le texte
-//! est découpé en jetons par `sqlparser`, et seuls les mots concernés sont
-//! remplacés, à leur position d'origine.
+//! 2. **Mise en page** : une clause par ligne, une colonne et un prédicat
+//!    par ligne quand il y en a plusieurs, espaces autour des opérateurs
+//!    (module `layout`).
+//!
+//! Le texte des jetons est conservé à l'identique : commentaires, chaînes,
+//! identifiants entre accents graves. Le texte est découpé en jetons par
+//! `sqlparser` ; les mots-clefs sont mis en capitales à leur position
+//! d'origine, puis la mise en page ne change que les espaces et les retours à
+//! la ligne.
 
 use sqlparser::tokenizer::{Token, Tokenizer};
 
 use crate::Dialect;
+use crate::keywords::is_keyword;
+use crate::layout::layout;
 use crate::limit::byte_offset;
-
-/// Mots réservés de MySQL 8 : ils ne peuvent pas servir d'identifiant sans accents graves.
-const RESERVED_WORDS: &[&str] = &[
-    "ACCESSIBLE",
-    "ADD",
-    "ALL",
-    "ALTER",
-    "ANALYZE",
-    "AND",
-    "AS",
-    "ASC",
-    "ASENSITIVE",
-    "BEFORE",
-    "BETWEEN",
-    "BIGINT",
-    "BINARY",
-    "BLOB",
-    "BOTH",
-    "BY",
-    "CALL",
-    "CASCADE",
-    "CASE",
-    "CHANGE",
-    "CHAR",
-    "CHARACTER",
-    "CHECK",
-    "COLLATE",
-    "COLUMN",
-    "CONDITION",
-    "CONSTRAINT",
-    "CONTINUE",
-    "CONVERT",
-    "CREATE",
-    "CROSS",
-    "CUBE",
-    "CUME_DIST",
-    "CURRENT_DATE",
-    "CURRENT_TIME",
-    "CURRENT_TIMESTAMP",
-    "CURRENT_USER",
-    "CURSOR",
-    "DATABASE",
-    "DATABASES",
-    "DAY_HOUR",
-    "DAY_MICROSECOND",
-    "DAY_MINUTE",
-    "DAY_SECOND",
-    "DEC",
-    "DECIMAL",
-    "DECLARE",
-    "DEFAULT",
-    "DELAYED",
-    "DELETE",
-    "DENSE_RANK",
-    "DESC",
-    "DESCRIBE",
-    "DETERMINISTIC",
-    "DISTINCT",
-    "DISTINCTROW",
-    "DIV",
-    "DOUBLE",
-    "DROP",
-    "DUAL",
-    "EACH",
-    "ELSE",
-    "ELSEIF",
-    "EMPTY",
-    "ENCLOSED",
-    "ESCAPED",
-    "EXCEPT",
-    "EXISTS",
-    "EXIT",
-    "EXPLAIN",
-    "FALSE",
-    "FETCH",
-    "FIRST_VALUE",
-    "FLOAT",
-    "FLOAT4",
-    "FLOAT8",
-    "FOR",
-    "FORCE",
-    "FOREIGN",
-    "FROM",
-    "FULLTEXT",
-    "FUNCTION",
-    "GENERATED",
-    "GET",
-    "GRANT",
-    "GROUP",
-    "GROUPING",
-    "GROUPS",
-    "HAVING",
-    "HIGH_PRIORITY",
-    "HOUR_MICROSECOND",
-    "HOUR_MINUTE",
-    "HOUR_SECOND",
-    "IF",
-    "IGNORE",
-    "IN",
-    "INDEX",
-    "INFILE",
-    "INNER",
-    "INOUT",
-    "INSENSITIVE",
-    "INSERT",
-    "INT",
-    "INT1",
-    "INT2",
-    "INT3",
-    "INT4",
-    "INT8",
-    "INTEGER",
-    "INTERSECT",
-    "INTERVAL",
-    "INTO",
-    "IO_AFTER_GTIDS",
-    "IO_BEFORE_GTIDS",
-    "IS",
-    "ITERATE",
-    "JOIN",
-    "JSON_TABLE",
-    "KEY",
-    "KEYS",
-    "KILL",
-    "LAG",
-    "LAST_VALUE",
-    "LATERAL",
-    "LEAD",
-    "LEADING",
-    "LEAVE",
-    "LEFT",
-    "LIKE",
-    "LIMIT",
-    "LINEAR",
-    "LINES",
-    "LOAD",
-    "LOCALTIME",
-    "LOCALTIMESTAMP",
-    "LOCK",
-    "LONG",
-    "LONGBLOB",
-    "LONGTEXT",
-    "LOOP",
-    "LOW_PRIORITY",
-    "MASTER_BIND",
-    "MASTER_SSL_VERIFY_SERVER_CERT",
-    "MATCH",
-    "MAXVALUE",
-    "MEDIUMBLOB",
-    "MEDIUMINT",
-    "MEDIUMTEXT",
-    "MIDDLEINT",
-    "MINUTE_MICROSECOND",
-    "MINUTE_SECOND",
-    "MOD",
-    "MODIFIES",
-    "NATURAL",
-    "NOT",
-    "NO_WRITE_TO_BINLOG",
-    "NTH_VALUE",
-    "NTILE",
-    "NULL",
-    "NUMERIC",
-    "OF",
-    "ON",
-    "OPTIMIZE",
-    "OPTIMIZER_COSTS",
-    "OPTION",
-    "OPTIONALLY",
-    "OR",
-    "ORDER",
-    "OUT",
-    "OUTER",
-    "OUTFILE",
-    "OVER",
-    "PARTITION",
-    "PERCENT_RANK",
-    "PRECISION",
-    "PRIMARY",
-    "PROCEDURE",
-    "PURGE",
-    "RANGE",
-    "RANK",
-    "READ",
-    "READS",
-    "READ_WRITE",
-    "REAL",
-    "RECURSIVE",
-    "REFERENCES",
-    "REGEXP",
-    "RELEASE",
-    "RENAME",
-    "REPEAT",
-    "REPLACE",
-    "REQUIRE",
-    "RESIGNAL",
-    "RESTRICT",
-    "RETURN",
-    "REVOKE",
-    "RIGHT",
-    "RLIKE",
-    "ROW",
-    "ROWS",
-    "ROW_NUMBER",
-    "SCHEMA",
-    "SCHEMAS",
-    "SECOND_MICROSECOND",
-    "SELECT",
-    "SENSITIVE",
-    "SEPARATOR",
-    "SET",
-    "SHOW",
-    "SIGNAL",
-    "SMALLINT",
-    "SPATIAL",
-    "SPECIFIC",
-    "SQL",
-    "SQLEXCEPTION",
-    "SQLSTATE",
-    "SQLWARNING",
-    "SQL_BIG_RESULT",
-    "SQL_CALC_FOUND_ROWS",
-    "SQL_SMALL_RESULT",
-    "SSL",
-    "STARTING",
-    "STORED",
-    "STRAIGHT_JOIN",
-    "SYSTEM",
-    "TABLE",
-    "TERMINATED",
-    "THEN",
-    "TINYBLOB",
-    "TINYINT",
-    "TINYTEXT",
-    "TO",
-    "TRAILING",
-    "TRIGGER",
-    "TRUE",
-    "UNDO",
-    "UNION",
-    "UNIQUE",
-    "UNLOCK",
-    "UNSIGNED",
-    "UPDATE",
-    "USAGE",
-    "USE",
-    "USING",
-    "UTC_DATE",
-    "UTC_TIME",
-    "UTC_TIMESTAMP",
-    "VALUES",
-    "VARBINARY",
-    "VARCHAR",
-    "VARCHARACTER",
-    "VARYING",
-    "VIRTUAL",
-    "WHEN",
-    "WHERE",
-    "WHILE",
-    "WINDOW",
-    "WITH",
-    "WRITE",
-    "XOR",
-    "YEAR_MONTH",
-    "ZEROFILL",
-];
-
-/// Mots-clefs non réservés, mais sans ambiguïté en pratique, mis aussi en capitales.
-const EXTRA_KEYWORDS: &[&str] = &[
-    "BEGIN",
-    "COLUMNS",
-    "COMMIT",
-    "END",
-    "OFFSET",
-    "ROLLBACK",
-    "TABLES",
-    "TRANSACTION",
-    "TRUNCATE",
-    "VIEW",
-];
 
 /// Unités de temps de MySQL, en capitales dans les positions où elles ne
 /// peuvent être qu'une unité (les unités composées, `DAY_HOUR`..., sont réservées).
@@ -319,11 +46,16 @@ const TIME_UNITS: &[&str] = &[
 /// Fonctions dont le premier argument est une unité de temps.
 const UNIT_FUNCTIONS: &[&str] = &["EXTRACT", "TIMESTAMPADD", "TIMESTAMPDIFF"];
 
-/// Enjolive `sql` : applique les règles de l'enjoliveur, sans rien changer d'autre.
+/// Enjolive `sql` : mots-clefs en capitales, puis mise en page (module `layout`).
 ///
 /// Un texte que le découpeur en jetons ne comprend pas (chaîne non fermée...)
 /// est renvoyé tel quel.
 pub fn beautify(sql: &str, dialect: Dialect) -> String {
+    layout(&uppercase_keywords(sql, dialect), dialect)
+}
+
+/// Met les mots-clefs en capitales, sans rien changer d'autre.
+fn uppercase_keywords(sql: &str, dialect: Dialect) -> String {
     let parser_dialect = dialect.parser_dialect();
     let Ok(tokens) = Tokenizer::new(parser_dialect.as_ref(), sql).tokenize_with_location() else {
         return sql.to_string();
@@ -380,18 +112,12 @@ pub fn beautify(sql: &str, dialect: Dialect) -> String {
     result
 }
 
-/// Indique si un mot non protégé passe en capitales.
-fn is_keyword(word: &str) -> bool {
-    let upper = word.to_ascii_uppercase();
-    RESERVED_WORDS.contains(&upper.as_str()) || EXTRA_KEYWORDS.contains(&upper.as_str())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn pretty(sql: &str) -> String {
-        beautify(sql, Dialect::MariaDb)
+        uppercase_keywords(sql, Dialect::MariaDb)
     }
 
     #[test]
@@ -445,6 +171,19 @@ mod tests {
         );
         // Ailleurs, ces mots peuvent être des noms de colonnes.
         assert_eq!(pretty("select day, year from t"), "SELECT day, year FROM t");
+    }
+
+    #[test]
+    fn beautifies_with_layout() {
+        assert_eq!(
+            beautify("select a, b from t where x=1 and y=2", Dialect::MariaDb),
+            "SELECT
+    a,
+    b
+FROM t
+WHERE x = 1
+AND y = 2"
+        );
     }
 
     #[test]

@@ -8,6 +8,8 @@
 
 pub mod beautify;
 pub mod classify;
+mod keywords;
+mod layout;
 pub mod limit;
 
 /// Dialecte SQL d'une requête.
