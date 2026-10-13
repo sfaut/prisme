@@ -85,6 +85,8 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 
 26. **Reconstruction partielle de l'arbre de l'explorateur.** L'arbre entier se reconstruit à chaque révision du catalogue (au plus 0,4 s sur 1 000 tables, voir le chapitre 2 de `docs/PERF.md`). Avec beaucoup de sources et beaucoup de tables, colonnes, index, il faudra ne reconstruire que les bases modifiées, voire construire les nœuds seulement à l'ouverture. Décision de Sébastien : à faire plus tard.
 
+27. **Copie avec ou sans en-têtes, réglage du profil.** Ctrl-C copie la sélection de la grille avec les noms des colonnes en première ligne. Décision de Sébastien : ce sera une option du profil de l'utilisateur, avec les en-têtes par défaut. À faire avec les profils (mode serveur, ou réglages de l'utilisateur unique).
+
 ### Sécurité
 
 23. **Clef maîtresse du chiffrement** : tranché, fichier de clef `prisme.key` dans le dossier de données (voir `docs/V1.md`, section 2.8).
