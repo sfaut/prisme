@@ -7,10 +7,17 @@
  * procédures, fonctions), puis le détail des tables.
  * Une partie pas encore reçue vaut `null`. Revenir sur une connexion déjà
  * explorée réutilise son catalogue ; « Rafraîchir » le relit.
+ *
+ * Un catalogue compte des dizaines de milliers d'objets (tables, colonnes,
+ * index...) : il reste hors de la réactivité de Vue, qui suivrait chacun
+ * d'eux. Mesuré sur 20 bases de 50 tables, le parcours profond du catalogue
+ * à chaque message reçu figeait l'interface pendant 3 minutes. Seul un
+ * numéro de révision par connexion est réactif : il augmente au plus toutes
+ * les 100 ms pendant la réception, et à la fin.
  */
 
 import { defineStore } from 'pinia'
-import { reactive, ref } from 'vue'
+import { markRaw, ref, shallowRef, triggerRef } from 'vue'
 
 import { streamCatalog } from '@/api/explorer'
 import type { CatalogEvent } from '@/api/generated/CatalogEvent'
@@ -118,11 +125,23 @@ export function applyCatalogEvent(catalog: Catalog, event: CatalogEvent): void {
   }
 }
 
+/**
+ * Délai entre deux signalements de nouvelles parties du catalogue, en millisecondes.
+ */
+const REVISION_DELAY = 100
+
 export const useCatalogStore = defineStore('catalog', () => {
   /**
-   * Catalogues, par identifiant de connexion.
+   * Catalogues, par identifiant de connexion. Les objets sont bruts (`markRaw`) :
+   * lire `revisions` pour être prévenu de leurs changements.
    */
-  const catalogs = ref<Record<number, Catalog>>({})
+  const catalogs = shallowRef<Record<number, Catalog>>({})
+
+  /**
+   * Numéro de révision de chaque catalogue : il augmente quand de nouvelles
+   * parties sont arrivées.
+   */
+  const revisions = ref<Record<number, number>>({})
 
   /**
    * Lit le catalogue d'une connexion au fil de l'eau, sauf s'il est déjà en mémoire.
@@ -135,16 +154,45 @@ export const useCatalogStore = defineStore('catalog', () => {
     if (!refresh && catalogs.value[connectionId] !== undefined) {
       return
     }
-    const catalog = reactive(emptyCatalog())
+    const catalog = markRaw(emptyCatalog())
     catalogs.value[connectionId] = catalog
+    triggerRef(catalogs)
+    revisions.value[connectionId] = (revisions.value[connectionId] ?? 0) + 1
+
+    /**
+     * Signalement différé des nouvelles parties, absent si rien n'attend.
+     */
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const signal = () => {
+      timer = undefined
+      revisions.value[connectionId] = (revisions.value[connectionId] ?? 0) + 1
+    }
     try {
-      await streamCatalog(connectionId, (event) => applyCatalogEvent(catalog, event))
+      await streamCatalog(connectionId, (event) => {
+        applyCatalogEvent(catalog, event)
+        timer ??= setTimeout(signal, REVISION_DELAY)
+      })
     } catch (failure) {
       // Rien de lisible : la prochaine ouverture de l'explorateur réessaiera.
       delete catalogs.value[connectionId]
+      triggerRef(catalogs)
       throw failure
+    } finally {
+      clearTimeout(timer)
+      signal()
     }
   }
 
-  return { catalogs, load }
+  /**
+   * Catalogue d'une connexion, `undefined` s'il n'a jamais été lu. Lire cette
+   * fonction dans un `computed` le fait recalculer à chaque révision.
+   *
+   * @param connectionId Identifiant de la connexion.
+   */
+  function catalogOf(connectionId: number): Catalog | undefined {
+    void revisions.value[connectionId]
+    return catalogs.value[connectionId]
+  }
+
+  return { catalogs, revisions, load, catalogOf }
 })

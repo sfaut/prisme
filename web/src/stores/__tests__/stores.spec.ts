@@ -1,6 +1,8 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { computed, isReactive } from 'vue'
 
+import { useCatalogStore } from '../catalog'
 import { useConnectionsStore } from '../connections'
 import { useSettingsStore } from '../settings'
 
@@ -19,6 +21,13 @@ vi.mock('@/api/connections', () => ({
   ],
   createConnection: async () => ({ id: 7 }),
   deleteConnection: async () => undefined,
+}))
+
+vi.mock('@/api/explorer', () => ({
+  streamCatalog: async (_id: number, onEvent: (event: unknown) => void) => {
+    onEvent({ type: 'schemas', schemas: ['app', 'logs'] })
+    onEvent({ type: 'done' })
+  },
 }))
 
 vi.mock('@/api/settings', () => ({
@@ -58,5 +67,17 @@ describe('settings', () => {
     expect(store.settings?.row_limit).toBe(1000)
     await store.setRowLimit(2000)
     expect(store.settings?.row_limit).toBe(2000)
+  })
+})
+
+describe('catalog', () => {
+  it('garde le catalogue hors de la réactivité et signale ses changements', async () => {
+    const store = useCatalogStore()
+    const names = computed(() => store.catalogOf(3)?.schemas.map((schema) => schema.name) ?? [])
+    expect(names.value).toEqual([])
+    await store.load(3)
+    expect(names.value).toEqual(['app', 'logs'])
+    expect(store.catalogOf(3)?.done).toBe(true)
+    expect(isReactive(store.catalogOf(3))).toBe(false)
   })
 })

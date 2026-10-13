@@ -59,7 +59,7 @@ const error = ref<string | null>(null)
  * Arbre complet, construit à partir du catalogue en mémoire.
  */
 const nodes = computed(() => {
-  const current = catalog.catalogs[props.connectionId]
+  const current = catalog.catalogOf(props.connectionId)
   return (current
     ? catalogNodes(current.schemas, props.currentDatabase)
     : []) as unknown as TreeOption[]
@@ -68,13 +68,14 @@ const nodes = computed(() => {
 /**
  * Erreurs de lecture signalées par le serveur pendant la réception.
  */
-const readErrors = computed(() => catalog.catalogs[props.connectionId]?.errors ?? [])
+// Copie : le tableau du catalogue est brut, il garde la même référence en grandissant.
+const readErrors = computed(() => [...(catalog.catalogOf(props.connectionId)?.errors ?? [])])
 
 /**
  * Le catalogue est-il encore en cours de réception ?
  */
 const receiving = computed(() => {
-  const current = catalog.catalogs[props.connectionId]
+  const current = catalog.catalogOf(props.connectionId)
   return current !== undefined && !current.done
 })
 
