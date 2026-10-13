@@ -41,9 +41,14 @@ const props = defineProps<{
    */
   columns: string[]
   /**
-   * Lignes du résultat ; le tableau peut grandir pendant la réception.
+   * Lignes du résultat ; le tableau peut grandir pendant la réception, sans
+   * être réactif : c'est `rowCount` qui signale les nouvelles lignes.
    */
   rows: Cell[][]
+  /**
+   * Nombre de lignes reçues.
+   */
+  rowCount: number
 }>()
 
 /**
@@ -76,12 +81,18 @@ let dragging = false
 /**
  * Vue : indices des lignes sources, filtrées et triées.
  */
-const view = computed(() => visibleRows(props.rows, filter, sort.value))
+const view = computed(() => {
+  // Lu pour que la vue se recalcule à l'arrivée de nouvelles lignes.
+  void props.rowCount
+  return visibleRows(props.rows, filter, sort.value)
+})
 
 /**
  * Largeurs des colonnes, estimées sur l'en-tête et les premières lignes.
  */
 const template = computed(() => {
+  // Lu pour que les largeurs se recalculent à l'arrivée de nouvelles lignes.
+  void props.rowCount
   const widths = props.columns.map((name, column) => {
     let longest = name.length + 2
     for (const row of props.rows.slice(0, WIDTH_SAMPLE)) {
@@ -89,7 +100,7 @@ const template = computed(() => {
     }
     return Math.min(360, Math.max(48, longest * CHAR_WIDTH + 16))
   })
-  const numberWidth = String(props.rows.length).length * CHAR_WIDTH + 16
+  const numberWidth = String(props.rowCount).length * CHAR_WIDTH + 16
   return [numberWidth, ...widths].map((width) => `${width}px`).join(' ')
 })
 
@@ -224,7 +235,7 @@ const filterColumn = computed({
         size="tiny"
         class="grid-filter-column"
       />
-      <span class="grid-count">{{ view.length }} / {{ rows.length }} lignes</span>
+      <span class="grid-count">{{ view.length }} / {{ rowCount }} lignes</span>
       <n-button size="tiny" :disabled="selection.ranges.length === 0" @click="copy(false)">
         Copier
       </n-button>

@@ -11,7 +11,8 @@ import ResultGrid from '../ResultGrid.vue'
  */
 function mountGrid(columns: string[], rows: (string | null)[][]) {
   return mount({
-    render: () => h(NMessageProvider, () => h(ResultGrid, { columns, rows })),
+    render: () =>
+      h(NMessageProvider, () => h(ResultGrid, { columns, rows, rowCount: rows.length })),
   })
 }
 

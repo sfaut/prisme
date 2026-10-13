@@ -16,7 +16,7 @@
  * l'utilise pour exposer un état réactif aux composants.
  */
 
-import { onScopeDispose, reactive, shallowReactive } from 'vue'
+import { markRaw, onScopeDispose, reactive } from 'vue'
 
 import type { LimitReport } from './generated/LimitReport'
 import type { ClientMessage } from './generated/ClientMessage'
@@ -62,9 +62,15 @@ export interface QueryResult {
    */
   columns: string[]
   /**
-   * Lignes reçues jusqu'ici.
+   * Lignes reçues jusqu'ici. Dans l'interface, ce tableau n'est pas réactif
+   * (ajouter des milliers de lignes une à une coûterait cher) : c'est
+   * `rowCount` qui signale l'arrivée de nouvelles lignes.
    */
   rows: Cell[][]
+  /**
+   * Nombre de lignes reçues : la valeur réactive à suivre pour redessiner.
+   */
+  rowCount: number
   /**
    * Des lignes au-delà de la limite ont-elles été écartées ?
    */
@@ -193,6 +199,7 @@ export function applyMessage(
           limit: message.limit,
           columns: message.columns,
           rows: [],
+          rowCount: 0,
           truncated: false,
           affectedRows: 0,
           elapsedMs: 0,
@@ -200,9 +207,14 @@ export function applyMessage(
       }
       break
     }
-    case 'rows':
-      tabOf(state, message.query)?.result?.rows.push(...message.rows)
+    case 'rows': {
+      const result = tabOf(state, message.query)?.result
+      if (result) {
+        result.rows.push(...message.rows)
+        result.rowCount = result.rows.length
+      }
       break
+    }
     case 'done': {
       const tab = tabOf(state, message.query)
       if (tab) {
@@ -307,7 +319,7 @@ export function progressSummary(tab: QueryTab, now: number): string[] {
   }
   let rows = '—'
   if (tab.result) {
-    const count = tab.result.rows.length
+    const count = tab.result.rowCount
     rows = `${count.toLocaleString('fr-FR')} ${count > 1 ? 'lignes' : 'ligne'}`
     if (tab.result.truncated) {
       rows += ' (tronqué)'
@@ -385,9 +397,8 @@ export function useQuerySession(connectionId: number) {
       if (message.type === 'columns') {
         const result = tabOf(state, message.query)?.result
         if (result) {
-          // Réactivité superficielle : l'arrivée d'un lot rafraîchit l'affichage,
-          // sans rendre réactive chacune des milliers de lignes.
-          result.rows = shallowReactive([])
+          // Lignes hors de la réactivité de Vue : seul `rowCount` signale leur arrivée.
+          result.rows = markRaw([])
         }
       }
     }

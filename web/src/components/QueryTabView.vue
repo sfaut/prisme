@@ -29,12 +29,10 @@ function lines(count: number): string {
   <div class="query-tab">
     <n-alert v-if="tab.error" type="error" :show-icon="false">{{ tab.error }}</n-alert>
     <div v-if="tab.result" class="tab-status">
-      <span v-if="tab.done"
-        >{{ lines(tab.result.rows.length) }} · {{ tab.result.elapsedMs }} ms</span
-      >
-      <span v-else>{{ lines(tab.result.rows.length) }} reçues…</span>
+      <span v-if="tab.done">{{ lines(tab.result.rowCount) }} · {{ tab.result.elapsedMs }} ms</span>
+      <span v-else>{{ lines(tab.result.rowCount) }} reçues…</span>
       <n-tag v-if="tab.result.truncated" type="warning" size="small">
-        Résultat tronqué à {{ lines(tab.result.rows.length) }}
+        Résultat tronqué à {{ lines(tab.result.rowCount) }}
       </n-tag>
       <code v-if="tab.result.limit === 'added'" class="tab-sql" :title="tab.result.sql">
         {{ tab.result.sql }}
@@ -45,6 +43,7 @@ function lines(count: number): string {
       v-if="tab.result && tab.result.columns.length > 0"
       :columns="tab.result.columns"
       :rows="tab.result.rows"
+      :row-count="tab.result.rowCount"
     />
   </div>
 </template>
