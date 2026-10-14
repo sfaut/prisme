@@ -614,8 +614,8 @@ const filterColumn = computed({
         class="grid-filter-toggle"
         @click="toggleFilter"
       />
-      <span class="grid-count">{{ countLabel }}</span>
-      <slot name="footer" />
+      <!-- L'emplacement suit le nombre dans le même texte, sans l'écart du conteneur. -->
+      <span class="grid-count">{{ countLabel }}<slot name="footer" /></span>
     </div>
   </div>
 </template>

@@ -99,7 +99,7 @@ const durations = computed(() => {
       :sql="tab.sql"
     >
       <template #footer>
-        <span v-if="durations">· {{ durations }}</span>
+        <template v-if="durations">&nbsp;· {{ durations }}</template>
       </template>
     </result-grid>
     <div v-else-if="durations" class="text-trim text-fg-muted">{{ durations }}</div>
