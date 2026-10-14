@@ -93,7 +93,8 @@ function reset(): void {
   cursor: row-resize;
   touch-action: none;
 
-  /* Trait visible au repos, au milieu de la zone de prise. */
+  /* Trait visible au repos, au milieu de la zone de prise, posé sur un
+     pixel entier pour rester net (voir `.editor-pane` dans `QueryCell.vue`). */
   &::before {
     position: absolute;
     inset-inline: 0;
@@ -101,6 +102,10 @@ function reset(): void {
     block-size: var(--line-width);
     background: var(--line);
     content: '';
+
+    @supports (top: round(down, 10%, 1px)) {
+      inset-block-start: round(down, 50% - var(--line-width) / 2, 1px);
+    }
   }
 
   &:hover,

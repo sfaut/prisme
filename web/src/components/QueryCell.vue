@@ -333,7 +333,7 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
 <template>
   <div ref="cellRoot" class="flex min-h-0 flex-1 flex-col gap-gap">
     <!-- Bloc du haut : l'éditeur, qui prend la place restante, puis les boutons. -->
-    <div class="editor-pane" :style="{ flexBasis: `${editorSplit * 100}%` }">
+    <div class="editor-pane" :style="{ '--editor-split': `${editorSplit * 100}%` }">
       <sql-editor
         ref="editor"
         v-model="sql"
@@ -450,14 +450,22 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
 
 <style scoped>
 /* Bloc du haut (éditeur et boutons) : la part retenue de la hauteur
-   (flex-basis) ; l'éditeur garde au moins quelques lignes. */
+   (`--editor-split`) ; l'éditeur garde au moins quelques lignes. */
 .editor-pane {
   display: flex;
+  flex: 0 0 var(--editor-split);
   flex-direction: column;
-  flex-grow: 0;
-  flex-shrink: 0;
   gap: var(--gap);
   min-block-size: calc(var(--editor-min-height) + var(--control-height) + var(--gap));
+}
+
+/* Hauteur arrondie au pixel : la barre de partage qui suit tombe sur un
+   pixel entier, et son trait reste aussi net que le bord du panneau de
+   gauche (sur une demi-position, il s'étalerait sur deux pixels). */
+@supports (flex-basis: round(down, 10%, 1px)) {
+  .editor-pane {
+    flex-basis: round(down, var(--editor-split), 1px);
+  }
 }
 
 /* Repère d'insertion d'un onglet déplacé, comme pour les colonnes de la grille. */
