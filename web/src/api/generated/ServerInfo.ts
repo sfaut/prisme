@@ -12,4 +12,10 @@ flavor: Flavor,
 /**
  * Résultat brut de `SELECT VERSION()`, par exemple `8.1.0` ou `11.3.2-MariaDB-1:11.3.2+maria~ubu2204`.
  */
-version: string, };
+version: string, 
+/**
+ * Le mode `ANSI_QUOTES` est-il actif sur la session (directement, ou par
+ * le mode `ANSI`) ? Les guillemets doubles délimitent alors des
+ * identifiants, et non plus des chaînes.
+ */
+ansi_quotes: boolean, };

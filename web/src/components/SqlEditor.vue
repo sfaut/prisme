@@ -44,6 +44,11 @@ const props = defineProps<{
    */
   version: string | null
   /**
+   * Le mode `ANSI_QUOTES` est-il actif sur la session ? Les guillemets
+   * doubles délimitent alors des identifiants (coloration, complétion).
+   */
+  ansiQuotes: boolean
+  /**
    * Bases, tables et colonnes proposées par la complétion.
    */
   schema: SQLNamespace
@@ -150,7 +155,7 @@ async function loadKeywords(): Promise<void> {
 
 function currentLanguage(): LanguageSupport {
   const fallback = props.flavor === 'mariadb' ? MariaSQL : MySQL
-  const dialect = keywords === null ? fallback : editorDialect(keywords)
+  const dialect = keywords === null ? fallback : editorDialect(keywords, props.ansiQuotes)
   // Langue montée à la main plutôt que par `sql()`, qui ajouterait la
   // complétion des mots-clefs : seuls les noms du catalogue sont proposés.
   const names = schemaCompletionSource({
@@ -208,7 +213,7 @@ watch(text, (value) => {
 })
 
 watch(
-  () => [props.flavor, props.schema, props.defaultSchema],
+  () => [props.flavor, props.ansiQuotes, props.schema, props.defaultSchema],
   () => view?.dispatch({ effects: language.reconfigure(currentLanguage()) }),
 )
 

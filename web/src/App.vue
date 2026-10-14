@@ -29,7 +29,6 @@ import SiderResizer from './components/SiderResizer.vue'
 import UiAlert from './components/ui/UiAlert.vue'
 import UiSelect from './components/ui/UiSelect.vue'
 import UiToaster from './components/ui/UiToaster.vue'
-import { selectAllQuery } from './components/explorerNodes'
 import { clampSiderWidth, loadSiderWidth } from './components/siderWidth'
 
 const connections = useConnectionsStore()
@@ -146,11 +145,8 @@ async function activeCellOn(connectionId: number) {
  * @param table Nom de la table.
  */
 async function openTable(connectionId: number, schema: string, table: string): Promise<void> {
-  if (editors.active) {
-    editors.setSql(editors.active.id, selectAllQuery(schema, table))
-  }
   try {
-    ;(await activeCellOn(connectionId))?.runWhenReady(0)
+    ;(await activeCellOn(connectionId))?.showTableWhenReady(schema, table)
   } catch (failure) {
     report(failure)
   }

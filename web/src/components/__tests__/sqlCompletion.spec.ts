@@ -5,6 +5,24 @@ import type { CatalogSchema } from '@/stores/catalog'
 import { completionSchema } from '../sqlCompletion'
 
 describe('completionSchema', () => {
+  it('délimite les noms qui ne sont pas des identifiants simples, selon ANSI_QUOTES', () => {
+    const schemas: CatalogSchema[] = [
+      {
+        name: 'ma base',
+        tables: [{ name: 'clients', kind: 'table', details: null }],
+        routines: [],
+      },
+    ]
+    const backticks = completionSchema(schemas) as Record<string, { self: { apply?: string } }>
+    expect(backticks['ma base']!.self.apply).toBe('`ma base`')
+    const ansi = completionSchema(schemas, true) as Record<
+      string,
+      { self: { apply?: string }; children: Record<string, { self: { apply?: string } }> }
+    >
+    expect(ansi['ma base']!.self.apply).toBe('"ma base"')
+    expect(ansi['ma base']!.children.clients!.self.apply).toBeUndefined()
+  })
+
   it('propose bases, tables, colonnes et routines avec leur nature, même avec un catalogue incomplet', () => {
     const schemas: CatalogSchema[] = [
       {

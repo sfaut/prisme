@@ -23,7 +23,7 @@ function readyState() {
   const state = initialState()
   applyMessage(state, {
     type: 'ready',
-    server: { flavor: 'mariadb', version: '11.3.2' },
+    server: { flavor: 'mariadb', version: '11.3.2', ansi_quotes: false },
     database: 'xlist',
   })
   return state

@@ -33,18 +33,24 @@ function wordList(words: string[]): string {
 /**
  * Dialecte de l'éditeur pour ces mots-clefs.
  *
+ * Avec le mode `ANSI_QUOTES` de la session, les guillemets doubles
+ * délimitent des identifiants (et la complétion les emploie pour protéger
+ * un nom) ; sinon ce sont des chaînes, et les identifiants se protègent par
+ * des accents graves.
+ *
  * @param keywords Mots-clefs du dialecte, par catégorie.
+ * @param ansiQuotes Le mode `ANSI_QUOTES` est-il actif sur la session ?
  */
-export function editorDialect(keywords: DialectKeywords): SQLDialect {
+export function editorDialect(keywords: DialectKeywords, ansiQuotes = false): SQLDialect {
   return SQLDialect.define({
     operatorChars: '*+-%<>!=&|^',
     charSetCasts: true,
-    doubleQuotedStrings: true,
+    doubleQuotedStrings: !ansiQuotes,
     unquotedBitLiterals: true,
     hashComments: true,
     spaceAfterDashes: true,
     specialVar: '@?',
-    identifierQuotes: '`',
+    identifierQuotes: ansiQuotes ? '"`' : '`',
     keywords: wordList([...keywords.reserved, ...keywords.keywords]),
     types: wordList(keywords.types),
     builtin: wordList(keywords.literals.filter((word) => !NATIVE_VALUES.has(word.toLowerCase()))),

@@ -38,6 +38,7 @@ import ResultTab from './ResultTab.vue'
 import SqlEditor from './SqlEditor.vue'
 import { movedItems, useTabDrag } from './tabDrag'
 import { loadEditorSplit } from './editorSplit'
+import { selectAllQuery } from './explorerNodes'
 import { completionSchema } from './sqlCompletion'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
@@ -236,6 +237,22 @@ function runWhenReady(cursor?: number): void {
 }
 
 /**
+ * Affiche le contenu d'une table dès que la session est prête : l'éditeur
+ * reçoit la requête, qui part aussitôt. Les noms sont délimités selon le
+ * mode `ANSI_QUOTES` de la session, connu seulement une fois prête.
+ *
+ * @param schema Nom de la base.
+ * @param table Nom de la table.
+ */
+function showTableWhenReady(schema: string, table: string): void {
+  whenReady(() => {
+    const query = selectAllQuery(schema, table, state.server?.ansi_quotes ?? false)
+    sql.value = query
+    session.run(query, 0)
+  })
+}
+
+/**
  * Change la base en cours de la session (comme `USE`) dès qu'elle est prête.
  *
  * @param database Nom de la base.
@@ -249,7 +266,10 @@ function changeDatabaseWhenReady(database: string): void {
  * d'après le catalogue de la connexion (chargé par l'explorateur).
  */
 const completion = computed(() =>
-  completionSchema(catalog.catalogOf(props.connection.id)?.schemas ?? []),
+  completionSchema(
+    catalog.catalogOf(props.connection.id)?.schemas ?? [],
+    state.server?.ansi_quotes ?? false,
+  ),
 )
 
 /**
@@ -316,7 +336,7 @@ watch(
   (database) => emit('database', database),
 )
 
-defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
+defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
 </script>
 
 <template>
@@ -373,6 +393,7 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
         v-model="sql"
         :flavor="state.server?.flavor ?? 'mysql'"
         :version="state.server?.version ?? null"
+        :ansi-quotes="state.server?.ansi_quotes ?? false"
         :schema="completion"
         :default-schema="state.database"
         @run="run"

@@ -17,4 +17,12 @@ describe('editorDialect', () => {
     expect(dialect.spec.hashComments).toBe(true)
     expect(dialect.spec.identifierQuotes).toBe('`')
   })
+
+  it('délimite les identifiants par des guillemets doubles en ANSI_QUOTES', () => {
+    const words = { reserved: [], keywords: [], types: [], literals: [] }
+    const ansi = editorDialect(words, true)
+    expect(ansi.spec.identifierQuotes).toBe('"`')
+    expect(ansi.spec.doubleQuotedStrings).toBe(false)
+    expect(editorDialect(words).spec.doubleQuotedStrings).toBe(true)
+  })
 })

@@ -68,6 +68,10 @@ pub struct ServerInfo {
     pub flavor: Flavor,
     /// Résultat brut de `SELECT VERSION()`, par exemple `8.1.0` ou `11.3.2-MariaDB-1:11.3.2+maria~ubu2204`.
     pub version: String,
+    /// Le mode `ANSI_QUOTES` est-il actif sur la session (directement, ou par
+    /// le mode `ANSI`) ? Les guillemets doubles délimitent alors des
+    /// identifiants, et non plus des chaînes.
+    pub ansi_quotes: bool,
 }
 
 /// Erreurs du connecteur MySQL / MariaDB.
@@ -145,12 +149,23 @@ pub async fn connect(target: &MysqlTarget) -> Result<Conn, MysqlError> {
 
 /// Lit l'identité du serveur sur une connexion ouverte.
 pub async fn server_info(connection: &mut Conn) -> Result<ServerInfo, MysqlError> {
-    let version: Option<String> = connection.query_first("SELECT VERSION()").await?;
-    let version = version.ok_or(MysqlError::MissingVersion)?;
+    let row: Option<(String, String)> = connection
+        .query_first("SELECT VERSION(), @@SESSION.sql_mode")
+        .await?;
+    let (version, sql_mode) = row.ok_or(MysqlError::MissingVersion)?;
     Ok(ServerInfo {
         flavor: detect_flavor(&version),
+        ansi_quotes: has_ansi_quotes(&sql_mode),
         version,
     })
+}
+
+/// `sql_mode` contient-il `ANSI_QUOTES` ? Le serveur développe le mode
+/// `ANSI` en ses composants dans `@@sql_mode`, `ANSI_QUOTES` compris.
+fn has_ansi_quotes(sql_mode: &str) -> bool {
+    sql_mode
+        .split(',')
+        .any(|mode| mode.trim().eq_ignore_ascii_case("ANSI_QUOTES"))
 }
 
 /// Base en cours sur une connexion ouverte (`SELECT DATABASE()`), `None` si aucune.
@@ -339,6 +354,18 @@ mod tests {
         assert!(is_right_aligned(ColumnType::MYSQL_TYPE_TIME));
         assert!(!is_right_aligned(ColumnType::MYSQL_TYPE_VAR_STRING));
         assert!(!is_right_aligned(ColumnType::MYSQL_TYPE_BLOB));
+    }
+
+    #[test]
+    fn detects_ansi_quotes_in_sql_mode() {
+        assert!(has_ansi_quotes(
+            "REAL_AS_FLOAT,PIPES_AS_CONCAT,ANSI_QUOTES,IGNORE_SPACE,ANSI"
+        ));
+        assert!(has_ansi_quotes("ANSI_QUOTES"));
+        assert!(!has_ansi_quotes(
+            "STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION"
+        ));
+        assert!(!has_ansi_quotes(""));
     }
 
     #[test]

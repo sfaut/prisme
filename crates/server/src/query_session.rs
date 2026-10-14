@@ -22,7 +22,7 @@
 //! Protocole, en JSON texte :
 //!
 //! ```text
-//! serveur → client  {"type": "ready", "server": {"flavor": "mariadb", "version": "11.3.2-MariaDB"}, "database": "xlist"}
+//! serveur → client  {"type": "ready", "server": {"flavor": "mariadb", "version": "11.3.2-MariaDB", "ansi_quotes": false}, "database": "xlist"}
 //! client → serveur  {"type": "run", "sql": "SELECT 1; SELECT 2", "cursor": 3, "row_limit": 2000}   cursor et row_limit facultatifs
 //! client → serveur  {"type": "cancel"}                                  arrête toutes les requêtes en cours
 //! client → serveur  {"type": "cancel_query", "query": 2}                arrête une seule requête du lot en cours
@@ -921,8 +921,9 @@ mod tests {
             username: "root".to_string(),
             password: SecretString::from(""),
             database_name: "test".to_string(),
-            // Requête à la connexion : la variable existe sur chaque connexion ouverte.
-            init_sql: "SET @prisme_init = 1".to_string(),
+            // Requêtes à la connexion : la variable existe sur chaque connexion
+            // ouverte, et les guillemets doubles y délimitent des identifiants.
+            init_sql: "SET @prisme_init = 1; SET SESSION sql_mode = 'ANSI_QUOTES'".to_string(),
             session_timeout_minutes: 5,
         };
         let id = connections::insert(&db, &key, user_id, &new).unwrap();
@@ -1097,6 +1098,7 @@ mod tests {
         let ready = next_json(&mut socket).await;
         assert_eq!(ready["type"], "ready");
         assert_eq!(ready["server"]["flavor"], "mariadb");
+        assert_eq!(ready["server"]["ansi_quotes"], true);
         assert_eq!(ready["database"], "test");
 
         // Pas de limite écrite : 1 000 lignes affichées sur 2 500, résultat tronqué.

@@ -556,20 +556,25 @@ export function triggerLabel(trigger: TriggerInfo): string {
 }
 
 /**
- * Requête qui affiche le contenu d'une table, avec des noms protégés par des accents graves.
+ * Requête qui affiche le contenu d'une table, avec des noms protégés.
  *
  * @param schema Nom de la base.
  * @param table Nom de la table.
+ * @param ansiQuotes Le mode `ANSI_QUOTES` est-il actif sur la session ?
  */
-export function selectAllQuery(schema: string, table: string): string {
-  return `SELECT * FROM ${quoteIdentifier(schema)}.${quoteIdentifier(table)}`
+export function selectAllQuery(schema: string, table: string, ansiQuotes = false): string {
+  return `SELECT * FROM ${quoteIdentifier(schema, ansiQuotes)}.${quoteIdentifier(table, ansiQuotes)}`
 }
 
 /**
- * Protège un identifiant MySQL : accents graves autour, accent grave interne doublé.
+ * Protège un identifiant MySQL : guillemets doubles si le mode
+ * `ANSI_QUOTES` est actif, accents graves sinon ; le délimiteur présent
+ * dans le nom est doublé.
  *
  * @param name Identifiant à protéger.
+ * @param ansiQuotes Le mode `ANSI_QUOTES` est-il actif sur la session ?
  */
-function quoteIdentifier(name: string): string {
-  return `\`${name.replace(/`/g, '``')}\``
+export function quoteIdentifier(name: string, ansiQuotes: boolean): string {
+  const quote = ansiQuotes ? '"' : '`'
+  return `${quote}${name.split(quote).join(quote + quote)}${quote}`
 }
