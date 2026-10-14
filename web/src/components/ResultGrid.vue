@@ -31,14 +31,14 @@
     `DECIMAL(10,2)`...) s'affiche au survol. Une colonne de texte qui
     contient du JSON ou du XML montre l'icône de ce format (`contentKind.ts`).
   - Liens : dans une colonne d'adresses web, chaque adresse est un lien,
-    ouvert dans un nouvel onglet.
+    précédé d'une icône de lien externe et ouvert dans un nouvel onglet.
 
   Seules les lignes visibles existent dans la page (défilement virtuel) : la
   grille reste fluide avec des dizaines de milliers de lignes. La logique
   (tri, filtre, sélection, copie) est dans `resultGrid.ts`.
 -->
 <script setup lang="ts">
-import { ListFilter, Search, X } from 'lucide-vue-next'
+import { ExternalLink, ListFilter, Search, X } from 'lucide-vue-next'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { computed, nextTick, reactive, ref, shallowRef, useTemplateRef, watch } from 'vue'
 
@@ -690,7 +690,9 @@ const filterColumn = computed({
               target="_blank"
               rel="noopener noreferrer"
               @mousedown.stop
-              >{{ cellAt(item.index, column) }}</a
+              ><ExternalLink class="grid-link-icon" aria-hidden="true" />{{
+                cellAt(item.index, column)
+              }}</a
             >
             <template v-else>{{ cellAt(item.index, column) ?? NULL_TEXT }}</template>
           </div>
@@ -948,5 +950,14 @@ const filterColumn = computed({
   &:hover {
     text-decoration: underline;
   }
+}
+
+/* Icône de lien externe, devant l'adresse. */
+.grid-link-icon {
+  display: inline-block;
+  inline-size: var(--icon-size-sm);
+  block-size: var(--icon-size-sm);
+  margin-inline-end: 0.25em;
+  vertical-align: -0.1em;
 }
 </style>
