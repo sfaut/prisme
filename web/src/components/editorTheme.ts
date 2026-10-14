@@ -25,6 +25,13 @@ const chrome = EditorView.theme({
     color: 'var(--fg-dimmed)',
     borderRight: 'var(--line-width) solid var(--line)',
   },
+  // Numéros de ligne plus petits que le texte, centrés sur leur ligne.
+  '.cm-lineNumbers .cm-gutterElement': {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    fontSize: 'var(--editor-gutter-font-size)',
+  },
   '.cm-activeLine': { backgroundColor: 'var(--editor-active-line)' },
   '.cm-activeLineGutter': { backgroundColor: 'var(--editor-active-gutter)' },
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection':
