@@ -14,6 +14,10 @@
   la base en cours, comme `USE` (émet `use-database`). Un double clic sur une
   table ou une vue émet `open-table`, pour en afficher le contenu.
 
+  Chaque ligne porte l'icône de son niveau : racines, source, base, dossier
+  (ouvert ou fermé), table, vue, procédure, fonction, colonne, index, clef
+  étrangère, déclencheur, et un cercle qui tourne pendant un chargement.
+
   Au survol de la racine, un menu « ⋮ » à droite ajoute une connexion ou relit
   tous les catalogues déjà lus ; au survol de chaque source, un autre modifie
   ou teste la connexion, relit son catalogue ou supprime la connexion (après
@@ -30,18 +34,29 @@ import {
   Cable,
   ChevronDown,
   ChevronRight,
+  Columns3,
   Database,
   EllipsisVertical,
+  Eye,
+  Folder,
+  FolderOpen,
   Hash,
   KeyRound,
+  Link,
+  ListOrdered,
+  LoaderCircle,
   Notebook,
   NotebookPen,
   Pencil,
   PlugZap,
   Plus,
   RefreshCw,
+  ScrollText,
+  Server,
+  SquareFunction,
   Table,
   Trash2,
+  Zap,
 } from 'lucide-vue-next'
 import { TreeItem, type TreeItemSelectEvent, TreeRoot, TreeVirtualizer } from 'reka-ui'
 import { type Component, computed, onMounted, ref, watch } from 'vue'
@@ -53,7 +68,13 @@ import { useCatalogStore } from '@/stores/catalog'
 import { useConnectionsStore } from '@/stores/connections'
 
 import ConnectionDialog from './ConnectionDialog.vue'
-import { type ExplorerNode, SOURCES_KEY, explorerTree, sourceKey } from './explorerNodes'
+import {
+  type EntryKind,
+  type ExplorerNode,
+  SOURCES_KEY,
+  explorerTree,
+  sourceKey,
+} from './explorerNodes'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
 import UiDialog from './ui/UiDialog.vue'
@@ -235,22 +256,43 @@ function expand(keys: string[]): void {
 }
 
 /**
- * Icône d'un nœud, devant son libellé : source, base, table ou vue,
- * racine des notebooks ; `null` pour les autres nœuds (dossiers, colonnes...).
+ * Icône des nœuds du catalogue, selon leur nature (dossier à part : son
+ * icône dépend de son ouverture).
+ */
+const ENTRY_ICONS: Record<Exclude<EntryKind, 'folder'>, Component> = {
+  table: Table,
+  view: Eye,
+  procedure: ScrollText,
+  function: SquareFunction,
+  column: Columns3,
+  index: ListOrdered,
+  'foreign-key': Link,
+  trigger: Zap,
+  loading: LoaderCircle,
+}
+
+/**
+ * Icône d'un nœud, devant son libellé : chaque niveau a la sienne (racines,
+ * source, base, dossier ouvert ou fermé, table, vue, colonne...).
  *
  * @param node Nœud de l'arbre.
+ * @param expanded Le nœud est-il ouvert ?
  */
-function nodeIcon(node: ExplorerNode): Component | null {
+function nodeIcon(node: ExplorerNode, expanded: boolean): Component {
   switch (node.role) {
+    case 'sources':
+      return Server
     case 'source':
       return Cable
     case 'database':
       return Database
     case 'notebooks':
       return Notebook
-    default:
-      return node.table === undefined ? null : Table
   }
+  if (node.entry === undefined || node.entry === 'folder') {
+    return expanded ? FolderOpen : Folder
+  }
+  return ENTRY_ICONS[node.entry]
 }
 
 /**
@@ -441,9 +483,9 @@ watch(
           />
           <span v-else class="size-icon-sm shrink-0" />
           <component
-            :is="nodeIcon(item.value as ExplorerNode)"
-            v-if="nodeIcon(item.value as ExplorerNode)"
+            :is="nodeIcon(item.value as ExplorerNode, isExpanded)"
             class="size-icon shrink-0 text-fg-muted"
+            :class="{ 'animate-spin': item.value.entry === 'loading' }"
           />
 
           <!-- Colonne : symboles, nom (gras si indexée), type et nullabilité. -->

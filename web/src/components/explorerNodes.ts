@@ -72,7 +72,22 @@ export interface Source {
 }
 
 /**
- * Nœud de l'arbre, au format attendu par `NTree` de Naive UI.
+ * Nature d'un nœud du catalogue qui n'a pas de rôle, pour choisir son icône.
+ */
+export type EntryKind =
+  | 'folder'
+  | 'table'
+  | 'view'
+  | 'procedure'
+  | 'function'
+  | 'column'
+  | 'index'
+  | 'foreign-key'
+  | 'trigger'
+  | 'loading'
+
+/**
+ * Nœud de l'arbre, au format attendu par `TreeRoot` de Reka UI.
  */
 export interface ExplorerNode extends Place {
   /**
@@ -93,6 +108,10 @@ export interface ExplorerNode extends Place {
    * source (`source`) ou une base (`database`).
    */
   role?: 'sources' | 'notebooks' | 'source' | 'database'
+  /**
+   * Nature d'un nœud du catalogue sans rôle (dossier, table, colonne...).
+   */
+  entry?: EntryKind
   /**
    * Table ou vue désignée par le nœud, pour l'ouvrir d'un double clic.
    */
@@ -281,6 +300,7 @@ function schemaFolders(
     key: `routine:${base}.${routine.name}:${routine.kind}`,
     label: routine.name,
     isLeaf: true,
+    entry: routine.kind === 'procedure' ? 'procedure' : 'function',
     ...place,
   })
   return [
@@ -323,6 +343,7 @@ function tableNode(place: Place, table: CatalogTable): ExplorerNode {
     key,
     label: table.kind === 'system' ? `${table.name} (système)` : table.name,
     isLeaf: false,
+    entry: table.kind === 'view' ? 'view' : 'table',
     ...place,
     table: table.name,
     children:
@@ -342,10 +363,11 @@ function tableNode(place: Place, table: CatalogTable): ExplorerNode {
  */
 function tableFolders(place: Place, kind: TableKind, details: TableDetails): ExplorerNode[] {
   const base = `${placeKey(place)}.${details.table}`
-  const item = (prefix: string, name: string, label: string): ExplorerNode => ({
+  const item = (entry: EntryKind, prefix: string, name: string, label: string): ExplorerNode => ({
     key: `${prefix}:${base}.${name}`,
     label,
     isLeaf: true,
+    entry,
     ...place,
   })
   const foreignKeyColumns = new Set(details.foreign_keys.flatMap((key) => key.columns))
@@ -361,7 +383,7 @@ function tableFolders(place: Place, kind: TableKind, details: TableDetails): Exp
     details.columns.map((column) => {
       const foreignKey = foreignKeyColumns.has(column.name)
       return {
-        ...item('column', column.name, `${column.name} ${columnDetails(column)}`),
+        ...item('column', 'column', column.name, `${column.name} ${columnDetails(column)}`),
         column: {
           name: column.name,
           details: columnDetails(column),
@@ -384,7 +406,7 @@ function tableFolders(place: Place, kind: TableKind, details: TableDetails): Exp
       'Index',
       place,
       details.indexes.map((index) => ({
-        ...item('index', index.name, indexLabel(index)),
+        ...item('index', 'index', index.name, indexLabel(index)),
         note: indexNote(index),
       })),
     ),
@@ -392,13 +414,17 @@ function tableFolders(place: Place, kind: TableKind, details: TableDetails): Exp
       `foreign-keys:${base}`,
       'Clefs étrangères',
       place,
-      details.foreign_keys.map((key) => item('fk', key.name, foreignKeyLabel(place.schema, key))),
+      details.foreign_keys.map((key) =>
+        item('foreign-key', 'fk', key.name, foreignKeyLabel(place.schema, key)),
+      ),
     ),
     folder(
       `triggers:${base}`,
       'Déclencheurs',
       place,
-      details.triggers.map((trigger) => item('trigger', trigger.name, triggerLabel(trigger))),
+      details.triggers.map((trigger) =>
+        item('trigger', 'trigger', trigger.name, triggerLabel(trigger)),
+      ),
     ),
   ]
 }
@@ -416,6 +442,7 @@ function folder(key: string, label: string, place: Place, children: ExplorerNode
     key: `folder:${key}`,
     label: `${label} (${children.length})`,
     isLeaf: children.length === 0,
+    entry: 'folder',
     ...place,
     children,
   }
@@ -431,6 +458,7 @@ function loadingNode(parent: string, place: Place): ExplorerNode {
   return {
     key: `${parent}:loading`,
     label: 'chargement…',
+    entry: 'loading',
     isLeaf: true,
     ...place,
     disabled: true,
