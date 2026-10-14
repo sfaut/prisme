@@ -791,7 +791,6 @@ const filterColumn = computed({
 .grid-column-name {
   display: flex;
   flex: 1;
-  align-items: center;
   gap: var(--grid-type-gap);
   min-inline-size: 0;
   padding-inline: var(--grid-cell-padding-x);
@@ -802,15 +801,21 @@ const filterColumn = computed({
 /* Icône neutre de la famille du type, devant le nom. */
 .grid-type-icon {
   flex: none;
+  align-self: center;
   inline-size: var(--icon-size-sm);
   block-size: var(--icon-size-sm);
   color: var(--fg-dimmed);
 }
 
-/* Le nom se tronque en premier, puis le type. */
+/*
+ * Le nom se tronque en premier, puis le type. Chacun occupe toute la
+ * hauteur de l'en-tête et y centre ses capitales (`align-content`) : rogné
+ * à sa hauteur de capitales, le texte perdrait ses jambages (« q », « _ »).
+ */
 .grid-column-label,
 .grid-column-type {
   overflow: hidden;
+  align-content: center;
   text-overflow: ellipsis;
   text-box: trim-both cap alphabetic;
 }
