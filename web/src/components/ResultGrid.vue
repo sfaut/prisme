@@ -27,8 +27,8 @@
   - Alignement : nombres, dates et heures à droite, d'après le type annoncé
     par le serveur.
   - Types : chaque en-tête montre l'icône de la famille du type de sa
-    colonne (`typeIcons.ts`), puis le nom natif du type (`VARCHAR(20)`,
-    `DECIMAL(10,2)`...), en petit et plus clair.
+    colonne (`typeIcons.ts`) ; le nom natif du type (`VARCHAR(20)`,
+    `DECIMAL(10,2)`...) s'affiche au survol.
 
   Seules les lignes visibles existent dans la page (défilement virtuel) : la
   grille reste fluide avec des dizaines de milliers de lignes. La logique
@@ -224,15 +224,14 @@ const estimated = computed(() => {
 })
 
 /**
- * Texte de l'en-tête d'une colonne, pour estimer sa largeur : son nom, puis
- * la place de l'icône et du nom du type.
+ * Texte de l'en-tête d'une colonne, pour estimer sa largeur : son nom, plus
+ * la place de l'icône du type.
  *
  * @param column Indice de la colonne.
  */
 function headerText(column: number): string {
-  const type = props.columnTypes[column]
   const name = props.columns[column] ?? ''
-  return type ? `${name}    ${type.name}` : name
+  return props.columnTypes[column] ? `${name}  ` : name
 }
 
 /**
@@ -575,9 +574,6 @@ const filterColumn = computed({
               aria-hidden="true"
             />
             <span class="grid-column-label">{{ columns[column] }}</span>
-            <span v-if="columnTypes[column]" class="grid-column-type">
-              {{ columnTypes[column].name }}
-            </span>
           </span>
           <button
             class="grid-sort"
@@ -808,27 +804,16 @@ const filterColumn = computed({
 }
 
 /*
- * Le nom se tronque en premier, puis le type. Chacun occupe toute la
- * hauteur de l'en-tête et y centre ses capitales (`align-content`) : rogné
- * à sa hauteur de capitales, le texte perdrait ses jambages (« q », « _ »).
+ * Le nom occupe toute la hauteur de l'en-tête et y centre ses capitales
+ * (`align-content`) : rogné à sa hauteur de capitales, il perdrait ses
+ * jambages (« q », « _ »).
  */
-.grid-column-label,
-.grid-column-type {
+.grid-column-label {
+  flex: 0 1 auto;
   overflow: hidden;
   align-content: center;
   text-overflow: ellipsis;
   text-box: trim-both cap alphabetic;
-}
-
-.grid-column-label {
-  flex: 0 1 auto;
-}
-
-.grid-column-type {
-  flex: 0 100 auto;
-  color: var(--fg-dimmed);
-  font-size: var(--font-size-small);
-  font-weight: 400;
 }
 
 .grid-sort {

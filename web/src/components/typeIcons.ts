@@ -2,7 +2,7 @@
  * Icône de chaque famille de types de colonne, affichée devant le nom des
  * colonnes dans l'en-tête de la grille de résultats (à la manière de
  * DuckDB UI). Les icônes sont neutres : même couleur pour toutes les
- * familles ; le nom natif du type, affiché à côté, donne le détail.
+ * familles ; le nom natif du type, au survol de l'en-tête, donne le détail.
  */
 
 import {

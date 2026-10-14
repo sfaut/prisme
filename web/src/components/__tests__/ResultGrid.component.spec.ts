@@ -27,14 +27,15 @@ function mountGrid(
 }
 
 describe('ResultGrid', () => {
-  it('affiche le type de chaque colonne dans son en-tête', () => {
+  it('montre le type de chaque colonne par une icône, son nom au survol', () => {
     const wrapper = mountGrid(['id', 'name'], [['1', 'a']], 'SELECT id, name FROM t', [
       { family: 'integer', name: 'INT UNSIGNED' },
       { family: 'text', name: 'VARCHAR(20)' },
     ])
-    const types = wrapper.findAll('.grid-column-type').map((type) => type.text())
-    expect(types).toEqual(['INT UNSIGNED', 'VARCHAR(20)'])
     expect(wrapper.findAll('.grid-type-icon')).toHaveLength(2)
+    expect(wrapper.find('.grid-column-type').exists()).toBe(false)
+    const titles = wrapper.findAll('.grid-column-name').map((name) => name.attributes('title'))
+    expect(titles[1]).toContain('VARCHAR(20)')
   })
 
   it('sélectionne tout par un clic sur le coin supérieur gauche', async () => {
