@@ -229,6 +229,11 @@ mod tests {
     #[test]
     fn adds_limit_to_plain_select() {
         assert_eq!(added("SELECT * FROM t"), "SELECT * FROM t LIMIT 1001");
+        // Requête générée par l'explorateur, quantificateur écrit en entier.
+        assert_eq!(
+            added("SELECT ALL * FROM `b`.`t`"),
+            "SELECT ALL * FROM `b`.`t` LIMIT 1001"
+        );
     }
 
     #[test]

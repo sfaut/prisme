@@ -556,14 +556,15 @@ export function triggerLabel(trigger: TriggerInfo): string {
 }
 
 /**
- * Requête qui affiche le contenu d'une table, avec des noms protégés.
+ * Requête qui affiche le contenu d'une table (`SELECT ALL`, quantificateur
+ * écrit en entier), avec des noms protégés.
  *
  * @param schema Nom de la base.
  * @param table Nom de la table.
  * @param ansiQuotes Le mode `ANSI_QUOTES` est-il actif sur la session ?
  */
 export function selectAllQuery(schema: string, table: string, ansiQuotes = false): string {
-  return `SELECT * FROM ${quoteIdentifier(schema, ansiQuotes)}.${quoteIdentifier(table, ansiQuotes)}`
+  return `SELECT ALL * FROM ${quoteIdentifier(schema, ansiQuotes)}.${quoteIdentifier(table, ansiQuotes)}`
 }
 
 /**
