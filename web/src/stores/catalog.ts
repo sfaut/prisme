@@ -16,6 +16,7 @@
  * les 100 ms pendant la réception, et à la fin.
  */
 
+import type { BeautifyCatalog } from '@/api/generated/BeautifyCatalog'
 import { defineStore } from 'pinia'
 import { markRaw, ref, shallowRef, triggerRef } from 'vue'
 
@@ -195,15 +196,24 @@ export const useCatalogStore = defineStore('catalog', () => {
   }
 
   /**
-   * Noms des fonctions et procédures de l'utilisateur, toutes bases
-   * confondues, tels que définis ; vide si le catalogue n'est pas lu.
+   * Noms du catalogue tels que définis, pour l'enjoliveur : bases, tables
+   * et vues, colonnes, fonctions et procédures, toutes bases confondues.
+   * Les parties pas encore lues sont simplement absentes.
    *
    * @param connectionId Identifiant de la connexion.
    */
-  function routineNames(connectionId: number): string[] {
+  function catalogNames(connectionId: number): BeautifyCatalog {
     const schemas = catalogs.value[connectionId]?.schemas ?? []
-    return schemas.flatMap((schema) => (schema.routines ?? []).map((routine) => routine.name))
+    const tables = schemas.flatMap((schema) => schema.tables ?? [])
+    return {
+      schemas: schemas.map((schema) => schema.name),
+      tables: tables.map((table) => table.name),
+      columns: tables.flatMap((table) =>
+        (table.details?.columns ?? []).map((column) => column.name),
+      ),
+      routines: schemas.flatMap((schema) => (schema.routines ?? []).map((routine) => routine.name)),
+    }
   }
 
-  return { catalogs, revisions, load, catalogOf, routineNames }
+  return { catalogs, revisions, load, catalogOf, catalogNames }
 })

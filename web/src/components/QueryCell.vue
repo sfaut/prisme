@@ -274,22 +274,25 @@ const completion = computed(() =>
 
 /**
  * Le catalogue de la connexion est-il entièrement chargé ? Sans lui,
- * l'enjoliveur ne connaît pas les fonctions de l'utilisateur et les
- * mettrait en capitales : « Enjoliver » attend donc la fin du chargement.
+ * l'enjoliveur ne connaît ni l'écriture des tables et des colonnes, ni les
+ * fonctions de l'utilisateur, qu'il mettrait en capitales : « Enjoliver »
+ * attend donc la fin du chargement.
  */
 const catalogReady = computed(() => catalog.catalogOf(props.connection.id)?.done === true)
 
 /**
- * Enjolive le texte de l'éditeur (mots-clefs en capitales...). Ctrl-Z annule.
- * Les fonctions et procédures du catalogue gardent la casse de leur définition.
+ * Enjolive le texte de l'éditeur, d'après l'analyse de la requête par le
+ * serveur : mots-clefs en capitales, noms (tables, colonnes, fonctions...)
+ * dans l'écriture du catalogue, selon la variante et la version du serveur.
+ * Ctrl-Z annule.
  */
 async function prettify(): Promise<void> {
   try {
-    sql.value = await beautify(
-      sql.value,
-      catalog.routineNames(props.connection.id),
-      state.server?.flavor,
-    )
+    sql.value = await beautify(sql.value, {
+      catalog: catalog.catalogNames(props.connection.id),
+      flavor: state.server?.flavor,
+      version: state.server?.version,
+    })
   } catch (failure) {
     state.error = failure instanceof Error ? failure.message : String(failure)
   }

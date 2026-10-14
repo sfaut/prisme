@@ -5,26 +5,40 @@
  */
 
 import { request } from './http'
+import type { BeautifyCatalog } from './generated/BeautifyCatalog'
 import type { BeautifyRequest } from './generated/BeautifyRequest'
 import type { Flavor } from './generated/Flavor'
 import type { SqlText } from './generated/SqlText'
 
 /**
- * Enjolive un texte SQL, une ou plusieurs requêtes.
+ * Contexte de l'enjolivement : ce que l'on sait du serveur.
+ */
+export interface BeautifyContext {
+  /**
+   * Noms du catalogue, tels que définis : les noms de la requête prennent leur écriture.
+   */
+  catalog?: BeautifyCatalog
+  /**
+   * Variante du serveur, pour ses mots-clefs ; absente, MySQL.
+   */
+  flavor?: Flavor
+  /**
+   * Version annoncée par le serveur ; absente, tous les mots-clefs du dialecte.
+   */
+  version?: string
+}
+
+/**
+ * Enjolive un texte SQL, une ou plusieurs requêtes : la requête est
+ * analysée, puis ses mots-clefs passent en capitales et ses noms prennent
+ * l'écriture du catalogue.
  *
  * @param sql Texte à enjoliver.
- * @param routines
- *     Noms des fonctions et procédures de l'utilisateur, tels que définis :
- *     ils gardent leur casse, les autres fonctions passent en capitales.
- * @param flavor Variante du serveur, pour ses mots-clefs ; absente, MySQL.
+ * @param context Catalogue, variante et version du serveur.
  * @returns Le texte enjolivé.
  */
-export async function beautify(
-  sql: string,
-  routines: string[] = [],
-  flavor?: Flavor,
-): Promise<string> {
-  const body: BeautifyRequest = { sql, routines, flavor }
+export async function beautify(sql: string, context: BeautifyContext = {}): Promise<string> {
+  const body: BeautifyRequest = { sql, ...context }
   const result = await request<SqlText>('POST', '/api/beautify', body)
   return result.sql
 }

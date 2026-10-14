@@ -14,15 +14,21 @@
 //!    de l'utilisateur, écrites dans la casse de leur définition (module
 //!    `functions`).
 //!
-//! 4. **Mots-clefs en capitales.** Seuls les mots réservés de MySQL passent
-//!    en capitales, plus quelques mots-clefs sans ambiguïté (`EXTRA_KEYWORDS`).
-//!    Un mot réservé ne peut jamais servir d'identifiant sans accents graves :
-//!    les noms de tables et de colonnes (`name`, `status`, `date`...) restent
-//!    donc tels quels, même quand ils ressemblent à un mot-clef. Les unités
-//!    de temps (`second`, `day`...) ne sont pas réservées : elles passent en
-//!    capitales seulement là où elles ne peuvent être qu'une unité, après
-//!    `INTERVAL <valeur>` et en premier argument d'`EXTRACT`,
-//!    `TIMESTAMPADD` et `TIMESTAMPDIFF`.
+//! 4. **Mots-clefs en capitales, noms dans l'écriture du catalogue**, d'après
+//!    l'analyse de la requête (module `analysis`) : un mot que la requête
+//!    emploie comme mot-clef passe en capitales (`CAST`, `DATE '...'`,
+//!    `INTERVAL 1 DAY`), un nom (base, table, colonne) prend l'écriture du
+//!    catalogue, un alias celle de sa déclaration ; un nom inconnu ou ambigu
+//!    reste tel quel, et un mot-clef inconnu de la version du serveur aussi.
+//!
+//!    Une requête que `sqlparser` ne comprend pas (corps de procédure,
+//!    syntaxe propre à une version) est traitée mot à mot : seuls les mots
+//!    des fichiers `keywords/*.yaml` connus de la version passent en
+//!    capitales, plus les unités de temps (`second`, `day`...) là où elles ne
+//!    peuvent être qu'une unité, après `INTERVAL <valeur>` et en premier
+//!    argument d'`EXTRACT`, `TIMESTAMPADD` et `TIMESTAMPDIFF`. Les noms de
+//!    tables et de colonnes (`name`, `status`, `date`...) restent alors tels
+//!    quels.
 //!
 //! 5. **Mise en page** : une clause par ligne, une colonne et un prédicat
 //!    par ligne quand il y en a plusieurs, espaces autour des opérateurs
@@ -46,6 +52,7 @@ use prisme_splitter::{Chunk, chunks};
 
 use crate::Dialect;
 use crate::alias::add_alias_keyword;
+use crate::analysis::{CatalogNames, Role, analyze};
 use crate::functions::case_function_names;
 use crate::keywords::is_keyword;
 use crate::layout::{has_delimiter_command, layout};
@@ -69,35 +76,54 @@ const TIME_UNITS: &[&str] = &[
 /// Fonctions dont le premier argument est une unité de temps.
 const UNIT_FUNCTIONS: &[&str] = &["EXTRACT", "TIMESTAMPADD", "TIMESTAMPDIFF"];
 
-/// Enjolive `sql` sans connaître les fonctions de l'utilisateur : toutes
-/// les fonctions passent en capitales. Voir `beautify_with_routines`.
+/// Contexte de l'enjolivement : dialecte, version et catalogue du serveur.
+#[derive(Debug, Clone, Copy)]
+pub struct BeautifyOptions<'a> {
+    /// Dialecte du texte.
+    pub dialect: Dialect,
+    /// Version annoncée par le serveur (`10.11.11-MariaDB`) ; absente, tous
+    /// les mots-clefs du dialecte sont connus.
+    pub version: Option<&'a str>,
+    /// Noms du catalogue, tels que définis : tables, colonnes, fonctions...
+    pub catalog: &'a CatalogNames,
+}
+
+/// Enjolive `sql` sans catalogue ni version : les noms restent tels
+/// quels, toutes les fonctions passent en capitales. Voir `beautify_with`.
 pub fn beautify(sql: &str, dialect: Dialect) -> String {
-    beautify_with_routines(sql, dialect, &[])
+    let catalog = CatalogNames::default();
+    beautify_with(
+        sql,
+        BeautifyOptions {
+            dialect,
+            version: None,
+            catalog: &catalog,
+        },
+    )
 }
 
 /// Enjolive `sql` : blancs normalisés, `AS` devant les alias, noms de
-/// fonctions en capitales, mots-clefs en capitales, puis mise en page
-/// (module `layout`).
+/// fonctions en capitales, mots-clefs en capitales et noms dans l'écriture
+/// du catalogue, puis mise en page (module `layout`).
 ///
-/// `routines` donne le nom, tel que défini, des fonctions et procédures de
-/// l'utilisateur (catalogue de la connexion) : elles gardent la casse de
-/// leur définition au lieu de passer en capitales.
+/// Les fonctions et procédures du catalogue gardent la casse de leur
+/// définition au lieu de passer en capitales.
 ///
 /// Un texte que le découpeur en jetons ne comprend pas (chaîne non fermée...)
 /// est renvoyé tel quel.
-pub fn beautify_with_routines(sql: &str, dialect: Dialect, routines: &[String]) -> String {
+pub fn beautify_with(sql: &str, options: BeautifyOptions) -> String {
     let normalized = normalize_blanks(sql);
     if has_delimiter_command(&normalized) {
-        beautify_chunks(&normalized, dialect, routines)
+        beautify_chunks(&normalized, options)
     } else {
-        beautify_part(&normalized, dialect, routines, false)
+        beautify_part(&normalized, options, false)
     }
 }
 
 /// Enjolive un texte qui contient des commandes `DELIMITER`, morceau par
 /// morceau : chaque commande sur sa ligne, puis chaque requête avec son
 /// séparateur, une ligne vide entre deux requêtes.
-fn beautify_chunks(sql: &str, dialect: Dialect, routines: &[String]) -> String {
+fn beautify_chunks(sql: &str, options: BeautifyOptions) -> String {
     let mut result = String::new();
     // Le morceau précédent appelle-t-il une simple fin de ligne (commande,
     // commentaires seuls) plutôt qu'une ligne vide ? Une commande est
@@ -124,8 +150,8 @@ fn beautify_chunks(sql: &str, dialect: Dialect, routines: &[String]) -> String {
                 }
                 // Hors du « ; » habituel, la requête peut être un programme stocké.
                 let program = delimiter != ";";
-                let mut part = beautify_part(&text, dialect, routines, program);
-                let only_comments = end.is_empty() && is_comment_only(&part, dialect);
+                let mut part = beautify_part(&text, options, program);
+                let only_comments = end.is_empty() && is_comment_only(&part, options.dialect);
                 match end.as_str() {
                     "" => {}
                     ";" => part.push(';'),
@@ -149,10 +175,34 @@ fn beautify_chunks(sql: &str, dialect: Dialect, routines: &[String]) -> String {
 /// Enjolive une partie de texte sans commande `DELIMITER` ; avec `program`,
 /// une seule requête terminée par un autre séparateur que `;`, qui peut être
 /// un programme stocké.
-fn beautify_part(sql: &str, dialect: Dialect, routines: &[String], program: bool) -> String {
+fn beautify_part(sql: &str, options: BeautifyOptions, program: bool) -> String {
+    let dialect = options.dialect;
     let aliased = add_alias_keyword(sql, dialect);
-    let functions = case_function_names(&aliased, dialect, routines);
-    layout(&uppercase_keywords(&functions, dialect), dialect, program)
+    let functions = case_function_names(&aliased, dialect, &options.catalog.routines);
+    let cased = match analyze(&functions, dialect, options.version, options.catalog) {
+        Some(words) => apply_roles(&functions, &words),
+        None => uppercase_keywords(&functions, dialect, options.version),
+    };
+    layout(&cased, dialect, program)
+}
+
+/// Réécrit chaque mot d'après son rôle : mot-clef en capitales, nom dans son
+/// écriture ; un mot-clef inconnu de la version du serveur reste tel quel.
+fn apply_roles(sql: &str, words: &[crate::analysis::Word]) -> String {
+    let mut result = String::with_capacity(sql.len());
+    let mut copied = 0;
+    for word in words {
+        result.push_str(&sql[copied..word.start]);
+        let text = &sql[word.start..word.end];
+        match &word.role {
+            Role::Keyword => result.push_str(&text.to_ascii_uppercase()),
+            Role::UnknownKeyword => result.push_str(text),
+            Role::Name { spelling } => result.push_str(spelling),
+        }
+        copied = word.end;
+    }
+    result.push_str(&sql[copied..]);
+    result
 }
 
 /// Le texte n'est-il fait que de commentaires (et de blancs) ?
@@ -167,8 +217,10 @@ fn is_comment_only(sql: &str, dialect: Dialect) -> bool {
         })
 }
 
-/// Met les mots-clefs en capitales, sans rien changer d'autre.
-fn uppercase_keywords(sql: &str, dialect: Dialect) -> String {
+/// Met les mots-clefs en capitales, sans rien changer d'autre, mot à mot :
+/// repli pour un texte que l'analyse ne comprend pas. Seuls les mots des
+/// fichiers de mots-clefs connus de la version passent en capitales.
+fn uppercase_keywords(sql: &str, dialect: Dialect, version: Option<&str>) -> String {
     let parser_dialect = dialect.parser_dialect();
     let Ok(tokens) = Tokenizer::new(parser_dialect.as_ref(), sql).tokenize_with_location() else {
         return sql.to_string();
@@ -208,7 +260,7 @@ fn uppercase_keywords(sql: &str, dialect: Dialect) -> String {
             unit_expected = true;
         }
         previous_word = upper;
-        if !is_unit && !is_keyword(&word.value, dialect) {
+        if !is_unit && !is_keyword(&word.value, dialect, version) {
             continue;
         }
         let (Some(start), Some(end)) = (
@@ -230,7 +282,7 @@ mod tests {
     use super::*;
 
     fn pretty(sql: &str) -> String {
-        uppercase_keywords(sql, Dialect::MariaDb)
+        uppercase_keywords(sql, Dialect::MariaDb, None)
     }
 
     #[test]
@@ -317,7 +369,17 @@ mod tests {
     fn beautifies_each_chunk_around_delimiter_commands() {
         let sql = "-- purge\ndelimiter //\ncreate procedure purge_logs()\nbegin\n  delete from logs where created_at < now() - interval 30 day;\n  select count(*) n from logs l;\nend //\ndelimiter ;\nselect id, ma_fonction(x) total from video v where a=1 and b=2;";
         assert_eq!(
-            beautify_with_routines(sql, Dialect::MySql, &["Ma_Fonction".to_string()]),
+            beautify_with(
+                sql,
+                BeautifyOptions {
+                    dialect: Dialect::MySql,
+                    version: None,
+                    catalog: &CatalogNames {
+                        routines: vec!["Ma_Fonction".to_string()],
+                        ..CatalogNames::default()
+                    },
+                },
+            ),
             "-- purge\n\
              DELIMITER //\n\
              CREATE PROCEDURE purge_logs()\n\
@@ -344,6 +406,30 @@ mod tests {
         let once = beautify(sql, Dialect::MySql);
         assert_eq!(beautify(&once, Dialect::MySql), once);
         assert!(once.contains("\nEND $$\nDELIMITER ;\n"), "{once}");
+    }
+
+    #[test]
+    fn spells_names_from_the_catalog_and_keywords_from_the_query() {
+        let catalog = CatalogNames {
+            tables: vec!["operations".to_string()],
+            columns: vec!["operation_id".to_string(), "cast".to_string()],
+            ..CatalogNames::default()
+        };
+        let options = BeautifyOptions {
+            dialect: Dialect::MySql,
+            version: Some("8.0.36"),
+            catalog: &catalog,
+        };
+        assert_eq!(
+            beautify_with(
+                "select cast(CAST as char) c, OPERATION_ID from Operations",
+                options
+            ),
+            "SELECT ALL
+    CAST(cast AS CHAR) AS c,
+    operation_id
+FROM operations"
+        );
     }
 
     #[test]

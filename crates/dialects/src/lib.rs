@@ -9,6 +9,7 @@
 //! traduction.
 
 mod alias;
+pub mod analysis;
 pub mod beautify;
 pub mod classify;
 mod functions;

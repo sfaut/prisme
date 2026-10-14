@@ -30,7 +30,8 @@ use axum::routing::{get, post, put};
 use axum::{Json, Router};
 use prisme_connectors::mysql::{self, Flavor, ServerInfo};
 use prisme_dialects::Dialect;
-use prisme_dialects::beautify::beautify_with_routines;
+use prisme_dialects::analysis::CatalogNames;
+use prisme_dialects::beautify::{BeautifyOptions, beautify_with};
 use prisme_dialects::keywords::keywords;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -208,31 +209,58 @@ struct SqlText {
     sql: String,
 }
 
-/// SQL à enjoliver.
+/// Noms du catalogue de la connexion, tels que définis (avec leur casse),
+/// pour l'enjoliveur. Vides si le catalogue n'est pas chargé.
+#[derive(Debug, Default, Deserialize, Serialize, TS)]
+#[ts(export)]
+#[serde(default)]
+struct BeautifyCatalog {
+    /// Bases.
+    schemas: Vec<String>,
+    /// Tables et vues, toutes bases confondues.
+    tables: Vec<String>,
+    /// Colonnes, toutes tables confondues.
+    columns: Vec<String>,
+    /// Fonctions et procédures stockées.
+    routines: Vec<String>,
+}
+
+/// SQL à enjoliver, avec le contexte du serveur.
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 struct BeautifyRequest {
     /// Texte SQL, une ou plusieurs requêtes.
     sql: String,
-    /// Noms des fonctions et procédures de l'utilisateur, tels que définis
-    /// (catalogue de la connexion) : ils gardent leur casse. Vide si le
-    /// catalogue n'est pas chargé.
+    /// Noms du catalogue : les noms de la requête prennent leur écriture.
     #[serde(default)]
-    routines: Vec<String>,
+    #[ts(optional)]
+    catalog: Option<BeautifyCatalog>,
     /// Variante du serveur, pour ses mots-clefs ; absente, MySQL.
     #[serde(default)]
     #[ts(optional)]
     flavor: Option<Flavor>,
+    /// Version annoncée par le serveur ; absente, tous les mots-clefs du dialecte.
+    #[serde(default)]
+    #[ts(optional)]
+    version: Option<String>,
 }
 
 /// `POST /api/beautify` : enjolive du SQL MySQL / MariaDB (voir `prisme_dialects::beautify`).
 async fn beautify_sql(Json(request): Json<BeautifyRequest>) -> Json<SqlText> {
+    let catalog = request.catalog.unwrap_or_default();
+    let names = CatalogNames {
+        schemas: catalog.schemas,
+        tables: catalog.tables,
+        columns: catalog.columns,
+        routines: catalog.routines,
+    };
+    let options = BeautifyOptions {
+        dialect: request.flavor.map_or(Dialect::MySql, dialect_of),
+        version: request.version.as_deref(),
+        catalog: &names,
+    };
     Json(SqlText {
-        sql: beautify_with_routines(
-            &request.sql,
-            request.flavor.map_or(Dialect::MySql, dialect_of),
-            &request.routines,
-        ),
+        sql: beautify_with(&request.sql, options),
     })
 }
 
@@ -543,16 +571,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn beautifies_user_functions_in_their_defined_case() {
-        let (status, body) = send(
-            &test_app(),
-            "POST",
-            "/api/beautify",
-            Some(json!({ "sql": "select now(), mafonction(1)", "routines": ["MaFonction"] })),
-        )
-        .await;
+    async fn beautifies_names_in_their_catalog_case() {
+        let request = json!({
+            "sql": "select now(), mafonction(ID) from CLIENTS",
+            "catalog": { "tables": ["Clients"], "columns": ["id"], "routines": ["MaFonction"] },
+            "flavor": "mariadb",
+            "version": "10.11.11-MariaDB",
+        });
+        let (status, body) = send(&test_app(), "POST", "/api/beautify", Some(request)).await;
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(body["sql"], "SELECT ALL\n    NOW(),\n    MaFonction(1)");
+        assert_eq!(
+            body["sql"],
+            "SELECT ALL\n    NOW(),\n    MaFonction(id)\nFROM Clients"
+        );
     }
 
     #[tokio::test]

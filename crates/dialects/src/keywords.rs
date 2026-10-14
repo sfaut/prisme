@@ -105,21 +105,36 @@ pub fn keywords(dialect: Dialect, version: Option<&str>) -> Keywords {
     }
 }
 
-/// Indique si un mot non protégé est un mot-clef du dialecte, toutes
-/// versions confondues : il passe en capitales.
-pub(crate) fn is_keyword(word: &str, dialect: Dialect) -> bool {
+/// Mots du fichier d'un dialecte, toutes catégories confondues, dont le nom est `word`.
+fn entries_named<'a>(word: &str, dialect: Dialect) -> impl Iterator<Item = &'a Entry> + use<'a> {
     let file = file_of(dialect);
     let upper = word.to_ascii_uppercase();
     [&file.reserved, &file.keywords, &file.types, &file.literals]
-        .iter()
-        .any(|entries| entries.iter().any(|entry| entry.name() == upper))
+        .into_iter()
+        .flatten()
+        .filter(move |entry| entry.name() == upper)
+}
+
+/// Indique si un mot non protégé est un mot-clef du dialecte dans cette
+/// version du serveur (sans version : toutes confondues) : il passe en
+/// capitales quand la requête n'a pas pu être analysée.
+pub(crate) fn is_keyword(word: &str, dialect: Dialect, version: Option<&str>) -> bool {
+    entries_named(word, dialect).any(|entry| entry.exists_in(version))
+}
+
+/// Indique si un mot-clef reconnu par l'analyseur existe dans cette version
+/// du serveur : un mot absent du fichier (mot-clef non réservé comme `CAST`)
+/// est tenu pour connu ; un mot du fichier doit exister dans la version.
+pub(crate) fn is_known_in_version(word: &str, dialect: Dialect, version: Option<&str>) -> bool {
+    let mut entries = entries_named(word, dialect).peekable();
+    entries.peek().is_none() || entries.any(|entry| entry.exists_in(version))
 }
 
 /// Indique si un mot non protégé est un mot-clef qui ne désigne pas une valeur
 /// (`SELECT`, `AND`, `IN`...) : il ne peut pas précéder un opérateur binaire.
 pub(crate) fn is_structural_keyword(word: &str, dialect: Dialect) -> bool {
     let upper = word.to_ascii_uppercase();
-    is_keyword(word, dialect)
+    is_keyword(word, dialect, None)
         && !file_of(dialect)
             .literals
             .iter()
@@ -190,10 +205,17 @@ mod tests {
 
     #[test]
     fn tells_structural_keywords_from_values() {
-        assert!(is_keyword("select", Dialect::MySql));
-        assert!(is_keyword("null", Dialect::MySql));
+        assert!(is_keyword("select", Dialect::MySql, None));
+        assert!(is_keyword("null", Dialect::MySql, None));
+        assert!(!is_keyword("window", Dialect::MySql, Some("5.7.44")));
+        assert!(is_known_in_version("cast", Dialect::MySql, Some("5.7.44")));
+        assert!(!is_known_in_version(
+            "window",
+            Dialect::MySql,
+            Some("5.7.44")
+        ));
         assert!(is_structural_keyword("and", Dialect::MySql));
         assert!(!is_structural_keyword("current_date", Dialect::MySql));
-        assert!(!is_keyword("ma_table", Dialect::MariaDb));
+        assert!(!is_keyword("ma_table", Dialect::MariaDb, None));
     }
 }
