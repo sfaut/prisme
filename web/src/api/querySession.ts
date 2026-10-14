@@ -148,6 +148,11 @@ export interface QueryTab {
    */
   endedAt: number | null
   /**
+   * Volume reçu pour la requête, en octets : taille des messages de son
+   * résultat (colonnes, lignes, fin) tels qu'ils passent sur le WebSocket.
+   */
+  bytes: number
+  /**
    * Onglet épinglé : il reste quand un nouveau lot est lancé.
    */
   pinned: boolean
@@ -215,12 +220,22 @@ export function initialState(): SessionState {
  * @param state État de la session.
  * @param message Message reçu du serveur.
  * @param now Instant de réception, pour mesurer la durée des requêtes.
+ * @param bytes
+ *     Taille du message en octets, comptée dans le volume reçu par sa
+ *     requête (colonnes, lignes et fin d'un résultat).
  */
 export function applyMessage(
   state: SessionState,
   message: ServerMessage,
   now: number = Date.now(),
+  bytes: number = 0,
 ): void {
+  if (message.type === 'columns' || message.type === 'rows' || message.type === 'done') {
+    const tab = tabOf(state, message.query)
+    if (tab) {
+      tab.bytes += bytes
+    }
+  }
   switch (message.type) {
     case 'ready':
       state.status = 'ready'
@@ -241,6 +256,7 @@ export function applyMessage(
           startedAt: null,
           columnsAt: null,
           endedAt: null,
+          bytes: 0,
           pinned: false,
           name: null,
         })),
@@ -416,6 +432,51 @@ export function tabFraction(tab: QueryTab): number | null {
 }
 
 /**
+ * Taille en octets d'un texte encodé en UTF-8, tel qu'il passe sur le
+ * WebSocket, sans le recopier (un message peut contenir des milliers de lignes).
+ *
+ * @param text Texte du message.
+ */
+export function utf8Length(text: string): number {
+  let bytes = 0
+  for (let index = 0; index < text.length; index++) {
+    const code = text.charCodeAt(index)
+    if (code < 0x80) {
+      bytes += 1
+    } else if (code < 0x800) {
+      bytes += 2
+    } else if (code >= 0xd800 && code < 0xdc00) {
+      // Paire de substitution : un caractère hors du plan de base, 4 octets.
+      bytes += 4
+      index++
+    } else {
+      bytes += 3
+    }
+  }
+  return bytes
+}
+
+/**
+ * Formate un volume de données dans l'unité qui lui convient : octets, puis
+ * ko, Mo, Go et To (par 1 000), avec une décimale au-delà de l'octet.
+ *
+ * @param bytes Volume en octets.
+ */
+export function formatBytes(bytes: number): string {
+  const units = ['ko', 'Mo', 'Go', 'To']
+  if (bytes < 1000) {
+    return `${Math.round(Math.max(0, bytes))} o`
+  }
+  let value = bytes / 1000
+  let unit = 0
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000
+    unit++
+  }
+  return `${value.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} ${units[unit]}`
+}
+
+/**
  * Formate une durée dans l'unité qui lui convient : millisecondes sous la
  * seconde, secondes (une décimale) sous la minute, minutes et secondes sous
  * l'heure, puis heures et minutes.
@@ -489,9 +550,10 @@ export function useQuerySession(connectionId: number) {
   const socket = new WebSocket(sessionUrl(connectionId, window.location))
 
   /**
-   * Messages reçus, pas encore appliqués, avec leur instant de réception.
+   * Messages reçus, pas encore appliqués, avec leur instant de réception et
+   * leur taille en octets.
    */
-  let pending: [ServerMessage, number][] = []
+  let pending: [ServerMessage, number, number][] = []
 
   /**
    * Application différée des messages en attente, absente si rien n'attend.
@@ -506,8 +568,8 @@ export function useQuerySession(connectionId: number) {
     flushTimer = undefined
     const messages = pending
     pending = []
-    for (const [message, receivedAt] of messages) {
-      applyMessage(state, message, receivedAt)
+    for (const [message, receivedAt, bytes] of messages) {
+      applyMessage(state, message, receivedAt, bytes)
       if (message.type === 'columns') {
         const result = tabOf(state, message.query)?.result
         if (result) {
@@ -519,7 +581,8 @@ export function useQuerySession(connectionId: number) {
   }
 
   socket.addEventListener('message', (event: MessageEvent<string>) => {
-    pending.push([JSON.parse(event.data) as ServerMessage, Date.now()])
+    const message = JSON.parse(event.data) as ServerMessage
+    pending.push([message, Date.now(), utf8Length(event.data)])
     flushTimer ??= setTimeout(flush, FLUSH_DELAY)
   })
   socket.addEventListener('close', () => {

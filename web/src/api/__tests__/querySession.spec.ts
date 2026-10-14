@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyMessage,
   executionDuration,
+  formatBytes,
   formatDuration,
   initialState,
   removeTab,
@@ -11,6 +12,7 @@ import {
   tabFraction,
   tabProgress,
   transferDuration,
+  utf8Length,
 } from '../querySession'
 
 /**
@@ -287,6 +289,48 @@ describe('durées', () => {
     expect(tabFraction(tab)).toBeNull()
     applyMessage(state, { type: 'error', query: 0, message: 'perdu' })
     expect(tabFraction(tab)).toBe(1)
+  })
+
+  it('compte le volume reçu par requête', () => {
+    const state = readyState()
+    startBatch(state)
+    applyMessage(
+      state,
+      { type: 'batch', queries: [{ query: 0, sql: 'a', start: 0, end: 1 }] },
+      0,
+      50,
+    )
+    applyMessage(
+      state,
+      {
+        type: 'columns',
+        query: 0,
+        columns: ['x'],
+        right_aligned: [false],
+        sql: 'a',
+        limit: 'added',
+        expected_rows: null,
+      },
+      0,
+      120,
+    )
+    applyMessage(state, { type: 'rows', query: 0, rows: [['1']] }, 0, 30)
+    expect(state.tabs[0]!.bytes).toBe(150)
+  })
+
+  it('mesure en octets un texte UTF-8', () => {
+    expect(utf8Length('abc')).toBe(3)
+    expect(utf8Length('é')).toBe(2)
+    expect(utf8Length('€')).toBe(3)
+    expect(utf8Length('😀')).toBe(4)
+  })
+
+  it('formate les volumes', () => {
+    expect(formatBytes(0)).toBe('0 o')
+    expect(formatBytes(999)).toBe('999 o')
+    expect(formatBytes(1000)).toBe('1,0 ko')
+    expect(formatBytes(1_234_567)).toBe('1,2 Mo')
+    expect(formatBytes(5_600_000_000)).toBe('5,6 Go')
   })
 
   it('formate les durées', () => {
