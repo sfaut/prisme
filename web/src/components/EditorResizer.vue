@@ -1,7 +1,8 @@
 <!--
-  Barre horizontale entre l'éditeur SQL et les résultats : la faire glisser
-  change la part de la hauteur donnée à l'éditeur, un double clic la remet
-  au tiers du haut. La part est retenue d'une visite à l'autre
+  Barre horizontale entre l'éditeur SQL (avec ses boutons) et les
+  résultats, tracée d'un trait comme la bordure du panneau de gauche : la
+  faire glisser change la part de la hauteur donnée à l'éditeur, un double
+  clic la remet au tiers du haut. La part est retenue d'une visite à l'autre
   (`editorSplit.ts`).
 -->
 <script setup lang="ts">
@@ -85,11 +86,22 @@ function reset(): void {
 
 <style scoped>
 .editor-resizer {
+  position: relative;
   flex: none;
   block-size: var(--resize-handle-width);
   border-radius: var(--resize-handle-width);
   cursor: row-resize;
   touch-action: none;
+
+  /* Trait visible au repos, au milieu de la zone de prise. */
+  &::before {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-start: calc(50% - var(--line-width) / 2);
+    block-size: var(--line-width);
+    background: var(--line);
+    content: '';
+  }
 
   &:hover,
   &.dragging {

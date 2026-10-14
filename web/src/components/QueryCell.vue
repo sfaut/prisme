@@ -12,8 +12,9 @@
   est relancée), se ferme (sa requête est arrêtée si elle tourne) ou se
   déplace en le faisant glisser, comme une colonne de la grille.
   La limite de lignes choisie ici devient la limite par défaut de l'utilisateur.
-  Une barre horizontale partage la hauteur entre l'éditeur et les
-  résultats : le tiers du haut par défaut, réglage retenu (`EditorResizer`).
+  Une barre horizontale, sous les boutons, partage la hauteur entre l'éditeur
+  (avec ses boutons) et les résultats : le tiers du haut par défaut, réglage
+  retenu (`EditorResizer`).
 -->
 <script setup lang="ts">
 import { Play, Square, WandSparkles } from 'lucide-vue-next'
@@ -331,6 +332,7 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
 
 <template>
   <div ref="cellRoot" class="flex min-h-0 flex-1 flex-col gap-gap">
+    <!-- Bloc du haut : l'éditeur, qui prend la place restante, puis les boutons. -->
     <div class="editor-pane" :style="{ flexBasis: `${editorSplit * 100}%` }">
       <sql-editor
         ref="editor"
@@ -340,54 +342,55 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
         :default-schema="state.database"
         @run="run"
         @run-all="runAll"
+        class="min-h-0 flex-1"
       />
+
+      <div class="flex items-center gap-gap">
+        <ui-button
+          label="Exécuter"
+          :icon="Play"
+          variant="solid"
+          tone="accent"
+          :disabled="state.status !== 'ready' && state.status !== 'running'"
+          :loading="state.status === 'running'"
+          @click="run()"
+        />
+        <ui-button
+          label="Tout exécuter"
+          title="Toutes les requêtes, en parallèle (Ctrl-Maj-Entrée)"
+          :disabled="state.status !== 'ready'"
+          @click="runAll"
+        />
+        <ui-button
+          label="Stopper"
+          :icon="Square"
+          tone="error"
+          title="Arrête toutes les requêtes et tous les chargements en cours"
+          :disabled="state.status !== 'running'"
+          @click="session.cancel()"
+        />
+        <ui-button
+          label="Enjoliver"
+          :icon="WandSparkles"
+          :disabled="sql.trim() === '' || !catalogReady"
+          :title="
+            catalogReady
+              ? 'Réécrit les requêtes en « beau SQL » : mots-clefs en capitales (Ctrl-Z annule)'
+              : 'Disponible une fois le catalogue de la connexion chargé'
+          "
+          @click="prettify"
+        />
+        <ui-select
+          :model-value="settings.settings?.row_limit"
+          :items="limitOptions"
+          label="Limite de lignes"
+          class="w-32"
+          @update:model-value="(limit) => limit !== undefined && changeLimit(limit)"
+        />
+        <span class="text-trim text-fg-muted">{{ connection.name }} · {{ serverLabel }}</span>
+      </div>
     </div>
     <editor-resizer v-model="editorSplit" :container="cellRoot" />
-
-    <div class="flex items-center gap-gap">
-      <ui-button
-        label="Exécuter"
-        :icon="Play"
-        variant="solid"
-        tone="accent"
-        :disabled="state.status !== 'ready' && state.status !== 'running'"
-        :loading="state.status === 'running'"
-        @click="run()"
-      />
-      <ui-button
-        label="Tout exécuter"
-        title="Toutes les requêtes, en parallèle (Ctrl-Maj-Entrée)"
-        :disabled="state.status !== 'ready'"
-        @click="runAll"
-      />
-      <ui-button
-        label="Stopper"
-        :icon="Square"
-        tone="error"
-        title="Arrête toutes les requêtes et tous les chargements en cours"
-        :disabled="state.status !== 'running'"
-        @click="session.cancel()"
-      />
-      <ui-button
-        label="Enjoliver"
-        :icon="WandSparkles"
-        :disabled="sql.trim() === '' || !catalogReady"
-        :title="
-          catalogReady
-            ? 'Réécrit les requêtes en « beau SQL » : mots-clefs en capitales (Ctrl-Z annule)'
-            : 'Disponible une fois le catalogue de la connexion chargé'
-        "
-        @click="prettify"
-      />
-      <ui-select
-        :model-value="settings.settings?.row_limit"
-        :items="limitOptions"
-        label="Limite de lignes"
-        class="w-32"
-        @update:model-value="(limit) => limit !== undefined && changeLimit(limit)"
-      />
-      <span class="text-trim text-fg-muted">{{ connection.name }} · {{ serverLabel }}</span>
-    </div>
 
     <ui-alert v-if="state.status === 'closed'" tone="warning" title="Session fermée.">
       <ui-button label="Reconnecter" @click="emit('reconnect')" />
@@ -446,12 +449,15 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
 </template>
 
 <style scoped>
-/* Éditeur : la part retenue de la hauteur (flex-basis), jamais moins que
-   quelques lignes. */
+/* Bloc du haut (éditeur et boutons) : la part retenue de la hauteur
+   (flex-basis) ; l'éditeur garde au moins quelques lignes. */
 .editor-pane {
+  display: flex;
+  flex-direction: column;
   flex-grow: 0;
   flex-shrink: 0;
-  min-block-size: var(--editor-min-height);
+  gap: var(--gap);
+  min-block-size: calc(var(--editor-min-height) + var(--control-height) + var(--gap));
 }
 
 /* Repère d'insertion d'un onglet déplacé, comme pour les colonnes de la grille. */
