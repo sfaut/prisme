@@ -9,6 +9,11 @@ export type BatchQuery = {
  */
 query: number, 
 /**
+ * Onglet de résultat enregistré de la requête (session d'un éditeur),
+ * 0 si la session n'enregistre pas ses résultats.
+ */
+tab: number, 
+/**
  * Texte de la requête, sans séparateur.
  */
 sql: string, 

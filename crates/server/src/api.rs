@@ -41,9 +41,11 @@ use crate::analyze::{self, Analysis, AnalyzeRequest, dialect_of};
 use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
 use crate::connections::{self, ConnectionSummary, NewConnection, ProbeRequest};
+use crate::editors;
 use crate::explorer;
 use crate::master_key::MasterKey;
 use crate::query_session;
+use crate::recorder::Recorder;
 use crate::settings::{self, Settings, SettingsUpdate};
 use crate::web_assets;
 
@@ -115,11 +117,13 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/connections/{id}/probe", post(probe_connection))
         .route("/api/connections/{id}/query", get(query_socket))
+        .route("/api/editors/{id}/session", get(editor_session))
         .route("/api/settings", get(get_settings).put(put_settings))
         .route("/api/beautify", post(beautify_sql))
         .route("/api/analyze", post(analyze_sql))
         .route("/api/dialects/{flavor}/keywords", get(dialect_keywords))
         .merge(explorer::routes())
+        .merge(editors::routes())
         .fallback(web_assets::serve)
         .with_state(state)
 }
@@ -198,7 +202,33 @@ async fn query_socket(
         .with_db(move |db, key| connections::load_target(db, key, user_id, id))
         .await?
         .ok_or(ApiError::NotFound)?;
-    Ok(upgrade.on_upgrade(move |socket| query_session::run(socket, state, user_id, target)))
+    Ok(upgrade.on_upgrade(move |socket| query_session::run(socket, state, user_id, target, None)))
+}
+
+/// `GET /api/editors/{id}/session` : WebSocket, session de requêtes d'un
+/// éditeur, sur la connexion de l'éditeur ; ses résultats sont enregistrés.
+async fn editor_session(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<i64>,
+    upgrade: WebSocketUpgrade,
+) -> Result<Response, ApiError> {
+    let user_id = user.id;
+    let connection_id = state
+        .with_db(move |db, _| editors::connection_of(db, user_id, id))
+        .await?
+        .ok_or(ApiError::NotFound)?
+        .ok_or_else(|| {
+            ApiError::BadRequest("aucune connexion choisie pour cet éditeur".to_string())
+        })?;
+    let target = state
+        .with_db(move |db, key| connections::load_target(db, key, user_id, connection_id))
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let recorder = Recorder::new(state.clone(), id);
+    Ok(upgrade.on_upgrade(move |socket| {
+        query_session::run(socket, state, user_id, target, Some(recorder))
+    }))
 }
 
 /// SQL enjolivé.
@@ -420,6 +450,34 @@ mod tests {
         // Le repli vers les fichiers de l'interface ne masque pas une route absente.
         let (status, _) = send(&test_app(), "GET", "/api/absent", None).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn creates_renames_closes_and_reopens_editors() {
+        let app = test_app();
+        let (status, created) = send(&app, "POST", "/api/editors", Some(json!({}))).await;
+        assert_eq!(status, StatusCode::CREATED);
+        let id = created["id"].as_i64().unwrap();
+        let uri = format!("/api/editors/{id}");
+        let change = json!({ "name": "Ventes", "sql": "SELECT 1", "connection_id": null });
+        let (status, _) = send(&app, "PUT", &uri, Some(change)).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, editors) = send(&app, "GET", "/api/editors", None).await;
+        assert_eq!(editors[0]["name"], "Ventes");
+        assert_eq!(editors[0]["results"], json!([]));
+
+        let (status, _) = send(&app, "DELETE", &uri, None).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, closed) = send(&app, "GET", "/api/editors/closed", None).await;
+        assert_eq!(closed[0]["sql"], "SELECT 1");
+        let (status, _) = send(&app, "POST", &format!("{uri}/reopen"), None).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (_, editors) = send(&app, "GET", "/api/editors", None).await;
+        assert_eq!(editors.as_array().unwrap().len(), 1);
+
+        // Sans connexion choisie, l'éditeur n'a pas de session.
+        let (status, _) = send(&app, "GET", &format!("{uri}/session"), None).await;
+        assert_ne!(status, StatusCode::OK);
     }
 
     #[tokio::test]

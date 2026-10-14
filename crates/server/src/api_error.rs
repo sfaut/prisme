@@ -13,6 +13,7 @@ use ts_rs::TS;
 use prisme_connectors::mysql::MysqlError;
 
 use crate::connections::ConnectionsError;
+use crate::editors::EditorsError;
 use crate::settings::SettingsError;
 
 /// Corps JSON d'une réponse en erreur.
@@ -47,6 +48,19 @@ impl From<ConnectionsError> for ApiError {
             ConnectionsError::Invalid(message) => Self::BadRequest(message),
             ConnectionsError::DuplicateName(_) => Self::Conflict(error.to_string()),
             ConnectionsError::Secret(_) | ConnectionsError::Sqlite(_) => {
+                tracing::error!("{error}");
+                Self::Internal
+            }
+        }
+    }
+}
+
+impl From<EditorsError> for ApiError {
+    /// Traduit une erreur de gestion des éditeurs en erreur HTTP.
+    fn from(error: EditorsError) -> Self {
+        match error {
+            EditorsError::Invalid(message) => Self::BadRequest(message),
+            EditorsError::Sqlite(_) | EditorsError::Json(_) => {
                 tracing::error!("{error}");
                 Self::Internal
             }

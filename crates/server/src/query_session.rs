@@ -70,6 +70,7 @@ use tokio::sync::{Semaphore, mpsc};
 use ts_rs::TS;
 
 use crate::api::AppState;
+use crate::recorder::Recorder;
 use crate::settings::{self, check_row_limit};
 
 /// Nombre de lignes par message `rows`.
@@ -125,22 +126,25 @@ struct QueryRequest {
 /// Requête d'un lot, telle qu'annoncée au client.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
-struct BatchQuery {
+pub(crate) struct BatchQuery {
     /// Numéro de la requête dans le lot, repris par ses messages.
-    query: u32,
+    pub(crate) query: u32,
+    /// Onglet de résultat enregistré de la requête (session d'un éditeur),
+    /// 0 si la session n'enregistre pas ses résultats.
+    pub(crate) tab: i64,
     /// Texte de la requête, sans séparateur.
-    sql: String,
+    pub(crate) sql: String,
     /// Début de la requête dans le texte de l'éditeur, en unités UTF-16.
-    start: usize,
+    pub(crate) start: usize,
     /// Fin de la requête dans le texte de l'éditeur, en unités UTF-16.
-    end: usize,
+    pub(crate) end: usize,
 }
 
 /// Traitement de la limite, tel qu'annoncé au client.
-#[derive(Debug, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "snake_case")]
-enum LimitReport {
+pub(crate) enum LimitReport {
     /// Prisme a ajouté `LIMIT N + 1`.
     Added,
     /// La limite écrite par l'utilisateur s'applique.
@@ -155,7 +159,7 @@ enum LimitReport {
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 #[serde(tag = "type", rename_all = "snake_case")]
-enum ServerMessage {
+pub(crate) enum ServerMessage {
     /// La connexion au serveur cible est ouverte.
     Ready {
         server: ServerInfo,
@@ -209,14 +213,24 @@ struct SocketClosed;
 /// File des messages à envoyer au client, partagée par les requêtes parallèles.
 ///
 /// Une tâche dédiée vide la file vers le WebSocket. La file est bornée : si
-/// le client lit lentement, la lecture des résultats patiente.
+/// le client lit lentement, la lecture des résultats patiente. Pour la
+/// session d'un éditeur, chaque message passe d'abord par l'enregistreur des
+/// résultats (`recorder.rs`).
 #[derive(Clone)]
-struct Outbox(mpsc::Sender<ServerMessage>);
+struct Outbox {
+    /// Vers la tâche d'écriture sur le WebSocket.
+    sender: mpsc::Sender<ServerMessage>,
+    /// Enregistreur des résultats de l'éditeur, absent hors éditeur.
+    recorder: Option<Arc<Recorder>>,
+}
 
 impl Outbox {
-    /// Met un message dans la file.
-    async fn send(&self, message: ServerMessage) -> Result<(), SocketClosed> {
-        self.0.send(message).await.map_err(|_| SocketClosed)
+    /// Met un message dans la file, après l'avoir montré à l'enregistreur.
+    async fn send(&self, mut message: ServerMessage) -> Result<(), SocketClosed> {
+        if let Some(recorder) = &self.recorder {
+            recorder.observe(&mut message).await;
+        }
+        self.sender.send(message).await.map_err(|_| SocketClosed)
     }
 
     /// Met un message d'erreur dans la file.
@@ -378,12 +392,23 @@ async fn write_messages(
 }
 
 /// Déroule une session : connexion au serveur cible, puis demandes du client
-/// jusqu'à la fermeture du WebSocket.
-pub async fn run(socket: WebSocket, state: AppState, user_id: i64, target: MysqlTarget) {
+/// jusqu'à la fermeture du WebSocket. Avec un enregistreur (session d'un
+/// éditeur), les résultats sont enregistrés au fil de l'exécution.
+pub async fn run(
+    socket: WebSocket,
+    state: AppState,
+    user_id: i64,
+    target: MysqlTarget,
+    recorder: Option<Recorder>,
+) {
     let (sink, incoming) = socket.split();
     let (sender, receiver) = mpsc::channel(OUTBOX_SIZE);
     let writer = tokio::spawn(write_messages(sink, receiver));
-    let outbox = Outbox(sender);
+    let recorder = recorder.map(Arc::new);
+    let outbox = Outbox {
+        sender,
+        recorder: recorder.clone(),
+    };
     let cancellation = Arc::new(Cancellation::default());
     let (request_sender, mut requests) = mpsc::channel(1);
     let reader = tokio::spawn(read_messages(
@@ -424,6 +449,9 @@ pub async fn run(socket: WebSocket, state: AppState, user_id: i64, target: Mysql
     reader.abort();
     drop(outbox);
     let _ = writer.await;
+    if let Some(recorder) = recorder {
+        recorder.finish().await;
+    }
 }
 
 /// Ce dont les requêtes ont besoin pendant leur exécution.
@@ -528,6 +556,7 @@ impl Session<'_> {
             .enumerate()
             .map(|(index, statement)| BatchQuery {
                 query: index as u32,
+                tab: 0,
                 sql: statement.sql.clone(),
                 start: statement.start,
                 end: statement.end,
