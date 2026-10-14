@@ -83,6 +83,7 @@
      (par rôle) y puisent leurs deux valeurs, claire et sombre ; les
      composants n'utilisent que ces dernières. */
   --white: #fff;
+  --black: #000;
   --zinc-100: #f4f4f5;
   --zinc-200: #e4e4e7;
   --zinc-300: #d4d4d8;
@@ -152,7 +153,10 @@
   --focus-ring: color-mix(in oklab, var(--accent) 60%, transparent);
   --accent-border: color-mix(in oklab, var(--accent) 50%, transparent);
   --error-border: color-mix(in oklab, var(--error) 50%, transparent);
-  --overlay: color-mix(in oklab, var(--fg-strong) 40%, transparent);
+  --overlay: light-dark(
+    color-mix(in oklab, var(--zinc-900) 40%, transparent),
+    color-mix(in oklab, var(--black) 60%, transparent)
+  );
   --resize-hover: color-mix(in oklab, var(--accent) 30%, transparent);
   --selection: color-mix(in oklab, var(--accent) 18%, transparent);
 
