@@ -4,6 +4,11 @@
  * DuckDB UI). Les icônes sont neutres : même couleur pour toutes les
  * familles ; le nom natif du type, au survol de l'en-tête, donne le détail.
  *
+ * Comme dans DuckDB UI, les nombres se distinguent par une marque : `123`
+ * pour les entiers, `#` pour les flottants, `.00` pour les décimaux.
+ * Lucide n'ayant pas d'icône pour `123` et `.00`, ces deux marques sont du
+ * texte (une chaîne au lieu d'un composant).
+ *
  * Une colonne de texte dont les valeurs sont des documents JSON ou XML
  * (`contentKind.ts`) prend l'icône de son contenu.
  */
@@ -32,11 +37,16 @@ import type { TypeFamily } from '@/api/generated/TypeFamily'
 import type { ContentKind } from './contentKind'
 
 /**
- * Icône Lucide de chaque famille de types.
+ * Marque d'un type : une icône Lucide, ou un court texte.
  */
-export const TYPE_ICONS: Record<TypeFamily, Component> = {
-  integer: Hash,
-  decimal: Hash,
+export type TypeMark = Component | string
+
+/**
+ * Marque de chaque famille de types.
+ */
+export const TYPE_ICONS: Record<TypeFamily, TypeMark> = {
+  integer: '123',
+  decimal: '.00',
   float: Hash,
   text: CaseSensitive,
   binary: Binary,
@@ -53,13 +63,13 @@ export const TYPE_ICONS: Record<TypeFamily, Component> = {
 }
 
 /**
- * Icône d'une colonne : celle de son contenu pour une colonne de texte qui
- * contient du JSON ou du XML, sinon celle de la famille de son type.
+ * Marque d'une colonne : l'icône de son contenu pour une colonne de texte
+ * qui contient du JSON ou du XML, sinon la marque de la famille de son type.
  *
  * @param type Type de la colonne.
  * @param content Contenu détecté, `null` si aucun format reconnu.
  */
-export function columnIcon(type: ColumnTypeInfo, content: ContentKind | null): Component {
+export function columnIcon(type: ColumnTypeInfo, content: ContentKind | null): TypeMark {
   if (type.family === 'text' && content === 'json') {
     return Braces
   }

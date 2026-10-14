@@ -238,6 +238,16 @@ const contentKinds = computed<(ContentKind | null)[]>(() => {
 })
 
 /**
+ * Marque de chaque colonne dans son en-tête (icône ou texte), absente sans type.
+ */
+const columnMarks = computed(() =>
+  props.columns.map((_, column) => {
+    const type = props.columnTypes[column]
+    return type ? columnIcon(type, contentKinds.value[column] ?? null) : undefined
+  }),
+)
+
+/**
  * Libellé du contenu reconnu d'une colonne, pour le survol de son en-tête.
  */
 const CONTENT_LABELS: Record<ContentKind, string> = { json: 'contenu JSON', xml: 'contenu XML' }
@@ -257,13 +267,17 @@ function headerTitle(column: number): string {
 
 /**
  * Texte de l'en-tête d'une colonne, pour estimer sa largeur : son nom, plus
- * la place de l'icône du type.
+ * la place de la marque du type (icône, ou texte comme « 123 »).
  *
  * @param column Indice de la colonne.
  */
 function headerText(column: number): string {
   const name = props.columns[column] ?? ''
-  return props.columnTypes[column] ? `${name}  ` : name
+  const mark = columnMarks.value[column]
+  if (mark === undefined) {
+    return name
+  }
+  return `${name}${' '.repeat(typeof mark === 'string' ? mark.length + 1 : 2)}`
 }
 
 /**
@@ -599,12 +613,21 @@ const filterColumn = computed({
             @pointerup="onColumnDrop"
             @pointercancel="onColumnDrop"
           >
-            <component
-              :is="columnIcon(columnTypes[column], contentKinds[column] ?? null)"
-              v-if="columnTypes[column]"
-              class="grid-type-icon"
-              aria-hidden="true"
-            />
+            <template v-if="columnMarks[column]">
+              <span
+                v-if="typeof columnMarks[column] === 'string'"
+                class="grid-type-glyph"
+                aria-hidden="true"
+              >
+                {{ columnMarks[column] }}
+              </span>
+              <component
+                :is="columnMarks[column]"
+                v-else
+                class="grid-type-icon"
+                aria-hidden="true"
+              />
+            </template>
             <span class="grid-column-label">{{ columns[column] }}</span>
           </span>
           <button
@@ -833,6 +856,18 @@ const filterColumn = computed({
   inline-size: var(--icon-size-sm);
   block-size: var(--icon-size-sm);
   color: var(--fg-dimmed);
+}
+
+/* Marque en texte (123, .00), de la hauteur des icônes. */
+.grid-type-glyph {
+  flex: none;
+  align-content: center;
+  color: var(--fg-dimmed);
+  font-family: var(--font-code);
+  font-size: var(--font-size-small);
+  font-weight: 500;
+  letter-spacing: -0.05em;
+  text-box: trim-both cap alphabetic;
 }
 
 /*

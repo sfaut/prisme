@@ -32,7 +32,9 @@ describe('ResultGrid', () => {
       { family: 'integer', name: 'INT UNSIGNED' },
       { family: 'text', name: 'VARCHAR(20)' },
     ])
-    expect(wrapper.findAll('.grid-type-icon')).toHaveLength(2)
+    // Entier : la marque « 123 » ; texte : l'icône « Aa ».
+    expect(wrapper.find('.grid-type-glyph').text()).toBe('123')
+    expect(wrapper.findAll('.grid-type-icon')).toHaveLength(1)
     expect(wrapper.find('.grid-column-type').exists()).toBe(false)
     const titles = wrapper.findAll('.grid-column-name').map((name) => name.attributes('title'))
     expect(titles[1]).toContain('VARCHAR(20)')
