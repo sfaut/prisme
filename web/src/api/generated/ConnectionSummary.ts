@@ -33,6 +33,10 @@ username: string,
  */
 database_name: string, 
 /**
+ * Requêtes exécutées à l'ouverture de chaque connexion, chaîne vide si aucune.
+ */
+init_sql: string, 
+/**
  * Date d'enregistrement, en UTC au format ISO 8601.
  */
 created_at: string, };

@@ -16,6 +16,7 @@ vi.mock('@/api/connections', () => ({
       port: 3306,
       username: 'root',
       database_name: '',
+      init_sql: '',
       created_at: '2026-10-12T20:00:00.000Z',
     },
   ],

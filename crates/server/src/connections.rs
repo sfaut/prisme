@@ -5,8 +5,15 @@
 //! appartient à un utilisateur : toutes les fonctions filtrent sur son
 //! identifiant. Fonctions synchrones (`rusqlite`), appelées depuis des tâches
 //! bloquantes.
+//!
+//! Une connexion peut porter des requêtes à exécuter à l'ouverture de chaque
+//! connexion vers la base (`SET NAMES utf8mb4; SET SESSION sql_mode = ...`) :
+//! seuls les réglages de la session y sont permis (voir
+//! `prisme_dialects::classify::session_setting_refusal`).
 
 use prisme_connectors::mysql::MysqlTarget;
+use prisme_dialects::Dialect;
+use prisme_dialects::classify::session_setting_refusal;
 use rusqlite::{Connection, OptionalExtension, ffi, params};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
@@ -26,6 +33,9 @@ const USERNAME_MAX_LENGTH: usize = 80;
 
 /// Longueur maximale d'un nom de base (limite MySQL et MariaDB), en caractères.
 const DATABASE_NAME_MAX_LENGTH: usize = 64;
+
+/// Longueur maximale des requêtes à la connexion, en caractères.
+const INIT_SQL_MAX_LENGTH: usize = 4000;
 
 /// Famille de moteurs des connexions MySQL et MariaDB.
 const ENGINE_MYSQL: &str = "mysql";
@@ -49,6 +59,11 @@ pub struct NewConnection {
     #[serde(default)]
     #[ts(optional, as = "Option<String>")]
     pub database_name: String,
+    /// Requêtes à exécuter à l'ouverture de chaque connexion, séparées par
+    /// des « ; » : réglages de la session seulement. Absentes ou vides : aucune.
+    #[serde(default)]
+    #[ts(optional, as = "Option<String>")]
+    pub init_sql: String,
 }
 
 /// Paramètres saisis à tester, avant leur enregistrement.
@@ -82,6 +97,8 @@ pub struct ConnectionSummary {
     pub username: String,
     /// Base sélectionnée à la connexion, chaîne vide si aucune.
     pub database_name: String,
+    /// Requêtes exécutées à l'ouverture de chaque connexion, chaîne vide si aucune.
+    pub init_sql: String,
     /// Date d'enregistrement, en UTC au format ISO 8601.
     pub created_at: String,
 }
@@ -123,8 +140,24 @@ impl NewConnection {
                 "port : doit être compris entre 1 et 65535".to_string(),
             ));
         }
+        check_length("init_sql", &self.init_sql, 0, INIT_SQL_MAX_LENGTH)?;
+        for statement in init_statements(&self.init_sql) {
+            // Le dialecte n'est connu qu'à la connexion : celui de MySQL sert
+            // aussi pour MariaDB, qui partage la syntaxe des réglages.
+            if let Some(refusal) = session_setting_refusal(&statement, Dialect::MySql) {
+                return Err(ConnectionsError::Invalid(format!("init_sql : {refusal}")));
+            }
+        }
         Ok(())
     }
+}
+
+/// Requêtes à la connexion, découpées comme dans l'éditeur (crate `splitter`).
+fn init_statements(init_sql: &str) -> Vec<String> {
+    prisme_splitter::split(init_sql)
+        .into_iter()
+        .map(|statement| statement.sql)
+        .collect()
 }
 
 /// Vérifie qu'un champ compte entre `min` et `max` caractères (et non octets, comme `length()` de SQLite).
@@ -149,8 +182,8 @@ pub fn insert(
     let password_secret = secrets::encrypt(key, &new.password)?;
 
     let result = db.execute(
-        "INSERT INTO connections (user_id, name, engine, host, port, username, password_secret, database_name)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        "INSERT INTO connections (user_id, name, engine, host, port, username, password_secret, database_name, init_sql)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
             user_id,
             new.name,
@@ -160,6 +193,7 @@ pub fn insert(
             new.username,
             password_secret,
             new.database_name,
+            new.init_sql,
         ],
     );
     result.map_err(|error| name_error(error, &new.name))?;
@@ -188,7 +222,7 @@ pub fn update(
     let result = db.execute(
         "UPDATE connections
          SET name = ?3, host = ?4, port = ?5, username = ?6,
-             password_secret = COALESCE(?7, password_secret), database_name = ?8
+             password_secret = COALESCE(?7, password_secret), database_name = ?8, init_sql = ?9
          WHERE id = ?1 AND user_id = ?2",
         params![
             id,
@@ -199,6 +233,7 @@ pub fn update(
             changed.username,
             password_secret,
             changed.database_name,
+            changed.init_sql,
         ],
     );
     let updated = result.map_err(|error| name_error(error, &changed.name))?;
@@ -220,7 +255,7 @@ fn name_error(error: rusqlite::Error, name: &str) -> ConnectionsError {
 /// Liste les connexions de l'utilisateur `user_id`, par nom, sans leur mot de passe.
 pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, ConnectionsError> {
     let mut statement = db.prepare(
-        "SELECT id, name, engine, host, port, username, database_name, created_at
+        "SELECT id, name, engine, host, port, username, database_name, init_sql, created_at
          FROM connections WHERE user_id = ?1 ORDER BY name",
     )?;
     let rows = statement.query_map(params![user_id], |row| {
@@ -232,7 +267,8 @@ pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, Con
             port: row.get(4)?,
             username: row.get(5)?,
             database_name: row.get(6)?,
-            created_at: row.get(7)?,
+            init_sql: row.get(7)?,
+            created_at: row.get(8)?,
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
@@ -260,7 +296,7 @@ pub fn load_target(
 ) -> Result<Option<MysqlTarget>, ConnectionsError> {
     let row = db
         .query_row(
-            "SELECT host, port, username, password_secret, database_name
+            "SELECT host, port, username, password_secret, database_name, init_sql
              FROM connections WHERE id = ?1 AND user_id = ?2",
             params![id, user_id],
             |row| {
@@ -270,12 +306,13 @@ pub fn load_target(
                     row.get::<_, String>(2)?,
                     row.get::<_, Vec<u8>>(3)?,
                     row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
                 ))
             },
         )
         .optional()?;
 
-    let Some((host, port, username, password_secret, database_name)) = row else {
+    let Some((host, port, username, password_secret, database_name, init_sql)) = row else {
         return Ok(None);
     };
     Ok(Some(MysqlTarget {
@@ -284,6 +321,7 @@ pub fn load_target(
         username,
         password: secrets::decrypt(key, &password_secret)?,
         database_name,
+        init_statements: init_statements(&init_sql),
     }))
 }
 
@@ -317,6 +355,7 @@ pub fn probe_target(
         username: connection.username,
         password,
         database_name: connection.database_name,
+        init_statements: init_statements(&connection.init_sql),
     }))
 }
 
@@ -333,7 +372,36 @@ mod tests {
             username: "root".to_string(),
             password: SecretString::from("secret"),
             database_name: String::new(),
+            init_sql: String::new(),
         }
+    }
+
+    #[test]
+    fn keeps_session_settings_and_refuses_the_rest() {
+        let db = store::open_in_memory();
+        let key = MasterKey::generate();
+        let user_id = store::ensure_user(&db, "test@example.com").unwrap();
+        let mut connection = new_connection("avec réglages");
+        connection.init_sql =
+            "SET NAMES utf8mb4;\nSET SESSION sql_mode = 'ANSI_QUOTES';".to_string();
+        let id = insert(&db, &key, user_id, &connection).unwrap();
+        assert_eq!(list(&db, user_id).unwrap()[0].init_sql, connection.init_sql);
+        let target = load_target(&db, &key, user_id, id).unwrap().unwrap();
+        assert_eq!(
+            target.init_statements,
+            ["SET NAMES utf8mb4", "SET SESSION sql_mode = 'ANSI_QUOTES'"]
+        );
+
+        connection.init_sql = "SET NAMES utf8mb4; SET GLOBAL max_connections = 1".to_string();
+        assert!(matches!(
+            update(&db, &key, user_id, id, &connection),
+            Err(ConnectionsError::Invalid(_))
+        ));
+        connection.init_sql = "DELETE FROM t".to_string();
+        assert!(matches!(
+            insert(&db, &key, user_id, &connection),
+            Err(ConnectionsError::Invalid(_))
+        ));
     }
 
     #[test]

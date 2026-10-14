@@ -6,6 +6,11 @@
   « Tester » se connecte avec la saisie en cours, sans l'enregistrer, et
   affiche la variante et la version du serveur.
 
+  « À la connexion » reçoit des requêtes exécutées à l'ouverture de chaque
+  connexion vers la base, séparées par des « ; » : seuls les réglages de la
+  session (`SET NAMES`, `SET SESSION sql_mode`...) sont permis, le serveur
+  refuse le reste à l'enregistrement. « Tester » les exécute aussi.
+
   Les longueurs maximales reprennent celles du serveur
   (`crates/server/src/connections.rs`). Les autres contrôles sont faits par le
   serveur, dont le message s'affiche dans la fenêtre en cas de refus.
@@ -26,6 +31,7 @@ import UiButton from './ui/UiButton.vue'
 import UiDialog from './ui/UiDialog.vue'
 import UiField from './ui/UiField.vue'
 import UiInput from './ui/UiInput.vue'
+import UiTextarea from './ui/UiTextarea.vue'
 
 /**
  * Fenêtre ouverte ou fermée.
@@ -89,7 +95,15 @@ const title = computed(() =>
  * Saisie vide, avec le port par défaut de MySQL.
  */
 function emptyForm(): Required<NewConnection> {
-  return { name: '', host: '127.0.0.1', port: 3306, username: '', password: '', database_name: '' }
+  return {
+    name: '',
+    host: '127.0.0.1',
+    port: 3306,
+    username: '',
+    password: '',
+    database_name: '',
+    init_sql: '',
+  }
 }
 
 /**
@@ -101,8 +115,8 @@ function initialForm(connection: ConnectionSummary | null): Required<NewConnecti
   if (connection === null) {
     return emptyForm()
   }
-  const { name, host, port, username, database_name } = connection
-  return { name, host, port, username, password: '', database_name }
+  const { name, host, port, username, database_name, init_sql } = connection
+  return { name, host, port, username, password: '', database_name, init_sql }
 }
 
 // Chaque ouverture repart de la connexion choisie, sans l'erreur précédente.
@@ -198,6 +212,17 @@ async function save(): Promise<void> {
           v-model="form.database_name"
           :maxlength="64"
           placeholder="facultatif"
+          class="w-field"
+        />
+      </ui-field>
+      <ui-field label="À la connexion" top>
+        <ui-textarea
+          v-model="form.init_sql"
+          :maxlength="4000"
+          rows="3"
+          placeholder="SET NAMES utf8mb4;&#10;SET SESSION sql_mode = 'ANSI_QUOTES';"
+          aria-label="Requêtes à exécuter à la connexion"
+          title="Réglages de la session exécutés à l'ouverture de chaque connexion, séparés par des « ; »"
           class="w-field"
         />
       </ui-field>

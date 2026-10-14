@@ -21,6 +21,7 @@ fn target(host: String, port: u16) -> MysqlTarget {
         username: "root".to_string(),
         password: SecretString::from(""),
         database_name: "test".to_string(),
+        init_statements: Vec::new(),
     }
 }
 

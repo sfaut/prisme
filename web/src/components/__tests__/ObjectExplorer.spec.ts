@@ -78,6 +78,7 @@ function connection(id: number, name: string): ConnectionSummary {
     port: 3306,
     username: 'root',
     database_name: '',
+    init_sql: '',
     created_at: '2026-10-13T00:00:00Z',
   }
 }

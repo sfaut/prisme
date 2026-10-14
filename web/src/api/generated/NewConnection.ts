@@ -27,4 +27,9 @@ password: string,
 /**
  * Base sélectionnée à la connexion. Absente ou vide : aucune.
  */
-database_name?: string, };
+database_name?: string, 
+/**
+ * Requêtes à exécuter à l'ouverture de chaque connexion, séparées par
+ * des « ; » : réglages de la session seulement. Absentes ou vides : aucune.
+ */
+init_sql?: string, };

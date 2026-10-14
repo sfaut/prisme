@@ -5,8 +5,12 @@
 //! ou `SELECT ... INTO` sont des écritures, même s'ils commencent comme une
 //! lecture. Une liste blanche décide de ce qui est une lecture : tout le
 //! reste est une écriture.
+//!
+//! Les requêtes exécutées à l'ouverture d'une connexion (`SET NAMES`,
+//! `SET SESSION sql_mode`...) sont vérifiées à part (`session_setting_refusal`) :
+//! seuls les réglages de la session elle-même sont permis.
 
-use sqlparser::ast::Statement;
+use sqlparser::ast::{ContextModifier, Set, Statement};
 use sqlparser::parser::Parser;
 
 use crate::Dialect;
@@ -32,6 +36,52 @@ pub fn classify(sql: &str, dialect: Dialect) -> StatementKind {
         StatementKind::Read
     } else {
         StatementKind::Write
+    }
+}
+
+/// Refus d'une requête à exécuter à l'ouverture d'une connexion, `None` si
+/// elle est permise : seuls les réglages de la session (`SET NAMES`,
+/// `SET SESSION x = ...`, `SET @v = ...`, `SET TIME ZONE`...) le sont. Un
+/// réglage global (`SET GLOBAL`, `SET @@global.x`), qui changerait tout le
+/// serveur, et toute autre requête sont refusés, comme une requête que
+/// Prisme ne comprend pas.
+pub fn session_setting_refusal(sql: &str, dialect: Dialect) -> Option<String> {
+    let Ok(statements) = Parser::parse_sql(dialect.parser_dialect().as_ref(), sql) else {
+        return Some(format!("« {sql} » : requête non comprise par Prisme"));
+    };
+    for statement in &statements {
+        match statement {
+            Statement::Set(set) if is_global(set) => {
+                return Some(format!(
+                    "« {sql} » : un réglage global changerait tout le serveur ; seuls les réglages de la session sont permis"
+                ));
+            }
+            Statement::Set(_) => {}
+            _ => {
+                return Some(format!(
+                    "« {sql} » : seuls les réglages de la session (SET ...) sont permis"
+                ));
+            }
+        }
+    }
+    None
+}
+
+/// Un `SET` vise-t-il tout le serveur (`GLOBAL`, `@@global.x`, `@@persist.x`) ?
+fn is_global(set: &Set) -> bool {
+    let global_name = |name: &str| {
+        let name = name.to_ascii_lowercase();
+        name.starts_with("@@global.") || name.starts_with("@@persist")
+    };
+    match set {
+        Set::SingleAssignment {
+            scope, variable, ..
+        } => scope == &Some(ContextModifier::Global) || global_name(&variable.to_string()),
+        Set::MultipleAssignments { assignments } => assignments.iter().any(|assignment| {
+            assignment.scope == Some(ContextModifier::Global)
+                || global_name(&assignment.name.to_string())
+        }),
+        _ => false,
     }
 }
 
@@ -67,6 +117,20 @@ fn is_read(statement: &Statement) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn allows_only_session_settings_at_connection() {
+        let refused = |sql| session_setting_refusal(sql, Dialect::MariaDb).is_some();
+        assert!(!refused("SET NAMES utf8mb4"));
+        assert!(!refused("SET SESSION sql_mode = 'ANSI_QUOTES'"));
+        assert!(!refused("SET @debut = NOW()"));
+        assert!(!refused("SET time_zone = '+00:00'"));
+        assert!(refused("SET GLOBAL max_connections = 10"));
+        assert!(refused("SET @@global.sql_mode = ''"));
+        assert!(refused("DELETE FROM t"));
+        assert!(refused("SELECT 1"));
+        assert!(refused("SET n'importe quoi"));
+    }
 
     fn kind(sql: &str) -> StatementKind {
         classify(sql, Dialect::MySql)

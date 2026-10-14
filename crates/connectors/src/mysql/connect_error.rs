@@ -97,6 +97,7 @@ mod tests {
             username: "root".to_string(),
             password: SecretString::from("x"),
             database_name: "shop".to_string(),
+            init_statements: Vec::new(),
         }
     }
 

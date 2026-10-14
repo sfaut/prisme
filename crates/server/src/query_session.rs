@@ -899,6 +899,8 @@ mod tests {
             username: "root".to_string(),
             password: SecretString::from(""),
             database_name: "test".to_string(),
+            // Requête à la connexion : la variable existe sur chaque connexion ouverte.
+            init_sql: "SET @prisme_init = 1".to_string(),
         };
         let id = connections::insert(&db, &key, user_id, &new).unwrap();
 
@@ -1004,6 +1006,7 @@ mod tests {
             username: "root".to_string(),
             password: secrecy::SecretString::from("secret"),
             database_name: String::new(),
+            init_statements: Vec::new(),
         };
         let cancellation = super::Cancellation::default();
         cancellation.cancel_query(&target, 1).await;
@@ -1126,6 +1129,15 @@ mod tests {
         let (batch, results) = run(&mut socket, json!({ "sql": text, "cursor": 12 })).await;
         assert_eq!(batch["queries"][0]["sql"], "SELECT 'a'");
         assert_eq!(results.len(), 1);
+
+        // Requête à la connexion exécutée sur la connexion de la session et sur
+        // celles des requêtes en parallèle.
+        let check = "SELECT 1 FROM DUAL WHERE @prisme_init = 1";
+        let (_, results) = run(&mut socket, json!({ "sql": check, "cursor": 0 })).await;
+        assert_eq!(results[0].rows, 1);
+        let request = json!({ "sql": format!("{check}; {check};") });
+        let (_, results) = run(&mut socket, request).await;
+        assert!(results.iter().all(|result| result.rows == 1));
 
         // Sans curseur : toutes les requêtes, en parallèle, sur la base en cours (mysql).
         let request = json!({ "sql": "SELECT 1; SELECT DATABASE(), 2;" });

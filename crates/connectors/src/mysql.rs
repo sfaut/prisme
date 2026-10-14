@@ -40,6 +40,9 @@ pub struct MysqlTarget {
     pub password: SecretString,
     /// Base sélectionnée à la connexion. Chaîne vide : aucune.
     pub database_name: String,
+    /// Requêtes exécutées à l'ouverture de chaque connexion, dans l'ordre
+    /// (`SET NAMES utf8mb4`, `SET SESSION sql_mode = ...`).
+    pub init_statements: Vec<String>,
 }
 
 /// Variante du serveur, détectée à la connexion.
@@ -81,6 +84,15 @@ pub enum MysqlError {
     /// Le serveur n'a renvoyé aucune version.
     #[error("le serveur n'a renvoyé aucune version")]
     MissingVersion,
+
+    /// Une requête d'initialisation de la connexion a échoué.
+    #[error("requête à la connexion « {statement} » en échec : {message}")]
+    Init {
+        /// La requête en échec.
+        statement: String,
+        /// Message du serveur.
+        message: String,
+    },
 }
 
 /// Déduit la variante du serveur du résultat de `SELECT VERSION()`.
@@ -92,10 +104,11 @@ pub fn detect_flavor(version: &str) -> Flavor {
     }
 }
 
-/// Ouvre une connexion au serveur, en `CONNECT_TIMEOUT` au plus.
+/// Ouvre une connexion au serveur, en `CONNECT_TIMEOUT` au plus, puis y
+/// exécute les requêtes d'initialisation de la cible, dans l'ordre.
 ///
 /// En cas d'échec, le message dit ce qui ne va pas (serveur injoignable, accès
-/// refusé, base inconnue...) et quoi vérifier.
+/// refusé, base inconnue, requête d'initialisation refusée...) et quoi vérifier.
 pub async fn connect(target: &MysqlTarget) -> Result<Conn, MysqlError> {
     let database_name = Some(target.database_name.as_str()).filter(|name| !name.is_empty());
     let options = OptsBuilder::default()
@@ -104,14 +117,26 @@ pub async fn connect(target: &MysqlTarget) -> Result<Conn, MysqlError> {
         .user(Some(target.username.as_str()))
         .pass(Some(target.password.expose_secret()))
         .db_name(database_name);
-    match tokio::time::timeout(CONNECT_TIMEOUT, Conn::new(options)).await {
-        Ok(Ok(connection)) => Ok(connection),
-        Ok(Err(error)) => Err(MysqlError::Connect(connect_error::describe(target, &error))),
-        Err(_) => Err(MysqlError::ConnectTimeout(connect_error::timeout_message(
-            target,
-            CONNECT_TIMEOUT,
-        ))),
+    let mut connection = match tokio::time::timeout(CONNECT_TIMEOUT, Conn::new(options)).await {
+        Ok(Ok(connection)) => connection,
+        Ok(Err(error)) => return Err(MysqlError::Connect(connect_error::describe(target, &error))),
+        Err(_) => {
+            return Err(MysqlError::ConnectTimeout(connect_error::timeout_message(
+                target,
+                CONNECT_TIMEOUT,
+            )));
+        }
+    };
+    for statement in &target.init_statements {
+        if let Err(error) = connection.query_drop(statement.as_str()).await {
+            let _ = connection.disconnect().await;
+            return Err(MysqlError::Init {
+                statement: statement.clone(),
+                message: error.to_string(),
+            });
+        }
     }
+    Ok(connection)
 }
 
 /// Lit l'identité du serveur sur une connexion ouverte.
