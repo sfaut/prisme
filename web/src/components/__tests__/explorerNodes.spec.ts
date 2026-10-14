@@ -196,7 +196,9 @@ describe('catalogNodes', () => {
   it('protège les noms dans la requête de contenu', () => {
     expect(selectAllQuery('ma base', 'drôle`nom')).toBe('SELECT ALL * FROM `ma base`.`drôle``nom`')
     // ANSI_QUOTES : guillemets doubles, doublés dans le nom.
-    expect(selectAllQuery('ma base', 'dit "x"', true)).toBe('SELECT ALL * FROM "ma base"."dit ""x"""')
+    expect(selectAllQuery('ma base', 'dit "x"', true)).toBe(
+      'SELECT ALL * FROM "ma base"."dit ""x"""',
+    )
   })
 })
 

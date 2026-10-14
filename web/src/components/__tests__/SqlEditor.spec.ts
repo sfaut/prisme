@@ -47,6 +47,26 @@ describe('SqlEditor', () => {
     wrapper.unmount()
   })
 
+  it('remplace le texte par une requête générée, curseur à la ligne suivante', () => {
+    const wrapper = mount(SqlEditor, {
+      props: {
+        flavor: 'mysql',
+        schema: {},
+        version: null,
+        ansiQuotes: false,
+        defaultSchema: null,
+        modelValue: 'ancien texte',
+      },
+      attachTo: document.body,
+    })
+    const query = 'SELECT ALL * FROM `b`.`t`;\n'
+    wrapper.vm.replaceText(query)
+    const updates = wrapper.emitted('update:modelValue') ?? []
+    expect(updates[updates.length - 1]).toEqual([query])
+    expect(wrapper.vm.cursor()).toBe(query.length)
+    wrapper.unmount()
+  })
+
   it('remplace le contenu quand le texte change de l’extérieur', async () => {
     const wrapper = mount(SqlEditor, {
       props: {

@@ -236,7 +236,26 @@ function cursor(): number {
   return view?.state.selection.main.head ?? 0
 }
 
-defineExpose({ cursor })
+/**
+ * Remplace le texte de l'éditeur (une requête générée), puis donne le focus
+ * à l'éditeur, curseur à la fin du texte, prêt à le modifier.
+ *
+ * @param value Nouveau texte.
+ */
+function replaceText(value: string): void {
+  if (!view) {
+    text.value = value
+    return
+  }
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: value },
+    selection: { anchor: value.length },
+    scrollIntoView: true,
+  })
+  view.focus()
+}
+
+defineExpose({ cursor, replaceText })
 </script>
 
 <template>

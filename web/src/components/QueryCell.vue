@@ -238,16 +238,22 @@ function runWhenReady(cursor?: number): void {
 
 /**
  * Affiche le contenu d'une table dès que la session est prête : l'éditeur
- * reçoit la requête, qui part aussitôt. Les noms sont délimités selon le
- * mode `ANSI_QUOTES` de la session, connu seulement une fois prête.
+ * reçoit la requête, terminée par « ; », avec le curseur sur la ligne
+ * suivante, prêt à la modifier ; la requête part aussitôt. Les noms sont
+ * délimités selon le mode `ANSI_QUOTES` de la session, connu seulement une
+ * fois prête.
  *
  * @param schema Nom de la base.
  * @param table Nom de la table.
  */
 function showTableWhenReady(schema: string, table: string): void {
   whenReady(() => {
-    const query = selectAllQuery(schema, table, state.server?.ansi_quotes ?? false)
-    sql.value = query
+    const query = `${selectAllQuery(schema, table, state.server?.ansi_quotes ?? false)};\n`
+    if (editor.value) {
+      editor.value.replaceText(query)
+    } else {
+      sql.value = query
+    }
     session.run(query, 0)
   })
 }
