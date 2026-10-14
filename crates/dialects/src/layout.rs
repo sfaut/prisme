@@ -119,6 +119,9 @@ struct Item<'a> {
     text: &'a str,
     /// Le texte d'origine avait-il un espace (ou un retour à la ligne) avant ce jeton ?
     space_before: bool,
+    /// Mot-clef du dialecte qui ne désigne pas une valeur (`SELECT`, `AND`...),
+    /// calculé au découpage, où le dialecte est connu.
+    structural: bool,
 }
 
 impl Item<'_> {
@@ -211,10 +214,15 @@ pub(crate) fn layout(sql: &str, dialect: Dialect, program: bool) -> String {
         ) else {
             return sql.to_string();
         };
+        let structural = matches!(
+            &token.token,
+            Token::Word(word) if word.quote_style.is_none() && is_structural_keyword(&word.value, dialect)
+        );
         items.push(Item {
             token: token.token,
             text: &sql[start..end],
             space_before,
+            structural,
         });
         space_before = false;
     }
@@ -740,7 +748,7 @@ fn is_operator(token: &Token) -> bool {
 /// Indique si un jeton termine un opérande : l'opérateur qui le suit est binaire.
 fn is_operand(item: &Item) -> bool {
     match &item.token {
-        Token::Word(word) => word.quote_style.is_some() || !is_structural_keyword(&word.value),
+        Token::Word(_) => !item.structural,
         Token::RParen | Token::Placeholder(_) | Token::Number(..) => true,
         Token::SingleQuotedString(_)
         | Token::DoubleQuotedString(_)

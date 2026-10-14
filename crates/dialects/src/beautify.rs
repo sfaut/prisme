@@ -208,7 +208,7 @@ fn uppercase_keywords(sql: &str, dialect: Dialect) -> String {
             unit_expected = true;
         }
         previous_word = upper;
-        if !is_unit && !is_keyword(&word.value) {
+        if !is_unit && !is_keyword(&word.value, dialect) {
             continue;
         }
         let (Some(start), Some(end)) = (

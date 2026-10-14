@@ -15,7 +15,13 @@ vi.mock('@/api/analyze', () => ({
 describe('SqlEditor', () => {
   it('souligne les erreurs de syntaxe signalées par le serveur', async () => {
     const wrapper = mount(SqlEditor, {
-      props: { flavor: 'mysql', schema: {}, defaultSchema: null, modelValue: 'SELEC 1' },
+      props: {
+        flavor: 'mysql',
+        schema: {},
+        version: null,
+        defaultSchema: null,
+        modelValue: 'SELEC 1',
+      },
       attachTo: document.body,
     })
     await vi.waitFor(() => expect(wrapper.find('.cm-lintRange-error').text()).toBe('SELEC'), {
@@ -26,7 +32,13 @@ describe('SqlEditor', () => {
 
   it('affiche le texte lié', () => {
     const wrapper = mount(SqlEditor, {
-      props: { flavor: 'mysql', schema: {}, defaultSchema: null, modelValue: 'SELECT 1' },
+      props: {
+        flavor: 'mysql',
+        schema: {},
+        version: null,
+        defaultSchema: null,
+        modelValue: 'SELECT 1',
+      },
       attachTo: document.body,
     })
     expect(wrapper.find('.cm-content').text()).toContain('SELECT 1')
@@ -35,7 +47,13 @@ describe('SqlEditor', () => {
 
   it('remplace le contenu quand le texte change de l’extérieur', async () => {
     const wrapper = mount(SqlEditor, {
-      props: { flavor: 'mariadb', schema: {}, defaultSchema: null, modelValue: 'SELECT 1' },
+      props: {
+        flavor: 'mariadb',
+        schema: {},
+        version: null,
+        defaultSchema: null,
+        modelValue: 'SELECT 1',
+      },
       attachTo: document.body,
     })
     await wrapper.setProps({ modelValue: 'SHOW TABLES' })

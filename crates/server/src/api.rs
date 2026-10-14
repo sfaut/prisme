@@ -17,24 +17,26 @@
 //! | `PUT /api/settings`                 | Modifie les réglages, renvoie les réglages à jour.           |
 //! | `POST /api/beautify`                | Enjolive du SQL (mots-clefs en capitales...).                |
 //! | `POST /api/analyze`                 | Analyse le texte de l'éditeur (voir `analyze.rs`).           |
+//! | `GET /api/dialects/{flavor}/keywords` | Mots-clefs du dialecte (`?version=` : ceux de la version). |
 //! | `GET /` et tout autre chemin        | Fichiers de l'interface (voir `web_assets.rs`).              |
 
 use std::sync::{Arc, Mutex};
 
 use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
-use prisme_connectors::mysql::{self, ServerInfo};
+use prisme_connectors::mysql::{self, Flavor, ServerInfo};
 use prisme_dialects::Dialect;
 use prisme_dialects::beautify::beautify_with_routines;
+use prisme_dialects::keywords::keywords;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::analyze::{self, Analysis, AnalyzeRequest};
+use crate::analyze::{self, Analysis, AnalyzeRequest, dialect_of};
 use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
 use crate::connections::{self, ConnectionSummary, NewConnection, ProbeRequest};
@@ -115,6 +117,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/settings", get(get_settings).put(put_settings))
         .route("/api/beautify", post(beautify_sql))
         .route("/api/analyze", post(analyze_sql))
+        .route("/api/dialects/{flavor}/keywords", get(dialect_keywords))
         .merge(explorer::routes())
         .fallback(web_assets::serve)
         .with_state(state)
@@ -216,12 +219,58 @@ struct BeautifyRequest {
     /// catalogue n'est pas chargé.
     #[serde(default)]
     routines: Vec<String>,
+    /// Variante du serveur, pour ses mots-clefs ; absente, MySQL.
+    #[serde(default)]
+    #[ts(optional)]
+    flavor: Option<Flavor>,
 }
 
 /// `POST /api/beautify` : enjolive du SQL MySQL / MariaDB (voir `prisme_dialects::beautify`).
 async fn beautify_sql(Json(request): Json<BeautifyRequest>) -> Json<SqlText> {
     Json(SqlText {
-        sql: beautify_with_routines(&request.sql, Dialect::MySql, &request.routines),
+        sql: beautify_with_routines(
+            &request.sql,
+            request.flavor.map_or(Dialect::MySql, dialect_of),
+            &request.routines,
+        ),
+    })
+}
+
+/// Version du serveur dont on veut les mots-clefs.
+#[derive(Debug, Deserialize)]
+struct KeywordsQuery {
+    /// Version annoncée par le serveur (`10.11.11-MariaDB`) ; absente, tous les mots.
+    version: Option<String>,
+}
+
+/// Mots-clefs d'un dialecte, en capitales, par catégorie (fichiers
+/// `crates/dialects/keywords/*.yaml`) : la coloration de l'éditeur les range
+/// dans ses classes de mots.
+#[derive(Debug, Serialize, TS)]
+#[ts(export)]
+struct DialectKeywords {
+    /// Mots réservés.
+    reserved: Vec<String>,
+    /// Mots-clefs non réservés.
+    keywords: Vec<String>,
+    /// Types de colonnes.
+    types: Vec<String>,
+    /// Mots qui désignent une valeur (`NULL`, `CURRENT_DATE`...).
+    literals: Vec<String>,
+}
+
+/// `GET /api/dialects/{flavor}/keywords` : mots-clefs du dialecte, limités à
+/// ceux de la version demandée.
+async fn dialect_keywords(
+    Path(flavor): Path<Flavor>,
+    Query(query): Query<KeywordsQuery>,
+) -> Json<DialectKeywords> {
+    let words = keywords(dialect_of(flavor), query.version.as_deref());
+    Json(DialectKeywords {
+        reserved: words.reserved,
+        keywords: words.keywords,
+        types: words.types,
+        literals: words.literals,
     })
 }
 
@@ -343,6 +392,26 @@ mod tests {
         // Le repli vers les fichiers de l'interface ne masque pas une route absente.
         let (status, _) = send(&test_app(), "GET", "/api/absent", None).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn gives_the_keywords_of_a_dialect_and_version() {
+        let app = test_app();
+        let (status, all) = send(&app, "GET", "/api/dialects/mysql/keywords", None).await;
+        assert_eq!(status, StatusCode::OK);
+        let has = |body: &Value, category: &str, word: &str| {
+            body[category].as_array().unwrap().contains(&json!(word))
+        };
+        assert!(has(&all, "reserved", "SELECT") && has(&all, "reserved", "WINDOW"));
+        assert!(has(&all, "types", "VARCHAR") && has(&all, "literals", "NULL"));
+
+        // MySQL 5.7 : les mots réservés apparus avec MySQL 8.0 ne sont pas retenus.
+        let uri = "/api/dialects/mysql/keywords?version=5.7.44";
+        let (_, old) = send(&app, "GET", uri, None).await;
+        assert!(has(&old, "reserved", "SELECT") && !has(&old, "reserved", "WINDOW"));
+
+        let (status, _) = send(&app, "GET", "/api/dialects/mariadb/keywords", None).await;
+        assert_eq!(status, StatusCode::OK);
     }
 
     #[tokio::test]

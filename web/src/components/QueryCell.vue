@@ -285,7 +285,11 @@ const catalogReady = computed(() => catalog.catalogOf(props.connection.id)?.done
  */
 async function prettify(): Promise<void> {
   try {
-    sql.value = await beautify(sql.value, catalog.routineNames(props.connection.id))
+    sql.value = await beautify(
+      sql.value,
+      catalog.routineNames(props.connection.id),
+      state.server?.flavor,
+    )
   } catch (failure) {
     state.error = failure instanceof Error ? failure.message : String(failure)
   }
@@ -384,6 +388,7 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
         ref="editor"
         v-model="sql"
         :flavor="state.server?.flavor ?? 'mysql'"
+        :version="state.server?.version ?? null"
         :schema="completion"
         :default-schema="state.database"
         @run="run"

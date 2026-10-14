@@ -58,9 +58,13 @@ const chrome = EditorView.theme({
  */
 const highlight = HighlightStyle.define([
   { tag: tags.keyword, color: 'var(--sql-keyword)' },
-  { tag: [tags.typeName, tags.standard(tags.name)], color: 'var(--sql-type)' },
+  { tag: tags.typeName, color: 'var(--sql-type)' },
   { tag: [tags.string, tags.special(tags.string)], color: 'var(--sql-string)' },
-  { tag: [tags.number, tags.bool, tags.null], color: 'var(--sql-number)' },
+  // Nombres et valeurs : NULL, booléens, mots qui désignent une valeur (CURRENT_DATE...).
+  {
+    tag: [tags.number, tags.bool, tags.null, tags.standard(tags.name)],
+    color: 'var(--sql-number)',
+  },
   { tag: tags.special(tags.name), color: 'var(--sql-variable)' },
   { tag: [tags.lineComment, tags.blockComment], color: 'var(--sql-comment)', fontStyle: 'italic' },
   { tag: [tags.operator, tags.punctuation], color: 'var(--fg-muted)' },

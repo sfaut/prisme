@@ -56,12 +56,17 @@ pub struct StatementSpan {
     pub end: usize,
 }
 
-/// Analyse le texte de l'éditeur.
-pub fn analyze(request: &AnalyzeRequest) -> Analysis {
-    let dialect = match request.flavor {
+/// Dialecte SQL d'une variante de serveur.
+pub fn dialect_of(flavor: Flavor) -> Dialect {
+    match flavor {
         Flavor::MySql => Dialect::MySql,
         Flavor::MariaDb => Dialect::MariaDb,
-    };
+    }
+}
+
+/// Analyse le texte de l'éditeur.
+pub fn analyze(request: &AnalyzeRequest) -> Analysis {
+    let dialect = dialect_of(request.flavor);
     let statements = split(&request.sql);
     Analysis {
         errors: statements

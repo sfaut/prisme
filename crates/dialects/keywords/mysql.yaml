@@ -1,0 +1,327 @@
+# Mots-clefs de MySQL (base : mots réservés de MySQL 8).
+#
+# Une seule liste par dialecte, lue par la coloration de l'éditeur SQL et
+# par l'enjoliveur (mots-clefs mis en capitales). Chaque catégorie se range
+# dans une classe de coloration de l'éditeur.
+#
+# Un mot est soit un simple nom, soit un nom avec ses versions :
+#   - name: WINDOW
+#     since: "8.0"       # disponible à partir de cette version (incluse)
+#     until: "9.0"       # retiré à partir de cette version (facultatif)
+# Les versions se renseignent au fil de l'eau.
+#
+# NULL, TRUE et FALSE s'écrivent entre guillemets : sans eux, YAML les lit
+# comme une valeur vide et des booléens, et non comme des mots.
+#
+# Prudence avant d'ajouter un mot non réservé : l'enjoliveur le mettra en
+# capitales partout où il apparaît, y compris comme nom de table, et sous
+# Linux un nom de table tient compte de la casse.
+
+# Mots réservés : ne peuvent pas servir de nom sans accents graves.
+reserved:
+  - ACCESSIBLE
+  - ADD
+  - ALL
+  - ALTER
+  - ANALYZE
+  - AND
+  - AS
+  - ASC
+  - ASENSITIVE
+  - BEFORE
+  - BETWEEN
+  - BOTH
+  - BY
+  - CALL
+  - CASCADE
+  - CASE
+  - CHANGE
+  - CHECK
+  - COLLATE
+  - COLUMN
+  - CONDITION
+  - CONSTRAINT
+  - CONTINUE
+  - CONVERT
+  - CREATE
+  - CROSS
+  - name: CUBE
+    since: "8.0"
+  - name: CUME_DIST
+    since: "8.0"
+  - CURSOR
+  - DATABASE
+  - DATABASES
+  - DAY_HOUR
+  - DAY_MICROSECOND
+  - DAY_MINUTE
+  - DAY_SECOND
+  - DECLARE
+  - DEFAULT
+  - DELAYED
+  - DELETE
+  - name: DENSE_RANK
+    since: "8.0"
+  - DESC
+  - DESCRIBE
+  - DETERMINISTIC
+  - DISTINCT
+  - DISTINCTROW
+  - DIV
+  - DROP
+  - DUAL
+  - EACH
+  - ELSE
+  - ELSEIF
+  - name: EMPTY
+    since: "8.0"
+  - ENCLOSED
+  - ESCAPED
+  - name: EXCEPT
+    since: "8.0"
+  - EXISTS
+  - EXIT
+  - EXPLAIN
+  - FETCH
+  - name: FIRST_VALUE
+    since: "8.0"
+  - FOR
+  - FORCE
+  - FOREIGN
+  - FROM
+  - FULLTEXT
+  - name: FUNCTION
+    since: "8.0"
+  - GENERATED
+  - GET
+  - GRANT
+  - GROUP
+  - name: GROUPING
+    since: "8.0"
+  - name: GROUPS
+    since: "8.0"
+  - HAVING
+  - HIGH_PRIORITY
+  - HOUR_MICROSECOND
+  - HOUR_MINUTE
+  - HOUR_SECOND
+  - IF
+  - IGNORE
+  - IN
+  - INDEX
+  - INFILE
+  - INNER
+  - INOUT
+  - INSENSITIVE
+  - INSERT
+  - INTERSECT
+  - INTERVAL
+  - INTO
+  - IO_AFTER_GTIDS
+  - IO_BEFORE_GTIDS
+  - IS
+  - ITERATE
+  - JOIN
+  - name: JSON_TABLE
+    since: "8.0"
+  - KEY
+  - KEYS
+  - KILL
+  - name: LAG
+    since: "8.0"
+  - name: LAST_VALUE
+    since: "8.0"
+  - name: LATERAL
+    since: "8.0"
+  - name: LEAD
+    since: "8.0"
+  - LEADING
+  - LEAVE
+  - LEFT
+  - LIKE
+  - LIMIT
+  - LINEAR
+  - LINES
+  - LOAD
+  - LOCK
+  - LOOP
+  - LOW_PRIORITY
+  - MASTER_BIND
+  - MASTER_SSL_VERIFY_SERVER_CERT
+  - MATCH
+  - MAXVALUE
+  - MINUTE_MICROSECOND
+  - MINUTE_SECOND
+  - MOD
+  - MODIFIES
+  - NATURAL
+  - NOT
+  - NO_WRITE_TO_BINLOG
+  - name: NTH_VALUE
+    since: "8.0"
+  - name: NTILE
+    since: "8.0"
+  - name: OF
+    since: "8.0"
+  - ON
+  - OPTIMIZE
+  - OPTIMIZER_COSTS
+  - OPTION
+  - OPTIONALLY
+  - OR
+  - ORDER
+  - OUT
+  - OUTER
+  - OUTFILE
+  - name: OVER
+    since: "8.0"
+  - PARTITION
+  - name: PERCENT_RANK
+    since: "8.0"
+  - PRECISION
+  - PRIMARY
+  - PROCEDURE
+  - PURGE
+  - RANGE
+  - name: RANK
+    since: "8.0"
+  - READ
+  - READS
+  - READ_WRITE
+  - name: RECURSIVE
+    since: "8.0"
+  - REFERENCES
+  - REGEXP
+  - RELEASE
+  - RENAME
+  - REPEAT
+  - REPLACE
+  - REQUIRE
+  - RESIGNAL
+  - RESTRICT
+  - RETURN
+  - REVOKE
+  - RIGHT
+  - RLIKE
+  - ROW
+  - ROWS
+  - name: ROW_NUMBER
+    since: "8.0"
+  - SCHEMA
+  - SCHEMAS
+  - SECOND_MICROSECOND
+  - SELECT
+  - SENSITIVE
+  - SEPARATOR
+  - SET
+  - SHOW
+  - SIGNAL
+  - SPATIAL
+  - SPECIFIC
+  - SQL
+  - SQLEXCEPTION
+  - SQLSTATE
+  - SQLWARNING
+  - SQL_BIG_RESULT
+  - SQL_CALC_FOUND_ROWS
+  - SQL_SMALL_RESULT
+  - SSL
+  - STARTING
+  - STORED
+  - STRAIGHT_JOIN
+  - name: SYSTEM
+    since: "8.0"
+  - TABLE
+  - TERMINATED
+  - THEN
+  - TO
+  - TRAILING
+  - TRIGGER
+  - UNDO
+  - UNION
+  - UNIQUE
+  - UNLOCK
+  - UNSIGNED
+  - UPDATE
+  - USAGE
+  - USE
+  - USING
+  - VALUES
+  - VARYING
+  - VIRTUAL
+  - WHEN
+  - WHERE
+  - WHILE
+  - name: WINDOW
+    since: "8.0"
+  - WITH
+  - WRITE
+  - XOR
+  - YEAR_MONTH
+  - ZEROFILL
+
+# Mots-clefs non réservés, sans ambiguïté en pratique.
+keywords:
+  - BEGIN
+  - COLUMNS
+  - COMMIT
+  - END
+  - OFFSET
+  - ROLLBACK
+  - TABLES
+  - TRANSACTION
+  - TRUNCATE
+  - VIEW
+
+# Types de colonnes, réservés.
+types:
+  - BIGINT
+  - BINARY
+  - BLOB
+  - CHAR
+  - CHARACTER
+  - DEC
+  - DECIMAL
+  - DOUBLE
+  - FLOAT
+  - FLOAT4
+  - FLOAT8
+  - INT
+  - INT1
+  - INT2
+  - INT3
+  - INT4
+  - INT8
+  - INTEGER
+  - LONG
+  - LONGBLOB
+  - LONGTEXT
+  - MEDIUMBLOB
+  - MEDIUMINT
+  - MEDIUMTEXT
+  - MIDDLEINT
+  - NUMERIC
+  - REAL
+  - SMALLINT
+  - TINYBLOB
+  - TINYINT
+  - TINYTEXT
+  - VARBINARY
+  - VARCHAR
+  - VARCHARACTER
+
+# Mots réservés qui désignent une valeur (`x = NULL`, `d - CURRENT_DATE`) :
+# dans une expression, ils jouent le rôle d'un opérande.
+literals:
+  - "NULL"
+  - "TRUE"
+  - "FALSE"
+  - CURRENT_DATE
+  - CURRENT_TIME
+  - CURRENT_TIMESTAMP
+  - CURRENT_USER
+  - LOCALTIME
+  - LOCALTIMESTAMP
+  - UTC_DATE
+  - UTC_TIME
+  - UTC_TIMESTAMP

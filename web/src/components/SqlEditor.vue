@@ -1,7 +1,8 @@
 <!--
   Éditeur SQL, basé sur CodeMirror 6.
 
-  Coloration selon le dialecte du serveur (MySQL ou MariaDB), numéros de
+  Coloration selon le dialecte et la version du serveur (MySQL ou MariaDB :
+  mots-clefs lus sur le serveur, voir `sqlDialect.ts`), numéros de
   ligne, thème clair ou sombre comme l'interface (`editorTheme.ts`),
   historique d'annulation, complétion des noms seulement : bases, tables,
   colonnes, fonctions et procédures (espace de noms construit à partir du
@@ -25,16 +26,23 @@ import { EditorView, basicSetup } from 'codemirror'
 import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
 
 import { analyzeSql } from '@/api/analyze'
+import type { DialectKeywords } from '@/api/generated/DialectKeywords'
 import type { Flavor } from '@/api/generated/Flavor'
+import { fetchKeywords } from '@/api/keywords'
 
 import { currentStatement, setStatements } from './currentStatement'
 import { editorTheme } from './editorTheme'
+import { editorDialect } from './sqlDialect'
 
 const props = defineProps<{
   /**
    * Dialecte du serveur cible, pour la coloration et les mots-clefs.
    */
   flavor: Flavor
+  /**
+   * Version du serveur cible, pour ses mots-clefs ; `null` tant qu'inconnue.
+   */
+  version: string | null
   /**
    * Bases, tables et colonnes proposées par la complétion.
    */
@@ -121,8 +129,28 @@ async function analyze(): Promise<void> {
 /**
  * Langue CodeMirror de l'éditeur : dialecte et complétion, d'après les propriétés.
  */
+/**
+ * Mots-clefs du dialecte et de la version du serveur, `null` tant qu'ils
+ * ne sont pas reçus : la coloration utilise alors les listes de `lang-sql`.
+ */
+let keywords: DialectKeywords | null = null
+
+/**
+ * Lit les mots-clefs du dialecte et de la version du serveur, puis
+ * recolore le texte. Un échec garde la coloration en place.
+ */
+async function loadKeywords(): Promise<void> {
+  try {
+    keywords = await fetchKeywords(props.flavor, props.version)
+    view?.dispatch({ effects: language.reconfigure(currentLanguage()) })
+  } catch {
+    // Serveur injoignable : la coloration de lang-sql reste en place.
+  }
+}
+
 function currentLanguage(): LanguageSupport {
-  const dialect = props.flavor === 'mariadb' ? MariaSQL : MySQL
+  const fallback = props.flavor === 'mariadb' ? MariaSQL : MySQL
+  const dialect = keywords === null ? fallback : editorDialect(keywords)
   // Langue montée à la main plutôt que par `sql()`, qui ajouterait la
   // complétion des mots-clefs : seuls les noms du catalogue sont proposés.
   const names = schemaCompletionSource({
@@ -186,6 +214,9 @@ watch(
 
 // Le dialecte change à l'ouverture de la session : l'analyse est à refaire.
 watch(() => props.flavor, scheduleAnalysis)
+
+// Dialecte ou version connus ou changés : leurs mots-clefs sont à relire.
+watch(() => [props.flavor, props.version], loadKeywords, { immediate: true })
 
 onBeforeUnmount(() => {
   clearTimeout(analysisTimer)

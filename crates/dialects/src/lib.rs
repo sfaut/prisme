@@ -2,8 +2,9 @@
 //!
 //! S'appuie sur `sqlparser` (voir `docs/V1.md`, section 3.2). Pour l'instant :
 //! la limite de lignes par défaut (module `limit`), la classification
-//! lecture / écriture (module `classify`), l'enjoliveur (module `beautify`)
-//! et la position des erreurs de syntaxe (module `syntax`).
+//! lecture / écriture (module `classify`), l'enjoliveur (module `beautify`),
+//! les mots-clefs de chaque dialecte (module `keywords`, fichiers
+//! `keywords/*.yaml`) et la position des erreurs de syntaxe (module `syntax`).
 //! Le catalogue de fonctions et les émetteurs par dialecte viendront avec la
 //! traduction.
 
@@ -11,7 +12,7 @@ mod alias;
 pub mod beautify;
 pub mod classify;
 mod functions;
-mod keywords;
+pub mod keywords;
 mod layout;
 pub mod limit;
 mod parse;

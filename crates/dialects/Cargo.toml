@@ -6,8 +6,10 @@ license.workspace = true
 
 [dependencies]
 prisme-splitter = { version = "0.1.0", path = "../splitter" }
+serde = { version = "1.0.229", features = ["derive"] }
 sqlparser = { version = "0.63.0", features = ["visitor"] }
 thiserror = "2.0.21"
+yaml_serde = "0.10.7"
 
 [dev-dependencies]
 rusqlite = { version = "0.40.2", features = ["bundled"] }

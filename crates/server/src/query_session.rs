@@ -60,7 +60,7 @@ use axum::extract::ws::{Message, WebSocket};
 use futures_util::future::join_all;
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
-use prisme_connectors::mysql::{self, Cell, Connection, Flavor, MysqlTarget, ServerInfo};
+use prisme_connectors::mysql::{self, Cell, Connection, MysqlTarget, ServerInfo};
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::{StatementKind, classify};
 use prisme_dialects::limit::{LimitOutcome, apply_default_limit, written_limit};
@@ -477,10 +477,7 @@ impl Session<'_> {
                 return Err(SocketClosed);
             }
         };
-        let dialect = match info.flavor {
-            Flavor::MySql => Dialect::MySql,
-            Flavor::MariaDb => Dialect::MariaDb,
-        };
+        let dialect = crate::analyze::dialect_of(info.flavor);
         self.outbox
             .send(ServerMessage::Ready {
                 server: info,
