@@ -8,6 +8,12 @@ vi.mock('@/api/connections', () => ({
   listConnections: async () => [],
 }))
 
+// Aucun éditeur enregistré : l'interface en crée un, sans connexion.
+vi.mock('@/api/editors', () => ({
+  listEditors: async () => [],
+  createEditor: async () => ({ id: 1, name: '', connection_id: null, sql: '' }),
+}))
+
 beforeEach(() => {
   setActivePinia(createPinia())
   // L'arbre de l'explorateur (défilement virtuel) interroge les media queries,
@@ -24,9 +30,11 @@ afterEach(() => {
 })
 
 describe('App', () => {
-  it("affiche le nom de l'application et invite à choisir une source", () => {
+  it("affiche le nom de l'application et invite à choisir une source", async () => {
     const wrapper = mount(App)
     expect(wrapper.text()).toContain('Prisme')
-    expect(wrapper.text()).toContain('Double-cliquez sur une source de données')
+    await vi.waitFor(() =>
+      expect(wrapper.text()).toContain('Double-cliquez sur une source de données'),
+    )
   })
 })

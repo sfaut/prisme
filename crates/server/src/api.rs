@@ -464,7 +464,6 @@ mod tests {
         assert_eq!(status, StatusCode::NO_CONTENT);
         let (_, editors) = send(&app, "GET", "/api/editors", None).await;
         assert_eq!(editors[0]["name"], "Ventes");
-        assert_eq!(editors[0]["results"], json!([]));
 
         let (status, _) = send(&app, "DELETE", &uri, None).await;
         assert_eq!(status, StatusCode::NO_CONTENT);

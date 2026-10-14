@@ -1,8 +1,11 @@
 <!--
   Cellule SQL : éditeur, exécution, limite de lignes, état et résultats.
 
-  La cellule ouvre une session de requêtes sur la connexion choisie et la
-  garde ouverte tant qu'elle est affichée. Ctrl-Entrée ou « Exécuter » lance
+  La cellule est celle d'un éditeur : elle ouvre la session de requêtes de
+  l'éditeur, sur sa connexion, et la garde ouverte tant qu'elle existe. Les
+  résultats sont enregistrés par le serveur ; la cellule repart des onglets
+  enregistrés, et enregistre aussi leur nom, leur épinglage, leur ordre et
+  leur fermeture. Ctrl-Entrée ou « Exécuter » lance
   la requête sous le curseur ; Ctrl-Maj-Entrée ou « Tout exécuter » lance
   toutes les requêtes en parallèle. « Stopper » les arrête toutes.
   « Enjoliver » réécrit le texte en « beau SQL », une fois le catalogue de la
@@ -23,6 +26,7 @@ import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import { beautify } from '@/api/beautify'
+import { deleteResult, listResults, reorderResults, updateResult } from '@/api/editors'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import { type QueryTab, useQuerySession } from '@/api/querySession'
 import { useCatalogStore } from '@/stores/catalog'
@@ -32,7 +36,7 @@ import QueryTabView from './QueryTabView.vue'
 import EditorResizer from './EditorResizer.vue'
 import ResultTab from './ResultTab.vue'
 import SqlEditor from './SqlEditor.vue'
-import { MOVE_THRESHOLD, dropPosition, moveColumn } from './resultGrid'
+import { movedItems, useTabDrag } from './tabDrag'
 import { loadEditorSplit } from './editorSplit'
 import { completionSchema } from './sqlCompletion'
 import UiAlert from './ui/UiAlert.vue'
@@ -40,6 +44,10 @@ import UiButton from './ui/UiButton.vue'
 import UiSelect from './ui/UiSelect.vue'
 
 const props = defineProps<{
+  /**
+   * Éditeur de la cellule.
+   */
+  editorId: number
   /**
    * Connexion sur laquelle s'exécutent les requêtes.
    */
@@ -62,7 +70,7 @@ const emit = defineEmits<{
  */
 const sql = defineModel<string>('sql', { required: true })
 
-const session = useQuerySession(props.connection.id)
+const session = useQuerySession(props.editorId)
 const catalog = useCatalogStore()
 const state = session.state
 const settings = useSettingsStore()
@@ -127,73 +135,44 @@ function tabLabel(tab: QueryTab): string {
 }
 
 /**
- * Déplacement d'onglet en cours : position de l'onglet pris, abscisse de
- * départ du pointeur, élément de l'onglet et pointeur, et le glissement
- * a-t-il dépassé le seuil ?
- */
-let moving: {
-  from: number
-  x: number
-  element: HTMLElement
-  pointerId: number
-  started: boolean
-} | null = null
-
-/**
- * Position où l'onglet déplacé serait inséré, `null` hors déplacement.
- */
-const dropAt = ref<number | null>(null)
-
-/**
- * Appui sur un onglet : début d'un éventuel déplacement. Les boutons et le
- * champ de renommage de l'onglet gardent leur propre comportement.
+ * Signale un échec d'enregistrement côté serveur, sans rien annuler à l'écran.
  *
- * @param event Appui sur l'onglet.
- * @param index Position de l'onglet.
+ * @param failure Erreur reçue.
  */
-function onTabDown(event: PointerEvent, index: number): void {
-  if (event.button !== 0 || (event.target as HTMLElement).closest('button, input')) {
-    return
-  }
-  const element = event.currentTarget as HTMLElement
-  moving = { from: index, x: event.clientX, element, pointerId: event.pointerId, started: false }
+function reportFailure(failure: unknown): void {
+  state.error = failure instanceof Error ? failure.message : String(failure)
 }
 
 /**
- * Suit le pointeur : passé le seuil, l'appui devient un déplacement (le
- * pointeur reste alors capturé par l'onglet) et le repère suit le pointeur.
- *
- * @param event Déplacement du pointeur.
+ * Déplacement d'un onglet de résultat par glissement ; le nouvel ordre est enregistré.
  */
-function onTabMove(event: PointerEvent): void {
-  if (moving === null) {
-    return
-  }
-  if (!moving.started && Math.abs(event.clientX - moving.x) > MOVE_THRESHOLD) {
-    moving.started = true
-    moving.element.setPointerCapture(moving.pointerId)
-  }
-  if (moving.started) {
-    const tabs = moving.element.parentElement?.querySelectorAll('[role="tab"]') ?? []
-    const centers = Array.from(tabs, (tab) => {
-      const rect = tab.getBoundingClientRect()
-      return rect.left + rect.width / 2
-    })
-    dropAt.value = dropPosition(centers, event.clientX)
-  }
+const tabDrag = useTabDrag((from, to) => {
+  state.tabs = movedItems(state.tabs, from, to)
+  reorderResults(
+    props.editorId,
+    state.tabs.map((tab) => tab.id),
+  ).catch(reportFailure)
+})
+
+/**
+ * Épingle ou désépingle un onglet de résultat, et l'enregistre.
+ *
+ * @param tab Onglet visé.
+ */
+function togglePin(tab: QueryTab): void {
+  tab.pinned = !tab.pinned
+  updateResult(tab.id, { name: tab.name ?? '', pinned: tab.pinned }).catch(reportFailure)
 }
 
 /**
- * Lâcher : l'onglet prend sa nouvelle place.
+ * Renomme un onglet de résultat, et l'enregistre.
+ *
+ * @param tab Onglet visé.
+ * @param name Nouveau nom, `null` pour le libellé par défaut.
  */
-function onTabDrop(): void {
-  if (moving?.started && dropAt.value !== null) {
-    const indexes = state.tabs.map((_, index) => index)
-    const moved = moveColumn(indexes, moving.from, dropAt.value)
-    state.tabs = moved.order.map((index) => state.tabs[index]!)
-  }
-  moving = null
-  dropAt.value = null
+function renameTab(tab: QueryTab, name: string | null): void {
+  tab.name = name
+  updateResult(tab.id, { name: name ?? '', pinned: tab.pinned }).catch(reportFailure)
 }
 
 /**
@@ -209,6 +188,7 @@ function closeTab(tab: QueryTab): void {
     selectedTab.value = neighbour?.id ?? 0
   }
   session.closeTab(tab.id)
+  deleteResult(tab.id).catch(reportFailure)
 }
 
 /**
@@ -320,6 +300,11 @@ async function changeLimit(rowLimit: number): Promise<void> {
   }
 }
 
+// Onglets de résultat enregistrés de l'éditeur, relus à chaque ouverture de la cellule.
+onMounted(() => {
+  listResults(props.editorId).then(session.restore).catch(reportFailure)
+})
+
 onMounted(async () => {
   if (settings.settings === null) {
     try {
@@ -427,21 +412,22 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
           :value="tab.id"
           as="div"
           :class="{
-            'drop-before': dropAt === index,
-            'drop-after': dropAt === state.tabs.length && index === state.tabs.length - 1,
+            'drop-before': tabDrag.dropAt.value === index,
+            'drop-after':
+              tabDrag.dropAt.value === state.tabs.length && index === state.tabs.length - 1,
           }"
-          @pointerdown="onTabDown($event, index)"
-          @pointermove="onTabMove"
-          @pointerup="onTabDrop"
-          @pointercancel="onTabDrop"
+          @pointerdown="tabDrag.onDown($event, index)"
+          @pointermove="tabDrag.onMove"
+          @pointerup="tabDrag.onDrop"
+          @pointercancel="tabDrag.onDrop"
           class="group relative flex h-control max-w-tab min-w-0 shrink-0 cursor-pointer items-center rounded-t-control ps-control-x pe-1 text-ui font-medium text-fg-muted outline-none select-none hover:text-fg-strong focus-visible:bg-surface-muted data-[state=active]:bg-surface-elevated data-[state=active]:text-fg-strong"
         >
           <result-tab
             :tab="tab"
             :default-label="tabLabel(tab)"
             @close="closeTab(tab)"
-            @toggle-pin="tab.pinned = !tab.pinned"
-            @rename="(name) => (tab.name = name)"
+            @toggle-pin="togglePin(tab)"
+            @rename="(name) => renameTab(tab, name)"
           />
         </tabs-trigger>
       </tabs-list>

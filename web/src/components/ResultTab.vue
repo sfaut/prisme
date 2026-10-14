@@ -2,9 +2,8 @@
   Contenu de l'onglet d'une requête, dans la barre des onglets de la cellule.
 
   - Pastille d'avancement, puis libellé : le nom donné par l'utilisateur, ou
-    le numéro et le début de la requête. Un double clic sur le libellé le
-    rend modifiable : Entrée valide, Échap annule, un nom vide rend le
-    libellé par défaut.
+    le numéro et le début de la requête ; un double clic le renomme
+    (`TabLabel`).
   - Épingle : un onglet épinglé reste quand la requête est relancée. Elle
     est toujours visible sur un onglet épinglé ; sinon, comme la croix, au
     survol de l'onglet ou sur l'onglet actif (l'onglet porte la classe
@@ -17,11 +16,12 @@
 -->
 <script setup lang="ts">
 import { Pin, X } from 'lucide-vue-next'
-import { computed, nextTick, ref, useTemplateRef } from 'vue'
+import { computed } from 'vue'
 
 import { type QueryTab, tabFraction, tabProgress } from '@/api/querySession'
 
 import ProgressDot from './ProgressDot.vue'
+import TabLabel from './TabLabel.vue'
 import UiButton from './ui/UiButton.vue'
 
 const props = defineProps<{
@@ -51,18 +51,6 @@ const emit = defineEmits<{
 }>()
 
 /**
- * Libellé en cours de modification ?
- */
-const editing = ref(false)
-
-/**
- * Saisie du nouveau nom.
- */
-const draft = ref('')
-
-const input = useTemplateRef<HTMLInputElement>('input')
-
-/**
  * Part accomplie de la requête, `null` si inconnue.
  */
 const fraction = computed(() => tabFraction(props.tab))
@@ -78,52 +66,12 @@ const barTone = computed(() => {
   }
   return progress === 'error' ? 'error' : progress === 'done' ? 'success' : 'accent'
 })
-
-/**
- * Rend le libellé modifiable, son texte sélectionné.
- */
-async function startEditing(): Promise<void> {
-  draft.value = props.tab.name ?? props.defaultLabel
-  editing.value = true
-  await nextTick()
-  input.value?.select()
-}
-
-/**
- * Valide le nouveau nom ; vide, l'onglet reprend son libellé par défaut.
- */
-function commit(): void {
-  if (editing.value) {
-    editing.value = false
-    const name = draft.value.trim()
-    emit('rename', name === '' || name === props.defaultLabel ? null : name)
-  }
-}
 </script>
 
 <template>
   <span class="flex min-w-0 items-center gap-1.5" @auxclick.middle.prevent="emit('close')">
     <progress-dot :tab="tab" />
-    <input
-      v-if="editing"
-      ref="input"
-      v-model="draft"
-      aria-label="Nom de l'onglet"
-      class="h-control-sm w-40 min-w-0 rounded-control border border-accent bg-surface px-1 text-ui text-fg-strong outline-none"
-      @blur="commit"
-      @keydown.stop
-      @keydown.enter.prevent="commit"
-      @keydown.escape.prevent="editing = false"
-      @mousedown.stop
-    />
-    <span
-      v-else
-      class="truncate text-trim"
-      title="Double-cliquer pour renommer"
-      @dblclick="startEditing"
-    >
-      {{ tab.name ?? defaultLabel }}
-    </span>
+    <tab-label :name="tab.name" :default-label="defaultLabel" @rename="emit('rename', $event)" />
     <!-- Épingle et croix côte à côte, sans l'écart qui sépare le libellé. -->
     <span class="flex items-center">
       <ui-button

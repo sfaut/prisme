@@ -250,11 +250,12 @@ mod tests {
         }
         recorder.finish().await;
 
-        let editors = state
-            .with_db(move |db, _| editors::list_open(db, user_id))
+        let editor_id = editor.id;
+        let tabs = state
+            .with_db(move |db, _| editors::results_of(db, user_id, editor_id))
             .await
+            .unwrap()
             .unwrap();
-        let tabs = &editors[0].results;
         assert_eq!(tabs[0].rows, [vec![Some("0".to_string())]]);
         assert!(tabs[0].result.done && tabs[0].result.error.is_none());
         assert_eq!(tabs[0].result.columns.as_ref().unwrap().execution_us, 120);

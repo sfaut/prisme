@@ -12,13 +12,14 @@
 //!
 //! | Méthode et chemin                       | Rôle                                                    |
 //! |-----------------------------------------|---------------------------------------------------------|
-//! | `GET /api/editors`                      | Éditeurs ouverts, avec leurs onglets de résultat.       |
+//! | `GET /api/editors`                      | Éditeurs ouverts, dans l'ordre.                         |
 //! | `POST /api/editors`                     | Crée un éditeur vide, à la suite des autres.            |
 //! | `PUT /api/editors/{id}`                 | Change le nom, le texte ou la connexion (204).          |
 //! | `DELETE /api/editors/{id}`              | Ferme l'éditeur ; rouvrable 24 heures (204).            |
 //! | `PUT /api/editors/order`                | Range les éditeurs ouverts dans l'ordre donné (204).    |
 //! | `GET /api/editors/closed`               | Éditeurs fermés depuis moins de 24 heures.              |
 //! | `POST /api/editors/{id}/reopen`         | Rouvre un éditeur fermé (204).                          |
+//! | `GET /api/editors/{id}/results`         | Onglets de résultat de l'éditeur, lignes comprises.     |
 //! | `PUT /api/editors/{id}/results/order`   | Range les onglets de résultat dans l'ordre donné (204). |
 //! | `PUT /api/results/{id}`                 | Renomme ou épingle un onglet de résultat (204).         |
 //! | `DELETE /api/results/{id}`              | Supprime un onglet de résultat et ses lignes (204).     |
@@ -75,8 +76,6 @@ pub struct Editor {
     pub connection_id: Option<i64>,
     /// Texte SQL de l'éditeur.
     pub sql: String,
-    /// Onglets de résultat, dans l'ordre d'affichage.
-    pub results: Vec<ResultTab>,
 }
 
 /// Onglet de résultat enregistré.
@@ -219,7 +218,8 @@ pub fn purge(db: &Connection) -> Result<usize, EditorsError> {
     )?)
 }
 
-/// Éditeurs ouverts de l'utilisateur, dans l'ordre, avec leurs onglets de résultat.
+/// Éditeurs ouverts de l'utilisateur, dans l'ordre (sans leurs onglets de
+/// résultat, lus éditeur par éditeur : `results_of`).
 pub fn list_open(db: &Connection, user_id: i64) -> Result<Vec<Editor>, EditorsError> {
     purge(db)?;
     let mut statement = db.prepare(
@@ -233,17 +233,23 @@ pub fn list_open(db: &Connection, user_id: i64) -> Result<Vec<Editor>, EditorsEr
                 name: row.get(1)?,
                 connection_id: row.get(2)?,
                 sql: row.get(3)?,
-                results: Vec::new(),
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
-    editors
-        .into_iter()
-        .map(|mut editor| {
-            editor.results = result_tabs(db, editor.id)?;
-            Ok(editor)
-        })
-        .collect()
+    Ok(editors)
+}
+
+/// Onglets de résultat de l'éditeur ouvert `editor_id`, s'il est à
+/// l'utilisateur ; `None` sinon.
+pub fn results_of(
+    db: &Connection,
+    user_id: i64,
+    editor_id: i64,
+) -> Result<Option<Vec<ResultTab>>, EditorsError> {
+    if connection_of(db, user_id, editor_id)?.is_none() {
+        return Ok(None);
+    }
+    Ok(Some(result_tabs(db, editor_id)?))
 }
 
 /// Onglets de résultat d'un éditeur, dans l'ordre d'affichage.
@@ -308,7 +314,6 @@ pub fn create(db: &Connection, user_id: i64, new: &NewEditor) -> Result<Editor, 
         name: String::new(),
         connection_id: new.connection_id,
         sql: String::new(),
-        results: Vec::new(),
     })
 }
 
@@ -495,6 +500,7 @@ pub fn routes() -> Router<AppState> {
         .route("/api/editors/closed", get(list_closed_editors))
         .route("/api/editors/{id}", put(update_editor).delete(close_editor))
         .route("/api/editors/{id}/reopen", post(reopen_editor))
+        .route("/api/editors/{id}/results", get(list_results))
         .route("/api/editors/{id}/results/order", put(reorder_results))
         .route(
             "/api/results/{id}",
@@ -502,7 +508,7 @@ pub fn routes() -> Router<AppState> {
         )
 }
 
-/// `GET /api/editors` : éditeurs ouverts, avec leurs onglets de résultat.
+/// `GET /api/editors` : éditeurs ouverts, dans l'ordre.
 async fn list_editors(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -586,6 +592,19 @@ async fn reopen_editor(
 ) -> Result<StatusCode, ApiError> {
     let found = state.with_db(move |db, _| reopen(db, user.id, id)).await?;
     no_content_or_not_found(found)
+}
+
+/// `GET /api/editors/{id}/results` : onglets de résultat de l'éditeur.
+async fn list_results(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<i64>,
+) -> Result<Json<Vec<ResultTab>>, ApiError> {
+    let results = state
+        .with_db(move |db, _| results_of(db, user.id, id))
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(Json(results))
 }
 
 /// `PUT /api/editors/{id}/results/order` : range les onglets de résultat.
@@ -717,7 +736,7 @@ mod tests {
         assert!(update_result_tab(&db, user_id, first[0], &pin).unwrap());
 
         let second = start_batch(&db, editor.id, &[(0, "SELECT 3".into())]).unwrap();
-        let tabs = &list_open(&db, user_id).unwrap()[0].results;
+        let tabs = results_of(&db, user_id, editor.id).unwrap().unwrap();
         assert_eq!(
             tabs.iter().map(|t| t.id).collect::<Vec<_>>(),
             [first[0], second[0]]
@@ -726,6 +745,15 @@ mod tests {
         assert!(tabs[0].result.done && tabs[0].pinned);
 
         assert!(delete_result_tab(&db, user_id, second[0]).unwrap());
-        assert_eq!(list_open(&db, user_id).unwrap()[0].results.len(), 1);
+        assert_eq!(
+            results_of(&db, user_id, editor.id).unwrap().unwrap().len(),
+            1
+        );
+        assert_eq!(
+            results_of(&db, user_id, editor.id).unwrap().unwrap().len(),
+            1
+        );
+        let other = store::ensure_user(&db, "autre@example.com").unwrap();
+        assert!(results_of(&db, other, editor.id).unwrap().is_none());
     }
 }

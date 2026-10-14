@@ -15,6 +15,11 @@
  * précédent, sauf ceux que l'utilisateur a épinglés ; un onglet peut aussi
  * être renommé ou fermé (sa requête est alors arrêtée si elle tourne).
  *
+ * La session est celle d'un éditeur : le serveur enregistre ses résultats
+ * au fil de l'exécution, et donne à chaque onglet l'identifiant de son
+ * enregistrement. À l'ouverture, la session reprend les onglets enregistrés
+ * (`restore`, `savedTab`).
+ *
  * `applyMessage` met l'état à jour message par message ; elle ne dépend ni de
  * Vue ni du WebSocket, ce qui la rend simple à tester. `useQuerySession`
  * l'utilise pour exposer un état réactif aux composants.
@@ -24,6 +29,7 @@ import { markRaw, onScopeDispose, reactive } from 'vue'
 
 import type { LimitReport } from './generated/LimitReport'
 import type { ClientMessage } from './generated/ClientMessage'
+import type { ResultTab } from './generated/ResultTab'
 import type { ServerInfo } from './generated/ServerInfo'
 import type { ServerMessage } from './generated/ServerMessage'
 
@@ -250,7 +256,7 @@ export function applyMessage(
       state.tabs = [
         ...state.tabs,
         ...message.queries.map((query) => ({
-          id: state.nextTabId++,
+          id: query.tab > 0 ? query.tab : state.nextTabId++,
           batch: state.batch,
           query: query.query,
           sql: query.sql,
@@ -538,27 +544,70 @@ export function removeTab(state: SessionState, id: number): QueryTab | undefined
 }
 
 /**
- * Construit l'adresse WebSocket de la session d'une connexion, sur l'hôte de la page.
+ * Onglet de l'interface à partir d'un onglet de résultat enregistré par le
+ * serveur. Il n'appartient à aucun lot de la session (lot 0) : les messages
+ * du serveur ne le touchent plus. Ses durées sont celles mesurées par le
+ * serveur ; les lignes restent hors de la réactivité de Vue.
  *
- * @param connectionId Identifiant de la connexion.
- * @param location Adresse de la page.
+ * @param saved Onglet enregistré.
  */
-export function sessionUrl(connectionId: number, location: Location): string {
-  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${location.host}/api/connections/${connectionId}/query`
+export function savedTab(saved: ResultTab): QueryTab {
+  const { result } = saved
+  const columns = result.columns
+  return {
+    id: saved.id,
+    batch: 0,
+    query: saved.query,
+    sql: saved.sql,
+    result:
+      columns === null
+        ? null
+        : {
+            sql: columns.sql,
+            limit: columns.limit,
+            expectedRows: columns.expected_rows,
+            executionUs: columns.execution_us,
+            columns: columns.columns,
+            rightAligned: columns.right_aligned,
+            rows: markRaw(saved.rows),
+            rowCount: result.row_count,
+            truncated: result.truncated,
+            affectedRows: result.affected_rows,
+            elapsedMs: 0,
+          },
+    error: result.error,
+    done: result.done,
+    startedAt: result.started ? 0 : null,
+    columnsAt: columns === null ? null : 0,
+    endedAt: result.done ? result.transfer_us / 1000 : null,
+    bytes: result.bytes,
+    pinned: saved.pinned,
+    name: saved.name === '' ? null : saved.name,
+  }
 }
 
 /**
- * Ouvre une session de requêtes sur la connexion `connectionId`.
+ * Construit l'adresse WebSocket de la session d'un éditeur, sur l'hôte de la page.
+ *
+ * @param editorId Identifiant de l'éditeur.
+ * @param location Adresse de la page.
+ */
+export function sessionUrl(editorId: number, location: Location): string {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  return `${protocol}//${location.host}/api/editors/${editorId}/session`
+}
+
+/**
+ * Ouvre la session de requêtes d'un éditeur, sur sa connexion.
  *
  * La session se ferme d'elle-même quand le composant qui l'a ouverte disparaît.
  *
- * @param connectionId Identifiant de la connexion.
+ * @param editorId Identifiant de l'éditeur.
  * @returns L'état réactif de la session, et les fonctions pour exécuter des requêtes et fermer la session.
  */
-export function useQuerySession(connectionId: number) {
+export function useQuerySession(editorId: number) {
   const state = reactive(initialState())
-  const socket = new WebSocket(sessionUrl(connectionId, window.location))
+  const socket = new WebSocket(sessionUrl(editorId, window.location))
 
   /**
    * Messages reçus, pas encore appliqués, avec leur instant de réception et
@@ -643,6 +692,19 @@ export function useQuerySession(connectionId: number) {
   }
 
   /**
+   * Reprend les onglets de résultat enregistrés de l'éditeur, s'ils arrivent
+   * avant le premier lot de la session (sinon, le lot lancé entre-temps les
+   * a déjà remplacés côté serveur).
+   *
+   * @param saved Onglets enregistrés.
+   */
+  function restore(saved: ResultTab[]): void {
+    if (state.batch === 0) {
+      state.tabs = saved.map(savedTab)
+    }
+  }
+
+  /**
    * Ferme un onglet. Si sa requête tourne encore (lot en cours), elle est
    * arrêtée ; ses derniers messages ne trouvent plus d'onglet et sont ignorés.
    *
@@ -673,5 +735,5 @@ export function useQuerySession(connectionId: number) {
 
   onScopeDispose(close)
 
-  return { state, run, changeDatabase, cancel, closeTab, close }
+  return { state, run, changeDatabase, cancel, closeTab, restore, close }
 }

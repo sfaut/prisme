@@ -7,6 +7,7 @@ import {
   formatDuration,
   initialState,
   removeTab,
+  savedTab,
   sessionUrl,
   startBatch,
   tabFraction,
@@ -39,8 +40,8 @@ describe('applyMessage', () => {
     applyMessage(state, {
       type: 'batch',
       queries: [
-        { query: 0, sql: 'select * from video', start: 0, end: 20 },
-        { query: 1, sql: 'select * from person', start: 21, end: 42 },
+        { query: 0, tab: 0, sql: 'select * from video', start: 0, end: 20 },
+        { query: 1, tab: 0, sql: 'select * from person', start: 21, end: 42 },
       ],
     })
     expect(state.tabs.map((tab) => tab.sql)).toEqual([
@@ -98,7 +99,7 @@ describe('applyMessage', () => {
     startBatch(state)
     applyMessage(state, {
       type: 'batch',
-      queries: [{ query: 0, sql: 'USE shop', start: 0, end: 8 }],
+      queries: [{ query: 0, tab: 0, sql: 'USE shop', start: 0, end: 8 }],
     })
     applyMessage(state, {
       type: 'done',
@@ -139,8 +140,8 @@ describe('applyMessage', () => {
     applyMessage(state, {
       type: 'batch',
       queries: [
-        { query: 0, sql: 'a', start: 0, end: 1 },
-        { query: 1, sql: 'b', start: 2, end: 3 },
+        { query: 0, tab: 0, sql: 'a', start: 0, end: 1 },
+        { query: 1, tab: 0, sql: 'b', start: 2, end: 3 },
       ],
     })
     state.tabs[1]!.pinned = true
@@ -152,7 +153,10 @@ describe('applyMessage', () => {
 
     // Le nouveau lot suit l'onglet épinglé ; ses messages ne touchent pas ce dernier,
     // qui portait pourtant le même numéro de requête dans l'ancien lot.
-    applyMessage(state, { type: 'batch', queries: [{ query: 1, sql: 'c', start: 0, end: 1 }] })
+    applyMessage(state, {
+      type: 'batch',
+      queries: [{ query: 1, tab: 0, sql: 'c', start: 0, end: 1 }],
+    })
     applyMessage(state, { type: 'started', query: 1 }, 1000)
     expect(state.tabs.map((tab) => [tab.sql, tab.startedAt])).toEqual([
       ['b', null],
@@ -164,7 +168,10 @@ describe('applyMessage', () => {
   it('retire un onglet fermé', () => {
     const state = readyState()
     startBatch(state)
-    applyMessage(state, { type: 'batch', queries: [{ query: 0, sql: 'a', start: 0, end: 1 }] })
+    applyMessage(state, {
+      type: 'batch',
+      queries: [{ query: 0, tab: 0, sql: 'a', start: 0, end: 1 }],
+    })
     const id = state.tabs[0]!.id
     expect(removeTab(state, id)?.sql).toBe('a')
     expect(state.tabs).toEqual([])
@@ -179,8 +186,8 @@ describe('tabProgress', () => {
     applyMessage(state, {
       type: 'batch',
       queries: [
-        { query: 0, sql: 'a', start: 0, end: 1 },
-        { query: 1, sql: 'b', start: 2, end: 3 },
+        { query: 0, tab: 0, sql: 'a', start: 0, end: 1 },
+        { query: 1, tab: 0, sql: 'b', start: 2, end: 3 },
       ],
     })
     const [first, second] = state.tabs
@@ -225,8 +232,8 @@ describe('durées', () => {
     applyMessage(state, {
       type: 'batch',
       queries: [
-        { query: 0, sql: 'a', start: 0, end: 1 },
-        { query: 1, sql: 'b', start: 2, end: 3 },
+        { query: 0, tab: 0, sql: 'a', start: 0, end: 1 },
+        { query: 1, tab: 0, sql: 'b', start: 2, end: 3 },
       ],
     })
     const tab = state.tabs[0]!
@@ -275,7 +282,10 @@ describe('durées', () => {
   it("mesure la part accomplie d'une requête, quand elle est connue", () => {
     const state = readyState()
     startBatch(state)
-    applyMessage(state, { type: 'batch', queries: [{ query: 0, sql: 'a', start: 0, end: 1 }] })
+    applyMessage(state, {
+      type: 'batch',
+      queries: [{ query: 0, tab: 0, sql: 'a', start: 0, end: 1 }],
+    })
     const tab = state.tabs[0]!
     expect(tabFraction(tab)).toBe(0)
     applyMessage(state, { type: 'started', query: 0 })
@@ -303,7 +313,7 @@ describe('durées', () => {
     startBatch(state)
     applyMessage(
       state,
-      { type: 'batch', queries: [{ query: 0, sql: 'a', start: 0, end: 1 }] },
+      { type: 'batch', queries: [{ query: 0, tab: 0, sql: 'a', start: 0, end: 1 }] },
       0,
       50,
     )
@@ -356,13 +366,49 @@ describe('durées', () => {
   })
 })
 
+describe('savedTab', () => {
+  it('reprend un onglet enregistré, hors des lots de la session', () => {
+    const tab = savedTab({
+      id: 42,
+      query: 1,
+      sql: 'SELECT x FROM t',
+      name: 'Gardé',
+      pinned: true,
+      result: {
+        started: true,
+        done: true,
+        error: null,
+        columns: {
+          columns: ['x'],
+          right_aligned: [true],
+          sql: 'SELECT x FROM t LIMIT 1001',
+          limit: 'added',
+          expected_rows: 1000,
+          execution_us: 1500,
+        },
+        row_count: 2,
+        truncated: false,
+        affected_rows: 0,
+        transfer_us: 4000,
+        bytes: 120,
+      },
+      rows: [['1'], ['2']],
+    })
+    expect([tab.id, tab.batch, tab.pinned, tab.name]).toEqual([42, 0, true, 'Gardé'])
+    expect(tab.result?.rows).toEqual([['1'], ['2']])
+    expect(executionDuration(tab, 0)).toBe(1.5)
+    expect(transferDuration(tab, 0)).toBe(4)
+    expect(tabProgress(tab)).toBe('done')
+  })
+})
+
 describe('sessionUrl', () => {
   it('suit le protocole de la page', () => {
     expect(sessionUrl(3, { protocol: 'http:', host: 'localhost:5173' } as Location)).toBe(
-      'ws://localhost:5173/api/connections/3/query',
+      'ws://localhost:5173/api/editors/3/session',
     )
     expect(sessionUrl(3, { protocol: 'https:', host: 'prisme.example' } as Location)).toBe(
-      'wss://prisme.example/api/connections/3/query',
+      'wss://prisme.example/api/editors/3/session',
     )
   })
 })
