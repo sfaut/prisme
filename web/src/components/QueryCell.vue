@@ -9,7 +9,8 @@
   connexion chargé (il donne la casse des fonctions de l'utilisateur).
   Chaque requête a son onglet de résultat (`ResultTab.vue`), avec sa barre
   d'avancement. Un onglet se renomme, s'épingle (il reste quand la requête
-  est relancée) ou se ferme (sa requête est arrêtée si elle tourne).
+  est relancée), se ferme (sa requête est arrêtée si elle tourne) ou se
+  déplace en le faisant glisser, comme une colonne de la grille.
   La limite de lignes choisie ici devient la limite par défaut de l'utilisateur.
 -->
 <script setup lang="ts">
@@ -26,6 +27,7 @@ import { useSettingsStore } from '@/stores/settings'
 import QueryTabView from './QueryTabView.vue'
 import ResultTab from './ResultTab.vue'
 import SqlEditor from './SqlEditor.vue'
+import { MOVE_THRESHOLD, dropPosition, moveColumn } from './resultGrid'
 import { completionSchema } from './sqlCompletion'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
@@ -109,6 +111,76 @@ watch(
 function tabLabel(tab: QueryTab): string {
   const short = tab.sql.replace(/\s+/g, ' ')
   return `${tab.query + 1} · ${short.length > 40 ? `${short.slice(0, 40)}…` : short}`
+}
+
+/**
+ * Déplacement d'onglet en cours : position de l'onglet pris, abscisse de
+ * départ du pointeur, élément de l'onglet et pointeur, et le glissement
+ * a-t-il dépassé le seuil ?
+ */
+let moving: {
+  from: number
+  x: number
+  element: HTMLElement
+  pointerId: number
+  started: boolean
+} | null = null
+
+/**
+ * Position où l'onglet déplacé serait inséré, `null` hors déplacement.
+ */
+const dropAt = ref<number | null>(null)
+
+/**
+ * Appui sur un onglet : début d'un éventuel déplacement. Les boutons et le
+ * champ de renommage de l'onglet gardent leur propre comportement.
+ *
+ * @param event Appui sur l'onglet.
+ * @param index Position de l'onglet.
+ */
+function onTabDown(event: PointerEvent, index: number): void {
+  if (event.button !== 0 || (event.target as HTMLElement).closest('button, input')) {
+    return
+  }
+  const element = event.currentTarget as HTMLElement
+  moving = { from: index, x: event.clientX, element, pointerId: event.pointerId, started: false }
+}
+
+/**
+ * Suit le pointeur : passé le seuil, l'appui devient un déplacement (le
+ * pointeur reste alors capturé par l'onglet) et le repère suit le pointeur.
+ *
+ * @param event Déplacement du pointeur.
+ */
+function onTabMove(event: PointerEvent): void {
+  if (moving === null) {
+    return
+  }
+  if (!moving.started && Math.abs(event.clientX - moving.x) > MOVE_THRESHOLD) {
+    moving.started = true
+    moving.element.setPointerCapture(moving.pointerId)
+  }
+  if (moving.started) {
+    const tabs = moving.element.parentElement?.querySelectorAll('[role="tab"]') ?? []
+    const centers = Array.from(tabs, (tab) => {
+      const rect = tab.getBoundingClientRect()
+      return rect.left + rect.width / 2
+    })
+    dropAt.value = dropPosition(centers, event.clientX)
+  }
+}
+
+/**
+ * Lâcher : l'onglet prend sa nouvelle place.
+ */
+function onTabDrop(): void {
+  if (moving?.started && dropAt.value !== null) {
+    const indexes = state.tabs.map((_, index) => index)
+    const moved = moveColumn(indexes, moving.from, dropAt.value)
+    state.tabs = moved.order.map((index) => state.tabs[index]!)
+  }
+  moving = null
+  dropAt.value = null
 }
 
 /**
@@ -324,10 +396,18 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
     >
       <tabs-list class="flex overflow-x-auto border-b border-line">
         <tabs-trigger
-          v-for="tab in state.tabs"
+          v-for="(tab, index) in state.tabs"
           :key="tab.id"
           :value="tab.id"
           as="div"
+          :class="{
+            'drop-before': dropAt === index,
+            'drop-after': dropAt === state.tabs.length && index === state.tabs.length - 1,
+          }"
+          @pointerdown="onTabDown($event, index)"
+          @pointermove="onTabMove"
+          @pointerup="onTabDrop"
+          @pointercancel="onTabDrop"
           class="group relative flex h-control max-w-tab min-w-0 shrink-0 cursor-pointer items-center rounded-t-control ps-control-x pe-1 text-ui font-medium text-fg-muted outline-none select-none hover:text-fg-strong focus-visible:bg-surface-muted data-[state=active]:bg-surface-elevated data-[state=active]:text-fg-strong"
         >
           <result-tab
@@ -350,3 +430,14 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
     </tabs-root>
   </div>
 </template>
+
+<style scoped>
+/* Repère d'insertion d'un onglet déplacé, comme pour les colonnes de la grille. */
+.drop-before {
+  box-shadow: inset var(--focus-width) 0 0 var(--accent);
+}
+
+.drop-after {
+  box-shadow: inset calc(-1 * var(--focus-width)) 0 0 var(--accent);
+}
+</style>

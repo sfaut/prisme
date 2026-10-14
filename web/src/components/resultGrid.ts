@@ -117,6 +117,13 @@ export function moveColumn(
 }
 
 /**
+ * Distance à parcourir avant qu'un appui sur un nom de colonne (ou sur un
+ * onglet de résultat) devienne un déplacement, en pixels : un clic un peu
+ * tremblé reste un clic.
+ */
+export const MOVE_THRESHOLD = 5
+
+/**
  * Position d'insertion d'une colonne lâchée à l'abscisse `x` : avant la
  * première colonne dont le milieu est à droite du pointeur.
  *

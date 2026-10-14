@@ -44,6 +44,7 @@ import {
   type SelectMode,
   type SortState,
   MIN_COLUMN_WIDTH,
+  MOVE_THRESHOLD,
   CHAR_WIDTH,
   NULL_TEXT,
   dropPosition,
@@ -358,12 +359,6 @@ function onRowEnter(row: number): void {
  * abscisse de départ du pointeur, et le glissement a-t-il dépassé le seuil ?
  */
 let moving: { from: number; x: number; started: boolean } | null = null
-
-/**
- * Distance à parcourir avant qu'un appui sur un nom de colonne devienne un
- * déplacement, en pixels : un clic un peu tremblé reste un clic.
- */
-const MOVE_THRESHOLD = 5
 
 /**
  * Position où la colonne déplacée serait insérée, `null` hors déplacement.
