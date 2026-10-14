@@ -162,9 +162,9 @@
   --grid-filter-column-width: 12.5rem;
   --grid-min-height: 7.5rem;
 
-  /* Éditeur SQL : hauteurs minimale et maximale. */
-  --editor-min-height: 8rem;
-  --editor-max-height: 24rem;
+  /* Éditeur SQL : hauteur minimale, quelle que soit la part qui lui est
+     donnée (`editorSplit.ts`). */
+  --editor-min-height: 4rem;
 
   /* Épaisseur de la barre d'avancement dessinée sur chaque onglet de résultat. */
   --tab-progress-height: 0.125rem;

@@ -12,6 +12,8 @@
   est relancée), se ferme (sa requête est arrêtée si elle tourne) ou se
   déplace en le faisant glisser, comme une colonne de la grille.
   La limite de lignes choisie ici devient la limite par défaut de l'utilisateur.
+  Une barre horizontale partage la hauteur entre l'éditeur et les
+  résultats : le tiers du haut par défaut, réglage retenu (`EditorResizer`).
 -->
 <script setup lang="ts">
 import { Play, Square, WandSparkles } from 'lucide-vue-next'
@@ -25,9 +27,11 @@ import { useCatalogStore } from '@/stores/catalog'
 import { useSettingsStore } from '@/stores/settings'
 
 import QueryTabView from './QueryTabView.vue'
+import EditorResizer from './EditorResizer.vue'
 import ResultTab from './ResultTab.vue'
 import SqlEditor from './SqlEditor.vue'
 import { MOVE_THRESHOLD, dropPosition, moveColumn } from './resultGrid'
+import { loadEditorSplit } from './editorSplit'
 import { completionSchema } from './sqlCompletion'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
@@ -83,6 +87,13 @@ const serverLabel = computed(() => {
 })
 
 const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
+
+const cellRoot = useTemplateRef<HTMLDivElement>('cellRoot')
+
+/**
+ * Part de la hauteur de la cellule donnée à l'éditeur, de 0 à 1.
+ */
+const editorSplit = ref(loadEditorSplit())
 
 /**
  * Onglet affiché : son identifiant.
@@ -319,16 +330,19 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col gap-gap">
-    <sql-editor
-      ref="editor"
-      v-model="sql"
-      :flavor="state.server?.flavor ?? 'mysql'"
-      :schema="completion"
-      :default-schema="state.database"
-      @run="run"
-      @run-all="runAll"
-    />
+  <div ref="cellRoot" class="flex min-h-0 flex-1 flex-col gap-gap">
+    <div class="editor-pane" :style="{ flexBasis: `${editorSplit * 100}%` }">
+      <sql-editor
+        ref="editor"
+        v-model="sql"
+        :flavor="state.server?.flavor ?? 'mysql'"
+        :schema="completion"
+        :default-schema="state.database"
+        @run="run"
+        @run-all="runAll"
+      />
+    </div>
+    <editor-resizer v-model="editorSplit" :container="cellRoot" />
 
     <div class="flex items-center gap-gap">
       <ui-button
@@ -432,6 +446,14 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
 </template>
 
 <style scoped>
+/* Éditeur : la part retenue de la hauteur (flex-basis), jamais moins que
+   quelques lignes. */
+.editor-pane {
+  flex-grow: 0;
+  flex-shrink: 0;
+  min-block-size: var(--editor-min-height);
+}
+
 /* Repère d'insertion d'un onglet déplacé, comme pour les colonnes de la grille. */
 .drop-before {
   box-shadow: inset var(--focus-width) 0 0 var(--accent);

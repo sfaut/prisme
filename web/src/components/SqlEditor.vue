@@ -199,14 +199,14 @@ defineExpose({ cursor })
 
 <style scoped>
 .sql-editor {
+  block-size: 100%;
   border: var(--line-width) solid var(--line);
   border-radius: var(--control-radius);
   overflow: hidden;
 }
 
 .sql-editor :deep(.cm-editor) {
-  min-height: var(--editor-min-height);
-  max-height: var(--editor-max-height);
+  block-size: 100%;
   font-size: var(--font-size-body);
 }
 
