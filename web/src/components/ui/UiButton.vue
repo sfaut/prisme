@@ -2,7 +2,8 @@
   Bouton de l'interface.
 
   Trois apparences (`variant`) : plein (`solid`), bordé (`outline`, par
-  défaut) ou discret (`ghost`) ; trois tons (`tone`) : neutre (par défaut),
+  défaut) ou discret (`ghost`, sans fond : au survol, seule son icône ou son
+  texte fonce) ; trois tons (`tone`) : neutre (par défaut),
   action (`accent`) ou danger (`error`). Une icône Lucide se place à gauche
   du libellé ; sans libellé, le bouton est carré. Pendant `loading`, une
   roue remplace l'icône et le bouton est inactif.
@@ -68,9 +69,9 @@ const LOOKS = {
     error: 'border border-error/50 text-error hover:bg-error-soft',
   },
   ghost: {
-    neutral: 'text-fg-muted hover:bg-surface-accented hover:text-fg-strong',
-    accent: 'text-accent hover:bg-accent-soft',
-    error: 'text-error hover:bg-error-soft',
+    neutral: 'text-fg-dimmed hover:text-fg-strong',
+    accent: 'text-accent hover:text-accent-hover',
+    error: 'text-error hover:text-error-hover',
   },
 } as const
 

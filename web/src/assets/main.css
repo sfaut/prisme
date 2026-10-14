@@ -39,6 +39,7 @@
   --color-warning-soft: var(--warning-soft);
   --color-error: var(--error);
   --color-error-soft: var(--error-soft);
+  --color-error-hover: var(--error-hover);
 
   --text-*: initial;
   --text-small: var(--font-size-small);
@@ -102,6 +103,7 @@
   --warning-soft: color-mix(in oklab, var(--warning) 12%, transparent);
   --error: light-dark(#dc2626, #f87171);
   --error-soft: color-mix(in oklab, var(--error) 12%, transparent);
+  --error-hover: light-dark(#b91c1c, #fca5a5);
 
   /* Coloration syntaxique de l'éditeur SQL (`editorTheme.ts`). */
   --sql-keyword: light-dark(#7c3aed, #c4b5fd);

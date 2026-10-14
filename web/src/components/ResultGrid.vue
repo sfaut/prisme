@@ -780,6 +780,10 @@ const filterColumn = computed({
   color: var(--fg-dimmed);
   font-size: var(--font-size-small);
   cursor: pointer;
+
+  &:hover {
+    color: var(--fg-strong);
+  }
 }
 
 .grid-cell {
