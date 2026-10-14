@@ -5,7 +5,7 @@ import type { CatalogSchema } from '@/stores/catalog'
 import { completionSchema } from '../sqlCompletion'
 
 describe('completionSchema', () => {
-  it('propose bases, tables et colonnes avec leur type, même avec un catalogue incomplet', () => {
+  it('propose bases, tables, colonnes et routines avec leur nature, même avec un catalogue incomplet', () => {
     const schemas: CatalogSchema[] = [
       {
         name: 'shop',
@@ -31,7 +31,10 @@ describe('completionSchema', () => {
           },
           { name: 'v_orders', kind: 'view', details: null },
         ],
-        routines: [],
+        routines: [
+          { name: 'total_ttc', kind: 'function' },
+          { name: 'purge', kind: 'procedure' },
+        ],
       },
       { name: 'pas_encore', tables: null, routines: null },
     ]
@@ -45,6 +48,14 @@ describe('completionSchema', () => {
           },
           v_orders: {
             self: { label: 'v_orders', type: 'type', detail: 'vue' },
+            children: [],
+          },
+          total_ttc: {
+            self: { label: 'total_ttc', type: 'function', detail: 'fonction' },
+            children: [],
+          },
+          purge: {
+            self: { label: 'purge', type: 'function', detail: 'procédure' },
             children: [],
           },
         },

@@ -3,9 +3,11 @@
 
   Coloration selon le dialecte du serveur (MySQL ou MariaDB), numéros de
   ligne, thème clair ou sombre comme l'interface (`editorTheme.ts`),
-  historique d'annulation, complétion des mots-clefs, des bases, des
-  tables et des colonnes (espace de noms construit à partir du catalogue,
-  voir `sqlCompletion.ts`). La requête que Ctrl-Entrée exécuterait est
+  historique d'annulation, complétion des noms seulement : bases, tables,
+  colonnes, fonctions et procédures (espace de noms construit à partir du
+  catalogue, voir `sqlCompletion.ts`). Les mots-clefs (SELECT, UPDATE...)
+  ne sont pas proposés, et une proposition doit commencer par le texte
+  tapé (ou en reprendre les initiales) : pas de correspondance dispersée. La requête que Ctrl-Entrée exécuterait est
   surlignée (`currentStatement.ts`) et les erreurs de syntaxe sont soulignées,
   avec leur message au survol : le texte est analysé par le serveur peu
   après chaque frappe. Ctrl-Entrée (Cmd-Entrée sur Mac) émet `run`
@@ -13,8 +15,10 @@
   lie avec `v-model`.
 -->
 <script setup lang="ts">
+import { autocompletion } from '@codemirror/autocomplete'
+import { LanguageSupport } from '@codemirror/language'
 import { type Diagnostic, setDiagnostics } from '@codemirror/lint'
-import { MariaSQL, MySQL, type SQLNamespace, sql } from '@codemirror/lang-sql'
+import { MariaSQL, MySQL, type SQLNamespace, schemaCompletionSource } from '@codemirror/lang-sql'
 import { Compartment } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
 import { EditorView, basicSetup } from 'codemirror'
@@ -117,12 +121,16 @@ async function analyze(): Promise<void> {
 /**
  * Langue CodeMirror de l'éditeur : dialecte et complétion, d'après les propriétés.
  */
-function currentLanguage() {
-  return sql({
-    dialect: props.flavor === 'mariadb' ? MariaSQL : MySQL,
+function currentLanguage(): LanguageSupport {
+  const dialect = props.flavor === 'mariadb' ? MariaSQL : MySQL
+  // Langue montée à la main plutôt que par `sql()`, qui ajouterait la
+  // complétion des mots-clefs : seuls les noms du catalogue sont proposés.
+  const names = schemaCompletionSource({
+    dialect,
     schema: props.schema,
     defaultSchema: props.defaultSchema ?? undefined,
   })
+  return new LanguageSupport(dialect.language, [dialect.language.data.of({ autocomplete: names })])
 }
 
 onMounted(() => {
@@ -148,6 +156,8 @@ onMounted(() => {
         },
       ]),
       basicSetup,
+      // Complétion stricte : début du nom ou initiales, jamais des lettres éparses.
+      autocompletion({ filterStrict: true }),
       editorTheme(),
       language.of(currentLanguage()),
       currentStatement(),

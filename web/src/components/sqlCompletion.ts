@@ -2,14 +2,16 @@
  * Complétion de l'éditeur SQL à partir du catalogue de la connexion.
  *
  * Le catalogue chargé pour l'explorateur devient l'espace de noms de
- * `@codemirror/lang-sql` : bases, puis tables et vues, puis colonnes. La
- * complétion propose alors les tables de la base en cours sans préfixe, et
- * les colonnes après `table.` ou `alias.`. Chaque proposition affiche sa
- * nature (base, table, vue) ou, pour une colonne, son type.
+ * `@codemirror/lang-sql` : bases, puis leurs tables, vues, fonctions et
+ * procédures, puis les colonnes des tables. La complétion propose alors les
+ * noms de la base en cours sans préfixe, et les colonnes après `table.` ou
+ * `alias.`. Chaque proposition affiche sa nature (base, table, vue,
+ * fonction, procédure) ou, pour une colonne, son type.
  */
 
 import type { SQLNamespace } from '@codemirror/lang-sql'
 
+import type { RoutineInfo } from '@/api/generated/RoutineInfo'
 import type { CatalogSchema, CatalogTable } from '@/stores/catalog'
 
 import { displayedType, upperType } from './explorerNodes'
@@ -23,16 +25,35 @@ import { displayedType, upperType } from './explorerNodes'
 export function completionSchema(schemas: CatalogSchema[]): SQLNamespace {
   const namespace: Record<string, SQLNamespace> = {}
   for (const schema of schemas) {
-    const tables: Record<string, SQLNamespace> = {}
+    const children: Record<string, SQLNamespace> = {}
     for (const table of schema.tables ?? []) {
-      tables[table.name] = tableNamespace(table)
+      children[table.name] = tableNamespace(table)
+    }
+    for (const routine of schema.routines ?? []) {
+      children[routine.name] = routineNamespace(routine)
     }
     namespace[schema.name] = {
       self: { label: schema.name, type: 'namespace', detail: 'base' },
-      children: tables,
+      children,
     }
   }
   return namespace
+}
+
+/**
+ * Espace de noms d'une fonction ou d'une procédure stockée : son seul nom.
+ *
+ * @param routine Routine du catalogue.
+ */
+function routineNamespace(routine: RoutineInfo): SQLNamespace {
+  return {
+    self: {
+      label: routine.name,
+      type: 'function',
+      detail: routine.kind === 'function' ? 'fonction' : 'procédure',
+    },
+    children: [],
+  }
 }
 
 /**
