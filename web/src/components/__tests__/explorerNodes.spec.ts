@@ -84,6 +84,7 @@ describe('sourceNodes', () => {
         catalog: { schemas: catalog, flavor: 'mariadb', done: true, errors: [] },
         currentDatabase: 'shop',
         flavor: 'mariadb',
+        showSystemSchemas: true,
       },
       {
         connectionId: 2,
@@ -91,6 +92,7 @@ describe('sourceNodes', () => {
         catalog: { schemas: catalog, flavor: 'mariadb', done: true, errors: [] },
         currentDatabase: null,
         flavor: 'mysql',
+        showSystemSchemas: true,
       },
       {
         connectionId: 3,
@@ -98,6 +100,7 @@ describe('sourceNodes', () => {
         catalog: undefined,
         currentDatabase: null,
         flavor: null,
+        showSystemSchemas: true,
       },
     ])
     expect([first?.label, second?.label, never?.label]).toEqual([
@@ -117,6 +120,31 @@ describe('sourceNodes', () => {
   })
 })
 
+describe('bases système', () => {
+  it('cache les bases système si la connexion le demande', () => {
+    const schemas = ['information_schema', 'mysql', 'shop', 'sys'].map((name) => ({
+      name,
+      tables: [],
+      routines: [],
+    }))
+    const source = (showSystemSchemas: boolean) => ({
+      connectionId: 1,
+      name: 'Origen 2',
+      catalog: { schemas, flavor: null, done: true, errors: [] },
+      currentDatabase: null,
+      flavor: null,
+      showSystemSchemas,
+    })
+    expect(labels(sourceNodes([source(false)])[0])).toEqual(['shop'])
+    expect(labels(sourceNodes([source(true)])[0])).toEqual([
+      'information_schema',
+      'mysql',
+      'shop',
+      'sys',
+    ])
+  })
+})
+
 describe('explorerTree', () => {
   it('range les sources sous « Sources de données », puis « Notebooks »', () => {
     const source = {
@@ -125,6 +153,7 @@ describe('explorerTree', () => {
       catalog: undefined,
       currentDatabase: null,
       flavor: null,
+      showSystemSchemas: true,
     }
     const [root, notebooks] = explorerTree([source], true)
     expect(notebooks?.label).toBe('Notebooks')

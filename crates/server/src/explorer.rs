@@ -219,6 +219,7 @@ mod tests {
             database_name: String::new(),
             init_sql: String::new(),
             session_timeout_minutes: 5,
+            show_system_schemas: true,
         };
         connections::insert(&db, &key, user_id, &new).unwrap();
         let app = router(AppState::new(db, key, user_id));

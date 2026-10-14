@@ -104,6 +104,7 @@ function emptyForm(): Required<NewConnection> {
     database_name: '',
     init_sql: '',
     session_timeout_minutes: 5,
+    show_system_schemas: true,
   }
 }
 
@@ -116,8 +117,16 @@ function initialForm(connection: ConnectionSummary | null): Required<NewConnecti
   if (connection === null) {
     return emptyForm()
   }
-  const { name, host, port, username, database_name, init_sql, session_timeout_minutes } =
-    connection
+  const {
+    name,
+    host,
+    port,
+    username,
+    database_name,
+    init_sql,
+    session_timeout_minutes,
+    show_system_schemas,
+  } = connection
   return {
     name,
     host,
@@ -127,6 +136,7 @@ function initialForm(connection: ConnectionSummary | null): Required<NewConnecti
     database_name,
     init_sql,
     session_timeout_minutes,
+    show_system_schemas,
   }
 }
 
@@ -238,6 +248,19 @@ async function save(): Promise<void> {
           />
           <span class="text-ui text-fg-muted">min après la fermeture de la page</span>
         </div>
+      </ui-field>
+      <ui-field label="Explorateur">
+        <label class="flex items-center gap-gap text-ui text-fg-strong">
+          <input
+            v-model="form.show_system_schemas"
+            type="checkbox"
+            class="size-icon accent-accent"
+          />
+          <span>
+            Afficher les bases système
+            <span class="text-fg-muted">(information_schema, mysql…)</span>
+          </span>
+        </label>
       </ui-field>
       <ui-alert v-if="error" tone="error" :title="error" />
       <ui-alert v-if="probed" tone="success" :title="probed" />

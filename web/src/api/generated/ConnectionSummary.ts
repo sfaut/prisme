@@ -42,6 +42,10 @@ init_sql: string,
  */
 session_timeout_minutes: number, 
 /**
+ * L'explorateur affiche-t-il les bases système ?
+ */
+show_system_schemas: boolean, 
+/**
  * Variante du serveur vue à la dernière connexion réussie, `null` si
  * la connexion n'a jamais abouti.
  */

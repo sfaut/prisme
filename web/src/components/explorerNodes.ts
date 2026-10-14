@@ -74,7 +74,17 @@ export interface Source {
    * Variante du serveur (badge à côté du nom), `null` si encore inconnue.
    */
   flavor: Flavor | null
+  /**
+   * Les bases système (`SYSTEM_SCHEMAS`) sont-elles affichées ?
+   */
+  showSystemSchemas: boolean
 }
+
+/**
+ * Bases fournies par le serveur lui-même, que le réglage de la connexion
+ * peut cacher dans l'explorateur.
+ */
+export const SYSTEM_SCHEMAS = ['information_schema', 'mysql', 'performance_schema', 'sys']
 
 /**
  * Nature d'un nœud du catalogue qui n'a pas de rôle, pour choisir son icône.
@@ -250,7 +260,13 @@ export function sourceNodes(sources: Source[]): ExplorerNode[] {
       children:
         catalog === undefined || (!catalog.done && catalog.schemas.length === 0)
           ? [loadingNode(key, place)]
-          : catalogNodes(source.connectionId, catalog.schemas, source.currentDatabase),
+          : catalogNodes(
+              source.connectionId,
+              source.showSystemSchemas
+                ? catalog.schemas
+                : catalog.schemas.filter((schema) => !SYSTEM_SCHEMAS.includes(schema.name)),
+              source.currentDatabase,
+            ),
     }
   })
 }

@@ -37,4 +37,9 @@ init_sql?: string,
  * Délai pendant lequel une session reste ouverte après la fermeture de
  * sa page, en minutes (0 : fermée aussitôt). Absent : 5 minutes.
  */
-session_timeout_minutes?: number, };
+session_timeout_minutes?: number, 
+/**
+ * L'explorateur affiche-t-il les bases système (`information_schema`,
+ * `mysql`...) ? Absent : oui.
+ */
+show_system_schemas?: boolean, };

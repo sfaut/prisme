@@ -79,6 +79,16 @@ pub struct NewConnection {
     #[serde(default = "default_session_timeout")]
     #[ts(optional, as = "Option<u32>")]
     pub session_timeout_minutes: u32,
+    /// L'explorateur affiche-t-il les bases système (`information_schema`,
+    /// `mysql`...) ? Absent : oui.
+    #[serde(default = "default_show_system_schemas")]
+    #[ts(optional, as = "Option<bool>")]
+    pub show_system_schemas: bool,
+}
+
+/// Affichage des bases système par défaut, pour la désérialisation de `NewConnection`.
+fn default_show_system_schemas() -> bool {
+    true
 }
 
 /// Délai de garde par défaut, pour la désérialisation de `NewConnection`.
@@ -121,6 +131,8 @@ pub struct ConnectionSummary {
     pub init_sql: String,
     /// Délai de garde d'une session après la fermeture de sa page, en minutes.
     pub session_timeout_minutes: u32,
+    /// L'explorateur affiche-t-il les bases système ?
+    pub show_system_schemas: bool,
     /// Variante du serveur vue à la dernière connexion réussie, `null` si
     /// la connexion n'a jamais abouti.
     pub server_flavor: Option<Flavor>,
@@ -212,8 +224,8 @@ pub fn insert(
     let password_secret = secrets::encrypt(key, &new.password)?;
 
     let result = db.execute(
-        "INSERT INTO connections (user_id, name, engine, host, port, username, password_secret, database_name, init_sql, session_timeout_minutes)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        "INSERT INTO connections (user_id, name, engine, host, port, username, password_secret, database_name, init_sql, session_timeout_minutes, show_system_schemas)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             user_id,
             new.name,
@@ -225,6 +237,7 @@ pub fn insert(
             new.database_name,
             new.init_sql,
             new.session_timeout_minutes,
+            new.show_system_schemas,
         ],
     );
     result.map_err(|error| name_error(error, &new.name))?;
@@ -254,7 +267,7 @@ pub fn update(
         "UPDATE connections
          SET name = ?3, host = ?4, port = ?5, username = ?6,
              password_secret = COALESCE(?7, password_secret), database_name = ?8, init_sql = ?9,
-             session_timeout_minutes = ?10
+             session_timeout_minutes = ?10, show_system_schemas = ?11
          WHERE id = ?1 AND user_id = ?2",
         params![
             id,
@@ -267,6 +280,7 @@ pub fn update(
             changed.database_name,
             changed.init_sql,
             changed.session_timeout_minutes,
+            changed.show_system_schemas,
         ],
     );
     let updated = result.map_err(|error| name_error(error, &changed.name))?;
@@ -289,7 +303,7 @@ fn name_error(error: rusqlite::Error, name: &str) -> ConnectionsError {
 pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, ConnectionsError> {
     let mut statement = db.prepare(
         "SELECT id, name, engine, host, port, username, database_name, init_sql,
-                session_timeout_minutes, server_flavor, created_at
+                session_timeout_minutes, show_system_schemas, server_flavor, created_at
          FROM connections WHERE user_id = ?1 ORDER BY name",
     )?;
     let rows = statement.query_map(params![user_id], |row| {
@@ -303,8 +317,9 @@ pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, Con
             database_name: row.get(6)?,
             init_sql: row.get(7)?,
             session_timeout_minutes: row.get(8)?,
-            server_flavor: flavor_of(&row.get::<_, String>(9)?),
-            created_at: row.get(10)?,
+            show_system_schemas: row.get(9)?,
+            server_flavor: flavor_of(&row.get::<_, String>(10)?),
+            created_at: row.get(11)?,
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
@@ -455,6 +470,7 @@ mod tests {
             database_name: String::new(),
             init_sql: String::new(),
             session_timeout_minutes: 5,
+            show_system_schemas: true,
         }
     }
 
@@ -674,6 +690,7 @@ mod tests {
         connection.session_timeout_minutes = 30;
         let id = insert(&db, &key, user_id, &connection).unwrap();
         assert_eq!(list(&db, user_id).unwrap()[0].session_timeout_minutes, 30);
+        assert!(list(&db, user_id).unwrap()[0].show_system_schemas);
         assert_eq!(session_timeout(&db, user_id, id).unwrap(), Some(30));
         assert_eq!(session_timeout(&db, user_id + 1, id).unwrap(), None);
     }

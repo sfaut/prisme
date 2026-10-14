@@ -925,6 +925,7 @@ mod tests {
             // ouverte, et les guillemets doubles y délimitent des identifiants.
             init_sql: "SET @prisme_init = 1; SET SESSION sql_mode = 'ANSI_QUOTES'".to_string(),
             session_timeout_minutes: 5,
+            show_system_schemas: true,
         };
         let id = connections::insert(&db, &key, user_id, &new).unwrap();
         let new_editor = NewEditor {
