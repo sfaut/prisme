@@ -10,7 +10,7 @@
 //! qu'un réaffichage de l'AST ne garantirait pas. Le `LIMIT` se place avant un
 //! éventuel `FOR UPDATE` / `FOR SHARE`, et jamais dans un commentaire final.
 
-use sqlparser::ast::{SetExpr, Statement};
+use sqlparser::ast::{Expr, LimitClause, SetExpr, Statement, Value};
 use sqlparser::keywords::Keyword;
 use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Location, Token, TokenWithSpan, Tokenizer};
@@ -97,6 +97,30 @@ pub fn apply_default_limit(
         ),
         outcome: LimitOutcome::Added,
     })
+}
+
+/// Nombre de lignes que la limite écrite par l'utilisateur autorise
+/// (`LIMIT n`, `LIMIT m, n`, `FETCH FIRST n ROWS`), quand c'est un nombre
+/// littéral ; `None` sans limite écrite, pour une limite calculée ou un
+/// pourcentage. L'interface s'en sert pour la barre d'avancement.
+pub fn written_limit(sql: &str, dialect: Dialect) -> Option<u64> {
+    let statements = Parser::parse_sql(dialect.parser_dialect().as_ref(), sql).ok()?;
+    let [Statement::Query(query)] = statements.as_slice() else {
+        return None;
+    };
+    let expression = match (&query.limit_clause, &query.fetch) {
+        (Some(LimitClause::LimitOffset { limit, .. }), _) => limit.as_ref()?,
+        (Some(LimitClause::OffsetCommaLimit { limit, .. }), _) => limit,
+        (None, Some(fetch)) if !fetch.percent => fetch.quantity.as_ref()?,
+        _ => return None,
+    };
+    match expression {
+        Expr::Value(value) => match &value.value {
+            Value::Number(number, _) => number.parse().ok(),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// Indique si le corps d'une requête renvoie des lignes au client.
@@ -189,6 +213,17 @@ mod tests {
         let query = limit(sql);
         assert_eq!(query.outcome, LimitOutcome::Added, "requête : {sql}");
         query.sql
+    }
+
+    #[test]
+    fn reads_the_limit_written_by_the_user() {
+        let read = |sql| written_limit(sql, Dialect::MySql);
+        assert_eq!(read("SELECT * FROM t LIMIT 50"), Some(50));
+        assert_eq!(read("SELECT * FROM t LIMIT 10, 20"), Some(20));
+        assert_eq!(read("SELECT * FROM t LIMIT 20 OFFSET 10"), Some(20));
+        assert_eq!(read("SELECT * FROM t"), None);
+        assert_eq!(read("SELECT * FROM t LIMIT @n"), None);
+        assert_eq!(read("SHOW TABLES"), None);
     }
 
     #[test]

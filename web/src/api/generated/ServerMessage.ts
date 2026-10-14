@@ -11,7 +11,13 @@ export type ServerMessage = { "type": "ready", server: ServerInfo, database: str
  * Pour chaque colonne, ses valeurs s'alignent-elles à droite (nombres,
  * dates et heures) ?
  */
-right_aligned: Array<boolean>, sql: string, limit: LimitReport, } | { "type": "rows", query: number, rows: Array<Array<string | null>>, } | { "type": "done", query: number, row_count: number, truncated: boolean, affected_rows: number, elapsed_ms: number, 
+right_aligned: Array<boolean>, sql: string, limit: LimitReport, 
+/**
+ * Nombre de lignes au plus : la limite de Prisme, ou celle écrite par
+ * l'utilisateur quand c'est un nombre ; `null` si inconnu. Sert à la
+ * barre d'avancement de l'interface.
+ */
+expected_rows: number | null, } | { "type": "rows", query: number, rows: Array<Array<string | null>>, } | { "type": "done", query: number, row_count: number, truncated: boolean, affected_rows: number, elapsed_ms: number, 
 /**
  * Base en cours de la session après la requête (elle change avec `USE`).
  */

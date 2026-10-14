@@ -62,6 +62,11 @@ export interface QueryResult {
    */
   limit: LimitReport
   /**
+   * Nombre de lignes au plus, annoncé par le serveur (sa limite, ou celle
+   * écrite par l'utilisateur) ; `null` si inconnu.
+   */
+  expectedRows: number | null
+  /**
    * Noms des colonnes.
    */
   columns: string[]
@@ -255,6 +260,7 @@ export function applyMessage(
         tab.result = {
           sql: message.sql,
           limit: message.limit,
+          expectedRows: message.expected_rows,
           columns: message.columns,
           rightAligned: message.right_aligned,
           rows: [],
@@ -386,25 +392,24 @@ export function transferDuration(tab: QueryTab, now: number): number | null {
  *
  * - en attente : 0 ;
  * - en exécution : inconnue ;
- * - en réception : lignes reçues sur la limite de lignes, si Prisme l'a
- *   ajoutée (le résultat ne la dépassera pas) ; inconnue sinon ;
+ * - en réception : lignes reçues sur le nombre de lignes au plus annoncé
+ *   par le serveur (la limite de Prisme ou celle de l'utilisateur) ;
+ *   inconnue sans ce nombre ;
  * - terminée, avec succès ou en échec : 1.
  *
  * @param tab Onglet de la requête.
- * @param rowLimit Limite de lignes du lot, `null` si inconnue.
  */
-export function tabFraction(tab: QueryTab, rowLimit: number | null): number | null {
+export function tabFraction(tab: QueryTab): number | null {
   switch (tabProgress(tab)) {
     case 'waiting':
       return 0
     case 'done':
     case 'error':
       return 1
-    case 'loading':
-      if (tab.result?.limit === 'added' && rowLimit !== null && rowLimit > 0) {
-        return Math.min(1, tab.result.rowCount / rowLimit)
-      }
-      return null
+    case 'loading': {
+      const expected = tab.result?.expectedRows ?? 0
+      return tab.result && expected > 0 ? Math.min(1, tab.result.rowCount / expected) : null
+    }
     default:
       return null
   }

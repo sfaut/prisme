@@ -333,7 +333,6 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
           <result-tab
             :tab="tab"
             :default-label="tabLabel(tab)"
-            :row-limit="settings.settings?.row_limit ?? null"
             @close="closeTab(tab)"
             @toggle-pin="tab.pinned = !tab.pinned"
             @rename="(name) => (tab.name = name)"

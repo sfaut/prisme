@@ -27,7 +27,7 @@
 //! serveur → client  {"type": "database", "database": "xlist"}          réponse à use : la base en cours
 //! serveur → client  {"type": "batch", "queries": [{"query": 0, "sql": "SELECT 1", "start": 0, "end": 9}]}
 //! serveur → client  {"type": "started", "query": 0}                  la requête part (en parallèle, elle peut attendre son tour)
-//! serveur → client  {"type": "columns", "query": 0, "columns": ["1"], "sql": "SELECT 1 LIMIT 1001", "limit": "added"}
+//! serveur → client  {"type": "columns", "query": 0, "columns": ["1"], "sql": "SELECT 1 LIMIT 1001", "limit": "added", "expected_rows": 1000}
 //! serveur → client  {"type": "rows", "query": 0, "rows": [["1"]]}       autant de lots que nécessaire
 //! serveur → client  {"type": "done", "query": 0, "row_count": 1, "truncated": false, "affected_rows": 0, "elapsed_ms": 2, "database": "xlist"}
 //! serveur → client  {"type": "error", "query": 0, "message": "..."}     à la place de la suite, en cas d'échec
@@ -63,7 +63,7 @@ use futures_util::{SinkExt, StreamExt};
 use prisme_connectors::mysql::{self, Cell, Connection, Flavor, MysqlTarget, ServerInfo};
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::{StatementKind, classify};
-use prisme_dialects::limit::{LimitOutcome, apply_default_limit};
+use prisme_dialects::limit::{LimitOutcome, apply_default_limit, written_limit};
 use prisme_splitter::{Statement, split, statement_at};
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Semaphore, mpsc};
@@ -175,6 +175,10 @@ enum ServerMessage {
         right_aligned: Vec<bool>,
         sql: String,
         limit: LimitReport,
+        /// Nombre de lignes au plus : la limite de Prisme, ou celle écrite par
+        /// l'utilisateur quand c'est un nombre ; `null` si inconnu. Sert à la
+        /// barre d'avancement de l'interface.
+        expected_rows: Option<u64>,
     },
     /// Lot de lignes.
     Rows { query: u32, rows: Vec<Vec<Cell>> },
@@ -714,6 +718,11 @@ impl Session<'_> {
                 right_aligned: stream.right_aligned_columns(),
                 sql: limited.sql.clone(),
                 limit: report(limited.outcome),
+                expected_rows: match limited.outcome {
+                    LimitOutcome::Added | LimitOutcome::Unparsed => Some(max_rows as u64),
+                    LimitOutcome::UserLimit => written_limit(sql, dialect),
+                    LimitOutcome::NotApplicable => None,
+                },
             })
             .await?;
 

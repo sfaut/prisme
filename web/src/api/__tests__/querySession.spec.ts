@@ -54,6 +54,7 @@ describe('applyMessage', () => {
       right_aligned: [true],
       sql: 'x',
       limit: 'added',
+      expected_rows: null,
     })
     applyMessage(state, {
       type: 'columns',
@@ -62,6 +63,7 @@ describe('applyMessage', () => {
       right_aligned: [true, false],
       sql: 'y',
       limit: 'added',
+      expected_rows: null,
     })
     applyMessage(state, { type: 'rows', query: 0, rows: [['1', 'a']] })
     applyMessage(state, { type: 'rows', query: 1, rows: [['7'], ['8']] })
@@ -191,6 +193,7 @@ describe('tabProgress', () => {
       right_aligned: [false],
       sql: 'a',
       limit: 'added',
+      expected_rows: null,
     })
     expect(tabProgress(first!)).toBe('loading')
 
@@ -237,6 +240,7 @@ describe('durées', () => {
         right_aligned: [false],
         sql: 'a',
         limit: 'added',
+        expected_rows: null,
       },
       1400,
     )
@@ -265,9 +269,9 @@ describe('durées', () => {
     startBatch(state)
     applyMessage(state, { type: 'batch', queries: [{ query: 0, sql: 'a', start: 0, end: 1 }] })
     const tab = state.tabs[0]!
-    expect(tabFraction(tab, 100)).toBe(0)
+    expect(tabFraction(tab)).toBe(0)
     applyMessage(state, { type: 'started', query: 0 })
-    expect(tabFraction(tab, 100)).toBeNull()
+    expect(tabFraction(tab)).toBeNull()
     applyMessage(state, {
       type: 'columns',
       query: 0,
@@ -275,14 +279,14 @@ describe('durées', () => {
       right_aligned: [false],
       sql: 'a LIMIT 101',
       limit: 'added',
+      expected_rows: 100,
     })
     applyMessage(state, { type: 'rows', query: 0, rows: [['1'], ['2'], ['3'], ['4']] })
-    expect(tabFraction(tab, 100)).toBe(0.04)
-    expect(tabFraction(tab, null)).toBeNull()
-    tab.result!.limit = 'user_limit'
-    expect(tabFraction(tab, 100)).toBeNull()
+    expect(tabFraction(tab)).toBe(0.04)
+    tab.result!.expectedRows = null
+    expect(tabFraction(tab)).toBeNull()
     applyMessage(state, { type: 'error', query: 0, message: 'perdu' })
-    expect(tabFraction(tab, 100)).toBe(1)
+    expect(tabFraction(tab)).toBe(1)
   })
 
   it('formate les durées', () => {

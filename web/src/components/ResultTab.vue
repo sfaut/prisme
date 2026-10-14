@@ -33,10 +33,6 @@ const props = defineProps<{
    * Libellé par défaut, sans nom donné.
    */
   defaultLabel: string
-  /**
-   * Limite de lignes du lot, pour la part accomplie ; `null` si inconnue.
-   */
-  rowLimit: number | null
 }>()
 
 const emit = defineEmits<{
@@ -69,7 +65,7 @@ const input = useTemplateRef<HTMLInputElement>('input')
 /**
  * Part accomplie de la requête, `null` si inconnue.
  */
-const fraction = computed(() => tabFraction(props.tab, props.rowLimit))
+const fraction = computed(() => tabFraction(props.tab))
 
 /**
  * Couleur de la barre : rouge en échec, verte une fois terminée, sinon
