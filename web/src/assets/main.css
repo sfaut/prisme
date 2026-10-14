@@ -188,6 +188,8 @@
   --font-size-body: 0.875rem;
   --font-size-title: 0.875rem;
   --font-size-heading: 1.125rem;
+  /* Texte de l'éditeur SQL. */
+  --editor-font-size: 0.8125rem;
 
   /* Espacements : unité de l'échelle (p-1 = 1 unité), écart entre
      éléments voisins, marge intérieure des panneaux et des contrôles. */

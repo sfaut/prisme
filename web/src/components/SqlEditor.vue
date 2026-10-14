@@ -207,7 +207,7 @@ defineExpose({ cursor })
 
 .sql-editor :deep(.cm-editor) {
   block-size: 100%;
-  font-size: var(--font-size-body);
+  font-size: var(--editor-font-size);
 }
 
 .sql-editor :deep(.cm-scroller) {
