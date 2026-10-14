@@ -2,9 +2,9 @@
  * Thème de l'éditeur SQL (CodeMirror), clair ou sombre comme le reste de
  * l'interface.
  *
- * Toutes les couleurs sont des variables CSS : celles du thème de Nuxt UI
- * pour le fond, le texte, les bordures et les bulles, et les `--sql-*` de
- * `assets/main.css` pour la coloration syntaxique. Le passage du clair au
+ * Toutes les couleurs sont des variables CSS du thème (`assets/main.css`) :
+ * fond, texte, bordures et bulles, surlignages (`--editor-*`) et
+ * coloration syntaxique (`--sql-*`). Le passage du clair au
  * sombre change ces variables, sans reconfigurer l'éditeur.
  */
 
@@ -12,16 +12,6 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import type { Extension } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
-
-/**
- * Couleur de l'interface mêlée de transparence, pour les surlignages.
- *
- * @param color Variable CSS de la couleur.
- * @param percent Part de la couleur, en pourcents.
- */
-function tint(color: string, percent: number): string {
-  return `color-mix(in oklab, var(${color}) ${percent}%, transparent)`
-}
 
 /**
  * Fond, gouttière, curseur, sélection, bulles et liste de complétion.
@@ -35,13 +25,13 @@ const chrome = EditorView.theme({
     color: 'var(--fg-dimmed)',
     borderRight: 'var(--line-width) solid var(--line)',
   },
-  '.cm-activeLine': { backgroundColor: tint('--fg', 4) },
-  '.cm-activeLineGutter': { backgroundColor: tint('--fg', 8) },
+  '.cm-activeLine': { backgroundColor: 'var(--editor-active-line)' },
+  '.cm-activeLineGutter': { backgroundColor: 'var(--editor-active-gutter)' },
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection':
-    { backgroundColor: tint('--accent', 25) },
-  '.cm-selectionMatch': { backgroundColor: tint('--accent', 12) },
-  '&.cm-focused .cm-matchingBracket': { backgroundColor: tint('--success', 25) },
-  '&.cm-focused .cm-nonmatchingBracket': { backgroundColor: tint('--error', 25) },
+    { backgroundColor: 'var(--editor-selection)' },
+  '.cm-selectionMatch': { backgroundColor: 'var(--editor-selection-match)' },
+  '&.cm-focused .cm-matchingBracket': { backgroundColor: 'var(--editor-bracket-match)' },
+  '&.cm-focused .cm-nonmatchingBracket': { backgroundColor: 'var(--editor-bracket-mismatch)' },
   '.cm-tooltip': {
     backgroundColor: 'var(--surface-elevated)',
     color: 'var(--fg)',

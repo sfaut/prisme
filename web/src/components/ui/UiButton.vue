@@ -61,12 +61,12 @@ const LOOKS = {
   solid: {
     neutral: 'bg-fg-strong text-surface hover:bg-fg',
     accent: 'bg-accent text-on-accent hover:bg-accent-hover',
-    error: 'bg-error text-on-accent hover:bg-error/85',
+    error: 'bg-error text-on-accent hover:bg-error-hover',
   },
   outline: {
     neutral: 'border border-line bg-surface text-fg-strong hover:bg-surface-muted',
-    accent: 'border border-accent/50 text-accent hover:bg-accent-soft',
-    error: 'border border-error/50 text-error hover:bg-error-soft',
+    accent: 'border border-accent-border text-accent hover:bg-accent-soft',
+    error: 'border border-error-border text-error hover:bg-error-soft',
   },
   ghost: {
     neutral: 'text-fg-dimmed hover:text-fg-strong',

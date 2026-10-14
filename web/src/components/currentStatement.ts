@@ -103,7 +103,7 @@ export function currentStatement(): Extension {
     decorationField,
     EditorView.baseTheme({
       '.cm-current-statement': {
-        backgroundColor: 'color-mix(in oklab, var(--accent) 7%, transparent)',
+        backgroundColor: 'var(--editor-current-statement)',
       },
     }),
   ]

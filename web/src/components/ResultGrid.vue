@@ -754,7 +754,7 @@ const filterColumn = computed({
   touch-action: none;
 
   &:hover {
-    background: color-mix(in oklab, var(--accent) 30%, transparent);
+    background: var(--resize-hover);
   }
 }
 
@@ -805,6 +805,6 @@ const filterColumn = computed({
 }
 
 .selected {
-  background: color-mix(in oklab, var(--accent) 18%, transparent);
+  background: var(--selection);
 }
 </style>

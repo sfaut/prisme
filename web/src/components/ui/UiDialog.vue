@@ -59,7 +59,7 @@ function focusFirst(event: Event): void {
 <template>
   <dialog-root v-model:open="open">
     <dialog-portal>
-      <dialog-overlay class="fixed inset-0 z-50 bg-fg-strong/40" />
+      <dialog-overlay class="fixed inset-0 z-50 bg-overlay" />
       <dialog-content
         class="fixed top-1/2 left-1/2 z-50 flex w-[calc(100vw-2rem)] max-w-dialog -translate-1/2 flex-col gap-panel rounded-panel border border-line bg-surface p-panel text-ui shadow-xl"
         :aria-describedby="description ? undefined : ''"
