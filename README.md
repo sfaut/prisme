@@ -172,13 +172,14 @@ Les requêtes passent par un WebSocket, une session par connexion enregistrée :
 npx wscat -c ws://127.0.0.1:8484/api/connections/1/query
 ```
 
-Prisme répond `{"type":"ready",...}` une fois connecté au serveur cible. Ensuite, chaque ligne saisie est un message, en JSON : `run` pour exécuter, `cancel` pour arrêter toutes les requêtes en cours. `sql` contient une ou plusieurs requêtes ; avec `cursor` (position dans le texte), seule la requête sous le curseur s'exécute, sans `cursor` toutes s'exécutent en parallèle :
+Prisme répond `{"type":"ready",...}` une fois connecté au serveur cible. Ensuite, chaque ligne saisie est un message, en JSON : `run` pour exécuter, `cancel` pour arrêter toutes les requêtes en cours, `cancel_query` pour n'en arrêter qu'une, désignée par son numéro dans le lot. `sql` contient une ou plusieurs requêtes ; avec `cursor` (position dans le texte), seule la requête sous le curseur s'exécute, sans `cursor` toutes s'exécutent en parallèle :
 
 ```
 {"type": "run", "sql": "SELECT * FROM information_schema.COLUMNS", "cursor": 0}
 {"type": "run", "sql": "SELECT * FROM information_schema.COLUMNS", "cursor": 0, "row_limit": 2000}
 {"type": "run", "sql": "SELECT 1; SELECT 2"}
 {"type": "cancel"}
+{"type": "cancel_query", "query": 1}
 ```
 
 Prisme annonce d'abord les requêtes du lot (`batch`, chacune numérotée), puis, pour chaque requête, des messages portant son numéro (`query`), dans l'ordre :

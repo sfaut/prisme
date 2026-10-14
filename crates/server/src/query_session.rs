@@ -22,6 +22,7 @@
 //! serveur → client  {"type": "ready", "server": {"flavor": "mariadb", "version": "11.3.2-MariaDB"}, "database": "xlist"}
 //! client → serveur  {"type": "run", "sql": "SELECT 1; SELECT 2", "cursor": 3, "row_limit": 2000}   cursor et row_limit facultatifs
 //! client → serveur  {"type": "cancel"}                                  arrête toutes les requêtes en cours
+//! client → serveur  {"type": "cancel_query", "query": 2}                arrête une seule requête du lot en cours
 //! client → serveur  {"type": "use", "database": "xlist"}               change la base en cours de la session
 //! serveur → client  {"type": "database", "database": "xlist"}          réponse à use : la base en cours
 //! serveur → client  {"type": "batch", "queries": [{"query": 0, "sql": "SELECT 1", "start": 0, "end": 9}]}
@@ -35,8 +36,10 @@
 //!
 //! `cancel` interrompt les requêtes en cours (`KILL QUERY` sur chacune de
 //! leurs connexions) et empêche le départ de celles qui attendent leur tour :
-//! chacune se termine par une erreur « requête interrompue ». La session lit
-//! les messages du client pendant l'exécution, pour recevoir `cancel` à temps.
+//! chacune se termine par une erreur « requête interrompue ». `cancel_query`
+//! fait de même pour une seule requête du lot (l'interface l'envoie quand on
+//! ferme son onglet). La session lit les messages du client pendant
+//! l'exécution, pour recevoir ces arrêts à temps.
 //!
 //! Une erreur qui ne concerne aucune requête (message invalide, connexion au
 //! serveur cible impossible) a `"query": null`. `database` est la base en
@@ -87,6 +90,8 @@ enum ClientMessage {
     Run(QueryRequest),
     /// Arrêter toutes les requêtes en cours.
     Cancel,
+    /// Arrêter une seule requête du lot en cours, désignée par son numéro.
+    CancelQuery { query: u32 },
     /// Changer la base en cours de la session, comme `USE`, sans résultat à afficher.
     Use { database: String },
 }
@@ -215,47 +220,78 @@ impl Outbox {
 
 /// Arrêt des requêtes en cours, demandé par le client.
 ///
-/// Garde la liste des connexions qui exécutent une requête, pour pouvoir les
-/// interrompre (`KILL QUERY`), et un drapeau que les requêtes consultent avant
-/// de partir et pendant la lecture de leurs lignes.
+/// Garde la liste des requêtes en cours avec leur connexion, pour pouvoir les
+/// interrompre (`KILL QUERY`), un drapeau pour l'arrêt de tout le lot et la
+/// liste des requêtes arrêtées une à une. Les requêtes consultent l'un et
+/// l'autre avant de partir et pendant la lecture de leurs lignes.
 #[derive(Default)]
 struct Cancellation {
-    /// L'arrêt a-t-il été demandé pour le lot en cours ?
+    /// L'arrêt de tout le lot a-t-il été demandé ?
     cancelled: AtomicBool,
-    /// Identifiants (`Conn::id()`) des connexions qui exécutent une requête.
-    running: Mutex<Vec<u32>>,
+    /// Numéros des requêtes du lot arrêtées une à une.
+    cancelled_queries: Mutex<Vec<u32>>,
+    /// Requêtes en cours : numéro de la requête et identifiant (`Conn::id()`)
+    /// de sa connexion.
+    running: Mutex<Vec<(u32, u32)>>,
 }
 
 impl Cancellation {
     /// Prépare un nouveau lot : plus aucun arrêt demandé.
     fn reset(&self) {
         self.cancelled.store(false, Ordering::SeqCst);
+        if let Ok(mut queries) = self.cancelled_queries.lock() {
+            queries.clear();
+        }
     }
 
-    /// L'arrêt a-t-il été demandé ?
-    fn is_cancelled(&self) -> bool {
+    /// L'arrêt de la requête `query` a-t-il été demandé, seul ou avec tout le lot ?
+    fn is_cancelled(&self, query: u32) -> bool {
         self.cancelled.load(Ordering::SeqCst)
+            || self
+                .cancelled_queries
+                .lock()
+                .is_ok_and(|queries| queries.contains(&query))
     }
 
-    /// Demande l'arrêt et interrompt toutes les requêtes en cours.
+    /// Demande l'arrêt de tout le lot et interrompt toutes les requêtes en cours.
     async fn cancel(&self, target: &MysqlTarget) {
         self.cancelled.store(true, Ordering::SeqCst);
-        let running = self
+        self.kill(target, |_| true).await;
+    }
+
+    /// Demande l'arrêt d'une seule requête et l'interrompt si elle est en cours.
+    async fn cancel_query(&self, target: &MysqlTarget, query: u32) {
+        if let Ok(mut queries) = self.cancelled_queries.lock() {
+            queries.push(query);
+        }
+        self.kill(target, |running| running == query).await;
+    }
+
+    /// Interrompt (`KILL QUERY`) les requêtes en cours que `selected` retient.
+    async fn kill(&self, target: &MysqlTarget, selected: impl Fn(u32) -> bool) {
+        let connections: Vec<u32> = self
             .running
             .lock()
-            .map(|ids| ids.clone())
+            .map(|running| {
+                running
+                    .iter()
+                    .filter(|(query, _)| selected(*query))
+                    .map(|(_, connection_id)| *connection_id)
+                    .collect()
+            })
             .unwrap_or_default();
-        for connection_id in running {
+        for connection_id in connections {
             if let Err(error) = mysql::kill_query(target, connection_id).await {
                 tracing::warn!("interruption de la requête impossible : {error}");
             }
         }
     }
 
-    /// Note qu'une connexion exécute une requête, jusqu'à la disparition du garde renvoyé.
-    fn track(&self, connection_id: u32) -> RunningGuard<'_> {
-        if let Ok(mut ids) = self.running.lock() {
-            ids.push(connection_id);
+    /// Note que la requête `query` s'exécute sur une connexion, jusqu'à la
+    /// disparition du garde renvoyé.
+    fn track(&self, query: u32, connection_id: u32) -> RunningGuard<'_> {
+        if let Ok(mut running) = self.running.lock() {
+            running.push((query, connection_id));
         }
         RunningGuard {
             cancellation: self,
@@ -273,8 +309,8 @@ struct RunningGuard<'a> {
 impl Drop for RunningGuard<'_> {
     /// Retire la connexion de la liste des requêtes en cours.
     fn drop(&mut self) {
-        if let Ok(mut ids) = self.cancellation.running.lock() {
-            ids.retain(|&id| id != self.connection_id);
+        if let Ok(mut running) = self.cancellation.running.lock() {
+            running.retain(|&(_, id)| id != self.connection_id);
         }
     }
 }
@@ -308,6 +344,9 @@ async fn read_messages(
                 }
             }
             Ok(ClientMessage::Cancel) => cancellation.cancel(&target).await,
+            Ok(ClientMessage::CancelQuery { query }) => {
+                cancellation.cancel_query(&target, query).await
+            }
             Err(error) => {
                 let message = format!("message invalide : {error}");
                 if outbox.error(None, message).await.is_err() {
@@ -568,7 +607,7 @@ impl Session<'_> {
         database: &Option<String>,
     ) -> Result<(), SocketClosed> {
         let _permit = permits.acquire().await.map_err(|_| SocketClosed)?;
-        if self.cancellation.is_cancelled() {
+        if self.cancellation.is_cancelled(query) {
             return self.outbox.error(Some(query), CANCELLED.to_string()).await;
         }
         self.outbox.send(ServerMessage::Started { query }).await?;
@@ -651,9 +690,9 @@ impl Session<'_> {
 
         let started = Instant::now();
         let connection_id = connection.id();
-        let _running = self.cancellation.track(connection_id);
+        let _running = self.cancellation.track(query, connection_id);
         // Arrêt demandé pendant l'ouverture de la connexion : la requête ne part pas.
-        if self.cancellation.is_cancelled() {
+        if self.cancellation.is_cancelled(query) {
             self.outbox
                 .error(Some(query), CANCELLED.to_string())
                 .await?;
@@ -662,7 +701,9 @@ impl Session<'_> {
         let mut stream = match mysql::execute(connection, &limited.sql).await {
             Ok(stream) => stream,
             Err(error) => {
-                self.outbox.error(Some(query), self.failure(error)).await?;
+                self.outbox
+                    .error(Some(query), self.failure(query, error))
+                    .await?;
                 return Ok(None);
             }
         };
@@ -685,11 +726,13 @@ impl Session<'_> {
                 Ok(None) => break,
                 Err(error) => {
                     stream.discard().await;
-                    self.outbox.error(Some(query), self.failure(error)).await?;
+                    self.outbox
+                        .error(Some(query), self.failure(query, error))
+                        .await?;
                     return Ok(None);
                 }
             };
-            if self.cancellation.is_cancelled() {
+            if self.cancellation.is_cancelled(query) {
                 // Le serveur a déjà reçu KILL QUERY : on cesse de lire.
                 stream.discard().await;
                 self.outbox
@@ -735,8 +778,8 @@ impl Session<'_> {
 
     /// Message d'une requête en échec : « interrompue » si l'arrêt a été
     /// demandé (l'erreur du serveur est alors celle de `KILL QUERY`).
-    fn failure(&self, error: mysql::MysqlError) -> String {
-        if self.cancellation.is_cancelled() {
+    fn failure(&self, query: u32, error: mysql::MysqlError) -> String {
+        if self.cancellation.is_cancelled(query) {
             CANCELLED.to_string()
         } else {
             error.to_string()
@@ -941,6 +984,30 @@ mod tests {
         assert!(super::chosen_statements(&[], Some(0)).is_empty());
     }
 
+    #[tokio::test]
+    async fn cancels_one_query_or_the_whole_batch() {
+        // Aucune requête en cours : l'arrêt ne contacte pas le serveur cible.
+        let target = super::MysqlTarget {
+            host: "127.0.0.1".to_string(),
+            port: 1,
+            username: "root".to_string(),
+            password: secrecy::SecretString::from("secret"),
+            database_name: String::new(),
+        };
+        let cancellation = super::Cancellation::default();
+        cancellation.cancel_query(&target, 1).await;
+        assert!(cancellation.is_cancelled(1));
+        assert!(!cancellation.is_cancelled(0));
+
+        cancellation.cancel(&target).await;
+        assert!(cancellation.is_cancelled(0));
+
+        // Nouveau lot : plus aucun arrêt.
+        cancellation.reset();
+        assert!(!cancellation.is_cancelled(0));
+        assert!(!cancellation.is_cancelled(1));
+    }
+
     #[test]
     fn refuses_writes_and_unparsable_queries() {
         assert_eq!(super::write_refusal("SELECT 1", Dialect::MariaDb), None);
@@ -1085,6 +1152,32 @@ mod tests {
             }
         }
         assert_eq!(errors, 2);
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+
+        // Fermer un onglet : seule sa requête est interrompue, l'autre va au bout.
+        let started = std::time::Instant::now();
+        let request = json!({ "type": "run", "sql": "SELECT SLEEP(30); SELECT SLEEP(1);" });
+        socket
+            .send(ClientMessage::Text(request.to_string().into()))
+            .await
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let cancel = json!({ "type": "cancel_query", "query": 0 }).to_string();
+        socket
+            .send(ClientMessage::Text(cancel.into()))
+            .await
+            .unwrap();
+        let (mut interrupted, mut finished) = (Vec::new(), Vec::new());
+        loop {
+            let message = next_json(&mut socket).await;
+            match message["type"].as_str().unwrap() {
+                "error" => interrupted.push(message["query"].clone()),
+                "done" => finished.push(message["query"].clone()),
+                "batch_done" => break,
+                _ => {}
+            }
+        }
+        assert_eq!((interrupted, finished), (vec![json!(0)], vec![json!(1)]));
         assert!(started.elapsed() < std::time::Duration::from_secs(10));
 
         // Rien à exécuter : erreur de session.
