@@ -28,7 +28,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
-use prisme_connectors::mysql::Cell;
+use prisme_connectors::mysql::{Cell, ColumnTypeInfo};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -106,6 +106,10 @@ pub struct SavedColumns {
     pub columns: Vec<String>,
     /// Pour chaque colonne, ses valeurs s'alignent-elles à droite ?
     pub right_aligned: Vec<bool>,
+    /// Type de chaque colonne ; vide pour un résultat enregistré avant le
+    /// typage des colonnes.
+    #[serde(default)]
+    pub types: Vec<ColumnTypeInfo>,
     /// Texte réellement exécuté.
     pub sql: String,
     /// Traitement de la limite de lignes.

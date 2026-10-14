@@ -7,7 +7,8 @@
 //!
 //! Les résultats se lisent ligne à ligne (`execute`, puis `ResultStream`),
 //! sans jamais charger tout le résultat en mémoire. Le catalogue (bases,
-//! tables, colonnes) est dans le sous-module `catalog`.
+//! tables, colonnes) est dans le sous-module `catalog`, le type des colonnes
+//! d'un résultat dans `column_type`.
 
 use std::time::Duration;
 
@@ -22,7 +23,10 @@ use ts_rs::TS;
 pub use mysql_async::Conn as Connection;
 
 pub mod catalog;
+mod column_type;
 mod connect_error;
+
+pub use column_type::{ColumnTypeInfo, TypeFamily};
 
 /// Délai maximal pour ouvrir une connexion au serveur.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -226,6 +230,24 @@ impl ResultStream<'_> {
             .columns_ref()
             .iter()
             .map(|column| is_right_aligned(column.column_type()))
+            .collect()
+    }
+
+    /// Type de chaque colonne, d'après les métadonnées du résultat (voir
+    /// le module `column_type`).
+    pub fn column_types(&self) -> Vec<ColumnTypeInfo> {
+        self.result
+            .columns_ref()
+            .iter()
+            .map(|column| {
+                column_type::describe(
+                    column.column_type(),
+                    column.flags(),
+                    column.column_length(),
+                    column.decimals(),
+                    column.character_set(),
+                )
+            })
             .collect()
     }
 

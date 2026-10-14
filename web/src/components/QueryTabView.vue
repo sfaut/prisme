@@ -93,6 +93,7 @@ const durations = computed(() => {
       v-if="tab.result && tab.result.columns.length > 0"
       :columns="tab.result.columns"
       :right-aligned="tab.result.rightAligned"
+      :column-types="tab.result.columnTypes"
       :rows="tab.result.rows"
       :row-count="tab.result.rowCount"
       :shown-count="shownCount"

@@ -30,6 +30,7 @@
 
 import { markRaw, onScopeDispose, reactive } from 'vue'
 
+import type { ColumnTypeInfo } from './generated/ColumnTypeInfo'
 import type { LimitReport } from './generated/LimitReport'
 import type { ClientMessage } from './generated/ClientMessage'
 import type { ResultTab } from './generated/ResultTab'
@@ -89,6 +90,11 @@ export interface QueryResult {
    * dates et heures) ?
    */
   rightAligned: boolean[]
+  /**
+   * Type de chaque colonne, annoncé par le serveur ; vide pour un résultat
+   * enregistré avant le typage des colonnes.
+   */
+  columnTypes: ColumnTypeInfo[]
   /**
    * Lignes reçues jusqu'ici. Dans l'interface, ce tableau n'est pas réactif
    * (ajouter des milliers de lignes une à une coûterait cher) : c'est
@@ -300,6 +306,7 @@ export function applyMessage(
           executionUs: message.execution_us,
           columns: message.columns,
           rightAligned: message.right_aligned,
+          columnTypes: message.types,
           rows: [],
           rowCount: 0,
           truncated: false,
@@ -613,6 +620,7 @@ export function savedTab(saved: ResultTab): QueryTab {
             executionUs: columns.execution_us,
             columns: columns.columns,
             rightAligned: columns.right_aligned,
+            columnTypes: columns.types,
             rows: markRaw(saved.rows),
             rowCount: result.row_count,
             truncated: result.truncated,

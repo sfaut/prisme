@@ -26,6 +26,9 @@
     affiché ; tri, filtre et largeurs restent attachés à la colonne.
   - Alignement : nombres, dates et heures à droite, d'après le type annoncé
     par le serveur.
+  - Types : chaque en-tête montre l'icône de la famille du type de sa
+    colonne (`typeIcons.ts`), puis le nom natif du type (`VARCHAR(20)`,
+    `DECIMAL(10,2)`...), en petit et plus clair.
 
   Seules les lignes visibles existent dans la page (défilement virtuel) : la
   grille reste fluide avec des dizaines de milliers de lignes. La logique
@@ -36,6 +39,7 @@ import { ListFilter, Search, X } from 'lucide-vue-next'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { computed, nextTick, reactive, ref, shallowRef, useTemplateRef, watch } from 'vue'
 
+import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Cell } from '@/api/querySession'
 import { cssPixels } from '@/cssLength'
 
@@ -63,6 +67,7 @@ import {
   visibleRows,
 } from './resultGrid'
 import { rememberWidths, rememberedWidths } from './gridWidths'
+import { TYPE_ICONS } from './typeIcons'
 import UiButton from './ui/UiButton.vue'
 import UiInput from './ui/UiInput.vue'
 import UiSelect from './ui/UiSelect.vue'
@@ -78,6 +83,10 @@ const props = defineProps<{
    * dates et heures) ?
    */
   rightAligned: boolean[]
+  /**
+   * Type de chaque colonne ; vide si inconnu (en-têtes sans type).
+   */
+  columnTypes: ColumnTypeInfo[]
   /**
    * Lignes du résultat ; le tableau peut grandir pendant la réception, sans
    * être réactif : c'est `rowCount` qui signale les nouvelles lignes.
@@ -211,8 +220,20 @@ watch(
 const estimated = computed(() => {
   // Lu pour que les largeurs se recalculent à l'arrivée de nouvelles lignes.
   void props.rowCount
-  return props.columns.map((name, column) => estimatedWidth(name, props.rows, column))
+  return props.columns.map((_, column) => estimatedWidth(headerText(column), props.rows, column))
 })
+
+/**
+ * Texte de l'en-tête d'une colonne, pour estimer sa largeur : son nom, puis
+ * la place de l'icône et du nom du type.
+ *
+ * @param column Indice de la colonne.
+ */
+function headerText(column: number): string {
+  const type = props.columnTypes[column]
+  const name = props.columns[column] ?? ''
+  return type ? `${name}    ${type.name}` : name
+}
 
 /**
  * Gabarit des colonnes de la grille : numéros de ligne, puis chaque colonne,
@@ -273,7 +294,7 @@ function onResizeEnd(): void {
  * @param column Indice de la colonne.
  */
 function fitWidth(column: number): void {
-  const width = fittedWidth(props.columns[column] ?? '', props.rows, column)
+  const width = fittedWidth(headerText(column), props.rows, column)
   if (resized.value[column] === width) {
     const others = { ...resized.value }
     delete others[column]
@@ -541,13 +562,22 @@ const filterColumn = computed({
         >
           <span
             class="grid-column-name"
-            :title="`${columns[column]} (glisser pour déplacer)`"
+            :title="`${columns[column]}${columnTypes[column] ? ` ${columnTypes[column].name}` : ''} (glisser pour déplacer)`"
             @pointerdown.prevent="onColumnHeader($event, position)"
             @pointermove="onColumnMove"
             @pointerup="onColumnDrop"
             @pointercancel="onColumnDrop"
           >
-            {{ columns[column] }}
+            <component
+              :is="TYPE_ICONS[columnTypes[column].family]"
+              v-if="columnTypes[column]"
+              class="grid-type-icon"
+              aria-hidden="true"
+            />
+            <span class="grid-column-label">{{ columns[column] }}</span>
+            <span v-if="columnTypes[column]" class="grid-column-type">
+              {{ columnTypes[column].name }}
+            </span>
           </span>
           <button
             class="grid-sort"
@@ -759,12 +789,41 @@ const filterColumn = computed({
 }
 
 .grid-column-name {
+  display: flex;
   flex: 1;
+  align-items: center;
+  gap: var(--grid-type-gap);
+  min-inline-size: 0;
   padding-inline: var(--grid-cell-padding-x);
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   cursor: grab;
+}
+
+/* Icône neutre de la famille du type, devant le nom. */
+.grid-type-icon {
+  flex: none;
+  inline-size: var(--icon-size-sm);
+  block-size: var(--icon-size-sm);
+  color: var(--fg-dimmed);
+}
+
+/* Le nom se tronque en premier, puis le type. */
+.grid-column-label,
+.grid-column-type {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-box: trim-both cap alphabetic;
+}
+
+.grid-column-label {
+  flex: 0 1 auto;
+}
+
+.grid-column-type {
+  flex: 0 100 auto;
+  color: var(--fg-dimmed);
+  font-size: var(--font-size-small);
+  font-weight: 400;
 }
 
 .grid-sort {

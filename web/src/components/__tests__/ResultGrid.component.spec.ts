@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import { mount } from '@vue/test-utils'
 
+import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
+
 import ResultGrid from '../ResultGrid.vue'
 
 /**
@@ -10,15 +12,31 @@ import ResultGrid from '../ResultGrid.vue'
  * @param columns Noms des colonnes.
  * @param rows Lignes du résultat.
  * @param sql Texte de la requête.
+ * @param columnTypes Types des colonnes, aucun par défaut.
  */
-function mountGrid(columns: string[], rows: (string | null)[][], sql = 'SELECT 1') {
+function mountGrid(
+  columns: string[],
+  rows: (string | null)[][],
+  sql = 'SELECT 1',
+  columnTypes: ColumnTypeInfo[] = [],
+) {
   const rightAligned = columns.map(() => false)
   return mount(ResultGrid, {
-    props: { columns, rightAligned, rows, rowCount: rows.length, sql },
+    props: { columns, rightAligned, columnTypes, rows, rowCount: rows.length, sql },
   })
 }
 
 describe('ResultGrid', () => {
+  it('affiche le type de chaque colonne dans son en-tête', () => {
+    const wrapper = mountGrid(['id', 'name'], [['1', 'a']], 'SELECT id, name FROM t', [
+      { family: 'integer', name: 'INT UNSIGNED' },
+      { family: 'text', name: 'VARCHAR(20)' },
+    ])
+    const types = wrapper.findAll('.grid-column-type').map((type) => type.text())
+    expect(types).toEqual(['INT UNSIGNED', 'VARCHAR(20)'])
+    expect(wrapper.findAll('.grid-type-icon')).toHaveLength(2)
+  })
+
   it('sélectionne tout par un clic sur le coin supérieur gauche', async () => {
     const wrapper = mountGrid(['id', 'name'], [['1', 'a']])
     await wrapper.find('.grid-corner').trigger('mousedown')

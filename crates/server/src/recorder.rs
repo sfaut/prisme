@@ -125,6 +125,7 @@ impl Recorder {
                 query,
                 columns,
                 right_aligned,
+                types,
                 sql,
                 limit,
                 expected_rows,
@@ -134,6 +135,7 @@ impl Recorder {
                     record.result.columns = Some(SavedColumns {
                         columns: columns.clone(),
                         right_aligned: right_aligned.clone(),
+                        types: types.clone(),
                         sql: sql.clone(),
                         limit: limit.clone(),
                         expected_rows: *expected_rows,
@@ -285,6 +287,7 @@ mod tests {
                 query: 0,
                 columns: vec!["x".to_string()],
                 right_aligned: vec![true],
+                types: Vec::new(),
                 sql: "SELECT 0".to_string(),
                 limit: LimitReport::NotApplicable,
                 expected_rows: None,
