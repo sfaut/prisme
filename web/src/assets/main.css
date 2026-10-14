@@ -159,6 +159,14 @@
   --resize-hover: color-mix(in oklab, var(--accent) 30%, transparent);
   --selection: color-mix(in oklab, var(--accent) 18%, transparent);
 
+  /* Badge de la variante du serveur d'une source, dans l'explorateur :
+     texte de la couleur du moteur (bleu MySQL, brun MariaDB) sur un fond
+     teinté de la même couleur. */
+  --badge-mysql: light-dark(var(--blue-600), var(--blue-300));
+  --badge-mysql-bg: color-mix(in oklab, var(--badge-mysql) 14%, transparent);
+  --badge-mariadb: light-dark(var(--amber-700), var(--amber-300));
+  --badge-mariadb-bg: color-mix(in oklab, var(--badge-mariadb) 16%, transparent);
+
   /* Coloration syntaxique de l'éditeur SQL (`editorTheme.ts`). */
   --sql-keyword: light-dark(var(--violet-600), var(--violet-300));
   --sql-type: light-dark(var(--cyan-700), var(--cyan-300));
@@ -265,6 +273,10 @@
   /* Arrondis : contrôles, puis fenêtres et menus. */
   --control-radius: 0.375rem;
   --panel-radius: 0.5rem;
+  /* Pastille (badge) : marges intérieures relatives à son texte, coins ronds. */
+  --badge-padding: 0.2em 0.55em;
+  --badge-radius: 1em;
+  --badge-font-size: 0.625rem;
 }
 
 :root.light {

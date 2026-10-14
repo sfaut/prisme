@@ -547,7 +547,8 @@ watch(
           <!-- Source : badge de la variante du serveur, juste après le nom. -->
           <span
             v-if="item.value.badge"
-            class="ms-0.5 me-auto shrink-0 rounded-control border border-line px-1 py-0.5 text-small text-fg-muted text-trim"
+            class="flavor-badge ms-0.5 me-auto shrink-0 text-trim"
+            :data-flavor="item.value.badge"
           >
             {{ item.value.badge }}
           </span>
@@ -596,5 +597,24 @@ watch(
 /* Retrait de chaque niveau : `--level` est posé sur la ligne (1 pour les racines). */
 .tree-row {
   padding-inline-start: calc(var(--space-unit) + var(--tree-indent) * (var(--level) - 1));
+}
+
+/* Badge de la variante du serveur : pastille teintée aux couleurs du moteur. */
+.flavor-badge {
+  padding: var(--badge-padding);
+  border-radius: var(--badge-radius);
+  font-size: var(--badge-font-size);
+  font-weight: 500;
+  letter-spacing: 0.03em;
+
+  &[data-flavor='mysql'] {
+    background: var(--badge-mysql-bg);
+    color: var(--badge-mysql);
+  }
+
+  &[data-flavor='mariadb'] {
+    background: var(--badge-mariadb-bg);
+    color: var(--badge-mariadb);
+  }
 }
 </style>
