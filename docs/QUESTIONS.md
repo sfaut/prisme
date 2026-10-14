@@ -58,6 +58,7 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 | Mode strict de Tutorial D | Reportée | Non critique. Seule la nullabilité doit exister dès maintenant. |
 | Vrai système de base de données maison | Option future | Sébastien n'exclut pas d'y aller plus tard. |
 | Moteur fédéré | Après la v1 | La v1 construit le noyau commun. |
+| Visualisation optimisée des contenus JSON et XML dans la grille | Reportée (à faire) | Demandée par Sébastien. La grille reconnaît déjà les colonnes de texte qui contiennent du JSON ou du XML (icône de l'en-tête, `web/src/components/contentKind.ts`) ; reste à proposer un affichage adapté de ces contenus (indentation, coloration, repli). |
 
 ## 4. Nom du projet
 
