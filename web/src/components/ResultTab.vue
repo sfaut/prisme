@@ -12,7 +12,7 @@
   - Croix (ou clic du milieu) : ferme l'onglet ; la cellule arrête sa
     requête si elle tourne.
   - Barre d'avancement dessinée sur le bord bas de l'onglet : indéterminée
-    (un segment qui glisse) quand la part accomplie est inconnue, verte
+    (un segment qui va et vient) quand la part accomplie est inconnue, verte
     une fois la requête terminée, rouge en cas d'échec (`tabFraction`).
 -->
 <script setup lang="ts">
@@ -189,20 +189,22 @@ function commit(): void {
     background: var(--error);
   }
 
-  /* Part inconnue : un segment glisse d'un bord à l'autre. */
+  /* Part inconnue : un segment va et vient d'un bord à l'autre. */
   &.indeterminate {
     inline-size: 30%;
-    animation: slide 1.2s ease-in-out infinite;
+    animation: sweep 1.2s ease-in-out infinite alternate;
   }
 }
 
-@keyframes slide {
+/* Le segment occupe 30 % de l'onglet : décalé de 70 / 30 de sa largeur,
+   il touche le bord droit. */
+@keyframes sweep {
   from {
-    transform: translateX(-100%);
+    transform: translateX(0);
   }
 
   to {
-    transform: translateX(340%);
+    transform: translateX(calc(70% / 0.3));
   }
 }
 </style>
