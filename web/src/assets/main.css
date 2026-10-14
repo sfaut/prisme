@@ -245,8 +245,9 @@
   --grip-color: var(--line);
   --status-dot-size: 0.5rem;
 
-  /* Barres de défilement : épaisseur, poignée et poignée survolée. */
-  --scrollbar-size: 0.5rem;
+  /* Barres de défilement : épaisseur, arrondi, poignée et poignée survolée. */
+  --scrollbar-size: 0.375rem;
+  --scrollbar-radius: 0.125rem;
   --scrollbar-thumb: light-dark(var(--zinc-300), var(--zinc-600));
   --scrollbar-thumb-hover: light-dark(var(--zinc-400), var(--zinc-500));
 
@@ -299,7 +300,7 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    border-radius: var(--scrollbar-size);
+    border-radius: var(--scrollbar-radius);
     background: var(--scrollbar-thumb);
 
     &:hover {
