@@ -8,8 +8,12 @@
  * chaque message portant le numéro de sa requête : `started` quand elle part
  * (en parallèle, elle peut attendre son tour), `columns`, des lots
  * `rows`, puis `done` (ou `error`). `batch_done` clôt le lot. `cancel` arrête
- * toutes les requêtes en cours. Le protocole est
+ * toutes les requêtes en cours, `cancel_query` une seule. Le protocole est
  * décrit dans `crates/server/src/query_session.rs`.
+ *
+ * Chaque requête a son onglet. Un nouveau lot remplace les onglets du
+ * précédent, sauf ceux que l'utilisateur a épinglés ; un onglet peut aussi
+ * être renommé ou fermé (sa requête est alors arrêtée si elle tourne).
  *
  * `applyMessage` met l'état à jour message par message ; elle ne dépend ni de
  * Vue ni du WebSocket, ce qui la rend simple à tester. `useQuerySession`
@@ -95,7 +99,17 @@ export interface QueryResult {
  */
 export interface QueryTab {
   /**
-   * Numéro de la requête dans le lot.
+   * Identifiant de l'onglet, unique dans la session (deux lots ont chacun
+   * leur requête numéro 0).
+   */
+  id: number
+  /**
+   * Numéro du lot de la requête : seuls les onglets du lot en cours
+   * reçoivent les messages du serveur.
+   */
+  batch: number
+  /**
+   * Numéro de la requête dans son lot.
    */
   query: number
   /**
@@ -128,6 +142,14 @@ export interface QueryTab {
    * Instant de la fin de la requête, `null` tant qu'elle n'est pas terminée.
    */
   endedAt: number | null
+  /**
+   * Onglet épinglé : il reste quand un nouveau lot est lancé.
+   */
+  pinned: boolean
+  /**
+   * Nom donné par l'utilisateur, `null` pour le libellé par défaut.
+   */
+  name: string | null
 }
 
 /**
@@ -147,9 +169,17 @@ export interface SessionState {
    */
   database: string | null
   /**
-   * Requêtes du dernier lot, une par onglet.
+   * Onglets : ceux épinglés des lots précédents, puis les requêtes du lot en cours.
    */
   tabs: QueryTab[]
+  /**
+   * Numéro du lot en cours (0 avant le premier).
+   */
+  batch: number
+  /**
+   * Identifiant du prochain onglet créé.
+   */
+  nextTabId: number
   /**
    * Dernière erreur de la session elle-même (connexion, demande invalide).
    */
@@ -160,7 +190,15 @@ export interface SessionState {
  * Crée l'état d'une session qui s'ouvre.
  */
 export function initialState(): SessionState {
-  return { status: 'connecting', server: null, database: null, tabs: [], error: null }
+  return {
+    status: 'connecting',
+    server: null,
+    database: null,
+    tabs: [],
+    batch: 0,
+    nextTabId: 1,
+    error: null,
+  }
 }
 
 /**
@@ -185,16 +223,23 @@ export function applyMessage(
       state.database = message.database
       break
     case 'batch':
-      state.tabs = message.queries.map((query) => ({
-        query: query.query,
-        sql: query.sql,
-        result: null,
-        error: null,
-        done: false,
-        startedAt: null,
-        columnsAt: null,
-        endedAt: null,
-      }))
+      state.tabs = [
+        ...state.tabs,
+        ...message.queries.map((query) => ({
+          id: state.nextTabId++,
+          batch: state.batch,
+          query: query.query,
+          sql: query.sql,
+          result: null,
+          error: null,
+          done: false,
+          startedAt: null,
+          columnsAt: null,
+          endedAt: null,
+          pinned: false,
+          name: null,
+        })),
+      ]
       break
     case 'started': {
       const tab = tabOf(state, message.query)
@@ -275,7 +320,7 @@ export function applyMessage(
  * @param query Numéro de la requête.
  */
 function tabOf(state: SessionState, query: number): QueryTab | undefined {
-  return state.tabs.find((tab) => tab.query === query)
+  return state.tabs.find((tab) => tab.batch === state.batch && tab.query === query)
 }
 
 /**
@@ -336,13 +381,33 @@ export function transferDuration(tab: QueryTab, now: number): number | null {
 }
 
 /**
- * Avancement d'un lot : nombre de requêtes terminées (avec succès ou en
- * échec) et nombre total.
+ * Part accomplie d'une requête, de 0 à 1, pour la barre d'avancement de son
+ * onglet ; `null` quand elle est inconnue (barre indéterminée).
  *
- * @param tabs Onglets du lot.
+ * - en attente : 0 ;
+ * - en exécution : inconnue ;
+ * - en réception : lignes reçues sur la limite de lignes, si Prisme l'a
+ *   ajoutée (le résultat ne la dépassera pas) ; inconnue sinon ;
+ * - terminée, avec succès ou en échec : 1.
+ *
+ * @param tab Onglet de la requête.
+ * @param rowLimit Limite de lignes du lot, `null` si inconnue.
  */
-export function batchProgress(tabs: QueryTab[]): { done: number; total: number } {
-  return { done: tabs.filter((tab) => tab.done).length, total: tabs.length }
+export function tabFraction(tab: QueryTab, rowLimit: number | null): number | null {
+  switch (tabProgress(tab)) {
+    case 'waiting':
+      return 0
+    case 'done':
+    case 'error':
+      return 1
+    case 'loading':
+      if (tab.result?.limit === 'added' && rowLimit !== null && rowLimit > 0) {
+        return Math.min(1, tab.result.rowCount / rowLimit)
+      }
+      return null
+    default:
+      return null
+  }
 }
 
 /**
@@ -370,14 +435,29 @@ export function formatDuration(milliseconds: number): string {
 }
 
 /**
- * Note le début d'un lot dans l'état : les onglets précédents disparaissent.
+ * Note le début d'un lot dans l'état : les onglets du lot précédent
+ * disparaissent, sauf ceux qui sont épinglés.
  *
  * @param state État de la session.
  */
 export function startBatch(state: SessionState): void {
   state.status = 'running'
-  state.tabs = []
+  state.batch++
+  state.tabs = state.tabs.filter((tab) => tab.pinned)
   state.error = null
+}
+
+/**
+ * Retire un onglet de l'état.
+ *
+ * @param state État de la session.
+ * @param id Identifiant de l'onglet.
+ * @returns L'onglet retiré, absent s'il n'existait pas.
+ */
+export function removeTab(state: SessionState, id: number): QueryTab | undefined {
+  const tab = state.tabs.find((item) => item.id === id)
+  state.tabs = state.tabs.filter((item) => item.id !== id)
+  return tab
 }
 
 /**
@@ -484,6 +564,19 @@ export function useQuerySession(connectionId: number) {
   }
 
   /**
+   * Ferme un onglet. Si sa requête tourne encore (lot en cours), elle est
+   * arrêtée ; ses derniers messages ne trouvent plus d'onglet et sont ignorés.
+   *
+   * @param id Identifiant de l'onglet.
+   */
+  function closeTab(id: number): void {
+    const tab = removeTab(state, id)
+    if (tab && !tab.done && tab.batch === state.batch && state.status === 'running') {
+      send({ type: 'cancel_query', query: tab.query })
+    }
+  }
+
+  /**
    * Envoie un message au serveur.
    *
    * @param message Message du client.
@@ -501,5 +594,5 @@ export function useQuerySession(connectionId: number) {
 
   onScopeDispose(close)
 
-  return { state, run, changeDatabase, cancel, close }
+  return { state, run, changeDatabase, cancel, closeTab, close }
 }

@@ -7,30 +7,24 @@
   toutes les requêtes en parallèle. « Stopper » les arrête toutes.
   « Enjoliver » réécrit le texte en « beau SQL », une fois le catalogue de la
   connexion chargé (il donne la casse des fonctions de l'utilisateur).
-  Chaque requête a son onglet de résultat ; pour un lot de plusieurs
-  requêtes, une barre à droite des onglets suit leur avancement.
+  Chaque requête a son onglet de résultat (`ResultTab.vue`), avec sa barre
+  d'avancement. Un onglet se renomme, s'épingle (il reste quand la requête
+  est relancée) ou se ferme (sa requête est arrêtée si elle tourne).
   La limite de lignes choisie ici devient la limite par défaut de l'utilisateur.
 -->
 <script setup lang="ts">
 import { Play, Square, WandSparkles } from 'lucide-vue-next'
-import {
-  ProgressIndicator,
-  ProgressRoot,
-  TabsContent,
-  TabsList,
-  TabsRoot,
-  TabsTrigger,
-} from 'reka-ui'
+import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import { beautify } from '@/api/beautify'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
-import { batchProgress, useQuerySession } from '@/api/querySession'
+import { type QueryTab, useQuerySession } from '@/api/querySession'
 import { useCatalogStore } from '@/stores/catalog'
 import { useSettingsStore } from '@/stores/settings'
 
-import ProgressDot from './ProgressDot.vue'
 import QueryTabView from './QueryTabView.vue'
+import ResultTab from './ResultTab.vue'
 import SqlEditor from './SqlEditor.vue'
 import { completionSchema } from './sqlCompletion'
 import UiAlert from './ui/UiAlert.vue'
@@ -89,32 +83,47 @@ const serverLabel = computed(() => {
 const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
 
 /**
- * Onglet affiché : numéro de sa requête.
+ * Onglet affiché : son identifiant.
  */
 const selectedTab = ref<string | number>(0)
 
-// Nouveau lot : le premier onglet s'affiche.
+// Les onglets d'un nouveau lot arrivent : le premier s'affiche. Sinon,
+// l'onglet affiché a disparu : le premier qui reste prend sa place.
 watch(
   () => state.tabs,
-  () => {
-    selectedTab.value = 0
+  (tabs, previous) => {
+    const fresh = tabs.find((tab) => !previous?.some((old) => old.id === tab.id))
+    if (fresh) {
+      selectedTab.value = fresh.id
+    } else if (!tabs.some((tab) => tab.id === selectedTab.value)) {
+      selectedTab.value = tabs[0]?.id ?? 0
+    }
   },
 )
 
 /**
- * Avancement du lot en cours : requêtes terminées et nombre total.
+ * Libellé par défaut d'un onglet : numéro et début de la requête.
+ *
+ * @param tab Onglet de la requête.
  */
-const batch = computed(() => batchProgress(state.tabs))
+function tabLabel(tab: QueryTab): string {
+  const short = tab.sql.replace(/\s+/g, ' ')
+  return `${tab.query + 1} · ${short.length > 40 ? `${short.slice(0, 40)}…` : short}`
+}
 
 /**
- * Libellé d'un onglet : numéro et début de la requête.
+ * Ferme un onglet ; s'il était affiché, son voisin de droite (ou de gauche)
+ * prend sa place. Sa requête est arrêtée si elle tourne.
  *
- * @param query Numéro de la requête.
- * @param text Texte de la requête.
+ * @param tab Onglet à fermer.
  */
-function tabLabel(query: number, text: string): string {
-  const short = text.replace(/\s+/g, ' ')
-  return `${query + 1} · ${short.length > 40 ? `${short.slice(0, 40)}…` : short}`
+function closeTab(tab: QueryTab): void {
+  if (selectedTab.value === tab.id) {
+    const index = state.tabs.indexOf(tab)
+    const neighbour = state.tabs[index + 1] ?? state.tabs[index - 1]
+    selectedTab.value = neighbour?.id ?? 0
+  }
+  session.closeTab(tab.id)
 }
 
 /**
@@ -313,42 +322,28 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
       :unmount-on-hide="false"
       class="flex min-h-0 flex-1 flex-col gap-1"
     >
-      <tabs-list class="flex border-b border-line">
+      <tabs-list class="flex overflow-x-auto border-b border-line">
         <tabs-trigger
           v-for="tab in state.tabs"
-          :key="tab.query"
-          :value="tab.query"
-          class="-mb-px flex h-control max-w-tab min-w-0 cursor-pointer items-center gap-1.5 border-b-2 border-transparent px-control-x text-ui font-medium text-fg-muted hover:text-fg-strong data-[state=active]:border-fg-strong data-[state=active]:text-fg-strong"
+          :key="tab.id"
+          :value="tab.id"
+          as="div"
+          class="group relative flex h-control max-w-tab min-w-0 shrink-0 cursor-pointer items-center rounded-t-control ps-control-x pe-1 text-ui font-medium text-fg-muted outline-none select-none hover:text-fg-strong focus-visible:bg-surface-muted data-[state=active]:bg-surface-elevated data-[state=active]:text-fg-strong"
         >
-          <progress-dot :tab="tab" />
-          <span class="truncate text-trim">{{ tabLabel(tab.query, tab.sql) }}</span>
+          <result-tab
+            :tab="tab"
+            :default-label="tabLabel(tab)"
+            :row-limit="settings.settings?.row_limit ?? null"
+            @close="closeTab(tab)"
+            @toggle-pin="tab.pinned = !tab.pinned"
+            @rename="(name) => (tab.name = name)"
+          />
         </tabs-trigger>
-        <div
-          v-if="batch.total > 1"
-          class="ms-auto flex shrink-0 items-center gap-gap ps-gap text-fg-muted"
-        >
-          <span class="text-trim">{{ batch.done }} / {{ batch.total }} requêtes</span>
-          <progress-root
-            :model-value="batch.done"
-            :max="batch.total"
-            :get-value-label="
-              (done: number | null | undefined, total: number) =>
-                `${done ?? 0} requêtes terminées sur ${total}`
-            "
-            class="h-progress-h w-progress overflow-hidden rounded-full bg-surface-accented"
-          >
-            <progress-indicator
-              class="h-full rounded-full transition-transform duration-300"
-              :class="batch.done === batch.total ? 'bg-success' : 'bg-accent'"
-              :style="{ transform: `translateX(-${100 - (100 * batch.done) / batch.total}%)` }"
-            />
-          </progress-root>
-        </div>
       </tabs-list>
       <tabs-content
         v-for="tab in state.tabs"
-        :key="tab.query"
-        :value="tab.query"
+        :key="tab.id"
+        :value="tab.id"
         class="flex min-h-0 flex-1 outline-none"
       >
         <query-tab-view :tab="tab" />

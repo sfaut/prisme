@@ -2,12 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import {
   applyMessage,
-  batchProgress,
   executionDuration,
   formatDuration,
   initialState,
+  removeTab,
   sessionUrl,
   startBatch,
+  tabFraction,
   tabProgress,
   transferDuration,
 } from '../querySession'
@@ -126,24 +127,42 @@ describe('applyMessage', () => {
     expect(state.status).toBe('closed')
   })
 
-  it('efface les onglets et l’erreur précédents au début d’un lot', () => {
+  it('efface les onglets et l’erreur précédents au début d’un lot, sauf les onglets épinglés', () => {
     const state = readyState()
+    startBatch(state)
+    applyMessage(state, {
+      type: 'batch',
+      queries: [
+        { query: 0, sql: 'a', start: 0, end: 1 },
+        { query: 1, sql: 'b', start: 2, end: 3 },
+      ],
+    })
+    state.tabs[1]!.pinned = true
     state.error = 'ancienne erreur'
-    state.tabs = [
-      {
-        query: 0,
-        sql: 'x',
-        result: null,
-        error: null,
-        done: true,
-        startedAt: 1,
-        columnsAt: null,
-        endedAt: 2,
-      },
-    ]
+
     startBatch(state)
     expect(state.error).toBeNull()
+    expect(state.tabs.map((tab) => tab.sql)).toEqual(['b'])
+
+    // Le nouveau lot suit l'onglet épinglé ; ses messages ne touchent pas ce dernier,
+    // qui portait pourtant le même numéro de requête dans l'ancien lot.
+    applyMessage(state, { type: 'batch', queries: [{ query: 1, sql: 'c', start: 0, end: 1 }] })
+    applyMessage(state, { type: 'started', query: 1 }, 1000)
+    expect(state.tabs.map((tab) => [tab.sql, tab.startedAt])).toEqual([
+      ['b', null],
+      ['c', 1000],
+    ])
+    expect(new Set(state.tabs.map((tab) => tab.id)).size).toBe(2)
+  })
+
+  it('retire un onglet fermé', () => {
+    const state = readyState()
+    startBatch(state)
+    applyMessage(state, { type: 'batch', queries: [{ query: 0, sql: 'a', start: 0, end: 1 }] })
+    const id = state.tabs[0]!.id
+    expect(removeTab(state, id)?.sql).toBe('a')
     expect(state.tabs).toEqual([])
+    expect(removeTab(state, id)).toBeUndefined()
   })
 })
 
@@ -191,7 +210,7 @@ describe('tabProgress', () => {
   })
 })
 
-describe('durées et avancement', () => {
+describe('durées', () => {
   it("sépare l'exécution du transfert des lignes", () => {
     const state = readyState()
     startBatch(state)
@@ -204,7 +223,6 @@ describe('durées et avancement', () => {
     })
     const tab = state.tabs[0]!
     expect(executionDuration(tab, 0)).toBeNull()
-    expect(batchProgress(state.tabs)).toEqual({ done: 0, total: 2 })
 
     applyMessage(state, { type: 'started', query: 0 }, 1000)
     expect(executionDuration(tab, 1300)).toBe(300)
@@ -240,7 +258,31 @@ describe('durées et avancement', () => {
     )
     expect(executionDuration(tab, 9999)).toBe(400)
     expect(transferDuration(tab, 9999)).toBe(1100)
-    expect(batchProgress(state.tabs)).toEqual({ done: 1, total: 2 })
+  })
+
+  it("mesure la part accomplie d'une requête, quand elle est connue", () => {
+    const state = readyState()
+    startBatch(state)
+    applyMessage(state, { type: 'batch', queries: [{ query: 0, sql: 'a', start: 0, end: 1 }] })
+    const tab = state.tabs[0]!
+    expect(tabFraction(tab, 100)).toBe(0)
+    applyMessage(state, { type: 'started', query: 0 })
+    expect(tabFraction(tab, 100)).toBeNull()
+    applyMessage(state, {
+      type: 'columns',
+      query: 0,
+      columns: ['x'],
+      right_aligned: [false],
+      sql: 'a LIMIT 101',
+      limit: 'added',
+    })
+    applyMessage(state, { type: 'rows', query: 0, rows: [['1'], ['2'], ['3'], ['4']] })
+    expect(tabFraction(tab, 100)).toBe(0.04)
+    expect(tabFraction(tab, null)).toBeNull()
+    tab.result!.limit = 'user_limit'
+    expect(tabFraction(tab, 100)).toBeNull()
+    applyMessage(state, { type: 'error', query: 0, message: 'perdu' })
+    expect(tabFraction(tab, 100)).toBe(1)
   })
 
   it('formate les durées', () => {
