@@ -23,6 +23,9 @@ static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
         M::up(include_str!("../migrations/0003_users_row_limit.sql")),
         M::up(include_str!("../migrations/0004_connections_init_sql.sql")),
         M::up(include_str!("../migrations/0005_editors.sql")),
+        M::up(include_str!(
+            "../migrations/0006_connections_session_timeout.sql"
+        )),
     ])
 });
 

@@ -79,6 +79,7 @@ function connection(id: number, name: string): ConnectionSummary {
     username: 'root',
     database_name: '',
     init_sql: '',
+    session_timeout_minutes: 5,
     created_at: '2026-10-13T00:00:00Z',
   }
 }

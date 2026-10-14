@@ -402,6 +402,91 @@ describe('savedTab', () => {
   })
 })
 
+describe('resume', () => {
+  it('reprend le dernier lot dans ses onglets, que les messages suivants continuent', () => {
+    const state = readyState()
+    state.tabs = [
+      savedTab({
+        id: 7,
+        query: 0,
+        sql: 'SELECT 1',
+        name: 'Mon onglet',
+        pinned: false,
+        result: {
+          started: false,
+          done: false,
+          error: null,
+          columns: null,
+          row_count: 0,
+          truncated: false,
+          affected_rows: 0,
+          transfer_us: 0,
+          bytes: 0,
+        },
+        rows: [],
+      }),
+    ]
+    const running = {
+      started: true,
+      done: false,
+      error: null,
+      columns: {
+        columns: ['x'],
+        right_aligned: [true],
+        sql: 'SELECT x FROM t LIMIT 1001',
+        limit: 'added' as const,
+        expected_rows: 1000,
+        execution_us: 2000,
+      },
+      row_count: 1,
+      truncated: false,
+      affected_rows: 0,
+      transfer_us: 0,
+      bytes: 50,
+    }
+    applyMessage(
+      state,
+      {
+        type: 'resume',
+        running: true,
+        queries: [
+          {
+            query: 0,
+            tab: 7,
+            sql: 'SELECT x FROM t',
+            result: running,
+            rows: [['1']],
+            started_us_ago: 5_000_000,
+            columns_us_ago: 3_000_000,
+          },
+          {
+            query: 1,
+            tab: 8,
+            sql: 'SELECT 2',
+            result: { ...running, columns: null, started: false, row_count: 0 },
+            rows: [],
+            started_us_ago: null,
+            columns_us_ago: null,
+          },
+        ],
+      },
+      10_000,
+    )
+    expect(state.status).toBe('running')
+    expect(state.tabs.map((tab) => [tab.id, tab.name, tab.batch])).toEqual([
+      [7, 'Mon onglet', 1],
+      [8, null, 1],
+    ])
+    const [first, second] = state.tabs
+    expect([first!.startedAt, first!.columnsAt]).toEqual([5_000, 7_000])
+    expect(tabProgress(second!)).toBe('waiting')
+
+    applyMessage(state, { type: 'rows', query: 0, rows: [['2']] }, 10_100)
+    expect(first!.result?.rowCount).toBe(2)
+    expect(transferDuration(first!, 10_100)).toBe(3_100)
+  })
+})
+
 describe('sessionUrl', () => {
   it('suit le protocole de la page', () => {
     expect(sessionUrl(3, { protocol: 'http:', host: 'localhost:5173' } as Location)).toBe(

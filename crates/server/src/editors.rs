@@ -558,6 +558,10 @@ async fn close_editor(
     Path(id): Path<i64>,
 ) -> Result<StatusCode, ApiError> {
     let found = state.with_db(move |db, _| close(db, user.id, id)).await?;
+    if found {
+        // Un éditeur fermé n'a plus de session : sa connexion se ferme.
+        state.sessions.stop_editor(id);
+    }
     no_content_or_not_found(found)
 }
 

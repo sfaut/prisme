@@ -17,6 +17,7 @@ vi.mock('@/api/connections', () => ({
       username: 'root',
       database_name: '',
       init_sql: '',
+      session_timeout_minutes: 5,
       created_at: '2026-10-12T20:00:00.000Z',
     },
   ],

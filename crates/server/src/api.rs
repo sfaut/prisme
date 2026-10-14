@@ -11,7 +11,7 @@
 //! | `PUT /api/connections/{id}`         | Modifie une connexion ; mot de passe vide : inchangé (204).  |
 //! | `DELETE /api/connections/{id}`      | Supprime une connexion (204).                                |
 //! | `POST /api/connections/{id}/probe`  | Se connecte et renvoie la variante et la version du serveur. |
-//! | `GET /api/connections/{id}/query`   | WebSocket : session de requêtes (voir `query_session.rs`).   |
+//! | `GET /api/connections/{id}/query`   | WebSocket : session de requêtes (voir `query_session.rs`), fermée avec lui. |
 //! | `GET /api/connections/{id}/catalog` | Bases, tables et colonnes (voir `explorer.rs`).             |
 //! | `GET /api/settings`                 | Réglages de l'utilisateur, avec les choix permis.            |
 //! | `PUT /api/settings`                 | Modifie les réglages, renvoie les réglages à jour.           |
@@ -21,6 +21,7 @@
 //! | `GET /` et tout autre chemin        | Fichiers de l'interface (voir `web_assets.rs`).              |
 
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, Query, State};
@@ -46,6 +47,7 @@ use crate::explorer;
 use crate::master_key::MasterKey;
 use crate::query_session;
 use crate::recorder::Recorder;
+use crate::sessions::Sessions;
 use crate::settings::{self, Settings, SettingsUpdate};
 use crate::web_assets;
 
@@ -58,6 +60,8 @@ pub struct AppState {
     key: Arc<MasterKey>,
     /// Utilisateur unique du mode poste de développement (voir `auth.rs`).
     pub local_user_id: i64,
+    /// Sessions de requêtes des éditeurs, ouvertes au-delà de leur WebSocket.
+    pub sessions: Arc<Sessions>,
 }
 
 impl AppState {
@@ -67,6 +71,7 @@ impl AppState {
             db: Arc::new(Mutex::new(db)),
             key: Arc::new(key),
             local_user_id,
+            sessions: Arc::default(),
         }
     }
 
@@ -168,6 +173,8 @@ async fn update_connection(
         .with_db(move |db, key| connections::update(db, key, user.id, id, &changed))
         .await?;
     if updated {
+        // Les sessions ouvertes avec les anciens paramètres se ferment.
+        state.sessions.stop_connection(id);
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
@@ -184,13 +191,15 @@ async fn delete_connection(
         .with_db(move |db, _key| connections::delete(db, user.id, id))
         .await?;
     if deleted {
+        state.sessions.stop_connection(id);
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
     }
 }
 
-/// `GET /api/connections/{id}/query` : ouvre une session de requêtes par WebSocket.
+/// `GET /api/connections/{id}/query` : ouvre une session de requêtes par
+/// WebSocket, qui se ferme avec lui (sans délai de garde).
 async fn query_socket(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -202,11 +211,17 @@ async fn query_socket(
         .with_db(move |db, key| connections::load_target(db, key, user_id, id))
         .await?
         .ok_or(ApiError::NotFound)?;
-    Ok(upgrade.on_upgrade(move |socket| query_session::run(socket, state, user_id, target, None)))
+    Ok(upgrade.on_upgrade(move |socket| async move {
+        let on_end = Box::new(|| {});
+        query_session::start(socket, state, user_id, target, None, Duration::ZERO, on_end);
+    }))
 }
 
 /// `GET /api/editors/{id}/session` : WebSocket, session de requêtes d'un
 /// éditeur, sur la connexion de l'éditeur ; ses résultats sont enregistrés.
+/// Si la session de l'éditeur est encore ouverte (page rafraîchie), le
+/// WebSocket s'y raccroche ; sinon elle s'ouvre, gardée après une
+/// déconnexion le délai réglé sur la connexion (voir `sessions.rs`).
 async fn editor_session(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -221,13 +236,29 @@ async fn editor_session(
         .ok_or_else(|| {
             ApiError::BadRequest("aucune connexion choisie pour cet éditeur".to_string())
         })?;
-    let target = state
-        .with_db(move |db, key| connections::load_target(db, key, user_id, connection_id))
+    let (target, minutes) = state
+        .with_db(move |db, key| {
+            let target = connections::load_target(db, key, user_id, connection_id)?;
+            let minutes = connections::session_timeout(db, user_id, connection_id)?;
+            Ok::<_, connections::ConnectionsError>(target.zip(minutes))
+        })
         .await?
         .ok_or(ApiError::NotFound)?;
-    let recorder = Recorder::new(state.clone(), id);
-    Ok(upgrade.on_upgrade(move |socket| {
-        query_session::run(socket, state, user_id, target, Some(recorder))
+    let keep_alive = Duration::from_secs(u64::from(minutes) * 60);
+    Ok(upgrade.on_upgrade(move |socket| async move {
+        let sessions = Arc::clone(&state.sessions);
+        sessions.attach(id, connection_id, socket, |socket, on_end| {
+            let recorder = Recorder::new(state.clone(), id);
+            query_session::start(
+                socket,
+                state,
+                user_id,
+                target,
+                Some(recorder),
+                keep_alive,
+                on_end,
+            )
+        });
     }))
 }
 

@@ -10,6 +10,9 @@
 //! connexion vers la base (`SET NAMES utf8mb4; SET SESSION sql_mode = ...`) :
 //! seuls les réglages de la session y sont permis (voir
 //! `prisme_dialects::classify::session_setting_refusal`).
+//!
+//! Elle règle aussi le délai pendant lequel une session de requêtes reste
+//! ouverte après la fermeture de sa page (voir `sessions.rs`).
 
 use prisme_connectors::mysql::MysqlTarget;
 use prisme_dialects::Dialect;
@@ -36,6 +39,12 @@ const DATABASE_NAME_MAX_LENGTH: usize = 64;
 
 /// Longueur maximale des requêtes à la connexion, en caractères.
 const INIT_SQL_MAX_LENGTH: usize = 4000;
+
+/// Délai de garde maximal d'une session détachée, en minutes (24 heures).
+const SESSION_TIMEOUT_MAX_MINUTES: u32 = 1440;
+
+/// Délai de garde d'une session détachée, en minutes, quand la saisie n'en donne pas.
+const SESSION_TIMEOUT_DEFAULT_MINUTES: u32 = 5;
 
 /// Famille de moteurs des connexions MySQL et MariaDB.
 const ENGINE_MYSQL: &str = "mysql";
@@ -64,6 +73,16 @@ pub struct NewConnection {
     #[serde(default)]
     #[ts(optional, as = "Option<String>")]
     pub init_sql: String,
+    /// Délai pendant lequel une session reste ouverte après la fermeture de
+    /// sa page, en minutes (0 : fermée aussitôt). Absent : 5 minutes.
+    #[serde(default = "default_session_timeout")]
+    #[ts(optional, as = "Option<u32>")]
+    pub session_timeout_minutes: u32,
+}
+
+/// Délai de garde par défaut, pour la désérialisation de `NewConnection`.
+fn default_session_timeout() -> u32 {
+    SESSION_TIMEOUT_DEFAULT_MINUTES
 }
 
 /// Paramètres saisis à tester, avant leur enregistrement.
@@ -99,6 +118,8 @@ pub struct ConnectionSummary {
     pub database_name: String,
     /// Requêtes exécutées à l'ouverture de chaque connexion, chaîne vide si aucune.
     pub init_sql: String,
+    /// Délai de garde d'une session après la fermeture de sa page, en minutes.
+    pub session_timeout_minutes: u32,
     /// Date d'enregistrement, en UTC au format ISO 8601.
     pub created_at: String,
 }
@@ -141,6 +162,11 @@ impl NewConnection {
             ));
         }
         check_length("init_sql", &self.init_sql, 0, INIT_SQL_MAX_LENGTH)?;
+        if self.session_timeout_minutes > SESSION_TIMEOUT_MAX_MINUTES {
+            return Err(ConnectionsError::Invalid(format!(
+                "session_timeout_minutes : doit être compris entre 0 et {SESSION_TIMEOUT_MAX_MINUTES}"
+            )));
+        }
         for statement in init_statements(&self.init_sql) {
             // Le dialecte n'est connu qu'à la connexion : celui de MySQL sert
             // aussi pour MariaDB, qui partage la syntaxe des réglages.
@@ -182,8 +208,8 @@ pub fn insert(
     let password_secret = secrets::encrypt(key, &new.password)?;
 
     let result = db.execute(
-        "INSERT INTO connections (user_id, name, engine, host, port, username, password_secret, database_name, init_sql)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        "INSERT INTO connections (user_id, name, engine, host, port, username, password_secret, database_name, init_sql, session_timeout_minutes)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             user_id,
             new.name,
@@ -194,6 +220,7 @@ pub fn insert(
             password_secret,
             new.database_name,
             new.init_sql,
+            new.session_timeout_minutes,
         ],
     );
     result.map_err(|error| name_error(error, &new.name))?;
@@ -222,7 +249,8 @@ pub fn update(
     let result = db.execute(
         "UPDATE connections
          SET name = ?3, host = ?4, port = ?5, username = ?6,
-             password_secret = COALESCE(?7, password_secret), database_name = ?8, init_sql = ?9
+             password_secret = COALESCE(?7, password_secret), database_name = ?8, init_sql = ?9,
+             session_timeout_minutes = ?10
          WHERE id = ?1 AND user_id = ?2",
         params![
             id,
@@ -234,6 +262,7 @@ pub fn update(
             password_secret,
             changed.database_name,
             changed.init_sql,
+            changed.session_timeout_minutes,
         ],
     );
     let updated = result.map_err(|error| name_error(error, &changed.name))?;
@@ -255,7 +284,8 @@ fn name_error(error: rusqlite::Error, name: &str) -> ConnectionsError {
 /// Liste les connexions de l'utilisateur `user_id`, par nom, sans leur mot de passe.
 pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, ConnectionsError> {
     let mut statement = db.prepare(
-        "SELECT id, name, engine, host, port, username, database_name, init_sql, created_at
+        "SELECT id, name, engine, host, port, username, database_name, init_sql,
+                session_timeout_minutes, created_at
          FROM connections WHERE user_id = ?1 ORDER BY name",
     )?;
     let rows = statement.query_map(params![user_id], |row| {
@@ -268,7 +298,8 @@ pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, Con
             username: row.get(5)?,
             database_name: row.get(6)?,
             init_sql: row.get(7)?,
-            created_at: row.get(8)?,
+            session_timeout_minutes: row.get(8)?,
+            created_at: row.get(9)?,
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
@@ -325,6 +356,24 @@ pub fn load_target(
     }))
 }
 
+/// Délai de garde des sessions de la connexion `id`, en minutes.
+///
+/// Renvoie `None` si la connexion n'existe pas ou appartient à un autre utilisateur.
+pub fn session_timeout(
+    db: &Connection,
+    user_id: i64,
+    id: i64,
+) -> Result<Option<u32>, ConnectionsError> {
+    let minutes = db
+        .query_row(
+            "SELECT session_timeout_minutes FROM connections WHERE id = ?1 AND user_id = ?2",
+            params![id, user_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(minutes)
+}
+
 /// Paramètres de connexion d'un test de paramètres saisis. Un mot de passe
 /// vide reprend celui de la connexion enregistrée `saved_id`, s'il y en a une.
 ///
@@ -373,6 +422,7 @@ mod tests {
             password: SecretString::from("secret"),
             database_name: String::new(),
             init_sql: String::new(),
+            session_timeout_minutes: 5,
         }
     }
 
@@ -564,5 +614,21 @@ mod tests {
         connection = new_connection("prod");
         connection.port = 0;
         assert!(connection.validate().is_err());
+    }
+
+    #[test]
+    fn keeps_the_session_timeout_within_a_day() {
+        let db = store::open_in_memory();
+        let key = MasterKey::generate();
+        let user_id = store::ensure_user(&db, "a@example.com").unwrap();
+        let mut connection = new_connection("prod");
+        connection.session_timeout_minutes = 1441;
+        assert!(connection.validate().is_err());
+
+        connection.session_timeout_minutes = 30;
+        let id = insert(&db, &key, user_id, &connection).unwrap();
+        assert_eq!(list(&db, user_id).unwrap()[0].session_timeout_minutes, 30);
+        assert_eq!(session_timeout(&db, user_id, id).unwrap(), Some(30));
+        assert_eq!(session_timeout(&db, user_id + 1, id).unwrap(), None);
     }
 }

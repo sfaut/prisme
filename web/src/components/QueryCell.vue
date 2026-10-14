@@ -70,7 +70,7 @@ const emit = defineEmits<{
  */
 const sql = defineModel<string>('sql', { required: true })
 
-const session = useQuerySession(props.editorId)
+const session = useQuerySession(props.editorId, () => listResults(props.editorId))
 const catalog = useCatalogStore()
 const state = session.state
 const settings = useSettingsStore()
@@ -301,10 +301,6 @@ async function changeLimit(rowLimit: number): Promise<void> {
 }
 
 // Onglets de résultat enregistrés de l'éditeur, relus à chaque ouverture de la cellule.
-onMounted(() => {
-  listResults(props.editorId).then(session.restore).catch(reportFailure)
-})
-
 onMounted(async () => {
   if (settings.settings === null) {
     try {

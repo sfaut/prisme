@@ -17,6 +17,8 @@ mod master_key;
 mod query_session;
 mod recorder;
 mod secrets;
+mod session_relay;
+mod sessions;
 mod settings;
 mod store;
 mod web_assets;

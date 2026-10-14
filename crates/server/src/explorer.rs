@@ -209,6 +209,7 @@ mod tests {
             password: SecretString::from(""),
             database_name: String::new(),
             init_sql: String::new(),
+            session_timeout_minutes: 5,
         };
         connections::insert(&db, &key, user_id, &new).unwrap();
         let app = router(AppState::new(db, key, user_id));

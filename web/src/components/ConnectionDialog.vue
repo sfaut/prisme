@@ -103,6 +103,7 @@ function emptyForm(): Required<NewConnection> {
     password: '',
     database_name: '',
     init_sql: '',
+    session_timeout_minutes: 5,
   }
 }
 
@@ -115,8 +116,18 @@ function initialForm(connection: ConnectionSummary | null): Required<NewConnecti
   if (connection === null) {
     return emptyForm()
   }
-  const { name, host, port, username, database_name, init_sql } = connection
-  return { name, host, port, username, password: '', database_name, init_sql }
+  const { name, host, port, username, database_name, init_sql, session_timeout_minutes } =
+    connection
+  return {
+    name,
+    host,
+    port,
+    username,
+    password: '',
+    database_name,
+    init_sql,
+    session_timeout_minutes,
+  }
 }
 
 // Chaque ouverture repart de la connexion choisie, sans l'erreur précédente.
@@ -213,6 +224,20 @@ async function save(): Promise<void> {
           aria-label="Requêtes à exécuter à la connexion"
           title="Réglages de la session exécutés à l'ouverture de chaque connexion, séparés par des « ; »"
         />
+      </ui-field>
+      <ui-field label="Session gardée">
+        <div class="flex items-center gap-gap">
+          <ui-input
+            v-model="form.session_timeout_minutes"
+            type="number"
+            :min="0"
+            :max="1440"
+            class="w-20"
+            aria-label="Minutes de garde de la session"
+            title="La session (connexion, transactions, requêtes en cours) reste ouverte ce nombre de minutes après la fermeture de la page, qui s'y raccroche à son retour ; 0 la ferme aussitôt"
+          />
+          <span class="text-ui text-fg-muted">min après la fermeture de la page</span>
+        </div>
       </ui-field>
       <ui-alert v-if="error" tone="error" :title="error" />
       <ui-alert v-if="probed" tone="success" :title="probed" />

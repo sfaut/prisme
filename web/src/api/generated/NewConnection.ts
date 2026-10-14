@@ -32,4 +32,9 @@ database_name?: string,
  * Requêtes à exécuter à l'ouverture de chaque connexion, séparées par
  * des « ; » : réglages de la session seulement. Absentes ou vides : aucune.
  */
-init_sql?: string, };
+init_sql?: string, 
+/**
+ * Délai pendant lequel une session reste ouverte après la fermeture de
+ * sa page, en minutes (0 : fermée aussitôt). Absent : 5 minutes.
+ */
+session_timeout_minutes?: number, };

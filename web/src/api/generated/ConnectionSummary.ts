@@ -37,6 +37,10 @@ database_name: string,
  */
 init_sql: string, 
 /**
+ * Délai de garde d'une session après la fermeture de sa page, en minutes.
+ */
+session_timeout_minutes: number, 
+/**
  * Date d'enregistrement, en UTC au format ISO 8601.
  */
 created_at: string, };

@@ -18,7 +18,10 @@
  * La session est celle d'un éditeur : le serveur enregistre ses résultats
  * au fil de l'exécution, et donne à chaque onglet l'identifiant de son
  * enregistrement. À l'ouverture, la session reprend les onglets enregistrés
- * (`restore`, `savedTab`).
+ * (`savedTab`), puis ouvre le WebSocket. Côté serveur, la session survit à
+ * la page le délai réglé sur sa connexion : le WebSocket s'y raccroche, et
+ * reçoit alors son dernier lot où il en est (`resume`, `resumedTab`), que
+ * les messages suivants continuent.
  *
  * `applyMessage` met l'état à jour message par message ; elle ne dépend ni de
  * Vue ni du WebSocket, ce qui la rend simple à tester. `useQuerySession`
@@ -30,6 +33,7 @@ import { markRaw, onScopeDispose, reactive } from 'vue'
 import type { LimitReport } from './generated/LimitReport'
 import type { ClientMessage } from './generated/ClientMessage'
 import type { ResultTab } from './generated/ResultTab'
+import type { ResumedQuery } from './generated/ResumedQuery'
 import type { ServerInfo } from './generated/ServerInfo'
 import type { ServerMessage } from './generated/ServerMessage'
 
@@ -343,6 +347,40 @@ export function applyMessage(
     case 'database':
       state.database = message.database
       break
+    case 'resume':
+      resumeBatch(state, message.queries, message.running, now)
+      break
+  }
+}
+
+/**
+ * Reprend le dernier lot de la session, reçu en se raccrochant à elle : il
+ * devient le lot en cours, et chaque requête retrouve son onglet (même
+ * identifiant : nom et épinglage sont gardés), ou en reçoit un nouveau.
+ *
+ * @param state État de la session.
+ * @param queries Requêtes du lot, où elles en sont.
+ * @param running Le lot est-il encore en cours ?
+ * @param now Instant de réception, pour situer le départ des requêtes.
+ */
+function resumeBatch(
+  state: SessionState,
+  queries: ResumedQuery[],
+  running: boolean,
+  now: number,
+): void {
+  state.batch++
+  if (running) {
+    state.status = 'running'
+  }
+  for (const query of queries) {
+    const index = state.tabs.findIndex((tab) => tab.id === query.tab)
+    const tab = resumedTab(query, state.batch, now, index < 0 ? undefined : state.tabs[index])
+    if (index < 0) {
+      state.tabs.push(tab)
+    } else {
+      state.tabs[index] = tab
+    }
   }
 }
 
@@ -587,6 +625,42 @@ export function savedTab(saved: ResultTab): QueryTab {
 }
 
 /**
+ * Onglet de l'interface d'une requête du lot repris en se raccrochant à la
+ * session. Il appartient au lot en cours : les messages suivants le
+ * complètent. Pour une requête inachevée, son départ et la réception de
+ * ses colonnes sont situés d'après le temps écoulé mesuré par le serveur.
+ *
+ * @param query Requête reprise.
+ * @param batch Numéro du lot en cours.
+ * @param now Instant de réception (`performance.now()`).
+ * @param existing Onglet déjà affiché pour cette requête, dont il garde le nom et l'épinglage.
+ */
+export function resumedTab(
+  query: ResumedQuery,
+  batch: number,
+  now: number,
+  existing?: QueryTab,
+): QueryTab {
+  const tab = savedTab({
+    id: query.tab,
+    query: query.query,
+    sql: query.sql,
+    name: existing?.name ?? '',
+    pinned: existing?.pinned ?? false,
+    result: query.result,
+    rows: query.rows,
+  })
+  tab.batch = batch
+  if (!query.result.done) {
+    const since = (microseconds: number | null) =>
+      microseconds === null ? null : now - microseconds / 1000
+    tab.startedAt = since(query.started_us_ago)
+    tab.columnsAt = since(query.columns_us_ago)
+  }
+  return tab
+}
+
+/**
  * Construit l'adresse WebSocket de la session d'un éditeur, sur l'hôte de la page.
  *
  * @param editorId Identifiant de l'éditeur.
@@ -598,16 +672,29 @@ export function sessionUrl(editorId: number, location: Location): string {
 }
 
 /**
- * Ouvre la session de requêtes d'un éditeur, sur sa connexion.
+ * Ouvre la session de requêtes d'un éditeur, sur sa connexion : les onglets
+ * enregistrés d'abord, puis le WebSocket, qui se raccroche à la session du
+ * serveur si elle est encore ouverte.
  *
- * La session se ferme d'elle-même quand le composant qui l'a ouverte disparaît.
+ * Le WebSocket se ferme quand le composant qui l'a ouvert disparaît ; la
+ * session du serveur reste ouverte le délai réglé sur la connexion.
  *
  * @param editorId Identifiant de l'éditeur.
+ * @param loadSaved Lecture des onglets de résultat enregistrés de l'éditeur.
  * @returns L'état réactif de la session, et les fonctions pour exécuter des requêtes et fermer la session.
  */
-export function useQuerySession(editorId: number) {
+export function useQuerySession(editorId: number, loadSaved: () => Promise<ResultTab[]>) {
   const state = reactive(initialState())
-  const socket = new WebSocket(sessionUrl(editorId, window.location))
+
+  /**
+   * WebSocket de la session, ouvert une fois les onglets enregistrés lus.
+   */
+  let socket: WebSocket | null = null
+
+  /**
+   * La session a-t-elle été fermée (composant disparu) ?
+   */
+  let closed = false
 
   /**
    * Messages reçus, pas encore appliqués, avec leur instant de réception et
@@ -640,16 +727,35 @@ export function useQuerySession(editorId: number) {
     }
   }
 
-  socket.addEventListener('message', (event: MessageEvent<string>) => {
-    const message = JSON.parse(event.data) as ServerMessage
-    pending.push([message, performance.now(), utf8Length(event.data)])
-    flushTimer ??= setTimeout(flush, FLUSH_DELAY)
-  })
-  socket.addEventListener('close', () => {
-    clearTimeout(flushTimer)
-    flush()
-    state.status = 'closed'
-  })
+  /**
+   * Ouvre le WebSocket de la session.
+   */
+  function connect(): void {
+    if (closed) {
+      return
+    }
+    socket = new WebSocket(sessionUrl(editorId, window.location))
+    socket.addEventListener('message', (event: MessageEvent<string>) => {
+      const message = JSON.parse(event.data) as ServerMessage
+      pending.push([message, performance.now(), utf8Length(event.data)])
+      flushTimer ??= setTimeout(flush, FLUSH_DELAY)
+    })
+    socket.addEventListener('close', () => {
+      clearTimeout(flushTimer)
+      flush()
+      state.status = 'closed'
+    })
+  }
+
+  // Les onglets enregistrés d'abord : le lot repris par le WebSocket s'y retrouve.
+  loadSaved()
+    .then((saved) => {
+      state.tabs = saved.map(savedTab)
+    })
+    .catch((failure: unknown) => {
+      state.error = failure instanceof Error ? failure.message : String(failure)
+    })
+    .finally(connect)
 
   /**
    * Envoie le texte de l'éditeur, si la session est prête.
@@ -692,19 +798,6 @@ export function useQuerySession(editorId: number) {
   }
 
   /**
-   * Reprend les onglets de résultat enregistrés de l'éditeur, s'ils arrivent
-   * avant le premier lot de la session (sinon, le lot lancé entre-temps les
-   * a déjà remplacés côté serveur).
-   *
-   * @param saved Onglets enregistrés.
-   */
-  function restore(saved: ResultTab[]): void {
-    if (state.batch === 0) {
-      state.tabs = saved.map(savedTab)
-    }
-  }
-
-  /**
    * Ferme un onglet. Si sa requête tourne encore (lot en cours), elle est
    * arrêtée ; ses derniers messages ne trouvent plus d'onglet et sont ignorés.
    *
@@ -723,17 +816,18 @@ export function useQuerySession(editorId: number) {
    * @param message Message du client.
    */
   function send(message: ClientMessage): void {
-    socket.send(JSON.stringify(message))
+    socket?.send(JSON.stringify(message))
   }
 
   /**
-   * Ferme la session.
+   * Ferme le WebSocket de la session.
    */
   function close(): void {
-    socket.close()
+    closed = true
+    socket?.close()
   }
 
   onScopeDispose(close)
 
-  return { state, run, changeDatabase, cancel, closeTab, restore, close }
+  return { state, run, changeDatabase, cancel, closeTab, close }
 }
