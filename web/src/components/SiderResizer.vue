@@ -66,7 +66,7 @@ function reset(): void {
     class="sider-resizer"
     :class="{ dragging: drag !== null }"
     :style="{ insetInlineStart: `calc(${width}px - var(--resize-handle-width) / 2)` }"
-    title="Glisser pour élargir, double clic pour la largeur par défaut"
+    title="Glisser pour élargir, double clic pour revenir à la position initiale"
     @pointerdown.prevent="start"
     @pointermove="move"
     @pointerup="stop"
