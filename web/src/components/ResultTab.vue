@@ -124,34 +124,37 @@ function commit(): void {
     >
       {{ tab.name ?? defaultLabel }}
     </span>
-    <ui-button
-      :icon="Pin"
-      variant="ghost"
-      :tone="tab.pinned ? 'accent' : 'neutral'"
-      small
-      :aria-pressed="tab.pinned"
-      :aria-label="tab.pinned ? 'Désépingler l’onglet' : 'Épingler l’onglet'"
-      :title="
-        tab.pinned
-          ? 'Désépingler : l’onglet sera remplacé à la prochaine exécution'
-          : 'Épingler : l’onglet reste quand la requête est relancée'
-      "
-      :class="
-        tab.pinned ? 'visible' : 'invisible group-hover:visible group-data-[state=active]:visible'
-      "
-      @mousedown.stop
-      @click.stop="emit('toggle-pin')"
-    />
-    <ui-button
-      :icon="X"
-      variant="ghost"
-      small
-      aria-label="Fermer l’onglet"
-      title="Fermer l’onglet (arrête sa requête si elle tourne)"
-      class="invisible group-hover:visible group-data-[state=active]:visible"
-      @mousedown.stop
-      @click.stop="emit('close')"
-    />
+    <!-- Épingle et croix côte à côte, sans l'écart qui sépare le libellé. -->
+    <span class="flex items-center">
+      <ui-button
+        :icon="Pin"
+        variant="ghost"
+        :tone="tab.pinned ? 'accent' : 'neutral'"
+        small
+        :aria-pressed="tab.pinned"
+        :aria-label="tab.pinned ? 'Désépingler l’onglet' : 'Épingler l’onglet'"
+        :title="
+          tab.pinned
+            ? 'Désépingler : l’onglet sera remplacé à la prochaine exécution'
+            : 'Épingler : l’onglet reste quand la requête est relancée'
+        "
+        :class="
+          tab.pinned ? 'visible' : 'invisible group-hover:visible group-data-[state=active]:visible'
+        "
+        @mousedown.stop
+        @click.stop="emit('toggle-pin')"
+      />
+      <ui-button
+        :icon="X"
+        variant="ghost"
+        small
+        aria-label="Fermer l’onglet"
+        title="Fermer l’onglet (arrête sa requête si elle tourne)"
+        class="invisible -ms-0.5 group-hover:visible group-data-[state=active]:visible"
+        @mousedown.stop
+        @click.stop="emit('close')"
+      />
+    </span>
     <span v-if="barTone" class="tab-progress" aria-hidden="true">
       <span
         class="tab-progress-bar"
