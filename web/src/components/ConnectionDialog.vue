@@ -250,16 +250,16 @@ async function save(): Promise<void> {
         </div>
       </ui-field>
       <ui-field label="Explorateur">
-        <label class="flex items-center gap-gap text-ui text-fg-strong">
+        <label
+          class="flex items-center gap-gap text-ui text-fg-strong"
+          title="Bases fournies par le serveur : information_schema, mysql, performance_schema, sys"
+        >
           <input
             v-model="form.show_system_schemas"
             type="checkbox"
             class="size-icon accent-accent"
           />
-          <span>
-            Afficher les bases système
-            <span class="text-fg-muted">(information_schema, mysql…)</span>
-          </span>
+          Afficher les bases système
         </label>
       </ui-field>
       <ui-alert v-if="error" tone="error" :title="error" />
