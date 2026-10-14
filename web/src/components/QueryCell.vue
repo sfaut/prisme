@@ -460,15 +460,6 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
   min-block-size: calc(var(--editor-min-height) + var(--control-height) + var(--gap));
 }
 
-/* Hauteur arrondie au pixel : la barre de partage qui suit tombe sur un
-   pixel entier, et son trait reste aussi net que le bord du panneau de
-   gauche (sur une demi-position, il s'étalerait sur deux pixels). */
-@supports (flex-basis: round(down, 10%, 1px)) {
-  .editor-pane {
-    flex-basis: round(down, var(--editor-split), 1px);
-  }
-}
-
 /* Repère d'insertion d'un onglet déplacé, comme pour les colonnes de la grille. */
 .drop-before {
   box-shadow: inset var(--focus-width) 0 0 var(--accent);
