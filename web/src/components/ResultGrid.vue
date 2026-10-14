@@ -28,7 +28,8 @@
     par le serveur.
   - Types : chaque en-tête montre l'icône de la famille du type de sa
     colonne (`typeIcons.ts`) ; le nom natif du type (`VARCHAR(20)`,
-    `DECIMAL(10,2)`...) s'affiche au survol.
+    `DECIMAL(10,2)`...) s'affiche au survol. Une colonne de texte qui
+    contient du JSON ou du XML montre l'icône de ce format (`contentKind.ts`).
 
   Seules les lignes visibles existent dans la page (défilement virtuel) : la
   grille reste fluide avec des dizaines de milliers de lignes. La logique
@@ -67,7 +68,8 @@ import {
   visibleRows,
 } from './resultGrid'
 import { rememberWidths, rememberedWidths } from './gridWidths'
-import { TYPE_ICONS } from './typeIcons'
+import { type ContentKind, detectContent } from './contentKind'
+import { columnIcon } from './typeIcons'
 import UiButton from './ui/UiButton.vue'
 import UiInput from './ui/UiInput.vue'
 import UiSelect from './ui/UiSelect.vue'
@@ -222,6 +224,36 @@ const estimated = computed(() => {
   void props.rowCount
   return props.columns.map((_, column) => estimatedWidth(headerText(column), props.rows, column))
 })
+
+/**
+ * Contenu reconnu de chaque colonne de texte (JSON ou XML), d'après ses
+ * premières valeurs ; `null` pour les autres colonnes.
+ */
+const contentKinds = computed<(ContentKind | null)[]>(() => {
+  // Lu pour que la détection se refasse à l'arrivée de nouvelles lignes.
+  void props.rowCount
+  return props.columns.map((_, column) =>
+    props.columnTypes[column]?.family === 'text' ? detectContent(props.rows, column) : null,
+  )
+})
+
+/**
+ * Libellé du contenu reconnu d'une colonne, pour le survol de son en-tête.
+ */
+const CONTENT_LABELS: Record<ContentKind, string> = { json: 'contenu JSON', xml: 'contenu XML' }
+
+/**
+ * Texte de survol de l'en-tête d'une colonne : nom, type natif et contenu reconnu.
+ *
+ * @param column Indice de la colonne.
+ */
+function headerTitle(column: number): string {
+  const type = props.columnTypes[column]
+  const content = contentKinds.value[column]
+  const details = [type?.name, content ? CONTENT_LABELS[content] : undefined].filter(Boolean)
+  const name = props.columns[column] ?? ''
+  return `${details.length > 0 ? `${name} ${details.join(', ')}` : name} (glisser pour déplacer)`
+}
 
 /**
  * Texte de l'en-tête d'une colonne, pour estimer sa largeur : son nom, plus
@@ -561,14 +593,14 @@ const filterColumn = computed({
         >
           <span
             class="grid-column-name"
-            :title="`${columns[column]}${columnTypes[column] ? ` ${columnTypes[column].name}` : ''} (glisser pour déplacer)`"
+            :title="headerTitle(column)"
             @pointerdown.prevent="onColumnHeader($event, position)"
             @pointermove="onColumnMove"
             @pointerup="onColumnDrop"
             @pointercancel="onColumnDrop"
           >
             <component
-              :is="TYPE_ICONS[columnTypes[column].family]"
+              :is="columnIcon(columnTypes[column], contentKinds[column] ?? null)"
               v-if="columnTypes[column]"
               class="grid-type-icon"
               aria-hidden="true"
