@@ -27,7 +27,7 @@
 //! serveur → client  {"type": "database", "database": "xlist"}          réponse à use : la base en cours
 //! serveur → client  {"type": "batch", "queries": [{"query": 0, "sql": "SELECT 1", "start": 0, "end": 9}]}
 //! serveur → client  {"type": "started", "query": 0}                  la requête part (en parallèle, elle peut attendre son tour)
-//! serveur → client  {"type": "columns", "query": 0, "columns": ["1"], "sql": "SELECT 1 LIMIT 1001", "limit": "added", "expected_rows": 1000}
+//! serveur → client  {"type": "columns", "query": 0, "columns": ["1"], "sql": "SELECT 1 LIMIT 1001", "limit": "added", "expected_rows": 1000, "execution_us": 830}
 //! serveur → client  {"type": "rows", "query": 0, "rows": [["1"]]}       autant de lots que nécessaire
 //! serveur → client  {"type": "done", "query": 0, "row_count": 1, "truncated": false, "affected_rows": 0, "elapsed_ms": 2, "database": "xlist"}
 //! serveur → client  {"type": "error", "query": 0, "message": "..."}     à la place de la suite, en cas d'échec
@@ -179,6 +179,9 @@ enum ServerMessage {
         /// l'utilisateur quand c'est un nombre ; `null` si inconnu. Sert à la
         /// barre d'avancement de l'interface.
         expected_rows: Option<u64>,
+        /// Temps d'exécution de la requête par le serveur cible, en
+        /// microsecondes : de son envoi à la réception de ses colonnes.
+        execution_us: u64,
     },
     /// Lot de lignes.
     Rows { query: u32, rows: Vec<Vec<Cell>> },
@@ -702,6 +705,7 @@ impl Session<'_> {
                 .await?;
             return Ok(None);
         }
+        let executing = Instant::now();
         let mut stream = match mysql::execute(connection, &limited.sql).await {
             Ok(stream) => stream,
             Err(error) => {
@@ -723,6 +727,7 @@ impl Session<'_> {
                     LimitOutcome::UserLimit => written_limit(sql, dialect),
                     LimitOutcome::NotApplicable => None,
                 },
+                execution_us: u64::try_from(executing.elapsed().as_micros()).unwrap_or(u64::MAX),
             })
             .await?;
 

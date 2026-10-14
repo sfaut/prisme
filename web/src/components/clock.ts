@@ -15,9 +15,11 @@ import { type Ref, onScopeDispose, ref } from 'vue'
 const TICK = 1000
 
 /**
- * Instant présent (`Date.now()`), rafraîchi à chaque tic.
+ * Instant présent (`performance.now()`, en millisecondes avec une partie
+ * décimale, insensible aux changements d'heure du poste), rafraîchi à
+ * chaque tic.
  */
-const now = ref(Date.now())
+const now = ref(performance.now())
 
 /**
  * Nombre de composants qui utilisent l'horloge.
@@ -35,8 +37,8 @@ let timer: ReturnType<typeof setInterval> | undefined
 export function useClock(): Ref<number> {
   users++
   if (timer === undefined) {
-    now.value = Date.now()
-    timer = setInterval(() => (now.value = Date.now()), TICK)
+    now.value = performance.now()
+    timer = setInterval(() => (now.value = performance.now()), TICK)
   }
   onScopeDispose(() => {
     users--

@@ -62,7 +62,7 @@ watch(
  */
 const durations = computed(() => {
   const running = props.tab.startedAt !== null && !props.tab.done
-  const now = running ? clock.value : Date.now()
+  const now = running ? clock.value : performance.now()
   const execution = executionDuration(props.tab, now)
   const transfer = transferDuration(props.tab, now)
   const volume = transfer === null ? null : formatBytes(shownBytes.value)

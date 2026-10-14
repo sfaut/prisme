@@ -57,6 +57,7 @@ describe('applyMessage', () => {
       sql: 'x',
       limit: 'added',
       expected_rows: null,
+      execution_us: 0,
     })
     applyMessage(state, {
       type: 'columns',
@@ -66,6 +67,7 @@ describe('applyMessage', () => {
       sql: 'y',
       limit: 'added',
       expected_rows: null,
+      execution_us: 0,
     })
     applyMessage(state, { type: 'rows', query: 0, rows: [['1', 'a']] })
     applyMessage(state, { type: 'rows', query: 1, rows: [['7'], ['8']] })
@@ -196,6 +198,7 @@ describe('tabProgress', () => {
       sql: 'a',
       limit: 'added',
       expected_rows: null,
+      execution_us: 0,
     })
     expect(tabProgress(first!)).toBe('loading')
 
@@ -243,10 +246,13 @@ describe('durées', () => {
         sql: 'a',
         limit: 'added',
         expected_rows: null,
+        execution_us: 0,
       },
       1400,
     )
-    expect(executionDuration(tab, 2000)).toBe(400)
+    // Colonnes reçues : le temps mesuré par le serveur (ici 0 µs dans le message).
+    tab.result!.executionUs = 380_500
+    expect(executionDuration(tab, 2000)).toBe(380.5)
     expect(transferDuration(tab, 2000)).toBe(600)
 
     applyMessage(
@@ -262,7 +268,7 @@ describe('durées', () => {
       },
       2500,
     )
-    expect(executionDuration(tab, 9999)).toBe(400)
+    expect(executionDuration(tab, 9999)).toBe(380.5)
     expect(transferDuration(tab, 9999)).toBe(1100)
   })
 
@@ -282,6 +288,7 @@ describe('durées', () => {
       sql: 'a LIMIT 101',
       limit: 'added',
       expected_rows: 100,
+      execution_us: 0,
     })
     applyMessage(state, { type: 'rows', query: 0, rows: [['1'], ['2'], ['3'], ['4']] })
     expect(tabFraction(tab)).toBe(0.04)
@@ -310,6 +317,7 @@ describe('durées', () => {
         sql: 'a',
         limit: 'added',
         expected_rows: null,
+        execution_us: 0,
       },
       0,
       120,
@@ -334,6 +342,8 @@ describe('durées', () => {
   })
 
   it('formate les durées', () => {
+    expect(formatDuration(0.25)).toBe('250 µs')
+    expect(formatDuration(0.9994)).toBe('999 µs')
     expect(formatDuration(42)).toBe('42 ms')
     expect(formatDuration(999)).toBe('999 ms')
     expect(formatDuration(1000)).toBe('1,0 s')

@@ -17,7 +17,12 @@ right_aligned: Array<boolean>, sql: string, limit: LimitReport,
  * l'utilisateur quand c'est un nombre ; `null` si inconnu. Sert à la
  * barre d'avancement de l'interface.
  */
-expected_rows: number | null, } | { "type": "rows", query: number, rows: Array<Array<string | null>>, } | { "type": "done", query: number, row_count: number, truncated: boolean, affected_rows: number, elapsed_ms: number, 
+expected_rows: number | null, 
+/**
+ * Temps d'exécution de la requête par le serveur cible, en
+ * microsecondes : de son envoi à la réception de ses colonnes.
+ */
+execution_us: number, } | { "type": "rows", query: number, rows: Array<Array<string | null>>, } | { "type": "done", query: number, row_count: number, truncated: boolean, affected_rows: number, elapsed_ms: number, 
 /**
  * Base en cours de la session après la requête (elle change avec `USE`).
  */

@@ -67,6 +67,10 @@ export interface QueryResult {
    */
   expectedRows: number | null
   /**
+   * Temps d'exécution mesuré par le serveur, en microsecondes.
+   */
+  executionUs: number
+  /**
    * Noms des colonnes.
    */
   columns: string[]
@@ -134,11 +138,11 @@ export interface QueryTab {
    */
   done: boolean
   /**
-   * Instant du départ de la requête (`Date.now()`), `null` tant qu'elle attend son tour.
+   * Instant du départ de la requête (`performance.now()`), `null` tant qu'elle attend son tour.
    */
   startedAt: number | null
   /**
-   * Instant de réception des colonnes (`Date.now()`) : le serveur a fini
+   * Instant de réception des colonnes (`performance.now()`) : le serveur a fini
    * d'exécuter la requête et commence à envoyer les lignes. `null` avant,
    * ou pour une requête sans résultat.
    */
@@ -227,7 +231,7 @@ export function initialState(): SessionState {
 export function applyMessage(
   state: SessionState,
   message: ServerMessage,
-  now: number = Date.now(),
+  now: number = performance.now(),
   bytes: number = 0,
 ): void {
   if (message.type === 'columns' || message.type === 'rows' || message.type === 'done') {
@@ -277,6 +281,7 @@ export function applyMessage(
           sql: message.sql,
           limit: message.limit,
           expectedRows: message.expected_rows,
+          executionUs: message.execution_us,
           columns: message.columns,
           rightAligned: message.right_aligned,
           rows: [],
@@ -375,19 +380,22 @@ export function tabProgress(tab: QueryTab): TabProgress {
 }
 
 /**
- * Temps d'exécution d'une requête, en millisecondes : de son départ à la
- * réception de ses colonnes (le serveur a fini de l'exécuter), ou à sa fin
- * pour une requête sans résultat. Il court jusqu'à `now` tant que la requête
- * s'exécute ; `null` tant qu'elle attend son tour.
+ * Temps d'exécution d'une requête, en millisecondes : celui mesuré par le
+ * serveur, à la microseconde, une fois les colonnes reçues ; sinon, depuis
+ * son départ (jusqu'à sa fin pour une requête sans résultat, jusqu'à `now`
+ * tant qu'elle s'exécute) ; `null` tant qu'elle attend son tour.
  *
  * @param tab Onglet de la requête.
- * @param now Instant présent (`Date.now()`).
+ * @param now Instant présent (`performance.now()`).
  */
 export function executionDuration(tab: QueryTab, now: number): number | null {
+  if (tab.result) {
+    return tab.result.executionUs / 1000
+  }
   if (tab.startedAt === null) {
     return null
   }
-  return (tab.columnsAt ?? tab.endedAt ?? now) - tab.startedAt
+  return (tab.endedAt ?? now) - tab.startedAt
 }
 
 /**
@@ -396,7 +404,7 @@ export function executionDuration(tab: QueryTab, now: number): number | null {
  * pendant la réception ; `null` sans résultat.
  *
  * @param tab Onglet de la requête.
- * @param now Instant présent (`Date.now()`).
+ * @param now Instant présent (`performance.now()`).
  */
 export function transferDuration(tab: QueryTab, now: number): number | null {
   return tab.columnsAt === null ? null : (tab.endedAt ?? now) - tab.columnsAt
@@ -477,14 +485,17 @@ export function formatBytes(bytes: number): string {
 }
 
 /**
- * Formate une durée dans l'unité qui lui convient : millisecondes sous la
- * seconde, secondes (une décimale) sous la minute, minutes et secondes sous
+ * Formate une durée dans l'unité qui lui convient : microsecondes sous la
+ * milliseconde, millisecondes sous la seconde, secondes (une décimale) sous la minute, minutes et secondes sous
  * l'heure, puis heures et minutes.
  *
  * @param milliseconds Durée.
  */
 export function formatDuration(milliseconds: number): string {
   const duration = Math.max(0, milliseconds)
+  if (duration < 1) {
+    return `${Math.round(duration * 1000)} µs`
+  }
   if (duration < 1000) {
     return `${Math.round(duration)} ms`
   }
@@ -582,7 +593,7 @@ export function useQuerySession(connectionId: number) {
 
   socket.addEventListener('message', (event: MessageEvent<string>) => {
     const message = JSON.parse(event.data) as ServerMessage
-    pending.push([message, Date.now(), utf8Length(event.data)])
+    pending.push([message, performance.now(), utf8Length(event.data)])
     flushTimer ??= setTimeout(flush, FLUSH_DELAY)
   })
   socket.addEventListener('close', () => {
