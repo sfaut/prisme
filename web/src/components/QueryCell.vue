@@ -21,7 +21,7 @@
   retenu (`EditorResizer`).
 -->
 <script setup lang="ts">
-import { Play, Square, WandSparkles } from 'lucide-vue-next'
+import { LoaderCircle, Play, Square, WandSparkles } from 'lucide-vue-next'
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 
@@ -386,6 +386,15 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
       <ui-button label="Reconnecter" @click="emit('reconnect')" />
     </ui-alert>
     <ui-alert v-if="state.error" tone="error" :title="state.error" />
+
+    <div
+      v-if="state.loading"
+      role="status"
+      class="m-auto flex items-center gap-gap text-ui text-fg-muted"
+    >
+      <LoaderCircle class="size-icon animate-spin" />
+      Chargement des résultats…
+    </div>
 
     <!--
       La grille de résultats doit avoir une hauteur bornée : sinon sa zone de

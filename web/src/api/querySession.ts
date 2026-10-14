@@ -208,6 +208,11 @@ export interface SessionState {
    * Dernière erreur de la session elle-même (connexion, demande invalide).
    */
   error: string | null
+  /**
+   * Les onglets enregistrés de l'éditeur sont-ils en cours de lecture ?
+   * L'interface affiche alors un indicateur de chargement à leur place.
+   */
+  loading: boolean
 }
 
 /**
@@ -222,6 +227,7 @@ export function initialState(): SessionState {
     batch: 0,
     nextTabId: 1,
     error: null,
+    loading: false,
   }
 }
 
@@ -748,6 +754,7 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
   }
 
   // Les onglets enregistrés d'abord : le lot repris par le WebSocket s'y retrouve.
+  state.loading = true
   loadSaved()
     .then((saved) => {
       state.tabs = saved.map(savedTab)
@@ -755,7 +762,10 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
     .catch((failure: unknown) => {
       state.error = failure instanceof Error ? failure.message : String(failure)
     })
-    .finally(connect)
+    .finally(() => {
+      state.loading = false
+      connect()
+    })
 
   /**
    * Envoie le texte de l'éditeur, si la session est prête.
