@@ -81,16 +81,24 @@ describe('sourceNodes', () => {
       {
         connectionId: 1,
         name: 'MariaDB Origen 2 (II)',
-        catalog: { schemas: catalog, done: true, errors: [] },
+        catalog: { schemas: catalog, flavor: 'mariadb', done: true, errors: [] },
         currentDatabase: 'shop',
+        flavor: 'mariadb',
       },
       {
         connectionId: 2,
         name: 'Origen 2',
-        catalog: { schemas: catalog, done: true, errors: [] },
+        catalog: { schemas: catalog, flavor: 'mariadb', done: true, errors: [] },
         currentDatabase: null,
+        flavor: 'mysql',
       },
-      { connectionId: 3, name: 'Jamais lue', catalog: undefined, currentDatabase: null },
+      {
+        connectionId: 3,
+        name: 'Jamais lue',
+        catalog: undefined,
+        currentDatabase: null,
+        flavor: null,
+      },
     ])
     expect([first?.label, second?.label, never?.label]).toEqual([
       'MariaDB Origen 2 (II)',
@@ -101,6 +109,8 @@ describe('sourceNodes', () => {
     expect(first?.children?.[0]?.current).toBe(true)
     expect(second?.children?.[0]?.current).toBe(false)
     expect(labels(never)).toEqual(['chargement…'])
+    // Badge de la variante du serveur, absent tant qu'elle est inconnue.
+    expect([first?.badge, second?.badge, never?.badge]).toEqual(['mariadb', 'mysql', undefined])
     // Mêmes bases dans deux sources : des clefs distinctes, et chaque nœud connaît sa connexion.
     expect(first?.children?.[0]?.key).not.toBe(second?.children?.[0]?.key)
     expect(second?.children?.[0]?.children?.[0]?.children?.[0]?.connectionId).toBe(2)
@@ -109,7 +119,13 @@ describe('sourceNodes', () => {
 
 describe('explorerTree', () => {
   it('range les sources sous « Sources de données », puis « Notebooks »', () => {
-    const source = { connectionId: 1, name: 'Origen 2', catalog: undefined, currentDatabase: null }
+    const source = {
+      connectionId: 1,
+      name: 'Origen 2',
+      catalog: undefined,
+      currentDatabase: null,
+      flavor: null,
+    }
     const [root, notebooks] = explorerTree([source], true)
     expect(notebooks?.label).toBe('Notebooks')
     expect(root?.label).toBe('Sources de données')
@@ -205,8 +221,9 @@ describe('catalogNodes', () => {
 describe('applyCatalogEvent', () => {
   it('remplit le catalogue message par message', () => {
     const state = emptyCatalog()
-    applyCatalogEvent(state, { type: 'schemas', schemas: ['a'] })
+    applyCatalogEvent(state, { type: 'schemas', schemas: ['a'], flavor: 'mysql' })
     expect(state.schemas).toEqual([{ name: 'a', tables: null, routines: null }])
+    expect(state.flavor).toBe('mysql')
 
     applyCatalogEvent(state, {
       type: 'objects',

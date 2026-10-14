@@ -4,7 +4,8 @@
 //! lignes JSON (`application/x-ndjson`), un message `CatalogEvent` par ligne,
 //! envoyé dès qu'il est prêt :
 //!
-//! 1. `schemas` : noms de toutes les bases ;
+//! 1. `schemas` : noms de toutes les bases, avec la variante du serveur
+//!    (retenue aussi sur la connexion, pour le badge de l'explorateur) ;
 //! 2. `objects` : tables, vues, procédures et fonctions, base par base ;
 //! 3. `details` : colonnes, index, clefs étrangères et déclencheurs des
 //!    tables, base par base ;
@@ -25,7 +26,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use futures_util::stream;
 use prisme_connectors::mysql::catalog::{self, SchemaObjects, TableDetails};
-use prisme_connectors::mysql::{self, Connection};
+use prisme_connectors::mysql::{self, Connection, Flavor};
 use serde::Serialize;
 use tokio::sync::mpsc;
 use ts_rs::TS;
@@ -46,8 +47,11 @@ const BUFFER: usize = 16;
 #[ts(export)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CatalogEvent {
-    /// Noms de toutes les bases, par ordre alphabétique.
-    Schemas { schemas: Vec<String> },
+    /// Noms de toutes les bases, par ordre alphabétique, et variante du serveur.
+    Schemas {
+        schemas: Vec<String>,
+        flavor: Flavor,
+    },
     /// Objets d'une base : tables, vues, procédures et fonctions.
     Objects {
         schema: String,
@@ -84,10 +88,14 @@ async fn stream_catalog(
         .await?
         .ok_or(ApiError::NotFound)?;
     let mut connection = mysql::connect(&target).await?;
+    let flavor = mysql::server_info(&mut connection).await?.flavor;
+    state
+        .with_db(move |db, _| connections::remember_flavor(db, user_id, id, flavor))
+        .await?;
 
     let (sender, receiver) = mpsc::channel(BUFFER);
     tokio::spawn(async move {
-        read_catalog(&mut connection, &target.database_name, &sender).await;
+        read_catalog(&mut connection, &target.database_name, flavor, &sender).await;
         let _ = connection.disconnect().await;
     });
 
@@ -113,6 +121,7 @@ async fn stream_catalog(
 async fn read_catalog(
     connection: &mut Connection,
     preferred: &str,
+    flavor: Flavor,
     sender: &mpsc::Sender<CatalogEvent>,
 ) {
     let schemas = match catalog::schemas(connection).await {
@@ -124,7 +133,7 @@ async fn read_catalog(
     };
     let order = reading_order(&schemas, preferred);
     if sender
-        .send(CatalogEvent::Schemas { schemas })
+        .send(CatalogEvent::Schemas { schemas, flavor })
         .await
         .is_err()
     {

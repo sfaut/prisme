@@ -22,6 +22,7 @@ import { markRaw, ref, shallowRef, triggerRef } from 'vue'
 
 import { streamCatalog } from '@/api/explorer'
 import type { CatalogEvent } from '@/api/generated/CatalogEvent'
+import type { Flavor } from '@/api/generated/Flavor'
 import type { RoutineInfo } from '@/api/generated/RoutineInfo'
 import type { TableDetails } from '@/api/generated/TableDetails'
 import type { TableKind } from '@/api/generated/TableKind'
@@ -59,6 +60,10 @@ export interface CatalogSchema {
 export interface Catalog {
   schemas: CatalogSchema[]
   /**
+   * Variante du serveur, annoncée avec les bases ; `null` avant.
+   */
+  flavor: Flavor | null
+  /**
    * Tout le catalogue est-il reçu ?
    */
   done: boolean
@@ -72,7 +77,7 @@ export interface Catalog {
  * Catalogue vide, en attente du premier message.
  */
 export function emptyCatalog(): Catalog {
-  return { schemas: [], done: false, errors: [] }
+  return { schemas: [], flavor: null, done: false, errors: [] }
 }
 
 /**
@@ -94,6 +99,7 @@ export function applyCatalogEvent(catalog: Catalog, event: CatalogEvent): void {
   switch (event.type) {
     case 'schemas':
       catalog.schemas = event.schemas.map((name) => ({ name, tables: null, routines: null }))
+      catalog.flavor = event.flavor
       break
     case 'objects': {
       const schema = catalog.schemas.find((candidate) => candidate.name === event.schema)

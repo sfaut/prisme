@@ -14,6 +14,9 @@
   la base en cours, comme `USE` (émet `use-database`). Un double clic sur une
   table ou une vue émet `open-table`, pour en afficher le contenu.
 
+  Chaque source porte en badge la variante de son serveur (`mysql`,
+  `mariadb`), vue à la dernière connexion ou à la lecture du catalogue.
+
   Chaque ligne porte l'icône de son niveau : racines, source, base, dossier
   (ouvert ou fermé), table, vue, procédure, fonction, colonne, index, clef
   étrangère, déclencheur, et un cercle qui tourne pendant un chargement.
@@ -190,6 +193,7 @@ const nodes = computed(() =>
       name: connection.name,
       catalog: catalog.catalogOf(connection.id),
       currentDatabase: connection.id === props.selectedId ? props.currentDatabase : null,
+      flavor: catalog.catalogOf(connection.id)?.flavor ?? connection.server_flavor,
     })),
     receiving.value,
   ),
@@ -524,8 +528,9 @@ watch(
           <!-- Autres nœuds : libellé, puis mention éventuelle (UNIQUE, chargement…). -->
           <span
             v-else
-            class="tree-label min-w-0 flex-1 truncate text-trim"
+            class="tree-label min-w-0 truncate text-trim"
             :class="{
+              'flex-1': !item.value.badge,
               'current-database': item.value.current,
               'font-bold':
                 item.value.current ||
@@ -537,6 +542,13 @@ watch(
             <span v-if="item.value.note" class="ms-3 text-small font-normal text-fg-dimmed">
               {{ item.value.note }}
             </span>
+          </span>
+          <!-- Source : badge de la variante du serveur, juste après le nom. -->
+          <span
+            v-if="item.value.badge"
+            class="ms-0.5 me-auto shrink-0 rounded-control border border-line px-1 py-0.5 text-small text-fg-muted text-trim"
+          >
+            {{ item.value.badge }}
           </span>
 
           <ui-dropdown-menu

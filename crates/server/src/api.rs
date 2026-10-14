@@ -412,12 +412,18 @@ async fn probe_connection(
     user: CurrentUser,
     Path(id): Path<i64>,
 ) -> Result<Json<ServerInfo>, ApiError> {
+    let user_id = user.id;
     let target = state
-        .with_db(move |db, key| connections::load_target(db, key, user.id, id))
+        .with_db(move |db, key| connections::load_target(db, key, user_id, id))
         .await?
         .ok_or(ApiError::NotFound)?;
 
-    Ok(Json(mysql::probe(&target).await?))
+    let info = mysql::probe(&target).await?;
+    let flavor = info.flavor;
+    state
+        .with_db(move |db, _| connections::remember_flavor(db, user_id, id, flavor))
+        .await?;
+    Ok(Json(info))
 }
 
 #[cfg(test)]

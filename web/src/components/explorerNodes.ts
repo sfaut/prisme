@@ -27,6 +27,7 @@
  */
 
 import type { ColumnInfo } from '@/api/generated/ColumnInfo'
+import type { Flavor } from '@/api/generated/Flavor'
 import type { ForeignKeyInfo } from '@/api/generated/ForeignKeyInfo'
 import type { IndexInfo } from '@/api/generated/IndexInfo'
 import type { RoutineInfo } from '@/api/generated/RoutineInfo'
@@ -69,6 +70,10 @@ export interface Source {
    * Base en cours de la session de requêtes de cette source, `null` si aucune.
    */
   currentDatabase: string | null
+  /**
+   * Variante du serveur (badge à côté du nom), `null` si encore inconnue.
+   */
+  flavor: Flavor | null
 }
 
 /**
@@ -128,6 +133,11 @@ export interface ExplorerNode extends Place {
    * Base en cours de la session de requêtes (affichée en gras).
    */
   current?: boolean
+  /**
+   * Badge affiché après le libellé d'une source : la variante de son
+   * serveur (`mysql`, `mariadb`).
+   */
+  badge?: string
   /**
    * Mention affichée après le libellé, en capitales, plus petite et plus
    * claire : `PRIMARY KEY` pour la clef primaire, `UNIQUE` pour un index unique.
@@ -236,6 +246,7 @@ export function sourceNodes(sources: Source[]): ExplorerNode[] {
       isLeaf: false,
       ...place,
       role: 'source' as const,
+      badge: source.flavor ?? undefined,
       children:
         catalog === undefined || (!catalog.done && catalog.schemas.length === 0)
           ? [loadingNode(key, place)]

@@ -12,9 +12,10 @@
 //! `prisme_dialects::classify::session_setting_refusal`).
 //!
 //! Elle règle aussi le délai pendant lequel une session de requêtes reste
-//! ouverte après la fermeture de sa page (voir `sessions.rs`).
+//! ouverte après la fermeture de sa page (voir `sessions.rs`), et retient
+//! la variante du serveur (MySQL ou MariaDB) vue à la dernière connexion.
 
-use prisme_connectors::mysql::MysqlTarget;
+use prisme_connectors::mysql::{Flavor, MysqlTarget};
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::session_setting_refusal;
 use rusqlite::{Connection, OptionalExtension, ffi, params};
@@ -120,6 +121,9 @@ pub struct ConnectionSummary {
     pub init_sql: String,
     /// Délai de garde d'une session après la fermeture de sa page, en minutes.
     pub session_timeout_minutes: u32,
+    /// Variante du serveur vue à la dernière connexion réussie, `null` si
+    /// la connexion n'a jamais abouti.
+    pub server_flavor: Option<Flavor>,
     /// Date d'enregistrement, en UTC au format ISO 8601.
     pub created_at: String,
 }
@@ -285,7 +289,7 @@ fn name_error(error: rusqlite::Error, name: &str) -> ConnectionsError {
 pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, ConnectionsError> {
     let mut statement = db.prepare(
         "SELECT id, name, engine, host, port, username, database_name, init_sql,
-                session_timeout_minutes, created_at
+                session_timeout_minutes, server_flavor, created_at
          FROM connections WHERE user_id = ?1 ORDER BY name",
     )?;
     let rows = statement.query_map(params![user_id], |row| {
@@ -299,7 +303,8 @@ pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, Con
             database_name: row.get(6)?,
             init_sql: row.get(7)?,
             session_timeout_minutes: row.get(8)?,
-            created_at: row.get(9)?,
+            server_flavor: flavor_of(&row.get::<_, String>(9)?),
+            created_at: row.get(10)?,
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
@@ -354,6 +359,33 @@ pub fn load_target(
         database_name,
         init_statements: init_statements(&init_sql),
     }))
+}
+
+/// Retient la variante du serveur de la connexion `id`, vue à une connexion réussie.
+pub fn remember_flavor(
+    db: &Connection,
+    user_id: i64,
+    id: i64,
+    flavor: Flavor,
+) -> Result<(), ConnectionsError> {
+    let name = match flavor {
+        Flavor::MySql => "mysql",
+        Flavor::MariaDb => "mariadb",
+    };
+    db.execute(
+        "UPDATE connections SET server_flavor = ?3 WHERE id = ?1 AND user_id = ?2",
+        params![id, user_id, name],
+    )?;
+    Ok(())
+}
+
+/// Variante enregistrée, `None` pour la chaîne vide (jamais connectée).
+fn flavor_of(name: &str) -> Option<Flavor> {
+    match name {
+        "mysql" => Some(Flavor::MySql),
+        "mariadb" => Some(Flavor::MariaDb),
+        _ => None,
+    }
 }
 
 /// Délai de garde des sessions de la connexion `id`, en minutes.
@@ -614,6 +646,20 @@ mod tests {
         connection = new_connection("prod");
         connection.port = 0;
         assert!(connection.validate().is_err());
+    }
+
+    #[test]
+    fn remembers_the_server_flavor() {
+        let db = store::open_in_memory();
+        let key = MasterKey::generate();
+        let user_id = store::ensure_user(&db, "a@example.com").unwrap();
+        let id = insert(&db, &key, user_id, &new_connection("prod")).unwrap();
+        assert_eq!(list(&db, user_id).unwrap()[0].server_flavor, None);
+        remember_flavor(&db, user_id, id, Flavor::MariaDb).unwrap();
+        assert_eq!(
+            list(&db, user_id).unwrap()[0].server_flavor,
+            Some(Flavor::MariaDb)
+        );
     }
 
     #[test]
