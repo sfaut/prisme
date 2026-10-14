@@ -15,6 +15,7 @@ let savedConnections: ConnectionSummary[] = []
 
 vi.mock('@/api/connections', () => ({
   listConnections: async () => savedConnections,
+  probeConnection: async () => ({ flavor: 'mysql', version: '8.4.0', ansi_quotes: false }),
 }))
 
 vi.mock('@/api/explorer', () => ({

@@ -24,6 +24,11 @@ vi.mock('@/api/connections', () => ({
     },
   ],
   createConnection: async () => ({ id: 7 }),
+  probeConnection: async () => ({
+    flavor: 'mariadb',
+    version: '11.4.2-MariaDB',
+    ansi_quotes: false,
+  }),
   deleteConnection: async () => undefined,
 }))
 
@@ -52,6 +57,12 @@ describe('connections', () => {
     await store.create({ name: 'prod', host: 'db', port: 3306, username: 'root', password: 'x' })
     expect(store.selectedId).toBe(7)
     expect(store.selected?.name).toBe('prod')
+  })
+
+  it('détecte en arrière-plan la variante d’une connexion jamais connectée', async () => {
+    const store = useConnectionsStore()
+    await store.load()
+    await vi.waitFor(() => expect(store.connections[0]?.server_flavor).toBe('mariadb'))
   })
 })
 
