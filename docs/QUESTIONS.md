@@ -29,6 +29,7 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 - **Traduction à trois niveaux** (native, émulée, non supportée en dernier recours), avec aperçu.
 - **Rust** pour tout, dont l'exécuteur fédéré futur ; **pilotes natifs**.
 - **Vue 3 + TypeScript + Vite**, types générés depuis Rust.
+- **Format binaire pour les résultats** (MessagePack, par exemple), retenu par Sébastien en octobre 2026, à faire plus tard. Aujourd'hui, les résultats passent par le WebSocket en JSON texte : chaque ligne est un tableau de chaînes dans un message `{"type":"rows","query":0,"rows":[…]}`, et guillemets, virgules et enveloppe alourdissent le volume (560 ko pour 10 000 lignes de 5 colonnes) et le décodage. Un format binaire réduirait les deux. À choisir : le format, et le maintien des types générés par `ts-rs` pour les messages.
 - **Suite de conformité** multi-bases comme filet de sécurité.
 - **Interface de stockage et de connecteurs abstraite**, pour pouvoir changer de moteur de workspace plus tard.
 
