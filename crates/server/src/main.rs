@@ -45,7 +45,9 @@ async fn main() -> anyhow::Result<()> {
     let master_key = master_key::load_or_create(&data_dir.join(master_key::FILE_NAME))?;
 
     // Au démarrage, rien d'autre ne tourne : l'accès synchrone à SQLite est sans risque ici.
-    let db = store::open(&data_dir.join(store::FILE_NAME))?;
+    let db_path = data_dir.join(store::FILE_NAME);
+    let db = store::open(&db_path)?;
+    tracing::info!("base interne : {}", db_path.display());
     let user_id = store::ensure_user(&db, &config.user_email)?;
     tracing::info!(user_id, "utilisateur local : {}", config.user_email);
 
