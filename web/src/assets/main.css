@@ -66,7 +66,6 @@
   --spacing-row: var(--row-height);
   --spacing-icon: var(--icon-size);
   --spacing-icon-sm: var(--icon-size-sm);
-  --spacing-field: var(--field-width);
   --spacing-menu: var(--menu-min-width);
   --spacing-dialog: var(--dialog-width);
   --spacing-toast: var(--toast-width);
@@ -215,9 +214,9 @@
   /* Retrait par niveau de l'arbre de l'explorateur. */
   --tree-indent: 0.75rem;
 
-  /* Largeurs : champs des formulaires, menus (au moins), fenêtres (au
-     plus), messages éphémères, onglets de résultat (au plus). */
-  --field-width: 15rem;
+  /* Largeurs : colonne des libellés des formulaires, menus (au moins),
+     fenêtres (au plus), messages éphémères, onglets de résultat (au plus). */
+  --field-label-width: 7rem;
   --menu-min-width: 10rem;
   --dialog-width: 28rem;
   --toast-width: 18rem;

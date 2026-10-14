@@ -1,6 +1,7 @@
 <!--
-  Champ de formulaire : libellé à gauche, contrôle à droite. Le libellé
-  enveloppe le contrôle : un clic dessus donne le focus au champ. Avec
+  Champ de formulaire : libellé à gauche, dans une colonne étroite
+  (`--field-label-width`), contrôle à droite, sur toute la largeur restante.
+  Le libellé enveloppe le contrôle : un clic dessus donne le focus au champ. Avec
   `top`, le libellé s'aligne sur le haut du contrôle (champ sur plusieurs
   lignes).
 -->
@@ -18,7 +19,10 @@ defineProps<{
 </script>
 
 <template>
-  <label class="flex justify-between gap-gap" :class="top ? 'items-start' : 'items-center'">
+  <label
+    class="grid grid-cols-[var(--field-label-width)_minmax(0,1fr)] gap-gap"
+    :class="top ? 'items-start' : 'items-center'"
+  >
     <span class="text-fg-muted" :class="{ 'pt-1': top }">{{ label }}</span>
     <slot />
   </label>
