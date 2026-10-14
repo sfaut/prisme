@@ -30,6 +30,8 @@
     colonne (`typeIcons.ts`) ; le nom natif du type (`VARCHAR(20)`,
     `DECIMAL(10,2)`...) s'affiche au survol. Une colonne de texte qui
     contient du JSON ou du XML montre l'icône de ce format (`contentKind.ts`).
+  - Liens : dans une colonne d'adresses web, chaque adresse est un lien,
+    ouvert dans un nouvel onglet.
 
   Seules les lignes visibles existent dans la page (défilement virtuel) : la
   grille reste fluide avec des dizaines de milliers de lignes. La logique
@@ -68,7 +70,7 @@ import {
   visibleRows,
 } from './resultGrid'
 import { rememberWidths, rememberedWidths } from './gridWidths'
-import { type ContentKind, detectContent } from './contentKind'
+import { type ContentKind, detectContent, isWebAddress } from './contentKind'
 import { columnIcon } from './typeIcons'
 import UiButton from './ui/UiButton.vue'
 import UiInput from './ui/UiInput.vue'
@@ -250,7 +252,11 @@ const columnMarks = computed(() =>
 /**
  * Libellé du contenu reconnu d'une colonne, pour le survol de son en-tête.
  */
-const CONTENT_LABELS: Record<ContentKind, string> = { json: 'contenu JSON', xml: 'contenu XML' }
+const CONTENT_LABELS: Record<ContentKind, string> = {
+  json: 'contenu JSON',
+  xml: 'contenu XML',
+  url: 'adresses web',
+}
 
 /**
  * Texte de survol de l'en-tête d'une colonne : nom, type natif et contenu reconnu.
@@ -677,7 +683,16 @@ const filterColumn = computed({
             @mousedown.prevent="onCellDown($event, item.index, position)"
             @mouseenter="onCellEnter(item.index, position)"
           >
-            {{ cellAt(item.index, column) ?? NULL_TEXT }}
+            <a
+              v-if="contentKinds[column] === 'url' && isWebAddress(cellAt(item.index, column))"
+              class="grid-link"
+              :href="cellAt(item.index, column) ?? undefined"
+              target="_blank"
+              rel="noopener noreferrer"
+              @mousedown.stop
+              >{{ cellAt(item.index, column) }}</a
+            >
+            <template v-else>{{ cellAt(item.index, column) ?? NULL_TEXT }}</template>
           </div>
         </div>
       </div>
@@ -922,5 +937,16 @@ const filterColumn = computed({
 
 .selected {
   background: var(--selection);
+}
+
+/* Adresse web d'une colonne de liens. */
+.grid-link {
+  color: var(--accent);
+  text-decoration: none;
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
 }
 </style>

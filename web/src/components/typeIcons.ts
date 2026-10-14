@@ -9,8 +9,8 @@
  * Lucide n'ayant pas d'icône pour `123` et `.00`, ces deux marques sont du
  * texte (une chaîne au lieu d'un composant).
  *
- * Une colonne de texte dont les valeurs sont des documents JSON ou XML
- * (`contentKind.ts`) prend l'icône de son contenu.
+ * Une colonne de texte dont les valeurs sont des documents JSON ou XML, ou
+ * des adresses web (`contentKind.ts`), prend l'icône de son contenu.
  */
 
 import {
@@ -24,6 +24,7 @@ import {
   Clock,
   CodeXml,
   Hash,
+  Link,
   List,
   ListChecks,
   Shapes,
@@ -75,6 +76,9 @@ export function columnIcon(type: ColumnTypeInfo, content: ContentKind | null): T
   }
   if (type.family === 'text' && content === 'xml') {
     return CodeXml
+  }
+  if (type.family === 'text' && content === 'url') {
+    return Link
   }
   return TYPE_ICONS[type.family]
 }

@@ -1,18 +1,33 @@
 /**
- * Détection du contenu des colonnes de texte : JSON ou XML.
+ * Détection du contenu des colonnes de texte : JSON, XML ou URL.
  *
  * Une colonne `TEXT` (ou `VARCHAR`) peut contenir des documents JSON ou
- * XML que le serveur ne type pas (le JSON de MariaDB arrive aussi en
- * `LONGTEXT`). L'en-tête de la grille montre alors l'icône du contenu à la
- * place de celle du texte. La détection lit un échantillon des premières
- * valeurs non vides : toutes doivent être des documents du même format,
- * sinon la colonne reste du texte.
+ * XML, ou des adresses web, que le serveur ne type pas (le JSON de MariaDB
+ * arrive aussi en `LONGTEXT`). L'en-tête de la grille montre alors l'icône
+ * du contenu à la place de celle du texte ; les adresses deviennent des
+ * liens. La détection lit un échantillon des premières valeurs non vides :
+ * toutes doivent être du même format, sinon la colonne reste du texte.
  */
 
 /**
  * Format reconnu dans une colonne de texte.
  */
-export type ContentKind = 'json' | 'xml'
+export type ContentKind = 'json' | 'xml' | 'url'
+
+/**
+ * Adresse web : `http://` ou `https://`, puis aucun espace. Seuls ces deux
+ * protocoles deviennent des liens (jamais `javascript:` ni `data:`).
+ */
+const URL_PATTERN = /^https?:\/\/[^\s]+$/i
+
+/**
+ * Le texte est-il une adresse web, à rendre cliquable ?
+ *
+ * @param value Texte de la cellule, `null` pour NULL.
+ */
+export function isWebAddress(value: string | null): value is string {
+  return value !== null && URL_PATTERN.test(value)
+}
 
 /**
  * Nombre de valeurs non vides lues pour décider.
@@ -25,8 +40,8 @@ const SAMPLE_SIZE = 50
 const SCAN_LIMIT = 500
 
 /**
- * Format des valeurs de la colonne `column`, `null` si ce n'est ni du JSON
- * ni du XML (ou si aucune valeur n'est encore là).
+ * Format des valeurs de la colonne `column`, `null` si ce n'est ni du
+ * JSON, ni du XML, ni des adresses web (ou si aucune valeur n'est encore là).
  *
  * @param rows Lignes du résultat.
  * @param column Indice de la colonne.
@@ -50,6 +65,9 @@ export function detectContent(rows: (string | null)[][], column: number): Conten
   }
   if (sample.every(isXmlDocument)) {
     return 'xml'
+  }
+  if (sample.every(isWebAddress)) {
+    return 'url'
   }
   return null
 }
