@@ -2,7 +2,8 @@
   Barre horizontale entre l'éditeur SQL (avec ses boutons) et les
   résultats, tracée d'un trait comme la bordure du panneau de gauche : la
   faire glisser change la part de la hauteur donnée à l'éditeur, un double
-  clic la remet au tiers du haut. La part est retenue d'une visite à l'autre
+  clic la remet au tiers du haut. Une poignée, au milieu, montre où la
+  saisir. La part est retenue d'une visite à l'autre
   (`editorSplit.ts`).
 -->
 <script setup lang="ts">
@@ -106,9 +107,25 @@ function reset(): void {
     content: '';
   }
 
+  /* Poignée centrale, posée sur le trait. */
+  &::after {
+    position: absolute;
+    inset-block-start: calc(50% - var(--grip-thickness) / 2);
+    inset-inline-start: calc(50% - var(--grip-length) / 2);
+    inline-size: var(--grip-length);
+    block-size: var(--grip-thickness);
+    border-radius: var(--grip-thickness);
+    background: var(--grip-color);
+    content: '';
+  }
+
   &:hover,
   &.dragging {
     background: color-mix(in oklab, var(--accent) 30%, transparent);
+
+    &::after {
+      background: var(--accent);
+    }
   }
 }
 </style>

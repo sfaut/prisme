@@ -1,7 +1,7 @@
 <!--
   Poignée verticale posée sur le bord droit du panneau de gauche : la faire
   glisser change la largeur du panneau, un double clic la remet à sa valeur
-  par défaut. La largeur est retenue d'une visite à l'autre (`siderWidth.ts`).
+  par défaut. Une poignée, au milieu, montre où la saisir. La largeur est retenue d'une visite à l'autre (`siderWidth.ts`).
 -->
 <script setup lang="ts">
 import { ref } from 'vue'
@@ -84,9 +84,25 @@ function reset(): void {
   cursor: col-resize;
   touch-action: none;
 
+  /* Poignée centrale. */
+  &::after {
+    position: absolute;
+    inset-block-start: calc(50% - var(--grip-length) / 2);
+    inset-inline-start: calc(50% - var(--grip-thickness) / 2);
+    inline-size: var(--grip-thickness);
+    block-size: var(--grip-length);
+    border-radius: var(--grip-thickness);
+    background: var(--grip-color);
+    content: '';
+  }
+
   &:hover,
   &.dragging {
     background: color-mix(in oklab, var(--accent) 30%, transparent);
+
+    &::after {
+      background: var(--accent);
+    }
   }
 }
 </style>
