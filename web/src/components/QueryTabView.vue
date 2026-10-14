@@ -1,17 +1,23 @@
 <!--
   Contenu de l'onglet d'une requête : erreur éventuelle, grille de résultats
-  et, sous la grille, le nombre de lignes chargées et la durée de la requête.
+  et, sous la grille, le nombre de lignes chargées et deux durées : le temps
+  d'exécution de la requête par le serveur (jusqu'à l'arrivée des colonnes),
+  puis le temps de transfert et d'affichage des lignes.
 
-  Pendant la réception, ce nombre et la durée changent une fois par seconde
-  (horloge partagée, `clock.ts`) ; à la fin de la requête, ils prennent
-  aussitôt leur valeur finale (durée mesurée par le serveur). Une requête
-  sans résultat à afficher (en attente, en échec, ou sans colonnes) ne
-  montre que sa durée.
+  Pendant la requête, le nombre de lignes et les durées changent une fois
+  par seconde (horloge partagée, `clock.ts`) ; à la fin, ils prennent
+  aussitôt leur valeur finale. Une requête sans grille (en attente, en
+  échec, ou sans colonnes) ne montre que ses durées.
 -->
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 
-import { type QueryTab, formatDuration, tabDuration } from '@/api/querySession'
+import {
+  type QueryTab,
+  executionDuration,
+  formatDuration,
+  transferDuration,
+} from '@/api/querySession'
 
 import { useClock } from './clock'
 import ResultGrid from './ResultGrid.vue'
@@ -41,14 +47,21 @@ watch(
 )
 
 /**
- * Durée de la requête, formatée ; vide tant qu'elle attend son tour.
- * L'horloge n'est lue que pendant l'exécution : une requête terminée n'est
- * plus redessinée à chaque tic.
+ * Durées de la requête, formatées : « exécution 120 ms · transfert 2,4 s » ;
+ * vide tant qu'elle attend son tour. L'horloge n'est lue que pendant la
+ * requête : une requête terminée n'est plus redessinée à chaque tic.
  */
-const duration = computed(() => {
+const durations = computed(() => {
   const running = props.tab.startedAt !== null && !props.tab.done
-  const elapsed = tabDuration(props.tab, running ? clock.value : Date.now())
-  return elapsed === null ? '' : formatDuration(elapsed)
+  const now = running ? clock.value : Date.now()
+  const execution = executionDuration(props.tab, now)
+  const transfer = transferDuration(props.tab, now)
+  return [
+    execution === null ? null : `exécution ${formatDuration(execution)}`,
+    transfer === null ? null : `transfert ${formatDuration(transfer)}`,
+  ]
+    .filter((part) => part !== null)
+    .join(' · ')
 })
 </script>
 
@@ -70,9 +83,9 @@ const duration = computed(() => {
       :sql="tab.sql"
     >
       <template #footer>
-        <span v-if="duration">· {{ duration }}</span>
+        <span v-if="durations">· {{ durations }}</span>
       </template>
     </result-grid>
-    <div v-else-if="duration" class="text-trim text-fg-muted">{{ duration }}</div>
+    <div v-else-if="durations" class="text-trim text-fg-muted">{{ durations }}</div>
   </div>
 </template>

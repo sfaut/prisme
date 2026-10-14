@@ -4,17 +4,11 @@
   Grise et pulsant très lentement tant que la requête attend son tour, bleue
   et pulsante pendant l'exécution (lentement) puis pendant la réception des
   lignes (vite), verte quand le résultat est complet, rouge en cas d'échec.
-  Au survol, une info-bulle donne le statut, la durée (qui court pendant
-  l'exécution) et le nombre de lignes.
 -->
 <script setup lang="ts">
 import { computed } from 'vue'
 
-import UiTooltip from './ui/UiTooltip.vue'
-
-import { type QueryTab, progressSummary, tabProgress } from '@/api/querySession'
-
-import { useClock } from './clock'
+import { type QueryTab, tabProgress } from '@/api/querySession'
 
 const props = defineProps<{
   /**
@@ -23,24 +17,22 @@ const props = defineProps<{
   tab: QueryTab
 }>()
 
-const clock = useClock()
-const progress = computed(() => tabProgress(props.tab))
+/**
+ * Libellé de chaque avancement, pour les lecteurs d'écran.
+ */
+const LABELS = {
+  waiting: 'En attente',
+  executing: 'Exécution',
+  loading: 'Chargement des lignes',
+  done: 'Terminé',
+  error: 'Échec',
+} as const
 
-// L'horloge n'est lue que pendant l'exécution : une requête terminée n'est
-// plus redessinée à chaque tic.
-const summary = computed(() => {
-  const running = props.tab.startedAt !== null && !props.tab.done
-  return progressSummary(props.tab, running ? clock.value : Date.now())
-})
+const progress = computed(() => tabProgress(props.tab))
 </script>
 
 <template>
-  <ui-tooltip>
-    <span class="progress-dot" :class="progress" role="img" :aria-label="summary[0]" />
-    <template #content>
-      <div v-for="line in summary" :key="line">{{ line }}</div>
-    </template>
-  </ui-tooltip>
+  <span class="progress-dot" :class="progress" role="img" :aria-label="LABELS[progress]" />
 </template>
 
 <style scoped>

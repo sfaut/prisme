@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest'
 
 import {
   applyMessage,
+  batchProgress,
+  executionDuration,
   formatDuration,
   initialState,
-  progressSummary,
   sessionUrl,
   startBatch,
   tabProgress,
+  transferDuration,
 } from '../querySession'
 
 /**
@@ -128,7 +130,16 @@ describe('applyMessage', () => {
     const state = readyState()
     state.error = 'ancienne erreur'
     state.tabs = [
-      { query: 0, sql: 'x', result: null, error: null, done: true, startedAt: 1, endedAt: 2 },
+      {
+        query: 0,
+        sql: 'x',
+        result: null,
+        error: null,
+        done: true,
+        startedAt: 1,
+        columnsAt: null,
+        endedAt: 2,
+      },
     ]
     startBatch(state)
     expect(state.error).toBeNull()
@@ -180,15 +191,25 @@ describe('tabProgress', () => {
   })
 })
 
-describe('progressSummary', () => {
-  it('donne statut, durée qui court et nombre de lignes', () => {
+describe('durées et avancement', () => {
+  it("sépare l'exécution du transfert des lignes", () => {
     const state = readyState()
     startBatch(state)
-    applyMessage(state, { type: 'batch', queries: [{ query: 0, sql: 'a', start: 0, end: 1 }] })
+    applyMessage(state, {
+      type: 'batch',
+      queries: [
+        { query: 0, sql: 'a', start: 0, end: 1 },
+        { query: 1, sql: 'b', start: 2, end: 3 },
+      ],
+    })
     const tab = state.tabs[0]!
-    expect(progressSummary(tab, 0)).toEqual(['En attente', '—', '—'])
+    expect(executionDuration(tab, 0)).toBeNull()
+    expect(batchProgress(state.tabs)).toEqual({ done: 0, total: 2 })
 
     applyMessage(state, { type: 'started', query: 0 }, 1000)
+    expect(executionDuration(tab, 1300)).toBe(300)
+    expect(transferDuration(tab, 1300)).toBeNull()
+
     applyMessage(
       state,
       {
@@ -199,25 +220,27 @@ describe('progressSummary', () => {
         sql: 'a',
         limit: 'added',
       },
-      1100,
+      1400,
     )
-    applyMessage(state, { type: 'rows', query: 0, rows: [['1'], ['2']] }, 1200)
-    expect(progressSummary(tab, 3500)).toEqual(['Chargement des lignes', '2,5 s', '2 lignes'])
+    expect(executionDuration(tab, 2000)).toBe(400)
+    expect(transferDuration(tab, 2000)).toBe(600)
 
     applyMessage(
       state,
       {
         type: 'done',
         query: 0,
-        row_count: 2,
-        truncated: true,
+        row_count: 0,
+        truncated: false,
         affected_rows: 0,
-        elapsed_ms: 420,
+        elapsed_ms: 500,
         database: null,
       },
-      1500,
+      2500,
     )
-    expect(progressSummary(tab, 9999)).toEqual(['Terminé', '420 ms', '2 lignes (tronqué)'])
+    expect(executionDuration(tab, 9999)).toBe(400)
+    expect(transferDuration(tab, 9999)).toBe(1100)
+    expect(batchProgress(state.tabs)).toEqual({ done: 1, total: 2 })
   })
 
   it('formate les durées', () => {

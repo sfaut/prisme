@@ -65,6 +65,8 @@
   --spacing-dialog: var(--dialog-width);
   --spacing-toast: var(--toast-width);
   --spacing-tab: var(--tab-max-width);
+  --spacing-progress: var(--progress-width);
+  --spacing-progress-h: var(--progress-height);
 
   --radius-control: var(--control-radius);
   --radius-panel: var(--panel-radius);
@@ -163,6 +165,10 @@
   /* Éditeur SQL : hauteurs minimale et maximale. */
   --editor-min-height: 8rem;
   --editor-max-height: 24rem;
+
+  /* Barre d'avancement d'un lot de requêtes : largeur et épaisseur. */
+  --progress-width: 6rem;
+  --progress-height: 0.375rem;
 
   /* Poignées de redimensionnement (panneau de gauche, colonnes de la
      grille) et pastille d'avancement des requêtes. */

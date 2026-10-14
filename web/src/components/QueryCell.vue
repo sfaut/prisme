@@ -7,17 +7,25 @@
   toutes les requêtes en parallèle. « Stopper » les arrête toutes.
   « Enjoliver » réécrit le texte en « beau SQL », une fois le catalogue de la
   connexion chargé (il donne la casse des fonctions de l'utilisateur).
-  Chaque requête a son onglet de résultat.
+  Chaque requête a son onglet de résultat ; pour un lot de plusieurs
+  requêtes, une barre à droite des onglets suit leur avancement.
   La limite de lignes choisie ici devient la limite par défaut de l'utilisateur.
 -->
 <script setup lang="ts">
 import { Play, Square, WandSparkles } from 'lucide-vue-next'
-import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
+import {
+  ProgressIndicator,
+  ProgressRoot,
+  TabsContent,
+  TabsList,
+  TabsRoot,
+  TabsTrigger,
+} from 'reka-ui'
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import { beautify } from '@/api/beautify'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
-import { useQuerySession } from '@/api/querySession'
+import { batchProgress, useQuerySession } from '@/api/querySession'
 import { useCatalogStore } from '@/stores/catalog'
 import { useSettingsStore } from '@/stores/settings'
 
@@ -92,6 +100,11 @@ watch(
     selectedTab.value = 0
   },
 )
+
+/**
+ * Avancement du lot en cours : requêtes terminées et nombre total.
+ */
+const batch = computed(() => batchProgress(state.tabs))
 
 /**
  * Libellé d'un onglet : numéro et début de la requête.
@@ -310,6 +323,27 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
           <progress-dot :tab="tab" />
           <span class="truncate text-trim">{{ tabLabel(tab.query, tab.sql) }}</span>
         </tabs-trigger>
+        <div
+          v-if="batch.total > 1"
+          class="ms-auto flex shrink-0 items-center gap-gap ps-gap text-fg-muted"
+        >
+          <span class="text-trim">{{ batch.done }} / {{ batch.total }} requêtes</span>
+          <progress-root
+            :model-value="batch.done"
+            :max="batch.total"
+            :get-value-label="
+              (done: number | null | undefined, total: number) =>
+                `${done ?? 0} requêtes terminées sur ${total}`
+            "
+            class="h-progress-h w-progress overflow-hidden rounded-full bg-surface-accented"
+          >
+            <progress-indicator
+              class="h-full rounded-full transition-transform duration-300"
+              :class="batch.done === batch.total ? 'bg-success' : 'bg-accent'"
+              :style="{ transform: `translateX(-${100 - (100 * batch.done) / batch.total}%)` }"
+            />
+          </progress-root>
+        </div>
       </tabs-list>
       <tabs-content
         v-for="tab in state.tabs"

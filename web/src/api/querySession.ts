@@ -119,6 +119,12 @@ export interface QueryTab {
    */
   startedAt: number | null
   /**
+   * Instant de réception des colonnes (`Date.now()`) : le serveur a fini
+   * d'exécuter la requête et commence à envoyer les lignes. `null` avant,
+   * ou pour une requête sans résultat.
+   */
+  columnsAt: number | null
+  /**
    * Instant de la fin de la requête, `null` tant qu'elle n'est pas terminée.
    */
   endedAt: number | null
@@ -186,6 +192,7 @@ export function applyMessage(
         error: null,
         done: false,
         startedAt: null,
+        columnsAt: null,
         endedAt: null,
       }))
       break
@@ -199,6 +206,7 @@ export function applyMessage(
     case 'columns': {
       const tab = tabOf(state, message.query)
       if (tab) {
+        tab.columnsAt = now
         tab.result = {
           sql: message.sql,
           limit: message.limit,
@@ -300,52 +308,41 @@ export function tabProgress(tab: QueryTab): TabProgress {
 }
 
 /**
- * Libellé de chaque avancement.
- */
-const PROGRESS_LABELS: Record<TabProgress, string> = {
-  waiting: 'En attente',
-  executing: 'Exécution',
-  loading: 'Chargement des lignes',
-  done: 'Terminé',
-  error: 'Échec',
-}
-
-/**
- * Résumé d'une requête pour l'info-bulle de sa pastille : statut, durée,
- * nombre de lignes. Pendant l'exécution, la durée court jusqu'à `now`.
- *
- * @param tab Onglet de la requête.
- * @param now Instant présent (`Date.now()`).
- * @returns Trois lignes de texte.
- */
-export function progressSummary(tab: QueryTab, now: number): string[] {
-  const progress = tabProgress(tab)
-  const elapsed = tabDuration(tab, now)
-  const duration = elapsed === null ? '—' : formatDuration(elapsed)
-  let rows = '—'
-  if (tab.result) {
-    const count = tab.result.rowCount
-    rows = `${count.toLocaleString('fr-FR')} ${count > 1 ? 'lignes' : 'ligne'}`
-    if (tab.result.truncated) {
-      rows += ' (tronqué)'
-    }
-  }
-  return [PROGRESS_LABELS[progress], duration, rows]
-}
-
-/**
- * Durée d'une requête, en millisecondes : celle mesurée par le serveur une
- * fois le résultat complet, sinon le temps écoulé depuis son départ (qui
- * court jusqu'à `now`) ; `null` tant qu'elle attend son tour.
+ * Temps d'exécution d'une requête, en millisecondes : de son départ à la
+ * réception de ses colonnes (le serveur a fini de l'exécuter), ou à sa fin
+ * pour une requête sans résultat. Il court jusqu'à `now` tant que la requête
+ * s'exécute ; `null` tant qu'elle attend son tour.
  *
  * @param tab Onglet de la requête.
  * @param now Instant présent (`Date.now()`).
  */
-export function tabDuration(tab: QueryTab, now: number): number | null {
-  if (tab.done && tab.error === null && tab.result) {
-    return tab.result.elapsedMs
+export function executionDuration(tab: QueryTab, now: number): number | null {
+  if (tab.startedAt === null) {
+    return null
   }
-  return tab.startedAt === null ? null : (tab.endedAt ?? now) - tab.startedAt
+  return (tab.columnsAt ?? tab.endedAt ?? now) - tab.startedAt
+}
+
+/**
+ * Temps de transfert et d'affichage des lignes, en millisecondes : de la
+ * réception des colonnes à la fin de la requête. Il court jusqu'à `now`
+ * pendant la réception ; `null` sans résultat.
+ *
+ * @param tab Onglet de la requête.
+ * @param now Instant présent (`Date.now()`).
+ */
+export function transferDuration(tab: QueryTab, now: number): number | null {
+  return tab.columnsAt === null ? null : (tab.endedAt ?? now) - tab.columnsAt
+}
+
+/**
+ * Avancement d'un lot : nombre de requêtes terminées (avec succès ou en
+ * échec) et nombre total.
+ *
+ * @param tabs Onglets du lot.
+ */
+export function batchProgress(tabs: QueryTab[]): { done: number; total: number } {
+  return { done: tabs.filter((tab) => tab.done).length, total: tabs.length }
 }
 
 /**

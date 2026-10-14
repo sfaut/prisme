@@ -4,12 +4,10 @@
   avec le choix du thème (clair, sombre ou celui du système) ; à droite, la
   cellule SQL et ses résultats. Disposition en classes Tailwind.
 
-  Le fournisseur de bulles de Reka UI enveloppe toute l'application, et les
-  messages éphémères (`notify`) s'affichent en bas à droite (`UiToaster`).
+  Les messages éphémères (`notify`) s'affichent en bas à droite (`UiToaster`).
 -->
 <script setup lang="ts">
 import { Database, Monitor, Moon, Sun } from 'lucide-vue-next'
-import { TooltipProvider } from 'reka-ui'
 import { nextTick, ref, useTemplateRef, watch } from 'vue'
 
 import { type ColorMode, colorMode } from './colorMode'
@@ -98,46 +96,44 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
 </script>
 
 <template>
-  <tooltip-provider :delay-duration="300">
-    <div class="relative flex h-full">
-      <aside
-        class="flex shrink-0 flex-col gap-panel border-e border-line p-panel"
-        :style="{ width: `${siderWidth}px` }"
-      >
-        <header class="flex items-center justify-between gap-gap">
-          <h1 class="text-heading font-semibold text-fg-strong">Prisme</h1>
-          <ui-select v-model="colorMode" :items="COLOR_MODES" label="Thème" class="w-28" />
-        </header>
-        <object-explorer
-          :selected-id="connections.selectedId"
-          :current-database="currentDatabase"
-          @open-table="openTable"
-          @select="connections.selectedId = $event"
-          @use-database="useDatabase"
-        />
-      </aside>
-      <sider-resizer v-model="siderWidth" />
-      <main class="flex h-full min-w-0 flex-1 flex-col gap-panel p-panel">
-        <query-cell
-          v-if="connections.selected"
-          ref="cell"
-          :key="`${connections.selected.id}-${connections.versions[connections.selected.id] ?? 0}-${attempt}`"
-          v-model:sql="sql"
-          :connection="connections.selected"
-          @reconnect="attempt++"
-          @database="currentDatabase = $event"
-        />
-        <div v-else class="m-auto flex max-w-xs flex-col items-center gap-gap text-center">
-          <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
-            <Database class="size-4 text-fg-muted" />
-          </span>
-          <p class="text-balance text-fg-muted">
-            Double-cliquez sur une source de données pour la choisir, ou ajoutez une connexion par
-            le menu « ⋮ »
-          </p>
-        </div>
-      </main>
-    </div>
-    <ui-toaster />
-  </tooltip-provider>
+  <div class="relative flex h-full">
+    <aside
+      class="flex shrink-0 flex-col gap-panel border-e border-line p-panel"
+      :style="{ width: `${siderWidth}px` }"
+    >
+      <header class="flex items-center justify-between gap-gap">
+        <h1 class="text-heading font-semibold text-fg-strong">Prisme</h1>
+        <ui-select v-model="colorMode" :items="COLOR_MODES" label="Thème" class="w-28" />
+      </header>
+      <object-explorer
+        :selected-id="connections.selectedId"
+        :current-database="currentDatabase"
+        @open-table="openTable"
+        @select="connections.selectedId = $event"
+        @use-database="useDatabase"
+      />
+    </aside>
+    <sider-resizer v-model="siderWidth" />
+    <main class="flex h-full min-w-0 flex-1 flex-col gap-panel p-panel">
+      <query-cell
+        v-if="connections.selected"
+        ref="cell"
+        :key="`${connections.selected.id}-${connections.versions[connections.selected.id] ?? 0}-${attempt}`"
+        v-model:sql="sql"
+        :connection="connections.selected"
+        @reconnect="attempt++"
+        @database="currentDatabase = $event"
+      />
+      <div v-else class="m-auto flex max-w-xs flex-col items-center gap-gap text-center">
+        <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
+          <Database class="size-4 text-fg-muted" />
+        </span>
+        <p class="text-balance text-fg-muted">
+          Double-cliquez sur une source de données pour la choisir, ou ajoutez une connexion par le
+          menu « ⋮ »
+        </p>
+      </div>
+    </main>
+  </div>
+  <ui-toaster />
 </template>
