@@ -12,8 +12,9 @@
   est relancée), se ferme (sa requête est arrêtée si elle tourne) ou se
   déplace en le faisant glisser, comme une colonne de la grille.
   La limite de lignes choisie ici devient la limite par défaut de l'utilisateur.
-  Une barre horizontale, sous les boutons, partage la hauteur entre l'éditeur
-  (avec ses boutons) et les résultats : le tiers du haut par défaut, réglage
+  Les boutons sont au-dessus de l'éditeur. Une barre horizontale, sous
+  l'éditeur, partage la hauteur entre l'éditeur (avec ses boutons) et les
+  résultats : le tiers du haut par défaut, réglage
   retenu (`EditorResizer`).
 -->
 <script setup lang="ts">
@@ -332,19 +333,8 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
 
 <template>
   <div ref="cellRoot" class="flex min-h-0 flex-1 flex-col gap-gap">
-    <!-- Bloc du haut : l'éditeur, qui prend la place restante, puis les boutons. -->
+    <!-- Bloc du haut : les boutons, puis l'éditeur, qui prend la place restante. -->
     <div class="editor-pane" :style="{ '--editor-split': `${editorSplit * 100}%` }">
-      <sql-editor
-        ref="editor"
-        v-model="sql"
-        :flavor="state.server?.flavor ?? 'mysql'"
-        :schema="completion"
-        :default-schema="state.database"
-        @run="run"
-        @run-all="runAll"
-        class="min-h-0 flex-1"
-      />
-
       <div class="flex items-center gap-gap">
         <ui-button
           label="Exécuter"
@@ -389,6 +379,17 @@ defineExpose({ run, runWhenReady, changeDatabaseWhenReady })
         />
         <span class="text-trim text-fg-muted">{{ connection.name }} · {{ serverLabel }}</span>
       </div>
+
+      <sql-editor
+        ref="editor"
+        v-model="sql"
+        :flavor="state.server?.flavor ?? 'mysql'"
+        :schema="completion"
+        :default-schema="state.database"
+        @run="run"
+        @run-all="runAll"
+        class="min-h-0 flex-1"
+      />
     </div>
     <editor-resizer v-model="editorSplit" :container="cellRoot" />
 
