@@ -64,7 +64,7 @@ jobs:
         run: npx vitest --run
       - name: Compilation de l'interface
         run: npm run build-only
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: web-dist
           path: web/dist/
@@ -141,7 +141,7 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: web-dist
           path: web/dist/
@@ -170,7 +170,7 @@ jobs:
             target/aarch64-apple-darwin/release/prisme \
             target/x86_64-apple-darwin/release/prisme
           lipo -info target/release/prisme
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: prisme-${{ matrix.name }}
           path: target/release/${{ matrix.binary }}
@@ -186,7 +186,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: prisme-*
           path: artifacts/
