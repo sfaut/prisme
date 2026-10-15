@@ -59,6 +59,7 @@ import {
   estimatedWidth,
   fittedWidth,
   moveColumn,
+  isFixedLengthText,
   isSelected,
   nextSort,
   resizedWidth,
@@ -238,6 +239,13 @@ const contentKinds = computed<(ContentKind | null)[]>(() => {
     props.columnTypes[column]?.family === 'text' ? detectContent(props.rows, column) : null,
   )
 })
+
+/**
+ * Pour chaque colonne, ses valeurs s'affichent-elles en chasse fixe (`CHAR`) ?
+ */
+const monospaced = computed(() =>
+  props.columns.map((_, column) => isFixedLengthText(props.columnTypes[column])),
+)
 
 /**
  * Marque de chaque colonne dans son en-tête (icône ou texte), absente sans type.
@@ -677,6 +685,7 @@ const filterColumn = computed({
             :class="{
               null: cellAt(item.index, column) === null,
               right: rightAligned[column],
+              mono: monospaced[column],
               selected: isSelected(selection, item.index, position),
             }"
             :title="cellAt(item.index, column) ?? NULL_TEXT"
@@ -929,6 +938,11 @@ const filterColumn = computed({
 
   &.right {
     text-align: end;
+  }
+
+  /* Texte de longueur fixe (CHAR) : codes et références, en chasse fixe. */
+  &.mono {
+    font-family: var(--font-code);
   }
 
   /* NULL en petites capitales : plus discret qu'une valeur de la colonne. */

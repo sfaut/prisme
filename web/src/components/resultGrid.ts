@@ -10,6 +10,7 @@
  * le résultat reçu du serveur.
  */
 
+import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Cell } from '@/api/querySession'
 
 /**
@@ -90,6 +91,17 @@ export const NULL_TEXT = 'NULL'
  * le bouton de tri et un début de nom.
  */
 export const MIN_COLUMN_WIDTH = 40
+
+/**
+ * Indique si une colonne est du texte de longueur fixe (`CHAR`), affiché en
+ * chasse fixe : ce sont en général des codes ou des références, plus lisibles
+ * caractère par caractère. `VARCHAR` et `TEXT` gardent la police courante.
+ *
+ * @param type Type de la colonne, absent s'il est inconnu.
+ */
+export function isFixedLengthText(type: ColumnTypeInfo | undefined): boolean {
+  return type?.family === 'text' && /^CHAR\b/.test(type.name)
+}
 
 /**
  * Ordre d'affichage des colonnes après un déplacement.

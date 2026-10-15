@@ -13,6 +13,7 @@ import {
   resizedWidth,
   compareCells,
   emptySelection,
+  isFixedLengthText,
   isSelected,
   nextSort,
   selectAll,
@@ -30,6 +31,17 @@ const rows: Cell[][] = [
   ['1', 'Éric', 'Paris'],
 ]
 const noFilter = { text: '', column: null }
+
+describe('texte de longueur fixe', () => {
+  it('reconnaît CHAR, avec ou sans longueur, et lui seul', () => {
+    expect(isFixedLengthText({ family: 'text', name: 'CHAR(4)' })).toBe(true)
+    expect(isFixedLengthText({ family: 'text', name: 'CHAR' })).toBe(true)
+    expect(isFixedLengthText({ family: 'text', name: 'VARCHAR(20)' })).toBe(false)
+    expect(isFixedLengthText({ family: 'text', name: 'TEXT' })).toBe(false)
+    expect(isFixedLengthText({ family: 'binary', name: 'BINARY(16)' })).toBe(false)
+    expect(isFixedLengthText(undefined)).toBe(false)
+  })
+})
 
 describe('tri', () => {
   it('compare les nombres par valeur et met NULL en premier', () => {
