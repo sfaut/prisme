@@ -68,6 +68,7 @@ Dans ce seul cadre, Claude Code pousse l'étiquette et crée la release GitHub a
 3. Rédiger le changelog d'après l'historique depuis l'étiquette précédente (`git log --oneline v0.1.0..HEAD`), ou depuis le début pour la première. En français, pour l'utilisateur de Prisme : plusieurs commits peuvent tenir en une ligne, les commits sans effet visible sont résumés ou omis. Une section par icône, dans cet ordre, les sections vides omises :
    - 🚀 Lancement, informations générales
    - 💥 Changement incompatible
+   - 🗑️ Retrait de fonctionnalité
    - 🔒 Sécurité
    - ✨ Nouvelle fonctionnalité
    - 🐞 Correction de bug
