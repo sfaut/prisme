@@ -8,6 +8,7 @@ Ce fichier est court. Les décisions détaillées sont dans `docs/` :
 - `docs/FEDERATED.md` : vision après la v1 (plan logique, optimiseur, langages, NULL, CSV, workspace).
 - `docs/QUESTIONS.md` : pistes retenues, écartées ou reportées, et questions encore ouvertes.
 - `docs/PERF.md` : problèmes de performance rencontrés, avec leur cause, leur correction et la méthode de mesure.
+- `docs/CHANGELOG.md` : changelogs des versions publiées, dans l'ordre de publication (voir « Publication d'une version »).
 
 ## Qui travaille ici
 
@@ -77,9 +78,11 @@ L'étiquette et le changelog portent sur ce qui est sur GitHub (`origin/master`)
    - ⚙️ Optimisation interne
    - 📝 Documentation
 4. Soumettre le changelog à Sébastien, avec le commit de `origin/master` sur lequel il porte. Rien n'est poussé sans sa validation.
-5. Après validation, committer la montée de version (« Passe la version à X.Y.Z ») : `version` de `Cargo.toml` à la racine, `Cargo.lock`, `web/package.json` et `web/package-lock.json` (`npm version X.Y.Z --no-git-tag-version`).
-6. Sébastien pousse `master`. Après `git fetch`, vérifier que `origin/master` est exactement le commit de version (`git rev-parse HEAD origin/master`), et que son parent est le commit soumis à l'étape 4 : un autre commit arrivé entre-temps manquerait au changelog. Attendre que la CI y soit verte (`gh run list`). Sinon, s'arrêter.
-7. Créer l'étiquette annotée sur ce commit (`git tag --annotate vX.Y.Z --message "Prisme vX.Y.Z" origin/master`), la pousser (`git push origin vX.Y.Z`), puis créer la release : `gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file <changelog>`.
+5. Après validation, committer la préparation de la version (« Prépare la version X.Y.Z ») :
+   - ajouter le changelog validé à la fin de `docs/CHANGELOG.md`, à la suite des précédents, sous un titre `## vX.Y.Z (AAAA-MM-JJ)` ; ses sections y sont des titres `###` ;
+   - monter la version, si elle ne vaut pas déjà X.Y.Z : `version` de `Cargo.toml` à la racine, `Cargo.lock`, `web/package.json` et `web/package-lock.json` (`npm version X.Y.Z --no-git-tag-version`).
+6. Sébastien pousse `master`. Après `git fetch`, vérifier que `origin/master` est exactement le commit de préparation (`git rev-parse HEAD origin/master`), et que son parent est le commit soumis à l'étape 4 : un autre commit arrivé entre-temps manquerait au changelog. Attendre que la CI y soit verte (`gh run list`). Sinon, s'arrêter.
+7. Créer l'étiquette annotée sur ce commit (`git tag --annotate vX.Y.Z --message "Prisme vX.Y.Z" origin/master`), la pousser (`git push origin vX.Y.Z`), puis créer la release : `gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file <changelog>`, où le fichier de notes reprend l'entrée de `docs/CHANGELOG.md` sans son titre.
 
 ## Commandes
 
