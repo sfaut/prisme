@@ -6,7 +6,13 @@ import {
 } from '@codemirror/state'
 import { describe, expect, it } from 'vitest'
 
-import { dedentLines, indentOrInsertSpaces, reindented, spacesToNextStop } from '../editorIndent'
+import {
+  dedentLines,
+  indentOrInsertSpaces,
+  insertPlainNewline,
+  reindented,
+  spacesToNextStop,
+} from '../editorIndent'
 
 /**
  * Applique une commande à un texte et rend le texte et la sélection obtenus.
@@ -91,6 +97,21 @@ describe('Tab', () => {
 
   it('laisse la ligne où s arrête la sélection, si elle s y arrête au début', () => {
     expect(apply(indentOrInsertSpaces, 'a\nb', [[0, 2]]).text).toBe('    a\nb')
+  })
+})
+
+describe('Entrée', () => {
+  it('va à la ligne en première colonne, même après une ligne indentée', () => {
+    expect(apply(insertPlainNewline, 'SELECT a', [[8, 8]])).toMatchObject({
+      handled: true,
+      text: 'SELECT a\n',
+      ranges: [[9, 9]],
+    })
+    expect(apply(insertPlainNewline, '    FROM t', [[10, 10]]).text).toBe('    FROM t\n')
+  })
+
+  it('remplace la sélection par le retour à la ligne', () => {
+    expect(apply(insertPlainNewline, 'SELECT a, b', [[8, 11]]).text).toBe('SELECT a\n')
   })
 })
 

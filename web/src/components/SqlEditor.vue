@@ -13,8 +13,8 @@
   avec leur message au survol : le texte est analysé par le serveur peu
   après chaque frappe. Ctrl-Entrée (Cmd-Entrée sur Mac) émet `run`
   avec la position du curseur ; Ctrl-Maj-Entrée émet `run-all`. Tab et
-  Maj-Tab indentent par taquets de quatre espaces (`editorIndent.ts`). Le
-  texte se lie avec `v-model`.
+  Maj-Tab indentent par taquets de quatre espaces, Entrée va à la ligne sans
+  retrait (`editorIndent.ts`). Le texte se lie avec `v-model`.
 -->
 <script setup lang="ts">
 import { autocompletion } from '@codemirror/autocomplete'
@@ -32,7 +32,7 @@ import type { Flavor } from '@/api/generated/Flavor'
 import { fetchKeywords } from '@/api/keywords'
 
 import { currentStatement, setStatements } from './currentStatement'
-import { dedentLines, indentOrInsertSpaces } from './editorIndent'
+import { dedentLines, indentOrInsertSpaces, insertPlainNewline } from './editorIndent'
 import { editorTheme } from './editorTheme'
 import { editorDialect } from './sqlDialect'
 
@@ -191,6 +191,8 @@ onMounted(() => {
         },
         // Échap puis Tab, ou Ctrl-M, rendent Tab au navigateur (CodeMirror).
         { key: 'Tab', run: indentOrInsertSpaces, shift: dedentLines },
+        // Sans retrait ajouté ; la complétion, prioritaire, garde Entrée pour valider.
+        { key: 'Enter', run: insertPlainNewline, shift: insertPlainNewline },
       ]),
       basicSetup,
       // Complétion stricte : début du nom ou initiales, jamais des lettres éparses.

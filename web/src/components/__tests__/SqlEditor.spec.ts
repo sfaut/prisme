@@ -67,6 +67,28 @@ describe('SqlEditor', () => {
     wrapper.unmount()
   })
 
+  it('va à la ligne sans retrait sur Entrée, au milieu d’une requête', () => {
+    const wrapper = mount(SqlEditor, {
+      props: {
+        flavor: 'mysql',
+        schema: {},
+        version: null,
+        ansiQuotes: false,
+        defaultSchema: null,
+        modelValue: '',
+      },
+      attachTo: document.body,
+    })
+    // Parenthèse ouverte : la langue SQL indenterait la suite de deux espaces.
+    wrapper.vm.replaceText('SELECT (a')
+    wrapper
+      .find('.cm-content')
+      .element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13 }))
+    const updates = wrapper.emitted('update:modelValue') ?? []
+    expect(updates[updates.length - 1]).toEqual(['SELECT (a\n'])
+    wrapper.unmount()
+  })
+
   it('remplace le contenu quand le texte change de l’extérieur', async () => {
     const wrapper = mount(SqlEditor, {
       props: {

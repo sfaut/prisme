@@ -1,6 +1,8 @@
 /**
- * Tabulation dans l'éditeur SQL : Tab et Maj-Tab indentent au lieu de
- * déplacer le focus vers l'élément suivant de la page (ticket #2).
+ * Retrait dans l'éditeur SQL : Tab et Maj-Tab indentent au lieu de
+ * déplacer le focus vers l'élément suivant de la page (ticket #2), et
+ * Entrée va à la ligne sans retrait (ticket #5) : la langue SQL de
+ * CodeMirror ajouterait deux espaces à chaque suite de requête.
  *
  * - Tab sans sélection : des espaces jusqu'au prochain taquet (tous les
  *   quatre caractères), à la position du curseur.
@@ -142,6 +144,19 @@ export const indentOrInsertSpaces: StateCommand = ({ state, dispatch }) => {
     }
   })
   dispatch(state.update(transaction, { scrollIntoView: true, userEvent: 'input' }))
+  return true
+}
+
+/**
+ * Entrée : un retour à la ligne à chaque curseur (la sélection est
+ * remplacée), le curseur en première colonne de la nouvelle ligne, sans
+ * retrait.
+ */
+export const insertPlainNewline: StateCommand = ({ state, dispatch }) => {
+  if (state.readOnly) {
+    return false
+  }
+  dispatch(state.update(state.replaceSelection('\n'), { scrollIntoView: true, userEvent: 'input' }))
   return true
 }
 
