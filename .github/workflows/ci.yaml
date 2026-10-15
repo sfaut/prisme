@@ -95,6 +95,9 @@ jobs:
 
   # Exécutables, interface embarquée. Sous Windows, le runtime C est intégré
   # (crt-static, dans .cargo/config.toml) : pas de VCRUNTIME140.dll à installer.
+  #
+  # TODO: signer les exécutables Windows (SignPath Foundation) et macOS (compte
+  # Apple Developer, notarisation), voir docs/QUESTIONS.md, section 3.
   build:
     name: Exécutable ${{ matrix.name }}
     needs: [web, rust]

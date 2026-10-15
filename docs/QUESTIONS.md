@@ -59,6 +59,7 @@ Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou 
 | Vrai système de base de données maison | Option future | Sébastien n'exclut pas d'y aller plus tard. |
 | Moteur fédéré | Après la v1 | La v1 construit le noyau commun. |
 | Visualisation optimisée des contenus JSON et XML dans la grille | Reportée (à faire) | Demandée par Sébastien. La grille reconnaît déjà les colonnes de texte qui contiennent du JSON ou du XML (icône de l'en-tête, `web/src/components/contentKind.ts`) ; reste à proposer un affichage adapté de ces contenus (indentation, coloration, repli). |
+| Signature des exécutables livrés | Reportée (à faire) | Sans signature, Windows (SmartScreen) et macOS (Gatekeeper) avertissent au premier lancement. Windows : SignPath Foundation, gratuit pour un projet open source au dépôt public, comme `sfaut/prisme` ; la signature n'efface l'alerte SmartScreen qu'une fois une réputation acquise. macOS : signature et notarisation demandent un compte Apple Developer (environ 99 $ par an), que Sébastien ne prend pas pour l'instant. Étapes à ajouter au job `build` de `.github/workflows/ci.yaml`, les certificats dans les secrets du dépôt. |
 
 ## 4. Nom du projet
 
