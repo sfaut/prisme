@@ -207,7 +207,7 @@ Pour regarder la base interne, ouvrir `./tmp/prisme.db` avec n'importe quel clie
 
 ## Intégration continue et livraison
 
-GitHub Actions (`.github/workflows/ci.yaml`) vérifie chaque push sur `master` et chaque pull request : formatage, lint, types et tests de l'interface ; formatage, `clippy` et tous les tests du backend, y compris ceux qui demandent Docker ; puis compilation des exécutables Windows et Linux, interface embarquée. Ces exécutables sont téléchargeables dans les artefacts de l'exécution (onglet « Actions », connexion à GitHub requise, conservés 90 jours).
+GitHub Actions (`.github/workflows/ci.yaml`) vérifie chaque push sur `master` et chaque pull request : formatage, lint, types et tests de l'interface ; formatage, `clippy` et tous les tests du backend, y compris ceux qui demandent Docker ; puis compilation des exécutables Windows, Linux et macOS, interface embarquée. Ces exécutables sont téléchargeables dans les artefacts de l'exécution (onglet « Actions », connexion à GitHub requise, conservés 90 jours).
 
 Pour publier une version, pousser un tag `v*` :
 
@@ -216,7 +216,15 @@ git tag --annotate v0.1.0 --message "Prisme v0.1.0"
 git push origin v0.1.0
 ```
 
-La CI crée alors une release GitHub, avec `prisme-v0.1.0-windows-x86_64.exe` et `prisme-v0.1.0-linux-x86_64`, téléchargeables directement depuis la page « Releases » du dépôt. L'exécutable Windows intègre le runtime C (voir `.cargo/config.toml`) : il ne demande pas d'installer le Visual C++ Redistributable.
+La CI crée alors une release GitHub, avec `prisme-v0.1.0-windows-x86_64.exe`, `prisme-v0.1.0-linux-x86_64` et `prisme-v0.1.0-macos-universal` (Apple Silicon et Intel), téléchargeables directement depuis la page « Releases » du dépôt. L'exécutable Windows intègre le runtime C (voir `.cargo/config.toml`) : il ne demande pas d'installer le Visual C++ Redistributable.
+
+Les exécutables ne sont pas signés. Sous Windows, SmartScreen avertit au premier lancement (« Informations complémentaires », puis « Exécuter quand même »). Sous Linux et macOS, le fichier téléchargé doit d'abord être rendu exécutable ; macOS bloque en plus un binaire téléchargé non signé, et lever ce blocage se fait une fois :
+
+```
+chmod +x prisme-v0.1.0-macos-universal
+xattr -d com.apple.quarantine prisme-v0.1.0-macos-universal
+./prisme-v0.1.0-macos-universal
+```
 
 ## Organisation du dépôt
 

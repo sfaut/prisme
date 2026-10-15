@@ -2,8 +2,8 @@
 #
 # À chaque push sur master et à chaque pull request : contrôle de l'interface,
 # contrôle et tests du backend (y compris les tests sur de vrais serveurs, dans
-# Docker), puis compilation des exécutables Windows et Linux, téléchargeables
-# dans les artefacts de l'exécution.
+# Docker), puis compilation des exécutables Windows, Linux et macOS,
+# téléchargeables dans les artefacts de l'exécution.
 #
 # À chaque tag v* (ex. v0.1.0) : en plus, création d'une release GitHub qui
 # porte les exécutables, téléchargeables directement depuis la page Releases.
@@ -108,6 +108,9 @@ jobs:
           - name: linux-x86_64
             os: ubuntu-latest
             binary: prisme
+          - name: macos-universal
+            os: macos-latest
+            binary: prisme
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -127,7 +130,20 @@ jobs:
         with:
           key: release
       - name: Compilation
+        if: runner.os != 'macOS'
         run: cargo build --release --bin prisme
+      # macOS : un binaire universel, qui tourne sur Apple Silicon et sur Intel.
+      # Les deux architectures sont compilées séparément, puis réunies par lipo
+      # dans target/release, comme pour les autres plateformes.
+      - name: Compilation (binaire universel Apple Silicon et Intel)
+        if: runner.os == 'macOS'
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+          cargo build --release --bin prisme --target aarch64-apple-darwin
+          cargo build --release --bin prisme --target x86_64-apple-darwin
+          mkdir -p target/release
+          lipo -create -output target/release/prisme             target/aarch64-apple-darwin/release/prisme             target/x86_64-apple-darwin/release/prisme
+          lipo -info target/release/prisme
       - uses: actions/upload-artifact@v4
         with:
           name: prisme-${{ matrix.name }}
@@ -153,7 +169,8 @@ jobs:
           mkdir dist
           cp artifacts/prisme-windows-x86_64/prisme.exe "dist/prisme-${GITHUB_REF_NAME}-windows-x86_64.exe"
           cp artifacts/prisme-linux-x86_64/prisme "dist/prisme-${GITHUB_REF_NAME}-linux-x86_64"
-          chmod +x "dist/prisme-${GITHUB_REF_NAME}-linux-x86_64"
+          cp artifacts/prisme-macos-universal/prisme "dist/prisme-${GITHUB_REF_NAME}-macos-universal"
+          chmod +x dist/prisme-*
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/*
