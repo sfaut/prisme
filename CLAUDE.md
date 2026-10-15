@@ -107,7 +107,7 @@ L'étiquette et le changelog portent sur ce qui est sur GitHub (`origin/master`)
 
 ```
 cargo run                         # lance Prisme sur http://127.0.0.1:8484
-cargo run -- --help               # options (--listen, --data-dir, --user-email)
+cargo run -- --help               # options (--listen, --data-dir, --user-email, --setup)
 cargo run -- --data-dir ./tmp     # dossier de données jetable, hors de %APPDATA%\Prisme
 cargo test                        # tests de tous les crates, sans Docker
 cargo test -- --include-ignored   # en plus, tests sur de vrais serveurs (Docker Desktop démarré)

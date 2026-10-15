@@ -21,15 +21,18 @@ Le projet est en début de v1. Pour l'instant, Prisme prépare son dossier de do
 cargo run
 ```
 
-Prisme écoute alors sur <http://127.0.0.1:8484>, qui sert l'API (la route `/api/health` répond `ok`) et l'interface compilée, si elle l'a été (voir plus bas). Sinon, la page d'accueil dit comment la compiler.
+Au premier lancement (pas encore de base interne dans le dossier de données), Prisme demande dans le terminal le port d'écoute (`8484` par défaut) et l'adresse e-mail de l'utilisateur (`me@local` par défaut) ; Entrée garde la valeur proposée, une réponse invalide (port pris ou hors de 1 à 65535, adresse mal formée) est redemandée. Les réponses sont enregistrées dans la base interne et relues aux lancements suivants ; `--setup` repose les questions. Sans terminal interactif, les valeurs par défaut s'appliquent. Une base créée avant ces questions garde ses réglages : port 8484 et utilisateur déjà enregistré.
+
+Prisme écoute alors sur <http://127.0.0.1:8484> (ou le port choisi), qui sert l'API (la route `/api/health` répond `ok`) et l'interface compilée, si elle l'a été (voir plus bas). Sinon, la page d'accueil dit comment la compiler.
 
 Options (`cargo run -- --help`) :
 
 | Option | Défaut | Rôle |
 |---|---|---|
-| `--listen` | `127.0.0.1:8484` | Adresse d'écoute. Elle doit être locale (`127.0.0.1` ou `::1`) : sans authentification, Prisme refuse d'être accessible depuis le réseau. |
+| `--listen` | `127.0.0.1` et le port enregistré | Adresse d'écoute, pour ce lancement (non enregistrée). Elle doit être locale (`127.0.0.1` ou `::1`) : sans authentification, Prisme refuse d'être accessible depuis le réseau. |
 | `--data-dir` | `%APPDATA%\Prisme` (Windows), `~/.local/share/Prisme` (Linux) | Dossier de données. |
-| `--user-email` | `sebastien.faut@gmail.com` | Utilisateur unique, créé au premier lancement. |
+| `--user-email` | l'utilisateur enregistré | Utilisateur, pour ce lancement (non enregistré) ; créé s'il n'existe pas. |
+| `--setup` | — | Repose les questions du premier lancement et enregistre les réponses. |
 
 Les options se passent après `--`, par exemple `cargo run -- --data-dir ./tmp` pour un dossier de données jetable (ignoré par Git).
 

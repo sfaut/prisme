@@ -13,37 +13,62 @@ use clap::Parser;
 /// Nom du dossier de données créé dans le dossier de données de l'utilisateur.
 const DATA_DIR_NAME: &str = "Prisme";
 
+/// Fonctionnement du premier lancement, affiché à la fin de `prisme --help`.
+const AFTER_HELP: &str = "\
+Premier lancement :
+  Quand la base interne n'existe pas encore dans le dossier de données,
+  Prisme demande dans le terminal le port d'écoute (8484 par défaut, sur
+  127.0.0.1) et l'adresse e-mail de l'utilisateur (me@local par défaut).
+  Les réponses sont enregistrées dans la base interne et relues aux
+  lancements suivants ; --setup repose les questions.
+  Une option --listen ou --user-email remplace sa question, sans être
+  enregistrée. Sans terminal interactif, les valeurs par défaut s'appliquent.";
+
 /// Options de lancement de Prisme.
 #[derive(Debug, Parser)]
 #[command(
     name = "prisme",
     version,
-    about = "Client web multi-bases de données en notebook"
+    about = "Client web multi-bases de données en notebook",
+    after_help = AFTER_HELP
 )]
 pub struct Config {
-    /// Adresse d'écoute du serveur web. Elle doit être locale (127.0.0.1 ou ::1).
-    #[arg(long, default_value = "127.0.0.1:8484")]
-    pub listen: SocketAddr,
+    /// Adresse d'écoute du serveur web, pour ce lancement. Elle doit être
+    /// locale (127.0.0.1 ou ::1). Par défaut : 127.0.0.1 et le port
+    /// enregistré (8484 au départ).
+    #[arg(long)]
+    pub listen: Option<SocketAddr>,
 
     /// Dossier de données (base interne et clef maîtresse).
     /// Par défaut : %APPDATA%\Prisme sous Windows, ~/.local/share/Prisme sous Linux.
     #[arg(long)]
     pub data_dir: Option<PathBuf>,
 
-    /// Adresse e-mail de l'utilisateur unique, créé au premier lancement.
-    #[arg(long, default_value = "sebastien.faut@gmail.com")]
-    pub user_email: String,
+    /// Adresse e-mail de l'utilisateur, pour ce lancement (créé s'il
+    /// n'existe pas). Par défaut : l'utilisateur enregistré.
+    #[arg(long)]
+    pub user_email: Option<String>,
+
+    /// Repose les questions du premier lancement (port et adresse e-mail)
+    /// et enregistre les nouvelles réponses.
+    #[arg(long)]
+    pub setup: bool,
 }
 
 impl Config {
-    /// Vérifie la cohérence des options : sans authentification, l'écoute doit être locale.
+    /// Vérifie la cohérence des options : sans authentification, l'écoute
+    /// doit être locale ; l'adresse e-mail doit être bien formée.
     pub fn validate(&self) -> anyhow::Result<()> {
-        if !self.listen.ip().is_loopback() {
+        if let Some(listen) = self.listen
+            && !listen.ip().is_loopback()
+        {
             bail!(
-                "l'adresse {} est accessible depuis le réseau : sans authentification, \
-                 Prisme n'écoute que sur 127.0.0.1 ou ::1",
-                self.listen
+                "l'adresse {listen} est accessible depuis le réseau : sans authentification, \
+                 Prisme n'écoute que sur 127.0.0.1 ou ::1"
             );
+        }
+        if let Some(email) = &self.user_email {
+            crate::setup::parse_email(email).map_err(anyhow::Error::msg)?;
         }
         Ok(())
     }

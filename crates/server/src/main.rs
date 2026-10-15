@@ -1,8 +1,9 @@
 //! Point d'entrée de Prisme.
 //!
 //! Lit la configuration, prépare le dossier de données (clef maîtresse et base
-//! interne, avec l'utilisateur unique du mode poste de développement), puis
-//! démarre le serveur web : l'API et l'interface (`web_assets.rs`). Voir
+//! interne), établit le port d'écoute et l'utilisateur unique du mode poste de
+//! développement, demandés au premier lancement (`setup.rs`), puis démarre le
+//! serveur web : l'API et l'interface (`web_assets.rs`). Voir
 //! `docs/V1.md`, section 2.8.
 
 mod analyze;
@@ -20,8 +21,11 @@ mod secrets;
 mod session_relay;
 mod sessions;
 mod settings;
+mod setup;
 mod store;
 mod web_assets;
+
+use std::io::IsTerminal;
 
 use anyhow::Context;
 use clap::Parser;
@@ -50,17 +54,33 @@ async fn main() -> anyhow::Result<()> {
 
     // Au démarrage, rien d'autre ne tourne : l'accès synchrone à SQLite est sans risque ici.
     let db_path = data_dir.join(store::FILE_NAME);
+    let first_launch = !db_path.exists();
     let db = store::open(&db_path)?;
     tracing::info!("base interne : {}", db_path.display());
-    let user_id = store::ensure_user(&db, &config.user_email)?;
-    tracing::info!(user_id, "utilisateur local : {}", config.user_email);
 
-    let app = api::router(api::AppState::new(db, master_key, user_id));
+    // Port et utilisateur : demandés au premier lancement ou avec --setup,
+    // si un terminal permet de répondre (setup.rs).
+    let mut input = std::io::stdin().lock();
+    let mut output = std::io::stdout();
+    let interactive = input.is_terminal() && output.is_terminal();
+    let terminal = interactive.then_some(setup::Terminal {
+        input: &mut input,
+        output: &mut output,
+        introduced: false,
+    });
+    let startup = setup::settle(&db, &config, first_launch, terminal, &setup::port_free)?;
+    tracing::info!(
+        user_id = startup.user_id,
+        "utilisateur local : {}",
+        startup.email
+    );
 
-    let listener = tokio::net::TcpListener::bind(config.listen)
+    let app = api::router(api::AppState::new(db, master_key, startup.user_id));
+
+    let listener = tokio::net::TcpListener::bind(startup.listen)
         .await
-        .with_context(|| format!("écoute sur {}", config.listen))?;
-    tracing::info!("Prisme écoute sur http://{}", config.listen);
+        .with_context(|| format!("écoute sur {}", startup.listen))?;
+    tracing::info!("Prisme écoute sur http://{}", startup.listen);
     axum::serve(listener, app).await?;
 
     Ok(())
