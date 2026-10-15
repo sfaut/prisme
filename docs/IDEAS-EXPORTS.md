@@ -28,7 +28,19 @@ Règles communes :
 - **Nombres en JSON** **[décidé]** : les colonnes entières, flottantes et décimales s'écrivent en nombres JSON, recopiés tels que le serveur les a envoyés (jamais convertis par `Number`, donc sans perte sur BIGINT et DECIMAL à l'écriture). À ajuster si la relecture par JavaScript pose problème.
 - **Colonnes JSON** **[décidé]** : une valeur reconnue comme JSON (`contentKind.ts`) s'insère comme objet imbriqué en JSON et NDJSON.
 - **Noms de colonnes en double** (`SELECT a.id, b.id`) **[décidé]** : l'export est refusé, quel que soit le format, avec une erreur explicite qui nomme les colonnes en cause. Le risque écarté est l'écrasement silencieux d'une colonne par une autre.
-- **Sélection discontinue** (Ctrl-clic) : les formats en grille (tabulaire, Box-Unicode, CSV, TSV, HTML) laissent la cellule non sélectionnée vide ; les formats à objets (JSON, NDJSON, XML) omettent sa clef. Une cellule non sélectionnée ne se confond ainsi jamais avec un NULL.
+- **Sélection discontinue** (Ctrl-clic) : les formats en grille (tabulaire, Box-Unicode, CSV, TSV, HTML, images) laissent la cellule non sélectionnée vide ; les formats à objets (JSON, NDJSON, XML) omettent sa clef. Une cellule non sélectionnée ne se confond ainsi jamais avec un NULL.
+
+### 2.1 Images : PNG, WebP, SVG
+
+Le tableau s'exporte aussi en image **[décidé]** : PNG et WebP, plus SVG en variante vectorielle.
+
+- **Rendu dans le navigateur** : le tableau est dessiné directement sur un `canvas` (`fillText`, traits), puis `canvas.toBlob('image/png')` ou `toBlob('image/webp')` produit le fichier. Les deux encodages sont natifs, sans dépendance.
+- **Mise en page commune** : un module pur calcule la position de chaque cellule (largeurs, alignement à droite des nombres, dates et heures, ordre des colonnes affiché). Le canvas et le SVG reprennent ce même calcul ; le SVG garde un texte sélectionnable et reste net à toute échelle.
+- **Thème** : couleurs, police et espacements viennent des variables CSS du thème (`web/src/assets/main.css`).
+- **Netteté** : dimensions multipliées par `devicePixelRatio` ; dessin après `document.fonts.ready`, pour que la police du thème soit chargée.
+- **Capture du DOM écartée** (`html-to-image`) : la grille est virtuelle, seules les lignes visibles existent dans la page ; il faudrait la reconstruire hors écran.
+- **Portée** : la sélection ou les lignes chargées. Les navigateurs plafonnent le canvas (environ 16 000 pixels de côté, 268 millions de pixels de surface selon le navigateur), soit quelques centaines de lignes : au-delà, une erreur explicite indique le plafond. L'export complet par le serveur ne s'applique pas aux images.
+- **Presse-papiers** : il n'accepte que `image/png` (`ClipboardItem`). « Copier en image » produit donc du PNG ; WebP et SVG passent par l'export en fichier.
 
 ## 3. Interface de la copie
 
@@ -48,7 +60,7 @@ Deux portées :
 Fenêtre d'export, ouverte par un bouton de la barre du bas :
 
 - portée (lignes chargées, ou résultat complet avec l'avertissement « la requête sera réexécutée ») ;
-- format (ceux de la section 2) ;
+- format (ceux de la section 2, images comprises pour les lignes chargées) ;
 - options : en-têtes, NULL, séparateur, BOM UTF-8 pour Excel ;
 - nom de fichier proposé : `<onglet>-AAAAMMJJ-HHMMSS.<extension>`.
 
@@ -76,8 +88,9 @@ L'export complet demande des sérialiseurs en Rust, alors que ceux de la copie s
 1. Sérialiseurs TypeScript et leurs tests.
 2. Bouton « Copier », Ctrl-Maj-C et dépôt `text/html` du format tabulaire.
 3. Export des lignes chargées.
-4. Sérialiseurs Rust et fichiers de référence communs.
-5. Gestionnaire d'exports et export complet.
+4. Images : mise en page commune, PNG et WebP par le canvas, SVG.
+5. Sérialiseurs Rust et fichiers de référence communs.
+6. Gestionnaire d'exports et export complet.
 
 ## 6. Tableau des décisions
 
@@ -85,6 +98,7 @@ L'export complet demande des sérialiseurs en Rust, alors que ceux de la copie s
 |---|---|
 | Tabulaire et TSV | Deux formats : tabulaire pour les tableurs, TSV strict pour recharger en base. |
 | Box-Unicode | Ajouté à la liste. |
+| Images | PNG et WebP par le canvas du navigateur, SVG en variante vectorielle ; PNG seul dans le presse-papiers. |
 | Nombres en JSON | Nombres JSON, à ajuster si besoin. |
 | Colonnes JSON | Objets imbriqués. |
 | Noms de colonnes en double | Export refusé, quel que soit le format. |
@@ -100,3 +114,4 @@ L'export complet demande des sérialiseurs en Rust, alors que ceux de la copie s
 5. **Noms en double et copie** : le refus vaut-il aussi pour la copie dans le presse-papiers, y compris en tabulaire, où l'écrasement n'existe pas ?
 6. **Colonne JSON invalide** : une valeur d'une colonne JSON qui ne s'analyse pas reste-t-elle une chaîne (le type change alors d'une ligne à l'autre), ou l'export échoue-t-il ?
 7. **Volume du presse-papiers** : faut-il plafonner la copie (nombre de cellules), et proposer l'export au-delà ?
+8. **Thème des images** : celui de l'écran, ou toujours le thème clair, plus lisible dans un document imprimé ou un courriel ? Un choix dans la fenêtre d'export est possible.
