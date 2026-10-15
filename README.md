@@ -209,14 +209,15 @@ Pour regarder la base interne, ouvrir `./tmp/prisme.db` avec n'importe quel clie
 
 GitHub Actions (`.github/workflows/ci.yaml`) vérifie chaque push sur `master` et chaque pull request : formatage, lint, types et tests de l'interface ; formatage, `clippy` et tous les tests du backend, y compris ceux qui demandent Docker ; puis compilation des exécutables Windows, Linux et macOS, interface embarquée. Ces exécutables sont téléchargeables dans les artefacts de l'exécution (onglet « Actions », connexion à GitHub requise, conservés 90 jours).
 
-Pour publier une version, pousser un tag `v*` :
+Une version se publie par une release GitHub, dont le changelog est rédigé à la main (processus complet dans [CLAUDE.md](CLAUDE.md), section « Publication d'une version »). Les versions de `Cargo.toml` et de `web/package.json` doivent déjà valoir celle de l'étiquette, et le commit visé être sur GitHub :
 
 ```
-git tag --annotate v0.1.0 --message "Prisme v0.1.0"
+git tag --annotate v0.1.0 --message "Prisme v0.1.0" origin/master
 git push origin v0.1.0
+gh release create v0.1.0 --verify-tag --title v0.1.0 --notes-file changelog.md
 ```
 
-La CI crée alors une release GitHub, avec `prisme-v0.1.0-windows-x86_64.exe`, `prisme-v0.1.0-linux-x86_64` et `prisme-v0.1.0-macos-universal` (Apple Silicon et Intel), téléchargeables directement depuis la page « Releases » du dépôt. L'exécutable Windows intègre le runtime C (voir `.cargo/config.toml`) : il ne demande pas d'installer le Visual C++ Redistributable.
+La release publiée relance la CI sur ce commit, qui vérifie les versions puis ajoute à la release `prisme-v0.1.0-windows-x86_64.exe`, `prisme-v0.1.0-linux-x86_64` et `prisme-v0.1.0-macos-universal` (Apple Silicon et Intel), téléchargeables directement depuis la page « Releases » du dépôt. Ils arrivent une vingtaine de minutes après la publication. L'exécutable Windows intègre le runtime C (voir `.cargo/config.toml`) : il ne demande pas d'installer le Visual C++ Redistributable.
 
 Les exécutables ne sont pas signés. Sous Windows, SmartScreen avertit au premier lancement (« Informations complémentaires », puis « Exécuter quand même »). Sous Linux et macOS, le fichier téléchargé doit d'abord être rendu exécutable ; macOS bloque en plus un binaire téléchargé non signé, et lever ce blocage se fait une fois :
 

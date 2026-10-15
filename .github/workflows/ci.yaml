@@ -5,23 +5,27 @@
 # Docker), puis compilation des exécutables Windows, Linux et macOS,
 # téléchargeables dans les artefacts de l'exécution.
 #
-# À chaque tag v* (ex. v0.1.0) : en plus, création d'une release GitHub qui
-# porte les exécutables, téléchargeables directement depuis la page Releases.
+# À la publication d'une release GitHub (créée avec gh, changelog rédigé à la
+# main, voir CLAUDE.md, « Publication d'une version ») : les mêmes étapes sur
+# le commit de l'étiquette, puis les exécutables sont ajoutés à cette release,
+# téléchargeables directement depuis la page Releases. La CI n'écrit jamais
+# les notes de la release.
 
 name: CI
 
 on:
   push:
     branches: [master]
-    tags: ["v*"]
   pull_request:
+  release:
+    types: [published]
   workflow_dispatch:
 
 # Une nouvelle exécution sur la même branche annule la précédente, sauf pour
-# un tag : une release ne doit pas s'interrompre en route.
+# une release : elle ne doit pas s'interrompre en route.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'release' }}
 
 permissions:
   contents: read
@@ -75,6 +79,23 @@ jobs:
       - uses: actions/checkout@v5
       # Installe la version figée par rust-toolchain.toml.
       - run: rustup toolchain install
+      # Release : les versions de Cargo.toml et de web/package.json doivent
+      # être celles de l'étiquette (v0.2.0 → 0.2.0), sinon prisme --version
+      # mentirait. Vérifié avant les longues compilations.
+      - name: Versions conformes à l'étiquette
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          expected="${TAG#v}"
+          cargo_version=$(cargo metadata --no-deps --format-version 1 \
+            | jq --raw-output '.packages[] | select(.name == "prisme-server") | .version')
+          web_version=$(jq --raw-output .version web/package.json)
+          echo "Étiquette $TAG, Cargo $cargo_version, interface $web_version"
+          if [ "$cargo_version" != "$expected" ] || [ "$web_version" != "$expected" ]; then
+            echo "::error::Les versions doivent valoir $expected : committer la montée de version avant l'étiquette."
+            exit 1
+          fi
       - uses: Swatinem/rust-cache@v2
       - name: Formatage (cargo fmt)
         run: cargo fmt --all --check
@@ -155,11 +176,11 @@ jobs:
           path: target/release/${{ matrix.binary }}
           if-no-files-found: error
 
-  # Release GitHub, uniquement pour un tag v* : les exécutables y sont
-  # renommés avec la version et la plateforme.
+  # Release publiée : les exécutables y sont ajoutés, renommés avec la
+  # version et la plateforme. Les notes de la release restent intactes.
   release:
     name: Release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'release'
     needs: [build]
     runs-on: ubuntu-latest
     permissions:
@@ -169,14 +190,14 @@ jobs:
         with:
           pattern: prisme-*
           path: artifacts/
-      - name: Noms des fichiers livrés
+      - name: Ajout des exécutables à la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
         run: |
           mkdir dist
-          cp artifacts/prisme-windows-x86_64/prisme.exe "dist/prisme-${GITHUB_REF_NAME}-windows-x86_64.exe"
-          cp artifacts/prisme-linux-x86_64/prisme "dist/prisme-${GITHUB_REF_NAME}-linux-x86_64"
-          cp artifacts/prisme-macos-universal/prisme "dist/prisme-${GITHUB_REF_NAME}-macos-universal"
+          cp artifacts/prisme-windows-x86_64/prisme.exe "dist/prisme-$TAG-windows-x86_64.exe"
+          cp artifacts/prisme-linux-x86_64/prisme "dist/prisme-$TAG-linux-x86_64"
+          cp artifacts/prisme-macos-universal/prisme "dist/prisme-$TAG-macos-universal"
           chmod +x dist/prisme-*
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          generate_release_notes: true
+          gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
