@@ -61,11 +61,13 @@ Dérogation à la directive générale « lecture seule » : dans ce dépôt, Cl
 
 ### Publication d'une version
 
-Dans ce seul cadre, Claude Code pousse l'étiquette et crée la release GitHub avec `gh`. La release publiée déclenche la compilation des exécutables (`.github/workflows/ci.yaml`), qui les y attache.
+Dans ce seul cadre, Claude Code pousse l'étiquette et crée la release GitHub avec `gh`. La release publiée déclenche la compilation des exécutables (`.github/workflows/ci.yaml`), qui les y attache. Le changelog est rédigé par Claude Code et validé par Sébastien, jamais généré automatiquement.
+
+L'étiquette et le changelog portent sur ce qui est sur GitHub (`origin/master`), jamais sur des commits restés locaux.
 
 1. Sébastien donne le numéro de l'étiquette, par exemple `v0.2.0`.
-2. Vérifier : format `vX.Y.Z`, numéro supérieur à la dernière étiquette (`git tag --list --sort=-version:refname`), arbre de travail propre.
-3. Rédiger le changelog d'après l'historique depuis l'étiquette précédente (`git log --oneline v0.1.0..HEAD`), ou depuis le début pour la première. En français, pour l'utilisateur de Prisme : plusieurs commits peuvent tenir en une ligne, les commits sans effet visible sont résumés ou omis. Une section par icône, dans cet ordre, les sections vides omises :
+2. Vérifier : format `vX.Y.Z`, numéro supérieur à la dernière étiquette (`git tag --list --sort=-version:refname`), arbre de travail propre. Après `git fetch`, `master` doit être identique à `origin/master` : un commit local non poussé entrerait dans la release sans figurer au changelog. Sinon, s'arrêter et le signaler.
+3. Rédiger le changelog d'après l'historique de GitHub depuis l'étiquette précédente (`git log --oneline v0.1.0..origin/master`), ou depuis le début pour la première. En français, pour l'utilisateur de Prisme : plusieurs commits peuvent tenir en une ligne, les commits sans effet visible sont résumés ou omis. Une section par icône, dans cet ordre, les sections vides omises :
    - 🚀 Lancement, informations générales
    - 💥 Changement incompatible
    - 🗑️ Retrait de fonctionnalité
@@ -74,10 +76,10 @@ Dans ce seul cadre, Claude Code pousse l'étiquette et crée la release GitHub a
    - 🐞 Correction de bug
    - ⚙️ Optimisation interne
    - 📝 Documentation
-4. Soumettre le changelog à Sébastien. Rien n'est poussé sans sa validation.
+4. Soumettre le changelog à Sébastien, avec le commit de `origin/master` sur lequel il porte. Rien n'est poussé sans sa validation.
 5. Après validation, committer la montée de version (« Passe la version à X.Y.Z ») : `version` de `Cargo.toml` à la racine, `Cargo.lock`, `web/package.json` et `web/package-lock.json` (`npm version X.Y.Z --no-git-tag-version`).
-6. Sébastien pousse `master`. Vérifier que le commit de version est sur `origin/master` (`git fetch`, puis `git merge-base --is-ancestor HEAD origin/master`) et que la CI y est verte (`gh run list`). Sinon, s'arrêter.
-7. Créer l'étiquette annotée (`git tag --annotate vX.Y.Z --message "Prisme vX.Y.Z"`), la pousser (`git push origin vX.Y.Z`), puis créer la release : `gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file <changelog>`.
+6. Sébastien pousse `master`. Après `git fetch`, vérifier que `origin/master` est exactement le commit de version (`git rev-parse HEAD origin/master`), et que son parent est le commit soumis à l'étape 4 : un autre commit arrivé entre-temps manquerait au changelog. Attendre que la CI y soit verte (`gh run list`). Sinon, s'arrêter.
+7. Créer l'étiquette annotée sur ce commit (`git tag --annotate vX.Y.Z --message "Prisme vX.Y.Z" origin/master`), la pousser (`git push origin vX.Y.Z`), puis créer la release : `gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file <changelog>`.
 
 ## Commandes
 
