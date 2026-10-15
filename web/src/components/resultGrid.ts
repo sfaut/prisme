@@ -444,13 +444,14 @@ export function isSelected(selection: GridSelection, row: number, column: number
 }
 
 /**
- * Copie la sélection en texte tabulé, collable dans un tableur.
+ * Copie brute de la sélection : les valeurs telles quelles, séparées par des
+ * tabulations, une ligne par ligne du résultat, collable dans un tableur.
  *
  * Le texte couvre les lignes et les colonnes touchées par la sélection ; une
  * cellule non sélectionnée à l'intérieur de ce cadre est copiée vide. NULL
- * est copié comme une cellule vide. Une valeur qui contient une tabulation,
- * un retour à la ligne ou un guillemet est mise entre guillemets, avec les
- * guillemets internes doublés (format des tableurs).
+ * est copié comme une cellule vide. Les guillemets passent tels quels ; les
+ * caractères de contrôle d'une valeur ou d'un nom de colonne sont écrits en
+ * toutes lettres (`rawCell`).
  *
  * @param selection Sélection.
  * @param view Vue : indices des lignes sources.
@@ -477,13 +478,13 @@ export function selectionToText(
         const source = view[row]
         const field = order[column] ?? column
         const cell = source === undefined ? null : (rows[source]?.[field] ?? null)
-        return isSelected(selection, row, column) ? escapeCell(cell ?? '') : ''
+        return isSelected(selection, row, column) ? rawCell(cell ?? '') : ''
       })
       .join('\t'),
   )
   if (withHeaders && columnIndexes.length > 0) {
     lines.unshift(
-      columnIndexes.map((column) => escapeCell(columns[order[column] ?? column] ?? '')).join('\t'),
+      columnIndexes.map((column) => rawCell(columns[order[column] ?? column] ?? '')).join('\t'),
     )
   }
   return lines.join('\n')
@@ -511,10 +512,42 @@ function coveredIndexes(
 }
 
 /**
- * Met une valeur entre guillemets si elle contient un séparateur ou un guillemet.
+ * Écriture littérale des caractères de contrôle qui en ont une, bien connue
+ * (séquences d'échappement du C, table ASCII).
+ */
+const CONTROL_ESCAPES: Record<number, string> = {
+  0x00: '\\0',
+  0x07: '\\a',
+  0x08: '\\b',
+  0x09: '\\t',
+  0x0a: '\\n',
+  0x0b: '\\v',
+  0x0c: '\\f',
+  0x0d: '\\r',
+  0x1b: '\\e',
+}
+
+/**
+ * Valeur copiée telle quelle, ses caractères de contrôle écrits en toutes
+ * lettres : une tabulation devient `\t`, un retour à la ligne `\n`, etc.
+ * (`CONTROL_ESCAPES`) ; un caractère de contrôle sans écriture connue
+ * devient `\xHH` (code hexadécimal). La copie garde ainsi une valeur par
+ * cellule et une ligne par ligne du résultat.
+ *
+ * Les `\` déjà présents restent tels quels (choix de Sébastien, ticket #3) :
+ * un `\t` écrit dans la valeur ne se distingue plus d'une tabulation. Cette
+ * copie est faite pour aller vite ; un export exact passera par CSV ou TSV.
  *
  * @param value Valeur à copier.
  */
-function escapeCell(value: string): string {
-  return /[\t\n\r"]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+function rawCell(value: string): string {
+  let text = ''
+  for (const character of value) {
+    const code = character.codePointAt(0) ?? 0
+    const control = code < 0x20 || (code >= 0x7f && code <= 0x9f)
+    text += control
+      ? (CONTROL_ESCAPES[code] ?? `\\x${code.toString(16).toUpperCase().padStart(2, '0')}`)
+      : character
+  }
+  return text
 }

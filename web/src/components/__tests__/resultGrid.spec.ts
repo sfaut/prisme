@@ -139,12 +139,35 @@ describe('copie', () => {
     expect(selectionToText(selection, view, rows, columns, false)).toBe('10\t\n\t')
   })
 
-  it('protège les tabulations, retours à la ligne et guillemets', () => {
-    const special: Cell[][] = [['a\tb', 'dit "oui"', 'x\ny']]
-    const selection = selectAll(1, 3)
-    expect(selectionToText(selection, [0], special, columns, false)).toBe(
-      '"a\tb"\t"dit ""oui"""\t"x\ny"',
+  it('copie les valeurs brutes, guillemets compris', () => {
+    const quoted: Cell[][] = [['v1.1', '"v1.2"', 'dit "oui"']]
+    expect(selectionToText(selectAll(1, 3), [0], quoted, columns, false)).toBe(
+      'v1.1\t"v1.2"\tdit "oui"',
     )
+  })
+
+  it('écrit en toutes lettres les caractères de contrôle', () => {
+    const special: Cell[][] = [['a\tb', 'x\r\ny', '\0\x07\b\v\f\x1b']]
+    expect(selectionToText(selectAll(1, 3), [0], special, columns, false)).toBe(
+      'a\\tb\tx\\r\\ny\t\\0\\a\\b\\v\\f\\e',
+    )
+  })
+
+  it('écrit en hexadécimal un caractère de contrôle sans écriture connue', () => {
+    const special: Cell[][] = [['\x01\x1f\x7f\x85', 'é', 'ok']]
+    expect(selectionToText(selectAll(1, 3), [0], special, columns, false)).toBe(
+      '\\x01\\x1F\\x7F\\x85\té\tok',
+    )
+  })
+
+  it('laisse les barres obliques inverses telles quelles', () => {
+    const paths: Cell[][] = [['C:\\dir', 'a\\tb', '']]
+    expect(selectionToText(selectAll(1, 3), [0], paths, columns, false)).toBe('C:\\dir\ta\\tb\t')
+  })
+
+  it('écrit aussi en toutes lettres les contrôles des noms de colonnes', () => {
+    const selection = selectColumn(emptySelection(), 0, 1, 'replace')
+    expect(selectionToText(selection, [0], [['1']], ['a\tb'], true)).toBe('a\\tb\n1')
   })
 })
 

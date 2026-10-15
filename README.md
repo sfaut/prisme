@@ -76,7 +76,7 @@ L'exécutable `target/release/prisme.exe` contient alors `web/dist` : lancé seu
 | Sélectionner | clic sur une cellule, un numéro de ligne ou un nom de colonne ; glisser pour une plage, ou sur les numéros de ligne pour un groupe de lignes ; clic sur le coin supérieur gauche pour tout sélectionner |
 | Étendre / ajouter | Maj-clic / Ctrl-clic |
 | Tout sélectionner, vider | Ctrl-A, Échap |
-| Copier | Ctrl-C, avec les noms des colonnes en première ligne (texte tabulé, collable dans un tableur ; NULL copié vide) |
+| Copier | Ctrl-C, avec les noms des colonnes en première ligne : copie brute, valeurs telles quelles (guillemets compris) séparées par des tabulations, collable dans un tableur ; NULL copié vide ; les caractères de contrôle d'une valeur écrits en toutes lettres (`\t`, `\n`, `\r`, `\0`, `\b`, `\f`…, sinon `\xHH`), pour garder une valeur par cellule et une ligne par ligne du résultat |
 
 ## Données locales
 
