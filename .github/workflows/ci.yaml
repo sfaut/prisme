@@ -142,7 +142,9 @@ jobs:
           cargo build --release --bin prisme --target aarch64-apple-darwin
           cargo build --release --bin prisme --target x86_64-apple-darwin
           mkdir -p target/release
-          lipo -create -output target/release/prisme             target/aarch64-apple-darwin/release/prisme             target/x86_64-apple-darwin/release/prisme
+          lipo -create -output target/release/prisme \
+            target/aarch64-apple-darwin/release/prisme \
+            target/x86_64-apple-darwin/release/prisme
           lipo -info target/release/prisme
       - uses: actions/upload-artifact@v4
         with:
