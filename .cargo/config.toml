@@ -6,3 +6,8 @@ TS_RS_EXPORT_DIR = { value = "web/src/api/generated", relative = true }
 # i64 et u64 deviennent `number` côté TypeScript : identifiants et compteurs
 # restent loin de 2^53.
 TS_RS_LARGE_INT = "number"
+
+# Sous Windows (MSVC), le runtime C est intégré à prisme.exe : l'exécutable ne
+# réclame plus VCRUNTIME140.dll, absente de certains postes.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
