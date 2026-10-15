@@ -30,9 +30,15 @@ Premier lancement :
     name = "prisme",
     version,
     about = "Client web multi-bases de données en notebook",
-    after_help = AFTER_HELP
+    after_help = AFTER_HELP,
+    disable_version_flag = true
 )]
 pub struct Config {
+    /// Print version
+    // Option de version propre à Prisme : -v en court (clap propose -V), --version en long.
+    #[arg(short = 'v', long, action = clap::ArgAction::Version)]
+    version: (),
+
     /// Adresse d'écoute du serveur web, pour ce lancement. Elle doit être
     /// locale (127.0.0.1 ou ::1). Par défaut : 127.0.0.1 et le port
     /// enregistré (8484 au départ).
@@ -102,6 +108,18 @@ mod tests {
     fn rejects_network_addresses() {
         assert!(config_listening_on("0.0.0.0:8484").validate().is_err());
         assert!(config_listening_on("192.168.1.10:8484").validate().is_err());
+    }
+
+    #[test]
+    fn version_is_v_or_version() {
+        use clap::error::ErrorKind;
+
+        for flag in ["-v", "--version"] {
+            let error = Config::try_parse_from(["prisme", flag]).unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::DisplayVersion);
+        }
+        let error = Config::try_parse_from(["prisme", "-V"]).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::UnknownArgument);
     }
 
     #[test]
