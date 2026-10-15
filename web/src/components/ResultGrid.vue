@@ -931,9 +931,11 @@ const filterColumn = computed({
     text-align: end;
   }
 
+  /* NULL en petites capitales : plus discret qu'une valeur de la colonne. */
   &.null {
     color: var(--fg-dimmed);
     font-style: italic;
+    font-variant-caps: all-small-caps;
   }
 }
 
