@@ -79,7 +79,7 @@ L'étiquette et le changelog portent sur ce qui est sur GitHub (`origin/master`)
 
 1. Sébastien donne le numéro de l'étiquette, par exemple `v0.2.0`.
 2. Vérifier : format `vX.Y.Z`, numéro supérieur à la dernière étiquette (`git tag --list --sort=-version:refname`), arbre de travail propre. Après `git fetch`, `master` doit être identique à `origin/master` : un commit local non poussé entrerait dans la release sans figurer au changelog. Sinon, s'arrêter et le signaler.
-3. Rédiger le changelog d'après l'historique de GitHub depuis l'étiquette précédente (`git log --oneline v0.1.0..origin/master`), ou depuis le début pour la première. En français, pour l'utilisateur de Prisme : plusieurs commits peuvent tenir en une ligne, les commits sans effet visible sont résumés ou omis. Une section par icône, dans cet ordre, les sections vides omises :
+3. Rédiger le changelog d'après l'historique de GitHub depuis l'étiquette précédente (`git log --oneline v0.1.0..origin/master`), ou depuis le début pour la première. En français, pour l'utilisateur de Prisme : plusieurs commits peuvent tenir en une ligne, les commits sans effet visible sont résumés ou omis. Toute évolution ou correction issue d'un ticket le cite, avec son lien (`[#12](https://github.com/sfaut/prisme/issues/12)`) : `docs/CHANGELOG.md` ne transforme pas un `#12` nu en lien. Les tickets se retrouvent par le `Réf. #N` des commits. Une section par icône, dans cet ordre, les sections vides omises :
    - 🚀 Lancement, informations générales
    - 💥 Changement incompatible
    - 🗑️ Retrait de fonctionnalité
