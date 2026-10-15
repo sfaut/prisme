@@ -205,6 +205,19 @@ Puis enregistrer une connexion vers `127.0.0.1`, port `3307` ou `3308`, compte `
 
 Pour regarder la base interne, ouvrir `./tmp/prisme.db` avec n'importe quel client SQLite (DBeaver, DB Browser for SQLite, `sqlite3`). La colonne `password_secret` ne contient que des octets chiffrés.
 
+## Intégration continue et livraison
+
+GitHub Actions (`.github/workflows/ci.yaml`) vérifie chaque push sur `master` et chaque pull request : formatage, lint, types et tests de l'interface ; formatage, `clippy` et tous les tests du backend, y compris ceux qui demandent Docker ; puis compilation des exécutables Windows et Linux, interface embarquée. Ces exécutables sont téléchargeables dans les artefacts de l'exécution (onglet « Actions », connexion à GitHub requise, conservés 90 jours).
+
+Pour publier une version, pousser un tag `v*` :
+
+```
+git tag --annotate v0.1.0 --message "Prisme v0.1.0"
+git push origin v0.1.0
+```
+
+La CI crée alors une release GitHub, avec `prisme-v0.1.0-windows-x86_64.exe` et `prisme-v0.1.0-linux-x86_64`, téléchargeables directement depuis la page « Releases » du dépôt. L'exécutable Windows intègre le runtime C (voir `.cargo/config.toml`) : il ne demande pas d'installer le Visual C++ Redistributable.
+
 ## Organisation du dépôt
 
 ```

@@ -1,0 +1,160 @@
+# Intégration continue et livraison de Prisme.
+#
+# À chaque push sur master et à chaque pull request : contrôle de l'interface,
+# contrôle et tests du backend (y compris les tests sur de vrais serveurs, dans
+# Docker), puis compilation des exécutables Windows et Linux, téléchargeables
+# dans les artefacts de l'exécution.
+#
+# À chaque tag v* (ex. v0.1.0) : en plus, création d'une release GitHub qui
+# porte les exécutables, téléchargeables directement depuis la page Releases.
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+# Une nouvelle exécution sur la même branche annule la précédente, sauf pour
+# un tag : une release ne doit pas s'interrompre en route.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Interface Vue : formatage, lint, types, tests, puis compilation de web/dist,
+  # transmis aux compilations de l'exécutable.
+  web:
+    name: Interface
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      # Les scripts lint et format du projet corrigent les fichiers (--fix,
+      # --write) : la CI appelle les outils en mode vérification.
+      - name: Formatage (Prettier)
+        run: npx prettier --check --experimental-cli src/
+      - name: Lint (Oxlint, ESLint)
+        run: |
+          npx oxlint .
+          npx eslint .
+      - name: Types (vue-tsc)
+        run: npm run type-check
+      - name: Tests (Vitest)
+        run: npx vitest --run
+      - name: Compilation de l'interface
+        run: npm run build-only
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist/
+          if-no-files-found: error
+
+  # Backend Rust : formatage, analyse statique, tous les tests. Les runners
+  # Ubuntu fournissent Docker : les tests sur MySQL / MariaDB tournent aussi.
+  rust:
+    name: Backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # Installe la version figée par rust-toolchain.toml.
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Formatage (cargo fmt)
+        run: cargo fmt --all --check
+      - name: Analyse statique (cargo clippy)
+        run: cargo clippy --all-targets -- --deny warnings
+      - name: Tests (y compris ceux qui demandent Docker)
+        run: cargo test -- --include-ignored
+      # cargo test régénère les types TypeScript (ts-rs) : ils doivent être
+      # identiques à ceux du dépôt, sinon un commit les a oubliés.
+      - name: Types TypeScript générés à jour
+        run: |
+          if [ -n "$(git status --porcelain -- web/src/api/generated)" ]; then
+            git status --short -- web/src/api/generated
+            git diff -- web/src/api/generated
+            echo "::error::Types ts-rs non committés : lancer cargo test et committer web/src/api/generated."
+            exit 1
+          fi
+
+  # Exécutables, interface embarquée. Sous Windows, le runtime C est intégré
+  # (crt-static, dans .cargo/config.toml) : pas de VCRUNTIME140.dll à installer.
+  build:
+    name: Exécutable ${{ matrix.name }}
+    needs: [web, rust]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x86_64
+            os: windows-latest
+            binary: prisme.exe
+          - name: linux-x86_64
+            os: ubuntu-latest
+            binary: prisme
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist/
+      # rust-embed tolère un web/dist absent (allow_missing) : sans ce
+      # contrôle, l'exécutable serait livré sans interface.
+      - name: Présence de l'interface compilée
+        run: test -f web/dist/index.html
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+      - name: Compilation
+        run: cargo build --release --bin prisme
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prisme-${{ matrix.name }}
+          path: target/release/${{ matrix.binary }}
+          if-no-files-found: error
+
+  # Release GitHub, uniquement pour un tag v* : les exécutables y sont
+  # renommés avec la version et la plateforme.
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: prisme-*
+          path: artifacts/
+      - name: Noms des fichiers livrés
+        run: |
+          mkdir dist
+          cp artifacts/prisme-windows-x86_64/prisme.exe "dist/prisme-${GITHUB_REF_NAME}-windows-x86_64.exe"
+          cp artifacts/prisme-linux-x86_64/prisme "dist/prisme-${GITHUB_REF_NAME}-linux-x86_64"
+          chmod +x "dist/prisme-${GITHUB_REF_NAME}-linux-x86_64"
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
