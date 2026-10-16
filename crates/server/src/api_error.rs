@@ -13,6 +13,7 @@ use prisme_connectors::mysql::MysqlError;
 
 use crate::connections::ConnectionsError;
 use crate::editors::EditorsError;
+use crate::profile::ProfileError;
 use crate::settings::SettingsError;
 
 /// JSON body of an error response.
@@ -73,6 +74,19 @@ impl From<SettingsError> for ApiError {
         match error {
             SettingsError::InvalidRowLimit(_) => Self::BadRequest(error.to_string()),
             SettingsError::Sqlite(_) => {
+                tracing::error!("{error}");
+                Self::Internal
+            }
+        }
+    }
+}
+
+impl From<ProfileError> for ApiError {
+    /// Translates a profile management error into an HTTP error.
+    fn from(error: ProfileError) -> Self {
+        match error {
+            ProfileError::NameTooLong { .. } => Self::BadRequest(error.to_string()),
+            ProfileError::Sqlite(_) => {
                 tracing::error!("{error}");
                 Self::Internal
             }

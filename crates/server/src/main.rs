@@ -15,6 +15,7 @@ mod connections;
 mod editors;
 mod explorer;
 mod master_key;
+mod profile;
 mod query_session;
 mod recorder;
 mod secrets;

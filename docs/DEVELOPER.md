@@ -135,6 +135,8 @@ On error (status 4xx or 5xx), PowerShell raises an exception, and Prisme's messa
 | `POST /api/connections/{id}/probe` | Connects, returns `{"flavor": ..., "version": ...}`. | 404 unknown connection, 502 server unreachable or access denied, 504 no answer within 10 s |
 | `GET /api/settings` | Settings: `{"row_limit": 1000, "row_limit_choices": [...]}`. | — |
 | `PUT /api/settings` | Changes the default limit, returns the updated settings. | 400 value not among the choices |
+| `GET /api/profile` | Profile: `{"email": "...", "first_name": "", "last_name": ""}`. | — |
+| `PUT /api/profile` | Changes the names (trimmed, 100 characters at most), returns the profile. | 400 name too long |
 
 ### Running queries over WebSocket
 

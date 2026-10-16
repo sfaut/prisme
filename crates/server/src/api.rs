@@ -15,6 +15,8 @@
 //! | `GET /api/connections/{id}/catalog` | Databases, tables and columns (see `explorer.rs`).            |
 //! | `GET /api/settings`                 | Settings of the user, with the allowed choices.               |
 //! | `PUT /api/settings`                 | Changes the settings, returns the updated settings.           |
+//! | `GET /api/profile`                  | Profile of the user: names and email address.                 |
+//! | `PUT /api/profile`                  | Changes the names, returns the updated profile.               |
 //! | `POST /api/beautify`                | Beautifies SQL (keywords in capitals...).                     |
 //! | `POST /api/analyze`                 | Analyses the editor's text (see `analyze.rs`).                |
 //! | `GET /api/dialects/{flavor}/keywords` | Keywords of the dialect (`?version=`: those of the version). |
@@ -45,6 +47,7 @@ use crate::connections::{self, ConnectionSummary, NewConnection, ProbeRequest};
 use crate::editors;
 use crate::explorer;
 use crate::master_key::MasterKey;
+use crate::profile::{self, Profile, ProfileUpdate};
 use crate::query_session;
 use crate::recorder::Recorder;
 use crate::sessions::Sessions;
@@ -124,6 +127,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/connections/{id}/query", get(query_socket))
         .route("/api/editors/{id}/session", get(editor_session))
         .route("/api/settings", get(get_settings).put(put_settings))
+        .route("/api/profile", get(get_profile).put(put_profile))
         .route("/api/beautify", post(beautify_sql))
         .route("/api/analyze", post(analyze_sql))
         .route("/api/dialects/{flavor}/keywords", get(dialect_keywords))
@@ -387,6 +391,29 @@ async fn put_settings(
         .with_db(move |db, _key| settings::update(db, user.id, &update))
         .await?;
     Ok(Json(settings))
+}
+
+/// `GET /api/profile`: profile of the current user.
+async fn get_profile(
+    State(state): State<AppState>,
+    user: CurrentUser,
+) -> Result<Json<Profile>, ApiError> {
+    let profile = state
+        .with_db(move |db, _key| profile::load(db, user.id))
+        .await?;
+    Ok(Json(profile))
+}
+
+/// `PUT /api/profile`: changes the names of the current user and returns the profile.
+async fn put_profile(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Json(update): Json<ProfileUpdate>,
+) -> Result<Json<Profile>, ApiError> {
+    let profile = state
+        .with_db(move |db, _key| profile::update(db, user.id, &update))
+        .await?;
+    Ok(Json(profile))
 }
 
 /// `POST /api/connections/probe`: connects with typed settings, not saved yet,
