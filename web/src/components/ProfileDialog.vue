@@ -82,11 +82,11 @@ async function save(): Promise<void> {
 <template>
   <ui-dialog v-model:open="open" title="Profil" description="Nom et prénom de l’utilisateur">
     <form id="profile-form" class="flex flex-col gap-gap" @submit.prevent="save">
-      <ui-field label="Prénom">
-        <ui-input v-model="form.first_name" :maxlength="100" autocomplete="given-name" />
-      </ui-field>
       <ui-field label="Nom">
         <ui-input v-model="form.last_name" :maxlength="100" autocomplete="family-name" />
+      </ui-field>
+      <ui-field label="Prénom">
+        <ui-input v-model="form.first_name" :maxlength="100" autocomplete="given-name" />
       </ui-field>
       <ui-field label="E-mail">
         <span class="truncate text-fg-muted" :title="email">{{ email }}</span>
