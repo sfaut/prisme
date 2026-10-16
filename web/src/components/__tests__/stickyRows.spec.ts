@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { ExplorerNode } from '../explorerNodes'
-import { pinnedRows, visibleRows } from '../stickyRows'
+import { pinnedRows, type VisibleRows, visibleRows } from '../stickyRows'
 
 const ROW_HEIGHT = 24
 
@@ -53,65 +53,104 @@ const everythingOpen = [
 ]
 
 /**
- * Labels of rows.
+ * Labels of the pinned rows.
  *
- * @param rows Rows to read.
+ * @param pinned Pinned rows.
  */
-function labels(rows: { node: ExplorerNode }[]): string[] {
-  return rows.map((row) => row.node.label)
+function labels(pinned: { node: ExplorerNode }[]): string[] {
+  return pinned.map((row) => row.node.label)
+}
+
+/**
+ * Pinned rows for a scroll position, in rows.
+ *
+ * @param visible Rows displayed by the tree.
+ * @param rows Scroll position, in rows (may be fractional).
+ */
+function pinnedAt(visible: VisibleRows, rows: number) {
+  return pinnedRows(visible, rows * ROW_HEIGHT, ROW_HEIGHT)
 }
 
 describe('visibleRows', () => {
   it('shows only the roots and the children of the open nodes', () => {
-    const rows = visibleRows(roots, ['sources'])
-    expect(labels(rows)).toEqual(['Sources', 'Origen'])
+    const { rows } = visibleRows(roots, ['sources'])
+    expect(rows.map((row) => row.node.label)).toEqual(['Sources', 'Origen'])
     expect(rows.map((row) => row.level)).toEqual([1, 2])
     expect(rows.map((row) => row.parent)).toEqual([null, 0])
   })
 
-  it('lists the rows in display order, with their depth and their parent', () => {
-    const rows = visibleRows(roots, everythingOpen)
+  it('lists the rows in display order, with their depth, their parent and their section', () => {
+    const { rows } = visibleRows(roots, everythingOpen)
     expect(rows).toHaveLength(18)
     // Row 6 is the first column, below the folder of the columns (row 5).
-    expect(rows[6]).toMatchObject({ level: 7, parent: 5 })
-    expect(rows[5]).toMatchObject({ level: 6, parent: 4 })
+    expect(rows[6]).toMatchObject({ level: 7, parent: 5, end: 6 })
+    // The columns folder ends with the last column (row 15); the table holds
+    // the index folder (row 16) after it.
+    expect(rows[5]).toMatchObject({ level: 6, parent: 4, end: 15 })
+    expect(rows[4]).toMatchObject({ level: 5, parent: 3, end: 16 })
     // The index folder is closed: its (absent) children do not show.
-    expect(rows[16]).toMatchObject({ level: 6, parent: 4 })
-    expect(rows[17]).toMatchObject({ level: 3, parent: 1 })
+    expect(rows[16]).toMatchObject({ level: 6, parent: 4, end: 16 })
+    expect(rows[17]).toMatchObject({ level: 3, parent: 1, end: 17 })
+  })
+
+  it('groups the indexes of the rows by level', () => {
+    const { byLevel } = visibleRows(roots, everythingOpen)
+    expect(byLevel[1]).toEqual([0])
+    expect(byLevel[3]).toEqual([2, 17])
+    expect(byLevel[6]).toEqual([5, 16])
   })
 })
 
 describe('pinnedRows', () => {
-  const rows = visibleRows(roots, everythingOpen)
+  const visible = visibleRows(roots, everythingOpen)
 
   it('pins nothing at the top of the tree', () => {
-    expect(pinnedRows(rows, 0, ROW_HEIGHT)).toEqual([])
+    expect(pinnedAt(visible, 0)).toEqual([])
   })
 
-  it('pins the ancestors of the first row under the pinned rows', () => {
-    // Scrolled by five rows: the columns folder is the first row, its six
-    // ancestors and the first column line are the pinned rows, hidden under
-    // them at the top of the tree.
-    const pinned = pinnedRows(rows, 5 * ROW_HEIGHT, ROW_HEIGHT)
+  it('pins the root as soon as it leaves the top, in full', () => {
+    // A tenth of a row: the root is pinned, the source, the database and the
+    // table are already above their slots, and the column folder too.
+    expect(labels(pinnedAt(visible, 0.1))).toEqual([
+      'Sources',
+      'Origen',
+      'a',
+      'Tables',
+      't',
+      'Colonnes',
+    ])
+  })
+
+  it('pins the chain of the rows above the top of the tree, from the root down', () => {
+    // Scrolled by five rows: the columns folder is the first row under the
+    // pinned ones, and its six ancestors (itself included) fill the six slots.
+    const pinned = pinnedAt(visible, 5)
     expect(labels(pinned)).toEqual(['Sources', 'Origen', 'a', 'Tables', 't', 'Colonnes'])
     expect(pinned.map((row) => row.level)).toEqual([1, 2, 3, 4, 5, 6])
   })
 
-  it('uses the row at the scroll position, not the rows of the pinned height', () => {
-    // A position between two rows is the row above it.
-    expect(labels(pinnedRows(rows, 5 * ROW_HEIGHT + 10, ROW_HEIGHT))).toEqual(
-      labels(pinnedRows(rows, 5 * ROW_HEIGHT, ROW_HEIGHT)),
-    )
+  it('keeps the source pinned while its section lasts, and releases the columns first', () => {
+    // The last column is at the top: the columns folder and the table no longer
+    // reach their slot, but the root and the source still do.
+    expect(labels(pinnedAt(visible, 15))).toEqual(['Sources', 'Origen'])
+    // The table is released once its last line (the index folder) reaches the top.
+    expect(labels(pinnedAt(visible, 11))).toEqual(['Sources', 'Origen', 'a', 'Tables', 't'])
   })
 
-  it('pins nothing when no count of pinned rows settles', () => {
-    // The last column is at the top: six ancestors would be pinned, which
-    // hides the rows that follow the columns and changes the count to zero
-    // (no row there), then back to six. Nothing is pinned.
-    expect(pinnedRows(rows, 15 * ROW_HEIGHT, ROW_HEIGHT)).toEqual([])
+  it('releases the columns folder once its last column reaches the top', () => {
+    // Ten rows down, the last column is still below the top: the folder stays.
+    expect(labels(pinnedAt(visible, 10))).toContain('Colonnes')
+    // Eleven rows down, the last column is above the top: the folder leaves.
+    expect(labels(pinnedAt(visible, 11))).not.toContain('Colonnes')
   })
 
   it('pins nothing past the end of the rows', () => {
-    expect(pinnedRows(rows, 100 * ROW_HEIGHT, ROW_HEIGHT)).toEqual([])
+    expect(pinnedAt(visible, 100)).toEqual([])
+  })
+
+  it('never pins a row without children', () => {
+    // Row 11, the sixth column, is above its slot at five rows and a half
+    // (slot 6), but a column has nothing below it to keep in view.
+    expect(labels(pinnedAt(visible, 5.5))).not.toContain('c6')
   })
 })

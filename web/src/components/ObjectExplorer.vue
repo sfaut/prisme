@@ -32,10 +32,11 @@
   have the same height (`--row-height`), and each level is indented by
   `--tree-indent` (variables of `main.css`).
 
-  While the tree scrolls, the ancestors of the first line under the top stay
-  pinned there (`stickyRows.ts`): the source, the database and the table keep
-  showing over their columns. The pinned lines are the lines of the tree
-  (`ExplorerLine.vue`), hidden from assistive technologies, which read the tree.
+  While the tree scrolls, each level leaves the top in full and stays pinned
+  there as long as its section lasts (`stickyRows.ts`): the source, the
+  database and the table keep showing over their columns. The pinned lines are
+  the lines of the tree (`ExplorerLine.vue`), hidden from assistive
+  technologies, which read the tree.
 -->
 <script setup lang="ts">
 import { NotebookPen, Pencil, PlugZap, Plus, RefreshCw, Trash2 } from 'lucide-vue-next'
@@ -174,9 +175,9 @@ const nodes = computed(() =>
 )
 
 /**
- * Rows displayed by the tree, in display order.
+ * Rows displayed by the tree, with the rows of each level.
  */
-const rows = computed(() => visibleRows(nodes.value, expandedKeys.value))
+const visible = computed(() => visibleRows(nodes.value, expandedKeys.value))
 
 /**
  * Position of the tree's scroll, in pixels.
@@ -184,10 +185,9 @@ const rows = computed(() => visibleRows(nodes.value, expandedKeys.value))
 const scrollTop = ref(0)
 
 /**
- * Ancestors of the rows under the top of the tree, pinned there while it
- * scrolls, so that the source, the database and the table stay visible.
+ * Levels pinned at the top of the tree while it scrolls, from the root down.
  */
-const pinned = computed(() => pinnedRows(rows.value, scrollTop.value, ROW_HEIGHT))
+const pinned = computed(() => pinnedRows(visible.value, scrollTop.value, ROW_HEIGHT))
 
 /**
  * Classes of a line of the tree, and of a pinned line, which look the same.
