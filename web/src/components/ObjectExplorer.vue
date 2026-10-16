@@ -33,36 +33,9 @@
   `--tree-indent` (variables of `main.css`).
 -->
 <script setup lang="ts">
-import {
-  Cable,
-  ChevronDown,
-  ChevronRight,
-  Columns3,
-  Database,
-  EllipsisVertical,
-  Eye,
-  Folder,
-  FolderOpen,
-  Hash,
-  KeyRound,
-  Link,
-  ListOrdered,
-  LoaderCircle,
-  Notebook,
-  NotebookPen,
-  Pencil,
-  PlugZap,
-  Plus,
-  RefreshCw,
-  ScrollText,
-  Server,
-  SquareFunction,
-  Table,
-  Trash2,
-  Zap,
-} from 'lucide-vue-next'
+import { NotebookPen, Pencil, PlugZap, Plus, RefreshCw, Trash2 } from 'lucide-vue-next'
 import { TreeItem, type TreeItemSelectEvent, TreeRoot, TreeVirtualizer } from 'reka-ui'
-import { type Component, computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 
 import { probeConnection, serverLabel } from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
@@ -71,17 +44,11 @@ import { useCatalogStore } from '@/stores/catalog'
 import { useConnectionsStore } from '@/stores/connections'
 
 import ConnectionDialog from './ConnectionDialog.vue'
-import {
-  type EntryKind,
-  type ExplorerNode,
-  SOURCES_KEY,
-  explorerTree,
-  sourceKey,
-} from './explorerNodes'
+import ExplorerLine from './ExplorerLine.vue'
+import { type ExplorerNode, SOURCES_KEY, explorerTree, sourceKey } from './explorerNodes'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
 import UiDialog from './ui/UiDialog.vue'
-import UiDropdownMenu from './ui/UiDropdownMenu.vue'
 import type { MenuItem } from './ui/menuItem'
 
 const props = defineProps<{
@@ -258,46 +225,6 @@ function expand(keys: string[]): void {
       void load(connection.id, false)
     }
   }
-}
-
-/**
- * Icon of the catalog nodes, according to their nature (folder apart: its
- * icon depends on its opening).
- */
-const ENTRY_ICONS: Record<Exclude<EntryKind, 'folder'>, Component> = {
-  table: Table,
-  view: Eye,
-  procedure: ScrollText,
-  function: SquareFunction,
-  column: Columns3,
-  index: ListOrdered,
-  'foreign-key': Link,
-  trigger: Zap,
-  loading: LoaderCircle,
-}
-
-/**
- * Icon of a node, before its label: each level has its own (roots, source,
- * database, open or closed folder, table, view, column...).
- *
- * @param node Node of the tree.
- * @param expanded Is the node open?
- */
-function nodeIcon(node: ExplorerNode, expanded: boolean): Component {
-  switch (node.role) {
-    case 'sources':
-      return Server
-    case 'source':
-      return Cable
-    case 'database':
-      return Database
-    case 'notebooks':
-      return Notebook
-  }
-  if (node.entry === undefined || node.entry === 'folder') {
-    return expanded ? FolderOpen : Folder
-  }
-  return ENTRY_ICONS[node.entry]
 }
 
 /**
@@ -481,92 +408,11 @@ watch(
             onSelect($event as TreeItemSelectEvent<ExplorerNode>, item.value as ExplorerNode)
           "
         >
-          <component
-            :is="isExpanded ? ChevronDown : ChevronRight"
-            v-if="item.value.children?.length"
-            class="size-icon-sm shrink-0 text-fg-dimmed"
+          <explorer-line
+            :node="item.value as ExplorerNode"
+            :expanded="isExpanded"
+            :menu="menuItems(item.value as ExplorerNode)"
           />
-          <span v-else class="size-icon-sm shrink-0" />
-          <component
-            :is="nodeIcon(item.value as ExplorerNode, isExpanded)"
-            class="size-icon shrink-0 text-fg-muted"
-            :class="{ 'animate-spin': item.value.entry === 'loading' }"
-          />
-
-          <!-- Column: symbols, name (bold if indexed), type and nullability. -->
-          <span v-if="item.value.column" class="tree-label flex min-w-0 flex-1 items-center">
-            <span
-              v-if="item.value.column.markSlots > 0"
-              class="inline-flex flex-none text-fg-muted"
-              :style="{ width: `${item.value.column.markSlots}em` }"
-            >
-              <KeyRound
-                v-if="item.value.column.primaryKey"
-                class="size-[1em]"
-                aria-label="Clef primaire"
-              />
-              <Hash
-                v-if="item.value.column.foreignKey"
-                class="size-[1em]"
-                aria-label="Clef étrangère"
-              />
-            </span>
-            <span
-              class="me-3 flex-none font-bold text-trim"
-              :style="{ minWidth: `${item.value.column.nameWidth}ch` }"
-            >
-              <span :class="{ 'font-normal': !item.value.column.indexed }">
-                {{ item.value.column.name }}
-              </span>
-            </span>
-            <span
-              class="truncate text-small text-fg-dimmed text-trim"
-              :title="item.value.column.details"
-            >
-              {{ item.value.column.details }}
-            </span>
-          </span>
-          <!-- Other nodes: label, then the note if any (UNIQUE, chargement…). -->
-          <span
-            v-else
-            class="tree-label min-w-0 truncate text-trim"
-            :class="{
-              'flex-1': !item.value.badge,
-              'current-database': item.value.current,
-              'font-bold':
-                item.value.current ||
-                item.value.role === 'sources' ||
-                item.value.role === 'notebooks',
-            }"
-          >
-            {{ item.value.label }}
-            <span v-if="item.value.note" class="ms-3 text-small font-normal text-fg-dimmed">
-              {{ item.value.note }}
-            </span>
-          </span>
-          <!-- Source: badge of the server's flavor, right after the name. -->
-          <span
-            v-if="item.value.badge"
-            class="flavor-badge ms-0.5 me-auto shrink-0 text-trim"
-            :data-flavor="item.value.badge"
-          >
-            {{ item.value.badge }}
-          </span>
-
-          <ui-dropdown-menu
-            v-if="menuItems(item.value as ExplorerNode)"
-            :items="menuItems(item.value as ExplorerNode) ?? []"
-          >
-            <ui-button
-              :icon="EllipsisVertical"
-              variant="ghost"
-              small
-              aria-label="Actions"
-              class="node-menu invisible group-hover:visible group-focus-visible:visible data-[state=open]:visible"
-              @click.stop
-              @keydown.stop
-            />
-          </ui-dropdown-menu>
         </tree-item>
       </tree-virtualizer>
     </tree-root>
@@ -597,24 +443,5 @@ watch(
 /* Indentation of each level: `--level` is set on the line (1 for the roots). */
 .tree-row {
   padding-inline-start: calc(var(--space-unit) + var(--tree-indent) * (var(--level) - 1));
-}
-
-/* Badge of the server's flavor: pill tinted in the engine's colors. */
-.flavor-badge {
-  padding: var(--badge-padding);
-  border-radius: var(--badge-radius);
-  font-size: var(--badge-font-size);
-  font-weight: 500;
-  letter-spacing: 0.03em;
-
-  &[data-flavor='mysql'] {
-    background: var(--badge-mysql-bg);
-    color: var(--badge-mysql);
-  }
-
-  &[data-flavor='mariadb'] {
-    background: var(--badge-mariadb-bg);
-    color: var(--badge-mariadb);
-  }
 }
 </style>
