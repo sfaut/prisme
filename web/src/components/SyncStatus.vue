@@ -1,17 +1,15 @@
 <!--
   State of the synchronisation with the internal database, in the top bar:
-  the editors' text, names and connections are saved there as they change.
-  "Synchronisé" when everything is saved, "Synchronisation…" while a save is
-  pending, and an error when the server refused the last one (the message
-  then shows in the editors' error alert and in the console).
+  every change (editors, connections, settings, profile) is saved there.
+  "Synchronisé" when everything is saved, "Synchronisation…" while a write is
+  running or waiting, and an error when the server refused the last one (its
+  message shows where the write came from).
 -->
 <script setup lang="ts">
 import { CircleAlert, CircleCheck, LoaderCircle } from 'lucide-vue-next'
 import { computed } from 'vue'
 
-import { useEditorsStore } from '@/stores/editors'
-
-const editors = useEditorsStore()
+import { syncState } from '@/api/sync'
 
 /**
  * Text and icon of each state.
@@ -25,7 +23,7 @@ const LABELS = {
 /**
  * Text, icon and tone of the current state.
  */
-const current = computed(() => LABELS[editors.syncState])
+const current = computed(() => LABELS[syncState.value])
 </script>
 
 <template>
@@ -38,7 +36,7 @@ const current = computed(() => LABELS[editors.syncState])
     <component
       :is="current.icon"
       class="size-icon shrink-0"
-      :class="{ 'animate-spin': editors.syncState === 'pending' }"
+      :class="{ 'animate-spin': syncState === 'pending' }"
     />
     <span>{{ current.text }}</span>
   </span>

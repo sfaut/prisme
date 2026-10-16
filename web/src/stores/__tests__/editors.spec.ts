@@ -1,44 +1,57 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { syncState } from '@/api/sync'
 import { useEditorsStore } from '../editors'
 
-const updateEditor = vi.fn<() => Promise<void>>()
-
-vi.mock('@/api/editors', () => ({
-  listEditors: async () => [],
-  createEditor: async () => ({ id: 1, name: '', connection_id: null, sql: '' }),
-  updateEditor: () => updateEditor(),
-}))
+/**
+ * Answers the next save with `status` (204 accepted, 500 refused).
+ */
+let saveStatus = 204
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  updateEditor.mockReset()
-  updateEditor.mockResolvedValue(undefined)
+  saveStatus = 204
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (_path: string, init: RequestInit) => {
+      if (init.method === 'POST') {
+        return new Response(JSON.stringify({ id: 1, name: '', connection_id: null, sql: '' }))
+      }
+      if (saveStatus === 204) {
+        return new Response(null, { status: 204 })
+      }
+      return new Response('{"error":"refused"}', { status: saveStatus })
+    }),
+  )
 })
 
-describe('synchronisation state', () => {
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+describe('synchronisation state of the editors', () => {
   it('is pending after a change, then synced once the server has saved it', async () => {
     const editors = useEditorsStore()
     await editors.create(null)
-    expect(editors.syncState).toBe('synced')
+    expect(syncState.value).toBe('synced')
 
     editors.setSql(1, 'SELECT 1')
-    expect(editors.syncState).toBe('pending')
+    expect(syncState.value).toBe('pending')
 
-    await vi.waitFor(() => expect(editors.syncState).toBe('synced'))
-    expect(updateEditor).toHaveBeenCalledOnce()
+    await vi.waitFor(() => expect(syncState.value).toBe('synced'))
   })
 
   it('is failed after a refused save, until a later save succeeds', async () => {
     const editors = useEditorsStore()
     await editors.create(null)
 
-    updateEditor.mockRejectedValueOnce(new Error('refused'))
+    saveStatus = 500
     editors.setSql(1, 'SELECT 1')
-    await vi.waitFor(() => expect(editors.syncState).toBe('failed'))
+    await vi.waitFor(() => expect(syncState.value).toBe('failed'))
 
+    saveStatus = 204
     editors.setSql(1, 'SELECT 2')
-    await vi.waitFor(() => expect(editors.syncState).toBe('synced'))
+    await vi.waitFor(() => expect(syncState.value).toBe('synced'))
   })
 })

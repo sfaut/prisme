@@ -7,6 +7,7 @@
  */
 
 import type { ErrorBody } from './generated/ErrorBody'
+import { trackWrite } from './sync'
 
 /**
  * Error returned by the API, with its HTTP status.
@@ -40,6 +41,20 @@ type Method = 'GET' | 'POST' | 'PUT' | 'DELETE'
  * @throws {ApiError} If the server answers with an error status.
  */
 export async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
+  const sent = send<T>(method, path, body)
+  return method === 'GET' ? sent : trackWrite(sent)
+}
+
+/**
+ * Sends a request to the API, without tracking it.
+ *
+ * @param method HTTP method.
+ * @param path Path of the route.
+ * @param body Body to send as JSON, absent for a GET.
+ * @returns The body of the response, `undefined` if it is empty.
+ * @throws {ApiError} If the server answers with an error status.
+ */
+async function send<T>(method: Method, path: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {
     method,
     headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
