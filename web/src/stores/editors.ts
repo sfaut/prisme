@@ -9,7 +9,7 @@
  */
 
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 
 import {
   closeEditor,
@@ -49,6 +49,12 @@ export interface EditorEntry {
  * Delay between the last keystroke and saving the text, in milliseconds.
  */
 const SAVE_DELAY = 500
+
+/**
+ * State of the synchronisation with the internal database: `synced` when every
+ * change is saved, `pending` while some are not, `failed` after a refused save.
+ */
+export type SyncState = 'synced' | 'pending' | 'failed'
 
 /**
  * Key of the active editor in local storage.
@@ -101,6 +107,26 @@ export const useEditorsStore = defineStore('editors', () => {
    * Pending text saves, by editor.
    */
   const timers = new Map<number, ReturnType<typeof setTimeout>>()
+
+  /**
+   * Editors with a change not yet confirmed by the server.
+   */
+  const unsaved = reactive(new Set<number>())
+
+  /**
+   * Whether the last save was refused by the server.
+   */
+  const saveFailed = ref(false)
+
+  /**
+   * Synchronisation state, shown in the top bar.
+   */
+  const syncState = computed<SyncState>(() => {
+    if (saveFailed.value) {
+      return 'failed'
+    }
+    return unsaved.size > 0 ? 'pending' : 'synced'
+  })
 
   /**
    * Active editor, `null` before loading.
@@ -157,12 +183,24 @@ export const useEditorsStore = defineStore('editors', () => {
     clearTimeout(timers.get(id))
     timers.delete(id)
     const editor = editors.value.find((item) => item.id === id)
-    if (editor) {
+    if (!editor) {
+      return
+    }
+    unsaved.add(id)
+    try {
       await updateEditor(id, {
         name: editor.name,
         sql: editor.sql,
         connection_id: editor.connectionId,
       })
+      saveFailed.value = false
+      // A change made during the request has its own save pending.
+      if (!timers.has(id)) {
+        unsaved.delete(id)
+      }
+    } catch (failure) {
+      saveFailed.value = true
+      throw failure
     }
   }
 
@@ -178,10 +216,17 @@ export const useEditorsStore = defineStore('editors', () => {
       return
     }
     editor.sql = sql
+    unsaved.add(id)
     clearTimeout(timers.get(id))
     timers.set(
       id,
-      setTimeout(() => void save(id), SAVE_DELAY),
+      setTimeout(
+        () =>
+          save(id).catch(() => {
+            // The failure shows in the synchronisation state (`syncState`).
+          }),
+        SAVE_DELAY,
+      ),
     )
   }
 
@@ -272,6 +317,7 @@ export const useEditorsStore = defineStore('editors', () => {
     activeId,
     active,
     closed,
+    syncState,
     activate,
     load,
     create,

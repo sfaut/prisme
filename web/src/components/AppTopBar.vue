@@ -1,7 +1,8 @@
 <!--
   Top bar of the application, across the whole width of the screen: name of
-  the application, theme choice, and the "Options" menu, which opens the
-  settings (row limit, language) and the user's profile.
+  the application, synchronisation state (`SyncStatus`), theme choice, and the
+  "Options" menu, which opens the settings (row limit, language) and the
+  user's profile.
 
   The windows it opens are its own: the menu only chooses which one shows.
 -->
@@ -12,6 +13,7 @@ import { ref } from 'vue'
 import { type ColorMode, colorMode } from '@/colorMode'
 
 import ProfileDialog from './ProfileDialog.vue'
+import SyncStatus from './SyncStatus.vue'
 import SettingsDialog from './SettingsDialog.vue'
 import UiButton from './ui/UiButton.vue'
 import UiDropdownMenu from './ui/UiDropdownMenu.vue'
@@ -50,6 +52,7 @@ const menuItems: MenuItem[] = [
   <header class="flex items-center gap-gap border-b border-line px-panel py-1">
     <h1 class="text-heading font-semibold text-fg-strong">Prisme</h1>
     <div class="ms-auto flex items-center gap-gap">
+      <sync-status />
       <ui-select v-model="colorMode" :items="COLOR_MODES" label="Thème" class="w-28" />
       <ui-dropdown-menu :items="menuItems">
         <ui-button :icon="Settings" variant="ghost" aria-label="Options" title="Options" />
