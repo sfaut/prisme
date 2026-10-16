@@ -4,15 +4,19 @@ Changelogs of the published versions of Prisme, most recent first. Each entry is
 
 ## v0.2.0 (2026-10-16)
 
-### 💥 Breaking changes
+### 🚀 Launch
 
-- The short option that prints the version becomes `-v`; `-V` is no longer recognised, `--version` is unchanged ([#7](https://github.com/sfaut/prisme/issues/7)).
+We are proud to announce Prisme v0.2.0. This version asks for its settings on first launch, makes the SQL editor handle Tab and Enter like a code editor, and refines the result grid: monospaced `CHAR` columns, a discreet `NULL` marker, and a raw copy that keeps one value per cell. The README is now in English, with a quick start.
 
 ### ✨ New features
 
 - First-launch setup: Prisme asks in the terminal for the listening port (8484 by default) and the user's email address (`me@local` by default), saves them in its internal database, and does not ask again. `prisme --setup` asks the questions again; `--listen` and `--user-email` only apply to one launch. An existing installation keeps its settings, without any question ([#6](https://github.com/sfaut/prisme/issues/6)).
 - SQL editor: Tab moves to the next tab stop (every four spaces) or indents the selected lines, Shift+Tab unindents them; Esc then Tab, or Ctrl+M, leave the editor with the keyboard ([#2](https://github.com/sfaut/prisme/issues/2)).
 - Result grid: `CHAR` columns are displayed in a monospaced font ([#4](https://github.com/sfaut/prisme/issues/4)), and the `NULL` marker in small capitals, more discreet ([#1](https://github.com/sfaut/prisme/issues/1)).
+
+### 💥 Breaking changes
+
+- The short option that prints the version becomes `-v`; `-V` is no longer recognised, `--version` is unchanged ([#7](https://github.com/sfaut/prisme/issues/7)).
 
 ### 🐞 Bug fixes
 
@@ -32,17 +36,11 @@ Changelogs of the published versions of Prisme, most recent first. Each entry is
 
 ### 🚀 Launch
 
-First public version of Prisme, a multi-database web client shaped like a SQL notebook. This v0.1.0 queries MySQL and MariaDB; PostgreSQL, SQLite, DuckDB and translation between dialects will come next.
+We are proud to announce Prisme v0.1.0, the first public version of Prisme, a multi-database web client shaped like a SQL notebook. This v0.1.0 queries MySQL and MariaDB; PostgreSQL, SQLite, DuckDB and translation between dialects will come next.
 
 - A single executable per platform, interface included: Windows (x86_64), Linux (x86_64) and macOS (universal, Apple Silicon and Intel). Nothing else to install.
 - Prisme runs locally and opens in the browser, at <http://127.0.0.1:8484>.
 - The executables are not signed yet: Windows shows a SmartScreen warning on first launch, and macOS asks to lift the file's quarantine (procedure in the README).
-
-### 🔒 Security
-
-- Connection passwords encrypted in the internal database (AES-256-GCM), never written to the logs nor sent back by the API.
-- Listening limited to the local machine: without authentication, Prisme refuses to be reachable from the network.
-- Read-only: query sessions refuse writes (`UPDATE`, `DELETE`, DDL, `CALL`…), detected by analysing the query, until the write switches exist.
 
 ### ✨ New features
 
@@ -73,6 +71,12 @@ First public version of Prisme, a multi-database web client shaped like a SQL no
 **Interface**
 - Light, dark or system theme, editor included.
 - Split bar between the editor and the results.
+
+### 🔒 Security
+
+- Connection passwords encrypted in the internal database (AES-256-GCM), never written to the logs nor sent back by the API.
+- Listening limited to the local machine: without authentication, Prisme refuses to be reachable from the network.
+- Read-only: query sessions refuse writes (`UPDATE`, `DELETE`, DDL, `CALL`…), detected by analysing the query, until the write switches exist.
 
 ### 📝 Documentation
 
