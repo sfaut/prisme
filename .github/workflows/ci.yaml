@@ -1,22 +1,22 @@
-# Intégration continue et livraison de Prisme.
+# Continuous integration and delivery of Prisme.
 #
-# À chaque push sur master et à chaque pull request : contrôle de l'interface,
-# contrôle et tests du backend (y compris les tests sur de vrais serveurs, dans
-# Docker), sans compiler les exécutables, pour un retour en deux minutes. Un
-# changement qui ne touche que la documentation ne lance rien.
+# On each push to master and each pull request: checks of the interface,
+# checks and tests of the backend (including the tests on real servers, in
+# Docker), without building the executables, for feedback in two minutes. A
+# change that only touches the documentation starts nothing.
 #
-# À la publication d'une release GitHub (créée avec gh, changelog rédigé à la
-# main, voir CLAUDE.md, « Publication d'une version ») : les mêmes contrôles
-# sur le commit de l'étiquette, puis la compilation des exécutables Windows,
-# Linux et macOS, ajoutés à cette release, téléchargeables directement depuis
-# la page Releases. La CI n'écrit jamais les notes de la release.
+# On publishing a GitHub release (created with gh, changelog written by hand,
+# see CLAUDE.md, "Publishing a version"): the same checks on the tagged
+# commit, then the build of the Windows, Linux and macOS executables, added
+# to this release, downloadable directly from the Releases page. The CI
+# never writes the release notes.
 #
-# Lancée à la main (workflow_dispatch) : contrôles et exécutables, déposés dans
-# les artefacts de l'exécution, pour essayer une compilation hors release.
+# Started by hand (workflow_dispatch): checks and executables, stored in the
+# run's artifacts, to try a build outside a release.
 
 name: CI
 
-# Fichiers sans effet sur le code : les modifier seuls ne lance pas la CI.
+# Files without effect on the code: changing only them does not start the CI.
 on:
   push:
     branches: [master]
@@ -27,8 +27,8 @@ on:
     types: [published]
   workflow_dispatch:
 
-# Une nouvelle exécution sur la même branche annule la précédente, sauf pour
-# une release : elle ne doit pas s'interrompre en route.
+# A new run on the same branch cancels the previous one, except for a
+# release: it must not stop halfway.
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name != 'release' }}
@@ -40,8 +40,8 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Interface Vue : formatage, lint, types, tests, puis compilation de web/dist,
-  # transmis aux compilations de l'exécutable.
+  # Vue interface: formatting, lint, types, tests, then build of web/dist,
+  # passed on to the builds of the executable.
   web:
     name: Interface
     runs-on: ubuntu-latest
@@ -56,9 +56,9 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
-      # Les scripts lint et format du projet corrigent les fichiers (--fix,
-      # --write) : la CI appelle les outils en mode vérification.
-      - name: Formatage (Prettier)
+      # The project's lint and format scripts fix the files (--fix, --write):
+      # the CI calls the tools in check mode.
+      - name: Formatting (Prettier)
         run: npx prettier --check --experimental-cli src/
       - name: Lint (Oxlint, ESLint)
         run: |
@@ -68,7 +68,7 @@ jobs:
         run: npm run type-check
       - name: Tests (Vitest)
         run: npx vitest --run
-      - name: Compilation de l'interface
+      - name: Build of the interface
         run: npm run build-only
       - uses: actions/upload-artifact@v7
         with:
@@ -76,19 +76,19 @@ jobs:
           path: web/dist/
           if-no-files-found: error
 
-  # Backend Rust : formatage, analyse statique, tous les tests. Les runners
-  # Ubuntu fournissent Docker : les tests sur MySQL / MariaDB tournent aussi.
+  # Rust backend: formatting, static analysis, all the tests. The Ubuntu
+  # runners provide Docker: the tests on MySQL / MariaDB run too.
   rust:
     name: Backend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # Installe la version figée par rust-toolchain.toml.
+      # Installs the version pinned by rust-toolchain.toml.
       - run: rustup toolchain install
-      # Release : les versions de Cargo.toml et de web/package.json doivent
-      # être celles de l'étiquette (v0.2.0 → 0.2.0), sinon prisme --version
-      # mentirait. Vérifié avant les longues compilations.
-      - name: Versions conformes à l'étiquette
+      # Release: the versions of Cargo.toml and web/package.json must be those
+      # of the tag (v0.2.0 → 0.2.0), otherwise prisme --version would lie.
+      # Checked before the long builds.
+      - name: Versions match the tag
         if: github.event_name == 'release'
         env:
           TAG: ${{ github.event.release.tag_name }}
@@ -97,37 +97,37 @@ jobs:
           cargo_version=$(cargo metadata --no-deps --format-version 1 \
             | jq --raw-output '.packages[] | select(.name == "prisme-server") | .version')
           web_version=$(jq --raw-output .version web/package.json)
-          echo "Étiquette $TAG, Cargo $cargo_version, interface $web_version"
+          echo "Tag $TAG, Cargo $cargo_version, interface $web_version"
           if [ "$cargo_version" != "$expected" ] || [ "$web_version" != "$expected" ]; then
-            echo "::error::Les versions doivent valoir $expected : committer la montée de version avant l'étiquette."
+            echo "::error::The versions must be $expected: commit the version bump before the tag."
             exit 1
           fi
       - uses: Swatinem/rust-cache@v2
-      - name: Formatage (cargo fmt)
+      - name: Formatting (cargo fmt)
         run: cargo fmt --all --check
-      - name: Analyse statique (cargo clippy)
+      - name: Static analysis (cargo clippy)
         run: cargo clippy --all-targets -- --deny warnings
-      - name: Tests (y compris ceux qui demandent Docker)
+      - name: Tests (including those that require Docker)
         run: cargo test -- --include-ignored
-      # cargo test régénère les types TypeScript (ts-rs) : ils doivent être
-      # identiques à ceux du dépôt, sinon un commit les a oubliés.
-      - name: Types TypeScript générés à jour
+      # cargo test regenerates the TypeScript types (ts-rs): they must be
+      # identical to those of the repository, otherwise a commit forgot them.
+      - name: Generated TypeScript types up to date
         run: |
           if [ -n "$(git status --porcelain -- web/src/api/generated)" ]; then
             git status --short -- web/src/api/generated
             git diff -- web/src/api/generated
-            echo "::error::Types ts-rs non committés : lancer cargo test et committer web/src/api/generated."
+            echo "::error::Uncommitted ts-rs types: run cargo test and commit web/src/api/generated."
             exit 1
           fi
 
-  # Exécutables, interface embarquée. Sous Windows, le runtime C est intégré
-  # (crt-static, dans .cargo/config.toml) : pas de VCRUNTIME140.dll à installer.
+  # Executables, interface embedded. On Windows, the C runtime is built in
+  # (crt-static, in .cargo/config.toml): no VCRUNTIME140.dll to install.
   #
-  # TODO: signer les exécutables Windows (SignPath Foundation) et macOS (compte
-  # Apple Developer, notarisation), voir docs/QUESTIONS.md, section 3.
+  # TODO: sign the Windows (SignPath Foundation) and macOS (Apple Developer
+  # account, notarization) executables, see docs/QUESTIONS.md, section 3.
   build:
-    name: Exécutable ${{ matrix.name }}
-    # Pour une release, ou à la demande ; jamais pour un simple push.
+    name: Executable ${{ matrix.name }}
+    # For a release, or on demand; never for a mere push.
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     needs: [web, rust]
     strategy:
@@ -153,21 +153,21 @@ jobs:
         with:
           name: web-dist
           path: web/dist/
-      # rust-embed tolère un web/dist absent (allow_missing) : sans ce
-      # contrôle, l'exécutable serait livré sans interface.
-      - name: Présence de l'interface compilée
+      # rust-embed tolerates a missing web/dist (allow_missing): without this
+      # check, the executable would ship without an interface.
+      - name: Built interface present
         run: test -f web/dist/index.html
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
           key: release
-      - name: Compilation
+      - name: Build
         if: runner.os != 'macOS'
         run: cargo build --release --bin prisme
-      # macOS : un binaire universel, qui tourne sur Apple Silicon et sur Intel.
-      # Les deux architectures sont compilées séparément, puis réunies par lipo
-      # dans target/release, comme pour les autres plateformes.
-      - name: Compilation (binaire universel Apple Silicon et Intel)
+      # macOS: a universal binary, which runs on Apple Silicon and on Intel.
+      # Both architectures are built separately, then joined by lipo in
+      # target/release, as for the other platforms.
+      - name: Build (universal binary for Apple Silicon and Intel)
         if: runner.os == 'macOS'
         run: |
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
@@ -184,8 +184,8 @@ jobs:
           path: target/release/${{ matrix.binary }}
           if-no-files-found: error
 
-  # Release publiée : les exécutables y sont ajoutés, renommés avec la
-  # version et la plateforme. Les notes de la release restent intactes.
+  # Published release: the executables are added to it, renamed with the
+  # version and the platform. The release notes stay untouched.
   release:
     name: Release
     if: github.event_name == 'release'
@@ -198,7 +198,7 @@ jobs:
         with:
           pattern: prisme-*
           path: artifacts/
-      - name: Ajout des exécutables à la release
+      - name: Add the executables to the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}

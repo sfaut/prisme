@@ -5,7 +5,7 @@
 /web/node_modules/
 /web/dist/
 
-# Données locales, au cas où --data-dir pointerait dans le dépôt
+# Local data, in case --data-dir points inside the repository
 /tmp/
 *.key
 *.db
