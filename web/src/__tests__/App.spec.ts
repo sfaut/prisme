@@ -37,4 +37,11 @@ describe('App', () => {
       expect(wrapper.text()).toContain('Double-cliquez sur une source de données'),
     )
   })
+
+  it('puts the options button in the top bar, above the explorer', async () => {
+    const wrapper = mount(App)
+    const bar = wrapper.find('header')
+    expect(bar.find('[aria-label="Options"]').exists()).toBe(true)
+    expect(bar.find('[aria-label="Thème"]').exists()).toBe(true)
+  })
 })

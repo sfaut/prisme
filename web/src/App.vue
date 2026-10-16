@@ -1,9 +1,9 @@
 <!--
-  Layout of the screen: on the left, the explorer of the data sources, in a
-  panel whose width is set by dragging its right edge, with the choice of the
-  theme (light, dark or the system's); on the right, the SQL editors, one tab
-  each (`EditorTabBar`), each with its cell (`QueryCell`): its connection, its
-  session and its result tabs. Layout in Tailwind classes.
+  Layout of the screen: on top, the application bar (`AppTopBar`), across the
+  whole width; below, on the left, the explorer of the data sources, in a
+  panel whose width is set by dragging its right edge; on the right, the SQL
+  editors, one tab each (`EditorTabBar`), each with its cell (`QueryCell`): its
+  connection, its session and its result tabs. Layout in Tailwind classes.
 
   The explorer acts on the active editor: the chosen source becomes its
   connection, an opened table or a chosen database (`USE`) runs there. The
@@ -13,34 +13,24 @@
   Transient messages (`notify`) show at the bottom right (`UiToaster`).
 -->
 <script setup lang="ts">
-import { Database, Monitor, Moon, Sun } from 'lucide-vue-next'
+import { Database } from 'lucide-vue-next'
 import { TabsContent, TabsRoot } from 'reka-ui'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
-import { type ColorMode, colorMode } from './colorMode'
 import { useConnectionsStore } from './stores/connections'
 import { useEditorsStore } from './stores/editors'
 
+import AppTopBar from './components/AppTopBar.vue'
 import EditorTabBar from './components/EditorTabBar.vue'
 import ObjectExplorer from './components/ObjectExplorer.vue'
 import QueryCell from './components/QueryCell.vue'
 import SiderResizer from './components/SiderResizer.vue'
 import UiAlert from './components/ui/UiAlert.vue'
-import UiSelect from './components/ui/UiSelect.vue'
 import UiToaster from './components/ui/UiToaster.vue'
 import { clampSiderWidth, loadSiderWidth } from './components/siderWidth'
 
 const connections = useConnectionsStore()
 const editors = useEditorsStore()
-
-/**
- * Choice of the theme, in the list at the top of the left panel.
- */
-const COLOR_MODES: { label: string; value: ColorMode; icon: typeof Monitor }[] = [
-  { label: 'Système', value: 'system', icon: Monitor },
-  { label: 'Clair', value: 'light', icon: Sun },
-  { label: 'Sombre', value: 'dark', icon: Moon },
-]
 
 /**
  * Width of the left panel, in pixels.
@@ -180,72 +170,73 @@ function selectSource(connectionId: number): void {
 </script>
 
 <template>
-  <div class="relative flex h-full">
-    <aside
-      class="flex shrink-0 flex-col gap-panel border-e border-line p-panel"
-      :style="{ width: `${siderWidth}px` }"
-    >
-      <header class="flex items-center justify-between gap-gap">
-        <h1 class="text-heading font-semibold text-fg-strong">Prisme</h1>
-        <ui-select v-model="colorMode" :items="COLOR_MODES" label="Thème" class="w-28" />
-      </header>
-      <object-explorer
-        :selected-id="connections.selectedId"
-        :current-database="editors.activeId === null ? null : (databases[editors.activeId] ?? null)"
-        @open-table="openTable"
-        @select="selectSource"
-        @use-database="useDatabase"
-      />
-    </aside>
-    <sider-resizer v-model="siderWidth" />
-    <main class="flex h-full min-w-0 flex-1 flex-col gap-gap p-panel">
-      <ui-alert
-        v-if="editorsError"
-        tone="error"
-        :title="editorsError"
-        closable
-        @close="editorsError = null"
-      />
-      <tabs-root
-        v-model="activeTab"
-        :unmount-on-hide="false"
-        class="flex min-h-0 flex-1 flex-col gap-gap"
+  <div class="flex h-full flex-col">
+    <app-top-bar />
+    <div class="relative flex min-h-0 flex-1">
+      <aside
+        class="flex shrink-0 flex-col gap-panel border-e border-line p-panel"
+        :style="{ width: `${siderWidth}px` }"
       >
-        <editor-tab-bar />
-        <tabs-content
-          v-for="editor in editors.editors"
-          :key="editor.id"
-          :value="editor.id"
-          class="flex min-h-0 flex-1 flex-col outline-none"
+        <object-explorer
+          :selected-id="connections.selectedId"
+          :current-database="
+            editors.activeId === null ? null : (databases[editors.activeId] ?? null)
+          "
+          @open-table="openTable"
+          @select="selectSource"
+          @use-database="useDatabase"
+        />
+      </aside>
+      <sider-resizer v-model="siderWidth" />
+      <main class="flex h-full min-w-0 flex-1 flex-col gap-gap p-panel">
+        <ui-alert
+          v-if="editorsError"
+          tone="error"
+          :title="editorsError"
+          closable
+          @close="editorsError = null"
+        />
+        <tabs-root
+          v-model="activeTab"
+          :unmount-on-hide="false"
+          class="flex min-h-0 flex-1 flex-col gap-gap"
         >
-          <query-cell
-            v-if="connectionOf(editor.connectionId)"
-            :ref="
-              (cell) =>
-                cell
-                  ? cells.set(editor.id, cell as InstanceType<typeof QueryCell>)
-                  : cells.delete(editor.id)
-            "
-            :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
-            :editor-id="editor.id"
-            :connection="connectionOf(editor.connectionId)!"
-            :sql="editor.sql"
-            @update:sql="(sql) => editors.setSql(editor.id, sql)"
-            @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
-            @database="(database) => (databases[editor.id] = database)"
-          />
-          <div v-else class="m-auto flex max-w-xs flex-col items-center gap-gap text-center">
-            <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
-              <Database class="size-4 text-fg-muted" />
-            </span>
-            <p class="text-balance text-fg-muted">
-              Double-cliquez sur une source de données pour la choisir pour cet éditeur, ou ajoutez
-              une connexion par le menu « ⋮ »
-            </p>
-          </div>
-        </tabs-content>
-      </tabs-root>
-    </main>
+          <editor-tab-bar />
+          <tabs-content
+            v-for="editor in editors.editors"
+            :key="editor.id"
+            :value="editor.id"
+            class="flex min-h-0 flex-1 flex-col outline-none"
+          >
+            <query-cell
+              v-if="connectionOf(editor.connectionId)"
+              :ref="
+                (cell) =>
+                  cell
+                    ? cells.set(editor.id, cell as InstanceType<typeof QueryCell>)
+                    : cells.delete(editor.id)
+              "
+              :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
+              :editor-id="editor.id"
+              :connection="connectionOf(editor.connectionId)!"
+              :sql="editor.sql"
+              @update:sql="(sql) => editors.setSql(editor.id, sql)"
+              @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
+              @database="(database) => (databases[editor.id] = database)"
+            />
+            <div v-else class="m-auto flex max-w-xs flex-col items-center gap-gap text-center">
+              <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
+                <Database class="size-4 text-fg-muted" />
+              </span>
+              <p class="text-balance text-fg-muted">
+                Double-cliquez sur une source de données pour la choisir pour cet éditeur, ou
+                ajoutez une connexion par le menu « ⋮ »
+              </p>
+            </div>
+          </tabs-content>
+        </tabs-root>
+      </main>
+    </div>
   </div>
   <ui-toaster />
 </template>
