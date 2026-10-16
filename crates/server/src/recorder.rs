@@ -254,7 +254,8 @@ mod tests {
     use super::*;
     use crate::editors::NewEditor;
     use crate::master_key::MasterKey;
-    use crate::query_session::{BatchQuery, LimitReport};
+    use crate::query_session::LimitReport;
+    use crate::query_session::protocol::BatchQuery;
     use crate::store;
 
     #[tokio::test]
