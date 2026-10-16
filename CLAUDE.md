@@ -9,6 +9,7 @@ Ce fichier est court. Les décisions détaillées sont dans `docs/` :
 - `docs/QUESTIONS.md` : pistes retenues, écartées ou reportées, et questions encore ouvertes.
 - `docs/PERF.md` : problèmes de performance rencontrés, avec leur cause, leur correction et la méthode de mesure.
 - `docs/CHANGELOG.md` : changelogs des versions publiées, la plus récente en haut (voir « Publication d'une version »).
+- `docs/DEVELOPER.md` : guide du développeur, en anglais (compilation, tests, API, CI, releases). Le `README.md`, en anglais aussi, s'adresse à l'utilisateur final.
 
 ## Qui travaille ici
 
