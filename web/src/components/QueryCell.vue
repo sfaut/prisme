@@ -327,7 +327,8 @@ async function changeLimit(rowLimit: number): Promise<void> {
   }
 }
 
-// Saved result tabs of the editor, read again on each opening of the cell.
+// The settings (row limit choices, default limit) are loaded once, when the
+// first cell opens. The saved result tabs are read by the query session.
 onMounted(async () => {
   if (settings.settings === null) {
     try {
