@@ -44,6 +44,7 @@ import { completionSchema } from './sqlCompletion'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
 import UiSelect from './ui/UiSelect.vue'
+import { notify } from './ui/toasts'
 
 const props = defineProps<{
   /**
@@ -137,12 +138,13 @@ function tabLabel(tab: QueryTab): string {
 }
 
 /**
- * Reports a failure to save on the server side, without undoing anything on screen.
+ * Shows a failure to save on the server side, as an error toast. Changing the
+ * screen back is up to the caller: only it knows what it changed.
  *
  * @param failure Received error.
  */
 function reportFailure(failure: unknown): void {
-  state.error = errorMessage(failure)
+  notify(`Enregistrement refusé : ${errorMessage(failure)}`, 'error')
 }
 
 /**
@@ -157,24 +159,34 @@ const tabDrag = useTabDrag((from, to) => {
 })
 
 /**
- * Pins or unpins a result tab, and saves it.
+ * Pins or unpins a result tab, and saves it. If the save fails, the tab goes
+ * back to its previous state.
  *
  * @param tab Targeted tab.
  */
 function togglePin(tab: QueryTab): void {
-  tab.pinned = !tab.pinned
-  updateResult(tab.id, { name: tab.name ?? '', pinned: tab.pinned }).catch(reportFailure)
+  const previous = tab.pinned
+  tab.pinned = !previous
+  updateResult(tab.id, { name: tab.name ?? '', pinned: tab.pinned }).catch((failure: unknown) => {
+    tab.pinned = previous
+    reportFailure(failure)
+  })
 }
 
 /**
- * Renames a result tab, and saves it.
+ * Renames a result tab, and saves it. If the save fails, the tab goes back to
+ * its previous name.
  *
  * @param tab Targeted tab.
  * @param name New name, `null` for the default label.
  */
 function renameTab(tab: QueryTab, name: string | null): void {
+  const previous = tab.name
   tab.name = name
-  updateResult(tab.id, { name: name ?? '', pinned: tab.pinned }).catch(reportFailure)
+  updateResult(tab.id, { name: name ?? '', pinned: tab.pinned }).catch((failure: unknown) => {
+    tab.name = previous
+    reportFailure(failure)
+  })
 }
 
 /**
