@@ -7,6 +7,10 @@ export default mergeConfig(
   defineConfig({
     test: {
       environment: 'jsdom',
+      // Node 25+ a son propre localStorage, qui avertit faute de fichier de
+      // stockage (--localstorage-file) : les tests utilisent celui de jsdom,
+      // comme dans un navigateur.
+      execArgv: ['--no-experimental-webstorage'],
       exclude: [...configDefaults.exclude, 'e2e/**'],
       root: fileURLToPath(new URL('./', import.meta.url)),
     },
