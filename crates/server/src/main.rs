@@ -43,6 +43,14 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
+    // A panic goes to the logs, with its location and message, before the default
+    // hook prints its backtrace on the standard error output.
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        tracing::error!("{info}");
+        default_hook(info);
+    }));
+
     let config = Config::parse();
     config.validate()?;
 
