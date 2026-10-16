@@ -128,14 +128,14 @@ fn chooses_the_statement_under_the_cursor_or_all_of_them() {
             .collect::<Vec<_>>()
     };
     assert_eq!(
-        sql(super::session::chosen_statements(&statements, Some(12))),
+        sql(super::execution::chosen_statements(&statements, Some(12))),
         ["SELECT 2"]
     );
     assert_eq!(
-        sql(super::session::chosen_statements(&statements, None)),
+        sql(super::execution::chosen_statements(&statements, None)),
         ["SELECT 1", "SELECT 2"]
     );
-    assert!(super::session::chosen_statements(&[], Some(0)).is_empty());
+    assert!(super::execution::chosen_statements(&[], Some(0)).is_empty());
 }
 
 #[tokio::test]
@@ -166,20 +166,20 @@ async fn cancels_one_query_or_the_whole_batch() {
 #[test]
 fn refuses_writes_and_unparsable_queries() {
     assert_eq!(
-        super::session::write_refusal("SELECT 1", Dialect::MariaDb),
+        super::limits::write_refusal("SELECT 1", Dialect::MariaDb),
         None
     );
     assert_eq!(
-        super::session::write_refusal("SHOW TABLES", Dialect::MariaDb),
+        super::limits::write_refusal("SHOW TABLES", Dialect::MariaDb),
         None
     );
-    assert!(super::session::write_refusal("DELETE FROM t", Dialect::MariaDb).is_some());
+    assert!(super::limits::write_refusal("DELETE FROM t", Dialect::MariaDb).is_some());
     assert!(
-        super::session::write_refusal("WITH x AS (SELECT 1) DELETE FROM t", Dialect::MariaDb)
+        super::limits::write_refusal("WITH x AS (SELECT 1) DELETE FROM t", Dialect::MariaDb)
             .is_some()
     );
     assert!(
-        super::session::write_refusal("SELECT * FROM t PROCEDURE ANALYSE()", Dialect::MariaDb)
+        super::limits::write_refusal("SELECT * FROM t PROCEDURE ANALYSE()", Dialect::MariaDb)
             .is_some()
     );
 }

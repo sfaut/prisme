@@ -1,31 +1,20 @@
 //! Session on a target server: opens the connection, then runs the client's
-//! requests (queries, database changes) until the session stops.
+//! requests (queries, database changes) until the session stops. The queries
+//! themselves run in `execution.rs`, and their row limit is set in `limits.rs`.
 
 use std::sync::Arc;
-use std::time::Instant;
 
-use futures_util::future::join_all;
 use prisme_connectors::mysql::{self, Connection, MysqlTarget};
 use prisme_dialects::Dialect;
-use prisme_dialects::classify::{StatementKind, classify};
-use prisme_dialects::limit::{LimitOutcome, apply_default_limit, written_limit};
-use prisme_splitter::{Statement, split, statement_at};
-use tokio::sync::{Semaphore, mpsc, watch};
+use prisme_splitter::split;
+use tokio::sync::{mpsc, watch};
 
 use super::cancellation::Cancellation;
+use super::execution::chosen_statements;
+use super::limits::row_limit;
 use super::outbox::{Outbox, SessionStopped};
-use super::protocol::{BatchQuery, LimitReport, QueryRequest, ServerMessage, SessionRequest};
+use super::protocol::{BatchQuery, QueryRequest, ServerMessage, SessionRequest};
 use crate::api::AppState;
-use crate::settings::{self, check_row_limit};
-
-/// Number of rows per `rows` message.
-const ROW_BATCH_SIZE: usize = 500;
-
-/// Maximum number of queries run at the same time (one connection each).
-const MAX_PARALLEL: usize = 8;
-
-/// Error message of the queries stopped by the user.
-const CANCELLED: &str = "query interrupted by the user";
 
 /// Runs a session: connection to the target server, then the client's
 /// requests until the session stops.
@@ -76,25 +65,25 @@ pub(super) async fn serve(
 }
 
 /// What the queries need while running.
-struct Session<'a> {
+pub(super) struct Session<'a> {
     /// Queue of the messages to the client.
-    outbox: &'a Outbox,
+    pub(super) outbox: &'a Outbox,
     /// Connection settings, for the extra connections and the interruptions.
-    target: &'a MysqlTarget,
+    pub(super) target: &'a MysqlTarget,
     /// State of the application, to read the settings.
-    state: &'a AppState,
+    pub(super) state: &'a AppState,
     /// User of the session.
-    user_id: i64,
+    pub(super) user_id: i64,
     /// Stopping of the running queries, requested by the client.
-    cancellation: &'a Cancellation,
+    pub(super) cancellation: &'a Cancellation,
 }
 
 /// Summary of a result read to the end.
-struct Summary {
-    row_count: usize,
-    truncated: bool,
-    affected_rows: u64,
-    elapsed_ms: u128,
+pub(super) struct Summary {
+    pub(super) row_count: usize,
+    pub(super) truncated: bool,
+    pub(super) affected_rows: u64,
+    pub(super) elapsed_ms: u128,
 }
 
 impl Session<'_> {
@@ -197,325 +186,5 @@ impl Session<'_> {
                 .await?;
         }
         self.outbox.send(ServerMessage::BatchDone).await
-    }
-
-    /// Runs a query on the session's connection.
-    async fn run_on_session(
-        &self,
-        connection: &mut Connection,
-        dialect: Dialect,
-        sql: &str,
-        max_rows: usize,
-    ) -> Result<(), SessionStopped> {
-        self.outbox
-            .send(ServerMessage::Started { query: 0 })
-            .await?;
-        let Some(summary) = self
-            .run_query(connection, dialect, 0, sql, max_rows)
-            .await?
-        else {
-            return Ok(());
-        };
-        let database = match mysql::current_database(connection).await {
-            Ok(database) => database,
-            Err(error) => return self.outbox.error(Some(0), error.to_string()).await,
-        };
-        self.done(0, summary, database).await
-    }
-
-    /// Runs all the queries in parallel, `MAX_PARALLEL` at most at a time, each
-    /// on its own connection opened on the database `database`.
-    async fn run_in_parallel(
-        &self,
-        statements: &[&Statement],
-        dialect: Dialect,
-        max_rows: usize,
-        database: &Option<String>,
-    ) -> Result<(), SessionStopped> {
-        // All the queries start, but wait for a permit before opening their connection.
-        let permits = Semaphore::new(MAX_PARALLEL);
-        let mut runs = Vec::with_capacity(statements.len());
-        for (query, statement) in (0_u32..).zip(statements.iter()) {
-            runs.push(self.run_with_permit(
-                &permits,
-                dialect,
-                query,
-                &statement.sql,
-                max_rows,
-                database,
-            ));
-        }
-        let results = join_all(runs).await;
-        results.into_iter().collect()
-    }
-
-    /// Waits for a permit among `permits`, then runs the query on a new connection.
-    async fn run_with_permit(
-        &self,
-        permits: &Semaphore,
-        dialect: Dialect,
-        query: u32,
-        sql: &str,
-        max_rows: usize,
-        database: &Option<String>,
-    ) -> Result<(), SessionStopped> {
-        let _permit = permits.acquire().await.map_err(|_| SessionStopped)?;
-        if self.cancellation.is_cancelled(query) {
-            return self.outbox.error(Some(query), CANCELLED.to_string()).await;
-        }
-        self.outbox.send(ServerMessage::Started { query }).await?;
-        self.run_on_new_connection(dialect, query, sql, max_rows, database)
-            .await
-    }
-
-    /// Runs a query on a new connection, placed on the database `database`.
-    async fn run_on_new_connection(
-        &self,
-        dialect: Dialect,
-        query: u32,
-        sql: &str,
-        max_rows: usize,
-        database: &Option<String>,
-    ) -> Result<(), SessionStopped> {
-        let mut connection = match mysql::connect(self.target).await {
-            Ok(connection) => connection,
-            Err(error) => return self.outbox.error(Some(query), error.to_string()).await,
-        };
-        let result = self
-            .run_on_connection(&mut connection, dialect, query, sql, max_rows, database)
-            .await;
-        let _ = connection.disconnect().await;
-        result
-    }
-
-    /// Places the connection on the database `database`, then runs the query on it.
-    async fn run_on_connection(
-        &self,
-        connection: &mut Connection,
-        dialect: Dialect,
-        query: u32,
-        sql: &str,
-        max_rows: usize,
-        database: &Option<String>,
-    ) -> Result<(), SessionStopped> {
-        if let Some(name) = database
-            && let Err(error) = mysql::use_database(connection, name).await
-        {
-            return self.outbox.error(Some(query), error.to_string()).await;
-        }
-        match self
-            .run_query(connection, dialect, query, sql, max_rows)
-            .await?
-        {
-            Some(summary) => self.done(query, summary, database.clone()).await,
-            None => Ok(()),
-        }
-    }
-
-    /// Runs a query and streams its columns and its rows.
-    ///
-    /// Returns the summary of the result, or `None` if the query failed (the
-    /// error has then already gone to the client).
-    async fn run_query(
-        &self,
-        connection: &mut Connection,
-        dialect: Dialect,
-        query: u32,
-        sql: &str,
-        max_rows: usize,
-    ) -> Result<Option<Summary>, SessionStopped> {
-        if let Some(refusal) = write_refusal(sql, dialect) {
-            self.outbox.error(Some(query), refusal).await?;
-            return Ok(None);
-        }
-        let limited = match apply_default_limit(sql, dialect, max_rows as u64) {
-            Ok(limited) => limited,
-            Err(error) => {
-                self.outbox.error(Some(query), error.to_string()).await?;
-                return Ok(None);
-            }
-        };
-        // Reading only stops by itself if Prisme set the limit.
-        let capped = matches!(
-            limited.outcome,
-            LimitOutcome::Added | LimitOutcome::Unparsed
-        );
-
-        let started = Instant::now();
-        let connection_id = connection.id();
-        let _running = self.cancellation.track(query, connection_id);
-        // Stop requested while the connection was opening: the query does not start.
-        if self.cancellation.is_cancelled(query) {
-            self.outbox
-                .error(Some(query), CANCELLED.to_string())
-                .await?;
-            return Ok(None);
-        }
-        let executing = Instant::now();
-        let mut stream = match mysql::execute(connection, &limited.sql).await {
-            Ok(stream) => stream,
-            Err(error) => {
-                self.outbox
-                    .error(Some(query), self.failure(query, error))
-                    .await?;
-                return Ok(None);
-            }
-        };
-        self.outbox
-            .send(ServerMessage::Columns {
-                query,
-                columns: stream.column_names(),
-                right_aligned: stream.right_aligned_columns(),
-                types: stream.column_types(),
-                sql: limited.sql.clone(),
-                limit: report(limited.outcome),
-                expected_rows: match limited.outcome {
-                    LimitOutcome::Added | LimitOutcome::Unparsed => Some(max_rows as u64),
-                    LimitOutcome::UserLimit => written_limit(sql, dialect),
-                    LimitOutcome::NotApplicable => None,
-                },
-                execution_us: u64::try_from(executing.elapsed().as_micros()).unwrap_or(u64::MAX),
-            })
-            .await?;
-
-        let mut batch = Vec::with_capacity(ROW_BATCH_SIZE);
-        let mut row_count = 0;
-        let mut truncated = false;
-        loop {
-            let row = match stream.next_row().await {
-                Ok(Some(row)) => row,
-                Ok(None) => break,
-                Err(error) => {
-                    stream.discard().await;
-                    self.outbox
-                        .error(Some(query), self.failure(query, error))
-                        .await?;
-                    return Ok(None);
-                }
-            };
-            if self.cancellation.is_cancelled(query) {
-                // The server has already received KILL QUERY: reading stops.
-                stream.discard().await;
-                self.outbox
-                    .error(Some(query), CANCELLED.to_string())
-                    .await?;
-                return Ok(None);
-            }
-            if capped && row_count == max_rows {
-                // Row N + 1: the result is truncated, no need to read further.
-                truncated = true;
-                if limited.outcome == LimitOutcome::Unparsed {
-                    // Without LIMIT, the server would keep sending rows: it is interrupted.
-                    if let Err(error) = mysql::kill_query(self.target, connection_id).await {
-                        tracing::warn!("cannot interrupt the query: {error}");
-                    }
-                }
-                break;
-            }
-            batch.push(row);
-            row_count += 1;
-            if batch.len() == ROW_BATCH_SIZE {
-                let rows = std::mem::replace(&mut batch, Vec::with_capacity(ROW_BATCH_SIZE));
-                self.outbox
-                    .send(ServerMessage::Rows { query, rows })
-                    .await?;
-            }
-        }
-        if !batch.is_empty() {
-            self.outbox
-                .send(ServerMessage::Rows { query, rows: batch })
-                .await?;
-        }
-
-        let affected_rows = stream.affected_rows();
-        stream.discard().await;
-        Ok(Some(Summary {
-            row_count,
-            truncated,
-            affected_rows,
-            elapsed_ms: started.elapsed().as_millis(),
-        }))
-    }
-
-    /// Message of a failed query: "interrupted" if the stop was requested (the
-    /// server's error is then that of `KILL QUERY`).
-    fn failure(&self, query: u32, error: mysql::MysqlError) -> String {
-        if self.cancellation.is_cancelled(query) {
-            CANCELLED.to_string()
-        } else {
-            error.to_string()
-        }
-    }
-
-    /// Announces the end of a result.
-    async fn done(
-        &self,
-        query: u32,
-        summary: Summary,
-        database: Option<String>,
-    ) -> Result<(), SessionStopped> {
-        self.outbox
-            .send(ServerMessage::Done {
-                query,
-                row_count: summary.row_count,
-                truncated: summary.truncated,
-                affected_rows: summary.affected_rows,
-                elapsed_ms: summary.elapsed_ms,
-                database,
-            })
-            .await
-    }
-}
-
-/// Queries to run: the one under the cursor, or all of them without a cursor.
-pub(super) fn chosen_statements(
-    statements: &[Statement],
-    cursor: Option<usize>,
-) -> Vec<&Statement> {
-    match cursor {
-        Some(cursor) => statement_at(statements, cursor)
-            .map(|index| vec![&statements[index]])
-            .unwrap_or_default(),
-        None => statements.iter().collect(),
-    }
-}
-
-/// Row limit of a request: the requested one, otherwise the user's setting.
-async fn row_limit(state: &AppState, user_id: i64, requested: Option<u32>) -> Result<u32, String> {
-    if let Some(row_limit) = requested {
-        return check_row_limit(row_limit).map_err(|error| error.to_string());
-    }
-    state
-        .with_db(move |db, _key| settings::load(db, user_id))
-        .await
-        .map(|settings| settings.row_limit)
-        .map_err(|_| "unreadable user settings, see the server log".to_string())
-}
-
-/// Returns the reason for the refusal if the query is not a read.
-///
-/// Writes stay refused as long as the write switches (stage 4 of the v1) do
-/// not exist. A query that cannot be parsed is refused too, as nothing proves
-/// it is a read.
-pub(super) fn write_refusal(sql: &str, dialect: Dialect) -> Option<String> {
-    match classify(sql, dialect) {
-        StatementKind::Read => None,
-        StatementKind::Write => {
-            Some("write refused: writes are disabled until the write switches exist".to_string())
-        }
-        StatementKind::Unparsed => Some(
-            "query refused: Prisme cannot parse it, so it cannot check that it is a read"
-                .to_string(),
-        ),
-    }
-}
-
-/// Translates the handling of the limit for the client.
-fn report(outcome: LimitOutcome) -> LimitReport {
-    match outcome {
-        LimitOutcome::Added => LimitReport::Added,
-        LimitOutcome::UserLimit => LimitReport::UserLimit,
-        LimitOutcome::NotApplicable => LimitReport::NotApplicable,
-        LimitOutcome::Unparsed => LimitReport::Unparsed,
     }
 }

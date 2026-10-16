@@ -60,6 +60,8 @@
 //! section 2.4).
 
 mod cancellation;
+mod execution;
+mod limits;
 mod outbox;
 pub(crate) mod protocol;
 mod session;
