@@ -348,10 +348,10 @@ pub fn update(
 
 /// Orders the user's open editors as given.
 pub fn reorder(db: &Connection, user_id: i64, order: &Order) -> Result<(), EditorsError> {
-    for (position, id) in order.ids.iter().enumerate() {
+    for (position, id) in (0_i64..).zip(&order.ids) {
         db.execute(
             "UPDATE editors SET position = ?3 WHERE id = ?1 AND user_id = ?2",
-            params![id, user_id, position as i64],
+            params![id, user_id, position],
         )?;
     }
     Ok(())
@@ -438,12 +438,12 @@ pub fn reorder_result_tabs(
     editor_id: i64,
     order: &Order,
 ) -> Result<(), EditorsError> {
-    for (position, id) in order.ids.iter().enumerate() {
+    for (position, id) in (0_i64..).zip(&order.ids) {
         db.execute(
             "UPDATE result_tabs SET position = ?3
              WHERE id = ?1 AND editor_id = ?4
                AND editor_id IN (SELECT id FROM editors WHERE user_id = ?2)",
-            params![id, user_id, position as i64, editor_id],
+            params![id, user_id, position, editor_id],
         )?;
     }
     Ok(())
@@ -467,10 +467,10 @@ pub fn start_batch(
         |row| row.get(0),
     )?;
     let mut ids = Vec::with_capacity(queries.len());
-    for (offset, (query, sql)) in queries.iter().enumerate() {
+    for (position, (query, sql)) in (first..).zip(queries) {
         db.execute(
             "INSERT INTO result_tabs (editor_id, position, query, sql) VALUES (?1, ?2, ?3, ?4)",
-            params![editor_id, first + offset as i64, query, sql],
+            params![editor_id, position, query, sql],
         )?;
         ids.push(db.last_insert_rowid());
     }

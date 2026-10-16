@@ -173,11 +173,10 @@ impl Session<'_> {
             return self.outbox.error(None, message).await;
         }
 
-        let queries = chosen
-            .iter()
-            .enumerate()
-            .map(|(index, statement)| BatchQuery {
-                query: index as u32,
+        let queries = (0_u32..)
+            .zip(chosen.iter())
+            .map(|(query, statement)| BatchQuery {
+                query,
                 tab: 0,
                 sql: statement.sql.clone(),
                 start: statement.start,
@@ -236,8 +235,7 @@ impl Session<'_> {
         // All the queries start, but wait for a permit before opening their connection.
         let permits = Semaphore::new(MAX_PARALLEL);
         let mut runs = Vec::with_capacity(statements.len());
-        for (index, statement) in statements.iter().enumerate() {
-            let query = index as u32;
+        for (query, statement) in (0_u32..).zip(statements.iter()) {
             runs.push(self.run_with_permit(
                 &permits,
                 dialect,

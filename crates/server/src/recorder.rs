@@ -164,9 +164,10 @@ impl Recorder {
                     record.result.truncated = *truncated;
                     record.result.affected_rows = *affected_rows;
                     record.result.bytes += bytes;
-                    record.result.transfer_us = record
-                        .columns_at
-                        .map_or(0, |at| at.elapsed().as_micros() as u64);
+                    // Saturates: 2^64 microseconds is about 584,000 years.
+                    record.result.transfer_us = record.columns_at.map_or(0, |at| {
+                        u64::try_from(at.elapsed().as_micros()).unwrap_or(u64::MAX)
+                    });
                     self.save(record).await;
                 }
             }
