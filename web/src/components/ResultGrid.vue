@@ -52,6 +52,7 @@ import {
   type SortState,
   MIN_COLUMN_WIDTH,
   MOVE_THRESHOLD,
+  CELL_PADDING,
   CHAR_WIDTH,
   NULL_TEXT,
   dropPosition,
@@ -302,7 +303,7 @@ const template = computed(() => {
   const widths = order.value.map(
     (column) => resized.value[column] ?? estimated.value[column] ?? MIN_COLUMN_WIDTH,
   )
-  const numberWidth = String(props.rowCount).length * CHAR_WIDTH + 16
+  const numberWidth = String(props.rowCount).length * CHAR_WIDTH + CELL_PADDING
   return [numberWidth, ...widths].map((width) => `${width}px`).join(' ')
 })
 

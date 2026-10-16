@@ -152,6 +152,12 @@ export function dropPosition(centers: number[], x: number): number {
 export const CHAR_WIDTH = 7
 
 /**
+ * Room added beside a text, in pixels, so that it does not touch the edges of
+ * its cell.
+ */
+export const CELL_PADDING = 16
+
+/**
  * Maximum estimated width of a column, in pixels.
  */
 export const MAX_ESTIMATED_WIDTH = 360
@@ -181,7 +187,7 @@ function contentWidth(name: string, rows: Cell[][], column: number, max: number)
   for (const row of rows) {
     longest = Math.max(longest, (row[column] ?? NULL_TEXT).length)
   }
-  return Math.min(max, Math.max(48, longest * CHAR_WIDTH + 16))
+  return Math.min(max, Math.max(48, longest * CHAR_WIDTH + CELL_PADDING))
 }
 
 /**
