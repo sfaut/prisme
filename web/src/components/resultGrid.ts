@@ -33,7 +33,9 @@ export interface SortState {
 }
 
 /**
- * Filter applied to the grid.
+ * User filter of the grid. Two forms: the global filter searches the text in
+ * all the columns (`column` is `null`); the targeted filter searches it in
+ * the column at the index `column` of the `SELECT`.
  */
 export interface GridFilter {
   /**
@@ -41,7 +43,7 @@ export interface GridFilter {
    */
   text: string
   /**
-   * Filtered column, or `null` to search in all the columns.
+   * Index of the targeted column, or `null` for the global filter.
    */
   column: number | null
 }

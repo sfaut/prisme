@@ -252,10 +252,10 @@ onBeforeUnmount(() => {
 const resized = ref<Record<number, number>>(rememberedWidths(props.sql, props.columns))
 
 // New columns: the widths remembered for the query, the order of the SELECT,
-// no sort, and the filter's text kept but for all the columns: the sort and
-// the filtered column are indexes that would point to other columns.
-// The same columns again (a session resumed after a reconnection) keep all of
-// it, as chosen by the user.
+// and no sort. The targeted filter's column index would point to another
+// column, so the filter becomes global; its text is kept. The same columns
+// again (a session resumed after a reconnection) keep everything, as chosen by
+// the user.
 watch(
   () => props.columns,
   (columns, previous) => {
