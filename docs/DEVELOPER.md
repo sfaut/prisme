@@ -187,11 +187,12 @@ Syntax highlighting and the beautifier share the keywords of each dialect, one f
 
 ## Continuous integration and releases
 
-GitHub Actions (`.github/workflows/ci.yaml`) checks every push to `master` and every pull request:
+GitHub Actions (`.github/workflows/ci.yaml`) checks every push to `master` and every pull request, in about two minutes:
 
 - interface: formatting, lint, types and tests;
-- backend: formatting, `clippy` and all tests, Docker ones included;
-- then the Windows, Linux and macOS executables, interface embedded, downloadable from the run's artifacts ("Actions" tab, GitHub sign-in required, kept 90 days).
+- backend: formatting, `clippy` and all tests, Docker ones included.
+
+A change that only touches documentation (`*.md`, `docs/`, `.claude/`, `LICENSE`) runs nothing. The Windows, Linux and macOS executables are only built for a release, or when the workflow is run by hand ("Actions" tab, "CI", "Run workflow"): they are then downloadable from the run's artifacts (GitHub sign-in required, kept 90 days).
 
 A version is published through a GitHub release, whose changelog is written by hand (full process in [CLAUDE.md](../CLAUDE.md), section "Publication d'une version"). The versions in `Cargo.toml` and `web/package.json` must already match the tag, and the target commit must be on GitHub:
 

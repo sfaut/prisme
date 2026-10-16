@@ -2,21 +2,27 @@
 #
 # À chaque push sur master et à chaque pull request : contrôle de l'interface,
 # contrôle et tests du backend (y compris les tests sur de vrais serveurs, dans
-# Docker), puis compilation des exécutables Windows, Linux et macOS,
-# téléchargeables dans les artefacts de l'exécution.
+# Docker), sans compiler les exécutables, pour un retour en deux minutes. Un
+# changement qui ne touche que la documentation ne lance rien.
 #
 # À la publication d'une release GitHub (créée avec gh, changelog rédigé à la
-# main, voir CLAUDE.md, « Publication d'une version ») : les mêmes étapes sur
-# le commit de l'étiquette, puis les exécutables sont ajoutés à cette release,
-# téléchargeables directement depuis la page Releases. La CI n'écrit jamais
-# les notes de la release.
+# main, voir CLAUDE.md, « Publication d'une version ») : les mêmes contrôles
+# sur le commit de l'étiquette, puis la compilation des exécutables Windows,
+# Linux et macOS, ajoutés à cette release, téléchargeables directement depuis
+# la page Releases. La CI n'écrit jamais les notes de la release.
+#
+# Lancée à la main (workflow_dispatch) : contrôles et exécutables, déposés dans
+# les artefacts de l'exécution, pour essayer une compilation hors release.
 
 name: CI
 
+# Fichiers sans effet sur le code : les modifier seuls ne lance pas la CI.
 on:
   push:
     branches: [master]
+    paths-ignore: ["**.md", "docs/**", ".claude/**", "LICENSE"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**", ".claude/**", "LICENSE"]
   release:
     types: [published]
   workflow_dispatch:
@@ -121,6 +127,8 @@ jobs:
   # Apple Developer, notarisation), voir docs/QUESTIONS.md, section 3.
   build:
     name: Exécutable ${{ matrix.name }}
+    # Pour une release, ou à la demande ; jamais pour un simple push.
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
     needs: [web, rust]
     strategy:
       fail-fast: false
