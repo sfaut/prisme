@@ -102,12 +102,9 @@ async fn stream_catalog(
 
     let lines = stream::unfold(receiver, |mut receiver| async move {
         let event = receiver.recv().await?;
-        let line = format!(
-            "{}
-",
-            serde_json::to_string(&event)
-                .expect("an explorer event always serialises: its fields are plain data")
-        );
+        let json = serde_json::to_string(&event)
+            .expect("an explorer event always serialises: its fields are plain data");
+        let line = format!("{json}\n");
         Some((Ok::<_, Infallible>(line), receiver))
     });
     Ok((
