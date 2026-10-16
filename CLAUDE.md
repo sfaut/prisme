@@ -14,8 +14,7 @@ This file is short. Detailed decisions are in `docs/`:
 
 ## Code principles
 
-The code must stay readable, fixable and extensible by a developer who knows PHP and Vue but not Rust:
-
+- The code is optimal and follows the idioms of its stack (Rust, TypeScript, Vue).
 - Small, named modules, short functions, no needless abstraction.
 - A module comment at the top of each important file, saying what the module does and why it exists.
 - Tests per module, plus the conformance suite (see below).
