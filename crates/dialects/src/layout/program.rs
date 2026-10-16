@@ -81,7 +81,7 @@ impl Printer {
     /// Starts a new statement on a new line, at indentation `indent`.
     fn start_program_statement(&mut self, indent: usize) {
         self.newline(indent);
-        self.queries = vec![Query::new(0, indent)];
+        self.queries.reset(Query::new(0, indent));
         self.statement_word.clear();
         self.statement_start = true;
     }
@@ -98,12 +98,7 @@ impl Printer {
             return true;
         }
         // In a CASE ... END expression, THEN, ELSE and END belong to it.
-        if !self.parens.is_empty()
-            || self
-                .queries
-                .last()
-                .is_some_and(|query| query.open_cases > 0)
-        {
+        if !self.parens.is_empty() || self.queries.current().open_cases > 0 {
             return false;
         }
         let top = self.blocks.last().map(|block| block.kind);
@@ -164,7 +159,10 @@ impl Printer {
                 true
             }
             "ELSE" if matches!(top, Some(BlockKind::If | BlockKind::Case)) => {
-                let block = self.blocks.last().expect("an IF or CASE block");
+                let block = self
+                    .blocks
+                    .last()
+                    .expect("an IF or CASE block");
                 let indent = if block.kind == BlockKind::Case {
                     block.indent + INDENT
                 } else {
@@ -179,14 +177,17 @@ impl Printer {
                 let indent = self.blocks.last().map_or(0, |block| block.indent);
                 self.newline(indent);
                 self.push_spaced("UNTIL");
-                self.queries = vec![Query::new(0, indent)];
+                self.queries.reset(Query::new(0, indent));
                 true
             }
             "END" if top.is_some() => {
-                let block = self.blocks.pop().expect("an open block");
+                let block = self
+                    .blocks
+                    .pop()
+                    .expect("an open block");
                 self.newline(block.indent);
                 self.push_spaced("END");
-                self.queries = vec![Query::new(0, block.indent)];
+                self.queries.reset(Query::new(0, block.indent));
                 self.end_pending = true;
                 true
             }
@@ -208,7 +209,7 @@ impl Printer {
         if body_now {
             self.start_program_statement(body);
         } else {
-            self.queries = vec![Query::new(0, indent)];
+            self.queries.reset(Query::new(0, indent));
         }
     }
 

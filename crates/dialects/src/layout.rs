@@ -251,11 +251,58 @@ struct Paren {
     line_indent: usize,
 }
 
+/// Stack of the queries being laid out: the main query, then the subqueries
+/// opened inside it, innermost last. The main query is always there, so the
+/// current query always exists.
+struct QueryStack {
+    /// The main query, which never leaves the stack.
+    main: Query,
+    /// Subqueries opened inside the main query, innermost last.
+    nested: Vec<Query>,
+}
+
+impl QueryStack {
+    /// Current query, the innermost one.
+    fn current(&self) -> &Query {
+        self.nested.last().unwrap_or(&self.main)
+    }
+
+    /// Current query, the innermost one, for writing.
+    fn current_mut(&mut self) -> &mut Query {
+        self.nested.last_mut().unwrap_or(&mut self.main)
+    }
+
+    /// Opens a subquery.
+    fn push(&mut self, query: Query) {
+        self.nested.push(query);
+    }
+
+    /// Closes the innermost subquery; the main query stays.
+    fn pop(&mut self) {
+        self.nested.pop();
+    }
+
+    /// Replaces the whole stack by a single main query.
+    fn reset(&mut self, main: Query) {
+        self.main = main;
+        self.nested.clear();
+    }
+}
+
+impl Default for QueryStack {
+    fn default() -> Self {
+        Self {
+            main: Query::new(0, 0),
+            nested: Vec::new(),
+        }
+    }
+}
+
 /// Writes the laid-out text, token by token.
 #[derive(Default)]
 struct Printer {
     out: String,
-    queries: Vec<Query>,
+    queries: QueryStack,
     parens: Vec<Paren>,
     /// The next token starts a line (after an end-of-line comment).
     newline_pending: bool,
@@ -283,7 +330,6 @@ struct Printer {
 impl Printer {
     /// Lays out all the tokens and returns the text.
     fn print(mut self, items: &[Item]) -> String {
-        self.queries.push(Query::new(0, 0));
         for index in 0..items.len() {
             self.place(items, index);
         }
@@ -292,12 +338,12 @@ impl Printer {
 
     /// Current query (the innermost one).
     fn query(&mut self) -> &mut Query {
-        self.queries.last_mut().expect("at least the main query")
+        self.queries.current_mut()
     }
 
     /// Is the token at the clause level of the current query?
     fn at_query_level(&self) -> bool {
-        self.queries.last().map(|query| query.depth) == Some(self.parens.len())
+        self.queries.current().depth == self.parens.len()
     }
 
     /// Places token `index`.
@@ -324,7 +370,7 @@ impl Printer {
         if matches!(item.token, Token::SemiColon) && self.parens.is_empty() {
             self.push_glued(item.text);
             self.out.push_str("\n\n");
-            self.queries = vec![Query::new(0, 0)];
+            self.queries.reset(Query::new(0, 0));
             self.statement_word.clear();
             return;
         }
@@ -356,7 +402,7 @@ impl Printer {
         // In GRANT and REVOKE, SELECT, INSERT... are privileges, not clauses.
         let structured = !matches!(self.statement_word.as_str(), "GRANT" | "REVOKE");
         if structured && self.at_query_level() && !word.is_empty() {
-            let query = self.queries.last().expect("a query");
+            let query = self.queries.current();
             let starts_predicates = word == "WHERE"
                 || word == "HAVING"
                 || (word == "ON" && query.joined && query.clause == Clause::Other);
@@ -397,7 +443,7 @@ impl Printer {
 
         if matches!(item.token, Token::Comma) {
             self.push_glued(item.text);
-            let query = self.queries.last().expect("a query");
+            let query = self.queries.current();
             if query.clause == Clause::Select
                 && query.multi_columns
                 && query.depth == self.parens.len()
@@ -539,7 +585,7 @@ impl Printer {
 
     /// Is the last opened clause a join (to recognise its `ON`)?
     fn after_join(&self) -> bool {
-        self.queries.last().is_some_and(|query| query.joined)
+        self.queries.current().joined
     }
 
     /// Places an opening parenthesis; a subquery is indented.
