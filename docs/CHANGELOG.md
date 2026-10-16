@@ -2,6 +2,32 @@
 
 Changelogs des versions publiées de Prisme, la plus récente en haut. Chaque entrée est aussi la note de sa release GitHub.
 
+## v0.2.0 (2026-10-16)
+
+### 💥 Changement incompatible
+
+- L'option courte qui affiche la version devient `-v` ; `-V` n'est plus reconnue, `--version` ne change pas ([#7](https://github.com/sfaut/prisme/issues/7)).
+
+### ✨ Nouvelles fonctionnalités
+
+- Réglages au premier lancement : Prisme demande dans le terminal le port d'écoute (8484 par défaut) et l'adresse e-mail de l'utilisateur (`me@local` par défaut), les enregistre dans sa base interne, et ne les redemande plus. `prisme --setup` repose les questions ; `--listen` et `--user-email` ne valent que pour un lancement. Une installation existante garde ses réglages, sans question ([#6](https://github.com/sfaut/prisme/issues/6)).
+- Éditeur SQL : Tab avance jusqu'au taquet suivant (tous les quatre espaces) ou indente les lignes sélectionnées, Maj-Tab les désindente ; Échap puis Tab, ou Ctrl-M, quittent l'éditeur au clavier ([#2](https://github.com/sfaut/prisme/issues/2)).
+- Grille de résultats : les colonnes `CHAR` s'affichent en chasse fixe ([#4](https://github.com/sfaut/prisme/issues/4)), et le marqueur `NULL` en petites capitales, plus discret ([#1](https://github.com/sfaut/prisme/issues/1)).
+
+### 🐞 Corrections de bugs
+
+- Éditeur SQL : Entrée n'ajoute plus deux espaces en début de ligne ; le curseur va en première colonne ([#5](https://github.com/sfaut/prisme/issues/5)).
+- Copie de la grille (Ctrl-C) : les valeurs sont copiées telles quelles, sans guillemets ajoutés ; les caractères de contrôle d'une valeur sont écrits en toutes lettres (`\t`, `\n`, `\r`…), pour garder une valeur par cellule ([#3](https://github.com/sfaut/prisme/issues/3)).
+
+### ⚙️ Optimisation interne
+
+- Dépendances à jour : Rust 1.99.1, Tokio 1.53.3, Vitest 5, Oxlint 1.88, Prettier 3.9.10, et les actions GitHub de l'intégration continue.
+
+### 📝 Documentation
+
+- README en anglais, pour l'utilisateur final, avec un démarrage rapide ; guide du développeur à part, dans `docs/DEVELOPER.md`.
+- Licence MIT : titulaire des droits précisé.
+
 ## v0.1.0 (2026-10-15)
 
 ### 🚀 Lancement
