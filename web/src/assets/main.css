@@ -234,8 +234,8 @@
   --grid-cell-padding-x: 0.25rem;
   /* Gap between the type icon and the name in the grid header. */
   --grid-type-gap: 0.375rem;
-  --grid-filter-width: 15rem;
-  --grid-filter-column-width: 12.5rem;
+  --grid-user-filter-width: 15rem;
+  --grid-user-filter-column-width: 12.5rem;
   --grid-min-height: 7.5rem;
 
   /* SQL editor: minimum height, whatever the share given to it

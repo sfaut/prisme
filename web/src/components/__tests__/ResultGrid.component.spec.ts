@@ -80,9 +80,9 @@ describe('ResultGrid', () => {
       ],
     )
     // Collapsed at first: the button of the bottom bar expands the form.
-    expect(wrapper.find('.grid-filter').exists()).toBe(false)
-    await wrapper.find('.grid-filter-toggle').trigger('click')
-    await wrapper.find('.grid-filter input').setValue('null')
+    expect(wrapper.find('.grid-user-filter').exists()).toBe(false)
+    await wrapper.find('.grid-user-filter-toggle').trigger('click')
+    await wrapper.find('.grid-user-filter input').setValue('null')
     expect(wrapper.find('.grid-count').text()).toBe('1 / 2 lignes')
   })
 })
@@ -119,9 +119,9 @@ describe('ResultGrid with a large result', () => {
 describe('ResultGrid filter', () => {
   it('keeps the filter text when the same columns come back', async () => {
     const wrapper = mountGrid(['id'], [['1'], ['2']])
-    await wrapper.find('.grid-filter-toggle').trigger('click')
-    await wrapper.find('.grid-filter input').setValue('2')
+    await wrapper.find('.grid-user-filter-toggle').trigger('click')
+    await wrapper.find('.grid-user-filter input').setValue('2')
     await wrapper.setProps({ columns: ['id'], rows: [['1'], ['2']], rowCount: 2 })
-    expect((wrapper.find('.grid-filter input').element as HTMLInputElement).value).toBe('2')
+    expect((wrapper.find('.grid-user-filter input').element as HTMLInputElement).value).toBe('2')
   })
 })

@@ -651,7 +651,7 @@ const userFilterColumn = computed({
         :icon="Search"
         placeholder="Filtrer"
         aria-label="Texte cherché"
-        class="grid-filter"
+        class="grid-user-filter"
       >
         <template v-if="userFilter.text !== ''" #trailing>
           <ui-button
@@ -667,7 +667,7 @@ const userFilterColumn = computed({
         v-model="userFilterColumn"
         :items="userFilterOptions"
         label="Colonne filtrée"
-        class="grid-filter-column"
+        class="grid-user-filter-column"
       />
     </div>
 
@@ -783,7 +783,7 @@ const userFilterColumn = computed({
         :aria-pressed="userFilterOpen"
         :aria-label="userFilterOpen ? 'Replier le filtre' : 'Filtrer les lignes'"
         :title="userFilterOpen ? 'Replier le filtre' : 'Filtrer les lignes'"
-        class="grid-filter-toggle"
+        class="grid-user-filter-toggle"
         @click="toggleUserFilter"
       />
       <!-- The slot follows the number in the same text, without the container's gap. -->
@@ -807,12 +807,12 @@ const userFilterColumn = computed({
   gap: var(--gap);
 }
 
-.grid-filter {
-  max-inline-size: var(--grid-filter-width);
+.grid-user-filter {
+  max-inline-size: var(--grid-user-filter-width);
 }
 
-.grid-filter-column {
-  max-inline-size: var(--grid-filter-column-width);
+.grid-user-filter-column {
+  max-inline-size: var(--grid-user-filter-column-width);
 }
 
 .grid-footer {
