@@ -37,9 +37,9 @@ export interface SortState {
  * all the columns (`column` is `null`); the targeted filter searches it in
  * the column at the index `column` of the `SELECT`.
  */
-export interface GridFilter {
+export interface UserFilter {
   /**
-   * Searched text, case-insensitive. Empty: no filter.
+   * Searched text, case-insensitive. Empty: no text to search.
    */
   text: string
   /**
@@ -258,20 +258,24 @@ export function compareCells(a: Cell, b: Cell): number {
 }
 
 /**
- * Computes the view: indexes of the source rows that pass the filter, in the sort order.
+ * Computes the view: indexes of the source rows that pass the user filter, in the sort order.
  *
  * Without a sort, the order received from the server is kept. The sort is
  * stable: for equal values, the server's order is kept too.
  *
  * @param rows Rows of the result.
- * @param filter Filter.
+ * @param userFilter User filter.
  * @param sort Sort, `null` for none.
  */
-export function visibleRows(rows: Cell[][], filter: GridFilter, sort: SortState | null): number[] {
-  const needle = filter.text.trim().toLowerCase()
+export function visibleRows(
+  rows: Cell[][],
+  userFilter: UserFilter,
+  sort: SortState | null,
+): number[] {
+  const needle = userFilter.text.trim().toLowerCase()
   const view: number[] = []
   rows.forEach((row, index) => {
-    if (needle === '' || matches(row, needle, filter.column)) {
+    if (needle === '' || matches(row, needle, userFilter.column)) {
       view.push(index)
     }
   })
@@ -298,7 +302,7 @@ export interface ViewMemory {
    */
   needle: string
   /**
-   * Filtered column the view was computed with.
+   * Targeted column the view was computed with, `null` for the global filter.
    */
   column: number | null
   /**
@@ -339,7 +343,7 @@ export function sameColumns(a: string[], b: string[]): boolean {
  * 50 000 rows takes about 0.2 s, and the rows arrive by batches of 500.
  *
  * The result is the one `visibleRows` gives on the whole array, as long as
- * the comparison is consistent. A new array, a new filter or a new sort
+ * the comparison is consistent. A new array, a new user filter or a new sort
  * starts again from the first row.
  *
  * A call examines at most `chunk` rows, so that a large result can be viewed
@@ -349,7 +353,7 @@ export function sameColumns(a: string[], b: string[]): boolean {
  *
  * @param memory Memory of the previous update, updated in place.
  * @param rows Rows of the result.
- * @param filter Filter.
+ * @param userFilter User filter.
  * @param sort Sort, `null` for none.
  * @param chunk Maximum number of rows examined by this call.
  * @returns A new array each time, so that Vue sees the change.
@@ -357,25 +361,25 @@ export function sameColumns(a: string[], b: string[]): boolean {
 export function updateView(
   memory: ViewMemory,
   rows: Cell[][],
-  filter: GridFilter,
+  userFilter: UserFilter,
   sort: SortState | null,
   chunk: number = Number.POSITIVE_INFINITY,
 ): number[] {
-  const needle = filter.text.trim().toLowerCase()
+  const needle = userFilter.text.trim().toLowerCase()
   const sameQuery =
     memory.rows === rows &&
     memory.needle === needle &&
-    memory.column === filter.column &&
+    memory.column === userFilter.column &&
     memory.sort?.column === sort?.column &&
     memory.sort?.direction === sort?.direction
   if (!sameQuery || rows.length < memory.scanned) {
-    Object.assign(memory, { rows, needle, column: filter.column, sort, scanned: 0, view: [] })
+    Object.assign(memory, { rows, needle, column: userFilter.column, sort, scanned: 0, view: [] })
   }
 
   const end = Math.min(rows.length, memory.scanned + chunk)
   const added: number[] = []
   for (let index = memory.scanned; index < end; index++) {
-    if (needle === '' || matches(rows[index]!, needle, filter.column)) {
+    if (needle === '' || matches(rows[index]!, needle, userFilter.column)) {
       added.push(index)
     }
   }

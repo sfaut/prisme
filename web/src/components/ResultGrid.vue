@@ -2,11 +2,12 @@
   Compact result grid.
 
   - Sort: ▲▼ button of the header (ascending, descending, none).
-  - Filter: text searched in one column or in all. The form is collapsed;
-    the button of the bottom bar expands it (and collapses it: the filter
+  - User filter: text searched in all the columns (global filter) or in one
+    column (targeted filter). The form is collapsed;
+    the button of the bottom bar expands it (and collapses it: the user filter
     stays applied, the button shows it).
-  - Bottom bar: filter button, number of loaded rows ("120 /
-    5 000 lignes" when a filter is active), then the content of the
+  - Bottom bar: user filter button, number of loaded rows ("120 /
+    5 000 lignes" when a user filter is active), then the content of the
     `footer` slot (duration of the query).
   - Selection: click on a cell, on a row number or on a column name;
     Shift+click extends, Ctrl+click adds, dragging extends too (on the row
@@ -22,7 +23,7 @@
     (`gridWidths.ts`). A text too long is truncated (…) and shows in full on
     hover.
   - Order: dragging a column name moves it. A new run restores the order of
-    the `SELECT`. Selection and copy follow the displayed order; sort, filter
+    the `SELECT`. Selection and copy follow the displayed order; sort, user filter
     and widths stay attached to the column.
   - Alignment: numbers, dates and times on the right, after the type
     announced by the server.
@@ -34,7 +35,7 @@
     by an external link icon and opened in a new tab.
 
   Only the visible rows exist in the page (virtual scrolling): the grid
-  stays smooth with tens of thousands of rows. The logic (sort, filter,
+  stays smooth with tens of thousands of rows. The logic (sort, user filter,
   selection, copy) is in `resultGrid.ts`.
 -->
 <script setup lang="ts">
@@ -56,7 +57,7 @@ import type { Cell } from '@/api/querySession'
 import { cssPixels } from '@/cssLength'
 
 import {
-  type GridFilter,
+  type UserFilter,
   type SelectMode,
   type SortState,
   MIN_COLUMN_WIDTH,
@@ -133,34 +134,34 @@ const ROW_HEIGHT = cssPixels('--grid-row-height', 22)
 
 const scroller = useTemplateRef<HTMLDivElement>('scroller')
 
-const filter = reactive<GridFilter>({ text: '', column: null })
+const userFilter = reactive<UserFilter>({ text: '', column: null })
 
 /**
- * Is the filter form expanded?
+ * Is the user filter form expanded?
  */
-const filterOpen = ref(false)
+const userFilterOpen = ref(false)
 
-const filterBox = useTemplateRef<HTMLDivElement>('filterBox')
+const userFilterBox = useTemplateRef<HTMLDivElement>('userFilterBox')
 
 /**
- * Expands or collapses the filter form; when expanded, its field takes the focus.
+ * Expands or collapses the user filter form; when expanded, its field takes the focus.
  */
-async function toggleFilter(): Promise<void> {
-  filterOpen.value = !filterOpen.value
-  if (filterOpen.value) {
+async function toggleUserFilter(): Promise<void> {
+  userFilterOpen.value = !userFilterOpen.value
+  if (userFilterOpen.value) {
     await nextTick()
-    filterBox.value?.querySelector('input')?.focus()
+    userFilterBox.value?.querySelector('input')?.focus()
   }
 }
 
 /**
  * Number of rows of the bottom bar: loaded rows, preceded by the kept rows
- * when a filter is active.
+ * when a user filter is active.
  */
 const countLabel = computed(() => {
   const loaded = props.shownCount ?? props.rowCount
   const total = `${loaded.toLocaleString('fr-FR')} ${loaded > 1 ? 'lignes' : 'ligne'}`
-  return filter.text === '' ? total : `${view.value.length.toLocaleString('fr-FR')} / ${total}`
+  return userFilter.text === '' ? total : `${view.value.length.toLocaleString('fr-FR')} / ${total}`
 })
 const sort = ref<SortState | null>(null)
 const selection = shallowRef(emptySelection())
@@ -223,13 +224,13 @@ function nextFrame(): Promise<void> {
 /**
  * Computes the view of the rows, one chunk per frame: the first chunk at once,
  * then the others while the browser draws. A newer computation (new rows,
- * filter or sort) stops this one.
+ * user filter or sort) stops this one.
  */
 async function refreshView(): Promise<void> {
   const run = ++viewRun
   const rows = props.rows
   for (;;) {
-    view.value = updateView(viewMemory, rows, filter, sort.value, VIEW_CHUNK)
+    view.value = updateView(viewMemory, rows, userFilter, sort.value, VIEW_CHUNK)
     if (viewMemory.scanned >= rows.length || run !== viewRun) {
       return
     }
@@ -237,9 +238,13 @@ async function refreshView(): Promise<void> {
   }
 }
 
-watch(() => [props.rows, props.rowCount, filter.text, filter.column, sort.value], refreshView, {
-  immediate: true,
-})
+watch(
+  () => [props.rows, props.rowCount, userFilter.text, userFilter.column, sort.value],
+  refreshView,
+  {
+    immediate: true,
+  },
+)
 
 onBeforeUnmount(() => {
   viewRun++
@@ -253,7 +258,7 @@ const resized = ref<Record<number, number>>(rememberedWidths(props.sql, props.co
 
 // New columns: the widths remembered for the query, the order of the SELECT,
 // and no sort. The targeted filter's column index would point to another
-// column, so the filter becomes global; its text is kept. The same columns
+// column, so the user filter becomes global; its text is kept. The same columns
 // again (a session resumed after a reconnection) keep everything, as chosen by
 // the user.
 watch(
@@ -265,7 +270,7 @@ watch(
     resized.value = rememberedWidths(props.sql, columns)
     order.value = columns.map((_, index) => index)
     sort.value = null
-    filter.column = null
+    userFilter.column = null
   },
 )
 
@@ -275,7 +280,7 @@ watch(resized, (widths) => rememberWidths(props.sql, props.columns, widths))
 /**
  * Display order: index in the `SELECT` of each displayed column. The
  * displayed positions serve the selection; the indexes of the `SELECT`
- * serve the sort, the filter and the widths.
+ * serve the sort, the user filter and the widths.
  */
 const order = ref(props.columns.map((_, index) => index))
 
@@ -423,7 +428,7 @@ function fitWidth(column: number): void {
   }
 }
 
-const filterOptions = computed(() => [
+const userFilterOptions = computed(() => [
   { label: 'Toutes les colonnes', value: -1 },
   ...props.columns.map((name, index) => ({ label: name, value: index })),
 ])
@@ -437,8 +442,8 @@ const virtualizer = useVirtualizer(
   })),
 )
 
-// Sort or filter changed: the positions change, the selection no longer makes sense.
-watch([filter, sort], () => {
+// Sort or user filter changed: the positions change, the selection no longer makes sense.
+watch([userFilter, sort], () => {
   selection.value = emptySelection()
 })
 
@@ -628,39 +633,39 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 /**
- * Value of the "filtered column" list: -1 for all the columns.
+ * Value of the targeted column list: -1 for the global filter, all the columns.
  */
-const filterColumn = computed({
-  get: () => filter.column ?? -1,
+const userFilterColumn = computed({
+  get: () => userFilter.column ?? -1,
   set: (value: number | undefined) => {
-    filter.column = value === undefined || value < 0 ? null : value
+    userFilter.column = value === undefined || value < 0 ? null : value
   },
 })
 </script>
 
 <template>
   <div class="result-grid">
-    <div v-if="filterOpen" ref="filterBox" class="grid-toolbar">
+    <div v-if="userFilterOpen" ref="userFilterBox" class="grid-toolbar">
       <ui-input
-        v-model="filter.text"
+        v-model="userFilter.text"
         :icon="Search"
         placeholder="Filtrer"
         aria-label="Texte cherché"
         class="grid-filter"
       >
-        <template v-if="filter.text !== ''" #trailing>
+        <template v-if="userFilter.text !== ''" #trailing>
           <ui-button
             :icon="X"
             variant="ghost"
             small
             aria-label="Vider le filtre"
-            @click="filter.text = ''"
+            @click="userFilter.text = ''"
           />
         </template>
       </ui-input>
       <ui-select
-        v-model="filterColumn"
-        :items="filterOptions"
+        v-model="userFilterColumn"
+        :items="userFilterOptions"
         label="Colonne filtrée"
         class="grid-filter-column"
       />
@@ -773,13 +778,13 @@ const filterColumn = computed({
       <ui-button
         :icon="ListFilter"
         variant="ghost"
-        :tone="filter.text === '' ? 'neutral' : 'accent'"
+        :tone="userFilter.text === '' ? 'neutral' : 'accent'"
         small
-        :aria-pressed="filterOpen"
-        :aria-label="filterOpen ? 'Replier le filtre' : 'Filtrer les lignes'"
-        :title="filterOpen ? 'Replier le filtre' : 'Filtrer les lignes'"
+        :aria-pressed="userFilterOpen"
+        :aria-label="userFilterOpen ? 'Replier le filtre' : 'Filtrer les lignes'"
+        :title="userFilterOpen ? 'Replier le filtre' : 'Filtrer les lignes'"
         class="grid-filter-toggle"
-        @click="toggleFilter"
+        @click="toggleUserFilter"
       />
       <!-- The slot follows the number in the same text, without the container's gap. -->
       <span class="grid-count">{{ countLabel }}<slot name="footer" /></span>

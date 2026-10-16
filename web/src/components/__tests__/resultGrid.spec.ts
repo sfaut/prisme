@@ -23,7 +23,7 @@ import {
   selectionToText,
   createViewMemory,
   sameColumns,
-  type GridFilter,
+  type UserFilter,
   type SortState,
   updateView,
   visibleRows,
@@ -72,7 +72,7 @@ describe('sort', () => {
   })
 })
 
-describe('filter', () => {
+describe('user filter', () => {
   it('searches in all the columns, case-insensitive', () => {
     expect(visibleRows(rows, { text: 'PAR', column: null }, null)).toEqual([2])
   })
@@ -231,20 +231,20 @@ describe('updateView', () => {
     String((index * 37) % 50),
     `item ${(index * 13) % 40}`,
   ])
-  const noFilter: GridFilter = { text: '', column: null }
+  const noFilter: UserFilter = { text: '', column: null }
 
   /**
    * Feeds the rows to the memory by batches, in one array that grows as the store does,
    * and pairs each view given by the memory with the full computation.
    *
    * @param batch Size of each batch.
-   * @param filter Filter of the view.
+   * @param userFilter User filter of the view.
    * @param sort Sort of the view, `null` for none.
    * @returns The pairs (view of the memory, full computation), one per batch.
    */
   function receiveBy(
     batch: number,
-    filter: GridFilter = noFilter,
+    userFilter: UserFilter = noFilter,
     sort: SortState | null = null,
   ): [number[], number[]][] {
     const received: Cell[][] = []
@@ -252,7 +252,10 @@ describe('updateView', () => {
     const pairs: [number[], number[]][] = []
     for (let start = 0; start < data.length; start += batch) {
       received.push(...data.slice(start, start + batch))
-      pairs.push([updateView(memory, received, filter, sort), visibleRows(received, filter, sort)])
+      pairs.push([
+        updateView(memory, received, userFilter, sort),
+        visibleRows(received, userFilter, sort),
+      ])
     }
     return pairs
   }
@@ -271,19 +274,21 @@ describe('updateView', () => {
   })
 
   it('applies a filter to the rows received since', () => {
-    const filter: GridFilter = { text: 'item 1', column: 1 }
-    for (const [actual, expected] of receiveBy(100, filter, { column: 0, direction: 'asc' })) {
+    const userFilter: UserFilter = { text: 'item 1', column: 1 }
+    for (const [actual, expected] of receiveBy(100, userFilter, { column: 0, direction: 'asc' })) {
       expect(actual).toEqual(expected)
     }
   })
 
-  it('starts again on a new array, a new filter or a new sort', () => {
+  it('starts again on a new array, a new user filter or a new sort', () => {
     const memory = createViewMemory()
     updateView(memory, data, noFilter, null)
     const fresh = data.slice(0, 10)
     expect(updateView(memory, fresh, noFilter, null)).toEqual(visibleRows(fresh, noFilter, null))
-    const filter: GridFilter = { text: '3', column: 0 }
-    expect(updateView(memory, fresh, filter, null)).toEqual(visibleRows(fresh, filter, null))
+    const userFilter: UserFilter = { text: '3', column: 0 }
+    expect(updateView(memory, fresh, userFilter, null)).toEqual(
+      visibleRows(fresh, userFilter, null),
+    )
   })
 
   it('returns a new array each time, so that Vue sees the change', () => {
@@ -308,16 +313,16 @@ describe('sameColumns', () => {
 describe('updateView by chunks', () => {
   it('ends on the same view as a single computation', () => {
     const rows: Cell[][] = Array.from({ length: 1000 }, (_, index) => [String((index * 31) % 97)])
-    const filter = { text: '', column: null }
+    const userFilter = { text: '', column: null }
     const sort = { column: 0, direction: 'desc' as const }
     const memory = createViewMemory()
     let view: number[] = []
     let calls = 0
     do {
-      view = updateView(memory, rows, filter, sort, 150)
+      view = updateView(memory, rows, userFilter, sort, 150)
       calls++
     } while (memory.scanned < rows.length)
     expect(calls).toBe(7)
-    expect(view).toEqual(visibleRows(rows, filter, sort))
+    expect(view).toEqual(visibleRows(rows, userFilter, sort))
   })
 })
