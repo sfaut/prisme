@@ -772,7 +772,6 @@ const filterColumn = computed({
   overflow: auto;
   border: var(--line-width) solid var(--line);
   font-size: var(--font-size-ui);
-  outline: none;
   user-select: none;
 }
 
