@@ -1,13 +1,13 @@
-# Workspace Cargo de Prisme : un dossier par crate sous crates/
-# (voir CLAUDE.md, section « Organisation du dépôt »).
+# Cargo workspace of Prisme: one folder per crate under crates/
+# (see CLAUDE.md, section "Repository layout").
 
 [workspace]
 resolver = "3"
 members = ["crates/*"]
 
 [workspace.package]
-# Version de Prisme, commune à tous les crates : elle suit l'étiquette Git
-# de la release (v0.1.0 → 0.1.0), comme celle de web/package.json.
+# Version of Prisme, common to all the crates: it follows the Git tag of the
+# release (v0.1.0 → 0.1.0), like that of web/package.json.
 version = "0.2.0"
 edition = "2024"
 license = "MIT"

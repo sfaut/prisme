@@ -1,4 +1,4 @@
-# Version de Rust figée pour tout le projet : rustup l'installe au besoin.
+# Rust version pinned for the whole project: rustup installs it when needed.
 [toolchain]
 channel = "1.99.1"
 components = ["clippy", "rustfmt"]
