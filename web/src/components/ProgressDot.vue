@@ -1,9 +1,9 @@
 <!--
-  Pastille d'avancement d'une requête, à gauche du libellé de son onglet.
+  Progress dot of a query, on the left of its tab's label.
 
-  Grise et pulsant très lentement tant que la requête attend son tour, bleue
-  et pulsante pendant l'exécution (lentement) puis pendant la réception des
-  lignes (vite), verte quand le résultat est complet, rouge en cas d'échec.
+  Grey and pulsing very slowly while the query waits for its turn, blue and
+  pulsing while running (slowly) then while receiving the rows (fast), green
+  when the result is complete, red on failure.
 -->
 <script setup lang="ts">
 import { computed } from 'vue'
@@ -12,13 +12,13 @@ import { type QueryTab, tabProgress } from '@/api/querySession'
 
 const props = defineProps<{
   /**
-   * Requête suivie.
+   * Tracked query.
    */
   tab: QueryTab
 }>()
 
 /**
- * Libellé de chaque avancement, pour les lecteurs d'écran.
+ * Label of each progress, for screen readers.
  */
 const LABELS = {
   waiting: 'En attente',

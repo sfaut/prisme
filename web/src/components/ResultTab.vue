@@ -1,18 +1,16 @@
 <!--
-  Contenu de l'onglet d'une requête, dans la barre des onglets de la cellule.
+  Content of a query's tab, in the cell's tab bar.
 
-  - Pastille d'avancement, puis libellé : le nom donné par l'utilisateur, ou
-    le numéro et le début de la requête ; un double clic le renomme
-    (`TabLabel`).
-  - Épingle : un onglet épinglé reste quand la requête est relancée. Elle
-    est toujours visible sur un onglet épinglé ; sinon, comme la croix, au
-    survol de l'onglet ou sur l'onglet actif (l'onglet porte la classe
-    `group`).
-  - Croix (ou clic du milieu) : ferme l'onglet ; la cellule arrête sa
-    requête si elle tourne.
-  - Barre d'avancement dessinée sur le bord bas de l'onglet : indéterminée
-    (un segment qui va et vient) quand la part accomplie est inconnue, verte
-    une fois la requête terminée, rouge en cas d'échec (`tabFraction`).
+  - Progress dot, then label: the name given by the user, or the number and
+    the start of the query; a double click renames it (`TabLabel`).
+  - Pin: a pinned tab stays when the query is run again. It is always
+    visible on a pinned tab; otherwise, like the cross, on hovering the tab
+    or on the active tab (the tab carries the `group` class).
+  - Cross (or middle click): closes the tab; the cell stops its query if
+    it is running.
+  - Progress bar drawn on the bottom edge of the tab: indeterminate (a
+    segment that goes back and forth) when the completed share is unknown,
+    green once the query has ended, red on failure (`tabFraction`).
 -->
 <script setup lang="ts">
 import { Pin, X } from 'lucide-vue-next'
@@ -26,38 +24,38 @@ import UiButton from './ui/UiButton.vue'
 
 const props = defineProps<{
   /**
-   * Requête de l'onglet.
+   * Query of the tab.
    */
   tab: QueryTab
   /**
-   * Libellé par défaut, sans nom donné.
+   * Default label, without a given name.
    */
   defaultLabel: string
 }>()
 
 const emit = defineEmits<{
   /**
-   * L'utilisateur ferme l'onglet.
+   * The user closes the tab.
    */
   close: []
   /**
-   * L'utilisateur épingle ou désépingle l'onglet.
+   * The user pins or unpins the tab.
    */
   'toggle-pin': []
   /**
-   * L'utilisateur renomme l'onglet ; `null` rend le libellé par défaut.
+   * The user renames the tab; `null` gives back the default label.
    */
   rename: [name: string | null]
 }>()
 
 /**
- * Part accomplie de la requête, `null` si inconnue.
+ * Completed share of the query, `null` if unknown.
  */
 const fraction = computed(() => tabFraction(props.tab))
 
 /**
- * Couleur de la barre : rouge en échec, verte une fois terminée, sinon
- * celle de l'action. Aucune barre tant que la requête attend son tour.
+ * Color of the bar: red on failure, green once ended, otherwise that of
+ * the action. No bar while the query waits for its turn.
  */
 const barTone = computed(() => {
   const progress = tabProgress(props.tab)
@@ -72,7 +70,7 @@ const barTone = computed(() => {
   <span class="flex min-w-0 items-center gap-1.5" @auxclick.middle.prevent="emit('close')">
     <progress-dot :tab="tab" />
     <tab-label :name="tab.name" :default-label="defaultLabel" @rename="emit('rename', $event)" />
-    <!-- Épingle et croix côte à côte, sans l'écart qui sépare le libellé. -->
+    <!-- Pin and cross side by side, without the gap that sets the label apart. -->
     <span class="flex items-center">
       <ui-button
         :icon="Pin"
@@ -114,7 +112,7 @@ const barTone = computed(() => {
 </template>
 
 <style scoped>
-/* Barre d'avancement, sur toute la largeur du bord bas de l'onglet. */
+/* Progress bar, over the whole width of the tab's bottom edge. */
 .tab-progress {
   position: absolute;
   inset-inline: 0;
@@ -140,15 +138,15 @@ const barTone = computed(() => {
     background: var(--error);
   }
 
-  /* Part inconnue : un segment va et vient d'un bord à l'autre. */
+  /* Unknown share: a segment goes back and forth from one edge to the other. */
   &.indeterminate {
     inline-size: 30%;
     animation: sweep 1.2s ease-in-out infinite alternate;
   }
 }
 
-/* Le segment occupe 30 % de l'onglet : décalé de 70 / 30 de sa largeur,
-   il touche le bord droit. */
+/* The segment takes 30 % of the tab: shifted by 70 / 30 of its width,
+   it touches the right edge. */
 @keyframes sweep {
   from {
     transform: translateX(0);

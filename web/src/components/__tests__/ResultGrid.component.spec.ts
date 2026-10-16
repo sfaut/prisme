@@ -7,12 +7,12 @@ import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import ResultGrid from '../ResultGrid.vue'
 
 /**
- * Monte la grille.
+ * Mounts the grid.
  *
- * @param columns Noms des colonnes.
- * @param rows Lignes du résultat.
- * @param sql Texte de la requête.
- * @param columnTypes Types des colonnes, aucun par défaut.
+ * @param columns Names of the columns.
+ * @param rows Rows of the result.
+ * @param sql Text of the query.
+ * @param columnTypes Types of the columns, none by default.
  */
 function mountGrid(
   columns: string[],
@@ -27,12 +27,12 @@ function mountGrid(
 }
 
 describe('ResultGrid', () => {
-  it('montre le type de chaque colonne par une icône, son nom au survol', () => {
+  it('shows the type of each column with an icon, its name on hover', () => {
     const wrapper = mountGrid(['id', 'name'], [['1', 'a']], 'SELECT id, name FROM t', [
       { family: 'integer', name: 'INT UNSIGNED' },
       { family: 'text', name: 'VARCHAR(20)' },
     ])
-    // Entier : la marque « 123 » ; texte : l'icône « Aa ».
+    // Integer: the "123" mark; text: the "Aa" icon.
     expect(wrapper.find('.grid-type-glyph').text()).toBe('123')
     expect(wrapper.findAll('.grid-type-icon')).toHaveLength(1)
     expect(wrapper.find('.grid-column-type').exists()).toBe(false)
@@ -40,14 +40,14 @@ describe('ResultGrid', () => {
     expect(titles[1]).toContain('VARCHAR(20)')
   })
 
-  it('sélectionne tout par un clic sur le coin supérieur gauche', async () => {
+  it('selects everything with a click on the top left corner', async () => {
     const wrapper = mountGrid(['id', 'name'], [['1', 'a']])
     await wrapper.find('.grid-corner').trigger('mousedown')
     const headers = wrapper.findAll('.grid-column-header')
     expect(headers.map((header) => header.classes('selected'))).toEqual([true, true])
   })
 
-  it('ajuste une colonne au contenu, puis lui rend sa largeur estimée', async () => {
+  it('fits a column to its content, then gives back its estimated width', async () => {
     const wrapper = mountGrid(['texte'], [['x'.repeat(100)]], 'SELECT texte FROM double_clic')
     const width = () =>
       (wrapper.find('.grid-header').element as HTMLElement).style.gridTemplateColumns.split(' ')[1]
@@ -58,7 +58,7 @@ describe('ResultGrid', () => {
     expect(width()).toBe('360px')
   })
 
-  it('affiche les en-têtes et le nombre de lignes', () => {
+  it('shows the headers and the number of rows', () => {
     const wrapper = mountGrid(
       ['id', 'name'],
       [
@@ -71,7 +71,7 @@ describe('ResultGrid', () => {
     expect(wrapper.find('.grid-count').text()).toBe('2 lignes')
   })
 
-  it('filtre les lignes', async () => {
+  it('filters the rows', async () => {
     const wrapper = mountGrid(
       ['id', 'name'],
       [
@@ -79,7 +79,7 @@ describe('ResultGrid', () => {
         ['2', null],
       ],
     )
-    // Replié au départ : le bouton de la barre du bas déplie le formulaire.
+    // Collapsed at first: the button of the bottom bar expands the form.
     expect(wrapper.find('.grid-filter').exists()).toBe(false)
     await wrapper.find('.grid-filter-toggle').trigger('click')
     await wrapper.find('.grid-filter input').setValue('null')

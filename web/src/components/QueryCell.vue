@@ -1,24 +1,24 @@
 <!--
-  Cellule SQL : éditeur, exécution, limite de lignes, état et résultats.
+  SQL cell: editor, run, row limit, state and results.
 
-  La cellule est celle d'un éditeur : elle ouvre la session de requêtes de
-  l'éditeur, sur sa connexion, et la garde ouverte tant qu'elle existe. Les
-  résultats sont enregistrés par le serveur ; la cellule repart des onglets
-  enregistrés, et enregistre aussi leur nom, leur épinglage, leur ordre et
-  leur fermeture. Ctrl-Entrée ou « Exécuter » lance
-  la requête sous le curseur ; Ctrl-Maj-Entrée ou « Tout exécuter » lance
-  toutes les requêtes en parallèle. « Stopper » les arrête toutes.
-  « Enjoliver » réécrit le texte en « beau SQL », une fois le catalogue de la
-  connexion chargé (il donne la casse des fonctions de l'utilisateur).
-  Chaque requête a son onglet de résultat (`ResultTab.vue`), avec sa barre
-  d'avancement. Un onglet se renomme, s'épingle (il reste quand la requête
-  est relancée), se ferme (sa requête est arrêtée si elle tourne) ou se
-  déplace en le faisant glisser, comme une colonne de la grille.
-  La limite de lignes choisie ici devient la limite par défaut de l'utilisateur.
-  Les boutons sont au-dessus de l'éditeur. Une barre horizontale, sous
-  l'éditeur, partage la hauteur entre l'éditeur (avec ses boutons) et les
-  résultats : le tiers du haut par défaut, réglage
-  retenu (`EditorResizer`).
+  The cell is that of an editor: it opens the editor's query session, on its
+  connection, and keeps it open as long as it exists. The results are saved
+  by the server; the cell starts again from the saved tabs, and also saves
+  their name, their pinning, their order and their closing. Ctrl+Enter or
+  "Exécuter" runs
+  the query under the cursor; Ctrl+Shift+Enter or "Tout exécuter" runs
+  all the queries in parallel. "Stopper" stops them all.
+  "Enjoliver" rewrites the text as "beautiful SQL", once the connection's
+  catalog is loaded (it gives the case of the user's functions).
+  Each query has its result tab (`ResultTab.vue`), with its progress bar. A
+  tab can be renamed, pinned (it stays when the query is run again), closed
+  (its query is stopped if it is running) or moved by dragging it, like a
+  column of the grid.
+  The row limit chosen here becomes the user's default limit.
+  The buttons are above the editor. A horizontal bar, under the editor,
+  splits the height between the editor (with its buttons) and the results:
+  the top third by default, a remembered setting
+  (`EditorResizer`).
 -->
 <script setup lang="ts">
 import { LoaderCircle, Play, Square, WandSparkles } from 'lucide-vue-next'
@@ -46,28 +46,28 @@ import UiSelect from './ui/UiSelect.vue'
 
 const props = defineProps<{
   /**
-   * Éditeur de la cellule.
+   * Editor of the cell.
    */
   editorId: number
   /**
-   * Connexion sur laquelle s'exécutent les requêtes.
+   * Connection on which the queries run.
    */
   connection: ConnectionSummary
 }>()
 
 const emit = defineEmits<{
   /**
-   * La session est fermée et l'utilisateur demande à la rouvrir.
+   * The session is closed and the user asks to reopen it.
    */
   reconnect: []
   /**
-   * La base en cours a changé (connexion, `USE`) ; `null` si aucune.
+   * The current database has changed (connection, `USE`); `null` if none.
    */
   database: [database: string | null]
 }>()
 
 /**
- * Texte SQL de la cellule.
+ * SQL text of the cell.
  */
 const sql = defineModel<string>('sql', { required: true })
 
@@ -77,7 +77,7 @@ const state = session.state
 const settings = useSettingsStore()
 
 /**
- * Choix de la limite de lignes, formatés pour la liste.
+ * Choices of the row limit, formatted for the list.
  */
 const limitOptions = computed(() =>
   (settings.settings?.row_limit_choices ?? []).map((choice) => ({
@@ -87,7 +87,7 @@ const limitOptions = computed(() =>
 )
 
 /**
- * Variante et version du serveur, pour l'en-tête de la cellule.
+ * Flavor and version of the server, for the header of the cell.
  */
 const serverLabel = computed(() => {
   const server = state.server
@@ -102,17 +102,17 @@ const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
 const cellRoot = useTemplateRef<HTMLDivElement>('cellRoot')
 
 /**
- * Part de la hauteur de la cellule donnée à l'éditeur, de 0 à 1.
+ * Share of the cell's height given to the editor, from 0 to 1.
  */
 const editorSplit = ref(loadEditorSplit())
 
 /**
- * Onglet affiché : son identifiant.
+ * Displayed tab: its id.
  */
 const selectedTab = ref<string | number>(0)
 
-// Les onglets d'un nouveau lot arrivent : le premier s'affiche. Sinon,
-// l'onglet affiché a disparu : le premier qui reste prend sa place.
+// The tabs of a new batch arrive: the first one is displayed. Otherwise,
+// the displayed tab has disappeared: the first remaining one takes its place.
 watch(
   () => state.tabs,
   (tabs, previous) => {
@@ -126,9 +126,9 @@ watch(
 )
 
 /**
- * Libellé par défaut d'un onglet : numéro et début de la requête.
+ * Default label of a tab: number and start of the query.
  *
- * @param tab Onglet de la requête.
+ * @param tab Tab of the query.
  */
 function tabLabel(tab: QueryTab): string {
   const short = tab.sql.replace(/\s+/g, ' ')
@@ -136,16 +136,16 @@ function tabLabel(tab: QueryTab): string {
 }
 
 /**
- * Signale un échec d'enregistrement côté serveur, sans rien annuler à l'écran.
+ * Reports a failure to save on the server side, without undoing anything on screen.
  *
- * @param failure Erreur reçue.
+ * @param failure Received error.
  */
 function reportFailure(failure: unknown): void {
   state.error = failure instanceof Error ? failure.message : String(failure)
 }
 
 /**
- * Déplacement d'un onglet de résultat par glissement ; le nouvel ordre est enregistré.
+ * Moving a result tab by dragging; the new order is saved.
  */
 const tabDrag = useTabDrag((from, to) => {
   state.tabs = movedItems(state.tabs, from, to)
@@ -156,9 +156,9 @@ const tabDrag = useTabDrag((from, to) => {
 })
 
 /**
- * Épingle ou désépingle un onglet de résultat, et l'enregistre.
+ * Pins or unpins a result tab, and saves it.
  *
- * @param tab Onglet visé.
+ * @param tab Targeted tab.
  */
 function togglePin(tab: QueryTab): void {
   tab.pinned = !tab.pinned
@@ -166,10 +166,10 @@ function togglePin(tab: QueryTab): void {
 }
 
 /**
- * Renomme un onglet de résultat, et l'enregistre.
+ * Renames a result tab, and saves it.
  *
- * @param tab Onglet visé.
- * @param name Nouveau nom, `null` pour le libellé par défaut.
+ * @param tab Targeted tab.
+ * @param name New name, `null` for the default label.
  */
 function renameTab(tab: QueryTab, name: string | null): void {
   tab.name = name
@@ -177,10 +177,10 @@ function renameTab(tab: QueryTab, name: string | null): void {
 }
 
 /**
- * Ferme un onglet ; s'il était affiché, son voisin de droite (ou de gauche)
- * prend sa place. Sa requête est arrêtée si elle tourne.
+ * Closes a tab; if it was displayed, its right (or left) neighbour takes its
+ * place. Its query is stopped if it is running.
  *
- * @param tab Onglet à fermer.
+ * @param tab Tab to close.
  */
 function closeTab(tab: QueryTab): void {
   if (selectedTab.value === tab.id) {
@@ -193,9 +193,9 @@ function closeTab(tab: QueryTab): void {
 }
 
 /**
- * Exécute la requête sous le curseur.
+ * Runs the query under the cursor.
  *
- * @param cursor Position du curseur ; absente, celle de l'éditeur.
+ * @param cursor Position of the cursor; when absent, that of the editor.
  */
 function run(cursor?: number): void {
   if (sql.value.trim() !== '') {
@@ -204,10 +204,10 @@ function run(cursor?: number): void {
 }
 
 /**
- * Lance une action dès que la session est prête : tout de suite si elle
- * l'est, sinon à la fin de son ouverture. Rien si elle se ferme avant.
+ * Starts an action as soon as the session is ready: right away if it is,
+ * otherwise at the end of its opening. Nothing if it closes before.
  *
- * @param action Action à lancer.
+ * @param action Action to start.
  */
 function whenReady(action: () => void): void {
   if (state.status === 'ready') {
@@ -228,23 +228,23 @@ function whenReady(action: () => void): void {
 }
 
 /**
- * Exécute la requête sous le curseur dès que la session est prête.
+ * Runs the query under the cursor as soon as the session is ready.
  *
- * @param cursor Position du curseur ; absente, celle de l'éditeur.
+ * @param cursor Position of the cursor; when absent, that of the editor.
  */
 function runWhenReady(cursor?: number): void {
   whenReady(() => run(cursor))
 }
 
 /**
- * Affiche le contenu d'une table dès que la session est prête : l'éditeur
- * reçoit la requête, terminée par « ; », avec le curseur sur la ligne
- * suivante, prêt à la modifier ; la requête part aussitôt. Les noms sont
- * délimités selon le mode `ANSI_QUOTES` de la session, connu seulement une
- * fois prête.
+ * Shows the content of a table as soon as the session is ready: the editor
+ * receives the query, ended by ";", with the cursor on the next line, ready
+ * to edit it; the query starts right away. The names are quoted according
+ * to the session's `ANSI_QUOTES` mode, known only once it is
+ * ready.
  *
- * @param schema Nom de la base.
- * @param table Nom de la table.
+ * @param schema Name of the database.
+ * @param table Name of the table.
  */
 function showTableWhenReady(schema: string, table: string): void {
   whenReady(() => {
@@ -259,17 +259,17 @@ function showTableWhenReady(schema: string, table: string): void {
 }
 
 /**
- * Change la base en cours de la session (comme `USE`) dès qu'elle est prête.
+ * Changes the session's current database (like `USE`) as soon as it is ready.
  *
- * @param database Nom de la base.
+ * @param database Name of the database.
  */
 function changeDatabaseWhenReady(database: string): void {
   whenReady(() => session.changeDatabase(database))
 }
 
 /**
- * Bases, tables et colonnes proposées par la complétion de l'éditeur,
- * d'après le catalogue de la connexion (chargé par l'explorateur).
+ * Databases, tables and columns offered by the editor's completion, after
+ * the connection's catalog (loaded by the explorer).
  */
 const completion = computed(() =>
   completionSchema(
@@ -279,18 +279,18 @@ const completion = computed(() =>
 )
 
 /**
- * Le catalogue de la connexion est-il entièrement chargé ? Sans lui,
- * l'enjoliveur ne connaît ni l'écriture des tables et des colonnes, ni les
- * fonctions de l'utilisateur, qu'il mettrait en capitales : « Enjoliver »
- * attend donc la fin du chargement.
+ * Is the connection's catalog fully loaded? Without it, the beautifier
+ * knows neither the spelling of the tables and columns, nor the user's
+ * functions, which it would put in capitals: "Enjoliver" therefore waits
+ * for the end of the loading.
  */
 const catalogReady = computed(() => catalog.catalogOf(props.connection.id)?.done === true)
 
 /**
- * Enjolive le texte de l'éditeur, d'après l'analyse de la requête par le
- * serveur : mots-clefs en capitales, noms (tables, colonnes, fonctions...)
- * dans l'écriture du catalogue, selon la variante et la version du serveur.
- * Ctrl-Z annule.
+ * Beautifies the editor's text, after the analysis of the query by the
+ * server: keywords in capitals, names (tables, columns, functions...) in the
+ * catalog's spelling, according to the flavor and the version of the server.
+ * Ctrl+Z undoes it.
  */
 async function prettify(): Promise<void> {
   try {
@@ -305,7 +305,7 @@ async function prettify(): Promise<void> {
 }
 
 /**
- * Exécute toutes les requêtes de l'éditeur, en parallèle.
+ * Runs all the editor's queries, in parallel.
  */
 function runAll(): void {
   if (sql.value.trim() !== '') {
@@ -314,9 +314,9 @@ function runAll(): void {
 }
 
 /**
- * Change la limite de lignes par défaut de l'utilisateur.
+ * Changes the user's default row limit.
  *
- * @param rowLimit Nouvelle limite.
+ * @param rowLimit New limit.
  */
 async function changeLimit(rowLimit: number): Promise<void> {
   try {
@@ -326,7 +326,7 @@ async function changeLimit(rowLimit: number): Promise<void> {
   }
 }
 
-// Onglets de résultat enregistrés de l'éditeur, relus à chaque ouverture de la cellule.
+// Saved result tabs of the editor, read again on each opening of the cell.
 onMounted(async () => {
   if (settings.settings === null) {
     try {
@@ -347,7 +347,7 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
 
 <template>
   <div ref="cellRoot" class="flex min-h-0 flex-1 flex-col gap-gap">
-    <!-- Bloc du haut : les boutons, puis l'éditeur, qui prend la place restante. -->
+    <!-- Top block: the buttons, then the editor, which takes the remaining room. -->
     <div class="editor-pane" :style="{ '--editor-split': `${editorSplit * 100}%` }">
       <div class="flex items-center gap-gap">
         <ui-button
@@ -424,12 +424,11 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
     </div>
 
     <!--
-      La grille de résultats doit avoir une hauteur bornée : sinon sa zone de
-      défilement grandit avec le résultat, toutes les lignes sont dessinées et
-      l'interface se fige. Chaque niveau, jusqu'à la grille, occupe donc la
-      place restante sans pouvoir la dépasser (flex-1 et min-h-0). Les
-      onglets cachés restent montés (`unmount-on-hide` à faux) : la grille
-      garde son défilement.
+      The result grid must have a bounded height: otherwise its scroll area grows
+      with the result, all the rows are drawn and the interface freezes. Each
+      level, down to the grid, therefore takes the remaining room without being
+      able to exceed it (flex-1 and min-h-0). The hidden tabs stay mounted
+      (`unmount-on-hide` set to false): the grid keeps its scroll position.
     -->
     <tabs-root
       v-if="state.tabs.length > 0"
@@ -476,8 +475,8 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
 </template>
 
 <style scoped>
-/* Bloc du haut (éditeur et boutons) : la part retenue de la hauteur
-   (`--editor-split`) ; l'éditeur garde au moins quelques lignes. */
+/* Top block (editor and buttons): the remembered share of the height
+   (`--editor-split`); the editor keeps at least a few lines. */
 .editor-pane {
   display: flex;
   flex: 0 0 var(--editor-split);
@@ -486,7 +485,7 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
   min-block-size: calc(var(--editor-min-height) + var(--control-height) + var(--gap));
 }
 
-/* Repère d'insertion d'un onglet déplacé, comme pour les colonnes de la grille. */
+/* Insertion marker of a moved tab, as for the grid's columns. */
 .drop-before {
   box-shadow: inset var(--focus-width) 0 0 var(--accent);
 }

@@ -1,8 +1,8 @@
 /**
- * Mots-clefs d'un dialecte, pour la coloration de l'éditeur SQL.
+ * Keywords of a dialect, for the SQL editor's highlighting.
  *
- * Les listes vivent côté serveur, un fichier par dialecte
- * (`crates/dialects/keywords/*.yaml`) : l'enjoliveur lit les mêmes.
+ * The lists live on the server side, one file per dialect
+ * (`crates/dialects/keywords/*.yaml`): the beautifier reads the same ones.
  */
 
 import { request } from './http'
@@ -10,10 +10,10 @@ import type { DialectKeywords } from './generated/DialectKeywords'
 import type { Flavor } from './generated/Flavor'
 
 /**
- * Lit les mots-clefs d'un dialecte, limités à ceux d'une version du serveur.
+ * Reads the keywords of a dialect, limited to those of a server version.
  *
- * @param flavor Variante du serveur.
- * @param version Version annoncée par le serveur ; absente, tous les mots.
+ * @param flavor Flavor of the server.
+ * @param version Version announced by the server; when absent, all the words.
  */
 export async function fetchKeywords(
   flavor: Flavor,

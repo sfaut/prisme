@@ -1,20 +1,21 @@
 /**
- * Explorateur d'objets : catalogue d'une connexion, reçu au fil de l'eau.
+ * Object explorer: catalog of a connection, received progressively.
  *
- * Le serveur envoie une ligne JSON par message (`CatalogEvent`) : les bases,
- * puis les tables base par base, puis les colonnes base par base. Chaque
- * message est transmis dès sa réception, sans attendre la fin du flux.
+ * The server sends one JSON line per message (`CatalogEvent`): the
+ * databases, then the tables database by database, then the columns database
+ * by database. Each message is passed on as soon as it is received, without
+ * waiting for the end of the stream.
  */
 
 import { toApiError } from './http'
 import type { CatalogEvent } from './generated/CatalogEvent'
 
 /**
- * Lit le catalogue d'une connexion et transmet chaque message dès qu'il arrive.
+ * Reads the catalog of a connection and passes on each message as soon as it arrives.
  *
- * @param connectionId Identifiant de la connexion.
- * @param onEvent Appelée pour chaque message reçu.
- * @throws {ApiError} Si la connexion au serveur cible échoue.
+ * @param connectionId Id of the connection.
+ * @param onEvent Called for each message received.
+ * @throws {ApiError} If the connection to the target server fails.
  */
 export async function streamCatalog(
   connectionId: number,
@@ -33,7 +34,7 @@ export async function streamCatalog(
     }
     pending += value
     const lines = pending.split('\n')
-    // La dernière ligne peut être incomplète : elle attend la suite.
+    // The last line can be incomplete: it waits for what follows.
     pending = lines.pop() ?? ''
     for (const line of lines) {
       if (line.trim() !== '') {

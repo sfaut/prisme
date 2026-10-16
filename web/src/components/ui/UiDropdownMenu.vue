@@ -1,8 +1,8 @@
 <!--
-  Menu déroulant, sur `DropdownMenu` de Reka UI (clavier, positionnement,
-  fermeture par Échap ou clic à côté, accessibilité). Le déclencheur est le
-  contenu de l'emplacement par défaut (un bouton) ; chaque choix a un
-  libellé, une icône Lucide et une action, ou est inactif.
+  Dropdown menu, on Reka UI's `DropdownMenu` (keyboard, positioning, closing
+  with Escape or a click outside, accessibility). The trigger is the content
+  of the default slot (a button); each choice has a label, a Lucide icon and
+  an action, or is inactive.
 -->
 <script setup lang="ts">
 import {
@@ -18,13 +18,13 @@ import type { MenuItem } from './menuItem'
 import { cssPixels } from '@/cssLength'
 
 /**
- * Écart avec le déclencheur, en pixels (`--popup-offset` du thème).
+ * Gap with the trigger, in pixels (`--popup-offset` of the theme).
  */
 const OFFSET = cssPixels('--popup-offset', 4)
 
 defineProps<{
   /**
-   * Choix du menu.
+   * Choices of the menu.
    */
   items: MenuItem[]
 }>()

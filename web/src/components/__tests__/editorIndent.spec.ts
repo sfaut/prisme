@@ -15,11 +15,11 @@ import {
 } from '../editorIndent'
 
 /**
- * Applique une commande à un texte et rend le texte et la sélection obtenus.
+ * Applies a command to a text and returns the resulting text and selection.
  *
- * @param command Commande à appliquer.
- * @param doc Texte de départ.
- * @param ranges Sélection de départ : `[ancre, tête]` par plage.
+ * @param command Command to apply.
+ * @param doc Initial text.
+ * @param ranges Initial selection: `[anchor, head]` per range.
  */
 function apply(command: StateCommand, doc: string, ranges: [number, number][]) {
   let state = EditorState.create({
@@ -40,22 +40,22 @@ function apply(command: StateCommand, doc: string, ranges: [number, number][]) {
   }
 }
 
-describe('taquets', () => {
-  it('compte les espaces jusqu au taquet suivant', () => {
+describe('tab stops', () => {
+  it('counts the spaces up to the next tab stop', () => {
     expect(spacesToNextStop(0)).toBe(4)
     expect(spacesToNextStop(1)).toBe(3)
     expect(spacesToNextStop(4)).toBe(4)
     expect(spacesToNextStop(7)).toBe(1)
   })
 
-  it('réindente en espaces seuls, alignés sur un taquet', () => {
+  it('reindents in spaces only, aligned on a tab stop', () => {
     expect(reindented('', 'more')).toBe('    ')
     expect(reindented('  ', 'more')).toBe('    ')
     expect(reindented('    ', 'more')).toBe('        ')
     expect(reindented('    ', 'less')).toBe('')
     expect(reindented('      ', 'less')).toBe('    ')
     expect(reindented('', 'less')).toBe('')
-    // Une tabulation vaut un niveau, et devient des espaces.
+    // A tab is worth one level, and becomes spaces.
     expect(reindented('\t', 'more')).toBe('        ')
     expect(reindented('\t\t', 'less')).toBe('    ')
     expect(reindented('  \t', 'less')).toBe('')
@@ -63,7 +63,7 @@ describe('taquets', () => {
 })
 
 describe('Tab', () => {
-  it('insère des espaces jusqu au taquet suivant, au curseur', () => {
+  it('inserts spaces up to the next tab stop, at the cursor', () => {
     expect(apply(indentOrInsertSpaces, 'SELECT', [[0, 0]])).toMatchObject({
       handled: true,
       text: '    SELECT',
@@ -75,11 +75,11 @@ describe('Tab', () => {
     })
   })
 
-  it('compte une tabulation qui précède le curseur jusqu à son taquet', () => {
+  it('counts a tab that precedes the cursor up to its tab stop', () => {
     expect(apply(indentOrInsertSpaces, '\ta', [[2, 2]]).text).toBe('\ta   ')
   })
 
-  it('insère à chaque curseur', () => {
+  it('inserts at each cursor', () => {
     expect(
       apply(indentOrInsertSpaces, 'a\nbc', [
         [1, 1],
@@ -88,20 +88,20 @@ describe('Tab', () => {
     ).toBe('a   \nbc  ')
   })
 
-  it('indente toutes les lignes d une sélection, tabulations de tête remplacées', () => {
+  it('indents all the lines of a selection, leading tabs replaced', () => {
     const result = apply(indentOrInsertSpaces, 'SELECT a\n\tFROM t\n  WHERE b', [[0, 26]])
     expect(result.text).toBe('    SELECT a\n        FROM t\n    WHERE b')
-    // L'ancre en début de ligne y reste, la tête suit le texte.
+    // The anchor at the start of a line stays there, the head follows the text.
     expect(result.ranges).toEqual([[0, result.text.length]])
   })
 
-  it('laisse la ligne où s arrête la sélection, si elle s y arrête au début', () => {
+  it('leaves the line where the selection stops, if it stops at its start', () => {
     expect(apply(indentOrInsertSpaces, 'a\nb', [[0, 2]]).text).toBe('    a\nb')
   })
 })
 
-describe('Entrée', () => {
-  it('va à la ligne en première colonne, même après une ligne indentée', () => {
+describe('Enter', () => {
+  it('goes to a new line in the first column, even after an indented line', () => {
     expect(apply(insertPlainNewline, 'SELECT a', [[8, 8]])).toMatchObject({
       handled: true,
       text: 'SELECT a\n',
@@ -110,13 +110,13 @@ describe('Entrée', () => {
     expect(apply(insertPlainNewline, '    FROM t', [[10, 10]]).text).toBe('    FROM t\n')
   })
 
-  it('remplace la sélection par le retour à la ligne', () => {
+  it('replaces the selection with the line break', () => {
     expect(apply(insertPlainNewline, 'SELECT a, b', [[8, 11]]).text).toBe('SELECT a\n')
   })
 })
 
-describe('Maj-Tab', () => {
-  it('désindente la ligne du curseur, sans sélection', () => {
+describe('Shift+Tab', () => {
+  it('dedents the cursor line, without a selection', () => {
     expect(apply(dedentLines, '      SELECT', [[8, 8]])).toMatchObject({
       handled: true,
       text: '    SELECT',
@@ -124,11 +124,11 @@ describe('Maj-Tab', () => {
     })
   })
 
-  it('désindente toutes les lignes d une sélection, tabulations de tête remplacées', () => {
+  it('dedents all the lines of a selection, leading tabs replaced', () => {
     expect(apply(dedentLines, '\t\ta\n    b\nc', [[0, 10]]).text).toBe('    a\nb\nc')
   })
 
-  it('ne change rien à une ligne sans retrait, mais garde la touche', () => {
+  it('changes nothing on a line without indentation, but keeps the key', () => {
     expect(apply(dedentLines, 'SELECT', [[3, 3]])).toMatchObject({ handled: true, text: 'SELECT' })
   })
 })

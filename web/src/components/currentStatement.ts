@@ -1,12 +1,13 @@
 /**
- * Mise en évidence, dans l'éditeur, de la requête que Ctrl-Entrée exécuterait.
+ * Highlighting, in the editor, of the query that Ctrl+Enter would run.
  *
- * Les emplacements des requêtes viennent du serveur (`/api/analyze`, même
- * découpage que l'exécution), demandés peu après chaque frappe. En attendant
- * la réponse, ils suivent les modifications du texte. La requête sous le
- * curseur suit la règle du serveur (`statement_at`) : la dernière qui
- * commence avant le curseur, sinon la première. Rien n'est surligné tant que
- * le texte compte moins de deux requêtes : il n'y a alors pas à choisir.
+ * The spans of the queries come from the server (`/api/analyze`, same
+ * splitting as the run), requested shortly after each keystroke. While
+ * waiting for the answer, they follow the changes of the text. The query
+ * under the cursor follows the server's rule (`statement_at`): the last one
+ * that starts before the cursor, otherwise the first one. Nothing is
+ * highlighted as long as the text counts fewer than two queries: there is
+ * then nothing to choose.
  */
 
 import { type EditorState, type Extension, StateEffect, StateField } from '@codemirror/state'
@@ -15,12 +16,12 @@ import { Decoration, type DecorationSet, EditorView } from '@codemirror/view'
 import type { StatementSpan } from '@/api/generated/StatementSpan'
 
 /**
- * Remplace les emplacements des requêtes, à la réception d'une analyse.
+ * Replaces the spans of the queries, on receiving an analysis.
  */
 export const setStatements = StateEffect.define<StatementSpan[]>()
 
 /**
- * Emplacements des requêtes du texte, mis à jour à chaque modification.
+ * Spans of the text's queries, updated on each change.
  */
 const statementsField = StateField.define<StatementSpan[]>({
   create: () => [],
@@ -41,11 +42,11 @@ const statementsField = StateField.define<StatementSpan[]>({
 })
 
 /**
- * Indice de la requête sous le curseur : la dernière qui commence avant lui,
- * sinon la première ; `null` s'il n'y a aucune requête.
+ * Index of the query under the cursor: the last one that starts before it,
+ * otherwise the first one; `null` if there is no query.
  *
- * @param statements Emplacements des requêtes, dans l'ordre.
- * @param cursor Position du curseur, en unités UTF-16.
+ * @param statements Spans of the queries, in order.
+ * @param cursor Position of the cursor, in UTF-16 units.
  */
 export function statementAt(statements: StatementSpan[], cursor: number): number | null {
   if (statements.length === 0) {
@@ -61,14 +62,14 @@ export function statementAt(statements: StatementSpan[], cursor: number): number
 }
 
 /**
- * Marque de la requête sous le curseur.
+ * Mark of the query under the cursor.
  */
 const currentMark = Decoration.mark({ class: 'cm-current-statement' })
 
 /**
- * Surlignage de la requête sous le curseur, vide s'il y a moins de deux requêtes.
+ * Highlight of the query under the cursor, empty if there are fewer than two queries.
  *
- * @param state État de l'éditeur.
+ * @param state State of the editor.
  */
 function currentDecoration(state: EditorState): DecorationSet {
   const statements = state.field(statementsField)
@@ -81,7 +82,7 @@ function currentDecoration(state: EditorState): DecorationSet {
 }
 
 /**
- * Surlignage recalculé à chaque changement du texte, du curseur ou des requêtes.
+ * Highlight recomputed on each change of the text, the cursor or the queries.
  */
 const decorationField = StateField.define<DecorationSet>({
   create: currentDecoration,
@@ -95,7 +96,7 @@ const decorationField = StateField.define<DecorationSet>({
 })
 
 /**
- * Extension de l'éditeur : mise en évidence de la requête sous le curseur.
+ * Editor extension: highlighting of the query under the cursor.
  */
 export function currentStatement(): Extension {
   return [

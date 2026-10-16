@@ -7,7 +7,7 @@ afterEach(() => {
 })
 
 describe('cssPixels', () => {
-  it('convertit en pixels une longueur en rem ou en px', () => {
+  it('converts a length in rem or px to pixels', () => {
     document.documentElement.style.fontSize = '16px'
     document.documentElement.style.setProperty('--hauteur', '1.5rem')
     document.documentElement.style.setProperty('--ecart', '4px')
@@ -15,7 +15,7 @@ describe('cssPixels', () => {
     expect(cssPixels('--ecart', 0)).toBe(4)
   })
 
-  it('rend la valeur de repli pour une variable absente ou illisible', () => {
+  it('returns the fallback value for a missing or unreadable variable', () => {
     document.documentElement.style.setProperty('--illisible', 'auto')
     expect(cssPixels('--absente', 22)).toBe(22)
     expect(cssPixels('--illisible', 22)).toBe(22)

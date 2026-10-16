@@ -1,31 +1,31 @@
 /**
- * Session de requêtes sur une connexion enregistrée, par WebSocket.
+ * Query session on a saved connection, over a WebSocket.
  *
- * Le client envoie (`run`) le texte complet de l'éditeur, avec la position du curseur
- * pour n'exécuter que la requête qui s'y trouve (Ctrl-Entrée), ou sans curseur
- * pour toutes les exécuter en parallèle (Ctrl-Maj-Entrée). Le serveur annonce
- * les requêtes du lot (`batch`), puis envoie leurs résultats en streaming,
- * chaque message portant le numéro de sa requête : `started` quand elle part
- * (en parallèle, elle peut attendre son tour), `columns`, des lots
- * `rows`, puis `done` (ou `error`). `batch_done` clôt le lot. `cancel` arrête
- * toutes les requêtes en cours, `cancel_query` une seule. Le protocole est
- * décrit dans `crates/server/src/query_session.rs`.
+ * The client sends (`run`) the editor's whole text, with the cursor position
+ * to run only the query found there (Ctrl+Enter), or without a cursor to run
+ * them all in parallel (Ctrl+Shift+Enter). The server announces the queries
+ * of the batch (`batch`), then streams their results, each message carrying
+ * the number of its query: `started` when it starts (in parallel, it may wait
+ * for its turn), `columns`, batches of `rows`, then `done` (or `error`).
+ * `batch_done` closes the batch. `cancel` stops all the running queries,
+ * `cancel_query` a single one. The protocol is described in
+ * `crates/server/src/query_session.rs`.
  *
- * Chaque requête a son onglet. Un nouveau lot remplace les onglets du
- * précédent, sauf ceux que l'utilisateur a épinglés ; un onglet peut aussi
- * être renommé ou fermé (sa requête est alors arrêtée si elle tourne).
+ * Each query has its tab. A new batch replaces the tabs of the previous one,
+ * except those the user pinned; a tab can also be renamed or closed (its
+ * query is then stopped if it is running).
  *
- * La session est celle d'un éditeur : le serveur enregistre ses résultats
- * au fil de l'exécution, et donne à chaque onglet l'identifiant de son
- * enregistrement. À l'ouverture, la session reprend les onglets enregistrés
- * (`savedTab`), puis ouvre le WebSocket. Côté serveur, la session survit à
- * la page le délai réglé sur sa connexion : le WebSocket s'y raccroche, et
- * reçoit alors son dernier lot où il en est (`resume`, `resumedTab`), que
- * les messages suivants continuent.
+ * The session is that of an editor: the server saves its results as they
+ * run, and gives each tab the id of its record. On opening, the session
+ * takes back the saved tabs (`savedTab`), then opens the WebSocket. On the
+ * server side, the session outlives the page for the delay set on its
+ * connection: the WebSocket reattaches to it, and then receives its last
+ * batch where it stands (`resume`, `resumedTab`), which the next messages
+ * continue.
  *
- * `applyMessage` met l'état à jour message par message ; elle ne dépend ni de
- * Vue ni du WebSocket, ce qui la rend simple à tester. `useQuerySession`
- * l'utilise pour exposer un état réactif aux composants.
+ * `applyMessage` updates the state message by message; it depends neither on
+ * Vue nor on the WebSocket, which makes it simple to test. `useQuerySession`
+ * uses it to expose a reactive state to the components.
  */
 
 import { markRaw, onScopeDispose, reactive } from 'vue'
@@ -39,190 +39,190 @@ import type { ServerInfo } from './generated/ServerInfo'
 import type { ServerMessage } from './generated/ServerMessage'
 
 /**
- * Délai de regroupement des messages reçus, en millisecondes : l'interface
- * est redessinée au plus une fois par délai, quel que soit le nombre de lots
- * de lignes reçus, ce qui la garde réactive pendant l'exécution.
+ * Grouping delay of the received messages, in milliseconds: the interface is
+ * redrawn at most once per delay, whatever the number of row batches
+ * received, which keeps it responsive while running.
  */
 const FLUSH_DELAY = 100
 
 /**
- * Cellule de résultat : du texte, ou `null` pour NULL.
+ * Result cell: text, or `null` for NULL.
  */
 export type Cell = string | null
 
 /**
- * Étape de la session.
+ * Stage of the session.
  *
- * - `connecting` : ouverture du WebSocket et connexion au serveur cible ;
- * - `ready` : prête à exécuter des requêtes ;
- * - `running` : un lot de requêtes est en cours ;
- * - `closed` : WebSocket fermé, la session doit être rouverte.
+ * - `connecting`: opening the WebSocket and connecting to the target server;
+ * - `ready`: ready to run queries;
+ * - `running`: a batch of queries is running;
+ * - `closed`: WebSocket closed, the session must be reopened.
  */
 export type SessionStatus = 'connecting' | 'ready' | 'running' | 'closed'
 
 /**
- * Résultat d'une requête, complété au fil des messages.
+ * Result of a query, completed as the messages arrive.
  */
 export interface QueryResult {
   /**
-   * Texte réellement exécuté, avec le `LIMIT` éventuellement ajouté.
+   * Text actually run, with the `LIMIT` added if any.
    */
   sql: string
   /**
-   * Traitement de la limite de lignes.
+   * Handling of the row limit.
    */
   limit: LimitReport
   /**
-   * Nombre de lignes au plus, annoncé par le serveur (sa limite, ou celle
-   * écrite par l'utilisateur) ; `null` si inconnu.
+   * Maximum number of rows, announced by the server (its limit, or the one
+   * written by the user); `null` if unknown.
    */
   expectedRows: number | null
   /**
-   * Temps d'exécution mesuré par le serveur, en microsecondes.
+   * Execution time measured by the server, in microseconds.
    */
   executionUs: number
   /**
-   * Noms des colonnes.
+   * Names of the columns.
    */
   columns: string[]
   /**
-   * Pour chaque colonne, ses valeurs s'alignent-elles à droite (nombres,
-   * dates et heures) ?
+   * For each column, are its values right-aligned (numbers, dates and
+   * times)?
    */
   rightAligned: boolean[]
   /**
-   * Type de chaque colonne, annoncé par le serveur ; vide pour un résultat
-   * enregistré avant le typage des colonnes.
+   * Type of each column, announced by the server; empty for a result saved
+   * before columns were typed.
    */
   columnTypes: ColumnTypeInfo[]
   /**
-   * Lignes reçues jusqu'ici. Dans l'interface, ce tableau n'est pas réactif
-   * (ajouter des milliers de lignes une à une coûterait cher) : c'est
-   * `rowCount` qui signale l'arrivée de nouvelles lignes.
+   * Rows received so far. In the interface, this array is not reactive
+   * (adding thousands of rows one by one would be costly): `rowCount` signals
+   * the arrival of new rows.
    */
   rows: Cell[][]
   /**
-   * Nombre de lignes reçues : la valeur réactive à suivre pour redessiner.
+   * Number of rows received: the reactive value to watch for redrawing.
    */
   rowCount: number
   /**
-   * Des lignes au-delà de la limite ont-elles été écartées ?
+   * Were rows beyond the limit discarded?
    */
   truncated: boolean
   /**
-   * Nombre de lignes modifiées, pour une écriture.
+   * Number of rows changed, for a write.
    */
   affectedRows: number
   /**
-   * Durée d'exécution, en millisecondes.
+   * Execution duration, in milliseconds.
    */
   elapsedMs: number
 }
 
 /**
- * Requête d'un lot, affichée dans son propre onglet.
+ * Query of a batch, shown in its own tab.
  */
 export interface QueryTab {
   /**
-   * Identifiant de l'onglet, unique dans la session (deux lots ont chacun
-   * leur requête numéro 0).
+   * Id of the tab, unique in the session (two batches each have their query
+   * number 0).
    */
   id: number
   /**
-   * Numéro du lot de la requête : seuls les onglets du lot en cours
-   * reçoivent les messages du serveur.
+   * Number of the query's batch: only the tabs of the current batch receive
+   * the server's messages.
    */
   batch: number
   /**
-   * Numéro de la requête dans son lot.
+   * Number of the query in its batch.
    */
   query: number
   /**
-   * Texte de la requête, tel que découpé dans l'éditeur.
+   * Text of the query, as split in the editor.
    */
   sql: string
   /**
-   * Résultat, `null` tant que les colonnes ne sont pas reçues.
+   * Result, `null` as long as the columns are not received.
    */
   result: QueryResult | null
   /**
-   * Erreur de la requête.
+   * Error of the query.
    */
   error: string | null
   /**
-   * La requête est-elle terminée (avec succès ou en erreur) ?
+   * Has the query ended (successfully or in error)?
    */
   done: boolean
   /**
-   * Instant du départ de la requête (`performance.now()`), `null` tant qu'elle attend son tour.
+   * Instant the query started (`performance.now()`), `null` as long as it waits for its turn.
    */
   startedAt: number | null
   /**
-   * Instant de réception des colonnes (`performance.now()`) : le serveur a fini
-   * d'exécuter la requête et commence à envoyer les lignes. `null` avant,
-   * ou pour une requête sans résultat.
+   * Instant the columns were received (`performance.now()`): the server has
+   * finished running the query and starts sending the rows. `null` before,
+   * or for a query without a result.
    */
   columnsAt: number | null
   /**
-   * Instant de la fin de la requête, `null` tant qu'elle n'est pas terminée.
+   * Instant the query ended, `null` as long as it has not ended.
    */
   endedAt: number | null
   /**
-   * Volume reçu pour la requête, en octets : taille des messages de son
-   * résultat (colonnes, lignes, fin) tels qu'ils passent sur le WebSocket.
+   * Volume received for the query, in bytes: size of the messages of its
+   * result (columns, rows, end) as they go over the WebSocket.
    */
   bytes: number
   /**
-   * Onglet épinglé : il reste quand un nouveau lot est lancé.
+   * Pinned tab: it stays when a new batch is started.
    */
   pinned: boolean
   /**
-   * Nom donné par l'utilisateur, `null` pour le libellé par défaut.
+   * Name given by the user, `null` for the default label.
    */
   name: string | null
 }
 
 /**
- * État complet d'une session.
+ * Whole state of a session.
  */
 export interface SessionState {
   /**
-   * Étape de la session.
+   * Stage of the session.
    */
   status: SessionStatus
   /**
-   * Identité du serveur cible, connue une fois la session prête.
+   * Identity of the target server, known once the session is ready.
    */
   server: ServerInfo | null
   /**
-   * Base en cours sur le serveur cible (elle change avec `USE`), `null` si aucune.
+   * Current database on the target server (it changes with `USE`), `null` if none.
    */
   database: string | null
   /**
-   * Onglets : ceux épinglés des lots précédents, puis les requêtes du lot en cours.
+   * Tabs: the pinned ones of the previous batches, then the queries of the current batch.
    */
   tabs: QueryTab[]
   /**
-   * Numéro du lot en cours (0 avant le premier).
+   * Number of the current batch (0 before the first one).
    */
   batch: number
   /**
-   * Identifiant du prochain onglet créé.
+   * Id of the next tab created.
    */
   nextTabId: number
   /**
-   * Dernière erreur de la session elle-même (connexion, demande invalide).
+   * Last error of the session itself (connection, invalid request).
    */
   error: string | null
   /**
-   * Les onglets enregistrés de l'éditeur sont-ils en cours de lecture ?
-   * L'interface affiche alors un indicateur de chargement à leur place.
+   * Are the editor's saved tabs being read? The interface then shows a
+   * loading indicator in their place.
    */
   loading: boolean
 }
 
 /**
- * Crée l'état d'une session qui s'ouvre.
+ * Creates the state of a session that is opening.
  */
 export function initialState(): SessionState {
   return {
@@ -238,17 +238,17 @@ export function initialState(): SessionState {
 }
 
 /**
- * Met à jour l'état avec un message du serveur.
+ * Updates the state with a message of the server.
  *
- * Modifie `state` sur place : les lignes s'ajoutent au tableau existant, sans
- * recopier un résultat qui peut compter des milliers de lignes.
+ * Changes `state` in place: the rows are added to the existing array, without
+ * copying a result that can count thousands of rows.
  *
- * @param state État de la session.
- * @param message Message reçu du serveur.
- * @param now Instant de réception, pour mesurer la durée des requêtes.
+ * @param state State of the session.
+ * @param message Message received from the server.
+ * @param now Instant of reception, to measure the duration of the queries.
  * @param bytes
- *     Taille du message en octets, comptée dans le volume reçu par sa
- *     requête (colonnes, lignes et fin d'un résultat).
+ *     Size of the message in bytes, counted in the volume received by its
+ *     query (columns, rows and end of a result).
  */
 export function applyMessage(
   state: SessionState,
@@ -349,8 +349,8 @@ export function applyMessage(
         break
       }
       state.error = message.message
-      // Avant `ready`, l'erreur est celle de la connexion au serveur cible :
-      // le serveur ferme alors la session.
+      // Before `ready`, the error is that of the connection to the target
+      // server: the server then closes the session.
       state.status = state.status === 'connecting' ? 'closed' : 'ready'
       break
     }
@@ -367,14 +367,14 @@ export function applyMessage(
 }
 
 /**
- * Reprend le dernier lot de la session, reçu en se raccrochant à elle : il
- * devient le lot en cours, et chaque requête retrouve son onglet (même
- * identifiant : nom et épinglage sont gardés), ou en reçoit un nouveau.
+ * Takes back the last batch of the session, received when reattaching to it:
+ * it becomes the current batch, and each query finds its tab again (same id:
+ * name and pinning are kept), or gets a new one.
  *
- * @param state État de la session.
- * @param queries Requêtes du lot, où elles en sont.
- * @param running Le lot est-il encore en cours ?
- * @param now Instant de réception, pour situer le départ des requêtes.
+ * @param state State of the session.
+ * @param queries Queries of the batch, where they stand.
+ * @param running Is the batch still running?
+ * @param now Instant of reception, to place the start of the queries.
  */
 function resumeBatch(
   state: SessionState,
@@ -398,30 +398,30 @@ function resumeBatch(
 }
 
 /**
- * Onglet de la requête numéro `query` du lot en cours.
+ * Tab of the query number `query` of the current batch.
  *
- * @param state État de la session.
- * @param query Numéro de la requête.
+ * @param state State of the session.
+ * @param query Number of the query.
  */
 function tabOf(state: SessionState, query: number): QueryTab | undefined {
   return state.tabs.find((tab) => tab.batch === state.batch && tab.query === query)
 }
 
 /**
- * Avancement d'une requête, affiché par la pastille de son onglet.
+ * Progress of a query, shown by the dot of its tab.
  *
- * - `waiting` : en attente de son tour (exécution parallèle limitée) ;
- * - `executing` : partie, aucun résultat reçu ;
- * - `loading` : colonnes reçues, lignes en cours de réception ;
- * - `done` : résultat complet ;
- * - `error` : échec.
+ * - `waiting`: waiting for its turn (limited parallel run);
+ * - `executing`: started, no result received;
+ * - `loading`: columns received, rows being received;
+ * - `done`: complete result;
+ * - `error`: failure.
  */
 export type TabProgress = 'waiting' | 'executing' | 'loading' | 'done' | 'error'
 
 /**
- * Avancement de la requête d'un onglet.
+ * Progress of the query of a tab.
  *
- * @param tab Onglet de la requête.
+ * @param tab Tab of the query.
  */
 export function tabProgress(tab: QueryTab): TabProgress {
   if (tab.error !== null) {
@@ -437,13 +437,13 @@ export function tabProgress(tab: QueryTab): TabProgress {
 }
 
 /**
- * Temps d'exécution d'une requête, en millisecondes : celui mesuré par le
- * serveur, à la microseconde, une fois les colonnes reçues ; sinon, depuis
- * son départ (jusqu'à sa fin pour une requête sans résultat, jusqu'à `now`
- * tant qu'elle s'exécute) ; `null` tant qu'elle attend son tour.
+ * Execution time of a query, in milliseconds: the one measured by the server,
+ * to the microsecond, once the columns are received; otherwise, since its
+ * start (until its end for a query without a result, until `now` while it
+ * runs); `null` as long as it waits for its turn.
  *
- * @param tab Onglet de la requête.
- * @param now Instant présent (`performance.now()`).
+ * @param tab Tab of the query.
+ * @param now Present instant (`performance.now()`).
  */
 export function executionDuration(tab: QueryTab, now: number): number | null {
   if (tab.result) {
@@ -456,29 +456,28 @@ export function executionDuration(tab: QueryTab, now: number): number | null {
 }
 
 /**
- * Temps de transfert et d'affichage des lignes, en millisecondes : de la
- * réception des colonnes à la fin de la requête. Il court jusqu'à `now`
- * pendant la réception ; `null` sans résultat.
+ * Transfer and display time of the rows, in milliseconds: from the reception
+ * of the columns to the end of the query. It runs until `now` during the
+ * reception; `null` without a result.
  *
- * @param tab Onglet de la requête.
- * @param now Instant présent (`performance.now()`).
+ * @param tab Tab of the query.
+ * @param now Present instant (`performance.now()`).
  */
 export function transferDuration(tab: QueryTab, now: number): number | null {
   return tab.columnsAt === null ? null : (tab.endedAt ?? now) - tab.columnsAt
 }
 
 /**
- * Part accomplie d'une requête, de 0 à 1, pour la barre d'avancement de son
- * onglet ; `null` quand elle est inconnue (barre indéterminée).
+ * Completed share of a query, from 0 to 1, for the progress bar of its tab;
+ * `null` when it is unknown (indeterminate bar).
  *
- * - en attente : 0 ;
- * - en exécution : inconnue ;
- * - en réception : lignes reçues sur le nombre de lignes au plus annoncé
- *   par le serveur (la limite de Prisme ou celle de l'utilisateur) ;
- *   inconnue sans ce nombre ;
- * - terminée, avec succès ou en échec : 1.
+ * - waiting: 0;
+ * - executing: unknown;
+ * - receiving: rows received out of the maximum number of rows announced by
+ *   the server (Prisme's limit or the user's); unknown without this number;
+ * - ended, successfully or in error: 1.
  *
- * @param tab Onglet de la requête.
+ * @param tab Tab of the query.
  */
 export function tabFraction(tab: QueryTab): number | null {
   switch (tabProgress(tab)) {
@@ -497,10 +496,10 @@ export function tabFraction(tab: QueryTab): number | null {
 }
 
 /**
- * Taille en octets d'un texte encodé en UTF-8, tel qu'il passe sur le
- * WebSocket, sans le recopier (un message peut contenir des milliers de lignes).
+ * Size in bytes of a text encoded in UTF-8, as it goes over the WebSocket,
+ * without copying it (a message can hold thousands of rows).
  *
- * @param text Texte du message.
+ * @param text Text of the message.
  */
 export function utf8Length(text: string): number {
   let bytes = 0
@@ -511,7 +510,7 @@ export function utf8Length(text: string): number {
     } else if (code < 0x800) {
       bytes += 2
     } else if (code >= 0xd800 && code < 0xdc00) {
-      // Paire de substitution : un caractère hors du plan de base, 4 octets.
+      // Surrogate pair: a character outside the basic plane, 4 bytes.
       bytes += 4
       index++
     } else {
@@ -522,10 +521,11 @@ export function utf8Length(text: string): number {
 }
 
 /**
- * Formate un volume de données dans l'unité qui lui convient : octets, puis
- * ko, Mo, Go et To (par 1 000), avec une décimale au-delà de l'octet.
+ * Formats a data volume in the unit that suits it: bytes, then kB, MB, GB and
+ * TB (by 1,000), with one decimal beyond the byte. Units are displayed in
+ * French (o, ko, Mo, Go, To), like the rest of the interface.
  *
- * @param bytes Volume en octets.
+ * @param bytes Volume in bytes.
  */
 export function formatBytes(bytes: number): string {
   const units = ['ko', 'Mo', 'Go', 'To']
@@ -542,11 +542,11 @@ export function formatBytes(bytes: number): string {
 }
 
 /**
- * Formate une durée dans l'unité qui lui convient : microsecondes sous la
- * milliseconde, millisecondes sous la seconde, secondes (une décimale) sous la minute, minutes et secondes sous
- * l'heure, puis heures et minutes.
+ * Formats a duration in the unit that suits it: microseconds under the
+ * millisecond, milliseconds under the second, seconds (one decimal) under the
+ * minute, minutes and seconds under the hour, then hours and minutes.
  *
- * @param milliseconds Durée.
+ * @param milliseconds Duration.
  */
 export function formatDuration(milliseconds: number): string {
   const duration = Math.max(0, milliseconds)
@@ -569,10 +569,10 @@ export function formatDuration(milliseconds: number): string {
 }
 
 /**
- * Note le début d'un lot dans l'état : les onglets du lot précédent
- * disparaissent, sauf ceux qui sont épinglés.
+ * Records the start of a batch in the state: the tabs of the previous batch
+ * disappear, except the pinned ones.
  *
- * @param state État de la session.
+ * @param state State of the session.
  */
 export function startBatch(state: SessionState): void {
   state.status = 'running'
@@ -582,11 +582,11 @@ export function startBatch(state: SessionState): void {
 }
 
 /**
- * Retire un onglet de l'état.
+ * Removes a tab from the state.
  *
- * @param state État de la session.
- * @param id Identifiant de l'onglet.
- * @returns L'onglet retiré, absent s'il n'existait pas.
+ * @param state State of the session.
+ * @param id Id of the tab.
+ * @returns The removed tab, absent if it did not exist.
  */
 export function removeTab(state: SessionState, id: number): QueryTab | undefined {
   const tab = state.tabs.find((item) => item.id === id)
@@ -595,12 +595,12 @@ export function removeTab(state: SessionState, id: number): QueryTab | undefined
 }
 
 /**
- * Onglet de l'interface à partir d'un onglet de résultat enregistré par le
- * serveur. Il n'appartient à aucun lot de la session (lot 0) : les messages
- * du serveur ne le touchent plus. Ses durées sont celles mesurées par le
- * serveur ; les lignes restent hors de la réactivité de Vue.
+ * Interface tab built from a result tab saved by the server. It belongs to no
+ * batch of the session (batch 0): the server's messages no longer touch it.
+ * Its durations are those measured by the server; the rows stay outside Vue's
+ * reactivity.
  *
- * @param saved Onglet enregistré.
+ * @param saved Saved tab.
  */
 export function savedTab(saved: ResultTab): QueryTab {
   const { result } = saved
@@ -639,15 +639,15 @@ export function savedTab(saved: ResultTab): QueryTab {
 }
 
 /**
- * Onglet de l'interface d'une requête du lot repris en se raccrochant à la
- * session. Il appartient au lot en cours : les messages suivants le
- * complètent. Pour une requête inachevée, son départ et la réception de
- * ses colonnes sont situés d'après le temps écoulé mesuré par le serveur.
+ * Interface tab of a query of the batch taken back when reattaching to the
+ * session. It belongs to the current batch: the next messages complete it.
+ * For an unfinished query, its start and the reception of its columns are
+ * placed from the elapsed time measured by the server.
  *
- * @param query Requête reprise.
- * @param batch Numéro du lot en cours.
- * @param now Instant de réception (`performance.now()`).
- * @param existing Onglet déjà affiché pour cette requête, dont il garde le nom et l'épinglage.
+ * @param query Resumed query.
+ * @param batch Number of the current batch.
+ * @param now Instant of reception (`performance.now()`).
+ * @param existing Tab already shown for this query, whose name and pinning it keeps.
  */
 export function resumedTab(
   query: ResumedQuery,
@@ -675,10 +675,10 @@ export function resumedTab(
 }
 
 /**
- * Construit l'adresse WebSocket de la session d'un éditeur, sur l'hôte de la page.
+ * Builds the WebSocket address of an editor's session, on the page's host.
  *
- * @param editorId Identifiant de l'éditeur.
- * @param location Adresse de la page.
+ * @param editorId Id of the editor.
+ * @param location Address of the page.
  */
 export function sessionUrl(editorId: number, location: Location): string {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -686,44 +686,44 @@ export function sessionUrl(editorId: number, location: Location): string {
 }
 
 /**
- * Ouvre la session de requêtes d'un éditeur, sur sa connexion : les onglets
- * enregistrés d'abord, puis le WebSocket, qui se raccroche à la session du
- * serveur si elle est encore ouverte.
+ * Opens the query session of an editor, on its connection: the saved tabs
+ * first, then the WebSocket, which reattaches to the server's session if it
+ * is still open.
  *
- * Le WebSocket se ferme quand le composant qui l'a ouvert disparaît ; la
- * session du serveur reste ouverte le délai réglé sur la connexion.
+ * The WebSocket closes when the component that opened it disappears; the
+ * server's session stays open for the delay set on the connection.
  *
- * @param editorId Identifiant de l'éditeur.
- * @param loadSaved Lecture des onglets de résultat enregistrés de l'éditeur.
- * @returns L'état réactif de la session, et les fonctions pour exécuter des requêtes et fermer la session.
+ * @param editorId Id of the editor.
+ * @param loadSaved Reading of the editor's saved result tabs.
+ * @returns The reactive state of the session, and the functions to run queries and close the session.
  */
 export function useQuerySession(editorId: number, loadSaved: () => Promise<ResultTab[]>) {
   const state = reactive(initialState())
 
   /**
-   * WebSocket de la session, ouvert une fois les onglets enregistrés lus.
+   * WebSocket of the session, opened once the saved tabs are read.
    */
   let socket: WebSocket | null = null
 
   /**
-   * La session a-t-elle été fermée (composant disparu) ?
+   * Has the session been closed (component gone)?
    */
   let closed = false
 
   /**
-   * Messages reçus, pas encore appliqués, avec leur instant de réception et
-   * leur taille en octets.
+   * Messages received, not applied yet, with their instant of reception and
+   * their size in bytes.
    */
   let pending: [ServerMessage, number, number][] = []
 
   /**
-   * Application différée des messages en attente, absente si rien n'attend.
+   * Deferred application of the pending messages, absent if nothing waits.
    */
   let flushTimer: ReturnType<typeof setTimeout> | undefined
 
   /**
-   * Applique d'un coup tous les messages en attente : l'interface n'est
-   * redessinée qu'une fois pour tous les lots de lignes reçus entre-temps.
+   * Applies all the pending messages at once: the interface is redrawn only
+   * once for all the row batches received in the meantime.
    */
   function flush(): void {
     flushTimer = undefined
@@ -734,7 +734,7 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
       if (message.type === 'columns') {
         const result = tabOf(state, message.query)?.result
         if (result) {
-          // Lignes hors de la réactivité de Vue : seul `rowCount` signale leur arrivée.
+          // Rows outside Vue's reactivity: only `rowCount` signals their arrival.
           result.rows = markRaw([])
         }
       }
@@ -742,7 +742,7 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
   }
 
   /**
-   * Ouvre le WebSocket de la session.
+   * Opens the WebSocket of the session.
    */
   function connect(): void {
     if (closed) {
@@ -761,7 +761,7 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
     })
   }
 
-  // Les onglets enregistrés d'abord : le lot repris par le WebSocket s'y retrouve.
+  // The saved tabs first: the batch resumed by the WebSocket finds its tabs among them.
   state.loading = true
   loadSaved()
     .then((saved) => {
@@ -776,13 +776,13 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
     })
 
   /**
-   * Envoie le texte de l'éditeur, si la session est prête.
+   * Sends the editor's text, if the session is ready.
    *
-   * @param sql Texte complet de l'éditeur.
+   * @param sql Whole text of the editor.
    * @param cursor
-   *     Position du curseur (unités UTF-16) : seule la requête qui s'y trouve
-   *     s'exécute. Absente : toutes, en parallèle.
-   * @param rowLimit Limite de lignes ; absente, celle des réglages s'applique.
+   *     Position of the cursor (UTF-16 units): only the query found there
+   *     runs. When absent: all of them, in parallel.
+   * @param rowLimit Row limit; when absent, the one of the settings applies.
    */
   function run(sql: string, cursor?: number, rowLimit?: number): void {
     if (state.status !== 'ready') {
@@ -793,11 +793,11 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
   }
 
   /**
-   * Change la base en cours de la session, comme `USE`, sans onglet de
-   * résultat. Pendant un lot, le changement attend sa fin. Un échec arrive
-   * comme erreur de session.
+   * Changes the session's current database, like `USE`, without a result
+   * tab. During a batch, the change waits for its end. A failure arrives as a
+   * session error.
    *
-   * @param database Nom de la base.
+   * @param database Name of the database.
    */
   function changeDatabase(database: string): void {
     if (state.status === 'ready' || state.status === 'running') {
@@ -806,8 +806,8 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
   }
 
   /**
-   * Arrête toutes les requêtes en cours : elles se terminent en erreur
-   * « requête interrompue », et celles qui attendaient leur tour ne partent pas.
+   * Stops all the running queries: they end with a "query interrupted"
+   * error, and those waiting for their turn do not start.
    */
   function cancel(): void {
     if (state.status === 'running') {
@@ -816,10 +816,10 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
   }
 
   /**
-   * Ferme un onglet. Si sa requête tourne encore (lot en cours), elle est
-   * arrêtée ; ses derniers messages ne trouvent plus d'onglet et sont ignorés.
+   * Closes a tab. If its query is still running (current batch), it is
+   * stopped; its last messages no longer find a tab and are ignored.
    *
-   * @param id Identifiant de l'onglet.
+   * @param id Id of the tab.
    */
   function closeTab(id: number): void {
     const tab = removeTab(state, id)
@@ -829,16 +829,16 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
   }
 
   /**
-   * Envoie un message au serveur.
+   * Sends a message to the server.
    *
-   * @param message Message du client.
+   * @param message Message of the client.
    */
   function send(message: ClientMessage): void {
     socket?.send(JSON.stringify(message))
   }
 
   /**
-   * Ferme le WebSocket de la session.
+   * Closes the WebSocket of the session.
    */
   function close(): void {
     closed = true

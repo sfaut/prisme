@@ -1,44 +1,44 @@
 /**
- * Partage de la hauteur de la cellule SQL entre l'éditeur, en haut, et les
- * résultats, en bas : part de la hauteur donnée à l'éditeur, réglable à la
- * souris et retenue d'une visite à l'autre.
+ * Split of the SQL cell's height between the editor, at the top, and the
+ * results, at the bottom: share of the height given to the editor, set with
+ * the mouse and remembered from one visit to the next.
  *
- * La part est gardée dans le stockage local du navigateur : c'est une
- * préférence d'affichage propre à ce poste. Si le stockage est indisponible
- * (navigation privée, stockage bloqué), la part par défaut s'applique.
+ * The share is kept in the browser's local storage: it is a display
+ * preference specific to this machine. If storage is unavailable (private
+ * browsing, blocked storage), the default share applies.
  */
 
 /**
- * Part par défaut : le tiers du haut pour l'éditeur.
+ * Default share: the top third for the editor.
  */
 export const DEFAULT_EDITOR_SPLIT = 1 / 3
 
 /**
- * Part minimale de l'éditeur : quelques lignes restent visibles.
+ * Minimum share of the editor: a few lines stay visible.
  */
 export const MIN_EDITOR_SPLIT = 0.1
 
 /**
- * Part maximale de l'éditeur : les résultats gardent leur place.
+ * Maximum share of the editor: the results keep their room.
  */
 export const MAX_EDITOR_SPLIT = 0.8
 
 /**
- * Clef de la part dans le stockage local.
+ * Key of the share in local storage.
  */
 const STORAGE_KEY = 'prisme.editorSplit'
 
 /**
- * Ramène une part entre le minimum et le maximum.
+ * Brings a share back between the minimum and the maximum.
  *
- * @param split Part voulue, de 0 à 1.
+ * @param split Wanted share, from 0 to 1.
  */
 export function clampEditorSplit(split: number): number {
   return Math.min(MAX_EDITOR_SPLIT, Math.max(MIN_EDITOR_SPLIT, split))
 }
 
 /**
- * Part retenue, ou la part par défaut si aucune n'est lisible.
+ * Remembered share, or the default share if none is readable.
  */
 export function loadEditorSplit(): number {
   try {
@@ -50,14 +50,14 @@ export function loadEditorSplit(): number {
 }
 
 /**
- * Retient la part ; sans effet si le stockage est indisponible.
+ * Remembers the share; no effect if storage is unavailable.
  *
- * @param split Part, de 0 à 1.
+ * @param split Share, from 0 to 1.
  */
 export function saveEditorSplit(split: number): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, String(split))
   } catch {
-    // Préférence d'affichage seulement : la perdre ne gêne rien.
+    // Display preference only: losing it harms nothing.
   }
 }

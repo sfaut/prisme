@@ -1,37 +1,37 @@
 /**
- * Largeur du panneau de gauche (connexions et explorateur), réglable à la
- * souris et retenue d'une visite à l'autre.
+ * Width of the left panel (connections and explorer), set with the mouse and
+ * remembered from one visit to the next.
  *
- * La largeur est gardée dans le stockage local du navigateur : c'est une
- * préférence d'affichage propre à ce poste. Si le stockage est indisponible
- * (navigation privée, stockage bloqué), la largeur par défaut s'applique.
+ * The width is kept in the browser's local storage: it is a display
+ * preference specific to this machine. If storage is unavailable (private
+ * browsing, blocked storage), the default width applies.
  */
 
 /**
- * Largeur par défaut, en pixels.
+ * Default width, in pixels.
  */
 export const DEFAULT_SIDER_WIDTH = 300
 
 /**
- * Largeur minimale, en pixels : de quoi lire les boutons des connexions.
+ * Minimum width, in pixels: enough to read the connections' buttons.
  */
 export const MIN_SIDER_WIDTH = 200
 
 /**
- * Part maximale de la fenêtre occupée par le panneau.
+ * Maximum share of the window taken by the panel.
  */
 export const MAX_SIDER_RATIO = 0.7
 
 /**
- * Clef de la largeur dans le stockage local.
+ * Key of the width in local storage.
  */
 const STORAGE_KEY = 'prisme.siderWidth'
 
 /**
- * Ramène une largeur entre le minimum et la part maximale de la fenêtre.
+ * Brings a width back between the minimum and the maximum share of the window.
  *
- * @param width Largeur voulue, en pixels.
- * @param windowWidth Largeur de la fenêtre, en pixels.
+ * @param width Wanted width, in pixels.
+ * @param windowWidth Width of the window, in pixels.
  */
 export function clampSiderWidth(width: number, windowWidth: number): number {
   const max = Math.max(MIN_SIDER_WIDTH, Math.floor(windowWidth * MAX_SIDER_RATIO))
@@ -39,7 +39,7 @@ export function clampSiderWidth(width: number, windowWidth: number): number {
 }
 
 /**
- * Largeur retenue, ou la largeur par défaut si aucune n'est lisible.
+ * Remembered width, or the default width if none is readable.
  */
 export function loadSiderWidth(): number {
   try {
@@ -51,14 +51,14 @@ export function loadSiderWidth(): number {
 }
 
 /**
- * Retient la largeur ; sans effet si le stockage est indisponible.
+ * Remembers the width; no effect if storage is unavailable.
  *
- * @param width Largeur, en pixels.
+ * @param width Width, in pixels.
  */
 export function saveSiderWidth(width: number): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, String(width))
   } catch {
-    // Préférence d'affichage seulement : la perdre ne gêne rien.
+    // Display preference only: losing it harms nothing.
   }
 }

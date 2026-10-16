@@ -1,9 +1,9 @@
 <!--
-  Barre horizontale entre l'éditeur SQL (avec ses boutons) et les
-  résultats, tracée d'un trait comme la bordure du panneau de gauche : la
-  faire glisser change la part de la hauteur donnée à l'éditeur, un double
-  clic la remet au tiers du haut. Une poignée, au milieu, montre où la
-  saisir. La part est retenue d'une visite à l'autre
+  Horizontal bar between the SQL editor (with its buttons) and the results,
+  drawn with a line like the border of the left panel: dragging it changes
+  the share of the height given to the editor, a double click resets it to
+  the top third. A grip, in the middle, shows where to grab it. The share is
+  remembered from one visit to the next
   (`editorSplit.ts`).
 -->
 <script setup lang="ts">
@@ -13,25 +13,25 @@ import { DEFAULT_EDITOR_SPLIT, clampEditorSplit, saveEditorSplit } from './edito
 
 const props = defineProps<{
   /**
-   * Élément partagé (la cellule) : sa hauteur sert de référence à la part.
+   * Shared element (the cell): its height is the reference of the share.
    */
   container: HTMLElement | null
 }>()
 
 /**
- * Part de la hauteur donnée à l'éditeur, de 0 à 1.
+ * Share of the height given to the editor, from 0 to 1.
  */
 const split = defineModel<number>({ required: true })
 
 /**
- * Glissement en cours ?
+ * Is a drag in progress?
  */
 const dragging = ref(false)
 
 /**
- * Commence le glissement ; le pointeur reste capturé même hors de la barre.
+ * Starts the drag; the pointer stays captured even outside the bar.
  *
- * @param event Appui sur la barre.
+ * @param event Press on the bar.
  */
 function start(event: PointerEvent): void {
   ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
@@ -39,9 +39,9 @@ function start(event: PointerEvent): void {
 }
 
 /**
- * Suit le pointeur : la barre se place à sa hauteur dans la cellule.
+ * Follows the pointer: the bar goes to its height in the cell.
  *
- * @param event Déplacement du pointeur.
+ * @param event Pointer move.
  */
 function move(event: PointerEvent): void {
   const box = props.container?.getBoundingClientRect()
@@ -51,7 +51,7 @@ function move(event: PointerEvent): void {
 }
 
 /**
- * Termine le glissement et retient la part.
+ * Ends the drag and remembers the share.
  */
 function stop(): void {
   if (dragging.value) {
@@ -61,7 +61,7 @@ function stop(): void {
 }
 
 /**
- * Remet la part par défaut.
+ * Resets the default share.
  */
 function reset(): void {
   split.value = DEFAULT_EDITOR_SPLIT
@@ -94,11 +94,11 @@ function reset(): void {
   cursor: row-resize;
   touch-action: none;
 
-  /* Trait visible au repos, au milieu de la zone de prise. C'est une
-     bordure, comme le bord du panneau de gauche : le navigateur arrondit
-     son épaisseur à un nombre entier de pixels d'écran, quelle que soit la
-     mise à l'échelle de l'affichage (une boîte remplie de 1 px pourrait
-     s'étaler sur deux pixels d'écran et paraître plus épaisse). */
+  /* Line visible at rest, in the middle of the grab area. It is a border,
+     like the edge of the left panel: the browser rounds its thickness to a
+     whole number of screen pixels, whatever the display scaling (a box
+     filled with 1 px could spread over two screen pixels and look
+     thicker). */
   &::before {
     position: absolute;
     inset-inline: 0;
@@ -107,7 +107,7 @@ function reset(): void {
     content: '';
   }
 
-  /* Poignée centrale, posée sur le trait. */
+  /* Central grip, placed on the line. */
   &::after {
     position: absolute;
     inset-block-start: calc(50% - var(--grip-thickness) / 2);

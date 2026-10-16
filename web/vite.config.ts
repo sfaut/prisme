@@ -5,15 +5,15 @@ import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import vueDevTools from 'vite-plugin-vue-devtools'
 
-// Adresse du serveur Prisme (cargo run) vers lequel le serveur de développement
-// de Vite redirige l'API et les WebSockets.
+// Address of the Prisme server (cargo run) to which Vite's development server
+// forwards the API and the WebSockets.
 const PRISME_SERVER = 'http://127.0.0.1:8484'
 
 /**
- * Date et heure locales au format ISO 8601, à la seconde, avec le décalage
- * horaire : « 2026-10-14T09:12:34+02:00 ».
+ * Local date and time in ISO 8601 format, to the second, with the time zone
+ * offset: "2026-10-14T09:12:34+02:00".
  *
- * @param date Instant à formater.
+ * @param date Instant to format.
  */
 function localIsoDateTime(date: Date): string {
   const pad = (value: number) => String(value).padStart(2, '0')
@@ -29,10 +29,10 @@ function localIsoDateTime(date: Date): string {
 }
 
 /**
- * Ajoute à `index.html` la date et l'heure du build, dans
- * `<meta name="build-time">` : on sait de quand date l'interface servie
- * (Ctrl-U, ou les outils de développement du navigateur). Au build seulement :
- * le serveur de développement n'en a pas.
+ * Adds the date and time of the build to `index.html`, in
+ * `<meta name="build-time">`: it tells when the served interface was built
+ * (Ctrl+U, or the browser's developer tools). On build only: the development
+ * server has none.
  */
 function buildTime(): Plugin {
   return {
@@ -64,12 +64,12 @@ export default defineConfig({
   build: {
     rolldownOptions: {
       output: {
-        // Bibliothèques mises à part, un fichier par famille : chacun reste
-        // sous les 500 ko, le code de Prisme, qui change à chaque version,
-        // reste petit, et le navigateur garde en cache les bibliothèques qui
-        // n'ont pas changé. Un groupe emporte aussi les dépendances de ses
-        // modules : la priorité la plus haute se sert en premier (Vue avant
-        // Reka UI, qui en dépend). « vendor » recueille le reste, s'il en reste.
+        // Libraries set apart, one file per family: each stays under 500 kB,
+        // Prisme's code, which changes with each version, stays small, and the
+        // browser keeps in cache the libraries that did not change. A group
+        // also takes the dependencies of its modules: the highest priority
+        // serves first (Vue before Reka UI, which depends on it). "vendor"
+        // collects the rest, if any.
         codeSplitting: {
           groups: [
             { name: 'vue', test: /node_modules[\\/](@vue|vue|pinia)[\\/]/, priority: 40 },

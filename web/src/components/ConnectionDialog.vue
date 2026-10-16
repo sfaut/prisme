@@ -1,21 +1,21 @@
 <!--
-  Fenêtre de création ou de modification d'une connexion MySQL / MariaDB.
+  Window to create or change a MySQL / MariaDB connection.
 
-  En modification, la saisie part de la connexion enregistrée, sauf le mot de
-  passe, que l'interface ne connaît pas : laissé vide, il reste inchangé.
-  « Tester » se connecte avec la saisie en cours, sans l'enregistrer, et
-  affiche la variante et la version du serveur.
+  When changing, the input starts from the saved connection, except the
+  password, which the interface does not know: left empty, it is unchanged.
+  "Tester" connects with the current input, without saving it, and shows the
+  flavor and the version of the server.
 
-  « À la connexion » reçoit des requêtes exécutées à l'ouverture de chaque
-  connexion vers la base, séparées par des « ; » : seuls les réglages de la
-  session (`SET NAMES`, `SET SESSION sql_mode`...) sont permis, le serveur
-  refuse le reste à l'enregistrement. « Tester » les exécute aussi.
+  "À la connexion" receives queries run when each connection to the database
+  opens, separated by ";": only session settings (`SET NAMES`,
+  `SET SESSION sql_mode`...) are allowed, the server refuses the rest on
+  saving. "Tester" runs them too.
 
-  Les longueurs maximales reprennent celles du serveur
-  (`crates/server/src/connections.rs`). Les autres contrôles sont faits par le
-  serveur, dont le message s'affiche dans la fenêtre en cas de refus.
+  The maximum lengths repeat the server's
+  (`crates/server/src/connections.rs`). The other checks are made by the
+  server, whose message shows in the window on refusal.
 
-  Fenêtre, champs et boutons de Prisme (`ui/`).
+  Window, fields and buttons of Prisme (`ui/`).
 -->
 <script setup lang="ts">
 import { Eye, EyeOff } from 'lucide-vue-next'
@@ -34,20 +34,20 @@ import UiInput from './ui/UiInput.vue'
 import UiTextarea from './ui/UiTextarea.vue'
 
 /**
- * Fenêtre ouverte ou fermée.
+ * Window open or closed.
  */
 const open = defineModel<boolean>('open', { required: true })
 
 const props = defineProps<{
   /**
-   * Connexion à modifier, `null` pour en créer une.
+   * Connection to change, `null` to create one.
    */
   connection: ConnectionSummary | null
 }>()
 
 const emit = defineEmits<{
   /**
-   * La connexion modifiée est enregistrée.
+   * The changed connection is saved.
    */
   updated: [connectionId: number]
 }>()
@@ -55,44 +55,44 @@ const emit = defineEmits<{
 const store = useConnectionsStore()
 
 /**
- * Saisie en cours.
+ * Current input.
  */
 const form = reactive<Required<NewConnection>>(emptyForm())
 
 /**
- * Message du serveur si l'enregistrement a échoué.
+ * Message of the server if saving failed.
  */
 const error = ref<string | null>(null)
 
 /**
- * Enregistrement en cours.
+ * Saving in progress.
  */
 const saving = ref(false)
 
 /**
- * Test de la saisie en cours.
+ * Test of the current input in progress.
  */
 const probing = ref(false)
 
 /**
- * Mot de passe affiché en clair ?
+ * Is the password shown in clear?
  */
 const showPassword = ref(false)
 
 /**
- * Résultat du dernier test réussi (variante et version du serveur), `null` si aucun.
+ * Result of the last successful test (flavor and version of the server), `null` if none.
  */
 const probed = ref<string | null>(null)
 
 /**
- * Titre de la fenêtre.
+ * Title of the window.
  */
 const title = computed(() =>
   props.connection === null ? 'Nouvelle connexion' : 'Modifier la connexion',
 )
 
 /**
- * Saisie vide, avec le port par défaut de MySQL.
+ * Empty input, with MySQL's default port.
  */
 function emptyForm(): Required<NewConnection> {
   return {
@@ -109,9 +109,9 @@ function emptyForm(): Required<NewConnection> {
 }
 
 /**
- * Saisie de départ : la connexion à modifier, mot de passe vide, ou une saisie vide.
+ * Initial input: the connection to change, password empty, or an empty input.
  *
- * @param connection Connexion à modifier, `null` pour en créer une.
+ * @param connection Connection to change, `null` to create one.
  */
 function initialForm(connection: ConnectionSummary | null): Required<NewConnection> {
   if (connection === null) {
@@ -140,7 +140,7 @@ function initialForm(connection: ConnectionSummary | null): Required<NewConnecti
   }
 }
 
-// Chaque ouverture repart de la connexion choisie, sans l'erreur précédente.
+// Each opening starts again from the chosen connection, without the previous error.
 watch(open, (isOpen) => {
   if (isOpen) {
     Object.assign(form, initialForm(props.connection))
@@ -150,8 +150,8 @@ watch(open, (isOpen) => {
 })
 
 /**
- * Se connecte avec la saisie en cours, sans l'enregistrer. En modification,
- * un mot de passe vide reprend celui de la connexion enregistrée.
+ * Connects with the current input, without saving it. When changing, an
+ * empty password takes that of the saved connection.
  */
 async function probe(): Promise<void> {
   probing.value = true
@@ -168,7 +168,7 @@ async function probe(): Promise<void> {
 }
 
 /**
- * Enregistre la connexion, puis ferme la fenêtre.
+ * Saves the connection, then closes the window.
  */
 async function save(): Promise<void> {
   saving.value = true

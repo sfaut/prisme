@@ -1,17 +1,16 @@
 <!--
-  Disposition de l'écran : à gauche, l'explorateur des sources de données,
-  dans un panneau dont on règle la largeur en faisant glisser son bord droit,
-  avec le choix du thème (clair, sombre ou celui du système) ; à droite, les
-  éditeurs SQL, un onglet chacun (`EditorTabBar`), chacun avec sa cellule
-  (`QueryCell`) : sa connexion, sa session et ses onglets de résultat.
-  Disposition en classes Tailwind.
+  Layout of the screen: on the left, the explorer of the data sources, in a
+  panel whose width is set by dragging its right edge, with the choice of the
+  theme (light, dark or the system's); on the right, the SQL editors, one tab
+  each (`EditorTabBar`), each with its cell (`QueryCell`): its connection, its
+  session and its result tabs. Layout in Tailwind classes.
 
-  L'explorateur agit sur l'éditeur actif : la source choisie devient sa
-  connexion, une table ouverte ou une base choisie (`USE`) s'y exécute. Les
-  cellules de tous les éditeurs restent montées : chacune garde sa session
-  (et ses transactions) ouverte, même quand un autre éditeur est affiché.
+  The explorer acts on the active editor: the chosen source becomes its
+  connection, an opened table or a chosen database (`USE`) runs there. The
+  cells of all the editors stay mounted: each one keeps its session (and its
+  transactions) open, even when another editor is displayed.
 
-  Les messages éphémères (`notify`) s'affichent en bas à droite (`UiToaster`).
+  Transient messages (`notify`) show at the bottom right (`UiToaster`).
 -->
 <script setup lang="ts">
 import { Database, Monitor, Moon, Sun } from 'lucide-vue-next'
@@ -35,7 +34,7 @@ const connections = useConnectionsStore()
 const editors = useEditorsStore()
 
 /**
- * Choix du thème, dans la liste en tête du panneau de gauche.
+ * Choice of the theme, in the list at the top of the left panel.
  */
 const COLOR_MODES: { label: string; value: ColorMode; icon: typeof Monitor }[] = [
   { label: 'Système', value: 'system', icon: Monitor },
@@ -44,34 +43,34 @@ const COLOR_MODES: { label: string; value: ColorMode; icon: typeof Monitor }[] =
 ]
 
 /**
- * Largeur du panneau de gauche, en pixels.
+ * Width of the left panel, in pixels.
  */
 const siderWidth = ref(clampSiderWidth(loadSiderWidth(), window.innerWidth))
 
 /**
- * Erreur de chargement ou d'enregistrement des éditeurs, `null` si aucune.
+ * Error loading or saving the editors, `null` if none.
  */
 const editorsError = ref<string | null>(null)
 
 /**
- * Base en cours de la session de chaque éditeur (elle change avec `USE`) ;
- * celle de l'éditeur actif est mise en gras dans l'explorateur.
+ * Current database of each editor's session (it changes with `USE`); that
+ * of the active editor is shown in bold in the explorer.
  */
 const databases = ref<Record<number, string | null>>({})
 
 /**
- * Nombre de reconnexions demandées, par éditeur : changer la clef de sa
- * cellule rouvre sa session. Modifier sa connexion la rouvre aussi.
+ * Number of reconnections requested, by editor: changing the key of its cell
+ * reopens its session. Changing its connection reopens it too.
  */
 const attempts = ref<Record<number, number>>({})
 
 /**
- * Cellules montées, par éditeur, pour y lancer une requête depuis l'explorateur.
+ * Mounted cells, by editor, to start a query there from the explorer.
  */
 const cells = new Map<number, InstanceType<typeof QueryCell>>()
 
 /**
- * Éditeur actif, sous la forme attendue par les onglets de Reka UI.
+ * Active editor, in the form expected by Reka UI's tabs.
  */
 const activeTab = computed({
   get: () => editors.activeId ?? 0,
@@ -79,18 +78,18 @@ const activeTab = computed({
 })
 
 /**
- * Connexion d'un éditeur, `null` si aucune (ou supprimée).
+ * Connection of an editor, `null` if none (or deleted).
  *
- * @param connectionId Identifiant de la connexion de l'éditeur.
+ * @param connectionId Id of the editor's connection.
  */
 function connectionOf(connectionId: number | null) {
   return connections.connections.find((connection) => connection.id === connectionId) ?? null
 }
 
 /**
- * Signale un échec de chargement ou d'enregistrement des éditeurs.
+ * Reports a failure loading or saving the editors.
  *
- * @param failure Erreur reçue.
+ * @param failure Received error.
  */
 function report(failure: unknown): void {
   editorsError.value = failure instanceof Error ? failure.message : String(failure)
@@ -100,7 +99,7 @@ onMounted(() => {
   editors.load().catch(report)
 })
 
-// La source surlignée dans l'explorateur est la connexion de l'éditeur actif.
+// The source highlighted in the explorer is the connection of the active editor.
 watch(
   () => editors.active?.connectionId ?? null,
   (connectionId) => {
@@ -108,7 +107,7 @@ watch(
   },
 )
 
-// Une connexion créée (ou supprimée) devient (ou cesse d'être) celle de l'éditeur actif.
+// A created (or deleted) connection becomes (or stops being) that of the active editor.
 watch(
   () => connections.selectedId,
   (connectionId) => {
@@ -119,11 +118,11 @@ watch(
 )
 
 /**
- * Donne une connexion à l'éditeur actif, puis attend que sa cellule (rouverte
- * sur cette connexion) soit montée.
+ * Gives a connection to the active editor, then waits for its cell (reopened
+ * on this connection) to be mounted.
  *
- * @param connectionId Identifiant de la connexion.
- * @returns La cellule de l'éditeur actif, absente s'il n'y en a pas.
+ * @param connectionId Id of the connection.
+ * @returns The cell of the active editor, absent if there is none.
  */
 async function activeCellOn(connectionId: number) {
   const editor = editors.active
@@ -136,13 +135,13 @@ async function activeCellOn(connectionId: number) {
 }
 
 /**
- * Affiche le contenu d'une table choisie dans l'explorateur, dans l'éditeur
- * actif. Une table d'une autre source donne d'abord cette connexion à
- * l'éditeur : la requête part dès que sa session est ouverte.
+ * Shows the content of a table chosen in the explorer, in the active editor.
+ * A table of another source first gives this connection to the editor: the
+ * query starts as soon as its session is open.
  *
- * @param connectionId Identifiant de la connexion de la table.
- * @param schema Nom de la base.
- * @param table Nom de la table.
+ * @param connectionId Id of the table's connection.
+ * @param schema Name of the database.
+ * @param table Name of the table.
  */
 async function openTable(connectionId: number, schema: string, table: string): Promise<void> {
   try {
@@ -153,12 +152,12 @@ async function openTable(connectionId: number, schema: string, table: string): P
 }
 
 /**
- * Fait d'une base choisie dans l'explorateur la base en cours de la session
- * de l'éditeur actif (comme `USE`). Une base d'une autre source donne d'abord
- * cette connexion à l'éditeur.
+ * Makes a database chosen in the explorer the current database of the active
+ * editor's session (like `USE`). A database of another source first gives
+ * this connection to the editor.
  *
- * @param connectionId Identifiant de la connexion de la base.
- * @param schema Nom de la base.
+ * @param connectionId Id of the database's connection.
+ * @param schema Name of the database.
  */
 async function useDatabase(connectionId: number, schema: string): Promise<void> {
   try {
@@ -169,9 +168,9 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
 }
 
 /**
- * Choisit une source comme connexion de l'éditeur actif.
+ * Chooses a source as the connection of the active editor.
  *
- * @param connectionId Identifiant de la connexion.
+ * @param connectionId Id of the connection.
  */
 function selectSource(connectionId: number): void {
   if (editors.active) {

@@ -1,50 +1,50 @@
 /**
- * Détection du contenu des colonnes de texte : JSON, XML ou URL.
+ * Detection of the content of text columns: JSON, XML or URL.
  *
- * Une colonne `TEXT` (ou `VARCHAR`) peut contenir des documents JSON ou
- * XML, ou des adresses web, que le serveur ne type pas (le JSON de MariaDB
- * arrive aussi en `LONGTEXT`). L'en-tête de la grille montre alors l'icône
- * du contenu à la place de celle du texte ; les adresses deviennent des
- * liens. La détection lit un échantillon des premières valeurs non vides :
- * toutes doivent être du même format, sinon la colonne reste du texte.
+ * A `TEXT` (or `VARCHAR`) column can hold JSON or XML documents, or web
+ * addresses, which the server does not type (MariaDB's JSON also arrives as
+ * `LONGTEXT`). The grid header then shows the icon of the content instead of
+ * that of text; the addresses become links. Detection reads a sample of the
+ * first non-empty values: all must be of the same format, otherwise the
+ * column stays text.
  */
 
 /**
- * Format reconnu dans une colonne de texte.
+ * Format recognized in a text column.
  */
 export type ContentKind = 'json' | 'xml' | 'url'
 
 /**
- * Adresse web : `http://` ou `https://`, puis aucun espace. Seuls ces deux
- * protocoles deviennent des liens (jamais `javascript:` ni `data:`).
+ * Web address: `http://` or `https://`, then no space. Only these two
+ * protocols become links (never `javascript:` nor `data:`).
  */
 const URL_PATTERN = /^https?:\/\/[^\s]+$/i
 
 /**
- * Le texte est-il une adresse web, à rendre cliquable ?
+ * Is the text a web address, to make clickable?
  *
- * @param value Texte de la cellule, `null` pour NULL.
+ * @param value Text of the cell, `null` for NULL.
  */
 export function isWebAddress(value: string | null): value is string {
   return value !== null && URL_PATTERN.test(value)
 }
 
 /**
- * Nombre de valeurs non vides lues pour décider.
+ * Number of non-empty values read to decide.
  */
 const SAMPLE_SIZE = 50
 
 /**
- * Nombre de lignes parcourues au plus pour réunir l'échantillon.
+ * Maximum number of rows scanned to gather the sample.
  */
 const SCAN_LIMIT = 500
 
 /**
- * Format des valeurs de la colonne `column`, `null` si ce n'est ni du
- * JSON, ni du XML, ni des adresses web (ou si aucune valeur n'est encore là).
+ * Format of the values of the column `column`, `null` if it is neither JSON,
+ * nor XML, nor web addresses (or if no value is there yet).
  *
- * @param rows Lignes du résultat.
- * @param column Indice de la colonne.
+ * @param rows Rows of the result.
+ * @param column Index of the column.
  */
 export function detectContent(rows: (string | null)[][], column: number): ContentKind | null {
   const sample: string[] = []
@@ -73,10 +73,10 @@ export function detectContent(rows: (string | null)[][], column: number): Conten
 }
 
 /**
- * Le texte est-il un objet ou un tableau JSON ? Un nombre ou une chaîne
- * seuls, du JSON valide, ne font pas d'une colonne une colonne JSON.
+ * Is the text a JSON object or array? A lone number or string, valid JSON,
+ * does not make a column a JSON column.
  *
- * @param value Texte, sans espaces autour.
+ * @param value Text, without surrounding spaces.
  */
 function isJsonDocument(value: string): boolean {
   const first = value[0]
@@ -92,9 +92,9 @@ function isJsonDocument(value: string): boolean {
 }
 
 /**
- * Le texte est-il un document XML bien formé ?
+ * Is the text a well-formed XML document?
  *
- * @param value Texte, sans espaces autour.
+ * @param value Text, without surrounding spaces.
  */
 function isXmlDocument(value: string): boolean {
   if (!value.startsWith('<') || !value.endsWith('>')) {

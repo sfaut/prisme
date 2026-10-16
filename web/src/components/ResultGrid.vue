@@ -1,41 +1,41 @@
 <!--
-  Grille de résultats compacte.
+  Compact result grid.
 
-  - Tri : bouton ▲▼ de l'en-tête (croissant, décroissant, aucun).
-  - Filtre : texte cherché dans une colonne ou dans toutes. Le formulaire est
-    replié ; le bouton de la barre du bas le déplie (et le replie : le filtre
-    reste appliqué, le bouton le signale).
-  - Barre du bas : bouton du filtre, nombre de lignes chargées (« 120 /
-    5 000 lignes » quand un filtre est actif), puis le contenu de
-    l'emplacement `footer` (durée de la requête).
-  - Sélection : clic sur une cellule, sur un numéro de ligne ou sur un nom de
-    colonne ; Maj-clic étend, Ctrl-clic ajoute, glisser étend aussi (sur les
-    numéros de ligne, glisser sélectionne un groupe de lignes). Un clic sur
-    le coin supérieur gauche sélectionne tout.
-  - Copie : Ctrl-C copie la sélection avec les noms des colonnes en première
-    ligne (un réglage du profil pourra les retirer). Ctrl-A sélectionne tout,
-    Échap vide la sélection.
-  - Largeur : glisser le bord droit d'un en-tête change la largeur de la
-    colonne ; un double clic sur ce bord l'ajuste à sa valeur la plus longue
-    (avec un plafond), un second lui rend sa largeur estimée. Les largeurs
-    choisies sont retrouvées quand la même requête est relancée
-    (`gridWidths.ts`). Un texte trop long est tronqué (…) et s'affiche en
-    entier au survol.
-  - Ordre : glisser un nom de colonne la déplace. Une nouvelle exécution
-    rétablit l'ordre du `SELECT`. La sélection et la copie suivent l'ordre
-    affiché ; tri, filtre et largeurs restent attachés à la colonne.
-  - Alignement : nombres, dates et heures à droite, d'après le type annoncé
-    par le serveur.
-  - Types : chaque en-tête montre l'icône de la famille du type de sa
-    colonne (`typeIcons.ts`) ; le nom natif du type (`VARCHAR(20)`,
-    `DECIMAL(10,2)`...) s'affiche au survol. Une colonne de texte qui
-    contient du JSON ou du XML montre l'icône de ce format (`contentKind.ts`).
-  - Liens : dans une colonne d'adresses web, chaque adresse est un lien,
-    précédé d'une icône de lien externe et ouvert dans un nouvel onglet.
+  - Sort: ▲▼ button of the header (ascending, descending, none).
+  - Filter: text searched in one column or in all. The form is collapsed;
+    the button of the bottom bar expands it (and collapses it: the filter
+    stays applied, the button shows it).
+  - Bottom bar: filter button, number of loaded rows ("120 /
+    5 000 lignes" when a filter is active), then the content of the
+    `footer` slot (duration of the query).
+  - Selection: click on a cell, on a row number or on a column name;
+    Shift+click extends, Ctrl+click adds, dragging extends too (on the row
+    numbers, dragging selects a group of rows). A click on the top left
+    corner selects everything.
+  - Copy: Ctrl+C copies the selection with the column names on the first
+    line (a profile setting may remove them). Ctrl+A selects everything,
+    Escape clears the selection.
+  - Width: dragging the right edge of a header changes the width of the
+    column; a double click on this edge fits it to its longest value (with a
+    cap), a second one gives back its estimated width. The chosen widths are
+    found again when the same query is run again
+    (`gridWidths.ts`). A text too long is truncated (…) and shows in full on
+    hover.
+  - Order: dragging a column name moves it. A new run restores the order of
+    the `SELECT`. Selection and copy follow the displayed order; sort, filter
+    and widths stay attached to the column.
+  - Alignment: numbers, dates and times on the right, after the type
+    announced by the server.
+  - Types: each header shows the icon of the family of its column's type
+    (`typeIcons.ts`); the native name of the type (`VARCHAR(20)`,
+    `DECIMAL(10,2)`...) shows on hover. A text column that holds JSON or XML
+    shows the icon of this format (`contentKind.ts`).
+  - Links: in a column of web addresses, each address is a link, preceded
+    by an external link icon and opened in a new tab.
 
-  Seules les lignes visibles existent dans la page (défilement virtuel) : la
-  grille reste fluide avec des dizaines de milliers de lignes. La logique
-  (tri, filtre, sélection, copie) est dans `resultGrid.ts`.
+  Only the visible rows exist in the page (virtual scrolling): the grid
+  stays smooth with tens of thousands of rows. The logic (sort, filter,
+  selection, copy) is in `resultGrid.ts`.
 -->
 <script setup lang="ts">
 import { ExternalLink, ListFilter, Search, X } from 'lucide-vue-next'
@@ -80,42 +80,42 @@ import { notify } from './ui/toasts'
 
 const props = defineProps<{
   /**
-   * Noms des colonnes.
+   * Names of the columns.
    */
   columns: string[]
   /**
-   * Pour chaque colonne, ses valeurs s'alignent-elles à droite (nombres,
-   * dates et heures) ?
+   * For each column, are its values right-aligned (numbers, dates and
+   * times)?
    */
   rightAligned: boolean[]
   /**
-   * Type de chaque colonne ; vide si inconnu (en-têtes sans type).
+   * Type of each column; empty if unknown (headers without a type).
    */
   columnTypes: ColumnTypeInfo[]
   /**
-   * Lignes du résultat ; le tableau peut grandir pendant la réception, sans
-   * être réactif : c'est `rowCount` qui signale les nouvelles lignes.
+   * Rows of the result; the array can grow during the reception, without
+   * being reactive: `rowCount` signals the new rows.
    */
   rows: Cell[][]
   /**
-   * Nombre de lignes reçues.
+   * Number of rows received.
    */
   rowCount: number
   /**
-   * Nombre de lignes affiché dans la barre du bas, rafraîchi moins souvent
-   * que `rowCount` pendant la réception ; absent, `rowCount`.
+   * Number of rows shown in the bottom bar, refreshed less often than
+   * `rowCount` during the reception; when absent, `rowCount`.
    */
   shownCount?: number
   /**
-   * Texte de la requête : les largeurs choisies sont retenues pour elle, et
-   * retrouvées si elle est relancée.
+   * Text of the query: the chosen widths are remembered for it, and found
+   * again if it is run again.
    */
   sql: string
 }>()
 
 /**
- * Hauteur d'une ligne, en pixels, pour le défilement virtuel
- * (`--grid-row-height` du thème).
+ * Height of a row, in pixels, for virtual scrolling
+ * (`--grid-row-height` of the theme).
  */
 const ROW_HEIGHT = cssPixels('--grid-row-height', 22)
 
@@ -124,14 +124,14 @@ const scroller = useTemplateRef<HTMLDivElement>('scroller')
 const filter = reactive<GridFilter>({ text: '', column: null })
 
 /**
- * Formulaire du filtre déplié ?
+ * Is the filter form expanded?
  */
 const filterOpen = ref(false)
 
 const filterBox = useTemplateRef<HTMLDivElement>('filterBox')
 
 /**
- * Déplie ou replie le formulaire du filtre ; déplié, son champ prend le focus.
+ * Expands or collapses the filter form; when expanded, its field takes the focus.
  */
 async function toggleFilter(): Promise<void> {
   filterOpen.value = !filterOpen.value
@@ -142,8 +142,8 @@ async function toggleFilter(): Promise<void> {
 }
 
 /**
- * Nombre de lignes de la barre du bas : lignes chargées, précédées des
- * lignes retenues quand un filtre est actif.
+ * Number of rows of the bottom bar: loaded rows, preceded by the kept rows
+ * when a filter is active.
  */
 const countLabel = computed(() => {
   const loaded = props.shownCount ?? props.rowCount
@@ -154,24 +154,24 @@ const sort = ref<SortState | null>(null)
 const selection = shallowRef(emptySelection())
 
 /**
- * Glissement de souris en cours : plage de cellules, ou groupe de lignes
- * (commencé sur un numéro de ligne) ; `null` sans glissement.
+ * Mouse drag in progress: range of cells, or group of rows (started on a
+ * row number); `null` without a drag.
  */
 let dragging: 'cells' | 'rows' | null = null
 
 /**
- * Donne le focus clavier à la grille, pour que Ctrl-C, Ctrl-A et Échap s'y
- * appliquent. Les clics de sélection empêchent le comportement par défaut
- * (sélection du texte de la page), qui aurait aussi donné ce focus.
+ * Gives the keyboard focus to the grid, so that Ctrl+C, Ctrl+A and Escape
+ * apply to it. The selection clicks prevent the default behavior (selection
+ * of the page's text), which would also have given this focus.
  */
 function focusGrid(): void {
   scroller.value?.focus({ preventScroll: true })
 }
 
 /**
- * Commence un glissement, qui prend fin au relâchement du bouton.
+ * Starts a drag, which ends when the button is released.
  *
- * @param kind Ce que le glissement sélectionne.
+ * @param kind What the drag selects.
  */
 function startDragging(kind: 'cells' | 'rows'): void {
   dragging = kind
@@ -179,21 +179,21 @@ function startDragging(kind: 'cells' | 'rows'): void {
 }
 
 /**
- * Vue : indices des lignes sources, filtrées et triées.
+ * View: indexes of the source rows, filtered and sorted.
  */
 const view = computed(() => {
-  // Lu pour que la vue se recalcule à l'arrivée de nouvelles lignes.
+  // Read so that the view recomputes when new rows arrive.
   void props.rowCount
   return visibleRows(props.rows, filter, sort.value)
 })
 
 /**
- * Largeurs choisies à la souris, par indice de colonne ; les autres colonnes
- * gardent leur largeur estimée.
+ * Widths chosen with the mouse, by column index; the other columns keep
+ * their estimated width.
  */
 const resized = ref<Record<number, number>>(rememberedWidths(props.sql, props.columns))
 
-// Nouveau résultat : les largeurs retenues pour lui, s'il y en a.
+// New result: the widths remembered for it, if any.
 watch(
   () => props.columns,
   (columns) => {
@@ -201,17 +201,17 @@ watch(
   },
 )
 
-// Toute largeur choisie est retenue pour la requête.
+// Every chosen width is remembered for the query.
 watch(resized, (widths) => rememberWidths(props.sql, props.columns, widths))
 
 /**
- * Ordre d'affichage : indice dans le `SELECT` de chaque colonne affichée.
- * Les positions affichées servent à la sélection ; les indices du `SELECT`
- * au tri, au filtre et aux largeurs.
+ * Display order: index in the `SELECT` of each displayed column. The
+ * displayed positions serve the selection; the indexes of the `SELECT`
+ * serve the sort, the filter and the widths.
  */
 const order = ref(props.columns.map((_, index) => index))
 
-// Nouveau résultat : l'ordre du SELECT.
+// New result: the order of the SELECT.
 watch(
   () => props.columns,
   (columns) => {
@@ -220,20 +220,20 @@ watch(
 )
 
 /**
- * Largeurs estimées des colonnes, sur l'en-tête et les premières lignes.
+ * Estimated widths of the columns, on the header and the first rows.
  */
 const estimated = computed(() => {
-  // Lu pour que les largeurs se recalculent à l'arrivée de nouvelles lignes.
+  // Read so that the widths recompute when new rows arrive.
   void props.rowCount
   return props.columns.map((_, column) => estimatedWidth(headerText(column), props.rows, column))
 })
 
 /**
- * Contenu reconnu de chaque colonne de texte (JSON ou XML), d'après ses
- * premières valeurs ; `null` pour les autres colonnes.
+ * Recognized content of each text column (JSON or XML), after its first
+ * values; `null` for the other columns.
  */
 const contentKinds = computed<(ContentKind | null)[]>(() => {
-  // Lu pour que la détection se refasse à l'arrivée de nouvelles lignes.
+  // Read so that detection runs again when new rows arrive.
   void props.rowCount
   return props.columns.map((_, column) =>
     props.columnTypes[column]?.family === 'text' ? detectContent(props.rows, column) : null,
@@ -241,14 +241,14 @@ const contentKinds = computed<(ContentKind | null)[]>(() => {
 })
 
 /**
- * Pour chaque colonne, ses valeurs s'affichent-elles en chasse fixe (`CHAR`) ?
+ * For each column, are its values shown in monospace (`CHAR`)?
  */
 const monospaced = computed(() =>
   props.columns.map((_, column) => isFixedLengthText(props.columnTypes[column])),
 )
 
 /**
- * Marque de chaque colonne dans son en-tête (icône ou texte), absente sans type.
+ * Mark of each column in its header (icon or text), absent without a type.
  */
 const columnMarks = computed(() =>
   props.columns.map((_, column) => {
@@ -258,7 +258,7 @@ const columnMarks = computed(() =>
 )
 
 /**
- * Libellé du contenu reconnu d'une colonne, pour le survol de son en-tête.
+ * Label of the recognized content of a column, for hovering its header.
  */
 const CONTENT_LABELS: Record<ContentKind, string> = {
   json: 'contenu JSON',
@@ -267,9 +267,9 @@ const CONTENT_LABELS: Record<ContentKind, string> = {
 }
 
 /**
- * Texte de survol de l'en-tête d'une colonne : nom, type natif et contenu reconnu.
+ * Hover text of a column header: name, native type and recognized content.
  *
- * @param column Indice de la colonne.
+ * @param column Index of the column.
  */
 function headerTitle(column: number): string {
   const type = props.columnTypes[column]
@@ -280,10 +280,10 @@ function headerTitle(column: number): string {
 }
 
 /**
- * Texte de l'en-tête d'une colonne, pour estimer sa largeur : son nom, plus
- * la place de la marque du type (icône, ou texte comme « 123 »).
+ * Text of a column header, to estimate its width: its name, plus the room
+ * of the type mark (icon, or text such as "123").
  *
- * @param column Indice de la colonne.
+ * @param column Index of the column.
  */
 function headerText(column: number): string {
   const name = props.columns[column] ?? ''
@@ -295,8 +295,8 @@ function headerText(column: number): string {
 }
 
 /**
- * Gabarit des colonnes de la grille : numéros de ligne, puis chaque colonne,
- * à sa largeur choisie ou estimée.
+ * Column template of the grid: row numbers, then each column, at its chosen
+ * or estimated width.
  */
 const template = computed(() => {
   const widths = order.value.map(
@@ -307,17 +307,17 @@ const template = computed(() => {
 })
 
 /**
- * Redimensionnement en cours : colonne, position de départ du pointeur et
- * largeur de départ.
+ * Resizing in progress: column, starting position of the pointer and
+ * starting width.
  */
 let resizing: { column: number; x: number; width: number } | null = null
 
 /**
- * Commence le redimensionnement d'une colonne ; le pointeur reste capturé
- * même hors de la poignée.
+ * Starts resizing a column; the pointer stays captured even outside the
+ * handle.
  *
- * @param event Appui sur la poignée.
- * @param column Indice de la colonne.
+ * @param event Press on the handle.
+ * @param column Index of the column.
  */
 function onResizeStart(event: PointerEvent, column: number): void {
   ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
@@ -326,9 +326,9 @@ function onResizeStart(event: PointerEvent, column: number): void {
 }
 
 /**
- * Suit le pointeur pendant le redimensionnement.
+ * Follows the pointer during the resizing.
  *
- * @param event Déplacement du pointeur.
+ * @param event Pointer move.
  */
 function onResizeMove(event: PointerEvent): void {
   if (resizing !== null) {
@@ -340,17 +340,17 @@ function onResizeMove(event: PointerEvent): void {
 }
 
 /**
- * Termine le redimensionnement.
+ * Ends the resizing.
  */
 function onResizeEnd(): void {
   resizing = null
 }
 
 /**
- * Ajuste une colonne à sa valeur la plus longue, dans la limite d'un plafond ;
- * si elle l'est déjà, lui rend sa largeur estimée.
+ * Fits a column to its longest value, within a cap; if it already is, gives
+ * back its estimated width.
  *
- * @param column Indice de la colonne.
+ * @param column Index of the column.
  */
 function fitWidth(column: number): void {
   const width = fittedWidth(headerText(column), props.rows, column)
@@ -377,15 +377,15 @@ const virtualizer = useVirtualizer(
   })),
 )
 
-// Tri ou filtre modifié : les positions changent, la sélection n'a plus de sens.
+// Sort or filter changed: the positions change, the selection no longer makes sense.
 watch([filter, sort], () => {
   selection.value = emptySelection()
 })
 
 /**
- * Mode de sélection d'après les touches tenues pendant le clic.
+ * Selection mode after the keys held during the click.
  *
- * @param event Clic.
+ * @param event Click.
  */
 function modeOf(event: MouseEvent): SelectMode {
   if (event.shiftKey) {
@@ -395,7 +395,7 @@ function modeOf(event: MouseEvent): SelectMode {
 }
 
 /**
- * Début d'une sélection de cellule (et d'un éventuel glissement).
+ * Start of a cell selection (and of a possible drag).
  */
 function onCellDown(event: MouseEvent, row: number, column: number): void {
   selection.value = selectCell(selection.value, row, column, modeOf(event))
@@ -404,8 +404,8 @@ function onCellDown(event: MouseEvent, row: number, column: number): void {
 }
 
 /**
- * Glissement sur une cellule : la plage s'étend jusqu'à elle, ou le groupe
- * de lignes jusqu'à sa ligne.
+ * Drag over a cell: the range extends up to it, or the group of rows up to
+ * its row.
  */
 function onCellEnter(row: number, column: number): void {
   if (dragging === 'cells') {
@@ -416,8 +416,8 @@ function onCellEnter(row: number, column: number): void {
 }
 
 /**
- * Clic sur un numéro de ligne : sélection de la ligne entière, et début
- * d'un éventuel glissement sur d'autres lignes.
+ * Click on a row number: selection of the whole row, and start of a
+ * possible drag over other rows.
  */
 function onRowHeader(event: MouseEvent, row: number): void {
   selection.value = selectRow(selection.value, row, props.columns.length, modeOf(event))
@@ -426,7 +426,7 @@ function onRowHeader(event: MouseEvent, row: number): void {
 }
 
 /**
- * Glissement sur un numéro de ligne : le groupe de lignes s'étend jusqu'à elle.
+ * Drag over a row number: the group of rows extends up to it.
  */
 function onRowEnter(row: number): void {
   if (dragging === 'rows') {
@@ -435,22 +435,22 @@ function onRowEnter(row: number): void {
 }
 
 /**
- * Déplacement de colonne en cours : position affichée de la colonne prise,
- * abscisse de départ du pointeur, et le glissement a-t-il dépassé le seuil ?
+ * Column move in progress: displayed position of the grabbed column,
+ * starting abscissa of the pointer, and has the drag passed the threshold?
  */
 let moving: { from: number; x: number; started: boolean } | null = null
 
 /**
- * Position où la colonne déplacée serait insérée, `null` hors déplacement.
+ * Position where the moved column would be inserted, `null` outside a move.
  */
 const dropAt = ref<number | null>(null)
 
 /**
- * Appui sur un nom de colonne : sélection de la colonne entière, et début
- * d'un éventuel déplacement.
+ * Press on a column name: selection of the whole column, and start of a
+ * possible move.
  *
- * @param event Appui sur le nom.
- * @param position Position affichée de la colonne.
+ * @param event Press on the name.
+ * @param position Displayed position of the column.
  */
 function onColumnHeader(event: PointerEvent, position: number): void {
   selection.value = selectColumn(selection.value, position, view.value.length, modeOf(event))
@@ -460,9 +460,9 @@ function onColumnHeader(event: PointerEvent, position: number): void {
 }
 
 /**
- * Suit le pointeur pendant un déplacement de colonne.
+ * Follows the pointer during a column move.
  *
- * @param event Déplacement du pointeur.
+ * @param event Pointer move.
  */
 function onColumnMove(event: PointerEvent): void {
   if (moving === null) {
@@ -475,7 +475,7 @@ function onColumnMove(event: PointerEvent): void {
 }
 
 /**
- * Lâcher : la colonne prend sa nouvelle place et reste sélectionnée.
+ * Release: the column takes its new place and stays selected.
  */
 function onColumnDrop(): void {
   if (moving?.started && dropAt.value !== null) {
@@ -488,7 +488,7 @@ function onColumnDrop(): void {
 }
 
 /**
- * Abscisse du milieu de chaque en-tête de colonne affiché, de gauche à droite.
+ * Abscissa of the middle of each displayed column header, from left to right.
  */
 function headerCenters(): number[] {
   const headers = scroller.value?.querySelectorAll('.grid-column-header') ?? []
@@ -499,10 +499,10 @@ function headerCenters(): number[] {
 }
 
 /**
- * Cellule d'une ligne de la vue.
+ * Cell of a view row.
  *
- * @param row Position de la ligne dans la vue.
- * @param column Indice de la colonne dans le `SELECT`.
+ * @param row Position of the row in the view.
+ * @param column Index of the column in the `SELECT`.
  */
 function cellAt(row: number, column: number): Cell {
   const source = view.value[row]
@@ -510,16 +510,16 @@ function cellAt(row: number, column: number): Cell {
 }
 
 /**
- * Change le tri d'une colonne : croissant, décroissant, aucun.
+ * Changes the sort of a column: ascending, descending, none.
  */
 function toggleSort(column: number): void {
   sort.value = nextSort(sort.value, column)
 }
 
 /**
- * Copie la sélection dans le presse-papiers.
+ * Copies the selection to the clipboard.
  *
- * @param withHeaders Ajoute les noms des colonnes en première ligne.
+ * @param withHeaders Adds the column names on the first line.
  */
 async function copy(withHeaders: boolean): Promise<void> {
   if (selection.value.ranges.length === 0) {
@@ -542,7 +542,7 @@ async function copy(withHeaders: boolean): Promise<void> {
 }
 
 /**
- * Sélectionne toutes les lignes et toutes les colonnes (Ctrl-A, clic sur le coin).
+ * Selects all the rows and all the columns (Ctrl+A, click on the corner).
  */
 function selectEverything(): void {
   selection.value = selectAll(view.value.length, props.columns.length)
@@ -550,14 +550,14 @@ function selectEverything(): void {
 }
 
 /**
- * Raccourcis clavier de la grille.
+ * Keyboard shortcuts of the grid.
  */
 function onKeydown(event: KeyboardEvent): void {
   const command = event.ctrlKey || event.metaKey
   if (command && event.key.toLowerCase() === 'c') {
     event.preventDefault()
-    // Avec les en-têtes, toujours pour l'instant : un réglage du profil
-    // de l'utilisateur pourra les retirer.
+    // With the headers, always for now: a setting of the user's profile may
+    // remove them.
     void copy(true)
   } else if (command && event.key.toLowerCase() === 'a') {
     event.preventDefault()
@@ -568,7 +568,7 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 /**
- * Valeur de la liste « colonne filtrée » : -1 pour toutes les colonnes.
+ * Value of the "filtered column" list: -1 for all the columns.
  */
 const filterColumn = computed({
   get: () => filter.column ?? -1,
@@ -721,7 +721,7 @@ const filterColumn = computed({
         class="grid-filter-toggle"
         @click="toggleFilter"
       />
-      <!-- L'emplacement suit le nombre dans le même texte, sans l'écart du conteneur. -->
+      <!-- The slot follows the number in the same text, without the container's gap. -->
       <span class="grid-count">{{ countLabel }}<slot name="footer" /></span>
     </div>
   </div>
@@ -766,8 +766,8 @@ const filterColumn = computed({
   position: relative;
   flex: 1;
   min-block-size: var(--grid-min-height);
-  /* Garde-fou : une zone de défilement plus haute que la fenêtre dessinerait
-     toutes les lignes et figerait l'interface. */
+  /* Safeguard: a scroll area taller than the window would draw all the rows
+     and freeze the interface. */
   max-block-size: 100vh;
   overflow: auto;
   border: var(--line-width) solid var(--line);
@@ -782,8 +782,8 @@ const filterColumn = computed({
 }
 
 /*
- * Cellules, en-têtes et numéros de ligne : le texte est centré sur ses
- * capitales (`text-box`) au milieu de la ligne (`align-content` sur un bloc).
+ * Cells, headers and row numbers: the text is centered on its capitals
+ * (`text-box`) in the middle of the row (`align-content` on a block).
  */
 .grid-cell,
 .grid-row-header,
@@ -836,8 +836,8 @@ const filterColumn = computed({
   min-inline-size: 0;
   border-inline-start: var(--line-width) solid var(--line);
 
-  /* Seule la dernière colonne porte une bordure droite : les autres sont
-     fermées par la bordure gauche de leur voisine. */
+  /* Only the last column carries a right border: the others are closed by
+     the left border of their neighbour. */
   &:last-child {
     border-inline-end: var(--line-width) solid var(--line);
   }
@@ -875,7 +875,7 @@ const filterColumn = computed({
   cursor: grab;
 }
 
-/* Icône neutre de la famille du type, devant le nom. */
+/* Neutral icon of the type's family, before the name. */
 .grid-type-icon {
   flex: none;
   align-self: center;
@@ -884,7 +884,7 @@ const filterColumn = computed({
   color: var(--fg-dimmed);
 }
 
-/* Marque en texte (123, .00), de la hauteur des icônes. */
+/* Text mark (123, .00), as tall as the icons. */
 .grid-type-glyph {
   flex: none;
   align-content: center;
@@ -897,9 +897,9 @@ const filterColumn = computed({
 }
 
 /*
- * Le nom occupe toute la hauteur de l'en-tête et y centre ses capitales
- * (`align-content`) : rogné à sa hauteur de capitales, il perdrait ses
- * jambages (« q », « _ »).
+ * The name takes the whole height of the header and centers its capitals
+ * there (`align-content`): cut to its cap height, it would lose its
+ * descenders ("q", "_").
  */
 .grid-column-label {
   flex: 0 1 auto;
@@ -940,12 +940,12 @@ const filterColumn = computed({
     text-align: end;
   }
 
-  /* Texte de longueur fixe (CHAR) : codes et références, en chasse fixe. */
+  /* Fixed-length text (CHAR): codes and references, in monospace. */
   &.mono {
     font-family: var(--font-code);
   }
 
-  /* NULL en petites capitales : plus discret qu'une valeur de la colonne. */
+  /* NULL in small capitals: more discreet than a value of the column. */
   &.null {
     color: var(--fg-dimmed);
     font-style: italic;
@@ -957,7 +957,7 @@ const filterColumn = computed({
   background: var(--selection);
 }
 
-/* Adresse web d'une colonne de liens. */
+/* Web address of a column of links. */
 .grid-link {
   color: var(--accent);
   text-decoration: none;
@@ -968,7 +968,7 @@ const filterColumn = computed({
   }
 }
 
-/* Icône de lien externe, devant l'adresse. */
+/* External link icon, before the address. */
 .grid-link-icon {
   display: inline-block;
   inline-size: var(--icon-size-sm);

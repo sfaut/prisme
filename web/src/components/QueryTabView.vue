@@ -1,14 +1,14 @@
 <!--
-  Contenu de l'onglet d'une requête : erreur éventuelle, grille de résultats
-  et, sous la grille, le nombre de lignes chargées et deux durées : le temps
-  d'exécution de la requête par le serveur (jusqu'à l'arrivée des colonnes),
-  puis le temps de transfert et d'affichage des lignes, suivi du volume
-  reçu et du débit.
+  Content of a query's tab: error if any, result grid and, under the grid,
+  the number of loaded rows and two durations: the execution time of the
+  query by the server (until the columns arrive), then the transfer and
+  display time of the rows, followed by the received volume and the
+  throughput.
 
-  Pendant la requête, le nombre de lignes, les durées et le volume changent une fois
-  par seconde (horloge partagée, `clock.ts`) ; à la fin, ils prennent
-  aussitôt leur valeur finale. Une requête sans grille (en attente, en
-  échec, ou sans colonnes) ne montre que ses durées.
+  During the query, the number of rows, the durations and the volume change once
+  per second (shared clock, `clock.ts`); at the end, they take their final
+  value at once. A query without a grid (waiting, failed, or without
+  columns) only shows its durations.
 -->
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
@@ -27,7 +27,7 @@ import UiAlert from './ui/UiAlert.vue'
 
 const props = defineProps<{
   /**
-   * Requête affichée.
+   * Displayed query.
    */
   tab: QueryTab
 }>()
@@ -35,13 +35,13 @@ const props = defineProps<{
 const clock = useClock()
 
 /**
- * Nombre de lignes affiché sous la grille : relevé à chaque tic de
- * l'horloge, et à la fin de la requête.
+ * Number of rows shown under the grid: read on each tick of the clock, and
+ * at the end of the query.
  */
 const shownCount = ref(props.tab.result?.rowCount ?? 0)
 
 /**
- * Volume reçu affiché sous la grille, en octets, relevé comme le nombre de lignes.
+ * Received volume shown under the grid, in bytes, read like the number of rows.
  */
 const shownBytes = ref(props.tab.bytes)
 
@@ -55,10 +55,10 @@ watch(
 )
 
 /**
- * Durées de la requête, formatées : « exécution 120 ms · transfert 2,4 s ·
- * 3,1 Mo · 1,3 Mo/s » (volume reçu et débit pendant le transfert) ; vide
- * tant qu'elle attend son tour. L'horloge n'est lue que pendant la
- * requête : une requête terminée n'est plus redessinée à chaque tic.
+ * Durations of the query, formatted: "exécution 120 ms · transfert 2,4 s ·
+ * 3,1 Mo · 1,3 Mo/s" (received volume and throughput during the transfer);
+ * empty while it waits for its turn. The clock is only read during the
+ * query: an ended query is no longer redrawn on each tick.
  */
 const durations = computed(() => {
   const running = props.tab.startedAt !== null && !props.tab.done
@@ -83,9 +83,9 @@ const durations = computed(() => {
 
 <template>
   <!--
-    min-w-0 : sans lui, l'onglet (élément flexible d'une rangée) ne rétrécit
-    jamais sous la largeur de son contenu, et une grille large débordait,
-    rognée à droite, au lieu de défiler dans sa propre zone.
+    min-w-0: without it, the tab (flex item of a row) never shrinks below the
+    width of its content, and a wide grid overflowed, cut off on the right,
+    instead of scrolling in its own area.
   -->
   <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-gap">
     <ui-alert v-if="tab.error" tone="error" :title="tab.error" />

@@ -1,18 +1,17 @@
 <!--
-  Champ de formulaire : libellé à gauche, dans une colonne étroite
-  (`--field-label-width`), contrôle à droite, sur toute la largeur restante.
-  Le libellé enveloppe le contrôle : un clic dessus donne le focus au champ. Avec
-  `top`, le libellé s'aligne sur le haut du contrôle (champ sur plusieurs
-  lignes).
+  Form field: label on the left, in a narrow column (`--field-label-width`),
+  control on the right, over the whole remaining width.
+  The label wraps the control: a click on it gives the focus to the field. With
+  `top`, the label aligns with the top of the control (multi-line field).
 -->
 <script setup lang="ts">
 defineProps<{
   /**
-   * Libellé du champ.
+   * Label of the field.
    */
   label: string
   /**
-   * Aligne le libellé sur le haut du contrôle plutôt qu'en son milieu.
+   * Aligns the label with the top of the control instead of its middle.
    */
   top?: boolean
 }>()

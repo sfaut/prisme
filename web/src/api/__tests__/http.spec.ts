@@ -6,7 +6,7 @@ import { streamCatalog } from '../explorer'
 import type { CatalogEvent } from '../generated/CatalogEvent'
 
 /**
- * Remplace `fetch` par une réponse fixe et renvoie le faux `fetch`, pour inspecter ses appels.
+ * Replaces `fetch` with a fixed response and returns the fake `fetch`, to inspect its calls.
  */
 function mockFetch(status: number, body: string) {
   const fake = vi.fn<(path: string, init: RequestInit) => Promise<Response>>(
@@ -21,12 +21,12 @@ afterEach(() => {
 })
 
 describe('request', () => {
-  it('renvoie le corps JSON', async () => {
+  it('returns the JSON body', async () => {
     mockFetch(200, '[{"id":1}]')
     await expect(request('GET', '/api/connections')).resolves.toEqual([{ id: 1 }])
   })
 
-  it('envoie le corps en JSON', async () => {
+  it('sends the body as JSON', async () => {
     const fake = mockFetch(201, '{"id":3}')
     await request('POST', '/api/connections', { name: 'prod' })
     expect(fake).toHaveBeenCalledWith('/api/connections', {
@@ -36,22 +36,22 @@ describe('request', () => {
     })
   })
 
-  it('lève une ApiError avec le message du serveur', async () => {
-    mockFetch(409, '{"error":"une connexion nommée « prod » existe déjà"}')
+  it('throws an ApiError with the message of the server', async () => {
+    mockFetch(409, '{"error":"a connection named \\"prod\\" already exists"}')
     const error = await request('POST', '/api/connections', {}).catch((error: unknown) => error)
     expect(error).toBeInstanceOf(ApiError)
     expect((error as ApiError).status).toBe(409)
-    expect((error as ApiError).message).toBe('une connexion nommée « prod » existe déjà')
+    expect((error as ApiError).message).toBe('a connection named "prod" already exists')
   })
 
-  it("se rabat sur le statut si le corps n'est pas du JSON", async () => {
+  it('falls back on the status if the body is not JSON', async () => {
     mockFetch(502, 'proxy indisponible')
     await expect(request('GET', '/api/health')).rejects.toThrow('502 Bad Gateway')
   })
 })
 
 describe('streamCatalog', () => {
-  it('transmet chaque ligne dès qu’elle est complète, même coupée entre deux paquets', async () => {
+  it('passes on each line as soon as it is complete, even split between two chunks', async () => {
     const chunks = [
       '{"type":"schemas","schemas":["a"]}\n{"type":"tab',
       'les","schema":"a","tables":[]}\n',
@@ -75,14 +75,14 @@ describe('streamCatalog', () => {
     expect(events.map((event) => event.type)).toEqual(['schemas', 'tables', 'done'])
   })
 
-  it('lève une ApiError si le serveur cible est injoignable', async () => {
-    mockFetch(504, '{"error":"192.168.0.4:3307 ne répond pas"}')
-    await expect(streamCatalog(3, () => {})).rejects.toThrow('192.168.0.4:3307 ne répond pas')
+  it('throws an ApiError if the target server is unreachable', async () => {
+    mockFetch(504, '{"error":"192.168.0.4:3307 does not answer"}')
+    await expect(streamCatalog(3, () => {})).rejects.toThrow('192.168.0.4:3307 does not answer')
   })
 })
 
 describe('beautify', () => {
-  it('renvoie le texte enjolivé par le serveur', async () => {
+  it('returns the text beautified by the server', async () => {
     const fake = mockFetch(200, '{"sql":"SELECT a FROM t"}')
     await expect(beautify('select a from t')).resolves.toBe('SELECT a FROM t')
     expect(fake.mock.calls[0]?.[0]).toBe('/api/beautify')

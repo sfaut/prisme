@@ -1,16 +1,16 @@
 /**
- * Complétion de l'éditeur SQL à partir du catalogue de la connexion.
+ * Completion of the SQL editor from the connection's catalog.
  *
- * Le catalogue chargé pour l'explorateur devient l'espace de noms de
- * `@codemirror/lang-sql` : bases, puis leurs tables, vues, fonctions et
- * procédures, puis les colonnes des tables. La complétion propose alors les
- * noms de la base en cours sans préfixe, et les colonnes après `table.` ou
- * `alias.`. Chaque proposition affiche sa nature (base, table, vue,
- * fonction, procédure) ou, pour une colonne, son type.
+ * The catalog loaded for the explorer becomes the namespace of
+ * `@codemirror/lang-sql`: databases, then their tables, views, functions and
+ * procedures, then the columns of the tables. Completion then offers the
+ * names of the current database without a prefix, and the columns after
+ * `table.` or `alias.`. Each option shows its nature (database, table, view,
+ * function, procedure) or, for a column, its type.
  *
- * Un nom qui n'est pas un identifiant simple (espace, tiret...) s'insère
- * délimité : guillemets doubles si le mode `ANSI_QUOTES` est actif sur la
- * session, accents graves sinon.
+ * A name that is not a plain identifier (space, dash...) is inserted quoted:
+ * double quotes if the `ANSI_QUOTES` mode is active on the session, backticks
+ * otherwise.
  */
 
 import type { Completion } from '@codemirror/autocomplete'
@@ -22,17 +22,17 @@ import type { CatalogSchema, CatalogTable } from '@/stores/catalog'
 import { displayedType, quoteIdentifier, upperType } from './explorerNodes'
 
 /**
- * Identifiant simple, qui s'écrit sans délimiteur (même règle que `lang-sql`).
+ * Plain identifier, written without quotes (same rule as `lang-sql`).
  */
 const PLAIN_IDENTIFIER = /^[\w$\xa1-\uffff][\w$\d\xa1-\uffff]*$/
 
 /**
- * Proposition de complétion d'un nom, délimité à l'insertion s'il n'est pas
- * un identifiant simple.
+ * Completion option of a name, quoted on insertion if it is not a plain
+ * identifier.
  *
- * @param name Nom proposé.
- * @param ansiQuotes Le mode `ANSI_QUOTES` est-il actif sur la session ?
- * @param rest Nature et détail de la proposition.
+ * @param name Offered name.
+ * @param ansiQuotes Is the `ANSI_QUOTES` mode active on the session?
+ * @param rest Nature and detail of the option.
  */
 function nameCompletion(
   name: string,
@@ -47,11 +47,11 @@ function nameCompletion(
 }
 
 /**
- * Espace de noms de la complétion, construit à partir du catalogue, même
- * incomplet : une partie pas encore reçue n'est simplement pas proposée.
+ * Namespace of the completion, built from the catalog, even incomplete: a
+ * part not received yet is simply not offered.
  *
- * @param schemas Bases du catalogue.
- * @param ansiQuotes Le mode `ANSI_QUOTES` est-il actif sur la session ?
+ * @param schemas Databases of the catalog.
+ * @param ansiQuotes Is the `ANSI_QUOTES` mode active on the session?
  */
 export function completionSchema(schemas: CatalogSchema[], ansiQuotes = false): SQLNamespace {
   const namespace: Record<string, SQLNamespace> = {}
@@ -72,10 +72,10 @@ export function completionSchema(schemas: CatalogSchema[], ansiQuotes = false): 
 }
 
 /**
- * Espace de noms d'une fonction ou d'une procédure stockée : son seul nom.
+ * Namespace of a stored function or procedure: its name only.
  *
- * @param routine Routine du catalogue.
- * @param ansiQuotes Le mode `ANSI_QUOTES` est-il actif sur la session ?
+ * @param routine Routine of the catalog.
+ * @param ansiQuotes Is the `ANSI_QUOTES` mode active on the session?
  */
 function routineNamespace(routine: RoutineInfo, ansiQuotes: boolean): SQLNamespace {
   return {
@@ -88,10 +88,10 @@ function routineNamespace(routine: RoutineInfo, ansiQuotes: boolean): SQLNamespa
 }
 
 /**
- * Espace de noms d'une table ou d'une vue : la table elle-même, puis ses colonnes avec leur type.
+ * Namespace of a table or a view: the table itself, then its columns with their type.
  *
- * @param table Table ou vue du catalogue.
- * @param ansiQuotes Le mode `ANSI_QUOTES` est-il actif sur la session ?
+ * @param table Table or view of the catalog.
+ * @param ansiQuotes Is the `ANSI_QUOTES` mode active on the session?
  */
 function tableNamespace(table: CatalogTable, ansiQuotes: boolean): SQLNamespace {
   return {

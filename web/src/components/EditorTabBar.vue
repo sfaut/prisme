@@ -1,16 +1,16 @@
 <!--
-  Barre des onglets d'éditeur, tout en haut de la zone de travail : un
-  onglet par éditeur SQL ouvert, chacun avec sa connexion, sa session et ses
-  onglets de résultat (`QueryCell`).
+  Bar of the editor tabs, at the very top of the work area: one tab per open
+  SQL editor, each with its connection, its session and its result tabs
+  (`QueryCell`).
 
-  - Libellé : le nom donné par l'utilisateur, sinon le nom de la connexion
-    de l'éditeur ; un double clic le renomme (`TabLabel`).
-  - Croix (ou clic du milieu) : ferme l'éditeur ; il reste rouvrable
-    24 heures depuis le menu « Rouvrir ».
-  - Glisser un onglet le déplace, comme une colonne de la grille.
-  - « + » ouvre un nouvel éditeur, sur la connexion de l'éditeur actif.
+  - Label: the name given by the user, otherwise the name of the editor's
+    connection; a double click renames it (`TabLabel`).
+  - Cross (or middle click): closes the editor; it can be reopened for
+    24 hours from the "Rouvrir" menu.
+  - Dragging a tab moves it, like a column of the grid.
+  - "+" opens a new editor, on the connection of the active editor.
 
-  À placer dans le `TabsRoot` de Reka UI qui porte les éditeurs (`App.vue`).
+  To place in the Reka UI `TabsRoot` that holds the editors (`App.vue`).
 -->
 <script setup lang="ts">
 import { History, Plus, X } from 'lucide-vue-next'
@@ -30,9 +30,9 @@ const editors = useEditorsStore()
 const connections = useConnectionsStore()
 
 /**
- * Libellé par défaut d'un éditeur : le nom de sa connexion, ou « Nouvel éditeur ».
+ * Default label of an editor: the name of its connection, or "Nouvel éditeur".
  *
- * @param connectionId Connexion de l'éditeur, `null` si aucune.
+ * @param connectionId Connection of the editor, `null` if none.
  */
 function defaultLabel(connectionId: number | null): string {
   const connection = connections.connections.find((item) => item.id === connectionId)
@@ -40,24 +40,24 @@ function defaultLabel(connectionId: number | null): string {
 }
 
 /**
- * Déplacement d'un onglet d'éditeur par glissement ; le nouvel ordre est enregistré.
+ * Moving an editor tab by dragging; the new order is saved.
  */
 const tabDrag = useTabDrag((from, to) => {
   void editors.reorder(movedItems(editors.editors, from, to).map((editor) => editor.id))
 })
 
 /**
- * Renomme un éditeur.
+ * Renames an editor.
  *
- * @param editor Éditeur visé.
- * @param name Nouveau nom, `null` pour le libellé par défaut.
+ * @param editor Targeted editor.
+ * @param name New name, `null` for the default label.
  */
 function rename(editor: EditorEntry, name: string | null): void {
   void editors.rename(editor.id, name ?? '')
 }
 
 /**
- * Choix du menu « Rouvrir » : éditeurs fermés depuis moins de 24 heures.
+ * Choices of the "Rouvrir" menu: editors closed less than 24 hours ago.
  */
 const reopenItems = computed<MenuItem[]>(() => {
   if (editors.closed.length === 0) {
@@ -135,7 +135,7 @@ const reopenItems = computed<MenuItem[]>(() => {
 </template>
 
 <style scoped>
-/* Repère d'insertion d'un onglet déplacé, comme pour les colonnes de la grille. */
+/* Insertion marker of a moved tab, as for the grid's columns. */
 .drop-before {
   box-shadow: inset var(--focus-width) 0 0 var(--accent);
 }

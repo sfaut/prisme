@@ -1,16 +1,15 @@
 /**
- * Icône de chaque famille de types de colonne, affichée devant le nom des
- * colonnes dans l'en-tête de la grille de résultats (à la manière de
- * DuckDB UI). Les icônes sont neutres : même couleur pour toutes les
- * familles ; le nom natif du type, au survol de l'en-tête, donne le détail.
+ * Icon of each family of column types, shown before the column names in the
+ * header of the result grid (in the manner of DuckDB UI). The icons are
+ * neutral: same color for all the families; the native name of the type, on
+ * hovering the header, gives the detail.
  *
- * Comme dans DuckDB UI, les nombres se distinguent par une marque : `123`
- * pour les entiers, `#` pour les flottants, `.00` pour les décimaux.
- * Lucide n'ayant pas d'icône pour `123` et `.00`, ces deux marques sont du
- * texte (une chaîne au lieu d'un composant).
+ * As in DuckDB UI, numbers are told apart by a mark: `123` for integers, `#`
+ * for floats, `.00` for decimals. As Lucide has no icon for `123` and `.00`,
+ * these two marks are text (a string instead of a component).
  *
- * Une colonne de texte dont les valeurs sont des documents JSON ou XML, ou
- * des adresses web (`contentKind.ts`), prend l'icône de son contenu.
+ * A text column whose values are JSON or XML documents, or web addresses
+ * (`contentKind.ts`), takes the icon of its content.
  */
 
 import {
@@ -38,12 +37,12 @@ import type { TypeFamily } from '@/api/generated/TypeFamily'
 import type { ContentKind } from './contentKind'
 
 /**
- * Marque d'un type : une icône Lucide, ou un court texte.
+ * Mark of a type: a Lucide icon, or a short text.
  */
 export type TypeMark = Component | string
 
 /**
- * Marque de chaque famille de types.
+ * Mark of each family of types.
  */
 export const TYPE_ICONS: Record<TypeFamily, TypeMark> = {
   integer: '123',
@@ -64,11 +63,11 @@ export const TYPE_ICONS: Record<TypeFamily, TypeMark> = {
 }
 
 /**
- * Marque d'une colonne : l'icône de son contenu pour une colonne de texte
- * qui contient du JSON ou du XML, sinon la marque de la famille de son type.
+ * Mark of a column: the icon of its content for a text column that holds
+ * JSON or XML, otherwise the mark of the family of its type.
  *
- * @param type Type de la colonne.
- * @param content Contenu détecté, `null` si aucun format reconnu.
+ * @param type Type of the column.
+ * @param content Detected content, `null` if no format is recognized.
  */
 export function columnIcon(type: ColumnTypeInfo, content: ContentKind | null): TypeMark {
   if (type.family === 'text' && content === 'json') {

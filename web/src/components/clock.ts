@@ -1,38 +1,36 @@
 /**
- * Horloge partagée, pour faire courir les durées affichées.
+ * Shared clock, to make the displayed durations run.
  *
- * Une seule minuterie pour toute l'interface, qui ne tourne que tant qu'un
- * composant l'utilise. Seuls les composants qui lisent l'horloge sont
- * redessinés à chaque tic.
+ * A single timer for the whole interface, which only ticks while a component
+ * uses it. Only the components that read the clock are redrawn on each tick.
  */
 
 import { type Ref, onScopeDispose, ref } from 'vue'
 
 /**
- * Intervalle entre deux tics, en millisecondes : les durées et les nombres
- * de lignes en cours de réception changent une fois par seconde.
+ * Interval between two ticks, in milliseconds: the durations and the numbers
+ * of rows being received change once per second.
  */
 const TICK = 1000
 
 /**
- * Instant présent (`performance.now()`, en millisecondes avec une partie
- * décimale, insensible aux changements d'heure du poste), rafraîchi à
- * chaque tic.
+ * Present instant (`performance.now()`, in milliseconds with a decimal part,
+ * insensitive to changes of the machine's time), refreshed on each tick.
  */
 const now = ref(performance.now())
 
 /**
- * Nombre de composants qui utilisent l'horloge.
+ * Number of components that use the clock.
  */
 let users = 0
 
 /**
- * Minuterie en cours, absente quand personne n'utilise l'horloge.
+ * Running timer, absent when nobody uses the clock.
  */
 let timer: ReturnType<typeof setInterval> | undefined
 
 /**
- * Renvoie l'horloge partagée ; elle s'arrête quand le dernier composant qui l'utilise disparaît.
+ * Returns the shared clock; it stops when the last component that uses it disappears.
  */
 export function useClock(): Ref<number> {
   users++

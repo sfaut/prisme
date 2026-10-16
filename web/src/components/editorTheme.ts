@@ -1,11 +1,11 @@
 /**
- * Thème de l'éditeur SQL (CodeMirror), clair ou sombre comme le reste de
- * l'interface.
+ * Theme of the SQL editor (CodeMirror), light or dark like the rest of the
+ * interface.
  *
- * Toutes les couleurs sont des variables CSS du thème (`assets/main.css`) :
- * fond, texte, bordures et bulles, surlignages (`--editor-*`) et
- * coloration syntaxique (`--sql-*`). Le passage du clair au
- * sombre change ces variables, sans reconfigurer l'éditeur.
+ * All the colors are CSS variables of the theme (`assets/main.css`):
+ * background, text, borders and tooltips, highlights (`--editor-*`) and
+ * syntax highlighting (`--sql-*`). Switching from light to dark changes these
+ * variables, without reconfiguring the editor.
  */
 
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
@@ -14,7 +14,7 @@ import { EditorView } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
 
 /**
- * Fond, gouttière, curseur, sélection, bulles et liste de complétion.
+ * Background, gutter, cursor, selection, tooltips and completion list.
  */
 const chrome = EditorView.theme({
   '&': { backgroundColor: 'var(--surface)', color: 'var(--fg-strong)' },
@@ -25,7 +25,7 @@ const chrome = EditorView.theme({
     color: 'var(--fg-dimmed)',
     borderRight: 'var(--line-width) solid var(--line)',
   },
-  // Numéros de ligne plus petits que le texte, centrés sur leur ligne.
+  // Line numbers smaller than the text, centered on their line.
   '.cm-lineNumbers .cm-gutterElement': {
     display: 'flex',
     alignItems: 'center',
@@ -54,13 +54,13 @@ const chrome = EditorView.theme({
 })
 
 /**
- * Coloration syntaxique du SQL, d'après les catégories de `@codemirror/lang-sql`.
+ * Syntax highlighting of SQL, after the categories of `@codemirror/lang-sql`.
  */
 const highlight = HighlightStyle.define([
   { tag: tags.keyword, color: 'var(--sql-keyword)' },
   { tag: tags.typeName, color: 'var(--sql-type)' },
   { tag: [tags.string, tags.special(tags.string)], color: 'var(--sql-string)' },
-  // Nombres et valeurs : NULL, booléens, mots qui désignent une valeur (CURRENT_DATE...).
+  // Numbers and values: NULL, booleans, words that designate a value (CURRENT_DATE...).
   {
     tag: [tags.number, tags.bool, tags.null, tags.standard(tags.name)],
     color: 'var(--sql-number)',
@@ -71,7 +71,7 @@ const highlight = HighlightStyle.define([
 ])
 
 /**
- * Thème complet de l'éditeur, à placer après `basicSetup`.
+ * Whole theme of the editor, to place after `basicSetup`.
  */
 export function editorTheme(): Extension {
   return [chrome, syntaxHighlighting(highlight)]

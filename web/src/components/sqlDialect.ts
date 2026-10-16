@@ -1,14 +1,13 @@
 /**
- * Dialecte de l'éditeur SQL (coloration), construit à partir des
- * mots-clefs du dialecte du serveur (`crates/dialects/keywords/*.yaml`).
+ * Dialect of the SQL editor (highlighting), built from the keywords of the
+ * server's dialect (`crates/dialects/keywords/*.yaml`).
  *
- * Les réglages de lecture du texte (guillemets, commentaires `#`, variables
- * `@`...) sont ceux des dialectes MySQL et MariaDB de `@codemirror/lang-sql`,
- * identiques pour les deux ; seules les listes de mots changent. Chaque
- * catégorie se range dans une classe de coloration de CodeMirror : mots
- * réservés et non réservés comme mots-clefs, types comme types, valeurs
- * comme mots intégrés (colorés comme les nombres). `NULL`, `TRUE`, `FALSE`
- * et `UNKNOWN` restent à `lang-sql`, qui les reconnaît lui-même.
+ * The text-reading settings (quotes, `#` comments, `@` variables...) are
+ * those of the MySQL and MariaDB dialects of `@codemirror/lang-sql`, identical
+ * for both; only the word lists change. Each category goes into a CodeMirror
+ * highlighting class: reserved and non-reserved words as keywords, types as
+ * types, values as builtins (colored like numbers). `NULL`, `TRUE`, `FALSE`
+ * and `UNKNOWN` are left to `lang-sql`, which recognizes them itself.
  */
 
 import { SQLDialect } from '@codemirror/lang-sql'
@@ -16,30 +15,28 @@ import { SQLDialect } from '@codemirror/lang-sql'
 import type { DialectKeywords } from '@/api/generated/DialectKeywords'
 
 /**
- * Valeurs que `lang-sql` reconnaît lui-même (nul et booléens).
+ * Values that `lang-sql` recognizes itself (null and booleans).
  */
 const NATIVE_VALUES = new Set(['null', 'true', 'false', 'unknown'])
 
 /**
- * Liste de mots telle que l'attend `lang-sql` : en minuscules, séparés par
- * des espaces.
+ * Word list as `lang-sql` expects it: in lower case, separated by spaces.
  *
- * @param words Mots, dans n'importe quelle casse.
+ * @param words Words, in any case.
  */
 function wordList(words: string[]): string {
   return words.map((word) => word.toLowerCase()).join(' ')
 }
 
 /**
- * Dialecte de l'éditeur pour ces mots-clefs.
+ * Editor dialect for these keywords.
  *
- * Avec le mode `ANSI_QUOTES` de la session, les guillemets doubles
- * délimitent des identifiants (et la complétion les emploie pour protéger
- * un nom) ; sinon ce sont des chaînes, et les identifiants se protègent par
- * des accents graves.
+ * With the session's `ANSI_QUOTES` mode, double quotes delimit identifiers
+ * (and completion uses them to quote a name); otherwise they are strings,
+ * and identifiers are quoted with backticks.
  *
- * @param keywords Mots-clefs du dialecte, par catégorie.
- * @param ansiQuotes Le mode `ANSI_QUOTES` est-il actif sur la session ?
+ * @param keywords Keywords of the dialect, by category.
+ * @param ansiQuotes Is the `ANSI_QUOTES` mode active on the session?
  */
 export function editorDialect(keywords: DialectKeywords, ansiQuotes = false): SQLDialect {
   return SQLDialect.define({

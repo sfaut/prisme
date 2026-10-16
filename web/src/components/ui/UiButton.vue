@@ -1,14 +1,14 @@
 <!--
-  Bouton de l'interface.
+  Button of the interface.
 
-  Trois apparences (`variant`) : plein (`solid`), bordé (`outline`, par
-  défaut) ou discret (`ghost`, sans fond : au survol, seule son icône ou son
-  texte fonce) ; trois tons (`tone`) : neutre (par défaut),
-  action (`accent`) ou danger (`error`). Une icône Lucide se place à gauche
-  du libellé ; sans libellé, le bouton est carré. Pendant `loading`, une
-  roue remplace l'icône et le bouton est inactif.
+  Three looks (`variant`): filled (`solid`), outlined (`outline`, the
+  default) or discreet (`ghost`, without background: on hover, only its icon
+  or its text darkens); three tones (`tone`): neutral (the default),
+  action (`accent`) or danger (`error`). A Lucide icon goes on the left of the
+  label; without a label, the button is square. During `loading`, a spinner
+  replaces the icon and the button is inactive.
 
-  Couleurs, hauteur, marges et arrondi viennent des variables du thème
+  Colors, height, padding and radius come from the theme's variables
   (`main.css`).
 -->
 <script setup lang="ts">
@@ -18,35 +18,35 @@ import { type Component, computed } from 'vue'
 const props = withDefaults(
   defineProps<{
     /**
-     * Libellé ; absent, le bouton n'affiche que son icône (prévoir `aria-label`).
+     * Label; when absent, the button only shows its icon (provide `aria-label`).
      */
     label?: string
     /**
-     * Icône Lucide, à gauche du libellé.
+     * Lucide icon, on the left of the label.
      */
     icon?: Component
     /**
-     * Apparence.
+     * Look.
      */
     variant?: 'solid' | 'outline' | 'ghost'
     /**
-     * Ton.
+     * Tone.
      */
     tone?: 'neutral' | 'accent' | 'error'
     /**
-     * Petite taille (bouton « ⋮ » de l'explorateur).
+     * Small size (the explorer's "⋮" button).
      */
     small?: boolean
     /**
-     * Action en cours : roue à la place de l'icône, bouton inactif.
+     * Action in progress: spinner instead of the icon, inactive button.
      */
     loading?: boolean
     /**
-     * Bouton inactif.
+     * Inactive button.
      */
     disabled?: boolean
     /**
-     * Type HTML du bouton.
+     * HTML type of the button.
      */
     type?: 'button' | 'submit'
   }>(),
@@ -54,8 +54,8 @@ const props = withDefaults(
 )
 
 /**
- * Classes de chaque apparence, par ton. Écrites en entier pour que
- * Tailwind les trouve dans le code.
+ * Classes of each look, by tone. Written out so that Tailwind finds them in
+ * the code.
  */
 const LOOKS = {
   solid: {

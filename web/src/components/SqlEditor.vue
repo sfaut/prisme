@@ -1,20 +1,20 @@
 <!--
-  Éditeur SQL, basé sur CodeMirror 6.
+  SQL editor, based on CodeMirror 6.
 
-  Coloration selon le dialecte et la version du serveur (MySQL ou MariaDB :
-  mots-clefs lus sur le serveur, voir `sqlDialect.ts`), numéros de
-  ligne, thème clair ou sombre comme l'interface (`editorTheme.ts`),
-  historique d'annulation, complétion des noms seulement : bases, tables,
-  colonnes, fonctions et procédures (espace de noms construit à partir du
-  catalogue, voir `sqlCompletion.ts`). Les mots-clefs (SELECT, UPDATE...)
-  ne sont pas proposés, et une proposition doit commencer par le texte
-  tapé (ou en reprendre les initiales) : pas de correspondance dispersée. La requête que Ctrl-Entrée exécuterait est
-  surlignée (`currentStatement.ts`) et les erreurs de syntaxe sont soulignées,
-  avec leur message au survol : le texte est analysé par le serveur peu
-  après chaque frappe. Ctrl-Entrée (Cmd-Entrée sur Mac) émet `run`
-  avec la position du curseur ; Ctrl-Maj-Entrée émet `run-all`. Tab et
-  Maj-Tab indentent par taquets de quatre espaces, Entrée va à la ligne sans
-  retrait (`editorIndent.ts`). Le texte se lie avec `v-model`.
+  Highlighting according to the dialect and the version of the server (MySQL or
+  MariaDB: keywords read from the server, see `sqlDialect.ts`), line numbers,
+  light or dark theme like the interface (`editorTheme.ts`), undo history,
+  completion of names only: databases, tables, columns, functions and
+  procedures (namespace built from the catalog, see `sqlCompletion.ts`).
+  Keywords (SELECT, UPDATE...) are not offered, and an option must start
+  with the typed text (or take its initials): no scattered matching. The
+  query that Ctrl+Enter would run is highlighted (`currentStatement.ts`)
+  and syntax errors are underlined, with their message on hover: the text
+  is analysed by the server shortly after each keystroke. Ctrl+Enter
+  (Cmd+Enter on Mac) emits `run` with the cursor position;
+  Ctrl+Shift+Enter emits `run-all`. Tab and Shift+Tab indent by stops of
+  four spaces, Enter goes to a new line without indentation
+  (`editorIndent.ts`). The text binds with `v-model`.
 -->
 <script setup lang="ts">
 import { autocompletion } from '@codemirror/autocomplete'
@@ -38,40 +38,40 @@ import { editorDialect } from './sqlDialect'
 
 const props = defineProps<{
   /**
-   * Dialecte du serveur cible, pour la coloration et les mots-clefs.
+   * Dialect of the target server, for highlighting and keywords.
    */
   flavor: Flavor
   /**
-   * Version du serveur cible, pour ses mots-clefs ; `null` tant qu'inconnue.
+   * Version of the target server, for its keywords; `null` while unknown.
    */
   version: string | null
   /**
-   * Le mode `ANSI_QUOTES` est-il actif sur la session ? Les guillemets
-   * doubles délimitent alors des identifiants (coloration, complétion).
+   * Is the `ANSI_QUOTES` mode active on the session? Double quotes then
+   * delimit identifiers (highlighting, completion).
    */
   ansiQuotes: boolean
   /**
-   * Bases, tables et colonnes proposées par la complétion.
+   * Databases, tables and columns offered by completion.
    */
   schema: SQLNamespace
   /**
-   * Base en cours : ses tables se complètent sans préfixe. `null` si aucune.
+   * Current database: its tables complete without a prefix. `null` if none.
    */
   defaultSchema: string | null
 }>()
 
 /**
- * Texte de l'éditeur.
+ * Text of the editor.
  */
 const text = defineModel<string>({ required: true })
 
 const emit = defineEmits<{
   /**
-   * L'utilisateur demande l'exécution de la requête sous le curseur (Ctrl-Entrée).
+   * The user asks to run the query under the cursor (Ctrl+Enter).
    */
   run: [cursor: number]
   /**
-   * L'utilisateur demande l'exécution de toutes les requêtes (Ctrl-Maj-Entrée).
+   * The user asks to run all the queries (Ctrl+Shift+Enter).
    */
   'run-all': []
 }>()
@@ -79,25 +79,25 @@ const emit = defineEmits<{
 const host = useTemplateRef<HTMLDivElement>('host')
 
 /**
- * Emplacement de la langue dans la configuration, pour la changer avec le
- * dialecte, le catalogue ou la base en cours.
+ * Slot of the language in the configuration, to change it with the dialect,
+ * the catalog or the current database.
  */
 const language = new Compartment()
 
 let view: EditorView | null = null
 
 /**
- * Délai entre la dernière frappe et l'analyse du texte, en millisecondes.
+ * Delay between the last keystroke and the analysis of the text, in milliseconds.
  */
 const ANALYSIS_DELAY = 250
 
 /**
- * Analyse différée en attente, absente si aucune.
+ * Pending deferred analysis, absent if none.
  */
 let analysisTimer: ReturnType<typeof setTimeout> | undefined
 
 /**
- * Programme l'analyse du texte, en remplaçant celle qui attendait.
+ * Schedules the analysis of the text, replacing the one that was waiting.
  */
 function scheduleAnalysis(): void {
   clearTimeout(analysisTimer)
@@ -105,10 +105,10 @@ function scheduleAnalysis(): void {
 }
 
 /**
- * Fait analyser le texte par le serveur et transmet le résultat à l'éditeur
- * (requêtes et erreurs de syntaxe),
- * sauf si le texte a changé entre-temps (une autre analyse suivra). Un échec
- * est sans conséquence : l'éditeur garde l'analyse précédente.
+ * Has the server analyse the text and passes the result on to the editor
+ * (queries and syntax errors),
+ * unless the text changed in the meantime (another analysis will follow). A
+ * failure has no consequence: the editor keeps the previous analysis.
  */
 async function analyze(): Promise<void> {
   const doc = view?.state.doc
@@ -129,37 +129,37 @@ async function analyze(): Promise<void> {
       })
     }
   } catch {
-    // Serveur injoignable : l'analyse reviendra à la prochaine frappe.
+    // Server unreachable: the analysis will come back on the next keystroke.
   }
 }
 
 /**
- * Langue CodeMirror de l'éditeur : dialecte et complétion, d'après les propriétés.
+ * CodeMirror language of the editor: dialect and completion, after the properties.
  */
 /**
- * Mots-clefs du dialecte et de la version du serveur, `null` tant qu'ils
- * ne sont pas reçus : la coloration utilise alors les listes de `lang-sql`.
+ * Keywords of the server's dialect and version, `null` as long as they are
+ * not received: highlighting then uses the lists of `lang-sql`.
  */
 let keywords: DialectKeywords | null = null
 
 /**
- * Lit les mots-clefs du dialecte et de la version du serveur, puis
- * recolore le texte. Un échec garde la coloration en place.
+ * Reads the keywords of the server's dialect and version, then highlights
+ * the text again. A failure keeps the highlighting in place.
  */
 async function loadKeywords(): Promise<void> {
   try {
     keywords = await fetchKeywords(props.flavor, props.version)
     view?.dispatch({ effects: language.reconfigure(currentLanguage()) })
   } catch {
-    // Serveur injoignable : la coloration de lang-sql reste en place.
+    // Server unreachable: lang-sql's highlighting stays in place.
   }
 }
 
 function currentLanguage(): LanguageSupport {
   const fallback = props.flavor === 'mariadb' ? MariaSQL : MySQL
   const dialect = keywords === null ? fallback : editorDialect(keywords, props.ansiQuotes)
-  // Langue montée à la main plutôt que par `sql()`, qui ajouterait la
-  // complétion des mots-clefs : seuls les noms du catalogue sont proposés.
+  // Language assembled by hand, because `sql()` would add the completion of
+  // keywords: only the names of the catalog are offered.
   const names = schemaCompletionSource({
     dialect,
     schema: props.schema,
@@ -173,7 +173,7 @@ onMounted(() => {
     parent: host.value!,
     doc: text.value,
     extensions: [
-      // Avant basicSetup, pour passer devant ses propres raccourcis.
+      // Before basicSetup, to take precedence over its own shortcuts.
       keymap.of([
         {
           key: 'Mod-Enter',
@@ -189,13 +189,13 @@ onMounted(() => {
             return true
           },
         },
-        // Échap puis Tab, ou Ctrl-M, rendent Tab au navigateur (CodeMirror).
+        // Escape then Tab, or Ctrl+M, give Tab back to the browser (CodeMirror).
         { key: 'Tab', run: indentOrInsertSpaces, shift: dedentLines },
-        // Sans retrait ajouté ; la complétion, prioritaire, garde Entrée pour valider.
+        // Without added indentation; completion, which takes precedence, keeps Enter to accept.
         { key: 'Enter', run: insertPlainNewline, shift: insertPlainNewline },
       ]),
       basicSetup,
-      // Complétion stricte : début du nom ou initiales, jamais des lettres éparses.
+      // Strict completion: start of the name or initials, never scattered letters.
       autocompletion({ filterStrict: true }),
       editorTheme(),
       language.of(currentLanguage()),
@@ -211,7 +211,7 @@ onMounted(() => {
   scheduleAnalysis()
 })
 
-// Texte modifié de l'extérieur (et non par la frappe) : on remplace le contenu.
+// Text changed from outside (and not by typing): the content is replaced.
 watch(text, (value) => {
   if (view && value !== view.state.doc.toString()) {
     view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } })
@@ -223,10 +223,10 @@ watch(
   () => view?.dispatch({ effects: language.reconfigure(currentLanguage()) }),
 )
 
-// Le dialecte change à l'ouverture de la session : l'analyse est à refaire.
+// The dialect changes when the session opens: the analysis must be redone.
 watch(() => props.flavor, scheduleAnalysis)
 
-// Dialecte ou version connus ou changés : leurs mots-clefs sont à relire.
+// Dialect or version known or changed: their keywords must be read again.
 watch(() => [props.flavor, props.version], loadKeywords, { immediate: true })
 
 onBeforeUnmount(() => {
@@ -236,17 +236,17 @@ onBeforeUnmount(() => {
 })
 
 /**
- * Position du curseur dans le texte, en unités UTF-16 (0 avant le montage).
+ * Position of the cursor in the text, in UTF-16 units (0 before mounting).
  */
 function cursor(): number {
   return view?.state.selection.main.head ?? 0
 }
 
 /**
- * Remplace le texte de l'éditeur (une requête générée), puis donne le focus
- * à l'éditeur, curseur à la fin du texte, prêt à le modifier.
+ * Replaces the text of the editor (a generated query), then gives the focus
+ * to the editor, cursor at the end of the text, ready to edit it.
  *
- * @param value Nouveau texte.
+ * @param value New text.
  */
 function replaceText(value: string): void {
   if (!view) {

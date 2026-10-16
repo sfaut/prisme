@@ -1,11 +1,11 @@
 /**
- * Connexions enregistrées et connexion sélectionnée dans l'interface.
+ * Saved connections and connection selected in the interface.
  *
- * La variante du serveur de chaque connexion (badge de l'explorateur) est
- * détectée en arrière-plan, sans attendre qu'on ouvre la source : après
- * chaque chargement de la liste, une connexion de variante inconnue est
- * testée une fois (`probeConnection`, qui la retient côté serveur) ; une
- * connexion modifiée est testée de nouveau. Un échec laisse le badge absent.
+ * The server flavor of each connection (explorer badge) is detected in the
+ * background, without waiting for the source to be opened: after each load
+ * of the list, a connection of unknown flavor is tested once
+ * (`probeConnection`, which the server remembers); a changed connection is
+ * tested again. A failure leaves the badge absent.
  */
 
 import { defineStore } from 'pinia'
@@ -23,37 +23,36 @@ import type { NewConnection } from '@/api/generated/NewConnection'
 
 export const useConnectionsStore = defineStore('connections', () => {
   /**
-   * Connexions de l'utilisateur, par nom.
+   * Connections of the user, by name.
    */
   const connections = ref<ConnectionSummary[]>([])
 
   /**
-   * Identifiant de la connexion sélectionnée, `null` si aucune.
+   * Id of the selected connection, `null` if none.
    */
   const selectedId = ref<number | null>(null)
 
   /**
-   * Nombre de modifications de chaque connexion depuis l'ouverture de
-   * l'interface, par identifiant : une session ouverte sur une connexion
-   * modifiée doit être rouverte.
+   * Number of changes of each connection since the interface was opened, by
+   * id: a session open on a changed connection must be reopened.
    */
   const versions = ref<Record<number, number>>({})
 
   /**
-   * Connexions déjà testées pour connaître leur variante, depuis l'ouverture
-   * de l'interface.
+   * Connections already tested to know their flavor, since the interface was
+   * opened.
    */
   const probed = new Set<number>()
 
   /**
-   * Connexion sélectionnée, `null` si aucune.
+   * Selected connection, `null` if none.
    */
   const selected = computed(
     () => connections.value.find((connection) => connection.id === selectedId.value) ?? null,
   )
 
   /**
-   * Recharge la liste depuis le serveur.
+   * Reloads the list from the server.
    */
   async function load(): Promise<void> {
     connections.value = await listConnections()
@@ -61,8 +60,8 @@ export const useConnectionsStore = defineStore('connections', () => {
   }
 
   /**
-   * Teste en arrière-plan les connexions de variante inconnue, pas encore
-   * testées, et note la variante reçue.
+   * Tests in the background the connections of unknown flavor, not tested yet,
+   * and records the received flavor.
    */
   function detectFlavors(): void {
     for (const connection of connections.value) {
@@ -80,16 +79,16 @@ export const useConnectionsStore = defineStore('connections', () => {
           }
         })
         .catch(() => {
-          // Serveur injoignable : pas de badge, nouvel essai au prochain chargement de la page.
+          // Server unreachable: no badge, new attempt on the next page load.
         })
     }
   }
 
   /**
-   * Enregistre une connexion, recharge la liste et sélectionne la nouvelle connexion.
+   * Saves a connection, reloads the list and selects the new connection.
    *
-   * @param connection Connexion saisie par l'utilisateur.
-   * @throws {ApiError} Si le serveur refuse la saisie (nom déjà pris, champ invalide...).
+   * @param connection Connection typed by the user.
+   * @throws {ApiError} If the server refuses the input (name already taken, invalid field...).
    */
   async function create(connection: NewConnection): Promise<void> {
     const { id } = await createConnection(connection)
@@ -98,16 +97,16 @@ export const useConnectionsStore = defineStore('connections', () => {
   }
 
   /**
-   * Modifie une connexion et recharge la liste.
+   * Changes a connection and reloads the list.
    *
-   * @param id Identifiant de la connexion.
-   * @param connection Connexion saisie ; mot de passe vide : inchangé.
-   * @throws {ApiError} Si le serveur refuse la saisie (nom déjà pris, champ invalide...).
+   * @param id Id of the connection.
+   * @param connection Typed connection; empty password: unchanged.
+   * @throws {ApiError} If the server refuses the input (name already taken, invalid field...).
    */
   async function update(id: number, connection: NewConnection): Promise<void> {
     await updateConnection(id, connection)
     versions.value[id] = (versions.value[id] ?? 0) + 1
-    // Hôte ou port changés : la variante est à tester de nouveau.
+    // Host or port changed: the flavor must be tested again.
     probed.delete(id)
     connections.value = await listConnections()
     const changed = connections.value.find((item) => item.id === id)
@@ -118,9 +117,9 @@ export const useConnectionsStore = defineStore('connections', () => {
   }
 
   /**
-   * Supprime une connexion et recharge la liste. Si c'était la connexion choisie, plus aucune ne l'est.
+   * Deletes a connection and reloads the list. If it was the chosen connection, none is anymore.
    *
-   * @param id Identifiant de la connexion.
+   * @param id Id of the connection.
    */
   async function remove(id: number): Promise<void> {
     await deleteConnection(id)

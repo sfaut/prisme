@@ -2,21 +2,21 @@ import { describe, expect, it } from 'vitest'
 
 import { rememberWidths, rememberedWidths } from '../gridWidths'
 
-describe('largeurs retenues', () => {
-  it('reviennent pour la même requête, avec les mêmes colonnes', () => {
+describe('remembered widths', () => {
+  it('come back for the same query, with the same columns', () => {
     rememberWidths('SELECT a, b FROM t', ['a', 'b'], { 1: 200 })
     expect(rememberedWidths('SELECT a, b FROM t', ['a', 'b'])).toEqual({ 1: 200 })
     expect(rememberedWidths('SELECT a FROM t', ['a'])).toEqual({})
-    // Colonnes changées entre-temps : on repart des largeurs estimées.
+    // Columns changed in the meantime: the estimated widths apply again.
     expect(rememberedWidths('SELECT a, b FROM t', ['a', 'c'])).toEqual({})
   })
 
-  it('oublient les requêtes les plus anciennes', () => {
-    rememberWidths('requête 0', ['a'], { 0: 90 })
+  it('forget the oldest queries', () => {
+    rememberWidths('query 0', ['a'], { 0: 90 })
     for (let index = 1; index <= 100; index++) {
-      rememberWidths(`requête ${index}`, ['a'], { 0: 90 })
+      rememberWidths(`query ${index}`, ['a'], { 0: 90 })
     }
-    expect(rememberedWidths('requête 0', ['a'])).toEqual({})
-    expect(rememberedWidths('requête 100', ['a'])).toEqual({ 0: 90 })
+    expect(rememberedWidths('query 0', ['a'])).toEqual({})
+    expect(rememberedWidths('query 100', ['a'])).toEqual({ 0: 90 })
   })
 })

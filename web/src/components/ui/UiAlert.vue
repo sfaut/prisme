@@ -1,8 +1,8 @@
 <!--
-  Message dans un bandeau coloré : succès, avertissement ou erreur.
+  Message in a colored banner: success, warning or error.
 
-  Avec `closable`, une croix à droite émet `close`. L'emplacement par défaut
-  accueille des actions à droite du message (bouton « Reconnecter »...).
+  With `closable`, a cross on the right emits `close`. The default slot holds
+  actions on the right of the message ("Reconnecter" button...).
 -->
 <script setup lang="ts">
 import { X } from 'lucide-vue-next'
@@ -11,7 +11,7 @@ import UiButton from './UiButton.vue'
 
 defineProps<{
   /**
-   * Ton du bandeau.
+   * Tone of the banner.
    */
   tone: 'success' | 'warning' | 'error'
   /**
@@ -19,20 +19,20 @@ defineProps<{
    */
   title: string
   /**
-   * Affiche une croix pour fermer le bandeau.
+   * Shows a cross to close the banner.
    */
   closable?: boolean
 }>()
 
 defineEmits<{
   /**
-   * L'utilisateur ferme le bandeau.
+   * The user closes the banner.
    */
   close: []
 }>()
 
 /**
- * Classes de chaque ton, écrites en entier pour que Tailwind les trouve.
+ * Classes of each tone, written out so that Tailwind finds them.
  */
 const TONES = {
   success: 'bg-success-soft text-success',

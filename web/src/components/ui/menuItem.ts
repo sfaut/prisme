@@ -1,31 +1,31 @@
 /**
- * Choix d'un menu déroulant (`UiDropdownMenu.vue`).
+ * Choice of a dropdown menu (`UiDropdownMenu.vue`).
  */
 
 import type { Component } from 'vue'
 
 /**
- * Un choix de menu : libellé, icône Lucide et action.
+ * A menu choice: label, Lucide icon and action.
  */
 export interface MenuItem {
   /**
-   * Libellé du choix.
+   * Label of the choice.
    */
   label: string
   /**
-   * Icône Lucide, à gauche du libellé.
+   * Lucide icon, on the left of the label.
    */
   icon: Component
   /**
-   * Ton du choix : `error` pour une action destructrice (« Supprimer »).
+   * Tone of the choice: `error` for a destructive action ("Supprimer").
    */
   tone?: 'error'
   /**
-   * Choix inactif.
+   * Inactive choice.
    */
   disabled?: boolean
   /**
-   * Action lancée au choix.
+   * Action started on choosing.
    */
   onSelect?: () => void
 }

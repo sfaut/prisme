@@ -1,11 +1,11 @@
 /**
- * Déplacement d'un onglet par glissement, même geste que pour les colonnes
- * de la grille : passé un seuil de quelques pixels, l'appui sur un onglet
- * devient un déplacement, un repère montre où il sera inséré (`dropAt`), et
- * le lâcher appelle `onMove` avec l'ancienne et la nouvelle position.
+ * Moving a tab by dragging, same gesture as for the grid's columns: past a
+ * threshold of a few pixels, pressing a tab becomes a move, a marker shows
+ * where it will be inserted (`dropAt`), and releasing calls `onMove` with the
+ * old and the new position.
  *
- * Sert aux onglets de résultat et aux onglets d'éditeur. Les onglets d'une
- * même barre sont les éléments `[role="tab"]` frères de l'onglet pris.
+ * Used by the result tabs and the editor tabs. The tabs of a bar are the
+ * `[role="tab"]` siblings of the grabbed tab.
  */
 
 import { type Ref, ref } from 'vue'
@@ -13,11 +13,11 @@ import { type Ref, ref } from 'vue'
 import { MOVE_THRESHOLD, dropPosition, moveColumn } from './resultGrid'
 
 /**
- * Nouvel ordre d'une liste après le déplacement d'un élément.
+ * New order of a list after moving an item.
  *
- * @param items Liste dans l'ordre actuel.
- * @param from Position de l'élément déplacé.
- * @param to Position d'insertion, avant le déplacement.
+ * @param items List in the current order.
+ * @param from Position of the moved item.
+ * @param to Insertion position, before the move.
  */
 export function movedItems<T>(items: T[], from: number, to: number): T[] {
   const moved = moveColumn(
@@ -29,9 +29,9 @@ export function movedItems<T>(items: T[], from: number, to: number): T[] {
 }
 
 /**
- * Gestion du glissement des onglets d'une barre.
+ * Handling of the dragging of a bar's tabs.
  *
- * @param onMove Appelée au lâcher, avec l'ancienne position et la position d'insertion.
+ * @param onMove Called on release, with the old position and the insertion position.
  */
 export function useTabDrag(onMove: (from: number, to: number) => void): {
   dropAt: Ref<number | null>
@@ -40,9 +40,9 @@ export function useTabDrag(onMove: (from: number, to: number) => void): {
   onDrop: () => void
 } {
   /**
-   * Déplacement en cours : position de l'onglet pris, abscisse de départ du
-   * pointeur, élément de l'onglet et pointeur, et le glissement a-t-il
-   * dépassé le seuil ?
+   * Move in progress: position of the grabbed tab, starting abscissa of the
+   * pointer, element of the tab and pointer, and has the drag passed the
+   * threshold?
    */
   let moving: {
     from: number
@@ -53,16 +53,16 @@ export function useTabDrag(onMove: (from: number, to: number) => void): {
   } | null = null
 
   /**
-   * Position où l'onglet déplacé serait inséré, `null` hors déplacement.
+   * Position where the moved tab would be inserted, `null` outside a move.
    */
   const dropAt = ref<number | null>(null)
 
   /**
-   * Appui sur un onglet : début d'un éventuel déplacement. Les boutons et le
-   * champ de renommage de l'onglet gardent leur propre comportement.
+   * Press on a tab: start of a possible move. The buttons and the renaming field
+   * of the tab keep their own behavior.
    *
-   * @param event Appui sur l'onglet.
-   * @param index Position de l'onglet.
+   * @param event Press on the tab.
+   * @param index Position of the tab.
    */
   function onDown(event: PointerEvent, index: number): void {
     if (event.button !== 0 || (event.target as HTMLElement).closest('button, input')) {
@@ -73,10 +73,10 @@ export function useTabDrag(onMove: (from: number, to: number) => void): {
   }
 
   /**
-   * Suit le pointeur : passé le seuil, l'appui devient un déplacement (le
-   * pointeur reste alors capturé par l'onglet) et le repère suit le pointeur.
+   * Follows the pointer: past the threshold, the press becomes a move (the
+   * pointer then stays captured by the tab) and the marker follows the pointer.
    *
-   * @param event Déplacement du pointeur.
+   * @param event Pointer move.
    */
   function onPointerMove(event: PointerEvent): void {
     if (moving === null) {
@@ -97,7 +97,7 @@ export function useTabDrag(onMove: (from: number, to: number) => void): {
   }
 
   /**
-   * Lâcher : l'onglet prend sa nouvelle place.
+   * Release: the tab takes its new place.
    */
   function onDrop(): void {
     if (moving?.started && dropAt.value !== null) {

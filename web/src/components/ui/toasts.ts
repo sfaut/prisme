@@ -1,54 +1,54 @@
 /**
- * Messages éphémères (« Sélection copiée »...), affichés en bas à droite
- * par `UiToaster.vue` puis retirés au bout de quelques secondes.
+ * Transient messages ("Sélection copiée"...), shown at the bottom right by
+ * `UiToaster.vue` then removed after a few seconds.
  *
- * N'importe quel module en ajoute un par `notify`, sans composant à monter.
+ * Any module adds one with `notify`, without a component to mount.
  */
 
 import { ref } from 'vue'
 
 /**
- * Un message éphémère.
+ * A transient message.
  */
 export interface Toast {
   /**
-   * Identifiant, pour l'affichage en liste.
+   * Id, for display in a list.
    */
   id: number
   /**
-   * Texte du message.
+   * Text of the message.
    */
   title: string
   /**
-   * Ton : succès ou erreur.
+   * Tone: success or error.
    */
   tone: 'success' | 'error'
 }
 
 /**
- * Messages en cours d'affichage.
+ * Messages being displayed.
  */
 export const toasts = ref<Toast[]>([])
 
 /**
- * Prochain identifiant.
+ * Next id.
  */
 let nextId = 1
 
 /**
- * Affiche un message éphémère.
+ * Shows a transient message.
  *
- * @param title Texte du message.
- * @param tone Ton du message.
+ * @param title Text of the message.
+ * @param tone Tone of the message.
  */
 export function notify(title: string, tone: Toast['tone'] = 'success'): void {
   toasts.value = [...toasts.value, { id: nextId++, title, tone }]
 }
 
 /**
- * Retire un message, une fois sa durée écoulée ou fermé par l'utilisateur.
+ * Removes a message, once its duration has elapsed or when the user closes it.
  *
- * @param id Identifiant du message.
+ * @param id Id of the message.
  */
 export function dismiss(id: number): void {
   toasts.value = toasts.value.filter((toast) => toast.id !== id)

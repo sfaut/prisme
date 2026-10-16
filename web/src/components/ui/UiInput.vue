@@ -1,11 +1,11 @@
 <!--
-  Champ de saisie d'une ligne.
+  Single-line input field.
 
-  Se lie par `v-model` à un texte ou à un nombre : avec un nombre (et
-  `type="number"`), la saisie est rendue en nombre. Une icône Lucide peut se
-  placer à gauche (`icon`), un contenu à droite (emplacement `trailing`,
-  par exemple un bouton pour vider le champ). Les attributs (`placeholder`,
-  `maxlength`, `aria-label`...) vont au champ ; `class` va à l'enveloppe.
+  Binds with `v-model` to a text or a number: with a number (and
+  `type="number"`), the input is returned as a number. A Lucide icon can go
+  on the left (`icon`), content on the right (`trailing` slot, for example a
+  button to clear the field). The attributes (`placeholder`,
+  `maxlength`, `aria-label`...) go to the field; `class` goes to the wrapper.
 -->
 <script setup lang="ts">
 import type { Component } from 'vue'
@@ -14,20 +14,20 @@ defineOptions({ inheritAttrs: false })
 
 defineProps<{
   /**
-   * Icône Lucide à gauche du texte.
+   * Lucide icon on the left of the text.
    */
   icon?: Component
 }>()
 
 /**
- * Valeur saisie.
+ * Typed value.
  */
 const model = defineModel<string | number>({ required: true })
 
 /**
- * Reporte la saisie dans le modèle, en nombre si le modèle en est un.
+ * Passes the input on to the model, as a number if the model is one.
  *
- * @param event Saisie dans le champ.
+ * @param event Input in the field.
  */
 function onInput(event: Event): void {
   const value = (event.target as HTMLInputElement).value

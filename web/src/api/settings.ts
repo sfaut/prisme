@@ -1,5 +1,5 @@
 /**
- * Réglages de l'utilisateur : pour l'instant, la limite de lignes par défaut.
+ * Settings of the user: for now, the default row limit.
  */
 
 import { request } from './http'
@@ -7,16 +7,16 @@ import type { Settings } from './generated/Settings'
 import type { SettingsUpdate } from './generated/SettingsUpdate'
 
 /**
- * Lit les réglages, avec les limites de lignes permises.
+ * Reads the settings, with the allowed row limits.
  */
 export function getSettings(): Promise<Settings> {
   return request('GET', '/api/settings')
 }
 
 /**
- * Modifie les réglages et renvoie les réglages à jour.
+ * Changes the settings and returns the updated settings.
  *
- * @param update Nouvelle limite de lignes, parmi les choix permis.
+ * @param update New row limit, among the allowed choices.
  */
 export function updateSettings(update: SettingsUpdate): Promise<Settings> {
   return request('PUT', '/api/settings', update)

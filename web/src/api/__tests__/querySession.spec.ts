@@ -17,7 +17,7 @@ import {
 } from '../querySession'
 
 /**
- * État d'une session prête, sur la base `xlist`.
+ * State of a ready session, on the `xlist` database.
  */
 function readyState() {
   const state = initialState()
@@ -30,7 +30,7 @@ function readyState() {
 }
 
 describe('applyMessage', () => {
-  it('suit un lot de deux requêtes, chacune dans son onglet', () => {
+  it('follows a batch of two queries, each in its tab', () => {
     const state = readyState()
     expect(state.status).toBe('ready')
     expect(state.database).toBe('xlist')
@@ -49,7 +49,7 @@ describe('applyMessage', () => {
       'select * from person',
     ])
 
-    // Les messages des deux requêtes s'entremêlent.
+    // The messages of the two queries interleave.
     applyMessage(state, {
       type: 'columns',
       query: 1,
@@ -96,7 +96,7 @@ describe('applyMessage', () => {
     expect(state.status).toBe('ready')
   })
 
-  it('suit la base en cours à la fin de chaque requête', () => {
+  it('follows the current database at the end of each query', () => {
     const state = readyState()
     startBatch(state)
     applyMessage(state, {
@@ -115,28 +115,28 @@ describe('applyMessage', () => {
     expect(state.database).toBe('shop')
   })
 
-  it('suit la base choisie par une demande use', () => {
+  it('follows the database chosen by a use request', () => {
     const state = readyState()
     applyMessage(state, { type: 'database', database: 'shop' })
     expect(state.database).toBe('shop')
     expect(state.status).toBe('ready')
   })
 
-  it('garde la session ouverte après une erreur de session', () => {
+  it('keeps the session open after a session error', () => {
     const state = readyState()
     startBatch(state)
-    applyMessage(state, { type: 'error', query: null, message: 'aucune requête à exécuter' })
+    applyMessage(state, { type: 'error', query: null, message: 'no query to run' })
     expect(state.status).toBe('ready')
-    expect(state.error).toBe('aucune requête à exécuter')
+    expect(state.error).toBe('no query to run')
   })
 
-  it('ferme la session si la connexion au serveur cible échoue', () => {
+  it('closes the session if the connection to the target server fails', () => {
     const state = initialState()
     applyMessage(state, { type: 'error', query: null, message: 'Access denied' })
     expect(state.status).toBe('closed')
   })
 
-  it('efface les onglets et l’erreur précédents au début d’un lot, sauf les onglets épinglés', () => {
+  it('clears the previous tabs and error at the start of a batch, except the pinned tabs', () => {
     const state = readyState()
     startBatch(state)
     applyMessage(state, {
@@ -153,8 +153,8 @@ describe('applyMessage', () => {
     expect(state.error).toBeNull()
     expect(state.tabs.map((tab) => tab.sql)).toEqual(['b'])
 
-    // Le nouveau lot suit l'onglet épinglé ; ses messages ne touchent pas ce dernier,
-    // qui portait pourtant le même numéro de requête dans l'ancien lot.
+    // The new batch follows the pinned tab; its messages do not touch the latter,
+    // which yet carried the same query number in the old batch.
     applyMessage(state, {
       type: 'batch',
       queries: [{ query: 1, tab: 0, sql: 'c', start: 0, end: 1 }],
@@ -167,7 +167,7 @@ describe('applyMessage', () => {
     expect(new Set(state.tabs.map((tab) => tab.id)).size).toBe(2)
   })
 
-  it('retire un onglet fermé', () => {
+  it('removes a closed tab', () => {
     const state = readyState()
     startBatch(state)
     applyMessage(state, {
@@ -182,7 +182,7 @@ describe('applyMessage', () => {
 })
 
 describe('tabProgress', () => {
-  it('passe d’attente à exécution, puis chargement, puis terminé ou erreur', () => {
+  it('goes from waiting to executing, then loading, then done or error', () => {
     const state = readyState()
     startBatch(state)
     applyMessage(state, {
@@ -228,8 +228,8 @@ describe('tabProgress', () => {
   })
 })
 
-describe('durées', () => {
-  it("sépare l'exécution du transfert des lignes", () => {
+describe('durations', () => {
+  it('separates the execution from the transfer of the rows', () => {
     const state = readyState()
     startBatch(state)
     applyMessage(state, {
@@ -261,7 +261,7 @@ describe('durées', () => {
       },
       1400,
     )
-    // Colonnes reçues : le temps mesuré par le serveur (ici 0 µs dans le message).
+    // Columns received: the time measured by the server (here 0 µs in the message).
     tab.result!.executionUs = 380_500
     expect(executionDuration(tab, 2000)).toBe(380.5)
     expect(transferDuration(tab, 2000)).toBe(600)
@@ -283,7 +283,7 @@ describe('durées', () => {
     expect(transferDuration(tab, 9999)).toBe(1100)
   })
 
-  it("mesure la part accomplie d'une requête, quand elle est connue", () => {
+  it('measures the completed share of a query, when it is known', () => {
     const state = readyState()
     startBatch(state)
     applyMessage(state, {
@@ -313,7 +313,7 @@ describe('durées', () => {
     expect(tabFraction(tab)).toBe(1)
   })
 
-  it('compte le volume reçu par requête', () => {
+  it('counts the volume received per query', () => {
     const state = readyState()
     startBatch(state)
     applyMessage(
@@ -342,14 +342,14 @@ describe('durées', () => {
     expect(state.tabs[0]!.bytes).toBe(150)
   })
 
-  it('mesure en octets un texte UTF-8', () => {
+  it('measures a UTF-8 text in bytes', () => {
     expect(utf8Length('abc')).toBe(3)
     expect(utf8Length('é')).toBe(2)
     expect(utf8Length('€')).toBe(3)
     expect(utf8Length('😀')).toBe(4)
   })
 
-  it('formate les volumes', () => {
+  it('formats the volumes', () => {
     expect(formatBytes(0)).toBe('0 o')
     expect(formatBytes(999)).toBe('999 o')
     expect(formatBytes(1000)).toBe('1,0 ko')
@@ -357,7 +357,7 @@ describe('durées', () => {
     expect(formatBytes(5_600_000_000)).toBe('5,6 Go')
   })
 
-  it('formate les durées', () => {
+  it('formats the durations', () => {
     expect(formatDuration(0.25)).toBe('250 µs')
     expect(formatDuration(0.9994)).toBe('999 µs')
     expect(formatDuration(42)).toBe('42 ms')
@@ -373,7 +373,7 @@ describe('durées', () => {
 })
 
 describe('savedTab', () => {
-  it('reprend un onglet enregistré, hors des lots de la session', () => {
+  it('takes back a saved tab, outside the batches of the session', () => {
     const tab = savedTab({
       id: 42,
       query: 1,
@@ -410,7 +410,7 @@ describe('savedTab', () => {
 })
 
 describe('resume', () => {
-  it('reprend le dernier lot dans ses onglets, que les messages suivants continuent', () => {
+  it('takes back the last batch in its tabs, which the next messages continue', () => {
     const state = readyState()
     state.tabs = [
       savedTab({
@@ -496,7 +496,7 @@ describe('resume', () => {
 })
 
 describe('sessionUrl', () => {
-  it('suit le protocole de la page', () => {
+  it('follows the protocol of the page', () => {
     expect(sessionUrl(3, { protocol: 'http:', host: 'localhost:5173' } as Location)).toBe(
       'ws://localhost:5173/api/editors/3/session',
     )

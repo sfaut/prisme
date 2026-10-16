@@ -1,27 +1,26 @@
 /**
- * Thème clair, sombre ou celui du système.
+ * Light, dark or system theme.
  *
- * Le choix est retenu dans le navigateur (`localStorage`). « Système » ne
- * pose aucune classe : les couleurs suivent alors le réglage du poste
- * (`color-scheme: light dark` dans `main.css`). « Clair » et « Sombre »
- * posent la classe `light` ou `dark` sur `<html>`, qui impose l'un ou
- * l'autre.
+ * The choice is remembered in the browser (`localStorage`). "System" sets no
+ * class: colors then follow the machine's setting (`color-scheme: light dark`
+ * in `main.css`). "Light" and "Dark" set the `light` or `dark` class on
+ * `<html>`, which forces one or the other.
  */
 
 import { ref, watch } from 'vue'
 
 /**
- * Choix possibles.
+ * Possible choices.
  */
 export type ColorMode = 'system' | 'light' | 'dark'
 
 /**
- * Clef du choix dans `localStorage`.
+ * Key of the choice in `localStorage`.
  */
 const STORAGE_KEY = 'prisme-color-mode'
 
 /**
- * Lit le choix retenu ; « système » s'il n'y en a pas ou s'il est illisible.
+ * Reads the remembered choice; "system" if there is none or if it is unreadable.
  */
 function storedMode(): ColorMode {
   try {
@@ -33,14 +32,14 @@ function storedMode(): ColorMode {
 }
 
 /**
- * Choix en cours, partagé par toute l'application.
+ * Current choice, shared by the whole application.
  */
 export const colorMode = ref<ColorMode>(storedMode())
 
 /**
- * Applique un choix à la page : classe sur `<html>`, puis le retient.
+ * Applies a choice to the page: class on `<html>`, then remembers it.
  *
- * @param mode Choix à appliquer.
+ * @param mode Choice to apply.
  */
 function apply(mode: ColorMode): void {
   const root = document.documentElement
@@ -49,7 +48,7 @@ function apply(mode: ColorMode): void {
   try {
     localStorage.setItem(STORAGE_KEY, mode)
   } catch {
-    // Stockage refusé (navigation privée) : le choix vaut pour cette visite.
+    // Storage refused (private browsing): the choice holds for this visit.
   }
 }
 

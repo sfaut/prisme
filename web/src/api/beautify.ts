@@ -1,7 +1,7 @@
 /**
- * Enjoliveur : réécrit du SQL en « beau SQL » (mots-clefs en capitales...).
+ * Beautifier: rewrites SQL as "beautiful SQL" (keywords in capitals...).
  *
- * Les règles sont appliquées par le serveur (`crates/dialects/src/beautify.rs`).
+ * The rules are applied by the server (`crates/dialects/src/beautify.rs`).
  */
 
 import { request } from './http'
@@ -11,31 +11,30 @@ import type { Flavor } from './generated/Flavor'
 import type { SqlText } from './generated/SqlText'
 
 /**
- * Contexte de l'enjolivement : ce que l'on sait du serveur.
+ * Context of beautifying: what is known about the server.
  */
 export interface BeautifyContext {
   /**
-   * Noms du catalogue, tels que définis : les noms de la requête prennent leur écriture.
+   * Names of the catalog, as defined: the names of the query take their spelling.
    */
   catalog?: BeautifyCatalog
   /**
-   * Variante du serveur, pour ses mots-clefs ; absente, MySQL.
+   * Flavor of the server, for its keywords; when absent, MySQL.
    */
   flavor?: Flavor
   /**
-   * Version annoncée par le serveur ; absente, tous les mots-clefs du dialecte.
+   * Version announced by the server; when absent, all the dialect's keywords.
    */
   version?: string
 }
 
 /**
- * Enjolive un texte SQL, une ou plusieurs requêtes : la requête est
- * analysée, puis ses mots-clefs passent en capitales et ses noms prennent
- * l'écriture du catalogue.
+ * Beautifies a SQL text, one or more queries: the query is analysed, then its
+ * keywords go to capitals and its names take the catalog's spelling.
  *
- * @param sql Texte à enjoliver.
- * @param context Catalogue, variante et version du serveur.
- * @returns Le texte enjolivé.
+ * @param sql Text to beautify.
+ * @param context Catalog, flavor and version of the server.
+ * @returns The beautified text.
  */
 export async function beautify(sql: string, context: BeautifyContext = {}): Promise<string> {
   const body: BeautifyRequest = { sql, ...context }

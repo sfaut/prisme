@@ -9,7 +9,7 @@ import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import ObjectExplorer from '../ObjectExplorer.vue'
 
 /**
- * Connexions renvoyées par le serveur simulé.
+ * Connections returned by the simulated server.
  */
 let savedConnections: ConnectionSummary[] = []
 
@@ -26,8 +26,8 @@ vi.mock('@/api/explorer', () => ({
 }))
 
 /**
- * Donne une taille aux éléments : sans elle, jsdom ne mesure rien et le
- * défilement virtuel de l'arbre n'affiche aucun nœud.
+ * Gives a size to the elements: without it, jsdom measures nothing and the
+ * tree's virtual scrolling shows no node.
  */
 function giveLayout(): void {
   const size = { width: 300, height: 500, top: 0, left: 0, right: 300, bottom: 500, x: 0, y: 0 }
@@ -65,10 +65,10 @@ function giveLayout(): void {
 }
 
 /**
- * Connexion enregistrée, pour remplir la liste des sources.
+ * Saved connection, to fill the list of sources.
  *
- * @param id Identifiant de la connexion.
- * @param name Nom de la connexion.
+ * @param id Id of the connection.
+ * @param name Name of the connection.
  */
 function connection(id: number, name: string): ConnectionSummary {
   return {
@@ -88,38 +88,38 @@ function connection(id: number, name: string): ConnectionSummary {
 }
 
 /**
- * Monte l'explorateur, attaché à la page (les menus s'ouvrent dans `body`).
+ * Mounts the explorer, attached to the page (the menus open in `body`).
  *
- * @param props Propriétés de l'explorateur.
+ * @param props Properties of the explorer.
  */
 function mountExplorer(props: { selectedId: number | null; currentDatabase: string | null }) {
   return mount(ObjectExplorer, { props, attachTo: document.body })
 }
 
 /**
- * Libellés des lignes affichées.
+ * Labels of the displayed lines.
  *
- * @param wrapper Explorateur monté.
+ * @param wrapper Mounted explorer.
  */
 function labels(wrapper: ReturnType<typeof mountExplorer>): string[] {
   return wrapper.findAll('.tree-label').map((node) => node.text())
 }
 
 /**
- * Ligne de l'arbre dont le libellé est donné.
+ * Line of the tree whose label is given.
  *
- * @param wrapper Explorateur monté.
- * @param label Libellé cherché.
+ * @param wrapper Mounted explorer.
+ * @param label Searched label.
  */
 function row(wrapper: ReturnType<typeof mountExplorer>, label: string) {
   return wrapper.findAll('.tree-row').find((item) => item.find('.tree-label').text() === label)
 }
 
 /**
- * Clique sur un élément. `detail` vaut 2 pour le second clic d'un double clic.
+ * Clicks on an element. `detail` is 2 for the second click of a double click.
  *
- * @param element Élément cliqué.
- * @param detail Rang du clic dans la série.
+ * @param element Clicked element.
+ * @param detail Rank of the click in the series.
  */
 async function click(element: { element: Element } | undefined, detail: number): Promise<void> {
   element?.element.dispatchEvent(new MouseEvent('click', { bubbles: true, detail }))
@@ -137,7 +137,7 @@ afterEach(() => {
 })
 
 describe('ObjectExplorer', () => {
-  it('range les sources sous une racine et ouvre celle de la connexion choisie', async () => {
+  it('puts the sources under a root and opens that of the chosen connection', async () => {
     savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
     const wrapper = mountExplorer({ selectedId: 1, currentDatabase: null })
     await vi.waitFor(() =>
@@ -154,7 +154,7 @@ describe('ObjectExplorer', () => {
     wrapper.unmount()
   })
 
-  it('propose un menu sur la racine et un autre sur chaque source', async () => {
+  it('offers a menu on the root and another one on each source', async () => {
     savedConnections = [connection(1, 'Origen 2')]
     const wrapper = mountExplorer({ selectedId: null, currentDatabase: null })
     await vi.waitFor(() => expect(wrapper.findAll('.node-menu')).toHaveLength(3))
@@ -171,25 +171,25 @@ describe('ObjectExplorer', () => {
     wrapper.unmount()
   })
 
-  it('ouvre une source d’un clic sur sa ligne et la choisit d’un double clic', async () => {
+  it('opens a source with a click on its line and chooses it with a double click', async () => {
     savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
     const wrapper = mountExplorer({ selectedId: 1, currentDatabase: null })
     await vi.waitFor(() => expect(row(wrapper, 'Autre')).toBeDefined())
     await click(row(wrapper, 'Autre'), 1)
     expect(wrapper.emitted('select')).toBeUndefined()
-    // Ouverte : sa première base suit la source.
+    // Open: its first database follows the source.
     const texts = () => labels(wrapper)
     await vi.waitFor(() => expect(texts()[texts().indexOf('Autre') + 1]).toBe('a'))
-    // Second clic d'un double clic : la source est choisie.
+    // Second click of a double click: the source is chosen.
     await click(row(wrapper, 'Autre'), 2)
     expect(wrapper.emitted('select')).toEqual([[2]])
-    // Double clic sur une base : elle devient la base en cours de sa source.
+    // Double click on a database: it becomes the current database of its source.
     await click(row(wrapper, 'a'), 2)
     expect(wrapper.emitted('use-database')).toEqual([[1, 'a']])
     wrapper.unmount()
   })
 
-  it('suit la base en cours, même en revenant sur une base déjà choisie', async () => {
+  it('follows the current database, even when going back to a database already chosen', async () => {
     savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
     const wrapper = mountExplorer({ selectedId: 1, currentDatabase: 'a' })
     const bold = () => wrapper.findAll('.current-database').map((node) => node.text())

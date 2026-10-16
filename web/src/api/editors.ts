@@ -1,6 +1,6 @@
 /**
- * Éditeurs SQL (onglets du haut de l'écran) et leurs onglets de résultat,
- * enregistrés côté serveur (`crates/server/src/editors.rs`).
+ * SQL editors (tabs at the top of the screen) and their result tabs, saved on
+ * the server side (`crates/server/src/editors.rs`).
  */
 
 import { request } from './http'
@@ -11,98 +11,98 @@ import type { ResultTab } from './generated/ResultTab'
 import type { ResultTabUpdate } from './generated/ResultTabUpdate'
 
 /**
- * Éditeurs ouverts, dans l'ordre, avec leurs onglets de résultat enregistrés.
+ * Open editors, in order, with their saved result tabs.
  */
 export async function listEditors(): Promise<Editor[]> {
   return request<Editor[]>('GET', '/api/editors')
 }
 
 /**
- * Crée un éditeur vide, à la suite des autres.
+ * Creates an empty editor, after the others.
  *
- * @param connectionId Connexion de départ, `null` pour aucune.
+ * @param connectionId Initial connection, `null` for none.
  */
 export async function createEditor(connectionId: number | null): Promise<Editor> {
   return request<Editor>('POST', '/api/editors', { connection_id: connectionId ?? undefined })
 }
 
 /**
- * Enregistre le nom, le texte et la connexion d'un éditeur.
+ * Saves the name, the text and the connection of an editor.
  *
- * @param id Identifiant de l'éditeur.
- * @param editor Nom, texte et connexion.
+ * @param id Id of the editor.
+ * @param editor Name, text and connection.
  */
 export async function updateEditor(id: number, editor: EditorUpdate): Promise<void> {
   await request('PUT', `/api/editors/${id}`, editor)
 }
 
 /**
- * Ferme un éditeur : il reste rouvrable 24 heures.
+ * Closes an editor: it can be reopened for 24 hours.
  *
- * @param id Identifiant de l'éditeur.
+ * @param id Id of the editor.
  */
 export async function closeEditor(id: number): Promise<void> {
   await request('DELETE', `/api/editors/${id}`)
 }
 
 /**
- * Range les éditeurs ouverts dans l'ordre donné.
+ * Puts the open editors in the given order.
  *
- * @param ids Identifiants, du premier au dernier.
+ * @param ids Ids, from the first to the last.
  */
 export async function reorderEditors(ids: number[]): Promise<void> {
   await request('PUT', '/api/editors/order', { ids })
 }
 
 /**
- * Éditeurs fermés depuis moins de 24 heures, du plus récent au plus ancien.
+ * Editors closed less than 24 hours ago, from the most recent to the oldest.
  */
 export async function listClosedEditors(): Promise<ClosedEditor[]> {
   return request<ClosedEditor[]>('GET', '/api/editors/closed')
 }
 
 /**
- * Rouvre un éditeur fermé.
+ * Reopens a closed editor.
  *
- * @param id Identifiant de l'éditeur.
+ * @param id Id of the editor.
  */
 export async function reopenEditor(id: number): Promise<void> {
   await request('POST', `/api/editors/${id}/reopen`)
 }
 
 /**
- * Onglets de résultat enregistrés d'un éditeur, lignes comprises.
+ * Saved result tabs of an editor, rows included.
  *
- * @param editorId Identifiant de l'éditeur.
+ * @param editorId Id of the editor.
  */
 export async function listResults(editorId: number): Promise<ResultTab[]> {
   return request<ResultTab[]>('GET', `/api/editors/${editorId}/results`)
 }
 
 /**
- * Range les onglets de résultat d'un éditeur dans l'ordre donné.
+ * Puts the result tabs of an editor in the given order.
  *
- * @param editorId Identifiant de l'éditeur.
- * @param ids Identifiants des onglets, du premier au dernier.
+ * @param editorId Id of the editor.
+ * @param ids Ids of the tabs, from the first to the last.
  */
 export async function reorderResults(editorId: number, ids: number[]): Promise<void> {
   await request('PUT', `/api/editors/${editorId}/results/order`, { ids })
 }
 
 /**
- * Renomme ou épingle un onglet de résultat.
+ * Renames or pins a result tab.
  *
- * @param id Identifiant de l'onglet.
- * @param tab Nom et épinglage.
+ * @param id Id of the tab.
+ * @param tab Name and pinning.
  */
 export async function updateResult(id: number, tab: ResultTabUpdate): Promise<void> {
   await request('PUT', `/api/results/${id}`, tab)
 }
 
 /**
- * Supprime un onglet de résultat et ses lignes.
+ * Deletes a result tab and its rows.
  *
- * @param id Identifiant de l'onglet.
+ * @param id Id of the tab.
  */
 export async function deleteResult(id: number): Promise<void> {
   await request('DELETE', `/api/results/${id}`)

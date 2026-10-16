@@ -1,11 +1,11 @@
 /**
- * Éditeurs SQL ouverts (onglets du haut de l'écran) et éditeur actif.
+ * Open SQL editors (tabs at the top of the screen) and active editor.
  *
- * Tout est enregistré côté serveur : le texte au fil de la frappe (avec un
- * délai), le nom, la connexion et l'ordre aussitôt changés. À l'ouverture
- * de la page, les éditeurs reviennent (chaque cellule relit ses onglets de
- * résultat enregistrés) ; l'éditeur actif est retenu dans le navigateur. Il y a
- * toujours au moins un éditeur ouvert.
+ * Everything is saved on the server side: the text as it is typed (with a
+ * delay), the name, the connection and the order as soon as they change. When
+ * the page opens, the editors come back (each cell reads its saved result
+ * tabs again); the active editor is remembered in the browser. There is
+ * always at least one open editor.
  */
 
 import { defineStore } from 'pinia'
@@ -24,41 +24,41 @@ import type { ClosedEditor } from '@/api/generated/ClosedEditor'
 import type { Editor } from '@/api/generated/Editor'
 
 /**
- * Éditeur ouvert dans l'interface.
+ * Editor open in the interface.
  */
 export interface EditorEntry {
   /**
-   * Identifiant de l'éditeur.
+   * Id of the editor.
    */
   id: number
   /**
-   * Nom donné par l'utilisateur, chaîne vide pour le nom par défaut.
+   * Name given by the user, empty string for the default name.
    */
   name: string
   /**
-   * Connexion de l'éditeur, `null` tant qu'aucune n'est choisie.
+   * Connection of the editor, `null` as long as none is chosen.
    */
   connectionId: number | null
   /**
-   * Texte SQL.
+   * SQL text.
    */
   sql: string
 }
 
 /**
- * Délai entre la dernière frappe et l'enregistrement du texte, en millisecondes.
+ * Delay between the last keystroke and saving the text, in milliseconds.
  */
 const SAVE_DELAY = 500
 
 /**
- * Clef de l'éditeur actif dans le stockage local.
+ * Key of the active editor in local storage.
  */
 const ACTIVE_KEY = 'prisme.activeEditor'
 
 /**
- * Éditeur de l'interface à partir de celui du serveur.
+ * Interface editor built from the server's.
  *
- * @param editor Éditeur reçu du serveur.
+ * @param editor Editor received from the server.
  */
 function entryOf(editor: Editor): EditorEntry {
   return {
@@ -70,7 +70,7 @@ function entryOf(editor: Editor): EditorEntry {
 }
 
 /**
- * Éditeur actif retenu, `null` si aucun n'est lisible.
+ * Remembered active editor, `null` if none is readable.
  */
 function storedActive(): number | null {
   try {
@@ -83,48 +83,48 @@ function storedActive(): number | null {
 
 export const useEditorsStore = defineStore('editors', () => {
   /**
-   * Éditeurs ouverts, dans l'ordre des onglets.
+   * Open editors, in the order of the tabs.
    */
   const editors = ref<EditorEntry[]>([])
 
   /**
-   * Identifiant de l'éditeur actif, `null` avant le chargement.
+   * Id of the active editor, `null` before loading.
    */
   const activeId = ref<number | null>(null)
 
   /**
-   * Éditeurs fermés depuis moins de 24 heures, rouvrables.
+   * Editors closed less than 24 hours ago, which can be reopened.
    */
   const closed = ref<ClosedEditor[]>([])
 
   /**
-   * Enregistrements du texte en attente, par éditeur.
+   * Pending text saves, by editor.
    */
   const timers = new Map<number, ReturnType<typeof setTimeout>>()
 
   /**
-   * Éditeur actif, `null` avant le chargement.
+   * Active editor, `null` before loading.
    */
   const active = computed(
     () => editors.value.find((editor) => editor.id === activeId.value) ?? null,
   )
 
   /**
-   * Rend un éditeur actif, et le retient.
+   * Makes an editor active, and remembers it.
    *
-   * @param id Identifiant de l'éditeur.
+   * @param id Id of the editor.
    */
   function activate(id: number): void {
     activeId.value = id
     try {
       localStorage.setItem(ACTIVE_KEY, String(id))
     } catch {
-      // Préférence d'affichage seulement.
+      // Display preference only.
     }
   }
 
   /**
-   * Charge les éditeurs ouverts ; sans aucun, en crée un.
+   * Loads the open editors; with none, creates one.
    */
   async function load(): Promise<void> {
     editors.value = (await listEditors()).map(entryOf)
@@ -138,9 +138,9 @@ export const useEditorsStore = defineStore('editors', () => {
   }
 
   /**
-   * Crée un éditeur à la suite des autres et le rend actif.
+   * Creates an editor after the others and makes it active.
    *
-   * @param connectionId Connexion de départ, `null` pour aucune.
+   * @param connectionId Initial connection, `null` for none.
    */
   async function create(connectionId: number | null): Promise<void> {
     const editor = await createEditor(connectionId)
@@ -149,9 +149,9 @@ export const useEditorsStore = defineStore('editors', () => {
   }
 
   /**
-   * Enregistre le nom, le texte et la connexion d'un éditeur, aussitôt.
+   * Saves the name, the text and the connection of an editor, immediately.
    *
-   * @param id Identifiant de l'éditeur.
+   * @param id Id of the editor.
    */
   async function save(id: number): Promise<void> {
     clearTimeout(timers.get(id))
@@ -167,10 +167,10 @@ export const useEditorsStore = defineStore('editors', () => {
   }
 
   /**
-   * Change le texte d'un éditeur ; il est enregistré peu après la dernière frappe.
+   * Changes the text of an editor; it is saved shortly after the last keystroke.
    *
-   * @param id Identifiant de l'éditeur.
-   * @param sql Nouveau texte.
+   * @param id Id of the editor.
+   * @param sql New text.
    */
   function setSql(id: number, sql: string): void {
     const editor = editors.value.find((item) => item.id === id)
@@ -186,10 +186,10 @@ export const useEditorsStore = defineStore('editors', () => {
   }
 
   /**
-   * Renomme un éditeur ; chaîne vide pour le nom par défaut.
+   * Renames an editor; empty string for the default name.
    *
-   * @param id Identifiant de l'éditeur.
-   * @param name Nouveau nom.
+   * @param id Id of the editor.
+   * @param name New name.
    */
   async function rename(id: number, name: string): Promise<void> {
     const editor = editors.value.find((item) => item.id === id)
@@ -200,10 +200,10 @@ export const useEditorsStore = defineStore('editors', () => {
   }
 
   /**
-   * Change la connexion d'un éditeur.
+   * Changes the connection of an editor.
    *
-   * @param id Identifiant de l'éditeur.
-   * @param connectionId Connexion, `null` pour aucune.
+   * @param id Id of the editor.
+   * @param connectionId Connection, `null` for none.
    */
   async function setConnection(id: number, connectionId: number | null): Promise<void> {
     const editor = editors.value.find((item) => item.id === id)
@@ -214,10 +214,10 @@ export const useEditorsStore = defineStore('editors', () => {
   }
 
   /**
-   * Ferme un éditeur (rouvrable 24 heures) ; son voisin devient actif. Le
-   * dernier éditeur fermé est remplacé par un éditeur vide.
+   * Closes an editor (can be reopened for 24 hours); its neighbour becomes
+   * active. The last editor closed is replaced by an empty editor.
    *
-   * @param id Identifiant de l'éditeur.
+   * @param id Id of the editor.
    */
   async function close(id: number): Promise<void> {
     if (timers.has(id)) {
@@ -234,9 +234,9 @@ export const useEditorsStore = defineStore('editors', () => {
   }
 
   /**
-   * Range les éditeurs dans l'ordre donné.
+   * Puts the editors in the given order.
    *
-   * @param ids Identifiants, du premier au dernier.
+   * @param ids Ids, from the first to the last.
    */
   async function reorder(ids: number[]): Promise<void> {
     editors.value = ids
@@ -246,16 +246,16 @@ export const useEditorsStore = defineStore('editors', () => {
   }
 
   /**
-   * Relit la liste des éditeurs fermés depuis moins de 24 heures.
+   * Reads again the list of the editors closed less than 24 hours ago.
    */
   async function loadClosed(): Promise<void> {
     closed.value = await listClosedEditors()
   }
 
   /**
-   * Rouvre un éditeur fermé et le rend actif ; sa cellule relira ses onglets de résultat.
+   * Reopens a closed editor and makes it active; its cell will read its result tabs again.
    *
-   * @param id Identifiant de l'éditeur.
+   * @param id Id of the editor.
    */
   async function reopen(id: number): Promise<void> {
     await reopenEditor(id)

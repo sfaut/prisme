@@ -1,19 +1,18 @@
 /**
- * Lecture en pixels d'une longueur du thème (`main.css`).
+ * Reading a theme length (`main.css`) in pixels.
  *
- * Le thème écrit ses longueurs en `rem`, relatives à la taille du texte de
- * la page. Quelques outils veulent pourtant un nombre de pixels : le
- * défilement virtuel (hauteur d'une ligne), le positionnement des menus de
- * Reka UI (écart avec leur bouton). Ils lisent la variable ici : le thème
- * reste la seule source de ces longueurs.
+ * The theme writes its lengths in `rem`, relative to the page's text size.
+ * A few tools want a number of pixels though: virtual scrolling (height of a
+ * row), the positioning of Reka UI's menus (gap with their button). They read
+ * the variable here: the theme stays the only source of these lengths.
  */
 
 /**
- * Valeur en pixels d'une variable CSS du thème, définie en `rem` ou en `px`.
+ * Value in pixels of a CSS variable of the theme, defined in `rem` or `px`.
  *
- * @param name Nom de la variable (`--row-height`).
- * @param fallback Valeur rendue si la variable est absente ou illisible
- *     (tests sans feuille de style, par exemple).
+ * @param name Name of the variable (`--row-height`).
+ * @param fallback Value returned if the variable is missing or unreadable
+ *     (tests without a stylesheet, for example).
  */
 export function cssPixels(name: string, fallback: number): number {
   const style = getComputedStyle(document.documentElement)

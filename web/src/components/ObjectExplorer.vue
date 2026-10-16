@@ -1,36 +1,36 @@
 <!--
-  Explorateur d'objets : sous la racine repliable « Sources de données »,
-  une branche par source (connexion enregistrée), puis ses bases, tables et
-  colonnes ; ensuite, la racine « Notebooks », vide pour l'instant.
+  Object explorer: under the collapsible "Sources de données" root, one
+  branch per source (saved connection), then its databases, tables and
+  columns; next, the "Notebooks" root, empty for now.
 
-  Plusieurs sources se côtoient dans le même arbre. Le catalogue d'une source
-  se lit quand on l'ouvre (celle de la connexion choisie s'ouvre d'elle-même)
-  et arrive au fil de l'eau : les bases d'abord, puis leurs objets (tables,
-  vues, procédures, fonctions), puis le détail des tables (colonnes, index,
-  clefs étrangères, déclencheurs), chaque partie affichée dès sa réception.
-  Il reste ensuite en mémoire. Un clic sur une ligne ouvre ou ferme son
-  niveau. Un double clic sur une source la choisit comme connexion de travail
-  (émet `select`) ; elle reste surlignée. Un double clic sur une base en fait
-  la base en cours, comme `USE` (émet `use-database`). Un double clic sur une
-  table ou une vue émet `open-table`, pour en afficher le contenu.
+  Several sources sit side by side in the same tree. The catalog of a source
+  is read when it is opened (that of the chosen connection opens by itself)
+  and arrives progressively: the databases first, then their objects (tables,
+  views, procedures, functions), then the details of the tables (columns,
+  indexes, foreign keys, triggers), each part shown as soon as it arrives.
+  It then stays in memory. A click on a line opens or closes its level. A
+  double click on a source chooses it as the working connection (emits
+  `select`); it stays highlighted. A double click on a database makes it the
+  current database, like `USE` (emits `use-database`). A double click on a
+  table or a view emits `open-table`, to show its content.
 
-  Chaque source porte en badge la variante de son serveur (`mysql`,
-  `mariadb`), vue à la dernière connexion ou à la lecture du catalogue.
+  Each source carries as a badge the flavor of its server (`mysql`,
+  `mariadb`), seen on the last connection or when reading the catalog.
 
-  Chaque ligne porte l'icône de son niveau : racines, source, base, dossier
-  (ouvert ou fermé), table, vue, procédure, fonction, colonne, index, clef
-  étrangère, déclencheur, et un cercle qui tourne pendant un chargement.
+  Each line carries the icon of its level: roots, source, database, folder
+  (open or closed), table, view, procedure, function, column, index, foreign
+  key, trigger, and a spinning circle during a load.
 
-  Au survol de la racine, un menu « ⋮ » à droite ajoute une connexion ou relit
-  tous les catalogues déjà lus ; au survol de chaque source, un autre modifie
-  ou teste la connexion, relit son catalogue ou supprime la connexion (après
-  confirmation).
+  On hovering the root, a "⋮" menu on the right adds a connection or reads
+  again all the catalogs already read; on hovering each source, another one
+  changes or tests the connection, reads its catalog again or deletes the
+  connection (after confirmation).
 
-  L'arbre est celui de Reka UI (`TreeRoot`, `TreeItem` : clavier, ouverture
-  des niveaux, accessibilité), en défilement virtuel (`TreeVirtualizer`) ;
-  le rendu des lignes est celui de Prisme, en classes Tailwind. Toutes les
-  lignes ont la même hauteur (`--row-height`), et chaque niveau est en
-  retrait de `--tree-indent` (variables de `main.css`).
+  The tree is Reka UI's (`TreeRoot`, `TreeItem`: keyboard, opening of the
+  levels, accessibility), with virtual scrolling (`TreeVirtualizer`); the
+  rendering of the lines is Prisme's, in Tailwind classes. All the lines
+  have the same height (`--row-height`), and each level is indented by
+  `--tree-indent` (variables of `main.css`).
 -->
 <script setup lang="ts">
 import {
@@ -86,27 +86,27 @@ import type { MenuItem } from './ui/menuItem'
 
 const props = defineProps<{
   /**
-   * Identifiant de la connexion choisie, `null` si aucune.
+   * Id of the chosen connection, `null` if none.
    */
   selectedId: number | null
   /**
-   * Base en cours de la session de requêtes de la connexion choisie, affichée
-   * en gras ; `null` si aucune.
+   * Current database of the chosen connection's query session, shown in
+   * bold; `null` if none.
    */
   currentDatabase: string | null
 }>()
 
 const emit = defineEmits<{
   /**
-   * L'utilisateur veut voir le contenu d'une table.
+   * The user wants to see the content of a table.
    */
   'open-table': [connectionId: number, schema: string, table: string]
   /**
-   * L'utilisateur choisit une source comme connexion de travail.
+   * The user chooses a source as the working connection.
    */
   select: [connectionId: number]
   /**
-   * L'utilisateur choisit une base comme base en cours (`USE`).
+   * The user chooses a database as the current database (`USE`).
    */
   'use-database': [connectionId: number, schema: string]
 }>()
@@ -115,49 +115,49 @@ const catalog = useCatalogStore()
 const connections = useConnectionsStore()
 
 /**
- * Hauteur d'une ligne, en pixels, pour le défilement virtuel
- * (`--row-height` du thème).
+ * Height of a line, in pixels, for virtual scrolling
+ * (`--row-height` of the theme).
  */
 const ROW_HEIGHT = cssPixels('--row-height', 24)
 
 /**
- * Connexions dont le catalogue est en cours de lecture.
+ * Connections whose catalog is being read.
  */
 const loadingIds = ref<number[]>([])
 
 /**
- * Erreur de lecture de la liste des connexions, `null` si aucune.
+ * Error reading the list of connections, `null` if none.
  */
 const listError = ref<string | null>(null)
 
 /**
- * Résultat du dernier test réussi d'une source (nom, variante et version du
- * serveur), `null` si aucun.
+ * Result of the last successful test of a source (name, flavor and version
+ * of the server), `null` if none.
  */
 const probed = ref<string | null>(null)
 
 /**
- * Dernière erreur de lecture de chaque connexion, par identifiant.
+ * Last reading error of each connection, by id.
  */
 const failures = ref<Record<number, string>>({})
 
 /**
- * Fenêtre de création ou de modification ouverte ?
+ * Is the creation or change window open?
  */
 const dialogOpen = ref(false)
 
 /**
- * Connexion modifiée par la fenêtre, `null` pour en créer une.
+ * Connection changed by the window, `null` to create one.
  */
 const editing = ref<ConnectionSummary | null>(null)
 
 /**
- * Connexion dont la suppression attend confirmation, `null` si aucune.
+ * Connection whose deletion waits for confirmation, `null` if none.
  */
 const removing = ref<ConnectionSummary | null>(null)
 
 /**
- * Fenêtre de confirmation de la suppression ouverte ?
+ * Is the deletion confirmation window open?
  */
 const removeOpen = computed({
   get: () => removing.value !== null,
@@ -169,12 +169,12 @@ const removeOpen = computed({
 })
 
 /**
- * Clefs des nœuds ouverts.
+ * Keys of the open nodes.
  */
 const expandedKeys = ref<string[]>([SOURCES_KEY])
 
 /**
- * Un catalogue est-il encore en cours de réception ?
+ * Is a catalog still being received?
  */
 const receiving = computed(() =>
   connections.connections.some((connection) => {
@@ -184,7 +184,7 @@ const receiving = computed(() =>
 )
 
 /**
- * Arbre complet, construit à partir des catalogues en mémoire.
+ * Whole tree, built from the catalogs in memory.
  */
 const nodes = computed(() =>
   explorerTree(
@@ -201,8 +201,8 @@ const nodes = computed(() =>
 )
 
 /**
- * Erreurs à afficher, précédées du nom de leur source : échecs de lecture,
- * puis erreurs signalées par le serveur pendant la réception.
+ * Errors to show, preceded by the name of their source: reading failures,
+ * then errors reported by the server during the reception.
  */
 const messages = computed(() =>
   connections.connections.flatMap((connection) => {
@@ -215,10 +215,10 @@ const messages = computed(() =>
 )
 
 /**
- * Lit le catalogue d'une connexion, depuis la mémoire ou depuis le serveur.
+ * Reads the catalog of a connection, from memory or from the server.
  *
- * @param connectionId Identifiant de la connexion.
- * @param refresh Relit le catalogue sur le serveur même s'il est en mémoire.
+ * @param connectionId Id of the connection.
+ * @param refresh Reads the catalog again from the server even if it is in memory.
  */
 async function load(connectionId: number, refresh: boolean): Promise<void> {
   if (loadingIds.value.includes(connectionId)) {
@@ -236,7 +236,7 @@ async function load(connectionId: number, refresh: boolean): Promise<void> {
 }
 
 /**
- * Relit les catalogues déjà lus.
+ * Reads again the catalogs already read.
  */
 function refreshAll(): void {
   for (const connection of connections.connections) {
@@ -247,9 +247,9 @@ function refreshAll(): void {
 }
 
 /**
- * Suit l'ouverture et la fermeture des nœuds : ouvrir une source lit son catalogue.
+ * Follows the opening and closing of the nodes: opening a source reads its catalog.
  *
- * @param keys Clefs des nœuds désormais ouverts.
+ * @param keys Keys of the nodes now open.
  */
 function expand(keys: string[]): void {
   expandedKeys.value = keys
@@ -261,8 +261,8 @@ function expand(keys: string[]): void {
 }
 
 /**
- * Icône des nœuds du catalogue, selon leur nature (dossier à part : son
- * icône dépend de son ouverture).
+ * Icon of the catalog nodes, according to their nature (folder apart: its
+ * icon depends on its opening).
  */
 const ENTRY_ICONS: Record<Exclude<EntryKind, 'folder'>, Component> = {
   table: Table,
@@ -277,11 +277,11 @@ const ENTRY_ICONS: Record<Exclude<EntryKind, 'folder'>, Component> = {
 }
 
 /**
- * Icône d'un nœud, devant son libellé : chaque niveau a la sienne (racines,
- * source, base, dossier ouvert ou fermé, table, vue, colonne...).
+ * Icon of a node, before its label: each level has its own (roots, source,
+ * database, open or closed folder, table, view, column...).
  *
- * @param node Nœud de l'arbre.
- * @param expanded Le nœud est-il ouvert ?
+ * @param node Node of the tree.
+ * @param expanded Is the node open?
  */
 function nodeIcon(node: ExplorerNode, expanded: boolean): Component {
   switch (node.role) {
@@ -301,9 +301,9 @@ function nodeIcon(node: ExplorerNode, expanded: boolean): Component {
 }
 
 /**
- * Choix du menu « ⋮ » d'un nœud, `null` pour un nœud sans menu.
+ * Choices of a node's "⋮" menu, `null` for a node without a menu.
  *
- * @param node Nœud de l'arbre.
+ * @param node Node of the tree.
  */
 function menuItems(node: ExplorerNode): MenuItem[] | null {
   const connection = connections.connections.find((item) => item.id === node.connectionId) ?? null
@@ -314,7 +314,7 @@ function menuItems(node: ExplorerNode): MenuItem[] | null {
         { label: 'Tout rafraîchir', icon: RefreshCw, onSelect: refreshAll },
       ]
     case 'notebooks':
-      // Les notebooks ne sont pas encore enregistrés (étape 3 de la v1).
+      // Notebooks are not saved yet (stage 3 of the v1).
       return [{ label: 'Créer un notebook', icon: NotebookPen, disabled: true }]
     case 'source':
       return [
@@ -344,9 +344,9 @@ function menuItems(node: ExplorerNode): MenuItem[] | null {
 }
 
 /**
- * Ouvre la fenêtre de connexion.
+ * Opens the connection window.
  *
- * @param connection Connexion à modifier, `null` pour en créer une.
+ * @param connection Connection to change, `null` to create one.
  */
 function openDialog(connection: ConnectionSummary | null): void {
   editing.value = connection
@@ -354,10 +354,10 @@ function openDialog(connection: ConnectionSummary | null): void {
 }
 
 /**
- * Se connecte au serveur d'une source et affiche sa variante et sa version.
- * Un échec s'affiche comme une erreur de lecture de la source.
+ * Connects to the server of a source and shows its flavor and version.
+ * A failure shows as a reading error of the source.
  *
- * @param connectionId Identifiant de la connexion.
+ * @param connectionId Id of the connection.
  */
 async function probe(connectionId: number): Promise<void> {
   const name = connections.connections.find((item) => item.id === connectionId)?.name
@@ -371,10 +371,10 @@ async function probe(connectionId: number): Promise<void> {
 }
 
 /**
- * Relit le catalogue d'une connexion modifiée, s'il était déjà lu : la
- * connexion peut désormais viser un autre serveur.
+ * Reads again the catalog of a changed connection, if it was already read:
+ * the connection may now target another server.
  *
- * @param connectionId Identifiant de la connexion modifiée.
+ * @param connectionId Id of the changed connection.
  */
 function onUpdated(connectionId: number): void {
   if (catalog.catalogs[connectionId] !== undefined) {
@@ -383,7 +383,7 @@ function onUpdated(connectionId: number): void {
 }
 
 /**
- * Supprime la connexion qui attendait confirmation.
+ * Deletes the connection that was waiting for confirmation.
  */
 async function confirmRemove(): Promise<void> {
   const connection = removing.value
@@ -401,13 +401,13 @@ async function confirmRemove(): Promise<void> {
 }
 
 /**
- * Suit les clics sur les lignes. L'arbre ne garde aucune sélection (la
- * source surlignée est celle de la connexion choisie) ; le clic ouvre ou
- * ferme le niveau. Le second clic d'un double clic choisit la source, change
- * de base ou ouvre la table.
+ * Follows the clicks on the lines. The tree keeps no selection (the
+ * highlighted source is that of the chosen connection); the click opens or
+ * closes the level. The second click of a double click chooses the source,
+ * changes the database or opens the table.
  *
- * @param event Sélection demandée par l'arbre, avec le clic d'origine.
- * @param node Nœud cliqué.
+ * @param event Selection requested by the tree, with the original click.
+ * @param node Clicked node.
  */
 function onSelect(event: TreeItemSelectEvent<ExplorerNode>, clicked: ExplorerNode): void {
   event.preventDefault()
@@ -432,7 +432,7 @@ onMounted(async () => {
   }
 })
 
-// La connexion choisie ouvre sa source.
+// The chosen connection opens its source.
 watch(
   () => props.selectedId,
   (connectionId) => {
@@ -442,7 +442,7 @@ watch(
     if (!expandedKeys.value.includes(sourceKey(connectionId))) {
       expandedKeys.value = [...expandedKeys.value, sourceKey(connectionId)]
     }
-    // Directement : la liste des connexions n'est peut-être pas encore reçue.
+    // Directly: the list of connections may not be received yet.
     void load(connectionId, false)
   },
   { immediate: true },
@@ -493,7 +493,7 @@ watch(
             :class="{ 'animate-spin': item.value.entry === 'loading' }"
           />
 
-          <!-- Colonne : symboles, nom (gras si indexée), type et nullabilité. -->
+          <!-- Column: symbols, name (bold if indexed), type and nullability. -->
           <span v-if="item.value.column" class="tree-label flex min-w-0 flex-1 items-center">
             <span
               v-if="item.value.column.markSlots > 0"
@@ -526,7 +526,7 @@ watch(
               {{ item.value.column.details }}
             </span>
           </span>
-          <!-- Autres nœuds : libellé, puis mention éventuelle (UNIQUE, chargement…). -->
+          <!-- Other nodes: label, then the note if any (UNIQUE, chargement…). -->
           <span
             v-else
             class="tree-label min-w-0 truncate text-trim"
@@ -544,7 +544,7 @@ watch(
               {{ item.value.note }}
             </span>
           </span>
-          <!-- Source : badge de la variante du serveur, juste après le nom. -->
+          <!-- Source: badge of the server's flavor, right after the name. -->
           <span
             v-if="item.value.badge"
             class="flavor-badge ms-0.5 me-auto shrink-0 text-trim"
@@ -594,12 +594,12 @@ watch(
 </template>
 
 <style scoped>
-/* Retrait de chaque niveau : `--level` est posé sur la ligne (1 pour les racines). */
+/* Indentation of each level: `--level` is set on the line (1 for the roots). */
 .tree-row {
   padding-inline-start: calc(var(--space-unit) + var(--tree-indent) * (var(--level) - 1));
 }
 
-/* Badge de la variante du serveur : pastille teintée aux couleurs du moteur. */
+/* Badge of the server's flavor: pill tinted in the engine's colors. */
 .flavor-badge {
   padding: var(--badge-padding);
   border-radius: var(--badge-radius);

@@ -7,13 +7,13 @@ vi.mock('@/api/analyze', () => ({
   analyzeSql: async (sql: string) => ({
     statements: [],
     errors: sql.startsWith('SELEC ')
-      ? [{ start: 0, end: 5, message: 'Requête non comprise par Prisme' }]
+      ? [{ start: 0, end: 5, message: 'Query not understood by Prisme' }]
       : [],
   }),
 }))
 
 describe('SqlEditor', () => {
-  it('souligne les erreurs de syntaxe signalées par le serveur', async () => {
+  it('underlines the syntax errors reported by the server', async () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mysql',
@@ -31,7 +31,7 @@ describe('SqlEditor', () => {
     wrapper.unmount()
   })
 
-  it('affiche le texte lié', () => {
+  it('shows the bound text', () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mysql',
@@ -47,7 +47,7 @@ describe('SqlEditor', () => {
     wrapper.unmount()
   })
 
-  it('remplace le texte par une requête générée, curseur à la ligne suivante', () => {
+  it('replaces the text with a generated query, cursor on the next line', () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mysql',
@@ -67,7 +67,7 @@ describe('SqlEditor', () => {
     wrapper.unmount()
   })
 
-  it('va à la ligne sans retrait sur Entrée, au milieu d’une requête', () => {
+  it('goes to a new line without indentation on Enter, in the middle of a query', () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mysql',
@@ -79,7 +79,7 @@ describe('SqlEditor', () => {
       },
       attachTo: document.body,
     })
-    // Parenthèse ouverte : la langue SQL indenterait la suite de deux espaces.
+    // Open parenthesis: the SQL language would indent what follows by two spaces.
     wrapper.vm.replaceText('SELECT (a')
     wrapper
       .find('.cm-content')
@@ -89,7 +89,7 @@ describe('SqlEditor', () => {
     wrapper.unmount()
   })
 
-  it('remplace le contenu quand le texte change de l’extérieur', async () => {
+  it('replaces the content when the text changes from outside', async () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mariadb',

@@ -1,43 +1,43 @@
 <!--
-  Libellé d'un onglet, renommable : un double clic le rend modifiable,
-  Entrée valide, Échap annule, un nom vide (ou le libellé par défaut) rend
-  le libellé par défaut. Sert aux onglets d'éditeur et de résultat.
+  Label of a tab, which can be renamed: a double click makes it editable,
+  Enter confirms, Escape cancels, an empty name (or the default label) gives
+  back the default label. Used by the editor and result tabs.
 -->
 <script setup lang="ts">
 import { nextTick, ref, useTemplateRef } from 'vue'
 
 const props = defineProps<{
   /**
-   * Nom donné par l'utilisateur, `null` pour le libellé par défaut.
+   * Name given by the user, `null` for the default label.
    */
   name: string | null
   /**
-   * Libellé par défaut, sans nom donné.
+   * Default label, without a given name.
    */
   defaultLabel: string
 }>()
 
 const emit = defineEmits<{
   /**
-   * L'utilisateur renomme l'onglet ; `null` rend le libellé par défaut.
+   * The user renames the tab; `null` gives back the default label.
    */
   rename: [name: string | null]
 }>()
 
 /**
- * Libellé en cours de modification ?
+ * Is the label being edited?
  */
 const editing = ref(false)
 
 /**
- * Saisie du nouveau nom.
+ * Input of the new name.
  */
 const draft = ref('')
 
 const input = useTemplateRef<HTMLInputElement>('input')
 
 /**
- * Rend le libellé modifiable, son texte sélectionné.
+ * Makes the label editable, its text selected.
  */
 async function startEditing(): Promise<void> {
   draft.value = props.name ?? props.defaultLabel
@@ -47,7 +47,7 @@ async function startEditing(): Promise<void> {
 }
 
 /**
- * Valide le nouveau nom ; vide, l'onglet reprend son libellé par défaut.
+ * Confirms the new name; when empty, the tab takes back its default label.
  */
 function commit(): void {
   if (editing.value) {

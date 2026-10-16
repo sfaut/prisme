@@ -8,7 +8,7 @@ vi.mock('@/api/connections', () => ({
   listConnections: async () => [],
 }))
 
-// Aucun éditeur enregistré : l'interface en crée un, sans connexion.
+// No saved editor: the interface creates one, without a connection.
 vi.mock('@/api/editors', () => ({
   listEditors: async () => [],
   createEditor: async () => ({ id: 1, name: '', connection_id: null, sql: '' }),
@@ -16,8 +16,8 @@ vi.mock('@/api/editors', () => ({
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  // L'arbre de l'explorateur (défilement virtuel) interroge les media queries,
-  // absentes de jsdom. Sans mise en page, il n'affiche d'ailleurs aucun nœud.
+  // The explorer's tree (virtual scrolling) queries the media queries, missing
+  // from jsdom. Without layout, it shows no node anyway.
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
     addEventListener() {},
@@ -30,7 +30,7 @@ afterEach(() => {
 })
 
 describe('App', () => {
-  it("affiche le nom de l'application et invite à choisir une source", async () => {
+  it('shows the name of the application and invites to choose a source', async () => {
     const wrapper = mount(App)
     expect(wrapper.text()).toContain('Prisme')
     await vi.waitFor(() =>

@@ -1,7 +1,7 @@
 <!--
-  Poignée verticale posée sur le bord droit du panneau de gauche : la faire
-  glisser change la largeur du panneau, un double clic la remet à sa valeur
-  par défaut. Une poignée, au milieu, montre où la saisir. La largeur est retenue d'une visite à l'autre (`siderWidth.ts`).
+  Vertical handle placed on the right edge of the left panel: dragging it
+  changes the width of the panel, a double click resets it to its default
+  value. A grip, in the middle, shows where to grab it. The width is remembered from one visit to the next (`siderWidth.ts`).
 -->
 <script setup lang="ts">
 import { ref } from 'vue'
@@ -9,19 +9,19 @@ import { ref } from 'vue'
 import { DEFAULT_SIDER_WIDTH, clampSiderWidth, saveSiderWidth } from './siderWidth'
 
 /**
- * Largeur du panneau, en pixels.
+ * Width of the panel, in pixels.
  */
 const width = defineModel<number>({ required: true })
 
 /**
- * Glissement en cours : position de départ du pointeur et largeur de départ.
+ * Drag in progress: starting position of the pointer and starting width.
  */
 const drag = ref<{ x: number; width: number } | null>(null)
 
 /**
- * Commence le glissement ; le pointeur reste capturé même hors de la poignée.
+ * Starts the drag; the pointer stays captured even outside the handle.
  *
- * @param event Appui sur la poignée.
+ * @param event Press on the handle.
  */
 function start(event: PointerEvent): void {
   ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
@@ -29,9 +29,9 @@ function start(event: PointerEvent): void {
 }
 
 /**
- * Suit le pointeur pendant le glissement.
+ * Follows the pointer during the drag.
  *
- * @param event Déplacement du pointeur.
+ * @param event Pointer move.
  */
 function move(event: PointerEvent): void {
   if (drag.value !== null) {
@@ -43,7 +43,7 @@ function move(event: PointerEvent): void {
 }
 
 /**
- * Termine le glissement et retient la largeur.
+ * Ends the drag and remembers the width.
  */
 function stop(): void {
   if (drag.value !== null) {
@@ -53,7 +53,7 @@ function stop(): void {
 }
 
 /**
- * Remet la largeur par défaut.
+ * Resets the default width.
  */
 function reset(): void {
   width.value = DEFAULT_SIDER_WIDTH
@@ -84,7 +84,7 @@ function reset(): void {
   cursor: col-resize;
   touch-action: none;
 
-  /* Poignée centrale. */
+  /* Central grip. */
   &::after {
     position: absolute;
     inset-block-start: calc(50% - var(--grip-length) / 2);

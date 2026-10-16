@@ -10,9 +10,9 @@ describe('statementAt', () => {
     { start: 11, end: 20 },
   ]
 
-  it('désigne la dernière requête qui commence avant le curseur, sinon la première', () => {
+  it('designates the last query that starts before the cursor, otherwise the first one', () => {
     expect(statementAt(statements, 3)).toBe(0)
-    // Entre deux requêtes : la précédente.
+    // Between two queries: the previous one.
     expect(statementAt(statements, 10)).toBe(0)
     expect(statementAt(statements, 15)).toBe(1)
     expect(statementAt([{ start: 4, end: 9 }], 0)).toBe(0)
@@ -22,9 +22,9 @@ describe('statementAt', () => {
 
 describe('currentStatement', () => {
   /**
-   * Texte surligné dans l'éditeur.
+   * Highlighted text in the editor.
    *
-   * @param view Éditeur.
+   * @param view Editor.
    */
   function highlighted(view: EditorView): string[] {
     return [...view.dom.querySelectorAll('.cm-current-statement')].map(
@@ -32,7 +32,7 @@ describe('currentStatement', () => {
     )
   }
 
-  it('surligne la requête sous le curseur, et la suit', () => {
+  it('highlights the query under the cursor, and follows it', () => {
     const doc = 'SELECT 1;\nSELECT 2;'
     const view = new EditorView({
       state: EditorState.create({ doc, extensions: currentStatement() }),
@@ -47,13 +47,13 @@ describe('currentStatement', () => {
     expect(highlighted(view)).toEqual(['SELECT 1;'])
     view.dispatch({ selection: { anchor: 15 } })
     expect(highlighted(view)).toEqual(['SELECT 2;'])
-    // Texte inséré avant : les emplacements suivent en attendant la prochaine analyse.
+    // Text inserted before: the spans follow while waiting for the next analysis.
     view.dispatch({ changes: { from: 0, insert: '-- x\n' } })
     expect(highlighted(view)).toEqual(['SELECT 2;'])
     view.destroy()
   })
 
-  it('ne surligne rien avec une seule requête', () => {
+  it('highlights nothing with a single query', () => {
     const view = new EditorView({
       state: EditorState.create({ doc: 'SELECT 1', extensions: currentStatement() }),
       parent: document.body,

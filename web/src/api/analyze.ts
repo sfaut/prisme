@@ -1,6 +1,6 @@
 /**
- * Analyse du texte de l'éditeur par le serveur : requêtes du texte et
- * erreurs de syntaxe.
+ * Analysis of the editor's text by the server: queries of the text and
+ * syntax errors.
  */
 
 import { request } from './http'
@@ -8,10 +8,10 @@ import type { Analysis } from './generated/Analysis'
 import type { Flavor } from './generated/Flavor'
 
 /**
- * Analyse le texte de l'éditeur.
+ * Analyses the editor's text.
  *
- * @param sql Texte complet de l'éditeur.
- * @param flavor Variante du serveur, qui fixe le dialecte d'analyse.
+ * @param sql Whole text of the editor.
+ * @param flavor Flavor of the server, which sets the dialect of the analysis.
  */
 export function analyzeSql(sql: string, flavor: Flavor): Promise<Analysis> {
   return request('POST', '/api/analyze', { sql, flavor })

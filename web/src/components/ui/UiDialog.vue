@@ -1,11 +1,11 @@
 <!--
-  Fenêtre modale, sur `Dialog` de Reka UI : le focus reste dans la fenêtre,
-  la page derrière ne défile plus, Échap ou un clic à côté la ferme.
+  Modal window, on Reka UI's `Dialog`: the focus stays in the window, the
+  page behind no longer scrolls, Escape or a click outside closes it.
 
-  Titre et description en tête, croix de fermeture, contenu (emplacement
-  par défaut) puis pied (emplacement `footer`, pour les boutons). À
-  l'ouverture, le focus va au premier champ de saisie, ou à défaut au
-  premier bouton du pied (« Annuler » d'une confirmation).
+  Title and description at the top, closing cross, content (default slot)
+  then footer (`footer` slot, for the buttons). On opening, the focus goes
+  to the first input field, or failing that to the first button of the
+  footer ("Annuler" of a confirmation).
 -->
 <script setup lang="ts">
 import { X } from 'lucide-vue-next'
@@ -23,26 +23,26 @@ import UiButton from './UiButton.vue'
 
 defineProps<{
   /**
-   * Titre de la fenêtre.
+   * Title of the window.
    */
   title: string
   /**
-   * Description, sous le titre.
+   * Description, under the title.
    */
   description?: string
 }>()
 
 /**
- * Fenêtre ouverte ou fermée.
+ * Window open or closed.
  */
 const open = defineModel<boolean>('open', { required: true })
 
 /**
- * Donne le focus au premier champ de saisie de la fenêtre, ou à défaut au
- * premier bouton de son pied. Sans l'un ni l'autre, Reka UI le donne au
- * premier élément focalisable (la croix).
+ * Gives the focus to the first input field of the window, or failing that to
+ * the first button of its footer. Without either, Reka UI gives it to the
+ * first focusable element (the cross).
  *
- * @param event Mise au point automatique de Reka UI, à l'ouverture.
+ * @param event Reka UI's automatic focus, on opening.
  */
 function focusFirst(event: Event): void {
   const content = event.target as HTMLElement

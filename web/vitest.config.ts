@@ -7,11 +7,10 @@ export default mergeConfig(
   defineConfig({
     test: {
       environment: 'jsdom',
-      // Node 25+ a son propre localStorage, qui avertit faute de fichier de
-      // stockage (--localstorage-file) : les tests utilisent celui de jsdom,
-      // comme dans un navigateur.
+      // Node 25+ has its own localStorage, which warns without a storage file
+      // (--localstorage-file): the tests use jsdom's, as in a browser.
       execArgv: ['--no-experimental-webstorage'],
-      // Mesures du texte absentes de jsdom, dont CodeMirror a besoin.
+      // Text measurements missing from jsdom, which CodeMirror needs.
       setupFiles: ['./src/testSetup.ts'],
       exclude: [...configDefaults.exclude, 'e2e/**'],
       root: fileURLToPath(new URL('./', import.meta.url)),

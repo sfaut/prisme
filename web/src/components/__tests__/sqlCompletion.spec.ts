@@ -5,7 +5,7 @@ import type { CatalogSchema } from '@/stores/catalog'
 import { completionSchema } from '../sqlCompletion'
 
 describe('completionSchema', () => {
-  it('délimite les noms qui ne sont pas des identifiants simples, selon ANSI_QUOTES', () => {
+  it('quotes the names that are not plain identifiers, according to ANSI_QUOTES', () => {
     const schemas: CatalogSchema[] = [
       {
         name: 'ma base',
@@ -23,7 +23,7 @@ describe('completionSchema', () => {
     expect(ansi['ma base']!.children.clients!.self.apply).toBeUndefined()
   })
 
-  it('propose bases, tables, colonnes et routines avec leur nature, même avec un catalogue incomplet', () => {
+  it('offers databases, tables, columns and routines with their nature, even with an incomplete catalog', () => {
     const schemas: CatalogSchema[] = [
       {
         name: 'shop',

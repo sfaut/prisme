@@ -1,24 +1,23 @@
 /*
-  Feuille de style de l'application : Tailwind CSS et le thème de Prisme.
+  Stylesheet of the application: Tailwind CSS and Prisme's theme.
 
-  Le thème tient en variables CSS, dans `:root` : couleurs par rôle,
-  tailles de police, espacements, hauteurs et arrondis. Changer une valeur
-  ici change toute l'interface. Tailwind en fait des classes (bloc
-  `@theme`) : `bg-surface`, `text-fg-muted`, `border-line`, `text-ui`,
+  The theme fits in CSS variables, in `:root`: colors by role, font sizes,
+  spacing, heights and radii. Changing a value here changes the whole
+  interface. Tailwind turns them into classes (`@theme` block):
+  `bg-surface`, `text-fg-muted`, `border-line`, `text-ui`,
   `h-control`, `p-panel`, `rounded-control`...
 
-  Couleurs : une palette (chaque teinte une seule fois), puis des variables
-  par rôle qui y puisent, seules utilisées par les composants. Clair et
-  sombre : chaque variable par rôle donne ses deux valeurs par
-  `light-dark(clair, sombre)`, choisie d'après `color-scheme`. Par défaut,
-  celui du système ; la classe `light` ou `dark` sur `<html>` impose l'un
-  ou l'autre (`colorMode.ts`).
+  Colors: a palette (each hue only once), then variables by role that draw
+  from it, the only ones used by the components. Light and dark: each role
+  variable gives its two values with `light-dark(light, dark)`, chosen
+  according to `color-scheme`. By default, that of the system; the `light`
+  or `dark` class on `<html>` forces one or the other
+  (`colorMode.ts`).
 */
 @import 'tailwindcss';
 
-/* Classes Tailwind tirées des variables : seules les couleurs et les
-   tailles de police de Prisme existent, pour ne pas en utiliser d'autres
-   par mégarde. */
+/* Tailwind classes drawn from the variables: only Prisme's colors and font
+   sizes exist, so as not to use others by mistake. */
 @theme inline {
   --color-*: initial;
   --color-surface: var(--surface);
@@ -56,7 +55,7 @@
   --font-sans: var(--font-ui);
   --font-mono: var(--font-code);
 
-  /* Toute l'échelle d'espacement (p-1, gap-2...) suit `--space-unit`. */
+  /* The whole spacing scale (p-1, gap-2...) follows `--space-unit`. */
   --spacing: var(--space-unit);
   --spacing-gap: var(--gap);
   --spacing-panel: var(--panel-padding);
@@ -78,9 +77,9 @@
 :root {
   color-scheme: light dark;
 
-  /* Palette : chaque teinte une seule fois. Les variables qui suivent
-     (par rôle) y puisent leurs deux valeurs, claire et sombre ; les
-     composants n'utilisent que ces dernières. */
+  /* Palette: each hue only once. The variables that follow (by role) draw
+     their two values from it, light and dark; the components only use the
+     latter. */
   --white: #fff;
   --black: #000;
   --zinc-100: #f4f4f5;
@@ -115,29 +114,29 @@
   --pink-300: #f9a8d4;
   --pink-700: #be185d;
 
-  /* Fonds : page, zones en retrait, menus et en-têtes, survol appuyé. */
+  /* Backgrounds: page, recessed areas, menus and headers, strong hover. */
   --surface: light-dark(var(--white), var(--zinc-900));
   --surface-muted: light-dark(var(--zinc-100), var(--zinc-800));
   --surface-elevated: light-dark(var(--zinc-100), var(--zinc-800));
   --surface-accented: light-dark(var(--zinc-200), var(--zinc-700));
 
-  /* Textes : courant, secondaire, discret, appuyé. */
+  /* Texts: regular, secondary, discreet, strong. */
   --fg: light-dark(var(--zinc-700), var(--zinc-200));
   --fg-muted: light-dark(var(--zinc-500), var(--zinc-400));
   --fg-dimmed: light-dark(var(--zinc-400), var(--zinc-500));
   --fg-strong: light-dark(var(--zinc-900), var(--white));
 
-  /* Bordures. */
+  /* Borders. */
   --line: light-dark(var(--zinc-200), var(--zinc-700));
   --line-muted: light-dark(var(--zinc-100), var(--zinc-800));
 
-  /* Couleur d'action (boutons principaux, sélection, focus). */
+  /* Action color (main buttons, selection, focus). */
   --accent: light-dark(var(--blue-500), var(--blue-400));
   --accent-hover: light-dark(var(--blue-600), var(--blue-300));
   --accent-soft: color-mix(in oklab, var(--accent) 15%, transparent);
   --on-accent: light-dark(var(--white), var(--zinc-900));
 
-  /* États. Les versions « soft » servent de fond aux alertes et badges. */
+  /* States. The "soft" versions are the background of alerts and badges. */
   --success: light-dark(var(--green-600), var(--green-400));
   --success-soft: color-mix(in oklab, var(--success) 12%, transparent);
   --warning: light-dark(var(--amber-600), var(--amber-400));
@@ -146,9 +145,8 @@
   --error-soft: color-mix(in oklab, var(--error) 12%, transparent);
   --error-hover: light-dark(var(--red-700), var(--red-300));
 
-  /* Couleurs dérivées : contour du focus, bords des boutons bordés,
-     voile derrière les fenêtres, survol des barres de redimensionnement,
-     sélection de la grille. */
+  /* Derived colors: focus outline, edges of outlined buttons, veil behind
+     the windows, hover of the resize bars, selection of the grid. */
   --focus-ring: color-mix(in oklab, var(--accent) 60%, transparent);
   --accent-border: color-mix(in oklab, var(--accent) 50%, transparent);
   --error-border: color-mix(in oklab, var(--error) 50%, transparent);
@@ -159,15 +157,15 @@
   --resize-hover: color-mix(in oklab, var(--accent) 30%, transparent);
   --selection: color-mix(in oklab, var(--accent) 18%, transparent);
 
-  /* Badge de la variante du serveur d'une source, dans l'explorateur :
-     texte de la couleur du moteur (bleu MySQL, brun MariaDB) sur un fond
-     teinté de la même couleur. */
+  /* Badge of a source's server flavor, in the explorer: text in the engine's
+     color (MySQL blue, MariaDB brown) on a background tinted with the same
+     color. */
   --badge-mysql: light-dark(var(--blue-600), var(--blue-300));
   --badge-mysql-bg: color-mix(in oklab, var(--badge-mysql) 14%, transparent);
   --badge-mariadb: light-dark(var(--amber-700), var(--amber-300));
   --badge-mariadb-bg: color-mix(in oklab, var(--badge-mariadb) 16%, transparent);
 
-  /* Coloration syntaxique de l'éditeur SQL (`editorTheme.ts`). */
+  /* Syntax highlighting of the SQL editor (`editorTheme.ts`). */
   --sql-keyword: light-dark(var(--violet-600), var(--violet-300));
   --sql-type: light-dark(var(--cyan-700), var(--cyan-300));
   --sql-string: light-dark(var(--amber-700), var(--amber-300));
@@ -175,9 +173,9 @@
   --sql-variable: light-dark(var(--pink-700), var(--pink-300));
   --sql-comment: light-dark(var(--zinc-500), var(--zinc-400));
 
-  /* Surlignages de l'éditeur SQL : ligne du curseur et sa gouttière,
-     sélection et ses autres occurrences, parenthèse appariée ou non,
-     requête que Ctrl-Entrée exécuterait. */
+  /* Highlights of the SQL editor: cursor line and its gutter, selection and
+     its other occurrences, matched or unmatched bracket, query that
+     Ctrl+Enter would run. */
   --editor-active-line: color-mix(in oklab, var(--fg) 4%, transparent);
   --editor-active-gutter: color-mix(in oklab, var(--fg) 8%, transparent);
   --editor-selection: color-mix(in oklab, var(--accent) 25%, transparent);
@@ -186,8 +184,8 @@
   --editor-bracket-mismatch: color-mix(in oklab, var(--error) 25%, transparent);
   --editor-current-statement: color-mix(in oklab, var(--accent) 7%, transparent);
 
-  /* Polices et tailles. `--font-size-ui` est la taille courante de
-     l'interface ; les fenêtres, menus et bulles l'utilisent aussi. */
+  /* Fonts and sizes. `--font-size-ui` is the regular size of the interface;
+     windows, menus and tooltips use it too. */
   --font-ui: ui-sans-serif, system-ui, sans-serif;
   --font-code: ui-monospace, 'Cascadia Code', Consolas, monospace;
   --font-size-small: 0.6875rem;
@@ -195,85 +193,85 @@
   --font-size-body: 0.875rem;
   --font-size-title: 0.875rem;
   --font-size-heading: 1.125rem;
-  /* Texte de l'éditeur SQL, puis ses numéros de ligne. */
+  /* Text of the SQL editor, then its line numbers. */
   --editor-font-size: 0.8125rem;
   --editor-gutter-font-size: 0.6875rem;
 
-  /* Espacements : unité de l'échelle (p-1 = 1 unité), écart entre
-     éléments voisins, marge intérieure des panneaux et des contrôles. */
+  /* Spacing: unit of the scale (p-1 = 1 unit), gap between neighbouring
+     elements, padding of panels and controls. */
   --space-unit: 0.25rem;
   --gap: 0.5rem;
   --panel-padding: 0.75rem;
   --control-padding-x: 0.5rem;
 
-  /* Hauteurs : contrôles (boutons, champs), petits boutons (menu « ⋮ »),
-     lignes de l'arbre et de la grille. */
+  /* Heights: controls (buttons, fields), small buttons ("⋮" menu), lines of
+     the tree and of the grid. */
   --control-height: 1.5rem;
   --control-height-sm: 1.25rem;
   --row-height: 1.5rem;
 
-  /* Écart entre un menu, une liste ou une bulle et son déclencheur. */
+  /* Gap between a menu, a list or a tooltip and its trigger. */
   --popup-offset: 0.25rem;
 
-  /* Icônes : courantes (boutons, menus), petites (chevrons de l'arbre). */
+  /* Icons: regular (buttons, menus), small (chevrons of the tree). */
   --icon-size: 0.875rem;
   --icon-size-sm: 0.75rem;
 
-  /* Retrait par niveau de l'arbre de l'explorateur. */
+  /* Indentation per level of the explorer's tree. */
   --tree-indent: 0.75rem;
 
-  /* Largeurs : colonne des libellés des formulaires, menus (au moins),
-     fenêtres (au plus), messages éphémères, onglets de résultat (au plus). */
+  /* Widths: label column of forms, menus (at least), windows (at most),
+     transient messages, result tabs (at most). */
   --field-label-width: 7rem;
   --menu-min-width: 10rem;
   --dialog-width: 28rem;
   --toast-width: 18rem;
   --tab-max-width: 20rem;
 
-  /* Grille de résultats : hauteur d'une ligne, marge des cellules, largeur
-     des champs du filtre, hauteur minimale. */
+  /* Result grid: height of a row, padding of the cells, width of the filter
+     fields, minimum height. */
   --grid-row-height: 1.375rem;
   --grid-cell-padding-x: 0.25rem;
-  /* Écart entre l'icône du type et le nom dans l'en-tête de la grille. */
+  /* Gap between the type icon and the name in the grid header. */
   --grid-type-gap: 0.375rem;
   --grid-filter-width: 15rem;
   --grid-filter-column-width: 12.5rem;
   --grid-min-height: 7.5rem;
 
-  /* Éditeur SQL : hauteur minimale, quelle que soit la part qui lui est
-     donnée (`editorSplit.ts`). */
+  /* SQL editor: minimum height, whatever the share given to it
+     (`editorSplit.ts`). */
   --editor-min-height: 4rem;
 
-  /* Épaisseur de la barre d'avancement dessinée sur chaque onglet de résultat. */
+  /* Thickness of the progress bar drawn on each result tab. */
   --tab-progress-height: 0.125rem;
 
-  /* Poignées de redimensionnement (panneau de gauche, colonnes de la
-     grille) et pastille d'avancement des requêtes. */
+  /* Resize handles (left panel, grid columns) and progress dot of the
+     queries. */
   --resize-handle-width: 0.375rem;
-  /* Poignée centrale des barres de redimensionnement : longueur, épaisseur
-     et couleur au repos, celle des bordures (bleue au survol). */
+  /* Central grip of the resize bars: length, thickness and color at rest,
+     that of the borders (blue on hover). */
   --grip-length: 1.75rem;
   --grip-thickness: 0.25rem;
   --grip-color: var(--line);
   --status-dot-size: 0.5rem;
 
-  /* Barres de défilement : épaisseur, arrondi, poignée et poignée survolée. */
+  /* Scrollbars: thickness, radius, thumb and hovered thumb. */
   --scrollbar-size: 0.375rem;
   --scrollbar-radius: 0.125rem;
   --scrollbar-thumb: light-dark(var(--zinc-300), var(--zinc-600));
   --scrollbar-thumb-hover: light-dark(var(--zinc-400), var(--zinc-500));
 
-  /* Traits : seules longueurs en pixels, pour rester nets à l'écran
-     (une fraction de pixel rendrait un trait flou). Bordures, contour du
-     focus et repère de déplacement d'une colonne. */
+  /* Lines: the only lengths in pixels, to stay sharp on screen (a fraction
+     of a pixel would blur a line). Borders, focus outline and move marker of
+     a column. */
   --line-width: 1px;
   --focus-width: 2px;
   --focus-offset: 1px;
 
-  /* Arrondis : contrôles, puis fenêtres et menus. */
+  /* Radii: controls, then windows and menus. */
   --control-radius: 0.375rem;
   --panel-radius: 0.5rem;
-  /* Pastille (badge) : marges intérieures relatives à son texte, coins ronds. */
+  /* Pill (badge): padding relative to its text, round corners. */
   --badge-padding: 0.2em 0.55em;
   --badge-radius: 1em;
   --badge-font-size: 0.625rem;
@@ -301,11 +299,11 @@
     font-size: var(--font-size-ui);
   }
 
-  /* Barres de défilement fines, aux couleurs du thème, sans flèches.
-     Chromium (Edge, Chrome) passe par ses pseudo-éléments, seuls à retirer
-     les flèches ; les autres navigateurs, par les propriétés standard. */
+  /* Thin scrollbars, in the theme's colors, without arrows. Chromium (Edge,
+     Chrome) goes through its pseudo-elements, the only way to remove the
+     arrows; the other browsers, through the standard properties. */
   ::-webkit-scrollbar {
-    /* Largeur de la barre verticale, hauteur de la barre horizontale. */
+    /* Width of the vertical bar, height of the horizontal bar. */
     width: var(--scrollbar-size);
     height: var(--scrollbar-size);
   }
@@ -342,12 +340,12 @@
 }
 
 /*
-  Texte centré sur ses capitales : `text-box` retire l'interligne au-dessus
-  des capitales et sous la ligne de base, si bien que le texte d'un bouton,
-  d'un badge ou d'une ligne d'arbre tombe au milieu de sa boîte, à hauteur
-  de l'icône voisine. Le retrait vertical rend la place des accents et des
-  jambages (É, g, p), qu'un texte tronqué (overflow: hidden) couperait
-  sinon. Un navigateur sans `text-box` garde l'interligne habituel.
+  Text centered on its capitals: `text-box` removes the leading above the
+  capitals and under the baseline, so that the text of a button, a badge
+  or a tree line falls in the middle of its box, level with the
+  neighbouring icon. The vertical padding gives back the room of accents
+  and descenders (É, g, p), which a truncated text (overflow: hidden) would
+  otherwise cut. A browser without `text-box` keeps the usual leading.
 */
 @utility text-trim {
   text-box: trim-both cap alphabetic;

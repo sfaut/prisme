@@ -1,7 +1,7 @@
 <!--
-  Affiche les messages éphémères de `toasts.ts`, en bas à droite, sur
-  `Toast` de Reka UI (durée, pause au survol, annonce aux lecteurs
-  d'écran). À monter une seule fois, dans `App.vue`.
+  Shows the transient messages of `toasts.ts`, at the bottom right, on
+  Reka UI's `Toast` (duration, pause on hover, announcement to screen
+  readers). To mount only once, in `App.vue`.
 -->
 <script setup lang="ts">
 import { CircleAlert, CircleCheck } from 'lucide-vue-next'
@@ -10,7 +10,7 @@ import { ToastProvider, ToastRoot, ToastTitle, ToastViewport } from 'reka-ui'
 import { dismiss, toasts } from './toasts'
 
 /**
- * Durée d'affichage d'un message, en millisecondes.
+ * Display duration of a message, in milliseconds.
  */
 const DURATION = 3000
 </script>

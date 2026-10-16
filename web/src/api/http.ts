@@ -1,20 +1,20 @@
 /**
- * Client HTTP de l'API Prisme.
+ * HTTP client of the Prisme API.
  *
- * Toutes les routes répondent en JSON. En cas d'échec, le serveur renvoie
- * `{"error": "message"}` (type `ErrorBody`) : ce message devient celui de
- * l'erreur levée, prêt à être affiché à l'utilisateur.
+ * All the routes answer in JSON. On failure, the server returns
+ * `{"error": "message"}` (`ErrorBody` type): this message becomes that of the
+ * thrown error, ready to be shown to the user.
  */
 
 import type { ErrorBody } from './generated/ErrorBody'
 
 /**
- * Erreur renvoyée par l'API, avec son statut HTTP.
+ * Error returned by the API, with its HTTP status.
  */
 export class ApiError extends Error {
   /**
-   * @param status Statut HTTP de la réponse (400, 404, 502...).
-   * @param message Message lisible, fourni par le serveur.
+   * @param status HTTP status of the response (400, 404, 502...).
+   * @param message Readable message, provided by the server.
    */
   constructor(
     readonly status: number,
@@ -26,18 +26,18 @@ export class ApiError extends Error {
 }
 
 /**
- * Méthodes HTTP utilisées par l'API.
+ * HTTP methods used by the API.
  */
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE'
 
 /**
- * Envoie une requête à l'API et renvoie le corps JSON de la réponse.
+ * Sends a request to the API and returns the JSON body of the response.
  *
- * @param method Méthode HTTP.
- * @param path Chemin de la route, par exemple `/api/connections`.
- * @param body Corps à envoyer en JSON, absent pour un GET.
- * @returns Le corps de la réponse, `undefined` s'il est vide.
- * @throws {ApiError} Si le serveur répond par un statut d'erreur.
+ * @param method HTTP method.
+ * @param path Path of the route, for example `/api/connections`.
+ * @param body Body to send as JSON, absent for a GET.
+ * @returns The body of the response, `undefined` if it is empty.
+ * @throws {ApiError} If the server answers with an error status.
  */
 export async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
   const response = await fetch(path, {
@@ -53,20 +53,20 @@ export async function request<T>(method: Method, path: string, body?: unknown): 
 }
 
 /**
- * Transforme une réponse en erreur en `ApiError`, avec le message du serveur.
+ * Turns an error response into an `ApiError`, with the server's message.
  *
- * @param response Réponse dont le statut est une erreur.
+ * @param response Response whose status is an error.
  */
 export async function toApiError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, errorMessage(response, await response.text()))
 }
 
 /**
- * Extrait le message d'une réponse en erreur : celui du serveur s'il est
- * lisible, sinon le statut HTTP.
+ * Extracts the message of an error response: the server's if it is readable,
+ * otherwise the HTTP status.
  *
- * @param response Réponse en erreur.
- * @param text Corps de la réponse.
+ * @param response Error response.
+ * @param text Body of the response.
  */
 function errorMessage(response: Response, text: string): string {
   try {

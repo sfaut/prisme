@@ -1,53 +1,53 @@
 /**
- * Logique de la grille de résultats : tri, filtre, sélection et copie.
+ * Logic of the result grid: sorting, filtering, selection and copy.
  *
- * Ces fonctions ne dépendent pas de l'affichage (voir `ResultGrid.vue`).
- * Les lignes du résultat ne sont jamais recopiées : la vue triée et filtrée
- * est une liste d'indices dans le tableau d'origine.
+ * These functions do not depend on the display (see `ResultGrid.vue`). The
+ * rows of the result are never copied: the sorted and filtered view is a
+ * list of indexes into the original array.
  *
- * Vocabulaire : une « ligne de la vue » est une position dans la grille
- * affichée (après tri et filtre) ; une « ligne source » est une position dans
- * le résultat reçu du serveur.
+ * Vocabulary: a "view row" is a position in the displayed grid (after
+ * sorting and filtering); a "source row" is a position in the result
+ * received from the server.
  */
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Cell } from '@/api/querySession'
 
 /**
- * Sens du tri.
+ * Direction of the sort.
  */
 export type SortDirection = 'asc' | 'desc'
 
 /**
- * Tri appliqué à la grille.
+ * Sort applied to the grid.
  */
 export interface SortState {
   /**
-   * Indice de la colonne triée.
+   * Index of the sorted column.
    */
   column: number
   /**
-   * Sens du tri.
+   * Direction of the sort.
    */
   direction: SortDirection
 }
 
 /**
- * Filtre appliqué à la grille.
+ * Filter applied to the grid.
  */
 export interface GridFilter {
   /**
-   * Texte cherché, sans distinction de casse. Vide : pas de filtre.
+   * Searched text, case-insensitive. Empty: no filter.
    */
   text: string
   /**
-   * Colonne filtrée, ou `null` pour chercher dans toutes les colonnes.
+   * Filtered column, or `null` to search in all the columns.
    */
   column: number | null
 }
 
 /**
- * Plage rectangulaire de cellules, en lignes de la vue, bornes comprises.
+ * Rectangular range of cells, in view rows, bounds included.
  */
 export interface CellRange {
   top: number
@@ -57,7 +57,7 @@ export interface CellRange {
 }
 
 /**
- * Position d'une cellule : ligne de la vue et colonne.
+ * Position of a cell: view row and column.
  */
 export interface CellPosition {
   row: number
@@ -65,7 +65,7 @@ export interface CellPosition {
 }
 
 /**
- * Sélection : une ou plusieurs plages, et la cellule de départ d'une extension (Maj-clic).
+ * Selection: one or more ranges, and the starting cell of an extension (Shift+click).
  */
 export interface GridSelection {
   ranges: CellRange[]
@@ -73,45 +73,45 @@ export interface GridSelection {
 }
 
 /**
- * Manière dont un clic modifie la sélection.
+ * How a click changes the selection.
  *
- * - `replace` : clic simple, la sélection est remplacée ;
- * - `extend` : Maj-clic, la dernière plage s'étend jusqu'au clic ;
- * - `add` : Ctrl-clic, une plage s'ajoute aux précédentes.
+ * - `replace`: simple click, the selection is replaced;
+ * - `extend`: Shift+click, the last range extends up to the click;
+ * - `add`: Ctrl+click, a range is added to the previous ones.
  */
 export type SelectMode = 'replace' | 'extend' | 'add'
 
 /**
- * Texte affiché pour NULL dans la grille.
+ * Text shown for NULL in the grid.
  */
 export const NULL_TEXT = 'NULL'
 
 /**
- * Largeur minimale d'une colonne redimensionnée, en pixels : de quoi garder
- * le bouton de tri et un début de nom.
+ * Minimum width of a resized column, in pixels: enough to keep the sort
+ * button and the start of the name.
  */
 export const MIN_COLUMN_WIDTH = 40
 
 /**
- * Indique si une colonne est du texte de longueur fixe (`CHAR`), affiché en
- * chasse fixe : ce sont en général des codes ou des références, plus lisibles
- * caractère par caractère. `VARCHAR` et `TEXT` gardent la police courante.
+ * Tells whether a column is fixed-length text (`CHAR`), shown in monospace:
+ * these are usually codes or references, more readable character by
+ * character. `VARCHAR` and `TEXT` keep the regular font.
  *
- * @param type Type de la colonne, absent s'il est inconnu.
+ * @param type Type of the column, absent if it is unknown.
  */
 export function isFixedLengthText(type: ColumnTypeInfo | undefined): boolean {
   return type?.family === 'text' && /^CHAR\b/.test(type.name)
 }
 
 /**
- * Ordre d'affichage des colonnes après un déplacement.
+ * Display order of the columns after a move.
  *
- * @param order Ordre actuel : indice dans le `SELECT` de chaque colonne affichée.
- * @param from Position affichée de la colonne déplacée.
+ * @param order Current order: index in the `SELECT` of each displayed column.
+ * @param from Displayed position of the moved column.
  * @param to
- *     Position d'insertion, comptée avant le retrait de la colonne
- *     (0 : tout à gauche, `order.length` : tout à droite).
- * @returns Le nouvel ordre, et la nouvelle position de la colonne déplacée.
+ *     Insertion position, counted before removing the column (0: far left,
+ *     `order.length`: far right).
+ * @returns The new order, and the new position of the moved column.
  */
 export function moveColumn(
   order: number[],
@@ -129,18 +129,17 @@ export function moveColumn(
 }
 
 /**
- * Distance à parcourir avant qu'un appui sur un nom de colonne (ou sur un
- * onglet de résultat) devienne un déplacement, en pixels : un clic un peu
- * tremblé reste un clic.
+ * Distance to travel before a press on a column name (or on a result tab)
+ * becomes a move, in pixels: a slightly shaky click stays a click.
  */
 export const MOVE_THRESHOLD = 5
 
 /**
- * Position d'insertion d'une colonne lâchée à l'abscisse `x` : avant la
- * première colonne dont le milieu est à droite du pointeur.
+ * Insertion position of a column dropped at the abscissa `x`: before the
+ * first column whose middle is to the right of the pointer.
  *
- * @param centers Abscisse du milieu de chaque en-tête affiché, de gauche à droite.
- * @param x Abscisse du pointeur.
+ * @param centers Abscissa of the middle of each displayed header, from left to right.
+ * @param x Abscissa of the pointer.
  */
 export function dropPosition(centers: number[], x: number): number {
   const index = centers.findIndex((center) => x < center)
@@ -148,34 +147,34 @@ export function dropPosition(centers: number[], x: number): number {
 }
 
 /**
- * Largeur d'un caractère, en pixels, pour estimer la largeur des colonnes.
+ * Width of a character, in pixels, to estimate the width of the columns.
  */
 export const CHAR_WIDTH = 7
 
 /**
- * Largeur maximale estimée d'une colonne, en pixels.
+ * Maximum estimated width of a column, in pixels.
  */
 export const MAX_ESTIMATED_WIDTH = 360
 
 /**
- * Largeur maximale d'une colonne ajustée à son contenu (double clic sur le
- * bord de son en-tête), en pixels.
+ * Maximum width of a column fitted to its content (double click on the edge
+ * of its header), in pixels.
  */
 export const MAX_FITTED_WIDTH = 720
 
 /**
- * Nombre de lignes lues pour estimer la largeur des colonnes.
+ * Number of rows read to estimate the width of the columns.
  */
 const WIDTH_SAMPLE = 200
 
 /**
- * Largeur d'une colonne d'après son texte le plus long : en-tête (plus la
- * place du bouton de tri) et lignes données.
+ * Width of a column after its longest text: header (plus the room of the
+ * sort button) and given rows.
  *
- * @param name Nom de la colonne.
- * @param rows Lignes à mesurer.
- * @param column Indice de la colonne.
- * @param max Largeur maximale, en pixels.
+ * @param name Name of the column.
+ * @param rows Rows to measure.
+ * @param column Index of the column.
+ * @param max Maximum width, in pixels.
  */
 function contentWidth(name: string, rows: Cell[][], column: number, max: number): number {
   let longest = name.length + 2
@@ -186,53 +185,52 @@ function contentWidth(name: string, rows: Cell[][], column: number, max: number)
 }
 
 /**
- * Largeur estimée d'une colonne, sur l'en-tête et les premières lignes,
- * plafonnée pour qu'une seule colonne ne prenne pas tout l'écran.
+ * Estimated width of a column, on the header and the first rows, capped so
+ * that a single column does not take the whole screen.
  *
- * @param name Nom de la colonne.
- * @param rows Lignes du résultat.
- * @param column Indice de la colonne.
+ * @param name Name of the column.
+ * @param rows Rows of the result.
+ * @param column Index of the column.
  */
 export function estimatedWidth(name: string, rows: Cell[][], column: number): number {
   return contentWidth(name, rows.slice(0, WIDTH_SAMPLE), column, MAX_ESTIMATED_WIDTH)
 }
 
 /**
- * Largeur ajustée au contenu d'une colonne : sa valeur la plus longue sur
- * toutes les lignes reçues, avec un plafond plus haut que l'estimation.
+ * Width fitted to the content of a column: its longest value over all the
+ * received rows, with a higher cap than the estimate.
  *
- * @param name Nom de la colonne.
- * @param rows Lignes du résultat.
- * @param column Indice de la colonne.
+ * @param name Name of the column.
+ * @param rows Rows of the result.
+ * @param column Index of the column.
  */
 export function fittedWidth(name: string, rows: Cell[][], column: number): number {
   return contentWidth(name, rows, column, MAX_FITTED_WIDTH)
 }
 
 /**
- * Largeur d'une colonne après un glissement de son bord droit.
+ * Width of a column after dragging its right edge.
  *
- * @param start Largeur au début du glissement, en pixels.
- * @param delta Déplacement horizontal du pointeur, en pixels.
+ * @param start Width at the start of the drag, in pixels.
+ * @param delta Horizontal move of the pointer, in pixels.
  */
 export function resizedWidth(start: number, delta: number): number {
   return Math.max(MIN_COLUMN_WIDTH, Math.round(start + delta))
 }
 
 /**
- * Expression d'un nombre décimal, pour trier les nombres par valeur.
+ * Pattern of a decimal number, to sort numbers by value.
  */
 const NUMBER = /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/
 
 /**
- * Compare deux cellules pour le tri croissant.
+ * Compares two cells for the ascending sort.
  *
- * NULL vient en premier, comme dans MySQL et MariaDB. Deux nombres se
- * comparent par valeur, le reste comme du texte, en tenant compte des
- * chiffres (« a2 » avant « a10 »).
+ * NULL comes first, as in MySQL and MariaDB. Two numbers compare by value,
+ * the rest as text, taking digits into account ("a2" before "a10").
  *
- * @param a Première cellule.
- * @param b Seconde cellule.
+ * @param a First cell.
+ * @param b Second cell.
  */
 export function compareCells(a: Cell, b: Cell): number {
   if (a === null || b === null) {
@@ -245,14 +243,14 @@ export function compareCells(a: Cell, b: Cell): number {
 }
 
 /**
- * Calcule la vue : indices des lignes sources qui passent le filtre, dans l'ordre du tri.
+ * Computes the view: indexes of the source rows that pass the filter, in the sort order.
  *
- * Sans tri, l'ordre reçu du serveur est conservé. Le tri est stable : à
- * valeur égale, l'ordre du serveur est conservé aussi.
+ * Without a sort, the order received from the server is kept. The sort is
+ * stable: for equal values, the server's order is kept too.
  *
- * @param rows Lignes du résultat.
- * @param filter Filtre.
- * @param sort Tri, `null` pour aucun.
+ * @param rows Rows of the result.
+ * @param filter Filter.
+ * @param sort Sort, `null` for none.
  */
 export function visibleRows(rows: Cell[][], filter: GridFilter, sort: SortState | null): number[] {
   const needle = filter.text.trim().toLowerCase()
@@ -272,11 +270,11 @@ export function visibleRows(rows: Cell[][], filter: GridFilter, sort: SortState 
 }
 
 /**
- * Indique si une ligne contient le texte cherché, dans une colonne ou dans toutes.
+ * Tells whether a row contains the searched text, in one column or in all.
  *
- * @param row Ligne.
- * @param needle Texte cherché, en minuscules.
- * @param column Colonne, ou `null` pour toutes.
+ * @param row Row.
+ * @param needle Searched text, in lower case.
+ * @param column Column, or `null` for all.
  */
 function matches(row: Cell[], needle: string, column: number | null): boolean {
   const cells = column === null ? row : [row[column] ?? null]
@@ -284,10 +282,10 @@ function matches(row: Cell[], needle: string, column: number | null): boolean {
 }
 
 /**
- * Tri suivant après un clic sur l'en-tête d'une colonne : croissant, puis décroissant, puis aucun.
+ * Next sort after a click on a column header: ascending, then descending, then none.
  *
- * @param current Tri actuel.
- * @param column Colonne cliquée.
+ * @param current Current sort.
+ * @param column Clicked column.
  */
 export function nextSort(current: SortState | null, column: number): SortState | null {
   if (current?.column !== column) {
@@ -297,20 +295,20 @@ export function nextSort(current: SortState | null, column: number): SortState |
 }
 
 /**
- * Sélection vide.
+ * Empty selection.
  */
 export function emptySelection(): GridSelection {
   return { ranges: [], anchor: null }
 }
 
 /**
- * Applique un clic sur une plage cible, selon le mode.
+ * Applies a click on a target range, according to the mode.
  *
- * @param selection Sélection actuelle.
- * @param target Plage visée par le clic (une cellule, une ligne entière ou une colonne entière).
- * @param position Cellule cliquée, nouveau point de départ.
- * @param mode Clic simple, Maj-clic ou Ctrl-clic.
- * @param stretch Étend la plage depuis le point de départ jusqu'à la cible.
+ * @param selection Current selection.
+ * @param target Range aimed at by the click (a cell, a whole row or a whole column).
+ * @param position Clicked cell, new starting point.
+ * @param mode Simple click, Shift+click or Ctrl+click.
+ * @param stretch Extends the range from the starting point to the target.
  */
 function applySelection(
   selection: GridSelection,
@@ -328,12 +326,12 @@ function applySelection(
 }
 
 /**
- * Sélectionne une cellule.
+ * Selects a cell.
  *
- * @param selection Sélection actuelle.
- * @param row Ligne de la vue.
- * @param column Colonne.
- * @param mode Clic simple, Maj-clic ou Ctrl-clic.
+ * @param selection Current selection.
+ * @param row View row.
+ * @param column Column.
+ * @param mode Simple click, Shift+click or Ctrl+click.
  */
 export function selectCell(
   selection: GridSelection,
@@ -356,12 +354,12 @@ export function selectCell(
 }
 
 /**
- * Sélectionne une ligne entière.
+ * Selects a whole row.
  *
- * @param selection Sélection actuelle.
- * @param row Ligne de la vue.
- * @param columnCount Nombre de colonnes.
- * @param mode Clic simple, Maj-clic ou Ctrl-clic.
+ * @param selection Current selection.
+ * @param row View row.
+ * @param columnCount Number of columns.
+ * @param mode Simple click, Shift+click or Ctrl+click.
  */
 export function selectRow(
   selection: GridSelection,
@@ -385,12 +383,12 @@ export function selectRow(
 }
 
 /**
- * Sélectionne une colonne entière.
+ * Selects a whole column.
  *
- * @param selection Sélection actuelle.
- * @param column Colonne.
- * @param rowCount Nombre de lignes de la vue.
- * @param mode Clic simple, Maj-clic ou Ctrl-clic.
+ * @param selection Current selection.
+ * @param column Column.
+ * @param rowCount Number of view rows.
+ * @param mode Simple click, Shift+click or Ctrl+click.
  */
 export function selectColumn(
   selection: GridSelection,
@@ -414,10 +412,10 @@ export function selectColumn(
 }
 
 /**
- * Sélectionne toute la grille.
+ * Selects the whole grid.
  *
- * @param rowCount Nombre de lignes de la vue.
- * @param columnCount Nombre de colonnes.
+ * @param rowCount Number of view rows.
+ * @param columnCount Number of columns.
  */
 export function selectAll(rowCount: number, columnCount: number): GridSelection {
   if (rowCount === 0 || columnCount === 0) {
@@ -430,11 +428,11 @@ export function selectAll(rowCount: number, columnCount: number): GridSelection 
 }
 
 /**
- * Indique si une cellule est sélectionnée.
+ * Tells whether a cell is selected.
  *
- * @param selection Sélection.
- * @param row Ligne de la vue.
- * @param column Colonne.
+ * @param selection Selection.
+ * @param row View row.
+ * @param column Column.
  */
 export function isSelected(selection: GridSelection, row: number, column: number): boolean {
   return selection.ranges.some(
@@ -444,23 +442,22 @@ export function isSelected(selection: GridSelection, row: number, column: number
 }
 
 /**
- * Copie brute de la sélection : les valeurs telles quelles, séparées par des
- * tabulations, une ligne par ligne du résultat, collable dans un tableur.
+ * Raw copy of the selection: the values as they are, separated by tabs, one
+ * line per row of the result, ready to paste into a spreadsheet.
  *
- * Le texte couvre les lignes et les colonnes touchées par la sélection ; une
- * cellule non sélectionnée à l'intérieur de ce cadre est copiée vide. NULL
- * est copié comme une cellule vide. Les guillemets passent tels quels ; les
- * caractères de contrôle d'une valeur ou d'un nom de colonne sont écrits en
- * toutes lettres (`rawCell`).
+ * The text covers the rows and the columns touched by the selection; an
+ * unselected cell inside this frame is copied empty. NULL is copied as an
+ * empty cell. Quotes go through as they are; the control characters of a
+ * value or of a column name are written out (`rawCell`).
  *
- * @param selection Sélection.
- * @param view Vue : indices des lignes sources.
- * @param rows Lignes du résultat.
- * @param columns Noms des colonnes.
- * @param withHeaders Ajoute une première ligne avec les noms des colonnes copiées.
+ * @param selection Selection.
+ * @param view View: indexes of the source rows.
+ * @param rows Rows of the result.
+ * @param columns Names of the columns.
+ * @param withHeaders Adds a first line with the names of the copied columns.
  * @param order
- *     Indice dans le `SELECT` de chaque colonne affichée, quand les colonnes
- *     ont été déplacées : la sélection porte sur les positions affichées.
+ *     Index in the `SELECT` of each displayed column, when the columns have
+ *     been moved: the selection is on the displayed positions.
  */
 export function selectionToText(
   selection: GridSelection,
@@ -491,11 +488,11 @@ export function selectionToText(
 }
 
 /**
- * Indices couverts par au moins une plage, triés, entre les bornes données.
+ * Indexes covered by at least one range, sorted, between the given bounds.
  *
- * @param ranges Plages.
- * @param start Borne de début (`top` ou `left`).
- * @param end Borne de fin (`bottom` ou `right`).
+ * @param ranges Ranges.
+ * @param start Start bound (`top` or `left`).
+ * @param end End bound (`bottom` or `right`).
  */
 function coveredIndexes(
   ranges: CellRange[],
@@ -512,8 +509,8 @@ function coveredIndexes(
 }
 
 /**
- * Écriture littérale des caractères de contrôle qui en ont une, bien connue
- * (séquences d'échappement du C, table ASCII).
+ * Literal spelling of the control characters that have a well-known one
+ * (C escape sequences, ASCII table).
  */
 const CONTROL_ESCAPES: Record<number, string> = {
   0x00: '\\0',
@@ -528,17 +525,16 @@ const CONTROL_ESCAPES: Record<number, string> = {
 }
 
 /**
- * Valeur copiée telle quelle, ses caractères de contrôle écrits en toutes
- * lettres : une tabulation devient `\t`, un retour à la ligne `\n`, etc.
- * (`CONTROL_ESCAPES`) ; un caractère de contrôle sans écriture connue
- * devient `\xHH` (code hexadécimal). La copie garde ainsi une valeur par
- * cellule et une ligne par ligne du résultat.
+ * Value copied as it is, its control characters written out: a tab becomes
+ * `\t`, a line break `\n`, etc. (`CONTROL_ESCAPES`); a control character
+ * without a known spelling becomes `\xHH` (hexadecimal code). The copy thus
+ * keeps one value per cell and one line per row of the result.
  *
- * Les `\` déjà présents restent tels quels (choix de Sébastien, ticket #3) :
- * un `\t` écrit dans la valeur ne se distingue plus d'une tabulation. Cette
- * copie est faite pour aller vite ; un export exact passera par CSV ou TSV.
+ * The `\` already present stay as they are (decision of ticket #3): a `\t`
+ * written in the value is no longer told apart from a tab. This copy is made
+ * to be quick; an exact export will go through CSV or TSV.
  *
- * @param value Valeur à copier.
+ * @param value Value to copy.
  */
 function rawCell(value: string): string {
   let text = ''

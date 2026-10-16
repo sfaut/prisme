@@ -52,22 +52,22 @@ beforeEach(() => {
 })
 
 describe('connections', () => {
-  it('sélectionne la connexion créée', async () => {
+  it('selects the created connection', async () => {
     const store = useConnectionsStore()
     await store.create({ name: 'prod', host: 'db', port: 3306, username: 'root', password: 'x' })
     expect(store.selectedId).toBe(7)
     expect(store.selected?.name).toBe('prod')
   })
 
-  it('détecte en arrière-plan la variante d’une connexion jamais connectée', async () => {
+  it('detects in the background the flavor of a connection never connected', async () => {
     const store = useConnectionsStore()
     await store.load()
     await vi.waitFor(() => expect(store.connections[0]?.server_flavor).toBe('mariadb'))
   })
 })
 
-describe('suppression', () => {
-  it('désélectionne la connexion supprimée', async () => {
+describe('deletion', () => {
+  it('unselects the deleted connection', async () => {
     const store = useConnectionsStore()
     store.selectedId = 7
     await store.remove(7)
@@ -76,7 +76,7 @@ describe('suppression', () => {
 })
 
 describe('settings', () => {
-  it('charge puis change la limite de lignes', async () => {
+  it('loads then changes the row limit', async () => {
     const store = useSettingsStore()
     await store.load()
     expect(store.settings?.row_limit).toBe(1000)
@@ -86,7 +86,7 @@ describe('settings', () => {
 })
 
 describe('catalog', () => {
-  it('garde le catalogue hors de la réactivité et signale ses changements', async () => {
+  it('keeps the catalog outside reactivity and signals its changes', async () => {
     const store = useCatalogStore()
     const names = computed(() => store.catalogOf(3)?.schemas.map((schema) => schema.name) ?? [])
     expect(names.value).toEqual([])

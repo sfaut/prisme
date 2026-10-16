@@ -69,14 +69,14 @@ const catalog: CatalogSchema[] = [
 ]
 
 /**
- * Libellés des enfants d'un nœud.
+ * Labels of the children of a node.
  */
 function labels(node: { children?: { label: string }[] } | undefined): string[] {
   return node?.children?.map((child) => child.label) ?? []
 }
 
 describe('sourceNodes', () => {
-  it('met une racine par source, ses bases en dessous', () => {
+  it('puts one root per source, its databases below', () => {
     const [first, second, never] = sourceNodes([
       {
         connectionId: 1,
@@ -112,16 +112,16 @@ describe('sourceNodes', () => {
     expect(first?.children?.[0]?.current).toBe(true)
     expect(second?.children?.[0]?.current).toBe(false)
     expect(labels(never)).toEqual(['chargement…'])
-    // Badge de la variante du serveur, absent tant qu'elle est inconnue.
+    // Badge of the server's flavor, absent as long as it is unknown.
     expect([first?.badge, second?.badge, never?.badge]).toEqual(['mariadb', 'mysql', undefined])
-    // Mêmes bases dans deux sources : des clefs distinctes, et chaque nœud connaît sa connexion.
+    // Same databases in two sources: distinct keys, and each node knows its connection.
     expect(first?.children?.[0]?.key).not.toBe(second?.children?.[0]?.key)
     expect(second?.children?.[0]?.children?.[0]?.children?.[0]?.connectionId).toBe(2)
   })
 })
 
-describe('bases système', () => {
-  it('cache les bases système si la connexion le demande', () => {
+describe('system databases', () => {
+  it('hides the system databases if the connection asks for it', () => {
     const schemas = ['information_schema', 'mysql', 'shop', 'sys'].map((name) => ({
       name,
       tables: [],
@@ -146,7 +146,7 @@ describe('bases système', () => {
 })
 
 describe('explorerTree', () => {
-  it('range les sources sous « Sources de données », puis « Notebooks »', () => {
+  it('puts the sources under "Sources de données", then "Notebooks"', () => {
     const source = {
       connectionId: 1,
       name: 'Origen 2',
@@ -165,20 +165,20 @@ describe('explorerTree', () => {
 })
 
 describe('catalogNodes', () => {
-  it("range les objets d'une base par dossier", () => {
+  it('puts the objects of a database by folder', () => {
     const [shop, pending] = catalogNodes(1, catalog)
     expect(labels(shop)).toEqual(['Tables (2)', 'Vues (1)', 'Procédures (1)', 'Fonctions (1)'])
     expect(labels(shop?.children?.[2])).toEqual(['purge'])
     expect(labels(pending)).toEqual(['chargement…'])
   })
 
-  it('signale la base en cours', () => {
+  it('marks the current database', () => {
     const [shop, pending] = catalogNodes(1, catalog, 'shop')
     expect(shop?.current).toBe(true)
     expect(pending?.current).toBe(false)
   })
 
-  it('détaille une table, et montre ce qui reste à recevoir', () => {
+  it('details a table, and shows what remains to be received', () => {
     const tables = catalogNodes(1, catalog)[0]?.children?.[0]
     const orders = tables?.children?.[0]
     expect(orders?.table).toBe('orders')
@@ -198,18 +198,18 @@ describe('catalogNodes', () => {
     expect(columns.map((node) => node.column?.primaryKey)).toEqual([true, false, false])
     expect(columns.map((node) => node.column?.foreignKey)).toEqual([false, false, true])
     expect(columns.map((node) => node.column?.indexed)).toEqual([true, false, true])
-    // Alignement : le nom le plus long (client_id) et au plus un symbole par colonne.
+    // Alignment: the longest name (client_id) and at most one symbol per column.
     expect(columns.map((node) => node.column?.nameWidth)).toEqual([9, 9, 9])
     expect(columns.map((node) => node.column?.markSlots)).toEqual([1, 1, 1])
     expect(labels(tables?.children?.[1])).toEqual(['chargement…'])
   })
 
-  it('met les types en capitales, sauf les valeurs d’un enum', () => {
+  it('puts the types in capitals, except the values of an enum', () => {
     expect(upperType('int unsigned')).toBe('INT UNSIGNED')
     expect(upperType("enum('a','B','it''s')")).toBe("ENUM('a','B','it''s')")
   })
 
-  it('retire la largeur d’affichage des entiers, et seulement elle', () => {
+  it('removes the display width of integers, and only it', () => {
     expect(displayedType('int(10) unsigned')).toBe('int unsigned')
     expect(displayedType('bigint(20)')).toBe('bigint')
     expect(displayedType('tinyint(1)')).toBe('tinyint')
@@ -218,7 +218,7 @@ describe('catalogNodes', () => {
     expect(displayedType('bit(1)')).toBe('bit(1)')
   })
 
-  it('libelle index, clefs étrangères et déclencheurs', () => {
+  it('labels indexes, foreign keys and triggers', () => {
     expect(indexLabel({ name: 'PRIMARY', columns: ['id'], unique: true })).toBe('PRIMARY (id)')
     expect(indexLabel({ name: 'uq', columns: ['a', 'b'], unique: true })).toBe('uq (a, b)')
     expect(indexNote({ name: 'PRIMARY', columns: ['id'], unique: true })).toBe('PRIMARY KEY')
@@ -238,9 +238,9 @@ describe('catalogNodes', () => {
     )
   })
 
-  it('protège les noms dans la requête de contenu', () => {
+  it('quotes the names in the content query', () => {
     expect(selectAllQuery('ma base', 'drôle`nom')).toBe('SELECT ALL * FROM `ma base`.`drôle``nom`')
-    // ANSI_QUOTES : guillemets doubles, doublés dans le nom.
+    // ANSI_QUOTES: double quotes, doubled in the name.
     expect(selectAllQuery('ma base', 'dit "x"', true)).toBe(
       'SELECT ALL * FROM "ma base"."dit ""x"""',
     )
@@ -248,7 +248,7 @@ describe('catalogNodes', () => {
 })
 
 describe('applyCatalogEvent', () => {
-  it('remplit le catalogue message par message', () => {
+  it('fills the catalog message by message', () => {
     const state = emptyCatalog()
     applyCatalogEvent(state, { type: 'schemas', schemas: ['a'], flavor: 'mysql' })
     expect(state.schemas).toEqual([{ name: 'a', tables: null, routines: null }])

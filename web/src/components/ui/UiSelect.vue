@@ -1,7 +1,7 @@
 <!--
-  Liste de choix, sur `Select` de Reka UI (clavier, positionnement de la
-  liste, accessibilité). Chaque choix a un libellé, une valeur et, au
-  besoin, une icône Lucide, reprise dans le bouton pour le choix en cours.
+  List of choices, on Reka UI's `Select` (keyboard, positioning of the list,
+  accessibility). Each choice has a label, a value and, when needed, a Lucide
+  icon, repeated in the button for the current choice.
 -->
 <script setup lang="ts" generic="T extends string | number">
 import { Check, ChevronDown } from 'lucide-vue-next'
@@ -21,28 +21,28 @@ import { type Component, computed } from 'vue'
 import { cssPixels } from '@/cssLength'
 
 /**
- * Écart avec le déclencheur, en pixels (`--popup-offset` du thème).
+ * Gap with the trigger, in pixels (`--popup-offset` of the theme).
  */
 const OFFSET = cssPixels('--popup-offset', 4)
 
 const props = defineProps<{
   /**
-   * Choix proposés.
+   * Offered choices.
    */
   items: { label: string; value: T; icon?: Component }[]
   /**
-   * Nom du champ, lu par les lecteurs d'écran (`aria-label`).
+   * Name of the field, read by screen readers (`aria-label`).
    */
   label: string
 }>()
 
 /**
- * Valeur choisie ; absente, le bouton reste vide.
+ * Chosen value; when absent, the button stays empty.
  */
 const model = defineModel<T | undefined>()
 
 /**
- * Choix en cours, pour son libellé et son icône dans le bouton.
+ * Current choice, for its label and its icon in the button.
  */
 const current = computed(() => props.items.find((item) => item.value === model.value))
 </script>

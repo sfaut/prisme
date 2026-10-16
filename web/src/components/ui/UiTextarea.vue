@@ -1,12 +1,12 @@
 <!--
-  Champ de saisie sur plusieurs lignes, en police de code (requêtes SQL).
+  Multi-line input field, in the code font (SQL queries).
 
-  Se lie par `v-model` à un texte. Les attributs (`placeholder`, `rows`,
-  `maxlength`, `aria-label`...) vont au champ.
+  Binds with `v-model` to a text. The attributes (`placeholder`, `rows`,
+  `maxlength`, `aria-label`...) go to the field.
 -->
 <script setup lang="ts">
 /**
- * Texte saisi.
+ * Typed text.
  */
 const model = defineModel<string>({ required: true })
 </script>

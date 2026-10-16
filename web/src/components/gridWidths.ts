@@ -1,45 +1,44 @@
 /**
- * Largeurs de colonnes choisies dans la grille de résultats, retenues par
- * requête pour la durée de la page.
+ * Column widths chosen in the result grid, remembered per query for the
+ * life of the page.
  *
- * Chaque exécution recrée la grille de résultats : sans mémoire, relancer
- * une requête ferait perdre les largeurs choisies. Elles sont donc gardées
- * ici, par texte de requête, et ne s'appliquent que si le résultat a les
- * mêmes colonnes, dans le même ordre (une table modifiée entre-temps repart
- * des largeurs estimées).
+ * Each run recreates the result grid: without memory, running a query again
+ * would lose the chosen widths. They are therefore kept here, by query text,
+ * and only apply if the result has the same columns, in the same order (a
+ * table changed in the meantime starts again from the estimated widths).
  */
 
 /**
- * Nombre de requêtes dont les largeurs sont retenues ; au-delà, les plus
- * anciennes sont oubliées.
+ * Number of queries whose widths are remembered; beyond, the oldest ones are
+ * forgotten.
  */
 const MAX_REMEMBERED = 100
 
 /**
- * Largeurs retenues pour une requête.
+ * Widths remembered for a query.
  */
 interface RememberedWidths {
   /**
-   * Noms des colonnes du résultat, dans l'ordre du `SELECT`.
+   * Names of the result's columns, in the order of the `SELECT`.
    */
   columns: string[]
   /**
-   * Largeur choisie, en pixels, par indice de colonne dans le `SELECT`.
+   * Chosen width, in pixels, by column index in the `SELECT`.
    */
   widths: Record<number, number>
 }
 
 /**
- * Largeurs retenues, par texte de requête, de la plus ancienne à la plus récente.
+ * Remembered widths, by query text, from the oldest to the most recent.
  */
 const remembered = new Map<string, RememberedWidths>()
 
 /**
- * Largeurs choisies pour une requête, vides si aucune n'est retenue ou si les
- * colonnes ont changé.
+ * Widths chosen for a query, empty if none is remembered or if the columns
+ * have changed.
  *
- * @param sql Texte de la requête.
- * @param columns Noms des colonnes du résultat.
+ * @param sql Text of the query.
+ * @param columns Names of the result's columns.
  */
 export function rememberedWidths(sql: string, columns: string[]): Record<number, number> {
   const entry = remembered.get(sql)
@@ -50,18 +49,18 @@ export function rememberedWidths(sql: string, columns: string[]): Record<number,
 }
 
 /**
- * Retient les largeurs choisies pour une requête.
+ * Remembers the widths chosen for a query.
  *
- * @param sql Texte de la requête.
- * @param columns Noms des colonnes du résultat.
- * @param widths Largeur choisie, par indice de colonne.
+ * @param sql Text of the query.
+ * @param columns Names of the result's columns.
+ * @param widths Chosen width, by column index.
  */
 export function rememberWidths(
   sql: string,
   columns: string[],
   widths: Record<number, number>,
 ): void {
-  // Supprimer puis remettre : la requête devient la plus récente.
+  // Delete then put back: the query becomes the most recent.
   remembered.delete(sql)
   remembered.set(sql, { columns: [...columns], widths: { ...widths } })
   if (remembered.size > MAX_REMEMBERED) {
