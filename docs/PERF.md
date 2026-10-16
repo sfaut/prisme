@@ -421,3 +421,40 @@ for the editor (`keywords()`) still returns its names in capitals.
 - **A lookup in a list of several hundred entries per token is still linear.**
   A map built once would remove it; not done here, as the gain is already
   measured on the allocations.
+
+## 7. Identifiers by visitor, keywords by index
+
+### 7.1 Measurement
+
+On a multi-line `INSERT` of 4 000 rows (146 KB), measured with a temporary
+test of `prisme-dialects`:
+
+| Step                          | Before | After  |
+|-------------------------------|--------|--------|
+| Analysis of the text          | 0.67 s | 0.21 s |
+| Beautifying                   | 1.19 s | 0.82 s |
+
+### 7.2 Identifiers: visitor instead of the JSON of the tree
+
+The analysis found the position of each identifier by serialising the whole
+syntax tree to JSON, then looking for the objects that had the shape of an
+identifier. The serialisation took 0.18 s on this query, and the shape test
+could match any other node of the same form. The visitor of `sqlparser`
+(`pre_visit_ident`) reaches each identifier directly. A test compared the two
+methods on eight queries (joins, CTEs, subqueries, `UPDATE`, `INSERT`,
+`CREATE`, quoted names): the same positions. The `serde_json` dependency and
+the `serde` option of `sqlparser` are removed from `prisme-dialects`.
+
+### 7.3 Keywords: index instead of a walk
+
+Each keyword check walked the list of the dialect's words, several hundred
+entries. The words are now indexed once by their name in capitals, and the
+values in a set. A lookup is a hash, and the words are compared without
+allocating.
+
+### 7.4 Takeaways
+
+- **Prefer the visitor of a parser to the shape of a serialised tree**: the
+  visitor says what a node is, the shape only suggests it.
+- **A table of words read once is the normal form of a keyword list**: a
+  scan per token only makes sense for a handful of words.

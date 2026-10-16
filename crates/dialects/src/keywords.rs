@@ -7,6 +7,7 @@
 //! word can carry the version it appeared in (`since`) or was removed in
 //! (`until`). The format is described at the top of each file.
 
+use std::collections::{HashMap, HashSet};
 use std::sync::OnceLock;
 
 use serde::Deserialize;
@@ -104,38 +105,79 @@ pub fn keywords(dialect: Dialect, version: Option<&str>) -> Keywords {
     }
 }
 
-/// Words of a dialect's file, all categories together, whose name is `word`.
-fn entries_named(word: &str, dialect: Dialect) -> impl Iterator<Item = &'static Entry> + '_ {
-    let file = file_of(dialect);
-    [&file.reserved, &file.keywords, &file.types, &file.literals]
-        .into_iter()
-        .flatten()
-        .filter(move |entry| entry.name().eq_ignore_ascii_case(word))
+/// Entries of a dialect's file, all categories together, whose name is `word`.
+fn entries_named(word: &str, dialect: Dialect) -> &'static [&'static Entry] {
+    index_of(dialect)
+        .entries
+        .get(&word.to_ascii_uppercase())
+        .map_or(&[], Vec::as_slice)
 }
 
 /// Tells whether an unquoted word is a keyword of the dialect in this server
 /// version (without a version: all of them): it goes to capitals when the
 /// query could not be parsed.
 pub(crate) fn is_keyword(word: &str, dialect: Dialect, version: Option<&str>) -> bool {
-    entries_named(word, dialect).any(|entry| entry.exists_in(version))
+    entries_named(word, dialect)
+        .iter()
+        .any(|entry| entry.exists_in(version))
 }
 
 /// Tells whether a keyword recognised by the parser exists in this server
 /// version: a word missing from the file (non-reserved keyword like `CAST`)
 /// is taken as known; a word of the file must exist in the version.
 pub(crate) fn is_known_in_version(word: &str, dialect: Dialect, version: Option<&str>) -> bool {
-    let mut entries = entries_named(word, dialect).peekable();
-    entries.peek().is_none() || entries.any(|entry| entry.exists_in(version))
+    let entries = entries_named(word, dialect);
+    entries.is_empty() || entries.iter().any(|entry| entry.exists_in(version))
 }
 
 /// Tells whether an unquoted word is a keyword that does not designate a value
 /// (`SELECT`, `AND`, `IN`...): it cannot precede a binary operator.
 pub(crate) fn is_structural_keyword(word: &str, dialect: Dialect) -> bool {
     is_keyword(word, dialect, None)
-        && !file_of(dialect)
-            .literals
-            .iter()
-            .any(|entry| entry.name().eq_ignore_ascii_case(word))
+        && !index_of(dialect)
+            .values
+            .contains(&word.to_ascii_uppercase())
+}
+
+/// Lookup tables of a dialect's file, built once: a word is found by its name
+/// in capitals, instead of a comparison with each entry of the file.
+#[derive(Default)]
+struct NameIndex {
+    /// Entries of each name, in capitals, all categories together.
+    entries: HashMap<String, Vec<&'static Entry>>,
+    /// Names of the values (`literals`), in capitals.
+    values: HashSet<String>,
+}
+
+/// Lookup tables of a dialect, read only once.
+fn index_of(dialect: Dialect) -> &'static NameIndex {
+    static MYSQL: OnceLock<NameIndex> = OnceLock::new();
+    static MARIADB: OnceLock<NameIndex> = OnceLock::new();
+    match dialect {
+        Dialect::MySql => MYSQL.get_or_init(|| name_index(file_of(dialect))),
+        Dialect::MariaDb => MARIADB.get_or_init(|| name_index(file_of(dialect))),
+    }
+}
+
+/// Builds the lookup tables of a keyword file, read once for the whole program.
+fn name_index(file: &'static KeywordFile) -> NameIndex {
+    let mut index = NameIndex::default();
+    for entry in [&file.reserved, &file.keywords, &file.types, &file.literals]
+        .into_iter()
+        .flatten()
+    {
+        index
+            .entries
+            .entry(entry.name().to_ascii_uppercase())
+            .or_default()
+            .push(entry);
+    }
+    index.values = file
+        .literals
+        .iter()
+        .map(|entry| entry.name().to_ascii_uppercase())
+        .collect();
+    index
 }
 
 /// Keyword file of a dialect, read only once.
