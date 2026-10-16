@@ -6,7 +6,7 @@
 //!
 //! 1. `schemas`: names of all the databases, with the server's flavor (also
 //!    remembered on the connection, for the explorer's badge);
-//! 2. `objects`: tables, views, procedures and functions, database by
+//! 2. `objects`: tables, views, procedures, functions and events, database by
 //!    database;
 //! 3. `details`: columns, indexes, foreign keys and triggers of the tables,
 //!    database by database;
@@ -53,7 +53,7 @@ pub enum CatalogEvent {
         schemas: Vec<String>,
         flavor: Flavor,
     },
-    /// Objects of a database: tables, views, procedures and functions.
+    /// Objects of a database: tables, views, procedures, functions and events.
     Objects {
         schema: String,
         objects: SchemaObjects,

@@ -148,6 +148,8 @@ async fn reads_the_catalog_schema_by_schema() {
         "CREATE TRIGGER t_bi BEFORE INSERT ON t FOR EACH ROW SET NEW.label = UPPER(NEW.label)",
         "CREATE PROCEDURE do_nothing() BEGIN END",
         "CREATE FUNCTION one() RETURNS INT DETERMINISTIC RETURN 1",
+        "CREATE EVENT e_daily ON SCHEDULE EVERY 1 DAY DO SELECT 1",
+        "CREATE EVENT e_paused ON SCHEDULE EVERY 1 DAY DISABLE DO SELECT 1",
     ] {
         execute(&mut connection, sql).await.unwrap().discard().await;
     }
@@ -181,6 +183,12 @@ async fn reads_the_catalog_schema_by_schema() {
             ("one", RoutineKind::Function)
         ]
     );
+    let events: Vec<_> = objects
+        .events
+        .iter()
+        .map(|event| (event.name.as_str(), event.enabled))
+        .collect();
+    assert_eq!(events, [("e_daily", true), ("e_paused", false)]);
 
     let details = catalog::details(&mut connection, "test").await.unwrap();
     let t = details.iter().find(|table| table.table == "t").unwrap();

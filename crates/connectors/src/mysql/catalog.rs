@@ -4,7 +4,7 @@
 //! arrive, in three steps:
 //!
 //! 1. `schemas`: database names;
-//! 2. `objects`: tables, views, procedures and functions of a database;
+//! 2. `objects`: tables, views, procedures, functions and events of a database;
 //! 3. `details`: columns, indexes, foreign keys and triggers of each table of
 //!    a database.
 //!
@@ -67,7 +67,17 @@ pub enum RoutineKind {
     Function,
 }
 
-/// Objects of a database: tables and views, procedures and functions, by name.
+/// Scheduled event of a database (`CREATE EVENT`, MySQL and MariaDB).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct EventInfo {
+    /// Name of the event.
+    pub name: String,
+    /// Running on its schedule (`ENABLED`), or paused (`DISABLED`).
+    pub enabled: bool,
+}
+
+/// Objects of a database: tables and views, procedures and functions, events, by name.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct SchemaObjects {
@@ -75,6 +85,8 @@ pub struct SchemaObjects {
     pub tables: Vec<TableInfo>,
     /// Procedures and functions.
     pub routines: Vec<RoutineInfo>,
+    /// Scheduled events.
+    pub events: Vec<EventInfo>,
 }
 
 /// Column of a table.
@@ -190,7 +202,21 @@ pub async fn objects(
             (schema,),
         )
         .await?;
+    let events: Vec<(String, String)> = connection
+        .exec(
+            "SELECT EVENT_NAME, STATUS FROM information_schema.EVENTS
+             WHERE EVENT_SCHEMA = ? ORDER BY EVENT_NAME",
+            (schema,),
+        )
+        .await?;
     Ok(SchemaObjects {
+        events: events
+            .into_iter()
+            .map(|(name, status)| EventInfo {
+                name,
+                enabled: status == "ENABLED",
+            })
+            .collect(),
         tables: tables
             .into_iter()
             .map(|(name, table_type)| TableInfo {
