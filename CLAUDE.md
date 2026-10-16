@@ -14,7 +14,7 @@ This file is short. Detailed decisions are in `docs/`:
 
 ## Code principles
 
-- The code is optimal and follows the idioms of its stack (Rust, TypeScript, Vue).
+- The code is optimal and follows the idioms of its stack (Rust, TypeScript, Vue) and the industry's best practices.
 - Small, named modules, short functions, no needless abstraction.
 - A module comment at the top of each important file, saying what the module does and why it exists.
 - Tests per module, plus the conformance suite (see below).
