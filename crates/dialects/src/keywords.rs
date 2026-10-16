@@ -45,10 +45,10 @@ enum Entry {
 }
 
 impl Entry {
-    /// The word, in capitals.
-    fn name(&self) -> String {
+    /// The word as written in the file. Comparisons ignore its case.
+    fn name(&self) -> &str {
         match self {
-            Self::Name(name) | Self::Versioned { name, .. } => name.to_ascii_uppercase(),
+            Self::Name(name) | Self::Versioned { name, .. } => name,
         }
     }
 
@@ -93,7 +93,7 @@ pub fn keywords(dialect: Dialect, version: Option<&str>) -> Keywords {
         entries
             .iter()
             .filter(|entry| entry.exists_in(version))
-            .map(Entry::name)
+            .map(|entry| entry.name().to_ascii_uppercase())
             .collect()
     };
     Keywords {
@@ -105,13 +105,12 @@ pub fn keywords(dialect: Dialect, version: Option<&str>) -> Keywords {
 }
 
 /// Words of a dialect's file, all categories together, whose name is `word`.
-fn entries_named<'a>(word: &str, dialect: Dialect) -> impl Iterator<Item = &'a Entry> + use<'a> {
+fn entries_named(word: &str, dialect: Dialect) -> impl Iterator<Item = &'static Entry> + '_ {
     let file = file_of(dialect);
-    let upper = word.to_ascii_uppercase();
     [&file.reserved, &file.keywords, &file.types, &file.literals]
         .into_iter()
         .flatten()
-        .filter(move |entry| entry.name() == upper)
+        .filter(move |entry| entry.name().eq_ignore_ascii_case(word))
 }
 
 /// Tells whether an unquoted word is a keyword of the dialect in this server
@@ -132,12 +131,11 @@ pub(crate) fn is_known_in_version(word: &str, dialect: Dialect, version: Option<
 /// Tells whether an unquoted word is a keyword that does not designate a value
 /// (`SELECT`, `AND`, `IN`...): it cannot precede a binary operator.
 pub(crate) fn is_structural_keyword(word: &str, dialect: Dialect) -> bool {
-    let upper = word.to_ascii_uppercase();
     is_keyword(word, dialect, None)
         && !file_of(dialect)
             .literals
             .iter()
-            .any(|entry| entry.name() == upper)
+            .any(|entry| entry.name().eq_ignore_ascii_case(word))
 }
 
 /// Keyword file of a dialect, read only once.

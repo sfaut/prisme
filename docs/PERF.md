@@ -387,3 +387,37 @@ computed at once, in its first chunk.
   it can take longer than a frame. Splitting it costs a little more in total.
 - **The merge of a chunk is linear in the rows already sorted**: a much
   larger result would need a different split, or a worker.
+
+## 6. Keyword lookups allocated for each entry
+
+### 6.1 Symptom
+
+Beautifying a multi-line `INSERT` of 4 000 rows (146 KB) took 3.2 s, and its
+analysis took 1.0 s. The time grew linearly with the query, but with a large
+constant factor.
+
+### 6.2 Measurement
+
+On the same query, measured with a temporary test of `prisme-dialects`:
+analysis 0.97 s → 0.67 s, beautifying 3.17 s → 1.19 s.
+
+### 6.3 Cause
+
+Each keyword check (`is_keyword`, `is_known_in_version`,
+`is_structural_keyword`) compared the word with every entry of the dialect's
+keyword file, and each comparison built the entry's name again, in capitals,
+in a new `String`. Several checks run for each token, in several passes.
+
+### 6.4 Fix
+
+`Entry::name` returns the name as written in the file, and the comparisons
+ignore its case (`eq_ignore_ascii_case`): no allocation. The list of keywords
+for the editor (`keywords()`) still returns its names in capitals.
+
+### 6.5 Takeaways
+
+- **A helper called per token must not allocate.** Check the cost of the
+  helpers of a hot loop before the loop.
+- **A lookup in a list of several hundred entries per token is still linear.**
+  A map built once would remove it; not done here, as the gain is already
+  measured on the allocations.
