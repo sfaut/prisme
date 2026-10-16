@@ -1,12 +1,11 @@
-//! Dialectes SQL de Prisme : analyse et réécriture des requêtes selon le dialecte.
+//! Prisme's SQL dialects: analysis and rewriting of queries per dialect.
 //!
-//! S'appuie sur `sqlparser` (voir `docs/V1.md`, section 3.2). Pour l'instant :
-//! la limite de lignes par défaut (module `limit`), la classification
-//! lecture / écriture (module `classify`), l'enjoliveur (module `beautify`),
-//! les mots-clefs de chaque dialecte (module `keywords`, fichiers
-//! `keywords/*.yaml`) et la position des erreurs de syntaxe (module `syntax`).
-//! Le catalogue de fonctions et les émetteurs par dialecte viendront avec la
-//! traduction.
+//! Relies on `sqlparser` (see `docs/V1.md`, section 3.2). For now: the
+//! default row limit (`limit` module), the read / write classification
+//! (`classify` module), the beautifier (`beautify` module), the keywords of
+//! each dialect (`keywords` module, `keywords/*.yaml` files) and the position
+//! of syntax errors (`syntax` module). The function catalog and the emitters
+//! per dialect will come with the translation.
 
 mod alias;
 pub mod analysis;
@@ -20,17 +19,17 @@ mod parse;
 pub mod syntax;
 mod whitespace;
 
-/// Dialecte SQL d'une requête.
+/// SQL dialect of a query.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
     /// MySQL.
     MySql,
-    /// MariaDB. `sqlparser` n'a pas de dialecte MariaDB : celui de MySQL sert de base.
+    /// MariaDB. `sqlparser` has no MariaDB dialect: the MySQL one serves as a base.
     MariaDb,
 }
 
 impl Dialect {
-    /// Dialecte `sqlparser` utilisé pour analyser une requête de ce dialecte.
+    /// `sqlparser` dialect used to parse a query of this dialect.
     fn parser_dialect(self) -> Box<dyn sqlparser::dialect::Dialect> {
         match self {
             Self::MySql | Self::MariaDb => Box::new(sqlparser::dialect::MySqlDialect {}),

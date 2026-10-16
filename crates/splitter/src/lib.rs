@@ -1,84 +1,82 @@
-//! Découpeur de requêtes : sépare un texte SQL en requêtes, et trouve celle
-//! qui se trouve sous le curseur (Ctrl-Entrée).
+//! Query splitter: splits a SQL text into queries, and finds the one under
+//! the cursor (Ctrl+Enter).
 //!
-//! Le découpage suit les règles lexicales de MySQL et MariaDB, sans analyser
-//! le SQL : un `;` sépare deux requêtes, sauf dans une chaîne (`'…'`, `"…"`),
-//! un identifiant protégé (`` `…` ``) ou un commentaire (`-- …`, `# …`,
-//! `/* … */`). La commande `DELIMITER` du client `mysql` est reconnue : elle
-//! change le séparateur (par exemple `//` autour d'un `CREATE PROCEDURE`) et
-//! n'est jamais envoyée au serveur.
+//! Splitting follows the lexical rules of MySQL and MariaDB, without parsing
+//! the SQL: a `;` separates two queries, except inside a string (`'…'`,
+//! `"…"`), a quoted identifier (`` `…` ``) or a comment (`-- …`, `# …`,
+//! `/* … */`). The `DELIMITER` command of the `mysql` client is recognised: it
+//! changes the separator (for example `//` around a `CREATE PROCEDURE`) and is
+//! never sent to the server.
 //!
-//! `split` donne les requêtes à exécuter ; `chunks` donne le texte entier en
-//! morceaux (commandes `DELIMITER`, requêtes avec leurs commentaires et leur
-//! séparateur), pour qui doit le réécrire sans rien perdre (l'enjoliveur).
+//! `split` gives the queries to run; `chunks` gives the whole text in pieces
+//! (`DELIMITER` commands, queries with their comments and their separator),
+//! for whoever must rewrite it without losing anything (the beautifier).
 //!
-//! Les positions (`start`, `end`) sont comptées en unités UTF-16, comme celles
-//! de l'éditeur de l'interface (CodeMirror) : un curseur se compare
-//! directement à elles.
+//! Positions (`start`, `end`) are counted in UTF-16 units, like those of the
+//! interface's editor (CodeMirror): a cursor compares to them directly.
 //!
-//! Le parcours se fait octet par octet : tous les caractères qui comptent
-//! (guillemets, séparateurs, marques de commentaire) sont en ASCII, et les
-//! octets d'un caractère UTF-8 multi-octets valent toujours au moins 0x80,
-//! sans confusion possible.
+//! The scan goes byte by byte: all the characters that matter (quotes,
+//! separators, comment markers) are ASCII, and the bytes of a multi-byte UTF-8
+//! character are always at least 0x80, so they cannot be mistaken for them.
 
-/// Séparateur de requêtes par défaut.
+/// Default query separator.
 const DEFAULT_DELIMITER: &str = ";";
 
-/// Requête découpée dans le texte.
+/// Query cut out of the text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Statement {
-    /// Texte de la requête, sans son séparateur ni les commentaires et espaces qui la précèdent.
+    /// Text of the query, without its separator nor the comments and spaces before it.
     pub sql: String,
-    /// Début de la requête dans le texte, en unités UTF-16 : premier caractère significatif.
+    /// Start of the query in the text, in UTF-16 units: first significant character.
     pub start: usize,
-    /// Fin de la requête dans le texte, en unités UTF-16, séparateur compris.
+    /// End of the query in the text, in UTF-16 units, separator included.
     pub end: usize,
 }
 
-/// Morceau du texte, dans l'ordre : mis bout à bout, les morceaux redonnent
-/// le texte, aux blancs près autour des commandes `DELIMITER`.
+/// Piece of the text, in order: put end to end, the pieces give the text
+/// back, except for whitespace around `DELIMITER` commands.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Chunk {
-    /// Commande `DELIMITER` du client `mysql`.
+    /// `DELIMITER` command of the `mysql` client.
     Command {
-        /// Ligne de la commande, sans les blancs qui l'entourent.
+        /// Line of the command, without the whitespace around it.
         line: String,
-        /// Nouveau séparateur.
+        /// New separator.
         delimiter: String,
     },
-    /// Texte d'une requête, avec les espaces et commentaires qui la précèdent.
+    /// Text of a query, with the spaces and comments before it.
     Sql {
-        /// Texte, sans son séparateur ; parfois fait seulement de blancs et
-        /// de commentaires.
+        /// Text, without its separator; sometimes made only of whitespace
+        /// and comments.
         text: String,
-        /// Séparateur qui le termine (`;`, `//`...), vide en fin de texte.
+        /// Separator that ends it (`;`, `//`...), empty at the end of the text.
         delimiter: String,
     },
 }
 
-/// Ce que le parcours du texte rencontre.
+/// What the scan of the text comes across.
 enum Event {
-    /// Commande `DELIMITER`, de l'octet `start` à la fin de sa ligne `end`.
+    /// `DELIMITER` command, from byte `start` to the end of its line `end`.
     Command {
         start: usize,
         end: usize,
         delimiter: String,
     },
-    /// Requête (ou blancs et commentaires seuls) terminée par `delimiter`.
+    /// Query (or whitespace and comments only) ended by `delimiter`.
     Statement {
-        /// Début du morceau : fin du séparateur ou de la commande précédente.
+        /// Start of the piece: end of the previous separator or command.
         chunk_start: usize,
-        /// Premier octet significatif, absent s'il n'y a que blancs et commentaires.
+        /// First significant byte, absent if there are only whitespace and comments.
         first: Option<usize>,
-        /// Début du séparateur, ou fin du texte.
+        /// Start of the separator, or end of the text.
         body_end: usize,
-        /// Fin du séparateur.
+        /// End of the separator.
         end: usize,
         delimiter: String,
     },
 }
 
-/// Découpe `text` en requêtes. Les morceaux vides (espaces, commentaires seuls) sont ignorés.
+/// Splits `text` into queries. Empty pieces (spaces, comments only) are ignored.
 pub fn split(text: &str) -> Vec<Statement> {
     scan(text)
         .into_iter()
@@ -94,8 +92,8 @@ pub fn split(text: &str) -> Vec<Statement> {
         .collect()
 }
 
-/// Découpe `text` en morceaux, sans rien perdre : commandes `DELIMITER`,
-/// requêtes avec leurs commentaires, blancs et commentaires de fin de texte.
+/// Cuts `text` into pieces, without losing anything: `DELIMITER` commands,
+/// queries with their comments, whitespace and comments at the end of the text.
 pub fn chunks(text: &str) -> Vec<Chunk> {
     scan(text)
         .into_iter()
@@ -121,13 +119,13 @@ pub fn chunks(text: &str) -> Vec<Chunk> {
         .collect()
 }
 
-/// Parcourt `text` et relève, dans l'ordre, les commandes `DELIMITER` et
-/// les morceaux qui se terminent par un séparateur ou par la fin du texte.
+/// Scans `text` and collects, in order, the `DELIMITER` commands and the
+/// pieces that end with a separator or with the end of the text.
 fn scan(text: &str) -> Vec<Event> {
     let bytes = text.as_bytes();
     let mut events = Vec::new();
     let mut delimiter = DEFAULT_DELIMITER.to_string();
-    // Début du morceau en cours, et son premier octet significatif s'il y en a un.
+    // Start of the current piece, and its first significant byte if there is one.
     let mut chunk_start = 0;
     let mut start: Option<usize> = None;
     let mut i = 0;
@@ -137,7 +135,7 @@ fn scan(text: &str) -> Vec<Event> {
             && at_line_start(bytes, i)
             && let Some((new_delimiter, line_end)) = delimiter_command(text, i)
         {
-            // Commentaires qui précèdent la commande : un morceau à part.
+            // Comments before the command: a piece of their own.
             if !text[chunk_start..i].trim().is_empty() {
                 events.push(Event::Statement {
                     chunk_start,
@@ -196,12 +194,12 @@ fn scan(text: &str) -> Vec<Event> {
     events
 }
 
-/// Indice de la requête sous le curseur `cursor` (en unités UTF-16).
+/// Index of the query under the cursor `cursor` (in UTF-16 units).
 ///
-/// C'est la dernière requête qui commence avant le curseur : un curseur placé
-/// entre deux requêtes (après le séparateur de l'une, avant le début de la
-/// suivante) désigne la précédente. Avant la première requête, c'est la
-/// première. `None` s'il n'y a aucune requête.
+/// It is the last query that starts before the cursor: a cursor placed
+/// between two queries (after the separator of one, before the start of the
+/// next) designates the previous one. Before the first query, it is the
+/// first one. `None` if there is no query.
 pub fn statement_at(statements: &[Statement], cursor: usize) -> Option<usize> {
     if statements.is_empty() {
         return None;
@@ -214,7 +212,7 @@ pub fn statement_at(statements: &[Statement], cursor: usize) -> Option<usize> {
     )
 }
 
-/// Construit une requête à partir de ses positions en octets.
+/// Builds a query from its byte positions.
 fn statement(text: &str, first: usize, body_end: usize, end: usize) -> Statement {
     Statement {
         sql: text[first..body_end].trim_end().to_string(),
@@ -223,12 +221,12 @@ fn statement(text: &str, first: usize, body_end: usize, end: usize) -> Statement
     }
 }
 
-/// Position en unités UTF-16 de l'octet `byte` du texte.
+/// Position in UTF-16 units of byte `byte` of the text.
 fn utf16_offset(text: &str, byte: usize) -> usize {
     text[..byte].encode_utf16().count()
 }
 
-/// Indique si l'octet `i` n'est précédé, sur sa ligne, que d'espaces.
+/// Tells whether byte `i` is only preceded, on its line, by spaces.
 fn at_line_start(bytes: &[u8], i: usize) -> bool {
     bytes[..i]
         .iter()
@@ -237,8 +235,8 @@ fn at_line_start(bytes: &[u8], i: usize) -> bool {
         .all(|&byte| byte == b' ' || byte == b'\t' || byte == b'\r')
 }
 
-/// Reconnaît une commande `DELIMITER x` qui commence à l'octet `i` (espaces
-/// compris). Renvoie le nouveau séparateur et la fin de la ligne.
+/// Recognises a `DELIMITER x` command starting at byte `i` (spaces
+/// included). Returns the new separator and the end of the line.
 fn delimiter_command(text: &str, i: usize) -> Option<(String, usize)> {
     let end = line_end(text.as_bytes(), i);
     let line = text[i..end].trim();
@@ -250,13 +248,13 @@ fn delimiter_command(text: &str, i: usize) -> Option<(String, usize)> {
     Some((new_delimiter.to_string(), end))
 }
 
-/// Indique si `--` à l'octet `i` ouvre un commentaire : il doit être suivi
-/// d'un espace, d'un caractère de contrôle ou de la fin du texte (règle MySQL).
+/// Tells whether `--` at byte `i` opens a comment: it must be followed by a
+/// space, a control character or the end of the text (MySQL rule).
 fn is_dash_comment(bytes: &[u8], i: usize) -> bool {
     bytes.get(i + 1) == Some(&b'-') && bytes.get(i + 2).is_none_or(|&byte| byte <= b' ')
 }
 
-/// Position du retour à la ligne qui termine la ligne de l'octet `i`, ou fin du texte.
+/// Position of the line feed that ends the line of byte `i`, or end of the text.
 fn line_end(bytes: &[u8], i: usize) -> usize {
     bytes[i..]
         .iter()
@@ -264,7 +262,7 @@ fn line_end(bytes: &[u8], i: usize) -> usize {
         .map_or(bytes.len(), |offset| i + offset)
 }
 
-/// Position qui suit la fin du commentaire `/* … */` ouvert à l'octet `i`.
+/// Position following the end of the `/* … */` comment opened at byte `i`.
 fn block_comment_end(bytes: &[u8], i: usize) -> usize {
     bytes[i + 2..]
         .windows(2)
@@ -272,10 +270,10 @@ fn block_comment_end(bytes: &[u8], i: usize) -> usize {
         .map_or(bytes.len(), |offset| i + 2 + offset + 2)
 }
 
-/// Position qui suit la fin de la chaîne ou de l'identifiant ouvert par `quote` à l'octet `i`.
+/// Position following the end of the string or identifier opened by `quote` at byte `i`.
 ///
-/// Un guillemet doublé reste dans la chaîne. Dans `'…'` et `"…"`, la barre
-/// oblique inverse protège le caractère suivant ; pas dans `` `…` ``.
+/// A doubled quote stays in the string. In `'…'` and `"…"`, the backslash
+/// escapes the next character; not in `` `…` ``.
 fn quoted_end(bytes: &[u8], i: usize, quote: u8) -> usize {
     let mut j = i + 1;
     while j < bytes.len() {
@@ -312,7 +310,7 @@ mod tests {
             ["select * from xlist.video", "select * from xlist.person"]
         );
         assert_eq!(sqls("SELECT 1"), ["SELECT 1"]);
-        assert!(sqls("  ;; -- rien\n").is_empty());
+        assert!(sqls("  ;; -- none\n").is_empty());
     }
 
     #[test]
@@ -325,8 +323,8 @@ mod tests {
             ]
         );
         assert_eq!(
-            sqls("SELECT 1 -- fin; pas ici\n; # rien; non plus\nSELECT /* ; */ 2"),
-            ["SELECT 1 -- fin; pas ici", "SELECT /* ; */ 2"]
+            sqls("SELECT 1 -- end; not here\n; # none; either\nSELECT /* ; */ 2"),
+            ["SELECT 1 -- end; not here", "SELECT /* ; */ 2"]
         );
     }
 
@@ -337,7 +335,7 @@ mod tests {
 
     #[test]
     fn statements_start_after_leading_comments() {
-        let statements = split("-- titre\n/* note */ SELECT 1;");
+        let statements = split("-- title\n/* note */ SELECT 1;");
         assert_eq!(statements[0].sql, "SELECT 1");
         assert_eq!(statements[0].start, 20);
         assert_eq!(statements[0].end, 29);
@@ -357,7 +355,7 @@ mod tests {
 
     #[test]
     fn cuts_the_whole_text_into_chunks() {
-        let text = "-- purge\nDELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END //\n delimiter ;\nCALL p(); # fin\n";
+        let text = "-- purge\nDELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT 1; END //\n delimiter ;\nCALL p(); # end\n";
         assert_eq!(
             chunks(text),
             [
@@ -373,7 +371,7 @@ mod tests {
                     text: "\nCREATE PROCEDURE p() BEGIN SELECT 1; END ".to_string(),
                     delimiter: "//".to_string(),
                 },
-                // Les seuls blancs avant une commande ne font pas un morceau.
+                // Whitespace alone before a command does not make a piece.
                 Chunk::Command {
                     line: "delimiter ;".to_string(),
                     delimiter: ";".to_string(),
@@ -383,7 +381,7 @@ mod tests {
                     delimiter: ";".to_string(),
                 },
                 Chunk::Sql {
-                    text: " # fin\n".to_string(),
+                    text: " # end\n".to_string(),
                     delimiter: String::new(),
                 },
             ]
@@ -392,7 +390,7 @@ mod tests {
 
     #[test]
     fn counts_positions_in_utf16_units() {
-        // « é » compte pour 1 unité UTF-16 (2 octets), « 😀 » pour 2 unités (4 octets).
+        // "é" counts for 1 UTF-16 unit (2 bytes), "😀" for 2 units (4 bytes).
         let statements = split("SELECT 'é😀';\nSELECT 2;");
         assert_eq!(statements[0].end, 13);
         assert_eq!(statements[1].start, 14);
@@ -406,7 +404,7 @@ mod tests {
 
         assert_eq!(statement_at(&statements, 0), Some(0));
         assert_eq!(statement_at(&statements, 10), Some(0));
-        // Ligne vide entre les deux : la précédente.
+        // Empty line between the two: the previous one.
         assert_eq!(statement_at(&statements, 27), Some(0));
         assert_eq!(statement_at(&statements, second), Some(1));
         assert_eq!(statement_at(&statements, text.len()), Some(1));
@@ -415,7 +413,7 @@ mod tests {
 
     #[test]
     fn cursor_before_the_first_statement_designates_it() {
-        let statements = split("\n\n-- commentaire\nSELECT 1;");
+        let statements = split("\n\n-- comment\nSELECT 1;");
         assert_eq!(statement_at(&statements, 0), Some(0));
     }
 }

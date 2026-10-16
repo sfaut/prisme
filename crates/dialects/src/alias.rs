@@ -1,16 +1,15 @@
-//! Règle de l'enjoliveur : `AS` devant chaque alias de colonne ou de table.
+//! Beautifier rule: `AS` before each column or table alias.
 //!
-//! `SELECT count(*) n FROM video v` devient `SELECT count(*) AS n FROM video
-//! AS v`. Le sens ne change pas : en MySQL et MariaDB, `AS` est facultatif
-//! devant un alias, et il rend la lecture sûre (`SELECT a b` ressemble à
-//! un oubli de virgule).
+//! `SELECT count(*) n FROM video v` becomes `SELECT count(*) AS n FROM video
+//! AS v`. The meaning does not change: in MySQL and MariaDB, `AS` is optional
+//! before an alias, and it makes reading safe (`SELECT a b` looks like a
+//! forgotten comma).
 //!
-//! Les alias sont trouvés par l'analyseur de `sqlparser`, pas par le texte :
-//! c'est lui qui sait que `b` est un alias dans `SELECT a b`, mais pas
-//! `DAY` dans `INTERVAL 1 DAY`. Sa position dans le texte d'origine
-//! (`Ident::span`) dit où insérer `AS`. Dans une partie que l'analyseur ne
-//! comprend pas, rien n'est inséré ; l'analyse reprend ensuite (module
-//! `parse`).
+//! Aliases are found by `sqlparser`'s parser, not by the text: it knows that
+//! `b` is an alias in `SELECT a b`, but not `DAY` in `INTERVAL 1 DAY`. Its
+//! position in the original text (`Ident::span`) tells where to insert `AS`.
+//! In a part the parser does not understand, nothing is inserted; parsing
+//! then resumes (`parse` module).
 
 use std::ops::ControlFlow;
 
@@ -22,7 +21,7 @@ use crate::Dialect;
 use crate::limit::byte_offset;
 use crate::parse::parse_each;
 
-/// Ajoute `AS` devant les alias qui n'en ont pas. Voir l'en-tête du module.
+/// Adds `AS` before the aliases that lack it. See the module header.
 pub(crate) fn add_alias_keyword(sql: &str, dialect: Dialect) -> String {
     let parser_dialect = dialect.parser_dialect();
     let Ok(tokens) = Tokenizer::new(parser_dialect.as_ref(), sql).tokenize_with_location() else {
@@ -34,7 +33,7 @@ pub(crate) fn add_alias_keyword(sql: &str, dialect: Dialect) -> String {
         let _ = statement.visit(&mut finder);
     }
 
-    // Insertions de la fin vers le début : les positions restent justes.
+    // Insertions from the end to the start: positions stay correct.
     let mut offsets: Vec<usize> = finder
         .starts
         .into_iter()
@@ -50,9 +49,9 @@ pub(crate) fn add_alias_keyword(sql: &str, dialect: Dialect) -> String {
     result
 }
 
-/// Le jeton qui précède celui commençant à `start`, blancs et commentaires
-/// sautés, est-il `AS` ? Un alias introuvable parmi les jetons compte comme
-/// précédé de `AS` : rien n'est inséré à une position douteuse.
+/// Is the token before the one starting at `start`, whitespace and comments
+/// skipped, `AS`? An alias not found among the tokens counts as preceded by
+/// `AS`: nothing is inserted at a doubtful position.
 fn preceded_by_as(tokens: &[sqlparser::tokenizer::TokenWithSpan], start: Location) -> bool {
     let Some(index) = tokens.iter().position(|token| token.span.start == start) else {
         return true;
@@ -66,15 +65,15 @@ fn preceded_by_as(tokens: &[sqlparser::tokenizer::TokenWithSpan], start: Locatio
         )
 }
 
-/// Relève la position de chaque alias de colonne ou de table.
+/// Collects the position of each column or table alias.
 #[derive(Default)]
 struct AliasFinder {
-    /// Début de chaque alias dans le texte d'origine.
+    /// Start of each alias in the original text.
     starts: Vec<Location>,
 }
 
 impl AliasFinder {
-    /// Relève un alias de table qui n'a pas été écrit avec `AS`.
+    /// Collects a table alias that was not written with `AS`.
     fn table_alias(&mut self, alias: Option<&TableAlias>) {
         if let Some(alias) = alias.filter(|alias| !alias.explicit) {
             self.starts.push(alias.name.span.start);
@@ -129,7 +128,7 @@ mod tests {
     fn keeps_existing_as_and_non_aliases() {
         let sql = "SELECT a AS b, now() - INTERVAL 1 DAY FROM t AS x WHERE c = 1";
         assert_eq!(with_as(sql), sql);
-        // Aucun alias : rien ne change.
+        // No alias: nothing changes.
         assert_eq!(with_as("SELECT a, b FROM t"), "SELECT a, b FROM t");
     }
 
@@ -144,8 +143,8 @@ mod tests {
     #[test]
     fn keeps_comments_and_quoted_aliases() {
         assert_eq!(
-            with_as("SELECT a /* note */ `mon alias` FROM t"),
-            "SELECT a /* note */ AS `mon alias` FROM t"
+            with_as("SELECT a /* note */ `my alias` FROM t"),
+            "SELECT a /* note */ AS `my alias` FROM t"
         );
     }
 

@@ -1,25 +1,26 @@
-//! Analyse d'une requête : le rôle de chaque mot, d'après l'arbre syntaxique
-//! de `sqlparser`, le catalogue de la connexion et la version du serveur.
+//! Analysis of a query: the role of each word, from `sqlparser`'s syntax
+//! tree, the connection's catalog and the server version.
 //!
-//! C'est l'étape qui précède l'enjolivement (et, plus tard, la résolution
-//! des noms du moteur fédéré) : la requête est comprise avant d'être
-//! réécrite, au lieu d'être traitée mot à mot d'après des listes.
+//! It is the step before beautifying (and, later, the name resolution of the
+//! federated engine): the query is understood before being rewritten,
+//! instead of being processed word by word from lists.
 //!
-//! - **Noms** : tout identifiant de l'arbre (base, table, colonne, alias,
-//!   fonction...) est un nom, jamais un mot-clef, même s'il ressemble à un
-//!   mot-clef (`cast`, `date`, `status`). Il prend l'écriture du catalogue
-//!   quand le catalogue la connaît sans ambiguïté ; un alias prend celle de
-//!   sa déclaration. Un nom inconnu, ambigu (`Clients` et `clients`) ou entre
-//!   accents graves garde l'écriture tapée.
-//! - **Mots-clefs** : tout autre mot que `sqlparser` reconnaît comme
-//!   mot-clef (`SELECT`, `CAST`, `INTERVAL ... DAY`...). Un mot-clef que la
-//!   version du serveur ne connaît pas (fichiers `keywords/*.yaml`, champs
-//!   `since` / `until`) est signalé à part.
+//! - **Names**: any identifier of the tree (database, table, column, alias,
+//!   function...) is a name, never a keyword, even if it looks like a keyword
+//!   (`cast`, `date`, `status`). It takes the catalog's spelling when the
+//!   catalog knows it unambiguously; an alias takes the spelling of its
+//!   declaration. An unknown or ambiguous name (`Clients` and `clients`), or
+//!   one between backticks, keeps the typed spelling.
+//! - **Keywords**: any other word that `sqlparser` recognises as a keyword
+//!   (`SELECT`, `CAST`, `INTERVAL ... DAY`...). A keyword that the server
+//!   version does not know (`keywords/*.yaml` files, `since` / `until`
+//!   fields) is reported separately.
 //!
-//! Les identifiants sont relevés dans l'arbre sérialisé (option `serde` de
-//! `sqlparser`), où chacun porte sa position : aucun n'échappe au relevé,
-//! où qu'il soit dans la requête. Leur nature (table, colonne...) vient d'un
-//! parcours de l'arbre ; un nom de nature inconnue garde son écriture.
+//! Identifiers are collected in the serialised tree (`serde` option of
+//! `sqlparser`), where each one carries its position: none escapes the
+//! collection, wherever it is in the query. Their nature (table, column...)
+//! comes from a walk of the tree; a name of unknown nature keeps its
+//! spelling.
 
 use std::collections::HashMap;
 use std::ops::ControlFlow;
@@ -35,70 +36,70 @@ use crate::Dialect;
 use crate::keywords::is_known_in_version;
 use crate::limit::byte_offset;
 
-/// Noms du catalogue de la connexion, tels que définis (avec leur casse).
+/// Names of the connection's catalog, as defined (with their case).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CatalogNames {
-    /// Bases.
+    /// Databases.
     pub schemas: Vec<String>,
-    /// Tables et vues, toutes bases confondues.
+    /// Tables and views, all databases together.
     pub tables: Vec<String>,
-    /// Colonnes, toutes tables confondues.
+    /// Columns, all tables together.
     pub columns: Vec<String>,
-    /// Fonctions et procédures stockées.
+    /// Stored functions and procedures.
     pub routines: Vec<String>,
 }
 
-/// Rôle d'un mot de la requête.
+/// Role of a word of the query.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Role {
-    /// Mot-clef du langage, connu de la version du serveur.
+    /// Keyword of the language, known to the server version.
     Keyword,
-    /// Mot-clef pour l'analyseur, mais inconnu de la version du serveur.
+    /// Keyword for the parser, but unknown to the server version.
     UnknownKeyword,
-    /// Nom (base, table, colonne, alias, fonction...), avec l'écriture à lui donner.
+    /// Name (database, table, column, alias, function...), with the spelling to give it.
     Name {
-        /// Écriture du nom : celle du catalogue, de la déclaration de
-        /// l'alias, ou celle tapée.
+        /// Spelling of the name: the catalog's, the alias declaration's, or
+        /// the typed one.
         spelling: String,
     },
 }
 
-/// Un mot de la requête et son rôle.
+/// A word of the query and its role.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Word {
-    /// Début du mot dans le texte, en octets.
+    /// Start of the word in the text, in bytes.
     pub start: usize,
-    /// Fin du mot dans le texte, en octets.
+    /// End of the word in the text, in bytes.
     pub end: usize,
-    /// Rôle du mot.
+    /// Role of the word.
     pub role: Role,
 }
 
-/// Nature d'un nom, d'après sa place dans l'arbre.
+/// Nature of a name, from its place in the tree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
-    /// Base, devant un nom de table ou de colonne.
+    /// Database, before a table or column name.
     Schema,
-    /// Table ou vue, ou alias de table employé devant une colonne.
+    /// Table or view, or table alias used before a column.
     Table,
-    /// Colonne, ou alias de colonne employé (`ORDER BY total`).
+    /// Column, or column alias used (`ORDER BY total`).
     Column,
-    /// Déclaration d'un alias de table (`FROM t AS a`, nom d'une CTE).
+    /// Declaration of a table alias (`FROM t AS a`, name of a CTE).
     TableAlias,
-    /// Déclaration d'un alias de colonne (`SELECT x AS total`).
+    /// Declaration of a column alias (`SELECT x AS total`).
     ColumnAlias,
-    /// Fonction ou procédure (son écriture est réglée par le module `functions`).
+    /// Function or procedure (its spelling is handled by the `functions` module).
     Function,
 }
 
-/// Position d'un identifiant dans le texte : ligne et colonne de son début.
+/// Position of an identifier in the text: line and column of its start.
 type Position = (u64, u64);
 
-/// Analyse un texte (une ou plusieurs requêtes). `None` si `sqlparser` ne
-/// le comprend pas : l'appelant se rabat alors sur un traitement mot à mot.
+/// Analyses a text (one or more queries). `None` if `sqlparser` does not
+/// understand it: the caller then falls back on word-by-word processing.
 ///
-/// `version` est celle annoncée par le serveur (`10.11.11-MariaDB`) ; sans
-/// version, tous les mots-clefs du dialecte sont connus.
+/// `version` is the one announced by the server (`10.11.11-MariaDB`);
+/// without a version, all the dialect's keywords are known.
 pub fn analyze(
     sql: &str,
     dialect: Dialect,
@@ -150,16 +151,16 @@ pub fn analyze(
     Some(words)
 }
 
-/// Positions de tous les identifiants de l'arbre sérialisé : un identifiant
-/// y est un objet `{ value, quote_style, span }`.
+/// Positions of all the identifiers of the serialised tree: an identifier is
+/// an object `{ value, quote_style, span }` there.
 fn identifier_positions(tree: &Value) -> HashMap<Position, bool> {
     let mut positions = HashMap::new();
     collect_identifiers(tree, &mut positions);
     positions
 }
 
-/// Parcourt l'arbre sérialisé et note la position de chaque identifiant,
-/// avec un indicateur « entre guillemets ».
+/// Walks the serialised tree and records the position of each identifier,
+/// with a "quoted" flag.
 fn collect_identifiers(node: &Value, positions: &mut HashMap<Position, bool>) {
     match node {
         Value::Object(fields) => {
@@ -187,19 +188,19 @@ fn collect_identifiers(node: &Value, positions: &mut HashMap<Position, bool>) {
     }
 }
 
-/// Parcours de l'arbre qui note la nature de chaque nom, et les alias déclarés.
+/// Walk of the tree that records the nature of each name, and the declared aliases.
 #[derive(Default)]
 struct KindCollector {
-    /// Nature de chaque nom, par position.
+    /// Nature of each name, by position.
     kinds: HashMap<Position, Kind>,
-    /// Alias de table déclarés, avec leur écriture.
+    /// Declared table aliases, with their spelling.
     table_aliases: Vec<String>,
-    /// Alias de colonne déclarés, avec leur écriture.
+    /// Declared column aliases, with their spelling.
     column_aliases: Vec<String>,
 }
 
 impl KindCollector {
-    /// Note la nature d'un identifiant.
+    /// Records the nature of an identifier.
     fn note(&mut self, ident: &sqlparser::ast::Ident, kind: Kind) {
         let start = ident.span.start;
         if start.line > 0 {
@@ -207,8 +208,8 @@ impl KindCollector {
         }
     }
 
-    /// Note les parties d'un nom qualifié : la dernière a la nature donnée,
-    /// celles qui la précèdent sont, de droite à gauche, `qualifiers`.
+    /// Records the parts of a qualified name: the last one has the given
+    /// nature, those before it are, from right to left, `qualifiers`.
     fn note_parts(&mut self, parts: &[&sqlparser::ast::Ident], last: Kind, qualifiers: &[Kind]) {
         let mut remaining = parts.iter().rev();
         if let Some(ident) = remaining.next() {
@@ -219,8 +220,8 @@ impl KindCollector {
         }
     }
 
-    /// Note les alias de colonne d'un corps de requête (`SELECT x AS total`),
-    /// opérations ensemblistes comprises.
+    /// Records the column aliases of a query body (`SELECT x AS total`), set
+    /// operations included.
     fn note_projection(&mut self, body: &SetExpr) {
         match body {
             SetExpr::Select(select) => {
@@ -241,7 +242,7 @@ impl KindCollector {
     }
 }
 
-/// Identifiants d'un nom d'objet (`base.table`), sans les parties calculées.
+/// Identifiers of an object name (`database.table`), without computed parts.
 fn object_idents(name: &ObjectName) -> Vec<&sqlparser::ast::Ident> {
     name.0.iter().filter_map(ObjectNamePart::as_ident).collect()
 }
@@ -299,19 +300,19 @@ impl Visitor for KindCollector {
     }
 }
 
-/// Écriture des noms : catalogue et alias déclarés, comparés sans tenir
-/// compte de la casse.
+/// Spelling of names: catalog and declared aliases, compared
+/// case-insensitively.
 struct Names<'a> {
-    /// Noms du catalogue.
+    /// Names of the catalog.
     catalog: &'a CatalogNames,
-    /// Alias de table déclarés dans la requête.
+    /// Table aliases declared in the query.
     table_aliases: Vec<String>,
-    /// Alias de colonne déclarés dans la requête.
+    /// Column aliases declared in the query.
     column_aliases: Vec<String>,
 }
 
 impl<'a> Names<'a> {
-    /// Prépare l'écriture des noms d'une requête.
+    /// Prepares the spelling of the names of a query.
     fn new(catalog: &'a CatalogNames, kinds: &KindCollector) -> Self {
         Self {
             catalog,
@@ -320,7 +321,7 @@ impl<'a> Names<'a> {
         }
     }
 
-    /// Écriture d'un nom tapé `typed`, de nature `kind` (inconnue : `None`).
+    /// Spelling of a typed name `typed`, of nature `kind` (unknown: `None`).
     fn spelling(&self, kind: Option<Kind>, typed: &str) -> String {
         let found =
             match kind {
@@ -335,9 +336,9 @@ impl<'a> Names<'a> {
     }
 }
 
-/// L'écriture d'un nom dans `names`, s'il y figure sous une seule écriture
-/// (sans tenir compte de la casse) ; `None` s'il n'y figure pas ou sous
-/// plusieurs écritures (`Clients` et `clients`).
+/// The spelling of a name in `names`, if it appears there under a single
+/// spelling (case-insensitively); `None` if it does not appear, or under
+/// several spellings (`Clients` and `clients`).
 fn unique(names: &[String], typed: &str) -> Option<String> {
     let mut matches = names.iter().filter(|name| name.eq_ignore_ascii_case(typed));
     let first = matches.next()?;
@@ -350,15 +351,15 @@ mod tests {
 
     use super::*;
 
-    /// Ligne et colonne d'un emplacement.
+    /// Line and column of a location.
     fn position_of(location: Location) -> Position {
         (location.line, location.column)
     }
 
-    /// Catalogue de test : une base, deux tables, leurs colonnes, une fonction.
+    /// Test catalog: one database, two tables, their columns, one function.
     fn catalog() -> CatalogNames {
         CatalogNames {
-            schemas: vec!["Compta".to_string()],
+            schemas: vec!["Accounts".to_string()],
             tables: vec![
                 "operations".to_string(),
                 "Clients".to_string(),
@@ -367,14 +368,14 @@ mod tests {
             columns: vec![
                 "operation_id".to_string(),
                 "cast".to_string(),
-                "Montant".to_string(),
+                "Amount".to_string(),
             ],
-            routines: vec!["TotalTtc".to_string()],
+            routines: vec!["TotalTax".to_string()],
         }
     }
 
-    /// Réécrit le texte d'après l'analyse : mots-clefs en capitales, noms
-    /// dans leur écriture, mots-clefs inconnus de la version entre crochets.
+    /// Rewrites the text from the analysis: keywords in capitals, names in
+    /// their spelling, keywords unknown to the version between brackets.
     fn rewrite(sql: &str, dialect: Dialect, version: Option<&str>) -> String {
         let words = analyze(sql, dialect, version, &catalog()).unwrap();
         let mut result = String::new();
@@ -409,11 +410,11 @@ mod tests {
     fn spells_names_as_the_catalog_does() {
         assert_eq!(
             rewrite(
-                "select OPERATION_ID, montant from COMPTA.Operations where operation_id > 0",
+                "select OPERATION_ID, amount from ACCOUNTS.Operations where operation_id > 0",
                 Dialect::MySql,
                 None
             ),
-            "SELECT operation_id, Montant FROM Compta.operations WHERE operation_id > 0"
+            "SELECT operation_id, Amount FROM Accounts.operations WHERE operation_id > 0"
         );
     }
 
@@ -421,11 +422,11 @@ mod tests {
     fn keeps_unknown_ambiguous_and_quoted_names_as_typed() {
         assert_eq!(
             rewrite(
-                "select x from CLIENTS join `OPERATIONS` join Inconnue",
+                "select x from CLIENTS join `OPERATIONS` join Unknown",
                 Dialect::MySql,
                 None
             ),
-            "SELECT x FROM CLIENTS JOIN `OPERATIONS` JOIN Inconnue"
+            "SELECT x FROM CLIENTS JOIN `OPERATIONS` JOIN Unknown"
         );
     }
 

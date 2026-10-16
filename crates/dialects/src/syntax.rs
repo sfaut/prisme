@@ -1,43 +1,42 @@
-//! Erreur de syntaxe d'une requête, avec sa position, pour la souligner dans
-//! l'éditeur avant toute exécution.
+//! Syntax error of a query, with its position, to underline it in the editor
+//! before anything runs.
 //!
-//! L'erreur est celle de `sqlparser`, dont le message se termine par sa
-//! position (« at Line: 2, Column: 8 ») : elle en est extraite. Une requête
-//! valide pour le serveur peut être refusée par `sqlparser` (corps de
-//! procédure, syntaxe propre à une version) : l'erreur dit alors que Prisme
-//! ne la comprend pas, ce qui reste vrai, puisque la session refuse les
-//! requêtes non analysables.
+//! The error is `sqlparser`'s, whose message ends with its position ("at
+//! Line: 2, Column: 8"): the position is extracted from it. A query valid for
+//! the server can be refused by `sqlparser` (procedure body, syntax specific
+//! to a version): the error then says that Prisme does not understand it,
+//! which stays true, since the session refuses queries it cannot parse.
 
 use sqlparser::parser::{Parser, ParserError};
 
 use crate::Dialect;
 
-/// Erreur de syntaxe d'une requête.
+/// Syntax error of a query.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyntaxError {
-    /// Message de `sqlparser`, sans la position.
+    /// Message of `sqlparser`, without the position.
     pub message: String,
-    /// Ligne de l'erreur dans la requête, à partir de 1 ; 0 si inconnue
-    /// (erreur en fin de requête, par exemple).
+    /// Line of the error in the query, from 1; 0 if unknown (error at the
+    /// end of the query, for example).
     pub line: usize,
-    /// Colonne de l'erreur, en caractères, à partir de 1 ; 0 si inconnue.
+    /// Column of the error, in characters, from 1; 0 if unknown.
     pub column: usize,
 }
 
-/// Marque de la position à la fin d'un message de `sqlparser`.
+/// Marker of the position at the end of a `sqlparser` message.
 const LOCATION_MARK: &str = " at Line: ";
 
-/// Analyse une requête seule et renvoie son erreur de syntaxe, `None` si elle est comprise.
+/// Parses a single query and returns its syntax error, `None` if it is understood.
 pub fn syntax_error(sql: &str, dialect: Dialect) -> Option<SyntaxError> {
     let error = Parser::parse_sql(dialect.parser_dialect().as_ref(), sql).err()?;
     let text = match error {
         ParserError::ParserError(text) | ParserError::TokenizerError(text) => text,
-        ParserError::RecursionLimitExceeded => "requête trop imbriquée".to_string(),
+        ParserError::RecursionLimitExceeded => "query nested too deeply".to_string(),
     };
     Some(with_location(&text))
 }
 
-/// Sépare un message de `sqlparser` de sa position finale, s'il en a une.
+/// Separates a `sqlparser` message from its final position, if it has one.
 fn with_location(text: &str) -> SyntaxError {
     let parsed = text
         .rsplit_once(LOCATION_MARK)

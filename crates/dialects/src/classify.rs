@@ -1,14 +1,14 @@
-//! Classification d'une requête : lecture ou écriture, d'après son AST.
+//! Classification of a query: read or write, from its AST.
 //!
-//! Sert aux interrupteurs d'écriture (voir `docs/V1.md`, section 2.4). La
-//! classification porte sur l'AST, jamais sur le texte : `WITH ... DELETE`
-//! ou `SELECT ... INTO` sont des écritures, même s'ils commencent comme une
-//! lecture. Une liste blanche décide de ce qui est une lecture : tout le
-//! reste est une écriture.
+//! Serves the write switches (see `docs/V1.md`, section 2.4). Classification
+//! works on the AST, never on the text: `WITH ... DELETE` or
+//! `SELECT ... INTO` are writes, even though they start like a read. An allow
+//! list decides what a read is: everything else is a write.
 //!
-//! Les requêtes exécutées à l'ouverture d'une connexion (`SET NAMES`,
-//! `SET SESSION sql_mode`...) sont vérifiées à part (`session_setting_refusal`) :
-//! seuls les réglages de la session elle-même sont permis.
+//! The queries run when a connection opens (`SET NAMES`,
+//! `SET SESSION sql_mode`...) are checked separately
+//! (`session_setting_refusal`): only settings of the session itself are
+//! allowed.
 
 use sqlparser::ast::{ContextModifier, Set, Statement};
 use sqlparser::parser::Parser;
@@ -16,18 +16,18 @@ use sqlparser::parser::Parser;
 use crate::Dialect;
 use crate::limit::returns_rows;
 
-/// Nature d'une requête.
+/// Nature of a query.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StatementKind {
-    /// Lecture : `SELECT` qui renvoie des lignes, `SHOW`, `DESCRIBE`, `EXPLAIN`, `USE`.
+    /// Read: `SELECT` that returns rows, `SHOW`, `DESCRIBE`, `EXPLAIN`, `USE`.
     Read,
-    /// Écriture de données ou de schéma, appel de procédure, réglage du serveur...
+    /// Write of data or schema, procedure call, server setting...
     Write,
-    /// Requête non analysable : sa nature est inconnue.
+    /// Query that cannot be parsed: its nature is unknown.
     Unparsed,
 }
 
-/// Classe le texte `sql`. S'il contient plusieurs requêtes, une seule écriture suffit à le classer en écriture.
+/// Classifies the text `sql`. If it contains several queries, a single write is enough to classify it as a write.
 pub fn classify(sql: &str, dialect: Dialect) -> StatementKind {
     let Ok(statements) = Parser::parse_sql(dialect.parser_dialect().as_ref(), sql) else {
         return StatementKind::Unparsed;
@@ -39,27 +39,26 @@ pub fn classify(sql: &str, dialect: Dialect) -> StatementKind {
     }
 }
 
-/// Refus d'une requête à exécuter à l'ouverture d'une connexion, `None` si
-/// elle est permise : seuls les réglages de la session (`SET NAMES`,
-/// `SET SESSION x = ...`, `SET @v = ...`, `SET TIME ZONE`...) le sont. Un
-/// réglage global (`SET GLOBAL`, `SET @@global.x`), qui changerait tout le
-/// serveur, et toute autre requête sont refusés, comme une requête que
-/// Prisme ne comprend pas.
+/// Refusal of a query to run when a connection opens, `None` if it is
+/// allowed: only session settings (`SET NAMES`, `SET SESSION x = ...`,
+/// `SET @v = ...`, `SET TIME ZONE`...) are. A global setting (`SET GLOBAL`,
+/// `SET @@global.x`), which would change the whole server, and any other
+/// query are refused, like a query Prisme does not understand.
 pub fn session_setting_refusal(sql: &str, dialect: Dialect) -> Option<String> {
     let Ok(statements) = Parser::parse_sql(dialect.parser_dialect().as_ref(), sql) else {
-        return Some(format!("« {sql} » : requête non comprise par Prisme"));
+        return Some(format!("\"{sql}\": query not understood by Prisme"));
     };
     for statement in &statements {
         match statement {
             Statement::Set(set) if is_global(set) => {
                 return Some(format!(
-                    "« {sql} » : un réglage global changerait tout le serveur ; seuls les réglages de la session sont permis"
+                    "\"{sql}\": a global setting would change the whole server; only session settings are allowed"
                 ));
             }
             Statement::Set(_) => {}
             _ => {
                 return Some(format!(
-                    "« {sql} » : seuls les réglages de la session (SET ...) sont permis"
+                    "\"{sql}\": only session settings (SET ...) are allowed"
                 ));
             }
         }
@@ -67,7 +66,7 @@ pub fn session_setting_refusal(sql: &str, dialect: Dialect) -> Option<String> {
     None
 }
 
-/// Un `SET` vise-t-il tout le serveur (`GLOBAL`, `@@global.x`, `@@persist.x`) ?
+/// Does a `SET` target the whole server (`GLOBAL`, `@@global.x`, `@@persist.x`)?
 fn is_global(set: &Set) -> bool {
     let global_name = |name: &str| {
         let name = name.to_ascii_lowercase();
@@ -85,11 +84,11 @@ fn is_global(set: &Set) -> bool {
     }
 }
 
-/// Indique si une requête est une lecture.
+/// Tells whether a query is a read.
 fn is_read(statement: &Statement) -> bool {
     match statement {
         Statement::Query(query) => returns_rows(&query.body),
-        // EXPLAIN seul montre le plan sans exécuter ; EXPLAIN ANALYZE exécute la requête.
+        // EXPLAIN alone shows the plan without running; EXPLAIN ANALYZE runs the query.
         Statement::Explain {
             analyze, statement, ..
         } => !analyze || is_read(statement),
@@ -123,13 +122,13 @@ mod tests {
         let refused = |sql| session_setting_refusal(sql, Dialect::MariaDb).is_some();
         assert!(!refused("SET NAMES utf8mb4"));
         assert!(!refused("SET SESSION sql_mode = 'ANSI_QUOTES'"));
-        assert!(!refused("SET @debut = NOW()"));
+        assert!(!refused("SET @start = NOW()"));
         assert!(!refused("SET time_zone = '+00:00'"));
         assert!(refused("SET GLOBAL max_connections = 10"));
         assert!(refused("SET @@global.sql_mode = ''"));
         assert!(refused("DELETE FROM t"));
         assert!(refused("SELECT 1"));
-        assert!(refused("SET n'importe quoi"));
+        assert!(refused("SET whatever you like"));
     }
 
     fn kind(sql: &str) -> StatementKind {
@@ -151,7 +150,7 @@ mod tests {
             "EXPLAIN UPDATE t SET a = 1",
             "USE test",
         ] {
-            assert_eq!(kind(sql), StatementKind::Read, "requête : {sql}");
+            assert_eq!(kind(sql), StatementKind::Read, "query: {sql}");
         }
     }
 
@@ -173,7 +172,7 @@ mod tests {
             "EXPLAIN ANALYZE DELETE FROM t",
             "SELECT 1; DELETE FROM t",
         ] {
-            assert_eq!(kind(sql), StatementKind::Write, "requête : {sql}");
+            assert_eq!(kind(sql), StatementKind::Write, "query: {sql}");
         }
     }
 

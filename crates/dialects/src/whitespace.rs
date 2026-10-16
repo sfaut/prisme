@@ -1,40 +1,38 @@
-//! Normalisation des blancs, première règle de l'enjoliveur.
+//! Whitespace normalisation, first rule of the beautifier.
 //!
-//! Un texte copié depuis un traitement de texte, une page web ou une
-//! messagerie contient souvent des blancs « exotiques » : espace insécable,
-//! espace fine, espace idéographique... Invisibles à l'écran, ils gênent le
-//! découpage en jetons et la mise en page. Ils deviennent ici des espaces
-//! normales, les séparateurs de ligne Unicode des retours à la ligne, et une
-//! tabulation devient quatre espaces.
+//! A text copied from a word processor, a web page or a messaging app often
+//! contains "exotic" whitespace: no-break space, thin space, ideographic
+//! space... Invisible on screen, they get in the way of tokenising and of the
+//! layout. They become normal spaces here, Unicode line separators become
+//! line breaks, and a tab becomes four spaces.
 //!
-//! Les caractères invisibles de largeur nulle (espace sans chasse, marque
-//! d'ordre des octets...) sont supprimés : ils ne sont pas des blancs au
-//! sens d'Unicode, mais ils arrivent de la même façon et font échouer une
-//! requête sans rien montrer.
+//! Zero-width invisible characters (zero-width space, byte order mark...) are
+//! removed: they are not whitespace in the Unicode sense, but they arrive the
+//! same way and make a query fail without showing anything.
 //!
-//! Les chaînes (`'...'`, `"..."`) et les identifiants entre accents graves
-//! restent intacts : un blanc y fait partie de la valeur, le changer
-//! changerait la requête. Les commentaires sont normalisés comme le reste :
-//! ils n'ont pas d'effet sur la requête.
+//! Strings (`'...'`, `"..."`) and identifiers between backticks stay intact:
+//! a whitespace there is part of the value, changing it would change the
+//! query. Comments are normalised like the rest: they have no effect on the
+//! query.
 
-/// Une tabulation devient ce nombre d'espaces.
+/// A tab becomes this number of spaces.
 const TAB_WIDTH: usize = 4;
 
-/// Endroit du texte où se trouve le caractère lu.
+/// Place in the text where the character read is.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Context {
-    /// Code SQL ordinaire.
+    /// Ordinary SQL code.
     Code,
-    /// Chaîne ou identifiant délimité par ce caractère (`'`, `"` ou `` ` ``).
+    /// String or identifier delimited by this character (`'`, `"` or `` ` ``).
     Quoted(char),
-    /// Commentaire jusqu'à la fin de la ligne (`-- ` ou `#`).
+    /// Comment up to the end of the line (`-- ` or `#`).
     LineComment,
-    /// Commentaire entre `/*` et `*/`.
+    /// Comment between `/*` and `*/`.
     BlockComment,
 }
 
-/// Remplace les blancs exotiques et les tabulations hors des chaînes et des
-/// identifiants entre accents graves. Voir l'en-tête du module.
+/// Replaces exotic whitespace and tabs outside strings and identifiers
+/// between backticks. See the module header.
 pub(crate) fn normalize_blanks(sql: &str) -> String {
     let mut result = String::with_capacity(sql.len());
     let mut context = Context::Code;
@@ -45,13 +43,13 @@ pub(crate) fn normalize_blanks(sql: &str) -> String {
             Context::Quoted(quote) => {
                 result.push(c);
                 if c == '\\' && quote != '`' {
-                    // Caractère échappé (`\'`) : recopié tel quel, il ne ferme rien.
+                    // Escaped character (`\'`): copied as is, it closes nothing.
                     if let Some(escaped) = chars.next() {
                         result.push(escaped);
                     }
                 } else if c == quote {
                     if next == Some(quote) {
-                        // Délimiteur doublé (`''`) : un délimiteur dans la valeur.
+                        // Doubled delimiter (`''`): a delimiter inside the value.
                         result.push(chars.next().unwrap_or(quote));
                     } else {
                         context = Context::Code;
@@ -62,7 +60,7 @@ pub(crate) fn normalize_blanks(sql: &str) -> String {
             Context::Code => match c {
                 '\'' | '"' | '`' => context = Context::Quoted(c),
                 '#' => context = Context::LineComment,
-                // MySQL n'ouvre un commentaire `--` que suivi d'un blanc.
+                // MySQL only opens a `--` comment when followed by whitespace.
                 '-' if next == Some('-') => {
                     let mut ahead = chars.clone();
                     ahead.next();
@@ -92,16 +90,16 @@ pub(crate) fn normalize_blanks(sql: &str) -> String {
     result
 }
 
-/// Ajoute `c` à `result`, normalisé s'il s'agit d'un blanc.
+/// Adds `c` to `result`, normalised if it is whitespace.
 fn push_normalized(result: &mut String, c: char) {
     match c {
         '\t' => result.extend(std::iter::repeat_n(' ', TAB_WIDTH)),
-        // Séparateurs de ligne et de paragraphe Unicode, « nouvelle ligne » (NEL).
+        // Unicode line and paragraph separators, "next line" (NEL).
         '\u{2028}' | '\u{2029}' | '\u{0085}' => result.push('\n'),
-        // Tout autre blanc hors ASCII : espaces insécables, fines, cadratin...
+        // Any other non-ASCII whitespace: no-break, thin, em spaces...
         c if c.is_whitespace() && !c.is_ascii() => result.push(' '),
-        // Invisibles de largeur nulle : espace sans chasse, antiliant, liant,
-        // gluon de mots, marque d'ordre des octets (BOM).
+        // Zero-width invisibles: zero-width space, non-joiner, joiner, word
+        // joiner, byte order mark (BOM).
         '\u{200B}' | '\u{200C}' | '\u{200D}' | '\u{2060}' | '\u{FEFF}' => {}
         c => result.push(c),
     }
@@ -135,7 +133,7 @@ mod tests {
 
     #[test]
     fn follows_escapes_and_doubled_quotes() {
-        // La chaîne continue après \' et '' : le blanc qui suit y est encore.
+        // The string goes on after \' and '': the whitespace that follows is still in it.
         let sql = "SELECT 'it\\'s\u{00A0}', 'l''a\u{00A0}' ,\u{00A0}x";
         assert_eq!(
             normalize_blanks(sql),
@@ -145,13 +143,13 @@ mod tests {
 
     #[test]
     fn normalizes_comments_without_misreading_quotes() {
-        // L'apostrophe d'un commentaire n'ouvre pas de chaîne.
+        // The apostrophe of a comment does not open a string.
         assert_eq!(
             normalize_blanks("-- it's\u{00A0}ok\nSELECT\u{00A0}1 /* l'a\tb */"),
             "-- it's ok\nSELECT 1 /* l'a    b */"
         );
         assert_eq!(normalize_blanks("# x'\nSELECT\u{00A0}1"), "# x'\nSELECT 1");
-        // Sans blanc après --, c'est une double soustraction.
+        // Without whitespace after --, it is a double subtraction.
         assert_eq!(
             normalize_blanks("SELECT 1--1,\u{00A0}'a'"),
             "SELECT 1--1, 'a'"

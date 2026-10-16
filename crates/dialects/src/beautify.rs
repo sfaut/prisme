@@ -1,50 +1,45 @@
-//! Enjoliveur : réécrit le SQL saisi en « beau SQL », règle par règle.
+//! Beautifier: rewrites the typed SQL as "beautiful SQL", rule by rule.
 //!
-//! Règles en place :
+//! Rules in place:
 //!
-//! 1. **Blancs normalisés.** Espaces insécables, fines et autres blancs
-//!    exotiques deviennent des espaces normales, une tabulation quatre
-//!    espaces, hors chaînes et identifiants entre accents graves (module
-//!    `whitespace`).
+//! 1. **Normalised whitespace.** No-break, thin and other exotic whitespace
+//!    becomes normal spaces, a tab four spaces, outside strings and
+//!    identifiers between backticks (`whitespace` module).
 //!
-//! 2. **`AS` devant les alias** de colonne et de table qui n'en ont pas
-//!    (module `alias`).
+//! 2. **`AS` before the column and table aliases** that lack it (`alias`
+//!    module).
 //!
-//! 3. **Noms de fonctions en capitales**, sauf les fonctions et procédures
-//!    de l'utilisateur, écrites dans la casse de leur définition (module
-//!    `functions`).
+//! 3. **Function names in capitals**, except the user's functions and
+//!    procedures, written in the case of their definition (`functions`
+//!    module).
 //!
-//! 4. **Mots-clefs en capitales, noms dans l'écriture du catalogue**, d'après
-//!    l'analyse de la requête (module `analysis`) : un mot que la requête
-//!    emploie comme mot-clef passe en capitales (`CAST`, `DATE '...'`,
-//!    `INTERVAL 1 DAY`), un nom (base, table, colonne) prend l'écriture du
-//!    catalogue, un alias celle de sa déclaration ; un nom inconnu ou ambigu
-//!    reste tel quel, et un mot-clef inconnu de la version du serveur aussi.
+//! 4. **Keywords in capitals, names as written in the catalog**, from the
+//!    analysis of the query (`analysis` module): a word the query uses as a
+//!    keyword goes to capitals (`CAST`, `DATE '...'`, `INTERVAL 1 DAY`), a
+//!    name (database, table, column) takes the catalog's spelling, an alias
+//!    the spelling of its declaration; an unknown or ambiguous name stays as
+//!    is, and so does a keyword unknown to the server version.
 //!
-//!    Une requête que `sqlparser` ne comprend pas (corps de procédure,
-//!    syntaxe propre à une version) est traitée mot à mot : seuls les mots
-//!    des fichiers `keywords/*.yaml` connus de la version passent en
-//!    capitales, plus les unités de temps (`second`, `day`...) là où elles ne
-//!    peuvent être qu'une unité, après `INTERVAL <valeur>` et en premier
-//!    argument d'`EXTRACT`, `TIMESTAMPADD` et `TIMESTAMPDIFF`. Les noms de
-//!    tables et de colonnes (`name`, `status`, `date`...) restent alors tels
-//!    quels.
+//!    A query that `sqlparser` does not understand (procedure body, syntax
+//!    specific to a version) is processed word by word: only the words of
+//!    the `keywords/*.yaml` files known to the version go to capitals, plus
+//!    time units (`second`, `day`...) where they can only be a unit, after
+//!    `INTERVAL <value>` and as the first argument of `EXTRACT`,
+//!    `TIMESTAMPADD` and `TIMESTAMPDIFF`. Table and column names (`name`,
+//!    `status`, `date`...) then stay as they are.
 //!
-//! 5. **Mise en page** : une clause par ligne, une colonne et un prédicat
-//!    par ligne quand il y en a plusieurs, espaces autour des opérateurs
-//!    (module `layout`).
+//! 5. **Layout**: one clause per line, one column and one predicate per line
+//!    when there are several, spaces around operators (`layout` module).
 //!
-//! Un texte qui contient la commande `DELIMITER` (procédures, fonctions...)
-//! est d'abord découpé en morceaux par le découpeur de requêtes : chaque
-//! requête reçoit toutes les règles, avec son propre séparateur, et le corps
-//! d'un programme stocké est mis en page bloc par bloc (`BEGIN ... END`,
-//! `IF ... END IF`...).
+//! A text that contains the `DELIMITER` command (procedures, functions...) is
+//! first cut into pieces by the query splitter: each query gets all the
+//! rules, with its own separator, and the body of a stored program is laid
+//! out block by block (`BEGIN ... END`, `IF ... END IF`...).
 //!
-//! Le texte des jetons est conservé à l'identique : commentaires, chaînes,
-//! identifiants entre accents graves. Le texte est découpé en jetons par
-//! `sqlparser` ; les mots-clefs sont mis en capitales à leur position
-//! d'origine, puis la mise en page ne change que les espaces et les retours à
-//! la ligne.
+//! The text of the tokens is kept identical: comments, strings, identifiers
+//! between backticks. The text is tokenised by `sqlparser`; keywords are put
+//! in capitals at their original position, then the layout only changes
+//! spaces and line breaks.
 
 use sqlparser::tokenizer::{Token, Tokenizer};
 
@@ -59,8 +54,8 @@ use crate::layout::{has_delimiter_command, layout};
 use crate::limit::byte_offset;
 use crate::whitespace::normalize_blanks;
 
-/// Unités de temps de MySQL, en capitales dans les positions où elles ne
-/// peuvent être qu'une unité (les unités composées, `DAY_HOUR`..., sont réservées).
+/// MySQL time units, in capitals in the positions where they can only be a
+/// unit (compound units, `DAY_HOUR`..., are reserved).
 const TIME_UNITS: &[&str] = &[
     "MICROSECOND",
     "SECOND",
@@ -73,23 +68,23 @@ const TIME_UNITS: &[&str] = &[
     "YEAR",
 ];
 
-/// Fonctions dont le premier argument est une unité de temps.
+/// Functions whose first argument is a time unit.
 const UNIT_FUNCTIONS: &[&str] = &["EXTRACT", "TIMESTAMPADD", "TIMESTAMPDIFF"];
 
-/// Contexte de l'enjolivement : dialecte, version et catalogue du serveur.
+/// Context of beautifying: dialect, version and catalog of the server.
 #[derive(Debug, Clone, Copy)]
 pub struct BeautifyOptions<'a> {
-    /// Dialecte du texte.
+    /// Dialect of the text.
     pub dialect: Dialect,
-    /// Version annoncée par le serveur (`10.11.11-MariaDB`) ; absente, tous
-    /// les mots-clefs du dialecte sont connus.
+    /// Version announced by the server (`10.11.11-MariaDB`); when absent,
+    /// all the dialect's keywords are known.
     pub version: Option<&'a str>,
-    /// Noms du catalogue, tels que définis : tables, colonnes, fonctions...
+    /// Names of the catalog, as defined: tables, columns, functions...
     pub catalog: &'a CatalogNames,
 }
 
-/// Enjolive `sql` sans catalogue ni version : les noms restent tels
-/// quels, toutes les fonctions passent en capitales. Voir `beautify_with`.
+/// Beautifies `sql` without a catalog or version: names stay as they are,
+/// all functions go to capitals. See `beautify_with`.
 pub fn beautify(sql: &str, dialect: Dialect) -> String {
     let catalog = CatalogNames::default();
     beautify_with(
@@ -102,15 +97,15 @@ pub fn beautify(sql: &str, dialect: Dialect) -> String {
     )
 }
 
-/// Enjolive `sql` : blancs normalisés, `AS` devant les alias, noms de
-/// fonctions en capitales, mots-clefs en capitales et noms dans l'écriture
-/// du catalogue, puis mise en page (module `layout`).
+/// Beautifies `sql`: normalised whitespace, `AS` before aliases, function
+/// names in capitals, keywords in capitals and names as written in the
+/// catalog, then layout (`layout` module).
 ///
-/// Les fonctions et procédures du catalogue gardent la casse de leur
-/// définition au lieu de passer en capitales.
+/// The catalog's functions and procedures keep the case of their definition
+/// instead of going to capitals.
 ///
-/// Un texte que le découpeur en jetons ne comprend pas (chaîne non fermée...)
-/// est renvoyé tel quel.
+/// A text that the tokenizer does not understand (unclosed string...) is
+/// returned as is.
 pub fn beautify_with(sql: &str, options: BeautifyOptions) -> String {
     let normalized = normalize_blanks(sql);
     if has_delimiter_command(&normalized) {
@@ -120,14 +115,14 @@ pub fn beautify_with(sql: &str, options: BeautifyOptions) -> String {
     }
 }
 
-/// Enjolive un texte qui contient des commandes `DELIMITER`, morceau par
-/// morceau : chaque commande sur sa ligne, puis chaque requête avec son
-/// séparateur, une ligne vide entre deux requêtes.
+/// Beautifies a text that contains `DELIMITER` commands, piece by piece:
+/// each command on its line, then each query with its separator, an empty
+/// line between two queries.
 fn beautify_chunks(sql: &str, options: BeautifyOptions) -> String {
     let mut result = String::new();
-    // Le morceau précédent appelle-t-il une simple fin de ligne (commande,
-    // commentaires seuls) plutôt qu'une ligne vide ? Une commande est
-    // toujours collée à ce qui la précède.
+    // Does the previous piece call for a mere line break (command, comments
+    // only) rather than an empty line? A command always sticks to what
+    // precedes it.
     let mut tight = true;
     let mut delimiter = ";".to_string();
     for chunk in chunks(sql) {
@@ -148,7 +143,7 @@ fn beautify_chunks(sql: &str, options: BeautifyOptions) -> String {
                 if text.trim().is_empty() {
                     continue;
                 }
-                // Hors du « ; » habituel, la requête peut être un programme stocké.
+                // Outside the usual ";", the query can be a stored program.
                 let program = delimiter != ";";
                 let mut part = beautify_part(&text, options, program);
                 let only_comments = end.is_empty() && is_comment_only(&part, options.dialect);
@@ -172,9 +167,9 @@ fn beautify_chunks(sql: &str, options: BeautifyOptions) -> String {
     result
 }
 
-/// Enjolive une partie de texte sans commande `DELIMITER` ; avec `program`,
-/// une seule requête terminée par un autre séparateur que `;`, qui peut être
-/// un programme stocké.
+/// Beautifies a part of text without a `DELIMITER` command; with `program`,
+/// a single query ended by a separator other than `;`, which can be a stored
+/// program.
 fn beautify_part(sql: &str, options: BeautifyOptions, program: bool) -> String {
     let dialect = options.dialect;
     let aliased = add_alias_keyword(sql, dialect);
@@ -186,8 +181,8 @@ fn beautify_part(sql: &str, options: BeautifyOptions, program: bool) -> String {
     layout(&cased, dialect, program)
 }
 
-/// Réécrit chaque mot d'après son rôle : mot-clef en capitales, nom dans son
-/// écriture ; un mot-clef inconnu de la version du serveur reste tel quel.
+/// Rewrites each word from its role: keyword in capitals, name in its
+/// spelling; a keyword unknown to the server version stays as is.
 fn apply_roles(sql: &str, words: &[crate::analysis::Word]) -> String {
     let mut result = String::with_capacity(sql.len());
     let mut copied = 0;
@@ -205,7 +200,7 @@ fn apply_roles(sql: &str, words: &[crate::analysis::Word]) -> String {
     result
 }
 
-/// Le texte n'est-il fait que de commentaires (et de blancs) ?
+/// Is the text made only of comments (and whitespace)?
 fn is_comment_only(sql: &str, dialect: Dialect) -> bool {
     let parser_dialect = dialect.parser_dialect();
     Tokenizer::new(parser_dialect.as_ref(), sql)
@@ -217,9 +212,9 @@ fn is_comment_only(sql: &str, dialect: Dialect) -> bool {
         })
 }
 
-/// Met les mots-clefs en capitales, sans rien changer d'autre, mot à mot :
-/// repli pour un texte que l'analyse ne comprend pas. Seuls les mots des
-/// fichiers de mots-clefs connus de la version passent en capitales.
+/// Puts keywords in capitals, without changing anything else, word by word:
+/// fallback for a text the analysis does not understand. Only the words of
+/// the keyword files known to the version go to capitals.
 fn uppercase_keywords(sql: &str, dialect: Dialect, version: Option<&str>) -> String {
     let parser_dialect = dialect.parser_dialect();
     let Ok(tokens) = Tokenizer::new(parser_dialect.as_ref(), sql).tokenize_with_location() else {
@@ -228,9 +223,9 @@ fn uppercase_keywords(sql: &str, dialect: Dialect, version: Option<&str>) -> Str
 
     let mut result = String::with_capacity(sql.len());
     let mut copied = 0;
-    // Une unité de temps est attendue : après INTERVAL, ou en premier argument d'EXTRACT...
+    // A time unit is expected: after INTERVAL, or as the first argument of EXTRACT...
     let mut unit_expected = false;
-    // Dernier mot lu, pour reconnaître EXTRACT( et ses semblables.
+    // Last word read, to recognise EXTRACT( and the like.
     let mut previous_word = String::new();
     for token in tokens {
         let word = match &token.token {
@@ -307,8 +302,8 @@ mod tests {
     #[test]
     fn handles_case_and_multibyte_text() {
         assert_eq!(
-            pretty("select case when x then 'été' else 'hiver' end as saison from t"),
-            "SELECT CASE WHEN x THEN 'été' ELSE 'hiver' END AS saison FROM t"
+            pretty("select case when x then 'café' else 'tea' end as drink from t"),
+            "SELECT CASE WHEN x THEN 'café' ELSE 'tea' END AS drink FROM t"
         );
     }
 
@@ -334,7 +329,7 @@ mod tests {
             ),
             "SELECT extract(YEAR FROM d), timestampdiff(DAY, a, b), date_add(d, INTERVAL (n + 1) MONTH)"
         );
-        // Ailleurs, ces mots peuvent être des noms de colonnes.
+        // Elsewhere, these words can be column names.
         assert_eq!(pretty("select day, year from t"), "SELECT day, year FROM t");
     }
 
@@ -367,7 +362,7 @@ mod tests {
 
     #[test]
     fn beautifies_each_chunk_around_delimiter_commands() {
-        let sql = "-- purge\ndelimiter //\ncreate procedure purge_logs()\nbegin\n  delete from logs where created_at < now() - interval 30 day;\n  select count(*) n from logs l;\nend //\ndelimiter ;\nselect id, ma_fonction(x) total from video v where a=1 and b=2;";
+        let sql = "-- purge\ndelimiter //\ncreate procedure purge_logs()\nbegin\n  delete from logs where created_at < now() - interval 30 day;\n  select count(*) n from logs l;\nend //\ndelimiter ;\nselect id, my_function(x) total from video v where a=1 and b=2;";
         assert_eq!(
             beautify_with(
                 sql,
@@ -375,7 +370,7 @@ mod tests {
                     dialect: Dialect::MySql,
                     version: None,
                     catalog: &CatalogNames {
-                        routines: vec!["Ma_Fonction".to_string()],
+                        routines: vec!["My_Function".to_string()],
                         ..CatalogNames::default()
                     },
                 },
@@ -392,7 +387,7 @@ mod tests {
              DELIMITER ;\n\
              SELECT ALL\n    \
                  id,\n    \
-                 Ma_Fonction(x) AS total\n\
+                 My_Function(x) AS total\n\
              FROM video AS v\n\
              WHERE TRUE\n    \
                  AND a = 1\n    \
@@ -439,7 +434,7 @@ FROM operations"
         assert_eq!(beautify(&once, Dialect::MariaDb), once);
     }
 
-    /// Exécute une requête sur une base SQLite en mémoire et renvoie ses lignes.
+    /// Runs a query on an in-memory SQLite database and returns its rows.
     fn rows_of(db: &rusqlite::Connection, sql: &str) -> Vec<Vec<Option<i64>>> {
         let mut statement = db.prepare(sql).unwrap();
         let columns = statement.column_count();
@@ -450,9 +445,9 @@ FROM operations"
             .unwrap()
     }
 
-    /// Les préfixes TRUE / FALSE ne changent pas le résultat, NULL compris :
-    /// chaque requête est exécutée telle quelle et enjolivée, sur toutes les
-    /// combinaisons de 0, 1 et NULL.
+    /// The TRUE / FALSE prefixes do not change the result, NULL included:
+    /// each query is run as is and beautified, on all the combinations of 0,
+    /// 1 and NULL.
     #[test]
     fn prefixes_keep_query_results_identical() {
         let db = rusqlite::Connection::open_in_memory().unwrap();
@@ -495,6 +490,6 @@ FROM operations"
 
     #[test]
     fn returns_unreadable_text_unchanged() {
-        assert_eq!(pretty("select 'pas fermée"), "select 'pas fermée");
+        assert_eq!(pretty("select 'not closed"), "select 'not closed");
     }
 }

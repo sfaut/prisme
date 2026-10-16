@@ -1,23 +1,21 @@
-//! Règle de l'enjoliveur : noms de fonctions en capitales, sauf les
-//! fonctions et procédures de l'utilisateur, écrites dans la casse de leur
-//! définition.
+//! Beautifier rule: function names in capitals, except the user's functions
+//! and procedures, written in the case of their definition.
 //!
-//! `select count(*), ma_Fonction(x) from t` devient `select COUNT(*),
-//! MaFonction(x) from t` si la base définit `MaFonction`. Le sens ne change
-//! pas : en MySQL et MariaDB, un nom de fonction ou de procédure ne tient
-//! pas compte de la casse.
+//! `select count(*), my_Function(x) from t` becomes `select COUNT(*),
+//! MyFunction(x) from t` if the database defines `MyFunction`. The meaning
+//! does not change: in MySQL and MariaDB, a function or procedure name is
+//! case-insensitive.
 //!
-//! Les appels de fonction sont trouvés par l'analyseur de `sqlparser`
-//! (nœuds `Function` de l'AST et `CALL`), jamais par le texte : dans
-//! `INSERT INTO t (a)`, `t` n'est pas une fonction. Quelques fonctions ont
-//! une syntaxe propre que l'AST représente sans la position de leur nom
-//! (`EXTRACT`, `SUBSTRING`, `TRIM`...) : elles sont reconnues à leur nom
-//! suivi d'une parenthèse, sauf derrière un mot qui annonce un nom de table
-//! ou d'index (`INTO`, `TABLE`, `ON`...).
+//! Function calls are found by `sqlparser`'s parser (`Function` nodes of the
+//! AST and `CALL`), never by the text: in `INSERT INTO t (a)`, `t` is not a
+//! function. A few functions have their own syntax, which the AST represents
+//! without the position of their name (`EXTRACT`, `SUBSTRING`, `TRIM`...):
+//! they are recognised by their name followed by a parenthesis, except after
+//! a word that announces a table or index name (`INTO`, `TABLE`, `ON`...).
 //!
-//! Un nom de fonction inconnu du catalogue est tenu pour une fonction de
-//! MySQL et passe en capitales : sans catalogue chargé, une fonction de
-//! l'utilisateur passe donc aussi en capitales, ce qui ne change pas son sens.
+//! A function name unknown to the catalog is taken for a MySQL function and
+//! goes to capitals: without a loaded catalog, a user function therefore also
+//! goes to capitals, which does not change its meaning.
 
 use std::collections::HashMap;
 use std::ops::ControlFlow;
@@ -30,7 +28,7 @@ use crate::Dialect;
 use crate::limit::byte_offset;
 use crate::parse::parse_each;
 
-/// Fonctions à syntaxe propre, que l'AST représente sans la position de leur nom.
+/// Functions with their own syntax, which the AST represents without the position of their name.
 const SPECIAL_FUNCTIONS: &[&str] = &[
     "CEIL",
     "CEILING",
@@ -43,8 +41,8 @@ const SPECIAL_FUNCTIONS: &[&str] = &[
     "TRIM",
 ];
 
-/// Mots après lesquels un nom suivi d'une parenthèse désigne une table, une
-/// vue ou un index, jamais une fonction (`INSERT INTO trim (a)`).
+/// Words after which a name followed by a parenthesis designates a table, a
+/// view or an index, never a function (`INSERT INTO trim (a)`).
 const OBJECT_KEYWORDS: &[Keyword] = &[
     Keyword::AS,
     Keyword::CONSTRAINT,
@@ -60,9 +58,8 @@ const OBJECT_KEYWORDS: &[Keyword] = &[
     Keyword::VIEW,
 ];
 
-/// Écrit les noms de fonctions en capitales, ou dans la casse de leur
-/// définition pour les fonctions et procédures de `routines`. Voir l'en-tête
-/// du module.
+/// Writes function names in capitals, or in the case of their definition for
+/// the functions and procedures of `routines`. See the module header.
 pub(crate) fn case_function_names(sql: &str, dialect: Dialect, routines: &[String]) -> String {
     let parser_dialect = dialect.parser_dialect();
     let Ok(tokens) = Tokenizer::new(parser_dialect.as_ref(), sql).tokenize_with_location() else {
@@ -80,7 +77,7 @@ pub(crate) fn case_function_names(sql: &str, dialect: Dialect, routines: &[Strin
     let mut starts = finder.starts;
     starts.extend(special_function_starts(&tokens));
 
-    // Remplacements de la fin vers le début : les positions restent justes.
+    // Replacements from the end to the start: positions stay correct.
     let mut replacements: Vec<(usize, usize, String)> = starts
         .into_iter()
         .filter_map(|start| {
@@ -111,9 +108,9 @@ pub(crate) fn case_function_names(sql: &str, dialect: Dialect, routines: &[Strin
     result
 }
 
-/// Début des noms de fonctions à syntaxe propre (`EXTRACT(`...) : un nom de
-/// `SPECIAL_FUNCTIONS` suivi d'une parenthèse, qui ne suit ni un point ni un
-/// mot de `OBJECT_KEYWORDS`.
+/// Start of the names of functions with their own syntax (`EXTRACT(`...): a
+/// name of `SPECIAL_FUNCTIONS` followed by a parenthesis, which follows
+/// neither a period nor a word of `OBJECT_KEYWORDS`.
 fn special_function_starts(tokens: &[TokenWithSpan]) -> Vec<Location> {
     let significant: Vec<&TokenWithSpan> = tokens
         .iter()
@@ -144,17 +141,17 @@ fn special_function_starts(tokens: &[TokenWithSpan]) -> Vec<Location> {
         .collect()
 }
 
-/// Relève la position du nom de chaque fonction appelée et de chaque
-/// procédure lancée par `CALL`.
+/// Collects the position of the name of each called function and of each
+/// procedure run by `CALL`.
 #[derive(Default)]
 struct FunctionFinder {
-    /// Début de chaque nom dans le texte d'origine.
+    /// Start of each name in the original text.
     starts: Vec<Location>,
 }
 
 impl FunctionFinder {
-    /// Relève le nom d'une fonction : la dernière partie de son nom
-    /// (`ma_base.ma_fonction` : `ma_fonction`).
+    /// Collects the name of a function: the last part of its name
+    /// (`my_db.my_function`: `my_function`).
     fn function(&mut self, function: &Function) {
         if let Some(ObjectNamePart::Identifier(name)) = function.name.0.last() {
             self.starts.push(name.span.start);

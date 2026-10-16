@@ -1,35 +1,35 @@
-//! Mise en page de l'enjoliveur : retours à la ligne, retraits et espaces.
+//! Beautifier layout: line breaks, indentation and spaces.
 //!
-//! Règles (voir `docs/V1.md`, section 2.9) :
+//! Rules (see `docs/V1.md`, section 2.9):
 //!
-//! - chaque clause principale commence une ligne : `SELECT`, `FROM`, les
-//!   jointures, `WHERE`, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, `UNION`... ;
-//! - une liste de plusieurs colonnes après `SELECT` met une colonne par ligne,
-//!   en retrait ; une seule colonne reste sur la ligne du `SELECT` ;
-//! - plusieurs prédicats dans `WHERE`, `HAVING` ou `ON` : un par ligne, `AND`
-//!   et `OR` en début de ligne, en retrait sous la clause (le `AND` d'un
-//!   `BETWEEN` et ceux d'un `CASE` restent sur la ligne) ; `ON` reste sur la
-//!   ligne de sa jointure ;
-//! - quand il y en a plusieurs, les prédicats sont précédés de `TRUE` (si le
-//!   premier lien est `AND`) ou de `FALSE` (si c'est `OR`), pour que chacun ait
-//!   sa ligne, `AND` ou `OR` en tête (voir `predicate_prefix`) ;
-//! - une sous-requête entre parenthèses est en retrait, sa parenthèse
-//!   fermante sur sa propre ligne ;
-//! - un espace autour des opérateurs binaires (`=`, `<`, `+`, `-`...), aucun
-//!   après un opérateur unaire (`-1`) ; un espace après une virgule ;
-//! - `ALL` suit chaque `SELECT` qui n'a ni `DISTINCT`, ni `DISTINCTROW`, ni
-//!   déjà `ALL` (sauf dans `GRANT` et `REVOKE`, où `SELECT` est un droit) ;
-//! - deux requêtes sont séparées par une ligne vide.
+//! - each main clause starts a line: `SELECT`, `FROM`, joins, `WHERE`,
+//!   `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, `UNION`...;
+//! - a list of several columns after `SELECT` puts one column per line,
+//!   indented; a single column stays on the `SELECT` line;
+//! - several predicates in `WHERE`, `HAVING` or `ON`: one per line, `AND` and
+//!   `OR` at the start of the line, indented under the clause (the `AND` of a
+//!   `BETWEEN` and those of a `CASE` stay on the line); `ON` stays on the
+//!   line of its join;
+//! - when there are several, predicates are preceded by `TRUE` (if the first
+//!   link is `AND`) or by `FALSE` (if it is `OR`), so that each has its line,
+//!   `AND` or `OR` first (see `predicate_prefix`);
+//! - a subquery between parentheses is indented, its closing parenthesis on
+//!   its own line;
+//! - a space around binary operators (`=`, `<`, `+`, `-`...), none after a
+//!   unary operator (`-1`); a space after a comma;
+//! - `ALL` follows each `SELECT` that has neither `DISTINCT`, nor
+//!   `DISTINCTROW`, nor `ALL` already (except in `GRANT` and `REVOKE`, where
+//!   `SELECT` is a privilege);
+//! - two queries are separated by an empty line.
 //!
-//! Le texte de chaque jeton est repris tel quel (chaînes, commentaires,
-//! identifiants entre accents graves, casse des mots) : seuls les espaces et
-//! les retours à la ligne changent. Un nom de fonction reste collé à sa
-//! parenthèse si c'était le cas, car MySQL l'exige pour ses fonctions.
-//! Un texte qui contient la commande `DELIMITER`, ou que le découpeur en
-//! jetons ne comprend pas, est renvoyé tel quel : l'enjoliveur découpe d'abord
-//! le texte autour des commandes `DELIMITER`, et met en page chaque requête
-//! à part. Le corps d'un programme stocké (procédure, fonction...) suit des
-//! règles de plus (module `program`).
+//! The text of each token is taken as is (strings, comments, identifiers
+//! between backticks, case of words): only spaces and line breaks change. A
+//! function name stays stuck to its parenthesis if it was, as MySQL requires
+//! it for its functions. A text that contains the `DELIMITER` command, or that
+//! the tokenizer does not understand, is returned as is: the beautifier first
+//! cuts the text around the `DELIMITER` commands, and lays out each query
+//! separately. The body of a stored program (procedure, function...) follows
+//! more rules (`program` module).
 
 use sqlparser::tokenizer::{Token, Tokenizer, Whitespace};
 
@@ -39,10 +39,10 @@ use crate::limit::byte_offset;
 
 mod program;
 
-/// Largeur d'un niveau de retrait.
+/// Width of an indentation level.
 const INDENT: usize = 4;
 
-/// Clauses qui commencent une ligne.
+/// Clauses that start a line.
 const CLAUSES: &[&str] = &[
     "SELECT",
     "FROM",
@@ -59,15 +59,15 @@ const CLAUSES: &[&str] = &[
     "VALUES",
 ];
 
-/// Mots qui commencent une jointure (et donc une ligne).
+/// Words that start a join (and therefore a line).
 const JOIN_STARTS: &[&str] = &["JOIN", "INNER", "LEFT", "RIGHT", "CROSS", "NATURAL", "FULL"];
 
-/// Mots qui précèdent `JOIN` dans une même jointure.
+/// Words that precede `JOIN` in the same join.
 const JOIN_MODIFIERS: &[&str] = &[
     "INNER", "LEFT", "RIGHT", "OUTER", "CROSS", "NATURAL", "FULL",
 ];
 
-/// Options d'un `SELECT`, qui restent sur sa ligne avant la liste des colonnes.
+/// Options of a `SELECT`, which stay on its line before the column list.
 const SELECT_OPTIONS: &[&str] = &[
     "ALL",
     "DISTINCT",
@@ -82,7 +82,7 @@ const SELECT_OPTIONS: &[&str] = &[
     "SQL_CALC_FOUND_ROWS",
 ];
 
-/// Clauses qui terminent la liste des colonnes d'un `SELECT`.
+/// Clauses that end the column list of a `SELECT`.
 const SELECT_LIST_ENDS: &[&str] = &[
     "FROM",
     "WHERE",
@@ -98,34 +98,34 @@ const SELECT_LIST_ENDS: &[&str] = &[
     "FOR",
 ];
 
-/// Mots qui terminent une liste de prédicats (`WHERE`, `HAVING`, `ON`).
+/// Words that end a list of predicates (`WHERE`, `HAVING`, `ON`).
 const PREDICATES_ENDS: &[&str] = &["ON", "USING", "FOR", "INTO", "LOCK"];
 
-/// Texte ajouté juste après un mot-clef.
+/// Text added right after a keyword.
 enum Injection {
-    /// `TRUE` ou `FALSE` après `WHERE`, `HAVING` ou `ON`, puis le premier lien à la ligne.
+    /// `TRUE` or `FALSE` after `WHERE`, `HAVING` or `ON`, then the first link on a new line.
     Prefix {
         constant: &'static str,
         connective: &'static str,
         indent: usize,
     },
-    /// `ALL` après un `SELECT` sans `DISTINCT` (`SELECT ALL` équivaut à `SELECT`).
+    /// `ALL` after a `SELECT` without `DISTINCT` (`SELECT ALL` is equivalent to `SELECT`).
     All,
 }
 
-/// Jeton à placer, avec son texte d'origine.
+/// Token to place, with its original text.
 struct Item<'a> {
     token: Token,
     text: &'a str,
-    /// Le texte d'origine avait-il un espace (ou un retour à la ligne) avant ce jeton ?
+    /// Did the original text have a space (or a line break) before this token?
     space_before: bool,
-    /// Mot-clef du dialecte qui ne désigne pas une valeur (`SELECT`, `AND`...),
-    /// calculé au découpage, où le dialecte est connu.
+    /// Keyword of the dialect that does not designate a value (`SELECT`,
+    /// `AND`...), computed while tokenising, where the dialect is known.
     structural: bool,
 }
 
 impl Item<'_> {
-    /// Mot non protégé, en capitales, ou chaîne vide pour un autre jeton.
+    /// Unquoted word, in capitals, or empty string for another token.
     fn word(&self) -> String {
         match &self.token {
             Token::Word(word) if word.quote_style.is_none() => word.value.to_ascii_uppercase(),
@@ -133,40 +133,40 @@ impl Item<'_> {
         }
     }
 
-    /// Le jeton est-il le mot `keyword` (non protégé) ?
+    /// Is the token the (unquoted) word `keyword`?
     fn is(&self, keyword: &str) -> bool {
         self.word() == keyword
     }
 }
 
-/// Clause en cours d'une requête, pour placer les `AND` et `OR`.
+/// Current clause of a query, to place the `AND`s and `OR`s.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Clause {
-    /// Liste des colonnes d'un `SELECT`.
+    /// Column list of a `SELECT`.
     Select,
-    /// `WHERE`, `HAVING` ou `ON` d'une jointure : prédicats en retrait sous la clause.
+    /// `WHERE`, `HAVING` or `ON` of a join: predicates indented under the clause.
     Filter,
-    /// Autre clause.
+    /// Other clause.
     Other,
 }
 
-/// Requête en cours de mise en page (la requête principale, ou une sous-requête).
+/// Query being laid out (the main query, or a subquery).
 struct Query {
-    /// Profondeur de parenthèses où vivent les clauses de la requête.
+    /// Parenthesis depth where the clauses of the query live.
     depth: usize,
-    /// Retrait des clauses de la requête.
+    /// Indentation of the clauses of the query.
     indent: usize,
-    /// Clause en cours.
+    /// Current clause.
     clause: Clause,
-    /// La liste des colonnes du `SELECT` en cours a-t-elle plusieurs colonnes ?
+    /// Does the column list of the current `SELECT` have several columns?
     multi_columns: bool,
-    /// La liste des colonnes attend-elle encore sa première colonne ?
+    /// Is the column list still waiting for its first column?
     columns_pending: bool,
-    /// Un `BETWEEN` attend son `AND`, qui reste sur la ligne.
+    /// A `BETWEEN` waits for its `AND`, which stays on the line.
     between_pending: bool,
-    /// Nombre de `CASE` ouverts : leurs `AND` et `OR` restent sur la ligne.
+    /// Number of open `CASE`s: their `AND`s and `OR`s stay on the line.
     open_cases: usize,
-    /// La dernière clause ouverte est-elle une jointure (qui attend son `ON`) ?
+    /// Is the last opened clause a join (waiting for its `ON`)?
     joined: bool,
 }
 
@@ -185,10 +185,10 @@ impl Query {
     }
 }
 
-/// Met en page `sql`. Voir les règles en tête du module.
+/// Lays out `sql`. See the rules at the top of the module.
 ///
-/// Avec `program`, `sql` est une seule requête qui peut être un programme
-/// stocké, dont les `;` séparent les instructions du corps (module `program`).
+/// With `program`, `sql` is a single query that can be a stored program,
+/// whose `;` separate the statements of the body (`program` module).
 pub(crate) fn layout(sql: &str, dialect: Dialect, program: bool) -> String {
     if has_delimiter_command(sql) {
         return sql.to_string();
@@ -234,7 +234,7 @@ pub(crate) fn layout(sql: &str, dialect: Dialect, program: bool) -> String {
     .print(&items)
 }
 
-/// Indique si le texte contient une commande `DELIMITER` du client `mysql`.
+/// Tells whether the text contains a `DELIMITER` command of the `mysql` client.
 pub(crate) fn has_delimiter_command(sql: &str) -> bool {
     sql.lines().any(|line| {
         line.split_whitespace()
@@ -243,45 +243,45 @@ pub(crate) fn has_delimiter_command(sql: &str) -> bool {
     })
 }
 
-/// Parenthèse ouverte.
+/// Open parenthesis.
 struct Paren {
-    /// Ouvre-t-elle une sous-requête ?
+    /// Does it open a subquery?
     subquery: bool,
-    /// Retrait de la ligne où elle a été ouverte.
+    /// Indentation of the line where it was opened.
     line_indent: usize,
 }
 
-/// Écrit le texte mis en page, jeton par jeton.
+/// Writes the laid-out text, token by token.
 #[derive(Default)]
 struct Printer {
     out: String,
     queries: Vec<Query>,
     parens: Vec<Paren>,
-    /// Le prochain jeton commence une ligne (après un commentaire de fin de ligne).
+    /// The next token starts a line (after an end-of-line comment).
     newline_pending: bool,
-    /// Le jeton précédent était un opérateur unaire, `(` ou `.` : le suivant s'y colle.
+    /// The previous token was a unary operator, `(` or `.`: the next one sticks to it.
     glue_next: bool,
-    /// Le jeton précédent était un opérateur binaire ou une virgule : le suivant
-    /// est précédé d'un espace.
+    /// The previous token was a binary operator or a comma: the next one is
+    /// preceded by a space.
     space_next: bool,
-    /// Texte à ajouter après le mot en cours de placement.
+    /// Text to add after the word being placed.
     injection: Option<Injection>,
-    /// Premier mot de la requête en cours (`GRANT`, `SELECT`...).
+    /// First word of the current query (`GRANT`, `SELECT`...).
     statement_word: String,
-    /// Le texte est-il un programme stocké (terminé par un séparateur posé
-    /// par `DELIMITER`) ? Ses `;` séparent alors les instructions du corps.
+    /// Is the text a stored program (ended by a separator set by
+    /// `DELIMITER`)? Its `;` then separate the statements of the body.
     program: bool,
-    /// Blocs ouverts du programme (`BEGIN`, `IF`, `WHILE`...).
+    /// Open blocks of the program (`BEGIN`, `IF`, `WHILE`...).
     blocks: Vec<program::Block>,
-    /// Le prochain mot commence-t-il une instruction du programme ?
+    /// Does the next word start a statement of the program?
     statement_start: bool,
-    /// Le mot précédent était le `END` d'un bloc : `IF`, `WHILE`... qui
-    /// suivent le complètent (`END IF`).
+    /// The previous word was the `END` of a block: `IF`, `WHILE`... that
+    /// follow complete it (`END IF`).
     end_pending: bool,
 }
 
 impl Printer {
-    /// Met en page tous les jetons et renvoie le texte.
+    /// Lays out all the tokens and returns the text.
     fn print(mut self, items: &[Item]) -> String {
         self.queries.push(Query::new(0, 0));
         for index in 0..items.len() {
@@ -290,19 +290,17 @@ impl Printer {
         self.out.trim_end().to_string()
     }
 
-    /// Requête en cours (la plus intérieure).
+    /// Current query (the innermost one).
     fn query(&mut self) -> &mut Query {
-        self.queries
-            .last_mut()
-            .expect("au moins la requête principale")
+        self.queries.last_mut().expect("at least the main query")
     }
 
-    /// Le jeton est-il au niveau des clauses de la requête en cours ?
+    /// Is the token at the clause level of the current query?
     fn at_query_level(&self) -> bool {
         self.queries.last().map(|query| query.depth) == Some(self.parens.len())
     }
 
-    /// Place le jeton `index`.
+    /// Places token `index`.
     fn place(&mut self, items: &[Item], index: usize) {
         let item = &items[index];
         let previous = index.checked_sub(1).map(|previous| &items[previous]);
@@ -315,14 +313,14 @@ impl Printer {
             self.newline(indent);
         }
 
-        // Fin d'une instruction du corps d'un programme : à la ligne, sans ligne vide.
+        // End of a statement of a program body: new line, without an empty line.
         if self.program && matches!(item.token, Token::SemiColon) && self.parens.is_empty() {
             self.end_pending = false;
             self.end_program_statement(item);
             return;
         }
 
-        // Fin de requête : ligne vide avant la suivante.
+        // End of a query: empty line before the next one.
         if matches!(item.token, Token::SemiColon) && self.parens.is_empty() {
             self.push_glued(item.text);
             self.out.push_str("\n\n");
@@ -355,10 +353,10 @@ impl Printer {
             return;
         }
 
-        // Dans GRANT et REVOKE, SELECT, INSERT... sont des droits, pas des clauses.
+        // In GRANT and REVOKE, SELECT, INSERT... are privileges, not clauses.
         let structured = !matches!(self.statement_word.as_str(), "GRANT" | "REVOKE");
         if structured && self.at_query_level() && !word.is_empty() {
-            let query = self.queries.last().expect("requête");
+            let query = self.queries.last().expect("a query");
             let starts_predicates = word == "WHERE"
                 || word == "HAVING"
                 || (word == "ON" && query.joined && query.clause == Clause::Other);
@@ -383,7 +381,7 @@ impl Printer {
             self.place_keyword_line(&word, previous, next, several_columns);
         }
 
-        // Première colonne d'une liste de plusieurs colonnes : à la ligne, en retrait.
+        // First column of a list of several columns: new line, indented.
         let query = self.query();
         if query.clause == Clause::Select
             && query.columns_pending
@@ -399,7 +397,7 @@ impl Printer {
 
         if matches!(item.token, Token::Comma) {
             self.push_glued(item.text);
-            let query = self.queries.last().expect("requête");
+            let query = self.queries.last().expect("a query");
             if query.clause == Clause::Select
                 && query.multi_columns
                 && query.depth == self.parens.len()
@@ -423,8 +421,8 @@ impl Printer {
                 self.push_spaced(item.text);
                 self.space_next = true;
             } else {
-                // Opérateur unaire (-1) : collé à ce qui suit. Un * seul
-                // (SELECT *, t.*, db.*) reste un jeton à part entière.
+                // Unary operator (-1): stuck to what follows. A lone *
+                // (SELECT *, t.*, db.*) stays a token in its own right.
                 self.push_spaced(item.text);
                 self.glue_next = !matches!(item.token, Token::Mul);
             }
@@ -452,8 +450,8 @@ impl Printer {
         }
     }
 
-    /// Passe à la ligne avant une clause, une jointure ou un `AND` / `OR`, et
-    /// suit la clause en cours.
+    /// Breaks the line before a clause, a join or an `AND` / `OR`, and tracks
+    /// the current clause.
     fn place_keyword_line(
         &mut self,
         word: &str,
@@ -509,9 +507,9 @@ impl Printer {
         }
 
         if CLAUSES.contains(&word) && !function_call {
-            // FROM juste après DELETE (et ses options) reste sur sa ligne :
-            // DELETE FROM t. Après une liste de tables (DELETE t1 FROM...), il
-            // commence une ligne comme ailleurs.
+            // FROM right after DELETE (and its options) stays on its line:
+            // DELETE FROM t. After a list of tables (DELETE t1 FROM...), it
+            // starts a line as elsewhere.
             let delete_from = word == "FROM"
                 && previous.is_some_and(|previous| {
                     matches!(
@@ -520,7 +518,7 @@ impl Printer {
                     )
                 })
                 && self.statement_word == "DELETE";
-            // BY suit GROUP et ORDER sur la même ligne.
+            // BY follows GROUP and ORDER on the same line.
             if !delete_from {
                 self.newline(query_indent);
             }
@@ -539,15 +537,15 @@ impl Printer {
         }
     }
 
-    /// La dernière clause ouverte est-elle une jointure (pour reconnaître son `ON`) ?
+    /// Is the last opened clause a join (to recognise its `ON`)?
     fn after_join(&self) -> bool {
         self.queries.last().is_some_and(|query| query.joined)
     }
 
-    /// Place une parenthèse ouvrante ; une sous-requête passe en retrait.
+    /// Places an opening parenthesis; a subquery is indented.
     fn open_paren(&mut self, item: &Item, previous: Option<&Item>, next: Option<&Item>) {
-        // Après un mot, l'espace d'origine est conservé : un nom de fonction
-        // reste collé à sa parenthèse (MySQL l'exige pour ses fonctions).
+        // After a word, the original space is kept: a function name stays
+        // stuck to its parenthesis (MySQL requires it for its functions).
         let after_word = previous.is_some_and(|previous| matches!(previous.token, Token::Word(_)));
         if !after_word || item.space_before {
             self.push_spaced(item.text);
@@ -569,7 +567,7 @@ impl Printer {
         }
     }
 
-    /// Place une parenthèse fermante ; celle d'une sous-requête a sa propre ligne.
+    /// Places a closing parenthesis; that of a subquery has its own line.
     fn close_paren(&mut self, item: &Item) {
         let Some(paren) = self.parens.pop() else {
             self.push_glued(item.text);
@@ -584,7 +582,7 @@ impl Printer {
         }
     }
 
-    /// Place un commentaire : un commentaire de fin de ligne force le retour à la ligne.
+    /// Places a comment: an end-of-line comment forces a line break.
     fn place_comment(&mut self, item: &Item, comment: &Whitespace) {
         self.push_spaced(item.text.trim_end());
         if matches!(comment, Whitespace::SingleLineComment { .. }) {
@@ -592,7 +590,7 @@ impl Printer {
         }
     }
 
-    /// Ajoute un texte, précédé d'un espace si la ligne en cours n'est pas vide.
+    /// Adds a text, preceded by a space if the current line is not empty.
     fn push_spaced(&mut self, text: &str) {
         self.space_next = false;
         let glued = std::mem::take(&mut self.glue_next);
@@ -604,7 +602,7 @@ impl Printer {
         self.out.push_str(text);
     }
 
-    /// Ajoute un texte collé à ce qui précède.
+    /// Adds a text stuck to what precedes.
     fn push_glued(&mut self, text: &str) {
         if std::mem::take(&mut self.space_next) {
             self.push_spaced(text);
@@ -618,7 +616,7 @@ impl Printer {
         self.out.push_str(text);
     }
 
-    /// Passe à la ligne avec le retrait `indent`, sauf en tout début de texte.
+    /// Breaks the line with indentation `indent`, except at the very start of the text.
     fn newline(&mut self, indent: usize) {
         self.glue_next = false;
         self.space_next = false;
@@ -633,15 +631,15 @@ impl Printer {
         self.out.push_str(&" ".repeat(indent));
     }
 
-    /// Retrait de la ligne en cours.
+    /// Indentation of the current line.
     fn current_line_indent(&self) -> usize {
         let line = self.out.rsplit('\n').next().unwrap_or("");
         line.len() - line.trim_start_matches(' ').len()
     }
 }
 
-/// Indique si la liste des colonnes d'un `SELECT` (les jetons qui le suivent)
-/// compte plusieurs colonnes, séparées par une virgule à son niveau.
+/// Tells whether the column list of a `SELECT` (the tokens that follow it)
+/// has several columns, separated by a comma at its level.
 fn has_several_columns(items: &[Item]) -> bool {
     let mut depth = 0usize;
     for item in items {
@@ -658,16 +656,17 @@ fn has_several_columns(items: &[Item]) -> bool {
     false
 }
 
-/// Préfixe à ajouter devant une liste de prédicats (les jetons qui suivent
-/// `WHERE`, `HAVING` ou `ON`), pour que chaque prédicat ait sa ligne :
-/// `TRUE` puis `AND` si le premier lien de la liste est `AND`, `FALSE` puis
-/// `OR` si c'est `OR`. `None` pour un seul prédicat, ou si le préfixe est déjà là.
+/// Prefix to add before a list of predicates (the tokens that follow
+/// `WHERE`, `HAVING` or `ON`), so that each predicate has its line: `TRUE`
+/// then `AND` if the first link of the list is `AND`, `FALSE` then `OR` if it
+/// is `OR`. `None` for a single predicate, or if the prefix is already there.
 ///
-/// Le sens de la requête ne change pas : en logique à trois valeurs,
-/// `TRUE AND x` et `FALSE OR x` valent `x`, y compris quand `x` est NULL. Et
-/// comme `AND` lie plus fort que `OR` (puis `XOR`), `TRUE AND p1 OR p2` se lit
-/// `(TRUE AND p1) OR p2`, et `FALSE OR p1 AND p2` se lit `FALSE OR (p1 AND p2)` :
-/// le préfixe ne s'attache qu'au premier terme, quel que soit le mélange.
+/// The meaning of the query does not change: in three-valued logic,
+/// `TRUE AND x` and `FALSE OR x` equal `x`, including when `x` is NULL. And
+/// since `AND` binds tighter than `OR` (then `XOR`), `TRUE AND p1 OR p2` reads
+/// `(TRUE AND p1) OR p2`, and `FALSE OR p1 AND p2` reads
+/// `FALSE OR (p1 AND p2)`: the prefix only attaches to the first term,
+/// whatever the mix.
 fn predicate_prefix(items: &[Item]) -> Option<(&'static str, &'static str)> {
     let mut significant = items
         .iter()
@@ -716,7 +715,7 @@ fn predicate_prefix(items: &[Item]) -> Option<(&'static str, &'static str)> {
     None
 }
 
-/// Indique si un jeton est un opérateur, binaire ou unaire.
+/// Tells whether a token is an operator, binary or unary.
 fn is_operator(token: &Token) -> bool {
     matches!(
         token,
@@ -745,7 +744,7 @@ fn is_operator(token: &Token) -> bool {
     )
 }
 
-/// Indique si un jeton termine un opérande : l'opérateur qui le suit est binaire.
+/// Tells whether a token ends an operand: the operator that follows it is binary.
 fn is_operand(item: &Item) -> bool {
     match &item.token {
         Token::Word(_) => !item.structural,
@@ -768,7 +767,7 @@ mod tests {
         layout(sql, Dialect::MariaDb, false)
     }
 
-    /// Met en page le corps d'un programme stocké.
+    /// Lays out the body of a stored program.
     fn program(sql: &str) -> String {
         layout(sql, Dialect::MariaDb, true)
     }
@@ -783,7 +782,7 @@ mod tests {
             laid_out("DELETE LOW_PRIORITY QUICK FROM logs"),
             "DELETE LOW_PRIORITY QUICK FROM logs"
         );
-        // Suppression sur plusieurs tables : FROM suit la liste des tables.
+        // Deletion on several tables: FROM follows the list of tables.
         assert_eq!(
             laid_out("DELETE l FROM logs l JOIN u ON u.id = l.uid"),
             "DELETE l\nFROM logs l\nJOIN u ON u.id = l.uid"
@@ -797,7 +796,7 @@ mod tests {
                 "create procedure p(n int) begin declare i int default 0; \
                  if n > 0 then delete from logs; elseif n < 0 then select 1; else select 2; end if; \
                  while i < n do set i = i + 1; end while; \
-                 boucle: loop leave boucle; end loop boucle; \
+                 my_loop: loop leave my_loop; end loop my_loop; \
                  repeat set i = i - 1; until i = 0 end repeat; \
                  case n when 1 then select 1; else begin end; end case; end"
             ),
@@ -814,9 +813,9 @@ mod tests {
                  WHILE i < n DO\n        \
                      set i = i + 1;\n    \
                  END WHILE;\n    \
-                 boucle: LOOP\n        \
-                     leave boucle;\n    \
-                 END LOOP boucle;\n    \
+                 my_loop: LOOP\n        \
+                     leave my_loop;\n    \
+                 END LOOP my_loop;\n    \
                  REPEAT\n        \
                      set i = i - 1;\n    \
                  UNTIL i = 0\n    \
@@ -889,17 +888,17 @@ mod tests {
             laid_out("SELECT * FROM t1 INNER JOIN t2 ON p1 AND p2 WHERE p3 OR p4"),
             "SELECT ALL *\nFROM t1\nINNER JOIN t2 ON TRUE\n    AND p1\n    AND p2\nWHERE FALSE\n    OR p3\n    OR p4"
         );
-        // Un seul prédicat : rien à ajouter.
+        // A single predicate: nothing to add.
         assert_eq!(
             laid_out("SELECT * FROM t WHERE a = 1"),
             "SELECT ALL *\nFROM t\nWHERE a = 1"
         );
-        // Préfixe déjà présent : il n'est pas doublé.
+        // Prefix already present: it is not doubled.
         assert_eq!(
             laid_out("SELECT * FROM t WHERE FALSE OR a OR b"),
             "SELECT ALL *\nFROM t\nWHERE FALSE\n    OR a\n    OR b"
         );
-        // Les liens d'une sous-requête ou d'une fonction ne comptent pas.
+        // The links of a subquery or a function do not count.
         assert_eq!(
             laid_out("SELECT * FROM t WHERE a IN (SELECT x FROM u WHERE y OR z)"),
             "SELECT ALL *\nFROM t\nWHERE a IN (\n    SELECT ALL x\n    FROM u\n    WHERE FALSE\n        OR y\n        OR z\n)"
@@ -914,7 +913,7 @@ mod tests {
             "SELECT DISTINCTROW a\nFROM t"
         );
         assert_eq!(laid_out("SELECT ALL a FROM t"), "SELECT ALL a\nFROM t");
-        // Dans GRANT et REVOKE, SELECT est un droit : rien à ajouter.
+        // In GRANT and REVOKE, SELECT is a privilege: nothing to add.
         assert_eq!(
             laid_out("GRANT SELECT ON db.* TO u"),
             "GRANT SELECT ON db.* TO u"
@@ -923,12 +922,12 @@ mod tests {
 
     #[test]
     fn keeps_grant_and_star_as_written() {
-        // Dans GRANT et REVOKE, SELECT est un droit, pas une clause.
+        // In GRANT and REVOKE, SELECT is a privilege, not a clause.
         assert_eq!(
             laid_out("GRANT SELECT, INSERT ON db.* TO u"),
             "GRANT SELECT, INSERT ON db.* TO u"
         );
-        // Un * seul ne se colle pas à ce qui le suit.
+        // A lone * does not stick to what follows it.
         assert_eq!(laid_out("SELECT t.* FROM t"), "SELECT ALL t.*\nFROM t");
     }
 

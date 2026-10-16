@@ -1,12 +1,11 @@
-//! Mots-clefs de chaque dialecte, partagés par l'enjoliveur (capitales,
-//! mise en page) et par la coloration de l'éditeur SQL (route de l'API).
+//! Keywords of each dialect, shared by the beautifier (capitals, layout) and
+//! by the SQL editor's highlighting (API route).
 //!
-//! Un fichier par dialecte, `crates/dialects/keywords/<dialecte>.yaml`, à
-//! modifier directement : il est embarqué dans l'exécutable à la
-//! compilation. Les mots y sont rangés par catégorie (réservés, mots-clefs
-//! non réservés, types, valeurs) ; un mot peut porter la version de son
-//! apparition (`since`) ou de son retrait (`until`). Le format est décrit en
-//! tête de chaque fichier.
+//! One file per dialect, `crates/dialects/keywords/<dialect>.yaml`, edited
+//! directly: it is embedded in the executable at compile time. Words are
+//! sorted by category (reserved, non-reserved keywords, types, values); a
+//! word can carry the version it appeared in (`since`) or was removed in
+//! (`until`). The format is described at the top of each file.
 
 use std::sync::OnceLock;
 
@@ -14,47 +13,47 @@ use serde::Deserialize;
 
 use crate::Dialect;
 
-/// Contenu d'un fichier de mots-clefs.
+/// Content of a keyword file.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct KeywordFile {
-    /// Mots réservés.
+    /// Reserved words.
     reserved: Vec<Entry>,
-    /// Mots-clefs non réservés, sans ambiguïté en pratique.
+    /// Non-reserved keywords, unambiguous in practice.
     keywords: Vec<Entry>,
-    /// Types de colonnes.
+    /// Column types.
     types: Vec<Entry>,
-    /// Mots qui désignent une valeur (`NULL`, `CURRENT_DATE`...).
+    /// Words that designate a value (`NULL`, `CURRENT_DATE`...).
     literals: Vec<Entry>,
 }
 
-/// Un mot du fichier : un simple nom, ou un nom avec ses versions.
+/// A word of the file: a plain name, or a name with its versions.
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
 enum Entry {
-    /// Mot de toutes les versions.
+    /// Word of all versions.
     Name(String),
-    /// Mot apparu, ou retiré, à une version donnée.
+    /// Word that appeared, or was removed, in a given version.
     Versioned {
-        /// Le mot.
+        /// The word.
         name: String,
-        /// Première version qui le connaît (incluse).
+        /// First version that knows it (included).
         since: Option<String>,
-        /// Première version qui ne le connaît plus.
+        /// First version that no longer knows it.
         until: Option<String>,
     },
 }
 
 impl Entry {
-    /// Le mot, en capitales.
+    /// The word, in capitals.
     fn name(&self) -> String {
         match self {
             Self::Name(name) | Self::Versioned { name, .. } => name.to_ascii_uppercase(),
         }
     }
 
-    /// Le mot existe-t-il dans cette version du serveur ? Sans version
-    /// connue, tous les mots sont retenus.
+    /// Does the word exist in this server version? Without a known version,
+    /// all words are kept.
     fn exists_in(&self, version: Option<&str>) -> bool {
         let (Self::Versioned { since, until, .. }, Some(version)) = (self, version) else {
             return true;
@@ -70,24 +69,24 @@ impl Entry {
     }
 }
 
-/// Mots-clefs d'un dialecte, en capitales, par catégorie.
+/// Keywords of a dialect, in capitals, by category.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Keywords {
-    /// Mots réservés.
+    /// Reserved words.
     pub reserved: Vec<String>,
-    /// Mots-clefs non réservés.
+    /// Non-reserved keywords.
     pub keywords: Vec<String>,
-    /// Types de colonnes.
+    /// Column types.
     pub types: Vec<String>,
-    /// Mots qui désignent une valeur.
+    /// Words that designate a value.
     pub literals: Vec<String>,
 }
 
-/// Mots-clefs d'un dialecte, limités à ceux qu'une version du serveur
-/// connaît ; sans version, tous ceux du fichier.
+/// Keywords of a dialect, limited to those a server version knows; without
+/// a version, all those of the file.
 ///
-/// `version` est celle annoncée par le serveur (`8.0.36`,
-/// `10.11.11-MariaDB`) : seuls ses nombres comptent.
+/// `version` is the one announced by the server (`8.0.36`,
+/// `10.11.11-MariaDB`): only its numbers count.
 pub fn keywords(dialect: Dialect, version: Option<&str>) -> Keywords {
     let file = file_of(dialect);
     let names = |entries: &[Entry]| -> Vec<String> {
@@ -105,7 +104,7 @@ pub fn keywords(dialect: Dialect, version: Option<&str>) -> Keywords {
     }
 }
 
-/// Mots du fichier d'un dialecte, toutes catégories confondues, dont le nom est `word`.
+/// Words of a dialect's file, all categories together, whose name is `word`.
 fn entries_named<'a>(word: &str, dialect: Dialect) -> impl Iterator<Item = &'a Entry> + use<'a> {
     let file = file_of(dialect);
     let upper = word.to_ascii_uppercase();
@@ -115,23 +114,23 @@ fn entries_named<'a>(word: &str, dialect: Dialect) -> impl Iterator<Item = &'a E
         .filter(move |entry| entry.name() == upper)
 }
 
-/// Indique si un mot non protégé est un mot-clef du dialecte dans cette
-/// version du serveur (sans version : toutes confondues) : il passe en
-/// capitales quand la requête n'a pas pu être analysée.
+/// Tells whether an unquoted word is a keyword of the dialect in this server
+/// version (without a version: all of them): it goes to capitals when the
+/// query could not be parsed.
 pub(crate) fn is_keyword(word: &str, dialect: Dialect, version: Option<&str>) -> bool {
     entries_named(word, dialect).any(|entry| entry.exists_in(version))
 }
 
-/// Indique si un mot-clef reconnu par l'analyseur existe dans cette version
-/// du serveur : un mot absent du fichier (mot-clef non réservé comme `CAST`)
-/// est tenu pour connu ; un mot du fichier doit exister dans la version.
+/// Tells whether a keyword recognised by the parser exists in this server
+/// version: a word missing from the file (non-reserved keyword like `CAST`)
+/// is taken as known; a word of the file must exist in the version.
 pub(crate) fn is_known_in_version(word: &str, dialect: Dialect, version: Option<&str>) -> bool {
     let mut entries = entries_named(word, dialect).peekable();
     entries.peek().is_none() || entries.any(|entry| entry.exists_in(version))
 }
 
-/// Indique si un mot non protégé est un mot-clef qui ne désigne pas une valeur
-/// (`SELECT`, `AND`, `IN`...) : il ne peut pas précéder un opérateur binaire.
+/// Tells whether an unquoted word is a keyword that does not designate a value
+/// (`SELECT`, `AND`, `IN`...): it cannot precede a binary operator.
 pub(crate) fn is_structural_keyword(word: &str, dialect: Dialect) -> bool {
     let upper = word.to_ascii_uppercase();
     is_keyword(word, dialect, None)
@@ -141,7 +140,7 @@ pub(crate) fn is_structural_keyword(word: &str, dialect: Dialect) -> bool {
             .any(|entry| entry.name() == upper)
 }
 
-/// Fichier de mots-clefs d'un dialecte, lu une seule fois.
+/// Keyword file of a dialect, read only once.
 fn file_of(dialect: Dialect) -> &'static KeywordFile {
     static MYSQL: OnceLock<KeywordFile> = OnceLock::new();
     static MARIADB: OnceLock<KeywordFile> = OnceLock::new();
@@ -151,14 +150,14 @@ fn file_of(dialect: Dialect) -> &'static KeywordFile {
     }
 }
 
-/// Lit un fichier de mots-clefs. Les fichiers font partie du programme :
-/// une erreur de format est un défaut de Prisme, signalé par les tests.
+/// Reads a keyword file. The files are part of the program: a format error is
+/// a defect of Prisme, reported by the tests.
 fn parse(text: &str) -> KeywordFile {
-    yaml_serde::from_str(text).expect("fichier de mots-clefs illisible")
+    yaml_serde::from_str(text).expect("unreadable keyword file")
 }
 
-/// Nombres d'une version (`10.11.11-MariaDB` donne `[10, 11, 11]`), pour
-/// comparer deux versions ; les nombres absents valent 0.
+/// Numbers of a version (`10.11.11-MariaDB` gives `[10, 11, 11]`), to compare
+/// two versions; missing numbers count as 0.
 fn version_number(version: &str) -> [u32; 3] {
     let mut parts = version
         .split(|character: char| !character.is_ascii_digit())
@@ -216,6 +215,6 @@ mod tests {
         ));
         assert!(is_structural_keyword("and", Dialect::MySql));
         assert!(!is_structural_keyword("current_date", Dialect::MySql));
-        assert!(!is_keyword("ma_table", Dialect::MariaDb, None));
+        assert!(!is_keyword("my_table", Dialect::MariaDb, None));
     }
 }

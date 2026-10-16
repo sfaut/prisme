@@ -1,14 +1,14 @@
-//! Limite de lignes par défaut (voir `docs/V1.md`, section 2.3).
+//! Default row limit (see `docs/V1.md`, section 2.3).
 //!
-//! Si l'utilisateur n'a écrit aucune limite, Prisme ajoute `LIMIT N + 1` : il
-//! affiche N lignes, et la ligne en trop, si elle arrive, signale un résultat
-//! tronqué. Une limite écrite par l'utilisateur passe telle quelle.
+//! If the user wrote no limit, Prisme adds `LIMIT N + 1`: it shows N rows,
+//! and the extra row, if it arrives, reports a truncated result. A limit
+//! written by the user goes through as is.
 //!
-//! L'AST décide s'il faut une limite. L'insertion se fait ensuite dans le texte
-//! d'origine, à une position calculée sur les jetons : la requête de
-//! l'utilisateur garde sa forme exacte (commentaires, casse, espaces), ce
-//! qu'un réaffichage de l'AST ne garantirait pas. Le `LIMIT` se place avant un
-//! éventuel `FOR UPDATE` / `FOR SHARE`, et jamais dans un commentaire final.
+//! The AST decides whether a limit is needed. The insertion then happens in
+//! the original text, at a position computed on the tokens: the user's query
+//! keeps its exact form (comments, case, spaces), which printing the AST back
+//! would not guarantee. The `LIMIT` goes before a possible `FOR UPDATE` /
+//! `FOR SHARE`, and never inside a trailing comment.
 
 use sqlparser::ast::{Expr, LimitClause, SetExpr, Statement, Value};
 use sqlparser::keywords::Keyword;
@@ -17,42 +17,42 @@ use sqlparser::tokenizer::{Location, Token, TokenWithSpan, Tokenizer};
 
 use crate::Dialect;
 
-/// Ce que Prisme a fait de la limite d'une requête.
+/// What Prisme did with the limit of a query.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LimitOutcome {
-    /// Aucune limite écrite : Prisme a ajouté `LIMIT max_rows + 1`.
+    /// No limit written: Prisme added `LIMIT max_rows + 1`.
     Added,
-    /// L'utilisateur a écrit une limite (`LIMIT`, `FETCH FIRST`) : elle s'applique telle quelle.
+    /// The user wrote a limit (`LIMIT`, `FETCH FIRST`): it applies as is.
     UserLimit,
-    /// La requête ne renvoie pas de lignes à limiter (`SHOW`, `EXPLAIN`, écriture, DDL...).
+    /// The query returns no rows to limit (`SHOW`, `EXPLAIN`, write, DDL...).
     NotApplicable,
-    /// La requête n'a pas pu être analysée : elle passe telle quelle, et la
-    /// lecture doit s'arrêter d'elle-même après `max_rows + 1` lignes.
+    /// The query could not be parsed: it goes through as is, and reading must
+    /// stop by itself after `max_rows + 1` rows.
     Unparsed,
 }
 
-/// Requête prête à être exécutée, avec ce qui a été fait de sa limite.
+/// Query ready to run, with what was done with its limit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LimitedQuery {
-    /// Texte à envoyer au serveur.
+    /// Text to send to the server.
     pub sql: String,
-    /// Traitement appliqué à la limite.
+    /// Handling applied to the limit.
     pub outcome: LimitOutcome,
 }
 
-/// Erreurs qui empêchent d'exécuter le texte saisi.
+/// Errors that prevent running the typed text.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum LimitError {
-    /// Le texte ne contient aucune requête.
-    #[error("aucune requête à exécuter")]
+    /// The text contains no query.
+    #[error("no query to run")]
     Empty,
 
-    /// Le texte contient plusieurs requêtes : une seule à la fois.
-    #[error("{0} requêtes reçues : une seule requête à la fois")]
+    /// The text contains several queries: one at a time.
+    #[error("{0} queries received: one query at a time")]
     MultipleStatements(usize),
 }
 
-/// Applique la limite par défaut de `max_rows` lignes à la requête `sql`.
+/// Applies the default limit of `max_rows` rows to the query `sql`.
 pub fn apply_default_limit(
     sql: &str,
     dialect: Dialect,
@@ -99,10 +99,10 @@ pub fn apply_default_limit(
     })
 }
 
-/// Nombre de lignes que la limite écrite par l'utilisateur autorise
-/// (`LIMIT n`, `LIMIT m, n`, `FETCH FIRST n ROWS`), quand c'est un nombre
-/// littéral ; `None` sans limite écrite, pour une limite calculée ou un
-/// pourcentage. L'interface s'en sert pour la barre d'avancement.
+/// Number of rows allowed by the limit written by the user (`LIMIT n`,
+/// `LIMIT m, n`, `FETCH FIRST n ROWS`), when it is a literal number; `None`
+/// without a written limit, for a computed limit or a percentage. The
+/// interface uses it for the progress bar.
 pub fn written_limit(sql: &str, dialect: Dialect) -> Option<u64> {
     let statements = Parser::parse_sql(dialect.parser_dialect().as_ref(), sql).ok()?;
     let [Statement::Query(query)] = statements.as_slice() else {
@@ -123,10 +123,10 @@ pub fn written_limit(sql: &str, dialect: Dialect) -> Option<u64> {
     }
 }
 
-/// Indique si le corps d'une requête renvoie des lignes au client.
+/// Tells whether the body of a query returns rows to the client.
 pub(crate) fn returns_rows(body: &SetExpr) -> bool {
     match body {
-        // SELECT ... INTO écrit dans une table ou des variables : rien à limiter.
+        // SELECT ... INTO writes into a table or variables: nothing to limit.
         SetExpr::Select(select) => select.into.is_none(),
         SetExpr::Query(query) => returns_rows(&query.body),
         SetExpr::SetOperation { .. } | SetExpr::Values(_) | SetExpr::Table(_) => true,
@@ -135,10 +135,10 @@ pub(crate) fn returns_rows(body: &SetExpr) -> bool {
     }
 }
 
-/// Calcule la position, en octets, où insérer ` LIMIT n` dans `sql`.
+/// Computes the position, in bytes, where to insert ` LIMIT n` in `sql`.
 ///
-/// C'est la fin du dernier jeton significatif (hors espaces, commentaires et
-/// `;`), avant la clause de verrouillage si `has_locks` est vrai.
+/// It is the end of the last significant token (outside spaces, comments and
+/// `;`), before the locking clause if `has_locks` is true.
 fn insertion_position(sql: &str, tokens: &[TokenWithSpan], has_locks: bool) -> Option<usize> {
     let boundary = if has_locks {
         lock_clause_start(tokens)?
@@ -152,8 +152,8 @@ fn insertion_position(sql: &str, tokens: &[TokenWithSpan], has_locks: bool) -> O
     byte_offset(sql, last.span.end)
 }
 
-/// Renvoie l'indice du jeton `FOR` qui ouvre la clause de verrouillage
-/// (`FOR UPDATE`, `FOR SHARE`), hors parenthèses.
+/// Returns the index of the `FOR` token that opens the locking clause
+/// (`FOR UPDATE`, `FOR SHARE`), outside parentheses.
 fn lock_clause_start(tokens: &[TokenWithSpan]) -> Option<usize> {
     let mut depth = 0usize;
     for (index, token) in tokens.iter().enumerate() {
@@ -179,8 +179,8 @@ fn lock_clause_start(tokens: &[TokenWithSpan]) -> Option<usize> {
     None
 }
 
-/// Convertit une position du tokenizer (ligne et colonne en caractères, à
-/// partir de 1) en position en octets dans `sql`.
+/// Converts a tokenizer position (line and column in characters, from 1)
+/// into a byte position in `sql`.
 pub(crate) fn byte_offset(sql: &str, location: Location) -> Option<usize> {
     let line_index = usize::try_from(location.line).ok()?.checked_sub(1)?;
     let column_index = usize::try_from(location.column).ok()?.checked_sub(1)?;
@@ -191,7 +191,7 @@ pub(crate) fn byte_offset(sql: &str, location: Location) -> Option<usize> {
         .map(str::len)
         .sum();
     let line = &sql[line_start..];
-    // Une colonne juste après le dernier caractère de la ligne est valide (fin de jeton).
+    // A column right after the last character of the line is valid (end of a token).
     let in_line = line
         .char_indices()
         .map(|(offset, _)| offset)
@@ -204,14 +204,14 @@ pub(crate) fn byte_offset(sql: &str, location: Location) -> Option<usize> {
 mod tests {
     use super::*;
 
-    /// Applique une limite de 1 000 lignes en dialecte MySQL.
+    /// Applies a limit of 1,000 rows in the MySQL dialect.
     fn limit(sql: &str) -> LimitedQuery {
         apply_default_limit(sql, Dialect::MySql, 1000).unwrap()
     }
 
     fn added(sql: &str) -> String {
         let query = limit(sql);
-        assert_eq!(query.outcome, LimitOutcome::Added, "requête : {sql}");
+        assert_eq!(query.outcome, LimitOutcome::Added, "query: {sql}");
         query.sql
     }
 
@@ -229,7 +229,7 @@ mod tests {
     #[test]
     fn adds_limit_to_plain_select() {
         assert_eq!(added("SELECT * FROM t"), "SELECT * FROM t LIMIT 1001");
-        // Requête générée par l'explorateur, quantificateur écrit en entier.
+        // Query generated by the explorer, quantifier written in full.
         assert_eq!(
             added("SELECT ALL * FROM `b`.`t`"),
             "SELECT ALL * FROM `b`.`t` LIMIT 1001"
@@ -239,17 +239,17 @@ mod tests {
     #[test]
     fn keeps_the_user_text_intact() {
         assert_eq!(
-            added("select  a,\n  b -- colonnes\nfrom t\nwhere x = 'é;' ;"),
-            "select  a,\n  b -- colonnes\nfrom t\nwhere x = 'é;' LIMIT 1001 ;"
+            added("select  a,\n  b -- columns\nfrom t\nwhere x = 'é;' ;"),
+            "select  a,\n  b -- columns\nfrom t\nwhere x = 'é;' LIMIT 1001 ;"
         );
     }
 
     #[test]
     fn inserts_before_trailing_comments() {
-        assert_eq!(added("SELECT 1 -- fin"), "SELECT 1 LIMIT 1001 -- fin");
+        assert_eq!(added("SELECT 1 -- end"), "SELECT 1 LIMIT 1001 -- end");
         assert_eq!(
-            added("SELECT 1 /* fin */\n"),
-            "SELECT 1 LIMIT 1001 /* fin */\n"
+            added("SELECT 1 /* end */\n"),
+            "SELECT 1 LIMIT 1001 /* end */\n"
         );
     }
 
@@ -312,7 +312,7 @@ mod tests {
                     sql: sql.to_string(),
                     outcome: LimitOutcome::UserLimit
                 },
-                "requête : {sql}"
+                "query: {sql}"
             );
         }
     }
@@ -331,7 +331,7 @@ mod tests {
             assert_eq!(
                 limit(sql).outcome,
                 LimitOutcome::NotApplicable,
-                "requête : {sql}"
+                "query: {sql}"
             );
             assert_eq!(limit(sql).sql, sql);
         }
@@ -348,7 +348,7 @@ mod tests {
     #[test]
     fn rejects_empty_and_multiple_statements() {
         assert_eq!(
-            apply_default_limit("  ; -- rien", Dialect::MySql, 1000),
+            apply_default_limit("  ; -- none", Dialect::MySql, 1000),
             Err(LimitError::Empty)
         );
         assert_eq!(

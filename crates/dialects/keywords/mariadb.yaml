@@ -1,27 +1,27 @@
-# Mots-clefs de MariaDB.
+# MariaDB keywords.
 #
-# Une seule liste par dialecte, lue par la coloration de l'éditeur SQL et
-# par l'enjoliveur (mots-clefs mis en capitales). Chaque catégorie se range
-# dans une classe de coloration de l'éditeur.
+# A single list per dialect, read by the SQL editor's highlighting and by
+# the beautifier (keywords put in capitals). Each category maps to a
+# highlighting class of the editor.
 #
-# Un mot est soit un simple nom, soit un nom avec ses versions :
+# A word is either a plain name, or a name with its versions:
 #   - name: WINDOW
-#     since: "8.0"       # disponible à partir de cette version (incluse)
-#     until: "9.0"       # retiré à partir de cette version (facultatif)
-# Les versions se renseignent au fil de l'eau.
+#     since: "8.0"       # available from this version (included)
+#     until: "9.0"       # removed from this version (optional)
+# Versions are filled in as they become known.
 #
-# NULL, TRUE et FALSE s'écrivent entre guillemets : sans eux, YAML les lit
-# comme une valeur vide et des booléens, et non comme des mots.
+# NULL, TRUE and FALSE are written between quotes: without them, YAML reads
+# them as an empty value and booleans, not as words.
 #
-# Prudence avant d'ajouter un mot non réservé : l'enjoliveur le mettra en
-# capitales partout où il apparaît, y compris comme nom de table, et sous
-# Linux un nom de table tient compte de la casse.
+# Be careful before adding a non-reserved word: the beautifier will put it in
+# capitals wherever it appears, including as a table name, and on Linux a
+# table name is case-sensitive.
 #
-# À affiner : la liste reprend pour l'instant les mots réservés de MySQL 8,
-# que l'enjoliveur appliquait aussi à MariaDB. Les mots réservés de MariaDB
-# diffèrent en partie (fonctions de fenêtrage non réservées, par exemple).
+# To refine: the list currently takes the reserved words of MySQL 8, which
+# the beautifier also applied to MariaDB. MariaDB's reserved words partly
+# differ (window functions not reserved, for example).
 
-# Mots réservés : ne peuvent pas servir de nom sans accents graves.
+# Reserved words: cannot be used as a name without backticks.
 reserved:
   - ACCESSIBLE
   - ADD
@@ -240,7 +240,7 @@ reserved:
   - YEAR_MONTH
   - ZEROFILL
 
-# Mots-clefs non réservés, sans ambiguïté en pratique.
+# Non-reserved keywords, unambiguous in practice.
 keywords:
   - BEGIN
   - COLUMNS
@@ -253,7 +253,7 @@ keywords:
   - TRUNCATE
   - VIEW
 
-# Types de colonnes, réservés.
+# Column types, reserved.
 types:
   - BIGINT
   - BINARY
@@ -290,8 +290,8 @@ types:
   - VARCHAR
   - VARCHARACTER
 
-# Mots réservés qui désignent une valeur (`x = NULL`, `d - CURRENT_DATE`) :
-# dans une expression, ils jouent le rôle d'un opérande.
+# Reserved words that designate a value (`x = NULL`, `d - CURRENT_DATE`):
+# in an expression, they play the role of an operand.
 literals:
   - "NULL"
   - "TRUE"

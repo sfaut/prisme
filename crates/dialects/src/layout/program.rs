@@ -1,9 +1,9 @@
-//! Mise en page des programmes stockés : corps des procédures, fonctions,
-//! déclencheurs et événements, écrits entre deux commandes `DELIMITER`.
+//! Layout of stored programs: bodies of procedures, functions, triggers and
+//! events, written between two `DELIMITER` commands.
 //!
-//! Dans un programme, `;` termine une instruction du corps, pas la requête :
-//! l'instruction suivante va à la ligne, au même retrait, sans ligne vide.
-//! Les blocs passent en retrait :
+//! In a program, `;` ends a statement of the body, not the query: the next
+//! statement goes to a new line, at the same indentation, without an empty
+//! line. Blocks are indented:
 //!
 //! ```text
 //! CREATE PROCEDURE purge_logs()
@@ -28,18 +28,18 @@
 //! END
 //! ```
 //!
-//! `LOOP ... END LOOP` et `REPEAT ... UNTIL ... END REPEAT` suivent la même
-//! règle ; une étiquette (`boucle: LOOP`) reste sur la ligne de son bloc.
-//! Les mots qui structurent le programme (`DO`, `UNTIL`...) sont écrits en
-//! capitales, même quand ils ne sont pas réservés, puisque leur rôle est
-//! alors certain. Une expression `CASE ... END` dans une instruction n'est
-//! pas un bloc : elle reste sur sa ligne.
+//! `LOOP ... END LOOP` and `REPEAT ... UNTIL ... END REPEAT` follow the same
+//! rule; a label (`my_loop: LOOP`) stays on the line of its block. The words
+//! that structure the program (`DO`, `UNTIL`...) are written in capitals, even
+//! when they are not reserved, since their role is then certain. A
+//! `CASE ... END` expression inside a statement is not a block: it stays on
+//! its line.
 
 use sqlparser::tokenizer::Token;
 
 use super::{INDENT, Item, Printer, Query};
 
-/// Bloc ouvert d'un programme.
+/// Open block of a program.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum BlockKind {
     /// `BEGIN ... END`.
@@ -52,33 +52,33 @@ pub(super) enum BlockKind {
     Loop,
     /// `REPEAT ... UNTIL ... END REPEAT`.
     Repeat,
-    /// `CASE [valeur] WHEN ... THEN ... [ELSE ...] END CASE`.
+    /// `CASE [value] WHEN ... THEN ... [ELSE ...] END CASE`.
     Case,
 }
 
-/// Bloc ouvert, avec ses retraits.
+/// Open block, with its indentations.
 pub(super) struct Block {
     kind: BlockKind,
-    /// Retrait de la ligne qui ouvre le bloc, et de son `END`.
+    /// Indentation of the line that opens the block, and of its `END`.
     indent: usize,
-    /// Retrait des instructions du bloc.
+    /// Indentation of the statements of the block.
     body: usize,
 }
 
 impl Printer {
-    /// Retrait des instructions du bloc en cours (0 hors de tout bloc).
+    /// Indentation of the statements of the current block (0 outside any block).
     pub(super) fn body_indent(&self) -> usize {
         self.blocks.last().map_or(0, |block| block.body)
     }
 
-    /// Fin d'une instruction du corps : `;`, puis l'instruction suivante à la
-    /// ligne, au même retrait.
+    /// End of a statement of the body: `;`, then the next statement on a new
+    /// line, at the same indentation.
     pub(super) fn end_program_statement(&mut self, item: &Item) {
         self.push_glued(item.text);
         self.start_program_statement(self.body_indent());
     }
 
-    /// Commence une nouvelle instruction à la ligne, au retrait `indent`.
+    /// Starts a new statement on a new line, at indentation `indent`.
     fn start_program_statement(&mut self, indent: usize) {
         self.newline(indent);
         self.queries = vec![Query::new(0, indent)];
@@ -86,18 +86,18 @@ impl Printer {
         self.statement_start = true;
     }
 
-    /// Place un mot qui structure le programme. Renvoie `false` si le mot
-    /// n'en est pas un ici : il est alors placé comme d'ordinaire.
+    /// Places a word that structures the program. Returns `false` if the word
+    /// is not one here: it is then placed as usual.
     pub(super) fn place_program_word(&mut self, item: &Item, next: Option<&Item>) -> bool {
         let word = item.word();
-        // Mot qui suit END : END IF, END WHILE...
+        // Word that follows END: END IF, END WHILE...
         if std::mem::take(&mut self.end_pending)
             && matches!(word.as_str(), "IF" | "WHILE" | "LOOP" | "REPEAT" | "CASE")
         {
             self.push_spaced(&word);
             return true;
         }
-        // Dans une expression CASE ... END, THEN, ELSE et END lui appartiennent.
+        // In a CASE ... END expression, THEN, ELSE and END belong to it.
         if !self.parens.is_empty()
             || self
                 .queries
@@ -109,7 +109,7 @@ impl Printer {
         let top = self.blocks.last().map(|block| block.kind);
         let at_start = std::mem::take(&mut self.statement_start);
         match word.as_str() {
-            // Étiquette d'un bloc (`boucle: LOOP`) : le bloc suit sur la ligne.
+            // Label of a block (`my_loop: LOOP`): the block follows on the line.
             _ if at_start && next.is_some_and(|next| next.token == Token::Colon) => {
                 self.push_spaced(item.text);
                 self.statement_start = true;
@@ -145,7 +145,7 @@ impl Printer {
                 self.start_program_statement(self.body_indent());
                 true
             }
-            // En tête d'instruction, DO est l'instruction DO de MySQL (`DO SLEEP(1)`).
+            // At the start of a statement, DO is MySQL's DO statement (`DO SLEEP(1)`).
             "DO" if top == Some(BlockKind::While) && !at_start => {
                 self.push_spaced("DO");
                 self.start_program_statement(self.body_indent());
@@ -164,7 +164,7 @@ impl Printer {
                 true
             }
             "ELSE" if matches!(top, Some(BlockKind::If | BlockKind::Case)) => {
-                let block = self.blocks.last().expect("bloc IF ou CASE");
+                let block = self.blocks.last().expect("an IF or CASE block");
                 let indent = if block.kind == BlockKind::Case {
                     block.indent + INDENT
                 } else {
@@ -183,7 +183,7 @@ impl Printer {
                 true
             }
             "END" if top.is_some() => {
-                let block = self.blocks.pop().expect("bloc ouvert");
+                let block = self.blocks.pop().expect("an open block");
                 self.newline(block.indent);
                 self.push_spaced("END");
                 self.queries = vec![Query::new(0, block.indent)];
@@ -194,9 +194,9 @@ impl Printer {
         }
     }
 
-    /// Ouvre un bloc sur la ligne en cours ; avec `body_now`, ses instructions
-    /// commencent aussitôt à la ligne (`BEGIN`, `LOOP`, `REPEAT`), sinon après
-    /// leur condition (`IF ... THEN`, `WHILE ... DO`, `CASE ... WHEN`).
+    /// Opens a block on the current line; with `body_now`, its statements start
+    /// right away on a new line (`BEGIN`, `LOOP`, `REPEAT`), otherwise after
+    /// their condition (`IF ... THEN`, `WHILE ... DO`, `CASE ... WHEN`).
     fn open_block(&mut self, kind: BlockKind, word: &str, body_now: bool) {
         let indent = self.current_line_indent();
         let body = match kind {
@@ -212,7 +212,7 @@ impl Printer {
         }
     }
 
-    /// La ligne en cours se termine-t-elle par une étiquette (`boucle:`) ?
+    /// Does the current line end with a label (`my_loop:`)?
     fn label_before(&self) -> bool {
         self.out.trim_end().ends_with(':')
     }
