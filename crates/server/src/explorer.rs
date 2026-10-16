@@ -105,7 +105,8 @@ async fn stream_catalog(
         let line = format!(
             "{}
 ",
-            serde_json::to_string(&event).expect("a serialisable message")
+            serde_json::to_string(&event)
+                .expect("an explorer event always serialises: its fields are plain data")
         );
         Some((Ok::<_, Infallible>(line), receiver))
     });

@@ -289,7 +289,8 @@ async fn send(
     sink: &mut SplitSink<WebSocket, Message>,
     message: &ServerMessage,
 ) -> Result<(), axum::Error> {
-    let json = serde_json::to_string(message).expect("a serialisable message");
+    let json = serde_json::to_string(message)
+        .expect("a server message always serialises: its fields are plain data");
     sink.send(Message::Text(json.into())).await
 }
 

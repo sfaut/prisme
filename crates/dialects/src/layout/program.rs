@@ -162,7 +162,7 @@ impl Printer {
                 let block = self
                     .blocks
                     .last()
-                    .expect("an IF or CASE block");
+                    .expect("ELSE is only matched under an open IF or CASE block");
                 let indent = if block.kind == BlockKind::Case {
                     block.indent + INDENT
                 } else {
@@ -184,7 +184,7 @@ impl Printer {
                 let block = self
                     .blocks
                     .pop()
-                    .expect("an open block");
+                    .expect("END is only matched while a block is open");
                 self.newline(block.indent);
                 self.push_spaced("END");
                 self.queries.reset(Query::new(0, block.indent));

@@ -46,7 +46,8 @@ impl MasterKey {
     /// Builds the AES-256-GCM cipher associated with the key.
     pub fn cipher(&self) -> Aes256Gcm {
         // The length is checked when MasterKey is built: failure is impossible.
-        Aes256Gcm::new_from_slice(self.0.expose_secret()).expect("a 32-byte key")
+        Aes256Gcm::new_from_slice(self.0.expose_secret())
+            .expect("the key length is checked when MasterKey is built")
     }
 
     /// Generates a new random key, without saving it.
