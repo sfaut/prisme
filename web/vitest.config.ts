@@ -11,6 +11,8 @@ export default mergeConfig(
       // stockage (--localstorage-file) : les tests utilisent celui de jsdom,
       // comme dans un navigateur.
       execArgv: ['--no-experimental-webstorage'],
+      // Mesures du texte absentes de jsdom, dont CodeMirror a besoin.
+      setupFiles: ['./src/testSetup.ts'],
       exclude: [...configDefaults.exclude, 'e2e/**'],
       root: fileURLToPath(new URL('./', import.meta.url)),
     },
