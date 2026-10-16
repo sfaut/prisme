@@ -78,11 +78,15 @@ pub(crate) fn case_function_names(sql: &str, dialect: Dialect, routines: &[Strin
     starts.extend(special_function_starts(&tokens));
 
     let index = OffsetIndex::new(sql);
+    let by_start: HashMap<Location, &TokenWithSpan> = tokens
+        .iter()
+        .map(|token| (token.span.start, token))
+        .collect();
     // Replacements from the end to the start: positions stay correct.
     let mut replacements: Vec<(usize, usize, String)> = starts
         .into_iter()
         .filter_map(|start| {
-            let token = tokens.iter().find(|token| token.span.start == start)?;
+            let token = *by_start.get(&start)?;
             let Token::Word(word) = &token.token else {
                 return None;
             };

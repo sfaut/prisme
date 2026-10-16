@@ -11,10 +11,12 @@
 //! In a part the parser does not understand, nothing is inserted; parsing
 //! then resumes (`parse` module).
 
+use std::collections::HashMap;
 use std::ops::ControlFlow;
 
 use sqlparser::ast::{SelectItem, TableAlias, TableFactor, Visit, Visitor};
 use sqlparser::keywords::Keyword;
+
 use sqlparser::tokenizer::{Location, Token, Tokenizer};
 
 use crate::Dialect;
@@ -34,11 +36,16 @@ pub(crate) fn add_alias_keyword(sql: &str, dialect: Dialect) -> String {
     }
 
     let index = OffsetIndex::new(sql);
+    let positions: HashMap<Location, usize> = tokens
+        .iter()
+        .enumerate()
+        .map(|(position, token)| (token.span.start, position))
+        .collect();
     // Insertions from the end to the start: positions stay correct.
     let mut offsets: Vec<usize> = finder
         .starts
         .into_iter()
-        .filter(|start| !preceded_by_as(&tokens, *start))
+        .filter(|start| !preceded_by_as(&tokens, &positions, *start))
         .filter_map(|start| index.offset(start))
         .collect();
     offsets.sort_unstable();
@@ -53,8 +60,12 @@ pub(crate) fn add_alias_keyword(sql: &str, dialect: Dialect) -> String {
 /// Is the token before the one starting at `start`, whitespace and comments
 /// skipped, `AS`? An alias not found among the tokens counts as preceded by
 /// `AS`: nothing is inserted at a doubtful position.
-fn preceded_by_as(tokens: &[sqlparser::tokenizer::TokenWithSpan], start: Location) -> bool {
-    let Some(index) = tokens.iter().position(|token| token.span.start == start) else {
+fn preceded_by_as(
+    tokens: &[sqlparser::tokenizer::TokenWithSpan],
+    positions: &HashMap<Location, usize>,
+    start: Location,
+) -> bool {
+    let Some(&index) = positions.get(&start) else {
         return true;
     };
     tokens[..index]

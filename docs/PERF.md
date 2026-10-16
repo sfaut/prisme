@@ -331,6 +331,24 @@ insertion point of a `LIMIT`) build the index once, before their loops.
 - **Long single-line texts are a case of their own**: a scan per line hides
   behind the usual short lines of a query.
 - **Remaining cost**: about 1.8 s for 138 KB, still growing a little faster
-  than linearly. Two other scans per token remain: `preceded_by_as` (alias
-  module) and the search of the token of each function (`functions` module),
-  both on the list of tokens. They are not changed here.
+  than linearly. Section 4.6 covers the two scans on the list of tokens that
+  were fixed after this one; the remaining growth is not explained yet.
+
+### 4.6 Two scans on the list of tokens
+
+Two functions searched the list of tokens for each alias (`preceded_by_as`,
+module `alias`) and for each function (the token of each function start,
+module `functions`): a scan of the whole list for each of them. Both now use a
+table of the tokens by position, built once.
+
+Measured with `SELECT` lists of growing size, each column
+written with an alias (`c1 a1, …`) or inside a function (`upper(c1), …`),
+on one line:
+
+| Columns | Aliases: before | Aliases: after | Functions: before | Functions: after |
+|---------|-----------------|----------------|-------------------|------------------|
+| 2 000   | 1.07 s          | 0.41 s         | 0.78 s            | 0.46 s           |
+| 4 000   | 1.56 s          | 1.27 s         | 1.35 s            | 1.64 s (noise)   |
+
+The gain is clear at 2 000 columns and within the noise at 4 000: the time of
+the other passes dominates there, and it is not explained yet.
