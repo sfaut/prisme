@@ -140,12 +140,23 @@ async function analyze(): Promise<void> {
 let keywords: DialectKeywords | null = null
 
 /**
+ * Number of the last keywords request: an answer that arrives after a newer
+ * request is ignored, as it may describe another dialect or version.
+ */
+let keywordsRequest = 0
+
+/**
  * Reads the keywords of the server's dialect and version, then highlights
  * the text again. A failure keeps the highlighting in place.
  */
 async function loadKeywords(): Promise<void> {
+  const request = ++keywordsRequest
   try {
-    keywords = await fetchKeywords(props.flavor, props.version)
+    const received = await fetchKeywords(props.flavor, props.version)
+    if (request !== keywordsRequest) {
+      return
+    }
+    keywords = received
     view?.dispatch({ effects: language.reconfigure(currentLanguage()) })
   } catch {
     // Server unreachable: lang-sql's highlighting stays in place.
