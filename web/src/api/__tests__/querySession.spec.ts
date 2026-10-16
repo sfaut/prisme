@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyMessage,
   executionDuration,
+  parseMessage,
   formatBytes,
   formatDuration,
   initialState,
@@ -503,5 +504,16 @@ describe('sessionUrl', () => {
     expect(sessionUrl(3, { protocol: 'https:', host: 'prisme.example' } as Location)).toBe(
       'wss://prisme.example/api/editors/3/session',
     )
+  })
+})
+
+describe('parseMessage', () => {
+  it('reads a message of the server', () => {
+    expect(parseMessage('{"type":"batch_done"}')).toEqual({ type: 'batch_done' })
+  })
+
+  it('returns null for a text that is not JSON, instead of throwing', () => {
+    expect(parseMessage('{"type":')).toBeNull()
+    expect(parseMessage('')).toBeNull()
   })
 })

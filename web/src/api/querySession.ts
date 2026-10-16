@@ -496,6 +496,22 @@ export function tabFraction(tab: QueryTab): number | null {
 }
 
 /**
+ * Parses a message received from the server.
+ *
+ * A message that is not JSON returns `null` instead of throwing: thrown in the
+ * WebSocket listener, the error would leave the session silent.
+ *
+ * @param data Text of the message.
+ */
+export function parseMessage(data: string): ServerMessage | null {
+  try {
+    return JSON.parse(data) as ServerMessage
+  } catch {
+    return null
+  }
+}
+
+/**
  * Size in bytes of a text encoded in UTF-8, as it goes over the WebSocket,
  * without copying it (a message can hold thousands of rows).
  *
@@ -750,7 +766,11 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
     }
     socket = new WebSocket(sessionUrl(editorId, window.location))
     socket.addEventListener('message', (event: MessageEvent<string>) => {
-      const message = JSON.parse(event.data) as ServerMessage
+      const message = parseMessage(event.data)
+      if (message === null) {
+        state.error = 'Message illisible reçu du serveur'
+        return
+      }
       pending.push([message, performance.now(), utf8Length(event.data)])
       flushTimer ??= setTimeout(flush, FLUSH_DELAY)
     })
