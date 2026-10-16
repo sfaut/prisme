@@ -134,9 +134,6 @@ async function analyze(): Promise<void> {
 }
 
 /**
- * CodeMirror language of the editor: dialect and completion, after the properties.
- */
-/**
  * Keywords of the server's dialect and version, `null` as long as they are
  * not received: highlighting then uses the lists of `lang-sql`.
  */
@@ -155,6 +152,10 @@ async function loadKeywords(): Promise<void> {
   }
 }
 
+/**
+ * CodeMirror language of the editor: dialect and completion, from the
+ * properties and the keywords received.
+ */
 function currentLanguage(): LanguageSupport {
   const fallback = props.flavor === 'mariadb' ? MariaSQL : MySQL
   const dialect = keywords === null ? fallback : editorDialect(keywords, props.ansiQuotes)
