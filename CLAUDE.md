@@ -59,7 +59,7 @@ Dérogation à la directive générale « lecture seule » : dans ce dépôt, Cl
 - Méthode : faire les modifications d'un seul motif, committer, puis passer au motif suivant. Avant chaque commit, relire `git diff --cached` : chaque ligne doit servir le motif annoncé par le message.
 - Messages en français. Le sujet dit ce que fait le changement, sans préfixe de fichier, de crate ou de module (« README : … », « V1.md : … ») : les fichiers touchés se voient déjà dans le commit.
 - Le sujet commence par un verbe conjugué à la 3e personne du singulier du présent (« Ajoute… », « Documente… », « Lit… »), jamais à l'infinitif.
-- Toujours en lecture seule pour le reste : pas de push, pas de création ou suppression de branche, pas de réécriture d'historique. Seule exception : la publication d'une version, ci-dessous.
+- Toujours en lecture seule pour le reste : pas de push, pas de création ou suppression de branche, pas de réécriture d'historique. Seule exception : la publication d'une version, ci-dessous (push du commit de préparation et de l'étiquette).
 
 ### Traitement des tickets GitHub
 
@@ -80,11 +80,11 @@ Cycle des étiquettes :
 
 ### Publication d'une version
 
-Dans ce seul cadre, Claude Code pousse l'étiquette et crée la release GitHub avec `gh`. La release publiée déclenche la compilation des exécutables (`.github/workflows/ci.yaml`), qui les y attache. Le changelog est rédigé par Claude Code et validé par Sébastien, jamais généré automatiquement.
+Dans ce seul cadre, Claude Code pousse sur GitHub le commit de préparation (`master`) et l'étiquette, puis crée la release avec `gh`. La release publiée déclenche les contrôles et la compilation des exécutables (`.github/workflows/ci.yaml`), qui les y attache : une seule compilation par version. Le changelog est rédigé par Claude Code et validé par Sébastien, jamais généré automatiquement.
 
 L'étiquette et le changelog portent sur ce qui est sur GitHub (`origin/master`), jamais sur des commits restés locaux.
 
-1. Sébastien donne le numéro de l'étiquette, par exemple `v0.2.0`.
+1. Sébastien donne le numéro de l'étiquette, par exemple `v0.3.0`.
 2. Vérifier : format `vX.Y.Z`, numéro supérieur à la dernière étiquette (`git tag --list --sort=-version:refname`), arbre de travail propre. Après `git fetch`, `master` doit être identique à `origin/master` : un commit local non poussé entrerait dans la release sans figurer au changelog. Sinon, s'arrêter et le signaler.
 3. Rédiger le changelog d'après l'historique de GitHub depuis l'étiquette précédente (`git log --oneline v0.2.0..origin/master`). En anglais, pour l'utilisateur de Prisme : plusieurs commits peuvent tenir en une ligne, les commits sans effet visible sont résumés ou omis. Toute évolution ou correction issue d'un ticket le cite, avec son lien (`[#12](https://github.com/sfaut/prisme/issues/12)`) : `docs/CHANGELOG.md` ne transforme pas un `#12` nu en lien. Les tickets se retrouvent par le `Réf. #N` des commits. Une section par icône, dans cet ordre, les sections vides omises, sauf la première, toujours présente :
    - 🚀 Launch : toujours en tête. Annonce la version (« We are proud to announce Prisme vX.Y.Z… ») et résume en quelques lignes ses principaux changements.
@@ -99,8 +99,9 @@ L'étiquette et le changelog portent sur ce qui est sur GitHub (`origin/master`)
 5. Après validation, committer la préparation de la version (« Prépare la version X.Y.Z ») :
    - ajouter le changelog validé en haut de `docs/CHANGELOG.md`, au-dessus des précédents, sous un titre `## vX.Y.Z (AAAA-MM-JJ)` ; ses sections y sont des titres `###` ;
    - monter la version, si elle ne vaut pas déjà X.Y.Z : `version` de `Cargo.toml` à la racine, `Cargo.lock`, `web/package.json` et `web/package-lock.json` (`npm version X.Y.Z --no-git-tag-version`).
-6. Sébastien pousse `master`. Après `git fetch`, vérifier que `origin/master` est exactement le commit de préparation (`git rev-parse HEAD origin/master`), et que son parent est le commit soumis à l'étape 4 : un autre commit arrivé entre-temps manquerait au changelog. Attendre que la CI y soit verte (`gh run list`). Sinon, s'arrêter.
-7. Créer l'étiquette annotée sur ce commit (`git tag --annotate vX.Y.Z --message "Prisme vX.Y.Z" origin/master`), la pousser (`git push origin vX.Y.Z`), puis créer la release : `gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file <changelog>`, où le fichier de notes reprend l'entrée de `docs/CHANGELOG.md` sans son titre.
+6. Après `git fetch`, vérifier que `origin/master` est toujours le commit soumis à l'étape 4, parent du commit de préparation : un autre commit arrivé entre-temps manquerait au changelog. Sinon, s'arrêter. Pousser `master` (`git push origin master`, sans forcer).
+7. Sans attendre la CI du push, créer l'étiquette annotée sur ce commit (`git tag --annotate vX.Y.Z --message "Prisme vX.Y.Z" origin/master`), la pousser (`git push origin vX.Y.Z`), puis créer la release : `gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file <changelog>`, où le fichier de notes reprend l'entrée de `docs/CHANGELOG.md` sans son titre.
+8. Suivre la CI de la release (`gh run watch`) jusqu'à l'ajout des trois exécutables. Si elle échoue, la release reste sans exécutables : le signaler à Sébastien, avec la cause. La release et l'étiquette ne se suppriment qu'avec son accord.
 
 ## Commandes
 
