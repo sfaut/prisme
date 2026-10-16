@@ -251,9 +251,9 @@ onBeforeUnmount(() => {
  */
 const resized = ref<Record<number, number>>(rememberedWidths(props.sql, props.columns))
 
-// New result: the widths remembered for it, if any.
 // New columns: the widths remembered for the query, the order of the SELECT,
-// and no sort nor filter, whose column indexes would point to other columns.
+// no sort, and the filter's text kept but for all the columns: the sort and
+// the filtered column are indexes that would point to other columns.
 // The same columns again (a session resumed after a reconnection) keep all of
 // it, as chosen by the user.
 watch(
@@ -266,7 +266,6 @@ watch(
     order.value = columns.map((_, index) => index)
     sort.value = null
     filter.column = null
-    filter.text = ''
   },
 )
 
