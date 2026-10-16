@@ -31,6 +31,11 @@
   rendering of the lines is Prisme's, in Tailwind classes. All the lines
   have the same height (`--row-height`), and each level is indented by
   `--tree-indent` (variables of `main.css`).
+
+  While the tree scrolls, the ancestors of the first line under the top stay
+  pinned there (`stickyRows.ts`): the source, the database and the table keep
+  showing over their columns. The pinned lines are the lines of the tree
+  (`ExplorerLine.vue`), hidden from assistive technologies, which read the tree.
 -->
 <script setup lang="ts">
 import { NotebookPen, Pencil, PlugZap, Plus, RefreshCw, Trash2 } from 'lucide-vue-next'
@@ -46,6 +51,7 @@ import { useConnectionsStore } from '@/stores/connections'
 import ConnectionDialog from './ConnectionDialog.vue'
 import ExplorerLine from './ExplorerLine.vue'
 import { type ExplorerNode, SOURCES_KEY, explorerTree, sourceKey } from './explorerNodes'
+import { pinnedRows, visibleRows } from './stickyRows'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
 import UiDialog from './ui/UiDialog.vue'
@@ -166,6 +172,40 @@ const nodes = computed(() =>
     receiving.value,
   ),
 )
+
+/**
+ * Rows displayed by the tree, in display order.
+ */
+const rows = computed(() => visibleRows(nodes.value, expandedKeys.value))
+
+/**
+ * Position of the tree's scroll, in pixels.
+ */
+const scrollTop = ref(0)
+
+/**
+ * Ancestors of the rows under the top of the tree, pinned there while it
+ * scrolls, so that the source, the database and the table stay visible.
+ */
+const pinned = computed(() => pinnedRows(rows.value, scrollTop.value, ROW_HEIGHT))
+
+/**
+ * Classes of a line of the tree, and of a pinned line, which look the same.
+ */
+const ROW_CLASSES =
+  'tree-row group flex h-row w-full cursor-pointer items-center gap-1 rounded-control pe-1 text-start outline-none select-none hover:bg-surface-muted focus-visible:bg-surface-muted'
+
+/**
+ * Classes of the line of a node: the chosen source is highlighted.
+ *
+ * @param node Node shown on the line.
+ */
+function rowClass(node: ExplorerNode): (string | Record<string, boolean>)[] {
+  return [
+    ROW_CLASSES,
+    { 'bg-surface-elevated': node.role === 'source' && node.connectionId === props.selectedId },
+  ]
+}
 
 /**
  * Errors to show, preceded by the name of their source: reading failures,
@@ -342,13 +382,52 @@ function onSelect(event: TreeItemSelectEvent<ExplorerNode>, clicked: ExplorerNod
   if (!(original instanceof MouseEvent) || original.detail !== 2) {
     return
   }
-  if (clicked.role === 'source') {
-    emit('select', clicked.connectionId)
-  } else if (clicked.role === 'database') {
-    emit('use-database', clicked.connectionId, clicked.schema)
-  } else if (clicked.table !== undefined) {
-    emit('open-table', clicked.connectionId, clicked.schema, clicked.table)
+  activate(clicked)
+}
+
+/**
+ * Acts on a node after a double click: chooses a source, changes the current
+ * database or opens the table.
+ *
+ * @param node Double-clicked node.
+ */
+function activate(node: ExplorerNode): void {
+  if (node.role === 'source') {
+    emit('select', node.connectionId)
+  } else if (node.role === 'database') {
+    emit('use-database', node.connectionId, node.schema)
+  } else if (node.table !== undefined) {
+    emit('open-table', node.connectionId, node.schema, node.table)
   }
+}
+
+/**
+ * Follows the clicks on a pinned line, as the tree does: a click opens or
+ * closes its level, and a double click acts on it.
+ *
+ * @param event Original click.
+ * @param clicked Node of the pinned line.
+ */
+function onPinnedClick(event: MouseEvent, clicked: ExplorerNode): void {
+  if (clicked.children?.length) {
+    expand(
+      expandedKeys.value.includes(clicked.key)
+        ? expandedKeys.value.filter((key) => key !== clicked.key)
+        : [...expandedKeys.value, clicked.key],
+    )
+  }
+  if (event.detail === 2) {
+    activate(clicked)
+  }
+}
+
+/**
+ * Follows the scroll of the tree, to pin the rows of its hierarchy.
+ *
+ * @param event Scroll event of the tree.
+ */
+function onScroll(event: Event): void {
+  scrollTop.value = (event.target as HTMLElement).scrollTop
 }
 
 onMounted(async () => {
@@ -382,40 +461,60 @@ watch(
     <ui-alert v-if="listError" tone="error" :title="listError" />
     <ui-alert v-for="message in messages" :key="message" tone="warning" :title="message" />
 
-    <tree-root
-      :items="nodes"
-      :get-key="(node: ExplorerNode) => node.key"
-      :expanded="expandedKeys"
-      class="min-h-0 flex-1 overflow-y-auto"
-      @update:expanded="expand"
-    >
-      <tree-virtualizer
-        v-slot="{ item }"
-        :estimate-size="ROW_HEIGHT"
-        :text-content="(flat) => flat.value.label"
+    <div class="relative flex min-h-0 flex-1 flex-col">
+      <tree-root
+        :items="nodes"
+        :get-key="(node: ExplorerNode) => node.key"
+        :expanded="expandedKeys"
+        class="min-h-0 flex-1 overflow-y-auto"
+        @update:expanded="expand"
+        @scroll="onScroll"
       >
-        <tree-item
-          v-slot="{ isExpanded }"
-          :value="item.value"
-          :level="item.level"
-          class="tree-row group flex h-row w-full cursor-pointer items-center gap-1 rounded-control pe-1 text-start outline-none select-none hover:bg-surface-muted focus-visible:bg-surface-muted"
-          :class="{
-            'bg-surface-elevated':
-              item.value.role === 'source' && item.value.connectionId === selectedId,
-          }"
-          :style="{ '--level': item.level }"
-          @select="
-            onSelect($event as TreeItemSelectEvent<ExplorerNode>, item.value as ExplorerNode)
-          "
+        <tree-virtualizer
+          v-slot="{ item }"
+          :estimate-size="ROW_HEIGHT"
+          :text-content="(flat) => flat.value.label"
+        >
+          <tree-item
+            v-slot="{ isExpanded }"
+            :value="item.value"
+            :level="item.level"
+            :class="rowClass(item.value as ExplorerNode)"
+            :style="{ '--level': item.level }"
+            @select="
+              onSelect($event as TreeItemSelectEvent<ExplorerNode>, item.value as ExplorerNode)
+            "
+          >
+            <explorer-line
+              :node="item.value as ExplorerNode"
+              :expanded="isExpanded"
+              :menu="menuItems(item.value as ExplorerNode)"
+            />
+          </tree-item>
+        </tree-virtualizer>
+      </tree-root>
+
+      <!-- Pinned lines repeat lines of the tree: hidden from assistive technologies. -->
+      <div
+        v-if="pinned.length"
+        aria-hidden="true"
+        class="absolute inset-x-0 top-0 z-10 border-b border-line bg-surface"
+      >
+        <div
+          v-for="row in pinned"
+          :key="row.node.key"
+          :class="rowClass(row.node)"
+          :style="{ '--level': row.level }"
+          @click="onPinnedClick($event, row.node)"
         >
           <explorer-line
-            :node="item.value as ExplorerNode"
-            :expanded="isExpanded"
-            :menu="menuItems(item.value as ExplorerNode)"
+            :node="row.node"
+            :expanded="expandedKeys.includes(row.node.key)"
+            :menu="menuItems(row.node)"
           />
-        </tree-item>
-      </tree-virtualizer>
-    </tree-root>
+        </div>
+      </div>
+    </div>
 
     <connection-dialog v-model:open="dialogOpen" :connection="editing" @updated="onUpdated" />
 

@@ -18,9 +18,14 @@ vi.mock('@/api/connections', () => ({
   probeConnection: async () => ({ flavor: 'mysql', version: '8.4.0', ansi_quotes: false }),
 }))
 
+/**
+ * Databases returned by the simulated server.
+ */
+let schemaNames = ['a', 'b', 'c']
+
 vi.mock('@/api/explorer', () => ({
   streamCatalog: async (_: number, onEvent: (event: unknown) => void) => {
-    onEvent({ type: 'schemas', schemas: ['a', 'b', 'c'] })
+    onEvent({ type: 'schemas', schemas: schemaNames })
     onEvent({ type: 'done' })
   },
 }))
@@ -129,6 +134,7 @@ async function click(element: { element: Element } | undefined, detail: number):
 beforeEach(() => {
   setActivePinia(createPinia())
   giveLayout()
+  schemaNames = ['a', 'b', 'c']
 })
 
 afterEach(() => {
@@ -186,6 +192,50 @@ describe('ObjectExplorer', () => {
     // Double click on a database: it becomes the current database of its source.
     await click(row(wrapper, 'a'), 2)
     expect(wrapper.emitted('use-database')).toEqual([[1, 'a']])
+    wrapper.unmount()
+  })
+
+  it('pins the hierarchy of the top row while the tree scrolls', async () => {
+    savedConnections = [connection(1, 'Origen 2')]
+    schemaNames = Array.from({ length: 40 }, (_, index) => `db${index}`)
+    const wrapper = mountExplorer({ selectedId: 1, currentDatabase: null })
+    await vi.waitFor(() => expect(row(wrapper, 'db0')).toBeDefined())
+    const pinned = () =>
+      wrapper.findAll('[aria-hidden="true"] .tree-label').map((node) => node.text())
+
+    expect(pinned()).toEqual([])
+    // Ten rows down: the first row under the pinned ones is a database of the
+    // source, so the pinned rows are the root and the source.
+    const tree = wrapper.find('[role="tree"]')
+    Object.defineProperty(tree.element, 'scrollTop', { value: 10 * 24, configurable: true })
+    await tree.trigger('scroll')
+    expect(pinned()).toEqual(['Sources de données', 'Origen 2'])
+
+    // Back to the top: nothing is pinned any more.
+    Object.defineProperty(tree.element, 'scrollTop', { value: 0, configurable: true })
+    await tree.trigger('scroll')
+    expect(pinned()).toEqual([])
+    wrapper.unmount()
+  })
+
+  it('opens and closes a pinned line with a click', async () => {
+    savedConnections = [connection(1, 'Origen 2')]
+    schemaNames = Array.from({ length: 40 }, (_, index) => `db${index}`)
+    const wrapper = mountExplorer({ selectedId: 1, currentDatabase: null })
+    await vi.waitFor(() => expect(row(wrapper, 'db0')).toBeDefined())
+    const tree = wrapper.find('[role="tree"]')
+    Object.defineProperty(tree.element, 'scrollTop', { value: 10 * 24, configurable: true })
+    await tree.trigger('scroll')
+
+    // The source is pinned under the root: its click closes it, and the pinned
+    // rows follow the tree, which no longer holds any database under it.
+    const pinnedSource = wrapper
+      .findAll('[aria-hidden="true"] .tree-row')
+      .find((item) => item.text().startsWith('Origen 2'))
+    expect(pinnedSource).toBeDefined()
+    await click(pinnedSource, 1)
+    expect(wrapper.findAll('[aria-hidden="true"] .tree-row')).toHaveLength(0)
+    expect(wrapper.emitted('select')).toBeUndefined()
     wrapper.unmount()
   })
 
