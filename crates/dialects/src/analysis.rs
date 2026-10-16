@@ -16,8 +16,8 @@
 //!   version does not know (`keywords/*.yaml` files, `since` / `until`
 //!   fields) is reported separately.
 //!
-//! Identifiers are collected in the serialised tree (`serde` option of
-//! `sqlparser`), where each one carries its position: none escapes the
+//! Identifiers are collected by a visitor of the tree, where each one carries
+//! its position: none escapes the
 //! collection, wherever it is in the query. Their nature (table, column...)
 //! comes from a walk of the tree; a name of unknown nature keeps its
 //! spelling.
@@ -25,9 +25,9 @@
 use std::collections::HashMap;
 use std::ops::ControlFlow;
 
-use serde_json::Value;
 use sqlparser::ast::{
-    Expr, ObjectName, ObjectNamePart, Query, SelectItem, SetExpr, TableFactor, Visit, Visitor,
+    Expr, Ident, ObjectName, ObjectNamePart, Query, SelectItem, SetExpr, TableFactor, Visit,
+    Visitor,
 };
 use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Token, Tokenizer};
@@ -109,7 +109,8 @@ pub fn analyze(
     let parser_dialect = dialect.parser_dialect();
     let statements = Parser::parse_sql(parser_dialect.as_ref(), sql).ok()?;
 
-    let identifiers = identifier_positions(&serde_json::to_value(&statements).ok()?);
+    let mut identifiers = IdentifierCollector::default();
+    let _ = statements.visit(&mut identifiers);
     let mut kinds = KindCollector::default();
     let _ = statements.visit(&mut kinds);
     let names = Names::new(catalog, &kinds);
@@ -127,7 +128,7 @@ pub fn analyze(
             continue;
         }
         let position = (token.span.start.line, token.span.start.column);
-        let role = if identifiers.contains_key(&position) {
+        let role = if identifiers.positions.contains_key(&position) {
             let kind = kinds.kinds.get(&position).copied();
             Role::Name {
                 spelling: names.spelling(kind, &word.value),
@@ -151,40 +152,27 @@ pub fn analyze(
     Some(words)
 }
 
-/// Positions of all the identifiers of the serialised tree: an identifier is
-/// an object `{ value, quote_style, span }` there.
-fn identifier_positions(tree: &Value) -> HashMap<Position, bool> {
-    let mut positions = HashMap::new();
-    collect_identifiers(tree, &mut positions);
-    positions
+/// Walk of the tree that records the position of each identifier, with a
+/// "quoted" flag. The visitor reaches every identifier of the statements,
+/// whatever the node that holds it.
+#[derive(Default)]
+struct IdentifierCollector {
+    /// Position of each identifier, and whether it is quoted.
+    positions: HashMap<Position, bool>,
 }
 
-/// Walks the serialised tree and records the position of each identifier,
-/// with a "quoted" flag.
-fn collect_identifiers(node: &Value, positions: &mut HashMap<Position, bool>) {
-    match node {
-        Value::Object(fields) => {
-            let is_identifier = fields.len() == 3
-                && fields.get("value").is_some_and(Value::is_string)
-                && fields.contains_key("quote_style")
-                && fields.contains_key("span");
-            if is_identifier {
-                let start = &fields["span"]["start"];
-                if let (Some(line), Some(column)) =
-                    (start["line"].as_u64(), start["column"].as_u64())
-                    && line > 0
-                {
-                    positions.insert((line, column), !fields["quote_style"].is_null());
-                }
-            }
-            fields
-                .values()
-                .for_each(|value| collect_identifiers(value, positions));
+impl Visitor for IdentifierCollector {
+    type Break = ();
+
+    fn pre_visit_ident(&mut self, ident: &Ident) -> ControlFlow<Self::Break> {
+        // A line 0 means that the parser gave no position to the identifier.
+        if ident.span.start.line > 0 {
+            self.positions.insert(
+                (ident.span.start.line, ident.span.start.column),
+                ident.quote_style.is_some(),
+            );
         }
-        Value::Array(items) => items
-            .iter()
-            .for_each(|item| collect_identifiers(item, positions)),
-        _ => {}
+        ControlFlow::Continue(())
     }
 }
 
@@ -475,7 +463,9 @@ mod tests {
     fn records_identifier_positions() {
         let sql = "select a from t";
         let statements = Parser::parse_sql(Dialect::MySql.parser_dialect().as_ref(), sql).unwrap();
-        let positions = identifier_positions(&serde_json::to_value(&statements).unwrap());
+        let mut collector = IdentifierCollector::default();
+        let _ = statements.visit(&mut collector);
+        let positions = collector.positions;
         assert!(positions.contains_key(&position_of(Location::new(1, 8))));
         assert!(positions.contains_key(&position_of(Location::new(1, 15))));
     }
