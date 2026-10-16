@@ -9,7 +9,7 @@
  * for its turn), `columns`, batches of `rows`, then `done` (or `error`).
  * `batch_done` closes the batch. `cancel` stops all the running queries,
  * `cancel_query` a single one. The protocol is described in
- * `crates/server/src/query_session.rs`.
+ * `crates/server/src/query_session/protocol.rs`.
  *
  * Each query has its tab. A new batch replaces the tabs of the previous one,
  * except those the user pinned; a tab can also be renamed or closed (its

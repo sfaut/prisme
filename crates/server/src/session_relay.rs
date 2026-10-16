@@ -5,7 +5,7 @@
 //! its transactions or its running queries. The relay is the task that links
 //! them:
 //!
-//! - it drains the session's message queue (`query_session.rs`), shows the
+//! - it drains the session's message queue (`query_session/outbox.rs`), shows the
 //!   messages to the editor's result recorder (`recorder.rs`), then sends
 //!   them to the attached WebSocket, if there is one; without a WebSocket,
 //!   messages are only recorded;
