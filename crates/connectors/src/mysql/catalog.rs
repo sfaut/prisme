@@ -1,19 +1,19 @@
-//! Catalogue d'un serveur MySQL ou MariaDB : bases, objets et détail des tables.
+//! Catalog of a MySQL or MariaDB server: databases, objects and table details.
 //!
-//! Sert à l'explorateur d'objets, qui affiche les éléments dès qu'ils
-//! arrivent, en trois temps :
+//! Serves the object explorer, which shows the elements as soon as they
+//! arrive, in three steps:
 //!
-//! 1. `schemas` : noms des bases ;
-//! 2. `objects` : tables, vues, procédures et fonctions d'une base ;
-//! 3. `details` : colonnes, index, clefs étrangères et déclencheurs de chaque
-//!    table d'une base.
+//! 1. `schemas`: database names;
+//! 2. `objects`: tables, views, procedures and functions of a database;
+//! 3. `details`: columns, indexes, foreign keys and triggers of each table of
+//!    a database.
 //!
-//! Chaque lecture filtre sur une base, ce qui évite au serveur de parcourir
-//! toutes les tables à la fois. Les requêtes ne demandent que des
-//! informations du dictionnaire : demander aussi le nombre de lignes
-//! (`TABLE_ROWS`) obligerait le serveur à ouvrir chaque table, ce qui est très
-//! lent sur un gros serveur. Les noms de base sont passés en paramètres de
-//! requêtes préparées, jamais concaténés au texte SQL.
+//! Each read filters on a database, which saves the server from walking all
+//! the tables at once. The queries only ask for dictionary information:
+//! asking for the row count as well (`TABLE_ROWS`) would force the server to
+//! open each table, which is very slow on a large server. Database names are
+//! passed as parameters of prepared statements, never concatenated to the
+//! SQL text.
 
 use std::collections::BTreeMap;
 
@@ -23,155 +23,155 @@ use ts_rs::TS;
 
 use super::{Connection, MysqlError};
 
-/// Table ou vue d'une base.
+/// Table or view of a database.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct TableInfo {
-    /// Nom de la table.
+    /// Name of the table.
     pub name: String,
-    /// Nature de l'objet.
+    /// Nature of the object.
     pub kind: TableKind,
 }
 
-/// Nature d'un objet de type table.
+/// Nature of a table-like object.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum TableKind {
-    /// Table de données.
+    /// Data table.
     Table,
-    /// Vue.
+    /// View.
     View,
-    /// Table ou vue fournie par le serveur lui-même (`information_schema`...).
+    /// Table or view provided by the server itself (`information_schema`...).
     System,
 }
 
-/// Procédure ou fonction stockée.
+/// Stored procedure or function.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct RoutineInfo {
-    /// Nom de la routine.
+    /// Name of the routine.
     pub name: String,
-    /// Procédure ou fonction.
+    /// Procedure or function.
     pub kind: RoutineKind,
 }
 
-/// Nature d'une routine stockée.
+/// Nature of a stored routine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum RoutineKind {
-    /// Procédure (`CALL`).
+    /// Procedure (`CALL`).
     Procedure,
-    /// Fonction (appelée dans une expression).
+    /// Function (called in an expression).
     Function,
 }
 
-/// Objets d'une base : tables et vues, procédures et fonctions, par nom.
+/// Objects of a database: tables and views, procedures and functions, by name.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct SchemaObjects {
-    /// Tables et vues.
+    /// Tables and views.
     pub tables: Vec<TableInfo>,
-    /// Procédures et fonctions.
+    /// Procedures and functions.
     pub routines: Vec<RoutineInfo>,
 }
 
-/// Colonne d'une table.
+/// Column of a table.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct ColumnInfo {
-    /// Nom de la colonne.
+    /// Name of the column.
     pub name: String,
-    /// Type complet, tel que déclaré (`varchar(50)`, `int unsigned`...).
+    /// Full type, as declared (`varchar(50)`, `int unsigned`...).
     pub column_type: String,
-    /// La colonne accepte-t-elle NULL ?
+    /// Does the column accept NULL?
     pub nullable: bool,
-    /// Rôle dans les index : `PRI`, `UNI`, `MUL`, ou chaîne vide.
+    /// Role in the indexes: `PRI`, `UNI`, `MUL`, or empty string.
     pub key: String,
-    /// Valeur attribuée automatiquement à l'insertion (`AUTO_INCREMENT`) ?
+    /// Value assigned automatically on insert (`AUTO_INCREMENT`)?
     pub auto_increment: bool,
 }
 
-/// Index d'une table.
+/// Index of a table.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct IndexInfo {
-    /// Nom de l'index (`PRIMARY` pour la clef primaire).
+    /// Name of the index (`PRIMARY` for the primary key).
     pub name: String,
-    /// Colonnes indexées, dans l'ordre de l'index. Une partie calculée
-    /// (index fonctionnel de MySQL) apparaît sous la forme `(expression)`.
+    /// Indexed columns, in the order of the index. A computed part (MySQL
+    /// functional index) appears as `(expression)`.
     pub columns: Vec<String>,
-    /// Index unique ?
+    /// Unique index?
     pub unique: bool,
 }
 
-/// Clef étrangère d'une table.
+/// Foreign key of a table.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct ForeignKeyInfo {
-    /// Nom de la contrainte.
+    /// Name of the constraint.
     pub name: String,
-    /// Colonnes de la table, dans l'ordre de la clef.
+    /// Columns of the table, in the order of the key.
     pub columns: Vec<String>,
-    /// Base de la table référencée.
+    /// Database of the referenced table.
     pub referenced_schema: String,
-    /// Table référencée.
+    /// Referenced table.
     pub referenced_table: String,
-    /// Colonnes référencées, dans le même ordre que `columns`.
+    /// Referenced columns, in the same order as `columns`.
     pub referenced_columns: Vec<String>,
 }
 
-/// Déclencheur d'une table.
+/// Trigger of a table.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct TriggerInfo {
-    /// Nom du déclencheur.
+    /// Name of the trigger.
     pub name: String,
-    /// Moment : `BEFORE` ou `AFTER`.
+    /// Timing: `BEFORE` or `AFTER`.
     pub timing: String,
-    /// Événement : `INSERT`, `UPDATE` ou `DELETE`.
+    /// Event: `INSERT`, `UPDATE` or `DELETE`.
     pub event: String,
 }
 
-/// Détail d'une table : colonnes, index, clefs étrangères et déclencheurs.
+/// Details of a table: columns, indexes, foreign keys and triggers.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct TableDetails {
-    /// Nom de la table.
+    /// Name of the table.
     pub table: String,
-    /// Colonnes, dans l'ordre de déclaration.
+    /// Columns, in declaration order.
     pub columns: Vec<ColumnInfo>,
-    /// Index, la clef primaire en premier, puis par nom.
+    /// Indexes, the primary key first, then by name.
     pub indexes: Vec<IndexInfo>,
-    /// Clefs étrangères, par nom.
+    /// Foreign keys, by name.
     pub foreign_keys: Vec<ForeignKeyInfo>,
-    /// Déclencheurs, par moment, événement et ordre d'exécution.
+    /// Triggers, by timing, event and execution order.
     pub triggers: Vec<TriggerInfo>,
 }
 
-/// Ligne d'`information_schema.COLUMNS` : table, colonne, type, nullabilité,
-/// index, informations complémentaires (`auto_increment`...).
+/// Row of `information_schema.COLUMNS`: table, column, type, nullability,
+/// index, extra information (`auto_increment`...).
 type ColumnRow = (String, String, String, String, String, String);
 
-/// Ligne d'`information_schema.STATISTICS` : table, index, non unique, colonne.
+/// Row of `information_schema.STATISTICS`: table, index, non unique, column.
 type IndexRow = (String, String, i64, Option<String>);
 
-/// Ligne d'`information_schema.KEY_COLUMN_USAGE` : table, contrainte, colonne,
-/// base, table et colonne référencées.
+/// Row of `information_schema.KEY_COLUMN_USAGE`: table, constraint, column,
+/// referenced database, table and column.
 type ForeignKeyRow = (String, String, String, String, String, String);
 
-/// Ligne d'`information_schema.TRIGGERS` : table, déclencheur, moment, événement.
+/// Row of `information_schema.TRIGGERS`: table, trigger, timing, event.
 type TriggerRow = (String, String, String, String);
 
-/// Liste les bases du serveur, par nom.
+/// Lists the server's databases, by name.
 pub async fn schemas(connection: &mut Connection) -> Result<Vec<String>, MysqlError> {
     Ok(connection
         .query("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME")
         .await?)
 }
 
-/// Liste les objets de la base `schema` : tables, vues, procédures et fonctions.
+/// Lists the objects of the database `schema`: tables, views, procedures and functions.
 pub async fn objects(
     connection: &mut Connection,
     schema: &str,
@@ -212,7 +212,7 @@ pub async fn objects(
     })
 }
 
-/// Lit le détail de toutes les tables de la base `schema`, table par table.
+/// Reads the details of all the tables of the database `schema`, table by table.
 pub async fn details(
     connection: &mut Connection,
     schema: &str,
@@ -255,11 +255,11 @@ pub async fn details(
     Ok(assemble_details(columns, indexes, foreign_keys, triggers))
 }
 
-/// Range les lignes lues dans `information_schema` table par table.
+/// Sorts the rows read from `information_schema` table by table.
 ///
-/// Les lignes arrivent triées par table puis dans l'ordre utile (position
-/// des colonnes, ordre des colonnes dans l'index ou la clef). Le résultat
-/// est trié par nom de table.
+/// Rows arrive sorted by table then in the useful order (position of the
+/// columns, order of the columns in the index or the key). The result is
+/// sorted by table name.
 fn assemble_details(
     columns: Vec<ColumnRow>,
     indexes: Vec<IndexRow>,
@@ -273,7 +273,7 @@ fn assemble_details(
             column_type,
             nullable: is_nullable == "YES",
             key,
-            // EXTRA peut cumuler plusieurs mentions (« auto_increment », « on update... »).
+            // EXTRA can combine several mentions ("auto_increment", "on update...").
             auto_increment: extra.to_lowercase().contains("auto_increment"),
         });
     }
@@ -317,13 +317,13 @@ fn assemble_details(
 
     let mut tables: Vec<TableDetails> = tables.into_values().collect();
     for details in &mut tables {
-        // Clef primaire en premier, comme dans SHOW INDEX ; le tri est stable.
+        // Primary key first, as in SHOW INDEX; the sort is stable.
         details.indexes.sort_by_key(|index| index.name != "PRIMARY");
     }
     tables
 }
 
-/// Renvoie le détail de la table `name`, créé vide s'il n'existe pas encore.
+/// Returns the details of the table `name`, created empty if they do not exist yet.
 fn table<'a>(tables: &'a mut BTreeMap<String, TableDetails>, name: &str) -> &'a mut TableDetails {
     tables
         .entry(name.to_string())
@@ -333,12 +333,12 @@ fn table<'a>(tables: &'a mut BTreeMap<String, TableDetails>, name: &str) -> &'a 
         })
 }
 
-/// Traduit la colonne `TABLE_TYPE` d'`information_schema.TABLES`.
+/// Translates the `TABLE_TYPE` column of `information_schema.TABLES`.
 fn table_kind(table_type: &str) -> TableKind {
     match table_type {
         "BASE TABLE" => TableKind::Table,
         "VIEW" => TableKind::View,
-        // SYSTEM VIEW (MySQL, MariaDB), SYSTEM VERSIONED (MariaDB, table versionnée)...
+        // SYSTEM VIEW (MySQL, MariaDB), SYSTEM VERSIONED (MariaDB, versioned table)...
         "SYSTEM VERSIONED" => TableKind::Table,
         _ => TableKind::System,
     }

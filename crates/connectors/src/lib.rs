@@ -1,6 +1,6 @@
-//! Connecteurs de Prisme : l'accès à chaque moteur de base de données cible.
+//! Prisme's connectors: access to each target database engine.
 //!
-//! Un module par famille de moteurs, chacun avec son pilote natif (voir
-//! `docs/V1.md`, section 3.2). Pour l'instant : MySQL et MariaDB.
+//! One module per family of engines, each with its native driver (see
+//! `docs/V1.md`, section 3.2). For now: MySQL and MariaDB.
 
 pub mod mysql;

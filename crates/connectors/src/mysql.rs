@@ -1,14 +1,14 @@
-//! Connecteur MySQL et MariaDB, avec le pilote `mysql_async`.
+//! MySQL and MariaDB connector, with the `mysql_async` driver.
 //!
-//! Les deux moteurs partagent le même protocole et le même pilote, mais Prisme
-//! les traite comme deux dialectes distincts (règle 1 de `CLAUDE.md`). La
-//! variante est détectée à la connexion par `SELECT VERSION()`, dont le
-//! résultat contient « MariaDB » pour ce dernier.
+//! Both engines share the same protocol and the same driver, but Prisme
+//! treats them as two distinct dialects (rule 1 of `CLAUDE.md`). The flavor
+//! is detected on connection through `SELECT VERSION()`, whose result
+//! contains "MariaDB" for the latter.
 //!
-//! Les résultats se lisent ligne à ligne (`execute`, puis `ResultStream`),
-//! sans jamais charger tout le résultat en mémoire. Le catalogue (bases,
-//! tables, colonnes) est dans le sous-module `catalog`, le type des colonnes
-//! d'un résultat dans `column_type`.
+//! Results are read row by row (`execute`, then `ResultStream`), never
+//! loading the whole result in memory. The catalog (databases, tables,
+//! columns) is in the `catalog` submodule, the type of a result's columns in
+//! `column_type`.
 
 use std::time::Duration;
 
@@ -19,7 +19,7 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// Connexion ouverte à un serveur MySQL ou MariaDB.
+/// Open connection to a MySQL or MariaDB server.
 pub use mysql_async::Conn as Connection;
 
 pub mod catalog;
@@ -28,82 +28,82 @@ mod connect_error;
 
 pub use column_type::{ColumnTypeInfo, TypeFamily};
 
-/// Délai maximal pour ouvrir une connexion au serveur.
+/// Maximum delay to open a connection to the server.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Paramètres de connexion à un serveur MySQL ou MariaDB.
+/// Connection settings for a MySQL or MariaDB server.
 #[derive(Clone)]
 pub struct MysqlTarget {
-    /// Nom d'hôte ou adresse IP du serveur.
+    /// Host name or IP address of the server.
     pub host: String,
-    /// Port TCP du serveur (3306 en général).
+    /// TCP port of the server (usually 3306).
     pub port: u16,
-    /// Compte de connexion.
+    /// Connection account.
     pub username: String,
-    /// Mot de passe du compte, jamais affiché dans un journal.
+    /// Password of the account, never shown in a log.
     pub password: SecretString,
-    /// Base sélectionnée à la connexion. Chaîne vide : aucune.
+    /// Database selected on connection. Empty string: none.
     pub database_name: String,
-    /// Requêtes exécutées à l'ouverture de chaque connexion, dans l'ordre
+    /// Queries run when each connection opens, in order
     /// (`SET NAMES utf8mb4`, `SET SESSION sql_mode = ...`).
     pub init_statements: Vec<String>,
 }
 
-/// Variante du serveur, détectée à la connexion.
+/// Flavor of the server, detected on connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "lowercase")]
 pub enum Flavor {
-    /// Serveur MySQL (Oracle).
+    /// MySQL server (Oracle).
     MySql,
-    /// Serveur MariaDB.
+    /// MariaDB server.
     MariaDb,
 }
 
-/// Identité d'un serveur, obtenue à la connexion.
+/// Identity of a server, obtained on connection.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct ServerInfo {
-    /// MySQL ou MariaDB.
+    /// MySQL or MariaDB.
     pub flavor: Flavor,
-    /// Résultat brut de `SELECT VERSION()`, par exemple `8.1.0` ou `11.3.2-MariaDB-1:11.3.2+maria~ubu2204`.
+    /// Raw result of `SELECT VERSION()`, for example `8.1.0` or `11.3.2-MariaDB-1:11.3.2+maria~ubu2204`.
     pub version: String,
-    /// Le mode `ANSI_QUOTES` est-il actif sur la session (directement, ou par
-    /// le mode `ANSI`) ? Les guillemets doubles délimitent alors des
-    /// identifiants, et non plus des chaînes.
+    /// Is the `ANSI_QUOTES` mode active on the session (directly, or through
+    /// the `ANSI` mode)? Double quotes then delimit identifiers, no longer
+    /// strings.
     pub ansi_quotes: bool,
 }
 
-/// Erreurs du connecteur MySQL / MariaDB.
+/// Errors of the MySQL / MariaDB connector.
 #[derive(Debug, thiserror::Error)]
 pub enum MysqlError {
-    /// Connexion impossible, avec un message qui dit quoi vérifier.
+    /// Connection impossible, with a message that says what to check.
     #[error("{0}")]
     Connect(String),
 
-    /// Le serveur n'a pas répondu dans le délai `CONNECT_TIMEOUT`.
+    /// The server did not answer within `CONNECT_TIMEOUT`.
     #[error("{0}")]
     ConnectTimeout(String),
 
-    /// Erreur du pilote sur une connexion ouverte : requête en échec, connexion perdue...
+    /// Driver error on an open connection: failed query, lost connection...
     #[error("{0}")]
     Driver(#[from] mysql_async::Error),
 
-    /// Le serveur n'a renvoyé aucune version.
-    #[error("le serveur n'a renvoyé aucune version")]
+    /// The server returned no version.
+    #[error("the server returned no version")]
     MissingVersion,
 
-    /// Une requête d'initialisation de la connexion a échoué.
-    #[error("requête à la connexion « {statement} » en échec : {message}")]
+    /// A query initialising the connection failed.
+    #[error("on-connect query \"{statement}\" failed: {message}")]
     Init {
-        /// La requête en échec.
+        /// The failed query.
         statement: String,
-        /// Message du serveur.
+        /// Message of the server.
         message: String,
     },
 }
 
-/// Déduit la variante du serveur du résultat de `SELECT VERSION()`.
+/// Deduces the server's flavor from the result of `SELECT VERSION()`.
 pub fn detect_flavor(version: &str) -> Flavor {
     if version.to_ascii_lowercase().contains("mariadb") {
         Flavor::MariaDb
@@ -112,11 +112,12 @@ pub fn detect_flavor(version: &str) -> Flavor {
     }
 }
 
-/// Ouvre une connexion au serveur, en `CONNECT_TIMEOUT` au plus, puis y
-/// exécute les requêtes d'initialisation de la cible, dans l'ordre.
+/// Opens a connection to the server, within `CONNECT_TIMEOUT` at most, then
+/// runs the target's initialisation queries on it, in order.
 ///
-/// En cas d'échec, le message dit ce qui ne va pas (serveur injoignable, accès
-/// refusé, base inconnue, requête d'initialisation refusée...) et quoi vérifier.
+/// On failure, the message says what is wrong (server unreachable, access
+/// denied, unknown database, initialisation query refused...) and what to
+/// check.
 pub async fn connect(target: &MysqlTarget) -> Result<Conn, MysqlError> {
     let database_name = Some(target.database_name.as_str()).filter(|name| !name.is_empty());
     let options = OptsBuilder::default()
@@ -147,7 +148,7 @@ pub async fn connect(target: &MysqlTarget) -> Result<Conn, MysqlError> {
     Ok(connection)
 }
 
-/// Lit l'identité du serveur sur une connexion ouverte.
+/// Reads the server's identity on an open connection.
 pub async fn server_info(connection: &mut Conn) -> Result<ServerInfo, MysqlError> {
     let row: Option<(String, String)> = connection
         .query_first("SELECT VERSION(), @@SESSION.sql_mode")
@@ -160,31 +161,31 @@ pub async fn server_info(connection: &mut Conn) -> Result<ServerInfo, MysqlError
     })
 }
 
-/// `sql_mode` contient-il `ANSI_QUOTES` ? Le serveur développe le mode
-/// `ANSI` en ses composants dans `@@sql_mode`, `ANSI_QUOTES` compris.
+/// Does `sql_mode` contain `ANSI_QUOTES`? The server expands the `ANSI` mode
+/// into its components in `@@sql_mode`, `ANSI_QUOTES` included.
 fn has_ansi_quotes(sql_mode: &str) -> bool {
     sql_mode
         .split(',')
         .any(|mode| mode.trim().eq_ignore_ascii_case("ANSI_QUOTES"))
 }
 
-/// Base en cours sur une connexion ouverte (`SELECT DATABASE()`), `None` si aucune.
+/// Current database on an open connection (`SELECT DATABASE()`), `None` if none.
 ///
-/// Elle change avec `USE`, ou avec la base choisie dans la connexion enregistrée.
+/// It changes with `USE`, or with the database chosen in the saved connection.
 pub async fn current_database(connection: &mut Conn) -> Result<Option<String>, MysqlError> {
     let database: Option<Option<String>> = connection.query_first("SELECT DATABASE()").await?;
     Ok(database.flatten())
 }
 
-/// Change la base en cours (`USE`), par exemple pour qu'une connexion
-/// supplémentaire reprenne la base choisie dans la session.
+/// Changes the current database (`USE`), for example so that an extra
+/// connection takes the database chosen in the session.
 pub async fn use_database(connection: &mut Conn, database: &str) -> Result<(), MysqlError> {
     let quoted = database.replace('`', "``");
     connection.query_drop(format!("USE `{quoted}`")).await?;
     Ok(())
 }
 
-/// Se connecte au serveur, lit son identité, puis se déconnecte.
+/// Connects to the server, reads its identity, then disconnects.
 pub async fn probe(target: &MysqlTarget) -> Result<ServerInfo, MysqlError> {
     let mut connection = connect(target).await?;
     let info = server_info(&mut connection).await?;
@@ -192,10 +193,10 @@ pub async fn probe(target: &MysqlTarget) -> Result<ServerInfo, MysqlError> {
     Ok(info)
 }
 
-/// Interrompt la requête en cours sur la connexion `connection_id` (`Conn::id()`).
+/// Interrupts the running query on connection `connection_id` (`Conn::id()`).
 ///
-/// Passe par une seconde connexion, car la première est occupée par la
-/// requête. La connexion interrompue reste ouverte et réutilisable.
+/// Goes through a second connection, as the first one is busy with the query.
+/// The interrupted connection stays open and reusable.
 pub async fn kill_query(target: &MysqlTarget, connection_id: u32) -> Result<(), MysqlError> {
     let mut connection = connect(target).await?;
     connection
@@ -205,20 +206,20 @@ pub async fn kill_query(target: &MysqlTarget, connection_id: u32) -> Result<(), 
     Ok(())
 }
 
-/// Valeur d'une cellule de résultat : `None` pour NULL, sinon du texte.
+/// Value of a result cell: `None` for NULL, otherwise text.
 ///
-/// Tout est transmis en texte, nombres compris : aucune perte de précision
-/// sur un `BIGINT UNSIGNED` ou un `DECIMAL`. Le typage fin viendra avec le
-/// crate `types`.
+/// Everything is sent as text, numbers included: no loss of precision on a
+/// `BIGINT UNSIGNED` or a `DECIMAL`. Fine typing will come with the `types`
+/// crate.
 pub type Cell = Option<String>;
 
-/// Résultat d'une requête en cours de lecture, ligne à ligne.
+/// Result of a query being read, row by row.
 pub struct ResultStream<'a> {
-    /// Résultat du pilote, qui garde la connexion empruntée jusqu'à la fin de la lecture.
+    /// Driver result, which keeps the connection borrowed until the end of the reading.
     result: QueryResult<'a, 'static, TextProtocol>,
 }
 
-/// Lance la requête `sql` et renvoie son résultat, à lire ligne à ligne.
+/// Runs the query `sql` and returns its result, to read row by row.
 pub async fn execute<'a>(
     connection: &'a mut Conn,
     sql: &'a str,
@@ -228,7 +229,7 @@ pub async fn execute<'a>(
 }
 
 impl ResultStream<'_> {
-    /// Noms des colonnes. Vide pour une requête qui ne renvoie pas de lignes.
+    /// Column names. Empty for a query that returns no rows.
     pub fn column_names(&self) -> Vec<String> {
         self.result
             .columns_ref()
@@ -237,9 +238,9 @@ impl ResultStream<'_> {
             .collect()
     }
 
-    /// Pour chaque colonne, ses valeurs s'alignent-elles à droite ? Oui pour
-    /// les nombres (entier, décimal, flottant, année), les dates et les heures,
-    /// d'après le type annoncé par le serveur avec le résultat.
+    /// For each column, are its values right-aligned? Yes for numbers
+    /// (integer, decimal, floating, year), dates and times, from the type
+    /// announced by the server with the result.
     pub fn right_aligned_columns(&self) -> Vec<bool> {
         self.result
             .columns_ref()
@@ -248,8 +249,8 @@ impl ResultStream<'_> {
             .collect()
     }
 
-    /// Type de chaque colonne, d'après les métadonnées du résultat (voir
-    /// le module `column_type`).
+    /// Type of each column, from the result's metadata (see the
+    /// `column_type` module).
     pub fn column_types(&self) -> Vec<ColumnTypeInfo> {
         self.result
             .columns_ref()
@@ -266,7 +267,7 @@ impl ResultStream<'_> {
             .collect()
     }
 
-    /// Lit la ligne suivante, ou `None` à la fin du résultat.
+    /// Reads the next row, or `None` at the end of the result.
     pub async fn next_row(&mut self) -> Result<Option<Vec<Cell>>, MysqlError> {
         let Some(row) = self.result.next().await? else {
             return Ok(None);
@@ -279,22 +280,22 @@ impl ResultStream<'_> {
         Ok(Some(cells))
     }
 
-    /// Nombre de lignes modifiées, pour une écriture.
+    /// Number of affected rows, for a write.
     pub fn affected_rows(&self) -> u64 {
         self.result.affected_rows()
     }
 
-    /// Abandonne la lecture : les lignes restantes sont lues et jetées par le
-    /// pilote, pour que la connexion redevienne utilisable. Après un
-    /// `kill_query`, le serveur n'en envoie plus et l'erreur d'interruption est
-    /// ignorée.
+    /// Gives up reading: the remaining rows are read and dropped by the
+    /// driver, so that the connection becomes usable again. After a
+    /// `kill_query`, the server sends no more and the interruption error is
+    /// ignored.
     pub async fn discard(self) {
-        // L'erreur attendue ici est celle de l'interruption : rien à en faire.
+        // The error expected here is the interruption's: nothing to do with it.
         let _ = self.result.drop_result().await;
     }
 }
 
-/// Un type dont les valeurs s'alignent à droite : nombre, date ou heure.
+/// A type whose values are right-aligned: number, date or time.
 fn is_right_aligned(column_type: ColumnType) -> bool {
     column_type.is_numeric_type()
         || matches!(
@@ -310,13 +311,13 @@ fn is_right_aligned(column_type: ColumnType) -> bool {
         )
 }
 
-/// Convertit une valeur du pilote en texte, ou `None` pour NULL.
+/// Converts a driver value to text, or `None` for NULL.
 fn cell(value: Value) -> Cell {
     match value {
         Value::NULL => None,
         Value::Bytes(bytes) => Some(match String::from_utf8(bytes) {
             Ok(text) => text,
-            // Données binaires (BLOB, BINARY...) : affichées en hexadécimal, comme le fait MySQL.
+            // Binary data (BLOB, BINARY...): shown in hexadecimal, as MySQL does.
             Err(error) => format!("0x{}", hex(error.as_bytes())),
         }),
         Value::Int(number) => Some(number.to_string()),
@@ -336,7 +337,7 @@ fn cell(value: Value) -> Cell {
     }
 }
 
-/// Écrit des octets en hexadécimal majuscule.
+/// Writes bytes in uppercase hexadecimal.
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02X}")).collect()
 }

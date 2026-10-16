@@ -2,14 +2,14 @@
 import type { TableKind } from "./TableKind";
 
 /**
- * Table ou vue d'une base.
+ * Table or view of a database.
  */
 export type TableInfo = { 
 /**
- * Nom de la table.
+ * Name of the table.
  */
 name: string, 
 /**
- * Nature de l'objet.
+ * Nature of the object.
  */
 kind: TableKind, };

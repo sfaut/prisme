@@ -1,32 +1,32 @@
-//! Type des colonnes d'un résultat MySQL ou MariaDB, tel que l'interface
-//! l'affiche dans l'en-tête de la grille.
+//! Type of the columns of a MySQL or MariaDB result, as the interface shows it
+//! in the grid's header.
 //!
-//! Le type vient des métadonnées que le serveur envoie avec le résultat :
-//! code du type, indicateurs (`UNSIGNED`, `ENUM`, `SET`), longueur, nombre
-//! de décimales et jeu de caractères. C'est le type du *résultat*, qui ne
-//! dit pas toujours tout du type déclaré dans la table :
+//! The type comes from the metadata the server sends with the result: type
+//! code, flags (`UNSIGNED`, `ENUM`, `SET`), length, number of decimals and
+//! character set. It is the type of the *result*, which does not always tell
+//! everything about the type declared in the table:
 //!
-//! - `BOOLEAN` arrive en `TINYINT(1)` ;
-//! - le JSON de MariaDB arrive en `LONGTEXT` ;
-//! - `ENUM` et `SET` se reconnaissent à un indicateur, sans leurs valeurs ;
-//! - une expression calculée (`COUNT(*)`, `CONCAT(...)`) a le type choisi
-//!   par le serveur.
+//! - `BOOLEAN` arrives as `TINYINT(1)`;
+//! - MariaDB's JSON arrives as `LONGTEXT`;
+//! - `ENUM` and `SET` are recognised by a flag, without their values;
+//! - a computed expression (`COUNT(*)`, `CONCAT(...)`) has the type chosen by
+//!   the server.
 //!
-//! La longueur d'un texte arrive en octets, dans le jeu de caractères des
-//! résultats de la connexion : elle est ramenée en caractères pour les jeux
-//! connus (`charset_max_bytes`). Pour un autre jeu, la longueur est omise
-//! plutôt que devinée.
+//! The length of a text arrives in bytes, in the character set of the
+//! connection's results: it is brought back to characters for the known sets
+//! (`charset_max_bytes`). For another set, the length is left out rather than
+//! guessed.
 
 use mysql_async::consts::{ColumnFlags, ColumnType};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// Famille d'un type de colonne, pour l'icône de l'en-tête de la grille.
+/// Family of a column type, for the icon of the grid's header.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum TypeFamily {
-    /// `TINYINT` à `BIGINT`.
+    /// `TINYINT` to `BIGINT`.
     Integer,
     /// `DECIMAL`.
     Decimal,
@@ -52,34 +52,34 @@ pub enum TypeFamily {
     Enum,
     /// `SET`.
     Set,
-    /// `GEOMETRY` et ses dérivés.
+    /// `GEOMETRY` and its derivatives.
     Geometry,
-    /// Autre type, ou `NULL` (colonne d'une expression `NULL`).
+    /// Other type, or `NULL` (column of a `NULL` expression).
     Other,
 }
 
-/// Type d'une colonne de résultat : sa famille et son nom natif.
+/// Type of a result column: its family and its native name.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct ColumnTypeInfo {
-    /// Famille du type.
+    /// Family of the type.
     pub family: TypeFamily,
-    /// Nom du type dans le dialecte du serveur : `INT UNSIGNED`,
+    /// Name of the type in the server's dialect: `INT UNSIGNED`,
     /// `DECIMAL(10,2)`, `VARCHAR(20)`, `DATETIME(6)`...
     pub name: String,
 }
 
-/// Collation du jeu de caractères `binary` : une chaîne d'octets.
+/// Collation of the `binary` character set: a byte string.
 const BINARY_COLLATION: u16 = 63;
 
-/// Nombre de décimales « non fixé » envoyé par le serveur (expression dont
-/// la précision n'est pas connue).
+/// "Not fixed" number of decimals sent by the server (expression whose
+/// precision is unknown).
 const NOT_FIXED_DEC: u8 = 31;
 
-/// Décrit le type d'une colonne à partir de ses métadonnées de résultat.
+/// Describes the type of a column from its result metadata.
 ///
-/// `length` est la longueur annoncée (en octets pour un texte), `charset`
-/// l'identifiant de collation des résultats.
+/// `length` is the announced length (in bytes for a text), `charset` the
+/// collation id of the results.
 pub fn describe(
     column_type: ColumnType,
     flags: ColumnFlags,
@@ -151,7 +151,7 @@ pub fn describe(
     ColumnTypeInfo { family, name }
 }
 
-/// Nom d'un type numérique, suivi de `UNSIGNED` s'il y a lieu.
+/// Name of a numeric type, followed by `UNSIGNED` when relevant.
 fn numeric(name: &str, unsigned: bool) -> String {
     if unsigned {
         format!("{name} UNSIGNED")
@@ -160,8 +160,8 @@ fn numeric(name: &str, unsigned: bool) -> String {
     }
 }
 
-/// `DECIMAL(précision,échelle)`. La longueur annoncée compte la virgule
-/// (s'il y a des décimales) et le signe (sauf `UNSIGNED`).
+/// `DECIMAL(precision,scale)`. The announced length counts the decimal point
+/// (if there are decimals) and the sign (except `UNSIGNED`).
 fn decimal(length: u32, scale: u8, unsigned: bool) -> String {
     let precision = length
         .saturating_sub(u32::from(scale > 0))
@@ -169,7 +169,7 @@ fn decimal(length: u32, scale: u8, unsigned: bool) -> String {
     numeric(&format!("DECIMAL({precision},{scale})"), unsigned)
 }
 
-/// Nom d'un type temporel, avec ses fractions de seconde s'il en a.
+/// Name of a temporal type, with its fractions of a second if it has any.
 fn with_fraction(name: &str, decimals: u8) -> String {
     if decimals == 0 || decimals >= NOT_FIXED_DEC {
         name.to_string()
@@ -178,7 +178,7 @@ fn with_fraction(name: &str, decimals: u8) -> String {
     }
 }
 
-/// Nom d'un type avec sa longueur entre parenthèses, si elle est connue.
+/// Name of a type with its length between parentheses, if it is known.
 fn sized(name: &str, length: Option<u32>) -> String {
     match length {
         Some(length) => format!("{name}({length})"),
@@ -186,8 +186,8 @@ fn sized(name: &str, length: Option<u32>) -> String {
     }
 }
 
-/// `TINYTEXT` à `LONGTEXT`, ou `TINYBLOB` à `LONGBLOB` pour le jeu `binary`,
-/// d'après la longueur maximale ramenée en caractères.
+/// `TINYTEXT` to `LONGTEXT`, or `TINYBLOB` to `LONGBLOB` for the `binary`
+/// set, from the maximum length brought back to characters.
 fn large_object(length: u32, charset: u16) -> (TypeFamily, String) {
     let (family, suffix) = if charset == BINARY_COLLATION {
         (TypeFamily::Binary, "BLOB")
@@ -206,19 +206,19 @@ fn large_object(length: u32, charset: u16) -> (TypeFamily, String) {
     (family, format!("{prefix}{suffix}"))
 }
 
-/// Longueur d'un texte en caractères, à partir de sa longueur en octets ;
-/// `None` pour un jeu de caractères inconnu.
+/// Length of a text in characters, from its length in bytes; `None` for an
+/// unknown character set.
 fn characters(bytes: u32, charset: u16) -> Option<u32> {
     charset_max_bytes(charset).map(|max| bytes / max)
 }
 
-/// Nombre maximal d'octets par caractère des jeux de caractères courants,
-/// d'après l'identifiant de collation ; `None` pour les autres.
+/// Maximum number of bytes per character of the common character sets, from
+/// the collation id; `None` for the others.
 fn charset_max_bytes(collation: u16) -> Option<u32> {
     match collation {
-        // utf8mb4 : utf8mb4_general_ci, _bin, collations Unicode et 0900 de MySQL 8.
+        // utf8mb4: utf8mb4_general_ci, _bin, Unicode and 0900 collations of MySQL 8.
         45 | 46 | 224..=247 | 255..=323 => Some(4),
-        // utf8mb3 (utf8 avant MySQL 8).
+        // utf8mb3 (utf8 before MySQL 8).
         33 | 76 | 83 | 192..=215 | 223 => Some(3),
         // binary, latin1, ascii.
         63 | 5 | 8 | 15 | 31 | 47..=49 | 94 | 11 | 65 => Some(1),
@@ -230,7 +230,7 @@ fn charset_max_bytes(collation: u16) -> Option<u32> {
 mod tests {
     use super::*;
 
-    /// Collation utf8mb4_general_ci, celle des résultats de Prisme.
+    /// utf8mb4_general_ci collation, that of Prisme's results.
     const UTF8MB4: u16 = 45;
 
     fn name(
@@ -261,7 +261,7 @@ mod tests {
             name(ColumnType::MYSQL_TYPE_TINY, none, 1, 0, 63),
             "TINYINT(1)"
         );
-        // DECIMAL(10,2) signé : 10 chiffres, la virgule et le signe.
+        // Signed DECIMAL(10,2): 10 digits, the decimal point and the sign.
         assert_eq!(
             name(ColumnType::MYSQL_TYPE_NEWDECIMAL, none, 12, 2, 63),
             "DECIMAL(10,2)"
@@ -305,7 +305,7 @@ mod tests {
             name(ColumnType::MYSQL_TYPE_BLOB, none, 255, 0, 63),
             "TINYBLOB"
         );
-        // Jeu de caractères inconnu : la longueur est omise.
+        // Unknown character set: the length is left out.
         assert_eq!(
             name(ColumnType::MYSQL_TYPE_VAR_STRING, none, 80, 0, 2000),
             "VARCHAR"

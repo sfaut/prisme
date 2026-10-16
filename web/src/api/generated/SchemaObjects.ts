@@ -3,14 +3,14 @@ import type { RoutineInfo } from "./RoutineInfo";
 import type { TableInfo } from "./TableInfo";
 
 /**
- * Objets d'une base : tables et vues, procédures et fonctions, par nom.
+ * Objects of a database: tables and views, procedures and functions, by name.
  */
 export type SchemaObjects = { 
 /**
- * Tables et vues.
+ * Tables and views.
  */
 tables: Array<TableInfo>, 
 /**
- * Procédures et fonctions.
+ * Procedures and functions.
  */
 routines: Array<RoutineInfo>, };

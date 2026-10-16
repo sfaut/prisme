@@ -2,20 +2,20 @@
 import type { Flavor } from "./Flavor";
 
 /**
- * Identité d'un serveur, obtenue à la connexion.
+ * Identity of a server, obtained on connection.
  */
 export type ServerInfo = { 
 /**
- * MySQL ou MariaDB.
+ * MySQL or MariaDB.
  */
 flavor: Flavor, 
 /**
- * Résultat brut de `SELECT VERSION()`, par exemple `8.1.0` ou `11.3.2-MariaDB-1:11.3.2+maria~ubu2204`.
+ * Raw result of `SELECT VERSION()`, for example `8.1.0` or `11.3.2-MariaDB-1:11.3.2+maria~ubu2204`.
  */
 version: string, 
 /**
- * Le mode `ANSI_QUOTES` est-il actif sur la session (directement, ou par
- * le mode `ANSI`) ? Les guillemets doubles délimitent alors des
- * identifiants, et non plus des chaînes.
+ * Is the `ANSI_QUOTES` mode active on the session (directly, or through
+ * the `ANSI` mode)? Double quotes then delimit identifiers, no longer
+ * strings.
  */
 ansi_quotes: boolean, };

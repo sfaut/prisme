@@ -1,7 +1,7 @@
-//! Tests d'intégration du connecteur MySQL / MariaDB, sur de vrais serveurs lancés dans Docker.
+//! Integration tests of the MySQL / MariaDB connector, on real servers started in Docker.
 //!
-//! Ignorés par défaut, car ils demandent Docker Desktop démarré et téléchargent
-//! les images au premier lancement. Pour les exécuter :
+//! Ignored by default, as they require Docker Desktop running and download the
+//! images on the first run. To run them:
 //! `cargo test -p prisme-connectors -- --include-ignored`.
 
 use std::time::{Duration, Instant};
@@ -13,7 +13,7 @@ use testcontainers_modules::mariadb::Mariadb;
 use testcontainers_modules::mysql::Mysql;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 
-/// Paramètres de connexion des images de test : compte root sans mot de passe, base `test`.
+/// Connection settings of the test images: root account without a password, `test` database.
 fn target(host: String, port: u16) -> MysqlTarget {
     MysqlTarget {
         host,
@@ -26,7 +26,7 @@ fn target(host: String, port: u16) -> MysqlTarget {
 }
 
 #[tokio::test]
-#[ignore = "nécessite Docker Desktop démarré"]
+#[ignore = "requires Docker Desktop running"]
 async fn probe_detects_mysql() {
     let server = Mysql::default().start().await.unwrap();
     let host = server.get_host().await.unwrap().to_string();
@@ -43,7 +43,7 @@ async fn probe_detects_mysql() {
 }
 
 #[tokio::test]
-#[ignore = "nécessite Docker Desktop démarré"]
+#[ignore = "requires Docker Desktop running"]
 async fn probe_detects_mariadb() {
     let server = Mariadb::default().start().await.unwrap();
     let host = server.get_host().await.unwrap().to_string();
@@ -55,7 +55,7 @@ async fn probe_detects_mariadb() {
 }
 
 #[tokio::test]
-#[ignore = "nécessite Docker Desktop démarré"]
+#[ignore = "requires Docker Desktop running"]
 async fn streams_rows_and_reports_writes() {
     let server = Mariadb::default().start().await.unwrap();
     let host = server.get_host().await.unwrap().to_string();
@@ -101,7 +101,7 @@ async fn streams_rows_and_reports_writes() {
 }
 
 #[tokio::test]
-#[ignore = "nécessite Docker Desktop démarré"]
+#[ignore = "requires Docker Desktop running"]
 async fn kill_query_interrupts_and_keeps_the_connection() {
     let server = Mysql::default().start().await.unwrap();
     let host = server.get_host().await.unwrap().to_string();
@@ -118,7 +118,7 @@ async fn kill_query_interrupts_and_keeps_the_connection() {
         })
     };
     let started = Instant::now();
-    // Interrompu, SLEEP() renvoie 1 ou une erreur selon le moment : seule la durée compte.
+    // Interrupted, SLEEP() returns 1 or an error depending on the moment: only the duration counts.
     if let Ok(stream) = execute(&mut connection, "SELECT SLEEP(30)").await {
         stream.discard().await;
     }
@@ -133,7 +133,7 @@ async fn kill_query_interrupts_and_keeps_the_connection() {
 }
 
 #[tokio::test]
-#[ignore = "nécessite Docker Desktop démarré"]
+#[ignore = "requires Docker Desktop running"]
 async fn reads_the_catalog_schema_by_schema() {
     let server = Mariadb::default().start().await.unwrap();
     let host = server.get_host().await.unwrap().to_string();

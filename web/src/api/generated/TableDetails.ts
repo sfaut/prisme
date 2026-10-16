@@ -5,26 +5,26 @@ import type { IndexInfo } from "./IndexInfo";
 import type { TriggerInfo } from "./TriggerInfo";
 
 /**
- * Détail d'une table : colonnes, index, clefs étrangères et déclencheurs.
+ * Details of a table: columns, indexes, foreign keys and triggers.
  */
 export type TableDetails = { 
 /**
- * Nom de la table.
+ * Name of the table.
  */
 table: string, 
 /**
- * Colonnes, dans l'ordre de déclaration.
+ * Columns, in declaration order.
  */
 columns: Array<ColumnInfo>, 
 /**
- * Index, la clef primaire en premier, puis par nom.
+ * Indexes, the primary key first, then by name.
  */
 indexes: Array<IndexInfo>, 
 /**
- * Clefs étrangères, par nom.
+ * Foreign keys, by name.
  */
 foreign_keys: Array<ForeignKeyInfo>, 
 /**
- * Déclencheurs, par moment, événement et ordre d'exécution.
+ * Triggers, by timing, event and execution order.
  */
 triggers: Array<TriggerInfo>, };

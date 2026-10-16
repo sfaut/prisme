@@ -2,14 +2,14 @@
 import type { RoutineKind } from "./RoutineKind";
 
 /**
- * Procédure ou fonction stockée.
+ * Stored procedure or function.
  */
 export type RoutineInfo = { 
 /**
- * Nom de la routine.
+ * Name of the routine.
  */
 name: string, 
 /**
- * Procédure ou fonction.
+ * Procedure or function.
  */
 kind: RoutineKind, };
