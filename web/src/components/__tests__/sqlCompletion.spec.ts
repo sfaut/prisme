@@ -11,6 +11,7 @@ describe('completionSchema', () => {
         name: 'ma base',
         tables: [{ name: 'clients', kind: 'table', details: null }],
         routines: [],
+        events: [],
       },
     ]
     const backticks = completionSchema(schemas) as Record<string, { self: { apply?: string } }>
@@ -53,8 +54,9 @@ describe('completionSchema', () => {
           { name: 'total_ttc', kind: 'function' },
           { name: 'purge', kind: 'procedure' },
         ],
+        events: [],
       },
-      { name: 'pas_encore', tables: null, routines: null },
+      { name: 'pas_encore', tables: null, routines: null, events: null },
     ]
     expect(completionSchema(schemas)).toEqual({
       shop: {

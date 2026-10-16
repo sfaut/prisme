@@ -27,6 +27,7 @@
  */
 
 import type { ColumnInfo } from '@/api/generated/ColumnInfo'
+import type { EventInfo } from '@/api/generated/EventInfo'
 import type { Flavor } from '@/api/generated/Flavor'
 import type { ForeignKeyInfo } from '@/api/generated/ForeignKeyInfo'
 import type { IndexInfo } from '@/api/generated/IndexInfo'
@@ -95,6 +96,7 @@ export type EntryKind =
   | 'view'
   | 'procedure'
   | 'function'
+  | 'event'
   | 'column'
   | 'index'
   | 'foreign-key'
@@ -294,9 +296,9 @@ export function catalogNodes(
       role: 'database' as const,
       current: schema.name === currentDatabase,
       children:
-        schema.tables === null || schema.routines === null
+        schema.tables === null || schema.routines === null || schema.events === null
           ? [loadingNode(key, place)]
-          : schemaFolders(place, schema.tables, schema.routines),
+          : schemaFolders(place, schema.tables, schema.routines, schema.events),
     }
   })
 }
@@ -311,16 +313,18 @@ function placeKey(place: Place): string {
 }
 
 /**
- * Folders of a database: tables, views, procedures, functions.
+ * Folders of a database: tables, views, procedures, functions, events.
  *
  * @param place Connection and database.
  * @param tables Tables and views of the database.
  * @param routines Procedures and functions of the database.
+ * @param events Scheduled events of the database.
  */
 function schemaFolders(
   place: Place,
   tables: CatalogTable[],
   routines: RoutineInfo[],
+  events: EventInfo[],
 ): ExplorerNode[] {
   const base = placeKey(place)
   const routineNode = (routine: RoutineInfo): ExplorerNode => ({
@@ -328,6 +332,13 @@ function schemaFolders(
     label: routine.name,
     isLeaf: true,
     entry: routine.kind === 'procedure' ? 'procedure' : 'function',
+    ...place,
+  })
+  const eventNode = (event: EventInfo): ExplorerNode => ({
+    key: `event:${base}.${event.name}`,
+    label: event.enabled ? event.name : `${event.name} · désactivé`,
+    isLeaf: true,
+    entry: 'event',
     ...place,
   })
   return [
@@ -355,6 +366,7 @@ function schemaFolders(
       place,
       routines.filter((routine) => routine.kind === 'function').map(routineNode),
     ),
+    folder(`events:${base}`, 'Événements', place, events.map(eventNode)),
   ]
 }
 

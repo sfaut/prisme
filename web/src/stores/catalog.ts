@@ -23,6 +23,7 @@ import { markRaw, ref, shallowRef, triggerRef } from 'vue'
 import { streamCatalog } from '@/api/explorer'
 import type { CatalogEvent } from '@/api/generated/CatalogEvent'
 import type { Flavor } from '@/api/generated/Flavor'
+import type { EventInfo } from '@/api/generated/EventInfo'
 import type { RoutineInfo } from '@/api/generated/RoutineInfo'
 import type { TableDetails } from '@/api/generated/TableDetails'
 import type { TableKind } from '@/api/generated/TableKind'
@@ -52,6 +53,10 @@ export interface CatalogSchema {
    * Procedures and functions, `null` as long as they are not received.
    */
   routines: RoutineInfo[] | null
+  /**
+   * Scheduled events, `null` as long as they are not received.
+   */
+  events: EventInfo[] | null
 }
 
 /**
@@ -98,7 +103,12 @@ function emptyDetails(table: string): TableDetails {
 export function applyCatalogEvent(catalog: Catalog, event: CatalogEvent): void {
   switch (event.type) {
     case 'schemas':
-      catalog.schemas = event.schemas.map((name) => ({ name, tables: null, routines: null }))
+      catalog.schemas = event.schemas.map((name) => ({
+        name,
+        tables: null,
+        routines: null,
+        events: null,
+      }))
       catalog.flavor = event.flavor
       break
     case 'objects': {
@@ -106,6 +116,7 @@ export function applyCatalogEvent(catalog: Catalog, event: CatalogEvent): void {
       if (schema) {
         schema.tables = event.objects.tables.map((table) => ({ ...table, details: null }))
         schema.routines = event.objects.routines
+        schema.events = event.objects.events
       }
       break
     }

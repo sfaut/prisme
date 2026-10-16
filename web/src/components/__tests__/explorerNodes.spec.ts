@@ -64,8 +64,12 @@ const catalog: CatalogSchema[] = [
       { name: 'purge', kind: 'procedure' },
       { name: 'total', kind: 'function' },
     ],
+    events: [
+      { name: 'nettoyage', enabled: true },
+      { name: 'archive', enabled: false },
+    ],
   },
-  { name: 'pas_encore', tables: null, routines: null },
+  { name: 'pas_encore', tables: null, routines: null, events: null },
 ]
 
 /**
@@ -126,6 +130,7 @@ describe('system databases', () => {
       name,
       tables: [],
       routines: [],
+      events: [],
     }))
     const source = (showSystemSchemas: boolean) => ({
       connectionId: 1,
@@ -167,8 +172,15 @@ describe('explorerTree', () => {
 describe('catalogNodes', () => {
   it('puts the objects of a database by folder', () => {
     const [shop, pending] = catalogNodes(1, catalog)
-    expect(labels(shop)).toEqual(['Tables (2)', 'Vues (1)', 'Procédures (1)', 'Fonctions (1)'])
+    expect(labels(shop)).toEqual([
+      'Tables (2)',
+      'Vues (1)',
+      'Procédures (1)',
+      'Fonctions (1)',
+      'Événements (2)',
+    ])
     expect(labels(shop?.children?.[2])).toEqual(['purge'])
+    expect(labels(shop?.children?.[4])).toEqual(['nettoyage', 'archive · désactivé'])
     expect(labels(pending)).toEqual(['chargement…'])
   })
 
@@ -251,7 +263,7 @@ describe('applyCatalogEvent', () => {
   it('fills the catalog message by message', () => {
     const state = emptyCatalog()
     applyCatalogEvent(state, { type: 'schemas', schemas: ['a'], flavor: 'mysql' })
-    expect(state.schemas).toEqual([{ name: 'a', tables: null, routines: null }])
+    expect(state.schemas).toEqual([{ name: 'a', tables: null, routines: null, events: null }])
     expect(state.flavor).toBe('mysql')
 
     applyCatalogEvent(state, {
@@ -263,6 +275,7 @@ describe('applyCatalogEvent', () => {
           { name: 'u', kind: 'table' },
         ],
         routines: [{ name: 'p', kind: 'procedure' }],
+        events: [],
       },
     })
     applyCatalogEvent(state, {

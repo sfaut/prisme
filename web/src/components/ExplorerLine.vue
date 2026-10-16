@@ -8,6 +8,7 @@
 <script setup lang="ts">
 import {
   Cable,
+  CalendarClock,
   ChevronDown,
   ChevronRight,
   Columns3,
@@ -58,6 +59,7 @@ const ENTRY_ICONS: Record<Exclude<EntryKind, 'folder'>, Component> = {
   table: Table,
   view: Eye,
   procedure: ScrollText,
+  event: CalendarClock,
   function: SquareFunction,
   column: Columns3,
   index: ListOrdered,
