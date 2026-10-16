@@ -2,7 +2,7 @@
 
 How to build Prisme from source, run it in development, test it, and how it is delivered. For using Prisme, see the [README](../README.md).
 
-The backend is written in Rust (`tokio`, `axum`), the interface in Vue 3 and TypeScript (Vite). Both are delivered as a single executable that embeds the compiled interface. Design decisions are in the [other documents](#design-documents) of this folder, written in French.
+The backend is written in Rust (`tokio`, `axum`), the interface in Vue 3 and TypeScript (Vite). Both are delivered as a single executable that embeds the compiled interface. Design decisions are in the [other documents](#design-documents) of this folder.
 
 ## Prerequisites
 
@@ -224,11 +224,10 @@ docs/              design decisions and notes
 
 ## Design documents
 
-These documents are in French.
-
 - [V1.md](V1.md): scope, decisions, detailed Rust stack, development order of the v1.
 - [FEDERATED.md](FEDERATED.md): the federated engine, after the v1.
 - [QUESTIONS.md](QUESTIONS.md): ideas kept or dropped, open questions.
 - [PERF.md](PERF.md): performance problems met, their cause and fix.
+- [IDEAS-EXPORTS.md](IDEAS-EXPORTS.md): ideas for copying and exporting results.
 - [CHANGELOG.md](CHANGELOG.md): changelogs of the published versions.
 - [CLAUDE.md](../CLAUDE.md): working rules of the repository.

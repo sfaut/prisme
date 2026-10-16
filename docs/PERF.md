@@ -1,248 +1,238 @@
-# Problèmes de performance
+# Performance problems
 
-Ce document décrit les problèmes de performance rencontrés dans Prisme : ce
-qui se voyait, comment ils ont été mesurés, pourquoi ils sont apparus et
-comment ils ont été corrigés. Il sert aussi de mode d'emploi pour mesurer à
-nouveau. Un chapitre par problème.
+This document describes the performance problems met in Prisme: what could
+be seen, how they were measured, why they appeared and how they were fixed.
+It also serves as a guide to measure again. One chapter per problem.
 
-## 1. Gel de l'interface pendant l'exécution : la grille dessinait toutes les lignes
+## 1. Interface frozen while running: the grid drew every row
 
-Problème rencontré en octobre 2026 dans la grille de résultats.
+Problem met in October 2026 in the result grid.
 
-### 1.1 Symptôme
+### 1.1 Symptom
 
-Pendant l'exécution de plusieurs requêtes en parallèle (Ctrl-Maj-Entrée), les
-onglets de résultat se figeaient : un clic sur un onglet mettait plusieurs
-secondes à être pris en compte, et toute l'interface semblait bloquée jusqu'à
-la fin de l'exécution.
+While several queries ran in parallel (Ctrl+Shift+Enter), the result tabs
+froze: a click on a tab took several seconds to be taken into account, and the
+whole interface seemed blocked until the end of the run.
 
-Une première correction (commit `6176cca`) a regroupé les messages reçus du
-serveur pour redessiner l'interface au plus une fois toutes les 100 ms. Elle
-n'a rien changé de visible : elle visait un coût réel, mais secondaire, et
-elle a été écrite sans mesure.
+A first fix (commit `6176cca`) grouped the messages received from the server
+to redraw the interface at most once every 100 ms. It changed nothing visible:
+it targeted a real but secondary cost, and it was written without measuring.
 
-### 1.2 Mesure
+### 1.2 Measurement
 
-Le problème a ensuite été mesuré dans un vrai navigateur :
+The problem was then measured in a real browser:
 
-- environnement isolé : MariaDB 11.3 dans Docker, un Prisme et un serveur Vite
-  sur d'autres ports et un dossier de données jetable, pour ne pas toucher à
-  l'instance de développement ;
-- Edge, sans fenêtre, piloté par Playwright (`playwright-core`, qui utilise
-  le navigateur installé) ;
-- scénario : 8 requêtes en parallèle, dont 4 de 50 000 lignes et 4 de 1 250
-  lignes, puis 12 clics sur des onglets pendant l'exécution ;
-- indicateurs : délai entre le clic et l'onglet affiché, « tâches longues »
-  du navigateur (blocages de plus de 50 ms, relevés par un `PerformanceObserver`),
-  profil CPU (`Profiler` du protocole Chrome DevTools), nombre d'éléments
-  présents dans la page.
+- isolated environment: MariaDB 11.3 in Docker, a Prisme and a Vite server on
+  other ports and a throwaway data folder, so as not to touch the development
+  instance;
+- headless Edge, driven by Playwright (`playwright-core`, which uses the
+  installed browser);
+- scenario: 8 queries in parallel, 4 of 50,000 rows and 4 of 1,250 rows, then
+  12 clicks on tabs during the run;
+- indicators: delay between the click and the tab shown, browser "long tasks"
+  (blocks of more than 50 ms, collected by a `PerformanceObserver`), CPU
+  profile (`Profiler` of the Chrome DevTools protocol), number of elements in
+  the page.
 
-| Mesure | Avant | Après la 1re correction (`a91fd29`) | Après la 2e correction (`d0534f6`) |
+| Measure | Before | After the 1st fix (`a91fd29`) | After the 2nd fix (`d0534f6`) |
 |---|---|---|---|
-| Durée totale de l'exécution | 118 s | 6 s | 4,5 s |
-| Délai d'un clic sur un onglet | 6 à 22 s | 0,07 à 0,5 s | 0,04 à 0,18 s |
-| Tâches longues (nombre, total) | 65, 110 s | 13, 1,2 s | 2, 0,14 s |
-| Plus longue tâche | 13,5 s | 131 ms | 78 ms |
-| Éléments dans la page (2 résultats de 20 000 lignes) | 100 400 | 548 | 548 |
+| Total run time | 118 s | 6 s | 4.5 s |
+| Delay of a click on a tab | 6 to 22 s | 0.07 to 0.5 s | 0.04 to 0.18 s |
+| Long tasks (count, total) | 65, 110 s | 13, 1.2 s | 2, 0.14 s |
+| Longest task | 13.5 s | 131 ms | 78 ms |
+| Elements in the page (2 results of 20,000 rows) | 100,400 | 548 | 548 |
 
-Le profil d'avant montrait 53 % du temps dans le moteur du navigateur (calcul
-des styles et de la mise en page), 14 % de ramasse-miettes, et le reste dans
-le rendu des lignes de la grille. Le nombre d'éléments a donné la clef : la
-grille d'un seul onglet contenait 20 000 lignes dessinées, pour un résultat de
-20 000 lignes.
+The profile before showed 53% of the time in the browser engine (style and
+layout computation), 14% in garbage collection, and the rest in rendering the
+grid's rows. The number of elements gave the key: the grid of a single tab
+contained 20,000 drawn rows, for a result of 20,000 rows.
 
-### 1.3 Cause principale : le défilement virtuel était contourné
+### 1.3 Main cause: virtual scrolling was bypassed
 
-#### 1.3.1 Le principe du défilement virtuel
+#### 1.3.1 The principle of virtual scrolling
 
-La grille de résultats (`web/src/components/ResultGrid.vue`) affiche des
-dizaines de milliers de lignes en n'en dessinant que quelques dizaines : celles
-qui sont visibles dans sa zone de défilement, plus une marge. La bibliothèque
-`@tanstack/vue-virtual` calcule ces lignes à partir de la hauteur de la zone
-de défilement.
+The result grid (`web/src/components/ResultGrid.vue`) shows tens of thousands
+of rows while drawing only a few dozen: those visible in its scroll area, plus
+a margin. The `@tanstack/vue-virtual` library computes these rows from the
+height of the scroll area.
 
 ```text
- Fonctionnement attendu (zone de défilement de 600 px, lignes de 22 px)
+ Expected behaviour (600 px scroll area, 22 px rows)
 
- ┌──────────────── zone de défilement : 600 px ───────────────┐
- │ ligne 1 040   ◄── dessinée                                 │
- │ ligne 1 041   ◄── dessinée                                 │
- │ …             ◄── ~27 lignes visibles + 20 de marge        │
- │ ligne 1 067   ◄── dessinée                                 │
+ ┌───────────────────── scroll area: 600 px ──────────────────┐
+ │ row 1,040   ◄── drawn                                      │
+ │ row 1,041   ◄── drawn                                      │
+ │ …           ◄── ~27 visible rows + 20 of margin            │
+ │ row 1,067   ◄── drawn                                      │
  └────────────────────────────────────────────────────────────┘
-   lignes 1 à 1 019 et 1 088 à 20 000 : seulement un espace vide
-   de la bonne hauteur, pour que la barre de défilement soit juste
+   rows 1 to 1,019 and 1,088 to 20,000: only an empty space
+   of the right height, so that the scroll bar is correct
 ```
 
-#### 1.3.2 Ce qui se passait
+#### 1.3.2 What was happening
 
-Le calcul suppose que la zone de défilement a une hauteur **bornée** par son
-conteneur. Or rien ne la bornait : elle prenait la hauteur de son contenu. Pour
-20 000 lignes de 22 pixels, elle mesurait 440 022 pixels. Pour la
-bibliothèque, toutes les lignes étaient donc « visibles », et elle les
-dessinait toutes.
+The computation assumes that the scroll area has a height **bounded** by its
+container. But nothing bounded it: it took the height of its content. For
+20,000 rows of 22 pixels, it measured 440,022 pixels. For the library, all
+the rows were therefore "visible", and it drew them all.
 
 ```text
- Avant la correction                         Après la correction
+ Before the fix                              After the fix
 
- fenêtre (900 px)                            fenêtre (900 px)
+ window (900 px)                             window (900 px)
  ┌───────────────────────────┐               ┌───────────────────────────┐
- │ disposition : 274 px      │               │ disposition : 900 px      │
+ │ layout: 274 px            │               │ layout: 900 px            │
  │ ┌───────────────────────┐ │               │ ┌───────────────────────┐ │
- │ │ éditeur, boutons      │ │               │ │ éditeur, boutons      │ │
- │ │ onglets               │ │               │ │ onglets               │ │
+ │ │ editor, buttons       │ │               │ │ editor, buttons       │ │
+ │ │ tabs                  │ │               │ │ tabs                  │ │
  │ │ ┌───────────────────┐ │ │               │ │ ┌───────────────────┐ │ │
- │ │ │ grille            │ │ │               │ │ │ grille : 640 px   │ │ │
- │ │ │ 440 022 px        │ │ │               │ │ │ (place restante)  │ │ │
- │ │ │ = 20 000 lignes   │ │ │               │ │ │ ~30 lignes        │ │ │
- │ │ │   dessinées       │ │ │               │ │ │   dessinées       │ │ │
+ │ │ │ grid              │ │ │               │ │ │ grid: 640 px      │ │ │
+ │ │ │ 440,022 px        │ │ │               │ │ │ (remaining space) │ │ │
+ │ │ │ = 20,000 rows     │ │ │               │ │ │ ~30 rows          │ │ │
+ │ │ │   drawn           │ │ │               │ │ │   drawn           │ │ │
  ┆ ┆ ┆                   ┆ ┆ ┆               │ │ └───────────────────┘ │ │
- ┆ ┆ ┆  (déborde de la   ┆ ┆ ┆               │ └───────────────────────┘ │
+ ┆ ┆ ┆  (overflows the   ┆ ┆ ┆               │ └───────────────────────┘ │
  ┆ ┆ ┆   page)           ┆ ┆ ┆               └───────────────────────────┘
 ```
 
-Chaque lot de lignes reçu redessinait alors des dizaines de milliers
-d'éléments, dans chaque onglet ouvert. Le navigateur passait son temps à
-recalculer styles et mise en page, et ne traitait plus les clics.
+Each batch of rows received then redrew tens of thousands of elements, in each
+open tab. The browser spent its time recomputing styles and layout, and no
+longer handled clicks.
 
-#### 1.3.3 Pourquoi c'est arrivé
+#### 1.3.3 Why it happened
 
-Trois éléments se sont combinés :
+Three elements combined:
 
-1. **La disposition ne remplissait pas la fenêtre.** Le composant `NLayout` de
-   Naive UI, utilisé pour la disposition générale (`web/src/App.vue`), prend
-   par défaut la hauteur de son contenu, et non celle de la fenêtre. L'écran
-   ne mesurait que 274 pixels de haut : il n'existait donc aucune « place
-   restante » à partager.
-2. **La chaîne des hauteurs était rompue.** Pour qu'un élément prenne la place
-   restante sans la dépasser, en CSS, chaque niveau doit être un conteneur
-   flexible (`display: flex`) avec `flex: 1` et `min-height: 0`. Sans
-   `min-height: 0`, un élément flexible ne rétrécit jamais sous la hauteur de
-   son contenu. Les onglets de résultat (`NTabs`), ajoutés pour l'exécution
-   parallèle, ont introduit des niveaux de plus dans cette chaîne, sans ces
-   règles.
-3. **Rien ne le signalait.** Les tests de l'interface tournent dans jsdom, un
-   navigateur simulé sans moteur de mise en page : toutes les hauteurs y
-   valent 0, et une grille non bornée n'y coûte rien. Le défaut ne se voit
-   qu'avec beaucoup de lignes, dans un vrai navigateur. Avec une requête de
-   1 000 lignes (la limite par défaut), il passait presque inaperçu.
+1. **The layout did not fill the window.** The `NLayout` component of
+   Naive UI, used for the overall layout (`web/src/App.vue`), takes the height
+   of its content by default, not that of the window. The screen was only 274
+   pixels high: there was therefore no "remaining space" to share.
+2. **The chain of heights was broken.** For an element to take the remaining
+   space without exceeding it, in CSS, each level must be a flexible container
+   (`display: flex`) with `flex: 1` and `min-height: 0`. Without
+   `min-height: 0`, a flexible element never shrinks below the height of its
+   content. The result tabs (`NTabs`), added for parallel execution,
+   introduced more levels in this chain, without these rules.
+3. **Nothing reported it.** The interface tests run in jsdom, a simulated
+   browser without a layout engine: all heights are 0 there, and an unbounded
+   grid costs nothing. The defect only shows with many rows, in a real
+   browser. With a query of 1,000 rows (the default limit), it went almost
+   unnoticed.
 
-### 1.4 Cause secondaire : la réactivité sur chaque ligne
+### 1.4 Secondary cause: reactivity on each row
 
-Une fois la grille bornée, le profil a montré un autre coût : 11 % du temps
-dans le suivi des changements de Vue (`set`). Les lignes reçues étaient
-ajoutées une à une dans un tableau réactif, et Vue interceptait chaque ajout,
-alors que seul leur nombre importe pour redessiner la grille.
+Once the grid was bounded, the profile showed another cost: 11% of the time in
+Vue's change tracking (`set`). Received rows were added one by one to a
+reactive array, and Vue intercepted each addition, whereas only their count
+matters to redraw the grid.
 
-### 1.5 Corrections
+### 1.5 Fixes
 
-| Commit | Correction |
+| Commit | Fix |
 |---|---|
-| `a91fd29` | La disposition remplit la fenêtre (`position="absolute"` sur `NLayout`). Chaque niveau, jusqu'à la grille, prend la place restante sans la dépasser (`flex: 1`, `min-height: 0`). **Garde-fou** : la zone de défilement de la grille ne peut pas dépasser la hauteur de la fenêtre (`max-height: 100vh`), pour que le défilement virtuel ne puisse plus être contourné, même si la chaîne des hauteurs est rompue à nouveau. |
-| `d0534f6` | Les lignes reçues sont gardées dans un tableau ordinaire (`markRaw`), hors du suivi de Vue. Seul leur nombre (`rowCount`) est réactif : la grille et les compteurs le lisent pour se redessiner. |
-| `6176cca` | Conservé : les messages du serveur sont appliqués par paquets, toutes les 100 ms, et l'horloge des durées ne redessine que les pastilles des requêtes en cours. |
+| `a91fd29` | The layout fills the window (`position="absolute"` on `NLayout`). Each level, down to the grid, takes the remaining space without exceeding it (`flex: 1`, `min-height: 0`). **Safeguard**: the grid's scroll area cannot exceed the window's height (`max-height: 100vh`), so that virtual scrolling can no longer be bypassed, even if the chain of heights is broken again. |
+| `d0534f6` | Received rows are kept in a plain array (`markRaw`), outside Vue's tracking. Only their count (`rowCount`) is reactive: the grid and the counters read it to redraw. |
+| `6176cca` | Kept: the server's messages are applied in batches, every 100 ms, and the duration clock only redraws the dots of the running queries. |
 
-### 1.6 Ce qu'il faut retenir
+### 1.6 Takeaways
 
-- **Une grille virtualisée a besoin d'une hauteur bornée.** Tout nouveau
-  conteneur placé entre la disposition et la grille doit prolonger la chaîne
-  `flex: 1` / `min-height: 0`. Le garde-fou `max-height: 100vh` limite les
-  dégâts, mais ne remplace pas une chaîne correcte.
-- **Mesurer avant de corriger.** La première correction, faite sans mesure, a
-  traité un coût secondaire. La mesure dans un vrai navigateur a désigné la
-  cause en quelques minutes : le nombre d'éléments dans la page.
-- **Les tests dans jsdom valident la logique, pas l'affichage.** Pour les
-  performances d'affichage, seul un vrai navigateur fait foi.
+- **A virtualised grid needs a bounded height.** Any new container placed
+  between the layout and the grid must extend the `flex: 1` / `min-height: 0`
+  chain. The `max-height: 100vh` safeguard limits the damage, but does not
+  replace a correct chain.
+- **Measure before fixing.** The first fix, made without measuring, treated a
+  secondary cost. Measuring in a real browser pointed to the cause in a few
+  minutes: the number of elements in the page.
+- **Tests in jsdom validate the logic, not the display.** For display
+  performance, only a real browser is authoritative.
 
-### 1.7 Mesurer à nouveau
+### 1.7 Measuring again
 
-1. Démarrer un MariaDB jetable : `docker run --rm -d --name prisme-perf -p 3310:3306 -e MARIADB_ROOT_PASSWORD=secret -e MARIADB_DATABASE=test mariadb:11.3`.
-2. Lancer un Prisme isolé : `cargo run -- --listen 127.0.0.1:8599 --data-dir ./tmp/perf`, puis y enregistrer une connexion vers `127.0.0.1:3310` (compte `root`, base `test`).
-3. Lancer Vite sur un autre port, avec un proxy vers `127.0.0.1:8599`.
-4. Avec Playwright (`playwright-core`, navigateur `msedge` ou `chrome` déjà installé) : ouvrir l'interface, choisir la connexion, saisir plusieurs requêtes sur `seq_1_to_200000` (table de séquence de MariaDB), cliquer sur « Tout exécuter », puis cliquer sur les onglets pendant l'exécution en mesurant le délai, et relever les tâches longues avec un `PerformanceObserver` de type `longtask`.
-5. Indicateur le plus parlant : `document.querySelectorAll('.grid-row').length` pendant l'exécution. Il doit rester de l'ordre de quelques dizaines par onglet visible, quel que soit le nombre de lignes reçues.
+1. Start a throwaway MariaDB: `docker run --rm -d --name prisme-perf -p 3310:3306 -e MARIADB_ROOT_PASSWORD=secret -e MARIADB_DATABASE=test mariadb:11.3`.
+2. Start an isolated Prisme: `cargo run -- --listen 127.0.0.1:8599 --data-dir ./tmp/perf`, then save a connection to `127.0.0.1:3310` in it (user `root`, database `test`).
+3. Start Vite on another port, with a proxy to `127.0.0.1:8599`.
+4. With Playwright (`playwright-core`, `msedge` or `chrome` browser already installed): open the interface, choose the connection, type several queries on `seq_1_to_200000` (MariaDB's sequence table), click **Tout exécuter** (Run all), then click on the tabs during the run while measuring the delay, and collect the long tasks with a `PerformanceObserver` of type `longtask`.
+5. Most telling indicator: `document.querySelectorAll('.grid-row').length` during the run. It must stay in the order of a few dozen per visible tab, whatever the number of rows received.
 
-## 2. Explorateur figé pendant le chargement initial : le catalogue était réactif
+## 2. Explorer frozen during the initial load: the catalog was reactive
 
-Problème rencontré en octobre 2026 dans l'explorateur d'objets.
+Problem met in October 2026 in the object explorer.
 
-### 2.1 Symptôme
+### 2.1 Symptom
 
-Au choix d'une connexion, l'explorateur restait inerte : un clic sur la base
-connectée ne l'ouvrait pas, alors qu'elle devrait être accessible tout de
-suite. Plus le serveur comptait de bases et de tables, plus l'attente était
-longue.
+On choosing a connection, the explorer stayed inert: a click on the connected
+database did not open it, whereas it should be available right away. The more
+databases and tables the server had, the longer the wait.
 
-### 2.2 Mesure
+### 2.2 Measurement
 
-Même environnement isolé que pour le chapitre 1 (section 1.7), avec un
-catalogue volumineux : 20 bases de 50 tables, soit 1 000 tables de 15
-colonnes, chacune avec un index et une clef étrangère.
+Same isolated environment as for chapter 1 (section 1.7), with a large
+catalog: 20 databases of 50 tables, that is 1,000 tables of 15 columns, each
+with an index and a foreign key.
 
-Le serveur n'était pas en cause : lu directement, le flux du catalogue livre
-les bases en 48 ms, les objets de la base en cours en 49 ms, et tout le
-catalogue (1,7 Mo) en 0,5 s.
+The server was not at fault: read directly, the catalog stream delivers the
+databases in 48 ms, the objects of the current database in 49 ms, and the
+whole catalog (1.7 MB) in 0.5 s.
 
-| Mesure, pendant le chargement initial | Avant | Après (`9f8707a`) |
+| Measure, during the initial load | Before | After (`9f8707a`) |
 |---|---|---|
-| Bases affichées | ~3 min, page figée | 0,5 à 0,6 s |
-| Ouverture d'une base, de « Tables », d'une table | plus de 30 s (abandon de la mesure) | 0,05 à 0,16 s |
-| Catalogue complet affiché | ~3 min | 2,6 à 2,9 s |
-| Plus longue tâche bloquante | ~3 min | 0,14 à 0,41 s |
+| Databases shown | ~3 min, page frozen | 0.5 to 0.6 s |
+| Opening a database, "Tables", a table | more than 30 s (measurement given up) | 0.05 to 0.16 s |
+| Whole catalog shown | ~3 min | 2.6 to 2.9 s |
+| Longest blocking task | ~3 min | 0.14 to 0.41 s |
 
-Le profil d'avant était sans ambiguïté : 98 % du temps dans le suivi des
-changements de Vue, dont 94 % dans `traverse`, la fonction qui parcourt un
-objet en profondeur pour une observation « profonde ».
+The profile before was unambiguous: 98% of the time in Vue's change tracking,
+of which 94% in `traverse`, the function that walks an object in depth for a
+"deep" watch.
 
 ### 2.3 Cause
 
 ```text
- Avant : chaque message reçu relance un parcours de tout le catalogue
+ Before: each message received starts a walk of the whole catalog
 
- message 1 (bases)          ──► parcours de    20 objets
- message 2 (objets db00)    ──► parcours de   ~70 objets
+ message 1 (databases)      ──► walk of       20 objects
+ message 2 (db00 objects)   ──► walk of      ~70 objects
  …
- message 20 (détails db19)  ──► parcours de ~40 000 objets
- …                              (et chaque message en ajoute)
+ message 20 (db19 details)  ──► walk of  ~40,000 objects
+ …                              (and each message adds more)
 ```
 
-Le catalogue (bases, tables, colonnes, index, clefs étrangères) était un objet
-réactif de Vue, rempli au fil des messages du serveur. Vue suivait chacun de
-ses dizaines de milliers d'objets. Une observation profonde du magasin
-(probablement celle des outils de développement de Vue et Pinia, actifs avec
-`npm run dev`) le reparcourait en entier à chaque message : le travail
-grossissait avec le catalogue, et le navigateur ne traitait plus les clics.
+The catalog (databases, tables, columns, indexes, foreign keys) was a Vue
+reactive object, filled as the server's messages came. Vue tracked each of its
+tens of thousands of objects. A deep watch of the store (probably that of the
+Vue and Pinia devtools, active with `npm run dev`) walked it entirely on each
+message: the work grew with the catalog, and the browser no longer handled
+clicks.
 
-Le défaut ne se voyait pas sur une base de test de quelques tables : il faut
-un catalogue de taille réelle pour qu'il apparaisse.
+The defect did not show on a test database of a few tables: a catalog of real
+size is needed for it to appear.
 
-### 2.4 Correction
+### 2.4 Fix
 
-Le principe est le même que pour les lignes de la grille (section 1.5) :
+The principle is the same as for the grid's rows (section 1.5):
 
-- le catalogue est un objet ordinaire (`markRaw`), hors du suivi de Vue ;
-- seul un numéro de révision par connexion est réactif. Il augmente au plus
-  toutes les 100 ms pendant la réception, puis à la fin ;
-- l'explorateur lit le catalogue par `catalogOf()`, qui lit aussi ce numéro :
-  l'arbre se reconstruit à chaque révision.
+- the catalog is a plain object (`markRaw`), outside Vue's tracking;
+- only a revision number per connection is reactive. It increases at most
+  every 100 ms during reception, then at the end;
+- the explorer reads the catalog through `catalogOf()`, which also reads this
+  number: the tree is rebuilt on each revision.
 
-### 2.5 Ce qu'il faut retenir
+### 2.5 Takeaways
 
-- **Une grande structure de données reçue du serveur reste hors de la
-  réactivité de Vue.** Seul un signal léger (un compteur, une révision)
-  prévient l'interface qu'elle a changé.
-- **Tester avec un volume réaliste.** Un catalogue de quelques tables ne
-  révèle rien.
-- **Limite restante** : l'arbre entier se reconstruit à chaque révision (0,4 s
-  au plus sur 1 000 tables). Avec beaucoup de sources et de tables, il faudra
-  ne reconstruire que les bases modifiées (question 26 de `docs/QUESTIONS.md`).
+- **A large data structure received from the server stays outside Vue's
+  reactivity.** Only a light signal (a counter, a revision) tells the
+  interface that it changed.
+- **Test with a realistic volume.** A catalog of a few tables reveals nothing.
+- **Remaining limit**: the whole tree is rebuilt on each revision (0.4 s at
+  most over 1,000 tables). With many sources and tables, only the modified
+  databases will have to be rebuilt (question 26 of `docs/QUESTIONS.md`).
 
-### 2.6 Mesurer à nouveau
+### 2.6 Measuring again
 
-Comme dans la section 1.7, avec un catalogue volumineux généré par script
-(`CREATE DATABASE` et `CREATE TABLE` en boucle) puis chargé par
-`docker exec -i … mariadb < catalogue.sql`. Scénario : choisir la connexion,
-mesurer le délai d'affichage des bases, puis ouvrir la base en cours, son
-dossier « Tables » et une table pendant le chargement. Attendre la fin de
-l'animation d'ouverture d'un nœud (environ 0,5 s) avant de cliquer sur un de
-ses enfants : un clic pendant l'animation est ignoré par l'arbre.
+As in section 1.7, with a large catalog generated by a script (`CREATE
+DATABASE` and `CREATE TABLE` in a loop) then loaded through
+`docker exec -i … mariadb < catalog.sql`. Scenario: choose the connection,
+measure the delay before the databases show, then open the current database,
+its "Tables" folder and a table during the load. Wait for the end of a node's
+opening animation (about 0.5 s) before clicking one of its children: a click
+during the animation is ignored by the tree.

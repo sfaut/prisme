@@ -1,239 +1,239 @@
-# Prisme : le moteur fédéré (après la v1)
+# Prisme: the federated engine (after the v1)
 
-Ce document décrit la vision de départ du projet, qui vient après la v1. L'idée de départ : un client qui interroge **plusieurs sources à la fois** (serveurs SQL, fichiers CSV) comme s'il n'y en avait qu'une, avec un dialecte neutre. Les mentions **[à confirmer]** signalent une proposition non validée.
+This document describes the original vision of the project, which comes after the v1. The starting idea: a client that queries **several sources at once** (SQL servers, CSV files) as if there were only one, with a neutral dialect. The **[to confirm]** marks flag a proposal not approved yet.
 
-La v1 (voir `docs/V1.md`) construit le noyau commun : parseur, AST, émetteurs par dialecte, connecteurs, streaming, annulation. Le moteur fédéré s'y ajoute.
+The v1 (see `docs/V1.md`) builds the common core: parser, AST, emitters per dialect, connectors, streaming, cancellation. The federated engine is added on top of it.
 
-## 1. Besoin
+## 1. Need
 
-- Interroger MySQL, MariaDB et des fichiers CSV (puis d'autres sources) dans une même requête, de 3 à 6 sources possibles.
-- Volumes : des dizaines de millions de lignes, parfois des centaines de millions pour le détail. Les clés de jointure sont indexées dans les bases.
-- **Motivation principale : la performance.** Sébastien juge DuckDB mauvais dès qu'on croise plusieurs sources : il rapatrie trop de données. Le moteur doit analyser la requête, chercher les données de façon optimale dans chaque source, puis assembler. Il y a donc du travail côté serveur et côté client.
-- Objectif d'optimisation : faire transiter le moins de données possible et limiter le travail local.
-- Le résultat doit être **cohérent, constant, reproductible**, et vu par l'utilisateur comme si la source était unique : types harmonisés (entiers, chaînes, booléens), comme pour une base unique.
-- Test de vérité à faire tôt : « CSV joint à MySQL, avec filtre », comparé au temps de DuckDB.
+- Query MySQL, MariaDB and CSV files (then other sources) in a single query, from 3 to 6 possible sources.
+- Volumes: tens of millions of rows, sometimes hundreds of millions for details. Join keys are indexed in the databases.
+- **Main motivation: performance.** DuckDB performs poorly as soon as several sources are joined: it fetches too much data. The engine must analyse the query, fetch the data optimally from each source, then assemble. There is therefore work on the server side and on the client side.
+- Optimisation goal: move as little data as possible and limit local work.
+- The result must be **consistent, stable, reproducible**, and seen by the user as if the source were single: harmonised types (integers, strings, booleans), as for a single database.
+- Reality check to run early: "CSV joined to MySQL, with a filter", compared with DuckDB's time.
 
-## 2. Langages d'entrée
+## 2. Input languages
 
-- Dialecte neutre, **ANSI strict comme noyau**, enrichi au besoin du meilleur des autres moteurs (DuckDB, ClickHouse). Exemple cité : les fonctions donnant le premier et le dernier jour d'une semaine. La requête enrichie est ensuite compilée vers le dialecte de la source visée.
-- Autres langages possibles, qui se mappent bien sur le plan logique parce qu'ils sont des pipelines d'opérations relationnelles :
-  - **Syntaxe SQL en pipe** (`FROM t |> WHERE ... |> AGGREGATE ...`). Sébastien a écrit « PSQL » ; c'est une interprétation de ma part, non confirmée. **[à confirmer]**
-  - **PRQL** : chaque étape correspond presque un pour un à un nœud de plan. Il a une notion de dialecte cible à la compilation. Fixer un sous-ensemble, car la spécification évolue.
-  - **Tutorial D** (voir la section 5).
-- **Un langage par requête**, choisi par l'utilisateur selon son aisance. Pas de mélange dans une même requête. Le choix du langage n'a plus d'effet après le parsing.
-- Ordre suggéré : SQL enrichi, puis syntaxe pipe (peu coûteuse, valide que le plan ne dépend pas de la forme du SQL), puis PRQL (vrai changement de paradigme).
-- Un langage orienté documents, avec structures imbriquées, ne rentre pas dans l'algèbre relationnelle sans aplatir les données ou gérer des types imbriqués, ce qui touche le modèle de types.
+- Neutral dialect, **strict ANSI as the core**, enriched when needed with the best of other engines (DuckDB, ClickHouse). Example: the functions giving the first and last day of a week. The enriched query is then compiled to the dialect of the targeted source.
+- Other possible languages, which map well onto the logical plan because they are pipelines of relational operations:
+  - **Pipe SQL syntax** (`FROM t |> WHERE ... |> AGGREGATE ...`). The original note said "PSQL"; this reading is an interpretation, not confirmed. **[to confirm]**
+  - **PRQL**: each step maps almost one to one to a plan node. It has a notion of target dialect at compile time. Set a subset, as the specification evolves.
+  - **Tutorial D** (see section 5).
+- **One language per query**, chosen by the user according to their comfort. No mixing in a single query. The choice of language has no effect after parsing.
+- Suggested order: enriched SQL, then pipe syntax (cheap, validates that the plan does not depend on the form of the SQL), then PRQL (a real paradigm shift).
+- A document-oriented language, with nested structures, does not fit relational algebra without flattening the data or handling nested types, which touches the type model.
 
 ## 3. Architecture
 
-Pipeline commun, où **le plan logique est le pivot** et ne dépend d'aucun langage :
+Common pipeline, where **the logical plan is the pivot** and depends on no language:
 
-1. **Frontend** (choisi par l'utilisateur) : texte vers plan logique.
-2. **Analyse** : résolution des tables et colonnes, types, catalogue de fonctions, classification lecture / écriture / DDL.
-3. **Optimiseur** : écrit une seule fois, travaille uniquement sur le plan logique.
-4. **Plan physique** : pour chaque jointure, semi-join, merge join ou hash join local, selon les index et les statistiques.
-5. **Exécution** : sous-requêtes envoyées en parallèle, résultats en streaming, assemblage local minimal.
-6. **Émetteurs** : un par source, qui traduit le plan (ou un sous-arbre poussé) dans le dialecte de la source.
+1. **Frontend** (chosen by the user): text to logical plan.
+2. **Analysis**: resolution of tables and columns, types, function catalog, read / write / DDL classification.
+3. **Optimiser**: written once, works only on the logical plan.
+4. **Physical plan**: for each join, semi-join, merge join or local hash join, depending on indexes and statistics.
+5. **Execution**: subqueries sent in parallel, results streamed, minimal local assembly.
+6. **Emitters**: one per source, which translates the plan (or a pushed-down subtree) into the source's dialect.
 
-Une commande **EXPLAIN** est à prévoir dès le début : plan logique optimisé, SQL généré pour chaque source, ce qui reste en local. C'est le meilleur outil de débogage et d'explication pour l'utilisateur.
+An **EXPLAIN** command is planned from the start: optimised logical plan, SQL generated for each source, what stays local. It is the best debugging and explanation tool for the user.
 
-## 4. Optimiseur
+## 4. Optimiser
 
-**Règles de réécriture**
+**Rewrite rules**
 
-- **Pushdown** des filtres, projections, agrégats et limites vers la source.
-- **Agrégation avant jointure** (*eager aggregation*) : pré-agréger côté source en groupant sur les clés de jointure. Valide pour `SUM`, `COUNT`, `MIN`, `MAX`, et `AVG` via `SUM` et `COUNT` (le `COUNT` doit porter sur la colonne, pas sur `*`). **Invalide** pour `COUNT(DISTINCT)` et quand la jointure ou un `Ungroup` multiplie les lignes sans correction. Pas toujours rentable : décision par les statistiques.
-- **Réordonnancement des jointures** : commencer par celle qui réduit le plus le volume.
-- **Regroupement par source** : un sous-arbre qui ne touche qu'une source part entier, en une seule requête.
-- **Réécriture de fonctions en plages** pour garder l'usage des index : `WHERE date_trunc('week', col) = X` devient `col >= début AND col < fin`. Les fonctions volatiles comme `current_date` sont évaluées une seule fois par Prisme.
+- **Pushdown** of filters, projections, aggregates and limits to the source.
+- **Aggregation before join** (*eager aggregation*): pre-aggregate on the source side, grouping on the join keys. Valid for `SUM`, `COUNT`, `MIN`, `MAX`, and `AVG` through `SUM` and `COUNT` (the `COUNT` must be on the column, not on `*`). **Invalid** for `COUNT(DISTINCT)` and when the join or an `Ungroup` multiplies rows without correction. Not always worth it: decided by the statistics.
+- **Join reordering**: start with the one that reduces the volume the most.
+- **Grouping by source**: a subtree that only touches one source goes as a whole, in a single query.
+- **Rewriting functions as ranges** to keep the use of indexes: `WHERE date_trunc('week', col) = X` becomes `col >= start AND col < end`. Volatile functions like `current_date` are evaluated only once by Prisme.
 
-**Stratégies de jointure entre sources**
+**Join strategies across sources**
 
-- **Semi-join par lots** : récupérer les clés de la petite partie, puis interroger l'autre source par paquets (`IN` de quelques milliers de valeurs). Chaque lot utilise l'index de la clé. Variante : filtre de Bloom.
-- **Merge join en streaming** : si la clé est indexée des deux côtés, demander `ORDER BY clé` aux deux sources en lecture non bufferisée et en parallèle, puis fusionner les deux flux en mémoire quasi constante. L'ordre renvoyé par les sources doit être identique à l'ordre de comparaison de Prisme (collations, position des NULL), sinon des lignes sautent silencieusement.
-- **Hash join local**, uniquement sur des résultats déjà réduits, avec plafond mémoire et repli sur disque (fichiers temporaires triés) au-delà.
-- Règle d'or à cette échelle : **ne jamais rapatrier de lignes brutes**. Chaque source réduit son volume avant que Prisme n'y touche.
-- Résultats toujours en streaming vers le client (pages ou curseur), sans jamais tout matérialiser en mémoire.
+- **Batched semi-join**: fetch the keys of the small part, then query the other source in batches (`IN` of a few thousand values). Each batch uses the key's index. Variant: Bloom filter.
+- **Streaming merge join**: if the key is indexed on both sides, ask both sources for `ORDER BY key` with unbuffered reads and in parallel, then merge both streams in near-constant memory. The order returned by the sources must be identical to Prisme's comparison order (collations, position of NULLs), otherwise rows are silently skipped.
+- **Local hash join**, only on already reduced results, with a memory ceiling and a spill to disk (sorted temporary files) beyond it.
+- Golden rule at this scale: **never fetch raw rows**. Each source reduces its volume before Prisme touches it.
+- Results always streamed to the client (pages or cursor), never fully materialised in memory.
 
-**Statistiques**
+**Statistics**
 
-- Un `COUNT(*)` sur des centaines de millions de lignes est lent : utiliser `information_schema` (estimations) et la cardinalité des index.
-- Taille d'un CSV connue, nombre de lignes estimé par échantillonnage.
-- Les statistiques doivent compter les NULL (taux par colonne) pour estimer la sélectivité.
+- A `COUNT(*)` over hundreds of millions of rows is slow: use `information_schema` (estimates) and index cardinality.
+- Size of a CSV known, row count estimated by sampling.
+- Statistics must count NULLs (rate per column) to estimate selectivity.
 
-**Stratégie de développement**
+**Development strategy**
 
-- v1 de l'optimiseur : règles fixes (filtres, projections, regroupement par source), puis agrégation avant jointure quand elle est valide, puis semi-join. Le merge join vient ensuite, puis le choix fondé sur les coûts.
-- Briques existantes à connaître : Apache DataFusion (Rust) et Calcite (Java) ont parseur, optimiseur et règles, y compris l'agrégation poussée sous les jointures ; Trino fait tout cela mais est lourd. Sébastien veut éviter les dépendances, donc le modèle de leur plan logique sert de référence. DataFusion reste une option pour l'exécuteur le moment venu.
-- Le gros du travail n'est pas l'analyse du texte (quelques millisecondes) mais le transfert et le traitement des lignes.
+- Optimiser v1: fixed rules (filters, projections, grouping by source), then aggregation before join when valid, then semi-join. The merge join comes next, then cost-based choices.
+- Existing building blocks to know: Apache DataFusion (Rust) and Calcite (Java) have a parser, an optimiser and rules, including aggregation pushed below joins; Trino does all of it but is heavy. Dependencies are avoided, so the model of their logical plan serves as a reference. DataFusion remains an option for the executor when the time comes.
+- Most of the work is not parsing the text (a few milliseconds) but transferring and processing the rows.
 
-## 5. Plan logique et Tutorial D
+## 5. Logical plan and Tutorial D
 
-### 5.1 Nœuds du plan
+### 5.1 Plan nodes
 
-Les nœuds portent un **schéma de sortie** (colonnes, type, nullabilité), une estimation de lignes et, après optimisation, la source d'exécution (ou `local`). Le mode de doublons est **explicite dans le nom**, sans drapeau à interpréter (demande de Sébastien).
+Nodes carry an **output schema** (columns, type, nullability), a row estimate and, after optimisation, the execution source (or `local`). The duplicate mode is **explicit in the name**, without a flag to interpret.
 
-- **Source** : `Scan` (source, table ou fichier, colonnes lues, options CSV, filtre et limite poussés).
-- **Unaires** : `Filter` (prédicat booléen, logique à trois valeurs), `Project`, `Extend` (colonnes calculées), `Rename`, `Sort` (clés, sens, position des NULL ; un tri n'est jamais supposé conservé après un autre nœud), `Limit`, `Distinct` (NULL considérés égaux).
-- **Jointures** : `InnerJoin`, `LeftJoin`, `RightJoin`, `FullJoin`, `SemiJoin` (MATCHING) et `AntiJoin` (NOT MATCHING). Le schéma de sortie d'un `SemiJoin` ou d'un `AntiJoin` est celui du côté gauche. Ils ne multiplient jamais les lignes. Une clé NULL ne correspond jamais.
-- **Ensembles** :
+- **Source**: `Scan` (source, table or file, columns read, CSV options, pushed filter and limit).
+- **Unary**: `Filter` (boolean predicate, three-valued logic), `Project`, `Extend` (computed columns), `Rename`, `Sort` (keys, direction, position of NULLs; a sort is never assumed kept after another node), `Limit`, `Distinct` (NULLs considered equal).
+- **Joins**: `InnerJoin`, `LeftJoin`, `RightJoin`, `FullJoin`, `SemiJoin` (MATCHING) and `AntiJoin` (NOT MATCHING). The output schema of a `SemiJoin` or an `AntiJoin` is that of the left side. They never multiply rows. A NULL key never matches.
+- **Sets**:
 
-| Nœud | Équivalent SQL | Doublons |
+| Node | SQL equivalent | Duplicates |
 |---|---|---|
-| `UnionAll` | `UNION ALL` | conservés (somme des occurrences) |
-| `UnionDistinct` | `UNION` | éliminés |
+| `UnionAll` | `UNION ALL` | kept (sum of occurrences) |
+| `UnionDistinct` | `UNION` | removed |
 | `MinusAll` | `EXCEPT ALL` | max(0, n − m) occurrences |
-| `MinusDistinct` | `EXCEPT` | éliminés |
+| `MinusDistinct` | `EXCEPT` | removed |
 | `IntersectAll` | `INTERSECT ALL` | min(n, m) occurrences |
-| `IntersectDistinct` | `INTERSECT` | éliminés |
+| `IntersectDistinct` | `INTERSECT` | removed |
 
-- **Agrégation et imbrication** : `Aggregate` (clés et fonctions, `DISTINCT` éventuel ; les NULL forment un seul groupe), `Group`, `Ungroup` (multiplie les lignes), `Wrap`, `Unwrap`.
-- **Écriture**, toujours à la racine et vers une seule cible : `Insert`, `Update`, `Delete`, `Export`. La classification lecture / écriture se lit sur la racine.
+- **Aggregation and nesting**: `Aggregate` (keys and functions, optional `DISTINCT`; NULLs form a single group), `Group`, `Ungroup` (multiplies rows), `Wrap`, `Unwrap`.
+- **Writes**, always at the root and to a single target: `Insert`, `Update`, `Delete`, `Export`. The read / write classification is read on the root.
 
 **Invariants**
 
-- Le plan est un arbre, sans cycle.
-- Une réécriture ne change jamais le schéma de sortie de la racine.
-- Un nœud poussé vers une source ne contient que des fonctions marquées « poussables » pour cette source.
-- Les propriétés dérivées (nullabilité, unicité de clé, ordre) se calculent sur le plan, jamais sur le texte d'origine.
+- The plan is a tree, without cycles.
+- A rewrite never changes the output schema of the root.
+- A node pushed to a source only contains functions marked "pushable" for that source.
+- Derived properties (nullability, key uniqueness, order) are computed on the plan, never on the original text.
 
-Dans les langages d'entrée : en SQL, `UNION` seul reste accepté comme en SQL standard (= `UnionDistinct`), avec les formes explicites `UNION DISTINCT` et `EXCEPT DISTINCT` en plus. Côté sources, `MinusAll` et `IntersectAll` n'existent pas partout : le catalogue dit par source si le nœud est poussable, sinon Prisme l'exécute en local (comptage par table de hachage).
+In the input languages: in SQL, a bare `UNION` stays accepted as in standard SQL (= `UnionDistinct`), with the explicit forms `UNION DISTINCT` and `EXCEPT DISTINCT` in addition. On the source side, `MinusAll` and `IntersectAll` do not exist everywhere: the catalog says per source whether the node is pushable, otherwise Prisme runs it locally (counting with a hash table).
 
-### 5.2 Tutorial D comme vocabulaire
+### 5.2 Tutorial D as a vocabulary
 
-Sébastien préfère s'en tenir à la **théorie de C. J. Date**. Tutorial D (langage d'enseignement du *Third Manifesto* de Date et Darwen) fournit le vocabulaire du plan logique : `JOIN`, `UNION`, `MINUS`, `WHERE`, projection, `RENAME`, `EXTEND`, `SUMMARIZE`, `GROUP` / `UNGROUP` (attributs à valeur relation), `WRAP` / `UNWRAP` (attributs à valeur tuple), `MATCHING` et `NOT MATCHING` (le semi-join est un opérateur de première classe), `TCLOSE` (fermeture transitive). Sa grammaire est petite et régulière, donc facile à parser. Implémentations de référence : Rel (Java) et Dee (Python).
+The project sticks to **C. J. Date's theory**. Tutorial D (the teaching language of Date and Darwen's *Third Manifesto*) provides the vocabulary of the logical plan: `JOIN`, `UNION`, `MINUS`, `WHERE`, projection, `RENAME`, `EXTEND`, `SUMMARIZE`, `GROUP` / `UNGROUP` (relation-valued attributes), `WRAP` / `UNWRAP` (tuple-valued attributes), `MATCHING` and `NOT MATCHING` (the semi-join is a first-class operator), `TCLOSE` (transitive closure). Its grammar is small and regular, hence easy to parse. Reference implementations: Rel (Java) and Dee (Python).
 
-Dans le plan, `Group` et `Ungroup` sont de vrais nœuds, et non des fonctions opaques (`array_agg`, `UNNEST`) : l'optimiseur peut raisonner dessus. La relation imbriquée reste une relation (fermeture), donc pas de monde parallèle pour les valeurs imbriquées.
+In the plan, `Group` and `Ungroup` are real nodes, not opaque functions (`array_agg`, `UNNEST`): the optimiser can reason about them. The nested relation stays a relation (closure), so there is no parallel world for nested values.
 
-### 5.3 Mode flex et mode strict
+### 5.3 Flex mode and strict mode
 
-Deux décisions imposées par la pureté de Date :
+Two decisions forced by Date's purity:
 
-- **Ensembles ou sacs** : Date impose des relations sans doublons, les sources SQL renvoient des sacs. **Décision : sacs en interne**, pour rester fidèle aux sources et éviter un `DISTINCT` à l'entrée sur des centaines de millions de lignes.
-- **NULL** : Date les rejette. Les sources en sont pleines, et convertir un NULL en 0 ou en -1 déforme le sens des données. **Décision : on conserve les NULL.**
+- **Sets or bags**: Date requires relations without duplicates, SQL sources return bags. **Decision: bags internally**, to stay faithful to the sources and avoid a `DISTINCT` at the input over hundreds of millions of rows.
+- **NULL**: Date rejects them. Sources are full of them, and turning a NULL into 0 or -1 distorts the meaning of the data. **Decision: NULLs are kept.**
 
-Sébastien aimerait la pureté, mais les sources sont trop hétérogènes. D'où deux modes, choisis par requête :
+Purity would be preferable, but the sources are too heterogeneous. Hence two modes, chosen per query:
 
-- **Flex** : dialecte dérivé de Tutorial D, aligné sur la sémantique SQL des sources (logique à trois valeurs, sacs, attributs nullables comme `INTEGER?`, opérateurs `IS NULL`, `COALESCE`, `NULLIF`). `UNION ALL` et `MINUS ALL` sont des extensions du flex. À documenter précisément pour ne pas induire en erreur ceux qui connaissent l'original.
-- **Strict** : simple **couche de vérification** sur le même plan. L'analyseur rejette la requête si un attribut peut être NULL ou si le résultat peut avoir des doublons, sauf traitement explicite (`COALESCE`, `DISTINCT`, colonne déclarée non nulle). Seules les formes `DISTINCT` des opérateurs ensemblistes y sont acceptées. L'exécution est identique.
-- **Le mode strict est reporté** (non critique). Ce qui est critique dès maintenant : réserver l'information de **nullabilité** dans les types et dans le plan.
+- **Flex**: a dialect derived from Tutorial D, aligned with the SQL semantics of the sources (three-valued logic, bags, nullable attributes like `INTEGER?`, `IS NULL`, `COALESCE`, `NULLIF` operators). `UNION ALL` and `MINUS ALL` are flex extensions. To be documented precisely so as not to mislead those who know the original.
+- **Strict**: a simple **verification layer** on the same plan. The analyser rejects the query if an attribute can be NULL or if the result can have duplicates, unless handled explicitly (`COALESCE`, `DISTINCT`, column declared non-null). Only the `DISTINCT` forms of set operators are accepted there. Execution is identical.
+- **The strict mode is postponed** (not critical). What is critical right now: keep the **nullability** information in the types and in the plan.
 
-## 6. Modèle de types
+## 6. Type model
 
-- Types internes : entier, décimal exact, chaîne, booléen, date/heure, NULL, avec nullabilité. À fixer en premier, car tout en dépend.
-- **Entiers** : un `BIGINT UNSIGNED` MySQL dépasse l'entier signé 64 bits. Les entiers hors plage sont lus en chaîne, puis comparés et calculés avec une bibliothèque de grands entiers si nécessaire. Un calcul qui déborde lève une **erreur explicite**, sans passer silencieusement en flottant. Le pushdown règle souvent le problème : si la somme se fait côté MySQL, il ne reste qu'un résultat à transporter.
-- **Décimaux** : exacts, jamais en flottant.
-- **Chaînes** : `'a' = 'A'` dépend de la collation de la source. Une règle unique est à fixer. **[à décider]**
-- **Dates** : une seule convention de fuseau pour tous. **[à décider]**
-- **Valeurs imbriquées** : réserver `LIST` et `STRUCT` dans le modèle dès le départ. Sébastien a posé la question des MVA (multi-value attributes). Précision : le modèle relationnel strict (1NF classique) interdit les valeurs multiples, mais Date soutient que « atomique » dépend des opérateurs fournis et défend les attributs à valeur relation (RVA), compatibles avec le modèle relationnel. Un tableau SQL (ordonné, avec doublons) n'est pas un RVA (ensemble sans ordre ni doublons), ce qui compte pour l'équivalence des réécritures. Le « MVA » de Manticore et Sphinx est en réalité une liste d'entiers. v1 du moteur : liste (plus familière aux utilisateurs de DuckDB et ClickHouse), en gardant la porte ouverte aux relations imbriquées. Minimum à implémenter : `array_agg`, `UNNEST` et le test d'appartenance.
-- MySQL et MariaDB n'ont pas de vrai type tableau : `array_agg` devient `JSON_ARRAYAGG`, `UNNEST` devient `JSON_TABLE`, `list_contains` devient `MEMBER OF` ou `JSON_CONTAINS`.
+- Internal types: integer, exact decimal, string, boolean, date/time, NULL, with nullability. To be set first, as everything depends on it.
+- **Integers**: a MySQL `BIGINT UNSIGNED` exceeds the signed 64-bit integer. Out-of-range integers are read as strings, then compared and computed with a big integer library if needed. A computation that overflows raises an **explicit error**, without silently switching to floating point. Pushdown often solves the problem: if the sum is done on the MySQL side, only one result is left to carry.
+- **Decimals**: exact, never as floating point.
+- **Strings**: `'a' = 'A'` depends on the source's collation. A single rule is to be set. **[to decide]**
+- **Dates**: a single time zone convention for all. **[to decide]**
+- **Nested values**: reserve `LIST` and `STRUCT` in the model from the start, including multi-value attributes (MVA). The strict relational model (classic 1NF) forbids multiple values, but Date argues that "atomic" depends on the operators provided and defends relation-valued attributes (RVA), compatible with the relational model. A SQL array (ordered, with duplicates) is not an RVA (set without order or duplicates), which matters for the equivalence of rewrites. The "MVA" of Manticore and Sphinx is actually a list of integers. Engine v1: list (more familiar to DuckDB and ClickHouse users), keeping the door open to nested relations. Minimum to implement: `array_agg`, `UNNEST` and the membership test.
+- MySQL and MariaDB have no real array type: `array_agg` becomes `JSON_ARRAYAGG`, `UNNEST` becomes `JSON_TABLE`, `list_contains` becomes `MEMBER OF` or `JSON_CONTAINS`.
 
-## 7. NULL : liste des points à trancher
+## 7. NULL: list of points to settle
 
-Référence en mode flex : le comportement des sources SQL. **Priorité** : les points 1 à 6 sont indispensables dès le départ (ils touchent la justesse des résultats et des jointures, et donc déjà la v1), les points 7 à 9 se décident avec le catalogue de fonctions, les points 10 à 12 avec le workspace et l'optimiseur. Aucun de ces points n'est encore tranché.
+Reference in flex mode: the behaviour of SQL sources. **Priority**: points 1 to 6 are essential from the start (they affect the correctness of results and joins, and therefore already the v1), points 7 to 9 are decided with the function catalog, points 10 to 12 with the workspace and the optimiser. None of these points is settled yet.
 
-1. **Égalité** : égalité de comparaison (`=`, jointures : `NULL = NULL` donne inconnu) et égalité d'identité (« non distincts », `IS NOT DISTINCT FROM`, `<=>` en MySQL). Nommer les deux dans le plan et dire laquelle chaque nœud utilise.
-2. **Logique à trois valeurs** : tables de vérité de `AND`, `OR`, `NOT` ; `Filter` rejette l'inconnu ; `CHECK` accepte l'inconnu ; `CASE WHEN` inconnu n'est pas vrai.
-3. **Jointures** : clé NULL ne correspond jamais (y compris `SemiJoin`). `AntiJoin` conserve une clé NULL à gauche. Piège : `NOT IN` avec un NULL dans la sous-requête ne renvoie rien. Le frontend SQL doit-il le reproduire tel quel ou le traduire en `AntiJoin` ? Les deux ne sont pas équivalents. Option : jointure sur égalité d'identité.
-4. **Opérateurs ensemblistes** : doublons selon l'identité, NULL compris, pour `Distinct`, `Union*`, `Minus*`, `Intersect*`. Vérifier que les sources suivent cette règle, y compris pour `EXCEPT ALL`.
-5. **Agrégation** : `GROUP BY` regroupe tous les NULL ; les fonctions ignorent les NULL sauf `COUNT(*)` ; agrégat sur un ensemble vide ou tout NULL : `SUM`, `MIN`, `MAX`, `AVG` donnent NULL, `COUNT` donne 0 ; `COUNT(DISTINCT)` ignore les NULL ; `array_agg` garde-t-il les NULL ? (varie selon les moteurs, à fixer).
-6. **Tri** : position des NULL (MySQL et MariaDB en premier en ordre croissant, PostgreSQL et DuckDB en dernier). Une règle de référence pour Prisme, et un `NULLS FIRST` / `NULLS LAST` explicite émis vers les sources, émulé si besoin. Crucial pour le merge join.
-7. **Fonctions** : un argument NULL donne NULL, sauf exceptions à lister (`COALESCE`, `NULLIF`, `IS NULL`, `CONCAT` contre `CONCAT_WS` contre `||`). Division par zéro : NULL ou erreur ? Casts ratés : erreur, ou NULL via une variante `TRY_CAST` ?
-8. **Types et nullabilité** : propagation par chaque nœud (`LeftJoin` rend nullables les colonnes de droite, `Aggregate` sans groupe peut produire un NULL, `UnionAll` est nullable si un côté l'est). Un `Filter` sur `IS NOT NULL` rend la colonne non nulle dans la suite du plan.
-9. **Imbrication** : liste NULL et liste vide sont différentes. `Ungroup` d'une liste NULL ou vide : zéro ligne, ou une ligne avec NULL (`UNNEST` contre `LEFT JOIN UNNEST`) ? Élément NULL dans une liste : conservé ?
-10. **CSV et workspace** : marqueurs de NULL à la lecture (voir la section 8) et à l'écriture (vide, `\N`, `NA`). SQLite autorise plusieurs NULL dans une colonne `UNIQUE`.
-11. **Optimiseur** : chaque règle préserve la sémantique des NULL. Pousser un filtre sous un `LeftJoin` n'est valide que du bon côté ; transformer un `LeftJoin` en `InnerJoin` exige un filtre qui rejette les NULL de droite ; `NOT (a = b)` n'est pas `a IS DISTINCT FROM b`.
-12. **Mode strict** : reporté, mais la nullabilité du point 8 doit exister.
+1. **Equality**: comparison equality (`=`, joins: `NULL = NULL` gives unknown) and identity equality ("not distinct", `IS NOT DISTINCT FROM`, `<=>` in MySQL). Name both in the plan and say which one each node uses.
+2. **Three-valued logic**: truth tables of `AND`, `OR`, `NOT`; `Filter` rejects unknown; `CHECK` accepts unknown; an unknown `CASE WHEN` is not true.
+3. **Joins**: a NULL key never matches (`SemiJoin` included). `AntiJoin` keeps a NULL key on the left. Pitfall: `NOT IN` with a NULL in the subquery returns nothing. Should the SQL frontend reproduce it as is or translate it into an `AntiJoin`? Both are not equivalent. Option: join on identity equality.
+4. **Set operators**: duplicates according to identity, NULL included, for `Distinct`, `Union*`, `Minus*`, `Intersect*`. Check that the sources follow this rule, `EXCEPT ALL` included.
+5. **Aggregation**: `GROUP BY` groups all NULLs; functions ignore NULLs except `COUNT(*)`; aggregate over an empty or all-NULL set: `SUM`, `MIN`, `MAX`, `AVG` give NULL, `COUNT` gives 0; `COUNT(DISTINCT)` ignores NULLs; does `array_agg` keep NULLs? (varies across engines, to set).
+6. **Sorting**: position of NULLs (MySQL and MariaDB first in ascending order, PostgreSQL and DuckDB last). A reference rule for Prisme, and an explicit `NULLS FIRST` / `NULLS LAST` emitted to the sources, emulated if needed. Crucial for the merge join.
+7. **Functions**: a NULL argument gives NULL, except for exceptions to list (`COALESCE`, `NULLIF`, `IS NULL`, `CONCAT` versus `CONCAT_WS` versus `||`). Division by zero: NULL or error? Failed casts: error, or NULL through a `TRY_CAST` variant?
+8. **Types and nullability**: propagation by each node (`LeftJoin` makes the right columns nullable, `Aggregate` without a group can produce a NULL, `UnionAll` is nullable if one side is). A `Filter` on `IS NOT NULL` makes the column non-null in the rest of the plan.
+9. **Nesting**: a NULL list and an empty list are different. `Ungroup` of a NULL or empty list: zero rows, or one row with NULL (`UNNEST` versus `LEFT JOIN UNNEST`)? NULL element in a list: kept?
+10. **CSV and workspace**: NULL markers on reading (see section 8) and on writing (empty, `\N`, `NA`). SQLite allows several NULLs in a `UNIQUE` column.
+11. **Optimiser**: each rule preserves NULL semantics. Pushing a filter below a `LeftJoin` is only valid on the right side; turning a `LeftJoin` into an `InnerJoin` requires a filter that rejects the right NULLs; `NOT (a = b)` is not `a IS DISTINCT FROM b`.
+12. **Strict mode**: postponed, but the nullability of point 8 must exist.
 
-Absence d'`ORDER BY` : l'ordre n'est pas garanti, comme dans n'importe quelle base. **Décision de Sébastien : le moteur n'ajoute pas de tri déterministe d'office.**
+No `ORDER BY`: the order is not guaranteed, as in any database. **Decision: the engine does not add a deterministic sort on its own.**
 
 ## 8. CSV
 
-Principe : **tout est texte**, sans inférence. Sébastien préfère s'en tenir aux `CAST` écrits dans la requête plutôt qu'à une phase de modélisation (un schéma par fichier). Prévoir tout de même la déclaration de source.
+Principle: **everything is text**, without inference. Typing goes through the `CAST`s written in the query rather than a modelling phase (one schema per file). The source declaration is still planned.
 
-**Déclaration de source** (comme une connexion MySQL) : chemin (dans un dossier **autorisé par rôle**, pour empêcher `../../etc/...`), séparateur (`,` par défaut, réglable, pas d'auto-détection en v1), encodage (UTF-8 par défaut, BOM toléré, autres par option), en-tête (présent par défaut, sinon colonnes `c1`, `c2`... ; un en-tête en doublon est une erreur), guillemets `"` avec guillemet doublé (RFC 4180), fins de ligne CRLF, LF ou CR.
+**Source declaration** (like a MySQL connection): path (in a folder **allowed per role**, to prevent `../../etc/...`), separator (`,` by default, adjustable, no auto-detection in v1), encoding (UTF-8 by default, BOM tolerated, others by option), header (present by default, otherwise columns `c1`, `c2`...; a duplicate header is an error), `"` quotes with doubled quote (RFC 4180), CRLF, LF or CR line endings.
 
-**Valeurs**
+**Values**
 
-- Aucun NULL par défaut : une cellule vide donne une chaîne vide.
-- Option sur le **scan** : `WITH EMPTY AS NULL`, et la forme générale `WITH NULL AS 'NA'` (`EMPTY AS NULL` est un raccourci de `NULL AS ''`). Réglable sur la déclaration de source, surchargeable dans la requête. Raisons : la conversion se fait à la lecture, avant filtre et jointure, l'optimiseur sait que les colonnes sont nullables, et `CAST('' AS INTEGER)` échoue alors qu'avec un NULL il passe. Alternative ponctuelle : `NULLIF(col, '')`.
-- La RFC 4180 ne dit rien sur le NULL : `,,` et `,"",` y sont deux écritures de la même chose. Les outils divergent (PostgreSQL : `,,` donne NULL et `,"",` donne chaîne vide ; MySQL : `\N` ; DuckDB : `nullstr` ; Excel et pandas : le vide est NULL ou NaN). Sources citées de mémoire, à vérifier. Par défaut, `,,` et `,"",` donnent tous deux une chaîne vide.
-- Le mode « guillemets = chaîne vide, vide nu = NULL » (comme PostgreSQL) est **reporté**, mais **le lecteur doit garder en interne l'information « champ entre guillemets »**, sinon il ne pourra jamais la restituer.
-- Pas d'inférence des booléens ni des guillemets comme signal de type : les guillemets ne portent pas de sens fiable. Conversion explicite par `CAST` ou `CASE`.
+- No NULL by default: an empty cell gives an empty string.
+- Option on the **scan**: `WITH EMPTY AS NULL`, and the general form `WITH NULL AS 'NA'` (`EMPTY AS NULL` is a shortcut for `NULL AS ''`). Adjustable on the source declaration, overridable in the query. Reasons: the conversion happens on reading, before filtering and joining, the optimiser knows the columns are nullable, and `CAST('' AS INTEGER)` fails whereas it passes with a NULL. One-off alternative: `NULLIF(col, '')`.
+- RFC 4180 says nothing about NULL: `,,` and `,"",` are two ways of writing the same thing there. Tools diverge (PostgreSQL: `,,` gives NULL and `,"",` gives an empty string; MySQL: `\N`; DuckDB: `nullstr`; Excel and pandas: empty is NULL or NaN). Sources quoted from memory, to check. By default, `,,` and `,"",` both give an empty string.
+- The "quotes = empty string, bare empty = NULL" mode (like PostgreSQL) is **postponed**, but **the reader must keep the "quoted field" information internally**, otherwise it can never restore it.
+- No inference of booleans, nor quotes as a type signal: quotes carry no reliable meaning. Explicit conversion with `CAST` or `CASE`.
 
-**Erreurs et exécution**
+**Errors and execution**
 
-- Nombre de colonnes différent de l'en-tête : erreur avec numéro de ligne. Option `ON ERROR SKIP` pour ignorer et compter.
-- Lecture en générateur, filtre et projection appliqués dès la lecture.
-- Le lecteur CSV suit la RFC 4180 pour l'échappement (guillemet doublé), sans traiter le backslash comme caractère d'échappement par défaut. À couvrir par des tests.
-- Statistiques : taille du fichier, lignes estimées par échantillonnage.
-- Pour les gros fichiers, commande explicite d'**import dans le workspace** (SQLite avec index), pour ne lire qu'une fois un CSV joint plusieurs fois.
+- Column count different from the header: error with the line number. `ON ERROR SKIP` option to ignore and count.
+- Reading as a generator, filter and projection applied while reading.
+- The CSV reader follows RFC 4180 for escaping (doubled quote), without treating the backslash as an escape character by default. To be covered by tests.
+- Statistics: file size, rows estimated by sampling.
+- For large files, an explicit **import into the workspace** command (SQLite with indexes), to read only once a CSV joined several times.
 
-## 9. Workspace (matérialisation)
+## 9. Workspace (materialisation)
 
-Usage : de l'analyse, avec plusieurs itérations sur un même jeu de données récupéré de plusieurs sources, pendant une ou deux journées de travail. Pas de cache à invalider, pas de réutilisation automatique de résultats (query matching).
+Use: analysis, with several iterations on the same dataset fetched from several sources, during one or two working days. No cache to invalidate, no automatic reuse of results (query matching).
 
-- Un workspace est un **fichier SQLite par utilisateur ou par session**, avec quota disque et nettoyage.
-- L'utilisateur enregistre explicitement un résultat sous un nom (`CREATE TABLE ws.ventes AS ...`), puis itère dessus avec des requêtes qui n'ont plus rien de fédéré : une seule source locale, indexée.
-- Le workspace est une **source de plus** pour l'optimiseur, la meilleure : statistiques exactes, aucune latence réseau.
-- Chaque jeu garde sa **provenance** (requête d'origine, sources, date), avec rafraîchissement possible.
-- C'est un **cache jetable**, reconstructible depuis les sources : pas de transactions, de sauvegardes ni de migrations à gérer.
-- Limites : SQLite est orienté lignes, donc les agrégations sur des dizaines de millions de lignes sont correctes avec de bons index mais pas rapides comme un moteur colonnaire. Insertion par lots dans une transaction.
-- Le stockage est isolé derrière une petite interface (créer, interroger, lister, supprimer) : on pourra le remplacer par un moteur colonnaire plus tard.
-- Sébastien n'exclut pas d'aller plus tard vers un vrai système de base de données.
+- A workspace is a **SQLite file per user or per session**, with a disk quota and cleanup.
+- The user explicitly saves a result under a name (`CREATE TABLE ws.sales AS ...`), then iterates on it with queries that are no longer federated at all: a single local source, indexed.
+- The workspace is **one more source** for the optimiser, the best one: exact statistics, no network latency.
+- Each dataset keeps its **provenance** (original query, sources, date), with a possible refresh.
+- It is a **disposable cache**, rebuildable from the sources: no transactions, backups or migrations to handle.
+- Limits: SQLite is row-oriented, so aggregations over tens of millions of rows are fine with good indexes but not as fast as a columnar engine. Batched inserts in a transaction.
+- Storage is isolated behind a small interface (create, query, list, delete): it can be replaced by a columnar engine later.
+- A real in-house database system is not ruled out later.
 
-## 10. Écritures, rôles et sécurité
+## 10. Writes, roles and security
 
-- **Une source lue, une destination écrite.** Pas d'écriture vers plusieurs destinations dans une même requête (aucun cas d'usage). Exemples utiles : import (`INSERT INTO mysql.clients SELECT ... FROM csv.clients_2026`), export vers un CSV, copie ou migration d'une base vers une autre. Non atomique entre deux sources, l'utilisateur en est averti.
-- **CSV** : en lecture, plus export d'un résultat vers un nouveau fichier. L'ajout en fin de fichier viendrait ensuite. `UPDATE` et `DELETE` sur CSV (réécriture complète du fichier, verrou) seulement si un besoin réel apparaît.
-- **Rôles** : certains utilisateurs en lecture seule, d'autres avec droits d'administration sur les serveurs (suppression, mise à jour). Classification par l'AST, comptes de connexion distincts par rôle côté source, identifiants chiffrés, journal d'audit.
-- **Multi-utilisateur** : workspace par utilisateur avec quota, requêtes longues dans des workers de longue durée, annulation possible.
+- **One source read, one destination written.** No writes to several destinations in a single query (no use case). Useful examples: import (`INSERT INTO mysql.clients SELECT ... FROM csv.clients_2026`), export to a CSV, copy or migration from one database to another. Not atomic across two sources, the user is warned.
+- **CSV**: read, plus export of a result to a new file. Appending to the end of a file would come next. `UPDATE` and `DELETE` on CSV (full rewrite of the file, lock) only if a real need appears.
+- **Roles**: some users read-only, others with administration rights on the servers (deletion, updates). Classification by the AST, distinct connection accounts per role on the source side, encrypted credentials, audit log.
+- **Multi-user**: workspace per user with a quota, long queries in long-lived workers, cancellation possible.
 
-## 11. Fonctions enrichies : catalogue
+## 11. Enriched functions: catalog
 
-- Chaque fonction du catalogue a une définition par dialecte : native, émulée, ou **locale** (évaluée par Prisme après rapatriement, utile dans le moteur fédéré). Le catalogue indique à l'optimiseur ce qui est poussable, sinon il enverrait un filtre que la source ne peut pas exécuter.
-- La sémantique de chaque fonction est définie une fois pour le dialecte de référence (début de semaine lundi ou dimanche, NULL, division entière, fuseaux) et vérifiée par des tests identiques sur chaque source.
-- Commencer par un petit catalogue (dates, chaînes, conditionnels), puis ajouter à la demande. Le choix de la sémantique de PRQL et du SQL pipe (héritent-ils de la sémantique de référence ?) reste à trancher.
+- Each function of the catalog has a definition per dialect: native, emulated, or **local** (evaluated by Prisme after fetching, useful in the federated engine). The catalog tells the optimiser what can be pushed down, otherwise it would send a filter the source cannot run.
+- The semantics of each function are defined once for the reference dialect (week starting on Monday or Sunday, NULL, integer division, time zones) and checked by identical tests on each source.
+- Start with a small catalog (dates, strings, conditionals), then add on demand. Whether PRQL and pipe SQL inherit the reference semantics is still to be settled.
 
-## 12. Exemples de requêtes
+## 12. Query examples
 
-Les noms de sources (`mysql_a`, `csv`) sont des exemples.
+The source names (`mysql_a`, `csv`) are examples.
 
-**1. SQL enrichi : jointure MySQL et CSV**
+**1. Enriched SQL: MySQL and CSV join**
 ```sql
-SELECT c.nom, SUM(o.montant) AS total
-FROM mysql_a.commandes o
+SELECT c.name, SUM(o.amount) AS total
+FROM mysql_a.orders o
 JOIN csv('clients.csv') c ON c.id = o.client_id
-WHERE o.date_cmd >= DATE '2026-01-01' AND c.pays = 'FR'
-GROUP BY c.nom
+WHERE o.order_date >= DATE '2026-01-01' AND c.country = 'FR'
+GROUP BY c.name
 ```
-Plan visé : le CSV est lu avec le filtre `pays = 'FR'` appliqué à la lecture ; ses `id` partent par lots vers MySQL (semi-join) ; MySQL exécute `SELECT client_id, SUM(montant) ... WHERE date_cmd >= ... AND client_id IN (...) GROUP BY client_id` (agrégation avant jointure) ; Prisme joint ce petit résultat au CSV puis refait un `SUM` par `nom`, valide pour un `SUM`.
+Target plan: the CSV is read with the `country = 'FR'` filter applied on reading; its `id`s go in batches to MySQL (semi-join); MySQL runs `SELECT client_id, SUM(amount) ... WHERE order_date >= ... AND client_id IN (...) GROUP BY client_id` (aggregation before join); Prisme joins this small result to the CSV then redoes a `SUM` per `name`, valid for a `SUM`.
 
-**2. La même requête en Tutorial D flex**
+**2. The same query in flex Tutorial D**
 ```
 SUMMARIZE (
-  (mysql_a.commandes WHERE date_cmd >= DATE('2026-01-01'))
+  (mysql_a.orders WHERE order_date >= DATE('2026-01-01'))
   JOIN
-  ((csv.clients WHERE pays = 'FR') RENAME {id AS client_id})
-) PER {nom} ADD (SUM(montant) AS total)
+  ((csv.clients WHERE country = 'FR') RENAME {id AS client_id})
+) PER {name} ADD (SUM(amount) AS total)
 ```
-Le `JOIN` est naturel (sur les attributs de même nom), d'où le `RENAME`. Le plan logique est identique à celui de l'exemple 1.
+The `JOIN` is natural (on the attributes with the same name), hence the `RENAME`. The logical plan is identical to that of example 1.
 
-**3. Syntaxe pipe avec fonction enrichie**
+**3. Pipe syntax with an enriched function**
 ```sql
-FROM mysql_a.commandes
-|> WHERE date_trunc('week', date_cmd) = date_trunc('week', current_date)
-|> AGGREGATE SUM(montant) AS total GROUP BY client_id
+FROM mysql_a.orders
+|> WHERE date_trunc('week', order_date) = date_trunc('week', current_date)
+|> AGGREGATE SUM(amount) AS total GROUP BY client_id
 ```
-`current_date` est évalué une fois. Le filtre devient une plage de dates (`date_cmd >= '2026-09-28' AND date_cmd < '2026-10-05'` pour une exécution le 2 octobre 2026), ce qui permet à MySQL d'utiliser son index.
+`current_date` is evaluated once. The filter becomes a date range (`order_date >= '2026-09-28' AND order_date < '2026-10-05'` for a run on 2 October 2026), which lets MySQL use its index.
 
-**4. Workspace et imbrication**
+**4. Workspace and nesting**
 ```sql
-CREATE TABLE ws.cmd_fr AS
-  SELECT o.client_id, o.produit FROM mysql_a.commandes o
-  WHERE o.pays = 'FR';
+CREATE TABLE ws.orders_fr AS
+  SELECT o.client_id, o.product FROM mysql_a.orders o
+  WHERE o.country = 'FR';
 
-SELECT client_id, array_agg(produit) AS produits
-FROM ws.cmd_fr GROUP BY client_id;
+SELECT client_id, array_agg(product) AS products
+FROM ws.orders_fr GROUP BY client_id;
 ```
-La première instruction est fédérée et écrit dans SQLite. La seconde est une requête locale sur une seule source, avec un nœud `Group`.
+The first statement is federated and writes to SQLite. The second is a local query on a single source, with a `Group` node.

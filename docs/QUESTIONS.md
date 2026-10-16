@@ -1,135 +1,135 @@
-# Pistes explorées, décisions et questions ouvertes
+# Ideas explored, decisions and open questions
 
-Ce document garde la trace du raisonnement : ce qui a été retenu, écarté ou reporté, et pourquoi, plus les questions encore ouvertes. Il évite de rouvrir des débats déjà tranchés.
+This document keeps track of the reasoning: what was kept, dropped or postponed, and why, plus the questions still open. It avoids reopening debates already settled.
 
-## 1. Chronologie de l'évolution du projet
+## 1. Timeline of the project
 
-1. **Idée de départ** : un client qui se connecte à plusieurs sources (serveurs SQL, fichiers CSV), met en forme les données comme un client MySQL, avec un dialecte agnostique de la source.
-2. **Problème à résoudre** : la performance. DuckDB croise mal plusieurs sources. Il faut un moteur qui analyse la requête, va chercher les données de façon optimale dans chaque source, puis assemble.
-3. **Première orientation technique** : zéro dépendance, tout en PHP (stack habituelle de Sébastien : PHP 8.5, Vue 3, MySQL 8, DuckDB, Git).
-4. **Extensions** : dialecte neutre sur base ANSI, autres langages d'entrée (syntaxe pipe, PRQL), matérialisation des résultats dans un workspace, écritures, rôles, valeurs imbriquées, théorie de Date et Tutorial D, NULL, CSV.
-5. **Nom** : Prisme (voir la section 4).
-6. **Recentrage de la v1** : un client multi-bases en notebook, chaque requête vers une seule base, avec traduction entre dialectes. Le moteur fédéré passe après.
-7. **Choix de la stack** : Rust, puis frontend Vue 3 + TypeScript + Vite « selon l'industrie ».
+1. **Starting idea**: a client that connects to several sources (SQL servers, CSV files), formats the data like a MySQL client, with a source-agnostic dialect.
+2. **Problem to solve**: performance. DuckDB joins several sources poorly. An engine is needed that analyses the query, fetches the data optimally from each source, then assembles.
+3. **First technical direction**: zero dependencies, everything in PHP (PHP 8.5, Vue 3, MySQL 8, DuckDB, Git).
+4. **Extensions**: neutral dialect on an ANSI base, other input languages (pipe syntax, PRQL), materialisation of results in a workspace, writes, roles, nested values, Date's theory and Tutorial D, NULL, CSV.
+5. **Name**: Prisme (see section 4).
+6. **Refocusing of the v1**: a multi-database client as a notebook, each query to a single database, with translation between dialects. The federated engine comes after.
+7. **Choice of stack**: Rust, then a Vue 3 + TypeScript + Vite frontend "the industry way".
 
-## 2. Pistes retenues
+## 2. Ideas kept
 
-- **Pipeline à plan logique pivot** : frontends vers plan, un optimiseur écrit une fois, émetteurs par source.
-- **Un langage par requête**, choisi par l'utilisateur.
-- **Autres langages à implémenter**, notés par Sébastien en octobre 2026 : Kusto (KQL, https://learn.microsoft.com/fr-fr/kusto/) et PRQL (https://prql-lang.org/). Leur place reste à fixer : langage d'entrée traduit vers le plan, ou dialecte d'une source (Kusto est aussi le langage d'Azure Data Explorer).
-- **ANSI strict comme noyau** du dialecte neutre, enrichi par emprunts (DuckDB, ClickHouse).
-- **Noms explicites pour les doublons** : `UnionAll`, `UnionDistinct`, `MinusAll`, `MinusDistinct`, `IntersectAll`, `IntersectDistinct`.
-- **Théorie de Date** pour le plan : `Group` et `Ungroup` comme nœuds, `SemiJoin` et `AntiJoin` de première classe.
-- **Tutorial D en deux modes** : flex (sémantique SQL) en priorité, strict reporté.
-- **Sacs et NULL conservés** en interne.
-- **CSV tout en texte**, casts par l'utilisateur, option de NULL sur le scan, lecteur qui garde l'information de guillemets.
-- **Workspace SQLite** par utilisateur ou session, cache jetable, enregistrement explicite.
-- **Une source lue, une destination écrite.**
-- **Limite par défaut** ajoutée par l'application, limite de l'utilisateur prioritaire quelle qu'elle soit.
-- **Traduction à trois niveaux** (native, émulée, non supportée en dernier recours), avec aperçu.
-- **Rust** pour tout, dont l'exécuteur fédéré futur ; **pilotes natifs**.
-- **Vue 3 + TypeScript + Vite**, types générés depuis Rust.
-- **Format binaire pour les résultats** (MessagePack, par exemple), retenu par Sébastien en octobre 2026, à faire plus tard. Aujourd'hui, les résultats passent par le WebSocket en JSON texte : chaque ligne est un tableau de chaînes dans un message `{"type":"rows","query":0,"rows":[…]}`, et guillemets, virgules et enveloppe alourdissent le volume (560 ko pour 10 000 lignes de 5 colonnes) et le décodage. Un format binaire réduirait les deux. À choisir : le format, et le maintien des types générés par `ts-rs` pour les messages.
-- **Suite de conformité** multi-bases comme filet de sécurité.
-- **Interface de stockage et de connecteurs abstraite**, pour pouvoir changer de moteur de workspace plus tard.
+- **Pipeline with a pivot logical plan**: frontends to plan, an optimiser written once, emitters per source.
+- **One language per query**, chosen by the user.
+- **Other languages to implement** (noted in October 2026): Kusto (KQL, https://learn.microsoft.com/en-us/kusto/) and PRQL (https://prql-lang.org/). Their place is still to be set: input language translated to the plan, or dialect of a source (Kusto is also the language of Azure Data Explorer).
+- **Strict ANSI as the core** of the neutral dialect, enriched by borrowings (DuckDB, ClickHouse).
+- **Explicit names for duplicates**: `UnionAll`, `UnionDistinct`, `MinusAll`, `MinusDistinct`, `IntersectAll`, `IntersectDistinct`.
+- **Date's theory** for the plan: `Group` and `Ungroup` as nodes, first-class `SemiJoin` and `AntiJoin`.
+- **Tutorial D in two modes**: flex (SQL semantics) first, strict postponed.
+- **Bags and NULLs kept** internally.
+- **CSV all text**, casts by the user, NULL option on the scan, reader that keeps the quote information.
+- **SQLite workspace** per user or session, disposable cache, explicit saving.
+- **One source read, one destination written.**
+- **Default limit** added by the application, the user's limit taking precedence whatever it is.
+- **Three-level translation** (native, emulated, unsupported as a last resort), with a preview.
+- **Rust** for everything, including the future federated executor; **native drivers**.
+- **Vue 3 + TypeScript + Vite**, types generated from Rust.
+- **Binary format for results** (MessagePack, for example), kept in October 2026, to do later. Today, results go through the WebSocket as JSON text: each row is an array of strings in a `{"type":"rows","query":0,"rows":[…]}` message, and quotes, commas and the envelope weigh on the volume (560 KB for 10,000 rows of 5 columns) and on decoding. A binary format would reduce both. To choose: the format, and keeping the types generated by `ts-rs` for the messages.
+- **Multi-database conformance suite** as a safety net.
+- **Abstract storage and connector interface**, to be able to change the workspace engine later.
 
-## 3. Pistes écartées ou reportées
+## 3. Ideas dropped or postponed
 
-| Piste | Statut | Raison |
+| Idea | Status | Reason |
 |---|---|---|
-| PHP pur, zéro dépendance pour tout le moteur | Écartée | Le parsing est rapide en PHP, mais les tableaux PHP coûtent cher en mémoire, les jointures locales sont lentes, et il n'y a pas de pilote DuckDB natif. Rust est la cible. À noter : le parseur, l'optimiseur et l'orchestration étaient jugés faisables en PHP, et le parallélisme d'I/O possible (`MYSQLI_ASYNC`, `proc_open`). |
-| Python + FastAPI + SQLGlot pour la v1 | Écartée | Recommandée pour la rapidité de livraison (SQLGlot traduit entre dialectes), mais Sébastien a préféré un seul langage, Rust. SQLGlot reste la référence de conception du transpileur. |
-| Go | Écartée | Bon pour les sessions longues, mais écosystème de parseurs fragmenté et rien d'équivalent à DataFusion pour le moteur fédéré. |
-| Frontend sans build (JavaScript + JSDoc + `@ts-check`, Vue en fichier copié) | Écartée | Sébastien tient aux types et à « l'industrie ». Navigateurs : pas de TypeScript natif (TC39 type annotations au stade 1). Sans build, les templates ne sont pas typés et presque aucune bibliothèque d'interface ne convient. |
-| DataFusion, Calcite, Trino comme base du moteur | Reportée | Sébastien veut éviter les dépendances. Leur modèle de plan sert de référence. DataFusion reste une option pour l'exécuteur. |
-| PrimeVue comme bibliothèque de composants | Écartée | Licence commerciale à clef depuis la v5 (juillet 2026), même en version communautaire gratuite. La v4.5.5, dernière sous MIT, est figée. Remplacée par Naive UI (MIT). |
-| Naive UI comme bibliothèque de composants | Écartée | Remplacée par Nuxt UI (MIT, sur Reka UI, avec Tailwind CSS) pour la refonte de l'interface : contrôle du rendu par les classes, thème par jetons, clair / sombre sans réglage par composant. Décision de Sébastien après un essai sur l'explorateur. |
-| Nuxt UI comme bibliothèque de composants | Écartée | Sa couche de thème (configuration de chaque composant, fusion de classes, tailles imposées à surcharger) gênait l'usage direct de Tailwind. Remplacée par Reka UI pour le comportement et des composants propres à Prisme pour le rendu. Décision de Sébastien. |
-| `sqlx` pour les accès aux bases | Écartée | Gère mal les résultats dynamiques sans schéma connu, et l'annulation est moins directe. |
-| Tri déterministe ajouté d'office | Écartée | Sébastien sait que sans `ORDER BY` l'ordre n'est pas garanti. |
-| Typage ou schéma déclaré par fichier CSV | Écartée | Compliquerait l'outil. Casts dans la requête. Seule la déclaration de source (chemin, séparateur, encodage, en-tête) est gardée. |
-| Inférence de types dans les CSV (booléens, vide = NULL, guillemets = texte) | Écartée | Pas de consensus entre outils, les guillemets ne portent pas de sens fiable, risque de faux positifs. |
-| Mode « guillemets = chaîne vide, vide nu = NULL » | Reportée | Réalisable si le lecteur garde l'information de guillemets. |
-| Écritures vers plusieurs destinations dans une requête | Écartée | Aucun cas d'usage, complexité et non-atomicité. |
-| Mélange de langages dans une même requête | Écartée | Un langage par requête suffit. |
-| Réutilisation automatique d'un résultat matérialisé (query matching) | Écartée en v1 | Problème difficile. Enregistrement explicite sous un nom. |
-| Parquet pour le workspace | Écartée | Écriture lourde. SQLite avec index est le meilleur compromis. |
-| `UPDATE` et `DELETE` sur CSV | Reportée | Réécriture complète du fichier et verrou ; seulement si un besoin réel apparaît. |
-| Mode strict de Tutorial D | Reportée | Non critique. Seule la nullabilité doit exister dès maintenant. |
-| Vrai système de base de données maison | Option future | Sébastien n'exclut pas d'y aller plus tard. |
-| Moteur fédéré | Après la v1 | La v1 construit le noyau commun. |
-| Visualisation optimisée des contenus JSON et XML dans la grille | Reportée (à faire) | Demandée par Sébastien. La grille reconnaît déjà les colonnes de texte qui contiennent du JSON ou du XML (icône de l'en-tête, `web/src/components/contentKind.ts`) ; reste à proposer un affichage adapté de ces contenus (indentation, coloration, repli). |
-| Signature des exécutables livrés | Reportée (à faire) | Sans signature, Windows (SmartScreen) et macOS (Gatekeeper) avertissent au premier lancement. Windows : SignPath Foundation, gratuit pour un projet open source au dépôt public, comme `sfaut/prisme` ; la signature n'efface l'alerte SmartScreen qu'une fois une réputation acquise. macOS : signature et notarisation demandent un compte Apple Developer (environ 99 $ par an), que Sébastien ne prend pas pour l'instant. Étapes à ajouter au job `build` de `.github/workflows/ci.yaml`, les certificats dans les secrets du dépôt. |
-| Documents publics en anglais et interface multilingue | Reportée (à faire) | Décidé par Sébastien : les échanges sur GitHub (tickets) se font en anglais, les documents publics (README, changelog, notes de release) seront traduits en anglais, et l'interface deviendra multilingue. Les documents internes (`CLAUDE.md`, `docs/`) restent en français. Fait : `README.md` (utilisateur final) et `docs/DEVELOPER.md` (développeur), en anglais. Restent le changelog, les notes de release et l'interface. |
-| Traitement automatique des tickets GitHub | Reportée | Aujourd'hui, Claude Code traite les tickets `ready` depuis une session locale, sous le compte de Sébastien, avec une signature (voir `CLAUDE.md`, « Traitement des tickets GitHub »). À terme : un ticket étiqueté `ready` déclencherait Claude Code dans GitHub Actions (app Claude, commentaires signés `claude[bot]`), ou un compte machine distinct posterait les commentaires. |
+| Pure PHP, zero dependencies for the whole engine | Dropped | Parsing is fast in PHP, but PHP arrays are memory-hungry, local joins are slow, and there is no native DuckDB driver. Rust is the target. Note: the parser, the optimiser and the orchestration were deemed feasible in PHP, and I/O parallelism possible (`MYSQLI_ASYNC`, `proc_open`). |
+| Python + FastAPI + SQLGlot for the v1 | Dropped | Faster to deliver (SQLGlot translates between dialects), but a single language, Rust, was preferred. SQLGlot remains the design reference of the transpiler. |
+| Go | Dropped | Good for long sessions, but a fragmented parser ecosystem and nothing equivalent to DataFusion for the federated engine. |
+| Frontend without a build (JavaScript + JSDoc + `@ts-check`, Vue as a copied file) | Dropped | Types and "the industry way" matter. Browsers: no native TypeScript (TC39 type annotations at stage 1). Without a build, templates are not typed and almost no interface library fits. |
+| DataFusion, Calcite, Trino as the base of the engine | Postponed | Dependencies are avoided. Their plan model serves as a reference. DataFusion remains an option for the executor. |
+| PrimeVue as the component library | Dropped | Key-based commercial license since v5 (July 2026), even for the free community edition. v4.5.5, the last one under MIT, is frozen. Replaced by Naive UI (MIT). |
+| Naive UI as the component library | Dropped | Replaced by Nuxt UI (MIT, on Reka UI, with Tailwind CSS) for the interface redesign: control of the rendering through classes, theme through tokens, light / dark without per-component settings. Decided after a trial on the explorer. |
+| Nuxt UI as the component library | Dropped | Its theme layer (configuration of each component, class merging, imposed sizes to override) got in the way of using Tailwind directly. Replaced by Reka UI for the behaviour and components specific to Prisme for the rendering. |
+| `sqlx` for database access | Dropped | Handles dynamic results without a known schema poorly, and cancellation is less direct. |
+| Deterministic sort added on its own | Dropped | Without `ORDER BY` the order is not guaranteed, by design. |
+| Typing or schema declared per CSV file | Dropped | Would complicate the tool. Casts in the query. Only the source declaration (path, separator, encoding, header) is kept. |
+| Type inference in CSVs (booleans, empty = NULL, quotes = text) | Dropped | No consensus across tools, quotes carry no reliable meaning, risk of false positives. |
+| "Quotes = empty string, bare empty = NULL" mode | Postponed | Feasible if the reader keeps the quote information. |
+| Writes to several destinations in a query | Dropped | No use case, complexity and non-atomicity. |
+| Mixing languages in a single query | Dropped | One language per query is enough. |
+| Automatic reuse of a materialised result (query matching) | Dropped in v1 | Hard problem. Explicit saving under a name. |
+| Parquet for the workspace | Dropped | Heavy to write. SQLite with indexes is the best trade-off. |
+| `UPDATE` and `DELETE` on CSV | Postponed | Full rewrite of the file and lock; only if a real need appears. |
+| Strict mode of Tutorial D | Postponed | Not critical. Only nullability must exist right now. |
+| Real in-house database system | Future option | Not ruled out later. |
+| Federated engine | After the v1 | The v1 builds the common core. |
+| Optimised display of JSON and XML contents in the grid | Postponed (to do) | The grid already recognises text columns that contain JSON or XML (header icon, `web/src/components/contentKind.ts`); an adapted display of these contents remains to be offered (indentation, highlighting, folding). |
+| Signing the delivered executables | Postponed (to do) | Without a signature, Windows (SmartScreen) and macOS (Gatekeeper) warn on first launch. Windows: SignPath Foundation, free for an open source project with a public repository, like `sfaut/prisme`; the signature only removes the SmartScreen warning once a reputation is acquired. macOS: signing and notarisation require an Apple Developer account (about $99 a year), not taken for now. Steps to add to the `build` job of `.github/workflows/ci.yaml`, with the certificates in the repository's secrets. |
+| Multilingual interface | Postponed (to do) | The repository is in English (code, documents, commits, tickets, server messages; see `CLAUDE.md`, "Languages"). The interface stays in French for now, and will become multilingual. |
+| Automatic handling of GitHub tickets | Postponed | Today, Claude Code handles `ready` tickets from a local session, under the maintainer's account, with a signature (see `CLAUDE.md`, "Handling GitHub tickets"). Eventually: a ticket labelled `ready` would trigger Claude Code in GitHub Actions (Claude app, comments signed `claude[bot]`), or a separate machine account would post the comments. |
 
-## 4. Nom du projet
+## 4. Project name
 
-- Retenu : **Prisme** (une seule vue sur plusieurs sources). Le nom de travail précédent était « Mineur ».
-- Variantes proposées puis écartées : Pivot, Espéranto, Carrefour, Mineur (ambigu en français, évoque le *data mining*), Prisql, Prysme, Prismo, Prisme/QL, `prism.sh`, `prisme.dev`.
-- À éviter : **Prisma** (ORM très connu) et **Prism** tout court (déjà pris). Vérifier la disponibilité du domaine, du dépôt et d'une éventuelle marque avant de publier.
+- Kept: **Prisme** (a single view over several sources). The previous working name was "Mineur".
+- Variants proposed then dropped: Pivot, Espéranto, Carrefour, Mineur (ambiguous in French, evokes *data mining*), Prisql, Prysme, Prismo, Prisme/QL, `prism.sh`, `prisme.dev`.
+- To avoid: **Prisma** (a well-known ORM) and plain **Prism** (already taken). Check the availability of the domain, the repository and a possible trademark before publishing.
 
-## 5. Questions ouvertes
+## 5. Open questions
 
-### Produit et v1
+### Product and v1
 
-1. **Grille de résultats** : besoins fixés (affichage compact, tri, filtre, sélection, copie). Proposition : composant propre avec `@tanstack/vue-virtual` (voir `docs/V1.md`, section 3.1). **[à confirmer]** Essai de volumétrie à faire.
-2. **`ts-rs` ou `specta`** pour générer les types TypeScript : tranché, `ts-rs`, plus simple à relire et suffisant.
-3. **MariaDB dans `sqlparser-rs`** : vérifier le support, sinon étendre le dialecte MySQL.
-4. **DDL** : le laisser en dialecte natif en v1 (proposition) ? **[à confirmer]**
-5. **Métriques de la v1** : lesquelles précisément (taille, nombre de lignes estimé, cardinalité, taux de NULL, statistiques par colonne) ? Et à quelle fréquence les rafraîchir ?
-6. **Authentification en v1** : tranché. La v1 cible le poste de développement (un utilisateur, `sebastien.faut@gmail.com`, sans authentification, écoute sur `127.0.0.1`) et doit évoluer facilement vers un serveur multi-utilisateur. Les rôles viennent après la v1 (voir `docs/V1.md`, section 2.8).
-7. **Persistance du notebook** : cellules, ordre, et résultats conservés ou recalculés ?
-8. **Dialectes versionnés** : la version est détectée à la connexion ; que change-t-elle (coloration, autocomplétion, avertissements de traduction) ?
-9. **Parallèle et transactions** : exécution parallèle sur des connexions distinctes, donc hors de la transaction de la session. Comportement et message à fixer.
-10. **Tutorial D en v1** : placé en dernier, en sous-ensemble sur une seule source. Convient-il ?
-11. **Langue du code** : tranché, identifiants en anglais, documentation en français.
+1. **Result grid**: needs set (compact display, sorting, filtering, selection, copying). Proposal: own component with `@tanstack/vue-virtual` (see `docs/V1.md`, section 3.1). **[to confirm]** Volume test to do.
+2. **`ts-rs` or `specta`** to generate the TypeScript types: settled, `ts-rs`, simpler to read and sufficient.
+3. **MariaDB in `sqlparser-rs`**: check the support, otherwise extend the MySQL dialect.
+4. **DDL**: leave it in the native dialect in v1 (proposal)? **[to confirm]**
+5. **v1 metrics**: which ones exactly (size, estimated row count, cardinality, NULL rate, per-column statistics)? And how often to refresh them?
+6. **Authentication in v1**: settled. The v1 targets the workstation (a single user, `me@local` by default, asked on first launch, without authentication, listening on `127.0.0.1`) and must evolve easily towards a multi-user server. Roles come after the v1 (see `docs/V1.md`, section 2.8).
+7. **Notebook persistence**: cells, order, and results kept or recomputed?
+8. **Versioned dialects**: the version is detected on connection; what does it change (highlighting, autocompletion, translation warnings)?
+9. **Parallel and transactions**: parallel execution on distinct connections, hence outside the session's transaction. Behaviour and message to set.
+10. **Tutorial D in v1**: placed last, as a subset on a single source. Is that fine?
+11. **Code language**: settled, the repository is in English (see `CLAUDE.md`, "Languages"); the interface stays in French for now.
 
-### Exécution
+### Execution
 
-24. **Requêtes qui changent la session dans un lot parallèle** : en Ctrl-Maj-Entrée, chaque requête a sa propre connexion, donc un `USE` ou un `SET` du lot ne touche pas les autres requêtes (`USE xlist; SELECT * FROM video;` lit `video` dans la base en cours, pas dans `xlist`). Décision provisoire de Sébastien : exécution entièrement parallèle, à affiner. Piste : exécuter d'abord, une par une, les requêtes qui changent la session, puis les autres en parallèle.
+24. **Queries that change the session in a parallel batch**: with Ctrl+Shift+Enter, each query has its own connection, so a `USE` or a `SET` of the batch does not affect the other queries (`USE xlist; SELECT * FROM video;` reads `video` in the current database, not in `xlist`). Provisional decision: fully parallel execution, to refine. Lead: first run, one by one, the queries that change the session, then the others in parallel.
 
-25. **Tests de bout en bout dans un vrai navigateur** (Playwright, avec Edge ou Chrome déjà installés) : scénarios de fonctionnement (connexions, explorateur, exécution sous le curseur et en parallèle, « Stopper », « Enjoliver », grille) et garde-fous de performance (nombre de lignes dessinées, délai d'un clic), sur un environnement isolé (MariaDB dans Docker, Prisme et Vite sur d'autres ports). Les tests dans jsdom ne voient ni la mise en page ni les performances d'affichage (voir le chapitre 1 de `docs/PERF.md`). Décision de Sébastien : à voir plus tard. À trancher alors : à quel moment les lancer (avant chaque commit qui touche l'interface, ou à la fin de chaque étape).
+25. **End-to-end tests in a real browser** (Playwright, with Edge or Chrome already installed): functional scenarios (connections, explorer, running under the cursor and in parallel, **Stopper** (Stop), **Enjoliver** (Beautify), grid) and performance safeguards (number of rows drawn, delay of a click), on an isolated environment (MariaDB in Docker, Prisme and Vite on other ports). Tests in jsdom see neither the layout nor the display performance (see chapter 1 of `docs/PERF.md`). Decision: to see later. To settle then: when to run them (before each commit that touches the interface, or at the end of each stage).
 
-26. **Reconstruction partielle de l'arbre de l'explorateur.** L'arbre entier se reconstruit à chaque révision du catalogue (au plus 0,4 s sur 1 000 tables, voir le chapitre 2 de `docs/PERF.md`). Avec beaucoup de sources et beaucoup de tables, colonnes, index, il faudra ne reconstruire que les bases modifiées, voire construire les nœuds seulement à l'ouverture. Décision de Sébastien : à faire plus tard.
+26. **Partial rebuild of the explorer tree.** The whole tree is rebuilt on each revision of the catalog (at most 0.4 s over 1,000 tables, see chapter 2 of `docs/PERF.md`). With many sources and many tables, columns, indexes, only the modified databases will have to be rebuilt, or nodes built only when opened. Decision: to do later.
 
-27. **Copie avec ou sans en-têtes, réglage du profil.** Ctrl-C copie la sélection de la grille avec les noms des colonnes en première ligne. Décision de Sébastien : ce sera une option du profil de l'utilisateur, avec les en-têtes par défaut. À faire avec les profils (mode serveur, ou réglages de l'utilisateur unique).
+27. **Copy with or without headers, profile setting.** Ctrl+C copies the grid selection with the column names on the first line. Decision: this will be an option of the user's profile, with headers by default. To do with profiles (server mode, or settings of the single user).
 
-28. **Suites de l'éditeur SQL (CodeMirror), à faire.** Déjà en place : complétion des bases, tables et colonnes d'après le catalogue, mise en évidence de la requête sous le curseur, erreurs de syntaxe soulignées, thème clair / sombre sur les jetons de l'interface. Restent, décidés par Sébastien :
-    - souligner dans l'éditeur les fonctions émulées ou non traduisibles, avec la traduction entre dialectes (règle 2 de `CLAUDE.md`) ;
-    - bulles d'information au survol : type et nullabilité d'une colonne, signature d'une fonction ;
-    - complétion qui comprend la requête (alias, tables du `FROM`, colonnes de la bonne table), comme source de complétion propre à Prisme ;
-    - coloration et complétion des autres langages (Tutorial D, PRQL, Kusto).
+28. **Next steps for the SQL editor (CodeMirror), to do.** Already in place: completion of databases, tables and columns from the catalog, highlighting of the query under the cursor, syntax errors underlined, light / dark theme on the interface's tokens. Decided and still to do:
+    - underline in the editor the emulated or untranslatable functions, with the translation between dialects (rule 2 of `CLAUDE.md`);
+    - hover tooltips: type and nullability of a column, signature of a function;
+    - completion that understands the query (aliases, tables of the `FROM`, columns of the right table), as a completion source specific to Prisme;
+    - highlighting and completion of the other languages (Tutorial D, PRQL, Kusto).
 
-### Sécurité
+### Security
 
-23. **Clef maîtresse du chiffrement** : tranché, fichier de clef `prisme.key` dans le dossier de données (voir `docs/V1.md`, section 2.8).
+23. **Master encryption key**: settled, `prisme.key` key file in the data folder (see `docs/V1.md`, section 2.8).
 
-### Moteur fédéré
+### Federated engine
 
-12. **NULL** : les 12 points de la section 7 de `docs/FEDERATED.md` sont à trancher, en priorité les points 1 à 6.
-13. **Collations** : quelle règle unique pour comparer les chaînes ?
-14. **Fuseaux horaires** : quelle convention unique ?
-15. **`NOT IN` avec NULL** : reproduire le comportement SQL tel quel ou traduire en `AntiJoin` ?
-16. **Sémantique des frontends PRQL et pipe** : héritent-ils de la sémantique de référence ou gardent-ils la leur ?
-17. **« PSQL »** : s'agit-il bien de la syntaxe SQL en pipe ? **[à confirmer]**
-18. **Types de la v1 du moteur** : liste d'abord, ensemble ou relation imbriquée ensuite ? Comportement de `Ungroup` sur liste NULL ou vide, et de `array_agg` sur les NULL.
-19. **Types entiers hors plage** : bibliothèque de grands entiers, ou erreur dans tous les cas ?
-20. **Besoin d'écritures atomiques entre sources** : écarté pour le moment, à réexaminer si un cas d'usage apparaît.
-21. **Écriture de NULL dans un CSV** (vide, `\N`, `NA`) : option à prévoir pour `Export`.
-22. **Mode strict de Tutorial D** : transformer les données (valeurs par défaut déclarées par source) ou seulement contrôler ?
+12. **NULL**: the 12 points of section 7 of `docs/FEDERATED.md` are to be settled, points 1 to 6 first.
+13. **Collations**: which single rule to compare strings?
+14. **Time zones**: which single convention?
+15. **`NOT IN` with NULL**: reproduce the SQL behaviour as is or translate into an `AntiJoin`?
+16. **Semantics of the PRQL and pipe frontends**: do they inherit the reference semantics or keep their own?
+17. **"PSQL"**: is it really the pipe SQL syntax? **[to confirm]**
+18. **Types of the engine's v1**: list first, set or nested relation later? Behaviour of `Ungroup` on a NULL or empty list, and of `array_agg` on NULLs.
+19. **Out-of-range integer types**: big integer library, or an error in all cases?
+20. **Need for atomic writes across sources**: dropped for now, to reconsider if a use case appears.
+21. **Writing NULL in a CSV** (empty, `\N`, `NA`): option to plan for `Export`.
+22. **Strict mode of Tutorial D**: transform the data (default values declared per source) or only check?
 
-## 6. Références et sources
+## 6. References and sources
 
-Plusieurs références ci-dessous sont citées de mémoire : à vérifier avant de s'y appuyer.
+Several references below are quoted from memory: to check before relying on them.
 
-- C. J. Date et Hugh Darwen, *The Third Manifesto* ; C. J. Date, « What First Normal Form Really Means » (références exactes à vérifier).
-- Tutorial D : implémentations Rel (Java) et Dee (Python).
-- RFC 4180 (CSV, informative, 2005) et W3C « CSV on the Web » (CSVW, propriété `null`).
-- SQLGlot (Python), référence de conception pour un transpileur de dialectes.
-- `sqlparser-rs`, Apache DataFusion (dont l'« unparser » plan vers SQL), Apache Calcite, Trino.
-- DuckDB : extensions pour MySQL, PostgreSQL, SQLite, CSV et Parquet.
-- PRQL, et la syntaxe SQL en pipe.
-- Manticore et Sphinx : origine du terme « MVA ».
-- TypeScript dans les navigateurs : proposition TC39 « type annotations » au stade 1 ; Node exécute TypeScript en supprimant les types (serveur seulement). Source : [A Small Year for tsc, a Giant Year for TypeScript](https://effectivetypescript.com/2025/12/19/ts-2025/) (décembre 2025).
-- Claude Code : [Quickstart](https://code.claude.com/docs/en/quickstart).
+- C. J. Date and Hugh Darwen, *The Third Manifesto*; C. J. Date, "What First Normal Form Really Means" (exact references to check).
+- Tutorial D: Rel (Java) and Dee (Python) implementations.
+- RFC 4180 (CSV, informative, 2005) and W3C "CSV on the Web" (CSVW, `null` property).
+- SQLGlot (Python), design reference for a dialect transpiler.
+- `sqlparser-rs`, Apache DataFusion (including the plan-to-SQL "unparser"), Apache Calcite, Trino.
+- DuckDB: extensions for MySQL, PostgreSQL, SQLite, CSV and Parquet.
+- PRQL, and the pipe SQL syntax.
+- Manticore and Sphinx: origin of the term "MVA".
+- TypeScript in browsers: TC39 "type annotations" proposal at stage 1; Node runs TypeScript by stripping the types (server only). Source: [A Small Year for tsc, a Giant Year for TypeScript](https://effectivetypescript.com/2025/12/19/ts-2025/) (December 2025).
+- Claude Code: [Quickstart](https://code.claude.com/docs/en/quickstart).
