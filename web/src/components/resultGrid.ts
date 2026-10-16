@@ -230,6 +230,13 @@ export function resizedWidth(start: number, delta: number): number {
 const NUMBER = /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/
 
 /**
+ * Collator of the text sort, created once: `localeCompare` with options builds
+ * a new collator on each call, which makes a sort of 100,000 rows ten times
+ * slower.
+ */
+const TEXT_COLLATOR = new Intl.Collator(undefined, { numeric: true })
+
+/**
  * Compares two cells for the ascending sort.
  *
  * NULL comes first, as in MySQL and MariaDB. Two numbers compare by value,
@@ -245,7 +252,7 @@ export function compareCells(a: Cell, b: Cell): number {
   if (NUMBER.test(a) && NUMBER.test(b)) {
     return Number(a) - Number(b)
   }
-  return a.localeCompare(b, undefined, { numeric: true })
+  return TEXT_COLLATOR.compare(a, b)
 }
 
 /**
