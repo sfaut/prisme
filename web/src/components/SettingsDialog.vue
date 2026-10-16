@@ -2,7 +2,8 @@
   Window of the settings: default row limit (shared with the choice in each
   SQL cell) and interface language. The language offers French only for now:
   the interface stays in French until it is made multilingual (see
-  `docs/QUESTIONS.md`), and the choice is not saved yet.
+  `docs/QUESTIONS.md`), and the choice is not saved yet. The planned languages
+  (English, Spanish, German, Italian) are listed, inactive.
   Window, fields and buttons of Prisme (`ui/`).
 -->
 <script setup lang="ts">
@@ -25,9 +26,26 @@ const open = defineModel<boolean>('open', { required: true })
 const settings = useSettingsStore()
 
 /**
- * Language of the interface, the only one for now.
+ * Language codes of the interface.
  */
-const language = ref<'fr'>('fr')
+type Language = 'fr' | 'en' | 'es' | 'de' | 'it'
+
+/**
+ * Language of the interface: French only for now. The other languages are
+ * listed as planned, and cannot be chosen until they are translated.
+ */
+const language = ref<Language>('fr')
+
+/**
+ * Choices of the language, the planned ones inactive.
+ */
+const LANGUAGE_ITEMS: { label: string; value: Language; disabled?: boolean }[] = [
+  { label: 'Français', value: 'fr' },
+  { label: 'English', value: 'en', disabled: true },
+  { label: 'Español', value: 'es', disabled: true },
+  { label: 'Deutsch', value: 'de', disabled: true },
+  { label: 'Italiano', value: 'it', disabled: true },
+]
 
 /**
  * Error of the last change, `null` if none.
@@ -98,7 +116,7 @@ watch(open, (isOpen) => {
       <ui-field label="Langue">
         <ui-select
           v-model="language"
-          :items="[{ label: 'Français', value: 'fr' }]"
+          :items="LANGUAGE_ITEMS"
           label="Langue de l’interface"
           class="w-40"
         />

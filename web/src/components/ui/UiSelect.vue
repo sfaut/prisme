@@ -29,7 +29,7 @@ const props = defineProps<{
   /**
    * Offered choices.
    */
-  items: { label: string; value: T; icon?: Component }[]
+  items: { label: string; value: T; icon?: Component; disabled?: boolean }[]
   /**
    * Name of the field, read by screen readers (`aria-label`).
    */
@@ -70,6 +70,7 @@ const current = computed(() => props.items.find((item) => item.value === model.v
             v-for="item in items"
             :key="item.value"
             :value="item.value"
+            :disabled="item.disabled"
             class="flex h-control cursor-pointer items-center gap-1.5 rounded-control px-control-x text-fg outline-none select-none data-highlighted:bg-surface-elevated data-highlighted:text-fg-strong"
           >
             <component :is="item.icon" v-if="item.icon" class="size-icon shrink-0" />
