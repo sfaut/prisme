@@ -1,3 +1,6 @@
+/**
+ * Entry point of the interface: mounts the root component with Pinia.
+ */
 import './assets/main.css'
 import './colorMode'
 
