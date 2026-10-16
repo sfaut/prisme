@@ -21,6 +21,10 @@ import {
   selectColumn,
   selectRow,
   selectionToText,
+  createViewMemory,
+  type GridFilter,
+  type SortState,
+  updateView,
   visibleRows,
 } from '../resultGrid'
 
@@ -217,5 +221,77 @@ describe('column move', () => {
     expect(selectionToText(selection, [0], rows, columns, true, [2, 0, 1])).toBe(
       'city\tid\tname\nLyon\t10\tZoé',
     )
+  })
+})
+
+describe('updateView', () => {
+  // Rows with duplicates in each column, so that the stability of the sort is tested.
+  const data: Cell[][] = Array.from({ length: 1200 }, (_, index) => [
+    String((index * 37) % 50),
+    `item ${(index * 13) % 40}`,
+  ])
+  const noFilter: GridFilter = { text: '', column: null }
+
+  /**
+   * Feeds the rows to the memory by batches, in one array that grows as the store does,
+   * and pairs each view given by the memory with the full computation.
+   *
+   * @param batch Size of each batch.
+   * @param filter Filter of the view.
+   * @param sort Sort of the view, `null` for none.
+   * @returns The pairs (view of the memory, full computation), one per batch.
+   */
+  function receiveBy(
+    batch: number,
+    filter: GridFilter = noFilter,
+    sort: SortState | null = null,
+  ): [number[], number[]][] {
+    const received: Cell[][] = []
+    const memory = createViewMemory()
+    const pairs: [number[], number[]][] = []
+    for (let start = 0; start < data.length; start += batch) {
+      received.push(...data.slice(start, start + batch))
+      pairs.push([updateView(memory, received, filter, sort), visibleRows(received, filter, sort)])
+    }
+    return pairs
+  }
+
+  it('gives the same view as a full computation, batch after batch', () => {
+    const sorts: (SortState | null)[] = [
+      null,
+      { column: 0, direction: 'asc' },
+      { column: 1, direction: 'desc' },
+    ]
+    for (const sort of sorts) {
+      for (const [actual, expected] of receiveBy(100, noFilter, sort)) {
+        expect(actual).toEqual(expected)
+      }
+    }
+  })
+
+  it('applies a filter to the rows received since', () => {
+    const filter: GridFilter = { text: 'item 1', column: 1 }
+    for (const [actual, expected] of receiveBy(100, filter, { column: 0, direction: 'asc' })) {
+      expect(actual).toEqual(expected)
+    }
+  })
+
+  it('starts again on a new array, a new filter or a new sort', () => {
+    const memory = createViewMemory()
+    updateView(memory, data, noFilter, null)
+    const fresh = data.slice(0, 10)
+    expect(updateView(memory, fresh, noFilter, null)).toEqual(visibleRows(fresh, noFilter, null))
+    const filter: GridFilter = { text: '3', column: 0 }
+    expect(updateView(memory, fresh, filter, null)).toEqual(visibleRows(fresh, filter, null))
+  })
+
+  it('returns a new array each time, so that Vue sees the change', () => {
+    const received = data.slice(0, 5)
+    const memory = createViewMemory()
+    const first = updateView(memory, received, noFilter, null)
+    received.push(...data.slice(5, 6))
+    const second = updateView(memory, received, noFilter, null)
+    expect(second).not.toBe(first)
+    expect(first).toHaveLength(5)
   })
 })

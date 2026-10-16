@@ -236,3 +236,53 @@ measure the delay before the databases show, then open the current database,
 its "Tables" folder and a table during the load. Wait for the end of a node's
 opening animation (about 0.5 s) before clicking one of its children: a click
 during the animation is ignored by the tree.
+
+## 3. Sorted result: the view was sorted again on each batch
+
+### 3.1 Symptom
+
+With a sort active while a large result is received, the interface froze
+during the reception. A result of 50 000 rows, sorted on a text column, took
+about 15 s of main thread in total, spread over the batches.
+
+### 3.2 Measurement
+
+The functions of `resultGrid.ts` run on 50 000 rows, in a test in the
+project, with a 4-column result (identifier, text, decimal number, date
+with some `NULL`), the rows arriving by batches of 500 in one array that
+grows, as the store does with `push`. Without a sort, the whole view takes
+under 1 ms per computation. With the sort, the view is recomputed on each
+batch:
+
+| Scenario (50 000 rows, 100 batches)     | Time  |
+|-----------------------------------------|-------|
+| Full sort on each batch (before)        | 15.4 s |
+| Incremental view (after)                | 1.5 s  |
+
+A single sort of 50 000 text values takes about 0.2 s.
+
+### 3.3 Cause
+
+`ResultGrid.vue` computed its view with `visibleRows` on the whole array,
+each time `rowCount` changed, that is on each batch. The sort is O(n log n)
+collator comparisons, so the total cost grew with the square of the number of
+batches.
+
+### 3.4 Fix
+
+The view is kept from one computation to the next (`updateView`, with its
+`ViewMemory`). Each update filters and sorts only the rows received since,
+then merges them into the view already sorted. The merge keeps the server's
+order for equal values, as the full sort does. A new array, a new filter or
+a new sort starts again from the first row.
+
+### 3.5 Takeaways
+
+- **Measure with the real data flow.** A benchmark that copies the array on
+  each batch resets the memory each time and measures the wrong path: the
+  fix was first measured that way and looked slower.
+- **A memoised value that changes in place must return a new array**, or Vue
+  does not see the change and the virtual list keeps its old length.
+- **Remaining cost**: 1.5 s over 50 000 rows, spread over the reception
+  (about 15 ms per batch of 500 rows). The comparisons of the merge are the
+  largest part.

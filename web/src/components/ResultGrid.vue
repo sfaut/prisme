@@ -69,7 +69,8 @@ import {
   selectColumn,
   selectRow,
   selectionToText,
-  visibleRows,
+  createViewMemory,
+  updateView,
 } from './resultGrid'
 import { rememberWidths, rememberedWidths } from './gridWidths'
 import { type ContentKind, detectContent, isWebAddress } from './contentKind'
@@ -182,10 +183,11 @@ function startDragging(kind: 'cells' | 'rows'): void {
 /**
  * View: indexes of the source rows, filtered and sorted.
  */
+const viewMemory = createViewMemory()
 const view = computed(() => {
   // Read so that the view recomputes when new rows arrive.
   void props.rowCount
-  return visibleRows(props.rows, filter, sort.value)
+  return updateView(viewMemory, props.rows, filter, sort.value)
 })
 
 /**

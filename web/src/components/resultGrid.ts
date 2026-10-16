@@ -283,6 +283,130 @@ export function visibleRows(rows: Cell[][], filter: GridFilter, sort: SortState 
 }
 
 /**
+ * View kept from one update to the next, so that the rows received since are
+ * added to it instead of sorting all the rows again (see `updateView`).
+ */
+export interface ViewMemory {
+  /**
+   * Rows the view was computed on: a new array (a new result) starts again.
+   */
+  rows: Cell[][] | null
+  /**
+   * Searched text the view was computed with, in lower case.
+   */
+  needle: string
+  /**
+   * Filtered column the view was computed with.
+   */
+  column: number | null
+  /**
+   * Sort the view was computed with, `null` for none.
+   */
+  sort: SortState | null
+  /**
+   * Number of source rows already examined.
+   */
+  scanned: number
+  /**
+   * View of the examined rows, in the sort order.
+   */
+  view: number[]
+}
+
+/**
+ * Empty memory: the first update computes the whole view.
+ */
+export function createViewMemory(): ViewMemory {
+  return { rows: null, needle: '', column: null, sort: null, scanned: 0, view: [] }
+}
+
+/**
+ * Updates the view after rows were received. Only the rows added since the
+ * last update are filtered and sorted, then merged into the view: a sort of
+ * 50 000 rows takes about 0.2 s, and the rows arrive by batches of 500.
+ *
+ * The result is the one `visibleRows` gives on the whole array, as long as
+ * the comparison is consistent. A new array, a new filter or a new sort
+ * starts again from the first row.
+ *
+ * @param memory Memory of the previous update, updated in place.
+ * @param rows Rows of the result.
+ * @param filter Filter.
+ * @param sort Sort, `null` for none.
+ * @returns A new array each time, so that Vue sees the change.
+ */
+export function updateView(
+  memory: ViewMemory,
+  rows: Cell[][],
+  filter: GridFilter,
+  sort: SortState | null,
+): number[] {
+  const needle = filter.text.trim().toLowerCase()
+  const sameQuery =
+    memory.rows === rows &&
+    memory.needle === needle &&
+    memory.column === filter.column &&
+    memory.sort?.column === sort?.column &&
+    memory.sort?.direction === sort?.direction
+  if (!sameQuery || rows.length < memory.scanned) {
+    Object.assign(memory, { rows, needle, column: filter.column, sort, scanned: 0, view: [] })
+  }
+
+  const added: number[] = []
+  for (let index = memory.scanned; index < rows.length; index++) {
+    if (needle === '' || matches(rows[index]!, needle, filter.column)) {
+      added.push(index)
+    }
+  }
+  memory.scanned = rows.length
+
+  if (sort) {
+    const sign = sort.direction === 'asc' ? 1 : -1
+    const order = (a: number, b: number) =>
+      sign * compareCells(rows[a]![sort.column] ?? null, rows[b]![sort.column] ?? null)
+    added.sort(order)
+    memory.view = mergeSorted(memory.view, added, order)
+  } else {
+    for (const index of added) {
+      memory.view.push(index)
+    }
+  }
+  return memory.view.slice()
+}
+
+/**
+ * Merges two lists sorted by `order`. On equal keys, the element of `first`
+ * comes first: `first` holds the earlier rows, so the sort stays stable.
+ *
+ * @param first Sorted list of the earlier rows.
+ * @param second Sorted list of the rows received since.
+ * @param order Comparison of two source rows.
+ */
+function mergeSorted(
+  first: number[],
+  second: number[],
+  order: (a: number, b: number) => number,
+): number[] {
+  const merged: number[] = []
+  let i = 0
+  let j = 0
+  while (i < first.length && j < second.length) {
+    if (order(second[j]!, first[i]!) < 0) {
+      merged.push(second[j++]!)
+    } else {
+      merged.push(first[i++]!)
+    }
+  }
+  for (; i < first.length; i++) {
+    merged.push(first[i]!)
+  }
+  for (; j < second.length; j++) {
+    merged.push(second[j]!)
+  }
+  return merged
+}
+
+/**
  * Tells whether a row contains the searched text, in one column or in all.
  *
  * @param row Row.
