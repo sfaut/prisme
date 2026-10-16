@@ -18,7 +18,7 @@ use sqlparser::keywords::Keyword;
 use sqlparser::tokenizer::{Location, Token, Tokenizer};
 
 use crate::Dialect;
-use crate::limit::byte_offset;
+use crate::offsets::OffsetIndex;
 use crate::parse::parse_each;
 
 /// Adds `AS` before the aliases that lack it. See the module header.
@@ -33,12 +33,13 @@ pub(crate) fn add_alias_keyword(sql: &str, dialect: Dialect) -> String {
         let _ = statement.visit(&mut finder);
     }
 
+    let index = OffsetIndex::new(sql);
     // Insertions from the end to the start: positions stay correct.
     let mut offsets: Vec<usize> = finder
         .starts
         .into_iter()
         .filter(|start| !preceded_by_as(&tokens, *start))
-        .filter_map(|start| byte_offset(sql, start))
+        .filter_map(|start| index.offset(start))
         .collect();
     offsets.sort_unstable();
     offsets.dedup();

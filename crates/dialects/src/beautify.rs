@@ -51,7 +51,7 @@ use crate::analysis::{CatalogNames, Role, analyze};
 use crate::functions::case_function_names;
 use crate::keywords::is_keyword;
 use crate::layout::{has_delimiter_command, layout};
-use crate::limit::byte_offset;
+use crate::offsets::OffsetIndex;
 use crate::whitespace::normalize_blanks;
 
 /// MySQL time units, in capitals in the positions where they can only be a
@@ -221,6 +221,7 @@ fn uppercase_keywords(sql: &str, dialect: Dialect, version: Option<&str>) -> Str
         return sql.to_string();
     };
 
+    let index = OffsetIndex::new(sql);
     let mut result = String::with_capacity(sql.len());
     let mut copied = 0;
     // A time unit is expected: after INTERVAL, or as the first argument of EXTRACT...
@@ -258,10 +259,9 @@ fn uppercase_keywords(sql: &str, dialect: Dialect, version: Option<&str>) -> Str
         if !is_unit && !is_keyword(&word.value, dialect, version) {
             continue;
         }
-        let (Some(start), Some(end)) = (
-            byte_offset(sql, token.span.start),
-            byte_offset(sql, token.span.end),
-        ) else {
+        let (Some(start), Some(end)) =
+            (index.offset(token.span.start), index.offset(token.span.end))
+        else {
             continue;
         };
         result.push_str(&sql[copied..start]);

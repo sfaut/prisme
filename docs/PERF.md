@@ -286,3 +286,51 @@ a new sort starts again from the first row.
 - **Remaining cost**: 1.5 s over 50 000 rows, spread over the reception
   (about 15 ms per batch of 500 rows). The comparisons of the merge are the
   largest part.
+
+## 4. Long single-line SQL: beautifying was quadratic
+
+### 4.1 Symptom
+
+The beautifier, and the analysis that runs after each pause of the typing,
+slowed down sharply on a query written on one line, such as an `INSERT` with
+thousands of rows. A 16 KB query took 5 s to beautify, a 138 KB one 203 s.
+
+### 4.2 Measurement
+
+A temporary integration test of `prisme-dialects` calls `beautify_with` on
+`INSERT INTO t (a, b, c, d) VALUES (…), (…)` of growing sizes, all on one
+line (4 values per row, about 9 tokens per row):
+
+| Size (rows)      | Before   | After   |
+|------------------|----------|---------|
+| 500 (16 KB)      | 5.0 s    | 0.3 s   |
+| 2 000 (67 KB)    | 54.5 s   | 1.2 s   |
+| 4 000 (138 KB)   | 202.8 s  | 1.8 s   |
+| 16 000 (582 KB)  | not run  | 8.7 s   |
+
+### 4.3 Cause
+
+Each token position given by `sqlparser` (line and column) was converted into
+a byte offset by `byte_offset`, which scanned the text from the start of its
+line, character by character, and counted the lines before it. On one long
+line, each conversion costs the length of the line, and the conversions
+of all the tokens make the total quadratic in the length of the query.
+
+### 4.4 Fix
+
+`OffsetIndex` (module `offsets.rs`) is built once per text, in one pass: the
+byte offset of each character, and the index of the first character of each
+line. A conversion is then a lookup. The five modules that converted positions
+(`alias`, `analysis`, `beautify`, `functions`, `layout`, and `limit` for the
+insertion point of a `LIMIT`) build the index once, before their loops.
+
+### 4.5 Takeaways
+
+- **A conversion done per token must not scan the text.** Build the index
+  once, then look up.
+- **Long single-line texts are a case of their own**: a scan per line hides
+  behind the usual short lines of a query.
+- **Remaining cost**: about 1.8 s for 138 KB, still growing a little faster
+  than linearly. Two other scans per token remain: `preceded_by_as` (alias
+  module) and the search of the token of each function (`functions` module),
+  both on the list of tokens. They are not changed here.

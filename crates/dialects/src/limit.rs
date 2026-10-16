@@ -13,9 +13,10 @@
 use sqlparser::ast::{Expr, LimitClause, SetExpr, Statement, Value};
 use sqlparser::keywords::Keyword;
 use sqlparser::parser::Parser;
-use sqlparser::tokenizer::{Location, Token, TokenWithSpan, Tokenizer};
+use sqlparser::tokenizer::{Token, TokenWithSpan, Tokenizer};
 
 use crate::Dialect;
+use crate::offsets::OffsetIndex;
 
 /// What Prisme did with the limit of a query.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,7 +85,8 @@ pub fn apply_default_limit(
     let Ok(tokens) = Tokenizer::new(parser_dialect.as_ref(), sql).tokenize_with_location() else {
         return Ok(unchanged(LimitOutcome::Unparsed));
     };
-    let Some(position) = insertion_position(sql, &tokens, !query.locks.is_empty()) else {
+    let index = OffsetIndex::new(sql);
+    let Some(position) = insertion_position(&index, &tokens, !query.locks.is_empty()) else {
         return Ok(unchanged(LimitOutcome::Unparsed));
     };
 
@@ -139,7 +141,11 @@ pub(crate) fn returns_rows(body: &SetExpr) -> bool {
 ///
 /// It is the end of the last significant token (outside spaces, comments and
 /// `;`), before the locking clause if `has_locks` is true.
-fn insertion_position(sql: &str, tokens: &[TokenWithSpan], has_locks: bool) -> Option<usize> {
+fn insertion_position(
+    index: &OffsetIndex,
+    tokens: &[TokenWithSpan],
+    has_locks: bool,
+) -> Option<usize> {
     let boundary = if has_locks {
         lock_clause_start(tokens)?
     } else {
@@ -149,7 +155,7 @@ fn insertion_position(sql: &str, tokens: &[TokenWithSpan], has_locks: bool) -> O
         .iter()
         .rev()
         .find(|token| !matches!(token.token, Token::Whitespace(_) | Token::SemiColon))?;
-    byte_offset(sql, last.span.end)
+    index.offset(last.span.end)
 }
 
 /// Returns the index of the `FOR` token that opens the locking clause
@@ -177,27 +183,6 @@ fn lock_clause_start(tokens: &[TokenWithSpan]) -> Option<usize> {
         }
     }
     None
-}
-
-/// Converts a tokenizer position (line and column in characters, from 1)
-/// into a byte position in `sql`.
-pub(crate) fn byte_offset(sql: &str, location: Location) -> Option<usize> {
-    let line_index = usize::try_from(location.line).ok()?.checked_sub(1)?;
-    let column_index = usize::try_from(location.column).ok()?.checked_sub(1)?;
-
-    let line_start: usize = sql
-        .split_inclusive('\n')
-        .take(line_index)
-        .map(str::len)
-        .sum();
-    let line = &sql[line_start..];
-    // A column right after the last character of the line is valid (end of a token).
-    let in_line = line
-        .char_indices()
-        .map(|(offset, _)| offset)
-        .chain(std::iter::once(line.len()))
-        .nth(column_index)?;
-    Some(line_start + in_line)
 }
 
 #[cfg(test)]

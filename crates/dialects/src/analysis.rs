@@ -34,7 +34,7 @@ use sqlparser::tokenizer::{Token, Tokenizer};
 
 use crate::Dialect;
 use crate::keywords::is_known_in_version;
-use crate::limit::byte_offset;
+use crate::offsets::OffsetIndex;
 
 /// Names of the connection's catalog, as defined (with their case).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -117,6 +117,7 @@ pub fn analyze(
     let tokens = Tokenizer::new(parser_dialect.as_ref(), sql)
         .tokenize_with_location()
         .ok()?;
+    let index = OffsetIndex::new(sql);
     let mut words = Vec::new();
     for token in tokens {
         let Token::Word(word) = &token.token else {
@@ -140,10 +141,9 @@ pub fn analyze(
         } else {
             continue;
         };
-        let (Some(start), Some(end)) = (
-            byte_offset(sql, token.span.start),
-            byte_offset(sql, token.span.end),
-        ) else {
+        let (Some(start), Some(end)) =
+            (index.offset(token.span.start), index.offset(token.span.end))
+        else {
             return None;
         };
         words.push(Word { start, end, role });

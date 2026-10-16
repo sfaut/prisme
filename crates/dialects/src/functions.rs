@@ -25,7 +25,7 @@ use sqlparser::keywords::Keyword;
 use sqlparser::tokenizer::{Location, Token, TokenWithSpan, Tokenizer};
 
 use crate::Dialect;
-use crate::limit::byte_offset;
+use crate::offsets::OffsetIndex;
 use crate::parse::parse_each;
 
 /// Functions with their own syntax, which the AST represents without the position of their name.
@@ -77,6 +77,7 @@ pub(crate) fn case_function_names(sql: &str, dialect: Dialect, routines: &[Strin
     let mut starts = finder.starts;
     starts.extend(special_function_starts(&tokens));
 
+    let index = OffsetIndex::new(sql);
     // Replacements from the end to the start: positions stay correct.
     let mut replacements: Vec<(usize, usize, String)> = starts
         .into_iter()
@@ -93,8 +94,8 @@ pub(crate) fn case_function_names(sql: &str, dialect: Dialect, routines: &[Strin
                 None => word.value.to_uppercase(),
             };
             Some((
-                byte_offset(sql, token.span.start)?,
-                byte_offset(sql, token.span.end)?,
+                index.offset(token.span.start)?,
+                index.offset(token.span.end)?,
                 name,
             ))
         })

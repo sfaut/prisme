@@ -35,7 +35,7 @@ use sqlparser::tokenizer::{Token, Tokenizer, Whitespace};
 
 use crate::Dialect;
 use crate::keywords::is_structural_keyword;
-use crate::limit::byte_offset;
+use crate::offsets::OffsetIndex;
 
 mod program;
 
@@ -198,6 +198,7 @@ pub(crate) fn layout(sql: &str, dialect: Dialect, program: bool) -> String {
         return sql.to_string();
     };
 
+    let index = OffsetIndex::new(sql);
     let mut items = Vec::new();
     let mut space_before = false;
     for token in tokens {
@@ -208,10 +209,9 @@ pub(crate) fn layout(sql: &str, dialect: Dialect, program: bool) -> String {
             space_before = true;
             continue;
         }
-        let (Some(start), Some(end)) = (
-            byte_offset(sql, token.span.start),
-            byte_offset(sql, token.span.end),
-        ) else {
+        let (Some(start), Some(end)) =
+            (index.offset(token.span.start), index.offset(token.span.end))
+        else {
             return sql.to_string();
         };
         let structural = matches!(
