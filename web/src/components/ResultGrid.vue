@@ -40,7 +40,16 @@
 <script setup lang="ts">
 import { ExternalLink, ListFilter, Search, X } from 'lucide-vue-next'
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import { computed, nextTick, reactive, ref, shallowRef, useTemplateRef, watch } from 'vue'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  reactive,
+  ref,
+  shallowRef,
+  useTemplateRef,
+  watch,
+} from 'vue'
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Cell } from '@/api/querySession'
@@ -70,6 +79,7 @@ import {
   selectRow,
   selectionToText,
   createViewMemory,
+  sameColumns,
   updateView,
 } from './resultGrid'
 import { rememberWidths, rememberedWidths } from './gridWidths'
@@ -181,13 +191,58 @@ function startDragging(kind: 'cells' | 'rows'): void {
 }
 
 /**
- * View: indexes of the source rows, filtered and sorted.
+ * Memory of the view, kept from one update to the next (see `updateView`).
  */
 const viewMemory = createViewMemory()
-const view = computed(() => {
-  // Read so that the view recomputes when new rows arrive.
-  void props.rowCount
-  return updateView(viewMemory, props.rows, filter, sort.value)
+
+/**
+ * Rows examined per frame when the view is computed: bounded, so that a large
+ * result (a session resumed after a reconnection, for example) does not
+ * freeze the interface.
+ */
+const VIEW_CHUNK = 2000
+
+/**
+ * View: indexes of the source rows, filtered and sorted. It covers the rows
+ * examined so far (see `refreshView`).
+ */
+const view = shallowRef<number[]>([])
+
+/**
+ * Number of the last view computation: a newer one stops the previous.
+ */
+let viewRun = 0
+
+/**
+ * Waits for the next frame of the display.
+ */
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()))
+}
+
+/**
+ * Computes the view of the rows, one chunk per frame: the first chunk at once,
+ * then the others while the browser draws. A newer computation (new rows,
+ * filter or sort) stops this one.
+ */
+async function refreshView(): Promise<void> {
+  const run = ++viewRun
+  const rows = props.rows
+  for (;;) {
+    view.value = updateView(viewMemory, rows, filter, sort.value, VIEW_CHUNK)
+    if (viewMemory.scanned >= rows.length || run !== viewRun) {
+      return
+    }
+    await nextFrame()
+  }
+}
+
+watch(() => [props.rows, props.rowCount, filter.text, filter.column, sort.value], refreshView, {
+  immediate: true,
+})
+
+onBeforeUnmount(() => {
+  viewRun++
 })
 
 /**
@@ -197,10 +252,21 @@ const view = computed(() => {
 const resized = ref<Record<number, number>>(rememberedWidths(props.sql, props.columns))
 
 // New result: the widths remembered for it, if any.
+// New columns: the widths remembered for the query, the order of the SELECT,
+// and no sort nor filter, whose column indexes would point to other columns.
+// The same columns again (a session resumed after a reconnection) keep all of
+// it, as chosen by the user.
 watch(
   () => props.columns,
-  (columns) => {
+  (columns, previous) => {
+    if (previous !== undefined && sameColumns(columns, previous)) {
+      return
+    }
     resized.value = rememberedWidths(props.sql, columns)
+    order.value = columns.map((_, index) => index)
+    sort.value = null
+    filter.column = null
+    filter.text = ''
   },
 )
 
@@ -213,14 +279,6 @@ watch(resized, (widths) => rememberWidths(props.sql, props.columns, widths))
  * serve the sort, the filter and the widths.
  */
 const order = ref(props.columns.map((_, index) => index))
-
-// New result: the order of the SELECT.
-watch(
-  () => props.columns,
-  (columns) => {
-    order.value = columns.map((_, index) => index)
-  },
-)
 
 /**
  * Estimated widths of the columns, on the header and the first rows.

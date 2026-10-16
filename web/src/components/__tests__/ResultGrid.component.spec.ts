@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { mount } from '@vue/test-utils'
 
@@ -84,5 +84,34 @@ describe('ResultGrid', () => {
     await wrapper.find('.grid-filter-toggle').trigger('click')
     await wrapper.find('.grid-filter input').setValue('null')
     expect(wrapper.find('.grid-count').text()).toBe('1 / 2 lignes')
+  })
+})
+
+describe('ResultGrid after a new result', () => {
+  it('keeps the sort when the same columns come back, after a reconnection', async () => {
+    const wrapper = mountGrid(['id'], [['2'], ['1']])
+    await wrapper.find('.grid-sort').trigger('click')
+    expect(wrapper.find('.grid-sort').text()).toBe('▲')
+    await wrapper.setProps({ columns: ['id'], rows: [['2'], ['1']], rowCount: 2 })
+    expect(wrapper.find('.grid-sort').text()).toBe('▲')
+  })
+
+  it('drops the sort when the columns change', async () => {
+    const wrapper = mountGrid(['id'], [['2'], ['1']])
+    await wrapper.find('.grid-sort').trigger('click')
+    await wrapper.setProps({ columns: ['other'], rows: [['2'], ['1']], rowCount: 2 })
+    expect(wrapper.find('.grid-sort').text()).toBe('⇅')
+  })
+})
+
+describe('ResultGrid with a large result', () => {
+  it('ends with every row in the view, computed a chunk per frame', async () => {
+    const rows = Array.from({ length: 5000 }, (_, index) => [String(index)])
+    const wrapper = mountGrid(['id'], rows)
+    // The height of the list is the number of rows of the view, at 22 px each (default).
+    await vi.waitFor(
+      () => expect(wrapper.find('.grid-body').attributes('style')).toContain('height: 110000px'),
+      { timeout: 5000 },
+    )
   })
 })

@@ -352,3 +352,38 @@ on one line:
 
 The gain is clear at 2 000 columns and within the noise at 4 000: the time of
 the other passes dominates there, and it is not explained yet.
+
+## 5. Resumed result: the view was computed in one go
+
+### 5.1 Symptom
+
+When a query session resumes after a reconnection, its rows come back at once.
+The grid then computed its whole view in one call: with a sort active, a sort
+of 50 000 rows (0.2 s), which froze the interface for the duration.
+
+### 5.2 Measurement
+
+On 50 000 rows sorted on a text column, a single call of `updateView` takes
+about 0.2 s. Computed by chunks of 2 000 rows, one per frame (25 frames), the
+longest frame takes 41 ms and the total is 0.55 s: the merge of each chunk
+compares the rows already sorted, which grows with the result.
+
+### 5.3 Cause
+
+The view was a `computed` over the whole array of rows, so Vue ran it in the
+frame that changed the rows, without a break.
+
+### 5.4 Fix
+
+`updateView` takes a `chunk` argument: a call examines at most that many rows.
+The grid (`ResultGrid.vue`) computes its view with `refreshView`: the first
+chunk at once, then one chunk per animation frame, until every row is in the
+view. A newer computation stops the previous one. A small result is still
+computed at once, in its first chunk.
+
+### 5.5 Takeaways
+
+- **A computation that can grow with the data must be split by frames** when
+  it can take longer than a frame. Splitting it costs a little more in total.
+- **The merge of a chunk is linear in the rows already sorted**: a much
+  larger result would need a different split, or a worker.

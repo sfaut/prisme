@@ -22,6 +22,7 @@ import {
   selectRow,
   selectionToText,
   createViewMemory,
+  sameColumns,
   type GridFilter,
   type SortState,
   updateView,
@@ -293,5 +294,30 @@ describe('updateView', () => {
     const second = updateView(memory, received, noFilter, null)
     expect(second).not.toBe(first)
     expect(first).toHaveLength(5)
+  })
+})
+
+describe('sameColumns', () => {
+  it('compares the names and their order', () => {
+    expect(sameColumns(['id', 'name'], ['id', 'name'])).toBe(true)
+    expect(sameColumns(['id', 'name'], ['name', 'id'])).toBe(false)
+    expect(sameColumns(['id'], ['id', 'name'])).toBe(false)
+  })
+})
+
+describe('updateView by chunks', () => {
+  it('ends on the same view as a single computation', () => {
+    const rows: Cell[][] = Array.from({ length: 1000 }, (_, index) => [String((index * 31) % 97)])
+    const filter = { text: '', column: null }
+    const sort = { column: 0, direction: 'desc' as const }
+    const memory = createViewMemory()
+    let view: number[] = []
+    let calls = 0
+    do {
+      view = updateView(memory, rows, filter, sort, 150)
+      calls++
+    } while (memory.scanned < rows.length)
+    expect(calls).toBe(7)
+    expect(view).toEqual(visibleRows(rows, filter, sort))
   })
 })

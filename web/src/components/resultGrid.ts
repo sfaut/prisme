@@ -321,6 +321,17 @@ export function createViewMemory(): ViewMemory {
 }
 
 /**
+ * Tells whether two results have the same columns, with the same names in the
+ * same order.
+ *
+ * @param a Names of the columns of a result.
+ * @param b Names of the columns of another result.
+ */
+export function sameColumns(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((name, index) => name === b[index])
+}
+
+/**
  * Updates the view after rows were received. Only the rows added since the
  * last update are filtered and sorted, then merged into the view: a sort of
  * 50 000 rows takes about 0.2 s, and the rows arrive by batches of 500.
@@ -329,10 +340,16 @@ export function createViewMemory(): ViewMemory {
  * the comparison is consistent. A new array, a new filter or a new sort
  * starts again from the first row.
  *
+ * A call examines at most `chunk` rows, so that a large result can be viewed
+ * over several calls, between two frames of the display. Until the last
+ * call, the view covers only the rows examined so far (`memory.scanned`
+ * tells how many).
+ *
  * @param memory Memory of the previous update, updated in place.
  * @param rows Rows of the result.
  * @param filter Filter.
  * @param sort Sort, `null` for none.
+ * @param chunk Maximum number of rows examined by this call.
  * @returns A new array each time, so that Vue sees the change.
  */
 export function updateView(
@@ -340,6 +357,7 @@ export function updateView(
   rows: Cell[][],
   filter: GridFilter,
   sort: SortState | null,
+  chunk: number = Number.POSITIVE_INFINITY,
 ): number[] {
   const needle = filter.text.trim().toLowerCase()
   const sameQuery =
@@ -352,13 +370,14 @@ export function updateView(
     Object.assign(memory, { rows, needle, column: filter.column, sort, scanned: 0, view: [] })
   }
 
+  const end = Math.min(rows.length, memory.scanned + chunk)
   const added: number[] = []
-  for (let index = memory.scanned; index < rows.length; index++) {
+  for (let index = memory.scanned; index < end; index++) {
     if (needle === '' || matches(rows[index]!, needle, filter.column)) {
       added.push(index)
     }
   }
-  memory.scanned = rows.length
+  memory.scanned = end
 
   if (sort) {
     const sign = sort.direction === 'asc' ? 1 : -1
