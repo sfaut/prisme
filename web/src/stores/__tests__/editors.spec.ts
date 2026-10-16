@@ -55,3 +55,19 @@ describe('synchronisation state of the editors', () => {
     await vi.waitFor(() => expect(syncState.value).toBe('synced'))
   })
 })
+
+describe('saves when the page closes', () => {
+  it('sends the text waiting for its delay at once, outliving the page', async () => {
+    const editors = useEditorsStore()
+    await editors.create(null)
+
+    editors.setSql(1, 'SELECT 3')
+    window.dispatchEvent(new Event('pagehide'))
+
+    expect(fetch).toHaveBeenLastCalledWith(
+      '/api/editors/1',
+      expect.objectContaining({ method: 'PUT', keepalive: true }),
+    )
+    await vi.waitFor(() => expect(syncState.value).toBe('synced'))
+  })
+})

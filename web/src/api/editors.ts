@@ -3,7 +3,7 @@
  * the server side (`crates/server/src/editors.rs`).
  */
 
-import { request } from './http'
+import { type RequestOptions, request } from './http'
 import type { ClosedEditor } from './generated/ClosedEditor'
 import type { Editor } from './generated/Editor'
 import type { EditorUpdate } from './generated/EditorUpdate'
@@ -31,9 +31,14 @@ export async function createEditor(connectionId: number | null): Promise<Editor>
  *
  * @param id Id of the editor.
  * @param editor Name, text and connection.
+ * @param options Options of the request, such as `keepalive` for a save made as the page closes.
  */
-export async function updateEditor(id: number, editor: EditorUpdate): Promise<void> {
-  await request('PUT', `/api/editors/${id}`, editor)
+export async function updateEditor(
+  id: number,
+  editor: EditorUpdate,
+  options: RequestOptions = {},
+): Promise<void> {
+  await request('PUT', `/api/editors/${id}`, editor, options)
 }
 
 /**

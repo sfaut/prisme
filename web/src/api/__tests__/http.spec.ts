@@ -33,7 +33,17 @@ describe('request', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: '{"name":"prod"}',
+      keepalive: false,
     })
+  })
+
+  it('lets a request outlive the page when asked to', async () => {
+    const fake = mockFetch(200, '')
+    await request('PUT', '/api/editors/1', {}, { keepalive: true })
+    expect(fake).toHaveBeenCalledWith(
+      '/api/editors/1',
+      expect.objectContaining({ keepalive: true }),
+    )
   })
 
   it('throws an ApiError with the message of the server', async () => {

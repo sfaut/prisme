@@ -163,8 +163,9 @@ export const useEditorsStore = defineStore('editors', () => {
    * Saves the name, the text and the connection of an editor, immediately.
    *
    * @param id Id of the editor.
+   * @param keepalive Lets the save outlive the page, for a save made as it closes.
    */
-  async function save(id: number): Promise<void> {
+  async function save(id: number, keepalive = false): Promise<void> {
     clearTimeout(timers.get(id))
     timers.delete(id)
     const editor = editors.value.find((item) => item.id === id)
@@ -173,16 +174,32 @@ export const useEditorsStore = defineStore('editors', () => {
     }
     markPending(editorKey(id))
     try {
-      await updateEditor(id, {
-        name: editor.name,
-        sql: editor.sql,
-        connection_id: editor.connectionId,
-      })
+      await updateEditor(
+        id,
+        {
+          name: editor.name,
+          sql: editor.sql,
+          connection_id: editor.connectionId,
+        },
+        { keepalive },
+      )
     } finally {
       // A change made during the request keeps its own save pending.
       if (!timers.has(id)) {
         clearPending(editorKey(id))
       }
+    }
+  }
+
+  /**
+   * Saves at once the texts waiting for their delay. Called when the page is
+   * hidden or closed: a save left waiting would be lost with the page.
+   */
+  function flushPending(): void {
+    for (const id of timers.keys()) {
+      save(id, true).catch(() => {
+        // The failure shows in the synchronisation state (`syncState`).
+      })
     }
   }
 
@@ -293,6 +310,14 @@ export const useEditorsStore = defineStore('editors', () => {
     }
     closed.value = closed.value.filter((editor) => editor.id !== id)
   }
+
+  // The page can close within the delay of a save: the pending texts go out first.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      flushPending()
+    }
+  })
+  window.addEventListener('pagehide', flushPending)
 
   return {
     editors,

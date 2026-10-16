@@ -32,16 +32,33 @@ export class ApiError extends Error {
 type Method = 'GET' | 'POST' | 'PUT' | 'DELETE'
 
 /**
+ * Options of a request.
+ */
+export interface RequestOptions {
+  /**
+   * Lets the request outlive the page, for a save made as the page closes.
+   * Such a request is limited in size by the browser.
+   */
+  keepalive?: boolean
+}
+
+/**
  * Sends a request to the API and returns the JSON body of the response.
  *
  * @param method HTTP method.
  * @param path Path of the route, for example `/api/connections`.
  * @param body Body to send as JSON, absent for a GET.
+ * @param options Options of the request.
  * @returns The body of the response, `undefined` if it is empty.
  * @throws {ApiError} If the server answers with an error status.
  */
-export async function request<T>(method: Method, path: string, body?: unknown): Promise<T> {
-  const sent = send<T>(method, path, body)
+export async function request<T>(
+  method: Method,
+  path: string,
+  body?: unknown,
+  options: RequestOptions = {},
+): Promise<T> {
+  const sent = send<T>(method, path, body, options)
   return method === 'GET' ? sent : trackWrite(sent)
 }
 
@@ -51,12 +68,19 @@ export async function request<T>(method: Method, path: string, body?: unknown): 
  * @param method HTTP method.
  * @param path Path of the route.
  * @param body Body to send as JSON, absent for a GET.
+ * @param options Options of the request.
  * @returns The body of the response, `undefined` if it is empty.
  * @throws {ApiError} If the server answers with an error status.
  */
-async function send<T>(method: Method, path: string, body?: unknown): Promise<T> {
+async function send<T>(
+  method: Method,
+  path: string,
+  body: unknown,
+  options: RequestOptions,
+): Promise<T> {
   const response = await fetch(path, {
     method,
+    keepalive: options.keepalive === true,
     headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
