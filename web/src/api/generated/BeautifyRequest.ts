@@ -3,22 +3,22 @@ import type { BeautifyCatalog } from "./BeautifyCatalog";
 import type { Flavor } from "./Flavor";
 
 /**
- * SQL à enjoliver, avec le contexte du serveur.
+ * SQL to beautify, with the server's context.
  */
 export type BeautifyRequest = { 
 /**
- * Texte SQL, une ou plusieurs requêtes.
+ * SQL text, one or more queries.
  */
 sql: string, 
 /**
- * Noms du catalogue : les noms de la requête prennent leur écriture.
+ * Names of the catalog: the names of the query take their spelling.
  */
 catalog?: BeautifyCatalog, 
 /**
- * Variante du serveur, pour ses mots-clefs ; absente, MySQL.
+ * Flavor of the server, for its keywords; when absent, MySQL.
  */
 flavor?: Flavor, 
 /**
- * Version annoncée par le serveur ; absente, tous les mots-clefs du dialecte.
+ * Version announced by the server; when absent, all the dialect's keywords.
  */
 version?: string, };

@@ -1,7 +1,7 @@
--- Utilisateurs de Prisme.
--- En mode poste de développement, un seul utilisateur, sans mot de passe :
--- password_hash reste vide. En mode serveur, il contiendra le hachage argon2
--- du mot de passe. Les dates sont en UTC, au format ISO 8601 à la milliseconde.
+-- Users of Prisme.
+-- In workstation mode, a single user, without a password: password_hash
+-- stays empty. In server mode, it will contain the argon2 hash of the
+-- password. Dates are in UTC, in ISO 8601 format to the millisecond.
 CREATE TABLE users (
     id INTEGER PRIMARY KEY,
     email TEXT NOT NULL UNIQUE CHECK (length(email) BETWEEN 3 AND 254),

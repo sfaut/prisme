@@ -1,14 +1,14 @@
-//! Chiffrement des secrets de connexion (mots de passe, plus tard clefs TLS ou SSH).
+//! Encryption of connection secrets (passwords, later TLS or SSH keys).
 //!
-//! Algorithme : AES-256-GCM, avec la clef maîtresse. Un secret chiffré est un
-//! bloc d'octets, stocké tel quel dans une colonne `BLOB` de la base interne :
+//! Algorithm: AES-256-GCM, with the master key. An encrypted secret is a block
+//! of bytes, stored as is in a `BLOB` column of the internal database:
 //!
 //! ```text
-//! [ nonce : 12 octets ][ texte chiffré : longueur du secret ][ étiquette : 16 octets ]
+//! [ nonce: 12 bytes ][ ciphertext: length of the secret ][ tag: 16 bytes ]
 //! ```
 //!
-//! Le nonce est tiré au hasard à chaque chiffrement : deux chiffrements du même
-//! secret donnent deux blocs différents. L'étiquette détecte toute altération.
+//! The nonce is drawn at random on each encryption: two encryptions of the
+//! same secret give two different blocks. The tag detects any alteration.
 
 use aes_gcm::aead::{Aead, Generate};
 use aes_gcm::{Nonce, aead};
@@ -16,33 +16,33 @@ use secrecy::{ExposeSecret, SecretString};
 
 use crate::master_key::MasterKey;
 
-/// Longueur du nonce en octets.
+/// Length of the nonce in bytes.
 const NONCE_LENGTH: usize = 12;
 
-/// Longueur de l'étiquette d'authentification en octets.
+/// Length of the authentication tag in bytes.
 const TAG_LENGTH: usize = 16;
 
-/// Erreurs de chiffrement ou de déchiffrement d'un secret.
+/// Errors encrypting or decrypting a secret.
 #[derive(Debug, thiserror::Error)]
 pub enum SecretError {
-    /// Le chiffrement a échoué (secret de taille démesurée).
-    #[error("chiffrement du secret impossible")]
+    /// Encryption failed (secret of excessive size).
+    #[error("cannot encrypt the secret")]
     Encrypt,
 
-    /// Le bloc est trop court pour contenir un nonce et une étiquette.
-    #[error("secret chiffré tronqué ({0} octets)")]
+    /// The block is too short to contain a nonce and a tag.
+    #[error("truncated encrypted secret ({0} bytes)")]
     Truncated(usize),
 
-    /// La clef ne correspond pas, ou le bloc a été altéré.
-    #[error("déchiffrement impossible : clef maîtresse différente ou secret altéré")]
+    /// The key does not match, or the block was altered.
+    #[error("cannot decrypt: different master key or altered secret")]
     Decrypt,
 
-    /// Le secret déchiffré n'est pas du texte UTF-8.
-    #[error("secret déchiffré invalide (UTF-8 attendu)")]
+    /// The decrypted secret is not UTF-8 text.
+    #[error("invalid decrypted secret (UTF-8 expected)")]
     InvalidUtf8,
 }
 
-/// Chiffre un secret avec la clef maîtresse et renvoie le bloc à stocker.
+/// Encrypts a secret with the master key and returns the block to store.
 pub fn encrypt(key: &MasterKey, secret: &SecretString) -> Result<Vec<u8>, SecretError> {
     let nonce = Nonce::generate();
     let ciphertext = key
@@ -56,7 +56,7 @@ pub fn encrypt(key: &MasterKey, secret: &SecretString) -> Result<Vec<u8>, Secret
     Ok(block)
 }
 
-/// Déchiffre un bloc produit par [`encrypt`] avec la même clef maîtresse.
+/// Decrypts a block produced by [`encrypt`] with the same master key.
 pub fn decrypt(key: &MasterKey, block: &[u8]) -> Result<SecretString, SecretError> {
     if block.len() < NONCE_LENGTH + TAG_LENGTH {
         return Err(SecretError::Truncated(block.len()));
@@ -83,15 +83,15 @@ mod tests {
     #[test]
     fn round_trip() {
         let key = MasterKey::generate();
-        let block = encrypt(&key, &secret("mot de passe é€")).unwrap();
+        let block = encrypt(&key, &secret("pass word é€")).unwrap();
 
         assert_eq!(
             block.len(),
-            NONCE_LENGTH + "mot de passe é€".len() + TAG_LENGTH
+            NONCE_LENGTH + "pass word é€".len() + TAG_LENGTH
         );
         assert_eq!(
             decrypt(&key, &block).unwrap().expose_secret(),
-            "mot de passe é€"
+            "pass word é€"
         );
     }
 

@@ -1,11 +1,11 @@
-//! Clef maîtresse du chiffrement des secrets de connexion.
+//! Master key for encrypting connection secrets.
 //!
-//! La clef fait 32 octets aléatoires (AES-256). Elle est générée au premier
-//! lancement et stockée en base64 dans le fichier `prisme.key` du dossier de
-//! données. Quiconque copie ce fichier avec la base interne lit les mots de
-//! passe enregistrés : le dossier de données doit rester lisible par le seul
-//! utilisateur. Perdre ce fichier oblige à ressaisir les mots de passe des
-//! connexions, sans toucher au reste. Voir `docs/V1.md`, section 2.8.
+//! The key is 32 random bytes (AES-256). It is generated on first launch and
+//! stored in base64 in the `prisme.key` file of the data folder. Whoever copies
+//! this file along with the internal database reads the saved passwords: the
+//! data folder must stay readable by the user only. Losing this file requires
+//! typing the connection passwords again, without touching the rest. See
+//! `docs/V1.md`, section 2.8.
 
 use std::fs::OpenOptions;
 use std::io::{self, Write};
@@ -17,49 +17,49 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use secrecy::{ExposeSecret, SecretSlice, SecretString};
 
-/// Nom du fichier de clef dans le dossier de données.
+/// Name of the key file in the data folder.
 pub const FILE_NAME: &str = "prisme.key";
 
-/// Longueur de la clef en octets (AES-256).
+/// Length of the key in bytes (AES-256).
 const KEY_LENGTH: usize = 32;
 
-/// Erreurs de lecture ou de création de la clef maîtresse.
+/// Errors reading or creating the master key.
 #[derive(Debug, thiserror::Error)]
 pub enum MasterKeyError {
-    /// Le fichier de clef est illisible ou impossible à créer.
-    #[error("fichier de clef {path} : {source}")]
+    /// The key file is unreadable or cannot be created.
+    #[error("key file {path}: {source}")]
     Io { path: String, source: io::Error },
 
-    /// Le contenu du fichier n'est pas du base64 valide.
-    #[error("fichier de clef {path} : contenu illisible (base64 attendu)")]
+    /// The content of the file is not valid base64.
+    #[error("key file {path}: unreadable content (base64 expected)")]
     InvalidEncoding { path: String },
 
-    /// Le contenu décodé n'a pas la longueur d'une clef AES-256.
-    #[error("fichier de clef {path} : {length} octets au lieu de {KEY_LENGTH}")]
+    /// The decoded content does not have the length of an AES-256 key.
+    #[error("key file {path}: {length} bytes instead of {KEY_LENGTH}")]
     InvalidLength { path: String, length: usize },
 }
 
-/// Clef maîtresse en mémoire, effacée à sa destruction et jamais affichée dans un journal.
+/// Master key in memory, wiped when dropped and never shown in a log.
 pub struct MasterKey(SecretSlice<u8>);
 
 impl MasterKey {
-    /// Construit le chiffreur AES-256-GCM associé à la clef.
+    /// Builds the AES-256-GCM cipher associated with the key.
     pub fn cipher(&self) -> Aes256Gcm {
-        // La longueur est vérifiée à la construction de MasterKey : l'échec est impossible.
-        Aes256Gcm::new_from_slice(self.0.expose_secret()).expect("clef de 32 octets")
+        // The length is checked when MasterKey is built: failure is impossible.
+        Aes256Gcm::new_from_slice(self.0.expose_secret()).expect("a 32-byte key")
     }
 
-    /// Génère une nouvelle clef aléatoire, sans l'enregistrer.
+    /// Generates a new random key, without saving it.
     pub fn generate() -> Self {
         let key = Key::<Aes256Gcm>::generate();
         Self(SecretSlice::from(key.to_vec()))
     }
 }
 
-/// Lit la clef du fichier `path`, ou la génère et l'y enregistre si le fichier n'existe pas.
+/// Reads the key from the file `path`, or generates it and saves it there if the file does not exist.
 ///
-/// Un fichier existant mais invalide produit une erreur : il n'est jamais
-/// écrasé, car les secrets déjà chiffrés deviendraient illisibles.
+/// An existing but invalid file produces an error: it is never overwritten,
+/// as the secrets already encrypted would become unreadable.
 pub fn load_or_create(path: &Path) -> Result<MasterKey, MasterKeyError> {
     match std::fs::read_to_string(path) {
         Ok(text) => decode(path, SecretString::from(text)),
@@ -68,7 +68,7 @@ pub fn load_or_create(path: &Path) -> Result<MasterKey, MasterKeyError> {
     }
 }
 
-/// Décode le contenu base64 d'un fichier de clef.
+/// Decodes the base64 content of a key file.
 fn decode(path: &Path, text: SecretString) -> Result<MasterKey, MasterKeyError> {
     let bytes = BASE64.decode(text.expose_secret().trim()).map_err(|_| {
         MasterKeyError::InvalidEncoding {
@@ -87,16 +87,16 @@ fn decode(path: &Path, text: SecretString) -> Result<MasterKey, MasterKeyError> 
     Ok(MasterKey(bytes))
 }
 
-/// Génère une clef et l'écrit dans un nouveau fichier.
+/// Generates a key and writes it to a new file.
 fn create(path: &Path) -> Result<MasterKey, MasterKeyError> {
     let key = MasterKey::generate();
     let text = SecretString::from(BASE64.encode(key.0.expose_secret()));
 
     let mut options = OpenOptions::new();
-    // create_new : échoue si le fichier est apparu entre-temps, pour ne jamais écraser une clef.
+    // create_new: fails if the file appeared in the meantime, so as never to overwrite a key.
     options.write(true).create_new(true);
-    // Sous Windows, %APPDATA% n'est déjà lisible que par l'utilisateur.
-    // Sous Unix, on restreint explicitement le fichier à son propriétaire.
+    // On Windows, %APPDATA% is already readable by the user only.
+    // On Unix, the file is explicitly restricted to its owner.
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
 
@@ -107,11 +107,11 @@ fn create(path: &Path) -> Result<MasterKey, MasterKeyError> {
         .and_then(|()| file.sync_all())
         .map_err(|source| io_error(path, source))?;
 
-    tracing::info!("clef maîtresse créée : {}", path.display());
+    tracing::info!("master key created: {}", path.display());
     Ok(key)
 }
 
-/// Construit une erreur d'entrée-sortie rattachée au fichier de clef.
+/// Builds an I/O error tied to the key file.
 fn io_error(path: &Path, source: io::Error) -> MasterKeyError {
     MasterKeyError::Io {
         path: display(path),
@@ -119,7 +119,7 @@ fn io_error(path: &Path, source: io::Error) -> MasterKeyError {
     }
 }
 
-/// Affiche un chemin pour un message d'erreur.
+/// Displays a path for an error message.
 fn display(path: &Path) -> String {
     path.display().to_string()
 }
@@ -144,7 +144,7 @@ mod tests {
     fn rejects_invalid_base64() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(FILE_NAME);
-        std::fs::write(&path, "pas du base64 !").unwrap();
+        std::fs::write(&path, "not base64!").unwrap();
 
         assert!(matches!(
             load_or_create(&path),

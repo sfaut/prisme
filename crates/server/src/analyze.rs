@@ -1,11 +1,11 @@
-//! Analyse du texte de l'éditeur, demandée par l'interface peu après chaque
-//! frappe : découpage en requêtes, pour mettre en évidence celle que
-//! Ctrl-Entrée exécuterait, et erreurs de syntaxe, pour les souligner.
+//! Analysis of the editor's text, requested by the interface shortly after
+//! each keystroke: splitting into queries, to highlight the one Ctrl+Enter
+//! would run, and syntax errors, to underline them.
 //!
-//! Le découpage est celui des sessions de requêtes (crate `splitter`) :
-//! l'interface montre exactement la requête qui partira. Chaque requête est
-//! ensuite analysée seule (`prisme_dialects::syntax`). Les positions sont en
-//! unités UTF-16, comme celles de l'éditeur.
+//! The splitting is that of the query sessions (`splitter` crate): the
+//! interface shows exactly the query that will be sent. Each query is then
+//! parsed on its own (`prisme_dialects::syntax`). Positions are in UTF-16
+//! units, like the editor's.
 
 use prisme_connectors::mysql::Flavor;
 use prisme_dialects::Dialect;
@@ -14,49 +14,49 @@ use prisme_splitter::{Statement, split};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// Texte à analyser.
+/// Text to analyse.
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct AnalyzeRequest {
-    /// Texte complet de l'éditeur.
+    /// Whole text of the editor.
     pub sql: String,
-    /// Variante du serveur de la session, qui fixe le dialecte d'analyse.
+    /// Flavor of the session's server, which sets the dialect of the analysis.
     pub flavor: Flavor,
 }
 
-/// Résultat de l'analyse.
+/// Result of the analysis.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct Analysis {
-    /// Requêtes du texte, dans l'ordre.
+    /// Queries of the text, in order.
     pub statements: Vec<StatementSpan>,
-    /// Erreurs de syntaxe, au plus une par requête.
+    /// Syntax errors, at most one per query.
     pub errors: Vec<SyntaxIssue>,
 }
 
-/// Erreur de syntaxe à souligner dans l'éditeur.
+/// Syntax error to underline in the editor.
 #[derive(Debug, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct SyntaxIssue {
-    /// Début du passage souligné, en unités UTF-16.
+    /// Start of the underlined passage, in UTF-16 units.
     pub start: usize,
-    /// Fin du passage souligné, en unités UTF-16.
+    /// End of the underlined passage, in UTF-16 units.
     pub end: usize,
-    /// Message affiché au survol.
+    /// Message shown on hover.
     pub message: String,
 }
 
-/// Emplacement d'une requête dans le texte, en unités UTF-16.
+/// Location of a query in the text, in UTF-16 units.
 #[derive(Debug, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
 pub struct StatementSpan {
-    /// Premier caractère significatif de la requête.
+    /// First significant character of the query.
     pub start: usize,
-    /// Fin de la requête, séparateur compris.
+    /// End of the query, separator included.
     pub end: usize,
 }
 
-/// Dialecte SQL d'une variante de serveur.
+/// SQL dialect of a server flavor.
 pub fn dialect_of(flavor: Flavor) -> Dialect {
     match flavor {
         Flavor::MySql => Dialect::MySql,
@@ -64,7 +64,7 @@ pub fn dialect_of(flavor: Flavor) -> Dialect {
     }
 }
 
-/// Analyse le texte de l'éditeur.
+/// Analyses the editor's text.
 pub fn analyze(request: &AnalyzeRequest) -> Analysis {
     let dialect = dialect_of(request.flavor);
     let statements = split(&request.sql);
@@ -83,11 +83,11 @@ pub fn analyze(request: &AnalyzeRequest) -> Analysis {
     }
 }
 
-/// Erreur de syntaxe d'une requête, placée dans le texte de l'éditeur.
+/// Syntax error of a query, placed in the editor's text.
 ///
-/// Le passage souligné est le mot qui commence à la position de l'erreur ;
-/// sans position connue (fin de requête inattendue), le dernier caractère de
-/// la requête.
+/// The underlined passage is the word that starts at the error's position;
+/// without a known position (unexpected end of query), the last character of
+/// the query.
 fn issue(statement: &Statement, dialect: Dialect) -> Option<SyntaxIssue> {
     let error = syntax_error(&statement.sql, dialect)?;
     let (start, end) = locate(&statement.sql, error.line, error.column)
@@ -95,13 +95,13 @@ fn issue(statement: &Statement, dialect: Dialect) -> Option<SyntaxIssue> {
     Some(SyntaxIssue {
         start: statement.start + start,
         end: statement.start + end,
-        message: format!("Requête non comprise par Prisme : {}", error.message),
+        message: format!("Query not understood by Prisme: {}", error.message),
     })
 }
 
-/// Passage du mot qui commence ligne `line`, colonne `column` (en
-/// caractères, à partir de 1) : début et fin en unités UTF-16, depuis le
-/// début de `sql`. `None` si la position est inconnue ou hors du texte.
+/// Passage of the word that starts at line `line`, column `column` (in
+/// characters, from 1): start and end in UTF-16 units, from the start of
+/// `sql`. `None` if the position is unknown or outside the text.
 fn locate(sql: &str, line: usize, column: usize) -> Option<(usize, usize)> {
     let (mut current_line, mut current_column, mut offset) = (1, 1, 0);
     let mut chars = sql.chars().peekable();
@@ -124,7 +124,7 @@ fn locate(sql: &str, line: usize, column: usize) -> Option<(usize, usize)> {
     None
 }
 
-/// Passage du dernier caractère de `sql`, en unités UTF-16 (vide si `sql` est vide).
+/// Passage of the last character of `sql`, in UTF-16 units (empty if `sql` is empty).
 fn last_character(sql: &str) -> (usize, usize) {
     let end: usize = sql.encode_utf16().count();
     let width = sql.chars().last().map_or(0, char::len_utf16);
@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn underlines_the_word_at_the_error() {
-        // « é » compte pour une unité UTF-16, « 😀 » pour deux.
+        // "é" counts for one UTF-16 unit, "😀" for two.
         let request = AnalyzeRequest {
             sql: "SELECT 'é';\nSELECT '😀'\nFROM t WHERE a = = 1;".to_string(),
             flavor: Flavor::MySql,
@@ -165,7 +165,7 @@ mod tests {
         assert!(
             errors[0]
                 .message
-                .starts_with("Requête non comprise par Prisme")
+                .starts_with("Query not understood by Prisme")
         );
     }
 

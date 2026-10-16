@@ -1,24 +1,24 @@
-//! API HTTP de Prisme, en JSON, servie par `axum`.
+//! HTTP API of Prisme, in JSON, served by `axum`.
 //!
-//! Routes :
+//! Routes:
 //!
-//! | Méthode et chemin                   | Rôle                                                         |
-//! |-------------------------------------|--------------------------------------------------------------|
-//! | `GET /api/health`                   | Vérifie que le serveur répond.                               |
-//! | `GET /api/connections`              | Liste les connexions de l'utilisateur, sans mot de passe.    |
-//! | `POST /api/connections`             | Enregistre une connexion, mot de passe chiffré.              |
-//! | `POST /api/connections/probe`       | Teste des paramètres saisis, avant enregistrement.           |
-//! | `PUT /api/connections/{id}`         | Modifie une connexion ; mot de passe vide : inchangé (204).  |
-//! | `DELETE /api/connections/{id}`      | Supprime une connexion (204).                                |
-//! | `POST /api/connections/{id}/probe`  | Se connecte et renvoie la variante et la version du serveur. |
-//! | `GET /api/connections/{id}/query`   | WebSocket : session de requêtes (voir `query_session.rs`), fermée avec lui. |
-//! | `GET /api/connections/{id}/catalog` | Bases, tables et colonnes (voir `explorer.rs`).             |
-//! | `GET /api/settings`                 | Réglages de l'utilisateur, avec les choix permis.            |
-//! | `PUT /api/settings`                 | Modifie les réglages, renvoie les réglages à jour.           |
-//! | `POST /api/beautify`                | Enjolive du SQL (mots-clefs en capitales...).                |
-//! | `POST /api/analyze`                 | Analyse le texte de l'éditeur (voir `analyze.rs`).           |
-//! | `GET /api/dialects/{flavor}/keywords` | Mots-clefs du dialecte (`?version=` : ceux de la version). |
-//! | `GET /` et tout autre chemin        | Fichiers de l'interface (voir `web_assets.rs`).              |
+//! | Method and path                     | Role                                                          |
+//! |-------------------------------------|---------------------------------------------------------------|
+//! | `GET /api/health`                   | Checks that the server answers.                               |
+//! | `GET /api/connections`              | Lists the user's connections, without passwords.              |
+//! | `POST /api/connections`             | Saves a connection, password encrypted.                       |
+//! | `POST /api/connections/probe`       | Tests typed settings, before saving them.                     |
+//! | `PUT /api/connections/{id}`         | Changes a connection; empty password: unchanged (204).        |
+//! | `DELETE /api/connections/{id}`      | Deletes a connection (204).                                   |
+//! | `POST /api/connections/{id}/probe`  | Connects and returns the server's flavor and version.         |
+//! | `GET /api/connections/{id}/query`   | WebSocket: query session (see `query_session.rs`), closed with it. |
+//! | `GET /api/connections/{id}/catalog` | Databases, tables and columns (see `explorer.rs`).            |
+//! | `GET /api/settings`                 | Settings of the user, with the allowed choices.               |
+//! | `PUT /api/settings`                 | Changes the settings, returns the updated settings.           |
+//! | `POST /api/beautify`                | Beautifies SQL (keywords in capitals...).                     |
+//! | `POST /api/analyze`                 | Analyses the editor's text (see `analyze.rs`).                |
+//! | `GET /api/dialects/{flavor}/keywords` | Keywords of the dialect (`?version=`: those of the version). |
+//! | `GET /` and any other path          | Files of the interface (see `web_assets.rs`).                 |
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -51,21 +51,21 @@ use crate::sessions::Sessions;
 use crate::settings::{self, Settings, SettingsUpdate};
 use crate::web_assets;
 
-/// État partagé par toutes les routes.
+/// State shared by all the routes.
 #[derive(Clone)]
 pub struct AppState {
-    /// Base interne. `rusqlite` est synchrone : un seul accès à la fois, dans une tâche bloquante.
+    /// Internal database. `rusqlite` is synchronous: one access at a time, in a blocking task.
     db: Arc<Mutex<Connection>>,
-    /// Clef maîtresse, pour chiffrer et déchiffrer les mots de passe.
+    /// Master key, to encrypt and decrypt the passwords.
     key: Arc<MasterKey>,
-    /// Utilisateur unique du mode poste de développement (voir `auth.rs`).
+    /// Single user of the workstation mode (see `auth.rs`).
     pub local_user_id: i64,
-    /// Sessions de requêtes des éditeurs, ouvertes au-delà de leur WebSocket.
+    /// Query sessions of the editors, kept open beyond their WebSocket.
     pub sessions: Arc<Sessions>,
 }
 
 impl AppState {
-    /// Construit l'état à partir de la base interne ouverte, de la clef et de l'utilisateur local.
+    /// Builds the state from the open internal database, the key and the local user.
     pub fn new(db: Connection, key: MasterKey, local_user_id: i64) -> Self {
         Self {
             db: Arc::new(Mutex::new(db)),
@@ -75,7 +75,7 @@ impl AppState {
         }
     }
 
-    /// Exécute `task` sur la base interne dans une tâche bloquante, hors des threads de `tokio`.
+    /// Runs `task` on the internal database in a blocking task, outside `tokio`'s threads.
     pub async fn with_db<T, E, F>(&self, task: F) -> Result<T, ApiError>
     where
         F: FnOnce(&Connection, &MasterKey) -> Result<T, E> + Send + 'static,
@@ -86,28 +86,28 @@ impl AppState {
         let key = Arc::clone(&self.key);
         tokio::task::spawn_blocking(move || {
             let db = db.lock().map_err(|_| {
-                tracing::error!("verrou de la base interne empoisonné");
+                tracing::error!("internal database lock poisoned");
                 ApiError::Internal
             })?;
             task(&db, &key).map_err(Into::into)
         })
         .await
         .map_err(|error| {
-            tracing::error!("tâche de la base interne interrompue : {error}");
+            tracing::error!("internal database task interrupted: {error}");
             ApiError::Internal
         })?
     }
 }
 
-/// Réponse à la création d'une ressource.
+/// Response to the creation of a resource.
 #[derive(Serialize, TS)]
 #[ts(export)]
 struct Created {
-    /// Identifiant de la ressource créée.
+    /// Id of the created resource.
     id: i64,
 }
 
-/// Construit le routeur de l'API.
+/// Builds the router of the API.
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/health", get(health))
@@ -133,12 +133,12 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// `GET /api/health` : répond `ok`.
+/// `GET /api/health`: answers `ok`.
 async fn health() -> &'static str {
     "ok"
 }
 
-/// `GET /api/connections` : connexions de l'utilisateur courant, sans mot de passe.
+/// `GET /api/connections`: connections of the current user, without passwords.
 async fn list_connections(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -149,7 +149,7 @@ async fn list_connections(
     Ok(Json(summaries))
 }
 
-/// `POST /api/connections` : enregistre une connexion et renvoie son identifiant (201).
+/// `POST /api/connections`: saves a connection and returns its id (201).
 async fn create_connection(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -161,8 +161,8 @@ async fn create_connection(
     Ok((StatusCode::CREATED, Json(Created { id })))
 }
 
-/// `PUT /api/connections/{id}` : modifie une connexion de l'utilisateur courant (204).
-/// Un mot de passe vide garde le mot de passe enregistré.
+/// `PUT /api/connections/{id}`: changes a connection of the current user (204).
+/// An empty password keeps the saved password.
 async fn update_connection(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -173,7 +173,7 @@ async fn update_connection(
         .with_db(move |db, key| connections::update(db, key, user.id, id, &changed))
         .await?;
     if updated {
-        // Les sessions ouvertes avec les anciens paramètres se ferment.
+        // The sessions opened with the old settings close.
         state.sessions.stop_connection(id);
         Ok(StatusCode::NO_CONTENT)
     } else {
@@ -181,7 +181,7 @@ async fn update_connection(
     }
 }
 
-/// `DELETE /api/connections/{id}` : supprime une connexion de l'utilisateur courant (204).
+/// `DELETE /api/connections/{id}`: deletes a connection of the current user (204).
 async fn delete_connection(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -198,8 +198,8 @@ async fn delete_connection(
     }
 }
 
-/// `GET /api/connections/{id}/query` : ouvre une session de requêtes par
-/// WebSocket, qui se ferme avec lui (sans délai de garde).
+/// `GET /api/connections/{id}/query`: opens a query session over a
+/// WebSocket, which closes with it (without a keep-alive delay).
 async fn query_socket(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -217,11 +217,11 @@ async fn query_socket(
     }))
 }
 
-/// `GET /api/editors/{id}/session` : WebSocket, session de requêtes d'un
-/// éditeur, sur la connexion de l'éditeur ; ses résultats sont enregistrés.
-/// Si la session de l'éditeur est encore ouverte (page rafraîchie), le
-/// WebSocket s'y raccroche ; sinon elle s'ouvre, gardée après une
-/// déconnexion le délai réglé sur la connexion (voir `sessions.rs`).
+/// `GET /api/editors/{id}/session`: WebSocket, query session of an editor, on
+/// the editor's connection; its results are saved. If the editor's session is
+/// still open (page reloaded), the WebSocket reattaches to it; otherwise it
+/// opens, kept after a disconnection for the delay set on the connection (see
+/// `sessions.rs`).
 async fn editor_session(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -233,9 +233,7 @@ async fn editor_session(
         .with_db(move |db, _| editors::connection_of(db, user_id, id))
         .await?
         .ok_or(ApiError::NotFound)?
-        .ok_or_else(|| {
-            ApiError::BadRequest("aucune connexion choisie pour cet éditeur".to_string())
-        })?;
+        .ok_or_else(|| ApiError::BadRequest("no connection chosen for this editor".to_string()))?;
     let (target, minutes) = state
         .with_db(move |db, key| {
             let target = connections::load_target(db, key, user_id, connection_id)?;
@@ -262,51 +260,51 @@ async fn editor_session(
     }))
 }
 
-/// SQL enjolivé.
+/// Beautified SQL.
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 struct SqlText {
-    /// Texte SQL, une ou plusieurs requêtes.
+    /// SQL text, one or more queries.
     sql: String,
 }
 
-/// Noms du catalogue de la connexion, tels que définis (avec leur casse),
-/// pour l'enjoliveur. Vides si le catalogue n'est pas chargé.
+/// Names of the connection's catalog, as defined (with their case), for the
+/// beautifier. Empty if the catalog is not loaded.
 #[derive(Debug, Default, Deserialize, Serialize, TS)]
 #[ts(export)]
 #[serde(default)]
 struct BeautifyCatalog {
-    /// Bases.
+    /// Databases.
     schemas: Vec<String>,
-    /// Tables et vues, toutes bases confondues.
+    /// Tables and views, all databases together.
     tables: Vec<String>,
-    /// Colonnes, toutes tables confondues.
+    /// Columns, all tables together.
     columns: Vec<String>,
-    /// Fonctions et procédures stockées.
+    /// Stored functions and procedures.
     routines: Vec<String>,
 }
 
-/// SQL à enjoliver, avec le contexte du serveur.
+/// SQL to beautify, with the server's context.
 #[derive(Deserialize, Serialize, TS)]
 #[ts(export)]
 struct BeautifyRequest {
-    /// Texte SQL, une ou plusieurs requêtes.
+    /// SQL text, one or more queries.
     sql: String,
-    /// Noms du catalogue : les noms de la requête prennent leur écriture.
+    /// Names of the catalog: the names of the query take their spelling.
     #[serde(default)]
     #[ts(optional)]
     catalog: Option<BeautifyCatalog>,
-    /// Variante du serveur, pour ses mots-clefs ; absente, MySQL.
+    /// Flavor of the server, for its keywords; when absent, MySQL.
     #[serde(default)]
     #[ts(optional)]
     flavor: Option<Flavor>,
-    /// Version annoncée par le serveur ; absente, tous les mots-clefs du dialecte.
+    /// Version announced by the server; when absent, all the dialect's keywords.
     #[serde(default)]
     #[ts(optional)]
     version: Option<String>,
 }
 
-/// `POST /api/beautify` : enjolive du SQL MySQL / MariaDB (voir `prisme_dialects::beautify`).
+/// `POST /api/beautify`: beautifies MySQL / MariaDB SQL (see `prisme_dialects::beautify`).
 async fn beautify_sql(Json(request): Json<BeautifyRequest>) -> Json<SqlText> {
     let catalog = request.catalog.unwrap_or_default();
     let names = CatalogNames {
@@ -325,31 +323,31 @@ async fn beautify_sql(Json(request): Json<BeautifyRequest>) -> Json<SqlText> {
     })
 }
 
-/// Version du serveur dont on veut les mots-clefs.
+/// Server version whose keywords are wanted.
 #[derive(Debug, Deserialize)]
 struct KeywordsQuery {
-    /// Version annoncée par le serveur (`10.11.11-MariaDB`) ; absente, tous les mots.
+    /// Version announced by the server (`10.11.11-MariaDB`); when absent, all the words.
     version: Option<String>,
 }
 
-/// Mots-clefs d'un dialecte, en capitales, par catégorie (fichiers
-/// `crates/dialects/keywords/*.yaml`) : la coloration de l'éditeur les range
-/// dans ses classes de mots.
+/// Keywords of a dialect, in capitals, by category
+/// (`crates/dialects/keywords/*.yaml` files): the editor's highlighting sorts
+/// them into its word classes.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 struct DialectKeywords {
-    /// Mots réservés.
+    /// Reserved words.
     reserved: Vec<String>,
-    /// Mots-clefs non réservés.
+    /// Non-reserved keywords.
     keywords: Vec<String>,
-    /// Types de colonnes.
+    /// Column types.
     types: Vec<String>,
-    /// Mots qui désignent une valeur (`NULL`, `CURRENT_DATE`...).
+    /// Words that designate a value (`NULL`, `CURRENT_DATE`...).
     literals: Vec<String>,
 }
 
-/// `GET /api/dialects/{flavor}/keywords` : mots-clefs du dialecte, limités à
-/// ceux de la version demandée.
+/// `GET /api/dialects/{flavor}/keywords`: keywords of the dialect, limited to
+/// those of the requested version.
 async fn dialect_keywords(
     Path(flavor): Path<Flavor>,
     Query(query): Query<KeywordsQuery>,
@@ -363,12 +361,12 @@ async fn dialect_keywords(
     })
 }
 
-/// `POST /api/analyze` : analyse le texte de l'éditeur (voir `analyze.rs`).
+/// `POST /api/analyze`: analyses the editor's text (see `analyze.rs`).
 async fn analyze_sql(Json(request): Json<AnalyzeRequest>) -> Json<Analysis> {
     Json(analyze::analyze(&request))
 }
 
-/// `GET /api/settings` : réglages de l'utilisateur courant.
+/// `GET /api/settings`: settings of the current user.
 async fn get_settings(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -379,7 +377,7 @@ async fn get_settings(
     Ok(Json(settings))
 }
 
-/// `PUT /api/settings` : modifie les réglages de l'utilisateur courant et les renvoie.
+/// `PUT /api/settings`: changes the settings of the current user and returns them.
 async fn put_settings(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -391,8 +389,8 @@ async fn put_settings(
     Ok(Json(settings))
 }
 
-/// `POST /api/connections/probe` : se connecte avec des paramètres saisis,
-/// pas encore enregistrés, et renvoie l'identité du serveur.
+/// `POST /api/connections/probe`: connects with typed settings, not saved yet,
+/// and returns the server's identity.
 async fn probe_settings(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -406,7 +404,7 @@ async fn probe_settings(
     Ok(Json(mysql::probe(&target).await?))
 }
 
-/// `POST /api/connections/{id}/probe` : se connecte au serveur et renvoie son identité.
+/// `POST /api/connections/{id}/probe`: connects to the server and returns its identity.
 async fn probe_connection(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -442,7 +440,7 @@ mod tests {
         router(AppState::new(db, MasterKey::generate(), user_id))
     }
 
-    /// Envoie une requête à l'application et renvoie le statut et le corps JSON (Null si vide ou texte).
+    /// Sends a request to the application and returns the status and the JSON body (Null if empty or text).
     async fn send(
         app: &Router,
         method: &str,
@@ -484,7 +482,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_api_path_is_not_found() {
-        // Le repli vers les fichiers de l'interface ne masque pas une route absente.
+        // The fallback to the interface's files does not hide a missing route.
         let (status, _) = send(&test_app(), "GET", "/api/absent", None).await;
         assert_eq!(status, StatusCode::NOT_FOUND);
     }
@@ -496,11 +494,11 @@ mod tests {
         assert_eq!(status, StatusCode::CREATED);
         let id = created["id"].as_i64().unwrap();
         let uri = format!("/api/editors/{id}");
-        let change = json!({ "name": "Ventes", "sql": "SELECT 1", "connection_id": null });
+        let change = json!({ "name": "Sales", "sql": "SELECT 1", "connection_id": null });
         let (status, _) = send(&app, "PUT", &uri, Some(change)).await;
         assert_eq!(status, StatusCode::NO_CONTENT);
         let (_, editors) = send(&app, "GET", "/api/editors", None).await;
-        assert_eq!(editors[0]["name"], "Ventes");
+        assert_eq!(editors[0]["name"], "Sales");
 
         let (status, _) = send(&app, "DELETE", &uri, None).await;
         assert_eq!(status, StatusCode::NO_CONTENT);
@@ -511,7 +509,7 @@ mod tests {
         let (_, editors) = send(&app, "GET", "/api/editors", None).await;
         assert_eq!(editors.as_array().unwrap().len(), 1);
 
-        // Sans connexion choisie, l'éditeur n'a pas de session.
+        // Without a chosen connection, the editor has no session.
         let (status, _) = send(&app, "GET", &format!("{uri}/session"), None).await;
         assert_ne!(status, StatusCode::OK);
     }
@@ -527,7 +525,7 @@ mod tests {
         assert!(has(&all, "reserved", "SELECT") && has(&all, "reserved", "WINDOW"));
         assert!(has(&all, "types", "VARCHAR") && has(&all, "literals", "NULL"));
 
-        // MySQL 5.7 : les mots réservés apparus avec MySQL 8.0 ne sont pas retenus.
+        // MySQL 5.7: the reserved words that appeared with MySQL 8.0 are not kept.
         let uri = "/api/dialects/mysql/keywords?version=5.7.44";
         let (_, old) = send(&app, "GET", uri, None).await;
         assert!(has(&old, "reserved", "SELECT") && !has(&old, "reserved", "WINDOW"));
@@ -586,17 +584,17 @@ mod tests {
         .await;
         let uri = format!("/api/connections/{}", created["id"]);
 
-        let (status, _) = send(&app, "PUT", &uri, Some(connection_json("recette", 3307))).await;
+        let (status, _) = send(&app, "PUT", &uri, Some(connection_json("staging", 3307))).await;
         assert_eq!(status, StatusCode::NO_CONTENT);
         let (_, list) = send(&app, "GET", "/api/connections", None).await;
-        assert_eq!(list[0]["name"], "recette");
+        assert_eq!(list[0]["name"], "staging");
         assert_eq!(list[0]["port"], 3307);
 
         let (status, _) = send(
             &app,
             "PUT",
             "/api/connections/999",
-            Some(connection_json("autre", 3306)),
+            Some(connection_json("other", 3306)),
         )
         .await;
         assert_eq!(status, StatusCode::NOT_FOUND);
@@ -667,8 +665,8 @@ mod tests {
     #[tokio::test]
     async fn beautifies_names_in_their_catalog_case() {
         let request = json!({
-            "sql": "select now(), mafonction(ID) from CLIENTS",
-            "catalog": { "tables": ["Clients"], "columns": ["id"], "routines": ["MaFonction"] },
+            "sql": "select now(), myfunction(ID) from CLIENTS",
+            "catalog": { "tables": ["Clients"], "columns": ["id"], "routines": ["MyFunction"] },
             "flavor": "mariadb",
             "version": "10.11.11-MariaDB",
         });
@@ -676,7 +674,7 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(
             body["sql"],
-            "SELECT ALL\n    NOW(),\n    MaFonction(id)\nFROM Clients"
+            "SELECT ALL\n    NOW(),\n    MyFunction(id)\nFROM Clients"
         );
     }
 
@@ -721,7 +719,7 @@ mod tests {
     #[tokio::test]
     async fn probe_unreachable_server_gives_bad_gateway() {
         let app = test_app();
-        // Port 1 : aucun serveur n'y écoute, la connexion est refusée.
+        // Port 1: no server listens there, the connection is refused.
         let (_, created) = send(
             &app,
             "POST",

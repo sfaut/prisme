@@ -1,48 +1,48 @@
-//! Réglages de l'utilisateur.
+//! Settings of the user.
 //!
-//! Pour l'instant : la limite de lignes par défaut, ajoutée aux requêtes qui
-//! n'en écrivent pas (voir `docs/V1.md`, section 2.3). Fonctions synchrones
-//! (`rusqlite`), appelées depuis des tâches bloquantes.
+//! For now: the default row limit, added to the queries that do not write one
+//! (see `docs/V1.md`, section 2.3). Synchronous functions (`rusqlite`), called
+//! from blocking tasks.
 
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-/// Limites de lignes proposées à l'utilisateur. Seul endroit à modifier pour changer la liste.
+/// Row limits offered to the user. The only place to change to modify the list.
 pub const ROW_LIMIT_CHOICES: [u32; 5] = [1_000, 2_000, 5_000, 10_000, 50_000];
 
-/// Réglages d'un utilisateur, tels que renvoyés par l'API.
+/// Settings of a user, as returned by the API.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct Settings {
-    /// Limite de lignes par défaut.
+    /// Default row limit.
     pub row_limit: u32,
-    /// Limites permises, pour construire la liste de choix de l'interface.
+    /// Allowed limits, to build the interface's list of choices.
     #[ts(type = "Array<number>")]
     pub row_limit_choices: &'static [u32],
 }
 
-/// Modification des réglages demandée par l'utilisateur.
+/// Change of settings requested by the user.
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct SettingsUpdate {
-    /// Nouvelle limite de lignes par défaut, parmi `ROW_LIMIT_CHOICES`.
+    /// New default row limit, among `ROW_LIMIT_CHOICES`.
     pub row_limit: u32,
 }
 
-/// Erreurs de gestion des réglages.
+/// Errors of settings management.
 #[derive(Debug, thiserror::Error)]
 pub enum SettingsError {
-    /// Limite hors de la liste des choix.
-    #[error("row_limit : {0} n'est pas permis, choix possibles : {choices:?}", choices = ROW_LIMIT_CHOICES)]
+    /// Limit outside the list of choices.
+    #[error("row_limit: {0} is not allowed, possible choices: {choices:?}", choices = ROW_LIMIT_CHOICES)]
     InvalidRowLimit(u32),
 
-    /// Erreur de la base interne.
-    #[error("base interne : {0}")]
+    /// Error of the internal database.
+    #[error("internal database: {0}")]
     Sqlite(#[from] rusqlite::Error),
 }
 
-/// Vérifie qu'une limite de lignes fait partie des choix permis.
+/// Checks that a row limit is among the allowed choices.
 pub fn check_row_limit(row_limit: u32) -> Result<u32, SettingsError> {
     if ROW_LIMIT_CHOICES.contains(&row_limit) {
         Ok(row_limit)
@@ -51,7 +51,7 @@ pub fn check_row_limit(row_limit: u32) -> Result<u32, SettingsError> {
     }
 }
 
-/// Lit les réglages de l'utilisateur `user_id`.
+/// Reads the settings of user `user_id`.
 pub fn load(db: &Connection, user_id: i64) -> Result<Settings, SettingsError> {
     let row_limit = db.query_row(
         "SELECT row_limit FROM users WHERE id = ?1",
@@ -64,7 +64,7 @@ pub fn load(db: &Connection, user_id: i64) -> Result<Settings, SettingsError> {
     })
 }
 
-/// Modifie les réglages de l'utilisateur `user_id` et renvoie les réglages à jour.
+/// Changes the settings of user `user_id` and returns the updated settings.
 pub fn update(
     db: &Connection,
     user_id: i64,

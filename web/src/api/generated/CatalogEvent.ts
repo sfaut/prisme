@@ -4,6 +4,6 @@ import type { SchemaObjects } from "./SchemaObjects";
 import type { TableDetails } from "./TableDetails";
 
 /**
- * Message du flux du catalogue.
+ * Message of the catalog stream.
  */
 export type CatalogEvent = { "type": "schemas", schemas: Array<string>, flavor: Flavor, } | { "type": "objects", schema: string, objects: SchemaObjects, } | { "type": "details", schema: string, tables: Array<TableDetails>, } | { "type": "error", message: string, } | { "type": "done" };

@@ -1,5 +1,5 @@
--- Variante du serveur de la connexion (mysql ou mariadb), détectée à la
--- dernière connexion réussie : l'explorateur l'affiche en badge à côté de
--- la source, même avant d'ouvrir son catalogue. Chaîne vide tant que la
--- connexion n'a jamais abouti.
+-- Flavor of the connection's server (mysql or mariadb), detected on the last
+-- successful connection: the explorer shows it as a badge next to the source,
+-- even before opening its catalog. Empty string as long as the connection
+-- never succeeded.
 ALTER TABLE connections ADD COLUMN server_flavor TEXT NOT NULL DEFAULT '' CHECK (server_flavor IN ('', 'mysql', 'mariadb'));

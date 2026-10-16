@@ -1,58 +1,58 @@
-//! Fichiers de l'interface, servis par le serveur lui-même, pour livrer
-//! Prisme en un seul exécutable.
+//! Files of the interface, served by the server itself, to deliver Prisme as
+//! a single executable.
 //!
-//! L'interface compilée est le dossier `web/dist`, produit par `npm run build`
-//! (Vite) : `index.html`, puis le JavaScript et le CSS dans `assets/`.
+//! The compiled interface is the `web/dist` folder, produced by
+//! `npm run build` (Vite): `index.html`, then the JavaScript and the CSS in
+//! `assets/`.
 //!
-//! - En version de production (`cargo build --release`), `rust-embed` copie
-//!   `web/dist` dans l'exécutable à la compilation : il suffit de lancer ce
-//!   seul fichier, sans Node.js.
-//! - En développement (`cargo run`), `rust-embed` lit les fichiers sur le
-//!   disque à chaque requête : un nouveau `npm run build` est servi sans
-//!   recompiler. Pour travailler sur l'interface, Vite (`npm run dev`) reste
-//!   plus pratique : il recharge la page à chaque modification et redirige
-//!   l'API vers ce serveur.
+//! - In a release build (`cargo build --release`), `rust-embed` copies
+//!   `web/dist` into the executable at compile time: running this single file
+//!   is enough, without Node.js.
+//! - In development (`cargo run`), `rust-embed` reads the files from disk on
+//!   each request: a new `npm run build` is served without recompiling. To
+//!   work on the interface, Vite (`npm run dev`) stays more convenient: it
+//!   reloads the page on each change and forwards the API to this server.
 //!
-//! Si `web/dist` n'existe pas (interface jamais compilée), le serveur démarre
-//! quand même, et la racine dit comment compiler l'interface.
+//! If `web/dist` does not exist (interface never compiled), the server starts
+//! anyway, and the root says how to compile the interface.
 
 use axum::http::{StatusCode, Uri, header};
 use axum::response::{IntoResponse, Response};
 use rust_embed::RustEmbed;
 
-/// Interface compilée par Vite (`web/dist`, chemin relatif au crate).
+/// Interface compiled by Vite (`web/dist`, path relative to the crate).
 #[derive(RustEmbed)]
 #[folder = "../../web/dist/"]
 #[allow_missing = true]
 struct WebDist;
 
-/// Page servie à la racine du site.
+/// Page served at the root of the site.
 const INDEX: &str = "index.html";
 
-/// Réponse de la racine quand l'interface n'a pas été compilée.
-const NOT_BUILT: &str = "Interface de Prisme non compilée : lancez « npm run build » dans \
-le dossier web/, puis rechargez la page. En développement, l'interface est aussi servie \
-par Vite (npm run dev) sur http://localhost:5173.";
+/// Response of the root when the interface was not compiled.
+const NOT_BUILT: &str = "Prisme's interface is not compiled: run \"npm run build\" in \
+the web/ folder, then reload the page. In development, the interface is also served \
+by Vite (npm run dev) on http://localhost:5173.";
 
-/// Durée de conservation des fichiers de `assets/` par le navigateur : un an.
-/// Leur nom contient l'empreinte de leur contenu (`index-BzxA2zj2.js`) : un
-/// nouveau build change le nom, jamais le contenu d'un nom déjà servi.
+/// How long the browser keeps the files of `assets/`: one year. Their name
+/// contains the hash of their content (`index-BzxA2zj2.js`): a new build
+/// changes the name, never the content of a name already served.
 const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 
-/// Les autres fichiers (`index.html`, icône) sont revalidés à chaque visite,
-/// pour que la page désigne toujours les `assets/` du dernier build.
+/// The other files (`index.html`, icon) are revalidated on each visit, so
+/// that the page always points to the `assets/` of the last build.
 const REVALIDATE: &str = "no-cache";
 
-/// Handler de repli du routeur : sert le fichier de l'interface demandé par
-/// l'URL, ou une erreur 404.
+/// Fallback handler of the router: serves the interface file requested by the
+/// URL, or a 404 error.
 pub async fn serve(uri: Uri) -> Response {
     serve_from::<WebDist>(uri.path())
 }
 
-/// Sert un fichier d'une interface embarquée, d'après le chemin de l'URL.
+/// Serves a file of an embedded interface, from the path of the URL.
 ///
-/// La racine donne `index.html`. Un chemin de l'API inconnu (`/api/...`)
-/// reste une erreur 404, comme tout fichier absent.
+/// The root gives `index.html`. An unknown API path (`/api/...`) stays a 404
+/// error, like any missing file.
 fn serve_from<E: RustEmbed>(path: &str) -> Response {
     let file = match path.trim_start_matches('/') {
         "" => INDEX,
@@ -77,7 +77,7 @@ fn serve_from<E: RustEmbed>(path: &str) -> Response {
     }
 }
 
-/// Politique de cache d'un fichier de l'interface.
+/// Cache policy of an interface file.
 fn cache_control(file: &str) -> &'static str {
     if file.starts_with("assets/") {
         IMMUTABLE
@@ -90,18 +90,18 @@ fn cache_control(file: &str) -> &'static str {
 mod tests {
     use super::*;
 
-    /// Petite interface compilée, stable, pour les tests.
+    /// Small, stable compiled interface, for the tests.
     #[derive(RustEmbed)]
     #[folder = "testdata/web_dist/"]
     struct Fixture;
 
-    /// Interface jamais compilée : dossier absent.
+    /// Interface never compiled: missing folder.
     #[derive(RustEmbed)]
     #[folder = "testdata/absent/"]
     #[allow_missing = true]
     struct Absent;
 
-    /// Statut, en-têtes utiles et corps d'une réponse.
+    /// Status, useful headers and body of a response.
     async fn read(response: Response) -> (StatusCode, String, String, String) {
         let status = response.status();
         let header = |name| {

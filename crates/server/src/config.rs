@@ -1,8 +1,8 @@
-//! Configuration de Prisme, lue sur la ligne de commande.
+//! Configuration of Prisme, read from the command line.
 //!
-//! La v1 ne connaît que le mode poste de développement : un seul utilisateur,
-//! sans authentification, donc une écoute limitée à la machine locale pour
-//! qu'aucune autre machine du réseau n'accède aux connexions enregistrées.
+//! The v1 only knows the workstation mode: a single user, without
+//! authentication, hence listening limited to the local machine so that no
+//! other machine of the network can reach the saved connections.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -10,67 +10,67 @@ use std::path::PathBuf;
 use anyhow::{Context, bail};
 use clap::Parser;
 
-/// Nom du dossier de données créé dans le dossier de données de l'utilisateur.
+/// Name of the data folder created in the user's data folder.
 const DATA_DIR_NAME: &str = "Prisme";
 
-/// Fonctionnement du premier lancement, affiché à la fin de `prisme --help`.
+/// How the first launch works, shown at the end of `prisme --help`.
 const AFTER_HELP: &str = "\
-Premier lancement :
-  Quand la base interne n'existe pas encore dans le dossier de données,
-  Prisme demande dans le terminal le port d'écoute (8484 par défaut, sur
-  127.0.0.1) et l'adresse e-mail de l'utilisateur (me@local par défaut).
-  Les réponses sont enregistrées dans la base interne et relues aux
-  lancements suivants ; --setup repose les questions.
-  Une option --listen ou --user-email remplace sa question, sans être
-  enregistrée. Sans terminal interactif, les valeurs par défaut s'appliquent.";
+First launch:
+  When the internal database does not exist yet in the data folder, Prisme
+  asks in the terminal for the listening port (8484 by default, on
+  127.0.0.1) and the user's email address (me@local by default). The
+  answers are saved in the internal database and read again on the next
+  launches; --setup asks the questions again.
+  A --listen or --user-email option replaces its question, without being
+  saved. Without an interactive terminal, the defaults apply.";
 
-/// Options de lancement de Prisme.
+/// Launch options of Prisme.
 #[derive(Debug, Parser)]
 #[command(
     name = "prisme",
     version,
-    about = "Client web multi-bases de données en notebook",
+    about = "Multi-database web client shaped like a notebook",
     after_help = AFTER_HELP,
     disable_version_flag = true
 )]
 pub struct Config {
     /// Print version
-    // Option de version propre à Prisme : -v en court (clap propose -V), --version en long.
+    // Prisme's own version option: -v as the short form (clap offers -V), --version as the long one.
     #[arg(short = 'v', long, action = clap::ArgAction::Version)]
     version: (),
 
-    /// Adresse d'écoute du serveur web, pour ce lancement. Elle doit être
-    /// locale (127.0.0.1 ou ::1). Par défaut : 127.0.0.1 et le port
-    /// enregistré (8484 au départ).
+    /// Listening address of the web server, for this launch. It must be
+    /// local (127.0.0.1 or ::1). Default: 127.0.0.1 and the saved port (8484
+    /// at first).
     #[arg(long)]
     pub listen: Option<SocketAddr>,
 
-    /// Dossier de données (base interne et clef maîtresse).
-    /// Par défaut : %APPDATA%\Prisme sous Windows, ~/.local/share/Prisme sous Linux.
+    /// Data folder (internal database and master key).
+    /// Default: %APPDATA%\Prisme on Windows, ~/.local/share/Prisme on Linux.
     #[arg(long)]
     pub data_dir: Option<PathBuf>,
 
-    /// Adresse e-mail de l'utilisateur, pour ce lancement (créé s'il
-    /// n'existe pas). Par défaut : l'utilisateur enregistré.
+    /// Email address of the user, for this launch (created if it does not
+    /// exist). Default: the saved user.
     #[arg(long)]
     pub user_email: Option<String>,
 
-    /// Repose les questions du premier lancement (port et adresse e-mail)
-    /// et enregistre les nouvelles réponses.
+    /// Asks the first-launch questions again (port and email address) and
+    /// saves the new answers.
     #[arg(long)]
     pub setup: bool,
 }
 
 impl Config {
-    /// Vérifie la cohérence des options : sans authentification, l'écoute
-    /// doit être locale ; l'adresse e-mail doit être bien formée.
+    /// Checks the consistency of the options: without authentication,
+    /// listening must be local; the email address must be well formed.
     pub fn validate(&self) -> anyhow::Result<()> {
         if let Some(listen) = self.listen
             && !listen.ip().is_loopback()
         {
             bail!(
-                "l'adresse {listen} est accessible depuis le réseau : sans authentification, \
-                 Prisme n'écoute que sur 127.0.0.1 ou ::1"
+                "the address {listen} is reachable from the network: without authentication, \
+                 Prisme only listens on 127.0.0.1 or ::1"
             );
         }
         if let Some(email) = &self.user_email {
@@ -79,13 +79,13 @@ impl Config {
         Ok(())
     }
 
-    /// Renvoie le dossier de données : celui de `--data-dir`, sinon le dossier par défaut.
+    /// Returns the data folder: that of `--data-dir`, otherwise the default folder.
     pub fn data_dir(&self) -> anyhow::Result<PathBuf> {
         match &self.data_dir {
             Some(dir) => Ok(dir.clone()),
             None => dirs::data_dir()
                 .map(|dir| dir.join(DATA_DIR_NAME))
-                .context("dossier de données de l'utilisateur introuvable : préciser --data-dir"),
+                .context("user data folder not found: specify --data-dir"),
         }
     }
 }

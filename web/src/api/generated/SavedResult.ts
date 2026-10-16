@@ -2,42 +2,42 @@
 import type { SavedColumns } from "./SavedColumns";
 
 /**
- * État enregistré d'un résultat, rempli au fil des messages de la session.
+ * Saved state of a result, filled as the session's messages arrive.
  */
 export type SavedResult = { 
 /**
- * La requête est-elle partie ?
+ * Has the query started?
  */
 started: boolean, 
 /**
- * La requête est-elle terminée, avec succès ou en échec ?
+ * Has the query ended, successfully or not?
  */
 done: boolean, 
 /**
- * Message d'échec, absent si la requête a réussi ou tourne encore.
+ * Failure message, absent if the query succeeded or is still running.
  */
 error: string | null, 
 /**
- * Colonnes, absentes tant qu'elles ne sont pas reçues (ou sans résultat).
+ * Columns, absent as long as they are not received (or without a result).
  */
 columns: SavedColumns | null, 
 /**
- * Nombre de lignes reçues.
+ * Number of rows received.
  */
 row_count: number, 
 /**
- * Le résultat a-t-il été tronqué par la limite ?
+ * Was the result truncated by the limit?
  */
 truncated: boolean, 
 /**
- * Lignes modifiées par une écriture.
+ * Rows affected by a write.
  */
 affected_rows: number, 
 /**
- * Temps de transfert des lignes, mesuré par le serveur, en microsecondes.
+ * Transfer time of the rows, measured by the server, in microseconds.
  */
 transfer_us: number, 
 /**
- * Volume des messages du résultat, en octets.
+ * Size of the result's messages, in bytes.
  */
 bytes: number, };

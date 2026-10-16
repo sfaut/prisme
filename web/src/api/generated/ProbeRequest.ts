@@ -2,15 +2,15 @@
 import type { NewConnection } from "./NewConnection";
 
 /**
- * Paramètres saisis à tester, avant leur enregistrement.
+ * Typed settings to test, before saving them.
  */
 export type ProbeRequest = { 
 /**
- * Connexion telle que saisie ; seul le nom n'est pas utilisé.
+ * Connection as typed; only the name is not used.
  */
 connection: NewConnection, 
 /**
- * Connexion enregistrée en cours de modification : si le mot de passe
- * saisi est vide, le sien est repris. Absente pour une création.
+ * Saved connection being edited: if the typed password is empty, its own
+ * is used. Absent for a creation.
  */
 saved_id?: number, };

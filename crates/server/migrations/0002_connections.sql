@@ -1,9 +1,10 @@
--- Connexions enregistrées vers les bases cibles.
--- Seul le mot de passe est chiffré (AES-256-GCM, voir src/secrets.rs) : le reste
--- est en clair, pour que l'explorateur liste les connexions sans rien déchiffrer.
--- engine : famille de moteurs. 'mysql' couvre MySQL et MariaDB, dont la variante
--- est détectée à la connexion. Les longueurs maximales sont reprises dans la
--- validation de src/connections.rs.
+-- Saved connections to the target databases.
+-- Only the password is encrypted (AES-256-GCM, see src/secrets.rs): the rest
+-- is in clear, so that the explorer lists the connections without decrypting
+-- anything.
+-- engine: family of engines. 'mysql' covers MySQL and MariaDB, whose flavor
+-- is detected on connection. The maximum lengths are repeated in the
+-- validation of src/connections.rs.
 CREATE TABLE connections (
     id INTEGER PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,

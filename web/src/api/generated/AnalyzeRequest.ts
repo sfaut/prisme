@@ -2,14 +2,14 @@
 import type { Flavor } from "./Flavor";
 
 /**
- * Texte à analyser.
+ * Text to analyse.
  */
 export type AnalyzeRequest = { 
 /**
- * Texte complet de l'éditeur.
+ * Whole text of the editor.
  */
 sql: string, 
 /**
- * Variante du serveur de la session, qui fixe le dialecte d'analyse.
+ * Flavor of the session's server, which sets the dialect of the analysis.
  */
 flavor: Flavor, };

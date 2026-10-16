@@ -3,35 +3,35 @@ import type { ColumnTypeInfo } from "./ColumnTypeInfo";
 import type { LimitReport } from "./LimitReport";
 
 /**
- * Colonnes d'un résultat et ce qui les accompagne (message `columns`).
+ * Columns of a result and what comes with them (`columns` message).
  */
 export type SavedColumns = { 
 /**
- * Noms des colonnes.
+ * Names of the columns.
  */
 columns: Array<string>, 
 /**
- * Pour chaque colonne, ses valeurs s'alignent-elles à droite ?
+ * For each column, are its values right-aligned?
  */
 right_aligned: Array<boolean>, 
 /**
- * Type de chaque colonne ; vide pour un résultat enregistré avant le
- * typage des colonnes.
+ * Type of each column; empty for a result saved before columns were
+ * typed.
  */
 types: Array<ColumnTypeInfo>, 
 /**
- * Texte réellement exécuté.
+ * Text actually run.
  */
 sql: string, 
 /**
- * Traitement de la limite de lignes.
+ * Handling of the row limit.
  */
 limit: LimitReport, 
 /**
- * Nombre de lignes au plus, `null` si inconnu.
+ * Maximum number of rows, `null` if unknown.
  */
 expected_rows: number | null, 
 /**
- * Temps d'exécution mesuré par le serveur, en microsecondes.
+ * Execution time measured by the server, in microseconds.
  */
 execution_us: number, };

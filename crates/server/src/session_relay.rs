@@ -1,26 +1,26 @@
-//! Relais entre une session de requêtes et le WebSocket qui y est rattaché.
+//! Relay between a query session and the WebSocket attached to it.
 //!
-//! Une session survit à son WebSocket : la page peut être rafraîchie, ou le
-//! navigateur fermé puis rouvert, sans perdre la connexion au serveur cible,
-//! ses transactions ni ses requêtes en cours. Le relais est la tâche qui
-//! fait le lien :
+//! A session outlives its WebSocket: the page can be reloaded, or the browser
+//! closed then reopened, without losing the connection to the target server,
+//! its transactions or its running queries. The relay is the task that links
+//! them:
 //!
-//! - il vide la file des messages de la session (`query_session.rs`), les
-//!   montre à l'enregistreur des résultats de l'éditeur (`recorder.rs`), puis
-//!   les envoie au WebSocket rattaché, s'il y en a un ; sans WebSocket, les
-//!   messages sont seulement enregistrés ;
-//! - il lit les messages du client (`read_messages`) et les transmet à la
-//!   session ; un arrêt (`cancel`) est traité aussitôt ;
-//! - un nouveau WebSocket remplace le précédent (fermé) et reçoit d'abord
-//!   l'état de la session : `ready`, avec la base en cours, puis `resume`, le
-//!   dernier lot où il en est ;
-//! - sans WebSocket pendant le délai de garde, il arrête la session : les
-//!   requêtes en cours sont interrompues, la connexion au serveur cible est
-//!   fermée (une transaction ouverte est alors annulée par le serveur).
+//! - it drains the session's message queue (`query_session.rs`), shows the
+//!   messages to the editor's result recorder (`recorder.rs`), then sends
+//!   them to the attached WebSocket, if there is one; without a WebSocket,
+//!   messages are only recorded;
+//! - it reads the client's messages (`read_messages`) and passes them on to
+//!   the session; a stop (`cancel`) is handled at once;
+//! - a new WebSocket replaces the previous one (closed) and first receives
+//!   the state of the session: `ready`, with the current database, then
+//!   `resume`, the last batch where it stands;
+//! - without a WebSocket for the keep-alive delay, it stops the session: the
+//!   running queries are interrupted, the connection to the target server is
+//!   closed (an open transaction is then rolled back by the server).
 //!
-//! Tous les messages passent par le relais, dans l'ordre : ce qu'il envoie à
-//! un nouveau WebSocket est donc exactement l'état atteint par les messages
-//! déjà relayés, et les suivants le continuent sans doublon.
+//! All messages go through the relay, in order: what it sends to a new
+//! WebSocket is therefore exactly the state reached by the messages already
+//! relayed, and the next ones continue it without duplicates.
 
 use std::future::pending;
 use std::sync::Arc;
@@ -37,90 +37,90 @@ use tokio::time::{Instant, sleep_until};
 use crate::query_session::{Cancellation, ClientMessage, ServerMessage, SessionRequest};
 use crate::recorder::Recorder;
 
-/// Ordre transmis au relais par le registre des sessions (`sessions.rs`).
+/// Order passed to the relay by the session registry (`sessions.rs`).
 pub(crate) enum Command {
-    /// Rattacher ce WebSocket à la session, à la place du précédent.
+    /// Attach this WebSocket to the session, instead of the previous one.
     Attach(Box<WebSocket>),
-    /// Arrêter la session.
+    /// Stop the session.
     Stop,
 }
 
-/// Accès à une session ouverte : y raccrocher un WebSocket, ou l'arrêter.
+/// Access to an open session: reattach a WebSocket to it, or stop it.
 pub(crate) struct SessionHandle {
-    /// Vers le relais de la session.
+    /// To the relay of the session.
     commands: mpsc::UnboundedSender<Command>,
 }
 
 impl SessionHandle {
-    /// Accès à la session dont le relais lit `commands`.
+    /// Access to the session whose relay reads `commands`.
     pub(crate) fn new(commands: mpsc::UnboundedSender<Command>) -> Self {
         Self { commands }
     }
 
-    /// Raccroche `socket` à la session. Si la session est déjà terminée, le
-    /// WebSocket est rendu, pour en ouvrir une autre.
+    /// Reattaches `socket` to the session. If the session has already ended,
+    /// the WebSocket is given back, to open another one.
     pub(crate) fn attach(&self, socket: WebSocket) -> Result<(), Box<WebSocket>> {
         self.commands
             .send(Command::Attach(Box::new(socket)))
             .map_err(|error| match error.0 {
                 Command::Attach(socket) => socket,
-                Command::Stop => unreachable!("seul un rattachement a été envoyé"),
+                Command::Stop => unreachable!("only an attachment was sent"),
             })
     }
 
-    /// Arrête la session : requêtes en cours interrompues, connexion fermée.
+    /// Stops the session: running queries interrupted, connection closed.
     pub(crate) fn stop(&self) {
         let _ = self.commands.send(Command::Stop);
     }
 }
 
-/// État de la session qu'un nouveau WebSocket reçoit avant la suite.
+/// State of the session that a new WebSocket receives before what follows.
 #[derive(Default)]
 struct Replay {
-    /// Identité du serveur cible, connue une fois la session prête.
+    /// Identity of the target server, known once the session is ready.
     server: Option<ServerInfo>,
-    /// Base en cours de la session.
+    /// Current database of the session.
     database: Option<String>,
-    /// Un lot est-il en cours ?
+    /// Is a batch running?
     running: bool,
 }
 
-/// Relais d'une session, construit par `query_session::start`.
+/// Relay of a session, built by `query_session::start`.
 pub(crate) struct Relay {
-    /// File des messages de la session.
+    /// Message queue of the session.
     pub(crate) messages: mpsc::Receiver<ServerMessage>,
-    /// Ordres du registre des sessions.
+    /// Orders of the session registry.
     pub(crate) commands: mpsc::UnboundedReceiver<Command>,
-    /// Vers la session : demandes d'exécution et de changement de base.
+    /// To the session: requests to run and to change the database.
     pub(crate) requests: mpsc::Sender<SessionRequest>,
-    /// Vers la file des messages, pour les erreurs de lecture des messages du
-    /// client. Faible : la file se ferme quand la session s'arrête, même si
-    /// un WebSocket est encore lu.
+    /// To the message queue, for errors reading the client's messages. Weak:
+    /// the queue closes when the session stops, even if a WebSocket is still
+    /// being read.
     pub(crate) outbox: mpsc::WeakSender<ServerMessage>,
-    /// Arrêt des requêtes en cours.
+    /// Stopping of the running queries.
     pub(crate) cancellation: Arc<Cancellation>,
-    /// Paramètres de connexion, pour interrompre les requêtes.
+    /// Connection settings, to interrupt the queries.
     pub(crate) target: MysqlTarget,
-    /// Enregistreur des résultats de l'éditeur, absent hors éditeur.
+    /// Recorder of the editor's results, absent outside an editor.
     pub(crate) recorder: Option<Recorder>,
-    /// Signal d'arrêt de la session.
+    /// Stop signal of the session.
     pub(crate) stop: watch::Sender<bool>,
-    /// Délai de garde de la session sans WebSocket.
+    /// Keep-alive delay of the session without a WebSocket.
     pub(crate) keep_alive: Duration,
-    /// Appelée une fois, quand la session commence à s'arrêter.
+    /// Called once, when the session starts stopping.
     pub(crate) on_end: Option<Box<dyn FnOnce() + Send + Sync>>,
 }
 
-/// WebSocket rattaché : écriture des messages et tâche de lecture.
+/// Attached WebSocket: writing of the messages and reading task.
 struct Attached {
-    /// Écriture vers le client.
+    /// Writing to the client.
     sink: SplitSink<WebSocket, Message>,
-    /// Lecture des messages du client.
+    /// Reading of the client's messages.
     reader: JoinHandle<()>,
 }
 
 impl Relay {
-    /// Relaie les messages de la session, d'abord vers `socket`, jusqu'à son arrêt.
+    /// Relays the session's messages, first to `socket`, until it stops.
     pub(crate) async fn run(mut self, socket: WebSocket) {
         let mut replay = Replay::default();
         let mut attached = Some(self.attach(socket));
@@ -176,7 +176,7 @@ impl Relay {
         }
     }
 
-    /// Rattache `socket` : la lecture de ses messages démarre.
+    /// Attaches `socket`: the reading of its messages starts.
     fn attach(&self, socket: WebSocket) -> Attached {
         let (sink, incoming) = socket.split();
         let reader = tokio::spawn(read_messages(
@@ -189,15 +189,15 @@ impl Relay {
         Attached { sink, reader }
     }
 
-    /// Envoie à un WebSocket qui se raccroche l'état de la session : `ready`
-    /// si elle est prête, puis le dernier lot de l'éditeur s'il y en a un.
+    /// Sends a reattaching WebSocket the state of the session: `ready` if it
+    /// is ready, then the editor's last batch if there is one.
     async fn send_replay(
         &self,
         sink: &mut SplitSink<WebSocket, Message>,
         replay: &Replay,
     ) -> Result<(), axum::Error> {
         let Some(server) = &replay.server else {
-            // Session encore en cours d'ouverture : `ready` viendra avec la suite.
+            // Session still opening: `ready` will come with what follows.
             return Ok(());
         };
         let ready = ServerMessage::Ready {
@@ -218,8 +218,8 @@ impl Relay {
         Ok(())
     }
 
-    /// Prend note d'un message avant son envoi : enregistrement du résultat,
-    /// état à rejouer pour un prochain WebSocket.
+    /// Takes note of a message before sending it: recording of the result,
+    /// state to replay for a next WebSocket.
     async fn observe(&self, message: &mut ServerMessage, replay: &mut Replay) {
         if let Some(recorder) = &self.recorder {
             recorder.observe(message).await;
@@ -240,10 +240,10 @@ impl Relay {
         }
     }
 
-    /// Commence l'arrêt de la session : elle cesse de lire les demandes, ses
-    /// requêtes en cours sont interrompues, et elle disparaît du registre
-    /// (un nouveau WebSocket ouvrira une autre session). Le relais continue
-    /// de vider la file jusqu'à la fin de la session.
+    /// Starts stopping the session: it stops reading requests, its running
+    /// queries are interrupted, and it disappears from the registry (a new
+    /// WebSocket will open another session). The relay keeps draining the
+    /// queue until the end of the session.
     async fn begin_stop(&mut self, deadline: &mut Option<Instant>) {
         *deadline = None;
         if *self.stop.borrow() {
@@ -258,15 +258,15 @@ impl Relay {
 }
 
 impl Attached {
-    /// Ferme le WebSocket et arrête la lecture de ses messages.
+    /// Closes the WebSocket and stops reading its messages.
     async fn close(mut self) {
         self.reader.abort();
         let _ = self.sink.close().await;
     }
 }
 
-/// Attend la fin de la lecture des messages du WebSocket rattaché (le client
-/// s'est déconnecté) ; sans WebSocket, n'arrive jamais.
+/// Waits for the end of the reading of the attached WebSocket's messages (the
+/// client disconnected); without a WebSocket, never happens.
 async fn reader_end(attached: &mut Option<Attached>) {
     match attached {
         Some(current) => {
@@ -276,7 +276,7 @@ async fn reader_end(attached: &mut Option<Attached>) {
     }
 }
 
-/// Attend l'échéance `deadline` ; sans échéance, n'arrive jamais.
+/// Waits for `deadline`; without a deadline, never happens.
 async fn until(deadline: Option<Instant>) {
     match deadline {
         Some(deadline) => sleep_until(deadline).await,
@@ -284,20 +284,20 @@ async fn until(deadline: Option<Instant>) {
     }
 }
 
-/// Envoie un message au client, en JSON.
+/// Sends a message to the client, in JSON.
 async fn send(
     sink: &mut SplitSink<WebSocket, Message>,
     message: &ServerMessage,
 ) -> Result<(), axum::Error> {
-    let json = serde_json::to_string(message).expect("message sérialisable");
+    let json = serde_json::to_string(message).expect("a serialisable message");
     sink.send(Message::Text(json.into())).await
 }
 
-/// Lit les messages du client tant que son WebSocket est ouvert.
+/// Reads the client's messages as long as its WebSocket is open.
 ///
-/// Un arrêt (`cancel`, `cancel_query`) est traité aussitôt, même pendant
-/// l'exécution d'un lot ; une demande d'exécution (`run`) ou de changement
-/// de base (`use`) est transmise à la session.
+/// A stop (`cancel`, `cancel_query`) is handled at once, even while a batch
+/// runs; a request to run (`run`) or to change the database (`use`) is passed
+/// on to the session.
 async fn read_messages(
     mut incoming: SplitStream<WebSocket>,
     requests: mpsc::Sender<SessionRequest>,
@@ -307,7 +307,7 @@ async fn read_messages(
 ) {
     while let Some(Ok(message)) = incoming.next().await {
         let Message::Text(text) = message else {
-            // Ping, pong et binaire sont ignorés ; Close termine la boucle au tour suivant.
+            // Ping, pong and binary are ignored; Close ends the loop on the next turn.
             continue;
         };
         match serde_json::from_str::<ClientMessage>(text.as_str()) {
@@ -331,7 +331,7 @@ async fn read_messages(
                 };
                 let message = ServerMessage::Error {
                     query: None,
-                    message: format!("message invalide : {error}"),
+                    message: format!("invalid message: {error}"),
                 };
                 if sender.send(message).await.is_err() {
                     break;

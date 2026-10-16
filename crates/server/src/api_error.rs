@@ -1,8 +1,7 @@
-//! Erreurs de l'API et leur traduction en réponses HTTP.
+//! Errors of the API and their translation into HTTP responses.
 //!
-//! Chaque erreur devient un statut HTTP et un corps JSON `{"error": "message"}`.
-//! Les erreurs internes sont détaillées dans le journal, jamais dans la
-//! réponse.
+//! Each error becomes an HTTP status and a JSON body `{"error": "message"}`.
+//! Internal errors are detailed in the log, never in the response.
 
 use axum::Json;
 use axum::http::StatusCode;
@@ -16,33 +15,33 @@ use crate::connections::ConnectionsError;
 use crate::editors::EditorsError;
 use crate::settings::SettingsError;
 
-/// Corps JSON d'une réponse en erreur.
+/// JSON body of an error response.
 #[derive(Serialize, TS)]
 #[ts(export)]
 pub struct ErrorBody {
-    /// Message lisible par l'utilisateur.
+    /// Message readable by the user.
     pub error: String,
 }
 
-/// Erreur renvoyée par une route de l'API.
+/// Error returned by an API route.
 #[derive(Debug)]
 pub enum ApiError {
-    /// Saisie invalide (400).
+    /// Invalid input (400).
     BadRequest(String),
-    /// Ressource absente, ou appartenant à un autre utilisateur (404).
+    /// Missing resource, or one belonging to another user (404).
     NotFound,
-    /// Conflit avec l'existant, par exemple un nom déjà pris (409).
+    /// Conflict with what exists, for example a name already taken (409).
     Conflict(String),
-    /// Le serveur cible a refusé ou échoué (502).
+    /// The target server refused or failed (502).
     BadGateway(String),
-    /// Le serveur cible n'a pas répondu à temps (504).
+    /// The target server did not answer in time (504).
     GatewayTimeout(String),
-    /// Erreur interne, déjà inscrite au journal (500).
+    /// Internal error, already written to the log (500).
     Internal,
 }
 
 impl From<ConnectionsError> for ApiError {
-    /// Traduit une erreur de gestion des connexions en erreur HTTP.
+    /// Translates a connection management error into an HTTP error.
     fn from(error: ConnectionsError) -> Self {
         match error {
             ConnectionsError::Invalid(message) => Self::BadRequest(message),
@@ -56,7 +55,7 @@ impl From<ConnectionsError> for ApiError {
 }
 
 impl From<EditorsError> for ApiError {
-    /// Traduit une erreur de gestion des éditeurs en erreur HTTP.
+    /// Translates an editor management error into an HTTP error.
     fn from(error: EditorsError) -> Self {
         match error {
             EditorsError::Invalid(message) => Self::BadRequest(message),
@@ -69,7 +68,7 @@ impl From<EditorsError> for ApiError {
 }
 
 impl From<SettingsError> for ApiError {
-    /// Traduit une erreur de gestion des réglages en erreur HTTP.
+    /// Translates a settings management error into an HTTP error.
     fn from(error: SettingsError) -> Self {
         match error {
             SettingsError::InvalidRowLimit(_) => Self::BadRequest(error.to_string()),
@@ -82,7 +81,7 @@ impl From<SettingsError> for ApiError {
 }
 
 impl From<MysqlError> for ApiError {
-    /// Traduit un échec du serveur cible : 504 s'il n'a pas répondu à temps, 502 sinon.
+    /// Translates a failure of the target server: 504 if it did not answer in time, 502 otherwise.
     fn from(error: MysqlError) -> Self {
         match error {
             MysqlError::ConnectTimeout(message) => Self::GatewayTimeout(message),
@@ -92,17 +91,17 @@ impl From<MysqlError> for ApiError {
 }
 
 impl IntoResponse for ApiError {
-    /// Construit la réponse HTTP : statut et corps JSON `{"error": "message"}`.
+    /// Builds the HTTP response: status and JSON body `{"error": "message"}`.
     fn into_response(self) -> Response {
         let (status, message) = match self {
             Self::BadRequest(message) => (StatusCode::BAD_REQUEST, message),
-            Self::NotFound => (StatusCode::NOT_FOUND, "ressource introuvable".to_string()),
+            Self::NotFound => (StatusCode::NOT_FOUND, "resource not found".to_string()),
             Self::Conflict(message) => (StatusCode::CONFLICT, message),
             Self::BadGateway(message) => (StatusCode::BAD_GATEWAY, message),
             Self::GatewayTimeout(message) => (StatusCode::GATEWAY_TIMEOUT, message),
             Self::Internal => (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                "erreur interne, voir le journal du serveur".to_string(),
+                "internal error, see the server log".to_string(),
             ),
         };
         (status, Json(ErrorBody { error: message })).into_response()

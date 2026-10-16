@@ -1,11 +1,11 @@
--- Éditeurs SQL ouverts par chaque utilisateur (onglets du haut de l'écran),
--- avec leur texte, leur connexion et leurs onglets de résultat : tout
--- survit à un rafraîchissement de la page ou à la fermeture du navigateur.
+-- SQL editors opened by each user (tabs at the top of the screen), with
+-- their text, their connection and their result tabs: everything survives a
+-- page reload or the browser being closed.
 --
--- connection_id : connexion de l'éditeur ; NULL tant qu'aucune n'est choisie,
--- et quand la connexion est supprimée (la clef étrangère l'exige).
--- closed_at : vide pour un éditeur ouvert ; date de fermeture sinon. Un
--- éditeur fermé reste rouvrable 24 heures, puis il est purgé (src/editors.rs).
+-- connection_id: connection of the editor; NULL as long as none is chosen,
+-- and when the connection is deleted (the foreign key requires it).
+-- closed_at: empty for an open editor; closing date otherwise. A closed
+-- editor stays reopenable for 24 hours, then it is purged (src/editors.rs).
 CREATE TABLE editors (
     id INTEGER PRIMARY KEY,
     user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
@@ -20,9 +20,9 @@ CREATE TABLE editors (
 
 CREATE INDEX editors_user ON editors (user_id, closed_at);
 
--- Onglets de résultat d'un éditeur, enregistrés par le serveur au fil de
--- l'exécution. result : état du résultat en JSON (colonnes, durées, erreur...,
--- voir SavedResult dans src/editors.rs) ; rows : lignes reçues, en JSON.
+-- Result tabs of an editor, saved by the server as the run goes.
+-- result: state of the result in JSON (columns, durations, error..., see
+-- SavedResult in src/editors.rs); rows: rows received, in JSON.
 CREATE TABLE result_tabs (
     id INTEGER PRIMARY KEY,
     editor_id INTEGER NOT NULL REFERENCES editors (id) ON DELETE CASCADE,

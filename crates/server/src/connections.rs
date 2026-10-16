@@ -1,19 +1,18 @@
-//! Connexions enregistrées vers les bases cibles.
+//! Saved connections to the target databases.
 //!
-//! Le mot de passe est chiffré avec la clef maîtresse avant d'être stocké, le
-//! reste est en clair (voir `docs/V1.md`, section 2.8). Chaque connexion
-//! appartient à un utilisateur : toutes les fonctions filtrent sur son
-//! identifiant. Fonctions synchrones (`rusqlite`), appelées depuis des tâches
-//! bloquantes.
+//! The password is encrypted with the master key before being stored, the
+//! rest is in clear (see `docs/V1.md`, section 2.8). Each connection belongs
+//! to a user: all the functions filter on their id. Synchronous functions
+//! (`rusqlite`), called from blocking tasks.
 //!
-//! Une connexion peut porter des requêtes à exécuter à l'ouverture de chaque
-//! connexion vers la base (`SET NAMES utf8mb4; SET SESSION sql_mode = ...`) :
-//! seuls les réglages de la session y sont permis (voir
+//! A connection can carry queries to run each time a connection to the
+//! database opens (`SET NAMES utf8mb4; SET SESSION sql_mode = ...`): only
+//! session settings are allowed there (see
 //! `prisme_dialects::classify::session_setting_refusal`).
 //!
-//! Elle règle aussi le délai pendant lequel une session de requêtes reste
-//! ouverte après la fermeture de sa page (voir `sessions.rs`), et retient
-//! la variante du serveur (MySQL ou MariaDB) vue à la dernière connexion.
+//! It also sets the delay during which a query session stays open after its
+//! page is closed (see `sessions.rs`), and remembers the server's flavor
+//! (MySQL or MariaDB) seen on the last connection.
 
 use prisme_connectors::mysql::{Flavor, MysqlTarget};
 use prisme_dialects::Dialect;
@@ -26,142 +25,142 @@ use ts_rs::TS;
 use crate::master_key::MasterKey;
 use crate::secrets::{self, SecretError};
 
-/// Longueur maximale du nom d'une connexion, en caractères.
+/// Maximum length of a connection's name, in characters.
 const NAME_MAX_LENGTH: usize = 100;
 
-/// Longueur maximale d'un nom d'hôte (limite DNS), en caractères.
+/// Maximum length of a host name (DNS limit), in characters.
 const HOST_MAX_LENGTH: usize = 253;
 
-/// Longueur maximale d'un compte de connexion (limite MariaDB), en caractères.
+/// Maximum length of a connection account (MariaDB limit), in characters.
 const USERNAME_MAX_LENGTH: usize = 80;
 
-/// Longueur maximale d'un nom de base (limite MySQL et MariaDB), en caractères.
+/// Maximum length of a database name (MySQL and MariaDB limit), in characters.
 const DATABASE_NAME_MAX_LENGTH: usize = 64;
 
-/// Longueur maximale des requêtes à la connexion, en caractères.
+/// Maximum length of the on-connect queries, in characters.
 const INIT_SQL_MAX_LENGTH: usize = 4000;
 
-/// Délai de garde maximal d'une session détachée, en minutes (24 heures).
+/// Maximum keep-alive delay of a detached session, in minutes (24 hours).
 const SESSION_TIMEOUT_MAX_MINUTES: u32 = 1440;
 
-/// Délai de garde d'une session détachée, en minutes, quand la saisie n'en donne pas.
+/// Keep-alive delay of a detached session, in minutes, when the input gives none.
 const SESSION_TIMEOUT_DEFAULT_MINUTES: u32 = 5;
 
-/// Famille de moteurs des connexions MySQL et MariaDB.
+/// Family of engines of the MySQL and MariaDB connections.
 const ENGINE_MYSQL: &str = "mysql";
 
-/// Connexion à enregistrer, telle que saisie par l'utilisateur.
+/// Connection to save, as typed by the user.
 #[derive(Deserialize, TS)]
 #[ts(export)]
 pub struct NewConnection {
-    /// Nom choisi par l'utilisateur, unique parmi ses connexions.
+    /// Name chosen by the user, unique among their connections.
     pub name: String,
-    /// Nom d'hôte ou adresse IP du serveur.
+    /// Host name or IP address of the server.
     pub host: String,
-    /// Port TCP du serveur.
+    /// TCP port of the server.
     pub port: u16,
-    /// Compte de connexion.
+    /// Connection account.
     pub username: String,
-    /// Mot de passe du compte, chiffré avant stockage.
+    /// Password of the account, encrypted before storage.
     #[ts(type = "string")]
     pub password: SecretString,
-    /// Base sélectionnée à la connexion. Absente ou vide : aucune.
+    /// Database selected on connection. Absent or empty: none.
     #[serde(default)]
     #[ts(optional, as = "Option<String>")]
     pub database_name: String,
-    /// Requêtes à exécuter à l'ouverture de chaque connexion, séparées par
-    /// des « ; » : réglages de la session seulement. Absentes ou vides : aucune.
+    /// Queries to run each time a connection opens, separated by ";":
+    /// session settings only. Absent or empty: none.
     #[serde(default)]
     #[ts(optional, as = "Option<String>")]
     pub init_sql: String,
-    /// Délai pendant lequel une session reste ouverte après la fermeture de
-    /// sa page, en minutes (0 : fermée aussitôt). Absent : 5 minutes.
+    /// Delay during which a session stays open after its page is closed, in
+    /// minutes (0: closed at once). Absent: 5 minutes.
     #[serde(default = "default_session_timeout")]
     #[ts(optional, as = "Option<u32>")]
     pub session_timeout_minutes: u32,
-    /// L'explorateur affiche-t-il les bases système (`information_schema`,
-    /// `mysql`...) ? Absent : oui.
+    /// Does the explorer show the system databases (`information_schema`,
+    /// `mysql`...)? Absent: yes.
     #[serde(default = "default_show_system_schemas")]
     #[ts(optional, as = "Option<bool>")]
     pub show_system_schemas: bool,
 }
 
-/// Affichage des bases système par défaut, pour la désérialisation de `NewConnection`.
+/// Default display of the system databases, for deserialising `NewConnection`.
 fn default_show_system_schemas() -> bool {
     true
 }
 
-/// Délai de garde par défaut, pour la désérialisation de `NewConnection`.
+/// Default keep-alive delay, for deserialising `NewConnection`.
 fn default_session_timeout() -> u32 {
     SESSION_TIMEOUT_DEFAULT_MINUTES
 }
 
-/// Paramètres saisis à tester, avant leur enregistrement.
+/// Typed settings to test, before saving them.
 #[derive(Deserialize, TS)]
 #[ts(export)]
 pub struct ProbeRequest {
-    /// Connexion telle que saisie ; seul le nom n'est pas utilisé.
+    /// Connection as typed; only the name is not used.
     pub connection: NewConnection,
-    /// Connexion enregistrée en cours de modification : si le mot de passe
-    /// saisi est vide, le sien est repris. Absente pour une création.
+    /// Saved connection being edited: if the typed password is empty, its own
+    /// is used. Absent for a creation.
     #[serde(default)]
     #[ts(optional)]
     pub saved_id: Option<i64>,
 }
 
-/// Connexion enregistrée, sans son mot de passe.
+/// Saved connection, without its password.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct ConnectionSummary {
-    /// Identifiant de la connexion.
+    /// Id of the connection.
     pub id: i64,
-    /// Nom choisi par l'utilisateur.
+    /// Name chosen by the user.
     pub name: String,
-    /// Famille de moteurs (`mysql` pour MySQL et MariaDB).
+    /// Family of engines (`mysql` for MySQL and MariaDB).
     pub engine: String,
-    /// Nom d'hôte ou adresse IP du serveur.
+    /// Host name or IP address of the server.
     pub host: String,
-    /// Port TCP du serveur.
+    /// TCP port of the server.
     pub port: u16,
-    /// Compte de connexion.
+    /// Connection account.
     pub username: String,
-    /// Base sélectionnée à la connexion, chaîne vide si aucune.
+    /// Database selected on connection, empty string if none.
     pub database_name: String,
-    /// Requêtes exécutées à l'ouverture de chaque connexion, chaîne vide si aucune.
+    /// Queries run each time a connection opens, empty string if none.
     pub init_sql: String,
-    /// Délai de garde d'une session après la fermeture de sa page, en minutes.
+    /// Keep-alive delay of a session after its page is closed, in minutes.
     pub session_timeout_minutes: u32,
-    /// L'explorateur affiche-t-il les bases système ?
+    /// Does the explorer show the system databases?
     pub show_system_schemas: bool,
-    /// Variante du serveur vue à la dernière connexion réussie, `null` si
-    /// la connexion n'a jamais abouti.
+    /// Flavor of the server seen on the last successful connection, `null`
+    /// if the connection never succeeded.
     pub server_flavor: Option<Flavor>,
-    /// Date d'enregistrement, en UTC au format ISO 8601.
+    /// Date it was saved, in UTC, in ISO 8601 format.
     pub created_at: String,
 }
 
-/// Erreurs de gestion des connexions enregistrées.
+/// Errors managing saved connections.
 #[derive(Debug, thiserror::Error)]
 pub enum ConnectionsError {
-    /// Saisie invalide : le message dit quel champ et pourquoi.
+    /// Invalid input: the message says which field and why.
     #[error("{0}")]
     Invalid(String),
 
-    /// L'utilisateur a déjà une connexion de ce nom.
-    #[error("une connexion nommée « {0} » existe déjà")]
+    /// The user already has a connection with this name.
+    #[error("a connection named \"{0}\" already exists")]
     DuplicateName(String),
 
-    /// Chiffrement ou déchiffrement du mot de passe en échec.
+    /// Encryption or decryption of the password failed.
     #[error(transparent)]
     Secret(#[from] SecretError),
 
-    /// Erreur de la base interne.
-    #[error("base interne : {0}")]
+    /// Error of the internal database.
+    #[error("internal database: {0}")]
     Sqlite(#[from] rusqlite::Error),
 }
 
 impl NewConnection {
-    /// Vérifie la saisie, avec les mêmes limites que la table `connections`.
+    /// Checks the input, with the same limits as the `connections` table.
     pub fn validate(&self) -> Result<(), ConnectionsError> {
         check_length("name", &self.name, 1, NAME_MAX_LENGTH)?;
         check_length("host", &self.host, 1, HOST_MAX_LENGTH)?;
@@ -174,27 +173,27 @@ impl NewConnection {
         )?;
         if self.port == 0 {
             return Err(ConnectionsError::Invalid(
-                "port : doit être compris entre 1 et 65535".to_string(),
+                "port: must be between 1 and 65535".to_string(),
             ));
         }
         check_length("init_sql", &self.init_sql, 0, INIT_SQL_MAX_LENGTH)?;
         if self.session_timeout_minutes > SESSION_TIMEOUT_MAX_MINUTES {
             return Err(ConnectionsError::Invalid(format!(
-                "session_timeout_minutes : doit être compris entre 0 et {SESSION_TIMEOUT_MAX_MINUTES}"
+                "session_timeout_minutes: must be between 0 and {SESSION_TIMEOUT_MAX_MINUTES}"
             )));
         }
         for statement in init_statements(&self.init_sql) {
-            // Le dialecte n'est connu qu'à la connexion : celui de MySQL sert
-            // aussi pour MariaDB, qui partage la syntaxe des réglages.
+            // The dialect is only known on connection: MySQL's also serves
+            // MariaDB, which shares the syntax of settings.
             if let Some(refusal) = session_setting_refusal(&statement, Dialect::MySql) {
-                return Err(ConnectionsError::Invalid(format!("init_sql : {refusal}")));
+                return Err(ConnectionsError::Invalid(format!("init_sql: {refusal}")));
             }
         }
         Ok(())
     }
 }
 
-/// Requêtes à la connexion, découpées comme dans l'éditeur (crate `splitter`).
+/// On-connect queries, split as in the editor (`splitter` crate).
 fn init_statements(init_sql: &str) -> Vec<String> {
     prisme_splitter::split(init_sql)
         .into_iter()
@@ -202,18 +201,18 @@ fn init_statements(init_sql: &str) -> Vec<String> {
         .collect()
 }
 
-/// Vérifie qu'un champ compte entre `min` et `max` caractères (et non octets, comme `length()` de SQLite).
+/// Checks that a field has between `min` and `max` characters (not bytes, like SQLite's `length()`).
 fn check_length(field: &str, value: &str, min: usize, max: usize) -> Result<(), ConnectionsError> {
     let length = value.chars().count();
     if length < min || length > max {
         return Err(ConnectionsError::Invalid(format!(
-            "{field} : entre {min} et {max} caractères attendus, {length} reçus"
+            "{field}: between {min} and {max} characters expected, {length} received"
         )));
     }
     Ok(())
 }
 
-/// Enregistre une connexion pour l'utilisateur `user_id` et renvoie son identifiant.
+/// Saves a connection for user `user_id` and returns its id.
 pub fn insert(
     db: &Connection,
     key: &MasterKey,
@@ -244,11 +243,10 @@ pub fn insert(
     Ok(db.last_insert_rowid())
 }
 
-/// Modifie la connexion `id` de l'utilisateur `user_id`. Un mot de passe vide
-/// garde le mot de passe enregistré : l'interface ne le connaît pas, elle ne
-/// peut pas le renvoyer.
+/// Changes connection `id` of user `user_id`. An empty password keeps the
+/// saved password: the interface does not know it, so it cannot send it back.
 ///
-/// Renvoie `false` si la connexion n'existe pas ou appartient à un autre utilisateur.
+/// Returns `false` if the connection does not exist or belongs to another user.
 pub fn update(
     db: &Connection,
     key: &MasterKey,
@@ -287,7 +285,7 @@ pub fn update(
     Ok(updated == 1)
 }
 
-/// Traduit la violation de l'unicité du nom en `DuplicateName`, laisse passer les autres erreurs.
+/// Translates a violation of the name's uniqueness into `DuplicateName`, lets the other errors through.
 fn name_error(error: rusqlite::Error, name: &str) -> ConnectionsError {
     match error {
         rusqlite::Error::SqliteFailure(failure, _)
@@ -299,7 +297,7 @@ fn name_error(error: rusqlite::Error, name: &str) -> ConnectionsError {
     }
 }
 
-/// Liste les connexions de l'utilisateur `user_id`, par nom, sans leur mot de passe.
+/// Lists the connections of user `user_id`, by name, without their password.
 pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, ConnectionsError> {
     let mut statement = db.prepare(
         "SELECT id, name, engine, host, port, username, database_name, init_sql,
@@ -325,9 +323,9 @@ pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, Con
     Ok(rows.collect::<Result<_, _>>()?)
 }
 
-/// Supprime la connexion `id` de l'utilisateur `user_id`.
+/// Deletes connection `id` of user `user_id`.
 ///
-/// Renvoie `false` si la connexion n'existe pas ou appartient à un autre utilisateur.
+/// Returns `false` if the connection does not exist or belongs to another user.
 pub fn delete(db: &Connection, user_id: i64, id: i64) -> Result<bool, ConnectionsError> {
     let deleted = db.execute(
         "DELETE FROM connections WHERE id = ?1 AND user_id = ?2",
@@ -336,9 +334,9 @@ pub fn delete(db: &Connection, user_id: i64, id: i64) -> Result<bool, Connection
     Ok(deleted == 1)
 }
 
-/// Charge les paramètres de connexion, mot de passe déchiffré, de la connexion `id`.
+/// Loads the connection settings, password decrypted, of connection `id`.
 ///
-/// Renvoie `None` si la connexion n'existe pas ou appartient à un autre utilisateur.
+/// Returns `None` if the connection does not exist or belongs to another user.
 pub fn load_target(
     db: &Connection,
     key: &MasterKey,
@@ -376,7 +374,7 @@ pub fn load_target(
     }))
 }
 
-/// Retient la variante du serveur de la connexion `id`, vue à une connexion réussie.
+/// Remembers the server flavor of connection `id`, seen on a successful connection.
 pub fn remember_flavor(
     db: &Connection,
     user_id: i64,
@@ -394,7 +392,7 @@ pub fn remember_flavor(
     Ok(())
 }
 
-/// Variante enregistrée, `None` pour la chaîne vide (jamais connectée).
+/// Saved flavor, `None` for the empty string (never connected).
 fn flavor_of(name: &str) -> Option<Flavor> {
     match name {
         "mysql" => Some(Flavor::MySql),
@@ -403,9 +401,9 @@ fn flavor_of(name: &str) -> Option<Flavor> {
     }
 }
 
-/// Délai de garde des sessions de la connexion `id`, en minutes.
+/// Keep-alive delay of the sessions of connection `id`, in minutes.
 ///
-/// Renvoie `None` si la connexion n'existe pas ou appartient à un autre utilisateur.
+/// Returns `None` if the connection does not exist or belongs to another user.
 pub fn session_timeout(
     db: &Connection,
     user_id: i64,
@@ -421,11 +419,11 @@ pub fn session_timeout(
     Ok(minutes)
 }
 
-/// Paramètres de connexion d'un test de paramètres saisis. Un mot de passe
-/// vide reprend celui de la connexion enregistrée `saved_id`, s'il y en a une.
+/// Connection settings of a test of typed settings. An empty password takes
+/// that of the saved connection `saved_id`, if there is one.
 ///
-/// Renvoie `None` si `saved_id` désigne une connexion absente ou appartenant
-/// à un autre utilisateur.
+/// Returns `None` if `saved_id` designates a missing connection or one
+/// belonging to another user.
 pub fn probe_target(
     db: &Connection,
     key: &MasterKey,
@@ -479,7 +477,7 @@ mod tests {
         let db = store::open_in_memory();
         let key = MasterKey::generate();
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
-        let mut connection = new_connection("avec réglages");
+        let mut connection = new_connection("with settings");
         connection.init_sql =
             "SET NAMES utf8mb4;\nSET SESSION sql_mode = 'ANSI_QUOTES';".to_string();
         let id = insert(&db, &key, user_id, &connection).unwrap();
@@ -557,7 +555,7 @@ mod tests {
 
         assert!(list(&db, bob).unwrap().is_empty());
         assert!(load_target(&db, &key, bob, id).unwrap().is_none());
-        // Le même nom reste libre pour un autre utilisateur.
+        // The same name stays free for another user.
         assert!(insert(&db, &key, bob, &new_connection("prod")).is_ok());
     }
 
@@ -584,17 +582,17 @@ mod tests {
         let bob = store::ensure_user(&db, "bob@example.com").unwrap();
         let id = insert(&db, &key, alice, &new_connection("prod")).unwrap();
 
-        let mut changed = new_connection("recette");
+        let mut changed = new_connection("staging");
         changed.password = SecretString::from("");
         assert!(update(&db, &key, alice, id, &changed).unwrap());
-        assert_eq!(list(&db, alice).unwrap()[0].name, "recette");
+        assert_eq!(list(&db, alice).unwrap()[0].name, "staging");
         let target = load_target(&db, &key, alice, id).unwrap().unwrap();
         assert_eq!(target.password.expose_secret(), "secret");
 
-        changed.password = SecretString::from("nouveau");
+        changed.password = SecretString::from("new");
         assert!(update(&db, &key, alice, id, &changed).unwrap());
         let target = load_target(&db, &key, alice, id).unwrap().unwrap();
-        assert_eq!(target.password.expose_secret(), "nouveau");
+        assert_eq!(target.password.expose_secret(), "new");
 
         assert!(!update(&db, &key, bob, id, &changed).unwrap());
     }
@@ -605,7 +603,7 @@ mod tests {
         let key = MasterKey::generate();
         let user_id = store::ensure_user(&db, "a@example.com").unwrap();
         insert(&db, &key, user_id, &new_connection("prod")).unwrap();
-        let id = insert(&db, &key, user_id, &new_connection("recette")).unwrap();
+        let id = insert(&db, &key, user_id, &new_connection("staging")).unwrap();
 
         assert!(matches!(
             update(&db, &key, user_id, id, &new_connection("prod")),
@@ -631,8 +629,8 @@ mod tests {
 
         let target = probe_target(&db, &key, alice, request("", Some(id)));
         assert_eq!(target.unwrap().unwrap().password.expose_secret(), "secret");
-        let target = probe_target(&db, &key, alice, request("autre", Some(id)));
-        assert_eq!(target.unwrap().unwrap().password.expose_secret(), "autre");
+        let target = probe_target(&db, &key, alice, request("other", Some(id)));
+        assert_eq!(target.unwrap().unwrap().password.expose_secret(), "other");
         let target = probe_target(&db, &key, alice, request("", None));
         assert_eq!(target.unwrap().unwrap().password.expose_secret(), "");
         assert!(

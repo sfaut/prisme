@@ -1,21 +1,20 @@
-//! Réglages demandés au lancement : port d'écoute et adresse e-mail de
-//! l'utilisateur (ticket #6).
+//! Settings asked at launch: listening port and email address of the user
+//! (ticket #6).
 //!
-//! Au premier lancement (base interne absente du dossier de données) ou avec
-//! `--setup`, Prisme pose les questions dans le terminal, en anglais ; Entrée
-//! garde la valeur proposée, une réponse invalide est redemandée. Les
-//! réponses sont enregistrées dans la base interne : le port dans
-//! `server_settings`, l'adresse dans `users`. Les lancements suivants les
-//! relisent sans rien demander.
+//! On first launch (internal database missing from the data folder) or with
+//! `--setup`, Prisme asks the questions in the terminal; Enter keeps the
+//! proposed value, an invalid answer is asked again. The answers are saved in
+//! the internal database: the port in `server_settings`, the address in
+//! `users`. The next launches read them again without asking anything.
 //!
-//! - Une option de la ligne de commande (`--listen`, `--user-email`) remplace
-//!   sa question et n'est pas enregistrée.
-//! - Sans terminal interactif (script, service), les valeurs par défaut
-//!   s'appliquent sans question ; `--setup` y est refusé.
-//! - Une base créée avant ces réglages garde les siens : port 8484 et
-//!   utilisateur déjà enregistré.
-//! - Le dossier de données n'est pas demandé : la base interne qui garde les
-//!   réponses s'y trouve. Il se choisit par `--data-dir`.
+//! - A command-line option (`--listen`, `--user-email`) replaces its question
+//!   and is not saved.
+//! - Without an interactive terminal (script, service), the defaults apply
+//!   without any question; `--setup` is refused there.
+//! - A database created before these settings keeps its own: port 8484 and
+//!   the user already saved.
+//! - The data folder is not asked: the internal database that keeps the
+//!   answers lives in it. It is chosen with `--data-dir`.
 
 use std::io::{BufRead, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpListener};
@@ -26,39 +25,38 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::config::Config;
 use crate::store;
 
-/// Adresse e-mail proposée au premier lancement.
+/// Email address proposed on first launch.
 pub const DEFAULT_EMAIL: &str = "me@local";
 
-/// Longueurs permises d'une adresse e-mail, comme la contrainte de la table `users`.
+/// Allowed lengths of an email address, like the constraint of the `users` table.
 const EMAIL_LENGTH: std::ops::RangeInclusive<usize> = 3..=254;
 
-/// Réglages retenus pour ce lancement.
+/// Settings kept for this launch.
 #[derive(Debug, PartialEq)]
 pub struct Startup {
-    /// Adresse d'écoute du serveur web.
+    /// Listening address of the web server.
     pub listen: SocketAddr,
-    /// Identifiant de l'utilisateur unique.
+    /// Id of the single user.
     pub user_id: i64,
-    /// Adresse e-mail de cet utilisateur.
+    /// Email address of this user.
     pub email: String,
 }
 
-/// Terminal où poser les questions.
+/// Terminal where the questions are asked.
 pub struct Terminal<'a> {
-    /// Réponses tapées par l'utilisateur, une par ligne.
+    /// Answers typed by the user, one per line.
     pub input: &'a mut dyn BufRead,
-    /// Questions et messages d'erreur.
+    /// Questions and error messages.
     pub output: &'a mut dyn Write,
-    /// L'introduction a-t-elle été affichée (avant la première question) ?
+    /// Has the introduction been shown (before the first question)?
     pub introduced: bool,
 }
 
 impl Terminal<'_> {
-    /// Pose la question `question` (en anglais) jusqu'à obtenir une réponse
-    /// que `parse` accepte ; `parse` explique sinon son refus, affiché avant
-    /// de reposer la question. Une réponse vide garde `default`, affiché
-    /// entre crochets. En fin d'entrée (Ctrl-Z, Ctrl-D), `default`
-    /// s'applique ; s'il est lui-même refusé, Prisme s'arrête.
+    /// Asks `question` until `parse` accepts the answer; otherwise `parse`
+    /// explains its refusal, shown before asking again. An empty answer keeps
+    /// `default`, shown between brackets. At the end of input (Ctrl+Z,
+    /// Ctrl+D), `default` applies; if it is refused itself, Prisme stops.
     fn ask<T>(
         &mut self,
         question: &str,
@@ -83,21 +81,21 @@ impl Terminal<'_> {
             };
             match parse(answer) {
                 Ok(value) => return Ok(value),
-                Err(message) if ended => bail!("{question} : {message}"),
+                Err(message) if ended => bail!("{question}: {message}"),
                 Err(message) => writeln!(self.output, "  {message}")?,
             }
         }
     }
 }
 
-/// Établit le port d'écoute et l'utilisateur de ce lancement, en posant les
-/// questions s'il y a lieu, puis enregistre les réponses dans la base interne
+/// Settles the listening port and the user of this launch, asking the
+/// questions when relevant, then saves the answers in the internal database
 /// `db`.
 ///
-/// `first_launch` indique que la base interne vient d'être créée ;
-/// `terminal` est absent pour un lancement sans terminal interactif ;
-/// `port_free` vérifie qu'un port proposé est libre (en production, la
-/// fonction `port_free` de ce module).
+/// `first_launch` tells that the internal database has just been created;
+/// `terminal` is absent for a launch without an interactive terminal;
+/// `port_free` checks that a proposed port is free (in production, the
+/// `port_free` function of this module).
 pub fn settle(
     db: &Connection,
     config: &Config,
@@ -106,9 +104,9 @@ pub fn settle(
     port_free: &dyn Fn(u16) -> Result<(), String>,
 ) -> anyhow::Result<Startup> {
     if config.setup && terminal.is_none() {
-        bail!("--setup pose des questions : il demande un terminal interactif");
+        bail!("--setup asks questions: it requires an interactive terminal");
     }
-    // Terminal où poser les questions, s'il y a des questions à poser.
+    // Terminal where the questions are asked, if there are questions to ask.
     let mut asked = if first_launch || config.setup {
         terminal.as_mut()
     } else {
@@ -161,7 +159,7 @@ pub fn settle(
     })
 }
 
-/// Lit un numéro de port, de 1 à 65535.
+/// Reads a port number, from 1 to 65535.
 pub fn parse_port(text: &str) -> Result<u16, String> {
     match text.parse::<u16>() {
         Ok(port) if port > 0 => Ok(port),
@@ -171,17 +169,17 @@ pub fn parse_port(text: &str) -> Result<u16, String> {
     }
 }
 
-/// Vérifie qu'un port est libre sur 127.0.0.1, en y écoutant un instant :
-/// un port déjà pris, ou réservé (sous 1024 sous Linux), est refusé.
+/// Checks that a port is free on 127.0.0.1, by listening on it for a moment:
+/// a port already taken, or reserved (below 1024 on Linux), is refused.
 pub fn port_free(port: u16) -> Result<(), String> {
     TcpListener::bind((Ipv4Addr::LOCALHOST, port))
         .map(drop)
         .map_err(|error| format!("Port {port} is not available: {error}."))
 }
 
-/// Vérifie une adresse e-mail, simplement : un `@` entre deux parties non
-/// vides, aucun blanc, 254 caractères au plus. Le domaine peut ne pas avoir
-/// de point (`me@local`).
+/// Checks an email address, simply: an `@` between two non-empty parts, no
+/// whitespace, 254 characters at most. The domain may have no dot
+/// (`me@local`).
 pub fn parse_email(text: &str) -> Result<String, String> {
     let well_formed = text.split_once('@').is_some_and(|(name, domain)| {
         !name.is_empty() && !domain.is_empty() && !domain.contains('@')
@@ -196,7 +194,7 @@ pub fn parse_email(text: &str) -> Result<String, String> {
     }
 }
 
-/// Port enregistré dans la base interne.
+/// Port saved in the internal database.
 fn stored_port(db: &Connection) -> rusqlite::Result<u16> {
     db.query_row(
         "SELECT listen_port FROM server_settings WHERE id = 1",
@@ -205,7 +203,7 @@ fn stored_port(db: &Connection) -> rusqlite::Result<u16> {
     )
 }
 
-/// Enregistre le port d'écoute.
+/// Saves the listening port.
 fn save_port(db: &Connection, port: u16) -> rusqlite::Result<()> {
     db.execute(
         "UPDATE server_settings SET listen_port = ?1 WHERE id = 1",
@@ -214,7 +212,7 @@ fn save_port(db: &Connection, port: u16) -> rusqlite::Result<()> {
     .map(drop)
 }
 
-/// Premier utilisateur enregistré (le seul en mode poste de développement).
+/// First saved user (the only one in workstation mode).
 fn first_user(db: &Connection) -> rusqlite::Result<Option<(i64, String)>> {
     db.query_row(
         "SELECT id, email FROM users ORDER BY id LIMIT 1",
@@ -224,13 +222,13 @@ fn first_user(db: &Connection) -> rusqlite::Result<Option<(i64, String)>> {
     .optional()
 }
 
-/// Change l'adresse e-mail d'un utilisateur (`--setup`).
+/// Changes the email address of a user (`--setup`).
 fn rename_user(db: &Connection, id: i64, email: &str) -> anyhow::Result<()> {
     db.execute(
         "UPDATE users SET email = ?1 WHERE id = ?2",
         params![email, id],
     )
-    .with_context(|| format!("adresse {email} : déjà prise par un autre utilisateur ?"))?;
+    .with_context(|| format!("address {email}: already taken by another user?"))?;
     Ok(())
 }
 
@@ -242,16 +240,16 @@ mod tests {
 
     use super::*;
 
-    /// Port proposé au premier lancement, aussi celui des bases créées avant
-    /// ce réglage : valeur par défaut de la migration 0009.
+    /// Port proposed on first launch, also that of the databases created
+    /// before this setting: default value of migration 0009.
     const DEFAULT_PORT: u16 = 8484;
 
-    /// Port toujours libre, pour ne pas dépendre des ports du poste.
+    /// Port always free, so as not to depend on the machine's ports.
     fn always_free(_: u16) -> Result<(), String> {
         Ok(())
     }
 
-    /// Lance `settle` avec des réponses tapées, et rend le résultat et le texte affiché.
+    /// Runs `settle` with typed answers, and returns the result and the text shown.
     fn run(
         db: &Connection,
         args: &[&str],
@@ -284,7 +282,7 @@ mod tests {
         assert!(output.contains("Listening port [8484]: "));
         assert!(output.contains("Email address [me@local]: "));
 
-        // Lancement suivant : rien n'est demandé, les réponses sont relues.
+        // Next launch: nothing is asked, the answers are read again.
         let (next, output) = run(&db, &[], false, Some(""));
         let next = next.unwrap();
         assert_eq!(port_of(&next), 9000);
@@ -354,14 +352,14 @@ mod tests {
 
     #[test]
     fn an_existing_installation_keeps_its_settings() {
-        // Base d'avant ce réglage : un utilisateur, le port par défaut.
+        // Database from before this setting: one user, the default port.
         let db = store::open_in_memory();
-        let user_id = store::ensure_user(&db, "sebastien.faut@gmail.com").unwrap();
+        let user_id = store::ensure_user(&db, "owner@example.com").unwrap();
         let (startup, output) = run(&db, &[], false, Some(""));
         let startup = startup.unwrap();
         assert_eq!(port_of(&startup), DEFAULT_PORT);
         assert_eq!(startup.user_id, user_id);
-        assert_eq!(startup.email, "sebastien.faut@gmail.com");
+        assert_eq!(startup.email, "owner@example.com");
         assert!(output.is_empty());
     }
 

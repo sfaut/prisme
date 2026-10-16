@@ -1,22 +1,23 @@
-//! Enregistreur des résultats d'un éditeur, branché sur le relais des
-//! messages de sa session de requêtes (`session_relay.rs`).
+//! Recorder of an editor's results, plugged into the relay of the messages of
+//! its query session (`session_relay.rs`).
 //!
-//! Chaque message envoyé au client passe d'abord par l'enregistreur :
+//! Each message sent to the client first goes through the recorder:
 //!
-//! - `batch` : les onglets non épinglés de l'éditeur disparaissent, un onglet
-//!   par requête est créé ; son identifiant part au client avec la requête ;
-//! - `started`, `columns`, `rows` : l'état et les lignes de chaque requête
-//!   s'accumulent en mémoire (les lignes sont bornées par la limite de lignes) ;
-//! - `done`, `error` : le résultat complet est écrit dans la base interne.
+//! - `batch`: the editor's unpinned tabs disappear, one tab per query is
+//!   created; its id goes to the client with the query;
+//! - `started`, `columns`, `rows`: the state and the rows of each query
+//!   accumulate in memory (rows are bounded by the row limit);
+//! - `done`, `error`: the complete result is written to the internal
+//!   database.
 //!
-//! Le navigateur ne renvoie donc jamais les résultats : après un
-//! rafraîchissement, il les relit tels que le serveur les a reçus. À la fin
-//! de la session, une requête inachevée est enregistrée en échec.
+//! The browser therefore never sends the results back: after a reload, it
+//! reads them again as the server received them. At the end of the session,
+//! an unfinished query is saved as failed.
 //!
-//! Le dernier lot reste en mémoire jusqu'au suivant, requêtes terminées
-//! comprises : un WebSocket qui se raccroche à la session le reçoit tel
-//! quel (`snapshot`), même si une requête s'est terminée entre la lecture
-//! des onglets enregistrés par la page et son raccrochage.
+//! The last batch stays in memory until the next one, finished queries
+//! included: a WebSocket that reattaches to the session receives it as is
+//! (`snapshot`), even if a query ended between the page reading the saved
+//! tabs and reattaching.
 
 use std::collections::HashMap;
 use std::time::Instant;
@@ -30,59 +31,59 @@ use crate::api::AppState;
 use crate::editors::{self, SavedColumns, SavedResult};
 use crate::query_session::ServerMessage;
 
-/// Message d'une requête que la fin de la session a interrompue.
-const SESSION_CLOSED: &str = "session fermée avant la fin de la requête";
+/// Message of a query interrupted by the end of the session.
+const SESSION_CLOSED: &str = "session closed before the end of the query";
 
-/// Requête du dernier lot, telle qu'envoyée à un WebSocket qui se raccroche.
+/// Query of the last batch, as sent to a WebSocket that reattaches.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub(crate) struct ResumedQuery {
-    /// Numéro de la requête dans le lot, repris par ses messages suivants.
+    /// Number of the query in the batch, repeated by its next messages.
     query: u32,
-    /// Onglet de résultat enregistré de la requête.
+    /// Saved result tab of the query.
     tab: i64,
-    /// Texte de la requête, sans séparateur.
+    /// Text of the query, without a separator.
     sql: String,
-    /// État du résultat.
+    /// State of the result.
     result: SavedResult,
-    /// Lignes reçues jusqu'ici.
+    /// Rows received so far.
     rows: Vec<Vec<Cell>>,
-    /// Temps écoulé depuis le départ de la requête, en microsecondes ;
-    /// absent tant qu'elle attend son tour.
+    /// Time elapsed since the query started, in microseconds; absent while
+    /// it waits for its turn.
     started_us_ago: Option<u64>,
-    /// Temps écoulé depuis la réception de ses colonnes, en microsecondes ;
-    /// absent avant.
+    /// Time elapsed since its columns were received, in microseconds; absent
+    /// before.
     columns_us_ago: Option<u64>,
 }
 
-/// Enregistreur des résultats d'un éditeur.
+/// Recorder of an editor's results.
 pub struct Recorder {
-    /// État de l'application, pour la base interne.
+    /// State of the application, for the internal database.
     state: AppState,
-    /// Éditeur dont les résultats sont enregistrés.
+    /// Editor whose results are recorded.
     editor_id: i64,
-    /// Requêtes du dernier lot, par numéro.
+    /// Queries of the last batch, by number.
     records: Mutex<HashMap<u32, Record>>,
 }
 
-/// Résultat d'une requête en cours d'enregistrement.
+/// Result of a query being recorded.
 struct Record {
-    /// Onglet de résultat de la requête.
+    /// Result tab of the query.
     tab_id: i64,
-    /// Texte de la requête.
+    /// Text of the query.
     sql: String,
-    /// État du résultat.
+    /// State of the result.
     result: SavedResult,
-    /// Lignes reçues.
+    /// Rows received.
     rows: Vec<Vec<Cell>>,
-    /// Instant du départ de la requête.
+    /// Instant the query started.
     started_at: Option<Instant>,
-    /// Instant de réception des colonnes, pour le temps de transfert.
+    /// Instant the columns were received, for the transfer time.
     columns_at: Option<Instant>,
 }
 
 impl Recorder {
-    /// Crée l'enregistreur des résultats de l'éditeur `editor_id`.
+    /// Creates the recorder of the results of editor `editor_id`.
     pub fn new(state: AppState, editor_id: i64) -> Self {
         Self {
             state,
@@ -91,8 +92,8 @@ impl Recorder {
         }
     }
 
-    /// Prend note d'un message avant son envoi au client. Pour `batch`,
-    /// complète chaque requête de l'identifiant de son onglet.
+    /// Takes note of a message before it is sent to the client. For `batch`,
+    /// completes each query with the id of its tab.
     pub async fn observe(&self, message: &mut ServerMessage) {
         let mut records = self.records.lock().await;
         let bytes = serde_json::to_vec(message).map_or(0, |json| json.len() as u64);
@@ -112,7 +113,7 @@ impl Recorder {
                             records.insert(query.query, Record::new(tab_id, &query.sql));
                         }
                     }
-                    Err(_) => tracing::warn!("onglets de résultat non créés, éditeur {editor_id}"),
+                    Err(_) => tracing::warn!("result tabs not created, editor {editor_id}"),
                 }
             }
             ServerMessage::Started { query } => {
@@ -183,7 +184,7 @@ impl Recorder {
         }
     }
 
-    /// Dernier lot, requête par requête, où il en est.
+    /// Last batch, query by query, where it stands.
     pub(crate) async fn snapshot(&self) -> Vec<ResumedQuery> {
         let records = self.records.lock().await;
         let mut queries: Vec<ResumedQuery> = records
@@ -202,7 +203,7 @@ impl Recorder {
         queries
     }
 
-    /// Fin de la session : les requêtes inachevées sont enregistrées en échec.
+    /// End of the session: unfinished queries are saved as failed.
     pub async fn finish(&self) {
         let mut records = self.records.lock().await;
         for record in records.values_mut().filter(|record| !record.result.done) {
@@ -213,8 +214,8 @@ impl Recorder {
         records.clear();
     }
 
-    /// Écrit le résultat d'une requête dans la base interne ; un échec est
-    /// inscrit au journal, sans interrompre la session.
+    /// Writes the result of a query to the internal database; a failure is
+    /// logged, without interrupting the session.
     async fn save(&self, record: &Record) {
         let tab_id = record.tab_id;
         let result = record.result.clone();
@@ -224,13 +225,13 @@ impl Recorder {
             .with_db(move |db, _| editors::save_result(db, tab_id, &result, &rows))
             .await;
         if saved.is_err() {
-            tracing::warn!("résultat non enregistré, onglet {tab_id}");
+            tracing::warn!("result not saved, tab {tab_id}");
         }
     }
 }
 
 impl Record {
-    /// Résultat vide de l'onglet `tab_id`, pour la requête `sql`.
+    /// Empty result of tab `tab_id`, for the query `sql`.
     fn new(tab_id: i64, sql: &str) -> Self {
         Self {
             tab_id,
@@ -243,7 +244,7 @@ impl Record {
     }
 }
 
-/// Temps écoulé depuis `instant`, en microsecondes.
+/// Time elapsed since `instant`, in microseconds.
 fn micros_since(instant: Instant) -> u64 {
     u64::try_from(instant.elapsed().as_micros()).unwrap_or(u64::MAX)
 }

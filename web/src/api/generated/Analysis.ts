@@ -3,14 +3,14 @@ import type { StatementSpan } from "./StatementSpan";
 import type { SyntaxIssue } from "./SyntaxIssue";
 
 /**
- * Résultat de l'analyse.
+ * Result of the analysis.
  */
 export type Analysis = { 
 /**
- * Requêtes du texte, dans l'ordre.
+ * Queries of the text, in order.
  */
 statements: Array<StatementSpan>, 
 /**
- * Erreurs de syntaxe, au plus une par requête.
+ * Syntax errors, at most one per query.
  */
 errors: Array<SyntaxIssue>, };

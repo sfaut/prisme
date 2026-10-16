@@ -2,55 +2,55 @@
 import type { Flavor } from "./Flavor";
 
 /**
- * Connexion enregistrée, sans son mot de passe.
+ * Saved connection, without its password.
  */
 export type ConnectionSummary = { 
 /**
- * Identifiant de la connexion.
+ * Id of the connection.
  */
 id: number, 
 /**
- * Nom choisi par l'utilisateur.
+ * Name chosen by the user.
  */
 name: string, 
 /**
- * Famille de moteurs (`mysql` pour MySQL et MariaDB).
+ * Family of engines (`mysql` for MySQL and MariaDB).
  */
 engine: string, 
 /**
- * Nom d'hôte ou adresse IP du serveur.
+ * Host name or IP address of the server.
  */
 host: string, 
 /**
- * Port TCP du serveur.
+ * TCP port of the server.
  */
 port: number, 
 /**
- * Compte de connexion.
+ * Connection account.
  */
 username: string, 
 /**
- * Base sélectionnée à la connexion, chaîne vide si aucune.
+ * Database selected on connection, empty string if none.
  */
 database_name: string, 
 /**
- * Requêtes exécutées à l'ouverture de chaque connexion, chaîne vide si aucune.
+ * Queries run each time a connection opens, empty string if none.
  */
 init_sql: string, 
 /**
- * Délai de garde d'une session après la fermeture de sa page, en minutes.
+ * Keep-alive delay of a session after its page is closed, in minutes.
  */
 session_timeout_minutes: number, 
 /**
- * L'explorateur affiche-t-il les bases système ?
+ * Does the explorer show the system databases?
  */
 show_system_schemas: boolean, 
 /**
- * Variante du serveur vue à la dernière connexion réussie, `null` si
- * la connexion n'a jamais abouti.
+ * Flavor of the server seen on the last successful connection, `null`
+ * if the connection never succeeded.
  */
 server_flavor: Flavor | null, 
 /**
- * Date d'enregistrement, en UTC au format ISO 8601.
+ * Date it was saved, in UTC, in ISO 8601 format.
  */
 created_at: string, };

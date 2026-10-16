@@ -1,12 +1,11 @@
-//! Utilisateur courant d'une requête.
+//! Current user of a request.
 //!
-//! C'est le seul endroit qui décide pour le compte de qui une requête s'exécute
-//! (voir `docs/V1.md`, section 2.8, règle 3). Les routes le reçoivent en
-//! paramètre (`user: CurrentUser`), comme un extracteur `axum`.
+//! It is the only place that decides on whose behalf a request runs (see
+//! `docs/V1.md`, section 2.8, rule 3). Routes receive it as a parameter
+//! (`user: CurrentUser`), like an `axum` extractor.
 //!
-//! En mode poste de développement, c'est toujours l'utilisateur local. Le mode
-//! serveur remplacera ce code par la vérification d'une session, sans toucher
-//! aux routes.
+//! In workstation mode, it is always the local user. The server mode will
+//! replace this code by checking a session, without touching the routes.
 
 use std::convert::Infallible;
 
@@ -15,16 +14,16 @@ use axum::http::request::Parts;
 
 use crate::api::AppState;
 
-/// Utilisateur pour le compte duquel la requête s'exécute.
+/// User on whose behalf the request runs.
 pub struct CurrentUser {
-    /// Identifiant dans la table `users`.
+    /// Id in the `users` table.
     pub id: i64,
 }
 
 impl FromRequestParts<AppState> for CurrentUser {
     type Rejection = Infallible;
 
-    /// Renvoie l'utilisateur local, unique en mode poste de développement.
+    /// Returns the local user, the only one in workstation mode.
     async fn from_request_parts(
         _parts: &mut Parts,
         state: &AppState,

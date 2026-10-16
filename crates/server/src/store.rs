@@ -1,9 +1,9 @@
-//! Base interne de Prisme : un fichier SQLite en mode WAL dans le dossier de données.
+//! Internal database of Prisme: a SQLite file in WAL mode in the data folder.
 //!
-//! Elle conserve les utilisateurs et les connexions, puis les notebooks. Le
-//! schéma évolue par migrations SQL numérotées (dossier `migrations/`),
-//! appliquées à l'ouverture. `rusqlite` est synchrone : hors du démarrage, les
-//! accès passeront par des tâches bloquantes dédiées (`spawn_blocking`).
+//! It keeps the users and the connections, then the notebooks. The schema
+//! evolves through numbered SQL migrations (`migrations/` folder), applied on
+//! opening. `rusqlite` is synchronous: outside startup, accesses go through
+//! dedicated blocking tasks (`spawn_blocking`).
 
 use std::path::Path;
 use std::sync::LazyLock;
@@ -11,11 +11,12 @@ use std::sync::LazyLock;
 use rusqlite::{Connection, params};
 use rusqlite_migration::{M, Migrations};
 
-/// Nom du fichier de la base interne dans le dossier de données.
+/// Name of the internal database file in the data folder.
 pub const FILE_NAME: &str = "prisme.db";
 
-/// Migrations du schéma, dans l'ordre. Une migration publiée ne se modifie plus :
-/// tout changement passe par une nouvelle migration ajoutée en fin de liste.
+/// Migrations of the schema, in order. A published migration is never
+/// modified again: any change goes through a new migration added at the end of
+/// the list.
 static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
     Migrations::new(vec![
         M::up(include_str!("../migrations/0001_users.sql")),
@@ -36,36 +37,36 @@ static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
     ])
 });
 
-/// Erreurs d'accès à la base interne.
+/// Errors accessing the internal database.
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
-    /// Erreur SQLite.
-    #[error("base interne : {0}")]
+    /// SQLite error.
+    #[error("internal database: {0}")]
     Sqlite(#[from] rusqlite::Error),
 
-    /// Échec d'une migration du schéma.
-    #[error("migration de la base interne : {0}")]
+    /// Failure of a schema migration.
+    #[error("internal database migration: {0}")]
     Migration(#[from] rusqlite_migration::Error),
 }
 
-/// Ouvre (ou crée) la base interne au chemin `path` et met son schéma à jour.
+/// Opens (or creates) the internal database at `path` and brings its schema up to date.
 pub fn open(path: &Path) -> Result<Connection, StoreError> {
     let mut connection = Connection::open(path)?;
-    // WAL : les lectures ne bloquent pas l'écriture, et inversement.
+    // WAL: reads do not block writes, and conversely.
     connection.pragma_update(None, "journal_mode", "WAL")?;
     prepare(&mut connection)?;
     Ok(connection)
 }
 
-/// Active les clefs étrangères et applique les migrations en attente.
+/// Enables foreign keys and applies the pending migrations.
 fn prepare(connection: &mut Connection) -> Result<(), StoreError> {
-    // SQLite ignore les clefs étrangères tant que ce réglage n'est pas activé, connexion par connexion.
+    // SQLite ignores foreign keys until this setting is enabled, connection by connection.
     connection.pragma_update(None, "foreign_keys", "ON")?;
     MIGRATIONS.to_latest(connection)?;
     Ok(())
 }
 
-/// Crée l'utilisateur `email` s'il n'existe pas encore, et renvoie son identifiant.
+/// Creates the user `email` if it does not exist yet, and returns its id.
 pub fn ensure_user(connection: &Connection, email: &str) -> Result<i64, StoreError> {
     connection.execute(
         "INSERT INTO users (email) VALUES (?1) ON CONFLICT (email) DO NOTHING",
@@ -79,7 +80,7 @@ pub fn ensure_user(connection: &Connection, email: &str) -> Result<i64, StoreErr
     Ok(id)
 }
 
-/// Ouvre une base interne en mémoire, schéma à jour, pour les tests.
+/// Opens an in-memory internal database, schema up to date, for the tests.
 #[cfg(test)]
 pub fn open_in_memory() -> Connection {
     let mut connection = Connection::open_in_memory().unwrap();
@@ -99,8 +100,8 @@ mod tests {
     #[test]
     fn ensure_user_is_idempotent() {
         let connection = open_in_memory();
-        let first = ensure_user(&connection, "sebastien.faut@gmail.com").unwrap();
-        let second = ensure_user(&connection, "sebastien.faut@gmail.com").unwrap();
+        let first = ensure_user(&connection, "owner@example.com").unwrap();
+        let second = ensure_user(&connection, "owner@example.com").unwrap();
 
         assert_eq!(first, second);
         let count: i64 = connection

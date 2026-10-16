@@ -1,10 +1,10 @@
-//! Point d'entrée de Prisme.
+//! Entry point of Prisme.
 //!
-//! Lit la configuration, prépare le dossier de données (clef maîtresse et base
-//! interne), établit le port d'écoute et l'utilisateur unique du mode poste de
-//! développement, demandés au premier lancement (`setup.rs`), puis démarre le
-//! serveur web : l'API et l'interface (`web_assets.rs`). Voir
-//! `docs/V1.md`, section 2.8.
+//! Reads the configuration, prepares the data folder (master key and internal
+//! database), settles the listening port and the single user of the
+//! workstation mode, asked on first launch (`setup.rs`), then starts the web
+//! server: the API and the interface (`web_assets.rs`). See `docs/V1.md`,
+//! section 2.8.
 
 mod analyze;
 mod api;
@@ -35,7 +35,7 @@ use crate::config::Config;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Niveau de journal réglable par la variable RUST_LOG (ex. RUST_LOG=debug).
+    // Log level adjustable through the RUST_LOG variable (e.g. RUST_LOG=debug).
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
@@ -47,19 +47,19 @@ async fn main() -> anyhow::Result<()> {
 
     let data_dir = config.data_dir()?;
     std::fs::create_dir_all(&data_dir)
-        .with_context(|| format!("création du dossier de données {}", data_dir.display()))?;
-    tracing::info!("dossier de données : {}", data_dir.display());
+        .with_context(|| format!("creating the data folder {}", data_dir.display()))?;
+    tracing::info!("data folder: {}", data_dir.display());
 
     let master_key = master_key::load_or_create(&data_dir.join(master_key::FILE_NAME))?;
 
-    // Au démarrage, rien d'autre ne tourne : l'accès synchrone à SQLite est sans risque ici.
+    // At startup, nothing else runs: synchronous access to SQLite is safe here.
     let db_path = data_dir.join(store::FILE_NAME);
     let first_launch = !db_path.exists();
     let db = store::open(&db_path)?;
-    tracing::info!("base interne : {}", db_path.display());
+    tracing::info!("internal database: {}", db_path.display());
 
-    // Port et utilisateur : demandés au premier lancement ou avec --setup,
-    // si un terminal permet de répondre (setup.rs).
+    // Port and user: asked on first launch or with --setup, if a terminal
+    // allows answering (setup.rs).
     let mut input = std::io::stdin().lock();
     let mut output = std::io::stdout();
     let interactive = input.is_terminal() && output.is_terminal();
@@ -69,18 +69,14 @@ async fn main() -> anyhow::Result<()> {
         introduced: false,
     });
     let startup = setup::settle(&db, &config, first_launch, terminal, &setup::port_free)?;
-    tracing::info!(
-        user_id = startup.user_id,
-        "utilisateur local : {}",
-        startup.email
-    );
+    tracing::info!(user_id = startup.user_id, "local user: {}", startup.email);
 
     let app = api::router(api::AppState::new(db, master_key, startup.user_id));
 
     let listener = tokio::net::TcpListener::bind(startup.listen)
         .await
-        .with_context(|| format!("écoute sur {}", startup.listen))?;
-    tracing::info!("Prisme écoute sur http://{}", startup.listen);
+        .with_context(|| format!("listening on {}", startup.listen))?;
+    tracing::info!("Prisme listens on http://{}", startup.listen);
     axum::serve(listener, app).await?;
 
     Ok(())

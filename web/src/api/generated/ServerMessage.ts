@@ -6,38 +6,38 @@ import type { ResumedQuery } from "./ResumedQuery";
 import type { ServerInfo } from "./ServerInfo";
 
 /**
- * Message envoyé au client.
+ * Message sent to the client.
  */
 export type ServerMessage = { "type": "ready", server: ServerInfo, database: string | null, } | { "type": "batch", queries: Array<BatchQuery>, } | { "type": "started", query: number, } | { "type": "columns", query: number, columns: Array<string>, 
 /**
- * Pour chaque colonne, ses valeurs s'alignent-elles à droite (nombres,
- * dates et heures) ?
+ * For each column, are its values right-aligned (numbers, dates and
+ * times)?
  */
 right_aligned: Array<boolean>, 
 /**
- * Type de chaque colonne, annoncé par le serveur avec le résultat.
+ * Type of each column, announced by the server with the result.
  */
 types: Array<ColumnTypeInfo>, sql: string, limit: LimitReport, 
 /**
- * Nombre de lignes au plus : la limite de Prisme, ou celle écrite par
- * l'utilisateur quand c'est un nombre ; `null` si inconnu. Sert à la
- * barre d'avancement de l'interface.
+ * Maximum number of rows: Prisme's limit, or the one written by the
+ * user when it is a number; `null` if unknown. Used by the interface's
+ * progress bar.
  */
 expected_rows: number | null, 
 /**
- * Temps d'exécution de la requête par le serveur cible, en
- * microsecondes : de son envoi à la réception de ses colonnes.
+ * Execution time of the query by the target server, in microseconds:
+ * from sending it to receiving its columns.
  */
 execution_us: number, } | { "type": "rows", query: number, rows: Array<Array<string | null>>, } | { "type": "done", query: number, row_count: number, truncated: boolean, affected_rows: number, elapsed_ms: number, 
 /**
- * Base en cours de la session après la requête (elle change avec `USE`).
+ * Current database of the session after the query (it changes with `USE`).
  */
 database: string | null, } | { "type": "error", query: number | null, message: string, } | { "type": "batch_done" } | { "type": "database", database: string | null, } | { "type": "resume", 
 /**
- * Le lot est-il encore en cours ?
+ * Is the batch still running?
  */
 running: boolean, 
 /**
- * Requêtes du lot, par numéro, où elles en sont.
+ * Queries of the batch, by number, where they stand.
  */
 queries: Array<ResumedQuery>, };

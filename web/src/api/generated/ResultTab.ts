@@ -2,34 +2,34 @@
 import type { SavedResult } from "./SavedResult";
 
 /**
- * Onglet de résultat enregistré.
+ * Saved result tab.
  */
 export type ResultTab = { 
 /**
- * Identifiant de l'onglet.
+ * Id of the tab.
  */
 id: number, 
 /**
- * Numéro de la requête dans son lot.
+ * Number of the query in its batch.
  */
 query: number, 
 /**
- * Texte de la requête.
+ * Text of the query.
  */
 sql: string, 
 /**
- * Nom donné par l'utilisateur, chaîne vide pour le libellé par défaut.
+ * Name given by the user, empty string for the default label.
  */
 name: string, 
 /**
- * Onglet épinglé : il reste quand les requêtes sont relancées.
+ * Pinned tab: it stays when the queries are run again.
  */
 pinned: boolean, 
 /**
- * État du résultat.
+ * State of the result.
  */
 result: SavedResult, 
 /**
- * Lignes reçues.
+ * Rows received.
  */
 rows: Array<Array<string | null>>, };

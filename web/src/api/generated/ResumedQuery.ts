@@ -2,36 +2,36 @@
 import type { SavedResult } from "./SavedResult";
 
 /**
- * Requête du dernier lot, telle qu'envoyée à un WebSocket qui se raccroche.
+ * Query of the last batch, as sent to a WebSocket that reattaches.
  */
 export type ResumedQuery = { 
 /**
- * Numéro de la requête dans le lot, repris par ses messages suivants.
+ * Number of the query in the batch, repeated by its next messages.
  */
 query: number, 
 /**
- * Onglet de résultat enregistré de la requête.
+ * Saved result tab of the query.
  */
 tab: number, 
 /**
- * Texte de la requête, sans séparateur.
+ * Text of the query, without a separator.
  */
 sql: string, 
 /**
- * État du résultat.
+ * State of the result.
  */
 result: SavedResult, 
 /**
- * Lignes reçues jusqu'ici.
+ * Rows received so far.
  */
 rows: Array<Array<string | null>>, 
 /**
- * Temps écoulé depuis le départ de la requête, en microsecondes ;
- * absent tant qu'elle attend son tour.
+ * Time elapsed since the query started, in microseconds; absent while
+ * it waits for its turn.
  */
 started_us_ago: number | null, 
 /**
- * Temps écoulé depuis la réception de ses colonnes, en microsecondes ;
- * absent avant.
+ * Time elapsed since its columns were received, in microseconds; absent
+ * before.
  */
 columns_us_ago: number | null, };

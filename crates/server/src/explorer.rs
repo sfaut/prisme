@@ -1,20 +1,21 @@
-//! Explorateur d'objets : catalogue d'une connexion enregistrée, envoyé au fil de l'eau.
+//! Object explorer: catalog of a saved connection, sent progressively.
 //!
-//! Route : `GET /api/connections/{id}/catalog`. La réponse est un flux de
-//! lignes JSON (`application/x-ndjson`), un message `CatalogEvent` par ligne,
-//! envoyé dès qu'il est prêt :
+//! Route: `GET /api/connections/{id}/catalog`. The response is a stream of
+//! JSON lines (`application/x-ndjson`), one `CatalogEvent` message per line,
+//! sent as soon as it is ready:
 //!
-//! 1. `schemas` : noms de toutes les bases, avec la variante du serveur
-//!    (retenue aussi sur la connexion, pour le badge de l'explorateur) ;
-//! 2. `objects` : tables, vues, procédures et fonctions, base par base ;
-//! 3. `details` : colonnes, index, clefs étrangères et déclencheurs des
-//!    tables, base par base ;
-//! 4. `done`, ou `error` si une lecture échoue.
+//! 1. `schemas`: names of all the databases, with the server's flavor (also
+//!    remembered on the connection, for the explorer's badge);
+//! 2. `objects`: tables, views, procedures and functions, database by
+//!    database;
+//! 3. `details`: columns, indexes, foreign keys and triggers of the tables,
+//!    database by database;
+//! 4. `done`, or `error` if a read fails.
 //!
-//! L'interface affiche donc les bases presque aussitôt, puis les objets et
-//! leur détail à mesure qu'ils arrivent. La base choisie dans la connexion
-//! est lue en premier, les bases système (`information_schema`, `mysql`...)
-//! en dernier.
+//! The interface therefore shows the databases almost at once, then the
+//! objects and their details as they arrive. The database chosen in the
+//! connection is read first, the system databases (`information_schema`,
+//! `mysql`...) last.
 
 use std::convert::Infallible;
 
@@ -36,47 +37,47 @@ use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
 use crate::connections;
 
-/// Bases fournies par le serveur lui-même, lues en dernier.
+/// Databases provided by the server itself, read last.
 const SYSTEM_SCHEMAS: [&str; 4] = ["information_schema", "mysql", "performance_schema", "sys"];
 
-/// Nombre de messages en attente d'envoi au-delà duquel la lecture patiente.
+/// Number of messages waiting to be sent beyond which reading waits.
 const BUFFER: usize = 16;
 
-/// Message du flux du catalogue.
+/// Message of the catalog stream.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum CatalogEvent {
-    /// Noms de toutes les bases, par ordre alphabétique, et variante du serveur.
+    /// Names of all the databases, in alphabetical order, and flavor of the server.
     Schemas {
         schemas: Vec<String>,
         flavor: Flavor,
     },
-    /// Objets d'une base : tables, vues, procédures et fonctions.
+    /// Objects of a database: tables, views, procedures and functions.
     Objects {
         schema: String,
         objects: SchemaObjects,
     },
-    /// Détail des tables d'une base : colonnes, index, clefs étrangères, déclencheurs.
+    /// Details of the tables of a database: columns, indexes, foreign keys, triggers.
     Details {
         schema: String,
         tables: Vec<TableDetails>,
     },
-    /// Échec d'une lecture ; le flux continue avec la base suivante.
+    /// Failure of a read; the stream goes on with the next database.
     Error { message: String },
-    /// Fin du catalogue.
+    /// End of the catalog.
     Done,
 }
 
-/// Routes de l'explorateur, à fusionner dans le routeur de l'API.
+/// Routes of the explorer, to merge into the API router.
 pub fn routes() -> Router<AppState> {
     Router::new().route("/api/connections/{id}/catalog", get(stream_catalog))
 }
 
-/// `GET /api/connections/{id}/catalog` : flux du catalogue du serveur.
+/// `GET /api/connections/{id}/catalog`: stream of the server's catalog.
 ///
-/// La connexion au serveur cible s'ouvre avant le début du flux : un échec
-/// de connexion reste une réponse HTTP en erreur (502, 504).
+/// The connection to the target server opens before the stream starts: a
+/// connection failure stays an HTTP error response (502, 504).
 async fn stream_catalog(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -104,7 +105,7 @@ async fn stream_catalog(
         let line = format!(
             "{}
 ",
-            serde_json::to_string(&event).expect("message sérialisable")
+            serde_json::to_string(&event).expect("a serialisable message")
         );
         Some((Ok::<_, Infallible>(line), receiver))
     });
@@ -115,9 +116,9 @@ async fn stream_catalog(
         .into_response())
 }
 
-/// Lit le catalogue base par base et envoie chaque partie dès qu'elle est lue.
+/// Reads the catalog database by database and sends each part as soon as it is read.
 ///
-/// S'arrête dès que le client a fermé la réponse.
+/// Stops as soon as the client has closed the response.
 async fn read_catalog(
     connection: &mut Connection,
     preferred: &str,
@@ -127,7 +128,7 @@ async fn read_catalog(
     let schemas = match catalog::schemas(connection).await {
         Ok(schemas) => schemas,
         Err(error) => {
-            let _ = sender.send(error_event("bases", &error)).await;
+            let _ = sender.send(error_event("databases", &error)).await;
             return;
         }
     };
@@ -167,15 +168,15 @@ async fn read_catalog(
     let _ = sender.send(CatalogEvent::Done).await;
 }
 
-/// Message d'erreur pour une lecture du catalogue en échec.
+/// Error message for a failed catalog read.
 fn error_event(what: &str, error: &mysql::MysqlError) -> CatalogEvent {
     CatalogEvent::Error {
-        message: format!("lecture du catalogue ({what}) impossible : {error}"),
+        message: format!("cannot read the catalog ({what}): {error}"),
     }
 }
 
-/// Ordre de lecture des bases : la base préférée, puis les bases de
-/// l'utilisateur, puis les bases système.
+/// Reading order of the databases: the preferred database, then the user's
+/// databases, then the system databases.
 fn reading_order(schemas: &[String], preferred: &str) -> Vec<String> {
     let rank = |schema: &String| {
         if schema == preferred {
@@ -187,7 +188,7 @@ fn reading_order(schemas: &[String], preferred: &str) -> Vec<String> {
         }
     };
     let mut order = schemas.to_vec();
-    // Tri stable : l'ordre alphabétique est conservé à rang égal.
+    // Stable sort: the alphabetical order is kept at equal rank.
     order.sort_by_key(rank);
     order
 }
@@ -204,15 +205,15 @@ mod tests {
     use crate::master_key::MasterKey;
     use crate::store;
 
-    /// Envoie `GET uri` à une application dont la connexion 1 vise un port fermé.
+    /// Sends `GET uri` to an application whose connection 1 targets a closed port.
     async fn status_of(uri: &str) -> StatusCode {
         let db = store::open_in_memory();
         let key = MasterKey::generate();
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
         let new = NewConnection {
-            name: "fermée".to_string(),
+            name: "closed".to_string(),
             host: "127.0.0.1".to_string(),
-            // Port 1 : aucun serveur n'y écoute.
+            // Port 1: no server listens there.
             port: 1,
             username: "root".to_string(),
             password: SecretString::from(""),

@@ -1,64 +1,63 @@
-//! Session de requêtes sur une connexion enregistrée, par WebSocket.
+//! Query session on a saved connection, over a WebSocket.
 //!
-//! Une session garde une connexion ouverte au serveur cible (les
-//! transactions en auront besoin). Elle survit à son WebSocket : après une
-//! déconnexion (page rafraîchie, navigateur fermé), elle reste ouverte le
-//! délai réglé sur la connexion, et un nouveau WebSocket s'y raccroche
-//! (`session_relay.rs`, `sessions.rs`). Le client envoie
-//! le texte complet de l'éditeur ; la session le découpe en requêtes (crate
-//! `splitter`) et exécute :
+//! A session keeps a connection open to the target server (transactions will
+//! need it). It outlives its WebSocket: after a disconnection (page reloaded,
+//! browser closed), it stays open for the delay set on the connection, and a
+//! new WebSocket reattaches to it (`session_relay.rs`, `sessions.rs`). The
+//! client sends the editor's whole text; the session splits it into queries
+//! (`splitter` crate) and runs:
 //!
-//! - avec un curseur (Ctrl-Entrée) : la requête sous le curseur, sur la
-//!   connexion de la session ;
-//! - sans curseur (Ctrl-Maj-Entrée) : toutes les requêtes en parallèle, chacune
-//!   sur sa propre connexion, ouverte sur la base en cours de la session.
-//!   Une requête qui change l'état de sa connexion (`USE`, `SET`) n'a donc
-//!   aucun effet sur les autres, ni sur la session.
+//! - with a cursor (Ctrl+Enter): the query under the cursor, on the session's
+//!   connection;
+//! - without a cursor (Ctrl+Shift+Enter): all the queries in parallel, each on
+//!   its own connection, opened on the session's current database. A query
+//!   that changes the state of its connection (`USE`, `SET`) therefore has no
+//!   effect on the others, nor on the session.
 //!
-//! Les résultats arrivent en streaming, par lots de lignes, sans jamais être
-//! chargés en entier en mémoire. Chaque message d'un résultat porte le numéro
-//! de sa requête (`query`) : les messages de requêtes parallèles s'entremêlent.
+//! Results arrive streamed, in batches of rows, never loaded whole in memory.
+//! Each message of a result carries the number of its query (`query`): the
+//! messages of parallel queries interleave.
 //!
-//! Protocole, en JSON texte :
+//! Protocol, as JSON text:
 //!
 //! ```text
-//! serveur → client  {"type": "ready", "server": {"flavor": "mariadb", "version": "11.3.2-MariaDB", "ansi_quotes": false}, "database": "xlist"}
-//! client → serveur  {"type": "run", "sql": "SELECT 1; SELECT 2", "cursor": 3, "row_limit": 2000}   cursor et row_limit facultatifs
-//! client → serveur  {"type": "cancel"}                                  arrête toutes les requêtes en cours
-//! client → serveur  {"type": "cancel_query", "query": 2}                arrête une seule requête du lot en cours
-//! client → serveur  {"type": "use", "database": "xlist"}               change la base en cours de la session
-//! serveur → client  {"type": "database", "database": "xlist"}          réponse à use : la base en cours
-//! serveur → client  {"type": "batch", "queries": [{"query": 0, "sql": "SELECT 1", "start": 0, "end": 9}]}
-//! serveur → client  {"type": "started", "query": 0}                  la requête part (en parallèle, elle peut attendre son tour)
-//! serveur → client  {"type": "columns", "query": 0, "columns": ["1"], "types": [{"family": "integer", "name": "INT"}], "sql": "SELECT 1 LIMIT 1001", "limit": "added", "expected_rows": 1000, "execution_us": 830}
-//! serveur → client  {"type": "rows", "query": 0, "rows": [["1"]]}       autant de lots que nécessaire
-//! serveur → client  {"type": "done", "query": 0, "row_count": 1, "truncated": false, "affected_rows": 0, "elapsed_ms": 2, "database": "xlist"}
-//! serveur → client  {"type": "error", "query": 0, "message": "..."}     à la place de la suite, en cas d'échec
-//! serveur → client  {"type": "batch_done"}                               toutes les requêtes sont terminées
-//! serveur → client  {"type": "resume", "running": true, "queries": [...]}  au raccrochage : le dernier lot, où il en est
+//! server → client  {"type": "ready", "server": {"flavor": "mariadb", "version": "11.3.2-MariaDB", "ansi_quotes": false}, "database": "xlist"}
+//! client → server  {"type": "run", "sql": "SELECT 1; SELECT 2", "cursor": 3, "row_limit": 2000}   cursor and row_limit optional
+//! client → server  {"type": "cancel"}                                  stops all the running queries
+//! client → server  {"type": "cancel_query", "query": 2}                stops a single query of the running batch
+//! client → server  {"type": "use", "database": "xlist"}               changes the session's current database
+//! server → client  {"type": "database", "database": "xlist"}          answer to use: the current database
+//! server → client  {"type": "batch", "queries": [{"query": 0, "sql": "SELECT 1", "start": 0, "end": 9}]}
+//! server → client  {"type": "started", "query": 0}                  the query starts (in parallel, it may wait for its turn)
+//! server → client  {"type": "columns", "query": 0, "columns": ["1"], "types": [{"family": "integer", "name": "INT"}], "sql": "SELECT 1 LIMIT 1001", "limit": "added", "expected_rows": 1000, "execution_us": 830}
+//! server → client  {"type": "rows", "query": 0, "rows": [["1"]]}       as many batches as needed
+//! server → client  {"type": "done", "query": 0, "row_count": 1, "truncated": false, "affected_rows": 0, "elapsed_ms": 2, "database": "xlist"}
+//! server → client  {"type": "error", "query": 0, "message": "..."}     instead of the rest, on failure
+//! server → client  {"type": "batch_done"}                               all the queries have ended
+//! server → client  {"type": "resume", "running": true, "queries": [...]}  on reattaching: the last batch, where it stands
 //! ```
 //!
-//! Un WebSocket qui se raccroche à une session reçoit `ready`, avec la base
-//! en cours, puis `resume` pour la session d'un éditeur qui a déjà exécuté
-//! un lot : chaque requête du dernier lot avec son onglet, son état et ses
-//! lignes reçues jusque-là ; les messages suivants continuent ce lot.
+//! A WebSocket that reattaches to a session receives `ready`, with the
+//! current database, then `resume` for the session of an editor that has
+//! already run a batch: each query of the last batch with its tab, its state
+//! and the rows received so far; the next messages continue this batch.
 //!
-//! `cancel` interrompt les requêtes en cours (`KILL QUERY` sur chacune de
-//! leurs connexions) et empêche le départ de celles qui attendent leur tour :
-//! chacune se termine par une erreur « requête interrompue ». `cancel_query`
-//! fait de même pour une seule requête du lot (l'interface l'envoie quand on
-//! ferme son onglet). La session lit les messages du client pendant
-//! l'exécution, pour recevoir ces arrêts à temps.
+//! `cancel` interrupts the running queries (`KILL QUERY` on each of their
+//! connections) and prevents those waiting for their turn from starting: each
+//! one ends with a "query interrupted" error. `cancel_query` does the same for
+//! a single query of the batch (the interface sends it when its tab is
+//! closed). The session reads the client's messages while running, to receive
+//! these stops in time.
 //!
-//! Une erreur qui ne concerne aucune requête (message invalide, connexion au
-//! serveur cible impossible) a `"query": null`. `database` est la base en
-//! cours de la session (`SELECT DATABASE()`, `null` si aucune) : celle de la
-//! connexion enregistrée au départ, puis celle choisie par `USE`.
+//! An error that concerns no query (invalid message, connection to the target
+//! server impossible) has `"query": null`. `database` is the session's current
+//! database (`SELECT DATABASE()`, `null` if none): that of the saved
+//! connection at first, then the one chosen by `USE`.
 //!
-//! La limite de lignes suit `docs/V1.md`, section 2.3 : `row_limit` de la
-//! demande, sinon le réglage de l'utilisateur. En attendant les interrupteurs
-//! d'écriture, les écritures et les requêtes non analysables sont refusées
-//! (`docs/V1.md`, section 2.4).
+//! The row limit follows `docs/V1.md`, section 2.3: the request's
+//! `row_limit`, otherwise the user's setting. Until the write switches exist,
+//! writes and queries that cannot be parsed are refused (`docs/V1.md`,
+//! section 2.4).
 
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -83,194 +82,194 @@ use crate::recorder::{Recorder, ResumedQuery};
 use crate::session_relay::{Relay, SessionHandle};
 use crate::settings::{self, check_row_limit};
 
-/// Nombre de lignes par message `rows`.
+/// Number of rows per `rows` message.
 const ROW_BATCH_SIZE: usize = 500;
 
-/// Nombre maximal de requêtes exécutées en même temps (une connexion chacune).
+/// Maximum number of queries run at the same time (one connection each).
 const MAX_PARALLEL: usize = 8;
 
-/// Nombre de messages en attente d'envoi au-delà duquel la lecture des résultats patiente.
+/// Number of messages waiting to be sent beyond which reading the results waits.
 const OUTBOX_SIZE: usize = 64;
 
-/// Message envoyé par le client.
+/// Message sent by the client.
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum ClientMessage {
-    /// Exécuter des requêtes.
+    /// Run queries.
     Run(QueryRequest),
-    /// Arrêter toutes les requêtes en cours.
+    /// Stop all the running queries.
     Cancel,
-    /// Arrêter une seule requête du lot en cours, désignée par son numéro.
+    /// Stop a single query of the running batch, designated by its number.
     CancelQuery { query: u32 },
-    /// Changer la base en cours de la session, comme `USE`, sans résultat à afficher.
+    /// Change the session's current database, like `USE`, without a result to show.
     Use { database: String },
 }
 
-/// Demande transmise à la session par la lecture des messages du client.
+/// Request passed to the session by the reading of the client's messages.
 pub(crate) enum SessionRequest {
-    /// Exécuter des requêtes.
+    /// Run queries.
     Run(QueryRequest),
-    /// Changer la base en cours.
+    /// Change the current database.
     Use(String),
 }
 
-/// Message d'erreur des requêtes arrêtées par l'utilisateur.
-const CANCELLED: &str = "requête interrompue par l'utilisateur";
+/// Error message of the queries stopped by the user.
+const CANCELLED: &str = "query interrupted by the user";
 
-/// Demande d'exécution envoyée par le client.
+/// Run request sent by the client.
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub(crate) struct QueryRequest {
-    /// Texte complet de l'éditeur, une ou plusieurs requêtes.
+    /// Whole text of the editor, one or more queries.
     sql: String,
-    /// Position du curseur en unités UTF-16 : seule la requête sous le
-    /// curseur s'exécute. Absent : toutes les requêtes, en parallèle.
+    /// Position of the cursor in UTF-16 units: only the query under the
+    /// cursor runs. Absent: all the queries, in parallel.
     #[ts(optional)]
     cursor: Option<usize>,
-    /// Limite de lignes pour ces requêtes seules, parmi les choix permis.
+    /// Row limit for these queries only, among the allowed choices.
     #[ts(optional)]
     row_limit: Option<u32>,
 }
 
-/// Requête d'un lot, telle qu'annoncée au client.
+/// Query of a batch, as announced to the client.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub(crate) struct BatchQuery {
-    /// Numéro de la requête dans le lot, repris par ses messages.
+    /// Number of the query in the batch, repeated by its messages.
     pub(crate) query: u32,
-    /// Onglet de résultat enregistré de la requête (session d'un éditeur),
-    /// 0 si la session n'enregistre pas ses résultats.
+    /// Saved result tab of the query (session of an editor), 0 if the session
+    /// does not save its results.
     pub(crate) tab: i64,
-    /// Texte de la requête, sans séparateur.
+    /// Text of the query, without a separator.
     pub(crate) sql: String,
-    /// Début de la requête dans le texte de l'éditeur, en unités UTF-16.
+    /// Start of the query in the editor's text, in UTF-16 units.
     pub(crate) start: usize,
-    /// Fin de la requête dans le texte de l'éditeur, en unités UTF-16.
+    /// End of the query in the editor's text, in UTF-16 units.
     pub(crate) end: usize,
 }
 
-/// Traitement de la limite, tel qu'annoncé au client.
+/// Handling of the limit, as announced to the client.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum LimitReport {
-    /// Prisme a ajouté `LIMIT N + 1`.
+    /// Prisme added `LIMIT N + 1`.
     Added,
-    /// La limite écrite par l'utilisateur s'applique.
+    /// The limit written by the user applies.
     UserLimit,
-    /// Requête sans lignes à limiter.
+    /// Query without rows to limit.
     NotApplicable,
-    /// Requête non analysée : la lecture s'arrête d'elle-même après N lignes.
+    /// Query not parsed: reading stops by itself after N rows.
     Unparsed,
 }
 
-/// Message envoyé au client.
+/// Message sent to the client.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum ServerMessage {
-    /// La connexion au serveur cible est ouverte.
+    /// The connection to the target server is open.
     Ready {
         server: ServerInfo,
         database: Option<String>,
     },
-    /// Requêtes qui vont s'exécuter.
+    /// Queries about to run.
     Batch { queries: Vec<BatchQuery> },
-    /// Une requête du lot démarre. En parallèle, les requêtes au-delà de
-    /// `MAX_PARALLEL` attendent leur tour avant ce message.
+    /// A query of the batch starts. In parallel, the queries beyond
+    /// `MAX_PARALLEL` wait for their turn before this message.
     Started { query: u32 },
-    /// Début d'un résultat : colonnes, texte réellement exécuté, traitement de la limite.
+    /// Start of a result: columns, text actually run, handling of the limit.
     Columns {
         query: u32,
         columns: Vec<String>,
-        /// Pour chaque colonne, ses valeurs s'alignent-elles à droite (nombres,
-        /// dates et heures) ?
+        /// For each column, are its values right-aligned (numbers, dates and
+        /// times)?
         right_aligned: Vec<bool>,
-        /// Type de chaque colonne, annoncé par le serveur avec le résultat.
+        /// Type of each column, announced by the server with the result.
         types: Vec<ColumnTypeInfo>,
         sql: String,
         limit: LimitReport,
-        /// Nombre de lignes au plus : la limite de Prisme, ou celle écrite par
-        /// l'utilisateur quand c'est un nombre ; `null` si inconnu. Sert à la
-        /// barre d'avancement de l'interface.
+        /// Maximum number of rows: Prisme's limit, or the one written by the
+        /// user when it is a number; `null` if unknown. Used by the interface's
+        /// progress bar.
         expected_rows: Option<u64>,
-        /// Temps d'exécution de la requête par le serveur cible, en
-        /// microsecondes : de son envoi à la réception de ses colonnes.
+        /// Execution time of the query by the target server, in microseconds:
+        /// from sending it to receiving its columns.
         execution_us: u64,
     },
-    /// Lot de lignes.
+    /// Batch of rows.
     Rows { query: u32, rows: Vec<Vec<Cell>> },
-    /// Fin d'un résultat.
+    /// End of a result.
     Done {
         query: u32,
         row_count: usize,
         truncated: bool,
         affected_rows: u64,
         elapsed_ms: u128,
-        /// Base en cours de la session après la requête (elle change avec `USE`).
+        /// Current database of the session after the query (it changes with `USE`).
         database: Option<String>,
     },
-    /// Échec d'une requête, ou de la session si `query` est absent.
+    /// Failure of a query, or of the session if `query` is absent.
     Error { query: Option<u32>, message: String },
-    /// Toutes les requêtes du lot sont terminées.
+    /// All the queries of the batch have ended.
     BatchDone,
-    /// Base en cours de la session, après une demande `use` réussie.
+    /// Current database of the session, after a successful `use` request.
     Database { database: Option<String> },
-    /// Dernier lot de la session, envoyé à un WebSocket qui s'y raccroche.
+    /// Last batch of the session, sent to a WebSocket that reattaches to it.
     Resume {
-        /// Le lot est-il encore en cours ?
+        /// Is the batch still running?
         running: bool,
-        /// Requêtes du lot, par numéro, où elles en sont.
+        /// Queries of the batch, by number, where they stand.
         queries: Vec<ResumedQuery>,
     },
 }
 
-/// Le relais des messages a disparu : la session s'arrête.
+/// The message relay is gone: the session stops.
 struct SessionStopped;
 
-/// File des messages à envoyer au client, partagée par les requêtes parallèles.
+/// Queue of the messages to send to the client, shared by the parallel queries.
 ///
-/// Le relais (`session_relay.rs`) vide la file vers le WebSocket rattaché,
-/// s'il y en a un. La file est bornée : si le client lit lentement, la
-/// lecture des résultats patiente.
+/// The relay (`session_relay.rs`) drains the queue to the attached WebSocket,
+/// if there is one. The queue is bounded: if the client reads slowly, reading
+/// the results waits.
 #[derive(Clone)]
 struct Outbox {
-    /// Vers le relais.
+    /// To the relay.
     sender: mpsc::Sender<ServerMessage>,
 }
 
 impl Outbox {
-    /// Met un message dans la file.
+    /// Puts a message in the queue.
     async fn send(&self, message: ServerMessage) -> Result<(), SessionStopped> {
         self.sender.send(message).await.map_err(|_| SessionStopped)
     }
 
-    /// Met un message d'erreur dans la file.
+    /// Puts an error message in the queue.
     async fn error(&self, query: Option<u32>, message: String) -> Result<(), SessionStopped> {
         self.send(ServerMessage::Error { query, message }).await
     }
 }
 
-/// Arrêt des requêtes en cours, demandé par le client.
+/// Stopping of the running queries, requested by the client.
 ///
-/// Garde la liste des requêtes en cours avec leur connexion, pour pouvoir les
-/// interrompre (`KILL QUERY`), un drapeau pour l'arrêt de tout le lot et la
-/// liste des requêtes arrêtées une à une. Les requêtes consultent l'un et
-/// l'autre avant de partir et pendant la lecture de leurs lignes.
+/// Keeps the list of the running queries with their connection, to be able
+/// to interrupt them (`KILL QUERY`), a flag for stopping the whole batch and
+/// the list of the queries stopped one by one. Queries check both before
+/// starting and while reading their rows.
 #[derive(Default)]
 pub(crate) struct Cancellation {
-    /// L'arrêt de tout le lot a-t-il été demandé ?
+    /// Has stopping the whole batch been requested?
     cancelled: AtomicBool,
-    /// Numéros des requêtes du lot arrêtées une à une.
+    /// Numbers of the queries of the batch stopped one by one.
     cancelled_queries: Mutex<Vec<u32>>,
-    /// Requêtes en cours : numéro de la requête et identifiant (`Conn::id()`)
-    /// de sa connexion.
+    /// Running queries: number of the query and id (`Conn::id()`) of its
+    /// connection.
     running: Mutex<Vec<(u32, u32)>>,
 }
 
 impl Cancellation {
-    /// Prépare un nouveau lot : plus aucun arrêt demandé.
+    /// Prepares a new batch: no stop requested anymore.
     fn reset(&self) {
         self.cancelled.store(false, Ordering::SeqCst);
         if let Ok(mut queries) = self.cancelled_queries.lock() {
@@ -278,7 +277,7 @@ impl Cancellation {
         }
     }
 
-    /// L'arrêt de la requête `query` a-t-il été demandé, seul ou avec tout le lot ?
+    /// Has stopping the query `query` been requested, alone or with the whole batch?
     fn is_cancelled(&self, query: u32) -> bool {
         self.cancelled.load(Ordering::SeqCst)
             || self
@@ -287,13 +286,13 @@ impl Cancellation {
                 .is_ok_and(|queries| queries.contains(&query))
     }
 
-    /// Demande l'arrêt de tout le lot et interrompt toutes les requêtes en cours.
+    /// Requests stopping the whole batch and interrupts all the running queries.
     pub(crate) async fn cancel(&self, target: &MysqlTarget) {
         self.cancelled.store(true, Ordering::SeqCst);
         self.kill(target, |_| true).await;
     }
 
-    /// Demande l'arrêt d'une seule requête et l'interrompt si elle est en cours.
+    /// Requests stopping a single query and interrupts it if it is running.
     pub(crate) async fn cancel_query(&self, target: &MysqlTarget, query: u32) {
         if let Ok(mut queries) = self.cancelled_queries.lock() {
             queries.push(query);
@@ -301,7 +300,7 @@ impl Cancellation {
         self.kill(target, |running| running == query).await;
     }
 
-    /// Interrompt (`KILL QUERY`) les requêtes en cours que `selected` retient.
+    /// Interrupts (`KILL QUERY`) the running queries that `selected` keeps.
     async fn kill(&self, target: &MysqlTarget, selected: impl Fn(u32) -> bool) {
         let connections: Vec<u32> = self
             .running
@@ -316,13 +315,13 @@ impl Cancellation {
             .unwrap_or_default();
         for connection_id in connections {
             if let Err(error) = mysql::kill_query(target, connection_id).await {
-                tracing::warn!("interruption de la requête impossible : {error}");
+                tracing::warn!("cannot interrupt the query: {error}");
             }
         }
     }
 
-    /// Note que la requête `query` s'exécute sur une connexion, jusqu'à la
-    /// disparition du garde renvoyé.
+    /// Records that the query `query` runs on a connection, until the returned
+    /// guard is dropped.
     fn track(&self, query: u32, connection_id: u32) -> RunningGuard<'_> {
         if let Ok(mut running) = self.running.lock() {
             running.push((query, connection_id));
@@ -334,14 +333,14 @@ impl Cancellation {
     }
 }
 
-/// Garde d'une requête en cours : à sa disparition, la connexion sort de la liste.
+/// Guard of a running query: when it is dropped, the connection leaves the list.
 struct RunningGuard<'a> {
     cancellation: &'a Cancellation,
     connection_id: u32,
 }
 
 impl Drop for RunningGuard<'_> {
-    /// Retire la connexion de la liste des requêtes en cours.
+    /// Removes the connection from the list of the running queries.
     fn drop(&mut self) {
         if let Ok(mut running) = self.cancellation.running.lock() {
             running.retain(|&(_, id)| id != self.connection_id);
@@ -349,14 +348,13 @@ impl Drop for RunningGuard<'_> {
     }
 }
 
-/// Ouvre une session sur `target`, rattachée au WebSocket `socket`, et
-/// renvoie de quoi y raccrocher un autre WebSocket ou l'arrêter.
+/// Opens a session on `target`, attached to the WebSocket `socket`, and
+/// returns what is needed to reattach another WebSocket to it or to stop it.
 ///
-/// Deux tâches se partagent la session : l'une exécute les demandes du
-/// client (`serve`), l'autre relaie les messages vers le WebSocket du moment
-/// et, pour la session d'un éditeur, les enregistre (`session_relay.rs`).
-/// Sans WebSocket rattaché pendant `keep_alive`, la session s'arrête ;
-/// `on_end` est alors appelée.
+/// Two tasks share the session: one runs the client's requests (`serve`), the
+/// other relays the messages to the current WebSocket and, for an editor's
+/// session, saves them (`session_relay.rs`). Without an attached WebSocket for
+/// `keep_alive`, the session stops; `on_end` is then called.
 pub(crate) fn start(
     socket: WebSocket,
     state: AppState,
@@ -396,8 +394,8 @@ pub(crate) fn start(
     SessionHandle::new(commands)
 }
 
-/// Déroule une session : connexion au serveur cible, puis demandes du client
-/// jusqu'à l'arrêt de la session.
+/// Runs a session: connection to the target server, then the client's
+/// requests until the session stops.
 async fn serve(
     outbox: Outbox,
     mut requests: mpsc::Receiver<SessionRequest>,
@@ -444,21 +442,21 @@ async fn serve(
     let _ = connection.disconnect().await;
 }
 
-/// Ce dont les requêtes ont besoin pendant leur exécution.
+/// What the queries need while running.
 struct Session<'a> {
-    /// File des messages vers le client.
+    /// Queue of the messages to the client.
     outbox: &'a Outbox,
-    /// Paramètres de connexion, pour les connexions supplémentaires et les interruptions.
+    /// Connection settings, for the extra connections and the interruptions.
     target: &'a MysqlTarget,
-    /// État de l'application, pour lire les réglages.
+    /// State of the application, to read the settings.
     state: &'a AppState,
-    /// Utilisateur de la session.
+    /// User of the session.
     user_id: i64,
-    /// Arrêt des requêtes en cours, demandé par le client.
+    /// Stopping of the running queries, requested by the client.
     cancellation: &'a Cancellation,
 }
 
-/// Résumé d'un résultat lu jusqu'au bout.
+/// Summary of a result read to the end.
 struct Summary {
     row_count: usize,
     truncated: bool,
@@ -467,7 +465,7 @@ struct Summary {
 }
 
 impl Session<'_> {
-    /// Ouvre la connexion de la session ; en cas d'échec, l'erreur part au client.
+    /// Opens the session's connection; on failure, the error goes to the client.
     async fn open(&self) -> Option<Connection> {
         match mysql::connect(self.target).await {
             Ok(connection) => Some(connection),
@@ -478,8 +476,8 @@ impl Session<'_> {
         }
     }
 
-    /// Annonce la session au client : identité du serveur et base en cours.
-    /// Renvoie le dialecte du serveur.
+    /// Announces the session to the client: identity of the server and current
+    /// database. Returns the server's dialect.
     async fn ready(&self, connection: &mut Connection) -> Result<Dialect, SessionStopped> {
         let info = match mysql::server_info(connection).await {
             Ok(info) => info,
@@ -505,8 +503,9 @@ impl Session<'_> {
         Ok(dialect)
     }
 
-    /// Change la base en cours de la session et annonce la nouvelle base au
-    /// client ; un échec (base inconnue, droits) part comme erreur de session.
+    /// Changes the session's current database and announces the new database
+    /// to the client; a failure (unknown database, privileges) goes as a
+    /// session error.
     async fn use_database(
         &self,
         connection: &mut Connection,
@@ -522,8 +521,8 @@ impl Session<'_> {
         }
     }
 
-    /// Traite une demande du client : découpe le texte, puis exécute la
-    /// requête sous le curseur, ou toutes les requêtes en parallèle.
+    /// Handles a request of the client: splits the text, then runs the query
+    /// under the cursor, or all the queries in parallel.
     async fn handle(
         &self,
         connection: &mut Connection,
@@ -537,7 +536,7 @@ impl Session<'_> {
         let statements = split(&request.sql);
         let chosen = chosen_statements(&statements, request.cursor);
         if chosen.is_empty() {
-            let message = "aucune requête à exécuter".to_string();
+            let message = "no query to run".to_string();
             return self.outbox.error(None, message).await;
         }
 
@@ -568,7 +567,7 @@ impl Session<'_> {
         self.outbox.send(ServerMessage::BatchDone).await
     }
 
-    /// Exécute une requête sur la connexion de la session.
+    /// Runs a query on the session's connection.
     async fn run_on_session(
         &self,
         connection: &mut Connection,
@@ -592,8 +591,8 @@ impl Session<'_> {
         self.done(0, summary, database).await
     }
 
-    /// Exécute toutes les requêtes en parallèle, `MAX_PARALLEL` au plus à la fois,
-    /// chacune sur sa propre connexion ouverte sur la base `database`.
+    /// Runs all the queries in parallel, `MAX_PARALLEL` at most at a time, each
+    /// on its own connection opened on the database `database`.
     async fn run_in_parallel(
         &self,
         statements: &[&Statement],
@@ -601,7 +600,7 @@ impl Session<'_> {
         max_rows: usize,
         database: &Option<String>,
     ) -> Result<(), SessionStopped> {
-        // Les requêtes partent toutes, mais attendent un jeton avant d'ouvrir leur connexion.
+        // All the queries start, but wait for a permit before opening their connection.
         let permits = Semaphore::new(MAX_PARALLEL);
         let mut runs = Vec::with_capacity(statements.len());
         for (index, statement) in statements.iter().enumerate() {
@@ -619,7 +618,7 @@ impl Session<'_> {
         results.into_iter().collect()
     }
 
-    /// Attend un jeton parmi `permits`, puis exécute la requête sur une nouvelle connexion.
+    /// Waits for a permit among `permits`, then runs the query on a new connection.
     async fn run_with_permit(
         &self,
         permits: &Semaphore,
@@ -638,7 +637,7 @@ impl Session<'_> {
             .await
     }
 
-    /// Exécute une requête sur une nouvelle connexion, placée sur la base `database`.
+    /// Runs a query on a new connection, placed on the database `database`.
     async fn run_on_new_connection(
         &self,
         dialect: Dialect,
@@ -658,7 +657,7 @@ impl Session<'_> {
         result
     }
 
-    /// Place la connexion sur la base `database`, puis y exécute la requête.
+    /// Places the connection on the database `database`, then runs the query on it.
     async fn run_on_connection(
         &self,
         connection: &mut Connection,
@@ -682,10 +681,10 @@ impl Session<'_> {
         }
     }
 
-    /// Exécute une requête et envoie ses colonnes et ses lignes en streaming.
+    /// Runs a query and streams its columns and its rows.
     ///
-    /// Renvoie le résumé du résultat, ou `None` si la requête a échoué (l'erreur
-    /// est alors déjà partie au client).
+    /// Returns the summary of the result, or `None` if the query failed (the
+    /// error has then already gone to the client).
     async fn run_query(
         &self,
         connection: &mut Connection,
@@ -705,7 +704,7 @@ impl Session<'_> {
                 return Ok(None);
             }
         };
-        // La lecture ne s'arrête d'elle-même que si Prisme a fixé la limite.
+        // Reading only stops by itself if Prisme set the limit.
         let capped = matches!(
             limited.outcome,
             LimitOutcome::Added | LimitOutcome::Unparsed
@@ -714,7 +713,7 @@ impl Session<'_> {
         let started = Instant::now();
         let connection_id = connection.id();
         let _running = self.cancellation.track(query, connection_id);
-        // Arrêt demandé pendant l'ouverture de la connexion : la requête ne part pas.
+        // Stop requested while the connection was opening: the query does not start.
         if self.cancellation.is_cancelled(query) {
             self.outbox
                 .error(Some(query), CANCELLED.to_string())
@@ -764,7 +763,7 @@ impl Session<'_> {
                 }
             };
             if self.cancellation.is_cancelled(query) {
-                // Le serveur a déjà reçu KILL QUERY : on cesse de lire.
+                // The server has already received KILL QUERY: reading stops.
                 stream.discard().await;
                 self.outbox
                     .error(Some(query), CANCELLED.to_string())
@@ -772,12 +771,12 @@ impl Session<'_> {
                 return Ok(None);
             }
             if capped && row_count == max_rows {
-                // La ligne N + 1 : le résultat est tronqué, inutile de lire plus loin.
+                // Row N + 1: the result is truncated, no need to read further.
                 truncated = true;
                 if limited.outcome == LimitOutcome::Unparsed {
-                    // Sans LIMIT, le serveur continuerait d'envoyer des lignes : on l'interrompt.
+                    // Without LIMIT, the server would keep sending rows: it is interrupted.
                     if let Err(error) = mysql::kill_query(self.target, connection_id).await {
-                        tracing::warn!("interruption de la requête impossible : {error}");
+                        tracing::warn!("cannot interrupt the query: {error}");
                     }
                 }
                 break;
@@ -807,8 +806,8 @@ impl Session<'_> {
         }))
     }
 
-    /// Message d'une requête en échec : « interrompue » si l'arrêt a été
-    /// demandé (l'erreur du serveur est alors celle de `KILL QUERY`).
+    /// Message of a failed query: "interrupted" if the stop was requested (the
+    /// server's error is then that of `KILL QUERY`).
     fn failure(&self, query: u32, error: mysql::MysqlError) -> String {
         if self.cancellation.is_cancelled(query) {
             CANCELLED.to_string()
@@ -817,7 +816,7 @@ impl Session<'_> {
         }
     }
 
-    /// Annonce la fin d'un résultat.
+    /// Announces the end of a result.
     async fn done(
         &self,
         query: u32,
@@ -837,7 +836,7 @@ impl Session<'_> {
     }
 }
 
-/// Requêtes à exécuter : celle sous le curseur, ou toutes sans curseur.
+/// Queries to run: the one under the cursor, or all of them without a cursor.
 fn chosen_statements(statements: &[Statement], cursor: Option<usize>) -> Vec<&Statement> {
     match cursor {
         Some(cursor) => statement_at(statements, cursor)
@@ -847,7 +846,7 @@ fn chosen_statements(statements: &[Statement], cursor: Option<usize>) -> Vec<&St
     }
 }
 
-/// Limite de lignes d'une demande : celle demandée, sinon le réglage de l'utilisateur.
+/// Row limit of a request: the requested one, otherwise the user's setting.
 async fn row_limit(state: &AppState, user_id: i64, requested: Option<u32>) -> Result<u32, String> {
     if let Some(row_limit) = requested {
         return check_row_limit(row_limit).map_err(|error| error.to_string());
@@ -856,27 +855,28 @@ async fn row_limit(state: &AppState, user_id: i64, requested: Option<u32>) -> Re
         .with_db(move |db, _key| settings::load(db, user_id))
         .await
         .map(|settings| settings.row_limit)
-        .map_err(|_| "réglages de l'utilisateur illisibles, voir le journal du serveur".to_string())
+        .map_err(|_| "unreadable user settings, see the server log".to_string())
 }
 
-/// Renvoie le motif du refus si la requête n'est pas une lecture.
+/// Returns the reason for the refusal if the query is not a read.
 ///
-/// Les écritures restent refusées tant que les interrupteurs d'écriture
-/// (étape 4 de la v1) n'existent pas. Une requête non analysable est refusée
-/// aussi, car rien ne prouve qu'elle est une lecture.
+/// Writes stay refused as long as the write switches (stage 4 of the v1) do
+/// not exist. A query that cannot be parsed is refused too, as nothing proves
+/// it is a read.
 fn write_refusal(sql: &str, dialect: Dialect) -> Option<String> {
     match classify(sql, dialect) {
         StatementKind::Read => None,
-        StatementKind::Write => Some(
-            "écriture refusée : les écritures sont désactivées en attendant les interrupteurs d'écriture".to_string(),
-        ),
+        StatementKind::Write => {
+            Some("write refused: writes are disabled until the write switches exist".to_string())
+        }
         StatementKind::Unparsed => Some(
-            "requête refusée : Prisme ne sait pas l'analyser, donc ne peut pas vérifier qu'elle est une lecture".to_string(),
+            "query refused: Prisme cannot parse it, so it cannot check that it is a read"
+                .to_string(),
         ),
     }
 }
 
-/// Traduit le traitement de la limite pour le client.
+/// Translates the handling of the limit for the client.
 fn report(outcome: LimitOutcome) -> LimitReport {
     match outcome {
         LimitOutcome::Added => LimitReport::Added,
@@ -906,10 +906,10 @@ mod tests {
 
     type ClientSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-    /// Démarre Prisme sur un port libre, avec une connexion enregistrée vers
-    /// `host:port` (compte root sans mot de passe, base `test`) et un éditeur
-    /// sur cette connexion, et renvoie l'adresse du serveur, l'identifiant de
-    /// la connexion et celui de l'éditeur.
+    /// Starts Prisme on a free port, with a saved connection to `host:port`
+    /// (root account without a password, `test` database) and an editor on
+    /// this connection, and returns the server's address, the id of the
+    /// connection and that of the editor.
     async fn start(host: &str, port: u16) -> (String, i64, i64) {
         let db = store::open_in_memory();
         let key = MasterKey::generate();
@@ -921,8 +921,8 @@ mod tests {
             username: "root".to_string(),
             password: SecretString::from(""),
             database_name: "test".to_string(),
-            // Requêtes à la connexion : la variable existe sur chaque connexion
-            // ouverte, et les guillemets doubles y délimitent des identifiants.
+            // On-connect queries: the variable exists on each open connection,
+            // and double quotes delimit identifiers there.
             init_sql: "SET @prisme_init = 1; SET SESSION sql_mode = 'ANSI_QUOTES'".to_string(),
             session_timeout_minutes: 5,
             show_system_schemas: true,
@@ -940,7 +940,7 @@ mod tests {
         (address, id, editor.id)
     }
 
-    /// Lit le prochain message texte du serveur, en JSON.
+    /// Reads the next text message of the server, as JSON.
     async fn next_json(socket: &mut ClientSocket) -> Value {
         loop {
             if let ClientMessage::Text(text) = socket.next().await.unwrap().unwrap() {
@@ -949,21 +949,21 @@ mod tests {
         }
     }
 
-    /// Résultat d'une requête d'un lot, tel que reçu par le client.
+    /// Result of a query of a batch, as received by the client.
     #[derive(Debug, Default)]
     struct Received {
-        /// Message `columns`, ou Null.
+        /// `columns` message, or Null.
         columns: Value,
-        /// Nombre de lignes reçues.
+        /// Number of rows received.
         rows: usize,
-        /// Dernier message de la requête : `done` ou `error`.
+        /// Last message of the query: `done` or `error`.
         end: Value,
-        /// Le message `started` est-il arrivé ?
+        /// Has the `started` message arrived?
         started: bool,
     }
 
-    /// Envoie une demande, puis lit les messages jusqu'à `batch_done`.
-    /// Renvoie le message `batch` (ou une erreur de session) et les résultats, par numéro de requête.
+    /// Sends a request, then reads the messages until `batch_done`.
+    /// Returns the `batch` message (or a session error) and the results, by query number.
     async fn run(socket: &mut ClientSocket, mut request: Value) -> (Value, Vec<Received>) {
         request["type"] = json!("run");
         socket
@@ -997,7 +997,7 @@ mod tests {
         }
     }
 
-    /// Exécute la requête sous le curseur (ici, le seul texte envoyé) et renvoie son résultat.
+    /// Runs the query under the cursor (here, the only text sent) and returns its result.
     async fn run_one(socket: &mut ClientSocket, sql: &str, row_limit: Option<u32>) -> Received {
         let mut request = json!({ "sql": sql, "cursor": 0 });
         if let Some(row_limit) = row_limit {
@@ -1028,7 +1028,7 @@ mod tests {
 
     #[tokio::test]
     async fn cancels_one_query_or_the_whole_batch() {
-        // Aucune requête en cours : l'arrêt ne contacte pas le serveur cible.
+        // No running query: stopping does not contact the target server.
         let target = super::MysqlTarget {
             host: "127.0.0.1".to_string(),
             port: 1,
@@ -1045,7 +1045,7 @@ mod tests {
         cancellation.cancel(&target).await;
         assert!(cancellation.is_cancelled(0));
 
-        // Nouveau lot : plus aucun arrêt.
+        // New batch: no stop anymore.
         cancellation.reset();
         assert!(!cancellation.is_cancelled(0));
         assert!(!cancellation.is_cancelled(1));
@@ -1066,7 +1066,7 @@ mod tests {
 
     #[tokio::test]
     async fn unreachable_server_sends_an_error() {
-        // Port 1 : aucun serveur n'y écoute.
+        // Port 1: no server listens there.
         let (address, id, _) = start("127.0.0.1", 1).await;
         let (mut socket, _) = connect_async(format!("ws://{address}/api/connections/{id}/query"))
             .await
@@ -1086,7 +1086,7 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "nécessite Docker Desktop démarré"]
+    #[ignore = "requires Docker Desktop running"]
     async fn streams_results_with_the_default_limit() {
         let server = Mariadb::default().start().await.unwrap();
         let host = server.get_host().await.unwrap().to_string();
@@ -1102,7 +1102,7 @@ mod tests {
         assert_eq!(ready["server"]["ansi_quotes"], true);
         assert_eq!(ready["database"], "test");
 
-        // Pas de limite écrite : 1 000 lignes affichées sur 2 500, résultat tronqué.
+        // No limit written: 1,000 rows shown out of 2,500, truncated result.
         let result = run_one(&mut socket, "SELECT seq FROM seq_1_to_2500", Some(1000)).await;
         assert_eq!(result.columns["limit"], "added");
         assert_eq!(
@@ -1112,7 +1112,7 @@ mod tests {
         assert_eq!(result.rows, 1000);
         assert_eq!(result.end["truncated"], true);
 
-        // Limite écrite : elle s'applique telle quelle, au-delà de la limite par défaut.
+        // Written limit: it applies as is, beyond the default limit.
         let result = run_one(
             &mut socket,
             "SELECT seq FROM seq_1_to_2500 LIMIT 1500",
@@ -1123,7 +1123,7 @@ mod tests {
         assert_eq!(result.rows, 1500);
         assert_eq!(result.end["truncated"], false);
 
-        // Une erreur n'interrompt pas la session.
+        // An error does not interrupt the session.
         let result = run_one(&mut socket, "SELECT * FROM missing", None).await;
         assert_eq!(result.end["type"], "error");
         let result = run_one(&mut socket, "SELECT 1", None).await;
@@ -1132,11 +1132,11 @@ mod tests {
             (1, Some("done"))
         );
 
-        // USE change la base en cours, annoncée à la fin de la requête.
+        // USE changes the current database, announced at the end of the query.
         let result = run_one(&mut socket, "USE mysql", None).await;
         assert_eq!(result.end["database"], "mysql");
 
-        // use change la base en cours sans résultat ; une base inconnue donne une erreur de session.
+        // use changes the current database without a result; an unknown database gives a session error.
         for database in ["test", "missing", "mysql"] {
             let request = json!({ "type": "use", "database": database });
             socket
@@ -1154,14 +1154,14 @@ mod tests {
             }
         }
 
-        // Curseur sur la ligne vide entre deux requêtes : la précédente s'exécute.
+        // Cursor on the empty line between two queries: the previous one runs.
         let text = "SELECT 'a';\n\nSELECT 'b', 'c';";
         let (batch, results) = run(&mut socket, json!({ "sql": text, "cursor": 12 })).await;
         assert_eq!(batch["queries"][0]["sql"], "SELECT 'a'");
         assert_eq!(results.len(), 1);
 
-        // Requête à la connexion exécutée sur la connexion de la session et sur
-        // celles des requêtes en parallèle.
+        // On-connect query run on the session's connection and on those of the
+        // parallel queries.
         let check = "SELECT 1 FROM DUAL WHERE @prisme_init = 1";
         let (_, results) = run(&mut socket, json!({ "sql": check, "cursor": 0 })).await;
         assert_eq!(results[0].rows, 1);
@@ -1169,7 +1169,7 @@ mod tests {
         let (_, results) = run(&mut socket, request).await;
         assert!(results.iter().all(|result| result.rows == 1));
 
-        // Sans curseur : toutes les requêtes, en parallèle, sur la base en cours (mysql).
+        // Without a cursor: all the queries, in parallel, on the current database (mysql).
         let request = json!({ "sql": "SELECT 1; SELECT DATABASE(), 2;" });
         let (batch, results) = run(&mut socket, request).await;
         assert_eq!(batch["queries"].as_array().unwrap().len(), 2);
@@ -1186,7 +1186,7 @@ mod tests {
         assert_eq!(results[1].end["database"], "mysql");
         assert!(results.iter().all(|result| result.started));
 
-        // Stopper : les requêtes en cours sont interrompues bien avant leur fin.
+        // Stop: the running queries are interrupted well before their end.
         let started = std::time::Instant::now();
         let request = json!({ "type": "run", "sql": "SELECT SLEEP(30); SELECT SLEEP(30);" });
         socket
@@ -1204,7 +1204,7 @@ mod tests {
             let message = next_json(&mut socket).await;
             match message["type"].as_str().unwrap() {
                 "error" => {
-                    assert_eq!(message["message"], "requête interrompue par l'utilisateur");
+                    assert_eq!(message["message"], "query interrupted by the user");
                     errors += 1;
                 }
                 "batch_done" => break,
@@ -1214,7 +1214,7 @@ mod tests {
         assert_eq!(errors, 2);
         assert!(started.elapsed() < std::time::Duration::from_secs(10));
 
-        // Fermer un onglet : seule sa requête est interrompue, l'autre va au bout.
+        // Closing a tab: only its query is interrupted, the other one goes to the end.
         let started = std::time::Instant::now();
         let request = json!({ "type": "run", "sql": "SELECT SLEEP(30); SELECT SLEEP(1);" });
         socket
@@ -1240,13 +1240,13 @@ mod tests {
         assert_eq!((interrupted, finished), (vec![json!(0)], vec![json!(1)]));
         assert!(started.elapsed() < std::time::Duration::from_secs(10));
 
-        // Rien à exécuter : erreur de session.
-        let (error, _) = run(&mut socket, json!({ "sql": " -- rien" })).await;
-        assert_eq!(error["message"], "aucune requête à exécuter");
+        // Nothing to run: session error.
+        let (error, _) = run(&mut socket, json!({ "sql": " -- nothing" })).await;
+        assert_eq!(error["message"], "no query to run");
     }
 
     #[tokio::test]
-    #[ignore = "nécessite Docker Desktop démarré"]
+    #[ignore = "requires Docker Desktop running"]
     async fn editor_session_survives_a_disconnect() {
         let server = Mariadb::default().start().await.unwrap();
         let host = server.get_host().await.unwrap().to_string();
@@ -1256,11 +1256,11 @@ mod tests {
         let (mut socket, _) = connect_async(&url).await.unwrap();
         assert_eq!(next_json(&mut socket).await["database"], "test");
 
-        // La base en cours change sur la connexion de la session.
+        // The current database changes on the session's connection.
         let result = run_one(&mut socket, "USE mysql", None).await;
         assert_eq!(result.end["database"], "mysql");
 
-        // Un lot part, puis la page disparaît avant sa fin.
+        // A batch starts, then the page disappears before its end.
         let request = json!({ "type": "run", "sql": "SELECT SLEEP(2); SELECT 1;" });
         socket
             .send(ClientMessage::Text(request.to_string().into()))
@@ -1271,8 +1271,8 @@ mod tests {
         drop(socket);
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
-        // La page revient : même session (base mysql), lot en cours repris
-        // avec les mêmes onglets, puis continué jusqu'au bout.
+        // The page comes back: same session (mysql database), running batch
+        // resumed with the same tabs, then continued to the end.
         let (mut socket, _) = connect_async(&url).await.unwrap();
         let ready = next_json(&mut socket).await;
         assert_eq!(

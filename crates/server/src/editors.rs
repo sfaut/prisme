@@ -1,28 +1,28 @@
-//! Éditeurs SQL de l'utilisateur (onglets du haut de l'écran) et leurs
-//! onglets de résultat, enregistrés dans la base interne : tout survit à un
-//! rafraîchissement de la page ou à la fermeture du navigateur.
+//! SQL editors of the user (tabs at the top of the screen) and their result
+//! tabs, saved in the internal database: everything survives a page reload or
+//! the browser being closed.
 //!
-//! Chaque éditeur a son texte, sa connexion et sa propre session de
-//! requêtes (`GET /api/editors/{id}/session`). Les résultats sont enregistrés
-//! par le serveur lui-même au fil de l'exécution (`recorder.rs`) : le
-//! navigateur ne les renvoie jamais. Fermer un éditeur le marque comme fermé
-//! (`closed_at`) ; il reste rouvrable 24 heures, puis il est purgé.
+//! Each editor has its text, its connection and its own query session
+//! (`GET /api/editors/{id}/session`). The results are saved by the server
+//! itself as the run goes (`recorder.rs`): the browser never sends them back.
+//! Closing an editor marks it as closed (`closed_at`); it stays reopenable for
+//! 24 hours, then it is purged.
 //!
-//! Routes :
+//! Routes:
 //!
-//! | Méthode et chemin                       | Rôle                                                    |
+//! | Method and path                         | Role                                                    |
 //! |-----------------------------------------|---------------------------------------------------------|
-//! | `GET /api/editors`                      | Éditeurs ouverts, dans l'ordre.                         |
-//! | `POST /api/editors`                     | Crée un éditeur vide, à la suite des autres.            |
-//! | `PUT /api/editors/{id}`                 | Change le nom, le texte ou la connexion (204).          |
-//! | `DELETE /api/editors/{id}`              | Ferme l'éditeur ; rouvrable 24 heures (204).            |
-//! | `PUT /api/editors/order`                | Range les éditeurs ouverts dans l'ordre donné (204).    |
-//! | `GET /api/editors/closed`               | Éditeurs fermés depuis moins de 24 heures.              |
-//! | `POST /api/editors/{id}/reopen`         | Rouvre un éditeur fermé (204).                          |
-//! | `GET /api/editors/{id}/results`         | Onglets de résultat de l'éditeur, lignes comprises.     |
-//! | `PUT /api/editors/{id}/results/order`   | Range les onglets de résultat dans l'ordre donné (204). |
-//! | `PUT /api/results/{id}`                 | Renomme ou épingle un onglet de résultat (204).         |
-//! | `DELETE /api/results/{id}`              | Supprime un onglet de résultat et ses lignes (204).     |
+//! | `GET /api/editors`                      | Open editors, in order.                                 |
+//! | `POST /api/editors`                     | Creates an empty editor, after the others.              |
+//! | `PUT /api/editors/{id}`                 | Changes the name, the text or the connection (204).     |
+//! | `DELETE /api/editors/{id}`              | Closes the editor; reopenable for 24 hours (204).       |
+//! | `PUT /api/editors/order`                | Orders the open editors as given (204).                 |
+//! | `GET /api/editors/closed`               | Editors closed less than 24 hours ago.                  |
+//! | `POST /api/editors/{id}/reopen`         | Reopens a closed editor (204).                          |
+//! | `GET /api/editors/{id}/results`         | Result tabs of the editor, rows included.               |
+//! | `PUT /api/editors/{id}/results/order`   | Orders the result tabs as given (204).                  |
+//! | `PUT /api/results/{id}`                 | Renames or pins a result tab (204).                     |
+//! | `DELETE /api/results/{id}`              | Deletes a result tab and its rows (204).                |
 
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -38,180 +38,180 @@ use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
 use crate::query_session::LimitReport;
 
-/// Longueur maximale du nom d'un éditeur ou d'un onglet de résultat, en caractères.
+/// Maximum length of the name of an editor or a result tab, in characters.
 const NAME_MAX_LENGTH: usize = 100;
 
-/// Durée pendant laquelle un éditeur fermé reste rouvrable, au format des
-/// modificateurs de date de SQLite.
+/// Duration during which a closed editor stays reopenable, in the format of
+/// SQLite's date modifiers.
 const REOPEN_DELAY: &str = "-1 day";
 
-/// Instant présent, au format des colonnes de date de la base interne.
+/// Current instant, in the format of the internal database's date columns.
 const NOW: &str = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
-/// Erreurs de gestion des éditeurs.
+/// Errors managing editors.
 #[derive(Debug, thiserror::Error)]
 pub enum EditorsError {
-    /// Saisie invalide : le message dit quel champ et pourquoi.
+    /// Invalid input: the message says which field and why.
     #[error("{0}")]
     Invalid(String),
 
-    /// Erreur de la base interne.
-    #[error("base interne : {0}")]
+    /// Error of the internal database.
+    #[error("internal database: {0}")]
     Sqlite(#[from] rusqlite::Error),
 
-    /// Résultat enregistré illisible.
-    #[error("résultat enregistré illisible : {0}")]
+    /// Unreadable saved result.
+    #[error("unreadable saved result: {0}")]
     Json(#[from] serde_json::Error),
 }
 
-/// Éditeur ouvert, tel que l'interface le reçoit.
+/// Open editor, as the interface receives it.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct Editor {
-    /// Identifiant de l'éditeur.
+    /// Id of the editor.
     pub id: i64,
-    /// Nom donné par l'utilisateur, chaîne vide pour le nom par défaut.
+    /// Name given by the user, empty string for the default name.
     pub name: String,
-    /// Connexion de l'éditeur, absente tant qu'aucune n'est choisie.
+    /// Connection of the editor, absent as long as none is chosen.
     pub connection_id: Option<i64>,
-    /// Texte SQL de l'éditeur.
+    /// SQL text of the editor.
     pub sql: String,
 }
 
-/// Onglet de résultat enregistré.
+/// Saved result tab.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct ResultTab {
-    /// Identifiant de l'onglet.
+    /// Id of the tab.
     pub id: i64,
-    /// Numéro de la requête dans son lot.
+    /// Number of the query in its batch.
     pub query: u32,
-    /// Texte de la requête.
+    /// Text of the query.
     pub sql: String,
-    /// Nom donné par l'utilisateur, chaîne vide pour le libellé par défaut.
+    /// Name given by the user, empty string for the default label.
     pub name: String,
-    /// Onglet épinglé : il reste quand les requêtes sont relancées.
+    /// Pinned tab: it stays when the queries are run again.
     pub pinned: bool,
-    /// État du résultat.
+    /// State of the result.
     pub result: SavedResult,
-    /// Lignes reçues.
+    /// Rows received.
     pub rows: Vec<Vec<Cell>>,
 }
 
-/// Colonnes d'un résultat et ce qui les accompagne (message `columns`).
+/// Columns of a result and what comes with them (`columns` message).
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct SavedColumns {
-    /// Noms des colonnes.
+    /// Names of the columns.
     pub columns: Vec<String>,
-    /// Pour chaque colonne, ses valeurs s'alignent-elles à droite ?
+    /// For each column, are its values right-aligned?
     pub right_aligned: Vec<bool>,
-    /// Type de chaque colonne ; vide pour un résultat enregistré avant le
-    /// typage des colonnes.
+    /// Type of each column; empty for a result saved before columns were
+    /// typed.
     #[serde(default)]
     pub types: Vec<ColumnTypeInfo>,
-    /// Texte réellement exécuté.
+    /// Text actually run.
     pub sql: String,
-    /// Traitement de la limite de lignes.
+    /// Handling of the row limit.
     pub limit: LimitReport,
-    /// Nombre de lignes au plus, `null` si inconnu.
+    /// Maximum number of rows, `null` if unknown.
     pub expected_rows: Option<u64>,
-    /// Temps d'exécution mesuré par le serveur, en microsecondes.
+    /// Execution time measured by the server, in microseconds.
     pub execution_us: u64,
 }
 
-/// État enregistré d'un résultat, rempli au fil des messages de la session.
+/// Saved state of a result, filled as the session's messages arrive.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, TS)]
 #[ts(export)]
 #[serde(default)]
 pub struct SavedResult {
-    /// La requête est-elle partie ?
+    /// Has the query started?
     pub started: bool,
-    /// La requête est-elle terminée, avec succès ou en échec ?
+    /// Has the query ended, successfully or not?
     pub done: bool,
-    /// Message d'échec, absent si la requête a réussi ou tourne encore.
+    /// Failure message, absent if the query succeeded or is still running.
     pub error: Option<String>,
-    /// Colonnes, absentes tant qu'elles ne sont pas reçues (ou sans résultat).
+    /// Columns, absent as long as they are not received (or without a result).
     pub columns: Option<SavedColumns>,
-    /// Nombre de lignes reçues.
+    /// Number of rows received.
     pub row_count: usize,
-    /// Le résultat a-t-il été tronqué par la limite ?
+    /// Was the result truncated by the limit?
     pub truncated: bool,
-    /// Lignes modifiées par une écriture.
+    /// Rows affected by a write.
     pub affected_rows: u64,
-    /// Temps de transfert des lignes, mesuré par le serveur, en microsecondes.
+    /// Transfer time of the rows, measured by the server, in microseconds.
     pub transfer_us: u64,
-    /// Volume des messages du résultat, en octets.
+    /// Size of the result's messages, in bytes.
     pub bytes: u64,
 }
 
-/// Éditeur fermé depuis moins de 24 heures, rouvrable.
+/// Editor closed less than 24 hours ago, reopenable.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct ClosedEditor {
-    /// Identifiant de l'éditeur.
+    /// Id of the editor.
     pub id: i64,
-    /// Nom donné par l'utilisateur, chaîne vide pour le nom par défaut.
+    /// Name given by the user, empty string for the default name.
     pub name: String,
-    /// Début du texte SQL, pour le reconnaître.
+    /// Start of the SQL text, to recognise it.
     pub sql: String,
-    /// Date de fermeture, en UTC au format ISO 8601.
+    /// Closing date, in UTC, in ISO 8601 format.
     pub closed_at: String,
 }
 
-/// Modification d'un éditeur : nom, texte et connexion, tous renvoyés.
+/// Change of an editor: name, text and connection, all sent.
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct EditorUpdate {
-    /// Nom, chaîne vide pour le nom par défaut.
+    /// Name, empty string for the default name.
     pub name: String,
-    /// Texte SQL.
+    /// SQL text.
     pub sql: String,
-    /// Connexion, absente pour aucune.
+    /// Connection, absent for none.
     pub connection_id: Option<i64>,
 }
 
-/// Modification d'un onglet de résultat.
+/// Change of a result tab.
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct ResultTabUpdate {
-    /// Nom, chaîne vide pour le libellé par défaut.
+    /// Name, empty string for the default label.
     pub name: String,
-    /// Onglet épinglé ?
+    /// Pinned tab?
     pub pinned: bool,
 }
 
-/// Nouvel ordre d'une liste : identifiants dans l'ordre d'affichage.
+/// New order of a list: ids in display order.
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct Order {
-    /// Identifiants, du premier au dernier.
+    /// Ids, from first to last.
     pub ids: Vec<i64>,
 }
 
-/// Création d'un éditeur.
+/// Creation of an editor.
 #[derive(Debug, Default, Deserialize, TS)]
 #[ts(export)]
 #[serde(default)]
 pub struct NewEditor {
-    /// Connexion de départ, absente pour aucune.
+    /// Initial connection, absent for none.
     #[ts(optional)]
     pub connection_id: Option<i64>,
 }
 
-/// Vérifie la longueur d'un nom.
+/// Checks the length of a name.
 fn check_name(name: &str) -> Result<(), EditorsError> {
     let length = name.chars().count();
     if length > NAME_MAX_LENGTH {
         return Err(EditorsError::Invalid(format!(
-            "nom : {NAME_MAX_LENGTH} caractères au plus, {length} reçus"
+            "name: {NAME_MAX_LENGTH} characters at most, {length} received"
         )));
     }
     Ok(())
 }
 
-/// Supprime les éditeurs fermés depuis plus de 24 heures, tous utilisateurs
-/// confondus, avec leurs onglets de résultat. Renvoie leur nombre.
+/// Deletes the editors closed more than 24 hours ago, all users together,
+/// with their result tabs. Returns their number.
 pub fn purge(db: &Connection) -> Result<usize, EditorsError> {
     Ok(db.execute(
         &format!(
@@ -222,8 +222,8 @@ pub fn purge(db: &Connection) -> Result<usize, EditorsError> {
     )?)
 }
 
-/// Éditeurs ouverts de l'utilisateur, dans l'ordre (sans leurs onglets de
-/// résultat, lus éditeur par éditeur : `results_of`).
+/// Open editors of the user, in order (without their result tabs, read
+/// editor by editor: `results_of`).
 pub fn list_open(db: &Connection, user_id: i64) -> Result<Vec<Editor>, EditorsError> {
     purge(db)?;
     let mut statement = db.prepare(
@@ -243,8 +243,8 @@ pub fn list_open(db: &Connection, user_id: i64) -> Result<Vec<Editor>, EditorsEr
     Ok(editors)
 }
 
-/// Onglets de résultat de l'éditeur ouvert `editor_id`, s'il est à
-/// l'utilisateur ; `None` sinon.
+/// Result tabs of the open editor `editor_id`, if it belongs to the user;
+/// `None` otherwise.
 pub fn results_of(
     db: &Connection,
     user_id: i64,
@@ -256,7 +256,7 @@ pub fn results_of(
     Ok(Some(result_tabs(db, editor_id)?))
 }
 
-/// Onglets de résultat d'un éditeur, dans l'ordre d'affichage.
+/// Result tabs of an editor, in display order.
 fn result_tabs(db: &Connection, editor_id: i64) -> Result<Vec<ResultTab>, EditorsError> {
     let mut statement = db.prepare(
         "SELECT id, query, sql, name, pinned, result, rows FROM result_tabs
@@ -289,8 +289,8 @@ fn result_tabs(db: &Connection, editor_id: i64) -> Result<Vec<ResultTab>, Editor
     Ok(tabs)
 }
 
-/// Connexion de l'éditeur ouvert `id`, s'il est à l'utilisateur : `None` si
-/// l'éditeur n'existe pas, `Some(None)` s'il n'a pas de connexion.
+/// Connection of the open editor `id`, if it belongs to the user: `None` if
+/// the editor does not exist, `Some(None)` if it has no connection.
 pub fn connection_of(
     db: &Connection,
     user_id: i64,
@@ -305,7 +305,7 @@ pub fn connection_of(
         .optional()?)
 }
 
-/// Crée un éditeur vide à la suite des éditeurs ouverts et le renvoie.
+/// Creates an empty editor after the open editors and returns it.
 pub fn create(db: &Connection, user_id: i64, new: &NewEditor) -> Result<Editor, EditorsError> {
     db.execute(
         "INSERT INTO editors (user_id, connection_id, position)
@@ -321,8 +321,8 @@ pub fn create(db: &Connection, user_id: i64, new: &NewEditor) -> Result<Editor, 
     })
 }
 
-/// Modifie l'éditeur ouvert `id`. Renvoie `false` s'il n'existe pas ou
-/// appartient à un autre utilisateur.
+/// Changes the open editor `id`. Returns `false` if it does not exist or
+/// belongs to another user.
 pub fn update(
     db: &Connection,
     user_id: i64,
@@ -346,7 +346,7 @@ pub fn update(
     Ok(updated == 1)
 }
 
-/// Range les éditeurs ouverts de l'utilisateur dans l'ordre donné.
+/// Orders the user's open editors as given.
 pub fn reorder(db: &Connection, user_id: i64, order: &Order) -> Result<(), EditorsError> {
     for (position, id) in order.ids.iter().enumerate() {
         db.execute(
@@ -357,8 +357,8 @@ pub fn reorder(db: &Connection, user_id: i64, order: &Order) -> Result<(), Edito
     Ok(())
 }
 
-/// Ferme l'éditeur `id` : il reste rouvrable 24 heures. Renvoie `false`
-/// s'il n'existe pas, est déjà fermé ou appartient à un autre utilisateur.
+/// Closes editor `id`: it stays reopenable for 24 hours. Returns `false` if
+/// it does not exist, is already closed or belongs to another user.
 pub fn close(db: &Connection, user_id: i64, id: i64) -> Result<bool, EditorsError> {
     let closed = db.execute(
         &format!(
@@ -370,7 +370,7 @@ pub fn close(db: &Connection, user_id: i64, id: i64) -> Result<bool, EditorsErro
     Ok(closed == 1)
 }
 
-/// Éditeurs fermés depuis moins de 24 heures, du plus récent au plus ancien.
+/// Editors closed less than 24 hours ago, from the most recent to the oldest.
 pub fn closed_recently(db: &Connection, user_id: i64) -> Result<Vec<ClosedEditor>, EditorsError> {
     purge(db)?;
     let mut statement = db.prepare(
@@ -390,8 +390,8 @@ pub fn closed_recently(db: &Connection, user_id: i64) -> Result<Vec<ClosedEditor
     Ok(editors)
 }
 
-/// Rouvre l'éditeur fermé `id`, à la suite des éditeurs ouverts. Renvoie
-/// `false` s'il n'existe pas, est déjà ouvert ou appartient à un autre utilisateur.
+/// Reopens the closed editor `id`, after the open editors. Returns `false` if
+/// it does not exist, is already open or belongs to another user.
 pub fn reopen(db: &Connection, user_id: i64, id: i64) -> Result<bool, EditorsError> {
     let reopened = db.execute(
         "UPDATE editors SET closed_at = '',
@@ -403,8 +403,8 @@ pub fn reopen(db: &Connection, user_id: i64, id: i64) -> Result<bool, EditorsErr
     Ok(reopened == 1)
 }
 
-/// Renomme ou épingle l'onglet de résultat `id`, s'il appartient à un
-/// éditeur de l'utilisateur. Renvoie `false` sinon.
+/// Renames or pins the result tab `id`, if it belongs to an editor of the
+/// user. Returns `false` otherwise.
 pub fn update_result_tab(
     db: &Connection,
     user_id: i64,
@@ -420,8 +420,8 @@ pub fn update_result_tab(
     Ok(updated == 1)
 }
 
-/// Supprime l'onglet de résultat `id` et ses lignes, s'il appartient à un
-/// éditeur de l'utilisateur. Renvoie `false` sinon.
+/// Deletes the result tab `id` and its rows, if it belongs to an editor of
+/// the user. Returns `false` otherwise.
 pub fn delete_result_tab(db: &Connection, user_id: i64, id: i64) -> Result<bool, EditorsError> {
     let deleted = db.execute(
         "DELETE FROM result_tabs
@@ -431,7 +431,7 @@ pub fn delete_result_tab(db: &Connection, user_id: i64, id: i64) -> Result<bool,
     Ok(deleted == 1)
 }
 
-/// Range les onglets de résultat de l'éditeur `editor_id` dans l'ordre donné.
+/// Orders the result tabs of editor `editor_id` as given.
 pub fn reorder_result_tabs(
     db: &Connection,
     user_id: i64,
@@ -449,9 +449,9 @@ pub fn reorder_result_tabs(
     Ok(())
 }
 
-/// Début d'un lot dans l'éditeur `editor_id` : les onglets non épinglés
-/// disparaissent, un onglet par requête est créé à la suite des onglets
-/// épinglés. Renvoie les identifiants des nouveaux onglets, dans l'ordre des requêtes.
+/// Start of a batch in editor `editor_id`: the unpinned tabs disappear, one
+/// tab per query is created after the pinned tabs. Returns the ids of the new
+/// tabs, in the order of the queries.
 pub fn start_batch(
     db: &Connection,
     editor_id: i64,
@@ -477,8 +477,8 @@ pub fn start_batch(
     Ok(ids)
 }
 
-/// Enregistre l'état et les lignes d'un onglet de résultat. Sans effet si
-/// l'onglet a été supprimé entre-temps (fermé par l'utilisateur).
+/// Saves the state and the rows of a result tab. Without effect if the tab
+/// was deleted in the meantime (closed by the user).
 pub fn save_result(
     db: &Connection,
     tab_id: i64,
@@ -496,7 +496,7 @@ pub fn save_result(
     Ok(())
 }
 
-/// Routes des éditeurs.
+/// Routes of the editors.
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/editors", get(list_editors).post(create_editor))
@@ -512,7 +512,7 @@ pub fn routes() -> Router<AppState> {
         )
 }
 
-/// `GET /api/editors` : éditeurs ouverts, dans l'ordre.
+/// `GET /api/editors`: open editors, in order.
 async fn list_editors(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -521,7 +521,7 @@ async fn list_editors(
     Ok(Json(editors))
 }
 
-/// `POST /api/editors` : crée un éditeur vide.
+/// `POST /api/editors`: creates an empty editor.
 async fn create_editor(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -533,7 +533,7 @@ async fn create_editor(
     Ok((StatusCode::CREATED, Json(editor)))
 }
 
-/// Réponse vide (204) ou 404 selon que l'élément visé a été trouvé.
+/// Empty response (204) or 404 depending on whether the target was found.
 fn no_content_or_not_found(found: bool) -> Result<StatusCode, ApiError> {
     if found {
         Ok(StatusCode::NO_CONTENT)
@@ -542,7 +542,7 @@ fn no_content_or_not_found(found: bool) -> Result<StatusCode, ApiError> {
     }
 }
 
-/// `PUT /api/editors/{id}` : change le nom, le texte ou la connexion.
+/// `PUT /api/editors/{id}`: changes the name, the text or the connection.
 async fn update_editor(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -555,7 +555,7 @@ async fn update_editor(
     no_content_or_not_found(found)
 }
 
-/// `DELETE /api/editors/{id}` : ferme l'éditeur.
+/// `DELETE /api/editors/{id}`: closes the editor.
 async fn close_editor(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -563,13 +563,13 @@ async fn close_editor(
 ) -> Result<StatusCode, ApiError> {
     let found = state.with_db(move |db, _| close(db, user.id, id)).await?;
     if found {
-        // Un éditeur fermé n'a plus de session : sa connexion se ferme.
+        // A closed editor no longer has a session: its connection closes.
         state.sessions.stop_editor(id);
     }
     no_content_or_not_found(found)
 }
 
-/// `PUT /api/editors/order` : range les éditeurs ouverts.
+/// `PUT /api/editors/order`: orders the open editors.
 async fn reorder_editors(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -581,7 +581,7 @@ async fn reorder_editors(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// `GET /api/editors/closed` : éditeurs fermés depuis moins de 24 heures.
+/// `GET /api/editors/closed`: editors closed less than 24 hours ago.
 async fn list_closed_editors(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -592,7 +592,7 @@ async fn list_closed_editors(
     Ok(Json(editors))
 }
 
-/// `POST /api/editors/{id}/reopen` : rouvre un éditeur fermé.
+/// `POST /api/editors/{id}/reopen`: reopens a closed editor.
 async fn reopen_editor(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -602,7 +602,7 @@ async fn reopen_editor(
     no_content_or_not_found(found)
 }
 
-/// `GET /api/editors/{id}/results` : onglets de résultat de l'éditeur.
+/// `GET /api/editors/{id}/results`: result tabs of the editor.
 async fn list_results(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -615,7 +615,7 @@ async fn list_results(
     Ok(Json(results))
 }
 
-/// `PUT /api/editors/{id}/results/order` : range les onglets de résultat.
+/// `PUT /api/editors/{id}/results/order`: orders the result tabs.
 async fn reorder_results(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -628,7 +628,7 @@ async fn reorder_results(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// `PUT /api/results/{id}` : renomme ou épingle un onglet de résultat.
+/// `PUT /api/results/{id}`: renames or pins a result tab.
 async fn update_result(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -641,7 +641,7 @@ async fn update_result(
     no_content_or_not_found(found)
 }
 
-/// `DELETE /api/results/{id}` : supprime un onglet de résultat.
+/// `DELETE /api/results/{id}`: deletes a result tab.
 async fn delete_result(
     State(state): State<AppState>,
     user: CurrentUser,
@@ -658,7 +658,7 @@ mod tests {
     use super::*;
     use crate::store;
 
-    /// Base de test avec un utilisateur.
+    /// Test database with one user.
     fn setup() -> (Connection, i64) {
         let db = store::open_in_memory();
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
@@ -671,7 +671,7 @@ mod tests {
         let first = create(&db, user_id, &NewEditor::default()).unwrap();
         let second = create(&db, user_id, &NewEditor::default()).unwrap();
         let changed = EditorUpdate {
-            name: "Ventes".to_string(),
+            name: "Sales".to_string(),
             sql: "SELECT 1".to_string(),
             connection_id: None,
         };
@@ -691,10 +691,10 @@ mod tests {
         );
         assert_eq!(
             (editors[1].name.as_str(), editors[1].sql.as_str()),
-            ("Ventes", "SELECT 1")
+            ("Sales", "SELECT 1")
         );
-        // Un autre utilisateur ne voit ni ne modifie rien.
-        let other = store::ensure_user(&db, "autre@example.com").unwrap();
+        // Another user neither sees nor changes anything.
+        let other = store::ensure_user(&db, "other@example.com").unwrap();
         assert!(list_open(&db, other).unwrap().is_empty());
         assert!(!update(&db, other, first.id, &changed).unwrap());
     }
@@ -709,7 +709,7 @@ mod tests {
         assert!(reopen(&db, user_id, editor.id).unwrap());
         assert_eq!(list_open(&db, user_id).unwrap().len(), 1);
 
-        // Fermé depuis plus de 24 heures : purgé.
+        // Closed more than 24 hours ago: purged.
         assert!(close(&db, user_id, editor.id).unwrap());
         db.execute(
             "UPDATE editors SET closed_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-25 hours')",
@@ -738,7 +738,7 @@ mod tests {
         };
         save_result(&db, first[0], &result, &[vec![Some("1".to_string())]]).unwrap();
         let pin = ResultTabUpdate {
-            name: "Gardé".to_string(),
+            name: "Kept".to_string(),
             pinned: true,
         };
         assert!(update_result_tab(&db, user_id, first[0], &pin).unwrap());
@@ -761,7 +761,7 @@ mod tests {
             results_of(&db, user_id, editor.id).unwrap().unwrap().len(),
             1
         );
-        let other = store::ensure_user(&db, "autre@example.com").unwrap();
+        let other = store::ensure_user(&db, "other@example.com").unwrap();
         assert!(results_of(&db, other, editor.id).unwrap().is_none());
     }
 }
