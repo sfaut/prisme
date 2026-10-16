@@ -285,6 +285,10 @@ function menuItems(node: ExplorerNode): MenuItem[] | null {
       // Notebooks are not saved yet (stage 3 of the v1).
       return [{ label: 'Créer un notebook', icon: NotebookPen, disabled: true }]
     case 'source':
+      // The connection may have been deleted since the tree was built: no menu then.
+      if (connection === null) {
+        return null
+      }
       return [
         { label: 'Modifier', icon: Pencil, onSelect: () => openDialog(connection) },
         {
