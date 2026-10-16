@@ -13,6 +13,7 @@
   Transient messages (`notify`) show at the bottom right (`UiToaster`).
 -->
 <script setup lang="ts">
+import { errorMessage } from '@/api/errorMessage'
 import { Database } from 'lucide-vue-next'
 import { TabsContent, TabsRoot } from 'reka-ui'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
@@ -82,7 +83,7 @@ function connectionOf(connectionId: number | null) {
  * @param failure Received error.
  */
 function report(failure: unknown): void {
-  editorsError.value = failure instanceof Error ? failure.message : String(failure)
+  editorsError.value = errorMessage(failure)
 }
 
 onMounted(() => {

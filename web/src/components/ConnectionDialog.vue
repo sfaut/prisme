@@ -18,6 +18,7 @@
   Window, fields and buttons of Prisme (`ui/`).
 -->
 <script setup lang="ts">
+import { errorMessage } from '@/api/errorMessage'
 import { Eye, EyeOff } from 'lucide-vue-next'
 import { computed, reactive, ref, watch } from 'vue'
 
@@ -161,7 +162,7 @@ async function probe(): Promise<void> {
     const info = await probeSettings({ connection: { ...form }, saved_id: props.connection?.id })
     probed.value = serverLabel(info)
   } catch (failure) {
-    error.value = failure instanceof Error ? failure.message : String(failure)
+    error.value = errorMessage(failure)
   } finally {
     probing.value = false
   }
@@ -182,7 +183,7 @@ async function save(): Promise<void> {
     }
     open.value = false
   } catch (failure) {
-    error.value = failure instanceof Error ? failure.message : String(failure)
+    error.value = errorMessage(failure)
   } finally {
     saving.value = false
   }

@@ -21,6 +21,7 @@
   (`EditorResizer`).
 -->
 <script setup lang="ts">
+import { errorMessage } from '@/api/errorMessage'
 import { LoaderCircle, Play, Square, WandSparkles } from 'lucide-vue-next'
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
@@ -141,7 +142,7 @@ function tabLabel(tab: QueryTab): string {
  * @param failure Received error.
  */
 function reportFailure(failure: unknown): void {
-  state.error = failure instanceof Error ? failure.message : String(failure)
+  state.error = errorMessage(failure)
 }
 
 /**
@@ -300,7 +301,7 @@ async function prettify(): Promise<void> {
       version: state.server?.version,
     })
   } catch (failure) {
-    state.error = failure instanceof Error ? failure.message : String(failure)
+    state.error = errorMessage(failure)
   }
 }
 
@@ -322,7 +323,7 @@ async function changeLimit(rowLimit: number): Promise<void> {
   try {
     await settings.setRowLimit(rowLimit)
   } catch (failure) {
-    state.error = failure instanceof Error ? failure.message : String(failure)
+    state.error = errorMessage(failure)
   }
 }
 
@@ -332,7 +333,7 @@ onMounted(async () => {
     try {
       await settings.load()
     } catch (failure) {
-      state.error = failure instanceof Error ? failure.message : String(failure)
+      state.error = errorMessage(failure)
     }
   }
 })

@@ -39,6 +39,7 @@
   technologies, which read the tree.
 -->
 <script setup lang="ts">
+import { errorMessage } from '@/api/errorMessage'
 import { NotebookPen, Pencil, PlugZap, Plus, RefreshCw, Trash2 } from 'lucide-vue-next'
 import { TreeItem, type TreeItemSelectEvent, TreeRoot, TreeVirtualizer } from 'reka-ui'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -236,7 +237,7 @@ async function load(connectionId: number, refresh: boolean): Promise<void> {
   try {
     await catalog.load(connectionId, refresh)
   } catch (failure) {
-    failures.value[connectionId] = failure instanceof Error ? failure.message : String(failure)
+    failures.value[connectionId] = errorMessage(failure)
   } finally {
     loadingIds.value = loadingIds.value.filter((id) => id !== connectionId)
   }
@@ -333,7 +334,7 @@ async function probe(connectionId: number): Promise<void> {
   try {
     probed.value = `${name} : ${serverLabel(await probeConnection(connectionId))}`
   } catch (failure) {
-    failures.value[connectionId] = failure instanceof Error ? failure.message : String(failure)
+    failures.value[connectionId] = errorMessage(failure)
   }
 }
 
@@ -363,7 +364,7 @@ async function confirmRemove(): Promise<void> {
     expandedKeys.value = expandedKeys.value.filter((key) => key !== sourceKey(connection.id))
     delete failures.value[connection.id]
   } catch (failure) {
-    failures.value[connection.id] = failure instanceof Error ? failure.message : String(failure)
+    failures.value[connection.id] = errorMessage(failure)
   }
 }
 
@@ -434,7 +435,7 @@ onMounted(async () => {
   try {
     await connections.load()
   } catch (failure) {
-    listError.value = `Connexions illisibles : ${failure instanceof Error ? failure.message : String(failure)}`
+    listError.value = `Connexions illisibles : ${errorMessage(failure)}`
   }
 })
 

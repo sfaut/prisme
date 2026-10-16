@@ -28,6 +28,7 @@
  * uses it to expose a reactive state to the components.
  */
 
+import { errorMessage } from './errorMessage'
 import { markRaw, onScopeDispose, reactive } from 'vue'
 
 import type { ColumnTypeInfo } from './generated/ColumnTypeInfo'
@@ -788,7 +789,7 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
       state.tabs = saved.map(savedTab)
     })
     .catch((failure: unknown) => {
-      state.error = failure instanceof Error ? failure.message : String(failure)
+      state.error = errorMessage(failure)
     })
     .finally(() => {
       state.loading = false
