@@ -464,7 +464,8 @@ watch(
   <div class="flex min-h-0 flex-1 flex-col gap-gap">
     <ui-alert v-if="probed" tone="success" :title="probed" closable @close="probed = null" />
     <ui-alert v-if="listError" tone="error" :title="listError" />
-    <ui-alert v-for="message in messages" :key="message" tone="warning" :title="message" />
+    <!-- Index as key: the same message can come twice, from two errors of one source. -->
+    <ui-alert v-for="(message, index) in messages" :key="index" tone="warning" :title="message" />
 
     <div class="relative flex min-h-0 flex-1 flex-col">
       <tree-root
