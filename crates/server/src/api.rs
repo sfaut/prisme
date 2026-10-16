@@ -309,22 +309,29 @@ struct BeautifyRequest {
 }
 
 /// `POST /api/beautify`: beautifies MySQL / MariaDB SQL (see `prisme_dialects::beautify`).
-async fn beautify_sql(Json(request): Json<BeautifyRequest>) -> Json<SqlText> {
-    let catalog = request.catalog.unwrap_or_default();
-    let names = CatalogNames {
-        schemas: catalog.schemas,
-        tables: catalog.tables,
-        columns: catalog.columns,
-        routines: catalog.routines,
-    };
-    let options = BeautifyOptions {
-        dialect: request.flavor.map_or(Dialect::MySql, dialect_of),
-        version: request.version.as_deref(),
-        catalog: &names,
-    };
-    Json(SqlText {
-        sql: beautify_with(&request.sql, options),
+/// The work is CPU-bound: it runs in a blocking task, off the threads of `tokio`.
+async fn beautify_sql(Json(request): Json<BeautifyRequest>) -> Result<Json<SqlText>, ApiError> {
+    let sql = tokio::task::spawn_blocking(move || {
+        let catalog = request.catalog.unwrap_or_default();
+        let names = CatalogNames {
+            schemas: catalog.schemas,
+            tables: catalog.tables,
+            columns: catalog.columns,
+            routines: catalog.routines,
+        };
+        let options = BeautifyOptions {
+            dialect: request.flavor.map_or(Dialect::MySql, dialect_of),
+            version: request.version.as_deref(),
+            catalog: &names,
+        };
+        beautify_with(&request.sql, options)
     })
+    .await
+    .map_err(|error| {
+        tracing::error!("beautify task interrupted: {error}");
+        ApiError::Internal
+    })?;
+    Ok(Json(SqlText { sql }))
 }
 
 /// Server version whose keywords are wanted.
@@ -365,9 +372,16 @@ async fn dialect_keywords(
     })
 }
 
-/// `POST /api/analyze`: analyses the editor's text (see `analyze.rs`).
-async fn analyze_sql(Json(request): Json<AnalyzeRequest>) -> Json<Analysis> {
-    Json(analyze::analyze(&request))
+/// `POST /api/analyze`: analyses the editor's text (see `analyze.rs`), in a
+/// blocking task: the text is parsed on each pause of the typing.
+async fn analyze_sql(Json(request): Json<AnalyzeRequest>) -> Result<Json<Analysis>, ApiError> {
+    let analysis = tokio::task::spawn_blocking(move || analyze::analyze(&request))
+        .await
+        .map_err(|error| {
+            tracing::error!("analysis task interrupted: {error}");
+            ApiError::Internal
+        })?;
+    Ok(Json(analysis))
 }
 
 /// `GET /api/settings`: settings of the current user.
