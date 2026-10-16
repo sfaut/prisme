@@ -71,6 +71,23 @@ const TIME_UNITS: &[&str] = &[
 /// Functions whose first argument is a time unit.
 const UNIT_FUNCTIONS: &[&str] = &["EXTRACT", "TIMESTAMPADD", "TIMESTAMPDIFF"];
 
+/// Place of a token where a time unit can come: only the token right after
+/// the mark is concerned, so a unit further on stays a name.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum UnitSlot {
+    /// Not a place for a time unit.
+    Elsewhere,
+    /// First argument of a function of `UNIT_FUNCTIONS`, right after its
+    /// parenthesis.
+    FirstArgument,
+    /// Value of an interval, right after `INTERVAL`: the unit follows it, once
+    /// the value is over. `depth` counts the parentheses opened by the value
+    /// (`INTERVAL (n + 1) MONTH`).
+    IntervalValue { depth: usize },
+    /// Unit of an interval, right after its value.
+    IntervalUnit,
+}
+
 /// Context of beautifying: dialect, version and catalog of the server.
 #[derive(Debug, Clone, Copy)]
 pub struct BeautifyOptions<'a> {
@@ -224,37 +241,53 @@ fn uppercase_keywords(sql: &str, dialect: Dialect, version: Option<&str>) -> Str
     let index = OffsetIndex::new(sql);
     let mut result = String::with_capacity(sql.len());
     let mut copied = 0;
-    // A time unit is expected: after INTERVAL, or as the first argument of EXTRACT...
-    let mut unit_expected = false;
+    // Where the next token must be for a time unit to be expected.
+    let mut slot = UnitSlot::Elsewhere;
     // Last word read, to recognise EXTRACT( and the like.
     let mut previous_word = String::new();
     for token in tokens {
+        if matches!(token.token, Token::Whitespace(_)) {
+            continue;
+        }
+        let current = std::mem::replace(&mut slot, UnitSlot::Elsewhere);
         let word = match &token.token {
             Token::Word(word) if word.quote_style.is_none() => word,
             Token::LParen => {
-                unit_expected |= UNIT_FUNCTIONS.contains(&previous_word.as_str());
+                slot = match current {
+                    UnitSlot::IntervalValue { depth } => {
+                        UnitSlot::IntervalValue { depth: depth + 1 }
+                    }
+                    _ if UNIT_FUNCTIONS.contains(&previous_word.as_str()) => {
+                        UnitSlot::FirstArgument
+                    }
+                    _ => UnitSlot::Elsewhere,
+                };
                 previous_word.clear();
                 continue;
             }
-            Token::SemiColon => {
-                unit_expected = false;
-                previous_word.clear();
-                continue;
-            }
-            Token::Whitespace(_) => continue,
             _ => {
+                slot = match (current, &token.token) {
+                    (UnitSlot::IntervalValue { depth: 0 }, _) => UnitSlot::IntervalUnit,
+                    (UnitSlot::IntervalValue { depth: 1 }, Token::RParen) => UnitSlot::IntervalUnit,
+                    (UnitSlot::IntervalValue { depth }, Token::RParen) => {
+                        UnitSlot::IntervalValue { depth: depth - 1 }
+                    }
+                    (UnitSlot::IntervalValue { depth }, _) => UnitSlot::IntervalValue { depth },
+                    _ => UnitSlot::Elsewhere,
+                };
                 previous_word.clear();
                 continue;
             }
         };
         let upper = word.value.to_ascii_uppercase();
-        let is_unit = unit_expected && TIME_UNITS.contains(&upper.as_str());
-        if is_unit {
-            unit_expected = false;
-        }
-        if upper == "INTERVAL" {
-            unit_expected = true;
-        }
+        let is_unit = matches!(current, UnitSlot::FirstArgument | UnitSlot::IntervalUnit)
+            && TIME_UNITS.contains(&upper.as_str());
+        slot = match (upper.as_str(), current) {
+            ("INTERVAL", _) => UnitSlot::IntervalValue { depth: 0 },
+            (_, UnitSlot::IntervalValue { depth: 0 }) => UnitSlot::IntervalUnit,
+            (_, UnitSlot::IntervalValue { depth }) => UnitSlot::IntervalValue { depth },
+            _ => UnitSlot::Elsewhere,
+        };
         previous_word = upper;
         if !is_unit && !is_keyword(&word.value, dialect, version) {
             continue;
@@ -331,6 +364,15 @@ mod tests {
         );
         // Elsewhere, these words can be column names.
         assert_eq!(pretty("select day, year from t"), "SELECT day, year FROM t");
+        // A unit is expected only right after its place: a later `day` is a name.
+        assert_eq!(
+            pretty("select extract(isoyear from d), day from t"),
+            "SELECT extract(isoyear FROM d), day FROM t"
+        );
+        assert_eq!(
+            pretty("select d + interval (a + b) day, day from t"),
+            "SELECT d + INTERVAL (a + b) DAY, day FROM t"
+        );
     }
 
     #[test]
