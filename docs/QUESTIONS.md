@@ -16,7 +16,8 @@ This document keeps track of the reasoning: what was kept, dropped or postponed,
 
 - **Pipeline with a pivot logical plan**: frontends to plan, an optimiser written once, emitters per source.
 - **One language per query**, chosen by the user.
-- **Other languages to implement** (noted in October 2026): Kusto (KQL, https://learn.microsoft.com/en-us/kusto/) and PRQL (https://prql-lang.org/). Their place is still to be set: input language translated to the plan, or dialect of a source (Kusto is also the language of Azure Data Explorer).
+- **PRQL as an input language** (decided): compiled to the SQL of the target by the official compiler, `prql-compiler` (https://prql-lang.org/). Every input language is held to the same conformance tests; if a compiler does not produce a target dialect faithfully, Prisme writes its own transpiler. The user chooses the input dialect in the profile ("Preferred dialect": "Selon source de données", MySQL, MariaDB, PRQL), see `docs/V1.md`, section 2.1.
+- **Other languages to implement**: Kusto (KQL, https://learn.microsoft.com/en-us/kusto/). Its place is still to be set: input language translated to the plan, or dialect of a source (Kusto is also the language of Azure Data Explorer).
 - **Strict ANSI as the core** of the neutral dialect, enriched by borrowings (DuckDB, ClickHouse).
 - **Explicit names for duplicates**: `UnionAll`, `UnionDistinct`, `MinusAll`, `MinusDistinct`, `IntersectAll`, `IntersectDistinct`.
 - **Date's theory** for the plan: `Group` and `Ungroup` as nodes, first-class `SemiJoin` and `AntiJoin`.
