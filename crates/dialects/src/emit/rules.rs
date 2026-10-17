@@ -497,7 +497,9 @@ impl Emitter<'_> {
         let reasons = reasons.join("; ");
         // Only the epoch: written alone.
         let only_epoch = epoch && literal == Some(0.0);
-        let repeated = (cap.is_some() || epoch) && !only_epoch;
+        // `NULLIF` evaluates its first argument twice when it differs from
+        // the second.
+        let repeated = (cap.is_some() || epoch || null_zero) && !only_epoch;
         if (repeated && !repeatable(n))
             || (epoch && !only_epoch && format.is_some_and(|format| !repeatable(format)))
         {

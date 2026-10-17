@@ -898,6 +898,8 @@ fn from_unixtime_keeps_the_range_and_the_type_of_the_input() {
         (mariadb_11_8, mysql_8_0, "iu"),
         (mysql_8_0, mariadb_11_8, "ABS(i)"),
         (mysql_8_0, mariadb_11_8, "i + RAND()"),
+        // `NULLIF` evaluates its first argument twice.
+        (mariadb_11_8, mysql_8_4, "(SELECT i FROM d LIMIT 1)"),
     ] {
         let text = format!("SELECT FROM_UNIXTIME({arguments}) AS f FROM d");
         assert_eq!(
