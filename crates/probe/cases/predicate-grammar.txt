@@ -1,0 +1,39 @@
+# Grammar of the predicates: right operand of a comparison, bound of BETWEEN, chains.
+eq_between 2 = 2 BETWEEN 1 AND 2
+eq_in 2 = 2 IN (1)
+lt_in 1 < 2 IN (1)
+eq_like 2 = 2 LIKE '1'
+eq_not_between 2 = 5 NOT BETWEEN 1 AND 2
+eq_regexp 2 = 2 REGEXP '1'
+eq_is_null 2 = NULL IS NULL
+in_eq 1 IN (1) = 1
+between_between 1 BETWEEN 0 AND 2 BETWEEN 0 AND 1
+between_in 1 BETWEEN 0 AND 2 IN (1)
+between_like 1 BETWEEN 0 AND 2 LIKE '0'
+between_eq 0 BETWEEN 0 AND 1 = 0
+between_is_null 1 BETWEEN 0 AND NULL IS NULL
+between_low_between 1 BETWEEN 0 BETWEEN 0 AND 1 AND 2
+in_in 1 IN (1) IN (1)
+in_between 1 IN (1) BETWEEN 0 AND 2
+in_like 1 IN (1) LIKE '1'
+like_like 'a' LIKE 'a' LIKE '1'
+like_in 'a' LIKE 'a' IN (1)
+like_between 'a' LIKE 'a' BETWEEN 0 AND 2
+like_plus '2' LIKE 1 + 1
+like_concat 'ab' LIKE 'a' || 'b'
+like_minus '-1' LIKE -1
+like_paren '2' LIKE (1 + 1)
+like_escape_eq 'a' LIKE 'a' ESCAPE '!' = 1
+like_escape_plus 'a' LIKE 'a' ESCAPE '!' + 1
+like_bitor '3' LIKE 1 | 2
+like_case 'a' LIKE CASE WHEN 1 THEN 'a' END
+regexp_plus '2' REGEXP 1 + 1
+regexp_regexp 'a' REGEXP 'a' REGEXP '1'
+is_null_between 1 IS NULL BETWEEN 0 AND 1
+is_null_in 1 IS NULL IN (0)
+is_null_eq 1 IS NULL = 0
+eq_eq 1 = 1 = 1
+not_between_eq NOT 0 BETWEEN 0 AND 1 = 0
+between_high_plus 3 BETWEEN 0 AND 1 + 2
+between_low_cmp 1 BETWEEN 0 = 0 AND 2
+in_list_pred 1 IN (1 = 1, 2)

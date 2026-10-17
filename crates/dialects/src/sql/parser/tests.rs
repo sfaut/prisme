@@ -387,6 +387,47 @@ fn reads_the_predicates() {
 }
 
 #[test]
+fn a_comparison_reads_tests_on_both_sides() {
+    assert_eq!(expr("a = b BETWEEN 1 AND 2"), "(= a (between b 1 2))");
+    assert_eq!(expr("a < b IN (1)"), "(< a (in b 1))");
+    assert_eq!(expr("a IN (1) = b"), "(= (in a 1) b)");
+    assert_eq!(expr("a = NULL IS NULL"), "(isnull (= a NULL))");
+    // The high bound of `BETWEEN` is a test, its low bound a value in MySQL.
+    assert_eq!(expr("a BETWEEN 0 AND b IN (1)"), "(between a 0 (in b 1))");
+    assert_eq!(
+        expr("a BETWEEN 0 AND b BETWEEN 0 AND 1"),
+        "(between a 0 (between b 0 1))"
+    );
+    assert_eq!(expr("a BETWEEN 0 AND 1 = 0"), "(= (between a 0 1) 0)");
+    assert_eq!(expr("a LIKE -1"), "(like a (- 1))");
+    // MySQL reads a single test, a simple pattern.
+    for text in [
+        "SELECT a IN (1) IN (1)",
+        "SELECT a LIKE 'a' LIKE 'b'",
+        "SELECT a IN (1) BETWEEN 0 AND 1",
+        "SELECT a BETWEEN 0 BETWEEN 0 AND 1 AND 2",
+        "SELECT a LIKE 1 + 1",
+        "SELECT a LIKE 'a' ESCAPE '!' + 1",
+        "SELECT a IS NULL BETWEEN 0 AND 1",
+    ] {
+        assert!(parse(text, &mysql()).is_err(), "{text}");
+    }
+    // MariaDB chains them from left to right, its pattern at the level of
+    // `|`, the bounds of `BETWEEN` tests.
+    let mariadb = mariadb();
+    assert_eq!(expr_with("a IN (1) IN (1)", &mariadb), "(in (in a 1) 1)");
+    assert_eq!(
+        expr_with("a LIKE 'a' BETWEEN 0 AND 2", &mariadb),
+        "(between (like a 'a') 0 2)"
+    );
+    assert_eq!(
+        expr_with("a BETWEEN 0 BETWEEN 0 AND 1 AND 2", &mariadb),
+        "(between a (between 0 0 1) 2)"
+    );
+    assert_eq!(expr_with("a LIKE 1 + 1", &mariadb), "(like a (+ 1 1))");
+}
+
+#[test]
 fn high_not_precedence_binds_not_tighter() {
     let mut options = mysql();
     options.mode = SqlMode::parse("HIGH_NOT_PRECEDENCE");

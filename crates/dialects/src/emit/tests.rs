@@ -2389,3 +2389,47 @@ fn trim_and_position_read_a_binary_argument_as_the_input() {
     assert_eq!(sql, text);
     assert!(rules.is_empty(), "{rules:?}");
 }
+
+#[test]
+fn a_comparison_compares_the_tests_as_written() {
+    // Each output reads the tests tighter than the comparisons.
+    for (text, expected) in [
+        (
+            "SELECT 2 = 2 BETWEEN 1 AND 2 AS a FROM g",
+            "SELECT 2 = (2 BETWEEN 1 AND 2) AS a FROM g",
+        ),
+        (
+            "SELECT s = s LIKE 'a' AS a FROM g",
+            "SELECT s = (s LIKE 'a') AS a FROM g",
+        ),
+        (
+            "SELECT 1 BETWEEN 0 AND 2 IN (1) AS a FROM g",
+            "SELECT 1 BETWEEN 0 AND (2 IN (1)) AS a FROM g",
+        ),
+        (
+            "SELECT 2 = NULL IS NULL AS a FROM g",
+            "SELECT (2 = NULL) IS NULL AS a FROM g",
+        ),
+    ] {
+        for (input, output) in [
+            (mysql(), mysql()),
+            (mariadb(), mysql()),
+            (mysql(), mariadb()),
+        ] {
+            let (sql, rules) = transpiled(text, input, self::output(output));
+            assert_eq!(sql, expected, "{text}");
+            assert!(rules.is_empty(), "{rules:?}");
+        }
+    }
+    // The tests MariaDB chains, and its patterns, between parentheses
+    // towards MySQL.
+    let (sql, _) = transpiled(
+        "SELECT s IN ('a') IN (1) AS a, s LIKE s LIKE 1 AS b, s LIKE 1 + 1 ESCAPE '!' AS c FROM g",
+        mariadb(),
+        output(mysql()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT (s IN ('a')) IN (1) AS a, (s LIKE s) LIKE 1 AS b, s LIKE (1 + 1) ESCAPE '!' AS c FROM g"
+    );
+}

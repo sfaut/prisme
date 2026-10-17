@@ -5,13 +5,17 @@
 //! 2. `XOR`;
 //! 3. `AND`, `&&`;
 //! 4. `NOT` (with `HIGH_NOT_PRECEDENCE`, as tight as `!`);
-//! 5. comparisons, `IS`, `LIKE`, `IN`, `BETWEEN`;
-//! 6. `|`; 7. `&`; 8. `<<`, `>>`; 9. `+`, `-`; 10. `*`, `/`, `DIV`, `%`,
-//!    `MOD`; 11. `^`;
-//! 12. prefix `-`, `+`, `~`, `!`.
+//! 5. comparisons, `IS NULL`;
+//! 6. the tests `LIKE`, `IN`, `BETWEEN`;
+//! 7. `|`; 8. `&`; 9. `<<`, `>>`; 10. `+`, `-`; 11. `*`, `/`, `DIV`, `%`,
+//!    `MOD`; 12. `^`;
+//! 13. prefix `-`, `+`, `~`, `!`.
 //!
 //! Binary operators associate to the left (`a - b - c` is `(a - b) - c`,
-//! `a = b = c` is `(a = b) = c`).
+//! `a = b = c` is `(a = b) = c`). A comparison compares two tests
+//! (`a = b BETWEEN 1 AND 2` compares `a` with the `BETWEEN`), and the high
+//! bound of `BETWEEN` is a test; MySQL reads one test after a value, MariaDB
+//! chains them (`crates/probe/cases/predicate-grammar.txt`, `test`).
 
 use prisme_plan::{Ident, Span};
 
@@ -75,16 +79,17 @@ impl Parser<'_> {
         self.predicate()
     }
 
-    /// Comparisons, `IS`, `BETWEEN`, `IN`, `LIKE`.
+    /// Comparisons and `IS`, left to right, each comparing two predicates
+    /// (`a = b BETWEEN 1 AND 2` compares `a` with the `BETWEEN`).
     fn predicate(&mut self) -> Result<Expr, ParseError> {
-        let mut left = self.bit_or()?;
+        let mut left = self.test()?;
         loop {
             if let Some(op) = self.comparison() {
                 self.advance();
                 left = if self.at_quantifier(op) {
                     self.quantified(left, op)?
                 } else {
-                    let right = self.bit_or()?;
+                    let right = self.test()?;
                     binary(op, left, right)
                 };
                 continue;
@@ -107,15 +112,33 @@ impl Parser<'_> {
                 };
                 continue;
             }
+            return Ok(left);
+        }
+    }
+
+    /// `BETWEEN`, `IN`, `LIKE` after a value, its high bound a test
+    /// (`a BETWEEN 0 AND b IN (1)` bounds `a` by the `IN`). MySQL reads one,
+    /// its pattern and its escape character simple operands
+    /// (`'2' LIKE 1 + 1` is a syntax error); MariaDB chains them from left
+    /// to right (`a IN (1) IN (1)`), its pattern and its escape character at
+    /// the level of `|`, the bounds of `BETWEEN` tests.
+    fn test(&mut self) -> Result<Expr, ParseError> {
+        let mariadb = self.options.dialect == Dialect::MariaDb;
+        let mut left = self.bit_or()?;
+        loop {
             let negated = self.at_keyword("NOT")
                 && self.is_any_word(1, &["BETWEEN", "IN", "LIKE", "REGEXP", "RLIKE"]);
             if negated {
                 self.advance();
             }
             if self.eat_keyword("BETWEEN").is_some() {
-                let low = self.bit_or()?;
+                let low = if mariadb {
+                    self.nested(Self::test)?
+                } else {
+                    self.bit_or()?
+                };
                 self.expect_keyword("AND")?;
-                let high = self.bit_or()?;
+                let high = self.nested(Self::test)?;
                 let span = self.span_from(left.span.start);
                 left = Expr {
                     kind: ExprKind::Between {
@@ -126,16 +149,12 @@ impl Parser<'_> {
                     },
                     span,
                 };
-                continue;
-            }
-            if self.eat_keyword("IN").is_some() {
+            } else if self.eat_keyword("IN").is_some() {
                 left = self.in_list(left, negated)?;
-                continue;
-            }
-            if self.eat_keyword("LIKE").is_some() {
-                let pattern = self.bit_or()?;
+            } else if self.eat_keyword("LIKE").is_some() {
+                let pattern = self.like_operand()?;
                 let escape = if self.eat_keyword("ESCAPE").is_some() {
-                    Some(Box::new(self.bit_or()?))
+                    Some(Box::new(self.like_operand()?))
                 } else {
                     None
                 };
@@ -149,12 +168,24 @@ impl Parser<'_> {
                     },
                     span,
                 };
-                continue;
+            } else {
+                if self.at_any_keyword(&["REGEXP", "RLIKE", "SOUNDS", "MEMBER"]) {
+                    return Err(self.unsupported("this operator", self.here()));
+                }
+                return Ok(left);
             }
-            if self.at_any_keyword(&["REGEXP", "RLIKE", "SOUNDS", "MEMBER"]) {
-                return Err(self.unsupported("this operator", self.here()));
+            if !mariadb {
+                return Ok(left);
             }
-            return Ok(left);
+        }
+    }
+
+    /// Pattern or escape character of `LIKE`: a simple operand in MySQL, an
+    /// expression at the level of `|` in MariaDB.
+    fn like_operand(&mut self) -> Result<Expr, ParseError> {
+        match self.options.dialect {
+            Dialect::MySql => self.unary(),
+            Dialect::MariaDb => self.bit_or(),
         }
     }
 

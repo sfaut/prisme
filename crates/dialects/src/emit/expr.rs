@@ -15,6 +15,7 @@ use prisme_types::Value;
 
 use super::Emitter;
 use super::case::Reading;
+use crate::Dialect;
 use crate::build::is_internal_name;
 use crate::report::StepKind;
 use crate::sql::ast::TemporalKind;
@@ -274,6 +275,11 @@ impl Emitter<'_> {
                 escape,
                 negated,
             } => {
+                // MySQL reads a simple operand after `LIKE` and `ESCAPE`.
+                let right = match self.output.dialect {
+                    Dialect::MySql => PREFIX,
+                    Dialect::MariaDb => right,
+                };
                 self.expr(operand, left);
                 self.write(if *negated { " NOT LIKE " } else { " LIKE " });
                 self.expr(pattern, right);

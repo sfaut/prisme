@@ -1,0 +1,23 @@
+# Comparisons and tests: a comparison compares two tests (`a = b BETWEEN 1
+# AND 2`), the high bound of `BETWEEN` is a test; MariaDB chains the tests
+# and reads a pattern of `LIKE` at the level of `|`, written between
+# parentheses towards MySQL (crates/probe/cases/predicate-grammar.txt).
+setup:
+  - DROP TABLE IF EXISTS predicates
+  - CREATE TABLE predicates (id INT NOT NULL PRIMARY KEY, a INT NULL, s VARCHAR(10) NULL)
+  - INSERT INTO predicates VALUES (1, 0, 'a'), (2, 1, '2'), (3, 2, 'ab'), (4, NULL, NULL), (5, 3, '-1')
+cases:
+  - from: mysql
+    sql: >-
+      SELECT a = a BETWEEN 1 AND 2 AS c1, a < a IN (1) AS c2, s = s LIKE 'a' AS c3,
+      a BETWEEN 0 AND a IN (1) AS c4, a = NULL IS NULL AS c5, a BETWEEN 0 AND 1 = 0 AS c6,
+      s LIKE -1 AS c7, 1 BETWEEN 0 AND a BETWEEN 0 AND 1 AS c8, a IN (1) = 1 AS c9
+      FROM predicates ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT a = a BETWEEN 1 AND 2 AS c1, a < a IN (1) AS c2, s = s LIKE 'a' AS c3,
+      a BETWEEN 0 AND a IN (1) AS c4, a = NULL IS NULL AS c5, a BETWEEN 0 AND 1 = 0 AS c6,
+      s LIKE -1 AS c7, 1 BETWEEN 0 AND a BETWEEN 0 AND 1 AS c8, a IN (1) = 1 AS c9,
+      a IN (1) IN (1) AS c10, s LIKE s LIKE 1 AS c11, s LIKE 1 + 1 AS c12,
+      a BETWEEN 0 BETWEEN 0 AND 1 AND 2 AS c13, s LIKE 'a' BETWEEN 0 AND a AS c14
+      FROM predicates ORDER BY id
