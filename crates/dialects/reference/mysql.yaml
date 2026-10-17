@@ -440,6 +440,15 @@ constructs:
     comment: >-
       `LPAD` and `RPAD` with an empty pad, beyond the length of the string,
       give the string unchanged; an empty string before. Measured on 9.3.0.
+  - id: unixtime_3001
+    since: "8.0.28"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-28.html
+    comment: >-
+      `UNIX_TIMESTAMP` and `FROM_UNIXTIME` reach 3001-01-18 23:59:59.999999
+      UTC (32536771199 seconds) on 64-bit platforms, beyond the `TIMESTAMP`
+      type; 2038-01-19 03:14:07 UTC (2^31 - 1) before (WL#14630). Beyond,
+      `UNIX_TIMESTAMP` gives 0, as before the epoch, and `FROM_UNIXTIME`
+      NULL. Measured on 8.0.27 and 8.0.28.
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:

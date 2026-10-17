@@ -405,6 +405,22 @@ constructs:
     comment: >-
       `UUID()` gives a value of type `UUID`, compared only with UUIDs, of the
       same text as the `VARCHAR(36)` it gave before, as in MySQL.
+  - id: unixtime_2106
+    since: "11.5.1"
+    source: https://jira.mariadb.org/browse/MDEV-32188
+    comment: >-
+      `UNIX_TIMESTAMP` and `FROM_UNIXTIME` reach 2106-02-07 06:28:15 UTC
+      (2^32 - 1 seconds), as `TIMESTAMP`; 2038-01-19 03:14:07 UTC (2^31 - 1)
+      before. Beyond, both give NULL. Measured on 11.4.13 and 11.5.2.
+  - id: unixtime_epoch_null
+    since: "11.7.1"
+    source: https://jira.mariadb.org/browse/MDEV-15751
+    comment: >-
+      The epoch, the zero of `TIMESTAMP`, leaves the range of
+      `UNIX_TIMESTAMP` and `FROM_UNIXTIME`: `UNIX_TIMESTAMP('1970-01-01
+      00:00:00')` and `FROM_UNIXTIME(0)` give NULL in UTC, 0 and the epoch
+      before; a fraction of a second after it stays in the range. Same change
+      as `timestamp_now`. Measured on 11.6.2 and 11.7.2.
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:

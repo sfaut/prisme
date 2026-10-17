@@ -102,6 +102,17 @@ pub enum Construct {
     /// `LPAD` and `RPAD` with an empty pad, beyond the length of the string:
     /// the string unchanged (MySQL), NULL otherwise.
     PadUnchanged,
+    /// `UNIX_TIMESTAMP` and `FROM_UNIXTIME` until 3001-01-18 23:59:59 UTC
+    /// (MySQL), 2038-01-19 03:14:07 otherwise.
+    #[serde(rename = "unixtime_3001")]
+    Unixtime3001,
+    /// `UNIX_TIMESTAMP` and `FROM_UNIXTIME` until 2106-02-07 06:28:15 UTC
+    /// (MariaDB), 2038-01-19 03:14:07 otherwise.
+    #[serde(rename = "unixtime_2106")]
+    Unixtime2106,
+    /// `UNIX_TIMESTAMP` and `FROM_UNIXTIME` giving NULL at the epoch
+    /// (MariaDB), 0 and its date otherwise.
+    UnixtimeEpochNull,
 }
 
 /// Construct refused in a dialect or a version.
@@ -236,6 +247,9 @@ impl Construct {
             Self::UuidType => "`UUID()` of type `UUID`",
             Self::PadEmptyString => "`LPAD` with an empty pad giving an empty string",
             Self::PadUnchanged => "`LPAD` with an empty pad giving the string unchanged",
+            Self::Unixtime3001 => "`UNIX_TIMESTAMP` until 3001",
+            Self::Unixtime2106 => "`UNIX_TIMESTAMP` until 2106",
+            Self::UnixtimeEpochNull => "`UNIX_TIMESTAMP` giving NULL at the epoch",
         }
     }
 }

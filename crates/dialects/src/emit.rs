@@ -276,23 +276,30 @@ impl Emitter<'_> {
         }
     }
 
-    /// Records a step.
+    /// Records a step, once: an emulation that repeats an expression writes
+    /// its steps again.
     fn step(&mut self, rule: &'static str, kind: StepKind, message: String, span: Option<Span>) {
-        self.steps.push(Step {
+        let step = Step {
             rule,
             kind,
             message,
             span,
-        });
+        };
+        if !self.steps.contains(&step) {
+            self.steps.push(step);
+        }
     }
 
-    /// Records an untranslatable construct.
+    /// Records an untranslatable construct, once.
     fn error(&mut self, rule: &'static str, message: &str, span: Option<Span>) {
-        self.errors.push(Untranslatable {
+        let error = Untranslatable {
             rule,
             message: message.to_string(),
             span,
-        });
+        };
+        if !self.errors.contains(&error) {
+            self.errors.push(error);
+        }
     }
 
     /// Name of the output dialect with its version, for the messages.

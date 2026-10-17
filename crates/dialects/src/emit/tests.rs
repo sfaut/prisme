@@ -29,10 +29,50 @@ fn output(input: InputDialect) -> OutputDialect {
     }
 }
 
-/// `t (a INT NOT NULL, b INT NULL)` and `u (a INT NOT NULL, c INT NULL)`.
+/// `t (a INT NOT NULL, b INT NULL)`, `u (a INT NOT NULL, c INT NULL)` and
+/// `d (dt DATETIME NOT NULL, dn DATETIME NULL, ts TIMESTAMP NULL, n BIGINT
+/// NOT NULL, i INT NULL, iu INT UNSIGNED NULL, f DOUBLE NULL, p DECIMAL(10,2)
+/// NULL)`.
 fn catalog() -> Tables {
     let int = DataType::Integer(IntegerType::signed(IntegerSize::Int));
     let mut tables = Tables::default();
+    tables.insert(
+        None,
+        "d",
+        vec![
+            (
+                Ident::new("dt"),
+                Type::not_null(DataType::DateTime { fraction: 0 }),
+            ),
+            (
+                Ident::new("dn"),
+                Type::nullable(DataType::DateTime { fraction: 0 }),
+            ),
+            (
+                Ident::new("ts"),
+                Type::nullable(DataType::Timestamp { fraction: 0 }),
+            ),
+            (
+                Ident::new("n"),
+                Type::not_null(DataType::Integer(IntegerType::signed(IntegerSize::Big))),
+            ),
+            (Ident::new("i"), Type::nullable(int.clone())),
+            (
+                Ident::new("iu"),
+                Type::nullable(DataType::Integer(IntegerType::unsigned(IntegerSize::Int))),
+            ),
+            (
+                Ident::new("f"),
+                Type::nullable(DataType::Float(prisme_types::FloatType::Double)),
+            ),
+            (
+                Ident::new("p"),
+                Type::nullable(DataType::Decimal(
+                    prisme_types::DecimalType::new(10, 2).unwrap(),
+                )),
+            ),
+        ],
+    );
     tables.insert(
         None,
         "u",
@@ -489,9 +529,9 @@ fn built_in_functions_follow_the_reference_files() {
             "function.unstudied",
         ),
         (
-            "SELECT UNIX_TIMESTAMP(a) FROM t",
+            "SELECT GREATEST(a, b) FROM t",
             output(mariadb()),
-            "function.unix-timestamp",
+            "function.greatest",
         ),
         (
             "SELECT FORMAT_PICO_TIME(a) FROM t",
@@ -669,6 +709,203 @@ fn uuid_stays_a_string() {
     let (sql, rules) = transpiled(text, mariadb(), output(mysql()));
     assert_eq!(sql, text);
     assert!(rules.is_empty(), "{rules:?}");
+}
+
+/// `dialect` in `version`, as an input.
+fn input_at(dialect: Dialect, major: u16, minor: u16, patch: u16) -> InputDialect {
+    InputDialect {
+        dialect,
+        version: Version::new(major, minor, patch),
+    }
+}
+
+#[test]
+fn unix_timestamp_keeps_the_range_of_the_input() {
+    let mysql_8_0 = input_at(Dialect::MySql, 8, 0, 19);
+    let mysql_8_4 = input_at(Dialect::MySql, 8, 4, 0);
+    let mariadb_10_6 = input_at(Dialect::MariaDb, 10, 6, 3);
+    let mariadb_11_8 = input_at(Dialect::MariaDb, 11, 8, 0);
+    for (input, target, argument, expected) in [
+        // Out of the range, 0 in MySQL, NULL in MariaDB.
+        (
+            mysql_8_0,
+            mariadb_10_6,
+            "dt",
+            "IFNULL(UNIX_TIMESTAMP(dt), 0)",
+        ),
+        (
+            mysql_8_0,
+            mariadb_10_6,
+            "dn",
+            "IF(dn IS NULL, NULL, IFNULL(UNIX_TIMESTAMP(dn), 0))",
+        ),
+        // MariaDB 11.8 goes to 2106, without the epoch.
+        (
+            mysql_8_0,
+            mariadb_11_8,
+            "dt",
+            "CASE WHEN UNIX_TIMESTAMP(dt) < 2147483648 THEN UNIX_TIMESTAMP(dt) ELSE 0 END",
+        ),
+        (
+            mysql_8_0,
+            mariadb_11_8,
+            "ts",
+            "CASE WHEN UNIX_TIMESTAMP(ts) < 2147483648 THEN UNIX_TIMESTAMP(ts) WHEN ts IS NOT NULL THEN 0 END",
+        ),
+        // MySQL gives 0 at the epoch and out of its range.
+        (
+            mariadb_10_6,
+            mysql_8_0,
+            "dn",
+            "CASE WHEN UNIX_TIMESTAMP(dn) > 0 THEN UNIX_TIMESTAMP(dn) WHEN dn = FROM_UNIXTIME(0) THEN 0 END",
+        ),
+        (
+            mariadb_10_6,
+            mysql_8_4,
+            "dn",
+            "CASE WHEN UNIX_TIMESTAMP(dn) > 0 AND UNIX_TIMESTAMP(dn) < 2147483648 THEN UNIX_TIMESTAMP(dn) WHEN dn = FROM_UNIXTIME(0) THEN 0 END",
+        ),
+        (
+            mariadb_11_8,
+            mysql_8_4,
+            "dn",
+            "CASE WHEN UNIX_TIMESTAMP(dn) > 0 AND UNIX_TIMESTAMP(dn) < 4294967296 THEN UNIX_TIMESTAMP(dn) END",
+        ),
+        // MySQL gives 0 in the second after the epoch, its fraction dropped.
+        (
+            mysql_8_0,
+            mariadb_10_6,
+            "'1960-01-01 00:00:00.5'",
+            "CASE WHEN UNIX_TIMESTAMP('1960-01-01 00:00:00.5') >= 1 THEN UNIX_TIMESTAMP('1960-01-01 00:00:00.5') ELSE 0 END",
+        ),
+        (
+            mariadb_10_6,
+            mysql_8_0,
+            "'1970-01-01 00:00:00.5'",
+            "CASE WHEN UNIX_TIMESTAMP('1970-01-01 00:00:00.5') > 0 THEN UNIX_TIMESTAMP('1970-01-01 00:00:00.5') WHEN '1970-01-01 00:00:00.5' >= FROM_UNIXTIME(0) AND '1970-01-01 00:00:00.5' < FROM_UNIXTIME(1) THEN TRUNCATE(UNIX_TIMESTAMP('1970-01-01 00:00:00.5' + INTERVAL 1 SECOND) - 1, 1) END",
+        ),
+    ] {
+        let output = output(target);
+        let text = format!("SELECT UNIX_TIMESTAMP({argument}) AS u FROM d");
+        let (sql, rules) = transpiled(&text, input, output);
+        assert_eq!(sql, format!("SELECT {expected} AS u FROM d"), "{text}");
+        assert_eq!(rules, ["function.unix-timestamp"], "{text}");
+    }
+    // Within both ranges: the current time, a `TIMESTAMP` of the output, a
+    // literal date from 1971 to 2037.
+    for (input, target, argument) in [
+        (mysql_8_0, mariadb_10_6, ""),
+        (mysql_8_0, mariadb_10_6, "ts"),
+        (mysql_8_4, mariadb_11_8, "ts"),
+        (mariadb_11_8, mysql_8_0, "ts"),
+        (mysql_8_4, mariadb_11_8, "'2024-05-06 07:08:09.5'"),
+        (mysql_8_4, mariadb_11_8, "NULL"),
+    ] {
+        let text = format!("SELECT UNIX_TIMESTAMP({argument}) AS u FROM d");
+        let (sql, rules) = transpiled(&text, input, output(target));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{text}: {rules:?}");
+    }
+    // Beyond the range of the output, or an argument that would be
+    // evaluated twice.
+    for (input, target, argument) in [
+        (mysql_8_4, mariadb_11_8, "dt"),
+        (mysql_8_4, mariadb_11_8, "'2200-01-01'"),
+        (mysql_8_4, mariadb_11_8, "'2024-02-30'"),
+        (mariadb_11_8, mysql_8_0, "dn"),
+        (mysql_8_0, mariadb_11_8, "(SELECT MAX(dt) FROM d)"),
+        (mysql_8_0, mariadb_11_8, "SYSDATE()"),
+    ] {
+        let text = format!("SELECT UNIX_TIMESTAMP({argument}) AS u FROM d");
+        assert_eq!(
+            errors(&text, input, output(target)),
+            ["function.unix-timestamp"],
+            "{text}"
+        );
+    }
+    // The steps of an argument written twice are recorded once.
+    let (sql, rules) = transpiled(
+        "SELECT UNIX_TIMESTAMP(NOW()) AS u",
+        mysql_8_0,
+        output(mariadb_11_8),
+    );
+    assert_eq!(sql.matches("LOCALTIMESTAMP()").count(), 4, "{sql}");
+    assert_eq!(rules, ["function.unix-timestamp", "function.now"]);
+}
+
+#[test]
+fn from_unixtime_keeps_the_range_and_the_type_of_the_input() {
+    let mysql_8_0 = input_at(Dialect::MySql, 8, 0, 19);
+    let mysql_8_4 = input_at(Dialect::MySql, 8, 4, 0);
+    let mariadb_10_6 = input_at(Dialect::MariaDb, 10, 6, 3);
+    let mariadb_11_8 = input_at(Dialect::MariaDb, 11, 8, 0);
+    for (input, target, arguments, expected) in [
+        // MariaDB 11.8 goes to 2106, without the epoch, and gives a
+        // `TIMESTAMP`.
+        (
+            mysql_8_0,
+            mariadb_11_8,
+            "n",
+            "CAST(IF(n = 0, FROM_UNIXTIME(1) - INTERVAL 1 SECOND, FROM_UNIXTIME(IF(n < 2147483648, n, NULL))) AS DATETIME)",
+        ),
+        (
+            mysql_8_4,
+            mariadb_11_8,
+            "p",
+            "CAST(IF(p = 0, FROM_UNIXTIME(1) - INTERVAL 1 SECOND, FROM_UNIXTIME(p)) AS DATETIME(2))",
+        ),
+        (
+            mysql_8_4,
+            mariadb_11_8,
+            "iu, '%Y'",
+            "IF(iu = 0, DATE_FORMAT(FROM_UNIXTIME(1) - INTERVAL 1 SECOND, '%Y'), FROM_UNIXTIME(iu, '%Y'))",
+        ),
+        (
+            mysql_8_4,
+            mariadb_11_8,
+            "0",
+            "CAST(FROM_UNIXTIME(1) - INTERVAL 1 SECOND AS DATETIME)",
+        ),
+        (
+            mysql_8_4,
+            mariadb_11_8,
+            "1700000000.5",
+            "CAST(FROM_UNIXTIME(1700000000.5) AS DATETIME(1))",
+        ),
+        // MySQL 8.4 goes to 3001, with the epoch.
+        (
+            mariadb_11_8,
+            mysql_8_4,
+            "n",
+            "FROM_UNIXTIME(NULLIF(IF(n < 4294967296, n, NULL), 0))",
+        ),
+        (mariadb_11_8, mysql_8_4, "i", "FROM_UNIXTIME(NULLIF(i, 0))"),
+    ] {
+        let text = format!("SELECT FROM_UNIXTIME({arguments}) AS f FROM d");
+        let (sql, rules) = transpiled(&text, input, output(target));
+        assert_eq!(sql, format!("SELECT {expected} AS f FROM d"), "{text}");
+        assert_eq!(rules, ["function.from-unixtime"], "{text}");
+    }
+    let text = "SELECT FROM_UNIXTIME(n) AS f FROM d";
+    let (sql, rules) = transpiled(text, mysql_8_0, output(mariadb_10_6));
+    assert_eq!(sql, text);
+    assert!(rules.is_empty(), "{rules:?}");
+    // Beyond the range of the output, an argument of unknown type, or an
+    // argument that would be evaluated twice.
+    for (input, target, arguments) in [
+        (mysql_8_4, mariadb_11_8, "n"),
+        (mysql_8_4, mariadb_11_8, "f"),
+        (mariadb_11_8, mysql_8_0, "iu"),
+        (mysql_8_0, mariadb_11_8, "ABS(i)"),
+        (mysql_8_0, mariadb_11_8, "i + RAND()"),
+    ] {
+        let text = format!("SELECT FROM_UNIXTIME({arguments}) AS f FROM d");
+        assert_eq!(
+            errors(&text, input, output(target)),
+            ["function.from-unixtime"],
+            "{text}"
+        );
+    }
 }
 
 #[test]
