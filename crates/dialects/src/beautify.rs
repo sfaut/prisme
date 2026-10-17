@@ -245,10 +245,14 @@ fn uppercase_keywords(sql: &str, dialect: Dialect, version: Option<&str>) -> Str
     let mut slot = UnitSlot::Elsewhere;
     // Last word read, to recognise EXTRACT( and the like.
     let mut previous_word = String::new();
-    for token in tokens {
-        if matches!(token.token, Token::Whitespace(_)) {
-            continue;
-        }
+    let mut tokens = tokens
+        .into_iter()
+        .filter(|token| !matches!(token.token, Token::Whitespace(_)))
+        .peekable();
+    while let Some(token) = tokens.next() {
+        // A word followed by a parenthesis is a function call, whose value
+        // goes on until its closing parenthesis.
+        let call = matches!(tokens.peek().map(|next| &next.token), Some(Token::LParen));
         let current = std::mem::replace(&mut slot, UnitSlot::Elsewhere);
         let word = match &token.token {
             Token::Word(word) if word.quote_style.is_none() => word,
@@ -284,6 +288,9 @@ fn uppercase_keywords(sql: &str, dialect: Dialect, version: Option<&str>) -> Str
             && TIME_UNITS.contains(&upper.as_str());
         slot = match (upper.as_str(), current) {
             ("INTERVAL", _) => UnitSlot::IntervalValue { depth: 0 },
+            (_, UnitSlot::IntervalValue { depth: 0 }) if call => {
+                UnitSlot::IntervalValue { depth: 0 }
+            }
             (_, UnitSlot::IntervalValue { depth: 0 }) => UnitSlot::IntervalUnit,
             (_, UnitSlot::IntervalValue { depth }) => UnitSlot::IntervalValue { depth },
             _ => UnitSlot::Elsewhere,
@@ -372,6 +379,10 @@ mod tests {
         assert_eq!(
             pretty("select d + interval (a + b) day, day from t"),
             "SELECT d + INTERVAL (a + b) DAY, day FROM t"
+        );
+        assert_eq!(
+            pretty("select d + interval f(x) day, day from t"),
+            "SELECT d + INTERVAL f(x) DAY, day FROM t"
         );
     }
 
