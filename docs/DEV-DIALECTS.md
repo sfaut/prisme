@@ -129,7 +129,7 @@ Goal: `WITH ds (c) AS (VALUES ROW (123), ROW (234), ROW (345)) SELECT * FROM ds`
 
 - `SELECT`: options (`DISTINCT`, `DISTINCTROW`, `HIGH_PRIORITY`, `STRAIGHT_JOIN`, `SQL_NO_CACHE`, `SQL_CALC_FOUND_ROWS`...), all the expressions with their precedence (`DIV`, `MOD`, `XOR`, `<=>`, `REGEXP`, `SOUNDS LIKE`, `MEMBER OF`, `->`, `->>`, `COLLATE`, `BINARY`, `:=`, `@variable`, `@@variable`, `INTERVAL`, `CASE`, `CAST`, `CONVERT`, `EXTRACT`; literals with charset introducers, hexadecimal and bit literals, `DATE '...'`), `FROM` (all the joins, `USING`, `NATURAL`, derived tables, `LATERAL`, `JSON_TABLE`, index hints, `PARTITION`), `GROUP BY ... WITH ROLLUP`, `HAVING`, `WINDOW` and window functions, the forms of `LIMIT`, set operations with parentheses, recursive common table expressions, `TABLE t`, locking clauses (`FOR UPDATE`, `FOR SHARE`, `NOWAIT`, `SKIP LOCKED`, `LOCK IN SHARE MODE`), `INTO` (variables, `OUTFILE` and `DUMPFILE`, which are writes), optimizer hints `/*+ ... */`.
 - `INSERT` and `REPLACE` (`VALUES`, `SET`, `SELECT`, `TABLE`, `ON DUPLICATE KEY UPDATE` with `VALUES()` or a row alias), multi-table `UPDATE` and `DELETE`, with `ORDER BY` and `LIMIT` (point 34).
-- Constructs with no effect on the result (hints, options such as `SQL_NO_CACHE`) are annotations of the plan, handled according to point 42.
+- Constructs with no effect on the result (hints, options such as `SQL_NO_CACHE`) are annotations of the plan: written towards the same dialect, left out towards another one, with a step in the report (point 42).
 - **Corpus**: queries written for Prisme, grouped by family, each with its expected status per dialect and version, in `crates/dialects/tests/corpus/`; the queries of the conformance suite are part of it. No copy of the test suites of MySQL or MariaDB (GPL license).
 - **Tests**: oracle `sqlparser-rs`; acceptance confirmed by the real server (`PREPARE` on a test schema, Docker); round trip with the same results on MySQL.
 - Done when the whole MySQL DML corpus passes the invariants of section 2.4.
@@ -220,7 +220,7 @@ Recorded in `docs/QUESTIONS.md`, section 5, "Dialects and transpilation":
 - 39: origin of the plan nodes (position and syntactic form), decided, may evolve;
 - 40: statements outside the DML, decided: translated as far as needed, loss of precision reported;
 - 41: executable comments of MySQL and MariaDB, decided: transpiled as far as possible, otherwise reported;
-- 42: constructs with no effect on the result (hints, options);
+- 42: constructs with no effect on the result (hints, options), decided: left out towards another dialect, reported;
 - 43: version of an input dialect;
 - 44: types when the catalog does not give them;
 - 45: PRQL s-strings;
