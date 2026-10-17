@@ -42,7 +42,10 @@ pub(crate) struct Reference {
 /// inspected version by version yet.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-#[allow(dead_code, reason = "a mark for the updates of the file, read by the tests")]
+#[allow(
+    dead_code,
+    reason = "a mark for the updates of the file, read by the tests"
+)]
 pub(crate) struct Inspected {
     /// Keywords.
     #[serde(default, deserialize_with = "versions::deserialize_optional_version")]
