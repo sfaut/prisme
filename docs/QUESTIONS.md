@@ -110,7 +110,7 @@ Points raised by the implementation plan of the dialects (`docs/DEV-DIALECTS.md`
 46. **`target` of the PRQL header** (`prql target:sql.mysql`): the output dialect comes from the connection. Proposal: a `target` different from the engine of the connection is an explicit error. **[to decide]**
 47. **Running a PRQL text from the editor**: PRQL has no separator character. A text holds `let` declarations and one main query; a relation is delimited by its syntax (the `let` that names it, the parentheses `()` around a pipeline, the braces `{}` of a tuple). The editor therefore finds the declarations and the main query with the PRQL parser, never with the SQL splitter (decided). Still open: with the cursor inside `let recent = (...)`, does Ctrl+Enter run the relation `recent` (with the declarations it uses) or the main query? Does Ctrl+Shift+Enter run the main query only, or each declared relation and the main query, one result tab each? **[to decide]**
 48. **Beautifier of the statements outside the plan** (DDL, stored programs, `DELIMITER` blocks): they keep the current path until they enter the plan. **[to confirm]**
-49. **Form of the catalog statements towards MySQL and MariaDB**: a query on `information_schema`, which accepts filters, joins and sorts and loses less, or `SHOW` (`SHOW TABLES`)? Proposal: `information_schema`, except when the input used `SHOW` and the target accepts it (`docs/DEV-DIALECTS.md`, step 7). **[to decide]**
+49. **Form of the catalog statements towards MySQL and MariaDB**: decided, a query on `information_schema`, which accepts filters, joins and sorts and loses less; `SHOW` only when the input used it and the target accepts it (`docs/DEV-DIALECTS.md`, step 7). **[decided]**
 
 ### Execution
 

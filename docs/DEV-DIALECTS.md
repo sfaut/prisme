@@ -155,7 +155,7 @@ Goal: `WITH ds (c) AS (VALUES ROW (123), ROW (234), ROW (345)) SELECT * FROM ds`
 Prisme translates them as far as needed (point 40). In the v1, between MySQL and MariaDB, and from PRQL; the other engines add their forms with their connector.
 
 - **Relations of the catalog of Prisme**, with a fixed schema (databases, tables, columns, indexes, views, routines...), read by `Scan` nodes like tables. The introspection forms of each dialect map onto them: `SHOW TABLES`, `SHOW COLUMNS`, `DESCRIBE` and the `information_schema` views in MySQL and MariaDB; later `sqlite_schema` and the `PRAGMA` of SQLite, `pg_catalog` in PostgreSQL, the `duckdb_*()` functions of DuckDB.
-- The emitter writes them with the means of the target, in the form that loses the least information and accepts the rest of the query (filters, joins, sorts): a query on `information_schema` in MySQL and MariaDB, or `SHOW` when the input used it and the target accepts it (origin, section 2.3) **[to decide]** (point 49).
+- The emitter writes them with the means of the target, in the form that loses the least information and accepts the rest of the query (filters, joins, sorts): a query on `information_schema` in MySQL and MariaDB, or `SHOW` when the input used it and the target accepts it (origin, section 2.3; point 49).
 - Example, once SQLite is an input dialect: `SELECT name FROM sqlite_schema WHERE type = 'table'` on a MySQL connection becomes a query on `information_schema.tables` (base tables of the current database). The columns MySQL cannot give in the same query (`rootpage`; `sql`, the text of creation, which MySQL gives table by table with `SHOW CREATE TABLE`) are listed in the report as a loss of precision.
 - Session statements: `USE`, `SET` (session variables, `NAMES`, `TRANSACTION`) translated by meaning, towards the setting of the same meaning in the target, otherwise an explicit error. `EXPLAIN` of a DML query: the `EXPLAIN` of the target on the transpiled query; its output differs from one engine to another, which the report states.
 - The other `SHOW` (`VARIABLES`, `STATUS`, `PROCESSLIST`, `GRANTS`, `WARNINGS`, `CREATE TABLE`...): one rule each, with its test.
@@ -228,4 +228,4 @@ Recorded in `docs/QUESTIONS.md`, section 5, "Dialects and transpilation":
 - 46: `target` of the PRQL header;
 - 47: what Ctrl+Enter and Ctrl+Shift+Enter run in a PRQL text (`let` declarations and main query);
 - 48: beautifier of the statements outside the plan, until they enter it;
-- 49: form of the catalog statements towards MySQL and MariaDB.
+- 49: form of the catalog statements towards MySQL and MariaDB, decided: `information_schema`, `SHOW` when the input used it.
