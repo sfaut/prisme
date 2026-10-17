@@ -18,6 +18,7 @@ mod master_key;
 mod profile;
 mod query_session;
 mod recorder;
+mod request_guard;
 mod secrets;
 mod session_relay;
 mod sessions;

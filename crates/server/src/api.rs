@@ -28,6 +28,7 @@ use std::time::Duration;
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
+use axum::middleware;
 use axum::response::Response;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
@@ -50,6 +51,7 @@ use crate::master_key::MasterKey;
 use crate::profile::{self, Profile, ProfileUpdate};
 use crate::query_session;
 use crate::recorder::Recorder;
+use crate::request_guard;
 use crate::sessions::Sessions;
 use crate::settings::{self, Settings, SettingsUpdate};
 use crate::web_assets;
@@ -134,6 +136,7 @@ pub fn router(state: AppState) -> Router {
         .merge(explorer::routes())
         .merge(editors::routes())
         .fallback(web_assets::serve)
+        .layer(middleware::from_fn(request_guard::local_only))
         .with_state(state)
 }
 
@@ -492,6 +495,7 @@ mod tests {
             .method(method)
             .uri(uri)
             .header("content-type", "application/json")
+            .header("host", "localhost:8484")
             .body(body.map_or_else(Body::empty, |json| Body::from(json.to_string())))
             .unwrap();
         let response = app.clone().oneshot(request).await.unwrap();

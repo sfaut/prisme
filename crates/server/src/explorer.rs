@@ -223,7 +223,10 @@ mod tests {
         connections::insert(&db, &key, user_id, &new).unwrap();
         let app = router(AppState::new(db, key, user_id));
 
-        let request = Request::get(uri).body(Body::empty()).unwrap();
+        let request = Request::get(uri)
+            .header("host", "localhost:8484")
+            .body(Body::empty())
+            .unwrap();
         app.oneshot(request).await.unwrap().status()
     }
 
