@@ -600,7 +600,7 @@ impl Emitter<'_> {
     }
 
     /// Name of the input dialect with its version, for the messages.
-    fn source_name(&self) -> String {
+    pub(super) fn source_name(&self) -> String {
         format!("{} {}", self.source.dialect.label(), self.source.version)
     }
 

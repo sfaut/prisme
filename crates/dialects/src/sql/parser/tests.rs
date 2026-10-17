@@ -143,6 +143,25 @@ fn tree(expr: &Expr) -> String {
             values.iter().map(tree).collect::<Vec<_>>().join(" ")
         ),
         ExprKind::Function(call) => call_tree(call),
+        ExprKind::Case {
+            operand,
+            branches,
+            otherwise,
+        } => {
+            let mut parts = vec!["case".to_string()];
+            parts.extend(operand.iter().map(|operand| tree(operand)));
+            parts.extend(
+                branches
+                    .iter()
+                    .map(|(when, then)| format!("(when {} {})", tree(when), tree(then))),
+            );
+            parts.extend(
+                otherwise
+                    .iter()
+                    .map(|otherwise| format!("(else {})", tree(otherwise))),
+            );
+            format!("({})", parts.join(" "))
+        }
     }
 }
 
@@ -402,6 +421,28 @@ fn a_reserved_word_is_a_name_only_between_backticks_or_after_a_dot() {
     assert_eq!(error("SELECT order FROM t", &mysql()).1, "order");
     assert_eq!(expr("`order`"), "order");
     assert_eq!(expr("t.order"), "t.order");
+}
+
+#[test]
+fn reads_case_with_and_without_operand() {
+    assert_eq!(
+        expr("CASE WHEN a > 1 THEN 'x' WHEN a OR b THEN 'y' ELSE NULL END"),
+        "(case (when (> a 1) 'x') (when (or a b) 'y') (else NULL))"
+    );
+    assert_eq!(
+        expr("case a + 1 when 2 then b end + 1"),
+        "(+ (case (+ a 1) (when 2 b)) 1)"
+    );
+    assert_eq!(
+        expr("CASE WHEN a THEN CASE b WHEN 1 THEN 2 END END"),
+        "(case (when a (case b (when 1 2))))"
+    );
+    assert_eq!(error("SELECT CASE a END", &mysql()).1, "END");
+    assert_eq!(
+        error("SELECT CASE WHEN a THEN 1", &mysql()).0,
+        "expected `END`, found the end of the query"
+    );
+    assert_eq!(expr("`case`"), "case");
 }
 
 #[test]

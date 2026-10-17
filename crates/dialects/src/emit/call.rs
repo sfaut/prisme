@@ -167,6 +167,8 @@ impl Emitter<'_> {
         }
         if call.args.is_empty() {
             self.write("*");
+        } else if reads_numbers(&call.function.value.to_ascii_uppercase()) {
+            self.number_list(&call.args);
         } else {
             self.expr_list(&call.args);
         }
@@ -198,6 +200,8 @@ impl Emitter<'_> {
         self.write("(");
         if call.args.is_empty() && upper == "COUNT" {
             self.write("*");
+        } else if reads_numbers(&upper) {
+            self.number_list(&call.args);
         } else {
             self.expr_list(&call.args);
         }
@@ -422,6 +426,35 @@ impl Emitter<'_> {
             self.write(")");
         }
     }
+}
+
+/// Tells whether the aggregate or window function `name` (in capitals) reads
+/// its arguments as numbers: they keep the scale of a `DECIMAL` `CASE`
+/// (measured with `SUM`, `AVG`, `MIN`, `MAX`, `FIRST_VALUE` and `LAG`).
+fn reads_numbers(name: &str) -> bool {
+    matches!(
+        name,
+        "AVG"
+            | "BIT_AND"
+            | "BIT_OR"
+            | "BIT_XOR"
+            | "COUNT"
+            | "FIRST_VALUE"
+            | "LAG"
+            | "LAST_VALUE"
+            | "LEAD"
+            | "MAX"
+            | "MIN"
+            | "NTH_VALUE"
+            | "STD"
+            | "STDDEV"
+            | "STDDEV_POP"
+            | "STDDEV_SAMP"
+            | "SUM"
+            | "VARIANCE"
+            | "VAR_POP"
+            | "VAR_SAMP"
+    )
 }
 
 /// Tells whether `expr` is the column `name` a block computes for itself.

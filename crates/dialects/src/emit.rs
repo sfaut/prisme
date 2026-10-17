@@ -23,6 +23,7 @@ mod aes;
 mod bit_count;
 mod builtin;
 mod call;
+mod case;
 mod expr;
 mod greatest;
 mod rules;
@@ -94,6 +95,7 @@ pub(crate) fn emit(statement: &Statement, output: &OutputDialect, source: &Sourc
         blocks: Vec::new(),
         top: true,
         column: false,
+        number: false,
         steps: Vec::new(),
         errors: Vec::new(),
     };
@@ -138,6 +140,12 @@ struct Emitter<'a> {
     /// may compute another value in the MySQL family (`LEAST('10', '9')`
     /// gives `'10'`, `LEAST('10', '9') + 0` gives 9 in MariaDB).
     column: bool,
+    /// Tells whether the next expression is read as a number: an operand of
+    /// an operator other than `LIKE`, an argument of an aggregate or window
+    /// function that reads numbers. MySQL writes a `DECIMAL` `CASE` as a
+    /// string at the scale of each result (`42` for an integer), as a
+    /// number at the scale of its type.
+    number: bool,
     /// Steps of the report.
     steps: Vec<Step>,
     /// Untranslatable constructs.

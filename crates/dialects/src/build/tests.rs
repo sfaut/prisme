@@ -1,5 +1,5 @@
 use prisme_plan::{ExprKind, SortReference};
-use prisme_types::{DataType, IntegerSize, IntegerType};
+use prisme_types::{DataType, IntegerSize, IntegerType, TextType};
 
 use super::*;
 use crate::lexer::SqlMode;
@@ -636,4 +636,116 @@ fn a_named_window_follows_the_rules_of_the_dialect() {
         plan_in(text, Dialect::MariaDb).unwrap_err().message,
         "window `w2` is not defined before window `w1`"
     );
+}
+
+#[test]
+fn types_case_from_its_results_after_the_dialect() {
+    let int = DataType::Integer(IntegerType::signed(IntegerSize::Int));
+    let types = |text: &str, dialect| column_types(&format!("SELECT {text} FROM t"), dialect);
+    for dialect in [Dialect::MySql, Dialect::MariaDb] {
+        assert_eq!(
+            types(
+                "CASE WHEN a > 1 THEN a END, CASE a WHEN 1 THEN a ELSE a END",
+                dialect
+            ),
+            [(int.clone(), true), (int.clone(), false)]
+        );
+        assert_eq!(
+            types("CASE WHEN a > 1 THEN b ELSE a END", dialect),
+            [(
+                DataType::Text(TextType {
+                    length: None,
+                    fixed: false,
+                    charset: None,
+                    collation: None
+                }),
+                true
+            )]
+        );
+        // A predicate is a number.
+        assert_eq!(
+            types("CASE WHEN a THEN a > 1 ELSE NULL END", dialect)[0].0,
+            DataType::Integer(types::boolean_integer(dialect))
+        );
+    }
+    let integer = |size, unsigned| DataType::Integer(IntegerType { size, unsigned });
+    let small = integer(IntegerSize::Small, false);
+    let tiny_unsigned = integer(IntegerSize::Tiny, true);
+    let big_unsigned = integer(IntegerSize::Big, true);
+    for (results, mysql, mariadb) in [
+        (
+            vec![&small, &small],
+            integer(IntegerSize::Int, false),
+            small.clone(),
+        ),
+        (
+            vec![&tiny_unsigned, &DataType::Null],
+            integer(IntegerSize::Int, true),
+            types::decimal(3, 0),
+        ),
+        (
+            vec![&tiny_unsigned, &int],
+            integer(IntegerSize::Int, false),
+            types::decimal(10, 0),
+        ),
+        (
+            vec![&integer(IntegerSize::Medium, false), &tiny_unsigned],
+            integer(IntegerSize::Int, false),
+            types::decimal(8, 0),
+        ),
+        (
+            vec![&big_unsigned, &int],
+            types::decimal(20, 0),
+            types::decimal(20, 0),
+        ),
+        (
+            vec![&big_unsigned, &tiny_unsigned],
+            big_unsigned.clone(),
+            big_unsigned.clone(),
+        ),
+    ] {
+        assert_eq!(
+            types::case(Dialect::MySql, results.clone()),
+            mysql,
+            "{results:?}"
+        );
+        assert_eq!(
+            types::case(Dialect::MariaDb, results.clone()),
+            mariadb,
+            "{results:?}"
+        );
+    }
+    // Dates and times give the larger `DATETIME`, a number with them a string.
+    let datetime = |fraction| DataType::DateTime { fraction };
+    for (results, merged) in [
+        (vec![DataType::Date, datetime(3)], datetime(3)),
+        (
+            vec![DataType::Time { fraction: 2 }, DataType::Date],
+            datetime(2),
+        ),
+        (
+            vec![DataType::Timestamp { fraction: 6 }, datetime(0)],
+            datetime(6),
+        ),
+        (
+            vec![
+                DataType::Timestamp { fraction: 1 },
+                DataType::Timestamp { fraction: 6 },
+            ],
+            DataType::Timestamp { fraction: 6 },
+        ),
+        (
+            vec![DataType::Date, int.clone()],
+            DataType::Text(TextType {
+                length: None,
+                fixed: false,
+                charset: None,
+                collation: None,
+            }),
+        ),
+        (vec![DataType::Json, DataType::Null], DataType::Json),
+        (vec![DataType::Unknown, DataType::Date], DataType::Unknown),
+    ] {
+        assert_eq!(types::case(Dialect::MySql, &results), merged, "{results:?}");
+    }
 }

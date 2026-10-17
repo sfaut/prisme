@@ -12,8 +12,8 @@
 
 use prisme_plan::Arithmetic;
 use prisme_types::{
-    DataType, DecimalType, FloatType, IntegerSize, IntegerType, MAX_DECIMAL_PRECISION, TextType,
-    Type,
+    BinaryType, DataType, DecimalType, FloatType, IntegerSize, IntegerType, MAX_DECIMAL_PRECISION,
+    TextType, Type,
 };
 
 use crate::Dialect;
@@ -114,6 +114,15 @@ fn integer_digits(integer: IntegerType) -> usize {
     integer.max().max(-integer.min()).to_string().len()
 }
 
+/// Digits MariaDB gives an integer in a `DECIMAL` that holds it: its display
+/// width, sign aside, 8 for a signed `MEDIUMINT` (`MEDIUMINT(9)`).
+fn display_digits(integer: IntegerType) -> usize {
+    match (integer.size, integer.unsigned) {
+        (IntegerSize::Medium, false) => 8,
+        _ => integer_digits(integer),
+    }
+}
+
 /// Digits before the point and scale of a numeric class, as a decimal.
 fn as_decimal(numeric: Numeric) -> (usize, usize) {
     match numeric {
@@ -194,17 +203,96 @@ pub(crate) fn negate(operand: &Type) -> Type {
 }
 
 /// Type that holds the values of several types, for the columns of a
-/// `VALUES` (and later of a `UNION` or a `CASE`).
+/// `VALUES` and of a set operation, and the default value of `LAG`.
 pub(crate) fn aggregate<'a>(types: impl IntoIterator<Item = &'a DataType>) -> DataType {
     types
         .into_iter()
         .fold(DataType::Null, |merged, next| merge(&merged, next))
 }
 
-/// Type that holds the values of two types.
+/// Type of a `CASE` whose results are of the types `types` (measured on
+/// MySQL 8.0.11 and 8.4.11, MariaDB 10.6.28 and 11.8.9:
+/// `crates/probe/cases/case.txt`, `case-integers.sql`). The families merge
+/// alike in both dialects, the integers otherwise:
+///
+/// - MySQL gives an `INT` or a `BIGINT`, unsigned when all are, a
+///   `DECIMAL(20, 0)` for a `BIGINT UNSIGNED` with a signed integer; a
+///   `NULL` changes nothing;
+/// - MariaDB keeps the largest size, and gives a `DECIMAL` of the digits of
+///   the largest integer to a signed integer with an unsigned one, a `NULL`
+///   literal counting as a signed integer.
+pub(crate) fn case<'a>(
+    dialect: Dialect,
+    types: impl IntoIterator<Item = &'a DataType>,
+) -> DataType {
+    let types: Vec<&DataType> = types.into_iter().collect();
+    let integers: Vec<IntegerType> = types
+        .iter()
+        .filter_map(|data_type| match data_type {
+            DataType::Integer(integer) => Some(*integer),
+            _ => None,
+        })
+        .collect();
+    let only_integers = types
+        .iter()
+        .all(|data_type| matches!(data_type, DataType::Integer(_) | DataType::Null));
+    if integers.is_empty() || !only_integers {
+        return aggregate(types);
+    }
+    let unsigned = integers.iter().all(|integer| integer.unsigned);
+    let largest = |integers: &[IntegerType]| {
+        integers
+            .iter()
+            .map(|integer| integer.size)
+            .max_by_key(|size| size.bytes())
+            .unwrap_or(IntegerSize::Int)
+    };
+    match dialect {
+        Dialect::MySql => {
+            let big_unsigned = integers
+                .iter()
+                .any(|integer| integer.unsigned && integer.size == IntegerSize::Big);
+            if big_unsigned && !unsigned {
+                return decimal(20, 0);
+            }
+            let size = match largest(&integers) {
+                IntegerSize::Big => IntegerSize::Big,
+                _ => IntegerSize::Int,
+            };
+            DataType::Integer(IntegerType { size, unsigned })
+        }
+        Dialect::MariaDb => {
+            let any_unsigned = integers.iter().any(|integer| integer.unsigned);
+            let any_signed = !unsigned || types.contains(&&DataType::Null);
+            if any_unsigned && any_signed {
+                let digits = integers
+                    .iter()
+                    .map(|integer| display_digits(*integer))
+                    .max();
+                return decimal(digits.unwrap_or(1), 0);
+            }
+            DataType::Integer(IntegerType {
+                size: largest(&integers),
+                unsigned,
+            })
+        }
+    }
+}
+
+/// Type that holds the values of two types, as a `CASE` merges them in
+/// both dialects, the integers aside.
 fn merge(left: &DataType, right: &DataType) -> DataType {
+    let text = || {
+        DataType::Text(TextType {
+            length: None,
+            fixed: false,
+            charset: None,
+            collation: None,
+        })
+    };
     match (left, right) {
         (DataType::Null, other) | (other, DataType::Null) => other.clone(),
+        (DataType::Unknown, _) | (_, DataType::Unknown) => DataType::Unknown,
         _ if left == right => left.clone(),
         (DataType::Text(left), DataType::Text(right)) => DataType::Text(TextType {
             length: left.length.zip(right.length).map(|(a, b)| a.max(b)),
@@ -212,12 +300,19 @@ fn merge(left: &DataType, right: &DataType) -> DataType {
             charset: left.charset.clone().or_else(|| right.charset.clone()),
             collation: left.collation.clone().or_else(|| right.collation.clone()),
         }),
-        (DataType::Text(_), _) | (_, DataType::Text(_)) => DataType::Text(TextType {
+        // A `JSON` with another type is a `LONGTEXT`.
+        (DataType::Json, _) | (_, DataType::Json) => text(),
+        // A byte string with a character string: bytes, unless the
+        // characters have the collation of a column and the bytes are a
+        // literal (coercibility), which the plan does not tell apart.
+        (DataType::Binary(_), _) | (_, DataType::Binary(_)) => DataType::Binary(BinaryType {
             length: None,
             fixed: false,
-            charset: None,
-            collation: None,
         }),
+        (DataType::Text(_), _) | (_, DataType::Text(_)) => text(),
+        _ if temporal(left) && temporal(right) => merge_temporal(left, right),
+        // A date or a time with a number: a string.
+        _ if temporal(left) || temporal(right) => text(),
         _ => match (numeric(left), numeric(right)) {
             (Numeric::Integer(a), Numeric::Integer(b)) if a.unsigned == b.unsigned => {
                 DataType::Integer(if a.size.bytes() >= b.size.bytes() {
@@ -233,6 +328,36 @@ fn merge(left: &DataType, right: &DataType) -> DataType {
                 decimal(a_integer.max(b_integer) + scale, scale)
             }
         },
+    }
+}
+
+/// Tells whether `data_type` is a date, a time or both.
+const fn temporal(data_type: &DataType) -> bool {
+    matches!(
+        data_type,
+        DataType::Date
+            | DataType::Time { .. }
+            | DataType::DateTime { .. }
+            | DataType::Timestamp { .. }
+    )
+}
+
+/// Type that holds the values of two different temporal types: a
+/// `DATETIME` of the larger fraction, a `TIMESTAMP` only with another one.
+fn merge_temporal(left: &DataType, right: &DataType) -> DataType {
+    let fraction = |data_type: &DataType| match data_type {
+        DataType::Time { fraction }
+        | DataType::DateTime { fraction }
+        | DataType::Timestamp { fraction } => *fraction,
+        _ => 0,
+    };
+    let fraction = fraction(left).max(fraction(right));
+    match (left, right) {
+        (DataType::Timestamp { .. }, DataType::Timestamp { .. }) => {
+            DataType::Timestamp { fraction }
+        }
+        (DataType::Time { .. }, DataType::Time { .. }) => DataType::Time { fraction },
+        _ => DataType::DateTime { fraction },
     }
 }
 

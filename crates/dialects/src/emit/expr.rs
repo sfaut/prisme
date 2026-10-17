@@ -14,6 +14,7 @@ use prisme_plan::{
 use prisme_types::Value;
 
 use super::Emitter;
+use super::case::Reading;
 use crate::build::is_internal_name;
 use crate::report::StepKind;
 
@@ -87,10 +88,12 @@ fn levels(expr: &Expr) -> (u8, u8, u8) {
 impl Emitter<'_> {
     /// Writes `expr`, between parentheses when its level is below `min`.
     pub(super) fn expr(&mut self, expr: &Expr, min: u8) {
-        // Read as a value of its type: this expression, never its operands.
+        // Read as a value of its type, or as a number: this expression,
+        // never its operands.
         let column = std::mem::take(&mut self.column);
+        let number = std::mem::take(&mut self.number);
         if let ExprKind::ToBoolean(inner) | ExprKind::ToInteger(inner) = &expr.kind {
-            self.expr(inner, min);
+            self.number_expr(inner, min);
             return;
         }
         if let ExprKind::Column(column) = &expr.kind
@@ -104,6 +107,10 @@ impl Emitter<'_> {
         // A rule may write a call as an expression of a lower level.
         if let ExprKind::Function(call) = &expr.kind {
             self.function_call(expr, call, min, column);
+            return;
+        }
+        if let ExprKind::Case(case) = &expr.kind {
+            self.case(expr, case, Reading { column, number });
             return;
         }
         let (level, left, right) = levels(expr);
@@ -177,10 +184,10 @@ impl Emitter<'_> {
             }
             ExprKind::Not(operand) => {
                 self.write("NOT ");
-                self.expr(operand, NOT);
+                self.number_expr(operand, NOT);
             }
             ExprKind::IsNull { operand, negated } => {
-                self.expr(operand, left);
+                self.number_expr(operand, left);
                 self.write(if *negated { " IS NOT NULL" } else { " IS NULL" });
             }
             ExprKind::Arithmetic {
@@ -200,7 +207,7 @@ impl Emitter<'_> {
             }
             ExprKind::Negate(operand) => {
                 self.write("-");
-                self.expr(operand, right);
+                self.number_expr(operand, right);
             }
             ExprKind::Bitwise {
                 op,
@@ -218,7 +225,7 @@ impl Emitter<'_> {
             }
             ExprKind::BitNot(operand) => {
                 self.write("~");
-                self.expr(operand, right);
+                self.number_expr(operand, right);
             }
             ExprKind::Between {
                 operand,
@@ -226,15 +233,15 @@ impl Emitter<'_> {
                 high,
                 negated,
             } => {
-                self.expr(operand, left);
+                self.number_expr(operand, left);
                 self.write(if *negated {
                     " NOT BETWEEN "
                 } else {
                     " BETWEEN "
                 });
-                self.expr(low, right);
+                self.number_expr(low, right);
                 self.write(" AND ");
-                self.expr(high, right);
+                self.number_expr(high, right);
             }
             ExprKind::Like {
                 operand,
@@ -255,9 +262,9 @@ impl Emitter<'_> {
                 list,
                 negated,
             } => {
-                self.expr(operand, left);
+                self.number_expr(operand, left);
                 self.write(if *negated { " NOT IN (" } else { " IN (" });
-                self.expr_list(list);
+                self.number_list(list);
                 self.write(")");
             }
             ExprKind::ScalarSubquery(_)
@@ -291,7 +298,7 @@ impl Emitter<'_> {
                 subquery,
                 negated,
             } => {
-                self.expr(operand, left);
+                self.number_expr(operand, left);
                 self.subquery(if *negated { " NOT IN " } else { " IN " }, subquery);
             }
             ExprKind::Quantified {
@@ -300,7 +307,7 @@ impl Emitter<'_> {
                 quantifier,
                 subquery,
             } => {
-                self.expr(operand, left);
+                self.number_expr(operand, left);
                 self.write(comparison(*op));
                 self.subquery(
                     match quantifier {
@@ -329,9 +336,25 @@ impl Emitter<'_> {
 
     /// `a op b`, the operands at levels `left` and `right` at least.
     fn binary(&mut self, a: &Expr, op: &str, b: &Expr, left: u8, right: u8) {
-        self.expr(a, left);
+        self.number_expr(a, left);
         self.write(op);
-        self.expr(b, right);
+        self.number_expr(b, right);
+    }
+
+    /// Writes `expr` read as a number (see `Emitter::number`).
+    pub(super) fn number_expr(&mut self, expr: &Expr, min: u8) {
+        self.number = true;
+        self.expr(expr, min);
+    }
+
+    /// Writes `exprs` separated by commas, each read as a number.
+    pub(super) fn number_list(&mut self, exprs: &[Expr]) {
+        for (index, expr) in exprs.iter().enumerate() {
+            if index > 0 {
+                self.write(", ");
+            }
+            self.number_expr(expr, 0);
+        }
     }
 
     /// Literal: its text in the input when the output reads it the same way,

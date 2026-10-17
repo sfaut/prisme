@@ -1,0 +1,94 @@
+# Rule `case.type`: `CASE` gives an unsigned integer with `NULL` or with a
+# signed integer an integer in MySQL, a `DECIMAL` in MariaDB, cast to the
+# family of the input; the other families merge alike. Rule `case.scale`:
+# MySQL writes the values of a `DECIMAL` `CASE` at the scale of each result
+# when it reads them as strings, MariaDB at the scale of the type.
+setup:
+  - DROP TABLE IF EXISTS case_values
+  - >-
+    CREATE TABLE case_values (id INT NOT NULL PRIMARY KEY, t TINYINT NULL,
+    tu TINYINT UNSIGNED NULL, m MEDIUMINT NULL, i INT NULL, iu INT UNSIGNED NULL,
+    b BIGINT NULL, bu BIGINT UNSIGNED NULL, p DECIMAL(10, 2) NULL, d DATE NULL,
+    dt DATETIME(3) NULL, s VARCHAR(20) NULL)
+  - >-
+    INSERT INTO case_values VALUES
+    (1, -128, 255, -8388608, -2147483648, 4294967295, -9223372036854775808,
+    18446744073709551615, -12.5, '2024-05-06', '2024-05-06 07:08:09.123', 'abc'),
+    (2, 127, 0, 8388607, 2147483647, 0, 9223372036854775807, 0, 99.99,
+    '1000-01-01', '9999-12-31 23:59:59.999', ''),
+    (3, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)
+cases:
+  # Families merged alike: dates, decimals, strings, simple `CASE`.
+  - from: mysql
+    sql: >-
+      SELECT id, CASE WHEN id = 1 THEN d ELSE dt END AS a, CASE WHEN id = 1 THEN i ELSE p END AS b,
+      CASE WHEN id = 1 THEN i ELSE s END AS c, CASE WHEN id = 1 THEN d ELSE i END AS e,
+      CASE s WHEN 'ABC' THEN 1 WHEN '' THEN 2 ELSE 0 END AS f, CASE i WHEN NULL THEN 1 ELSE 0 END AS g,
+      CASE t WHEN 127 THEN 'x' END AS h, CASE WHEN i > 0 THEN t ELSE b END AS k,
+      CASE WHEN id = 1 THEN bu ELSE b END AS l, CASE WHEN id = 1 THEN iu END AS n,
+      CASE WHEN id = 1 THEN iu ELSE bu END AS o FROM case_values ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, CASE WHEN id = 1 THEN d ELSE dt END AS a, CASE WHEN id = 1 THEN i ELSE p END AS b,
+      CASE WHEN id = 1 THEN i ELSE s END AS c, CASE WHEN id = 1 THEN d ELSE i END AS e,
+      CASE s WHEN 'ABC' THEN 1 WHEN '' THEN 2 ELSE 0 END AS f, CASE i WHEN NULL THEN 1 ELSE 0 END AS g,
+      CASE t WHEN 127 THEN 'x' END AS h, CASE WHEN i > 0 THEN t ELSE b END AS k,
+      CASE WHEN id = 1 THEN bu ELSE b END AS l, CASE WHEN id = 1 THEN iu END AS n,
+      CASE WHEN id = 1 THEN iu ELSE bu END AS o FROM case_values ORDER BY id
+  # An unsigned integer with `NULL` or a signed integer: cast.
+  - from: mysql
+    sql: >-
+      SELECT id, CASE WHEN id = 1 THEN tu ELSE NULL END AS a, CASE WHEN id = 1 THEN iu ELSE NULL END AS b,
+      CASE WHEN id < 3 THEN bu ELSE NULL END AS c, CASE WHEN id = 2 THEN NULL ELSE bu END AS e,
+      CASE WHEN id = 1 THEN iu ELSE i END AS f, CASE WHEN id = 1 THEN tu ELSE t END AS g,
+      CASE WHEN id = 1 THEN m ELSE tu END AS h FROM case_values ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, CASE WHEN id = 1 THEN tu ELSE NULL END AS a, CASE WHEN id = 1 THEN iu ELSE NULL END AS b,
+      CASE WHEN id < 3 THEN bu ELSE NULL END AS c, CASE WHEN id = 2 THEN NULL ELSE bu END AS e,
+      CASE WHEN id = 1 THEN iu ELSE i END AS f, CASE WHEN id = 1 THEN tu ELSE t END AS g,
+      CASE WHEN id = 1 THEN m ELSE tu END AS h FROM case_values ORDER BY id
+  # The column keeps the name of its text.
+  - from: mysql
+    sql: SELECT CASE WHEN id = 1 THEN iu ELSE NULL END FROM case_values ORDER BY id
+  - from: mariadb
+    sql: SELECT CASE WHEN id = 1 THEN iu ELSE NULL END FROM case_values ORDER BY id
+  # A result of unknown type among integers and `NULL`.
+  - from: mysql
+    sql: SELECT CASE WHEN id = 1 THEN ABS(iu) ELSE NULL END AS a FROM case_values
+    refused: case.type
+  - from: mariadb
+    sql: SELECT CASE WHEN id = 1 THEN ABS(iu) ELSE NULL END AS a FROM case_values
+    refused: case.type
+  # A `DECIMAL` `CASE` with results of a smaller scale: a column of the
+  # result, a number, a string.
+  - from: mysql
+    sql: >-
+      SELECT id, CASE WHEN id = 1 THEN i WHEN id = 2 THEN 0 ELSE p END AS a,
+      CASE WHEN id = 1 THEN i ELSE p END + 0 AS b FROM case_values ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, CASE WHEN id = 1 THEN i WHEN id = 2 THEN 0 ELSE p END AS a,
+      CASE WHEN id = 1 THEN i ELSE p END + 0 AS b FROM case_values ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, CONCAT(CASE WHEN id = 1 THEN i WHEN id = 2 THEN 0 WHEN id = 3 THEN 1.5 ELSE p END) AS a,
+      CASE WHEN id = 1 THEN i ELSE p END LIKE '%.00' AS b FROM case_values ORDER BY id
+  - from: mysql
+    sql: SELECT id, CONCAT(CASE WHEN id = 1 THEN i ELSE p END) AS a FROM case_values ORDER BY id
+    refused: case.scale
+  # Aggregate and window functions read numbers, at the scale of the type:
+  # `LIKE` reads their values as strings.
+  - from: mysql
+    sql: >-
+      SELECT MIN(CASE WHEN id = 1 THEN i ELSE p END) LIKE '%.00' AS a,
+      MAX(CASE WHEN id = 1 THEN i ELSE p END) LIKE '99.99' AS b,
+      SUM(CASE WHEN id = 1 THEN i ELSE p END) LIKE '%.01' AS c,
+      AVG(CASE WHEN id = 1 THEN i ELSE p END) LIKE '%.005000' AS e FROM case_values
+  - from: mysql
+    sql: >-
+      SELECT id, LEAD(CASE WHEN id = 1 THEN i ELSE p END) OVER (ORDER BY id DESC) LIKE '%.00' AS a,
+      LAST_VALUE(CASE WHEN id = 1 THEN i ELSE p END) OVER (ORDER BY id DESC) LIKE '%.00' AS b,
+      NTH_VALUE(CASE WHEN id = 1 THEN i ELSE p END, 3) OVER (ORDER BY id DESC) LIKE '%.00' AS c,
+      FIRST_VALUE(CASE WHEN id = 1 THEN i ELSE p END) OVER (ORDER BY id) LIKE '%.00' AS e,
+      LAG(CASE WHEN id = 1 THEN i ELSE p END) OVER (ORDER BY id) LIKE '%.00' AS f FROM case_values ORDER BY id

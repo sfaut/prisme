@@ -500,6 +500,16 @@ pub enum ExprKind {
     Row(Vec<Expr>),
     /// Call to a function.
     Function(Box<FunctionCall>),
+    /// `CASE [operand] WHEN ... THEN ... [ELSE ...] END`.
+    Case {
+        /// Value compared to each `WHEN` (`CASE x WHEN 1 ...`); `None` when
+        /// each `WHEN` is a predicate.
+        operand: Option<Box<Expr>>,
+        /// `WHEN` and `THEN` of each branch, in order.
+        branches: Vec<(Expr, Expr)>,
+        /// `ELSE`.
+        otherwise: Option<Box<Expr>>,
+    },
 }
 
 impl FunctionCall {
@@ -551,6 +561,18 @@ impl Expr {
                 children
             }
             ExprKind::Row(values) => values.iter().collect(),
+            ExprKind::Case {
+                operand,
+                branches,
+                otherwise,
+            } => {
+                let mut children: Vec<&Self> = operand.iter().map(AsRef::as_ref).collect();
+                for (when, then) in branches {
+                    children.extend([when, then]);
+                }
+                children.extend(otherwise.as_deref());
+                children
+            }
             ExprKind::Function(call) => {
                 let mut children: Vec<&Self> = call.args.iter().collect();
                 children.extend(call.order_by.iter().map(|item| &item.expr));

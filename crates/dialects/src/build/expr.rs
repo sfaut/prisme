@@ -8,7 +8,8 @@
 //! expected.
 
 use prisme_plan::{
-    Arithmetic, Bitwise, Comparison, Expr, Logical, NotDistinctForm, Quantifier, Span,
+    Arithmetic, Bitwise, Case, CaseBranch, Comparison, Expr, Logical, NotDistinctForm, Quantifier,
+    Span,
 };
 use prisme_types::{DataType, Decimal, IntegerSize, IntegerType, Type, Value};
 
@@ -271,12 +272,13 @@ impl Builder<'_> {
             | ExprKind::Quantified { .. }
             | ExprKind::Row(_)
             | ExprKind::Column(_)
-            | ExprKind::Function(_) => self.other_expr(expr, scope)?,
+            | ExprKind::Function(_)
+            | ExprKind::Case { .. } => self.other_expr(expr, scope)?,
         };
         Ok(built.with_span(expr.span))
     }
 
-    /// Column, call, subquery or row: out of `expr`, whose frame the
+    /// Column, call, subquery, row or `CASE`: out of `expr`, whose frame the
     /// recursion of deep expressions repeats.
     fn other_expr(&mut self, expr: &ast::Expr, scope: &Scope) -> Result<Expr, BuildError> {
         Ok(match &expr.kind {
@@ -342,8 +344,58 @@ impl Builder<'_> {
                     .collect::<Result<Vec<_>, _>>()?;
                 Expr::row(built)
             }
-            _ => unreachable!("called on columns, calls, subqueries and rows"),
+            ExprKind::Case {
+                operand,
+                branches,
+                otherwise,
+            } => self.case(operand.as_deref(), branches, otherwise.as_deref(), scope)?,
+            _ => unreachable!("called on columns, calls, subqueries, rows and `CASE`"),
         })
+    }
+
+    /// `CASE`: each `WHEN` compared to the operand, or a predicate without
+    /// operand; the results of the type the dialect gives them together,
+    /// nullable without `ELSE`.
+    fn case(
+        &mut self,
+        operand: Option<&ast::Expr>,
+        branches: &[(ast::Expr, ast::Expr)],
+        otherwise: Option<&ast::Expr>,
+        scope: &Scope,
+    ) -> Result<Expr, BuildError> {
+        let operand = operand
+            .map(|operand| self.value(operand, scope))
+            .transpose()?;
+        let mut built = Vec::with_capacity(branches.len());
+        for (when, then) in branches {
+            let when = match operand {
+                Some(_) => self.value(when, scope)?,
+                None => self.condition(when, scope)?,
+            };
+            let then = self.value(then, scope)?;
+            built.push(CaseBranch { when, then });
+        }
+        let otherwise = otherwise
+            .map(|otherwise| self.value(otherwise, scope))
+            .transpose()?;
+        let results: Vec<&Expr> = built
+            .iter()
+            .map(|branch| &branch.then)
+            .chain(otherwise.as_ref())
+            .collect();
+        let ty = Type {
+            data_type: types::case(
+                self.dialect,
+                results.iter().map(|result| &result.ty.data_type),
+            ),
+            nullable: otherwise.is_none() || results.iter().any(|result| result.ty.nullable),
+        };
+        let case = Case {
+            operand: operand.map(Box::new),
+            branches: built,
+            otherwise: otherwise.map(Box::new),
+        };
+        Ok(Expr::case(case, ty))
     }
 
     /// Literal, of the type the dialect gives it.

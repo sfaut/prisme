@@ -470,8 +470,41 @@ impl Parser<'_> {
         Ok(None)
     }
 
-    /// Expression that starts with a word: a keyword literal, a call with or
-    /// without parentheses, a column, or a construct not read yet.
+    /// `CASE [operand] WHEN a THEN b ... [ELSE c] END`, from `CASE`.
+    fn case(&mut self) -> Result<Expr, ParseError> {
+        let start = self.here().start;
+        self.advance();
+        let operand = if self.at_keyword("WHEN") {
+            None
+        } else {
+            Some(Box::new(self.expr()?))
+        };
+        let mut branches = Vec::new();
+        while self.eat_keyword("WHEN").is_some() {
+            let when = self.expr()?;
+            self.expect_keyword("THEN")?;
+            branches.push((when, self.expr()?));
+        }
+        if branches.is_empty() {
+            return Err(self.expected("`WHEN`"));
+        }
+        let otherwise = match self.eat_keyword("ELSE") {
+            Some(_) => Some(Box::new(self.expr()?)),
+            None => None,
+        };
+        self.expect_keyword("END")?;
+        Ok(leaf(
+            ExprKind::Case {
+                operand,
+                branches,
+                otherwise,
+            },
+            self.span_from(start),
+        ))
+    }
+
+    /// Expression that starts with a word: a keyword literal, `CASE`, a call
+    /// with or without parentheses, a column, or a construct not read yet.
     fn word_expr(&mut self) -> Result<Expr, ParseError> {
         let token = self.peek().cloned().expect("a word comes next");
         let keyword_literal = [
@@ -486,6 +519,9 @@ impl Parser<'_> {
             return Ok(leaf(ExprKind::Literal(literal), token.span));
         }
         let next = self.peek_at(1).map(|next| &next.kind);
+        if token.kind == TokenKind::Word && self.at_keyword("CASE") {
+            return self.case();
+        }
         if token.kind == TokenKind::Word {
             if matches!(next, Some(TokenKind::Punct(Punct::LeftParen)))
                 && let Some(construct) = self.keyword_construct()?
@@ -497,7 +533,6 @@ impl Parser<'_> {
                 return Err(self.unsupported("typed literals and charset introducers", token.span));
             }
             let constructs = [
-                "CASE",
                 "CAST",
                 "CONVERT",
                 "EXISTS",

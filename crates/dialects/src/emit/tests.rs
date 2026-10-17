@@ -293,6 +293,7 @@ fn strings_follow_the_sql_mode_of_the_output() {
         blocks: Vec::new(),
         top: true,
         column: false,
+        number: false,
         steps: Vec::new(),
         errors: Vec::new(),
     };
@@ -1430,4 +1431,115 @@ fn aes_keeps_the_arguments_the_output_reads_alike() {
             "{text}"
         );
     }
+}
+
+#[test]
+fn case_keeps_the_family_of_its_type() {
+    let text = concat!(
+        "SELECT CASE WHEN i > 0 THEN 'a' WHEN i IS NULL OR n = 1 THEN 'b' ELSE 'c' END AS x, ",
+        "CASE i + 1 WHEN 2 THEN i ELSE -i END + 1 AS y, CASE WHEN i > 0 THEN iu END AS z, ",
+        "CASE WHEN i > 0 THEN ABS(i) ELSE 'x' END AS w FROM d"
+    );
+    for (input, target) in [
+        (mysql(), mariadb()),
+        (mariadb(), mysql()),
+        (mysql(), mysql()),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{rules:?}");
+    }
+    // An unsigned integer with `NULL` or a signed integer: an integer in
+    // MySQL, a `DECIMAL` in MariaDB.
+    let text = concat!(
+        "SELECT CASE WHEN i > 0 THEN iu ELSE NULL END AS x, ",
+        "CASE WHEN i > 0 THEN iu ELSE i END AS y FROM d"
+    );
+    let (sql, rules) = transpiled(text, mysql(), output(mariadb()));
+    assert_eq!(
+        sql,
+        concat!(
+            "SELECT CAST(CASE WHEN i > 0 THEN iu ELSE NULL END AS UNSIGNED) AS x, ",
+            "CAST(CASE WHEN i > 0 THEN iu ELSE i END AS SIGNED) AS y FROM d"
+        )
+    );
+    assert_eq!(rules, ["case.type", "case.type"]);
+    let (sql, rules) = transpiled(text, mariadb(), output(mysql()));
+    assert_eq!(
+        sql,
+        concat!(
+            "SELECT CAST(CASE WHEN i > 0 THEN iu ELSE NULL END AS DECIMAL(10, 0)) AS x, ",
+            "CAST(CASE WHEN i > 0 THEN iu ELSE i END AS DECIMAL(10, 0)) AS y FROM d"
+        )
+    );
+    assert_eq!(rules, ["case.type", "case.type"]);
+    // The column keeps its name.
+    let (sql, rules) = transpiled(
+        "SELECT CASE WHEN i > 0 THEN iu ELSE NULL END FROM d",
+        mysql(),
+        output(mariadb()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT CAST(CASE WHEN i > 0 THEN iu ELSE NULL END AS UNSIGNED) AS `CASE WHEN i > 0 THEN iu ELSE NULL END` FROM d"
+    );
+    assert_eq!(rules, ["case.type", "column.implicit-name"]);
+    // A result of unknown type among integers hides the difference.
+    let text = "SELECT CASE WHEN i > 0 THEN ABS(i) ELSE NULL END AS x FROM d";
+    assert_eq!(errors(text, mysql(), output(mariadb())), ["case.type"]);
+    assert_eq!(errors(text, mariadb(), output(mysql())), ["case.type"]);
+    assert!(errors(text, mysql(), output(mysql())).is_empty());
+}
+
+#[test]
+fn a_decimal_case_keeps_the_scale_of_its_values() {
+    // Read as numbers, or a column towards MariaDB: the same values.
+    let text = concat!(
+        "SELECT SUM(CASE WHEN i > 0 THEN i ELSE p END) AS s, ",
+        "CASE WHEN i > 0 THEN i ELSE p END + 1 AS t FROM d ",
+        "WHERE CASE WHEN i > 0 THEN 1 ELSE p END BETWEEN 1 AND 2"
+    );
+    for (input, target) in [(mysql(), mariadb()), (mariadb(), mysql())] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{rules:?}");
+    }
+    let text = "SELECT CASE WHEN i > 0 THEN i ELSE p END AS x FROM d";
+    let (sql, rules) = transpiled(text, mysql(), output(mariadb()));
+    assert_eq!(sql, text);
+    assert!(rules.is_empty(), "{rules:?}");
+    // Towards MySQL, the results take the scale of the type.
+    let (sql, rules) = transpiled(
+        "SELECT CONCAT(CASE WHEN i > 0 THEN i WHEN i = 0 THEN 0 WHEN i < -5 THEN 1.5 ELSE p END) AS x FROM d",
+        mariadb(),
+        output(mysql()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT CONCAT(CASE WHEN i > 0 THEN CAST(i AS DECIMAL(12, 2)) WHEN i = 0 THEN 0.00 WHEN i < -5 THEN 1.50 ELSE p END) AS x FROM d"
+    );
+    assert_eq!(rules, ["case.scale"]);
+    // Towards MariaDB, an expression that may read the values as strings.
+    for text in [
+        "SELECT CONCAT(CASE WHEN i > 0 THEN i ELSE p END) AS x FROM d",
+        "SELECT i FROM d WHERE CASE WHEN i > 0 THEN i ELSE p END LIKE '4%'",
+        "SELECT x FROM (SELECT CASE WHEN i > 0 THEN i ELSE p END AS x FROM d) AS q",
+        "SELECT CASE WHEN i > 0 THEN CASE WHEN i > 1 THEN i ELSE p END ELSE 'x' END AS x FROM d",
+    ] {
+        assert_eq!(
+            errors(text, mysql(), output(mariadb())),
+            ["case.scale"],
+            "{text}"
+        );
+    }
+    // A decimal CASE in a decimal CASE is read as the outer one.
+    let text =
+        "SELECT CASE WHEN i > 0 THEN CASE WHEN i > 1 THEN i ELSE p END ELSE 1.5 END AS x FROM d";
+    assert!(errors(text, mysql(), output(mariadb())).is_empty());
+    // A result of unknown type with a decimal.
+    let text = "SELECT CONCAT(CASE WHEN i > 0 THEN ABS(i) ELSE p END) AS x FROM d";
+    assert_eq!(errors(text, mysql(), output(mariadb())), ["case.scale"]);
+    assert_eq!(errors(text, mariadb(), output(mysql())), ["case.scale"]);
+    let text = "SELECT CASE WHEN i > 0 THEN ABS(i) ELSE p END + 1 AS x FROM d";
+    assert!(errors(text, mysql(), output(mariadb())).is_empty());
 }

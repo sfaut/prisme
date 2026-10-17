@@ -1,0 +1,151 @@
+# Type of CASE over each pair of types (the branches of IF and COALESCE aggregate alike).
+case_i_i CASE WHEN i > 0 THEN i ELSE i END
+case_i_u CASE WHEN i > 0 THEN i ELSE CAST(i AS UNSIGNED) END
+case_i_big CASE WHEN i > 0 THEN i ELSE 18446744073709551615 END
+case_i_n CASE WHEN i > 0 THEN i ELSE n END
+case_i_f CASE WHEN i > 0 THEN i ELSE f END
+case_i_s CASE WHEN i > 0 THEN i ELSE s END
+case_i_lit CASE WHEN i > 0 THEN i ELSE 'abc' END
+case_i_d CASE WHEN i > 0 THEN i ELSE d END
+case_i_dt CASE WHEN i > 0 THEN i ELSE dt END
+case_i_ts CASE WHEN i > 0 THEN i ELSE ts END
+case_i_t CASE WHEN i > 0 THEN i ELSE t END
+case_i_j CASE WHEN i > 0 THEN i ELSE j END
+case_i_null CASE WHEN i > 0 THEN i ELSE NULL END
+case_i_one CASE WHEN i > 0 THEN i ELSE 1 END
+case_i_b CASE WHEN i > 0 THEN i ELSE X'41' END
+case_i_bool CASE WHEN i > 0 THEN i ELSE i > 0 END
+case_u_u CASE WHEN i > 0 THEN CAST(i AS UNSIGNED) ELSE CAST(i AS UNSIGNED) END
+case_u_big CASE WHEN i > 0 THEN CAST(i AS UNSIGNED) ELSE 18446744073709551615 END
+case_u_n CASE WHEN i > 0 THEN CAST(i AS UNSIGNED) ELSE n END
+case_u_f CASE WHEN i > 0 THEN CAST(i AS UNSIGNED) ELSE f END
+case_u_s CASE WHEN i > 0 THEN CAST(i AS UNSIGNED) ELSE s END
+case_u_lit CASE WHEN i > 0 THEN CAST(i AS UNSIGNED) ELSE 'abc' END
+case_u_d CASE WHEN i > 0 THEN CAST(i AS UNSIGNED) ELSE d END
+case_u_dt CASE WHEN i > 0 THEN CAST(i AS UNSIGNED) ELSE dt END
+case_u_ts CASE WHEN i > 0 THEN CAST(i AS UNSIGNED) ELSE ts END
+case_u_t CASE WHEN i > 0 THEN CAST(i AS UNSIGNED) ELSE t END
+case_u_j CASE WHEN i > 0 THEN CAST(i AS UNSIGNED) ELSE j END
+case_u_null CASE WHEN i > 0 THEN CAST(i AS UNSIGNED) ELSE NULL END
+case_u_one CASE WHEN i > 0 THEN CAST(i AS UNSIGNED) ELSE 1 END
+case_u_b CASE WHEN i > 0 THEN CAST(i AS UNSIGNED) ELSE X'41' END
+case_u_bool CASE WHEN i > 0 THEN CAST(i AS UNSIGNED) ELSE i > 0 END
+case_big_big CASE WHEN i > 0 THEN 18446744073709551615 ELSE 18446744073709551615 END
+case_big_n CASE WHEN i > 0 THEN 18446744073709551615 ELSE n END
+case_big_f CASE WHEN i > 0 THEN 18446744073709551615 ELSE f END
+case_big_s CASE WHEN i > 0 THEN 18446744073709551615 ELSE s END
+case_big_lit CASE WHEN i > 0 THEN 18446744073709551615 ELSE 'abc' END
+case_big_d CASE WHEN i > 0 THEN 18446744073709551615 ELSE d END
+case_big_dt CASE WHEN i > 0 THEN 18446744073709551615 ELSE dt END
+case_big_ts CASE WHEN i > 0 THEN 18446744073709551615 ELSE ts END
+case_big_t CASE WHEN i > 0 THEN 18446744073709551615 ELSE t END
+case_big_j CASE WHEN i > 0 THEN 18446744073709551615 ELSE j END
+case_big_null CASE WHEN i > 0 THEN 18446744073709551615 ELSE NULL END
+case_big_one CASE WHEN i > 0 THEN 18446744073709551615 ELSE 1 END
+case_big_b CASE WHEN i > 0 THEN 18446744073709551615 ELSE X'41' END
+case_big_bool CASE WHEN i > 0 THEN 18446744073709551615 ELSE i > 0 END
+case_n_n CASE WHEN i > 0 THEN n ELSE n END
+case_n_f CASE WHEN i > 0 THEN n ELSE f END
+case_n_s CASE WHEN i > 0 THEN n ELSE s END
+case_n_lit CASE WHEN i > 0 THEN n ELSE 'abc' END
+case_n_d CASE WHEN i > 0 THEN n ELSE d END
+case_n_dt CASE WHEN i > 0 THEN n ELSE dt END
+case_n_ts CASE WHEN i > 0 THEN n ELSE ts END
+case_n_t CASE WHEN i > 0 THEN n ELSE t END
+case_n_j CASE WHEN i > 0 THEN n ELSE j END
+case_n_null CASE WHEN i > 0 THEN n ELSE NULL END
+case_n_one CASE WHEN i > 0 THEN n ELSE 1 END
+case_n_b CASE WHEN i > 0 THEN n ELSE X'41' END
+case_n_bool CASE WHEN i > 0 THEN n ELSE i > 0 END
+case_f_f CASE WHEN i > 0 THEN f ELSE f END
+case_f_s CASE WHEN i > 0 THEN f ELSE s END
+case_f_lit CASE WHEN i > 0 THEN f ELSE 'abc' END
+case_f_d CASE WHEN i > 0 THEN f ELSE d END
+case_f_dt CASE WHEN i > 0 THEN f ELSE dt END
+case_f_ts CASE WHEN i > 0 THEN f ELSE ts END
+case_f_t CASE WHEN i > 0 THEN f ELSE t END
+case_f_j CASE WHEN i > 0 THEN f ELSE j END
+case_f_null CASE WHEN i > 0 THEN f ELSE NULL END
+case_f_one CASE WHEN i > 0 THEN f ELSE 1 END
+case_f_b CASE WHEN i > 0 THEN f ELSE X'41' END
+case_f_bool CASE WHEN i > 0 THEN f ELSE i > 0 END
+case_s_s CASE WHEN i > 0 THEN s ELSE s END
+case_s_lit CASE WHEN i > 0 THEN s ELSE 'abc' END
+case_s_d CASE WHEN i > 0 THEN s ELSE d END
+case_s_dt CASE WHEN i > 0 THEN s ELSE dt END
+case_s_ts CASE WHEN i > 0 THEN s ELSE ts END
+case_s_t CASE WHEN i > 0 THEN s ELSE t END
+case_s_j CASE WHEN i > 0 THEN s ELSE j END
+case_s_null CASE WHEN i > 0 THEN s ELSE NULL END
+case_s_one CASE WHEN i > 0 THEN s ELSE 1 END
+case_s_b CASE WHEN i > 0 THEN s ELSE X'41' END
+case_s_bool CASE WHEN i > 0 THEN s ELSE i > 0 END
+case_lit_lit CASE WHEN i > 0 THEN 'abc' ELSE 'abc' END
+case_lit_d CASE WHEN i > 0 THEN 'abc' ELSE d END
+case_lit_dt CASE WHEN i > 0 THEN 'abc' ELSE dt END
+case_lit_ts CASE WHEN i > 0 THEN 'abc' ELSE ts END
+case_lit_t CASE WHEN i > 0 THEN 'abc' ELSE t END
+case_lit_j CASE WHEN i > 0 THEN 'abc' ELSE j END
+case_lit_null CASE WHEN i > 0 THEN 'abc' ELSE NULL END
+case_lit_one CASE WHEN i > 0 THEN 'abc' ELSE 1 END
+case_lit_b CASE WHEN i > 0 THEN 'abc' ELSE X'41' END
+case_lit_bool CASE WHEN i > 0 THEN 'abc' ELSE i > 0 END
+case_d_d CASE WHEN i > 0 THEN d ELSE d END
+case_d_dt CASE WHEN i > 0 THEN d ELSE dt END
+case_d_ts CASE WHEN i > 0 THEN d ELSE ts END
+case_d_t CASE WHEN i > 0 THEN d ELSE t END
+case_d_j CASE WHEN i > 0 THEN d ELSE j END
+case_d_null CASE WHEN i > 0 THEN d ELSE NULL END
+case_d_one CASE WHEN i > 0 THEN d ELSE 1 END
+case_d_b CASE WHEN i > 0 THEN d ELSE X'41' END
+case_d_bool CASE WHEN i > 0 THEN d ELSE i > 0 END
+case_dt_dt CASE WHEN i > 0 THEN dt ELSE dt END
+case_dt_ts CASE WHEN i > 0 THEN dt ELSE ts END
+case_dt_t CASE WHEN i > 0 THEN dt ELSE t END
+case_dt_j CASE WHEN i > 0 THEN dt ELSE j END
+case_dt_null CASE WHEN i > 0 THEN dt ELSE NULL END
+case_dt_one CASE WHEN i > 0 THEN dt ELSE 1 END
+case_dt_b CASE WHEN i > 0 THEN dt ELSE X'41' END
+case_dt_bool CASE WHEN i > 0 THEN dt ELSE i > 0 END
+case_ts_ts CASE WHEN i > 0 THEN ts ELSE ts END
+case_ts_t CASE WHEN i > 0 THEN ts ELSE t END
+case_ts_j CASE WHEN i > 0 THEN ts ELSE j END
+case_ts_null CASE WHEN i > 0 THEN ts ELSE NULL END
+case_ts_one CASE WHEN i > 0 THEN ts ELSE 1 END
+case_ts_b CASE WHEN i > 0 THEN ts ELSE X'41' END
+case_ts_bool CASE WHEN i > 0 THEN ts ELSE i > 0 END
+case_t_t CASE WHEN i > 0 THEN t ELSE t END
+case_t_j CASE WHEN i > 0 THEN t ELSE j END
+case_t_null CASE WHEN i > 0 THEN t ELSE NULL END
+case_t_one CASE WHEN i > 0 THEN t ELSE 1 END
+case_t_b CASE WHEN i > 0 THEN t ELSE X'41' END
+case_t_bool CASE WHEN i > 0 THEN t ELSE i > 0 END
+case_j_j CASE WHEN i > 0 THEN j ELSE j END
+case_j_null CASE WHEN i > 0 THEN j ELSE NULL END
+case_j_one CASE WHEN i > 0 THEN j ELSE 1 END
+case_j_b CASE WHEN i > 0 THEN j ELSE X'41' END
+case_j_bool CASE WHEN i > 0 THEN j ELSE i > 0 END
+case_null_null CASE WHEN i > 0 THEN NULL ELSE NULL END
+case_null_one CASE WHEN i > 0 THEN NULL ELSE 1 END
+case_null_b CASE WHEN i > 0 THEN NULL ELSE X'41' END
+case_null_bool CASE WHEN i > 0 THEN NULL ELSE i > 0 END
+case_one_one CASE WHEN i > 0 THEN 1 ELSE 1 END
+case_one_b CASE WHEN i > 0 THEN 1 ELSE X'41' END
+case_one_bool CASE WHEN i > 0 THEN 1 ELSE i > 0 END
+case_b_b CASE WHEN i > 0 THEN X'41' ELSE X'41' END
+case_b_bool CASE WHEN i > 0 THEN X'41' ELSE i > 0 END
+case_bool_bool CASE WHEN i > 0 THEN i > 0 ELSE i > 0 END
+case_no_else CASE WHEN i > 0 THEN i END
+case_simple CASE i WHEN 42 THEN 'a' WHEN 'x' THEN 'b' END
+case_simple_null CASE NULL WHEN NULL THEN 1 ELSE 2 END
+case_value_dt CASE WHEN i < 0 THEN d ELSE dt END
+case_value_t CASE WHEN i < 0 THEN d ELSE t END
+case_value_t_d CASE WHEN i > 0 THEN t ELSE d END
+case_value_s_d CASE WHEN i > 0 THEN d ELSE s END
+case_value_n_d CASE WHEN i > 0 THEN d ELSE 1 END
+case_value_f_i CASE WHEN i > 0 THEN 1e0 ELSE i END
+case_simple_string CASE s WHEN 'hello world' THEN 'ci' ELSE 'cs' END
+case_simple_number CASE s WHEN 0 THEN 'zero' ELSE 'other' END
+case_simple_date CASE d WHEN '2024-05-06 00:00:00' THEN 'eq' ELSE 'ne' END
+case_simple_mixed CASE '10' WHEN 10.0 THEN 'num' WHEN '10.0' THEN 'str' ELSE 'none' END
+case_simple_mixed2 CASE 10 WHEN '10.0' THEN 'num' ELSE 'none' END
