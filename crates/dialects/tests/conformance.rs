@@ -248,7 +248,7 @@ async fn start(image: String) -> Server {
         .await
         .unwrap_or_else(|error| panic!("{image}: {error}"));
     let target = MysqlTarget {
-        host: container.get_host().await.unwrap().to_string(),
+        host: ipv4_host(container.get_host().await.unwrap().to_string()),
         port: container.get_host_port_ipv4(3306).await.unwrap(),
         username: "root".to_string(),
         password: SecretString::from(""),
@@ -267,6 +267,18 @@ async fn start(image: String) -> Server {
         version,
         target,
         _container: container,
+    }
+}
+
+/// Host `host` of a container, `localhost` written `127.0.0.1`:
+/// `localhost` resolves to `::1` first, where the port of the container
+/// does not answer, and Windows reports the refusal after 2 seconds, on
+/// each connection (`docs/PERF.md`, chapter 8).
+fn ipv4_host(host: String) -> String {
+    if host == "localhost" {
+        "127.0.0.1".to_string()
+    } else {
+        host
     }
 }
 

@@ -15,7 +15,15 @@ use testcontainers_modules::mysql::Mysql;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 
 /// Connection settings of the test images: root account without a password, `test` database.
+/// `localhost` is written `127.0.0.1`: `localhost` resolves to `::1` first, where the port of the
+/// container does not answer, and Windows reports the refusal after 2 seconds (`docs/PERF.md`,
+/// chapter 8).
 fn target(host: String, port: u16) -> MysqlTarget {
+    let host = if host == "localhost" {
+        "127.0.0.1".to_string()
+    } else {
+        host
+    };
     MysqlTarget {
         host,
         port,

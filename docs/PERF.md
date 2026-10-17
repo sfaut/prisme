@@ -458,3 +458,69 @@ allocating.
   visitor says what a node is, the shape only suggests it.
 - **A table of words read once is the normal form of a keyword list**: a
   scan per token only makes sense for a handful of words.
+
+## 8. Slow conformance suite: each connection waited for IPv6
+
+Problem met in October 2026 in the conformance suite of the dialects
+(`crates/dialects/tests/conformance.rs`).
+
+### 8.1 Symptom
+
+A run took about six minutes (361 s) once the images were downloaded, for 610
+comparisons of a query and its transpilation, checked 8 at a time on four
+servers.
+
+### 8.2 Measurement
+
+Temporary timers in the harness; the time of each phase of a comparison is
+added over all the comparisons, 8 of them running at once:
+
+| Phase | Time |
+|---|---|
+| Start of the 4 servers, in parallel | 30.4 s |
+| Tables of the files (`setup`) | 10.7 s |
+| Comparisons, wall clock | 317.8 s |
+| Opening the connection to the input server, its session included (sum) | 1,253 s |
+| Opening the connection to the output server (sum) | 1,252 s |
+| `SELECT VERSION()`, transpilation and catalog of the tables (sum) | 2.0 s |
+| Both queries (sum) | 13.5 s |
+
+Each of the 1,220 connections took about 2 s; the queries, a few
+milliseconds.
+
+### 8.3 Cause
+
+`testcontainers` gives the host `localhost`. On Windows, `localhost`
+resolves to `::1` first, then to `127.0.0.1`
+(`[System.Net.Dns]::GetHostAddresses("localhost")`). The port that Docker
+Desktop publishes for the container does not answer on `::1`: the connection
+is refused, and Windows reports a refused connection after about 2 seconds
+(2.09 s on `::1`, 2.05 s on `127.0.0.1`, measured on a closed port).
+`tokio` then tries `127.0.0.1`, which answers. The tool `probe` was spared:
+it runs its client inside the container, on `127.0.0.1`.
+
+### 8.4 Fix
+
+The harness writes `localhost` as `127.0.0.1` (`ipv4_host`), as do the
+integration tests of the connector (`crates/connectors/tests/mysql.rs`).
+
+| Measure | Before | After |
+|---|---|---|
+| Opening a connection, on average | 2.05 s | 18 ms |
+| Comparisons, wall clock | 317.8 s | 5.2 s |
+| Tables of the files | 10.7 s | 2.3 s |
+| Whole run | 361 s | 39 s |
+
+### 8.5 Takeaways
+
+- **On Windows, `localhost` costs 2 seconds per connection to a server that
+  does not answer on `::1`**, as a container of Docker Desktop: write
+  `127.0.0.1`. A connection of Prisme to `localhost` meets the same delay.
+- **Time each phase before optimising.** The comparisons ran in parallel
+  and none looked slow: the connections took 99% of their time.
+
+### 8.6 Measuring again
+
+Add timers around the phases of `check` and of the test (`Instant::now()`,
+the durations added in a `static Mutex<[Duration; N]>`), then run the suite
+with `-- --include-ignored --nocapture`.
