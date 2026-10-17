@@ -1,6 +1,7 @@
 <!--
-  Window of the user's profile: first and last names, and the read-only mode
-  of the query sessions, saved on the server.
+  Window of the user's profile: first and last names, the read-only mode of
+  the query sessions and the preferred dialect (that of the editors which do
+  not choose their own), saved on the server.
   The email address is shown but not editable: it identifies the user, and
   `prisme --setup` or `--user-email` change it.
   Window, fields and buttons of Prisme (`ui/`).
@@ -11,6 +12,7 @@ import { reactive, ref, watch } from 'vue'
 import { ApiError } from '@/api/http'
 import { useProfileStore } from '@/stores/profile'
 
+import DialectSelect from './DialectSelect.vue'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
 import UiDialog from './ui/UiDialog.vue'
@@ -88,7 +90,7 @@ async function save(): Promise<void> {
 </script>
 
 <template>
-  <ui-dialog v-model:open="open" title="Profil" description="Nom et prénom de l’utilisateur">
+  <ui-dialog v-model:open="open" title="Profil" description="Nom, prénom et préférences">
     <form id="profile-form" class="flex flex-col gap-gap" @submit.prevent="save">
       <ui-field label="Nom">
         <ui-input v-model="form.last_name" :maxlength="100" autocomplete="family-name" />
@@ -104,6 +106,9 @@ async function save(): Promise<void> {
           <input v-model="form.read_only_session" type="checkbox" class="size-icon accent-accent" />
           Sessions en lecture seule
         </label>
+      </ui-field>
+      <ui-field label="Dialecte préféré">
+        <dialect-select v-model="form.preferred_dialect" label="Dialecte préféré" />
       </ui-field>
       <ui-field label="E-mail">
         <span class="truncate text-fg-muted" :title="email">{{ email }}</span>

@@ -266,6 +266,20 @@ export const useEditorsStore = defineStore('editors', () => {
   }
 
   /**
+   * Changes the dialect of an editor's text.
+   *
+   * @param id Id of the editor.
+   * @param dialect Dialect, empty string for the preferred dialect of the profile.
+   */
+  async function setDialect(id: number, dialect: string): Promise<void> {
+    const editor = editors.value.find((item) => item.id === id)
+    if (editor && editor.dialect !== dialect) {
+      editor.dialect = dialect
+      await save(id)
+    }
+  }
+
+  /**
    * Closes an editor (can be reopened for 24 hours); its neighbour becomes
    * active. The last editor closed is replaced by an empty editor.
    *
@@ -338,6 +352,7 @@ export const useEditorsStore = defineStore('editors', () => {
     setSql,
     rename,
     setConnection,
+    setDialect,
     close,
     reorder,
     loadClosed,

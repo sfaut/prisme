@@ -221,7 +221,9 @@ function selectSource(connectionId: number): void {
               :editor-id="editor.id"
               :connection="connectionOf(editor.connectionId)!"
               :sql="editor.sql"
+              :dialect="editor.dialect"
               @update:sql="(sql) => editors.setSql(editor.id, sql)"
+              @update:dialect="(dialect) => editors.setDialect(editor.id, dialect).catch(report)"
               @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
               @database="(database) => (databases[editor.id] = database)"
             />

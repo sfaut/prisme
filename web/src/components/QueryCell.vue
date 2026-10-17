@@ -15,6 +15,10 @@
   (its query is stopped if it is running) or moved by dragging it, like a
   column of the grid.
   The row limit chosen here becomes the user's default limit.
+  The dialect of the text is that of the editor, or the preferred dialect of
+  the profile: a dialect other than the native SQL of the data source is
+  transpiled by the server before running, highlighted as written, and
+  "Aperçu" shows its transpilation without running it.
   The buttons are above the editor. A horizontal bar, under the editor,
   splits the height between the editor (with its buttons) and the results:
   the top third by default, a remembered setting
@@ -22,15 +26,17 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { LoaderCircle, Play, Square, WandSparkles } from 'lucide-vue-next'
+import { Languages, LoaderCircle, Play, Square, WandSparkles } from 'lucide-vue-next'
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import { beautify } from '@/api/beautify'
 import { deleteResult, listResults, reorderResults, updateResult } from '@/api/editors'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
+import type { TranspileRequest } from '@/api/generated/TranspileRequest'
 import { type QueryTab, useQuerySession } from '@/api/querySession'
 import { useCatalogStore } from '@/stores/catalog'
+import { useProfileStore } from '@/stores/profile'
 import { useSettingsStore } from '@/stores/settings'
 
 import QueryTabView from './QueryTabView.vue'
@@ -41,6 +47,9 @@ import { movedItems, useTabDrag } from './tabDrag'
 import { loadEditorSplit } from './editorSplit'
 import { selectAllQuery } from './explorerNodes'
 import { completionSchema } from './sqlCompletion'
+import DialectSelect from './DialectSelect.vue'
+import { SOURCE, effectiveDialect, parseChoice } from './dialectChoice'
+import TranspilePreviewDialog from './TranspilePreviewDialog.vue'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
 import UiSelect from './ui/UiSelect.vue'
@@ -73,10 +82,45 @@ const emit = defineEmits<{
  */
 const sql = defineModel<string>('sql', { required: true })
 
+/**
+ * Dialect of the editor's text, empty string for the preferred dialect of
+ * the profile.
+ */
+const dialect = defineModel<string>('dialect', { required: true })
+
 const session = useQuerySession(props.editorId, () => listResults(props.editorId))
 const catalog = useCatalogStore()
 const state = session.state
 const settings = useSettingsStore()
+const profile = useProfileStore()
+
+/**
+ * Dialect the text is written in: the editor's, or the profile's.
+ */
+const effective = computed(() =>
+  effectiveDialect(dialect.value, profile.profile?.preferred_dialect),
+)
+
+/**
+ * Dialect and version chosen for the text, `null` for the native SQL of the
+ * data source: the editor then highlights the text in the server's dialect.
+ */
+const written = computed(() => parseChoice(effective.value))
+
+/**
+ * Dialect sent with the queries: absent for the native SQL of the source.
+ */
+const sentDialect = computed(() => (written.value === null ? undefined : effective.value))
+
+/**
+ * Request of the preview of the transpilation, `null` before the first one.
+ */
+const previewRequest = ref<TranspileRequest | null>(null)
+
+/**
+ * Window of the preview open.
+ */
+const previewOpen = ref(false)
 
 /**
  * Choices of the row limit, formatted for the list.
@@ -212,8 +256,22 @@ function closeTab(tab: QueryTab): void {
  */
 function run(cursor?: number): void {
   if (sql.value.trim() !== '') {
-    session.run(sql.value, cursor ?? editor.value?.cursor() ?? 0)
+    session.run(sql.value, cursor ?? editor.value?.cursor() ?? 0, undefined, sentDialect.value)
   }
+}
+
+/**
+ * Shows the transpilation of the query under the cursor, without running it.
+ */
+function preview(): void {
+  previewRequest.value = {
+    connection_id: props.connection.id,
+    database: state.database ?? undefined,
+    sql: sql.value,
+    cursor: editor.value?.cursor() ?? 0,
+    dialect: effective.value,
+  }
+  previewOpen.value = true
 }
 
 /**
@@ -322,7 +380,7 @@ async function prettify(): Promise<void> {
  */
 function runAll(): void {
   if (sql.value.trim() !== '') {
-    session.run(sql.value)
+    session.run(sql.value, undefined, undefined, sentDialect.value)
   }
 }
 
@@ -339,15 +397,19 @@ async function changeLimit(rowLimit: number): Promise<void> {
   }
 }
 
-// The settings (row limit choices, default limit) are loaded once, when the
-// first cell opens. The saved result tabs are read by the query session.
+// The settings (row limit choices, default limit) and the profile (preferred
+// dialect) are loaded once, when the first cell opens. The saved result tabs
+// are read by the query session.
 onMounted(async () => {
-  if (settings.settings === null) {
-    try {
+  try {
+    if (settings.settings === null) {
       await settings.load()
-    } catch (failure) {
-      state.error = errorMessage(failure)
     }
+    if (profile.profile === null) {
+      await profile.load()
+    }
+  } catch (failure) {
+    state.error = errorMessage(failure)
   }
 })
 
@@ -405,14 +467,31 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
           class="w-32"
           @update:model-value="(limit) => limit !== undefined && changeLimit(limit)"
         />
+        <dialect-select
+          v-model="dialect"
+          :inherited="profile.profile?.preferred_dialect ?? SOURCE"
+          label="Dialecte de l’éditeur"
+          class="w-44"
+        />
+        <ui-button
+          label="Aperçu"
+          :icon="Languages"
+          :disabled="written === null || sql.trim() === '' || state.status === 'closed'"
+          :title="
+            written === null
+              ? 'Le SQL natif de la source s’exécute tel qu’écrit : rien à transpiler'
+              : 'Montre la transpilation de la requête sous le curseur, sans l’exécuter'
+          "
+          @click="preview"
+        />
         <span class="text-trim text-fg-muted">{{ connection.name }} · {{ serverLabel }}</span>
       </div>
 
       <sql-editor
         ref="editor"
         v-model="sql"
-        :flavor="state.server?.flavor ?? 'mysql'"
-        :version="state.server?.version ?? null"
+        :flavor="written?.id ?? state.server?.flavor ?? 'mysql'"
+        :version="written ? written.version : (state.server?.version ?? null)"
         :ansi-quotes="state.server?.ansi_quotes ?? false"
         :schema="completion"
         :default-schema="state.database"
@@ -485,6 +564,7 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
         <query-tab-view :tab="tab" />
       </tabs-content>
     </tabs-root>
+    <transpile-preview-dialog v-model:open="previewOpen" :request="previewRequest" />
   </div>
 </template>
 

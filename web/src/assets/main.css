@@ -242,6 +242,10 @@
      (`editorSplit.ts`). */
   --editor-min-height: 4rem;
 
+  /* Report of a transpilation, unfolded above the result grid: highest
+     height, beyond which it scrolls. */
+  --transpilation-max-height: 12rem;
+
   /* Thickness of the progress bar drawn on each result tab. */
   --tab-progress-height: 0.125rem;
 

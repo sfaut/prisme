@@ -180,6 +180,32 @@ describe('applyMessage', () => {
     expect(state.tabs).toEqual([])
     expect(removeTab(state, id)).toBeUndefined()
   })
+
+  it('keeps the report of the transpilation of a query', () => {
+    const state = readyState()
+    startBatch(state)
+    applyMessage(state, {
+      type: 'batch',
+      queries: [{ query: 0, tab: 0, sql: 'VALUES ROW(1)', start: 0, end: 13 }],
+    })
+    expect(state.tabs[0]!.transpilation).toBeNull()
+    const report = {
+      input: 'mysql 8.0.19',
+      output: 'mariadb 11.3.2',
+      sql: 'VALUES (1)',
+      steps: [
+        {
+          rule: 'values.form',
+          kind: 'rewrite' as const,
+          message: 'MariaDB writes the rows of VALUES without ROW',
+          span: { start: 0, end: 13 },
+        },
+      ],
+      errors: [],
+    }
+    applyMessage(state, { type: 'transpiled', query: 0, report })
+    expect(state.tabs[0]!.transpilation).toEqual(report)
+  })
 })
 
 describe('tabProgress', () => {
@@ -404,6 +430,7 @@ describe('savedTab', () => {
       rows: [['1'], ['2']],
     })
     expect([tab.id, tab.batch, tab.pinned, tab.name]).toEqual([42, 0, true, 'Gardé'])
+    expect(tab.transpilation).toBeNull()
     expect(tab.result?.rows).toEqual([['1'], ['2']])
     expect(executionDuration(tab, 0)).toBe(1.5)
     expect(transferDuration(tab, 0)).toBe(4)

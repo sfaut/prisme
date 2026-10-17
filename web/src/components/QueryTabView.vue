@@ -1,5 +1,7 @@
 <!--
-  Content of a query's tab: error if any, result grid and, under the grid,
+  Content of a query's tab: report of its transpilation for a query written
+  in another dialect (`TranspilationView`), error if any, result grid and,
+  under the grid,
   the number of loaded rows and two durations: the execution time of the
   query by the server (until the columns arrive), then the transfer and
   display time of the rows, followed by the received volume and the
@@ -23,6 +25,7 @@ import {
 
 import { useClock } from './clock'
 import ResultGrid from './ResultGrid.vue'
+import TranspilationView from './TranspilationView.vue'
 import UiAlert from './ui/UiAlert.vue'
 
 const props = defineProps<{
@@ -88,6 +91,7 @@ const durations = computed(() => {
     instead of scrolling in its own area.
   -->
   <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-gap">
+    <transpilation-view v-if="tab.transpilation" :report="tab.transpilation" :sql="tab.sql" />
     <ui-alert v-if="tab.error" tone="error" :title="tab.error" />
     <result-grid
       v-if="tab.result && tab.result.columns.length > 0"

@@ -6,7 +6,9 @@
  * them all in parallel (Ctrl+Shift+Enter). The server announces the queries
  * of the batch (`batch`), then streams their results, each message carrying
  * the number of its query: `started` when it starts (in parallel, it may wait
- * for its turn), `columns`, batches of `rows`, then `done` (or `error`).
+ * for its turn), `transpiled` for a query written in another dialect than the
+ * native SQL of the server (report of its transpilation), `columns`, batches
+ * of `rows`, then `done` (or `error`).
  * `batch_done` closes the batch. `cancel` stops all the running queries,
  * `cancel_query` a single one. The protocol is described in
  * `crates/server/src/query_session/protocol.rs`.
@@ -38,6 +40,7 @@ import type { ResultTab } from './generated/ResultTab'
 import type { ResumedQuery } from './generated/ResumedQuery'
 import type { ServerInfo } from './generated/ServerInfo'
 import type { ServerMessage } from './generated/ServerMessage'
+import type { TranspilationReport } from './generated/TranspilationReport'
 
 /**
  * Grouping delay of the received messages, in milliseconds: the interface is
@@ -181,6 +184,11 @@ export interface QueryTab {
    * Name given by the user, `null` for the default label.
    */
   name: string | null
+  /**
+   * Report of the transpilation of a query written in a dialect other than
+   * the native SQL of the server; `null` otherwise.
+   */
+  transpilation: TranspilationReport | null
 }
 
 /**
@@ -286,6 +294,7 @@ export function applyMessage(
           bytes: 0,
           pinned: false,
           name: null,
+          transpilation: null,
         })),
       ]
       break
@@ -293,6 +302,13 @@ export function applyMessage(
       const tab = tabOf(state, message.query)
       if (tab) {
         tab.startedAt = now
+      }
+      break
+    }
+    case 'transpiled': {
+      const tab = tabOf(state, message.query)
+      if (tab) {
+        tab.transpilation = message.report
       }
       break
     }
@@ -652,6 +668,7 @@ export function savedTab(saved: ResultTab): QueryTab {
     bytes: result.bytes,
     pinned: saved.pinned,
     name: saved.name === '' ? null : saved.name,
+    transpilation: result.transpilation,
   }
 }
 
@@ -804,13 +821,16 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
    *     Position of the cursor (UTF-16 units): only the query found there
    *     runs. When absent: all of them, in parallel.
    * @param rowLimit Row limit; when absent, the one of the settings applies.
+   * @param dialect
+   *     Dialect the text is written in (`mysql 8.0.19`), transpiled by the
+   *     server; when absent, the native SQL of the server.
    */
-  function run(sql: string, cursor?: number, rowLimit?: number): void {
+  function run(sql: string, cursor?: number, rowLimit?: number, dialect?: string): void {
     if (state.status !== 'ready') {
       return
     }
     startBatch(state)
-    send({ type: 'run', sql, cursor, row_limit: rowLimit })
+    send({ type: 'run', sql, cursor, row_limit: rowLimit, dialect })
   }
 
   /**

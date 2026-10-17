@@ -152,12 +152,13 @@ Goal: `WITH ds (c) AS (VALUES ROW (123), ROW (234), ROW (345)) SELECT * FROM ds`
 - **Interface**: choice of the dialect and of its version in the profile dialog and on the editor tab (PRQL offered from step 9), transpiled query and report in the result tab, preview button. Light and dark modes checked (rule 10 of `CLAUDE.md`).
 - **Tests**: units, round trip, route, interface (Vitest), and on a MariaDB server (Docker): the MySQL query of the example returns its three rows.
 
-Done for the transpiler (`crates/dialects`: `sql`, `build`, `emit`, `report`, `transpile`) and the server (`crates/server/src/transpilation.rs`). Decided autonomously, to be reviewed by the maintainer:
+Done: transpiler (`crates/dialects`: `sql`, `build`, `emit`, `report`, `transpile`), server (`crates/server/src/transpilation.rs`) and interface (list of the dialects in the profile and on each editor, report folded above the result, preview window; light and dark modes checked). Decided autonomously, to be reviewed by the maintainer:
 
 - the columns of the tables come from the metadata of `SELECT * FROM t`, prepared on the connection that runs the query, without running it: its temporary tables are seen, a view is not computed, and the types are those the connector already reads from a result (`plan_type`);
 - the interface sends the dialect with each run (`dialect` of the `run` message), resolved from the tab and the profile; the server checks it against the registry;
 - the report comes in a `transpiled` message, before the result, and is saved with it;
-- the preview (`POST /api/transpile`) reads the columns on a new connection placed on the database of the session: the temporary tables of the session are not seen there.
+- the preview (`POST /api/transpile`) reads the columns on a new connection placed on the database of the session: the temporary tables of the session are not seen there;
+- the editor highlights and analyses the text in the dialect it is written in, with its version; the syntax errors underlined as you type still come from `sqlparser-rs` until step 10, the parser of Prisme giving its own error when the query runs.
 
 ### Step 5. Complete MySQL DML grammar
 

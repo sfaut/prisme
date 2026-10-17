@@ -144,6 +144,15 @@ Each editor has its own connection, its own session (and therefore its own trans
 
 Drag the bar under the editor to share the height between editor and results; double-click it to restore the default.
 
+### Dialects
+
+You can write in the SQL of the data source, or in another dialect that Prisme translates for the server.
+
+- **Dialecte préféré** (Preferred dialect), in the profile: **Selon source de données** (According to the data source) runs the queries as written; otherwise choose a dialect and its version, for example **MySQL 8.0.19**. Each editor can override it with the list next to the buttons.
+- A query written in another dialect is translated just before it runs: the result tab shows **Transpilée** (Transpiled), which unfolds to the query actually run and each difference, with its rule and the passage of your query it concerns.
+- **Aperçu** (Preview) shows the translation of the query under the cursor, without running it.
+- A construct Prisme cannot translate yet gives an explicit error, never an approximate translation. For now, the translation covers `SELECT` with `WHERE`, `ORDER BY`, `LIMIT`, common table expressions (`WITH`) and `VALUES`.
+
 ### Result tabs
 
 Each query gets its own tab:
