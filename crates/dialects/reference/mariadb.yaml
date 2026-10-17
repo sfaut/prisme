@@ -343,6 +343,8 @@ keywords:
 #     since: "8.0.19"         # first version that has it (included)
 #     until: "9.0.0"          # first version that no longer has it (optional)
 #     source: https://...     # reference manual or release notes
+#     comment: >-             # context: what the construct does, how it was
+#       ...                   # established (optional)
 constructs:
   - id: with
     since: "10.2.1"
@@ -387,12 +389,22 @@ constructs:
   - id: timestamp_now
     since: "11.7.1"
     source: https://jira.mariadb.org/browse/MDEV-15751
+    comment: >-
+      `NOW()`, `CURRENT_TIMESTAMP`, `SYSDATE()` and `FROM_UNIXTIME()` give a
+      `TIMESTAMP`, of the same value in the time zone of the session; a
+      `DATETIME` before, as in MySQL.
   - id: time_localtime
     since: "11.6.2"
     source: https://jira.mariadb.org/browse/MDEV-34829
+    comment: >-
+      `LOCALTIME` gives the time of day, a `TIME`; the date and time before, a
+      `DATETIME`, as in MySQL.
   - id: uuid_type
     since: "10.7.1"
     source: https://github.com/MariaDB/server/commit/b1fab9bf
+    comment: >-
+      `UUID()` gives a value of type `UUID`, compared only with UUIDs, of the
+      same text as the `VARCHAR(36)` it gave before, as in MySQL.
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:

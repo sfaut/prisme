@@ -165,6 +165,10 @@ pub(crate) struct ConstructEntry {
     /// Reference manual or release notes that attest it.
     #[allow(dead_code, reason = "read by the people who maintain the file")]
     source: String,
+    /// Context: what the construct does, how it was established.
+    #[allow(dead_code, reason = "read by the people who maintain the file")]
+    #[serde(default)]
+    comment: String,
 }
 
 impl Version {

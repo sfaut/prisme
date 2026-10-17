@@ -364,6 +364,8 @@ keywords:
 #     since: "8.0.19"         # first version that has it (included)
 #     until: "9.0.0"          # first version that no longer has it (optional)
 #     source: https://...     # reference manual or release notes
+#     comment: >-             # context: what the construct does, how it was
+#       ...                   # established (optional)
 constructs:
   - id: with
     since: "8.0.1"
@@ -428,9 +430,16 @@ constructs:
     since: "8.0.13"
     until: "9.3.0"
     source: https://github.com/mysql/mysql-server/blob/mysql-8.0.13/sql/item_strfunc.cc
+    comment: >-
+      `LPAD` and `RPAD` with an empty pad, beyond the length of the string,
+      give an empty string (`make_empty_result` in the source); NULL before,
+      as in MariaDB. Measured on 8.0.11 and 8.4.
   - id: pad_unchanged
     since: "9.3.0"
     source: https://bugs.mysql.com/bug.php?id=117227
+    comment: >-
+      `LPAD` and `RPAD` with an empty pad, beyond the length of the string,
+      give the string unchanged; an empty string before. Measured on 9.3.0.
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:
