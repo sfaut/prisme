@@ -1,0 +1,65 @@
+# Typed literals: `DATE '...'`, `TIME '...'`, `TIMESTAMP '...'` and their
+# ODBC form. Written as is when both dialects read the same value; as their
+# value when the fraction beyond 6 digits differs, rounded by MySQL,
+# truncated by MariaDB (rule `literal.temporal`); refused out of the range
+# of the output, for a form one dialect reads and the other refuses, and
+# for a time zone offset (rule `literal.offset`)
+# (crates/probe/cases/typed-literals*.txt).
+cases:
+  # Forms read alike, implicit names included.
+  - from: mysql
+    sql: SELECT DATE '2024-05-06', TIME '07:08:09.5', TIMESTAMP '2024-05-06 07:08:09'
+  - from: mariadb
+    sql: SELECT DATE '2024-05-06', TIME '07:08:09.5', TIMESTAMP '2024-05-06 07:08:09'
+  - from: mysql
+    sql: >-
+      SELECT DATE '24/5/6' AS a, TIME '1 07:08' AS b, TIME '-0 01:00:00.25' AS c,
+      TIMESTAMP '2024-05-06T07:08:09.5' AS e, TIMESTAMP '2024.05.06 7.8.9' AS g,
+      TIMESTAMP '240506070809' AS h, TIME '07:08:09.1234564' AS k, {d '2024-05-06'} AS l,
+      {t '070809'} AS m, {ts '20240506070809.5'} AS n, {x 'abc'} AS o, {d '2024-02-30'} AS q,
+      {d '2024-05' '-06'} AS r
+  - from: mariadb
+    sql: >-
+      SELECT DATE '24/5/6' AS a, TIME '1 07:08' AS b, TIME '-0 01:00:00.25' AS c,
+      TIMESTAMP '2024-05-06T07:08:09.5' AS e, TIMESTAMP '2024.05.06 7.8.9' AS g,
+      TIMESTAMP '240506070809' AS h, TIME '07:08:09.1234564' AS k, {d '2024-05-06'} AS l,
+      {t '070809'} AS m, {ts '20240506070809.5'} AS n, {x 'abc'} AS o, {d '2024-02-30'} AS q,
+      {d '2024-05' '-06'} AS r
+  # Fractions beyond 6 digits, written as the value of the input.
+  - from: mysql
+    sql: >-
+      SELECT TIME '07:08:59.9999995' AS a, TIME '-07:08:59.9999995' AS b,
+      TIMESTAMP '2024-12-31 23:59:59.9999995' AS c, TIMESTAMP '2024-05-06 07:08:09.123456789' AS e,
+      {t '07:08:09.1234567'} AS g
+  - from: mariadb
+    sql: >-
+      SELECT TIME '07:08:59.9999995' AS a, TIME '-07:08:59.9999995' AS b,
+      TIMESTAMP '2024-12-31 23:59:59.9999995' AS c, TIMESTAMP '2024-05-06 07:08:09.123456789' AS e,
+      {t '07:08:09.1234567'} AS g
+  # Zero dates, by the SQL mode of the session, which both dialects follow.
+  - from: mysql
+    session: ["SET sql_mode = ''"]
+    sql: >-
+      SELECT DATE '0000-00-00' AS a, DATE '2024-05-00' AS b, {d '0000-00-00'} AS c,
+      TIMESTAMP '00-00-00 00:00:00' AS e
+  - from: mariadb
+    session: ["SET sql_mode = 'NO_ZERO_DATE'"]
+    sql: SELECT DATE '2024-05-00' AS a, {d '0000-00-00'} AS b, {d '2024-05-00'} AS c
+  # Values out of the range of the output, read by one dialect only.
+  - from: mariadb
+    sql: SELECT TIME '838:59:59.5'
+    refused: literal.temporal
+  - from: mysql
+    sql: SELECT TIMESTAMP '9999-12-31 23:59:59.9999995'
+    refused: literal.temporal
+  - from: mysql
+    sql: SELECT DATE '2024--05-06'
+    refused: literal.temporal
+  - from: mariadb
+    sql: SELECT DATE '+2024-05-06'
+    refused: literal.temporal
+  # An offset, converted by MySQL to the time zone of the session.
+  - from: mysql
+    inputs: mysql >= 8.0.19
+    sql: SELECT TIMESTAMP '2024-05-06 01:00:00+02:00'
+    refused: literal.offset

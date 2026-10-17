@@ -78,6 +78,7 @@ fn tree(expr: &Expr) -> String {
             Literal::Null => "NULL".to_string(),
             Literal::True => "TRUE".to_string(),
             Literal::False => "FALSE".to_string(),
+            Literal::Temporal { kind, value } => format!("{kind:?}'{value}'"),
         },
         ExprKind::Unary { op, operand } => {
             let op = match op {
@@ -1181,4 +1182,84 @@ fn reads_the_grouping_and_the_named_windows() {
         .1,
         "ORDER"
     );
+}
+
+#[test]
+fn reads_typed_literals_and_their_odbc_form() {
+    assert_eq!(expr("DATE '2024-05-06'"), "Date'2024-05-06'");
+    assert_eq!(expr("time '07:08:09.5'"), "Time'07:08:09.5'");
+    assert_eq!(
+        expr("TIMESTAMP '2024-05-06 07:08:09'"),
+        "Timestamp'2024-05-06 07:08:09'"
+    );
+    assert_eq!(expr("{d '2024-05-06'}"), "Date'2024-05-06'");
+    assert_eq!(expr("{ t '07:08:09' }"), "Time'07:08:09'");
+    assert_eq!(
+        expr("{ts '2024-05-06 07:08:09'}"),
+        "Timestamp'2024-05-06 07:08:09'"
+    );
+    // The ODBC form gives its string when the dialect reads no date in it.
+    assert_eq!(expr("{D '2024-05-06'}"), "'2024-05-06'");
+    assert_eq!(expr("{x '2024-05-06'}"), "'2024-05-06'");
+    assert_eq!(expr("{d '2024-02-30'}"), "'2024-02-30'");
+    assert_eq!(expr("{d 'x' 'y'}"), "'xy'");
+    assert_eq!(expr("{t '838:59:59.5'}"), "'838:59:59.5'");
+    assert_eq!(
+        expr_with("{t '838:59:59.5'}", &mariadb()),
+        "Time'838:59:59.5'"
+    );
+    let strict = ParseOptions {
+        mode: SqlMode::parse("NO_ZERO_DATE,NO_ZERO_IN_DATE"),
+        ..mysql()
+    };
+    assert_eq!(expr_with("{d '0000-00-00'}", &strict), "'0000-00-00'");
+    assert_eq!(expr_with("{d '2024-05-00'}", &strict), "'2024-05-00'");
+    assert_eq!(expr("{d '0000-00-00'}"), "Date'0000-00-00'");
+    // An offset from MySQL 8.0.19.
+    let offset = "{ts '2024-05-06 01:00:00+02:00'}";
+    assert_eq!(expr(offset), "Timestamp'2024-05-06 01:00:00+02:00'");
+    assert_eq!(
+        expr_with(offset, &mysql_at(8, 0, 18)),
+        "'2024-05-06 01:00:00+02:00'"
+    );
+    assert_eq!(expr_with(offset, &mariadb()), "'2024-05-06 01:00:00+02:00'");
+    // MariaDB refuses the offset as an invalid date, MySQL before 8.0.19 as
+    // an absent construct.
+    assert_eq!(
+        expr_with("TIMESTAMP '2024-05-06 01:00:00+02:00'", &mariadb()),
+        "Timestamp'2024-05-06 01:00:00+02:00'"
+    );
+    let (message, at) = error(
+        "SELECT TIMESTAMP '2024-05-06 01:00:00+02:00'",
+        &mysql_at(8, 0, 18),
+    );
+    assert!(
+        message.contains("time zone offset") && message.contains("8.0.19"),
+        "{message}"
+    );
+    assert_eq!(at, "'2024-05-06 01:00:00+02:00'");
+    // `DATETIME` is a column, and a second string an alias.
+    let alias = self::select("SELECT DATETIME '2024-05-06', DATE '2024-05' '-06'");
+    assert!(matches!(
+        &alias.items[0],
+        SelectItem::Expr { expr, alias: Some(alias), .. }
+            if tree(expr) == "DATETIME" && alias.name.value == "2024-05-06"
+    ));
+    assert!(matches!(
+        &alias.items[1],
+        SelectItem::Expr { expr, alias: Some(alias), .. }
+            if tree(expr) == "Date'2024-05'" && alias.name.value == "-06"
+    ));
+    // A form Prisme does not read, and the other ODBC escapes.
+    for (text, faulty) in [
+        ("SELECT {d '2024-05-06T'}", "{d '2024-05-06T'}"),
+        ("SELECT {fn NOW()}", "{"),
+    ] {
+        let (message, at) = error(text, &mysql());
+        assert!(
+            message.ends_with("not supported yet by the parser of Prisme"),
+            "{text}: {message}"
+        );
+        assert_eq!(at, faulty, "{text}");
+    }
 }

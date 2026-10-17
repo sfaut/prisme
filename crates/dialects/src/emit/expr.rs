@@ -17,6 +17,7 @@ use super::Emitter;
 use super::case::Reading;
 use crate::build::is_internal_name;
 use crate::report::StepKind;
+use crate::sql::ast::TemporalKind;
 
 /// Level of `NOT`.
 const NOT: u8 = 4;
@@ -364,6 +365,18 @@ impl Emitter<'_> {
     /// Literal: its text in the input when the output reads it the same way,
     /// its canonical spelling otherwise.
     fn literal(&mut self, expr: &Expr, value: &Value) {
+        let temporal = match value {
+            Value::Date(text) => Some((TemporalKind::Date, text)),
+            Value::Time(text) => Some((TemporalKind::Time, text)),
+            Value::DateTime(text) => Some((TemporalKind::Timestamp, text)),
+            _ => None,
+        };
+        if let Some((kind, text)) = temporal
+            && let Some(rewritten) = self.temporal_literal(expr, kind, text)
+        {
+            self.write(&rewritten);
+            return;
+        }
         let same_reading = self.source.mode.ansi_quotes == self.output.mode.ansi_quotes
             && self.source.mode.no_backslash_escapes == self.output.mode.no_backslash_escapes;
         if same_reading

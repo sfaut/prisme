@@ -1,0 +1,31 @@
+# Typed literals: letters, spaces and empty strings.
+l1 TIMESTAMP '2024-05-06 07:08:09 AM'
+l2 TIME '07:08:09 PM'
+l3 DATE 'May 6, 2024'
+l4 DATE '2024-05-06e'
+l5 TIME '1e2'
+l6 DATE '2024-05-06é'
+l7 TIMESTAMP '2024-05-06 07:08:09.5 '
+l8 DATE 'abc'
+l9 TIME 'abc'
+l10 TIMESTAMP 'abc'
+l11 TIME '07:08:09.5x'
+l12 DATE '2024-05-06 x'
+l13 TIMESTAMP '2024-05-06 07:08:09 x'
+l14 TIME '07:08:09 x'
+l15 DATE 'T'
+l16 TIME '07:08:09T'
+l17 TIMESTAMP '2024-05-06 07:08:09T'
+l18 DATE ' '
+l19 TIME ' '
+l20 TIMESTAMP ''
+l21 {d 'May 6, 2024'}
+l22 {t '07:08:09 PM'}
+l23 {ts ''}
+l24 {d '2024-05-06T'}
+l25 TIME '07:08.5'
+l26 TIME '7:8.5'
+l27 {t '07:08.5'}
+l28 TIME '.'
+l29 DATE '.'
+l30 TIME '1 .5'

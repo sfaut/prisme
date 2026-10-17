@@ -26,6 +26,7 @@ pub(crate) mod functions;
 mod group;
 mod scope;
 mod tables;
+mod temporal;
 pub(crate) mod types;
 
 #[cfg(test)]

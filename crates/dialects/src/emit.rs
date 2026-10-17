@@ -29,6 +29,7 @@ mod expr;
 mod greatest;
 mod rules;
 mod source;
+mod temporal;
 
 #[cfg(test)]
 mod tests;

@@ -14,7 +14,7 @@ use prisme_plan::{
 use prisme_types::{DataType, Decimal, IntegerSize, IntegerType, Type, Value};
 
 use super::scope::Scope;
-use super::{BuildError, Builder, as_predicate, plan_error, types};
+use super::{BuildError, Builder, as_predicate, plan_error, temporal, types};
 use crate::sql::ast::{self, BinaryOp, ExprKind, Literal, UnaryOp};
 
 /// Operator of the plan for a binary operator of the tree.
@@ -439,6 +439,9 @@ impl Builder<'_> {
             Literal::Null => Expr::literal(Value::Null, DataType::Null),
             Literal::True => Expr::literal(Value::Boolean(true), DataType::Boolean),
             Literal::False => Expr::literal(Value::Boolean(false), DataType::Boolean),
+            Literal::Temporal { kind, value } => {
+                temporal::temporal_literal(*kind, value, self.dialect)
+            }
         })
     }
 }

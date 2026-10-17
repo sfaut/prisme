@@ -134,6 +134,9 @@ pub enum Construct {
     /// `CAST` of a negative decimal to `UNSIGNED`: the unsigned integer of
     /// the same bits (MySQL), 0 otherwise.
     CastUnsignedWrap,
+    /// Time zone offset in a date and time literal (`TIMESTAMP '2024-05-06
+    /// 01:00:00+02:00'`, MySQL), converted to the time zone of the session.
+    DatetimeOffset,
     /// `UNIX_TIMESTAMP` and `FROM_UNIXTIME` until 3001-01-18 23:59:59 UTC
     /// (MySQL), 2038-01-19 03:14:07 otherwise.
     #[serde(rename = "unixtime_3001")]
@@ -302,6 +305,7 @@ impl Construct {
             Self::CastUnsignedWrap => {
                 "`CAST` of a negative decimal to `UNSIGNED` giving the integer of the same bits"
             }
+            Self::DatetimeOffset => "time zone offset in a date and time literal",
             Self::Unixtime3001 => "`UNIX_TIMESTAMP` until 3001",
             Self::Unixtime2106 => "`UNIX_TIMESTAMP` until 2106",
             Self::UnixtimeEpochNull => "`UNIX_TIMESTAMP` giving NULL at the epoch",

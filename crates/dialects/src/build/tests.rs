@@ -806,3 +806,24 @@ fn types_cast_after_its_target() {
         [(types::bigint(), false), (types::double(), true)]
     );
 }
+
+#[test]
+fn types_typed_literals_as_the_servers() {
+    let text = concat!(
+        "SELECT DATE '2024-05-06', TIME '07:08:09.5', TIMESTAMP '2024-05-06 07:08:09.1234567', ",
+        "TIMESTAMP '2024-05-06 07:08:09.', {t '070809'}, DATE '2024-05-00', {d 'x'}"
+    );
+    let expected = |zero_nullable| {
+        vec![
+            (DataType::Date, false),
+            (DataType::Time { fraction: 1 }, false),
+            (DataType::DateTime { fraction: 6 }, false),
+            (DataType::DateTime { fraction: 0 }, false),
+            (DataType::Time { fraction: 0 }, false),
+            (DataType::Date, zero_nullable),
+            (types::string_literal("x"), false),
+        ]
+    };
+    assert_eq!(column_types(text, Dialect::MySql), expected(false));
+    assert_eq!(column_types(text, Dialect::MariaDb), expected(true));
+}

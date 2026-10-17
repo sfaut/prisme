@@ -1691,3 +1691,95 @@ fn cast_values_that_differ_between_the_dialects_are_errors() {
     assert!(errors(text, mariadb(), output(mysql_at(8, 0, 18))).is_empty());
     assert_eq!(errors(text, mariadb(), output(mysql)), ["cast.unsigned"]);
 }
+
+#[test]
+fn typed_literals_keep_their_form_within_a_dialect() {
+    let text = concat!(
+        "SELECT DATE '2024-05-06' AS a, TIME '07:08:09.1234567' AS b, ",
+        "TIMESTAMP '2024.05.06 7:8:9' AS c, {d '2024-05-06'} AS e, {t 'x'} AS g, ",
+        "TIMESTAMP '2024-05-06 01:00:00+02:00' AS h FROM d"
+    );
+    let (sql, rules) = transpiled(text, mysql_at(8, 4, 0), output(mysql_at(8, 4, 0)));
+    assert_eq!(
+        sql,
+        "SELECT DATE '2024-05-06' AS a, TIME '07:08:09.1234567' AS b, TIMESTAMP '2024.05.06 7:8:9' AS c, {d '2024-05-06'} AS e, 'x' AS g, TIMESTAMP '2024-05-06 01:00:00+02:00' AS h FROM d"
+    );
+    assert!(rules.is_empty(), "{rules:?}");
+    // An offset is absent before MySQL 8.0.19.
+    assert_eq!(
+        errors(
+            "SELECT TIMESTAMP '2024-05-06 01:00:00+02:00'",
+            mysql_at(8, 4, 0),
+            output(mysql_at(8, 0, 18))
+        ),
+        ["literal.offset"]
+    );
+}
+
+#[test]
+fn a_typed_literal_read_otherwise_takes_its_value() {
+    // The same value in both dialects: as is.
+    let text = "SELECT DATE '24/5/6' AS a, TIME '1 07:08' AS b, {ts '2024-05-06T07:08:09.5'} AS c, TIME '07:08:09.1234564' AS e FROM d";
+    for (input, output) in [(mysql(), mariadb()), (mariadb(), mysql())] {
+        let (sql, rules) = transpiled(text, input, self::output(output));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{rules:?}");
+    }
+    // Rounded by MySQL, truncated by MariaDB.
+    let text =
+        "SELECT TIME '07:08:59.9999995' AS a, TIMESTAMP '2024-12-31 23:59:59.9999995' AS b FROM d";
+    let (sql, rules) = transpiled(text, mysql(), output(mariadb()));
+    assert_eq!(
+        sql,
+        "SELECT TIME '07:09:00.000000' AS a, TIMESTAMP '2025-01-01 00:00:00.000000' AS b FROM d"
+    );
+    assert_eq!(rules, ["literal.temporal", "literal.temporal"]);
+    let (sql, _) = transpiled(text, mariadb(), output(mysql()));
+    assert_eq!(
+        sql,
+        "SELECT TIME '07:08:59.999999' AS a, TIMESTAMP '2024-12-31 23:59:59.999999' AS b FROM d"
+    );
+    // A zero day keeps its value; the implicit name is kept by an alias.
+    let (sql, _) = transpiled(
+        "SELECT TIMESTAMP '2024-05-00 23:59:59.9999995'",
+        mariadb(),
+        output(mysql()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT TIMESTAMP '2024-05-00 23:59:59.999999' AS `TIMESTAMP '2024-05-00 23:59:59.9999995'`"
+    );
+}
+
+#[test]
+fn typed_literals_the_dialects_read_otherwise_are_errors() {
+    for (text, input, output) in [
+        // Beyond 838:59:59 in MySQL.
+        ("SELECT TIME '838:59:59.5'", mariadb(), mysql()),
+        // An error in MySQL, rounded beyond 9999-12-31.
+        (
+            "SELECT TIMESTAMP '9999-12-31 23:59:59.9999995'",
+            mysql(),
+            mariadb(),
+        ),
+        // Read by MySQL only.
+        ("SELECT DATE '2024--05-06'", mysql(), mariadb()),
+        ("SELECT TIME ':08:09'", mysql(), mariadb()),
+    ] {
+        assert_eq!(
+            errors(text, input, self::output(output)),
+            ["literal.temporal"],
+            "{text}"
+        );
+    }
+    assert_eq!(
+        errors(
+            "SELECT TIMESTAMP '2024-05-06 01:00:00+02:00'",
+            mysql(),
+            output(mariadb())
+        ),
+        ["literal.offset"]
+    );
+    // Refused by both: as is.
+    assert!(errors("SELECT DATE '2024-02-30'", mysql(), output(mariadb())).is_empty());
+}

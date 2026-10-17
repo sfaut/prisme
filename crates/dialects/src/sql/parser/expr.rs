@@ -19,7 +19,7 @@ use super::{ParseError, Parser};
 use crate::keywords;
 use crate::lexer::{Punct, TokenKind};
 use crate::sql::ast::{
-    BinaryOp, Expr, ExprKind, FunctionCall, Literal, ObjectName, Query, UnaryOp,
+    BinaryOp, Expr, ExprKind, FunctionCall, Literal, ObjectName, Query, TemporalKind, UnaryOp,
 };
 
 impl Parser<'_> {
@@ -385,6 +385,7 @@ impl Parser<'_> {
                 Err(self.unsupported("parameters of prepared statements", token.span))
             }
             TokenKind::Punct(Punct::LeftParen) => self.parenthesized(),
+            TokenKind::Punct(Punct::LeftBrace) => self.odbc_literal(),
             TokenKind::Word | TokenKind::QuotedIdent(_) => self.word_expr(),
             _ => Err(self.expected("an expression")),
         }
@@ -533,8 +534,14 @@ impl Parser<'_> {
             let next = self.peek_at(1).map(|next| &next.kind);
             if matches!(next, Some(TokenKind::String { .. })) {
                 let upper = token.text(self.text).to_ascii_uppercase();
-                if ["DATE", "TIME", "TIMESTAMP"].contains(&upper.as_str()) {
-                    return Err(self.unsupported("typed literals", token.span));
+                let kind = match upper.as_str() {
+                    "DATE" => Some(TemporalKind::Date),
+                    "TIME" => Some(TemporalKind::Time),
+                    "TIMESTAMP" => Some(TemporalKind::Timestamp),
+                    _ => None,
+                };
+                if let Some(kind) = kind {
+                    return self.typed_literal(kind);
                 }
                 if upper.starts_with('_') {
                     return Err(self.unsupported("charset introducers", token.span));

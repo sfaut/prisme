@@ -633,6 +633,25 @@ pub enum Literal {
     True,
     /// `FALSE`.
     False,
+    /// `DATE '...'`, `TIME '...'`, `TIMESTAMP '...'`, or their ODBC form
+    /// (`{d '...'}`) when the dialect reads a date or a time in it.
+    Temporal {
+        /// Type written.
+        kind: TemporalKind,
+        /// String, as written.
+        value: String,
+    },
+}
+
+/// Type of a typed literal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TemporalKind {
+    /// `DATE`.
+    Date,
+    /// `TIME`.
+    Time,
+    /// `TIMESTAMP`, a `DATETIME`.
+    Timestamp,
 }
 
 /// Prefix operator.

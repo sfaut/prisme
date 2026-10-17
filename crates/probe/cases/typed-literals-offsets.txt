@@ -1,0 +1,5 @@
+# Time zone offset of a date and time literal: run with --server mysql:8.0.18 --server mysql:8.0.19.
+lit TIMESTAMP '2024-05-06 01:00:00+02:00'
+odbc {ts '2024-05-06 01:00:00+02:00'}
+cast CAST('2024-05-06 01:00:00+02:00' AS DATETIME)
+neg14 TIMESTAMP '2024-05-06 01:00:00-14:00'

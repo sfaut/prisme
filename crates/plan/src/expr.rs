@@ -399,6 +399,12 @@ impl Expr {
         )
     }
 
+    /// Literal of the type `ty`, nullable for another value than NULL when
+    /// the server types it so (a zero date, `date NULL` in MariaDB).
+    pub fn literal_typed(value: Value, ty: Type) -> Self {
+        Self::new(ExprKind::Literal(value), ty)
+    }
+
     /// Variable, of the type read on the server.
     pub fn variable(variable: Variable, ty: Type) -> Self {
         Self::new(ExprKind::Variable(variable), ty)

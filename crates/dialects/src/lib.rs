@@ -9,7 +9,8 @@
 //! of syntax errors (`syntax` module). The transpilation is being written
 //! (`docs/DEV-DIALECTS.md`): lexer of the MySQL family (`lexer` module),
 //! syntax tree and parser (`sql`), plan builder (`build`), emitter (`emit`),
-//! report (`report`) and entry point (`transpile`).
+//! report (`report`) and entry point (`transpile`), with the dates and times
+//! of the literals (`temporal`).
 
 mod alias;
 pub mod analysis;
@@ -29,6 +30,7 @@ mod reference;
 pub mod report;
 pub mod sql;
 pub mod syntax;
+mod temporal;
 pub mod transpile;
 pub mod versions;
 mod whitespace;

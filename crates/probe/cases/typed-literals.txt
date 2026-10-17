@@ -1,0 +1,37 @@
+# Typed literals: forms, types and values.
+date_ DATE '2024-05-06'
+date_lower date '2024-05-06'
+date_short DATE '2024-5-6'
+date_compact DATE '20240506'
+date_slash DATE '2024/05/06'
+date_two_digit DATE '24-05-06'
+date_time DATE '2024-05-06 07:08:09'
+date_zero DATE '0000-00-00'
+date_zero_day DATE '2024-05-00'
+date_bad DATE '2024-02-30'
+date_space DATE ' 2024-05-06'
+date_dq DATE "2024-05-06"
+time_ TIME '07:08:09'
+time_frac TIME '07:08:09.5'
+time_frac6 TIME '07:08:09.123456'
+time_frac7 TIME '07:08:09.1234567'
+time_days TIME '2 07:08:09'
+time_neg TIME '-838:59:59'
+time_over TIME '839:00:00'
+time_short TIME '7:8:9'
+time_compact TIME '070809'
+time_hm TIME '07:08'
+ts_ TIMESTAMP '2024-05-06 07:08:09'
+ts_frac TIMESTAMP '2024-05-06 07:08:09.5'
+ts_t TIMESTAMP '2024-05-06T07:08:09'
+ts_date TIMESTAMP '2024-05-06'
+ts_offset TIMESTAMP '2024-05-06 23:00:00+02:00'
+ts_frac7 TIMESTAMP '2024-05-06 07:08:09.1234567'
+ts_bad TIMESTAMP '2024-02-30 07:08:09'
+odbc_d {d '2024-05-06'}
+odbc_t {t '07:08:09'}
+odbc_ts {ts '2024-05-06 07:08:09'}
+odbc_ts_frac {ts '2024-05-06 07:08:09.5'}
+odbc_bad {d '2024-02-30'}
+datetime_kw DATETIME '2024-05-06 07:08:09'
+date_concat DATE '2024-05' '-06'

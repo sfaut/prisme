@@ -17,6 +17,7 @@ mod call;
 mod cast;
 mod expr;
 mod from;
+mod temporal;
 
 #[cfg(test)]
 mod tests;

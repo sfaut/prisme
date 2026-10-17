@@ -25,11 +25,19 @@ pub struct SqlMode {
     pub real_as_float: bool,
     /// `ORACLE` (MariaDB): the Oracle syntax, refused by Prisme.
     pub oracle: bool,
+    /// `NO_ZERO_DATE`: the date `0000-00-00` is an error, and a string in
+    /// the ODBC form of a literal (`{d '0000-00-00'}`).
+    pub no_zero_date: bool,
+    /// `NO_ZERO_IN_DATE`: a zero month or day of another date
+    /// (`2024-05-00`) is an error, and a string in the ODBC form of a
+    /// literal.
+    pub no_zero_in_date: bool,
 }
 
 impl SqlMode {
     /// Reads the value of `@@sql_mode`: modes separated by commas, in any
-    /// case. Modes without effect on the reading are ignored.
+    /// case. Modes without effect on the reading or the literals are
+    /// ignored.
     pub fn parse(text: &str) -> Self {
         let mut mode = Self::default();
         for name in text.split(',').map(str::trim) {
@@ -47,6 +55,13 @@ impl SqlMode {
             "IGNORE_SPACE" => self.ignore_space = true,
             "HIGH_NOT_PRECEDENCE" => self.high_not_precedence = true,
             "REAL_AS_FLOAT" => self.real_as_float = true,
+            "NO_ZERO_DATE" => self.no_zero_date = true,
+            "NO_ZERO_IN_DATE" => self.no_zero_in_date = true,
+            "TRADITIONAL" => {
+                for part in ["NO_ZERO_DATE", "NO_ZERO_IN_DATE"] {
+                    self.add(part);
+                }
+            }
             "ANSI" => {
                 for part in [
                     "REAL_AS_FLOAT",
@@ -83,7 +98,15 @@ mod tests {
         let mode = SqlMode::parse(
             "ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO",
         );
-        assert_eq!(mode, SqlMode::default());
+        assert_eq!(
+            mode,
+            SqlMode {
+                no_zero_in_date: true,
+                ..SqlMode::default()
+            }
+        );
+        let traditional = SqlMode::parse("TRADITIONAL");
+        assert!(traditional.no_zero_date && traditional.no_zero_in_date);
         let mode = SqlMode::parse("ansi_quotes, NO_BACKSLASH_ESCAPES");
         assert!(mode.ansi_quotes && mode.no_backslash_escapes && !mode.pipes_as_concat);
     }

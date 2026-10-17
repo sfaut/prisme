@@ -480,6 +480,17 @@ constructs:
       integer of the same bits (18446744073709551612), as for a float or a
       time; 0 before, as in MariaDB (crates/probe/cases/cast-bounds.txt,
       measured 0 on 8.0.17 and 8.0.18, the integer on 8.0.19 to 8.0.27).
+  - id: datetime_offset
+    since: "8.0.19"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-19.html
+    comment: >-
+      A time zone offset after the time of a date and time literal or string
+      (`TIMESTAMP '2024-05-06 01:00:00+02:00'`, `CAST('...+02:00' AS
+      DATETIME)`), from -14:00 to +14:00, the value converted to the time zone
+      of the session; before, error 1525 for a literal, a string for its ODBC
+      form, the offset ignored by `CAST` (crates/probe/cases/cast-bounds.txt
+      and typed-literals-offsets.txt, measured on 8.0.18 and 8.0.19). MariaDB
+      refuses it likewise.
   - id: pad_empty_string
     since: "8.0.13"
     until: "9.3.0"
