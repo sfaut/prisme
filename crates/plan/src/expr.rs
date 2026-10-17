@@ -19,7 +19,7 @@
 
 use prisme_types::{DataType, IntegerType, Type, Value};
 
-use crate::{Cast, DateArithmetic, Ident, Plan, PlanError, SortKey, Span, TimestampDiff};
+use crate::{Cast, DateArithmetic, Extract, Ident, Plan, PlanError, SortKey, Span, TimestampDiff};
 
 /// Expression of the plan, with its type.
 #[derive(Debug, Clone, PartialEq)]
@@ -181,6 +181,8 @@ pub enum ExprKind {
     DateArithmetic(Box<DateArithmetic>),
     /// Whole units from a date or a time to another (`TIMESTAMPDIFF`).
     TimestampDiff(Box<TimestampDiff>),
+    /// Part of a date or a time (`EXTRACT`).
+    Extract(Box<Extract>),
     /// Number to boolean, true when non-zero (MySQL family: `WHERE a`,
     /// `2 AND 3`).
     ToBoolean(Box<Expr>),
@@ -685,6 +687,11 @@ impl Expr {
         Self::new(ExprKind::TimestampDiff(Box::new(diff)), ty)
     }
 
+    /// Part of a date or a time, of the type the dialect gives it.
+    pub fn extract(extract: Extract, ty: Type) -> Self {
+        Self::new(ExprKind::Extract(Box::new(extract)), ty)
+    }
+
     /// Number to boolean, true when non-zero; unknown when the number is NULL.
     pub fn to_boolean(operand: Expr) -> Self {
         let ty = boolean(operand.ty.nullable);
@@ -728,6 +735,7 @@ impl Expr {
                 vec![&mut arithmetic.operand, &mut arithmetic.value]
             }
             ExprKind::TimestampDiff(diff) => vec![&mut diff.start, &mut diff.end],
+            ExprKind::Extract(extract) => vec![&mut extract.operand],
             ExprKind::Between {
                 operand, low, high, ..
             } => vec![operand.as_mut(), low.as_mut(), high.as_mut()],

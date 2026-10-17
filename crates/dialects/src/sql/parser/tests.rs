@@ -167,6 +167,7 @@ fn tree(expr: &Expr) -> String {
             format!("({})", parts.join(" "))
         }
         ExprKind::Cast(cast) => format!("(cast {} {:?})", tree(&cast.operand), cast.target),
+        ExprKind::Extract(call) => format!("(Extract {:?} {})", call.unit, tree(&call.operand)),
         ExprKind::TimestampDiff(call) => format!(
             "(TimestampDiff {:?} {} {})",
             call.unit,
@@ -1391,6 +1392,26 @@ fn reads_timestampdiff_of_a_simple_unit() {
         "SELECT TIMESTAMPDIFF('DAY', d, e)",
         "SELECT TIMESTAMPDIFF(FRAC_SECOND, d, e)",
         "SELECT TIMESTAMPDIFF(DAY, d)",
+    ] {
+        assert!(parse(text, &mysql()).is_err(), "{text}");
+    }
+}
+
+#[test]
+fn reads_extract_of_a_simple_or_a_compound_unit() {
+    assert_eq!(expr("EXTRACT(DAY FROM d + 1)"), "(Extract Day (+ d 1))");
+    assert_eq!(expr("extract(sql_tsi_month from d)"), "(Extract Month d)");
+    assert_eq!(
+        expr("EXTRACT(DAY_MICROSECOND FROM d)"),
+        "(Extract DayMicrosecond d)"
+    );
+    for text in [
+        "SELECT EXTRACT('DAY' FROM d)",
+        "SELECT EXTRACT(DAY, d)",
+        "SELECT EXTRACT(FRAC_SECOND FROM d)",
+        "SELECT EXTRACT(SQL_TSI_DAY_HOUR FROM d)",
+        "SELECT EXTRACT(SQL_TSI_MICROSECOND FROM d)",
+        "SELECT EXTRACT (DAY FROM d)",
     ] {
         assert!(parse(text, &mysql()).is_err(), "{text}");
     }

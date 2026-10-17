@@ -12,7 +12,8 @@
 //!   unit)` or `ADDDATE(x, n)` of `n` days, `SUBDATE`, and
 //!   `TIMESTAMPADD(unit, n, x)` of a simple unit;
 //! - `TIMESTAMPDIFF(unit, start, end)`, the whole units from `start` to
-//!   `end`, of a simple unit.
+//!   `end`, of a simple unit;
+//! - `EXTRACT(unit FROM x)`, a part of `x`, of a simple or a compound unit.
 //!
 //! The value `n` is a whole expression, closed by its unit
 //! (`INTERVAL 1 + 1 DAY`). `INTERVAL(n, n1, ...)`, whose parentheses hold a
@@ -23,7 +24,7 @@ use prisme_plan::{DateArithmeticForm, Span, TimeUnit};
 
 use super::{ParseError, Parser};
 use crate::lexer::{Punct, TokenKind};
-use crate::sql::ast::{DateArithmeticCall, Expr, ExprKind, TimestampDiffCall};
+use crate::sql::ast::{DateArithmeticCall, Expr, ExprKind, ExtractCall, TimestampDiffCall};
 
 impl Parser<'_> {
     /// Tells whether an interval comes next: `INTERVAL`, other than the
@@ -159,6 +160,19 @@ impl Parser<'_> {
                 start: from,
                 end: to,
             })),
+            span: self.span_from(start),
+        })
+    }
+
+    /// `EXTRACT(unit FROM x)`, after its name.
+    pub(super) fn extract(&mut self, start: usize) -> Result<Expr, ParseError> {
+        self.expect_punct(Punct::LeftParen)?;
+        let unit = self.time_unit(false)?;
+        self.expect_keyword("FROM")?;
+        let operand = self.expr()?;
+        self.expect_punct(Punct::RightParen)?;
+        Ok(Expr {
+            kind: ExprKind::Extract(Box::new(ExtractCall { unit, operand })),
             span: self.span_from(start),
         })
     }

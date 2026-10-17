@@ -26,6 +26,7 @@ mod call;
 mod case;
 mod cast;
 mod expr;
+mod extract;
 mod greatest;
 mod interval;
 mod rules;

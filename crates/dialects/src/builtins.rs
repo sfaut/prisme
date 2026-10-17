@@ -114,7 +114,8 @@ pub(crate) enum Rule {
     /// `BIT_COUNT` of a binary string.
     #[serde(rename = "function.bit-count")]
     BitCount,
-    /// `EXTRACT` from a `TIME`.
+    /// `EXTRACT` of a `TIME`, of the day of a date, of a string or a number
+    /// (`emit::extract` module).
     #[serde(rename = "function.extract")]
     Extract,
     /// `FROM_UNIXTIME`: its type and its range.

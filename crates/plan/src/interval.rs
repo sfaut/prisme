@@ -2,7 +2,8 @@
 //! subtracted from a date or a time (`d + INTERVAL 1 DAY`, `DATE_ADD`,
 //! `ADDDATE`, `TIMESTAMPADD`), with the form written, since each form has a
 //! syntax of its own and the precedence of its operands; the units between
-//! two dates or times (`TIMESTAMPDIFF`).
+//! two dates or times (`TIMESTAMPDIFF`); a part of a date or a time
+//! (`EXTRACT`).
 
 use crate::Expr;
 
@@ -30,6 +31,15 @@ pub struct TimestampDiff {
     pub start: Expr,
     /// Date or time the count ends at.
     pub end: Expr,
+}
+
+/// `EXTRACT(unit FROM operand)`: a part of a date or a time, as an integer.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Extract {
+    /// Part taken, a simple or a compound unit.
+    pub unit: TimeUnit,
+    /// Date or time the part is taken from.
+    pub operand: Expr,
 }
 
 /// Form of a date and time arithmetic.

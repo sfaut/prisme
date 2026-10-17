@@ -519,6 +519,8 @@ pub enum ExprKind {
     DateArithmetic(Box<DateArithmeticCall>),
     /// `TIMESTAMPDIFF(unit, start, end)`.
     TimestampDiff(Box<TimestampDiffCall>),
+    /// `EXTRACT(unit FROM x)`.
+    Extract(Box<ExtractCall>),
 }
 
 /// `CAST` or `CONVERT`.
@@ -556,6 +558,15 @@ pub struct TimestampDiffCall {
     pub end: Expr,
 }
 
+/// `EXTRACT(unit FROM x)`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExtractCall {
+    /// Part taken, a simple or a compound unit.
+    pub unit: TimeUnit,
+    /// Date or time the part is taken from.
+    pub operand: Expr,
+}
+
 impl FunctionCall {
     /// Name of the function, in capitals.
     pub fn upper_name(&self) -> String {
@@ -590,6 +601,7 @@ impl Expr {
             ExprKind::Cast(cast) => vec![&cast.operand],
             ExprKind::DateArithmetic(call) => vec![&call.operand, &call.value],
             ExprKind::TimestampDiff(call) => vec![&call.start, &call.end],
+            ExprKind::Extract(call) => vec![&call.operand],
             ExprKind::Binary { left, right, .. } => vec![left, right],
             ExprKind::Between {
                 operand, low, high, ..

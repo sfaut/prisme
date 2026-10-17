@@ -765,7 +765,7 @@ fn fraction_digits(data_type: &DataType) -> Option<u8> {
 /// Tells whether `expr` gives the same value each time it is written in a
 /// statement: without subquery, stored function nor function of
 /// `VOLATILE`.
-fn repeatable(expr: &Expr) -> bool {
+pub(super) fn repeatable(expr: &Expr) -> bool {
     match &expr.kind {
         ExprKind::Column(_) | ExprKind::Literal(_) | ExprKind::Variable(_) => true,
         ExprKind::Not(operand)
@@ -779,6 +779,7 @@ fn repeatable(expr: &Expr) -> bool {
             repeatable(&arithmetic.operand) && repeatable(&arithmetic.value)
         }
         ExprKind::TimestampDiff(diff) => repeatable(&diff.start) && repeatable(&diff.end),
+        ExprKind::Extract(extract) => repeatable(&extract.operand),
         ExprKind::Compare { left, right, .. }
         | ExprKind::NotDistinct { left, right, .. }
         | ExprKind::Logical { left, right, .. }

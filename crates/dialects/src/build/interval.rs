@@ -20,8 +20,16 @@
 //!
 //! `TIMESTAMPDIFF` gives a nullable `BIGINT`, NULL for a value that is not a
 //! date nor a time (`crates/probe/cases/timestampdiff*.txt`).
+//!
+//! `EXTRACT` gives a nullable integer, NULL for a value that is not a date
+//! nor a time: a `BIGINT` by `MINUTE_MICROSECOND`, `HOUR_MICROSECOND` and
+//! `DAY_MICROSECOND`, whose values pass 2^31, an `INT` by the other units,
+//! as MariaDB types a date or a time; MySQL gives an `INT` to
+//! `MINUTE_MICROSECOND` and a `BIGINT` to `DAY_SECOND`, MariaDB a `BIGINT` to
+//! `DAY_MINUTE` and `DAY_SECOND` of a string, of the same family
+//! (`crates/probe/cases/extract-emulations.txt`).
 
-use prisme_plan::{DateArithmetic, Expr, ExprKind, TimeUnit, TimestampDiff};
+use prisme_plan::{DateArithmetic, Expr, ExprKind, Extract, TimeUnit, TimestampDiff};
 use prisme_types::{
     DataType, IntegerSize, IntegerType, MAX_FRACTION_DIGITS, TextType, Type, Value,
 };
@@ -73,6 +81,26 @@ impl Builder<'_> {
         };
         let ty = Type::nullable(DataType::Integer(IntegerType::signed(IntegerSize::Big)));
         Ok(Expr::timestamp_diff(diff, ty))
+    }
+
+    /// Part of a date or a time.
+    pub(super) fn extract(
+        &mut self,
+        call: &ast::ExtractCall,
+        scope: &Scope,
+    ) -> Result<Expr, BuildError> {
+        let extract = Extract {
+            unit: call.unit,
+            operand: self.value(&call.operand, scope)?,
+        };
+        let size = match call.unit {
+            TimeUnit::MinuteMicrosecond | TimeUnit::HourMicrosecond | TimeUnit::DayMicrosecond => {
+                IntegerSize::Big
+            }
+            _ => IntegerSize::Int,
+        };
+        let ty = Type::nullable(DataType::Integer(IntegerType::signed(size)));
+        Ok(Expr::extract(extract, ty))
     }
 }
 

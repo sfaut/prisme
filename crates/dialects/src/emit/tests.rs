@@ -2044,3 +2044,227 @@ fn the_current_date_and_time_move_and_count_alike() {
         ["interval.time"]
     );
 }
+
+#[test]
+fn extract_keeps_the_parts_read_alike() {
+    let text = concat!(
+        "SELECT EXTRACT(MICROSECOND FROM tm) AS a, EXTRACT(MINUTE_SECOND FROM dt) AS b, ",
+        "EXTRACT(HOUR FROM dt3) AS c, EXTRACT(HOUR_MINUTE FROM ts) AS e, ",
+        "EXTRACT(DAY FROM dd) AS h, EXTRACT(WEEK FROM dt) AS j, EXTRACT(YEAR_MONTH FROM s) AS k, ",
+        "EXTRACT(YEAR FROM i) AS l, EXTRACT(DAY_HOUR FROM '2024-05-06 07:08:09.5') AS m, ",
+        "EXTRACT(DAY FROM '2024-05-06') AS o, EXTRACT(DAY_SECOND FROM NULL) AS q, ",
+        "EXTRACT(DAY_MINUTE FROM dd + INTERVAL 1 HOUR) AS r FROM d, g"
+    );
+    for (input, output) in [
+        (mysql(), mariadb()),
+        (mariadb(), mysql()),
+        (mysql(), mysql()),
+    ] {
+        let (sql, rules) = transpiled(text, input, self::output(output));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{rules:?}");
+    }
+    // The unit is written in capitals, without `SQL_TSI_`.
+    let (sql, _) = transpiled(
+        "SELECT extract(sql_tsi_day from dd) AS a FROM g",
+        mysql(),
+        output(mariadb()),
+    );
+    assert_eq!(sql, "SELECT EXTRACT(DAY FROM dd) AS a FROM g");
+}
+
+#[test]
+fn extract_of_a_time_counts_its_hours_as_the_input() {
+    let towards_mariadb = [
+        ("HOUR", "TIME_TO_SEC(tm) DIV 3600"),
+        ("DAY_HOUR", "TIME_TO_SEC(tm) DIV 3600"),
+        (
+            "HOUR_MINUTE",
+            "EXTRACT(HOUR_MINUTE FROM tm) + EXTRACT(DAY FROM tm) * 2400",
+        ),
+        (
+            "DAY_SECOND",
+            "EXTRACT(HOUR_SECOND FROM tm) + EXTRACT(DAY FROM tm) * 240000",
+        ),
+        (
+            "HOUR_MICROSECOND",
+            "EXTRACT(HOUR_MICROSECOND FROM tm) + EXTRACT(DAY FROM tm) * 240000000000",
+        ),
+        ("DAY", "EXTRACT(DAY FROM TIMESTAMP(CURRENT_DATE, tm))"),
+        ("WEEK", "EXTRACT(WEEK FROM TIMESTAMP(CURRENT_DATE, tm))"),
+        ("MONTH", "EXTRACT(MONTH FROM TIMESTAMP(CURRENT_DATE, tm))"),
+    ];
+    let towards_mysql = [
+        ("HOUR", "MOD(EXTRACT(HOUR FROM tm), 24)"),
+        ("DAY", "EXTRACT(HOUR FROM tm) DIV 24"),
+        (
+            "HOUR_SECOND",
+            "EXTRACT(HOUR_SECOND FROM tm) - EXTRACT(HOUR FROM tm) DIV 24 * 240000",
+        ),
+        (
+            "DAY_HOUR",
+            "EXTRACT(HOUR FROM tm) + EXTRACT(HOUR FROM tm) DIV 24 * 76",
+        ),
+        (
+            "DAY_MICROSECOND",
+            "EXTRACT(HOUR_MICROSECOND FROM tm) + EXTRACT(HOUR FROM tm) DIV 24 * 760000000000",
+        ),
+        ("YEAR_MONTH", "EXTRACT(MINUTE FROM tm) * 0"),
+    ];
+    for (cases, input, target) in [
+        (&towards_mariadb[..], mysql(), mariadb()),
+        (&towards_mysql[..], mariadb(), mysql()),
+    ] {
+        for (unit, expected) in cases {
+            let text = format!("SELECT EXTRACT({unit} FROM tm) AS a FROM g");
+            let (sql, rules) = transpiled(&text, input, output(target));
+            assert_eq!(sql, format!("SELECT {expected} AS a FROM g"), "{text}");
+            assert_eq!(rules, ["function.extract"], "{text}");
+        }
+    }
+    // The parts of an hour are read alike.
+    let text = "SELECT EXTRACT(MINUTE_MICROSECOND FROM tm) AS a FROM g";
+    assert_eq!(transpiled(text, mysql(), output(mariadb())).0, text);
+    // The parentheses follow the level of the emulation.
+    for (text, input, target, expected) in [
+        (
+            "SELECT 2 * EXTRACT(HOUR FROM tm) AS a FROM g",
+            mysql(),
+            mariadb(),
+            "SELECT 2 * (TIME_TO_SEC(tm) DIV 3600) AS a FROM g",
+        ),
+        (
+            "SELECT EXTRACT(HOUR FROM tm) * 2 AS a FROM g",
+            mysql(),
+            mariadb(),
+            "SELECT TIME_TO_SEC(tm) DIV 3600 * 2 AS a FROM g",
+        ),
+        (
+            "SELECT -EXTRACT(HOUR_MINUTE FROM tm) AS a FROM g",
+            mysql(),
+            mariadb(),
+            "SELECT -(EXTRACT(HOUR_MINUTE FROM tm) + EXTRACT(DAY FROM tm) * 2400) AS a FROM g",
+        ),
+        (
+            "SELECT 1 - EXTRACT(DAY FROM tm) AS a FROM g",
+            mariadb(),
+            mysql(),
+            "SELECT 1 - EXTRACT(HOUR FROM tm) DIV 24 AS a FROM g",
+        ),
+    ] {
+        assert_eq!(transpiled(text, input, output(target)).0, expected);
+    }
+}
+
+#[test]
+fn extract_takes_the_day_of_a_date_as_the_input() {
+    // MySQL drops the day of a literal, a `CAST` and the current date and
+    // time.
+    for (operand, unit, expected) in [
+        (
+            "TIMESTAMP '2024-05-06 07:08:09'",
+            "DAY_HOUR",
+            "EXTRACT(HOUR FROM TIMESTAMP '2024-05-06 07:08:09')",
+        ),
+        (
+            "CAST(dt AS DATE)",
+            "DAY_MINUTE",
+            "EXTRACT(HOUR_MINUTE FROM CAST(dt AS DATE))",
+        ),
+        (
+            "NOW(6)",
+            "DAY_MICROSECOND",
+            "EXTRACT(HOUR_MICROSECOND FROM NOW(6))",
+        ),
+    ] {
+        let text = format!("SELECT EXTRACT({unit} FROM {operand}) AS a FROM d");
+        let (sql, rules) = transpiled(&text, mysql(), output(mariadb()));
+        assert_eq!(sql, format!("SELECT {expected} AS a FROM d"), "{text}");
+        assert_eq!(rules, ["function.extract"], "{text}");
+    }
+    // MariaDB keeps it: the day and the part of the hours taken apart.
+    for (operand, unit, expected) in [
+        (
+            "dt",
+            "DAY_MINUTE",
+            "EXTRACT(DAY FROM dt) * 10000 + EXTRACT(HOUR_MINUTE FROM dt)",
+        ),
+        (
+            "NOW()",
+            "DAY_HOUR",
+            "EXTRACT(DAY FROM NOW()) * 100 + EXTRACT(HOUR FROM NOW())",
+        ),
+    ] {
+        let text = format!("SELECT EXTRACT({unit} FROM {operand}) AS a FROM d");
+        let (sql, rules) = transpiled(&text, mariadb(), output(mysql()));
+        assert_eq!(sql, format!("SELECT {expected} AS a FROM d"), "{text}");
+        assert_eq!(rules, ["function.extract"], "{text}");
+    }
+    let (sql, _) = transpiled(
+        "SELECT EXTRACT(DAY_SECOND FROM dt) * 2 AS a FROM d",
+        mariadb(),
+        output(mysql()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT (EXTRACT(DAY FROM dt) * 1000000 + EXTRACT(HOUR_SECOND FROM dt)) * 2 AS a FROM d"
+    );
+}
+
+#[test]
+fn extract_refuses_the_parts_read_otherwise() {
+    for (text, input, target) in [
+        // MySQL keeps or drops the day of a column.
+        (
+            "SELECT EXTRACT(DAY_HOUR FROM dt) FROM d",
+            mysql(),
+            mariadb(),
+        ),
+        // A string or a number.
+        ("SELECT EXTRACT(MINUTE FROM s) FROM g", mysql(), mariadb()),
+        ("SELECT EXTRACT(DAY FROM i) FROM d", mariadb(), mysql()),
+        (
+            "SELECT EXTRACT(HOUR FROM '2024-05-06') FROM g",
+            mysql(),
+            mariadb(),
+        ),
+        (
+            "SELECT EXTRACT(SECOND FROM '2024-05-06 07:08:09.1234567')",
+            mysql(),
+            mariadb(),
+        ),
+        // Another type, a type unknown.
+        ("SELECT EXTRACT(YEAR FROM y) FROM g", mysql(), mariadb()),
+        (
+            "SELECT EXTRACT(YEAR FROM IFNULL(s, dd)) FROM g",
+            mariadb(),
+            mysql(),
+        ),
+        // The week of the zero date.
+        ("SELECT EXTRACT(WEEK FROM tm) FROM g", mariadb(), mysql()),
+        // An operand written twice that may give two values.
+        (
+            "SELECT EXTRACT(HOUR_MINUTE FROM (SELECT MAX(tm) FROM g)) FROM g",
+            mysql(),
+            mariadb(),
+        ),
+        (
+            "SELECT EXTRACT(DAY_HOUR FROM SYSDATE())",
+            mariadb(),
+            mysql(),
+        ),
+    ] {
+        assert_eq!(
+            errors(text, input, output(target)),
+            ["function.extract"],
+            "{text}"
+        );
+    }
+    // Between two versions of MySQL, the day of a subquery.
+    let text = "SELECT EXTRACT(DAY_HOUR FROM (SELECT TIMESTAMP '2024-05-06 07:08:09'))";
+    assert_eq!(
+        errors(text, mysql_at(8, 0, 11), output(mysql_at(8, 4, 0))),
+        ["function.extract"]
+    );
+    assert!(errors(text, mysql_at(8, 4, 0), output(mysql_at(8, 4, 0))).is_empty());
+}

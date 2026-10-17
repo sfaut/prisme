@@ -974,3 +974,24 @@ fn types_the_current_date_and_time_after_the_version() {
         [(DataType::Unknown, true), (DataType::Unknown, true)]
     );
 }
+
+#[test]
+fn types_extract_as_a_nullable_integer() {
+    let int = DataType::Integer(IntegerType::signed(IntegerSize::Int));
+    let bigint = DataType::Integer(IntegerType::signed(IntegerSize::Big));
+    let text = concat!(
+        "SELECT EXTRACT(DAY FROM DATE '2024-05-06'), EXTRACT(DAY_SECOND FROM NULL), ",
+        "EXTRACT(MINUTE_MICROSECOND FROM TIME '10:20:30'), EXTRACT(DAY_MICROSECOND FROM '')"
+    );
+    for dialect in [Dialect::MySql, Dialect::MariaDb] {
+        assert_eq!(
+            column_types(text, dialect),
+            [
+                (int.clone(), true),
+                (int.clone(), true),
+                (bigint.clone(), true),
+                (bigint.clone(), true)
+            ]
+        );
+    }
+}

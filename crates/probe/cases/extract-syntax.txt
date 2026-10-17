@@ -1,0 +1,13 @@
+# Syntax of EXTRACT: units, spaces, operands.
+spaced EXTRACT (DAY FROM d)
+tsi_day EXTRACT(SQL_TSI_DAY FROM d)
+tsi_micro EXTRACT(SQL_TSI_MICROSECOND FROM dt)
+tsi_compound EXTRACT(SQL_TSI_DAY_HOUR FROM dt)
+quoted EXTRACT('DAY' FROM d)
+comma EXTRACT(DAY, d)
+frac EXTRACT(FRAC_SECOND FROM dt)
+sum_operand EXTRACT(DAY FROM d + INTERVAL 1 DAY)
+compare_operand EXTRACT(DAY FROM d = d)
+lower extract(day from d)
+backtick `EXTRACT`(DAY FROM d)
+qualified sample.EXTRACT(DAY FROM d)
