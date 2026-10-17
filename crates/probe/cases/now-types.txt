@@ -1,0 +1,41 @@
+# Types of the functions of the current date and time, by argument.
+now NOW()
+now3 NOW(3)
+now6 NOW(6)
+now7 NOW(7)
+now_str NOW('3')
+now_dec NOW(3.0)
+now_col NOW(i)
+now_null NOW(NULL)
+now_neg NOW(-1)
+cts CURRENT_TIMESTAMP
+cts_p CURRENT_TIMESTAMP()
+cts3 CURRENT_TIMESTAMP(3)
+lts LOCALTIMESTAMP
+lts3 LOCALTIMESTAMP(3)
+lt LOCALTIME
+lt3 LOCALTIME(3)
+sysdate SYSDATE()
+sysdate3 SYSDATE(3)
+curdate CURDATE()
+cd CURRENT_DATE
+cd_p CURRENT_DATE()
+curtime CURTIME()
+curtime3 CURTIME(3)
+ct CURRENT_TIME
+ct3 CURRENT_TIME(3)
+utc_date UTC_DATE()
+utc_date_bare UTC_DATE
+utc_time UTC_TIME()
+utc_time3 UTC_TIME(3)
+utc_time_bare UTC_TIME
+utc_ts UTC_TIMESTAMP()
+utc_ts3 UTC_TIMESTAMP(3)
+utc_ts_bare UTC_TIMESTAMP
+now_plus NOW() + 0
+now3_plus NOW(3) + 0
+curdate_plus CURDATE() + 0
+now_interval NOW() + INTERVAL 1 DAY
+now3_interval NOW(3) + INTERVAL 1 DAY
+curdate_interval CURDATE() + INTERVAL 1 HOUR
+curtime_interval CURTIME() + INTERVAL 1 HOUR

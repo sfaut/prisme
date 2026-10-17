@@ -914,3 +914,63 @@ fn types_timestampdiff_as_a_nullable_bigint() {
         );
     }
 }
+
+#[test]
+fn types_the_current_date_and_time_after_the_version() {
+    let text = concat!(
+        "SELECT NOW(), CURRENT_TIMESTAMP(3), SYSDATE(6), LOCALTIME, LOCALTIMESTAMP(2), ",
+        "UTC_TIMESTAMP, CURDATE(), CURRENT_DATE, UTC_DATE(), CURTIME(1), CURRENT_TIME, UTC_TIME(4)"
+    );
+    let types = |dialect, version| -> Vec<(DataType, bool)> {
+        plan_at(text, dialect, version)
+            .unwrap()
+            .schema()
+            .columns
+            .into_iter()
+            .map(|column| (column.ty.data_type, column.ty.nullable))
+            .collect()
+    };
+    let expected = |now: fn(u8) -> DataType, localtime: DataType| {
+        [
+            now(0),
+            now(3),
+            now(6),
+            localtime,
+            DataType::DateTime { fraction: 2 },
+            DataType::DateTime { fraction: 0 },
+            DataType::Date,
+            DataType::Date,
+            DataType::Date,
+            DataType::Time { fraction: 1 },
+            DataType::Time { fraction: 0 },
+            DataType::Time { fraction: 4 },
+        ]
+        .into_iter()
+        .map(|data_type| (data_type, false))
+        .collect::<Vec<_>>()
+    };
+    let datetime: fn(u8) -> DataType = |fraction| DataType::DateTime { fraction };
+    let timestamp: fn(u8) -> DataType = |fraction| DataType::Timestamp { fraction };
+    for (dialect, version) in [
+        (Dialect::MySql, Version::new(8, 4, 0)),
+        (Dialect::MariaDb, Version::new(11, 6, 1)),
+    ] {
+        assert_eq!(
+            types(dialect, version),
+            expected(datetime, DataType::DateTime { fraction: 0 })
+        );
+    }
+    assert_eq!(
+        types(Dialect::MariaDb, Version::new(11, 6, 2)),
+        expected(datetime, DataType::Time { fraction: 0 })
+    );
+    assert_eq!(
+        types(Dialect::MariaDb, Version::new(11, 7, 1)),
+        expected(timestamp, DataType::Time { fraction: 0 })
+    );
+    // An argument the servers refuse leaves the type unknown.
+    assert_eq!(
+        column_types("SELECT NOW(7), CURDATE(1)", Dialect::MySql),
+        [(DataType::Unknown, true), (DataType::Unknown, true)]
+    );
+}

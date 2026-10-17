@@ -918,7 +918,7 @@ fn unix_timestamp_keeps_the_range_of_the_input() {
         mysql_8_0,
         output(mariadb_11_8),
     );
-    assert_eq!(sql.matches("LOCALTIMESTAMP()").count(), 4, "{sql}");
+    assert_eq!(sql.matches("LOCALTIMESTAMP()").count(), 2, "{sql}");
     assert_eq!(rules, ["function.unix-timestamp", "function.now"]);
 }
 
@@ -1906,7 +1906,7 @@ fn intervals_of_values_read_otherwise_are_errors() {
         ("'2024-05-06' + INTERVAL 1 MICROSECOND", "interval.string"),
         ("'2024-05-06' + INTERVAL 1.5 SECOND", "interval.string"),
         // An operand of unknown type.
-        ("NOW() + INTERVAL 1 DAY", "interval.unknown"),
+        ("IFNULL(s, dd) + INTERVAL 1 DAY", "interval.unknown"),
         // Years that may reach 2^31.
         ("dd + INTERVAL 4294967297 YEAR", "interval.year"),
         ("dd + INTERVAL n YEAR", "interval.year"),
@@ -1985,7 +1985,10 @@ fn timestampdiff_keeps_its_form_and_refuses_values_read_otherwise() {
             "TIMESTAMPDIFF(DAY, 20240506.1234567, dd)",
             "timestampdiff.operand",
         ),
-        ("TIMESTAMPDIFF(DAY, NOW(), dd)", "timestampdiff.unknown"),
+        (
+            "TIMESTAMPDIFF(DAY, IFNULL(s, dd), dd)",
+            "timestampdiff.unknown",
+        ),
     ];
     for (written, rule) in cases {
         let text = format!("SELECT {written} FROM d, g");
@@ -2001,4 +2004,43 @@ fn timestampdiff_keeps_its_form_and_refuses_values_read_otherwise() {
             "{written}"
         );
     }
+}
+
+#[test]
+fn the_current_date_and_time_move_and_count_alike() {
+    let mariadb_11_8 = input_at(Dialect::MariaDb, 11, 8, 0);
+    let text = concat!(
+        "SELECT NOW() + INTERVAL 1 DAY AS a, CURDATE() - INTERVAL 1 HOUR AS b, ",
+        "TIMESTAMPDIFF(DAY, dd, CURRENT_DATE) AS c, UTC_TIMESTAMP(3) + INTERVAL 1 SECOND AS e, ",
+        "CURTIME() + INTERVAL 1 MINUTE AS g, TIMESTAMPDIFF(SECOND, SYSDATE(), dt) AS h FROM d, g"
+    );
+    for (input, output) in [
+        (mysql(), mariadb()),
+        (mariadb(), mysql()),
+        (mariadb_11_8, mysql()),
+    ] {
+        let (sql, rules) = transpiled(text, input, self::output(output));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{rules:?}");
+    }
+    // A time of day moved by days: on the current date from MySQL 8.0.28,
+    // the hours added in MariaDB.
+    let (sql, rules) = transpiled(
+        "SELECT CURTIME() + INTERVAL 1 DAY AS a",
+        mysql_at(8, 4, 0),
+        output(mariadb()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT TIMESTAMP(CURRENT_DATE, CURTIME()) + INTERVAL 1 DAY AS a"
+    );
+    assert_eq!(rules, ["interval.time"]);
+    assert_eq!(
+        errors(
+            "SELECT CURTIME() + INTERVAL 1 DAY",
+            mariadb(),
+            output(mysql_at(8, 4, 0))
+        ),
+        ["interval.time"]
+    );
 }

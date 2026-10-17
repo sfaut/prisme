@@ -121,7 +121,7 @@ cases:
     refused: interval.microseconds
   # An operand of unknown type.
   - from: mariadb
-    sql: SELECT NOW() + INTERVAL 1 DAY
+    sql: SELECT IFNULL(s, d) + INTERVAL 1 DAY FROM interval_values
     refused: interval.unknown
   # TIMESTAMPDIFF: dates, times on the current date, numbers and plain strings
   # read alike.
@@ -151,5 +151,31 @@ cases:
     sql: SELECT TIMESTAMPDIFF(DAY, s, d) FROM interval_values
     refused: timestampdiff.operand
   - from: mysql
-    sql: SELECT TIMESTAMPDIFF(DAY, NOW(), d) FROM interval_values
+    sql: SELECT TIMESTAMPDIFF(DAY, IFNULL(s, d), d) FROM interval_values
     refused: timestampdiff.unknown
+  # The current date and time, of their types: moved and counted alike, the
+  # instants compared by their types.
+  - from: mysql
+    compare: types
+    sql: >-
+      SELECT NOW() + INTERVAL 1 DAY AS a, UTC_TIMESTAMP(3) - INTERVAL 1 SECOND AS b,
+      TIMESTAMPDIFF(SECOND, SYSDATE(), dt) AS c, CURTIME() + INTERVAL 1 MINUTE AS e
+      FROM interval_values ORDER BY id
+  - from: mariadb
+    compare: types
+    sql: >-
+      SELECT NOW() + INTERVAL 1 DAY AS a, UTC_TIMESTAMP(3) - INTERVAL 1 SECOND AS b,
+      TIMESTAMPDIFF(SECOND, SYSDATE(), dt) AS c, CURTIME() + INTERVAL 1 MINUTE AS e
+      FROM interval_values ORDER BY id
+  - from: mysql
+    inputs: mysql >= 8.0.28
+    compare: types
+    sql: SELECT CURTIME() + INTERVAL 1 DAY AS a
+  - from: mysql
+    sql: >-
+      SELECT CURDATE() - INTERVAL 1 HOUR AS a, TIMESTAMPDIFF(DAY, d, CURRENT_DATE) AS b,
+      CURRENT_DATE + INTERVAL 1 MONTH AS c FROM interval_values ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT CURDATE() - INTERVAL 1 HOUR AS a, TIMESTAMPDIFF(DAY, d, CURRENT_DATE) AS b,
+      CURRENT_DATE + INTERVAL 1 MONTH AS c FROM interval_values ORDER BY id

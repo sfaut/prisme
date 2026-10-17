@@ -1,8 +1,9 @@
 //! Function calls of the MySQL family in the plan: scalar functions, built-in
 //! or stored in the database (typed as unknown until the types of the
-//! function catalog), aggregate functions (read by the aggregation of their
-//! block) and window functions (read by the window node of their block),
-//! with their named windows.
+//! function catalog, those of the current date and time aside, `now`),
+//! aggregate functions (read by the aggregation of their block) and window
+//! functions (read by the window node of their block), with their named
+//! windows.
 
 use prisme_plan::{
     AggregateCall, Direction, Expr, Frame, FrameBound, FunctionCall, Ident, Nulls, OnEmpty,
@@ -12,7 +13,7 @@ use prisme_types::{DataType, Type};
 
 use super::group::Clause;
 use super::scope::Scope;
-use super::{BuildError, Builder, functions, same_name};
+use super::{BuildError, Builder, functions, now, same_name};
 use crate::Dialect;
 use crate::builtins::{self, Kind};
 use crate::sql::ast;
@@ -60,13 +61,18 @@ impl Builder<'_> {
             [qualifier, function] => (Some(qualifier.clone()), function.clone()),
             parts => (None, parts[parts.len() - 1].clone()),
         };
+        let ty = kind
+            .is_some()
+            .then(|| now::now_type(&name, &args, self.dialect, self.version))
+            .flatten()
+            .unwrap_or_else(|| Type::nullable(DataType::Unknown));
         let call = FunctionCall {
             qualifier,
             name: function,
             args,
             stored: call.stored,
         };
-        Ok(Expr::function(call, Type::nullable(DataType::Unknown)).with_span(span))
+        Ok(Expr::function(call, ty).with_span(span))
     }
 
     /// Call to an aggregate function, read by the aggregation of its block.
