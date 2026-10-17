@@ -102,6 +102,8 @@ This document keeps track of the reasoning: what was kept, dropped or postponed,
     - completion that understands the query (aliases, tables of the `FROM`, columns of the right table), as a completion source specific to Prisme;
     - highlighting and completion of the other languages (Tutorial D, PRQL, Kusto).
 
+29. **Grid filter when the columns change**: settled. The user filter is either global (all columns) or targeted (one column). When the columns of a grid change within the same tab (practically unreachable: a new query opens a new tab, and a resumed session keeps its query), the text of the user filter stays, the targeted filter goes back to global and the sort is reset. Decision: keep this behaviour, no need to reopen it.
+
 ### Security
 
 23. **Master encryption key**: settled, `prisme.key` key file in the data folder (see `docs/V1.md`, section 2.8).
