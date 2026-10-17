@@ -690,6 +690,55 @@ fn now_keeps_the_datetime_of_mysql() {
 }
 
 #[test]
+fn calls_without_parentheses_keep_their_form() {
+    let text = concat!(
+        "SELECT CURRENT_DATE AS a, current_time AS b, CURRENT_TIMESTAMP AS c, LOCALTIME AS d, ",
+        "LOCALTIMESTAMP AS e, UTC_DATE AS f, UTC_TIME AS g, UTC_TIMESTAMP AS h, CURRENT_USER AS i, ",
+        "CURRENT_DATE() AS j"
+    );
+    for (input, target) in [
+        (mysql(), mariadb()),
+        (mariadb(), mysql()),
+        (mysql(), mysql()),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{rules:?}");
+    }
+    // A rule keeps the form, the column its name.
+    let mariadb_11_8 = OutputDialect {
+        dialect: Dialect::MariaDb,
+        version: Version::new(11, 8, 0),
+        mode: SqlMode::default(),
+    };
+    let (sql, rules) = transpiled("SELECT LOCALTIME, NOW() AS n", mysql(), mariadb_11_8);
+    assert_eq!(
+        sql,
+        "SELECT LOCALTIMESTAMP AS `LOCALTIME`, LOCALTIMESTAMP() AS n"
+    );
+    assert_eq!(
+        rules,
+        ["function.now", "column.implicit-name", "function.now"]
+    );
+    let input = InputDialect {
+        dialect: Dialect::MariaDb,
+        version: Version::new(11, 8, 0),
+    };
+    let (sql, rules) = transpiled("SELECT LOCALTIME AS l", input, output(mysql()));
+    assert_eq!(sql, "SELECT CURRENT_TIME AS l");
+    assert_eq!(rules, ["function.now"]);
+    // A quoted name is a column.
+    let text = "SELECT `localtime` FROM (SELECT 1 AS `localtime`) AS q";
+    let (sql, rules) = transpiled(text, mysql(), output(mariadb()));
+    assert_eq!(sql, text);
+    assert!(rules.is_empty(), "{rules:?}");
+    assert_eq!(
+        errors("SELECT CURRENT_ROLE AS r", mariadb(), output(mysql())),
+        ["function.untranslatable"]
+    );
+}
+
+#[test]
 fn pad_keeps_its_result_with_an_empty_pad() {
     let mysql_out = |major, minor, patch| OutputDialect {
         dialect: Dialect::MySql,

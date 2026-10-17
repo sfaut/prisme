@@ -321,12 +321,15 @@ keywords:
     - VARCHARACTER
 
   # Reserved words that designate a value (`x = NULL`, `d - CURRENT_DATE`):
-  # in an expression, they play the role of an operand.
+  # in an expression, they play the role of an operand. Those other than
+  # `NULL`, `TRUE` and `FALSE` call a function without parentheses, as
+  # `CURRENT_DATE()` does (measured on MariaDB 10.6.28 and 11.8.9).
   literals:
     - "NULL"
     - "TRUE"
     - "FALSE"
     - CURRENT_DATE
+    - CURRENT_ROLE
     - CURRENT_TIME
     - CURRENT_TIMESTAMP
     - CURRENT_USER

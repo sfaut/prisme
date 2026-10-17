@@ -155,6 +155,15 @@ pub(crate) fn is_structural_keyword(word: &str, dialect: Dialect) -> bool {
             .contains(&word.to_ascii_uppercase())
 }
 
+/// Tells whether the unquoted `word` calls a built-in function without
+/// parentheses in the dialect (`CURRENT_DATE`, `LOCALTIME`): a word that
+/// designates a value, `NULL`, `TRUE` and `FALSE` aside.
+pub(crate) fn is_call_without_parentheses(word: &str, dialect: Dialect) -> bool {
+    let upper = word.to_ascii_uppercase();
+    !matches!(upper.as_str(), "NULL" | "TRUE" | "FALSE")
+        && index_of(dialect).values.contains(&upper)
+}
+
 /// Lookup tables of a dialect's file, built once: a word is found by its name
 /// in capitals, instead of a comparison with each entry of the file.
 #[derive(Default)]

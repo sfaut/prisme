@@ -405,6 +405,18 @@ fn a_reserved_word_is_a_name_only_between_backticks_or_after_a_dot() {
 }
 
 #[test]
+fn a_word_of_value_calls_its_function_without_parentheses() {
+    assert_eq!(expr("CURRENT_DATE - 1"), "(- (current_date) 1)");
+    assert_eq!(expr("LOCALTIME"), "(localtime)");
+    assert_eq!(expr("localtimestamp(3)"), "(localtimestamp 3)");
+    assert_eq!(expr("`localtime`"), "localtime");
+    assert_eq!(expr("t.localtime"), "t.localtime");
+    // `CURRENT_ROLE` without parentheses in MariaDB only.
+    assert_eq!(expr_with("CURRENT_ROLE", &mariadb()), "(current_role)");
+    assert_eq!(expr("CURRENT_ROLE"), "CURRENT_ROLE");
+}
+
+#[test]
 fn constructs_not_read_yet_are_explicit_errors() {
     for (text, faulty) in [
         ("SELECT CAST(a AS CHAR) FROM t", "CAST"),

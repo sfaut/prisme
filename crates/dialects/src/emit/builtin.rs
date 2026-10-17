@@ -17,6 +17,7 @@ use prisme_plan::{Expr, FunctionCall, Ident, Span};
 
 use super::Emitter;
 use crate::builtins::{self, Kind, Rule, Translation};
+use crate::keywords;
 use crate::report::StepKind;
 
 /// How the name of a call is written.
@@ -28,6 +29,8 @@ pub(super) enum NameForm {
     Spaced,
     /// `` `name`( ``.
     Quoted,
+    /// `name` without parentheses (`CURRENT_DATE`, `LOCALTIME`).
+    Bare,
 }
 
 /// How the output writes a built-in function of the input.
@@ -211,6 +214,10 @@ impl Emitter<'_> {
         if name.quoted {
             return NameForm::Quoted;
         }
+        // The call is its name alone.
+        if span.is_some_and(|span| span.end - span.start == name.value.len()) {
+            return NameForm::Bare;
+        }
         // A space or a comment between the name and `(`.
         let spaced = span.is_some_and(|span| {
             let rest = self.source.text.get(span.start..).unwrap_or_default();
@@ -262,15 +269,23 @@ impl Emitter<'_> {
 
     /// Writes `name(args)` in `form`.
     pub(super) fn call_text(&mut self, name: &str, form: NameForm, args: &[Expr]) {
+        if form == NameForm::Bare
+            && args.is_empty()
+            && keywords::is_call_without_parentheses(name, self.output.dialect)
+        {
+            self.write(name);
+            return;
+        }
         self.call_name(name, form);
         self.expr_list(args);
         self.write(")");
     }
 
-    /// Writes `name(` in `form`.
+    /// Writes `name(` in `form`; `name(` for a name written without
+    /// parentheses.
     pub(super) fn call_name(&mut self, name: &str, form: NameForm) {
         match form {
-            NameForm::Plain => self.write(name),
+            NameForm::Plain | NameForm::Bare => self.write(name),
             NameForm::Spaced => {
                 self.write(name);
                 self.write(" ");

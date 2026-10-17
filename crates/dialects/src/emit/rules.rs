@@ -172,13 +172,18 @@ impl Emitter<'_> {
         let upper = call.name.value.to_ascii_uppercase();
         let localtime = upper == "LOCALTIME";
         let target = self.target();
+        // A call written without parentheses keeps that form.
+        let form = match self.form(&call.name, expr.span) {
+            NameForm::Bare => NameForm::Bare,
+            _ => NameForm::Plain,
+        };
         if self.output.dialect == Dialect::MySql {
             if localtime && self.input_has(Construct::TimeLocaltime) {
                 let message = format!(
                     "`LOCALTIME` of MariaDB is the time of day: `CURRENT_TIME` in {target}"
                 );
                 self.step(rule.id(), StepKind::Rewrite, message, expr.span);
-                self.call_text("CURRENT_TIME", NameForm::Plain, &call.args);
+                self.call_text("CURRENT_TIME", form, &call.args);
             } else {
                 self.input_call(expr, call);
             }
@@ -198,7 +203,7 @@ impl Emitter<'_> {
                 "{target} gives `{upper}` another type: `LOCALTIMESTAMP` gives the same instant as a `DATETIME`"
             );
             self.step(rule.id(), StepKind::Rewrite, message, expr.span);
-            self.call_text("LOCALTIMESTAMP", NameForm::Plain, &call.args);
+            self.call_text("LOCALTIMESTAMP", form, &call.args);
             return;
         }
         let digits = match call.args.as_slice() {

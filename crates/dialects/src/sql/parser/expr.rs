@@ -13,11 +13,14 @@
 //! Binary operators associate to the left (`a - b - c` is `(a - b) - c`,
 //! `a = b = c` is `(a = b) = c`).
 
-use prisme_plan::Span;
+use prisme_plan::{Ident, Span};
 
 use super::{ParseError, Parser};
+use crate::keywords;
 use crate::lexer::{Punct, TokenKind};
-use crate::sql::ast::{BinaryOp, Expr, ExprKind, Literal, ObjectName, Query, UnaryOp};
+use crate::sql::ast::{
+    BinaryOp, Expr, ExprKind, FunctionCall, Literal, ObjectName, Query, UnaryOp,
+};
 
 impl Parser<'_> {
     /// Expression.
@@ -467,8 +470,8 @@ impl Parser<'_> {
         Ok(None)
     }
 
-    /// Expression that starts with a word: a keyword literal, a column, or a
-    /// construct not read yet.
+    /// Expression that starts with a word: a keyword literal, a call with or
+    /// without parentheses, a column, or a construct not read yet.
     fn word_expr(&mut self) -> Result<Expr, ParseError> {
         let token = self.peek().cloned().expect("a word comes next");
         let keyword_literal = [
@@ -527,6 +530,26 @@ impl Parser<'_> {
         }
         if self.at_call() {
             return self.call();
+        }
+        if token.kind == TokenKind::Word
+            && keywords::is_call_without_parentheses(token.text(self.text), self.options.dialect)
+        {
+            // `CURRENT_DATE`, `LOCALTIME`: a call without parentheses.
+            self.advance();
+            let call = FunctionCall {
+                name: ObjectName {
+                    parts: vec![Ident::new(token.text(self.text))],
+                    span: token.span,
+                },
+                args: Vec::new(),
+                star: false,
+                distinct: false,
+                order_by: Vec::new(),
+                separator: None,
+                stored: false,
+                over: None,
+            };
+            return Ok(leaf(ExprKind::Function(Box::new(call)), token.span));
         }
         let name: ObjectName = self.object_name(3)?;
         let span = name.span;
