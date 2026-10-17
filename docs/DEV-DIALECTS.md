@@ -101,7 +101,7 @@ To settle before step 1, as the types and the plan depend on them:
 
 - `crates/types`: integer types (sizes, signed or not), exact decimal, floating point, string, binary, boolean, date and time types, JSON, unknown type; nullability. Conversion from the column types the MySQL connector reads (`crates/connectors/src/mysql/column_type.rs`).
 - `crates/plan`, the nodes the DML needs: `Scan`, `Values`, `Filter`, `Project`, `Extend`, `Aggregate`, `Sort`, `Limit` (count and offset), `Distinct`, the joins (inner, left, right, cross; full later), the six set operations, common table expressions (recursive included), window functions; `Insert`, `Update`, `Delete` at the root; for step 8, the relations of the catalog of Prisme, read by `Scan`, and the session nodes (`Use`, `Set`, `Explain`). Expressions: column references, literals, operators with explicit semantics (comparison equality and identity equality), calls to functions of the catalog, `CASE`, `CAST`, subqueries (scalar, `IN`, `EXISTS`).
-- Origin of the nodes (section 2.3); output schema of each node, with types left unknown when the catalog does not give them (point 44).
+- Origin of the nodes (section 2.3); output schema of each node. The column types come from the catalog of the connection, read on demand for the tables of the query, just before transpiling, on the connection of the session (`SHOW COLUMNS` also sees its temporary tables); the type of an expression the plan cannot derive is asked to the server through the metadata of a prepared statement, without running it (point 44).
 - Tests: construction, output schemas, nullability rules decided in step 0.
 - Done when the plan represents by hand the queries of step 4.
 
@@ -240,7 +240,7 @@ Recorded in `docs/QUESTIONS.md`, section 5, "Dialects and transpilation":
 - 41: executable comments of MySQL and MariaDB, decided: transpiled as far as possible, otherwise reported;
 - 42: constructs with no effect on the result (hints, options), decided: left out towards another dialect, reported;
 - 43: version of an input dialect, decided: chosen by the user, from the registry of the versions;
-- 44: types when the catalog does not give them, decided for the user variables (`SELECT @x` before running), leads to confirm for the other cases;
+- 44: types when the catalog does not give them, decided: columns read on demand, prepared statement metadata, user variables read with `SELECT @x` before running;
 - 45: PRQL s-strings, decided: read by the parser of the output dialect;
 - 46: `target` of the PRQL header, decided: error if it differs from the engine of the connection;
 - 47: what Ctrl+Enter and Ctrl+Shift+Enter run in a PRQL text, decided: the relation under the cursor with its dependencies, every relation;
