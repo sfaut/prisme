@@ -69,14 +69,14 @@ Each rule of translation (structural rewrite or function of the catalog) has a s
 
 Each node and each expression of the plan keeps its **origin**: its position in the input (for the audit, the comments and the errors) and the syntactic form written by the user when several forms have the same meaning (`VALUES ROW (...)` or `VALUES (...)`, `<=>` or `IS NOT DISTINCT FROM`, `LIMIT a, b` or `LIMIT b OFFSET a`, alias with or without `AS`). The emitter writes the original form when the output dialect accepts it; otherwise it writes another form and records a step in the report. Hence:
 
-- a query transpiled to its own dialect comes out with its forms, and its report is empty;
+- a query transpiled to its own dialect comes out with its forms, and its report holds only the rewrites for optimisation;
 - every difference between the input and the output is a step of the report, none is silent.
 
-Proposal to confirm **[to decide]** (`docs/QUESTIONS.md`, point 39).
+Decided (point 39), with a reservation: the principle can evolve. A rewrite for optimisation (a range in place of a function, to keep the use of an index) changes the form even towards the same dialect; it is then a step of the report, like any other difference.
 
 ### 2.4 Invariants, checked at each step
 
-1. **Round trip**: for each dialect and each query of the corpus, parsing the output again gives the same plan (fixpoint), and the report of a transpilation to the same dialect is empty.
+1. **Round trip**: for each dialect and each query of the corpus, parsing the output again gives the same plan (fixpoint), and the report of a transpilation to the same dialect holds only rewrites for optimisation.
 2. **Same results**: on a real server, the query and its transpilation return the same rows (conformance suite).
 3. **Comments**: the same comments, with the same text, before and after.
 4. **No silent approximation**: every difference between input and output comes from an identified rule, with its test and its line in the report.
@@ -91,7 +91,7 @@ To settle before step 1, as the types and the plan depend on them:
 
 - NULL, points 1 to 6 of `docs/FEDERATED.md`, section 7 (`docs/QUESTIONS.md`, point 12): the two equalities, three-valued logic, joins, set operators, aggregation, sorting;
 - the internal types of the v1 (`docs/FEDERATED.md`, section 6): integers (unsigned `BIGINT` included), exact decimals, strings, dates, JSON;
-- the origin of the plan nodes (point 39), the statements outside the DML (point 40), the version of an input dialect (point 43).
+- the statements outside the DML (point 40), the version of an input dialect (point 43).
 
 The PRQL points (45 to 47) wait for step 7.
 
@@ -205,7 +205,7 @@ PostgreSQL, SQLite and DuckDB (connector, parser, emitter, catalog for each), DD
 
 Recorded in `docs/QUESTIONS.md`, section 5, "Dialects and transpilation":
 
-- 39: origin of the plan nodes (position and syntactic form);
+- 39: origin of the plan nodes (position and syntactic form), decided, may evolve;
 - 40: statements outside the DML that the sessions accept today;
 - 41: executable comments of MySQL and MariaDB;
 - 42: constructs with no effect on the result (hints, options);
