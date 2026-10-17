@@ -129,6 +129,8 @@ Done for the constructs (`crates/dialects/src/versions.rs`, `crates/dialects/ver
 - Executable comments (`/*! ... */`, `/*!80000 ... */`, `/*M! ... */`) are code for the server, depending on its version. Prisme resolves their condition (version of the server towards the same dialect, version of the input dialect otherwise, point 43): the content is then code, given to the parser and translated with the rest of the query, or a plain comment. A content that cannot be translated is reported (point 41).
 - Tests: units, oracle (tokens of `sqlparser-rs` on the corpus, listed differences aside), performance budget.
 
+Done (`crates/dialects/src/lexer.rs`): tokens with their position in bytes, line and column computed for the messages (`LineIndex`); comments as tokens; SQL mode read from `@@sql_mode` (`SqlMode`, combination modes expanded); executable comments resolved against the version given by the caller, six-digit versions read as MySQL 8.0.34 and later do (six digits followed by a whitespace) and as MariaDB does (six digits). Oracle: the tokens of a corpus cut like those of `sqlparser-rs`; listed difference: an unquoted user variable keeps its dots (`@a.b`), as in MySQL. Budget: 1 MB on a single line, about 240,000 tokens, in a fraction of a second.
+
 ### Step 4. First vertical slice: the example of the dialects
 
 Goal: `WITH ds (c) AS (VALUES ROW (123), ROW (234), ROW (345)) SELECT * FROM ds`, written in MySQL, runs on MariaDB as `WITH ds (c) AS (VALUES (123), (234), (345)) SELECT * FROM ds`, and the report shows the rewrite with its position.

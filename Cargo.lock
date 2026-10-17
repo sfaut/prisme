@@ -1991,6 +1991,7 @@ dependencies = [
 name = "prisme-dialects"
 version = "0.2.0"
 dependencies = [
+ "prisme-plan",
  "prisme-splitter",
  "rusqlite",
  "serde",

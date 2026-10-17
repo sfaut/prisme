@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+prisme-plan = { path = "../plan" }
 prisme-splitter = { path = "../splitter" }
 serde = { version = "1.0.229", features = ["derive"] }
 sqlparser = { version = "0.63.0", features = ["visitor"] }

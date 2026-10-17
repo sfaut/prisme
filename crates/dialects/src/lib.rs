@@ -5,8 +5,10 @@
 //! (`classify` module), the beautifier (`beautify` module), the keywords of
 //! each dialect (`keywords` module, `keywords/*.yaml` files), the position
 //! of syntax errors (`syntax` module) and the registry of the versions of each
-//! dialect (`versions` module, `versions/*.yaml` files). The function catalog
-//! and the emitters per dialect will come with the translation.
+//! dialect (`versions` module, `versions/*.yaml` files). The transpilation
+//! is being written: the lexer of the MySQL family (`lexer` module); the
+//! parsers, the plan builders, the function catalog and the emitters per
+//! dialect come next (`docs/DEV-DIALECTS.md`).
 
 mod alias;
 pub mod analysis;
@@ -15,6 +17,7 @@ pub mod classify;
 mod functions;
 pub mod keywords;
 mod layout;
+pub mod lexer;
 pub mod limit;
 mod offsets;
 mod parse;
