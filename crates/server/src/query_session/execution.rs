@@ -87,7 +87,7 @@ impl Session<'_> {
         database: &Option<String>,
     ) -> Result<(), SessionStopped> {
         let _permit = permits.acquire().await.map_err(|_| SessionStopped)?;
-        if self.cancellation.is_cancelled(query) {
+        if self.is_cancelled(query) {
             return self.outbox.error(Some(query), CANCELLED.to_string()).await;
         }
         self.outbox.send(ServerMessage::Started { query }).await?;
@@ -170,9 +170,9 @@ impl Session<'_> {
 
         let started = Instant::now();
         let connection_id = connection.id();
-        let _running = self.cancellation.track(query, connection_id);
+        let _running = self.cancellation.track(self.batch, query, connection_id);
         // Stop requested while the connection was opening: the query does not start.
-        if self.cancellation.is_cancelled(query) {
+        if self.is_cancelled(query) {
             self.outbox
                 .error(Some(query), CANCELLED.to_string())
                 .await?;
@@ -220,7 +220,7 @@ impl Session<'_> {
                     return Ok(None);
                 }
             };
-            if self.cancellation.is_cancelled(query) {
+            if self.is_cancelled(query) {
                 // The server has already received KILL QUERY: reading stops.
                 stream.discard().await;
                 self.outbox
@@ -264,10 +264,15 @@ impl Session<'_> {
         }))
     }
 
+    /// Has stopping the query `query` of this batch been requested?
+    fn is_cancelled(&self, query: u32) -> bool {
+        self.cancellation.is_cancelled(self.batch, query)
+    }
+
     /// Message of a failed query: "interrupted" if the stop was requested (the
     /// server's error is then that of `KILL QUERY`).
     pub(super) fn failure(&self, query: u32, error: mysql::MysqlError) -> String {
-        if self.cancellation.is_cancelled(query) {
+        if self.is_cancelled(query) {
             CANCELLED.to_string()
         } else {
             error.to_string()

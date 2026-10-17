@@ -313,7 +313,14 @@ async fn read_messages(
         };
         match serde_json::from_str::<ClientMessage>(text.as_str()) {
             Ok(ClientMessage::Run(request)) => {
-                if requests.send(SessionRequest::Run(request)).await.is_err() {
+                if requests
+                    .send(SessionRequest::Run {
+                        batch: cancellation.receive_batch(),
+                        request,
+                    })
+                    .await
+                    .is_err()
+                {
                     break;
                 }
             }

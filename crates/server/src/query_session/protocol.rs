@@ -24,8 +24,14 @@ pub(crate) enum ClientMessage {
 
 /// Request passed to the session by the reading of the client's messages.
 pub(crate) enum SessionRequest {
-    /// Run queries.
-    Run(QueryRequest),
+    /// Run queries, numbered by the relay when it received them (see
+    /// `Cancellation::receive_batch`).
+    Run {
+        /// Number of the batch.
+        batch: u64,
+        /// Queries to run.
+        request: QueryRequest,
+    },
     /// Change the current database.
     Use(String),
 }

@@ -33,6 +33,7 @@ pub(super) async fn serve(
         state: &state,
         user_id,
         cancellation: &cancellation,
+        batch: 0,
     };
     let Some(mut connection) = session.open().await else {
         return;
@@ -48,8 +49,8 @@ pub(super) async fn serve(
                 break;
             }
             let handled = match request {
-                SessionRequest::Run(request) => {
-                    cancellation.reset();
+                SessionRequest::Run { batch, request } => {
+                    let session = Session { batch, ..session };
                     session.handle(&mut connection, dialect, request).await
                 }
                 SessionRequest::Use(database) => {
@@ -65,7 +66,10 @@ pub(super) async fn serve(
 }
 
 /// What the queries need while running.
+#[derive(Clone, Copy)]
 pub(super) struct Session<'a> {
+    /// Number of the batch the session runs: its stops are looked up under it.
+    pub(super) batch: u64,
     /// Queue of the messages to the client.
     pub(super) outbox: &'a Outbox,
     /// Connection settings, for the extra connections and the interruptions.

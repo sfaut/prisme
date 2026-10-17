@@ -150,17 +150,22 @@ async fn cancels_one_query_or_the_whole_batch() {
         init_statements: Vec::new(),
     };
     let cancellation = super::Cancellation::default();
-    cancellation.cancel_query(&target, 1).await;
-    assert!(cancellation.is_cancelled(1));
-    assert!(!cancellation.is_cancelled(0));
 
+    // A stop sent right after its batch, before the batch starts, reaches it.
+    let first = cancellation.receive_batch();
     cancellation.cancel(&target).await;
-    assert!(cancellation.is_cancelled(0));
+    assert!(cancellation.is_cancelled(first, 0));
 
-    // New batch: no stop anymore.
-    cancellation.reset();
-    assert!(!cancellation.is_cancelled(0));
-    assert!(!cancellation.is_cancelled(1));
+    // A batch received after the stop is not affected.
+    let second = cancellation.receive_batch();
+    assert!(!cancellation.is_cancelled(second, 0));
+
+    // A stop of one query reaches that query of the last batch only.
+    cancellation.cancel_query(&target, 1).await;
+    assert!(cancellation.is_cancelled(second, 1));
+    assert!(!cancellation.is_cancelled(second, 0));
+    let third = cancellation.receive_batch();
+    assert!(!cancellation.is_cancelled(third, 1));
 }
 
 #[test]
