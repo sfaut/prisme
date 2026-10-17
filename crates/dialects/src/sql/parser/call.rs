@@ -2,16 +2,19 @@
 //! (`COUNT(*)`, `DISTINCT`, `GROUP_CONCAT(... ORDER BY ... SEPARATOR ...)`),
 //! window functions with their window (`OVER`), and the `WINDOW` clause.
 //!
-//! The name of a built-in aggregate function is that function only when
-//! `(` follows it without space: `SUM (a)` calls a stored function named
-//! `SUM`, and `COUNT (*)` is a syntax error, as on the servers. The functions
-//! whose arguments have a syntax of their own (`CAST(a AS CHAR)`,
-//! `TRIM(LEADING ...)`, `DATE_ADD(d, INTERVAL ...)`...) are read in a later
-//! increment of step 5.
+//! A call is to a built-in function of the dialect in its version, or to a
+//! function stored in the database (reference file of the dialect,
+//! `builtins` module): the names of some built-in functions call a stored
+//! function when a space separates them from `(` (`SUM (a)`, so `COUNT (*)`
+//! is a syntax error) or when written between backticks (`` `LEFT`(a) ``),
+//! as on the servers. The functions whose arguments have a syntax of their
+//! own (`CAST(a AS CHAR)`, `TRIM(LEADING ...)`, `DATE_ADD(d, INTERVAL
+//! ...)`...) are read in a later increment of step 5.
 
 use prisme_plan::{FrameUnits, Span};
 
 use super::{ParseError, Parser};
+use crate::builtins;
 use crate::lexer::{Punct, TokenKind};
 use crate::sql::ast::{
     AGGREGATES, Expr, ExprKind, Frame, FrameBound, FunctionCall, NamedWindow, ObjectName,
@@ -78,14 +81,12 @@ impl Parser<'_> {
             }
         };
         let upper = name.parts[name.parts.len() - 1].value.to_ascii_uppercase();
-        let qualified = name.parts.len() > 1;
-        if !qualified && SPECIAL_SYNTAX.contains(&upper.as_str()) {
+        let stored = self.stored(&name, &upper);
+        if !stored && SPECIAL_SYNTAX.contains(&upper.as_str()) {
             return Err(self.unsupported(&format!("`{upper}`"), name.span));
         }
-        let open = self.expect_punct(Punct::LeftParen)?;
-        let touching = name.span.end == open.start;
-        let builtin_aggregate = !qualified && AGGREGATES.contains(&upper.as_str());
-        let aggregate = builtin_aggregate && touching;
+        self.expect_punct(Punct::LeftParen)?;
+        let aggregate = !stored && AGGREGATES.contains(&upper.as_str());
         let mut call = FunctionCall {
             name,
             args: Vec::new(),
@@ -93,7 +94,7 @@ impl Parser<'_> {
             distinct: false,
             order_by: Vec::new(),
             separator: None,
-            stored: builtin_aggregate && !touching,
+            stored,
             over: None,
         };
         if aggregate {
@@ -114,6 +115,9 @@ impl Parser<'_> {
             return Err(self.unsupported("`WITHIN GROUP`", self.here()));
         }
         if self.at_keyword("OVER") && self.at_window_after_over() {
+            if call.stored {
+                return Err(self.expected("the end of the call of a stored function"));
+            }
             let over = self.expect_keyword("OVER")?;
             self.check(Construct::WindowFunctions, over)?;
             call.over = Some(self.window()?);
@@ -122,6 +126,26 @@ impl Parser<'_> {
             kind: ExprKind::Function(Box::new(call)),
             span: self.span_from(start),
         })
+    }
+
+    /// Tells whether the call of `name`, `upper` in capitals, before `(`,
+    /// calls a function stored in the database: a qualified name, a name the
+    /// dialect does not know in its version, the name of a function of the
+    /// grammar between backticks (`` `LEFT`(a) ``), or followed by a space
+    /// (`NOW ()`) without the SQL mode `IGNORE_SPACE`.
+    fn stored(&self, name: &ObjectName, upper: &str) -> bool {
+        let [ident] = name.parts.as_slice() else {
+            return true;
+        };
+        let options = self.options;
+        let Some(builtin) = builtins::builtin(options.dialect, options.version, upper) else {
+            return true;
+        };
+        if ident.quoted {
+            return builtin.function.grammar;
+        }
+        let spaced = name.span.end != self.here().start;
+        spaced && builtin.function.touching && !options.mode.ignore_space
     }
 
     /// Tells whether a window follows `OVER`: `(` or a name. `OVER` is a

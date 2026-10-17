@@ -775,10 +775,17 @@ fn reads_the_function_calls_and_the_windows() {
         ("count(DISTINCT a, b)", "(count distinct a b)"),
         ("SUM(ALL a)", "(sum a)"),
         ("SUM (a)", "(stored sum a)"),
-        ("db.f(a, 1)", "(db.f a 1)"),
+        ("AVG (a)", "(avg a)"),
+        ("db.f(a, 1)", "(stored db.f a 1)"),
         ("LEFT(a, 1)", "(left a 1)"),
+        ("LEFT (a, 1)", "(left a 1)"),
+        ("`LEFT`(a, 1)", "(stored left a 1)"),
+        ("`ABS`(a)", "(abs a)"),
         ("NOW()", "(now)"),
-        ("f(a) + 1", "(+ (f a) 1)"),
+        ("NOW ()", "(stored now)"),
+        ("f(a) + 1", "(+ (stored f a) 1)"),
+        // `FORMAT_PICO_TIME` appeared in MySQL 8.0.16.
+        ("FORMAT_PICO_TIME(a)", "(format_pico_time a)"),
         (
             "GROUP_CONCAT(DISTINCT a ORDER BY b DESC SEPARATOR ';')",
             "(group_concat distinct a (order b) (separator ';'))",
@@ -798,6 +805,22 @@ fn reads_the_function_calls_and_the_windows() {
         assert_eq!(expr(text), expected, "{text}");
     }
     assert_eq!(error("SELECT COUNT (*)", &mysql()).1, "*");
+    let ignore_space = ParseOptions {
+        mode: SqlMode {
+            ignore_space: true,
+            ..SqlMode::default()
+        },
+        ..mysql()
+    };
+    assert_eq!(expr_with("SUM (a)", &ignore_space), "(sum a)");
+    assert_eq!(
+        expr_with("FORMAT_PICO_TIME(a)", &mysql_at(8, 0, 11)),
+        "(stored format_pico_time a)"
+    );
+    // MariaDB reads `RANK` followed by a space as a stored function.
+    assert_eq!(expr_with("RANK ()", &mariadb()), "(stored rank)");
+    assert_eq!(error("SELECT f(a) OVER ()", &mysql()).1, "OVER");
+    assert_eq!(error("SELECT RANK () OVER ()", &mariadb()).1, "OVER");
     assert_eq!(
         error("SELECT LAG(a) RESPECT NULLS OVER ()", &mysql()).1,
         "RESPECT"

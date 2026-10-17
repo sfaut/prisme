@@ -331,7 +331,7 @@ pub(crate) fn deserialize_version<'de, D: serde::Deserializer<'de>>(
 }
 
 /// Reads an optional version of a reference file.
-fn deserialize_optional_version<'de, D: serde::Deserializer<'de>>(
+pub(crate) fn deserialize_optional_version<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<Version>, D::Error> {
     deserialize_version(deserializer).map(Some)

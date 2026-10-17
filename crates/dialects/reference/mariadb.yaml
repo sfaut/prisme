@@ -1,9 +1,11 @@
 # MariaDB: what Prisme knows of the dialect, version by version.
 #
 # The only source of these facts, one file per dialect: the keywords (read by
-# the editor's highlighting, the beautifier and the parser) and the constructs
-# of the grammar whose availability depends on the version (read by the parser
-# and the emitter). Edited directly, embedded in the executable.
+# the editor's highlighting, the beautifier and the parser), the constructs of
+# the grammar whose availability depends on the version (read by the parser
+# and the emitter) and the built-in functions with their translation (read by
+# the parser, the plan builder and the emitter). Edited directly, embedded in
+# the executable.
 #
 # Versions: the file covers every version from `floor`, the first GA release
 # of MariaDB 10.6 (docs/QUESTIONS.md, point 51). A fact that depends on the version
@@ -17,7 +19,8 @@
 # of the engine.
 #
 # What is missing from this file is absent from MariaDB: the parser of the
-# MariaDB dialect refuses it (rule "each dialect stays in its domain").
+# MariaDB dialect refuses it (rule "each dialect stays in its domain"), and
+# reads a function name it does not list as a stored function.
 
 floor: "10.6.3"
 
@@ -370,3 +373,1018 @@ constructs:
   - id: offset_fetch
     since: "10.6.0"
     source: https://mariadb.com/kb/en/select-offset-fetch/
+
+# Built-in functions, by family, each family with the page of the manual that
+# describes it. Each function:
+#   - name: FORMAT_PICO_TIME   # name, in capitals
+#     since: "8.0.16"          # period of the function, when it depends on
+#     until: "9.0.0"           #   the version
+#     source: https://...      # document of that version that attests it
+#     grammar: true            # function of the grammar of the server: its
+#                              #   name between backticks calls a stored
+#                              #   function (`LEFT`(a)); without it, the
+#                              #   quoted name is the built-in function
+#     touching: true           # and so does a space before `(` (`NOW ()`),
+#                              #   unless the SQL mode IGNORE_SPACE is set
+#     mysql: same              # translation to MySQL, below
+#
+# Translation to MySQL, measured on the servers of `checked`:
+#   same               the function of the same name of MySQL gives the same
+#                      results (its availability comes from the reference
+#                      file of MySQL);
+#   { name: X }        another name, same arguments and results;
+#   { rule: id }       a rule of Prisme writes it (`emit::builtin`), each
+#                      with its test and its step in the report;
+#   { error: reason }  untranslatable, an explicit error.
+# Without translation, the function is absent from MySQL or not studied
+# yet: an explicit error.
+#
+# Types and values that differ only outside the domain of a function (an
+# invalid argument) are noted in a comment after the name.
+#
+# Left out: the functions of the versions newer than those of `checked`.
+# Also left out: MBRCOVEREDBY, ST_COLLECT, ST_GEOHASH, ST_ISVALID,
+# ST_LATFROMGEOHASH, ST_LONGFROMGEOHASH, ST_POINTFROMGEOHASH, ST_SIMPLIFY and
+# ST_VALIDATE, which the function reference of MariaDB gives as 11.8 but
+# MariaDB 11.8.9 lacks (measured).
+functions:
+  - family: Flow control
+    manual: https://mariadb.com/docs/server/reference/sql-functions/control-flow-functions
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: DECODE_ORACLE
+      - name: IF
+        grammar: true
+        mysql: same
+      - name: IFNULL
+        mysql: same
+      - name: NULLIF
+        mysql: same
+      - name: NVL
+      - name: NVL2
+  - family: Comparison
+    manual: https://mariadb.com/docs/server/reference/sql-structure/operators/comparison-operators
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: COALESCE
+        mysql: same
+      - name: GREATEST
+        mysql: { rule: function.greatest }
+      - name: INTERVAL
+        grammar: true
+        mysql: same
+      - name: ISNULL
+        mysql: same
+      - name: LEAST
+        mysql: { rule: function.greatest }
+  - family: Numeric
+    manual: https://mariadb.com/docs/server/reference/sql-functions/numeric-functions
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: ABS
+        mysql: same
+      - name: ACOS
+        mysql: same
+      - name: ASIN
+        mysql: same
+      - name: ATAN
+        mysql: same
+      - name: ATAN2
+        mysql: same
+      - name: CEIL
+        mysql: same
+      - name: CEILING
+        mysql: same
+      - name: CONV
+        mysql: same
+      - name: COS
+        mysql: same
+      - name: COT
+        mysql: same
+      - name: CRC32
+        mysql: same
+      - name: CRC32C
+        since: "10.8.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/numeric-functions/crc32c
+      - name: DEGREES
+        mysql: same
+      - name: EXP
+        mysql: same
+      - name: FLOOR
+        mysql: same
+      - name: LN  # 0 or a negative number: NULL in both, with different warnings
+        mysql: same
+      - name: LOG  # 0 or a negative number: NULL in both, with different warnings
+        mysql: same
+      - name: LOG10
+        mysql: same
+      - name: LOG2
+        mysql: same
+      - name: MOD
+        mysql: same
+      - name: OCT
+        mysql: same
+      - name: PI
+        mysql: same
+      - name: POW
+        mysql: same
+      - name: POWER
+        mysql: same
+      - name: RADIANS
+        mysql: same
+      - name: RAND
+        mysql: same
+      - name: ROUND
+        mysql: same
+      - name: SIGN
+        mysql: same
+      - name: SIN
+        mysql: same
+      - name: SQRT
+        mysql: same
+      - name: TAN
+        mysql: same
+      - name: TRUNCATE
+        grammar: true
+        mysql: same
+  - family: Date and time
+    manual: https://mariadb.com/docs/server/reference/sql-functions/date-time-functions
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: ADDDATE
+        grammar: true
+        touching: true
+        mysql: same
+      - name: ADDTIME
+        mysql: same
+      - name: ADD_MONTHS
+        mysql: { rule: function.add-months }
+      - name: CONVERT_TZ
+        mysql: same
+      - name: CURDATE
+        grammar: true
+        touching: true
+        mysql: same
+      - name: CURRENT_DATE
+        grammar: true
+        mysql: same
+      - name: CURRENT_TIME
+        grammar: true
+        mysql: same
+      - name: CURRENT_TIMESTAMP
+        grammar: true
+        mysql: { rule: function.now }
+      - name: CURTIME
+        grammar: true
+        touching: true
+        mysql: same
+      - name: DATE
+        grammar: true
+        mysql: same
+      - name: DATEDIFF
+        mysql: same
+      - name: DATE_ADD
+        grammar: true
+        touching: true
+        mysql: same
+      - name: DATE_FORMAT
+        mysql: same
+      - name: DATE_SUB
+        grammar: true
+        touching: true
+        mysql: same
+      - name: DAY
+        grammar: true
+        mysql: same
+      - name: DAYNAME
+        mysql: same
+      - name: DAYOFMONTH
+        mysql: same
+      - name: DAYOFWEEK
+        mysql: same
+      - name: DAYOFYEAR
+        mysql: same
+      - name: EXTRACT
+        grammar: true
+        touching: true
+        mysql: { rule: function.extract }
+      - name: FORMAT_PICO_TIME
+        since: "11.0.2"
+        source: https://mariadb.com/docs/server/reference/sql-functions/date-time-functions/format_pico_time
+        mysql: same
+      - name: FROM_DAYS
+        mysql: same
+      - name: FROM_UNIXTIME
+        mysql: { rule: function.from-unixtime }
+      - name: GET_FORMAT
+        grammar: true
+        mysql: same
+      - name: HOUR
+        grammar: true
+        mysql: same
+      - name: LAST_DAY
+        mysql: same
+      - name: LOCALTIME
+        grammar: true
+        mysql: { rule: function.now }
+      - name: LOCALTIMESTAMP
+        grammar: true
+        mysql: same
+      - name: MAKEDATE
+        mysql: same
+      - name: MAKETIME
+        mysql: same
+      - name: MICROSECOND
+        mysql: same
+      - name: MINUTE
+        grammar: true
+        mysql: same
+      - name: MONTH
+        grammar: true
+        mysql: same
+      - name: MONTHNAME
+        mysql: same
+      - name: NOW
+        grammar: true
+        touching: true
+        mysql: { rule: function.now }
+      - name: PERIOD_ADD
+        mysql: same
+      - name: PERIOD_DIFF
+        mysql: same
+      - name: QUARTER
+        mysql: same
+      - name: SECOND
+        grammar: true
+        mysql: same
+      - name: SEC_TO_TIME
+        mysql: same
+      - name: STR_TO_DATE  # an impossible date: an error in MySQL from 8.0.35, NULL elsewhere
+        mysql: same
+      - name: SUBDATE
+        grammar: true
+        touching: true
+        mysql: same
+      - name: SUBTIME
+        mysql: same
+      - name: SYSDATE
+        grammar: true
+        mysql: { rule: function.now }
+      - name: TIME
+        grammar: true
+        mysql: same
+      - name: TIMEDIFF
+        mysql: same
+      - name: TIMESTAMP
+        grammar: true
+        mysql: same
+      - name: TIMESTAMPADD
+        grammar: true
+        mysql: same
+      - name: TIMESTAMPDIFF
+        grammar: true
+        mysql: same
+      - name: TIME_FORMAT
+        mysql: same
+      - name: TIME_TO_SEC
+        mysql: { rule: function.time-to-sec }
+      - name: TO_DAYS
+        mysql: same
+      - name: TO_SECONDS
+        mysql: same
+      - name: UNIX_TIMESTAMP
+        mysql: { rule: function.unix-timestamp }
+      - name: UTC_DATE
+        grammar: true
+        mysql: same
+      - name: UTC_TIME
+        grammar: true
+        mysql: same
+      - name: UTC_TIMESTAMP
+        grammar: true
+        mysql: same
+      - name: WEEK
+        mysql: same
+      - name: WEEKDAY
+        mysql: same
+      - name: WEEKOFYEAR
+        mysql: same
+      - name: YEAR  # a YEAR in MySQL 8.4, an INT elsewhere: same values
+        grammar: true
+        mysql: same
+      - name: YEARWEEK
+        mysql: same
+  - family: String
+    manual: https://mariadb.com/docs/server/reference/sql-functions/string-functions
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: ASCII
+        grammar: true
+        mysql: same
+      - name: BIN
+        mysql: same
+      - name: BIT_LENGTH
+        mysql: same
+      - name: CHAR  # an invalid character with USING: NULL in MySQL, an error in MariaDB
+        grammar: true
+        mysql: same
+      - name: CHARACTER_LENGTH
+        mysql: same
+      - name: CHAR_LENGTH
+        mysql: same
+      - name: CHR
+      - name: CONCAT
+        mysql: same
+      - name: CONCAT_WS
+        mysql: same
+      - name: ELT
+        mysql: same
+      - name: EXPORT_SET
+        mysql: same
+      - name: FIELD
+        mysql: same
+      - name: FIND_IN_SET
+        mysql: same
+      - name: FORMAT
+        mysql: same
+      - name: FORMAT_BYTES
+        since: "11.8.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/secondary-functions/miscellaneous-functions/miscellaneous-functions-format_bytes
+        mysql: same
+      - name: FROM_BASE64
+        mysql: same
+      - name: HEX
+        mysql: same
+      - name: INSERT
+        grammar: true
+        mysql: same
+      - name: INSTR
+        mysql: same
+      - name: LCASE
+        mysql: same
+      - name: LEFT
+        grammar: true
+        mysql: same
+      - name: LENGTH
+        mysql: same
+      - name: LENGTHB
+      - name: LOAD_FILE
+        mysql: same
+      - name: LOCATE
+        mysql: same
+      - name: LOWER
+        mysql: same
+      - name: LPAD
+        mysql: { rule: function.pad }
+      - name: LTRIM
+        mysql: same
+      - name: MAKE_SET
+        mysql: same
+      - name: MID
+        grammar: true
+        touching: true
+        mysql: same
+      - name: NATURAL_SORT_KEY
+        since: "10.7.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/string-functions/natural_sort_key
+      - name: OCTET_LENGTH
+        mysql: same
+      - name: ORD
+        mysql: same
+      - name: POSITION
+        grammar: true
+        touching: true
+        mysql: same
+      - name: QUOTE
+        mysql: same
+      - name: REGEXP_INSTR
+        mysql: { rule: function.regexp }
+      - name: REGEXP_REPLACE
+        mysql: { rule: function.regexp }
+      - name: REGEXP_SUBSTR
+        mysql: { rule: function.regexp }
+      - name: REPEAT
+        grammar: true
+        mysql: same
+      - name: REPLACE
+        grammar: true
+        mysql: same
+      - name: REVERSE
+        mysql: same
+      - name: RIGHT
+        grammar: true
+        mysql: same
+      - name: RPAD
+        mysql: { rule: function.pad }
+      - name: RTRIM
+        mysql: same
+      - name: SFORMAT
+        since: "10.7.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/string-functions/sformat
+      - name: SOUNDEX
+        mysql: same
+      - name: SPACE
+        mysql: same
+      - name: STRCMP
+        mysql: same
+      - name: SUBSTR
+        grammar: true
+        touching: true
+        mysql: same
+      - name: SUBSTRING
+        grammar: true
+        touching: true
+        mysql: same
+      - name: SUBSTRING_INDEX
+        mysql: same
+      - name: TO_BASE64
+        mysql: same
+      - name: TO_CHAR
+      - name: TRIM
+        grammar: true
+        touching: true
+        mysql: same
+      - name: UCASE
+        mysql: same
+      - name: UNHEX  # an invalid hexadecimal string: an error in MySQL, NULL in MariaDB
+        mysql: same
+      - name: UPPER
+        mysql: same
+      - name: WEIGHT_STRING
+        grammar: true
+        mysql: { error: "its value depends on the collation, whose default differs between MySQL and MariaDB" }
+  - family: Cast
+    manual: https://mariadb.com/docs/server/reference/sql-functions/string-functions
+    functions:
+      - name: CAST
+        grammar: true
+        touching: true
+      - name: CONVERT
+        grammar: true
+  - family: XML
+    manual: https://mariadb.com/docs/server/reference/sql-functions/string-functions
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: EXTRACTVALUE
+        mysql: same
+      - name: UPDATEXML
+        mysql: same
+  - family: Bit
+    manual: https://mariadb.com/docs/server/reference/sql-functions/secondary-functions/bit-functions-and-operators
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: BIT_COUNT
+        mysql: { rule: function.bit-count }
+  - family: Encryption and compression
+    manual: https://mariadb.com/docs/server/reference/sql-functions/secondary-functions/encryption-hashing-and-compression-functions
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: AES_DECRYPT
+        mysql: { rule: function.aes }
+      - name: AES_ENCRYPT
+        mysql: { rule: function.aes }
+      - name: COMPRESS
+        mysql: same
+      - name: DECODE
+      - name: DES_DECRYPT
+      - name: DES_ENCRYPT
+      - name: ENCODE
+      - name: ENCRYPT
+      - name: KDF
+        since: "11.3.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/secondary-functions/encryption-hashing-and-compression-functions/kdf
+      - name: MD5
+        mysql: same
+      - name: OLD_PASSWORD
+      - name: PASSWORD
+      - name: RANDOM_BYTES
+        since: "10.10.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/secondary-functions/encryption-hashing-and-compression-functions/random_bytes
+        mysql: same
+      - name: SHA
+        mysql: same
+      - name: SHA1
+        mysql: same
+      - name: SHA2
+        mysql: same
+      - name: UNCOMPRESS
+        mysql: same
+      - name: UNCOMPRESSED_LENGTH
+        mysql: same
+  - family: Locking
+    manual: https://mariadb.com/docs/server/reference/sql-functions/secondary-functions/miscellaneous-functions
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: GET_LOCK
+        mysql: same
+      - name: IS_FREE_LOCK
+        mysql: same
+      - name: IS_USED_LOCK
+        mysql: same
+      - name: RELEASE_ALL_LOCKS
+        mysql: same
+      - name: RELEASE_LOCK
+        mysql: same
+  - family: Information
+    manual: https://mariadb.com/docs/server/reference/sql-functions/secondary-functions/information-functions
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: BENCHMARK
+        mysql: same
+      - name: BINLOG_GTID_POS
+      - name: CHARSET
+        grammar: true
+        mysql: same
+      - name: COERCIBILITY
+        mysql: { error: "MariaDB 11.8 gives another coercibility to a literal (6, MySQL 4)" }
+      - name: COLLATION
+        mysql: same
+      - name: CONNECTION_ID
+        mysql: same
+      - name: CURRENT_ROLE
+        grammar: true
+        mysql: { error: "MySQL lists the roles as `role`@`host` or NONE, MariaDB gives the name of one role or NULL" }
+      - name: CURRENT_USER
+        grammar: true
+        mysql: same
+      - name: DATABASE
+        mysql: same
+      - name: DECODE_HISTOGRAM
+      - name: FOUND_ROWS
+        mysql: same
+      - name: LAST_INSERT_ID
+        mysql: same
+      - name: ROWNUM
+        grammar: true
+      - name: ROW_COUNT
+        mysql: same
+      - name: SCHEMA
+        mysql: same
+      - name: SESSION_USER
+        grammar: true
+        touching: true
+        mysql: same
+      - name: SYSTEM_USER
+        grammar: true
+        touching: true
+        mysql: same
+      - name: USER
+        grammar: true
+        mysql: same
+      - name: VERSION
+        mysql: same
+  - family: JSON
+    manual: https://mariadb.com/docs/server/reference/sql-functions/special-functions/json-functions
+    functions:
+      - name: JSON_ARRAY
+      - name: JSON_ARRAY_APPEND
+      - name: JSON_ARRAY_INSERT
+      - name: JSON_ARRAY_INTERSECT
+        since: "11.2.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/special-functions/json-functions/json_array_intersect
+      - name: JSON_COMPACT
+      - name: JSON_CONTAINS
+      - name: JSON_CONTAINS_PATH
+      - name: JSON_DEPTH
+      - name: JSON_DETAILED
+      - name: JSON_EQUALS
+        since: "10.7.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/special-functions/json-functions/json_equals
+      - name: JSON_EXISTS
+      - name: JSON_EXTRACT
+      - name: JSON_INSERT
+      - name: JSON_KEYS
+      - name: JSON_KEY_VALUE
+        since: "11.2.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/special-functions/json-functions/json_key_value
+      - name: JSON_LENGTH
+      - name: JSON_LOOSE
+      - name: JSON_MERGE
+      - name: JSON_MERGE_PATCH
+      - name: JSON_MERGE_PRESERVE
+      - name: JSON_NORMALIZE
+        since: "10.7.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/special-functions/json-functions/json_normalize
+      - name: JSON_OBJECT
+      - name: JSON_OBJECT_FILTER_KEYS
+        since: "11.2.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/special-functions/json-functions/json_object_filter_keys
+      - name: JSON_OBJECT_TO_ARRAY
+        since: "11.2.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/special-functions/json-functions/json_object_to_array
+      - name: JSON_OVERLAPS
+        since: "10.9.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/special-functions/json-functions/json_overlaps
+      - name: JSON_PRETTY
+      - name: JSON_QUERY
+      - name: JSON_QUOTE
+      - name: JSON_REMOVE
+      - name: JSON_REPLACE
+      - name: JSON_SCHEMA_VALID
+        since: "11.1.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/special-functions/json-functions/json_schema_valid
+      - name: JSON_SEARCH
+      - name: JSON_SET
+      - name: JSON_TYPE
+      - name: JSON_UNQUOTE
+      - name: JSON_VALID
+      - name: JSON_VALUE
+  - family: Dynamic columns
+    manual: https://mariadb.com/docs/server/reference/sql-functions/special-functions/dynamic-columns-functions
+    functions:
+      - name: COLUMN_ADD
+        grammar: true
+      - name: COLUMN_CHECK
+      - name: COLUMN_CREATE
+        grammar: true
+      - name: COLUMN_DELETE
+        grammar: true
+      - name: COLUMN_EXISTS
+      - name: COLUMN_GET
+        grammar: true
+      - name: COLUMN_JSON
+      - name: COLUMN_LIST
+  - family: Spatial
+    manual: https://mariadb.com/docs/server/reference/sql-statements/geometry-constructors
+    functions:
+      - name: AREA
+      - name: ASBINARY
+      - name: ASTEXT
+      - name: ASWKB
+      - name: ASWKT
+      - name: BOUNDARY
+      - name: BUFFER
+      - name: CENTROID
+      - name: CONTAINS
+      - name: CONVEXHULL
+      - name: CROSSES
+      - name: DIMENSION
+      - name: DISJOINT
+      - name: ENDPOINT
+      - name: ENVELOPE
+      - name: EQUALS
+      - name: EXTERIORRING
+      - name: GEOMCOLLFROMTEXT
+      - name: GEOMCOLLFROMWKB
+      - name: GEOMETRYCOLLECTION
+      - name: GEOMETRYCOLLECTIONFROMTEXT
+      - name: GEOMETRYCOLLECTIONFROMWKB
+      - name: GEOMETRYFROMTEXT
+      - name: GEOMETRYFROMWKB
+      - name: GEOMETRYN
+      - name: GEOMETRYTYPE
+      - name: GEOMFROMTEXT
+      - name: GEOMFROMWKB
+      - name: GLENGTH
+      - name: INTERIORRINGN
+      - name: INTERSECTS
+      - name: ISCLOSED
+      - name: ISEMPTY
+      - name: ISRING
+      - name: ISSIMPLE
+      - name: LINEFROMTEXT
+      - name: LINEFROMWKB
+      - name: LINESTRING
+      - name: LINESTRINGFROMTEXT
+      - name: LINESTRINGFROMWKB
+      - name: MBRCONTAINS
+      - name: MBRDISJOINT
+      - name: MBREQUAL
+      - name: MBREQUALS
+      - name: MBRINTERSECTS
+      - name: MBROVERLAPS
+      - name: MBRTOUCHES
+      - name: MBRWITHIN
+      - name: MLINEFROMTEXT
+      - name: MLINEFROMWKB
+      - name: MPOINTFROMTEXT
+      - name: MPOINTFROMWKB
+      - name: MPOLYFROMTEXT
+      - name: MPOLYFROMWKB
+      - name: MULTILINESTRING
+      - name: MULTILINESTRINGFROMTEXT
+      - name: MULTILINESTRINGFROMWKB
+      - name: MULTIPOINT
+      - name: MULTIPOINTFROMTEXT
+      - name: MULTIPOINTFROMWKB
+      - name: MULTIPOLYGON
+      - name: MULTIPOLYGONFROMTEXT
+      - name: MULTIPOLYGONFROMWKB
+      - name: NUMGEOMETRIES
+      - name: NUMINTERIORRINGS
+      - name: NUMPOINTS
+      - name: OVERLAPS
+      - name: POINT
+      - name: POINTFROMTEXT
+      - name: POINTFROMWKB
+      - name: POINTN
+      - name: POINTONSURFACE
+      - name: POLYFROMTEXT
+      - name: POLYFROMWKB
+      - name: POLYGON
+      - name: POLYGONFROMTEXT
+      - name: POLYGONFROMWKB
+      - name: SRID
+      - name: STARTPOINT
+      - name: ST_AREA
+      - name: ST_ASBINARY
+      - name: ST_ASGEOJSON
+      - name: ST_ASTEXT
+      - name: ST_ASWKB
+      - name: ST_ASWKT
+      - name: ST_BOUNDARY
+      - name: ST_BUFFER
+      - name: ST_CENTROID
+      - name: ST_CONTAINS
+      - name: ST_CONVEXHULL
+      - name: ST_CROSSES
+      - name: ST_DIFFERENCE
+      - name: ST_DIMENSION
+      - name: ST_DISJOINT
+      - name: ST_DISTANCE
+      - name: ST_DISTANCE_SPHERE
+      - name: ST_ENDPOINT
+      - name: ST_ENVELOPE
+      - name: ST_EQUALS
+      - name: ST_EXTERIORRING
+      - name: ST_GEOMCOLLFROMTEXT
+      - name: ST_GEOMCOLLFROMWKB
+      - name: ST_GEOMETRYCOLLECTIONFROMTEXT
+      - name: ST_GEOMETRYCOLLECTIONFROMWKB
+      - name: ST_GEOMETRYFROMTEXT
+      - name: ST_GEOMETRYFROMWKB
+      - name: ST_GEOMETRYN
+      - name: ST_GEOMETRYTYPE
+      - name: ST_GEOMFROMGEOJSON
+      - name: ST_GEOMFROMTEXT
+      - name: ST_GEOMFROMWKB
+      - name: ST_INTERIORRINGN
+      - name: ST_INTERSECTION
+      - name: ST_INTERSECTS
+      - name: ST_ISCLOSED
+      - name: ST_ISEMPTY
+      - name: ST_ISRING
+      - name: ST_ISSIMPLE
+      - name: ST_LENGTH
+      - name: ST_LINEFROMTEXT
+      - name: ST_LINEFROMWKB
+      - name: ST_LINESTRINGFROMTEXT
+      - name: ST_LINESTRINGFROMWKB
+      - name: ST_MLINEFROMTEXT
+      - name: ST_MLINEFROMWKB
+      - name: ST_MPOINTFROMTEXT
+      - name: ST_MPOINTFROMWKB
+      - name: ST_MPOLYFROMTEXT
+      - name: ST_MPOLYFROMWKB
+      - name: ST_MULTILINESTRINGFROMTEXT
+      - name: ST_MULTILINESTRINGFROMWKB
+      - name: ST_MULTIPOINTFROMTEXT
+      - name: ST_MULTIPOINTFROMWKB
+      - name: ST_MULTIPOLYGONFROMTEXT
+      - name: ST_MULTIPOLYGONFROMWKB
+      - name: ST_NUMGEOMETRIES
+      - name: ST_NUMINTERIORRINGS
+      - name: ST_NUMPOINTS
+      - name: ST_OVERLAPS
+      - name: ST_POINTFROMTEXT
+      - name: ST_POINTFROMWKB
+      - name: ST_POINTN
+      - name: ST_POINTONSURFACE
+      - name: ST_POLYFROMTEXT
+      - name: ST_POLYFROMWKB
+      - name: ST_POLYGONFROMTEXT
+      - name: ST_POLYGONFROMWKB
+      - name: ST_RELATE
+      - name: ST_SRID
+      - name: ST_STARTPOINT
+      - name: ST_SYMDIFFERENCE
+      - name: ST_TOUCHES
+      - name: ST_UNION
+      - name: ST_WITHIN
+      - name: ST_X
+      - name: ST_Y
+      - name: TOUCHES
+      - name: WITHIN
+      - name: X
+      - name: Y
+  - family: Vector
+    manual: https://mariadb.com/docs/server/reference/sql-functions/vector-functions
+    functions:
+      - name: VEC_DISTANCE
+        since: "11.8.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/vector-functions/vector-functions-vec_distance
+      - name: VEC_DISTANCE_COSINE
+        since: "11.7.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/vector-functions/vec_distance_cosine
+      - name: VEC_DISTANCE_EUCLIDEAN
+        since: "11.7.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/vector-functions/vec_distance_euclidean
+      - name: VEC_FROMTEXT  # 11.6.0 in the preview release Vector, 11.7.0 in the GA releases
+        since: "11.7.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/vector-functions/vec_fromtext
+      - name: VEC_TOTEXT  # 11.6.0 in the preview release Vector, 11.7.0 in the GA releases
+        since: "11.7.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/vector-functions/vec_totext
+  - family: Replication and Galera
+    manual: https://mariadb.com/docs/server/reference/sql-functions/special-functions/galera-functions
+    functions:
+      - name: MASTER_GTID_WAIT
+      - name: MASTER_POS_WAIT
+      - name: WSREP_LAST_SEEN_GTID
+      - name: WSREP_LAST_WRITTEN_GTID
+      - name: WSREP_SYNC_WAIT_UPTO_GTID
+  - family: Sequences
+    manual: https://mariadb.com/docs/server/reference/sql-structure/sequences/sequence-functions
+    functions:
+      - name: LASTVAL
+        grammar: true
+      - name: NEXTVAL
+        grammar: true
+      - name: SETVAL
+        grammar: true
+  - family: Miscellaneous
+    manual: https://mariadb.com/docs/server/reference/sql-functions/secondary-functions/miscellaneous-functions
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: DEFAULT
+        grammar: true
+      - name: INET6_ATON
+        mysql: same
+      - name: INET6_NTOA
+        mysql: same
+      - name: INET_ATON
+        mysql: same
+      - name: INET_NTOA
+        mysql: same
+      - name: IS_IPV4
+        mysql: same
+      - name: IS_IPV4_COMPAT
+        mysql: same
+      - name: IS_IPV4_MAPPED
+        mysql: same
+      - name: IS_IPV6
+        mysql: same
+      - name: NAME_CONST
+        mysql: same
+      - name: SLEEP
+        mysql: same
+      - name: SYS_GUID
+      - name: UUID
+        mysql: { rule: function.uuid }
+      - name: UUID_SHORT
+        mysql: same
+      - name: UUID_V4
+        since: "11.7.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/secondary-functions/miscellaneous-functions/uuid_v4
+      - name: UUID_V7
+        since: "11.7.0"
+        source: https://mariadb.com/docs/server/reference/sql-functions/secondary-functions/miscellaneous-functions/uuid_v7
+      - name: VALUE
+        grammar: true
+      - name: VALUES
+        grammar: true
+  - family: Oracle mode
+    manual: https://mariadb.com/docs/release-notes/community-server/about/compatibility-and-differences/sql_modeoracle
+    functions:
+      - name: CONCAT_OPERATOR_ORACLE
+      - name: LPAD_ORACLE
+      - name: LTRIM_ORACLE
+      - name: REPLACE_ORACLE
+      - name: RPAD_ORACLE
+      - name: RTRIM_ORACLE
+      - name: SUBSTR_ORACLE
+      - name: TRIM_ORACLE
+        grammar: true
+        touching: true
+  - family: Aggregate
+    manual: https://mariadb.com/docs/server/reference/sql-functions/aggregate-functions
+    kind: aggregate
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: AVG
+        grammar: true
+        mysql: same
+      - name: BIT_AND
+        grammar: true
+        touching: true
+        mysql: same
+      - name: BIT_OR
+        grammar: true
+        touching: true
+        mysql: same
+      - name: BIT_XOR
+        grammar: true
+        touching: true
+        mysql: same
+      - name: COUNT
+        grammar: true
+        touching: true
+        mysql: same
+      - name: GROUP_CONCAT
+        grammar: true
+        touching: true
+        mysql: same
+      - name: JSON_ARRAYAGG
+        grammar: true
+        touching: true
+        mysql: { error: "a JSON in MySQL, a text in MariaDB" }
+      - name: JSON_OBJECTAGG
+        grammar: true
+        touching: true
+        mysql: { error: "a JSON in MySQL, a text in MariaDB" }
+      - name: MAX
+        grammar: true
+        touching: true
+        mysql: same
+      - name: MIN
+        grammar: true
+        touching: true
+        mysql: same
+      - name: STD
+        grammar: true
+        touching: true
+        mysql: same
+      - name: STDDEV
+        grammar: true
+        touching: true
+        mysql: same
+      - name: STDDEV_POP
+        grammar: true
+        touching: true
+        mysql: same
+      - name: STDDEV_SAMP
+        grammar: true
+        touching: true
+        mysql: same
+      - name: SUM
+        grammar: true
+        touching: true
+        mysql: same
+      - name: VARIANCE
+        grammar: true
+        touching: true
+        mysql: same
+      - name: VAR_POP
+        grammar: true
+        touching: true
+        mysql: same
+      - name: VAR_SAMP
+        grammar: true
+        touching: true
+        mysql: same
+  - family: Window
+    manual: https://mariadb.com/docs/server/reference/sql-functions/special-functions/window-functions
+    kind: window
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: CUME_DIST
+        grammar: true
+        touching: true
+        mysql: same
+      - name: DENSE_RANK
+        grammar: true
+        touching: true
+        mysql: same
+      - name: FIRST_VALUE
+        grammar: true
+        touching: true
+        mysql: same
+      - name: LAG
+        grammar: true
+        touching: true
+        mysql: same
+      - name: LAST_VALUE  # without a window, also a scalar function of MariaDB: the last of its arguments
+        grammar: true
+        mysql: same
+      - name: LEAD
+        grammar: true
+        touching: true
+        mysql: same
+      - name: MEDIAN
+        grammar: true
+        touching: true
+      - name: NTH_VALUE
+        grammar: true
+        touching: true
+        mysql: same
+      - name: NTILE
+        grammar: true
+        touching: true
+        mysql: same
+      - name: PERCENTILE_CONT
+        grammar: true
+        touching: true
+      - name: PERCENTILE_DISC
+        grammar: true
+        touching: true
+      - name: PERCENT_RANK
+        grammar: true
+        touching: true
+        mysql: same
+      - name: RANK
+        grammar: true
+        touching: true
+        mysql: same
+      - name: ROW_NUMBER  # `ROW_NUMBER ()`: a syntax error in MariaDB 10.6, the built-in function in 11.8
+        grammar: true
+        mysql: same

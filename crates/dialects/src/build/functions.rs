@@ -1,8 +1,6 @@
-//! Minimal catalog of the aggregate and window functions of the MySQL
-//! family: their role, the type of their result, and whether MySQL and
-//! MariaDB write and compute them alike. The scalar functions wait for the
-//! function catalog of step 7 (`docs/DEV-DIALECTS.md`): until then, they are
-//! written as is towards their own dialect and refused towards another.
+//! Aggregate and window functions of the MySQL family: the window functions
+//! the builder reads, and the type of their result. Their translation to
+//! the other dialects comes from the reference files (`builtins` module).
 //!
 //! The types were measured on MySQL 8.0.11 and 8.4, MariaDB 10.6 and 11.8
 //! (`CREATE TABLE ... AS SELECT`, then `DESCRIBE`).
@@ -38,36 +36,10 @@ pub(crate) const ORDERED_IN_MARIADB: [&str; 6] = [
     "RANK",
 ];
 
-/// Aggregate functions MySQL and MariaDB write and compute alike.
-const SHARED_AGGREGATES: [&str; 16] = [
-    "AVG",
-    "BIT_AND",
-    "BIT_OR",
-    "BIT_XOR",
-    "COUNT",
-    "GROUP_CONCAT",
-    "MAX",
-    "MIN",
-    "STD",
-    "STDDEV",
-    "STDDEV_POP",
-    "STDDEV_SAMP",
-    "SUM",
-    "VARIANCE",
-    "VAR_POP",
-    "VAR_SAMP",
-];
-
 /// Tells whether `name`, in capitals, is a window function that is not an
 /// aggregate function.
 pub(crate) fn is_window_function(name: &str) -> bool {
     WINDOW_FUNCTIONS.contains(&name)
-}
-
-/// Tells whether MySQL and MariaDB write and compute the aggregate or
-/// window function `name`, in capitals, alike.
-pub(crate) fn is_shared(name: &str) -> bool {
-    SHARED_AGGREGATES.contains(&name) || WINDOW_FUNCTIONS.contains(&name)
 }
 
 /// Text without length: `TEXT`, `MEDIUMTEXT`.

@@ -236,9 +236,10 @@ pub struct FunctionCall {
     pub order_by: Vec<OrderItem>,
     /// `SEPARATOR` of `GROUP_CONCAT`.
     pub separator: Option<String>,
-    /// Call to a stored function of the name of an aggregate function: the
-    /// name followed by a space (`SUM (a)`), which the MySQL family does not
-    /// read as the built-in function.
+    /// Call to a function stored in the database: a qualified name, a name
+    /// the dialect does not know in its version, or the name of a built-in
+    /// function written in a form that calls a stored one (`SUM (a)`,
+    /// `` `LEFT`(a) ``).
     pub stored: bool,
     /// Window of a window function or of an aggregate used as one.
     pub over: Option<WindowSpec>,

@@ -7,24 +7,20 @@
 //! the `GROUP BY` clause: written in the select list, it keeps the comments
 //! of the input in their place.
 //!
-//! The scalar functions are written as is towards their own dialect; towards
-//! the other one, they wait for the function catalog of step 7
-//! (`docs/DEV-DIALECTS.md`). The aggregate and window functions that MySQL and
-//! MariaDB share go through, with the forms MariaDB lacks emulated: an
-//! ordered window for `RANK`, `LAG`...; the named windows written in the
-//! order MariaDB reads them.
+//! The aggregate and window functions are named by the reference files
+//! (`builtin` module), with the forms MariaDB lacks emulated: an ordered
+//! window for `RANK`, `LAG`...; the named windows written in the order
+//! MariaDB reads them.
 
 use prisme_plan::{
-    Aggregate, AggregateCall, Expr, Frame, FrameBound, FrameUnits, FunctionCall, Ident,
-    NamedAggregate, NamedExpr, Project, ProjectItem, SortReference, Span, WindowCall,
-    WindowDefinition,
+    Aggregate, AggregateCall, Expr, Frame, FrameBound, FrameUnits, Ident, NamedAggregate,
+    NamedExpr, Project, ProjectItem, SortReference, Span, WindowCall, WindowDefinition,
 };
 
 use super::{Block, Emitter};
 use crate::Dialect;
 use crate::build::{functions, is_internal_name};
 use crate::report::StepKind;
-use crate::sql::ast::AGGREGATES;
 
 /// Level of a bound of a frame: `1 PRECEDING` reads a value below the
 /// comparisons.
@@ -161,47 +157,11 @@ impl Emitter<'_> {
         expr.clone()
     }
 
-    /// Refuses a function of the input dialect that the output dialect
-    /// lacks or computes otherwise, `shared` telling whether both have it.
-    fn function_dialect(&mut self, name: &Ident, shared: bool, span: Option<Span>) {
-        if shared || self.source.dialect == self.output.dialect {
-            return;
-        }
-        let message = format!(
-            "function `{}` of {}: its translation to {} waits for the function catalog of Prisme",
-            name.value,
-            self.source.dialect.label(),
-            self.output.dialect.label()
-        );
-        self.error("function.dialect", &message, span);
-    }
-
-    /// Call to a scalar function. A function stored under the name of an
-    /// aggregate function keeps a space before `(`.
-    pub(super) fn function_call(&mut self, expr: &Expr, call: &FunctionCall) {
-        self.function_dialect(&call.name, false, expr.span);
-        if let Some(qualifier) = &call.qualifier {
-            self.ident(qualifier, expr.span);
-            self.write(".");
-        }
-        if call.name.quoted {
-            self.ident(&call.name, expr.span);
-        } else {
-            self.write(&call.name.value);
-        }
-        let upper = call.name.value.to_ascii_uppercase();
-        let stored = call.qualifier.is_none() && AGGREGATES.contains(&upper.as_str());
-        self.write(if stored { " (" } else { "(" });
-        self.expr_list(&call.args);
-        self.write(")");
-    }
-
     /// Call to an aggregate function.
     pub(super) fn aggregate_call(&mut self, call: &AggregateCall) {
-        let upper = call.function.value.to_ascii_uppercase();
-        self.function_dialect(&call.function, functions::is_shared(&upper), call.span);
-        self.write(&call.function.value);
-        self.write("(");
+        let name = self.builtin_name(&call.function, call.span);
+        let form = self.builtin_form(&name, &call.function, call.span);
+        self.call_name(&name, form);
         if call.distinct {
             self.write("DISTINCT ");
         }
@@ -225,7 +185,7 @@ impl Emitter<'_> {
     /// Call to a window function, with its window.
     pub(super) fn window_call(&mut self, expr: &Expr, call: &WindowCall) {
         let upper = call.function.value.to_ascii_uppercase();
-        self.function_dialect(&call.function, functions::is_shared(&upper), expr.span);
+        let name = self.builtin_name(&call.function, expr.span);
         let mariadb = self.output.dialect == Dialect::MariaDb;
         if mariadb && matches!(upper.as_str(), "LAG" | "LEAD") && call.args.len() > 2 {
             let message = format!(
@@ -234,7 +194,7 @@ impl Emitter<'_> {
             );
             self.error("window.default", &message, expr.span);
         }
-        self.write(&call.function.value);
+        self.write(&name);
         self.write("(");
         if call.args.is_empty() && upper == "COUNT" {
             self.write("*");

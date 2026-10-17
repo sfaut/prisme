@@ -1,9 +1,11 @@
 # MySQL: what Prisme knows of the dialect, version by version.
 #
 # The only source of these facts, one file per dialect: the keywords (read by
-# the editor's highlighting, the beautifier and the parser) and the constructs
-# of the grammar whose availability depends on the version (read by the parser
-# and the emitter). Edited directly, embedded in the executable.
+# the editor's highlighting, the beautifier and the parser), the constructs of
+# the grammar whose availability depends on the version (read by the parser
+# and the emitter) and the built-in functions with their translation (read by
+# the parser, the plan builder and the emitter). Edited directly, embedded in
+# the executable.
 #
 # Versions: the file covers every version from `floor`, the first GA release
 # of MySQL 8.0 (docs/QUESTIONS.md, point 51). A fact that depends on the version
@@ -17,7 +19,8 @@
 # of the engine.
 #
 # What is missing from this file is absent from MySQL: the parser of the
-# MySQL dialect refuses it (rule "each dialect stays in its domain").
+# MySQL dialect refuses it (rule "each dialect stays in its domain"), and
+# reads a function name it does not list as a stored function.
 
 floor: "8.0.11"
 
@@ -410,3 +413,920 @@ constructs:
   - id: intersect_except_all
     since: "8.0.31"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-31.html
+
+# Built-in functions, by family, each family with the page of the manual that
+# describes it. Each function:
+#   - name: FORMAT_PICO_TIME   # name, in capitals
+#     since: "8.0.16"          # period of the function, when it depends on
+#     until: "9.0.0"           #   the version
+#     source: https://...      # document of that version that attests it
+#     grammar: true            # function of the grammar of the server: its
+#                              #   name between backticks calls a stored
+#                              #   function (`LEFT`(a)); without it, the
+#                              #   quoted name is the built-in function
+#     touching: true           # and so does a space before `(` (`NOW ()`),
+#                              #   unless the SQL mode IGNORE_SPACE is set
+#     mariadb: same            # translation to MariaDB, below
+#
+# Translation to MariaDB, measured on the servers of `checked`:
+#   same               the function of the same name of MariaDB gives the same
+#                      results (its availability comes from the reference
+#                      file of MariaDB);
+#   { name: X }        another name, same arguments and results;
+#   { rule: id }       a rule of Prisme writes it (`emit::builtin`), each
+#                      with its test and its step in the report;
+#   { error: reason }  untranslatable, an explicit error.
+# Without translation, the function is absent from MariaDB or not studied
+# yet: an explicit error.
+#
+# Types and values that differ only outside the domain of a function (an
+# invalid argument) are noted in a comment after the name.
+#
+# Left out: the functions of the versions newer than those of `checked`.
+# Also left out: the internal functions of the server (`CAN_ACCESS_...`,
+# `INTERNAL_...`, `GET_DD_...`, `IS_VISIBLE_DD_OBJECT`), "intended only for
+# internal use by the server. Attempts by users to invoke them result in an
+# error" (https://dev.mysql.com/doc/refman/8.4/en/internal-functions.html).
+functions:
+  - family: Flow control
+    manual: https://dev.mysql.com/doc/refman/8.4/en/flow-control-functions.html
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: IF
+        grammar: true
+        mariadb: same
+      - name: IFNULL
+        mariadb: same
+      - name: NULLIF
+        mariadb: same
+  - family: Comparison
+    manual: https://dev.mysql.com/doc/refman/8.4/en/comparison-operators.html
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: COALESCE
+        grammar: true
+        mariadb: same
+      - name: GREATEST
+        mariadb: { rule: function.greatest }
+      - name: INTERVAL
+        grammar: true
+        mariadb: same
+      - name: ISNULL
+        mariadb: same
+      - name: LEAST
+        mariadb: { rule: function.greatest }
+  - family: Numeric
+    manual: https://dev.mysql.com/doc/refman/8.4/en/mathematical-functions.html
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: ABS
+        mariadb: same
+      - name: ACOS
+        mariadb: same
+      - name: ASIN
+        mariadb: same
+      - name: ATAN
+        mariadb: same
+      - name: ATAN2
+        mariadb: same
+      - name: CEIL
+        mariadb: same
+      - name: CEILING
+        mariadb: same
+      - name: CONV
+        mariadb: same
+      - name: COS
+        mariadb: same
+      - name: COT
+        mariadb: same
+      - name: CRC32
+        mariadb: same
+      - name: DEGREES
+        mariadb: same
+      - name: EXP
+        mariadb: same
+      - name: FLOOR
+        mariadb: same
+      - name: LN  # 0 or a negative number: NULL in both, with different warnings
+        mariadb: same
+      - name: LOG  # 0 or a negative number: NULL in both, with different warnings
+        mariadb: same
+      - name: LOG10
+        mariadb: same
+      - name: LOG2
+        mariadb: same
+      - name: MOD
+        grammar: true
+        mariadb: same
+      - name: PI
+        mariadb: same
+      - name: POW
+        mariadb: same
+      - name: POWER
+        mariadb: same
+      - name: RADIANS
+        mariadb: same
+      - name: RAND
+        mariadb: same
+      - name: ROUND
+        mariadb: same
+      - name: SIGN
+        mariadb: same
+      - name: SIN
+        mariadb: same
+      - name: SQRT
+        mariadb: same
+      - name: TAN
+        mariadb: same
+      - name: TRUNCATE
+        grammar: true
+        mariadb: same
+  - family: Date and time
+    manual: https://dev.mysql.com/doc/refman/8.4/en/date-and-time-functions.html
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: ADDDATE
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: ADDTIME
+        mariadb: same
+      - name: CONVERT_TZ
+        mariadb: same
+      - name: CURDATE
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: CURRENT_DATE
+        grammar: true
+        mariadb: same
+      - name: CURRENT_TIME
+        grammar: true
+        mariadb: same
+      - name: CURRENT_TIMESTAMP
+        grammar: true
+        mariadb: { rule: function.now }
+      - name: CURTIME
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: DATE
+        grammar: true
+        mariadb: same
+      - name: DATEDIFF
+        mariadb: same
+      - name: DATE_ADD
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: DATE_FORMAT
+        mariadb: same
+      - name: DATE_SUB
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: DAY
+        grammar: true
+        mariadb: same
+      - name: DAYNAME
+        mariadb: same
+      - name: DAYOFMONTH
+        mariadb: same
+      - name: DAYOFWEEK
+        mariadb: same
+      - name: DAYOFYEAR
+        mariadb: same
+      - name: EXTRACT
+        grammar: true
+        touching: true
+        mariadb: { rule: function.extract }
+      - name: FROM_DAYS
+        mariadb: same
+      - name: FROM_UNIXTIME
+        mariadb: { rule: function.from-unixtime }
+      - name: GET_FORMAT
+        grammar: true
+        mariadb: same
+      - name: HOUR
+        grammar: true
+        mariadb: same
+      - name: LAST_DAY
+        mariadb: same
+      - name: LOCALTIME
+        grammar: true
+        mariadb: { rule: function.now }
+      - name: LOCALTIMESTAMP
+        grammar: true
+        mariadb: same
+      - name: MAKEDATE
+        mariadb: same
+      - name: MAKETIME
+        mariadb: same
+      - name: MICROSECOND
+        grammar: true
+        mariadb: same
+      - name: MINUTE
+        grammar: true
+        mariadb: same
+      - name: MONTH
+        grammar: true
+        mariadb: same
+      - name: MONTHNAME
+        mariadb: same
+      - name: NOW
+        grammar: true
+        touching: true
+        mariadb: { rule: function.now }
+      - name: PERIOD_ADD
+        mariadb: same
+      - name: PERIOD_DIFF
+        mariadb: same
+      - name: QUARTER
+        grammar: true
+        mariadb: same
+      - name: SECOND
+        grammar: true
+        mariadb: same
+      - name: SEC_TO_TIME
+        mariadb: same
+      - name: STR_TO_DATE  # an impossible date: an error in MySQL from 8.0.35, NULL elsewhere
+        mariadb: same
+      - name: SUBDATE
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: SUBTIME
+        mariadb: same
+      - name: SYSDATE
+        grammar: true
+        touching: true
+        mariadb: { rule: function.now }
+      - name: TIME
+        grammar: true
+        mariadb: same
+      - name: TIMEDIFF
+        mariadb: same
+      - name: TIMESTAMP
+        grammar: true
+        mariadb: same
+      - name: TIMESTAMPADD
+        grammar: true
+        mariadb: same
+      - name: TIMESTAMPDIFF
+        grammar: true
+        mariadb: same
+      - name: TIME_FORMAT
+        mariadb: same
+      - name: TIME_TO_SEC
+        mariadb: { rule: function.time-to-sec }
+      - name: TO_DAYS
+        mariadb: same
+      - name: TO_SECONDS
+        mariadb: same
+      - name: UNIX_TIMESTAMP
+        mariadb: { rule: function.unix-timestamp }
+      - name: UTC_DATE
+        grammar: true
+        mariadb: same
+      - name: UTC_TIME
+        grammar: true
+        mariadb: same
+      - name: UTC_TIMESTAMP
+        grammar: true
+        mariadb: same
+      - name: WEEK
+        grammar: true
+        mariadb: same
+      - name: WEEKDAY
+        mariadb: same
+      - name: WEEKOFYEAR
+        mariadb: same
+      - name: YEAR  # a YEAR in MySQL 8.4, an INT elsewhere: same values
+        grammar: true
+        mariadb: same
+      - name: YEARWEEK
+        mariadb: same
+  - family: String
+    manual: https://dev.mysql.com/doc/refman/8.4/en/string-functions.html
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: ASCII
+        grammar: true
+        mariadb: same
+      - name: BIN
+        mariadb: same
+      - name: BIT_LENGTH
+        mariadb: same
+      - name: CHAR  # an invalid character with USING: NULL in MySQL, an error in MariaDB
+        grammar: true
+        mariadb: same
+      - name: CHARACTER_LENGTH
+        mariadb: same
+      - name: CHAR_LENGTH
+        mariadb: same
+      - name: CONCAT
+        mariadb: same
+      - name: CONCAT_WS
+        mariadb: same
+      - name: ELT
+        mariadb: same
+      - name: EXPORT_SET
+        mariadb: same
+      - name: FIELD
+        mariadb: same
+      - name: FIND_IN_SET
+        mariadb: same
+      - name: FORMAT
+        grammar: true
+        mariadb: same
+      - name: FROM_BASE64
+        mariadb: same
+      - name: HEX
+        mariadb: same
+      - name: INSERT
+        grammar: true
+        mariadb: same
+      - name: INSTR
+        mariadb: same
+      - name: LCASE
+        mariadb: same
+      - name: LEFT
+        grammar: true
+        mariadb: same
+      - name: LENGTH
+        mariadb: same
+      - name: LOAD_FILE
+        mariadb: same
+      - name: LOCATE
+        mariadb: same
+      - name: LOWER
+        mariadb: same
+      - name: LPAD
+        mariadb: { rule: function.pad }
+      - name: LTRIM
+        mariadb: same
+      - name: MAKE_SET
+        mariadb: same
+      - name: MID
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: OCT
+        mariadb: same
+      - name: OCTET_LENGTH
+        mariadb: same
+      - name: ORD
+        mariadb: same
+      - name: POSITION
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: QUOTE
+        mariadb: same
+      - name: REGEXP_INSTR
+        mariadb: { rule: function.regexp }
+      - name: REGEXP_LIKE
+        mariadb: { rule: function.regexp }
+      - name: REGEXP_REPLACE
+        mariadb: { rule: function.regexp }
+      - name: REGEXP_SUBSTR
+        mariadb: { rule: function.regexp }
+      - name: REPEAT
+        grammar: true
+        mariadb: same
+      - name: REPLACE
+        grammar: true
+        mariadb: same
+      - name: REVERSE
+        mariadb: same
+      - name: RIGHT
+        grammar: true
+        mariadb: same
+      - name: RPAD
+        mariadb: { rule: function.pad }
+      - name: RTRIM
+        mariadb: same
+      - name: SOUNDEX
+        mariadb: same
+      - name: SPACE
+        mariadb: same
+      - name: STRCMP
+        mariadb: same
+      - name: SUBSTR
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: SUBSTRING
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: SUBSTRING_INDEX
+        mariadb: same
+      - name: TO_BASE64
+        mariadb: same
+      - name: TRIM
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: UCASE
+        mariadb: same
+      - name: UNHEX  # an invalid hexadecimal string: an error in MySQL, NULL in MariaDB
+        mariadb: same
+      - name: UPPER
+        mariadb: same
+      - name: WEIGHT_STRING
+        grammar: true
+        mariadb: { error: "its value depends on the collation, whose default differs between MySQL and MariaDB" }
+  - family: Cast
+    manual: https://dev.mysql.com/doc/refman/8.4/en/cast-functions.html
+    functions:
+      - name: CAST
+        grammar: true
+        touching: true
+      - name: CONVERT
+        grammar: true
+  - family: XML
+    manual: https://dev.mysql.com/doc/refman/8.4/en/xml-functions.html
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: EXTRACTVALUE
+        mariadb: same
+      - name: UPDATEXML
+        mariadb: same
+  - family: Bit
+    manual: https://dev.mysql.com/doc/refman/8.4/en/bit-functions.html
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: BIT_COUNT
+        mariadb: { rule: function.bit-count }
+  - family: Encryption and compression
+    manual: https://dev.mysql.com/doc/refman/8.4/en/encryption-functions.html
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: AES_DECRYPT
+        mariadb: { rule: function.aes }
+      - name: AES_ENCRYPT
+        mariadb: { rule: function.aes }
+      - name: COMPRESS
+        mariadb: same
+      - name: MD5
+        mariadb: same
+      - name: RANDOM_BYTES
+        mariadb: same
+      - name: SHA
+        mariadb: same
+      - name: SHA1
+        mariadb: same
+      - name: SHA2
+        mariadb: same
+      - name: STATEMENT_DIGEST
+      - name: STATEMENT_DIGEST_TEXT
+      - name: UNCOMPRESS
+        mariadb: same
+      - name: UNCOMPRESSED_LENGTH
+        mariadb: same
+      - name: VALIDATE_PASSWORD_STRENGTH
+  - family: Locking
+    manual: https://dev.mysql.com/doc/refman/8.4/en/locking-functions.html
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: GET_LOCK
+        mariadb: same
+      - name: IS_FREE_LOCK
+        mariadb: same
+      - name: IS_USED_LOCK
+        mariadb: same
+      - name: RELEASE_ALL_LOCKS
+        mariadb: same
+      - name: RELEASE_LOCK
+        mariadb: same
+  - family: Information
+    manual: https://dev.mysql.com/doc/refman/8.4/en/information-functions.html
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: BENCHMARK
+        mariadb: same
+      - name: CHARSET
+        grammar: true
+        mariadb: same
+      - name: COERCIBILITY
+        mariadb: { error: "MariaDB 11.8 gives another coercibility to a literal (6, MySQL 4)" }
+      - name: COLLATION
+        grammar: true
+        mariadb: same
+      - name: CONNECTION_ID
+        mariadb: same
+      - name: CURRENT_ROLE
+        mariadb: { error: "MySQL lists the roles as `role`@`host` or NONE, MariaDB gives the name of one role or NULL" }
+      - name: CURRENT_USER
+        grammar: true
+        mariadb: same
+      - name: DATABASE
+        grammar: true
+        mariadb: same
+      - name: FOUND_ROWS
+        mariadb: same
+      - name: ICU_VERSION
+      - name: LAST_INSERT_ID
+        mariadb: same
+      - name: ROLES_GRAPHML
+      - name: ROW_COUNT
+        grammar: true
+        mariadb: same
+      - name: SCHEMA
+        grammar: true
+        mariadb: same
+      - name: SESSION_USER
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: SYSTEM_USER
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: USER
+        grammar: true
+        mariadb: same
+      - name: VERSION
+        mariadb: same
+  - family: JSON
+    manual: https://dev.mysql.com/doc/refman/8.4/en/json-function-reference.html
+    functions:
+      - name: JSON_ARRAY
+      - name: JSON_ARRAY_APPEND
+      - name: JSON_ARRAY_INSERT
+      - name: JSON_CONTAINS
+      - name: JSON_CONTAINS_PATH
+      - name: JSON_DEPTH
+      - name: JSON_EXTRACT
+      - name: JSON_INSERT
+      - name: JSON_KEYS
+      - name: JSON_LENGTH
+      - name: JSON_MERGE
+      - name: JSON_MERGE_PATCH
+      - name: JSON_MERGE_PRESERVE
+      - name: JSON_OBJECT
+      - name: JSON_OVERLAPS
+        since: "8.0.17"
+        source: https://dev.mysql.com/doc/refman/8.0/en/json-search-functions.html#function_json-overlaps
+      - name: JSON_PRETTY
+      - name: JSON_QUOTE
+      - name: JSON_REMOVE
+      - name: JSON_REPLACE
+      - name: JSON_SCHEMA_VALID
+        since: "8.0.17"
+        source: https://dev.mysql.com/doc/refman/8.0/en/json-validation-functions.html
+      - name: JSON_SCHEMA_VALIDATION_REPORT
+        since: "8.0.17"
+        source: https://dev.mysql.com/doc/refman/8.0/en/json-validation-functions.html
+      - name: JSON_SEARCH
+      - name: JSON_SET
+      - name: JSON_STORAGE_FREE
+      - name: JSON_STORAGE_SIZE
+      - name: JSON_TYPE
+      - name: JSON_UNQUOTE
+      - name: JSON_VALID
+      - name: JSON_VALUE
+        since: "8.0.21"
+        source: https://dev.mysql.com/doc/refman/8.0/en/json-search-functions.html#function_json-value
+        grammar: true
+  - family: Spatial
+    manual: https://dev.mysql.com/doc/refman/8.4/en/spatial-function-reference.html
+    functions:
+      - name: GEOMCOLLECTION
+        grammar: true
+      - name: GEOMETRYCOLLECTION
+        grammar: true
+      - name: LINESTRING
+        grammar: true
+      - name: MBRCONTAINS
+      - name: MBRCOVEREDBY
+      - name: MBRCOVERS
+      - name: MBRDISJOINT
+      - name: MBREQUALS
+      - name: MBRINTERSECTS
+      - name: MBROVERLAPS
+      - name: MBRTOUCHES
+      - name: MBRWITHIN
+      - name: MULTILINESTRING
+        grammar: true
+      - name: MULTIPOINT
+        grammar: true
+      - name: MULTIPOLYGON
+        grammar: true
+      - name: POINT
+        grammar: true
+      - name: POLYGON
+        grammar: true
+      - name: ST_AREA
+      - name: ST_ASBINARY
+      - name: ST_ASGEOJSON
+      - name: ST_ASTEXT
+      - name: ST_ASWKB
+      - name: ST_ASWKT
+      - name: ST_BUFFER
+      - name: ST_BUFFER_STRATEGY
+      - name: ST_CENTROID
+      - name: ST_CONTAINS
+      - name: ST_CONVEXHULL
+      - name: ST_CROSSES
+      - name: ST_DIFFERENCE
+      - name: ST_DIMENSION
+      - name: ST_DISJOINT
+      - name: ST_DISTANCE
+      - name: ST_DISTANCE_SPHERE
+      - name: ST_ENDPOINT
+      - name: ST_ENVELOPE
+      - name: ST_EQUALS
+      - name: ST_EXTERIORRING
+      - name: ST_FRECHETDISTANCE
+        since: "8.0.23"
+        source: https://dev.mysql.com/doc/refman/8.0/en/spatial-relation-functions-object-shapes.html#function_st-frechetdistance
+      - name: ST_GEOHASH
+      - name: ST_GEOMCOLLFROMTEXT
+      - name: ST_GEOMCOLLFROMTXT
+      - name: ST_GEOMCOLLFROMWKB
+      - name: ST_GEOMETRYCOLLECTIONFROMTEXT
+      - name: ST_GEOMETRYCOLLECTIONFROMWKB
+      - name: ST_GEOMETRYFROMTEXT
+      - name: ST_GEOMETRYFROMWKB
+      - name: ST_GEOMETRYN
+      - name: ST_GEOMETRYTYPE
+      - name: ST_GEOMFROMGEOJSON
+      - name: ST_GEOMFROMTEXT
+      - name: ST_GEOMFROMWKB
+      - name: ST_HAUSDORFFDISTANCE
+        since: "8.0.23"
+        source: https://dev.mysql.com/doc/refman/8.0/en/spatial-relation-functions-object-shapes.html#function_st-hausdorffdistance
+      - name: ST_INTERIORRINGN
+      - name: ST_INTERSECTION
+      - name: ST_INTERSECTS
+      - name: ST_ISCLOSED
+      - name: ST_ISEMPTY
+      - name: ST_ISSIMPLE
+      - name: ST_ISVALID
+      - name: ST_LATFROMGEOHASH
+      - name: ST_LATITUDE
+        since: "8.0.12"
+        source: https://dev.mysql.com/doc/refman/8.0/en/gis-point-property-functions.html#function_st-latitude
+      - name: ST_LENGTH
+      - name: ST_LINEFROMTEXT
+      - name: ST_LINEFROMWKB
+      - name: ST_LINEINTERPOLATEPOINT
+        since: "8.0.24"
+        source: https://dev.mysql.com/doc/refman/8.0/en/spatial-operator-functions.html#function_st-lineinterpolatepoint
+      - name: ST_LINEINTERPOLATEPOINTS
+        since: "8.0.24"
+        source: https://dev.mysql.com/doc/refman/8.0/en/spatial-operator-functions.html#function_st-lineinterpolatepoints
+      - name: ST_LINESTRINGFROMTEXT
+      - name: ST_LINESTRINGFROMWKB
+      - name: ST_LONGFROMGEOHASH
+      - name: ST_LONGITUDE
+        since: "8.0.12"
+        source: https://dev.mysql.com/doc/refman/8.0/en/gis-point-property-functions.html#function_st-longitude
+      - name: ST_MAKEENVELOPE
+      - name: ST_MLINEFROMTEXT
+      - name: ST_MLINEFROMWKB
+      - name: ST_MPOINTFROMTEXT
+      - name: ST_MPOINTFROMWKB
+      - name: ST_MPOLYFROMTEXT
+      - name: ST_MPOLYFROMWKB
+      - name: ST_MULTILINESTRINGFROMTEXT
+      - name: ST_MULTILINESTRINGFROMWKB
+      - name: ST_MULTIPOINTFROMTEXT
+      - name: ST_MULTIPOINTFROMWKB
+      - name: ST_MULTIPOLYGONFROMTEXT
+      - name: ST_MULTIPOLYGONFROMWKB
+      - name: ST_NUMGEOMETRIES
+      - name: ST_NUMINTERIORRING
+      - name: ST_NUMINTERIORRINGS
+      - name: ST_NUMPOINTS
+      - name: ST_OVERLAPS
+      - name: ST_POINTATDISTANCE
+        since: "8.0.24"
+        source: https://dev.mysql.com/doc/refman/8.0/en/spatial-operator-functions.html#function_st-pointatdistance
+      - name: ST_POINTFROMGEOHASH
+      - name: ST_POINTFROMTEXT
+      - name: ST_POINTFROMWKB
+      - name: ST_POINTN
+      - name: ST_POLYFROMTEXT
+      - name: ST_POLYFROMWKB
+      - name: ST_POLYGONFROMTEXT
+      - name: ST_POLYGONFROMWKB
+      - name: ST_SIMPLIFY
+      - name: ST_SRID
+      - name: ST_STARTPOINT
+      - name: ST_SWAPXY
+      - name: ST_SYMDIFFERENCE
+      - name: ST_TOUCHES
+      - name: ST_TRANSFORM
+        since: "8.0.13"
+        source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-13.html
+      - name: ST_UNION
+      - name: ST_VALIDATE
+      - name: ST_WITHIN
+      - name: ST_X
+      - name: ST_Y
+  - family: Replication
+    manual: https://dev.mysql.com/doc/refman/8.4/en/replication-functions.html
+    functions:
+      - name: ASYNCHRONOUS_CONNECTION_FAILOVER_ADD_MANAGED
+        since: "8.0.23"
+        source: https://dev.mysql.com/doc/refman/8.0/en/replication-functions-async-failover.html
+      - name: ASYNCHRONOUS_CONNECTION_FAILOVER_ADD_SOURCE
+        since: "8.0.22"
+        source: https://dev.mysql.com/doc/refman/8.0/en/replication-functions-async-failover.html
+      - name: ASYNCHRONOUS_CONNECTION_FAILOVER_DELETE_MANAGED
+        since: "8.0.23"
+        source: https://dev.mysql.com/doc/refman/8.0/en/replication-functions-async-failover.html
+      - name: ASYNCHRONOUS_CONNECTION_FAILOVER_DELETE_SOURCE
+        since: "8.0.22"
+        source: https://dev.mysql.com/doc/refman/8.0/en/replication-functions-async-failover.html
+      - name: ASYNCHRONOUS_CONNECTION_FAILOVER_RESET
+        since: "8.0.27"
+        source: https://dev.mysql.com/doc/refman/8.0/en/replication-functions-async-failover.html
+      - name: GTID_SUBSET
+      - name: GTID_SUBTRACT
+      - name: MASTER_POS_WAIT
+      - name: SOURCE_POS_WAIT
+        since: "8.0.26"
+        source: https://dev.mysql.com/doc/refman/8.0/en/replication-functions-synchronization.html#function_source-pos-wait
+      - name: WAIT_FOR_EXECUTED_GTID_SET
+      - name: WAIT_UNTIL_SQL_THREAD_AFTER_GTIDS
+        until: "8.2.0"
+        source: https://dev.mysql.com/doc/relnotes/mysql/8.2/en/news-8-2-0.html
+  - family: Performance Schema
+    manual: https://dev.mysql.com/doc/refman/8.4/en/performance-schema-functions.html
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: FORMAT_BYTES
+        since: "8.0.16"
+        source: https://dev.mysql.com/doc/refman/8.0/en/performance-schema-functions.html#function_format-bytes
+        mariadb: same
+      - name: FORMAT_PICO_TIME
+        since: "8.0.16"
+        source: https://dev.mysql.com/doc/refman/8.0/en/performance-schema-functions.html#function_format-pico-time
+        mariadb: same
+      - name: PS_CURRENT_THREAD_ID
+        since: "8.0.16"
+        source: https://dev.mysql.com/doc/refman/8.0/en/performance-schema-functions.html#function_ps-current-thread-id
+      - name: PS_THREAD_ID
+        since: "8.0.16"
+        source: https://dev.mysql.com/doc/refman/8.0/en/performance-schema-functions.html#function_ps-thread-id
+  - family: Miscellaneous
+    manual: https://dev.mysql.com/doc/refman/8.4/en/miscellaneous-functions.html
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: ANY_VALUE
+      - name: BIN_TO_UUID
+      - name: DEFAULT
+        grammar: true
+      - name: GROUPING
+        grammar: true
+      - name: INET6_ATON
+        mariadb: same
+      - name: INET6_NTOA
+        mariadb: same
+      - name: INET_ATON
+        mariadb: same
+      - name: INET_NTOA
+        mariadb: same
+      - name: IS_IPV4
+        mariadb: same
+      - name: IS_IPV4_COMPAT
+        mariadb: same
+      - name: IS_IPV4_MAPPED
+        mariadb: same
+      - name: IS_IPV6
+        mariadb: same
+      - name: IS_UUID
+      - name: NAME_CONST
+        mariadb: same
+      - name: SLEEP
+        mariadb: same
+      - name: UUID
+        mariadb: { rule: function.uuid }
+      - name: UUID_SHORT
+        mariadb: same
+      - name: UUID_TO_BIN
+      - name: VALUES
+        grammar: true
+  - family: Aggregate
+    manual: https://dev.mysql.com/doc/refman/8.4/en/aggregate-functions.html
+    kind: aggregate
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: AVG
+        grammar: true
+        mariadb: same
+      - name: BIT_AND
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: BIT_OR
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: BIT_XOR
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: COUNT
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: GROUP_CONCAT
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: JSON_ARRAYAGG
+        grammar: true
+        touching: true
+        mariadb: { error: "a JSON in MySQL, a text in MariaDB" }
+      - name: JSON_OBJECTAGG
+        grammar: true
+        touching: true
+        mariadb: { error: "a JSON in MySQL, a text in MariaDB" }
+      - name: MAX
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: MIN
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: STD
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: STDDEV
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: STDDEV_POP
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: STDDEV_SAMP
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: ST_COLLECT
+        since: "8.0.24"
+        source: https://dev.mysql.com/doc/refman/8.0/en/spatial-aggregate-functions.html
+        grammar: true
+        touching: true
+      - name: SUM
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: VARIANCE
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: VAR_POP
+        grammar: true
+        touching: true
+        mariadb: same
+      - name: VAR_SAMP
+        grammar: true
+        touching: true
+        mariadb: same
+  - family: Window
+    manual: https://dev.mysql.com/doc/refman/8.4/en/window-function-descriptions.html
+    kind: window
+    checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
+    functions:
+      - name: CUME_DIST
+        grammar: true
+        mariadb: same
+      - name: DENSE_RANK
+        grammar: true
+        mariadb: same
+      - name: FIRST_VALUE
+        grammar: true
+        mariadb: same
+      - name: LAG
+        grammar: true
+        mariadb: same
+      - name: LAST_VALUE
+        grammar: true
+        mariadb: same
+      - name: LEAD
+        grammar: true
+        mariadb: same
+      - name: NTH_VALUE
+        grammar: true
+        mariadb: same
+      - name: NTILE
+        grammar: true
+        mariadb: same
+      - name: PERCENT_RANK
+        grammar: true
+        mariadb: same
+      - name: RANK
+        grammar: true
+        mariadb: same
+      - name: ROW_NUMBER
+        grammar: true
+        mariadb: same

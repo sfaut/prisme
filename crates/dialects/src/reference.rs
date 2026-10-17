@@ -1,16 +1,18 @@
 //! Reference of each dialect: what Prisme knows of it, version by version.
 //!
 //! One file per dialect, `crates/dialects/reference/<dialect>.yaml`, the only
-//! source of these facts: the keywords (`keywords` module) and the constructs
+//! source of these facts: the keywords (`keywords` module), the constructs
 //! of the grammar whose availability depends on the version (`versions`
-//! module). Edited directly, embedded in the executable, read only once. The
-//! format is described at the top of each file.
+//! module) and the built-in functions (`builtins` module). Edited directly,
+//! embedded in the executable, read only once. The format is described at
+//! the top of each file.
 
 use std::sync::OnceLock;
 
 use serde::Deserialize;
 
 use crate::Dialect;
+use crate::builtins::Family;
 use crate::keywords::KeywordFile;
 use crate::versions::{self, ConstructEntry, Version};
 
@@ -25,6 +27,8 @@ pub(crate) struct Reference {
     pub(crate) keywords: KeywordFile,
     /// Constructs of the grammar, with their period of validity.
     pub(crate) constructs: Vec<ConstructEntry>,
+    /// Built-in functions, by family.
+    pub(crate) functions: Vec<Family>,
 }
 
 /// Reference of a dialect, read only once.

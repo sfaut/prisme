@@ -4,17 +4,18 @@
 //! default row limit (`limit` module), the read / write classification
 //! (`classify` module), the beautifier (`beautify` module), the reference of
 //! each dialect (`reference` module, `reference/*.yaml` files), read by the
-//! keywords (`keywords` module) and the registry of the versions (`versions`
-//! module), and the position of syntax errors (`syntax` module). The
-//! transpilation is being written (`docs/DEV-DIALECTS.md`): lexer of the MySQL family
-//! (`lexer` module), syntax tree and parser (`sql`), plan builder (`build`),
-//! emitter (`emit`), report (`report`) and entry point (`transpile`); the
-//! function catalog comes next.
+//! keywords (`keywords` module), the registry of the versions (`versions`
+//! module) and the built-in functions (`builtins` module), and the position
+//! of syntax errors (`syntax` module). The transpilation is being written
+//! (`docs/DEV-DIALECTS.md`): lexer of the MySQL family (`lexer` module),
+//! syntax tree and parser (`sql`), plan builder (`build`), emitter (`emit`),
+//! report (`report`) and entry point (`transpile`).
 
 mod alias;
 pub mod analysis;
 pub mod beautify;
 pub mod build;
+mod builtins;
 pub mod classify;
 pub mod emit;
 mod functions;

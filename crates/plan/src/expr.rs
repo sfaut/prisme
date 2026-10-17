@@ -301,6 +301,9 @@ pub struct FunctionCall {
     pub name: Ident,
     /// Arguments.
     pub args: Vec<Expr>,
+    /// Function stored in the database, the built-in functions of the
+    /// dialect aside.
+    pub stored: bool,
 }
 
 /// Call to a window function.

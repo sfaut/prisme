@@ -1,7 +1,8 @@
-//! Function calls of the MySQL family in the plan: scalar functions (typed
-//! as unknown until the function catalog of step 7), aggregate functions
-//! (read by the aggregation of their block) and window functions (read by
-//! the window node of their block), with their named windows.
+//! Function calls of the MySQL family in the plan: scalar functions, built-in
+//! or stored in the database (typed as unknown until the types of the
+//! function catalog), aggregate functions (read by the aggregation of their
+//! block) and window functions (read by the window node of their block),
+//! with their named windows.
 
 use prisme_plan::{
     AggregateCall, Direction, Expr, Frame, FrameBound, FunctionCall, Ident, Nulls, OnEmpty,
@@ -13,6 +14,7 @@ use super::group::Clause;
 use super::scope::Scope;
 use super::{BuildError, Builder, functions, same_name};
 use crate::Dialect;
+use crate::builtins::{self, Kind};
 use crate::sql::ast;
 
 /// Parts of a window: partition, order, frame.
@@ -33,8 +35,21 @@ impl Builder<'_> {
         if call.is_aggregate() {
             return self.aggregate_call(call, &name, span, scope);
         }
-        if call.name.parts.len() == 1 && functions::is_window_function(&name) {
-            return Err(self.error(format!("`{name}` needs a window (`OVER`)"), span));
+        let kind = (!call.stored)
+            .then(|| builtins::builtin(self.dialect, self.version, &name))
+            .flatten()
+            .map(|builtin| builtin.kind);
+        match kind {
+            Some(Kind::Aggregate) => {
+                let message = format!("aggregate function `{name}`: not supported yet by Prisme");
+                return Err(self.error(message, span));
+            }
+            // Without a window, `LAST_VALUE` of MariaDB is also a scalar
+            // function: the last of its arguments.
+            Some(Kind::Window) if !(self.dialect == Dialect::MariaDb && name == "LAST_VALUE") => {
+                return Err(self.error(format!("`{name}` needs a window (`OVER`)"), span));
+            }
+            _ => {}
         }
         let args = call
             .args
@@ -49,6 +64,7 @@ impl Builder<'_> {
             qualifier,
             name: function,
             args,
+            stored: call.stored,
         };
         Ok(Expr::function(call, Type::nullable(DataType::Unknown)).with_span(span))
     }

@@ -465,6 +465,103 @@ fn windows_take_the_forms_mariadb_reads() {
 }
 
 #[test]
+fn built_in_functions_follow_the_reference_files() {
+    let text = "SELECT CONCAT(a, 'x'), ABS(-1), `ABS`(b), LEFT(a, 1), LEFT (a, 1), AVG (a) FROM t";
+    let (sql, rules) = transpiled(text, mysql(), output(mariadb()));
+    assert_eq!(sql, text);
+    assert!(rules.is_empty(), "{rules:?}");
+    for (text, output, rule) in [
+        (
+            "SELECT ANY_VALUE(a) FROM t",
+            output(mariadb()),
+            "function.absent",
+        ),
+        (
+            "SELECT COERCIBILITY(a) FROM t",
+            output(mariadb()),
+            "function.untranslatable",
+        ),
+        (
+            "SELECT JSON_DEPTH('[]')",
+            output(mariadb()),
+            "function.unstudied",
+        ),
+        (
+            "SELECT TIME_TO_SEC(a) FROM t",
+            output(mariadb()),
+            "function.time-to-sec",
+        ),
+        (
+            "SELECT FORMAT_PICO_TIME(a) FROM t",
+            output(mysql_at(8, 0, 11)),
+            "function.version",
+        ),
+        (
+            "SELECT WAIT_UNTIL_SQL_THREAD_AFTER_GTIDS('', 1)",
+            output(mysql_at(8, 4, 0)),
+            "function.version",
+        ),
+    ] {
+        assert_eq!(errors(text, mysql(), output), [rule], "{text}");
+    }
+    assert_eq!(
+        errors("SELECT ADD_MONTHS(a, 1) FROM t", mariadb(), output(mysql())),
+        ["function.add-months"]
+    );
+    // Without a window, `LAST_VALUE` of MariaDB is a scalar function MySQL lacks.
+    assert_eq!(
+        errors("SELECT LAST_VALUE(a, b) FROM t", mariadb(), output(mysql())),
+        ["function.absent"]
+    );
+}
+
+#[test]
+fn stored_functions_keep_calling_the_database() {
+    for (text, expected, rules) in [
+        (
+            "SELECT f(a), db.g(1) FROM t",
+            "SELECT f(a), db.g(1) FROM t",
+            vec![],
+        ),
+        // `NOW` followed by a space calls a stored function in both dialects.
+        ("SELECT NOW () FROM t", "SELECT NOW () FROM t", vec![]),
+        // MariaDB reads `SYSDATE ()` as its built-in function.
+        (
+            "SELECT SYSDATE () FROM t",
+            "SELECT `SYSDATE`() AS `SYSDATE ()` FROM t",
+            vec!["function.stored", "column.implicit-name"],
+        ),
+        (
+            "SELECT `LEFT`(a, 1) FROM t",
+            "SELECT `LEFT`(a, 1) FROM t",
+            vec![],
+        ),
+    ] {
+        let (sql, written) = transpiled(text, mysql(), output(mariadb()));
+        assert_eq!(sql, expected, "{text}");
+        assert_eq!(written, rules, "{text}");
+    }
+    // `ADD_MONTHS` is a stored function in MySQL, a built-in one in MariaDB.
+    assert_eq!(
+        errors("SELECT ADD_MONTHS(a, 1) FROM t", mysql(), output(mariadb())),
+        ["function.stored"]
+    );
+    // A stored function named like a function of a later version.
+    assert_eq!(
+        errors(
+            "SELECT FORMAT_PICO_TIME(a) FROM t",
+            mysql_at(8, 0, 11),
+            output(mysql_at(8, 4, 0))
+        ),
+        ["function.stored"]
+    );
+    // `MEDIAN (a)` calls a stored function in MariaDB, MySQL has no `MEDIAN`.
+    let (sql, rules) = transpiled("SELECT MEDIAN (a) FROM t", mariadb(), output(mysql()));
+    assert_eq!(sql, "SELECT MEDIAN (a) FROM t");
+    assert!(rules.is_empty(), "{rules:?}");
+}
+
+#[test]
 fn what_the_output_lacks_is_an_explicit_error() {
     for (text, output, rule) in [
         (
@@ -472,11 +569,10 @@ fn what_the_output_lacks_is_an_explicit_error() {
             output(mariadb()),
             "window.default",
         ),
-        ("SELECT NOW()", output(mariadb()), "function.dialect"),
         (
             "SELECT JSON_ARRAYAGG(a) FROM t",
             output(mariadb()),
-            "function.dialect",
+            "function.untranslatable",
         ),
         (
             "SELECT a, COUNT(*) FROM t GROUP BY a WITH ROLLUP ORDER BY a",

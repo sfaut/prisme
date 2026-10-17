@@ -561,10 +561,6 @@ fn aggregate_and_window_functions_stay_in_their_clauses() {
             "window function in `HAVING`",
         ),
         (
-            "SELECT MEDIAN(x) OVER () FROM a",
-            "`MEDIAN` with `OVER`: not supported yet by Prisme",
-        ),
-        (
             "SELECT `#key1` FROM (SELECT 1 AS `#key1`) AS d",
             "column `#key1`: the names `#key...`, `#aggregate...` and `#window...` are reserved by Prisme",
         ),
@@ -574,6 +570,22 @@ fn aggregate_and_window_functions_stay_in_their_clauses() {
     // A window function reads the aggregation of its block.
     let text = "SELECT SUM(SUM(x)) OVER (ORDER BY k) FROM a GROUP BY k";
     assert!(plan_in(text, Dialect::MySql).is_ok());
+    // Window functions of MariaDB.
+    for (text, message) in [
+        (
+            "SELECT MEDIAN(x) OVER () FROM a",
+            "`MEDIAN` with `OVER`: not supported yet by Prisme",
+        ),
+        (
+            "SELECT MEDIAN(x) FROM a",
+            "`MEDIAN` needs a window (`OVER`)",
+        ),
+    ] {
+        let refused = plan_in(text, Dialect::MariaDb).unwrap_err();
+        assert_eq!(refused.message, message, "{text}");
+    }
+    // Without a window, `LAST_VALUE` of MariaDB is a scalar function.
+    assert!(plan_in("SELECT LAST_VALUE(x, k) FROM a", Dialect::MariaDb).is_ok());
 }
 
 #[test]
