@@ -327,3 +327,40 @@ Recorded in `docs/QUESTIONS.md`, section 5, "Dialects and transpilation":
 - 49: form of the catalog statements towards MySQL and MariaDB, decided: `information_schema`, `SHOW` when the input used it;
 - 50: storage of the registry of the versions, decided: data files in the repository;
 - 51: oldest versions covered by the registry, decided: MySQL 8.0, MariaDB 10.6.
+
+## 6. Feedback
+
+Difficulties met, their solutions, and the particularities of the servers and versions found along the way, for the next implementations. Each entry says how it was established; the measures go through the tool `probe` (`docs/DEVELOPER.md`, section "Measurements on real servers").
+
+### 6.1 Method
+
+- **Measure, then read the source.** The manuals leave out the edge cases (empty pad of `LPAD`, first second after the epoch of `UNIX_TIMESTAMP`): `probe expr` measures them on several versions at once, the source of the server explains them and dates them (`LPAD` read in `sql/item_strfunc.cc` of MySQL 8.0.13 and in Bug #117227).
+- **Bracket a change between two images.** The images are published per patch version (`mysql:8.0.27`, `mysql:8.0.28`): the version of a change is measured on both sides. Some versions have no image (MariaDB 11.7.0 and 11.7.1, the first 11.7 image being 11.7.2): the `since` then comes from the fix version of the ticket, confirmed on the neighbouring images.
+- **Check each emulation against the function of the input.** A unit test only checks the text written. The emulation is run on the output server and the function on the input server, value by value, at the bounds of the ranges and beyond, in UTC and in another time zone (+05:00). This check found the first second after the epoch of `UNIX_TIMESTAMP` and the scale given by `x + INTERVAL 1 SECOND`, which the unit tests could not see.
+- **Compare the values, then the types.** The same function gives decimals of other precisions on the two servers (`UNIX_TIMESTAMP('…00.5')`: `DECIMAL(12,1)` in MySQL, `DECIMAL(17,1)` in MariaDB). The scale is kept by the emulations; the precision waits for the result types of the functions.
+- **Read a type through `CREATE TABLE ... AS SELECT`**, the value from the column created. A user variable converts some values (a binary string read as `0x0` in MySQL 8.4). MariaDB 10.6 refuses the `CREATE TABLE ... AS SELECT` of a `JSON` column (error 1054, "Unknown column in CHECK"): `probe` then reports the type as unknown.
+- **Classify the names of functions by the error of a call**, made inside `SELECT 0 + ...` so that the select modifiers (`ALL`, `DISTINCT`, `STRAIGHT_JOIN`, `SQL_*_RESULT`) are not taken for functions: 1305, no function of that name; 1582, another number of arguments; 1064, syntax of its own; 1630, a stored function named like a built-in one, which is also the error of a quoted built-in name (`` `NOW`() ``). The spatial constructors of MariaDB (`POINT`...) answer only with their exact number of arguments: a name is built-in when any form of the call reaches the function.
+
+### 6.2 Emitter
+
+- **The rules of the reference files apply between dialects only.** Between two versions of a dialect, a function goes through as written, even when its behaviour changed (`UNIX_TIMESTAMP` from MySQL 8.0.19 to MySQL 8.4); a rule written for both directions only meets the pairs MySQL → MariaDB and MariaDB → MySQL.
+- **An emulation that repeats an argument** (`CASE WHEN UNIX_TIMESTAMP(x) < ... THEN UNIX_TIMESTAMP(x) ...`) needs an argument that gives the same value on each evaluation: neither subquery, nor stored function, nor function of `VOLATILE` (`emit/rules.rs`, `repeatable`); otherwise an error. The steps of the repeated argument are recorded once.
+- **The types of the results of functions are unknown in the plan** for now: `NOW()` is nullable, of a type unknown. A rule that depends on the type takes the form that is right for any value (`UNIX_TIMESTAMP(NOW())` keeps the test of the fraction), or gives an error when it cannot (the fractional digits of the cast of `FROM_UNIXTIME`).
+- **`NULLIF` evaluates its first argument twice** when it differs from the second, on both servers (`SET @c = 0` then `NULLIF((@c := @c + 1), 0)` gives 2, measured on MySQL 8.0.11 and 8.4, MariaDB 10.6 and 11.8): an emulation that writes it repeats its argument.
+- **Avoid `LEAST` and `GREATEST` to bound an argument** in an emulation: their comparison of a string with a number differs between the servers (section 6.3).
+- **Prisme leaves the session time zone at the default of the server.** The tables of the named time zones stop in 2037 (the last offset applies beyond), the `SYSTEM` time zone follows the rules of the system, daylight saving time included: no emulation computes an instant beyond the range of MariaDB (2106) exactly in every time zone.
+
+### 6.3 Particularities of the servers and versions
+
+- **Range of `UNIX_TIMESTAMP` and `FROM_UNIXTIME`**: until 2038-01-19 03:14:07 UTC before MySQL 8.0.28 and MariaDB 11.5.1, 3001-01-18 23:59:59.999999 in MySQL from 8.0.28 (on 64-bit platforms), 2106-02-07 06:28:15 in MariaDB from 11.5.1, the epoch left out in MariaDB from 11.7.1. Out of it, `UNIX_TIMESTAMP` gives 0 in MySQL (with a warning for a zero date), NULL in MariaDB, and `FROM_UNIXTIME` NULL on both (MariaDB adds the warning "Truncated incorrect unixtime value").
+- **First second after the epoch**: MySQL gives 0 with the scale of the argument (`UNIX_TIMESTAMP('1970-01-01 00:00:00.5')` gives `0.0` in UTC), MariaDB the fraction (`0.5`).
+- **Zero dates**: `UNIX_TIMESTAMP` of a zero `TIMESTAMP` column gives 0 on every server; of a zero `DATETIME` or string, 0 in MySQL, NULL in MariaDB.
+- **MariaDB 11.7.1** (MDEV-15751): `NOW()`, `CURRENT_TIMESTAMP`, `SYSDATE()` and `FROM_UNIXTIME()` give a `TIMESTAMP`; `FROM_UNIXTIME(0)` gives NULL, `FROM_UNIXTIME(1) - INTERVAL 1 SECOND` the epoch as a `DATETIME`; `IF(c, <DATETIME>, <TIMESTAMP>)` gives a `DATETIME`. **MariaDB 11.6.2**: `LOCALTIME` gives a `TIME`. **MariaDB 10.7.1**: `UUID()` gives a `UUID`.
+- **Fractional digits of `FROM_UNIXTIME(n)`**, the same on both servers: 0 for an integer, a boolean, NULL, a date or a time without fraction; the scale of a decimal, 6 at most; those of a `DATETIME(n)` or `TIME(n)`; 6 for a float or a string. `x + INTERVAL 1 SECOND` gives 6 fractional digits to a string `x`.
+- **Cast of a string with a fraction to `DATETIME`**: MySQL rounds (`CAST('1970-01-01 00:00:00.5' AS DATETIME)` gives `00:00:01`), MariaDB truncates (`00:00:00`). No rule yet: to handle with `CAST` (special syntax, step 7).
+- **`LPAD` and `RPAD` with an empty pad**, beyond the length of the string: NULL in MariaDB and in MySQL before 8.0.13, an empty string from 8.0.13, the string unchanged from 9.3.0. MariaDB pads with spaces without a third argument, MySQL refuses it (error 1582).
+- **`TIME_TO_SEC`** of a value with a fraction: a whole number in MySQL, a decimal in MariaDB.
+- **`LEAST` and `GREATEST` of a string and a number** compare them as strings in MySQL, as numbers in MariaDB: `LEAST('300', 2147483648)` gives `2147483648` in MySQL 8.0.11 and 8.4, `300` in MariaDB 10.6 and 11.8. To study for the rule `function.greatest`.
+- **Type of `UNIX_TIMESTAMP`**: `INT(11)` in MySQL 8.0.11, `BIGINT` in 8.0.27 and later, `BIGINT(17)` in MariaDB.
+- **Names read as built-in calls by the lexer** of both servers, absent from the reference files for now: `SQL_TSI_DAY`, `SQL_TSI_HOUR`... (synonyms of `DAY()`...), `CHARACTER` (`CHAR`), `ROW`, `BINARY`.
+- **MySQL 9.x**: the vector functions (`STRING_TO_VECTOR`, `VECTOR_DIM`, `VECTOR_TO_STRING`) are absent from `reference/mysql.yaml`, whose functions are inspected up to 8.4.11.
