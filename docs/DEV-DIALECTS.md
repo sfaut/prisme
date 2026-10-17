@@ -107,7 +107,7 @@ The PRQL points (45 to 47) wait for step 8.
 
 - Tokens with their position (byte offsets, line and column), comments kept as tokens with their position.
 - Set by the dialect (MySQL or MariaDB), the server version and the SQL mode read on connection (`ANSI_QUOTES`, `NO_BACKSLASH_ESCAPES`, `PIPES_AS_CONCAT`; `docs/QUESTIONS.md`, point 30).
-- Executable comments (`/*! ... */`, `/*!80000 ... */`, `/*M! ... */`) are code for the server, depending on its version: handled according to point 41.
+- Executable comments (`/*! ... */`, `/*!80000 ... */`, `/*M! ... */`) are code for the server, depending on its version. Prisme resolves their condition (version of the server towards the same dialect, version of the input dialect otherwise, point 43): the content is then code, given to the parser and translated with the rest of the query, or a plain comment. A content that cannot be translated is reported (point 41).
 - Tests: units, oracle (tokens of `sqlparser-rs` on the corpus, listed differences aside), performance budget.
 
 ### Step 3. First vertical slice: the example of the dialects
@@ -219,7 +219,7 @@ Recorded in `docs/QUESTIONS.md`, section 5, "Dialects and transpilation":
 
 - 39: origin of the plan nodes (position and syntactic form), decided, may evolve;
 - 40: statements outside the DML, decided: translated as far as needed, loss of precision reported;
-- 41: executable comments of MySQL and MariaDB;
+- 41: executable comments of MySQL and MariaDB, decided: transpiled as far as possible, otherwise reported;
 - 42: constructs with no effect on the result (hints, options);
 - 43: version of an input dialect;
 - 44: types when the catalog does not give them;
