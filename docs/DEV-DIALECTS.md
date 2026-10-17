@@ -142,6 +142,7 @@ Goal: `WITH ds (c) AS (VALUES ROW (123), ROW (234), ROW (345)) SELECT * FROM ds`
 
 - `SELECT`: options (`DISTINCT`, `DISTINCTROW`, `HIGH_PRIORITY`, `STRAIGHT_JOIN`, `SQL_NO_CACHE`, `SQL_CALC_FOUND_ROWS`...), all the expressions with their precedence (`DIV`, `MOD`, `XOR`, `<=>`, `REGEXP`, `SOUNDS LIKE`, `MEMBER OF`, `->`, `->>`, `COLLATE`, `BINARY`, `:=`, `@variable`, `@@variable`, `INTERVAL`, `CASE`, `CAST`, `CONVERT`, `EXTRACT`; literals with charset introducers, hexadecimal and bit literals, `DATE '...'`), `FROM` (all the joins, `USING`, `NATURAL`, derived tables, `LATERAL`, `JSON_TABLE`, index hints, `PARTITION`), `GROUP BY ... WITH ROLLUP`, `HAVING`, `WINDOW` and window functions, the forms of `LIMIT`, set operations with parentheses, recursive common table expressions, `TABLE t`, locking clauses (`FOR UPDATE`, `FOR SHARE`, `NOWAIT`, `SKIP LOCKED`, `LOCK IN SHARE MODE`), `INTO` (variables, `OUTFILE` and `DUMPFILE`, which are writes), optimizer hints `/*+ ... */`.
 - `INSERT` and `REPLACE` (`VALUES`, `SET`, `SELECT`, `TABLE`, `ON DUPLICATE KEY UPDATE` with `VALUES()` or a row alias), multi-table `UPDATE` and `DELETE`, with `ORDER BY` and `LIMIT` (point 34).
+- Type of a user variable (`@x`): read with `SELECT @x, @y` on the connection that runs the query, just before running it, after the previous queries of the batch; each query of a batch is therefore transpiled just before it runs (point 44).
 - Constructs with no effect on the result (hints, options such as `SQL_NO_CACHE`) are annotations of the plan: written towards the same dialect, left out towards another one, with a step in the report (point 42).
 - **Corpus**: queries written for Prisme, grouped by family, each with its expected status per dialect and version, in `crates/dialects/tests/corpus/`; the queries of the conformance suite are part of it. No copy of the test suites of MySQL or MariaDB (GPL license).
 - **Tests**: oracle `sqlparser-rs`; acceptance confirmed by the real server (`PREPARE` on a test schema, Docker); round trip with the same results on MySQL.
@@ -239,7 +240,7 @@ Recorded in `docs/QUESTIONS.md`, section 5, "Dialects and transpilation":
 - 41: executable comments of MySQL and MariaDB, decided: transpiled as far as possible, otherwise reported;
 - 42: constructs with no effect on the result (hints, options), decided: left out towards another dialect, reported;
 - 43: version of an input dialect, decided: chosen by the user, from the registry of the versions;
-- 44: types when the catalog does not give them;
+- 44: types when the catalog does not give them, decided for the user variables (`SELECT @x` before running), leads to confirm for the other cases;
 - 45: PRQL s-strings, decided: read by the parser of the output dialect;
 - 46: `target` of the PRQL header, decided: error if it differs from the engine of the connection;
 - 47: what Ctrl+Enter and Ctrl+Shift+Enter run in a PRQL text, decided: the relation under the cursor with its dependencies, every relation;
