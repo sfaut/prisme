@@ -142,7 +142,7 @@ More detailed logs: `$env:RUST_LOG="debug"` (PowerShell) before `cargo run`. Tes
 ## Rules
 
 1. **MySQL and MariaDB are two distinct dialects**, with a common base. The server version is detected on connection (`SELECT VERSION()`, which contains "MariaDB" for the latter).
-2. **Never a silent approximate translation.** A function is translated natively, by an equivalent expression (emulated), or, as a last resort, by an explicit error. Emulation must keep the result type and the use of indexes. The preview of the translated query reports emulations.
+2. **Never a silent approximate translation.** A function is translated natively, by an equivalent expression (emulated), or, as a last resort, by an explicit error. Emulation must keep the result type and the use of indexes. The preview of the translated query reports emulations. Catalog and session statements (`SHOW`, `USE`, `SET`, `EXPLAIN`, catalog views) are translated as far as needed: when the target gives less than the same request written in its own dialect, the report states the loss of precision.
 3. **Row limit**: if the user wrote no limit, the application adds `LIMIT N+1` (at the AST level), shows N rows and reports "truncated result". If the user wrote a limit, it goes through as is, whatever it is. Always read in streaming.
 4. **Write switches** (UPDATE, DELETE, CREATE, DROP, ALTER): classification by the AST, never by the text, plus a read-only connection account or a `READ ONLY` transaction on the database side when the engine allows it.
 5. **NULLs follow SQL semantics** (three-valued logic, bags and not sets). Column nullability is carried by the types and by the plan from the start.

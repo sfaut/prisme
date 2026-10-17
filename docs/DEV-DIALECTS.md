@@ -10,8 +10,8 @@ Each step ends on a state usable end to end, with its tests and its documents up
 - **Output dialects** of the v1: MySQL and MariaDB, the engines Prisme has a connector for. PostgreSQL, SQLite and DuckDB come with their connectors (`docs/V1.md`, section 4).
 - **Transpilation**: parser (input dialect to AST), plan builder (AST to logical plan), emitter (logical plan to output dialect). The logical plan is the single pivot; a query whose input dialect is the output dialect goes through it too.
 - **Everything is written by Prisme**: one parser per dialect, the plan builders, the emitters, the PRQL parser (the whole language, after the PRQL book, https://prql-lang.org/book/). `sqlparser-rs` becomes a dev-dependency, an oracle of the tests.
-- **Scope**: the DML (`SELECT`, `INSERT`, `UPDATE`, `DELETE`). DDL is set aside.
-- **Never a silent approximate translation** (rule 2 of `CLAUDE.md`): each construct is translated natively, emulated by Prisme (result type and use of indexes kept), or refused with an explicit error.
+- **Scope**: the DML (`SELECT`, `INSERT`, `UPDATE`, `DELETE`), plus the catalog and session statements (`SHOW`, `DESCRIBE`, `EXPLAIN`, `USE`, `SET`, queries on the catalog of the engine). DDL is set aside.
+- **Never a silent approximate translation** (rule 2 of `CLAUDE.md`): each construct is translated natively, emulated by Prisme (result type and use of indexes kept), or refused with an explicit error. A catalog or session statement is translated as far as needed; when the target gives less than the same request written in its own dialect, the report states the loss of precision.
 - **Audit**: every rewrite and every emulation is listed, with its position in the input; every untranslatable construct is listed with its error.
 - **Beautifier**: generated from the plan, comments kept (`docs/V1.md`, section 2.9).
 
@@ -56,7 +56,7 @@ pub struct OutputDialect { pub engine: Engine, pub version: Version }
 pub struct Transpilation {
     /// Query in the output dialect.
     pub sql: String,
-    /// Rewrites and emulations, each with its rule and its position in the input.
+    /// Rewrites, emulations and losses of precision, each with its rule and its position in the input.
     pub steps: Vec<Step>,
     /// Untranslatable constructs, each with its position and its reason.
     pub errors: Vec<Untranslatable>,
@@ -91,14 +91,14 @@ To settle before step 1, as the types and the plan depend on them:
 
 - NULL, points 1 to 6 of `docs/FEDERATED.md`, section 7 (`docs/QUESTIONS.md`, point 12): the two equalities, three-valued logic, joins, set operators, aggregation, sorting;
 - the internal types of the v1 (`docs/FEDERATED.md`, section 6): integers (unsigned `BIGINT` included), exact decimals, strings, dates, JSON;
-- the statements outside the DML (point 40), the version of an input dialect (point 43).
+- the version of an input dialect (point 43).
 
-The PRQL points (45 to 47) wait for step 7.
+The PRQL points (45 to 47) wait for step 8.
 
 ### Step 1. Types and plan
 
 - `crates/types`: integer types (sizes, signed or not), exact decimal, floating point, string, binary, boolean, date and time types, JSON, unknown type; nullability. Conversion from the column types the MySQL connector reads (`crates/connectors/src/mysql/column_type.rs`).
-- `crates/plan`, the nodes the DML needs: `Scan`, `Values`, `Filter`, `Project`, `Extend`, `Aggregate`, `Sort`, `Limit` (count and offset), `Distinct`, the joins (inner, left, right, cross; full later), the six set operations, common table expressions (recursive included), window functions; `Insert`, `Update`, `Delete` at the root. Expressions: column references, literals, operators with explicit semantics (comparison equality and identity equality), calls to functions of the catalog, `CASE`, `CAST`, subqueries (scalar, `IN`, `EXISTS`).
+- `crates/plan`, the nodes the DML needs: `Scan`, `Values`, `Filter`, `Project`, `Extend`, `Aggregate`, `Sort`, `Limit` (count and offset), `Distinct`, the joins (inner, left, right, cross; full later), the six set operations, common table expressions (recursive included), window functions; `Insert`, `Update`, `Delete` at the root; for step 7, the relations of the catalog of Prisme, read by `Scan`, and the session nodes (`Use`, `Set`, `Explain`). Expressions: column references, literals, operators with explicit semantics (comparison equality and identity equality), calls to functions of the catalog, `CASE`, `CAST`, subqueries (scalar, `IN`, `EXISTS`).
 - Origin of the nodes (section 2.3); output schema of each node, with types left unknown when the catalog does not give them (point 44).
 - Tests: construction, output schemas, nullability rules decided in step 0.
 - Done when the plan represents by hand the queries of step 3.
@@ -121,8 +121,8 @@ Goal: `WITH ds (c) AS (VALUES ROW (123), ROW (234), ROW (345)) SELECT * FROM ds`
   - profile setting, migration `users.preferred_dialect` (`TEXT NOT NULL DEFAULT 'source'`, checked among `source`, `mysql`, `mariadb`, `prql`);
   - override per editor tab, migration `editors.dialect` (`TEXT NOT NULL DEFAULT ''`, the empty string meaning "the value of the profile");
   - route `POST /api/transpile` (preview without running);
-  - when the input dialect is not "Selon source de données": transpilation, then the current read / write classification and row limit applied to the output (temporary, until step 8), then running; the report goes with the result. "Selon source de données" keeps the current path until step 8, so that the default setting changes nothing.
-- **Interface**: choice of the dialect in the profile dialog and on the editor tab (PRQL offered from step 7), transpiled query and report in the result tab, preview button. Light and dark modes checked (rule 10 of `CLAUDE.md`).
+  - when the input dialect is not "Selon source de données": transpilation, then the current read / write classification and row limit applied to the output (temporary, until step 9), then running; the report goes with the result. "Selon source de données" keeps the current path until step 9, so that the default setting changes nothing.
+- **Interface**: choice of the dialect in the profile dialog and on the editor tab (PRQL offered from step 8), transpiled query and report in the result tab, preview button. Light and dark modes checked (rule 10 of `CLAUDE.md`).
 - **Tests**: units, round trip, route, interface (Vitest), and on a MariaDB server (Docker): the MySQL query of the example returns its three rows.
 
 ### Step 4. Complete MySQL DML grammar
@@ -143,14 +143,26 @@ Goal: `WITH ds (c) AS (VALUES ROW (123), ROW (234), ROW (345)) SELECT * FROM ds`
 
 ### Step 6. Function catalog
 
-- Format: for each function, its names per dialect, its signature, its result type and nullability; for each output dialect and version, its level: native, emulated, local (later, step 11) or unsupported. Proposal: names, versions and levels in a data file per dialect (`yaml_serde` is already a dependency), emulations in Rust on the plan, never on the text.
+- Format: for each function, its names per dialect, its signature, its result type and nullability; for each output dialect and version, its level: native, emulated, local (later, step 12) or unsupported. Proposal: names, versions and levels in a data file per dialect (`yaml_serde` is already a dependency), emulations in Rust on the plan, never on the text.
 - First families: dates and times, strings, conditionals, numbers, JSON (a native type in MySQL, a text in MariaDB), regular expressions (different libraries in MySQL and MariaDB: their semantics are compared, function by function).
 - Emulations keep the result type and the use of indexes (rewriting as a range, `docs/V1.md`, section 2.1).
 - Functions of the user (stored functions of the database): native on their own server, known through the catalog of the connection.
 - Editor: emulated and untranslatable functions underlined (`docs/QUESTIONS.md`, point 28).
 - **Tests**: each function of the catalog, on both servers, results compared, NULL included.
 
-### Step 7. PRQL
+### Step 7. Catalog and session statements
+
+Prisme translates them as far as needed (point 40). In the v1, between MySQL and MariaDB, and from PRQL; the other engines add their forms with their connector.
+
+- **Relations of the catalog of Prisme**, with a fixed schema (databases, tables, columns, indexes, views, routines...), read by `Scan` nodes like tables. The introspection forms of each dialect map onto them: `SHOW TABLES`, `SHOW COLUMNS`, `DESCRIBE` and the `information_schema` views in MySQL and MariaDB; later `sqlite_schema` and the `PRAGMA` of SQLite, `pg_catalog` in PostgreSQL, the `duckdb_*()` functions of DuckDB.
+- The emitter writes them with the means of the target, in the form that loses the least information and accepts the rest of the query (filters, joins, sorts): a query on `information_schema` in MySQL and MariaDB, or `SHOW` when the input used it and the target accepts it (origin, section 2.3) **[to decide]** (point 49).
+- Example, once SQLite is an input dialect: `SELECT name FROM sqlite_schema WHERE type = 'table'` on a MySQL connection becomes a query on `information_schema.tables` (base tables of the current database). The columns MySQL cannot give in the same query (`rootpage`; `sql`, the text of creation, which MySQL gives table by table with `SHOW CREATE TABLE`) are listed in the report as a loss of precision.
+- Session statements: `USE`, `SET` (session variables, `NAMES`, `TRANSACTION`) translated by meaning, towards the setting of the same meaning in the target, otherwise an explicit error. `EXPLAIN` of a DML query: the `EXPLAIN` of the target on the transpiled query; its output differs from one engine to another, which the report states.
+- The other `SHOW` (`VARIABLES`, `STATUS`, `PROCESSLIST`, `GRANTS`, `WARNINGS`, `CREATE TABLE`...): one rule each, with its test.
+- Report: a step kind "loss of precision", which says what the same request written in the dialect of the target would give in addition.
+- **Tests**: on a test schema, the relations of the catalog give the same rows on MySQL and MariaDB; each rule has its test.
+
+### Step 8. PRQL
 
 - Lexer and parser of the whole language, chapter by chapter of the book: transforms (`from`, `select`, `derive`, `filter`, `sort`, `take`, `join`, `group`, `aggregate`, `window`, `loop`) and relation functions (`append`, `remove`, `intersect`), declarations (`let`, functions, modules), literals (dates `@2026-01-01`, ranges, f-strings, r-strings, s-strings), operators (`==`, `??`, `~=`, `//`, `**`...), `case`, the `prql` header, the standard library (`std`).
 - Plan builder with the semantics of the book (`docs/QUESTIONS.md`, point 16), expressed by the explicit nodes of the plan: `== null` becomes a test of identity, `/` a division with a real result, `//` an integer division.
@@ -159,27 +171,27 @@ Goal: `WITH ds (c) AS (VALUES ROW (123), ROW (234), ROW (345)) SELECT * FROM ds`
 - **Tests**: the examples of the book (their license is checked before copying them into the repository; otherwise examples written for Prisme), each compared with an equivalent SQL query: same plan, or same results on both servers.
 - The PRQL choice appears in the profile and on the tab.
 
-### Step 8. Analyses and native SQL on the transpiler
+### Step 9. Analyses and native SQL on the transpiler
 
 - Syntax errors of the editor (`crates/server/src/analyze.rs`) given by the parsers of Prisme.
 - Read / write classification on the root of the plan, in place of `classify`; check of the session settings (`session_setting_refusal`) on the parser of Prisme.
 - Row limit as a `Limit` node of the plan (N + 1), written by the emitter, in place of the insertion in the text (`limit` module).
-- Statements outside the DML that the sessions accept today (`SHOW`, `DESCRIBE`, `EXPLAIN`, `USE`, `SET`): according to point 40.
+- Statements outside the DML that the sessions accept today (`SHOW`, `DESCRIBE`, `EXPLAIN`, `USE`, `SET`): through the plan (step 7).
 - "Selon source de données" goes through the transpiler (`docs/QUESTIONS.md`, point 36). Condition: corpus and conformance suite passing for MySQL and MariaDB.
 - **Tests**: the current tests of `classify`, `limit` and `syntax` carried over to the new implementation, and passing.
 
-### Step 9. Beautifier from the plan
+### Step 10. Beautifier from the plan
 
 - Emitter with a layout mode: the rules of `docs/V1.md`, section 2.9 (capitals, `AS` before aliases, function names, layout), comments attached to the nodes (paragraph "Comments" of the same section).
 - Statements outside the plan (DDL, stored programs, `DELIMITER` blocks) keep the current path until they enter the plan (point 48).
 - **Tests**: the current tests of `beautify` and `layout` carried over; comment invariant; idempotence (beautifying a beautified query changes nothing).
 
-### Step 10. `sqlparser-rs` out of the executable
+### Step 11. `sqlparser-rs` out of the executable
 
 - `sqlparser` moves from `[dependencies]` to `[dev-dependencies]` of `crates/dialects`; `cargo tree` confirms that the executable no longer depends on it.
 - The module comments that cite `sqlparser` are updated; `docs/V1.md`, section 3.2, already describes it as a dev-dependency.
 
-### Step 11. Audit and execution plan
+### Step 12. Audit and execution plan
 
 - Full preview before running: query in the output dialect, steps of the report, errors, each one linked to its position in the input (selection in the editor).
 - Execution plan: tree of the plan, each node marked "server" or "Prisme (Rust)". In the v1, every node runs on the server, except the local emulations; first local node: computed columns (`Extend`) evaluated by Prisme on the rows read. Scope to set (`docs/QUESTIONS.md`, point 33).
@@ -206,7 +218,7 @@ PostgreSQL, SQLite and DuckDB (connector, parser, emitter, catalog for each), DD
 Recorded in `docs/QUESTIONS.md`, section 5, "Dialects and transpilation":
 
 - 39: origin of the plan nodes (position and syntactic form), decided, may evolve;
-- 40: statements outside the DML that the sessions accept today;
+- 40: statements outside the DML, decided: translated as far as needed, loss of precision reported;
 - 41: executable comments of MySQL and MariaDB;
 - 42: constructs with no effect on the result (hints, options);
 - 43: version of an input dialect;
@@ -214,4 +226,5 @@ Recorded in `docs/QUESTIONS.md`, section 5, "Dialects and transpilation":
 - 45: PRQL s-strings;
 - 46: `target` of the PRQL header;
 - 47: several PRQL queries in one editor;
-- 48: beautifier of the statements outside the plan, until they enter it.
+- 48: beautifier of the statements outside the plan, until they enter it;
+- 49: form of the catalog statements towards MySQL and MariaDB.
