@@ -9,7 +9,10 @@
 //!    a database.
 //!
 //! The transpiler needs the columns of the tables a query reads, with their
-//! type: `table_columns`, on the connection that runs the query.
+//! type: `table_columns`, on the connection that runs the query. The
+//! metadata of a prepared statement gives a `JSON` column of MySQL the type
+//! of a `LONGTEXT`: `SHOW COLUMNS` tells them apart, for a table with such a
+//! column.
 //!
 //! Each read filters on a database, which saves the server from walking all
 //! the tables at once. The queries only ask for dictionary information:
@@ -29,6 +32,10 @@ use super::{Connection, MysqlError, column_type};
 /// Errors of the server for a table that does not exist: unknown table
 /// (`ER_NO_SUCH_TABLE`), unknown database (`ER_BAD_DB_ERROR`).
 const MISSING_TABLE: [u16; 2] = [1146, 1049];
+
+/// Length in bytes of a `LONGTEXT` column, and of a `JSON` column, in the
+/// metadata of a prepared statement.
+const LONG_LENGTH: u32 = u32::MAX;
 
 /// Table or view of a database.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -189,7 +196,9 @@ type TriggerRow = (String, String, String, String);
 ///
 /// The server describes the columns of `SELECT * FROM t` when preparing it,
 /// without running it: a temporary table of the connection is seen as well,
-/// and a view is not computed (`docs/QUESTIONS.md`, point 44).
+/// and a view is not computed (`docs/QUESTIONS.md`, point 44). A column of
+/// the length of a `LONGTEXT` may be a `JSON` of MySQL, which `SHOW COLUMNS`
+/// names (`json_columns`).
 pub async fn table_columns(
     connection: &mut Connection,
     database: Option<&str>,
@@ -206,7 +215,11 @@ pub async fn table_columns(
         }
         Err(error) => return Err(error.into()),
     };
-    let columns = statement
+    let long = statement
+        .columns()
+        .iter()
+        .any(|column| column.column_length() == LONG_LENGTH);
+    let mut columns: Vec<(String, prisme_types::Type)> = statement
         .columns()
         .iter()
         .map(|column| {
@@ -221,7 +234,32 @@ pub async fn table_columns(
         })
         .collect();
     connection.close(statement).await?;
+    if long {
+        let json = json_columns(connection, &name).await?;
+        for (column, ty) in &mut columns {
+            if json.iter().any(|field| field.eq_ignore_ascii_case(column)) {
+                ty.data_type = prisme_types::DataType::Json;
+            }
+        }
+    }
     Ok(Some(columns))
+}
+
+/// Names of the `JSON` columns of the table or view `name`, quoted, as
+/// `SHOW COLUMNS` declares them: a temporary table and a view as well.
+/// MariaDB declares its `JSON` as a `LONGTEXT`, read as a string.
+async fn json_columns(connection: &mut Connection, name: &str) -> Result<Vec<String>, MysqlError> {
+    let rows: Vec<mysql_async::Row> = connection
+        .query(format!("SHOW COLUMNS FROM {name}"))
+        .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(|row| {
+            let field: String = row.get(0)?;
+            let declared: String = row.get(1)?;
+            declared.eq_ignore_ascii_case("json").then_some(field)
+        })
+        .collect())
 }
 
 /// Name between backticks, read as a name whatever the SQL mode.

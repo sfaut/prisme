@@ -227,8 +227,8 @@ async fn reads_the_columns_of_a_table_without_running_it() {
     let port = server.get_host_port_ipv4(3306).await.unwrap();
     let mut connection = connect(&target(host, port)).await.unwrap();
     for sql in [
-        "CREATE TABLE t (id INT NOT NULL, label VARCHAR(20))",
-        "CREATE TEMPORARY TABLE `odd``name` (n BIGINT UNSIGNED NOT NULL)",
+        "CREATE TABLE t (id INT NOT NULL, label VARCHAR(20), doc JSON, body LONGTEXT)",
+        "CREATE TEMPORARY TABLE `odd``name` (n BIGINT UNSIGNED NOT NULL, d JSON)",
     ] {
         execute(&mut connection, sql).await.unwrap().discard().await;
     }
@@ -238,13 +238,16 @@ async fn reads_the_columns_of_a_table_without_running_it() {
         .unwrap()
         .unwrap();
     let names: Vec<&str> = columns.iter().map(|(name, _)| name.as_str()).collect();
-    assert_eq!(names, ["id", "label"]);
+    assert_eq!(names, ["id", "label", "doc", "body"]);
     assert_eq!(
         columns[0].1.data_type,
         DataType::Integer(IntegerType::signed(IntegerSize::Int))
     );
     assert!(!columns[0].1.nullable);
     assert!(columns[1].1.nullable);
+    // A `JSON` and a `LONGTEXT`, of the same metadata once prepared.
+    assert_eq!(columns[2].1.data_type, DataType::Json);
+    assert!(matches!(columns[3].1.data_type, DataType::Text(_)));
 
     // A temporary table of the connection, in the current database.
     let temporary = catalog::table_columns(&mut connection, None, "odd`name")
@@ -255,6 +258,7 @@ async fn reads_the_columns_of_a_table_without_running_it() {
         temporary[0].1.data_type,
         DataType::Integer(IntegerType::unsigned(IntegerSize::Big))
     );
+    assert_eq!(temporary[1].1.data_type, DataType::Json);
     assert!(
         catalog::table_columns(&mut connection, None, "missing")
             .await
