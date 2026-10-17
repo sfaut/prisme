@@ -459,7 +459,7 @@ allocating.
 - **A table of words read once is the normal form of a keyword list**: a
   scan per token only makes sense for a handful of words.
 
-## 8. Slow conformance suite: each connection waited for IPv6
+## 8. Slow conformance suite: each connection waited for IPv6, the servers wrote to disk
 
 Problem met in October 2026 in the conformance suite of the dialects
 (`crates/dialects/tests/conformance.rs`).
@@ -511,15 +511,41 @@ integration tests of the connector (`crates/connectors/tests/mysql.rs`).
 | Tables of the files | 10.7 s | 2.3 s |
 | Whole run | 361 s | 39 s |
 
-### 8.5 Takeaways
+### 8.5 Second cause: the start of the servers
+
+The start of the four servers then took 70% of the run. At its first start,
+the entrypoint of the MySQL and MariaDB images creates the data directory on
+the disk of the container, then loads the tables of the named time zones of
+the system (`mysql_tzinfo_to_sql`). The cases set a time zone by its offset
+only (`SET time_zone = '+05:00'`). The harness now skips these tables
+(`MYSQL_INITDB_SKIP_TZINFO`, `MARIADB_INITDB_SKIP_TZINFO`), and places the
+data directory in memory (a `tmpfs` on `/var/lib/mysql`), lost with the
+container, which the suite drops at its end anyway. One run each, the start
+varying by about 2 s from one run to the next (30.4 s and 28.6 s with the same
+settings):
+
+| Measure | Through `127.0.0.1` | Without time zone tables | Data in memory as well |
+|---|---|---|---|
+| Start of the 4 servers | 28.6 s | 21.6 s | 12.1 s |
+| Tables of the files | 2.3 s | 2.1 s | 0.4 s |
+| Comparisons, wall clock | 5.2 s | 4.7 s | 5.0 s |
+| Whole run | 39.1 s | 31.0 s | 20.5 s |
+
+A later run, without the timers, took 27.0 s. Checking 16 pairs at once
+instead of 8 gives 4.8 s of comparisons instead of 5.0 s: the parallelism
+stays at 8.
+
+### 8.6 Takeaways
 
 - **On Windows, `localhost` costs 2 seconds per connection to a server that
   does not answer on `::1`**, as a container of Docker Desktop: write
   `127.0.0.1`. A connection of Prisme to `localhost` meets the same delay.
 - **Time each phase before optimising.** The comparisons ran in parallel
   and none looked slow: the connections took 99% of their time.
+- **A throwaway server needs neither a durable disk nor the time zones it
+  does not read**: in memory, the servers start twice as fast.
 
-### 8.6 Measuring again
+### 8.7 Measuring again
 
 Add timers around the phases of `check` and of the test (`Instant::now()`,
 the durations added in a `static Mutex<[Duration; N]>`), then run the suite

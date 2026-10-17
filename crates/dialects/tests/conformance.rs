@@ -33,7 +33,7 @@ use prisme_dialects::versions::Version;
 use prisme_plan::Ident;
 use secrecy::SecretString;
 use serde::Deserialize;
-use testcontainers_modules::testcontainers::core::{IntoContainerPort, WaitFor};
+use testcontainers_modules::testcontainers::core::{IntoContainerPort, Mount, WaitFor};
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use testcontainers_modules::testcontainers::{ContainerAsync, GenericImage, ImageExt};
 use tokio::sync::Semaphore;
@@ -87,7 +87,9 @@ struct Case {
     /// Query.
     sql: String,
     /// Statements run before the query on both connections (`SET time_zone =
-    /// ...`): the transpiler reads the SQL mode of the session after them.
+    /// ...`): the transpiler reads the SQL mode of the session after them. A
+    /// time zone is an offset (`'+05:00'`): the servers have no table of the
+    /// named time zones.
     #[serde(default)]
     session: Vec<String>,
     /// Rule of the refusal expected; absent, the transpilation must run and
@@ -223,7 +225,9 @@ fn dialect_named(name: &str) -> Dialect {
 /// The server is awaited on the message of the server that listens on its
 /// port, which all the versions write; the server of the initialisation of
 /// the image listens on none. It resolves no host name: the reverse lookup
-/// of each client address slows every connection down in Docker.
+/// of each client address slows every connection down in Docker. Its start
+/// skips the tables of the named time zones, and its data directory is in
+/// memory, lost with the container (`docs/PERF.md`, chapter 8).
 ///
 /// # Panics
 ///
@@ -233,15 +237,25 @@ async fn start(image: String) -> Server {
         .split_once(':')
         .unwrap_or_else(|| panic!("image `{image}`: expected `<name>:<tag>`"));
     let dialect = dialect_named(name);
-    let (empty_password, database) = match dialect {
-        Dialect::MySql => ("MYSQL_ALLOW_EMPTY_PASSWORD", "MYSQL_DATABASE"),
-        Dialect::MariaDb => ("MARIADB_ALLOW_EMPTY_ROOT_PASSWORD", "MARIADB_DATABASE"),
+    let (empty_password, database, skip_time_zones) = match dialect {
+        Dialect::MySql => (
+            "MYSQL_ALLOW_EMPTY_PASSWORD",
+            "MYSQL_DATABASE",
+            "MYSQL_INITDB_SKIP_TZINFO",
+        ),
+        Dialect::MariaDb => (
+            "MARIADB_ALLOW_EMPTY_ROOT_PASSWORD",
+            "MARIADB_DATABASE",
+            "MARIADB_INITDB_SKIP_TZINFO",
+        ),
     };
     let container = GenericImage::new(name, tag)
         .with_exposed_port(3306.tcp())
         .with_wait_for(WaitFor::message_on_stderr("port: 3306"))
         .with_env_var(empty_password, "yes")
         .with_env_var(database, "test")
+        .with_env_var(skip_time_zones, "yes")
+        .with_mount(Mount::tmpfs_mount("/var/lib/mysql"))
         .with_cmd(["--skip-name-resolve"])
         .with_startup_timeout(START_TIMEOUT)
         .start()
