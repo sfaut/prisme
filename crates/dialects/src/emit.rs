@@ -34,6 +34,7 @@ mod rules;
 mod source;
 mod string;
 mod temporal;
+mod truth;
 
 #[cfg(test)]
 mod tests;

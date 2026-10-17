@@ -84,7 +84,13 @@ impl Emitter<'_> {
         let inherited = numeric.then_some(reading);
         for branch in &case.branches {
             self.write(" WHEN ");
-            self.number_expr(&branch.when, 0);
+            match &branch.when.kind {
+                // A `JSON` is read as by `IF` (`truth` module).
+                ExprKind::ToBoolean(json) if json.ty.data_type == DataType::Json => {
+                    self.json_condition(json, 0, false);
+                }
+                _ => self.number_expr(&branch.when, 0),
+            }
             self.write(" THEN ");
             self.case_result(&branch.then, scale, inherited);
         }

@@ -92,6 +92,7 @@ fn catalog() -> Tables {
                 })),
             ),
             (Ident::new("e"), Type::not_null(DataType::Enum)),
+            (Ident::new("js"), Type::nullable(DataType::Json)),
             (Ident::new("dd"), Type::not_null(DataType::Date)),
             (
                 Ident::new("dt3"),
@@ -2461,4 +2462,91 @@ fn is_true_is_written_between_parentheses_where_mysql_needs_it() {
         sql,
         "SELECT (de IS TRUE) = 1 AS a, (de IS TRUE) IS NULL AS b, (NOT de) IS TRUE AS c FROM g"
     );
+}
+
+#[test]
+fn a_json_read_as_a_boolean_is_read_as_the_input_reads_it() {
+    let mysql_8_0_16 = mysql_at(8, 0, 16);
+    let mysql_8_4 = mysql_at(8, 4, 0);
+    // Towards MySQL from MariaDB, read as its text.
+    for (text, written) in [
+        (
+            "SELECT NOT js AS a FROM g",
+            "SELECT NOT CAST(js AS CHAR) AS a FROM g",
+        ),
+        (
+            "SELECT s FROM g WHERE js AND s IS NOT NULL",
+            "SELECT s FROM g WHERE CAST(js AS CHAR) AND s IS NOT NULL",
+        ),
+        (
+            "SELECT js IS TRUE AS a FROM g",
+            "SELECT CAST(js AS CHAR) IS TRUE AS a FROM g",
+        ),
+        (
+            "SELECT CASE WHEN js THEN 1 END AS a FROM g",
+            "SELECT CASE WHEN CAST(js AS CHAR) THEN 1 END AS a FROM g",
+        ),
+        (
+            "SELECT IF(js, 1, 0) AS a FROM g",
+            "SELECT IF(CAST(js AS CHAR), 1, 0) AS a FROM g",
+        ),
+    ] {
+        for target in [mysql_8_0_16, mysql_8_4] {
+            let (sql, rules) = transpiled(text, mariadb(), output(target));
+            assert_eq!(sql, written);
+            assert_eq!(rules, ["boolean.json"], "{text}");
+        }
+    }
+    // Towards MariaDB, and across MySQL 8.0.17 for the clauses and the
+    // operators: an error.
+    for text in [
+        "SELECT NOT js FROM g",
+        "SELECT js AND 1 FROM g",
+        "SELECT js IS TRUE FROM g",
+        "SELECT s FROM g WHERE js",
+    ] {
+        for (input, target) in [
+            (mysql_8_4, mariadb()),
+            (mysql_8_0_16, mariadb()),
+            (mysql_8_4, mysql_8_0_16),
+            (mysql_8_0_16, mysql_8_4),
+        ] {
+            assert_eq!(
+                errors(text, input, output(target)),
+                ["boolean.json"],
+                "{text}"
+            );
+        }
+    }
+    for text in [
+        "SELECT CASE WHEN js THEN 1 END FROM g",
+        "SELECT IF(js, 1, 0) FROM g",
+    ] {
+        assert_eq!(errors(text, mysql_8_4, output(mariadb())), ["boolean.json"]);
+    }
+    // Read alike: the same reading, a value of `JSON`, a test of NULL, a
+    // condition of `IF` and `CASE WHEN` between MySQL versions.
+    for (text, input, target) in [
+        ("SELECT NOT js AS a FROM g", mysql_8_4, mysql_at(8, 0, 17)),
+        (
+            "SELECT js IS NULL AS a, js AS b FROM g",
+            mysql_8_4,
+            mariadb(),
+        ),
+        (
+            "SELECT js IS NULL AS a, js AS b FROM g",
+            mariadb(),
+            mysql_8_4,
+        ),
+        (
+            "SELECT CASE WHEN js THEN 1 END AS a FROM g",
+            mysql_8_4,
+            mysql_8_0_16,
+        ),
+        ("SELECT IF(js, 1, 0) AS a FROM g", mysql_8_0_16, mysql_8_4),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{rules:?}");
+    }
 }

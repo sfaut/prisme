@@ -162,6 +162,9 @@ pub enum Construct {
     /// `LOCATE`, `INSTR` and `POSITION` in the collation of their string
     /// (MySQL); the collations of their arguments aggregated otherwise.
     LocateCharset,
+    /// `JSON` of `WHERE`, `NOT`, `AND`... read as compared with 0: true
+    /// unless it is the number 0 (MySQL); read as a number otherwise.
+    JsonTruth,
 }
 
 /// Construct refused in a dialect or a version.
@@ -323,6 +326,7 @@ impl Construct {
             Self::AesIv => "`AES_ENCRYPT` with an initialization vector and a mode",
             Self::StringCharset => "`REPLACE` in the character set of its string",
             Self::LocateCharset => "`LOCATE` in the collation of its string",
+            Self::JsonTruth => "`JSON` read as true unless it is the number 0",
         }
     }
 }

@@ -525,6 +525,18 @@ constructs:
       type; 2038-01-19 03:14:07 UTC (2^31 - 1) before (WL#14630). Beyond,
       `UNIX_TIMESTAMP` gives 0, as before the epoch, and `FROM_UNIXTIME`
       NULL. Measured on 8.0.27 and 8.0.28.
+  - id: json_truth
+    since: "8.0.17"
+    source: https://dev.mysql.com/worklog/task/?id=12358
+    comment: >-
+      `WHERE`, `HAVING`, `ON` and the operands of `NOT`, `AND`, `OR`, `XOR`
+      and `IS TRUE` read a value `x` as `x <> 0` (WL#12358): a `JSON`,
+      compared with 0 by the rules of JSON, is true unless it is the number
+      0 (`NOT CAST('false' AS JSON)` gives 0, 1 before); before, as by `IF`
+      and `CASE WHEN` in every version, it is read as a number (`true` 1, an
+      object 0). No entry in the release notes; bisected on the images
+      8.0.11 to 8.0.17 (crates/probe/cases/json-truth.txt). MariaDB reads its
+      `JSON`, a `LONGTEXT`, as a string (`'true'` 0).
   - id: string_charset
     since: "8.0.19"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-19.html
@@ -592,7 +604,7 @@ functions:
     functions:
       - name: IF
         grammar: true
-        mariadb: same
+        mariadb: { rule: function.if }
       - name: IFNULL
         mariadb: same
       - name: NULLIF

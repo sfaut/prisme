@@ -128,6 +128,9 @@ pub(crate) enum Rule {
     /// `GREATEST`, `LEAST` over numbers and strings.
     #[serde(rename = "function.greatest")]
     Greatest,
+    /// `IF` of a `JSON` condition (`emit::truth` module).
+    #[serde(rename = "function.if")]
+    If,
     /// `NOW`, `CURRENT_TIMESTAMP`, `SYSDATE`, `LOCALTIME`: their type.
     #[serde(rename = "function.now")]
     Now,
@@ -161,6 +164,7 @@ impl Rule {
             Self::Extract => "function.extract",
             Self::FromUnixtime => "function.from-unixtime",
             Self::Greatest => "function.greatest",
+            Self::If => "function.if",
             Self::Now => "function.now",
             Self::Pad => "function.pad",
             Self::Regexp => "function.regexp",

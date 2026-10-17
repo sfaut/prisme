@@ -107,6 +107,7 @@ impl Emitter<'_> {
             Rule::BitCount => self.bit_count(rule, expr, call),
             Rule::FromUnixtime => self.date_from_unixtime(rule, expr, call),
             Rule::Greatest => self.greatest(rule, expr, call, column),
+            Rule::If => self.if_call(expr, call),
             Rule::Now => self.now(rule, expr, call),
             Rule::Pad => self.pad(rule, expr, call),
             Rule::TimeToSec => self.time_to_sec(rule, expr, call, min),

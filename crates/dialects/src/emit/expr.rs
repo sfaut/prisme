@@ -6,13 +6,15 @@
 //! `^` (11), prefix `-` and `~` (12), operands (14).
 //!
 //! The conversions between booleans and numbers are implicit in the MySQL
-//! family: `ToBoolean` and `ToInteger` write their operand alone.
+//! family: `ToBoolean` and `ToInteger` write their operand alone, but a
+//! `JSON` read as a boolean, which each server reads its own way (`truth`
+//! module).
 
 use prisme_plan::{
     Arithmetic, Bitwise, Comparison, Expr, ExprKind, Logical, NotDistinctForm, Plan, Quantifier,
     VariableScope,
 };
-use prisme_types::Value;
+use prisme_types::{DataType, Value};
 
 use super::Emitter;
 use super::case::Reading;
@@ -99,7 +101,11 @@ impl Emitter<'_> {
         let column = std::mem::take(&mut self.column);
         let number = std::mem::take(&mut self.number);
         if let ExprKind::ToBoolean(inner) | ExprKind::ToInteger(inner) = &expr.kind {
-            self.number_expr(inner, min);
+            if matches!(expr.kind, ExprKind::ToBoolean(_)) && inner.ty.data_type == DataType::Json {
+                self.json_condition(inner, min, true);
+            } else {
+                self.number_expr(inner, min);
+            }
             return;
         }
         if let ExprKind::Column(column) = &expr.kind

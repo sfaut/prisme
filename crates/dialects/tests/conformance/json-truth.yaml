@@ -1,0 +1,28 @@
+# Rule `boolean.json`: a `JSON` read as a boolean, true unless it is the
+# number 0 in MySQL from 8.0.17, a number before, a string in MariaDB
+# (crates/probe/cases/json-truth.txt). Towards MySQL from MariaDB, read as
+# its text. A `JSON` column of MariaDB is a `LONGTEXT`, which MySQL reads as
+# MariaDB does: from MySQL, its readings would compare a `JSON` with a
+# `LONGTEXT`. The values leave out the fractions, which `WHERE` of MySQL
+# 8.0.11 and `XOR` read otherwise, whatever their type.
+setup:
+  - DROP TABLE IF EXISTS json_truth
+  - CREATE TABLE json_truth (id INT NOT NULL PRIMARY KEY, j JSON NULL)
+  - >-
+    INSERT INTO json_truth VALUES (1, '{"a": 1}'), (2, 'true'), (3, '0'), (4, '1'), (5, '"1"'),
+    (6, 'null'), (7, '[]'), (8, NULL)
+cases:
+  - from: mysql
+    sql: SELECT id, j IS NULL AS a FROM json_truth ORDER BY id
+  - from: mariadb
+    sql: SELECT id, NOT j AS a, j IS TRUE AS b, j AND 1 AS c, j OR 0 AS d FROM json_truth ORDER BY id
+  - from: mariadb
+    sql: SELECT id FROM json_truth WHERE j ORDER BY id
+  - from: mariadb
+    sql: SELECT id, IF(j, 1, 0) AS a, CASE WHEN j THEN 1 ELSE 0 END AS b FROM json_truth ORDER BY id
+  - from: mariadb
+    sql: SELECT id FROM json_truth GROUP BY id, j HAVING j ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT a.id FROM json_truth AS a JOIN json_truth AS b ON a.id = b.id AND NOT b.j
+      ORDER BY a.id
