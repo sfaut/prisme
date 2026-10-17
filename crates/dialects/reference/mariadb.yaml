@@ -327,8 +327,9 @@ keywords:
     - UTC_TIME
     - UTC_TIMESTAMP
 
-# Constructs of the grammar whose availability depends on the version
-# (docs/DEV-DIALECTS.md, step 2). Each construct:
+# Constructs of the grammar, and behaviours of built-in functions, whose
+# availability depends on the version (docs/DEV-DIALECTS.md, step 2). Each
+# construct:
 #   - id: values_row          # identifier, the `Construct` enum of versions.rs
 #     since: "8.0.19"         # first version that has it (included)
 #     until: "9.0.0"          # first version that no longer has it (optional)
@@ -373,6 +374,13 @@ constructs:
   - id: offset_fetch
     since: "10.6.0"
     source: https://mariadb.com/kb/en/select-offset-fetch/
+  # Behaviours of built-in functions.
+  - id: timestamp_now
+    since: "11.7.1"
+    source: https://jira.mariadb.org/browse/MDEV-15751
+  - id: time_localtime
+    since: "11.6.2"
+    source: https://jira.mariadb.org/browse/MDEV-34829
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:

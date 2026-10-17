@@ -234,6 +234,7 @@ New rules of the report: the errors `function.absent` (function the output lacks
 
 Rules written, each with its tests (the emulations checked on the servers):
 
+- `function.now`: `NOW`, `CURRENT_TIMESTAMP` and `SYSDATE` give a `TIMESTAMP` in MariaDB from 11.7.1, `LOCALTIME` a `TIME` from 11.6.2 (constructs `timestamp_now` and `time_localtime` of the reference file), a `DATETIME` in MySQL; towards those versions, `NOW`, `CURRENT_TIMESTAMP` and `LOCALTIME` become `LOCALTIMESTAMP`, the same instant of the statement, and `SYSDATE(n)` becomes `CAST(SYSDATE(n) AS DATETIME(n))` (decided autonomously: the cast makes the column nullable in the metadata, its values stay non-null); from MariaDB, `LOCALTIME` of those versions becomes `CURRENT_TIME`, and the `TIMESTAMP` of the others the `DATETIME` of MySQL, of the same value in the time zone of the session.
 - `function.time-to-sec`: `TIME_TO_SEC` of a value that may have a fraction of seconds (a string, a decimal, a time with fractional digits) gives a whole number in MySQL, a decimal in MariaDB; towards MariaDB, `TIME_TO_SEC(x) DIV 1`; towards MySQL, an error (decided autonomously: an emulation of the fraction would not keep the scale of the result).
 
 ### Step 8. Catalog and session statements

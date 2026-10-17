@@ -63,6 +63,8 @@ pub(crate) struct Source<'a> {
     pub(crate) mode: SqlMode,
     /// Dialect it was written in.
     pub(crate) dialect: Dialect,
+    /// Version of that dialect.
+    pub(crate) version: Version,
     /// Comments, in order.
     pub(crate) comments: &'a [(Span, CommentKind)],
 }
@@ -303,6 +305,14 @@ impl Emitter<'_> {
         let dialect = self.output.dialect;
         registry(dialect)
             .check(dialect, construct, self.output.version)
+            .is_ok()
+    }
+
+    /// Tells whether the input dialect has `construct` in its version.
+    fn input_has(&self, construct: Construct) -> bool {
+        let dialect = self.source.dialect;
+        registry(dialect)
+            .check(dialect, construct, self.source.version)
             .is_ok()
     }
 

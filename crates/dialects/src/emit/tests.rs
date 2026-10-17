@@ -204,6 +204,7 @@ fn strings_follow_the_sql_mode_of_the_output() {
         text: "",
         mode: SqlMode::default(),
         dialect: Dialect::MySql,
+        version: Version::new(8, 0, 19),
         comments: &[],
     };
     let mut emitter = Emitter {
@@ -259,6 +260,7 @@ fn nulls_placed_against_the_rule_of_the_output_are_emulated() {
         text: "",
         mode: SqlMode::default(),
         dialect: Dialect::MySql,
+        version: Version::new(8, 0, 19),
         comments: &[],
     };
     let emitted = emit(&Statement::Query(plan), &output(mysql()), &source);
@@ -486,7 +488,11 @@ fn built_in_functions_follow_the_reference_files() {
             output(mariadb()),
             "function.unstudied",
         ),
-        ("SELECT NOW()", output(mariadb()), "function.now"),
+        (
+            "SELECT UNIX_TIMESTAMP(a) FROM t",
+            output(mariadb()),
+            "function.unix-timestamp",
+        ),
         (
             "SELECT FORMAT_PICO_TIME(a) FROM t",
             output(mysql_at(8, 0, 11)),
@@ -544,6 +550,64 @@ fn time_to_sec_drops_the_fraction_towards_mariadb() {
         ),
         ["function.time-to-sec"]
     );
+}
+
+#[test]
+fn now_keeps_the_datetime_of_mysql() {
+    let mariadb_11_8 = |input| {
+        let mut output = output(input);
+        output.dialect = Dialect::MariaDb;
+        output.version = Version::new(11, 8, 0);
+        output
+    };
+    for (text, expected, rules) in [
+        (
+            "SELECT NOW() AS n",
+            "SELECT LOCALTIMESTAMP() AS n",
+            vec!["function.now"],
+        ),
+        (
+            "SELECT CURRENT_TIMESTAMP(3) AS n",
+            "SELECT LOCALTIMESTAMP(3) AS n",
+            vec!["function.now"],
+        ),
+        (
+            "SELECT LOCALTIME() AS n",
+            "SELECT LOCALTIMESTAMP() AS n",
+            vec!["function.now"],
+        ),
+        (
+            "SELECT SYSDATE(3) AS n",
+            "SELECT CAST(SYSDATE(3) AS DATETIME(3)) AS n",
+            vec!["function.now"],
+        ),
+        (
+            "SELECT SYSDATE() AS n",
+            "SELECT CAST(SYSDATE() AS DATETIME) AS n",
+            vec!["function.now"],
+        ),
+    ] {
+        let (sql, written) = transpiled(text, mysql(), mariadb_11_8(mysql()));
+        assert_eq!(sql, expected, "{text}");
+        assert_eq!(written, rules, "{text}");
+    }
+    // Before MariaDB 11.6.2 and 11.7.1, the same types as MySQL.
+    let text = "SELECT NOW() AS n, SYSDATE() AS s, LOCALTIME() AS l";
+    let (sql, rules) = transpiled(text, mysql(), output(mariadb()));
+    assert_eq!(sql, text);
+    assert!(rules.is_empty(), "{rules:?}");
+    // `LOCALTIME` of MariaDB 11.8 is the time of day.
+    let input = InputDialect {
+        dialect: Dialect::MariaDb,
+        version: Version::new(11, 8, 0),
+    };
+    let (sql, rules) = transpiled(
+        "SELECT LOCALTIME(2) AS l, NOW() AS n",
+        input,
+        output(mysql()),
+    );
+    assert_eq!(sql, "SELECT CURRENT_TIME(2) AS l, NOW() AS n");
+    assert_eq!(rules, ["function.now"]);
 }
 
 #[test]

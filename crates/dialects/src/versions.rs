@@ -89,6 +89,11 @@ pub enum Construct {
     InsertReturning,
     /// `OFFSET ... FETCH`.
     OffsetFetch,
+    /// `NOW()`, `CURRENT_TIMESTAMP`, `SYSDATE()` and `FROM_UNIXTIME()` of
+    /// type `TIMESTAMP` (MariaDB), a `DATETIME` otherwise.
+    TimestampNow,
+    /// `LOCALTIME` of type `TIME` (MariaDB), a `DATETIME` otherwise.
+    TimeLocaltime,
 }
 
 /// Construct refused in a dialect or a version.
@@ -214,6 +219,8 @@ impl Construct {
             Self::DeleteReturning => "`DELETE ... RETURNING`",
             Self::InsertReturning => "`INSERT ... RETURNING`",
             Self::OffsetFetch => "`OFFSET ... FETCH`",
+            Self::TimestampNow => "`NOW()` of type `TIMESTAMP`",
+            Self::TimeLocaltime => "`LOCALTIME` of type `TIME`",
         }
     }
 }

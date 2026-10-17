@@ -348,8 +348,9 @@ keywords:
     - UTC_TIME
     - UTC_TIMESTAMP
 
-# Constructs of the grammar whose availability depends on the version
-# (docs/DEV-DIALECTS.md, step 2). Each construct:
+# Constructs of the grammar, and behaviours of built-in functions, whose
+# availability depends on the version (docs/DEV-DIALECTS.md, step 2). Each
+# construct:
 #   - id: values_row          # identifier, the `Construct` enum of versions.rs
 #     since: "8.0.19"         # first version that has it (included)
 #     until: "9.0.0"          # first version that no longer has it (optional)
