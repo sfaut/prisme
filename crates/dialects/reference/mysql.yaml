@@ -24,6 +24,15 @@
 
 floor: "8.0.11"
 
+# Last version inspected, by section: the section is complete up to that
+# version (included), from the reference manual of its series, the release
+# notes and measures on the servers (MySQL 8.0.11 and 8.4.11). An update
+# starts from the release notes of the later versions. A later fact may be
+# known already, found in passing. A section left out has not been inspected
+# version by version yet: its facts are filled in as they become known.
+inspected:
+  functions: "8.4.11"
+
 # Keywords, by category; each category maps to a highlighting class of the
 # editor. A word is either a plain name, or a name with its versions:
 #   - name: WINDOW

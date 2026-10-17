@@ -23,12 +23,36 @@ pub(crate) struct Reference {
     /// Oldest version covered.
     #[serde(deserialize_with = "versions::deserialize_version")]
     pub(crate) floor: Version,
+    /// Last version inspected, by section.
+    #[allow(
+        dead_code,
+        reason = "a mark for the updates of the file, read by the tests"
+    )]
+    pub(crate) inspected: Inspected,
     /// Keywords, by category.
     pub(crate) keywords: KeywordFile,
     /// Constructs of the grammar, with their period of validity.
     pub(crate) constructs: Vec<ConstructEntry>,
     /// Built-in functions, by family.
     pub(crate) functions: Vec<Family>,
+}
+
+/// Last version inspected in each section of a reference file: the section
+/// is complete up to that version; `None` when the section has not been
+/// inspected version by version yet.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code, reason = "a mark for the updates of the file, read by the tests")]
+pub(crate) struct Inspected {
+    /// Keywords.
+    #[serde(default, deserialize_with = "versions::deserialize_optional_version")]
+    pub(crate) keywords: Option<Version>,
+    /// Constructs of the grammar.
+    #[serde(default, deserialize_with = "versions::deserialize_optional_version")]
+    pub(crate) constructs: Option<Version>,
+    /// Built-in functions.
+    #[serde(default, deserialize_with = "versions::deserialize_optional_version")]
+    pub(crate) functions: Option<Version>,
 }
 
 /// Reference of a dialect, read only once.
@@ -52,6 +76,25 @@ fn parse(text: &str) -> Reference {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_inspected_versions_follow_the_floor() {
+        for dialect in [Dialect::MySql, Dialect::MariaDb] {
+            let reference = reference(dialect);
+            let inspected = &reference.inspected;
+            assert!(inspected.functions.is_some(), "{dialect:?}");
+            for version in [
+                inspected.keywords,
+                inspected.constructs,
+                inspected.functions,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                assert!(version >= reference.floor, "{dialect:?}: {version}");
+            }
+        }
+    }
 
     #[test]
     fn reads_the_file_of_each_dialect() {

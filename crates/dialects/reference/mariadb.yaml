@@ -24,6 +24,15 @@
 
 floor: "10.6.3"
 
+# Last version inspected, by section: the section is complete up to that
+# version (included), from the reference manual of its series, the release
+# notes and measures on the servers (MariaDB 10.6.28 and 11.8.9). An update
+# starts from the release notes of the later versions. A later fact may be
+# known already, found in passing. A section left out has not been inspected
+# version by version yet: its facts are filled in as they become known.
+inspected:
+  functions: "11.8.9"
+
 # Keywords, by category; each category maps to a highlighting class of the
 # editor. A word is either a plain name, or a name with its versions:
 #   - name: WINDOW
