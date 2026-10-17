@@ -232,6 +232,10 @@ New rules of the report: the errors `function.absent` (function the output lacks
 - the JSON, spatial and replication functions, `CAST`, `CONVERT`, `DEFAULT` and `VALUES` wait for their study: "not studied yet";
 - a stored function named like a built-in function of the output keeps calling the database with a space before `(` or between backticks, according to the grammar of the output, otherwise the call is refused: its database must be named.
 
+Rules written, each with its tests (the emulations checked on the servers):
+
+- `function.time-to-sec`: `TIME_TO_SEC` of a value that may have a fraction of seconds (a string, a decimal, a time with fractional digits) gives a whole number in MySQL, a decimal in MariaDB; towards MariaDB, `TIME_TO_SEC(x) DIV 1`; towards MySQL, an error (decided autonomously: an emulation of the fraction would not keep the scale of the result).
+
 ### Step 8. Catalog and session statements
 
 Prisme translates them as far as needed (point 40). In the v1, between MySQL and MariaDB, and from PRQL; the other engines add their forms with their connector.

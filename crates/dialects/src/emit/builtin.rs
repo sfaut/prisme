@@ -39,8 +39,8 @@ enum Target {
 }
 
 impl Emitter<'_> {
-    /// Call to a scalar function.
-    pub(super) fn function_call(&mut self, expr: &Expr, call: &FunctionCall) {
+    /// Call to a scalar function, at level `min` at least.
+    pub(super) fn function_call(&mut self, expr: &Expr, call: &FunctionCall, min: u8) {
         if call.stored {
             self.stored_call(expr, call);
             return;
@@ -50,12 +50,9 @@ impl Emitter<'_> {
                 let form = self.builtin_form(&name, &call.name, expr.span);
                 self.call_text(&name, form, &call.args);
             }
-            Some(Target::Rule(rule)) => self.builtin_rule(rule, expr, call),
+            Some(Target::Rule(rule)) => self.builtin_rule(rule, expr, call, min),
             // The error is recorded: the call is written as in the input.
-            None => {
-                let form = self.form(&call.name, expr.span);
-                self.call_text(&call.name.value, form, &call.args);
-            }
+            None => self.input_call(expr, call),
         }
     }
 
@@ -203,7 +200,7 @@ impl Emitter<'_> {
     }
 
     /// Form of `name` in the input of the call at `span`.
-    fn form(&self, name: &Ident, span: Option<Span>) -> NameForm {
+    pub(super) fn form(&self, name: &Ident, span: Option<Span>) -> NameForm {
         if name.quoted {
             return NameForm::Quoted;
         }
@@ -257,7 +254,7 @@ impl Emitter<'_> {
     }
 
     /// Writes `name(args)` in `form`.
-    fn call_text(&mut self, name: &str, form: NameForm, args: &[Expr]) {
+    pub(super) fn call_text(&mut self, name: &str, form: NameForm, args: &[Expr]) {
         self.call_name(name, form);
         self.expr_list(args);
         self.write(")");
@@ -279,15 +276,8 @@ impl Emitter<'_> {
         self.write("(");
     }
 
-    /// Writes the call `expr` of the built-in function `call` by `rule`.
-    fn builtin_rule(&mut self, rule: Rule, expr: &Expr, call: &FunctionCall) {
-        self.rule_not_written(rule, &call.name, expr.span);
-        let form = self.form(&call.name, expr.span);
-        self.call_text(&call.name.value, form, &call.args);
-    }
-
     /// Records the error of a rule not written yet.
-    fn rule_not_written(&mut self, rule: Rule, name: &Ident, span: Option<Span>) {
+    pub(super) fn rule_not_written(&mut self, rule: Rule, name: &Ident, span: Option<Span>) {
         let message = format!(
             "function `{}` of {}: its translation to {} is not written yet in Prisme",
             name.value.to_ascii_uppercase(),

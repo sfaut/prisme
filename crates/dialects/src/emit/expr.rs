@@ -19,6 +19,8 @@ use crate::report::StepKind;
 
 /// Level of `NOT`.
 const NOT: u8 = 4;
+/// Level of `*`, `/`, `DIV` and `%`.
+pub(super) const MULTIPLY: u8 = 10;
 /// Level of the comparisons and predicates.
 const PREDICATE: u8 = 5;
 /// Level of the prefix operators.
@@ -65,7 +67,7 @@ fn levels(expr: &Expr) -> (u8, u8, u8) {
         },
         ExprKind::Arithmetic { op, .. } => match op {
             Arithmetic::Add | Arithmetic::Subtract => binary(9),
-            _ => binary(10),
+            _ => binary(MULTIPLY),
         },
         // An operand that is itself negative is put between parentheses:
         // `--` could open a comment.
@@ -95,6 +97,11 @@ impl Emitter<'_> {
             return;
         }
         self.at(expr.span);
+        // A rule may write a call as an expression of a lower level.
+        if let ExprKind::Function(call) = &expr.kind {
+            self.function_call(expr, call, min);
+            return;
+        }
         let (level, left, right) = levels(expr);
         let parenthesized = level < min;
         if parenthesized {
@@ -254,7 +261,6 @@ impl Emitter<'_> {
             | ExprKind::InSubquery { .. }
             | ExprKind::Quantified { .. }
             | ExprKind::Row(_) => self.query_kind(expr, left),
-            ExprKind::Function(call) => self.function_call(expr, call),
             ExprKind::Window(call) => self.window_call(expr, call),
             _ => {
                 self.error(

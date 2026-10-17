@@ -486,11 +486,7 @@ fn built_in_functions_follow_the_reference_files() {
             output(mariadb()),
             "function.unstudied",
         ),
-        (
-            "SELECT TIME_TO_SEC(a) FROM t",
-            output(mariadb()),
-            "function.time-to-sec",
-        ),
+        ("SELECT NOW()", output(mariadb()), "function.now"),
         (
             "SELECT FORMAT_PICO_TIME(a) FROM t",
             output(mysql_at(8, 0, 11)),
@@ -512,6 +508,41 @@ fn built_in_functions_follow_the_reference_files() {
     assert_eq!(
         errors("SELECT LAST_VALUE(a, b) FROM t", mariadb(), output(mysql())),
         ["function.absent"]
+    );
+}
+
+#[test]
+fn time_to_sec_drops_the_fraction_towards_mariadb() {
+    for (text, expected, rules) in [
+        (
+            "SELECT TIME_TO_SEC(a) AS s FROM t",
+            "SELECT TIME_TO_SEC(a) AS s FROM t",
+            vec![],
+        ),
+        (
+            "SELECT TIME_TO_SEC('00:39:38.5') AS s",
+            "SELECT TIME_TO_SEC('00:39:38.5') DIV 1 AS s",
+            vec!["function.time-to-sec"],
+        ),
+        (
+            "SELECT 2 * TIME_TO_SEC('00:39:38.5') AS s",
+            "SELECT 2 * (TIME_TO_SEC('00:39:38.5') DIV 1) AS s",
+            vec!["function.time-to-sec"],
+        ),
+    ] {
+        let (sql, written) = transpiled(text, mysql(), output(mariadb()));
+        assert_eq!(sql, expected, "{text}");
+        assert_eq!(written, rules, "{text}");
+    }
+    let text = "SELECT TIME_TO_SEC(a) AS s FROM t";
+    assert_eq!(transpiled(text, mariadb(), output(mysql())).0, text);
+    assert_eq!(
+        errors(
+            "SELECT TIME_TO_SEC('00:39:38.5')",
+            mariadb(),
+            output(mysql())
+        ),
+        ["function.time-to-sec"]
     );
 }
 

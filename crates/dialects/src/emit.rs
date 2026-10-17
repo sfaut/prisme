@@ -10,7 +10,8 @@
 //! the sources of a `FROM` (`source` module) and the set operations put the
 //! parentheses their nesting needs; the aggregation and the windows are
 //! written by the `call` module, the calls to scalar functions and the names
-//! of the built-in functions by the `builtin` module.
+//! of the built-in functions by the `builtin` module, with the rules of the
+//! functions (`rules` module).
 //!
 //! Literals are written as in the input when the output reads them the same
 //! way (same SQL mode for the quotes and the backslashes), otherwise in a
@@ -21,6 +22,7 @@
 mod builtin;
 mod call;
 mod expr;
+mod rules;
 mod source;
 
 #[cfg(test)]
