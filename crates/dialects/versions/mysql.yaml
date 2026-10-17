@@ -1,0 +1,64 @@
+# Registry of the versions of MySQL: the constructs of the grammar whose
+# availability depends on the version (docs/DEV-DIALECTS.md, step 2).
+#
+# floor: oldest version covered, the first GA release of MySQL 8.0
+# (docs/QUESTIONS.md, point 51). A construct that appeared before it is
+# available in every version offered.
+#
+# Each construct:
+#   - id: values_row          # identifier, the `Construct` enum of versions.rs
+#     since: "8.0.19"         # first version that has it (included)
+#     until: "9.0.0"          # first version that no longer has it (optional)
+#     source: https://...     # reference manual or release notes
+#
+# A construct missing from this file is absent from MySQL: the parser of the
+# MySQL dialect refuses it (rule "each dialect stays in its domain").
+
+floor: "8.0.11"
+
+constructs:
+  - id: with
+    since: "8.0.1"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-1.html
+  - id: with_recursive
+    since: "8.0.1"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-1.html
+  - id: window_functions
+    since: "8.0.2"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-2.html
+  - id: json_table
+    since: "8.0.4"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-4.html
+  - id: json_arrow
+    since: "5.7.9"
+    source: https://dev.mysql.com/doc/relnotes/mysql/5.7/en/news-5-7-9.html
+  - id: json_double_arrow
+    since: "5.7.13"
+    source: https://dev.mysql.com/doc/relnotes/mysql/5.7/en/news-5-7-13.html
+  - id: lateral
+    since: "8.0.14"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-14.html
+  - id: explain_format_tree
+    since: "8.0.16"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-16.html
+  - id: member_of
+    since: "8.0.17"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-17.html
+  - id: explain_analyze
+    since: "8.0.18"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-18.html
+  - id: values_row
+    since: "8.0.19"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-19.html
+  - id: table_statement
+    since: "8.0.19"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-19.html
+  - id: insert_row_alias
+    since: "8.0.19"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-19.html
+  - id: intersect_except
+    since: "8.0.31"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-31.html
+  - id: intersect_except_all
+    since: "8.0.31"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-31.html

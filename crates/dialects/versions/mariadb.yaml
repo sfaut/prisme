@@ -1,0 +1,46 @@
+# Registry of the versions of MariaDB: the constructs of the grammar whose
+# availability depends on the version (docs/DEV-DIALECTS.md, step 2).
+#
+# floor: oldest version covered, the first GA release of MariaDB 10.6
+# (docs/QUESTIONS.md, point 51). A construct that appeared before it is
+# available in every version offered.
+#
+# Format: see versions/mysql.yaml. A construct missing from this file is
+# absent from MariaDB: the parser of the MariaDB dialect refuses it.
+
+floor: "10.6.3"
+
+constructs:
+  - id: with
+    since: "10.2.1"
+    source: https://mariadb.com/kb/en/with/
+  - id: with_recursive
+    since: "10.2.2"
+    source: https://mariadb.com/kb/en/recursive-common-table-expressions-overview/
+  - id: window_functions
+    since: "10.2.0"
+    source: https://mariadb.com/kb/en/window-functions-overview/
+  - id: values_bare
+    since: "10.3.3"
+    source: https://mariadb.com/kb/en/table-value-constructors/
+  - id: system_versioning
+    since: "10.3.4"
+    source: https://mariadb.com/kb/en/system-versioned-tables/
+  - id: intersect_except
+    since: "10.3.0"
+    source: https://mariadb.com/kb/en/intersect/
+  - id: intersect_except_all
+    since: "10.5.0"
+    source: https://mariadb.com/kb/en/intersect/
+  - id: delete_returning
+    since: "10.0.5"
+    source: https://mariadb.com/kb/en/delete/
+  - id: insert_returning
+    since: "10.5.0"
+    source: https://mariadb.com/kb/en/insertreturning/
+  - id: json_table
+    since: "10.6.0"
+    source: https://mariadb.com/kb/en/json_table/
+  - id: offset_fetch
+    since: "10.6.0"
+    source: https://mariadb.com/kb/en/select-offset-fetch/
