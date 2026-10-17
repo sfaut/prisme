@@ -216,8 +216,7 @@ pub(crate) struct Builtin {
 impl Function {
     /// Tells whether `version` has the function.
     pub(crate) fn available(&self, version: Version) -> bool {
-        self.since.is_none_or(|since| version >= since)
-            && self.until.is_none_or(|until| version < until)
+        within(self.since, self.until, version)
     }
 
     /// Translation to `dialect`, when the file gives one.
@@ -263,6 +262,49 @@ pub(crate) fn changes(dialect: Dialect) -> impl Iterator<Item = Version> {
         .iter()
         .flat_map(|family| &family.functions)
         .flat_map(|function| function.since.into_iter().chain(function.until))
+}
+
+/// Built-in function of a reference file, as the servers must show it:
+/// checked on real servers by `prisme-probe`.
+#[derive(Debug, Clone, Copy)]
+pub struct ListedFunction {
+    /// Name, in capitals.
+    pub name: &'static str,
+    /// First version that has it.
+    pub since: Option<Version>,
+    /// First version that no longer has it.
+    pub until: Option<Version>,
+    /// Its name between backticks calls a stored function.
+    pub grammar: bool,
+    /// With a space before `(`, its name calls a stored function.
+    pub touching: bool,
+}
+
+impl ListedFunction {
+    /// Tells whether `version` has the function.
+    pub fn available(&self, version: Version) -> bool {
+        within(self.since, self.until, version)
+    }
+}
+
+/// Tells whether `version` lies in the period from `since` (included) to
+/// `until` (excluded).
+fn within(since: Option<Version>, until: Option<Version>, version: Version) -> bool {
+    since.is_none_or(|since| version >= since) && until.is_none_or(|until| version < until)
+}
+
+/// Built-in functions of the reference file of `dialect`.
+pub fn listed_functions(dialect: Dialect) -> impl Iterator<Item = ListedFunction> {
+    families(dialect)
+        .iter()
+        .flat_map(|family| &family.functions)
+        .map(|function| ListedFunction {
+            name: function.name.as_str(),
+            since: function.since,
+            until: function.until,
+            grammar: function.grammar,
+            touching: function.touching,
+        })
 }
 
 /// Built-in function `name`, in capitals, of `dialect`, whatever its period.

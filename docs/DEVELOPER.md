@@ -187,6 +187,26 @@ Then save a connection to `127.0.0.1`, port `3307` or `3308`, user `root`, passw
 
 To look at the internal database, open `./tmp/prisme.db` with any SQLite client (DBeaver, DB Browser for SQLite, `sqlite3`). The `password_secret` column only holds encrypted bytes.
 
+### Measurements on real servers
+
+The research of the dialects compares the servers through `probe`, a development tool outside the executable (`crates/probe`, Docker Desktop running). Each server is an official image, `--server mysql:8.0.11`, repeated for several servers (by default MySQL 8.0.11 and 8.4, MariaDB 10.6 and 11.8). Its container, `prisme-probe-<name>-<tag>`, is created at the first run, without any published port, then kept running for the next ones: `docker stop` stops it, `docker rm` deletes it.
+
+```
+# Statements on each server, output as tables (an error does not stop the next statements)
+echo "SELECT LPAD('hi', 4, '')" | cargo run -p prisme-probe -- sql
+
+# Type, nullability, value, warning or error of expressions; * marks the servers that differ
+cargo run -p prisme-probe -- expr --expression "FROM_UNIXTIME(0)" --setup "SET time_zone = '+00:00'"
+cargo run -p prisme-probe -- expr cases.txt --differ
+
+# Built-in functions of a reference file against the servers of its dialect
+cargo run -p prisme-probe -- functions mysql --server mysql:9.3.0
+```
+
+A file of cases holds one expression per line, `id expression`; an id starting with `~` for an expression whose value changes at each run (only its type is compared); `! statement` for a statement run first; `#` for a comment. The expressions read the one row of the table `sample`, described by `cargo run -p prisme-probe -- expr --help`.
+
+`functions` brings a reference file up to a new version: it lists the functions of the file absent from a server whose version lies in their period, those present outside their period, the names that call a stored function between backticks or followed by a space otherwise than the file says, and the built-in functions of the server the file lacks (the internal functions of MySQL are left out on purpose).
+
 ## SQL keywords
 
 Syntax highlighting and the beautifier share the keywords of each dialect, in its reference file, edited directly: `crates/dialects/reference/mysql.yaml` and `mariadb.yaml`, which also hold the constructs of the grammar by version. The keywords list reserved words, non-reserved keywords, types and values, with, when needed, the version a word appeared in (`since`). The editor only highlights the words of the server's version. The beautifier rules are described in section 2.9 of [V1.md](V1.md).
@@ -220,6 +240,7 @@ crates/
   types/           internal types and values, with their nullability
   plan/            logical plan: nodes, expressions, output schemas
   splitter/        splitting a text into queries, per dialect
+  probe/           measurements on real servers, for the research of the dialects (development tool)
   server/          the prisme executable: configuration, master key, internal database, API
     migrations/    numbered SQL migrations of the internal database
 web/               Vue interface

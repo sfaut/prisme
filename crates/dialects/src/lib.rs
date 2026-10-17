@@ -33,6 +33,8 @@ pub mod transpile;
 pub mod versions;
 mod whitespace;
 
+pub use builtins::{ListedFunction, listed_functions};
+
 /// SQL dialect of a query.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Dialect {

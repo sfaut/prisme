@@ -51,6 +51,7 @@ crates/        Cargo workspace
   splitter/    splitting queries per dialect (Ctrl+Enter)
   connectors/  common interface and one implementation per engine
   server/      notebook sessions, API, authentication
+  probe/       measurements on real servers, for the research of the dialects (development tool)
 web/           Vue application
 docs/          decisions and notes
 ```
@@ -122,6 +123,7 @@ cargo test -- --include-ignored   # also tests on real servers (Docker Desktop r
 cargo clippy --all-targets        # static analysis, must stay free of warnings
 cargo fmt                         # formatting
 cargo build --release             # single executable, interface embedded (after npm run build)
+cargo run -p prisme-probe -- --help  # measurements on real servers (Docker Desktop running)
 ```
 
 In `web/`:

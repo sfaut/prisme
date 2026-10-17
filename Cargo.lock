@@ -2009,6 +2009,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "prisme-probe"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "prisme-dialects",
+]
+
+[[package]]
 name = "prisme-server"
 version = "0.2.0"
 dependencies = [
