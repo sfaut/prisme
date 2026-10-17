@@ -104,6 +104,8 @@ This document keeps track of the reasoning: what was kept, dropped or postponed,
 
 29. **Grid filter when the columns change**: settled. The user filter is either global (all columns) or targeted (one column). When the columns of a grid change within the same tab (practically unreachable: a new query opens a new tab, and a resumed session keeps its query), the text of the user filter stays, the targeted filter goes back to global and the sort is reset. Decision: keep this behaviour, no need to reopen it.
 
+30. **Parsing with the server's SQL mode.** The splitter and the parser read a text as the server does only under the default mode. Under `NO_BACKSLASH_ESCAPES`, a backslash escapes nothing in a string: `SELECT 'a\'; DROP TABLE t; SELECT '` is three statements for the server, and one read query for Prisme (`prisme-splitter` and `classify`), while `CLIENT_MULTI_STATEMENTS` is on by default in `mysql_async`. Until this is handled, the read-only mode of the sessions (default on, see `docs/V1.md`, section 2.4) is what refuses the write. Decision: the parser and the splitter take the server's SQL mode (`NO_BACKSLASH_ESCAPES`, `ANSI_QUOTES`) read on connection, through `sqlparser`'s dialect hook `supports_string_literal_backslash_escape`. It is part of the transpilation work: Prisme will parse and rewrite the text itself, so the mode must reach every analysis that takes a dialect today (`Dialect` in `crates/dialects`, `prisme-splitter`).
+
 ### Security
 
 23. **Master encryption key**: settled, `prisme.key` key file in the data folder (see `docs/V1.md`, section 2.8).
