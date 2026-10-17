@@ -112,7 +112,7 @@ Points raised by the implementation plan of the dialects (`docs/DEV-DIALECTS.md`
 48. **Beautifier of the statements outside the plan** (DDL, stored programs, `DELIMITER` blocks): decided, the current token-based path is not kept for them. Still open, until they enter the plan: (a) the beautifier leaves them as written and beautifies the rest of the text; (b) they enter the plan before the beautifier moves to it (`docs/DEV-DIALECTS.md`, step 11), which brings DDL forward; (c) the beautifier refuses a text that contains them, with an explicit error. **[to decide]**
 49. **Form of the catalog statements towards MySQL and MariaDB**: decided, a query on `information_schema`, which accepts filters, joins and sorts and loses less; `SHOW` only when the input used it and the target accepts it (`docs/DEV-DIALECTS.md`, step 8). **[decided]**
 50. **Storage of the registry of the versions**: decided, data files in the repository, edited directly and read in the diffs, embedded in the executable, on the model of `crates/dialects/keywords/*.yaml`. **[decided]**
-51. **Oldest versions covered by the registry**: MySQL 5.7 (no common table expressions nor window functions) and MariaDB 10.3 (first table value constructors and system versioning), or more recent ones? **[to decide]**
+51. **Oldest versions covered by the registry**: decided, the work starts with the most recent and most widely used dialects: MySQL 8.0 and later, MariaDB 10.6 and later. Older versions can be added afterwards. **[decided]**
 
 ### Execution
 

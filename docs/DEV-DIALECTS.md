@@ -95,8 +95,7 @@ Decided (point 39), with a reservation: the principle can evolve. A rewrite for 
 To settle before step 1, as the types and the plan depend on them:
 
 - NULL, points 1 to 6 of `docs/FEDERATED.md`, section 7 (`docs/QUESTIONS.md`, point 12): the two equalities, three-valued logic, joins, set operators, aggregation, sorting;
-- the internal types of the v1 (`docs/FEDERATED.md`, section 6): integers (unsigned `BIGINT` included), exact decimals, strings, dates, JSON;
-- the oldest versions covered by the registry of the versions (point 51).
+- the internal types of the v1 (`docs/FEDERATED.md`, section 6): integers (unsigned `BIGINT` included), exact decimals, strings, dates, JSON.
 
 ### Step 1. Types and plan
 
@@ -111,8 +110,8 @@ To settle before step 1, as the types and the plan depend on them:
 The user chooses the version of the dialect they write in (point 43): Prisme knows the period of validity of each keyword, construct and function.
 
 - **Content**, per dialect: each construct of the grammar (`WITH`, `WITH RECURSIVE`, `VALUES` and `TABLE` statements, row alias of `INSERT ... ON DUPLICATE KEY UPDATE`, `RETURNING`...), each keyword and each function, with the version it appeared in (`since`), the version it was removed in (`until`) and its source (reference manual or release notes of the engine). The `keywords/*.yaml` files already follow this model for the keywords; the registry extends it to the constructs and the functions.
-- **Examples**, each confirmed by its source when it enters the registry: common table expressions, recursive included, from MySQL 8.0.1; `VALUES` and `TABLE` statements from MySQL 8.0.19; `INTERSECT` and `EXCEPT` from MySQL 8.0.31; table value constructors from MariaDB 10.3.3; system versioning from MariaDB 10.3.4.
-- **Versions offered** to the user: those where the dialect changed (a version that adds or removes something), derived from the registry, from the oldest version covered (point 51).
+- **Examples**, each confirmed by its source when it enters the registry: common table expressions, recursive included, from MySQL 8.0.1; `VALUES` and `TABLE` statements from MySQL 8.0.19; `INTERSECT` and `EXCEPT` from MySQL 8.0.31; the `UUID` type from MariaDB 10.7.
+- **Versions offered** to the user: those where the dialect changed (a version that adds or removes something), derived from the registry. The registry starts with the most recent and most widely used versions, MySQL 8.0 and later, MariaDB 10.6 and later; older versions can be added afterwards (point 51).
 - **Storage**: data files in the repository, one per dialect, edited directly, read in the diffs and embedded in the executable, on the model of `crates/dialects/keywords/*.yaml` (point 50).
 - **Use**: the lexer and the parser accept a keyword or a construct only within its period, for the chosen version, otherwise an explicit error ("`VALUES` statement: from MySQL 8.0.19, chosen version 8.0.18"); the emitter checks the version of the server the same way; executable comments are resolved against the chosen version (point 41). Each construct added to a parser in the next steps enters the registry with its versions.
 - **Tests**: each entry has its test (accepted from `since`, refused before); the entries are checked on real servers of the versions available in Docker (ignored tests).
@@ -129,7 +128,7 @@ The user chooses the version of the dialect they write in (point 43): Prisme kno
 Goal: `WITH ds (c) AS (VALUES ROW (123), ROW (234), ROW (345)) SELECT * FROM ds`, written in MySQL, runs on MariaDB as `WITH ds (c) AS (VALUES (123), (234), (345)) SELECT * FROM ds`, and the report shows the rewrite with its position.
 
 - **Parser**: minimal MySQL grammar: `WITH` with a column list, `VALUES` and `VALUES ROW`, `SELECT` (columns, `*`, expressions with literals, arithmetic, comparisons, `AND`, `OR`, `NOT`), `FROM` a table or a common table expression, `WHERE`, `ORDER BY`, `LIMIT`. Any other construct gives the error "not supported yet by the parser of Prisme", with its position.
-- **Plan builder** and **emitters** MySQL and MariaDB for this subset, aware of the versions: the `VALUES` statement from MySQL 8.0.19, table value constructors from MariaDB 10.3.3.
+- **Plan builder** and **emitters** MySQL and MariaDB for this subset, aware of the versions: the `VALUES` statement from MySQL 8.0.19, table value constructors in every MariaDB version covered (10.6 and later).
 - **Entry point** `transpile(input, input_dialect, output_dialect) -> Transpilation`; the current `Dialect` enum (MySQL, MariaDB) becomes the output dialect, with the server version.
 - **Server**:
   - profile setting, migration `users.preferred_dialect` (`TEXT NOT NULL DEFAULT 'source'`: `source`, or a dialect with its version, such as `mysql 8.0.19`, checked by the server against the registry);
@@ -245,4 +244,4 @@ Recorded in `docs/QUESTIONS.md`, section 5, "Dialects and transpilation":
 - 48: beautifier of the statements outside the plan, current path not kept, treatment until they enter the plan open;
 - 49: form of the catalog statements towards MySQL and MariaDB, decided: `information_schema`, `SHOW` when the input used it;
 - 50: storage of the registry of the versions, decided: data files in the repository;
-- 51: oldest versions covered by the registry.
+- 51: oldest versions covered by the registry, decided: MySQL 8.0, MariaDB 10.6.
