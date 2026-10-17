@@ -96,7 +96,7 @@ To settle before step 1, as the types and the plan depend on them:
 
 - NULL, points 1 to 6 of `docs/FEDERATED.md`, section 7 (`docs/QUESTIONS.md`, point 12): the two equalities, three-valued logic, joins, set operators, aggregation, sorting;
 - the internal types of the v1 (`docs/FEDERATED.md`, section 6): integers (unsigned `BIGINT` included), exact decimals, strings, dates, JSON;
-- the storage of the registry of the versions and the oldest versions it covers (points 50 and 51).
+- the oldest versions covered by the registry of the versions (point 51).
 
 ### Step 1. Types and plan
 
@@ -112,7 +112,8 @@ The user chooses the version of the dialect they write in (point 43): Prisme kno
 
 - **Content**, per dialect: each construct of the grammar (`WITH`, `WITH RECURSIVE`, `VALUES` and `TABLE` statements, row alias of `INSERT ... ON DUPLICATE KEY UPDATE`, `RETURNING`...), each keyword and each function, with the version it appeared in (`since`), the version it was removed in (`until`) and its source (reference manual or release notes of the engine). The `keywords/*.yaml` files already follow this model for the keywords; the registry extends it to the constructs and the functions.
 - **Examples**, each confirmed by its source when it enters the registry: common table expressions, recursive included, from MySQL 8.0.1; `VALUES` and `TABLE` statements from MySQL 8.0.19; `INTERSECT` and `EXCEPT` from MySQL 8.0.31; table value constructors from MariaDB 10.3.3; system versioning from MariaDB 10.3.4.
-- **Versions offered** to the user: those where the dialect changed (a version that adds or removes something), derived from the registry, from the oldest version covered (point 51). Storage of the registry: point 50.
+- **Versions offered** to the user: those where the dialect changed (a version that adds or removes something), derived from the registry, from the oldest version covered (point 51).
+- **Storage**: data files in the repository, one per dialect, edited directly, read in the diffs and embedded in the executable, on the model of `crates/dialects/keywords/*.yaml` (point 50).
 - **Use**: the lexer and the parser accept a keyword or a construct only within its period, for the chosen version, otherwise an explicit error ("`VALUES` statement: from MySQL 8.0.19, chosen version 8.0.18"); the emitter checks the version of the server the same way; executable comments are resolved against the chosen version (point 41). Each construct added to a parser in the next steps enters the registry with its versions.
 - **Tests**: each entry has its test (accepted from `since`, refused before); the entries are checked on real servers of the versions available in Docker (ignored tests).
 
@@ -243,5 +244,5 @@ Recorded in `docs/QUESTIONS.md`, section 5, "Dialects and transpilation":
 - 47: what Ctrl+Enter and Ctrl+Shift+Enter run in a PRQL text, decided: the relation under the cursor with its dependencies, every relation;
 - 48: beautifier of the statements outside the plan, current path not kept, treatment until they enter the plan open;
 - 49: form of the catalog statements towards MySQL and MariaDB, decided: `information_schema`, `SHOW` when the input used it;
-- 50: storage of the registry of the versions;
+- 50: storage of the registry of the versions, decided: data files in the repository;
 - 51: oldest versions covered by the registry.
