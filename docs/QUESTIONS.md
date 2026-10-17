@@ -126,7 +126,7 @@ This document keeps track of the reasoning: what was kept, dropped or postponed,
 13. **Collations**: which single rule to compare strings?
 14. **Time zones**: which single convention?
 15. **`NOT IN` with NULL**: reproduce the SQL behaviour as is or translate into an `AntiJoin`?
-16. **Semantics of the PRQL and pipe frontends**: do they inherit the reference semantics or keep their own?
+16. **Semantics of the PRQL and pipe parsers**: do they inherit the reference semantics or keep their own?
 17. **"PSQL"**: is it really the pipe SQL syntax? **[to confirm]**
 18. **Types of the engine's v1**: list first, set or nested relation later? Behaviour of `Ungroup` on a NULL or empty list, and of `array_agg` on NULLs.
 19. **Out-of-range integer types**: big integer library, or an error in all cases?

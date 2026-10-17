@@ -28,7 +28,7 @@ The v1 (see `docs/V1.md`) builds the common core: parser, AST, emitters per dial
 
 Common pipeline, where **the logical plan is the pivot** and depends on no language:
 
-1. **Frontend** (chosen by the user): text to logical plan.
+1. **Parser** (chosen by the user): input dialect to AST, then plan builder to the logical plan.
 2. **Analysis**: resolution of tables and columns, types, function catalog, read / write / DDL classification.
 3. **Optimiser**: written once, works only on the logical plan.
 4. **Physical plan**: for each join, semi-join, merge join or local hash join, depending on indexes and statistics.
