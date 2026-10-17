@@ -102,6 +102,7 @@ impl Emitter<'_> {
         column: bool,
     ) {
         match rule {
+            Rule::Aes => self.aes(rule, expr, call),
             Rule::BitCount => self.bit_count(rule, expr, call),
             Rule::FromUnixtime => self.date_from_unixtime(rule, expr, call),
             Rule::Greatest => self.greatest(rule, expr, call, column),

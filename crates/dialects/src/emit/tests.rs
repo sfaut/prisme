@@ -568,9 +568,9 @@ fn built_in_functions_follow_the_reference_files() {
             "function.unstudied",
         ),
         (
-            "SELECT AES_ENCRYPT(a, 'k') FROM t",
+            "SELECT REGEXP_LIKE(a, 'x') FROM t",
             output(mariadb()),
-            "function.aes",
+            "function.regexp",
         ),
         (
             "SELECT FORMAT_PICO_TIME(a) FROM t",
@@ -1286,6 +1286,85 @@ fn bit_count_reads_its_argument_as_the_input_does() {
         assert_eq!(
             errors(text, input, output(target)),
             ["function.bit-count"],
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn aes_keeps_the_arguments_the_output_reads_alike() {
+    let mysql_8_4 = input_at(Dialect::MySql, 8, 4, 0);
+    let mariadb_10_6 = input_at(Dialect::MariaDb, 10, 6, 0);
+    let mariadb_11_8 = input_at(Dialect::MariaDb, 11, 8, 0);
+    for (text, input, target) in [
+        (
+            "SELECT AES_ENCRYPT(a, 'k'), AES_DECRYPT(a, 'k') AS v FROM t",
+            mysql_8_4,
+            mariadb_10_6,
+        ),
+        (
+            "SELECT AES_ENCRYPT(a, 'k'), AES_DECRYPT(a, 'k') AS v FROM t",
+            mariadb_10_6,
+            mysql_8_4,
+        ),
+        (
+            "SELECT AES_ENCRYPT(a, 'k', 'abcdefghijklmnop') AS v FROM t",
+            mysql_8_4,
+            mariadb_11_8,
+        ),
+        (
+            "SELECT AES_DECRYPT(a, 'k', 'abcdefghijklmnop') AS v FROM t",
+            mariadb_11_8,
+            mysql_8_4,
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{text}");
+    }
+    for (text, input, target, expected) in [
+        (
+            "SELECT AES_ENCRYPT(a, 'k', 'abcdefghijklmnop') AS v FROM t",
+            mysql_8_4,
+            mariadb_10_6,
+            "SELECT AES_ENCRYPT(a, 'k') AS v FROM t",
+        ),
+        (
+            "SELECT AES_DECRYPT(a, 'k', NULL, 'AES-128-ECB') AS v FROM t",
+            mariadb_11_8,
+            mysql_8_4,
+            "SELECT AES_DECRYPT(a, 'k', NULL) AS v FROM t",
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, expected);
+        assert_eq!(rules, ["function.aes"], "{text}");
+    }
+    for (text, input, target) in [
+        (
+            "SELECT AES_ENCRYPT(a, 'k', NULL, 'hkdf') AS v FROM t",
+            mysql_8_4,
+            mariadb_11_8,
+        ),
+        (
+            "SELECT AES_ENCRYPT(a, 'k', NULL, 'pbkdf2_hmac', 'salt', 1000) AS v FROM t",
+            mysql_8_4,
+            mariadb_11_8,
+        ),
+        (
+            "SELECT AES_ENCRYPT(a, 'k', 'abcdefghijklmnop', 'aes-256-cbc') AS v FROM t",
+            mariadb_11_8,
+            mysql_8_4,
+        ),
+        (
+            "SELECT AES_ENCRYPT(a, 'k', NULL, CONCAT('aes-128', '-ecb')) AS v FROM t",
+            mariadb_11_8,
+            mysql_8_4,
+        ),
+    ] {
+        assert_eq!(
+            errors(text, input, output(target)),
+            ["function.aes"],
             "{text}"
         );
     }

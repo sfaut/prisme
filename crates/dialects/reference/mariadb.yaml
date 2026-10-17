@@ -405,6 +405,15 @@ constructs:
     comment: >-
       `UUID()` gives a value of type `UUID`, compared only with UUIDs, of the
       same text as the `VARCHAR(36)` it gave before, as in MySQL.
+  - id: aes_iv
+    since: "11.2.1"
+    source: https://jira.mariadb.org/browse/MDEV-9069
+    comment: >-
+      `AES_ENCRYPT` and `AES_DECRYPT` take an initialization vector, third
+      argument, and a mode, fourth argument (`'aes-128-ecb'`, `'aes-256-cbc'`...),
+      by default the variable `block_encryption_mode`, added with them; two
+      arguments only before. The mode `aes-128-ecb`, the default, ignores the
+      vector. Measured on 11.1.6 and 11.2.6.
   - id: unixtime_2106
     since: "11.5.1"
     source: https://jira.mariadb.org/browse/MDEV-32188

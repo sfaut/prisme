@@ -113,6 +113,10 @@ pub enum Construct {
     /// `UNIX_TIMESTAMP` and `FROM_UNIXTIME` giving NULL at the epoch
     /// (MariaDB), 0 and its date otherwise.
     UnixtimeEpochNull,
+    /// `AES_ENCRYPT` and `AES_DECRYPT` with an initialization vector, third
+    /// argument, and a mode, fourth argument (MariaDB); two arguments only
+    /// otherwise.
+    AesIv,
 }
 
 /// Construct refused in a dialect or a version.
@@ -250,6 +254,7 @@ impl Construct {
             Self::Unixtime3001 => "`UNIX_TIMESTAMP` until 3001",
             Self::Unixtime2106 => "`UNIX_TIMESTAMP` until 2106",
             Self::UnixtimeEpochNull => "`UNIX_TIMESTAMP` giving NULL at the epoch",
+            Self::AesIv => "`AES_ENCRYPT` with an initialization vector and a mode",
         }
     }
 }
