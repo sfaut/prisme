@@ -427,7 +427,59 @@ constructs:
   - id: intersect_except_all
     since: "8.0.31"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-31.html
+  # Targets of `CAST` and `CONVERT` (crates/probe/cases/cast-forms.txt, measured on
+  # 8.0.11, 8.0.17, 8.0.22, 8.0.27, 8.4.11 and 9.3.0, and cast-bounds.txt, on each
+  # version from 8.0.17 to 8.0.27).
+  - id: cast_double
+    since: "8.0.17"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-17.html
+    comment: >-
+      `CAST(x AS DOUBLE)` and `CAST(x AS FLOAT)`; a syntax error before
+      (8.0.16 measured).
+  - id: cast_double_synonyms
+    since: "8.0.17"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-17.html
+    comment: >-
+      `CAST(x AS DOUBLE PRECISION)`, `AS REAL` (a `FLOAT` under
+      `REAL_AS_FLOAT`) and `AS FLOAT(p)`, a `FLOAT` up to 24 bits, a `DOUBLE`
+      from 25 to 53; MariaDB has none of them.
+  - id: cast_national_char
+    since: "8.0.11"
+    source: https://dev.mysql.com/doc/refman/8.0/en/cast-functions.html
+    comment: >-
+      `CAST(x AS NATIONAL CHAR)`, as `NCHAR`; MariaDB refuses it. Available
+      at the floor (checked on MySQL 8.0.11).
+  - id: cast_json
+    since: "5.7.8"
+    source: https://dev.mysql.com/doc/relnotes/mysql/5.7/en/news-5-7-8.html
+    comment: >-
+      `CAST(x AS JSON)`, with the type `JSON`; MariaDB has no such target.
+  - id: cast_year
+    since: "8.0.22"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-22.html
+    comment: >-
+      `CAST(x AS YEAR)`; a syntax error in 8.0.17 (measured).
+  - id: cast_at_time_zone
+    since: "8.0.22"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-22.html
+    comment: >-
+      `CAST(ts AT TIME ZONE [INTERVAL] '+00:00' AS DATETIME[(n)])`, the zone
+      `+00:00` or `UTC` only, of a `TIMESTAMP`: its date and time in UTC.
+  - id: cast_spatial
+    since: "8.0.24"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-24.html
+    comment: >-
+      `CAST(g AS POINT)` and the other spatial types but `GEOMETRY`; a syntax
+      error in 8.0.23, accepted in 8.0.24 (crates/probe/cases/cast-bounds.txt).
   # Behaviours of built-in functions.
+  - id: cast_unsigned_wrap
+    since: "8.0.19"
+    source: https://dev.mysql.com/doc/refman/8.4/en/cast-functions.html
+    comment: >-
+      `CAST(-3.7 AS UNSIGNED)`, of a negative decimal, gives the unsigned
+      integer of the same bits (18446744073709551612), as for a float or a
+      time; 0 before, as in MariaDB (crates/probe/cases/cast-bounds.txt,
+      measured 0 on 8.0.17 and 8.0.18, the integer on 8.0.19 to 8.0.27).
   - id: pad_empty_string
     since: "8.0.13"
     until: "9.3.0"

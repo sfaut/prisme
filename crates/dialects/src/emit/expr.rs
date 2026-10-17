@@ -113,6 +113,10 @@ impl Emitter<'_> {
             self.case(expr, case, Reading { column, number });
             return;
         }
+        if let ExprKind::Cast(cast) = &expr.kind {
+            self.cast(expr, cast);
+            return;
+        }
         let (level, left, right) = levels(expr);
         let parenthesized = level < min;
         if parenthesized {

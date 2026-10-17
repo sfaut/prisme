@@ -14,6 +14,7 @@
 //! report.
 
 mod call;
+mod cast;
 mod expr;
 mod from;
 

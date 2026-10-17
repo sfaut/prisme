@@ -20,6 +20,7 @@
 //! `group` module.
 
 mod call;
+mod cast;
 mod expr;
 pub(crate) mod functions;
 mod group;

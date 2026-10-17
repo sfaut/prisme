@@ -273,13 +273,14 @@ impl Builder<'_> {
             | ExprKind::Row(_)
             | ExprKind::Column(_)
             | ExprKind::Function(_)
-            | ExprKind::Case { .. } => self.other_expr(expr, scope)?,
+            | ExprKind::Case { .. }
+            | ExprKind::Cast(_) => self.other_expr(expr, scope)?,
         };
         Ok(built.with_span(expr.span))
     }
 
-    /// Column, call, subquery, row or `CASE`: out of `expr`, whose frame the
-    /// recursion of deep expressions repeats.
+    /// Column, call, subquery, row, `CASE` or `CAST`: out of `expr`, whose
+    /// frame the recursion of deep expressions repeats.
     fn other_expr(&mut self, expr: &ast::Expr, scope: &Scope) -> Result<Expr, BuildError> {
         Ok(match &expr.kind {
             ExprKind::Column(name) => self.column(name, scope)?,
@@ -349,7 +350,8 @@ impl Builder<'_> {
                 branches,
                 otherwise,
             } => self.case(operand.as_deref(), branches, otherwise.as_deref(), scope)?,
-            _ => unreachable!("called on columns, calls, subqueries, rows and `CASE`"),
+            ExprKind::Cast(cast) => self.cast(cast, scope)?,
+            _ => unreachable!("called on columns, calls, subqueries, rows, `CASE` and `CAST`"),
         })
     }
 

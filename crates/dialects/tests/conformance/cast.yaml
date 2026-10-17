@@ -1,0 +1,142 @@
+# `CAST` and `CONVERT`. Rule `cast.target`: a target the output lacks is
+# written as its equivalent (`DOUBLE PRECISION` as `DOUBLE`, `INT` as
+# `SIGNED INT`, `VARCHAR(n)` as `CHAR(n)`...), or refused without one.
+# Rules `cast.fraction`, `cast.spaces`, `cast.unsigned`, `cast.float`,
+# `cast.bytes`, `cast.temporal`, `cast.invalid` and `cast.unknown`: the
+# conversions whose values differ between MySQL and MariaDB are refused, by
+# the type of the operand (crates/probe/cases/cast.txt).
+setup:
+  - DROP TABLE IF EXISTS cast_values
+  - >-
+    CREATE TABLE cast_values (id INT NOT NULL PRIMARY KEY, i INT NULL,
+    iu INT UNSIGNED NULL, b BIGINT NULL, p DECIMAL(10, 2) NULL, f DOUBLE NULL,
+    d DATE NULL, dt DATETIME(3) NULL, tm TIME NULL, s VARCHAR(30) NULL,
+    vb VARBINARY(10) NULL, e ENUM('b', 'a') NULL, y YEAR NULL)
+  - >-
+    INSERT INTO cast_values VALUES
+    (1, -5, 7, 9223372036854775807, 12.50, 2.5, '2024-05-06',
+    '2024-05-06 07:08:09.123', '10:20:30', '12', X'3132', 'a', 2024),
+    (2, 2147483647, 4294967295, -9223372036854775808, -0.50, -3.75, '1000-01-01',
+    '9999-12-31 23:59:59.000', '-838:59:59', 'Hello World', X'', 'b', 1901),
+    (3, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)
+cases:
+  # Conversions of the same values in both dialects.
+  - from: mysql
+    sql: >-
+      SELECT id, CAST(i AS SIGNED) AS a, CAST(p AS SIGNED INTEGER) AS c, CAST(e AS SIGNED) AS g,
+      CAST(y AS SIGNED) AS h, CAST(i AS UNSIGNED) AS k, CAST(b AS UNSIGNED INT) AS l,
+      CAST(i AS DECIMAL(12, 2)) AS m, CAST(f AS DECIMAL(10, 3)) AS n, CAST(s AS DECIMAL) AS o,
+      CONVERT(p, DEC(4, 1)) AS q FROM cast_values ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, CAST(i AS SIGNED) AS a, CAST(p AS SIGNED INTEGER) AS c, CAST(e AS SIGNED) AS g,
+      CAST(y AS SIGNED) AS h, CAST(i AS UNSIGNED) AS k, CAST(b AS UNSIGNED INT) AS l,
+      CAST(i AS DECIMAL(12, 2)) AS m, CAST(f AS DECIMAL(10, 3)) AS n, CAST(s AS DECIMAL) AS o,
+      CONVERT(p, DEC(4, 1)) AS q FROM cast_values ORDER BY id
+  - from: mysql
+    sql: >-
+      SELECT id, CAST(i AS CHAR) AS a, CAST(s AS CHAR(4)) AS c, CAST(s AS CHAR CHARACTER SET latin1) AS g,
+      CONVERT(s USING utf8mb4) AS h, CONVERT(i, CHAR(3)) AS k, CAST(s AS BINARY(4)) AS l,
+      CAST(vb AS BINARY) AS m, CAST(dt AS DATE) AS n, CAST(d AS DATETIME) AS o,
+      CAST(dt AS DATETIME(3)) AS q, CAST(dt AS TIME(3)) AS r FROM cast_values ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, CAST(i AS CHAR) AS a, CAST(s AS CHAR(4)) AS c, CAST(s AS CHAR CHARACTER SET latin1) AS g,
+      CONVERT(s USING utf8mb4) AS h, CONVERT(i, CHAR(3)) AS k, CAST(s AS BINARY(4)) AS l,
+      CAST(vb AS BINARY) AS m, CAST(dt AS DATE) AS n, CAST(d AS DATETIME) AS o,
+      CAST(dt AS DATETIME(3)) AS q, CAST(dt AS TIME(3)) AS r FROM cast_values ORDER BY id
+  # Literals whose values are read alike.
+  - from: mysql
+    sql: >-
+      SELECT CAST('12' AS SIGNED) AS a, CAST('2024-05-06 07:08:09.5' AS DATETIME(1)) AS b,
+      CAST('2024-05-06' AS TIME) AS c, CAST(3.7 AS UNSIGNED) AS e
+  - from: mariadb
+    sql: >-
+      SELECT CAST('12' AS SIGNED) AS a, CAST('2024-05-06 07:08:09.5' AS DATETIME(1)) AS b,
+      CAST('2024-05-06' AS TIME) AS c, CAST(3.7 AS UNSIGNED) AS e
+  # Targets written as their equivalent.
+  - from: mysql
+    inputs: mysql >= 8.0.17
+    sql: >-
+      SELECT id, CAST(f AS DOUBLE) AS a, CAST(f AS DOUBLE PRECISION) AS c, CAST(i AS REAL) AS g,
+      CAST(f AS FLOAT(30)) AS h, CAST(id AS FLOAT(10)) AS k, CAST(s AS NATIONAL CHAR(3)) AS l
+      FROM cast_values ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, CAST(i AS INT) AS a, CAST(p AS INTEGER) AS c, CAST(s AS VARCHAR(5)) AS g,
+      CAST(s AS CHAR(5) CHARACTER SET latin1 COLLATE latin1_bin) AS h FROM cast_values ORDER BY id
+  - from: mariadb
+    outputs: mysql >= 8.0.17
+    sql: SELECT id, CAST(f AS DOUBLE) AS a, CAST(id AS FLOAT) AS c FROM cast_values ORDER BY id
+  # Targets without equivalent.
+  - from: mysql
+    sql: SELECT CAST(i AS JSON) AS a FROM cast_values
+    refused: cast.target
+  - from: mysql
+    inputs: mysql >= 8.0.22
+    sql: SELECT CAST(i AS YEAR) AS a FROM cast_values
+    refused: cast.target
+  - from: mariadb
+    sql: SELECT CAST('::1' AS INET6) AS a
+    refused: cast.target
+  - from: mariadb
+    sql: SELECT CAST(f AS DOUBLE(5, 2)) AS a FROM cast_values
+    refused: cast.target
+  - from: mariadb
+    sql: SELECT CAST(p AS DECIMAL(40, 35)) AS a FROM cast_values
+    refused: cast.target
+  - from: mariadb
+    outputs: mysql < 8.0.17
+    sql: SELECT CAST(f AS DOUBLE) AS a FROM cast_values
+    refused: cast.target
+  # Values that differ.
+  - from: mysql
+    sql: SELECT CAST(dt AS SIGNED) AS a FROM cast_values
+    refused: cast.fraction
+  - from: mariadb
+    sql: SELECT CAST(dt AS DATETIME) AS a FROM cast_values
+    refused: cast.fraction
+  - from: mysql
+    sql: SELECT CAST(s AS SIGNED) AS a FROM cast_values
+    refused: cast.spaces
+  - from: mysql
+    sql: SELECT CAST(f AS UNSIGNED) AS a FROM cast_values
+    refused: cast.unsigned
+  - from: mariadb
+    sql: SELECT CAST(tm AS UNSIGNED) AS a FROM cast_values
+    refused: cast.unsigned
+  # A negative decimal to `UNSIGNED`: the integer of the same bits in MySQL
+  # from 8.0.19, 0 before and in MariaDB.
+  - from: mysql
+    inputs: mysql < 8.0.19
+    sql: SELECT id, CAST(p AS UNSIGNED) AS a FROM cast_values ORDER BY id
+  - from: mariadb
+    outputs: mysql < 8.0.19
+    sql: SELECT id, CAST(p AS UNSIGNED) AS a FROM cast_values ORDER BY id
+  - from: mysql
+    inputs: mysql >= 8.0.19
+    sql: SELECT CAST(p AS UNSIGNED) AS a FROM cast_values
+    refused: cast.unsigned
+  - from: mariadb
+    outputs: mysql >= 8.0.19
+    sql: SELECT CAST(p AS UNSIGNED) AS a FROM cast_values
+    refused: cast.unsigned
+  - from: mariadb
+    outputs: mysql >= 8.0.17
+    sql: SELECT CAST(f AS FLOAT) AS a FROM cast_values
+    refused: cast.float
+  - from: mysql
+    sql: SELECT CAST(vb AS CHAR) AS a FROM cast_values
+    refused: cast.bytes
+  - from: mariadb
+    sql: SELECT CAST(s AS DATE) AS a FROM cast_values
+    refused: cast.temporal
+  - from: mysql
+    sql: SELECT CAST(i AS DATE) AS a FROM cast_values
+    refused: cast.invalid
+  - from: mariadb
+    sql: SELECT CAST(y AS TIME) AS a FROM cast_values
+    refused: cast.invalid
+  - from: mysql
+    sql: SELECT CAST(ABS(i) AS SIGNED) AS a FROM cast_values
+    refused: cast.unknown

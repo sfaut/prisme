@@ -1543,3 +1543,151 @@ fn a_decimal_case_keeps_the_scale_of_its_values() {
     let text = "SELECT CASE WHEN i > 0 THEN ABS(i) ELSE p END + 1 AS x FROM d";
     assert!(errors(text, mysql(), output(mariadb())).is_empty());
 }
+
+#[test]
+fn cast_keeps_its_form_within_a_dialect() {
+    let text = concat!(
+        "SELECT CAST(i AS SIGNED) AS a, CAST(i AS UNSIGNED INTEGER) AS b, ",
+        "CONVERT(p, DECIMAL(5, 2)) AS c, CAST(i AS CHAR(10) CHARACTER SET utf8mb4) AS e, ",
+        "CONVERT(i USING latin1) AS g, CAST(i AS BINARY(4)) AS h, CAST(dt AS DATE) AS j, ",
+        "CAST(f AS DOUBLE PRECISION) AS k, CAST(f AS JSON) AS l, CAST(i AS YEAR) AS m, ",
+        "CAST(ts AT TIME ZONE 'UTC' AS DATETIME) AS o FROM d"
+    );
+    let (sql, rules) = transpiled(text, mysql_at(8, 4, 0), output(mysql_at(8, 4, 0)));
+    assert_eq!(sql, text);
+    assert!(rules.is_empty(), "{rules:?}");
+    let text = concat!(
+        "SELECT CAST(i AS INT) AS a, CAST(f AS DOUBLE(5, 2)) AS b, ",
+        "CAST(i AS VARCHAR(5) CHARACTER SET latin1 COLLATE latin1_bin) AS c, ",
+        "CAST(i AS INTERVAL DAY_SECOND(2)) AS e, CAST('::1' AS INET6) AS g FROM d"
+    );
+    let (sql, rules) = transpiled(text, mariadb(), output(mariadb()));
+    assert_eq!(sql, text);
+    assert!(rules.is_empty(), "{rules:?}");
+    // A target older than the output version is an error.
+    assert_eq!(
+        errors(
+            "SELECT CAST(f AS DOUBLE) FROM d",
+            mysql_at(8, 4, 0),
+            output(mysql_at(8, 0, 11))
+        ),
+        ["cast.target"]
+    );
+}
+
+#[test]
+fn a_target_of_cast_takes_its_equivalent_in_the_other_dialect() {
+    let (sql, rules) = transpiled(
+        concat!(
+            "SELECT CAST(n AS DOUBLE PRECISION) AS a, CAST(n AS REAL) AS b, ",
+            "CAST(n AS FLOAT(30)) AS c, CAST(i AS FLOAT(10)) AS e, ",
+            "CAST(i AS NATIONAL CHAR(3)) AS g FROM d"
+        ),
+        mysql_at(8, 4, 0),
+        output(mariadb()),
+    );
+    assert_eq!(
+        sql,
+        concat!(
+            "SELECT CAST(n AS DOUBLE) AS a, CAST(n AS DOUBLE) AS b, ",
+            "CAST(n AS DOUBLE) AS c, CAST(i AS FLOAT) AS e, ",
+            "CAST(i AS NCHAR(3)) AS g FROM d"
+        )
+    );
+    assert_eq!(rules, ["cast.target"; 5]);
+    let (sql, rules) = transpiled(
+        concat!(
+            "SELECT CAST(de AS INT) AS a, CAST(s AS VARCHAR(5)) AS b, ",
+            "CAST(s AS CHAR(5) CHARACTER SET latin1 COLLATE latin1_bin) AS c FROM g"
+        ),
+        mariadb(),
+        output(mysql_at(8, 4, 0)),
+    );
+    assert_eq!(
+        sql,
+        concat!(
+            "SELECT CAST(de AS SIGNED INT) AS a, CAST(s AS CHAR(5)) AS b, ",
+            "CAST(s AS CHAR(5) CHARACTER SET latin1) COLLATE latin1_bin AS c FROM g"
+        )
+    );
+    assert_eq!(rules, ["cast.target"; 3]);
+    // Without equivalent: an error.
+    for text in [
+        "SELECT CAST(i AS JSON) FROM d",
+        "SELECT CAST(i AS YEAR) FROM d",
+        "SELECT CAST(ts AT TIME ZONE 'UTC' AS DATETIME) FROM d",
+    ] {
+        assert_eq!(
+            errors(text, mysql_at(8, 4, 0), output(mariadb())),
+            ["cast.target"],
+            "{text}"
+        );
+    }
+    for text in [
+        "SELECT CAST(s AS INET6) FROM g",
+        "SELECT CAST(de AS DOUBLE(5, 2)) FROM g",
+        "SELECT CAST(s AS INTERVAL DAY_SECOND(2)) FROM g",
+        "SELECT CAST(de AS DECIMAL(40, 35)) FROM g",
+    ] {
+        assert_eq!(
+            errors(text, mariadb(), output(mysql_at(8, 4, 0))),
+            ["cast.target"],
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn cast_values_that_differ_between_the_dialects_are_errors() {
+    let mysql = mysql_at(8, 4, 0);
+    for (text, expected) in [
+        ("SELECT CAST(dt3 AS SIGNED) FROM g", vec!["cast.fraction"]),
+        ("SELECT CAST(dt3 AS DATETIME) FROM g", vec!["cast.fraction"]),
+        ("SELECT CAST(dt3 AS TIME(3)) FROM g", vec![]),
+        ("SELECT CAST(dt3 AS DATE) FROM g", vec![]),
+        ("SELECT CAST(dd AS DATETIME) FROM g", vec![]),
+        ("SELECT CAST(s AS SIGNED) FROM g", vec!["cast.spaces"]),
+        ("SELECT CAST('12' AS SIGNED)", vec![]),
+        ("SELECT CAST('\n12' AS SIGNED)", vec!["cast.spaces"]),
+        ("SELECT CAST(f AS UNSIGNED) FROM d", vec!["cast.unsigned"]),
+        ("SELECT CAST(tm AS UNSIGNED) FROM g", vec!["cast.unsigned"]),
+        ("SELECT CAST(p AS UNSIGNED) FROM d", vec!["cast.unsigned"]),
+        ("SELECT CAST(3.7 AS UNSIGNED)", vec![]),
+        ("SELECT CAST(i AS UNSIGNED) FROM d", vec![]),
+        ("SELECT CAST(f AS FLOAT) FROM d", vec!["cast.float"]),
+        ("SELECT CAST(i AS FLOAT) FROM d", vec![]),
+        ("SELECT CAST(vb AS CHAR) FROM g", vec!["cast.bytes"]),
+        (
+            "SELECT CAST(vb AS CHAR CHARACTER SET latin1) FROM g",
+            vec![],
+        ),
+        ("SELECT CAST(s AS DATE) FROM g", vec!["cast.temporal"]),
+        (
+            "SELECT CAST('2024-05-06 07:08:09.5' AS DATETIME(1))",
+            vec![],
+        ),
+        ("SELECT CAST('2024-05-06' AS TIME)", vec![]),
+        (
+            "SELECT CAST('2024-05-06 07:08:09.5' AS DATETIME)",
+            vec!["cast.temporal"],
+        ),
+        (
+            "SELECT CAST('2024-05-06 23:00:00+02:00' AS DATETIME)",
+            vec!["cast.temporal"],
+        ),
+        ("SELECT CAST(i AS DATE) FROM d", vec!["cast.invalid"]),
+        ("SELECT CAST(e AS DATETIME) FROM g", vec!["cast.invalid"]),
+        ("SELECT CAST(y AS TIME) FROM g", vec!["cast.invalid"]),
+        ("SELECT CAST(ABS(i) AS SIGNED) FROM d", vec!["cast.unknown"]),
+        ("SELECT CAST(ABS(i) AS DECIMAL) FROM d", vec![]),
+    ] {
+        assert_eq!(errors(text, mysql, output(mariadb())), expected, "{text}");
+        assert!(errors(text, mysql, output(mysql)).is_empty(), "{text}");
+    }
+    // A negative decimal to `UNSIGNED` gives 0 in MySQL before 8.0.19, as
+    // in MariaDB.
+    let text = "SELECT CAST(p AS UNSIGNED) FROM d";
+    assert!(errors(text, mysql_at(8, 0, 18), output(mariadb())).is_empty());
+    assert!(errors(text, mariadb(), output(mysql_at(8, 0, 18))).is_empty());
+    assert_eq!(errors(text, mariadb(), output(mysql)), ["cast.unsigned"]);
+}

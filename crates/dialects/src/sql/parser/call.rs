@@ -7,9 +7,10 @@
 //! `builtins` module): the names of some built-in functions call a stored
 //! function when a space separates them from `(` (`SUM (a)`, so `COUNT (*)`
 //! is a syntax error) or when written between backticks (`` `LEFT`(a) ``),
-//! as on the servers. The functions whose arguments have a syntax of their
-//! own (`CAST(a AS CHAR)`, `TRIM(LEADING ...)`, `DATE_ADD(d, INTERVAL
-//! ...)`...) are read in a later increment of step 5.
+//! as on the servers. `CAST` and `CONVERT` have a module of their own
+//! (`cast`); the other functions whose arguments have a syntax of their own
+//! (`TRIM(LEADING ...)`, `DATE_ADD(d, INTERVAL ...)`...) are read in a later
+//! increment of step 5.
 
 use prisme_plan::{FrameUnits, Span};
 
@@ -23,11 +24,9 @@ use crate::sql::ast::{
 use crate::versions::Construct;
 
 /// Functions whose arguments have a syntax of their own, not read yet.
-const SPECIAL_SYNTAX: [&str; 16] = [
+const SPECIAL_SYNTAX: [&str; 14] = [
     "ADDDATE",
-    "CAST",
     "CHAR",
-    "CONVERT",
     "DATE_ADD",
     "DATE_SUB",
     "EXTRACT",
@@ -82,6 +81,11 @@ impl Parser<'_> {
         };
         let upper = name.parts[name.parts.len() - 1].value.to_ascii_uppercase();
         let stored = self.stored(&name, &upper);
+        match upper.as_str() {
+            "CAST" if !stored => return self.cast(start),
+            "CONVERT" if !stored => return self.convert(start),
+            _ => {}
+        }
         if !stored && SPECIAL_SYNTAX.contains(&upper.as_str()) {
             return Err(self.unsupported(&format!("`{upper}`"), name.span));
         }

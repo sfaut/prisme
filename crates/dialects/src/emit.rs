@@ -24,6 +24,7 @@ mod bit_count;
 mod builtin;
 mod call;
 mod case;
+mod cast;
 mod expr;
 mod greatest;
 mod rules;

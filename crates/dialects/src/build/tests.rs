@@ -749,3 +749,60 @@ fn types_case_from_its_results_after_the_dialect() {
         assert_eq!(types::case(Dialect::MySql, &results), merged, "{results:?}");
     }
 }
+
+#[test]
+fn types_cast_after_its_target() {
+    let text = |length, charset: Option<&str>| {
+        DataType::Text(TextType {
+            length,
+            fixed: false,
+            charset: charset.map(str::to_string),
+            collation: None,
+        })
+    };
+    let binary = |length| {
+        DataType::Binary(prisme_types::BinaryType {
+            length,
+            fixed: false,
+        })
+    };
+    assert_eq!(
+        column_types(
+            concat!(
+                "SELECT CAST(a AS SIGNED), CAST(a AS UNSIGNED), CAST(a AS DECIMAL), ",
+                "CAST(a AS DECIMAL(0, 2)), CAST(a AS DOUBLE), CAST(a AS FLOAT(30)), ",
+                "CAST(a AS CHAR(3)), CAST(a AS NCHAR), CAST(a AS CHAR BYTE), ",
+                "CONVERT(b USING latin1), CAST(a AS BINARY(2)), CAST(a AS DATE), ",
+                "CAST(a AS DATETIME(3)), CAST(b AS TIME) FROM t"
+            ),
+            Dialect::MySql
+        ),
+        [
+            (types::bigint(), false),
+            (
+                DataType::Integer(IntegerType::unsigned(IntegerSize::Big)),
+                false
+            ),
+            (types::decimal(10, 0), false),
+            (types::decimal(10, 2), false),
+            (types::double(), false),
+            (types::double(), false),
+            (text(Some(3), None), false),
+            (text(None, Some("utf8mb3")), false),
+            (binary(None), false),
+            (text(Some(10), Some("latin1")), true),
+            (binary(Some(2)), false),
+            (DataType::Date, true),
+            (DataType::DateTime { fraction: 3 }, true),
+            (DataType::Time { fraction: 0 }, true),
+        ]
+    );
+    // MariaDB: `INT` alone, a nullable `DOUBLE`.
+    assert_eq!(
+        column_types(
+            "SELECT CAST(a AS INT), CAST(a AS DOUBLE) FROM t",
+            Dialect::MariaDb
+        ),
+        [(types::bigint(), false), (types::double(), true)]
+    );
+}

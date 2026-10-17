@@ -533,8 +533,6 @@ impl Parser<'_> {
                 return Err(self.unsupported("typed literals and charset introducers", token.span));
             }
             let constructs = [
-                "CAST",
-                "CONVERT",
                 "EXISTS",
                 "INTERVAL",
                 "BINARY",

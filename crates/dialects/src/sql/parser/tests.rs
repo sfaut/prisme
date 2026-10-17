@@ -1,4 +1,7 @@
-use prisme_plan::{AliasForm, IndexHintAction, IndexHintScope, JoinForm, LimitForm, ValuesForm};
+use prisme_plan::{
+    AliasForm, CastForm, CastTarget, CharTarget, CharWord, Charset, IndexHintAction,
+    IndexHintScope, IntegerWord, JoinForm, LimitForm, ValuesForm,
+};
 
 use super::*;
 use crate::sql::ast::{
@@ -162,6 +165,45 @@ fn tree(expr: &Expr) -> String {
             );
             format!("({})", parts.join(" "))
         }
+        ExprKind::Cast(cast) => format!("(cast {} {:?})", tree(&cast.operand), cast.target),
+    }
+}
+
+/// Target and form of the conversion `text`, with `options`.
+fn cast_of(text: &str, options: &ParseOptions) -> (CastTarget, CastForm) {
+    let QueryBody::Select(select) = query(&format!("SELECT {text}"), options).body else {
+        panic!("not a SELECT");
+    };
+    match &select.items[0] {
+        SelectItem::Expr {
+            expr:
+                Expr {
+                    kind: ExprKind::Cast(cast),
+                    ..
+                },
+            ..
+        } => (cast.target.clone(), cast.form.clone()),
+        other => panic!("{other:?}"),
+    }
+}
+
+/// Character string target of `length`, `charset` and `binary`.
+fn char_target(length: Option<u32>, charset: Option<Charset>, binary: bool) -> CastTarget {
+    CastTarget::Char(CharTarget {
+        word: CharWord::Char,
+        length,
+        charset,
+        binary,
+        collation: None,
+    })
+}
+
+/// Character set `name` written after `CHARACTER SET`.
+fn named(name: &str) -> Charset {
+    Charset::Named {
+        name: name.to_string(),
+        short: false,
+        quoted: false,
     }
 }
 
@@ -446,6 +488,207 @@ fn reads_case_with_and_without_operand() {
 }
 
 #[test]
+fn reads_cast_and_convert_in_each_of_their_forms() {
+    let mysql = mysql_at(8, 0, 22);
+    for (text, target, form) in [
+        (
+            "CAST(a AS SIGNED)",
+            CastTarget::Signed(None),
+            CastForm::Cast,
+        ),
+        (
+            "cast(a as unsigned integer)",
+            CastTarget::Unsigned(Some(IntegerWord::Integer)),
+            CastForm::Cast,
+        ),
+        (
+            "CONVERT(a, DECIMAL(5, 2))",
+            CastTarget::Decimal {
+                dec: false,
+                precision: Some(5),
+                scale: Some(2),
+            },
+            CastForm::Convert,
+        ),
+        (
+            "CAST(a AS DEC(7))",
+            CastTarget::Decimal {
+                dec: true,
+                precision: Some(7),
+                scale: None,
+            },
+            CastForm::Cast,
+        ),
+        (
+            "CAST(a AS CHAR(10) CHARACTER SET utf8mb4 BINARY)",
+            char_target(Some(10), Some(named("utf8mb4")), true),
+            CastForm::Cast,
+        ),
+        (
+            "CAST(a AS CHAR BINARY CHARSET 'latin1')",
+            char_target(
+                None,
+                Some(Charset::Named {
+                    name: "latin1".to_string(),
+                    short: true,
+                    quoted: true,
+                }),
+                true,
+            ),
+            CastForm::Cast,
+        ),
+        (
+            "CAST(a AS CHAR ASCII)",
+            char_target(None, Some(Charset::Ascii), false),
+            CastForm::Cast,
+        ),
+        (
+            "CONVERT(a USING utf8mb4)",
+            char_target(None, Some(named("utf8mb4")), false),
+            CastForm::ConvertUsing,
+        ),
+        (
+            "CAST(a AS BINARY(4))",
+            CastTarget::Binary(Some(4)),
+            CastForm::Cast,
+        ),
+        (
+            "CAST(a AS DATETIME(3))",
+            CastTarget::DateTime(Some(3)),
+            CastForm::Cast,
+        ),
+        ("CAST(a AS TIME)", CastTarget::Time(None), CastForm::Cast),
+        ("CAST(a AS DATE)", CastTarget::Date, CastForm::Cast),
+        (
+            "CAST(a AS DOUBLE PRECISION)",
+            CastTarget::Double {
+                precision: true,
+                digits: None,
+            },
+            CastForm::Cast,
+        ),
+        (
+            "CAST(a AS FLOAT(30))",
+            CastTarget::Float(Some(30)),
+            CastForm::Cast,
+        ),
+        (
+            "CAST(a AS REAL)",
+            CastTarget::Real { float: false },
+            CastForm::Cast,
+        ),
+        ("CAST(a AS YEAR)", CastTarget::Year, CastForm::Cast),
+        ("CAST(a AS JSON)", CastTarget::Json, CastForm::Cast),
+        (
+            "CAST(a AT TIME ZONE INTERVAL '+00:00' AS DATETIME(6))",
+            CastTarget::DateTime(Some(6)),
+            CastForm::AtTimeZone {
+                zone: "+00:00".to_string(),
+                interval: true,
+            },
+        ),
+    ] {
+        assert_eq!(cast_of(text, &mysql), (target, form), "{text}");
+    }
+    for (text, target) in [
+        ("CAST(a AS INT)", CastTarget::Integer(IntegerWord::Int)),
+        (
+            "CAST(a AS DOUBLE(5, 2))",
+            CastTarget::Double {
+                precision: false,
+                digits: Some((5, 2)),
+            },
+        ),
+        (
+            "CAST(a AS VARCHAR(5) CHARACTER SET latin1 COLLATE latin1_bin)",
+            CastTarget::Char(CharTarget {
+                word: CharWord::VarChar,
+                length: Some(5),
+                charset: Some(named("latin1")),
+                binary: false,
+                collation: Some("latin1_bin".to_string()),
+            }),
+        ),
+        ("CAST(a AS INTERVAL DAY_SECOND(2))", CastTarget::Interval(2)),
+        ("CAST(a AS INET6)", CastTarget::Named("INET6".to_string())),
+    ] {
+        assert_eq!(cast_of(text, &mariadb()).0, target, "{text}");
+    }
+    assert_eq!(
+        expr("CAST(a + 1 AS SIGNED) * 2"),
+        "(* (cast (+ a 1) Signed(None)) 2)"
+    );
+}
+
+#[test]
+fn cast_after_a_space_or_between_backticks_calls_a_stored_function() {
+    assert_eq!(expr("CAST (a)"), "(stored cast a)");
+    assert_eq!(expr("`CAST`(a)"), "(stored cast a)");
+    let ignore_space = ParseOptions {
+        mode: SqlMode {
+            ignore_space: true,
+            ..SqlMode::default()
+        },
+        ..mysql()
+    };
+    assert_eq!(
+        expr_with("CAST (a AS DATE)", &ignore_space),
+        "(cast a Date)"
+    );
+    // `CONVERT` is a reserved word: a space changes nothing, a name is
+    // between backticks.
+    assert_eq!(expr("CONVERT (a, DATE)"), "(cast a Date)");
+    assert_eq!(error("SELECT convert FROM t", &mysql()).1, "convert");
+}
+
+#[test]
+fn a_target_of_cast_follows_the_dialect_and_its_version() {
+    for (text, options, faulty) in [
+        ("SELECT CAST(a AS DOUBLE)", mysql_at(8, 0, 16), "DOUBLE"),
+        ("SELECT CAST(a AS YEAR)", mysql_at(8, 0, 21), "YEAR"),
+        ("SELECT CAST(a AS INT)", mysql(), "INT"),
+        ("SELECT CAST(a AS VARCHAR(4))", mysql(), "VARCHAR"),
+        ("SELECT CAST(a AS JSON)", mariadb(), "JSON"),
+        ("SELECT CAST(a AS DOUBLE PRECISION)", mariadb(), "PRECISION"),
+        ("SELECT CAST(a AS NATIONAL CHAR)", mariadb(), "NATIONAL"),
+        (
+            "SELECT CAST(a AT TIME ZONE 'UTC' AS DATETIME)",
+            mariadb(),
+            "AT",
+        ),
+        ("SELECT CAST(a AS POINT)", mysql(), "POINT"),
+        ("SELECT CAST(a AS NUMERIC)", mysql(), "NUMERIC"),
+        ("SELECT CAST(a AS DATETIME(7))", mysql(), "7"),
+        ("SELECT CAST(a AS DECIMAL(66))", mysql(), "66"),
+        ("SELECT CAST(a AS DECIMAL(40, 31))", mysql(), "31"),
+        ("SELECT CAST(a AS DECIMAL(5, 6))", mariadb(), "6"),
+        ("SELECT CAST(a AS FLOAT(54))", mysql(), "54"),
+        (
+            "SELECT CAST(a AT TIME ZONE 'UTC' AS DATE)",
+            mysql_at(8, 0, 22),
+            "DATE",
+        ),
+        (
+            "SELECT CAST(a AT TIME ZONE UTC AS DATETIME)",
+            mysql_at(8, 0, 22),
+            "UTC",
+        ),
+        ("SELECT CAST(a AS UNSIGNED ARRAY)", mysql(), "ARRAY"),
+        ("SELECT CONVERT(a AS DATE)", mysql(), "AS"),
+    ] {
+        assert_eq!(error(text, &options).1, faulty, "{text}");
+    }
+    assert_eq!(
+        cast_of("CAST(a AS DECIMAL(40, 38))", &mariadb()).0,
+        CastTarget::Decimal {
+            dec: false,
+            precision: Some(40),
+            scale: Some(38),
+        }
+    );
+}
+
+#[test]
 fn a_word_of_value_calls_its_function_without_parentheses() {
     assert_eq!(expr("CURRENT_DATE - 1"), "(- (current_date) 1)");
     assert_eq!(expr("LOCALTIME"), "(localtime)");
@@ -460,7 +703,6 @@ fn a_word_of_value_calls_its_function_without_parentheses() {
 #[test]
 fn constructs_not_read_yet_are_explicit_errors() {
     for (text, faulty) in [
-        ("SELECT CAST(a AS CHAR) FROM t", "CAST"),
         ("SELECT TRIM(LEADING 'x' FROM a) FROM t", "TRIM"),
         ("SELECT a FROM t FOR UPDATE", "FOR"),
         ("SELECT GROUP_CONCAT(a LIMIT 1) FROM t", "LIMIT"),

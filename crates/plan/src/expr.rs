@@ -19,7 +19,7 @@
 
 use prisme_types::{DataType, IntegerType, Type, Value};
 
-use crate::{Ident, Plan, PlanError, SortKey, Span};
+use crate::{Cast, Ident, Plan, PlanError, SortKey, Span};
 
 /// Expression of the plan, with its type.
 #[derive(Debug, Clone, PartialEq)]
@@ -174,8 +174,8 @@ pub enum ExprKind {
     Window(Box<WindowCall>),
     /// `CASE`.
     Case(Case),
-    /// `CAST` to the data type of the expression.
-    Cast(Box<Expr>),
+    /// `CAST` or `CONVERT` to the data type of the expression.
+    Cast(Box<Cast>),
     /// Number to boolean, true when non-zero (MySQL family: `WHERE a`,
     /// `2 AND 3`).
     ToBoolean(Box<Expr>),
@@ -656,10 +656,10 @@ impl Expr {
         Self::new(ExprKind::Case(case), ty)
     }
 
-    /// `CAST` to the data type of `ty`, whose nullability the dialect gives
-    /// (MySQL gives NULL for `CAST('0000-00-00' AS DATE)`).
-    pub fn cast(operand: Expr, ty: Type) -> Self {
-        Self::new(ExprKind::Cast(Box::new(operand)), ty)
+    /// `CAST` or `CONVERT` to the data type of `ty`, whose nullability the
+    /// dialect gives (MySQL gives NULL for `CAST('0000-00-00' AS DATE)`).
+    pub fn cast(cast: Cast, ty: Type) -> Self {
+        Self::new(ExprKind::Cast(Box::new(cast)), ty)
     }
 
     /// Number to boolean, true when non-zero; unknown when the number is NULL.
@@ -695,12 +695,12 @@ impl Expr {
             ExprKind::Not(operand)
             | ExprKind::Negate(operand)
             | ExprKind::BitNot(operand)
-            | ExprKind::Cast(operand)
             | ExprKind::ToBoolean(operand)
             | ExprKind::ToInteger(operand)
             | ExprKind::IsNull { operand, .. }
             | ExprKind::InSubquery { operand, .. }
             | ExprKind::Quantified { operand, .. } => vec![operand.as_mut()],
+            ExprKind::Cast(cast) => vec![&mut cast.operand],
             ExprKind::Between {
                 operand, low, high, ..
             } => vec![operand.as_mut(), low.as_mut(), high.as_mut()],

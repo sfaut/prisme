@@ -17,6 +17,7 @@
 //! Each node keeps its origin: its position in the input and the form written
 //! by the user when several forms have the same meaning (`origin` module).
 
+mod cast;
 mod error;
 mod expr;
 mod order;
@@ -25,6 +26,7 @@ mod plan;
 mod schema;
 mod statement;
 
+pub use cast::{Cast, CastForm, CastTarget, CharTarget, CharWord, Charset, IntegerWord};
 pub use error::PlanError;
 pub use expr::{
     Arithmetic, Bitwise, Case, CaseBranch, ColumnRef, Comparison, Expr, ExprKind, Frame,

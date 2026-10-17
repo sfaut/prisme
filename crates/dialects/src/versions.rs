@@ -89,12 +89,41 @@ pub enum Construct {
     InsertReturning,
     /// `OFFSET ... FETCH`.
     OffsetFetch,
+    /// `CAST(x AS DOUBLE)` and `CAST(x AS FLOAT)`.
+    CastDouble,
+    /// `CAST(x AS DOUBLE PRECISION)`, `AS REAL` and `AS FLOAT(p)` (MySQL).
+    CastDoubleSynonyms,
+    /// `CAST(x AS DOUBLE(m, d))` (MariaDB).
+    CastDoubleDigits,
+    /// `CAST(x AS INTEGER)` and `CAST(x AS INT)`, without `SIGNED` (MariaDB).
+    CastInteger,
+    /// `CAST(x AS VARCHAR(n))` (MariaDB).
+    CastVarchar,
+    /// `COLLATE` in the target of `CAST` (MariaDB).
+    CastCollate,
+    /// `CAST(x AS NATIONAL CHAR)` (MySQL).
+    CastNationalChar,
+    /// `CAST(x AS JSON)` (MySQL).
+    CastJson,
+    /// `CAST(x AS YEAR)` (MySQL).
+    CastYear,
+    /// `CAST(x AT TIME ZONE 'UTC' AS DATETIME)` (MySQL).
+    CastAtTimeZone,
+    /// `CAST(x AS POINT)` and the other spatial types (MySQL).
+    CastSpatial,
+    /// `CAST(x AS INTERVAL DAY_SECOND(n))` (MariaDB).
+    CastInterval,
+    /// Type `INET6` (MariaDB), the target of `CAST`.
+    Inet6Type,
+    /// Type `INET4` (MariaDB), the target of `CAST`.
+    Inet4Type,
     /// `NOW()`, `CURRENT_TIMESTAMP`, `SYSDATE()` and `FROM_UNIXTIME()` of
     /// type `TIMESTAMP` (MariaDB), a `DATETIME` otherwise.
     TimestampNow,
     /// `LOCALTIME` of type `TIME` (MariaDB), a `DATETIME` otherwise.
     TimeLocaltime,
-    /// `UUID()` of type `UUID` (MariaDB), a `VARCHAR(36)` otherwise.
+    /// Type `UUID` (MariaDB), the target of `CAST`; `UUID()` of type `UUID`,
+    /// a `VARCHAR(36)` otherwise.
     UuidType,
     /// `LPAD` and `RPAD` with an empty pad, beyond the length of the string:
     /// an empty string (MySQL), NULL otherwise.
@@ -102,6 +131,9 @@ pub enum Construct {
     /// `LPAD` and `RPAD` with an empty pad, beyond the length of the string:
     /// the string unchanged (MySQL), NULL otherwise.
     PadUnchanged,
+    /// `CAST` of a negative decimal to `UNSIGNED`: the unsigned integer of
+    /// the same bits (MySQL), 0 otherwise.
+    CastUnsignedWrap,
     /// `UNIX_TIMESTAMP` and `FROM_UNIXTIME` until 3001-01-18 23:59:59 UTC
     /// (MySQL), 2038-01-19 03:14:07 otherwise.
     #[serde(rename = "unixtime_3001")]
@@ -246,11 +278,30 @@ impl Construct {
             Self::DeleteReturning => "`DELETE ... RETURNING`",
             Self::InsertReturning => "`INSERT ... RETURNING`",
             Self::OffsetFetch => "`OFFSET ... FETCH`",
+            Self::CastDouble => "`CAST(x AS DOUBLE)` and `CAST(x AS FLOAT)`",
+            Self::CastDoubleSynonyms => {
+                "`CAST(x AS DOUBLE PRECISION)`, `AS REAL` and `AS FLOAT(p)`"
+            }
+            Self::CastDoubleDigits => "`CAST(x AS DOUBLE(m, d))`",
+            Self::CastInteger => "`CAST(x AS INTEGER)` without `SIGNED`",
+            Self::CastVarchar => "`CAST(x AS VARCHAR(n))`",
+            Self::CastCollate => "`COLLATE` in the target of `CAST`",
+            Self::CastNationalChar => "`CAST(x AS NATIONAL CHAR)`",
+            Self::CastJson => "`CAST(x AS JSON)`",
+            Self::CastYear => "`CAST(x AS YEAR)`",
+            Self::CastAtTimeZone => "`CAST(x AT TIME ZONE ...)`",
+            Self::CastSpatial => "`CAST` to a spatial type",
+            Self::CastInterval => "`CAST(x AS INTERVAL DAY_SECOND(n))`",
+            Self::Inet6Type => "type `INET6`",
+            Self::Inet4Type => "type `INET4`",
             Self::TimestampNow => "`NOW()` of type `TIMESTAMP`",
             Self::TimeLocaltime => "`LOCALTIME` of type `TIME`",
-            Self::UuidType => "`UUID()` of type `UUID`",
+            Self::UuidType => "type `UUID`",
             Self::PadEmptyString => "`LPAD` with an empty pad giving an empty string",
             Self::PadUnchanged => "`LPAD` with an empty pad giving the string unchanged",
+            Self::CastUnsignedWrap => {
+                "`CAST` of a negative decimal to `UNSIGNED` giving the integer of the same bits"
+            }
             Self::Unixtime3001 => "`UNIX_TIMESTAMP` until 3001",
             Self::Unixtime2106 => "`UNIX_TIMESTAMP` until 2106",
             Self::UnixtimeEpochNull => "`UNIX_TIMESTAMP` giving NULL at the epoch",

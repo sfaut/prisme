@@ -1,0 +1,11 @@
+# Version boundaries of CAST: a negative decimal to UNSIGNED and the time zone offsets
+# (MySQL 8.0.19), the zero day or month (8.0.24), the spatial targets (8.0.24), the types
+# of the plugins of MariaDB (INET4 and UUID, 10.10).
+neg_decimal CAST(n - 20 AS UNSIGNED)
+neg_literal CAST(-3.7 AS UNSIGNED)
+offset CAST('2024-05-06 23:00:00+02:00' AS DATETIME)
+zero_in_date CAST('2024-05-00' AS DATE)
+spatial CAST(POINT(1, 2) AS POINT)
+inet4 CAST('1.2.3.4' AS INET4)
+uuid CAST('123e4567-e89b-12d3-a456-426614174000' AS UUID)
+inet6 CAST('::1' AS INET6)

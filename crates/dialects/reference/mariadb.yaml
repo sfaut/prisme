@@ -388,6 +388,55 @@ constructs:
   - id: offset_fetch
     since: "10.6.0"
     source: https://mariadb.com/kb/en/select-offset-fetch/
+  # Targets of `CAST` and `CONVERT` (crates/probe/cases/cast-forms.txt, measured on
+  # 10.6.28 and 11.8.9, and cast-bounds.txt, on 10.6.28, 10.10.7, 10.11.19 and
+  # 11.8.9). Available at the floor, checked on 10.6.28, but the types `INET4`
+  # and `UUID`.
+  - id: cast_double
+    since: "10.6.3"
+    source: https://mariadb.com/kb/en/cast/
+    comment: >-
+      `CAST(x AS DOUBLE)` and `CAST(x AS FLOAT)`, nullable.
+  - id: cast_double_digits
+    since: "10.6.3"
+    source: https://mariadb.com/kb/en/cast/
+    comment: >-
+      `CAST(x AS DOUBLE(m, d))`, rounded to `d` decimals; MySQL refuses it.
+  - id: cast_integer
+    since: "10.6.3"
+    source: https://mariadb.com/kb/en/cast/
+    comment: >-
+      `CAST(x AS INTEGER)` and `CAST(x AS INT)`, without `SIGNED`: a `BIGINT`,
+      as `SIGNED`; MySQL refuses them.
+  - id: cast_varchar
+    since: "10.6.3"
+    source: https://mariadb.com/kb/en/cast/
+    comment: >-
+      `CAST(x AS VARCHAR(n))`, its length required, as `CHAR(n)`; MySQL
+      refuses it.
+  - id: cast_collate
+    since: "10.6.3"
+    source: https://mariadb.com/kb/en/cast/
+    comment: >-
+      `CAST(s AS CHAR [CHARACTER SET cs] COLLATE c)`; MySQL refuses `COLLATE`
+      in the target, accepts it after the `CAST`.
+  - id: cast_interval
+    since: "10.6.3"
+    source: https://mariadb.com/kb/en/cast/
+    comment: >-
+      `CAST(x AS INTERVAL DAY_SECOND(n))`, a duration written as a
+      `VARCHAR(20)` (`00:00:42.00` for 42); MySQL has no such target.
+  - id: inet6_type
+    since: "10.5.0"
+    source: https://mariadb.com/kb/en/inet6/
+    comment: >-
+      Type `INET6`, the target of `CAST`; MySQL has no such type.
+  - id: inet4_type
+    since: "10.10.1"
+    source: https://mariadb.com/kb/en/inet4/
+    comment: >-
+      Type `INET4`, the target of `CAST`; refused by 10.6.28 (error 4161),
+      accepted by 10.10.7, 10.11.19 and 11.8.9 (measured).
   # Behaviours of built-in functions.
   - id: timestamp_now
     since: "11.7.1"
@@ -407,7 +456,8 @@ constructs:
     source: https://github.com/MariaDB/server/commit/b1fab9bf
     comment: >-
       `UUID()` gives a value of type `UUID`, compared only with UUIDs, of the
-      same text as the `VARCHAR(36)` it gave before, as in MySQL.
+      same text as the `VARCHAR(36)` it gave before, as in MySQL. The type is
+      also the target of `CAST` (refused by 10.6.28, error 4161).
   - id: aes_iv
     since: "11.2.1"
     source: https://jira.mariadb.org/browse/MDEV-9069

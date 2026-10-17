@@ -771,10 +771,10 @@ fn repeatable(expr: &Expr) -> bool {
         ExprKind::Not(operand)
         | ExprKind::Negate(operand)
         | ExprKind::BitNot(operand)
-        | ExprKind::Cast(operand)
         | ExprKind::ToBoolean(operand)
         | ExprKind::ToInteger(operand)
         | ExprKind::IsNull { operand, .. } => repeatable(operand),
+        ExprKind::Cast(cast) => repeatable(&cast.operand),
         ExprKind::Compare { left, right, .. }
         | ExprKind::NotDistinct { left, right, .. }
         | ExprKind::Logical { left, right, .. }

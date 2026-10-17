@@ -1,0 +1,7 @@
+# The negative zero of the floats: written by the expression itself or by a conversion.
+literal -0e0
+negated -(f - f)
+concat CONCAT(-(f - f))
+cast_char CAST(-(f - f) AS CHAR)
+plus -(f - f) + 0
+compare -(f - f) = 0

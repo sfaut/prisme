@@ -7,7 +7,8 @@
 //! explicit conversions).
 
 use prisme_plan::{
-    AliasForm, Direction, FrameUnits, Ident, IndexHint, JoinForm, LimitForm, Span, ValuesForm,
+    AliasForm, CastForm, CastTarget, Direction, FrameUnits, Ident, IndexHint, JoinForm, LimitForm,
+    Span, ValuesForm,
 };
 
 /// Statement.
@@ -510,6 +511,19 @@ pub enum ExprKind {
         /// `ELSE`.
         otherwise: Option<Box<Expr>>,
     },
+    /// `CAST(x AS type)`, `CONVERT(x, type)`, `CONVERT(x USING charset)`.
+    Cast(Box<CastCall>),
+}
+
+/// `CAST` or `CONVERT`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CastCall {
+    /// Value converted.
+    pub operand: Expr,
+    /// Type, as written.
+    pub target: CastTarget,
+    /// Form written.
+    pub form: CastForm,
 }
 
 impl FunctionCall {
@@ -543,6 +557,7 @@ impl Expr {
             | ExprKind::Nested(operand)
             | ExprKind::InSubquery { operand, .. }
             | ExprKind::Quantified { operand, .. } => vec![operand],
+            ExprKind::Cast(cast) => vec![&cast.operand],
             ExprKind::Binary { left, right, .. } => vec![left, right],
             ExprKind::Between {
                 operand, low, high, ..
