@@ -197,8 +197,10 @@ Prisme translates them as far as needed (point 40). In the v1, between MySQL and
 
 ### Step 11. Beautifier from the plan
 
+Postponed: the beautifier is taken up again once the transpilation is in place (steps 1 to 10). The points below are the starting point of that work.
+
 - Emitter with a layout mode: the rules of `docs/V1.md`, section 2.9 (capitals, `AS` before aliases, function names, layout), comments attached to the nodes (paragraph "Comments" of the same section).
-- Statements outside the plan (DDL, stored programs, `DELIMITER` blocks): the current token-based path is not kept for them; their treatment until they enter the plan is open (point 48).
+- Statements outside the plan (DDL, stored programs, `DELIMITER` blocks): the current token-based path is not kept for them; the rest is postponed with the beautifier (point 48).
 - **Tests**: the current tests of `beautify` and `layout` carried over; comment invariant; idempotence (beautifying a beautified query changes nothing).
 
 ### Step 12. `sqlparser-rs` out of the executable
@@ -241,7 +243,7 @@ Recorded in `docs/QUESTIONS.md`, section 5, "Dialects and transpilation":
 - 45: PRQL s-strings, decided: read by the parser of the output dialect;
 - 46: `target` of the PRQL header, decided: error if it differs from the engine of the connection;
 - 47: what Ctrl+Enter and Ctrl+Shift+Enter run in a PRQL text, decided: the relation under the cursor with its dependencies, every relation;
-- 48: beautifier of the statements outside the plan, current path not kept, treatment until they enter the plan open;
+- 48: beautifier of the statements outside the plan, current path not kept, the rest postponed until the transpilation is in place;
 - 49: form of the catalog statements towards MySQL and MariaDB, decided: `information_schema`, `SHOW` when the input used it;
 - 50: storage of the registry of the versions, decided: data files in the repository;
 - 51: oldest versions covered by the registry, decided: MySQL 8.0, MariaDB 10.6.
