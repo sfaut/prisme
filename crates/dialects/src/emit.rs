@@ -19,6 +19,7 @@
 //! written again, each one before the first construct that follows it in
 //! the input.
 
+mod bit_count;
 mod builtin;
 mod call;
 mod expr;

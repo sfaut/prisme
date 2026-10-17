@@ -102,6 +102,7 @@ impl Emitter<'_> {
         column: bool,
     ) {
         match rule {
+            Rule::BitCount => self.bit_count(rule, expr, call),
             Rule::FromUnixtime => self.date_from_unixtime(rule, expr, call),
             Rule::Greatest => self.greatest(rule, expr, call, column),
             Rule::Now => self.now(rule, expr, call),
@@ -723,7 +724,7 @@ fn seconds_bound(data_type: &DataType) -> Option<i64> {
 }
 
 /// Number of a numeric literal; `None` for another value.
-fn number(value: &Value) -> Option<f64> {
+pub(super) fn number(value: &Value) -> Option<f64> {
     match value {
         Value::Boolean(value) => Some(f64::from(u8::from(*value))),
         Value::Integer(value) => Some(*value as f64),

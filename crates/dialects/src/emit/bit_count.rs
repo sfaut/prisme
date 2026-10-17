@@ -1,0 +1,195 @@
+//! `BIT_COUNT` between MySQL and MariaDB. Both count the bits of an
+//! integer, of a date or a time read as a number, of the index of an
+//! `ENUM`; they read the other values differently:
+//!
+//! - a byte string: MySQL counts the bits of its bytes, MariaDB reads it
+//!   as a number (`BIT_COUNT(X'FF0F')` gives 12, 0 in MariaDB);
+//! - a character string: MySQL reads an integer, its fraction dropped,
+//!   MariaDB a decimal, rounded (`BIT_COUNT('3.7')` gives 2, 1 in MariaDB);
+//! - a number from 2^63: MySQL counts the bits of 2^63 - 1, MariaDB those
+//!   of the number taken as unsigned, those of 2^64 - 1 from 2^64;
+//! - a floating point number: MySQL rounds half to even, MariaDB half away
+//!   from zero (`BIT_COUNT(2.5e0)` gives 1, 2 in MariaDB).
+//!
+//! Measured on MySQL 8.0.11 and 8.4, MariaDB 10.6 and 11.8.
+
+use prisme_plan::{Expr, ExprKind, FunctionCall};
+use prisme_types::DataType;
+
+use super::Emitter;
+use super::rules::number;
+use crate::Dialect;
+use crate::builtins::Rule;
+use crate::report::StepKind;
+
+/// Largest number of integer digits of a decimal below 2^63 whatever its
+/// value.
+const SAFE_DIGITS: u8 = 18;
+
+/// Bound below which a number literal is read alike, under 2^63.
+const SAFE_LITERAL: f64 = 9e18;
+
+/// What MariaDB does to a value before counting its bits, written in
+/// MySQL around a decimal: rounded, bounded to `[-2^63, 2^64 - 1]`, then
+/// taken as the unsigned integer of the same bits.
+const MARIADB_BITS: (&str, &str) = (
+    "CAST((GREATEST(LEAST(ROUND(",
+    "), 18446744073709551615), -9223372036854775808) + 18446744073709551616) % 18446744073709551616 AS UNSIGNED)",
+);
+
+/// How a value is read before its bits are counted.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Reading {
+    /// Alike in both dialects.
+    Same,
+    /// A character string.
+    Text,
+    /// A byte string.
+    Binary,
+    /// A number that may reach 2^63.
+    Large,
+    /// A floating point number.
+    Float,
+    /// A type whose reading was not measured, or a type unknown.
+    Other,
+}
+
+impl Reading {
+    /// Reading of `arg`.
+    fn of(arg: &Expr) -> Self {
+        match &arg.ty.data_type {
+            DataType::Null
+            | DataType::Boolean
+            | DataType::Integer(_)
+            | DataType::Bit { .. }
+            | DataType::Year
+            | DataType::Enum
+            | DataType::Set
+            | DataType::Date
+            | DataType::Time { .. }
+            | DataType::DateTime { .. }
+            | DataType::Timestamp { .. } => Self::Same,
+            DataType::Decimal(decimal) => {
+                let small = match &arg.kind {
+                    ExprKind::Literal(value) => {
+                        number(value).is_some_and(|value| value.abs() < SAFE_LITERAL)
+                    }
+                    _ => decimal.precision() - decimal.scale() <= SAFE_DIGITS,
+                };
+                if small { Self::Same } else { Self::Large }
+            }
+            DataType::Text(_) => Self::Text,
+            DataType::Binary(_) => Self::Binary,
+            DataType::Float(_) => Self::Float,
+            _ => Self::Other,
+        }
+    }
+}
+
+impl Emitter<'_> {
+    /// `BIT_COUNT(x)`: natively when both dialects read `x` alike, otherwise
+    /// with `x` read as the input does, or an error.
+    pub(super) fn bit_count(&mut self, rule: Rule, expr: &Expr, call: &FunctionCall) {
+        // The server reports the number of arguments.
+        let [arg] = call.args.as_slice() else {
+            self.input_call(expr, call);
+            return;
+        };
+        let reading = Reading::of(arg);
+        let message = match reading {
+            Reading::Same => {
+                self.input_call(expr, call);
+                return;
+            }
+            Reading::Float => {
+                "`BIT_COUNT` of a floating point number: MySQL rounds it half to even, MariaDB half away from zero (`BIT_COUNT(2.5e0)` gives 1, 2 in MariaDB), and they bound it differently from 2^63"
+            }
+            Reading::Other if arg.ty.data_type == DataType::Unknown => {
+                "`BIT_COUNT` of an argument whose type is unknown: MySQL and MariaDB read a string and a number from 2^63 differently"
+            }
+            Reading::Other => {
+                "`BIT_COUNT` of a value of this type: its reading in MySQL and MariaDB is not established"
+            }
+            Reading::Text | Reading::Binary | Reading::Large => "",
+        };
+        if !message.is_empty() {
+            self.error(rule.id(), message, expr.span);
+            self.input_call(expr, call);
+            return;
+        }
+        let context = match reading {
+            Reading::Text => {
+                "`BIT_COUNT` reads a string as an integer in MySQL, its fraction dropped, as a decimal in MariaDB, rounded (`BIT_COUNT('3.7')` gives 2, 1 in MariaDB)"
+            }
+            Reading::Binary => {
+                "`BIT_COUNT` counts the bits of the bytes of a byte string in MySQL, reads it as a number in MariaDB (`BIT_COUNT(X'FF0F')` gives 12, 0 in MariaDB)"
+            }
+            _ => {
+                "`BIT_COUNT` of a number from 2^63 counts the bits of 2^63 - 1 in MySQL, those of the number taken as unsigned in MariaDB"
+            }
+        };
+        let towards_mariadb = self.output.dialect == Dialect::MariaDb;
+        let how = match (reading, towards_mariadb) {
+            (Reading::Text, true) => "`CAST(x AS SIGNED)` reads it as MySQL does",
+            (Reading::Binary, true) => "its bits are counted by `HEX` and `REPLACE`",
+            (_, true) => "`LEAST(x, 9223372036854775807)` bounds it as MySQL does",
+            (Reading::Large, false) => {
+                "rounded, bounded and taken as an unsigned integer as MariaDB does"
+            }
+            (_, false) => {
+                "read as a decimal, rounded, bounded and taken as an unsigned integer as MariaDB does"
+            }
+        };
+        self.step(
+            rule.id(),
+            StepKind::Emulation,
+            format!("{context}: {how}"),
+            expr.span,
+        );
+        if towards_mariadb && reading == Reading::Binary {
+            self.bit_count_of_bytes(arg);
+            return;
+        }
+        let form = self.form(&call.name, expr.span);
+        self.call_name(&call.name.value, form);
+        match (reading, towards_mariadb) {
+            (Reading::Text, true) => {
+                self.write("CAST(");
+                self.expr(arg, 0);
+                self.write(" AS SIGNED)");
+            }
+            (_, true) => {
+                self.write("LEAST(");
+                self.expr(arg, 0);
+                self.write(", 9223372036854775807)");
+            }
+            (reading, false) => {
+                self.write(MARIADB_BITS.0);
+                if reading == Reading::Large {
+                    self.expr(arg, 0);
+                } else {
+                    self.write("CAST(");
+                    self.expr(arg, 0);
+                    self.write(" AS DECIMAL(65, 30))");
+                }
+                self.write(MARIADB_BITS.1);
+            }
+        }
+        self.write(")");
+    }
+
+    /// Number of bits set in the bytes of `arg`, in MariaDB: each digit of
+    /// `HEX(arg)` replaced by as many `x` as its bits, then counted.
+    fn bit_count_of_bytes(&mut self, arg: &Expr) {
+        self.write("LENGTH(");
+        self.write(&"REPLACE(".repeat(16));
+        self.write("HEX(");
+        self.expr(arg, 0);
+        self.write(")");
+        for digit in 0..16_u32 {
+            let bits = "x".repeat(digit.count_ones() as usize);
+            self.write(&format!(", '{digit:X}', '{bits}')"));
+        }
+        self.write(")");
+    }
+}

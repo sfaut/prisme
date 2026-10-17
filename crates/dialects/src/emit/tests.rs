@@ -102,6 +102,12 @@ fn catalog() -> Tables {
                 Type::not_null(DataType::Time { fraction: 0 }),
             ),
             (Ident::new("y"), Type::not_null(DataType::Year)),
+            (
+                Ident::new("de"),
+                Type::not_null(DataType::Decimal(
+                    prisme_types::DecimalType::new(25, 1).unwrap(),
+                )),
+            ),
         ],
     );
     tables.insert(
@@ -562,9 +568,9 @@ fn built_in_functions_follow_the_reference_files() {
             "function.unstudied",
         ),
         (
-            "SELECT BIT_COUNT(a) FROM t",
+            "SELECT AES_ENCRYPT(a, 'k') FROM t",
             output(mariadb()),
-            "function.bit-count",
+            "function.aes",
         ),
         (
             "SELECT FORMAT_PICO_TIME(a) FROM t",
@@ -1178,6 +1184,108 @@ fn greatest_refuses_what_compares_otherwise() {
         assert_eq!(
             errors(text, input, output(target)),
             ["function.greatest"],
+            "{text}"
+        );
+    }
+}
+
+#[test]
+fn bit_count_reads_its_argument_as_the_input_does() {
+    for (text, input, target) in [
+        (
+            "SELECT BIT_COUNT(a), BIT_COUNT(NULL) AS v FROM t",
+            mysql(),
+            mariadb(),
+        ),
+        (
+            "SELECT BIT_COUNT(dd), BIT_COUNT(e), BIT_COUNT(y) AS v FROM g",
+            mysql(),
+            mariadb(),
+        ),
+        (
+            "SELECT BIT_COUNT(p), BIT_COUNT(3.7) AS v FROM d",
+            mariadb(),
+            mysql(),
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{text}");
+    }
+    let bytes = concat!(
+        "LENGTH(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(",
+        "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(HEX(vb), '0', ''), '1', 'x'), '2', 'x'), ",
+        "'3', 'xx'), '4', 'x'), '5', 'xx'), '6', 'xx'), '7', 'xxx'), '8', 'x'), '9', 'xx'), ",
+        "'A', 'xx'), 'B', 'xxx'), 'C', 'xx'), 'D', 'xxx'), 'E', 'xxx'), 'F', 'xxxx'))"
+    );
+    let mariadb_bits = |value: &str| {
+        format!(
+            "BIT_COUNT(CAST((GREATEST(LEAST(ROUND({value}), 18446744073709551615), -9223372036854775808) + 18446744073709551616) % 18446744073709551616 AS UNSIGNED))"
+        )
+    };
+    for (text, input, target, expected) in [
+        (
+            "SELECT BIT_COUNT(s) AS v FROM g",
+            mysql(),
+            mariadb(),
+            "SELECT BIT_COUNT(CAST(s AS SIGNED)) AS v FROM g".to_string(),
+        ),
+        (
+            "SELECT BIT_COUNT(vb) AS v FROM g",
+            mysql(),
+            mariadb(),
+            format!("SELECT {bytes} AS v FROM g"),
+        ),
+        (
+            "SELECT BIT_COUNT(de) AS v FROM g",
+            mysql(),
+            mariadb(),
+            "SELECT BIT_COUNT(LEAST(de, 9223372036854775807)) AS v FROM g".to_string(),
+        ),
+        (
+            "SELECT BIT_COUNT(18446744073709551616) AS v",
+            mysql(),
+            mariadb(),
+            "SELECT BIT_COUNT(LEAST(18446744073709551616, 9223372036854775807)) AS v".to_string(),
+        ),
+        (
+            "SELECT BIT_COUNT(s) AS v FROM g",
+            mariadb(),
+            mysql(),
+            format!(
+                "SELECT {} AS v FROM g",
+                mariadb_bits("CAST(s AS DECIMAL(65, 30))")
+            ),
+        ),
+        (
+            "SELECT BIT_COUNT(vb) AS v FROM g",
+            mariadb(),
+            mysql(),
+            format!(
+                "SELECT {} AS v FROM g",
+                mariadb_bits("CAST(vb AS DECIMAL(65, 30))")
+            ),
+        ),
+        (
+            "SELECT BIT_COUNT(de) AS v FROM g",
+            mariadb(),
+            mysql(),
+            format!("SELECT {} AS v FROM g", mariadb_bits("de")),
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, expected);
+        assert_eq!(rules, ["function.bit-count"], "{text}");
+    }
+    // A floating point number, a type unknown.
+    for (text, input, target) in [
+        ("SELECT BIT_COUNT(f) AS v FROM d", mysql(), mariadb()),
+        ("SELECT BIT_COUNT(f) AS v FROM d", mariadb(), mysql()),
+        ("SELECT BIT_COUNT(ABS(a)) AS v FROM t", mysql(), mariadb()),
+    ] {
+        assert_eq!(
+            errors(text, input, output(target)),
+            ["function.bit-count"],
             "{text}"
         );
     }
