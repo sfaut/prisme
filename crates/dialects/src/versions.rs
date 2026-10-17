@@ -96,6 +96,12 @@ pub enum Construct {
     TimeLocaltime,
     /// `UUID()` of type `UUID` (MariaDB), a `VARCHAR(36)` otherwise.
     UuidType,
+    /// `LPAD` and `RPAD` with an empty pad, beyond the length of the string:
+    /// an empty string (MySQL), NULL otherwise.
+    PadEmptyString,
+    /// `LPAD` and `RPAD` with an empty pad, beyond the length of the string:
+    /// the string unchanged (MySQL), NULL otherwise.
+    PadUnchanged,
 }
 
 /// Construct refused in a dialect or a version.
@@ -224,6 +230,8 @@ impl Construct {
             Self::TimestampNow => "`NOW()` of type `TIMESTAMP`",
             Self::TimeLocaltime => "`LOCALTIME` of type `TIME`",
             Self::UuidType => "`UUID()` of type `UUID`",
+            Self::PadEmptyString => "`LPAD` with an empty pad giving an empty string",
+            Self::PadUnchanged => "`LPAD` with an empty pad giving the string unchanged",
         }
     }
 }

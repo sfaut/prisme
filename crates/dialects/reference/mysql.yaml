@@ -414,6 +414,14 @@ constructs:
   - id: intersect_except_all
     since: "8.0.31"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-31.html
+  # Behaviours of built-in functions.
+  - id: pad_empty_string
+    since: "8.0.13"
+    until: "9.3.0"
+    source: https://github.com/mysql/mysql-server/blob/mysql-8.0.13/sql/item_strfunc.cc
+  - id: pad_unchanged
+    since: "9.3.0"
+    source: https://bugs.mysql.com/bug.php?id=117227
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:

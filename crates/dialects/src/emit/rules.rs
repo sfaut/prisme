@@ -21,6 +21,7 @@ impl Emitter<'_> {
     pub(super) fn builtin_rule(&mut self, rule: Rule, expr: &Expr, call: &FunctionCall, min: u8) {
         match rule {
             Rule::Now => self.now(rule, expr, call),
+            Rule::Pad => self.pad(rule, expr, call),
             Rule::TimeToSec => self.time_to_sec(rule, expr, call, min),
             Rule::Uuid => self.uuid(rule, expr, call),
             _ => {
@@ -138,6 +139,54 @@ impl Emitter<'_> {
         self.write(&format!(" AS DATETIME{digits})"));
     }
 
+    /// `LPAD` and `RPAD`: MariaDB pads with spaces without a pad, MySQL
+    /// needs it. With an empty pad, beyond the length of the string, they
+    /// give NULL in MariaDB and MySQL before 8.0.13, an empty string in MySQL
+    /// from 8.0.13, the string unchanged from 9.3.0. A literal pad other than
+    /// the empty string gives the same result everywhere; another pad is an
+    /// error when the two servers differ.
+    fn pad(&mut self, rule: Rule, expr: &Expr, call: &FunctionCall) {
+        let upper = call.name.value.to_ascii_uppercase();
+        let target = self.target();
+        let pad = match call.args.as_slice() {
+            [_, _] if self.output.dialect == Dialect::MySql => {
+                let message = format!(
+                    "`{upper}` without a pad pads with spaces: {target} needs the pad `' '`"
+                );
+                self.step(rule.id(), StepKind::Rewrite, message, expr.span);
+                let form = self.form(&call.name, expr.span);
+                self.call_name(&call.name.value, form);
+                self.expr_list(&call.args);
+                self.write(", ' ')");
+                return;
+            }
+            [_, _, pad] => pad,
+            // The server reports the number of arguments.
+            _ => {
+                self.input_call(expr, call);
+                return;
+            }
+        };
+        let input = empty_pad(
+            self.input_has(Construct::PadEmptyString),
+            self.input_has(Construct::PadUnchanged),
+        );
+        let output = empty_pad(
+            self.has(Construct::PadEmptyString),
+            self.has(Construct::PadUnchanged),
+        );
+        let literal = matches!(&pad.kind, ExprKind::Literal(value) if !empty(value));
+        if input != output && !literal {
+            let message = format!(
+                "`{upper}` with a pad that may be empty: beyond the length of the string, {} {} gives {input}, {target} gives {output}",
+                self.source.dialect.label(),
+                self.source.version
+            );
+            self.error(rule.id(), &message, expr.span);
+        }
+        self.input_call(expr, call);
+    }
+
     /// `UUID()`: a `VARCHAR(36)` in MySQL, a value of type `UUID` in MariaDB
     /// from 10.7.1, of the same text, which compares only with UUIDs. Towards
     /// those versions, a `CAST` to `CHAR(36)` keeps the string of MySQL;
@@ -161,6 +210,27 @@ impl Emitter<'_> {
     pub(super) fn input_call(&mut self, expr: &Expr, call: &FunctionCall) {
         let form = self.form(&call.name, expr.span);
         self.call_text(&call.name.value, form, &call.args);
+    }
+}
+
+/// Result of `LPAD` and `RPAD` with an empty pad, beyond the length of the
+/// string, from the behaviours of the server.
+fn empty_pad(empty_string: bool, unchanged: bool) -> &'static str {
+    if unchanged {
+        "the string unchanged"
+    } else if empty_string {
+        "an empty string"
+    } else {
+        "NULL"
+    }
+}
+
+/// Tells whether `value` is an empty string.
+fn empty(value: &Value) -> bool {
+    match value {
+        Value::Text(text) => text.is_empty(),
+        Value::Binary(bytes) => bytes.is_empty(),
+        _ => false,
     }
 }
 

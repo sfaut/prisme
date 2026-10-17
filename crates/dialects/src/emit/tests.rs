@@ -611,6 +611,48 @@ fn now_keeps_the_datetime_of_mysql() {
 }
 
 #[test]
+fn pad_keeps_its_result_with_an_empty_pad() {
+    let mysql_out = |major, minor, patch| OutputDialect {
+        dialect: Dialect::MySql,
+        version: Version::new(major, minor, patch),
+        mode: SqlMode::default(),
+    };
+    // A pad of at least one character gives the same result everywhere.
+    let text = "SELECT LPAD(a, 5, '0') AS l, RPAD(a, 5, 0) AS r, LPAD(a, 5, NULL) AS n FROM t";
+    let (sql, rules) = transpiled(text, mysql_at(8, 4, 0), output(mariadb()));
+    assert_eq!(sql, text);
+    assert!(rules.is_empty(), "{rules:?}");
+    // MySQL from 8.0.13 gives an empty string, MariaDB NULL.
+    for text in [
+        "SELECT LPAD(a, 5, b) AS l FROM t",
+        "SELECT RPAD(a, 5, '') AS r FROM t",
+    ] {
+        assert_eq!(
+            errors(text, mysql_at(8, 4, 0), output(mariadb())),
+            ["function.pad"],
+            "{text}"
+        );
+        assert_eq!(
+            errors(text, mariadb(), mysql_out(9, 3, 0)),
+            ["function.pad"],
+            "{text}"
+        );
+    }
+    // MySQL before 8.0.13 gives NULL, as MariaDB does.
+    let text = "SELECT LPAD(a, 5, b) AS l FROM t";
+    let (sql, rules) = transpiled(text, mysql_at(8, 0, 12), output(mariadb()));
+    assert_eq!(sql, text);
+    assert!(rules.is_empty(), "{rules:?}");
+    let (sql, rules) = transpiled(text, mariadb(), mysql_out(8, 0, 11));
+    assert_eq!(sql, text);
+    assert!(rules.is_empty(), "{rules:?}");
+    // Without a pad, MariaDB pads with spaces.
+    let (sql, rules) = transpiled("SELECT RPAD(a, 5) AS r FROM t", mariadb(), output(mysql()));
+    assert_eq!(sql, "SELECT RPAD(a, 5, ' ') AS r FROM t");
+    assert_eq!(rules, ["function.pad"]);
+}
+
+#[test]
 fn uuid_stays_a_string() {
     let mariadb_at = |major, minor, patch| OutputDialect {
         dialect: Dialect::MariaDb,
