@@ -371,10 +371,40 @@ fn difference(expected: &Answer, got: &Answer, compare: Compare) -> Option<Strin
         ));
     }
     let same_rows = match compare {
-        Compare::Values => expected.rows == got.rows,
+        Compare::Values => values(expected) == values(got),
         Compare::Types => expected.rows.len() == got.rows.len(),
     };
     (!same_rows).then(|| format!("rows {:?}\n  transpiled {:?}", expected.rows, got.rows))
+}
+
+/// Rows of `answer` as they compare: a decimal by its value, `42` as
+/// `42.00` (MySQL writes the values of a `DECIMAL` `CASE` at the scale of
+/// each result, MariaDB at the scale of the type).
+fn values(answer: &Answer) -> Vec<Vec<Cell>> {
+    answer
+        .rows
+        .iter()
+        .map(|row| {
+            row.iter()
+                .zip(&answer.families)
+                .map(|(cell, family)| match (cell, family) {
+                    (Some(text), TypeFamily::Decimal) => Some(decimal_value(text)),
+                    _ => cell.clone(),
+                })
+                .collect()
+        })
+        .collect()
+}
+
+/// Decimal `text` without the zeros that end its fraction.
+fn decimal_value(text: &str) -> String {
+    match text.split_once('.') {
+        Some((whole, fraction)) => match fraction.trim_end_matches('0') {
+            "" => whole.to_string(),
+            fraction => format!("{whole}.{fraction}"),
+        },
+        None => text.to_string(),
+    }
 }
 
 /// Opens a connection to `server` and runs the statements of the session.
