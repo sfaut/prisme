@@ -491,6 +491,17 @@ constructs:
       form, the offset ignored by `CAST` (crates/probe/cases/cast-bounds.txt
       and typed-literals-offsets.txt, measured on 8.0.18 and 8.0.19). MariaDB
       refuses it likewise.
+  - id: time_interval_datetime
+    since: "8.0.28"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-28.html
+    comment: >-
+      A `TIME` moved by an interval of days or longer (`t + INTERVAL 1 DAY`,
+      `DATE_ADD`, `ADDDATE`, `TIMESTAMPADD`) gives a `DATETIME`, the time
+      read on the current date (Bug #103781); before, a `TIME` of the hours
+      added by `DAY` and `WEEK`, NULL by a month or a year. MariaDB gives a
+      `TIME` by `DAY` and its compound units, NULL by the longer ones
+      (crates/probe/cases/interval-time*.txt, measured on 8.0.11 and 8.0.20
+      to 8.0.28, 8.1.0 and 8.4.11).
   - id: pad_empty_string
     since: "8.0.13"
     until: "9.3.0"

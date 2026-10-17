@@ -52,6 +52,11 @@ fn plan_in(text: &str, dialect: Dialect) -> Result<Plan, BuildError> {
         Dialect::MySql => Version::new(8, 0, 19),
         Dialect::MariaDb => Version::new(10, 6, 3),
     };
+    plan_at(text, dialect, version)
+}
+
+/// Plan of `text`, written in `dialect` and its `version`.
+fn plan_at(text: &str, dialect: Dialect, version: Version) -> Result<Plan, BuildError> {
     let options = ParseOptions {
         dialect,
         version,
@@ -826,4 +831,72 @@ fn types_typed_literals_as_the_servers() {
     };
     assert_eq!(column_types(text, Dialect::MySql), expected(false));
     assert_eq!(column_types(text, Dialect::MariaDb), expected(true));
+}
+
+#[test]
+fn types_intervals_as_the_servers() {
+    let text = concat!(
+        "SELECT DATE '2024-05-06' + INTERVAL 1 DAY, DATE '2024-05-06' + INTERVAL 1 HOUR, ",
+        "DATE '2024-05-06' + INTERVAL 1.25 SECOND, ",
+        "TIMESTAMP '2024-05-06 07:08:09.5' + INTERVAL 1 MONTH, ",
+        "TIMESTAMP '2024-05-06 07:08:09' - INTERVAL '1.5' SECOND, ",
+        "DATE_ADD(DATE '2024-05-06', INTERVAL '1.5' SECOND_MICROSECOND), ",
+        "TIMESTAMPADD(SECOND, 1, TIME '07:08:09.5'), TIME '07:08:09' + INTERVAL 1 DAY, ",
+        "TIME '07:08:09' + INTERVAL 1 WEEK, '2024-05-06' + INTERVAL 1 DAY, ",
+        "ADDDATE('2024-05-06 07:08:09.5', 1)"
+    );
+    let text_of = |length| {
+        DataType::Text(TextType {
+            length: Some(length),
+            fixed: false,
+            charset: None,
+            collation: None,
+        })
+    };
+    let expected = |time_week, string, fractional_string| {
+        [
+            DataType::Date,
+            DataType::DateTime { fraction: 0 },
+            DataType::DateTime { fraction: 2 },
+            DataType::DateTime { fraction: 1 },
+            DataType::DateTime { fraction: 6 },
+            DataType::DateTime { fraction: 6 },
+            DataType::Time { fraction: 1 },
+            DataType::Time { fraction: 0 },
+            time_week,
+            text_of(string),
+            text_of(fractional_string),
+        ]
+        .into_iter()
+        .map(|data_type| (data_type, true))
+        .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        column_types(text, Dialect::MySql),
+        expected(DataType::Time { fraction: 0 }, 29, 29)
+    );
+    assert_eq!(
+        column_types(text, Dialect::MariaDb),
+        expected(DataType::DateTime { fraction: 0 }, 19, 21)
+    );
+    // A `DATETIME`, the time read on the current date, from MySQL 8.0.28.
+    let plan = plan_at(
+        "SELECT TIME '07:08:09' + INTERVAL 1 DAY, TIME '07:08:09' + INTERVAL 1 HOUR",
+        Dialect::MySql,
+        Version::new(8, 0, 28),
+    )
+    .unwrap();
+    let types: Vec<DataType> = plan
+        .schema()
+        .columns
+        .into_iter()
+        .map(|column| column.ty.data_type)
+        .collect();
+    assert_eq!(
+        types,
+        [
+            DataType::DateTime { fraction: 0 },
+            DataType::Time { fraction: 0 }
+        ]
+    );
 }

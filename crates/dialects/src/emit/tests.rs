@@ -1783,3 +1783,171 @@ fn typed_literals_the_dialects_read_otherwise_are_errors() {
     // Refused by both: as is.
     assert!(errors("SELECT DATE '2024-02-30'", mysql(), output(mariadb())).is_empty());
 }
+
+#[test]
+fn intervals_keep_their_form_and_precedence() {
+    let text = concat!(
+        "SELECT dd + INTERVAL 1 DAY AS a, dt - INTERVAL '1:30' HOUR_MINUTE AS b, ",
+        "INTERVAL 1 DAY + dd AS c, DATE_ADD(dd, INTERVAL 1 + i MONTH) AS e, ",
+        "DATE_SUB(dt, INTERVAL 2 WEEK) AS g, ADDDATE(dd, INTERVAL 1 YEAR) AS h, ",
+        "ADDDATE(dd, 3) AS j, SUBDATE(dt, i) AS k, SUBDATE(dd, INTERVAL 1 QUARTER) AS l, ",
+        "TIMESTAMPADD(MINUTE, 5, dt) AS m, INTERVAL(i, 1, 10) AS o FROM d, g"
+    );
+    for (input, output) in [
+        (mysql(), mariadb()),
+        (mariadb(), mysql()),
+        (mysql(), mysql()),
+    ] {
+        let (sql, rules) = transpiled(text, input, self::output(output));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{rules:?}");
+    }
+    // The sum takes the operators of a higher level; the interval first
+    // takes its operand to the next `AND`.
+    let cases = [
+        ("dd + INTERVAL 1 DAY * 2", "(dd + INTERVAL 1 DAY) * 2"),
+        (
+            "dd + INTERVAL 1 DAY ^ 1 * 2",
+            "(dd + INTERVAL 1 DAY) ^ 1 * 2",
+        ),
+        (
+            "0 | dd + INTERVAL 1 DAY * 2",
+            "0 | (dd + INTERVAL 1 DAY) * 2",
+        ),
+        ("i + (dd + INTERVAL 1 DAY)", "i + (dd + INTERVAL 1 DAY)"),
+        (
+            "dd + INTERVAL 1 DAY + INTERVAL 1 HOUR",
+            "dd + INTERVAL 1 DAY + INTERVAL 1 HOUR",
+        ),
+        ("INTERVAL 1 DAY + dd = dd", "INTERVAL 1 DAY + dd = dd"),
+        ("(INTERVAL 1 DAY + dd) = dd", "(INTERVAL 1 DAY + dd) = dd"),
+        ("2 * INTERVAL 1 DAY + dd", "2 * (INTERVAL 1 DAY + dd)"),
+        ("INTERVAL 1 DAY + dd AND 1", "INTERVAL 1 DAY + dd AND 1"),
+        ("NOT INTERVAL 1 DAY + dd", "NOT INTERVAL 1 DAY + dd"),
+        ("INTERVAL 1 DAY + NOT i", "INTERVAL 1 DAY + (NOT i)"),
+        ("dd + INTERVAL 1 OR 0 DAY", "dd + INTERVAL 1 OR 0 DAY"),
+        ("dd + INTERVAL (1) DAY", "dd + INTERVAL 1 DAY"),
+        ("dd + INTERVAL 1 SQL_TSI_DAY", "dd + INTERVAL 1 DAY"),
+        (
+            "ADDDATE(dd, INTERVAL 1 DAY + 1)",
+            "ADDDATE(dd, INTERVAL 1 DAY + 1)",
+        ),
+        (
+            "date_add(dd, interval 1 day)",
+            "DATE_ADD(dd, INTERVAL 1 DAY)",
+        ),
+    ];
+    for (written, expected) in cases {
+        let (sql, rules) = transpiled(
+            &format!("SELECT {written} AS x FROM d, g"),
+            mysql(),
+            output(mysql()),
+        );
+        assert_eq!(
+            sql,
+            format!("SELECT {expected} AS x FROM d, g"),
+            "{written}"
+        );
+        assert!(rules.is_empty(), "{written}: {rules:?}");
+    }
+}
+
+#[test]
+fn a_time_moved_by_days_follows_the_version() {
+    let mariadb_at = |major, minor, patch| OutputDialect {
+        dialect: Dialect::MariaDb,
+        version: Version::new(major, minor, patch),
+        mode: SqlMode::default(),
+    };
+    // A `DATETIME` read on the current date from MySQL 8.0.28.
+    let text = "SELECT tm + INTERVAL 1 DAY AS a, TIMESTAMPADD(WEEK, 1, tm) AS b FROM d, g";
+    let (sql, rules) = transpiled(text, mysql_at(8, 0, 28), mariadb_at(11, 8, 9));
+    assert_eq!(
+        sql,
+        "SELECT TIMESTAMP(CURRENT_DATE, tm) + INTERVAL 1 DAY AS a, TIMESTAMPADD(WEEK, 1, TIMESTAMP(CURRENT_DATE, tm)) AS b FROM d, g"
+    );
+    assert_eq!(rules, ["interval.time", "interval.time"]);
+    let (sql, rules) = transpiled(text, mysql_at(8, 4, 0), output(mysql_at(8, 0, 27)));
+    assert!(sql.starts_with("SELECT TIMESTAMP(CURRENT_DATE, tm) + INTERVAL 1 DAY"));
+    assert_eq!(rules, ["interval.time", "interval.time"]);
+    // The hours added by `DAY` before, as in MariaDB; NULL by the longer
+    // units, of another type.
+    let text = "SELECT tm + INTERVAL 1 DAY AS a, tm - INTERVAL '1 2' DAY_HOUR AS b, tm + INTERVAL 1 HOUR AS c FROM d, g";
+    let (sql, rules) = transpiled(text, mysql_at(8, 0, 27), mariadb_at(11, 8, 9));
+    assert_eq!(sql, text);
+    assert!(rules.is_empty(), "{rules:?}");
+    for unit in ["WEEK", "MONTH"] {
+        let text = format!("SELECT tm + INTERVAL 1 {unit} FROM d, g");
+        assert_eq!(
+            errors(&text, mysql_at(8, 0, 27), mariadb_at(11, 8, 9)),
+            ["interval.time"]
+        );
+    }
+    assert_eq!(
+        errors(
+            "SELECT tm + INTERVAL 1 DAY FROM d, g",
+            mariadb(),
+            output(mysql_at(8, 4, 0))
+        ),
+        ["interval.time"]
+    );
+}
+
+#[test]
+fn intervals_of_values_read_otherwise_are_errors() {
+    let cases = [
+        // A string or a number, read as a date and time.
+        ("s + INTERVAL 1 DAY", "interval.string"),
+        ("i + INTERVAL 1 DAY", "interval.string"),
+        (
+            "'2024-05-06 07:08:09.5' + INTERVAL 1 DAY",
+            "interval.string",
+        ),
+        ("'2024-05-06' + INTERVAL 1 MICROSECOND", "interval.string"),
+        ("'2024-05-06' + INTERVAL 1.5 SECOND", "interval.string"),
+        // An operand of unknown type.
+        ("NOW() + INTERVAL 1 DAY", "interval.unknown"),
+        // Years that may reach 2^31.
+        ("dd + INTERVAL 4294967297 YEAR", "interval.year"),
+        ("dd + INTERVAL n YEAR", "interval.year"),
+        ("dd + INTERVAL iu YEAR", "interval.year"),
+        ("TIMESTAMPADD(YEAR, n, dd)", "interval.year"),
+        // Microseconds of more than 6 digits.
+        (
+            "dt + INTERVAL '1.1234567' SECOND_MICROSECOND",
+            "interval.microseconds",
+        ),
+        (
+            "dt + INTERVAL 1234567 SECOND_MICROSECOND",
+            "interval.microseconds",
+        ),
+        ("dt + INTERVAL s DAY_MICROSECOND", "interval.microseconds"),
+    ];
+    for (written, rule) in cases {
+        let text = format!("SELECT {written} FROM d, g");
+        for (input, output) in [(mysql(), mariadb()), (mariadb(), mysql())] {
+            assert_eq!(
+                errors(&text, input, self::output(output)),
+                [rule],
+                "{written}"
+            );
+        }
+        // The same dialect gives the same value.
+        assert!(
+            errors(&text, mysql(), output(mysql())).is_empty(),
+            "{written}"
+        );
+    }
+    // Values read alike.
+    let text = concat!(
+        "SELECT '2024-05-06' + INTERVAL 1 DAY AS a, '2024-05-06 07:08:09' + INTERVAL 2 SECOND AS b, ",
+        "NULL + INTERVAL 1 DAY AS c, dd + INTERVAL -1 YEAR AS e, dd + INTERVAL i YEAR AS g, ",
+        "dd + INTERVAL '-2147483647' YEAR AS h, dt + INTERVAL '1.123456' SECOND_MICROSECOND AS j, ",
+        "dt + INTERVAL p SECOND_MICROSECOND AS k, dt + INTERVAL 1.5 SECOND AS l FROM d, g"
+    );
+    for (input, output) in [(mysql(), mariadb()), (mariadb(), mysql())] {
+        let (sql, rules) = transpiled(text, input, self::output(output));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{rules:?}");
+    }
+}

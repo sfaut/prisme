@@ -1,0 +1,38 @@
+# INTERVAL: prefix operators before the interval first, the end of its operand, years near 2^31 and 2^32.
+plus_first + INTERVAL 1 DAY + d
+minus_first - INTERVAL 1 DAY + d
+minus_first_more - INTERVAL 1 DAY + d + 1
+minus_first_paren -(INTERVAL 1 DAY + d)
+minus_minus_first - - INTERVAL 1 DAY + d
+tilde_first ~ INTERVAL 1 DAY + d
+bang_first ! INTERVAL 1 DAY + d
+minus_first_times 2 * - INTERVAL 1 DAY + d
+first_not INTERVAL 1 DAY + NOT d
+first_and INTERVAL 1 DAY + d AND 1
+first_xor INTERVAL 1 DAY + d XOR 1
+first_pipes INTERVAL 1 DAY + d || 0
+first_amps INTERVAL 1 DAY + d && 1
+first_is_true INTERVAL 1 DAY + d IS TRUE
+first_like INTERVAL 1 DAY + s LIKE 'x'
+first_regexp INTERVAL 1 DAY + s REGEXP 'x'
+first_sounds INTERVAL 1 DAY + s SOUNDS LIKE 'x'
+first_member INTERVAL 1 DAY + d MEMBER OF ('[1]')
+first_ne INTERVAL 1 DAY + d <> d
+first_null_safe INTERVAL 1 DAY + d <=> d
+first_any INTERVAL 1 DAY + d = ANY (SELECT d)
+adddate_first ADDDATE(d, INTERVAL 1 DAY + 1)
+subdate_first SUBDATE(d, INTERVAL 1 DAY + 1)
+adddate_interval_fn ADDDATE(d, INTERVAL(5, 1, 10))
+year_2_31 d + INTERVAL 2147483648 YEAR
+year_2_31_neg d + INTERVAL -2147483648 YEAR
+year_2_31_neg1 d + INTERVAL -2147483649 YEAR
+year_2_32_low d + INTERVAL 4294965272 YEAR
+year_2_32_m1 d + INTERVAL 4294967295 YEAR
+year_2_32_m2025 d + INTERVAL 4294965271 YEAR
+year_dec_round d + INTERVAL 2147483647.5 YEAR
+year_str_space d + INTERVAL ' 4294967297' YEAR
+year_str_x d + INTERVAL '4294967297x' YEAR
+year_bigint_col d + INTERVAL CAST(4294967297 AS SIGNED) YEAR
+year_unsigned d + INTERVAL CAST(4294967295 AS UNSIGNED) YEAR
+year_ym_big d + INTERVAL '4294967297-1' YEAR_MONTH
+year_tsadd_neg TIMESTAMPADD(YEAR, -4294967295, d)

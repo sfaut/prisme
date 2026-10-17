@@ -1,0 +1,79 @@
+# INTERVAL: binding of the sum with the operators around it.
+first_eq INTERVAL 1 DAY + d = DATE '2024-05-07'
+first_or INTERVAL 1 DAY + d OR 0
+first_plus_minus INTERVAL 1 DAY + d - INTERVAL 1 HOUR
+first_times INTERVAL 1 DAY + d * 1
+first_div INTERVAL 1 DAY + d DIV 1
+first_xor INTERVAL 1 DAY + d ^ 0
+first_bitor INTERVAL 1 DAY + d | 0
+first_shift INTERVAL 1 DAY + d << 0
+first_plus INTERVAL 1 DAY + d + 1
+first_neg INTERVAL 1 DAY + -d
+first_two INTERVAL 1 DAY + INTERVAL 1 DAY + d
+first_nested INTERVAL 1 DAY + (d)
+first_value INTERVAL 1 + 1 DAY + d
+first_value_or INTERVAL 1 OR 0 DAY + d
+first_paren_value INTERVAL (1) DAY + d
+first_paren_sum INTERVAL (1) + 1 DAY + d
+first_is INTERVAL 1 DAY + d IS NULL
+first_between INTERVAL 1 DAY + d BETWEEN d AND dt
+first_in INTERVAL 1 DAY + d IN (DATE '2024-05-07')
+first_collate INTERVAL 1 DAY + s COLLATE utf8mb4_bin
+first_after_plus 1 + INTERVAL 1 DAY + d
+first_after_times 2 * INTERVAL 1 DAY + d
+first_after_minus d - INTERVAL 1 DAY + d
+first_after_unary - INTERVAL 1 DAY + d
+first_after_not NOT INTERVAL 1 DAY + d
+first_after_eq d = INTERVAL 0 DAY + d
+first_after_bitor 0 | INTERVAL 1 DAY + d
+first_in_paren (INTERVAL 1 DAY) + d
+first_lower interval 1 day + d
+after_times d + INTERVAL 1 DAY * 2
+after_div d + INTERVAL 1 DAY DIV 1
+after_mod d + INTERVAL 1 DAY MOD 7
+after_xor d + INTERVAL 1 DAY ^ 0
+after_bitor d + INTERVAL 1 DAY | 0
+after_shift d + INTERVAL 1 DAY << 0
+after_plus d + INTERVAL 1 DAY + 1
+after_minus d + INTERVAL 1 DAY - 1
+after_eq d + INTERVAL 1 DAY = DATE '2024-05-07'
+after_is d + INTERVAL 1 DAY IS NULL
+after_collate s + INTERVAL 1 DAY COLLATE utf8mb4_bin
+after_times_minus d - INTERVAL 1 DAY * 2
+after_twice d + INTERVAL 1 DAY + INTERVAL 1 DAY * 2
+before_times 2 * d + INTERVAL 1 DAY
+before_unary - d + INTERVAL 1 DAY
+before_xor 1 ^ d + INTERVAL 1 DAY
+before_bitor 0 | d + INTERVAL 1 DAY * 2
+before_shift 0 << d + INTERVAL 1 DAY
+before_bitand -1 & d + INTERVAL 1 DAY * 1
+before_plus 1 + d + INTERVAL 1 DAY
+value_times d + INTERVAL i * 2 DAY
+value_eq d + INTERVAL 1 = 1 DAY
+value_neg d + INTERVAL - 1 DAY
+value_neg_paren d + INTERVAL -(1) DAY
+value_not d + INTERVAL NOT 1 DAY
+value_case d + INTERVAL CASE WHEN 1 THEN 2 END DAY
+value_sub d + INTERVAL (SELECT 1) DAY
+value_interval d + INTERVAL INTERVAL 1 DAY + 1 DAY
+value_cast d + INTERVAL CAST('1' AS SIGNED) DAY
+value_col d + INTERVAL day DAY
+unary_interval d + - INTERVAL 1 DAY
+unary_minus_interval d - - INTERVAL 1 DAY
+unary_plus_interval d + + INTERVAL 1 DAY
+times_interval d * INTERVAL 1 DAY
+compare_interval d = INTERVAL 1 DAY
+fn_interval INTERVAL(5, 1, 10)
+fn_interval_two INTERVAL(5, 1)
+fn_interval_space INTERVAL (5, 1, 10)
+fn_interval_sum d + INTERVAL(5, 1, 10)
+fn_interval_null INTERVAL(NULL, 1, 10)
+fn_interval_lower interval(5, 1, 10)
+fn_interval_paren_unit d + INTERVAL (1) DAY
+fn_interval_sub_unit d + INTERVAL (1, 2) DAY
+date_add_expr DATE_ADD(d, INTERVAL 1 DAY) + INTERVAL 1 DAY
+date_add_value DATE_ADD(d, INTERVAL 1 + 1 DAY)
+date_add_two DATE_ADD(d, INTERVAL 1 DAY + INTERVAL 1 DAY)
+date_add_first DATE_ADD(INTERVAL 1 DAY + d, INTERVAL 1 DAY)
+adddate_two ADDDATE(d, 1, 2)
+adddate_interval_plus ADDDATE(d, INTERVAL 1 DAY + 1)

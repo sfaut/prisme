@@ -16,11 +16,11 @@
 use prisme_plan::{Ident, Span};
 
 use super::{ParseError, Parser};
-use crate::keywords;
 use crate::lexer::{Punct, TokenKind};
 use crate::sql::ast::{
     BinaryOp, Expr, ExprKind, FunctionCall, Literal, ObjectName, Query, TemporalKind, UnaryOp,
 };
+use crate::{Dialect, keywords};
 
 impl Parser<'_> {
     /// Expression.
@@ -65,7 +65,7 @@ impl Parser<'_> {
     }
 
     /// `NOT`, loose unless `HIGH_NOT_PRECEDENCE`.
-    fn not_expr(&mut self) -> Result<Expr, ParseError> {
+    pub(super) fn not_expr(&mut self) -> Result<Expr, ParseError> {
         if !self.options.mode.high_not_precedence
             && let Some(span) = self.eat_keyword("NOT")
         {
@@ -271,34 +271,49 @@ impl Parser<'_> {
         )
     }
 
-    /// `+`, `-`.
+    /// `+`, `-`, and an interval added or subtracted (`d + INTERVAL 1 DAY`),
+    /// whose sum closes at its unit, then takes the operators of a higher
+    /// level: `d + INTERVAL 1 DAY * 2` multiplies the sum.
     fn additive(&mut self) -> Result<Expr, ParseError> {
-        self.binary_level(
-            Self::multiplicative,
-            &[
-                (Punct::Plus, BinaryOp::Add),
-                (Punct::Minus, BinaryOp::Subtract),
-            ],
-            &[],
-        )
+        let mut left = self.multiplicative()?;
+        loop {
+            let subtract = if self.at_punct(Punct::Minus) {
+                true
+            } else if self.at_punct(Punct::Plus) {
+                false
+            } else {
+                return Ok(left);
+            };
+            self.advance();
+            if self.at_interval() {
+                let sum = self.interval_operand(left, subtract)?;
+                let sum = self.binary_level_from(sum, Self::unary, &BIT_XOR, &[])?;
+                left = self.binary_level_from(
+                    sum,
+                    Self::bit_xor,
+                    &MULTIPLICATIVE,
+                    &MULTIPLICATIVE_WORDS,
+                )?;
+                continue;
+            }
+            let right = self.multiplicative()?;
+            let op = if subtract {
+                BinaryOp::Subtract
+            } else {
+                BinaryOp::Add
+            };
+            left = binary(op, left, right);
+        }
     }
 
     /// `*`, `/`, `DIV`, `%`, `MOD`.
     fn multiplicative(&mut self) -> Result<Expr, ParseError> {
-        self.binary_level(
-            Self::bit_xor,
-            &[
-                (Punct::Star, BinaryOp::Multiply),
-                (Punct::Slash, BinaryOp::Divide),
-                (Punct::Percent, BinaryOp::Modulo),
-            ],
-            &[("DIV", BinaryOp::IntegerDivide), ("MOD", BinaryOp::Modulo)],
-        )
+        self.binary_level(Self::bit_xor, &MULTIPLICATIVE, &MULTIPLICATIVE_WORDS)
     }
 
     /// `^`.
     fn bit_xor(&mut self) -> Result<Expr, ParseError> {
-        self.binary_level(Self::unary, &[(Punct::Caret, BinaryOp::BitXor)], &[])
+        self.binary_level(Self::unary, &BIT_XOR, &[])
     }
 
     /// Level of left-associative binary operators, written as a symbol or a
@@ -309,7 +324,19 @@ impl Parser<'_> {
         symbols: &[(Punct, BinaryOp)],
         words: &[(&str, BinaryOp)],
     ) -> Result<Expr, ParseError> {
-        let mut left = operand(self)?;
+        let left = operand(self)?;
+        self.binary_level_from(left, operand, symbols, words)
+    }
+
+    /// Level of left-associative binary operators after its first operand,
+    /// `left`.
+    fn binary_level_from(
+        &mut self,
+        mut left: Expr,
+        operand: fn(&mut Self) -> Result<Expr, ParseError>,
+        symbols: &[(Punct, BinaryOp)],
+        words: &[(&str, BinaryOp)],
+    ) -> Result<Expr, ParseError> {
         loop {
             let symbol = symbols
                 .iter()
@@ -349,7 +376,24 @@ impl Parser<'_> {
             return self.expr_primary();
         };
         let start = self.here().start;
-        self.advance();
+        let symbol = self
+            .advance()
+            .is_some_and(|token| token.kind != TokenKind::Word);
+        if symbol
+            && op != UnaryOp::Plus
+            && self.options.dialect == Dialect::MariaDb
+            && self.at_interval()
+        {
+            // MariaDB reads `- INTERVAL 1 DAY + d` as `d - INTERVAL 1 DAY`,
+            // and refuses `~` and `!` before an interval.
+            if op == UnaryOp::Minus {
+                return Err(self.unsupported(
+                    "`- INTERVAL ... + x`, which MariaDB reads as `x - INTERVAL ...`",
+                    Span::new(start, self.here().end),
+                ));
+            }
+            return Err(self.expected("an expression"));
+        }
         let operand = self.nested(Self::unary)?;
         Ok(unary(op, start, operand))
     }
@@ -523,6 +567,9 @@ impl Parser<'_> {
         if token.kind == TokenKind::Word && self.at_keyword("CASE") {
             return self.case();
         }
+        if self.at_interval() {
+            return self.interval_first();
+        }
         if token.kind == TokenKind::Word {
             if matches!(next, Some(TokenKind::Punct(Punct::LeftParen)))
                 && let Some(construct) = self.keyword_construct()?
@@ -549,7 +596,6 @@ impl Parser<'_> {
             }
             let constructs = [
                 "EXISTS",
-                "INTERVAL",
                 "BINARY",
                 "DATE",
                 "TIME",
@@ -604,6 +650,20 @@ impl Parser<'_> {
         Ok(leaf(ExprKind::Column(name), span))
     }
 }
+
+/// Operators of the level of `*`, written as a symbol.
+const MULTIPLICATIVE: [(Punct, BinaryOp); 3] = [
+    (Punct::Star, BinaryOp::Multiply),
+    (Punct::Slash, BinaryOp::Divide),
+    (Punct::Percent, BinaryOp::Modulo),
+];
+
+/// Operators of the level of `*`, written as a word.
+const MULTIPLICATIVE_WORDS: [(&str, BinaryOp); 2] =
+    [("DIV", BinaryOp::IntegerDivide), ("MOD", BinaryOp::Modulo)];
+
+/// Operator `^`.
+const BIT_XOR: [(Punct, BinaryOp); 1] = [(Punct::Caret, BinaryOp::BitXor)];
 
 /// Expression without children.
 fn leaf(kind: ExprKind, span: Span) -> Expr {

@@ -1,0 +1,4 @@
+# TIME + INTERVAL of days, by version: run with --server mysql:8.0.20 to --server mysql:8.0.28 (a DATETIME from 8.0.28).
+t_day t + INTERVAL 1 DAY
+t_week t + INTERVAL 1 WEEK
+t_sub t - INTERVAL 1 DAY

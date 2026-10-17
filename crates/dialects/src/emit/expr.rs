@@ -20,17 +20,17 @@ use crate::report::StepKind;
 use crate::sql::ast::TemporalKind;
 
 /// Level of `NOT`.
-const NOT: u8 = 4;
+pub(super) const NOT: u8 = 4;
 /// Level of `+` and `-`.
 pub(super) const ADDITIVE: u8 = 9;
 /// Level of `*`, `/`, `DIV` and `%`.
 pub(super) const MULTIPLY: u8 = 10;
 /// Level of the comparisons and predicates.
-const PREDICATE: u8 = 5;
+pub(super) const PREDICATE: u8 = 5;
 /// Level of the prefix operators.
 const PREFIX: u8 = 12;
 /// Level of an operand.
-const OPERAND: u8 = 14;
+pub(super) const OPERAND: u8 = 14;
 
 /// Symbol of a comparison, between spaces.
 const fn comparison(op: Comparison) -> &'static str {
@@ -116,6 +116,10 @@ impl Emitter<'_> {
         }
         if let ExprKind::Cast(cast) = &expr.kind {
             self.cast(expr, cast);
+            return;
+        }
+        if let ExprKind::DateArithmetic(arithmetic) = &expr.kind {
+            self.date_arithmetic(expr, arithmetic, min);
             return;
         }
         let (level, left, right) = levels(expr);

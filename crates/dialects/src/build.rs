@@ -24,6 +24,7 @@ mod cast;
 mod expr;
 pub(crate) mod functions;
 mod group;
+mod interval;
 mod scope;
 mod tables;
 mod temporal;

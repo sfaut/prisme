@@ -19,7 +19,7 @@
 
 use prisme_types::{DataType, IntegerType, Type, Value};
 
-use crate::{Cast, Ident, Plan, PlanError, SortKey, Span};
+use crate::{Cast, DateArithmetic, Ident, Plan, PlanError, SortKey, Span};
 
 /// Expression of the plan, with its type.
 #[derive(Debug, Clone, PartialEq)]
@@ -176,6 +176,9 @@ pub enum ExprKind {
     Case(Case),
     /// `CAST` or `CONVERT` to the data type of the expression.
     Cast(Box<Cast>),
+    /// Interval added to or subtracted from a date or a time
+    /// (`d + INTERVAL 1 DAY`, `DATE_ADD`, `TIMESTAMPADD`).
+    DateArithmetic(Box<DateArithmetic>),
     /// Number to boolean, true when non-zero (MySQL family: `WHERE a`,
     /// `2 AND 3`).
     ToBoolean(Box<Expr>),
@@ -668,6 +671,12 @@ impl Expr {
         Self::new(ExprKind::Cast(Box::new(cast)), ty)
     }
 
+    /// Interval added to or subtracted from a date or a time, of the type the
+    /// dialect gives it.
+    pub fn date_arithmetic(arithmetic: DateArithmetic, ty: Type) -> Self {
+        Self::new(ExprKind::DateArithmetic(Box::new(arithmetic)), ty)
+    }
+
     /// Number to boolean, true when non-zero; unknown when the number is NULL.
     pub fn to_boolean(operand: Expr) -> Self {
         let ty = boolean(operand.ty.nullable);
@@ -707,6 +716,9 @@ impl Expr {
             | ExprKind::InSubquery { operand, .. }
             | ExprKind::Quantified { operand, .. } => vec![operand.as_mut()],
             ExprKind::Cast(cast) => vec![&mut cast.operand],
+            ExprKind::DateArithmetic(arithmetic) => {
+                vec![&mut arithmetic.operand, &mut arithmetic.value]
+            }
             ExprKind::Between {
                 operand, low, high, ..
             } => vec![operand.as_mut(), low.as_mut(), high.as_mut()],

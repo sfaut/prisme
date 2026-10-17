@@ -1,0 +1,13 @@
+# INTERVAL on zero dates, under the SQL mode ''.
+! SET sql_mode = ''
+zero_day DATE '2024-05-00' + INTERVAL 1 DAY
+zero_month DATE '2024-00-10' + INTERVAL 1 MONTH
+zero_date DATE '0000-00-00' + INTERVAL 1 DAY
+zero_date_year DATE '0000-00-00' + INTERVAL 1 YEAR
+zero_ts TIMESTAMP '2024-05-00 10:00:00' + INTERVAL 1 HOUR
+zero_ts_us TIMESTAMP '2024-05-00 10:00:00' + INTERVAL 1 MICROSECOND
+zero_string '2024-05-00' + INTERVAL 1 DAY
+zero_cast CAST('2024-05-00' AS DATE) + INTERVAL 1 DAY
+zero_tsadd TIMESTAMPADD(DAY, 1, DATE '2024-05-00')
+zero_adddate ADDDATE(DATE '2024-05-00', 1)
+feb30_string '2024-02-30' + INTERVAL 1 DAY

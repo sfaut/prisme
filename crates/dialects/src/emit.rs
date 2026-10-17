@@ -27,6 +27,7 @@ mod case;
 mod cast;
 mod expr;
 mod greatest;
+mod interval;
 mod rules;
 mod source;
 mod temporal;

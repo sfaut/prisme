@@ -167,6 +167,13 @@ fn tree(expr: &Expr) -> String {
             format!("({})", parts.join(" "))
         }
         ExprKind::Cast(cast) => format!("(cast {} {:?})", tree(&cast.operand), cast.target),
+        ExprKind::DateArithmetic(call) => format!(
+            "({:?} {} {} {:?})",
+            call.form,
+            tree(&call.operand),
+            tree(&call.value),
+            call.unit
+        ),
     }
 }
 
@@ -1262,4 +1269,103 @@ fn reads_typed_literals_and_their_odbc_form() {
         );
         assert_eq!(at, faulty, "{text}");
     }
+}
+
+#[test]
+fn reads_intervals_with_the_precedence_of_the_servers() {
+    assert_eq!(expr("d + INTERVAL 1 DAY"), "(Plus d 1 Day)");
+    assert_eq!(
+        expr("d - interval '1:30' hour_minute"),
+        "(Minus d '1:30' HourMinute)"
+    );
+    assert_eq!(expr("d + INTERVAL 1 + 1 DAY"), "(Plus d (+ 1 1) Day)");
+    assert_eq!(expr("d + INTERVAL 1 OR 0 DAY"), "(Plus d (or 1 0) Day)");
+    assert_eq!(expr("d + INTERVAL 1 SQL_TSI_WEEK"), "(Plus d 1 Week)");
+    // The sum closes at its unit, then takes the operators of a higher level.
+    assert_eq!(expr("d + INTERVAL 1 DAY * 2"), "(* (Plus d 1 Day) 2)");
+    assert_eq!(
+        expr("d + INTERVAL 1 DAY ^ 1 * 2"),
+        "(* (^ (Plus d 1 Day) 1) 2)"
+    );
+    assert_eq!(
+        expr("0 | d + INTERVAL 1 DAY * 2 + 1"),
+        "(| 0 (+ (* (Plus d 1 Day) 2) 1))"
+    );
+    assert_eq!(expr("2 * d + INTERVAL 1 DAY"), "(Plus (* 2 d) 1 Day)");
+    assert_eq!(
+        expr("d - INTERVAL 1 DAY - INTERVAL 1 HOUR"),
+        "(Minus (Minus d 1 Day) 1 Hour)"
+    );
+    // The interval first: its operand runs to the next `AND`, `OR` or `XOR`.
+    assert_eq!(
+        expr("INTERVAL 1 DAY + d = e"),
+        "(IntervalFirst (= d e) 1 Day)"
+    );
+    assert_eq!(
+        expr("INTERVAL 1 DAY + d IS NULL AND 1"),
+        "(and (IntervalFirst (isnull d) 1 Day) 1)"
+    );
+    assert_eq!(
+        expr("2 * INTERVAL 1 DAY + d"),
+        "(* 2 (IntervalFirst d 1 Day))"
+    );
+    assert_eq!(expr("- INTERVAL 1 DAY + d"), "(- (IntervalFirst d 1 Day))");
+    assert_eq!(
+        expr("d + INTERVAL INTERVAL 1 DAY + 1 DAY"),
+        "(Plus d (IntervalFirst 1 1 Day) Day)"
+    );
+    // `INTERVAL(n, n1, ...)` is a function.
+    assert_eq!(expr("INTERVAL(5, 1, 10)"), "(interval 5 1 10)");
+    assert_eq!(expr("d + INTERVAL (5, 1)"), "(+ d (interval 5 1))");
+    assert_eq!(expr("d + INTERVAL (1) DAY"), "(Plus d 1 Day)");
+    // The functions.
+    assert_eq!(expr("DATE_ADD(d, INTERVAL 1 DAY)"), "(DateAdd d 1 Day)");
+    assert_eq!(
+        expr("date_sub(d, INTERVAL 1 YEAR_MONTH)"),
+        "(DateSub d 1 YearMonth)"
+    );
+    assert_eq!(expr("ADDDATE(d, 1)"), "(AddDays d 1 Day)");
+    assert_eq!(expr("SUBDATE(d, INTERVAL 1 MONTH)"), "(SubDate d 1 Month)");
+    assert_eq!(
+        expr("ADDDATE(d, INTERVAL 1 DAY + 1)"),
+        "(AddDays d (IntervalFirst 1 1 Day) Day)"
+    );
+    assert_eq!(
+        expr("TIMESTAMPADD(SQL_TSI_HOUR, 1, d)"),
+        "(TimestampAdd d 1 Hour)"
+    );
+    assert_eq!(
+        expr("TIMESTAMPADD (MICROSECOND, 1, d)"),
+        "(TimestampAdd d 1 Microsecond)"
+    );
+    // Forms the servers refuse.
+    for text in [
+        "SELECT INTERVAL 1 DAY",
+        "SELECT INTERVAL 1 DAY - d",
+        "SELECT d * INTERVAL 1 DAY",
+        "SELECT d + - INTERVAL 1 DAY",
+        "SELECT (INTERVAL 1 DAY) + d",
+        "SELECT d + INTERVAL 1 DAYS",
+        "SELECT d + INTERVAL 1 'DAY'",
+        "SELECT d + INTERVAL 1 SQL_TSI_MICROSECOND",
+        "SELECT d + INTERVAL 1 SQL_TSI_DAY_HOUR",
+        "SELECT DATE_ADD(d, 1)",
+        "SELECT DATE_ADD(d, INTERVAL 1 DAY + 1)",
+        "SELECT DATE_ADD (d, INTERVAL 1 DAY)",
+        "SELECT TIMESTAMPADD(DAY_HOUR, 1, d)",
+        "SELECT TIMESTAMPADD(FRAC_SECOND, 1, d)",
+    ] {
+        assert!(parse(text, &mysql()).is_err(), "{text}");
+    }
+    // MariaDB reads `- INTERVAL 1 DAY + d` as `d - INTERVAL 1 DAY`, and
+    // refuses `~` and `!` before an interval.
+    assert_eq!(
+        error("SELECT - INTERVAL 1 DAY + d", &mariadb()).0,
+        "`- INTERVAL ... + x`, which MariaDB reads as `x - INTERVAL ...`: not supported yet by the parser of Prisme"
+    );
+    assert!(parse("SELECT ~ INTERVAL 1 DAY + d", &mariadb()).is_err());
+    assert_eq!(
+        expr_with("+ INTERVAL 1 DAY + d", &mariadb()),
+        "(+ (IntervalFirst d 1 Day))"
+    );
 }

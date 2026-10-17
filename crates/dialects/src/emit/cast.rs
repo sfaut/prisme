@@ -501,7 +501,7 @@ fn starts_with_line_break(text: &str) -> bool {
 /// (`YYYY-MM-DD HH:MM:SS[.f]`) that both servers read alike: a valid date
 /// from the year 1000, without offset, of `fraction` fractional digits at
 /// most (any for a date, `fraction` `None`).
-fn plain_temporal(text: &str, fraction: Option<u8>) -> bool {
+pub(super) fn plain_temporal(text: &str, fraction: Option<u8>) -> bool {
     let (date, time) = match text.split_once(' ') {
         Some((date, time)) => (date, Some(time)),
         None => (text, None),

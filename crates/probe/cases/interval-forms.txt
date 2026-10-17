@@ -1,0 +1,82 @@
+# INTERVAL: units with their SQL_TSI_ alias, year 0, huge values, forms of the functions.
+tsi_second d + INTERVAL 1 SQL_TSI_SECOND
+tsi_minute d + INTERVAL 1 SQL_TSI_MINUTE
+tsi_hour d + INTERVAL 1 SQL_TSI_HOUR
+tsi_day d + INTERVAL 1 SQL_TSI_DAY
+tsi_week d + INTERVAL 1 SQL_TSI_WEEK
+tsi_month d + INTERVAL 1 SQL_TSI_MONTH
+tsi_quarter d + INTERVAL 1 SQL_TSI_QUARTER
+tsi_year d + INTERVAL 1 SQL_TSI_YEAR
+tsi_microsecond d + INTERVAL 1 SQL_TSI_MICROSECOND
+tsi_frac d + INTERVAL 1 SQL_TSI_FRAC_SECOND
+tsi_lower d + INTERVAL 1 sql_tsi_day
+tsi_date_add DATE_ADD(d, INTERVAL 1 SQL_TSI_DAY)
+tsi_tsadd TIMESTAMPADD(SQL_TSI_DAY, 1, d)
+tsi_tsdiff TIMESTAMPDIFF(SQL_TSI_DAY, d, dt)
+tsi_column_name SQL_TSI_DAY
+unit_quoted d + INTERVAL 1 `DAY`
+unit_string d + INTERVAL 1 'DAY'
+unit_bad d + INTERVAL 1 DAYS
+unit_frac d + INTERVAL 1 FRAC_SECOND
+unit_millisecond d + INTERVAL 1 MILLISECOND
+tsadd_compound TIMESTAMPADD(DAY_HOUR, 1, d)
+tsadd_quoted TIMESTAMPADD('DAY', 1, d)
+tsdiff_compound TIMESTAMPDIFF(DAY_HOUR, d, dt)
+date_add_days DATE_ADD(d, 1)
+date_sub_days DATE_SUB(d, 1)
+subdate_days SUBDATE(d, 1)
+adddate_iv_plus ADDDATE(d, INTERVAL 1 DAY + INTERVAL 1 DAY)
+date_add_iv_plus DATE_ADD(d, INTERVAL 1 DAY + 1)
+date_add_space DATE_ADD (d, INTERVAL 1 DAY)
+adddate_space ADDDATE (d, 1)
+tsadd_space TIMESTAMPADD (DAY, 1, d)
+tsdiff_space TIMESTAMPDIFF (DAY, d, dt)
+date_add_quoted `DATE_ADD`(d, INTERVAL 1 DAY)
+interval_fn_space INTERVAL (5, 1, 10)
+y0_day_plus DATE '0000-12-31' + INTERVAL 1 DAY
+y0_month_plus DATE '0000-12-31' + INTERVAL 1 MONTH
+y0_from_y1_month DATE '0001-01-31' - INTERVAL 1 MONTH
+y0_from_y1_year DATE '0001-05-06' - INTERVAL 1 YEAR
+y0_from_y1_day DATE '0001-01-01' - INTERVAL 1 DAY
+y0_from_y1_hour TIMESTAMP '0001-01-01 00:00:00' - INTERVAL 1 HOUR
+y0_from_y1_week DATE '0001-01-07' - INTERVAL 1 WEEK
+y0_in_y0_day DATE '0000-03-01' + INTERVAL 1 DAY
+y0_in_y0_month DATE '0000-03-01' + INTERVAL 1 MONTH
+y0_to_y1_hour TIMESTAMP '0000-12-31 23:00:00' + INTERVAL 1 HOUR
+y0_feb29 DATE '0000-02-29' + INTERVAL 1 YEAR
+y1_feb DATE '0004-02-29' - INTERVAL 4 YEAR
+y1_day DATE '0001-01-02' - INTERVAL 1 DAY
+y999 DATE '0999-12-31' + INTERVAL 1 DAY
+max_month DATE '9999-12-31' + INTERVAL 1 MONTH
+max_year DATE '9999-01-01' + INTERVAL 1 YEAR
+huge_year_32 d + INTERVAL 4294967296 YEAR
+huge_year_33 d + INTERVAL 4294967297 YEAR
+huge_year_31 d + INTERVAL 2147483647 YEAR
+huge_year_neg d + INTERVAL -4294967295 YEAR
+huge_month_32 d + INTERVAL 4294967297 MONTH
+huge_quarter_32 d + INTERVAL 4294967297 QUARTER
+huge_week_32 d + INTERVAL 4294967297 WEEK
+huge_day_32 d + INTERVAL 4294967297 DAY
+huge_ym_32 d + INTERVAL '4294967297-0' YEAR_MONTH
+huge_ym_month d + INTERVAL '0-4294967297' YEAR_MONTH
+huge_year_dec d + INTERVAL 4294967297.5 YEAR
+huge_year_str d + INTERVAL '4294967297' YEAR
+huge_year_dbl d + INTERVAL 4294967297e0 YEAR
+huge_tsadd_year TIMESTAMPADD(YEAR, 4294967297, d)
+huge_tsadd_month TIMESTAMPADD(MONTH, 4294967297, d)
+frac_dmus7 dt + INTERVAL '1.1234567' DAY_MICROSECOND
+frac_smus6 dt + INTERVAL '1.123456' SECOND_MICROSECOND
+frac_smus7 dt + INTERVAL '1.1234567' SECOND_MICROSECOND
+frac_smus8 dt + INTERVAL '0.12345678' SECOND_MICROSECOND
+frac_mmus7 dt + INTERVAL '1:1.1234567' MINUTE_MICROSECOND
+frac_hmus7 dt + INTERVAL '1:1:1.1234567' HOUR_MICROSECOND
+frac_sec7 dt + INTERVAL '1.1234567' SECOND
+frac_sec_dec7 dt + INTERVAL 1.1234567 SECOND
+frac_smus_dec7 dt + INTERVAL 1.1234567 SECOND_MICROSECOND
+frac_smus_neg7 dt + INTERVAL '-1.1234567' SECOND_MICROSECOND
+frac_smus_dot dt + INTERVAL '.5' SECOND_MICROSECOND
+frac_smus_int dt + INTERVAL '5' SECOND_MICROSECOND
+frac_smus_int7 dt + INTERVAL '1234567' SECOND_MICROSECOND
+frac_dmus_short dt + INTERVAL '1 2:3:4.5' DAY_MICROSECOND
+frac_us_str dt + INTERVAL '1.5' MICROSECOND
+frac_us_dec dt + INTERVAL 1.5 MICROSECOND

@@ -1,0 +1,69 @@
+# INTERVAL: fractional digits of the result, by operand, unit and value.
+d_dec1_sec d + INTERVAL 1.5 SECOND
+d_dec2_sec d + INTERVAL 1.25 SECOND
+d_dec7_sec d + INTERVAL 1.1234567 SECOND
+d_str_sec d + INTERVAL '1' SECOND
+d_flt_sec d + INTERVAL 1e0 SECOND
+d_null_sec d + INTERVAL NULL SECOND
+d_int_sec d + INTERVAL i SECOND
+d_numcol_sec d + INTERVAL n SECOND
+d_dblcol_sec d + INTERVAL f SECOND
+d_dec1_min d + INTERVAL 1.5 MINUTE
+d_str_min d + INTERVAL '1' MINUTE
+d_dec1_day d + INTERVAL 1.5 DAY
+d_str_day d + INTERVAL '1' DAY
+d_flt_day d + INTERVAL 1e0 DAY
+d_null_day d + INTERVAL NULL DAY
+d_str_hm d + INTERVAL '1:30' HOUR_MINUTE
+d_dec_hm d + INTERVAL 1.5 HOUR_MINUTE
+d_str_ym d + INTERVAL '1-2' YEAR_MONTH
+d_dec_ms d + INTERVAL 1.5 MINUTE_SECOND
+dt_dec4_sec dt + INTERVAL 1.2345 SECOND
+dt_dec7_sec dt + INTERVAL 1.1234567 SECOND
+dt_dec1_min dt + INTERVAL 1.5 MINUTE
+dt_str_min dt + INTERVAL '1' MINUTE
+dt_dec_ms dt + INTERVAL 1.5 MINUTE_SECOND
+dt_str_ms dt + INTERVAL '1:2.5' MINUTE_SECOND
+dt_dec4_ms dt + INTERVAL 1.2345 MINUTE_SECOND
+ts_dec1_sec ts + INTERVAL 1.5 SECOND
+ts_null_sec ts + INTERVAL NULL SECOND
+t_dec1_sec t + INTERVAL 1.5 SECOND
+t_str_sec t + INTERVAL '1' SECOND
+t_us t + INTERVAL 1 MICROSECOND
+t_hour t + INTERVAL 1 HOUR
+t3_hour CAST(t AS TIME(3)) + INTERVAL 1 HOUR
+t3_dec4 CAST(t AS TIME(3)) + INTERVAL 1.2345 SECOND
+t_day_type t + INTERVAL 1 DAY
+null_day NULL + INTERVAL 1 DAY
+null_sec NULL + INTERVAL 1 SECOND
+null_us NULL + INTERVAL 1 MICROSECOND
+s_day s + INTERVAL 1 DAY
+s_sec_dec s + INTERVAL 1.5 SECOND
+s_us s + INTERVAL 1 MICROSECOND
+i_day i + INTERVAL 1 DAY
+n_day n + INTERVAL 1 DAY
+f_day f + INTERVAL 1 DAY
+j_day j + INTERVAL 1 DAY
+sn_day sn + INTERVAL 1 DAY
+dn_sec dn + INTERVAL 1.5 SECOND
+sub_d d - INTERVAL 1.5 SECOND
+first_d INTERVAL 1.5 SECOND + d
+date_add_d DATE_ADD(d, INTERVAL 1.5 SECOND)
+adddate_d ADDDATE(d, 1.5)
+adddate_dt ADDDATE(dt, 1.5)
+adddate_s ADDDATE(s, 1)
+adddate_null ADDDATE(d, NULL)
+adddate_str ADDDATE(d, '1')
+tsadd_dec_sec TIMESTAMPADD(SECOND, 1.5, d)
+tsadd_dec4_sec TIMESTAMPADD(SECOND, 1.2345, dt)
+tsadd_str_sec TIMESTAMPADD(SECOND, '1', d)
+tsadd_us TIMESTAMPADD(MICROSECOND, 1, d)
+tsadd_dec_day TIMESTAMPADD(DAY, 1.5, dt)
+tsadd_null TIMESTAMPADD(SECOND, NULL, d)
+tsadd_t TIMESTAMPADD(SECOND, 1, t)
+tsdiff_type TIMESTAMPDIFF(DAY, d, dt)
+tsdiff_null TIMESTAMPDIFF(DAY, NULL, dt)
+tsdiff_notnull TIMESTAMPDIFF(DAY, DATE '2024-01-01', DATE '2024-02-01')
+interval_notnull DATE '2024-01-01' + INTERVAL 1 DAY
+interval_fn INTERVAL(i, 1, 10)
+interval_fn_null INTERVAL(dn, 1, 10)

@@ -7,8 +7,8 @@
 //! explicit conversions).
 
 use prisme_plan::{
-    AliasForm, CastForm, CastTarget, Direction, FrameUnits, Ident, IndexHint, JoinForm, LimitForm,
-    Span, ValuesForm,
+    AliasForm, CastForm, CastTarget, DateArithmeticForm, Direction, FrameUnits, Ident, IndexHint,
+    JoinForm, LimitForm, Span, TimeUnit, ValuesForm,
 };
 
 /// Statement.
@@ -513,6 +513,10 @@ pub enum ExprKind {
     },
     /// `CAST(x AS type)`, `CONVERT(x, type)`, `CONVERT(x USING charset)`.
     Cast(Box<CastCall>),
+    /// Interval added to or subtracted from a date or a time:
+    /// `d + INTERVAL 1 DAY`, `DATE_ADD(d, INTERVAL 1 DAY)`,
+    /// `TIMESTAMPADD(DAY, 1, d)`...
+    DateArithmetic(Box<DateArithmeticCall>),
 }
 
 /// `CAST` or `CONVERT`.
@@ -524,6 +528,19 @@ pub struct CastCall {
     pub target: CastTarget,
     /// Form written.
     pub form: CastForm,
+}
+
+/// Interval added to or subtracted from a date or a time.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DateArithmeticCall {
+    /// Date or time the interval moves.
+    pub operand: Expr,
+    /// Number of units, or the string of a compound unit.
+    pub value: Expr,
+    /// Unit of the interval.
+    pub unit: TimeUnit,
+    /// Form written.
+    pub form: DateArithmeticForm,
 }
 
 impl FunctionCall {
@@ -558,6 +575,7 @@ impl Expr {
             | ExprKind::InSubquery { operand, .. }
             | ExprKind::Quantified { operand, .. } => vec![operand],
             ExprKind::Cast(cast) => vec![&cast.operand],
+            ExprKind::DateArithmetic(call) => vec![&call.operand, &call.value],
             ExprKind::Binary { left, right, .. } => vec![left, right],
             ExprKind::Between {
                 operand, low, high, ..

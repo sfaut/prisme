@@ -39,7 +39,7 @@ pub(super) fn temporal_literal(kind: TemporalKind, value: &str, dialect: Dialect
 
 /// Fractional digits after the last `.` of a string the dialect does not
 /// read as a value, 6 at most.
-fn written_digits(value: &str) -> u8 {
+pub(super) fn written_digits(value: &str) -> u8 {
     let digits = value.rsplit_once('.').map_or(0, |(_, fraction)| {
         fraction.bytes().take_while(u8::is_ascii_digit).count()
     });

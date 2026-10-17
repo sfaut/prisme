@@ -1,0 +1,16 @@
+# INTERVAL on a TIME: units of days and more, by version: run with --server mysql:8.0.11 --server mysql:8.1.0 --server mysql:8.4 and the MariaDB servers.
+t_day t + INTERVAL 1 DAY
+t_week t + INTERVAL 1 WEEK
+t_month t + INTERVAL 1 MONTH
+t_day_hour t + INTERVAL '1 2' DAY_HOUR
+t_hour t + INTERVAL 1 HOUR
+t_hour_big t + INTERVAL 30 HOUR
+t_neg_zero TIME '-01:00:00' + INTERVAL 1 HOUR
+t_neg_zero_min TIME '-00:01:00' + INTERVAL 60 SECOND
+t_neg_zero_us TIME '-00:00:00.5' + INTERVAL '0.5' SECOND_MICROSECOND
+t_neg_cross TIME '-01:00:00' + INTERVAL 2 HOUR
+t_date_add DATE_ADD(t, INTERVAL 1 DAY)
+t_tsadd TIMESTAMPADD(DAY, 1, t)
+t_sub t - INTERVAL 1 DAY
+t_minus_hour t - INTERVAL 11 HOUR
+t_lit TIME '10:00:00' + INTERVAL 1 DAY

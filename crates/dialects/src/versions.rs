@@ -137,6 +137,9 @@ pub enum Construct {
     /// Time zone offset in a date and time literal (`TIMESTAMP '2024-05-06
     /// 01:00:00+02:00'`, MySQL), converted to the time zone of the session.
     DatetimeOffset,
+    /// `TIME` moved by an interval of days or longer (`t + INTERVAL 1 DAY`),
+    /// read on the current date: a `DATETIME` (MySQL), a `TIME` otherwise.
+    TimeIntervalDatetime,
     /// `UNIX_TIMESTAMP` and `FROM_UNIXTIME` until 3001-01-18 23:59:59 UTC
     /// (MySQL), 2038-01-19 03:14:07 otherwise.
     #[serde(rename = "unixtime_3001")]
@@ -306,6 +309,7 @@ impl Construct {
                 "`CAST` of a negative decimal to `UNSIGNED` giving the integer of the same bits"
             }
             Self::DatetimeOffset => "time zone offset in a date and time literal",
+            Self::TimeIntervalDatetime => "`TIME` moved by an interval of days giving a `DATETIME`",
             Self::Unixtime3001 => "`UNIX_TIMESTAMP` until 3001",
             Self::Unixtime2106 => "`UNIX_TIMESTAMP` until 2106",
             Self::UnixtimeEpochNull => "`UNIX_TIMESTAMP` giving NULL at the epoch",

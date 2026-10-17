@@ -20,6 +20,7 @@
 mod cast;
 mod error;
 mod expr;
+mod interval;
 mod order;
 mod origin;
 mod plan;
@@ -33,6 +34,7 @@ pub use expr::{
     FrameBound, FrameUnits, FunctionCall, Logical, NotDistinctForm, Quantifier, Variable,
     VariableScope, WindowCall,
 };
+pub use interval::{DateArithmetic, DateArithmeticForm, TimeUnit};
 pub use order::{Direction, Nulls, SortForm, SortKey, SortReference};
 pub use origin::{AliasForm, Ident, Span};
 pub use plan::{

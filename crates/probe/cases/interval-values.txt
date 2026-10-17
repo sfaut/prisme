@@ -1,0 +1,268 @@
+# INTERVAL: each value with the simple units, on dt DATETIME(3).
+one_microsecond dt + INTERVAL 1 MICROSECOND
+one_second dt + INTERVAL 1 SECOND
+one_day dt + INTERVAL 1 DAY
+one_month dt + INTERVAL 1 MONTH
+one_year dt + INTERVAL 1 YEAR
+neg_microsecond dt + INTERVAL -1 MICROSECOND
+neg_second dt + INTERVAL -1 SECOND
+neg_day dt + INTERVAL -1 DAY
+neg_month dt + INTERVAL -1 MONTH
+neg_year dt + INTERVAL -1 YEAR
+dec15_microsecond dt + INTERVAL 1.5 MICROSECOND
+dec15_second dt + INTERVAL 1.5 SECOND
+dec15_day dt + INTERVAL 1.5 DAY
+dec15_month dt + INTERVAL 1.5 MONTH
+dec15_year dt + INTERVAL 1.5 YEAR
+decn15_microsecond dt + INTERVAL -1.5 MICROSECOND
+decn15_second dt + INTERVAL -1.5 SECOND
+decn15_day dt + INTERVAL -1.5 DAY
+decn15_month dt + INTERVAL -1.5 MONTH
+decn15_year dt + INTERVAL -1.5 YEAR
+dec14_microsecond dt + INTERVAL 1.4 MICROSECOND
+dec14_second dt + INTERVAL 1.4 SECOND
+dec14_day dt + INTERVAL 1.4 DAY
+dec14_month dt + INTERVAL 1.4 MONTH
+dec14_year dt + INTERVAL 1.4 YEAR
+str15_microsecond dt + INTERVAL '1.5' MICROSECOND
+str15_second dt + INTERVAL '1.5' SECOND
+str15_day dt + INTERVAL '1.5' DAY
+str15_month dt + INTERVAL '1.5' MONTH
+str15_year dt + INTERVAL '1.5' YEAR
+str14_microsecond dt + INTERVAL '1.4' MICROSECOND
+str14_second dt + INTERVAL '1.4' SECOND
+str14_day dt + INTERVAL '1.4' DAY
+str14_month dt + INTERVAL '1.4' MONTH
+str14_year dt + INTERVAL '1.4' YEAR
+flt15_microsecond dt + INTERVAL 1.5e0 MICROSECOND
+flt15_second dt + INTERVAL 1.5e0 SECOND
+flt15_day dt + INTERVAL 1.5e0 DAY
+flt15_month dt + INTERVAL 1.5e0 MONTH
+flt15_year dt + INTERVAL 1.5e0 YEAR
+str1_microsecond dt + INTERVAL '1' MICROSECOND
+str1_second dt + INTERVAL '1' SECOND
+str1_day dt + INTERVAL '1' DAY
+str1_month dt + INTERVAL '1' MONTH
+str1_year dt + INTERVAL '1' YEAR
+strsp_microsecond dt + INTERVAL ' 1' MICROSECOND
+strsp_second dt + INTERVAL ' 1' SECOND
+strsp_day dt + INTERVAL ' 1' DAY
+strsp_month dt + INTERVAL ' 1' MONTH
+strsp_year dt + INTERVAL ' 1' YEAR
+strx_microsecond dt + INTERVAL '1x' MICROSECOND
+strx_second dt + INTERVAL '1x' SECOND
+strx_day dt + INTERVAL '1x' DAY
+strx_month dt + INTERVAL '1x' MONTH
+strx_year dt + INTERVAL '1x' YEAR
+x_microsecond dt + INTERVAL 'x' MICROSECOND
+x_second dt + INTERVAL 'x' SECOND
+x_day dt + INTERVAL 'x' DAY
+x_month dt + INTERVAL 'x' MONTH
+x_year dt + INTERVAL 'x' YEAR
+nul_microsecond dt + INTERVAL NULL MICROSECOND
+nul_second dt + INTERVAL NULL SECOND
+nul_day dt + INTERVAL NULL DAY
+nul_month dt + INTERVAL NULL MONTH
+nul_year dt + INTERVAL NULL YEAR
+zero_microsecond dt + INTERVAL 0 MICROSECOND
+zero_second dt + INTERVAL 0 SECOND
+zero_day dt + INTERVAL 0 DAY
+zero_month dt + INTERVAL 0 MONTH
+zero_year dt + INTERVAL 0 YEAR
+big31_microsecond dt + INTERVAL 2147483648 MICROSECOND
+big31_second dt + INTERVAL 2147483648 SECOND
+big31_day dt + INTERVAL 2147483648 DAY
+big31_month dt + INTERVAL 2147483648 MONTH
+big31_year dt + INTERVAL 2147483648 YEAR
+max63_microsecond dt + INTERVAL 9223372036854775807 MICROSECOND
+max63_second dt + INTERVAL 9223372036854775807 SECOND
+max63_day dt + INTERVAL 9223372036854775807 DAY
+max63_month dt + INTERVAL 9223372036854775807 MONTH
+max63_year dt + INTERVAL 9223372036854775807 YEAR
+min63_microsecond dt + INTERVAL -9223372036854775808 MICROSECOND
+min63_second dt + INTERVAL -9223372036854775808 SECOND
+min63_day dt + INTERVAL -9223372036854775808 DAY
+min63_month dt + INTERVAL -9223372036854775808 MONTH
+min63_year dt + INTERVAL -9223372036854775808 YEAR
+e20_microsecond dt + INTERVAL 1e20 MICROSECOND
+e20_second dt + INTERVAL 1e20 SECOND
+e20_day dt + INTERVAL 1e20 DAY
+e20_month dt + INTERVAL 1e20 MONTH
+e20_year dt + INTERVAL 1e20 YEAR
+empty_microsecond dt + INTERVAL '' MICROSECOND
+empty_second dt + INTERVAL '' SECOND
+empty_day dt + INTERVAL '' DAY
+empty_month dt + INTERVAL '' MONTH
+empty_year dt + INTERVAL '' YEAR
+strneg_microsecond dt + INTERVAL '-1' MICROSECOND
+strneg_second dt + INTERVAL '-1' SECOND
+strneg_day dt + INTERVAL '-1' DAY
+strneg_month dt + INTERVAL '-1' MONTH
+strneg_year dt + INTERVAL '-1' YEAR
+strplus_microsecond dt + INTERVAL '+1' MICROSECOND
+strplus_second dt + INTERVAL '+1' SECOND
+strplus_day dt + INTERVAL '+1' DAY
+strplus_month dt + INTERVAL '+1' MONTH
+strplus_year dt + INTERVAL '+1' YEAR
+dec25_microsecond dt + INTERVAL 2.5 MICROSECOND
+dec25_second dt + INTERVAL 2.5 SECOND
+dec25_day dt + INTERVAL 2.5 DAY
+dec25_month dt + INTERVAL 2.5 MONTH
+dec25_year dt + INTERVAL 2.5 YEAR
+decn25_microsecond dt + INTERVAL -2.5 MICROSECOND
+decn25_second dt + INTERVAL -2.5 SECOND
+decn25_day dt + INTERVAL -2.5 DAY
+decn25_month dt + INTERVAL -2.5 MONTH
+decn25_year dt + INTERVAL -2.5 YEAR
+str25_microsecond dt + INTERVAL '2.5' MICROSECOND
+str25_second dt + INTERVAL '2.5' SECOND
+str25_day dt + INTERVAL '2.5' DAY
+str25_month dt + INTERVAL '2.5' MONTH
+str25_year dt + INTERVAL '2.5' YEAR
+i_microsecond dt + INTERVAL i MICROSECOND
+i_second dt + INTERVAL i SECOND
+i_day dt + INTERVAL i DAY
+i_month dt + INTERVAL i MONTH
+i_year dt + INTERVAL i YEAR
+n_microsecond dt + INTERVAL n MICROSECOND
+n_second dt + INTERVAL n SECOND
+n_day dt + INTERVAL n DAY
+n_month dt + INTERVAL n MONTH
+n_year dt + INTERVAL n YEAR
+f_microsecond dt + INTERVAL f MICROSECOND
+f_second dt + INTERVAL f SECOND
+f_day dt + INTERVAL f DAY
+f_month dt + INTERVAL f MONTH
+f_year dt + INTERVAL f YEAR
+c130_hour_minute dt + INTERVAL '1:30' HOUR_MINUTE
+c130_day_hour dt + INTERVAL '1:30' DAY_HOUR
+c130_year_month dt + INTERVAL '1:30' YEAR_MONTH
+c130_day_microsecond dt + INTERVAL '1:30' DAY_MICROSECOND
+c130_second_microsecond dt + INTERVAL '1:30' SECOND_MICROSECOND
+c130_minute_second dt + INTERVAL '1:30' MINUTE_SECOND
+cn130_hour_minute dt + INTERVAL '-1:30' HOUR_MINUTE
+cn130_day_hour dt + INTERVAL '-1:30' DAY_HOUR
+cn130_year_month dt + INTERVAL '-1:30' YEAR_MONTH
+cn130_day_microsecond dt + INTERVAL '-1:30' DAY_MICROSECOND
+cn130_second_microsecond dt + INTERVAL '-1:30' SECOND_MICROSECOND
+cn130_minute_second dt + INTERVAL '-1:30' MINUTE_SECOND
+c123_hour_minute dt + INTERVAL '1:2:3' HOUR_MINUTE
+c123_day_hour dt + INTERVAL '1:2:3' DAY_HOUR
+c123_year_month dt + INTERVAL '1:2:3' YEAR_MONTH
+c123_day_microsecond dt + INTERVAL '1:2:3' DAY_MICROSECOND
+c123_second_microsecond dt + INTERVAL '1:2:3' SECOND_MICROSECOND
+c123_minute_second dt + INTERVAL '1:2:3' MINUTE_SECOND
+c1_hour_minute dt + INTERVAL '1' HOUR_MINUTE
+c1_day_hour dt + INTERVAL '1' DAY_HOUR
+c1_year_month dt + INTERVAL '1' YEAR_MONTH
+c1_day_microsecond dt + INTERVAL '1' DAY_MICROSECOND
+c1_second_microsecond dt + INTERVAL '1' SECOND_MICROSECOND
+c1_minute_second dt + INTERVAL '1' MINUTE_SECOND
+i1_hour_minute dt + INTERVAL 1 HOUR_MINUTE
+i1_day_hour dt + INTERVAL 1 DAY_HOUR
+i1_year_month dt + INTERVAL 1 YEAR_MONTH
+i1_day_microsecond dt + INTERVAL 1 DAY_MICROSECOND
+i1_second_microsecond dt + INTERVAL 1 SECOND_MICROSECOND
+i1_minute_second dt + INTERVAL 1 MINUTE_SECOND
+d15_hour_minute dt + INTERVAL 1.5 HOUR_MINUTE
+d15_day_hour dt + INTERVAL 1.5 DAY_HOUR
+d15_year_month dt + INTERVAL 1.5 YEAR_MONTH
+d15_day_microsecond dt + INTERVAL 1.5 DAY_MICROSECOND
+d15_second_microsecond dt + INTERVAL 1.5 SECOND_MICROSECOND
+d15_minute_second dt + INTERVAL 1.5 MINUTE_SECOND
+s15_hour_minute dt + INTERVAL '1.5' HOUR_MINUTE
+s15_day_hour dt + INTERVAL '1.5' DAY_HOUR
+s15_year_month dt + INTERVAL '1.5' YEAR_MONTH
+s15_day_microsecond dt + INTERVAL '1.5' DAY_MICROSECOND
+s15_second_microsecond dt + INTERVAL '1.5' SECOND_MICROSECOND
+s15_minute_second dt + INTERVAL '1.5' MINUTE_SECOND
+c12_hour_minute dt + INTERVAL '1 2' HOUR_MINUTE
+c12_day_hour dt + INTERVAL '1 2' DAY_HOUR
+c12_year_month dt + INTERVAL '1 2' YEAR_MONTH
+c12_day_microsecond dt + INTERVAL '1 2' DAY_MICROSECOND
+c12_second_microsecond dt + INTERVAL '1 2' SECOND_MICROSECOND
+c12_minute_second dt + INTERVAL '1 2' MINUTE_SECOND
+cdash_hour_minute dt + INTERVAL '1-2' HOUR_MINUTE
+cdash_day_hour dt + INTERVAL '1-2' DAY_HOUR
+cdash_year_month dt + INTERVAL '1-2' YEAR_MONTH
+cdash_day_microsecond dt + INTERVAL '1-2' DAY_MICROSECOND
+cdash_second_microsecond dt + INTERVAL '1-2' SECOND_MICROSECOND
+cdash_minute_second dt + INTERVAL '1-2' MINUTE_SECOND
+ctrail_hour_minute dt + INTERVAL '1:' HOUR_MINUTE
+ctrail_day_hour dt + INTERVAL '1:' DAY_HOUR
+ctrail_year_month dt + INTERVAL '1:' YEAR_MONTH
+ctrail_day_microsecond dt + INTERVAL '1:' DAY_MICROSECOND
+ctrail_second_microsecond dt + INTERVAL '1:' SECOND_MICROSECOND
+ctrail_minute_second dt + INTERVAL '1:' MINUTE_SECOND
+clead_hour_minute dt + INTERVAL ':1' HOUR_MINUTE
+clead_day_hour dt + INTERVAL ':1' DAY_HOUR
+clead_year_month dt + INTERVAL ':1' YEAR_MONTH
+clead_day_microsecond dt + INTERVAL ':1' DAY_MICROSECOND
+clead_second_microsecond dt + INTERVAL ':1' SECOND_MICROSECOND
+clead_minute_second dt + INTERVAL ':1' MINUTE_SECOND
+cdouble_hour_minute dt + INTERVAL '1::2' HOUR_MINUTE
+cdouble_day_hour dt + INTERVAL '1::2' DAY_HOUR
+cdouble_year_month dt + INTERVAL '1::2' YEAR_MONTH
+cdouble_day_microsecond dt + INTERVAL '1::2' DAY_MICROSECOND
+cdouble_second_microsecond dt + INTERVAL '1::2' SECOND_MICROSECOND
+cdouble_minute_second dt + INTERVAL '1::2' MINUTE_SECOND
+cdots_hour_minute dt + INTERVAL '1.2.3' HOUR_MINUTE
+cdots_day_hour dt + INTERVAL '1.2.3' DAY_HOUR
+cdots_year_month dt + INTERVAL '1.2.3' YEAR_MONTH
+cdots_day_microsecond dt + INTERVAL '1.2.3' DAY_MICROSECOND
+cdots_second_microsecond dt + INTERVAL '1.2.3' SECOND_MICROSECOND
+cdots_minute_second dt + INTERVAL '1.2.3' MINUTE_SECOND
+cfrac_hour_minute dt + INTERVAL '1 2:3:4.5678909' HOUR_MINUTE
+cfrac_day_hour dt + INTERVAL '1 2:3:4.5678909' DAY_HOUR
+cfrac_year_month dt + INTERVAL '1 2:3:4.5678909' YEAR_MONTH
+cfrac_day_microsecond dt + INTERVAL '1 2:3:4.5678909' DAY_MICROSECOND
+cfrac_second_microsecond dt + INTERVAL '1 2:3:4.5678909' SECOND_MICROSECOND
+cfrac_minute_second dt + INTERVAL '1 2:3:4.5678909' MINUTE_SECOND
+cneg12_hour_minute dt + INTERVAL '-1 2' HOUR_MINUTE
+cneg12_day_hour dt + INTERVAL '-1 2' DAY_HOUR
+cneg12_year_month dt + INTERVAL '-1 2' YEAR_MONTH
+cneg12_day_microsecond dt + INTERVAL '-1 2' DAY_MICROSECOND
+cneg12_second_microsecond dt + INTERVAL '-1 2' SECOND_MICROSECOND
+cneg12_minute_second dt + INTERVAL '-1 2' MINUTE_SECOND
+c1neg2_hour_minute dt + INTERVAL '1 -2' HOUR_MINUTE
+c1neg2_day_hour dt + INTERVAL '1 -2' DAY_HOUR
+c1neg2_year_month dt + INTERVAL '1 -2' YEAR_MONTH
+c1neg2_day_microsecond dt + INTERVAL '1 -2' DAY_MICROSECOND
+c1neg2_second_microsecond dt + INTERVAL '1 -2' SECOND_MICROSECOND
+c1neg2_minute_second dt + INTERVAL '1 -2' MINUTE_SECOND
+csp_hour_minute dt + INTERVAL ' 1:30 ' HOUR_MINUTE
+csp_day_hour dt + INTERVAL ' 1:30 ' DAY_HOUR
+csp_year_month dt + INTERVAL ' 1:30 ' YEAR_MONTH
+csp_day_microsecond dt + INTERVAL ' 1:30 ' DAY_MICROSECOND
+csp_second_microsecond dt + INTERVAL ' 1:30 ' SECOND_MICROSECOND
+csp_minute_second dt + INTERVAL ' 1:30 ' MINUTE_SECOND
+cx_hour_minute dt + INTERVAL '1:30x' HOUR_MINUTE
+cx_day_hour dt + INTERVAL '1:30x' DAY_HOUR
+cx_year_month dt + INTERVAL '1:30x' YEAR_MONTH
+cx_day_microsecond dt + INTERVAL '1:30x' DAY_MICROSECOND
+cx_second_microsecond dt + INTERVAL '1:30x' SECOND_MICROSECOND
+cx_minute_second dt + INTERVAL '1:30x' MINUTE_SECOND
+cbig_hour_minute dt + INTERVAL '1:99' HOUR_MINUTE
+cbig_day_hour dt + INTERVAL '1:99' DAY_HOUR
+cbig_year_month dt + INTERVAL '1:99' YEAR_MONTH
+cbig_day_microsecond dt + INTERVAL '1:99' DAY_MICROSECOND
+cbig_second_microsecond dt + INTERVAL '1:99' SECOND_MICROSECOND
+cbig_minute_second dt + INTERVAL '1:99' MINUTE_SECOND
+cfrac7_hour_minute dt + INTERVAL '1.1234567' HOUR_MINUTE
+cfrac7_day_hour dt + INTERVAL '1.1234567' DAY_HOUR
+cfrac7_year_month dt + INTERVAL '1.1234567' YEAR_MONTH
+cfrac7_day_microsecond dt + INTERVAL '1.1234567' DAY_MICROSECOND
+cfrac7_second_microsecond dt + INTERVAL '1.1234567' SECOND_MICROSECOND
+cfrac7_minute_second dt + INTERVAL '1.1234567' MINUTE_SECOND
+cneg15_hour_minute dt + INTERVAL '-1.5' HOUR_MINUTE
+cneg15_day_hour dt + INTERVAL '-1.5' DAY_HOUR
+cneg15_year_month dt + INTERVAL '-1.5' YEAR_MONTH
+cneg15_day_microsecond dt + INTERVAL '-1.5' DAY_MICROSECOND
+cneg15_second_microsecond dt + INTERVAL '-1.5' SECOND_MICROSECOND
+cneg15_minute_second dt + INTERVAL '-1.5' MINUTE_SECOND
+dn15_hour_minute dt + INTERVAL -1.5 HOUR_MINUTE
+dn15_day_hour dt + INTERVAL -1.5 DAY_HOUR
+dn15_year_month dt + INTERVAL -1.5 YEAR_MONTH
+dn15_day_microsecond dt + INTERVAL -1.5 DAY_MICROSECOND
+dn15_second_microsecond dt + INTERVAL -1.5 SECOND_MICROSECOND
+dn15_minute_second dt + INTERVAL -1.5 MINUTE_SECOND

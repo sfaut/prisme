@@ -775,6 +775,9 @@ fn repeatable(expr: &Expr) -> bool {
         | ExprKind::ToInteger(operand)
         | ExprKind::IsNull { operand, .. } => repeatable(operand),
         ExprKind::Cast(cast) => repeatable(&cast.operand),
+        ExprKind::DateArithmetic(arithmetic) => {
+            repeatable(&arithmetic.operand) && repeatable(&arithmetic.value)
+        }
         ExprKind::Compare { left, right, .. }
         | ExprKind::NotDistinct { left, right, .. }
         | ExprKind::Logical { left, right, .. }
