@@ -228,7 +228,7 @@ New rules of the report: `cast.target` (a target the output lacks in its version
 - a literal whose value both servers read alike goes through: a string of an integer without a line break before it, a valid date from the year 1000, a date and time of as many fractional digits as the target at most, a positive decimal;
 - an operand of unknown type, a function, is refused towards the targets whose values depend on the type (integers, `FLOAT`, `CHAR`, dates and times), until the types of the function catalog;
 - `COLLATE` written after the conversion towards MySQL gives the same collation, with the coercibility of an explicit `COLLATE`, which prevails over more operands: the same values wherever MariaDB gives one;
-- the negative zero of the floats (`CAST(-0e0 AS CHAR)` gives `'-0'` in MySQL, `'0'` in MariaDB) differs outside `CAST` as well, a literal and `CONCAT` included (section 6.3): no rule of `CAST`, the question concerns every float.
+- the negative zero of the floats (`CAST(-0e0 AS CHAR)` gives `'-0'` in MySQL, `'0'` in MariaDB) differs outside `CAST` as well, a literal and `CONCAT` included (section 6.3): no rule of `CAST`, the question concerns every float (`docs/QUESTIONS.md`, point 52).
 
 ### Step 6. MariaDB parser and emitter, first translation pairs
 
