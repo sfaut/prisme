@@ -1,7 +1,9 @@
-//! Profile of the user: first and last names, and the email address, which
-//! identifies the user and is changed by `prisme --setup` or `--user-email`.
+//! Profile of the user: first and last names, the email address, which
+//! identifies the user and is changed by `prisme --setup` or `--user-email`,
+//! and the read-only mode of the query sessions (`docs/V1.md`, section 2.4).
 //!
-//! The names are stored in the `users` table (see `migrations/0010_users_names.sql`).
+//! The settings are stored in the `users` table (see `migrations/0010_users_names.sql`
+//! and `migrations/0011_users_read_only_session.sql`).
 //! Synchronous functions (`rusqlite`), called from blocking tasks.
 
 use rusqlite::{Connection, params};
@@ -21,9 +23,12 @@ pub struct Profile {
     pub first_name: String,
     /// Last name, empty until the user fills it in.
     pub last_name: String,
+    /// Are the query sessions in read-only mode? On by default: the database
+    /// then refuses the writes too.
+    pub read_only_session: bool,
 }
 
-/// Change of the names requested by the user.
+/// Change of the profile requested by the user.
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct ProfileUpdate {
@@ -31,6 +36,8 @@ pub struct ProfileUpdate {
     pub first_name: String,
     /// New last name, trimmed, at most `NAME_MAX_CHARS` characters.
     pub last_name: String,
+    /// New read-only mode of the query sessions.
+    pub read_only_session: bool,
 }
 
 /// Errors of profile management.
@@ -70,20 +77,21 @@ pub fn check_update(update: &ProfileUpdate) -> Result<(String, String), ProfileE
 /// Reads the profile of user `user_id`.
 pub fn load(db: &Connection, user_id: i64) -> Result<Profile, ProfileError> {
     let profile = db.query_row(
-        "SELECT email, first_name, last_name FROM users WHERE id = ?1",
+        "SELECT email, first_name, last_name, read_only_session FROM users WHERE id = ?1",
         params![user_id],
         |row| {
             Ok(Profile {
                 email: row.get(0)?,
                 first_name: row.get(1)?,
                 last_name: row.get(2)?,
+                read_only_session: row.get(3)?,
             })
         },
     )?;
     Ok(profile)
 }
 
-/// Changes the names of user `user_id` and returns the updated profile.
+/// Changes the profile of user `user_id` and returns the updated profile.
 pub fn update(
     db: &Connection,
     user_id: i64,
@@ -91,8 +99,8 @@ pub fn update(
 ) -> Result<Profile, ProfileError> {
     let (first_name, last_name) = check_update(update)?;
     db.execute(
-        "UPDATE users SET first_name = ?1, last_name = ?2 WHERE id = ?3",
-        params![first_name, last_name, user_id],
+        "UPDATE users SET first_name = ?1, last_name = ?2, read_only_session = ?3 WHERE id = ?4",
+        params![first_name, last_name, update.read_only_session, user_id],
     )?;
     load(db, user_id)
 }
@@ -101,6 +109,15 @@ pub fn update(
 mod tests {
     use super::*;
     use crate::store;
+
+    /// Update with the given names, read-only mode unchanged from `read_only_session`.
+    fn update_of(first_name: &str, last_name: &str, read_only_session: bool) -> ProfileUpdate {
+        ProfileUpdate {
+            first_name: first_name.to_string(),
+            last_name: last_name.to_string(),
+            read_only_session,
+        }
+    }
 
     #[test]
     fn names_are_empty_until_filled() {
@@ -113,21 +130,22 @@ mod tests {
     }
 
     #[test]
-    fn update_trims_and_stores_the_names() {
+    fn read_only_sessions_are_on_by_default() {
+        let db = store::open_in_memory();
+        let user_id = store::ensure_user(&db, "a@example.com").unwrap();
+        assert!(load(&db, user_id).unwrap().read_only_session);
+    }
+
+    #[test]
+    fn update_trims_and_stores_the_names_and_the_read_only_mode() {
         let db = store::open_in_memory();
         let user_id = store::ensure_user(&db, "a@example.com").unwrap();
 
-        let profile = update(
-            &db,
-            user_id,
-            &ProfileUpdate {
-                first_name: " Sébastien ".to_string(),
-                last_name: "Faut".to_string(),
-            },
-        )
-        .unwrap();
+        let profile = update(&db, user_id, &update_of(" Sébastien ", "Faut", false)).unwrap();
         assert_eq!(profile.first_name, "Sébastien");
         assert_eq!(profile.last_name, "Faut");
+        assert!(!profile.read_only_session);
+        assert!(!load(&db, user_id).unwrap().read_only_session);
     }
 
     #[test]
@@ -137,14 +155,7 @@ mod tests {
 
         let too_long = "é".repeat(NAME_MAX_CHARS + 1);
         assert!(matches!(
-            update(
-                &db,
-                user_id,
-                &ProfileUpdate {
-                    first_name: too_long,
-                    last_name: String::new(),
-                },
-            ),
+            update(&db, user_id, &update_of(&too_long, "", true)),
             Err(ProfileError::NameTooLong {
                 field: "first_name"
             })

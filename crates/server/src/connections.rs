@@ -334,6 +334,20 @@ pub fn delete(db: &Connection, user_id: i64, id: i64) -> Result<bool, Connection
     Ok(deleted == 1)
 }
 
+/// Statement that puts a connection in read-only mode: the database then
+/// refuses the writes of its transactions (`docs/V1.md`, section 2.4).
+const READ_ONLY_STATEMENT: &str = "SET SESSION transaction_read_only = ON";
+
+/// Adds the read-only mode to the initialisation of each connection of a query
+/// session, when `read_only` is set. It comes last, after the statements of the
+/// connection itself, so that they cannot switch it off.
+pub fn with_read_only(mut target: MysqlTarget, read_only: bool) -> MysqlTarget {
+    if read_only {
+        target.init_statements.push(READ_ONLY_STATEMENT.to_string());
+    }
+    target
+}
+
 /// Loads the connection settings, password decrypted, of connection `id`.
 ///
 /// Returns `None` if the connection does not exist or belongs to another user.
@@ -691,5 +705,26 @@ mod tests {
         assert!(list(&db, user_id).unwrap()[0].show_system_schemas);
         assert_eq!(session_timeout(&db, user_id, id).unwrap(), Some(30));
         assert_eq!(session_timeout(&db, user_id + 1, id).unwrap(), None);
+    }
+
+    #[test]
+    fn read_only_comes_last_and_only_when_asked() {
+        let target = MysqlTarget {
+            host: "127.0.0.1".to_string(),
+            port: 3306,
+            username: "root".to_string(),
+            password: SecretString::from("secret"),
+            database_name: String::new(),
+            init_statements: vec!["SET NAMES utf8mb4".to_string()],
+        };
+        let read_only = with_read_only(target.clone(), true);
+        assert_eq!(
+            read_only.init_statements,
+            ["SET NAMES utf8mb4", READ_ONLY_STATEMENT]
+        );
+        assert_eq!(
+            with_read_only(target, false).init_statements,
+            ["SET NAMES utf8mb4"]
+        );
     }
 }

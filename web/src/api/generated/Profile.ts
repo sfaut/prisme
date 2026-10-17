@@ -15,4 +15,9 @@ first_name: string,
 /**
  * Last name, empty until the user fills it in.
  */
-last_name: string, };
+last_name: string, 
+/**
+ * Are the query sessions in read-only mode? On by default: the database
+ * then refuses the writes too.
+ */
+read_only_session: boolean, };

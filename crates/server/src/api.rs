@@ -15,8 +15,8 @@
 //! | `GET /api/connections/{id}/catalog` | Databases, tables and columns (see `explorer.rs`).            |
 //! | `GET /api/settings`                 | Settings of the user, with the allowed choices.               |
 //! | `PUT /api/settings`                 | Changes the settings, returns the updated settings.           |
-//! | `GET /api/profile`                  | Profile of the user: names and email address.                 |
-//! | `PUT /api/profile`                  | Changes the names, returns the updated profile.               |
+//! | `GET /api/profile`                  | Profile of the user: names, email address, read-only sessions. |
+//! | `PUT /api/profile`                  | Changes the names and the read-only sessions, returns the profile. |
 //! | `POST /api/beautify`                | Beautifies SQL (keywords in capitals...).                     |
 //! | `POST /api/analyze`                 | Analyses the editor's text (see `analyze.rs`).                |
 //! | `GET /api/dialects/{flavor}/keywords` | Keywords of the dialect (`?version=`: those of the version). |
@@ -214,10 +214,14 @@ async fn query_socket(
     upgrade: WebSocketUpgrade,
 ) -> Result<Response, ApiError> {
     let user_id = user.id;
-    let target = state
-        .with_db(move |db, key| connections::load_target(db, key, user_id, id))
-        .await?
-        .ok_or(ApiError::NotFound)?;
+    let (target, read_only) = state
+        .with_db(move |db, key| {
+            let target = connections::load_target(db, key, user_id, id)?;
+            let read_only = profile::load(db, user_id)?.read_only_session;
+            Ok::<_, ApiError>((target, read_only))
+        })
+        .await?;
+    let target = connections::with_read_only(target.ok_or(ApiError::NotFound)?, read_only);
     Ok(upgrade.on_upgrade(move |socket| async move {
         let on_end = Box::new(|| {});
         query_session::start(socket, state, user_id, target, None, Duration::ZERO, on_end);
@@ -241,14 +245,20 @@ async fn editor_session(
         .await?
         .ok_or(ApiError::NotFound)?
         .ok_or_else(|| ApiError::BadRequest("no connection chosen for this editor".to_string()))?;
-    let (target, minutes) = state
+    let (target, minutes, read_only) = state
         .with_db(move |db, key| {
             let target = connections::load_target(db, key, user_id, connection_id)?;
             let minutes = connections::session_timeout(db, user_id, connection_id)?;
-            Ok::<_, connections::ConnectionsError>(target.zip(minutes))
+            let read_only = profile::load(db, user_id)?.read_only_session;
+            Ok::<_, ApiError>(
+                target
+                    .zip(minutes)
+                    .map(|(target, minutes)| (target, minutes, read_only)),
+            )
         })
         .await?
         .ok_or(ApiError::NotFound)?;
+    let target = connections::with_read_only(target, read_only);
     let keep_alive = Duration::from_secs(u64::from(minutes) * 60);
     Ok(upgrade.on_upgrade(move |socket| async move {
         let sessions = Arc::clone(&state.sessions);

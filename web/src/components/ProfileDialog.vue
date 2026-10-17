@@ -1,5 +1,6 @@
 <!--
-  Window of the user's profile: first and last names, saved on the server.
+  Window of the user's profile: first and last names, and the read-only mode
+  of the query sessions, saved on the server.
   The email address is shown but not editable: it identifies the user, and
   `prisme --setup` or `--user-email` change it.
   Window, fields and buttons of Prisme (`ui/`).
@@ -26,7 +27,7 @@ const profile = useProfileStore()
 /**
  * Current input: the names, as typed.
  */
-const form = reactive({ first_name: '', last_name: '' })
+const form = reactive({ first_name: '', last_name: '', read_only_session: true })
 
 /**
  * Email address of the user, shown above the names.
@@ -59,6 +60,7 @@ watch(open, async (isOpen) => {
   }
   form.first_name = profile.profile?.first_name ?? ''
   form.last_name = profile.profile?.last_name ?? ''
+  form.read_only_session = profile.profile?.read_only_session ?? true
   email.value = profile.profile?.email ?? ''
 })
 
@@ -69,7 +71,7 @@ async function save(): Promise<void> {
   saving.value = true
   error.value = null
   try {
-    await profile.save({ first_name: form.first_name, last_name: form.last_name })
+    await profile.save({ ...form })
     open.value = false
   } catch (failure) {
     error.value = failure instanceof ApiError ? failure.message : String(failure)
@@ -87,6 +89,15 @@ async function save(): Promise<void> {
       </ui-field>
       <ui-field label="Prénom">
         <ui-input v-model="form.first_name" :maxlength="100" autocomplete="given-name" />
+      </ui-field>
+      <ui-field label="Requêtes">
+        <label
+          class="flex items-center gap-gap text-ui text-fg-strong"
+          title="La base refuse les écritures des sessions, en plus du contrôle de Prisme"
+        >
+          <input v-model="form.read_only_session" type="checkbox" class="size-icon accent-accent" />
+          Sessions en lecture seule
+        </label>
       </ui-field>
       <ui-field label="E-mail">
         <span class="truncate text-fg-muted" :title="email">{{ email }}</span>
