@@ -114,7 +114,8 @@ reserved:
   - INOUT
   - INSENSITIVE
   - INSERT
-  - INTERSECT
+  - name: INTERSECT
+    since: "8.0.31"
   - INTERVAL
   - INTO
   - IO_AFTER_GTIDS
@@ -132,7 +133,7 @@ reserved:
   - name: LAST_VALUE
     since: "8.0"
   - name: LATERAL
-    since: "8.0"
+    since: "8.0.14"
   - name: LEAD
     since: "8.0"
   - LEADING
