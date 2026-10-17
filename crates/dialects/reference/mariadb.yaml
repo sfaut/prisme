@@ -864,7 +864,7 @@ functions:
       - name: POSITION
         grammar: true
         touching: true
-        mysql: same
+        mysql: { rule: function.binary-argument }
       - name: QUOTE
         mysql: same
       - name: REGEXP_INSTR
@@ -913,7 +913,7 @@ functions:
       - name: TRIM
         grammar: true
         touching: true
-        mysql: same
+        mysql: { rule: function.binary-argument }
       - name: UCASE
         mysql: same
       - name: UNHEX  # an invalid hexadecimal string: an error in MySQL, NULL in MariaDB

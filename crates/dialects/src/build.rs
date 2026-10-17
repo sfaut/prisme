@@ -27,6 +27,7 @@ mod group;
 mod interval;
 mod now;
 mod scope;
+mod string;
 mod tables;
 mod temporal;
 pub(crate) mod types;

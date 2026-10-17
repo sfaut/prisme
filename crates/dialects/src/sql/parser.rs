@@ -18,6 +18,7 @@ mod cast;
 mod expr;
 mod from;
 mod interval;
+mod string;
 mod temporal;
 
 #[cfg(test)]

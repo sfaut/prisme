@@ -168,6 +168,18 @@ fn tree(expr: &Expr) -> String {
         }
         ExprKind::Cast(cast) => format!("(cast {} {:?})", tree(&cast.operand), cast.target),
         ExprKind::Extract(call) => format!("(Extract {:?} {})", call.unit, tree(&call.operand)),
+        ExprKind::Trim(call) => {
+            let mut parts = vec!["Trim".to_string()];
+            parts.extend(call.side.map(|side| format!("{side:?}")));
+            parts.extend(call.pattern.iter().map(tree));
+            parts.push(tree(&call.operand));
+            format!("({})", parts.join(" "))
+        }
+        ExprKind::Position(call) => format!(
+            "(Position {} {})",
+            tree(&call.substring),
+            tree(&call.string)
+        ),
         ExprKind::TimestampDiff(call) => format!(
             "(TimestampDiff {:?} {} {})",
             call.unit,
@@ -728,7 +740,7 @@ fn a_word_of_value_calls_its_function_without_parentheses() {
 #[test]
 fn constructs_not_read_yet_are_explicit_errors() {
     for (text, faulty) in [
-        ("SELECT TRIM(LEADING 'x' FROM a) FROM t", "TRIM"),
+        ("SELECT WEIGHT_STRING(a AS CHAR(3)) FROM t", "WEIGHT_STRING"),
         ("SELECT a FROM t FOR UPDATE", "FOR"),
         ("SELECT GROUP_CONCAT(a LIMIT 1) FROM t", "LIMIT"),
         (
@@ -1415,4 +1427,39 @@ fn reads_extract_of_a_simple_or_a_compound_unit() {
     ] {
         assert!(parse(text, &mysql()).is_err(), "{text}");
     }
+}
+
+#[test]
+fn reads_trim_and_position_in_their_forms() {
+    assert_eq!(expr("TRIM(s)"), "(Trim s)");
+    assert_eq!(expr("trim(both from s)"), "(Trim Both s)");
+    assert_eq!(expr("TRIM('x' FROM s)"), "(Trim 'x' s)");
+    assert_eq!(
+        expr("TRIM(LEADING 'x' FROM CONCAT(s, 'x'))"),
+        "(Trim Leading 'x' (concat s 'x'))"
+    );
+    assert_eq!(expr("TRIM(TRAILING FROM s)"), "(Trim Trailing s)");
+    // The pattern and the string are whole expressions.
+    assert_eq!(
+        expr("TRIM('a' = 'a' FROM s = 'x')"),
+        "(Trim (= 'a' 'a') (= s 'x'))"
+    );
+    assert_eq!(expr("POSITION('b' IN s)"), "(Position 'b' s)");
+    assert_eq!(
+        expr("position(1 + 1 in s = 'a')"),
+        "(Position (+ 1 1) (= s 'a'))"
+    );
+    for text in [
+        "SELECT TRIM(BOTH)",
+        "SELECT TRIM(BOTH 'x' s)",
+        "SELECT TRIM(FROM s)",
+        "SELECT TRIM('x' FROM)",
+        "SELECT POSITION('a' = 'a' IN s)",
+        "SELECT POSITION('a', s)",
+        "SELECT POSITION('a' IN s, 2)",
+    ] {
+        assert!(parse(text, &mysql()).is_err(), "{text}");
+    }
+    // A space after the name calls a stored function.
+    assert_eq!(expr("TRIM (s)"), "(stored trim s)");
 }

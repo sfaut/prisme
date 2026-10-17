@@ -918,7 +918,7 @@ functions:
       - name: POSITION
         grammar: true
         touching: true
-        mariadb: same
+        mariadb: { rule: function.binary-argument }
       - name: QUOTE
         mariadb: same
       - name: REGEXP_INSTR
@@ -965,7 +965,7 @@ functions:
       - name: TRIM
         grammar: true
         touching: true
-        mariadb: same
+        mariadb: { rule: function.binary-argument }
       - name: UCASE
         mariadb: same
       - name: UNHEX  # an invalid hexadecimal string: an error in MySQL, NULL in MariaDB

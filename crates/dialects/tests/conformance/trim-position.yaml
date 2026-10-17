@@ -1,0 +1,40 @@
+# `TRIM` and `POSITION`, written in their form: the same values in both
+# dialects for character strings, numbers and dates
+# (crates/probe/cases/trim-position.txt).
+setup:
+  - DROP TABLE IF EXISTS trim_position
+  - >-
+    CREATE TABLE trim_position (id INT NOT NULL PRIMARY KEY, s VARCHAR(30) NULL,
+    p VARCHAR(5) NULL, d DATE NULL, n DECIMAL(5, 2) NULL)
+  - >-
+    INSERT INTO trim_position VALUES
+    (1, '  ab  ', ' ', '2024-05-06', 12.50), (2, 'xxabxx', 'x', '2024-12-31', -1.00),
+    (3, 'xyxyabxyx', 'xy', '1000-01-01', 0.00), (4, 'ééaéé', 'é', '2024-02-29', 1.25),
+    (5, 'aXbx', 'X', NULL, NULL), (6, '', '', NULL, NULL), (7, NULL, NULL, NULL, NULL)
+cases:
+  - from: mysql
+    sql: >-
+      SELECT TRIM(s) AS a, TRIM(BOTH FROM s) AS b, TRIM(LEADING FROM s) AS c,
+      TRIM(TRAILING FROM s) AS e, TRIM(p FROM s) AS g, TRIM(BOTH p FROM s) AS h,
+      TRIM(LEADING p FROM s) AS k, trim(trailing p from s) AS l, TRIM('' FROM s) AS m,
+      TRIM(n) AS o, TRIM(d) AS q, TRIM('0' FROM n) AS r, TRIM('a' = 'a' FROM '1a1') AS t
+      FROM trim_position ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT TRIM(s) AS a, TRIM(BOTH FROM s) AS b, TRIM(LEADING FROM s) AS c,
+      TRIM(TRAILING FROM s) AS e, TRIM(p FROM s) AS g, TRIM(BOTH p FROM s) AS h,
+      TRIM(LEADING p FROM s) AS k, trim(trailing p from s) AS l, TRIM('' FROM s) AS m,
+      TRIM(n) AS o, TRIM(d) AS q, TRIM('0' FROM n) AS r, TRIM('a' = 'a' FROM '1a1') AS t
+      FROM trim_position ORDER BY id
+  - from: mysql
+    sql: >-
+      SELECT POSITION(p IN s) AS a, POSITION('b' IN s) AS b, POSITION('B' IN s) AS c,
+      POSITION('' IN s) AS e, POSITION('05' IN d) AS g, position(2 in n) AS h,
+      POSITION(1 + 1 IN '123') AS k, POSITION('a' IN s = s) AS l
+      FROM trim_position ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT POSITION(p IN s) AS a, POSITION('b' IN s) AS b, POSITION('B' IN s) AS c,
+      POSITION('' IN s) AS e, POSITION('05' IN d) AS g, position(2 in n) AS h,
+      POSITION(1 + 1 IN '123') AS k, POSITION('a' IN s = s) AS l
+      FROM trim_position ORDER BY id

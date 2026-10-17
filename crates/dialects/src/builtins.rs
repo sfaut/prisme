@@ -111,8 +111,8 @@ pub(crate) enum Rule {
     /// `AES_ENCRYPT`, `AES_DECRYPT`: their optional arguments.
     #[serde(rename = "function.aes")]
     Aes,
-    /// `REPLACE`, `SUBSTRING_INDEX`, `LOCATE` and `INSTR` with a binary
-    /// argument (`emit::charset` module).
+    /// `REPLACE`, `SUBSTRING_INDEX`, `LOCATE`, `INSTR`, `TRIM` and
+    /// `POSITION` with a binary argument (`emit::charset` module).
     #[serde(rename = "function.binary-argument")]
     BinaryArgument,
     /// `BIT_COUNT` of a binary string.

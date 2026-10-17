@@ -26,6 +26,7 @@ mod origin;
 mod plan;
 mod schema;
 mod statement;
+mod string;
 
 pub use cast::{Cast, CastForm, CastTarget, CharTarget, CharWord, Charset, IntegerWord};
 pub use error::PlanError;
@@ -49,3 +50,4 @@ pub use statement::{
     Assignment, Delete, Explain, Insert, SetVariables, Statement, Update, UseDatabase,
     VariableAssignment,
 };
+pub use string::{Position, Trim, TrimSide};

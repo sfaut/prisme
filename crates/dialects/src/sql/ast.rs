@@ -8,7 +8,7 @@
 
 use prisme_plan::{
     AliasForm, CastForm, CastTarget, DateArithmeticForm, Direction, FrameUnits, Ident, IndexHint,
-    JoinForm, LimitForm, Span, TimeUnit, ValuesForm,
+    JoinForm, LimitForm, Span, TimeUnit, TrimSide, ValuesForm,
 };
 
 /// Statement.
@@ -521,6 +521,10 @@ pub enum ExprKind {
     TimestampDiff(Box<TimestampDiffCall>),
     /// `EXTRACT(unit FROM x)`.
     Extract(Box<ExtractCall>),
+    /// `TRIM([[side] [pattern] FROM] x)`.
+    Trim(Box<TrimCall>),
+    /// `POSITION(substring IN string)`.
+    Position(Box<PositionCall>),
 }
 
 /// `CAST` or `CONVERT`.
@@ -567,6 +571,26 @@ pub struct ExtractCall {
     pub operand: Expr,
 }
 
+/// `TRIM([[side] [pattern] FROM] x)`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrimCall {
+    /// Side trimmed, when written.
+    pub side: Option<TrimSide>,
+    /// String removed, when written.
+    pub pattern: Option<Expr>,
+    /// String trimmed.
+    pub operand: Expr,
+}
+
+/// `POSITION(substring IN string)`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PositionCall {
+    /// String searched for.
+    pub substring: Expr,
+    /// String searched in.
+    pub string: Expr,
+}
+
 impl FunctionCall {
     /// Name of the function, in capitals.
     pub fn upper_name(&self) -> String {
@@ -602,6 +626,12 @@ impl Expr {
             ExprKind::DateArithmetic(call) => vec![&call.operand, &call.value],
             ExprKind::TimestampDiff(call) => vec![&call.start, &call.end],
             ExprKind::Extract(call) => vec![&call.operand],
+            ExprKind::Trim(call) => call
+                .pattern
+                .iter()
+                .chain(std::iter::once(&call.operand))
+                .collect(),
+            ExprKind::Position(call) => vec![&call.substring, &call.string],
             ExprKind::Binary { left, right, .. } => vec![left, right],
             ExprKind::Between {
                 operand, low, high, ..

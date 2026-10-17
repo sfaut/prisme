@@ -58,7 +58,8 @@ impl StringKind {
 impl Emitter<'_> {
     /// `REPLACE`, `SUBSTRING_INDEX`, `LOCATE` and `INSTR`: natively, or with
     /// their string read as binary when the output reads it in its own
-    /// character set and an argument is a binary string, or an error.
+    /// character set and an argument is a binary string, or an error. `TRIM`
+    /// and `POSITION` are nodes of their own (`string` module).
     pub(super) fn binary_argument(&mut self, rule: Rule, expr: &Expr, call: &FunctionCall) {
         let upper = call.name.value.to_ascii_uppercase();
         let (construct, subject, others): (Construct, usize, &[usize]) = match upper.as_str() {

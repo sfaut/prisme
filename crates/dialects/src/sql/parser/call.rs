@@ -26,13 +26,11 @@ use crate::sql::ast::{
 use crate::versions::Construct;
 
 /// Functions whose arguments have a syntax of their own, not read yet.
-const SPECIAL_SYNTAX: [&str; 7] = [
+const SPECIAL_SYNTAX: [&str; 5] = [
     "CHAR",
     "GET_FORMAT",
     "JSON_TABLE",
     "JSON_VALUE",
-    "POSITION",
-    "TRIM",
     "WEIGHT_STRING",
 ];
 
@@ -85,6 +83,8 @@ impl Parser<'_> {
             "TIMESTAMPADD" if !stored => return self.timestamp_add(start),
             "TIMESTAMPDIFF" if !stored => return self.timestamp_diff(start),
             "EXTRACT" if !stored => return self.extract(start),
+            "TRIM" if !stored => return self.trim(start),
+            "POSITION" if !stored => return self.position(start),
             _ => {}
         }
         if !stored && SPECIAL_SYNTAX.contains(&upper.as_str()) {

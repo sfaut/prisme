@@ -1,7 +1,8 @@
-# Rule `function.binary-argument`: `REPLACE`, `SUBSTRING_INDEX`, `LOCATE` and
-# `INSTR` of a character string with a binary argument. MySQL reads them in
-# the character set of the string from 8.0.19 (`REPLACE`, `SUBSTRING_INDEX`)
-# and 8.0.26 (`LOCATE`, `INSTR`), MariaDB and the earlier versions as binary:
+# Rule `function.binary-argument`: `REPLACE`, `SUBSTRING_INDEX`, `TRIM`,
+# `LOCATE`, `INSTR` and `POSITION` of a character string with a binary
+# argument. MySQL reads them in the character set of the string from 8.0.19
+# (`REPLACE`, `SUBSTRING_INDEX`, `TRIM`) and 8.0.26 (`LOCATE`, `INSTR`,
+# `POSITION`), MariaDB and the earlier versions as binary:
 # the string read as binary towards MySQL, an error towards MariaDB and for
 # `LOCATE` from a start (crates/probe/cases/string-binary.txt).
 setup:
@@ -17,13 +18,15 @@ cases:
   - from: mariadb
     sql: >-
       SELECT REPLACE(s, b, '-') AS a, SUBSTRING_INDEX(s, b, 1) AS c, LOCATE(b, s) AS e,
-      INSTR(s, b) AS h, REPLACE(s, 'b', '-') AS k, LOCATE('B', s, 3) AS l
-      FROM binary_argument ORDER BY id
+      INSTR(s, b) AS h, REPLACE(s, 'b', '-') AS k, LOCATE('B', s, 3) AS l,
+      TRIM(b FROM s) AS m, TRIM(LEADING b FROM s) AS o, POSITION(b IN s) AS q,
+      TRIM(b FROM b) AS r FROM binary_argument ORDER BY id
   - from: mysql
     inputs: mysql < 8.0.19
     sql: >-
       SELECT REPLACE(s, b, '-') AS a, SUBSTRING_INDEX(s, b, 1) AS c, LOCATE(b, s) AS e,
-      INSTR(s, b) AS h FROM binary_argument ORDER BY id
+      INSTR(s, b) AS h, TRIM(b FROM s) AS k, POSITION(b IN s) AS l
+      FROM binary_argument ORDER BY id
   - from: mysql
     sql: >-
       SELECT REPLACE(b, s, '-') AS a, LOCATE(s, b) AS c, REPLACE(s, 'b', '-') AS e
@@ -33,8 +36,16 @@ cases:
     sql: SELECT REPLACE(s, b, '-') FROM binary_argument
     refused: function.binary-argument
   - from: mysql
+    inputs: mysql >= 8.0.19
+    sql: SELECT TRIM(TRAILING b FROM s) FROM binary_argument
+    refused: function.binary-argument
+  - from: mysql
     inputs: mysql >= 8.0.26
     sql: SELECT LOCATE(b, s) FROM binary_argument
+    refused: function.binary-argument
+  - from: mysql
+    inputs: mysql >= 8.0.26
+    sql: SELECT POSITION(b IN s) FROM binary_argument
     refused: function.binary-argument
   - from: mariadb
     outputs: mysql >= 8.0.26

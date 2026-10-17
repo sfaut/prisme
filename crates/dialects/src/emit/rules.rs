@@ -781,6 +781,12 @@ pub(super) fn repeatable(expr: &Expr) -> bool {
         }
         ExprKind::TimestampDiff(diff) => repeatable(&diff.start) && repeatable(&diff.end),
         ExprKind::Extract(extract) => repeatable(&extract.operand),
+        ExprKind::Trim(trim) => {
+            trim.pattern.as_ref().is_none_or(repeatable) && repeatable(&trim.operand)
+        }
+        ExprKind::Position(position) => {
+            repeatable(&position.substring) && repeatable(&position.string)
+        }
         ExprKind::Compare { left, right, .. }
         | ExprKind::NotDistinct { left, right, .. }
         | ExprKind::Logical { left, right, .. }

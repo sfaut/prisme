@@ -2322,3 +2322,70 @@ fn a_binary_argument_is_read_as_the_input_reads_it() {
         );
     }
 }
+
+#[test]
+fn trim_and_position_keep_their_form() {
+    let text = concat!(
+        "SELECT TRIM(s) AS a, TRIM(BOTH FROM s) AS b, TRIM('x' FROM s) AS c, ",
+        "TRIM(LEADING 'x' FROM s) AS e, TRIM(TRAILING s FROM 'xax') AS h, ",
+        "POSITION('b' IN s) AS j, POSITION(de + 1 IN s) AS k, POSITION(vb IN vb) AS l FROM g"
+    );
+    for (input, output) in [
+        (mysql(), mariadb()),
+        (mariadb(), mysql()),
+        (mysql(), mysql()),
+    ] {
+        let (sql, rules) = transpiled(text, input, self::output(output));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{rules:?}");
+    }
+    // The keywords are written in capitals, a comparison before `IN`
+    // between parentheses.
+    let (sql, _) = transpiled(
+        "SELECT trim(both 'x' from s) AS a, position(('a' = s) in s) AS b FROM g",
+        mariadb(),
+        output(mysql()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT TRIM(BOTH 'x' FROM s) AS a, POSITION(('a' = s) IN s) AS b FROM g"
+    );
+}
+
+#[test]
+fn trim_and_position_read_a_binary_argument_as_the_input() {
+    let mysql_8_4 = mysql_at(8, 4, 0);
+    let (sql, rules) = transpiled(
+        "SELECT TRIM(BOTH vb FROM s) AS a, POSITION(vb IN s) AS b, TRIM(vb FROM vb) AS c FROM g",
+        mariadb(),
+        output(mysql_8_4),
+    );
+    assert_eq!(
+        sql,
+        concat!(
+            "SELECT TRIM(BOTH vb FROM CAST(s AS BINARY)) AS a, ",
+            "POSITION(vb IN CAST(s AS BINARY)) AS b, TRIM(vb FROM vb) AS c FROM g"
+        )
+    );
+    assert!(
+        rules.iter().all(|rule| *rule == "function.binary-argument") && !rules.is_empty(),
+        "{rules:?}"
+    );
+    // Towards MariaDB, the character set of the string is unknown.
+    for text in [
+        "SELECT TRIM(vb FROM s) FROM g",
+        "SELECT POSITION(vb IN s) FROM g",
+        "SELECT TRIM(LOWER(s) FROM s) FROM g",
+    ] {
+        assert_eq!(
+            errors(text, mysql_8_4, output(mariadb())),
+            ["function.binary-argument"],
+            "{text}"
+        );
+    }
+    // Between two versions of MySQL, as written.
+    let text = "SELECT TRIM(vb FROM s) AS a FROM g";
+    let (sql, rules) = transpiled(text, mysql_at(8, 0, 18), output(mysql_8_4));
+    assert_eq!(sql, text);
+    assert!(rules.is_empty(), "{rules:?}");
+}

@@ -19,7 +19,10 @@
 
 use prisme_types::{DataType, IntegerType, Type, Value};
 
-use crate::{Cast, DateArithmetic, Extract, Ident, Plan, PlanError, SortKey, Span, TimestampDiff};
+use crate::{
+    Cast, DateArithmetic, Extract, Ident, Plan, PlanError, Position, SortKey, Span, TimestampDiff,
+    Trim,
+};
 
 /// Expression of the plan, with its type.
 #[derive(Debug, Clone, PartialEq)]
@@ -183,6 +186,10 @@ pub enum ExprKind {
     TimestampDiff(Box<TimestampDiff>),
     /// Part of a date or a time (`EXTRACT`).
     Extract(Box<Extract>),
+    /// String without a pattern at its start or its end (`TRIM`).
+    Trim(Box<Trim>),
+    /// Position of a substring in a string (`POSITION`).
+    Position(Box<Position>),
     /// Number to boolean, true when non-zero (MySQL family: `WHERE a`,
     /// `2 AND 3`).
     ToBoolean(Box<Expr>),
@@ -692,6 +699,18 @@ impl Expr {
         Self::new(ExprKind::Extract(Box::new(extract)), ty)
     }
 
+    /// String without a pattern at its start or its end, of the type the
+    /// dialect gives it.
+    pub fn trim(trim: Trim, ty: Type) -> Self {
+        Self::new(ExprKind::Trim(Box::new(trim)), ty)
+    }
+
+    /// Position of a substring in a string, of the type the dialect gives
+    /// it.
+    pub fn position(position: Position, ty: Type) -> Self {
+        Self::new(ExprKind::Position(Box::new(position)), ty)
+    }
+
     /// Number to boolean, true when non-zero; unknown when the number is NULL.
     pub fn to_boolean(operand: Expr) -> Self {
         let ty = boolean(operand.ty.nullable);
@@ -736,6 +755,12 @@ impl Expr {
             }
             ExprKind::TimestampDiff(diff) => vec![&mut diff.start, &mut diff.end],
             ExprKind::Extract(extract) => vec![&mut extract.operand],
+            ExprKind::Trim(trim) => trim
+                .pattern
+                .iter_mut()
+                .chain(std::iter::once(&mut trim.operand))
+                .collect(),
+            ExprKind::Position(position) => vec![&mut position.substring, &mut position.string],
             ExprKind::Between {
                 operand, low, high, ..
             } => vec![operand.as_mut(), low.as_mut(), high.as_mut()],

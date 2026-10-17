@@ -130,6 +130,14 @@ impl Emitter<'_> {
             self.extract(expr, extract, min);
             return;
         }
+        if let ExprKind::Trim(trim) = &expr.kind {
+            self.trim(expr, trim);
+            return;
+        }
+        if let ExprKind::Position(position) = &expr.kind {
+            self.position(expr, position);
+            return;
+        }
         let (level, left, right) = levels(expr);
         let parenthesized = level < min;
         if parenthesized {
