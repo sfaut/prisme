@@ -162,10 +162,6 @@ impl Builder<'_> {
     pub(super) fn expr(&mut self, expr: &ast::Expr, scope: &Scope) -> Result<Expr, BuildError> {
         let built = match &expr.kind {
             ExprKind::Nested(inner) => return self.expr(inner, scope),
-            ExprKind::Column(name) => {
-                let (column, ty) = self.resolve(name, scope)?;
-                Expr::column(column, ty)
-            }
             ExprKind::Literal(literal) => self.literal(literal, expr)?,
             ExprKind::Unary { op, operand } => {
                 let operand_span = operand.span;
@@ -273,15 +269,19 @@ impl Builder<'_> {
             | ExprKind::Exists(_)
             | ExprKind::InSubquery { .. }
             | ExprKind::Quantified { .. }
-            | ExprKind::Row(_) => self.query_expr(expr, scope)?,
+            | ExprKind::Row(_)
+            | ExprKind::Column(_)
+            | ExprKind::Function(_) => self.other_expr(expr, scope)?,
         };
         Ok(built.with_span(expr.span))
     }
 
-    /// Subquery or row: out of `expr`, whose frame the recursion of deep
-    /// expressions repeats.
-    fn query_expr(&mut self, expr: &ast::Expr, scope: &Scope) -> Result<Expr, BuildError> {
+    /// Column, call, subquery or row: out of `expr`, whose frame the
+    /// recursion of deep expressions repeats.
+    fn other_expr(&mut self, expr: &ast::Expr, scope: &Scope) -> Result<Expr, BuildError> {
         Ok(match &expr.kind {
+            ExprKind::Column(name) => self.column(name, scope)?,
+            ExprKind::Function(call) => self.call(call, expr.span, scope)?,
             ExprKind::Subquery(query) => {
                 let plan = self.subquery(query, scope)?;
                 let columns = plan.schema().len();
@@ -342,7 +342,7 @@ impl Builder<'_> {
                     .collect::<Result<Vec<_>, _>>()?;
                 Expr::row(built)
             }
-            _ => unreachable!("called on subqueries and rows"),
+            _ => unreachable!("called on columns, calls, subqueries and rows"),
         })
     }
 

@@ -5,10 +5,13 @@
 //! group, aggregate functions ignore NULLs except `COUNT(*)`. Without grouping
 //! keys, the node gives one row even on an empty input, so its results can be
 //! NULL even on a non-null column; with keys, an empty input gives no row.
+//! `WITH ROLLUP` adds a row per level of super-aggregate, its keys NULL.
 
 use prisme_types::{DataType, Type};
 
-use crate::{AliasForm, Column, Expr, Ident, NamedExpr, Plan, Schema, Span};
+use crate::{
+    AliasForm, Column, Expr, Ident, NamedExpr, Plan, Schema, SortKey, SortReference, Span,
+};
 
 /// One row per group.
 #[derive(Debug, Clone, PartialEq)]
@@ -18,6 +21,11 @@ pub struct Aggregate {
     /// Grouping keys (`GROUP BY`); empty for a single group over the whole
     /// input.
     pub keys: Vec<NamedExpr>,
+    /// How each key designates its value, as written: an expression, an
+    /// alias or a position of the select list.
+    pub references: Vec<SortReference>,
+    /// `WITH ROLLUP`: super-aggregate rows, from the last key to the first.
+    pub rollup: bool,
     /// Aggregate functions, output after the keys.
     pub aggregates: Vec<NamedAggregate>,
     /// Position in the input.
@@ -44,6 +52,14 @@ pub struct AggregateCall {
     pub args: Vec<Expr>,
     /// `DISTINCT` written in the call.
     pub distinct: bool,
+    /// Order of the values (`GROUP_CONCAT(a ORDER BY b)`).
+    pub order_by: Vec<SortKey>,
+    /// Separator of the values (`GROUP_CONCAT(a SEPARATOR ';')`), when
+    /// written.
+    pub separator: Option<String>,
+    /// Value of a column neither grouped nor aggregated (MySQL family): any
+    /// value of the group, written as the column alone (`ANY_VALUE`).
+    pub implicit: bool,
     /// Data type of the result, given by the function catalog of the
     /// dialect (`SUM` of an `INT` is a `DECIMAL` in MySQL).
     pub data_type: DataType,
@@ -79,10 +95,15 @@ impl AggregateCall {
 }
 
 impl Aggregate {
-    /// Keys, then aggregate functions.
+    /// Keys, then aggregate functions. The keys of super-aggregate rows
+    /// are NULL.
     pub(crate) fn schema(&self) -> Schema {
         let grouped = !self.keys.is_empty();
-        let keys = self.keys.iter().map(NamedExpr::column);
+        let keys = self.keys.iter().map(|key| {
+            let mut column = key.column();
+            column.ty.nullable |= self.rollup;
+            column
+        });
         let aggregates = self.aggregates.iter().map(|aggregate| Column {
             qualifier: None,
             name: aggregate.name.clone(),
@@ -119,6 +140,9 @@ mod tests {
                 function: Ident::new("SUM"),
                 args: vec![column("a", false)],
                 distinct: false,
+                order_by: Vec::new(),
+                separator: None,
+                implicit: false,
                 data_type: DataType::Decimal(DecimalType::new(32, 0).unwrap()),
                 on_empty: OnEmpty::Null,
                 span: None,
@@ -135,6 +159,9 @@ mod tests {
                 function: Ident::new("COUNT"),
                 args: Vec::new(),
                 distinct: false,
+                order_by: Vec::new(),
+                separator: None,
+                implicit: false,
                 data_type: DataType::Integer(IntegerType::signed(IntegerSize::Big)),
                 on_empty: OnEmpty::Value,
                 span: None,
@@ -156,9 +183,12 @@ mod tests {
                 (Ident::new("b"), Type::nullable(int())),
             ],
         ));
+        let references = vec![SortReference::Expression; keys.len()];
         Aggregate {
             input: Box::new(table),
             keys,
+            references,
+            rollup: false,
             aggregates: vec![sum(), count()],
             span: None,
         }

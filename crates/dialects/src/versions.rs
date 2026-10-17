@@ -57,6 +57,8 @@ pub enum Construct {
     /// Set operation between parentheses as the right operand of another:
     /// `a UNION (b UNION c)`.
     NestedSetOperation,
+    /// `ORDER BY` of a query grouped `WITH ROLLUP`.
+    RollupOrderBy,
     /// `EXPLAIN FORMAT=TREE`.
     ExplainFormatTree,
     /// `value MEMBER OF (array)`.
@@ -193,6 +195,7 @@ impl Construct {
             Self::DerivedColumnList => "column list of a derived table",
             Self::DerivedOuterReference => "outer reference in a derived table",
             Self::NestedSetOperation => "set operation between parentheses as a right operand",
+            Self::RollupOrderBy => "`ORDER BY` with `WITH ROLLUP`",
             Self::ExplainFormatTree => "`EXPLAIN FORMAT=TREE`",
             Self::MemberOf => "`MEMBER OF`",
             Self::ExplainAnalyze => "`EXPLAIN ANALYZE`",

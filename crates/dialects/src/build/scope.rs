@@ -218,6 +218,28 @@ impl Scope {
         Ok((reference, first.ty.clone()))
     }
 
+    /// Column `column`, as resolved, designates, under a name that tells
+    /// its position in the source: two names of the same column give the
+    /// same reference. `None` when `column` is no column of the source (an
+    /// outer reference, a column the block computes).
+    pub(super) fn canonical(&self, column: &ColumnRef) -> Option<ColumnRef> {
+        let mut found = self.entries.iter().filter(|entry| {
+            same(&entry.reference.name, &column.name)
+                && match &column.qualifier {
+                    None => entry.bare,
+                    Some(qualifier) => entry.belongs_to(qualifier),
+                }
+        });
+        let first = found.next()?;
+        if found.next().is_some() {
+            return None;
+        }
+        Some(ColumnRef {
+            qualifier: None,
+            name: Ident::new(format!("#{}", first.position)),
+        })
+    }
+
     /// Positions in the schema of the source of the columns of `*` (all of
     /// them) or of `t.*`, with their value as a column of the select list;
     /// `None` when `t` designates no column.

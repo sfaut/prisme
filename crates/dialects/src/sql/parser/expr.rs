@@ -247,7 +247,7 @@ impl Parser<'_> {
     }
 
     /// `|`.
-    fn bit_or(&mut self) -> Result<Expr, ParseError> {
+    pub(super) fn bit_or(&mut self) -> Result<Expr, ParseError> {
         self.binary_level(Self::bit_and, &[(Punct::Pipe, BinaryOp::BitOr)], &[])
     }
 
@@ -490,9 +490,6 @@ impl Parser<'_> {
                 return Ok(construct);
             }
             let next = self.peek_at(1).map(|next| &next.kind);
-            if matches!(next, Some(TokenKind::Punct(Punct::LeftParen))) {
-                return Err(self.unsupported("function calls", token.span));
-            }
             if matches!(next, Some(TokenKind::String { .. })) {
                 return Err(self.unsupported("typed literals and charset introducers", token.span));
             }
@@ -520,6 +517,16 @@ impl Parser<'_> {
                     token.span,
                 ));
             }
+        }
+        let before_paren = self
+            .peek_at(1)
+            .is_some_and(|next| next.kind == TokenKind::Punct(Punct::LeftParen));
+        if before_paren && self.at_any_keyword(&["ANY", "SOME", "ALL"]) {
+            // A quantifier out of a comparison: `a <=> ANY (...)`.
+            return Err(self.expected("an expression"));
+        }
+        if self.at_call() {
+            return self.call();
         }
         let name: ObjectName = self.object_name(3)?;
         let span = name.span;

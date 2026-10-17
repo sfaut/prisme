@@ -5,9 +5,11 @@
 //! The emitter writes the form of the input when the output dialect accepts
 //! it (section 2.3), otherwise another form, an emulation or an error, each
 //! one with its step in the report. The plan of a `SELECT` is folded back
-//! into a block, `Limit(Distinct(Project(Sort(Filter(source)))))`; the
-//! sources of a `FROM` (`source` module) and the set operations put the
-//! parentheses their nesting needs.
+//! into a block,
+//! `Limit(Distinct(Project(Sort(Window(Filter(Aggregate(Filter(source))))))))`;
+//! the sources of a `FROM` (`source` module) and the set operations put the
+//! parentheses their nesting needs; the calls, the aggregation and the
+//! windows are written by the `call` module.
 //!
 //! Literals are written as in the input when the output reads them the same
 //! way (same SQL mode for the quotes and the backslashes), otherwise in a
@@ -15,6 +17,7 @@
 //! written again, each one before the first construct that follows it in
 //! the input.
 
+mod call;
 mod expr;
 mod source;
 
@@ -22,13 +25,14 @@ mod source;
 mod tests;
 
 use prisme_plan::{
-    AliasForm, Direction, Ident, Limit, LimitForm, Nulls, Plan, Project, ProjectItem, SetOperation,
-    SetOperator, Sort, SortReference, Span, Statement, Values, ValuesForm, With,
+    Aggregate, AliasForm, Direction, Filter, Ident, Limit, LimitForm, Nulls, Plan, Project,
+    ProjectItem, SetOperation, SetOperator, Sort, SortKey, SortReference, Span, Statement, Values,
+    ValuesForm, Window, With,
 };
 use prisme_types::Value;
 
 use crate::Dialect;
-use crate::build::is_dual;
+use crate::build::{is_dual, is_internal_name};
 use crate::keywords::is_reserved;
 use crate::lexer::{CommentKind, SqlMode};
 use crate::report::{Step, StepKind, Untranslatable};
@@ -53,6 +57,8 @@ pub(crate) struct Source<'a> {
     pub(crate) text: &'a str,
     /// SQL mode it was read with.
     pub(crate) mode: SqlMode,
+    /// Dialect it was written in.
+    pub(crate) dialect: Dialect,
     /// Comments, in order.
     pub(crate) comments: &'a [(Span, CommentKind)],
 }
@@ -75,6 +81,8 @@ pub(crate) fn emit(statement: &Statement, output: &OutputDialect, source: &Sourc
         output,
         source,
         next_comment: 0,
+        quiet: 0,
+        blocks: Vec::new(),
         steps: Vec::new(),
         errors: Vec::new(),
     };
@@ -104,6 +112,12 @@ struct Emitter<'a> {
     source: &'a Source<'a>,
     /// Next comment of the input to write.
     next_comment: usize,
+    /// Above 0, the comments wait: a part of the input is written away from
+    /// its place.
+    quiet: usize,
+    /// Columns the `SELECT` blocks being written compute for themselves,
+    /// the innermost last.
+    blocks: Vec<call::Internal>,
     /// Steps of the report.
     steps: Vec<Step>,
     /// Untranslatable constructs.
@@ -120,8 +134,14 @@ struct Block<'p> {
     project: &'p Project,
     /// `ORDER BY`, on the source.
     sort: Option<&'p Sort>,
+    /// Window functions and `WINDOW`.
+    window: Option<&'p Window>,
+    /// `HAVING`.
+    having: Option<&'p Filter>,
+    /// `GROUP BY` and aggregate functions.
+    aggregate: Option<&'p Aggregate>,
     /// `WHERE`.
-    filter: Option<&'p prisme_plan::Filter>,
+    filter: Option<&'p Filter>,
     /// `FROM`.
     source: &'p Plan,
 }
@@ -155,6 +175,27 @@ impl<'p> Block<'p> {
             }
             _ => None,
         };
+        let window = match node {
+            Plan::Window(window) => {
+                node = &window.input;
+                Some(window)
+            }
+            _ => None,
+        };
+        let having = match node {
+            Plan::Filter(filter) if matches!(filter.input.as_ref(), Plan::Aggregate(_)) => {
+                node = &filter.input;
+                Some(filter)
+            }
+            _ => None,
+        };
+        let aggregate = match node {
+            Plan::Aggregate(aggregate) => {
+                node = &aggregate.input;
+                Some(aggregate)
+            }
+            _ => None,
+        };
         let filter = match node {
             Plan::Filter(filter) => {
                 node = &filter.input;
@@ -167,6 +208,9 @@ impl<'p> Block<'p> {
             distinct,
             project,
             sort,
+            window,
+            having,
+            aggregate,
             filter,
             source: node,
         })
@@ -200,6 +244,9 @@ impl Emitter<'_> {
 
     /// Writes the comments of the input placed before `span`, when known.
     fn at(&mut self, span: Option<Span>) {
+        if self.quiet > 0 {
+            return;
+        }
         if let Some(span) = span {
             self.comments_before(span.start);
         }
@@ -359,8 +406,16 @@ impl Emitter<'_> {
         }
     }
 
-    /// `SELECT` block.
+    /// `SELECT` block, the columns it computes for itself written as what
+    /// they stand for.
     fn select(&mut self, block: &Block<'_>, names_matter: bool) {
+        self.blocks.push(call::Internal::new(block));
+        self.select_clauses(block, names_matter);
+        self.blocks.pop();
+    }
+
+    /// Clauses of a `SELECT` block.
+    fn select_clauses(&mut self, block: &Block<'_>, names_matter: bool) {
         self.at(block.project.span);
         self.write("SELECT ");
         if block.distinct {
@@ -408,6 +463,25 @@ impl Emitter<'_> {
             self.clause(" WHERE ");
             self.expr(&filter.predicate, 0);
         }
+        if let Some(aggregate) = block.aggregate {
+            self.group_by(aggregate, block.project);
+            if aggregate.rollup && block.sort.is_some() && !self.has(Construct::RollupOrderBy) {
+                let message = format!(
+                    "{} has no {}: not supported yet by Prisme",
+                    self.target(),
+                    Construct::RollupOrderBy.label()
+                );
+                self.error("rollup.order", &message, block.project.span);
+            }
+        }
+        if let Some(having) = block.having {
+            self.at(having.span);
+            self.clause(" HAVING ");
+            self.expr(&having.predicate, 0);
+        }
+        if let Some(window) = block.window {
+            self.window_clause(&window.definitions);
+        }
         if let Some(sort) = block.sort {
             self.order_by(sort, Some(block.project));
         }
@@ -420,8 +494,15 @@ impl Emitter<'_> {
     /// from the text of its expression: when the text written differs from
     /// the text read, an alias gives the name.
     fn keep_implicit_name(&mut self, expr: &prisme_plan::Expr, name: &Ident, start: usize) {
-        let written = match &expr.kind {
-            prisme_plan::ExprKind::Column(column) => column.name.value.clone(),
+        let value = self.naming_value(expr);
+        let written = match &value.kind {
+            // An aggregate or window function the block computes is named
+            // after its text.
+            prisme_plan::ExprKind::Column(column)
+                if column.qualifier.is_some() || !is_internal_name(&column.name.value) =>
+            {
+                column.name.value.clone()
+            }
             prisme_plan::ExprKind::Literal(Value::Text(value)) => value.clone(),
             _ => self.out[start..].to_string(),
         };
@@ -562,12 +643,16 @@ impl Emitter<'_> {
     fn order_by(&mut self, sort: &Sort, project: Option<&Project>) {
         self.at(sort.keys.first().and_then(|key| key.expr.span));
         self.clause(" ORDER BY ");
-        let mut first = true;
-        for key in &sort.keys {
-            if !first {
+        self.sort_keys(&sort.keys, project);
+    }
+
+    /// Keys of an `ORDER BY`, separated by commas; those of a `SELECT`
+    /// block designate a column of `project` as written.
+    fn sort_keys(&mut self, keys: &[SortKey], project: Option<&Project>) {
+        for (index, key) in keys.iter().enumerate() {
+            if index > 0 {
                 self.write(", ");
             }
-            first = false;
             let smallest = Nulls::as_smallest(key.direction);
             if key.nulls != smallest {
                 // NULL is the smallest value in the MySQL family: a key
@@ -597,7 +682,7 @@ impl Emitter<'_> {
     }
 
     /// Value of a sort key, by alias or position when written so.
-    fn sort_value(&mut self, key: &prisme_plan::SortKey, project: Option<&Project>) {
+    fn sort_value(&mut self, key: &SortKey, project: Option<&Project>) {
         let items = project.map_or(&[][..], |project| project.items.as_slice());
         let found = items
             .iter()

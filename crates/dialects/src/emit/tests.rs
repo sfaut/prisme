@@ -203,6 +203,7 @@ fn strings_follow_the_sql_mode_of_the_output() {
     let source = Source {
         text: "",
         mode: SqlMode::default(),
+        dialect: Dialect::MySql,
         comments: &[],
     };
     let mut emitter = Emitter {
@@ -210,6 +211,8 @@ fn strings_follow_the_sql_mode_of_the_output() {
         output: &ansi,
         source: &source,
         next_comment: 0,
+        quiet: 0,
+        blocks: Vec::new(),
         steps: Vec::new(),
         errors: Vec::new(),
     };
@@ -255,6 +258,7 @@ fn nulls_placed_against_the_rule_of_the_output_are_emulated() {
     let source = Source {
         text: "",
         mode: SqlMode::default(),
+        dialect: Dialect::MySql,
         comments: &[],
     };
     let emitted = emit(&Statement::Query(plan), &output(mysql()), &source);
@@ -405,4 +409,86 @@ fn constructs_without_emulation_are_explicit_errors() {
         ),
         ["set.operator"]
     );
+}
+
+#[test]
+fn calls_grouping_and_windows_keep_their_form() {
+    for text in [
+        "SELECT a, COUNT(*) FROM t GROUP BY a",
+        "SELECT a AS x, SUM(b) AS s FROM t WHERE a > 1 GROUP BY x HAVING SUM(b) > 10 ORDER BY s DESC LIMIT 5",
+        "SELECT a, b FROM t GROUP BY 1, 2 WITH ROLLUP",
+        "SELECT a, b FROM t GROUP BY a",
+        "SELECT a + 1, MAX(b) FROM t GROUP BY a + 1",
+        "SELECT count(DISTINCT b), GROUP_CONCAT(b ORDER BY a DESC SEPARATOR ';') FROM t",
+        "SELECT a FROM t GROUP BY a HAVING COUNT(*) > 1 ORDER BY COUNT(*)",
+        "SELECT a, (SELECT MAX(c) FROM u WHERE u.a = t.a) FROM t GROUP BY a",
+        "SELECT NOW(), f(a), db.g(1), SUM (a), `LEFT`(b) FROM t",
+        "SELECT a, ROW_NUMBER() OVER (PARTITION BY b ORDER BY a ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS r FROM t",
+        "SELECT SUM(a) OVER w, RANK() OVER (w ORDER BY b) FROM t WINDOW w AS (PARTITION BY a)",
+        "SELECT SUM(a) OVER w FROM t WINDOW w AS (ORDER BY a RANGE UNBOUNDED PRECEDING)",
+        "SELECT a, SUM(SUM(b)) OVER (ORDER BY a) FROM t GROUP BY a",
+        "SELECT COUNT(*) OVER () FROM t",
+        "SELECT a, COUNT(*) FROM t /* f */ GROUP BY a",
+    ] {
+        let (sql, rules) = transpiled(text, mysql(), output(mysql()));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{text}: {rules:?}");
+    }
+}
+
+#[test]
+fn windows_take_the_forms_mariadb_reads() {
+    for (text, expected, rule) in [
+        (
+            "SELECT RANK() OVER () AS r FROM t",
+            "SELECT RANK() OVER (ORDER BY NULL) AS r FROM t",
+            "window.order",
+        ),
+        (
+            "SELECT LAG(a) OVER w AS r FROM t WINDOW w AS (PARTITION BY b)",
+            "SELECT LAG(a) OVER (w ORDER BY NULL) AS r FROM t WINDOW w AS (PARTITION BY b)",
+            "window.order",
+        ),
+        (
+            "SELECT SUM(a) OVER w1 AS s FROM t WINDOW w1 AS (w2), w2 AS (ORDER BY a)",
+            "SELECT SUM(a) OVER w1 AS s FROM t WINDOW w2 AS (ORDER BY a), w1 AS (w2)",
+            "window.definitions",
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, mysql(), output(mariadb()));
+        assert_eq!(sql, expected);
+        assert_eq!(rules, [rule], "{text}");
+    }
+    // The aggregate functions both dialects share go through.
+    let text = "SELECT a, COUNT(*), GROUP_CONCAT(b SEPARATOR ',') FROM t GROUP BY a WITH ROLLUP";
+    assert_eq!(transpiled(text, mysql(), output(mariadb())).0, text);
+}
+
+#[test]
+fn what_the_output_lacks_is_an_explicit_error() {
+    for (text, output, rule) in [
+        (
+            "SELECT LAG(a, 1, 0) OVER (ORDER BY a) FROM t",
+            output(mariadb()),
+            "window.default",
+        ),
+        ("SELECT NOW()", output(mariadb()), "function.dialect"),
+        (
+            "SELECT JSON_ARRAYAGG(a) FROM t",
+            output(mariadb()),
+            "function.dialect",
+        ),
+        (
+            "SELECT a, COUNT(*) FROM t GROUP BY a WITH ROLLUP ORDER BY a",
+            output(mariadb()),
+            "rollup.order",
+        ),
+        (
+            "SELECT a, COUNT(*) FROM t GROUP BY a WITH ROLLUP ORDER BY a",
+            output(mysql_at(8, 0, 11)),
+            "rollup.order",
+        ),
+    ] {
+        assert_eq!(errors(text, mysql(), output), [rule], "{text}");
+    }
 }

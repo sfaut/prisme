@@ -374,3 +374,254 @@ fn lists_the_tables_of_joins_derived_tables_and_subqueries() {
         .collect();
     assert_eq!(names, ["a", "b", "t", "u"]);
 }
+
+/// Type of each column of `text`, written in `dialect`: its data type and
+/// whether it is nullable.
+fn column_types(text: &str, dialect: Dialect) -> Vec<(DataType, bool)> {
+    plan_in(text, dialect)
+        .unwrap_or_else(|error| panic!("{text}: {error}"))
+        .schema()
+        .columns
+        .into_iter()
+        .map(|column| (column.ty.data_type, column.ty.nullable))
+        .collect()
+}
+
+/// Aggregation of the plan of `text`, under its projection, `HAVING` and
+/// windows.
+fn aggregation(text: &str) -> prisme_plan::Aggregate {
+    let mut node = plan(text);
+    loop {
+        node = match node {
+            Plan::Aggregate(aggregate) => return aggregate,
+            Plan::Project(Project { input, .. })
+            | Plan::Filter(Filter { input, .. })
+            | Plan::Sort(Sort { input, .. })
+            | Plan::Window(prisme_plan::Window { input, .. }) => *input,
+            other => panic!("{text}: no aggregation in {other:?}"),
+        };
+    }
+}
+
+#[test]
+fn types_the_aggregate_functions_as_measured() {
+    let int = |size| DataType::Integer(IntegerType::signed(size));
+    let bigint_unsigned = DataType::Integer(IntegerType::unsigned(IntegerSize::Big));
+    assert_eq!(
+        column_types(
+            "SELECT COUNT(*), SUM(x), AVG(x), MIN(k), MAX(x), BIT_OR(x), STD(x) FROM a",
+            Dialect::MySql
+        ),
+        [
+            (int(IntegerSize::Big), false),
+            (types::decimal(32, 0), true),
+            (types::decimal(14, 4), true),
+            (int(IntegerSize::Int), true),
+            (int(IntegerSize::Int), true),
+            (bigint_unsigned, false),
+            (types::double(), true),
+        ]
+    );
+    // With keys, a group is never empty: the functions of a column that
+    // is not null are not null.
+    assert_eq!(
+        column_types("SELECT k, SUM(x), MIN(k) FROM a GROUP BY k", Dialect::MySql),
+        [
+            (int(IntegerSize::Int), true),
+            (types::decimal(32, 0), false),
+            (int(IntegerSize::Int), true),
+        ]
+    );
+    assert_eq!(
+        column_types("SELECT x FROM a GROUP BY x WITH ROLLUP", Dialect::MySql),
+        [(int(IntegerSize::Int), true)]
+    );
+}
+
+#[test]
+fn types_the_window_functions_after_the_dialect() {
+    let text = "SELECT ROW_NUMBER() OVER (), PERCENT_RANK() OVER (ORDER BY x), \
+                LAG(x) OVER (ORDER BY x), SUM(x) OVER () FROM a";
+    let bigint = DataType::Integer(IntegerType::signed(IntegerSize::Big));
+    let bigint_unsigned = DataType::Integer(IntegerType::unsigned(IntegerSize::Big));
+    let int = DataType::Integer(IntegerType::signed(IntegerSize::Int));
+    assert_eq!(
+        column_types(text, Dialect::MySql),
+        [
+            (bigint_unsigned, false),
+            (types::double(), false),
+            (bigint.clone(), true),
+            (types::decimal(32, 0), true),
+        ]
+    );
+    assert_eq!(
+        column_types(text, Dialect::MariaDb),
+        [
+            (bigint, false),
+            (types::double(), true),
+            (int, true),
+            (types::decimal(32, 0), true),
+        ]
+    );
+}
+
+#[test]
+fn a_grouped_block_reads_its_keys_and_its_aggregates() {
+    let Plan::Project(project) = plan("SELECT k FROM a WHERE x > 1 GROUP BY k HAVING COUNT(*) > 1")
+    else {
+        panic!("projection expected");
+    };
+    let Plan::Filter(having) = project.input.as_ref() else {
+        panic!("`HAVING` expected");
+    };
+    let Plan::Aggregate(aggregate) = having.input.as_ref() else {
+        panic!("aggregation expected");
+    };
+    assert!(matches!(aggregate.input.as_ref(), Plan::Filter(_)));
+    assert_eq!(aggregate.keys[0].name, Ident::new("#key1"));
+    let ProjectItem::Expr(item) = &project.items[0] else {
+        panic!("expression expected");
+    };
+    assert!(matches!(&item.expr.kind, ExprKind::Column(column) if column.name.value == "#key1"));
+    // The same call is read once; a column equal to a key reads the key.
+    assert_eq!(
+        aggregation("SELECT SUM(x), SUM(a.x) + 1 FROM a")
+            .aggregates
+            .len(),
+        1
+    );
+    assert!(
+        aggregation("SELECT k + 1 FROM a GROUP BY k + 1")
+            .aggregates
+            .is_empty()
+    );
+    assert!(
+        aggregation("SELECT a.k FROM a GROUP BY k")
+            .aggregates
+            .is_empty()
+    );
+    // A column neither grouped nor aggregated reads any value of its group.
+    let aggregate = aggregation("SELECT k, x FROM a GROUP BY k");
+    assert!(aggregate.aggregates[0].call.implicit);
+}
+
+#[test]
+fn a_grouping_key_designates_a_position_a_column_or_an_alias() {
+    let references = |text| aggregation(text).references;
+    assert_eq!(
+        references("SELECT x AS z, COUNT(*) FROM a GROUP BY z, 1"),
+        [SortReference::Alias, SortReference::Position]
+    );
+    // The columns of the source come before the aliases: `k` is `a.k`.
+    let aggregate = aggregation("SELECT x AS k FROM a GROUP BY k");
+    assert_eq!(aggregate.references, [SortReference::Expression]);
+    assert!(aggregate.aggregates[0].call.implicit);
+    // `HAVING` reads the aliases of the select list.
+    let text = "SELECT k AS z, SUM(x) AS s FROM a GROUP BY k HAVING s > 10 AND z > 0";
+    assert!(plan_in(text, Dialect::MySql).is_ok());
+}
+
+#[test]
+fn aggregate_and_window_functions_stay_in_their_clauses() {
+    for (text, message) in [
+        (
+            "SELECT x FROM a WHERE SUM(x) > 1",
+            "invalid use of the aggregate function `SUM` in `WHERE`",
+        ),
+        (
+            "SELECT SUM(SUM(x)) FROM a",
+            "invalid use of the aggregate function `SUM` in the arguments of an aggregate function",
+        ),
+        (
+            "SELECT SUM(x) FROM a GROUP BY SUM(x)",
+            "invalid use of the aggregate function `SUM` in `GROUP BY`",
+        ),
+        (
+            "SELECT SUM(x) AS s FROM a GROUP BY s",
+            "grouping on `s`, which reads an aggregate or window function",
+        ),
+        (
+            "SELECT * FROM a GROUP BY k",
+            "`*` in a grouped query: not supported yet by Prisme",
+        ),
+        (
+            "SELECT x FROM a HAVING x > 1",
+            "`HAVING` without grouping: not supported yet by Prisme",
+        ),
+        (
+            "SELECT ROW_NUMBER() FROM a",
+            "`ROW_NUMBER` needs a window (`OVER`)",
+        ),
+        (
+            "SELECT x FROM a WHERE ROW_NUMBER() OVER () > 1",
+            "window function `ROW_NUMBER` in `WHERE`",
+        ),
+        (
+            "SELECT k, ROW_NUMBER() OVER () AS r FROM a GROUP BY k HAVING r > 1",
+            "window function in `HAVING`",
+        ),
+        (
+            "SELECT MEDIAN(x) OVER () FROM a",
+            "`MEDIAN` with `OVER`: not supported yet by Prisme",
+        ),
+        (
+            "SELECT `#key1` FROM (SELECT 1 AS `#key1`) AS d",
+            "column `#key1`: the names `#key...`, `#aggregate...` and `#window...` are reserved by Prisme",
+        ),
+    ] {
+        assert_eq!(error(text), message, "{text}");
+    }
+    // A window function reads the aggregation of its block.
+    let text = "SELECT SUM(SUM(x)) OVER (ORDER BY k) FROM a GROUP BY k";
+    assert!(plan_in(text, Dialect::MySql).is_ok());
+}
+
+#[test]
+fn a_named_window_follows_the_rules_of_the_dialect() {
+    let Plan::Project(project) =
+        plan("SELECT SUM(x) OVER w FROM a WINDOW w AS (ROWS UNBOUNDED PRECEDING)")
+    else {
+        panic!("projection expected");
+    };
+    let Plan::Window(window) = project.input.as_ref() else {
+        panic!("window expected");
+    };
+    assert_eq!(window.definitions.len(), 1);
+    let ExprKind::Window(call) = &window.functions[0].expr.kind else {
+        panic!("window function expected");
+    };
+    assert!(call.frame.is_some());
+    for (text, message) in [
+        (
+            "SELECT SUM(x) OVER (w) FROM a WINDOW w AS (ROWS UNBOUNDED PRECEDING)",
+            "window `w` has a frame: no window can complete it",
+        ),
+        (
+            "SELECT SUM(x) OVER (w ORDER BY x) FROM a WINDOW w AS (ORDER BY k)",
+            "window `w` has an `ORDER BY`: a window that completes it has none of its own",
+        ),
+        (
+            "SELECT SUM(x) OVER (w PARTITION BY x) FROM a WINDOW w AS (ORDER BY k)",
+            "a window that completes window `w` has no `PARTITION BY` of its own",
+        ),
+        (
+            "SELECT 1 FROM a WINDOW w AS (), w AS ()",
+            "window `w` is defined twice",
+        ),
+        (
+            "SELECT 1 FROM a WINDOW w AS (w)",
+            "the named windows complete each other in a cycle",
+        ),
+        ("SELECT SUM(x) OVER v FROM a", "unknown window `v`"),
+    ] {
+        assert_eq!(error(text), message, "{text}");
+    }
+    // MySQL reads the window a definition completes anywhere in the clause,
+    // MariaDB before it.
+    let text = "SELECT SUM(x) OVER w1 FROM a WINDOW w1 AS (w2), w2 AS (ORDER BY k)";
+    assert!(plan_in(text, Dialect::MySql).is_ok());
+    assert_eq!(
+        plan_in(text, Dialect::MariaDb).unwrap_err().message,
+        "window `w2` is not defined before window `w1`"
+    );
+}

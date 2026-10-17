@@ -23,7 +23,7 @@ pub use source::{
 };
 pub use unary::{
     Distinct, Extend, Filter, Limit, LimitForm, NamedExpr, Project, ProjectItem, Sort, Wildcard,
-    Window,
+    Window, WindowDefinition,
 };
 
 use crate::{Schema, Span};

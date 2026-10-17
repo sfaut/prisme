@@ -14,6 +14,7 @@ use prisme_plan::{
 use prisme_types::Value;
 
 use super::Emitter;
+use crate::build::is_internal_name;
 use crate::report::StepKind;
 
 /// Level of `NOT`.
@@ -84,6 +85,13 @@ impl Emitter<'_> {
     pub(super) fn expr(&mut self, expr: &Expr, min: u8) {
         if let ExprKind::ToBoolean(inner) | ExprKind::ToInteger(inner) = &expr.kind {
             self.expr(inner, min);
+            return;
+        }
+        if let ExprKind::Column(column) = &expr.kind
+            && column.qualifier.is_none()
+            && is_internal_name(&column.name.value)
+            && self.internal(expr, &column.name, min)
+        {
             return;
         }
         self.at(expr.span);
@@ -246,6 +254,8 @@ impl Emitter<'_> {
             | ExprKind::InSubquery { .. }
             | ExprKind::Quantified { .. }
             | ExprKind::Row(_) => self.query_kind(expr, left),
+            ExprKind::Function(call) => self.function_call(expr, call),
+            ExprKind::Window(call) => self.window_call(expr, call),
             _ => {
                 self.error(
                     "expr.kind",
@@ -347,7 +357,7 @@ impl Emitter<'_> {
 
     /// String between single quotes, escaped for the SQL mode of the
     /// output.
-    fn string(&self, value: &str) -> String {
+    pub(super) fn string(&self, value: &str) -> String {
         let mut quoted = String::with_capacity(value.len() + 2);
         quoted.push('\'');
         for character in value.chars() {

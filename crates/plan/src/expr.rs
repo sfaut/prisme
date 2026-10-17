@@ -169,7 +169,7 @@ pub enum ExprKind {
     /// `(a, b) IN (SELECT ...)`): equal when each value is.
     Row(Vec<Expr>),
     /// Call to a scalar function.
-    Function(FunctionCall),
+    Function(Box<FunctionCall>),
     /// Call to a window function.
     Window(Box<WindowCall>),
     /// `CASE`.
@@ -295,6 +295,8 @@ pub enum Bitwise {
 /// Call to a scalar function.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FunctionCall {
+    /// Database of a stored function (`db.f()`).
+    pub qualifier: Option<Ident>,
     /// Name of the function, as written.
     pub name: Ident,
     /// Arguments.
@@ -306,14 +308,17 @@ pub struct FunctionCall {
 pub struct WindowCall {
     /// Name of the function, as written.
     pub function: Ident,
-    /// Arguments.
+    /// Arguments; empty for `COUNT(*)`.
     pub args: Vec<Expr>,
-    /// `PARTITION BY`.
+    /// `PARTITION BY`, that of the named window included.
     pub partition_by: Vec<Expr>,
-    /// `ORDER BY` of the window.
+    /// `ORDER BY` of the window, that of the named window included.
     pub order_by: Vec<SortKey>,
     /// Frame of the window, when written.
     pub frame: Option<Frame>,
+    /// Named window the call refers to (`OVER w`, `OVER (w ORDER BY a)`),
+    /// whose definition the window node holds.
+    pub window: Option<Ident>,
 }
 
 /// Frame of a window.
@@ -635,7 +640,7 @@ impl Expr {
 
     /// Call to a scalar function, of the type the function catalog gives it.
     pub fn function(call: FunctionCall, ty: Type) -> Self {
-        Self::new(ExprKind::Function(call), ty)
+        Self::new(ExprKind::Function(Box::new(call)), ty)
     }
 
     /// Call to a window function, of the type the function catalog gives it.
@@ -670,6 +675,93 @@ impl Expr {
         Self::new(ExprKind::ToInteger(Box::new(operand)), ty)
     }
 
+    /// Operands of the expression, to rewrite them: the values it is
+    /// computed from, the subqueries left out.
+    pub fn operands_mut(&mut self) -> Vec<&mut Expr> {
+        match &mut self.kind {
+            ExprKind::Column(_)
+            | ExprKind::Literal(_)
+            | ExprKind::Variable(_)
+            | ExprKind::Exists { .. }
+            | ExprKind::ScalarSubquery(_) => Vec::new(),
+            ExprKind::Compare { left, right, .. }
+            | ExprKind::NotDistinct { left, right, .. }
+            | ExprKind::Logical { left, right, .. }
+            | ExprKind::Arithmetic { left, right, .. }
+            | ExprKind::Bitwise { left, right, .. } => vec![left.as_mut(), right.as_mut()],
+            ExprKind::Not(operand)
+            | ExprKind::Negate(operand)
+            | ExprKind::BitNot(operand)
+            | ExprKind::Cast(operand)
+            | ExprKind::ToBoolean(operand)
+            | ExprKind::ToInteger(operand)
+            | ExprKind::IsNull { operand, .. }
+            | ExprKind::InSubquery { operand, .. }
+            | ExprKind::Quantified { operand, .. } => vec![operand.as_mut()],
+            ExprKind::Between {
+                operand, low, high, ..
+            } => vec![operand.as_mut(), low.as_mut(), high.as_mut()],
+            ExprKind::Like {
+                operand,
+                pattern,
+                escape,
+                ..
+            } => {
+                let mut operands = vec![operand.as_mut(), pattern.as_mut()];
+                operands.extend(escape.as_deref_mut());
+                operands
+            }
+            ExprKind::InList { operand, list, .. } => {
+                let mut operands = vec![operand.as_mut()];
+                operands.extend(list.iter_mut());
+                operands
+            }
+            ExprKind::Row(values) => values.iter_mut().collect(),
+            ExprKind::Function(call) => call.args.iter_mut().collect(),
+            ExprKind::Window(call) => {
+                let WindowCall {
+                    args,
+                    partition_by,
+                    order_by,
+                    frame,
+                    ..
+                } = call.as_mut();
+                let mut operands: Vec<&mut Expr> = args.iter_mut().collect();
+                operands.extend(partition_by.iter_mut());
+                operands.extend(order_by.iter_mut().map(|key| &mut key.expr));
+                if let Some(frame) = frame {
+                    operands.extend(frame.bounds_mut());
+                }
+                operands
+            }
+            ExprKind::Case(case) => {
+                let mut operands: Vec<&mut Expr> =
+                    case.operand.as_deref_mut().into_iter().collect();
+                for branch in &mut case.branches {
+                    operands.push(&mut branch.when);
+                    operands.push(&mut branch.then);
+                }
+                operands.extend(case.otherwise.as_deref_mut());
+                operands
+            }
+        }
+    }
+
+    /// Same expression, without the positions read in the input: two
+    /// expressions written at different places compare equal.
+    pub fn without_spans(mut self) -> Self {
+        self.clear_spans();
+        self
+    }
+
+    /// Removes the positions of the expression and of its operands.
+    fn clear_spans(&mut self) {
+        self.span = None;
+        for operand in self.operands_mut() {
+            operand.clear_spans();
+        }
+    }
+
     /// Same expression, read at `span` in the input.
     pub fn with_span(self, span: Span) -> Self {
         Self {
@@ -685,6 +777,19 @@ impl Expr {
             ty,
             span: None,
         }
+    }
+}
+
+impl Frame {
+    /// Values of the bounds, to rewrite them.
+    fn bounds_mut(&mut self) -> Vec<&mut Expr> {
+        let mut bounds = Vec::new();
+        for bound in std::iter::once(&mut self.start).chain(self.end.as_mut()) {
+            if let FrameBound::Preceding(value) | FrameBound::Following(value) = bound {
+                bounds.push(value.as_mut());
+            }
+        }
+        bounds
     }
 }
 

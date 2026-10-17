@@ -37,7 +37,8 @@ pub use plan::{
     Aggregate, AggregateCall, Cte, CteRef, Derived, Distinct, Extend, Filter, IndexHint,
     IndexHintAction, IndexHintScope, Join, JoinForm, JoinKind, JoinUsing, Limit, LimitForm,
     NamedAggregate, NamedExpr, OnEmpty, Plan, Project, ProjectItem, Scan, SetOperation,
-    SetOperator, Sort, TableAlias, TableName, Values, ValuesForm, Wildcard, Window, With,
+    SetOperator, Sort, TableAlias, TableName, Values, ValuesForm, Wildcard, Window,
+    WindowDefinition, With,
 };
 pub use schema::{Column, Schema};
 pub use statement::{

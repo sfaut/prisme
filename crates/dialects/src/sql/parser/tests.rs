@@ -2,7 +2,8 @@ use prisme_plan::{AliasForm, IndexHintAction, IndexHintScope, JoinForm, LimitFor
 
 use super::*;
 use crate::sql::ast::{
-    BinaryOp, Expr, ExprKind, JoinConstraint, JoinKind, Literal, SetOperator, TableRef, UnaryOp,
+    BinaryOp, Expr, ExprKind, FrameBound, FunctionCall, JoinConstraint, JoinKind, Literal,
+    SetOperator, TableRef, UnaryOp, WindowSpec,
 };
 
 /// Settings of MySQL 8.0.19.
@@ -141,7 +142,83 @@ fn tree(expr: &Expr) -> String {
             "(row {})",
             values.iter().map(tree).collect::<Vec<_>>().join(" ")
         ),
+        ExprKind::Function(call) => call_tree(call),
     }
+}
+
+/// Call written as a prefix tree: `(sum distinct a)`, `(count *)`, with its
+/// window.
+fn call_tree(call: &FunctionCall) -> String {
+    let name = call
+        .name
+        .parts
+        .iter()
+        .map(|part| part.value.to_lowercase())
+        .collect::<Vec<_>>()
+        .join(".");
+    let mut parts = vec![if call.stored {
+        format!("stored {name}")
+    } else {
+        name
+    }];
+    if call.distinct {
+        parts.push("distinct".to_string());
+    }
+    if call.star {
+        parts.push("*".to_string());
+    }
+    parts.extend(call.args.iter().map(tree));
+    if !call.order_by.is_empty() {
+        let keys = call.order_by.iter().map(|item| tree(&item.expr));
+        parts.push(format!("(order {})", keys.collect::<Vec<_>>().join(" ")));
+    }
+    if let Some(separator) = &call.separator {
+        parts.push(format!("(separator '{separator}')"));
+    }
+    if let Some(over) = &call.over {
+        parts.push(window_tree(over));
+    }
+    format!("({})", parts.join(" "))
+}
+
+/// Window written as a prefix tree: `(over w (partition a) (order b) rows)`.
+fn window_tree(spec: &WindowSpec) -> String {
+    let mut parts = vec!["over".to_string()];
+    if let Some(base) = &spec.base {
+        parts.push(base.value.clone());
+    }
+    if !spec.partition_by.is_empty() {
+        let values = spec.partition_by.iter().map(tree);
+        parts.push(format!(
+            "(partition {})",
+            values.collect::<Vec<_>>().join(" ")
+        ));
+    }
+    if !spec.order_by.is_empty() {
+        let keys = spec.order_by.iter().map(|item| tree(&item.expr));
+        parts.push(format!("(order {})", keys.collect::<Vec<_>>().join(" ")));
+    }
+    if let Some(frame) = &spec.frame {
+        let bound = |bound: &FrameBound| match bound {
+            FrameBound::UnboundedPreceding => "unbounded-preceding".to_string(),
+            FrameBound::Preceding(value) => format!("{}-preceding", tree(value)),
+            FrameBound::CurrentRow => "current-row".to_string(),
+            FrameBound::Following(value) => format!("{}-following", tree(value)),
+            FrameBound::UnboundedFollowing => "unbounded-following".to_string(),
+        };
+        let units = match frame.units {
+            prisme_plan::FrameUnits::Rows => "rows",
+            prisme_plan::FrameUnits::Range => "range",
+        };
+        let mut text = format!("({units} {}", bound(&frame.start));
+        if let Some(end) = &frame.end {
+            text.push(' ');
+            text.push_str(&bound(end));
+        }
+        text.push(')');
+        parts.push(text);
+    }
+    format!("({})", parts.join(" "))
 }
 
 /// Symbol of a binary operator in the trees.
@@ -330,8 +407,10 @@ fn a_reserved_word_is_a_name_only_between_backticks_or_after_a_dot() {
 #[test]
 fn constructs_not_read_yet_are_explicit_errors() {
     for (text, faulty) in [
-        ("SELECT COUNT(*) FROM t", "COUNT"),
-        ("SELECT a FROM t GROUP BY a", "GROUP"),
+        ("SELECT CAST(a AS CHAR) FROM t", "CAST"),
+        ("SELECT TRIM(LEADING 'x' FROM a) FROM t", "TRIM"),
+        ("SELECT a FROM t FOR UPDATE", "FOR"),
+        ("SELECT GROUP_CONCAT(a LIMIT 1) FROM t", "LIMIT"),
         (
             "SELECT x FROM JSON_TABLE('[1]', '$[*]' COLUMNS (x INT PATH '$')) AS j",
             "JSON_TABLE",
@@ -687,4 +766,91 @@ fn reads_the_subqueries_and_the_rows() {
     }
     assert_eq!(error("SELECT ROW(1)", &mysql()).1, ")");
     assert_eq!(error("SELECT 1 <=> ANY (SELECT 1)", &mysql()).1, "ANY");
+}
+
+#[test]
+fn reads_the_function_calls_and_the_windows() {
+    for (text, expected) in [
+        ("COUNT(*)", "(count *)"),
+        ("count(DISTINCT a, b)", "(count distinct a b)"),
+        ("SUM(ALL a)", "(sum a)"),
+        ("SUM (a)", "(stored sum a)"),
+        ("db.f(a, 1)", "(db.f a 1)"),
+        ("LEFT(a, 1)", "(left a 1)"),
+        ("NOW()", "(now)"),
+        ("f(a) + 1", "(+ (f a) 1)"),
+        (
+            "GROUP_CONCAT(DISTINCT a ORDER BY b DESC SEPARATOR ';')",
+            "(group_concat distinct a (order b) (separator ';'))",
+        ),
+        ("ROW_NUMBER() OVER ()", "(row_number (over))"),
+        ("SUM(a) OVER w", "(sum a (over w))"),
+        ("RANK() OVER (w ORDER BY a)", "(rank (over w (order a)))"),
+        (
+            "SUM(a) OVER (PARTITION BY b, c ORDER BY d ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)",
+            "(sum a (over (partition b c) (order d) (rows 1-preceding current-row)))",
+        ),
+        (
+            "AVG(a) OVER (RANGE UNBOUNDED PRECEDING)",
+            "(avg a (over (range unbounded-preceding)))",
+        ),
+    ] {
+        assert_eq!(expr(text), expected, "{text}");
+    }
+    assert_eq!(error("SELECT COUNT (*)", &mysql()).1, "*");
+    assert_eq!(
+        error("SELECT LAG(a) RESPECT NULLS OVER ()", &mysql()).1,
+        "RESPECT"
+    );
+    assert_eq!(
+        error(
+            "SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY a)",
+            &mariadb()
+        )
+        .1,
+        "WITHIN"
+    );
+}
+
+#[test]
+fn reads_the_grouping_and_the_named_windows() {
+    let select = select(
+        "SELECT a, SUM(b) FROM t GROUP BY a, 2 WITH ROLLUP HAVING SUM(b) > 1 \
+         WINDOW w AS (ORDER BY a), v AS (w ROWS 2 PRECEDING)",
+    );
+    assert_eq!(
+        select.group_by.iter().map(tree).collect::<Vec<_>>(),
+        ["a", "2"]
+    );
+    assert!(select.rollup);
+    assert_eq!(
+        select.having.as_ref().map(tree).as_deref(),
+        Some("(> (sum b) 1)")
+    );
+    let windows: Vec<String> = select
+        .windows
+        .iter()
+        .map(|window| format!("{} {}", window.name.value, window_tree(&window.spec)))
+        .collect();
+    assert_eq!(
+        windows,
+        ["w (over (order a))", "v (over w (rows 2-preceding))"]
+    );
+    assert_eq!(error("SELECT a FROM t GROUP BY a DESC", &mysql()).1, "DESC");
+    assert!(
+        query(
+            "SELECT a FROM t GROUP BY a WITH ROLLUP ORDER BY a",
+            &mysql()
+        )
+        .limit
+        .is_none()
+    );
+    assert_eq!(
+        error(
+            "SELECT a FROM t GROUP BY a WITH ROLLUP ORDER BY a",
+            &mysql_at(8, 0, 11)
+        )
+        .1,
+        "ORDER"
+    );
 }

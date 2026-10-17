@@ -1,7 +1,9 @@
 //! Nodes with a single input: filter, projections, window functions, sort,
 //! limit and duplicate removal.
 
-use crate::{AliasForm, Column, Expr, ExprKind, Ident, Plan, PlanError, Schema, SortKey, Span};
+use crate::{
+    AliasForm, Column, Expr, ExprKind, Frame, Ident, Plan, PlanError, Schema, SortKey, Span,
+};
 
 /// Rows for which a predicate is true; a false or unknown predicate drops the
 /// row (`docs/FEDERATED.md`, section 7, point 2).
@@ -75,8 +77,26 @@ pub struct Window {
     /// Window functions (`ExprKind::Window`), added after the columns of the
     /// input.
     pub functions: Vec<NamedExpr>,
+    /// Named windows (`WINDOW w AS (...)`), as written: the calls carry the
+    /// windows they use whole.
+    pub definitions: Vec<WindowDefinition>,
     /// Position in the input.
     pub span: Option<Span>,
+}
+
+/// Named window, as written: `w AS (base PARTITION BY a ORDER BY b)`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WindowDefinition {
+    /// Name.
+    pub name: Ident,
+    /// Named window it completes.
+    pub base: Option<Ident>,
+    /// `PARTITION BY` written in this definition.
+    pub partition_by: Vec<Expr>,
+    /// `ORDER BY` written in this definition.
+    pub order_by: Vec<SortKey>,
+    /// Frame written in this definition.
+    pub frame: Option<Frame>,
 }
 
 /// Rows in order.

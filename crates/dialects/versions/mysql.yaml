@@ -66,6 +66,9 @@ constructs:
   - id: nested_set_operation
     since: "8.0.22"
     source: https://dev.mysql.com/doc/refman/8.0/en/parenthesized-query-expressions.html
+  - id: rollup_order_by
+    since: "8.0.12"
+    source: https://dev.mysql.com/doc/refman/8.0/en/group-by-modifiers.html
   - id: intersect_except
     since: "8.0.31"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-31.html

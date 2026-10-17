@@ -13,6 +13,7 @@
 //! again; the executable comments whose content is code are listed, for the
 //! report.
 
+mod call;
 mod expr;
 mod from;
 
@@ -29,8 +30,8 @@ use crate::lexer::{
     CommentKind, LexError, LexerOptions, Punct, SqlMode, Token, TokenKind, tokenize,
 };
 use crate::sql::ast::{
-    Alias, CteDefinition, Limit, ObjectName, OrderItem, Query, QueryBody, Row, Select, SelectItem,
-    SetOperation, SetOperator, Statement, StatementKind, Values, With,
+    Alias, CteDefinition, Expr, Limit, ObjectName, OrderItem, Query, QueryBody, Row, Select,
+    SelectItem, SetOperation, SetOperator, Statement, StatementKind, Values, With,
 };
 use crate::versions::{Construct, Version, registry};
 
@@ -378,8 +379,11 @@ impl Parser<'_> {
                 None
             };
             let body = parser.query_body()?;
-            let order_by = if parser.eat_keyword("ORDER").is_some() {
+            let order_by = if let Some(order) = parser.eat_keyword("ORDER") {
                 parser.expect_keyword("BY")?;
+                if matches!(&body, QueryBody::Select(select) if select.rollup) {
+                    parser.check(Construct::RollupOrderBy, order)?;
+                }
                 parser.order_items()?
             } else {
                 Vec::new()
@@ -633,22 +637,50 @@ impl Parser<'_> {
         } else {
             None
         };
-        self.refuse_clauses(&[
-            "GROUP",
-            "HAVING",
-            "WINDOW",
-            "INTO",
-            "FOR",
-            "LOCK",
-            "PROCEDURE",
-        ])?;
+        let (group_by, rollup) = self.group_by()?;
+        let having = if self.eat_keyword("HAVING").is_some() {
+            Some(self.expr()?)
+        } else {
+            None
+        };
+        let windows = self.window_clause()?;
+        self.refuse_clauses(&["INTO", "FOR", "LOCK", "PROCEDURE"])?;
         Ok(Select {
             distinct,
             items,
             from,
             filter,
+            group_by,
+            rollup,
+            having,
+            windows,
             span: self.span_from(start),
         })
+    }
+
+    /// `GROUP BY a, b [WITH ROLLUP]`, when written.
+    fn group_by(&mut self) -> Result<(Vec<Expr>, bool), ParseError> {
+        if self.eat_keyword("GROUP").is_none() {
+            return Ok((Vec::new(), false));
+        }
+        self.expect_keyword("BY")?;
+        let mut keys = Vec::new();
+        loop {
+            keys.push(self.expr()?);
+            if self.at_any_keyword(&["ASC", "DESC"]) {
+                // MariaDB sorts the groups; MySQL 8 refuses it.
+                return Err(self.unsupported("`ASC` and `DESC` in `GROUP BY`", self.here()));
+            }
+            if self.eat_punct(Punct::Comma).is_none() {
+                break;
+            }
+        }
+        let rollup = self.is_word(self.peek(), "WITH") && self.is_word(self.peek_at(1), "ROLLUP");
+        if rollup {
+            self.advance();
+            self.advance();
+        }
+        Ok((keys, rollup))
     }
 
     /// Refuses the clauses `keywords`, not read yet.

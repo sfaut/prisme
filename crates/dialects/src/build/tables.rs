@@ -54,8 +54,20 @@ impl Collector {
                 if let Some(from) = &select.from {
                     self.table_ref(from);
                 }
-                if let Some(filter) = &select.filter {
-                    self.expr(filter);
+                let clauses = select
+                    .filter
+                    .iter()
+                    .chain(&select.group_by)
+                    .chain(&select.having);
+                for expr in clauses {
+                    self.expr(expr);
+                }
+                for window in &select.windows {
+                    window
+                        .spec
+                        .children()
+                        .into_iter()
+                        .for_each(|expr| self.expr(expr));
                 }
             }
             QueryBody::Values(values) => {
@@ -105,45 +117,15 @@ impl Collector {
 
     /// Subqueries of an expression.
     fn expr(&mut self, expr: &ast::Expr) {
-        match &expr.kind {
-            ExprKind::Column(_) | ExprKind::Literal(_) => {}
-            ExprKind::Unary { operand, .. }
-            | ExprKind::IsNull { operand, .. }
-            | ExprKind::Nested(operand) => self.expr(operand),
-            ExprKind::Binary { left, right, .. } => {
-                self.expr(left);
-                self.expr(right);
-            }
-            ExprKind::Between {
-                operand, low, high, ..
-            } => {
-                self.expr(operand);
-                self.expr(low);
-                self.expr(high);
-            }
-            ExprKind::InList { operand, list, .. } => {
-                self.expr(operand);
-                list.iter().for_each(|value| self.expr(value));
-            }
-            ExprKind::Like {
-                operand,
-                pattern,
-                escape,
-                ..
-            } => {
-                self.expr(operand);
-                self.expr(pattern);
-                if let Some(escape) = escape {
-                    self.expr(escape);
-                }
-            }
-            ExprKind::Subquery(query) | ExprKind::Exists(query) => self.query(query),
-            ExprKind::InSubquery { operand, query, .. }
-            | ExprKind::Quantified { operand, query, .. } => {
-                self.expr(operand);
-                self.query(query);
-            }
-            ExprKind::Row(values) => values.iter().for_each(|value| self.expr(value)),
+        if let ExprKind::Subquery(query)
+        | ExprKind::Exists(query)
+        | ExprKind::InSubquery { query, .. }
+        | ExprKind::Quantified { query, .. } = &expr.kind
+        {
+            self.query(query);
+        }
+        for child in expr.children() {
+            self.expr(child);
         }
     }
 }

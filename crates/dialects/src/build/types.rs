@@ -236,6 +236,60 @@ fn merge(left: &DataType, right: &DataType) -> DataType {
     }
 }
 
+/// Digits `SUM` adds to those of an exact number (measured on MySQL and
+/// MariaDB: `SUM` of an `INT` is a `DECIMAL(32, 0)`).
+const SUM_INCREMENT: usize = 22;
+
+/// Digits `AVG` adds to the precision and to the scale of an exact number
+/// (`AVG` of an `INT` is a `DECIMAL(14, 4)`).
+const AVG_INCREMENT: usize = 4;
+
+/// Type of `SUM`: a `DECIMAL` of more digits for an exact number, a
+/// `DOUBLE` otherwise.
+pub(crate) fn sum(argument: &DataType) -> DataType {
+    match numeric(argument) {
+        exact @ (Numeric::Integer(_) | Numeric::Decimal(..)) => {
+            let (integer, scale) = as_decimal(exact);
+            decimal(integer + scale + SUM_INCREMENT, scale)
+        }
+        Numeric::Null | Numeric::Float => double(),
+    }
+}
+
+/// Type of `AVG`: a `DECIMAL` of more digits and scale for an exact number,
+/// a `DOUBLE` otherwise.
+pub(crate) fn avg(argument: &DataType) -> DataType {
+    match numeric(argument) {
+        exact @ (Numeric::Integer(_) | Numeric::Decimal(..)) => {
+            let (integer, scale) = as_decimal(exact);
+            decimal(integer + scale + AVG_INCREMENT, scale + AVG_INCREMENT)
+        }
+        Numeric::Null | Numeric::Float => double(),
+    }
+}
+
+/// Type of a rank (`ROW_NUMBER`, `RANK`, `NTILE`...): `BIGINT UNSIGNED` in
+/// MySQL, `BIGINT` in MariaDB.
+pub(crate) const fn rank(dialect: Dialect) -> DataType {
+    match dialect {
+        Dialect::MySql => DataType::Integer(IntegerType::unsigned(IntegerSize::Big)),
+        Dialect::MariaDb => bigint(),
+    }
+}
+
+/// Type of a value a window function reads from another row (`LAG`,
+/// `FIRST_VALUE`...): MySQL widens integers to `BIGINT`, MariaDB keeps the
+/// type.
+pub(crate) fn window_value(data_type: &DataType, dialect: Dialect) -> DataType {
+    match (data_type, dialect) {
+        (DataType::Integer(integer), Dialect::MySql) => DataType::Integer(IntegerType {
+            size: IntegerSize::Big,
+            ..*integer
+        }),
+        _ => data_type.clone(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

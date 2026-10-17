@@ -8,15 +8,21 @@
 //! (`types` module), explicit conversions between booleans and numbers,
 //! NULL position of the sort keys (NULL is the smallest value).
 //!
-//! A `SELECT` gives the nodes `Limit(Distinct(Project(Sort(Filter(source)))))`,
+//! A `SELECT` gives the nodes
+//! `Limit(Distinct(Project(Sort(Window(Filter(Aggregate(Filter(source))))))))`,
 //! each one when its clause is written: the sort comes before the
 //! projection, its keys being expressions of the source, as an `ORDER BY`
 //! can name columns the select list leaves out; a key that names an alias
 //! or a position of the select list takes its expression, and keeps the
 //! form written. The source is a table, a common table expression, a derived
-//! table or a join of sources; a set operation joins query bodies.
+//! table or a join of sources; a set operation joins query bodies. The
+//! aggregation, its `HAVING` and the window functions are described in the
+//! `group` module.
 
+mod call;
 mod expr;
+pub(crate) mod functions;
+mod group;
 mod scope;
 mod tables;
 mod types;
@@ -41,6 +47,8 @@ use crate::sql::ast::{
     QueryBody, Select, SelectItem, StatementKind, TableRef,
 };
 use crate::versions::{Construct, Version, registry};
+pub(crate) use group::is_internal_name;
+use group::{Above, Block, Clause};
 use scope::{ResolveError, Scope};
 pub use tables::referenced_tables;
 
@@ -123,6 +131,7 @@ pub fn build(
         ctes: Vec::new(),
         outer: Vec::new(),
         derived: Vec::new(),
+        blocks: Vec::new(),
     };
     match &statement.kind {
         StatementKind::Query(query) => Ok(prisme_plan::Statement::Query(builder.query(query)?)),
@@ -164,6 +173,10 @@ struct Builder<'a> {
     outer: Vec<Scope>,
     /// Derived tables being built, the innermost last.
     derived: Vec<DerivedFrame>,
+    /// `SELECT` blocks being built, the innermost last; each query starts
+    /// with an empty one, so that its expressions do not read the
+    /// aggregation of an enclosing block.
+    blocks: Vec<Block>,
 }
 
 /// Derived table being built.
@@ -249,6 +262,15 @@ impl Builder<'_> {
 
     /// Query, with its common table expressions, its sort and its limit.
     fn query(&mut self, query: &Query) -> Result<Plan, BuildError> {
+        self.blocks.push(Block::default());
+        let plan = self.query_with(query);
+        self.blocks.pop();
+        plan
+    }
+
+    /// Query, with its common table expressions, its sort and its limit, in
+    /// its own block.
+    fn query_with(&mut self, query: &Query) -> Result<Plan, BuildError> {
         let in_scope = self.ctes.len();
         let mut ctes = Vec::new();
         if let Some(with) = &query.with {
@@ -378,11 +400,24 @@ impl Builder<'_> {
         order_by: &[OrderItem],
         limit: Option<&ast::Limit>,
     ) -> Result<Plan, BuildError> {
+        self.blocks.push(Block::default());
+        let plan = self.select_block(select, order_by);
+        self.blocks.pop();
+        self.limit(plan?, limit)
+    }
+
+    /// `SELECT` block, with the sort of its query.
+    fn select_block(
+        &mut self,
+        select: &Select,
+        order_by: &[OrderItem],
+    ) -> Result<Plan, BuildError> {
         let (mut plan, scope) = match &select.from {
             Some(table) => self.source(table, None)?,
             None => (dual(), Scope::empty()),
         };
         if let Some(filter) = &select.filter {
+            self.set_clause(Clause::Where);
             let predicate = self.condition(filter, &scope)?;
             plan = Plan::Filter(Filter {
                 input: Box::new(plan),
@@ -390,10 +425,91 @@ impl Builder<'_> {
                 span: Some(filter.span),
             });
         }
+        let grouped = group::is_grouped(select, order_by);
+        if let Some(having) = &select.having
+            && !grouped
+        {
+            return Err(self.error(
+                "`HAVING` without grouping: not supported yet by Prisme",
+                having.span,
+            ));
+        }
+        let block = self.block_mut();
+        block.grouped = grouped;
+        block.keyed = !select.group_by.is_empty();
+        block.source = scope.clone();
+        self.set_clause(Clause::Window);
+        self.window_definitions(&select.windows, &scope)?;
+        self.set_clause(Clause::Select);
+        let (mut items, outputs) = self.select_items(&select.items, &scope)?;
+        self.block_mut().outputs.clone_from(&outputs);
+        self.set_clause(Clause::GroupBy);
+        let keys = self.group_keys(&select.group_by, &scope, &outputs)?;
+        let mut having = match &select.having {
+            Some(having) => {
+                self.set_clause(Clause::Having);
+                Some(self.having(having, &scope)?)
+            }
+            None => None,
+        };
+        let mut sort = Vec::new();
+        if !order_by.is_empty() {
+            self.set_clause(Clause::OrderBy);
+            sort = self.sort_keys(order_by, &scope, &outputs)?;
+        }
+        self.set_clause(Clause::Other);
+        if grouped {
+            let above = Above {
+                items: &mut items,
+                having: having.as_mut(),
+                sort: &mut sort,
+            };
+            plan = self.aggregate_node(plan, keys, select.rollup, above);
+        }
+        if let Some(predicate) = having {
+            plan = Plan::Filter(Filter {
+                input: Box::new(plan),
+                span: select.having.as_ref().map(|having| having.span),
+                predicate,
+            });
+        }
+        plan = self.window_node(plan);
+        if !sort.is_empty() {
+            plan = Plan::Sort(Sort {
+                input: Box::new(plan),
+                keys: sort,
+                span: None,
+            });
+        }
+        let mut project =
+            Project::new(plan, items).map_err(|error| plan_error(&error, select.span))?;
+        project.span = Some(select.span);
+        let mut plan = Plan::Project(project);
+        if select.distinct {
+            plan = Plan::Distinct(Distinct {
+                input: Box::new(plan),
+                span: None,
+            });
+        }
+        Ok(plan)
+    }
+
+    /// Select list, with its columns for the keys of `ORDER BY`, `GROUP BY`
+    /// and `HAVING`.
+    fn select_items(
+        &mut self,
+        select_items: &[SelectItem],
+        scope: &Scope,
+    ) -> Result<(Vec<ProjectItem>, Vec<Output>), BuildError> {
         let mut items = Vec::new();
         let mut outputs = Vec::new();
-        for item in &select.items {
+        for item in select_items {
             match item {
+                SelectItem::Wildcard { span, .. } if self.block().grouped => {
+                    return Err(
+                        self.error("`*` in a grouped query: not supported yet by Prisme", *span)
+                    );
+                }
                 SelectItem::Wildcard { qualifier, span } => {
                     let qualifier = qualifier
                         .as_ref()
@@ -410,7 +526,7 @@ impl Builder<'_> {
                     }));
                 }
                 SelectItem::Expr { expr, alias, .. } => {
-                    let built = self.value(expr, &scope)?;
+                    let built = self.value(expr, scope)?;
                     let (name, form) = match alias {
                         Some(alias) => (alias.name.clone(), alias.form),
                         None => (implicit_name(expr, self.text), AliasForm::Implicit),
@@ -427,25 +543,7 @@ impl Builder<'_> {
                 }
             }
         }
-        if !order_by.is_empty() {
-            let keys = self.sort_keys(order_by, &scope, &outputs)?;
-            plan = Plan::Sort(Sort {
-                input: Box::new(plan),
-                keys,
-                span: None,
-            });
-        }
-        let mut project =
-            Project::new(plan, items).map_err(|error| plan_error(&error, select.span))?;
-        project.span = Some(select.span);
-        let mut plan = Plan::Project(project);
-        if select.distinct {
-            plan = Plan::Distinct(Distinct {
-                input: Box::new(plan),
-                span: None,
-            });
-        }
-        self.limit(plan, limit)
+        Ok((items, outputs))
     }
 
     /// Keys of an `ORDER BY`: a position of the select list, an alias of the
@@ -749,7 +847,8 @@ impl Builder<'_> {
     }
 }
 
-/// Column of the select list, for the keys of an `ORDER BY`.
+/// Column of the select list, for the keys of an `ORDER BY`, a `GROUP BY`
+/// and the aliases of `HAVING`.
 #[derive(Debug, Clone)]
 struct Output {
     /// Alias written.

@@ -136,6 +136,7 @@ impl Prepared {
         let source = Source {
             text: &self.text,
             mode: self.output.mode,
+            dialect: self.input.dialect,
             comments: &self.parsed.comments,
         };
         let emitted = emit(&plan, &self.output, &source);
