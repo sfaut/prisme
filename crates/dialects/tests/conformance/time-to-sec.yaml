@@ -1,0 +1,12 @@
+# Rule `function.time-to-sec`: `TIME_TO_SEC` of a value with a fraction of
+# seconds.
+cases:
+  - from: mysql
+    sql: >-
+      SELECT TIME_TO_SEC(t) AS a, TIME_TO_SEC('10:20:30.5') AS b, TIME_TO_SEC(dt) AS c, TIME_TO_SEC(n) AS e,
+      TIME_TO_SEC('-1:00:00.75') AS g FROM sample
+  - from: mariadb
+    sql: SELECT TIME_TO_SEC(t) AS a, TIME_TO_SEC(i) AS b FROM sample
+  - from: mariadb
+    sql: SELECT TIME_TO_SEC('10:20:30.5') AS v
+    refused: function.time-to-sec

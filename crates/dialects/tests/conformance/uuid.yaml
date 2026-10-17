@@ -1,0 +1,11 @@
+# Rule `function.uuid`: `UUID()` is a string in MySQL, a value of type
+# `UUID` in MariaDB from 10.7.1, compared only with UUIDs.
+cases:
+  - from: mysql
+    compare: types
+    sql: SELECT UUID() AS u
+  - from: mysql
+    sql: SELECT LENGTH(UUID()) AS a, UUID() < 'g' AS b, UUID() > '' AS c
+  - from: mariadb
+    compare: types
+    sql: SELECT UUID() AS u

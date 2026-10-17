@@ -1,0 +1,17 @@
+# Rule `function.now`: the type of `NOW` and its family, compared by their
+# columns as their values change from one run to the next.
+cases:
+  - from: mysql
+    compare: types
+    sql: >-
+      SELECT NOW() AS a, CURRENT_TIMESTAMP(3) AS b, SYSDATE() AS c, SYSDATE(6) AS d, LOCALTIME AS e,
+      LOCALTIMESTAMP(6) AS g, NOW() + 0 AS h
+  - from: mariadb
+    compare: types
+    sql: >-
+      SELECT NOW() AS a, CURRENT_TIMESTAMP(3) AS b, SYSDATE() AS c, SYSDATE(6) AS d, LOCALTIME AS e,
+      LOCALTIMESTAMP(6) AS g, NOW() + 0 AS h
+  - from: mysql
+    sql: SELECT NOW() = LOCALTIMESTAMP AS a, NOW() > '2024-01-01' AS b
+  - from: mariadb
+    sql: SELECT NOW() = LOCALTIMESTAMP AS a, NOW() > '2024-01-01' AS b

@@ -1,0 +1,74 @@
+# Rule `function.greatest`: `GREATEST` and `LEAST` over strings with
+# numbers, dates or times, and over numbers with a `NULL`, in the select
+# list and in an expression.
+cases:
+  - from: mysql
+    sql: >-
+      SELECT LEAST(s, 9) AS a, LEAST('10', 9) AS b, GREATEST('10', 9) AS c, LEAST('abc', 5) AS d,
+      LEAST('10', 9.5) AS e, LEAST('10', 9e0) AS g, LEAST('a', 0.1e0 + 0.2e0) AS h, LEAST('a', 1e20) AS k,
+      LEAST('a', -0.5e0) AS l, LEAST(' 5', 3) AS m, LEAST('1e3', 999) AS o FROM sample
+  - from: mysql
+    sql: >-
+      SELECT LEAST(s, f) AS a, GREATEST(s, n) AS b, LEAST(s, i, NULL) AS c, GREATEST('10', TRUE) AS d,
+      LEAST(sn, 1) AS e FROM sample
+  - from: mysql
+    sql: >-
+      SELECT LEAST('10', 9) + 0 AS a, LEAST('10', '9') + 0 AS b, ABS(LEAST('10', '9')) AS c,
+      (SELECT LEAST('10', '9')) + 0 AS d
+  - from: mysql
+    sql: SELECT v + 0 AS a, v AS b FROM (SELECT LEAST('10', '9') AS v) AS q
+  - from: mysql
+    sql: >-
+      SELECT GREATEST(d, '2024-01-09') AS a, LEAST(d, '2024-01-09') AS b, LEAST(d, '2024-05-06 10:00:00') AS c,
+      GREATEST(d, '2024-05-06 10:00:00') AS e, LEAST(dt, '2024-05-06') AS g,
+      GREATEST(dt, '2030-01-01 00:00:00.5') AS h, LEAST(ts, '2030-01-01') AS k, GREATEST(ts, '2000-01-01') AS l,
+      LEAST(dt, '2000-01-01 00:00:00.123456') AS m, GREATEST(dt, '2000-01-01 00:00:00.123456') AS o,
+      LEAST(d, dt, '2024-05-06 03:00:00') AS p, LEAST(d, '2030-01-01', '2000-01-01') AS q,
+      LEAST(d, dn, '2000-01-01') AS r, GREATEST(d, '2024-05-06', NULL) AS u FROM sample
+  - from: mysql
+    sql: >-
+      SELECT LEAST(t, '9:00:00') AS a, GREATEST(t, '9:00:00') AS b, LEAST(t, '-1:00:00') AS c, LEAST(t, 5) AS e,
+      LEAST(t, '9:00:00.5') AS g, GREATEST(t, 'abc') AS h, LEAST(t, s) AS k FROM sample
+  - from: mysql
+    sql: >-
+      SELECT LEAST(1, NULL) AS a, LEAST(i, NULL) AS b, LEAST(1.5, NULL) AS c, LEAST(NULL, n, i) AS e,
+      LEAST(TRUE, NULL) AS g, LEAST(18446744073709551615, NULL) AS h FROM sample
+  - from: mysql
+    sql: SELECT s FROM sample ORDER BY LEAST(s, 9)
+  - from: mariadb
+    sql: >-
+      SELECT LEAST(s, 9) AS a, LEAST('10', 9) AS b, GREATEST('10', 9) AS c, LEAST('abc', 5) AS d,
+      LEAST('10', 9.5) AS e, LEAST(' 5', 3) AS g, LEAST('1e3', 999) AS h, LEAST('', 1) AS k,
+      GREATEST('-0', -1) AS l, LEAST('10', 18446744073709551615) AS m FROM sample
+  - from: mariadb
+    sql: >-
+      SELECT LEAST('10', 9) + 0 AS a, CONCAT(LEAST('10', 9)) AS b, LEAST(s, i, NULL) AS c, LEAST(sn, 1) AS e,
+      GREATEST(s, f) AS g FROM sample
+  - from: mariadb
+    sql: >-
+      SELECT GREATEST(d, '2024-01-09') AS a, LEAST(d, '2024-01-09') AS b, LEAST(d, '2024-01-09') + 0 AS c,
+      LEAST(d, '2024-05-06 10:00:00') AS e, GREATEST(d, '2024-05-06 10:00:00') AS g,
+      LEAST(d, '2024-05-05 23:59:59.5') AS h, LEAST(dt, '2024-05-06') AS k,
+      GREATEST(dt, '2030-01-01 00:00:00.5') AS l, LEAST(ts, '2030-01-01') AS m, GREATEST(ts, '2000-01-01') AS o,
+      LEAST(dt, '2000-01-01 00:00:00.123456') AS p, GREATEST(dt, '2000-01-01 00:00:00.123456') AS q,
+      LEAST(d, dt, '2024-05-06 03:00:00') AS r, CONCAT(GREATEST(d, '2024-01-09')) AS u,
+      LEAST(d, dn, '2000-01-01') AS w FROM sample
+  - from: mariadb
+    sql: >-
+      SELECT LEAST(t, '9:00:00') AS a, GREATEST(t, '9:00:00') AS b, LEAST(t, '9:00:00.5') AS c,
+      LEAST(t, '-1:00:00') AS e, GREATEST(t, '838:59:59') AS g, LEAST(t, '9:00:00') + 0 AS h FROM sample
+  - from: mariadb
+    sql: >-
+      SELECT LEAST(1, NULL) AS a, LEAST(i, NULL) AS b, LEAST(1.5, NULL) AS c, LEAST(TRUE, NULL) AS e,
+      LEAST(NULL, i) AS g FROM sample
+  # Strings compared as numbers by MariaDB in an expression.
+  - from: mariadb
+    sql: SELECT LEAST('10', '9') + 0 AS v
+    refused: function.greatest
+  # The type of the result of a function is unknown for now.
+  - from: mysql
+    sql: SELECT LEAST(ABS(i), '9') AS v FROM sample
+    refused: function.greatest
+  - from: mariadb
+    sql: SELECT LEAST(t, 5) AS v FROM sample
+    refused: function.greatest

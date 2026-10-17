@@ -1,0 +1,38 @@
+# Rule `function.aes`: `AES_ENCRYPT` and `AES_DECRYPT`, their vector, their
+# mode and the key derivation of MySQL.
+cases:
+  - from: mysql
+    sql: >-
+      SELECT HEX(AES_ENCRYPT(s, 'key')) AS a, AES_DECRYPT(AES_ENCRYPT(s, 'key'), 'key') AS b,
+      HEX(AES_ENCRYPT(s, 'a key longer than sixteen bytes')) AS c, AES_ENCRYPT(sn, 'key') AS d,
+      AES_DECRYPT(s, 'key') AS e FROM sample
+  - from: mariadb
+    sql: >-
+      SELECT HEX(AES_ENCRYPT(s, 'key')) AS a, AES_DECRYPT(AES_ENCRYPT(s, 'key'), 'key') AS b,
+      HEX(AES_ENCRYPT(s, 'a key longer than sixteen bytes')) AS c, AES_ENCRYPT(sn, 'key') AS d,
+      AES_DECRYPT(s, 'key') AS e FROM sample
+  # The vector, which the mode aes-128-ecb ignores.
+  - from: mysql
+    sql: >-
+      SELECT HEX(AES_ENCRYPT(s, 'key', 'abcdefghijklmnop')) AS a, HEX(AES_ENCRYPT(s, 'key', NULL)) AS b,
+      AES_DECRYPT(AES_ENCRYPT(s, 'key'), 'key', 'short') AS c FROM sample
+  - from: mariadb
+    inputs: mariadb >= 11.2.1
+    sql: >-
+      SELECT HEX(AES_ENCRYPT(s, 'key', 'abcdefghijklmnop')) AS a, HEX(AES_ENCRYPT(s, 'key', NULL)) AS b,
+      AES_DECRYPT(AES_ENCRYPT(s, 'key'), 'key', 'short') AS c FROM sample
+  # The mode of MariaDB.
+  - from: mariadb
+    inputs: mariadb >= 11.2.1
+    sql: >-
+      SELECT HEX(AES_ENCRYPT(s, 'key', NULL, 'aes-128-ecb')) AS a,
+      AES_DECRYPT(AES_ENCRYPT(s, 'key'), 'key', 'abcdefghijklmnop', 'AES-128-ECB') AS b FROM sample
+  - from: mariadb
+    inputs: mariadb >= 11.2.1
+    sql: SELECT AES_ENCRYPT(s, 'key', 'abcdefghijklmnop', 'aes-256-cbc') AS v FROM sample
+    refused: function.aes
+  # The key derivation of MySQL.
+  - from: mysql
+    inputs: mysql >= 8.0.30
+    sql: SELECT AES_ENCRYPT(s, 'key', NULL, 'hkdf') AS v FROM sample
+    refused: function.aes

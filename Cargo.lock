@@ -2001,13 +2001,17 @@ name = "prisme-dialects"
 version = "0.2.0"
 dependencies = [
  "indoc",
+ "prisme-connectors",
  "prisme-plan",
  "prisme-splitter",
  "prisme-types",
  "rusqlite",
+ "secrecy",
  "serde",
  "sqlparser",
+ "testcontainers-modules",
  "thiserror",
+ "tokio",
  "yaml_serde",
 ]
 

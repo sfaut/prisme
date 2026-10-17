@@ -77,6 +77,30 @@ cargo fmt                            # formatting
 
 - **Unit tests** sit at the bottom of each `.rs` file, in a `#[cfg(test)] mod tests` block. They also cover the API: HTTP requests go to the application in memory, on an in-memory internal database, without opening a port.
 - **Integration tests** sit in the `tests/` folder of each crate. Those of the MySQL / MariaDB connector start real servers in Docker. They are ignored by default: start Docker Desktop, then add `-- --include-ignored`. The first run downloads the server images.
+- **Conformance suite of the dialects** (`crates/dialects/tests/conformance.rs`): each query of the files `crates/dialects/tests/conformance/*.yaml`, written in a dialect, runs on each server of that dialect, and its transpilation on each server of the other dialect. Both give the same result (same columns, same type families, same rows in the same order), or Prisme refuses the query with the rule the case expects. The servers are MySQL 8.0.11 and 8.4, MariaDB 10.6 and 11.8; the variable `PRISME_CONFORMANCE_SERVERS` lists others, to check a new version against the same cases. The pairs of servers are checked in parallel: a run takes about four minutes once the images are downloaded.
+
+```
+cargo test -p prisme-dialects --test conformance -- --include-ignored
+$env:PRISME_CONFORMANCE_SERVERS="mysql:9.3.0,mariadb:11.8"; cargo test -p prisme-dialects --test conformance -- --include-ignored
+```
+
+A file of cases gives the statements that create its tables (`setup`, run once on each server, after the table `sample` of `probe`), then its cases:
+
+```yaml
+setup:
+  - CREATE TABLE unix_time (id INT NOT NULL PRIMARY KEY, dt DATETIME(1) NULL)
+cases:
+  - from: mysql                       # dialect the query is written in
+    session: ["SET time_zone = '+05:00'"]
+    sql: SELECT id, UNIX_TIMESTAMP(dt) AS a FROM unix_time ORDER BY id
+  - from: mariadb
+    outputs: mysql < 8.0.31           # servers of the transpilation (inputs: servers of the query)
+    sql: SELECT g FROM grammar INTERSECT SELECT 'b'
+    refused: set.operator             # rule of the refusal expected
+  - from: mysql
+    compare: types                    # a value that changes at each run: columns and number of rows only
+    sql: SELECT NOW() AS a
+```
 
 `cargo test` also regenerates the TypeScript types of `web/src/api/generated/` from the Rust structures (`ts-rs`). After changing a structure exchanged with the interface, run `cargo test`, then `npm run type-check`, and commit the generated types with the Rust change.
 

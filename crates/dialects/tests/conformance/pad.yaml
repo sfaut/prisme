@@ -1,0 +1,29 @@
+# Rule `function.pad`: `LPAD` and `RPAD` without a pad, and with an empty
+# pad, which gives NULL in MariaDB and in MySQL before 8.0.13, an empty
+# string from 8.0.13.
+cases:
+  - from: mysql
+    sql: SELECT LPAD(s, 15, '*') AS a, RPAD(sn, 5, 'x') AS b, LPAD(s, 3, 'ab') AS c FROM sample
+  - from: mariadb
+    sql: SELECT LPAD(s, 15) AS a, RPAD(s, 15) AS b, LPAD(sn, 5) AS c, RPAD(s, 3) AS d FROM sample
+  # An empty pad: alike up to MySQL 8.0.12.
+  - from: mysql
+    inputs: mysql < 8.0.13
+    sql: >-
+      SELECT LPAD(s, 20, '') AS a, RPAD(s, 20, '') AS b, RPAD(s, 3, '') AS c, LPAD(s, 0, '') AS d,
+      LPAD(s, 20, sn) AS e FROM sample
+  - from: mysql
+    inputs: mysql >= 8.0.13
+    sql: SELECT LPAD(s, 20, '') AS v FROM sample
+    refused: function.pad
+  - from: mysql
+    inputs: mysql >= 8.0.13
+    sql: SELECT LPAD(s, 20, sn) AS v FROM sample
+    refused: function.pad
+  - from: mariadb
+    outputs: mysql < 8.0.13
+    sql: SELECT LPAD(s, 20, '') AS a, RPAD(s, 3, '') AS b FROM sample
+  - from: mariadb
+    outputs: mysql >= 8.0.13
+    sql: SELECT LPAD(s, 20, '') AS v FROM sample
+    refused: function.pad

@@ -1,0 +1,71 @@
+# Rules of the grammar: `table.select`, `derived.columns`, `derived.lateral`,
+# `set.nested`, `set.operator`, `window.order`, `window.definitions`,
+# `window.default`, `rollup.order`, `values.form`, `values.union` and
+# `column.implicit-name`.
+setup:
+  - DROP TABLE IF EXISTS grammar
+  - CREATE TABLE grammar (id INT NOT NULL PRIMARY KEY, g VARCHAR(10) NOT NULL, v INT NULL)
+  - INSERT INTO grammar VALUES (1, 'a', 10), (2, 'a', 20), (3, 'b', NULL), (4, 'b', 40), (5, 'c', 50)
+cases:
+  # table.select
+  - from: mysql
+    inputs: mysql >= 8.0.19
+    sql: TABLE grammar ORDER BY id
+  # derived.columns
+  - from: mysql
+    inputs: mysql >= 8.0.19
+    sql: SELECT a, b FROM (SELECT id, g FROM grammar) AS x (a, b) ORDER BY a
+  - from: mariadb
+    inputs: mariadb >= 11.7.1
+    sql: SELECT a, b FROM (SELECT id, g FROM grammar) AS x (a, b) ORDER BY a
+  # derived.lateral
+  - from: mysql
+    inputs: mysql >= 8.0.14
+    sql: SELECT grammar.id, q.w FROM grammar, LATERAL (SELECT grammar.v + 1 AS w) AS q ORDER BY grammar.id
+    refused: derived.lateral
+  # set.nested
+  - from: mariadb
+    sql: SELECT id FROM grammar WHERE id = 1 UNION (SELECT id FROM grammar WHERE id = 2 UNION SELECT 3) ORDER BY id
+  # set.operator
+  - from: mariadb
+    outputs: mysql >= 8.0.31
+    sql: SELECT g FROM grammar INTERSECT SELECT 'b' ORDER BY g
+  - from: mariadb
+    outputs: mysql < 8.0.31
+    sql: SELECT g FROM grammar INTERSECT SELECT 'b' ORDER BY g
+    refused: set.operator
+  # window.order, window.definitions
+  - from: mysql
+    sql: >-
+      SELECT id, RANK() OVER () AS r, DENSE_RANK() OVER (PARTITION BY g) AS d, COUNT(*) OVER () AS c
+      FROM grammar ORDER BY id
+  - from: mysql
+    sql: >-
+      SELECT id, SUM(v) OVER w2 AS s, ROW_NUMBER() OVER w1 AS n FROM grammar
+      WINDOW w2 AS (w1 ORDER BY id), w1 AS (PARTITION BY g) ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, SUM(v) OVER (PARTITION BY g ORDER BY id) AS s, LEAD(v) OVER (ORDER BY id) AS l
+      FROM grammar ORDER BY id
+  # window.default
+  - from: mysql
+    sql: SELECT id, LAG(v, 1, 0) OVER (ORDER BY id) AS l FROM grammar ORDER BY id
+    refused: window.default
+  # rollup.order
+  - from: mysql
+    sql: SELECT g, SUM(v) AS t FROM grammar GROUP BY g WITH ROLLUP
+  - from: mysql
+    inputs: mysql >= 8.0.12
+    sql: SELECT g, SUM(v) AS t FROM grammar GROUP BY g WITH ROLLUP ORDER BY g
+    refused: rollup.order
+  # values.form, values.union
+  - from: mysql
+    inputs: mysql >= 8.0.19
+    sql: SELECT * FROM (VALUES ROW(1, 'a'), ROW(2, 'b')) AS t ORDER BY 1
+  - from: mariadb
+    sql: SELECT * FROM (VALUES (1, 'a'), (2, 'b')) AS t ORDER BY 1
+  # column.implicit-name
+  - from: mysql
+    sql: SELECT id + 1, LEAST(g, 9), LPAD(g, 3, '*'), v FROM grammar ORDER BY id
+  - from: mariadb
+    sql: SELECT id + 1, LEAST(g, 9), LPAD(g, 3), v FROM grammar ORDER BY id

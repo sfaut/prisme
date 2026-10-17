@@ -1,0 +1,142 @@
+# Rules `function.unix-timestamp` and `function.from-unixtime`: the ranges of
+# both functions, the epoch and the second after it, in UTC and at +05:00.
+# A date or a number beyond the range of the output is refused: from MySQL
+# 8.0.28 towards MariaDB, from MariaDB 11.5.1 towards MySQL before 8.0.28.
+setup:
+  - DROP TABLE IF EXISTS unix_time
+  - >-
+    CREATE TABLE unix_time (id INT NOT NULL PRIMARY KEY, dt DATETIME(1) NULL, s VARCHAR(30) NULL,
+    n DECIMAL(17, 1) NULL, i BIGINT NULL, k INT NULL)
+  - >-
+    INSERT INTO unix_time VALUES
+    (1, '1960-01-01 00:00:00', '1960-01-01 00:00:00', NULL, -1, -1),
+    (2, '1969-12-31 23:59:59.5', '1969-12-31 23:59:59.5', 0.5, 0, 0),
+    (3, '1970-01-01 00:00:00', '1970-01-01 00:00:00', 0.0, 1, 1),
+    (4, '1970-01-01 00:00:00.5', '1970-01-01 00:00:00.5', 1.5, 2147483647, 2147483647),
+    (5, '1970-01-01 05:00:00', '1970-01-01 05:00:00', 2147483647.5, 2147483648, NULL),
+    (6, '1970-01-01 05:00:00.5', '1970-01-01 05:00:00.5', 4294967295.0, 4294967295, NULL),
+    (7, '2024-05-06 07:08:09', '2024-05-06 07:08:09', 1700000000.1, 4294967296, NULL),
+    (8, '2038-01-19 03:14:07', '2038-01-19 03:14:07', NULL, 32536771199, NULL),
+    (9, '2038-01-19 03:14:08', '2038-01-19 03:14:08', NULL, 32536771200, NULL),
+    (10, '2106-02-07 06:28:15', '2106-02-07 06:28:15', NULL, NULL, NULL),
+    (11, '2106-02-07 06:28:16', '2106-02-07 06:28:16', NULL, NULL, NULL),
+    (12, '2999-12-31 00:00:00', '2999-12-31 00:00:00', NULL, NULL, NULL),
+    (13, NULL, NULL, NULL, NULL, NULL)
+cases:
+  # UNIX_TIMESTAMP of dates up to 2999
+  - from: mysql
+    inputs: mysql < 8.0.28
+    sql: SELECT id, UNIX_TIMESTAMP(dt) AS a, UNIX_TIMESTAMP(s) AS b FROM unix_time ORDER BY id
+  - from: mysql
+    inputs: mysql < 8.0.28
+    session: ["SET time_zone = '+05:00'"]
+    sql: SELECT id, UNIX_TIMESTAMP(dt) AS a, UNIX_TIMESTAMP(s) AS b FROM unix_time ORDER BY id
+  - from: mysql
+    inputs: mysql >= 8.0.28
+    sql: SELECT id, UNIX_TIMESTAMP(dt) AS a, UNIX_TIMESTAMP(s) AS b FROM unix_time ORDER BY id
+    refused: function.unix-timestamp
+  - from: mariadb
+    inputs: mariadb < 11.5.1
+    sql: SELECT id, UNIX_TIMESTAMP(dt) AS a, UNIX_TIMESTAMP(s) AS b FROM unix_time ORDER BY id
+  - from: mariadb
+    inputs: mariadb < 11.5.1
+    session: ["SET time_zone = '+05:00'"]
+    sql: SELECT id, UNIX_TIMESTAMP(dt) AS a, UNIX_TIMESTAMP(s) AS b FROM unix_time ORDER BY id
+  - from: mariadb
+    inputs: mariadb >= 11.5.1
+    outputs: mysql >= 8.0.28
+    sql: SELECT id, UNIX_TIMESTAMP(dt) AS a, UNIX_TIMESTAMP(s) AS b FROM unix_time ORDER BY id
+  - from: mariadb
+    inputs: mariadb >= 11.5.1
+    outputs: mysql >= 8.0.28
+    session: ["SET time_zone = '+05:00'"]
+    sql: SELECT id, UNIX_TIMESTAMP(dt) AS a, UNIX_TIMESTAMP(s) AS b FROM unix_time ORDER BY id
+  - from: mariadb
+    inputs: mariadb >= 11.5.1
+    outputs: mysql < 8.0.28
+    sql: SELECT id, UNIX_TIMESTAMP(dt) AS a, UNIX_TIMESTAMP(s) AS b FROM unix_time ORDER BY id
+    refused: function.unix-timestamp
+  # FROM_UNIXTIME of numbers beyond 2^32
+  - from: mysql
+    inputs: mysql < 8.0.28
+    sql: SELECT id, FROM_UNIXTIME(n) AS a, FROM_UNIXTIME(i) AS b FROM unix_time ORDER BY id
+  - from: mysql
+    inputs: mysql < 8.0.28
+    session: ["SET time_zone = '+05:00'"]
+    sql: SELECT id, FROM_UNIXTIME(n) AS a, FROM_UNIXTIME(i) AS b FROM unix_time ORDER BY id
+  - from: mysql
+    inputs: mysql >= 8.0.28
+    sql: SELECT id, FROM_UNIXTIME(n) AS a, FROM_UNIXTIME(i) AS b FROM unix_time ORDER BY id
+    refused: function.from-unixtime
+  - from: mariadb
+    inputs: mariadb < 11.5.1
+    sql: SELECT id, FROM_UNIXTIME(n) AS a, FROM_UNIXTIME(i) AS b FROM unix_time ORDER BY id
+  - from: mariadb
+    inputs: mariadb < 11.5.1
+    session: ["SET time_zone = '+05:00'"]
+    sql: SELECT id, FROM_UNIXTIME(n) AS a, FROM_UNIXTIME(i) AS b FROM unix_time ORDER BY id
+  - from: mariadb
+    inputs: mariadb >= 11.5.1
+    outputs: mysql >= 8.0.28
+    sql: SELECT id, FROM_UNIXTIME(n) AS a, FROM_UNIXTIME(i) AS b FROM unix_time ORDER BY id
+  - from: mariadb
+    inputs: mariadb >= 11.5.1
+    outputs: mysql >= 8.0.28
+    session: ["SET time_zone = '+05:00'"]
+    sql: SELECT id, FROM_UNIXTIME(n) AS a, FROM_UNIXTIME(i) AS b FROM unix_time ORDER BY id
+  - from: mariadb
+    inputs: mariadb >= 11.5.1
+    outputs: mysql < 8.0.28
+    sql: SELECT id, FROM_UNIXTIME(n) AS a, FROM_UNIXTIME(i) AS b FROM unix_time ORDER BY id
+    refused: function.from-unixtime
+  # FROM_UNIXTIME of an INT, within every range
+  - from: mysql
+    sql: SELECT id, FROM_UNIXTIME(k) AS v FROM unix_time ORDER BY id
+  - from: mysql
+    session: ["SET time_zone = '+05:00'"]
+    sql: SELECT id, FROM_UNIXTIME(k) AS v FROM unix_time ORDER BY id
+  - from: mariadb
+    sql: SELECT id, FROM_UNIXTIME(k) AS v FROM unix_time ORDER BY id
+  - from: mariadb
+    session: ["SET time_zone = '+05:00'"]
+    sql: SELECT id, FROM_UNIXTIME(k) AS v FROM unix_time ORDER BY id
+  # Literals within the range of 2038, a TIMESTAMP
+  - from: mysql
+    sql: >-
+      SELECT UNIX_TIMESTAMP('2024-05-06 07:08:09') AS a, FROM_UNIXTIME(0) AS b,
+      FROM_UNIXTIME(1700000000, '%Y %D %M') AS c, UNIX_TIMESTAMP(ts) AS d FROM sample
+  - from: mariadb
+    sql: >-
+      SELECT UNIX_TIMESTAMP('2024-05-06 07:08:09') AS a, FROM_UNIXTIME(0) AS b,
+      FROM_UNIXTIME(1700000000, '%Y %D %M') AS c, UNIX_TIMESTAMP(ts) AS d FROM sample
+  # A literal beyond 2038
+  - from: mysql
+    inputs: mysql < 8.0.28
+    sql: SELECT FROM_UNIXTIME(2147483648) AS v
+  - from: mysql
+    inputs: mysql >= 8.0.28
+    outputs: mariadb >= 11.5.1
+    sql: SELECT FROM_UNIXTIME(2147483648) AS v
+  - from: mysql
+    inputs: mysql >= 8.0.28
+    outputs: mariadb < 11.5.1
+    sql: SELECT FROM_UNIXTIME(2147483648) AS v
+    refused: function.from-unixtime
+  - from: mariadb
+    inputs: mariadb < 11.5.1
+    sql: SELECT FROM_UNIXTIME(2147483648) AS v
+  - from: mariadb
+    inputs: mariadb >= 11.5.1
+    outputs: mysql >= 8.0.28
+    sql: SELECT FROM_UNIXTIME(2147483648) AS v
+  - from: mariadb
+    inputs: mariadb >= 11.5.1
+    outputs: mysql < 8.0.28
+    sql: SELECT FROM_UNIXTIME(2147483648) AS v
+    refused: function.from-unixtime
+  - from: mysql
+    compare: types
+    sql: SELECT UNIX_TIMESTAMP() AS v
+  - from: mariadb
+    compare: types
+    sql: SELECT UNIX_TIMESTAMP() AS v
