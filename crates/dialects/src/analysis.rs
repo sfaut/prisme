@@ -13,7 +13,7 @@
 //!   one between backticks, keeps the typed spelling.
 //! - **Keywords**: any other word that `sqlparser` recognises as a keyword
 //!   (`SELECT`, `CAST`, `INTERVAL ... DAY`...). A keyword that the server
-//!   version does not know (`keywords/*.yaml` files, `since` / `until`
+//!   version does not know (`reference/*.yaml` files, `since` / `until`
 //!   fields) is reported separately.
 //!
 //! Identifiers are collected by a visitor of the tree, where each one carries

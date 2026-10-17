@@ -1,8 +1,8 @@
 //! Keywords of each dialect, shared by the beautifier (capitals, layout) and
 //! by the SQL editor's highlighting (API route).
 //!
-//! One file per dialect, `crates/dialects/keywords/<dialect>.yaml`, edited
-//! directly: it is embedded in the executable at compile time. Words are
+//! The keywords come from the reference file of each dialect
+//! (`crates/dialects/reference/<dialect>.yaml`, `reference` module). Words are
 //! sorted by category (reserved, non-reserved keywords, types, values); a
 //! word can carry the version it appeared in (`since`) or was removed in
 //! (`until`). The format is described at the top of each file.
@@ -13,12 +13,13 @@ use std::sync::OnceLock;
 use serde::Deserialize;
 
 use crate::Dialect;
+use crate::reference::reference;
 use crate::versions::Version;
 
-/// Content of a keyword file.
+/// Keywords of a reference file.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct KeywordFile {
+pub(crate) struct KeywordFile {
     /// Reserved words.
     reserved: Vec<Entry>,
     /// Non-reserved keywords, unambiguous in practice.
@@ -176,7 +177,8 @@ fn index_of(dialect: Dialect) -> &'static NameIndex {
     }
 }
 
-/// Builds the lookup tables of a keyword file, read once for the whole program.
+/// Builds the lookup tables of the keywords of a dialect, once for the whole
+/// program.
 fn name_index(file: &'static KeywordFile) -> NameIndex {
     let mut index = NameIndex::default();
     for entry in [&file.reserved, &file.keywords, &file.types, &file.literals]
@@ -204,20 +206,9 @@ fn name_index(file: &'static KeywordFile) -> NameIndex {
     index
 }
 
-/// Keyword file of a dialect, read only once.
+/// Keywords of a dialect, from its reference file.
 fn file_of(dialect: Dialect) -> &'static KeywordFile {
-    static MYSQL: OnceLock<KeywordFile> = OnceLock::new();
-    static MARIADB: OnceLock<KeywordFile> = OnceLock::new();
-    match dialect {
-        Dialect::MySql => MYSQL.get_or_init(|| parse(include_str!("../keywords/mysql.yaml"))),
-        Dialect::MariaDb => MARIADB.get_or_init(|| parse(include_str!("../keywords/mariadb.yaml"))),
-    }
-}
-
-/// Reads a keyword file. The files are part of the program: a format error is
-/// a defect of Prisme, reported by the tests.
-fn parse(text: &str) -> KeywordFile {
-    yaml_serde::from_str(text).expect("unreadable keyword file")
+    &reference(dialect).keywords
 }
 
 /// Numbers of a version (`10.11.11-MariaDB` gives `[10, 11, 11]`), to compare

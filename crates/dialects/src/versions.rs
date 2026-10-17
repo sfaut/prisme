@@ -1,10 +1,11 @@
 //! Registry of the versions of each dialect: the period of validity of each
 //! construct of the grammar (`docs/DEV-DIALECTS.md`, step 2).
 //!
-//! One file per dialect, `crates/dialects/versions/<dialect>.yaml`, edited
-//! directly and embedded in the executable. The user chooses the version of
-//! the dialect they write in; the parser accepts a construct only within its
-//! period, and the emitter checks the version of the server the same way.
+//! The constructs come from the reference file of each dialect
+//! (`crates/dialects/reference/<dialect>.yaml`, `reference` module). The user
+//! chooses the version of the dialect they write in; the parser accepts a
+//! construct only within its period, and the emitter checks the version of
+//! the server the same way.
 //! A construct missing from the file of a dialect is absent from it: each
 //! dialect stays in its domain.
 //!
@@ -18,6 +19,7 @@ use std::sync::OnceLock;
 use serde::Deserialize;
 
 use crate::Dialect;
+use crate::reference::reference;
 
 /// Version of a dialect: `8.0.19`, `10.6.3`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -121,21 +123,20 @@ pub enum VersionError {
     },
 }
 
-/// Registry of a dialect.
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// Registry of a dialect: its floor and its constructs, read from its
+/// reference file.
+#[derive(Debug)]
 pub struct Registry {
     /// Oldest version covered.
-    #[serde(deserialize_with = "deserialize_version")]
     floor: Version,
     /// Constructs, with their period of validity.
-    constructs: Vec<Entry>,
+    constructs: &'static [ConstructEntry],
 }
 
-/// Construct of a registry file, with its period of validity.
+/// Construct of a reference file, with its period of validity.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Entry {
+pub(crate) struct ConstructEntry {
     /// Construct.
     id: Construct,
     /// First version that has it.
@@ -303,24 +304,25 @@ impl Registry {
     }
 }
 
-/// Registry of a dialect, read only once.
+/// Registry of a dialect, built only once.
 pub fn registry(dialect: Dialect) -> &'static Registry {
     static MYSQL: OnceLock<Registry> = OnceLock::new();
     static MARIADB: OnceLock<Registry> = OnceLock::new();
+    let build = || {
+        let reference = reference(dialect);
+        Registry {
+            floor: reference.floor,
+            constructs: &reference.constructs,
+        }
+    };
     match dialect {
-        Dialect::MySql => MYSQL.get_or_init(|| parse(include_str!("../versions/mysql.yaml"))),
-        Dialect::MariaDb => MARIADB.get_or_init(|| parse(include_str!("../versions/mariadb.yaml"))),
+        Dialect::MySql => MYSQL.get_or_init(build),
+        Dialect::MariaDb => MARIADB.get_or_init(build),
     }
 }
 
-/// Reads a registry file. The files are part of the program: a format error
-/// is a defect of Prisme, reported by the tests.
-fn parse(text: &str) -> Registry {
-    yaml_serde::from_str(text).expect("unreadable registry of the versions")
-}
-
-/// Reads a version written as a string in a registry file.
-fn deserialize_version<'de, D: serde::Deserializer<'de>>(
+/// Reads a version written as a string in a reference file.
+pub(crate) fn deserialize_version<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Version, D::Error> {
     let text = String::deserialize(deserializer)?;
@@ -328,7 +330,7 @@ fn deserialize_version<'de, D: serde::Deserializer<'de>>(
         .ok_or_else(|| serde::de::Error::custom(format!("invalid version {text:?}")))
 }
 
-/// Reads an optional version of a registry file.
+/// Reads an optional version of a reference file.
 fn deserialize_optional_version<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Option<Version>, D::Error> {
@@ -359,7 +361,7 @@ mod tests {
         for dialect in [Dialect::MySql, Dialect::MariaDb] {
             let registry = registry(dialect);
             let mut seen = HashSet::new();
-            for entry in &registry.constructs {
+            for entry in registry.constructs {
                 assert!(seen.insert(entry.id), "{:?} twice in {dialect:?}", entry.id);
                 assert!(entry.until.is_none_or(|until| until > entry.since));
                 assert!(entry.source.starts_with("https://"));

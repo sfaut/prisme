@@ -1,6 +1,6 @@
 /**
  * Dialects offered to the user, with their versions, read once from the
- * server (registry of the versions, `crates/dialects/versions/*.yaml`).
+ * server (registry of the versions, `crates/dialects/reference/*.yaml`).
  */
 
 import { defineStore } from 'pinia'

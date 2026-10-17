@@ -22,7 +22,7 @@
 //!
 //!    A query that `sqlparser` does not understand (procedure body, syntax
 //!    specific to a version) is processed word by word: only the words of
-//!    the `keywords/*.yaml` files known to the version go to capitals, plus
+//!    the `reference/*.yaml` files known to the version go to capitals, plus
 //!    time units (`second`, `day`...) where they can only be a unit, after
 //!    `INTERVAL <value>` and as the first argument of `EXTRACT`,
 //!    `TIMESTAMPADD` and `TIMESTAMPDIFF`. Table and column names (`name`,

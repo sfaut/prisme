@@ -2,7 +2,7 @@
  * Keywords of a dialect, for the SQL editor's highlighting.
  *
  * The lists live on the server side, one file per dialect
- * (`crates/dialects/keywords/*.yaml`): the beautifier reads the same ones.
+ * (`crates/dialects/reference/*.yaml`): the beautifier reads the same ones.
  */
 
 import { request } from './http'

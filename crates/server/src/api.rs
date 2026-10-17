@@ -358,7 +358,7 @@ struct KeywordsQuery {
 }
 
 /// Keywords of a dialect, in capitals, by category
-/// (`crates/dialects/keywords/*.yaml` files): the editor's highlighting sorts
+/// (`crates/dialects/reference/*.yaml` files): the editor's highlighting sorts
 /// them into its word classes.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]

@@ -1,6 +1,6 @@
 /**
  * Dialect of the SQL editor (highlighting), built from the keywords of the
- * server's dialect (`crates/dialects/keywords/*.yaml`).
+ * server's dialect (`crates/dialects/reference/*.yaml`).
  *
  * The text-reading settings (quotes, `#` comments, `@` variables...) are
  * those of the MySQL and MariaDB dialects of `@codemirror/lang-sql`, identical
