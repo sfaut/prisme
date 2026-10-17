@@ -528,9 +528,17 @@ impl Parser<'_> {
             {
                 return Ok(construct);
             }
+            // A word followed by a string: a typed literal, an introducer, or
+            // a column and its alias (`a 'x'`).
             let next = self.peek_at(1).map(|next| &next.kind);
             if matches!(next, Some(TokenKind::String { .. })) {
-                return Err(self.unsupported("typed literals and charset introducers", token.span));
+                let upper = token.text(self.text).to_ascii_uppercase();
+                if ["DATE", "TIME", "TIMESTAMP"].contains(&upper.as_str()) {
+                    return Err(self.unsupported("typed literals", token.span));
+                }
+                if upper.starts_with('_') {
+                    return Err(self.unsupported("charset introducers", token.span));
+                }
             }
             let constructs = [
                 "EXISTS",

@@ -440,6 +440,16 @@ fn reads_aliases_with_their_form() {
             None,
         ]
     );
+    // A string after a column is its alias.
+    let string_alias = self::select("SELECT a 'x y' FROM t");
+    assert!(matches!(
+        &string_alias.items[0],
+        SelectItem::Expr { alias: Some(alias), .. } if alias.name.value == "x y"
+    ));
+    assert_eq!(
+        error("SELECT _utf8mb4'x'", &mysql()).0,
+        "charset introducers: not supported yet by the parser of Prisme"
+    );
     assert!(matches!(
         &select.items[4],
         SelectItem::Wildcard { qualifier: Some(name), .. } if name.parts[0].value == "t"
