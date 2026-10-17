@@ -66,7 +66,8 @@ enum Command {
     /// The file holds one case per line, `id expression`; an id starting
     /// with `~` for an expression whose value changes at each run (only its
     /// type is compared); `! statement` for a statement run first (`! SET
-    /// time_zone = '+01:00'`); `#` for a comment. The expressions read the
+    /// time_zone = '+01:00'`), again in the session that reads the values;
+    /// `#` for a comment. The expressions read the
     /// one row of the table `sample`: d DATE, dt DATETIME(3), ts
     /// TIMESTAMP(6), t TIME, s VARCHAR(30), i INT, n DECIMAL(10,2), f DOUBLE,
     /// all NOT NULL, then the nullable columns dn DATE and sn VARCHAR(30),

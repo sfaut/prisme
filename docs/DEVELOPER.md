@@ -227,7 +227,7 @@ cargo run -p prisme-probe -- expr cases.txt --differ
 cargo run -p prisme-probe -- functions mysql --server mysql:9.3.0
 ```
 
-A file of cases holds one expression per line, `id expression`; an id starting with `~` for an expression whose value changes at each run (only its type is compared); `! statement` for a statement run first; `#` for a comment. The expressions read the one row of the table `sample`, described by `cargo run -p prisme-probe -- expr --help`.
+A file of cases holds one expression per line, `id expression`; an id starting with `~` for an expression whose value changes at each run (only its type is compared); `! statement` for a statement run first, again in the session that reads the values (a statement that can run twice: `DROP TABLE IF EXISTS` before `CREATE TABLE`); `#` for a comment. The expressions read the one row of the table `sample`, described by `cargo run -p prisme-probe -- expr --help`. The type is that of the column of a `CREATE TABLE ... AS SELECT`, the value the one a query of the client reads.
 
 The measurements behind the rules of the dialects stay in `crates/probe/cases/`: a file of cases for `expr` (`unix-time-ranges.txt`), a file of statements for `sql` (`bit-count-readings.sql`), each with a comment that says what it measures. A new version of a server runs them again, its image added with `--server`, and `--differ` shows the cases where it departs from the others:
 

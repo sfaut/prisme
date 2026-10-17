@@ -6,8 +6,13 @@
 //! Each expression is evaluated twice in a stored procedure that catches the
 //! errors: `SELECT <expression> INTO @value FROM sample` gives the warning
 //! or the error as a query gives them, and `CREATE TABLE ... AS SELECT`,
-//! with the warnings kept as warnings, gives the type and the value, read in
-//! that column (a user variable converts some values). `sample` holds one row:
+//! with the warnings kept as warnings, gives the type. The value is the one
+//! a query of the client reads, in a session of its own where the statements
+//! of the file run again: the column of the `CREATE TABLE` bounds a value to
+//! its type (MySQL 8.0.11 types `CAST(-1 AS UNSIGNED)` as an `INT UNSIGNED`,
+//! 4294967295) and writes a decimal at its scale, a user variable converts
+//! some values. A byte string keeps the value of the column, in hexadecimal.
+//! `sample` holds one row:
 //! `d DATE`, `dt DATETIME(3)`, `ts TIMESTAMP(6)`, `t TIME`, `s VARCHAR(30)`,
 //! `i INT`, `n DECIMAL(10,2)`, `f DOUBLE`, all `NOT NULL`, then `dn DATE`,
 //! `sn VARCHAR(30)` and `j JSON`, nullable, `dn` and `sn` being NULL.
@@ -241,7 +246,59 @@ pub fn measure(server: &Server, cases: &Cases) -> anyhow::Result<HashMap<String,
         };
         measures.insert(id.clone(), measure);
     }
+    for (id, value) in read_values(server, cases)? {
+        if let Some(measure) = measures.get_mut(&id)
+            && measure.failure.is_none()
+            && !measure.column_type.as_deref().is_some_and(binary)
+        {
+            measure.value = value;
+        }
+    }
     Ok(measures)
+}
+
+/// Values of `cases` as a query of the client reads them, in a session where
+/// the statements of the file run again; a query that fails gives none.
+fn read_values(server: &Server, cases: &Cases) -> anyhow::Result<HashMap<String, Option<String>>> {
+    let mut script = String::new();
+    for statement in &cases.setup {
+        let _ = writeln!(script, "{};", statement.trim_end_matches(';'));
+    }
+    for case in &cases.cases {
+        let _ = writeln!(
+            script,
+            "SELECT '{}', {} FROM sample;",
+            case.id, case.expression
+        );
+    }
+    let output = server.run(&script, &["--batch", "--skip-column-names", "--force"])?;
+    let values = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| line.split_once('\t'))
+        .map(|(id, value)| (id.to_string(), field(value)))
+        .collect();
+    Ok(values)
+}
+
+/// Tells whether a column of type `column_type` holds bytes, written in
+/// hexadecimal.
+fn binary(column_type: &str) -> bool {
+    [
+        "binary",
+        "varbinary",
+        "tinyblob",
+        "blob",
+        "mediumblob",
+        "longblob",
+        "bit",
+        "geometry",
+        "point",
+        "linestring",
+        "polygon",
+        "multi",
+    ]
+    .iter()
+    .any(|prefix| column_type.starts_with(prefix))
 }
 
 /// Literal of `text`, read the same way whatever the SQL mode.
