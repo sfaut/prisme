@@ -26,6 +26,12 @@ constructs:
   - id: system_versioning
     since: "10.3.4"
     source: https://mariadb.com/kb/en/system-versioned-tables/
+  - id: nested_set_operation
+    since: "10.4.0"
+    source: https://jira.mariadb.org/browse/MDEV-11953
+  - id: derived_column_list
+    since: "11.7.1"
+    source: https://jira.mariadb.org/browse/MDEV-31466
   - id: intersect_except
     since: "10.3.0"
     source: https://mariadb.com/kb/en/intersect/

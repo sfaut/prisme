@@ -1,5 +1,8 @@
 //! Nodes that bring rows: tables, `VALUES`, common table expressions and
 //! subqueries of the `FROM`.
+//!
+//! The index hints of a table (`USE INDEX`, MySQL family) do not change the
+//! rows read; its partitions (`PARTITION (p0)`) do, as a filter.
 
 use prisme_types::{DataType, Type};
 
@@ -15,8 +18,48 @@ pub struct Scan {
     /// Columns of the table, in order, with their type read from the
     /// catalog of the connection.
     pub columns: Vec<(Ident, Type)>,
+    /// Partitions read (`PARTITION (p0, p1)`); all of them when empty.
+    pub partitions: Vec<Ident>,
+    /// Index hints, in order (MySQL family).
+    pub index_hints: Vec<IndexHint>,
     /// Position in the input.
     pub span: Option<Span>,
+}
+
+/// Index hint of a table (MySQL family): `USE INDEX (i)`, `FORCE KEY FOR
+/// JOIN (i)`, `IGNORE INDEX FOR ORDER BY (i)`. Without effect on the rows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexHint {
+    /// What the optimizer is told.
+    pub action: IndexHintAction,
+    /// `KEY` written in place of `INDEX`.
+    pub key: bool,
+    /// Part of the query the hint is for; all of it when `None`.
+    pub scope: Option<IndexHintScope>,
+    /// Indexes; empty for `USE INDEX ()`, no index.
+    pub indexes: Vec<Ident>,
+}
+
+/// What an index hint tells the optimizer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum IndexHintAction {
+    /// `USE`: only these indexes.
+    Use,
+    /// `FORCE`: these indexes, a full scan being the last resort.
+    Force,
+    /// `IGNORE`: not these indexes.
+    Ignore,
+}
+
+/// Part of the query an index hint is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum IndexHintScope {
+    /// `FOR JOIN`: finding rows and joins.
+    Join,
+    /// `FOR ORDER BY`.
+    OrderBy,
+    /// `FOR GROUP BY`.
+    GroupBy,
 }
 
 /// Name of a table, with its database when written (`db.t`).
@@ -110,6 +153,12 @@ pub struct Derived {
     pub input: Box<Plan>,
     /// Alias, required in the `FROM`.
     pub alias: TableAlias,
+    /// `LATERAL`: the subquery reads the columns of the tables before it in
+    /// the `FROM`.
+    pub lateral: bool,
+    /// The subquery reads columns of an enclosing query (outer references),
+    /// which some dialects and versions refuse in a derived table.
+    pub outer_references: bool,
     /// Columns, qualified and renamed by the alias, computed when built.
     pub schema: Schema,
     /// Position in the input.
@@ -117,6 +166,19 @@ pub struct Derived {
 }
 
 impl Scan {
+    /// Rows of `table`, of the given columns, without alias, partition or
+    /// hint.
+    pub fn new(table: TableName, columns: Vec<(Ident, Type)>) -> Self {
+        Self {
+            table,
+            alias: None,
+            columns,
+            partitions: Vec::new(),
+            index_hints: Vec::new(),
+            span: None,
+        }
+    }
+
     /// Columns of the table, qualified by the alias or by the name of the
     /// table.
     pub(crate) fn schema(&self) -> Schema {
@@ -232,6 +294,8 @@ impl Derived {
         Ok(Self {
             input: Box::new(input),
             alias,
+            lateral: false,
+            outer_references: false,
             schema,
             span: None,
         })
@@ -310,15 +374,13 @@ mod tests {
 
     #[test]
     fn scan_qualifies_by_alias_or_table() {
-        let mut scan = Scan {
-            table: TableName {
+        let mut scan = Scan::new(
+            TableName {
                 database: None,
                 name: Ident::new("t"),
             },
-            alias: None,
-            columns: vec![(Ident::new("a"), Type::not_null(int()))],
-            span: None,
-        };
+            vec![(Ident::new("a"), Type::not_null(int()))],
+        );
         assert_eq!(scan.schema().columns[0].qualifier, Some(Ident::new("t")));
         scan.alias = Some(TableAlias {
             name: Ident::new("x"),

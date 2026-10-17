@@ -216,18 +216,16 @@ mod tests {
 
     /// Table `t (a INT NOT NULL, b INT NULL)`.
     fn table() -> Plan {
-        Plan::Scan(Scan {
-            table: TableName {
+        Plan::Scan(Scan::new(
+            TableName {
                 database: None,
                 name: Ident::new("t"),
             },
-            alias: None,
-            columns: vec![
+            vec![
                 (Ident::new("a"), Type::not_null(int())),
                 (Ident::new("b"), Type::nullable(int())),
             ],
-            span: None,
-        })
+        ))
     }
 
     fn column_a() -> Expr {

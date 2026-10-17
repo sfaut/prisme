@@ -17,7 +17,7 @@ use prisme_plan::Span;
 
 use super::{ParseError, Parser};
 use crate::lexer::{Punct, TokenKind};
-use crate::sql::ast::{BinaryOp, Expr, ExprKind, Literal, ObjectName, UnaryOp};
+use crate::sql::ast::{BinaryOp, Expr, ExprKind, Literal, ObjectName, Query, UnaryOp};
 
 impl Parser<'_> {
     /// Expression.
@@ -78,8 +78,12 @@ impl Parser<'_> {
         loop {
             if let Some(op) = self.comparison() {
                 self.advance();
-                let right = self.bit_or()?;
-                left = binary(op, left, right);
+                left = if self.at_quantifier(op) {
+                    self.quantified(left, op)?
+                } else {
+                    let right = self.bit_or()?;
+                    binary(op, left, right)
+                };
                 continue;
             }
             if self.eat_keyword("IS").is_some() {
@@ -176,12 +180,56 @@ impl Parser<'_> {
         })
     }
 
-    /// `IN (values)`, after `IN`.
-    fn in_list(&mut self, operand: Expr, negated: bool) -> Result<Expr, ParseError> {
+    /// Tells whether `ANY`, `SOME` or `ALL` and a subquery follow the
+    /// comparison `op`; `<=>` has none in the MySQL family.
+    fn at_quantifier(&self, op: BinaryOp) -> bool {
+        op != BinaryOp::NullSafeEq
+            && self.at_any_keyword(&["ANY", "SOME", "ALL"])
+            && self
+                .peek_at(1)
+                .is_some_and(|token| token.kind == TokenKind::Punct(Punct::LeftParen))
+    }
+
+    /// `operand op ANY (subquery)`, from `ANY`, `SOME` or `ALL`.
+    fn quantified(&mut self, operand: Expr, op: BinaryOp) -> Result<Expr, ParseError> {
+        let all = self.at_keyword("ALL");
+        self.advance();
+        let query = self.subquery()?;
+        let span = self.span_from(operand.span.start);
+        Ok(Expr {
+            kind: ExprKind::Quantified {
+                op,
+                operand: Box::new(operand),
+                all,
+                query: Box::new(query),
+            },
+            span,
+        })
+    }
+
+    /// `(query)`: a subquery between parentheses.
+    fn subquery(&mut self) -> Result<Query, ParseError> {
         self.expect_punct(Punct::LeftParen)?;
-        if self.at_any_keyword(&["SELECT", "WITH", "VALUES", "TABLE"]) {
-            return Err(self.unsupported("subqueries", self.here()));
+        let query = self.query()?;
+        self.expect_punct(Punct::RightParen)?;
+        Ok(query)
+    }
+
+    /// `IN (values)` or `IN (subquery)`, after `IN`.
+    fn in_list(&mut self, operand: Expr, negated: bool) -> Result<Expr, ParseError> {
+        if self.query_in_parentheses() {
+            let query = self.subquery()?;
+            let span = self.span_from(operand.span.start);
+            return Ok(Expr {
+                kind: ExprKind::InSubquery {
+                    operand: Box::new(operand),
+                    query: Box::new(query),
+                    negated,
+                },
+                span,
+            });
         }
+        self.expect_punct(Punct::LeftParen)?;
         let mut list = vec![self.expr()?];
         while self.eat_punct(Punct::Comma).is_some() {
             list.push(self.expr()?);
@@ -354,21 +402,69 @@ impl Parser<'_> {
         )
     }
 
-    /// Expression between parentheses.
+    /// Expression, subquery or row between parentheses.
     fn parenthesized(&mut self) -> Result<Expr, ParseError> {
-        let start = self.expect_punct(Punct::LeftParen)?.start;
-        if self.at_any_keyword(&["SELECT", "WITH", "VALUES", "TABLE"]) {
-            return Err(self.unsupported("subqueries", self.here()));
+        let start = self.here().start;
+        if self.query_in_parentheses() {
+            return self.scalar_subquery(start);
         }
+        self.expect_punct(Punct::LeftParen)?;
         let inner = self.expr()?;
         if self.at_punct(Punct::Comma) {
-            return Err(self.unsupported("row constructors", self.here()));
+            return self.row(start, inner);
         }
         self.expect_punct(Punct::RightParen)?;
         Ok(leaf(
             ExprKind::Nested(Box::new(inner)),
             self.span_from(start),
         ))
+    }
+
+    /// Subquery between parentheses, from `start`.
+    fn scalar_subquery(&mut self, start: usize) -> Result<Expr, ParseError> {
+        let query = self.subquery()?;
+        Ok(leaf(
+            ExprKind::Subquery(Box::new(query)),
+            self.span_from(start),
+        ))
+    }
+
+    /// Row from `start`, after its first value: `, b, c)`.
+    fn row(&mut self, start: usize, first: Expr) -> Result<Expr, ParseError> {
+        let mut values = vec![first];
+        while self.eat_punct(Punct::Comma).is_some() {
+            values.push(self.expr()?);
+        }
+        self.expect_punct(Punct::RightParen)?;
+        Ok(leaf(ExprKind::Row(values), self.span_from(start)))
+    }
+
+    /// `EXISTS (subquery)` or `ROW (values)`, from the keyword; `None` for
+    /// another word.
+    fn keyword_construct(&mut self) -> Result<Option<Expr>, ParseError> {
+        let start = self.here().start;
+        if self.at_keyword("EXISTS") {
+            self.advance();
+            let query = self.subquery()?;
+            return Ok(Some(leaf(
+                ExprKind::Exists(Box::new(query)),
+                self.span_from(start),
+            )));
+        }
+        if self.at_keyword("ROW") {
+            self.advance();
+            self.expect_punct(Punct::LeftParen)?;
+            // `ROW` holds two values at least.
+            let mut values = vec![self.expr()?];
+            self.expect_punct(Punct::Comma)?;
+            values.push(self.expr()?);
+            while self.eat_punct(Punct::Comma).is_some() {
+                values.push(self.expr()?);
+            }
+            self.expect_punct(Punct::RightParen)?;
+            return Ok(Some(leaf(ExprKind::Row(values), self.span_from(start))));
+        }
+        Ok(None)
     }
 
     /// Expression that starts with a word: a keyword literal, a column, or a
@@ -388,6 +484,12 @@ impl Parser<'_> {
         }
         let next = self.peek_at(1).map(|next| &next.kind);
         if token.kind == TokenKind::Word {
+            if matches!(next, Some(TokenKind::Punct(Punct::LeftParen)))
+                && let Some(construct) = self.keyword_construct()?
+            {
+                return Ok(construct);
+            }
+            let next = self.peek_at(1).map(|next| &next.kind);
             if matches!(next, Some(TokenKind::Punct(Punct::LeftParen))) {
                 return Err(self.unsupported("function calls", token.span));
             }

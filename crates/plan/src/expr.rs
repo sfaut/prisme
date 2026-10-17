@@ -133,8 +133,9 @@ pub enum ExprKind {
         /// `true` for `NOT IN`.
         negated: bool,
     },
-    /// `IN` a subquery of one column, three-valued: `NOT IN` a subquery that
-    /// holds a NULL is never true.
+    /// `IN` a subquery of as many columns as the value tested (one, or the
+    /// values of a row), three-valued: `NOT IN` a subquery that holds a NULL
+    /// is never true.
     InSubquery {
         /// Value tested.
         operand: Box<Expr>,
@@ -152,6 +153,21 @@ pub enum ExprKind {
     },
     /// Subquery of one column and at most one row; NULL without row.
     ScalarSubquery(Box<Plan>),
+    /// Comparison with the rows of a subquery of as many columns as the
+    /// value compared: `a > ALL (subquery)`, `(a, b) = ANY (subquery)`.
+    Quantified {
+        /// Comparison.
+        op: Comparison,
+        /// Value compared.
+        operand: Box<Expr>,
+        /// `ALL` or `ANY`.
+        quantifier: Quantifier,
+        /// Subquery.
+        subquery: Box<Plan>,
+    },
+    /// Row of values, compared whole (`(a, b) = (1, 2)`,
+    /// `(a, b) IN (SELECT ...)`): equal when each value is.
+    Row(Vec<Expr>),
     /// Call to a scalar function.
     Function(FunctionCall),
     /// Call to a window function.
@@ -196,6 +212,15 @@ pub enum VariableScope {
     Session,
     /// System variable of the server (`@@global.x`).
     Global,
+}
+
+/// Quantifier of a comparison with a subquery.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Quantifier {
+    /// `ALL`: true for every row, true without row.
+    All,
+    /// `ANY`, `SOME`: true for at least one row, false without row.
+    Any,
 }
 
 /// Comparison operator.
@@ -505,15 +530,27 @@ impl Expr {
         )
     }
 
-    /// `IN` a subquery: unknown when the value or the column of the
-    /// subquery can be NULL.
+    /// `IN` a subquery: unknown when the value or a column of the subquery
+    /// can be NULL.
     ///
     /// # Errors
     ///
-    /// `PlanError::ColumnCount` when the subquery has more than one column.
+    /// `PlanError::ColumnCount` when the subquery has not as many columns as
+    /// the value tested (one, or the values of a row).
     pub fn in_subquery(operand: Expr, subquery: Plan, negated: bool) -> Result<Self, PlanError> {
-        let column = single_column(&subquery)?;
-        let ty = boolean(operand.ty.nullable || column.nullable);
+        let expected = match &operand.kind {
+            ExprKind::Row(values) => values.len(),
+            _ => 1,
+        };
+        let schema = subquery.schema();
+        if schema.len() != expected {
+            return Err(PlanError::ColumnCount {
+                expected,
+                found: schema.len(),
+            });
+        }
+        let nullable = schema.columns.iter().any(|column| column.ty.nullable);
+        let ty = boolean(operand.ty.nullable || nullable);
         Ok(Self::new(
             ExprKind::InSubquery {
                 operand: Box::new(operand),
@@ -522,6 +559,56 @@ impl Expr {
             },
             ty,
         ))
+    }
+
+    /// Comparison with the rows of a subquery: unknown when the value or a
+    /// column of the subquery can be NULL; never unknown without row.
+    ///
+    /// # Errors
+    ///
+    /// `PlanError::ColumnCount` when the subquery has not as many columns as
+    /// the value compared (one, or the values of a row).
+    pub fn quantified(
+        op: Comparison,
+        operand: Expr,
+        quantifier: Quantifier,
+        subquery: Plan,
+    ) -> Result<Self, PlanError> {
+        let expected = match &operand.kind {
+            ExprKind::Row(values) => values.len(),
+            _ => 1,
+        };
+        let schema = subquery.schema();
+        if schema.len() != expected {
+            return Err(PlanError::ColumnCount {
+                expected,
+                found: schema.len(),
+            });
+        }
+        let nullable = schema.columns.iter().any(|column| column.ty.nullable);
+        let ty = boolean(operand.ty.nullable || nullable);
+        Ok(Self::new(
+            ExprKind::Quantified {
+                op,
+                operand: Box::new(operand),
+                quantifier,
+                subquery: Box::new(subquery),
+            },
+            ty,
+        ))
+    }
+
+    /// Row of values: of no data type of its own, NULL in part when one of
+    /// its values can be.
+    pub fn row(values: Vec<Expr>) -> Self {
+        let nullable = values.iter().any(|value| value.ty.nullable);
+        Self::new(
+            ExprKind::Row(values),
+            Type {
+                data_type: DataType::Unknown,
+                nullable,
+            },
+        )
     }
 
     /// `EXISTS`: never unknown.
@@ -734,7 +821,12 @@ mod tests {
                 found: 2
             })
         );
-        assert!(Expr::in_subquery(column("a", false), two_columns, false).is_err());
+        assert!(Expr::in_subquery(column("a", false), two_columns.clone(), false).is_err());
+        // A row tests the columns of the subquery one by one.
+        let row = Expr::row(vec![column("a", false), column("b", true)]);
+        assert!(row.ty.nullable);
+        let in_row = Expr::in_subquery(row, two_columns, false).unwrap();
+        assert_eq!(in_row.ty, Type::nullable(DataType::Boolean));
     }
 
     #[test]

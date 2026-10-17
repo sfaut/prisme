@@ -6,7 +6,7 @@
 //! text, and the plan builder gives it its meaning (names resolved, types,
 //! explicit conversions).
 
-use prisme_plan::{AliasForm, Direction, Ident, LimitForm, Span, ValuesForm};
+use prisme_plan::{AliasForm, Direction, Ident, IndexHint, JoinForm, LimitForm, Span, ValuesForm};
 
 /// Statement.
 #[derive(Debug, Clone, PartialEq)]
@@ -70,8 +70,38 @@ pub enum QueryBody {
     Select(Box<Select>),
     /// `VALUES`.
     Values(Values),
+    /// `TABLE t`: the rows of a table.
+    Table(ObjectName),
     /// Query between parentheses.
     Nested(Box<Query>),
+    /// `UNION`, `EXCEPT`, `INTERSECT`.
+    SetOperation(Box<SetOperation>),
+}
+
+/// Set operation of two query bodies.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SetOperation {
+    /// Operator.
+    pub operator: SetOperator,
+    /// `ALL`: duplicates kept.
+    pub all: bool,
+    /// Left operand, which names the columns.
+    pub left: QueryBody,
+    /// Right operand.
+    pub right: QueryBody,
+    /// Position in the input.
+    pub span: Span,
+}
+
+/// Set operator, without its duplicate mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SetOperator {
+    /// `UNION`.
+    Union,
+    /// `EXCEPT`.
+    Except,
+    /// `INTERSECT`.
+    Intersect,
 }
 
 /// `VALUES` statement or table value constructor.
@@ -155,11 +185,89 @@ pub enum TableRef {
     Named {
         /// Name.
         name: ObjectName,
+        /// Partitions (`PARTITION (p0)`).
+        partitions: Vec<Ident>,
         /// Alias.
         alias: Option<Alias>,
+        /// Index hints.
+        index_hints: Vec<IndexHint>,
         /// Position in the input.
         span: Span,
     },
+    /// Subquery, with its alias.
+    Derived {
+        /// Subquery.
+        query: Box<Query>,
+        /// `LATERAL`.
+        lateral: bool,
+        /// Alias, required.
+        alias: Alias,
+        /// Column list after the alias; empty when not written.
+        columns: Vec<Ident>,
+        /// Position in the input.
+        span: Span,
+    },
+    /// Join of two sources.
+    Join(Box<Join>),
+    /// Sources between parentheses.
+    Nested {
+        /// Sources.
+        inner: Box<TableRef>,
+        /// Position in the input, parentheses included.
+        span: Span,
+    },
+}
+
+/// Join of two sources.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Join {
+    /// Left source.
+    pub left: TableRef,
+    /// Right source.
+    pub right: TableRef,
+    /// Inner, left or right join.
+    pub kind: JoinKind,
+    /// Keywords written.
+    pub form: JoinForm,
+    /// `NATURAL`.
+    pub natural: bool,
+    /// `ON` or `USING`.
+    pub constraint: Option<JoinConstraint>,
+    /// Position in the input.
+    pub span: Span,
+}
+
+/// Kind of a join as written: a comma or an inner join without condition
+/// is a cross join.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum JoinKind {
+    /// Inner join (`JOIN`, `INNER JOIN`, `CROSS JOIN`, `STRAIGHT_JOIN`, `,`).
+    Inner,
+    /// `LEFT [OUTER] JOIN`.
+    Left,
+    /// `RIGHT [OUTER] JOIN`.
+    Right,
+}
+
+/// Condition of a join.
+#[derive(Debug, Clone, PartialEq)]
+pub enum JoinConstraint {
+    /// `ON predicate`.
+    On(Expr),
+    /// `USING (columns)`.
+    Using(Vec<Ident>),
+}
+
+impl TableRef {
+    /// Position in the input.
+    pub fn span(&self) -> Span {
+        match self {
+            Self::Named { span, .. } | Self::Derived { span, .. } | Self::Nested { span, .. } => {
+                *span
+            }
+            Self::Join(join) => join.span,
+        }
+    }
 }
 
 /// Key of an `ORDER BY`.
@@ -258,6 +366,32 @@ pub enum ExprKind {
     },
     /// Expression between parentheses.
     Nested(Box<Expr>),
+    /// Subquery giving one value.
+    Subquery(Box<Query>),
+    /// `EXISTS (subquery)`.
+    Exists(Box<Query>),
+    /// `[NOT] IN (subquery)`.
+    InSubquery {
+        /// Value tested.
+        operand: Box<Expr>,
+        /// Subquery.
+        query: Box<Query>,
+        /// `NOT IN`.
+        negated: bool,
+    },
+    /// Comparison with the rows of a subquery: `a > ALL (subquery)`.
+    Quantified {
+        /// Comparison operator.
+        op: BinaryOp,
+        /// Value compared.
+        operand: Box<Expr>,
+        /// `ALL` (`true`), or `ANY` and `SOME`.
+        all: bool,
+        /// Subquery.
+        query: Box<Query>,
+    },
+    /// Row of values: `(a, b)`, `ROW(a, b)`.
+    Row(Vec<Expr>),
 }
 
 /// Literal.

@@ -6,10 +6,27 @@ use crate::lexer::SqlMode;
 use crate::sql::{ParseOptions, parse};
 use crate::versions::Version;
 
-/// `t (a INT NOT NULL, b VARCHAR(10) NULL)` and `u (a INT NOT NULL)`.
+/// `t (a INT NOT NULL, b VARCHAR(10) NULL)`, `db.u (a INT NOT NULL)`,
+/// `a (k INT NULL, x INT NOT NULL)` and `b (k INT NOT NULL, y INT NULL)`.
 fn catalog() -> Tables {
     let int = DataType::Integer(IntegerType::signed(IntegerSize::Int));
     let mut tables = Tables::default();
+    tables.insert(
+        None,
+        "a",
+        vec![
+            (Ident::new("k"), Type::nullable(int.clone())),
+            (Ident::new("x"), Type::not_null(int.clone())),
+        ],
+    );
+    tables.insert(
+        None,
+        "b",
+        vec![
+            (Ident::new("k"), Type::not_null(int.clone())),
+            (Ident::new("y"), Type::nullable(int.clone())),
+        ],
+    );
     tables.insert(
         None,
         "t",
@@ -42,7 +59,8 @@ fn plan_in(text: &str, dialect: Dialect) -> Result<Plan, BuildError> {
         conditional_version: version,
     };
     let parsed = parse(text, &options).unwrap_or_else(|error| panic!("{text}: {error}"));
-    let prisme_plan::Statement::Query(plan) = build(&parsed.statement, text, dialect, &catalog())?
+    let prisme_plan::Statement::Query(plan) =
+        build(&parsed.statement, text, dialect, version, &catalog())?
     else {
         panic!("not a query");
     };
@@ -191,4 +209,168 @@ fn lists_the_tables_outside_the_common_table_expressions() {
             name: Ident::new("t")
         }]
     );
+}
+
+#[test]
+fn a_join_on_names_merges_its_columns() {
+    let columns = |text| -> Vec<(String, bool)> {
+        plan(text)
+            .schema()
+            .columns
+            .into_iter()
+            .map(|column| (column.name.value, column.ty.nullable))
+            .collect()
+    };
+    let column = |name: &str, nullable| (name.to_string(), nullable);
+    assert_eq!(
+        columns("SELECT * FROM a JOIN b USING (k)"),
+        [column("k", true), column("x", false), column("y", true)]
+    );
+    assert_eq!(
+        columns("SELECT * FROM a RIGHT JOIN b USING (k)"),
+        [column("k", false), column("y", true), column("x", true)]
+    );
+    assert_eq!(
+        columns("SELECT a.*, b.* FROM a NATURAL LEFT JOIN b"),
+        [
+            column("k", true),
+            column("x", false),
+            column("k", true),
+            column("y", true)
+        ]
+    );
+    assert_eq!(
+        columns("SELECT k, a.k, b.k FROM a JOIN b USING (k)"),
+        [column("k", false), column("k", true), column("k", false)]
+    );
+    assert_eq!(error("SELECT k FROM a, b"), "column `k` is ambiguous");
+    assert_eq!(
+        error("SELECT 1 FROM a JOIN b USING (z)"),
+        "unknown column `z` in `USING`"
+    );
+    assert_eq!(
+        error("SELECT 1 FROM a JOIN a AS c ON 1 JOIN b USING (k)"),
+        "column `k` is ambiguous in `USING`"
+    );
+}
+
+#[test]
+fn the_condition_of_a_join_reads_both_sides() {
+    let Plan::Project(project) = plan("SELECT * FROM a LEFT JOIN b ON a.k = b.k AND y > 1") else {
+        panic!("projection expected");
+    };
+    let Plan::Join(join) = project.input.as_ref() else {
+        panic!("join expected");
+    };
+    assert_eq!(join.kind, JoinKind::Left);
+    assert!(join.condition.is_some());
+    assert_eq!(
+        error("SELECT 1 FROM a JOIN (b JOIN t ON x = 1) ON 1"),
+        "unknown column `x`"
+    );
+    let Plan::Project(project) = plan("SELECT * FROM a, b") else {
+        panic!("projection expected");
+    };
+    assert!(matches!(project.input.as_ref(), Plan::Join(join) if join.kind == JoinKind::Cross));
+}
+
+#[test]
+fn a_derived_table_names_its_columns() {
+    let schema = plan("SELECT d.p, q FROM (SELECT k, x FROM a) AS d (p, q)").schema();
+    assert_eq!(schema.columns[0].name, Ident::new("p"));
+    assert!(error("SELECT * FROM (SELECT 1) AS d (p, q)").contains("columns"));
+    assert_eq!(
+        plan("SELECT * FROM a, LATERAL (SELECT a.x + 1 AS n) AS d")
+            .schema()
+            .len(),
+        3
+    );
+    assert_eq!(
+        error("SELECT * FROM a, (SELECT a.x) AS d"),
+        "unknown column `a.x`"
+    );
+}
+
+#[test]
+fn an_outer_reference_in_a_derived_table_follows_the_version() {
+    let text = "SELECT (SELECT n FROM (SELECT a.x AS n) AS d) FROM a";
+    assert!(plan_in(text, Dialect::MySql).is_ok());
+    let message = plan_in(text, Dialect::MariaDb).unwrap_err().message;
+    assert!(message.contains("outer reference"), "{message}");
+}
+
+#[test]
+fn a_set_operation_types_its_columns_from_both_sides() {
+    let schema = plan("SELECT k, 1 FROM a UNION SELECT y, 'abc' FROM b").schema();
+    assert_eq!(schema.columns[0].name, Ident::new("k"));
+    assert!(schema.columns[0].ty.nullable);
+    assert!(matches!(schema.columns[1].ty.data_type, DataType::Text(_)));
+    assert_eq!(
+        error("SELECT 1 UNION SELECT 1, 2"),
+        "the sides of the set operation have 1 and 2 columns"
+    );
+    let Plan::Limit(limit) = plan("TABLE a UNION ALL TABLE b ORDER BY k LIMIT 1") else {
+        panic!("limit expected");
+    };
+    assert!(matches!(limit.input.as_ref(), Plan::Sort(_)));
+}
+
+#[test]
+fn subqueries_read_the_columns_of_the_enclosing_queries() {
+    let schema =
+        plan("SELECT (SELECT y FROM b WHERE b.k = a.k LIMIT 1) AS y FROM a WHERE EXISTS (SELECT 1 FROM b WHERE y = x)")
+            .schema();
+    assert!(schema.columns[0].ty.nullable);
+    assert!(
+        plan_in(
+            "SELECT 1 FROM a WHERE (k, x) = ANY (TABLE b)",
+            Dialect::MySql
+        )
+        .is_ok()
+    );
+    assert!(
+        plan_in(
+            "SELECT 1 FROM a WHERE k NOT IN (SELECT k FROM b)",
+            Dialect::MySql
+        )
+        .is_ok()
+    );
+    assert_eq!(
+        error("SELECT (SELECT k, y FROM b)"),
+        "subquery of 2 columns: row subqueries are not supported yet by Prisme"
+    );
+    assert_eq!(
+        error("SELECT (1, 2)"),
+        "a row of 2 values where a single value is expected"
+    );
+    assert_eq!(
+        error("SELECT 1 FROM a WHERE (k, x) = (1, 2, 3)"),
+        "operands of 2 and 3 values are compared"
+    );
+    assert_eq!(
+        error("SELECT 1 FROM a WHERE (k, x) > ANY (TABLE b)"),
+        "a row of 2 values where a single value is expected"
+    );
+    assert_eq!(
+        error("SELECT 1 FROM a WHERE k IN (TABLE b)"),
+        "2 columns where 1 are expected"
+    );
+}
+
+#[test]
+fn lists_the_tables_of_joins_derived_tables_and_subqueries() {
+    let options = ParseOptions {
+        dialect: Dialect::MySql,
+        version: Version::new(8, 0, 19),
+        mode: SqlMode::default(),
+        conditional_version: Version::new(8, 0, 19),
+    };
+    let text = "WITH c AS (TABLE a) SELECT * FROM c JOIN (SELECT * FROM b) AS d ON 1 \
+                WHERE EXISTS (SELECT 1 FROM t) UNION TABLE db.u";
+    let parsed = parse(text, &options).unwrap();
+    let names: Vec<String> = referenced_tables(&parsed.statement)
+        .into_iter()
+        .map(|table| table.name.value)
+        .collect();
+    assert_eq!(names, ["a", "b", "t", "u"]);
 }

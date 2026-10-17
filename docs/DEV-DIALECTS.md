@@ -170,6 +170,20 @@ Done: transpiler (`crates/dialects`: `sql`, `build`, `emit`, `report`, `transpil
 - **Tests**: oracle `sqlparser-rs`; acceptance confirmed by the real server (`PREPARE` on a test schema, Docker); round trip with the same results on MySQL.
 - Done when the whole MySQL DML corpus passes the invariants of section 2.4.
 
+Progress, first increment: sources, set operations and subqueries. Read, built and written towards MySQL and MariaDB: joins (comma, `JOIN`, `INNER`, `CROSS`, `STRAIGHT_JOIN`, `LEFT` / `RIGHT [OUTER]`, `NATURAL`, `ON`, `USING`), sources between parentheses, derived tables (`LATERAL`, column list), `PARTITION`, index hints, set operations (`UNION`, `EXCEPT`, `INTERSECT`, with `ALL` / `DISTINCT` and parentheses), `TABLE t`, subqueries (scalar, `IN`, `EXISTS`, `ANY` / `SOME` / `ALL`, correlated), rows (`(a, b)`, `ROW(a, b)`). The grammar follows what MySQL 8.0.11 and 8.4, MariaDB 10.6 and 11.8 accept, measured on the servers:
+
+- the comma joins loosest (`a, b JOIN c ON x` is `a, (b JOIN c ON x)`); a join reads its right side greedily; an inner join without condition whose right side is a join joins the leftmost table of that side (`a JOIN b JOIN c ON x` is `(a JOIN b) JOIN c ON x`); `LEFT` and `RIGHT` need `ON` or `USING`; `NATURAL` reads a single table; `STRAIGHT_JOIN` takes `ON` only;
+- `USING` and `NATURAL` merge the columns of the same name: the merged column answers to its name alone and comes first in `*`, taken from the left side (from the right side for a right join, whose columns then come first); each side keeps its own column, reached by its qualifier, `t.*` included;
+- `INTERSECT` binds tighter than `UNION` and `EXCEPT`; before MySQL 8.0.31, `INTERSECT` and `EXCEPT` are not reserved, hence aliases;
+- `<=>` has no `ANY` or `ALL`; a row compares with `= ANY` and `<> ALL` only, the forms of `IN` and `NOT IN`; `ROW` holds two values at least.
+
+New rules of the report: `table.select` (`TABLE t` written `SELECT * FROM t` towards MariaDB and MySQL before 8.0.19), `derived.columns` (column list of a derived table emulated by a common table expression towards MariaDB before 11.7.1), `set.nested` (set operation between parentheses as a right operand, emulated by a derived table towards MySQL before 8.0.22; an error when its columns have the same names), and the errors `set.operator` (`INTERSECT` and `EXCEPT` towards MySQL before 8.0.31), `derived.lateral` (towards MariaDB), `derived.outer-reference` (column of an enclosing query in a derived table, towards MariaDB and MySQL before 8.0.14), `join.kind` (semi-joins and anti-joins of other dialects). Decided autonomously, to be reviewed by the maintainer:
+
+- the merged column of `USING` and `NATURAL` takes the type of the side it comes from, not null after an inner join; the side of an outer join that may find no match is nullable in the expressions of the query;
+- `UNION DISTINCT` and `UNION`, `SOME` and `ANY`, `ROW(a, b)` and `(a, b)` are lexical synonyms: the plan does not keep them;
+- `INTERSECT`, `EXCEPT`, `LATERAL` and the outer references of a derived table are explicit errors towards the outputs without them, until their emulations (`EXISTS` with `<=>` for `INTERSECT` and `EXCEPT`, for example) are written;
+- subqueries of several columns compared with a row (`(a, b) = (SELECT x, y ...)`) are refused by the builder, "not supported yet"; so is `JSON_TABLE` by the parser. The several levels of `ORDER BY` and `LIMIT` of MySQL before 8.0.31 are not modeled.
+
 ### Step 6. MariaDB parser and emitter, first translation pairs
 
 - What only MariaDB has: `RETURNING` (`INSERT`, `REPLACE`, `DELETE`), system versioning (`FOR SYSTEM_TIME AS OF`, `BETWEEN`, `FROM ... TO`, `ALL`), sequences (`NEXT VALUE FOR`, `NEXTVAL()`, `PREVIOUS VALUE FOR`, `LASTVAL()`), `LIMIT ... ROWS EXAMINED`, `OFFSET ... FETCH`, and the other differences of `docs/V1.md`, section 2.2, checked version by version in the documentation of both engines. The Oracle mode of MariaDB (`sql_mode=ORACLE`) is refused explicitly.

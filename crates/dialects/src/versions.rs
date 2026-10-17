@@ -50,6 +50,13 @@ pub enum Construct {
     JsonDoubleArrow,
     /// `LATERAL` derived tables.
     Lateral,
+    /// Column list of a derived table: `(SELECT 1, 2) AS d (a, b)`.
+    DerivedColumnList,
+    /// Derived table that reads columns of an enclosing query.
+    DerivedOuterReference,
+    /// Set operation between parentheses as the right operand of another:
+    /// `a UNION (b UNION c)`.
+    NestedSetOperation,
     /// `EXPLAIN FORMAT=TREE`.
     ExplainFormatTree,
     /// `value MEMBER OF (array)`.
@@ -183,6 +190,9 @@ impl Construct {
             Self::JsonArrow => "`->` operator",
             Self::JsonDoubleArrow => "`->>` operator",
             Self::Lateral => "`LATERAL`",
+            Self::DerivedColumnList => "column list of a derived table",
+            Self::DerivedOuterReference => "outer reference in a derived table",
+            Self::NestedSetOperation => "set operation between parentheses as a right operand",
             Self::ExplainFormatTree => "`EXPLAIN FORMAT=TREE`",
             Self::MemberOf => "`MEMBER OF`",
             Self::ExplainAnalyze => "`EXPLAIN ANALYZE`",

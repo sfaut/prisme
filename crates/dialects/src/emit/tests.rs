@@ -29,10 +29,18 @@ fn output(input: InputDialect) -> OutputDialect {
     }
 }
 
-/// `t (a INT NOT NULL, b INT NULL)`.
+/// `t (a INT NOT NULL, b INT NULL)` and `u (a INT NOT NULL, c INT NULL)`.
 fn catalog() -> Tables {
     let int = DataType::Integer(IntegerType::signed(IntegerSize::Int));
     let mut tables = Tables::default();
+    tables.insert(
+        None,
+        "u",
+        vec![
+            (Ident::new("a"), Type::not_null(int.clone())),
+            (Ident::new("c"), Type::nullable(int.clone())),
+        ],
+    );
     tables.insert(
         None,
         "t",
@@ -213,15 +221,13 @@ fn strings_follow_the_sql_mode_of_the_output() {
 #[test]
 fn nulls_placed_against_the_rule_of_the_output_are_emulated() {
     let int = DataType::Integer(IntegerType::signed(IntegerSize::Int));
-    let scan = Plan::Scan(Scan {
-        table: prisme_plan::TableName {
+    let scan = Plan::Scan(Scan::new(
+        prisme_plan::TableName {
             database: None,
             name: Ident::new("t"),
         },
-        alias: None,
-        columns: vec![(Ident::new("b"), Type::nullable(int.clone()))],
-        span: None,
-    });
+        vec![(Ident::new("b"), Type::nullable(int.clone()))],
+    ));
     let column = Expr::column(
         prisme_plan::ColumnRef {
             qualifier: None,
@@ -269,4 +275,134 @@ fn deep_expressions_go_through() {
     let text = format!("SELECT {}1", "- ".repeat(90));
     let (sql, _) = transpiled(&text, mysql(), output(mysql()));
     assert!(sql.starts_with("SELECT -(-(-("), "{sql}");
+}
+
+/// MySQL in `version`, as an input.
+fn mysql_at(major: u16, minor: u16, patch: u16) -> InputDialect {
+    InputDialect {
+        dialect: Dialect::MySql,
+        version: Version::new(major, minor, patch),
+    }
+}
+
+/// Rules of the errors of `text`, from `input` to `output`.
+fn errors(text: &str, input: InputDialect, output: OutputDialect) -> Vec<&'static str> {
+    run(text, input, output)
+        .unwrap_or_else(|error| panic!("{text}: {error}"))
+        .errors
+        .iter()
+        .map(|error| error.rule)
+        .collect()
+}
+
+#[test]
+fn joins_derived_tables_and_subqueries_keep_their_form() {
+    for text in [
+        "SELECT * FROM t JOIN u USING (a)",
+        "SELECT t.a, u.c FROM t LEFT JOIN u ON t.a = u.a WHERE u.c IS NULL",
+        "SELECT * FROM t, u WHERE t.a = u.a",
+        "SELECT * FROM t NATURAL JOIN u",
+        "SELECT * FROM t NATURAL RIGHT OUTER JOIN u",
+        "SELECT * FROM t STRAIGHT_JOIN u ON t.a = u.a",
+        "SELECT * FROM t CROSS JOIN u INNER JOIN t AS v ON v.a = u.a",
+        "SELECT * FROM (t, u) JOIN t AS v ON v.a = u.a",
+        "SELECT * FROM t, u JOIN t AS v ON v.a = u.a",
+        "SELECT * FROM t JOIN (u JOIN t AS v ON v.a = u.a) ON t.a = u.a",
+        "SELECT * FROM t PARTITION (p0) AS x USE INDEX () IGNORE KEY FOR JOIN (PRIMARY, i)",
+        "SELECT d.x FROM (SELECT a AS x FROM t) AS d",
+        "SELECT * FROM (SELECT 1, 2) AS d (x, y)",
+        "SELECT * FROM t, LATERAL (SELECT t.a + 1 AS n) AS d",
+        "SELECT a FROM t UNION SELECT a FROM u ORDER BY a LIMIT 3",
+        "(SELECT a FROM t LIMIT 1) UNION SELECT 2",
+        "TABLE t ORDER BY a LIMIT 1",
+        "SELECT a, (SELECT c FROM u WHERE u.a = t.a LIMIT 1) AS c FROM t",
+        "SELECT a FROM t WHERE NOT EXISTS (SELECT 1 FROM u) AND a IN (SELECT a FROM u)",
+        "SELECT a FROM t WHERE a > ALL (SELECT a FROM u) OR (a, b) = ANY (TABLE u)",
+        "SELECT a FROM t WHERE (a, b) IN ((1, 2), (3, 4)) AND (a, b) <> (1, 2)",
+    ] {
+        let (sql, rules) = transpiled(text, mysql(), output(mysql()));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{text}: {rules:?}");
+    }
+}
+
+#[test]
+fn set_operations_keep_the_parentheses_their_precedence_needs() {
+    let input = mysql_at(8, 0, 31);
+    for text in [
+        "SELECT 1 UNION SELECT 2 INTERSECT SELECT 3",
+        "(SELECT 1 UNION SELECT 2) INTERSECT SELECT 3",
+        "SELECT 1 EXCEPT (SELECT 2 EXCEPT SELECT 3)",
+        "SELECT 1 INTERSECT ALL SELECT 2 EXCEPT ALL SELECT 3",
+    ] {
+        let (sql, rules) = transpiled(text, input, output(input));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{text}: {rules:?}");
+    }
+    let (sql, _) = transpiled(
+        "SELECT 1 UNION (SELECT 2 UNION SELECT 3) UNION ALL SELECT 4",
+        input,
+        output(input),
+    );
+    assert_eq!(
+        sql,
+        "SELECT 1 UNION (SELECT 2 UNION SELECT 3) UNION ALL SELECT 4"
+    );
+}
+
+#[test]
+fn constructs_missing_in_the_output_are_rewritten_or_emulated() {
+    let (sql, rules) = transpiled("TABLE t", mysql(), output(mariadb()));
+    assert_eq!(sql, "SELECT * FROM t");
+    assert_eq!(rules, ["table.select"]);
+    let (sql, rules) = transpiled(
+        "SELECT * FROM (SELECT 1, 2) AS d (x, y)",
+        mysql(),
+        output(mariadb()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT * FROM (WITH d (x, y) AS (SELECT 1, 2) SELECT * FROM d) AS d"
+    );
+    assert_eq!(rules, ["derived.columns"]);
+    let input = mysql_at(8, 0, 31);
+    let (sql, rules) = transpiled(
+        "SELECT a FROM t UNION ALL (SELECT a FROM u UNION SELECT 1)",
+        input,
+        output(mysql_at(8, 0, 21)),
+    );
+    assert_eq!(
+        sql,
+        "SELECT a FROM t UNION ALL SELECT * FROM (SELECT a FROM u UNION SELECT 1) AS `d`"
+    );
+    assert_eq!(rules, ["set.nested"]);
+}
+
+#[test]
+fn constructs_without_emulation_are_explicit_errors() {
+    assert_eq!(
+        errors(
+            "SELECT * FROM t, LATERAL (SELECT t.a) AS d",
+            mysql(),
+            output(mariadb())
+        ),
+        ["derived.lateral"]
+    );
+    assert_eq!(
+        errors(
+            "SELECT (SELECT n FROM (SELECT t.a AS n) AS d) FROM t",
+            mysql(),
+            output(mariadb())
+        ),
+        ["derived.outer-reference"]
+    );
+    let input = mysql_at(8, 0, 31);
+    assert_eq!(
+        errors(
+            "SELECT a FROM t INTERSECT SELECT a FROM u",
+            input,
+            output(mysql_at(8, 0, 30))
+        ),
+        ["set.operator"]
+    );
 }

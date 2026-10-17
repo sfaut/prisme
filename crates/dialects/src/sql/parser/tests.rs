@@ -1,7 +1,9 @@
-use prisme_plan::{AliasForm, LimitForm, ValuesForm};
+use prisme_plan::{AliasForm, IndexHintAction, IndexHintScope, JoinForm, LimitForm, ValuesForm};
 
 use super::*;
-use crate::sql::ast::{BinaryOp, Expr, ExprKind, Literal, UnaryOp};
+use crate::sql::ast::{
+    BinaryOp, Expr, ExprKind, JoinConstraint, JoinKind, Literal, SetOperator, TableRef, UnaryOp,
+};
 
 /// Settings of MySQL 8.0.19.
 fn mysql() -> ParseOptions {
@@ -10,6 +12,16 @@ fn mysql() -> ParseOptions {
         version: Version::new(8, 0, 19),
         mode: SqlMode::default(),
         conditional_version: Version::new(8, 0, 19),
+    }
+}
+
+/// Settings of MySQL in `version`.
+fn mysql_at(major: u16, minor: u16, patch: u16) -> ParseOptions {
+    let version = Version::new(major, minor, patch);
+    ParseOptions {
+        version,
+        conditional_version: version,
+        ..mysql()
     }
 }
 
@@ -73,30 +85,7 @@ fn tree(expr: &Expr) -> String {
             format!("({op} {})", tree(operand))
         }
         ExprKind::Binary { op, left, right } => {
-            let op = match op {
-                BinaryOp::Add => "+",
-                BinaryOp::Subtract => "-",
-                BinaryOp::Multiply => "*",
-                BinaryOp::Divide => "/",
-                BinaryOp::IntegerDivide => "div",
-                BinaryOp::Modulo => "%",
-                BinaryOp::Eq => "=",
-                BinaryOp::NotEq => "<>",
-                BinaryOp::Lt => "<",
-                BinaryOp::LtEq => "<=",
-                BinaryOp::Gt => ">",
-                BinaryOp::GtEq => ">=",
-                BinaryOp::NullSafeEq => "<=>",
-                BinaryOp::And => "and",
-                BinaryOp::Or => "or",
-                BinaryOp::Xor => "xor",
-                BinaryOp::BitAnd => "&",
-                BinaryOp::BitOr => "|",
-                BinaryOp::BitXor => "^",
-                BinaryOp::ShiftLeft => "<<",
-                BinaryOp::ShiftRight => ">>",
-            };
-            format!("({op} {} {})", tree(left), tree(right))
+            format!("({} {} {})", symbol(*op), tree(left), tree(right))
         }
         ExprKind::IsNull { operand, negated } => {
             format!(
@@ -131,6 +120,54 @@ fn tree(expr: &Expr) -> String {
             operand, pattern, ..
         } => format!("(like {} {})", tree(operand), tree(pattern)),
         ExprKind::Nested(inner) => tree(inner),
+        ExprKind::Subquery(_) => "(query)".to_string(),
+        ExprKind::Exists(_) => "(exists query)".to_string(),
+        ExprKind::InSubquery {
+            operand, negated, ..
+        } => format!(
+            "({}in {} query)",
+            if *negated { "not" } else { "" },
+            tree(operand)
+        ),
+        ExprKind::Quantified {
+            op, operand, all, ..
+        } => format!(
+            "({} {} {} query)",
+            symbol(*op),
+            if *all { "all" } else { "any" },
+            tree(operand)
+        ),
+        ExprKind::Row(values) => format!(
+            "(row {})",
+            values.iter().map(tree).collect::<Vec<_>>().join(" ")
+        ),
+    }
+}
+
+/// Symbol of a binary operator in the trees.
+fn symbol(op: BinaryOp) -> &'static str {
+    match op {
+        BinaryOp::Add => "+",
+        BinaryOp::Subtract => "-",
+        BinaryOp::Multiply => "*",
+        BinaryOp::Divide => "/",
+        BinaryOp::IntegerDivide => "div",
+        BinaryOp::Modulo => "%",
+        BinaryOp::Eq => "=",
+        BinaryOp::NotEq => "<>",
+        BinaryOp::Lt => "<",
+        BinaryOp::LtEq => "<=",
+        BinaryOp::Gt => ">",
+        BinaryOp::GtEq => ">=",
+        BinaryOp::NullSafeEq => "<=>",
+        BinaryOp::And => "and",
+        BinaryOp::Or => "or",
+        BinaryOp::Xor => "xor",
+        BinaryOp::BitAnd => "&",
+        BinaryOp::BitOr => "|",
+        BinaryOp::BitXor => "^",
+        BinaryOp::ShiftLeft => "<<",
+        BinaryOp::ShiftRight => ">>",
     }
 }
 
@@ -295,9 +332,10 @@ fn constructs_not_read_yet_are_explicit_errors() {
     for (text, faulty) in [
         ("SELECT COUNT(*) FROM t", "COUNT"),
         ("SELECT a FROM t GROUP BY a", "GROUP"),
-        ("SELECT a FROM t JOIN u", "JOIN"),
-        ("SELECT a FROM (SELECT 1) AS d", "("),
-        ("SELECT 1 UNION SELECT 2", "UNION"),
+        (
+            "SELECT x FROM JSON_TABLE('[1]', '$[*]' COLUMNS (x INT PATH '$')) AS j",
+            "JSON_TABLE",
+        ),
         ("INSERT INTO t VALUES (1)", "INSERT"),
         ("SELECT @x", "@x"),
     ] {
@@ -352,4 +390,301 @@ fn keeps_the_comments_and_the_executable_comments_apart() {
 fn refuses_a_query_nested_too_deeply() {
     let text = format!("SELECT {}1{}", "(".repeat(500), ")".repeat(500));
     assert_eq!(error(&text, &mysql()).0, "query nested too deeply");
+}
+
+/// Sources of the `FROM` of `text`, as a tree: `(a join b on c)`.
+fn from(text: &str, options: &ParseOptions) -> String {
+    let QueryBody::Select(select) = query(text, options).body else {
+        panic!("not a SELECT");
+    };
+    table_tree(select.from.as_ref().expect("a FROM"))
+}
+
+/// Tree of a source of a `FROM`.
+fn table_tree(table: &TableRef) -> String {
+    match table {
+        TableRef::Named { name, alias, .. } => {
+            let name = name
+                .parts
+                .iter()
+                .map(|part| part.value.as_str())
+                .collect::<Vec<_>>()
+                .join(".");
+            match alias {
+                Some(alias) => format!("{name} {}", alias.name.value),
+                None => name,
+            }
+        }
+        TableRef::Derived {
+            lateral,
+            alias,
+            columns,
+            ..
+        } => {
+            let columns = columns
+                .iter()
+                .map(|column| column.value.as_str())
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!(
+                "{}(query) {}{}",
+                if *lateral { "lateral " } else { "" },
+                alias.name.value,
+                if columns.is_empty() {
+                    String::new()
+                } else {
+                    format!(" ({columns})")
+                }
+            )
+        }
+        TableRef::Join(join) => {
+            let operator = match (join.kind, join.form) {
+                (_, JoinForm::Comma) => ",",
+                (JoinKind::Inner, JoinForm::Straight) => "straight",
+                (JoinKind::Inner, _) => "join",
+                (JoinKind::Left, _) => "left",
+                (JoinKind::Right, _) => "right",
+            };
+            let natural = if join.natural { "natural " } else { "" };
+            let constraint = match &join.constraint {
+                Some(JoinConstraint::On(condition)) => format!(" on {}", tree(condition)),
+                Some(JoinConstraint::Using(names)) => format!(
+                    " using {}",
+                    names
+                        .iter()
+                        .map(|name| name.value.as_str())
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                ),
+                None => String::new(),
+            };
+            format!(
+                "({} {natural}{operator} {}{constraint})",
+                table_tree(&join.left),
+                table_tree(&join.right)
+            )
+        }
+        TableRef::Nested { inner, .. } => format!("[{}]", table_tree(inner)),
+    }
+}
+
+/// Body of `text` as a tree: `(union a b)`, the `SELECT` blocks named by
+/// their first item.
+fn body(text: &str, options: &ParseOptions) -> String {
+    body_tree(&query(text, options).body)
+}
+
+/// Tree of a query body.
+fn body_tree(body: &QueryBody) -> String {
+    match body {
+        QueryBody::Select(select) => match &select.items[0] {
+            SelectItem::Expr { expr, .. } => tree(expr),
+            SelectItem::Wildcard { .. } => "*".to_string(),
+        },
+        QueryBody::Values(_) => "values".to_string(),
+        QueryBody::Table(name) => format!("table {}", name.parts[0].value),
+        QueryBody::Nested(query) => format!("[{}]", body_tree(&query.body)),
+        QueryBody::SetOperation(operation) => {
+            let operator = match operation.operator {
+                SetOperator::Union => "union",
+                SetOperator::Except => "except",
+                SetOperator::Intersect => "intersect",
+            };
+            format!(
+                "({operator}{} {} {})",
+                if operation.all { " all" } else { "" },
+                body_tree(&operation.left),
+                body_tree(&operation.right)
+            )
+        }
+    }
+}
+
+#[test]
+fn the_comma_joins_loosest_and_a_join_reads_its_right_side_greedily() {
+    let options = mysql();
+    for (text, expected) in [
+        ("SELECT 1 FROM a, b", "(a , b)"),
+        ("SELECT 1 FROM a, b, c", "((a , b) , c)"),
+        ("SELECT 1 FROM a, b JOIN c ON x", "(a , (b join c on x))"),
+        (
+            "SELECT 1 FROM a JOIN b ON x JOIN c ON y",
+            "((a join b on x) join c on y)",
+        ),
+        (
+            "SELECT 1 FROM a JOIN b JOIN c ON x ON y",
+            "(a join (b join c on x) on y)",
+        ),
+        (
+            "SELECT 1 FROM a JOIN b JOIN c ON x",
+            "((a join b) join c on x)",
+        ),
+        (
+            "SELECT 1 FROM a CROSS JOIN b JOIN c ON x",
+            "((a join b) join c on x)",
+        ),
+        (
+            "SELECT 1 FROM a LEFT JOIN b USING (k, j)",
+            "(a left b using k j)",
+        ),
+        (
+            "SELECT 1 FROM a RIGHT OUTER JOIN b ON x",
+            "(a right b on x)",
+        ),
+        (
+            "SELECT 1 FROM a NATURAL JOIN b JOIN c ON x",
+            "((a natural join b) join c on x)",
+        ),
+        ("SELECT 1 FROM a NATURAL LEFT JOIN b", "(a natural left b)"),
+        (
+            "SELECT 1 FROM a STRAIGHT_JOIN b ON x",
+            "(a straight b on x)",
+        ),
+        (
+            "SELECT 1 FROM (a, b) JOIN c ON x",
+            "([(a , b)] join c on x)",
+        ),
+        ("SELECT 1 FROM a AS t1 JOIN b t2", "(a t1 join b t2)"),
+    ] {
+        assert_eq!(from(text, &options), expected, "{text}");
+    }
+}
+
+#[test]
+fn an_outer_join_needs_its_condition() {
+    assert_eq!(
+        error("SELECT 1 FROM a LEFT JOIN b", &mysql()).0,
+        "expected `ON` or `USING`, found the end of the query"
+    );
+    assert_eq!(
+        error("SELECT 1 FROM a STRAIGHT_JOIN b USING (k)", &mysql()).1,
+        "USING"
+    );
+}
+
+#[test]
+fn reads_the_derived_tables() {
+    let options = mysql();
+    assert_eq!(from("SELECT 1 FROM (SELECT 1) AS d", &options), "(query) d");
+    assert_eq!(
+        from("SELECT 1 FROM ((SELECT 1)) d (x)", &options),
+        "(query) d (x)"
+    );
+    assert_eq!(
+        from("SELECT 1 FROM a, LATERAL (SELECT a.k) AS d", &options),
+        "(a , lateral (query) d)"
+    );
+    assert_eq!(
+        error("SELECT 1 FROM (SELECT 1)", &options),
+        (
+            "every derived table must have its own alias".to_string(),
+            "(SELECT 1)".to_string()
+        )
+    );
+    let (message, at) = error(
+        "SELECT 1 FROM a, LATERAL (SELECT 1) AS d",
+        &mysql_at(8, 0, 13),
+    );
+    assert!(message.contains("8.0.14"), "{message}");
+    assert_eq!(at, "LATERAL");
+    let (message, _) = error("SELECT 1 FROM (SELECT 1) AS d (x)", &mariadb());
+    assert!(message.contains("11.7.1"), "{message}");
+}
+
+#[test]
+fn reads_the_partitions_and_the_index_hints() {
+    let QueryBody::Select(select) = query(
+        "SELECT 1 FROM t PARTITION (p0, p1) AS u USE INDEX () FORCE KEY FOR ORDER BY (PRIMARY, i)",
+        &mysql(),
+    )
+    .body
+    else {
+        panic!("not a SELECT");
+    };
+    let Some(TableRef::Named {
+        partitions,
+        alias,
+        index_hints,
+        ..
+    }) = &select.from
+    else {
+        panic!("not a table");
+    };
+    assert_eq!(partitions.len(), 2);
+    assert_eq!(
+        alias.as_ref().map(|alias| alias.name.value.as_str()),
+        Some("u")
+    );
+    assert_eq!(index_hints.len(), 2);
+    assert_eq!(index_hints[0].action, IndexHintAction::Use);
+    assert!(index_hints[0].indexes.is_empty());
+    assert_eq!(index_hints[1].action, IndexHintAction::Force);
+    assert!(index_hints[1].key);
+    assert_eq!(index_hints[1].scope, Some(IndexHintScope::OrderBy));
+    assert_eq!(index_hints[1].indexes[0].value, "PRIMARY");
+}
+
+#[test]
+fn intersect_binds_tighter_than_union_and_except() {
+    let options = mysql_at(8, 0, 31);
+    for (text, expected) in [
+        (
+            "SELECT 1 UNION SELECT 2 UNION ALL SELECT 3",
+            "(union all (union 1 2) 3)",
+        ),
+        (
+            "SELECT 1 UNION SELECT 2 INTERSECT SELECT 3",
+            "(union 1 (intersect 2 3))",
+        ),
+        (
+            "SELECT 1 INTERSECT SELECT 2 EXCEPT SELECT 3",
+            "(except (intersect 1 2) 3)",
+        ),
+        (
+            "SELECT 1 UNION DISTINCT (SELECT 2 UNION SELECT 3)",
+            "(union 1 [(union 2 3)])",
+        ),
+        ("TABLE t UNION VALUES ROW(1)", "(union table t values)"),
+    ] {
+        assert_eq!(body(text, &options), expected, "{text}");
+    }
+}
+
+#[test]
+fn set_operations_follow_the_versions() {
+    // `INTERSECT` is reserved from MySQL 8.0.31 on, an alias before.
+    assert_eq!(error("SELECT 1 INTERSECT SELECT 2", &mysql()).1, "SELECT");
+    assert_eq!(
+        body("SELECT 1 EXCEPT ALL SELECT 2", &mariadb()),
+        "(except all 1 2)"
+    );
+    let (message, at) = error(
+        "SELECT 1 UNION (SELECT 2 UNION SELECT 3)",
+        &mysql_at(8, 0, 21),
+    );
+    assert!(message.contains("8.0.22"), "{message}");
+    assert_eq!(at, "SELECT 2 UNION SELECT 3");
+    assert_eq!(error("TABLE t", &mariadb()).1, "TABLE");
+}
+
+#[test]
+fn reads_the_subqueries_and_the_rows() {
+    for (text, expected) in [
+        ("(SELECT 1)", "(query)"),
+        ("((SELECT 1)) + 1", "(+ (query) 1)"),
+        ("a IN (SELECT 1)", "(in a query)"),
+        ("a NOT IN (VALUES ROW(1))", "(notin a query)"),
+        ("NOT EXISTS (SELECT 1)", "(not (exists query))"),
+        ("a > ALL (SELECT 1)", "(> all a query)"),
+        ("a = SOME (TABLE t)", "(= any a query)"),
+        ("(a, b) = ROW(1, 2)", "(= (row a b) (row 1 2))"),
+        (
+            "(a, (b, c)) IN ((1, (2, 3)))",
+            "(in (row a (row b c)) (row 1 (row 2 3)))",
+        ),
+    ] {
+        assert_eq!(expr(text), expected, "{text}");
+    }
+    assert_eq!(error("SELECT ROW(1)", &mysql()).1, ")");
+    assert_eq!(error("SELECT 1 <=> ANY (SELECT 1)", &mysql()).1, "ANY");
 }

@@ -1,9 +1,10 @@
 //! Plan builder of the MySQL family: syntax tree to logical plan
-//! (`docs/DEV-DIALECTS.md`, step 4).
+//! (`docs/DEV-DIALECTS.md`, steps 4 and 5).
 //!
 //! The builder gives the tree its meaning: names resolved against the
-//! columns of the tables (read from the catalog of the connection) and of
-//! the common table expressions, types of the MySQL family
+//! columns of the tables (read from the catalog of the connection), of the
+//! common table expressions and of the derived tables, then of the enclosing
+//! queries for a subquery (outer references); types of the MySQL family
 //! (`types` module), explicit conversions between booleans and numbers,
 //! NULL position of the sort keys (NULL is the smallest value).
 //!
@@ -12,10 +13,12 @@
 //! projection, its keys being expressions of the source, as an `ORDER BY`
 //! can name columns the select list leaves out; a key that names an alias
 //! or a position of the select list takes its expression, and keeps the
-//! form written.
+//! form written. The source is a table, a common table expression, a derived
+//! table or a join of sources; a set operation joins query bodies.
 
 mod expr;
 mod scope;
+mod tables;
 mod types;
 
 #[cfg(test)]
@@ -25,18 +28,21 @@ use std::collections::HashMap;
 use std::fmt;
 
 use prisme_plan::{
-    AliasForm, Cte, CteRef, Direction, Distinct, Filter, Ident, Limit, NamedExpr, Nulls, Plan,
-    PlanError, Project, ProjectItem, Scan, Sort, SortForm, SortKey, SortReference, Span,
-    TableAlias, TableName, Values as ValuesNode, ValuesForm, Wildcard, With,
+    AliasForm, Comparison, Cte, CteRef, Derived, Direction, Distinct, Expr, Filter, Ident, Join,
+    JoinKind, JoinUsing, Limit, Logical, NamedExpr, Nulls, Plan, PlanError, Project, ProjectItem,
+    Scan, SetOperation, SetOperator, Sort, SortForm, SortKey, SortReference, Span, TableAlias,
+    TableName, Values as ValuesNode, ValuesForm, Wildcard, With,
 };
 use prisme_types::Type;
 
 use crate::Dialect;
 use crate::sql::ast::{
-    self, CteDefinition, ExprKind, Literal, OrderItem, Query, QueryBody, Select, SelectItem,
-    StatementKind, TableRef,
+    self, CteDefinition, ExprKind, JoinConstraint, Literal, ObjectName, OrderItem, Query,
+    QueryBody, Select, SelectItem, StatementKind, TableRef,
 };
-use scope::Scope;
+use crate::versions::{Construct, Version, registry};
+use scope::{ResolveError, Scope};
+pub use tables::referenced_tables;
 
 /// Columns of the tables of the database, read on demand for the tables of a
 /// query (`docs/QUESTIONS.md`, point 44).
@@ -95,71 +101,36 @@ impl fmt::Display for BuildError {
 
 impl std::error::Error for BuildError {}
 
-/// Builds the plan of a statement written in `dialect`, `text` being the
-/// text it was read from.
+/// Builds the plan of a statement written in `dialect` and its `version`,
+/// `text` being the text it was read from.
 ///
 /// # Errors
 ///
-/// `BuildError` on an unknown table or column, an ambiguous column, rows of
-/// `VALUES` of different lengths.
+/// `BuildError` on an unknown table or column, an ambiguous column, rows or
+/// sides of different lengths, a construct the version refuses.
 pub fn build(
     statement: &ast::Statement,
     text: &str,
     dialect: Dialect,
+    version: Version,
     catalog: &dyn Catalog,
 ) -> Result<prisme_plan::Statement, BuildError> {
     let mut builder = Builder {
         text,
         dialect,
+        version,
         catalog,
         ctes: Vec::new(),
+        outer: Vec::new(),
+        derived: Vec::new(),
     };
     match &statement.kind {
         StatementKind::Query(query) => Ok(prisme_plan::Statement::Query(builder.query(query)?)),
     }
 }
 
-/// Tables a statement reads, common table expressions aside: those whose
-/// columns the catalog must give.
-pub fn referenced_tables(statement: &ast::Statement) -> Vec<TableName> {
-    let mut tables = Vec::new();
-    match &statement.kind {
-        StatementKind::Query(query) => collect_tables(query, &mut Vec::new(), &mut tables),
-    }
-    tables
-}
-
-/// Adds to `tables` the tables of `query`, `ctes` being the names of the
-/// common table expressions in scope.
-fn collect_tables(query: &Query, ctes: &mut Vec<Ident>, tables: &mut Vec<TableName>) {
-    let in_scope = ctes.len();
-    if let Some(with) = &query.with {
-        for definition in &with.ctes {
-            collect_tables(&definition.query, ctes, tables);
-            ctes.push(definition.name.clone());
-        }
-    }
-    match &query.body {
-        QueryBody::Select(select) => {
-            if let Some(TableRef::Named { name, .. }) = &select.from {
-                let is_cte =
-                    name.parts.len() == 1 && ctes.iter().any(|cte| same_name(cte, &name.parts[0]));
-                if !is_cte {
-                    let table = table_name(name);
-                    if !tables.contains(&table) {
-                        tables.push(table);
-                    }
-                }
-            }
-        }
-        QueryBody::Nested(nested) => collect_tables(nested, ctes, tables),
-        QueryBody::Values(_) => {}
-    }
-    ctes.truncate(in_scope);
-}
-
 /// Name of a table: `t` or `db.t`.
-fn table_name(name: &ast::ObjectName) -> TableName {
+fn table_name(name: &ObjectName) -> TableName {
     match name.parts.as_slice() {
         [database, table] => TableName {
             database: Some(database.clone()),
@@ -183,10 +154,25 @@ struct Builder<'a> {
     text: &'a str,
     /// Dialect of the query.
     dialect: Dialect,
+    /// Version of the dialect.
+    version: Version,
     /// Columns of the tables.
     catalog: &'a dyn Catalog,
     /// Common table expressions in scope, the innermost last.
     ctes: Vec<Cte>,
+    /// Scopes of the enclosing queries of a subquery, the innermost last.
+    outer: Vec<Scope>,
+    /// Derived tables being built, the innermost last.
+    derived: Vec<DerivedFrame>,
+}
+
+/// Derived table being built.
+#[derive(Debug, Clone, Copy)]
+struct DerivedFrame {
+    /// Number of enclosing scopes outside the derived table.
+    outside: usize,
+    /// A column of one of them was read.
+    outer_references: bool,
 }
 
 /// Error of the plan crate, at `span`.
@@ -204,6 +190,61 @@ impl Builder<'_> {
             message: message.into(),
             span,
         }
+    }
+
+    /// Checks that the dialect has `construct` in its version.
+    fn check(&self, construct: Construct, span: Span) -> Result<(), BuildError> {
+        registry(self.dialect)
+            .check(self.dialect, construct, self.version)
+            .map_err(|error| self.error(error.to_string(), span))
+    }
+
+    /// Text written at `span`.
+    fn written(&self, span: Span) -> &str {
+        &self.text[span.start..span.end]
+    }
+
+    /// Column designated by `name`, in `scope` then in the scopes of the
+    /// enclosing queries.
+    fn resolve(
+        &mut self,
+        name: &ObjectName,
+        scope: &Scope,
+    ) -> Result<(prisme_plan::ColumnRef, Type), BuildError> {
+        let ambiguous = |builder: &Self| {
+            let written = builder.written(name.span);
+            builder.error(format!("column `{written}` is ambiguous"), name.span)
+        };
+        match scope.resolve(name) {
+            Ok(found) => return Ok(found),
+            Err(ResolveError::Ambiguous) => return Err(ambiguous(self)),
+            Err(ResolveError::Unknown) => {}
+        }
+        for index in (0..self.outer.len()).rev() {
+            match self.outer[index].resolve(name) {
+                Ok(found) => {
+                    for frame in &mut self.derived {
+                        if index < frame.outside {
+                            frame.outer_references = true;
+                        }
+                    }
+                    return Ok(found);
+                }
+                Err(ResolveError::Ambiguous) => return Err(ambiguous(self)),
+                Err(ResolveError::Unknown) => {}
+            }
+        }
+        let written = self.written(name.span);
+        Err(self.error(format!("unknown column `{written}`"), name.span))
+    }
+
+    /// Plan of a subquery of an expression, which reads the columns of
+    /// `scope`.
+    fn subquery(&mut self, query: &Query, scope: &Scope) -> Result<Plan, BuildError> {
+        self.outer.push(scope.clone());
+        let plan = self.query(query);
+        self.outer.pop();
+        plan
     }
 
     /// Query, with its common table expressions, its sort and its limit.
@@ -242,18 +283,17 @@ impl Builder<'_> {
 
     /// Body of a query, then its sort and its limit.
     fn query_body(&mut self, query: &Query) -> Result<Plan, BuildError> {
-        let plan = match &query.body {
-            QueryBody::Select(select) => return self.select(select, query),
-            QueryBody::Values(values) => Plan::Values(self.values(values)?),
-            QueryBody::Nested(nested) => self.query(nested)?,
-        };
+        if let QueryBody::Select(select) = &query.body {
+            return self.select(select, &query.order_by, query.limit.as_ref());
+        }
+        let plan = self.body(&query.body)?;
         let plan = if query.order_by.is_empty() {
             plan
         } else {
-            // The keys of a `VALUES` or of a query between parentheses name
-            // its output columns.
+            // The keys after a `VALUES`, a `TABLE`, a set operation or a
+            // query between parentheses name its output columns.
             let scope = Scope::new(plan.schema());
-            let outputs = output_columns(&scope);
+            let outputs = scope.outputs();
             let keys = self.sort_keys(&query.order_by, &scope, &outputs)?;
             Plan::Sort(Sort {
                 input: Box::new(plan),
@@ -261,12 +301,59 @@ impl Builder<'_> {
                 span: None,
             })
         };
-        self.limit(plan, query)
+        self.limit(plan, query.limit.as_ref())
+    }
+
+    /// Body of a query, without sort or limit of its own.
+    fn body(&mut self, body: &QueryBody) -> Result<Plan, BuildError> {
+        match body {
+            QueryBody::Select(select) => self.select(select, &[], None),
+            QueryBody::Values(values) => Ok(Plan::Values(self.values(values)?)),
+            QueryBody::Table(name) => self.named(name, None, &[], &[], name.span),
+            QueryBody::Nested(query) => self.query(query),
+            QueryBody::SetOperation(operation) => self.set_operation(operation),
+        }
+    }
+
+    /// `UNION`, `EXCEPT` or `INTERSECT`: the columns take their names from
+    /// the left side and a type that holds the values of both sides.
+    fn set_operation(&mut self, operation: &ast::SetOperation) -> Result<Plan, BuildError> {
+        let left = self.body(&operation.left)?;
+        let right = self.body(&operation.right)?;
+        let (left_schema, right_schema) = (left.schema(), right.schema());
+        if left_schema.len() != right_schema.len() {
+            return Err(self.error(
+                format!(
+                    "the sides of the set operation have {} and {} columns",
+                    left_schema.len(),
+                    right_schema.len()
+                ),
+                operation.span,
+            ));
+        }
+        let data_types = left_schema
+            .columns
+            .iter()
+            .zip(&right_schema.columns)
+            .map(|(left, right)| types::aggregate([&left.ty.data_type, &right.ty.data_type]))
+            .collect();
+        let operator = match (operation.operator, operation.all) {
+            (ast::SetOperator::Union, true) => SetOperator::UnionAll,
+            (ast::SetOperator::Union, false) => SetOperator::UnionDistinct,
+            (ast::SetOperator::Except, true) => SetOperator::MinusAll,
+            (ast::SetOperator::Except, false) => SetOperator::MinusDistinct,
+            (ast::SetOperator::Intersect, true) => SetOperator::IntersectAll,
+            (ast::SetOperator::Intersect, false) => SetOperator::IntersectDistinct,
+        };
+        let mut node = SetOperation::new(operator, left, right, data_types)
+            .map_err(|error| plan_error(&error, operation.span))?;
+        node.span = Some(operation.span);
+        Ok(Plan::SetOperation(node))
     }
 
     /// `LIMIT` of a query, around `plan`.
-    fn limit(&mut self, plan: Plan, query: &Query) -> Result<Plan, BuildError> {
-        let Some(limit) = &query.limit else {
+    fn limit(&mut self, plan: Plan, limit: Option<&ast::Limit>) -> Result<Plan, BuildError> {
+        let Some(limit) = limit else {
             return Ok(plan);
         };
         let scope = Scope::empty();
@@ -285,17 +372,21 @@ impl Builder<'_> {
     }
 
     /// `SELECT` block, with the sort and the limit of its query.
-    fn select(&mut self, select: &Select, query: &Query) -> Result<Plan, BuildError> {
-        let mut plan = match &select.from {
-            Some(table) => self.table_ref(table)?,
-            None => dual(),
+    fn select(
+        &mut self,
+        select: &Select,
+        order_by: &[OrderItem],
+        limit: Option<&ast::Limit>,
+    ) -> Result<Plan, BuildError> {
+        let (mut plan, scope) = match &select.from {
+            Some(table) => self.source(table, None)?,
+            None => (dual(), Scope::empty()),
         };
-        let scope = Scope::new(plan.schema());
         if let Some(filter) = &select.filter {
-            let predicate = self.expr(filter, &scope)?;
+            let predicate = self.condition(filter, &scope)?;
             plan = Plan::Filter(Filter {
                 input: Box::new(plan),
-                predicate: as_predicate(predicate),
+                predicate,
                 span: Some(filter.span),
             });
         }
@@ -310,10 +401,12 @@ impl Builder<'_> {
                     let columns = scope
                         .wildcard(qualifier)
                         .ok_or_else(|| self.error("unknown table in `.*`", *span))?;
-                    outputs.extend(columns.iter().map(|&position| scope.output(position)));
+                    let (positions, columns): (Vec<usize>, Vec<Output>) =
+                        columns.into_iter().unzip();
+                    outputs.extend(columns);
                     items.push(ProjectItem::Wildcard(Wildcard {
                         qualifier: qualifier.cloned(),
-                        columns,
+                        columns: positions,
                     }));
                 }
                 SelectItem::Expr { expr, alias, .. } => {
@@ -334,8 +427,8 @@ impl Builder<'_> {
                 }
             }
         }
-        if !query.order_by.is_empty() {
-            let keys = self.sort_keys(&query.order_by, &scope, &outputs)?;
+        if !order_by.is_empty() {
+            let keys = self.sort_keys(order_by, &scope, &outputs)?;
             plan = Plan::Sort(Sort {
                 input: Box::new(plan),
                 keys,
@@ -352,7 +445,7 @@ impl Builder<'_> {
                 span: None,
             });
         }
-        self.limit(plan, query)
+        self.limit(plan, limit)
     }
 
     /// Keys of an `ORDER BY`: a position of the select list, an alias of the
@@ -460,15 +553,55 @@ impl Builder<'_> {
         Ok(node)
     }
 
-    /// Source of rows of a `FROM`: a common table expression in scope, or a
-    /// table of the catalog.
-    fn table_ref(&mut self, table: &TableRef) -> Result<Plan, BuildError> {
-        let TableRef::Named { name, alias, span } = table;
-        let alias = alias.as_ref().map(|alias| TableAlias {
-            name: alias.name.clone(),
-            columns: Vec::new(),
-            form: alias.form,
-        });
+    /// Source of a `FROM`, with its columns; `left` is the scope of the
+    /// sources before it, which a `LATERAL` derived table reads.
+    fn source(
+        &mut self,
+        table: &TableRef,
+        left: Option<&Scope>,
+    ) -> Result<(Plan, Scope), BuildError> {
+        match table {
+            TableRef::Named {
+                name,
+                partitions,
+                alias,
+                index_hints,
+                span,
+            } => {
+                let alias = alias.as_ref().map(|alias| TableAlias {
+                    name: alias.name.clone(),
+                    columns: Vec::new(),
+                    form: alias.form,
+                });
+                let plan = self.named(name, alias, partitions, index_hints, *span)?;
+                let scope = Scope::new(plan.schema());
+                Ok((plan, scope))
+            }
+            TableRef::Derived {
+                query,
+                lateral,
+                alias,
+                columns,
+                span,
+            } => {
+                let plan = self.derived(query, *lateral, alias, columns, *span, left)?;
+                let scope = Scope::new(plan.schema());
+                Ok((plan, scope))
+            }
+            TableRef::Join(join) => self.join(join, left),
+            TableRef::Nested { inner, .. } => self.source(inner, left),
+        }
+    }
+
+    /// Table or common table expression, by its name.
+    fn named(
+        &mut self,
+        name: &ObjectName,
+        alias: Option<TableAlias>,
+        partitions: &[Ident],
+        index_hints: &[prisme_plan::IndexHint],
+        span: Span,
+    ) -> Result<Plan, BuildError> {
         if let [single] = name.parts.as_slice()
             && let Some(cte) = self
                 .ctes
@@ -476,9 +609,15 @@ impl Builder<'_> {
                 .rev()
                 .find(|cte| same_name(&cte.name, single))
         {
-            let mut cte_ref = CteRef::new(cte, alias).map_err(|error| plan_error(&error, *span))?;
+            if !partitions.is_empty() || !index_hints.is_empty() {
+                return Err(self.error(
+                    "a common table expression has neither partitions nor indexes",
+                    span,
+                ));
+            }
+            let mut cte_ref = CteRef::new(cte, alias).map_err(|error| plan_error(&error, span))?;
             cte_ref.name = single.clone();
-            cte_ref.span = Some(*span);
+            cte_ref.span = Some(span);
             return Ok(Plan::CteRef(cte_ref));
         }
         let table = table_name(name);
@@ -486,15 +625,127 @@ impl Builder<'_> {
             .catalog
             .columns(table.database.as_ref(), &table.name)
             .ok_or_else(|| {
-                let written = &self.text[name.span.start..name.span.end];
+                let written = self.written(name.span);
                 self.error(format!("unknown table `{written}`"), name.span)
             })?;
-        Ok(Plan::Scan(Scan {
-            table,
-            alias,
-            columns,
-            span: Some(*span),
-        }))
+        let mut scan = Scan::new(table, columns);
+        scan.alias = alias;
+        scan.partitions = partitions.to_vec();
+        scan.index_hints = index_hints.to_vec();
+        scan.span = Some(span);
+        Ok(Plan::Scan(scan))
+    }
+
+    /// Derived table: its subquery reads the columns of the enclosing
+    /// queries, and those of the sources before it when `LATERAL`.
+    fn derived(
+        &mut self,
+        query: &Query,
+        lateral: bool,
+        alias: &ast::Alias,
+        columns: &[Ident],
+        span: Span,
+        left: Option<&Scope>,
+    ) -> Result<Plan, BuildError> {
+        self.derived.push(DerivedFrame {
+            outside: self.outer.len(),
+            outer_references: false,
+        });
+        let lateral_scope = lateral.then(|| left.cloned().unwrap_or_default());
+        if let Some(scope) = lateral_scope {
+            self.outer.push(scope);
+        }
+        let plan = self.query(query);
+        if lateral {
+            self.outer.pop();
+        }
+        let frame = self.derived.pop().expect("pushed above");
+        let plan = plan?;
+        if frame.outer_references {
+            self.check(Construct::DerivedOuterReference, span)?;
+        }
+        let alias = TableAlias {
+            name: alias.name.clone(),
+            columns: columns.to_vec(),
+            form: alias.form,
+        };
+        let mut derived = Derived::new(plan, alias).map_err(|error| plan_error(&error, span))?;
+        derived.lateral = lateral;
+        derived.outer_references = frame.outer_references;
+        derived.span = Some(span);
+        Ok(Plan::Derived(derived))
+    }
+
+    /// Join of two sources.
+    fn join(
+        &mut self,
+        join: &ast::Join,
+        left: Option<&Scope>,
+    ) -> Result<(Plan, Scope), BuildError> {
+        let (left_plan, left_scope) = self.source(&join.left, left)?;
+        let (right_plan, right_scope) = self.source(&join.right, Some(&left_scope))?;
+        let left_len = left_plan.schema().len();
+        let mut kind = match join.kind {
+            ast::JoinKind::Inner => JoinKind::Inner,
+            ast::JoinKind::Left => JoinKind::Left,
+            ast::JoinKind::Right => JoinKind::Right,
+        };
+        let (left_scope, right_scope) = match kind {
+            JoinKind::Left => (left_scope, right_scope.nullable()),
+            JoinKind::Right => (left_scope.nullable(), right_scope),
+            _ => (left_scope, right_scope),
+        };
+        let names = match (&join.constraint, join.natural) {
+            (_, true) => Some(Scope::common_names(&left_scope, &right_scope)),
+            (Some(JoinConstraint::Using(names)), false) => Some(names.clone()),
+            _ => None,
+        };
+        let (scope, condition, using) = match names {
+            Some(names) => {
+                let (scope, pairs) = Scope::using(left_scope, right_scope, left_len, &names, kind)
+                    .map_err(|(error, name)| {
+                        let message = match error {
+                            ResolveError::Unknown => {
+                                format!("unknown column `{}` in `USING`", name.value)
+                            }
+                            ResolveError::Ambiguous => {
+                                format!("column `{}` is ambiguous in `USING`", name.value)
+                            }
+                        };
+                        self.error(message, join.span)
+                    })?;
+                let condition = pairs
+                    .into_iter()
+                    .map(|(left, right)| Expr::compare(Comparison::Eq, left, right))
+                    .reduce(|all, next| Expr::logical(Logical::And, all, next));
+                let using = JoinUsing {
+                    columns: names,
+                    natural: join.natural,
+                };
+                (scope, condition, Some(using))
+            }
+            None => {
+                let scope = Scope::concat(left_scope, right_scope, left_len);
+                let condition = match &join.constraint {
+                    Some(JoinConstraint::On(predicate)) => Some(self.condition(predicate, &scope)?),
+                    _ => None,
+                };
+                (scope, condition, None)
+            }
+        };
+        if kind == JoinKind::Inner && condition.is_none() {
+            kind = JoinKind::Cross;
+        }
+        let plan = Plan::Join(Join {
+            left: Box::new(left_plan),
+            right: Box::new(right_plan),
+            kind,
+            condition,
+            using,
+            form: join.form,
+            span: Some(join.span),
+        });
+        Ok((plan, scope))
     }
 }
 
@@ -505,13 +756,6 @@ struct Output {
     alias: Option<Ident>,
     /// Value.
     expr: prisme_plan::Expr,
-}
-
-/// Columns of a scope, as outputs without alias.
-fn output_columns(scope: &Scope) -> Vec<Output> {
-    (0..scope.len())
-        .map(|position| scope.output(position))
-        .collect()
 }
 
 /// Source of a `SELECT` without `FROM`: one row without columns.

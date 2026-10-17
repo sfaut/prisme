@@ -14,6 +14,7 @@
 //! report.
 
 mod expr;
+mod from;
 
 #[cfg(test)]
 mod tests;
@@ -29,7 +30,7 @@ use crate::lexer::{
 };
 use crate::sql::ast::{
     Alias, CteDefinition, Limit, ObjectName, OrderItem, Query, QueryBody, Row, Select, SelectItem,
-    Statement, StatementKind, TableRef, Values, With,
+    SetOperation, SetOperator, Statement, StatementKind, Values, With,
 };
 use crate::versions::{Construct, Version, registry};
 
@@ -343,7 +344,7 @@ impl Parser<'_> {
     /// Statement.
     fn statement(&mut self) -> Result<Statement, ParseError> {
         let start = self.here().start;
-        if self.at_any_keyword(&["SELECT", "WITH", "VALUES"]) || self.at_punct(Punct::LeftParen) {
+        if self.starts_query(0) || self.at_punct(Punct::LeftParen) {
             let query = self.query()?;
             return Ok(Statement {
                 kind: StatementKind::Query(query),
@@ -351,8 +352,8 @@ impl Parser<'_> {
             });
         }
         let statements = [
-            "INSERT", "REPLACE", "UPDATE", "DELETE", "TABLE", "SHOW", "DESCRIBE", "DESC",
-            "EXPLAIN", "USE", "SET", "CALL", "DO", "HANDLER",
+            "INSERT", "REPLACE", "UPDATE", "DELETE", "SHOW", "DESCRIBE", "DESC", "EXPLAIN", "USE",
+            "SET", "CALL", "DO", "HANDLER",
         ];
         match self.peek() {
             Some(token)
@@ -447,16 +448,83 @@ impl Parser<'_> {
         Ok(names)
     }
 
-    /// Body of a query, set operations included.
+    /// Body of a query: set operations, `INTERSECT` binding tighter than
+    /// `UNION` and `EXCEPT` (MySQL 8.0.31 and later, MariaDB), each one
+    /// associating to the left.
     fn query_body(&mut self) -> Result<QueryBody, ParseError> {
-        let body = self.query_primary()?;
-        if self.at_any_keyword(&["UNION", "EXCEPT", "INTERSECT"]) {
-            return Err(self.unsupported("set operations", self.here()));
+        let start = self.here().start;
+        let mut left = self.intersect_operand()?;
+        loop {
+            let operator = if self.at_keyword("UNION") {
+                SetOperator::Union
+            } else if self.at_keyword("EXCEPT") {
+                SetOperator::Except
+            } else {
+                return Ok(left);
+            };
+            let all = self.set_quantifier(operator)?;
+            let right = self.intersect_operand()?;
+            left = self.set_operation(operator, all, left, right, start)?;
         }
-        Ok(body)
     }
 
-    /// `SELECT`, `VALUES`, or a query between parentheses.
+    /// Operand of `UNION` and `EXCEPT`: query bodies joined by `INTERSECT`.
+    fn intersect_operand(&mut self) -> Result<QueryBody, ParseError> {
+        let start = self.here().start;
+        let mut left = self.query_primary()?;
+        while self.at_keyword("INTERSECT") {
+            let all = self.set_quantifier(SetOperator::Intersect)?;
+            let right = self.query_primary()?;
+            left = self.set_operation(SetOperator::Intersect, all, left, right, start)?;
+        }
+        Ok(left)
+    }
+
+    /// Consumes a set operator, then its `ALL` or `DISTINCT`; tells whether
+    /// `ALL` is written.
+    fn set_quantifier(&mut self, operator: SetOperator) -> Result<bool, ParseError> {
+        let span = self.here();
+        self.advance();
+        if operator != SetOperator::Union {
+            self.check(Construct::IntersectExcept, span)?;
+        }
+        if let Some(all) = self.eat_keyword("ALL") {
+            if operator != SetOperator::Union {
+                self.check(
+                    Construct::IntersectExceptAll,
+                    Span::new(span.start, all.end),
+                )?;
+            }
+            return Ok(true);
+        }
+        self.eat_keyword("DISTINCT");
+        Ok(false)
+    }
+
+    /// Set operation of `left` and `right`, from `start`.
+    fn set_operation(
+        &self,
+        operator: SetOperator,
+        all: bool,
+        left: QueryBody,
+        right: QueryBody,
+        start: usize,
+    ) -> Result<QueryBody, ParseError> {
+        if let QueryBody::Nested(query) = &right
+            && matches!(query.body, QueryBody::SetOperation(_))
+        {
+            self.check(Construct::NestedSetOperation, query.span)?;
+        }
+        Ok(QueryBody::SetOperation(Box::new(SetOperation {
+            operator,
+            all,
+            left,
+            right,
+            span: self.span_from(start),
+        })))
+    }
+
+    /// `SELECT`, `VALUES`, `TABLE`, or a query between parentheses.
     fn query_primary(&mut self) -> Result<QueryBody, ParseError> {
         if self.at_keyword("SELECT") {
             return Ok(QueryBody::Select(Box::new(self.select()?)));
@@ -464,15 +532,16 @@ impl Parser<'_> {
         if self.at_keyword("VALUES") {
             return Ok(QueryBody::Values(self.values()?));
         }
-        if self.at_keyword("TABLE") {
-            return Err(self.unsupported("`TABLE` statement", self.here()));
+        if let Some(span) = self.eat_keyword("TABLE") {
+            self.check(Construct::TableStatement, span)?;
+            return Ok(QueryBody::Table(self.object_name(2)?));
         }
         if self.eat_punct(Punct::LeftParen).is_some() {
             let query = self.query()?;
             self.expect_punct(Punct::RightParen)?;
             return Ok(QueryBody::Nested(Box::new(query)));
         }
-        Err(self.expected("`SELECT`, `VALUES` or a query between parentheses"))
+        Err(self.expected("`SELECT`, `VALUES`, `TABLE` or a query between parentheses"))
     }
 
     /// `VALUES ROW (...), ...` (MySQL) or `VALUES (...), ...` (MariaDB).
@@ -554,7 +623,7 @@ impl Parser<'_> {
             if self.eat_keyword("DUAL").is_some() {
                 None
             } else {
-                Some(self.table_ref()?)
+                Some(self.table_refs()?)
             }
         } else {
             None
@@ -662,36 +731,6 @@ impl Parser<'_> {
             name: self.name()?,
             form,
         }))
-    }
-
-    /// Source of rows of a `FROM`.
-    fn table_ref(&mut self) -> Result<TableRef, ParseError> {
-        let start = self.here().start;
-        if self.at_punct(Punct::LeftParen) {
-            return Err(self.unsupported("derived tables", self.here()));
-        }
-        let name = self.object_name(2)?;
-        let alias = self.alias(false)?;
-        let joins = [
-            "JOIN",
-            "INNER",
-            "CROSS",
-            "LEFT",
-            "RIGHT",
-            "NATURAL",
-            "STRAIGHT_JOIN",
-        ];
-        if self.at_punct(Punct::Comma) || self.at_any_keyword(&joins) {
-            return Err(self.unsupported("joins", self.here()));
-        }
-        if self.at_any_keyword(&["USE", "FORCE", "IGNORE", "PARTITION"]) {
-            return Err(self.unsupported("index hints and partitions", self.here()));
-        }
-        Ok(TableRef::Named {
-            name,
-            alias,
-            span: self.span_from(start),
-        })
     }
 
     /// Keys of an `ORDER BY`.

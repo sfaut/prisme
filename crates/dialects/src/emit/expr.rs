@@ -8,7 +8,8 @@
 //! family: `ToBoolean` and `ToInteger` write their operand alone.
 
 use prisme_plan::{
-    Arithmetic, Bitwise, Comparison, Expr, ExprKind, Logical, NotDistinctForm, VariableScope,
+    Arithmetic, Bitwise, Comparison, Expr, ExprKind, Logical, NotDistinctForm, Plan, Quantifier,
+    VariableScope,
 };
 use prisme_types::Value;
 
@@ -24,6 +25,18 @@ const PREFIX: u8 = 12;
 /// Level of an operand.
 const OPERAND: u8 = 14;
 
+/// Symbol of a comparison, between spaces.
+const fn comparison(op: Comparison) -> &'static str {
+    match op {
+        Comparison::Eq => " = ",
+        Comparison::NotEq => " <> ",
+        Comparison::Lt => " < ",
+        Comparison::LtEq => " <= ",
+        Comparison::Gt => " > ",
+        Comparison::GtEq => " >= ",
+    }
+}
+
 /// Level of an expression, and the levels its left and right operands need.
 fn levels(expr: &Expr) -> (u8, u8, u8) {
     let binary = |level: u8| (level, level, level + 1);
@@ -35,11 +48,14 @@ fn levels(expr: &Expr) -> (u8, u8, u8) {
         },
         ExprKind::Not(_) => (NOT, NOT, NOT),
         ExprKind::NotDistinct { negated: true, .. } => (NOT, NOT, NOT),
-        ExprKind::Compare { .. } | ExprKind::NotDistinct { .. } => binary(PREDICATE),
+        ExprKind::NotDistinct { .. } => binary(PREDICATE),
+        ExprKind::Compare { .. } | ExprKind::Quantified { .. } => binary(PREDICATE),
         ExprKind::IsNull { .. }
         | ExprKind::Between { .. }
         | ExprKind::Like { .. }
-        | ExprKind::InList { .. } => (PREDICATE, PREDICATE + 1, PREDICATE + 1),
+        | ExprKind::InList { .. }
+        | ExprKind::InSubquery { .. } => (PREDICATE, PREDICATE + 1, PREDICATE + 1),
+        ExprKind::Exists { negated: true, .. } => (NOT, NOT, NOT),
         ExprKind::Bitwise { op, .. } => match op {
             Bitwise::Or => binary(6),
             Bitwise::And => binary(7),
@@ -106,17 +122,7 @@ impl Emitter<'_> {
                 op,
                 left: a,
                 right: b,
-            } => {
-                let symbol = match op {
-                    Comparison::Eq => " = ",
-                    Comparison::NotEq => " <> ",
-                    Comparison::Lt => " < ",
-                    Comparison::LtEq => " <= ",
-                    Comparison::Gt => " > ",
-                    Comparison::GtEq => " >= ",
-                };
-                self.binary(a, symbol, b, left, right);
-            }
+            } => self.binary(a, comparison(*op), b, left, right),
             ExprKind::NotDistinct {
                 left: a,
                 right: b,
@@ -235,6 +241,11 @@ impl Emitter<'_> {
                 self.expr_list(list);
                 self.write(")");
             }
+            ExprKind::ScalarSubquery(_)
+            | ExprKind::Exists { .. }
+            | ExprKind::InSubquery { .. }
+            | ExprKind::Quantified { .. }
+            | ExprKind::Row(_) => self.query_kind(expr, left),
             _ => {
                 self.error(
                     "expr.kind",
@@ -244,6 +255,56 @@ impl Emitter<'_> {
                 self.write("NULL");
             }
         }
+    }
+
+    /// Content of a subquery or of a row, its operand at level `left` at
+    /// least: out of `expr_kind`, whose frame the recursion of deep
+    /// expressions repeats.
+    fn query_kind(&mut self, expr: &Expr, left: u8) {
+        match &expr.kind {
+            ExprKind::ScalarSubquery(subquery) => self.subquery("", subquery),
+            ExprKind::Exists { subquery, negated } => {
+                self.subquery(if *negated { "NOT EXISTS " } else { "EXISTS " }, subquery);
+            }
+            ExprKind::InSubquery {
+                operand,
+                subquery,
+                negated,
+            } => {
+                self.expr(operand, left);
+                self.subquery(if *negated { " NOT IN " } else { " IN " }, subquery);
+            }
+            ExprKind::Quantified {
+                op,
+                operand,
+                quantifier,
+                subquery,
+            } => {
+                self.expr(operand, left);
+                self.write(comparison(*op));
+                self.subquery(
+                    match quantifier {
+                        Quantifier::All => "ALL ",
+                        Quantifier::Any => "ANY ",
+                    },
+                    subquery,
+                );
+            }
+            ExprKind::Row(values) => {
+                self.write("(");
+                self.expr_list(values);
+                self.write(")");
+            }
+            _ => unreachable!("called on subqueries and rows"),
+        }
+    }
+
+    /// `prefix (subquery)`.
+    fn subquery(&mut self, prefix: &str, subquery: &Plan) {
+        self.write(prefix);
+        self.write("(");
+        self.query(subquery, false);
+        self.write(")");
     }
 
     /// `a op b`, the operands at levels `left` and `right` at least.

@@ -130,6 +130,7 @@ impl Prepared {
             &self.parsed.statement,
             &self.text,
             self.input.dialect,
+            self.input.version,
             catalog,
         )?;
         let source = Source {

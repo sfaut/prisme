@@ -38,6 +38,13 @@ constructs:
   - id: lateral
     since: "8.0.14"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-14.html
+  # Available at the floor (checked on MySQL 8.0.11).
+  - id: derived_column_list
+    since: "8.0.11"
+    source: https://dev.mysql.com/doc/refman/8.0/en/derived-tables.html
+  - id: derived_outer_reference
+    since: "8.0.14"
+    source: https://dev.mysql.com/doc/refman/8.0/en/derived-tables.html
   - id: explain_format_tree
     since: "8.0.16"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-16.html
@@ -56,6 +63,9 @@ constructs:
   - id: insert_row_alias
     since: "8.0.19"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-19.html
+  - id: nested_set_operation
+    since: "8.0.22"
+    source: https://dev.mysql.com/doc/refman/8.0/en/parenthesized-query-expressions.html
   - id: intersect_except
     since: "8.0.31"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-31.html
