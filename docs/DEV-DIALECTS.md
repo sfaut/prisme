@@ -14,6 +14,7 @@ Each step ends on a state usable end to end, with its tests and its documents up
 - **Scope**: the DML (`SELECT`, `INSERT`, `UPDATE`, `DELETE`), plus the catalog and session statements (`SHOW`, `DESCRIBE`, `EXPLAIN`, `USE`, `SET`, queries on the catalog of the engine). DDL is set aside.
 - **Never a silent approximate translation** (rule 2 of `CLAUDE.md`): each construct is translated natively, emulated by Prisme (result type and use of indexes kept, except the position of NULLs in a sort, whose loss of index is reported), or refused with an explicit error. A catalog or session statement is translated as far as needed; when the target gives less than the same request written in its own dialect, the report states the loss of precision.
 - **Audit**: every rewrite and every emulation is listed, with its position in the input; every untranslatable construct is listed with its error.
+- **Settings of the server**: a result that depends on the settings of the server or of the data (collation, `sql_mode`, time zone) follows the target server. The transpiler translates the language and neither emulates nor reports these settings: on the same rows, `WHERE v = 'a'` keeps `'a '` on MariaDB (PAD SPACE collation by default) and leaves it out on MySQL 8 (`utf8mb4_0900_ai_ci`, NO PAD) (`docs/FEDERATED.md`, section 6).
 - **Beautifier**: generated from the plan, comments kept (`docs/V1.md`, section 2.9).
 
 ## 2. Target architecture
