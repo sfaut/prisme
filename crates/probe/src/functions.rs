@@ -19,6 +19,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
+use indoc::indoc;
 use prisme_dialects::versions::Version;
 use prisme_dialects::{Dialect, ListedFunction, listed_functions};
 
@@ -35,27 +36,27 @@ const STORED: u32 = 1630;
 const ARGUMENTS: [&str; 5] = ["", "1", "1, 1", "1, 1, 1", "1, 1, 1, 1"];
 
 /// Procedure that prepares a statement and records the error code.
-const PROCEDURE: &str = r#"
-DROP TABLE IF EXISTS probe_builtins;
-CREATE TABLE probe_builtins (name VARCHAR(64) NOT NULL, form VARCHAR(10) NOT NULL, code INT NOT NULL);
-DROP PROCEDURE IF EXISTS probe_builtin;
-DELIMITER //
-CREATE PROCEDURE probe_builtin(IN function_name VARCHAR(64), IN form VARCHAR(10), IN statement TEXT)
-BEGIN
-  DECLARE code INT DEFAULT 0;
-  DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+const PROCEDURE: &str = indoc! {r#"
+    DROP TABLE IF EXISTS probe_builtins;
+    CREATE TABLE probe_builtins (name VARCHAR(64) NOT NULL, form VARCHAR(10) NOT NULL, code INT NOT NULL);
+    DROP PROCEDURE IF EXISTS probe_builtin;
+    DELIMITER //
+    CREATE PROCEDURE probe_builtin(IN function_name VARCHAR(64), IN form VARCHAR(10), IN statement TEXT)
     BEGIN
-      GET DIAGNOSTICS CONDITION 1 code = MYSQL_ERRNO;
-    END;
-  SET @probe_sql = statement;
-  PREPARE probe_statement FROM @probe_sql;
-  IF code = 0 THEN
-    DEALLOCATE PREPARE probe_statement;
-  END IF;
-  INSERT INTO probe_builtins VALUES (function_name, form, code);
-END//
-DELIMITER ;
-"#;
+      DECLARE code INT DEFAULT 0;
+      DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+        BEGIN
+          GET DIAGNOSTICS CONDITION 1 code = MYSQL_ERRNO;
+        END;
+      SET @probe_sql = statement;
+      PREPARE probe_statement FROM @probe_sql;
+      IF code = 0 THEN
+        DEALLOCATE PREPARE probe_statement;
+      END IF;
+      INSERT INTO probe_builtins VALUES (function_name, form, code);
+    END//
+    DELIMITER ;
+"#};
 
 /// What a server makes of a name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

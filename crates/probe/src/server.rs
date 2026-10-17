@@ -13,6 +13,7 @@ use std::thread;
 use std::time::Duration;
 
 use anyhow::{Context, bail};
+use indoc::formatdoc;
 use prisme_dialects::Dialect;
 use prisme_dialects::versions::Version;
 
@@ -166,11 +167,10 @@ impl Server {
     /// Waits until the server answers over TCP, creates the database of the
     /// measurements, then gives the version of the server.
     fn wait(&self) -> anyhow::Result<String> {
-        let script = format!(
-            "CREATE DATABASE IF NOT EXISTS {DATABASE};
-SELECT VERSION();
-"
-        );
+        let script = formatdoc! {"
+            CREATE DATABASE IF NOT EXISTS {DATABASE};
+            SELECT VERSION();
+        "};
         for _ in 0..START_TIMEOUT {
             let output = self.client(&script, &["--batch", "--skip-column-names"], None);
             if let Ok(output) = output

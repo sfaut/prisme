@@ -9,20 +9,21 @@ use std::path::PathBuf;
 
 use anyhow::{Context, bail};
 use clap::Parser;
+use indoc::indoc;
 
 /// Name of the data folder created in the user's data folder.
 const DATA_DIR_NAME: &str = "Prisme";
 
 /// How the first launch works, shown at the end of `prisme --help`.
-const AFTER_HELP: &str = "\
-First launch:
-  When the internal database does not exist yet in the data folder, Prisme
-  asks in the terminal for the listening port (8484 by default, on
-  127.0.0.1) and the user's email address (me@local by default). The
-  answers are saved in the internal database and read again on the next
-  launches; --setup asks the questions again.
-  A --listen or --user-email option replaces its question, without being
-  saved. Without an interactive terminal, the defaults apply.";
+const AFTER_HELP: &str = indoc! {"
+    First launch:
+      When the internal database does not exist yet in the data folder, Prisme
+      asks in the terminal for the listening port (8484 by default, on
+      127.0.0.1) and the user's email address (me@local by default). The
+      answers are saved in the internal database and read again on the next
+      launches; --setup asks the questions again.
+      A --listen or --user-email option replaces its question, without being
+      saved. Without an interactive terminal, the defaults apply."};
 
 /// Launch options of Prisme.
 #[derive(Debug, Parser)]

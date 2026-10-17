@@ -1417,6 +1417,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "indoc"
+version = "2.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a37b2691796cffeb8a8cd305ac66e65841559f147f4e63231d0eafa4db5384d1"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "inout"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1991,6 +2000,7 @@ dependencies = [
 name = "prisme-dialects"
 version = "0.2.0"
 dependencies = [
+ "indoc",
  "prisme-plan",
  "prisme-splitter",
  "prisme-types",
@@ -2014,6 +2024,7 @@ version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
+ "indoc",
  "prisme-dialects",
 ]
 
@@ -2028,6 +2039,7 @@ dependencies = [
  "clap",
  "dirs",
  "futures-util",
+ "indoc",
  "prisme-connectors",
  "prisme-dialects",
  "prisme-plan",

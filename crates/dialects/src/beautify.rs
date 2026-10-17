@@ -314,6 +314,8 @@ fn uppercase_keywords(sql: &str, dialect: Dialect, version: Option<&str>) -> Str
 
 #[cfg(test)]
 mod tests {
+    use indoc::indoc;
+
     use super::*;
 
     fn pretty(sql: &str) -> String {
@@ -473,10 +475,11 @@ mod tests {
                 "select cast(CAST as char) c, OPERATION_ID from Operations",
                 options
             ),
-            "SELECT ALL
-    CAST(cast AS CHAR) AS c,
-    operation_id
-FROM operations"
+            indoc! {"
+                SELECT ALL
+                    CAST(cast AS CHAR) AS c,
+                    operation_id
+                FROM operations"}
         );
     }
 

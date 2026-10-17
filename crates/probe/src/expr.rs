@@ -16,95 +16,96 @@ use std::collections::HashMap;
 use std::fmt::Write;
 
 use anyhow::{Context, bail};
+use indoc::indoc;
 
 use crate::server::Server;
 
 /// Table of the sample row, procedure and table of the results.
-const PREPARATION: &str = r#"
-DROP TABLE IF EXISTS sample;
-CREATE TABLE sample (
-  d DATE NOT NULL, dt DATETIME(3) NOT NULL, ts TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
-  t TIME NOT NULL, s VARCHAR(30) NOT NULL, i INT NOT NULL, n DECIMAL(10,2) NOT NULL,
-  f DOUBLE NOT NULL, dn DATE NULL, sn VARCHAR(30) NULL, j JSON NULL
-);
-INSERT INTO sample VALUES ('2024-05-06', '2024-05-06 07:08:09.123', '2024-05-06 07:08:09.123456',
-  '10:20:30', 'Hello World', 42, 12.50, 2.5, NULL, NULL, '{"a": [1, 2]}');
-DROP TABLE IF EXISTS probe_results;
-CREATE TABLE probe_results (
-  seq INT AUTO_INCREMENT PRIMARY KEY, case_id VARCHAR(100) NOT NULL, column_type TEXT NULL,
-  nullable VARCHAR(3) NULL, value LONGTEXT NULL, warning TEXT NULL, failure TEXT NULL,
-  type_failure TEXT NULL
-);
-"#;
+const PREPARATION: &str = indoc! {r#"
+    DROP TABLE IF EXISTS sample;
+    CREATE TABLE sample (
+      d DATE NOT NULL, dt DATETIME(3) NOT NULL, ts TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+      t TIME NOT NULL, s VARCHAR(30) NOT NULL, i INT NOT NULL, n DECIMAL(10,2) NOT NULL,
+      f DOUBLE NOT NULL, dn DATE NULL, sn VARCHAR(30) NULL, j JSON NULL
+    );
+    INSERT INTO sample VALUES ('2024-05-06', '2024-05-06 07:08:09.123', '2024-05-06 07:08:09.123456',
+      '10:20:30', 'Hello World', 42, 12.50, 2.5, NULL, NULL, '{"a": [1, 2]}');
+    DROP TABLE IF EXISTS probe_results;
+    CREATE TABLE probe_results (
+      seq INT AUTO_INCREMENT PRIMARY KEY, case_id VARCHAR(100) NOT NULL, column_type TEXT NULL,
+      nullable VARCHAR(3) NULL, value LONGTEXT NULL, warning TEXT NULL, failure TEXT NULL,
+      type_failure TEXT NULL
+    );
+"#};
 
 /// Procedure of the measurement, created after the statements of the user:
 /// it runs with their SQL mode.
-const PROCEDURE: &str = r#"
-DROP PROCEDURE IF EXISTS probe_expression;
-DELIMITER //
-CREATE PROCEDURE probe_expression(IN case_id VARCHAR(100), IN expression LONGTEXT)
-BEGIN
-  DECLARE failure TEXT DEFAULT NULL;
-  DECLARE failure_code INT DEFAULT 0;
-  DECLARE warning TEXT DEFAULT NULL;
-  DECLARE value_failure TEXT DEFAULT NULL;
-  DECLARE value_warning TEXT DEFAULT NULL;
-  DECLARE column_type TEXT DEFAULT NULL;
-  DECLARE nullable VARCHAR(3) DEFAULT NULL;
-  DECLARE value_text LONGTEXT DEFAULT NULL;
-  DECLARE saved_mode TEXT DEFAULT @@SESSION.sql_mode;
-  DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+const PROCEDURE: &str = indoc! {r#"
+    DROP PROCEDURE IF EXISTS probe_expression;
+    DELIMITER //
+    CREATE PROCEDURE probe_expression(IN case_id VARCHAR(100), IN expression LONGTEXT)
     BEGIN
-      GET DIAGNOSTICS CONDITION 1 failure_code = MYSQL_ERRNO, failure = MESSAGE_TEXT;
-      SET failure = CONCAT(failure_code, ' ', failure);
-    END;
-  DECLARE CONTINUE HANDLER FOR SQLWARNING
-    BEGIN
-      GET DIAGNOSTICS CONDITION 1 warning = MESSAGE_TEXT;
-    END;
-  -- Value and warning, as a query gives them.
-  SET @probe_value = NULL;
-  SET @probe_sql = CONCAT('SELECT ', expression, ' INTO @probe_value FROM sample');
-  PREPARE probe_statement FROM @probe_sql;
-  IF failure IS NULL THEN
-    SET warning = NULL;
-    EXECUTE probe_statement;
-    SET value_warning = warning;
-    DEALLOCATE PREPARE probe_statement;
-  END IF;
-  SET value_failure = failure;
-  -- Type and nullability, the warnings kept as warnings.
-  SET failure = NULL;
-  SET @probe_mode = TRIM(BOTH ',' FROM REPLACE(REPLACE(CONCAT(',', saved_mode, ','),
-    ',STRICT_TRANS_TABLES,', ','), ',STRICT_ALL_TABLES,', ','));
-  SET SESSION sql_mode = @probe_mode;
-  DROP TABLE IF EXISTS probe_type;
-  SET @probe_sql = CONCAT('CREATE TABLE probe_type AS SELECT ', expression, ' AS v FROM sample');
-  PREPARE probe_statement FROM @probe_sql;
-  IF failure IS NULL THEN
-    EXECUTE probe_statement;
-    DEALLOCATE PREPARE probe_statement;
-  END IF;
-  SET SESSION sql_mode = saved_mode;
-  -- Value, read in the column of its type; from the query otherwise.
-  IF failure IS NULL THEN
-    SELECT c.COLUMN_TYPE, c.IS_NULLABLE INTO column_type, nullable
-      FROM information_schema.COLUMNS AS c
-      WHERE c.TABLE_SCHEMA = DATABASE() AND c.TABLE_NAME = 'probe_type';
-    IF column_type REGEXP '^(binary|varbinary|tinyblob|blob|mediumblob|longblob|bit|geometry|point|linestring|polygon|multi)' THEN
-      SELECT CONCAT('=0x', HEX(v)) INTO value_text FROM probe_type;
-    ELSE
-      SELECT CONCAT('=', CAST(v AS CHAR)) INTO value_text FROM probe_type;
-    END IF;
-  ELSE
-    SET value_text = CONCAT('=', CAST(@probe_value AS CHAR));
-  END IF;
-  INSERT INTO probe_results (case_id, column_type, nullable, value, warning, failure, type_failure)
-    VALUES (case_id, column_type, nullable, IF(value_failure IS NULL, value_text, NULL),
-      value_warning, value_failure, failure);
-END//
-DELIMITER ;
-"#;
+      DECLARE failure TEXT DEFAULT NULL;
+      DECLARE failure_code INT DEFAULT 0;
+      DECLARE warning TEXT DEFAULT NULL;
+      DECLARE value_failure TEXT DEFAULT NULL;
+      DECLARE value_warning TEXT DEFAULT NULL;
+      DECLARE column_type TEXT DEFAULT NULL;
+      DECLARE nullable VARCHAR(3) DEFAULT NULL;
+      DECLARE value_text LONGTEXT DEFAULT NULL;
+      DECLARE saved_mode TEXT DEFAULT @@SESSION.sql_mode;
+      DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+        BEGIN
+          GET DIAGNOSTICS CONDITION 1 failure_code = MYSQL_ERRNO, failure = MESSAGE_TEXT;
+          SET failure = CONCAT(failure_code, ' ', failure);
+        END;
+      DECLARE CONTINUE HANDLER FOR SQLWARNING
+        BEGIN
+          GET DIAGNOSTICS CONDITION 1 warning = MESSAGE_TEXT;
+        END;
+      -- Value and warning, as a query gives them.
+      SET @probe_value = NULL;
+      SET @probe_sql = CONCAT('SELECT ', expression, ' INTO @probe_value FROM sample');
+      PREPARE probe_statement FROM @probe_sql;
+      IF failure IS NULL THEN
+        SET warning = NULL;
+        EXECUTE probe_statement;
+        SET value_warning = warning;
+        DEALLOCATE PREPARE probe_statement;
+      END IF;
+      SET value_failure = failure;
+      -- Type and nullability, the warnings kept as warnings.
+      SET failure = NULL;
+      SET @probe_mode = TRIM(BOTH ',' FROM REPLACE(REPLACE(CONCAT(',', saved_mode, ','),
+        ',STRICT_TRANS_TABLES,', ','), ',STRICT_ALL_TABLES,', ','));
+      SET SESSION sql_mode = @probe_mode;
+      DROP TABLE IF EXISTS probe_type;
+      SET @probe_sql = CONCAT('CREATE TABLE probe_type AS SELECT ', expression, ' AS v FROM sample');
+      PREPARE probe_statement FROM @probe_sql;
+      IF failure IS NULL THEN
+        EXECUTE probe_statement;
+        DEALLOCATE PREPARE probe_statement;
+      END IF;
+      SET SESSION sql_mode = saved_mode;
+      -- Value, read in the column of its type; from the query otherwise.
+      IF failure IS NULL THEN
+        SELECT c.COLUMN_TYPE, c.IS_NULLABLE INTO column_type, nullable
+          FROM information_schema.COLUMNS AS c
+          WHERE c.TABLE_SCHEMA = DATABASE() AND c.TABLE_NAME = 'probe_type';
+        IF column_type REGEXP '^(binary|varbinary|tinyblob|blob|mediumblob|longblob|bit|geometry|point|linestring|polygon|multi)' THEN
+          SELECT CONCAT('=0x', HEX(v)) INTO value_text FROM probe_type;
+        ELSE
+          SELECT CONCAT('=', CAST(v AS CHAR)) INTO value_text FROM probe_type;
+        END IF;
+      ELSE
+        SET value_text = CONCAT('=', CAST(@probe_value AS CHAR));
+      END IF;
+      INSERT INTO probe_results (case_id, column_type, nullable, value, warning, failure, type_failure)
+        VALUES (case_id, column_type, nullable, IF(value_failure IS NULL, value_text, NULL),
+          value_warning, value_failure, failure);
+    END//
+    DELIMITER ;
+"#};
 
 /// Expression to measure.
 #[derive(Debug, Clone, PartialEq, Eq)]

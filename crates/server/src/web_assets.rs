@@ -31,8 +31,8 @@ const INDEX: &str = "index.html";
 
 /// Response of the root when the interface was not compiled.
 const NOT_BUILT: &str = "Prisme's interface is not compiled: run \"npm run build\" in \
-the web/ folder, then reload the page. In development, the interface is also served \
-by Vite (npm run dev) on http://localhost:5173.";
+    the web/ folder, then reload the page. In development, the interface is also served \
+    by Vite (npm run dev) on http://localhost:5173.";
 
 /// How long the browser keeps the files of `assets/`: one year. Their name
 /// contains the hash of their content (`index-BzxA2zj2.js`): a new build
