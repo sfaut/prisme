@@ -22,6 +22,7 @@ impl Emitter<'_> {
         match rule {
             Rule::Now => self.now(rule, expr, call),
             Rule::TimeToSec => self.time_to_sec(rule, expr, call, min),
+            Rule::Uuid => self.uuid(rule, expr, call),
             _ => {
                 self.rule_not_written(rule, &call.name, expr.span);
                 self.input_call(expr, call);
@@ -135,6 +136,25 @@ impl Emitter<'_> {
         self.write("CAST(");
         self.input_call(expr, call);
         self.write(&format!(" AS DATETIME{digits})"));
+    }
+
+    /// `UUID()`: a `VARCHAR(36)` in MySQL, a value of type `UUID` in MariaDB
+    /// from 10.7.1, of the same text, which compares only with UUIDs. Towards
+    /// those versions, a `CAST` to `CHAR(36)` keeps the string of MySQL;
+    /// towards MySQL, the string of the same text.
+    fn uuid(&mut self, rule: Rule, expr: &Expr, call: &FunctionCall) {
+        if self.output.dialect == Dialect::MySql || !self.has(Construct::UuidType) {
+            self.input_call(expr, call);
+            return;
+        }
+        let message = format!(
+            "{} gives `UUID()` the type `UUID`: cast to `CHAR(36)`, the string of the same text",
+            self.target()
+        );
+        self.step(rule.id(), StepKind::Emulation, message, expr.span);
+        self.write("CAST(");
+        self.input_call(expr, call);
+        self.write(" AS CHAR(36))");
     }
 
     /// Writes the call `call` with its name and form in the input.

@@ -611,6 +611,25 @@ fn now_keeps_the_datetime_of_mysql() {
 }
 
 #[test]
+fn uuid_stays_a_string() {
+    let mariadb_at = |major, minor, patch| OutputDialect {
+        dialect: Dialect::MariaDb,
+        version: Version::new(major, minor, patch),
+        mode: SqlMode::default(),
+    };
+    let text = "SELECT UUID() AS u";
+    let (sql, rules) = transpiled(text, mysql(), mariadb_at(10, 7, 1));
+    assert_eq!(sql, "SELECT CAST(UUID() AS CHAR(36)) AS u");
+    assert_eq!(rules, ["function.uuid"]);
+    let (sql, rules) = transpiled(text, mysql(), mariadb_at(10, 6, 28));
+    assert_eq!(sql, text);
+    assert!(rules.is_empty(), "{rules:?}");
+    let (sql, rules) = transpiled(text, mariadb(), output(mysql()));
+    assert_eq!(sql, text);
+    assert!(rules.is_empty(), "{rules:?}");
+}
+
+#[test]
 fn stored_functions_keep_calling_the_database() {
     for (text, expected, rules) in [
         (

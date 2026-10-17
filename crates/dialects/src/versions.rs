@@ -94,6 +94,8 @@ pub enum Construct {
     TimestampNow,
     /// `LOCALTIME` of type `TIME` (MariaDB), a `DATETIME` otherwise.
     TimeLocaltime,
+    /// `UUID()` of type `UUID` (MariaDB), a `VARCHAR(36)` otherwise.
+    UuidType,
 }
 
 /// Construct refused in a dialect or a version.
@@ -221,6 +223,7 @@ impl Construct {
             Self::OffsetFetch => "`OFFSET ... FETCH`",
             Self::TimestampNow => "`NOW()` of type `TIMESTAMP`",
             Self::TimeLocaltime => "`LOCALTIME` of type `TIME`",
+            Self::UuidType => "`UUID()` of type `UUID`",
         }
     }
 }
