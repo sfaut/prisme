@@ -1951,3 +1951,54 @@ fn intervals_of_values_read_otherwise_are_errors() {
         assert!(rules.is_empty(), "{rules:?}");
     }
 }
+
+#[test]
+fn timestampdiff_keeps_its_form_and_refuses_values_read_otherwise() {
+    let text = concat!(
+        "SELECT TIMESTAMPDIFF(DAY, dd, dt) AS a, TIMESTAMPDIFF(MICROSECOND, tm, dt3) AS b, ",
+        "TIMESTAMPDIFF(MONTH, '2024-05-06', ts) AS c, TIMESTAMPDIFF(SECOND, 20240506, p) AS e, ",
+        "TIMESTAMPDIFF(HOUR, NULL, i) AS g, TIMESTAMPDIFF(DAY, '2024-05-06 07:08:09.123456', dd) AS h FROM d, g"
+    );
+    for (input, output) in [(mysql(), mariadb()), (mariadb(), mysql())] {
+        let (sql, rules) = transpiled(text, input, self::output(output));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{rules:?}");
+    }
+    let (sql, _) = transpiled(
+        "SELECT timestampdiff(sql_tsi_day, dd, dt) AS a FROM d, g",
+        mysql(),
+        output(mariadb()),
+    );
+    assert_eq!(sql, "SELECT TIMESTAMPDIFF(DAY, dd, dt) AS a FROM d, g");
+    let cases = [
+        ("TIMESTAMPDIFF(DAY, s, dd)", "timestampdiff.operand"),
+        ("TIMESTAMPDIFF(DAY, dd, f)", "timestampdiff.operand"),
+        (
+            "TIMESTAMPDIFF(DAY, '2024-05-06 07:08:09.1234567', dd)",
+            "timestampdiff.operand",
+        ),
+        (
+            "TIMESTAMPDIFF(DAY, '2024--05-06', dd)",
+            "timestampdiff.operand",
+        ),
+        (
+            "TIMESTAMPDIFF(DAY, 20240506.1234567, dd)",
+            "timestampdiff.operand",
+        ),
+        ("TIMESTAMPDIFF(DAY, NOW(), dd)", "timestampdiff.unknown"),
+    ];
+    for (written, rule) in cases {
+        let text = format!("SELECT {written} FROM d, g");
+        for (input, output) in [(mysql(), mariadb()), (mariadb(), mysql())] {
+            assert_eq!(
+                errors(&text, input, self::output(output)),
+                [rule],
+                "{written}"
+            );
+        }
+        assert!(
+            errors(&text, mysql(), output(mysql())).is_empty(),
+            "{written}"
+        );
+    }
+}

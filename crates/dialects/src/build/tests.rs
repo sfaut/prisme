@@ -900,3 +900,17 @@ fn types_intervals_as_the_servers() {
         ]
     );
 }
+
+#[test]
+fn types_timestampdiff_as_a_nullable_bigint() {
+    let bigint = DataType::Integer(IntegerType::signed(IntegerSize::Big));
+    for dialect in [Dialect::MySql, Dialect::MariaDb] {
+        assert_eq!(
+            column_types(
+                "SELECT TIMESTAMPDIFF(DAY, DATE '2024-05-06', DATE '2024-06-05')",
+                dialect
+            ),
+            [(bigint.clone(), true)]
+        );
+    }
+}

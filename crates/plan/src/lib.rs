@@ -34,7 +34,7 @@ pub use expr::{
     FrameBound, FrameUnits, FunctionCall, Logical, NotDistinctForm, Quantifier, Variable,
     VariableScope, WindowCall,
 };
-pub use interval::{DateArithmetic, DateArithmeticForm, TimeUnit};
+pub use interval::{DateArithmetic, DateArithmeticForm, TimeUnit, TimestampDiff};
 pub use order::{Direction, Nulls, SortForm, SortKey, SortReference};
 pub use origin::{AliasForm, Ident, Span};
 pub use plan::{

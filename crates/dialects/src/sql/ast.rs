@@ -517,6 +517,8 @@ pub enum ExprKind {
     /// `d + INTERVAL 1 DAY`, `DATE_ADD(d, INTERVAL 1 DAY)`,
     /// `TIMESTAMPADD(DAY, 1, d)`...
     DateArithmetic(Box<DateArithmeticCall>),
+    /// `TIMESTAMPDIFF(unit, start, end)`.
+    TimestampDiff(Box<TimestampDiffCall>),
 }
 
 /// `CAST` or `CONVERT`.
@@ -541,6 +543,17 @@ pub struct DateArithmeticCall {
     pub unit: TimeUnit,
     /// Form written.
     pub form: DateArithmeticForm,
+}
+
+/// `TIMESTAMPDIFF(unit, start, end)`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TimestampDiffCall {
+    /// Unit counted, a simple one.
+    pub unit: TimeUnit,
+    /// Date or time the count starts from.
+    pub start: Expr,
+    /// Date or time the count ends at.
+    pub end: Expr,
 }
 
 impl FunctionCall {
@@ -576,6 +589,7 @@ impl Expr {
             | ExprKind::Quantified { operand, .. } => vec![operand],
             ExprKind::Cast(cast) => vec![&cast.operand],
             ExprKind::DateArithmetic(call) => vec![&call.operand, &call.value],
+            ExprKind::TimestampDiff(call) => vec![&call.start, &call.end],
             ExprKind::Binary { left, right, .. } => vec![left, right],
             ExprKind::Between {
                 operand, low, high, ..

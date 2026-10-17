@@ -8,10 +8,10 @@
 //! function when a space separates them from `(` (`SUM (a)`, so `COUNT (*)`
 //! is a syntax error) or when written between backticks (`` `LEFT`(a) ``),
 //! as on the servers. `CAST` and `CONVERT` have a module of their own
-//! (`cast`), as `DATE_ADD`, `DATE_SUB`, `ADDDATE`, `SUBDATE` and
-//! `TIMESTAMPADD` (`interval`); the other functions whose arguments have a
-//! syntax of their own (`TRIM(LEADING ...)`, `EXTRACT(DAY FROM d)`...) are
-//! read in a later increment of step 5.
+//! (`cast`), as `DATE_ADD`, `DATE_SUB`, `ADDDATE`, `SUBDATE`,
+//! `TIMESTAMPADD` and `TIMESTAMPDIFF` (`interval`); the other functions whose
+//! arguments have a syntax of their own (`TRIM(LEADING ...)`,
+//! `EXTRACT(DAY FROM d)`...) are read in a later increment of step 5.
 
 use prisme_plan::{FrameUnits, Span};
 
@@ -25,14 +25,13 @@ use crate::sql::ast::{
 use crate::versions::Construct;
 
 /// Functions whose arguments have a syntax of their own, not read yet.
-const SPECIAL_SYNTAX: [&str; 9] = [
+const SPECIAL_SYNTAX: [&str; 8] = [
     "CHAR",
     "EXTRACT",
     "GET_FORMAT",
     "JSON_TABLE",
     "JSON_VALUE",
     "POSITION",
-    "TIMESTAMPDIFF",
     "TRIM",
     "WEIGHT_STRING",
 ];
@@ -84,6 +83,7 @@ impl Parser<'_> {
                 return self.date_function(start, &upper);
             }
             "TIMESTAMPADD" if !stored => return self.timestamp_add(start),
+            "TIMESTAMPDIFF" if !stored => return self.timestamp_diff(start),
             _ => {}
         }
         if !stored && SPECIAL_SYNTAX.contains(&upper.as_str()) {

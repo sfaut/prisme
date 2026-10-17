@@ -10,7 +10,9 @@
 //!   unit`, and no other prefix operator before it;
 //! - `DATE_ADD(x, INTERVAL n unit)`, `DATE_SUB`, `ADDDATE(x, INTERVAL n
 //!   unit)` or `ADDDATE(x, n)` of `n` days, `SUBDATE`, and
-//!   `TIMESTAMPADD(unit, n, x)` of a simple unit.
+//!   `TIMESTAMPADD(unit, n, x)` of a simple unit;
+//! - `TIMESTAMPDIFF(unit, start, end)`, the whole units from `start` to
+//!   `end`, of a simple unit.
 //!
 //! The value `n` is a whole expression, closed by its unit
 //! (`INTERVAL 1 + 1 DAY`). `INTERVAL(n, n1, ...)`, whose parentheses hold a
@@ -21,7 +23,7 @@ use prisme_plan::{DateArithmeticForm, Span, TimeUnit};
 
 use super::{ParseError, Parser};
 use crate::lexer::{Punct, TokenKind};
-use crate::sql::ast::{DateArithmeticCall, Expr, ExprKind};
+use crate::sql::ast::{DateArithmeticCall, Expr, ExprKind, TimestampDiffCall};
 
 impl Parser<'_> {
     /// Tells whether an interval comes next: `INTERVAL`, other than the
@@ -140,6 +142,25 @@ impl Parser<'_> {
             DateArithmeticForm::TimestampAdd,
             self.span_from(start),
         ))
+    }
+
+    /// `TIMESTAMPDIFF(unit, start, end)`, after its name.
+    pub(super) fn timestamp_diff(&mut self, start: usize) -> Result<Expr, ParseError> {
+        self.expect_punct(Punct::LeftParen)?;
+        let unit = self.time_unit(true)?;
+        self.expect_punct(Punct::Comma)?;
+        let from = self.expr()?;
+        self.expect_punct(Punct::Comma)?;
+        let to = self.expr()?;
+        self.expect_punct(Punct::RightParen)?;
+        Ok(Expr {
+            kind: ExprKind::TimestampDiff(Box::new(TimestampDiffCall {
+                unit,
+                start: from,
+                end: to,
+            })),
+            span: self.span_from(start),
+        })
     }
 
     /// `INTERVAL n unit`, from `INTERVAL`: its value and its unit.

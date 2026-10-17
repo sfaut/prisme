@@ -29,8 +29,19 @@
 //! The dates moved into the year 0, out of the range both dialects support
 //! (from `1000-01-01`), give a zero date in MySQL, NULL in MariaDB: no rule
 //! (`docs/DEV-DIALECTS.md`, section 6.3).
+//!
+//! `TIMESTAMPDIFF(unit, start, end)` gives the same values in both dialects
+//! for dates, times (on the current date), integers, booleans, decimals of 6
+//! fractional digits at most and NULL
+//! (`crates/probe/cases/timestampdiff*.txt`). Rule `timestampdiff.operand`: another value read as a date and time, an
+//! error, a string literal of a date or of a date and time of 6 fractional
+//! digits at most aside: MySQL rounds the fractional seconds beyond 6
+//! digits, MariaDB truncates them (strings, decimals, floats), and each reads
+//! forms of strings the other refuses (`2024--05-07`, `+2024-05-07`, a time
+//! zone offset). Rule `timestampdiff.unknown`: an operand of unknown type, a
+//! function, an error until the types of the function catalog.
 
-use prisme_plan::{DateArithmetic, DateArithmeticForm, Expr, ExprKind, TimeUnit};
+use prisme_plan::{DateArithmetic, DateArithmeticForm, Expr, ExprKind, TimeUnit, TimestampDiff};
 use prisme_types::{DataType, IntegerSize, Value};
 
 use super::Emitter;
@@ -164,6 +175,22 @@ impl Emitter<'_> {
         }
     }
 
+    /// Writes `expr`, the count `diff`, `TIMESTAMPDIFF(unit, start, end)`.
+    pub(super) fn timestamp_diff(&mut self, expr: &Expr, diff: &TimestampDiff) {
+        if self.source.dialect != self.output.dialect {
+            for operand in [&diff.start, &diff.end] {
+                if let Some((rule, message)) = diff_operand_difference(operand) {
+                    self.error(rule, &message, expr.span);
+                }
+            }
+        }
+        self.write(&format!("TIMESTAMPDIFF({}, ", diff.unit.keyword()));
+        self.expr(&diff.start, 0);
+        self.write(", ");
+        self.expr(&diff.end, 0);
+        self.write(")");
+    }
+
     /// `INTERVAL n unit`.
     fn interval(&mut self, arithmetic: &DateArithmetic) {
         self.write("INTERVAL ");
@@ -259,6 +286,34 @@ fn plain_string(arithmetic: &DateArithmetic) -> bool {
                 DataType::Null | DataType::Boolean | DataType::Integer(_)
             ));
     !fraction && plain_temporal(text, Some(0))
+}
+
+/// Difference of the values of an operand of `TIMESTAMPDIFF` read as a date
+/// and time.
+fn diff_operand_difference(operand: &Expr) -> Option<(&'static str, String)> {
+    let plain_string = matches!(
+        &operand.kind,
+        ExprKind::Literal(Value::Text(text)) if plain_temporal(text, Some(6))
+    );
+    match &operand.ty.data_type {
+        DataType::Date
+        | DataType::DateTime { .. }
+        | DataType::Timestamp { .. }
+        | DataType::Time { .. }
+        | DataType::Null
+        | DataType::Boolean
+        | DataType::Integer(_) => None,
+        DataType::Decimal(decimal) if decimal.scale() <= 6 => None,
+        DataType::Unknown => Some((
+            "timestampdiff.unknown",
+            "`TIMESTAMPDIFF` of a value whose type is unknown (a function): MySQL and MariaDB read a string or a number of more than 6 fractional digits otherwise, unknown until the types of the function catalog".to_string(),
+        )),
+        _ if plain_string => None,
+        _ => Some((
+            "timestampdiff.operand",
+            "`TIMESTAMPDIFF` of a value that is not a date nor a time, read as a date and time: MySQL rounds its fractional seconds beyond 6 digits, MariaDB truncates them (`TIMESTAMPDIFF(MICROSECOND, '2024-05-06 00:00:00.1234567', DATE '2024-05-06')` gives -123457 against -123456), and each reads strings the other refuses (`'2024--05-07'`, `'+2024-05-07'`); a typed literal (`TIMESTAMP '...'`) or a `CAST` gives a date and time".to_string(),
+        )),
+    }
 }
 
 /// Difference of a number of years MariaDB reduces to 32 bits.

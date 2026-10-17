@@ -17,9 +17,14 @@
 //! The fractional digits are those of the operand, or more: 6 by a unit of
 //! microseconds; by `SECOND`, those of a decimal value, 6 for a string or a
 //! float.
+//!
+//! `TIMESTAMPDIFF` gives a nullable `BIGINT`, NULL for a value that is not a
+//! date nor a time (`crates/probe/cases/timestampdiff*.txt`).
 
-use prisme_plan::{DateArithmetic, Expr, ExprKind, TimeUnit};
-use prisme_types::{DataType, MAX_FRACTION_DIGITS, TextType, Type, Value};
+use prisme_plan::{DateArithmetic, Expr, ExprKind, TimeUnit, TimestampDiff};
+use prisme_types::{
+    DataType, IntegerSize, IntegerType, MAX_FRACTION_DIGITS, TextType, Type, Value,
+};
 
 use super::scope::Scope;
 use super::{BuildError, Builder, temporal};
@@ -53,6 +58,21 @@ impl Builder<'_> {
             form: call.form,
         };
         Ok(Expr::date_arithmetic(arithmetic, Type::nullable(data_type)))
+    }
+
+    /// Whole units from a date or a time to another.
+    pub(super) fn timestamp_diff(
+        &mut self,
+        call: &ast::TimestampDiffCall,
+        scope: &Scope,
+    ) -> Result<Expr, BuildError> {
+        let diff = TimestampDiff {
+            unit: call.unit,
+            start: self.value(&call.start, scope)?,
+            end: self.value(&call.end, scope)?,
+        };
+        let ty = Type::nullable(DataType::Integer(IntegerType::signed(IntegerSize::Big)));
+        Ok(Expr::timestamp_diff(diff, ty))
     }
 }
 

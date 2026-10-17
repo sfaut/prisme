@@ -778,6 +778,7 @@ fn repeatable(expr: &Expr) -> bool {
         ExprKind::DateArithmetic(arithmetic) => {
             repeatable(&arithmetic.operand) && repeatable(&arithmetic.value)
         }
+        ExprKind::TimestampDiff(diff) => repeatable(&diff.start) && repeatable(&diff.end),
         ExprKind::Compare { left, right, .. }
         | ExprKind::NotDistinct { left, right, .. }
         | ExprKind::Logical { left, right, .. }

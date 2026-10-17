@@ -167,6 +167,12 @@ fn tree(expr: &Expr) -> String {
             format!("({})", parts.join(" "))
         }
         ExprKind::Cast(cast) => format!("(cast {} {:?})", tree(&cast.operand), cast.target),
+        ExprKind::TimestampDiff(call) => format!(
+            "(TimestampDiff {:?} {} {})",
+            call.unit,
+            tree(&call.start),
+            tree(&call.end)
+        ),
         ExprKind::DateArithmetic(call) => format!(
             "({:?} {} {} {:?})",
             call.form,
@@ -1368,4 +1374,24 @@ fn reads_intervals_with_the_precedence_of_the_servers() {
         expr_with("+ INTERVAL 1 DAY + d", &mariadb()),
         "(+ (IntervalFirst d 1 Day))"
     );
+}
+
+#[test]
+fn reads_timestampdiff_of_a_simple_unit() {
+    assert_eq!(
+        expr("TIMESTAMPDIFF(DAY, d, e + 1)"),
+        "(TimestampDiff Day d (+ e 1))"
+    );
+    assert_eq!(
+        expr("timestampdiff (sql_tsi_month, d, e)"),
+        "(TimestampDiff Month d e)"
+    );
+    for text in [
+        "SELECT TIMESTAMPDIFF(DAY_HOUR, d, e)",
+        "SELECT TIMESTAMPDIFF('DAY', d, e)",
+        "SELECT TIMESTAMPDIFF(FRAC_SECOND, d, e)",
+        "SELECT TIMESTAMPDIFF(DAY, d)",
+    ] {
+        assert!(parse(text, &mysql()).is_err(), "{text}");
+    }
 }

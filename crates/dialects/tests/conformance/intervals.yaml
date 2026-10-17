@@ -1,12 +1,17 @@
 # Date and time arithmetic: `x + INTERVAL n unit`, `INTERVAL n unit + x`,
-# `DATE_ADD`, `DATE_SUB`, `ADDDATE`, `SUBDATE` and `TIMESTAMPADD`. Written in
+# `DATE_ADD`, `DATE_SUB`, `ADDDATE`, `SUBDATE`, `TIMESTAMPADD` and
+# `TIMESTAMPDIFF`. Written in
 # its form when both dialects give the same value; a `TIME` moved by days
 # written on the current date towards a dialect that reads it otherwise, an
 # error where the readings differ otherwise (rule `interval.time`); refused
 # for another value read as a date and time (`interval.string`), years that
 # may reach 2^31 (`interval.year`), microseconds of more than 6 digits
 # (`interval.microseconds`) and an operand of unknown type
-# (`interval.unknown`) (crates/probe/cases/interval*.txt).
+# (`interval.unknown`); `TIMESTAMPDIFF` refused for another value than a date,
+# a time, a number of 6 fractional digits at most or a plain string literal
+# (`timestampdiff.operand`), and for an operand of unknown type
+# (`timestampdiff.unknown`) (crates/probe/cases/interval*.txt and
+# timestampdiff*.txt).
 setup:
   - DROP TABLE IF EXISTS interval_values
   - >-
@@ -118,3 +123,33 @@ cases:
   - from: mariadb
     sql: SELECT NOW() + INTERVAL 1 DAY
     refused: interval.unknown
+  # TIMESTAMPDIFF: dates, times on the current date, numbers and plain strings
+  # read alike.
+  - from: mysql
+    sql: >-
+      SELECT TIMESTAMPDIFF(DAY, d, dt) AS a,
+      TIMESTAMPDIFF(MICROSECOND, dt, TIMESTAMP '2024-05-07 07:08:09.122') AS b,
+      TIMESTAMPDIFF(MONTH, DATE '2024-01-31', d) AS c,
+      TIMESTAMPDIFF(SQL_TSI_HOUR, tm, TIME '50:00:00') AS e, TIMESTAMPDIFF(DAY, '2024-05-06', d) AS g,
+      TIMESTAMPDIFF(SECOND, 20240506070809, dt) AS h, TIMESTAMPDIFF(MICROSECOND, p, dt) AS k,
+      TIMESTAMPDIFF(QUARTER, NULL, d) AS l, TIMESTAMPDIFF(WEEK, d, tm) AS m
+      FROM interval_values ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT TIMESTAMPDIFF(DAY, d, dt) AS a,
+      TIMESTAMPDIFF(MICROSECOND, dt, TIMESTAMP '2024-05-07 07:08:09.122') AS b,
+      TIMESTAMPDIFF(MONTH, DATE '2024-01-31', d) AS c,
+      TIMESTAMPDIFF(SQL_TSI_HOUR, tm, TIME '50:00:00') AS e, TIMESTAMPDIFF(DAY, '2024-05-06', d) AS g,
+      TIMESTAMPDIFF(SECOND, 20240506070809, dt) AS h, TIMESTAMPDIFF(MICROSECOND, p, dt) AS k,
+      TIMESTAMPDIFF(QUARTER, NULL, d) AS l, TIMESTAMPDIFF(WEEK, d, tm) AS m
+      FROM interval_values ORDER BY id
+  - from: mysql
+    sql: >-
+      SELECT TIMESTAMPDIFF(MICROSECOND, '2024-05-06 00:00:00.1234567', DATE '2024-05-06')
+    refused: timestampdiff.operand
+  - from: mariadb
+    sql: SELECT TIMESTAMPDIFF(DAY, s, d) FROM interval_values
+    refused: timestampdiff.operand
+  - from: mysql
+    sql: SELECT TIMESTAMPDIFF(DAY, NOW(), d) FROM interval_values
+    refused: timestampdiff.unknown

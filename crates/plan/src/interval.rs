@@ -1,7 +1,8 @@
 //! Date and time arithmetic of the MySQL family: an interval added to or
 //! subtracted from a date or a time (`d + INTERVAL 1 DAY`, `DATE_ADD`,
 //! `ADDDATE`, `TIMESTAMPADD`), with the form written, since each form has a
-//! syntax of its own and the precedence of its operands.
+//! syntax of its own and the precedence of its operands; the units between
+//! two dates or times (`TIMESTAMPDIFF`).
 
 use crate::Expr;
 
@@ -17,6 +18,18 @@ pub struct DateArithmetic {
     pub unit: TimeUnit,
     /// Form written.
     pub form: DateArithmeticForm,
+}
+
+/// `TIMESTAMPDIFF(unit, start, end)`: the number of whole units from `start`
+/// to `end`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TimestampDiff {
+    /// Unit counted, a simple one.
+    pub unit: TimeUnit,
+    /// Date or time the count starts from.
+    pub start: Expr,
+    /// Date or time the count ends at.
+    pub end: Expr,
 }
 
 /// Form of a date and time arithmetic.

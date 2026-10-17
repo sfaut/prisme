@@ -122,6 +122,10 @@ impl Emitter<'_> {
             self.date_arithmetic(expr, arithmetic, min);
             return;
         }
+        if let ExprKind::TimestampDiff(diff) = &expr.kind {
+            self.timestamp_diff(expr, diff);
+            return;
+        }
         let (level, left, right) = levels(expr);
         let parenthesized = level < min;
         if parenthesized {

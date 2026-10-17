@@ -275,7 +275,8 @@ impl Builder<'_> {
             | ExprKind::Function(_)
             | ExprKind::Case { .. }
             | ExprKind::Cast(_)
-            | ExprKind::DateArithmetic(_) => self.other_expr(expr, scope)?,
+            | ExprKind::DateArithmetic(_)
+            | ExprKind::TimestampDiff(_) => self.other_expr(expr, scope)?,
         };
         Ok(built.with_span(expr.span))
     }
@@ -353,6 +354,7 @@ impl Builder<'_> {
             } => self.case(operand.as_deref(), branches, otherwise.as_deref(), scope)?,
             ExprKind::Cast(cast) => self.cast(cast, scope)?,
             ExprKind::DateArithmetic(call) => self.date_arithmetic(call, scope)?,
+            ExprKind::TimestampDiff(call) => self.timestamp_diff(call, scope)?,
             _ => unreachable!(
                 "called on columns, calls, subqueries, rows, `CASE`, `CAST` and intervals"
             ),
