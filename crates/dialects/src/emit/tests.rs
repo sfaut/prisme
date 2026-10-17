@@ -2433,3 +2433,32 @@ fn a_comparison_compares_the_tests_as_written() {
         "SELECT (s IN ('a')) IN (1) AS a, (s LIKE s) LIKE 1 AS b, s LIKE (1 + 1) ESCAPE '!' AS c FROM g"
     );
 }
+
+#[test]
+fn is_true_is_written_between_parentheses_where_mysql_needs_it() {
+    let text = concat!(
+        "SELECT de IS TRUE AS a, de IS NOT FALSE AS b, s = s IS UNKNOWN AS c, ",
+        "NOT de IS TRUE AS e, de IS NULL IS FALSE AS h, (de IS TRUE) + 1 AS j FROM g ",
+        "WHERE de IS TRUE AND s IS NOT UNKNOWN"
+    );
+    for (input, output) in [
+        (mysql(), mariadb()),
+        (mariadb(), mysql()),
+        (mysql(), mysql()),
+    ] {
+        let (sql, rules) = transpiled(text, input, self::output(output));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{rules:?}");
+    }
+    // MariaDB reads a comparison or `IS` after it, MySQL between
+    // parentheses.
+    let (sql, _) = transpiled(
+        "SELECT de IS TRUE = 1 AS a, de IS TRUE IS NULL AS b, (NOT de) IS TRUE AS c FROM g",
+        mariadb(),
+        output(mysql()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT (de IS TRUE) = 1 AS a, (de IS TRUE) IS NULL AS b, (NOT de) IS TRUE AS c FROM g"
+    );
+}

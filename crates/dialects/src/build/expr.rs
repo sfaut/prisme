@@ -224,6 +224,11 @@ impl Builder<'_> {
                 self.single(&built, operand.span)?;
                 Expr::is_null(built, *negated)
             }
+            ExprKind::IsTruth {
+                operand,
+                truth,
+                negated,
+            } => Expr::is_truth(self.condition(operand, scope)?, *truth, *negated),
             ExprKind::Between {
                 operand,
                 low,

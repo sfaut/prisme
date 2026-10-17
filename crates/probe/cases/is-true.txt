@@ -1,0 +1,85 @@
+# IS TRUE, IS FALSE, IS UNKNOWN: values, types, precedence, syntax.
+it_one 1 IS TRUE
+it_zero 0 IS TRUE
+it_null NULL IS TRUE
+int_null NULL IS NOT TRUE
+if_null NULL IS FALSE
+inf_null NULL IS NOT FALSE
+iu_null NULL IS UNKNOWN
+iu_one 1 IS UNKNOWN
+inu_one 1 IS NOT UNKNOWN
+iu_str 'abc' IS UNKNOWN
+iu_cmp NULL = 1 IS UNKNOWN
+it_half 0.5 IS TRUE
+it_small 0.0000001 IS TRUE
+it_float 1e-300 IS TRUE
+it_dec0 0.0 IS TRUE
+it_negzero -0e0 IS TRUE
+it_neg -1 IS TRUE
+it_big 18446744073709551615 IS TRUE
+it_str 'abc' IS TRUE
+it_str1 '1abc' IS TRUE
+it_str05 '0.5' IS TRUE
+it_strsp ' 1' IS TRUE
+it_strnl CONCAT(CHAR(10 USING utf8mb4), '1') IS TRUE
+it_empty '' IS TRUE
+it_strexp '1e-400' IS TRUE
+it_date d IS TRUE
+it_dt dt IS TRUE
+it_time TIME '00:00:00' IS TRUE
+it_timefrac TIME '00:00:00.5' IS TRUE
+it_t t IS TRUE
+it_json j IS TRUE
+it_jsonzero CAST('0' AS JSON) IS TRUE
+it_jsonfalse CAST('false' AS JSON) IS TRUE
+it_dn dn IS TRUE
+it_bin CAST('a' AS BINARY) IS TRUE
+it_binzero CAST('0' AS BINARY) IS TRUE
+it_hex 0x00 IS TRUE
+it_bit b'1' IS TRUE
+it_true TRUE IS TRUE
+it_lower 1 is true
+it_cmp 1 = 1 IS TRUE
+it_cmp2 1 = 2 IS FALSE
+it_lt 1 < 2 IS TRUE
+it_cmp_after 1 IS TRUE = 1
+it_cmp_after_paren (1 IS TRUE) = 1
+it_chain 1 IS TRUE IS TRUE
+it_chain_null NULL IS NULL IS TRUE
+it_then_null 1 IS TRUE IS NULL
+it_not NOT 0 IS TRUE
+it_not2 NOT 1 IS FALSE
+it_bang !0 IS TRUE
+it_and 1 AND 0 IS TRUE
+it_or 0 OR 1 IS FALSE
+it_between 2 BETWEEN 1 AND 3 IS TRUE
+it_between_after 1 IS TRUE BETWEEN 0 AND 2
+it_like 'a' LIKE 'a' IS TRUE
+it_like_after 1 IS TRUE LIKE '1'
+it_in 1 IN (1) IS TRUE
+it_in_after 1 IS TRUE IN (1)
+it_in_list 1 IN (1 IS TRUE)
+it_plus 1 + 1 IS TRUE
+it_add (1 IS TRUE) + 1
+it_is_not_null 1 IS NOT NULL IS TRUE
+it_case CASE WHEN 1 IS TRUE THEN 'y' END
+it_sub (SELECT 1) IS TRUE
+it_notnot 1 IS NOT NOT TRUE
+it_spaced 1 IS  NOT  TRUE
+# Precedence against NOT, AND, OR and the comparisons.
+p_not NOT NULL IS TRUE
+p_bang !NULL IS TRUE
+p_and NULL AND 0 IS FALSE
+p_or NULL OR 1 IS FALSE
+p_xor NULL XOR 1 IS FALSE
+p_eq 2 = 2 IS TRUE
+p_eq_null 2 = 2 IS NULL
+p_lt 3 < 2 IS FALSE
+p_between 2 BETWEEN 1 AND 3 IS TRUE
+p_not_between 2 NOT BETWEEN 1 AND 3 IS TRUE
+p_is_null_then 2 IS NULL IS FALSE
+p_unknown_then 1 IS UNKNOWN IS FALSE
+p_true_eq 2 IS TRUE = 2
+p_eq_after_null NULL IS NULL = 1
+p_assign @x := 0 IS TRUE
+p_hnp_in_where 1 IN (2 IS TRUE)

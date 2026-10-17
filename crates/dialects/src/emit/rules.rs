@@ -774,7 +774,8 @@ pub(super) fn repeatable(expr: &Expr) -> bool {
         | ExprKind::BitNot(operand)
         | ExprKind::ToBoolean(operand)
         | ExprKind::ToInteger(operand)
-        | ExprKind::IsNull { operand, .. } => repeatable(operand),
+        | ExprKind::IsNull { operand, .. }
+        | ExprKind::IsTruth { operand, .. } => repeatable(operand),
         ExprKind::Cast(cast) => repeatable(&cast.operand),
         ExprKind::DateArithmetic(arithmetic) => {
             repeatable(&arithmetic.operand) && repeatable(&arithmetic.value)

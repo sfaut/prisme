@@ -32,7 +32,7 @@ pub use cast::{Cast, CastForm, CastTarget, CharTarget, CharWord, Charset, Intege
 pub use error::PlanError;
 pub use expr::{
     Arithmetic, Bitwise, Case, CaseBranch, ColumnRef, Comparison, Expr, ExprKind, Frame,
-    FrameBound, FrameUnits, FunctionCall, Logical, NotDistinctForm, Quantifier, Variable,
+    FrameBound, FrameUnits, FunctionCall, Logical, NotDistinctForm, Quantifier, Truth, Variable,
     VariableScope, WindowCall,
 };
 pub use interval::{DateArithmetic, DateArithmeticForm, Extract, TimeUnit, TimestampDiff};

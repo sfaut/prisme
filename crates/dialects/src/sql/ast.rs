@@ -8,7 +8,7 @@
 
 use prisme_plan::{
     AliasForm, CastForm, CastTarget, DateArithmeticForm, Direction, FrameUnits, Ident, IndexHint,
-    JoinForm, LimitForm, Span, TimeUnit, TrimSide, ValuesForm,
+    JoinForm, LimitForm, Span, TimeUnit, TrimSide, Truth, ValuesForm,
 };
 
 /// Statement.
@@ -440,6 +440,15 @@ pub enum ExprKind {
         /// `IS NOT NULL`.
         negated: bool,
     },
+    /// `IS [NOT] TRUE`, `FALSE`, `UNKNOWN`.
+    IsTruth {
+        /// Value tested.
+        operand: Box<Expr>,
+        /// Truth value tested.
+        truth: Truth,
+        /// `IS NOT`.
+        negated: bool,
+    },
     /// `[NOT] BETWEEN low AND high`.
     Between {
         /// Value tested.
@@ -619,6 +628,7 @@ impl Expr {
             | ExprKind::Exists(_) => Vec::new(),
             ExprKind::Unary { operand, .. }
             | ExprKind::IsNull { operand, .. }
+            | ExprKind::IsTruth { operand, .. }
             | ExprKind::Nested(operand)
             | ExprKind::InSubquery { operand, .. }
             | ExprKind::Quantified { operand, .. } => vec![operand],

@@ -99,6 +99,15 @@ fn tree(expr: &Expr) -> String {
                 tree(operand)
             )
         }
+        ExprKind::IsTruth {
+            operand,
+            truth,
+            negated,
+        } => format!(
+            "(is{} {truth:?} {})",
+            if *negated { "not" } else { "" },
+            tree(operand)
+        ),
         ExprKind::Between {
             operand,
             low,
@@ -1503,4 +1512,35 @@ fn reads_trim_and_position_in_their_forms() {
     }
     // A space after the name calls a stored function.
     assert_eq!(expr("TRIM (s)"), "(stored trim s)");
+}
+
+#[test]
+fn reads_is_true_is_false_and_is_unknown() {
+    assert_eq!(expr("a IS TRUE"), "(is True a)");
+    assert_eq!(expr("a is not false"), "(isnot False a)");
+    assert_eq!(expr("a IS UNKNOWN"), "(is Unknown a)");
+    // Looser than the comparisons and `IS NULL`, tighter than `NOT` and
+    // `AND`.
+    assert_eq!(expr("a = b IS TRUE"), "(is True (= a b))");
+    assert_eq!(expr("a IS NULL IS FALSE"), "(is False (isnull a))");
+    assert_eq!(expr("NOT a IS TRUE"), "(not (is True a))");
+    assert_eq!(expr("a AND b IS FALSE"), "(and a (is False b))");
+    assert_eq!(expr("!a IS TRUE"), "(is True (not a))");
+    // MySQL ends the expression there, MariaDB goes on.
+    for text in [
+        "SELECT a IS TRUE = 1",
+        "SELECT a IS TRUE IS TRUE",
+        "SELECT a IS TRUE IS NULL",
+        "SELECT a IS NOT NOT TRUE",
+        "SELECT a IS TRUE BETWEEN 0 AND 1",
+    ] {
+        assert!(parse(text, &mysql()).is_err(), "{text}");
+    }
+    let mariadb = mariadb();
+    assert_eq!(expr_with("a IS TRUE = 1", &mariadb), "(= (is True a) 1)");
+    assert_eq!(
+        expr_with("a IS TRUE IS NULL", &mariadb),
+        "(isnull (is True a))"
+    );
+    assert!(parse("SELECT a IS TRUE IN (1)", &mariadb).is_err());
 }

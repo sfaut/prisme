@@ -83,6 +83,15 @@ pub enum ExprKind {
         /// `true` for `IS NOT NULL`.
         negated: bool,
     },
+    /// `IS TRUE`, `IS FALSE`, `IS UNKNOWN`, and their `IS NOT`.
+    IsTruth {
+        /// Boolean tested.
+        operand: Box<Expr>,
+        /// Truth value tested.
+        truth: Truth,
+        /// `true` for `IS NOT`.
+        negated: bool,
+    },
     /// Arithmetic operation.
     Arithmetic {
         /// Arithmetic operator.
@@ -226,6 +235,29 @@ pub enum VariableScope {
     Session,
     /// System variable of the server (`@@global.x`).
     Global,
+}
+
+/// Truth value of a boolean, tested by `IS TRUE`, `IS FALSE` and
+/// `IS UNKNOWN`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Truth {
+    /// `TRUE`.
+    True,
+    /// `FALSE`.
+    False,
+    /// `UNKNOWN`: the boolean is NULL.
+    Unknown,
+}
+
+impl Truth {
+    /// Keyword of the truth value.
+    pub const fn keyword(self) -> &'static str {
+        match self {
+            Self::True => "TRUE",
+            Self::False => "FALSE",
+            Self::Unknown => "UNKNOWN",
+        }
+    }
 }
 
 /// Quantifier of a comparison with a subquery.
@@ -474,6 +506,19 @@ impl Expr {
         Self::new(
             ExprKind::IsNull {
                 operand: Box::new(operand),
+                negated,
+            },
+            boolean(false),
+        )
+    }
+
+    /// `IS TRUE`, `IS FALSE`, `IS UNKNOWN` and their `IS NOT`: never
+    /// unknown.
+    pub fn is_truth(operand: Expr, truth: Truth, negated: bool) -> Self {
+        Self::new(
+            ExprKind::IsTruth {
+                operand: Box::new(operand),
+                truth,
                 negated,
             },
             boolean(false),
@@ -747,6 +792,7 @@ impl Expr {
             | ExprKind::ToBoolean(operand)
             | ExprKind::ToInteger(operand)
             | ExprKind::IsNull { operand, .. }
+            | ExprKind::IsTruth { operand, .. }
             | ExprKind::InSubquery { operand, .. }
             | ExprKind::Quantified { operand, .. } => vec![operand.as_mut()],
             ExprKind::Cast(cast) => vec![&mut cast.operand],

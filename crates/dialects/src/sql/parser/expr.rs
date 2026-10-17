@@ -5,7 +5,7 @@
 //! 2. `XOR`;
 //! 3. `AND`, `&&`;
 //! 4. `NOT` (with `HIGH_NOT_PRECEDENCE`, as tight as `!`);
-//! 5. comparisons, `IS NULL`;
+//! 5. comparisons, `IS NULL`, `IS TRUE`, `IS FALSE`, `IS UNKNOWN`;
 //! 6. the tests `LIKE`, `IN`, `BETWEEN`;
 //! 7. `|`; 8. `&`; 9. `<<`, `>>`; 10. `+`, `-`; 11. `*`, `/`, `DIV`, `%`,
 //!    `MOD`; 12. `^`;
@@ -17,7 +17,7 @@
 //! bound of `BETWEEN` is a test; MySQL reads one test after a value, MariaDB
 //! chains them (`crates/probe/cases/predicate-grammar.txt`, `test`).
 
-use prisme_plan::{Ident, Span};
+use prisme_plan::{Ident, Span, Truth};
 
 use super::{ParseError, Parser};
 use crate::lexer::{Punct, TokenKind};
@@ -80,7 +80,9 @@ impl Parser<'_> {
     }
 
     /// Comparisons and `IS`, left to right, each comparing two predicates
-    /// (`a = b BETWEEN 1 AND 2` compares `a` with the `BETWEEN`).
+    /// (`a = b BETWEEN 1 AND 2` compares `a` with the `BETWEEN`). `IS TRUE`,
+    /// `IS FALSE` and `IS UNKNOWN` end the expression in MySQL (`a IS TRUE
+    /// = 1` is a syntax error); MariaDB goes on.
     fn predicate(&mut self) -> Result<Expr, ParseError> {
         let mut left = self.test()?;
         loop {
@@ -96,11 +98,32 @@ impl Parser<'_> {
             }
             if self.eat_keyword("IS").is_some() {
                 let negated = self.eat_keyword("NOT").is_some();
-                if self.eat_keyword("NULL").is_none() {
-                    if self.at_any_keyword(&["TRUE", "FALSE", "UNKNOWN"]) {
-                        return Err(self.unsupported("`IS TRUE`, `IS FALSE`", self.here()));
+                let truth = [
+                    ("TRUE", Truth::True),
+                    ("FALSE", Truth::False),
+                    ("UNKNOWN", Truth::Unknown),
+                ]
+                .into_iter()
+                .find_map(|(keyword, truth)| self.eat_keyword(keyword).map(|_| truth));
+                if let Some(truth) = truth {
+                    let span = self.span_from(left.span.start);
+                    left = Expr {
+                        kind: ExprKind::IsTruth {
+                            operand: Box::new(left),
+                            truth,
+                            negated,
+                        },
+                        span,
+                    };
+                    // MySQL closes the expression there: a comparison or
+                    // `IS` after it is a syntax error.
+                    if self.options.dialect == Dialect::MySql {
+                        return Ok(left);
                     }
-                    return Err(self.expected("`NULL`"));
+                    continue;
+                }
+                if self.eat_keyword("NULL").is_none() {
+                    return Err(self.expected("`NULL`, `TRUE`, `FALSE` or `UNKNOWN`"));
                 }
                 let span = self.span_from(left.span.start);
                 left = Expr {

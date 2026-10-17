@@ -2,6 +2,9 @@
 # AND 2`), the high bound of `BETWEEN` is a test; MariaDB chains the tests
 # and reads a pattern of `LIKE` at the level of `|`, written between
 # parentheses towards MySQL (crates/probe/cases/predicate-grammar.txt).
+# `IS TRUE`, `IS FALSE` and `IS UNKNOWN` of numbers, strings and NULL; MariaDB
+# reads a comparison or `IS` after them, written between parentheses towards
+# MySQL (crates/probe/cases/is-true.txt).
 setup:
   - DROP TABLE IF EXISTS predicates
   - CREATE TABLE predicates (id INT NOT NULL PRIMARY KEY, a INT NULL, s VARCHAR(10) NULL)
@@ -21,3 +24,16 @@ cases:
       a IN (1) IN (1) AS c10, s LIKE s LIKE 1 AS c11, s LIKE 1 + 1 AS c12,
       a BETWEEN 0 BETWEEN 0 AND 1 AND 2 AS c13, s LIKE 'a' BETWEEN 0 AND a AS c14
       FROM predicates ORDER BY id
+  - from: mysql
+    sql: >-
+      SELECT a IS TRUE AS c1, a IS NOT TRUE AS c2, a IS FALSE AS c3, a IS NOT FALSE AS c4,
+      a IS UNKNOWN AS c5, a IS NOT UNKNOWN AS c6, s IS TRUE AS c7, a = 1 IS FALSE AS c8,
+      NOT a IS TRUE AS c9, a IS NULL IS FALSE AS c10, (a IS TRUE) + 1 AS c11,
+      NULL AND a IS FALSE AS c12 FROM predicates WHERE id IS NOT UNKNOWN ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT a IS TRUE AS c1, a IS NOT TRUE AS c2, a IS FALSE AS c3, a IS NOT FALSE AS c4,
+      a IS UNKNOWN AS c5, a IS NOT UNKNOWN AS c6, s IS TRUE AS c7, a = 1 IS FALSE AS c8,
+      NOT a IS TRUE AS c9, a IS NULL IS FALSE AS c10, a IS TRUE = 1 AS c11,
+      a IS TRUE IS NULL AS c12, a IS FALSE IS NOT TRUE AS c13 FROM predicates
+      WHERE id IS NOT UNKNOWN ORDER BY id

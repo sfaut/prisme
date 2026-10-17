@@ -1,6 +1,7 @@
 //! Expressions written in the MySQL family, with the parentheses their
 //! precedence needs, from the loosest level to the tightest: `OR` (1),
-//! `XOR` (2), `AND` (3), `NOT` (4), comparisons and predicates (5), `|`
+//! `XOR` (2), `AND` (3), `NOT` and `IS TRUE` (4), comparisons and
+//! predicates (5), `|`
 //! (6), `&` (7), shifts (8), `+` and `-` (9), `*`, `/`, `DIV`, `%` (10),
 //! `^` (11), prefix `-` and `~` (12), operands (14).
 //!
@@ -55,6 +56,9 @@ fn levels(expr: &Expr) -> (u8, u8, u8) {
             Logical::And => binary(3),
         },
         ExprKind::Not(_) => (NOT, NOT, NOT),
+        // MySQL reads no operator after `IS TRUE`: as an operand of a
+        // comparison or of `IS`, it is put between parentheses.
+        ExprKind::IsTruth { .. } => (NOT, PREDICATE, PREDICATE),
         ExprKind::NotDistinct { negated: true, .. } => (NOT, NOT, NOT),
         ExprKind::NotDistinct { .. } => binary(PREDICATE),
         ExprKind::Compare { .. } | ExprKind::Quantified { .. } => binary(PREDICATE),
@@ -215,6 +219,15 @@ impl Emitter<'_> {
             ExprKind::IsNull { operand, negated } => {
                 self.number_expr(operand, left);
                 self.write(if *negated { " IS NOT NULL" } else { " IS NULL" });
+            }
+            ExprKind::IsTruth {
+                operand,
+                truth,
+                negated,
+            } => {
+                self.expr(operand, left);
+                self.write(if *negated { " IS NOT " } else { " IS " });
+                self.write(truth.keyword());
             }
             ExprKind::Arithmetic {
                 op,
