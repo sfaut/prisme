@@ -1,0 +1,272 @@
+use prisme_plan::{Expr, Filter as FilterNode, Project as ProjectNode, Scan, SortForm, SortKey};
+use prisme_types::{DataType, IntegerSize, IntegerType, Type};
+
+use super::*;
+use crate::build::Tables;
+use crate::report::Transpilation;
+use crate::transpile::{InputDialect, TranspileError, transpile};
+
+fn mysql() -> InputDialect {
+    InputDialect {
+        dialect: Dialect::MySql,
+        version: Version::new(8, 0, 19),
+    }
+}
+
+fn mariadb() -> InputDialect {
+    InputDialect {
+        dialect: Dialect::MariaDb,
+        version: Version::new(10, 6, 3),
+    }
+}
+
+/// Output dialect of the same dialect and version as `input`.
+fn output(input: InputDialect) -> OutputDialect {
+    OutputDialect {
+        dialect: input.dialect,
+        version: input.version,
+        mode: SqlMode::default(),
+    }
+}
+
+/// `t (a INT NOT NULL, b INT NULL)`.
+fn catalog() -> Tables {
+    let int = DataType::Integer(IntegerType::signed(IntegerSize::Int));
+    let mut tables = Tables::default();
+    tables.insert(
+        None,
+        "t",
+        vec![
+            (Ident::new("a"), Type::not_null(int.clone())),
+            (Ident::new("b"), Type::nullable(int)),
+        ],
+    );
+    tables
+}
+
+/// Transpilation of `text` from `input` to `output`.
+fn run(
+    text: &str,
+    input: InputDialect,
+    output: OutputDialect,
+) -> Result<Transpilation, TranspileError> {
+    transpile(text, input, output, &catalog())
+}
+
+/// Query of `text`, from `input` to `output`, and the rules of its steps.
+fn transpiled(
+    text: &str,
+    input: InputDialect,
+    output: OutputDialect,
+) -> (String, Vec<&'static str>) {
+    let transpilation = run(text, input, output).unwrap_or_else(|error| panic!("{text}: {error}"));
+    assert!(
+        transpilation.errors.is_empty(),
+        "{:?}",
+        transpilation.errors
+    );
+    let rules = transpilation.steps.iter().map(|step| step.rule).collect();
+    (transpilation.sql, rules)
+}
+
+#[test]
+fn the_example_of_mysql_runs_on_mariadb() {
+    let text = "WITH ds (c) AS (VALUES ROW (123), ROW (234), ROW (345)) SELECT * FROM ds";
+    let transpilation = run(text, mysql(), output(mariadb())).unwrap();
+    assert_eq!(
+        transpilation.sql,
+        "WITH ds (c) AS (VALUES (123), (234), (345)) SELECT * FROM ds"
+    );
+    let [step] = transpilation.steps.as_slice() else {
+        panic!("{:?}", transpilation.steps);
+    };
+    assert_eq!(step.rule, "values.form");
+    assert_eq!(step.kind, StepKind::Rewrite);
+    let span = step.span.unwrap();
+    assert_eq!(
+        &text[span.start..span.end],
+        "VALUES ROW (123), ROW (234), ROW (345)"
+    );
+}
+
+#[test]
+fn the_example_comes_back_to_mysql_with_its_form() {
+    let (sql, rules) = transpiled(
+        "WITH ds (c) AS (VALUES (123), (234), (345)) SELECT * FROM ds",
+        mariadb(),
+        output(mysql()),
+    );
+    assert_eq!(
+        sql,
+        "WITH ds (c) AS (VALUES ROW(123), ROW(234), ROW(345)) SELECT * FROM ds"
+    );
+    assert_eq!(rules, ["values.form"]);
+}
+
+#[test]
+fn a_query_towards_its_own_dialect_keeps_its_forms_without_step() {
+    for text in [
+        "SELECT a AS x, b y, `a` FROM t AS u WHERE a > 1 AND b IS NOT NULL ORDER BY x DESC, 2 LIMIT 5, 10",
+        "SELECT DISTINCT a FROM t ORDER BY a LIMIT 10 OFFSET 20",
+        "SELECT a FROM t WHERE a BETWEEN 1 AND 2 OR b NOT IN (1, 2) OR b LIKE 'x%' ESCAPE '!'",
+        "SELECT 1.50, 1e5, 'it''s', \"dq\", NULL, TRUE",
+        "SELECT (a + 1) * 2 AS v, -a AS n, ~a AS i, a <=> b AS s FROM t",
+        "VALUES ROW(1, 'a'), ROW(2, 'b') ORDER BY column_0 DESC LIMIT 1",
+    ] {
+        let (sql, rules) = transpiled(text, mysql(), output(mysql()));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{text}: {rules:?}");
+    }
+}
+
+#[test]
+fn the_output_is_a_fixpoint() {
+    for text in [
+        "select a+1, b from t where not a=1 && b <> 2 order by 1",
+        "SELECT a FROM t WHERE (a = 1 OR a = 2) AND (b = 3 XOR b = 4)",
+        "SELECT a - (b - 1), a - b - 1, a DIV 2 MOD 3 FROM t",
+    ] {
+        let (once, _) = transpiled(text, mysql(), output(mysql()));
+        let (twice, rules) = transpiled(&once, mysql(), output(mysql()));
+        assert_eq!(twice, once, "{text}");
+        assert!(rules.is_empty(), "{once}: {rules:?}");
+    }
+}
+
+#[test]
+fn an_implicit_name_is_kept_by_an_alias() {
+    let (sql, rules) = transpiled("SELECT a+1 FROM t", mysql(), output(mysql()));
+    assert_eq!(sql, "SELECT a + 1 AS `a+1` FROM t");
+    assert_eq!(rules, ["column.implicit-name"]);
+}
+
+#[test]
+fn values_whose_names_change_become_a_union() {
+    let (sql, rules) = transpiled(
+        "VALUES ROW(1, 'x'), ROW(2, 'y')",
+        mysql(),
+        output(mariadb()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT 1 AS `column_0`, 'x' AS `column_1` UNION ALL SELECT 2, 'y'"
+    );
+    assert_eq!(rules, ["values.union"]);
+    // MariaDB names its columns after the first row: the same names in MariaDB.
+    let (sql, rules) = transpiled("VALUES (1, 'x')", mariadb(), output(mariadb()));
+    assert_eq!(sql, "VALUES (1, 'x')");
+    assert!(rules.is_empty());
+}
+
+#[test]
+fn a_word_reserved_in_the_output_is_quoted() {
+    let mut old = mysql();
+    old.version = Version::new(8, 0, 11);
+    // `LATERAL` is reserved from MySQL 8.0.14.
+    let (sql, rules) = transpiled("SELECT a AS lateral FROM t", old, output(mysql()));
+    assert_eq!(sql, "SELECT a AS `lateral` FROM t");
+    assert_eq!(rules, ["identifier.quoted"]);
+}
+
+#[test]
+fn comments_are_written_again_near_their_place() {
+    let (sql, _) = transpiled(
+        "-- title\nSELECT a /* first */, b # second\nFROM t",
+        mysql(),
+        output(mysql()),
+    );
+    assert_eq!(sql, "-- title\nSELECT a, /* first */ b # second\nFROM t");
+}
+
+#[test]
+fn executable_comments_become_code() {
+    let transpilation = run("SELECT 1 /*!80000 + 1 */ AS x", mysql(), output(mysql())).unwrap();
+    assert_eq!(transpilation.sql, "SELECT 1 + 1 AS x");
+    assert_eq!(transpilation.steps[0].rule, "executable-comment.code");
+}
+
+#[test]
+fn strings_follow_the_sql_mode_of_the_output() {
+    let mut ansi = output(mysql());
+    ansi.mode = SqlMode::parse("ANSI_QUOTES,NO_BACKSLASH_ESCAPES");
+    // Read with the mode of the session: under ANSI_QUOTES, "x" is a name.
+    let (sql, _) = transpiled("SELECT 'a\\b' AS \"x\"", mysql(), ansi);
+    assert_eq!(sql, "SELECT 'a\\b' AS `x`");
+    let source = Source {
+        text: "",
+        mode: SqlMode::default(),
+        comments: &[],
+    };
+    let mut emitter = Emitter {
+        out: String::new(),
+        output: &ansi,
+        source: &source,
+        next_comment: 0,
+        steps: Vec::new(),
+        errors: Vec::new(),
+    };
+    let literal = Expr::literal(Value::Text("it's a \\".to_string()), DataType::Null);
+    emitter.expr(&literal, 0);
+    assert_eq!(emitter.out, "'it''s a \\'");
+}
+
+#[test]
+fn nulls_placed_against_the_rule_of_the_output_are_emulated() {
+    let int = DataType::Integer(IntegerType::signed(IntegerSize::Int));
+    let scan = Plan::Scan(Scan {
+        table: prisme_plan::TableName {
+            database: None,
+            name: Ident::new("t"),
+        },
+        alias: None,
+        columns: vec![(Ident::new("b"), Type::nullable(int.clone()))],
+        span: None,
+    });
+    let column = Expr::column(
+        prisme_plan::ColumnRef {
+            qualifier: None,
+            name: Ident::new("b"),
+        },
+        Type::nullable(int),
+    );
+    let key = SortKey {
+        expr: column.clone(),
+        direction: Direction::Ascending,
+        nulls: Nulls::Last,
+        form: SortForm::default(),
+    };
+    let sort = Plan::Sort(Sort {
+        input: Box::new(scan),
+        keys: vec![key],
+        span: None,
+    });
+    let item = ProjectItem::Expr(prisme_plan::NamedExpr {
+        expr: column,
+        name: Ident::new("b"),
+        alias: AliasForm::Implicit,
+    });
+    let plan = Plan::Project(ProjectNode::new(sort, vec![item]).unwrap());
+    let source = Source {
+        text: "",
+        mode: SqlMode::default(),
+        comments: &[],
+    };
+    let emitted = emit(&Statement::Query(plan), &output(mysql()), &source);
+    assert_eq!(emitted.sql, "SELECT b FROM t ORDER BY b IS NULL, b");
+    assert_eq!(emitted.steps[0].rule, "sort.nulls");
+    // The filter node, unused here, keeps its place in a block.
+    let _ = FilterNode {
+        input: Box::new(Plan::Values(
+            Values::new(vec![Vec::new()], Vec::new(), Vec::new(), ValuesForm::Row).unwrap(),
+        )),
+        predicate: Expr::literal(Value::Boolean(true), DataType::Boolean),
+        span: None,
+    };
+}
+
+#[test]
+fn deep_expressions_go_through() {
+    let text = format!("SELECT {}1", "- ".repeat(90));
+    let (sql, _) = transpiled(&text, mysql(), output(mysql()));
+    assert!(sql.starts_with("SELECT -(-(-("), "{sql}");
+}

@@ -81,6 +81,12 @@ Each node and each expression of the plan keeps its **origin**: its position in 
 
 Decided (point 39), with a reservation: the principle can evolve. A rewrite for optimisation (a range in place of a function, to keep the use of an index) changes the form even towards the same dialect; it is then a step of the report, like any other difference.
 
+Decided autonomously, to be reviewed by the maintainer:
+
+- the lexical differences are not steps of the report: case of the keywords, spaces and line breaks, quote character of an identifier, synonyms of an operator (`!=` and `<>`, `&&` and `AND`, `%` and `MOD`, `!` and `NOT`), canonical spelling of a literal of the same value. The emitter writes a literal as in the input when the output reads it the same way (same SQL mode for the quotes and the backslashes);
+- in the MySQL family, a column without alias takes its name from the text of its expression: when the text written differs from the text read (`a+1` written `a + 1`), an alias keeps the name, with a step of the report;
+- the comments are written again before the first construct that follows them in the input.
+
 ### 2.4 Invariants, checked at each step
 
 1. **Round trip**: for each dialect and each query of the corpus, parsing the output again gives the same plan (fixpoint), and the report of a transpilation to the same dialect holds only rewrites for optimisation.

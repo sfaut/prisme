@@ -1993,6 +1993,7 @@ version = "0.2.0"
 dependencies = [
  "prisme-plan",
  "prisme-splitter",
+ "prisme-types",
  "rusqlite",
  "serde",
  "sqlparser",

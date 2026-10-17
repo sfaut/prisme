@@ -13,6 +13,7 @@ use std::sync::OnceLock;
 use serde::Deserialize;
 
 use crate::Dialect;
+use crate::versions::Version;
 
 /// Content of a keyword file.
 #[derive(Debug, Deserialize)]
@@ -56,10 +57,14 @@ impl Entry {
     /// Does the word exist in this server version? Without a known version,
     /// all words are kept.
     fn exists_in(&self, version: Option<&str>) -> bool {
-        let (Self::Versioned { since, until, .. }, Some(version)) = (self, version) else {
+        version.is_none_or(|version| self.exists_at(version_number(version)))
+    }
+
+    /// Does the word exist in the version with these numbers?
+    fn exists_at(&self, version: [u32; 3]) -> bool {
+        let Self::Versioned { since, until, .. } = self else {
             return true;
         };
-        let version = version_number(version);
         let after_since = since
             .as_deref()
             .is_none_or(|since| version >= version_number(since));
@@ -130,6 +135,16 @@ pub(crate) fn is_known_in_version(word: &str, dialect: Dialect, version: Option<
     entries.is_empty() || entries.iter().any(|entry| entry.exists_in(version))
 }
 
+/// Tells whether `word` is a reserved word of the dialect in this version: it
+/// cannot name a table, a column or an alias without quotes.
+pub fn is_reserved(word: &str, dialect: Dialect, version: Version) -> bool {
+    let numbers = [version.major, version.minor, version.patch].map(u32::from);
+    index_of(dialect)
+        .reserved
+        .get(&word.to_ascii_uppercase())
+        .is_some_and(|entries| entries.iter().any(|entry| entry.exists_at(numbers)))
+}
+
 /// Tells whether an unquoted word is a keyword that does not designate a value
 /// (`SELECT`, `AND`, `IN`...): it cannot precede a binary operator.
 pub(crate) fn is_structural_keyword(word: &str, dialect: Dialect) -> bool {
@@ -147,6 +162,8 @@ struct NameIndex {
     entries: HashMap<String, Vec<&'static Entry>>,
     /// Names of the values (`literals`), in capitals.
     values: HashSet<String>,
+    /// Entries of the reserved words, by name in capitals.
+    reserved: HashMap<String, Vec<&'static Entry>>,
 }
 
 /// Lookup tables of a dialect, read only once.
@@ -168,6 +185,13 @@ fn name_index(file: &'static KeywordFile) -> NameIndex {
     {
         index
             .entries
+            .entry(entry.name().to_ascii_uppercase())
+            .or_default()
+            .push(entry);
+    }
+    for entry in &file.reserved {
+        index
+            .reserved
             .entry(entry.name().to_ascii_uppercase())
             .or_default()
             .push(entry);

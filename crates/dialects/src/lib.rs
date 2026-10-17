@@ -6,14 +6,17 @@
 //! each dialect (`keywords` module, `keywords/*.yaml` files), the position
 //! of syntax errors (`syntax` module) and the registry of the versions of each
 //! dialect (`versions` module, `versions/*.yaml` files). The transpilation
-//! is being written: the lexer of the MySQL family (`lexer` module); the
-//! parsers, the plan builders, the function catalog and the emitters per
-//! dialect come next (`docs/DEV-DIALECTS.md`).
+//! is being written (`docs/DEV-DIALECTS.md`): lexer of the MySQL family
+//! (`lexer` module), syntax tree and parser (`sql`), plan builder (`build`),
+//! emitter (`emit`), report (`report`) and entry point (`transpile`); the
+//! function catalog comes next.
 
 mod alias;
 pub mod analysis;
 pub mod beautify;
+pub mod build;
 pub mod classify;
+pub mod emit;
 mod functions;
 pub mod keywords;
 mod layout;
@@ -21,7 +24,10 @@ pub mod lexer;
 pub mod limit;
 mod offsets;
 mod parse;
+pub mod report;
+pub mod sql;
 pub mod syntax;
+pub mod transpile;
 pub mod versions;
 mod whitespace;
 

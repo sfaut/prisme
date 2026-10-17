@@ -31,7 +31,7 @@ pub use expr::{
     FrameBound, FrameUnits, FunctionCall, Logical, NotDistinctForm, Variable, VariableScope,
     WindowCall,
 };
-pub use order::{Direction, Nulls, SortForm, SortKey};
+pub use order::{Direction, Nulls, SortForm, SortKey, SortReference};
 pub use origin::{AliasForm, Ident, Span};
 pub use plan::{
     Aggregate, AggregateCall, Cte, CteRef, Derived, Distinct, Extend, Filter, Join, JoinKind,

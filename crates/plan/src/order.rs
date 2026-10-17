@@ -47,6 +47,20 @@ pub struct SortForm {
     pub direction: bool,
     /// `NULLS FIRST` or `NULLS LAST` written.
     pub nulls: bool,
+    /// How the key designates its value.
+    pub reference: SortReference,
+}
+
+/// How a sort key designates its value, in the `ORDER BY` of a `SELECT`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum SortReference {
+    /// An expression written in full.
+    #[default]
+    Expression,
+    /// The alias of a column of the `SELECT` (`ORDER BY total`).
+    Alias,
+    /// The position of a column of the `SELECT`, from 1 (`ORDER BY 2`).
+    Position,
 }
 
 impl Nulls {
