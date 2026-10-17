@@ -1,0 +1,8 @@
+# UUID() as a string in MariaDB.
+~uuid UUID()
+~uuid_cast CAST(UUID() AS CHAR(36))
+uuid_cast_len LENGTH(CAST(UUID() AS CHAR(36)))
+uuid_concat LENGTH(CONCAT(UUID(), ''))
+~uuid_charset CHARSET(UUID())
+~uuid_cast_charset CHARSET(CAST(UUID() AS CHAR(36)))
+uuid_compare UUID() = 'x'

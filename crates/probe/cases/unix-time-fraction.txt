@@ -1,0 +1,16 @@
+# Digits of FROM_UNIXTIME by type of argument, in UTC
+! SET time_zone = '+00:00'
+int        FROM_UNIXTIME(i)
+dec        FROM_UNIXTIME(n)
+dec8       FROM_UNIXTIME(CAST(1.12345678 AS DECIMAL(10,8)))
+dbl        FROM_UNIXTIME(f)
+dbl_lit    FROM_UNIXTIME(1e0)
+text       FROM_UNIXTIME(s)
+date       FROM_UNIXTIME(d)
+dtime      FROM_UNIXTIME(dt)
+time       FROM_UNIXTIME(t)
+bool       FROM_UNIXTIME(TRUE)
+null       FROM_UNIXTIME(NULL)
+year       FROM_UNIXTIME(CAST(2024 AS YEAR))
+ut_tsnull  UNIX_TIMESTAMP(NULL)
+if_mixed   IF(i = 0, FROM_UNIXTIME(1) - INTERVAL 1 SECOND, FROM_UNIXTIME(n))

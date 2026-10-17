@@ -1,0 +1,48 @@
+# GREATEST and LEAST in a numeric or string context.
+plus LEAST('10', '9') + 0
+times LEAST('10', '9') * 1
+signed CAST(LEAST('10', '9') AS SIGNED)
+equal LEAST('10', '9') = 10
+mixed_plus LEAST('10', 9) + 0
+mixed_concat CONCAT(LEAST('10', 9))
+concat_plus LEAST('10', CONCAT(9)) + 0
+dbl_plus LEAST('10' + 0e0, 9) + 0
+date_plus LEAST(d, '2024-01-09') + 0
+time_plus LEAST(t, '9:00:00') + 0
+time_concat_plus LEAST(CONCAT(t), '9:00:00') + 0
+where_cmp (SELECT COUNT(*) FROM sample WHERE LEAST('10', 9) = '10')
+null_if_plus LEAST(1, IF(FALSE, 1, NULL)) + 0
+t_bin LEAST(t, _binary '9:00:00')
+t_bin_concat LEAST(CONCAT(t), _binary '9:00:00')
+ts_cast LEAST(ts, CAST('2030-01-01' AS DATETIME))
+d_cast_dt LEAST(d, CAST('2024-05-06 10:00:00' AS DATE))
+# Temporal only, in a numeric or string context
+dd_plus LEAST(d, dt) + 0
+tt_plus LEAST(t, TIME '09:00:00') + 0
+dcast_plus LEAST(d, CAST('2024-01-09' AS DATE)) + 0
+tcast_plus LEAST(t, CAST('9:00:00' AS TIME)) + 0
+dd_concat CONCAT(LEAST(d, dt))
+dd_eq_str LEAST(d, dt) = '2024-05-06'
+dd_signed CAST(LEAST(d, dt) AS SIGNED)
+# Numbers only
+nn_concat CONCAT(LEAST(1.50, 2))
+nn_plus LEAST(1.50, 2) + 0
+# Mixed in MariaDB, in contexts
+mix_signed CAST(LEAST('10', 9) AS SIGNED)
+mix_eq_str LEAST('10', 9) = '9'
+dbl_signed CAST(LEAST('10' + 0e0, 9) AS SIGNED)
+dbl_concat CONCAT(LEAST('10' + 0e0, 9))
+# Strings only: wrapped in CONCAT, in contexts
+ss_concat_plus CONCAT(LEAST('10', '9')) + 0
+ss_concat_eq CONCAT(LEAST('10', '9')) = 10
+ss_eq_str LEAST('10', '9') = '10'
+ss_sum (SELECT SUM(LEAST('10', '9')) FROM sample)
+ss_abs ABS(LEAST('10', '9'))
+ss_lpad LPAD(LEAST('10', '9'), 3, '*')
+ss_order (SELECT GROUP_CONCAT(x ORDER BY LEAST(x, 'zz')) FROM (SELECT '10' AS x UNION ALL SELECT '9') AS q)
+# Selected in a subquery or a derived table, then used as a number
+ss_scalar (SELECT LEAST('10', '9')) + 0
+ss_derived (SELECT x + 0 FROM (SELECT LEAST('10', '9') AS x) AS q)
+ss_derived_limit (SELECT x + 0 FROM (SELECT LEAST('10', '9') AS x LIMIT 1) AS q)
+ss_cte (WITH c AS (SELECT LEAST('10', '9') AS x) SELECT x + 0 FROM c)
+ss_union (SELECT x + 0 FROM (SELECT LEAST('10', '9') AS x UNION ALL SELECT '8') AS q LIMIT 1)

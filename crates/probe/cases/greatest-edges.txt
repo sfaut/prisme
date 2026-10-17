@@ -1,0 +1,74 @@
+# GREATEST and LEAST: NULL, dates, times, edges.
+# NULL with each family
+null_int LEAST(1, NULL)
+null_int_col LEAST(i, NULL)
+null_dec LEAST(1.5, NULL)
+null_dbl LEAST(1e0, NULL)
+null_str LEAST('a', NULL)
+null_scol LEAST(s, NULL)
+null_date LEAST(d, NULL)
+null_dt LEAST(dt, NULL)
+null_time LEAST(t, NULL)
+null_first LEAST(NULL, i)
+nullable_col LEAST(i, sn)
+nullable_dn LEAST(d, dn)
+# Typed NULL in MariaDB
+cast_null_signed LEAST(1, CAST(NULL AS SIGNED))
+null_plus LEAST(1, NULL + 0)
+if_null_int LEAST(i, IF(FALSE, i, NULL))
+# Coercibility of number to string conversions
+coer_cast COERCIBILITY(CAST(9 AS CHAR))
+coer_concat COERCIBILITY(CONCAT(9))
+coer_col COERCIBILITY(s)
+coer_lit COERCIBILITY('a')
+coll_cast COLLATION(CAST(9 AS CHAR))
+coll_concat COLLATION(CONCAT(9))
+coll_col COLLATION(s)
+coll_lit COLLATION('a')
+coll_time_cast COLLATION(CAST(t AS CHAR))
+coer_time_concat COERCIBILITY(CONCAT(t))
+# Number to string texts
+txt_dbl CONCAT(0.1e0 + 0.2e0)
+txt_cast_dbl CAST(0.1e0 + 0.2e0 AS CHAR)
+txt_big CONCAT(1e20)
+txt_15 CONCAT(1e15)
+txt_16 CONCAT(123456789012345678e0)
+txt_small CONCAT(1e-7)
+txt_neg CONCAT(-0.5e0)
+txt_f CONCAT(f)
+txt_dec CONCAT(9.50)
+txt_bool CONCAT(TRUE)
+lst_dbl LEAST('a', 0.1e0 + 0.2e0)
+lst_big LEAST('a', 1e20)
+lst_16 LEAST('a', 123456789012345678e0)
+lst_small LEAST('a', 1e-7)
+lst_neg LEAST('a', -0.5e0)
+# Strings to numbers
+dbl_space ' 5' + 0e0
+dbl_comma '1,5' + 0e0
+dbl_hex '0x10' + 0e0
+dbl_empty '' + 0e0
+dbl_inf 'inf' + 0e0
+dbl_big '1e400' + 0e0
+cast_dbl CAST('10' AS DOUBLE)
+# Date family with strings
+d_dtstr LEAST(d, '2024-05-06 10:00:00')
+g_d_dtstr GREATEST(d, '2024-05-06 10:00:00')
+dt_str LEAST(dt, '2024-05-06')
+g_dt_str GREATEST(dt, '2030-01-01 00:00:00.5')
+ts_str LEAST(ts, '2030-01-01')
+g_ts_str GREATEST(ts, '2000-01-01')
+d_short GREATEST(d, '2030-1-1')
+d_str_str LEAST(d, '2030-01-01', '2000-01-01')
+d_invalid GREATEST(d, '2024-02-30')
+d_invalid_l LEAST(d, '2024-02-30')
+d_zero LEAST(d, '0000-00-00')
+d_null_str LEAST(d, sn)
+g_d_bad GREATEST(d, 'abc')
+d_bad3 LEAST(DATE '2024-01-10', 'abc', DATE '2024-01-05')
+d_int_bad LEAST(d, 5)
+# TIME with strings
+t_str GREATEST(t, '9:00:00')
+t_frac LEAST(t, '9:00:00.5')
+t_neg LEAST(t, '-1:00:00')
+t_cast_cmp LEAST(CAST(t AS CHAR), '9:00:00')

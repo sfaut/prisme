@@ -314,7 +314,7 @@ PostgreSQL, SQLite and DuckDB (connector, parser, emitter, catalog for each), DD
 | Conformance | Each query of `crates/dialects/tests/conformance/*.yaml` on several versions of its dialect, its transpilation on several versions of the other: same result, or the refusal the case expects (rule 8 of `CLAUDE.md`) | `cargo test -p prisme-dialects --test conformance -- --include-ignored` (Docker) |
 | Performance | Budget on long queries | measures recorded in `docs/PERF.md` |
 
-The conformance suite keeps the checks of each rule for the next versions and dialects: a rule added brings its cases, in the file of its function or of its construct, with the columns, the literals and the expressions it reads differently, the bounds of its ranges and the refusals it states. A new version of a server runs the same cases (`PRISME_CONFORMANCE_SERVERS`, `docs/DEVELOPER.md`).
+The conformance suite keeps the checks of each rule for the next versions and dialects: a rule added brings its cases, in the file of its function or of its construct, with the columns, the literals and the expressions it reads differently, the bounds of its ranges and the refusals it states. A new version of a server runs the same cases (`PRISME_CONFORMANCE_SERVERS`, `docs/DEVELOPER.md`). The measurements of `probe` behind the rules stay in `crates/probe/cases/`.
 
 ## 5. Open points raised by this plan
 

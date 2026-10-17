@@ -1,0 +1,5 @@
+# SYSDATE as a DATETIME NOT NULL in MariaDB 11.8.
+~sysdate_interval SYSDATE(3) + INTERVAL 0 SECOND
+~sysdate_addtime ADDTIME(SYSDATE(3), 0)
+~sysdate_date_add DATE_ADD(SYSDATE(3), INTERVAL 0 SECOND)
+~sysdate_coalesce COALESCE(CAST(SYSDATE(3) AS DATETIME(3)), LOCALTIMESTAMP(3))

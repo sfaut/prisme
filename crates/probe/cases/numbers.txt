@@ -1,0 +1,116 @@
+# Numeric functions and operators MySQL and MariaDB share: one case per form.
+abs ABS(-2)
+abs_dec ABS(-2.50)
+abs_col_int ABS(i)
+abs_col_dec ABS(n)
+abs_double ABS(f)
+abs_string ABS('-3')
+abs_bigint_min ABS(-9223372036854775807)
+acos ACOS(1)
+acos_out ACOS(2)
+asin ASIN(0.2)
+atan ATAN(2)
+atan_two ATAN(-2, 2)
+atan2 ATAN2(-2, 2)
+cos COS(PI())
+cot COT(12)
+sin SIN(PI())
+tan TAN(1)
+ceil CEIL(1.23)
+ceiling_neg CEILING(-1.23)
+ceil_col_int CEIL(i)
+ceil_col_dec CEIL(n)
+ceil_double CEIL(f)
+ceil_string CEIL('1.5')
+floor FLOOR(1.23)
+floor_neg FLOOR(-1.23)
+floor_col_dec FLOOR(n)
+floor_double FLOOR(f)
+conv CONV('a', 16, 2)
+conv_neg CONV(-17, 10, -18)
+conv_num CONV(10 + '10' + 0xa, 10, 10)
+crc32 CRC32('MySQL')
+crc32_col CRC32(s)
+degrees DEGREES(PI())
+radians RADIANS(90)
+div_op 5 DIV 2
+div_neg -5 DIV 2
+div_dec 5.5 DIV 2
+div_zero 5 DIV 0
+exp EXP(2)
+ln LN(2)
+ln_zero LN(0)
+log LOG(2)
+log_base LOG(2, 65536)
+log_neg LOG(-1)
+log10 LOG10(100)
+log2 LOG2(65536)
+mod MOD(234, 10)
+mod_op 253 % 7
+mod_word 29 MOD 9
+mod_neg MOD(-34.5, 3)
+mod_zero MOD(5, 0)
+mod_col MOD(i, 5)
+mod_dec MOD(n, 3)
+pi PI()
+pi_plus PI() + 0.000000000000000
+pow POW(2, 2)
+power POWER(2, -2)
+pow_dec POW(2.5, 2)
+~rand RAND()
+rand_seed RAND(3)
+rand_seed_col RAND(i)
+round ROUND(-1.23)
+round_half ROUND(2.5)
+round_half_neg ROUND(-2.5)
+round_double_half ROUND(2.5E0)
+round_double_half3 ROUND(3.5E0)
+round_digits ROUND(1.298, 1)
+round_neg_digits ROUND(23.298, -1)
+round_col ROUND(n, 1)
+round_col_int ROUND(i, -1)
+round_double ROUND(f)
+round_var_digits ROUND(n, i)
+round_string ROUND('2.5')
+sign SIGN(-32)
+sign_dec SIGN(0.0)
+sqrt SQRT(4)
+sqrt_neg SQRT(-16)
+truncate TRUNCATE(1.223, 1)
+truncate_neg TRUNCATE(-1.999, 1)
+truncate_digits TRUNCATE(122, -2)
+truncate_col TRUNCATE(n, 0)
+truncate_double TRUNCATE(f, 0)
+plus_int i + 1
+plus_bigint 9223372036854775807 + 0
+plus_unsigned 18446744073709551615 + 0
+minus_unsigned CAST(1 AS UNSIGNED) - 2
+times_dec n * 2
+divide_int i / 5
+divide_dec n / 3
+divide_zero i / 0
+divide_double f / 3
+plus_string '1.5' + 1
+plus_date d + 0
+plus_datetime dt + 0
+plus_time t + 0
+negate -i
+negate_dec -n
+bit_count BIT_COUNT(29)
+bit_and_op 29 & 15
+bit_or_op 29 | 15
+bit_xor_op 1 ^ 1
+bit_not_op ~0
+shift_left 1 << 2
+shift_right 4 >> 2
+bit_binary_string X'10' & X'01'
+bit_count_binary BIT_COUNT(X'FF')
+greatest GREATEST(2, 0)
+greatest_mixed GREATEST(2, '10')
+greatest_null GREATEST(2, NULL)
+greatest_dates GREATEST(d, dt)
+greatest_string GREATEST('B', 'a', 'C')
+least LEAST(34.0, 3.0, 5.0, 767.0)
+least_int_dec LEAST(i, n)
+interval_fn INTERVAL(23, 1, 15, 17, 30, 44, 200)
+interval_fn_null INTERVAL(NULL, 1)

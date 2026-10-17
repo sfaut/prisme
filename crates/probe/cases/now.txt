@@ -1,0 +1,7 @@
+# Emulations of the NOW family towards MariaDB.
+~localtimestamp3 LOCALTIMESTAMP(3)
+~cast_sysdate CAST(SYSDATE() AS DATETIME)
+~cast_sysdate3 CAST(SYSDATE(3) AS DATETIME(3))
+~current_time3 CURRENT_TIME(3)
+same_instant LOCALTIMESTAMP(6) = NOW(6)
+cast_same TIMESTAMPDIFF(SECOND, CAST(SYSDATE() AS DATETIME), SYSDATE()) = 0

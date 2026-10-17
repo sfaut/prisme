@@ -229,6 +229,13 @@ cargo run -p prisme-probe -- functions mysql --server mysql:9.3.0
 
 A file of cases holds one expression per line, `id expression`; an id starting with `~` for an expression whose value changes at each run (only its type is compared); `! statement` for a statement run first; `#` for a comment. The expressions read the one row of the table `sample`, described by `cargo run -p prisme-probe -- expr --help`.
 
+The measurements behind the rules of the dialects stay in `crates/probe/cases/`: a file of cases for `expr` (`unix-time-ranges.txt`), a file of statements for `sql` (`bit-count-readings.sql`), each with a comment that says what it measures. A new version of a server runs them again, its image added with `--server`, and `--differ` shows the cases where it departs from the others:
+
+```
+cargo run -p prisme-probe -- expr crates/probe/cases/greatest.txt --server mysql:9.3.0 --server mysql:8.4 --differ
+cargo run -p prisme-probe -- sql crates/probe/cases/bit-count-readings.sql
+```
+
 `functions` brings a reference file up to a new version: it lists the functions of the file absent from a server whose version lies in their period, those present outside their period, the names that call a stored function between backticks or followed by a space otherwise than the file says, and the built-in functions of the server the file lacks (the internal functions of MySQL are left out on purpose).
 
 ## SQL keywords

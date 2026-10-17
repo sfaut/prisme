@@ -1,0 +1,9 @@
+# Vector and mode of MariaDB, from 11.2.1 (MDEV-9069).
+mode @@block_encryption_mode
+three HEX(AES_ENCRYPT('text', 'key', 'abcdefghijklmnop'))
+four_ecb HEX(AES_ENCRYPT('text', 'key', NULL, 'aes-128-ecb'))
+four_ecb_upper HEX(AES_ENCRYPT('text', 'key', NULL, 'AES-128-ECB'))
+four_ecb_iv HEX(AES_ENCRYPT('text', 'key', 'abcdefghijklmnop', 'aes-128-ecb'))
+four_cbc_null_iv HEX(AES_ENCRYPT('text', 'key', NULL, 'aes-128-cbc'))
+four_bad_mode HEX(AES_ENCRYPT('text', 'key', NULL, 'nonsense'))
+dec_four AES_DECRYPT(AES_ENCRYPT('text', 'key', NULL, 'aes-128-ecb'), 'key', NULL, 'aes-128-ecb')

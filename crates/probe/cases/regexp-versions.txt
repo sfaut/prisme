@@ -1,0 +1,9 @@
+# REGEXP_SUBSTR, REGEXP_REPLACE and REGEXP_INSTR before MySQL 8.0.17.
+substr REGEXP_SUBSTR('abc', 'b')
+substr_hex HEX(REGEXP_SUBSTR('abc', 'b'))
+replace REGEXP_REPLACE('abc', 'b', 'X')
+instr_emoji REGEXP_INSTR(CONVERT(X'F09F988061' USING utf8mb4), 'a')
+substr_emoji HEX(REGEXP_SUBSTR(CONVERT(X'F09F988061' USING utf8mb4), 'a'))
+replace_emoji HEX(REGEXP_REPLACE(CONVERT(X'F09F988061' USING utf8mb4), 'a', 'b'))
+replace_pos REGEXP_REPLACE('abcabc', 'b', 'X', 3)
+substr_ci REGEXP_SUBSTR(CONVERT(X'C39F' USING utf8mb4), 'ss')

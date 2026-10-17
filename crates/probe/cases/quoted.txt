@@ -1,0 +1,15 @@
+# Quoted names and spaces before `(`: built-in or stored function.
+abs_quoted `ABS`(-1)
+concat_quoted `CONCAT`('a', 'b')
+left_quoted `LEFT`('abc', 1)
+now_quoted `NOW`() IS NOT NULL
+sum_quoted (SELECT `SUM`(i) FROM tp)
+avg_space (SELECT AVG (i) FROM tp)
+count_space (SELECT COUNT (i) FROM tp)
+left_space LEFT ('abc', 1)
+concat_space CONCAT ('a', 'b')
+format_pico_space FORMAT_PICO_TIME (1000)
+row_number_space (SELECT ROW_NUMBER () OVER () FROM tp)
+lower_space lower ('A')
+now_lower_space now () IS NOT NULL
+db_concat check.CONCAT('a', 'b')
