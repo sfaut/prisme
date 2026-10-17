@@ -3,6 +3,9 @@ name = "prisme-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+# `cargo run`, from the root of the workspace, starts Prisme; the development
+# tool `probe` runs with `cargo run -p prisme-probe`.
+default-run = "prisme"
 
 [[bin]]
 name = "prisme"
