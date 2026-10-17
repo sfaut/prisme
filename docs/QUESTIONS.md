@@ -96,6 +96,21 @@ This document keeps track of the reasoning: what was kept, dropped or postponed,
 33. **Execution plan**: for the parts that the server cannot run directly (cross-source joins, emulations that need local evaluation), Prisme shows a plan with the Rust steps and the queries delegated to each source. Its exact content and its display are to define. Splitting a query and delegating its subqueries is the approach retained for the cases that need it.
 34. **Simple write statements**: `INSERT` / `UPDATE` / `DELETE` are not necessarily simple once translated (`RETURNING`, `ON DUPLICATE KEY`, `REPLACE`, multi-table `UPDATE`/`DELETE`). Scope to set per statement.
 
+### Dialects and transpilation
+
+Points raised by the implementation plan of the dialects (`docs/DEV-DIALECTS.md`).
+
+39. **Origin of the plan nodes**: each node and expression keeps its position in the input and the syntactic form written (`VALUES ROW (...)` or `VALUES (...)`, `<=>` or `IS NOT DISTINCT FROM`...). The emitter writes the original form when the output dialect accepts it, otherwise another one, with a step in the report. A query transpiled to its own dialect then comes out with its forms and an empty report (`docs/DEV-DIALECTS.md`, section 2.3). **[to decide]**
+40. **Statements outside the DML** that the sessions accept today (`SHOW`, `DESCRIBE`, `EXPLAIN`, `USE`, `SET`): proposal, plan nodes of their own, written only towards the same dialect, untranslatable towards another one; `EXPLAIN` of a DML query takes the plan of that query. **[to decide]**
+41. **Executable comments** (`/*! ... */`, `/*!80000 ... */` in MySQL and MariaDB, `/*M! ... */` in MariaDB): the server runs their content depending on its version. Proposal: towards the same dialect, their content is read as code, according to the version of the server; towards another dialect, explicit error. **[to decide]**
+42. **Constructs with no effect on the result** (index hints, optimizer hints, `SQL_NO_CACHE`, `HIGH_PRIORITY`...): annotations of the plan, written towards the same dialect. Towards another dialect: proposal, left out with a step in the report, since the result does not change; or explicit error. **[to decide]**
+43. **Version of an input dialect**: proposal, the parser accepts the grammar of the latest version of the dialect, and the emitter checks the version of the server (explicit error if the server is too old). Related to point 8. **[to decide]**
+44. **Types unknown to the catalog**: the plan builder takes the column types from the catalog of the connection; when a type is unknown, an emulation that needs it gives an explicit error. **[to decide]**
+45. **PRQL s-strings** (raw SQL inside PRQL): proposal, read by the parser of the output dialect, explicit error if it does not understand them. **[to decide]**
+46. **`target` of the PRQL header** (`prql target:sql.mysql`): the output dialect comes from the connection. Proposal: a `target` different from the engine of the connection is an explicit error. **[to decide]**
+47. **Several PRQL queries in one editor**: a PRQL text holds one main query, while the editor runs the query under the cursor (Ctrl+Enter) or all of them (Ctrl+Shift+Enter). How to delimit them? **[to decide]**
+48. **Beautifier of the statements outside the plan** (DDL, stored programs, `DELIMITER` blocks): they keep the current path until they enter the plan. **[to confirm]**
+
 ### Execution
 
 24. **Queries that change the session in a parallel batch**: with Ctrl+Shift+Enter, each query has its own connection, so a `USE` or a `SET` of the batch does not affect the other queries (`USE xlist; SELECT * FROM video;` reads `video` in the current database, not in `xlist`). Provisional decision: fully parallel execution, to refine. Lead: first run, one by one, the queries that change the session, then the others in parallel.
