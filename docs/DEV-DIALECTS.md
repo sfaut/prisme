@@ -107,6 +107,8 @@ Settled before step 1, as the types and the plan depend on them, from the behavi
 - Tests: construction, output schemas, nullability rules decided in step 0.
 - Done when the plan represents by hand the queries of step 4.
 
+Done: `crates/types` (types, values, `i128` integers, decimals as exact text), `crates/plan` (nodes, expressions typed with their nullability, origin), conversion of the result types of the MySQL connector (`plan_types`), and the queries of step 4 built by hand (`crates/plan/tests/example.rs`). Left to the steps that need them: the relations of the catalog of Prisme (step 8); the full outer join, `USING` and `NATURAL`, row constructors (`(a, b) IN (...)`) and multi-table writes, with the complete grammar (step 5); the other written forms, with the parsers that read them.
+
 ### Step 2. Registry of the versions
 
 The user chooses the version of the dialect they write in (point 43): Prisme knows the period of validity of each keyword, construct and function.

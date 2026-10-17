@@ -214,6 +214,7 @@ crates/
     tests/         integration tests on real servers (Docker)
   dialects/        query analysis: default limit, read / write, beautifier, keywords
   types/           internal types and values, with their nullability
+  plan/            logical plan: nodes, expressions, output schemas
   splitter/        splitting a text into queries, per dialect
   server/          the prisme executable: configuration, master key, internal database, API
     migrations/    numbered SQL migrations of the internal database

@@ -2000,6 +2000,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "prisme-plan"
+version = "0.2.0"
+dependencies = [
+ "prisme-types",
+]
+
+[[package]]
 name = "prisme-server"
 version = "0.2.0"
 dependencies = [

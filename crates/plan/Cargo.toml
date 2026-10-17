@@ -1,0 +1,8 @@
+[package]
+name = "prisme-plan"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+prisme-types = { path = "../types" }
