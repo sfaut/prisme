@@ -22,6 +22,7 @@
 mod builtin;
 mod call;
 mod expr;
+mod greatest;
 mod rules;
 mod source;
 
@@ -89,6 +90,8 @@ pub(crate) fn emit(statement: &Statement, output: &OutputDialect, source: &Sourc
         next_comment: 0,
         quiet: 0,
         blocks: Vec::new(),
+        top: true,
+        column: false,
         steps: Vec::new(),
         errors: Vec::new(),
     };
@@ -124,6 +127,15 @@ struct Emitter<'a> {
     /// Columns the `SELECT` blocks being written compute for themselves,
     /// the innermost last.
     blocks: Vec<call::Internal>,
+    /// Tells whether the next `SELECT` block gives the result of the
+    /// statement: false inside a `WITH` and a subquery.
+    top: bool,
+    /// Tells whether the next expression is read as a value of its type: a
+    /// column of the result of the statement, a key of `ORDER BY` or
+    /// `GROUP BY`. An expression its parent reads as a number or a boolean
+    /// may compute another value in the MySQL family (`LEAST('10', '9')`
+    /// gives `'10'`, `LEAST('10', '9') + 0` gives 9 in MariaDB).
+    column: bool,
     /// Steps of the report.
     steps: Vec<Step>,
     /// Untranslatable constructs.
@@ -380,7 +392,9 @@ impl Emitter<'_> {
                 self.write(")");
             }
             self.write(" AS (");
+            let top = std::mem::replace(&mut self.top, false);
             self.query(&cte.plan, cte.columns.is_empty());
+            self.top = top;
             self.write(")");
         }
         self.write(" ");
@@ -431,12 +445,15 @@ impl Emitter<'_> {
     /// they stand for.
     fn select(&mut self, block: &Block<'_>, names_matter: bool) {
         self.blocks.push(call::Internal::new(block));
-        self.select_clauses(block, names_matter);
+        let top = std::mem::replace(&mut self.top, false);
+        self.select_clauses(block, names_matter, top);
+        self.top = top;
         self.blocks.pop();
     }
 
-    /// Clauses of a `SELECT` block.
-    fn select_clauses(&mut self, block: &Block<'_>, names_matter: bool) {
+    /// Clauses of a `SELECT` block, which gives the result of the statement
+    /// when `top`.
+    fn select_clauses(&mut self, block: &Block<'_>, names_matter: bool, top: bool) {
         self.at(block.project.span);
         self.write("SELECT ");
         if block.distinct {
@@ -456,6 +473,7 @@ impl Emitter<'_> {
                 }
                 ProjectItem::Expr(named) => {
                     let start = self.out.len();
+                    self.column = top;
                     self.expr(&named.expr, 0);
                     match named.alias {
                         AliasForm::As => {
@@ -724,7 +742,10 @@ impl Emitter<'_> {
                 self.at(key.expr.span);
                 self.write(&(index + 1).to_string());
             }
-            _ => self.expr(&key.expr, 0),
+            _ => {
+                self.column = true;
+                self.expr(&key.expr, 0);
+            }
         }
     }
 

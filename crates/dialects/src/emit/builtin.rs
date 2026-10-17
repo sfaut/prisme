@@ -39,8 +39,15 @@ enum Target {
 }
 
 impl Emitter<'_> {
-    /// Call to a scalar function, at level `min` at least.
-    pub(super) fn function_call(&mut self, expr: &Expr, call: &FunctionCall, min: u8) {
+    /// Call to a scalar function, at level `min` at least, read as a value
+    /// of its type when `column` (see `Emitter::column`).
+    pub(super) fn function_call(
+        &mut self,
+        expr: &Expr,
+        call: &FunctionCall,
+        min: u8,
+        column: bool,
+    ) {
         if call.stored {
             self.stored_call(expr, call);
             return;
@@ -50,7 +57,7 @@ impl Emitter<'_> {
                 let form = self.builtin_form(&name, &call.name, expr.span);
                 self.call_text(&name, form, &call.args);
             }
-            Some(Target::Rule(rule)) => self.builtin_rule(rule, expr, call, min),
+            Some(Target::Rule(rule)) => self.builtin_rule(rule, expr, call, min, column),
             // The error is recorded: the call is written as in the input.
             None => self.input_call(expr, call),
         }

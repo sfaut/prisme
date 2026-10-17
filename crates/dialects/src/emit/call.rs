@@ -365,7 +365,10 @@ impl Emitter<'_> {
                 {
                     self.ident(&named.name, key.expr.span);
                 }
-                _ => self.expr(&key.expr, 0),
+                _ => {
+                    self.column = true;
+                    self.expr(&key.expr, 0);
+                }
             }
         }
         if aggregate.rollup {

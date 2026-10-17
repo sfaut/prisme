@@ -73,6 +73,37 @@ fn catalog() -> Tables {
             ),
         ],
     );
+    let text = DataType::Text(prisme_types::TextType {
+        length: Some(30),
+        fixed: false,
+        charset: None,
+        collation: None,
+    });
+    tables.insert(
+        None,
+        "g",
+        vec![
+            (Ident::new("s"), Type::not_null(text)),
+            (
+                Ident::new("vb"),
+                Type::not_null(DataType::Binary(prisme_types::BinaryType {
+                    length: Some(10),
+                    fixed: false,
+                })),
+            ),
+            (Ident::new("e"), Type::not_null(DataType::Enum)),
+            (Ident::new("dd"), Type::not_null(DataType::Date)),
+            (
+                Ident::new("dt3"),
+                Type::not_null(DataType::DateTime { fraction: 3 }),
+            ),
+            (
+                Ident::new("tm"),
+                Type::not_null(DataType::Time { fraction: 0 }),
+            ),
+            (Ident::new("y"), Type::not_null(DataType::Year)),
+        ],
+    );
     tables.insert(
         None,
         "u",
@@ -254,6 +285,8 @@ fn strings_follow_the_sql_mode_of_the_output() {
         next_comment: 0,
         quiet: 0,
         blocks: Vec::new(),
+        top: true,
+        column: false,
         steps: Vec::new(),
         errors: Vec::new(),
     };
@@ -529,9 +562,9 @@ fn built_in_functions_follow_the_reference_files() {
             "function.unstudied",
         ),
         (
-            "SELECT GREATEST(a, b) FROM t",
+            "SELECT BIT_COUNT(a) FROM t",
             output(mariadb()),
-            "function.greatest",
+            "function.bit-count",
         ),
         (
             "SELECT FORMAT_PICO_TIME(a) FROM t",
@@ -981,5 +1014,171 @@ fn what_the_output_lacks_is_an_explicit_error() {
         ),
     ] {
         assert_eq!(errors(text, mysql(), output), [rule], "{text}");
+    }
+}
+
+#[test]
+fn greatest_compares_as_the_input_does() {
+    let rule = ["function.greatest"];
+    // From MySQL, which compares a string with a number as strings, a time
+    // with a string as strings, and gives a date compared with a string as
+    // a string.
+    for (text, expected) in [
+        (
+            "SELECT GREATEST(a, b) AS v FROM t",
+            "SELECT GREATEST(a, b) AS v FROM t",
+        ),
+        (
+            "SELECT GREATEST(dd, dt3) AS v FROM g",
+            "SELECT GREATEST(dd, dt3) AS v FROM g",
+        ),
+        (
+            "SELECT LEAST(s, 'x') AS v FROM g",
+            "SELECT LEAST(s, 'x') AS v FROM g",
+        ),
+        (
+            "SELECT s FROM g ORDER BY LEAST(s, 'x')",
+            "SELECT s FROM g ORDER BY LEAST(s, 'x')",
+        ),
+        (
+            "SELECT COUNT(*) AS c FROM g GROUP BY LEAST(s, 'x')",
+            "SELECT COUNT(*) AS c FROM g GROUP BY LEAST(s, 'x')",
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, mysql(), output(mariadb()));
+        assert_eq!(sql, expected);
+        assert!(rules.is_empty(), "{text}");
+    }
+    for (text, expected) in [
+        (
+            "SELECT LEAST(s, 'x') + 0 AS v FROM g",
+            "SELECT CONCAT(LEAST(s, 'x')) + 0 AS v FROM g",
+        ),
+        (
+            "SELECT (SELECT LEAST(s, 'x') FROM g LIMIT 1) AS v",
+            "SELECT (SELECT CONCAT(LEAST(s, 'x')) FROM g LIMIT 1) AS v",
+        ),
+        (
+            "WITH c AS (SELECT LEAST(s, 'x') AS v FROM g) SELECT v FROM c",
+            "WITH c AS (SELECT CONCAT(LEAST(s, 'x')) AS v FROM g) SELECT v FROM c",
+        ),
+        (
+            "SELECT LEAST(s, 9) AS v FROM g",
+            "SELECT LEAST(s, CONCAT(9)) AS v FROM g",
+        ),
+        (
+            "SELECT LEAST(s, 9) + 0 AS v FROM g",
+            "SELECT CONCAT(LEAST(s, CONCAT(9))) + 0 AS v FROM g",
+        ),
+        (
+            "SELECT GREATEST(dd, '2024-01-09', NULL) AS v FROM g",
+            "SELECT CONCAT(GREATEST(dd, '2024-01-09', NULL)) AS v FROM g",
+        ),
+        (
+            "SELECT LEAST(tm, '9:00:00', 5) AS v FROM g",
+            "SELECT LEAST(CONCAT(tm), '9:00:00', CONCAT(5)) AS v FROM g",
+        ),
+        (
+            "SELECT LEAST(a, NULL) AS v FROM t",
+            "SELECT LEAST(a, IF(FALSE, a, NULL)) AS v FROM t",
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, mysql(), output(mariadb()));
+        assert_eq!(sql, expected);
+        assert_eq!(rules, rule, "{text}");
+    }
+    // From MariaDB, which compares a string with a number as numbers, a
+    // date or a time with a string as dates or times.
+    for (text, expected) in [
+        (
+            "SELECT LEAST(s, 'x') AS v FROM g",
+            "SELECT LEAST(s, 'x') AS v FROM g",
+        ),
+        (
+            "SELECT LEAST(a, 1.5e0, NULL) AS v FROM t",
+            "SELECT LEAST(a, 1.5e0, NULL) AS v FROM t",
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, mariadb(), output(mysql()));
+        assert_eq!(sql, expected);
+        assert!(rules.is_empty(), "{text}");
+    }
+    for (text, expected) in [
+        (
+            "SELECT LEAST(s, 9) AS v FROM g",
+            "SELECT LEAST(s + 0e0, 9) AS v FROM g",
+        ),
+        (
+            "SELECT LEAST(e, vb, 1) + 0 AS v FROM g",
+            "SELECT LEAST(e + 0e0, vb + 0e0, 1) + 0 AS v FROM g",
+        ),
+        (
+            "SELECT GREATEST(dd, '2024-01-09') + 0 AS v FROM g",
+            "SELECT GREATEST(dd, CAST('2024-01-09' AS DATE)) + 0 AS v FROM g",
+        ),
+        (
+            "SELECT LEAST(dt3, '2000-01-01 00:00:00.123456') AS v FROM g",
+            "SELECT LEAST(dt3, CAST('2000-01-01 00:00:00.123456' AS DATETIME(6))) AS v FROM g",
+        ),
+        (
+            "SELECT LEAST(dd, dt3, '2024-05-06 03:00:00') AS v FROM g",
+            "SELECT LEAST(dd, dt3, CAST('2024-05-06 03:00:00' AS DATETIME)) AS v FROM g",
+        ),
+        (
+            "SELECT LEAST(tm, '-1:02:03.4567') AS v FROM g",
+            "SELECT LEAST(tm, CAST('-1:02:03.4567' AS TIME(4))) AS v FROM g",
+        ),
+        (
+            "SELECT LEAST(a, NULL) AS v FROM t",
+            "SELECT LEAST(a, NULL + 0e0) AS v FROM t",
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, mariadb(), output(mysql()));
+        assert_eq!(sql, expected);
+        assert_eq!(rules, rule, "{text}");
+    }
+}
+
+#[test]
+fn greatest_refuses_what_compares_otherwise() {
+    for (text, input, target) in [
+        // A string that may not be a valid date.
+        ("SELECT LEAST(dd, s) AS v FROM g", mysql(), mariadb()),
+        (
+            "SELECT LEAST(dd, '2024-1-9') AS v FROM g",
+            mysql(),
+            mariadb(),
+        ),
+        (
+            "SELECT LEAST(dd, '2024-02-30') AS v FROM g",
+            mariadb(),
+            mysql(),
+        ),
+        // Read as a number, which changes the comparison.
+        (
+            "SELECT LEAST(dd, '2024-01-09') + 0 AS v FROM g",
+            mysql(),
+            mariadb(),
+        ),
+        ("SELECT LEAST(tm, 's') + 0 AS v FROM g", mysql(), mariadb()),
+        ("SELECT LEAST(s, 'x') + 0 AS v FROM g", mariadb(), mysql()),
+        // A time with a number, or a string that may not be a valid time.
+        ("SELECT LEAST(tm, 5) AS v FROM g", mariadb(), mysql()),
+        ("SELECT LEAST(tm, s) AS v FROM g", mariadb(), mysql()),
+        (
+            "SELECT LEAST(tm, '25:61:00') AS v FROM g",
+            mariadb(),
+            mysql(),
+        ),
+        // A date with a number, a type compared otherwise, a type unknown.
+        ("SELECT LEAST(dd, 5) AS v FROM g", mysql(), mariadb()),
+        ("SELECT LEAST(y, 2000) AS v FROM g", mysql(), mariadb()),
+        ("SELECT LEAST(ABS(a), 1) AS v FROM t", mysql(), mariadb()),
+    ] {
+        assert_eq!(
+            errors(text, input, output(target)),
+            ["function.greatest"],
+            "{text}"
+        );
     }
 }

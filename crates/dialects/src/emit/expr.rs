@@ -19,6 +19,8 @@ use crate::report::StepKind;
 
 /// Level of `NOT`.
 const NOT: u8 = 4;
+/// Level of `+` and `-`.
+pub(super) const ADDITIVE: u8 = 9;
 /// Level of `*`, `/`, `DIV` and `%`.
 pub(super) const MULTIPLY: u8 = 10;
 /// Level of the comparisons and predicates.
@@ -66,7 +68,7 @@ fn levels(expr: &Expr) -> (u8, u8, u8) {
             Bitwise::Xor => binary(11),
         },
         ExprKind::Arithmetic { op, .. } => match op {
-            Arithmetic::Add | Arithmetic::Subtract => binary(9),
+            Arithmetic::Add | Arithmetic::Subtract => binary(ADDITIVE),
             _ => binary(MULTIPLY),
         },
         // An operand that is itself negative is put between parentheses:
@@ -85,6 +87,8 @@ fn levels(expr: &Expr) -> (u8, u8, u8) {
 impl Emitter<'_> {
     /// Writes `expr`, between parentheses when its level is below `min`.
     pub(super) fn expr(&mut self, expr: &Expr, min: u8) {
+        // Read as a value of its type: this expression, never its operands.
+        let column = std::mem::take(&mut self.column);
         if let ExprKind::ToBoolean(inner) | ExprKind::ToInteger(inner) = &expr.kind {
             self.expr(inner, min);
             return;
@@ -99,7 +103,7 @@ impl Emitter<'_> {
         self.at(expr.span);
         // A rule may write a call as an expression of a lower level.
         if let ExprKind::Function(call) = &expr.kind {
-            self.function_call(expr, call, min);
+            self.function_call(expr, call, min, column);
             return;
         }
         let (level, left, right) = levels(expr);

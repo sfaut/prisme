@@ -91,10 +91,19 @@ impl Unixtime {
 
 impl Emitter<'_> {
     /// Writes the call `expr` of the built-in function `call` by `rule`, at
-    /// level `min` at least.
-    pub(super) fn builtin_rule(&mut self, rule: Rule, expr: &Expr, call: &FunctionCall, min: u8) {
+    /// level `min` at least, read as a value of its type when `column`
+    /// (see `Emitter::column`).
+    pub(super) fn builtin_rule(
+        &mut self,
+        rule: Rule,
+        expr: &Expr,
+        call: &FunctionCall,
+        min: u8,
+        column: bool,
+    ) {
         match rule {
             Rule::FromUnixtime => self.date_from_unixtime(rule, expr, call),
+            Rule::Greatest => self.greatest(rule, expr, call, column),
             Rule::Now => self.now(rule, expr, call),
             Rule::Pad => self.pad(rule, expr, call),
             Rule::TimeToSec => self.time_to_sec(rule, expr, call, min),
@@ -645,7 +654,7 @@ fn date_bound(arg: &Expr, timestamp_max: i64) -> Option<i64> {
 /// Year of a valid date literal, `YYYY-MM-DD` followed or not by
 /// `hh:mm:ss` and up to 6 fractional digits; `None` for another form,
 /// which the servers may read differently.
-fn literal_year(text: &str) -> Option<u32> {
+pub(super) fn literal_year(text: &str) -> Option<u32> {
     let (date, time) = text.split_once(' ').unwrap_or((text, ""));
     let field = |part: &str, len: usize, max: u32| {
         (part.len() == len && part.bytes().all(|byte| byte.is_ascii_digit()))
@@ -684,7 +693,7 @@ fn literal_year(text: &str) -> Option<u32> {
 
 /// Fractional digits of a date written as a string, those after its last
 /// point, up to `MAX_FRACTION_DIGITS`.
-fn literal_digits(text: &str) -> u8 {
+pub(super) fn literal_digits(text: &str) -> u8 {
     let fraction = text.rsplit_once('.').map_or("", |(_, fraction)| fraction);
     let count = fraction.bytes().take_while(u8::is_ascii_digit).count();
     u8::try_from(count).map_or(MAX_FRACTION_DIGITS, |count| count.min(MAX_FRACTION_DIGITS))
