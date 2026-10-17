@@ -98,8 +98,6 @@ To settle before step 1, as the types and the plan depend on them:
 - the internal types of the v1 (`docs/FEDERATED.md`, section 6): integers (unsigned `BIGINT` included), exact decimals, strings, dates, JSON;
 - the storage of the registry of the versions and the oldest versions it covers (points 50 and 51).
 
-The PRQL point 46 waits for step 9.
-
 ### Step 1. Types and plan
 
 - `crates/types`: integer types (sizes, signed or not), exact decimal, floating point, string, binary, boolean, date and time types, JSON, unknown type; nullability. Conversion from the column types the MySQL connector reads (`crates/connectors/src/mysql/column_type.rs`).
@@ -183,7 +181,7 @@ Prisme translates them as far as needed (point 40). In the v1, between MySQL and
 - Plan builder with the semantics of the book (`docs/QUESTIONS.md`, point 16), expressed by the explicit nodes of the plan: `== null` becomes a test of identity, `/` a division with a real result, `//` an integer division.
 - Splitting of a PRQL text: PRQL has no separator character, a relation is delimited by its syntax (`let`, parentheses around a pipeline, braces of a tuple). The editor finds the declarations and the main query with the PRQL parser, never with the SQL splitter. Each relation is a query of the editor: Ctrl+Enter runs the relation under the cursor with the relations it depends on, Ctrl+Shift+Enter runs every relation, one result tab each (point 47).
 - S-strings (raw SQL inside PRQL): read by the parser of the output dialect, explicit error if it does not understand them (point 45).
-- Open point to settle at the start of the step: the `target` of the header (point 46).
+- `target` of the `prql` header: a target different from the engine of the connection is an explicit error (point 46).
 - Editor: highlighting and completion of PRQL; the keywords route takes the input dialects.
 - **Tests**: the examples of the book (their license is checked before copying them into the repository; otherwise examples written for Prisme), each compared with an equivalent SQL query: same plan, or same results on both servers.
 - The PRQL choice appears in the profile and on the tab.
@@ -241,7 +239,7 @@ Recorded in `docs/QUESTIONS.md`, section 5, "Dialects and transpilation":
 - 43: version of an input dialect, decided: chosen by the user, from the registry of the versions;
 - 44: types when the catalog does not give them;
 - 45: PRQL s-strings, decided: read by the parser of the output dialect;
-- 46: `target` of the PRQL header;
+- 46: `target` of the PRQL header, decided: error if it differs from the engine of the connection;
 - 47: what Ctrl+Enter and Ctrl+Shift+Enter run in a PRQL text, decided: the relation under the cursor with its dependencies, every relation;
 - 48: beautifier of the statements outside the plan, until they enter it;
 - 49: form of the catalog statements towards MySQL and MariaDB, decided: `information_schema`, `SHOW` when the input used it;
