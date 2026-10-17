@@ -25,6 +25,7 @@ mod builtin;
 mod call;
 mod case;
 mod cast;
+mod charset;
 mod expr;
 mod extract;
 mod greatest;

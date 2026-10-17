@@ -525,6 +525,32 @@ constructs:
       type; 2038-01-19 03:14:07 UTC (2^31 - 1) before (WL#14630). Beyond,
       `UNIX_TIMESTAMP` gives 0, as before the epoch, and `FROM_UNIXTIME`
       NULL. Measured on 8.0.27 and 8.0.28.
+  - id: string_charset
+    since: "8.0.19"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-19.html
+    comment: >-
+      `REPLACE`, `SUBSTRING_INDEX` and `TRIM` take the character set of their
+      string, their other arguments converted to it at execution, error 3854
+      when their bytes are not valid in it (Bug #30114420): a binary argument
+      with a character string gives a character string. Before, as in
+      MariaDB, the character sets of the arguments are aggregated: a binary
+      string, of the same bytes (crates/probe/cases/string-binary.txt,
+      measured on 8.0.12, 8.0.14, 8.0.17 to 8.0.20, 8.0.23 and 8.4.11).
+  - id: locate_charset
+    since: "8.0.26"
+    source: https://github.com/mysql/mysql-server/blob/mysql-8.0.26/sql/item_func.cc
+    comment: >-
+      `LOCATE`, `INSTR` and `POSITION` search in the collation of their
+      string, the substring converted to its character set
+      (`Item_func_locate::resolve_type` and `val_int` in the source; no entry
+      in the release notes): a binary substring is searched in a character
+      string after its collation, its position counted in characters, and a
+      `COLLATE` of the substring is ignored. Before, as in MariaDB, the
+      collations are aggregated: a binary substring is searched byte by
+      byte, its position counted in bytes (`POSITION(CAST('B' AS BINARY) IN
+      'abc')` gives 0, 2 from 8.0.26; crates/probe/cases/string-binary.txt,
+      measured on 8.0.14, 8.0.17, 8.0.18, 8.0.20, 8.0.23 to 8.0.26 and
+      8.4.11).
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:
@@ -859,7 +885,7 @@ functions:
         grammar: true
         mariadb: same
       - name: INSTR
-        mariadb: same
+        mariadb: { rule: function.binary-argument }
       - name: LCASE
         mariadb: same
       - name: LEFT
@@ -870,7 +896,7 @@ functions:
       - name: LOAD_FILE
         mariadb: same
       - name: LOCATE
-        mariadb: same
+        mariadb: { rule: function.binary-argument }
       - name: LOWER
         mariadb: same
       - name: LPAD
@@ -908,7 +934,7 @@ functions:
         mariadb: same
       - name: REPLACE
         grammar: true
-        mariadb: same
+        mariadb: { rule: function.binary-argument }
       - name: REVERSE
         mariadb: same
       - name: RIGHT
@@ -933,7 +959,7 @@ functions:
         touching: true
         mariadb: same
       - name: SUBSTRING_INDEX
-        mariadb: same
+        mariadb: { rule: function.binary-argument }
       - name: TO_BASE64
         mariadb: same
       - name: TRIM

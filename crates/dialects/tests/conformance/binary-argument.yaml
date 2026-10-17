@@ -1,0 +1,46 @@
+# Rule `function.binary-argument`: `REPLACE`, `SUBSTRING_INDEX`, `LOCATE` and
+# `INSTR` of a character string with a binary argument. MySQL reads them in
+# the character set of the string from 8.0.19 (`REPLACE`, `SUBSTRING_INDEX`)
+# and 8.0.26 (`LOCATE`, `INSTR`), MariaDB and the earlier versions as binary:
+# the string read as binary towards MySQL, an error towards MariaDB and for
+# `LOCATE` from a start (crates/probe/cases/string-binary.txt).
+setup:
+  - DROP TABLE IF EXISTS binary_argument
+  - >-
+    CREATE TABLE binary_argument (id INT NOT NULL PRIMARY KEY, s VARCHAR(30) NULL,
+    b VARBINARY(10) NULL)
+  - >-
+    INSERT INTO binary_argument VALUES
+    (1, 'xaXb', 'X'), (2, 'ébéb', 'b'), (3, 'abc', 'B'), (4, 'a.b.c', '.'),
+    (5, NULL, NULL)
+cases:
+  - from: mariadb
+    sql: >-
+      SELECT REPLACE(s, b, '-') AS a, SUBSTRING_INDEX(s, b, 1) AS c, LOCATE(b, s) AS e,
+      INSTR(s, b) AS h, REPLACE(s, 'b', '-') AS k, LOCATE('B', s, 3) AS l
+      FROM binary_argument ORDER BY id
+  - from: mysql
+    inputs: mysql < 8.0.19
+    sql: >-
+      SELECT REPLACE(s, b, '-') AS a, SUBSTRING_INDEX(s, b, 1) AS c, LOCATE(b, s) AS e,
+      INSTR(s, b) AS h FROM binary_argument ORDER BY id
+  - from: mysql
+    sql: >-
+      SELECT REPLACE(b, s, '-') AS a, LOCATE(s, b) AS c, REPLACE(s, 'b', '-') AS e
+      FROM binary_argument ORDER BY id
+  - from: mysql
+    inputs: mysql >= 8.0.19
+    sql: SELECT REPLACE(s, b, '-') FROM binary_argument
+    refused: function.binary-argument
+  - from: mysql
+    inputs: mysql >= 8.0.26
+    sql: SELECT LOCATE(b, s) FROM binary_argument
+    refused: function.binary-argument
+  - from: mariadb
+    outputs: mysql >= 8.0.26
+    sql: SELECT INSTR(s, IFNULL(b, s)) FROM binary_argument
+    refused: function.binary-argument
+  - from: mariadb
+    outputs: mysql >= 8.0.26
+    sql: SELECT LOCATE(b, s, 3) FROM binary_argument
+    refused: function.binary-argument

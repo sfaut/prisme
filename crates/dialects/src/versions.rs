@@ -155,6 +155,13 @@ pub enum Construct {
     /// argument, and a mode, fourth argument (MariaDB); two arguments only
     /// otherwise.
     AesIv,
+    /// `REPLACE`, `SUBSTRING_INDEX` and `TRIM` in the character set of their
+    /// string (MySQL); the character sets of their arguments aggregated
+    /// otherwise.
+    StringCharset,
+    /// `LOCATE`, `INSTR` and `POSITION` in the collation of their string
+    /// (MySQL); the collations of their arguments aggregated otherwise.
+    LocateCharset,
 }
 
 /// Construct refused in a dialect or a version.
@@ -314,6 +321,8 @@ impl Construct {
             Self::Unixtime2106 => "`UNIX_TIMESTAMP` until 2106",
             Self::UnixtimeEpochNull => "`UNIX_TIMESTAMP` giving NULL at the epoch",
             Self::AesIv => "`AES_ENCRYPT` with an initialization vector and a mode",
+            Self::StringCharset => "`REPLACE` in the character set of its string",
+            Self::LocateCharset => "`LOCATE` in the collation of its string",
         }
     }
 }

@@ -829,7 +829,7 @@ functions:
         grammar: true
         mysql: same
       - name: INSTR
-        mysql: same
+        mysql: { rule: function.binary-argument }
       - name: LCASE
         mysql: same
       - name: LEFT
@@ -841,7 +841,7 @@ functions:
       - name: LOAD_FILE
         mysql: same
       - name: LOCATE
-        mysql: same
+        mysql: { rule: function.binary-argument }
       - name: LOWER
         mysql: same
       - name: LPAD
@@ -878,7 +878,7 @@ functions:
         mysql: same
       - name: REPLACE
         grammar: true
-        mysql: same
+        mysql: { rule: function.binary-argument }
       - name: REVERSE
         mysql: same
       - name: RIGHT
@@ -906,7 +906,7 @@ functions:
         touching: true
         mysql: same
       - name: SUBSTRING_INDEX
-        mysql: same
+        mysql: { rule: function.binary-argument }
       - name: TO_BASE64
         mysql: same
       - name: TO_CHAR

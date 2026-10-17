@@ -2268,3 +2268,57 @@ fn extract_refuses_the_parts_read_otherwise() {
     );
     assert!(errors(text, mysql_at(8, 4, 0), output(mysql_at(8, 4, 0))).is_empty());
 }
+
+#[test]
+fn a_binary_argument_is_read_as_the_input_reads_it() {
+    let mysql_8_0_18 = mysql_at(8, 0, 18);
+    let mysql_8_4 = mysql_at(8, 4, 0);
+    // Towards the character set of the string: the string read as binary.
+    for (call, expected) in [
+        ("REPLACE(s, vb, '-')", "REPLACE(CAST(s AS BINARY), vb, '-')"),
+        (
+            "SUBSTRING_INDEX(s, vb, 2)",
+            "SUBSTRING_INDEX(CAST(s AS BINARY), vb, 2)",
+        ),
+        ("LOCATE(vb, s)", "LOCATE(vb, CAST(s AS BINARY))"),
+        (
+            "INSTR(s, CAST('B' AS BINARY))",
+            "INSTR(CAST(s AS BINARY), CAST('B' AS BINARY))",
+        ),
+    ] {
+        let text = format!("SELECT {call} AS a FROM g");
+        let (sql, rules) = transpiled(&text, mariadb(), output(mysql_8_4));
+        assert_eq!(sql, format!("SELECT {expected} AS a FROM g"), "{text}");
+        assert_eq!(rules, ["function.binary-argument"], "{text}");
+    }
+    // Read alike: character strings, a binary string, the same reading.
+    for (call, input, target) in [
+        ("REPLACE(s, 'a', '-')", mariadb(), mysql_8_4),
+        ("REPLACE(vb, s, '-')", mariadb(), mysql_8_4),
+        ("LOCATE(vb, s)", mariadb(), mysql_8_0_18),
+        ("REPLACE(s, vb, '-')", mysql_8_0_18, mariadb()),
+        ("LOCATE(s, vb)", mysql_8_4, mariadb()),
+        ("REPLACE(LOWER(s), 'a', '-')", mysql_8_4, mariadb()),
+    ] {
+        let text = format!("SELECT {call} AS a FROM g");
+        let (sql, rules) = transpiled(&text, input, output(target));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{text}: {rules:?}");
+    }
+    // The character set of the string unknown, an argument of unknown type.
+    for (call, input, target) in [
+        ("REPLACE(s, vb, '-')", mysql_8_4, mariadb()),
+        ("LOCATE(vb, s)", mysql_8_4, mariadb()),
+        ("REPLACE(s, IFNULL(s, vb), '-')", mariadb(), mysql_8_4),
+        ("INSTR(s, LOWER(s))", mysql_8_4, mariadb()),
+        // The start counted in characters, then the bytes.
+        ("LOCATE(vb, s, 2)", mariadb(), mysql_8_4),
+    ] {
+        let text = format!("SELECT {call} AS a FROM g");
+        assert_eq!(
+            errors(&text, input, output(target)),
+            ["function.binary-argument"],
+            "{text}"
+        );
+    }
+}

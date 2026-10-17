@@ -111,6 +111,10 @@ pub(crate) enum Rule {
     /// `AES_ENCRYPT`, `AES_DECRYPT`: their optional arguments.
     #[serde(rename = "function.aes")]
     Aes,
+    /// `REPLACE`, `SUBSTRING_INDEX`, `LOCATE` and `INSTR` with a binary
+    /// argument (`emit::charset` module).
+    #[serde(rename = "function.binary-argument")]
+    BinaryArgument,
     /// `BIT_COUNT` of a binary string.
     #[serde(rename = "function.bit-count")]
     BitCount,
@@ -152,6 +156,7 @@ impl Rule {
         match self {
             Self::AddMonths => "function.add-months",
             Self::Aes => "function.aes",
+            Self::BinaryArgument => "function.binary-argument",
             Self::BitCount => "function.bit-count",
             Self::Extract => "function.extract",
             Self::FromUnixtime => "function.from-unixtime",
