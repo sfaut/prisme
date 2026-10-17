@@ -257,6 +257,14 @@ pub(crate) fn families(dialect: Dialect) -> &'static [Family] {
     &reference(dialect).functions
 }
 
+/// Versions where a built-in function of `dialect` appears or disappears.
+pub(crate) fn changes(dialect: Dialect) -> impl Iterator<Item = Version> {
+    families(dialect)
+        .iter()
+        .flat_map(|family| &family.functions)
+        .flat_map(|function| function.since.into_iter().chain(function.until))
+}
+
 /// Built-in function `name`, in capitals, of `dialect`, whatever its period.
 pub(crate) fn lookup(dialect: Dialect, name: &str) -> Option<Builtin> {
     index(dialect).get(name).copied()

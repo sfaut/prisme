@@ -9,9 +9,10 @@
 //! A construct missing from the file of a dialect is absent from it: each
 //! dialect stays in its domain.
 //!
-//! The versions offered to the user are those where the dialect changed,
-//! from the oldest version covered (`floor`, the first GA release of MySQL
-//! 8.0 and of MariaDB 10.6).
+//! The versions offered to the user are those where the dialect changed (a
+//! construct or a built-in function, `builtins` module), from the oldest
+//! version covered (`floor`, the first GA release of MySQL 8.0 and of
+//! MariaDB 10.6).
 
 use std::fmt;
 use std::sync::OnceLock;
@@ -19,6 +20,7 @@ use std::sync::OnceLock;
 use serde::Deserialize;
 
 use crate::Dialect;
+use crate::builtins;
 use crate::reference::reference;
 
 /// Version of a dialect: `8.0.19`, `10.6.3`.
@@ -127,6 +129,8 @@ pub enum VersionError {
 /// reference file.
 #[derive(Debug)]
 pub struct Registry {
+    /// Dialect.
+    dialect: Dialect,
     /// Oldest version covered.
     floor: Version,
     /// Constructs, with their period of validity.
@@ -289,12 +293,13 @@ impl Registry {
     }
 
     /// Versions offered to the user: the floor, then each version that adds
-    /// or removes a construct, in order.
+    /// or removes a construct or a built-in function, in order.
     pub fn offered_versions(&self) -> Vec<Version> {
         let changes = self
             .constructs
             .iter()
-            .flat_map(|entry| std::iter::once(entry.since).chain(entry.until));
+            .flat_map(|entry| std::iter::once(entry.since).chain(entry.until))
+            .chain(builtins::changes(self.dialect));
         let mut versions: Vec<Version> = std::iter::once(self.floor)
             .chain(changes.filter(|&version| version > self.floor))
             .collect();
@@ -311,6 +316,7 @@ pub fn registry(dialect: Dialect) -> &'static Registry {
     let build = || {
         let reference = reference(dialect);
         Registry {
+            dialect,
             floor: reference.floor,
             constructs: &reference.constructs,
         }
@@ -412,10 +418,14 @@ mod tests {
         assert_eq!(mysql.first(), Some(&Version::new(8, 0, 11)));
         assert!(mysql.contains(&Version::new(8, 0, 19)));
         assert!(mysql.contains(&Version::new(8, 0, 31)));
+        // Built-in functions: `FORMAT_PICO_TIME` appears, `WAIT_UNTIL_SQL_THREAD_AFTER_GTIDS` goes.
+        assert!(mysql.contains(&Version::new(8, 0, 16)));
+        assert!(mysql.contains(&Version::new(8, 2, 0)));
         // Constructs older than the floor give no version of their own.
         assert!(!mysql.contains(&Version::new(8, 0, 1)));
         assert!(mysql.windows(2).all(|pair| pair[0] < pair[1]));
         let mariadb = registry(Dialect::MariaDb).offered_versions();
         assert_eq!(mariadb.first(), Some(&Version::new(10, 6, 3)));
+        assert!(mariadb.contains(&Version::new(10, 7, 0)));
     }
 }
