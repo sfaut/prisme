@@ -120,7 +120,7 @@ Purity would be preferable, but the sources are too heterogeneous. Hence two mod
 
 ## 6. Type model
 
-- Internal types: integer, exact decimal, string, boolean, date/time, NULL, with nullability. To be set first, as everything depends on it. The points below carry the behaviour measured on MySQL 8.4.11, MariaDB 10.6.28 and MariaDB 11.8.9, and a proposal for the v1, to decide before the plan is written (`docs/DEV-DIALECTS.md`, step 0). In the v1, the server runs the whole query: Prisme compares and computes nothing itself yet.
+- Internal types: integer, exact decimal, string, boolean, date/time, NULL, with nullability. To be set first, as everything depends on it. The points below carry the behaviour measured on MySQL 8.4.11, MariaDB 10.6.28 and MariaDB 11.8.9, and the decision for the v1, taken before the plan is written (`docs/DEV-DIALECTS.md`, step 0). In the v1, the server runs the whole query: Prisme compares and computes nothing itself yet.
 - **Integers**: a MySQL `BIGINT UNSIGNED` exceeds the signed 64-bit integer. A computation that overflows raises an **explicit error**, without silently switching to floating point. Pushdown often solves the problem: if the sum is done on the MySQL side, only one result is left to carry.
   - Measured: `BIGINT UNSIGNED` reaches 18446744073709551615. `18446744073709551615 + 1`, `9223372036854775807 + 1` and `CAST(1 AS UNSIGNED) - 2` give the error 1690 "value is out of range" on the three servers.
   - Decided: the plan keeps the declared type (1, 2, 3, 4 or 8 bytes, signed or not), as a transpilation keeps the result type. The integer values of the plan (literals, constants computed by Prisme) are held in an `i128`, which holds every integer of the MySQL family, signed and unsigned, without a big integer library. An overflow gives the explicit error of the engine. **[decided]**
@@ -144,7 +144,7 @@ Purity would be preferable, but the sources are too heterogeneous. Hence two mod
 
 Reference in flex mode: the behaviour of SQL sources. **Priority**: points 1 to 6 are essential from the start (they affect the correctness of results and joins, and therefore already the v1), points 7 to 9 are decided with the function catalog, points 10 to 12 with the workspace and the optimiser.
 
-Points 1 to 6 carry the behaviour measured on MySQL 8.4.11, MariaDB 10.6.28 and MariaDB 11.8.9, identical on the three servers, and a proposal, to decide before the plan is written (`docs/DEV-DIALECTS.md`, step 0). The other points are not settled yet. Tables of the measures: `l (k)` holds 1, 2, NULL; `r (k)` holds 1, NULL; `s1 (a)` holds NULL, NULL, NULL, 1, 1; `s2 (a)` holds NULL, 1.
+Points 1 to 6 carry the behaviour measured on MySQL 8.4.11, MariaDB 10.6.28 and MariaDB 11.8.9, identical on the three servers, and the decision, taken before the plan is written (`docs/DEV-DIALECTS.md`, step 0). The other points are not settled yet. Tables of the measures: `l (k)` holds 1, 2, NULL; `r (k)` holds 1, NULL; `s1 (a)` holds NULL, NULL, NULL, 1, 1; `s2 (a)` holds NULL, 1.
 
 1. **Equality**: comparison equality (`=`, joins: `NULL = NULL` gives unknown) and identity equality ("not distinct", `IS NOT DISTINCT FROM`, `<=>` in MySQL). Name both in the plan and say which one each node uses.
    - Measured: `NULL = NULL` gives NULL, `NULL <=> NULL` gives 1, `1 <=> NULL` gives 0. `IS NOT DISTINCT FROM` is a syntax error on the three servers: `<=>` is the only spelling of identity equality in the MySQL family.

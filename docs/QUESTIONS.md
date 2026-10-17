@@ -140,7 +140,7 @@ Points raised by the implementation plan of the dialects (`docs/DEV-DIALECTS.md`
 
 ### Federated engine
 
-12. **NULL**: the 12 points of section 7 of `docs/FEDERATED.md` are to be settled, points 1 to 6 first. Points 1 to 6 carry the behaviour measured on MySQL and MariaDB and a proposal each.
+12. **NULL**: the 12 points of section 7 of `docs/FEDERATED.md` are to be settled, points 1 to 6 first. Points 1 to 6 are decided, from the behaviour measured on MySQL and MariaDB; points 7 to 12 remain open.
 13. **Collations**: which single rule to compare strings?
 14. **Time zones**: which single convention?
 15. **`NOT IN` with NULL**: reproduce the SQL behaviour as is or translate into an `AntiJoin`?

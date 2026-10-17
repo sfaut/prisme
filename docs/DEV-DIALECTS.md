@@ -93,10 +93,10 @@ Decided (point 39), with a reservation: the principle can evolve. A rewrite for 
 
 ### Step 0. Decisions before the code
 
-To settle before step 1, as the types and the plan depend on them:
+Settled before step 1, as the types and the plan depend on them, from the behaviour measured on MySQL 8.4.11, MariaDB 10.6.28 and MariaDB 11.8.9. Done.
 
 - NULL, points 1 to 6 of `docs/FEDERATED.md`, section 7 (`docs/QUESTIONS.md`, point 12): the two equalities, three-valued logic, joins, set operators, aggregation, sorting;
-- the internal types of the v1 (`docs/FEDERATED.md`, section 6): integers (unsigned `BIGINT` included), exact decimals, strings, dates, JSON.
+- the internal types of the v1 (`docs/FEDERATED.md`, section 6): integers (unsigned `BIGINT` included), exact decimals, booleans, strings, dates, JSON.
 
 ### Step 1. Types and plan
 
