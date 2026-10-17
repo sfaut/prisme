@@ -18,4 +18,9 @@ version: string,
  * the `ANSI` mode)? Double quotes then delimit identifiers, no longer
  * strings.
  */
-ansi_quotes: boolean, };
+ansi_quotes: boolean, 
+/**
+ * Value of `@@SESSION.sql_mode`, combination modes expanded by the
+ * server: the transpiler reads and writes the queries under this mode.
+ */
+sql_mode: string, };

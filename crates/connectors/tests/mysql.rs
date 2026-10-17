@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 
 use prisme_connectors::mysql::catalog::{self, RoutineKind, TableKind};
 use prisme_connectors::mysql::{Flavor, MysqlTarget, connect, execute, kill_query, probe};
+use prisme_types::{DataType, IntegerSize, IntegerType};
 use secrecy::SecretString;
 use testcontainers_modules::mariadb::Mariadb;
 use testcontainers_modules::mysql::Mysql;
@@ -207,5 +208,55 @@ async fn reads_the_catalog_schema_by_schema() {
     assert_eq!(
         (t.triggers[0].timing.as_str(), t.triggers[0].event.as_str()),
         ("BEFORE", "INSERT")
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires Docker Desktop running"]
+async fn reads_the_columns_of_a_table_without_running_it() {
+    let server = Mysql::default().start().await.unwrap();
+    let host = server.get_host().await.unwrap().to_string();
+    let port = server.get_host_port_ipv4(3306).await.unwrap();
+    let mut connection = connect(&target(host, port)).await.unwrap();
+    for sql in [
+        "CREATE TABLE t (id INT NOT NULL, label VARCHAR(20))",
+        "CREATE TEMPORARY TABLE `odd``name` (n BIGINT UNSIGNED NOT NULL)",
+    ] {
+        execute(&mut connection, sql).await.unwrap().discard().await;
+    }
+
+    let columns = catalog::table_columns(&mut connection, Some("test"), "t")
+        .await
+        .unwrap()
+        .unwrap();
+    let names: Vec<&str> = columns.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(names, ["id", "label"]);
+    assert_eq!(
+        columns[0].1.data_type,
+        DataType::Integer(IntegerType::signed(IntegerSize::Int))
+    );
+    assert!(!columns[0].1.nullable);
+    assert!(columns[1].1.nullable);
+
+    // A temporary table of the connection, in the current database.
+    let temporary = catalog::table_columns(&mut connection, None, "odd`name")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        temporary[0].1.data_type,
+        DataType::Integer(IntegerType::unsigned(IntegerSize::Big))
+    );
+    assert!(
+        catalog::table_columns(&mut connection, None, "missing")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        catalog::table_columns(&mut connection, Some("nowhere"), "t")
+            .await
+            .unwrap()
+            .is_none()
     );
 }

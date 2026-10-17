@@ -72,6 +72,9 @@ pub struct ServerInfo {
     /// the `ANSI` mode)? Double quotes then delimit identifiers, no longer
     /// strings.
     pub ansi_quotes: bool,
+    /// Value of `@@SESSION.sql_mode`, combination modes expanded by the
+    /// server: the transpiler reads and writes the queries under this mode.
+    pub sql_mode: String,
 }
 
 /// Errors of the MySQL / MariaDB connector.
@@ -158,6 +161,7 @@ pub async fn server_info(connection: &mut Conn) -> Result<ServerInfo, MysqlError
         flavor: detect_flavor(&version),
         ansi_quotes: has_ansi_quotes(&sql_mode),
         version,
+        sql_mode,
     })
 }
 

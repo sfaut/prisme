@@ -8,6 +8,9 @@
 //! 3. `details`: columns, indexes, foreign keys and triggers of each table of
 //!    a database.
 //!
+//! The transpiler needs the columns of the tables a query reads, with their
+//! type: `table_columns`, on the connection that runs the query.
+//!
 //! Each read filters on a database, which saves the server from walking all
 //! the tables at once. The queries only ask for dictionary information:
 //! asking for the row count as well (`TABLE_ROWS`) would force the server to
@@ -21,7 +24,11 @@ use mysql_async::prelude::Queryable;
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::{Connection, MysqlError};
+use super::{Connection, MysqlError, column_type};
+
+/// Errors of the server for a table that does not exist: unknown table
+/// (`ER_NO_SUCH_TABLE`), unknown database (`ER_BAD_DB_ERROR`).
+const MISSING_TABLE: [u16; 2] = [1146, 1049];
 
 /// Table or view of a database.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -175,6 +182,52 @@ type ForeignKeyRow = (String, String, String, String, String, String);
 
 /// Row of `information_schema.TRIGGERS`: table, trigger, timing, event.
 type TriggerRow = (String, String, String, String);
+
+/// Columns of the table or view `table`, of the database `database` (the
+/// current database when absent), with their internal type, in order; `None`
+/// when the table or the database does not exist.
+///
+/// The server describes the columns of `SELECT * FROM t` when preparing it,
+/// without running it: a temporary table of the connection is seen as well,
+/// and a view is not computed (`docs/QUESTIONS.md`, point 44).
+pub async fn table_columns(
+    connection: &mut Connection,
+    database: Option<&str>,
+    table: &str,
+) -> Result<Option<Vec<(String, prisme_types::Type)>>, MysqlError> {
+    let name = match database {
+        Some(database) => format!("{}.{}", quote(database), quote(table)),
+        None => quote(table),
+    };
+    let statement = match connection.prep(format!("SELECT * FROM {name}")).await {
+        Ok(statement) => statement,
+        Err(mysql_async::Error::Server(error)) if MISSING_TABLE.contains(&error.code) => {
+            return Ok(None);
+        }
+        Err(error) => return Err(error.into()),
+    };
+    let columns = statement
+        .columns()
+        .iter()
+        .map(|column| {
+            let ty = column_type::plan_type(
+                column.column_type(),
+                column.flags(),
+                column.column_length(),
+                column.decimals(),
+                column.character_set(),
+            );
+            (column.name_str().into_owned(), ty)
+        })
+        .collect();
+    connection.close(statement).await?;
+    Ok(Some(columns))
+}
+
+/// Name between backticks, read as a name whatever the SQL mode.
+fn quote(name: &str) -> String {
+    format!("`{}`", name.replace('`', "``"))
+}
 
 /// Lists the server's databases, by name.
 pub async fn schemas(connection: &mut Connection) -> Result<Vec<String>, MysqlError> {
