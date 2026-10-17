@@ -5,16 +5,24 @@
 //! - a byte string: MySQL counts the bits of its bytes, MariaDB reads it
 //!   as a number (`BIT_COUNT(X'FF0F')` gives 12, 0 in MariaDB);
 //! - a character string: MySQL reads an integer, its fraction dropped,
-//!   MariaDB a decimal, rounded (`BIT_COUNT('3.7')` gives 2, 1 in MariaDB);
+//!   MariaDB a decimal, rounded (`BIT_COUNT('3.7')` gives 2, 1 in MariaDB).
+//!   From 2^63, MySQL bounds the integer to 2^63 - 1 or takes it as
+//!   unsigned according to the expression: a literal is taken as unsigned,
+//!   a column of a table is bounded, a column of a view, of a derived table
+//!   or of a common table expression is read as the expression it stands
+//!   for, a string function is bounded before 8.4 and taken as unsigned
+//!   from 8.4, `COALESCE` and `IFNULL` take it as unsigned;
 //! - a number from 2^63: MySQL counts the bits of 2^63 - 1, MariaDB those
 //!   of the number taken as unsigned, those of 2^64 - 1 from 2^64;
 //! - a floating point number: MySQL rounds half to even, MariaDB half away
 //!   from zero (`BIT_COUNT(2.5e0)` gives 1, 2 in MariaDB).
 //!
-//! Measured on MySQL 8.0.11 and 8.4, MariaDB 10.6 and 11.8.
+//! Measured on MySQL 8.0.11 and 8.4.11, MariaDB 10.6.28 and 11.8.9; the
+//! readings of a string by expression also on MySQL 8.0.17, 8.0.22, 8.0.28
+//! and 9.3.0.
 
 use prisme_plan::{Expr, ExprKind, FunctionCall};
-use prisme_types::DataType;
+use prisme_types::{DataType, Value};
 
 use super::Emitter;
 use super::rules::number;
@@ -96,6 +104,7 @@ impl Emitter<'_> {
             return;
         };
         let reading = Reading::of(arg);
+        let towards_mariadb = self.output.dialect == Dialect::MariaDb;
         let message = match reading {
             Reading::Same => {
                 self.input_call(expr, call);
@@ -110,6 +119,15 @@ impl Emitter<'_> {
             Reading::Other => {
                 "`BIT_COUNT` of a value of this type: its reading in MySQL and MariaDB is not established"
             }
+            Reading::Text if towards_mariadb => match &arg.kind {
+                ExprKind::Literal(Value::Text(text)) if !vertical_space_first(text) => "",
+                ExprKind::Literal(_) => {
+                    "`BIT_COUNT` of a string that starts with a line break or a vertical space: MySQL reads it as 0, MariaDB skips them"
+                }
+                _ => {
+                    "`BIT_COUNT` of a string other than a literal: MySQL bounds the integer it reads to 2^63 - 1 or takes it as unsigned from 2^63 according to the expression (a column of a table, of a view or of a derived table, a function) and to the version"
+                }
+            },
             Reading::Text | Reading::Binary | Reading::Large => "",
         };
         if !message.is_empty() {
@@ -128,9 +146,10 @@ impl Emitter<'_> {
                 "`BIT_COUNT` of a number from 2^63 counts the bits of 2^63 - 1 in MySQL, those of the number taken as unsigned in MariaDB"
             }
         };
-        let towards_mariadb = self.output.dialect == Dialect::MariaDb;
         let how = match (reading, towards_mariadb) {
-            (Reading::Text, true) => "`CAST(x AS SIGNED)` reads it as MySQL does",
+            (Reading::Text, true) => {
+                "`CAST(x AS SIGNED)` reads a literal as MySQL does, taken as unsigned from 2^63"
+            }
             (Reading::Binary, true) => "its bits are counted by `HEX` and `REPLACE`",
             (_, true) => "`LEAST(x, 9223372036854775807)` bounds it as MySQL does",
             (Reading::Large, false) => {
@@ -192,4 +211,12 @@ impl Emitter<'_> {
         }
         self.write(")");
     }
+}
+
+/// Tells whether `text` starts with a line break or a vertical space after
+/// its spaces and tabs: MySQL reads a literal as an integer after spaces
+/// and tabs only, `CAST(x AS SIGNED)` of MariaDB after all of them.
+fn vertical_space_first(text: &str) -> bool {
+    text.trim_start_matches([' ', '\t'])
+        .starts_with(['\n', '\u{b}', '\u{c}', '\r'])
 }

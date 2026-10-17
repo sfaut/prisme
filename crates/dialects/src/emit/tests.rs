@@ -1225,10 +1225,10 @@ fn bit_count_reads_its_argument_as_the_input_does() {
     };
     for (text, input, target, expected) in [
         (
-            "SELECT BIT_COUNT(s) AS v FROM g",
+            "SELECT BIT_COUNT('18446744073709551615') AS v",
             mysql(),
             mariadb(),
-            "SELECT BIT_COUNT(CAST(s AS SIGNED)) AS v FROM g".to_string(),
+            "SELECT BIT_COUNT(CAST('18446744073709551615' AS SIGNED)) AS v".to_string(),
         ),
         (
             "SELECT BIT_COUNT(vb) AS v FROM g",
@@ -1277,11 +1277,24 @@ fn bit_count_reads_its_argument_as_the_input_does() {
         assert_eq!(sql, expected);
         assert_eq!(rules, ["function.bit-count"], "{text}");
     }
-    // A floating point number, a type unknown.
+    // A floating point number, a type unknown, a string other than a
+    // literal towards MariaDB, a literal starting with a line break.
     for (text, input, target) in [
         ("SELECT BIT_COUNT(f) AS v FROM d", mysql(), mariadb()),
         ("SELECT BIT_COUNT(f) AS v FROM d", mariadb(), mysql()),
         ("SELECT BIT_COUNT(ABS(a)) AS v FROM t", mysql(), mariadb()),
+        ("SELECT BIT_COUNT(s) AS v FROM g", mysql(), mariadb()),
+        (
+            "SELECT BIT_COUNT(CONCAT(s)) AS v FROM g",
+            mysql(),
+            mariadb(),
+        ),
+        (
+            "SELECT BIT_COUNT((SELECT s FROM g LIMIT 1)) AS v",
+            mysql(),
+            mariadb(),
+        ),
+        ("SELECT BIT_COUNT(' \\n5') AS v", mysql(), mariadb()),
     ] {
         assert_eq!(
             errors(text, input, output(target)),
