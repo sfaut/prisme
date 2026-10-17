@@ -72,6 +72,8 @@ struct Received {
     end: Value,
     /// Has the `started` message arrived?
     started: bool,
+    /// `transpiled` message, or Null.
+    transpiled: Value,
 }
 
 /// Sends a request, then reads the messages until `batch_done`.
@@ -102,6 +104,7 @@ async fn run(socket: &mut ClientSocket, mut request: Value) -> (Value, Vec<Recei
         let result = &mut results[message["query"].as_u64().unwrap() as usize];
         match kind.as_str() {
             "started" => result.started = true,
+            "transpiled" => result.transpiled = message,
             "columns" => result.columns = message,
             "rows" => result.rows += message["rows"].as_array().unwrap().len(),
             _ => result.end = message,
@@ -208,6 +211,92 @@ async fn unknown_connection_is_refused() {
             .await
             .is_err()
     );
+}
+
+#[tokio::test]
+#[ignore = "requires Docker Desktop running"]
+async fn runs_queries_written_in_mysql_on_mariadb() {
+    let server = Mariadb::default().start().await.unwrap();
+    let host = server.get_host().await.unwrap().to_string();
+    let port = server.get_host_port_ipv4(3306).await.unwrap();
+    // The session refuses the writes: the table is created beforehand.
+    let target = prisme_connectors::mysql::MysqlTarget {
+        host: host.clone(),
+        port,
+        username: "root".to_string(),
+        password: SecretString::from(""),
+        database_name: "test".to_string(),
+        init_statements: Vec::new(),
+    };
+    let mut connection = prisme_connectors::mysql::connect(&target).await.unwrap();
+    for sql in [
+        "CREATE TABLE t (a INT NOT NULL)",
+        "INSERT INTO t VALUES (1), (2)",
+    ] {
+        prisme_connectors::mysql::execute(&mut connection, sql)
+            .await
+            .unwrap()
+            .discard()
+            .await;
+    }
+    let (address, id, _) = start(&host, port).await;
+    let (mut socket, _) = connect_async(format!("ws://{address}/api/connections/{id}/query"))
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut socket).await["type"], "ready");
+    let mysql = |sql: &str| json!({ "sql": sql, "cursor": 0, "dialect": "mysql 8.0.19" });
+
+    // The example of the dialects: VALUES ROW becomes a table value constructor.
+    let example = "WITH ds (c) AS (VALUES ROW (123), ROW (234), ROW (345)) SELECT * FROM ds";
+    let (_, results) = run(&mut socket, mysql(example)).await;
+    let report = &results[0].transpiled["report"];
+    assert_eq!(
+        report["sql"],
+        "WITH ds (c) AS (VALUES (123), (234), (345)) SELECT * FROM ds"
+    );
+    assert_eq!(report["steps"][0]["rule"], "values.form");
+    assert_eq!(
+        report["steps"][0]["span"],
+        json!({ "start": 16, "end": 54 })
+    );
+    assert_eq!(results[0].columns["columns"], json!(["c"]));
+    assert_eq!(results[0].rows, 3);
+
+    // The columns of the tables come from the server; the implicit name of a
+    // column is kept, and the default limit applies to the transpilation.
+    let (_, results) = run(&mut socket, mysql("SELECT a+1 FROM t WHERE a > 1")).await;
+    assert_eq!(
+        results[0].columns["sql"],
+        "SELECT a + 1 AS `a+1` FROM t WHERE a > 1 LIMIT 1001"
+    );
+    assert_eq!(results[0].columns["columns"], json!(["a+1"]));
+    assert_eq!(results[0].rows, 1);
+
+    // A query the parser of MySQL does not read yet: report, then error.
+    let (_, results) = run(&mut socket, mysql("SELECT COUNT(*) FROM t")).await;
+    let errors = &results[0].transpiled["report"]["errors"];
+    assert_eq!(errors[0]["rule"], Value::Null);
+    assert_eq!(results[0].end["type"], "error");
+    assert!(
+        results[0].end["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("query not transpiled from mysql 8.0.19 to mariadb ")
+    );
+    let (_, results) = run(&mut socket, mysql("SELECT * FROM missing")).await;
+    assert_eq!(
+        results[0].transpiled["report"]["errors"][0]["message"],
+        "unknown table `missing`"
+    );
+
+    // Unknown dialect: error of the session; the native SQL runs as written.
+    let request = json!({ "sql": "SELECT 1", "cursor": 0, "dialect": "oracle 19.0.0" });
+    let (error, _) = run(&mut socket, request).await;
+    assert_eq!(error["type"], "error");
+    let request = json!({ "sql": "SELECT 1", "cursor": 0, "dialect": "source" });
+    let (_, results) = run(&mut socket, request).await;
+    assert_eq!(results[0].transpiled, Value::Null);
+    assert_eq!(results[0].rows, 1);
 }
 
 #[tokio::test]

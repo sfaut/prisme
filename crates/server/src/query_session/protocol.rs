@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 use crate::recorder::ResumedQuery;
+use crate::transpilation::TranspilationReport;
 
 /// Message sent by the client.
 #[derive(Debug, Deserialize, TS)]
@@ -49,6 +50,12 @@ pub(crate) struct QueryRequest {
     /// Row limit for these queries only, among the allowed choices.
     #[ts(optional)]
     pub(super) row_limit: Option<u32>,
+    /// Dialect the queries are written in: `source` or absent for the
+    /// native SQL of the server, otherwise a dialect with its version
+    /// (`mysql 8.0.19`), transpiled to the dialect of the server.
+    #[ts(optional)]
+    #[serde(default)]
+    pub(super) dialect: Option<String>,
 }
 
 /// Query of a batch, as announced to the client.
@@ -98,6 +105,12 @@ pub(crate) enum ServerMessage {
     /// A query of the batch starts. In parallel, the queries beyond
     /// `MAX_PARALLEL` wait for their turn before this message.
     Started { query: u32 },
+    /// Report of the transpilation of a query written in another dialect,
+    /// before its result (or its error, if it cannot be transpiled).
+    Transpiled {
+        query: u32,
+        report: TranspilationReport,
+    },
     /// Start of a result: columns, text actually run, handling of the limit.
     Columns {
         query: u32,

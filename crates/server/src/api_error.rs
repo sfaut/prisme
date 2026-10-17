@@ -85,7 +85,9 @@ impl From<ProfileError> for ApiError {
     /// Translates a profile management error into an HTTP error.
     fn from(error: ProfileError) -> Self {
         match error {
-            ProfileError::NameTooLong { .. } => Self::BadRequest(error.to_string()),
+            ProfileError::NameTooLong { .. } | ProfileError::Dialect(_) => {
+                Self::BadRequest(error.to_string())
+            }
             ProfileError::Sqlite(_) => {
                 tracing::error!("{error}");
                 Self::Internal

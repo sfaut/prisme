@@ -20,4 +20,10 @@ last_name: string,
  * Are the query sessions in read-only mode? On by default: the database
  * then refuses the writes too.
  */
-read_only_session: boolean, };
+read_only_session: boolean, 
+/**
+ * Dialect the user writes in, unless an editor tab says otherwise:
+ * `source` (native SQL of the data source) or a dialect with its version
+ * (`mysql 8.0.19`).
+ */
+preferred_dialect: string, };

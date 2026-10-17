@@ -14,7 +14,7 @@
 //! |-----------------------------------------|---------------------------------------------------------|
 //! | `GET /api/editors`                      | Open editors, in order.                                 |
 //! | `POST /api/editors`                     | Creates an empty editor, after the others.              |
-//! | `PUT /api/editors/{id}`                 | Changes the name, the text or the connection (204).     |
+//! | `PUT /api/editors/{id}`                 | Changes the name, text, connection or dialect (204).    |
 //! | `DELETE /api/editors/{id}`              | Closes the editor; reopenable for 24 hours (204).       |
 //! | `PUT /api/editors/order`                | Orders the open editors as given (204).                 |
 //! | `GET /api/editors/closed`               | Editors closed less than 24 hours ago.                  |
@@ -37,6 +37,7 @@ use crate::api::AppState;
 use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
 use crate::query_session::LimitReport;
+use crate::transpilation::{DialectChoice, TranspilationReport};
 
 /// Maximum length of the name of an editor or a result tab, in characters.
 const NAME_MAX_LENGTH: usize = 100;
@@ -76,6 +77,9 @@ pub struct Editor {
     pub connection_id: Option<i64>,
     /// SQL text of the editor.
     pub sql: String,
+    /// Dialect of the editor's text (`source`, `mysql 8.0.19`...); empty
+    /// string for the preferred dialect of the profile.
+    pub dialect: String,
 }
 
 /// Saved result tab.
@@ -143,6 +147,9 @@ pub struct SavedResult {
     pub transfer_us: u64,
     /// Size of the result's messages, in bytes.
     pub bytes: u64,
+    /// Report of the transpilation, for a query written in a dialect other
+    /// than the native SQL of the server.
+    pub transpilation: Option<TranspilationReport>,
 }
 
 /// Editor closed less than 24 hours ago, reopenable.
@@ -159,7 +166,7 @@ pub struct ClosedEditor {
     pub closed_at: String,
 }
 
-/// Change of an editor: name, text and connection, all sent.
+/// Change of an editor: name, text, connection and dialect, all sent.
 #[derive(Debug, Deserialize, TS)]
 #[ts(export)]
 pub struct EditorUpdate {
@@ -169,6 +176,9 @@ pub struct EditorUpdate {
     pub sql: String,
     /// Connection, absent for none.
     pub connection_id: Option<i64>,
+    /// Dialect of the text, empty string for the preferred dialect of the
+    /// profile.
+    pub dialect: String,
 }
 
 /// Change of a result tab.
@@ -210,6 +220,17 @@ fn check_name(name: &str) -> Result<(), EditorsError> {
     Ok(())
 }
 
+/// Checks the dialect of an editor: empty, or a choice of the registry.
+/// Returns its stored form.
+fn check_dialect(dialect: &str) -> Result<String, EditorsError> {
+    if dialect.is_empty() {
+        return Ok(String::new());
+    }
+    DialectChoice::parse(dialect)
+        .map(|choice| choice.to_string())
+        .map_err(|message| EditorsError::Invalid(format!("dialect: {message}")))
+}
+
 /// Deletes the editors closed more than 24 hours ago, all users together,
 /// with their result tabs. Returns their number.
 pub fn purge(db: &Connection) -> Result<usize, EditorsError> {
@@ -227,7 +248,7 @@ pub fn purge(db: &Connection) -> Result<usize, EditorsError> {
 pub fn list_open(db: &Connection, user_id: i64) -> Result<Vec<Editor>, EditorsError> {
     purge(db)?;
     let mut statement = db.prepare(
-        "SELECT id, name, connection_id, sql FROM editors
+        "SELECT id, name, connection_id, sql, dialect FROM editors
          WHERE user_id = ?1 AND closed_at = '' ORDER BY position, id",
     )?;
     let editors = statement
@@ -237,6 +258,7 @@ pub fn list_open(db: &Connection, user_id: i64) -> Result<Vec<Editor>, EditorsEr
                 name: row.get(1)?,
                 connection_id: row.get(2)?,
                 sql: row.get(3)?,
+                dialect: row.get(4)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -318,6 +340,7 @@ pub fn create(db: &Connection, user_id: i64, new: &NewEditor) -> Result<Editor, 
         name: String::new(),
         connection_id: new.connection_id,
         sql: String::new(),
+        dialect: String::new(),
     })
 }
 
@@ -330,9 +353,11 @@ pub fn update(
     changed: &EditorUpdate,
 ) -> Result<bool, EditorsError> {
     check_name(&changed.name)?;
+    let dialect = check_dialect(&changed.dialect)?;
     let updated = db.execute(
         &format!(
-            "UPDATE editors SET name = ?3, sql = ?4, connection_id = ?5, updated_at = {NOW}
+            "UPDATE editors SET name = ?3, sql = ?4, connection_id = ?5, dialect = ?6,
+             updated_at = {NOW}
              WHERE id = ?1 AND user_id = ?2 AND closed_at = ''"
         ),
         params![
@@ -340,7 +365,8 @@ pub fn update(
             user_id,
             changed.name,
             changed.sql,
-            changed.connection_id
+            changed.connection_id,
+            dialect
         ],
     )?;
     Ok(updated == 1)
@@ -670,10 +696,11 @@ mod tests {
         let (db, user_id) = setup();
         let first = create(&db, user_id, &NewEditor::default()).unwrap();
         let second = create(&db, user_id, &NewEditor::default()).unwrap();
-        let changed = EditorUpdate {
+        let mut changed = EditorUpdate {
             name: "Sales".to_string(),
             sql: "SELECT 1".to_string(),
             connection_id: None,
+            dialect: "mariadb 10.6.3".to_string(),
         };
         assert!(update(&db, user_id, first.id, &changed).unwrap());
         reorder(
@@ -693,6 +720,14 @@ mod tests {
             (editors[1].name.as_str(), editors[1].sql.as_str()),
             ("Sales", "SELECT 1")
         );
+        assert_eq!(editors[1].dialect, "mariadb 10.6.3");
+        assert_eq!(editors[0].dialect, "");
+        changed.dialect = "mariadb 10.5.0".to_string();
+        assert!(matches!(
+            update(&db, user_id, first.id, &changed),
+            Err(EditorsError::Invalid(_))
+        ));
+        changed.dialect = String::new();
         // Another user neither sees nor changes anything.
         let other = store::ensure_user(&db, "other@example.com").unwrap();
         assert!(list_open(&db, other).unwrap().is_empty());

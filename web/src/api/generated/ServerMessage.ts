@@ -4,11 +4,12 @@ import type { ColumnTypeInfo } from "./ColumnTypeInfo";
 import type { LimitReport } from "./LimitReport";
 import type { ResumedQuery } from "./ResumedQuery";
 import type { ServerInfo } from "./ServerInfo";
+import type { TranspilationReport } from "./TranspilationReport";
 
 /**
  * Message sent to the client.
  */
-export type ServerMessage = { "type": "ready", server: ServerInfo, database: string | null, } | { "type": "batch", queries: Array<BatchQuery>, } | { "type": "started", query: number, } | { "type": "columns", query: number, columns: Array<string>, 
+export type ServerMessage = { "type": "ready", server: ServerInfo, database: string | null, } | { "type": "batch", queries: Array<BatchQuery>, } | { "type": "started", query: number, } | { "type": "transpiled", query: number, report: TranspilationReport, } | { "type": "columns", query: number, columns: Array<string>, 
 /**
  * For each column, are its values right-aligned (numbers, dates and
  * times)?

@@ -16,4 +16,10 @@ cursor?: number,
 /**
  * Row limit for these queries only, among the allowed choices.
  */
-row_limit?: number, };
+row_limit?: number, 
+/**
+ * Dialect the queries are written in: `source` or absent for the
+ * native SQL of the server, otherwise a dialect with its version
+ * (`mysql 8.0.19`), transpiled to the dialect of the server.
+ */
+dialect?: string, };

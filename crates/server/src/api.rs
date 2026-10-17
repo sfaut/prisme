@@ -15,11 +15,12 @@
 //! | `GET /api/connections/{id}/catalog` | Databases, tables and columns (see `explorer.rs`).            |
 //! | `GET /api/settings`                 | Settings of the user, with the allowed choices.               |
 //! | `PUT /api/settings`                 | Changes the settings, returns the updated settings.           |
-//! | `GET /api/profile`                  | Profile of the user: names, email address, read-only sessions. |
-//! | `PUT /api/profile`                  | Changes the names and the read-only sessions, returns the profile. |
+//! | `GET /api/profile`                  | Profile of the user: names, email address, read-only sessions, preferred dialect. |
+//! | `PUT /api/profile`                  | Changes the names, the read-only sessions and the preferred dialect, returns the profile. |
 //! | `POST /api/beautify`                | Beautifies SQL (keywords in capitals...).                     |
 //! | `POST /api/analyze`                 | Analyses the editor's text (see `analyze.rs`).                |
 //! | `GET /api/dialects/{flavor}/keywords` | Keywords of the dialect (`?version=`: those of the version). |
+//! | `GET /api/dialects`, `POST /api/transpile` | Dialects offered, preview of the transpilation (see `transpilation.rs`). |
 //! | `GET /` and any other path          | Files of the interface (see `web_assets.rs`).                 |
 
 use std::sync::{Arc, Mutex};
@@ -54,6 +55,7 @@ use crate::recorder::Recorder;
 use crate::request_guard;
 use crate::sessions::Sessions;
 use crate::settings::{self, Settings, SettingsUpdate};
+use crate::transpilation;
 use crate::web_assets;
 
 /// State shared by all the routes.
@@ -135,6 +137,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/dialects/{flavor}/keywords", get(dialect_keywords))
         .merge(explorer::routes())
         .merge(editors::routes())
+        .merge(transpilation::routes())
         .fallback(web_assets::serve)
         .layer(middleware::from_fn(request_guard::local_only))
         .with_state(state)
@@ -549,7 +552,8 @@ mod tests {
         assert_eq!(status, StatusCode::CREATED);
         let id = created["id"].as_i64().unwrap();
         let uri = format!("/api/editors/{id}");
-        let change = json!({ "name": "Sales", "sql": "SELECT 1", "connection_id": null });
+        let change =
+            json!({ "name": "Sales", "sql": "SELECT 1", "connection_id": null, "dialect": "" });
         let (status, _) = send(&app, "PUT", &uri, Some(change)).await;
         assert_eq!(status, StatusCode::NO_CONTENT);
         let (_, editors) = send(&app, "GET", "/api/editors", None).await;
@@ -587,6 +591,49 @@ mod tests {
 
         let (status, _) = send(&app, "GET", "/api/dialects/mariadb/keywords", None).await;
         assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn offers_the_dialects_and_checks_the_preferred_one() {
+        let app = test_app();
+        let (status, dialects) = send(&app, "GET", "/api/dialects", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(dialects[0]["id"], "mysql");
+        assert_eq!(dialects[0]["versions"][0], "8.0.11");
+
+        let (_, profile) = send(&app, "GET", "/api/profile", None).await;
+        assert_eq!(profile["preferred_dialect"], "source");
+        let mut change = json!({
+            "first_name": "",
+            "last_name": "",
+            "read_only_session": true,
+            "preferred_dialect": "mariadb 10.6.3",
+        });
+        let (status, profile) = send(&app, "PUT", "/api/profile", Some(change.clone())).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(profile["preferred_dialect"], "mariadb 10.6.3");
+        change["preferred_dialect"] = json!("mariadb");
+        let (status, _) = send(&app, "PUT", "/api/profile", Some(change)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn the_preview_needs_a_dialect_to_transpile_and_a_connection() {
+        let app = test_app();
+        let preview =
+            |dialect: &str| json!({ "connection_id": 42, "sql": "SELECT 1", "dialect": dialect });
+        let (status, _) = send(&app, "POST", "/api/transpile", Some(preview("source"))).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = send(&app, "POST", "/api/transpile", Some(preview("sql"))).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = send(
+            &app,
+            "POST",
+            "/api/transpile",
+            Some(preview("mysql 8.0.19")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

@@ -1,14 +1,17 @@
 //! Profile of the user: first and last names, the email address, which
 //! identifies the user and is changed by `prisme --setup` or `--user-email`,
-//! and the read-only mode of the query sessions (`docs/V1.md`, section 2.4).
+//! the read-only mode of the query sessions (`docs/V1.md`, section 2.4) and
+//! the preferred dialect (`transpilation.rs`).
 //!
-//! The settings are stored in the `users` table (see `migrations/0010_users_names.sql`
-//! and `migrations/0011_users_read_only_session.sql`).
+//! The settings are stored in the `users` table (see `migrations/0010_users_names.sql`,
+//! `migrations/0011_users_read_only_session.sql` and `migrations/0012_dialects.sql`).
 //! Synchronous functions (`rusqlite`), called from blocking tasks.
 
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
+
+use crate::transpilation::DialectChoice;
 
 /// Longest first or last name, in characters: the database checks the same limit (`length()` counts characters).
 pub const NAME_MAX_CHARS: usize = 100;
@@ -26,6 +29,10 @@ pub struct Profile {
     /// Are the query sessions in read-only mode? On by default: the database
     /// then refuses the writes too.
     pub read_only_session: bool,
+    /// Dialect the user writes in, unless an editor tab says otherwise:
+    /// `source` (native SQL of the data source) or a dialect with its version
+    /// (`mysql 8.0.19`).
+    pub preferred_dialect: String,
 }
 
 /// Change of the profile requested by the user.
@@ -38,6 +45,8 @@ pub struct ProfileUpdate {
     pub last_name: String,
     /// New read-only mode of the query sessions.
     pub read_only_session: bool,
+    /// New preferred dialect, checked against the registry of the versions.
+    pub preferred_dialect: String,
 }
 
 /// Errors of profile management.
@@ -49,6 +58,10 @@ pub enum ProfileError {
         /// Field that is too long.
         field: &'static str,
     },
+
+    /// Unknown dialect or invalid version.
+    #[error("preferred_dialect: {0}")]
+    Dialect(String),
 
     /// Error of the internal database.
     #[error("internal database: {0}")]
@@ -77,7 +90,8 @@ pub fn check_update(update: &ProfileUpdate) -> Result<(String, String), ProfileE
 /// Reads the profile of user `user_id`.
 pub fn load(db: &Connection, user_id: i64) -> Result<Profile, ProfileError> {
     let profile = db.query_row(
-        "SELECT email, first_name, last_name, read_only_session FROM users WHERE id = ?1",
+        "SELECT email, first_name, last_name, read_only_session, preferred_dialect
+         FROM users WHERE id = ?1",
         params![user_id],
         |row| {
             Ok(Profile {
@@ -85,6 +99,7 @@ pub fn load(db: &Connection, user_id: i64) -> Result<Profile, ProfileError> {
                 first_name: row.get(1)?,
                 last_name: row.get(2)?,
                 read_only_session: row.get(3)?,
+                preferred_dialect: row.get(4)?,
             })
         },
     )?;
@@ -98,9 +113,17 @@ pub fn update(
     update: &ProfileUpdate,
 ) -> Result<Profile, ProfileError> {
     let (first_name, last_name) = check_update(update)?;
+    let dialect = DialectChoice::parse(&update.preferred_dialect).map_err(ProfileError::Dialect)?;
     db.execute(
-        "UPDATE users SET first_name = ?1, last_name = ?2, read_only_session = ?3 WHERE id = ?4",
-        params![first_name, last_name, update.read_only_session, user_id],
+        "UPDATE users SET first_name = ?1, last_name = ?2, read_only_session = ?3,
+         preferred_dialect = ?4 WHERE id = ?5",
+        params![
+            first_name,
+            last_name,
+            update.read_only_session,
+            dialect.to_string(),
+            user_id
+        ],
     )?;
     load(db, user_id)
 }
@@ -110,12 +133,14 @@ mod tests {
     use super::*;
     use crate::store;
 
-    /// Update with the given names, read-only mode unchanged from `read_only_session`.
+    /// Update with the given names and read-only mode, in the native SQL of
+    /// the data source.
     fn update_of(first_name: &str, last_name: &str, read_only_session: bool) -> ProfileUpdate {
         ProfileUpdate {
             first_name: first_name.to_string(),
             last_name: last_name.to_string(),
             read_only_session,
+            preferred_dialect: "source".to_string(),
         }
     }
 
@@ -161,5 +186,27 @@ mod tests {
             })
         ));
         assert_eq!(load(&db, user_id).unwrap().first_name, "");
+    }
+
+    #[test]
+    fn the_preferred_dialect_is_the_source_until_chosen() {
+        let db = store::open_in_memory();
+        let user_id = store::ensure_user(&db, "a@example.com").unwrap();
+        assert_eq!(load(&db, user_id).unwrap().preferred_dialect, "source");
+
+        let mut chosen = update_of("", "", true);
+        chosen.preferred_dialect = "mysql 8.0.19".to_string();
+        let profile = update(&db, user_id, &chosen).unwrap();
+        assert_eq!(profile.preferred_dialect, "mysql 8.0.19");
+
+        chosen.preferred_dialect = "mysql 5.7.44".to_string();
+        assert!(matches!(
+            update(&db, user_id, &chosen),
+            Err(ProfileError::Dialect(_))
+        ));
+        assert_eq!(
+            load(&db, user_id).unwrap().preferred_dialect,
+            "mysql 8.0.19"
+        );
     }
 }

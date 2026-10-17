@@ -15,6 +15,7 @@ use super::limits::{report, write_refusal};
 use super::outbox::SessionStopped;
 use super::protocol::ServerMessage;
 use super::session::{Session, Summary};
+use crate::transpilation::{self, Translation};
 
 /// Number of rows per `rows` message.
 const ROW_BATCH_SIZE: usize = 500;
@@ -139,7 +140,9 @@ impl Session<'_> {
         }
     }
 
-    /// Runs a query and streams its columns and its rows.
+    /// Runs a query and streams its columns and its rows. A query written in
+    /// another dialect is transpiled first: what follows applies to its
+    /// transpilation.
     ///
     /// Returns the summary of the result, or `None` if the query failed (the
     /// error has then already gone to the client).
@@ -151,6 +154,17 @@ impl Session<'_> {
         sql: &str,
         max_rows: usize,
     ) -> Result<Option<Summary>, SessionStopped> {
+        let transpiled;
+        let sql = match self.translation {
+            None => sql,
+            Some(translation) => match self.transpile(connection, translation, query, sql).await? {
+                Some(output) => {
+                    transpiled = output;
+                    transpiled.as_str()
+                }
+                None => return Ok(None),
+            },
+        };
         if let Some(refusal) = write_refusal(sql, dialect) {
             self.outbox.error(Some(query), refusal).await?;
             return Ok(None);
@@ -264,6 +278,36 @@ impl Session<'_> {
         }))
     }
 
+    /// Transpiles a query on the connection that runs it, then sends its
+    /// report. Returns the text to run, or `None` if the query cannot be
+    /// transpiled (the error has then already gone to the client).
+    async fn transpile(
+        &self,
+        connection: &mut Connection,
+        translation: Translation,
+        query: u32,
+        sql: &str,
+    ) -> Result<Option<String>, SessionStopped> {
+        let report = match transpilation::transpile(connection, sql, translation).await {
+            Ok(report) => report,
+            Err(error) => {
+                let message = format!("columns of the tables of the query unreadable: {error}");
+                self.outbox.error(Some(query), message).await?;
+                return Ok(None);
+            }
+        };
+        let failure = report.failure();
+        let output = report.sql.clone();
+        self.outbox
+            .send(ServerMessage::Transpiled { query, report })
+            .await?;
+        if let Some(message) = failure {
+            self.outbox.error(Some(query), message).await?;
+            return Ok(None);
+        }
+        Ok(Some(output))
+    }
+
     /// Has stopping the query `query` of this batch been requested?
     fn is_cancelled(&self, query: u32) -> bool {
         self.cancellation.is_cancelled(self.batch, query)
@@ -300,7 +344,7 @@ impl Session<'_> {
 }
 
 /// Queries to run: the one under the cursor, or all of them without a cursor.
-pub(super) fn chosen_statements(
+pub(crate) fn chosen_statements(
     statements: &[Statement],
     cursor: Option<usize>,
 ) -> Vec<&Statement> {

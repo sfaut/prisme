@@ -25,6 +25,7 @@ mod sessions;
 mod settings;
 mod setup;
 mod store;
+mod transpilation;
 mod web_assets;
 
 use std::io::IsTerminal;

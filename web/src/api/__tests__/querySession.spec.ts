@@ -399,6 +399,7 @@ describe('savedTab', () => {
         affected_rows: 0,
         transfer_us: 4000,
         bytes: 120,
+        transpilation: null,
       },
       rows: [['1'], ['2']],
     })
@@ -430,6 +431,7 @@ describe('resume', () => {
           affected_rows: 0,
           transfer_us: 0,
           bytes: 0,
+          transpilation: null,
         },
         rows: [],
       }),
@@ -452,6 +454,7 @@ describe('resume', () => {
       affected_rows: 0,
       transfer_us: 0,
       bytes: 50,
+      transpilation: null,
     }
     applyMessage(
       state,

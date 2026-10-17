@@ -152,6 +152,13 @@ Goal: `WITH ds (c) AS (VALUES ROW (123), ROW (234), ROW (345)) SELECT * FROM ds`
 - **Interface**: choice of the dialect and of its version in the profile dialog and on the editor tab (PRQL offered from step 9), transpiled query and report in the result tab, preview button. Light and dark modes checked (rule 10 of `CLAUDE.md`).
 - **Tests**: units, round trip, route, interface (Vitest), and on a MariaDB server (Docker): the MySQL query of the example returns its three rows.
 
+Done for the transpiler (`crates/dialects`: `sql`, `build`, `emit`, `report`, `transpile`) and the server (`crates/server/src/transpilation.rs`). Decided autonomously, to be reviewed by the maintainer:
+
+- the columns of the tables come from the metadata of `SELECT * FROM t`, prepared on the connection that runs the query, without running it: its temporary tables are seen, a view is not computed, and the types are those the connector already reads from a result (`plan_type`);
+- the interface sends the dialect with each run (`dialect` of the `run` message), resolved from the tab and the profile; the server checks it against the registry;
+- the report comes in a `transpiled` message, before the result, and is saved with it;
+- the preview (`POST /api/transpile`) reads the columns on a new connection placed on the database of the session: the temporary tables of the session are not seen there.
+
 ### Step 5. Complete MySQL DML grammar
 
 - `SELECT`: options (`DISTINCT`, `DISTINCTROW`, `HIGH_PRIORITY`, `STRAIGHT_JOIN`, `SQL_NO_CACHE`, `SQL_CALC_FOUND_ROWS`...), all the expressions with their precedence (`DIV`, `MOD`, `XOR`, `<=>`, `REGEXP`, `SOUNDS LIKE`, `MEMBER OF`, `->`, `->>`, `COLLATE`, `BINARY`, `:=`, `@variable`, `@@variable`, `INTERVAL`, `CASE`, `CAST`, `CONVERT`, `EXTRACT`; literals with charset introducers, hexadecimal and bit literals, `DATE '...'`), `FROM` (all the joins, `USING`, `NATURAL`, derived tables, `LATERAL`, `JSON_TABLE`, index hints, `PARTITION`), `GROUP BY ... WITH ROLLUP`, `HAVING`, `WINDOW` and window functions, the forms of `LIMIT`, set operations with parentheses, recursive common table expressions, `TABLE t`, locking clauses (`FOR UPDATE`, `FOR SHARE`, `NOWAIT`, `SKIP LOCKED`, `LOCK IN SHARE MODE`), `INTO` (variables, `OUTFILE` and `DUMPFILE`, which are writes), optimizer hints `/*+ ... */`.

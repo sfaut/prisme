@@ -5,8 +5,9 @@
 //!
 //! - `batch`: the editor's unpinned tabs disappear, one tab per query is
 //!   created; its id goes to the client with the query;
-//! - `started`, `columns`, `rows`: the state and the rows of each query
-//!   accumulate in memory (rows are bounded by the row limit);
+//! - `started`, `transpiled`, `columns`, `rows`: the state, the report of
+//!   the transpilation and the rows of each query accumulate in memory (rows
+//!   are bounded by the row limit);
 //! - `done`, `error`: the complete result is written to the internal
 //!   database.
 //!
@@ -120,6 +121,11 @@ impl Recorder {
                 if let Some(record) = records.get_mut(query) {
                     record.result.started = true;
                     record.started_at = Some(Instant::now());
+                }
+            }
+            ServerMessage::Transpiled { query, report } => {
+                if let Some(record) = records.get_mut(query) {
+                    record.result.transpilation = Some(report.clone());
                 }
             }
             ServerMessage::Columns {

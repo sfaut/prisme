@@ -25,9 +25,14 @@ const open = defineModel<boolean>('open', { required: true })
 const profile = useProfileStore()
 
 /**
- * Current input: the names, as typed.
+ * Current input: the names, as typed, and the settings.
  */
-const form = reactive({ first_name: '', last_name: '', read_only_session: true })
+const form = reactive({
+  first_name: '',
+  last_name: '',
+  read_only_session: true,
+  preferred_dialect: 'source',
+})
 
 /**
  * Email address of the user, shown above the names.
@@ -61,6 +66,7 @@ watch(open, async (isOpen) => {
   form.first_name = profile.profile?.first_name ?? ''
   form.last_name = profile.profile?.last_name ?? ''
   form.read_only_session = profile.profile?.read_only_session ?? true
+  form.preferred_dialect = profile.profile?.preferred_dialect ?? 'source'
   email.value = profile.profile?.email ?? ''
 })
 

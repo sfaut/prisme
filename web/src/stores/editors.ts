@@ -45,6 +45,11 @@ export interface EditorEntry {
    * SQL text.
    */
   sql: string
+  /**
+   * Dialect of the text (`source`, `mysql 8.0.19`...), empty string for the
+   * preferred dialect of the profile.
+   */
+  dialect: string
 }
 
 /**
@@ -77,6 +82,7 @@ function entryOf(editor: Editor): EditorEntry {
     name: editor.name,
     connectionId: editor.connection_id,
     sql: editor.sql,
+    dialect: editor.dialect,
   }
 }
 
@@ -160,7 +166,8 @@ export const useEditorsStore = defineStore('editors', () => {
   }
 
   /**
-   * Saves the name, the text and the connection of an editor, immediately.
+   * Saves the name, the text, the connection and the dialect of an editor,
+   * immediately.
    *
    * @param id Id of the editor.
    * @param keepalive Lets the save outlive the page, for a save made as it closes.
@@ -180,6 +187,7 @@ export const useEditorsStore = defineStore('editors', () => {
           name: editor.name,
           sql: editor.sql,
           connection_id: editor.connectionId,
+          dialect: editor.dialect,
         },
         { keepalive },
       )

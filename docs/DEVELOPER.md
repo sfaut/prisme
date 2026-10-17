@@ -135,8 +135,10 @@ On error (status 4xx or 5xx), PowerShell raises an exception, and Prisme's messa
 | `POST /api/connections/{id}/probe` | Connects, returns `{"flavor": ..., "version": ...}`. | 404 unknown connection, 502 server unreachable or access denied, 504 no answer within 10 s |
 | `GET /api/settings` | Settings: `{"row_limit": 1000, "row_limit_choices": [...]}`. | — |
 | `PUT /api/settings` | Changes the default limit, returns the updated settings. | 400 value not among the choices |
-| `GET /api/profile` | Profile: `{"email": "...", "first_name": "", "last_name": ""}`. | — |
-| `PUT /api/profile` | Changes the names (trimmed, 100 characters at most), returns the profile. | 400 name too long |
+| `GET /api/profile` | Profile: `{"email": "...", "first_name": "", "last_name": "", "read_only_session": true, "preferred_dialect": "source"}`. | — |
+| `PUT /api/profile` | Changes the names (trimmed, 100 characters at most), the read-only sessions and the preferred dialect, returns the profile. | 400 name too long, unknown dialect or version |
+| `GET /api/dialects` | Dialects offered, with their versions: `[{"id": "mysql", "label": "MySQL", "versions": ["8.0.11", ...]}, ...]`. | — |
+| `POST /api/transpile` | Transpiles without running: `{"connection_id": 1, "sql": "...", "dialect": "mysql 8.0.19"}`, optional `cursor` and `database`; returns each query with its report. | 400 dialect unknown or `source`, 404 unknown connection, 502 / 504 server |
 
 ### Running queries over WebSocket
 
@@ -148,13 +150,14 @@ npx wscat -c ws://127.0.0.1:8484/api/connections/1/query
 
 Prisme answers `{"type":"ready",...}` once connected to the target server. Then each line typed is a JSON message:
 
-- `run` runs `sql`, one or more queries. With `cursor` (a position in the text), only the query under the cursor runs; without it, all of them run in parallel. `row_limit` overrides the default limit for this run.
+- `run` runs `sql`, one or more queries. With `cursor` (a position in the text), only the query under the cursor runs; without it, all of them run in parallel. `row_limit` overrides the default limit for this run. `dialect` gives the dialect the queries are written in: `source` (or absent) for the native SQL of the server, otherwise a dialect with its version, such as `mysql 8.0.19`, transpiled to the dialect of the server.
 - `cancel` stops every running query; `cancel_query` stops one, given its number in the batch.
 
 ```
 {"type": "run", "sql": "SELECT * FROM information_schema.COLUMNS", "cursor": 0}
 {"type": "run", "sql": "SELECT * FROM information_schema.COLUMNS", "cursor": 0, "row_limit": 2000}
 {"type": "run", "sql": "SELECT 1; SELECT 2"}
+{"type": "run", "sql": "VALUES ROW(1), ROW(2)", "cursor": 0, "dialect": "mysql 8.0.19"}
 {"type": "cancel"}
 {"type": "cancel_query", "query": 1}
 ```
@@ -162,6 +165,7 @@ Prisme answers `{"type":"ready",...}` once connected to the target server. Then 
 Prisme first announces the queries of the batch (`batch`, each one numbered), then, for each query, messages carrying its number (`query`), in this order:
 
 1. `started`: the query starts (in parallel, it may wait for its turn).
+   For a query written in another dialect, `transpiled` follows, with the report of its transpilation: the transpiled query, its steps (rule, kind, message, position in the query) and its errors; what follows applies to the transpiled query, and a query that cannot be transpiled ends with an `error`.
 2. `columns`: column names and types, columns right-aligned by the grid (numbers, dates and times), the text actually run, how the limit was handled (`added` if Prisme added `LIMIT N + 1`, `user_limit` if the query had one, `not_applicable` for `SHOW` or `EXPLAIN`), the maximum row count (`expected_rows`, `null` if unknown) and the execution time measured by the server (`execution_us`, in microseconds).
 3. `rows`: the rows, in batches of 500, each cell as text or `null`.
 4. `done`: row count, `truncated` (rows beyond the limit were dropped), affected rows, duration.

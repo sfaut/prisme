@@ -15,4 +15,8 @@ last_name: string,
 /**
  * New read-only mode of the query sessions.
  */
-read_only_session: boolean, };
+read_only_session: boolean, 
+/**
+ * New preferred dialect, checked against the registry of the versions.
+ */
+preferred_dialect: string, };

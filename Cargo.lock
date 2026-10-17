@@ -2021,6 +2021,7 @@ dependencies = [
  "futures-util",
  "prisme-connectors",
  "prisme-dialects",
+ "prisme-plan",
  "prisme-splitter",
  "rusqlite",
  "rusqlite_migration",

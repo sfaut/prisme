@@ -22,13 +22,14 @@
 //!
 //! ```text
 //! server → client  {"type": "ready", "server": {"flavor": "mariadb", "version": "11.3.2-MariaDB", "ansi_quotes": false}, "database": "xlist"}
-//! client → server  {"type": "run", "sql": "SELECT 1; SELECT 2", "cursor": 3, "row_limit": 2000}   cursor and row_limit optional
+//! client → server  {"type": "run", "sql": "SELECT 1; SELECT 2", "cursor": 3, "row_limit": 2000, "dialect": "mysql 8.0.19"}   cursor, row_limit and dialect optional
 //! client → server  {"type": "cancel"}                                  stops all the running queries
 //! client → server  {"type": "cancel_query", "query": 2}                stops a single query of the running batch
 //! client → server  {"type": "use", "database": "xlist"}               changes the session's current database
 //! server → client  {"type": "database", "database": "xlist"}          answer to use: the current database
 //! server → client  {"type": "batch", "queries": [{"query": 0, "sql": "SELECT 1", "start": 0, "end": 9}]}
 //! server → client  {"type": "started", "query": 0}                  the query starts (in parallel, it may wait for its turn)
+//! server → client  {"type": "transpiled", "query": 0, "report": {"input": "mysql 8.0.19", "output": "mariadb 11.3.2", "sql": "...", "steps": [...], "errors": []}}
 //! server → client  {"type": "columns", "query": 0, "columns": ["1"], "types": [{"family": "integer", "name": "INT"}], "sql": "SELECT 1 LIMIT 1001", "limit": "added", "expected_rows": 1000, "execution_us": 830}
 //! server → client  {"type": "rows", "query": 0, "rows": [["1"]]}       as many batches as needed
 //! server → client  {"type": "done", "query": 0, "row_count": 1, "truncated": false, "affected_rows": 0, "elapsed_ms": 2, "database": "xlist"}
@@ -54,6 +55,11 @@
 //! database (`SELECT DATABASE()`, `null` if none): that of the saved
 //! connection at first, then the one chosen by `USE`.
 //!
+//! A query written in a dialect other than the native SQL of the server
+//! (`dialect` of the request) is transpiled just before it runs, on the
+//! connection that runs it (`transpilation.rs`): its report comes in the
+//! `transpiled` message, and what follows applies to the transpiled query.
+//!
 //! The row limit follows `docs/V1.md`, section 2.3: the request's
 //! `row_limit`, otherwise the user's setting. Until the write switches exist,
 //! writes and queries that cannot be parsed are refused (`docs/V1.md`,
@@ -69,6 +75,7 @@ mod session;
 mod tests;
 
 pub(crate) use cancellation::Cancellation;
+pub(crate) use execution::chosen_statements;
 pub(crate) use protocol::{ClientMessage, LimitReport, ServerMessage, SessionRequest};
 
 use std::sync::Arc;

@@ -19,4 +19,9 @@ connection_id: number | null,
 /**
  * SQL text of the editor.
  */
-sql: string, };
+sql: string, 
+/**
+ * Dialect of the editor's text (`source`, `mysql 8.0.19`...); empty
+ * string for the preferred dialect of the profile.
+ */
+dialect: string, };
