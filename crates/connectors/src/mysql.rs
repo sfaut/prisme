@@ -267,6 +267,25 @@ impl ResultStream<'_> {
             .collect()
     }
 
+    /// Internal type of each column, with its nullability, from the result's
+    /// metadata: the types of a result the logical plan cannot derive
+    /// (`docs/QUESTIONS.md`, point 44).
+    pub fn plan_types(&self) -> Vec<prisme_types::Type> {
+        self.result
+            .columns_ref()
+            .iter()
+            .map(|column| {
+                column_type::plan_type(
+                    column.column_type(),
+                    column.flags(),
+                    column.column_length(),
+                    column.decimals(),
+                    column.character_set(),
+                )
+            })
+            .collect()
+    }
+
     /// Reads the next row, or `None` at the end of the result.
     pub async fn next_row(&mut self) -> Result<Option<Vec<Cell>>, MysqlError> {
         let Some(row) = self.result.next().await? else {

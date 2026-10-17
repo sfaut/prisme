@@ -1978,6 +1978,7 @@ name = "prisme-connectors"
 version = "0.2.0"
 dependencies = [
  "mysql_async",
+ "prisme-types",
  "secrecy",
  "serde",
  "testcontainers-modules",

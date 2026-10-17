@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 mysql_async = "0.37.1"
+prisme-types = { path = "../types" }
 secrecy = "0.10.3"
 serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2.0.21"

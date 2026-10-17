@@ -1,5 +1,6 @@
 //! Type of the columns of a MySQL or MariaDB result, as the interface shows it
-//! in the grid's header.
+//! in the grid's header (`describe`) and as the logical plan types it
+//! (`plan_type`, internal types of `prisme_types`).
 //!
 //! The type comes from the metadata the server sends with the result: type
 //! code, flags (`UNSIGNED`, `ENUM`, `SET`), length, number of decimals and
@@ -18,6 +19,10 @@
 //! guessed.
 
 use mysql_async::consts::{ColumnFlags, ColumnType};
+use prisme_types::{
+    BinaryType, DataType, DecimalType, FloatType, IntegerSize, IntegerType, MAX_FRACTION_DIGITS,
+    TextType, Type,
+};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -149,6 +154,127 @@ pub fn describe(
         }
     };
     ColumnTypeInfo { family, name }
+}
+
+/// Internal type of a column (`prisme_types`), from the same metadata as
+/// `describe`, with its nullability (`NOT_NULL` flag).
+///
+/// The character set of the metadata is the one of the connection's
+/// results, not that of the column: the charset and the collation of a text
+/// are left unknown.
+pub fn plan_type(
+    column_type: ColumnType,
+    flags: ColumnFlags,
+    length: u32,
+    decimals: u8,
+    charset: u16,
+) -> Type {
+    let nullable = !flags.contains(ColumnFlags::NOT_NULL_FLAG);
+    let data_type = if flags.contains(ColumnFlags::ENUM_FLAG) {
+        DataType::Enum
+    } else if flags.contains(ColumnFlags::SET_FLAG) {
+        DataType::Set
+    } else {
+        plan_data_type(column_type, flags, length, decimals, charset)
+    };
+    Type {
+        data_type,
+        nullable,
+    }
+}
+
+/// Data type of a column, `ENUM` and `SET` aside.
+fn plan_data_type(
+    column_type: ColumnType,
+    flags: ColumnFlags,
+    length: u32,
+    decimals: u8,
+    charset: u16,
+) -> DataType {
+    let unsigned = flags.contains(ColumnFlags::UNSIGNED_FLAG);
+    let integer = |size| DataType::Integer(IntegerType { size, unsigned });
+    match column_type {
+        ColumnType::MYSQL_TYPE_TINY => integer(IntegerSize::Tiny),
+        ColumnType::MYSQL_TYPE_SHORT => integer(IntegerSize::Small),
+        ColumnType::MYSQL_TYPE_INT24 => integer(IntegerSize::Medium),
+        ColumnType::MYSQL_TYPE_LONG => integer(IntegerSize::Int),
+        ColumnType::MYSQL_TYPE_LONGLONG => integer(IntegerSize::Big),
+        ColumnType::MYSQL_TYPE_DECIMAL | ColumnType::MYSQL_TYPE_NEWDECIMAL => {
+            plan_decimal(length, decimals, unsigned)
+        }
+        ColumnType::MYSQL_TYPE_FLOAT => DataType::Float(FloatType::Single),
+        ColumnType::MYSQL_TYPE_DOUBLE => DataType::Float(FloatType::Double),
+        ColumnType::MYSQL_TYPE_YEAR => DataType::Year,
+        ColumnType::MYSQL_TYPE_DATE | ColumnType::MYSQL_TYPE_NEWDATE => DataType::Date,
+        ColumnType::MYSQL_TYPE_TIME | ColumnType::MYSQL_TYPE_TIME2 => DataType::Time {
+            fraction: fraction(decimals),
+        },
+        ColumnType::MYSQL_TYPE_DATETIME | ColumnType::MYSQL_TYPE_DATETIME2 => DataType::DateTime {
+            fraction: fraction(decimals),
+        },
+        ColumnType::MYSQL_TYPE_TIMESTAMP | ColumnType::MYSQL_TYPE_TIMESTAMP2 => {
+            DataType::Timestamp {
+                fraction: fraction(decimals),
+            }
+        }
+        // A `BIT` column announces its number of bits, 1 to 64.
+        ColumnType::MYSQL_TYPE_BIT => DataType::Bit {
+            width: u8::try_from(length).unwrap_or(u8::MAX),
+        },
+        ColumnType::MYSQL_TYPE_JSON => DataType::Json,
+        ColumnType::MYSQL_TYPE_ENUM => DataType::Enum,
+        ColumnType::MYSQL_TYPE_SET => DataType::Set,
+        ColumnType::MYSQL_TYPE_GEOMETRY => DataType::Geometry,
+        ColumnType::MYSQL_TYPE_STRING => string(true, length, charset),
+        ColumnType::MYSQL_TYPE_VAR_STRING | ColumnType::MYSQL_TYPE_VARCHAR => {
+            string(false, length, charset)
+        }
+        ColumnType::MYSQL_TYPE_TINY_BLOB
+        | ColumnType::MYSQL_TYPE_MEDIUM_BLOB
+        | ColumnType::MYSQL_TYPE_LONG_BLOB
+        | ColumnType::MYSQL_TYPE_BLOB => string(false, length, charset),
+        ColumnType::MYSQL_TYPE_VECTOR => DataType::Other("VECTOR".to_string()),
+        ColumnType::MYSQL_TYPE_NULL => DataType::Null,
+        _ => DataType::Unknown,
+    }
+}
+
+/// Decimal type from its announced length (see `decimal`); a length outside
+/// the model keeps the type by its name.
+fn plan_decimal(length: u32, scale: u8, unsigned: bool) -> DataType {
+    let precision = length
+        .saturating_sub(u32::from(scale > 0))
+        .saturating_sub(u32::from(!unsigned));
+    u8::try_from(precision)
+        .ok()
+        .and_then(|precision| DecimalType::new(precision, scale).ok())
+        .map_or_else(
+            || DataType::Other(decimal(length, scale, unsigned)),
+            DataType::Decimal,
+        )
+}
+
+/// Digits of the fractional seconds; the "not fixed" number of an
+/// expression counts as the largest one.
+fn fraction(decimals: u8) -> u8 {
+    decimals.min(MAX_FRACTION_DIGITS)
+}
+
+/// Text or byte string, fixed or variable, depending on the character set.
+fn string(fixed: bool, length: u32, charset: u16) -> DataType {
+    if charset == BINARY_COLLATION {
+        DataType::Binary(BinaryType {
+            length: Some(length),
+            fixed,
+        })
+    } else {
+        DataType::Text(TextType {
+            length: characters(length, charset),
+            fixed,
+            charset: None,
+            collation: None,
+        })
+    }
 }
 
 /// Name of a numeric type, followed by `UNSIGNED` when relevant.
@@ -341,6 +467,101 @@ mod tests {
         assert_eq!(
             describe(ColumnType::MYSQL_TYPE_DATE, none, 10, 0, 63).family,
             TypeFamily::Date
+        );
+    }
+
+    #[test]
+    fn plan_type_keeps_size_sign_and_nullability() {
+        // Measured on MySQL 8.4: `CAST(18446744073709551615 AS UNSIGNED)`.
+        let unsigned_bigint = plan_type(
+            ColumnType::MYSQL_TYPE_LONGLONG,
+            ColumnFlags::NOT_NULL_FLAG | ColumnFlags::UNSIGNED_FLAG,
+            21,
+            0,
+            63,
+        );
+        assert_eq!(
+            unsigned_bigint,
+            Type::not_null(DataType::Integer(IntegerType::unsigned(IntegerSize::Big)))
+        );
+        let tiny = plan_type(ColumnType::MYSQL_TYPE_TINY, ColumnFlags::empty(), 4, 0, 63);
+        assert_eq!(
+            tiny,
+            Type::nullable(DataType::Integer(IntegerType::signed(IntegerSize::Tiny)))
+        );
+    }
+
+    #[test]
+    fn plan_type_reads_decimals_and_fractions() {
+        // Measured on MySQL 8.4 and MariaDB: `1 / 3` is a DECIMAL with 4 decimals, length 7.
+        assert_eq!(
+            plan_type(
+                ColumnType::MYSQL_TYPE_NEWDECIMAL,
+                ColumnFlags::empty(),
+                7,
+                4,
+                63
+            )
+            .data_type,
+            DataType::Decimal(DecimalType::new(5, 4).unwrap())
+        );
+        assert_eq!(
+            plan_type(
+                ColumnType::MYSQL_TYPE_DATETIME,
+                ColumnFlags::empty(),
+                26,
+                6,
+                63
+            )
+            .data_type,
+            DataType::DateTime { fraction: 6 }
+        );
+        assert_eq!(
+            plan_type(
+                ColumnType::MYSQL_TYPE_TIME,
+                ColumnFlags::empty(),
+                10,
+                NOT_FIXED_DEC,
+                63
+            )
+            .data_type,
+            DataType::Time { fraction: 6 }
+        );
+    }
+
+    #[test]
+    fn plan_type_tells_texts_from_bytes() {
+        let none = ColumnFlags::empty();
+        assert_eq!(
+            plan_type(ColumnType::MYSQL_TYPE_VAR_STRING, none, 80, 0, UTF8MB4).data_type,
+            DataType::Text(TextType {
+                length: Some(20),
+                fixed: false,
+                charset: None,
+                collation: None,
+            })
+        );
+        assert_eq!(
+            plan_type(ColumnType::MYSQL_TYPE_STRING, none, 16, 0, 63).data_type,
+            DataType::Binary(BinaryType {
+                length: Some(16),
+                fixed: true,
+            })
+        );
+        assert_eq!(
+            plan_type(
+                ColumnType::MYSQL_TYPE_STRING,
+                ColumnFlags::SET_FLAG,
+                8,
+                0,
+                UTF8MB4
+            )
+            .data_type,
+            DataType::Set
+        );
+        assert_eq!(
+            plan_type(ColumnType::MYSQL_TYPE_NULL, none, 0, 0, 63).data_type,
+            DataType::Null
         );
     }
 }
