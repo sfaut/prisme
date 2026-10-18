@@ -51,13 +51,20 @@ cases:
   - from: mysql
     sql: SELECT b AS B, COUNT(*) AS n FROM aliases GROUP BY b HAVING b + 0 = 10
   # An alias of an aggregate function, written as its function towards
-  # MariaDB (error 1247).
+  # MariaDB (error 1247); read as one value for all the rows by MySQL before
+  # 8.0.29 (Bug #32695670): refused from these versions.
   - from: mysql
-    sql: SELECT a % 2 AS x, SUM(b) AS s FROM aliases GROUP BY x ORDER BY -s, x
+    sql: SELECT a % 2 AS x, COUNT(*) AS n FROM aliases GROUP BY x ORDER BY -n, x
+    inputs: mysql >= 8.0.29
+  - from: mysql
+    sql: SELECT a % 2 AS x, COUNT(*) AS n FROM aliases GROUP BY x ORDER BY -n, x
+    inputs: mysql < 8.0.29
+    refused: alias.aggregate
   - from: mysql
     sql: >-
-      SELECT a % 2 AS x, SUM(b) AS s FROM aliases GROUP BY x HAVING ABS(s) >= 30 ORDER
-      BY s + 0, x
+      SELECT a % 2 AS x, MAX(b) AS m FROM aliases GROUP BY x HAVING ABS(m) >= 20 ORDER
+      BY m + 0, x
+    inputs: mysql >= 8.0.29
   # An alias of a window function, written as its function towards MySQL
   # 8.0.16 to 8.0.28 (Bug #32695670).
   - from: mariadb
@@ -106,3 +113,9 @@ cases:
       SELECT a % 2 AS x, COUNT(*) AS n, RANK() OVER (ORDER BY n + 0, -x) AS r FROM aliases
       GROUP BY x ORDER BY x
     inputs: mysql >= 8.0.29
+  - from: mysql
+    sql: >-
+      SELECT a % 2 AS x, COUNT(*) AS n, RANK() OVER (ORDER BY n + 0, -x) AS r FROM aliases
+      GROUP BY x ORDER BY x
+    inputs: mysql < 8.0.29
+    refused: alias.aggregate

@@ -6,18 +6,25 @@
 //! otherwise:
 //!
 //! - towards MariaDB, an alias of an aggregate function inside an expression
-//!   of `ORDER BY`, which MariaDB refuses (error 1247) and MySQL reads (rule
-//!   `alias.aggregate`);
+//!   of `ORDER BY` or of a window, which MariaDB refuses (error 1247) and
+//!   MySQL reads (rule `alias.aggregate`);
+//! - towards MySQL before 8.0.29, the same alias, which these versions read
+//!   as one value for all the rows (`ORDER BY n + 0` sorts nothing; Bug
+//!   #32695670, fixed in 8.0.29; rule `alias.aggregate`, construct
+//!   `aggregate_alias_read`);
 //! - towards MySQL 8.0.16 to 8.0.28, an alias of a window function inside an
 //!   expression of `ORDER BY`, which these versions compute again for the
-//!   sort (`ROW_NUMBER` gives 4 to the third row; Bug #32695670, fixed in
-//!   8.0.29; rule `alias.window`);
+//!   sort (`ROW_NUMBER` gives 4 to the third row; the same bug; rule
+//!   `alias.window`);
 //! - a `JSON` that the dialects read otherwise, for the rules of the `json`
 //!   module.
 //!
 //! Written again, the expression must give the same value: an aggregate or
 //! window function of the same arguments, over a window of the same
-//! definition, computed over the same rows **[decided autonomously]**.
+//! definition, computed over the same rows **[decided autonomously]**. From a
+//! version of MySQL that reads these aliases otherwise, towards an output
+//! that reads them right, the same rules refuse the query: Prisme writes no
+//! emulation of a bug.
 //!
 //! A name alone in a window designates an alias of the select list first in
 //! MariaDB, a column of the source only in MySQL: towards MySQL, the alias
@@ -83,7 +90,14 @@ impl Emitter<'_> {
     /// reads otherwise in `ORDER BY`.
     fn replace_aliases(&mut self, expr: &mut Expr) {
         if let ExprKind::Alias(alias) = &mut expr.kind {
-            if let Some((rule, message)) = self.sort_alias_rule(alias) {
+            if let Some((rule, reading)) = self.sort_alias_rule(alias) {
+                let message = match reading {
+                    Ok(message) => message,
+                    Err(message) => {
+                        self.error(rule, &message, expr.span);
+                        return;
+                    }
+                };
                 if self.repeatable_computed(&alias.expr) {
                     self.step(rule, StepKind::Emulation, message, expr.span);
                     let span = expr.span;
@@ -103,33 +117,56 @@ impl Emitter<'_> {
         }
     }
 
-    /// Rule and message of the item `alias`, read through its alias inside
-    /// an expression of `ORDER BY`, that the output reads otherwise than the
-    /// input.
-    fn sort_alias_rule(&self, alias: &AliasRef) -> Option<(&'static str, String)> {
+    /// Rule of the item `alias`, read through its alias inside an expression
+    /// of `ORDER BY` or of a window, that the output reads otherwise than the
+    /// input: the message of its emulation, or of its refusal when the input
+    /// reads it otherwise than its documentation.
+    fn sort_alias_rule(&self, alias: &AliasRef) -> Option<(&'static str, Result<String, String>)> {
         let name = &alias.name.value;
-        if self.source.dialect == Dialect::MySql
-            && self.output.dialect == Dialect::MariaDb
-            && self.reads_computed(&alias.expr, false)
-        {
-            let message = format!(
-                "MariaDB refuses the alias of an aggregate function inside an expression of \
-                 `ORDER BY` (error 1247): `{name}` written as its aggregate function"
-            );
-            return Some(("alias.aggregate", message));
+        let source = format!("{} {}", self.source.dialect.label(), self.source.version);
+        let bug = "as one value for all the rows (Bug #32695670, fixed in 8.0.29)";
+        if self.reads_computed(&alias.expr, false) {
+            // MariaDB refuses these aliases: from MySQL only.
+            let input = self.input_has(Construct::AggregateAliasRead);
+            let output = self.has(Construct::AggregateAliasRead);
+            let reading = match (self.output.dialect, input, output) {
+                (Dialect::MariaDb, true, _) => Ok(format!(
+                    "MariaDB refuses the alias of an aggregate function inside an expression of                      `ORDER BY` or of a window (error 1247): `{name}` written as its aggregate                      function"
+                )),
+                (Dialect::MariaDb, false, _) => Err(format!(
+                    "{source} reads the alias `{name}` of an aggregate function inside an                      expression of `ORDER BY` or of a window {bug}, and MariaDB refuses it                      (error 1247): not supported by Prisme"
+                )),
+                (Dialect::MySql, true, false) => Ok(format!(
+                    "{} reads the alias of an aggregate function inside an expression of `ORDER                      BY` or of a window {bug}: `{name}` written as its aggregate function",
+                    self.target()
+                )),
+                (Dialect::MySql, false, true) => Err(format!(
+                    "{source} reads the alias `{name}` of an aggregate function inside an                      expression of `ORDER BY` or of a window {bug}, {} as its aggregate                      function: not supported by Prisme",
+                    self.target()
+                )),
+                (Dialect::MySql, _, _) => return None,
+            };
+            return Some(("alias.aggregate", reading));
         }
-        if self.output.dialect == Dialect::MySql
-            && !self.has(Construct::WindowAliasOnce)
-            && self.input_has(Construct::WindowAliasOnce)
-            && self.reads_computed(&alias.expr, true)
-        {
-            let message = format!(
-                "{} computes again a window function read through its alias inside an \
-                 expression of `ORDER BY` (Bug #32695670): `{name}` written as its window \
-                 function",
-                self.target()
-            );
-            return Some(("alias.window", message));
+        if self.reads_computed(&alias.expr, true) {
+            let input = self.input_has(Construct::WindowAliasOnce);
+            let output = self.has(Construct::WindowAliasOnce);
+            let reading = match (input, output) {
+                (true, false) => Ok(format!(
+                    "{} computes again a window function read through its alias inside an \
+                     expression of `ORDER BY` (Bug #32695670): `{name}` written as its window \
+                     function",
+                    self.target()
+                )),
+                (false, true) => Err(format!(
+                    "{source} computes again the window function `{name}` read through its \
+                     alias inside an expression of `ORDER BY` (Bug #32695670, fixed in 8.0.29), \
+                     {} once: not supported by Prisme",
+                    self.target()
+                )),
+                _ => return None,
+            };
+            return Some(("alias.window", reading));
         }
         None
     }

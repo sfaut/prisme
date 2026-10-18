@@ -212,6 +212,10 @@ pub enum Construct {
     /// `ORDER BY`, computed once (MySQL: computed again for the sort from
     /// 8.0.16 to 8.0.28).
     WindowAliasOnce,
+    /// The alias of an aggregate function inside an expression of `ORDER BY`
+    /// or of a window, read as the value of the function (MySQL: as one value
+    /// for all the rows before 8.0.29; MariaDB refuses it).
+    AggregateAliasRead,
     /// A column named alone in a window when an alias of the select list has
     /// its name, read as the column (MySQL from 8.0.14; MariaDB reads the
     /// alias).
@@ -414,6 +418,9 @@ impl Construct {
             }
             Self::WindowAliasOnce => {
                 "a window function read once through its alias inside an expression of `ORDER BY`"
+            }
+            Self::AggregateAliasRead => {
+                "the alias of an aggregate function read inside an expression of `ORDER BY`"
             }
             Self::WindowShadowedColumn => {
                 "a column named alone in a window when an alias of the select list has its name"

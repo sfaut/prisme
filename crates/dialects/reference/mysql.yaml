@@ -512,6 +512,16 @@ constructs:
     comment: >-
       Bug #32695670: an alias inside an expression of `ORDER BY` resolved as
       an alias written alone; measured on 8.0.30 and later.
+  - id: aggregate_alias_read
+    since: "8.0.29"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-29.html
+    comment: >-
+      `SELECT a % 2 AS x, COUNT(*) AS n FROM t GROUP BY x ORDER BY n + 0 DESC`
+      sorts on the count. Before, the alias of an aggregate function inside
+      an expression of `ORDER BY` or of a window reads one value for all the
+      rows: the rows keep their order, `RANK() OVER (ORDER BY n + 0)` gives
+      1 to every row; measured on 8.0.11 to 8.0.28 and from 8.0.30
+      (crates/probe/cases/alias-references.sql). Bug #32695670.
   - id: window_shadowed_column
     since: "8.0.14"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-14.html

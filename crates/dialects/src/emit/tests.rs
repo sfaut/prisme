@@ -3841,7 +3841,7 @@ fn an_alias_inside_an_expression_keeps_its_name() {
 fn an_alias_of_an_aggregate_in_order_by_is_its_function_towards_mariadb() {
     let (sql, rules) = transpiled(
         "SELECT a % 2 AS x, SUM(b) AS s FROM t GROUP BY x ORDER BY s + 0, -s",
-        mysql(),
+        mysql_at(8, 0, 30),
         output(mariadb()),
     );
     assert_eq!(
@@ -3849,6 +3849,26 @@ fn an_alias_of_an_aggregate_in_order_by_is_its_function_towards_mariadb() {
         "SELECT a % 2 AS x, SUM(b) AS s FROM t GROUP BY x ORDER BY SUM(b) + 0, -SUM(b)"
     );
     assert_eq!(rules, ["alias.aggregate", "alias.aggregate"]);
+    // Towards MySQL before 8.0.29, which reads it as one value for all the
+    // rows; from these versions, refused towards an output that reads it.
+    let text = "SELECT a % 2 AS x, SUM(b) AS s FROM t GROUP BY x ORDER BY s + 0";
+    assert_eq!(
+        transpiled(text, mysql_at(8, 0, 30), output(mysql_at(8, 0, 28))),
+        (
+            "SELECT a % 2 AS x, SUM(b) AS s FROM t GROUP BY x ORDER BY SUM(b) + 0".to_string(),
+            vec!["alias.aggregate"]
+        )
+    );
+    for target in [mariadb(), mysql_at(8, 0, 29)] {
+        assert_eq!(
+            errors(text, mysql_at(8, 0, 28), output(target)),
+            ["alias.aggregate"]
+        );
+    }
+    assert_eq!(
+        transpiled(text, mysql_at(8, 0, 11), output(mysql_at(8, 0, 28))),
+        (text.to_string(), vec![])
+    );
     // Alone, in `HAVING`, an implicit `ANY_VALUE`, or read alike: as written.
     for (text, target) in [
         (
@@ -3877,7 +3897,7 @@ fn an_alias_of_an_aggregate_in_order_by_is_its_function_towards_mariadb() {
     assert_eq!(
         errors(
             "SELECT a % 2 AS x, SUM(b + RAND()) AS s FROM t GROUP BY x ORDER BY s + 0",
-            mysql(),
+            mysql_at(8, 0, 30),
             output(mariadb())
         ),
         ["alias.aggregate"]
@@ -3918,12 +3938,20 @@ fn an_alias_of_a_window_in_order_by_is_its_function_towards_mysql_8_0_16_to_8_0_
             "{text}"
         );
     }
+    // From a version that computes it again, refused towards one that
+    // computes it once.
+    for target in [mariadb(), mysql_at(8, 0, 15), mysql_at(8, 0, 29)] {
+        assert_eq!(
+            errors(text, mysql_at(8, 0, 16), output(target)),
+            ["alias.window"]
+        );
+    }
     // Computed alike by both, or once by the output.
     for (input, target) in [
         (mysql_at(8, 0, 20), mysql_at(8, 0, 28)),
         (mariadb(), mysql_at(8, 0, 15)),
         (mariadb(), mysql_at(8, 0, 29)),
-        (mysql_at(8, 0, 20), mariadb()),
+        (mysql_at(8, 0, 30), mariadb()),
     ] {
         assert_eq!(
             transpiled(text, input, output(target)),
@@ -4056,7 +4084,7 @@ fn a_name_alone_in_a_window_is_read_as_the_input_reads_it() {
     // An alias of an aggregate inside an expression, refused by MariaDB.
     let (sql, rules) = transpiled(
         "SELECT a % 2 AS x, SUM(a) AS s, RANK() OVER (ORDER BY s + 0) AS r FROM t GROUP BY x",
-        mysql(),
+        mysql_at(8, 0, 30),
         output(mariadb()),
     );
     assert_eq!(

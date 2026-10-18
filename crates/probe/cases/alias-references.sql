@@ -130,6 +130,19 @@ SELECT a % 2 AS x, SUM(b) AS s, RANK() OVER (ORDER BY s + 0) AS r FROM ar GROUP 
 SELECT a % 2 AS x, SUM(b) AS s, RANK() OVER (ORDER BY -x) AS r FROM ar GROUP BY x ORDER BY x;
 SELECT a % 2 AS x, COUNT(*) AS n, SUM(n) OVER () AS s FROM ar GROUP BY a % 2 ORDER BY x;
 SELECT a % 2 AS x, COUNT(*) AS n, SUM(n + 0) OVER () AS s FROM ar GROUP BY a % 2 ORDER BY x;
+-- The alias of an aggregate inside an expression of a window and of
+-- `ORDER BY`, of values that differ (1 and 2 rows, 30 and 20).
+SELECT a % 2 AS x, COUNT(*) AS n, RANK() OVER (ORDER BY n + 0) AS r FROM ar GROUP BY x ORDER BY x;
+SELECT a % 2 AS x, COUNT(*) AS n, RANK() OVER (ORDER BY -n) AS r FROM ar GROUP BY x ORDER BY x;
+SELECT a % 2 AS x, COUNT(*) AS n, RANK() OVER (ORDER BY n + 0, -x) AS r FROM ar GROUP BY x ORDER BY x;
+SELECT a % 2 AS x, COUNT(*) AS n, RANK() OVER (ORDER BY COUNT(*) + 0, -x) AS r FROM ar GROUP BY x ORDER BY x;
+SELECT a % 2 AS x, COUNT(*) AS n, RANK() OVER (PARTITION BY n + 0 ORDER BY x) AS r FROM ar GROUP BY x ORDER BY x;
+SELECT a % 2 AS x, MAX(b) AS m, RANK() OVER (ORDER BY m + 0 DESC) AS r FROM ar GROUP BY x ORDER BY x;
+SELECT a % 2 AS x, MAX(b) AS m, RANK() OVER w AS r FROM ar GROUP BY x WINDOW w AS (ORDER BY -m) ORDER BY x;
+SELECT COUNT(*) AS n, RANK() OVER (ORDER BY n + 0) AS r FROM ar;
+SELECT a % 2 AS x, COUNT(*) AS n FROM ar GROUP BY x ORDER BY n + 0 DESC, x;
+SELECT a % 2 AS x, COUNT(*) AS n FROM ar GROUP BY x ORDER BY -n, x;
+SELECT a % 2 AS x, MAX(b) AS m FROM ar GROUP BY x ORDER BY m + 0, x;
 -- A qualified name in `HAVING`.
 SELECT a % 2 AS b, COUNT(*) AS n FROM ar GROUP BY a % 2, b HAVING ar.b = 10 ORDER BY 1, 2;
 SELECT a % 2 AS b, COUNT(*) AS n FROM ar GROUP BY a % 2, ar.b HAVING b = 1 ORDER BY 1, 2;
