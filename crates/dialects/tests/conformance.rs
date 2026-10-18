@@ -266,10 +266,11 @@ fn dialect_named(name: &str) -> Dialect {
 /// port, which all the versions write, `port: 3306` followed by a space: the
 /// X Plugin of MySQL writes `port: 33060` before it, and a connection made
 /// then is closed when the servers start slowly. The server of the
-/// initialisation of the image listens on no port. It resolves no host name: the reverse lookup
-/// of each client address slows every connection down in Docker. Its start
-/// skips the tables of the named time zones, and its data directory is in
-/// memory, lost with the container (`docs/PERF.md`, chapter 8).
+/// initialisation of the image listens on no port. It resolves no host
+/// name: the reverse lookup of each client address slows every connection
+/// down in Docker. Its start skips the tables of the named time zones, and
+/// its data directory is in memory, lost with the container (`docs/PERF.md`,
+/// chapter 8).
 ///
 /// # Panics
 ///
