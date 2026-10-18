@@ -160,6 +160,17 @@ fn table_name(name: &ObjectName) -> TableName {
     }
 }
 
+/// Position of the first subquery of `expr`.
+fn subquery_span(expr: &ast::Expr) -> Option<Span> {
+    match &expr.kind {
+        ExprKind::Subquery(_)
+        | ExprKind::Exists(_)
+        | ExprKind::InSubquery { .. }
+        | ExprKind::Quantified { .. } => Some(expr.span),
+        _ => expr.children().into_iter().find_map(subquery_span),
+    }
+}
+
 /// Tells whether two names designate the same object, without case.
 fn same_name(left: &Ident, right: &Ident) -> bool {
     left.value.eq_ignore_ascii_case(&right.value)
@@ -218,6 +229,13 @@ impl Builder<'_> {
         registry(self.dialect)
             .check(self.dialect, construct, self.version)
             .map_err(|error| self.error(error.to_string(), span))
+    }
+
+    /// Tells whether the dialect has `construct` in its version.
+    fn has(&self, construct: Construct) -> bool {
+        (registry(self.dialect))
+            .check(self.dialect, construct, self.version)
+            .is_ok()
     }
 
     /// Text written at `span`.
@@ -441,12 +459,69 @@ impl Builder<'_> {
 
     /// Body of a query, then its sort and its limit.
     fn query_body(&mut self, query: &Query) -> Result<Plan, BuildError> {
-        if let QueryBody::Select(select) = &query.body {
+        if let Some(select) = self.sorted_select(query)? {
             return self.select(select, &query.order_by, query.limit.as_ref());
         }
         let plan = self.body(&query.body)?;
         let plan = self.sorted(plan, &query.order_by)?;
         self.limit(plan, query.limit.as_ref())
+    }
+
+    /// `SELECT` that the `ORDER BY` of `query` sorts as its own: its body,
+    /// or a `SELECT` between parentheses without `ORDER BY` or `LIMIT` of its
+    /// own, whose block the outer `ORDER BY` sorts by the rule measured
+    /// (`crates/probe/cases/alias-references.sql`): MariaDB and MySQL read
+    /// its names as those of an `ORDER BY` of the `SELECT`, a column of the
+    /// source first inside an expression (`(SELECT a AS b FROM t) ORDER BY
+    /// b + 0` sorts by the column `b`, `(SELECT id FROM t) ORDER BY a` by a
+    /// column outside the select list), except MySQL 8.0.31 to 8.0.41, 8.1.0
+    /// to 8.4.4 and 9.0.0 to 9.2.0, which read the columns of the result
+    /// (construct `parenthesized_order_result`). With an `ORDER BY` or a
+    /// `LIMIT` between the parentheses, all read the columns of the result.
+    ///
+    /// # Errors
+    ///
+    /// `BuildError` on a `WITH` between the parentheses, and, from MySQL
+    /// 8.0.42, 8.4.5 and 9.3.0, on a subquery in the outer `ORDER BY`, whose
+    /// names these versions read as the columns of the result
+    /// (`parenthesized_order_subquery`): not supported yet.
+    fn sorted_select<'q>(&self, query: &'q Query) -> Result<Option<&'q ast::Select>, BuildError> {
+        let mut body = &query.body;
+        if matches!(body, QueryBody::Nested(_))
+            && (query.order_by.is_empty() || self.has(Construct::ParenthesizedOrderResult))
+        {
+            return Ok(None);
+        }
+        while let QueryBody::Nested(inner) = body {
+            if !inner.order_by.is_empty() || inner.limit.is_some() {
+                return Ok(None);
+            }
+            if let Some(with) = &inner.with {
+                return Err(self.error(
+                    "`WITH` between parentheses followed by an `ORDER BY`: not supported yet by \
+                     Prisme",
+                    with.span,
+                ));
+            }
+            body = &inner.body;
+        }
+        let QueryBody::Select(select) = body else {
+            return Ok(None);
+        };
+        if matches!(query.body, QueryBody::Nested(_))
+            && self.has(Construct::ParenthesizedOrderSubquery)
+            && let Some(span) = (query.order_by.iter()).find_map(|item| subquery_span(&item.expr))
+        {
+            let message = format!(
+                "a subquery in an `ORDER BY` after a `SELECT` between parentheses, whose names \
+                 {} {} reads as the columns of the result, and the other names of that `ORDER \
+                 BY` as those of the `SELECT`: not supported yet by Prisme",
+                self.dialect.label(),
+                self.version
+            );
+            return Err(self.error(message, span));
+        }
+        Ok(Some(select))
     }
 
     /// `plan` sorted by `order_by` when written: the keys after a `VALUES`,

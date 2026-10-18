@@ -119,3 +119,36 @@ cases:
       GROUP BY x ORDER BY x
     inputs: mysql < 8.0.29
     refused: alias.aggregate
+  # An `ORDER BY` after a `SELECT` between parentheses without `ORDER BY` or
+  # `LIMIT` of its own: the names of the `SELECT` in MariaDB and MySQL, a
+  # column of the table first inside an expression; the columns of the result
+  # in MySQL 8.0.31 to 8.0.41, 8.1.0 to 8.4.4 and 9.0.0 to 9.2.0, emulated by a
+  # derived table towards the others (rule `order.parenthesized`).
+  - from: mysql
+    sql: (SELECT id, a AS b FROM aliases) ORDER BY b + 0
+  - from: mysql
+    sql: ((SELECT id, a AS b FROM aliases WHERE id > 0)) ORDER BY CONCAT(b), id
+  - from: mysql
+    sql: (SELECT id, a AS x FROM aliases) ORDER BY -x
+  - from: mysql
+    sql: (SELECT id, a AS b FROM aliases) ORDER BY (SELECT -b)
+    inputs: mysql < 8.0.42 or mysql >= 8.1.0 and mysql < 8.4.5 or mysql >= 9.0.0 and mysql < 9.3.0
+  - from: mysql
+    sql: (SELECT id FROM aliases) ORDER BY a + 0
+    inputs: mysql < 8.0.31 or mysql >= 8.0.42 and mysql < 8.1.0 or mysql >= 8.4.5 and mysql < 9.0.0 or mysql >= 9.3.0
+  - from: mariadb
+    sql: (SELECT id, a AS b FROM aliases) ORDER BY -b
+  - from: mariadb
+    sql: (SELECT id FROM aliases) ORDER BY a + 0
+  # An expression of the alias of a grouping key that is an expression, with
+  # aggregate functions: sorted otherwise by the versions that read the
+  # columns of the result, refused from them.
+  - from: mysql
+    sql: (SELECT a % 2 AS x, COUNT(*) AS n FROM aliases GROUP BY x) ORDER BY -x
+    inputs: mysql < 8.0.31 or mysql >= 8.0.42 and mysql < 8.1.0 or mysql >= 8.4.5 and mysql < 9.0.0 or mysql >= 9.3.0
+  - from: mysql
+    sql: (SELECT a % 2 AS x, COUNT(*) AS n FROM aliases GROUP BY x) ORDER BY -x
+    inputs: mysql >= 8.0.31 and mysql < 8.0.42 or mysql >= 8.1.0 and mysql < 8.4.5 or mysql >= 9.0.0 and mysql < 9.3.0
+    refused: order.parenthesized
+  - from: mariadb
+    sql: (SELECT a % 2 AS x, COUNT(*) AS n FROM aliases GROUP BY x) ORDER BY -x

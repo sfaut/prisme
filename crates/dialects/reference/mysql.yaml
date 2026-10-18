@@ -495,6 +495,45 @@ constructs:
       up to 8.0.18, the outer `ORDER BY` sorts the rows of the union before
       its `LIMIT` (6, 5); refused from 8.0.19 to 8.0.30
       (`parenthesized_set_limit`), 2, 1 from 8.0.31.
+  - id: parenthesized_order_result
+    since: "8.0.31"
+    until: "8.0.42"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-31.html
+    comment: >-
+      `(SELECT id, a AS b FROM t) ORDER BY b + 0` sorts by the alias `b`, the
+      column of the result, and `(SELECT id FROM t) ORDER BY a` is refused
+      (error 1054), from 8.0.31 (WL #11350) to 8.0.41, 8.1.0 to 8.4.4 and
+      9.0.0 to 9.2.0. Before and after, and in MariaDB, the names are read as
+      those of an `ORDER BY` of the `SELECT`: inside an expression, the
+      column `b` of the source first. Without `ORDER BY` or `LIMIT` between
+      the parentheses only; measured on each local image, 9.0.0 having none
+      (crates/probe/cases/alias-references.sql). The release notes of 8.0.42,
+      8.4.5 and 9.3.0 say nothing of it. These versions sort the rows otherwise
+      by an expression of the alias of a grouping key that is an expression,
+      in a block with aggregate functions:
+      `(SELECT a % 2 AS x, COUNT(*) AS n FROM t GROUP BY x) ORDER BY -x`.
+  - id: parenthesized_order_result
+    since: "8.1.0"
+    until: "8.4.5"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.4/en/news-8-4-5.html
+    comment: >-
+      As in 8.0.31 to 8.0.41; measured on 8.1.0, 8.2.0, 8.3.0, 8.4.0, 8.4.2,
+      8.4.3, 8.4.4, and otherwise on 8.4.5 and 8.4.11.
+  - id: parenthesized_order_result
+    since: "9.0.0"
+    until: "9.3.0"
+    source: https://dev.mysql.com/doc/relnotes/mysql/9.7/en/news-9-3-0.html
+    comment: >-
+      As in 8.0.31 to 8.0.41; measured on 9.0.1, 9.1.0 and 9.2.0, and
+      otherwise on 9.3.0.
+  - id: parenthesized_order_subquery
+    since: "8.0.31"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-31.html
+    comment: >-
+      `(SELECT id, a AS b FROM t) ORDER BY (SELECT b)` sorts by the alias
+      `b`, from 8.0.31, after 8.0.42, 8.4.5 and 9.3.0 too, where the other
+      names of that `ORDER BY` are read as those of the `SELECT`; the column
+      `b` of the source before 8.0.31 and in MariaDB.
   - id: window_alias_once
     since: "8.0.11"
     until: "8.0.16"

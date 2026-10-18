@@ -1209,3 +1209,71 @@ fn reads_the_aliases_in_the_windows() {
         );
     }
 }
+
+#[test]
+fn an_order_after_a_select_between_parentheses_reads_as_the_input() {
+    let mysql = |minor, patch| Version::new(8, minor, patch);
+    // The names of the `SELECT` in MariaDB and most versions of MySQL, the
+    // columns of the result in MySQL 8.0.31 to 8.0.41, 8.1.0 to 8.4.4 and
+    // 9.0.0 to 9.2.0.
+    // The same positions as the text between parentheses.
+    let text = "(SELECT a AS b FROM t) ORDER BY b + 0";
+    let folded = plan_at(
+        " SELECT a AS b FROM t  ORDER BY b + 0",
+        Dialect::MySql,
+        mysql(0, 19),
+    );
+    for version in [
+        mysql(0, 19),
+        mysql(0, 30),
+        mysql(0, 42),
+        mysql(4, 5),
+        Version::new(9, 3, 0),
+    ] {
+        assert_eq!(plan_at(text, Dialect::MySql, version), folded, "{version}");
+        assert!(plan_at("(SELECT a FROM t) ORDER BY b", Dialect::MySql, version).is_ok());
+    }
+    assert!(plan_in("((SELECT a FROM t)) ORDER BY -b", Dialect::MariaDb).is_ok());
+    for version in [
+        mysql(0, 31),
+        mysql(0, 41),
+        mysql(1, 0),
+        mysql(4, 4),
+        Version::new(9, 2, 0),
+    ] {
+        assert_ne!(plan_at(text, Dialect::MySql, version), folded, "{version}");
+        assert_eq!(
+            plan_at("(SELECT a FROM t) ORDER BY b", Dialect::MySql, version)
+                .unwrap_err()
+                .message,
+            "unknown column `b`"
+        );
+    }
+    // With an `ORDER BY` between the parentheses, the columns of the result.
+    let text = "(SELECT a AS b FROM t ORDER BY a) ORDER BY b + 0";
+    assert_eq!(
+        plan_at(text, Dialect::MySql, mysql(0, 19)),
+        plan_at(text, Dialect::MySql, mysql(0, 31))
+    );
+    // A `WITH` between the parentheses, and a subquery that MySQL reads on
+    // the columns of the result from 8.0.31: not supported yet.
+    let text = "(WITH c AS (SELECT a, b FROM t) SELECT a AS b FROM c) ORDER BY b + 0";
+    assert!(plan_at(text, Dialect::MySql, mysql(0, 31)).is_ok());
+    assert!(
+        (plan_at(text, Dialect::MySql, mysql(0, 30))
+            .unwrap_err()
+            .message)
+            .starts_with("`WITH` between parentheses")
+    );
+    let text = "(SELECT a AS b FROM t) ORDER BY (SELECT b)";
+    for version in [mysql(0, 30), mysql(0, 31)] {
+        assert!(plan_at(text, Dialect::MySql, version).is_ok());
+    }
+    assert!(plan_in(text, Dialect::MariaDb).is_ok());
+    assert!(
+        (plan_at(text, Dialect::MySql, mysql(0, 42))
+            .unwrap_err()
+            .message)
+            .starts_with("a subquery in an `ORDER BY` after a `SELECT` between parentheses")
+    );
+}

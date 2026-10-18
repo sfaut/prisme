@@ -212,6 +212,14 @@ pub enum Construct {
     /// `ORDER BY`, computed once (MySQL: computed again for the sort from
     /// 8.0.16 to 8.0.28).
     WindowAliasOnce,
+    /// The names of an `ORDER BY` after a `SELECT` between parentheses
+    /// without `ORDER BY` or `LIMIT` of its own read as the columns of its
+    /// result (MySQL 8.0.31 to 8.0.41, 8.1.0 to 8.4.4, 9.0.0 to 9.2.0); as
+    /// those of an `ORDER BY` of that `SELECT` otherwise.
+    ParenthesizedOrderResult,
+    /// The names of a subquery in that `ORDER BY` read as the columns of the
+    /// result (MySQL from 8.0.31).
+    ParenthesizedOrderSubquery,
     /// The alias of an aggregate function inside an expression of `ORDER BY`
     /// or of a window, read as the value of the function (MySQL: as one value
     /// for all the rows before 8.0.29; MariaDB refuses it).
@@ -418,6 +426,12 @@ impl Construct {
             }
             Self::WindowAliasOnce => {
                 "a window function read once through its alias inside an expression of `ORDER BY`"
+            }
+            Self::ParenthesizedOrderResult => {
+                "the names of an `ORDER BY` after a `SELECT` between parentheses read as the columns of its result"
+            }
+            Self::ParenthesizedOrderSubquery => {
+                "the names of a subquery in an `ORDER BY` after a `SELECT` between parentheses read as the columns of its result"
             }
             Self::AggregateAliasRead => {
                 "the alias of an aggregate function read inside an expression of `ORDER BY`"

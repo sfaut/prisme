@@ -4093,3 +4093,76 @@ fn a_name_alone_in_a_window_is_read_as_the_input_reads_it() {
     );
     assert_eq!(rules, ["alias.aggregate"]);
 }
+
+#[test]
+fn an_order_after_a_select_between_parentheses_is_read_as_the_input() {
+    // From MySQL 8.0.31, the columns of the result: a derived table towards
+    // the versions that read a column of the source first inside an
+    // expression.
+    let text = "(SELECT a AS b FROM t) ORDER BY b + 0";
+    for target in [mysql_at(8, 0, 30), mysql_at(8, 0, 42), mariadb()] {
+        assert_eq!(
+            transpiled(text, mysql_at(8, 0, 31), output(target)),
+            (
+                "SELECT * FROM (SELECT a AS b FROM t) AS `d` ORDER BY b + 0".to_string(),
+                vec!["order.parenthesized"]
+            )
+        );
+    }
+    assert_eq!(
+        transpiled(text, mysql_at(8, 0, 31), output(mysql_at(9, 2, 0))),
+        (text.to_string(), vec![])
+    );
+    // A subquery, read on the columns of the result in MySQL only.
+    let (_, rules) = transpiled(
+        "(SELECT a AS x FROM t) ORDER BY (SELECT x)",
+        mysql_at(8, 4, 0),
+        output(mariadb()),
+    );
+    assert_eq!(rules, ["order.parenthesized"]);
+    // Read alike: a name alone, a name of the result only, the column
+    // itself.
+    for text in [
+        "(SELECT a AS b FROM t) ORDER BY b DESC",
+        "(SELECT a AS x FROM t) ORDER BY -x",
+        "(SELECT a, b FROM t) ORDER BY a + b",
+        "(SELECT a AS x, COUNT(*) AS n FROM t GROUP BY a) ORDER BY -x",
+    ] {
+        assert_eq!(
+            transpiled(text, mysql_at(8, 0, 31), output(mariadb())),
+            (text.to_string(), vec![]),
+            "{text}"
+        );
+    }
+    // An expression of the alias of a grouping key that is an expression,
+    // with aggregate functions: sorted otherwise by these versions.
+    let text = "SELECT a % 2 AS x, COUNT(*) AS n FROM t GROUP BY x";
+    let text = format!("({text}) ORDER BY -x");
+    assert_eq!(
+        errors(&text, mysql_at(8, 0, 31), output(mariadb())),
+        ["order.parenthesized"]
+    );
+    assert!(errors(&text, mysql_at(8, 0, 31), output(mysql_at(8, 4, 4))).is_empty());
+    // Elsewhere, the names of the `SELECT`, written in its block.
+    assert_eq!(
+        transpiled(
+            text.as_str(),
+            mysql_at(8, 0, 30),
+            output(mysql_at(8, 0, 31))
+        ),
+        (
+            "SELECT a % 2 AS x, COUNT(*) AS n FROM t GROUP BY x ORDER BY -x".to_string(),
+            vec![]
+        )
+    );
+    for input in [mysql_at(8, 0, 30), mysql_at(8, 0, 42), mariadb()] {
+        assert_eq!(
+            transpiled(
+                "(SELECT a AS b FROM t) ORDER BY b + 0",
+                input,
+                output(mysql_at(8, 0, 31))
+            ),
+            ("SELECT a AS b FROM t ORDER BY b + 0".to_string(), vec![])
+        );
+    }
+}

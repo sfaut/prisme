@@ -288,6 +288,17 @@ impl Emitter<'_> {
         }
     }
 
+    /// Tells whether `expr` is a column the `SELECT` block computes for a
+    /// grouping key that is an expression other than a column.
+    pub(super) fn expression_key(&self, expr: &Expr) -> bool {
+        match self.computed(expr) {
+            Some(Substitute::Expr(value)) => {
+                !matches!(value.kind, ExprKind::Column(_) | ExprKind::Window(_))
+            }
+            _ => false,
+        }
+    }
+
     /// Value that names a column of the select list without alias: what a
     /// column the block computes stands for, when it is a grouping key or the
     /// column of an implicit `ANY_VALUE`; `expr` otherwise.

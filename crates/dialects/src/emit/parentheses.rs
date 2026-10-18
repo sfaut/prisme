@@ -1,5 +1,5 @@
-//! Query between parentheses with its own `ORDER BY` or `LIMIT`, followed by
-//! an outer `ORDER BY` or `LIMIT` (rule `limit.nested`), measured on each
+//! Query between parentheses followed by an outer `ORDER BY` or `LIMIT`. With
+//! its own `ORDER BY` or `LIMIT` (rule `limit.nested`), measured on each
 //! image of MySQL 8.0.11 to 9.3.0 and MariaDB 10.5.29 to 11.8.9
 //! (`crates/probe/cases/parenthesized-limits.sql`,
 //! `docs/sources/mysql/parenthesized-limits.md`).
@@ -25,19 +25,32 @@
 //!   `(SELECT a ... UNION SELECT 6 ORDER BY 1 LIMIT 2) ORDER BY 1 DESC` gives
 //!   6, 5, and 2, 1 by the standard (construct `parenthesized_set_order`).
 //!
-//! An outer `ORDER BY` after a single query reads by the standard in every
-//! version. A derived
-//! table reads by the standard in every version too
+//! An outer `ORDER BY` after a single `SELECT` with its own `ORDER BY` or
+//! `LIMIT` reads the columns of its result in every version. Without them,
+//! MariaDB and MySQL read the names of the outer `ORDER BY` as those of an
+//! `ORDER BY` of the `SELECT`, which the plan folds into its block, except
+//! MySQL 8.0.31 to 8.0.41, 8.1.0 to 8.4.4 and 9.0.0 to 9.2.0, which read the
+//! columns of the result, as the plan reads them from these versions
+//! (construct `parenthesized_order_result`, rule `order.parenthesized`,
+//! `crates/probe/cases/alias-references.sql`):
+//! `(SELECT id, a AS b FROM t) ORDER BY b + 0` sorts by the column `b` of
+//! the source in the others. These versions also sort the rows otherwise by
+//! an expression of the alias of a grouping key that is an expression, in a
+//! block with aggregate functions
+//! (`(SELECT a % 2 AS x, COUNT(*) AS n FROM t GROUP BY x) ORDER BY -x`): an
+//! error towards the others.
+//!
+//! A derived table reads by the standard in every version
 //! (`SELECT * FROM (SELECT ... LIMIT 2) AS d LIMIT 5`): it stands for the
 //! parentheses towards a server that reads them otherwise than the input,
 //! when the input reads them by the standard; when the input reads them
 //! otherwise, and the output otherwise than the input, the query is an error
 //! (**[decided autonomously]**).
 
-use prisme_plan::{Limit, Plan, Sort};
+use prisme_plan::{Expr, ExprKind, Ident, Limit, Plan, ProjectItem, Sort};
 use prisme_types::Value;
 
-use super::{Block, Emitter};
+use super::{Block, Emitter, call};
 use crate::report::StepKind;
 use crate::versions::Construct;
 
@@ -133,6 +146,23 @@ impl Emitter<'_> {
         names_matter: bool,
     ) {
         let nesting = Nesting::of(inner, sort, limit);
+        if let Some(sort) = sort
+            && let Some(order) = self.outer_order(inner, sort, nesting)
+        {
+            let span = (sort.keys.first())
+                .and_then(|key| key.expr.span)
+                .or_else(|| inner.span());
+            match order {
+                Ok(message) => self.as_derived(inner, "order.parenthesized", &message, span),
+                Err(message) => {
+                    self.error("order.parenthesized", &message, span);
+                    self.write("(");
+                    self.query(inner, names_matter);
+                    self.write(")");
+                }
+            }
+            return;
+        }
         let input = self.reading(nesting, true);
         let output = self.reading(nesting, false);
         if input == output {
@@ -157,20 +187,139 @@ impl Emitter<'_> {
             return;
         }
         let message = format!("{} {}", self.target(), describe(output));
+        self.as_derived(inner, "limit.nested", &message, span);
+    }
+
+    /// `inner` as a derived table that stands for its parentheses, which the
+    /// output reads otherwise (`message`), under `rule`.
+    fn as_derived(
+        &mut self,
+        inner: &Plan,
+        rule: &'static str,
+        message: &str,
+        span: Option<prisme_plan::Span>,
+    ) {
         if self.has_duplicate_names(inner) {
             let message =
                 format!("{message}, and its columns have the same names: not supported yet");
-            self.error("limit.nested", &message, span);
+            self.error(rule, &message, span);
         }
         self.write("SELECT * FROM (");
         self.query(inner, true);
         self.write(") AS `d`");
         self.step(
-            "limit.nested",
+            rule,
             StepKind::Emulation,
             format!("{message}: emulated by a derived table"),
             span,
         );
+    }
+
+    /// How the output reads the `ORDER BY` `sort` after `inner`, a `SELECT`
+    /// between parentheses without `ORDER BY` or `LIMIT` of its own, when
+    /// the input reads its names as the columns of the result and the output
+    /// as those of an `ORDER BY` of the `SELECT`: `None` when each key reads
+    /// the same values in both; the message of the derived table that stands
+    /// for the parentheses otherwise; an error message when the input sorts
+    /// the rows otherwise than the plan.
+    fn outer_order(
+        &mut self,
+        inner: &Plan,
+        sort: &Sort,
+        nesting: Nesting,
+    ) -> Option<Result<String, String>> {
+        if nesting.inner_sort
+            || nesting.inner_limit
+            || nesting.inner_set
+            || !self.input_has(Construct::ParenthesizedOrderResult)
+            || self.has(Construct::ParenthesizedOrderResult)
+        {
+            return None;
+        }
+        let body = match inner {
+            Plan::With(with) => with.body.as_ref(),
+            _ => inner,
+        };
+        let block = Block::fold(body)?;
+        self.blocks.push(call::Internal::new(&block));
+        let misread = (block.aggregate).is_some_and(|aggregate| !aggregate.aggregates.is_empty())
+            && (sort.keys.iter()).any(|key| self.reads_expression_key(&block, &key.expr, true));
+        let alike = (sort.keys.iter()).all(|key| self.sorted_alike(&block, &key.expr, true));
+        self.blocks.pop();
+        let source = format!("{} {}", self.source.dialect.label(), self.source.version);
+        let reads = "reads the names of an `ORDER BY` after a `SELECT` between parentheses as \
+                     those of its own `ORDER BY`, a column of the source first inside an \
+                     expression";
+        if misread {
+            return Some(Err(format!(
+                "{source} sorts the rows otherwise by an expression of the alias of a grouping \
+                 key that is an expression, after a `SELECT` between parentheses with aggregate \
+                 functions, and {} {reads}: not supported by Prisme",
+                self.target()
+            )));
+        }
+        (!alike).then(|| Ok(format!("{} {reads}", self.target())))
+    }
+
+    /// Tells whether `expr`, a key of an `ORDER BY` after `block`, reads
+    /// inside an expression a column of the result whose item is a grouping
+    /// key that is an expression.
+    fn reads_expression_key(&self, block: &Block<'_>, expr: &Expr, top: bool) -> bool {
+        if let ExprKind::Column(column) = &expr.kind {
+            return !top
+                && item(block, &column.name).is_some_and(|value| self.expression_key(value));
+        }
+        let mut copy = expr.clone();
+        (copy.operands_mut().into_iter())
+            .any(|operand| self.reads_expression_key(block, operand, false))
+    }
+
+    /// Tells whether `expr`, a key of an `ORDER BY` after `block` that names
+    /// its columns of the result, reads the same values when the output
+    /// reads its names as those of an `ORDER BY` of `block`: a name alone
+    /// designates the item of the select list in both; inside an
+    /// expression, a name that no column of the source has, or the column of
+    /// the source that its item is. A subquery or a window function reads
+    /// otherwise.
+    fn sorted_alike(&self, block: &Block<'_>, expr: &Expr, top: bool) -> bool {
+        match &expr.kind {
+            ExprKind::Column(column) if column.qualifier.is_none() => {
+                top || self.item_is_column(block, &column.name)
+            }
+            ExprKind::Column(_)
+            | ExprKind::Exists { .. }
+            | ExprKind::ScalarSubquery(_)
+            | ExprKind::InSubquery { .. }
+            | ExprKind::Quantified { .. }
+            | ExprKind::Window(_) => false,
+            _ => {
+                let mut copy = expr.clone();
+                (copy.operands_mut().into_iter())
+                    .all(|operand| self.sorted_alike(block, operand, false))
+            }
+        }
+    }
+
+    /// Tells whether a name inside an expression of an `ORDER BY` of
+    /// `block` reads the item `name` of its select list: no column of the
+    /// source has the name, or a single one, which the item is.
+    fn item_is_column(&self, block: &Block<'_>, name: &Ident) -> bool {
+        let schema = block.source.schema();
+        let same = |other: &Ident| other.value.eq_ignore_ascii_case(&name.value);
+        let columns: Vec<_> = (schema.columns.iter())
+            .filter(|column| same(&column.name))
+            .collect();
+        match columns.as_slice() {
+            [] => true,
+            [_] => item(block, name).is_none_or(|value| {
+                let column = match &value.kind {
+                    ExprKind::Column(column) => Some(column.clone()),
+                    _ => None,
+                };
+                (self.key_column(value).or(column)).is_some_and(|column| same(&column.name))
+            }),
+            _ => false,
+        }
     }
 
     /// Reading of `nesting` by the input when `input`, by the output
@@ -221,6 +370,17 @@ impl Emitter<'_> {
                 .any(|other| other.name.value.eq_ignore_ascii_case(&column.name.value))
         })
     }
+}
+
+/// Expression of the item of the select list of `block` named `name`;
+/// `None` for a column of a wildcard.
+fn item<'b>(block: &Block<'b>, name: &Ident) -> Option<&'b Expr> {
+    (block.project.items.iter()).find_map(|item| match item {
+        ProjectItem::Expr(named) if named.name.value.eq_ignore_ascii_case(&name.value) => {
+            Some(&named.expr)
+        }
+        _ => None,
+    })
 }
 
 /// What a server does with a query between parentheses read as `reading`,

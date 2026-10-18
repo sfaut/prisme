@@ -174,3 +174,79 @@ SELECT a % 2 AS b, id % 2 AS b, COUNT(*) AS n FROM ar GROUP BY a % 2, id % 2 HAV
 (SELECT a % 2 AS x, SUM(b) AS s FROM ar GROUP BY x) ORDER BY s + 0, x;
 (SELECT a % 2 AS x, SUM(b) AS s FROM ar GROUP BY x) ORDER BY -x;
 ((SELECT id, a AS b FROM ar)) ORDER BY b + 0;
+-- A name of the select list or of the source only, an inner `ORDER BY`, a
+-- set operation, a table alias, a grouped query.
+(SELECT id, a AS x FROM ar) ORDER BY -x;
+(SELECT id, a AS b FROM ar) ORDER BY CONCAT(b);
+(SELECT id, a AS b FROM ar) ORDER BY b DESC;
+(SELECT id, a AS b FROM ar ORDER BY id) ORDER BY -b;
+(SELECT id, a AS b FROM ar WHERE id > 0) ORDER BY -b;
+(SELECT id, a AS b FROM ar AS p) ORDER BY -b;
+(SELECT id, a AS b FROM ar AS p) ORDER BY -p.b;
+(SELECT id, a FROM ar) ORDER BY -b;
+(SELECT id, a FROM ar) ORDER BY b;
+(SELECT id FROM ar) ORDER BY a;
+(SELECT id, a AS b FROM ar UNION ALL SELECT 4, 0) ORDER BY -b;
+(SELECT a % 2 AS x, COUNT(*) AS n FROM ar GROUP BY a % 2) ORDER BY -n;
+(SELECT a % 2 AS b, COUNT(*) AS n FROM ar GROUP BY a % 2) ORDER BY -b;
+-- An inner `ORDER BY` without `LIMIT`, of another order than both readings.
+(SELECT id, a AS b FROM ar ORDER BY id DESC) ORDER BY -b;
+(SELECT id, a AS b FROM ar ORDER BY id DESC) ORDER BY b + 0;
+(SELECT id, a AS x FROM ar ORDER BY id DESC) ORDER BY -x;
+(SELECT id, a AS b FROM ar ORDER BY -id) ORDER BY b;
+-- A grouped query of three groups: a grouping key alone, inside an
+-- expression, an aggregate, a column of the source; `DISTINCT`, `HAVING`.
+(SELECT a AS x, COUNT(*) AS n FROM ar GROUP BY a) ORDER BY x DESC;
+(SELECT a AS x, COUNT(*) AS n FROM ar GROUP BY a) ORDER BY -x;
+(SELECT a AS x, COUNT(*) AS n FROM ar GROUP BY a) ORDER BY x + 0 DESC;
+(SELECT a AS x, COUNT(*) AS n FROM ar GROUP BY x) ORDER BY -x;
+(SELECT a AS x FROM ar GROUP BY a) ORDER BY -x;
+(SELECT a AS x, MAX(b) AS m FROM ar GROUP BY a) ORDER BY -m;
+(SELECT a AS x, MAX(b) AS m FROM ar GROUP BY a) ORDER BY m + 0;
+(SELECT a AS x, MAX(b) AS m FROM ar GROUP BY a) ORDER BY -MAX(b);
+(SELECT a AS x, MAX(b) AS m FROM ar GROUP BY a) ORDER BY -a;
+(SELECT a AS x, MAX(b) AS m FROM ar GROUP BY a) ORDER BY a DESC;
+(SELECT a AS b, MAX(b) AS m FROM ar GROUP BY a) ORDER BY -b;
+(SELECT a AS x FROM ar GROUP BY a HAVING x > 0) ORDER BY -x;
+(SELECT DISTINCT a AS x FROM ar) ORDER BY -x;
+(SELECT DISTINCT a AS x FROM ar) ORDER BY x DESC;
+-- A column of the source only, inside an expression; a qualified alias.
+(SELECT id FROM ar) ORDER BY a + 0;
+(SELECT id FROM ar) ORDER BY -b;
+(SELECT id, a AS x FROM ar) ORDER BY -b;
+(SELECT id, a AS x FROM ar) ORDER BY ar.x;
+-- A window, a position, an aggregate of the outer `ORDER BY`.
+(SELECT id, a AS b, ROW_NUMBER() OVER (ORDER BY id DESC) AS r FROM ar) ORDER BY -r;
+(SELECT id, a AS x FROM ar) ORDER BY ROW_NUMBER() OVER (ORDER BY x);
+(SELECT id, a AS x FROM ar) ORDER BY ROW_NUMBER() OVER (ORDER BY -x);
+(SELECT id, a AS b FROM ar) ORDER BY 2 DESC;
+(SELECT id, a AS b FROM ar) ORDER BY SUM(b);
+-- Inside a derived table, a common table expression, a subquery.
+SELECT * FROM ((SELECT id, a AS b FROM ar) ORDER BY -b LIMIT 1) AS d;
+WITH c AS ((SELECT id, a AS b FROM ar) ORDER BY -b LIMIT 1) SELECT * FROM c;
+SELECT (SELECT id FROM ((SELECT id, a AS b FROM ar) ORDER BY -b LIMIT 1) AS d) AS v;
+SELECT id FROM ar WHERE id IN ((SELECT id FROM ar) ORDER BY -b);
+-- A grouping key, or an item, that is an expression.
+(SELECT a % 2 AS x, COUNT(*) AS n FROM ar GROUP BY x) ORDER BY x DESC;
+(SELECT a % 2 AS x, COUNT(*) AS n FROM ar GROUP BY x) ORDER BY x + 0 DESC;
+(SELECT a % 2 AS x, COUNT(*) AS n FROM ar GROUP BY x) ORDER BY -n;
+(SELECT a % 2 AS x, COUNT(*) AS n FROM ar GROUP BY a % 2) ORDER BY -x;
+(SELECT a + 0 AS x, COUNT(*) AS n FROM ar GROUP BY x) ORDER BY -x;
+(SELECT a + 0 AS x, COUNT(*) AS n FROM ar GROUP BY a + 0) ORDER BY x DESC;
+(SELECT a + 0 AS x FROM ar GROUP BY x) ORDER BY -x;
+(SELECT a + 0 AS x FROM ar GROUP BY a) ORDER BY -x;
+(SELECT a + 0 AS x FROM ar) ORDER BY -x;
+(SELECT DISTINCT a + 0 AS x FROM ar) ORDER BY -x;
+(SELECT a % 2 AS x FROM ar GROUP BY x) ORDER BY -x;
+(SELECT a % 2 AS x, COUNT(*) AS n FROM ar GROUP BY x HAVING n > 0) ORDER BY -x;
+SELECT * FROM (SELECT a % 2 AS x, COUNT(*) AS n FROM ar GROUP BY x) AS d ORDER BY -x;
+SELECT a % 2 AS x, COUNT(*) AS n FROM ar GROUP BY x ORDER BY -x;
+-- A subquery of the outer `ORDER BY`: a name of the result, of the source.
+(SELECT id, a AS x FROM ar) ORDER BY (SELECT -x);
+(SELECT id FROM ar) ORDER BY (SELECT -a);
+(SELECT id, a AS b FROM ar) ORDER BY (SELECT -b);
+(SELECT id, a AS b FROM ar) ORDER BY (SELECT b + 0);
+(SELECT id, a AS b FROM ar) ORDER BY (SELECT MAX(b) FROM ar AS q WHERE q.id = b);
+-- `WITH` between the parentheses.
+(WITH c AS (SELECT id, a, b FROM ar) SELECT id, a AS b FROM c) ORDER BY b + 0;
+(WITH c AS (SELECT id, a, b FROM ar) SELECT id FROM c) ORDER BY a;
