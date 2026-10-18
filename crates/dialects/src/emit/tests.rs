@@ -271,6 +271,10 @@ fn comments_are_written_again_near_their_place() {
         output(mysql()),
     );
     assert_eq!(sql, "-- title\nSELECT a, /* first */ b # second\nFROM t");
+    // A comment inside a literal written as it is: once.
+    let text = "SELECT 'a' /* x */ 'b' AS v, DATE /* y */ '2024-05-06' AS w, _latin1 /* z */ 'c' AS u FROM t";
+    let (sql, _) = transpiled(text, mysql(), output(mariadb()));
+    assert_eq!(sql, text);
 }
 
 #[test]

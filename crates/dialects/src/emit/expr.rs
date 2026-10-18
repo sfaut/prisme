@@ -459,7 +459,7 @@ impl Emitter<'_> {
             && let Some(span) = expr.span
             && let Some(text) = self.source.text.get(span.start..span.end)
         {
-            self.write(text);
+            self.input_text(span, text);
             return;
         }
         let text = match value {

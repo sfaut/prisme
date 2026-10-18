@@ -293,6 +293,20 @@ impl Emitter<'_> {
         }
     }
 
+    /// Writes `text`, the text of the input at `span`, with the comments it
+    /// holds, not written again (`'a' /* x */ 'b'`); those before it come
+    /// first.
+    fn input_text(&mut self, span: Span, text: &str) {
+        self.at(Some(span));
+        self.write(text);
+        while let Some(&(comment, _)) = self.source.comments.get(self.next_comment)
+            && comment.start >= span.start
+            && comment.end <= span.end
+        {
+            self.next_comment += 1;
+        }
+    }
+
     /// Writes the comments of the input placed before `span`, when known.
     fn at(&mut self, span: Option<Span>) {
         if self.quiet > 0 {
