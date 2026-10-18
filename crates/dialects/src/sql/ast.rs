@@ -8,7 +8,7 @@
 
 use prisme_plan::{
     AliasForm, CallForm, CastForm, CastTarget, DateArithmeticForm, Direction, FrameUnits, Ident,
-    IndexHint, JoinForm, LimitForm, Span, TimeUnit, TrimSide, Truth, ValuesForm,
+    IndexHint, JoinForm, LimitForm, Span, TimeUnit, TrimSide, Truth, ValuesForm, WrittenOption,
 };
 
 /// Statement.
@@ -132,6 +132,8 @@ pub struct Row {
 pub struct Select {
     /// `DISTINCT` (or `DISTINCTROW`).
     pub distinct: bool,
+    /// Options written after `SELECT` (`SQL_NO_CACHE`), each once, in order.
+    pub options: Vec<WrittenOption>,
     /// Items of the select list.
     pub items: Vec<SelectItem>,
     /// `FROM`; `None` without it or with `FROM DUAL`.

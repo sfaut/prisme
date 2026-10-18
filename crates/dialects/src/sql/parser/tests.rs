@@ -1729,3 +1729,249 @@ fn reads_with_recursive_and_refuses_cycle() {
         )
     );
 }
+
+/// Options of the first `SELECT` of `text`, in order, and its `DISTINCT`.
+fn options_of(text: &str, options: &ParseOptions) -> (Vec<&'static str>, bool) {
+    let mut body = query(text, options).body;
+    loop {
+        body = match body {
+            QueryBody::Select(select) => {
+                let keywords = (select.options.iter())
+                    .map(|written| written.option.keyword())
+                    .collect();
+                return (keywords, select.distinct);
+            }
+            QueryBody::SetOperation(operation) => operation.left,
+            QueryBody::Nested(query) => query.body,
+            other => panic!("{text}: {other:?}"),
+        };
+    }
+}
+
+#[test]
+fn reads_the_options_of_select_in_any_order() {
+    // Each option once, in the order written, `ALL`, `DISTINCT` and
+    // `DISTINCTROW` among them.
+    for (text, expected, distinct) in [
+        ("SELECT SQL_NO_CACHE a FROM t", vec!["SQL_NO_CACHE"], false),
+        (
+            "SELECT DISTINCT SQL_CALC_FOUND_ROWS HIGH_PRIORITY a FROM t LIMIT 1",
+            vec!["SQL_CALC_FOUND_ROWS", "HIGH_PRIORITY"],
+            true,
+        ),
+        (
+            "SELECT SQL_BUFFER_RESULT STRAIGHT_JOIN SQL_SMALL_RESULT DISTINCTROW a FROM t",
+            vec!["SQL_BUFFER_RESULT", "STRAIGHT_JOIN", "SQL_SMALL_RESULT"],
+            true,
+        ),
+        (
+            "SELECT SQL_BIG_RESULT ALL sql_no_cache a FROM t",
+            vec!["SQL_BIG_RESULT", "SQL_NO_CACHE"],
+            false,
+        ),
+        (
+            "SELECT HIGH_PRIORITY HIGH_PRIORITY STRAIGHT_JOIN a FROM t",
+            vec!["HIGH_PRIORITY", "STRAIGHT_JOIN"],
+            false,
+        ),
+        (
+            "SELECT SQL_SMALL_RESULT SQL_BIG_RESULT a FROM t GROUP BY a",
+            vec!["SQL_SMALL_RESULT", "SQL_BIG_RESULT"],
+            false,
+        ),
+        ("SELECT DISTINCT DISTINCTROW a FROM t", vec![], true),
+        ("SELECT ALL ALL a FROM t", vec![], false),
+    ] {
+        for options in [mysql(), mariadb()] {
+            assert_eq!(
+                options_of(text, &options),
+                (expected.clone(), distinct),
+                "{text}"
+            );
+        }
+    }
+    // `ALL` with `DISTINCT`, error 1221 of both.
+    for text in [
+        "SELECT ALL DISTINCT a FROM t",
+        "SELECT DISTINCTROW ALL a FROM t",
+        "SELECT ALL SQL_NO_CACHE DISTINCT a FROM t",
+    ] {
+        for options in [mysql(), mariadb()] {
+            assert_eq!(
+                error(text, &options).0,
+                "incorrect usage of `ALL` and `DISTINCT`",
+                "{text}"
+            );
+        }
+    }
+    // An option alone is not a name; after a table or between backticks, it
+    // is.
+    for options in [mysql(), mariadb()] {
+        assert!(parse("SELECT sql_no_cache FROM t", &options).is_err());
+        let counts = |text: &str| match query(text, &options).body {
+            QueryBody::Select(select) => (select.options.len(), select.items.len()),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(counts("SELECT t.sql_no_cache FROM t"), (0, 1));
+        assert_eq!(counts("SELECT `sql_no_cache` FROM t"), (0, 1));
+    }
+}
+
+#[test]
+fn sql_cache_is_an_option_of_mariadb_and_a_name_of_mysql() {
+    assert_eq!(
+        options_of("SELECT SQL_CACHE a FROM t", &mariadb()),
+        (vec!["SQL_CACHE"], false)
+    );
+    // MySQL reads the column `SQL_CACHE` under the alias `a`.
+    let select = select("SELECT SQL_CACHE a FROM t");
+    assert!(select.options.is_empty());
+    assert_eq!(select.items.len(), 1);
+    // MariaDB: errors 1225 and 1221; MySQL takes `SQL_NO_CACHE` twice.
+    assert_eq!(
+        error("SELECT SQL_NO_CACHE SQL_NO_CACHE a FROM t", &mariadb()),
+        (
+            "option `SQL_NO_CACHE` used twice in statement".to_string(),
+            "SQL_NO_CACHE".to_string()
+        )
+    );
+    assert_eq!(
+        error("SELECT SQL_CACHE SQL_CACHE a FROM t", &mariadb()).0,
+        "option `SQL_CACHE` used twice in statement"
+    );
+    for text in [
+        "SELECT SQL_CACHE SQL_NO_CACHE a FROM t",
+        "SELECT SQL_NO_CACHE SQL_CACHE a FROM t",
+    ] {
+        assert_eq!(
+            error(text, &mariadb()).0,
+            "incorrect usage of `SQL_NO_CACHE` and `SQL_CACHE`"
+        );
+    }
+    assert_eq!(
+        options_of("SELECT SQL_NO_CACHE SQL_NO_CACHE a FROM t", &mysql()),
+        (vec!["SQL_NO_CACHE"], false)
+    );
+}
+
+#[test]
+fn the_options_of_the_first_select_only_are_refused_elsewhere() {
+    let placement = |keyword: &str| {
+        format!(
+            "incorrect usage/placement of `{keyword}`: only on the first `SELECT` of the \
+             statement"
+        )
+    };
+    // Error 1234 of both: a subquery, a derived table, a common table
+    // expression, another operand of a set operation.
+    for (text, keyword) in [
+        ("SELECT (SELECT HIGH_PRIORITY 1) AS s", "HIGH_PRIORITY"),
+        (
+            "SELECT * FROM (SELECT SQL_CALC_FOUND_ROWS a FROM t LIMIT 1) AS d",
+            "SQL_CALC_FOUND_ROWS",
+        ),
+        (
+            "WITH c AS (SELECT SQL_BUFFER_RESULT a FROM t) SELECT * FROM c",
+            "SQL_BUFFER_RESULT",
+        ),
+        (
+            "SELECT a FROM t UNION SELECT SQL_CALC_FOUND_ROWS 1 LIMIT 2",
+            "SQL_CALC_FOUND_ROWS",
+        ),
+        (
+            "SELECT a FROM t WHERE EXISTS (SELECT HIGH_PRIORITY 1)",
+            "HIGH_PRIORITY",
+        ),
+        (
+            "SELECT a FROM t WHERE a IN (SELECT SQL_BUFFER_RESULT a FROM t)",
+            "SQL_BUFFER_RESULT",
+        ),
+        (
+            "SELECT a FROM t WHERE a = ANY (SELECT SQL_BUFFER_RESULT a FROM t)",
+            "SQL_BUFFER_RESULT",
+        ),
+    ] {
+        for options in [mysql(), mariadb()] {
+            assert_eq!(
+                error(text, &options),
+                (placement(keyword), keyword.to_string()),
+                "{text}"
+            );
+        }
+    }
+    // A `SELECT` after a `TABLE` or a `VALUES`.
+    assert_eq!(
+        error("TABLE t UNION SELECT HIGH_PRIORITY 1, 2", &mysql()).0,
+        placement("HIGH_PRIORITY")
+    );
+    assert_eq!(
+        error("VALUES (9) UNION SELECT SQL_CALC_FOUND_ROWS 8", &mariadb()).0,
+        placement("SQL_CALC_FOUND_ROWS")
+    );
+    // The first `SELECT` of the statement, between parentheses too.
+    for text in [
+        "SELECT SQL_CALC_FOUND_ROWS a FROM t UNION SELECT 9 LIMIT 2",
+        "WITH c AS (SELECT a FROM t) SELECT SQL_CALC_FOUND_ROWS * FROM c LIMIT 1",
+        "((SELECT SQL_CALC_FOUND_ROWS a FROM t LIMIT 2)) UNION ALL SELECT 9 LIMIT 2",
+        "(SELECT SQL_CALC_FOUND_ROWS a FROM t LIMIT 2) UNION (SELECT 9) LIMIT 1",
+        "((SELECT HIGH_PRIORITY a FROM t LIMIT 2) UNION SELECT 9) LIMIT 1",
+        "(SELECT SQL_BUFFER_RESULT a FROM t ORDER BY a)",
+        "SELECT (SELECT STRAIGHT_JOIN SQL_SMALL_RESULT SQL_BIG_RESULT 1) AS s",
+    ] {
+        for options in [mysql(), mariadb()] {
+            assert!(parse(text, &options).is_ok(), "{text}");
+        }
+    }
+    // MySQL takes `SQL_NO_CACHE` anywhere, and the options of a `SELECT`
+    // between parentheses followed by `ORDER BY` or `LIMIT`; MariaDB does
+    // not.
+    for (text, keyword) in [
+        ("SELECT (SELECT SQL_NO_CACHE 1) AS s", "SQL_NO_CACHE"),
+        (
+            "SELECT a FROM t UNION SELECT SQL_NO_CACHE 1",
+            "SQL_NO_CACHE",
+        ),
+        (
+            "SELECT * FROM ((SELECT SQL_NO_CACHE a FROM t)) AS d",
+            "SQL_NO_CACHE",
+        ),
+    ] {
+        assert!(parse(text, &mysql()).is_ok(), "{text}");
+        assert_eq!(error(text, &mariadb()).0, placement(keyword), "{text}");
+    }
+    for (text, keyword) in [
+        (
+            "(SELECT SQL_CALC_FOUND_ROWS a FROM t LIMIT 2) LIMIT 1",
+            "SQL_CALC_FOUND_ROWS",
+        ),
+        (
+            "(SELECT SQL_CALC_FOUND_ROWS a FROM t LIMIT 2) ORDER BY 1 DESC",
+            "SQL_CALC_FOUND_ROWS",
+        ),
+        (
+            "((SELECT HIGH_PRIORITY a FROM t LIMIT 2)) LIMIT 1",
+            "HIGH_PRIORITY",
+        ),
+        (
+            "((SELECT SQL_NO_CACHE a FROM t LIMIT 2) LIMIT 1)",
+            "SQL_NO_CACHE",
+        ),
+        (
+            "WITH c AS (SELECT a FROM t) (SELECT SQL_BUFFER_RESULT a FROM c LIMIT 2) LIMIT 1",
+            "SQL_BUFFER_RESULT",
+        ),
+    ] {
+        assert!(parse(text, &mysql()).is_ok(), "{text}");
+        assert_eq!(
+            error(text, &mariadb()),
+            (
+                format!(
+                    "incorrect usage/placement of `{keyword}`: MariaDB refuses it in a \
+                     `SELECT` between parentheses followed by `ORDER BY` or `LIMIT`"
+                ),
+                keyword.to_string()
+            ),
+            "{text}"
+        );
+    }
+}

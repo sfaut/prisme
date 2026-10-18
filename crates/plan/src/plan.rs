@@ -22,8 +22,8 @@ pub use source::{
     TableName, Values, ValuesForm, With,
 };
 pub use unary::{
-    Distinct, Extend, Filter, FilterForm, Limit, LimitForm, NamedExpr, Project, ProjectItem, Sort,
-    Wildcard, Window, WindowDefinition,
+    Distinct, Extend, Filter, FilterForm, Limit, LimitForm, NamedExpr, Project, ProjectItem,
+    SelectOption, Sort, Wildcard, Window, WindowDefinition, WrittenOption,
 };
 
 use crate::{Schema, Span};

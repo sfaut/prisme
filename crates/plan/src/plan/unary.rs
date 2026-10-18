@@ -37,6 +37,60 @@ pub struct Project {
     pub input: Box<Plan>,
     /// Items of the list, in order.
     pub items: Vec<ProjectItem>,
+    /// Options written after `SELECT`, each once, in order.
+    pub options: Vec<WrittenOption>,
+    /// Position in the input.
+    pub span: Option<Span>,
+}
+
+/// Option of a `SELECT` block of the MySQL family, written after `SELECT`
+/// (`SELECT SQL_NO_CACHE a FROM t`). Without effect on the rows, except
+/// `SQL_CALC_FOUND_ROWS`, which sets what `FOUND_ROWS()` gives next.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SelectOption {
+    /// `HIGH_PRIORITY`: the query goes before the updates waiting for a
+    /// table lock.
+    HighPriority,
+    /// `STRAIGHT_JOIN`: the tables are joined in the order written.
+    StraightJoin,
+    /// `SQL_SMALL_RESULT`: `GROUP BY` or `DISTINCT` expects few rows.
+    SmallResult,
+    /// `SQL_BIG_RESULT`: `GROUP BY` or `DISTINCT` expects many rows.
+    BigResult,
+    /// `SQL_BUFFER_RESULT`: the result goes through a temporary table, which
+    /// frees the tables earlier.
+    BufferResult,
+    /// `SQL_NO_CACHE`: the result stays out of the query cache.
+    NoCache,
+    /// `SQL_CACHE`: the result goes into the query cache (MariaDB).
+    Cache,
+    /// `SQL_CALC_FOUND_ROWS`: `FOUND_ROWS()` then gives the number of rows
+    /// without the `LIMIT`.
+    CalcFoundRows,
+}
+
+impl SelectOption {
+    /// Keyword of the option.
+    #[must_use]
+    pub const fn keyword(self) -> &'static str {
+        match self {
+            Self::HighPriority => "HIGH_PRIORITY",
+            Self::StraightJoin => "STRAIGHT_JOIN",
+            Self::SmallResult => "SQL_SMALL_RESULT",
+            Self::BigResult => "SQL_BIG_RESULT",
+            Self::BufferResult => "SQL_BUFFER_RESULT",
+            Self::NoCache => "SQL_NO_CACHE",
+            Self::Cache => "SQL_CACHE",
+            Self::CalcFoundRows => "SQL_CALC_FOUND_ROWS",
+        }
+    }
+}
+
+/// Option of a `SELECT` block, with its position.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WrittenOption {
+    /// Option.
+    pub option: SelectOption,
     /// Position in the input.
     pub span: Option<Span>,
 }
@@ -181,6 +235,7 @@ impl Project {
         Ok(Self {
             input: Box::new(input),
             items,
+            options: Vec::new(),
             span: None,
         })
     }

@@ -234,6 +234,10 @@ pub enum Construct {
     /// `uca1400_ai_ci` as the default collation of `utf8mb3`, `ucs2`,
     /// `utf16` and `utf32` (MariaDB).
     UnicodeUca1400,
+    /// `FOUND_ROWS()` after `SQL_CALC_FOUND_ROWS` on a `UNION ALL` with a
+    /// `LIMIT` and without `ORDER BY` counting every row (MySQL), the rows up
+    /// to the `LIMIT` before.
+    UnionAllFoundRows,
 }
 
 /// Construct refused in a dialect or a version.
@@ -442,6 +446,9 @@ impl Construct {
             Self::Utf8mb4Uca1400 => "`utf8mb4_uca1400_ai_ci` as the default collation of `utf8mb4`",
             Self::UnicodeUca1400 => {
                 "`uca1400_ai_ci` as the default collation of `utf8mb3`, `ucs2`, `utf16` and `utf32`"
+            }
+            Self::UnionAllFoundRows => {
+                "`FOUND_ROWS()` counting every row of a `UNION ALL` beyond its `LIMIT`"
             }
         }
     }

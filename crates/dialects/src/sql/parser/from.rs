@@ -201,7 +201,7 @@ impl Parser<'_> {
     /// `[LATERAL] (query) [AS] alias [(columns)]`, from `(`.
     fn derived(&mut self, start: usize, lateral: bool) -> Result<TableRef, ParseError> {
         self.expect_punct(Punct::LeftParen)?;
-        let query = self.query()?;
+        let query = self.inner_query()?;
         self.expect_punct(Punct::RightParen)?;
         let Some(alias) = self.alias(false)? else {
             return Err(ParseError {

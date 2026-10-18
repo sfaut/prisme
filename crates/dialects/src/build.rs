@@ -720,6 +720,7 @@ impl Builder<'_> {
         let mut project =
             Project::new(plan, items).map_err(|error| plan_error(&error, select.span))?;
         project.span = Some(select.span);
+        project.options.clone_from(&select.options);
         let mut plan = Plan::Project(project);
         if select.distinct {
             plan = Plan::Distinct(Distinct {

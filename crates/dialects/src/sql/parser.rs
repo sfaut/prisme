@@ -28,13 +28,16 @@ mod tests;
 
 use std::fmt;
 
-use prisme_plan::{AliasForm, Direction, Ident, LimitForm, Span, ValuesForm};
+use prisme_plan::{
+    AliasForm, Direction, Ident, LimitForm, SelectOption, Span, ValuesForm, WrittenOption,
+};
 
 use crate::Dialect;
 use crate::keywords::is_reserved;
 use crate::lexer::{
     CommentKind, LexError, LexerOptions, Punct, SqlMode, Token, TokenKind, tokenize,
 };
+use crate::select_options::{self, OPTIONS};
 use crate::sql::ast::{
     Alias, CteDefinition, Expr, Limit, ObjectName, OrderItem, Query, QueryBody, Row, Select,
     SelectItem, SetOperation, SetOperator, Statement, StatementKind, Values, With,
@@ -131,6 +134,7 @@ pub fn parse(text: &str, options: &ParseOptions) -> Result<Parsed, ParseError> {
         pos: 0,
         options,
         depth: 0,
+        head: true,
     };
     let statement = parser.statement()?;
     parser.eat_punct(Punct::Semicolon);
@@ -156,6 +160,9 @@ struct Parser<'a> {
     options: &'a ParseOptions,
     /// Nesting of the rule being read.
     depth: usize,
+    /// Tells whether the next `SELECT` is the first one of the statement,
+    /// which takes the options of the first `SELECT` only.
+    head: bool,
 }
 
 impl Parser<'_> {
@@ -399,6 +406,9 @@ impl Parser<'_> {
             } else {
                 None
             };
+            if !order_by.is_empty() || limit.is_some() {
+                parser.parenthesized_options(&body)?;
+            }
             Ok(Query {
                 with,
                 body,
@@ -407,6 +417,48 @@ impl Parser<'_> {
                 span: parser.span_from(start),
             })
         })
+    }
+
+    /// Query inside another one: a common table expression, a derived table,
+    /// a subquery. Its `SELECT` blocks are never the first one of the
+    /// statement.
+    pub(super) fn inner_query(&mut self) -> Result<Query, ParseError> {
+        let head = std::mem::replace(&mut self.head, false);
+        let query = self.query();
+        self.head = head;
+        query
+    }
+
+    /// Refuses, in MariaDB, the options of the first `SELECT` of the
+    /// statement when `body`, followed by an `ORDER BY` or a `LIMIT`, is that
+    /// `SELECT` between parentheses: `(SELECT SQL_CALC_FOUND_ROWS a FROM t
+    /// LIMIT 2) LIMIT 1` (error 1234), which a set operation between the
+    /// parentheses allows (`select_options` module).
+    fn parenthesized_options(&self, body: &QueryBody) -> Result<(), ParseError> {
+        let dialect = self.options.dialect;
+        let QueryBody::Nested(query) = body else {
+            return Ok(());
+        };
+        let mut body = &query.body;
+        while let QueryBody::Nested(query) = body {
+            body = &query.body;
+        }
+        let QueryBody::Select(select) = body else {
+            return Ok(());
+        };
+        let refused = (select.options.iter())
+            .find(|written| select_options::first_only(dialect, written.option));
+        match refused {
+            Some(written) if dialect == Dialect::MariaDb => Err(ParseError {
+                message: format!(
+                    "incorrect usage/placement of `{}`: MariaDB refuses it in a `SELECT` \
+                     between parentheses followed by `ORDER BY` or `LIMIT`",
+                    written.option.keyword()
+                ),
+                span: written.span.unwrap_or(select.span),
+            }),
+            _ => Ok(()),
+        }
     }
 
     /// `WITH [RECURSIVE] name [(columns)] AS (query), ...`.
@@ -428,7 +480,7 @@ impl Parser<'_> {
             };
             self.expect_keyword("AS")?;
             self.expect_punct(Punct::LeftParen)?;
-            let query = self.query()?;
+            let query = self.inner_query()?;
             self.expect_punct(Punct::RightParen)?;
             if self.at_keyword("CYCLE") {
                 return Err(self.unsupported("`CYCLE`", self.here()));
@@ -542,10 +594,13 @@ impl Parser<'_> {
         if self.at_keyword("SELECT") {
             return Ok(QueryBody::Select(Box::new(self.select()?)));
         }
+        // A `SELECT` after a `VALUES` or a `TABLE` is not the first one.
         if self.at_keyword("VALUES") {
+            self.head = false;
             return Ok(QueryBody::Values(self.values()?));
         }
         if let Some(span) = self.eat_keyword("TABLE") {
+            self.head = false;
             self.check(Construct::TableStatement, span)?;
             return Ok(QueryBody::Table(self.object_name(2)?));
         }
@@ -603,30 +658,8 @@ impl Parser<'_> {
     /// `SELECT` block.
     fn select(&mut self) -> Result<Select, ParseError> {
         let start = self.expect_keyword("SELECT")?.start;
-        let mut distinct = false;
-        loop {
-            if self.eat_keyword("ALL").is_some() {
-                continue;
-            }
-            if self.eat_keyword("DISTINCT").is_some() || self.eat_keyword("DISTINCTROW").is_some() {
-                distinct = true;
-                continue;
-            }
-            let options = [
-                "HIGH_PRIORITY",
-                "STRAIGHT_JOIN",
-                "SQL_SMALL_RESULT",
-                "SQL_BIG_RESULT",
-                "SQL_BUFFER_RESULT",
-                "SQL_NO_CACHE",
-                "SQL_CACHE",
-                "SQL_CALC_FOUND_ROWS",
-            ];
-            if self.at_any_keyword(&options) {
-                return Err(self.unsupported("options of `SELECT`", self.here()));
-            }
-            break;
-        }
+        let head = std::mem::replace(&mut self.head, false);
+        let (distinct, options) = self.select_options(head)?;
         let mut items = vec![self.select_item()?];
         while self.eat_punct(Punct::Comma).is_some() {
             items.push(self.select_item()?);
@@ -656,6 +689,7 @@ impl Parser<'_> {
         self.refuse_clauses(&["INTO", "FOR", "LOCK", "PROCEDURE"])?;
         Ok(Select {
             distinct,
+            options,
             items,
             from,
             filter,
@@ -665,6 +699,76 @@ impl Parser<'_> {
             windows,
             span: self.span_from(start),
         })
+    }
+
+    /// `ALL`, `DISTINCT` or `DISTINCTROW`, and the options of the dialect,
+    /// in any order after `SELECT`; tells whether `DISTINCT` is written, and
+    /// gives each option once. The options of the first `SELECT` only are
+    /// refused when it is not `head` (`select_options` module).
+    fn select_options(&mut self, head: bool) -> Result<(bool, Vec<WrittenOption>), ParseError> {
+        let dialect = self.options.dialect;
+        let (mut all, mut distinct) = (false, false);
+        let mut options: Vec<WrittenOption> = Vec::new();
+        loop {
+            let span = self.here();
+            if self.eat_keyword("ALL").is_some() {
+                all = true;
+            } else if self.eat_keyword("DISTINCT").is_some()
+                || self.eat_keyword("DISTINCTROW").is_some()
+            {
+                distinct = true;
+            } else if let Some(option) = self.select_option() {
+                let keyword = option.keyword();
+                let error = |message: String| Err(ParseError { message, span });
+                if !head && select_options::first_only(dialect, option) {
+                    return error(format!(
+                        "incorrect usage/placement of `{keyword}`: only on the first `SELECT` \
+                         of the statement"
+                    ));
+                }
+                let cache = [SelectOption::Cache, SelectOption::NoCache];
+                if dialect == Dialect::MariaDb && cache.contains(&option) {
+                    // MariaDB: errors 1225 and 1221.
+                    if options.iter().any(|written| written.option == option) {
+                        return error(format!("option `{keyword}` used twice in statement"));
+                    }
+                    if options
+                        .iter()
+                        .any(|written| cache.contains(&written.option))
+                    {
+                        return error(
+                            "incorrect usage of `SQL_NO_CACHE` and `SQL_CACHE`".to_string(),
+                        );
+                    }
+                }
+                if !options.iter().any(|written| written.option == option) {
+                    options.push(WrittenOption {
+                        option,
+                        span: Some(span),
+                    });
+                }
+            } else {
+                break;
+            }
+            if all && distinct {
+                // Error 1221 of both dialects.
+                return Err(ParseError {
+                    message: "incorrect usage of `ALL` and `DISTINCT`".to_string(),
+                    span,
+                });
+            }
+        }
+        Ok((distinct, options))
+    }
+
+    /// Consumes an option of `SELECT` of the dialect, when one follows.
+    fn select_option(&mut self) -> Option<SelectOption> {
+        let dialect = self.options.dialect;
+        let option = (OPTIONS.iter().copied()).find(|&option| {
+            select_options::has(dialect, option) && self.at_keyword(option.keyword())
+        })?;
+        self.advance();
+        Some(option)
     }
 
     /// `GROUP BY a, b [WITH ROLLUP]`, when written.

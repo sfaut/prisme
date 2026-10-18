@@ -13,7 +13,7 @@
 //! of the built-in functions by the `builtin` module, with the rules of the
 //! functions (`rules` module); the recursive common table expressions by the
 //! `recursive` module, the items of the select list read through their alias
-//! by the `alias` module.
+//! by the `alias` module, the options of `SELECT` by the `options` module.
 //!
 //! Literals are written as in the input when the output reads them the same
 //! way (same SQL mode for the quotes and the backslashes), otherwise in a
@@ -38,6 +38,7 @@ mod hexadecimal;
 mod interval;
 mod json;
 mod literal;
+mod options;
 mod parentheses;
 mod predicate;
 mod recursive;
@@ -112,6 +113,7 @@ pub(crate) fn emit(statement: &Statement, output: &OutputDialect, source: &Sourc
         quiet: 0,
         blocks: Vec::new(),
         top: true,
+        head: true,
         column: false,
         number: false,
         json_as_is: false,
@@ -121,7 +123,10 @@ pub(crate) fn emit(statement: &Statement, output: &OutputDialect, source: &Sourc
         errors: Vec::new(),
     };
     match statement {
-        Statement::Query(plan) => emitter.query(plan, true),
+        Statement::Query(plan) => {
+            emitter.found_rows_union(plan);
+            emitter.query(plan, true);
+        }
         _ => emitter.error(
             "statement.kind",
             "statements other than queries: not supported yet by the emitter of Prisme",
@@ -155,6 +160,10 @@ struct Emitter<'a> {
     /// Tells whether the next `SELECT` block gives the result of the
     /// statement: false inside a `WITH` and a subquery.
     top: bool,
+    /// Tells whether the next `SELECT` written is the first one of the
+    /// statement, which takes the options of the first `SELECT` only
+    /// (`options` module).
+    head: bool,
     /// Tells whether the next expression is read as a value of its type: a
     /// column of the result of the statement, a key of `ORDER BY` or
     /// `GROUP BY`. An expression its parent reads as a number or a boolean
@@ -456,6 +465,7 @@ impl Emitter<'_> {
             }
             self.write(" AS (");
             let top = std::mem::replace(&mut self.top, false);
+            let head = std::mem::replace(&mut self.head, false);
             if cte.parts.is_empty() {
                 self.query(&cte.plan, cte.columns.is_empty());
             } else {
@@ -463,6 +473,7 @@ impl Emitter<'_> {
                 self.query(&plan, cte.columns.is_empty());
             }
             self.top = top;
+            self.head = head;
             self.write(")");
         }
         self.write(" ");
@@ -531,6 +542,8 @@ impl Emitter<'_> {
         if block.distinct {
             self.write("DISTINCT ");
         }
+        let head = std::mem::take(&mut self.head);
+        self.select_options(block.project, head);
         for (index, item) in block.project.items.iter().enumerate() {
             if index > 0 {
                 self.write(", ");
@@ -647,6 +660,7 @@ impl Emitter<'_> {
     /// `TABLE t`, or `SELECT * FROM t` when the output has no `TABLE`
     /// statement; its rows compared by the parent when `compared`.
     fn table_statement(&mut self, plan: &Plan, compared: bool) {
+        self.head = false;
         if compared {
             self.json_rows(plan);
         }
@@ -881,6 +895,7 @@ impl Emitter<'_> {
     /// of `SELECT` when the output names its columns otherwise or has no
     /// `VALUES` statement.
     fn values(&mut self, values: &Values, names_matter: bool) {
+        self.head = false;
         self.at(values.span);
         if let Some(message) = self.values_union(values, names_matter) {
             self.values_as_union(values);

@@ -41,9 +41,9 @@ pub use origin::{AliasForm, Ident, Span};
 pub use plan::{
     Aggregate, AggregateCall, Cte, CtePart, CteRef, Derived, Distinct, Extend, Filter, FilterForm,
     IndexHint, IndexHintAction, IndexHintScope, Join, JoinForm, JoinKind, JoinUsing, Limit,
-    LimitForm, NamedAggregate, NamedExpr, OnEmpty, Plan, Project, ProjectItem, Scan, SetOperation,
-    SetOperator, Sort, TableAlias, TableName, Values, ValuesForm, Wildcard, Window,
-    WindowDefinition, With,
+    LimitForm, NamedAggregate, NamedExpr, OnEmpty, Plan, Project, ProjectItem, Scan, SelectOption,
+    SetOperation, SetOperator, Sort, TableAlias, TableName, Values, ValuesForm, Wildcard, Window,
+    WindowDefinition, With, WrittenOption,
 };
 pub use schema::{Column, Schema};
 pub use statement::{

@@ -30,6 +30,7 @@ mod parse;
 mod reference;
 mod regexp;
 pub mod report;
+mod select_options;
 pub mod sql;
 pub mod syntax;
 mod temporal;

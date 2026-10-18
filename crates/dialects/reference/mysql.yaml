@@ -781,6 +781,20 @@ constructs:
       Measured on 8.0.11 to 8.0.23, 8.0.25 to 8.0.28 and 8.4.11
       (crates/probe/cases/literals-hex-long.txt); the code in
       docs/sources/mysql/item-hex-string-val-int.md.
+  - id: union_all_found_rows
+    since: "8.0.18"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-18.html
+    comment: >-
+      `FOUND_ROWS()` after `SQL_CALC_FOUND_ROWS` on a set operation of
+      `UNION ALL` alone, with a `LIMIT` and without `ORDER BY`, counts every
+      row: `SELECT SQL_CALC_FOUND_ROWS id FROM t UNION ALL SELECT 9 LIMIT 2`
+      over 4 rows gives 5, and 2 before, the rows up to the `LIMIT`, as
+      MariaDB in every version; the same everywhere with an `ORDER BY` or a
+      `UNION` (crates/probe/cases/select-options.sql, measured on each local
+      image of MySQL, 8.0.11 to 9.3.0, and of MariaDB, 10.5.29 to 11.8.9).
+      The release notes of 8.0.18 change the evaluation of `UNION ALL ...
+      LIMIT` ("evaluated an excessive number of rows", Bug #79340) without
+      naming `FOUND_ROWS()`.
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:

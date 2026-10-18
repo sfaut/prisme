@@ -51,6 +51,7 @@ use prisme_plan::{Expr, ExprKind, Ident, Limit, Plan, ProjectItem, Sort};
 use prisme_types::Value;
 
 use super::{Block, Emitter, call};
+use crate::Dialect;
 use crate::report::StepKind;
 use crate::versions::Construct;
 
@@ -166,6 +167,11 @@ impl Emitter<'_> {
         let input = self.reading(nesting, true);
         let output = self.reading(nesting, false);
         if input == output {
+            // MariaDB refuses the options of the first `SELECT` there
+            // (`options` module).
+            if self.output.dialect == Dialect::MariaDb && !nesting.inner_set {
+                self.head = false;
+            }
             self.write("(");
             self.query(inner, names_matter);
             self.write(")");
@@ -205,6 +211,7 @@ impl Emitter<'_> {
             self.error(rule, &message, span);
         }
         self.write("SELECT * FROM (");
+        self.head = false;
         self.query(inner, true);
         self.write(") AS `d`");
         self.step(

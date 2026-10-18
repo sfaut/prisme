@@ -337,6 +337,7 @@ fn strings_follow_the_sql_mode_of_the_output() {
         quiet: 0,
         blocks: Vec::new(),
         top: true,
+        head: true,
         column: false,
         number: false,
         json_as_is: false,
@@ -4317,6 +4318,177 @@ fn an_order_after_a_select_between_parentheses_is_read_as_the_input() {
                 output(mysql_at(8, 0, 31))
             ),
             ("SELECT a AS b FROM t ORDER BY b + 0".to_string(), vec![])
+        );
+    }
+}
+
+#[test]
+fn the_options_of_select_keep_their_place_towards_the_same_dialect() {
+    for (text, input) in [
+        (
+            "SELECT SQL_CALC_FOUND_ROWS HIGH_PRIORITY a FROM t LIMIT 1",
+            mysql(),
+        ),
+        (
+            "SELECT DISTINCT SQL_BUFFER_RESULT STRAIGHT_JOIN t.a FROM t JOIN u ON u.a = t.a",
+            mariadb(),
+        ),
+        (
+            "SELECT SQL_SMALL_RESULT SQL_BIG_RESULT a FROM t GROUP BY a",
+            mysql(),
+        ),
+        (
+            "SELECT a FROM t UNION SELECT STRAIGHT_JOIN a FROM u",
+            mariadb(),
+        ),
+        (
+            "SELECT (SELECT SQL_NO_CACHE MAX(a) FROM u) AS m FROM t",
+            mysql(),
+        ),
+        ("SELECT SQL_CACHE a FROM t", mariadb()),
+        (
+            "(SELECT SQL_NO_CACHE a FROM t LIMIT 2) UNION SELECT 9",
+            mariadb(),
+        ),
+        (
+            "(SELECT HIGH_PRIORITY a FROM t ORDER BY a LIMIT 2) LIMIT 1",
+            mysql_at(8, 0, 31),
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(input));
+        assert_eq!((sql.as_str(), rules), (text, vec![]));
+    }
+    // `DISTINCT` first, each option once.
+    let (sql, rules) = transpiled(
+        "SELECT SQL_NO_CACHE DISTINCT HIGH_PRIORITY HIGH_PRIORITY a FROM t",
+        mysql(),
+        output(mysql()),
+    );
+    assert_eq!(sql, "SELECT DISTINCT SQL_NO_CACHE HIGH_PRIORITY a FROM t");
+    assert!(rules.is_empty());
+}
+
+#[test]
+fn the_options_without_effect_are_left_out_towards_another_dialect() {
+    let both = || vec![mysql(), mariadb()];
+    for (text, inputs, expected, steps) in [
+        (
+            "SELECT SQL_CACHE a FROM t",
+            vec![mariadb()],
+            "SELECT a FROM t",
+            vec!["option.dialect"],
+        ),
+        (
+            "SELECT DISTINCT SQL_BUFFER_RESULT STRAIGHT_JOIN t.a FROM t JOIN u ON u.a = t.a",
+            both(),
+            "SELECT DISTINCT t.a FROM t JOIN u ON u.a = t.a",
+            vec!["option.dialect", "option.dialect"],
+        ),
+        (
+            "SELECT a FROM t UNION SELECT SQL_NO_CACHE a FROM u",
+            vec![mysql()],
+            "SELECT a FROM t UNION SELECT a FROM u",
+            vec!["option.dialect"],
+        ),
+        (
+            "SELECT SQL_CALC_FOUND_ROWS HIGH_PRIORITY a FROM t LIMIT 1",
+            both(),
+            "SELECT SQL_CALC_FOUND_ROWS a FROM t LIMIT 1",
+            vec!["option.dialect"],
+        ),
+        (
+            "SELECT SQL_CALC_FOUND_ROWS a FROM t UNION SELECT a FROM u LIMIT 2",
+            both(),
+            "SELECT SQL_CALC_FOUND_ROWS a FROM t UNION SELECT a FROM u LIMIT 2",
+            vec![],
+        ),
+    ] {
+        for input in inputs {
+            let target = if input.dialect == Dialect::MySql {
+                mariadb()
+            } else {
+                mysql()
+            };
+            let (sql, rules) = transpiled(text, input, output(target));
+            assert_eq!((sql.as_str(), rules), (expected, steps.clone()), "{text}");
+        }
+    }
+}
+
+#[test]
+fn an_option_of_the_first_select_only_elsewhere_in_the_output_is_left_out() {
+    // MariaDB refuses `SQL_CALC_FOUND_ROWS` in a `SELECT` between parentheses
+    // followed by a `LIMIT`, which MySQL reads as the standard from 8.0.31.
+    assert_eq!(
+        errors(
+            "(SELECT SQL_CALC_FOUND_ROWS a FROM t ORDER BY a LIMIT 2) LIMIT 1",
+            mysql_at(8, 0, 31),
+            output(mariadb()),
+        ),
+        ["option.placement"]
+    );
+    // The derived table that stands for the parentheses.
+    let (sql, rules) = transpiled(
+        "(SELECT SQL_BUFFER_RESULT a FROM t ORDER BY a LIMIT 2) LIMIT 5",
+        mysql_at(8, 0, 31),
+        output(mysql_at(8, 0, 30)),
+    );
+    assert_eq!(
+        sql,
+        "SELECT * FROM (SELECT a FROM t ORDER BY a LIMIT 2) AS `d` LIMIT 5"
+    );
+    assert_eq!(rules, ["option.placement", "limit.nested"]);
+    assert_eq!(
+        errors(
+            "(SELECT SQL_CALC_FOUND_ROWS a FROM t ORDER BY a LIMIT 2) LIMIT 5",
+            mysql_at(8, 0, 31),
+            output(mysql_at(8, 0, 30)),
+        ),
+        ["option.placement"]
+    );
+}
+
+#[test]
+fn found_rows_of_a_union_all_with_a_limit_differ_from_mysql_8_0_18() {
+    let text = "SELECT SQL_CALC_FOUND_ROWS a FROM t UNION ALL SELECT a FROM u LIMIT 2";
+    for (input, target) in [
+        (mysql_at(8, 0, 18), mariadb()),
+        (mariadb(), mysql_at(8, 0, 18)),
+        (mysql_at(8, 0, 17), mysql_at(8, 0, 18)),
+        (mysql_at(8, 4, 0), mysql_at(8, 0, 17)),
+    ] {
+        assert_eq!(errors(text, input, output(target)), ["option.found-rows"]);
+    }
+    for (input, target) in [
+        (mysql_at(8, 0, 17), mariadb()),
+        (mariadb(), mysql_at(8, 0, 17)),
+        (mysql_at(8, 0, 18), mysql_at(8, 4, 0)),
+    ] {
+        assert!(errors(text, input, output(target)).is_empty());
+    }
+    // The first `SELECT` between parentheses, a `UNION ALL` of three.
+    for text in [
+        "(SELECT SQL_CALC_FOUND_ROWS a FROM t LIMIT 3) UNION ALL SELECT a FROM u LIMIT 2",
+        "SELECT SQL_CALC_FOUND_ROWS a FROM t UNION ALL SELECT a FROM u UNION ALL SELECT 9 \
+         LIMIT 2",
+    ] {
+        assert_eq!(
+            errors(text, mysql_at(8, 4, 0), output(mariadb())),
+            ["option.found-rows"],
+            "{text}"
+        );
+    }
+    // Every server counts every row with an `ORDER BY`, a `UNION`, or
+    // without `LIMIT`.
+    for text in [
+        "SELECT SQL_CALC_FOUND_ROWS a FROM t UNION ALL SELECT a FROM u ORDER BY 1 LIMIT 2",
+        "SELECT SQL_CALC_FOUND_ROWS a FROM t UNION ALL SELECT a FROM u UNION SELECT 9 LIMIT 2",
+        "SELECT SQL_CALC_FOUND_ROWS a FROM t UNION ALL SELECT a FROM u",
+        "SELECT a FROM t UNION ALL SELECT a FROM u LIMIT 2",
+    ] {
+        assert!(
+            errors(text, mysql_at(8, 4, 0), output(mariadb())).is_empty(),
+            "{text}"
         );
     }
 }

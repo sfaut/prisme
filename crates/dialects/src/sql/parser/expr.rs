@@ -274,7 +274,7 @@ impl Parser<'_> {
     /// `(query)`: a subquery between parentheses.
     fn subquery(&mut self) -> Result<Query, ParseError> {
         self.expect_punct(Punct::LeftParen)?;
-        let query = self.query()?;
+        let query = self.inner_query()?;
         self.expect_punct(Punct::RightParen)?;
         Ok(query)
     }
