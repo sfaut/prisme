@@ -3963,3 +3963,105 @@ fn a_grouping_column_named_as_an_alias_in_having_is_an_error_towards_mariadb() {
         );
     }
 }
+
+#[test]
+fn a_name_alone_in_a_window_is_read_as_the_input_reads_it() {
+    // MariaDB reads an alias first, MySQL a column of the source only.
+    for (text, written) in [
+        (
+            "SELECT a AS x, ROW_NUMBER() OVER (ORDER BY x) AS r FROM t",
+            "SELECT a AS x, ROW_NUMBER() OVER (ORDER BY a) AS r FROM t",
+        ),
+        (
+            "SELECT ROW_NUMBER() OVER (ORDER BY x DESC) AS r, a AS x FROM t",
+            "SELECT ROW_NUMBER() OVER (ORDER BY a DESC) AS r, a AS x FROM t",
+        ),
+        (
+            "SELECT a AS b, SUM(a) OVER (PARTITION BY b) AS s FROM t",
+            "SELECT a AS b, SUM(a) OVER (PARTITION BY a) AS s FROM t",
+        ),
+        (
+            "SELECT a AS x, ROW_NUMBER() OVER w AS r FROM t WINDOW w AS (ORDER BY x)",
+            "SELECT a AS x, ROW_NUMBER() OVER w AS r FROM t WINDOW w AS (ORDER BY a)",
+        ),
+        (
+            "SELECT a AS x FROM t ORDER BY ROW_NUMBER() OVER (ORDER BY x)",
+            "SELECT a AS x FROM t ORDER BY ROW_NUMBER() OVER (ORDER BY a)",
+        ),
+        (
+            "SELECT a % 2 AS x, SUM(a) AS s, RANK() OVER (ORDER BY s, x) AS r FROM t GROUP BY x",
+            "SELECT a % 2 AS x, SUM(a) AS s, RANK() OVER (ORDER BY SUM(a), a % 2) AS r FROM t \
+             GROUP BY x",
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, mariadb(), output(mysql()));
+        assert_eq!(sql, written);
+        assert!(
+            rules.iter().all(|rule| *rule == "alias.window-name"),
+            "{text}"
+        );
+    }
+    assert_eq!(
+        errors(
+            "SELECT RAND() AS x, ROW_NUMBER() OVER (ORDER BY x) AS r FROM t",
+            mariadb(),
+            output(mysql())
+        ),
+        ["alias.window-name"]
+    );
+    // Towards MariaDB and MySQL 8.0.13, a column that an alias names is
+    // written with its table.
+    let text = "SELECT a AS b, ROW_NUMBER() OVER (ORDER BY b) AS r FROM t";
+    for target in [mariadb(), mysql_at(8, 0, 13)] {
+        assert_eq!(
+            transpiled(text, mysql(), output(target)),
+            (
+                "SELECT a AS b, ROW_NUMBER() OVER (ORDER BY t.b) AS r FROM t".to_string(),
+                vec!["alias.window-column"]
+            )
+        );
+    }
+    let (sql, _) = transpiled(
+        "SELECT a % 2 AS b, COUNT(*) AS n, RANK() OVER (PARTITION BY b) AS r FROM t GROUP BY \
+         a % 2, b",
+        mysql(),
+        output(mariadb()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT a % 2 AS b, COUNT(*) AS n, RANK() OVER (PARTITION BY t.b ORDER BY NULL) AS r \
+         FROM t GROUP BY a % 2, b"
+    );
+    // Read alike: as written.
+    for (input, target) in [(mysql(), mysql()), (mariadb(), mariadb())] {
+        assert_eq!(
+            transpiled(text, input, output(target)),
+            (text.to_string(), vec![])
+        );
+    }
+    for text in [
+        "SELECT a AS b, ROW_NUMBER() OVER (ORDER BY b + 0) AS r FROM t",
+        "SELECT a AS x, ROW_NUMBER() OVER (ORDER BY x + 0) AS r FROM t",
+        "SELECT b AS b, ROW_NUMBER() OVER (ORDER BY b) AS r FROM t",
+        "SELECT a AS b, ROW_NUMBER() OVER (ORDER BY t.b) AS r FROM t",
+    ] {
+        for (input, target) in [(mysql(), mariadb()), (mariadb(), mysql())] {
+            assert_eq!(
+                transpiled(text, input, output(target)),
+                (text.to_string(), vec![]),
+                "{text}"
+            );
+        }
+    }
+    // An alias of an aggregate inside an expression, refused by MariaDB.
+    let (sql, rules) = transpiled(
+        "SELECT a % 2 AS x, SUM(a) AS s, RANK() OVER (ORDER BY s + 0) AS r FROM t GROUP BY x",
+        mysql(),
+        output(mariadb()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT a % 2 AS x, SUM(a) AS s, RANK() OVER (ORDER BY SUM(a) + 0) AS r FROM t GROUP BY x"
+    );
+    assert_eq!(rules, ["alias.aggregate"]);
+}

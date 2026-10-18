@@ -94,6 +94,12 @@ pub(super) struct Block {
     /// Columns of the source that its grouping keys name, as the source
     /// names them: `HAVING` reads them before the aliases.
     pub(super) key_columns: Vec<ColumnRef>,
+    /// Items of its select list written with an alias, by alias: the keys
+    /// of its windows read them, known before the select list is built.
+    pub(super) alias_items: Vec<(Ident, ast::Expr)>,
+    /// An expression of a key of a window is being built: its names read a
+    /// column of the source first, then an alias of the select list.
+    pub(super) window_keys: bool,
 }
 
 /// Grouping key of a block, as the expressions above the aggregation see
@@ -285,13 +291,14 @@ impl Builder<'_> {
     }
 
     /// Item of the select list that the name `single` designates inside an
-    /// expression of `GROUP BY`, `HAVING` or `ORDER BY`, or of one of their
-    /// aggregate functions, by the rule of the MySQL family
-    /// (`crates/probe/cases/alias-references.sql`): a name that no column of
-    /// the source has (`ORDER BY x + 0`), and in `HAVING`, outside an
-    /// aggregate function, a name that no grouping key names (`GROUP BY a %
-    /// 2 HAVING b = 1` reads the alias `b`). A name written alone in `GROUP
-    /// BY` and `ORDER BY` is read by `group_value` and `sort_value`.
+    /// expression of `GROUP BY`, `HAVING`, `ORDER BY` or of a key of a
+    /// window, or of one of their aggregate functions, by the rule of the
+    /// MySQL family (`crates/probe/cases/alias-references.sql`): a name that
+    /// no column of the source has (`ORDER BY x + 0`), and in `HAVING`,
+    /// outside an aggregate function, a name that no grouping key names
+    /// (`GROUP BY a % 2 HAVING b = 1` reads the alias `b`). A name written
+    /// alone in `GROUP BY`, `ORDER BY` and a window is read by `group_value`,
+    /// `sort_value` and `window_key`.
     fn alias_value(
         &mut self,
         single: &Ident,
@@ -299,6 +306,12 @@ impl Builder<'_> {
         scope: &Scope,
     ) -> Result<Option<Expr>, BuildError> {
         let block = self.block();
+        if block.window_keys && matches!(block.clause, Clause::Window | Clause::WindowFunction) {
+            if scope.resolve(name) != Err(ResolveError::Unknown) {
+                return Ok(None);
+            }
+            return self.window_alias(single, name.span, scope);
+        }
         let (Some(aliases), clause) = (block.aliases, block.clause) else {
             return Ok(None);
         };

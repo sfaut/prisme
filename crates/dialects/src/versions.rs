@@ -212,6 +212,10 @@ pub enum Construct {
     /// `ORDER BY`, computed once (MySQL: computed again for the sort from
     /// 8.0.16 to 8.0.28).
     WindowAliasOnce,
+    /// A column named alone in a window when an alias of the select list has
+    /// its name, read as the column (MySQL from 8.0.14; MariaDB reads the
+    /// alias).
+    WindowShadowedColumn,
     /// `utf8mb4_uca1400_ai_ci` as the default collation of `utf8mb4`
     /// (MariaDB).
     Utf8mb4Uca1400,
@@ -410,6 +414,9 @@ impl Construct {
             }
             Self::WindowAliasOnce => {
                 "a window function read once through its alias inside an expression of `ORDER BY`"
+            }
+            Self::WindowShadowedColumn => {
+                "a column named alone in a window when an alias of the select list has its name"
             }
             Self::Utf8mb4Uca1400 => "`utf8mb4_uca1400_ai_ci` as the default collation of `utf8mb4`",
             Self::UnicodeUca1400 => {

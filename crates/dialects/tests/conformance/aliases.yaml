@@ -64,3 +64,45 @@ cases:
     sql: SELECT id, ROW_NUMBER() OVER (ORDER BY b) AS r FROM aliases ORDER BY r + 0
   - from: mariadb
     sql: SELECT id, RANK() OVER w AS r FROM aliases WINDOW w AS (ORDER BY b) ORDER BY -r
+  # A name alone in a window: an alias first in MariaDB, written as its
+  # expression towards MySQL (`alias.window-name`); a column of the source in
+  # MySQL, written with its table towards MariaDB (`alias.window-column`).
+  # Inside an expression, a column first in both.
+  - from: mariadb
+    sql: SELECT id, a AS x, ROW_NUMBER() OVER (ORDER BY x) AS r FROM aliases ORDER BY id
+  - from: mariadb
+    sql: SELECT id, ROW_NUMBER() OVER (ORDER BY x DESC) AS r, a AS x FROM aliases ORDER BY id
+  - from: mariadb
+    sql: SELECT id, a AS b, ROW_NUMBER() OVER (ORDER BY b) AS r FROM aliases ORDER BY id
+  - from: mysql
+    sql: SELECT id, a AS b, ROW_NUMBER() OVER (ORDER BY b) AS r FROM aliases ORDER BY id
+    inputs: mysql >= 8.0.14
+  - from: mariadb
+    sql: SELECT id, a % 2 AS x, SUM(b) OVER (PARTITION BY x) AS s FROM aliases ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, a AS x, ROW_NUMBER() OVER w AS r FROM aliases WINDOW w AS (ORDER BY x)
+      ORDER BY id
+  - from: mysql
+    sql: >-
+      SELECT id, a AS b, ROW_NUMBER() OVER w AS r FROM aliases WINDOW w AS (ORDER BY b)
+      ORDER BY id
+    inputs: mysql >= 8.0.14
+  - from: mariadb
+    sql: SELECT id, a AS x FROM aliases ORDER BY ROW_NUMBER() OVER (ORDER BY x)
+  - from: mysql
+    sql: SELECT id, a AS b FROM aliases ORDER BY ROW_NUMBER() OVER (ORDER BY b)
+    inputs: mysql >= 8.0.14
+  - from: mysql
+    sql: SELECT id, a AS b, ROW_NUMBER() OVER (ORDER BY -b) AS r FROM aliases ORDER BY id
+  - from: mariadb
+    sql: SELECT id, a AS x, ROW_NUMBER() OVER (ORDER BY -x) AS r FROM aliases ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT a % 2 AS x, COUNT(*) AS n, RANK() OVER (ORDER BY n DESC, x) AS r FROM aliases
+      GROUP BY x ORDER BY x
+  - from: mysql
+    sql: >-
+      SELECT a % 2 AS x, COUNT(*) AS n, RANK() OVER (ORDER BY n + 0, -x) AS r FROM aliases
+      GROUP BY x ORDER BY x
+    inputs: mysql >= 8.0.29

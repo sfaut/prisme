@@ -101,6 +101,35 @@ SELECT id, a AS x, ROW_NUMBER() OVER (ORDER BY x + 0) AS r FROM ar ORDER BY id;
 SELECT a % 2 AS x, SUM(b) AS s, RANK() OVER (ORDER BY s) AS r FROM ar GROUP BY x ORDER BY x;
 SELECT a % 2 AS x, SUM(b) AS s, RANK() OVER (ORDER BY x DESC) AS r FROM ar GROUP BY x ORDER BY x;
 SELECT id, a AS x, SUM(b) OVER (PARTITION BY x % 2) AS s FROM ar ORDER BY id;
+-- A qualified name, an expression of a name of both, an alias written after
+-- the window, in the `WINDOW` clause, in a window of `ORDER BY`, as an
+-- argument; the alias of a window, of an aggregate.
+SELECT id, a AS b, ROW_NUMBER() OVER (ORDER BY ar.b) AS r FROM ar ORDER BY id;
+SELECT id, a AS b, ROW_NUMBER() OVER (ORDER BY b + 0) AS r FROM ar ORDER BY id;
+SELECT id, a AS b, ROW_NUMBER() OVER (ORDER BY -b) AS r FROM ar ORDER BY id;
+SELECT id, a AS b, ROW_NUMBER() OVER (ORDER BY (SELECT b)) AS r FROM ar ORDER BY id;
+SELECT id, ROW_NUMBER() OVER (ORDER BY x) AS r, a AS x FROM ar ORDER BY id;
+SELECT id, ROW_NUMBER() OVER (ORDER BY x + 0) AS r, a AS x FROM ar ORDER BY id;
+SELECT id, a AS x, ROW_NUMBER() OVER (ORDER BY -x) AS r FROM ar ORDER BY id;
+SELECT id, a AS x, ROW_NUMBER() OVER (ORDER BY (SELECT x)) AS r FROM ar ORDER BY id;
+SELECT id, a AS x, SUM(id) OVER (PARTITION BY x) AS s FROM ar ORDER BY id;
+SELECT id, a AS x, ROW_NUMBER() OVER w AS r FROM ar WINDOW w AS (ORDER BY x) ORDER BY id;
+SELECT id, a AS x, ROW_NUMBER() OVER w AS r FROM ar WINDOW w AS (ORDER BY x + 0) ORDER BY id;
+SELECT id, a AS b, ROW_NUMBER() OVER w AS r FROM ar WINDOW w AS (ORDER BY b) ORDER BY id;
+SELECT id, a AS b, ROW_NUMBER() OVER w AS r FROM ar WINDOW w AS (ORDER BY -b) ORDER BY id;
+SELECT id, a AS x FROM ar ORDER BY ROW_NUMBER() OVER (ORDER BY x);
+SELECT id, a AS x FROM ar ORDER BY ROW_NUMBER() OVER (ORDER BY x + 0);
+SELECT id, a AS b FROM ar ORDER BY ROW_NUMBER() OVER (ORDER BY b);
+SELECT id, a AS b FROM ar ORDER BY ROW_NUMBER() OVER (ORDER BY -b);
+SELECT id, a AS x, LAG(x) OVER (ORDER BY id) AS l FROM ar ORDER BY id;
+SELECT id, a AS x, SUM(x + 0) OVER () AS s FROM ar ORDER BY id;
+SELECT id, ROW_NUMBER() OVER (ORDER BY b) AS r, SUM(id) OVER (ORDER BY r) AS s FROM ar ORDER BY id;
+SELECT id, ROW_NUMBER() OVER (ORDER BY b) AS r, SUM(id) OVER (ORDER BY r + 0) AS s FROM ar ORDER BY id;
+SELECT id, ROW_NUMBER() OVER (ORDER BY r) AS r FROM ar ORDER BY id;
+SELECT a % 2 AS x, SUM(b) AS s, RANK() OVER (ORDER BY s + 0) AS r FROM ar GROUP BY x ORDER BY x;
+SELECT a % 2 AS x, SUM(b) AS s, RANK() OVER (ORDER BY -x) AS r FROM ar GROUP BY x ORDER BY x;
+SELECT a % 2 AS x, COUNT(*) AS n, SUM(n) OVER () AS s FROM ar GROUP BY a % 2 ORDER BY x;
+SELECT a % 2 AS x, COUNT(*) AS n, SUM(n + 0) OVER () AS s FROM ar GROUP BY a % 2 ORDER BY x;
 -- A qualified name in `HAVING`.
 SELECT a % 2 AS b, COUNT(*) AS n FROM ar GROUP BY a % 2, b HAVING ar.b = 10 ORDER BY 1, 2;
 SELECT a % 2 AS b, COUNT(*) AS n FROM ar GROUP BY a % 2, ar.b HAVING b = 1 ORDER BY 1, 2;

@@ -13,9 +13,9 @@
 //! MariaDB reads them.
 
 use prisme_plan::{
-    Aggregate, AggregateCall, ColumnRef, Expr, ExprKind, Frame, FrameBound, FrameUnits, Ident,
-    NamedAggregate, NamedExpr, Project, ProjectItem, SortKey, SortReference, Span, WindowCall,
-    WindowDefinition,
+    Aggregate, AggregateCall, AliasForm, Column, ColumnRef, Expr, ExprKind, Frame, FrameBound,
+    FrameUnits, Ident, NamedAggregate, NamedExpr, Project, ProjectItem, SortKey, SortReference,
+    Span, WindowCall, WindowDefinition,
 };
 use prisme_types::{DataType, Value};
 
@@ -41,6 +41,12 @@ pub(super) struct Internal {
     windows: Vec<NamedExpr>,
     /// Named windows.
     definitions: Vec<WindowDefinition>,
+    /// Items of the select list written with an alias: alias and
+    /// expression.
+    aliases: Vec<(Ident, Expr)>,
+    /// Columns of the source, with their table, when the block has window
+    /// functions.
+    columns: Vec<Column>,
 }
 
 /// What a column of a block stands for.
@@ -60,11 +66,25 @@ impl Internal {
         let (windows, definitions) = block.window.map_or_else(Default::default, |window| {
             (window.functions.clone(), window.definitions.clone())
         });
+        let aliases = (block.project.items.iter())
+            .filter_map(|item| match item {
+                ProjectItem::Expr(named) if named.alias != AliasForm::Implicit => {
+                    Some((named.name.clone(), named.expr.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        let columns = match block.window {
+            Some(_) => block.source.schema().columns,
+            None => Vec::new(),
+        };
         Self {
             keys,
             aggregates,
             windows,
             definitions,
+            aliases,
+            columns,
         }
     }
 
@@ -242,6 +262,18 @@ impl Emitter<'_> {
             }
             _ => None,
         }
+    }
+
+    /// Items of the select list of the `SELECT` block written with an alias:
+    /// alias and expression.
+    pub(super) fn block_aliases(&self) -> &[(Ident, Expr)] {
+        self.blocks.last().map_or(&[], |block| &block.aliases)
+    }
+
+    /// Columns of the source of the `SELECT` block, with their table, when
+    /// it has window functions.
+    pub(super) fn block_columns(&self) -> &[Column] {
+        self.blocks.last().map_or(&[], |block| &block.columns)
     }
 
     /// Column of the source that `expr` stands for, when it is a column the
@@ -435,12 +467,24 @@ impl Emitter<'_> {
         if !partition_by.is_empty() {
             separate(self);
             self.write("PARTITION BY ");
-            self.expr_list(partition_by);
+            let partition_by: Vec<Expr> = (partition_by.iter())
+                .map(|value| {
+                    let value = self.window_key(value);
+                    self.sort_aliases(&value).into_owned()
+                })
+                .collect();
+            self.expr_list(&partition_by);
         }
         if !order_by.is_empty() {
             separate(self);
             self.write("ORDER BY ");
-            self.sort_keys(order_by, None);
+            let order_by: Vec<SortKey> = (order_by.iter())
+                .map(|key| SortKey {
+                    expr: self.window_key(&key.expr).into_owned(),
+                    ..key.clone()
+                })
+                .collect();
+            self.sort_keys(&order_by, None);
         } else if unordered {
             separate(self);
             self.write("ORDER BY NULL");

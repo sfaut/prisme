@@ -589,6 +589,16 @@ impl Builder<'_> {
         block.grouped = grouped;
         block.keyed = !select.group_by.is_empty();
         block.source = scope.clone();
+        block.alias_items = (select.items.iter())
+            .filter_map(|item| match item {
+                ast::SelectItem::Expr {
+                    expr,
+                    alias: Some(alias),
+                    ..
+                } => Some((alias.name.clone(), expr.clone())),
+                _ => None,
+            })
+            .collect();
         self.set_clause(Clause::Window);
         self.window_definitions(&select.windows, &scope)?;
         self.set_clause(Clause::Select);

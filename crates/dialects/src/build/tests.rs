@@ -1175,3 +1175,37 @@ fn reads_the_aliases_inside_the_expressions_of_the_keys() {
         "an aggregate function of `s`, the alias of an aggregate or window function"
     );
 }
+
+#[test]
+fn reads_the_aliases_in_the_windows() {
+    // A name alone: an alias first in MariaDB, a column only in MySQL.
+    let text = "SELECT a AS x, ROW_NUMBER() OVER (ORDER BY x) AS r FROM t";
+    assert!(plan_in(text, Dialect::MariaDb).is_ok());
+    assert_eq!(error(text), "unknown column `x`");
+    for dialect in [Dialect::MySql, Dialect::MariaDb] {
+        for text in [
+            "SELECT a AS x, ROW_NUMBER() OVER (ORDER BY x + 0) AS r FROM t",
+            "SELECT ROW_NUMBER() OVER (ORDER BY -x) AS r, a AS x FROM t",
+            "SELECT a AS x, ROW_NUMBER() OVER w AS r FROM t WINDOW w AS (PARTITION BY x % 2)",
+        ] {
+            assert!(plan_in(text, dialect).is_ok(), "{text}");
+        }
+        // Not in the arguments, not the alias of a window function.
+        assert_eq!(
+            plan_in(
+                "SELECT a AS x, LAG(x) OVER (ORDER BY a) AS l FROM t",
+                dialect
+            )
+            .unwrap_err()
+            .message,
+            "unknown column `x`"
+        );
+        assert!(
+            plan_in(
+                "SELECT ROW_NUMBER() OVER (ORDER BY -r) AS r FROM t",
+                dialect
+            )
+            .is_err()
+        );
+    }
+}

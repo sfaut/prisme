@@ -299,9 +299,9 @@ impl Builder<'_> {
         let partition_by = spec
             .partition_by
             .iter()
-            .map(|value| self.value(value, scope))
+            .map(|value| self.window_key(value, scope))
             .collect::<Result<Vec<_>, _>>()?;
-        let order_by = self.expression_keys(&spec.order_by, scope)?;
+        let order_by = self.keys(&spec.order_by, scope, Self::window_key)?;
         let frame = match &spec.frame {
             Some(frame) => Some(Frame {
                 units: frame.units,
@@ -335,19 +335,83 @@ impl Builder<'_> {
         })
     }
 
-    /// Keys of an `ORDER BY` of a window or of an aggregate function: each
-    /// one an expression, a number being a constant there.
+    /// Keys of an `ORDER BY` of an aggregate function: each one an
+    /// expression, a number being a constant there.
     pub(super) fn expression_keys(
         &mut self,
         items: &[ast::OrderItem],
         scope: &Scope,
+    ) -> Result<Vec<SortKey>, BuildError> {
+        self.keys(items, scope, Self::value)
+    }
+
+    /// Key of a window (`PARTITION BY`, `ORDER BY`), by the rule measured on
+    /// the servers (`crates/probe/cases/alias-references.sql`): a name alone
+    /// designates an alias of the select list first in MariaDB, a column of
+    /// the source only in MySQL; inside an expression, a column of the
+    /// source first, then an alias, in both. An alias written after the
+    /// window is read as well.
+    fn window_key(&mut self, expr: &ast::Expr, scope: &Scope) -> Result<Expr, BuildError> {
+        if let ast::ExprKind::Column(name) = &expr.kind
+            && let [single] = name.parts.as_slice()
+        {
+            if self.dialect == Dialect::MariaDb
+                && let Some(value) = self.window_alias(single, name.span, scope)?
+            {
+                return Ok(value);
+            }
+            return self.value(expr, scope);
+        }
+        let previous = std::mem::replace(&mut self.block_mut().window_keys, true);
+        let value = self.value(expr, scope);
+        self.block_mut().window_keys = previous;
+        value
+    }
+
+    /// Item of the select list whose alias is `name`, read by a key of a
+    /// window: its expression, built where the window reads it; an error
+    /// when several items have this alias (error 1052).
+    pub(super) fn window_alias(
+        &mut self,
+        name: &Ident,
+        span: Span,
+        scope: &Scope,
+    ) -> Result<Option<Expr>, BuildError> {
+        let found: Vec<ast::Expr> = (self.block().alias_items.iter())
+            .filter(|(alias, _)| same_name(alias, name))
+            .map(|(_, expr)| expr.clone())
+            .collect();
+        let item = match found.as_slice() {
+            [] => return Ok(None),
+            [item] => item,
+            _ => {
+                let message = format!(
+                    "`{}` is ambiguous: several items of the select list have this alias",
+                    name.value
+                );
+                return Err(self.error(message, span));
+            }
+        };
+        let previous = std::mem::replace(&mut self.block_mut().window_keys, false);
+        let value = self.value(item, scope);
+        self.block_mut().window_keys = previous;
+        Ok(Some(Expr::alias(name.clone(), value?).with_span(span)))
+    }
+
+    /// Keys of an `ORDER BY` of a window or of an aggregate function, each
+    /// one an expression read by `key`.
+    fn keys(
+        &mut self,
+        items: &[ast::OrderItem],
+        scope: &Scope,
+        key: fn(&mut Self, &ast::Expr, &Scope) -> Result<Expr, BuildError>,
     ) -> Result<Vec<SortKey>, BuildError> {
         items
             .iter()
             .map(|item| {
                 let direction = item.direction.unwrap_or(Direction::Ascending);
                 Ok(SortKey {
-                    expr: self.value(&item.expr, scope)?,
+                    expr: key(self, &item.expr, scope)?,
                     direction,
                     nulls: Nulls::as_smallest(direction),
                     form: SortForm {

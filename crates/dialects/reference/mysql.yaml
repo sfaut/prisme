@@ -512,6 +512,15 @@ constructs:
     comment: >-
       Bug #32695670: an alias inside an expression of `ORDER BY` resolved as
       an alias written alone; measured on 8.0.30 and later.
+  - id: window_shadowed_column
+    since: "8.0.14"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-14.html
+    comment: >-
+      `SELECT a AS b, ROW_NUMBER() OVER (ORDER BY b) FROM t` sorts on the
+      column `b`; error 1054 before (Bug #27808099, "failed with Unknown field
+      in window order by even when the column was found in the table"),
+      measured on 8.0.11 to 8.0.13 (crates/probe/cases/alias-references.sql).
+      MariaDB reads the alias.
   - id: rollup_order_by
     since: "8.0.12"
     source: https://dev.mysql.com/doc/refman/8.0/en/group-by-modifiers.html

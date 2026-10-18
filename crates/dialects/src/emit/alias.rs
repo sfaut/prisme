@@ -19,6 +19,13 @@
 //! window function of the same arguments, over a window of the same
 //! definition, computed over the same rows **[decided autonomously]**.
 //!
+//! A name alone in a window designates an alias of the select list first in
+//! MariaDB, a column of the source only in MySQL: towards MySQL, the alias
+//! is written as its expression (rule `alias.window-name`); towards MariaDB,
+//! and towards MySQL before 8.0.14, which refuses it (Bug #27808099), a
+//! column that an alias names is written with its table (rule
+//! `alias.window-column`).
+//!
 //! In `HAVING`, MySQL reads a name of a grouping column before an alias of
 //! the select list (warning 1052), MariaDB refuses it as ambiguous when the
 //! alias is not that of an aggregate function or of the column itself
@@ -28,7 +35,9 @@
 
 use std::borrow::Cow;
 
-use prisme_plan::{AliasForm, AliasRef, Expr, ExprKind, Ident, Project, ProjectItem, Span};
+use prisme_plan::{
+    AliasForm, AliasRef, ColumnRef, Expr, ExprKind, Ident, Project, ProjectItem, Span,
+};
 
 use super::Emitter;
 use crate::Dialect;
@@ -123,6 +132,115 @@ impl Emitter<'_> {
             return Some(("alias.window", message));
         }
         None
+    }
+
+    /// Key `expr` of a window, written so that the output reads it as the
+    /// input: an alias read alone written as its expression towards MySQL, a
+    /// column that an alias names written with its table towards MariaDB and
+    /// MySQL before 8.0.14.
+    pub(super) fn window_key<'e>(&mut self, expr: &'e Expr) -> Cow<'e, Expr> {
+        if let ExprKind::Alias(alias) = &expr.kind {
+            // The alias of the column of its name (`b AS b`) names it alike.
+            let itself = matches!(&alias.expr.kind, ExprKind::Column(column)
+                if column.name.value.eq_ignore_ascii_case(&alias.name.value));
+            if self.output.dialect != Dialect::MySql || itself {
+                return Cow::Borrowed(expr);
+            }
+            let message = format!(
+                "MySQL reads a name alone in a window as a column of the source, MariaDB as \
+                 an alias of the select list first: `{}` written as its expression",
+                alias.name.value
+            );
+            if !self.repeatable_computed(&alias.expr) {
+                let message =
+                    format!("{message}, which would compute it again: not supported yet by Prisme");
+                self.error("alias.window-name", &message, expr.span);
+                return Cow::Borrowed(expr);
+            }
+            self.step("alias.window-name", StepKind::Rewrite, message, expr.span);
+            let mut value = alias.expr.clone();
+            value.span = expr.span.or(value.span);
+            return Cow::Owned(value);
+        }
+        let Some(column) = self.shadowed_column(expr) else {
+            return Cow::Borrowed(expr);
+        };
+        let Some(qualified) = self.qualified(&column) else {
+            let message = format!(
+                "{} reads `{}` alone in a window as an alias of the select list, and Prisme finds \
+                 no single table of this column to name it: not supported yet by Prisme",
+                self.target(),
+                column.name.value
+            );
+            self.error("alias.window-column", &message, expr.span);
+            return Cow::Borrowed(expr);
+        };
+        let message = match self.output.dialect {
+            Dialect::MariaDb => format!(
+                "MariaDB reads a name alone in a window as an alias of the select list first: \
+                 the column `{}` written with its table",
+                column.name.value
+            ),
+            Dialect::MySql => format!(
+                "{} refuses a column named alone in a window when an alias of the select list \
+                 has its name (error 1054, Bug #27808099): `{}` written with its table",
+                self.target(),
+                column.name.value
+            ),
+        };
+        self.step("alias.window-column", StepKind::Rewrite, message, expr.span);
+        let mut value = Expr::column(qualified, expr.ty.clone());
+        value.span = expr.span;
+        Cow::Owned(value)
+    }
+
+    /// Column written alone that `expr`, a key of a window, stands for, when
+    /// an alias of the select list other than this column has its name and
+    /// the output reads the alias or refuses the name.
+    fn shadowed_column(&self, expr: &Expr) -> Option<ColumnRef> {
+        if self.output.dialect == Dialect::MySql && self.has(Construct::WindowShadowedColumn) {
+            return None;
+        }
+        let column = match &expr.kind {
+            ExprKind::Column(column) if !crate::build::is_internal_name(&column.name.value) => {
+                column.clone()
+            }
+            _ => self.key_column(expr)?,
+        };
+        if column.qualifier.is_some() {
+            return None;
+        }
+        let aliases = self.block_aliases();
+        let same = |value: &Expr| {
+            let named = match &value.kind {
+                ExprKind::Column(found) => Some(found.clone()),
+                _ => self.key_column(value),
+            };
+            named.is_some_and(|found| found.name.value.eq_ignore_ascii_case(&column.name.value))
+        };
+        aliases
+            .iter()
+            .any(|(alias, value)| {
+                alias.value.eq_ignore_ascii_case(&column.name.value) && !same(value)
+            })
+            .then_some(column)
+    }
+
+    /// `column`, named alone, with the table it belongs to in the source;
+    /// `None` when no single table has a column of this name.
+    fn qualified(&self, column: &ColumnRef) -> Option<ColumnRef> {
+        let columns = self.block_columns();
+        let mut found = columns.iter().filter(|found| {
+            found.qualifier.is_some() && found.name.value.eq_ignore_ascii_case(&column.name.value)
+        });
+        let first = found.next()?;
+        if found.next().is_some() {
+            return None;
+        }
+        Some(ColumnRef {
+            qualifier: first.qualifier.clone(),
+            name: column.name.clone(),
+        })
     }
 
     /// Refuses, towards MariaDB, a name of a grouping column written in
