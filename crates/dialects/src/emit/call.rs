@@ -17,6 +17,7 @@ use prisme_plan::{
     NamedExpr, Project, ProjectItem, SortReference, Span, WindowCall, WindowDefinition,
 };
 
+use super::json::reads_json_as_is;
 use super::{Block, Emitter};
 use crate::Dialect;
 use crate::build::{functions, is_internal_name};
@@ -165,12 +166,24 @@ impl Emitter<'_> {
         if call.distinct {
             self.write("DISTINCT ");
         }
+        let upper = call.function.value.to_ascii_uppercase();
+        // Without `DISTINCT`, `COUNT` and `GROUP_CONCAT` read the text of a
+        // `JSON` in both dialects (`json` module).
+        let json_as_is = !call.distinct && reads_json_as_is(&upper);
+        let number = reads_numbers(&upper);
         if call.args.is_empty() {
             self.write("*");
-        } else if reads_numbers(&call.function.value.to_ascii_uppercase()) {
-            self.number_list(&call.args);
-        } else {
-            self.expr_list(&call.args);
+        }
+        for (index, arg) in call.args.iter().enumerate() {
+            if index > 0 {
+                self.write(", ");
+            }
+            self.json_as_is = json_as_is;
+            if number {
+                self.number_expr(arg, 0);
+            } else {
+                self.expr(arg, 0);
+            }
         }
         if !call.order_by.is_empty() {
             self.write(" ORDER BY ");
@@ -330,8 +343,9 @@ impl Emitter<'_> {
     }
 
     /// `GROUP BY`, each key designating its value as written: by a position
-    /// or an alias of the select list, or as an expression.
-    pub(super) fn group_by(&mut self, aggregate: &Aggregate, project: &Project) {
+    /// or an alias of the select list, or as an expression; `having` when
+    /// the block has `HAVING`.
+    pub(super) fn group_by(&mut self, aggregate: &Aggregate, project: &Project, having: bool) {
         if aggregate.keys.is_empty() {
             return;
         }
@@ -373,6 +387,9 @@ impl Emitter<'_> {
                     self.column = true;
                     self.expr(&key.expr, 0);
                 }
+            }
+            if having {
+                self.json_having_key(&key.expr, aggregate.rollup);
             }
         }
         if aggregate.rollup {

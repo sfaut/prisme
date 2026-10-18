@@ -30,6 +30,7 @@ mod expr;
 mod extract;
 mod greatest;
 mod interval;
+mod json;
 mod rules;
 mod source;
 mod string;
@@ -103,6 +104,8 @@ pub(crate) fn emit(statement: &Statement, output: &OutputDialect, source: &Sourc
         top: true,
         column: false,
         number: false,
+        json_as_is: false,
+        compared_rows: false,
         steps: Vec::new(),
         errors: Vec::new(),
     };
@@ -153,6 +156,16 @@ struct Emitter<'a> {
     /// string at the scale of each result (`42` for an integer), as a
     /// number at the scale of its type.
     number: bool,
+    /// Tells whether the next expression keeps a `JSON` as written, both
+    /// dialects reading its text or its value there: a column of the
+    /// result, an operand of `LIKE` or `IS NULL`, an argument of `CONCAT` or
+    /// of a `JSON_` function (`json` module).
+    json_as_is: bool,
+    /// Tells whether the rows of the next query are compared: an operand of
+    /// a set operation other than `UNION ALL`, a subquery of `IN`, `ANY` or
+    /// `ALL`. Its `JSON` columns are then read as the input reads them
+    /// (`json` module).
+    compared_rows: bool,
     /// Steps of the report.
     steps: Vec<Step>,
     /// Untranslatable constructs.
@@ -377,7 +390,10 @@ impl Emitter<'_> {
     fn query(&mut self, plan: &Plan, names_matter: bool) {
         match plan {
             Plan::With(with) => {
+                // The rows compared are those of the body.
+                let compared = std::mem::take(&mut self.compared_rows);
                 self.with(with);
+                self.compared_rows = compared;
                 self.query(&with.body, names_matter);
             }
             _ => self.body(plan, names_matter),
@@ -420,8 +436,11 @@ impl Emitter<'_> {
     /// Body of a query: a `SELECT` block, a `VALUES`, or a query followed
     /// by its `ORDER BY` and its `LIMIT`.
     fn body(&mut self, plan: &Plan, names_matter: bool) {
+        // Rows compared by the parent: those of this query, not of its
+        // subqueries.
+        let compared = std::mem::take(&mut self.compared_rows);
         if let Some(block) = Block::fold(plan) {
-            self.select(&block, names_matter);
+            self.select(&block, names_matter, compared);
             return;
         }
         let (limit, inner) = match plan {
@@ -434,10 +453,13 @@ impl Emitter<'_> {
         };
         match inner {
             Plan::Values(values) if !is_dual(inner) => self.values(values, names_matter),
-            Plan::SetOperation(operation) => self.set_operation(operation, names_matter),
-            Plan::Scan(_) | Plan::CteRef(_) => self.table_statement(inner),
+            Plan::SetOperation(operation) => {
+                self.set_operation(operation, names_matter, compared);
+            }
+            Plan::Scan(_) | Plan::CteRef(_) => self.table_statement(inner, compared),
             _ if sort.is_some() || limit.is_some() => {
                 self.write("(");
+                self.compared_rows = compared;
                 self.query(inner, names_matter);
                 self.write(")");
             }
@@ -459,18 +481,18 @@ impl Emitter<'_> {
     }
 
     /// `SELECT` block, the columns it computes for itself written as what
-    /// they stand for.
-    fn select(&mut self, block: &Block<'_>, names_matter: bool) {
+    /// they stand for, its rows compared by the parent when `compared`.
+    fn select(&mut self, block: &Block<'_>, names_matter: bool, compared: bool) {
         self.blocks.push(call::Internal::new(block));
         let top = std::mem::replace(&mut self.top, false);
-        self.select_clauses(block, names_matter, top);
+        self.select_clauses(block, names_matter, top, compared || block.distinct);
         self.top = top;
         self.blocks.pop();
     }
 
     /// Clauses of a `SELECT` block, which gives the result of the statement
-    /// when `top`.
-    fn select_clauses(&mut self, block: &Block<'_>, names_matter: bool, top: bool) {
+    /// when `top`, its rows compared when `compared`.
+    fn select_clauses(&mut self, block: &Block<'_>, names_matter: bool, top: bool, compared: bool) {
         self.at(block.project.span);
         self.write("SELECT ");
         if block.distinct {
@@ -491,6 +513,7 @@ impl Emitter<'_> {
                 ProjectItem::Expr(named) => {
                     let start = self.out.len();
                     self.column = top;
+                    self.json_as_is = !compared;
                     self.expr(&named.expr, 0);
                     match named.alias {
                         AliasForm::As => {
@@ -520,7 +543,7 @@ impl Emitter<'_> {
             self.truth_operand(&filter.predicate, 0, truth::Context::Clause("`WHERE`"));
         }
         if let Some(aggregate) = block.aggregate {
-            self.group_by(aggregate, block.project);
+            self.group_by(aggregate, block.project, block.having.is_some());
             if aggregate.rollup && block.sort.is_some() && !self.has(Construct::RollupOrderBy) {
                 let message = format!(
                     "{} has no {}: not supported yet by Prisme",
@@ -551,16 +574,19 @@ impl Emitter<'_> {
     /// the text read, an alias gives the name.
     fn keep_implicit_name(&mut self, expr: &prisme_plan::Expr, name: &Ident, start: usize) {
         let value = self.naming_value(expr);
+        let text = &self.out[start..];
         let written = match &value.kind {
             // An aggregate or window function the block computes is named
-            // after its text.
+            // after its text, as a column read through a call (`json`
+            // module), whose text ends with `)`.
             prisme_plan::ExprKind::Column(column)
-                if column.qualifier.is_some() || !is_internal_name(&column.name.value) =>
+                if (column.qualifier.is_some() || !is_internal_name(&column.name.value))
+                    && !text.ends_with(')') =>
             {
                 column.name.value.clone()
             }
             prisme_plan::ExprKind::Literal(Value::Text(value)) => value.clone(),
-            _ => self.out[start..].to_string(),
+            _ => text.to_string(),
         };
         if written == name.value {
             return;
@@ -581,8 +607,11 @@ impl Emitter<'_> {
     }
 
     /// `TABLE t`, or `SELECT * FROM t` when the output has no `TABLE`
-    /// statement.
-    fn table_statement(&mut self, plan: &Plan) {
+    /// statement; its rows compared by the parent when `compared`.
+    fn table_statement(&mut self, plan: &Plan, compared: bool) {
+        if compared {
+            self.json_rows(plan);
+        }
         if self.has(Construct::TableStatement) {
             self.write("TABLE ");
         } else {
@@ -597,8 +626,9 @@ impl Emitter<'_> {
     }
 
     /// `UNION`, `EXCEPT` or `INTERSECT`, its operands between parentheses
-    /// when their nesting needs it.
-    fn set_operation(&mut self, operation: &SetOperation, names_matter: bool) {
+    /// when their nesting needs it; its rows compared by the parent when
+    /// `compared`.
+    fn set_operation(&mut self, operation: &SetOperation, names_matter: bool, compared: bool) {
         let (keyword, construct) = match operation.operator {
             SetOperator::UnionAll => ("UNION ALL", None),
             SetOperator::UnionDistinct => ("UNION", None),
@@ -616,8 +646,13 @@ impl Emitter<'_> {
             );
             self.error("set.operator", &message, operation.span);
         }
+        // Every set operation but `UNION ALL` compares the rows of its
+        // operands.
+        let compared = compared || operation.operator != SetOperator::UnionAll;
+        self.compared_rows = compared;
         self.set_operand(&operation.left, operation.operator, false, names_matter);
         self.write(&format!(" {keyword} "));
+        self.compared_rows = compared;
         self.set_operand(&operation.right, operation.operator, true, false);
     }
 
@@ -747,14 +782,20 @@ impl Emitter<'_> {
                 ProjectItem::Expr(named) if named.expr == key.expr => Some((index, named)),
                 _ => None,
             });
+        // A `JSON` the select list keeps as is is sorted by an expression of
+        // its text (`json` module).
+        let json = self.json_differs(&key.expr);
         match (key.form.reference, found) {
-            (SortReference::Alias, Some((_, named))) if named.alias != AliasForm::Implicit => {
+            (SortReference::Alias, Some((_, named)))
+                if !json && named.alias != AliasForm::Implicit =>
+            {
                 self.ident(&named.name, key.expr.span);
             }
             (SortReference::Position, Some((index, _)))
-                if items
-                    .iter()
-                    .all(|item| matches!(item, ProjectItem::Expr(_))) =>
+                if !json
+                    && items
+                        .iter()
+                        .all(|item| matches!(item, ProjectItem::Expr(_))) =>
             {
                 self.at(key.expr.span);
                 self.write(&(index + 1).to_string());

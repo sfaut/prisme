@@ -64,6 +64,9 @@ impl Emitter<'_> {
         if numeric(&cast.target) {
             self.number_expr(&cast.operand, 0);
         } else {
+            // A string takes the text of a `JSON` in both dialects (`json`
+            // module).
+            self.json_as_is = matches!(cast.target, CastTarget::Char(_) | CastTarget::Binary(_));
             self.expr(&cast.operand, 0);
         }
         match &cast.form {

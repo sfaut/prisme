@@ -210,6 +210,7 @@ impl Emitter<'_> {
         let right_parenthesized =
             matches!(&*join.right, Plan::Join(_)) && (!comma || is_comma(&join.right));
         self.join_side(&join.right, right_parenthesized);
+        self.json_using(join);
         match (&join.using, &join.condition) {
             (Some(using), _) if !using.natural => {
                 self.write(" USING (");

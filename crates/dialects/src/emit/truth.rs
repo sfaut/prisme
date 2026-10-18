@@ -145,10 +145,12 @@ impl Emitter<'_> {
             let message = format!("{message}: read as its text");
             self.step("boolean.json", StepKind::Emulation, message, json.span);
             self.write("CAST(");
+            self.json_as_is = true;
             self.expr(json, 0);
             self.write(" AS CHAR)");
         } else {
             self.error("boolean.json", &message, json.span);
+            self.json_as_is = true;
             self.number_expr(json, min);
         }
     }

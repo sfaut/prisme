@@ -16,6 +16,7 @@
 use prisme_plan::{Expr, FunctionCall, Ident, Span};
 
 use super::Emitter;
+use super::json::reads_json_as_is;
 use crate::builtins::{self, Kind, Rule, Translation};
 use crate::keywords;
 use crate::report::StepKind;
@@ -277,7 +278,14 @@ impl Emitter<'_> {
             return;
         }
         self.call_name(name, form);
-        self.expr_list(args);
+        let json_as_is = reads_json_as_is(&name.to_ascii_uppercase());
+        for (index, arg) in args.iter().enumerate() {
+            if index > 0 {
+                self.write(", ");
+            }
+            self.json_as_is = json_as_is;
+            self.expr(arg, 0);
+        }
         self.write(")");
     }
 

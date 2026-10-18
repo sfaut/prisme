@@ -295,6 +295,8 @@ fn strings_follow_the_sql_mode_of_the_output() {
         top: true,
         column: false,
         number: false,
+        json_as_is: false,
+        compared_rows: false,
         steps: Vec::new(),
         errors: Vec::new(),
     };
@@ -2662,5 +2664,128 @@ fn a_fraction_read_as_a_boolean_is_read_as_the_input_reads_it() {
         let (sql, rules) = transpiled(text, input, output(target));
         assert_eq!(sql, text);
         assert!(rules.is_empty(), "{rules:?}");
+    }
+}
+
+#[test]
+fn a_json_compared_is_read_as_the_input_reads_it() {
+    let mysql_8_4 = mysql_at(8, 4, 0);
+    // Towards MySQL from MariaDB, read as its text.
+    for (text, written, rules) in [
+        (
+            "SELECT s FROM g WHERE js = 'b'",
+            "SELECT s FROM g WHERE CONCAT(js) = 'b'",
+            &["json.text"][..],
+        ),
+        (
+            "SELECT s FROM g WHERE js IN ('b', 1) AND js + 0 > 1",
+            "SELECT s FROM g WHERE CONCAT(js) IN ('b', 1) AND CONCAT(js) + 0 > 1",
+            &["json.text", "json.text"],
+        ),
+        (
+            "SELECT js FROM g ORDER BY js",
+            "SELECT js FROM g ORDER BY CONCAT(js)",
+            &["json.text"],
+        ),
+        (
+            "SELECT js AS j FROM g ORDER BY j, 1",
+            "SELECT js AS j FROM g ORDER BY CONCAT(js), CONCAT(js)",
+            &["json.text"],
+        ),
+        (
+            "SELECT DISTINCT js FROM g",
+            "SELECT DISTINCT CONCAT(js) AS `js` FROM g",
+            &["json.text", "column.implicit-name"],
+        ),
+        (
+            "SELECT js, COUNT(*) AS n FROM g GROUP BY js",
+            "SELECT CONCAT(js) AS `js`, COUNT(*) AS n FROM g GROUP BY CONCAT(js)",
+            &["column.implicit-name", "json.text"],
+        ),
+        (
+            "SELECT s FROM g GROUP BY s, js HAVING js < '2'",
+            "SELECT s FROM g GROUP BY s, CONCAT(js), js HAVING CONCAT(js) < '2'",
+            &["json.text"],
+        ),
+        (
+            "SELECT MAX(js) AS m, COUNT(DISTINCT js) AS n FROM g",
+            "SELECT MAX(CONCAT(js)) AS m, COUNT(DISTINCT CONCAT(js)) AS n FROM g",
+            &["json.text", "json.text"],
+        ),
+        (
+            "SELECT js FROM g UNION SELECT js FROM g",
+            "SELECT CONCAT(js) AS `js` FROM g UNION SELECT CONCAT(js) FROM g",
+            &["json.text", "column.implicit-name", "json.text"],
+        ),
+        (
+            "SELECT s FROM g WHERE 'b' IN (SELECT js FROM g)",
+            "SELECT s FROM g WHERE 'b' IN (SELECT CONCAT(js) FROM g)",
+            &["json.text"],
+        ),
+        (
+            "SELECT s FROM g WHERE (SELECT js FROM g LIMIT 1) = 'b'",
+            "SELECT s FROM g WHERE CONCAT((SELECT js FROM g LIMIT 1)) = 'b'",
+            &["json.text"],
+        ),
+        (
+            "SELECT CAST(js AS SIGNED) AS a, ROW_NUMBER() OVER (PARTITION BY js) AS r FROM g",
+            "SELECT CAST(CONCAT(js) AS SIGNED) AS a, ROW_NUMBER() OVER (PARTITION BY CONCAT(js)) AS r FROM g",
+            &["json.text", "json.text"],
+        ),
+        (
+            "SELECT q.js FROM (SELECT js FROM g) AS q WHERE q.js = 'b'",
+            "SELECT q.js FROM (SELECT js FROM g) AS q WHERE CONCAT(q.js) = 'b'",
+            &["json.text"],
+        ),
+    ] {
+        let (sql, steps) = transpiled(text, mariadb(), output(mysql_8_4));
+        assert_eq!(sql, written);
+        assert_eq!(steps, rules, "{text}");
+    }
+    // Read alike: its text or its value.
+    for text in [
+        "SELECT js, js IS NULL AS a, js LIKE '%b%' AS b, CONCAT(js, s) AS c, CAST(js AS CHAR) AS d FROM g",
+        "SELECT COUNT(js) AS n, GROUP_CONCAT(js) AS c FROM g",
+        "SELECT js FROM g UNION ALL SELECT js FROM g",
+    ] {
+        for (input, target) in [(mariadb(), mysql_8_4), (mysql_8_4, mariadb())] {
+            let (sql, rules) = transpiled(text, input, output(target));
+            assert_eq!(sql, text);
+            assert!(rules.is_empty(), "{rules:?}");
+        }
+    }
+    assert_eq!(
+        errors(
+            "SELECT JSON_TYPE(js) AS t FROM g",
+            mariadb(),
+            output(mysql_8_4)
+        ),
+        ["function.unstudied"]
+    );
+    // Towards MariaDB from MySQL, and a join `USING` a `JSON`: an error.
+    for text in [
+        "SELECT s FROM g WHERE js = 'b'",
+        "SELECT js FROM g ORDER BY js",
+        "SELECT js + 0 AS a FROM g",
+    ] {
+        assert_eq!(
+            errors(text, mysql_8_4, output(mariadb())),
+            ["json.text"],
+            "{text}"
+        );
+    }
+    assert_eq!(
+        errors("TABLE g UNION TABLE g", mysql_8_4, output(mariadb())),
+        ["json.text", "json.text"]
+    );
+    for text in [
+        "SELECT g.s FROM g JOIN g AS h USING (js)",
+        "SELECT s FROM g GROUP BY s, js WITH ROLLUP HAVING js < '2'",
+    ] {
+        assert_eq!(
+            errors(text, mariadb(), output(mysql_8_4)),
+            ["json.text"],
+            "{text}"
+        );
     }
 }

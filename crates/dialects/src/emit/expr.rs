@@ -8,7 +8,8 @@
 //! The conversions between booleans and numbers are implicit in the MySQL
 //! family: `ToBoolean` and `ToInteger` write their operand alone, but a
 //! `JSON` read as a boolean, which each server reads its own way (`truth`
-//! module).
+//! module). A `JSON` compared, sorted or converted to a number is read as
+//! the input reads it (`json` module).
 
 use prisme_plan::{
     Arithmetic, Bitwise, Comparison, Expr, ExprKind, Logical, NotDistinctForm, Plan, Quantifier,
@@ -96,10 +97,11 @@ fn levels(expr: &Expr) -> (u8, u8, u8) {
 impl Emitter<'_> {
     /// Writes `expr`, between parentheses when its level is below `min`.
     pub(super) fn expr(&mut self, expr: &Expr, min: u8) {
-        // Read as a value of its type, or as a number: this expression,
-        // never its operands.
+        // Read as a value of its type, as a number, a `JSON` kept as is:
+        // this expression, never its operands.
         let column = std::mem::take(&mut self.column);
         let number = std::mem::take(&mut self.number);
+        let json_as_is = std::mem::take(&mut self.json_as_is);
         if let ExprKind::ToBoolean(inner) | ExprKind::ToInteger(inner) = &expr.kind {
             if matches!(expr.kind, ExprKind::ToBoolean(_)) && inner.ty.data_type == DataType::Json {
                 self.json_condition(inner, min, true);
@@ -113,6 +115,9 @@ impl Emitter<'_> {
             && is_internal_name(&column.name.value)
             && self.internal(expr, &column.name, min)
         {
+            return;
+        }
+        if !json_as_is && self.json_text(expr) {
             return;
         }
         self.at(expr.span);
@@ -238,6 +243,7 @@ impl Emitter<'_> {
                 }
             }
             ExprKind::IsNull { operand, negated } => {
+                self.json_as_is = true;
                 self.number_expr(operand, left);
                 self.write(if *negated { " IS NOT NULL" } else { " IS NULL" });
             }
@@ -314,11 +320,15 @@ impl Emitter<'_> {
                     Dialect::MySql => PREFIX,
                     Dialect::MariaDb => right,
                 };
+                // Both dialects read the text of a `JSON` there.
+                self.json_as_is = true;
                 self.expr(operand, left);
                 self.write(if *negated { " NOT LIKE " } else { " LIKE " });
+                self.json_as_is = true;
                 self.expr(pattern, right);
                 if let Some(escape) = escape {
                     self.write(" ESCAPE ");
+                    self.json_as_is = true;
                     self.expr(escape, right);
                 }
             }
@@ -364,6 +374,7 @@ impl Emitter<'_> {
                 negated,
             } => {
                 self.number_expr(operand, left);
+                self.compared_rows = true;
                 self.subquery(if *negated { " NOT IN " } else { " IN " }, subquery);
             }
             ExprKind::Quantified {
@@ -374,6 +385,7 @@ impl Emitter<'_> {
             } => {
                 self.number_expr(operand, left);
                 self.write(comparison(*op));
+                self.compared_rows = true;
                 self.subquery(
                     match quantifier {
                         Quantifier::All => "ALL ",

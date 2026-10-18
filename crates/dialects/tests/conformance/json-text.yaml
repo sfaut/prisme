@@ -1,0 +1,56 @@
+# Rule `json.text`: a `JSON` compared, sorted, grouped or converted to a
+# number, by the rules of JSON in MySQL, as its text in MariaDB, whose `JSON`
+# is a `LONGTEXT` of collation `utf8mb4_bin` (crates/probe/cases/
+# json-text.txt). Towards MySQL from MariaDB, read as its text by `CONCAT`.
+# From MySQL, the readings would compare a `JSON` with a `LONGTEXT`, a column
+# of MariaDB: only those alike are checked. The texts are written as MySQL
+# stores them, normalized (`{"a": 1}`, `2.5`), which MariaDB keeps as
+# written.
+setup:
+  - DROP TABLE IF EXISTS json_text
+  - CREATE TABLE json_text (id INT NOT NULL PRIMARY KEY, j JSON NULL)
+  - >-
+    INSERT INTO json_text VALUES (1, '{"a": 1}'), (2, '[1, 2]'), (3, 'true'), (4, '1'),
+    (5, '"abc"'), (6, '10'), (7, '"b"'), (8, 'null'), (9, '2.5'), (10, NULL), (11, '1.0'),
+    (12, '"1"'), (13, '"B"')
+cases:
+  - from: mysql
+    sql: >-
+      SELECT id, j, j IS NULL AS a, j LIKE '%b%' AS b, CONCAT(j, '') AS c, COUNT(j) OVER () AS d
+      FROM json_text ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, j, j IS NULL AS a, j LIKE '%b%' AS b, CONCAT(j, '') AS c, CAST(j AS CHAR) AS d
+      FROM json_text ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, j = 'b' AS a, j = 1 AS b, j < 'b' AS c, j + 0 AS d, j IN ('b', 1) AS e,
+      j BETWEEN '1' AND '9' AS f, CASE j WHEN 'b' THEN 1 ELSE 0 END AS g, j <=> '"b"' AS h
+      FROM json_text ORDER BY id
+  - from: mariadb
+    sql: SELECT id, CAST(j AS SIGNED) AS a, CAST(j AS DECIMAL(5, 1)) AS b FROM json_text ORDER BY id
+  - from: mariadb
+    sql: SELECT j, COUNT(*) AS n FROM json_text GROUP BY j ORDER BY j
+  - from: mariadb
+    sql: SELECT DISTINCT j FROM json_text ORDER BY j
+  - from: mariadb
+    sql: SELECT MIN(j) AS a, MAX(j) AS b, COUNT(DISTINCT j) AS c, SUM(j) AS d FROM json_text
+  - from: mariadb
+    sql: SELECT j FROM json_text UNION SELECT j FROM json_text ORDER BY j
+  - from: mariadb
+    sql: SELECT id, ROW_NUMBER() OVER (PARTITION BY j ORDER BY id) AS r FROM json_text ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT a.id, b.id AS other FROM json_text AS a JOIN json_text AS b ON a.j = b.j AND a.id <> b.id
+      ORDER BY a.id
+  - from: mariadb
+    sql: >-
+      SELECT o.id FROM json_text AS o
+      WHERE 'b' IN (SELECT i.j FROM json_text AS i WHERE i.id = o.id)
+      OR (SELECT i.j FROM json_text AS i WHERE i.id = o.id) = '1'
+      ORDER BY o.id
+  - from: mariadb
+    sql: SELECT id FROM json_text GROUP BY id, j HAVING j < '2' ORDER BY id
+  - from: mariadb
+    sql: SELECT a.id FROM json_text AS a JOIN json_text AS b USING (j) ORDER BY a.id
+    refused: json.text
