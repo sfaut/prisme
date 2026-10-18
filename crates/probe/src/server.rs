@@ -91,6 +91,40 @@ impl Server {
         Ok(())
     }
 
+    /// Query that stopped the server, read in the log of its container, when
+    /// the server no longer runs (a crash); `None` while it runs.
+    pub fn stopped_by(&self) -> anyhow::Result<Option<String>> {
+        let running = docker(&["inspect", "--format", "{{.State.Running}}", &self.container])?;
+        if running.trim() == "true" {
+            return Ok(None);
+        }
+        // The servers write their log to the standard error of the container.
+        let output = Command::new("docker")
+            .args(["logs", "--tail", "500", &self.container])
+            .output()
+            .context("running docker")?;
+        let log = String::from_utf8_lossy(&output.stderr);
+        let query = log
+            .lines()
+            .rev()
+            .find_map(|line| line.strip_prefix("Query (")?.split_once("): "))
+            .map(|(_, query)| query.trim_end().to_string());
+        match query {
+            Some(query) => Ok(Some(query)),
+            None => bail!(
+                "{}: the server stopped, no query in its log",
+                self.container
+            ),
+        }
+    }
+
+    /// Starts the server again after it stopped, then waits for it.
+    pub fn restart(&self) -> anyhow::Result<()> {
+        eprintln!("{}: starting the container again", self.container);
+        docker(&["start", &self.container])?;
+        self.wait().map(drop)
+    }
+
     /// Name and version of the server, `MariaDB 10.6.28`.
     pub fn label(&self) -> String {
         match Version::parse(&self.version) {

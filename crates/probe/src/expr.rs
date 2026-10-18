@@ -22,7 +22,7 @@
 //! `i INT`, `n DECIMAL(10,2)`, `f DOUBLE`, all `NOT NULL`, then `dn DATE`,
 //! `sn VARCHAR(30)` and `j JSON`, nullable, `dn` and `sn` being NULL.
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt::Write;
 use std::thread;
 
@@ -318,22 +318,103 @@ pub struct Measure {
     pub type_failure: Option<String>,
 }
 
-/// Measures `cases` on `server`: a result per identifier. The cases are
-/// shared among `SESSIONS` sessions of the server, which measure at once,
-/// each after the statements of the file.
+/// Failure of a case whose measure stops the server.
+const STOPS: &str = "stops the server";
+
+/// Measures `cases` on `server`: a result per identifier. A case that stops
+/// the server (a crash, `REGEXP_SUBSTR(1, NULL)` on MySQL 8.0.11) has the
+/// failure `STOPS`: the server starts again and the cases are measured again
+/// without it. The case is the one whose query the log of the server gives;
+/// the cases of a batch that stops it are measured again in batches of
+/// their own, until the query names a single case.
 pub fn measure(server: &Server, cases: &Cases) -> anyhow::Result<HashMap<String, Measure>> {
+    let mut stopping = BTreeSet::new();
+    let mut alone = HashSet::new();
+    loop {
+        let kept = Cases {
+            setup: cases.setup.clone(),
+            cases: (cases.cases.iter())
+                .filter(|case| !stopping.contains(&case.id))
+                .cloned()
+                .collect(),
+        };
+        let outcome = measure_once(server, &kept, &alone);
+        let Some(query) = server.stopped_by()? else {
+            let mut measures = outcome?;
+            for id in stopping {
+                let failure = Some(STOPS.to_string());
+                measures.insert(
+                    id,
+                    Measure {
+                        failure,
+                        ..Measure::default()
+                    },
+                );
+            }
+            return Ok(measures);
+        };
+        let suspects: Vec<&Case> = (kept.cases.iter())
+            .filter(|case| stopped_by(&query, case))
+            .collect();
+        if suspects.is_empty() {
+            bail!(
+                "{}: stopped by a query of no case: {query}",
+                server.container
+            );
+        }
+        let same = (suspects.iter()).all(|case| case.expression == suspects[0].expression);
+        if same || suspects.iter().all(|case| alone.contains(&case.id)) {
+            for case in suspects {
+                eprintln!("{}: {} {STOPS}", server.container, case.id);
+                stopping.insert(case.id.clone());
+            }
+        } else {
+            alone.extend(suspects.iter().map(|case| case.id.clone()));
+        }
+        server.restart()?;
+    }
+}
+
+/// Tells whether `query`, which stopped a server, measures `case`: its
+/// value, its type alone or in a batch, or its value read by the client.
+/// The log of MySQL cuts a query at 1,024 bytes: a batch is then known by
+/// its first expressions.
+fn stopped_by(query: &str, case: &Case) -> bool {
+    let expression = &case.expression;
+    query == format!("SELECT {expression} INTO @probe_value FROM sample")
+        || query.ends_with(&format!(" AS SELECT {expression} AS v FROM sample"))
+        || query.contains(&format!(" AS SELECT {expression} AS c"))
+        || query.contains(&format!(", {expression} AS c"))
+        || query.starts_with(&format!("SELECT '{}', ", case.id))
+}
+
+/// Measures `cases` on `server` once, those of `alone` each in a batch of
+/// its own. The cases are shared among `SESSIONS` sessions of the server,
+/// which measure at once, each after the statements of the file.
+fn measure_once(
+    server: &Server,
+    cases: &Cases,
+    alone: &HashSet<String>,
+) -> anyhow::Result<HashMap<String, Measure>> {
     let setup = setup_script(cases);
     server.run_checked(&format!("{PREPARATION}{setup}{PROCEDURE}"), &[])?;
     in_sessions(cases, |chunk| {
         let mut script = setup.clone();
         for batch in chunk.chunks(BATCH) {
             for case in batch {
+                let solo = alone.contains(&case.id);
+                if solo {
+                    script.push_str("CALL probe_batch();\n");
+                }
                 let _ = writeln!(
                     script,
                     "CALL probe_value('{}', {});",
                     case.id,
                     text_literal(&case.expression)
                 );
+                if solo {
+                    script.push_str("CALL probe_batch();\n");
+                }
             }
             script.push_str("CALL probe_batch();\n");
         }
@@ -764,5 +845,30 @@ mod tests {
         assert_eq!(cut("abcdef", 4), "abc…");
         assert_eq!(cut("abcdef", 0), "abcdef");
         assert_eq!(cut("abc", 4), "abc");
+    }
+
+    #[test]
+    fn the_query_of_a_crash_names_its_case() {
+        let case = Case {
+            id: "b".to_string(),
+            expression: "REGEXP_SUBSTR(1, NULL)".to_string(),
+            deterministic: true,
+        };
+        for query in [
+            "SELECT REGEXP_SUBSTR(1, NULL) INTO @probe_value FROM sample",
+            "CREATE TABLE probe_type_12 AS SELECT REGEXP_SUBSTR(1, NULL) AS v FROM sample",
+            "CREATE TABLE probe_type_12 AS SELECT REGEXP_SUBSTR(1, NULL) AS c1, ABS(1) AS c2 FROM sample",
+            "CREATE TABLE probe_type_12 AS SELECT ABS(1) AS c1, REGEXP_SUBSTR(1, NULL) AS c2, CONC",
+            "SELECT 'b', REGEXP_SUBSTR(1, NULL) FROM sample",
+        ] {
+            assert!(stopped_by(query, &case), "{query}");
+        }
+        for query in [
+            "SELECT REGEXP_SUBSTR(1, NULL, 1) INTO @probe_value FROM sample",
+            "CREATE TABLE probe_type_12 AS SELECT X(REGEXP_SUBSTR(1, NULL)) AS c1 FROM sample",
+            "SELECT 'bb', REGEXP_SUBSTR(1, NULL) FROM sample",
+        ] {
+            assert!(!stopped_by(query, &case), "{query}");
+        }
     }
 }

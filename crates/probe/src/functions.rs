@@ -19,6 +19,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
+use anyhow::Context;
 use indoc::indoc;
 use prisme_dialects::versions::Version;
 use prisme_dialects::{Dialect, ListedFunction, listed_functions};
@@ -33,6 +34,9 @@ const SYNTAX: u32 = 1064;
 const STORED: u32 = 1630;
 /// Built-in function called with another number of arguments.
 const WRONG_COUNT: u32 = 1582;
+/// Call left untried, as it stops the server; no server answers with this
+/// code.
+const UNTRIED: u32 = 1;
 
 /// Arguments of the calls prepared.
 const ARGUMENTS: [&str; 5] = ["", "1", "1, 1", "1, 1, 1", "1, 1, 1, 1"];
@@ -93,9 +97,13 @@ impl Codes {
     /// whatever the others (`POINT` of MariaDB is a built-in function with
     /// two arguments, a stored one otherwise).
     fn verdict(&self) -> Verdict {
-        let reached = |code: &u32| ![NO_FUNCTION, STORED, SYNTAX].contains(code);
+        let reached = |code: &u32| ![NO_FUNCTION, STORED, SYNTAX, UNTRIED].contains(code);
         if !self.plain.iter().any(reached) {
-            return if self.plain.iter().all(|&code| code == SYNTAX) {
+            return if self
+                .plain
+                .iter()
+                .all(|&code| code == SYNTAX || code == UNTRIED)
+            {
                 Verdict::Syntax
             } else {
                 Verdict::Absent
@@ -106,14 +114,14 @@ impl Codes {
                 && self
                     .quoted
                     .iter()
-                    .all(|&code| code == NO_FUNCTION || code == STORED),
+                    .all(|&code| [NO_FUNCTION, STORED, UNTRIED].contains(&code)),
             touching: self.spaced == Some(STORED),
         }
     }
 
     /// Numbers of arguments of the calls that reach a built-in function.
     pub fn arities(&self) -> BTreeSet<usize> {
-        let missed = [NO_FUNCTION, STORED, SYNTAX, WRONG_COUNT];
+        let missed = [NO_FUNCTION, STORED, SYNTAX, WRONG_COUNT, UNTRIED];
         self.plain
             .iter()
             .enumerate()
@@ -177,11 +185,49 @@ fn is_name(name: &str) -> bool {
         })
 }
 
-/// Error codes of the calls of `names` on `server`.
+/// Error codes of the calls of `names` on `server`. A call that stops the
+/// server when prepared (`AES_ENCRYPT()` on MariaDB 11.3.2), named by the log
+/// of the server, is left untried: the server starts again and the calls
+/// are prepared again without it.
 pub fn probe(server: &Server, names: &BTreeSet<String>) -> anyhow::Result<BTreeMap<String, Codes>> {
+    let mut untried = BTreeSet::new();
+    loop {
+        let outcome = probe_once(server, names, &untried);
+        let Some(query) = server.stopped_by()? else {
+            return outcome;
+        };
+        let call = (query.strip_prefix("SELECT 0 + "))
+            .map(|call| call.replace('`', ""))
+            .filter(|call| !untried.contains(call))
+            .with_context(|| {
+                format!(
+                    "{}: stopped by a query of no call: {query}",
+                    server.container
+                )
+            })?;
+        eprintln!("{}: {call} stops the server", server.container);
+        untried.insert(call);
+        server.restart()?;
+    }
+}
+
+/// Error codes of the calls of `names` on `server`, those of `untried`
+/// (`AES_ENCRYPT()`) left untried.
+fn probe_once(
+    server: &Server,
+    names: &BTreeSet<String>,
+    untried: &BTreeSet<String>,
+) -> anyhow::Result<BTreeMap<String, Codes>> {
     let mut script = PROCEDURE.to_string();
     for name in names {
         for (count, arguments) in ARGUMENTS.iter().enumerate() {
+            if untried.contains(&format!("{name}({arguments})")) {
+                let _ = writeln!(
+                    script,
+                    "INSERT INTO probe_builtins VALUES ('{name}', 'plain{count}', {UNTRIED}), ('{name}', 'quoted{count}', {UNTRIED});"
+                );
+                continue;
+            }
             let _ = writeln!(
                 script,
                 "CALL probe_builtin('{name}', 'plain{count}', 'SELECT 0 + {name}({arguments})');"
