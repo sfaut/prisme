@@ -1,6 +1,7 @@
 //! Tables a statement reads, whose columns the builder needs: those of its
 //! sources, of its derived tables, of its set operations and of the
-//! subqueries of its expressions, common table expressions left out.
+//! subqueries of its expressions, common table expressions left out; and the
+//! user variables it reads, whose types the builder needs.
 
 use prisme_plan::{Ident, TableName};
 
@@ -9,11 +10,22 @@ use crate::sql::ast::{self, ExprKind, Query, QueryBody, SelectItem, StatementKin
 
 /// Tables `statement` reads, each one once, in the order written.
 pub fn referenced_tables(statement: &ast::Statement) -> Vec<TableName> {
+    collect(statement).tables
+}
+
+/// User variables `statement` reads, each one once (names compared without
+/// case), in the order written; those it only assigns left out.
+pub fn referenced_user_variables(statement: &ast::Statement) -> Vec<Ident> {
+    collect(statement).variables
+}
+
+/// Walk of `statement`.
+fn collect(statement: &ast::Statement) -> Collector {
     let mut collector = Collector::default();
     match &statement.kind {
         StatementKind::Query(query) => collector.query(query),
     }
-    collector.tables
+    collector
 }
 
 /// State of the walk.
@@ -23,6 +35,8 @@ struct Collector {
     ctes: Vec<Ident>,
     /// Tables found.
     tables: Vec<TableName>,
+    /// User variables read.
+    variables: Vec<Ident>,
 }
 
 impl Collector {
@@ -121,7 +135,7 @@ impl Collector {
         }
     }
 
-    /// Subqueries of an expression.
+    /// Subqueries and user variables of an expression.
     fn expr(&mut self, expr: &ast::Expr) {
         if let ExprKind::Subquery(query)
         | ExprKind::Exists(query)
@@ -129,6 +143,14 @@ impl Collector {
         | ExprKind::Quantified { query, .. } = &expr.kind
         {
             self.query(query);
+        }
+        if let ExprKind::UserVariable(variable) = &expr.kind
+            && !self
+                .variables
+                .iter()
+                .any(|name| name.value.eq_ignore_ascii_case(&variable.value))
+        {
+            self.variables.push(variable.clone());
         }
         for child in expr.children() {
             self.expr(child);

@@ -313,7 +313,7 @@ fn utf16(text: &str, span: Span) -> TextSpan {
 }
 
 /// Transpiles `text`, reading the columns of its tables on `connection`, on
-/// its current database.
+/// its current database, and the types of its user variables.
 ///
 /// The reading and the writing of the query run in blocking tasks, off the
 /// threads of `tokio`, like the analysis of the editor's text.
@@ -353,6 +353,14 @@ pub async fn transpile(
                 .collect();
             tables.insert(database, &table.name.value, columns);
         }
+    }
+    let names: Vec<String> = prepared
+        .user_variables()
+        .into_iter()
+        .map(|name| name.value)
+        .collect();
+    for (name, ty) in catalog::user_variable_types(connection, &names).await? {
+        tables.insert_user_variable(&name, ty);
     }
     match blocking(move || prepared.transpile(&tables)).await {
         Ok(transpilation) => report.fill(text, transpilation),
@@ -408,8 +416,8 @@ async fn list_dialects() -> Json<Vec<DialectOption>> {
 
 /// `POST /api/transpile`: transpiles the queries of a text without running
 /// them. The columns of their tables are read on a new connection to the
-/// server, placed on the database of the session: the temporary tables of the
-/// session are not seen there.
+/// server, placed on the database of the session: the temporary tables and
+/// the user variables of the session are not seen there.
 async fn preview(
     State(state): State<AppState>,
     user: CurrentUser,

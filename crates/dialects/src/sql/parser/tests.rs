@@ -230,6 +230,17 @@ fn tree(expr: &Expr) -> String {
             tree(&call.value),
             call.unit
         ),
+        ExprKind::UserVariable(name) => format!("@{}", name.value),
+        ExprKind::SystemVariable(variable) => {
+            let parts: Vec<&str> = [&variable.scope, &variable.prefix]
+                .into_iter()
+                .flatten()
+                .chain(std::iter::once(&variable.name))
+                .map(|part| part.value.as_str())
+                .collect();
+            format!("@@{}", parts.join("."))
+        }
+        ExprKind::Assign { name, value } => format!("(:= @{} {})", name.value, tree(value)),
     }
 }
 
@@ -965,7 +976,7 @@ fn constructs_not_read_yet_are_explicit_errors() {
             "JSON_TABLE",
         ),
         ("INSERT INTO t VALUES (1)", "INSERT"),
-        ("SELECT @x", "@x"),
+        ("SELECT ?", "?"),
     ] {
         let (message, at) = error(text, &mysql());
         assert!(
@@ -2160,4 +2171,103 @@ fn refuses_the_locking_clauses_each_dialect_refuses() {
     }
     assert!(parse("(SELECT a FROM t) FOR UPDATE", &mysql_at(8, 0, 31)).is_ok());
     assert!(parse("(SELECT a FROM t) LIMIT 1 FOR UPDATE", &mysql_at(8, 0, 30)).is_ok());
+}
+
+#[test]
+fn reads_user_and_system_variables_and_assignments() {
+    assert_eq!(expr("@a + @`b c`"), "(+ @a @b c)");
+    assert_eq!(expr("1 + @x := 2 * 3"), "(+ 1 (:= @x (* 2 3)))");
+    assert_eq!(expr("@x := 0 OR 1 AND 0"), "(:= @x (or 0 (and 1 0)))");
+    assert_eq!(expr("- @x := 2"), "(- (:= @x 2))");
+    assert_eq!(expr("NOT @x := 0"), "(not (:= @x 0))");
+    assert_eq!(expr("@x := @y := 2"), "(:= @x (:= @y 2))");
+    assert_eq!(expr("@x := 2 IS NULL"), "(:= @x (isnull 2))");
+    assert_eq!(expr("@ + 1"), "(+ @ 1)");
+    assert_eq!(expr("@@sql_mode"), "@@sql_mode");
+    assert_eq!(expr("@@SESSION . sql_mode"), "@@SESSION.sql_mode");
+    assert_eq!(
+        expr("@@global.hot_cache.key_buffer_size"),
+        "@@global.hot_cache.key_buffer_size"
+    );
+    assert_eq!(expr("@@global.select"), "@@global.select");
+    assert_eq!(expr("@@`select`"), "@@select");
+    let select = select("SELECT @ a");
+    let SelectItem::Expr { expr, alias, .. } = &select.items[0] else {
+        panic!("not an expression");
+    };
+    assert_eq!(
+        (
+            tree(expr),
+            alias.as_ref().map(|alias| alias.name.value.as_str())
+        ),
+        ("@".to_string(), Some("a"))
+    );
+}
+
+#[test]
+fn refuses_the_variables_the_servers_refuse() {
+    let mariadb_10_7 = ParseOptions {
+        version: Version::new(10, 7, 1),
+        conditional_version: Version::new(10, 7, 1),
+        ..mariadb()
+    };
+    for (text, options, message, at) in [
+        (
+            "SELECT @@select",
+            mysql(),
+            "expected a variable name, found `select`",
+            "@@select",
+        ),
+        (
+            "SELECT @@global",
+            mysql(),
+            "expected `.`, found the end of the query",
+            "",
+        ),
+        (
+            "SELECT @@`session`.x",
+            mysql(),
+            "expected the end of the query, found `.`",
+            ".",
+        ),
+        (
+            "SELECT @ x := 1",
+            mysql(),
+            "expected the end of the query, found `:=`",
+            ":=",
+        ),
+        (
+            "SELECT @@x := 1",
+            mysql(),
+            "expected the end of the query, found `:=`",
+            ":=",
+        ),
+        (
+            "SELECT @ a",
+            mariadb_10_7,
+            "the user variable of an empty name: removed in MariaDB 10.7.1, chosen version \
+             10.7.1",
+            "@",
+        ),
+        (
+            "SELECT @''",
+            mariadb_10_7,
+            "the user variable of an empty name: removed in MariaDB 10.7.1, chosen version \
+             10.7.1",
+            "@''",
+        ),
+        (
+            "SELECT @'' := 1",
+            mysql(),
+            "an assignment of the user variable of an empty name: absent from MySQL",
+            ":=",
+        ),
+    ] {
+        assert_eq!(
+            error(text, &options),
+            (message.to_string(), at.to_string()),
+            "{text}"
+        );
+    }
+    assert!(parse("SELECT @'' := 1", &mariadb()).is_ok());
 }

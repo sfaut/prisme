@@ -918,6 +918,25 @@ constructs:
     since: "8.0.26"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-26.html
     comment: As up to 8.0.18.
+  # User and system variables (crates/probe/cases/variables.sql and
+  # variables-grammar.sql, measured on each local image, 8.0.11 to 9.3.0).
+  - id: empty_user_variable
+    since: "5.0.0"
+    source: https://dev.mysql.com/doc/refman/8.4/en/user-variables.html
+    comment: >-
+      `SELECT @''`, `` @`` ``, `@` alone read the variable of an empty name,
+      NULL: `SELECT @ a` is that variable, named `a` by its alias (`@ a AS
+      b` is a syntax error). Its assignment is refused (`@'' := 1`, `SET
+      @'' = 1`, error 3061, "User variable name '' is illegal"). Not in the
+      manual, measured.
+  # `tx_isolation` and `tx_read_only`, deprecated in 5.7.20, removed in 8.0.3
+  # (WL #9636): none in the versions covered.
+  - id: transaction_variables
+    since: "5.7.20"
+    source: https://dev.mysql.com/doc/relnotes/mysql/5.7/en/news-5-7-20.html
+    comment: >-
+      `transaction_isolation` and `transaction_read_only`, created as aliases
+      of `tx_isolation` and `tx_read_only` (WL #9636).
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:

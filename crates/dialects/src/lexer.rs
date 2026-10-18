@@ -450,17 +450,26 @@ impl Lexer<'_> {
         }
     }
 
-    /// `@name`, `@'name'`, `@@name`, or `@` alone.
+    /// `@name`, `@'name'`, `@@name`, `` @@`name` ``, or `@` alone.
     fn variable(&mut self) -> Result<TokenKind, LexError> {
         let start = self.pos;
         if self.peek(1) == Some(b'@') {
+            // The name of a system variable takes backticks, no other quote.
+            if self.peek(2) == Some(b'`') {
+                self.pos += 2;
+                let name = self.quoted(b'`', false)?;
+                return Ok(TokenKind::SystemVariable { name, quoted: true });
+            }
             let end = self.scan_while(start + 2, is_word_byte);
             if end == start + 2 {
                 return Err(self.error("system variable name expected", start, start + 2));
             }
             self.pos = end;
             self.check_word(start + 2)?;
-            return Ok(TokenKind::SystemVariable);
+            return Ok(TokenKind::SystemVariable {
+                name: self.text[start + 2..end].to_string(),
+                quoted: false,
+            });
         }
         match self.peek(1) {
             Some(quote @ (b'\'' | b'"' | b'`')) => {

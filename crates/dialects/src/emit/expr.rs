@@ -1,5 +1,6 @@
 //! Expressions written in the MySQL family, with the parentheses their
-//! precedence needs, from the loosest level to the tightest: `OR` (1),
+//! precedence needs, from the loosest level to the tightest: the assignment
+//! of a user variable (0), `OR` (1),
 //! `XOR` (2), `AND` (3), `NOT` and `IS TRUE` (4), comparisons and
 //! predicates (5), `|`
 //! (6), `&` (7), shifts (8), `+` and `-` (9), `*`, `/`, `DIV`, `%` (10),
@@ -13,7 +14,6 @@
 
 use prisme_plan::{
     Arithmetic, Bitwise, Comparison, Expr, ExprKind, Logical, NotDistinctForm, Plan, Quantifier,
-    VariableScope,
 };
 use prisme_types::{DataType, TextType, Value};
 
@@ -58,6 +58,8 @@ const fn comparison(op: Comparison) -> &'static str {
 fn levels(expr: &Expr) -> (u8, u8, u8) {
     let binary = |level: u8| (level, level, level + 1);
     match &expr.kind {
+        // Its value extends as far as an expression goes.
+        ExprKind::Assign { .. } => (0, 0, 0),
         ExprKind::Logical { op, .. } => match op {
             Logical::Or => binary(OR),
             Logical::Xor => binary(2),
@@ -196,14 +198,8 @@ impl Emitter<'_> {
                 self.ident(&column.name, expr.span);
             }
             ExprKind::Literal(value) => self.literal(expr, value),
-            ExprKind::Variable(variable) => {
-                self.write(match variable.scope {
-                    VariableScope::User => "@",
-                    VariableScope::Session => "@@",
-                    VariableScope::Global => "@@global.",
-                });
-                self.ident(&variable.name, expr.span);
-            }
+            ExprKind::Variable(variable) => self.variable(variable, expr.span),
+            ExprKind::Assign { name, value } => self.assign(expr, name, value),
             ExprKind::Compare {
                 op,
                 left: a,

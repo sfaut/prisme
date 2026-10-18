@@ -290,6 +290,17 @@ pub enum Construct {
     /// clause, inside or after the parentheses (MySQL 8.0.19 to 8.0.25 give
     /// every row).
     ParenthesizedLockedLimit,
+    /// The user variable of an empty name, `@''`, `@` alone (MySQL; MariaDB
+    /// before 10.7.1).
+    EmptyUserVariable,
+    /// An assignment of the user variable of an empty name, `@'' := 1`
+    /// (MariaDB before 10.7.1).
+    EmptyUserVariableAssignment,
+    /// The system variables `tx_isolation` and `tx_read_only` (MariaDB).
+    TxVariables,
+    /// The system variables `transaction_isolation` and
+    /// `transaction_read_only` (MySQL; MariaDB from 11.1.1).
+    TransactionVariables,
 }
 
 /// Construct refused in a dialect or a version.
@@ -542,6 +553,14 @@ impl Construct {
             Self::ParenthesizedLockedLimit => {
                 "an outer `LIMIT` bounding a locked `SELECT` between parentheses with its own \
                  `ORDER BY`"
+            }
+            Self::EmptyUserVariable => "the user variable of an empty name",
+            Self::EmptyUserVariableAssignment => {
+                "an assignment of the user variable of an empty name"
+            }
+            Self::TxVariables => "the system variables `tx_isolation` and `tx_read_only`",
+            Self::TransactionVariables => {
+                "the system variables `transaction_isolation` and `transaction_read_only`"
             }
         }
     }

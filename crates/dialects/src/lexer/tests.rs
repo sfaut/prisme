@@ -180,7 +180,7 @@ fn reads_the_prefixed_strings() {
 #[test]
 fn reads_user_and_system_variables() {
     assert_eq!(
-        lex("@x @a.b @'my var' @@session.sql_mode @", &mysql()),
+        lex("@x @a.b @'my var' @@session.sql_mode @@`a``b` @", &mysql()),
         [
             (
                 TokenKind::UserVariable {
@@ -203,9 +203,22 @@ fn reads_user_and_system_variables() {
                 },
                 "@'my var'".to_string()
             ),
-            (TokenKind::SystemVariable, "@@session".to_string()),
+            (
+                TokenKind::SystemVariable {
+                    name: "session".to_string(),
+                    quoted: false
+                },
+                "@@session".to_string()
+            ),
             (TokenKind::Punct(Punct::Dot), ".".to_string()),
             (TokenKind::Word, "sql_mode".to_string()),
+            (
+                TokenKind::SystemVariable {
+                    name: "a`b".to_string(),
+                    quoted: true
+                },
+                "@@`a``b`".to_string()
+            ),
             (TokenKind::Punct(Punct::At), "@".to_string()),
         ]
     );

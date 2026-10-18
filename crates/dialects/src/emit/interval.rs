@@ -262,7 +262,7 @@ fn operand_difference(arithmetic: &DateArithmetic) -> Option<(&'static str, Stri
         | DataType::Null => None,
         DataType::Unknown => Some((
             "interval.unknown",
-            "an interval moves a value whose type is unknown (a function): MySQL and MariaDB give different values for a `TIME` or a string, unknown until the types of the function catalog".to_string(),
+            "an interval moves a value whose type is unknown (a function, until the types of the function catalog, or a system variable): MySQL and MariaDB give different values for a `TIME` or a string".to_string(),
         )),
         _ if plain_string(arithmetic) => None,
         _ => Some((
@@ -306,7 +306,7 @@ fn diff_operand_difference(operand: &Expr) -> Option<(&'static str, String)> {
         DataType::Decimal(decimal) if decimal.scale() <= 6 => None,
         DataType::Unknown => Some((
             "timestampdiff.unknown",
-            "`TIMESTAMPDIFF` of a value whose type is unknown (a function): MySQL and MariaDB read a string or a number of more than 6 fractional digits otherwise, unknown until the types of the function catalog".to_string(),
+            "`TIMESTAMPDIFF` of a value whose type is unknown (a function, until the types of the function catalog, or a system variable): MySQL and MariaDB read a string or a number of more than 6 fractional digits otherwise".to_string(),
         )),
         _ if plain_string => None,
         _ => Some((

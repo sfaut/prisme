@@ -118,7 +118,7 @@ impl Builder<'_> {
     }
 
     /// Refuses a row where a single value is expected.
-    fn single(&self, expr: &Expr, span: Span) -> Result<(), BuildError> {
+    pub(super) fn single(&self, expr: &Expr, span: Span) -> Result<(), BuildError> {
         match &expr.kind {
             prisme_plan::ExprKind::Row(values) => Err(self.error(
                 format!(
@@ -147,7 +147,7 @@ impl Builder<'_> {
     }
 
     /// Integer from a predicate (`(a = 1) + 1`), other values unchanged.
-    fn as_value(&self, expr: Expr) -> Expr {
+    pub(super) fn as_value(&self, expr: Expr) -> Expr {
         if expr.ty.data_type != DataType::Boolean {
             return expr;
         }
@@ -310,7 +310,10 @@ impl Builder<'_> {
             | ExprKind::TimestampDiff(_)
             | ExprKind::Extract(_)
             | ExprKind::Trim(_)
-            | ExprKind::Position(_) => self.other_expr(expr, scope)?,
+            | ExprKind::Position(_)
+            | ExprKind::UserVariable(_)
+            | ExprKind::SystemVariable(_)
+            | ExprKind::Assign { .. } => self.other_expr(expr, scope)?,
         };
         Ok(built.with_span(expr.span))
     }
@@ -393,6 +396,9 @@ impl Builder<'_> {
             ExprKind::Extract(call) => self.extract(call, scope)?,
             ExprKind::Trim(call) => self.trim(call, scope)?,
             ExprKind::Position(call) => self.position(call, scope)?,
+            ExprKind::UserVariable(name) => self.user_variable(name),
+            ExprKind::SystemVariable(variable) => super::variable::system_variable(variable),
+            ExprKind::Assign { name, value } => self.assign(name, value, scope)?,
             _ => unreachable!(
                 "called on columns, calls, subqueries, rows, `CASE`, `CAST`, intervals, `TRIM` and `POSITION`"
             ),

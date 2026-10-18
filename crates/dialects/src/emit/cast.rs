@@ -443,7 +443,7 @@ fn bytes_difference(data_type: &DataType, target: &CharTarget) -> Option<(&'stat
     (bytes && !any_byte).then(|| {
         (
             "cast.bytes",
-            "`CAST` of bytes to characters: an invalid sequence gives its bytes in MySQL until 8.0.27, NULL from 8.0.28, `?` in MariaDB (`CAST(X'FF41' AS CHAR)`); the type of the operand is a byte string or is unknown (a function)".to_string(),
+            "`CAST` of bytes to characters: an invalid sequence gives its bytes in MySQL until 8.0.27, NULL from 8.0.28, `?` in MariaDB (`CAST(X'FF41' AS CHAR)`); the type of the operand is a byte string or is unknown (a function, a system variable)".to_string(),
         )
     })
 }
@@ -493,7 +493,7 @@ fn unknown_reason(target: &str) -> (&'static str, String) {
     (
         "cast.unknown",
         format!(
-            "`CAST` to `{target}` of a value whose type is unknown (a function): MySQL and MariaDB convert some types differently (a string, a fractional time, a negative number), unknown until the types of the function catalog"
+            "`CAST` to `{target}` of a value whose type is unknown (a function, until the types of the function catalog, or a system variable): MySQL and MariaDB convert some types differently (a string, a fractional time, a negative number)"
         ),
     )
 }

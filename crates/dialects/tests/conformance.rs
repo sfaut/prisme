@@ -668,7 +668,8 @@ async fn run_output(
 }
 
 /// Transpilation of `case` from the server of `input` to `output`, whose
-/// session `target` gives the SQL mode and the columns of the tables read.
+/// session `target` gives the SQL mode, the columns of the tables read and
+/// the types of the user variables read.
 async fn transpile(
     case: &Case,
     input: &Image,
@@ -704,6 +705,17 @@ async fn transpile(
                 .collect();
             tables.insert(database, &table.name.value, columns);
         }
+    }
+    let names: Vec<String> = translation
+        .user_variables()
+        .into_iter()
+        .map(|name| name.value)
+        .collect();
+    let variables = catalog::user_variable_types(target, &names)
+        .await
+        .map_err(|error| error.to_string())?;
+    for (name, ty) in variables {
+        tables.insert_user_variable(&name, ty);
     }
     let transpilation = translation
         .transpile(&tables)

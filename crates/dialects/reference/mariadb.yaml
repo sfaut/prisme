@@ -771,6 +771,39 @@ constructs:
       default of `character_set_collations`, measured on 11.4.13 and 11.5.2
       (crates/probe/cases/literals-collations.txt). A national string keeps
       `utf8mb3_general_ci` (`N'a'`, in every version).
+  # User and system variables (crates/probe/cases/variables.sql and
+  # variables-grammar.sql, measured on each local image, 10.5.29 to 11.8.9).
+  # The forms refused from 10.7.1, the first image of 10.7, are neither in
+  # the release notes of 10.7 nor in a ticket found.
+  - id: empty_user_variable
+    since: "5.1.0"
+    until: "10.7.1"
+    source: https://mariadb.com/docs/server/reference/sql-structure/sql-language-structure/user-defined-variables
+    comment: >-
+      `SELECT @''`, `` @`` ``, `@` alone read the variable of an empty name
+      up to 10.6.28: `SELECT @ a` is that variable, named `a` by its alias;
+      a syntax error from 10.7.1. Not in the documentation, measured.
+  - id: empty_user_variable_assignment
+    since: "5.1.0"
+    until: "10.7.1"
+    source: https://mariadb.com/docs/server/reference/sql-structure/sql-language-structure/user-defined-variables
+    comment: >-
+      `SELECT @'' := 1`, `SET @`` = 1`, `@ := 1` assign the variable of an
+      empty name up to 10.6.28, refused by MySQL (error 3061). Not in the
+      documentation, measured.
+  - id: tx_variables
+    since: "5.1.0"
+    source: https://mariadb.com/docs/server/server-management/variables-and-modes/server-system-variables
+    comment: >-
+      `tx_isolation` and `tx_read_only`, deprecated from 11.1.1 (MDEV-21921);
+      present on each local image, 10.5.29 to 11.8.9.
+  - id: transaction_variables
+    since: "11.1.1"
+    source: https://jira.mariadb.org/browse/MDEV-21921
+    comment: >-
+      `transaction_isolation` and `transaction_read_only`, the names of
+      MySQL, system variables from 11.1.1 (fix version of the ticket, no
+      image of it); absent up to 11.0.5, present from 11.1.2.
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:

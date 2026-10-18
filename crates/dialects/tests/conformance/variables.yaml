@@ -1,0 +1,68 @@
+# User and system variables (crates/probe/cases/variables.sql,
+# variables-grammar.sql): user variables of the session, read with the type
+# of their value on the connection; assignments inside an expression,
+# between parentheses inside another one; the variable of an empty name
+# (`variable.empty`); system variables with their scope, those of the
+# transactions taking the name of the output (`variable.renamed`).
+setup:
+  - DROP TABLE IF EXISTS variables_t
+  - CREATE TABLE variables_t (id INT NOT NULL PRIMARY KEY, a INT NOT NULL, s VARCHAR(10) NOT NULL)
+  - INSERT INTO variables_t VALUES (1, 3, 'x'), (2, 1, 'y'), (3, 2, 'z')
+cases:
+  # Values set by the session, of each type a variable keeps.
+  - from: mysql
+    session: ["SET @i = 5, @s = 'abc', @d = 1.5, @f = 1e0, @t = DATE '2024-05-06'"]
+    sql: SELECT @i AS i, @s AS s, @d AS d, @f AS f, @t AS t, @I AS j
+  - from: mariadb
+    session: ["SET @i = 5, @s = 'abc', @d = 1.5, @`my var` = 2, @a.b = 3"]
+    sql: SELECT @i + 1 AS a, CONCAT(@s, 'd') AS b, @d * 2 AS c, @'my var' AS e, @a.b AS f
+  # The type read on the connection steers the translations that depend on
+  # it: an integer in a bit operation, a date kept as a string, a string read
+  # as a number as the input reads it.
+  - from: mysql
+    session: ["SET @i = 5, @t = DATE '2024-05-06'"]
+    sql: SELECT @i | 1 AS a, CAST(@i AS SIGNED) AS b, @t + 0 AS c
+  - from: mariadb
+    session: ["SET @s = '12.6'"]
+    sql: SELECT @s | 1 AS a
+  # Assignments: the value of the whole expression on their right.
+  - from: mysql
+    sql: SELECT 1 + @x := 2 * 3 AS a, @y := 0 OR 1 AS b, @z := 2 IS NULL AS c
+  - from: mariadb
+    sql: SELECT - @x := 2 AS a, NOT @y := 0 AS b, @z := @w := 4 AS c
+  - from: mysql
+    sql: SELECT id, @r := a * 10 AS r FROM variables_t ORDER BY id
+  - from: mariadb
+    sql: SELECT id FROM variables_t WHERE @k := a > 1 ORDER BY @o := id
+  - from: mysql
+    sql: SELECT @x := DATE '2024-05-06' AS a, @y := 'é' AS b
+  # The variable of an empty name, `@` alone (`@ a` is named `a` by its
+  # alias), refused by MariaDB from 10.7.1; its assignment, by MySQL.
+  - from: mysql
+    sql: SELECT @'' AS a, @ b
+    outputs: mariadb < 10.7.1
+  - from: mysql
+    sql: SELECT @ a
+    outputs: mariadb >= 10.7.1
+    refused: variable.empty
+  - from: mariadb
+    inputs: mariadb < 10.7.1
+    sql: SELECT @'' := 1 AS a
+    refused: variable.empty
+  # System variables, with their scope.
+  - from: mysql
+    sql: >-
+      SELECT @@sql_select_limit AS a, @@SESSION.sql_select_limit AS b, @@local.sql_select_limit AS c,
+      @@GLOBAL.sql_select_limit AS d, @@autocommit AS e, @@max_heap_table_size AS f
+  - from: mariadb
+    sql: SELECT @@session . sql_select_limit AS a, @@global.default.key_buffer_size > 0 AS b
+  # The variables of the transactions, renamed when the output lacks them.
+  - from: mariadb
+    sql: SELECT @@tx_isolation AS a, @@tx_read_only AS b, @@SESSION.tx_isolation AS c
+  - from: mysql
+    sql: SELECT @@transaction_isolation AS a, @@global.transaction_read_only AS b
+  # A system variable has a type unknown to Prisme: refused where the
+  # translation depends on it.
+  - from: mysql
+    sql: SELECT @@sql_select_limit | 1 AS a
+    refused: bitwise.operand

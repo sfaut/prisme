@@ -22,8 +22,8 @@ use prisme_plan::{CallForm, Ident, Span, Truth};
 use super::{ParseError, Parser};
 use crate::lexer::{Punct, TokenKind};
 use crate::sql::ast::{
-    BinaryOp, Expr, ExprKind, FunctionCall, Literal, ObjectName, Query, Strings, TemporalKind,
-    UnaryOp,
+    BinaryOp, Expr, ExprKind, FunctionCall, Literal, ObjectName, Query, Strings, SystemVariable,
+    TemporalKind, UnaryOp,
 };
 use crate::versions::Construct;
 use crate::{Dialect, keywords};
@@ -481,9 +481,8 @@ impl Parser<'_> {
             | TokenKind::BitString(_)
             | TokenKind::HexNumber(_)
             | TokenKind::BitNumber(_) => Ok(self.bytes_literal()),
-            TokenKind::UserVariable { .. } | TokenKind::SystemVariable => {
-                Err(self.unsupported("variables", token.span))
-            }
+            TokenKind::UserVariable { .. } | TokenKind::Punct(Punct::At) => self.user_variable(),
+            TokenKind::SystemVariable { .. } => self.system_variable(),
             TokenKind::Placeholder => {
                 Err(self.unsupported("parameters of prepared statements", token.span))
             }
@@ -492,6 +491,82 @@ impl Parser<'_> {
             TokenKind::Word | TokenKind::QuotedIdent(_) => self.word_expr(),
             _ => Err(self.expected("an expression")),
         }
+    }
+
+    /// User variable, `@x`, and the assignment that may follow, `@x :=
+    /// value`. The value assigned is a whole expression, even after an
+    /// operator: `1 + @x := 2 * 3` gives 7. `@` alone is the variable of an
+    /// empty name, as `@''`: `@ a` is that variable, named `a` by its alias.
+    fn user_variable(&mut self) -> Result<Expr, ParseError> {
+        let at = self.advance().expect("a variable comes next");
+        let name = match at.kind {
+            TokenKind::UserVariable { name, quoted } => Ident {
+                value: name,
+                quoted,
+            },
+            _ => Ident::new(""),
+        };
+        if name.value.is_empty() {
+            self.check(Construct::EmptyUserVariable, at.span)?;
+        }
+        let Some(assign) = self.eat_punct(Punct::Assign) else {
+            return Ok(leaf(ExprKind::UserVariable(name), at.span));
+        };
+        if name.value.is_empty() {
+            self.check(Construct::EmptyUserVariableAssignment, assign)?;
+        }
+        let value = self.expr()?;
+        Ok(leaf(
+            ExprKind::Assign {
+                name,
+                value: Box::new(value),
+            },
+            self.span_from(at.span.start),
+        ))
+    }
+
+    /// System variable: `@@x`, `@@session.x`, `@@local.x`, `@@global.x`, its
+    /// name possibly after the instance of a structured variable or the
+    /// component that defines it (`@@hot_cache.key_buffer_size`).
+    fn system_variable(&mut self) -> Result<Expr, ParseError> {
+        let token = self.advance().expect("a variable comes next");
+        let TokenKind::SystemVariable { name, quoted } = token.kind else {
+            unreachable!("a system variable comes next");
+        };
+        if !quoted && keywords::is_reserved(&name, self.options.dialect, self.options.version) {
+            return Err(ParseError {
+                message: format!("expected a variable name, found `{name}`"),
+                span: token.span,
+            });
+        }
+        let mut scope = None;
+        let mut name = Ident {
+            value: name,
+            quoted,
+        };
+        let scoped = ["SESSION", "LOCAL", "GLOBAL"]
+            .iter()
+            .any(|scope| name.value.eq_ignore_ascii_case(scope));
+        if !quoted && scoped {
+            self.expect_punct(Punct::Dot)?;
+            scope = Some(name);
+            name = self.name_after_dot()?;
+        }
+        // A name between backticks ends the variable: `` @@`session`.x `` is
+        // refused by the servers.
+        let mut prefix = None;
+        if !name.quoted && self.eat_punct(Punct::Dot).is_some() {
+            prefix = Some(name);
+            name = self.name_after_dot()?;
+        }
+        Ok(leaf(
+            ExprKind::SystemVariable(Box::new(SystemVariable {
+                scope,
+                prefix,
+                name,
+            })),
+            self.span_from(token.span.start),
+        ))
     }
 
     /// Strings in a row, joined into one (`'a' 'b'` is `'ab'`).

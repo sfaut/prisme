@@ -15,7 +15,8 @@
 //!   keeps its values, an expression that may read them as strings is an
 //!   error (rule `case.scale`).
 //!
-//! A result of unknown type (a function) hides these differences: an error.
+//! A result of unknown type (a function, a system variable) hides these
+//! differences: an error.
 
 use prisme_plan::{Case, Expr, ExprKind};
 use prisme_types::{DataType, DecimalType, Value};
@@ -105,7 +106,7 @@ impl Emitter<'_> {
     }
 
     /// Errors of a `CASE` whose results include a value of unknown type
-    /// (a function): among integers and `NULL`, the family of the type may
+    /// (a function, a system variable): among integers and `NULL`, the family of the type may
     /// differ; with a decimal that has a scale, read otherwise than as a
     /// number, the scale of its values.
     fn case_unknown(&mut self, expr: &Expr, results: &[&Expr], reading: Reading) {
@@ -125,13 +126,13 @@ impl Emitter<'_> {
         if integral {
             self.error(
                 "case.type",
-                "`CASE` of a result whose type is unknown (a function) with integers or `NULL`: an unsigned integer with a signed one or with `NULL` gives an integer in MySQL, a `DECIMAL` in MariaDB",
+                "`CASE` of a result whose type is unknown (a function, a system variable) with integers or `NULL`: an unsigned integer with a signed one or with `NULL` gives an integer in MySQL, a `DECIMAL` in MariaDB",
                 expr.span,
             );
         } else if scaled && !reading.number {
             self.error(
                 "case.scale",
-                "`CASE` of a result whose type is unknown (a function) with a decimal: MySQL writes each value of a `DECIMAL` `CASE` at the scale of its result (`42` for an integer), MariaDB at the scale of the type (`42.00`)",
+                "`CASE` of a result whose type is unknown (a function, a system variable) with a decimal: MySQL writes each value of a `DECIMAL` `CASE` at the scale of its result (`42` for an integer), MariaDB at the scale of the type (`42.00`)",
                 expr.span,
             );
         }

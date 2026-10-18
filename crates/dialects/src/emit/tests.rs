@@ -4847,3 +4847,169 @@ fn locking_clauses_next_to_parentheses_lock_the_rows_of_the_input() {
         assert_eq!(sql, expected, "{text} -> {}", out.version);
     }
 }
+
+#[test]
+fn variables_keep_their_form() {
+    for (text, input) in [
+        (
+            "SELECT @a, @a.b, @`my var`, @@sql_mode, @@SESSION.sql_mode, @@local.sql_mode, \
+             @@global.sql_mode, @@hot_cache.key_buffer_size, @@global.default.key_buffer_size",
+            mysql(),
+        ),
+        ("SELECT @x := 1, @x := 0 OR 1, @x := @y := 2", mysql()),
+        ("SELECT a FROM t WHERE @x := a ORDER BY @y := b", mariadb()),
+        ("SELECT @`` := 1, @``", mariadb()),
+        (
+            "SELECT @@tx_isolation, @@transaction_read_only",
+            mariadb_at(11, 1, 2),
+        ),
+    ] {
+        assert_eq!(
+            transpiled(text, input, output(input)),
+            (text.to_string(), vec![])
+        );
+    }
+}
+
+#[test]
+fn an_assignment_inside_an_expression_takes_parentheses() {
+    for (text, expected) in [
+        (
+            "SELECT 1 + @x := 2 * 3",
+            "SELECT 1 + (@x := 2 * 3) AS `1 + @x := 2 * 3`",
+        ),
+        ("SELECT - @x := 2", "SELECT -(@x := 2) AS `- @x := 2`"),
+        (
+            "SELECT NOT @x := 0",
+            "SELECT NOT (@x := 0) AS `NOT @x := 0`",
+        ),
+        ("SELECT (@x := 2) IS NULL", "SELECT (@x := 2) IS NULL"),
+        (
+            "SELECT a FROM t WHERE b = @x := 1",
+            "SELECT a FROM t WHERE b = (@x := 1)",
+        ),
+    ] {
+        let (sql, _) = transpiled(text, mysql(), output(mariadb()));
+        assert_eq!(sql, expected, "{text}");
+    }
+}
+
+#[test]
+fn user_variables_are_written_with_their_at_and_backticks() {
+    let mariadb_10_7 = output(mariadb_at(10, 7, 1));
+    assert_eq!(
+        transpiled("SELECT @'my var', @\"b\"", mysql(), mariadb_10_7),
+        (
+            "SELECT @`my var` AS `@'my var'`, @`b` AS `@\"b\"`".to_string(),
+            vec!["column.implicit-name", "column.implicit-name"]
+        )
+    );
+    assert_eq!(
+        errors("SELECT @'', @ a", mysql(), mariadb_10_7),
+        ["variable.empty", "variable.empty"]
+    );
+    assert_eq!(
+        transpiled("SELECT @ a, @ + 1", mysql(), output(mariadb())),
+        ("SELECT @ a, @ + 1".to_string(), vec![])
+    );
+    assert_eq!(
+        errors("SELECT @'' := 1", mariadb(), output(mysql())),
+        ["variable.empty"]
+    );
+    assert_eq!(
+        transpiled("SELECT @``", mysql(), output(mariadb())).0,
+        "SELECT @``"
+    );
+}
+
+#[test]
+fn transaction_variables_take_the_name_of_the_output() {
+    assert_eq!(
+        transpiled(
+            "SELECT @@tx_isolation AS i, @@SESSION.tx_read_only AS r",
+            mariadb(),
+            output(mysql())
+        ),
+        (
+            "SELECT @@transaction_isolation AS i, @@SESSION.transaction_read_only AS r".to_string(),
+            vec!["variable.renamed", "variable.renamed"]
+        )
+    );
+    assert_eq!(
+        transpiled(
+            "SELECT @@transaction_isolation AS i",
+            mysql(),
+            output(mariadb())
+        ),
+        (
+            "SELECT @@tx_isolation AS i".to_string(),
+            vec!["variable.renamed"]
+        )
+    );
+    assert_eq!(
+        transpiled(
+            "SELECT @@transaction_isolation AS i",
+            mysql(),
+            output(mariadb_at(11, 1, 2))
+        ),
+        ("SELECT @@transaction_isolation AS i".to_string(), vec![])
+    );
+}
+
+#[test]
+fn user_variables_take_their_type_from_the_catalog() {
+    let prepared = crate::transpile::prepare(
+        "SELECT @a, @A, @b := 1, (SELECT @c FROM t) FROM t WHERE @d := @e",
+        mysql(),
+        output(mysql()),
+    )
+    .unwrap();
+    let names: Vec<String> = prepared
+        .user_variables()
+        .into_iter()
+        .map(|name| name.value)
+        .collect();
+    assert_eq!(names, ["a", "c", "e"]);
+    let mut tables = catalog();
+    tables.insert_user_variable(
+        "A",
+        Type::nullable(DataType::Integer(IntegerType::signed(IntegerSize::Big))),
+    );
+    let plan_of = |tables: &Tables| {
+        let parsed = crate::sql::parse(
+            "SELECT @a",
+            &crate::sql::ParseOptions {
+                dialect: Dialect::MySql,
+                version: Version::new(8, 0, 19),
+                mode: SqlMode::default(),
+                conditional_version: Version::new(8, 0, 19),
+            },
+        )
+        .unwrap();
+        crate::build::build(
+            &parsed.statement,
+            "SELECT @a",
+            Dialect::MySql,
+            Version::new(8, 0, 19),
+            tables,
+        )
+        .unwrap()
+    };
+    let Statement::Query(Plan::Project(project)) = plan_of(&tables) else {
+        panic!("not a projection");
+    };
+    let ProjectItem::Expr(item) = &project.items[0] else {
+        panic!("not an expression");
+    };
+    assert_eq!(
+        item.expr.ty.data_type,
+        DataType::Integer(IntegerType::signed(IntegerSize::Big))
+    );
+    let Statement::Query(Plan::Project(project)) = plan_of(&catalog()) else {
+        panic!("not a projection");
+    };
+    let ProjectItem::Expr(item) = &project.items[0] else {
+        panic!("not an expression");
+    };
+    assert_eq!(item.expr.ty.data_type, DataType::Unknown);
+}

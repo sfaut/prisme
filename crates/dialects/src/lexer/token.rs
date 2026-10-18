@@ -54,9 +54,14 @@ pub enum TokenKind {
         /// `true` when the name is written between quotes.
         quoted: bool,
     },
-    /// System variable, `@@name`: the scope and the dots that may follow
-    /// (`@@session.sql_mode`) are separate tokens.
-    SystemVariable,
+    /// System variable, `@@name`, `` @@`name` ``: the dots and the names that
+    /// may follow (`@@session.sql_mode`) are separate tokens.
+    SystemVariable {
+        /// Name, quotes removed.
+        name: String,
+        /// `true` when the name is written between backticks.
+        quoted: bool,
+    },
     /// Parameter of a prepared statement, `?`.
     Placeholder,
     /// Operator or punctuation.

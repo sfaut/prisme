@@ -10,10 +10,10 @@
 
 use std::fmt;
 
-use prisme_plan::{Span, TableName};
+use prisme_plan::{Ident, Span, TableName};
 
 use crate::Dialect;
-use crate::build::{BuildError, Catalog, build, referenced_tables};
+use crate::build::{BuildError, Catalog, build, referenced_tables, referenced_user_variables};
 use crate::emit::{OutputDialect, Source, emit};
 use crate::report::{Step, StepKind, Transpilation};
 use crate::sql::{ParseError, ParseOptions, Parsed, parse};
@@ -116,6 +116,13 @@ impl Prepared {
     /// Tables the query reads, whose columns `transpile` needs.
     pub fn tables(&self) -> Vec<TableName> {
         referenced_tables(&self.parsed.statement)
+    }
+
+    /// User variables the query reads, whose types `transpile` takes from
+    /// the catalog: read on the connection just before the query runs
+    /// (`SELECT @x, @y`, `docs/QUESTIONS.md`, point 44).
+    pub fn user_variables(&self) -> Vec<Ident> {
+        referenced_user_variables(&self.parsed.statement)
     }
 
     /// Builds the plan from the columns of `catalog`, then writes the query

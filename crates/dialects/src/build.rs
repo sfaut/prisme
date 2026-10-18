@@ -35,6 +35,7 @@ mod string;
 mod tables;
 mod temporal;
 pub(crate) mod types;
+mod variable;
 
 #[cfg(test)]
 mod tests;
@@ -59,23 +60,32 @@ use crate::versions::{Construct, Version, registry};
 pub(crate) use group::is_internal_name;
 use group::{Above, Block, Clause};
 use scope::{ResolveError, Scope};
-pub use tables::referenced_tables;
+pub use tables::{referenced_tables, referenced_user_variables};
 
 /// Columns of the tables of the database, read on demand for the tables of a
-/// query (`docs/QUESTIONS.md`, point 44).
+/// query, and types of the user variables of the connection
+/// (`docs/QUESTIONS.md`, point 44).
 pub trait Catalog {
     /// Columns of `table` in `database` (the current database when `None`),
     /// with their type; `None` when the table is unknown.
     fn columns(&self, database: Option<&Ident>, table: &Ident) -> Option<Vec<(Ident, Type)>>;
+
+    /// Type of the value of the user variable `name` (without `@`) on the
+    /// connection; `None` when not read.
+    fn user_variable(&self, _name: &str) -> Option<Type> {
+        None
+    }
 }
 
-/// Catalog held in memory: the columns of the tables read for a query.
-/// Names are compared without case.
+/// Catalog held in memory: the columns of the tables read for a query, and
+/// the types of its user variables. Names are compared without case.
 #[derive(Debug, Clone, Default)]
 pub struct Tables {
     /// Columns, by database (empty for the current one) and table, in lower
     /// case.
     tables: HashMap<(String, String), Vec<(Ident, Type)>>,
+    /// Types of the user variables, by name in lower case.
+    variables: HashMap<String, Type>,
 }
 
 impl Tables {
@@ -83,12 +93,21 @@ impl Tables {
     pub fn insert(&mut self, database: Option<&str>, table: &str, columns: Vec<(Ident, Type)>) {
         self.tables.insert(key(database, table), columns);
     }
+
+    /// Adds the type of the user variable `name`, without `@`.
+    pub fn insert_user_variable(&mut self, name: &str, ty: Type) {
+        self.variables.insert(name.to_lowercase(), ty);
+    }
 }
 
 impl Catalog for Tables {
     fn columns(&self, database: Option<&Ident>, table: &Ident) -> Option<Vec<(Ident, Type)>> {
         let database = database.map(|database| database.value.as_str());
         self.tables.get(&key(database, &table.value)).cloned()
+    }
+
+    fn user_variable(&self, name: &str) -> Option<Type> {
+        self.variables.get(&name.to_lowercase()).cloned()
     }
 }
 

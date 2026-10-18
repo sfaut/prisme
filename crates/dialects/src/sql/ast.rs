@@ -580,6 +580,32 @@ pub enum ExprKind {
     Trim(Box<TrimCall>),
     /// `POSITION(substring IN string)`.
     Position(Box<PositionCall>),
+    /// User variable, `@x`; `@` alone is the variable of an empty name.
+    UserVariable(Ident),
+    /// System variable, `@@x`, `@@session.x`.
+    SystemVariable(Box<SystemVariable>),
+    /// Assignment of a user variable inside an expression, `@x := value`,
+    /// which gives the value assigned.
+    Assign {
+        /// Name of the variable assigned, quotes removed.
+        name: Ident,
+        /// Value assigned.
+        value: Box<Expr>,
+    },
+}
+
+/// System variable, `@@x`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SystemVariable {
+    /// Scope written before the name, `SESSION`, `LOCAL` or `GLOBAL`, as
+    /// written.
+    pub scope: Option<Ident>,
+    /// Instance of a structured variable, or component that defines the
+    /// variable, written before its name: `hot_cache` of
+    /// `@@hot_cache.key_buffer_size`.
+    pub prefix: Option<Ident>,
+    /// Name.
+    pub name: Ident,
 }
 
 /// `CAST` or `CONVERT`.
@@ -670,8 +696,11 @@ impl Expr {
         match &self.kind {
             ExprKind::Column(_)
             | ExprKind::Literal(_)
+            | ExprKind::UserVariable(_)
+            | ExprKind::SystemVariable(_)
             | ExprKind::Subquery(_)
             | ExprKind::Exists(_) => Vec::new(),
+            ExprKind::Assign { value, .. } => vec![value],
             ExprKind::Unary { operand, .. }
             | ExprKind::IsNull { operand, .. }
             | ExprKind::IsTruth { operand, .. }

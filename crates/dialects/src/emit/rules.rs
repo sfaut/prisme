@@ -770,6 +770,8 @@ fn fraction_digits(data_type: &DataType) -> Option<u8> {
 pub(super) fn repeatable(expr: &Expr) -> bool {
     match &expr.kind {
         ExprKind::Column(_) | ExprKind::Literal(_) | ExprKind::Variable(_) => true,
+        // Written twice, it assigns twice.
+        ExprKind::Assign { .. } => false,
         ExprKind::Not(operand)
         | ExprKind::Negate(operand)
         | ExprKind::BitNot(operand)

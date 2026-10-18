@@ -47,7 +47,7 @@ pub enum ExprKind {
     /// Literal.
     Literal(Value),
     /// User or system variable (`@x`, `@@sql_mode`).
-    Variable(Variable),
+    Variable(Box<Variable>),
     /// Comparison, three-valued.
     Compare {
         /// Comparison operator.
@@ -233,6 +233,14 @@ pub enum ExprKind {
     /// Boolean to integer, 1 or 0 (MySQL family: `SUM(a = 1)`,
     /// `(a = 1) + 1`).
     ToInteger(Box<Expr>),
+    /// Assignment of a user variable inside an expression (`@x := 1`),
+    /// which gives the value assigned, as the variable keeps it.
+    Assign {
+        /// Name of the variable assigned, without `@`.
+        name: Ident,
+        /// Value assigned.
+        value: Box<Expr>,
+    },
 }
 
 /// Item of the select list read through its alias.
@@ -258,6 +266,13 @@ pub struct ColumnRef {
 pub struct Variable {
     /// Scope of the variable.
     pub scope: VariableScope,
+    /// Scope as written before its dot (`SESSION`, `local`); `None` for a
+    /// user variable, for `@@x`, and for a scope written by Prisme.
+    pub scope_word: Option<Ident>,
+    /// Instance of a structured variable, or component that defines the
+    /// variable, written before its name: `hot_cache` of
+    /// `@@hot_cache.key_buffer_size`.
+    pub prefix: Option<Ident>,
     /// Name, without `@` or `@@`.
     pub name: Ident,
 }
@@ -268,10 +283,25 @@ pub enum VariableScope {
     /// User variable of the connection (`@x`); its type is read on the server
     /// before running (`docs/QUESTIONS.md`, point 44).
     User,
-    /// System variable of the session (`@@x`, `@@session.x`).
+    /// System variable without scope (`@@x`): the value of the session, the
+    /// global one when the variable has none.
+    System,
+    /// System variable of the session (`@@session.x`, `@@local.x`).
     Session,
     /// System variable of the server (`@@global.x`).
     Global,
+}
+
+impl Variable {
+    /// User variable `@name`.
+    pub fn user(name: Ident) -> Self {
+        Self {
+            scope: VariableScope::User,
+            scope_word: None,
+            prefix: None,
+            name,
+        }
+    }
 }
 
 /// Truth value of a boolean, tested by `IS TRUE`, `IS FALSE` and
@@ -512,7 +542,7 @@ impl Expr {
 
     /// Variable, of the type read on the server.
     pub fn variable(variable: Variable, ty: Type) -> Self {
-        Self::new(ExprKind::Variable(variable), ty)
+        Self::new(ExprKind::Variable(Box::new(variable)), ty)
     }
 
     /// Comparison: unknown when an operand is NULL.
@@ -852,6 +882,18 @@ impl Expr {
         Self::new(ExprKind::Position(Box::new(position)), ty)
     }
 
+    /// Assignment of the user variable `name` (`@x := value`), of the type
+    /// the dialect gives the value kept.
+    pub fn assign(name: Ident, value: Expr, ty: Type) -> Self {
+        Self::new(
+            ExprKind::Assign {
+                name,
+                value: Box::new(value),
+            },
+            ty,
+        )
+    }
+
     /// Number to boolean, true when non-zero; unknown when the number is NULL.
     pub fn to_boolean(operand: Expr) -> Self {
         let ty = boolean(operand.ty.nullable);
@@ -895,7 +937,8 @@ impl Expr {
             | ExprKind::IsNull { operand, .. }
             | ExprKind::IsTruth { operand, .. }
             | ExprKind::InSubquery { operand, .. }
-            | ExprKind::Quantified { operand, .. } => vec![operand.as_mut()],
+            | ExprKind::Quantified { operand, .. }
+            | ExprKind::Assign { value: operand, .. } => vec![operand.as_mut()],
             ExprKind::Alias(alias) => vec![&mut alias.expr],
             ExprKind::Cast(cast) => vec![&mut cast.operand],
             ExprKind::DateArithmetic(arithmetic) => {

@@ -9,7 +9,8 @@
 //!    a database.
 //!
 //! The transpiler needs the columns of the tables a query reads, with their
-//! type: `table_columns`, on the connection that runs the query. The
+//! type: `table_columns`, on the connection that runs the query; and the
+//! types of the user variables it reads: `user_variable_types`. The
 //! metadata of a prepared statement gives a `JSON` column the type of a
 //! `LONGTEXT`, and a string the collation of the results of the connection:
 //! `SHOW FULL COLUMNS` gives the collation of each column, and tells a
@@ -400,6 +401,43 @@ fn unquoted(text: &str) -> Vec<(usize, char)> {
 }
 
 /// Name between backticks, read as a name whatever the SQL mode.
+/// Types of the values of the user variables `names` (without `@`) on the
+/// connection, from the metadata of the result of `SELECT @a, @b`, run just
+/// before the query (`docs/QUESTIONS.md`, point 44): the type of an unset
+/// variable is that of NULL, a byte string. An empty name is left out, which
+/// MariaDB refuses from 10.7.1: the transpiler reports it.
+pub async fn user_variable_types(
+    connection: &mut Connection,
+    names: &[String],
+) -> Result<Vec<(String, prisme_types::Type)>, MysqlError> {
+    let names: Vec<&String> = names.iter().filter(|name| !name.is_empty()).collect();
+    if names.is_empty() {
+        return Ok(Vec::new());
+    }
+    let items: Vec<String> = names
+        .iter()
+        .map(|name| format!("@{}", quote(name)))
+        .collect();
+    let result = connection
+        .query_iter(format!("SELECT {}", items.join(", ")))
+        .await?;
+    let types: Vec<prisme_types::Type> = result
+        .columns_ref()
+        .iter()
+        .map(|column| {
+            column_type::plan_type(
+                column.column_type(),
+                column.flags(),
+                column.column_length(),
+                column.decimals(),
+                column.character_set(),
+            )
+        })
+        .collect();
+    result.drop_result().await?;
+    Ok(names.into_iter().cloned().zip(types).collect())
+}
+
 fn quote(name: &str) -> String {
     format!("`{}`", name.replace('`', "``"))
 }

@@ -14,7 +14,8 @@
 //! functions (`rules` module); the recursive common table expressions by the
 //! `recursive` module, the items of the select list read through their alias
 //! by the `alias` module, the options of `SELECT` by the `options` module,
-//! the locking clauses by the `lock` module.
+//! the locking clauses by the `lock` module, the variables by the `variable`
+//! module.
 //!
 //! Literals are written as in the input when the output reads them the same
 //! way (same SQL mode for the quotes and the backslashes), otherwise in a
@@ -49,6 +50,7 @@ mod source;
 mod string;
 mod temporal;
 mod truth;
+mod variable;
 
 #[cfg(test)]
 mod tests;
