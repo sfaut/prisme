@@ -109,12 +109,12 @@ struct Case {
     /// give the same result.
     #[serde(default)]
     refused: Option<String>,
-    /// Servers of the query, as a condition (`mysql >= 8.0.17`); all those of
-    /// its dialect when absent.
+    /// Servers of the query, as a condition (`mysql >= 8.0.17`, see
+    /// `Selection`); all those of its dialect when absent.
     #[serde(default)]
     inputs: Option<String>,
-    /// Servers of the transpilation, as a condition (`mariadb < 11.2.1`); all
-    /// those of the other dialect when absent.
+    /// Servers of the transpilation, as a condition (`mariadb < 11.2.1`, see
+    /// `Selection`); all those of the other dialect when absent.
     #[serde(default)]
     outputs: Option<String>,
     /// What is compared: `values` (by default), or `types` for a value that
@@ -133,6 +133,31 @@ enum Compare {
     Values,
     /// Columns, types and number of rows.
     Types,
+}
+
+/// Servers of a case: alternatives separated by `or`, each one of
+/// conditions separated by `and`
+/// (`mysql >= 8.0.31 and mysql < 8.0.42 or mysql >= 9.0.0`).
+#[derive(Debug)]
+struct Selection(Vec<Vec<Condition>>);
+
+impl Selection {
+    /// Reads the alternatives of `text`.
+    ///
+    /// # Panics
+    ///
+    /// On a condition written otherwise.
+    fn parse(text: &str) -> Self {
+        let alternatives = text
+            .split(" or ")
+            .map(|alternative| (alternative.split(" and ")).map(Condition::parse).collect());
+        Self(alternatives.collect())
+    }
+
+    /// Tells whether the server of `image` meets one of the alternatives.
+    fn keeps(&self, image: &Image) -> bool {
+        (self.0.iter()).any(|conditions| conditions.iter().all(|condition| condition.keeps(image)))
+    }
 }
 
 /// Condition on the servers of a case: a dialect, an operator and a version.
@@ -732,7 +757,7 @@ async fn transpilations_give_the_same_result() {
                 (image.dialect == from) == input
                     && condition
                         .as_deref()
-                        .map(Condition::parse)
+                        .map(Selection::parse)
                         .is_none_or(|condition| condition.keeps(image))
             };
             let indexes = |condition: &Option<String>, input: bool| -> Vec<usize> {

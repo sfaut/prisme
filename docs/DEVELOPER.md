@@ -95,7 +95,8 @@ cases:
     session: ["SET time_zone = '+05:00'"]
     sql: SELECT id, UNIX_TIMESTAMP(dt) AS a FROM unix_time ORDER BY id
   - from: mariadb
-    outputs: mysql < 8.0.31           # servers of the transpilation (inputs: servers of the query)
+    outputs: mysql < 8.0.31           # servers of the transpilation (inputs: servers of the query),
+                                      # alternatives with `or`, conditions with `and`
     sql: SELECT g FROM grammar INTERSECT SELECT 'b'
     refused: set.operator             # rule of the refusal expected
   - from: mysql
