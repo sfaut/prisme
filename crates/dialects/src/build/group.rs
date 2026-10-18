@@ -9,11 +9,14 @@
 //! aggregated reads any value of its group, which the MySQL family allows
 //! when the column depends on the keys, or without `ONLY_FULL_GROUP_BY`: an
 //! implicit `ANY_VALUE`, written as the column alone. The emitter writes
-//! each of these columns back as the expression it stands for.
+//! each of these columns back as the expression it stands for. A `*` reads
+//! these columns too, one per column of the source, named as the source
+//! names them.
 
 use prisme_plan::{
     Aggregate, AggregateCall, AliasForm, ColumnRef, Expr, ExprKind, Ident, NamedAggregate,
-    NamedExpr, OnEmpty, Plan, ProjectItem, SortKey, SortReference, Span, Window, WindowDefinition,
+    NamedExpr, OnEmpty, Plan, ProjectItem, SortKey, SortReference, Span, Wildcard, Window,
+    WindowDefinition,
 };
 use prisme_types::{DataType, Type, Value};
 
@@ -446,7 +449,7 @@ impl Builder<'_> {
             .enumerate()
             .map(|(index, (expr, _))| Key::new(index, expr, &block.source, rollup))
             .collect();
-        for item in above.items {
+        for item in above.items.iter_mut() {
             if let ProjectItem::Expr(named) = item {
                 block.regroup(&mut named.expr, &views);
             }
@@ -458,6 +461,17 @@ impl Builder<'_> {
             block.regroup(&mut key.expr, &views);
         }
         block.regroup_windows(&views);
+        // The stars last: a column that a clause names keeps its spelling
+        // in the `ANY_VALUE` they share (`HAVING b`, not `t.b`).
+        let source = input.schema();
+        let stars: Vec<Vec<Expr>> = (above.items.iter())
+            .filter_map(|item| match item {
+                ProjectItem::Wildcard(wildcard) => {
+                    Some(star_values(block, wildcard, &source.columns, &views))
+                }
+                ProjectItem::Expr(_) => None,
+            })
+            .collect();
         let (keys, references) = keys
             .into_iter()
             .enumerate()
@@ -470,14 +484,35 @@ impl Builder<'_> {
                 (key, reference)
             })
             .unzip();
-        Plan::Aggregate(Aggregate {
+        let plan = Plan::Aggregate(Aggregate {
             input: Box::new(input),
             keys,
             references,
             rollup,
             aggregates: std::mem::take(&mut block.aggregates),
             span: None,
-        })
+        });
+        // Each column of a star reads the column of the aggregation that
+        // computes it.
+        let schema = plan.schema();
+        let mut stars = stars.into_iter();
+        for item in above.items.iter_mut() {
+            if let ProjectItem::Wildcard(wildcard) = item
+                && let Some(values) = stars.next()
+            {
+                wildcard.columns = (values.iter())
+                    .map(|value| {
+                        (schema.columns.iter())
+                            .position(|column| {
+                                matches!(&value.kind, ExprKind::Column(read)
+                                    if read.qualifier.is_none() && read.name == column.name)
+                            })
+                            .expect("a column of the source reads a column of the aggregation")
+                    })
+                    .collect();
+            }
+        }
+        plan
     }
 
     /// Window node of the block over `input`, when it calls window functions
@@ -494,6 +529,24 @@ impl Builder<'_> {
             span: None,
         })
     }
+}
+
+/// Values of the columns of `wildcard` above the aggregation of `block`,
+/// its keys `keys`: a column of the aggregation for each column of the
+/// source, at its position in `source`.
+fn star_values(
+    block: &mut Block,
+    wildcard: &Wildcard,
+    source: &[prisme_plan::Column],
+    keys: &[Key],
+) -> Vec<Expr> {
+    (wildcard.names.iter().zip(&wildcard.columns))
+        .map(|(name, &position)| {
+            let mut value = Expr::column(name.clone(), source[position].ty.clone());
+            block.regroup(&mut value, keys);
+            value
+        })
+        .collect()
 }
 
 /// Tells whether a `SELECT` block aggregates its rows: `GROUP BY`, or an

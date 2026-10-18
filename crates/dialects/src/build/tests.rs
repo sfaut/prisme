@@ -546,10 +546,6 @@ fn aggregate_and_window_functions_stay_in_their_clauses() {
             "grouping on `s`, which reads an aggregate or window function",
         ),
         (
-            "SELECT * FROM a GROUP BY k",
-            "`*` in a grouped query: not supported yet by Prisme",
-        ),
-        (
             "SELECT x FROM a HAVING x > 1",
             "`HAVING` without grouping: not supported yet by Prisme",
         ),
@@ -1117,6 +1113,63 @@ fn lists_the_tables_outside_a_recursive_expression() {
         .map(|table| table.name.value)
         .collect();
     assert_eq!(names, ["a", "b"]);
+}
+
+#[test]
+fn a_star_of_a_grouped_block_reads_the_columns_of_the_aggregation() {
+    // Names, tables and nullability of the columns of the result.
+    let columns = |text: &str| -> Vec<(Option<String>, String, bool)> {
+        (plan(text).schema().columns.into_iter())
+            .map(|column| {
+                let qualifier = column.qualifier.map(|name| name.value);
+                (qualifier, column.name.value, column.ty.nullable)
+            })
+            .collect()
+    };
+    let column = |qualifier: Option<&str>, name: &str, nullable: bool| {
+        (qualifier.map(String::from), name.to_string(), nullable)
+    };
+    // `a` is the key, `b` any value of its group.
+    assert_eq!(
+        columns("SELECT *, COUNT(*) AS n FROM t GROUP BY a"),
+        [
+            column(Some("t"), "a", false),
+            column(Some("t"), "b", true),
+            column(None, "n", false),
+        ]
+    );
+    let Plan::Project(project) = plan("SELECT *, COUNT(*) AS n FROM t GROUP BY a") else {
+        panic!("a select list expected");
+    };
+    let ProjectItem::Wildcard(wildcard) = &project.items[0] else {
+        panic!("a star expected");
+    };
+    // `#key1`, then `#aggregate2`, the implicit `ANY_VALUE(b)`, after
+    // `COUNT(*)`.
+    assert_eq!(wildcard.columns, [0, 2]);
+    // The keys of `WITH ROLLUP` are NULL in the super-aggregate rows.
+    assert_eq!(
+        columns("SELECT t.* FROM t GROUP BY a WITH ROLLUP"),
+        [column(Some("t"), "a", true), column(Some("t"), "b", true)]
+    );
+    // The column of `USING` once, the others with their table.
+    assert_eq!(
+        columns("SELECT * FROM a JOIN b USING (k) GROUP BY k"),
+        [
+            column(None, "k", true),
+            column(Some("a"), "x", false),
+            column(Some("b"), "y", true),
+        ]
+    );
+    for text in [
+        "SELECT * FROM t GROUP BY 2",
+        "SELECT *, a AS x FROM t GROUP BY x HAVING b > 1 ORDER BY b",
+        "SELECT DISTINCT * FROM t GROUP BY a + 1 ORDER BY COUNT(*)",
+        "SELECT *, ROW_NUMBER() OVER (ORDER BY b) AS r FROM t GROUP BY a",
+        "SELECT * FROM t WHERE a > 1 GROUP BY a, b",
+    ] {
+        assert!(plan_in(text, Dialect::MySql).is_ok(), "{text}");
+    }
 }
 
 /// Predicate of the `HAVING` of `text`, written in MySQL.

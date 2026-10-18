@@ -2,7 +2,8 @@
 //! limit and duplicate removal.
 
 use crate::{
-    AliasForm, Column, Expr, ExprKind, Frame, Ident, Plan, PlanError, Schema, SortKey, Span,
+    AliasForm, Column, ColumnRef, Expr, ExprKind, Frame, Ident, Plan, PlanError, Schema, SortKey,
+    Span,
 };
 
 /// Rows for which a predicate is true; a false or unknown predicate drops the
@@ -44,6 +45,11 @@ pub struct Wildcard {
     pub qualifier: Option<Ident>,
     /// Positions of the columns in the schema of the input, in order.
     pub columns: Vec<usize>,
+    /// Names of these columns in the output, one per column, when the input
+    /// names them otherwise: above the aggregation of a grouped block, the
+    /// columns of the source that it computes (`#key1`, `#aggregate1`...).
+    /// Empty when the output keeps the names of the input.
+    pub names: Vec<ColumnRef>,
 }
 
 /// Expression with the name of its output column.
@@ -175,10 +181,19 @@ impl Project {
             .iter()
             .flat_map(|item| match item {
                 ProjectItem::Expr(named) => vec![named.column()],
-                ProjectItem::Wildcard(wildcard) => wildcard
-                    .columns
-                    .iter()
-                    .map(|&position| input.columns[position].clone())
+                ProjectItem::Wildcard(wildcard) => (wildcard.columns.iter())
+                    .enumerate()
+                    .map(|(index, &position)| {
+                        let column = input.columns[position].clone();
+                        match wildcard.names.get(index) {
+                            Some(name) => Column {
+                                qualifier: name.qualifier.clone(),
+                                name: name.name.clone(),
+                                ty: column.ty,
+                            },
+                            None => column,
+                        }
+                    })
                     .collect(),
             })
             .collect();
@@ -262,6 +277,7 @@ mod tests {
             ProjectItem::Wildcard(Wildcard {
                 qualifier: None,
                 columns: vec![1, 0],
+                names: Vec::new(),
             }),
             ProjectItem::Expr(NamedExpr {
                 expr: column_a(),
@@ -282,10 +298,33 @@ mod tests {
     }
 
     #[test]
+    fn a_wildcard_names_its_columns_as_the_source_above_an_aggregation() {
+        let name = |qualifier: Option<&str>, name: &str| ColumnRef {
+            qualifier: qualifier.map(Ident::new),
+            name: Ident::new(name),
+        };
+        let items = vec![ProjectItem::Wildcard(Wildcard {
+            qualifier: None,
+            columns: vec![1, 0],
+            names: vec![name(Some("t"), "x"), name(None, "y")],
+        })];
+        let schema = Project::new(table(), items).unwrap().schema();
+        let columns: Vec<(Option<&str>, &str, bool)> = (schema.columns.iter())
+            .map(|column| {
+                let qualifier = column.qualifier.as_ref().map(|name| name.value.as_str());
+                (qualifier, column.name.value.as_str(), column.ty.nullable)
+            })
+            .collect();
+        // The names of the wildcard, the types of the input.
+        assert_eq!(columns, [(Some("t"), "x", true), (None, "y", false)]);
+    }
+
+    #[test]
     fn project_refuses_a_wildcard_outside_its_input() {
         let items = vec![ProjectItem::Wildcard(Wildcard {
             qualifier: None,
             columns: vec![2],
+            names: Vec::new(),
         })];
         assert_eq!(
             Project::new(table(), items),

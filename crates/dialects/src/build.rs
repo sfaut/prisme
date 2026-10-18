@@ -747,11 +747,6 @@ impl Builder<'_> {
         let mut outputs = Vec::new();
         for item in select_items {
             match item {
-                SelectItem::Wildcard { span, .. } if self.block().grouped => {
-                    return Err(
-                        self.error("`*` in a grouped query: not supported yet by Prisme", *span)
-                    );
-                }
                 SelectItem::Wildcard { qualifier, span } => {
                     let qualifier = qualifier
                         .as_ref()
@@ -761,10 +756,23 @@ impl Builder<'_> {
                         .ok_or_else(|| self.error("unknown table in `.*`", *span))?;
                     let (positions, columns): (Vec<usize>, Vec<Output>) =
                         columns.into_iter().unzip();
+                    // Above the aggregation, the columns of the source that
+                    // it computes (`aggregate_node`), named as the source
+                    // names them.
+                    let names = match self.block().grouped {
+                        true => (columns.iter())
+                            .filter_map(|output| match &output.expr.kind {
+                                prisme_plan::ExprKind::Column(column) => Some(column.clone()),
+                                _ => None,
+                            })
+                            .collect(),
+                        false => Vec::new(),
+                    };
                     outputs.extend(columns);
                     items.push(ProjectItem::Wildcard(Wildcard {
                         qualifier: qualifier.cloned(),
                         columns: positions,
+                        names,
                     }));
                 }
                 SelectItem::Expr { expr, alias, .. } => {

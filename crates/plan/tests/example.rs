@@ -54,6 +54,7 @@ fn select_star(input: Plan) -> Plan {
     let wildcard = ProjectItem::Wildcard(Wildcard {
         qualifier: None,
         columns: vec![0],
+        names: Vec::new(),
     });
     Plan::Project(Project::new(input, vec![wildcard]).unwrap())
 }

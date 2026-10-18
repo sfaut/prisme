@@ -1,0 +1,24 @@
+# Forms of a grouped query that both dialects read alike
+# (crates/probe/cases/grouped-star.sql): `*` in a grouped query, a key of
+# the select list and any value of its group for the other columns, which
+# MySQL accepts when they depend on the keys (`ONLY_FULL_GROUP_BY`).
+setup:
+  - DROP TABLE IF EXISTS grouped
+  - CREATE TABLE grouped (id INT NOT NULL PRIMARY KEY, a INT NOT NULL, b INT NULL)
+  - INSERT INTO grouped VALUES (1, 1, 10), (2, 1, 20), (3, 2, NULL), (4, 3, 40)
+cases:
+  # `*` in a grouped query.
+  - from: mysql
+    sql: SELECT * FROM grouped GROUP BY id ORDER BY id
+  - from: mariadb
+    sql: SELECT grouped.*, COUNT(*) AS n FROM grouped GROUP BY id ORDER BY id DESC
+  - from: mysql
+    sql: SELECT *, COUNT(*) AS n FROM grouped GROUP BY id HAVING b > 10 ORDER BY a, id
+  - from: mariadb
+    sql: SELECT * FROM grouped GROUP BY 1 ORDER BY -a, id
+  - from: mysql
+    sql: SELECT *, id AS x FROM grouped GROUP BY x ORDER BY b, x
+  - from: mariadb
+    sql: SELECT * FROM grouped AS p JOIN grouped AS q USING (id) GROUP BY id ORDER BY id
+  - from: mysql
+    sql: SELECT DISTINCT p.*, q.a FROM grouped AS p JOIN grouped AS q ON q.id = p.id GROUP BY p.id ORDER BY p.id

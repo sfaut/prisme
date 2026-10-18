@@ -612,6 +612,28 @@ fn nulls_placed_against_the_rule_of_the_output_are_emulated() {
 }
 
 #[test]
+fn a_star_of_a_grouped_query_keeps_its_form() {
+    for text in [
+        "SELECT * FROM t GROUP BY a",
+        "SELECT t.*, COUNT(*) AS n FROM t GROUP BY a WITH ROLLUP",
+        "SELECT *, a AS x FROM t GROUP BY x HAVING b > 1 ORDER BY b DESC",
+        "SELECT DISTINCT * FROM t WHERE a > 0 GROUP BY a + 1 ORDER BY COUNT(*)",
+        "SELECT p.*, q.c FROM t AS p JOIN u AS q USING (a) GROUP BY a",
+    ] {
+        for (input, target) in [
+            (mysql(), mysql()),
+            (mysql(), mariadb()),
+            (mariadb(), mysql()),
+            (mariadb(), mariadb()),
+        ] {
+            let (sql, rules) = transpiled(text, input, output(target));
+            assert_eq!(sql, text);
+            assert!(rules.is_empty(), "{text}: {rules:?}");
+        }
+    }
+}
+
+#[test]
 fn deep_expressions_go_through() {
     let text = format!("SELECT {}1", "- ".repeat(90));
     let (sql, _) = transpiled(&text, mysql(), output(mysql()));
