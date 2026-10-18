@@ -1,5 +1,6 @@
 # Rule `function.bit-count`: `BIT_COUNT` of strings read as numbers, of
-# bytes, of numbers from 2^63; a floating point number is refused.
+# bytes, of numbers from 2^63; a floating point number, a time with a fraction
+# of a second and a JSON value are refused.
 setup:
   - DROP TABLE IF EXISTS bit_count
   - >-
@@ -36,15 +37,16 @@ setup:
     (27, '-1e40', NULL, NULL),
     (28, NULL, NULL, NULL)
 cases:
-  # Read alike: integers, dates and times, decimals below 2^63, NULL.
+  # Read alike: integers, dates, times without a fraction of a second,
+  # decimals below 2^63, NULL.
   - from: mysql
     sql: >-
-      SELECT BIT_COUNT(i) AS i, BIT_COUNT(d) AS d, BIT_COUNT(dt) AS dt, BIT_COUNT(ts) AS ts,
-      BIT_COUNT(t) AS t, BIT_COUNT(n) AS n, BIT_COUNT(NULL) AS z, BIT_COUNT(-1) AS m FROM sample
+      SELECT BIT_COUNT(i) AS i, BIT_COUNT(d) AS d, BIT_COUNT(t) AS t, BIT_COUNT(n) AS n,
+      BIT_COUNT(NULL) AS z, BIT_COUNT(-1) AS m FROM sample
   - from: mariadb
     sql: >-
-      SELECT BIT_COUNT(i) AS i, BIT_COUNT(d) AS d, BIT_COUNT(dt) AS dt, BIT_COUNT(ts) AS ts,
-      BIT_COUNT(t) AS t, BIT_COUNT(n) AS n, BIT_COUNT(NULL) AS z, BIT_COUNT(-1) AS m FROM sample
+      SELECT BIT_COUNT(i) AS i, BIT_COUNT(d) AS d, BIT_COUNT(t) AS t, BIT_COUNT(n) AS n,
+      BIT_COUNT(NULL) AS z, BIT_COUNT(-1) AS m FROM sample
   # Strings: MySQL reads them by expression, the same in MariaDB.
   - from: mariadb
     sql: SELECT id, BIT_COUNT(s) AS v FROM bit_count ORDER BY id
@@ -100,4 +102,15 @@ cases:
     refused: function.bit-count
   - from: mariadb
     sql: SELECT BIT_COUNT(f) AS v FROM sample
+    refused: function.bit-count
+  # Times with a fraction of a second, rounded otherwise from 59.5 seconds;
+  # JSON values, read by their value in MySQL, their text in MariaDB.
+  - from: mysql
+    sql: SELECT BIT_COUNT(dt) AS v FROM sample
+    refused: function.bit-count
+  - from: mariadb
+    sql: SELECT BIT_COUNT(ts) AS v FROM sample
+    refused: function.bit-count
+  - from: mariadb
+    sql: SELECT BIT_COUNT(j) AS v FROM sample
     refused: function.bit-count

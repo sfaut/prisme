@@ -1,6 +1,7 @@
 //! `BIT_COUNT` between MySQL and MariaDB. Both count the bits of an
-//! integer, of a date or a time read as a number, of the index of an
-//! `ENUM`; they read the other values differently:
+//! integer, of a date or a time without a fraction of a second read as a
+//! number, of the index of an `ENUM`; they read the other values
+//! differently:
 //!
 //! - a byte string: MySQL counts the bits of its bytes, MariaDB reads it
 //!   as a number (`BIT_COUNT(X'FF0F')` gives 12, 0 in MariaDB);
@@ -15,7 +16,13 @@
 //! - a number from 2^63: MySQL counts the bits of 2^63 - 1, MariaDB those
 //!   of the number taken as unsigned, those of 2^64 - 1 from 2^64;
 //! - a floating point number: MySQL rounds half to even, MariaDB half away
-//!   from zero (`BIT_COUNT(2.5e0)` gives 1, 2 in MariaDB).
+//!   from zero (`BIT_COUNT(2.5e0)` gives 1, 2 in MariaDB);
+//! - a time with a fraction of a second: MySQL rounds the time to the
+//!   second, MariaDB the number it reads, which differ from 59.5 seconds
+//!   (`TIME'10:00:59.5'` reads 100100, 100060 in MariaDB);
+//! - a `JSON`: MySQL reads its value, MariaDB its text, or a decimal for a
+//!   function of JSON (`BIT_COUNT(JSON_EXTRACT('{"a": "3.7"}', '$.a'))`
+//!   gives 2, 1 in MariaDB).
 //!
 //! Measured on MySQL 8.0.11 and 8.4.11, MariaDB 10.6.28 and 11.8.9; the
 //! readings of a string by expression also on MySQL 8.0.17, 8.0.22, 8.0.28
@@ -58,6 +65,10 @@ enum Reading {
     Large,
     /// A floating point number.
     Float,
+    /// A time, a date and time or a timestamp with a fraction of a second.
+    Fraction,
+    /// A `JSON`.
+    Json,
     /// A type whose reading was not measured, or a type unknown.
     Other,
 }
@@ -73,10 +84,16 @@ impl Reading {
             | DataType::Year
             | DataType::Enum
             | DataType::Set
-            | DataType::Date
-            | DataType::Time { .. }
-            | DataType::DateTime { .. }
-            | DataType::Timestamp { .. } => Self::Same,
+            | DataType::Date => Self::Same,
+            DataType::Time { fraction }
+            | DataType::DateTime { fraction }
+            | DataType::Timestamp { fraction } => {
+                if *fraction == 0 {
+                    Self::Same
+                } else {
+                    Self::Fraction
+                }
+            }
             DataType::Decimal(decimal) => {
                 let small = match &arg.kind {
                     ExprKind::Literal(value) => {
@@ -89,6 +106,7 @@ impl Reading {
             DataType::Text(_) => Self::Text,
             DataType::Binary(_) => Self::Binary,
             DataType::Float(_) => Self::Float,
+            DataType::Json => Self::Json,
             _ => Self::Other,
         }
     }
@@ -112,6 +130,12 @@ impl Emitter<'_> {
             }
             Reading::Float => {
                 "`BIT_COUNT` of a floating point number: MySQL rounds it half to even, MariaDB half away from zero (`BIT_COUNT(2.5e0)` gives 1, 2 in MariaDB), and they bound it differently from 2^63"
+            }
+            Reading::Fraction => {
+                "`BIT_COUNT` of a time with a fraction of a second: MySQL rounds the time to the second, MariaDB the number it reads (`BIT_COUNT(TIME'10:00:59.5')` gives 6, 9 in MariaDB)"
+            }
+            Reading::Json => {
+                "`BIT_COUNT` of a `JSON`: MySQL reads its value, MariaDB its text, or a decimal for a function of JSON (`BIT_COUNT(JSON_EXTRACT('{\"a\": \"3.7\"}', '$.a'))` gives 2, 1 in MariaDB)"
             }
             Reading::Other if arg.ty.data_type == DataType::Unknown => {
                 "`BIT_COUNT` of an argument whose type is unknown: MySQL and MariaDB read a string and a number from 2^63 differently"

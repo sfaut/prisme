@@ -1339,11 +1339,14 @@ fn bit_count_reads_its_argument_as_the_input_does() {
         assert_eq!(sql, expected);
         assert_eq!(rules, ["function.bit-count"], "{text}");
     }
-    // A floating point number, a type unknown, a string other than a
-    // literal towards MariaDB, a literal starting with a line break.
+    // A floating point number, a time with a fraction of a second, a
+    // `JSON`, a type unknown, a string other than a literal towards
+    // MariaDB, a literal starting with a line break.
     for (text, input, target) in [
         ("SELECT BIT_COUNT(f) AS v FROM d", mysql(), mariadb()),
         ("SELECT BIT_COUNT(f) AS v FROM d", mariadb(), mysql()),
+        ("SELECT BIT_COUNT(dt3) AS v FROM g", mysql(), mariadb()),
+        ("SELECT BIT_COUNT(js) AS v FROM g", mariadb(), mysql()),
         ("SELECT BIT_COUNT(ABS(a)) AS v FROM t", mysql(), mariadb()),
         ("SELECT BIT_COUNT(s) AS v FROM g", mysql(), mariadb()),
         (
