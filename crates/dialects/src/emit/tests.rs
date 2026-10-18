@@ -2824,6 +2824,11 @@ fn in_of_a_json_list_is_read_as_the_input_reads_it() {
             mysql_8_4,
             mysql_8_0_16,
         ),
+        (
+            "SELECT s FROM g WHERE (SELECT js FROM g LIMIT 1) IN ('b', 1)",
+            mysql_8_4,
+            mysql_8_0_16,
+        ),
     ] {
         assert_eq!(errors(text, input, output(target)), ["json.in"], "{text}");
     }

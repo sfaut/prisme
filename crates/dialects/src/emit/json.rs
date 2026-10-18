@@ -40,9 +40,10 @@
 //! `json_in_compared`); before, a `JSON` as its text against a string, as a
 //! number against a number. From 8.0.17, `j IN (a, b)` is written `j = a OR
 //! j = b`, which compares by the rules of JSON in every version, when the
-//! operand is the `JSON`. Otherwise (`'b' IN (j, 'x')` compares `'b'` with
-//! `'x'` by the rules of JSON too), and towards 8.0.17, an error (rule
-//! `json.in`).
+//! operand is the `JSON`, of the same value at each evaluation (neither a
+//! subquery nor a function of `VOLATILE`). Otherwise (`'b' IN (j, 'x')`
+//! compares `'b'` with `'x'` by the rules of JSON too), and towards 8.0.17,
+//! an error (rule `json.in`).
 //!
 //! Only a value the plan types `JSON` is concerned: the results of the
 //! `JSON_` functions are of unknown type yet, their translation between the
@@ -53,6 +54,7 @@ use prisme_types::DataType;
 
 use super::Emitter;
 use super::expr::{AND, OR, PREDICATE};
+use super::rules::repeatable;
 use crate::Dialect;
 use crate::build::is_internal_name;
 use crate::report::StepKind;
@@ -202,6 +204,13 @@ impl Emitter<'_> {
         if !json(operand) {
             let message = format!(
                 "{message}, and its other values by the rules of JSON too: not supported yet by Prisme"
+            );
+            self.error("json.in", &message, expr.span);
+            return false;
+        }
+        if !repeatable(operand) {
+            let message = format!(
+                "{message}, and the emulation writes the operand once per value, which may give several values"
             );
             self.error("json.in", &message, expr.span);
             return false;
