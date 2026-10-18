@@ -1,0 +1,116 @@
+# Locking clauses (crates/probe/cases/locking.sql, locking-scope.sql): their
+# form towards the other dialect (`lock.share`, `lock.of`, `lock.clauses`,
+# `lock.wait`), and their place next to parentheses, where the output locks
+# the rows the input locks (`lock.parenthesized`, `locking` module). The rows
+# are compared; the locks, measured by the probe, are not.
+setup:
+  - DROP TABLE IF EXISTS locking_a
+  - DROP TABLE IF EXISTS locking_b
+  - CREATE TABLE locking_a (id INT NOT NULL PRIMARY KEY, a INT NOT NULL)
+  - CREATE TABLE locking_b (id INT NOT NULL PRIMARY KEY, b INT NOT NULL)
+  - INSERT INTO locking_a VALUES (1, 3), (2, 1), (3, 2), (4, 5), (5, 4)
+  - INSERT INTO locking_b VALUES (1, 10), (3, 30)
+cases:
+  - from: mysql
+    sql: SELECT id, a FROM locking_a WHERE a > 1 ORDER BY id FOR UPDATE
+  - from: mariadb
+    sql: SELECT id, a FROM locking_a ORDER BY a LIMIT 2 FOR UPDATE NOWAIT
+  # `FOR SHARE` of MySQL, `LOCK IN SHARE MODE` of MariaDB.
+  - from: mysql
+    sql: SELECT id FROM locking_a ORDER BY id FOR SHARE
+  - from: mysql
+    sql: SELECT id FROM locking_a ORDER BY id FOR SHARE NOWAIT
+  - from: mariadb
+    sql: SELECT id FROM locking_a ORDER BY id LOCK IN SHARE MODE
+  - from: mariadb
+    sql: SELECT id FROM locking_a ORDER BY id LOCK IN SHARE MODE WAIT 0
+  # `SKIP LOCKED`, from MariaDB 10.6.0.
+  - from: mysql
+    sql: SELECT id FROM locking_a ORDER BY id FOR SHARE OF locking_a SKIP LOCKED
+    outputs: mariadb >= 10.6.0
+  - from: mysql
+    sql: SELECT id FROM locking_a ORDER BY id FOR UPDATE SKIP LOCKED
+    outputs: mariadb < 10.6.0
+    refused: lock.wait
+  - from: mariadb
+    inputs: mariadb >= 10.6.0
+    sql: SELECT id FROM locking_a ORDER BY id LOCK IN SHARE MODE SKIP LOCKED
+  # `WAIT n` of MariaDB: `NOWAIT` for 0, without form in MySQL otherwise.
+  - from: mariadb
+    sql: SELECT id FROM locking_a ORDER BY id FOR UPDATE WAIT 0
+  - from: mariadb
+    sql: SELECT id FROM locking_a ORDER BY id FOR UPDATE WAIT 1
+    refused: lock.wait
+  # `OF` of MySQL, left out towards MariaDB when it names every table.
+  - from: mysql
+    sql: SELECT p.id FROM locking_a AS p ORDER BY p.id FOR UPDATE OF p
+  - from: mysql
+    sql: >-
+      SELECT a.id, b.b FROM locking_a AS a JOIN locking_b AS b ON b.id = a.id
+      ORDER BY a.id FOR UPDATE OF a FOR UPDATE OF b
+  - from: mysql
+    sql: >-
+      SELECT a.id, b.b FROM locking_a AS a JOIN locking_b AS b ON b.id = a.id
+      ORDER BY a.id FOR UPDATE OF a
+    refused: lock.of
+  - from: mysql
+    sql: >-
+      SELECT a.id, b.b FROM locking_a AS a JOIN locking_b AS b ON b.id = a.id
+      ORDER BY a.id FOR UPDATE OF a FOR SHARE OF b
+    refused: lock.clauses
+  # Locked blocks inside the query.
+  - from: mysql
+    sql: SELECT d.id FROM (SELECT id FROM locking_a FOR UPDATE) AS d ORDER BY d.id
+  - from: mysql
+    sql: >-
+      SELECT id FROM locking_a WHERE id IN (SELECT id FROM locking_b FOR SHARE)
+      ORDER BY id
+  - from: mariadb
+    sql: >-
+      WITH c AS (SELECT id FROM locking_a FOR UPDATE) SELECT id FROM c ORDER BY
+      id
+  - from: mysql
+    inputs: mysql >= 8.0.19
+    sql: TABLE locking_b ORDER BY id FOR UPDATE
+  # Set operations: a clause after them locks their last operand.
+  - from: mariadb
+    sql: >-
+      SELECT id FROM locking_a UNION SELECT id FROM locking_b ORDER BY id FOR
+      UPDATE
+  - from: mysql
+    sql: >-
+      SELECT id FROM locking_a WHERE id = 1 UNION (SELECT id FROM locking_b
+      WHERE id = 3) FOR UPDATE
+  - from: mysql
+    sql: >-
+      (SELECT id FROM locking_a WHERE id = 2 FOR UPDATE) UNION SELECT id FROM
+      locking_b ORDER BY id
+  # Next to parentheses: MySQL 8.0.19 to 8.0.25 give every row of a sorted
+  # `SELECT` between parentheses that is locked before an outer `LIMIT`,
+  # which joins that `SELECT` in the output.
+  - from: mariadb
+    sql: (SELECT id FROM locking_a ORDER BY id FOR UPDATE) LIMIT 2
+  - from: mariadb
+    sql: (SELECT id FROM locking_a ORDER BY id) LIMIT 2 FOR UPDATE
+  - from: mysql
+    inputs: mysql < 8.0.19 or mysql >= 8.0.26
+    sql: (SELECT id FROM locking_a ORDER BY id) LIMIT 2 FOR UPDATE
+  # MariaDB, and MySQL before 8.0.18, lock no row by a clause after an outer
+  # `ORDER BY` over a query with its own `ORDER BY` or `LIMIT`: the clause
+  # goes between the parentheses.
+  - from: mysql
+    inputs: mysql >= 8.0.18
+    sql: >-
+      (SELECT id FROM locking_a ORDER BY id LIMIT 3) ORDER BY id DESC FOR
+      UPDATE
+  # MySQL before 8.0.31 lets the outer `LIMIT` override the inner one
+  # (`limit.nested`).
+  - from: mysql
+    inputs: mysql >= 8.0.31
+    sql: (SELECT id FROM locking_a ORDER BY id LIMIT 4) LIMIT 2 FOR UPDATE
+  - from: mariadb
+    sql: (SELECT id FROM locking_a ORDER BY id LIMIT 4 FOR UPDATE) LIMIT 2
+  - from: mariadb
+    sql: >-
+      (SELECT id FROM locking_a UNION SELECT id FROM locking_b) ORDER BY id
+      FOR UPDATE

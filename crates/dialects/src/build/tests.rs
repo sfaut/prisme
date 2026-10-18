@@ -1,4 +1,4 @@
-use prisme_plan::{ExprKind, SortReference};
+use prisme_plan::{ExprKind, LockStrength, LockWait, SortReference};
 use prisme_types::{DataType, IntegerSize, IntegerType, TextType};
 
 use super::*;
@@ -1438,4 +1438,255 @@ fn an_order_after_a_select_between_parentheses_reads_as_the_input() {
             .message)
             .starts_with("a subquery in an `ORDER BY` after a `SELECT` between parentheses")
     );
+}
+
+/// Nodes of `plan` from its top down to its first lock, the lock written
+/// `Lock` (`Lock*` when written after parentheses), its input last.
+fn lock_path(plan: &Plan) -> String {
+    let name = |plan: &Plan| {
+        let debug = format!("{plan:?}");
+        debug[..debug.find('(').unwrap_or(debug.len())].to_string()
+    };
+    match plan {
+        Plan::Lock(lock) => {
+            let star = if lock.outside { "*" } else { "" };
+            format!("Lock{star}({})", name(&lock.input))
+        }
+        Plan::Limit(limit) => format!("Limit({})", lock_path(&limit.input)),
+        Plan::Sort(sort) => format!("Sort({})", lock_path(&sort.input)),
+        Plan::With(with) => format!("With({})", lock_path(&with.body)),
+        Plan::SetOperation(operation) => format!(
+            "SetOperation({}, {})",
+            lock_path(&operation.left),
+            lock_path(&operation.right)
+        ),
+        other => name(other),
+    }
+}
+
+#[test]
+fn a_locking_clause_stands_above_the_block_it_locks() {
+    let mysql_8_0_31 = Version::new(8, 0, 31);
+    for (text, version, expected) in [
+        ("SELECT a FROM t FOR UPDATE", None, "Lock(Project)"),
+        ("SELECT a FROM t LIMIT 1 FOR UPDATE", None, "Lock(Limit)"),
+        ("TABLE t ORDER BY a LIMIT 1 FOR UPDATE", None, "Lock(Limit)"),
+        (
+            "SELECT a FROM t UNION SELECT k FROM a ORDER BY 1 FOR UPDATE",
+            None,
+            "Sort(SetOperation(Project, Lock(Project)))",
+        ),
+        (
+            "(SELECT a FROM t FOR UPDATE) UNION SELECT k FROM a",
+            None,
+            "SetOperation(Lock(Project), Project)",
+        ),
+        (
+            "SELECT a FROM t UNION (SELECT k FROM a LIMIT 1) FOR UPDATE",
+            None,
+            "SetOperation(Project, Lock(Limit))",
+        ),
+        (
+            "(SELECT a FROM t FOR UPDATE) ORDER BY a",
+            None,
+            "Lock(Project)",
+        ),
+        (
+            "(SELECT a FROM t) ORDER BY a FOR UPDATE",
+            None,
+            "Lock*(Project)",
+        ),
+        (
+            "(SELECT a FROM t LIMIT 2) ORDER BY a FOR UPDATE",
+            None,
+            "Sort(Lock*(Limit))",
+        ),
+        (
+            "(SELECT a FROM t LIMIT 2 FOR UPDATE) LIMIT 1",
+            None,
+            "Limit(Lock(Limit))",
+        ),
+        (
+            "(SELECT a FROM t ORDER BY a FOR UPDATE) LIMIT 1",
+            Some(mysql_8_0_31),
+            "Lock(Limit)",
+        ),
+        ("(SELECT a FROM t FOR UPDATE) LIMIT 1", None, "Lock(Limit)"),
+        (
+            "WITH c AS (SELECT a FROM t) SELECT a FROM c FOR UPDATE OF c",
+            None,
+            "With(Lock(Project))",
+        ),
+        (
+            "(SELECT a FROM t UNION SELECT k FROM a LIMIT 3) FOR UPDATE",
+            Some(mysql_8_0_31),
+            "Limit(SetOperation(Project, Lock*(Project)))",
+        ),
+        ("SELECT 1 FOR UPDATE FOR SHARE", None, "Lock(Project)"),
+    ] {
+        let plan = plan_at(
+            text,
+            Dialect::MySql,
+            version.unwrap_or(Version::new(8, 0, 19)),
+        )
+        .unwrap_or_else(|error| panic!("{text}: {error}"));
+        assert_eq!(lock_path(&plan), expected, "{text}");
+    }
+}
+
+#[test]
+fn a_locking_clause_names_the_tables_of_its_block() {
+    let plan = plan("SELECT p.k FROM a AS p, b FOR UPDATE OF p NOWAIT FOR SHARE OF b");
+    let Plan::Lock(lock) = &plan else {
+        panic!("{plan:?}");
+    };
+    let names: Vec<_> = (lock.clauses.iter())
+        .map(|clause| (clause.strength, clause.tables[0].name.value.as_str()))
+        .collect();
+    assert_eq!(
+        names,
+        [(LockStrength::Update, "p"), (LockStrength::Share, "b")]
+    );
+    assert_eq!(lock.clauses[0].wait, LockWait::NoWait);
+    plan_in("SELECT a FROM db.u FOR UPDATE OF db.u", Dialect::MySql).unwrap();
+    for (text, message) in [
+        (
+            "SELECT p.k FROM a AS p FOR UPDATE OF a",
+            "`a` in a locking clause: no table of the block has this alias or name",
+        ),
+        (
+            "SELECT k FROM a FOR UPDATE OF A",
+            "`A` in a locking clause: no table of the block has this alias or name",
+        ),
+        (
+            "SELECT a FROM db.u FOR UPDATE OF other.u",
+            "`other.u` in a locking clause: no table of the block has this alias or name",
+        ),
+        (
+            "SELECT d.a FROM (SELECT a FROM t) AS d FOR UPDATE OF d",
+            "`d`, a derived table, in a locking clause: MySQL refuses it (error 3569)",
+        ),
+        (
+            "SELECT a.k FROM a, b FOR UPDATE FOR SHARE OF b",
+            "table `b` in several locking clauses (MySQL, error 3569)",
+        ),
+        (
+            "SELECT a FROM t UNION SELECT k FROM a FOR UPDATE OF t",
+            "`t` in a locking clause: no table of the block has this alias or name",
+        ),
+    ] {
+        assert_eq!(error(text), message, "{text}");
+    }
+}
+
+#[test]
+fn a_locking_clause_that_locks_no_row_in_the_input_is_refused() {
+    let mysql = |patch| (Dialect::MySql, Version::new(8, 0, patch));
+    let mariadb = (Dialect::MariaDb, Version::new(10, 6, 3));
+    let none = "locks no row by a locking clause there, the clauses after the parentheses \
+                making a block of their own, without table: not supported by Prisme";
+    let inside = " (at the end of the query between parentheses, it locks its rows)";
+    let dropped = "drops a locking clause at the end of a query between parentheses followed \
+                   by a `LIMIT` without `ORDER BY` (Bug #30521098), and locks no row: not \
+                   supported by Prisme (after the `LIMIT`, it locks the rows of the query \
+                   between parentheses)";
+    for (text, (dialect, version), expected) in [
+        (
+            "(SELECT a FROM t LIMIT 2) ORDER BY a FOR UPDATE",
+            mariadb,
+            format!("MariaDB 10.6.3 {none}{inside}"),
+        ),
+        (
+            "((SELECT a FROM t) LIMIT 2) LIMIT 1 FOR UPDATE",
+            mariadb,
+            format!("MariaDB 10.6.3 {none}{inside}"),
+        ),
+        (
+            "(SELECT a FROM t ORDER BY a) ORDER BY a DESC FOR UPDATE",
+            mysql(17),
+            format!("MySQL 8.0.17 {none}{inside}"),
+        ),
+        (
+            "(SELECT a FROM t UNION SELECT k FROM a) ORDER BY a LOCK IN SHARE MODE",
+            mysql(17),
+            format!("MySQL 8.0.17 {none}{inside}"),
+        ),
+        (
+            "(SELECT a FROM t UNION SELECT k FROM a ORDER BY 1 LIMIT 3) LIMIT 2 FOR UPDATE",
+            mysql(18),
+            format!("MySQL 8.0.18 {none}"),
+        ),
+        (
+            "(SELECT a FROM t FOR UPDATE) LIMIT 1",
+            mysql(18),
+            format!("MySQL 8.0.18 {dropped}"),
+        ),
+        (
+            "((SELECT a FROM t LIMIT 2 FOR UPDATE)) LIMIT 1",
+            mysql(18),
+            format!("MySQL 8.0.18 {dropped}"),
+        ),
+        (
+            "(SELECT a FROM t ORDER BY a FOR UPDATE) LIMIT 1",
+            mysql(25),
+            "MySQL 8.0.25 gives every row of a `SELECT` between parentheses with its own \
+             `ORDER BY` and a locking clause, the `LIMIT` after the parentheses left aside: \
+             not supported by Prisme"
+                .to_string(),
+        ),
+        (
+            "(SELECT a FROM t ORDER BY a) LIMIT 2 FOR UPDATE",
+            mysql(19),
+            "MySQL 8.0.19 gives every row of a `SELECT` between parentheses with its own \
+             `ORDER BY` and a locking clause, the `LIMIT` after the parentheses left aside: \
+             not supported by Prisme"
+                .to_string(),
+        ),
+        (
+            "(SELECT a FROM t FOR UPDATE) FOR UPDATE",
+            mariadb,
+            "several locking clauses on one query block, between parentheses and after them: \
+             not supported by Prisme"
+                .to_string(),
+        ),
+        (
+            "WITH RECURSIVE c (n) AS ((SELECT 1 FOR UPDATE) UNION ALL SELECT n + 1 FROM c \
+             WHERE n < 3) SELECT n FROM c",
+            mariadb,
+            "a locking clause in a part of a recursive common table expression: not supported \
+             yet by Prisme"
+                .to_string(),
+        ),
+        (
+            "WITH RECURSIVE c (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c WHERE n < 3 FOR \
+             UPDATE) SELECT n FROM c",
+            mariadb,
+            "a locking clause after the parts of a recursive common table expression: not \
+             supported yet by Prisme"
+                .to_string(),
+        ),
+    ] {
+        let error = plan_at(text, dialect, version).unwrap_err();
+        assert_eq!(error.message, expected, "{text}");
+    }
+    for (text, (dialect, version)) in [
+        ("(SELECT a FROM t LIMIT 2) ORDER BY a FOR UPDATE", mysql(18)),
+        ("(SELECT a FROM t LIMIT 2) LIMIT 1 FOR UPDATE", mysql(11)),
+        ("(SELECT a FROM t ORDER BY a) LIMIT 1 FOR UPDATE", mariadb),
+        (
+            "(SELECT a FROM t UNION SELECT k FROM a) ORDER BY a FOR UPDATE",
+            mariadb,
+        ),
+        ("(SELECT a FROM t FOR UPDATE) LIMIT 1", mysql(19)),
+        ("(SELECT a FROM t FOR UPDATE) ORDER BY a LIMIT 1", mysql(11)),
+        ("(SELECT a FROM t LIMIT 2 FOR UPDATE) LIMIT 1", mariadb),
+        ("(SELECT a FROM t ORDER BY a FOR UPDATE) LIMIT 1", mysql(26)),
+        ("(SELECT a FROM t ORDER BY a) LIMIT 2 FOR UPDATE", mysql(18)),
+        (
+            "(SELECT a FROM t ORDER BY a) ORDER BY a LIMIT 2 FOR UPDATE",
+            mysql(19),
+        ),
+    ] {
+        plan_at(text, dialect, version).unwrap_or_else(|error| panic!("{text}: {error}"));
+    }
 }

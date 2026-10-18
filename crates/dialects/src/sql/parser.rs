@@ -19,6 +19,7 @@ mod expr;
 mod from;
 mod interval;
 mod literal;
+mod lock;
 mod predicate;
 mod string;
 mod temporal;
@@ -409,14 +410,36 @@ impl Parser<'_> {
             if !order_by.is_empty() || limit.is_some() {
                 parser.parenthesized_options(&body)?;
             }
+            let locks = parser.locks()?;
+            if let Some(lock) = locks.first() {
+                parser.lock_placement(&body, order_by.is_empty() && limit.is_none(), lock.span)?;
+            }
+            parser.refuse_clauses(&["INTO"])?;
             Ok(Query {
                 with,
                 body,
                 order_by,
                 limit,
+                locks,
                 span: parser.span_from(start),
             })
         })
+    }
+
+    /// Checks the place of the locking clauses of a query of `body`, `bare`
+    /// when they follow it without `ORDER BY` nor `LIMIT`: right after a
+    /// query between parentheses (`(SELECT a FROM t) FOR UPDATE`), after a
+    /// set operation whose last operand is between parentheses.
+    fn lock_placement(&self, body: &QueryBody, bare: bool, span: Span) -> Result<(), ParseError> {
+        match body {
+            QueryBody::Nested(_) if bare => self.check(Construct::ParenthesizedLock, span),
+            QueryBody::SetOperation(operation)
+                if matches!(operation.right, QueryBody::Nested(_)) =>
+            {
+                self.check(Construct::ParenthesizedOperandLock, span)
+            }
+            _ => Ok(()),
+        }
     }
 
     /// Query inside another one: a common table expression, a derived table,
@@ -686,7 +709,7 @@ impl Parser<'_> {
             None
         };
         let windows = self.window_clause()?;
-        self.refuse_clauses(&["INTO", "FOR", "LOCK", "PROCEDURE"])?;
+        self.refuse_clauses(&["INTO", "PROCEDURE"])?;
         Ok(Select {
             distinct,
             options,

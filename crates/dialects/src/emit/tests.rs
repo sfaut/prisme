@@ -343,6 +343,8 @@ fn strings_follow_the_sql_mode_of_the_output() {
         json_as_is: false,
         as_bytes: false,
         compared_rows: false,
+        trailing_lock: None,
+        lock_end: LockEnd::Write,
         steps: Vec::new(),
         errors: Vec::new(),
     };
@@ -4576,4 +4578,272 @@ fn an_order_after_parentheses_with_an_inner_limit_reads_the_result_or_a_derived_
         transpiled(text, mariadb_at(11, 8, 9), output(mariadb_at(11, 4, 13))),
         (text.to_string(), vec![])
     );
+}
+
+/// MariaDB in `version`, as an input.
+fn mariadb_at(major: u16, minor: u16, patch: u16) -> InputDialect {
+    InputDialect {
+        dialect: Dialect::MariaDb,
+        version: Version::new(major, minor, patch),
+    }
+}
+
+#[test]
+fn locking_clauses_keep_their_form() {
+    for (text, input) in [
+        ("SELECT a FROM t WHERE a = 1 FOR UPDATE", mysql()),
+        (
+            "SELECT a FROM t ORDER BY a LIMIT 1 FOR SHARE OF t SKIP LOCKED",
+            mysql(),
+        ),
+        (
+            "SELECT t.a FROM t JOIN u ON u.a = t.a FOR UPDATE OF t NOWAIT FOR SHARE OF u",
+            mysql(),
+        ),
+        ("SELECT a FROM t LOCK IN SHARE MODE", mysql()),
+        ("SELECT a FROM t /* x */ FOR UPDATE", mysql()),
+        ("SELECT a FROM t FOR UPDATE WAIT 2", mariadb()),
+        ("SELECT a FROM t LOCK IN SHARE MODE NOWAIT", mariadb()),
+        (
+            "SELECT a FROM t UNION SELECT a FROM u ORDER BY a LIMIT 2 FOR UPDATE",
+            mysql(),
+        ),
+        (
+            "SELECT a FROM t UNION SELECT a FROM u FOR UPDATE",
+            mariadb(),
+        ),
+        (
+            "SELECT a FROM t UNION SELECT a FROM u UNION SELECT a FROM t FOR UPDATE",
+            mariadb(),
+        ),
+        (
+            "(SELECT a FROM t FOR UPDATE) UNION SELECT a FROM u",
+            mysql(),
+        ),
+        (
+            "SELECT a FROM t UNION (SELECT a FROM u LIMIT 1 FOR UPDATE)",
+            mariadb(),
+        ),
+        (
+            "SELECT a FROM t UNION (SELECT a FROM u FOR UPDATE) UNION SELECT a FROM t",
+            mysql(),
+        ),
+        ("SELECT * FROM (SELECT a FROM t FOR UPDATE) AS d", mysql()),
+        (
+            "SELECT a FROM t WHERE a IN (SELECT a FROM u FOR SHARE)",
+            mysql(),
+        ),
+        (
+            "WITH c AS (SELECT a FROM t FOR UPDATE) SELECT a FROM c",
+            mariadb(),
+        ),
+        ("(SELECT a FROM t LIMIT 2 FOR UPDATE) ORDER BY a", mariadb()),
+        ("(SELECT a FROM t LIMIT 2) LIMIT 1 FOR UPDATE", mysql()),
+        ("TABLE t FOR UPDATE", mysql()),
+        ("SELECT 1 FOR UPDATE", mariadb()),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(input));
+        assert_eq!((sql.as_str(), rules), (text, vec![]), "{text}");
+    }
+}
+
+#[test]
+fn locking_clauses_take_the_form_of_the_output() {
+    for (text, input, out, expected, rule) in [
+        (
+            "SELECT a FROM t FOR SHARE",
+            mysql(),
+            mariadb(),
+            "SELECT a FROM t LOCK IN SHARE MODE",
+            Some("lock.share"),
+        ),
+        (
+            "SELECT a FROM t FOR SHARE NOWAIT",
+            mysql(),
+            mariadb(),
+            "SELECT a FROM t LOCK IN SHARE MODE NOWAIT",
+            Some("lock.share"),
+        ),
+        (
+            "SELECT a FROM t LOCK IN SHARE MODE SKIP LOCKED",
+            mariadb(),
+            mysql(),
+            "SELECT a FROM t FOR SHARE SKIP LOCKED",
+            Some("lock.share"),
+        ),
+        (
+            "SELECT p.a FROM t AS p FOR UPDATE OF p",
+            mysql(),
+            mariadb(),
+            "SELECT p.a FROM t AS p FOR UPDATE",
+            Some("lock.of"),
+        ),
+        (
+            "SELECT t.a FROM t, (SELECT 1 AS x) AS d FOR UPDATE OF t",
+            mysql(),
+            mariadb(),
+            "SELECT t.a FROM t, (SELECT 1 AS x) AS d FOR UPDATE",
+            Some("lock.of"),
+        ),
+        (
+            "SELECT t.a FROM t, u FOR UPDATE OF t FOR UPDATE OF u",
+            mysql(),
+            mariadb(),
+            "SELECT t.a FROM t, u FOR UPDATE",
+            Some("lock.clauses"),
+        ),
+        (
+            "SELECT a FROM t FOR UPDATE WAIT 0",
+            mariadb(),
+            mysql(),
+            "SELECT a FROM t FOR UPDATE NOWAIT",
+            Some("lock.wait"),
+        ),
+        (
+            "SELECT a FROM t LOCK IN SHARE MODE WAIT 0x0",
+            mariadb(),
+            mysql(),
+            "SELECT a FROM t FOR SHARE NOWAIT",
+            Some("lock.wait"),
+        ),
+        (
+            "SELECT a FROM t UNION (SELECT a FROM u) FOR UPDATE",
+            mysql(),
+            mariadb(),
+            "SELECT a FROM t UNION SELECT a FROM u FOR UPDATE",
+            None,
+        ),
+        (
+            "SELECT a FROM t AS `of` FOR UPDATE",
+            mariadb(),
+            mysql(),
+            "SELECT a FROM t AS `of` FOR UPDATE",
+            None,
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(out));
+        assert_eq!(sql, expected, "{text}");
+        let locks: Vec<_> = (rules.into_iter())
+            .filter(|rule| rule.starts_with("lock."))
+            .collect();
+        assert_eq!(locks.first().copied(), rule, "{text}");
+    }
+}
+
+#[test]
+fn locking_clauses_without_form_in_the_output_are_errors() {
+    for (text, input, out, rule) in [
+        (
+            "SELECT t.a FROM t, u FOR UPDATE OF t",
+            mysql(),
+            output(mariadb()),
+            "lock.of",
+        ),
+        (
+            "SELECT t.a FROM t, u FOR UPDATE OF t FOR SHARE OF u",
+            mysql(),
+            output(mariadb()),
+            "lock.clauses",
+        ),
+        (
+            "SELECT t.a FROM t, u FOR UPDATE OF t NOWAIT FOR UPDATE OF u",
+            mysql(),
+            output(mariadb()),
+            "lock.clauses",
+        ),
+        (
+            "SELECT a FROM t FOR UPDATE WAIT 1",
+            mariadb(),
+            output(mysql()),
+            "lock.wait",
+        ),
+        (
+            "SELECT a FROM t FOR UPDATE SKIP LOCKED",
+            mysql(),
+            output(mariadb_at(10, 5, 29)),
+            "lock.wait",
+        ),
+    ] {
+        assert_eq!(errors(text, input, out), [rule], "{text}");
+    }
+}
+
+#[test]
+fn locking_clauses_next_to_parentheses_lock_the_rows_of_the_input() {
+    for (text, input, out, expected) in [
+        // The outer `LIMIT` of a block without its own joins it: MySQL
+        // before 8.0.19 drops a clause at the end of the parentheses before
+        // that `LIMIT`.
+        (
+            "(SELECT a FROM t FOR UPDATE) LIMIT 1",
+            mariadb(),
+            mysql_at(8, 0, 18),
+            "SELECT a FROM t LIMIT 1 FOR UPDATE",
+        ),
+        (
+            "(SELECT a FROM t UNION SELECT a FROM u FOR UPDATE) LIMIT 1",
+            mariadb(),
+            mysql_at(8, 0, 18),
+            "SELECT a FROM t UNION SELECT a FROM u LIMIT 1 FOR UPDATE",
+        ),
+        (
+            "(SELECT a FROM t LIMIT 2 FOR UPDATE) LIMIT 1",
+            mariadb(),
+            mysql_at(8, 0, 31),
+            "(SELECT a FROM t LIMIT 2 FOR UPDATE) LIMIT 1",
+        ),
+        // MariaDB, and MySQL before 8.0.18, lock no row by a clause after
+        // an outer `ORDER BY` over a query with its own `LIMIT`: it goes
+        // between the parentheses.
+        (
+            "(SELECT a FROM t LIMIT 2) ORDER BY a FOR UPDATE",
+            mysql_at(8, 0, 31),
+            mariadb(),
+            "(SELECT a FROM t LIMIT 2 FOR UPDATE) ORDER BY a",
+        ),
+        (
+            "(SELECT a FROM t LIMIT 2) ORDER BY a FOR UPDATE",
+            mysql_at(8, 0, 31),
+            mysql_at(8, 0, 17),
+            "(SELECT a FROM t LIMIT 2 FOR UPDATE) ORDER BY a",
+        ),
+        (
+            "(SELECT a FROM t LIMIT 2) ORDER BY a FOR UPDATE",
+            mysql_at(8, 0, 31),
+            mysql_at(8, 0, 18),
+            "(SELECT a FROM t LIMIT 2) ORDER BY a FOR UPDATE",
+        ),
+        (
+            "(SELECT a FROM t ORDER BY a LIMIT 2) LIMIT 1 FOR UPDATE",
+            mysql_at(8, 0, 31),
+            mariadb(),
+            "(SELECT a FROM t ORDER BY a LIMIT 2 FOR UPDATE) LIMIT 1",
+        ),
+        // A derived table stands for the parentheses that MySQL before
+        // 8.0.31 reads otherwise: the clause stays inside.
+        (
+            "(SELECT a FROM t ORDER BY a LIMIT 2 FOR UPDATE) LIMIT 1",
+            mariadb(),
+            mysql_at(8, 0, 30),
+            "SELECT * FROM (SELECT a FROM t ORDER BY a LIMIT 2 FOR UPDATE) AS `d` LIMIT 1",
+        ),
+        // The limit joins the locked block, which MySQL 8.0.19 to 8.0.25
+        // read otherwise between parentheses.
+        (
+            "(SELECT a FROM t ORDER BY a FOR UPDATE) LIMIT 1",
+            mariadb(),
+            mysql_at(8, 0, 20),
+            "SELECT a FROM t ORDER BY a LIMIT 1 FOR UPDATE",
+        ),
+        // The union keeps its clause after its own clauses.
+        (
+            "(SELECT a FROM t UNION SELECT a FROM u) ORDER BY a FOR UPDATE",
+            mariadb(),
+            mysql_at(8, 0, 17),
+            "SELECT a FROM t UNION SELECT a FROM u ORDER BY a FOR UPDATE",
+        ),
+    ] {
+        let (sql, _) = transpiled(text, input, output(out));
+        assert_eq!(sql, expected, "{text} -> {}", out.version);
+    }
 }

@@ -10,7 +10,11 @@
 //! the original text, at a position computed on the tokens: the user's query
 //! keeps its exact form (comments, case, spaces), which printing the AST back
 //! would not guarantee. The `LIMIT` goes before a possible `FOR UPDATE` /
-//! `FOR SHARE`, and never inside a trailing comment.
+//! `FOR SHARE`, and never inside a trailing comment. A query between
+//! parentheses that ends with its locking clause takes the `LIMIT` before
+//! that clause, inside the parentheses (`(SELECT ... LIMIT n FOR UPDATE)`):
+//! MySQL before 8.0.19 drops the clause before an outer `LIMIT` (Bug
+//! #30521098, `crates/probe/cases/locking-scope.sql`).
 
 use sqlparser::ast::{Expr, LimitClause, Query, SetExpr, Statement, Value};
 use sqlparser::keywords::Keyword;
@@ -88,7 +92,7 @@ pub fn apply_default_limit(
         return Ok(unchanged(LimitOutcome::Unparsed));
     };
     let index = OffsetIndex::new(sql);
-    let Some(position) = insertion_position(&index, &tokens, !query.locks.is_empty()) else {
+    let Some(position) = insertion_position(&index, &tokens, lock_depth(query)) else {
         return Ok(unchanged(LimitOutcome::Unparsed));
     };
 
@@ -143,6 +147,23 @@ fn has_limit(query: &Query) -> bool {
     query.limit_clause.is_some() || query.fetch.is_some()
 }
 
+/// Depth of the parentheses around the locking clause that the `LIMIT` goes
+/// before: 0 for that of `query`, 1 for that of the query between the
+/// parentheses `query` is made of (`(SELECT ... FOR UPDATE)`), at any depth;
+/// `None` without locking clause, or after an `ORDER BY`, which the `LIMIT`
+/// follows.
+fn lock_depth(query: &Query) -> Option<usize> {
+    if !query.locks.is_empty() {
+        return Some(0);
+    }
+    match query.body.as_ref() {
+        SetExpr::Query(inner) if query.order_by.is_none() => {
+            lock_depth(inner).map(|depth| depth + 1)
+        }
+        _ => None,
+    }
+}
+
 /// Tells whether the body of a query returns rows to the client.
 pub(crate) fn returns_rows(body: &SetExpr) -> bool {
     match body {
@@ -158,16 +179,15 @@ pub(crate) fn returns_rows(body: &SetExpr) -> bool {
 /// Computes the position, in bytes, where to insert ` LIMIT n` in `sql`.
 ///
 /// It is the end of the last significant token (outside spaces, comments and
-/// `;`), before the locking clause if `has_locks` is true.
+/// `;`), before the locking clause between `lock_depth` parentheses if any.
 fn insertion_position(
     index: &OffsetIndex,
     tokens: &[TokenWithSpan],
-    has_locks: bool,
+    lock_depth: Option<usize>,
 ) -> Option<usize> {
-    let boundary = if has_locks {
-        lock_clause_start(tokens)?
-    } else {
-        tokens.len()
+    let boundary = match lock_depth {
+        Some(depth) => lock_clause_start(tokens, depth)?,
+        None => tokens.len(),
     };
     let last = tokens[..boundary]
         .iter()
@@ -177,14 +197,14 @@ fn insertion_position(
 }
 
 /// Returns the index of the `FOR` token that opens the locking clause
-/// (`FOR UPDATE`, `FOR SHARE`), outside parentheses.
-fn lock_clause_start(tokens: &[TokenWithSpan]) -> Option<usize> {
+/// (`FOR UPDATE`, `FOR SHARE`), between `target` parentheses.
+fn lock_clause_start(tokens: &[TokenWithSpan], target: usize) -> Option<usize> {
     let mut depth = 0usize;
     for (index, token) in tokens.iter().enumerate() {
         match &token.token {
             Token::LParen => depth += 1,
             Token::RParen => depth = depth.saturating_sub(1),
-            Token::Word(word) if depth == 0 && word.keyword == Keyword::FOR => {
+            Token::Word(word) if depth == target && word.keyword == Keyword::FOR => {
                 let next = tokens[index + 1..]
                     .iter()
                     .find(|token| !matches!(token.token, Token::Whitespace(_)));
@@ -297,6 +317,23 @@ mod tests {
         assert_eq!(
             added("SELECT * FROM t\nFOR SHARE NOWAIT;"),
             "SELECT * FROM t LIMIT 1001\nFOR SHARE NOWAIT;"
+        );
+        assert_eq!(
+            added("SELECT a FROM t UNION SELECT a FROM u FOR UPDATE OF u"),
+            "SELECT a FROM t UNION SELECT a FROM u LIMIT 1001 FOR UPDATE OF u"
+        );
+        // Inside the parentheses, which MySQL before 8.0.19 reads otherwise.
+        assert_eq!(
+            added("((SELECT a FROM t WHERE a IN (SELECT a FROM u FOR SHARE) FOR UPDATE))"),
+            "((SELECT a FROM t WHERE a IN (SELECT a FROM u FOR SHARE) LIMIT 1001 FOR UPDATE))"
+        );
+        assert_eq!(
+            added("(SELECT a FROM t ORDER BY a) FOR UPDATE"),
+            "(SELECT a FROM t ORDER BY a) LIMIT 1001 FOR UPDATE"
+        );
+        assert_eq!(
+            added("(SELECT a FROM t FOR UPDATE) ORDER BY a"),
+            "(SELECT a FROM t FOR UPDATE) ORDER BY a LIMIT 1001"
         );
     }
 

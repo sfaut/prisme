@@ -243,6 +243,53 @@ pub enum Construct {
     /// `LIMIT` and without `ORDER BY` counting every row (MySQL), the rows up
     /// to the `LIMIT` before.
     UnionAllFoundRows,
+    /// `FOR SHARE` (MySQL), `LOCK IN SHARE MODE` alone otherwise.
+    LockShare,
+    /// `OF` in a locking clause: the tables it locks (MySQL).
+    LockOf,
+    /// Several locking clauses after a query, each one on its own tables
+    /// (MySQL).
+    LockClauses,
+    /// `NOWAIT` in a locking clause.
+    LockNowait,
+    /// `SKIP LOCKED` in a locking clause.
+    LockSkipLocked,
+    /// `WAIT n` in a locking clause (MariaDB).
+    LockWaitSeconds,
+    /// `NOWAIT`, `SKIP LOCKED` or `WAIT n` after `LOCK IN SHARE MODE`
+    /// (MariaDB).
+    ShareModeOptions,
+    /// A locking clause right after a query between parentheses: `(SELECT a
+    /// FROM t) FOR UPDATE`.
+    ParenthesizedLock,
+    /// A locking clause after a set operation whose last operand is between
+    /// parentheses (MySQL; MariaDB refuses it, error 1221).
+    ParenthesizedOperandLock,
+    /// A locking clause after a query between parentheses with its own
+    /// `LIMIT`, followed by a `LIMIT` or by nothing, locking the rows of that
+    /// query (MySQL; none in MariaDB).
+    ParenthesizedLimitLock,
+    /// A locking clause after a set operation between parentheses with its
+    /// own `LIMIT`, followed by a `LIMIT` or by nothing, locking the rows of
+    /// its last operand (MySQL, but 8.0.18; none in MariaDB).
+    ParenthesizedSetLimitLock,
+    /// A locking clause after an `ORDER BY` that follows a query between
+    /// parentheses with its own `ORDER BY` or `LIMIT`, locking the rows of
+    /// that query (MySQL from 8.0.18; none before and in MariaDB).
+    ParenthesizedOrderLock,
+    /// A locking clause after an `ORDER BY` that follows a set operation
+    /// between parentheses, locking the rows of its last operand (none in
+    /// MySQL before 8.0.18).
+    ParenthesizedSetOrderLock,
+    /// A locking clause at the end of a query between parentheses followed by
+    /// a `LIMIT` without `ORDER BY`, locking the rows of that query (dropped
+    /// by MySQL before 8.0.19, Bug #30521098).
+    ParenthesizedInnerLock,
+    /// An outer `LIMIT` without `ORDER BY` bounding a `SELECT` between
+    /// parentheses with its own `ORDER BY`, without `LIMIT`, and a locking
+    /// clause, inside or after the parentheses (MySQL 8.0.19 to 8.0.25 give
+    /// every row).
+    ParenthesizedLockedLimit,
 }
 
 /// Construct refused in a dialect or a version.
@@ -457,6 +504,44 @@ impl Construct {
             }
             Self::UnionAllFoundRows => {
                 "`FOUND_ROWS()` counting every row of a `UNION ALL` beyond its `LIMIT`"
+            }
+            Self::LockShare => "`FOR SHARE`",
+            Self::LockOf => "`OF` in a locking clause",
+            Self::LockClauses => "several locking clauses",
+            Self::LockNowait => "`NOWAIT`",
+            Self::LockSkipLocked => "`SKIP LOCKED`",
+            Self::LockWaitSeconds => "`WAIT n` in a locking clause",
+            Self::ShareModeOptions => {
+                "`NOWAIT`, `SKIP LOCKED` or `WAIT` after `LOCK IN SHARE MODE`"
+            }
+            Self::ParenthesizedLock => "a locking clause right after a query between parentheses",
+            Self::ParenthesizedOperandLock => {
+                "a locking clause after a set operation whose last operand is between parentheses"
+            }
+            Self::ParenthesizedLimitLock => {
+                "a locking clause after a query between parentheses with its own `LIMIT`, \
+                 followed by a `LIMIT` or by nothing, locking the rows of that query"
+            }
+            Self::ParenthesizedSetLimitLock => {
+                "a locking clause after a set operation between parentheses with its own \
+                 `LIMIT`, followed by a `LIMIT` or by nothing, locking the rows of its last \
+                 operand"
+            }
+            Self::ParenthesizedOrderLock => {
+                "a locking clause after an `ORDER BY` that follows a query between parentheses \
+                 with its own `ORDER BY` or `LIMIT`, locking the rows of that query"
+            }
+            Self::ParenthesizedSetOrderLock => {
+                "a locking clause after an `ORDER BY` that follows a set operation between \
+                 parentheses, locking the rows of its last operand"
+            }
+            Self::ParenthesizedInnerLock => {
+                "a locking clause at the end of a query between parentheses followed by a \
+                 `LIMIT` without `ORDER BY`, locking the rows of that query"
+            }
+            Self::ParenthesizedLockedLimit => {
+                "an outer `LIMIT` bounding a locked `SELECT` between parentheses with its own \
+                 `ORDER BY`"
             }
         }
     }

@@ -39,11 +39,12 @@ pub use interval::{DateArithmetic, DateArithmeticForm, Extract, TimeUnit, Timest
 pub use order::{Direction, Nulls, SortForm, SortKey, SortReference};
 pub use origin::{AliasForm, Ident, Span};
 pub use plan::{
-    Aggregate, AggregateCall, Cte, CtePart, CteRef, Derived, Distinct, Extend, Filter, FilterForm,
-    IndexHint, IndexHintAction, IndexHintScope, Join, JoinForm, JoinKind, JoinUsing, Limit,
-    LimitForm, NamedAggregate, NamedExpr, OnEmpty, Plan, Project, ProjectItem, Scan, SelectOption,
+    Aggregate, AggregateCall, BlockTable, BlockTableKind, Cte, CtePart, CteRef, Derived, Distinct,
+    Extend, Filter, FilterForm, IndexHint, IndexHintAction, IndexHintScope, Join, JoinForm,
+    JoinKind, JoinUsing, Limit, LimitForm, Lock, LockClause, LockForm, LockStrength, LockWait,
+    NamedAggregate, NamedExpr, OnEmpty, Plan, Project, ProjectItem, Scan, SelectOption,
     SetOperation, SetOperator, Sort, TableAlias, TableName, Values, ValuesForm, Wildcard, Window,
-    WindowDefinition, With, WrittenOption,
+    WindowDefinition, With, WrittenOption, block_tables,
 };
 pub use schema::{Column, Schema};
 pub use statement::{

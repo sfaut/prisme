@@ -27,6 +27,7 @@ pub(crate) mod functions;
 mod group;
 mod interval;
 mod json;
+mod lock;
 mod now;
 mod recursive;
 mod scope;
@@ -375,6 +376,13 @@ impl Builder<'_> {
                 span,
             ));
         };
+        if let Some(span) = parts.iter().find_map(|part| lock::written_lock(part.body)) {
+            return Err(self.error(
+                "a locking clause in a part of a recursive common table expression: not \
+                 supported yet by Prisme",
+                span,
+            ));
+        }
         let readings: Vec<CtePart> = (parts.iter())
             .map(|part| recursive::part_reading(part.body, name))
             .collect();
@@ -448,6 +456,13 @@ impl Builder<'_> {
         if let Some(limit) = &query.limit {
             self.check(Construct::RecursiveLimit, limit.span)?;
         }
+        if let Some(lock) = query.locks.first() {
+            return Err(self.error(
+                "a locking clause after the parts of a recursive common table expression: not \
+                 supported yet by Prisme",
+                lock.span,
+            ));
+        }
         let plan = self.limit(plan, query.limit.as_ref())?;
         let mut cte = Cte::new(name.clone(), definition.columns.clone(), plan)
             .map_err(|error| plan_error(&error, span))?;
@@ -459,12 +474,29 @@ impl Builder<'_> {
 
     /// Body of a query, then its sort and its limit.
     fn query_body(&mut self, query: &Query) -> Result<Plan, BuildError> {
+        self.lock_placement(query)?;
         if let Some(select) = self.sorted_select(query)? {
-            return self.select(select, &query.order_by, query.limit.as_ref());
+            let plan = self.select(select, &query.order_by, query.limit.as_ref())?;
+            // The locking clauses between the parentheses lock the same
+            // block.
+            let mut locks: Vec<&ast::Locking> = Vec::new();
+            let mut body = &query.body;
+            while let QueryBody::Nested(inner) = body {
+                locks.extend(&inner.locks);
+                body = &inner.body;
+            }
+            if let (Some(_), Some(lock)) = (locks.first(), query.locks.first()) {
+                return Err(self.several_locks(lock.span));
+            }
+            let outside = matches!(query.body, QueryBody::Nested(_)) && !query.locks.is_empty();
+            locks.extend(&query.locks);
+            return self.locked(plan, &locks, outside);
         }
         let plan = self.body(&query.body)?;
         let plan = self.sorted(plan, &query.order_by)?;
-        self.limit(plan, query.limit.as_ref())
+        let plan = lock::joined_limit(self.limit(plan, query.limit.as_ref())?);
+        let outside = matches!(query.body, QueryBody::Nested(_));
+        self.locked(plan, &query.locks.iter().collect::<Vec<_>>(), outside)
     }
 
     /// `SELECT` that the `ORDER BY` of `query` sorts as its own: its body,

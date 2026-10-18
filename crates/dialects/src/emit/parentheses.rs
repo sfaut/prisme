@@ -61,11 +61,13 @@
 //! otherwise, and the output otherwise than the input, the query is an error
 //! (**[decided autonomously]**).
 
-use prisme_plan::{Expr, ExprKind, Ident, Limit, Nulls, Plan, ProjectItem, Sort, SortKey};
+use prisme_plan::{Expr, ExprKind, Ident, Limit, Lock, Nulls, Plan, ProjectItem, Sort, SortKey};
 use prisme_types::Value;
 
+use super::lock::LockEnd;
 use super::{Block, Emitter, call};
 use crate::Dialect;
+use crate::locking::Shape;
 use crate::report::StepKind;
 use crate::versions::Construct;
 
@@ -142,10 +144,7 @@ impl Nesting {
     /// Shape of `inner`, between parentheses, followed by `sort` and
     /// `limit`.
     fn of(inner: &Plan, sort: Option<&Sort>, limit: Option<&Limit>) -> Self {
-        let mut node = match inner {
-            Plan::With(with) => with.body.as_ref(),
-            _ => inner,
-        };
+        let mut node = unlocked(inner);
         let mut inner_limit = false;
         let mut inner_sort = false;
         if let Some(block) = Block::fold(node) {
@@ -177,6 +176,30 @@ impl Nesting {
             inner_set: matches!(node, Plan::SetOperation(_)),
         }
     }
+
+    /// Shape of the clauses, for the locking clauses (`locking` module).
+    const fn lock_shape(self) -> Shape {
+        Shape {
+            outer_sort: self.outer_sort,
+            outer_limit: self.outer_limit,
+            inner_sort: self.inner_sort,
+            inner_limit: self.inner_limit,
+            inner_set: self.inner_set,
+        }
+    }
+}
+
+/// `plan` without its `WITH`, nor the locking clauses at its top: the query
+/// whose clauses meet those after the parentheses around it.
+fn unlocked(plan: &Plan) -> &Plan {
+    let plan = match plan {
+        Plan::With(with) => with.body.as_ref(),
+        _ => plan,
+    };
+    match plan {
+        Plan::Lock(lock) => &lock.input,
+        _ => plan,
+    }
 }
 
 impl Emitter<'_> {
@@ -207,6 +230,9 @@ impl Emitter<'_> {
                 self.sorted_otherwise(inner, sort, order, names_matter);
                 return;
             }
+            if !self.place_trailing_lock(inner, nesting, limit) {
+                return;
+            }
             // MariaDB refuses the options of the first `SELECT` there
             // (`options` module).
             if self.output.dialect == Dialect::MariaDb && !nesting.inner_set {
@@ -234,6 +260,87 @@ impl Emitter<'_> {
         }
         let message = format!("{} {}", self.target(), describe(output));
         self.as_derived(inner, "limit.nested", &message, span);
+    }
+
+    /// Places the locking clauses at the end of `inner`, a query between
+    /// parentheses of `nesting` that the output reads as the input (rule
+    /// `lock.parenthesized`): after the outer `ORDER BY` and `LIMIT` when
+    /// written there and the output locks the rows of `inner` there, or when
+    /// it would drop them at the end of `inner` (MySQL before 8.0.19);
+    /// at the end of `inner` otherwise, or from a derived table when the
+    /// output locks its rows in neither place. Returns false when the
+    /// derived table is written.
+    fn place_trailing_lock(
+        &mut self,
+        inner: &Plan,
+        nesting: Nesting,
+        limit: Option<&Limit>,
+    ) -> bool {
+        let Some(lock) = self.trailing_lock_of(inner) else {
+            return true;
+        };
+        let shape = nesting.lock_shape();
+        let inside = shape.locked_inside(|construct| self.has(construct));
+        let after = shape.locked_after(|construct| self.has(construct));
+        let span = lock.clauses.first().and_then(|clause| clause.span);
+        if after && (lock.outside || !inside) {
+            self.lock_end = LockEnd::Lift;
+            if !lock.outside {
+                let message = format!(
+                    "{} drops a locking clause at the end of a query between parentheses \
+                     followed by a `LIMIT` without `ORDER BY` (Bug #30521098): written after \
+                     the `LIMIT`, which locks the same rows",
+                    self.target()
+                );
+                self.step("lock.parenthesized", StepKind::Rewrite, message, span);
+            }
+            return true;
+        }
+        if inside {
+            if lock.outside {
+                let message = format!(
+                    "{} locks no row by a locking clause after a query between parentheses \
+                     with these clauses: written at the end of that query, which locks the \
+                     same rows",
+                    self.target()
+                );
+                self.step("lock.parenthesized", StepKind::Rewrite, message, span);
+            }
+            return true;
+        }
+        let message = format!(
+            "{} locks no row by a locking clause after a query between parentheses with these \
+             clauses, and drops it at the end of that query",
+            self.target()
+        );
+        let span = limit.and_then(|limit| limit.span).or(span);
+        self.as_derived(inner, "lock.parenthesized", &message, span);
+        false
+    }
+
+    /// Lock whose clauses the text of `plan` ends with: a locked block, or the
+    /// last operand of a set operation, written without parentheses.
+    fn trailing_lock_of<'p>(&self, plan: &'p Plan) -> Option<&'p Lock> {
+        match plan {
+            Plan::With(with) => self.trailing_lock_of(&with.body),
+            Plan::Lock(lock) => Some(lock),
+            Plan::Limit(limit) if Block::fold(plan).is_none() => {
+                self.trailing_lock_of(&limit.input)
+            }
+            Plan::Sort(sort) => self.trailing_lock_of(&sort.input),
+            Plan::SetOperation(operation) => {
+                let right = operation.right.as_ref();
+                let written = match right {
+                    Plan::Lock(lock) => &lock.input,
+                    _ => right,
+                };
+                if self.operand_parenthesized(written, operation.operator, true, false) {
+                    return None;
+                }
+                self.trailing_lock_of(right)
+            }
+            _ => None,
+        }
     }
 
     /// `inner` between parentheses, before the `ORDER BY` `sort` that the
@@ -308,11 +415,7 @@ impl Emitter<'_> {
         {
             return None;
         }
-        let body = match inner {
-            Plan::With(with) => with.body.as_ref(),
-            _ => inner,
-        };
-        let block = Block::fold(body)?;
+        let block = Block::fold(unlocked(inner))?;
         self.blocks.push(call::Internal::new(&block));
         let misread = (block.aggregate).is_some_and(|aggregate| !aggregate.aggregates.is_empty())
             && (sort.keys.iter()).any(|key| self.reads_expression_key(&block, &key.expr, true));

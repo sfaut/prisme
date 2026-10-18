@@ -25,6 +25,7 @@ pub mod keywords;
 mod layout;
 pub mod lexer;
 pub mod limit;
+mod locking;
 mod offsets;
 mod parse;
 mod reference;

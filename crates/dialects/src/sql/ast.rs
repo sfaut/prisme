@@ -8,7 +8,8 @@
 
 use prisme_plan::{
     AliasForm, CallForm, CastForm, CastTarget, DateArithmeticForm, Direction, FrameUnits, Ident,
-    IndexHint, JoinForm, LimitForm, Span, TimeUnit, TrimSide, Truth, ValuesForm, WrittenOption,
+    IndexHint, JoinForm, LimitForm, LockForm, LockStrength, LockWait, Span, TimeUnit, TrimSide,
+    Truth, ValuesForm, WrittenOption,
 };
 
 /// Statement.
@@ -38,6 +39,24 @@ pub struct Query {
     pub order_by: Vec<OrderItem>,
     /// `LIMIT`.
     pub limit: Option<Limit>,
+    /// Locking clauses (`FOR UPDATE`...), in order; empty when not written.
+    pub locks: Vec<Locking>,
+    /// Position in the input.
+    pub span: Span,
+}
+
+/// Locking clause: `FOR UPDATE`, `FOR SHARE`, `LOCK IN SHARE MODE`, with
+/// its tables and its option.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Locking {
+    /// Lock taken on the rows read.
+    pub strength: LockStrength,
+    /// Tables written after `OF`; empty without `OF`.
+    pub tables: Vec<ObjectName>,
+    /// `NOWAIT`, `SKIP LOCKED`, `WAIT n`, or nothing.
+    pub wait: LockWait,
+    /// Form written.
+    pub form: LockForm,
     /// Position in the input.
     pub span: Span,
 }

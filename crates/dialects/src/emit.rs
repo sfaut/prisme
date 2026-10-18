@@ -13,7 +13,8 @@
 //! of the built-in functions by the `builtin` module, with the rules of the
 //! functions (`rules` module); the recursive common table expressions by the
 //! `recursive` module, the items of the select list read through their alias
-//! by the `alias` module, the options of `SELECT` by the `options` module.
+//! by the `alias` module, the options of `SELECT` by the `options` module,
+//! the locking clauses by the `lock` module.
 //!
 //! Literals are written as in the input when the output reads them the same
 //! way (same SQL mode for the quotes and the backslashes), otherwise in a
@@ -38,6 +39,7 @@ mod hexadecimal;
 mod interval;
 mod json;
 mod literal;
+mod lock;
 mod options;
 mod parentheses;
 mod predicate;
@@ -52,9 +54,9 @@ mod truth;
 mod tests;
 
 use prisme_plan::{
-    Aggregate, AliasForm, ColumnRef, Direction, Filter, FilterForm, Ident, Limit, LimitForm, Nulls,
-    Plan, Project, ProjectItem, SetOperation, SetOperator, Sort, SortKey, SortReference, Span,
-    Statement, Values, ValuesForm, Window, With,
+    Aggregate, AliasForm, ColumnRef, Direction, Filter, FilterForm, Ident, Limit, LimitForm,
+    LockClause, Nulls, Plan, Project, ProjectItem, SetOperation, SetOperator, Sort, SortKey,
+    SortReference, Span, Statement, Values, ValuesForm, Window, With,
 };
 use prisme_types::Value;
 
@@ -64,6 +66,7 @@ use crate::keywords::is_reserved;
 use crate::lexer::{CommentKind, SqlMode};
 use crate::report::{Step, StepKind, Untranslatable};
 use crate::versions::{Construct, Version, registry};
+use lock::LockEnd;
 
 /// Dialect of the server that runs the query, with its version and its SQL
 /// mode.
@@ -119,6 +122,8 @@ pub(crate) fn emit(statement: &Statement, output: &OutputDialect, source: &Sourc
         json_as_is: false,
         as_bytes: false,
         compared_rows: false,
+        trailing_lock: None,
+        lock_end: LockEnd::Write,
         steps: Vec::new(),
         errors: Vec::new(),
     };
@@ -191,6 +196,12 @@ struct Emitter<'a> {
     /// `ALL`. Its `JSON` columns are then read as the input reads them
     /// (`json` module).
     compared_rows: bool,
+    /// Locking clauses at the end of the query being written: those of the
+    /// last operand of its set operation, written without parentheses, which
+    /// follow its `ORDER BY` and its `LIMIT` (`lock` module).
+    trailing_lock: Option<Vec<LockClause>>,
+    /// What the next query does with the locking clauses at its end.
+    lock_end: LockEnd,
     /// Steps of the report.
     steps: Vec<Step>,
     /// Untranslatable constructs.
@@ -429,10 +440,13 @@ impl Emitter<'_> {
     fn query(&mut self, plan: &Plan, names_matter: bool) {
         match plan {
             Plan::With(with) => {
-                // The rows compared are those of the body.
+                // The rows compared are those of the body, and so is the
+                // end of the query.
                 let compared = std::mem::take(&mut self.compared_rows);
+                let end = std::mem::replace(&mut self.lock_end, LockEnd::Write);
                 self.with(with);
                 self.compared_rows = compared;
+                self.lock_end = end;
                 self.query(&with.body, names_matter);
             }
             _ => self.body(plan, names_matter),
@@ -479,9 +493,33 @@ impl Emitter<'_> {
         self.write(" ");
     }
 
-    /// Body of a query: a `SELECT` block, a `VALUES`, or a query followed
-    /// by its `ORDER BY` and its `LIMIT`.
+    /// Body of a query, then the locking clauses at its end, unless the
+    /// caller writes them (`LockEnd::Lift`).
     fn body(&mut self, plan: &Plan, names_matter: bool) {
+        let outer = self.trailing_lock.take();
+        let end = std::mem::replace(&mut self.lock_end, LockEnd::Write);
+        self.body_clauses(plan, names_matter, end);
+        let clauses = std::mem::replace(&mut self.trailing_lock, outer);
+        match clauses {
+            Some(clauses) if end == LockEnd::Lift => {
+                debug_assert!(self.trailing_lock.is_none());
+                self.trailing_lock = Some(clauses);
+            }
+            Some(clauses) => self.write_lock_clauses(&clauses),
+            None => {}
+        }
+    }
+
+    /// Body of a query: a `SELECT` block, a `VALUES`, or a query followed
+    /// by its `ORDER BY` and its `LIMIT`; a locked block leaves its locking
+    /// clauses at the end of the query.
+    fn body_clauses(&mut self, plan: &Plan, names_matter: bool, end: LockEnd) {
+        if let Plan::Lock(lock) = plan {
+            let clauses = self.output_clauses(lock);
+            self.body_clauses(&lock.input, names_matter, end);
+            self.trailing_lock = Some(clauses);
+            return;
+        }
         // Rows compared by the parent: those of this query, not of its
         // subqueries.
         let compared = std::mem::take(&mut self.compared_rows);
@@ -500,7 +538,7 @@ impl Emitter<'_> {
         match inner {
             Plan::Values(values) if !is_dual(inner) => self.values(values, names_matter),
             Plan::SetOperation(operation) => {
-                self.set_operation(operation, names_matter, compared);
+                self.set_operation(operation, names_matter, compared, end != LockEnd::Avoid);
             }
             Plan::Scan(_) | Plan::CteRef(_) => self.table_statement(inner, compared),
             _ if sort.is_some() || limit.is_some() => {
@@ -679,8 +717,14 @@ impl Emitter<'_> {
 
     /// `UNION`, `EXCEPT` or `INTERSECT`, its operands between parentheses
     /// when their nesting needs it; its rows compared by the parent when
-    /// `compared`.
-    fn set_operation(&mut self, operation: &SetOperation, names_matter: bool, compared: bool) {
+    /// `compared`; its last operand ending the query when `trailing`.
+    fn set_operation(
+        &mut self,
+        operation: &SetOperation,
+        names_matter: bool,
+        compared: bool,
+        trailing: bool,
+    ) {
         let (keyword, construct) = match operation.operator {
             SetOperator::UnionAll => ("UNION ALL", None),
             SetOperator::UnionDistinct => ("UNION", None),
@@ -702,27 +746,53 @@ impl Emitter<'_> {
         // operands.
         let compared = compared || operation.operator != SetOperator::UnionAll;
         self.compared_rows = compared;
-        self.set_operand(&operation.left, operation.operator, false, names_matter);
+        self.set_operand(
+            &operation.left,
+            operation.operator,
+            false,
+            names_matter,
+            false,
+        );
         self.write(&format!(" {keyword} "));
         self.compared_rows = compared;
-        self.set_operand(&operation.right, operation.operator, true, false);
+        self.set_operand(&operation.right, operation.operator, true, false, trailing);
     }
 
-    /// Operand of a set operation of `parent`, on the right side or not.
-    fn set_operand(&mut self, plan: &Plan, parent: SetOperator, right: bool, names_matter: bool) {
+    /// Operand of a set operation of `parent`, on the right side or not,
+    /// ending the query when `trailing`. A locked operand is written between
+    /// parentheses, its locking clauses inside, unless it ends the query
+    /// without parentheses: its clauses then follow the `ORDER BY` and the
+    /// `LIMIT` of the query, which lock the same rows.
+    fn set_operand(
+        &mut self,
+        plan: &Plan,
+        parent: SetOperator,
+        right: bool,
+        names_matter: bool,
+        trailing: bool,
+    ) {
+        if let Plan::Lock(lock) = plan {
+            if trailing && !self.operand_parenthesized(&lock.input, parent, right, names_matter) {
+                self.lock_end = LockEnd::Lift;
+                self.query(plan, names_matter);
+            } else {
+                self.write("(");
+                self.query(plan, names_matter);
+                self.write(")");
+            }
+            return;
+        }
         let nested = self
             .written_set_operator(plan, names_matter)
             .map(precedence);
-        let parenthesized = match nested {
-            Some(level) if right => level <= precedence(parent),
-            Some(level) => level < precedence(parent),
-            None => match plan {
-                Plan::With(_) | Plan::Sort(_) | Plan::Limit(_) => true,
-                _ => Block::fold(plan)
-                    .is_some_and(|block| block.sort.is_some() || block.limit.is_some()),
-            },
-        };
-        if !parenthesized {
+        if !self.operand_parenthesized(plan, parent, right, names_matter) {
+            // A set operation without parentheses: its last operand ends
+            // the query when this one does.
+            self.lock_end = if trailing {
+                LockEnd::Lift
+            } else {
+                LockEnd::Avoid
+            };
             self.query(plan, names_matter);
             return;
         }
@@ -733,6 +803,29 @@ impl Emitter<'_> {
         self.write("(");
         self.query(plan, names_matter);
         self.write(")");
+    }
+
+    /// Tells whether `plan`, an operand of a set operation of `parent` on
+    /// the right side or not, is written between parentheses.
+    fn operand_parenthesized(
+        &self,
+        plan: &Plan,
+        parent: SetOperator,
+        right: bool,
+        names_matter: bool,
+    ) -> bool {
+        let nested = self
+            .written_set_operator(plan, names_matter)
+            .map(precedence);
+        match nested {
+            Some(level) if right => level <= precedence(parent),
+            Some(level) => level < precedence(parent),
+            None => match plan {
+                Plan::With(_) | Plan::Sort(_) | Plan::Limit(_) | Plan::Lock(_) => true,
+                _ => Block::fold(plan)
+                    .is_some_and(|block| block.sort.is_some() || block.limit.is_some()),
+            },
+        }
     }
 
     /// Set operator `plan` is written with at its top, if any: a set

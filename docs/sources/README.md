@@ -38,3 +38,5 @@ the URL of the document it comes from. A page is never kept raw.
   `https://mariadb.com/docs/llms.txt`.
 - `mariadb/MDEV-<n>.md`: ticket of MariaDB, its fix versions and what it was
   consulted for.
+- `mariadb/<subject>.md`: excerpts on a subject: tickets of MariaDB, pages of
+  the documentation.

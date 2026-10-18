@@ -795,6 +795,129 @@ constructs:
       The release notes of 8.0.18 change the evaluation of `UNION ALL ...
       LIMIT` ("evaluated an excessive number of rows", Bug #79340) without
       naming `FOUND_ROWS()`.
+  # Locking clauses (crates/probe/cases/locking.sql, measured on each local
+  # image, 8.0.11 to 9.3.0; docs/sources/mysql/locking-reads.md): `FOR
+  # UPDATE`, `FOR SHARE` and `LOCK IN SHARE MODE` after the `LIMIT`, `OF`,
+  # `NOWAIT` and `SKIP LOCKED` after `FOR` only, from 8.0.1 (WL #8919, WL
+  # #3597), before the first version measured.
+  - id: lock_share
+    since: "8.0.1"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-1.html
+    comment: >-
+      `SELECT a FROM t FOR SHARE`, the same lock as `LOCK IN SHARE MODE`,
+      which the manual keeps for compatibility.
+  - id: lock_of
+    since: "8.0.1"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-1.html
+    comment: >-
+      `SELECT p.a FROM t AS p JOIN u AS q ON q.id = p.id FOR UPDATE OF p`:
+      the tables of the block by their alias, or their name without alias
+      (`OF t`, `OF db.t`), the case compared as written (`OF T` refused,
+      error 3568, on a server with case-sensitive names); a common table
+      expression read by the block, not a derived table (error 3569), nor a
+      table of a subquery (error 3568). `OF` is reserved from 8.0.1.
+  - id: lock_clauses
+    since: "8.0.1"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-1.html
+    comment: >-
+      `... FOR UPDATE OF p FOR SHARE OF q`: each table in one clause only,
+      a clause without `OF` alone (error 3569, `FOR UPDATE FOR UPDATE` and
+      `FOR UPDATE LOCK IN SHARE MODE` included).
+  - id: lock_nowait
+    since: "8.0.1"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-1.html
+    comment: >-
+      `FOR UPDATE NOWAIT`, `FOR SHARE OF t NOWAIT`; refused after `LOCK IN
+      SHARE MODE` (error 1064), as is `SKIP LOCKED`.
+  - id: lock_skip_locked
+    since: "8.0.1"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-1.html
+    comment: >-
+      `FOR UPDATE SKIP LOCKED`, `FOR SHARE SKIP LOCKED`; never with
+      `NOWAIT`.
+  - id: parenthesized_lock
+    since: "8.0.31"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-31.html
+    comment: >-
+      `(SELECT a FROM t) FOR UPDATE`, `((SELECT a FROM t)) FOR UPDATE`,
+      `(SELECT a FROM t UNION SELECT b FROM u) FOR UPDATE`, in a subquery
+      and a derived table too: error 1064 up to 8.0.30 (1248 for a derived
+      table), accepted from 8.0.31 (WL #11350, the parentheses of the query
+      expressions). An `ORDER BY` or a `LIMIT` after the parentheses lets
+      every version read it: `(SELECT a FROM t) ORDER BY a FOR UPDATE`.
+  - id: parenthesized_operand_lock
+    since: "8.0.1"
+    source: https://dev.mysql.com/doc/refman/8.0/en/select.html
+    comment: >-
+      `SELECT a FROM t UNION (SELECT b FROM u LIMIT 1) FOR UPDATE`,
+      `(SELECT a FROM t) UNION (SELECT b FROM u) FOR UPDATE`: accepted in
+      every version measured, the clause locking the tables of the last
+      operand.
+  # Rows locked by a locking clause next to a query between parentheses
+  # (crates/probe/cases/locking-scope.sql, trx_rows_locked measured on each
+  # local image, 8.0.11 to 9.3.0; `locking` module): a clause after the outer
+  # `ORDER BY` or `LIMIT` locks the rows of the query between parentheses
+  # when the server joins the outer clauses to its own, none otherwise.
+  - id: parenthesized_limit_lock
+    since: "8.0.1"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-1.html
+    comment: >-
+      `(SELECT a FROM t LIMIT 2) LIMIT 1 FOR UPDATE` locks the rows of `t`
+      read, `(SELECT a FROM t LIMIT 2) FOR UPDATE` too from 8.0.31
+      (`parenthesized_lock`), in every version measured; none in MariaDB.
+  - id: parenthesized_set_limit_lock
+    since: "8.0.1"
+    until: "8.0.18"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-1.html
+    comment: >-
+      `(SELECT a FROM t UNION SELECT b FROM u ORDER BY 1 LIMIT 3) LIMIT 2
+      FOR UPDATE` locks the rows of `u` up to 8.0.17, none in 8.0.18; 8.0.19
+      to 8.0.30 refuse the query (error 1235, `parenthesized_set_limit`).
+  - id: parenthesized_set_limit_lock
+    since: "8.0.31"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-31.html
+    comment: >-
+      As up to 8.0.17, `(SELECT a FROM t UNION SELECT b FROM u LIMIT 4) FOR
+      UPDATE` included.
+  - id: parenthesized_order_lock
+    since: "8.0.18"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-18.html
+    comment: >-
+      `(SELECT a FROM t LIMIT 2) ORDER BY a FOR UPDATE`, `(SELECT a FROM t
+      ORDER BY a) ORDER BY a DESC FOR UPDATE`, over a set operation with its
+      own `ORDER BY` or `LIMIT` too: no row locked up to 8.0.17, those of the
+      query between parentheses from 8.0.18; the release notes of 8.0.18
+      say nothing of it.
+  - id: parenthesized_set_order_lock
+    since: "8.0.18"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-18.html
+    comment: >-
+      `(SELECT a FROM t UNION SELECT b FROM u) ORDER BY a FOR UPDATE` locks
+      the rows of `u` from 8.0.18, none up to 8.0.17, as with an outer
+      `LIMIT` after the `ORDER BY`.
+  - id: parenthesized_inner_lock
+    since: "8.0.19"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-19.html
+    comment: >-
+      `(SELECT a FROM t FOR UPDATE) LIMIT 1`, `(SELECT a FROM t UNION SELECT
+      b FROM u FOR UPDATE) LIMIT 4`: no row locked up to 8.0.18, the outer
+      `LIMIT` dropping the clause (Bug #30521098); an outer `ORDER BY` keeps
+      it in every version.
+  - id: parenthesized_locked_limit
+    since: "8.0.1"
+    until: "8.0.19"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-1.html
+    comment: >-
+      `(SELECT a FROM t ORDER BY a) LIMIT 2 FOR UPDATE`, `(SELECT a FROM t
+      ORDER BY a FOR UPDATE) LIMIT 1`: every row from 8.0.19 to 8.0.25, the
+      outer `LIMIT` left aside, the rows bounded before and after; with an
+      outer `ORDER BY`, a `LIMIT` between the parentheses, or without
+      `ORDER BY` between them, the rows bounded in every version. The
+      release notes of 8.0.19 and 8.0.26 say nothing of it.
+  - id: parenthesized_locked_limit
+    since: "8.0.26"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-26.html
+    comment: As up to 8.0.18.
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:

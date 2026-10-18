@@ -959,7 +959,6 @@ fn a_word_of_value_calls_its_function_without_parentheses() {
 fn constructs_not_read_yet_are_explicit_errors() {
     for (text, faulty) in [
         ("SELECT WEIGHT_STRING(a AS CHAR(3)) FROM t", "WEIGHT_STRING"),
-        ("SELECT a FROM t FOR UPDATE", "FOR"),
         ("SELECT GROUP_CONCAT(a LIMIT 1) FROM t", "LIMIT"),
         (
             "SELECT x FROM JSON_TABLE('[1]', '$[*]' COLUMNS (x INT PATH '$')) AS j",
@@ -1977,4 +1976,188 @@ fn the_options_of_the_first_select_only_are_refused_elsewhere() {
             "{text}"
         );
     }
+}
+
+/// Locking clauses of `text`, each one written `strength form [tables]
+/// wait`.
+fn locks(text: &str, options: &ParseOptions) -> Vec<String> {
+    let name = |name: &ObjectName| {
+        let parts: Vec<&str> = name.parts.iter().map(|part| part.value.as_str()).collect();
+        parts.join(".")
+    };
+    (query(text, options).locks.iter())
+        .map(|lock| {
+            let tables: Vec<String> = lock.tables.iter().map(name).collect();
+            format!(
+                "{:?} {:?} [{}] {:?}",
+                lock.strength,
+                lock.form,
+                tables.join(", "),
+                lock.wait
+            )
+        })
+        .collect()
+}
+
+#[test]
+fn reads_the_locking_clauses_of_each_dialect() {
+    for (text, expected) in [
+        ("SELECT a FROM t FOR UPDATE", vec!["Update For [] Wait"]),
+        (
+            "SELECT a FROM t ORDER BY a LIMIT 1 for share of t, db.u skip locked",
+            vec!["Share For [t, db.u] SkipLocked"],
+        ),
+        (
+            "SELECT a FROM t LOCK IN SHARE MODE",
+            vec!["Share ShareMode [] Wait"],
+        ),
+        (
+            "SELECT p.a FROM t AS p, u AS q FOR UPDATE OF p NOWAIT FOR SHARE OF q",
+            vec!["Update For [p] NoWait", "Share For [q] Wait"],
+        ),
+        (
+            "SELECT a FROM t FOR /* x */ UPDATE SKIP /* y */ LOCKED",
+            vec!["Update For [] SkipLocked"],
+        ),
+        (
+            "(SELECT a FROM t) ORDER BY a FOR UPDATE",
+            vec!["Update For [] Wait"],
+        ),
+    ] {
+        assert_eq!(locks(text, &mysql()), expected, "{text}");
+    }
+    for (text, expected) in [
+        (
+            "SELECT a FROM t FOR UPDATE WAIT 0.5",
+            "Update For [] Seconds(\"0.5\")",
+        ),
+        (
+            "SELECT a FROM t LOCK IN SHARE MODE NOWAIT",
+            "Share ShareMode [] NoWait",
+        ),
+        (
+            "SELECT a FROM t LOCK IN SHARE MODE WAIT 0x2",
+            "Share ShareMode [] Seconds(\"0x2\")",
+        ),
+        (
+            "SELECT a FROM t FOR UPDATE WAIT 1e1",
+            "Update For [] Seconds(\"1e1\")",
+        ),
+        (
+            "SELECT a FROM t LOCK IN SHARE MODE SKIP LOCKED",
+            "Share ShareMode [] SkipLocked",
+        ),
+    ] {
+        assert_eq!(locks(text, &mariadb()), [expected], "{text}");
+    }
+    for text in [
+        "SELECT a FROM t WHERE a IN (SELECT b FROM u FOR UPDATE) FOR UPDATE",
+        "SELECT * FROM (SELECT a FROM t LIMIT 1 FOR UPDATE) AS d",
+        "WITH c AS (SELECT a FROM t FOR UPDATE) SELECT a FROM c",
+        "(SELECT a FROM t FOR UPDATE) UNION (SELECT b FROM u LOCK IN SHARE MODE)",
+        "(SELECT a FROM t LIMIT 1) UNION SELECT b FROM u FOR UPDATE",
+        "SELECT a FROM t AS share FOR UPDATE",
+    ] {
+        assert!(parse(text, &mysql()).is_ok(), "{text}");
+        assert!(parse(text, &mariadb()).is_ok(), "{text}");
+    }
+}
+
+#[test]
+fn refuses_the_locking_clauses_each_dialect_refuses() {
+    let mariadb_10_5 = ParseOptions {
+        version: Version::new(10, 5, 29),
+        conditional_version: Version::new(10, 5, 29),
+        ..mariadb()
+    };
+    for (text, options, message, at) in [
+        (
+            "SELECT a FROM t FOR SHARE",
+            mariadb(),
+            "`FOR SHARE`: absent from MariaDB",
+            "FOR SHARE",
+        ),
+        (
+            "SELECT a FROM t FOR UPDATE OF t",
+            mariadb(),
+            "`OF` in a locking clause: absent from MariaDB",
+            "OF",
+        ),
+        (
+            "SELECT a FROM t FOR UPDATE LOCK IN SHARE MODE",
+            mariadb(),
+            "several locking clauses: absent from MariaDB",
+            "LOCK IN SHARE MODE",
+        ),
+        (
+            "SELECT a FROM t FOR UPDATE WAIT 1",
+            mysql(),
+            "`WAIT n` in a locking clause: absent from MySQL",
+            "WAIT",
+        ),
+        (
+            "SELECT a FROM t LOCK IN SHARE MODE NOWAIT",
+            mysql(),
+            "`NOWAIT`, `SKIP LOCKED` or `WAIT` after `LOCK IN SHARE MODE`: absent from MySQL",
+            "NOWAIT",
+        ),
+        (
+            "SELECT a FROM t FOR UPDATE SKIP LOCKED",
+            mariadb_10_5,
+            "`SKIP LOCKED`: from MariaDB 10.6.0, chosen version 10.5.29",
+            "SKIP LOCKED",
+        ),
+        (
+            "(SELECT a FROM t) FOR UPDATE",
+            mysql_at(8, 0, 30),
+            "a locking clause right after a query between parentheses: from MySQL 8.0.31, \
+             chosen version 8.0.30",
+            "FOR UPDATE",
+        ),
+        (
+            "SELECT a FROM t UNION (SELECT b FROM u LIMIT 1) FOR UPDATE",
+            mariadb(),
+            "a locking clause after a set operation whose last operand is between parentheses: \
+             absent from MariaDB",
+            "FOR UPDATE",
+        ),
+        (
+            "SELECT a FROM t FOR UPDATE WAIT '1'",
+            mariadb(),
+            "expected a number of seconds, found `'1'`",
+            "'1'",
+        ),
+        (
+            "SELECT a FROM t FOR UPDATE LIMIT 1",
+            mysql(),
+            "expected the end of the query, found `LIMIT`",
+            "LIMIT",
+        ),
+        (
+            "SELECT a FROM t FOR UPDATE UNION SELECT 1",
+            mariadb(),
+            "expected the end of the query, found `UNION`",
+            "UNION",
+        ),
+        (
+            "SELECT a FROM t FOR UPDATE NOWAIT SKIP LOCKED",
+            mysql(),
+            "expected the end of the query, found `SKIP`",
+            "SKIP",
+        ),
+        (
+            "SELECT a FROM t FOR UPDATE INTO @x",
+            mysql(),
+            "`INTO` clause: not supported yet by the parser of Prisme",
+            "INTO",
+        ),
+    ] {
+        assert_eq!(
+            error(text, &options),
+            (message.to_string(), at.to_string()),
+            "{text}"
+        );
+    }
+    assert!(parse("(SELECT a FROM t) FOR UPDATE", &mysql_at(8, 0, 31)).is_ok());
+    assert!(parse("(SELECT a FROM t) LIMIT 1 FOR UPDATE", &mysql_at(8, 0, 30)).is_ok());
 }

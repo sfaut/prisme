@@ -10,12 +10,16 @@
 
 mod aggregate;
 mod join;
+mod lock;
 mod set;
 mod source;
 mod unary;
 
 pub use aggregate::{Aggregate, AggregateCall, NamedAggregate, OnEmpty};
 pub use join::{Join, JoinForm, JoinKind, JoinUsing};
+pub use lock::{
+    BlockTable, BlockTableKind, Lock, LockClause, LockForm, LockStrength, LockWait, block_tables,
+};
 pub use set::{SetOperation, SetOperator};
 pub use source::{
     Cte, CtePart, CteRef, Derived, IndexHint, IndexHintAction, IndexHintScope, Scan, TableAlias,
@@ -55,6 +59,8 @@ pub enum Plan {
     Sort(Sort),
     /// Part of the rows (`LIMIT`, `OFFSET`).
     Limit(Limit),
+    /// Rows of a query block read with locks (`FOR UPDATE`).
+    Lock(Lock),
     /// Rows without duplicates (`DISTINCT`), NULLs being identical.
     Distinct(Distinct),
     /// Join of two inputs.
@@ -79,6 +85,7 @@ impl Plan {
             Self::Window(window) => window.schema(),
             Self::Sort(sort) => sort.input.schema(),
             Self::Limit(limit) => limit.input.schema(),
+            Self::Lock(lock) => lock.input.schema(),
             Self::Distinct(distinct) => distinct.input.schema(),
             Self::Join(join) => join.schema(),
             Self::SetOperation(operation) => operation.schema.clone(),
@@ -101,6 +108,7 @@ impl Plan {
             Self::Window(window) => window.span,
             Self::Sort(sort) => sort.span,
             Self::Limit(limit) => limit.span,
+            Self::Lock(lock) => lock.input.span(),
             Self::Distinct(distinct) => distinct.span,
             Self::Join(join) => join.span,
             Self::SetOperation(operation) => operation.span,

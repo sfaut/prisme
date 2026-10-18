@@ -512,6 +512,75 @@ constructs:
   - id: offset_fetch
     since: "10.6.0"
     source: https://mariadb.com/kb/en/select-offset-fetch/
+  # Locking clauses (crates/probe/cases/locking.sql, measured on each local
+  # image, 10.5.29 to 11.8.9; docs/sources/mariadb/locking-reads.md): `FOR
+  # UPDATE` and `LOCK IN SHARE MODE` after the `LIMIT`, one clause, without
+  # `FOR SHARE` nor `OF` (error 1064), each one followed by `WAIT n`,
+  # `NOWAIT` or `SKIP LOCKED`.
+  - id: lock_nowait
+    since: "10.3.0"
+    source: https://jira.mariadb.org/browse/MDEV-11379
+    comment: >-
+      `FOR UPDATE NOWAIT`, `LOCK IN SHARE MODE NOWAIT`, the same as `WAIT 0`
+      by the documentation.
+  - id: lock_wait_seconds
+    since: "10.3.0"
+    source: https://jira.mariadb.org/browse/MDEV-11379
+    comment: >-
+      `FOR UPDATE WAIT 2`: the timeout of the locks of the statement, in
+      seconds; the number an integer, a decimal, an approximate or a
+      hexadecimal number (`WAIT 0.5`, `WAIT 1e1`, `WAIT 0x2`), a string
+      refused, as is `WAIT` alone (error 1064); beyond 2^32 - 1, two
+      warnings.
+  - id: share_mode_options
+    since: "10.3.0"
+    source: https://jira.mariadb.org/browse/MDEV-11379
+    comment: >-
+      `LOCK IN SHARE MODE WAIT 1`, `LOCK IN SHARE MODE NOWAIT`, `LOCK IN
+      SHARE MODE SKIP LOCKED` from 10.6.0 (`lock_skip_locked`).
+  - id: lock_skip_locked
+    since: "10.6.0"
+    source: https://jira.mariadb.org/browse/MDEV-13115
+    comment: >-
+      `FOR UPDATE SKIP LOCKED`, `LOCK IN SHARE MODE SKIP LOCKED`: refused
+      on 10.5.29 (error 1064), accepted from 10.6.16; never with `WAIT` or
+      `NOWAIT`, which it implies (MDEV-25433).
+  - id: parenthesized_lock
+    since: "10.4.0"
+    source: https://jira.mariadb.org/browse/MDEV-11953
+    comment: >-
+      `(SELECT a FROM t) FOR UPDATE`, `(SELECT a FROM t UNION SELECT b FROM
+      u) FOR UPDATE`, in a subquery and a derived table too: accepted on
+      each local image, 10.5.29 to 11.8.9, dated by the grammar of the
+      parentheses.
+  # Rows locked by a locking clause next to a query between parentheses
+  # (crates/probe/cases/locking-scope.sql, trx_rows_locked measured on each
+  # local image, 10.5.29 to 11.8.9; `locking` module): a clause after the
+  # outer `ORDER BY` or `LIMIT` locks no row when the query between
+  # parentheses has its own `LIMIT` (`(SELECT a FROM t LIMIT 2) FOR UPDATE`
+  # included), or an `ORDER BY` as the outer query; those of that query
+  # otherwise.
+  - id: parenthesized_set_order_lock
+    since: "10.4.0"
+    source: https://jira.mariadb.org/browse/MDEV-11953
+    comment: >-
+      `(SELECT a FROM t UNION SELECT b FROM u) ORDER BY a FOR UPDATE` locks
+      the rows of `u`, as with an outer `LIMIT`; measured on each local
+      image, 10.5.29 to 11.8.9, dated by the grammar of the parentheses.
+  - id: parenthesized_inner_lock
+    since: "10.4.0"
+    source: https://jira.mariadb.org/browse/MDEV-11953
+    comment: >-
+      `(SELECT a FROM t FOR UPDATE) LIMIT 1` locks the rows of `t` read, a
+      clause at the end of any query between parentheses too, whatever
+      follows; measured on each local image, 10.5.29 to 11.8.9.
+  - id: parenthesized_locked_limit
+    since: "10.4.0"
+    source: https://jira.mariadb.org/browse/MDEV-11953
+    comment: >-
+      `(SELECT a FROM t ORDER BY a FOR UPDATE) LIMIT 1` gives one row, as
+      `(SELECT a FROM t ORDER BY a) LIMIT 1 FOR UPDATE`; measured on each
+      local image, 10.5.29 to 11.8.9.
   # Targets of `CAST` and `CONVERT` (crates/probe/cases/cast-forms.txt, measured on
   # 10.6.28 and 11.8.9, and cast-bounds.txt, on 10.6.28, 10.10.7, 10.11.19 and
   # 11.8.9). Available at the floor, checked on 10.6.28, but the types `INET4`

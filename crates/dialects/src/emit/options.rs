@@ -129,6 +129,7 @@ fn union_all(operation: &SetOperation) -> bool {
 fn head_project(plan: &Plan) -> Option<&Project> {
     match plan {
         Plan::SetOperation(operation) => head_project(&operation.left),
+        Plan::Lock(lock) => head_project(&lock.input),
         Plan::Limit(limit) if Block::fold(plan).is_none() => head_project(&limit.input),
         Plan::Sort(sort) if Block::fold(plan).is_none() => head_project(&sort.input),
         _ => Block::fold(plan).map(|block| block.project),
