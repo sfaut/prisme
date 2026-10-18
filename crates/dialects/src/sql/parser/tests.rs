@@ -68,8 +68,8 @@ fn error(text: &str, options: &ParseOptions) -> (String, String) {
 fn literal_tree(literal: &Literal) -> String {
     match literal {
         Literal::Integer(text) | Literal::Decimal(text) | Literal::Float(text) => text.clone(),
-        Literal::String(value) => format!("'{value}'"),
-        Literal::National(value) => format!("N'{value}'"),
+        Literal::String(strings) => format!("'{}'", strings.value),
+        Literal::National(strings) => format!("N'{}'", strings.value),
         Literal::Introduced { charset, literal } => format!("_{charset}{}", literal_tree(literal)),
         Literal::Null => "NULL".to_string(),
         Literal::True => "TRUE".to_string(),

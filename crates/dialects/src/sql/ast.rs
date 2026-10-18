@@ -739,10 +739,10 @@ pub enum Literal {
     /// Approximate number, as written.
     Float(String),
     /// String, adjacent strings joined (`'a' 'b'` is `'ab'`).
-    String(String),
+    String(Strings),
     /// National string, `N'...'`, adjacent strings joined: a string of the
     /// character set `utf8mb3`.
-    National(String),
+    National(Strings),
     /// String after a character set introducer (`_latin1'abc'`).
     Introduced {
         /// Character set, in lower case.
@@ -764,6 +764,24 @@ pub enum Literal {
         /// String, as written.
         value: String,
     },
+}
+
+/// Value of adjacent strings (`'a' 'b'`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Strings {
+    /// Value, the strings joined.
+    pub value: String,
+    /// Length in bytes of the value of the first string, which names a
+    /// column without alias in MySQL (`'a' 'b'` is named `a`, `ab` in
+    /// MariaDB).
+    pub first: usize,
+}
+
+impl Strings {
+    /// Value of the first string.
+    pub fn first(&self) -> &str {
+        &self.value[..self.first]
+    }
 }
 
 /// Type of a typed literal.

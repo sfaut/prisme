@@ -15,7 +15,7 @@ use prisme_types::{DataType, Decimal, IntegerSize, IntegerType, Type, Value};
 
 use super::scope::Scope;
 use super::{BuildError, Builder, as_predicate, plan_error, temporal, types};
-use crate::sql::ast::{self, BinaryOp, ExprKind, Literal, UnaryOp};
+use crate::sql::ast::{self, BinaryOp, ExprKind, Literal, Strings, UnaryOp};
 
 /// Operator of the plan for a binary operator of the tree.
 enum Operator {
@@ -477,18 +477,18 @@ impl Builder<'_> {
                 }
                 Expr::literal(Value::Float(value), types::double())
             }
-            Literal::String(value) => {
+            Literal::String(Strings { value, .. }) => {
                 Expr::literal(Value::Text(value.clone()), types::string_literal(value))
             }
-            Literal::National(value) => {
+            Literal::National(Strings { value, .. }) => {
                 Expr::literal(Value::Text(value.clone()), types::national_string(value))
             }
             Literal::Introduced { charset, literal } => match literal.as_ref() {
-                Literal::String(value) if charset == "binary" => Expr::literal(
+                Literal::String(Strings { value, .. }) if charset == "binary" => Expr::literal(
                     Value::Binary(value.as_bytes().to_vec()),
                     types::byte_string(value.len()),
                 ),
-                Literal::String(value) => Expr::literal(
+                Literal::String(Strings { value, .. }) => Expr::literal(
                     Value::Text(value.clone()),
                     types::introduced_string(charset, value),
                 ),

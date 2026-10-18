@@ -13,7 +13,7 @@
 use super::{ParseError, Parser};
 use crate::charsets::is_charset;
 use crate::lexer::TokenKind;
-use crate::sql::ast::{Expr, ExprKind, Literal};
+use crate::sql::ast::{Expr, ExprKind, Literal, Strings};
 
 impl Parser<'_> {
     /// Tells whether the next token is a character set introducer.
@@ -33,7 +33,7 @@ impl Parser<'_> {
         let word = self.advance().expect("an introducer comes next");
         let charset = word.text(self.text)[1..].to_ascii_lowercase();
         let literal = match self.peek().map(|token| &token.kind) {
-            Some(TokenKind::String { .. }) => Literal::String(self.strings()),
+            Some(TokenKind::String { .. }) => Literal::String(self.strings(None)),
             Some(
                 TokenKind::HexString(_)
                 | TokenKind::HexNumber(_)
@@ -59,19 +59,23 @@ impl Parser<'_> {
         let Some(TokenKind::NationalString(first)) = self.advance().map(|token| token.kind) else {
             unreachable!("a national string comes next");
         };
-        let value = first + &self.strings();
-        leaf(Literal::National(value), self.span_from(start))
+        let strings = self.strings(Some(first));
+        leaf(Literal::National(strings), self.span_from(start))
     }
 
-    /// Strings that follow, joined; empty when none follows.
-    pub(super) fn strings(&mut self) -> String {
-        let mut value = String::new();
+    /// The string `first`, when read already, and the strings that follow,
+    /// joined.
+    pub(super) fn strings(&mut self, first: Option<String>) -> Strings {
+        let mut parts: Vec<String> = first.into_iter().collect();
         while let Some(TokenKind::String { value: part, .. }) = self.peek().map(|token| &token.kind)
         {
-            value.push_str(part);
+            parts.push(part.clone());
             self.pos += 1;
         }
-        value
+        Strings {
+            first: parts.first().map_or(0, String::len),
+            value: parts.concat(),
+        }
     }
 }
 

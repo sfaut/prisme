@@ -227,6 +227,37 @@ fn an_implicit_name_is_kept_by_an_alias() {
 }
 
 #[test]
+fn adjacent_strings_keep_the_name_of_the_input() {
+    // MySQL names a column of adjacent strings after the first, MariaDB
+    // after their value.
+    for (input, target, expected) in [
+        (
+            mysql(),
+            mariadb(),
+            "SELECT 'a' 'b' AS `a`, N'c' 'd' AS `c`, _binary'e' 'f' AS `e`, 'g' AS v FROM t",
+        ),
+        (
+            mariadb(),
+            mysql(),
+            "SELECT 'a' 'b' AS `ab`, N'c' 'd' AS `cd`, _binary'e' 'f' AS `ef`, 'g' AS v FROM t",
+        ),
+    ] {
+        let (sql, _) = transpiled(
+            "SELECT 'a' 'b', N'c' 'd', _binary'e' 'f', 'g' AS v FROM t",
+            input,
+            output(target),
+        );
+        assert_eq!(sql, expected);
+    }
+    for input in [mysql(), mariadb()] {
+        let text = "SELECT 'a' 'b', _latin1'c' 'd', _binary'e' 'f', 'g' FROM t";
+        let (sql, rules) = transpiled(text, input, output(input));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty());
+    }
+}
+
+#[test]
 fn values_whose_names_change_become_a_union() {
     let (sql, rules) = transpiled(
         "VALUES ROW(1, 'x'), ROW(2, 'y')",

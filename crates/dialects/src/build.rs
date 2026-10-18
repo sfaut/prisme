@@ -535,7 +535,10 @@ impl Builder<'_> {
                     let built = self.value(expr, scope)?;
                     let (name, form) = match alias {
                         Some(alias) => (alias.name.clone(), alias.form),
-                        None => (implicit_name(expr, self.text), AliasForm::Implicit),
+                        None => (
+                            implicit_name(expr, self.text, self.dialect),
+                            AliasForm::Implicit,
+                        ),
                     };
                     outputs.push(Output {
                         alias: alias.as_ref().map(|alias| alias.name.clone()),
@@ -645,7 +648,7 @@ impl Builder<'_> {
                 .collect(),
             Dialect::MariaDb => first
                 .iter()
-                .map(|value| implicit_name(value, self.text))
+                .map(|value| implicit_name(value, self.text, Dialect::MariaDb))
                 .collect(),
         };
         let data_types = (0..first.len())
@@ -875,22 +878,25 @@ pub(crate) fn is_dual(plan: &Plan) -> bool {
     matches!(plan, Plan::Values(values) if values.schema.is_empty() && values.rows.len() == 1)
 }
 
-/// Name the MySQL family gives to a column without alias: the name of a
-/// column, the value of a string, national or introduced (`N'a'` and
-/// `_latin1'a'` are named `a`), the text written otherwise.
-fn implicit_name(expr: &ast::Expr, text: &str) -> Ident {
-    match &expr.kind {
-        ExprKind::Column(name) => name.parts[name.parts.len() - 1].clone(),
-        ExprKind::Literal(Literal::String(value) | Literal::National(value)) => {
-            Ident::new(value.clone())
-        }
+/// Name `dialect` gives to a column without alias: the name of a column,
+/// the value of a string, national or introduced (`N'a'` and `_latin1'a'`
+/// are named `a`), of its first string in MySQL (`'a' 'b'` is named `a`,
+/// `ab` in MariaDB), the text written otherwise.
+fn implicit_name(expr: &ast::Expr, text: &str, dialect: Dialect) -> Ident {
+    let string = match &expr.kind {
+        ExprKind::Column(name) => return name.parts[name.parts.len() - 1].clone(),
+        ExprKind::Literal(Literal::String(strings) | Literal::National(strings)) => strings,
         ExprKind::Literal(Literal::Introduced { literal, .. })
-            if let Literal::String(value) = literal.as_ref() =>
+            if let Literal::String(strings) = literal.as_ref() =>
         {
-            Ident::new(value.clone())
+            strings
         }
-        _ => Ident::new(&text[expr.span.start..expr.span.end]),
-    }
+        _ => return Ident::new(&text[expr.span.start..expr.span.end]),
+    };
+    Ident::new(match dialect {
+        Dialect::MySql => string.first(),
+        Dialect::MariaDb => &string.value,
+    })
 }
 
 /// Predicate from an expression: a number becomes a boolean, true when not

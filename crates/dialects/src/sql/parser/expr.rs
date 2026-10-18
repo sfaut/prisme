@@ -497,9 +497,9 @@ impl Parser<'_> {
     /// Strings in a row, joined into one (`'a' 'b'` is `'ab'`).
     fn string(&mut self) -> Expr {
         let start = self.here().start;
-        let value = self.strings();
+        let strings = self.strings(None);
         leaf(
-            ExprKind::Literal(Literal::String(value)),
+            ExprKind::Literal(Literal::String(strings)),
             self.span_from(start),
         )
     }

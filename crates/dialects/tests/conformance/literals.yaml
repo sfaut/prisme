@@ -10,6 +10,12 @@ cases:
     sql: SELECT N'a', _latin1'é', _binary'c', N'', _latin1 'd'
   - from: mariadb
     sql: SELECT N'a', _latin1'é', _binary'c', N'', _latin1 'd'
+  # Adjacent strings, named after the first in MySQL, after their value in
+  # MariaDB.
+  - from: mysql
+    sql: SELECT 'a' 'b', N'c' 'd', _latin1'e' 'f', '' 'g', _binary'h' /* x */ 'i'
+  - from: mariadb
+    sql: SELECT 'a' 'b', N'c' 'd', _latin1'e' 'f', '' 'g', _binary'h' /* x */ 'i'
   - from: mysql
     sql: >-
       SELECT N'a' 'b' AS a, HEX(_latin1'é') AS b, N'ß' = N'ss' AS c, N'a' = N'a ' AS d,

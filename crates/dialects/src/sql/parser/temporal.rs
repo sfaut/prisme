@@ -56,14 +56,10 @@ impl Parser<'_> {
             ));
         }
         self.advance();
-        let strings = self.here().start;
-        let mut value = String::new();
-        while let Some(TokenKind::String { value: part, .. }) = self.peek().map(|token| &token.kind)
-        {
-            value.push_str(part);
-            self.advance();
-        }
-        let strings = self.span_from(strings);
+        let strings_start = self.here().start;
+        let strings = self.strings(None);
+        let value = strings.value.clone();
+        let span = self.span_from(strings_start);
         self.expect_punct(Punct::RightBrace)?;
         let kind = match letter.as_str() {
             "d" => Some(TemporalKind::Date),
@@ -95,7 +91,7 @@ impl Parser<'_> {
                 Literal::Temporal { kind, value },
                 self.span_from(start.start),
             ),
-            None => leaf(Literal::String(value), strings),
+            None => leaf(Literal::String(strings), span),
         })
     }
 }

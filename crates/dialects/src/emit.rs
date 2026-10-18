@@ -602,9 +602,9 @@ impl Emitter<'_> {
             {
                 column.name.value.clone()
             }
-            prisme_plan::ExprKind::Literal(Value::Text(value)) => value.clone(),
-            prisme_plan::ExprKind::Literal(Value::Binary(bytes)) => {
-                literal::bytes_name(text, bytes)
+            prisme_plan::ExprKind::Literal(Value::Text(value)) => self.string_name(text, value),
+            prisme_plan::ExprKind::Literal(Value::Binary(bytes)) if literal::is_string(text) => {
+                self.string_name(text, &String::from_utf8_lossy(bytes))
             }
             _ => text.to_string(),
         };

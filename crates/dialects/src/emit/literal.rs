@@ -22,7 +22,9 @@ use prisme_plan::Expr;
 use prisme_types::DataType;
 
 use super::Emitter;
+use crate::Dialect;
 use crate::charsets::{default_collation, is_charset};
+use crate::lexer::{LexerOptions, TokenKind, tokenize};
 
 impl Emitter<'_> {
     /// Records the error of the introduced string `expr` that the output
@@ -74,22 +76,38 @@ impl Emitter<'_> {
             .unwrap_or_else(|| format!("_{charset}"));
         format!("{prefix}{}", self.string(value))
     }
+
+    /// Name the output gives to the string `text` written, of `value`,
+    /// without alias: the value of its first string in MySQL (`'a' 'b'` is
+    /// named `a`), its value in MariaDB.
+    pub(super) fn string_name(&self, text: &str, value: &str) -> String {
+        let options = LexerOptions {
+            dialect: self.output.dialect,
+            version: self.output.version,
+            mode: self.output.mode,
+        };
+        let first = tokenize(text, &options).ok().and_then(|tokens| {
+            tokens.into_iter().find_map(|token| match token.kind {
+                TokenKind::String { value, .. } | TokenKind::NationalString(value) => Some(value),
+                _ => None,
+            })
+        });
+        match (self.output.dialect, first) {
+            (Dialect::MySql, Some(first)) => first,
+            _ => value.to_string(),
+        }
+    }
 }
 
-/// Name the MySQL family gives to the byte string `text` written, of
-/// `bytes`, without alias: its value for a string (`_binary'c'` is named
-/// `c`), its text for a hexadecimal or bit literal (`_binary X'63'`).
-pub(super) fn bytes_name(text: &str, bytes: &[u8]) -> String {
-    let string = text.find(['\'', '"']).is_some_and(|quote| {
+/// Tells whether the byte string `text` is written as a string
+/// (`_binary'c'`), named after its value, rather than a hexadecimal or bit
+/// literal (`_binary X'63'`), named after its text.
+pub(super) fn is_string(text: &str) -> bool {
+    text.find(['\'', '"']).is_some_and(|quote| {
         let before = text[..quote].trim_end();
         let last = before
             .rsplit(|c: char| c.is_whitespace() || c == '/')
             .next();
         !matches!(last, Some("X" | "x" | "B" | "b"))
-    });
-    if string {
-        String::from_utf8_lossy(bytes).into_owned()
-    } else {
-        text.to_string()
-    }
+    })
 }
