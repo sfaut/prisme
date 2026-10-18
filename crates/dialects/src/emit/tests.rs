@@ -4492,3 +4492,88 @@ fn found_rows_of_a_union_all_with_a_limit_differ_from_mysql_8_0_18() {
         );
     }
 }
+
+#[test]
+fn an_order_after_parentheses_with_an_inner_limit_reads_the_result_or_a_derived_table() {
+    let mariadb_at = |major, minor, patch| input_at(Dialect::MariaDb, major, minor, patch);
+    // MariaDB before the fix of MDEV-29681 reads an expression otherwise: a
+    // derived table towards it, an error from it.
+    for text in [
+        "(SELECT a AS b FROM t ORDER BY a LIMIT 3) ORDER BY -b",
+        "(SELECT a AS b FROM t ORDER BY a) ORDER BY b + 0, b",
+        "(SELECT a AS b FROM t UNION ALL SELECT 1 LIMIT 3) ORDER BY -b",
+    ] {
+        let derived = format!(
+            "SELECT * FROM {} AS `d`{}",
+            &text[..text.find(')').unwrap() + 1],
+            &text[text.find(')').unwrap() + 1..]
+        );
+        for (input, target) in [
+            (mariadb_at(10, 6, 17), mariadb_at(10, 6, 16)),
+            (mysql_at(8, 4, 0), mariadb_at(11, 0, 4)),
+            (mariadb_at(11, 8, 9), mariadb_at(11, 2, 2)),
+        ] {
+            assert_eq!(
+                transpiled(text, input, output(target)),
+                (derived.clone(), vec!["order.parenthesized"]),
+                "{text}"
+            );
+        }
+        for target in [mariadb_at(10, 6, 17), mysql_at(8, 4, 0)] {
+            assert_eq!(
+                errors(text, mariadb_at(10, 11, 6), output(target)),
+                ["order.parenthesized"],
+                "{text}"
+            );
+        }
+        // Both read it so: as written.
+        assert_eq!(
+            transpiled(text, mariadb_at(10, 6, 16), output(mariadb_at(11, 1, 3))),
+            (text.to_string(), vec![])
+        );
+    }
+    // A name alone or a position, read as the column of the result by all,
+    // the position written as the name of its column.
+    for (text, sql) in [
+        (
+            "(SELECT a AS b FROM t ORDER BY a LIMIT 3) ORDER BY b DESC",
+            "(SELECT a AS b FROM t ORDER BY a LIMIT 3) ORDER BY b DESC",
+        ),
+        (
+            "(SELECT a AS b FROM t LIMIT 3) ORDER BY 1",
+            "(SELECT a AS b FROM t LIMIT 3) ORDER BY b",
+        ),
+        (
+            "(SELECT a AS b FROM t UNION ALL SELECT 1 LIMIT 3) ORDER BY b",
+            "(SELECT a AS b FROM t UNION ALL SELECT 1 LIMIT 3) ORDER BY b",
+        ),
+    ] {
+        for (input, target) in [
+            (mariadb_at(10, 6, 17), mariadb_at(10, 6, 16)),
+            (mariadb_at(10, 6, 16), mysql_at(8, 4, 0)),
+        ] {
+            assert_eq!(
+                transpiled(text, input, output(target)),
+                (sql.to_string(), vec![]),
+                "{text}"
+            );
+        }
+    }
+    // A subquery, which every MariaDB reads in no defined order there.
+    let text = "(SELECT a AS b FROM t LIMIT 3) ORDER BY (SELECT -b)";
+    assert_eq!(
+        transpiled(text, mysql_at(8, 4, 0), output(mariadb_at(11, 8, 9))),
+        (
+            "SELECT * FROM (SELECT a AS b FROM t LIMIT 3) AS `d` ORDER BY (SELECT -b)".to_string(),
+            vec!["order.parenthesized"]
+        )
+    );
+    assert_eq!(
+        errors(text, mariadb_at(11, 8, 9), output(mysql_at(8, 4, 0))),
+        ["order.parenthesized"]
+    );
+    assert_eq!(
+        transpiled(text, mariadb_at(11, 8, 9), output(mariadb_at(11, 4, 13))),
+        (text.to_string(), vec![])
+    );
+}

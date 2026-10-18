@@ -208,6 +208,11 @@ pub enum Construct {
     /// An outer `ORDER BY` sorting the rows of a set operation between
     /// parentheses after its own `LIMIT` (MySQL), before it earlier.
     ParenthesizedSetOrder,
+    /// The names of an `ORDER BY` after a query between parentheses with its
+    /// own `ORDER BY` or `LIMIT` read in the context of that query, a key
+    /// other than a name alone or a position read otherwise than the columns
+    /// of the result (MariaDB before the fix of MDEV-29681).
+    ParenthesizedOrderInner,
     /// A window function read through its alias inside an expression of
     /// `ORDER BY`, computed once (MySQL: computed again for the sort from
     /// 8.0.16 to 8.0.28).
@@ -427,6 +432,9 @@ impl Construct {
             }
             Self::ParenthesizedSetOrder => {
                 "an outer `ORDER BY` after the `LIMIT` of a set operation between parentheses"
+            }
+            Self::ParenthesizedOrderInner => {
+                "the names of an `ORDER BY` after a query between parentheses with its own `ORDER BY` or `LIMIT` read in the context of that query"
             }
             Self::WindowAliasOnce => {
                 "a window function read once through its alias inside an expression of `ORDER BY`"

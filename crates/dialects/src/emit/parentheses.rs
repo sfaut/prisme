@@ -25,8 +25,22 @@
 //!   `(SELECT a ... UNION SELECT 6 ORDER BY 1 LIMIT 2) ORDER BY 1 DESC` gives
 //!   6, 5, and 2, 1 by the standard (construct `parenthesized_set_order`).
 //!
-//! An outer `ORDER BY` after a single `SELECT` with its own `ORDER BY` or
-//! `LIMIT` reads the columns of its result in every version. Without them,
+//! An outer `ORDER BY` after a query with its own `ORDER BY` or `LIMIT`
+//! reads the columns of its result, as the plan reads them, except
+//! (`crates/probe/cases/parenthesized-order.sql`, rule `order.parenthesized`):
+//!
+//! - MariaDB before the fix of MDEV-29681 (construct
+//!   `parenthesized_order_inner`), which reads the names of a key other than
+//!   a name alone or a position in the context of the query between
+//!   parentheses: `(SELECT id, a AS b FROM t LIMIT 3) ORDER BY -b` sorts the
+//!   rows in no defined order, `-b` reads the column `b` of the table
+//!   without `LIMIT`, error 1054 or 1052 over a set operation or a join, and
+//!   an expression of the alias of a window function stops the server;
+//! - a subquery of that `ORDER BY`, which every MariaDB measured sorts in no
+//!   defined order (`ORDER BY (SELECT -b)`).
+//!
+//! The derived table stands for the parentheses towards these servers, the
+//! query is an error from them. Without `ORDER BY` or `LIMIT` of its own,
 //! MariaDB and MySQL read the names of the outer `ORDER BY` as those of an
 //! `ORDER BY` of the `SELECT`, which the plan folds into its block, except
 //! MySQL 8.0.31 to 8.0.41, 8.1.0 to 8.4.4 and 9.0.0 to 9.2.0, which read the
@@ -47,7 +61,7 @@
 //! otherwise, and the output otherwise than the input, the query is an error
 //! (**[decided autonomously]**).
 
-use prisme_plan::{Expr, ExprKind, Ident, Limit, Plan, ProjectItem, Sort};
+use prisme_plan::{Expr, ExprKind, Ident, Limit, Nulls, Plan, ProjectItem, Sort, SortKey};
 use prisme_types::Value;
 
 use super::{Block, Emitter, call};
@@ -74,6 +88,37 @@ enum Reading {
     SortedFirst,
     /// Refused (error 1235).
     Refused,
+}
+
+/// How a server reads a key of an `ORDER BY` after a query between
+/// parentheses with its own `ORDER BY` or `LIMIT`, otherwise than by the
+/// columns of the result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InnerKey {
+    /// Its names in the context of that query, a key other than a name
+    /// alone or a position (MariaDB before the fix of MDEV-29681, construct
+    /// `parenthesized_order_inner`).
+    Context,
+    /// A subquery, which sorts the rows in no defined order (MariaDB).
+    Subquery,
+}
+
+impl InnerKey {
+    /// What the server does, after its name.
+    const fn describe(self) -> &'static str {
+        match self {
+            Self::Context => {
+                "reads the names of an `ORDER BY` after a query between parentheses with its \
+                 own `ORDER BY` or `LIMIT` in the context of that query (MDEV-29681): a key \
+                 other than a name alone or a position sorts the rows otherwise than by the \
+                 columns of the result"
+            }
+            Self::Subquery => {
+                "sorts the rows in no defined order by a subquery of an `ORDER BY` after a \
+                 query between parentheses with its own `ORDER BY` or `LIMIT`"
+            }
+        }
+    }
 }
 
 /// Shape of a query between parentheses and of the clauses after it.
@@ -150,23 +195,18 @@ impl Emitter<'_> {
         if let Some(sort) = sort
             && let Some(order) = self.outer_order(inner, sort, nesting)
         {
-            let span = (sort.keys.first())
-                .and_then(|key| key.expr.span)
-                .or_else(|| inner.span());
-            match order {
-                Ok(message) => self.as_derived(inner, "order.parenthesized", &message, span),
-                Err(message) => {
-                    self.error("order.parenthesized", &message, span);
-                    self.write("(");
-                    self.query(inner, names_matter);
-                    self.write(")");
-                }
-            }
+            self.sorted_otherwise(inner, sort, order, names_matter);
             return;
         }
         let input = self.reading(nesting, true);
         let output = self.reading(nesting, false);
         if input == output {
+            if let Some(sort) = sort
+                && let Some(order) = self.inner_order(sort, nesting)
+            {
+                self.sorted_otherwise(inner, sort, order, names_matter);
+                return;
+            }
             // MariaDB refuses the options of the first `SELECT` there
             // (`options` module).
             if self.output.dialect == Dialect::MariaDb && !nesting.inner_set {
@@ -194,6 +234,31 @@ impl Emitter<'_> {
         }
         let message = format!("{} {}", self.target(), describe(output));
         self.as_derived(inner, "limit.nested", &message, span);
+    }
+
+    /// `inner` between parentheses, before the `ORDER BY` `sort` that the
+    /// output reads otherwise than the input (rule `order.parenthesized`):
+    /// from a derived table that stands for the parentheses (`Ok`), or as
+    /// written with an error (`Err`).
+    fn sorted_otherwise(
+        &mut self,
+        inner: &Plan,
+        sort: &Sort,
+        order: Result<String, String>,
+        names_matter: bool,
+    ) {
+        let span = (sort.keys.first())
+            .and_then(|key| key.expr.span)
+            .or_else(|| inner.span());
+        match order {
+            Ok(message) => self.as_derived(inner, "order.parenthesized", &message, span),
+            Err(message) => {
+                self.error("order.parenthesized", &message, span);
+                self.write("(");
+                self.query(inner, names_matter);
+                self.write(")");
+            }
+        }
     }
 
     /// `inner` as a derived table that stands for its parentheses, which the
@@ -266,6 +331,62 @@ impl Emitter<'_> {
             )));
         }
         (!alike).then(|| Ok(format!("{} {reads}", self.target())))
+    }
+
+    /// How the output reads the `ORDER BY` `sort` after a query between
+    /// parentheses with its own `ORDER BY` or `LIMIT`, which the plan sorts
+    /// by the columns of the result: `None` when the input and the output
+    /// read each key alike; the message of the derived table that stands for
+    /// the parentheses when the output reads a key otherwise; an error
+    /// message when the input does, whose order the plan does not follow.
+    fn inner_order(&self, sort: &Sort, nesting: Nesting) -> Option<Result<String, String>> {
+        if !nesting.inner_sort && !nesting.inner_limit {
+            return None;
+        }
+        let differs = |key: &&SortKey| self.inner_key(key, true) != self.inner_key(key, false);
+        let key = sort.keys.iter().find(differs)?;
+        if let Some(reading) = self.inner_key(key, true) {
+            let source = format!("{} {}", self.source.dialect.label(), self.source.version);
+            return Some(Err(format!(
+                "{source} {}: not supported by Prisme",
+                reading.describe()
+            )));
+        }
+        let reading = self.inner_key(key, false)?;
+        Some(Ok(format!("{} {}", self.target(), reading.describe())))
+    }
+
+    /// How the input (`input`) or the output reads `key`, of an `ORDER BY`
+    /// after a query between parentheses with its own `ORDER BY` or `LIMIT`:
+    /// `None` by the columns of the result.
+    fn inner_key(&self, key: &SortKey, input: bool) -> Option<InnerKey> {
+        let (dialect, inner) = if input {
+            (
+                self.source.dialect,
+                self.input_has(Construct::ParenthesizedOrderInner),
+            )
+        } else {
+            (
+                self.output.dialect,
+                self.has(Construct::ParenthesizedOrderInner),
+            )
+        };
+        if inner && !self.written_as_column(key) {
+            Some(InnerKey::Context)
+        } else if dialect == Dialect::MariaDb && has_subquery(&key.expr) {
+            Some(InnerKey::Subquery)
+        } else {
+            None
+        }
+    }
+
+    /// Tells whether the output writes `key` as a name alone or a position:
+    /// a column of the result, its NULLs where the MySQL family puts them,
+    /// sorted by its value (`json` module).
+    fn written_as_column(&self, key: &SortKey) -> bool {
+        matches!(&key.expr.kind, ExprKind::Column(column) if column.qualifier.is_none())
+            && key.nulls == Nulls::as_smallest(key.direction)
+            && !self.json_differs(&key.expr)
     }
 
     /// Tells whether `expr`, a key of an `ORDER BY` after `block`, reads
@@ -409,6 +530,20 @@ fn describe(reading: Reading) -> &'static str {
         }
         Reading::Refused => {
             "refuses an `ORDER BY` or a `LIMIT` after a set operation between parentheses with its own"
+        }
+    }
+}
+
+/// Tells whether `expr` holds a subquery.
+fn has_subquery(expr: &Expr) -> bool {
+    match &expr.kind {
+        ExprKind::Exists { .. }
+        | ExprKind::ScalarSubquery(_)
+        | ExprKind::InSubquery { .. }
+        | ExprKind::Quantified { .. } => true,
+        _ => {
+            let mut copy = expr.clone();
+            (copy.operands_mut().into_iter()).any(|operand| has_subquery(operand))
         }
     }
 }

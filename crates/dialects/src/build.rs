@@ -477,7 +477,9 @@ impl Builder<'_> {
     /// column outside the select list), except MySQL 8.0.31 to 8.0.41, 8.1.0
     /// to 8.4.4 and 9.0.0 to 9.2.0, which read the columns of the result
     /// (construct `parenthesized_order_result`). With an `ORDER BY` or a
-    /// `LIMIT` between the parentheses, all read the columns of the result.
+    /// `LIMIT` between the parentheses, the plan reads the columns of the
+    /// result, as MySQL and MariaDB do, the exceptions of MariaDB aside
+    /// (`emit::parentheses`).
     ///
     /// # Errors
     ///

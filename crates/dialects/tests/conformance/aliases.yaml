@@ -152,3 +152,34 @@ cases:
     refused: order.parenthesized
   - from: mariadb
     sql: (SELECT a % 2 AS x, COUNT(*) AS n FROM aliases GROUP BY x) ORDER BY -x
+  # An `ORDER BY` after a query between parentheses with its own `ORDER BY`
+  # or `LIMIT`: the columns of the result. MariaDB before the fix of
+  # MDEV-29681 reads a key other than a name alone or a position otherwise,
+  # every MariaDB sorts by a subquery there in no defined order: a derived
+  # table towards them, refused from them (rule `order.parenthesized`).
+  - from: mysql
+    sql: (SELECT id, a AS b FROM aliases ORDER BY id LIMIT 3) ORDER BY b + 0
+  - from: mysql
+    sql: (SELECT id, a AS b FROM aliases UNION ALL SELECT 4, 0 ORDER BY id) ORDER BY -b
+    inputs: mysql < 8.0.19 or mysql >= 8.0.31
+  - from: mysql
+    sql: (SELECT id, a AS b FROM aliases LIMIT 3) ORDER BY (SELECT -b)
+    inputs: mysql < 8.0.14 or mysql >= 8.0.18
+  - from: mariadb
+    sql: (SELECT id, a AS b FROM aliases ORDER BY id LIMIT 3) ORDER BY b DESC, 1
+  - from: mariadb
+    sql: (SELECT id, a AS b FROM aliases LIMIT 3) ORDER BY b + 0
+    inputs: >-
+      mariadb < 10.6.0 or mariadb >= 10.6.17 and mariadb < 10.7.0 or mariadb >= 10.11.7 and
+      mariadb < 11.0.0 or mariadb >= 11.0.5 and mariadb < 11.1.0 or mariadb >= 11.1.4 and
+      mariadb < 11.2.0 or mariadb >= 11.2.3 and mariadb < 11.3.0 or mariadb >= 11.3.2
+  - from: mariadb
+    sql: (SELECT id, a AS b FROM aliases LIMIT 3) ORDER BY b + 0
+    inputs: >-
+      mariadb >= 10.6.0 and mariadb < 10.6.17 or mariadb >= 10.7.0 and mariadb < 10.11.7 or
+      mariadb >= 11.0.0 and mariadb < 11.0.5 or mariadb >= 11.1.0 and mariadb < 11.1.4 or
+      mariadb >= 11.2.0 and mariadb < 11.2.3 or mariadb >= 11.3.0 and mariadb < 11.3.2
+    refused: order.parenthesized
+  - from: mariadb
+    sql: (SELECT id, a AS b FROM aliases LIMIT 3) ORDER BY (SELECT -b)
+    refused: order.parenthesized
