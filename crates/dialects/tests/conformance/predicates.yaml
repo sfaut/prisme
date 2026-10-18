@@ -4,7 +4,9 @@
 # parentheses towards MySQL (crates/probe/cases/predicate-grammar.txt).
 # `IS TRUE`, `IS FALSE` and `IS UNKNOWN` of numbers, strings and NULL; MariaDB
 # reads a comparison or `IS` after them, written between parentheses towards
-# MySQL (crates/probe/cases/is-true.txt).
+# MySQL (crates/probe/cases/is-true.txt). `SOUNDS LIKE`, the same in both
+# dialects, its right operand at the level of `|`; `REGEXP`, refused between
+# the dialects (crates/probe/cases/regexp-grammar.txt).
 setup:
   - DROP TABLE IF EXISTS predicates
   - CREATE TABLE predicates (id INT NOT NULL PRIMARY KEY, a INT NULL, s VARCHAR(10) NULL)
@@ -37,3 +39,19 @@ cases:
       NOT a IS TRUE AS c9, a IS NULL IS FALSE AS c10, a IS TRUE = 1 AS c11,
       a IS TRUE IS NULL AS c12, a IS FALSE IS NOT TRUE AS c13 FROM predicates
       WHERE id IS NOT UNKNOWN ORDER BY id
+  - from: mysql
+    sql: >-
+      SELECT s SOUNDS LIKE 'a' AS c1, s SOUNDS LIKE s AS c2, 'Robert' SOUNDS LIKE 'Rupert' AS c3,
+      s SOUNDS LIKE a AS c4, s SOUNDS LIKE 'a' | 'b' AS c5, 1 = s SOUNDS LIKE 'ab' AS c6
+      FROM predicates ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT s SOUNDS LIKE 'a' AS c1, s SOUNDS LIKE s AS c2, 'Robert' SOUNDS LIKE 'Rupert' AS c3,
+      s SOUNDS LIKE a AS c4, s SOUNDS LIKE 'a' | 'b' AS c5, s SOUNDS LIKE 'a' SOUNDS LIKE '1' AS c6
+      FROM predicates ORDER BY id
+  - from: mysql
+    sql: SELECT id FROM predicates WHERE s REGEXP 'a' ORDER BY id
+    refused: regexp.pattern
+  - from: mariadb
+    sql: SELECT id FROM predicates WHERE s REGEXP 'a' ORDER BY id
+    refused: regexp.pattern

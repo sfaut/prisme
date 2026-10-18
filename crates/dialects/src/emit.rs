@@ -31,6 +31,7 @@ mod extract;
 mod greatest;
 mod interval;
 mod json;
+mod predicate;
 mod rules;
 mod source;
 mod string;

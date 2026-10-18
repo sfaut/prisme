@@ -136,6 +136,30 @@ pub enum ExprKind {
         /// `true` for `NOT LIKE`.
         negated: bool,
     },
+    /// `REGEXP` (`RLIKE`): the value matches the regular expression.
+    Regexp {
+        /// Value tested.
+        operand: Box<Expr>,
+        /// Regular expression.
+        pattern: Box<Expr>,
+        /// `true` for `NOT REGEXP`.
+        negated: bool,
+    },
+    /// `SOUNDS LIKE`: the `SOUNDEX` of both values are equal.
+    SoundsLike {
+        /// Left operand.
+        left: Box<Expr>,
+        /// Right operand.
+        right: Box<Expr>,
+    },
+    /// `value MEMBER OF (array)`: the value is an element of the `JSON`
+    /// array (MySQL).
+    MemberOf {
+        /// Value searched for.
+        value: Box<Expr>,
+        /// `JSON` array searched in.
+        array: Box<Expr>,
+    },
     /// `IN` a list of values.
     InList {
         /// Value tested.
@@ -590,6 +614,43 @@ impl Expr {
         )
     }
 
+    /// `REGEXP`: unknown when the value or the pattern is NULL.
+    pub fn regexp(operand: Expr, pattern: Expr, negated: bool) -> Self {
+        let nullable = operand.ty.nullable || pattern.ty.nullable;
+        Self::new(
+            ExprKind::Regexp {
+                operand: Box::new(operand),
+                pattern: Box::new(pattern),
+                negated,
+            },
+            boolean(nullable),
+        )
+    }
+
+    /// `SOUNDS LIKE`: unknown when a value is NULL.
+    pub fn sounds_like(left: Expr, right: Expr) -> Self {
+        let nullable = left.ty.nullable || right.ty.nullable;
+        Self::new(
+            ExprKind::SoundsLike {
+                left: Box::new(left),
+                right: Box::new(right),
+            },
+            boolean(nullable),
+        )
+    }
+
+    /// `MEMBER OF`: unknown when the value or the array is NULL.
+    pub fn member_of(value: Expr, array: Expr) -> Self {
+        let nullable = value.ty.nullable || array.ty.nullable;
+        Self::new(
+            ExprKind::MemberOf {
+                value: Box::new(value),
+                array: Box::new(array),
+            },
+            boolean(nullable),
+        )
+    }
+
     /// `IN` a list: unknown when the value or a value of the list is NULL.
     pub fn in_list(operand: Expr, list: Vec<Expr>, negated: bool) -> Self {
         let nullable = operand.ty.nullable || list.iter().any(|value| value.ty.nullable);
@@ -785,7 +846,12 @@ impl Expr {
             | ExprKind::NotDistinct { left, right, .. }
             | ExprKind::Logical { left, right, .. }
             | ExprKind::Arithmetic { left, right, .. }
-            | ExprKind::Bitwise { left, right, .. } => vec![left.as_mut(), right.as_mut()],
+            | ExprKind::Bitwise { left, right, .. }
+            | ExprKind::SoundsLike { left, right } => vec![left.as_mut(), right.as_mut()],
+            ExprKind::Regexp {
+                operand, pattern, ..
+            } => vec![operand.as_mut(), pattern.as_mut()],
+            ExprKind::MemberOf { value, array } => vec![value.as_mut(), array.as_mut()],
             ExprKind::Not(operand)
             | ExprKind::Negate(operand)
             | ExprKind::BitNot(operand)

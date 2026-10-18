@@ -6,7 +6,7 @@
 //! 3. `AND`, `&&`;
 //! 4. `NOT` (with `HIGH_NOT_PRECEDENCE`, as tight as `!`);
 //! 5. comparisons, `IS NULL`, `IS TRUE`, `IS FALSE`, `IS UNKNOWN`;
-//! 6. the tests `LIKE`, `IN`, `BETWEEN`;
+//! 6. the tests `LIKE`, `IN`, `BETWEEN`, `REGEXP`, `SOUNDS LIKE`, `MEMBER OF`;
 //! 7. `|`; 8. `&`; 9. `<<`, `>>`; 10. `+`, `-`; 11. `*`, `/`, `DIV`, `%`,
 //!    `MOD`; 12. `^`;
 //! 13. prefix `-`, `+`, `~`, `!`.
@@ -140,11 +140,13 @@ impl Parser<'_> {
     }
 
     /// `BETWEEN`, `IN`, `LIKE` after a value, its high bound a test
-    /// (`a BETWEEN 0 AND b IN (1)` bounds `a` by the `IN`). MySQL reads one,
-    /// its pattern and its escape character simple operands
-    /// (`'2' LIKE 1 + 1` is a syntax error); MariaDB chains them from left
-    /// to right (`a IN (1) IN (1)`), its pattern and its escape character at
-    /// the level of `|`, the bounds of `BETWEEN` tests.
+    /// (`a BETWEEN 0 AND b IN (1)` bounds `a` by the `IN`), and the tests of
+    /// the `predicate` module (`REGEXP`, `SOUNDS LIKE`, `MEMBER OF`). MySQL
+    /// reads one, the pattern and the escape character of `LIKE` simple
+    /// operands (`'2' LIKE 1 + 1` is a syntax error); MariaDB chains them
+    /// from left to right (`a IN (1) IN (1)`), the pattern and the escape
+    /// character of `LIKE` at the level of `|`, the bounds of `BETWEEN`
+    /// tests.
     fn test(&mut self) -> Result<Expr, ParseError> {
         let mariadb = self.options.dialect == Dialect::MariaDb;
         let mut left = self.bit_or()?;
@@ -191,10 +193,13 @@ impl Parser<'_> {
                     },
                     span,
                 };
+            } else if self.eat_keyword("REGEXP").is_some() || self.eat_keyword("RLIKE").is_some() {
+                left = self.regexp(left, negated)?;
+            } else if self.at_keyword("SOUNDS") {
+                left = self.sounds_like(left)?;
+            } else if self.at_member_of() {
+                left = self.member_of(left)?;
             } else {
-                if self.at_any_keyword(&["REGEXP", "RLIKE", "SOUNDS", "MEMBER"]) {
-                    return Err(self.unsupported("this operator", self.here()));
-                }
                 return Ok(left);
             }
             if !mariadb {
@@ -413,7 +418,7 @@ impl Parser<'_> {
 
     /// Prefix operators: `-`, `+`, `~`, `!` (and `NOT` under
     /// `HIGH_NOT_PRECEDENCE`).
-    fn unary(&mut self) -> Result<Expr, ParseError> {
+    pub(super) fn unary(&mut self) -> Result<Expr, ParseError> {
         let op = match self.peek().map(|token| &token.kind) {
             Some(TokenKind::Punct(Punct::Minus)) => Some(UnaryOp::Minus),
             Some(TokenKind::Punct(Punct::Plus)) => Some(UnaryOp::Plus),

@@ -480,6 +480,29 @@ pub enum ExprKind {
         /// `NOT LIKE`.
         negated: bool,
     },
+    /// `[NOT] REGEXP pattern`, `RLIKE` its synonym.
+    Regexp {
+        /// Value tested.
+        operand: Box<Expr>,
+        /// Regular expression.
+        pattern: Box<Expr>,
+        /// `NOT REGEXP`.
+        negated: bool,
+    },
+    /// `SOUNDS LIKE`: the `SOUNDEX` of both values are equal.
+    SoundsLike {
+        /// Left operand.
+        left: Box<Expr>,
+        /// Right operand.
+        right: Box<Expr>,
+    },
+    /// `value MEMBER [OF] (array)` (MySQL).
+    MemberOf {
+        /// Value searched for.
+        value: Box<Expr>,
+        /// `JSON` array searched in.
+        array: Box<Expr>,
+    },
     /// Expression between parentheses.
     Nested(Box<Expr>),
     /// Subquery giving one value.
@@ -642,7 +665,13 @@ impl Expr {
                 .chain(std::iter::once(&call.operand))
                 .collect(),
             ExprKind::Position(call) => vec![&call.substring, &call.string],
-            ExprKind::Binary { left, right, .. } => vec![left, right],
+            ExprKind::Binary { left, right, .. } | ExprKind::SoundsLike { left, right } => {
+                vec![left, right]
+            }
+            ExprKind::Regexp {
+                operand, pattern, ..
+            } => vec![operand, pattern],
+            ExprKind::MemberOf { value, array } => vec![value, array],
             ExprKind::Between {
                 operand, low, high, ..
             } => vec![operand, low, high],

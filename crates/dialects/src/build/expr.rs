@@ -159,6 +159,29 @@ impl Builder<'_> {
         }
     }
 
+    /// `REGEXP`, `SOUNDS LIKE` and `MEMBER OF`, predicates of two values: out
+    /// of `expr`, whose frame the recursion of deep expressions repeats.
+    fn word_test(&mut self, expr: &ast::Expr, scope: &Scope) -> Result<Expr, BuildError> {
+        Ok(match &expr.kind {
+            ExprKind::Regexp {
+                operand,
+                pattern,
+                negated,
+            } => Expr::regexp(
+                self.value(operand, scope)?,
+                self.value(pattern, scope)?,
+                *negated,
+            ),
+            ExprKind::SoundsLike { left, right } => {
+                Expr::sounds_like(self.value(left, scope)?, self.value(right, scope)?)
+            }
+            ExprKind::MemberOf { value, array } => {
+                Expr::member_of(self.value(value, scope)?, self.value(array, scope)?)
+            }
+            _ => unreachable!("called on the tests written with words"),
+        })
+    }
+
     /// Expression, typed.
     pub(super) fn expr(&mut self, expr: &ast::Expr, scope: &Scope) -> Result<Expr, BuildError> {
         let built = match &expr.kind {
@@ -270,6 +293,9 @@ impl Builder<'_> {
                     escape,
                     *negated,
                 )
+            }
+            ExprKind::Regexp { .. } | ExprKind::SoundsLike { .. } | ExprKind::MemberOf { .. } => {
+                self.word_test(expr, scope)?
             }
             ExprKind::Subquery(_)
             | ExprKind::Exists(_)

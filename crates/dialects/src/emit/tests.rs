@@ -2365,6 +2365,68 @@ fn trim_and_position_keep_their_form() {
 }
 
 #[test]
+fn regexp_sounds_like_and_member_of_keep_their_form() {
+    let text = concat!(
+        "SELECT s REGEXP 1 + 1 AS a, s SOUNDS LIKE 'x' | 'y' AS b, 1 + 0 MEMBER OF (js) AS c, ",
+        "(s REGEXP 'x') = 1 AS d FROM g WHERE s NOT REGEXP 'b' AND NOT s REGEXP 'c'"
+    );
+    let (sql, rules) = transpiled(text, mysql(), output(mysql()));
+    assert_eq!(sql, text.replace("(s REGEXP 'x') = 1", "s REGEXP 'x' = 1"));
+    assert!(rules.is_empty(), "{rules:?}");
+    // `RLIKE` is written `REGEXP`, an operand between parentheses as its
+    // level needs, `OF` written.
+    let (sql, _) = transpiled(
+        "SELECT s RLIKE 'a' AS a, 1 MEMBER ((js)) AS b, js MEMBER OF ((de + 1)) AS c FROM g",
+        mysql(),
+        output(mysql()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT s REGEXP 'a' AS a, 1 MEMBER OF (js) AS b, js MEMBER OF ((de + 1)) AS c FROM g"
+    );
+    // MySQL reads one test after a value: a test of MariaDB chained is put
+    // between parentheses.
+    let (sql, rules) = transpiled(
+        "SELECT s SOUNDS LIKE 'a' SOUNDS LIKE 'b' AS a FROM g",
+        mariadb(),
+        output(mysql()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT (s SOUNDS LIKE 'a') SOUNDS LIKE 'b' AS a FROM g"
+    );
+    assert!(rules.is_empty(), "{rules:?}");
+}
+
+#[test]
+fn regexp_and_member_of_refuse_what_the_output_reads_otherwise() {
+    // ICU against PCRE2.
+    for (input, target) in [(mysql(), mariadb()), (mariadb(), mysql())] {
+        assert_eq!(
+            errors("SELECT s FROM g WHERE s REGEXP 'a'", input, output(target)),
+            ["regexp.pattern"]
+        );
+    }
+    // `MEMBER OF`, MySQL from 8.0.17.
+    for target in [mariadb(), mysql_at(8, 0, 16)] {
+        assert_eq!(
+            errors(
+                "SELECT s FROM g WHERE 1 MEMBER OF (js)",
+                mysql(),
+                output(target)
+            ),
+            ["json.member-of"]
+        );
+    }
+    let (sql, _) = transpiled(
+        "SELECT s FROM g WHERE 1 MEMBER OF (js)",
+        mysql_at(8, 0, 17),
+        output(mysql_at(8, 4, 0)),
+    );
+    assert_eq!(sql, "SELECT s FROM g WHERE 1 MEMBER OF (js)");
+}
+
+#[test]
 fn trim_and_position_read_a_binary_argument_as_the_input() {
     let mysql_8_4 = mysql_at(8, 4, 0);
     let (sql, rules) = transpiled(

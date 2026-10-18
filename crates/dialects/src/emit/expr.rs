@@ -37,7 +37,7 @@ pub(super) const MULTIPLY: u8 = 10;
 /// Level of the comparisons and predicates.
 pub(super) const PREDICATE: u8 = 5;
 /// Level of the prefix operators.
-const PREFIX: u8 = 12;
+pub(super) const PREFIX: u8 = 12;
 /// Level of an operand.
 pub(super) const OPERAND: u8 = 14;
 
@@ -72,6 +72,9 @@ fn levels(expr: &Expr) -> (u8, u8, u8) {
         ExprKind::IsNull { .. }
         | ExprKind::Between { .. }
         | ExprKind::Like { .. }
+        | ExprKind::Regexp { .. }
+        | ExprKind::SoundsLike { .. }
+        | ExprKind::MemberOf { .. }
         | ExprKind::InList { .. }
         | ExprKind::InSubquery { .. } => (PREDICATE, PREDICATE + 1, PREDICATE + 1),
         ExprKind::Exists { negated: true, .. } => (NOT, NOT, NOT),
@@ -355,6 +358,9 @@ impl Emitter<'_> {
             | ExprKind::Quantified { .. }
             | ExprKind::Row(_) => self.query_kind(expr, left),
             ExprKind::Window(call) => self.window_call(expr, call),
+            ExprKind::Regexp { .. } => self.regexp(expr, left, right),
+            ExprKind::SoundsLike { .. } => self.sounds_like(expr, left, right),
+            ExprKind::MemberOf { .. } => self.member_of(expr, left),
             _ => {
                 self.error(
                     "expr.kind",

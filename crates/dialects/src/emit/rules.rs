@@ -793,7 +793,12 @@ pub(super) fn repeatable(expr: &Expr) -> bool {
         | ExprKind::NotDistinct { left, right, .. }
         | ExprKind::Logical { left, right, .. }
         | ExprKind::Arithmetic { left, right, .. }
-        | ExprKind::Bitwise { left, right, .. } => repeatable(left) && repeatable(right),
+        | ExprKind::Bitwise { left, right, .. }
+        | ExprKind::SoundsLike { left, right } => repeatable(left) && repeatable(right),
+        ExprKind::Regexp {
+            operand, pattern, ..
+        } => repeatable(operand) && repeatable(pattern),
+        ExprKind::MemberOf { value, array } => repeatable(value) && repeatable(array),
         ExprKind::Between {
             operand, low, high, ..
         } => repeatable(operand) && repeatable(low) && repeatable(high),

@@ -133,6 +133,22 @@ fn tree(expr: &Expr) -> String {
         ExprKind::Like {
             operand, pattern, ..
         } => format!("(like {} {})", tree(operand), tree(pattern)),
+        ExprKind::Regexp {
+            operand,
+            pattern,
+            negated,
+        } => format!(
+            "({}regexp {} {})",
+            if *negated { "not" } else { "" },
+            tree(operand),
+            tree(pattern)
+        ),
+        ExprKind::SoundsLike { left, right } => {
+            format!("(soundslike {} {})", tree(left), tree(right))
+        }
+        ExprKind::MemberOf { value, array } => {
+            format!("(memberof {} {})", tree(value), tree(array))
+        }
         ExprKind::Nested(inner) => tree(inner),
         ExprKind::Subquery(_) => "(query)".to_string(),
         ExprKind::Exists(_) => "(exists query)".to_string(),
@@ -434,6 +450,61 @@ fn a_comparison_reads_tests_on_both_sides() {
         "(between a (between 0 0 1) 2)"
     );
     assert_eq!(expr_with("a LIKE 1 + 1", &mariadb), "(like a (+ 1 1))");
+}
+
+#[test]
+fn reads_regexp_sounds_like_and_member_of() {
+    assert_eq!(expr("a REGEXP 'x' AND b"), "(and (regexp a 'x') b)");
+    assert_eq!(expr("a NOT RLIKE 'x'"), "(notregexp a 'x')");
+    assert_eq!(expr("NOT a REGEXP 'x'"), "(not (regexp a 'x'))");
+    // A pattern and the right operand of `SOUNDS LIKE` at the level of `|`,
+    // tighter than a comparison.
+    assert_eq!(expr("a REGEXP 1 + 1"), "(regexp a (+ 1 1))");
+    assert_eq!(expr("a = b REGEXP 'x'"), "(= a (regexp b 'x'))");
+    assert_eq!(expr("a REGEXP 'x' = 1"), "(= (regexp a 'x') 1)");
+    assert_eq!(expr("a SOUNDS LIKE b | c"), "(soundslike a (| b c))");
+    // The array of `MEMBER OF` a simple operand, `OF` optional.
+    assert_eq!(expr("a + 0 MEMBER OF ('[1]')"), "(memberof (+ a 0) '[1]')");
+    assert_eq!(expr("a MEMBER ((b))"), "(memberof a b)");
+    assert_eq!(expr("a = b MEMBER OF (-1)"), "(= a (memberof b (- 1)))");
+    for text in [
+        "SELECT a REGEXP 'x' REGEXP 'y'",
+        "SELECT a REGEXP 'x' IN (1)",
+        "SELECT a SOUNDS LIKE b SOUNDS LIKE c",
+        "SELECT a NOT SOUNDS LIKE b",
+        "SELECT a sounds",
+        "SELECT a MEMBER OF ('[1]') + 1",
+        "SELECT a MEMBER OF '[1]'",
+        "SELECT a MEMBER OF ('[1]' + 0)",
+        "SELECT a NOT MEMBER OF ('[1]')",
+        "SELECT a MEMBER OF ('[1]') IN (1)",
+        "SELECT a member",
+    ] {
+        assert!(parse(text, &mysql()).is_err(), "{text}");
+    }
+    // MariaDB chains them.
+    let mariadb = mariadb();
+    assert_eq!(
+        expr_with("a REGEXP 'x' REGEXP 'y'", &mariadb),
+        "(regexp (regexp a 'x') 'y')"
+    );
+    assert_eq!(
+        expr_with("a SOUNDS LIKE b IN (1)", &mariadb),
+        "(in (soundslike a b) 1)"
+    );
+    // Before MySQL 8.0.17, and in MariaDB, `MEMBER` is an alias.
+    let old = mysql_at(8, 0, 16);
+    assert_eq!(
+        error("SELECT a MEMBER OF ('[1]')", &old),
+        (
+            "`MEMBER OF`: from MySQL 8.0.17, chosen version 8.0.16".to_string(),
+            "MEMBER".to_string()
+        )
+    );
+    assert_eq!(error("SELECT a MEMBER ('[1]')", &mariadb).1, "MEMBER");
+    for options in [old, mariadb] {
+        assert!(parse("SELECT a member", &options).is_ok());
+    }
 }
 
 #[test]

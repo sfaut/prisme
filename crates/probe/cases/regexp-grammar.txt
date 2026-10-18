@@ -1,0 +1,70 @@
+# Grammar of REGEXP, RLIKE, SOUNDS LIKE and MEMBER OF: level of their operands, chains, NOT,
+# NULL, the forms of MEMBER OF (MySQL from 8.0.17), the values of SOUNDEX.
+regexp_plus '2' REGEXP 1 + 1
+regexp_concat_pipe '12' REGEXP '1' | 2
+regexp_regexp 'a' REGEXP 'a' REGEXP '1'
+regexp_in 'a' REGEXP 'a' IN (1)
+regexp_like 'a' REGEXP 'a' LIKE '1'
+in_regexp 1 IN (1) REGEXP '1'
+eq_regexp 2 = 2 REGEXP '1'
+regexp_eq 'a' REGEXP 'a' = 1
+not_regexp 'a' NOT REGEXP 'b'
+not_rlike 'a' NOT RLIKE 'b'
+not_prefix NOT 'a' REGEXP 'b'
+regexp_between 'a' REGEXP 'a' BETWEEN 0 AND 2
+between_regexp 1 BETWEEN 0 AND 2 REGEXP '1'
+regexp_null NULL REGEXP 'a'
+regexp_null_pattern 'a' REGEXP NULL
+regexp_number 123 REGEXP '2'
+regexp_number_pattern 'a1' REGEXP 1
+regexp_binary BINARY 'aBc' REGEXP 'b'
+regexp_bin_collation 'aBc' COLLATE utf8mb4_bin REGEXP 'b'
+regexp_latin1_cs CONVERT('aBc' USING latin1) COLLATE latin1_general_cs REGEXP 'b'
+regexp_pattern_bin 'aBc' REGEXP 'b' COLLATE utf8mb4_bin
+regexp_x_binary 'aBc' REGEXP BINARY 'b'
+regexp_blob CAST('aBc' AS BINARY) REGEXP 'B'
+sounds 'Robert' SOUNDS LIKE 'Rupert'
+sounds_plus 'a' SOUNDS LIKE 'a' + 0
+sounds_concat 'ab' SOUNDS LIKE 'a' | 'b'
+sounds_eq 1 = 'a' SOUNDS LIKE 'a'
+sounds_not 'a' NOT SOUNDS LIKE 'b'
+sounds_sounds 'a' SOUNDS LIKE 'a' SOUNDS LIKE 'a'
+sounds_null NULL SOUNDS LIKE 'a'
+member 1 MEMBER OF ('[1, 2]')
+member_of_plus 1 MEMBER OF ('[1]') + 1
+member_plus 1 + 0 MEMBER OF ('[1]')
+member_eq 1 = 1 MEMBER OF ('[1]')
+member_noparen 1 MEMBER OF '[1]'
+member_not 1 NOT MEMBER OF ('[1]')
+member_without_of 1 MEMBER ('[1]')
+member_plus_inside 1 MEMBER OF ('[1]' + 0)
+member_concat_inside 1 MEMBER OF (CONCAT('[1', ']'))
+member_nested 1 MEMBER OF (('[1]'))
+member_collate 1 MEMBER OF ('[1]' COLLATE utf8mb4_bin)
+member_neg 1 MEMBER OF (-1)
+member_null CONCAT(IFNULL(NULL MEMBER OF ('[1]'), 'n'), IFNULL(1 MEMBER OF (NULL), 'n'))
+member_type 1 MEMBER OF ('[1]')
+member_string 'a' MEMBER OF ('["a"]')
+member_in 1 MEMBER OF ('[1]') IN (1)
+member_regexp 1 REGEXP '1' MEMBER OF ('[1]')
+member_not_prefix NOT 1 MEMBER OF ('[1]')
+sounds_type 'a' SOUNDS LIKE 'b'
+sounds_null_type IFNULL('a' SOUNDS LIKE NULL, 'n')
+regexp_neg_pattern 'a-1' REGEXP -1
+regexp_not_not 'a' NOT REGEXP 'b' IS TRUE
+regexp_is 'a' REGEXP 'a' IS TRUE
+regexp_collate_after 'A' REGEXP 'a' COLLATE utf8mb4_bin
+s_accent SOUNDEX('Ébert')
+s_sharp SOUNDEX('straße')
+s_ae SOUNDEX('Ærø')
+s_cjk SOUNDEX('日本')
+s_mixed SOUNDEX('ǅemal')
+s_empty SOUNDEX('')
+s_digits SOUNDEX('123')
+s_dash SOUNDEX('a-b')
+s_greek SOUNDEX('Ωmega')
+s_long SOUNDEX('Tymczak')
+s_hw SOUNDEX('Ashcraft')
+s_number SOUNDEX(12.5)
+s_binary SOUNDEX(CAST('Robert' AS BINARY))
+s_like CONCAT('Ébert' SOUNDS LIKE 'Ebert', 'straße' SOUNDS LIKE 'strase', '' SOUNDS LIKE '', 'ß' SOUNDS LIKE 's')

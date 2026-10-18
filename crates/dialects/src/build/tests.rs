@@ -999,6 +999,27 @@ fn types_the_json_of_the_functions_of_mysql() {
 }
 
 #[test]
+fn types_regexp_sounds_like_and_member_of_as_predicates() {
+    let text = concat!(
+        "SELECT a REGEXP 'x', b NOT REGEXP 'x', a SOUNDS LIKE 'x', b SOUNDS LIKE 'x', ",
+        "a MEMBER OF ('[1]'), a MEMBER OF (NULL) FROM t WHERE b REGEXP a"
+    );
+    let integer = |nullable| (types::bigint(), nullable);
+    assert_eq!(
+        column_types(text, Dialect::MySql),
+        [false, true, false, true, false, true].map(integer)
+    );
+    let Plan::Project(project) = plan(text) else {
+        panic!("projection expected");
+    };
+    let Plan::Filter(filter) = project.input.as_ref() else {
+        panic!("filter expected");
+    };
+    assert!(matches!(filter.predicate.kind, ExprKind::Regexp { .. }));
+    assert_eq!(filter.predicate.ty, Type::nullable(DataType::Boolean));
+}
+
+#[test]
 fn types_extract_as_a_nullable_integer() {
     let int = DataType::Integer(IntegerType::signed(IntegerSize::Int));
     let bigint = DataType::Integer(IntegerType::signed(IntegerSize::Big));
