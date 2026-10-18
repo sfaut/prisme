@@ -213,7 +213,7 @@ To look at the internal database, open `./tmp/prisme.db` with any SQLite client 
 
 ### Measurements on real servers
 
-The research of the dialects compares the servers through `probe`, a development tool outside the executable (`crates/probe`, Docker Desktop running). Each server is an official image, `--server mysql:8.0.11`, repeated for several servers (by default MySQL 8.0.11 and 8.4, MariaDB 10.6 and 11.8). Its container, `prisme-probe-<name>-<tag>`, is created at the first run, without any published port, then kept running for the next ones: `docker stop` stops it, `docker rm` deletes it.
+The research of the dialects compares the servers through `probe`, a development tool outside the executable (`crates/probe`, Docker Desktop running). Each server is an official image, `--server mysql:8.0.11`, repeated for several servers (by default MySQL 8.0.11 and 8.4, MariaDB 10.6 and 11.8), or every local image of MySQL and MariaDB with `--all` (`docker images`, one image per server: `mariadb:11.8.9` rather than its alias `mariadb:11.8`). Its container, `prisme-probe-<name>-<tag>`, is created at the first run, without any published port, then kept: `docker rm` deletes it. The servers run by groups of 5 (`--group`): a group is started and measured in parallel, then the containers the run started are stopped, before the next group; a container already running is left running. Many servers started at once no longer answer.
 
 ```
 # Statements on each server, output as tables (an error does not stop the next statements)
@@ -222,6 +222,9 @@ echo "SELECT LPAD('hi', 4, '')" | cargo run -p prisme-probe -- sql
 # Type, nullability, value, warning or error of expressions; * marks the servers that differ
 cargo run -p prisme-probe -- expr --expression "FROM_UNIXTIME(0)" --setup "SET time_zone = '+00:00'"
 cargo run -p prisme-probe -- expr cases.txt --differ
+
+# Every local image, a line per server under each case
+cargo run -p prisme-probe -- --all expr cases.txt --layout rows --differ
 
 # Built-in functions of a reference file against the servers of its dialect
 cargo run -p prisme-probe -- functions mysql --server mysql:9.3.0

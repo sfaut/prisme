@@ -443,6 +443,67 @@ pub fn render(
     out
 }
 
+/// Layout of the results of `render`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Layout {
+    /// A line per case, a column per server.
+    Columns,
+    /// A line per case, then a line per server.
+    Rows,
+}
+
+/// Results of `cases` on `servers`, each case followed by a line per server,
+/// its label then its result: the layout of many servers. `*` marks the cases
+/// where the servers differ; `differ` keeps only those; `markdown` writes a
+/// table of a row per case and server.
+pub fn render_rows(
+    servers: &[Server],
+    cases: &Cases,
+    measures: &[HashMap<String, Measure>],
+    markdown: bool,
+    differ: bool,
+    width: usize,
+) -> String {
+    let labels: Vec<String> = servers.iter().map(Server::label).collect();
+    let label_width = labels.iter().map(String::len).max().unwrap_or(0);
+    let mut out = String::new();
+    if markdown {
+        let _ = writeln!(out, "| id | expression | server | result |");
+        let _ = writeln!(out, "|---|---|---|---|");
+    }
+    for case in &cases.cases {
+        let cells: Vec<String> = measures
+            .iter()
+            .map(|by_id| cell(by_id.get(&case.id), case.deterministic))
+            .collect();
+        let first = cells.first().map(|cell| normalized(cell));
+        let same = cells.iter().all(|cell| Some(normalized(cell)) == first);
+        if differ && same {
+            continue;
+        }
+        let mark = if same { ' ' } else { '*' };
+        if !markdown {
+            let _ = writeln!(out, "{mark} {} {}", case.id, case.expression);
+        }
+        for (label, cell) in labels.iter().zip(&cells) {
+            let cell = cut(cell, width);
+            if markdown {
+                let escape = |text: &str| text.replace('|', "\\|");
+                let _ = writeln!(
+                    out,
+                    "| {} | `{}` | {label} | {} |",
+                    case.id,
+                    escape(&case.expression),
+                    escape(&cell)
+                );
+            } else {
+                let _ = writeln!(out, "    {label:label_width$}  {cell}");
+            }
+        }
+    }
+    out
+}
+
 /// `text` cut at `width` characters, `…` marking the cut; whole for 0.
 fn cut(text: &str, width: usize) -> String {
     if width == 0 || text.chars().count() <= width {

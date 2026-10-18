@@ -1,6 +1,9 @@
 //! Measurements on real MySQL and MariaDB servers, for the research of the
 //! dialects (`docs/DEV-DIALECTS.md`): the servers run in Docker containers,
-//! one per image, started on demand and kept between runs (`server` module).
+//! one per image (`server` module), the images named or all the local ones
+//! (`--all`), by groups of a few servers at once (`--group`): a group is
+//! started, measured, then its containers stopped, before the next one. Many
+//! servers started at once would no longer answer.
 //!
 //! - `sql`: runs statements on each server and prints their output;
 //! - `expr`: measures expressions on each server and marks the servers that
@@ -23,7 +26,7 @@ use anyhow::{Context, bail};
 use clap::{Parser, Subcommand, ValueEnum};
 use prisme_dialects::Dialect;
 
-use crate::expr::Cases;
+use crate::expr::{Cases, Layout};
 use crate::server::Server;
 
 /// Measurements on real MySQL and MariaDB servers, in Docker containers.
@@ -31,13 +34,23 @@ use crate::server::Server;
 #[command(name = "probe")]
 struct Cli {
     /// Docker image of a server, repeated for several servers. Its container,
-    /// `prisme-probe-<name>-<tag>`, is created when missing, then kept.
+    /// `prisme-probe-<name>-<tag>`, is created when missing; a container the
+    /// run started is stopped after its group, one already running is left
+    /// running.
     #[arg(
         long = "server",
         global = true,
         default_values = ["mysql:8.0.11", "mysql:8.4", "mariadb:10.6", "mariadb:11.8"]
     )]
     servers: Vec<String>,
+    /// Every local image of MySQL and MariaDB (`docker images`), one per
+    /// server, instead of `--server`.
+    #[arg(long, global = true, conflicts_with = "servers")]
+    all: bool,
+    /// Number of servers started and measured at once; the containers a
+    /// group started are stopped after it.
+    #[arg(long, global = true, default_value_t = 5, value_parser = clap::value_parser!(u16).range(1..))]
+    group: u16,
     /// What to do.
     #[command(subcommand)]
     command: Command,
@@ -87,6 +100,10 @@ enum Command {
         /// Prints a Markdown table.
         #[arg(long)]
         markdown: bool,
+        /// Layout of the results: a column per server, or a line per server
+        /// under each case (`rows`), for many servers.
+        #[arg(long, value_enum, default_value_t = Layout::Columns)]
+        layout: Layout,
         /// Characters of a cell, cut beyond (0: whole).
         #[arg(long, default_value_t = 70)]
         width: usize,
@@ -111,6 +128,12 @@ enum DialectName {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    let images = if cli.all {
+        server::local_images()?
+    } else {
+        cli.servers.clone()
+    };
+    let group = usize::from(cli.group);
     match cli.command {
         Command::Sql {
             file,
@@ -118,7 +141,6 @@ fn main() -> anyhow::Result<()> {
             verbose,
         } => {
             let script = read(file.as_ref())?;
-            let servers = start(&cli.servers)?;
             let mut options = vec!["--table", "--force"];
             if types {
                 options.push("--column-type-info");
@@ -126,8 +148,8 @@ fn main() -> anyhow::Result<()> {
             if verbose {
                 options.push("-vvv");
             }
-            for server in &servers {
-                let output = server.run(&script, &options)?;
+            let outputs = by_groups(&images, group, |server| server.run(&script, &options))?;
+            for (server, output) in &outputs {
                 println!("== {} ({})", server.label(), server.container);
                 print!("{}", String::from_utf8_lossy(&output.stdout));
                 let errors = String::from_utf8_lossy(&output.stderr);
@@ -142,6 +164,7 @@ fn main() -> anyhow::Result<()> {
             setup,
             differ,
             markdown,
+            layout,
             width,
         } => {
             let mut cases = match &file {
@@ -155,11 +178,17 @@ fn main() -> anyhow::Result<()> {
             if cases.cases.is_empty() {
                 bail!("no expression: give a file of cases or --expression");
             }
-            let servers = start(&cli.servers)?;
-            let measures = in_parallel(&servers, |server| expr::measure(server, &cases))?;
+            let (servers, measures): (Vec<_>, Vec<_>) =
+                by_groups(&images, group, |server| expr::measure(server, &cases))?
+                    .into_iter()
+                    .unzip();
+            let render = match layout {
+                Layout::Columns => expr::render,
+                Layout::Rows => expr::render_rows,
+            };
             print!(
                 "{}",
-                expr::render(&servers, &cases, &measures, markdown, differ, width)
+                render(&servers, &cases, &measures, markdown, differ, width)
             );
         }
         Command::Functions { dialect } => {
@@ -167,16 +196,19 @@ fn main() -> anyhow::Result<()> {
                 DialectName::Mysql => Dialect::MySql,
                 DialectName::Mariadb => Dialect::MariaDb,
             };
-            let servers: Vec<Server> = start(&cli.servers)?
-                .into_iter()
-                .filter(|server| server.dialect == dialect)
-                .collect();
-            if servers.is_empty() {
+            let mut of_dialect = Vec::new();
+            for image in images {
+                if server::dialect_of(&image)? == dialect {
+                    of_dialect.push(image);
+                }
+            }
+            if of_dialect.is_empty() {
                 bail!("no server of {}: add --server", dialect.label());
             }
-            let reports = in_parallel(&servers, |server| {
+            let reports = by_groups(&of_dialect, group, |server| {
                 functions::check(dialect, std::slice::from_ref(server))
             })?;
+            let reports: Vec<String> = reports.into_iter().map(|(_, report)| report).collect();
             print!("{}", reports.concat());
         }
     }
@@ -199,16 +231,38 @@ fn read(file: Option<&PathBuf>) -> anyhow::Result<String> {
     }
 }
 
-/// Servers of `images`, started in parallel.
-fn start(images: &[String]) -> anyhow::Result<Vec<Server>> {
-    in_parallel(images, |image| Server::start(image))
+/// Results of `task` on the servers of `images`, `group` servers at a time:
+/// each group is started, then measured, in parallel, then the containers it
+/// started are stopped, before the next group. Gives each server with its
+/// result, in the order of `images`.
+fn by_groups<R: Send>(
+    images: &[String],
+    group: usize,
+    task: impl Fn(&Server) -> anyhow::Result<R> + Sync,
+) -> anyhow::Result<Vec<(Server, R)>> {
+    let mut results = Vec::with_capacity(images.len());
+    for chunk in images.chunks(group) {
+        let started = in_parallel(chunk, |image| Server::start(image));
+        let servers: Vec<Server> = started.iter().flatten().cloned().collect();
+        let outcomes = in_parallel(&servers, &task);
+        for server in &servers {
+            server.stop()?;
+        }
+        for result in started {
+            result?;
+        }
+        for (server, outcome) in servers.into_iter().zip(outcomes) {
+            results.push((server, outcome?));
+        }
+    }
+    Ok(results)
 }
 
 /// Results of `task` over `items`, run in parallel, in the order of `items`.
 fn in_parallel<T: Sync, R: Send>(
     items: &[T],
     task: impl Fn(&T) -> anyhow::Result<R> + Sync,
-) -> anyhow::Result<Vec<R>> {
+) -> Vec<anyhow::Result<R>> {
     thread::scope(|scope| {
         let handles: Vec<_> = items
             .iter()

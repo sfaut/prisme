@@ -1,6 +1,6 @@
 //! Database servers of the measurements: containers of the official Docker
-//! images of MySQL and MariaDB, one per image, started on demand and left
-//! running afterwards for the next measurements.
+//! images of MySQL and MariaDB, one per image, started on demand, then
+//! stopped after their measurements when the run started them.
 //!
 //! The containers publish no port: the statements go through the client of
 //! the image (`docker exec`), over TCP inside the container, so that a server
@@ -44,6 +44,9 @@ pub struct Server {
     pub container: String,
     /// Version of the server, as `SELECT VERSION()` gives it.
     pub version: String,
+    /// Tells whether the run started or created the container: it is then
+    /// stopped after the measurements (`Server::stop`).
+    started: bool,
 }
 
 impl Server {
@@ -56,10 +59,29 @@ impl Server {
             dialect,
             container,
             version: String::new(),
+            started: false,
         };
-        server.ensure_running()?;
+        server.started = server.ensure_running()?;
         server.version = server.wait()?;
         Ok(server)
+    }
+
+    /// Stops the container when the run started it, leaving it as the run
+    /// found it.
+    pub fn stop(&self) -> anyhow::Result<()> {
+        if !self.started {
+            return Ok(());
+        }
+        eprintln!("{}: stopping the container", self.container);
+        let status = Command::new("docker")
+            .args(["stop", &self.container])
+            .stdout(Stdio::null())
+            .status()
+            .context("running docker")?;
+        if !status.success() {
+            bail!("{}: the container does not stop", self.container);
+        }
+        Ok(())
     }
 
     /// Name and version of the server, `MariaDB 10.6.28`.
@@ -132,8 +154,9 @@ impl Server {
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
 
-    /// Starts the container, or creates it from its image.
-    fn ensure_running(&self) -> anyhow::Result<()> {
+    /// Starts the container, or creates it from its image; tells whether it
+    /// had to.
+    fn ensure_running(&self) -> anyhow::Result<bool> {
         let state = Command::new("docker")
             .args(["inspect", "--format", "{{.State.Running}}", &self.container])
             .output()
@@ -156,12 +179,12 @@ impl Server {
                 .args(["start", &self.container])
                 .status()
         } else {
-            return Ok(());
+            return Ok(false);
         };
         if !status.context("running docker")?.success() {
             bail!("{}: the container does not start", self.container);
         }
-        Ok(())
+        Ok(true)
     }
 
     /// Waits until the server answers over TCP, creates the database of the
@@ -182,6 +205,86 @@ impl Server {
         }
         bail!("{}: no answer after {START_TIMEOUT} s", self.container)
     }
+}
+
+/// Local images of MySQL and MariaDB (`docker images`), one per version of
+/// server, sorted by dialect then by version.
+pub fn local_images() -> anyhow::Result<Vec<String>> {
+    let listing = docker(&["images", "--format", "{{.Repository}}:{{.Tag}}"])?;
+    let images: Vec<&str> = listing
+        .lines()
+        .filter(|image| image.starts_with("mysql:") || image.starts_with("mariadb:"))
+        .filter(|image| !image.ends_with(":<none>"))
+        .collect();
+    if images.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut arguments = vec!["image", "inspect", "--format", "{{json .Config.Env}}"];
+    arguments.extend(&images);
+    let environments = docker(&arguments)?;
+    let mut versions = Vec::with_capacity(images.len());
+    for (image, environment) in images.iter().zip(environments.lines()) {
+        match image_version(environment) {
+            Some(version) => versions.push((image.to_string(), version)),
+            None => eprintln!("{image}: no version in its environment, left out"),
+        }
+    }
+    Ok(by_version(versions))
+}
+
+/// Output of the command `docker arguments`; an error when it fails.
+fn docker(arguments: &[&str]) -> anyhow::Result<String> {
+    let output = Command::new("docker")
+        .args(arguments)
+        .output()
+        .context("running docker")?;
+    if !output.status.success() {
+        bail!(
+            "docker {}: {}",
+            arguments[0],
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Version of the server of an official image, read from its environment
+/// (`["MYSQL_VERSION=8.0.31-1.el8", ...]`, `MARIADB_VERSION=1:11.8.9+maria~ubu2404`):
+/// the images of a version alias (`mariadb:11.8`) tell their exact version
+/// without being started.
+fn image_version(environment: &str) -> Option<Version> {
+    let value = ["\"MYSQL_VERSION=", "\"MARIADB_VERSION="]
+        .iter()
+        .find_map(|name| environment.split_once(name))?
+        .1;
+    // The epoch of the Debian packages of MariaDB, `1:`, comes first.
+    let value = value.split_once(':').map_or(value, |(_, rest)| rest);
+    Version::parse(value)
+}
+
+/// Images `images` with their version, one per dialect and version (of the
+/// most precise tag: `mariadb:11.8.9` rather than `mariadb:11.8`), MySQL
+/// first, then by version.
+fn by_version(images: Vec<(String, Version)>) -> Vec<String> {
+    let dialect = |image: &str| image.starts_with("mariadb:");
+    let precision = |image: &str| image.matches('.').count();
+    let mut kept: Vec<(String, Version)> = Vec::new();
+    for (image, version) in images {
+        match kept.iter_mut().find(|(other, other_version)| {
+            *other_version == version && dialect(other) == dialect(&image)
+        }) {
+            Some(known) if precision(&image) > precision(&known.0) => *known = (image, version),
+            Some(_) => {}
+            None => kept.push((image, version)),
+        }
+    }
+    kept.sort_by_key(|(image, version)| (dialect(image), *version));
+    kept.into_iter().map(|(image, _)| image).collect()
+}
+
+/// Dialect of the image `image`.
+pub fn dialect_of(image: &str) -> anyhow::Result<Dialect> {
+    Ok(container_of(image)?.0)
 }
 
 /// Dialect and container of the image `image`.
@@ -222,12 +325,49 @@ mod tests {
     }
 
     #[test]
+    fn an_image_tells_its_version() {
+        let mysql = r#"["PATH=/usr/bin","MYSQL_MAJOR=8.0","MYSQL_VERSION=8.0.31-1.el8"]"#;
+        assert_eq!(image_version(mysql), Some(Version::new(8, 0, 31)));
+        let mariadb = r#"["MARIADB_VERSION=1:11.8.9+maria~ubu2404","LANG=C.UTF-8"]"#;
+        assert_eq!(image_version(mariadb), Some(Version::new(11, 8, 9)));
+        assert_eq!(image_version(r#"["PATH=/usr/bin"]"#), None);
+    }
+
+    #[test]
+    fn the_local_images_are_one_per_server_by_version() {
+        let images = [
+            ("mariadb:11.8", Version::new(11, 8, 9)),
+            ("mariadb:11.8.9", Version::new(11, 8, 9)),
+            ("mariadb:10.11", Version::new(10, 11, 19)),
+            ("mariadb:10.11.2", Version::new(10, 11, 2)),
+            ("mysql:8", Version::new(8, 4, 11)),
+            ("mysql:8.0.11", Version::new(8, 0, 11)),
+            ("mysql:8.4", Version::new(8, 4, 11)),
+        ];
+        let images = images
+            .into_iter()
+            .map(|(image, version)| (image.to_string(), version))
+            .collect();
+        assert_eq!(
+            by_version(images),
+            [
+                "mysql:8.0.11",
+                "mysql:8.4",
+                "mariadb:10.11.2",
+                "mariadb:10.11",
+                "mariadb:11.8.9"
+            ]
+        );
+    }
+
+    #[test]
     fn the_label_gives_the_version() {
         let server = Server {
             image: "mariadb:10.6".to_string(),
             dialect: Dialect::MariaDb,
             container: "prisme-probe-mariadb-10.6".to_string(),
             version: "10.6.28-MariaDB-ubu2204".to_string(),
+            started: false,
         };
         assert_eq!(server.label(), "MariaDB 10.6.28");
     }
