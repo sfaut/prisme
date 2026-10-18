@@ -25,6 +25,7 @@ mod expr;
 pub(crate) mod functions;
 mod group;
 mod interval;
+mod json;
 mod now;
 mod scope;
 mod string;

@@ -1,6 +1,7 @@
 //! Function calls of the MySQL family in the plan: scalar functions, built-in
 //! or stored in the database (typed as unknown until the types of the
-//! function catalog, those of the current date and time aside, `now`),
+//! function catalog, those of the current date and time aside, `now`, and
+//! those of MySQL that give a `JSON`, `json`),
 //! aggregate functions (read by the aggregation of their block) and window
 //! functions (read by the window node of their block), with their named
 //! windows.
@@ -13,7 +14,7 @@ use prisme_types::{DataType, Type};
 
 use super::group::Clause;
 use super::scope::Scope;
-use super::{BuildError, Builder, functions, now, same_name};
+use super::{BuildError, Builder, functions, json, now, same_name};
 use crate::Dialect;
 use crate::builtins::{self, Kind};
 use crate::sql::ast;
@@ -63,7 +64,10 @@ impl Builder<'_> {
         };
         let ty = kind
             .is_some()
-            .then(|| now::now_type(&name, &args, self.dialect, self.version))
+            .then(|| {
+                now::now_type(&name, &args, self.dialect, self.version)
+                    .or_else(|| json::json_type(&name, self.dialect))
+            })
             .flatten()
             .unwrap_or_else(|| Type::nullable(DataType::Unknown));
         let call = FunctionCall {

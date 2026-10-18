@@ -45,8 +45,9 @@
 //! compares `'b'` with `'x'` by the rules of JSON too), and towards 8.0.17,
 //! an error (rule `json.in`).
 //!
-//! Only a value the plan types `JSON` is concerned: the results of the
-//! `JSON_` functions are of unknown type yet, their translation between the
+//! Only a value the plan types `JSON` is concerned: a column, a subquery,
+//! a function of MySQL that gives a `JSON` (`build::json`). The other
+//! functions of JSON are of unknown type yet, their translation between the
 //! dialects refused.
 
 use prisme_plan::{Expr, ExprKind, Join, Plan};

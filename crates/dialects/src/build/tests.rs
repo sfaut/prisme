@@ -976,6 +976,29 @@ fn types_the_current_date_and_time_after_the_version() {
 }
 
 #[test]
+fn types_the_json_of_the_functions_of_mysql() {
+    let text = concat!(
+        "SELECT JSON_ARRAY(), JSON_OBJECT('k', 1), JSON_EXTRACT('{}', '$.a'), ",
+        "JSON_SET('{}', '$.b', 1), JSON_LENGTH('[1]'), JSON_UNQUOTE('\"a\"')"
+    );
+    let json = (DataType::Json, true);
+    let unknown = (DataType::Unknown, true);
+    assert_eq!(
+        column_types(text, Dialect::MySql),
+        [
+            json.clone(),
+            json.clone(),
+            json.clone(),
+            json,
+            unknown.clone(),
+            unknown.clone()
+        ]
+    );
+    // MariaDB gives a string, of a type unknown as its other functions.
+    assert_eq!(column_types(text, Dialect::MariaDb), vec![unknown; 6]);
+}
+
+#[test]
 fn types_extract_as_a_nullable_integer() {
     let int = DataType::Integer(IntegerType::signed(IntegerSize::Int));
     let bigint = DataType::Integer(IntegerType::signed(IntegerSize::Big));

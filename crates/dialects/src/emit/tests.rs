@@ -2520,6 +2520,17 @@ fn a_json_read_as_a_boolean_is_read_as_the_input_reads_it() {
             );
         }
     }
+    // A function that gives a `JSON` as well.
+    for (input, target) in [(mysql_8_4, mysql_8_0_16), (mysql_8_0_16, mysql_8_4)] {
+        assert_eq!(
+            errors(
+                "SELECT s FROM g WHERE JSON_EXTRACT(js, '$.a')",
+                input,
+                output(target)
+            ),
+            ["boolean.json"]
+        );
+    }
     for text in [
         "SELECT CASE WHEN js THEN 1 END FROM g",
         "SELECT IF(js, 1, 0) FROM g",
@@ -2807,6 +2818,10 @@ fn in_of_a_json_list_is_read_as_the_input_reads_it() {
         (
             "SELECT s FROM g WHERE js IN ('b', 1) AND s = 'x'",
             "SELECT s FROM g WHERE (js = 'b' OR js = 1) AND s = 'x'",
+        ),
+        (
+            "SELECT s FROM g WHERE JSON_EXTRACT(js, '$.a') IN ('b', 1)",
+            "SELECT s FROM g WHERE JSON_EXTRACT(js, '$.a') = 'b' OR JSON_EXTRACT(js, '$.a') = 1",
         ),
     ] {
         let (sql, rules) = transpiled(text, mysql_8_4, output(mysql_8_0_16));
