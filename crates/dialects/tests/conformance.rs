@@ -8,15 +8,25 @@
 //!
 //! The servers are Docker images started for the run, listed by the
 //! variable `PRISME_CONFORMANCE_SERVERS` (by default `mysql:8.0.11`,
-//! `mysql:8.4`, `mariadb:10.6` and `mariadb:11.8`): a new version is checked
-//! by adding its image, without writing the cases again. Each server holds
-//! the table `sample`, then the tables of each file (`setup`).
+//! `mysql:8.4`, `mariadb:10.6` and `mariadb:11.8`), or `all` for every local
+//! image of MySQL and MariaDB, one per version: a new version is checked by
+//! adding its image, without writing the cases again.
+//! `PRISME_CONFORMANCE_FILES` limits the run to some files (`grammar,cast`).
+//! The version of each image is read from its environment before the run, so
+//! that the servers need not run together: they start by groups of 5
+//! (`PRISME_CONFORMANCE_GROUP`), many servers at once running out of memory.
+//! Each server of a group holds the table `sample` and the tables of each
+//! file (`setup`), runs the queries it is the input of, then the
+//! transpilations it is the output of, each distinct text once; the results
+//! are compared once every group has run.
 //!
 //! Ignored by default, as it requires Docker Desktop running:
 //! `cargo test -p prisme-dialects --test conformance -- --include-ignored`.
 
 use std::cmp::Ordering;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -43,10 +53,13 @@ use tokio::task::JoinSet;
 /// them, separated by commas.
 const DEFAULT_SERVERS: &str = "mysql:8.0.11,mysql:8.4,mariadb:10.6,mariadb:11.8";
 
+/// Servers started together when `PRISME_CONFORMANCE_GROUP` does not say.
+const DEFAULT_GROUP: usize = 5;
+
 /// Time allowed for a server to start, the image being already downloaded.
 const START_TIMEOUT: Duration = Duration::from_secs(300);
 
-/// Pairs of servers checked at once.
+/// Queries run at once on the servers of a group.
 const PARALLEL_CHECKS: usize = 8;
 
 /// Table that every server holds: one row of the common types, as the
@@ -161,30 +174,51 @@ impl Condition {
         }
     }
 
-    /// Tells whether `server` meets the condition.
-    fn keeps(&self, server: &Server) -> bool {
-        server.dialect == self.dialect && self.accepted.contains(&server.version.cmp(&self.version))
+    /// Tells whether the server of `image` meets the condition.
+    fn keeps(&self, image: &Image) -> bool {
+        image.dialect == self.dialect && self.accepted.contains(&image.version.cmp(&self.version))
+    }
+}
+
+/// Image of a server of the run.
+#[derive(Debug, Clone)]
+struct Image {
+    /// Docker image, `mysql:8.0.11`.
+    name: String,
+    /// Dialect.
+    dialect: Dialect,
+    /// Version of the server, read from the environment of the image, and
+    /// checked against `SELECT VERSION()` at its start.
+    version: Version,
+}
+
+impl Image {
+    /// Image and version of the server: `mariadb:10.6 (MariaDB 10.6.28)`.
+    fn label(&self) -> String {
+        format!("{} ({} {})", self.name, self.dialect.label(), self.version)
     }
 }
 
 /// Server of the run, in its container.
 struct Server {
-    /// Docker image, `mysql:8.0.11`.
-    image: String,
-    /// Dialect.
-    dialect: Dialect,
-    /// Version, as `SELECT VERSION()` gives it.
-    version: Version,
+    /// Image of the server.
+    image: Image,
     /// Connection settings.
     target: MysqlTarget,
-    /// Container, removed when the server is dropped.
-    _container: ContainerAsync<GenericImage>,
+    /// Container, removed by `Server::remove` or when the server is
+    /// dropped.
+    container: ContainerAsync<GenericImage>,
 }
 
 impl Server {
-    /// Image and version of the server: `mariadb:10.6 (MariaDB 10.6.28)`.
-    fn label(&self) -> String {
-        format!("{} ({} {})", self.image, self.dialect.label(), self.version)
+    /// Removes the container of the server, freeing its memory before the
+    /// next group.
+    async fn remove(self) {
+        let label = self.image.label();
+        self.container
+            .rm()
+            .await
+            .unwrap_or_else(|error| panic!("{label}: {error}"));
     }
 }
 
@@ -199,13 +233,19 @@ struct Answer {
     rows: Vec<Vec<Cell>>,
 }
 
-/// What a case gave on a pair of servers.
-enum Outcome {
-    /// Same result.
-    Same,
+/// Transpilation of a case for a pair of servers.
+enum Transpiled {
     /// Refused with the rule expected.
     Refused,
+    /// Refused otherwise than expected, or translated when a refusal was
+    /// expected.
+    Failed(String),
+    /// Text run on the output.
+    Sql(String),
 }
+
+/// Result of a query on a server: its answer, or the error of the server.
+type Run = Result<Answer, String>;
 
 /// Dialect of the name `name` in the cases and the images.
 ///
@@ -231,13 +271,14 @@ fn dialect_named(name: &str) -> Dialect {
 ///
 /// # Panics
 ///
-/// When the container does not start or the server does not answer.
-async fn start(image: String) -> Server {
+/// When the container does not start, the server does not answer or gives
+/// another version than its image.
+async fn start(image: Image) -> Server {
     let (name, tag) = image
+        .name
         .split_once(':')
-        .unwrap_or_else(|| panic!("image `{image}`: expected `<name>:<tag>`"));
-    let dialect = dialect_named(name);
-    let (empty_password, database, skip_time_zones) = match dialect {
+        .unwrap_or_else(|| panic!("image `{}`: expected `<name>:<tag>`", image.name));
+    let (empty_password, database, skip_time_zones) = match image.dialect {
         Dialect::MySql => (
             "MYSQL_ALLOW_EMPTY_PASSWORD",
             "MYSQL_DATABASE",
@@ -260,7 +301,7 @@ async fn start(image: String) -> Server {
         .with_startup_timeout(START_TIMEOUT)
         .start()
         .await
-        .unwrap_or_else(|error| panic!("{image}: {error}"));
+        .unwrap_or_else(|error| panic!("{}: {error}", image.name));
     let target = MysqlTarget {
         host: ipv4_host(container.get_host().await.unwrap().to_string()),
         port: container.get_host_port_ipv4(3306).await.unwrap(),
@@ -271,16 +312,19 @@ async fn start(image: String) -> Server {
     };
     let mut connection = connect(&target)
         .await
-        .unwrap_or_else(|error| panic!("{image}: {error}"));
+        .unwrap_or_else(|error| panic!("{}: {error}", image.name));
     let info = server_info(&mut connection).await.unwrap();
     let version = Version::parse(&info.version)
-        .unwrap_or_else(|| panic!("{image}: version `{}` unread", info.version));
+        .unwrap_or_else(|| panic!("{}: version `{}` unread", image.name, info.version));
+    assert_eq!(
+        version, image.version,
+        "{}: the server gives another version than its image",
+        image.name
+    );
     Server {
         image,
-        dialect,
-        version,
         target,
-        _container: container,
+        container,
     }
 }
 
@@ -296,13 +340,11 @@ fn ipv4_host(host: String) -> String {
     }
 }
 
-/// Servers of the run, started together.
-async fn start_servers() -> Vec<Server> {
-    let images =
-        std::env::var("PRISME_CONFORMANCE_SERVERS").unwrap_or_else(|_| DEFAULT_SERVERS.to_string());
+/// Servers of `images`, started together.
+async fn start_servers(images: &[Image]) -> Vec<Server> {
     let tasks: Vec<_> = images
-        .split(',')
-        .map(|image| tokio::spawn(start(image.trim().to_string())))
+        .iter()
+        .map(|image| tokio::spawn(start(image.clone())))
         .collect();
     let mut servers = Vec::new();
     for task in tasks {
@@ -311,7 +353,107 @@ async fn start_servers() -> Vec<Server> {
     servers
 }
 
-/// Files of cases, by name.
+/// Images of the run, MySQL first, then by version: those of
+/// `PRISME_CONFORMANCE_SERVERS`, separated by commas, or every local image
+/// of MySQL and MariaDB for `all`, one per version (of the most precise
+/// tag: `mariadb:11.8.9` rather than `mariadb:11.8`).
+///
+/// # Panics
+///
+/// When Docker does not answer, or an image has no version in its
+/// environment.
+fn images() -> Vec<Image> {
+    let list =
+        std::env::var("PRISME_CONFORMANCE_SERVERS").unwrap_or_else(|_| DEFAULT_SERVERS.to_string());
+    let names: Vec<String> = if list.trim() == "all" {
+        docker(&["images", "--format", "{{.Repository}}:{{.Tag}}"])
+            .lines()
+            .filter(|name| name.starts_with("mysql:") || name.starts_with("mariadb:"))
+            .filter(|name| !name.ends_with(":<none>"))
+            .map(ToString::to_string)
+            .collect()
+    } else {
+        list.split(',')
+            .map(|name| name.trim().to_string())
+            .collect()
+    };
+    let mut images: Vec<Image> = Vec::new();
+    for name in names {
+        let image = image_of(&name);
+        let precision = |name: &str| name.matches('.').count();
+        match images
+            .iter_mut()
+            .find(|other| other.dialect == image.dialect && other.version == image.version)
+        {
+            Some(known) if precision(&name) > precision(&known.name) => *known = image,
+            Some(_) => {}
+            None => images.push(image),
+        }
+    }
+    images.sort_by_key(|image| (image.dialect == Dialect::MariaDb, image.version));
+    images
+}
+
+/// Image `name`, downloaded when missing, with the version of its server,
+/// read from its environment (`MYSQL_VERSION=8.0.31-1.el8`,
+/// `MARIADB_VERSION=1:11.8.9+maria~ubu2404`).
+///
+/// # Panics
+///
+/// When Docker does not answer, or the image has no version.
+fn image_of(name: &str) -> Image {
+    let (dialect, _) = name
+        .split_once(':')
+        .unwrap_or_else(|| panic!("image `{name}`: expected `<name>:<tag>`"));
+    let dialect = dialect_named(dialect);
+    let inspect = ["image", "inspect", "--format", "{{json .Config.Env}}", name];
+    let environment = docker_output(&inspect).unwrap_or_else(|_| {
+        docker(&["pull", "--quiet", name]);
+        docker(&inspect)
+    });
+    let value = ["\"MYSQL_VERSION=", "\"MARIADB_VERSION="]
+        .iter()
+        .find_map(|variable| environment.split_once(variable))
+        .unwrap_or_else(|| panic!("image `{name}`: no version in its environment"))
+        .1;
+    // The epoch of the Debian packages of MariaDB, `1:`, comes first.
+    let value = value.split_once(':').map_or(value, |(_, rest)| rest);
+    let version =
+        Version::parse(value).unwrap_or_else(|| panic!("image `{name}`: version `{value}` unread"));
+    Image {
+        name: name.to_string(),
+        dialect,
+        version,
+    }
+}
+
+/// Output of `docker arguments`.
+///
+/// # Panics
+///
+/// When the command fails.
+fn docker(arguments: &[&str]) -> String {
+    docker_output(arguments).unwrap_or_else(|error| panic!("docker {}: {error}", arguments[0]))
+}
+
+/// Output of `docker arguments`, or its error.
+fn docker_output(arguments: &[&str]) -> Result<String, String> {
+    let output = Command::new("docker")
+        .args(arguments)
+        .output()
+        .map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+/// Files of cases, by name; those of `PRISME_CONFORMANCE_FILES`, names
+/// without extension separated by commas, when it lists them.
+///
+/// # Panics
+///
+/// On a file unread, or a name of `PRISME_CONFORMANCE_FILES` of no file.
 fn case_files() -> Vec<(PathBuf, CaseFile)> {
     let directory = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/conformance");
     let mut paths: Vec<PathBuf> = std::fs::read_dir(&directory)
@@ -323,6 +465,21 @@ fn case_files() -> Vec<(PathBuf, CaseFile)> {
         })
         .collect();
     paths.sort();
+    if let Ok(list) = std::env::var("PRISME_CONFORMANCE_FILES") {
+        let names: Vec<&str> = list.split(',').map(str::trim).collect();
+        for name in &names {
+            assert!(
+                paths
+                    .iter()
+                    .any(|path| path.file_stem().is_some_and(|stem| stem == *name)),
+                "PRISME_CONFORMANCE_FILES: no file `{name}.yaml`"
+            );
+        }
+        paths.retain(|path| {
+            path.file_stem()
+                .is_some_and(|stem| names.iter().any(|name| stem == *name))
+        });
+    }
     paths
         .into_iter()
         .map(|path| {
@@ -442,12 +599,55 @@ async fn session(server: &Server, statements: &[String]) -> Result<Connection, S
     Ok(connection)
 }
 
-/// Transpiles `case` from `input` to `output`, runs both queries and
-/// compares their results.
-async fn check(case: &Case, input: &Server, output: &Server) -> Result<Outcome, String> {
-    let mut source = session(input, &case.session).await?;
-    let mut target = session(output, &case.session).await?;
-    let info = server_info(&mut target)
+/// Answer of the query of `case` on `server`, its input.
+async fn run_input(case: &Case, server: &Server) -> Run {
+    let mut connection = session(server, &case.session).await?;
+    answer(&mut connection, &case.sql).await
+}
+
+/// Transpilations of `case` from the servers of `inputs` to `server`, and
+/// the answer of each distinct text on `server`.
+async fn run_output(
+    case: &Case,
+    inputs: &[Image],
+    server: &Server,
+) -> (Vec<Transpiled>, HashMap<String, Run>) {
+    let mut runs = HashMap::new();
+    let mut target = match session(server, &case.session).await {
+        Ok(connection) => connection,
+        Err(error) => {
+            let failed = inputs
+                .iter()
+                .map(|_| Transpiled::Failed(error.clone()))
+                .collect();
+            return (failed, runs);
+        }
+    };
+    let mut transpiled = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        let outcome = transpile(case, input, server, &mut target)
+            .await
+            .unwrap_or_else(Transpiled::Failed);
+        if let Transpiled::Sql(sql) = &outcome
+            && !runs.contains_key(sql)
+        {
+            let run = answer(&mut target, sql).await;
+            runs.insert(sql.clone(), run);
+        }
+        transpiled.push(outcome);
+    }
+    (transpiled, runs)
+}
+
+/// Transpilation of `case` from the server of `input` to `output`, whose
+/// session `target` gives the SQL mode and the columns of the tables read.
+async fn transpile(
+    case: &Case,
+    input: &Image,
+    output: &Server,
+    target: &mut Connection,
+) -> Result<Transpiled, String> {
+    let info = server_info(target)
         .await
         .map_err(|error| error.to_string())?;
     let translation = prepare(
@@ -457,8 +657,8 @@ async fn check(case: &Case, input: &Server, output: &Server) -> Result<Outcome, 
             version: input.version,
         },
         OutputDialect {
-            dialect: output.dialect,
-            version: output.version,
+            dialect: output.image.dialect,
+            version: output.image.version,
             mode: SqlMode::parse(&info.sql_mode),
         },
     )
@@ -466,7 +666,7 @@ async fn check(case: &Case, input: &Server, output: &Server) -> Result<Outcome, 
     let mut tables = Tables::default();
     for table in translation.tables() {
         let database = table.database.as_ref().map(|name| name.value.as_str());
-        let columns = catalog::table_columns(&mut target, info.flavor, database, &table.name.value)
+        let columns = catalog::table_columns(target, info.flavor, database, &table.name.value)
             .await
             .map_err(|error| error.to_string())?;
         if let Some(columns) = columns {
@@ -485,124 +685,182 @@ async fn check(case: &Case, input: &Server, output: &Server) -> Result<Outcome, 
         .iter()
         .map(|error| error.rule)
         .collect();
-    match (&case.refused, rules.is_empty()) {
-        (Some(rule), false) if rules.contains(&rule.as_str()) => return Ok(Outcome::Refused),
-        (Some(rule), true) => {
-            return Err(format!(
-                "translated, `{rule}` expected: {}",
-                transpilation.sql
-            ));
-        }
-        (_, false) => return Err(format!("refused: {:?}", transpilation.errors)),
-        (None, true) => {}
-    }
-    let expected = answer(&mut source, &case.sql)
-        .await
-        .map_err(|error| format!("{}: {error}", input.label()))?;
-    let got = answer(&mut target, &transpilation.sql)
-        .await
-        .map_err(|error| {
-            format!(
-                "{}: {error}\n  transpiled {}",
-                output.label(),
-                transpilation.sql
-            )
-        })?;
-    match difference(&expected, &got, case.compare) {
-        Some(difference) => Err(format!("{difference}\n  transpiled {}", transpilation.sql)),
-        None => Ok(Outcome::Same),
-    }
+    Ok(match (&case.refused, rules.is_empty()) {
+        (Some(rule), false) if rules.contains(&rule.as_str()) => Transpiled::Refused,
+        (Some(rule), true) => Transpiled::Failed(format!(
+            "translated, `{rule}` expected: {}",
+            transpilation.sql
+        )),
+        (_, false) => Transpiled::Failed(format!("refused: {:?}", transpilation.errors)),
+        (None, true) => Transpiled::Sql(transpilation.sql),
+    })
+}
+
+/// Index of a case: its file, then its place in the file.
+type CaseKey = (usize, usize);
+
+/// What a task of a group gives.
+enum Done {
+    /// Answer of a case on an input, the index of its image.
+    Input(CaseKey, usize, Run),
+    /// Transpilations of a case towards an output, the index of its image,
+    /// for each of its inputs, and the answers of their texts.
+    Output(CaseKey, usize, Vec<Transpiled>, HashMap<String, Run>),
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "requires Docker Desktop running"]
 async fn transpilations_give_the_same_result() {
-    let servers = start_servers().await;
-    let files = case_files();
-    for server in &servers {
-        let mut connection = session(server, &[]).await.unwrap();
-        let sample: Vec<String> = SAMPLE.iter().map(ToString::to_string).collect();
-        run_all(&mut connection, &sample)
-            .await
-            .unwrap_or_else(|error| panic!("{}: {error}", server.label()));
-        for (path, file) in &files {
-            run_all(&mut connection, &file.setup)
-                .await
-                .unwrap_or_else(|error| {
-                    panic!("{} on {}: {error}", path.display(), server.label())
-                });
-        }
-    }
-    // Each pair of servers of each case, checked in parallel; the failures
-    // are listed in the order of the files.
-    let servers = Arc::new(servers);
-    let files = Arc::new(files);
-    let permits = Arc::new(Semaphore::new(PARALLEL_CHECKS));
-    let mut checks = JoinSet::new();
+    let images = images();
+    let files = Arc::new(case_files());
+    let group = std::env::var("PRISME_CONFORMANCE_GROUP").map_or(DEFAULT_GROUP, |text| {
+        text.parse()
+            .ok()
+            .filter(|&size| size > 0)
+            .expect("PRISME_CONFORMANCE_GROUP: a number of servers")
+    });
+    // The inputs and the outputs of each case, as indexes of `images`.
+    let mut servers_of: HashMap<CaseKey, (Vec<usize>, Vec<usize>)> = HashMap::new();
     let mut failures = Vec::new();
     for (file_index, (path, file)) in files.iter().enumerate() {
         for (case_index, case) in file.cases.iter().enumerate() {
             let from = dialect_named(&case.from);
-            let inputs = case.inputs.as_deref().map(Condition::parse);
-            let outputs = case.outputs.as_deref().map(Condition::parse);
-            let kept = |server: &Server, input: bool| {
-                let condition = if input { &inputs } else { &outputs };
-                (server.dialect == from) == input
+            let kept = |image: &Image, condition: &Option<String>, input: bool| {
+                (image.dialect == from) == input
                     && condition
-                        .as_ref()
-                        .is_none_or(|condition| condition.keeps(server))
+                        .as_deref()
+                        .map(Condition::parse)
+                        .is_none_or(|condition| condition.keeps(image))
             };
-            let mut pairs = 0;
-            for (input, input_server) in servers.iter().enumerate() {
-                for (output, output_server) in servers.iter().enumerate() {
-                    if !kept(input_server, true) || !kept(output_server, false) {
-                        continue;
-                    }
-                    pairs += 1;
-                    let (servers, files, permits) = (
-                        Arc::clone(&servers),
-                        Arc::clone(&files),
-                        Arc::clone(&permits),
-                    );
-                    checks.spawn(async move {
-                        let _permit = permits.acquire().await.expect("open semaphore");
-                        let case = &files[file_index].1.cases[case_index];
-                        let outcome = check(case, &servers[input], &servers[output]).await;
-                        ((file_index, case_index, input, output), outcome)
-                    });
-                }
-            }
-            if pairs == 0 {
+            let indexes = |condition: &Option<String>, input: bool| -> Vec<usize> {
+                (0..images.len())
+                    .filter(|&index| kept(&images[index], condition, input))
+                    .collect()
+            };
+            let (inputs, outputs) = (indexes(&case.inputs, true), indexes(&case.outputs, false));
+            if inputs.is_empty() || outputs.is_empty() {
                 let name = path.file_name().unwrap().to_string_lossy();
                 let key = (file_index, case_index, 0, 0);
                 failures.push((key, format!("{name}: no server for {}", case.sql)));
             }
+            servers_of.insert((file_index, case_index), (inputs, outputs));
+        }
+    }
+    let servers_of = Arc::new(servers_of);
+    let mut expected: HashMap<(CaseKey, usize), Run> = HashMap::new();
+    let mut transpiled: HashMap<(CaseKey, usize, usize), Transpiled> = HashMap::new();
+    let mut got: HashMap<(CaseKey, usize, String), Run> = HashMap::new();
+    for (chunk, group_images) in images.chunks(group).enumerate() {
+        let first = chunk * group;
+        let servers = start_servers(group_images).await;
+        for server in &servers {
+            let mut connection = session(server, &[]).await.unwrap();
+            let sample: Vec<String> = SAMPLE.iter().map(ToString::to_string).collect();
+            run_all(&mut connection, &sample)
+                .await
+                .unwrap_or_else(|error| panic!("{}: {error}", server.image.label()));
+            for (path, file) in files.iter() {
+                run_all(&mut connection, &file.setup)
+                    .await
+                    .unwrap_or_else(|error| {
+                        panic!("{} on {}: {error}", path.display(), server.image.label())
+                    });
+            }
+        }
+        let servers = Arc::new(servers);
+        let images = Arc::new(images.clone());
+        let permits = Arc::new(Semaphore::new(PARALLEL_CHECKS));
+        let mut tasks = JoinSet::new();
+        for (offset, index) in (first..first + servers.len()).enumerate() {
+            for (key, (inputs, outputs)) in servers_of.iter() {
+                let (servers, files, images, permits, servers_of) = (
+                    Arc::clone(&servers),
+                    Arc::clone(&files),
+                    Arc::clone(&images),
+                    Arc::clone(&permits),
+                    Arc::clone(&servers_of),
+                );
+                let key = *key;
+                let (input, output) = (inputs.contains(&index), outputs.contains(&index));
+                if !input && !output {
+                    continue;
+                }
+                tasks.spawn(async move {
+                    let _permit = permits.acquire().await.expect("open semaphore");
+                    let case = &files[key.0].1.cases[key.1];
+                    let server = &servers[offset];
+                    if input {
+                        return Done::Input(key, index, run_input(case, server).await);
+                    }
+                    let inputs: Vec<Image> = servers_of[&key]
+                        .0
+                        .iter()
+                        .map(|&input| images[input].clone())
+                        .collect();
+                    let (outcomes, runs) = run_output(case, &inputs, server).await;
+                    Done::Output(key, index, outcomes, runs)
+                });
+            }
+        }
+        while let Some(done) = tasks.join_next().await {
+            match done.expect("check task") {
+                Done::Input(key, index, run) => {
+                    expected.insert((key, index), run);
+                }
+                Done::Output(key, index, outcomes, runs) => {
+                    for (&input, outcome) in servers_of[&key].0.iter().zip(outcomes) {
+                        transpiled.insert((key, input, index), outcome);
+                    }
+                    for (sql, run) in runs {
+                        got.insert((key, index, sql), run);
+                    }
+                }
+            }
+        }
+        let servers = Arc::into_inner(servers).expect("tasks of the group done");
+        for server in servers {
+            server.remove().await;
         }
     }
     let (mut same, mut refused) = (0, 0);
-    while let Some(joined) = checks.join_next().await {
-        let (key, outcome) = joined.expect("check task");
-        let (file_index, case_index, input, output) = key;
-        match outcome {
-            Ok(Outcome::Same) => same += 1,
-            Ok(Outcome::Refused) => refused += 1,
-            Err(failure) => {
-                let (path, file) = &files[file_index];
-                let name = path.file_name().unwrap().to_string_lossy();
-                let message = format!(
-                    "{name}: {} -> {}: {}\n  {failure}",
-                    servers[input].label(),
-                    servers[output].label(),
-                    file.cases[case_index].sql
-                );
-                failures.push((key, message));
+    for ((key, input, output), outcome) in transpiled {
+        let (path, file) = &files[key.0];
+        let case = &file.cases[key.1];
+        let failure = match outcome {
+            Transpiled::Refused => {
+                refused += 1;
+                continue;
             }
-        }
+            Transpiled::Failed(failure) => failure,
+            Transpiled::Sql(sql) => {
+                let failure = match (&expected[&(key, input)], &got[&(key, output, sql.clone())]) {
+                    (Err(error), _) => format!("{}: {error}", images[input].label()),
+                    (_, Err(error)) => format!("{}: {error}", images[output].label()),
+                    (Ok(expected), Ok(got)) => match difference(expected, got, case.compare) {
+                        Some(difference) => difference,
+                        None => {
+                            same += 1;
+                            continue;
+                        }
+                    },
+                };
+                format!("{failure}\n  transpiled {sql}")
+            }
+        };
+        let name = path.file_name().unwrap().to_string_lossy();
+        let message = format!(
+            "{name}: {} -> {}: {}\n  {failure}",
+            images[input].label(),
+            images[output].label(),
+            case.sql
+        );
+        failures.push(((key.0, key.1, input, output), message));
     }
     failures.sort_by_key(|(key, _)| *key);
     let failures: Vec<String> = failures.into_iter().map(|(_, message)| message).collect();
     println!(
-        "{same} same results, {refused} refusals, {} failures",
+        "{} servers, {same} same results, {refused} refusals, {} failures",
+        images.len(),
         failures.len()
     );
     assert!(failures.is_empty(), "\n{}", failures.join("\n\n"));
