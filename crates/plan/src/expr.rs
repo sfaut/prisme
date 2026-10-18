@@ -374,6 +374,21 @@ pub struct FunctionCall {
     /// Function stored in the database, the built-in functions of the
     /// dialect aside.
     pub stored: bool,
+    /// How the input writes the call.
+    pub form: CallForm,
+}
+
+/// How the input writes a call to a scalar function.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CallForm {
+    /// `f(a, b)`.
+    #[default]
+    Call,
+    /// `column->path`, a `JSON_EXTRACT` of a column and a string (MySQL).
+    Arrow,
+    /// `column->>path`, a `JSON_UNQUOTE` of a `JSON_EXTRACT` of a column and
+    /// a string (MySQL).
+    LongArrow,
 }
 
 /// Call to a window function.

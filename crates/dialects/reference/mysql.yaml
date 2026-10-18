@@ -390,9 +390,17 @@ constructs:
   - id: json_arrow
     since: "5.7.9"
     source: https://dev.mysql.com/doc/relnotes/mysql/5.7/en/news-5-7-9.html
+    comment: >-
+      `column->path`, the `JSON_EXTRACT` of a column, qualified or not, and of
+      a single string literal, without introducer; a string after the path is
+      an alias. Measured on each local image, 8.0.11 to 8.0.28, 8.0.30, 8.0.31,
+      8.1.0, 8.4.11 and 9.3.0 (crates/probe/cases/json-arrows.sql).
   - id: json_double_arrow
     since: "5.7.13"
     source: https://dev.mysql.com/doc/relnotes/mysql/5.7/en/news-5-7-13.html
+    comment: >-
+      `column->>path`, the `JSON_UNQUOTE` of the `JSON_EXTRACT` of
+      `column->path`, of the same forms. Measured with `json_arrow`.
   - id: lateral
     since: "8.0.14"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-14.html

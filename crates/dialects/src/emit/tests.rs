@@ -3014,6 +3014,31 @@ fn trim_and_position_keep_their_form() {
 }
 
 #[test]
+fn the_json_arrows_keep_their_form_towards_mysql() {
+    // `->` and `->>` read a column and a string
+    // (crates/probe/cases/json-arrows.sql).
+    let text = concat!(
+        "SELECT js->'$.a' AS a, js->>'$.a' AS b, g.s->\"$.n\" AS c, JSON_UNQUOTE(js->'$.a') AS d ",
+        "FROM g WHERE js->>'$.a' = 'x' ORDER BY js->'$.n'"
+    );
+    let (sql, rules) = transpiled(text, mysql(), output(mysql()));
+    assert_eq!(sql, text);
+    assert!(rules.is_empty(), "{rules:?}");
+    // A column named after its text keeps its name.
+    let (sql, _) = transpiled("SELECT js -> '$.a' FROM g", mysql(), output(mysql()));
+    assert_eq!(sql, "SELECT js->'$.a' AS `js -> '$.a'` FROM g");
+    // MariaDB has no arrow: the functions they stand for, whose translation
+    // is not studied yet.
+    let transpilation = run("SELECT js->>'$.a' AS b FROM g", mysql(), output(mariadb())).unwrap();
+    let rules: Vec<&str> = transpilation
+        .errors
+        .iter()
+        .map(|error| error.rule)
+        .collect();
+    assert_eq!(rules, ["function.unstudied", "function.unstudied"]);
+}
+
+#[test]
 fn regexp_sounds_like_and_member_of_keep_their_form() {
     let text = concat!(
         "SELECT s REGEXP 1 + 1 AS a, s SOUNDS LIKE 'x' | 'y' AS b, 1 + 0 MEMBER OF (js) AS c, ",

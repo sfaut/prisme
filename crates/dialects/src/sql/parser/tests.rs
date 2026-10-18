@@ -1,5 +1,5 @@
 use prisme_plan::{
-    AliasForm, CastForm, CastTarget, CharTarget, CharWord, Charset, IndexHintAction,
+    AliasForm, CallForm, CastForm, CastTarget, CharTarget, CharWord, Charset, IndexHintAction,
     IndexHintScope, IntegerWord, JoinForm, LimitForm, ValuesForm,
 };
 
@@ -293,6 +293,11 @@ fn call_tree(call: &FunctionCall) -> String {
         parts.push("*".to_string());
     }
     parts.extend(call.args.iter().map(tree));
+    match call.form {
+        CallForm::Call => {}
+        CallForm::Arrow => parts.push("(form ->)".to_string()),
+        CallForm::LongArrow => parts.push("(form ->>)".to_string()),
+    }
     if !call.order_by.is_empty() {
         let keys = call.order_by.iter().map(|item| tree(&item.expr));
         parts.push(format!("(order {})", keys.collect::<Vec<_>>().join(" ")));
@@ -462,6 +467,40 @@ fn a_comparison_reads_tests_on_both_sides() {
         "(between a (between 0 0 1) 2)"
     );
     assert_eq!(expr_with("a LIKE 1 + 1", &mariadb), "(like a (+ 1 1))");
+}
+
+#[test]
+fn reads_the_json_arrows_after_a_column() {
+    // A column, qualified or not, then a single string: `->` the
+    // `JSON_EXTRACT` of both, `->>` its `JSON_UNQUOTE`, as simple as a
+    // column (crates/probe/cases/json-arrows.sql).
+    assert_eq!(expr("b->'$.a'"), "(json_extract b '$.a' (form ->))");
+    assert_eq!(
+        expr("t.b ->> \"$.a\""),
+        "(json_unquote (json_extract t.b '$.a') (form ->>))"
+    );
+    assert_eq!(
+        expr("-b->'$.n' + 1"),
+        "(+ (- (json_extract b '$.n' (form ->))) 1)"
+    );
+    for text in [
+        "SELECT b->_utf8mb4'$.a'",
+        "SELECT b->N'$.a'",
+        "SELECT b->X'24'",
+        "SELECT (b)->'$.a'",
+        "SELECT b->'$.n'->'$[0]'",
+        "SELECT b->CONCAT('$', '.a')",
+        "SELECT JSON_OBJECT('a', 1)->'$.a'",
+    ] {
+        assert!(parse(text, &mysql()).is_err(), "{text}");
+    }
+    assert_eq!(
+        error("SELECT b->>'$.a'", &mariadb()),
+        (
+            "`->>` operator: absent from MariaDB".to_string(),
+            "->>".to_string()
+        )
+    );
 }
 
 #[test]

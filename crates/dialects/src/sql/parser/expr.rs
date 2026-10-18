@@ -17,13 +17,15 @@
 //! bound of `BETWEEN` is a test; MySQL reads one test after a value, MariaDB
 //! chains them (`crates/probe/cases/predicate-grammar.txt`, `test`).
 
-use prisme_plan::{Ident, Span, Truth};
+use prisme_plan::{CallForm, Ident, Span, Truth};
 
 use super::{ParseError, Parser};
 use crate::lexer::{Punct, TokenKind};
 use crate::sql::ast::{
-    BinaryOp, Expr, ExprKind, FunctionCall, Literal, ObjectName, Query, TemporalKind, UnaryOp,
+    BinaryOp, Expr, ExprKind, FunctionCall, Literal, ObjectName, Query, Strings, TemporalKind,
+    UnaryOp,
 };
+use crate::versions::Construct;
 use crate::{Dialect, keywords};
 
 impl Parser<'_> {
@@ -694,12 +696,70 @@ impl Parser<'_> {
                 separator: None,
                 stored: false,
                 over: None,
+                form: CallForm::Call,
             };
             return Ok(leaf(ExprKind::Function(Box::new(call)), token.span));
         }
         let name: ObjectName = self.object_name(3)?;
         let span = name.span;
-        Ok(leaf(ExprKind::Column(name), span))
+        self.json_arrow(leaf(ExprKind::Column(name), span))
+    }
+
+    /// `column->path` or `column->>path` after `column` (MySQL), the path a
+    /// single string: the `JSON_EXTRACT` of the column and the path, and its
+    /// `JSON_UNQUOTE` for `->>`; the column alone otherwise.
+    fn json_arrow(&mut self, column: Expr) -> Result<Expr, ParseError> {
+        let unquote = if self.at_punct(Punct::LongArrow) {
+            true
+        } else if self.at_punct(Punct::Arrow) {
+            false
+        } else {
+            return Ok(column);
+        };
+        let arrow = self.here();
+        let construct = if unquote {
+            Construct::JsonDoubleArrow
+        } else {
+            Construct::JsonArrow
+        };
+        self.check(construct, arrow)?;
+        self.advance();
+        let Some(TokenKind::String { value, .. }) = self.peek().map(|token| token.kind.clone())
+        else {
+            return Err(self.expected("a JSON path between quotes"));
+        };
+        let path_span = self.here();
+        self.advance();
+        let path = Strings {
+            first: value.len(),
+            value,
+        };
+        let start = column.span.start;
+        let path = leaf(ExprKind::Literal(Literal::String(path)), path_span);
+        let span = self.span_from(start);
+        let call = |name: &str, args: Vec<Expr>, form: CallForm| {
+            let call = FunctionCall {
+                name: ObjectName {
+                    parts: vec![Ident::new(name)],
+                    span: arrow,
+                },
+                args,
+                star: false,
+                distinct: false,
+                order_by: Vec::new(),
+                separator: None,
+                stored: false,
+                over: None,
+                form,
+            };
+            leaf(ExprKind::Function(Box::new(call)), span)
+        };
+        Ok(if unquote {
+            let extract = call("JSON_EXTRACT", vec![column, path], CallForm::Call);
+            call("JSON_UNQUOTE", vec![extract], CallForm::LongArrow)
+        } else {
+            call("JSON_EXTRACT", vec![column, path], CallForm::Arrow)
+        })
     }
 }
 

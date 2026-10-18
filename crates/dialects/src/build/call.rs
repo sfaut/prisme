@@ -75,6 +75,7 @@ impl Builder<'_> {
             name: function,
             args,
             stored: call.stored,
+            form: call.form,
         };
         Ok(Expr::function(call, ty).with_span(span))
     }

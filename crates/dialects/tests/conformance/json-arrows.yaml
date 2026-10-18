@@ -1,0 +1,16 @@
+# The JSON arrows of MySQL, `j->'$.a'` and `j->>'$.a'`, a `JSON_EXTRACT` of
+# a column and a string and its `JSON_UNQUOTE` (crates/probe/cases/json-arrows.sql):
+# MariaDB reads neither, and the translation of the functions of JSON is not
+# studied yet (rule `function.unstudied`).
+setup:
+  - DROP TABLE IF EXISTS json_arrows
+  - CREATE TABLE json_arrows (id INT NOT NULL PRIMARY KEY, j JSON NULL)
+  - >-
+    INSERT INTO json_arrows VALUES (1, '{"a": "x", "n": [1, 2]}'), (2, '{"a": 1}'), (3, NULL)
+cases:
+  - from: mysql
+    sql: SELECT id, j->'$.a' AS a, j->>'$.a' AS b, json_arrows.j->'$.n[1]' AS c FROM json_arrows ORDER BY id
+    refused: function.unstudied
+  - from: mysql
+    sql: SELECT id FROM json_arrows WHERE j->>'$.a' = 'x' ORDER BY j->'$.a', id
+    refused: function.unstudied

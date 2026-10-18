@@ -14,7 +14,7 @@
 //! (`TRIM(LEADING ...)`, `POSITION(s IN t)`...) are read in a later increment
 //! of step 5.
 
-use prisme_plan::{FrameUnits, Span};
+use prisme_plan::{CallForm, FrameUnits, Span};
 
 use super::{ParseError, Parser};
 use crate::builtins;
@@ -101,6 +101,7 @@ impl Parser<'_> {
             separator: None,
             stored,
             over: None,
+            form: CallForm::Call,
         };
         if aggregate {
             self.aggregate_arguments(&mut call, &upper)?;

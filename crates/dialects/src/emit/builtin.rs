@@ -7,13 +7,19 @@
 //! studied yet. The output must have the function in the version of the
 //! server.
 //!
+//! A call written with an arrow of MySQL (`c->'$.a'`, `c->>'$.a'`) keeps
+//! its arrow towards an output that has it, as long as it reads a column and
+//! a string; it is written as the functions it stands for otherwise
+//! (`JSON_EXTRACT`, `JSON_UNQUOTE`).
+//!
 //! A function stored in the database keeps its name. When the output has a
 //! built-in function of that name, the call is written in a form that still
 //! calls the stored function: a space before `(` or the name between
 //! backticks, according to the grammar of the output; otherwise its database
 //! must be named.
 
-use prisme_plan::{Expr, FunctionCall, Ident, Span};
+use prisme_plan::{CallForm, Expr, ExprKind, FunctionCall, Ident, Span};
+use prisme_types::Value;
 
 use super::Emitter;
 use super::hexadecimal::reads_bytes;
@@ -21,6 +27,7 @@ use super::json::reads_json_as_is;
 use crate::builtins::{self, Kind, Rule, Translation};
 use crate::keywords;
 use crate::report::StepKind;
+use crate::versions::Construct;
 
 /// How the name of a call is written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,13 +66,48 @@ impl Emitter<'_> {
         }
         match self.builtin_target(&call.name, true, expr.span) {
             Some(Target::Name(name)) => {
-                let form = self.builtin_form(&name, &call.name, expr.span);
-                self.call_text(&name, form, &call.args);
+                if !self.json_arrow(call) {
+                    let form = self.builtin_form(&name, &call.name, expr.span);
+                    self.call_text(&name, form, &call.args);
+                }
             }
             Some(Target::Rule(rule)) => self.builtin_rule(rule, expr, call, min, column),
             // The error is recorded: the call is written as in the input.
             None => self.input_call(expr, call),
         }
+    }
+
+    /// Writes `call` with the arrow the input writes it with (`c->'$.a'`,
+    /// `c->>'$.a'`) when the output has it and the call reads a column and a
+    /// string; tells whether it did.
+    fn json_arrow(&mut self, call: &FunctionCall) -> bool {
+        let (args, arrow, construct) = match (call.form, call.args.as_slice()) {
+            (CallForm::Arrow, args) => (args, "->", Construct::JsonArrow),
+            (CallForm::LongArrow, [inner]) => match &inner.kind {
+                ExprKind::Function(extract) => {
+                    (extract.args.as_slice(), "->>", Construct::JsonDoubleArrow)
+                }
+                _ => return false,
+            },
+            _ => return false,
+        };
+        let [column, path] = args else {
+            return false;
+        };
+        let reads = matches!(column.kind, ExprKind::Column(_))
+            && matches!(path.kind, ExprKind::Literal(Value::Text(_)));
+        if !reads || !self.has(construct) {
+            return false;
+        }
+        for (index, arg) in args.iter().enumerate() {
+            if index > 0 {
+                self.write(arrow);
+            }
+            self.json_as_is = true;
+            self.as_bytes = reads_bytes("JSON_EXTRACT", index);
+            self.expr(arg, 0);
+        }
+        true
     }
 
     /// Name under which the output writes the built-in aggregate or window

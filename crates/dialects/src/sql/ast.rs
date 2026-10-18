@@ -7,8 +7,8 @@
 //! explicit conversions).
 
 use prisme_plan::{
-    AliasForm, CastForm, CastTarget, DateArithmeticForm, Direction, FrameUnits, Ident, IndexHint,
-    JoinForm, LimitForm, Span, TimeUnit, TrimSide, Truth, ValuesForm,
+    AliasForm, CallForm, CastForm, CastTarget, DateArithmeticForm, Direction, FrameUnits, Ident,
+    IndexHint, JoinForm, LimitForm, Span, TimeUnit, TrimSide, Truth, ValuesForm,
 };
 
 /// Statement.
@@ -244,6 +244,8 @@ pub struct FunctionCall {
     pub stored: bool,
     /// Window of a window function or of an aggregate used as one.
     pub over: Option<WindowSpec>,
+    /// How the call is written: `JSON_EXTRACT(c, '$.a')` or `c->'$.a'`.
+    pub form: CallForm,
 }
 
 /// Item of a select list.
