@@ -607,6 +607,7 @@ fn nulls_placed_against_the_rule_of_the_output_are_emulated() {
             Values::new(vec![Vec::new()], Vec::new(), Vec::new(), ValuesForm::Row).unwrap(),
         )),
         predicate: Expr::literal(Value::Boolean(true), DataType::Boolean),
+        form: prisme_plan::FilterForm::Where,
         span: None,
     };
 }
@@ -619,6 +620,30 @@ fn a_star_of_a_grouped_query_keeps_its_form() {
         "SELECT *, a AS x FROM t GROUP BY x HAVING b > 1 ORDER BY b DESC",
         "SELECT DISTINCT * FROM t WHERE a > 0 GROUP BY a + 1 ORDER BY COUNT(*)",
         "SELECT p.*, q.c FROM t AS p JOIN u AS q USING (a) GROUP BY a",
+    ] {
+        for (input, target) in [
+            (mysql(), mysql()),
+            (mysql(), mariadb()),
+            (mariadb(), mysql()),
+            (mariadb(), mariadb()),
+        ] {
+            let (sql, rules) = transpiled(text, input, output(target));
+            assert_eq!(sql, text);
+            assert!(rules.is_empty(), "{text}: {rules:?}");
+        }
+    }
+}
+
+#[test]
+fn having_without_grouping_keeps_its_form() {
+    for text in [
+        "SELECT a AS x FROM t WHERE b > 0 HAVING x > 1 ORDER BY x",
+        "SELECT a FROM t HAVING a > 1",
+        "SELECT * FROM t HAVING b IS NULL",
+        "SELECT a AS x FROM t AS p HAVING p.a > 1",
+        "SELECT a, ROW_NUMBER() OVER (ORDER BY a) AS r FROM t HAVING a > 1",
+        "SELECT a + 1 FROM t HAVING `a + 1` > 2",
+        "SELECT DISTINCT a FROM t HAVING a IN (SELECT a FROM u) LIMIT 2",
     ] {
         for (input, target) in [
             (mysql(), mysql()),

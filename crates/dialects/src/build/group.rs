@@ -12,6 +12,10 @@
 //! each of these columns back as the expression it stands for. A `*` reads
 //! these columns too, one per column of the source, named as the source
 //! names them.
+//!
+//! Without grouping, `HAVING` filters the rows of the source after `WHERE`,
+//! before the window functions, and its names read the select list
+//! (`having_item`).
 
 use prisme_plan::{
     Aggregate, AggregateCall, AliasForm, ColumnRef, Expr, ExprKind, Ident, NamedAggregate,
@@ -275,8 +279,13 @@ impl Builder<'_> {
     }
 
     /// Column designated by `name`, or the item of the select list whose
-    /// alias it is (`alias_value`).
+    /// alias it is (`alias_value`), or that it designates in a `HAVING`
+    /// without grouping (`having_item`).
     pub(super) fn column(&mut self, name: &ObjectName, scope: &Scope) -> Result<Expr, BuildError> {
+        let block = self.block();
+        if block.clause == Clause::Having && !block.grouped {
+            return self.having_item(name, scope);
+        }
         if let [single] = name.parts.as_slice()
             && let Some(value) = self.alias_value(single, name, scope)?
         {
@@ -347,6 +356,75 @@ impl Builder<'_> {
         Ok(Some(
             Expr::alias(single.clone(), value).with_span(name.span),
         ))
+    }
+
+    /// Value that `name` designates in a `HAVING` without grouping, which
+    /// reads the select list, by the rule of the MySQL family
+    /// (`crates/probe/cases/having-alone.sql`): the items of that name (an
+    /// alias, a column, the name an expression has without alias), a single
+    /// value when several have it; otherwise an item that is the column
+    /// `name` of the source, under an alias too (`SELECT a AS x FROM t
+    /// HAVING a > 1`); otherwise a column of an enclosing query, even when
+    /// the source has a column of that name (`SELECT (SELECT q.b FROM t AS q
+    /// HAVING a > 1) FROM t` reads the `a` of the enclosing query).
+    ///
+    /// # Errors
+    ///
+    /// `BuildError` on a name that no item has or is (error 1054 in both
+    /// dialects), and on a name of items of different values (error 1052).
+    fn having_item(&mut self, name: &ObjectName, scope: &Scope) -> Result<Expr, BuildError> {
+        let block = self.block();
+        if let [single] = name.parts.as_slice() {
+            let named: Vec<&Output> = (block.outputs.iter())
+                .filter(|output| same_name(&output.name, single))
+                .collect();
+            if let Some(first) = named.first() {
+                let value = canonical(&first.expr, &block.source);
+                if named
+                    .iter()
+                    .any(|output| canonical(&output.expr, &block.source) != value)
+                {
+                    let message = format!(
+                        "`{}` is ambiguous in `HAVING`: several items of the select list of \
+                         different values have this name",
+                        single.value
+                    );
+                    return Err(self.error(message, name.span));
+                }
+                let value = first.expr.clone();
+                return Ok(Expr::alias(single.clone(), value).with_span(name.span));
+            }
+        }
+        let unknown = |builder: &Self| {
+            let message = format!(
+                "unknown column `{}` in `HAVING`, which reads the select list without grouping",
+                builder.written(name.span)
+            );
+            builder.error(message, name.span)
+        };
+        match scope.resolve(name) {
+            Ok((column, ty)) => {
+                let found = scope.canonical(&column);
+                let listed = block.outputs.iter().any(|output| {
+                    matches!(&output.expr.kind, ExprKind::Column(item)
+                        if scope.canonical(item) == found)
+                });
+                if listed {
+                    return Ok(Expr::column(column, ty).with_span(name.span));
+                }
+            }
+            Err(ResolveError::Ambiguous) => {
+                let written = self.written(name.span);
+                return Err(self.error(format!("column `{written}` is ambiguous"), name.span));
+            }
+            Err(ResolveError::Unknown) => {}
+        }
+        // A column of the source outside the select list is not read: the
+        // name reads an enclosing query.
+        match self.resolve(name, &Scope::empty()) {
+            Ok((column, ty)) => Ok(Expr::column(column, ty).with_span(name.span)),
+            Err(_) => Err(unknown(self)),
+        }
     }
 
     /// Column of the select list whose alias is `name`; an error when

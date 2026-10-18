@@ -1,0 +1,25 @@
+# `HAVING` without grouping (crates/probe/cases/having-alone.sql), which
+# both dialects read alike: a filter of the rows after `WHERE`, before the
+# window functions, whose names read the select list (an alias, a column, or
+# the column of an item under an alias).
+setup:
+  - DROP TABLE IF EXISTS alone
+  - CREATE TABLE alone (id INT NOT NULL PRIMARY KEY, a INT NOT NULL, b INT NULL)
+  - INSERT INTO alone VALUES (1, 1, 10), (2, 1, 20), (3, 2, NULL), (4, 3, 40)
+cases:
+  - from: mysql
+    sql: SELECT id, a AS x FROM alone HAVING x > 1 ORDER BY id
+  - from: mariadb
+    sql: SELECT b AS a, a AS b FROM alone HAVING a > 15 ORDER BY b
+  - from: mysql
+    sql: SELECT id, a AS x FROM alone AS p HAVING p.a > 1 ORDER BY id
+  - from: mariadb
+    sql: SELECT * FROM alone WHERE id > 1 HAVING b IS NULL OR a = 3 ORDER BY id
+  - from: mysql
+    sql: SELECT id, a, ROW_NUMBER() OVER (ORDER BY id) AS r FROM alone HAVING a > 1 ORDER BY id
+  - from: mariadb
+    sql: SELECT DISTINCT a AS x FROM alone HAVING x < 3 ORDER BY x DESC LIMIT 1
+  - from: mysql
+    sql: SELECT id, a FROM alone HAVING id IN (SELECT id FROM alone WHERE a = 1) ORDER BY id
+  - from: mariadb
+    sql: SELECT a + 1 FROM alone HAVING `a + 1` > 2 ORDER BY 1

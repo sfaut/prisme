@@ -289,6 +289,7 @@ impl Entry {
     fn output(&self) -> Output {
         Output {
             alias: None,
+            name: self.reference.name.clone(),
             expr: self.as_expr(),
         }
     }

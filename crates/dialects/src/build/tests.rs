@@ -546,10 +546,6 @@ fn aggregate_and_window_functions_stay_in_their_clauses() {
             "grouping on `s`, which reads an aggregate or window function",
         ),
         (
-            "SELECT x FROM a HAVING x > 1",
-            "`HAVING` without grouping: not supported yet by Prisme",
-        ),
-        (
             "SELECT ROW_NUMBER() FROM a",
             "`ROW_NUMBER` needs a window (`OVER`)",
         ),
@@ -1181,6 +1177,119 @@ fn having(text: &str) -> prisme_plan::Expr {
         panic!("{text}: `HAVING` expected");
     };
     filter.predicate
+}
+
+#[test]
+fn having_without_grouping_reads_the_select_list() {
+    // After `WHERE`, before the window functions.
+    let text = "SELECT a AS x, ROW_NUMBER() OVER (ORDER BY a) AS r FROM t WHERE a > 0 HAVING x > 1";
+    let Plan::Project(project) = plan(text) else {
+        panic!("a select list expected");
+    };
+    let Plan::Window(window) = *project.input else {
+        panic!("window functions expected");
+    };
+    let Plan::Filter(filter) = *window.input else {
+        panic!("`HAVING` expected");
+    };
+    assert_eq!(filter.form, prisme_plan::FilterForm::Having);
+    assert!(
+        matches!(&*filter.input, Plan::Filter(filter) if filter.form == prisme_plan::FilterForm::Where)
+    );
+    let left = |text: &str| {
+        let ExprKind::Compare { left, .. } = having(text).kind else {
+            panic!("{text}: a comparison expected");
+        };
+        left.kind
+    };
+    let column = |expr: &prisme_plan::Expr| match &expr.kind {
+        ExprKind::Column(column) => {
+            let qualifier = column.qualifier.as_ref().map(|name| name.value.clone());
+            Some((qualifier, column.name.value.clone()))
+        }
+        _ => None,
+    };
+    let named =
+        |qualifier: Option<&str>, name: &str| Some((qualifier.map(String::from), name.to_string()));
+    // An item of that name, read through its name.
+    for (text, name, value) in [
+        ("SELECT a AS x FROM t HAVING x > 1", "x", named(None, "a")),
+        (
+            "SELECT b AS a, a AS b FROM t HAVING a > 1",
+            "a",
+            named(None, "b"),
+        ),
+        ("SELECT * FROM t HAVING b > 1", "b", named(Some("t"), "b")),
+        ("SELECT a, a FROM t HAVING a > 1", "a", named(None, "a")),
+        ("SELECT a + 1 FROM t HAVING `a + 1` > 2", "a + 1", None),
+    ] {
+        let ExprKind::Alias(alias) = left(text) else {
+            panic!("{text}: an item read through its name expected");
+        };
+        assert_eq!(alias.name.value, name, "{text}");
+        assert_eq!(column(&alias.expr), value, "{text}");
+    }
+    // Otherwise the column of an item, under an alias too.
+    for (text, value) in [
+        ("SELECT a AS x FROM t HAVING a > 1", (None, "a")),
+        (
+            "SELECT a AS x, a AS y FROM t HAVING t.a > 1",
+            (Some("t"), "a"),
+        ),
+        ("SELECT a AS x FROM t AS p HAVING p.a > 1", (Some("p"), "a")),
+    ] {
+        let ExprKind::Column(found) = left(text) else {
+            panic!("{text}: a column expected");
+        };
+        let qualifier = found.qualifier.as_ref().map(|name| name.value.as_str());
+        assert_eq!((qualifier, found.name.value.as_str()), value, "{text}");
+    }
+    for text in [
+        "SELECT a FROM t HAVING (SELECT b) IS NULL",
+        "SELECT k FROM a HAVING k IN (SELECT k FROM b)",
+        "SELECT (SELECT y FROM b HAVING a.x > 1) FROM a",
+        // `k` of `a`: the `k` of `b` is outside the select list.
+        "SELECT (SELECT y FROM b HAVING k > 1) FROM a",
+        "SELECT DISTINCT a FROM t HAVING a > 1 ORDER BY a LIMIT 1",
+    ] {
+        assert!(plan_in(text, Dialect::MySql).is_ok(), "{text}");
+    }
+    // Errors 1054 and 1052 of both dialects, 3594 of MySQL and 4015 of
+    // MariaDB.
+    for (text, message) in [
+        (
+            "SELECT a FROM t HAVING b > 1",
+            "unknown column `b` in `HAVING`, which reads the select list without grouping",
+        ),
+        (
+            "SELECT a AS b FROM t HAVING t.b > 1",
+            "unknown column `t.b` in `HAVING`, which reads the select list without grouping",
+        ),
+        (
+            "SELECT (SELECT y FROM b HAVING b.k > 1) FROM a",
+            "unknown column `b.k` in `HAVING`, which reads the select list without grouping",
+        ),
+        (
+            "SELECT a + 0 AS a FROM t HAVING t.a > 1",
+            "unknown column `t.a` in `HAVING`, which reads the select list without grouping",
+        ),
+        (
+            "SELECT a, b AS a FROM t HAVING a > 1",
+            "`a` is ambiguous in `HAVING`: several items of the select list of different values \
+             have this name",
+        ),
+        (
+            "SELECT * FROM a, b HAVING k > 1",
+            "`k` is ambiguous in `HAVING`: several items of the select list of different values \
+             have this name",
+        ),
+        (
+            "SELECT a, ROW_NUMBER() OVER (ORDER BY a) AS r FROM t HAVING r > 1",
+            "window function in `HAVING`",
+        ),
+    ] {
+        assert_eq!(error(text), message, "{text}");
+    }
 }
 
 #[test]

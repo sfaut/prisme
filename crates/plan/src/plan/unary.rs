@@ -14,8 +14,20 @@ pub struct Filter {
     pub input: Box<Plan>,
     /// Predicate, of type `Boolean`.
     pub predicate: Expr,
+    /// Clause written.
+    pub form: FilterForm,
     /// Position in the input.
     pub span: Option<Span>,
+}
+
+/// Clause written for a filter of a `SELECT` block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FilterForm {
+    /// `WHERE`, over the source.
+    Where,
+    /// `HAVING`: over the aggregation of a grouped block, over the source
+    /// and its `WHERE` in a block without grouping.
+    Having,
 }
 
 /// Columns computed from each row: the `SELECT` list.

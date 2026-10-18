@@ -50,9 +50,9 @@ mod truth;
 mod tests;
 
 use prisme_plan::{
-    Aggregate, AliasForm, Direction, Filter, Ident, Limit, LimitForm, Nulls, Plan, Project,
-    ProjectItem, SetOperation, SetOperator, Sort, SortKey, SortReference, Span, Statement, Values,
-    ValuesForm, Window, With,
+    Aggregate, AliasForm, Direction, Filter, FilterForm, Ident, Limit, LimitForm, Nulls, Plan,
+    Project, ProjectItem, SetOperation, SetOperator, Sort, SortKey, SortReference, Span, Statement,
+    Values, ValuesForm, Window, With,
 };
 use prisme_types::Value;
 
@@ -246,7 +246,7 @@ impl<'p> Block<'p> {
             _ => None,
         };
         let having = match node {
-            Plan::Filter(filter) if matches!(filter.input.as_ref(), Plan::Aggregate(_)) => {
+            Plan::Filter(filter) if filter.form == FilterForm::Having => {
                 node = &filter.input;
                 Some(filter)
             }
@@ -260,7 +260,7 @@ impl<'p> Block<'p> {
             _ => None,
         };
         let filter = match node {
-            Plan::Filter(filter) => {
+            Plan::Filter(filter) if filter.form == FilterForm::Where => {
                 node = &filter.input;
                 Some(filter)
             }

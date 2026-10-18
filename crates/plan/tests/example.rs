@@ -119,6 +119,7 @@ fn filter_sort_and_limit_of_the_minimal_grammar() {
         let filter = Plan::Filter(prisme_plan::Filter {
             input: Box::new(ds),
             predicate,
+            form: prisme_plan::FilterForm::Where,
             span: None,
         });
         let item = ProjectItem::Expr(NamedExpr {

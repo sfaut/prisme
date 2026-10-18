@@ -42,10 +42,10 @@ use std::collections::HashMap;
 use std::fmt;
 
 use prisme_plan::{
-    AliasForm, Comparison, Cte, CtePart, CteRef, Derived, Direction, Distinct, Expr, Filter, Ident,
-    Join, JoinKind, JoinUsing, Limit, Logical, NamedExpr, Nulls, Plan, PlanError, Project,
-    ProjectItem, Scan, SetOperation, SetOperator, Sort, SortForm, SortKey, SortReference, Span,
-    TableAlias, TableName, Values as ValuesNode, ValuesForm, Wildcard, With,
+    AliasForm, Comparison, Cte, CtePart, CteRef, Derived, Direction, Distinct, Expr, Filter,
+    FilterForm, Ident, Join, JoinKind, JoinUsing, Limit, Logical, NamedExpr, Nulls, Plan,
+    PlanError, Project, ProjectItem, Scan, SetOperation, SetOperator, Sort, SortForm, SortKey,
+    SortReference, Span, TableAlias, TableName, Values as ValuesNode, ValuesForm, Wildcard, With,
 };
 use prisme_types::Type;
 
@@ -648,18 +648,11 @@ impl Builder<'_> {
             plan = Plan::Filter(Filter {
                 input: Box::new(plan),
                 predicate,
+                form: FilterForm::Where,
                 span: Some(filter.span),
             });
         }
         let grouped = group::is_grouped(select, order_by);
-        if let Some(having) = &select.having
-            && !grouped
-        {
-            return Err(self.error(
-                "`HAVING` without grouping: not supported yet by Prisme",
-                having.span,
-            ));
-        }
         let block = self.block_mut();
         block.grouped = grouped;
         block.keyed = !select.group_by.is_empty();
@@ -713,6 +706,7 @@ impl Builder<'_> {
                 input: Box::new(plan),
                 span: select.having.as_ref().map(|having| having.span),
                 predicate,
+                form: FilterForm::Having,
             });
         }
         plan = self.window_node(plan);
@@ -786,6 +780,7 @@ impl Builder<'_> {
                     };
                     outputs.push(Output {
                         alias: alias.as_ref().map(|alias| alias.name.clone()),
+                        name: name.clone(),
                         expr: built.clone(),
                     });
                     items.push(ProjectItem::Expr(NamedExpr {
@@ -1114,6 +1109,9 @@ impl Builder<'_> {
 struct Output {
     /// Alias written.
     alias: Option<Ident>,
+    /// Name of the column: the alias, or the name the dialect gives without
+    /// alias.
+    name: Ident,
     /// Value.
     expr: prisme_plan::Expr,
 }
