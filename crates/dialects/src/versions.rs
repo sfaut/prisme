@@ -213,7 +213,9 @@ pub struct Registry {
     constructs: &'static [ConstructEntry],
 }
 
-/// Construct of a reference file, with its period of validity.
+/// Construct of a reference file, with its period of validity. A construct
+/// that several branches received apart, as a fix of a patch version, has an
+/// entry for each period, in order.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ConstructEntry {
@@ -376,32 +378,36 @@ impl Registry {
     /// # Errors
     ///
     /// `VersionError` when the dialect never had the construct, or not in
-    /// this version.
+    /// this version: before the next period, or after the last one.
     pub fn check(
         &self,
         dialect: Dialect,
         construct: Construct,
         version: Version,
     ) -> Result<(), VersionError> {
-        let Some(entry) = self.constructs.iter().find(|entry| entry.id == construct) else {
-            return Err(VersionError::Absent { construct, dialect });
-        };
-        if version < entry.since {
-            return Err(VersionError::Before {
-                construct,
-                dialect,
-                since: entry.since,
-                chosen: version,
-            });
+        let mut removed = None;
+        for entry in self.constructs.iter().filter(|entry| entry.id == construct) {
+            if version < entry.since {
+                return Err(VersionError::Before {
+                    construct,
+                    dialect,
+                    since: entry.since,
+                    chosen: version,
+                });
+            }
+            match entry.until {
+                Some(until) if version >= until => removed = Some(until),
+                _ => return Ok(()),
+            }
         }
-        match entry.until {
-            Some(until) if version >= until => Err(VersionError::Removed {
+        match removed {
+            Some(until) => Err(VersionError::Removed {
                 construct,
                 dialect,
                 until,
                 chosen: version,
             }),
-            _ => Ok(()),
+            None => Err(VersionError::Absent { construct, dialect }),
         }
     }
 
@@ -458,7 +464,7 @@ pub(crate) fn deserialize_optional_version<'de, D: serde::Deserializer<'de>>(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::collections::HashMap;
 
     use super::*;
 
@@ -476,16 +482,71 @@ mod tests {
     }
 
     #[test]
-    fn registries_are_readable_without_duplicates() {
+    fn registries_are_readable_with_periods_in_order() {
         for dialect in [Dialect::MySql, Dialect::MariaDb] {
             let registry = registry(dialect);
-            let mut seen = HashSet::new();
+            // End of the last period of each construct seen.
+            let mut seen: HashMap<Construct, Option<Version>> = HashMap::new();
             for entry in registry.constructs {
-                assert!(seen.insert(entry.id), "{:?} twice in {dialect:?}", entry.id);
+                if let Some(end) = seen.get(&entry.id) {
+                    assert!(
+                        end.is_some_and(|until| until < entry.since),
+                        "{:?}: periods overlap in {dialect:?}",
+                        entry.id
+                    );
+                }
+                seen.insert(entry.id, entry.until);
                 assert!(entry.until.is_none_or(|until| until > entry.since));
                 assert!(entry.source.starts_with("https://"));
             }
         }
+    }
+
+    #[test]
+    fn a_construct_of_several_periods_is_checked_in_each() {
+        let entry = |since: Version, until: Option<Version>| ConstructEntry {
+            id: Construct::ValuesBare,
+            since,
+            until,
+            source: String::new(),
+            comment: String::new(),
+        };
+        let constructs = Box::leak(Box::new([
+            entry(Version::new(10, 11, 19), Some(Version::new(11, 0, 0))),
+            entry(Version::new(11, 4, 13), None),
+        ]));
+        let registry = Registry {
+            dialect: Dialect::MariaDb,
+            floor: Version::new(10, 6, 3),
+            constructs,
+        };
+        let check = |major, minor, patch| {
+            registry
+                .check(
+                    Dialect::MariaDb,
+                    Construct::ValuesBare,
+                    Version::new(major, minor, patch),
+                )
+                .map_err(|error| error.to_string())
+        };
+        assert_eq!(check(10, 11, 19), Ok(()));
+        assert_eq!(check(11, 8, 0), Ok(()));
+        assert_eq!(
+            check(10, 11, 18),
+            Err(
+                "`VALUES` without `ROW`: from MariaDB 10.11.19, chosen version 10.11.18"
+                    .to_string()
+            )
+        );
+        assert_eq!(
+            check(11, 2, 6),
+            Err("`VALUES` without `ROW`: from MariaDB 11.4.13, chosen version 11.2.6".to_string())
+        );
+        assert!(
+            registry
+                .offered_versions()
+                .contains(&Version::new(11, 0, 0))
+        );
     }
 
     #[test]
