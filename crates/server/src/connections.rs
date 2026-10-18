@@ -335,8 +335,11 @@ pub fn delete(db: &Connection, user_id: i64, id: i64) -> Result<bool, Connection
 }
 
 /// Statement that puts a connection in read-only mode: the database then
-/// refuses the writes of its transactions (`docs/V1.md`, section 2.4).
-const READ_ONLY_STATEMENT: &str = "SET SESSION transaction_read_only = ON";
+/// refuses the writes of its transactions (`docs/V1.md`, section 2.4). The
+/// standard form, which every version of MySQL and MariaDB reads, where the
+/// variable `transaction_read_only` is unknown to MariaDB before 11.1 and
+/// `tx_read_only` to MySQL 8.0 and later.
+const READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
 
 /// Adds the read-only mode to the initialisation of each connection of a query
 /// session, when `read_only` is set. It comes last, after the statements of the
@@ -726,5 +729,36 @@ mod tests {
             with_read_only(target, false).init_statements,
             ["SET NAMES utf8mb4"]
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Docker Desktop running"]
+    async fn read_only_refuses_the_writes_of_mariadb_before_11_1() {
+        use prisme_connectors::mysql;
+        use testcontainers_modules::mariadb::Mariadb;
+        use testcontainers_modules::testcontainers::ImageExt;
+        use testcontainers_modules::testcontainers::runners::AsyncRunner;
+
+        // MariaDB 10.6 has no variable `transaction_read_only`.
+        let server = Mariadb::default().with_tag("10.6").start().await.unwrap();
+        let target = MysqlTarget {
+            host: server.get_host().await.unwrap().to_string(),
+            port: server.get_host_port_ipv4(3306).await.unwrap(),
+            username: "root".to_string(),
+            password: SecretString::from(""),
+            database_name: "test".to_string(),
+            init_statements: Vec::new(),
+        };
+        let mut writer = mysql::connect(&target).await.unwrap();
+        mysql::execute(&mut writer, "CREATE TABLE t (a INT NOT NULL)")
+            .await
+            .unwrap()
+            .discard()
+            .await;
+        let mut reader = mysql::connect(&with_read_only(target, true)).await.unwrap();
+        let Err(error) = mysql::execute(&mut reader, "INSERT INTO t VALUES (1)").await else {
+            panic!("a write in a read-only session");
+        };
+        assert!(error.to_string().contains("READ ONLY"), "{error}");
     }
 }
