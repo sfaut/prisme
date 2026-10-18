@@ -211,12 +211,23 @@ impl Emitter<'_> {
         }
         self.write(&name);
         self.write("(");
+        // `COUNT` reads the text of a `JSON` in both dialects (`json`
+        // module).
+        let json_as_is = reads_json_as_is(&upper);
+        let number = reads_numbers(&upper);
         if call.args.is_empty() && upper == "COUNT" {
             self.write("*");
-        } else if reads_numbers(&upper) {
-            self.number_list(&call.args);
-        } else {
-            self.expr_list(&call.args);
+        }
+        for (index, arg) in call.args.iter().enumerate() {
+            if index > 0 {
+                self.write(", ");
+            }
+            self.json_as_is = json_as_is;
+            if number {
+                self.number_expr(arg, 0);
+            } else {
+                self.expr(arg, 0);
+            }
         }
         self.write(") OVER ");
         let unordered = mariadb

@@ -2746,6 +2746,7 @@ fn a_json_compared_is_read_as_the_input_reads_it() {
     for text in [
         "SELECT js, js IS NULL AS a, js LIKE '%b%' AS b, CONCAT(js, s) AS c, CAST(js AS CHAR) AS d FROM g",
         "SELECT COUNT(js) AS n, GROUP_CONCAT(js) AS c FROM g",
+        "SELECT COUNT(js) OVER () AS n FROM g",
         "SELECT js FROM g UNION ALL SELECT js FROM g",
     ] {
         for (input, target) in [(mariadb(), mysql_8_4), (mysql_8_4, mariadb())] {
