@@ -1,6 +1,6 @@
 //! `ORDER BY` of a grouped `SELECT` with window functions, towards MariaDB,
 //! measured on each image of MySQL 8.0.11 to 9.3.0 and of MariaDB 10.5.29 to
-//! 10.11.19 and 11.8.9 (`crates/probe/cases/grouped-window-order.sql`).
+//! 11.8.9 (`crates/probe/cases/grouped-window-order.sql`).
 //!
 //! MariaDB takes the order of the grouping for an `ORDER BY` that is a
 //! prefix of `GROUP BY`, constants aside, in either direction, and drops the

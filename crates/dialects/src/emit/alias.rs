@@ -1,8 +1,8 @@
 //! Items of the select list read through their alias inside an expression
 //! (`ORDER BY x + 0`, `HAVING x > 1`), written by their name where the
 //! output reads it as the input does (`crates/probe/cases/alias-references.sql`,
-//! measured on each local image of MySQL, 8.0.11 to 9.3.0, and on MariaDB
-//! 10.5.29, 10.6.28, 10.11.19 and 11.8.9), by the expression of the item
+//! measured on each local image of MySQL, 8.0.11 to 9.3.0, and of MariaDB,
+//! 10.5.29 to 11.8.9), by the expression of the item
 //! otherwise:
 //!
 //! - towards MariaDB, an alias of an aggregate function inside an expression
