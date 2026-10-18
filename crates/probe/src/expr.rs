@@ -3,12 +3,17 @@
 //! The servers that differ are marked: this is how the behaviours of the
 //! built-in functions are compared before writing a translation rule.
 //!
-//! Each expression is evaluated twice in a stored procedure that catches the
+//! Each expression is evaluated twice in stored procedures that catch the
 //! errors: `SELECT <expression> INTO @value FROM sample` gives the warning
 //! or the error as a query gives them, and `CREATE TABLE ... AS SELECT`,
-//! with the warnings kept as warnings, gives the type. The value is the one
-//! a query of the client reads, in a session of its own where the statements
-//! of the file run again: the column of the `CREATE TABLE` bounds a value to
+//! with the warnings kept as warnings, gives the type. One `CREATE TABLE`
+//! gives the types of up to `BATCH` expressions that run, a column each; an
+//! expression that fails, or whose batch fails, has a `CREATE TABLE` of its
+//! own. The cases are shared among `SESSIONS` sessions of the server, those
+//! of a file with statements of its own measured in one session. The
+//! value is the one a query of the client reads, in sessions of its own where
+//! the statements of the file run again: the column of the `CREATE TABLE`
+//! bounds a value to
 //! its type (MySQL 8.0.11 types `CAST(-1 AS UNSIGNED)` as an `INT UNSIGNED`,
 //! 4294967295) and writes a decimal at its scale, a user variable converts
 //! some values. A byte string keeps the value of the column, in hexadecimal.
@@ -19,13 +24,25 @@
 
 use std::collections::HashMap;
 use std::fmt::Write;
+use std::thread;
 
 use anyhow::{Context, bail};
 use indoc::indoc;
 
 use crate::server::Server;
 
-/// Table of the sample row, procedure and table of the results.
+/// Sessions of a server that measure at once, each a share of the cases.
+/// A file with statements of its own runs in one session: the statements of
+/// each session would drop the tables that the others read.
+const SESSIONS: usize = 4;
+
+/// Expressions whose types one `CREATE TABLE` measures, a column each: the
+/// `CREATE TABLE` takes most of the time of a measure (`docs/PERF.md`,
+/// chapter 9).
+const BATCH: usize = 30;
+
+/// Table of the sample row, tables of the results and of the expressions
+/// whose type is pending.
 const PREPARATION: &str = indoc! {r#"
     DROP TABLE IF EXISTS sample;
     CREATE TABLE sample (
@@ -41,24 +58,106 @@ const PREPARATION: &str = indoc! {r#"
       nullable VARCHAR(3) NULL, value LONGTEXT NULL, warning TEXT NULL, failure TEXT NULL,
       type_failure TEXT NULL
     );
+    DROP TABLE IF EXISTS probe_pending;
+    CREATE TABLE probe_pending (
+      owner BIGINT NOT NULL, place INT NOT NULL, result_seq INT NOT NULL, expression LONGTEXT NOT NULL,
+      PRIMARY KEY (owner, place)
+    );
 "#};
 
-/// Procedure of the measurement, created after the statements of the user:
-/// it runs with their SQL mode.
+/// Procedures of the measurement, created after the statements of the user:
+/// they run with their SQL mode.
+///
+/// `probe_value` gives the value and the first warning of an expression, or
+/// its error, as a query gives them, then measures its type alone when it
+/// fails, or leaves it pending. `probe_batch` measures the types pending in
+/// one `CREATE TABLE`, a column each, then each alone when it fails.
+/// `probe_create` creates the table of the types of the session, with the
+/// warnings kept as warnings; `probe_read` reads the type of a column and
+/// its value.
 const PROCEDURE: &str = indoc! {r#"
-    DROP PROCEDURE IF EXISTS probe_expression;
+    DROP PROCEDURE IF EXISTS probe_value;
+    DROP PROCEDURE IF EXISTS probe_type;
+    DROP PROCEDURE IF EXISTS probe_batch;
+    DROP PROCEDURE IF EXISTS probe_create;
+    DROP PROCEDURE IF EXISTS probe_read;
     DELIMITER //
-    CREATE PROCEDURE probe_expression(IN case_id VARCHAR(100), IN expression LONGTEXT)
+    CREATE PROCEDURE probe_create(IN select_list LONGTEXT, OUT failure TEXT)
+    BEGIN
+      DECLARE failure_code INT DEFAULT 0;
+      DECLARE saved_mode TEXT DEFAULT @@SESSION.sql_mode;
+      DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+        BEGIN
+          GET DIAGNOSTICS CONDITION 1 failure_code = MYSQL_ERRNO, failure = MESSAGE_TEXT;
+          SET failure = CONCAT(failure_code, ' ', failure);
+        END;
+      DECLARE CONTINUE HANDLER FOR SQLWARNING BEGIN END;
+      SET failure = NULL;
+      SET @probe_mode = TRIM(BOTH ',' FROM REPLACE(REPLACE(CONCAT(',', saved_mode, ','),
+        ',STRICT_TRANS_TABLES,', ','), ',STRICT_ALL_TABLES,', ','));
+      SET SESSION sql_mode = @probe_mode;
+      -- A table per session, the sessions of a server measuring at once.
+      SET @probe_table = CONCAT('probe_type_', CONNECTION_ID());
+      SET @probe_sql = CONCAT('DROP TABLE IF EXISTS ', @probe_table);
+      PREPARE probe_statement FROM @probe_sql;
+      EXECUTE probe_statement;
+      DEALLOCATE PREPARE probe_statement;
+      SET @probe_sql = CONCAT('CREATE TABLE ', @probe_table, ' AS SELECT ', select_list, ' FROM sample');
+      PREPARE probe_statement FROM @probe_sql;
+      IF failure IS NULL THEN
+        EXECUTE probe_statement;
+        DEALLOCATE PREPARE probe_statement;
+      END IF;
+      SET SESSION sql_mode = saved_mode;
+    END//
+    CREATE PROCEDURE probe_read(IN result_seq INT, IN wanted_column VARCHAR(10))
+    BEGIN
+      DECLARE failure TEXT DEFAULT NULL;
+      DECLARE failure_code INT DEFAULT 0;
+      DECLARE type_text TEXT DEFAULT NULL;
+      DECLARE type_nullable VARCHAR(3) DEFAULT NULL;
+      DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+        BEGIN
+          GET DIAGNOSTICS CONDITION 1 failure_code = MYSQL_ERRNO, failure = MESSAGE_TEXT;
+          SET failure = CONCAT(failure_code, ' ', failure);
+        END;
+      DECLARE CONTINUE HANDLER FOR SQLWARNING BEGIN END;
+      -- Value, read in the column of its type.
+      SELECT c.COLUMN_TYPE, c.IS_NULLABLE INTO type_text, type_nullable
+        FROM information_schema.COLUMNS AS c
+        WHERE c.TABLE_SCHEMA = DATABASE() AND c.TABLE_NAME = @probe_table
+          AND c.COLUMN_NAME = wanted_column;
+      IF type_text REGEXP '^(binary|varbinary|tinyblob|blob|mediumblob|longblob|bit|geometry|point|linestring|polygon|multi)' THEN
+        SET @probe_sql = CONCAT('SELECT CONCAT(''=0x'', HEX(', wanted_column, ')) INTO @probe_text FROM ', @probe_table);
+      ELSE
+        SET @probe_sql = CONCAT('SELECT CONCAT(''='', CAST(', wanted_column, ' AS CHAR)) INTO @probe_text FROM ', @probe_table);
+      END IF;
+      SET @probe_text = NULL;
+      PREPARE probe_statement FROM @probe_sql;
+      EXECUTE probe_statement;
+      DEALLOCATE PREPARE probe_statement;
+      UPDATE probe_results AS r
+        SET r.column_type = type_text, r.nullable = type_nullable,
+          r.value = IF(r.failure IS NULL, @probe_text, NULL), r.type_failure = failure
+        WHERE r.seq = result_seq;
+    END//
+    CREATE PROCEDURE probe_type(IN result_seq INT, IN expression LONGTEXT)
+    BEGIN
+      DECLARE failure TEXT DEFAULT NULL;
+      CALL probe_create(CONCAT(expression, ' AS v'), failure);
+      IF failure IS NULL THEN
+        CALL probe_read(result_seq, 'v');
+      ELSE
+        UPDATE probe_results AS r SET r.type_failure = failure WHERE r.seq = result_seq;
+      END IF;
+    END//
+    CREATE PROCEDURE probe_value(IN case_id VARCHAR(100), IN expression LONGTEXT)
     BEGIN
       DECLARE failure TEXT DEFAULT NULL;
       DECLARE failure_code INT DEFAULT 0;
       DECLARE warning TEXT DEFAULT NULL;
-      DECLARE value_failure TEXT DEFAULT NULL;
       DECLARE value_warning TEXT DEFAULT NULL;
-      DECLARE column_type TEXT DEFAULT NULL;
-      DECLARE nullable VARCHAR(3) DEFAULT NULL;
-      DECLARE value_text LONGTEXT DEFAULT NULL;
-      DECLARE saved_mode TEXT DEFAULT @@SESSION.sql_mode;
+      DECLARE result_seq INT DEFAULT 0;
       DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
         BEGIN
           GET DIAGNOSTICS CONDITION 1 failure_code = MYSQL_ERRNO, failure = MESSAGE_TEXT;
@@ -78,36 +177,55 @@ const PROCEDURE: &str = indoc! {r#"
         SET value_warning = warning;
         DEALLOCATE PREPARE probe_statement;
       END IF;
-      SET value_failure = failure;
-      -- Type and nullability, the warnings kept as warnings.
-      SET failure = NULL;
-      SET @probe_mode = TRIM(BOTH ',' FROM REPLACE(REPLACE(CONCAT(',', saved_mode, ','),
-        ',STRICT_TRANS_TABLES,', ','), ',STRICT_ALL_TABLES,', ','));
-      SET SESSION sql_mode = @probe_mode;
-      DROP TABLE IF EXISTS probe_type;
-      SET @probe_sql = CONCAT('CREATE TABLE probe_type AS SELECT ', expression, ' AS v FROM sample');
-      PREPARE probe_statement FROM @probe_sql;
+      -- The value of the query, until the column of its type gives it;
+      -- none when the column of the results refuses it (bytes that are no
+      -- text, `CHAR(-1)`).
+      BEGIN
+        DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+          INSERT INTO probe_results (case_id, warning, failure)
+            VALUES (case_id, value_warning, failure);
+        INSERT INTO probe_results (case_id, value, warning, failure)
+          VALUES (case_id, IF(failure IS NULL, CONCAT('=', CAST(@probe_value AS CHAR)), NULL),
+            value_warning, failure);
+      END;
+      SET result_seq = LAST_INSERT_ID();
       IF failure IS NULL THEN
-        EXECUTE probe_statement;
-        DEALLOCATE PREPARE probe_statement;
-      END IF;
-      SET SESSION sql_mode = saved_mode;
-      -- Value, read in the column of its type; from the query otherwise.
-      IF failure IS NULL THEN
-        SELECT c.COLUMN_TYPE, c.IS_NULLABLE INTO column_type, nullable
-          FROM information_schema.COLUMNS AS c
-          WHERE c.TABLE_SCHEMA = DATABASE() AND c.TABLE_NAME = 'probe_type';
-        IF column_type REGEXP '^(binary|varbinary|tinyblob|blob|mediumblob|longblob|bit|geometry|point|linestring|polygon|multi)' THEN
-          SELECT CONCAT('=0x', HEX(v)) INTO value_text FROM probe_type;
-        ELSE
-          SELECT CONCAT('=', CAST(v AS CHAR)) INTO value_text FROM probe_type;
-        END IF;
+        SET @probe_pending = COALESCE(@probe_pending, 0) + 1;
+        INSERT INTO probe_pending (owner, place, result_seq, expression)
+          VALUES (CONNECTION_ID(), @probe_pending, result_seq, expression);
+        SET @probe_list = CONCAT_WS(', ', @probe_list, CONCAT(expression, ' AS c', @probe_pending));
       ELSE
-        SET value_text = CONCAT('=', CAST(@probe_value AS CHAR));
+        CALL probe_type(result_seq, expression);
       END IF;
-      INSERT INTO probe_results (case_id, column_type, nullable, value, warning, failure, type_failure)
-        VALUES (case_id, column_type, nullable, IF(value_failure IS NULL, value_text, NULL),
-          value_warning, value_failure, failure);
+    END//
+    CREATE PROCEDURE probe_batch()
+    BEGIN
+      DECLARE failure TEXT DEFAULT NULL;
+      DECLARE total INT DEFAULT COALESCE(@probe_pending, 0);
+      DECLARE current INT DEFAULT 1;
+      DECLARE pending_seq INT DEFAULT 0;
+      DECLARE pending_expression LONGTEXT DEFAULT NULL;
+      DECLARE CONTINUE HANDLER FOR NOT FOUND SET pending_seq = 0;
+      IF total > 0 THEN
+        CALL probe_create(@probe_list, failure);
+        WHILE current <= total DO
+          SET pending_seq = 0;
+          SELECT p.result_seq, p.expression INTO pending_seq, pending_expression
+            FROM probe_pending AS p WHERE p.owner = CONNECTION_ID() AND p.place = current;
+          -- A place whose row was refused has no expression pending.
+          IF pending_seq > 0 THEN
+            IF failure IS NULL THEN
+              CALL probe_read(pending_seq, CONCAT('c', current));
+            ELSE
+              CALL probe_type(pending_seq, pending_expression);
+            END IF;
+          END IF;
+          SET current = current + 1;
+        END WHILE;
+        DELETE FROM probe_pending WHERE owner = CONNECTION_ID();
+      END IF;
+      SET @probe_pending = 0;
+      SET @probe_list = NULL;
     END//
     DELIMITER ;
 "#};
@@ -200,25 +318,38 @@ pub struct Measure {
     pub type_failure: Option<String>,
 }
 
-/// Measures `cases` on `server`: a result per identifier.
+/// Measures `cases` on `server`: a result per identifier. The cases are
+/// shared among `SESSIONS` sessions of the server, which measure at once,
+/// each after the statements of the file.
 pub fn measure(server: &Server, cases: &Cases) -> anyhow::Result<HashMap<String, Measure>> {
-    let mut script = PREPARATION.to_string();
-    for statement in &cases.setup {
-        let _ = writeln!(script, "{};", statement.trim_end_matches(';'));
-    }
-    script.push_str(PROCEDURE);
-    for case in &cases.cases {
-        let _ = writeln!(
-            script,
-            "CALL probe_expression('{}', {});",
-            case.id,
-            text_literal(&case.expression)
-        );
-    }
-    script.push_str(
+    let setup = setup_script(cases);
+    server.run_checked(&format!("{PREPARATION}{setup}{PROCEDURE}"), &[])?;
+    in_sessions(cases, |chunk| {
+        let mut script = setup.clone();
+        for batch in chunk.chunks(BATCH) {
+            for case in batch {
+                let _ = writeln!(
+                    script,
+                    "CALL probe_value('{}', {});",
+                    case.id,
+                    text_literal(&case.expression)
+                );
+            }
+            script.push_str("CALL probe_batch();\n");
+        }
+        // The table of the types of the session, dropped with it.
+        script.push_str(indoc! {"
+            SET @probe_sql = CONCAT('DROP TABLE IF EXISTS probe_type_', CONNECTION_ID());
+            PREPARE probe_statement FROM @probe_sql;
+            EXECUTE probe_statement;
+            DEALLOCATE PREPARE probe_statement;
+        "});
+        server.run_checked(&script, &[]).map(drop)
+    })?;
+    let output = server.run_checked(
         "SELECT case_id, column_type, nullable, value, warning, failure, type_failure FROM probe_results ORDER BY seq;\n",
-    );
-    let output = server.run_checked(&script, &["--batch", "--skip-column-names"])?;
+        &["--batch", "--skip-column-names"],
+    )?;
     let mut measures = HashMap::new();
     for line in output.lines() {
         let fields: Vec<Option<String>> = line.split('\t').map(field).collect();
@@ -257,27 +388,62 @@ pub fn measure(server: &Server, cases: &Cases) -> anyhow::Result<HashMap<String,
     Ok(measures)
 }
 
-/// Values of `cases` as a query of the client reads them, in a session where
+/// Values of `cases` as a query of the client reads them, in sessions where
 /// the statements of the file run again; a query that fails gives none.
 fn read_values(server: &Server, cases: &Cases) -> anyhow::Result<HashMap<String, Option<String>>> {
+    let setup = setup_script(cases);
+    let chunks = in_sessions(cases, |chunk| {
+        let mut script = setup.clone();
+        for case in chunk {
+            let _ = writeln!(
+                script,
+                "SELECT '{}', {} FROM sample;",
+                case.id, case.expression
+            );
+        }
+        let output = server.run(&script, &["--batch", "--skip-column-names", "--force"])?;
+        Ok(String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .filter_map(|line| line.split_once('\t'))
+            .map(|(id, value)| (id.to_string(), field(value)))
+            .collect::<Vec<_>>())
+    })?;
+    Ok(chunks.into_iter().flatten().collect())
+}
+
+/// Statements of the file, as a script.
+fn setup_script(cases: &Cases) -> String {
     let mut script = String::new();
     for statement in &cases.setup {
         let _ = writeln!(script, "{};", statement.trim_end_matches(';'));
     }
-    for case in &cases.cases {
-        let _ = writeln!(
-            script,
-            "SELECT '{}', {} FROM sample;",
-            case.id, case.expression
-        );
-    }
-    let output = server.run(&script, &["--batch", "--skip-column-names", "--force"])?;
-    let values = String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter_map(|line| line.split_once('\t'))
-        .map(|(id, value)| (id.to_string(), field(value)))
-        .collect();
-    Ok(values)
+    script
+}
+
+/// Results of `task` over `SESSIONS` shares of the cases, run at once, in
+/// the order of the cases; over all the cases at once for a file with
+/// statements of its own.
+fn in_sessions<R: Send>(
+    cases: &Cases,
+    task: impl Fn(&[Case]) -> anyhow::Result<R> + Sync,
+) -> anyhow::Result<Vec<R>> {
+    let sessions = if cases.setup.is_empty() { SESSIONS } else { 1 };
+    let size = cases.cases.len().div_ceil(sessions).max(1);
+    thread::scope(|scope| {
+        let handles: Vec<_> = cases
+            .cases
+            .chunks(size)
+            .map(|chunk| scope.spawn(|| task(chunk)))
+            .collect();
+        handles
+            .into_iter()
+            .map(|handle| {
+                handle
+                    .join()
+                    .map_err(|_| anyhow::anyhow!("a session of measures panicked"))?
+            })
+            .collect()
+    })
 }
 
 /// Tells whether a column of type `column_type` holds bytes, written in

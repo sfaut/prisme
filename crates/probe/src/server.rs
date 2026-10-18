@@ -6,6 +6,13 @@
 //! the image (`docker exec`), over TCP inside the container, so that a server
 //! still being initialised is never reached. Their root password only
 //! protects these throwaway servers.
+//!
+//! The servers trade durability for the speed of the measurements, each of
+//! which creates and drops a table (`docs/PERF.md`, chapter 9): the tables
+//! go into the system tablespace instead of a file each, the redo log is
+//! written to disk once a second instead of at each commit, and the
+//! sessions of the client write no binary log (MySQL). These settings last
+//! until the server restarts.
 
 use std::io::Write;
 use std::process::{Command, Output, Stdio};
@@ -120,6 +127,7 @@ impl Server {
             .args(["--protocol=TCP", "--host=127.0.0.1", "--user=root"])
             .arg(format!("--password={PASSWORD}"))
             .arg("--default-character-set=utf8mb4")
+            .arg("--init-command=SET SESSION sql_log_bin = 0")
             .args(options)
             .args(database)
             .stdin(Stdio::piped())
@@ -191,10 +199,13 @@ impl Server {
     }
 
     /// Waits until the server answers over TCP, creates the database of the
-    /// measurements, then gives the version of the server.
+    /// measurements, sets the server for their speed, then gives the version
+    /// of the server.
     fn wait(&self) -> anyhow::Result<String> {
         let script = formatdoc! {"
             CREATE DATABASE IF NOT EXISTS {DATABASE};
+            SET GLOBAL innodb_file_per_table = OFF;
+            SET GLOBAL innodb_flush_log_at_trx_commit = 0;
             SELECT VERSION();
         "};
         for _ in 0..START_TIMEOUT {

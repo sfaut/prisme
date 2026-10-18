@@ -550,3 +550,109 @@ stays at 8.
 Add timers around the phases of `check` and of the test (`Instant::now()`,
 the durations added in a `static Mutex<[Duration; N]>`), then run the suite
 with `-- --include-ignored --nocapture`.
+
+## 9. Slow measures of `probe`: a table created and dropped for each expression
+
+Problem met in October 2026 in the tool `probe` (`crates/probe`), with the
+cases generated from the function catalogs: 25,446 calls of the functions of
+MySQL, to measure on each of the 52 local images.
+
+### 9.1 Symptom
+
+`probe expr` measured 2,000 of these cases on the four default servers
+(MySQL 8.0.11 and 8.4, MariaDB 10.6 and 11.8) in 9 min 30 s, about 285 ms
+per case on each server: the whole file would have taken about 22 hours over
+the 52 images.
+
+### 9.2 Cause
+
+Each case ran in a stored procedure: `SELECT <expression> INTO @value`, then
+`DROP TABLE` and `CREATE TABLE ... AS SELECT <expression>`, whose column gives
+the type, then an `INSERT` of the result. The containers of `probe` keep
+their data on the disk of the container. The `CREATE TABLE` created a file
+per table (`innodb_file_per_table`), the `DROP` deleted it, each commit
+wrote the redo log to disk (`innodb_flush_log_at_trx_commit = 1`), and MySQL
+wrote each change to its binary log, on by default from 8.0. The `SELECT`
+alone is fast: the 2,000 queries of the values ran in 0.65 s on MySQL 8.4,
+against 81 s for the whole measure.
+
+### 9.3 Fix
+
+Three changes, whose output is identical byte for byte to that of the
+previous code, on the 2,000 cases, on the 177 cases of `CHAR` and on two
+files with statements of their own (`cast.txt`, `json-functions.txt`):
+
+- **The servers trade durability for speed** (`server.rs`): at the start of
+  a run, `SET GLOBAL innodb_file_per_table = OFF` (the tables go into the
+  system tablespace, without a file each) and
+  `SET GLOBAL innodb_flush_log_at_trx_commit = 0` (the redo log written once a
+  second); each session of the client runs `SET SESSION sql_log_bin = 0`
+  (`--init-command`). The settings last until the server restarts. On
+  MySQL 8.4 alone, 200 cases:
+
+  | Settings | Time |
+  |---|---|
+  | Default | 21.7 s |
+  | No binary log, redo log flushed once a second (`2`), a file per table | 16.7 s |
+  | No binary log, redo log flushed once a second (`2`), no file per table | 8.7 s |
+  | No binary log, redo log written once a second (`0`), no file per table | 6.7 s |
+
+  On MariaDB 11.8, which has no binary log by default and writes a `.frm`
+  file for each table, 10.4 s instead of 12.6 s.
+
+- **One `CREATE TABLE` for 30 expressions** (`expr.rs`): the expressions
+  whose value runs wait in a table of the session (`probe_pending`), then a
+  `CREATE TABLE` of one column each gives their types; when it fails, each
+  is measured alone, as is an expression whose value fails. A `DROP` and a
+  `CREATE TABLE` take about 60 ms on both servers, the settings applied.
+
+- **Four sessions per server** (`expr.rs`), each with a share of the cases
+  and a table of its own (`probe_type_<connection>`); a file with statements
+  of its own (`! CREATE TABLE ...`) runs in one session, as each session
+  runs them again and would drop the tables of the others. The 8,000
+  first cases, on a server alone, already running:
+
+  | Server | 1 session | 4 sessions |
+  |---|---|---|
+  | MySQL 8.0.11 | 30 s | 15 s |
+  | MariaDB 10.6 | 47 s | 23 s |
+
+The 2,000 cases on the four servers, their start included:
+
+| Code | Time |
+|---|---|
+| Before | 9 min 30 s |
+| Settings of the servers | 4 min 06 s |
+| Settings and batches of 30 types | 34 s |
+
+On a server already running, the 2,000 cases take 7 to 8 s (MySQL 8.4,
+MariaDB 11.8): the start of the containers takes most of the 34 s.
+
+### 9.4 Defect found on the way
+
+The first version of the batches inserted the value of the query in the
+table of the results before measuring the type. A value that is no text
+(`CHAR(1, -1, 1)` gives the byte `0xFF`) was refused by the `LONGTEXT`
+column, the handler of the procedure swallowed the error, and
+`LAST_INSERT_ID()` named the previous case, whose row then received the type
+of the next one. Two runs gave different results, which a comparison of the
+outputs showed. That `INSERT` now falls back to a row without value, which
+the column of the type then fills.
+
+### 9.5 Takeaways
+
+- **A measure that creates a table per case measures the disk first**: the
+  type of an expression costs a `CREATE TABLE`, so as few of them as
+  possible, on a server that writes nothing it does not need.
+- **Compare the whole output after each change**: an optimisation of a
+  measure must give the same measures, which a `diff` of two runs checks.
+- **Rebuild the binary before measuring it**: `cargo clippy` and
+  `cargo test` do not build `target/debug/probe.exe`; two measures of an
+  unchanged binary first suggested that the batches gained nothing.
+
+### 9.6 Measuring again
+
+Run `probe expr --layout rows --width 0` on a file of cases with and without
+the change, time each run (`date +%s` before and after), and compare the
+outputs with `diff`. A server already running is left running by the tool,
+which separates the measures from the start of the containers.
