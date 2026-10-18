@@ -5,8 +5,9 @@
 # `IS TRUE`, `IS FALSE` and `IS UNKNOWN` of numbers, strings and NULL; MariaDB
 # reads a comparison or `IS` after them, written between parentheses towards
 # MySQL (crates/probe/cases/is-true.txt). `SOUNDS LIKE`, the same in both
-# dialects, its right operand at the level of `|`; `REGEXP`, refused between
-# the dialects (crates/probe/cases/regexp-grammar.txt).
+# dialects, its right operand at the level of `|`; `REGEXP`, its pattern
+# translated between the dialects (crates/probe/cases/regexp-grammar.txt,
+# regexp.yaml).
 setup:
   - DROP TABLE IF EXISTS predicates
   - CREATE TABLE predicates (id INT NOT NULL PRIMARY KEY, a INT NULL, s VARCHAR(10) NULL)
@@ -50,8 +51,6 @@ cases:
       s SOUNDS LIKE a AS c4, s SOUNDS LIKE 'a' | 'b' AS c5, s SOUNDS LIKE 'a' SOUNDS LIKE '1' AS c6
       FROM predicates ORDER BY id
   - from: mysql
-    sql: SELECT id FROM predicates WHERE s REGEXP 'a' ORDER BY id
-    refused: regexp.pattern
+    sql: SELECT id FROM predicates WHERE s REGEXP 'a' OR s REGEXP '^-?[0-9]+$' ORDER BY id
   - from: mariadb
-    sql: SELECT id FROM predicates WHERE s REGEXP 'a' ORDER BY id
-    refused: regexp.pattern
+    sql: SELECT id FROM predicates WHERE s REGEXP 'a' OR s REGEXP '^-?[0-9]+$' ORDER BY id

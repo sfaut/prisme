@@ -1,0 +1,105 @@
+# Patterns of `REGEXP`, read by ICU in MySQL, by PCRE2 in MariaDB, and
+# translated (crates/probe/cases/regexp-translation.txt, regexp-folding.txt,
+# regexp-syntax.txt, regexp-classes.sql): line terminators, classes, case
+# folding of the literal characters under a collation `_ci`, `_bin`, or of
+# unknown case (the result of `GROUP_CONCAT`, which keeps the collation of
+# its argument). Each subject is in a column of each collation.
+setup:
+  - DROP TABLE IF EXISTS regexps
+  - >-
+    CREATE TABLE regexps (id INT NOT NULL PRIMARY KEY,
+    ci VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL,
+    cs VARCHAR(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL)
+  - >-
+    INSERT INTO regexps (id, ci) VALUES (1, 'abc'), (2, 'ABC'),
+    (3, CONCAT('a', CHAR(13 USING utf8mb4), CHAR(10 USING utf8mb4), 'b')),
+    (4, CONCAT('a', CHAR(13 USING utf8mb4), 'b')), (5, CONCAT('a', CHAR(10 USING utf8mb4), 'b')),
+    (6, CONCAT('ab', CHAR(13 USING utf8mb4))), (7, CONCAT('ab', CHAR(10 USING utf8mb4))),
+    (8, CONCAT('ab', CHAR(13 USING utf8mb4), CHAR(10 USING utf8mb4))),
+    (9, CONCAT('a', CONVERT(X'E280A8' USING utf8mb4), 'b')),
+    (10, CONCAT('x', CONVERT(X'E1A08E' USING utf8mb4), 'y')), (11, 'x y'),
+    (12, CONCAT('x', CHAR(9 USING utf8mb4), 'y')), (13, 'ss'), (14, 'SS'), (15, 'ß'), (16, 'ẞ'),
+    (17, 'ſs'), (18, 'Strasse'), (19, 'STRAßE'), (20, 'ﬆ'), (21, 'st'), (22, 'ﬅ'), (23, 'ffi'),
+    (24, 'ﬃ'), (25, 'oﬃce'), (26, 'office'), (27, 'test'), (28, 'teﬆ'), (29, 'word_1'),
+    (30, 'é'), (31, ''), (32, NULL), (33, 'İ'), (34, CONVERT(X'69CC87' USING utf8mb4)),
+    (35, 'Ⓐ'), (36, 'k'), (37, 'K'), (38, 'Straße'), (39, 'x,y')
+  - UPDATE regexps SET cs = ci
+cases:
+  # Line terminators.
+  - from: mysql
+    sql: >-
+      SELECT id, ci REGEXP 'a.b' IS TRUE AS c1, ci REGEXP 'b$' IS TRUE AS c2,
+      ci REGEXP '(?m)^b' IS TRUE AS c3, ci REGEXP '(?m)b$' IS TRUE AS c4,
+      ci REGEXP '(?s)^a.b$' IS TRUE AS c5, ci REGEXP 'b\\Z' IS TRUE AS c6,
+      ci REGEXP '(?s)^a..b$' IS TRUE AS c7, ci REGEXP 'a\\Rb' IS TRUE AS c8,
+      ci REGEXP '^a(?s:.)+b$' IS TRUE AS c9 FROM regexps ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, ci REGEXP 'a.b' IS TRUE AS c1, ci REGEXP 'b$' IS TRUE AS c2,
+      ci REGEXP '(?m)^b' IS TRUE AS c3, ci REGEXP '(?m)b$' IS TRUE AS c4,
+      ci REGEXP '(?s)^a.b$' IS TRUE AS c5, ci REGEXP 'b\\Z' IS TRUE AS c6,
+      ci REGEXP '(?s)^a..b$' IS TRUE AS c7, ci REGEXP 'a\\Rb' IS TRUE AS c8,
+      ci REGEXP '' IS TRUE AS c9 FROM regexps ORDER BY id
+  # Classes.
+  - from: mysql
+    sql: >-
+      SELECT id, ci REGEXP '^x\\sy$' IS TRUE AS c1, ci REGEXP '^x\\Sy$' IS TRUE AS c2,
+      ci REGEXP '^x[\\s,]y$' IS TRUE AS c3, ci REGEXP '^x[^\\S]y$' IS TRUE AS c4,
+      ci REGEXP '^x\\hy$' IS TRUE AS c5, ci REGEXP '^x[[:space:]]y$' IS TRUE AS c6,
+      ci REGEXP '^\\w+$' IS TRUE AS c7, ci REGEXP '[\\W_]' IS TRUE AS c8,
+      ci REGEXP '^[^\\W_]+$' IS TRUE AS c9, ci REGEXP '\\p{Nd}' IS TRUE AS c10,
+      ci REGEXP '^x[^[:blank:]a]y$' IS TRUE AS c11, ci REGEXP '^x[\\S\\n]y$' IS TRUE AS c12
+      FROM regexps ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, ci REGEXP '^x\\sy$' IS TRUE AS c1, ci REGEXP '^x\\Sy$' IS TRUE AS c2,
+      ci REGEXP '^x[\\s,]y$' IS TRUE AS c3, ci REGEXP '^x[^\\S]y$' IS TRUE AS c4,
+      ci REGEXP '^x\\hy$' IS TRUE AS c5, ci REGEXP '^x[[:space:]]y$' IS TRUE AS c6,
+      ci REGEXP '^x[\\S\\n]y$' IS TRUE AS c7, ci REGEXP '^x[^\\H\\t]y$' IS TRUE AS c8,
+      ci REGEXP '\\p{Nd}' IS TRUE AS c9 FROM regexps ORDER BY id
+  # Case folding, of a known case.
+  - from: mysql
+    sql: >-
+      SELECT id, ci REGEXP '^ß$' IS TRUE AS c1, ci REGEXP '^ss$' IS TRUE AS c2,
+      ci REGEXP '^stra(ss)?e$' IS TRUE AS c3, ci REGEXP 'ﬃ' IS TRUE AS c4,
+      ci REGEXP '^ffi$' IS TRUE AS c5, ci REGEXP 'st' IS TRUE AS c6, ci REGEXP '^ß+$' IS TRUE AS c7,
+      ci REGEXP '^[ß]$' IS TRUE AS c8, ci REGEXP '^İ$' IS TRUE AS c9, cs REGEXP '^ß$' IS TRUE AS c10,
+      cs REGEXP '(?i)^ss$' IS TRUE AS c11, cs REGEXP 'st' IS TRUE AS c12,
+      ci REGEXP '^k$' IS TRUE AS c13, ci REGEXP 'Straße' IS TRUE AS c14 FROM regexps ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, ci REGEXP '^ß$' IS TRUE AS c1, ci REGEXP '^ss$' IS TRUE AS c2,
+      ci REGEXP 'ffi' IS TRUE AS c3, ci REGEXP '^ﬆ$' IS TRUE AS c4, ci REGEXP '^st$' IS TRUE AS c5,
+      ci REGEXP 'Strasse' IS TRUE AS c6, cs REGEXP '(?i)ss' IS TRUE AS c7,
+      ci REGEXP '^i\\x{307}$' IS TRUE AS c8, ci REGEXP '^ß+$' IS TRUE AS c9,
+      ci REGEXP '^k$' IS TRUE AS c10 FROM regexps ORDER BY id
+  # Case folding, of an unknown case.
+  - from: mysql
+    sql: >-
+      SELECT id, GROUP_CONCAT(ci) REGEXP '^ß$' IS TRUE AS c1,
+      GROUP_CONCAT(cs) REGEXP '^ß$' IS TRUE AS c2, GROUP_CONCAT(ci) REGEXP 'test' IS TRUE AS c3,
+      GROUP_CONCAT(cs) REGEXP 'test' IS TRUE AS c4, GROUP_CONCAT(ci) REGEXP '^ss$' IS TRUE AS c5,
+      GROUP_CONCAT(cs) REGEXP '^SS$' IS TRUE AS c6, GROUP_CONCAT(ci) REGEXP 'office' IS TRUE AS c7,
+      GROUP_CONCAT(cs) REGEXP 'office' IS TRUE AS c8 FROM regexps GROUP BY id ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, GROUP_CONCAT(ci) REGEXP 'ss' IS TRUE AS c1,
+      GROUP_CONCAT(cs) REGEXP 'ss' IS TRUE AS c2, GROUP_CONCAT(ci) REGEXP '^ß$' IS TRUE AS c3,
+      GROUP_CONCAT(cs) REGEXP '^ß$' IS TRUE AS c4, GROUP_CONCAT(ci) REGEXP 'ffi' IS TRUE AS c5
+      FROM regexps GROUP BY id ORDER BY id
+  # Refused.
+  - from: mysql
+    sql: SELECT id FROM regexps WHERE ci REGEXP '\\bst' ORDER BY id
+    refused: regexp.pattern
+  - from: mysql
+    sql: SELECT id FROM regexps GROUP BY id HAVING GROUP_CONCAT(ci) REGEXP 'ffi' ORDER BY id
+    refused: regexp.pattern
+  - from: mysql
+    sql: SELECT id FROM regexps WHERE ci REGEXP '\\p{L}' ORDER BY id
+    refused: regexp.pattern
+  - from: mysql
+    sql: SELECT id FROM regexps WHERE ci REGEXP cs ORDER BY id
+    refused: regexp.pattern
+  - from: mariadb
+    sql: SELECT id FROM regexps WHERE ci REGEXP '\\w' ORDER BY id
+    refused: regexp.pattern

@@ -1,0 +1,107 @@
+# REGEXP, ICU (MySQL) against PCRE2 (MariaDB): where ICU folds a run of literal characters
+# fully, case-insensitive (ß against ss), and the forms that keep it from it or emulate it.
+# Subjects and patterns as hex, their text in the comment above the case.
+# sharp_quant_one: «ss», «^ß{1}$», ci
+sharp_quant_one CONVERT(X'7373' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5EC39F7B317D24' USING utf8mb4)
+# sharp_plus: «ss», «^ß+$», ci
+sharp_plus CONVERT(X'7373' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5EC39F2B24' USING utf8mb4)
+# sharp_group: «ss», «^(?:ß)$», ci
+sharp_group CONVERT(X'7373' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E283F3AC39F2924' USING utf8mb4)
+# sharp_capture: «ss», «^(ß)$», ci
+sharp_capture CONVERT(X'7373' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E28C39F2924' USING utf8mb4)
+# sharp_opt: «ss», «^ß?$», ci
+sharp_opt CONVERT(X'7373' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5EC39F3F24' USING utf8mb4)
+# sharp_alt: «ss», «^(?:ß|x)$», ci
+sharp_alt CONVERT(X'7373' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E283F3AC39F7C782924' USING utf8mb4)
+# sharp_cap_ss: «ss», «^ẞ$», ci
+sharp_cap_ss CONVERT(X'7373' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5EE1BA9E24' USING utf8mb4)
+# sharp_long_s: «ſs», «^ß$», ci
+sharp_long_s CONVERT(X'C5BF73' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5EC39F24' USING utf8mb4)
+# sharp_upper_ss: «SS», «^ß$», ci
+sharp_upper_ss CONVERT(X'5353' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5EC39F24' USING utf8mb4)
+# sharp_mixed: «sS», «^ß$», ci
+sharp_mixed CONVERT(X'7353' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5EC39F24' USING utf8mb4)
+# sharp_three: «sss», «^ßs$», ci
+sharp_three CONVERT(X'737373' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5EC39F7324' USING utf8mb4)
+# sharp_then_s: «sss», «^sß$», ci
+sharp_then_s CONVERT(X'737373' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E73C39F24' USING utf8mb4)
+# dotted_i: «i\u{0307}», «^İ$», ci
+dotted_i CONVERT(X'69CC87' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5EC4B024' USING utf8mb4)
+# dotted_i_rev: «İ», «^i\u{0307}$», ci
+dotted_i_rev CONVERT(X'C4B0' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E69CC8724' USING utf8mb4)
+# dotted_i_esc: «İ», «^i\x{307}$», ci
+dotted_i_esc CONVERT(X'C4B0' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E695C787B3330377D24' USING utf8mb4)
+# napos: «\u{02BC}n», «^ŉ$», ci
+napos CONVERT(X'CABC6E' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5EC58924' USING utf8mb4)
+# napos_rev: «ŉ», «^\u{02BC}n$», ci
+napos_rev CONVERT(X'C589' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5ECABC6E24' USING utf8mb4)
+# ffi_lig_seq: «ffi», «^ﬃ$», ci
+ffi_lig_seq CONVERT(X'666669' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5EEFAC8324' USING utf8mb4)
+# ffi_lig_mixed: «ﬀi», «^ﬃ$», ci
+ffi_lig_mixed CONVERT(X'EFAC8069' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5EEFAC8324' USING utf8mb4)
+# ffi_lig_upper: «FFI», «^ﬃ$», ci
+ffi_lig_upper CONVERT(X'464649' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5EEFAC8324' USING utf8mb4)
+# iota_dial: «ι\u{0308}\u{0301}», «^ΐ$», ci
+iota_dial CONVERT(X'CEB9CC88CC81' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5ECE9024' USING utf8mb4)
+# alpha_iota: «αι», «^ᾳ$», ci
+alpha_iota CONVERT(X'CEB1CEB9' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5EE1BEB324' USING utf8mb4)
+# alpha_iota_rev: «ᾳ», «^αι$», ci
+alpha_iota_rev CONVERT(X'E1BEB3' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5ECEB1CEB924' USING utf8mb4)
+# alpha_iota_cap: «ᾳ», «^ΑΙ$», ci
+alpha_iota_cap CONVERT(X'E1BEB3' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5ECE91CE9924' USING utf8mb4)
+# alpha_iota_class: «ᾳ», «^α[ι]$», ci
+alpha_iota_class CONVERT(X'E1BEB3' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5ECEB15BCEB95D24' USING utf8mb4)
+# run_sss_plus: «ßs», «^sss+$», ci
+run_sss_plus CONVERT(X'C39F73' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E7373732B24' USING utf8mb4)
+# run_ss_plus: «ß», «^ss+$», ci
+run_ss_plus CONVERT(X'C39F' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E73732B24' USING utf8mb4)
+# run_ss_star: «ß», «^ss*$», ci
+run_ss_star CONVERT(X'C39F' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E73732A24' USING utf8mb4)
+# run_ss_lazy: «ß», «^ss??$», ci
+run_ss_lazy CONVERT(X'C39F' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E73733F3F24' USING utf8mb4)
+# run_comment: «ß», «^s(?#c)s$», ci
+run_comment CONVERT(X'C39F' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E73283F2363297324' USING utf8mb4)
+# run_flag_i: «ß», «^s(?i)s$», ci
+run_flag_i CONVERT(X'C39F' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E73283F69297324' USING utf8mb4)
+# run_flag_off_on: «ß», «^(?-i)s(?i)s$», ci
+run_flag_off_on CONVERT(X'C39F' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E283F2D692973283F69297324' USING utf8mb4)
+# run_flag_on_off: «ß», «^s(?-i)s$», ci
+run_flag_on_off CONVERT(X'C39F' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E73283F2D69297324' USING utf8mb4)
+# run_flag_scoped: «ß», «^(?i:ss)$», ci
+run_flag_scoped CONVERT(X'C39F' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E283F693A73732924' USING utf8mb4)
+# run_quote: «ß», «^\Qss\E$», ci
+run_quote CONVERT(X'C39F' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E5C5173735C4524' USING utf8mb4)
+# run_escape_both: «ß», «^\x73\x73$», ci
+run_escape_both CONVERT(X'C39F' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E5C7837335C78373324' USING utf8mb4)
+# run_alt_split: «ß», «^(?:s|x)s$», ci
+run_alt_split CONVERT(X'C39F' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E283F3A737C78297324' USING utf8mb4)
+# run_anchor_mid: «ß», «^s\Bs$», ci
+run_anchor_mid CONVERT(X'C39F' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E735C427324' USING utf8mb4)
+# run_lookahead_mid: «ß», «^s(?=s)s$», ci
+run_lookahead_mid CONVERT(X'C39F' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E73283F3D73297324' USING utf8mb4)
+# run_cs_collation: «ß», «^(?i)ss$», cs
+run_cs_collation CONVERT(X'C39F' USING utf8mb4) COLLATE utf8mb4_bin REGEXP CONVERT(X'5E283F6929737324' USING utf8mb4)
+# run_cs_plain: «ß», «^ss$», cs
+run_cs_plain CONVERT(X'C39F' USING utf8mb4) COLLATE utf8mb4_bin REGEXP CONVERT(X'5E737324' USING utf8mb4)
+# icu_class_st: «ﬆ», «^(?-i:ﬅ)$», ci
+icu_class_st CONVERT(X'EFAC86' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E283F2D693AEFAC852924' USING utf8mb4)
+# icu_class_st_self: «ﬅ», «^(?-i:ﬅ)$», ci
+icu_class_st_self CONVERT(X'EFAC85' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E283F2D693AEFAC852924' USING utf8mb4)
+# icu_break_fi: «ﬁ», «^f(?:)i$», ci
+icu_break_fi CONVERT(X'EFAC81' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E66283F3A296924' USING utf8mb4)
+# icu_break_fi_plain: «fi», «^f(?:)i$», ci
+icu_break_fi_plain CONVERT(X'6669' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E66283F3A296924' USING utf8mb4)
+# icu_break_fi_upper: «FI», «^f(?:)i$», ci
+icu_break_fi_upper CONVERT(X'4649' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E66283F3A296924' USING utf8mb4)
+# pcre_lig_alt: «ﬆ», «^(?:st|[ﬅﬆ])$», ci
+pcre_lig_alt CONVERT(X'EFAC86' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E283F3A73747C5BEFAC85EFAC865D2924' USING utf8mb4)
+# pcre_lig_alt_cs: «ﬆ», «^(?:st|[ﬅﬆ])$», cs
+pcre_lig_alt_cs CONVERT(X'EFAC86' USING utf8mb4) COLLATE utf8mb4_bin REGEXP CONVERT(X'5E283F3A73747C5BEFAC85EFAC865D2924' USING utf8mb4)
+# pcre_guard_ss: «SS», «^(?:ß|(?=S)ss)$», ci
+pcre_guard_ss CONVERT(X'5353' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E283F3AC39F7C283F3D532973732924' USING utf8mb4)
+# pcre_guard_ss_cs: «ss», «^(?:ß|(?=S)ss)$», cs
+pcre_guard_ss_cs CONVERT(X'7373' USING utf8mb4) COLLATE utf8mb4_bin REGEXP CONVERT(X'5E283F3AC39F7C283F3D532973732924' USING utf8mb4)
+# pcre_guard_ss_cs2: «Ss», «^(?:ß|(?=S)ss)$», cs
+pcre_guard_ss_cs2 CONVERT(X'5373' USING utf8mb4) COLLATE utf8mb4_bin REGEXP CONVERT(X'5E283F3AC39F7C283F3D532973732924' USING utf8mb4)
+# pcre_guard_long: «ſs», «^(?:ß|(?=S)ss)$», ci
+pcre_guard_long CONVERT(X'C5BF73' USING utf8mb4) COLLATE utf8mb4_unicode_ci REGEXP CONVERT(X'5E283F3AC39F7C283F3D532973732924' USING utf8mb4)

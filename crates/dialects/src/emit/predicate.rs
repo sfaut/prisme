@@ -7,9 +7,12 @@
 //! dialects, as `=` compares them. `MEMBER OF`, MySQL from 8.0.17, is an
 //! error towards MariaDB and the earlier versions (rule `json.member-of`).
 //! `REGEXP` reads its pattern by the library of the server, ICU in MySQL,
-//! PCRE2 in MariaDB: between the dialects, an error (rule
-//! `regexp.pattern`). `REGEXP` and `SOUNDS LIKE` read the text of a
-//! `JSON`, `MEMBER OF` its value: a `JSON` is written as is in each one.
+//! PCRE2 in MariaDB: between the dialects, a pattern written as a text
+//! literal is translated (`regexp` module), compared with the case of the
+//! collation of the operand; another pattern, or a construct that the
+//! output cannot read the same way, is an error (rule `regexp.pattern`).
+//! `REGEXP` and `SOUNDS LIKE` read the text of a `JSON`, `MEMBER OF` its
+//! value: a `JSON` is written as is in each one.
 //!
 //! `REGEXP` gives an integer, a `DOUBLE` in MySQL 8.0.11 (construct
 //! `regexp_integer`), which arithmetic carries (`(s REGEXP 'b') / 3` is a
@@ -31,11 +34,13 @@
 //! multibyte character as its bytes, which 8.0.21 reads as one character.
 
 use prisme_plan::{Expr, ExprKind};
+use prisme_types::{DataType, Value};
 
 use super::Emitter;
 use super::charset::StringKind;
 use super::expr::{PREDICATE, PREFIX};
 use crate::Dialect;
+use crate::regexp::{self, Case, Library};
 use crate::report::StepKind;
 use crate::versions::Construct;
 
@@ -76,20 +81,72 @@ impl Emitter<'_> {
         else {
             return;
         };
-        if self.source.dialect != self.output.dialect {
-            let message = format!(
-                "{} reads a regular expression by ICU, {} by PCRE2: not supported yet by Prisme",
-                self.source_name(),
-                self.target()
-            );
-            self.error("regexp.pattern", &message, expr.span);
-        }
+        let translated = self.regexp_pattern(operand, pattern);
         self.regexp_binary(expr, operand, pattern);
         self.json_as_is = true;
         self.expr(operand, left);
         self.write(if *negated { " NOT REGEXP " } else { " REGEXP " });
-        self.json_as_is = true;
-        self.expr(pattern, right);
+        if let Some(translated) = translated {
+            self.at(pattern.span);
+            let literal = self.string(&translated);
+            self.write(&literal);
+        } else {
+            self.json_as_is = true;
+            self.expr(pattern, right);
+        }
+    }
+
+    /// `pattern` of `operand REGEXP pattern` written for the library of the
+    /// output, `None` when written as is: a text literal, compared with the
+    /// case of the collation of `operand`, else of `pattern`. Otherwise an
+    /// error (rule `regexp.pattern`).
+    fn regexp_pattern(&mut self, operand: &Expr, pattern: &Expr) -> Option<String> {
+        let from = Library::of(self.source.dialect);
+        let to = Library::of(self.output.dialect);
+        if from == to {
+            return None;
+        }
+        let reading = format!(
+            "{} reads the pattern of `REGEXP` by {}, {} by {}",
+            self.source_name(),
+            from.label(),
+            self.target(),
+            to.label()
+        );
+        let text = match &pattern.kind {
+            ExprKind::Literal(Value::Text(text)) => text,
+            ExprKind::Literal(Value::Null) => return None,
+            _ => {
+                let message =
+                    format!("{reading}: Prisme translates a pattern written as a text literal");
+                self.error("regexp.pattern", &message, pattern.span);
+                return None;
+            }
+        };
+        let collation = |expr: &Expr| match &expr.ty.data_type {
+            DataType::Text(text) => text.collation.clone(),
+            _ => None,
+        };
+        let case = collation(operand)
+            .or_else(|| collation(pattern))
+            .map_or(Case::Unknown, |collation| Case::of_collation(&collation));
+        match regexp::translate(text, from, to, case) {
+            Ok(translation) => {
+                for emulation in translation.emulations {
+                    let message = format!("{reading}: {emulation}");
+                    self.step("regexp.pattern", StepKind::Emulation, message, pattern.span);
+                }
+                (translation.pattern != *text).then_some(translation.pattern)
+            }
+            Err(reason) => {
+                self.error(
+                    "regexp.pattern",
+                    &format!("{reading}: {reason}"),
+                    pattern.span,
+                );
+                None
+            }
+        }
     }
 
     /// Records the error of `expr`, `operand REGEXP pattern`, with a binary

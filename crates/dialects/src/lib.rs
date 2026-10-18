@@ -10,7 +10,7 @@
 //! (`docs/DEV-DIALECTS.md`): lexer of the MySQL family (`lexer` module),
 //! syntax tree and parser (`sql`), plan builder (`build`), emitter (`emit`),
 //! report (`report`) and entry point (`transpile`), with the dates and times
-//! of the literals (`temporal`).
+//! of the literals (`temporal`) and the patterns of `REGEXP` (`regexp`).
 
 mod alias;
 pub mod analysis;
@@ -27,6 +27,7 @@ pub mod limit;
 mod offsets;
 mod parse;
 mod reference;
+mod regexp;
 pub mod report;
 pub mod sql;
 pub mod syntax;

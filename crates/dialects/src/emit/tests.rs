@@ -2457,13 +2457,36 @@ fn regexp_refuses_a_binary_string_read_otherwise() {
 
 #[test]
 fn regexp_and_member_of_refuse_what_the_output_reads_otherwise() {
-    // ICU against PCRE2.
+    // ICU against PCRE2: a pattern written as a text literal, translated.
     for (input, target) in [(mysql(), mariadb()), (mariadb(), mysql())] {
-        assert_eq!(
-            errors("SELECT s FROM g WHERE s REGEXP 'a'", input, output(target)),
-            ["regexp.pattern"]
-        );
+        for text in [
+            "SELECT s FROM g WHERE s REGEXP s",
+            "SELECT s FROM g WHERE s REGEXP '\\\\bword'",
+        ] {
+            assert_eq!(
+                errors(text, input, output(target)),
+                ["regexp.pattern"],
+                "{text}"
+            );
+        }
+        let text = "SELECT s FROM g WHERE s REGEXP 'abc' OR s REGEXP NULL";
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!((sql.as_str(), rules), (text, vec![]));
     }
+    let (sql, rules) = transpiled(
+        "SELECT s FROM g WHERE s REGEXP 'a.b'",
+        mysql(),
+        output(mariadb()),
+    );
+    assert_eq!(sql, "SELECT s FROM g WHERE s REGEXP '(*ANY)a.b'");
+    assert_eq!(rules, ["regexp.pattern"]);
+    let (sql, rules) = transpiled(
+        "SELECT s FROM g WHERE s REGEXP 'b\\\\Z'",
+        mariadb(),
+        output(mysql()),
+    );
+    assert_eq!(sql, "SELECT s FROM g WHERE s REGEXP 'b(?=\\\\n?\\\\z)'");
+    assert_eq!(rules, ["regexp.pattern"]);
     // `MEMBER OF`, MySQL from 8.0.17.
     for target in [mariadb(), mysql_at(8, 0, 16)] {
         assert_eq!(
