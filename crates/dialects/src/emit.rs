@@ -51,9 +51,9 @@ mod truth;
 mod tests;
 
 use prisme_plan::{
-    Aggregate, AliasForm, Direction, Filter, FilterForm, Ident, Limit, LimitForm, Nulls, Plan,
-    Project, ProjectItem, SetOperation, SetOperator, Sort, SortKey, SortReference, Span, Statement,
-    Values, ValuesForm, Window, With,
+    Aggregate, AliasForm, ColumnRef, Direction, Filter, FilterForm, Ident, Limit, LimitForm, Nulls,
+    Plan, Project, ProjectItem, SetOperation, SetOperator, Sort, SortKey, SortReference, Span,
+    Statement, Values, ValuesForm, Window, With,
 };
 use prisme_types::Value;
 
@@ -806,30 +806,34 @@ impl Emitter<'_> {
     /// Value of a sort key, by alias or position when written so.
     fn sort_value(&mut self, key: &SortKey, project: Option<&Project>) {
         let items = project.map_or(&[][..], |project| project.items.as_slice());
-        let found = items
-            .iter()
-            .enumerate()
-            .find_map(|(index, item)| match item {
-                ProjectItem::Expr(named) if named.expr == key.expr => Some((index, named)),
-                _ => None,
-            });
+        let found = items.iter().find_map(|item| match item {
+            ProjectItem::Expr(named) if named.expr == key.expr => Some(named),
+            _ => None,
+        });
         // A `JSON` the select list keeps as is is sorted by an expression of
         // its text (`json` module).
         let json = self.json_differs(&key.expr);
-        match (key.form.reference, found) {
-            (SortReference::Alias, Some((_, named)))
+        let position = project
+            .filter(|_| key.form.reference == SortReference::Position && !json)
+            .and_then(|project| {
+                result_position(
+                    project,
+                    |expr| *expr == key.expr,
+                    |column| {
+                        matches!(&key.expr.kind,
+                            prisme_plan::ExprKind::Column(read) if read == column)
+                    },
+                )
+            });
+        match (key.form.reference, found, position) {
+            (SortReference::Alias, Some(named), _)
                 if !json && named.alias != AliasForm::Implicit =>
             {
                 self.ident(&named.name, key.expr.span);
             }
-            (SortReference::Position, Some((index, _)))
-                if !json
-                    && items
-                        .iter()
-                        .all(|item| matches!(item, ProjectItem::Expr(_))) =>
-            {
+            (SortReference::Position, _, Some(position)) => {
                 self.at(key.expr.span);
-                self.write(&(index + 1).to_string());
+                self.write(&position.to_string());
             }
             _ => {
                 let expr = self.sort_aliases(&key.expr);
@@ -995,6 +999,43 @@ const fn precedence(operator: SetOperator) -> u8 {
         SetOperator::IntersectAll | SetOperator::IntersectDistinct => 2,
         _ => 1,
     }
+}
+
+/// Position, from 1, of a column of the result of `project`: an item whose
+/// expression `item` accepts, or a column of a star that `column` accepts,
+/// named as the input names it. Each star counts its columns.
+fn result_position(
+    project: &Project,
+    item: impl Fn(&prisme_plan::Expr) -> bool,
+    column: impl Fn(&ColumnRef) -> bool,
+) -> Option<usize> {
+    let mut input = None;
+    let mut position = 0;
+    for listed in &project.items {
+        match listed {
+            ProjectItem::Expr(named) => {
+                position += 1;
+                if item(&named.expr) {
+                    return Some(position);
+                }
+            }
+            ProjectItem::Wildcard(wildcard) => {
+                let schema = input.get_or_insert_with(|| project.input.schema());
+                for &index in &wildcard.columns {
+                    position += 1;
+                    let read = &schema.columns[index];
+                    let name = ColumnRef {
+                        qualifier: read.qualifier.clone(),
+                        name: read.name.clone(),
+                    };
+                    if column(&name) {
+                        return Some(position);
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Name MariaDB gives to a column of `VALUES` holding `expr` in its first

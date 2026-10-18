@@ -635,6 +635,31 @@ fn a_star_of_a_grouped_query_keeps_its_form() {
 }
 
 #[test]
+fn a_position_over_a_star_keeps_its_form() {
+    // Each star counts the columns it stands for.
+    for text in [
+        "SELECT * FROM t ORDER BY 2",
+        "SELECT *, a + 1 AS x FROM t ORDER BY 3 DESC, 1",
+        "SELECT t.*, u.c FROM t JOIN u USING (a) ORDER BY 3, 2",
+        "SELECT u.*, t.* FROM t JOIN u ON u.a = t.a ORDER BY 4",
+        "SELECT * FROM t GROUP BY 2",
+        "SELECT *, COUNT(*) AS n FROM t GROUP BY 1 ORDER BY 3 DESC, 2",
+        "SELECT DISTINCT * FROM t GROUP BY 1, 2 ORDER BY 2 LIMIT 3",
+    ] {
+        for (input, target) in [
+            (mysql(), mysql()),
+            (mysql(), mariadb()),
+            (mariadb(), mysql()),
+            (mariadb(), mariadb()),
+        ] {
+            let (sql, rules) = transpiled(text, input, output(target));
+            assert_eq!(sql, text);
+            assert!(rules.is_empty(), "{text}: {rules:?}");
+        }
+    }
+}
+
+#[test]
 fn a_grouped_order_by_keeps_its_order_after_the_windows_towards_mariadb() {
     // MariaDB takes the order of the grouping for an `ORDER BY` of grouping
     // keys, lost to the windows: a last key on an item with a window

@@ -21,7 +21,7 @@ use prisme_types::{DataType, Value};
 
 use super::json::reads_json_as_is;
 use super::rules::repeatable;
-use super::{Block, Emitter};
+use super::{Block, Emitter, result_position};
 use crate::Dialect;
 use crate::build::{functions, is_internal_name};
 use crate::report::StepKind;
@@ -549,34 +549,33 @@ impl Emitter<'_> {
         }
         self.at(aggregate.keys[0].expr.span);
         self.clause(" GROUP BY ");
-        let all_expressions = project
-            .items
-            .iter()
-            .all(|item| matches!(item, ProjectItem::Expr(_)));
         for (index, key) in aggregate.keys.iter().enumerate() {
             if index > 0 {
                 self.write(", ");
             }
-            let found = project
-                .items
-                .iter()
-                .enumerate()
-                .find_map(|(position, item)| match item {
-                    ProjectItem::Expr(named) if reads_column(&named.expr, &key.name) => {
-                        Some((position, named))
-                    }
-                    _ => None,
-                });
+            let found = project.items.iter().find_map(|item| match item {
+                ProjectItem::Expr(named) if reads_column(&named.expr, &key.name) => Some(named),
+                _ => None,
+            });
             let reference = aggregate
                 .references
                 .get(index)
                 .copied()
                 .unwrap_or(SortReference::Expression);
-            match (reference, found) {
-                (SortReference::Position, Some((position, _))) if all_expressions => {
-                    self.write(&(position + 1).to_string());
+            let position = (reference == SortReference::Position)
+                .then(|| {
+                    result_position(
+                        project,
+                        |expr| reads_column(expr, &key.name),
+                        |column| column.qualifier.is_none() && column.name == key.name,
+                    )
+                })
+                .flatten();
+            match (reference, found, position) {
+                (SortReference::Position, _, Some(position)) => {
+                    self.write(&position.to_string());
                 }
-                (SortReference::Alias, Some((_, named)))
+                (SortReference::Alias, Some(named), _)
                     if named.alias != prisme_plan::AliasForm::Implicit =>
                 {
                     self.ident(&named.name, key.expr.span);
