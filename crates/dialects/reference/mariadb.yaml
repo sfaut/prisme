@@ -539,8 +539,8 @@ constructs:
   # Hexadecimal literals as results of the conditional functions, fixed in a
   # patch version of each branch maintained then, with the type of the
   # hexadecimal literals in `ROUND` (MDEV-38061, of the same versions; its
-  # ticket does not describe this change). Measured with
-  # crates/probe/cases/literals-hex-results.txt.
+  # ticket does not describe this change, docs/sources/mariadb/MDEV-38061.md).
+  # Measured with crates/probe/cases/literals-hex-results.txt.
   - id: hybrid_result_number
     since: "10.11.19"
     until: "11.0.0"

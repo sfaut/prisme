@@ -633,7 +633,8 @@ constructs:
       last 8 not zero, read as a number: 0, 2^64 - 1 before, with the warning
       1292 (`Item_hex_string::val_int` returns 0 in 8.0.27, -1 in 8.0.26).
       Measured on 8.0.11 to 8.0.23, 8.0.25 to 8.0.28 and 8.4.11
-      (crates/probe/cases/literals-hex-long.txt).
+      (crates/probe/cases/literals-hex-long.txt); the code in
+      docs/sources/mysql/item-hex-string-val-int.md.
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:
