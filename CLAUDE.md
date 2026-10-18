@@ -12,6 +12,7 @@ This file is short. Detailed decisions are in `docs/`:
 - `docs/DEV-DIALECTS.md`: implementation plan of the dialects (parsers, logical plan, emitters, PRQL), step by step.
 - `docs/CHANGELOG.md`: changelogs of the published versions, most recent first (see "Publishing a version").
 - `docs/DEVELOPER.md`: developer guide (build, tests, API, CI, releases). `README.md` is for the end user.
+- `docs/sources/`: excerpts of the documents consulted for the dialects (release notes, tickets, source code of the servers), each with its URL. A page downloaded is archived there, never raw: only what matters, in Markdown (`docs/sources/README.md`).
 
 ## Code principles
 
