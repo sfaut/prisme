@@ -10,11 +10,21 @@
 //! PCRE2 in MariaDB: between the dialects, an error (rule
 //! `regexp.pattern`). `REGEXP` and `SOUNDS LIKE` read the text of a
 //! `JSON`, `MEMBER OF` its value: a `JSON` is written as is in each one.
+//!
+//! `REGEXP` gives an integer, a `DOUBLE` in MySQL 8.0.11 (construct
+//! `regexp_integer`), which arithmetic carries (`(s REGEXP 'b') / 3` is a
+//! `DOUBLE` of 4 fractional digits there, a `DECIMAL` elsewhere); `NOT
+//! REGEXP`, the `NOT` of a `REGEXP` there, an integer everywhere. Read as a
+//! number towards 8.0.11, it is compared with 0, an integer; from 8.0.11, an
+//! error (rule `regexp.type`): no expression of the other servers gives
+//! that `DOUBLE` of no fractional digit.
 
 use prisme_plan::{Expr, ExprKind};
 
 use super::Emitter;
-use super::expr::PREFIX;
+use super::expr::{PREDICATE, PREFIX};
+use crate::Dialect;
+use crate::report::StepKind;
 use crate::versions::Construct;
 
 impl Emitter<'_> {
@@ -42,6 +52,46 @@ impl Emitter<'_> {
         self.write(if *negated { " NOT REGEXP " } else { " REGEXP " });
         self.json_as_is = true;
         self.expr(pattern, right);
+    }
+
+    /// `expr` read as a number at level `min`, a `REGEXP` that the input and
+    /// the output give as an integer and as a `DOUBLE` (rule `regexp.type`);
+    /// true when written.
+    pub(super) fn regexp_number(&mut self, expr: &Expr, min: u8) -> bool {
+        if !matches!(expr.kind, ExprKind::Regexp { negated: false, .. }) {
+            return false;
+        }
+        let integer =
+            self.source.dialect == Dialect::MariaDb || self.input_has(Construct::RegexpInteger);
+        if integer
+            == (self.output.dialect == Dialect::MariaDb || self.has(Construct::RegexpInteger))
+        {
+            return false;
+        }
+        let reading = |integer: bool| if integer { "an integer" } else { "a `DOUBLE`" };
+        let message = format!(
+            "{} gives the result of `REGEXP` as {}, {} as {}",
+            self.source_name(),
+            reading(integer),
+            self.target(),
+            reading(!integer)
+        );
+        if !integer {
+            self.error("regexp.type", &message, expr.span);
+            return false;
+        }
+        let message = format!("{message}: compared with 0, an integer");
+        self.step("regexp.type", StepKind::Emulation, message, expr.span);
+        let parenthesized = PREDICATE < min;
+        if parenthesized {
+            self.write("(");
+        }
+        self.expr(expr, PREDICATE);
+        self.write(" <> 0");
+        if parenthesized {
+            self.write(")");
+        }
+        true
     }
 
     /// `left SOUNDS LIKE right`, its operands at levels `left` and `right`

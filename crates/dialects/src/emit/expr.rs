@@ -112,7 +112,9 @@ impl Emitter<'_> {
         if let ExprKind::ToBoolean(inner) | ExprKind::ToInteger(inner) = &expr.kind {
             if matches!(expr.kind, ExprKind::ToBoolean(_)) && inner.ty.data_type == DataType::Json {
                 self.json_condition(inner, min, true);
-            } else {
+            } else if !(matches!(expr.kind, ExprKind::ToInteger(_))
+                && self.regexp_number(inner, min))
+            {
                 self.number_expr(inner, min);
             }
             return;

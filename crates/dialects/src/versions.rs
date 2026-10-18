@@ -172,6 +172,9 @@ pub enum Construct {
     /// `IN` of a list compares all its values by the rules of JSON when one
     /// is a `JSON` (MySQL); a `JSON` as its text or as a number otherwise.
     JsonInCompared,
+    /// `REGEXP` and `REGEXP_LIKE` give an integer (MySQL); a `DOUBLE`
+    /// before.
+    RegexpInteger,
 }
 
 /// Construct refused in a dialect or a version.
@@ -338,6 +341,7 @@ impl Construct {
             Self::ConditionCompared => "conditions read as compared with 0",
             Self::XorCompared => "`XOR` of operands read as compared with 0",
             Self::JsonInCompared => "`IN` comparing a `JSON` by the rules of JSON",
+            Self::RegexpInteger => "`REGEXP` giving an integer",
         }
     }
 }

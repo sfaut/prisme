@@ -1,0 +1,25 @@
+# The result of REGEXP read as a number between versions of MySQL: a DOUBLE(21, 0) in 8.0.11,
+# a BIGINT in 8.0.12 and 8.0.13, an INT from 8.0.14; the emulations, compared with 0 and
+# added to 0e0.
+column 'abc' REGEXP 'b'
+column_null NULL REGEXP 'b'
+divided ('abc' REGEXP 'b') / 3
+plus_half ('abc' REGEXP 'b') + 0.5
+concat CONCAT('abc' REGEXP 'b')
+average (SELECT AVG(s REGEXP 'b') FROM (SELECT 'abc' AS s UNION ALL SELECT 'x') AS d)
+total (SELECT SUM(s REGEXP 'b') FROM (SELECT 'abc' AS s UNION ALL SELECT 'x') AS d)
+like_column REGEXP_LIKE('abc', 'b')
+compared ('abc' REGEXP 'b') <> 0
+compared_null (NULL REGEXP 'b') <> 0
+compared_divided (('abc' REGEXP 'b') <> 0) / 3
+compared_average (SELECT AVG((s REGEXP 'b') <> 0) FROM (SELECT 'abc' AS s UNION ALL SELECT 'x') AS d)
+float ('abc' REGEXP 'b') + 0e0
+float_divided (('abc' REGEXP 'b') + 0e0) / 3
+float_average (SELECT AVG((s REGEXP 'b') + 0e0) FROM (SELECT 'abc' AS s UNION ALL SELECT 'x') AS d)
+float_null (NULL REGEXP 'b') + 0e0
+greatest GREATEST('abc' REGEXP 'b', 0.5)
+case_mix CASE WHEN TRUE THEN 'abc' REGEXP 'b' ELSE 1.5 END
+negated 'abc' NOT REGEXP 'b'
+negated_compared 'abc' NOT REGEXP 'b' <> 0
+divided_back ('abc' REGEXP 'b') / 3 * 3
+compared_back ('abc' REGEXP 'b' <> 0) / 3 * 3

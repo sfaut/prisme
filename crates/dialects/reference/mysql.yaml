@@ -560,6 +560,18 @@ constructs:
       1). A list of one value is a comparison `=`, alike in every version
       (crates/probe/cases/json-text.txt, measured on 8.0.11 to 8.0.17 and
       8.4.11).
+  - id: regexp_integer
+    since: "8.0.12"
+    source: https://github.com/mysql/mysql-server/blob/mysql-8.0.12/sql/item_regexp_func.h
+    comment: >-
+      `REGEXP` and `REGEXP_LIKE` give an integer (`set_data_type_longlong`
+      in the constructor of `Item_func_regexp_like`; no entry in the release
+      notes): a `BIGINT(21)` in 8.0.12 and 8.0.13, an `INT` from 8.0.14, of
+      the same values. In 8.0.11, a `DOUBLE(21, 0)`, which arithmetic
+      carries: `(s REGEXP 'b') / 3` is a `DOUBLE` of 4 fractional digits, a
+      `DECIMAL` from 8.0.12. `NOT REGEXP`, the `NOT` of a `REGEXP`, gives
+      an integer in every version (crates/probe/cases/regexp-type.txt,
+      measured on 8.0.11 to 8.0.14 and 8.4.11).
   - id: string_charset
     since: "8.0.19"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-19.html

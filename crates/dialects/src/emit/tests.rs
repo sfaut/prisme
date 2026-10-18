@@ -2399,6 +2399,31 @@ fn regexp_sounds_like_and_member_of_keep_their_form() {
 }
 
 #[test]
+fn regexp_read_as_a_number_keeps_the_type_of_the_input() {
+    let (old, new) = (mysql_at(8, 0, 11), mysql_at(8, 0, 12));
+    // Towards MySQL 8.0.11, whose `REGEXP` gives a `DOUBLE`, compared with 0;
+    // `NOT REGEXP`, an integer there, and a condition as written.
+    let (sql, rules) = transpiled(
+        "SELECT (s REGEXP 'b') / 3 AS a, s NOT REGEXP 'b' AS b FROM g WHERE s REGEXP 'c'",
+        new,
+        output(old),
+    );
+    assert_eq!(
+        sql,
+        "SELECT (s REGEXP 'b' <> 0) / 3 AS a, s NOT REGEXP 'b' AS b FROM g WHERE s REGEXP 'c'"
+    );
+    assert_eq!(rules, ["regexp.type"]);
+    // From MySQL 8.0.11, an error.
+    assert_eq!(
+        errors("SELECT s REGEXP 'b' AS b FROM g", old, output(new)),
+        ["regexp.type"]
+    );
+    let (sql, rules) = transpiled("SELECT s FROM g WHERE s REGEXP 'c'", old, output(new));
+    assert_eq!(sql, "SELECT s FROM g WHERE s REGEXP 'c'");
+    assert!(rules.is_empty(), "{rules:?}");
+}
+
+#[test]
 fn regexp_and_member_of_refuse_what_the_output_reads_otherwise() {
     // ICU against PCRE2.
     for (input, target) in [(mysql(), mariadb()), (mariadb(), mysql())] {
