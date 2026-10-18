@@ -214,6 +214,7 @@ impl Emitter<'_> {
         }
         if BIT_AGGREGATES.contains(&upper.as_str()) {
             self.bit_aggregate(&upper, call.args.first());
+            self.bit_window(&upper, call, expr.span);
         }
         self.write(&name);
         self.write("(");

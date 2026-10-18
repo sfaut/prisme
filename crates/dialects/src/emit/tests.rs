@@ -1627,6 +1627,58 @@ fn bit_aggregates_read_their_argument_as_the_input_does() {
 }
 
 #[test]
+fn bit_aggregate_windows_follow_the_output() {
+    // Windows that MariaDB computes right.
+    for (text, input, target) in [
+        (
+            "SELECT BIT_XOR(y) OVER (), BIT_OR(n) OVER (ORDER BY dt), BIT_AND(i) OVER (ORDER BY dt ROWS UNBOUNDED PRECEDING), BIT_OR(n) OVER (ORDER BY dt ROWS 1 PRECEDING) AS v FROM g, d",
+            mysql(),
+            mariadb(),
+        ),
+        (
+            "SELECT BIT_XOR(n) OVER (ORDER BY dt ROWS 1 PRECEDING) AS v FROM d",
+            mariadb(),
+            mysql(),
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{text}");
+    }
+    // MySQL before 8.0.12, `BIT_XOR` from bit 31 and the NULL values of a
+    // frame whose start moves in MariaDB.
+    for (text, input, target) in [
+        (
+            "SELECT BIT_OR(a) OVER () AS v FROM t",
+            mariadb(),
+            mysql_at(8, 0, 11),
+        ),
+        (
+            "SELECT BIT_OR(a) OVER () AS v FROM t",
+            mysql(),
+            mysql_at(8, 0, 11),
+        ),
+        ("SELECT BIT_XOR(a) OVER () AS v FROM t", mysql(), mariadb()),
+        (
+            "SELECT BIT_OR(b) OVER (ORDER BY a ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS v FROM t",
+            mysql(),
+            mariadb(),
+        ),
+        (
+            "SELECT BIT_AND(b) OVER w AS v FROM t WINDOW w AS (ORDER BY a ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)",
+            mysql(),
+            mariadb(),
+        ),
+    ] {
+        assert_eq!(
+            errors(text, input, output(target)),
+            ["window.bit-aggregate"],
+            "{text}"
+        );
+    }
+}
+
+#[test]
 fn aes_keeps_the_arguments_the_output_reads_alike() {
     let mysql_8_4 = input_at(Dialect::MySql, 8, 4, 0);
     let mariadb_10_6 = input_at(Dialect::MariaDb, 10, 6, 0);

@@ -7,7 +7,9 @@
 # shift, taken modulo 2^32 by MariaDB (bitwise-shifts.txt). Rule
 # `function.bit-aggregate`: `BIT_AND`, `BIT_OR` and `BIT_XOR`, alike but for
 # byte strings, times with a fraction and JSON values
-# (bitwise-aggregates.sql).
+# (bitwise-aggregates.sql); rule `window.bit-aggregate`: as window functions,
+# from MySQL 8.0.12, and towards MariaDB but for `BIT_XOR` from bit 31 and
+# the NULL values of a frame whose start moves (bitwise-windows.sql).
 setup:
   - DROP TABLE IF EXISTS bitwise
   - >-
@@ -140,6 +142,37 @@ cases:
     sql: SELECT BIT_OR(f) AS a, BIT_XOR(n) AS b, BIT_AND(d) AS c FROM sample
   - from: mariadb
     sql: SELECT BIT_OR(f) AS a, BIT_XOR(n) AS b, BIT_AND(d) AS c FROM sample
+  # As window functions, from MySQL 8.0.12; towards MariaDB, `BIT_XOR` of a
+  # value without a bit from 31, the NULL values of a frame whose start
+  # stays.
+  - from: mysql
+    inputs: mysql >= 8.0.12
+    sql: >-
+      SELECT id, BIT_OR(s) OVER (PARTITION BY id) AS a, BIT_XOR(t) OVER (ORDER BY id) AS b,
+      BIT_AND(i) OVER (ORDER BY id) AS c,
+      BIT_OR(id * 3) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS e,
+      BIT_AND(de) OVER () AS g FROM bitwise ORDER BY id
+  - from: mariadb
+    outputs: mysql >= 8.0.12
+    sql: >-
+      SELECT id, BIT_OR(s) OVER (PARTITION BY id) AS a, BIT_XOR(t) OVER (ORDER BY id) AS b,
+      BIT_AND(i) OVER (ORDER BY id) AS c,
+      BIT_OR(id * 3) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS e,
+      BIT_AND(de) OVER () AS g FROM bitwise ORDER BY id
+  - from: mariadb
+    outputs: mysql < 8.0.12
+    sql: SELECT id, BIT_OR(i) OVER () AS v FROM bitwise ORDER BY id
+    refused: window.bit-aggregate
+  - from: mysql
+    inputs: mysql >= 8.0.12
+    sql: SELECT id, BIT_XOR(i) OVER () AS v FROM bitwise ORDER BY id
+    refused: window.bit-aggregate
+  - from: mysql
+    inputs: mysql >= 8.0.12
+    sql: >-
+      SELECT id, BIT_OR(t) OVER (ORDER BY id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW) AS v
+      FROM bitwise ORDER BY id
+    refused: window.bit-aggregate
   # Byte strings, times with a fraction of a second, JSON values: refused.
   - from: mysql
     sql: SELECT HEX(BIT_OR(b)) AS v FROM bitwise

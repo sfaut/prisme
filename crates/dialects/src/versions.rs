@@ -181,6 +181,8 @@ pub enum Construct {
     /// `REGEXP` refuses a binary string with a character string, error 3995
     /// (MySQL).
     RegexpBinaryError,
+    /// `BIT_AND`, `BIT_OR` and `BIT_XOR` as window functions.
+    BitWindow,
 }
 
 /// Construct refused in a dialect or a version.
@@ -350,6 +352,7 @@ impl Construct {
             Self::RegexpInteger => "`REGEXP` giving an integer",
             Self::RegexpBinary => "`REGEXP` reading a binary string byte by byte",
             Self::RegexpBinaryError => "`REGEXP` refusing a binary string with a character string",
+            Self::BitWindow => "`BIT_AND`, `BIT_OR` and `BIT_XOR` as window functions",
         }
     }
 }

@@ -34,8 +34,17 @@
 //! time with a fraction of a second, which MySQL rounds, MariaDB truncates,
 //! and a `JSON`: between the dialects, an error (rule
 //! `function.bit-aggregate`), as for an argument of unknown type.
+//!
+//! As window functions, they come in MySQL 8.0.12 (WL#11573, error 1235
+//! before). MariaDB computes two of their windows wrong, measured on 10.6.28
+//! and 11.8.9 (`crates/probe/cases/bitwise-windows.sql`): `BIT_XOR` sets
+//! the bits from 31 wrong, whatever the frame (MDEV-35439, `(1 << i)` on 32
+//! bits in `Item_sum_xor::set_bits_from_counters`), and a frame whose start
+//! moves loses count of its NULL values (MDEV-40689, fixed in 11.4.14 and
+//! 11.8.10). Towards MariaDB, both are errors (rule `window.bit-aggregate`);
+//! towards MySQL, the translation gives the exact result.
 
-use prisme_plan::{Bitwise, Expr, ExprKind};
+use prisme_plan::{Bitwise, Expr, ExprKind, FrameBound, Span, WindowCall};
 use prisme_types::{DataType, IntegerSize, IntegerType, Value};
 
 use super::Emitter;
@@ -43,6 +52,7 @@ use super::bit_count::{Reading, Refusal, vertical_space_first};
 use super::rules::number;
 use crate::Dialect;
 use crate::report::StepKind;
+use crate::versions::Construct;
 
 /// Range of the counts of a shift that MySQL and MariaDB shift alike: from
 /// it, MariaDB takes the count modulo 2^32, which gives a count below 64.
@@ -121,6 +131,40 @@ impl Emitter<'_> {
             ),
         };
         self.error("function.bit-aggregate", &message, arg.span);
+    }
+
+    /// `BIT_AND`, `BIT_OR` or `BIT_XOR`, `name` in capitals, as the window
+    /// function `call` at `span`: an error before MySQL 8.0.12, and towards
+    /// MariaDB for the windows it computes wrong.
+    pub(super) fn bit_window(&mut self, name: &str, call: &WindowCall, span: Option<Span>) {
+        if !self.has(Construct::BitWindow) {
+            let message = format!(
+                "{}: absent from {}",
+                Construct::BitWindow.label(),
+                self.target()
+            );
+            self.error("window.bit-aggregate", &message, span);
+            return;
+        }
+        let towards_mariadb =
+            self.source.dialect == Dialect::MySql && self.output.dialect == Dialect::MariaDb;
+        let Some(arg) = call.args.first().filter(|_| towards_mariadb) else {
+            return;
+        };
+        if name == "BIT_XOR" && !below_2_31(arg) {
+            let message = "`BIT_XOR` as a window function of a value that may have a bit from 31: MariaDB sets those bits wrong (MDEV-35439; `BIT_XOR(u) OVER (ORDER BY id)` of 3 then 2147483648 gives 2147483651, 18446744071562067971 in MariaDB)";
+            self.error("window.bit-aggregate", message, span);
+        }
+        let moving = call
+            .frame
+            .as_ref()
+            .is_some_and(|frame| frame.start != FrameBound::UnboundedPreceding);
+        if moving && arg.ty.nullable {
+            let message = format!(
+                "`{name}` as a window function of a nullable value, over a frame whose start moves: MariaDB loses count of the NULL values of the frame (MDEV-40689, fixed in 11.4.14 and 11.8.10; `BIT_AND(b) OVER (ORDER BY pk ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)` over 2 then NULL gives 2, 18446744073709551615 in MariaDB)"
+            );
+            self.error("window.bit-aggregate", &message, span);
+        }
     }
 
     /// Records the error of the operation `expr` of the operator `symbol`
@@ -320,6 +364,19 @@ fn integer_prefix(text: &str) -> f64 {
         .take_while(u8::is_ascii_digit)
         .fold(0.0, |value, digit| value * 10.0 + f64::from(digit - b'0'));
     if negative { -value } else { value }
+}
+
+/// Tells whether `arg` stays in `[0, 2^31)`, without a bit from 31.
+fn below_2_31(arg: &Expr) -> bool {
+    match &arg.ty.data_type {
+        DataType::Null | DataType::Boolean | DataType::Year | DataType::Enum => true,
+        DataType::Integer(IntegerType {
+            size: IntegerSize::Tiny | IntegerSize::Small | IntegerSize::Medium,
+            unsigned: true,
+        }) => true,
+        DataType::Bit { width } => *width <= 31,
+        _ => false,
+    }
 }
 
 /// Tells whether `operand` is a byte string, which MySQL computes byte by

@@ -517,6 +517,15 @@ constructs:
     source: https://jira.mariadb.org/browse/MDEV-40593
     comment: >-
       The same fix in the branch 13.0, by the ticket, not measured.
+  - id: bit_window
+    since: "10.2.0"
+    source: https://mariadb.com/kb/en/window-functions-overview/
+    comment: >-
+      `BIT_AND`, `BIT_OR` and `BIT_XOR` as window functions, with the
+      window functions. `BIT_XOR` sets the bits from 31 wrong (MDEV-35439)
+      and a frame whose start moves loses count of its NULL values
+      (MDEV-40689, fixed in 11.4.14 and 11.8.10), measured on 10.6.28 and
+      11.8.9 (crates/probe/cases/bitwise-windows.sql).
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:

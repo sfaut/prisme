@@ -618,6 +618,13 @@ constructs:
       'abc')` gives 0, 2 from 8.0.26; crates/probe/cases/string-binary.txt,
       measured on 8.0.14, 8.0.17, 8.0.18, 8.0.20, 8.0.23 to 8.0.26 and
       8.4.11).
+  - id: bit_window
+    since: "8.0.12"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-12.html
+    comment: >-
+      `BIT_AND`, `BIT_OR` and `BIT_XOR` as window functions (WL#11573);
+      error 1235 before (crates/probe/cases/bitwise-windows.sql, measured on
+      8.0.11, 8.0.12 and 8.4.11).
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:
