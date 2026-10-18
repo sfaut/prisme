@@ -227,8 +227,10 @@ async fn reads_the_columns_of_a_table_without_running_it() {
     let port = server.get_host_port_ipv4(3306).await.unwrap();
     let mut connection = connect(&target(host, port)).await.unwrap();
     for sql in [
-        "CREATE TABLE t (id INT NOT NULL, label VARCHAR(20), doc JSON, body LONGTEXT)",
-        "CREATE TEMPORARY TABLE `odd``name` (n BIGINT UNSIGNED NOT NULL, d JSON)",
+        "CREATE TABLE t (id INT NOT NULL, label VARCHAR(20), doc JSON, body LONGTEXT,
+            code CHAR(3) COLLATE utf8mb4_bin)",
+        "CREATE TEMPORARY TABLE `odd``name` (n BIGINT UNSIGNED NOT NULL, d JSON,
+            l VARCHAR(5) CHARACTER SET latin1 COLLATE latin1_general_cs)",
     ] {
         execute(&mut connection, sql).await.unwrap().discard().await;
     }
@@ -238,7 +240,7 @@ async fn reads_the_columns_of_a_table_without_running_it() {
         .unwrap()
         .unwrap();
     let names: Vec<&str> = columns.iter().map(|(name, _)| name.as_str()).collect();
-    assert_eq!(names, ["id", "label", "doc", "body"]);
+    assert_eq!(names, ["id", "label", "doc", "body", "code"]);
     assert_eq!(
         columns[0].1.data_type,
         DataType::Integer(IntegerType::signed(IntegerSize::Int))
@@ -248,6 +250,24 @@ async fn reads_the_columns_of_a_table_without_running_it() {
     // A `JSON` and a `LONGTEXT`, of the same metadata once prepared.
     assert_eq!(columns[2].1.data_type, DataType::Json);
     assert!(matches!(columns[3].1.data_type, DataType::Text(_)));
+    // The collation of each column, the metadata giving that of the results.
+    let collations: Vec<Option<&str>> = columns
+        .iter()
+        .map(|(_, ty)| match &ty.data_type {
+            DataType::Text(text) => text.collation.as_deref(),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        collations,
+        [
+            None,
+            Some("utf8mb4_0900_ai_ci"),
+            None,
+            Some("utf8mb4_0900_ai_ci"),
+            Some("utf8mb4_bin")
+        ]
+    );
 
     // A temporary table of the connection, in the current database.
     let temporary = catalog::table_columns(&mut connection, Flavor::MySql, None, "odd`name")
@@ -259,6 +279,10 @@ async fn reads_the_columns_of_a_table_without_running_it() {
         DataType::Integer(IntegerType::unsigned(IntegerSize::Big))
     );
     assert_eq!(temporary[1].1.data_type, DataType::Json);
+    assert!(matches!(
+        &temporary[2].1.data_type,
+        DataType::Text(text) if text.collation.as_deref() == Some("latin1_general_cs")
+    ));
     assert!(
         catalog::table_columns(&mut connection, Flavor::MySql, None, "missing")
             .await
@@ -282,7 +306,7 @@ async fn reads_the_json_columns_of_mariadb_by_their_check() {
     let mut connection = connect(&target(host, port)).await.unwrap();
     for sql in [
         "CREATE TABLE t (doc JSON, checked LONGTEXT CHECK (JSON_VALID(checked)), body LONGTEXT,
-            own JSON CHECK (JSON_LENGTH(own) < 5))",
+            own JSON CHECK (JSON_LENGTH(own) < 5), code CHAR(3) COLLATE utf8mb4_bin)",
         "CREATE VIEW v AS SELECT doc FROM t",
         "CREATE TEMPORARY TABLE `odd``name` (d JSON)",
     ] {
@@ -298,7 +322,11 @@ async fn reads_the_json_columns_of_mariadb_by_their_check() {
         .map(|(_, ty)| ty.data_type == DataType::Json)
         .collect();
     // A `JSON` with a check of its own is read as a string by MariaDB.
-    assert_eq!(json, [true, true, false, false]);
+    assert_eq!(json, [true, true, false, false, false]);
+    assert!(matches!(
+        &columns[4].1.data_type,
+        DataType::Text(text) if text.collation.as_deref() == Some("utf8mb4_bin")
+    ));
     let temporary = catalog::table_columns(&mut connection, Flavor::MariaDb, None, "odd`name")
         .await
         .unwrap()

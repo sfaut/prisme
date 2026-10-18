@@ -11,8 +11,9 @@
 //! The transpiler needs the columns of the tables a query reads, with their
 //! type: `table_columns`, on the connection that runs the query. The
 //! metadata of a prepared statement gives a `JSON` column the type of a
-//! `LONGTEXT`: for a table with such a column, `SHOW COLUMNS` tells them
-//! apart in MySQL, the check `json_valid` of the column in MariaDB.
+//! `LONGTEXT`, and a string the collation of the results of the connection:
+//! `SHOW FULL COLUMNS` gives the collation of each column, and tells a
+//! `JSON` apart in MySQL; in MariaDB, the check `json_valid` of the column.
 //!
 //! Each read filters on a database, which saves the server from walking all
 //! the tables at once. The queries only ask for dictionary information:
@@ -196,10 +197,13 @@ type TriggerRow = (String, String, String, String);
 ///
 /// The server describes the columns of `SELECT * FROM t` when preparing it,
 /// without running it: a temporary table of the connection is seen as well,
-/// and a view is not computed (`docs/QUESTIONS.md`, point 44). A column of
-/// the length of a `LONGTEXT` may be a `JSON`, which `SHOW COLUMNS` names in
-/// MySQL (`declared_json_columns`), `SHOW CREATE TABLE` in MariaDB
-/// (`checked_json_columns`), as `flavor` tells.
+/// and a view is not computed (`docs/QUESTIONS.md`, point 44). The metadata
+/// give a string the collation of the results (`utf8mb4_0900_ai_ci` for a
+/// column of `utf8mb4_bin`, measured on MySQL 8.4.11 and MariaDB 11.8.9):
+/// `SHOW FULL COLUMNS` gives its own (`declared_columns`). A column of the
+/// length of a `LONGTEXT` may be a `JSON`, which `SHOW FULL COLUMNS` names in
+/// MySQL, `SHOW CREATE TABLE` in MariaDB (`checked_json_columns`), as
+/// `flavor` tells.
 pub async fn table_columns(
     connection: &mut Connection,
     flavor: Flavor,
@@ -236,36 +240,57 @@ pub async fn table_columns(
         })
         .collect();
     connection.close(statement).await?;
-    if long {
-        let json = match flavor {
-            Flavor::MySql => declared_json_columns(connection, &name).await?,
-            Flavor::MariaDb => checked_json_columns(connection, &name).await?,
-        };
-        for (column, ty) in &mut columns {
-            if json.iter().any(|field| field.eq_ignore_ascii_case(column)) {
-                ty.data_type = prisme_types::DataType::Json;
-            }
+    let declared = declared_columns(connection, &name).await?;
+    let json = match flavor {
+        Flavor::MySql => declared
+            .iter()
+            .filter(|column| column.declared.eq_ignore_ascii_case("json"))
+            .map(|column| column.field.clone())
+            .collect(),
+        Flavor::MariaDb if long => checked_json_columns(connection, &name).await?,
+        Flavor::MariaDb => Vec::new(),
+    };
+    for (column, ty) in &mut columns {
+        if json.iter().any(|field| field.eq_ignore_ascii_case(column)) {
+            ty.data_type = prisme_types::DataType::Json;
+        }
+        if let prisme_types::DataType::Text(text) = &mut ty.data_type {
+            text.collation = declared
+                .iter()
+                .find(|declared| declared.field.eq_ignore_ascii_case(column))
+                .and_then(|declared| declared.collation.clone());
         }
     }
     Ok(Some(columns))
 }
 
-/// Names of the `JSON` columns of the table or view `name`, quoted, as
-/// `SHOW COLUMNS` of MySQL declares them: a temporary table and a view as
-/// well.
-async fn declared_json_columns(
+/// Column as `SHOW FULL COLUMNS` declares it.
+struct DeclaredColumn {
+    /// Name of the column.
+    field: String,
+    /// Declared type: `varchar(20)`, `json`...
+    declared: String,
+    /// Collation of a string; `None` for another type.
+    collation: Option<String>,
+}
+
+/// Columns of the table or view `name`, quoted, as `SHOW FULL COLUMNS`
+/// declares them: a temporary table and a view as well.
+async fn declared_columns(
     connection: &mut Connection,
     name: &str,
-) -> Result<Vec<String>, MysqlError> {
+) -> Result<Vec<DeclaredColumn>, MysqlError> {
     let rows: Vec<mysql_async::Row> = connection
-        .query(format!("SHOW COLUMNS FROM {name}"))
+        .query(format!("SHOW FULL COLUMNS FROM {name}"))
         .await?;
     Ok(rows
         .into_iter()
         .filter_map(|row| {
-            let field: String = row.get(0)?;
-            let declared: String = row.get(1)?;
-            declared.eq_ignore_ascii_case("json").then_some(field)
+            Some(DeclaredColumn {
+                field: row.get(0)?,
+                declared: row.get(1)?,
+                collation: row.get::<Option<String>, _>(2)?,
+            })
         })
         .collect())
 }
