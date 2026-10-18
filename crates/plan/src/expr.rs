@@ -40,6 +40,10 @@ pub struct Expr {
 pub enum ExprKind {
     /// Column of the input.
     Column(ColumnRef),
+    /// Item of the select list read through its alias inside an expression
+    /// (`ORDER BY x + 1`, `HAVING x > 0`): the value of the item, written by
+    /// its name where the output reads it so.
+    Alias(Box<AliasRef>),
     /// Literal.
     Literal(Value),
     /// User or system variable (`@x`, `@@sql_mode`).
@@ -229,6 +233,15 @@ pub enum ExprKind {
     /// Boolean to integer, 1 or 0 (MySQL family: `SUM(a = 1)`,
     /// `(a = 1) + 1`).
     ToInteger(Box<Expr>),
+}
+
+/// Item of the select list read through its alias.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AliasRef {
+    /// Alias, as written.
+    pub name: Ident,
+    /// Expression of the item.
+    pub expr: Expr,
 }
 
 /// Reference to a column of the input.
@@ -470,6 +483,13 @@ impl Expr {
     /// Reference to a column, of the type found in the input.
     pub fn column(column: ColumnRef, ty: Type) -> Self {
         Self::new(ExprKind::Column(column), ty)
+    }
+
+    /// Item of the select list of expression `expr`, read through its alias
+    /// `name`: of the type of the item.
+    pub fn alias(name: Ident, expr: Self) -> Self {
+        let ty = expr.ty.clone();
+        Self::new(ExprKind::Alias(Box::new(AliasRef { name, expr })), ty)
     }
 
     /// Literal of the type the dialect gives it; nullable only for NULL.
@@ -876,6 +896,7 @@ impl Expr {
             | ExprKind::IsTruth { operand, .. }
             | ExprKind::InSubquery { operand, .. }
             | ExprKind::Quantified { operand, .. } => vec![operand.as_mut()],
+            ExprKind::Alias(alias) => vec![&mut alias.expr],
             ExprKind::Cast(cast) => vec![&mut cast.operand],
             ExprKind::DateArithmetic(arithmetic) => {
                 vec![&mut arithmetic.operand, &mut arithmetic.value]

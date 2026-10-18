@@ -208,6 +208,10 @@ pub enum Construct {
     /// An outer `ORDER BY` sorting the rows of a set operation between
     /// parentheses after its own `LIMIT` (MySQL), before it earlier.
     ParenthesizedSetOrder,
+    /// A window function read through its alias inside an expression of
+    /// `ORDER BY`, computed once (MySQL: computed again for the sort from
+    /// 8.0.16 to 8.0.28).
+    WindowAliasOnce,
     /// `utf8mb4_uca1400_ai_ci` as the default collation of `utf8mb4`
     /// (MariaDB).
     Utf8mb4Uca1400,
@@ -403,6 +407,9 @@ impl Construct {
             }
             Self::ParenthesizedSetOrder => {
                 "an outer `ORDER BY` after the `LIMIT` of a set operation between parentheses"
+            }
+            Self::WindowAliasOnce => {
+                "a window function read once through its alias inside an expression of `ORDER BY`"
             }
             Self::Utf8mb4Uca1400 => "`utf8mb4_uca1400_ai_ci` as the default collation of `utf8mb4`",
             Self::UnicodeUca1400 => {

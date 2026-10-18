@@ -31,9 +31,9 @@ mod string;
 pub use cast::{Cast, CastForm, CastTarget, CharTarget, CharWord, Charset, IntegerWord};
 pub use error::PlanError;
 pub use expr::{
-    Arithmetic, Bitwise, CallForm, Case, CaseBranch, ColumnRef, Comparison, Expr, ExprKind, Frame,
-    FrameBound, FrameUnits, FunctionCall, Logical, NotDistinctForm, Quantifier, Truth, Variable,
-    VariableScope, WindowCall,
+    AliasRef, Arithmetic, Bitwise, CallForm, Case, CaseBranch, ColumnRef, Comparison, Expr,
+    ExprKind, Frame, FrameBound, FrameUnits, FunctionCall, Logical, NotDistinctForm, Quantifier,
+    Truth, Variable, VariableScope, WindowCall,
 };
 pub use interval::{DateArithmetic, DateArithmeticForm, Extract, TimeUnit, TimestampDiff};
 pub use order::{Direction, Nulls, SortForm, SortKey, SortReference};

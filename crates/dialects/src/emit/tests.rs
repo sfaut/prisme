@@ -3810,3 +3810,156 @@ fn the_recursive_parts_one_dialect_refuses_are_errors() {
     );
     assert!(errors(null, mysql(), output(mysql())).is_empty());
 }
+
+#[test]
+fn an_alias_inside_an_expression_keeps_its_name() {
+    for text in [
+        "SELECT a AS x FROM t ORDER BY x + 0",
+        "SELECT a AS b FROM t ORDER BY b + 0",
+        "SELECT a % 2 AS x, COUNT(*) AS n FROM t GROUP BY x HAVING x + 0 = 1 ORDER BY -x",
+        "SELECT a AS x, COUNT(*) AS n FROM t GROUP BY x + 0",
+        "SELECT a % 2 AS b, COUNT(*) AS n FROM t GROUP BY a % 2 HAVING b = 1",
+        "SELECT a AS x FROM t GROUP BY a ORDER BY MAX(x)",
+        "SELECT RAND() AS r FROM t ORDER BY r + 0",
+    ] {
+        for (input, target) in [
+            (mysql(), mysql()),
+            (mariadb(), mariadb()),
+            (mysql(), mariadb()),
+            (mariadb(), mysql()),
+        ] {
+            assert_eq!(
+                transpiled(text, input, output(target)),
+                (text.to_string(), vec![]),
+                "{text}"
+            );
+        }
+    }
+}
+
+#[test]
+fn an_alias_of_an_aggregate_in_order_by_is_its_function_towards_mariadb() {
+    let (sql, rules) = transpiled(
+        "SELECT a % 2 AS x, SUM(b) AS s FROM t GROUP BY x ORDER BY s + 0, -s",
+        mysql(),
+        output(mariadb()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT a % 2 AS x, SUM(b) AS s FROM t GROUP BY x ORDER BY SUM(b) + 0, -SUM(b)"
+    );
+    assert_eq!(rules, ["alias.aggregate", "alias.aggregate"]);
+    // Alone, in `HAVING`, an implicit `ANY_VALUE`, or read alike: as written.
+    for (text, target) in [
+        (
+            "SELECT a % 2 AS x, SUM(b) AS s FROM t GROUP BY x ORDER BY s",
+            mariadb(),
+        ),
+        (
+            "SELECT a % 2 AS x, SUM(b) AS s FROM t GROUP BY x HAVING s + 0 > 1",
+            mariadb(),
+        ),
+        (
+            "SELECT a AS x, b FROM t GROUP BY b ORDER BY x + 0",
+            mariadb(),
+        ),
+        (
+            "SELECT a % 2 AS x, SUM(b) AS s FROM t GROUP BY x ORDER BY s + 0",
+            mysql(),
+        ),
+    ] {
+        assert_eq!(
+            transpiled(text, mysql(), output(target)),
+            (text.to_string(), vec![]),
+            "{text}"
+        );
+    }
+    assert_eq!(
+        errors(
+            "SELECT a % 2 AS x, SUM(b + RAND()) AS s FROM t GROUP BY x ORDER BY s + 0",
+            mysql(),
+            output(mariadb())
+        ),
+        ["alias.aggregate"]
+    );
+}
+
+#[test]
+fn an_alias_of_a_window_in_order_by_is_its_function_towards_mysql_8_0_16_to_8_0_28() {
+    let text = "SELECT a, ROW_NUMBER() OVER (ORDER BY b) AS r FROM t ORDER BY r + 0";
+    let written = "SELECT a, ROW_NUMBER() OVER (ORDER BY b) AS r FROM t ORDER BY ROW_NUMBER() \
+                   OVER (ORDER BY b) + 0";
+    for input in [mariadb(), mysql_at(8, 0, 15), mysql_at(8, 0, 30)] {
+        for target in [mysql_at(8, 0, 16), mysql_at(8, 0, 28)] {
+            assert_eq!(
+                transpiled(text, input, output(target)),
+                (written.to_string(), vec!["alias.window"])
+            );
+        }
+    }
+    let (sql, _) = transpiled(
+        "SELECT a, RANK() OVER w AS r FROM t WINDOW w AS (ORDER BY b) ORDER BY -r",
+        mariadb(),
+        output(mysql_at(8, 0, 20)),
+    );
+    assert_eq!(
+        sql,
+        "SELECT a, RANK() OVER w AS r FROM t WINDOW w AS (ORDER BY b) ORDER BY -RANK() OVER w"
+    );
+    // A window sorted by an expression of another value at each evaluation.
+    for text in [
+        "SELECT a, ROW_NUMBER() OVER (ORDER BY RAND()) AS r FROM t ORDER BY r + 0",
+        "SELECT a, ROW_NUMBER() OVER (v) AS r FROM t WINDOW w AS (ORDER BY RAND()), v AS (w) \
+         ORDER BY r + 0",
+    ] {
+        assert_eq!(
+            errors(text, mariadb(), output(mysql_at(8, 0, 20))),
+            ["alias.window"],
+            "{text}"
+        );
+    }
+    // Computed alike by both, or once by the output.
+    for (input, target) in [
+        (mysql_at(8, 0, 20), mysql_at(8, 0, 28)),
+        (mariadb(), mysql_at(8, 0, 15)),
+        (mariadb(), mysql_at(8, 0, 29)),
+        (mysql_at(8, 0, 20), mariadb()),
+    ] {
+        assert_eq!(
+            transpiled(text, input, output(target)),
+            (text.to_string(), vec![])
+        );
+    }
+}
+
+#[test]
+fn a_grouping_column_named_as_an_alias_in_having_is_an_error_towards_mariadb() {
+    let text = "SELECT a % 2 AS b, COUNT(*) AS n FROM t GROUP BY a % 2, b HAVING b + 0 = 1";
+    assert_eq!(errors(text, mysql(), output(mariadb())), ["alias.having"]);
+    assert!(errors(text, mariadb(), output(mysql())).is_empty());
+    // A key written as `GROUP BY` writes it.
+    assert_eq!(
+        errors(
+            "SELECT a % 2 AS b, COUNT(*) AS n FROM t GROUP BY a % 2, b HAVING t.b = '1'",
+            mysql(),
+            output(mariadb())
+        ),
+        ["alias.having"]
+    );
+    // The alias of an aggregate, of the column itself, a qualified key, a
+    // name inside an aggregate function or a subquery: read as the column
+    // by both.
+    for text in [
+        "SELECT COUNT(a) AS b FROM t GROUP BY b HAVING b = 1",
+        "SELECT b AS b, COUNT(a) AS n FROM t GROUP BY b HAVING b = 1",
+        "SELECT b AS B, COUNT(a) AS n FROM t GROUP BY b HAVING b = 1",
+        "SELECT a % 2 AS b, COUNT(*) AS n FROM t GROUP BY a % 2, t.b HAVING b = '1'",
+        "SELECT a % 2 AS b, COUNT(*) AS n FROM t GROUP BY a % 2, b HAVING MAX(b) = 1",
+        "SELECT a % 2 AS b, COUNT(*) AS n FROM t GROUP BY a % 2, b HAVING (SELECT b) = '1'",
+    ] {
+        assert!(
+            errors(text, mysql(), output(mariadb())).is_empty(),
+            "{text}"
+        );
+    }
+}

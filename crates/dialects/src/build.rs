@@ -596,6 +596,12 @@ impl Builder<'_> {
         self.block_mut().outputs.clone_from(&outputs);
         self.set_clause(Clause::GroupBy);
         let keys = self.group_keys(&select.group_by, &scope, &outputs)?;
+        self.block_mut().key_columns = (keys.iter())
+            .filter_map(|(expr, _)| match &expr.kind {
+                prisme_plan::ExprKind::Column(column) => scope.canonical(column),
+                _ => None,
+            })
+            .collect();
         let mut having = match &select.having {
             Some(having) => {
                 self.set_clause(Clause::Having);
@@ -750,12 +756,20 @@ impl Builder<'_> {
                 Ok((output.expr.clone(), SortReference::Position))
             }
             ExprKind::Column(name) if name.parts.len() == 1 => {
-                let alias = outputs.iter().find(|output| {
+                let mut aliases = outputs.iter().filter(|output| {
                     output
                         .alias
                         .as_ref()
                         .is_some_and(|alias| same_name(alias, &name.parts[0]))
                 });
+                let alias = aliases.next();
+                if aliases.next().is_some() {
+                    let message = format!(
+                        "`{}` is ambiguous: several items of the select list have this alias",
+                        name.parts[0].value
+                    );
+                    return Err(self.error(message, name.span));
+                }
                 match alias {
                     Some(output) => Ok((output.expr.clone(), SortReference::Alias)),
                     None => Ok((self.value(&item.expr, scope)?, SortReference::Expression)),

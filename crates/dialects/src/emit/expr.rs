@@ -105,6 +105,10 @@ fn levels(expr: &Expr) -> (u8, u8, u8) {
 impl Emitter<'_> {
     /// Writes `expr`, between parentheses when its level is below `min`.
     pub(super) fn expr(&mut self, expr: &Expr, min: u8) {
+        if let ExprKind::Alias(alias) = &expr.kind {
+            self.alias(expr, alias, min);
+            return;
+        }
         // Read as a value of its type, as a number, a `JSON` kept as is, as
         // bytes: this expression, never its operands.
         let column = std::mem::take(&mut self.column);

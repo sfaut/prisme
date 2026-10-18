@@ -408,6 +408,13 @@ constructs:
     comment: >-
       `(SELECT a FROM t UNION SELECT 6 ORDER BY 1 LIMIT 2) ORDER BY 1 DESC`
       gives 2, 1.
+  - id: window_alias_once
+    since: "10.6.3"
+    source: https://mariadb.com/kb/en/window-functions-overview/
+    comment: >-
+      `SELECT id, ROW_NUMBER() OVER (ORDER BY b) AS r FROM t ORDER BY r + 0`
+      computes the window function once, measured on 10.5.29, 10.6.28,
+      10.11.19 and 11.8.9 (crates/probe/cases/alias-references.sql).
   - id: derived_column_list
     since: "11.7.1"
     source: https://jira.mariadb.org/browse/MDEV-31466

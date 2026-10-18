@@ -13,9 +13,9 @@
 
 use prisme_plan::{
     Aggregate, AggregateCall, AliasForm, ColumnRef, Expr, ExprKind, Ident, NamedAggregate,
-    NamedExpr, OnEmpty, Plan, ProjectItem, SortKey, SortReference, Window, WindowDefinition,
+    NamedExpr, OnEmpty, Plan, ProjectItem, SortKey, SortReference, Span, Window, WindowDefinition,
 };
-use prisme_types::Type;
+use prisme_types::{DataType, Type, Value};
 
 use super::scope::{ResolveError, Scope};
 use super::{BuildError, Builder, Output, same_name};
@@ -85,8 +85,15 @@ pub(super) struct Block {
     pub(super) windows: Vec<NamedExpr>,
     /// Named windows of its `WINDOW` clause.
     pub(super) definitions: Vec<WindowDefinition>,
-    /// Columns of its select list, for the aliases read by `HAVING`.
+    /// Columns of its select list, for the aliases read by `GROUP BY`,
+    /// `HAVING` and `ORDER BY`.
     pub(super) outputs: Vec<Output>,
+    /// Clause whose names can designate an alias of the select list, inside
+    /// its aggregate functions too: `GROUP BY`, `HAVING` or `ORDER BY`.
+    aliases: Option<Clause>,
+    /// Columns of the source that its grouping keys name, as the source
+    /// names them: `HAVING` reads them before the aliases.
+    pub(super) key_columns: Vec<ColumnRef>,
 }
 
 /// Grouping key of a block, as the expressions above the aggregation see
@@ -169,6 +176,10 @@ impl Block {
     /// reads the key, a column neither grouped nor aggregated reads any
     /// value of its group.
     pub(super) fn regroup(&mut self, expr: &mut Expr, keys: &[Key]) {
+        if let ExprKind::Alias(alias) = &mut expr.kind {
+            self.regroup(&mut alias.expr, keys);
+            return;
+        }
         let span = expr.span;
         let found = canonical(expr, &self.source);
         if let Some(key) = keys.iter().find(|key| key.canonical == found) {
@@ -245,19 +256,22 @@ impl Builder<'_> {
 
     /// Enters `clause` of the block, and gives the clause it leaves.
     pub(super) fn set_clause(&mut self, clause: Clause) -> Clause {
-        std::mem::replace(&mut self.block_mut().clause, clause)
+        let block = self.block_mut();
+        match clause {
+            Clause::GroupBy | Clause::Having | Clause::OrderBy => block.aliases = Some(clause),
+            Clause::Aggregate | Clause::WindowFunction => {}
+            Clause::Other | Clause::Where | Clause::Window | Clause::Select => block.aliases = None,
+        }
+        std::mem::replace(&mut block.clause, clause)
     }
 
-    /// Column designated by `name`. In `HAVING`, a name that is no column of
-    /// the source designates an alias of the select list (the rule of the
-    /// MySQL family: the source first, then the aliases).
+    /// Column designated by `name`, or the item of the select list whose
+    /// alias it is (`alias_value`).
     pub(super) fn column(&mut self, name: &ObjectName, scope: &Scope) -> Result<Expr, BuildError> {
         if let [single] = name.parts.as_slice()
-            && self.block().clause == Clause::Having
-            && scope.resolve(name) == Err(ResolveError::Unknown)
-            && let Some(output) = self.alias(single)
+            && let Some(value) = self.alias_value(single, name, scope)?
         {
-            return Ok(output.expr.clone());
+            return Ok(value);
         }
         let (column, ty) = self.resolve(name, scope)?;
         if column.qualifier.is_none() && is_internal_name(&column.name.value) {
@@ -270,14 +284,73 @@ impl Builder<'_> {
         Ok(Expr::column(column, ty))
     }
 
-    /// Column of the select list whose alias is `name`.
-    fn alias(&self, name: &Ident) -> Option<&Output> {
-        self.block().outputs.iter().find(|output| {
+    /// Item of the select list that the name `single` designates inside an
+    /// expression of `GROUP BY`, `HAVING` or `ORDER BY`, or of one of their
+    /// aggregate functions, by the rule of the MySQL family
+    /// (`crates/probe/cases/alias-references.sql`): a name that no column of
+    /// the source has (`ORDER BY x + 0`), and in `HAVING`, outside an
+    /// aggregate function, a name that no grouping key names (`GROUP BY a %
+    /// 2 HAVING b = 1` reads the alias `b`). A name written alone in `GROUP
+    /// BY` and `ORDER BY` is read by `group_value` and `sort_value`.
+    fn alias_value(
+        &mut self,
+        single: &Ident,
+        name: &ObjectName,
+        scope: &Scope,
+    ) -> Result<Option<Expr>, BuildError> {
+        let block = self.block();
+        let (Some(aliases), clause) = (block.aliases, block.clause) else {
+            return Ok(None);
+        };
+        if clause == Clause::WindowFunction {
+            return Ok(None);
+        }
+        match scope.resolve(name) {
+            Ok((column, _)) => {
+                let grouped = scope
+                    .canonical(&column)
+                    .is_some_and(|column| block.key_columns.contains(&column));
+                if aliases != Clause::Having || clause != Clause::Having || grouped {
+                    return Ok(None);
+                }
+            }
+            Err(ResolveError::Ambiguous) => return Ok(None),
+            Err(ResolveError::Unknown) => {}
+        }
+        let Some(output) = self.alias(single, name.span)? else {
+            return Ok(None);
+        };
+        let value = output.expr.clone();
+        if clause == Clause::Aggregate && reads_internal(&value, &String::from(INTERNAL_PREFIX)) {
+            let message = format!(
+                "an aggregate function of `{}`, the alias of an aggregate or window function",
+                single.value
+            );
+            return Err(self.error(message, name.span));
+        }
+        Ok(Some(
+            Expr::alias(single.clone(), value).with_span(name.span),
+        ))
+    }
+
+    /// Column of the select list whose alias is `name`; an error when
+    /// several have it (error 1052 in both dialects).
+    fn alias(&self, name: &Ident, span: Span) -> Result<Option<&Output>, BuildError> {
+        let mut found = self.block().outputs.iter().filter(|output| {
             output
                 .alias
                 .as_ref()
                 .is_some_and(|alias| same_name(alias, name))
-        })
+        });
+        let output = found.next();
+        if found.next().is_some() {
+            let message = format!(
+                "`{}` is ambiguous: several items of the select list have this alias",
+                name.value
+            );
+            return Err(self.error(message, span));
+        }
+        Ok(output)
     }
 
     /// Keys of a `GROUP BY`: a position of the select list, a column of the
@@ -327,7 +400,7 @@ impl Builder<'_> {
             ast::ExprKind::Column(name)
                 if name.parts.len() == 1 && scope.resolve(name) == Err(ResolveError::Unknown) =>
             {
-                match self.alias(&name.parts[0]) {
+                match self.alias(&name.parts[0], name.span)? {
                     Some(output) => Ok((output.expr.clone(), SortReference::Alias)),
                     None => Ok((self.value(item, scope)?, SortReference::Expression)),
                 }
@@ -483,8 +556,13 @@ pub(super) fn canonical(expr: &Expr, source: &Scope) -> Expr {
     copy
 }
 
-/// Names the columns of `expr` as `source` names them.
+/// Names the columns of `expr` as `source` names them, an item of the
+/// select list read through its alias by its expression.
 fn canonical_columns(expr: &mut Expr, source: &Scope) {
+    if let ExprKind::Alias(alias) = &mut expr.kind {
+        let value = std::mem::replace(&mut alias.expr, Expr::literal(Value::Null, DataType::Null));
+        *expr = value;
+    }
     if let ExprKind::Column(column) = &mut expr.kind
         && let Some(found) = source.canonical(column)
     {

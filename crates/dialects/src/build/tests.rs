@@ -1118,3 +1118,60 @@ fn lists_the_tables_outside_a_recursive_expression() {
         .collect();
     assert_eq!(names, ["a", "b"]);
 }
+
+/// Predicate of the `HAVING` of `text`, written in MySQL.
+fn having(text: &str) -> prisme_plan::Expr {
+    let Plan::Project(project) = plan(text) else {
+        panic!("{text}: a select list expected");
+    };
+    let Plan::Filter(filter) = *project.input else {
+        panic!("{text}: `HAVING` expected");
+    };
+    filter.predicate
+}
+
+#[test]
+fn reads_the_aliases_inside_the_expressions_of_the_keys() {
+    // `b` names a column of `t`, which `HAVING` reads after the alias, a
+    // grouping key aside.
+    let left = |text: &str| {
+        let ExprKind::Compare { left, .. } = having(text).kind else {
+            panic!("{text}: a comparison expected");
+        };
+        left.kind
+    };
+    assert!(matches!(
+        left("SELECT a % 2 AS b, COUNT(*) AS n FROM t GROUP BY a % 2 HAVING b = 1"),
+        ExprKind::Alias(alias) if alias.name.value == "b"
+    ));
+    assert!(!matches!(
+        left("SELECT a % 2 AS b, COUNT(*) AS n FROM t GROUP BY a % 2, b HAVING b = '1'"),
+        ExprKind::Alias(_)
+    ));
+    for text in [
+        "SELECT a AS x FROM t ORDER BY x + 0",
+        "SELECT a AS b FROM t ORDER BY b + 0",
+        "SELECT a AS b, b AS b FROM t ORDER BY b + 0",
+        "SELECT a AS x, COUNT(*) AS n FROM t GROUP BY x + 0",
+        "SELECT a AS x FROM t GROUP BY a ORDER BY MAX(x)",
+        "SELECT a % 2 AS x, COUNT(*) AS n FROM t GROUP BY x HAVING ABS(x) = 1 ORDER BY -n",
+    ] {
+        assert!(plan_in(text, Dialect::MySql).is_ok(), "{text}");
+    }
+    // Errors 1052 and 1111 of MySQL.
+    for text in [
+        "SELECT a AS x, b AS x FROM t ORDER BY x",
+        "SELECT a AS x, b AS x FROM t ORDER BY x + 0",
+        "SELECT a AS x, b AS x FROM t GROUP BY x",
+    ] {
+        assert_eq!(
+            error(text),
+            "`x` is ambiguous: several items of the select list have this alias",
+            "{text}"
+        );
+    }
+    assert_eq!(
+        error("SELECT a % 2 AS x, SUM(a) AS s FROM t GROUP BY x HAVING SUM(s) > 3"),
+        "an aggregate function of `s`, the alias of an aggregate or window function"
+    );
+}

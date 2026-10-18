@@ -495,6 +495,23 @@ constructs:
       up to 8.0.18, the outer `ORDER BY` sorts the rows of the union before
       its `LIMIT` (6, 5); refused from 8.0.19 to 8.0.30
       (`parenthesized_set_limit`), 2, 1 from 8.0.31.
+  - id: window_alias_once
+    since: "8.0.11"
+    until: "8.0.16"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-29.html
+    comment: >-
+      `SELECT id, ROW_NUMBER() OVER (ORDER BY b) AS r FROM t ORDER BY r + 0`
+      computes the window function once. From 8.0.16 to 8.0.28, it is
+      computed again for the sort, which numbers 1, 2, 4 the rows of a table
+      of three (`RANK`, `SUM` up to 8.0.26), the function written in `ORDER
+      BY` aside; measured on each local image
+      (crates/probe/cases/alias-references.sql).
+  - id: window_alias_once
+    since: "8.0.29"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-29.html
+    comment: >-
+      Bug #32695670: an alias inside an expression of `ORDER BY` resolved as
+      an alias written alone; measured on 8.0.30 and later.
   - id: rollup_order_by
     since: "8.0.12"
     source: https://dev.mysql.com/doc/refman/8.0/en/group-by-modifiers.html

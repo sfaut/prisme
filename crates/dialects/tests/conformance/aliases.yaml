@@ -1,0 +1,66 @@
+# Items of the select list read through their alias inside the expressions
+# of `ORDER BY`, `GROUP BY` and `HAVING` (crates/probe/cases/alias-references.sql):
+# a column of the source first, then the alias, and in `HAVING` a grouping
+# column first. Towards MariaDB, an alias of an aggregate function inside an
+# expression of `ORDER BY` is written as its function (rule `alias.aggregate`);
+# towards MySQL 8.0.16 to 8.0.28, an alias of a window function (`alias.window`);
+# a grouping column named as an alias in `HAVING` is refused towards MariaDB
+# (`alias.having`).
+setup:
+  - DROP TABLE IF EXISTS aliases
+  - CREATE TABLE aliases (id INT NOT NULL PRIMARY KEY, a INT NOT NULL, b INT NOT NULL)
+  - INSERT INTO aliases VALUES (1, 3, 10), (2, 2, 30), (3, 1, 20)
+cases:
+  - from: mysql
+    sql: SELECT id, a AS x FROM aliases ORDER BY x + 0, id
+  - from: mariadb
+    sql: SELECT id, a AS x FROM aliases ORDER BY -x
+  # `b` names a column of the table: read before the alias inside an
+  # expression, after it alone.
+  - from: mysql
+    sql: SELECT id, a AS b FROM aliases ORDER BY b + 0
+  - from: mariadb
+    sql: SELECT id, a AS b FROM aliases ORDER BY CASE WHEN b > 2 THEN 0 ELSE 1 END, b
+  - from: mysql
+    sql: SELECT a AS x FROM aliases GROUP BY a ORDER BY MAX(x)
+  # `HAVING`: a grouping column, then an alias, then a column of the table.
+  - from: mysql
+    sql: SELECT a % 2 AS x, COUNT(*) AS n FROM aliases GROUP BY x HAVING x + 0 = 1
+  - from: mariadb
+    sql: SELECT a % 2 AS b, COUNT(*) AS n FROM aliases GROUP BY a % 2 HAVING b = 1
+  - from: mysql
+    sql: SELECT a % 2 AS b, COUNT(*) AS n FROM aliases GROUP BY a % 2 HAVING b + 0 = 1
+  - from: mysql
+    sql: SELECT COUNT(a) AS b FROM aliases GROUP BY b HAVING b = 10 ORDER BY 1
+  - from: mysql
+    sql: >-
+      SELECT a % 2 AS b, COUNT(*) AS n FROM aliases GROUP BY a % 2, b HAVING b + 0 = 10
+      ORDER BY 1, 2
+    refused: alias.having
+  - from: mysql
+    sql: >-
+      SELECT a % 2 AS b, COUNT(*) AS n FROM aliases GROUP BY a % 2, b HAVING aliases.b + 0 =
+      10 ORDER BY 1, 2
+    refused: alias.having
+  # A key written qualified, the alias of the column itself: read as the
+  # column by both.
+  - from: mysql
+    sql: >-
+      SELECT a % 2 AS b, COUNT(*) AS n FROM aliases GROUP BY a % 2, aliases.b HAVING b + 0 =
+      10 ORDER BY 1, 2
+  - from: mysql
+    sql: SELECT b AS B, COUNT(*) AS n FROM aliases GROUP BY b HAVING b + 0 = 10
+  # An alias of an aggregate function, written as its function towards
+  # MariaDB (error 1247).
+  - from: mysql
+    sql: SELECT a % 2 AS x, SUM(b) AS s FROM aliases GROUP BY x ORDER BY -s, x
+  - from: mysql
+    sql: >-
+      SELECT a % 2 AS x, SUM(b) AS s FROM aliases GROUP BY x HAVING ABS(s) >= 30 ORDER
+      BY s + 0, x
+  # An alias of a window function, written as its function towards MySQL
+  # 8.0.16 to 8.0.28 (Bug #32695670).
+  - from: mariadb
+    sql: SELECT id, ROW_NUMBER() OVER (ORDER BY b) AS r FROM aliases ORDER BY r + 0
+  - from: mariadb
+    sql: SELECT id, RANK() OVER w AS r FROM aliases WINDOW w AS (ORDER BY b) ORDER BY -r

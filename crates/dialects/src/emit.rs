@@ -12,7 +12,8 @@
 //! written by the `call` module, the calls to scalar functions and the names
 //! of the built-in functions by the `builtin` module, with the rules of the
 //! functions (`rules` module); the recursive common table expressions by the
-//! `recursive` module.
+//! `recursive` module, the items of the select list read through their alias
+//! by the `alias` module.
 //!
 //! Literals are written as in the input when the output reads them the same
 //! way (same SQL mode for the quotes and the backslashes), otherwise in a
@@ -21,6 +22,7 @@
 //! the input.
 
 mod aes;
+mod alias;
 mod bit_count;
 mod bitwise;
 mod builtin;
@@ -586,6 +588,7 @@ impl Emitter<'_> {
         if let Some(having) = block.having {
             self.at(having.span);
             self.clause(" HAVING ");
+            self.having_aliases(&having.predicate, block.project);
             self.truth_operand(&having.predicate, 0, truth::Context::Clause("`HAVING`"));
         }
         if let Some(window) = block.window {
@@ -827,8 +830,9 @@ impl Emitter<'_> {
                 self.write(&(index + 1).to_string());
             }
             _ => {
+                let expr = self.sort_aliases(&key.expr);
                 self.column = true;
-                self.expr(&key.expr, 0);
+                self.expr(&expr, 0);
             }
         }
     }

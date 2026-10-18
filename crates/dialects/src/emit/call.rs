@@ -13,11 +13,14 @@
 //! MariaDB reads them.
 
 use prisme_plan::{
-    Aggregate, AggregateCall, Expr, Frame, FrameBound, FrameUnits, Ident, NamedAggregate,
-    NamedExpr, Project, ProjectItem, SortReference, Span, WindowCall, WindowDefinition,
+    Aggregate, AggregateCall, ColumnRef, Expr, ExprKind, Frame, FrameBound, FrameUnits, Ident,
+    NamedAggregate, NamedExpr, Project, ProjectItem, SortKey, SortReference, Span, WindowCall,
+    WindowDefinition,
 };
+use prisme_types::{DataType, Value};
 
 use super::json::reads_json_as_is;
+use super::rules::repeatable;
 use super::{Block, Emitter};
 use crate::Dialect;
 use crate::build::{functions, is_internal_name};
@@ -82,16 +85,20 @@ impl Internal {
             })
     }
 
+    /// Named window `name`, when the block defines it.
+    fn definition(&self, name: &Ident) -> Option<&WindowDefinition> {
+        self.definitions
+            .iter()
+            .find(|definition| definition.name.value.eq_ignore_ascii_case(&name.value))
+    }
+
     /// Tells whether the named window `name` has an order and a frame, those
     /// of the windows it completes included; `None` when unknown.
     fn resolved(&self, name: &Ident, depth: usize) -> Option<(bool, bool)> {
         if depth > self.definitions.len() {
             return None;
         }
-        let definition = self
-            .definitions
-            .iter()
-            .find(|definition| definition.name.value.eq_ignore_ascii_case(&name.value))?;
+        let definition = self.definition(name)?;
         let ordered = !definition.order_by.is_empty()
             || match &definition.base {
                 Some(base) => self.resolved(base, depth + 1)?.0,
@@ -129,6 +136,124 @@ impl Emitter<'_> {
             self.quiet -= 1;
         }
         true
+    }
+
+    /// Tells whether `expr` reads a column its `SELECT` block computes by a
+    /// window function when `window`, by an aggregate function otherwise (an
+    /// implicit `ANY_VALUE` aside), through its grouping keys too.
+    pub(super) fn reads_computed(&self, expr: &Expr, window: bool) -> bool {
+        let mut copy = expr.clone();
+        self.reads_computed_mut(&mut copy, window)
+    }
+
+    /// Same as `reads_computed`, on the operands given by `operands_mut`.
+    fn reads_computed_mut(&self, expr: &mut Expr, window: bool) -> bool {
+        if let Some(substitute) = self.computed(expr) {
+            return match substitute {
+                Substitute::Aggregate(call) => !window && !call.implicit,
+                Substitute::Expr(value) if matches!(value.kind, ExprKind::Window(_)) => window,
+                Substitute::Expr(value) => self.reads_computed(&value, window),
+            };
+        }
+        (expr.operands_mut().into_iter()).any(|operand| self.reads_computed_mut(operand, window))
+    }
+
+    /// Tells whether `expr` gives the same value each time it is written in
+    /// its `SELECT` block, the columns the block computes read as what they
+    /// stand for: an aggregate or window function of such arguments, over a
+    /// window of the same definition, gives the same value written twice.
+    pub(super) fn repeatable_computed(&self, expr: &Expr) -> bool {
+        let mut copy = expr.clone();
+        self.repeatable_computed_mut(&mut copy) && repeatable(&copy)
+    }
+
+    /// Checks the columns of `expr` its block computes, replaced by NULL for
+    /// `repeatable` once checked.
+    fn repeatable_computed_mut(&self, expr: &mut Expr) -> bool {
+        if let Some(substitute) = self.computed(expr) {
+            let checked = match substitute {
+                Substitute::Aggregate(call) => {
+                    call.args.iter().all(|arg| self.repeatable_computed(arg))
+                        && (call.order_by.iter()).all(|key| self.repeatable_computed(&key.expr))
+                }
+                Substitute::Expr(value) => match &value.kind {
+                    ExprKind::Window(call) => {
+                        call.args.iter().all(|arg| self.repeatable_computed(arg))
+                            && self.repeatable_window(
+                                &call.partition_by,
+                                &call.order_by,
+                                call.window.as_ref(),
+                                0,
+                            )
+                    }
+                    _ => self.repeatable_computed(&value),
+                },
+            };
+            *expr = Expr::literal(Value::Null, DataType::Null);
+            return checked;
+        }
+        (expr.operands_mut().into_iter()).all(|operand| self.repeatable_computed_mut(operand))
+    }
+
+    /// Tells whether the window of `partition_by` and `order_by`, completing
+    /// the named window `base`, partitions and sorts the rows by expressions
+    /// of the same value at each evaluation, those of `base` included.
+    fn repeatable_window(
+        &self,
+        partition_by: &[Expr],
+        order_by: &[SortKey],
+        base: Option<&Ident>,
+        depth: usize,
+    ) -> bool {
+        if !partition_by
+            .iter()
+            .all(|value| self.repeatable_computed(value))
+            || !order_by
+                .iter()
+                .all(|key| self.repeatable_computed(&key.expr))
+        {
+            return false;
+        }
+        let Some(base) = base else {
+            return true;
+        };
+        let Some(block) = self.blocks.last() else {
+            return false;
+        };
+        match block.definition(base) {
+            Some(definition) if depth < block.definitions.len() => self.repeatable_window(
+                &definition.partition_by,
+                &definition.order_by,
+                definition.base.as_ref(),
+                depth + 1,
+            ),
+            _ => false,
+        }
+    }
+
+    /// What `expr` stands for, when it is a column its `SELECT` block
+    /// computes.
+    fn computed(&self, expr: &Expr) -> Option<Substitute> {
+        match &expr.kind {
+            ExprKind::Column(column)
+                if column.qualifier.is_none() && is_internal_name(&column.name.value) =>
+            {
+                self.blocks.last()?.substitute(&column.name)
+            }
+            _ => None,
+        }
+    }
+
+    /// Column of the source that `expr` stands for, when it is a column the
+    /// `SELECT` block computes for a grouping key that is a column.
+    pub(super) fn key_column(&self, expr: &Expr) -> Option<ColumnRef> {
+        match self.computed(expr)? {
+            Substitute::Expr(value) => match value.kind {
+                ExprKind::Column(column) if !is_internal_name(&column.name.value) => Some(column),
+                _ => None,
+            },
+            Substitute::Aggregate(_) => None,
+        }
     }
 
     /// Value that names a column of the select list without alias: what a
