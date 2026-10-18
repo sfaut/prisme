@@ -474,12 +474,12 @@ impl Parser<'_> {
         }
         match &token.kind {
             TokenKind::String { .. } => Ok(self.string()),
-            TokenKind::NationalString(_)
-            | TokenKind::HexString(_)
+            TokenKind::NationalString(_) => Ok(self.national()),
+            TokenKind::HexString(_)
             | TokenKind::BitString(_)
             | TokenKind::HexNumber(_)
             | TokenKind::BitNumber(_) => {
-                Err(self.unsupported("national, hexadecimal and bit literals", token.span))
+                Err(self.unsupported("hexadecimal and bit literals", token.span))
             }
             TokenKind::UserVariable { .. } | TokenKind::SystemVariable => {
                 Err(self.unsupported("variables", token.span))
@@ -497,12 +497,7 @@ impl Parser<'_> {
     /// Strings in a row, joined into one (`'a' 'b'` is `'ab'`).
     fn string(&mut self) -> Expr {
         let start = self.here().start;
-        let mut value = String::new();
-        while let Some(TokenKind::String { value: part, .. }) = self.peek().map(|token| &token.kind)
-        {
-            value.push_str(part);
-            self.pos += 1;
-        }
+        let value = self.strings();
         leaf(
             ExprKind::Literal(Literal::String(value)),
             self.span_from(start),
@@ -629,14 +624,17 @@ impl Parser<'_> {
         if self.at_interval() {
             return self.interval_first();
         }
+        if self.at_introducer() {
+            return self.introduced();
+        }
         if token.kind == TokenKind::Word {
             if matches!(next, Some(TokenKind::Punct(Punct::LeftParen)))
                 && let Some(construct) = self.keyword_construct()?
             {
                 return Ok(construct);
             }
-            // A word followed by a string: a typed literal, an introducer, or
-            // a column and its alias (`a 'x'`).
+            // A word followed by a string: a typed literal, or a column and
+            // its alias (`a 'x'`).
             let next = self.peek_at(1).map(|next| &next.kind);
             if matches!(next, Some(TokenKind::String { .. })) {
                 let upper = token.text(self.text).to_ascii_uppercase();
@@ -648,9 +646,6 @@ impl Parser<'_> {
                 };
                 if let Some(kind) = kind {
                     return self.typed_literal(kind);
-                }
-                if upper.starts_with('_') {
-                    return Err(self.unsupported("charset introducers", token.span));
                 }
             }
             let constructs = [

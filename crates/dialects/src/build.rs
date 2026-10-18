@@ -876,11 +876,19 @@ pub(crate) fn is_dual(plan: &Plan) -> bool {
 }
 
 /// Name the MySQL family gives to a column without alias: the name of a
-/// column, the value of a string, the text written otherwise.
+/// column, the value of a string, national or introduced (`N'a'` and
+/// `_latin1'a'` are named `a`), the text written otherwise.
 fn implicit_name(expr: &ast::Expr, text: &str) -> Ident {
     match &expr.kind {
         ExprKind::Column(name) => name.parts[name.parts.len() - 1].clone(),
-        ExprKind::Literal(Literal::String(value)) => Ident::new(value.clone()),
+        ExprKind::Literal(Literal::String(value) | Literal::National(value)) => {
+            Ident::new(value.clone())
+        }
+        ExprKind::Literal(Literal::Introduced { literal, .. })
+            if let Literal::String(value) = literal.as_ref() =>
+        {
+            Ident::new(value.clone())
+        }
         _ => Ident::new(&text[expr.span.start..expr.span.end]),
     }
 }

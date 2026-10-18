@@ -18,6 +18,7 @@ mod cast;
 mod expr;
 mod from;
 mod interval;
+mod literal;
 mod predicate;
 mod string;
 mod temporal;

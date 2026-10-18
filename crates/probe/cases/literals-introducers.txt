@@ -1,0 +1,18 @@
+# National strings and character set introducers at their boundaries: what
+# an introducer takes, the strings that follow, `COLLATE`, the names of the
+# character sets.
+intro_number _latin1 5
+intro_alone (SELECT _latin1 FROM sample)
+intro_national _latin1 N'a'
+intro_collate COLLATION(_latin1'a' COLLATE latin1_bin)
+national_collate COLLATION(N'a' COLLATE utf8mb3_bin)
+national_adjacent_intro N'a' _latin1'b'
+binary_adjacent _binary'a' 'b'
+intro_utf8 CHARSET(_utf8'a')
+intro_utf8mb3 CHARSET(_utf8mb3'a')
+intro_binary_charset CHARSET(_binary'a')
+national_charset CHARSET(N'a')
+intro_filename CHARSET(_filename'a')
+intro_ucs2 HEX(_ucs2'a')
+intro_comment CHARSET(_latin1/* c */'a')
+intro_dquote CHARSET(_latin1"a")

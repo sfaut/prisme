@@ -480,6 +480,20 @@ impl Builder<'_> {
             Literal::String(value) => {
                 Expr::literal(Value::Text(value.clone()), types::string_literal(value))
             }
+            Literal::National(value) => {
+                Expr::literal(Value::Text(value.clone()), types::national_string(value))
+            }
+            Literal::Introduced { charset, literal } => match literal.as_ref() {
+                Literal::String(value) if charset == "binary" => Expr::literal(
+                    Value::Binary(value.as_bytes().to_vec()),
+                    types::byte_string(value.len()),
+                ),
+                Literal::String(value) => Expr::literal(
+                    Value::Text(value.clone()),
+                    types::introduced_string(charset, value),
+                ),
+                _ => unreachable!("an introducer introduces a string"),
+            },
             Literal::Null => Expr::literal(Value::Null, DataType::Null),
             Literal::True => Expr::literal(Value::Boolean(true), DataType::Boolean),
             Literal::False => Expr::literal(Value::Boolean(false), DataType::Boolean),

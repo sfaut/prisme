@@ -1,5 +1,5 @@
 use prisme_plan::{Expr, Filter as FilterNode, Project as ProjectNode, Scan, SortForm, SortKey};
-use prisme_types::{DataType, IntegerSize, IntegerType, Type};
+use prisme_types::{BinaryType, DataType, IntegerSize, IntegerType, TextType, Type};
 
 use super::*;
 use crate::build::Tables;
@@ -288,7 +288,7 @@ fn strings_follow_the_sql_mode_of_the_output() {
     let (sql, _) = transpiled("SELECT 'a\\b' AS \"x\"", mysql(), ansi);
     assert_eq!(sql, "SELECT 'a\\b' AS `x`");
     let source = Source {
-        text: "",
+        text: "_latin1 'it''s' 'a'",
         mode: SqlMode::default(),
         dialect: Dialect::MySql,
         version: Version::new(8, 0, 19),
@@ -312,6 +312,73 @@ fn strings_follow_the_sql_mode_of_the_output() {
     let literal = Expr::literal(Value::Text("it's a \\".to_string()), DataType::Null);
     emitter.expr(&literal, 0);
     assert_eq!(emitter.out, "'it''s a \\'");
+    // The introducer as written, then the string; a byte string in
+    // hexadecimal.
+    let latin1 = DataType::Text(TextType {
+        length: None,
+        fixed: false,
+        charset: Some("latin1".to_string()),
+        collation: None,
+    });
+    let introduced =
+        Expr::literal(Value::Text("it'sa".to_string()), latin1).with_span(Span::new(0, 19));
+    let bytes = Expr::literal(
+        Value::Binary(b"it's".to_vec()),
+        DataType::Binary(BinaryType {
+            length: Some(4),
+            fixed: false,
+        }),
+    );
+    emitter.out.clear();
+    emitter.expr(&introduced, 0);
+    emitter.write(", ");
+    emitter.expr(&bytes, 0);
+    assert_eq!(emitter.out, "_latin1 'it''sa', _binary X'69742773'");
+}
+
+#[test]
+fn introduced_strings_keep_the_collation_of_the_input() {
+    let mariadb_at = |minor, patch| input_at(Dialect::MariaDb, 11, minor, patch);
+    // National strings, character sets of the same default collation,
+    // `_binary`.
+    for (text, input, target) in [
+        (
+            "SELECT N'a', _latin1'b', _binary'c', _utf8mb3'd', _UCS2'e' AS v FROM t",
+            mysql(),
+            mariadb(),
+        ),
+        ("SELECT N'a', _utf16'b' AS v FROM t", mariadb(), mysql()),
+        ("SELECT N'a' AS v FROM t", mysql(), mariadb_at(8, 0)),
+        (
+            "SELECT _utf8mb4'a' AS v FROM t",
+            mariadb_at(4, 0),
+            mariadb_at(8, 0),
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{text}");
+    }
+    // Another default collation, or a character set the output lacks.
+    for (text, input, target) in [
+        ("SELECT _utf8mb4'a' AS v FROM t", mysql(), mariadb()),
+        ("SELECT _utf8mb4'a' AS v FROM t", mariadb(), mysql()),
+        (
+            "SELECT _utf8mb4'a' AS v FROM t",
+            mariadb(),
+            mariadb_at(4, 0),
+        ),
+        ("SELECT _utf8'a' AS v FROM t", mysql(), mariadb_at(8, 0)),
+        ("SELECT _utf32'a' AS v FROM t", mariadb_at(8, 0), mysql()),
+        ("SELECT _gb18030'a' AS v FROM t", mysql(), mariadb()),
+        ("SELECT _filename'a' AS v FROM t", mariadb(), mysql()),
+    ] {
+        assert_eq!(
+            errors(text, input, output(target)),
+            ["literal.introducer"],
+            "{text}"
+        );
+    }
 }
 
 #[test]

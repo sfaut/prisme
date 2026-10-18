@@ -526,6 +526,25 @@ constructs:
       and a frame whose start moves loses count of its NULL values
       (MDEV-40689, fixed in 11.4.14 and 11.8.10), measured on 10.6.28 and
       11.8.9 (crates/probe/cases/bitwise-windows.sql).
+  - id: utf8mb4_uca1400
+    since: "11.4.0"
+    source: https://jira.mariadb.org/browse/MDEV-32336
+    comment: >-
+      `utf8mb4_uca1400_ai_ci`, instead of `utf8mb4_general_ci`, as the
+      collation of a string after `_utf8mb4`: set by the packages of MariaDB
+      11.4 (`character_set_collations` gives `utf8mb4=utf8mb4_uca1400_ai_ci`
+      in the image 11.4.13, nothing in 11.3.2), measured on 11.3.2 and 11.4.13
+      (crates/probe/cases/literals-collations.txt). A server set otherwise
+      is not detected.
+  - id: unicode_uca1400
+    since: "11.5.1"
+    source: https://jira.mariadb.org/browse/MDEV-25829
+    comment: >-
+      `uca1400_ai_ci`, instead of `general_ci`, as the collation of a string
+      after `_utf8mb3`, `_ucs2`, `_utf16`, `_utf32` (and `_utf8mb4`): the
+      default of `character_set_collations`, measured on 11.4.13 and 11.5.2
+      (crates/probe/cases/literals-collations.txt). A national string keeps
+      `utf8mb3_general_ci` (`N'a'`, in every version).
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:

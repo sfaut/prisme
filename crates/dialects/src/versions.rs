@@ -183,6 +183,12 @@ pub enum Construct {
     RegexpBinaryError,
     /// `BIT_AND`, `BIT_OR` and `BIT_XOR` as window functions.
     BitWindow,
+    /// `utf8mb4_uca1400_ai_ci` as the default collation of `utf8mb4`
+    /// (MariaDB).
+    Utf8mb4Uca1400,
+    /// `uca1400_ai_ci` as the default collation of `utf8mb3`, `ucs2`,
+    /// `utf16` and `utf32` (MariaDB).
+    UnicodeUca1400,
 }
 
 /// Construct refused in a dialect or a version.
@@ -353,6 +359,10 @@ impl Construct {
             Self::RegexpBinary => "`REGEXP` reading a binary string byte by byte",
             Self::RegexpBinaryError => "`REGEXP` refusing a binary string with a character string",
             Self::BitWindow => "`BIT_AND`, `BIT_OR` and `BIT_XOR` as window functions",
+            Self::Utf8mb4Uca1400 => "`utf8mb4_uca1400_ai_ci` as the default collation of `utf8mb4`",
+            Self::UnicodeUca1400 => {
+                "`uca1400_ai_ci` as the default collation of `utf8mb3`, `ucs2`, `utf16` and `utf32`"
+            }
         }
     }
 }

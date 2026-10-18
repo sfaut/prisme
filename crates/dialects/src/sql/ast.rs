@@ -740,6 +740,16 @@ pub enum Literal {
     Float(String),
     /// String, adjacent strings joined (`'a' 'b'` is `'ab'`).
     String(String),
+    /// National string, `N'...'`, adjacent strings joined: a string of the
+    /// character set `utf8mb3`.
+    National(String),
+    /// String after a character set introducer (`_latin1'abc'`).
+    Introduced {
+        /// Character set, in lower case.
+        charset: String,
+        /// Literal introduced: a `String`.
+        literal: Box<Literal>,
+    },
     /// `NULL`.
     Null,
     /// `TRUE`.

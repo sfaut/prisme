@@ -1,0 +1,54 @@
+# National strings and strings after a character set introducer: read alike,
+# implicit names included; refused when the output lacks the character set
+# or gives the string another collation, that of `utf8mb4` between the
+# dialects, of the other Unicode character sets from MariaDB 11.5.1 (rule
+# `literal.introducer`) (crates/probe/cases/literals-introducers.txt,
+# literals-collations.txt, literals-names.sql).
+cases:
+  # Alike, implicit names included.
+  - from: mysql
+    sql: SELECT N'a', _latin1'é', _binary'c', N'', _latin1 'd'
+  - from: mariadb
+    sql: SELECT N'a', _latin1'é', _binary'c', N'', _latin1 'd'
+  - from: mysql
+    sql: >-
+      SELECT N'a' 'b' AS a, HEX(_latin1'é') AS b, N'ß' = N'ss' AS c, N'a' = N'a ' AS d,
+      _latin1'a' = _latin1'A ' AS e, CHAR_LENGTH(_latin1'é') AS f, _binary'a' = _binary'A' AS g,
+      LENGTH(N'é') AS h, _binary'a' 'b' AS i, s = N'hello world' AS j FROM sample
+  - from: mariadb
+    sql: >-
+      SELECT N'a' 'b' AS a, HEX(_latin1'é') AS b, N'ß' = N'ss' AS c, N'a' = N'a ' AS d,
+      _latin1'a' = _latin1'A ' AS e, CHAR_LENGTH(_latin1'é') AS f, _binary'a' = _binary'A' AS g,
+      LENGTH(N'é') AS h, _binary'a' 'b' AS i, s = N'hello world' AS j FROM sample
+  # The other Unicode character sets, of `general_ci` before MariaDB 11.5.1.
+  - from: mysql
+    outputs: mariadb < 11.5.1
+    sql: >-
+      SELECT _utf8mb3'ß' = _utf8mb3'ss' AS a, _ucs2'a' = _ucs2'A ' AS b, HEX(_utf16'a') AS c,
+      _utf32'é' = _utf32'e' AS d, _utf8'a' AS e
+  - from: mariadb
+    inputs: mariadb < 11.5.1
+    sql: >-
+      SELECT _utf8mb3'ß' = _utf8mb3'ss' AS a, _ucs2'a' = _ucs2'A ' AS b, HEX(_utf16'a') AS c,
+      _utf32'é' = _utf32'e' AS d, _utf8'a' AS e
+  # Another collation, or a character set the output lacks: refused.
+  - from: mysql
+    sql: SELECT _utf8mb4'a' = _utf8mb4'a ' AS v
+    refused: literal.introducer
+  - from: mariadb
+    sql: SELECT _utf8mb4'a' AS v
+    refused: literal.introducer
+  - from: mysql
+    outputs: mariadb >= 11.5.1
+    sql: SELECT _utf8mb3'ß' = _utf8mb3'ss' AS v
+    refused: literal.introducer
+  - from: mariadb
+    inputs: mariadb >= 11.5.1
+    sql: SELECT _ucs2'a' AS v
+    refused: literal.introducer
+  - from: mysql
+    sql: SELECT _gb18030'a' AS v
+    refused: literal.introducer
+  - from: mariadb
+    sql: SELECT _filename'a' AS v
+    refused: literal.introducer

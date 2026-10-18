@@ -32,6 +32,7 @@ mod extract;
 mod greatest;
 mod interval;
 mod json;
+mod literal;
 mod predicate;
 mod rules;
 mod source;
@@ -588,6 +589,9 @@ impl Emitter<'_> {
                 column.name.value.clone()
             }
             prisme_plan::ExprKind::Literal(Value::Text(value)) => value.clone(),
+            prisme_plan::ExprKind::Literal(Value::Binary(bytes)) => {
+                literal::bytes_name(text, bytes)
+            }
             _ => text.to_string(),
         };
         if written == name.value {

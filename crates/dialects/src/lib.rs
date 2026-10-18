@@ -17,6 +17,7 @@ pub mod analysis;
 pub mod beautify;
 pub mod build;
 mod builtins;
+mod charsets;
 pub mod classify;
 pub mod emit;
 mod functions;

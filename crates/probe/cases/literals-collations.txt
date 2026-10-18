@@ -1,0 +1,26 @@
+# Collation and coercibility of national and introduced strings, by version.
+national COLLATION(N'a')
+utf8 COLLATION(_utf8'a')
+utf8mb3 COLLATION(_utf8mb3'a')
+utf8mb4 COLLATION(_utf8mb4'a')
+ucs2 COLLATION(_ucs2'a')
+utf16 COLLATION(_utf16'a')
+utf32 COLLATION(_utf32'a')
+latin1 COLLATION(_latin1'a')
+binary COLLATION(_binary'a')
+plain COLLATION('a')
+coercibility_national COERCIBILITY(N'a')
+coercibility_intro COERCIBILITY(_utf8mb4'a')
+coercibility_plain COERCIBILITY('a')
+pad_intro _utf8mb4'a' = _utf8mb4'a '
+pad_national N'a' = N'a '
+mixed_intro 'a' = _utf8mb4'a'
+mixed_national 'a' = N'a'
+mixed_intro_national N'a' = _utf8mb4'a'
+sharp_intro _utf8mb4'ß' = _utf8mb4'ss'
+sharp_national N'ß' = N'ss'
+accent_intro _utf8mb4'é' = _utf8mb4'e'
+case_intro _utf8mb4'a' = _utf8mb4'A'
+column_intro s = _utf8mb4'hello world'
+latin1_pad _latin1'a' = _latin1'a '
+latin1_mixed 'a' = _latin1'a'

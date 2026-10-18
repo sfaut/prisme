@@ -80,6 +80,45 @@ pub(crate) fn string_literal(value: &str) -> DataType {
     })
 }
 
+/// Type of a national string, `N'abc'`: a `VARCHAR` of `utf8mb3`, of the
+/// collation `utf8mb3_general_ci` in every version of both dialects.
+pub(crate) fn national_string(value: &str) -> DataType {
+    DataType::Text(TextType {
+        length: u32::try_from(value.chars().count()).ok(),
+        fixed: false,
+        charset: Some("utf8mb3".to_string()),
+        collation: Some("utf8mb3_general_ci".to_string()),
+    })
+}
+
+/// Type of a string after the introducer `charset` (`_latin1'abc'`): a
+/// `VARCHAR` of that character set, of its default collation (`None`).
+/// Its length counts the characters of a Unicode character set, unknown in
+/// another one, which reads the bytes of the text otherwise (`_latin1'é'`
+/// holds two characters).
+pub(crate) fn introduced_string(charset: &str, value: &str) -> DataType {
+    let unicode = matches!(charset, "utf8" | "utf8mb3" | "utf8mb4");
+    DataType::Text(TextType {
+        length: if unicode {
+            u32::try_from(value.chars().count()).ok()
+        } else {
+            None
+        },
+        fixed: false,
+        charset: Some(charset.to_string()),
+        collation: None,
+    })
+}
+
+/// Type of a byte string of `length` bytes, a literal (`_binary'abc'`): a
+/// `VARBINARY`.
+pub(crate) fn byte_string(length: usize) -> DataType {
+    DataType::Binary(BinaryType {
+        length: u32::try_from(length).ok(),
+        fixed: false,
+    })
+}
+
 /// Numeric class of an operand.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Numeric {

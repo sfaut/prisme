@@ -63,6 +63,21 @@ fn error(text: &str, options: &ParseOptions) -> (String, String) {
     )
 }
 
+/// Literal written for a prefix tree, a character set before its literal
+/// (`_latin1'a'`).
+fn literal_tree(literal: &Literal) -> String {
+    match literal {
+        Literal::Integer(text) | Literal::Decimal(text) | Literal::Float(text) => text.clone(),
+        Literal::String(value) => format!("'{value}'"),
+        Literal::National(value) => format!("N'{value}'"),
+        Literal::Introduced { charset, literal } => format!("_{charset}{}", literal_tree(literal)),
+        Literal::Null => "NULL".to_string(),
+        Literal::True => "TRUE".to_string(),
+        Literal::False => "FALSE".to_string(),
+        Literal::Temporal { kind, value } => format!("{kind:?}'{value}'"),
+    }
+}
+
 /// Expression written as a prefix tree, to test the precedence.
 fn tree(expr: &Expr) -> String {
     match &expr.kind {
@@ -72,14 +87,7 @@ fn tree(expr: &Expr) -> String {
             .map(|part| part.value.as_str())
             .collect::<Vec<_>>()
             .join("."),
-        ExprKind::Literal(literal) => match literal {
-            Literal::Integer(text) | Literal::Decimal(text) | Literal::Float(text) => text.clone(),
-            Literal::String(value) => format!("'{value}'"),
-            Literal::Null => "NULL".to_string(),
-            Literal::True => "TRUE".to_string(),
-            Literal::False => "FALSE".to_string(),
-            Literal::Temporal { kind, value } => format!("{kind:?}'{value}'"),
-        },
+        ExprKind::Literal(literal) => literal_tree(literal),
         ExprKind::Unary { op, operand } => {
             let op = match op {
                 UnaryOp::Minus => "-",
@@ -594,14 +602,52 @@ fn reads_aliases_with_their_form() {
         &string_alias.items[0],
         SelectItem::Expr { alias: Some(alias), .. } if alias.name.value == "x y"
     ));
-    assert_eq!(
-        error("SELECT _utf8mb4'x'", &mysql()).0,
-        "charset introducers: not supported yet by the parser of Prisme"
-    );
+    // A word `_` and a character set introduces the string; another word is
+    // a column.
+    let introduced = self::select("SELECT _utf8mb4'x', _foo 'y' FROM t");
+    assert!(matches!(
+        &introduced.items[0],
+        SelectItem::Expr { alias: None, .. }
+    ));
+    assert!(matches!(
+        &introduced.items[1],
+        SelectItem::Expr { alias: Some(alias), .. } if alias.name.value == "y"
+    ));
     assert!(matches!(
         &select.items[4],
         SelectItem::Wildcard { qualifier: Some(name), .. } if name.parts[0].value == "t"
     ));
+}
+
+#[test]
+fn reads_national_and_introduced_strings() {
+    for (text, expected) in [
+        ("N'a' 'b'", "N'ab'"),
+        ("n'a'", "N'a'"),
+        ("_latin1'a' 'b'", "_latin1'ab'"),
+        ("_UTF8MB4 'é'", "_utf8mb4'é'"),
+        ("_binary /* bytes */ 'a' + 1", "(+ _binary'a' 1)"),
+    ] {
+        assert_eq!(expr(text), expected, "{text}");
+    }
+    // `gb18030` in MySQL only, `filename` in MariaDB only.
+    assert_eq!(expr("_gb18030'a'"), "_gb18030'a'");
+    assert_eq!(expr_with("_filename'a'", &mariadb()), "_filename'a'");
+    assert_eq!(
+        error("SELECT _latin1 5", &mysql()),
+        (
+            "expected a string, a hexadecimal or a bit literal, found `5`".to_string(),
+            "5".to_string()
+        )
+    );
+    assert_eq!(
+        error("SELECT _latin1 N'a'", &mysql()).0,
+        "expected a string, a hexadecimal or a bit literal, found `N'a'`"
+    );
+    assert_eq!(
+        error("SELECT _latin1 X'41'", &mysql()).0,
+        "hexadecimal and bit literals: not supported yet by the parser of Prisme"
+    );
 }
 
 #[test]

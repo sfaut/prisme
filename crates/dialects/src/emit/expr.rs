@@ -15,7 +15,7 @@ use prisme_plan::{
     Arithmetic, Bitwise, Comparison, Expr, ExprKind, Logical, NotDistinctForm, Plan, Quantifier,
     VariableScope,
 };
-use prisme_types::{DataType, Value};
+use prisme_types::{DataType, TextType, Value};
 
 use super::Emitter;
 use super::case::Reading;
@@ -452,6 +452,7 @@ impl Emitter<'_> {
             self.write(&rewritten);
             return;
         }
+        self.introducer(expr);
         let same_reading = self.source.mode.ansi_quotes == self.output.mode.ansi_quotes
             && self.source.mode.no_backslash_escapes == self.output.mode.no_backslash_escapes;
         if same_reading
@@ -468,10 +469,17 @@ impl Emitter<'_> {
             Value::Integer(value) => value.to_string(),
             Value::Decimal(value) => value.as_str().to_string(),
             Value::Float(value) => format!("{value:e}"),
-            Value::Text(value) => self.string(value),
+            Value::Text(value) => match &expr.ty.data_type {
+                DataType::Text(TextType {
+                    charset: Some(charset),
+                    ..
+                }) => self.introduced_string(expr, value, charset),
+                _ => self.string(value),
+            },
+            // A byte string, `_binary X'...'` in both dialects.
             Value::Binary(bytes) => {
                 let digits: String = bytes.iter().map(|byte| format!("{byte:02X}")).collect();
-                format!("X'{digits}'")
+                format!("_binary X'{digits}'")
             }
             Value::Date(text) => format!("DATE {}", self.string(text)),
             Value::Time(text) => format!("TIME {}", self.string(text)),
