@@ -483,12 +483,13 @@ constructs:
       The same defect in the branch 11.3, fixed in 11.3.2 by the ticket;
       measured fixed on 11.3.2.
   - id: window_alias_once
-    since: "10.6.3"
+    since: "10.2.0"
     source: https://mariadb.com/kb/en/window-functions-overview/
     comment: >-
       `SELECT id, ROW_NUMBER() OVER (ORDER BY b) AS r FROM t ORDER BY r + 0`
       computes the window function once, measured on each local image,
-      10.5.29 to 11.8.9 (crates/probe/cases/alias-references.sql).
+      10.5.29 to 11.8.9 (crates/probe/cases/alias-references.sql); from the
+      window functions, in 10.2.0.
   - id: derived_column_list
     since: "11.7.1"
     source: https://jira.mariadb.org/browse/MDEV-31466
