@@ -18,8 +18,8 @@ pub use aggregate::{Aggregate, AggregateCall, NamedAggregate, OnEmpty};
 pub use join::{Join, JoinForm, JoinKind, JoinUsing};
 pub use set::{SetOperation, SetOperator};
 pub use source::{
-    Cte, CteRef, Derived, IndexHint, IndexHintAction, IndexHintScope, Scan, TableAlias, TableName,
-    Values, ValuesForm, With,
+    Cte, CtePart, CteRef, Derived, IndexHint, IndexHintAction, IndexHintScope, Scan, TableAlias,
+    TableName, Values, ValuesForm, With,
 };
 pub use unary::{
     Distinct, Extend, Filter, Limit, LimitForm, NamedExpr, Project, ProjectItem, Sort, Wildcard,

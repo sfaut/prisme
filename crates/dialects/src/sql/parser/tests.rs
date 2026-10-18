@@ -1709,3 +1709,23 @@ fn reads_is_true_is_false_and_is_unknown() {
     );
     assert!(parse("SELECT a IS TRUE IN (1)", &mariadb).is_err());
 }
+
+#[test]
+fn reads_with_recursive_and_refuses_cycle() {
+    let text = "WITH RECURSIVE r (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r WHERE n < 3) \
+                SELECT n FROM r";
+    for options in [mysql(), mariadb()] {
+        let with = query(text, &options).with.expect("a `WITH`");
+        assert!(with.recursive);
+        assert_eq!(with.ctes.len(), 1);
+    }
+    let cycle = "WITH RECURSIVE r (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r WHERE n < 3) \
+                 CYCLE n RESTRICT SELECT n FROM r";
+    assert_eq!(
+        error(cycle, &mariadb()),
+        (
+            "`CYCLE`: not supported yet by the parser of Prisme".to_string(),
+            "CYCLE".to_string()
+        )
+    );
+}

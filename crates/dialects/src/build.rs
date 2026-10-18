@@ -17,7 +17,8 @@
 //! form written. The source is a table, a common table expression, a derived
 //! table or a join of sources; a set operation joins query bodies. The
 //! aggregation, its `HAVING` and the window functions are described in the
-//! `group` module.
+//! `group` module; a recursive common table expression builds its anchors
+//! before its recursive parts (`recursive` module).
 
 mod call;
 mod cast;
@@ -27,6 +28,7 @@ mod group;
 mod interval;
 mod json;
 mod now;
+mod recursive;
 mod scope;
 mod string;
 mod tables;
@@ -40,10 +42,10 @@ use std::collections::HashMap;
 use std::fmt;
 
 use prisme_plan::{
-    AliasForm, Comparison, Cte, CteRef, Derived, Direction, Distinct, Expr, Filter, Ident, Join,
-    JoinKind, JoinUsing, Limit, Logical, NamedExpr, Nulls, Plan, PlanError, Project, ProjectItem,
-    Scan, SetOperation, SetOperator, Sort, SortForm, SortKey, SortReference, Span, TableAlias,
-    TableName, Values as ValuesNode, ValuesForm, Wildcard, With,
+    AliasForm, Comparison, Cte, CtePart, CteRef, Derived, Direction, Distinct, Expr, Filter, Ident,
+    Join, JoinKind, JoinUsing, Limit, Logical, NamedExpr, Nulls, Plan, PlanError, Project,
+    ProjectItem, Scan, SetOperation, SetOperator, Sort, SortForm, SortKey, SortReference, Span,
+    TableAlias, TableName, Values as ValuesNode, ValuesForm, Wildcard, With,
 };
 use prisme_types::Type;
 
@@ -280,8 +282,25 @@ impl Builder<'_> {
         let in_scope = self.ctes.len();
         let mut ctes = Vec::new();
         if let Some(with) = &query.with {
-            for definition in &with.ctes {
-                let cte = self.cte(definition)?;
+            for (index, definition) in with.ctes.iter().enumerate() {
+                // MariaDB reads a later expression there, MySQL a table.
+                if with.recursive
+                    && let Some(later) = (with.ctes[index + 1..].iter())
+                        .find(|later| recursive::reads(&definition.query, &later.name))
+                {
+                    let message = format!(
+                        "`{}`, the name of a common table expression after `{}` in `WITH \
+                         RECURSIVE`: not supported yet by Prisme",
+                        later.name.value, definition.name.value
+                    );
+                    return Err(self.error(message, definition.span));
+                }
+                let cte = if with.recursive && recursive::reads(&definition.query, &definition.name)
+                {
+                    self.recursive_cte(definition)?
+                } else {
+                    self.cte(definition)?
+                };
                 self.ctes.push(cte.clone());
                 ctes.push(cte);
             }
@@ -293,7 +312,7 @@ impl Builder<'_> {
             return Ok(body);
         }
         Ok(Plan::With(With {
-            recursive: false,
+            recursive: query.with.as_ref().is_some_and(|with| with.recursive),
             ctes,
             body: Box::new(body),
             span: query.with.as_ref().map(|with| with.span),
@@ -309,27 +328,142 @@ impl Builder<'_> {
         Ok(cte)
     }
 
+    /// Recursive common table expression, in a block of its own: a `UNION`
+    /// whose parts that do not read it, the anchors, are built first. Its
+    /// columns take the type of the anchors, nullable, which the other parts
+    /// read: MySQL and MariaDB store the rows of each iteration in columns of
+    /// that type (`crates/probe/cases/with-recursive.sql`).
+    fn recursive_cte(&mut self, definition: &CteDefinition) -> Result<Cte, BuildError> {
+        self.blocks.push(Block::default());
+        let cte = self.recursive_parts(definition);
+        self.blocks.pop();
+        cte
+    }
+
+    /// Parts of the recursive common table expression `definition`, joined
+    /// in the order written, then its sort and its limit.
+    fn recursive_parts(&mut self, definition: &CteDefinition) -> Result<Cte, BuildError> {
+        let (name, span, query) = (&definition.name, definition.span, &definition.query);
+        if query.with.is_some() {
+            return Err(self.error(
+                "`WITH` inside a recursive common table expression: not supported yet by Prisme",
+                span,
+            ));
+        }
+        let Some(parts) = recursive::union_parts(&query.body) else {
+            return Err(self.error(
+                "a recursive common table expression of another set operation than `UNION`: \
+                 not supported yet by Prisme",
+                span,
+            ));
+        };
+        let readings: Vec<CtePart> = (parts.iter())
+            .map(|part| recursive::part_reading(part.body, name))
+            .collect();
+        let reading: Vec<bool> = readings.iter().map(|part| part.recursive).collect();
+        if !reading.contains(&false) {
+            let message = format!(
+                "the recursive common table expression `{}` has no part that does not read it",
+                name.value
+            );
+            return Err(self.error(message, span));
+        }
+        if reading[0] && definition.columns.is_empty() {
+            return Err(self.error(
+                "a recursive common table expression read by its first part, without column \
+                 list: not supported yet by Prisme",
+                span,
+            ));
+        }
+        let mut plans = Vec::with_capacity(parts.len());
+        for (part, reads) in parts.iter().zip(&reading) {
+            plans.push(if *reads {
+                None
+            } else {
+                Some(self.body(part.body)?)
+            });
+        }
+        let schemas: Vec<_> = plans.iter().flatten().map(Plan::schema).collect();
+        let width = schemas[0].len();
+        if let Some(other) = schemas.iter().find(|schema| schema.len() != width) {
+            return Err(self.error(
+                format!(
+                    "the parts of the common table expression have {width} and {} columns",
+                    other.len()
+                ),
+                span,
+            ));
+        }
+        let first = plans.iter().flatten().next().expect("an anchor").clone();
+        let mut columns = Cte::new(name.clone(), definition.columns.clone(), first)
+            .map_err(|error| plan_error(&error, span))?;
+        for (index, column) in columns.schema.columns.iter_mut().enumerate() {
+            let anchors = schemas
+                .iter()
+                .map(|schema| &schema.columns[index].ty.data_type);
+            column.ty = Type::nullable(types::aggregate(anchors));
+        }
+        self.ctes.push(columns.clone());
+        let mut built = Vec::with_capacity(parts.len());
+        for (part, plan) in parts.iter().zip(plans) {
+            match plan.map_or_else(|| self.body(part.body), Ok) {
+                Ok(plan) => built.push(plan),
+                Err(error) => {
+                    self.ctes.pop();
+                    return Err(error);
+                }
+            }
+        }
+        self.ctes.pop();
+        let mut built = built.into_iter();
+        let mut plan = built.next().expect("a first part");
+        for (part, right) in parts.iter().skip(1).zip(built) {
+            let (all, union_span) = part.union.expect("a `UNION` before each later part");
+            let operator = if all {
+                SetOperator::UnionAll
+            } else {
+                SetOperator::UnionDistinct
+            };
+            plan = self.combine(operator, plan, right, union_span)?;
+        }
+        let plan = self.sorted(plan, &query.order_by)?;
+        if let Some(limit) = &query.limit {
+            self.check(Construct::RecursiveLimit, limit.span)?;
+        }
+        let plan = self.limit(plan, query.limit.as_ref())?;
+        let mut cte = Cte::new(name.clone(), definition.columns.clone(), plan)
+            .map_err(|error| plan_error(&error, span))?;
+        cte.schema = columns.schema;
+        cte.parts = readings;
+        cte.span = Some(span);
+        Ok(cte)
+    }
+
     /// Body of a query, then its sort and its limit.
     fn query_body(&mut self, query: &Query) -> Result<Plan, BuildError> {
         if let QueryBody::Select(select) = &query.body {
             return self.select(select, &query.order_by, query.limit.as_ref());
         }
         let plan = self.body(&query.body)?;
-        let plan = if query.order_by.is_empty() {
-            plan
-        } else {
-            // The keys after a `VALUES`, a `TABLE`, a set operation or a
-            // query between parentheses name its output columns.
-            let scope = Scope::new(plan.schema());
-            let outputs = scope.outputs();
-            let keys = self.sort_keys(&query.order_by, &scope, &outputs)?;
-            Plan::Sort(Sort {
-                input: Box::new(plan),
-                keys,
-                span: None,
-            })
-        };
+        let plan = self.sorted(plan, &query.order_by)?;
         self.limit(plan, query.limit.as_ref())
+    }
+
+    /// `plan` sorted by `order_by` when written: the keys after a `VALUES`,
+    /// a `TABLE`, a set operation or a query between parentheses name its
+    /// output columns.
+    fn sorted(&mut self, plan: Plan, order_by: &[OrderItem]) -> Result<Plan, BuildError> {
+        if order_by.is_empty() {
+            return Ok(plan);
+        }
+        let scope = Scope::new(plan.schema());
+        let outputs = scope.outputs();
+        let keys = self.sort_keys(order_by, &scope, &outputs)?;
+        Ok(Plan::Sort(Sort {
+            input: Box::new(plan),
+            keys,
+            span: None,
+        }))
     }
 
     /// Body of a query, without sort or limit of its own.
@@ -348,23 +482,6 @@ impl Builder<'_> {
     fn set_operation(&mut self, operation: &ast::SetOperation) -> Result<Plan, BuildError> {
         let left = self.body(&operation.left)?;
         let right = self.body(&operation.right)?;
-        let (left_schema, right_schema) = (left.schema(), right.schema());
-        if left_schema.len() != right_schema.len() {
-            return Err(self.error(
-                format!(
-                    "the sides of the set operation have {} and {} columns",
-                    left_schema.len(),
-                    right_schema.len()
-                ),
-                operation.span,
-            ));
-        }
-        let data_types = left_schema
-            .columns
-            .iter()
-            .zip(&right_schema.columns)
-            .map(|(left, right)| types::aggregate([&left.ty.data_type, &right.ty.data_type]))
-            .collect();
         let operator = match (operation.operator, operation.all) {
             (ast::SetOperator::Union, true) => SetOperator::UnionAll,
             (ast::SetOperator::Union, false) => SetOperator::UnionDistinct,
@@ -373,9 +490,37 @@ impl Builder<'_> {
             (ast::SetOperator::Intersect, true) => SetOperator::IntersectAll,
             (ast::SetOperator::Intersect, false) => SetOperator::IntersectDistinct,
         };
+        self.combine(operator, left, right, operation.span)
+    }
+
+    /// Set operation `operator` of `left` and `right`, at `span`.
+    fn combine(
+        &mut self,
+        operator: SetOperator,
+        left: Plan,
+        right: Plan,
+        span: Span,
+    ) -> Result<Plan, BuildError> {
+        let (left_schema, right_schema) = (left.schema(), right.schema());
+        if left_schema.len() != right_schema.len() {
+            return Err(self.error(
+                format!(
+                    "the sides of the set operation have {} and {} columns",
+                    left_schema.len(),
+                    right_schema.len()
+                ),
+                span,
+            ));
+        }
+        let data_types = left_schema
+            .columns
+            .iter()
+            .zip(&right_schema.columns)
+            .map(|(left, right)| types::aggregate([&left.ty.data_type, &right.ty.data_type]))
+            .collect();
         let mut node = SetOperation::new(operator, left, right, data_types)
-            .map_err(|error| plan_error(&error, operation.span))?;
-        node.span = Some(operation.span);
+            .map_err(|error| plan_error(&error, span))?;
+        node.span = Some(span);
         Ok(Plan::SetOperation(node))
     }
 

@@ -381,6 +381,21 @@ constructs:
   - id: with_recursive
     since: "8.0.1"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-1.html
+    comment: >-
+      The anchors come before the recursive parts (error 3574); a recursive
+      part reads the expression once, in its `FROM`, outside a derived table
+      and a subquery (error 3577), without `GROUP BY`, aggregate or window
+      (3575), nor `DISTINCT` (1235). The columns take the type of the anchors,
+      a `BIGINT` for an integer literal. Measured on each local image, 8.0.11
+      to 9.3.0 (crates/probe/cases/with-recursive.sql).
+  - id: recursive_limit
+    since: "8.0.19"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-19.html
+    comment: >-
+      `LIMIT` and `OFFSET` over the parts of a recursive common table
+      expression, which stop its iterations once the rows are found (Bug
+      #92857); error 1235 from 8.0.11 to 8.0.18, measured on each local image
+      (crates/probe/cases/with-recursive.sql).
   - id: window_functions
     since: "8.0.2"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-2.html

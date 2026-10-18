@@ -355,6 +355,15 @@ constructs:
   - id: with_recursive
     since: "10.2.2"
     source: https://mariadb.com/kb/en/recursive-common-table-expressions-overview/
+    comment: >-
+      Anchors and recursive parts in any order, but of two anchors in a row
+      after a recursive part, only the last is kept; a recursive part reads the
+      expression once, outside a subquery and the inner side of an outer join,
+      without aggregate or window (error 4008), a derived table and `GROUP BY`
+      allowed; no `ORDER BY` nor `LIMIT` over the parts (1235). The columns
+      take the type of the anchors, an `INT` for an integer literal of at most
+      9 digits. Measured on each local image, 10.6.28 to 11.8.9
+      (crates/probe/cases/with-recursive.sql).
   - id: window_functions
     since: "10.2.0"
     source: https://mariadb.com/kb/en/window-functions-overview/

@@ -31,8 +31,14 @@ impl Collector {
         let in_scope = self.ctes.len();
         if let Some(with) = &query.with {
             for definition in &with.ctes {
-                self.query(&definition.query);
-                self.ctes.push(definition.name.clone());
+                // A recursive expression reads itself.
+                if with.recursive {
+                    self.ctes.push(definition.name.clone());
+                    self.query(&definition.query);
+                } else {
+                    self.query(&definition.query);
+                    self.ctes.push(definition.name.clone());
+                }
             }
         }
         self.body(&query.body);

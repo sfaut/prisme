@@ -1,0 +1,118 @@
+# Recursive common table expressions (crates/probe/cases/with-recursive.sql):
+# the columns take the type of the anchors in both dialects, but MariaDB gives
+# an `INT` to an integer literal of at most 9 digits, MySQL a `BIGINT`
+# (rule `cte.recursive-type`); MySQL reads the anchors before the recursive
+# parts (`cte.recursive-order`); each dialect refuses parts the other reads
+# (`cte.recursive-part`, `cte.recursive-limit`), and fills a column of NULL
+# otherwise (`cte.recursive-null`).
+setup:
+  - DROP TABLE IF EXISTS with_recursive
+  - >-
+    CREATE TABLE with_recursive (id INT NOT NULL PRIMARY KEY, parent INT NULL,
+    name VARCHAR(20) NOT NULL, big BIGINT NOT NULL)
+  - >-
+    INSERT INTO with_recursive VALUES (1, NULL, 'root', 10), (2, 1, 'a', 20),
+    (3, 1, 'b', 30), (4, 2, 'c', 40), (5, 4, 'd', 50)
+cases:
+  - from: mysql
+    sql: >-
+      WITH RECURSIVE r (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r WHERE n < 5)
+      SELECT n FROM r ORDER BY n
+  - from: mariadb
+    sql: >-
+      WITH RECURSIVE r (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r WHERE n < 5)
+      SELECT n FROM r ORDER BY n
+  - from: mysql
+    sql: >-
+      WITH RECURSIVE r (id, path, big) AS (SELECT id, CAST(name AS CHAR(200)), big
+      FROM with_recursive WHERE parent IS NULL UNION ALL SELECT w.id,
+      CONCAT(r.path, '/', w.name), r.big + w.big FROM r JOIN with_recursive AS w ON
+      w.parent = r.id) SELECT id, path, big FROM r ORDER BY id
+  - from: mariadb
+    sql: >-
+      WITH RECURSIVE r (id, path) AS (SELECT id, CAST(name AS CHAR(200)) FROM
+      with_recursive WHERE parent IS NULL UNION ALL SELECT w.id, CONCAT(r.path, '/',
+      w.name) FROM r JOIN with_recursive AS w ON w.parent = r.id) SELECT id, path
+      FROM r ORDER BY id
+  # Beyond an `INT`: a `BIGINT` in MySQL, written `IF(FALSE, ...)` towards
+  # MariaDB.
+  - from: mysql
+    sql: >-
+      WITH RECURSIVE r (n, u, b) AS (SELECT 1, CAST(1 AS UNSIGNED), 1 = 1 UNION ALL
+      SELECT n * 1000, u * 1000, b * 1000 FROM r WHERE n < 1000000000000) SELECT n,
+      u, b FROM r ORDER BY n
+  - from: mysql
+    sql: >-
+      WITH RECURSIVE r AS (SELECT 1 AS n UNION ALL SELECT n * 1000 FROM r WHERE n <
+      1000000000000) SELECT * FROM r ORDER BY n
+  - from: mysql
+    sql: >-
+      WITH RECURSIVE r (n, a) AS (SELECT 1, 10 UNION ALL SELECT 2, 20 UNION ALL SELECT
+      n + 1, a * 100000 FROM r WHERE n < 4 UNION ALL SELECT n + 10, a FROM r WHERE n <
+      2) SELECT n, a FROM r ORDER BY n, a
+  - from: mysql
+    sql: >-
+      WITH RECURSIVE r (d) AS (SELECT DATE '2024-02-27' UNION ALL SELECT d + INTERVAL
+      1 DAY FROM r WHERE d < '2024-03-02') SELECT d FROM r ORDER BY d
+  - from: mariadb
+    sql: >-
+      WITH RECURSIVE r (n) AS (SELECT 1 UNION SELECT n % 2 + 1 FROM r) SELECT n FROM
+      r ORDER BY n
+  # The anchors after a recursive part, written first towards MySQL when
+  # MariaDB reads their order as the standard does.
+  - from: mariadb
+    sql: >-
+      WITH RECURSIVE r (n) AS (SELECT n + 1 FROM r WHERE n < 3 UNION ALL SELECT 1)
+      SELECT n FROM r ORDER BY n
+  - from: mariadb
+    sql: >-
+      WITH RECURSIVE r (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r WHERE n < 3 OR
+      n BETWEEN 10 AND 11 UNION ALL SELECT 10 UNION ALL SELECT n + 100 FROM r WHERE n
+      < 2) SELECT n FROM r ORDER BY n
+  - from: mariadb
+    sql: >-
+      WITH RECURSIVE r (n) AS (SELECT n + 1 FROM r WHERE n < 3 OR n BETWEEN 10 AND 11
+      UNION ALL (SELECT 1 UNION ALL SELECT 10)) SELECT n FROM r ORDER BY n
+  - from: mariadb
+    sql: >-
+      WITH RECURSIVE r (n) AS (SELECT n + 1 FROM r WHERE n < 3 OR n BETWEEN 10 AND 11
+      UNION ALL SELECT 1 UNION ALL SELECT 10) SELECT n FROM r ORDER BY n
+    refused: cte.recursive-order
+  - from: mariadb
+    sql: >-
+      WITH RECURSIVE r (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r WHERE n < 3
+      UNION SELECT 5) SELECT n FROM r ORDER BY n
+    refused: cte.recursive-order
+  # Parts one dialect refuses.
+  - from: mysql
+    inputs: mysql >= 8.0.19
+    sql: >-
+      WITH RECURSIVE r (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r WHERE n < 100
+      LIMIT 3) SELECT n FROM r ORDER BY n
+    refused: cte.recursive-limit
+  - from: mysql
+    sql: >-
+      WITH RECURSIVE r (n) AS (SELECT 1 UNION ALL SELECT r.n + 1 FROM with_recursive
+      AS w LEFT JOIN r ON w.id = r.n WHERE r.n < 3) SELECT n FROM r ORDER BY n
+    refused: cte.recursive-part
+  - from: mariadb
+    sql: >-
+      WITH RECURSIVE r (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM (SELECT n FROM r)
+      AS d WHERE n < 3) SELECT n FROM r ORDER BY n
+    refused: cte.recursive-part
+  - from: mariadb
+    sql: >-
+      WITH RECURSIVE r (n) AS (SELECT 1 UNION ALL SELECT DISTINCT n + 1 FROM r WHERE
+      n < 3) SELECT n FROM r ORDER BY n
+    refused: cte.recursive-part
+  # A column of NULL: error 1406 in MySQL, an empty string in MariaDB.
+  - from: mysql
+    sql: >-
+      WITH RECURSIVE r (n) AS (SELECT NULL UNION ALL SELECT 1 FROM r WHERE n IS NULL)
+      SELECT n FROM r ORDER BY n
+    refused: cte.recursive-null
+  - from: mariadb
+    sql: >-
+      WITH RECURSIVE r (n) AS (SELECT NULL UNION ALL SELECT 1 FROM r WHERE n IS NULL)
+      SELECT n FROM r ORDER BY n
+    refused: cte.recursive-null

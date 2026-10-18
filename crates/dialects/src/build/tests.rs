@@ -1039,3 +1039,82 @@ fn types_extract_as_a_nullable_integer() {
         );
     }
 }
+
+#[test]
+fn a_recursive_expression_takes_the_types_of_its_anchors() {
+    let text = "WITH RECURSIVE r (n, s, k) AS (SELECT 1, 'a', k FROM a UNION ALL \
+                SELECT n + 0.5, CONCAT(s, 'b'), k FROM r WHERE n < 3) SELECT * FROM r";
+    let int = DataType::Integer(IntegerType::signed(IntegerSize::Int));
+    let anchors = |first| {
+        vec![
+            (first, true),
+            (types::string_literal("a"), true),
+            (int.clone(), true),
+        ]
+    };
+    assert_eq!(column_types(text, Dialect::MySql), anchors(types::bigint()));
+    assert_eq!(column_types(text, Dialect::MariaDb), anchors(int.clone()));
+    // The anchors after a recursive part, as MariaDB writes them.
+    let text = "WITH RECURSIVE r (n) AS (SELECT n + 1 FROM r WHERE n < 3 UNION ALL SELECT 1) \
+                SELECT n FROM r";
+    assert_eq!(column_types(text, Dialect::MariaDb), [(int, true)]);
+}
+
+#[test]
+fn a_recursive_expression_needs_an_anchor_and_a_union() {
+    assert_eq!(
+        error("WITH RECURSIVE r (n) AS (SELECT n FROM r) SELECT n FROM r"),
+        "the recursive common table expression `r` has no part that does not read it"
+    );
+    assert_eq!(
+        plan_in(
+            "WITH RECURSIVE r (n) AS (SELECT 1 EXCEPT SELECT n FROM r) SELECT n FROM r",
+            Dialect::MariaDb
+        )
+        .unwrap_err()
+        .message,
+        "a recursive common table expression of another set operation than `UNION`: not \
+         supported yet by Prisme"
+    );
+    // `b` is a table for MySQL, the expression after it for MariaDB.
+    assert_eq!(
+        error("WITH RECURSIVE r (k) AS (SELECT k FROM b), b (k) AS (SELECT 1) SELECT k FROM r"),
+        "`b`, the name of a common table expression after `r` in `WITH RECURSIVE`: not \
+         supported yet by Prisme"
+    );
+    // A `WITH` without `RECURSIVE` reads the table.
+    assert!(
+        plan_in(
+            "WITH r (k) AS (SELECT k FROM b), b (k) AS (SELECT 1) SELECT k FROM r",
+            Dialect::MySql
+        )
+        .is_ok()
+    );
+    let limited = "WITH RECURSIVE r (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r WHERE n < 3 \
+                   LIMIT 2) SELECT n FROM r";
+    assert!(plan_at(limited, Dialect::MySql, Version::new(8, 0, 19)).is_ok());
+    assert_eq!(
+        plan_at(limited, Dialect::MySql, Version::new(8, 0, 18))
+            .unwrap_err()
+            .message,
+        "`LIMIT` in a recursive common table expression: from MySQL 8.0.19, chosen version 8.0.18"
+    );
+}
+
+#[test]
+fn lists_the_tables_outside_a_recursive_expression() {
+    let options = ParseOptions {
+        dialect: Dialect::MySql,
+        version: Version::new(8, 0, 19),
+        mode: SqlMode::default(),
+        conditional_version: Version::new(8, 0, 19),
+    };
+    let text = "WITH RECURSIVE r (k) AS (SELECT k FROM a UNION ALL SELECT r.k FROM r JOIN b \
+                ON b.k = r.k) SELECT k FROM r";
+    let parsed = parse(text, &options).unwrap();
+    let names: Vec<_> = referenced_tables(&parsed.statement)
+        .into_iter()
+        .map(|table| table.name.value)
+        .collect();
+    assert_eq!(names, ["a", "b"]);
+}

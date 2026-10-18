@@ -44,6 +44,9 @@ pub enum Construct {
     With,
     /// `WITH RECURSIVE`.
     WithRecursive,
+    /// `LIMIT` of a recursive common table expression, which stops its
+    /// iterations.
+    RecursiveLimit,
     /// Window functions (`OVER`).
     WindowFunctions,
     /// `JSON_TABLE`.
@@ -320,6 +323,7 @@ impl Construct {
         match self {
             Self::With => "`WITH`",
             Self::WithRecursive => "`WITH RECURSIVE`",
+            Self::RecursiveLimit => "`LIMIT` in a recursive common table expression",
             Self::WindowFunctions => "window functions",
             Self::JsonTable => "`JSON_TABLE`",
             Self::JsonArrow => "`->` operator",

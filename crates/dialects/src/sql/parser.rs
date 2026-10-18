@@ -415,7 +415,7 @@ impl Parser<'_> {
         self.check(Construct::With, Span::new(start, start + 4))?;
         let recursive = self.eat_keyword("RECURSIVE");
         if let Some(span) = recursive {
-            return Err(self.unsupported("`WITH RECURSIVE`", span));
+            self.check(Construct::WithRecursive, span)?;
         }
         let mut ctes = Vec::new();
         loop {
@@ -430,6 +430,9 @@ impl Parser<'_> {
             self.expect_punct(Punct::LeftParen)?;
             let query = self.query()?;
             self.expect_punct(Punct::RightParen)?;
+            if self.at_keyword("CYCLE") {
+                return Err(self.unsupported("`CYCLE`", self.here()));
+            }
             ctes.push(CteDefinition {
                 name,
                 columns,
@@ -441,7 +444,7 @@ impl Parser<'_> {
             }
         }
         Ok(With {
-            recursive: false,
+            recursive: recursive.is_some(),
             ctes,
             span: self.span_from(start),
         })

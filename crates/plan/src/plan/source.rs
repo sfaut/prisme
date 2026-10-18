@@ -142,8 +142,25 @@ pub struct Cte {
     pub plan: Plan,
     /// Columns, renamed by the column list, computed when built.
     pub schema: Schema,
+    /// Parts of the `UNION` of an expression that reads itself, in the order
+    /// written; empty for another expression.
+    pub parts: Vec<CtePart>,
     /// Position in the input.
     pub span: Option<Span>,
+}
+
+/// Part of the `UNION` of a recursive common table expression: an anchor,
+/// which gives the columns, or a recursive part, which reads the rows the
+/// iteration before it added.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CtePart {
+    /// The part reads the expression.
+    pub recursive: bool,
+    /// It reads it inside a derived table.
+    pub derived: bool,
+    /// It reads it on the inner side of an outer join (the right side of a
+    /// `LEFT JOIN`, the left side of a `RIGHT JOIN`).
+    pub outer_join: bool,
 }
 
 /// Subquery of the `FROM`, with its alias.
@@ -258,6 +275,7 @@ impl Cte {
             columns,
             plan,
             schema,
+            parts: Vec::new(),
             span: None,
         })
     }

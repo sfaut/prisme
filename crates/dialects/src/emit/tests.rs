@@ -3681,3 +3681,132 @@ fn in_of_a_json_list_is_read_as_the_input_reads_it() {
         assert!(rules.is_empty(), "{rules:?}");
     }
 }
+
+#[test]
+fn a_recursive_expression_keeps_its_form_in_its_dialect() {
+    let text = "WITH RECURSIVE r (n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM r WHERE n < 3) \
+                SELECT n FROM r";
+    for input in [mysql(), mariadb()] {
+        assert_eq!(
+            transpiled(text, input, output(input)),
+            (text.to_string(), vec![])
+        );
+    }
+    // MariaDB gives an `INT` to `1`, MySQL a `BIGINT`: wider.
+    assert_eq!(
+        transpiled(text, mariadb(), output(mysql())),
+        (text.to_string(), vec![])
+    );
+}
+
+#[test]
+fn the_integer_anchors_keep_the_bigint_of_mysql_towards_mariadb() {
+    let (sql, rules) = transpiled(
+        "WITH RECURSIVE r (x, a, n, u) AS (SELECT 1, a, n, CAST(1 AS UNSIGNED) FROM d, t \
+         UNION ALL SELECT x * 1000, a, n, u FROM r WHERE x < 1000000) SELECT x FROM r",
+        mysql(),
+        output(mariadb()),
+    );
+    assert_eq!(
+        sql,
+        "WITH RECURSIVE r (x, a, n, u) AS (SELECT IF(FALSE, -9223372036854775807, 1), a, n, \
+         IF(FALSE, 18446744073709551615, CAST(1 AS UNSIGNED)) FROM d, t UNION ALL SELECT \
+         x * 1000, a, n, u FROM r WHERE x < 1000000) SELECT x FROM r"
+    );
+    assert_eq!(rules, ["cte.recursive-type", "cte.recursive-type"]);
+    // Without column list, the anchor keeps its name.
+    let (sql, _) = transpiled(
+        "WITH RECURSIVE r AS (SELECT 1 UNION ALL SELECT `1` + 1 FROM r WHERE `1` < 3) \
+         SELECT * FROM r",
+        mysql(),
+        output(mariadb()),
+    );
+    assert_eq!(
+        sql,
+        "WITH RECURSIVE r AS (SELECT IF(FALSE, -9223372036854775807, 1) AS `1` UNION ALL \
+         SELECT `1` + 1 FROM r WHERE `1` < 3) SELECT * FROM r"
+    );
+}
+
+#[test]
+fn the_anchors_come_first_towards_mysql() {
+    let recursive = |parts: &str| format!("WITH RECURSIVE r (n) AS ({parts}) SELECT n FROM r");
+    let (sql, rules) = transpiled(
+        &recursive("SELECT n + 1 FROM r WHERE n < 3 UNION ALL SELECT 1"),
+        mariadb(),
+        output(mysql()),
+    );
+    assert_eq!(
+        sql,
+        recursive("SELECT 1 UNION ALL SELECT n + 1 FROM r WHERE n < 3")
+    );
+    assert_eq!(rules, ["cte.recursive-order"]);
+    let (sql, _) = transpiled(
+        &recursive("SELECT 1 UNION ALL SELECT n + 1 FROM r WHERE n < 3 UNION ALL SELECT 10"),
+        mariadb(),
+        output(mysql()),
+    );
+    assert_eq!(
+        sql,
+        recursive("SELECT 1 UNION ALL SELECT 10 UNION ALL SELECT n + 1 FROM r WHERE n < 3")
+    );
+    // Orders MariaDB reads otherwise than the standard, or refuses, and
+    // several operators.
+    for parts in [
+        "SELECT n + 1 FROM r WHERE n < 3 UNION ALL SELECT 1 UNION ALL SELECT 10",
+        "SELECT 1 UNION ALL SELECT n + 1 FROM r WHERE n < 3 UNION ALL SELECT 10 UNION ALL SELECT 20",
+        "SELECT n + 1 FROM r WHERE n < 3 UNION ALL SELECT 1 UNION ALL SELECT n + 10 FROM r",
+        "SELECT 1 UNION ALL SELECT n + 1 FROM r WHERE n < 3 UNION SELECT 5",
+    ] {
+        assert_eq!(
+            errors(&recursive(parts), mariadb(), output(mysql())),
+            ["cte.recursive-order"],
+            "{parts}"
+        );
+    }
+}
+
+#[test]
+fn the_recursive_parts_one_dialect_refuses_are_errors() {
+    let recursive =
+        |part: &str| format!("WITH RECURSIVE r (n) AS (SELECT 1 UNION ALL {part}) SELECT n FROM r");
+    let limited = recursive("SELECT n + 1 FROM r WHERE n < 3 LIMIT 2");
+    assert_eq!(
+        errors(&limited, mysql(), output(mariadb())),
+        ["cte.recursive-limit"]
+    );
+    assert_eq!(
+        errors(&limited, mysql(), output(mysql_at(8, 0, 18))),
+        ["cte.recursive-limit"]
+    );
+    assert_eq!(
+        errors(
+            &recursive("SELECT r.n + 1 FROM t LEFT JOIN r ON t.a = r.n WHERE r.n < 3"),
+            mysql(),
+            output(mariadb())
+        ),
+        ["cte.recursive-part"]
+    );
+    for part in [
+        "SELECT n + 1 FROM (SELECT n FROM r) AS d WHERE n < 3",
+        "SELECT DISTINCT n + 1 FROM r WHERE n < 3",
+        "SELECT n + 1 FROM r WHERE n < 3 GROUP BY n",
+    ] {
+        assert_eq!(
+            errors(&recursive(part), mariadb(), output(mysql())),
+            ["cte.recursive-part"],
+            "{part}"
+        );
+    }
+    let null = "WITH RECURSIVE r (n) AS (SELECT NULL UNION ALL SELECT 1 FROM r WHERE n IS NULL) \
+                SELECT n FROM r";
+    assert_eq!(
+        errors(null, mysql(), output(mariadb())),
+        ["cte.recursive-null"]
+    );
+    assert_eq!(
+        errors(null, mariadb(), output(mysql())),
+        ["cte.recursive-null"]
+    );
+    assert!(errors(null, mysql(), output(mysql())).is_empty());
+}

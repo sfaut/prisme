@@ -11,7 +11,8 @@
 //! parentheses their nesting needs; the aggregation and the windows are
 //! written by the `call` module, the calls to scalar functions and the names
 //! of the built-in functions by the `builtin` module, with the rules of the
-//! functions (`rules` module).
+//! functions (`rules` module); the recursive common table expressions by the
+//! `recursive` module.
 //!
 //! Literals are written as in the input when the output reads them the same
 //! way (same SQL mode for the quotes and the backslashes), otherwise in a
@@ -36,6 +37,7 @@ mod json;
 mod literal;
 mod parentheses;
 mod predicate;
+mod recursive;
 mod rules;
 mod source;
 mod string;
@@ -451,7 +453,12 @@ impl Emitter<'_> {
             }
             self.write(" AS (");
             let top = std::mem::replace(&mut self.top, false);
-            self.query(&cte.plan, cte.columns.is_empty());
+            if cte.parts.is_empty() {
+                self.query(&cte.plan, cte.columns.is_empty());
+            } else {
+                let plan = self.recursive_plan(cte);
+                self.query(&plan, cte.columns.is_empty());
+            }
             self.top = top;
             self.write(")");
         }
