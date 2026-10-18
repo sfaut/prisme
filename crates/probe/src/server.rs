@@ -172,11 +172,14 @@ impl Server {
                 .args(["run", "--detach", "--name", &self.container, "--env"])
                 .arg(format!("{variable}={PASSWORD}"))
                 .arg(&self.image)
+                // The identifier of the container, out of the measures.
+                .stdout(Stdio::null())
                 .status()
         } else if running.trim() != "true" {
             eprintln!("{}: starting the container", self.container);
             Command::new("docker")
                 .args(["start", &self.container])
+                .stdout(Stdio::null())
                 .status()
         } else {
             return Ok(false);
