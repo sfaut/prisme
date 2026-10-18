@@ -710,7 +710,7 @@ fn constructs_missing_in_the_output_are_rewritten_or_emulated() {
     let (sql, rules) = transpiled(
         "SELECT a FROM t UNION ALL (SELECT a FROM u UNION SELECT 1)",
         input,
-        output(mysql_at(8, 0, 21)),
+        output(mysql_at(8, 0, 30)),
     );
     assert_eq!(
         sql,

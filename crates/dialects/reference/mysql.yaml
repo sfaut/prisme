@@ -422,8 +422,15 @@ constructs:
     since: "8.0.19"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-19.html
   - id: nested_set_operation
-    since: "8.0.22"
-    source: https://dev.mysql.com/doc/refman/8.0/en/parenthesized-query-expressions.html
+    since: "8.0.31"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-31.html
+    comment: >-
+      A set operation between parentheses as a right operand
+      (`SELECT 1 UNION (SELECT 2 UNION SELECT 3)`), WL #11350
+      (docs/sources/mysql/8.0.31.md): error 1064 from 8.0.11 to 8.0.18, 1235
+      from 8.0.19 to 8.0.30, accepted from 8.0.31. Measured on each local
+      image, 8.0.11 to 8.0.28, 8.0.30, 8.0.31, 8.1.0, 8.4.11 and 9.3.0
+      (crates/probe/cases/nested-set-operations.sql).
   - id: rollup_order_by
     since: "8.0.12"
     source: https://dev.mysql.com/doc/refman/8.0/en/group-by-modifiers.html

@@ -1247,9 +1247,9 @@ fn set_operations_follow_the_versions() {
     );
     let (message, at) = error(
         "SELECT 1 UNION (SELECT 2 UNION SELECT 3)",
-        &mysql_at(8, 0, 21),
+        &mysql_at(8, 0, 30),
     );
-    assert!(message.contains("8.0.22"), "{message}");
+    assert!(message.contains("8.0.31"), "{message}");
     assert_eq!(at, "SELECT 2 UNION SELECT 3");
     assert_eq!(error("TABLE t", &mariadb()).1, "TABLE");
 }
