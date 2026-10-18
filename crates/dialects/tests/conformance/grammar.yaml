@@ -1,5 +1,5 @@
 # Rules of the grammar: `table.select`, `derived.columns`, `derived.lateral`,
-# `set.nested`, `set.operator`, `window.order`, `window.definitions`,
+# `set.nested`, `limit.nested`, `set.operator`, `window.order`, `window.definitions`,
 # `window.default`, `rollup.order`, `values.form`, `values.union` and
 # `column.implicit-name`.
 setup:
@@ -26,6 +26,23 @@ cases:
   # set.nested
   - from: mariadb
     sql: SELECT id FROM grammar WHERE id = 1 UNION (SELECT id FROM grammar WHERE id = 2 UNION SELECT 3) ORDER BY id
+  # limit.nested
+  - from: mariadb
+    sql: (SELECT id FROM grammar ORDER BY id LIMIT 2) LIMIT 5
+  - from: mariadb
+    sql: (SELECT id FROM grammar ORDER BY id LIMIT 3) LIMIT 5 OFFSET 1
+  - from: mariadb
+    sql: (SELECT id FROM grammar UNION SELECT 9 ORDER BY 1 LIMIT 2) ORDER BY 1 DESC
+  - from: mysql
+    inputs: mysql >= 8.0.31
+    sql: (SELECT id FROM grammar ORDER BY id LIMIT 2) LIMIT 5
+  - from: mysql
+    inputs: mysql < 8.0.31
+    sql: (SELECT id FROM grammar ORDER BY id LIMIT 2) LIMIT 5
+    refused: limit.nested
+  - from: mysql
+    sql: (SELECT id FROM grammar ORDER BY id LIMIT 3) LIMIT 5 OFFSET 1
+    refused: limit.nested
   # set.operator
   - from: mariadb
     outputs: mysql >= 8.0.31

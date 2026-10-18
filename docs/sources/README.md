@@ -19,7 +19,8 @@ the URL of the document it comes from. A page is never kept raw.
   ```
 
   The page is downloaded into a temporary folder, outside the repository.
-- `mysql/<subject>.md`: excerpt of the source code of MySQL, with the tag and
-  the line of each version.
+- `mysql/<subject>.md`: excerpts on a subject: source code of MySQL, with the
+  tag and the line of each version, tickets of bugs.mysql.com, pages of the
+  manual.
 - `mariadb/MDEV-<n>.md`: ticket of MariaDB, its fix versions and what it was
   consulted for.

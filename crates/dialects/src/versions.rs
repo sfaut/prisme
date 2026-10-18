@@ -190,6 +190,21 @@ pub enum Construct {
     /// `COALESCE` and `NULLIF`, all results being such literals, read as a
     /// number (MariaDB), as a string before.
     HybridResultNumber,
+    /// An outer `LIMIT` keeping the `ORDER BY` of a query between
+    /// parentheses (MySQL), dropped before.
+    ParenthesizedOrderKept,
+    /// An outer `LIMIT` keeping the `LIMIT` of a query between parentheses
+    /// (MySQL), overridden before.
+    ParenthesizedLimitKept,
+    /// An outer `OFFSET` counted from the rows of a query between
+    /// parentheses bounded by its own `LIMIT` (MariaDB).
+    ParenthesizedOffsetKept,
+    /// A set operation between parentheses with its own `ORDER BY` or
+    /// `LIMIT`, followed by another (MySQL, refused from 8.0.19 to 8.0.30).
+    ParenthesizedSetLimit,
+    /// An outer `ORDER BY` sorting the rows of a set operation between
+    /// parentheses after its own `LIMIT` (MySQL), before it earlier.
+    ParenthesizedSetOrder,
     /// `utf8mb4_uca1400_ai_ci` as the default collation of `utf8mb4`
     /// (MariaDB).
     Utf8mb4Uca1400,
@@ -369,6 +384,21 @@ impl Construct {
             Self::HexLongZero => "a hexadecimal literal of more than 8 bytes read as 0",
             Self::HybridResultNumber => {
                 "a hexadecimal literal as a result of a conditional function read as a number"
+            }
+            Self::ParenthesizedOrderKept => {
+                "an outer `LIMIT` keeping the `ORDER BY` of a query between parentheses"
+            }
+            Self::ParenthesizedLimitKept => {
+                "an outer `LIMIT` keeping the `LIMIT` of a query between parentheses"
+            }
+            Self::ParenthesizedOffsetKept => {
+                "an outer `OFFSET` counted from the rows of a query between parentheses"
+            }
+            Self::ParenthesizedSetLimit => {
+                "a set operation between parentheses with its own `ORDER BY` or `LIMIT`, followed by another"
+            }
+            Self::ParenthesizedSetOrder => {
+                "an outer `ORDER BY` after the `LIMIT` of a set operation between parentheses"
             }
             Self::Utf8mb4Uca1400 => "`utf8mb4_uca1400_ai_ci` as the default collation of `utf8mb4`",
             Self::UnicodeUca1400 => {

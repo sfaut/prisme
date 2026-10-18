@@ -431,6 +431,47 @@ constructs:
       from 8.0.19 to 8.0.30, accepted from 8.0.31. Measured on each local
       image, 8.0.11 to 8.0.28, 8.0.30, 8.0.31, 8.1.0, 8.4.11 and 9.3.0
       (crates/probe/cases/nested-set-operations.sql).
+  # Query between parentheses with its own `ORDER BY` or `LIMIT`, followed by
+  # an outer one (crates/probe/cases/parenthesized-limits.sql, measured on each
+  # local image, 8.0.11 to 8.0.28, 8.0.30, 8.0.31, 8.1.0, 8.4.11 and 9.3.0;
+  # docs/sources/mysql/parenthesized-limits.md). An outer `OFFSET` over an
+  # inner `LIMIT` counts from the start of the inner rows in every version
+  # (construct `parenthesized_offset_kept`, absent).
+  - id: parenthesized_order_kept
+    since: "8.0.19"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-19.html
+    comment: >-
+      `(SELECT a FROM t ORDER BY a DESC LIMIT 2) LIMIT 5` keeps the order of
+      the query between parentheses (Bug #30521098, docs/sources/mysql/8.0.19.md);
+      the outer `LIMIT` drops it before.
+  - id: parenthesized_limit_kept
+    since: "8.0.31"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-31.html
+    comment: >-
+      `(SELECT a FROM t LIMIT 2) LIMIT 5` gives 2 rows at most (WL #11350,
+      Bug #103954); before, the outer `LIMIT` overrides the inner one, its
+      offset included (5 rows).
+  - id: parenthesized_set_limit
+    since: "8.0.11"
+    until: "8.0.19"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-31.html
+    comment: >-
+      `(SELECT a FROM t UNION SELECT 6 ORDER BY 1 LIMIT 2) LIMIT 5`: refused
+      from 8.0.19 to 8.0.30 (error 1235), with an outer `ORDER BY` or
+      `LIMIT`, accepted before and after.
+  - id: parenthesized_set_limit
+    since: "8.0.31"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-31.html
+    comment: >-
+      Accepted again from 8.0.31 (WL #11350).
+  - id: parenthesized_set_order
+    since: "8.0.19"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-19.html
+    comment: >-
+      `(SELECT a FROM t UNION SELECT 6 ORDER BY 1 LIMIT 2) ORDER BY 1 DESC`:
+      up to 8.0.18, the outer `ORDER BY` sorts the rows of the union before
+      its `LIMIT` (6, 5); refused from 8.0.19 to 8.0.30
+      (`parenthesized_set_limit`), 2, 1 from 8.0.31.
   - id: rollup_order_by
     since: "8.0.12"
     source: https://dev.mysql.com/doc/refman/8.0/en/group-by-modifiers.html

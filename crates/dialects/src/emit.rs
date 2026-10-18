@@ -34,6 +34,7 @@ mod hexadecimal;
 mod interval;
 mod json;
 mod literal;
+mod parentheses;
 mod predicate;
 mod rules;
 mod source;
@@ -482,10 +483,8 @@ impl Emitter<'_> {
             }
             Plan::Scan(_) | Plan::CteRef(_) => self.table_statement(inner, compared),
             _ if sort.is_some() || limit.is_some() => {
-                self.write("(");
                 self.compared_rows = compared;
-                self.query(inner, names_matter);
-                self.write(")");
+                self.parenthesized(inner, sort, limit, names_matter);
             }
             _ => {
                 self.error(
@@ -728,19 +727,12 @@ impl Emitter<'_> {
     /// between parentheses: read from a derived table, whose columns need
     /// distinct names.
     fn nested_set_operation(&mut self, plan: &Plan) {
-        let schema = plan.schema();
-        let names = &schema.columns;
-        let duplicate = names.iter().enumerate().any(|(index, column)| {
-            names[..index]
-                .iter()
-                .any(|other| other.name.value.eq_ignore_ascii_case(&column.name.value))
-        });
         let message = format!(
             "{} has no {}",
             self.target(),
             Construct::NestedSetOperation.label()
         );
-        if duplicate {
+        if self.has_duplicate_names(plan) {
             let message =
                 format!("{message}, and its columns have the same names: not supported yet");
             self.error("set.nested", &message, plan.span());

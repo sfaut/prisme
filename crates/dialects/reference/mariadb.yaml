@@ -367,6 +367,38 @@ constructs:
   - id: nested_set_operation
     since: "10.4.0"
     source: https://jira.mariadb.org/browse/MDEV-11953
+  # Query between parentheses with its own `ORDER BY` or `LIMIT`, followed by
+  # an outer one, read by the standard: measured on each local image, 10.5.29
+  # to 11.8.9 (crates/probe/cases/parenthesized-limits.sql).
+  - id: parenthesized_order_kept
+    since: "10.4.0"
+    source: https://jira.mariadb.org/browse/MDEV-11953
+    comment: >-
+      `(SELECT a FROM t ORDER BY a DESC LIMIT 2) LIMIT 5` keeps the order of
+      the query between parentheses.
+  - id: parenthesized_limit_kept
+    since: "10.4.0"
+    source: https://jira.mariadb.org/browse/MDEV-11953
+    comment: >-
+      `(SELECT a FROM t LIMIT 2) LIMIT 5` gives 2 rows at most.
+  - id: parenthesized_offset_kept
+    since: "10.4.0"
+    source: https://jira.mariadb.org/browse/MDEV-11953
+    comment: >-
+      `(SELECT a FROM t ORDER BY a LIMIT 3) LIMIT 5 OFFSET 1` gives the
+      second and third rows, from the 3 rows between parentheses.
+  - id: parenthesized_set_limit
+    since: "10.4.0"
+    source: https://jira.mariadb.org/browse/MDEV-11953
+    comment: >-
+      `(SELECT a FROM t UNION SELECT 6 ORDER BY 1 LIMIT 2) LIMIT 5` gives 2
+      rows.
+  - id: parenthesized_set_order
+    since: "10.4.0"
+    source: https://jira.mariadb.org/browse/MDEV-11953
+    comment: >-
+      `(SELECT a FROM t UNION SELECT 6 ORDER BY 1 LIMIT 2) ORDER BY 1 DESC`
+      gives 2, 1.
   - id: derived_column_list
     since: "11.7.1"
     source: https://jira.mariadb.org/browse/MDEV-31466

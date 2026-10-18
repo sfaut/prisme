@@ -692,6 +692,100 @@ fn set_operations_keep_the_parentheses_their_precedence_needs() {
 }
 
 #[test]
+fn limits_between_parentheses_are_read_as_the_input_reads_them() {
+    let limited = "(SELECT a FROM t ORDER BY a LIMIT 2) LIMIT 5";
+    let derived = "SELECT * FROM (SELECT a FROM t ORDER BY a LIMIT 2) AS `d` LIMIT 5";
+    // MySQL lets the outer limit override the inner one before 8.0.31.
+    let (sql, rules) = transpiled(limited, mariadb(), output(mysql_at(8, 0, 30)));
+    assert_eq!((sql.as_str(), rules), (derived, vec!["limit.nested"]));
+    let (sql, rules) = transpiled(limited, mariadb(), output(mysql_at(8, 0, 31)));
+    assert_eq!((sql.as_str(), rules), (limited, vec![]));
+    // An outer offset counts from the start of the inner rows from 8.0.31.
+    let (sql, rules) = transpiled(
+        "(SELECT a FROM t LIMIT 3) LIMIT 5 OFFSET 1",
+        mariadb(),
+        output(mysql_at(8, 4, 0)),
+    );
+    assert_eq!(
+        (sql.as_str(), rules),
+        (
+            "SELECT * FROM (SELECT a FROM t LIMIT 3) AS `d` LIMIT 5 OFFSET 1",
+            vec!["limit.nested"]
+        )
+    );
+    let zero = "(SELECT a FROM t LIMIT 3) LIMIT 5 OFFSET 0";
+    let (sql, rules) = transpiled(zero, mariadb(), output(mysql_at(8, 4, 0)));
+    assert_eq!((sql.as_str(), rules), (zero, vec![]));
+    // An outer order and an operand read alike everywhere.
+    for text in [
+        "(SELECT a FROM t ORDER BY a LIMIT 2) ORDER BY a DESC LIMIT 1 OFFSET 1",
+        "(SELECT a FROM t LIMIT 2) UNION ALL (SELECT a FROM u LIMIT 1) LIMIT 5",
+    ] {
+        let (sql, rules) = transpiled(text, mariadb(), output(mysql_at(8, 0, 30)));
+        assert_eq!((sql.as_str(), rules), (text, vec![]), "{text}");
+    }
+    // A set operation between parentheses with its own limit, refused from
+    // 8.0.19 to 8.0.30.
+    let (sql, rules) = transpiled(
+        "(SELECT a FROM t UNION SELECT a FROM u LIMIT 2) ORDER BY a DESC",
+        mariadb(),
+        output(mysql_at(8, 0, 25)),
+    );
+    assert_eq!(
+        sql,
+        "SELECT * FROM (SELECT a FROM t UNION SELECT a FROM u LIMIT 2) AS `d` ORDER BY a DESC"
+    );
+    assert_eq!(rules, ["limit.nested"]);
+    // Up to 8.0.18, the outer order sorts the union before its limit.
+    let (_, rules) = transpiled(
+        "(SELECT a FROM t UNION SELECT a FROM u LIMIT 2) ORDER BY a DESC",
+        mariadb(),
+        output(mysql_at(8, 0, 18)),
+    );
+    assert_eq!(rules, ["limit.nested"]);
+    // Each level of parentheses.
+    let (sql, _) = transpiled(
+        "((SELECT a FROM t LIMIT 3) LIMIT 2) LIMIT 5",
+        mariadb(),
+        output(mysql_at(8, 0, 30)),
+    );
+    assert_eq!(
+        sql,
+        "SELECT * FROM (SELECT * FROM (SELECT a FROM t LIMIT 3) AS `d` LIMIT 2) AS `d` LIMIT 5"
+    );
+    // Between versions that read it alike, as written; otherwise an error.
+    let (sql, rules) = transpiled(limited, mysql_at(8, 0, 28), output(mysql_at(8, 0, 30)));
+    assert_eq!((sql.as_str(), rules), (limited, vec![]));
+    assert_eq!(
+        errors(limited, mysql_at(8, 0, 28), output(mariadb())),
+        ["limit.nested"]
+    );
+    assert_eq!(
+        errors(limited, mysql_at(8, 0, 18), output(mysql_at(8, 0, 28))),
+        ["limit.nested"]
+    );
+    // An order without limit between parentheses folds into one block.
+    let (sql, rules) = transpiled(
+        "(SELECT a FROM t ORDER BY a DESC) LIMIT 2",
+        mariadb(),
+        output(mysql_at(8, 0, 22)),
+    );
+    assert_eq!(
+        (sql.as_str(), rules),
+        ("SELECT a FROM t ORDER BY a DESC LIMIT 2", vec![])
+    );
+    // A derived table needs distinct column names.
+    assert_eq!(
+        errors(
+            "(SELECT a, a FROM t LIMIT 2) LIMIT 5",
+            mariadb(),
+            output(mysql_at(8, 0, 30))
+        ),
+        ["limit.nested"]
+    );
+}
+
+#[test]
 fn constructs_missing_in_the_output_are_rewritten_or_emulated() {
     let (sql, rules) = transpiled("TABLE t", mysql(), output(mariadb()));
     assert_eq!(sql, "SELECT * FROM t");
