@@ -4,8 +4,10 @@
 //! reference file of its dialect (`builtins` module): the function of the
 //! same name of the output, another name, a rule of Prisme, or an explicit
 //! error, the function being absent from the output, untranslatable or not
-//! studied yet. The output must have the function in the version of the
-//! server.
+//! studied yet. A function of the same name may read the arguments of some
+//! types otherwise: such an argument, or one of a type unknown to Prisme, is
+//! an error (`function.argument`). The output must have the function in the
+//! version of the server.
 //!
 //! A call written with an arrow of MySQL (`c->'$.a'`, `c->>'$.a'`) keeps
 //! its arrow towards an output that has it, as long as it reads a column and
@@ -19,12 +21,12 @@
 //! must be named.
 
 use prisme_plan::{CallForm, Expr, ExprKind, FunctionCall, Ident, Span};
-use prisme_types::Value;
+use prisme_types::{DataType, Value};
 
 use super::Emitter;
 use super::hexadecimal::reads_bytes;
 use super::json::reads_json_as_is;
-use crate::builtins::{self, Kind, Rule, Translation};
+use crate::builtins::{self, ArgumentType, Kind, Rule, Translation};
 use crate::keywords;
 use crate::report::StepKind;
 use crate::versions::Construct;
@@ -64,7 +66,7 @@ impl Emitter<'_> {
             self.stored_call(expr, call);
             return;
         }
-        match self.builtin_target(&call.name, true, expr.span) {
+        match self.builtin_target(&call.name, Some(&call.args), expr.span) {
             Some(Target::Name(name)) => {
                 if !self.json_arrow(call) {
                     let form = self.builtin_form(&name, &call.name, expr.span);
@@ -113,7 +115,7 @@ impl Emitter<'_> {
     /// Name under which the output writes the built-in aggregate or window
     /// function `name` of the input; the name of the input after an error.
     pub(super) fn builtin_name(&mut self, name: &Ident, span: Option<Span>) -> String {
-        match self.builtin_target(name, false, span) {
+        match self.builtin_target(name, None, span) {
             Some(Target::Name(written)) => written,
             // The writer of the call checks its argument (`bitwise` module).
             Some(Target::Rule(Rule::BitAggregate)) => name.value.clone(),
@@ -126,8 +128,14 @@ impl Emitter<'_> {
     }
 
     /// How the output writes the built-in function `name` of the input,
-    /// called without a window when `scalar`; `None` after an error.
-    fn builtin_target(&mut self, name: &Ident, scalar: bool, span: Option<Span>) -> Option<Target> {
+    /// called without a window with `args` when they are given; `None` after
+    /// an error.
+    fn builtin_target(
+        &mut self,
+        name: &Ident,
+        args: Option<&[Expr]>,
+        span: Option<Span>,
+    ) -> Option<Target> {
         let input = self.source.dialect;
         let output = self.output.dialect;
         let upper = name.value.to_ascii_uppercase();
@@ -140,7 +148,7 @@ impl Emitter<'_> {
         }
         // Without a window, `LAST_VALUE` of MariaDB is a scalar function of
         // its own.
-        if scalar && builtin.is_some_and(|builtin| builtin.kind != Kind::Scalar) {
+        if args.is_some() && builtin.is_some_and(|builtin| builtin.kind != Kind::Scalar) {
             let message = format!("{of} without a window: absent from {}", output.label());
             self.error("function.absent", &message, span);
             return None;
@@ -169,6 +177,24 @@ impl Emitter<'_> {
             Some(Translation::Same) => self
                 .available(&upper, span)
                 .then(|| Target::Name(name.value.clone())),
+            Some(Translation::SameExcept { types, reason }) => {
+                let refused = args.unwrap_or_default().iter().find(|arg| {
+                    let data_type = &arg.ty.data_type;
+                    *data_type == DataType::Unknown
+                        || types.iter().any(|kind| kind.matches(data_type))
+                });
+                if let Some(arg) = refused {
+                    let argument = argument_label(&arg.ty.data_type, types);
+                    let message = format!(
+                        "{of} with {argument}: untranslatable to {}, {reason}",
+                        output.label()
+                    );
+                    self.error("function.argument", &message, arg.span.or(span));
+                    return None;
+                }
+                self.available(&upper, span)
+                    .then(|| Target::Name(name.value.clone()))
+            }
             Some(Translation::Name(other)) => {
                 let message = format!("{of}: named `{other}` in {}", output.label());
                 self.step("function.name", StepKind::Rewrite, message, span);
@@ -362,5 +388,24 @@ impl Emitter<'_> {
             self.output.dialect.label()
         );
         self.error(rule.id(), &message, span);
+    }
+}
+
+/// Argument of `data_type`, refused among `types`, for the messages.
+fn argument_label(data_type: &DataType, types: &[ArgumentType]) -> String {
+    let wide = types
+        .iter()
+        .any(|kind| *kind == ArgumentType::WideDecimal && kind.matches(data_type));
+    match data_type {
+        DataType::Unknown => {
+            "an argument of a type unknown to Prisme (a function, a system variable)".to_string()
+        }
+        DataType::Decimal(_) if wide => "a `DECIMAL` of more than 15 digits".to_string(),
+        DataType::Date => "a `DATE`".to_string(),
+        DataType::Time { .. } => "a `TIME`".to_string(),
+        DataType::DateTime { .. } => "a `DATETIME`".to_string(),
+        DataType::Timestamp { .. } => "a `TIMESTAMP`".to_string(),
+        DataType::Float(_) => "a floating point number".to_string(),
+        _ => "an argument of this type".to_string(),
     }
 }

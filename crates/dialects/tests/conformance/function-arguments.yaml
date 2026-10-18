@@ -1,0 +1,25 @@
+# Rule `function.argument`: a function of the same name in both dialects,
+# whose results differ for the arguments of some types (`same_except` in the
+# reference files): a date or a time in `STRCMP`, a floating point number and
+# a `DECIMAL` of more than 15 digits in `HEX`.
+cases:
+  - from: mysql
+    sql: >-
+      SELECT STRCMP(s, 'Hello') AS a, STRCMP(s, 'Hello World') AS b, HEX(i) AS c, HEX(n) AS e,
+      HEX(12.5) AS g, HEX(9223372036854775808) AS h, HEX(99999999999999.5) AS j FROM sample
+  - from: mariadb
+    sql: >-
+      SELECT STRCMP(s, 'Hello') AS a, STRCMP(s, 'Hello World') AS b, HEX(i) AS c, HEX(n) AS e,
+      HEX(12.5) AS g, HEX(9223372036854775808) AS h, HEX(99999999999999.5) AS j FROM sample
+  - from: mysql
+    sql: SELECT STRCMP(d, 20240506) AS v FROM sample
+    refused: function.argument
+  - from: mariadb
+    sql: SELECT STRCMP(t, '10:20:30') AS v FROM sample
+    refused: function.argument
+  - from: mysql
+    sql: SELECT HEX(f) AS v FROM sample
+    refused: function.argument
+  - from: mariadb
+    sql: SELECT HEX(123456789012345678.5) AS v
+    refused: function.argument

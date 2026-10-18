@@ -823,6 +823,12 @@ constructs:
 #   same               the function of the same name of MySQL gives the same
 #                      results (its availability comes from the reference
 #                      file of MySQL);
+#   same_except: [types]
+#   reason: reason     the same, but for an argument of one of these types
+#                      (temporal: a date or a time; float: a FLOAT or a
+#                      DOUBLE; wide_decimal: a DECIMAL of more than 15
+#                      digits), or of a type unknown to Prisme: an explicit
+#                      error, for this reason (rule `function.argument`);
 #   { name: X }        another name, same arguments and results;
 #   { rule: id }       a rule of Prisme writes it (`emit::builtin`), each
 #                      with its test and its step in the report;
@@ -1145,7 +1151,9 @@ functions:
       - name: FROM_BASE64
         mysql: same
       - name: HEX
-        mysql: same
+        mysql:
+          same_except: [float, wide_decimal]
+          reason: "MySQL rounds a floating point number half to even, MariaDB half away from zero (`HEX(2.5e0)` gives 2 in MySQL 8.4.11, 3 in MariaDB 11.8.9), MariaDB reads a `DECIMAL` of more than 15 digits as a `DOUBLE` (`HEX(123456789012345678.5)` gives 1B69B4BA630F34F in MySQL 8.4.11, 1B69B4BA630F350 in MariaDB 11.8.9), and MySQL bounds a number to the range of `BIGINT` (`HEX(18446744073709551616)` gives 7FFFFFFFFFFFFFFF in MySQL 8.4.11, FFFFFFFFFFFFFFFF in MariaDB 11.8.9)"
       - name: INSERT
         grammar: true
         mysql: same
@@ -1217,7 +1225,9 @@ functions:
       - name: SPACE
         mysql: same
       - name: STRCMP
-        mysql: same
+        mysql:
+          same_except: [temporal]
+          reason: "MySQL and MariaDB compare a date or a time with the other argument otherwise (`STRCMP(d, 20240506)`, `d` a `DATE` of 2024-05-06, gives 1 in MySQL 8.4.11, -1 in MariaDB 11.8.9)"
       - name: SUBSTR
         grammar: true
         touching: true

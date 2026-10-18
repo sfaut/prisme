@@ -1104,6 +1104,37 @@ fn built_in_functions_follow_the_reference_files() {
 }
 
 #[test]
+fn arguments_the_dialects_read_otherwise_are_errors() {
+    for (input, other) in [(mysql(), mariadb()), (mariadb(), mysql())] {
+        for text in [
+            "SELECT STRCMP(s, 'x'), HEX(s), HEX(vb), BIN(1), OCT(s), CHARSET(s) FROM g",
+            "SELECT HEX(i), HEX(p), HEX(9223372036854775808), HEX(99999999999999.5) FROM d",
+        ] {
+            let (sql, rules) = transpiled(text, input, output(other));
+            assert_eq!(sql, text);
+            assert!(rules.is_empty(), "{text}: {rules:?}");
+        }
+        for text in [
+            "SELECT STRCMP(dd, 'x') FROM g",
+            "SELECT STRCMP('x', tm) FROM g",
+            "SELECT STRCMP(@@version, 'x')",
+            "SELECT HEX(f) FROM d",
+            "SELECT HEX(de) FROM g",
+            "SELECT HEX(18446744073709551616)",
+            "SELECT HEX(123456789012345678.5)",
+        ] {
+            assert_eq!(
+                errors(text, input, output(other)),
+                ["function.argument"],
+                "{text}"
+            );
+        }
+        // Towards its own dialect, the function goes through.
+        assert!(errors("SELECT HEX(f) FROM d", input, output(input)).is_empty());
+    }
+}
+
+#[test]
 fn time_to_sec_drops_the_fraction_towards_mariadb() {
     for (text, expected, rules) in [
         (

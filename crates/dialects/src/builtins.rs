@@ -7,12 +7,14 @@
 //! A name the dialect does not know, or does not know in the chosen version,
 //! calls a stored function of the database. The emitter writes a built-in
 //! function from the verdict of the file (`emit::builtin` module): the same
-//! function of the output, another name, a rule of Prisme, or an explicit
-//! error.
+//! function of the output, the same function but for the arguments of some
+//! types, which the dialects read otherwise, another name, a rule of Prisme,
+//! or an explicit error.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+use prisme_types::DataType;
 use serde::Deserialize;
 
 use crate::Dialect;
@@ -93,6 +95,15 @@ pub(crate) struct Function {
 pub(crate) enum Translation {
     /// The function of the same name of the output gives the same results.
     Same,
+    /// The function of the same name gives the same results, but for an
+    /// argument of one of these types, or of a type unknown to Prisme: an
+    /// error, for this reason.
+    SameExcept {
+        /// Types of the arguments the dialects read otherwise.
+        types: Vec<ArgumentType>,
+        /// Reason of the error.
+        reason: String,
+    },
     /// Another name of the output, same arguments and results.
     Name(String),
     /// A rule of Prisme writes it.
@@ -157,6 +168,40 @@ pub(crate) enum Rule {
     Uuid,
 }
 
+/// Type of an argument that a function reads otherwise in the other
+/// dialect (`Translation::SameExcept`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum ArgumentType {
+    /// `DATE`, `TIME`, `DATETIME` and `TIMESTAMP`.
+    Temporal,
+    /// `FLOAT` and `DOUBLE`.
+    Float,
+    /// `DECIMAL` of more than 15 digits, which a `DOUBLE` holds no longer
+    /// exactly.
+    WideDecimal,
+}
+
+impl ArgumentType {
+    /// Tells whether a value of `data_type` is of this type.
+    pub(crate) fn matches(self, data_type: &DataType) -> bool {
+        match self {
+            Self::Temporal => matches!(
+                data_type,
+                DataType::Date
+                    | DataType::Time { .. }
+                    | DataType::DateTime { .. }
+                    | DataType::Timestamp { .. }
+            ),
+            Self::Float => matches!(data_type, DataType::Float(_)),
+            Self::WideDecimal => matches!(
+                data_type,
+                DataType::Decimal(decimal) if decimal.precision() > 15
+            ),
+        }
+    }
+}
+
 impl Rule {
     /// Identifier, in the reference files and the report.
     pub(crate) fn id(self) -> &'static str {
@@ -186,7 +231,8 @@ impl Rule {
 enum RawTranslation {
     /// `same`.
     Word(String),
-    /// `{ name: X }`, `{ rule: id }` or `{ error: reason }`.
+    /// `{ name: X }`, `{ rule: id }`, `{ error: reason }` or
+    /// `{ same_except: [types], reason: reason }`.
     Map(TranslationMap),
 }
 
@@ -200,6 +246,10 @@ struct TranslationMap {
     rule: Option<Rule>,
     /// Reason of an error.
     error: Option<String>,
+    /// Types of the arguments refused.
+    same_except: Option<Vec<ArgumentType>>,
+    /// Reason the arguments of `same_except` are refused.
+    reason: Option<String>,
 }
 
 impl TryFrom<RawTranslation> for Translation {
@@ -209,12 +259,20 @@ impl TryFrom<RawTranslation> for Translation {
         match raw {
             RawTranslation::Word(word) if word == "same" => Ok(Self::Same),
             RawTranslation::Word(word) => Err(format!("unknown translation {word:?}")),
-            RawTranslation::Map(map) => match (map.name, map.rule, map.error) {
-                (Some(name), None, None) => Ok(Self::Name(name)),
-                (None, Some(rule), None) => Ok(Self::Rule(rule)),
-                (None, None, Some(reason)) => Ok(Self::Error(reason)),
-                _ => Err("a translation has one key: name, rule or error".to_string()),
-            },
+            RawTranslation::Map(map) => {
+                match (map.name, map.rule, map.error, map.same_except, map.reason) {
+                    (Some(name), None, None, None, None) => Ok(Self::Name(name)),
+                    (None, Some(rule), None, None, None) => Ok(Self::Rule(rule)),
+                    (None, None, Some(reason), None, None) => Ok(Self::Error(reason)),
+                    (None, None, None, Some(types), Some(reason)) if !types.is_empty() => {
+                        Ok(Self::SameExcept { types, reason })
+                    }
+                    _ => Err(
+                        "a translation has one key, name, rule or error, or same_except and reason"
+                            .to_string(),
+                    ),
+                }
+            }
         }
     }
 }
@@ -443,6 +501,24 @@ mod tests {
         assert!(raw.is_err());
         let raw: Result<Translation, _> = yaml_serde::from_str("{ rule: function.unknown }");
         assert!(raw.is_err());
+        let raw: Translation =
+            yaml_serde::from_str("{ same_except: [temporal, float], reason: r }").unwrap();
+        assert_eq!(
+            raw,
+            Translation::SameExcept {
+                types: vec![ArgumentType::Temporal, ArgumentType::Float],
+                reason: "r".to_string()
+            }
+        );
+        for wrong in [
+            "{ same_except: [temporal] }",
+            "{ same_except: [], reason: r }",
+            "{ same_except: [other], reason: r }",
+            "{ name: X, reason: r }",
+        ] {
+            let raw: Result<Translation, _> = yaml_serde::from_str(wrong);
+            assert!(raw.is_err(), "{wrong}");
+        }
         let rule: Rule = yaml_serde::from_str(Rule::TimeToSec.id()).unwrap();
         assert_eq!(rule, Rule::TimeToSec);
     }
@@ -453,7 +529,7 @@ mod tests {
             for family in families(dialect) {
                 for function in &family.functions {
                     let name = match function.translation(other) {
-                        Some(Translation::Same) => &function.name,
+                        Some(Translation::Same | Translation::SameExcept { .. }) => &function.name,
                         Some(Translation::Name(name)) => name,
                         _ => continue,
                     };
