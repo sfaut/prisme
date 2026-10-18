@@ -274,7 +274,9 @@ fn read(file: Option<&PathBuf>) -> anyhow::Result<String> {
 /// Results of `task` on the servers of `images`, `group` servers at a time:
 /// each group is started, then measured, in parallel, then the containers it
 /// started are stopped, before the next group. Gives each server with its
-/// result, in the order of `images`.
+/// result, in the order of `images`. A server that does not start, or whose
+/// measure fails, is left out, its error on the standard error: one server
+/// no longer ends a run of hours over the others.
 fn by_groups<R: Send>(
     images: &[String],
     group: usize,
@@ -282,18 +284,26 @@ fn by_groups<R: Send>(
 ) -> anyhow::Result<Vec<(Server, R)>> {
     let mut results = Vec::with_capacity(images.len());
     for chunk in images.chunks(group) {
-        let started = in_parallel(chunk, |image| Server::start(image));
-        let servers: Vec<Server> = started.iter().flatten().cloned().collect();
+        let mut servers = Vec::with_capacity(chunk.len());
+        for started in in_parallel(chunk, |image| Server::start(image)) {
+            match started {
+                Ok(server) => servers.push(server),
+                Err(error) => eprintln!("left out: {error:#}"),
+            }
+        }
         let outcomes = in_parallel(&servers, &task);
         for server in &servers {
             server.stop()?;
         }
-        for result in started {
-            result?;
-        }
         for (server, outcome) in servers.into_iter().zip(outcomes) {
-            results.push((server, outcome?));
+            match outcome {
+                Ok(outcome) => results.push((server, outcome)),
+                Err(error) => eprintln!("left out: {error:#}"),
+            }
         }
+    }
+    if results.is_empty() {
+        bail!("no server measured");
     }
     Ok(results)
 }
