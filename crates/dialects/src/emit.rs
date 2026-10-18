@@ -33,6 +33,7 @@ mod charset;
 mod expr;
 mod extract;
 mod greatest;
+mod grouped_order;
 mod hexadecimal;
 mod interval;
 mod json;
@@ -596,6 +597,7 @@ impl Emitter<'_> {
         }
         if let Some(sort) = block.sort {
             self.order_by(sort, Some(block.project));
+            self.grouped_window_order(block);
         }
         if let Some(limit) = block.limit {
             self.limit(limit);

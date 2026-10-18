@@ -1,0 +1,29 @@
+# `ORDER BY` of a grouped query with window functions
+# (crates/probe/cases/grouped-window-order.sql). MariaDB takes the order of
+# the grouping for an `ORDER BY` of grouping keys, and loses it to the
+# windows when an index gives it, here the primary key: from MySQL, a last
+# key on an item with a window function keeps the order (rule
+# `order.grouped-windows`). From MariaDB, the queries its server sorts.
+setup:
+  - DROP TABLE IF EXISTS windowed
+  - CREATE TABLE windowed (id INT NOT NULL PRIMARY KEY, a INT NOT NULL, b INT NULL)
+  - INSERT INTO windowed VALUES (1, 1, 10), (2, 1, 20), (3, 2, NULL), (4, 3, 40)
+cases:
+  - from: mysql
+    sql: SELECT id, ROW_NUMBER() OVER (ORDER BY id DESC) AS r FROM windowed GROUP BY id ORDER BY id
+  - from: mysql
+    sql: SELECT id, COUNT(*) OVER () AS c FROM windowed GROUP BY id ORDER BY id DESC LIMIT 2
+  - from: mysql
+    sql: SELECT id, SUM(b) OVER (ORDER BY id DESC) AS s FROM windowed WHERE id > 1 GROUP BY id ORDER BY 1
+  - from: mysql
+    sql: SELECT *, ROW_NUMBER() OVER (PARTITION BY a ORDER BY id DESC) AS r FROM windowed GROUP BY id ORDER BY id
+  # In a subquery that reads the enclosing query, which a derived table of
+  # MariaDB cannot read.
+  - from: mysql
+    sql: SELECT o.id, (SELECT q.id + 0 * ROW_NUMBER() OVER (ORDER BY q.id DESC) FROM windowed AS q WHERE q.id >= o.id GROUP BY q.id ORDER BY q.id LIMIT 1) AS s FROM windowed AS o ORDER BY o.id
+  # A key of a window or an aggregate function: both sort the rows after the
+  # windows.
+  - from: mariadb
+    sql: SELECT id, ROW_NUMBER() OVER (ORDER BY id DESC) AS r FROM windowed GROUP BY id ORDER BY id, r
+  - from: mariadb
+    sql: SELECT a, COUNT(*) AS n, ROW_NUMBER() OVER (ORDER BY a DESC) AS r FROM windowed GROUP BY a ORDER BY n, a

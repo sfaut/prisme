@@ -635,6 +635,88 @@ fn a_star_of_a_grouped_query_keeps_its_form() {
 }
 
 #[test]
+fn a_grouped_order_by_keeps_its_order_after_the_windows_towards_mariadb() {
+    // MariaDB takes the order of the grouping for an `ORDER BY` of grouping
+    // keys, lost to the windows: a last key on an item with a window
+    // function.
+    for (text, written) in [
+        (
+            "SELECT a, ROW_NUMBER() OVER (ORDER BY a DESC) AS r FROM t GROUP BY a ORDER BY a",
+            "SELECT a, ROW_NUMBER() OVER (ORDER BY a DESC) AS r FROM t GROUP BY a ORDER BY a, 2",
+        ),
+        (
+            "SELECT a, COUNT(*) AS n, COUNT(*) OVER () AS c FROM t GROUP BY a ORDER BY a DESC \
+             LIMIT 2",
+            "SELECT a, COUNT(*) AS n, COUNT(*) OVER () AS c FROM t GROUP BY a ORDER BY a DESC, \
+             3 LIMIT 2",
+        ),
+        (
+            "SELECT a, b, ROW_NUMBER() OVER (ORDER BY b) + 1 AS r FROM t GROUP BY a, b ORDER BY \
+             b, NULL, a",
+            "SELECT a, b, ROW_NUMBER() OVER (ORDER BY b) + 1 AS r FROM t GROUP BY a, b ORDER BY \
+             b, NULL, a, 3",
+        ),
+        (
+            "SELECT *, ROW_NUMBER() OVER w AS r FROM t GROUP BY a, b WINDOW w AS (ORDER BY a) \
+             ORDER BY a",
+            "SELECT *, ROW_NUMBER() OVER w AS r FROM t GROUP BY a, b WINDOW w AS (ORDER BY a) \
+             ORDER BY a, 3",
+        ),
+        (
+            "SELECT a AS x, SUM(b) AS s, RANK() OVER (ORDER BY SUM(b)) AS r FROM t GROUP BY x \
+             ORDER BY x",
+            "SELECT a AS x, SUM(b) AS s, RANK() OVER (ORDER BY SUM(b)) AS r FROM t GROUP BY x \
+             ORDER BY x, 3",
+        ),
+        (
+            "SELECT a + 1 AS k, ROW_NUMBER() OVER (ORDER BY a + 1) AS r FROM t GROUP BY a + 1 \
+             ORDER BY k DESC",
+            "SELECT a + 1 AS k, ROW_NUMBER() OVER (ORDER BY a + 1) AS r FROM t GROUP BY a + 1 \
+             ORDER BY k DESC, 2",
+        ),
+        (
+            "SELECT (SELECT a + 0 * ROW_NUMBER() OVER () FROM t GROUP BY a ORDER BY a LIMIT 1) \
+             AS s FROM u",
+            "SELECT (SELECT a + 0 * ROW_NUMBER() OVER () FROM t GROUP BY a ORDER BY a, 1 LIMIT \
+             1) AS s FROM u",
+        ),
+    ] {
+        assert_eq!(
+            transpiled(text, mysql(), output(mariadb())),
+            (written.to_string(), vec!["order.grouped-windows"]),
+            "{text}"
+        );
+        // MySQL sorts the rows; from MariaDB, the query keeps the reading of
+        // its server.
+        for (input, target) in [
+            (mysql(), mysql()),
+            (mariadb(), mysql()),
+            (mariadb(), mariadb()),
+        ] {
+            let (sql, rules) = transpiled(text, input, output(target));
+            assert_eq!(sql, text);
+            assert!(rules.is_empty(), "{text}: {rules:?}");
+        }
+    }
+    // A key of a window or an aggregate function, or an expression of a
+    // grouping key, sorts the rows after the windows.
+    for text in [
+        "SELECT a, ROW_NUMBER() OVER (ORDER BY a) AS r FROM t GROUP BY a ORDER BY r",
+        "SELECT a, ROW_NUMBER() OVER (ORDER BY a) AS r FROM t GROUP BY a ORDER BY a, r",
+        "SELECT a, ROW_NUMBER() OVER (ORDER BY a) AS r FROM t GROUP BY a ORDER BY a + 0",
+        "SELECT a, COUNT(*) AS n, ROW_NUMBER() OVER (ORDER BY a) AS r FROM t GROUP BY a ORDER BY \
+         n, a",
+        "SELECT a, ROW_NUMBER() OVER (ORDER BY a) AS r FROM t ORDER BY a",
+        "SELECT a FROM t GROUP BY a ORDER BY a",
+        "SELECT COUNT(*) AS n, ROW_NUMBER() OVER () AS r FROM t ORDER BY n",
+    ] {
+        let (sql, rules) = transpiled(text, mysql(), output(mariadb()));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{text}: {rules:?}");
+    }
+}
+
+#[test]
 fn having_without_grouping_keeps_its_form() {
     for text in [
         "SELECT a AS x FROM t WHERE b > 0 HAVING x > 1 ORDER BY x",
