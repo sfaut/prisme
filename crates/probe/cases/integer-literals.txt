@@ -1,0 +1,14 @@
+# Type of the integer literals by their length: MariaDB gives an `INT` to a
+# literal of at most 9 characters, leading zeros and a minus included, a
+# `BIGINT` beyond, whatever its value.
+eight 99999999
+nine 999999999
+ten 1000000000
+int_max 2147483647
+int_over 2147483648
+zeros_nine 000000001
+zeros_ten 0999999999
+neg_eight -99999999
+neg_nine -999999999
+int_min -2147483648
+plus_nine +999999999

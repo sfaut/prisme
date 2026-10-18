@@ -25,6 +25,9 @@ const MAX_SCALE: u8 = 30;
 /// Digits added to the scale of a division (`div_precision_increment`).
 const DIVISION_INCREMENT: u8 = 4;
 
+/// Most digits of an integer literal of type `INT` in MariaDB.
+const MARIADB_INT_DIGITS: usize = 9;
+
 /// `BIGINT`, signed.
 pub(crate) const fn bigint() -> DataType {
     DataType::Integer(IntegerType::signed(IntegerSize::Big))
@@ -44,13 +47,15 @@ pub(crate) const fn boolean_integer(dialect: Dialect) -> IntegerType {
     }
 }
 
-/// Type of an integer literal: `BIGINT`, `BIGINT UNSIGNED` beyond, or
-/// `DECIMAL` beyond `BIGINT UNSIGNED`. MariaDB gives `INT` to the literals
-/// an `INT` holds.
+/// Type of an integer literal of `digits` digits: `BIGINT`, `BIGINT
+/// UNSIGNED` beyond, or `DECIMAL` beyond `BIGINT UNSIGNED`. MariaDB gives
+/// `INT` to the literals of at most 9 digits, leading zeros included,
+/// whatever their value: `999999999` and `000000001` are `INT`s,
+/// `1000000000` and `0999999999` `BIGINT`s
+/// (`crates/probe/cases/integer-literals.txt`).
 pub(crate) fn integer_literal(value: i128, digits: usize, dialect: Dialect) -> DataType {
-    let int = IntegerType::signed(IntegerSize::Int);
-    if dialect == Dialect::MariaDb && int.contains(value) {
-        return DataType::Integer(int);
+    if dialect == Dialect::MariaDb && digits <= MARIADB_INT_DIGITS {
+        return DataType::Integer(IntegerType::signed(IntegerSize::Int));
     }
     if i64::try_from(value).is_ok() {
         bigint()
@@ -507,10 +512,15 @@ mod tests {
     #[test]
     fn integer_literals_grow_to_decimal() {
         assert_eq!(integer_literal(123, 3, Dialect::MySql), bigint());
+        let int = DataType::Integer(IntegerType::signed(IntegerSize::Int));
+        assert_eq!(integer_literal(123, 3, Dialect::MariaDb), int);
+        assert_eq!(integer_literal(999_999_999, 9, Dialect::MariaDb), int);
+        assert_eq!(integer_literal(1, 9, Dialect::MariaDb), int);
         assert_eq!(
-            integer_literal(123, 3, Dialect::MariaDb),
-            DataType::Integer(IntegerType::signed(IntegerSize::Int))
+            integer_literal(1_000_000_000, 10, Dialect::MariaDb),
+            bigint()
         );
+        assert_eq!(integer_literal(999_999_999, 10, Dialect::MariaDb), bigint());
         assert_eq!(
             integer_literal(i128::from(u64::MAX), 20, Dialect::MySql),
             DataType::Integer(IntegerType::unsigned(IntegerSize::Big))
