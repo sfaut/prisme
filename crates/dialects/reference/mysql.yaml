@@ -1427,15 +1427,15 @@ functions:
       - name: BIT_AND
         grammar: true
         touching: true
-        mariadb: same
+        mariadb: { rule: function.bit-aggregate }
       - name: BIT_OR
         grammar: true
         touching: true
-        mariadb: same
+        mariadb: { rule: function.bit-aggregate }
       - name: BIT_XOR
         grammar: true
         touching: true
-        mariadb: same
+        mariadb: { rule: function.bit-aggregate }
       - name: COUNT
         grammar: true
         touching: true

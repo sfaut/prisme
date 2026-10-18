@@ -38,4 +38,5 @@ SELECT HEX(_binary X'0102' | _binary X'01') AS v;
 SELECT HEX(_binary X'0102' | NULL) AS v;
 SELECT HEX(NULL | NULL) AS v;
 SELECT HEX(_binary'12' | CAST('12' AS CHAR)) AS v;
+SELECT HEX(BIT_OR(b)) AS bit_or, HEX(BIT_AND(c)) AS bit_and_c FROM bw;
 DROP TABLE bw;

@@ -167,6 +167,9 @@ impl Emitter<'_> {
             self.write("DISTINCT ");
         }
         let upper = call.function.value.to_ascii_uppercase();
+        if BIT_AGGREGATES.contains(&upper.as_str()) {
+            self.bit_aggregate(&upper, call.args.first());
+        }
         // Without `DISTINCT`, `COUNT` and `GROUP_CONCAT` read the text of a
         // `JSON` in both dialects (`json` module).
         let json_as_is = !call.distinct && reads_json_as_is(&upper);
@@ -208,6 +211,9 @@ impl Emitter<'_> {
                 self.target()
             );
             self.error("window.default", &message, expr.span);
+        }
+        if BIT_AGGREGATES.contains(&upper.as_str()) {
+            self.bit_aggregate(&upper, call.args.first());
         }
         self.write(&name);
         self.write("(");
@@ -455,6 +461,10 @@ impl Emitter<'_> {
         }
     }
 }
+
+/// Aggregate functions of the bits of their argument, which MySQL computes
+/// byte by byte for a byte string (`bitwise` module).
+const BIT_AGGREGATES: [&str; 3] = ["BIT_AND", "BIT_OR", "BIT_XOR"];
 
 /// Tells whether the aggregate or window function `name` (in capitals) reads
 /// its arguments as numbers: they keep the scale of a `DECIMAL` `CASE`

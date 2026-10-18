@@ -4,7 +4,10 @@
 # bitwise-numbers.txt): strings, numbers from 2^63, byte strings, which MySQL
 # computes byte by byte; floating point numbers, times with a fraction of a
 # second and JSON values are refused. Rule `bitwise.shift`: the count of a
-# shift, taken modulo 2^32 by MariaDB (bitwise-shifts.txt).
+# shift, taken modulo 2^32 by MariaDB (bitwise-shifts.txt). Rule
+# `function.bit-aggregate`: `BIT_AND`, `BIT_OR` and `BIT_XOR`, alike but for
+# byte strings, times with a fraction and JSON values
+# (bitwise-aggregates.sql).
 setup:
   - DROP TABLE IF EXISTS bitwise
   - >-
@@ -119,3 +122,34 @@ cases:
   - from: mariadb
     sql: SELECT j | 0 AS v FROM sample
     refused: bitwise.operand
+  # Aggregate functions: alike for strings, decimals, floating point numbers,
+  # integers, `BIT`.
+  - from: mysql
+    sql: >-
+      SELECT BIT_OR(s) AS a, BIT_AND(s) AS b, BIT_XOR(s) AS c, BIT_OR(de) AS e,
+      BIT_XOR(de) AS g, BIT_AND(i) AS h, BIT_OR(t) AS k FROM bitwise
+  - from: mariadb
+    sql: >-
+      SELECT BIT_OR(s) AS a, BIT_AND(s) AS b, BIT_XOR(s) AS c, BIT_OR(de) AS e,
+      BIT_XOR(de) AS g, BIT_AND(i) AS h, BIT_OR(t) AS k FROM bitwise
+  - from: mysql
+    sql: SELECT id, BIT_OR(s) AS a, BIT_XOR(de) AS b FROM bitwise GROUP BY id ORDER BY id
+  - from: mariadb
+    sql: SELECT id, BIT_OR(s) AS a, BIT_XOR(de) AS b FROM bitwise GROUP BY id ORDER BY id
+  - from: mysql
+    sql: SELECT BIT_OR(f) AS a, BIT_XOR(n) AS b, BIT_AND(d) AS c FROM sample
+  - from: mariadb
+    sql: SELECT BIT_OR(f) AS a, BIT_XOR(n) AS b, BIT_AND(d) AS c FROM sample
+  # Byte strings, times with a fraction of a second, JSON values: refused.
+  - from: mysql
+    sql: SELECT HEX(BIT_OR(b)) AS v FROM bitwise
+    refused: function.bit-aggregate
+  - from: mariadb
+    sql: SELECT BIT_AND(c) OVER (ORDER BY id) AS v FROM bitwise
+    refused: function.bit-aggregate
+  - from: mysql
+    sql: SELECT BIT_OR(tm) AS v FROM bitwise
+    refused: function.bit-aggregate
+  - from: mariadb
+    sql: SELECT BIT_XOR(j) AS v FROM sample
+    refused: function.bit-aggregate

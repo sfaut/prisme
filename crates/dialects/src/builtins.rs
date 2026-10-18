@@ -115,6 +115,10 @@ pub(crate) enum Rule {
     /// `POSITION` with a binary argument (`emit::charset` module).
     #[serde(rename = "function.binary-argument")]
     BinaryArgument,
+    /// `BIT_AND`, `BIT_OR`, `BIT_XOR` of a byte string, of a time with a
+    /// fraction of a second, of a `JSON` (`emit::bitwise` module).
+    #[serde(rename = "function.bit-aggregate")]
+    BitAggregate,
     /// `BIT_COUNT` of a binary string.
     #[serde(rename = "function.bit-count")]
     BitCount,
@@ -160,6 +164,7 @@ impl Rule {
             Self::AddMonths => "function.add-months",
             Self::Aes => "function.aes",
             Self::BinaryArgument => "function.binary-argument",
+            Self::BitAggregate => "function.bit-aggregate",
             Self::BitCount => "function.bit-count",
             Self::Extract => "function.extract",
             Self::FromUnixtime => "function.from-unixtime",

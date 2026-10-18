@@ -1,7 +1,8 @@
 //! Bit operators between MySQL and MariaDB: `|`, `&`, `^`, `<<`, `>>` and
-//! `~` (`crates/probe/cases/bitwise-readings.sql`, `bitwise-binary.sql`,
-//! `bitwise-numbers.txt` and `bitwise-shifts.txt`, measured on MySQL 8.0.11
-//! and 8.4.11, MariaDB 10.6.28 and 11.8.9).
+//! `~`, and the aggregate functions `BIT_AND`, `BIT_OR` and `BIT_XOR`
+//! (`crates/probe/cases/bitwise-readings.sql`, `bitwise-binary.sql`,
+//! `bitwise-numbers.txt`, `bitwise-shifts.txt` and `bitwise-aggregates.sql`,
+//! measured on MySQL 8.0.11 and 8.4.11, MariaDB 10.6.28 and 11.8.9).
 //!
 //! An operator reads each operand as an unsigned integer as `BIT_COUNT`
 //! reads its argument, on each server and for each expression (a literal, a
@@ -25,6 +26,14 @@
 //! byte string `0x33`, 3 in MariaDB): towards MariaDB, an error (rule
 //! `bitwise.binary`); towards MySQL, each byte string is read as a number as
 //! MariaDB does, which MySQL then computes as numbers.
+//!
+//! `BIT_AND`, `BIT_OR` and `BIT_XOR` read a string, a decimal and a floating
+//! point number alike in both dialects, which differs from the operators of
+//! MariaDB (`BIT_OR('3.7')` gives 3, `'3.7' | 0` 4). They read otherwise a
+//! byte string, which MySQL computes byte by byte, MariaDB as a number, a
+//! time with a fraction of a second, which MySQL rounds, MariaDB truncates,
+//! and a `JSON`: between the dialects, an error (rule
+//! `function.bit-aggregate`), as for an argument of unknown type.
 
 use prisme_plan::{Bitwise, Expr, ExprKind};
 use prisme_types::{DataType, IntegerSize, IntegerType, Value};
@@ -84,6 +93,34 @@ impl Emitter<'_> {
         } else {
             self.bit_operand(operand, min, "~");
         }
+    }
+
+    /// `BIT_AND`, `BIT_OR` or `BIT_XOR`, `name` in capitals, of `arg`:
+    /// between the dialects, an error for a value that they read otherwise,
+    /// or of unknown type.
+    pub(super) fn bit_aggregate(&mut self, name: &str, arg: Option<&Expr>) {
+        let Some(arg) = arg.filter(|_| self.source.dialect != self.output.dialect) else {
+            return;
+        };
+        let message = match Reading::of(arg) {
+            Reading::Same | Reading::Text | Reading::Large | Reading::Float => return,
+            Reading::Binary => format!(
+                "`{name}` of a byte string: MySQL computes it byte by byte, MariaDB reads it as a number (`{name}(CAST('1' AS BINARY))` gives the byte string `0x31`, 1 in MariaDB)"
+            ),
+            Reading::Fraction => format!(
+                "`{name}` of a time with a fraction of a second: MySQL rounds it to the second, MariaDB drops the fraction (`{name}(TIME'10:00:00.6')` gives 100001, 100000 in MariaDB)"
+            ),
+            Reading::Json => format!(
+                "`{name}` of a `JSON`: MySQL reads its value, MariaDB its text (the JSON number `3.7` gives 4, 3 in MariaDB)"
+            ),
+            Reading::Other if arg.ty.data_type == DataType::Unknown => format!(
+                "`{name}` of an argument whose type is unknown: MySQL computes a byte string byte by byte, MariaDB reads it as a number"
+            ),
+            Reading::Other => format!(
+                "`{name}` of a value of this type: its reading in MySQL and MariaDB is not established"
+            ),
+        };
+        self.error("function.bit-aggregate", &message, arg.span);
     }
 
     /// Records the error of the operation `expr` of the operator `symbol`

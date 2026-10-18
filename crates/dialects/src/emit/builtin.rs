@@ -72,6 +72,8 @@ impl Emitter<'_> {
     pub(super) fn builtin_name(&mut self, name: &Ident, span: Option<Span>) -> String {
         match self.builtin_target(name, false, span) {
             Some(Target::Name(written)) => written,
+            // The writer of the call checks its argument (`bitwise` module).
+            Some(Target::Rule(Rule::BitAggregate)) => name.value.clone(),
             Some(Target::Rule(rule)) => {
                 self.rule_not_written(rule, name, span);
                 name.value.clone()

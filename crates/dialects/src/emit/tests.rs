@@ -1595,6 +1595,38 @@ fn bit_operators_read_their_operands_as_the_input_does() {
 }
 
 #[test]
+fn bit_aggregates_read_their_argument_as_the_input_does() {
+    for (text, input, target) in [
+        (
+            "SELECT BIT_XOR(s), BIT_AND(de), BIT_OR(f), BIT_OR(dd) AS v FROM g, d",
+            mysql(),
+            mariadb(),
+        ),
+        ("SELECT BIT_OR(vb) AS v FROM g", mysql(), mysql()),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{text}");
+    }
+    // A byte string, a time with a fraction of a second, a `JSON`, a type
+    // unknown, of an aggregate or a window function.
+    for (text, input, target) in [
+        ("SELECT BIT_OR(vb) AS v FROM g", mysql(), mariadb()),
+        ("SELECT BIT_AND(vb) AS v FROM g", mariadb(), mysql()),
+        ("SELECT BIT_OR(dt3) AS v FROM g", mysql(), mariadb()),
+        ("SELECT BIT_XOR(js) AS v FROM g", mariadb(), mysql()),
+        ("SELECT BIT_XOR(ABS(a)) AS v FROM t", mysql(), mariadb()),
+        ("SELECT BIT_OR(vb) OVER () AS v FROM g", mariadb(), mysql()),
+    ] {
+        assert_eq!(
+            errors(text, input, output(target)),
+            ["function.bit-aggregate"],
+            "{text}"
+        );
+    }
+}
+
+#[test]
 fn aes_keeps_the_arguments_the_output_reads_alike() {
     let mysql_8_4 = input_at(Dialect::MySql, 8, 4, 0);
     let mariadb_10_6 = input_at(Dialect::MariaDb, 10, 6, 0);
