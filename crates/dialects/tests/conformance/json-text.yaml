@@ -1,11 +1,9 @@
 # Rule `json.text`: a `JSON` compared, sorted, grouped or converted to a
 # number, by the rules of JSON in MySQL, as its text in MariaDB, whose `JSON`
 # is a `LONGTEXT` of collation `utf8mb4_bin` (crates/probe/cases/
-# json-text.txt). Towards MySQL from MariaDB, read as its text by `CONCAT`.
-# From MySQL, the readings would compare a `JSON` with a `LONGTEXT`, a column
-# of MariaDB: only those alike are checked. The texts are written as MySQL
-# stores them, normalized (`{"a": 1}`, `2.5`), which MariaDB keeps as
-# written.
+# json-text.txt). Towards MySQL from MariaDB, read as its text by `CONCAT`;
+# towards MariaDB, an error. The texts are written as MySQL stores them,
+# normalized (`{"a": 1}`, `2.5`), which MariaDB keeps as written.
 setup:
   - DROP TABLE IF EXISTS json_text
   - CREATE TABLE json_text (id INT NOT NULL PRIMARY KEY, j JSON NULL)
@@ -18,6 +16,9 @@ cases:
     sql: >-
       SELECT id, j, j IS NULL AS a, j LIKE '%b%' AS b, CONCAT(j, '') AS c, COUNT(j) OVER () AS d
       FROM json_text ORDER BY id
+  - from: mysql
+    sql: SELECT id FROM json_text WHERE j = 'b' ORDER BY id
+    refused: json.text
   - from: mariadb
     sql: >-
       SELECT id, j, j IS NULL AS a, j LIKE '%b%' AS b, CONCAT(j, '') AS c, CAST(j AS CHAR) AS d

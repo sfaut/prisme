@@ -466,7 +466,7 @@ async fn check(case: &Case, input: &Server, output: &Server) -> Result<Outcome, 
     let mut tables = Tables::default();
     for table in translation.tables() {
         let database = table.database.as_ref().map(|name| name.value.as_str());
-        let columns = catalog::table_columns(&mut target, database, &table.name.value)
+        let columns = catalog::table_columns(&mut target, info.flavor, database, &table.name.value)
             .await
             .map_err(|error| error.to_string())?;
         if let Some(columns) = columns {

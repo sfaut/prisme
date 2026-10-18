@@ -10,9 +10,9 @@
 //!
 //! The transpiler needs the columns of the tables a query reads, with their
 //! type: `table_columns`, on the connection that runs the query. The
-//! metadata of a prepared statement gives a `JSON` column of MySQL the type
-//! of a `LONGTEXT`: `SHOW COLUMNS` tells them apart, for a table with such a
-//! column.
+//! metadata of a prepared statement gives a `JSON` column the type of a
+//! `LONGTEXT`: for a table with such a column, `SHOW COLUMNS` tells them
+//! apart in MySQL, the check `json_valid` of the column in MariaDB.
 //!
 //! Each read filters on a database, which saves the server from walking all
 //! the tables at once. The queries only ask for dictionary information:
@@ -27,7 +27,7 @@ use mysql_async::prelude::Queryable;
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::{Connection, MysqlError, column_type};
+use super::{Connection, Flavor, MysqlError, column_type};
 
 /// Errors of the server for a table that does not exist: unknown table
 /// (`ER_NO_SUCH_TABLE`), unknown database (`ER_BAD_DB_ERROR`).
@@ -197,10 +197,12 @@ type TriggerRow = (String, String, String, String);
 /// The server describes the columns of `SELECT * FROM t` when preparing it,
 /// without running it: a temporary table of the connection is seen as well,
 /// and a view is not computed (`docs/QUESTIONS.md`, point 44). A column of
-/// the length of a `LONGTEXT` may be a `JSON` of MySQL, which `SHOW COLUMNS`
-/// names (`json_columns`).
+/// the length of a `LONGTEXT` may be a `JSON`, which `SHOW COLUMNS` names in
+/// MySQL (`declared_json_columns`), `SHOW CREATE TABLE` in MariaDB
+/// (`checked_json_columns`), as `flavor` tells.
 pub async fn table_columns(
     connection: &mut Connection,
+    flavor: Flavor,
     database: Option<&str>,
     table: &str,
 ) -> Result<Option<Vec<(String, prisme_types::Type)>>, MysqlError> {
@@ -235,7 +237,10 @@ pub async fn table_columns(
         .collect();
     connection.close(statement).await?;
     if long {
-        let json = json_columns(connection, &name).await?;
+        let json = match flavor {
+            Flavor::MySql => declared_json_columns(connection, &name).await?,
+            Flavor::MariaDb => checked_json_columns(connection, &name).await?,
+        };
         for (column, ty) in &mut columns {
             if json.iter().any(|field| field.eq_ignore_ascii_case(column)) {
                 ty.data_type = prisme_types::DataType::Json;
@@ -246,9 +251,12 @@ pub async fn table_columns(
 }
 
 /// Names of the `JSON` columns of the table or view `name`, quoted, as
-/// `SHOW COLUMNS` declares them: a temporary table and a view as well.
-/// MariaDB declares its `JSON` as a `LONGTEXT`, read as a string.
-async fn json_columns(connection: &mut Connection, name: &str) -> Result<Vec<String>, MysqlError> {
+/// `SHOW COLUMNS` of MySQL declares them: a temporary table and a view as
+/// well.
+async fn declared_json_columns(
+    connection: &mut Connection,
+    name: &str,
+) -> Result<Vec<String>, MysqlError> {
     let rows: Vec<mysql_async::Row> = connection
         .query(format!("SHOW COLUMNS FROM {name}"))
         .await?;
@@ -260,6 +268,110 @@ async fn json_columns(connection: &mut Connection, name: &str) -> Result<Vec<Str
             declared.eq_ignore_ascii_case("json").then_some(field)
         })
         .collect())
+}
+
+/// Names of the `JSON` columns of the table `name`, quoted, as MariaDB reads
+/// them: the columns whose check is a call of `json_valid`, which `JSON`
+/// adds to its `LONGTEXT`, a temporary table as well (`SHOW CREATE TABLE`).
+/// `SHOW COLUMNS` of MariaDB declares its `JSON` as a `LONGTEXT`, its
+/// functions read such a column as a `JSON` (`JSON_ARRAY(j)` gives
+/// `[{"a": 1}]`), and any other column as a string, a `JSON` with a check of
+/// its own as well (measured on MariaDB 10.6.28 and 11.8.9). A view shows
+/// no check: its columns are read as strings.
+async fn checked_json_columns(
+    connection: &mut Connection,
+    name: &str,
+) -> Result<Vec<String>, MysqlError> {
+    let rows: Vec<mysql_async::Row> = connection
+        .query(format!("SHOW CREATE TABLE {name}"))
+        .await?;
+    let create: Option<String> = rows.into_iter().next().and_then(|row| row.get(1));
+    Ok(create.map_or_else(Vec::new, |create| {
+        create.lines().filter_map(checked_json_column).collect()
+    }))
+}
+
+/// Name of the column that `line` of `SHOW CREATE TABLE` of MariaDB
+/// defines, when its check is a call of `json_valid`, of any argument
+/// (`JSON CHECK (json_valid(k))` is read as a `JSON`); `None` for any
+/// other line. A column takes one line, its check last. Its name is between
+/// backticks, between double quotes under `ANSI_QUOTES`, bare when
+/// `sql_quote_show_create` is off and the name needs no quotes; a string
+/// doubles its quote or escapes it by a backslash (`'it''s'`, `'x\'y'`).
+fn checked_json_column(line: &str) -> Option<String> {
+    const CHECK: &str = " CHECK ";
+    const JSON_VALID: &str = "json_valid";
+    let line = line.strip_prefix("  ")?;
+    let line = line.strip_suffix(',').unwrap_or(line);
+    let (name, definition) = column_name(line)?;
+    let (start, _) = unquoted(definition)
+        .into_iter()
+        .rev()
+        .find(|&(index, _)| definition[index..].starts_with(" CHECK ("))?;
+    let clause = parenthesized(&definition[start + CHECK.len()..])?;
+    let function = clause.get(..JSON_VALID.len())?;
+    let args = &clause[JSON_VALID.len()..];
+    (function.eq_ignore_ascii_case(JSON_VALID) && parenthesized(args).is_some()).then_some(name)
+}
+
+/// Name of the column that `line` of `SHOW CREATE TABLE` begins with, and
+/// the rest of the line; `None` for a check of the table, which begins with
+/// the keyword `CONSTRAINT`, a bare name never being a keyword.
+fn column_name(line: &str) -> Option<(String, &str)> {
+    let Some(quote) = line.chars().next().filter(|c| matches!(c, '`' | '"')) else {
+        let end = line.find(' ')?;
+        let name = &line[..end];
+        return (name != "CONSTRAINT").then(|| (name.to_string(), &line[end..]));
+    };
+    let mut name = String::new();
+    let mut chars = line.char_indices().skip(1).peekable();
+    while let Some((index, c)) = chars.next() {
+        if c != quote {
+            name.push(c);
+        } else if chars.next_if(|&(_, next)| next == quote).is_some() {
+            name.push(quote);
+        } else {
+            return Some((name, &line[index + 1..]));
+        }
+    }
+    None
+}
+
+/// Text between the parenthesis that begins `text` and the one that ends it,
+/// when they pair; `None` otherwise.
+fn parenthesized(text: &str) -> Option<&str> {
+    let inner = text.strip_prefix('(')?.strip_suffix(')')?;
+    let mut depth = 0usize;
+    for (_, c) in unquoted(inner) {
+        match c {
+            '(' => depth += 1,
+            ')' => depth = depth.checked_sub(1)?,
+            _ => {}
+        }
+    }
+    (depth == 0).then_some(inner)
+}
+
+/// Characters of `text` outside its strings and its quoted names, with
+/// their offset. A string is between single quotes, a backslash escaping the
+/// next character; a name between backticks or double quotes; both double
+/// their quote inside, which closes and opens again.
+fn unquoted(text: &str) -> Vec<(usize, char)> {
+    let mut found = Vec::new();
+    let mut quote = None;
+    let mut chars = text.char_indices();
+    while let Some((index, c)) = chars.next() {
+        match quote {
+            Some('\'') if c == '\\' => {
+                chars.next();
+            }
+            Some(open) if c == open => quote = None,
+            Some(_) => {}
+            None if matches!(c, '\'' | '`' | '"') => quote = Some(c),
+            None => found.push((index, c)),
+        }
+    }
+    found
 }
 
 /// Name between backticks, read as a name whatever the SQL mode.
@@ -463,6 +575,8 @@ fn table_kind(table_type: &str) -> TableKind {
 
 #[cfg(test)]
 mod tests {
+    use indoc::indoc;
+
     use super::*;
 
     fn text(value: &str) -> String {
@@ -530,6 +644,30 @@ mod tests {
         assert_eq!(t.foreign_keys[0].referenced_table, "u");
         assert_eq!(t.triggers[0].name, "t_bi");
         assert_eq!(tables[1].indexes[0].columns, ["(expression)"]);
+    }
+
+    #[test]
+    fn reads_the_json_columns_of_mariadb_by_their_check() {
+        // Lines of `SHOW CREATE TABLE` measured on MariaDB 10.6.28 and 11.8.9.
+        let create = indoc! {r#"
+            CREATE TABLE `jc` (
+              `a``b` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL DEFAULT '{}' COMMENT 'c CHECK (json_valid(`x`))' CHECK (json_valid(`a``b`)),
+              `c,d` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL INVISIBLE CHECK (json_valid(`c,d`)),
+              `e` longtext DEFAULT NULL COMMENT 'CHECK (json_valid(`e`))',
+              `f` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`f`) and `f` <> '1'),
+              `g` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin GENERATED ALWAYS AS (json_object('b',`b`)) VIRTUAL CHECK (json_valid(`g`)),
+              `h` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'it''s ) CHECK (' CHECK (json_valid(`h`)),
+              `i` longtext /*M!100301 COMPRESSED*/ CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT 'x\'y' CHECK (json_valid(`i`)),
+              `k` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid(`g`)),
+              "l m" longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL CHECK (json_valid("l m")),
+              n longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT json_array() CHECK (json_valid(n)),
+              `o` longtext DEFAULT NULL COMMENT 'a\\' CHECK (json_valid(`o`) or `o` is null),
+              `p` longtext DEFAULT NULL,
+              CONSTRAINT `cp` CHECK (json_valid(`p`))
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+        "#};
+        let names: Vec<String> = create.lines().filter_map(checked_json_column).collect();
+        assert_eq!(names, ["a`b", "c,d", "g", "h", "i", "k", "l m", "n"]);
     }
 
     #[test]

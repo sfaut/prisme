@@ -1,10 +1,9 @@
 # Rule `boolean.json`: a `JSON` read as a boolean, true unless it is the
 # number 0 in MySQL from 8.0.17, a number before, a string in MariaDB
 # (crates/probe/cases/json-truth.txt). Towards MySQL from MariaDB, read as
-# its text. A `JSON` column of MariaDB is a `LONGTEXT`, which MySQL reads as
-# MariaDB does: from MySQL, its readings would compare a `JSON` with a
-# `LONGTEXT`. The values leave out the fractions, which `WHERE` of MySQL
-# 8.0.11 and `XOR` read otherwise, whatever their type.
+# its text; towards MariaDB, an error. The values leave out the fractions,
+# which `WHERE` of MySQL 8.0.11 and `XOR` read otherwise, whatever their
+# type.
 setup:
   - DROP TABLE IF EXISTS json_truth
   - CREATE TABLE json_truth (id INT NOT NULL PRIMARY KEY, j JSON NULL)
@@ -14,6 +13,9 @@ setup:
 cases:
   - from: mysql
     sql: SELECT id, j IS NULL AS a FROM json_truth ORDER BY id
+  - from: mysql
+    sql: SELECT id FROM json_truth WHERE j ORDER BY id
+    refused: boolean.json
   - from: mariadb
     sql: SELECT id, NOT j AS a, j IS TRUE AS b, j AND 1 AS c, j OR 0 AS d FROM json_truth ORDER BY id
   - from: mariadb

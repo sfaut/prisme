@@ -34,7 +34,7 @@ use prisme_plan::{Ident, Span};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-use crate::analyze::dialect_of;
+use crate::analyze::{dialect_of, flavor_of};
 use crate::api::AppState;
 use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
@@ -337,6 +337,7 @@ pub async fn transpile(
             return Ok(report);
         }
     };
+    let flavor = flavor_of(translation.output.dialect);
     let mut tables = Tables::default();
     for table in prepared.tables() {
         let database = table
@@ -344,7 +345,7 @@ pub async fn transpile(
             .as_ref()
             .map(|database| database.value.as_str());
         if let Some(columns) =
-            catalog::table_columns(connection, database, &table.name.value).await?
+            catalog::table_columns(connection, flavor, database, &table.name.value).await?
         {
             let columns = columns
                 .into_iter()

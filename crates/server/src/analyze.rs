@@ -64,6 +64,14 @@ pub fn dialect_of(flavor: Flavor) -> Dialect {
     }
 }
 
+/// Server flavor of an SQL dialect.
+pub fn flavor_of(dialect: Dialect) -> Flavor {
+    match dialect {
+        Dialect::MySql => Flavor::MySql,
+        Dialect::MariaDb => Flavor::MariaDb,
+    }
+}
+
 /// Analyses the editor's text.
 pub fn analyze(request: &AnalyzeRequest) -> Analysis {
     let dialect = dialect_of(request.flavor);

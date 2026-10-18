@@ -233,7 +233,7 @@ async fn reads_the_columns_of_a_table_without_running_it() {
         execute(&mut connection, sql).await.unwrap().discard().await;
     }
 
-    let columns = catalog::table_columns(&mut connection, Some("test"), "t")
+    let columns = catalog::table_columns(&mut connection, Flavor::MySql, Some("test"), "t")
         .await
         .unwrap()
         .unwrap();
@@ -250,7 +250,7 @@ async fn reads_the_columns_of_a_table_without_running_it() {
     assert!(matches!(columns[3].1.data_type, DataType::Text(_)));
 
     // A temporary table of the connection, in the current database.
-    let temporary = catalog::table_columns(&mut connection, None, "odd`name")
+    let temporary = catalog::table_columns(&mut connection, Flavor::MySql, None, "odd`name")
         .await
         .unwrap()
         .unwrap();
@@ -260,15 +260,54 @@ async fn reads_the_columns_of_a_table_without_running_it() {
     );
     assert_eq!(temporary[1].1.data_type, DataType::Json);
     assert!(
-        catalog::table_columns(&mut connection, None, "missing")
+        catalog::table_columns(&mut connection, Flavor::MySql, None, "missing")
             .await
             .unwrap()
             .is_none()
     );
     assert!(
-        catalog::table_columns(&mut connection, Some("nowhere"), "t")
+        catalog::table_columns(&mut connection, Flavor::MySql, Some("nowhere"), "t")
             .await
             .unwrap()
             .is_none()
     );
+}
+
+#[tokio::test]
+#[ignore = "requires Docker Desktop running"]
+async fn reads_the_json_columns_of_mariadb_by_their_check() {
+    let server = Mariadb::default().start().await.unwrap();
+    let host = server.get_host().await.unwrap().to_string();
+    let port = server.get_host_port_ipv4(3306).await.unwrap();
+    let mut connection = connect(&target(host, port)).await.unwrap();
+    for sql in [
+        "CREATE TABLE t (doc JSON, checked LONGTEXT CHECK (JSON_VALID(checked)), body LONGTEXT,
+            own JSON CHECK (JSON_LENGTH(own) < 5))",
+        "CREATE VIEW v AS SELECT doc FROM t",
+        "CREATE TEMPORARY TABLE `odd``name` (d JSON)",
+    ] {
+        execute(&mut connection, sql).await.unwrap().discard().await;
+    }
+
+    let columns = catalog::table_columns(&mut connection, Flavor::MariaDb, Some("test"), "t")
+        .await
+        .unwrap()
+        .unwrap();
+    let json: Vec<bool> = columns
+        .iter()
+        .map(|(_, ty)| ty.data_type == DataType::Json)
+        .collect();
+    // A `JSON` with a check of its own is read as a string by MariaDB.
+    assert_eq!(json, [true, true, false, false]);
+    let temporary = catalog::table_columns(&mut connection, Flavor::MariaDb, None, "odd`name")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(temporary[0].1.data_type, DataType::Json);
+    // A view shows no check.
+    let view = catalog::table_columns(&mut connection, Flavor::MariaDb, None, "v")
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(matches!(view[0].1.data_type, DataType::Text(_)));
 }
