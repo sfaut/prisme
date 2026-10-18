@@ -229,9 +229,15 @@ cargo run -p prisme-probe -- --all expr cases.txt --layout rows --differ
 
 # Built-in functions of a reference file against the servers of its dialect
 cargo run -p prisme-probe -- functions mysql --server mysql:9.3.0
+
+# Calls of each function of a reference file, then their measures on every local image
+cargo run -p prisme-probe -- --all calls mysql > calls-mysql.txt
+cargo run -p prisme-probe -- --all expr calls-mysql.txt --layout rows --width 0 > calls-mysql.out
 ```
 
 A file of cases holds one expression per line, `id expression`; an id starting with `~` for an expression whose value changes at each run (only its type is compared); `! statement` for a statement run first, again in each session that measures or reads the values (a statement that can run twice: `DROP TABLE IF EXISTS` before `CREATE TABLE`); `#` for a comment. The expressions read the one row of the table `sample`, described by `cargo run -p prisme-probe -- expr --help`. The type is that of the column of a `CREATE TABLE ... AS SELECT`, shared by up to 30 expressions, the value the one a query of the client reads; four sessions of each server measure at once, one for a file with statements of its own.
+
+`calls` writes a file of cases from a reference file (`crates/dialects/reference/<dialect>.yaml`): each function called with each number of arguments, up to 3, that reaches it on the servers of the dialect (the smallest one when all are beyond), its arguments `1`, then with each value of a fixed set at each argument in turn: `NULL`, `0`, `-1`, `1.5`, `1e1`, the edges of the integers, strings (empty, a space, an accent, a number, a date, a time), `0x41`, a JSON text and the columns of `sample`. The functions that wait or hold locks (`SLEEP`, `GET_LOCK`...) are left out, as are those with a syntax of their own, which no call reaches (`CAST`). The file of MySQL holds about 25,000 cases: it is written again from the reference file rather than kept.
 
 The measurements behind the rules of the dialects stay in `crates/probe/cases/`: a file of cases for `expr` (`unix-time-ranges.txt`), a file of statements for `sql` (`bit-count-readings.sql`), each with a comment that says what it measures. A new version of a server runs them again, its image added with `--server`, and `--differ` shows the cases where it departs from the others:
 

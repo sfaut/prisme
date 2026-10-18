@@ -31,6 +31,8 @@ const NO_FUNCTION: u32 = 1305;
 const SYNTAX: u32 = 1064;
 /// Stored function that does not exist, the name being a built-in one.
 const STORED: u32 = 1630;
+/// Built-in function called with another number of arguments.
+const WRONG_COUNT: u32 = 1582;
 
 /// Arguments of the calls prepared.
 const ARGUMENTS: [&str; 5] = ["", "1", "1, 1", "1, 1, 1", "1, 1, 1, 1"];
@@ -77,7 +79,7 @@ enum Verdict {
 
 /// Error codes of the calls of a name.
 #[derive(Debug, Default)]
-struct Codes {
+pub struct Codes {
     /// `NAME(...)`, by number of arguments.
     plain: Vec<u32>,
     /// `NAME (1)`.
@@ -107,6 +109,17 @@ impl Codes {
                     .all(|&code| code == NO_FUNCTION || code == STORED),
             touching: self.spaced == Some(STORED),
         }
+    }
+
+    /// Numbers of arguments of the calls that reach a built-in function.
+    pub fn arities(&self) -> BTreeSet<usize> {
+        let missed = [NO_FUNCTION, STORED, SYNTAX, WRONG_COUNT];
+        self.plain
+            .iter()
+            .enumerate()
+            .filter(|(_, code)| !missed.contains(code))
+            .map(|(count, _)| count)
+            .collect()
     }
 }
 
@@ -165,7 +178,7 @@ fn is_name(name: &str) -> bool {
 }
 
 /// Error codes of the calls of `names` on `server`.
-fn probe(server: &Server, names: &BTreeSet<String>) -> anyhow::Result<BTreeMap<String, Codes>> {
+pub fn probe(server: &Server, names: &BTreeSet<String>) -> anyhow::Result<BTreeMap<String, Codes>> {
     let mut script = PROCEDURE.to_string();
     for name in names {
         for (count, arguments) in ARGUMENTS.iter().enumerate() {
@@ -332,6 +345,25 @@ mod tests {
         );
         let keyword = codes(&[1064; 5], Some(1064), &[1305; 5]);
         assert_eq!(keyword.verdict(), Verdict::Syntax);
+    }
+
+    #[test]
+    fn the_codes_give_the_numbers_of_arguments() {
+        let codes = Codes {
+            plain: vec![1582, 0, 1582, 1582, 1582],
+            ..Codes::default()
+        };
+        assert_eq!(codes.arities(), BTreeSet::from([1]));
+        let concat = Codes {
+            plain: vec![1582, 0, 0, 0, 0],
+            ..Codes::default()
+        };
+        assert_eq!(concat.arities(), BTreeSet::from([1, 2, 3, 4]));
+        let absent = Codes {
+            plain: vec![1305; 5],
+            ..Codes::default()
+        };
+        assert!(absent.arities().is_empty());
     }
 
     #[test]

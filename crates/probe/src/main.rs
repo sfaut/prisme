@@ -9,15 +9,19 @@
 //! - `expr`: measures expressions on each server and marks the servers that
 //!   differ (`expr` module);
 //! - `functions`: checks the built-in functions of a reference file against
-//!   the servers of its dialect (`functions` module).
+//!   the servers of its dialect (`functions` module);
+//! - `calls`: writes the cases of `expr` that call each function of a
+//!   reference file with a fixed set of values (`calls` module).
 //!
 //! A development tool, outside the executable of Prisme. Docker must be
 //! running.
 
+mod calls;
 mod expr;
 mod functions;
 mod server;
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
 use std::path::PathBuf;
 use std::thread;
@@ -115,6 +119,15 @@ enum Command {
         /// Dialect of the reference file.
         dialect: DialectName,
     },
+    /// Writes a file of cases of `expr` that calls each function of the
+    /// reference file of a dialect: with each number of arguments, up to 3,
+    /// that reaches it on the servers of that dialect (the smallest one when
+    /// all are beyond), then with each value of a fixed set at each argument
+    /// in turn.
+    Calls {
+        /// Dialect of the reference file.
+        dialect: DialectName,
+    },
 }
 
 /// Dialect named on the command line.
@@ -192,27 +205,54 @@ fn main() -> anyhow::Result<()> {
             );
         }
         Command::Functions { dialect } => {
-            let dialect = match dialect {
-                DialectName::Mysql => Dialect::MySql,
-                DialectName::Mariadb => Dialect::MariaDb,
-            };
-            let mut of_dialect = Vec::new();
-            for image in images {
-                if server::dialect_of(&image)? == dialect {
-                    of_dialect.push(image);
-                }
-            }
-            if of_dialect.is_empty() {
-                bail!("no server of {}: add --server", dialect.label());
-            }
-            let reports = by_groups(&of_dialect, group, |server| {
+            let dialect = dialect.dialect();
+            let reports = by_groups(&of_dialect(&images, dialect)?, group, |server| {
                 functions::check(dialect, std::slice::from_ref(server))
             })?;
             let reports: Vec<String> = reports.into_iter().map(|(_, report)| report).collect();
             print!("{}", reports.concat());
         }
+        Command::Calls { dialect } => {
+            let dialect = dialect.dialect();
+            let measured = by_groups(&of_dialect(&images, dialect)?, group, |server| {
+                calls::arities(dialect, server)
+            })?;
+            let mut arities: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
+            let mut labels = Vec::new();
+            for (server, counts) in measured {
+                labels.push(server.label());
+                for (name, counts) in counts {
+                    arities.entry(name).or_default().extend(counts);
+                }
+            }
+            print!("{}", calls::cases(dialect, &labels, &arities));
+        }
     }
     Ok(())
+}
+
+impl DialectName {
+    /// Dialect named.
+    fn dialect(self) -> Dialect {
+        match self {
+            Self::Mysql => Dialect::MySql,
+            Self::Mariadb => Dialect::MariaDb,
+        }
+    }
+}
+
+/// Images of `images` whose servers are of `dialect`.
+fn of_dialect(images: &[String], dialect: Dialect) -> anyhow::Result<Vec<String>> {
+    let mut kept = Vec::new();
+    for image in images {
+        if server::dialect_of(image)? == dialect {
+            kept.push(image.clone());
+        }
+    }
+    if kept.is_empty() {
+        bail!("no server of {}: add --server", dialect.label());
+    }
+    Ok(kept)
 }
 
 /// Content of `file`, or of the standard input when absent or `-`.
