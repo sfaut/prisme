@@ -2,7 +2,9 @@
 //!
 //! If the user wrote no limit, Prisme adds `LIMIT N + 1`: it shows N rows,
 //! and the extra row, if it arrives, reports a truncated result. A limit
-//! written by the user goes through as is.
+//! written by the user goes through as is, that of a query between
+//! parentheses included (`(SELECT ... LIMIT 2)`): MySQL before 8.0.31 lets an
+//! outer limit override it, and refuses it over a set operation (error 1235).
 //!
 //! The AST decides whether a limit is needed. The insertion then happens in
 //! the original text, at a position computed on the tokens: the user's query
@@ -10,7 +12,7 @@
 //! would not guarantee. The `LIMIT` goes before a possible `FOR UPDATE` /
 //! `FOR SHARE`, and never inside a trailing comment.
 
-use sqlparser::ast::{Expr, LimitClause, SetExpr, Statement, Value};
+use sqlparser::ast::{Expr, LimitClause, Query, SetExpr, Statement, Value};
 use sqlparser::keywords::Keyword;
 use sqlparser::parser::Parser;
 use sqlparser::tokenizer::{Token, TokenWithSpan, Tokenizer};
@@ -75,7 +77,7 @@ pub fn apply_default_limit(
         _ => return Err(LimitError::MultipleStatements(statements.len())),
     };
 
-    if query.limit_clause.is_some() || query.fetch.is_some() {
+    if has_limit(limited(query)) {
         return Ok(unchanged(LimitOutcome::UserLimit));
     }
     if !returns_rows(&query.body) {
@@ -110,6 +112,7 @@ pub fn written_limit(sql: &str, dialect: Dialect) -> Option<u64> {
     let [Statement::Query(query)] = statements.as_slice() else {
         return None;
     };
+    let query = limited(query);
     let expression = match (&query.limit_clause, &query.fetch) {
         (Some(LimitClause::LimitOffset { limit, .. }), _) => limit.as_ref()?,
         (Some(LimitClause::OffsetCommaLimit { limit, .. }), _) => limit,
@@ -123,6 +126,21 @@ pub fn written_limit(sql: &str, dialect: Dialect) -> Option<u64> {
         },
         _ => None,
     }
+}
+
+/// Query whose limit applies to `query`: `query` when it has one or is not
+/// a query between parentheses, otherwise that query (`(SELECT ... LIMIT
+/// 2)`, at any depth).
+fn limited(query: &Query) -> &Query {
+    match query.body.as_ref() {
+        SetExpr::Query(inner) if !has_limit(query) => limited(inner),
+        _ => query,
+    }
+}
+
+/// Tells whether `query` has a limit of its own (`LIMIT`, `FETCH FIRST`).
+fn has_limit(query: &Query) -> bool {
+    query.limit_clause.is_some() || query.fetch.is_some()
 }
 
 /// Tells whether the body of a query returns rows to the client.
@@ -208,6 +226,8 @@ mod tests {
         assert_eq!(read("SELECT * FROM t LIMIT 20 OFFSET 10"), Some(20));
         assert_eq!(read("SELECT * FROM t"), None);
         assert_eq!(read("SELECT * FROM t LIMIT @n"), None);
+        assert_eq!(read("((SELECT * FROM t LIMIT 3)) ORDER BY a"), Some(3));
+        assert_eq!(read("SELECT 1 UNION (SELECT 2 LIMIT 1)"), None);
         assert_eq!(read("SHOW TABLES"), None);
     }
 
@@ -248,6 +268,12 @@ mod tests {
             added("SELECT a FROM t UNION SELECT a FROM u"),
             "SELECT a FROM t UNION SELECT a FROM u LIMIT 1001"
         );
+        // The limit of an operand applies to that operand only.
+        assert_eq!(
+            added("SELECT a FROM t UNION (SELECT a FROM u LIMIT 1)"),
+            "SELECT a FROM t UNION (SELECT a FROM u LIMIT 1) LIMIT 1001"
+        );
+        assert_eq!(added("(SELECT a FROM t)"), "(SELECT a FROM t) LIMIT 1001");
     }
 
     #[test]
@@ -290,6 +316,9 @@ mod tests {
             "SELECT * FROM t LIMIT 10 OFFSET 5",
             "SELECT * FROM t LIMIT 50000000",
             "(SELECT a FROM t) UNION (SELECT a FROM u) LIMIT 3",
+            "(SELECT a FROM t LIMIT 2)",
+            "((SELECT a FROM t UNION SELECT a FROM u LIMIT 2)) ORDER BY a",
+            "WITH x AS (SELECT 1 AS a) (SELECT a FROM x ORDER BY a LIMIT 2)",
         ] {
             assert_eq!(
                 limit(sql),
