@@ -162,6 +162,8 @@ impl Server {
             .arg(format!("--password={PASSWORD}"))
             .arg("--default-character-set=utf8mb4")
             .arg("--init-command=SET SESSION sql_log_bin = 0")
+            // A value as long as the server allows, cut by the measure.
+            .arg("--max-allowed-packet=1073741824")
             .args(options)
             .args(database)
             .stdin(Stdio::piped())

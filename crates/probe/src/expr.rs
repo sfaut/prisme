@@ -17,6 +17,8 @@
 //! its type (MySQL 8.0.11 types `CAST(-1 AS UNSIGNED)` as an `INT UNSIGNED`,
 //! 4294967295) and writes a decimal at its scale, a user variable converts
 //! some values. A byte string keeps the value of the column, in hexadecimal.
+//! A value keeps its first `VALUE_LENGTH` characters, then its length
+//! (`SPACE(d)` reads `d` as 20240506 and gives as many spaces).
 //! `sample` holds one row:
 //! `d DATE`, `dt DATETIME(3)`, `ts TIMESTAMP(6)`, `t TIME`, `s VARCHAR(30)`,
 //! `i INT`, `n DECIMAL(10,2)`, `f DOUBLE`, all `NOT NULL`, then `dn DATE`,
@@ -27,7 +29,7 @@ use std::fmt::Write;
 use std::thread;
 
 use anyhow::{Context, bail};
-use indoc::indoc;
+use indoc::{formatdoc, indoc};
 
 use crate::server::Server;
 
@@ -40,6 +42,10 @@ const SESSIONS: usize = 4;
 /// `CREATE TABLE` takes most of the time of a measure (`docs/PERF.md`,
 /// chapter 9).
 const BATCH: usize = 30;
+
+/// Characters of a value kept, its length written after them beyond; half
+/// as many bytes in hexadecimal.
+const VALUE_LENGTH: usize = 1000;
 
 /// Table of the sample row, tables of the results and of the expressions
 /// whose type is pending.
@@ -86,8 +92,10 @@ const RESUMPTION: &str = indoc! {"
 /// one `CREATE TABLE`, a column each, then each alone when it fails.
 /// `probe_create` creates the table of the types of the session, with the
 /// warnings kept as warnings; `probe_read` reads the type of a column and
-/// its value.
-const PROCEDURE: &str = indoc! {r#"
+/// its value. A value keeps its first `VALUE_LENGTH` characters.
+fn procedure() -> String {
+    let bytes = VALUE_LENGTH / 2;
+    formatdoc! {r#"
     DROP PROCEDURE IF EXISTS probe_value;
     DROP PROCEDURE IF EXISTS probe_type;
     DROP PROCEDURE IF EXISTS probe_batch;
@@ -128,6 +136,7 @@ const PROCEDURE: &str = indoc! {r#"
       DECLARE failure_code INT DEFAULT 0;
       DECLARE type_text TEXT DEFAULT NULL;
       DECLARE type_nullable VARCHAR(3) DEFAULT NULL;
+      DECLARE type_bytes BOOLEAN DEFAULT FALSE;
       DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
         BEGIN
           GET DIAGNOSTICS CONDITION 1 failure_code = MYSQL_ERRNO, failure = MESSAGE_TEXT;
@@ -139,15 +148,24 @@ const PROCEDURE: &str = indoc! {r#"
         FROM information_schema.COLUMNS AS c
         WHERE c.TABLE_SCHEMA = DATABASE() AND c.TABLE_NAME = @probe_table
           AND c.COLUMN_NAME = wanted_column;
-      IF type_text REGEXP '^(binary|varbinary|tinyblob|blob|mediumblob|longblob|bit|geometry|point|linestring|polygon|multi)' THEN
-        SET @probe_sql = CONCAT('SELECT CONCAT(''=0x'', HEX(', wanted_column, ')) INTO @probe_text FROM ', @probe_table);
+      SET type_bytes = type_text REGEXP '^(binary|varbinary|tinyblob|blob|mediumblob|longblob|bit|geometry|point|linestring|polygon|multi)';
+      IF type_bytes THEN
+        SET @probe_sql = CONCAT('SELECT IF(LENGTH(', wanted_column, ') > {bytes}, CONCAT(HEX(LEFT(',
+          wanted_column, ', {bytes})), ''... ('', LENGTH(', wanted_column, '), '' bytes)''), HEX(',
+          wanted_column, ')) INTO @probe_text FROM ', @probe_table);
       ELSE
-        SET @probe_sql = CONCAT('SELECT CONCAT(''='', CAST(', wanted_column, ' AS CHAR)) INTO @probe_text FROM ', @probe_table);
+        SET @probe_sql = CONCAT('SELECT CAST(', wanted_column, ' AS CHAR) INTO @probe_text FROM ', @probe_table);
       END IF;
       SET @probe_text = NULL;
       PREPARE probe_statement FROM @probe_sql;
       EXECUTE probe_statement;
       DEALLOCATE PREPARE probe_statement;
+      IF type_bytes THEN
+        SET @probe_text = CONCAT('=0x', @probe_text);
+      ELSE
+        SET @probe_text = CONCAT('=', IF(CHAR_LENGTH(@probe_text) > {VALUE_LENGTH},
+          CONCAT(LEFT(@probe_text, {VALUE_LENGTH}), '... (', CHAR_LENGTH(@probe_text), ' characters)'), @probe_text));
+      END IF;
       UPDATE probe_results AS r
         SET r.column_type = type_text, r.nullable = type_nullable,
           r.value = IF(r.failure IS NULL, @probe_text, NULL), r.type_failure = failure
@@ -192,13 +210,15 @@ const PROCEDURE: &str = indoc! {r#"
       -- The value of the query, until the column of its type gives it;
       -- none when the column of the results refuses it (bytes that are no
       -- text, `CHAR(-1)`).
+      SET @probe_text = CAST(@probe_value AS CHAR);
       BEGIN
         DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
           INSERT INTO probe_results (case_id, warning, failure)
             VALUES (case_id, value_warning, failure);
         INSERT INTO probe_results (case_id, value, warning, failure)
-          VALUES (case_id, IF(failure IS NULL, CONCAT('=', CAST(@probe_value AS CHAR)), NULL),
-            value_warning, failure);
+          VALUES (case_id, IF(failure IS NULL, CONCAT('=', IF(CHAR_LENGTH(@probe_text) > {VALUE_LENGTH},
+            CONCAT(LEFT(@probe_text, {VALUE_LENGTH}), '... (', CHAR_LENGTH(@probe_text), ' characters)'),
+            @probe_text)), NULL), value_warning, failure);
       END;
       SET result_seq = LAST_INSERT_ID();
       IF failure IS NULL THEN
@@ -240,7 +260,8 @@ const PROCEDURE: &str = indoc! {r#"
       SET @probe_list = NULL;
     END//
     DELIMITER ;
-"#};
+"#}
+}
 
 /// Expression to measure.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -416,14 +437,14 @@ fn measure_once(
 ) -> anyhow::Result<HashMap<String, Measure>> {
     let setup = setup_script(cases);
     let measured: HashSet<String> = if resumed {
-        server.run_checked(&format!("{RESUMPTION}{setup}{PROCEDURE}"), &[])?;
+        server.run_checked(&format!("{RESUMPTION}{setup}{}", procedure()), &[])?;
         let ids = server.run_checked(
             "SELECT case_id FROM probe_results;\n",
             &["--batch", "--skip-column-names"],
         )?;
         ids.lines().map(str::to_string).collect()
     } else {
-        server.run_checked(&format!("{PREPARATION}{setup}{PROCEDURE}"), &[])?;
+        server.run_checked(&format!("{PREPARATION}{setup}{}", procedure()), &[])?;
         HashSet::new()
     };
     let pending = Cases {
@@ -521,10 +542,21 @@ fn read_values(server: &Server, cases: &Cases) -> anyhow::Result<HashMap<String,
         Ok(String::from_utf8_lossy(&output.stdout)
             .lines()
             .filter_map(|line| line.split_once('\t'))
-            .map(|(id, value)| (id.to_string(), field(value)))
+            .map(|(id, value)| (id.to_string(), field(value).map(bounded)))
             .collect::<Vec<_>>())
     })?;
     Ok(chunks.into_iter().flatten().collect())
+}
+
+/// `value` cut after its first `VALUE_LENGTH` characters, then its length,
+/// as the procedures cut the values they read.
+fn bounded(value: String) -> String {
+    let length = value.chars().count();
+    if length <= VALUE_LENGTH {
+        return value;
+    }
+    let kept: String = value.chars().take(VALUE_LENGTH).collect();
+    format!("{kept}... ({length} characters)")
 }
 
 /// Statements of the file, as a script.
@@ -905,5 +937,15 @@ mod tests {
         ] {
             assert!(!stopped_by(query, &case), "{query}");
         }
+    }
+
+    #[test]
+    fn a_long_value_keeps_its_first_characters_and_its_length() {
+        let kept = "é".repeat(VALUE_LENGTH);
+        assert_eq!(bounded(kept.clone()), kept);
+        assert_eq!(
+            bounded(format!("{kept}éé")),
+            format!("{kept}... ({} characters)", VALUE_LENGTH + 2)
+        );
     }
 }
