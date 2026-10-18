@@ -263,8 +263,10 @@ fn dialect_named(name: &str) -> Dialect {
 /// Starts the server of `image` (`mariadb:10.6`) and reads its version.
 ///
 /// The server is awaited on the message of the server that listens on its
-/// port, which all the versions write; the server of the initialisation of
-/// the image listens on none. It resolves no host name: the reverse lookup
+/// port, which all the versions write, `port: 3306` followed by a space: the
+/// X Plugin of MySQL writes `port: 33060` before it, and a connection made
+/// then is closed when the servers start slowly. The server of the
+/// initialisation of the image listens on no port. It resolves no host name: the reverse lookup
 /// of each client address slows every connection down in Docker. Its start
 /// skips the tables of the named time zones, and its data directory is in
 /// memory, lost with the container (`docs/PERF.md`, chapter 8).
@@ -292,7 +294,7 @@ async fn start(image: Image) -> Server {
     };
     let container = GenericImage::new(name, tag)
         .with_exposed_port(3306.tcp())
-        .with_wait_for(WaitFor::message_on_stderr("port: 3306"))
+        .with_wait_for(WaitFor::message_on_stderr("port: 3306 "))
         .with_env_var(empty_password, "yes")
         .with_env_var(database, "test")
         .with_env_var(skip_time_zones, "yes")
