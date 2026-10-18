@@ -55,6 +55,9 @@ keywords:
     - ALTER
     - ANALYZE
     - AND
+    - name: ARRAY
+      since: "8.0.17"
+      until: "8.0.19"
     - AS
     - ASC
     - ASENSITIVE
@@ -181,6 +184,9 @@ keywords:
     - MASTER_SSL_VERIFY_SERVER_CERT
     - MATCH
     - MAXVALUE
+    - name: MEMBER
+      since: "8.0.17"
+      until: "8.0.19"
     - MINUTE_MICROSECOND
     - MINUTE_SECOND
     - MOD

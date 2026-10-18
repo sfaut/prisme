@@ -256,6 +256,10 @@ mod tests {
         assert!(!reserved(Some("5.7.44")).contains(&"WINDOW".to_string()));
         assert!(reserved(None).contains(&"WINDOW".to_string()));
         assert!(reserved(Some("5.7.44")).contains(&"SELECT".to_string()));
+        // `MEMBER` is reserved in MySQL 8.0.17 and 8.0.18 only.
+        assert!(!reserved(Some("8.0.16")).contains(&"MEMBER".to_string()));
+        assert!(reserved(Some("8.0.18")).contains(&"MEMBER".to_string()));
+        assert!(!reserved(Some("8.0.19")).contains(&"MEMBER".to_string()));
     }
 
     #[test]

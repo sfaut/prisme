@@ -1,0 +1,10 @@
+# Words reserved in some versions only, as a name of a column of the result: ARRAY and MEMBER
+# are reserved in MySQL 8.0.17 and 8.0.18. MEMBER after a value opens `MEMBER OF` from 8.0.17,
+# as SOUNDS opens `SOUNDS LIKE` in every version: neither is an alias without AS there.
+as_member (SELECT 1 AS member)
+alias_member (SELECT 1 member)
+as_array (SELECT 1 AS array)
+alias_array (SELECT 1 array)
+quoted_member (SELECT 1 AS `member`)
+as_sounds (SELECT 1 AS sounds)
+alias_sounds (SELECT 1 sounds)

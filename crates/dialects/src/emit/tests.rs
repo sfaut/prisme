@@ -252,6 +252,15 @@ fn a_word_reserved_in_the_output_is_quoted() {
     let (sql, rules) = transpiled("SELECT a AS lateral FROM t", old, output(mysql()));
     assert_eq!(sql, "SELECT a AS `lateral` FROM t");
     assert_eq!(rules, ["identifier.quoted"]);
+    // `ARRAY` and `MEMBER` are reserved in MySQL 8.0.17 and 8.0.18 only.
+    for (patch, expected) in [
+        (17, "SELECT a AS `array`, b AS `member` FROM t"),
+        (19, "SELECT a AS array, b AS member FROM t"),
+    ] {
+        let target = mysql_at(8, 0, patch);
+        let (sql, _) = transpiled("SELECT a AS array, b AS member FROM t", old, output(target));
+        assert_eq!(sql, expected);
+    }
 }
 
 #[test]
