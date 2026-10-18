@@ -24,6 +24,10 @@ use crate::build::is_internal_name;
 use crate::report::StepKind;
 use crate::sql::ast::TemporalKind;
 
+/// Level of `OR`.
+pub(super) const OR: u8 = 1;
+/// Level of `AND`.
+pub(super) const AND: u8 = 3;
 /// Level of `NOT`.
 pub(super) const NOT: u8 = 4;
 /// Level of `+` and `-`.
@@ -54,9 +58,9 @@ fn levels(expr: &Expr) -> (u8, u8, u8) {
     let binary = |level: u8| (level, level, level + 1);
     match &expr.kind {
         ExprKind::Logical { op, .. } => match op {
-            Logical::Or => binary(1),
+            Logical::Or => binary(OR),
             Logical::Xor => binary(2),
-            Logical::And => binary(3),
+            Logical::And => binary(AND),
         },
         ExprKind::Not(_) => (NOT, NOT, NOT),
         // MySQL reads no operator after `IS TRUE`: as an operand of a
@@ -152,6 +156,9 @@ impl Emitter<'_> {
         }
         if let ExprKind::Position(position) = &expr.kind {
             self.position(expr, position);
+            return;
+        }
+        if self.json_in(expr, min) {
             return;
         }
         let (level, left, right) = levels(expr);

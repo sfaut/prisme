@@ -35,6 +35,15 @@
 //! `2.50` stored `2.5`), MariaDB as written: a difference of the data, which
 //! the reading of the query does not reach.
 //!
+//! Between versions of MySQL, `IN` of a list compares all its values by the
+//! rules of JSON when one is a `JSON`, from 8.0.17 (construct
+//! `json_in_compared`); before, a `JSON` as its text against a string, as a
+//! number against a number. From 8.0.17, `j IN (a, b)` is written `j = a OR
+//! j = b`, which compares by the rules of JSON in every version, when the
+//! operand is the `JSON`. Otherwise (`'b' IN (j, 'x')` compares `'b'` with
+//! `'x'` by the rules of JSON too), and towards 8.0.17, an error (rule
+//! `json.in`).
+//!
 //! Only a value the plan types `JSON` is concerned: the results of the
 //! `JSON_` functions are of unknown type yet, their translation between the
 //! dialects refused.
@@ -43,9 +52,11 @@ use prisme_plan::{Expr, ExprKind, Join, Plan};
 use prisme_types::DataType;
 
 use super::Emitter;
+use super::expr::{AND, OR, PREDICATE};
 use crate::Dialect;
 use crate::build::is_internal_name;
 use crate::report::StepKind;
+use crate::versions::Construct;
 
 impl Emitter<'_> {
     /// Writes `expr`, a column or a scalar subquery of type `JSON` that the
@@ -145,6 +156,79 @@ impl Emitter<'_> {
             let message = format!("{message}: not supported yet by Prisme");
             self.error("json.text", &message, plan.span());
         }
+    }
+
+    /// `IN` of a list at the level `min`, between versions of MySQL that
+    /// compare a `JSON` of it otherwise (rule `json.in`); true when written.
+    pub(super) fn json_in(&mut self, expr: &Expr, min: u8) -> bool {
+        let ExprKind::InList {
+            operand,
+            list,
+            negated,
+        } = &expr.kind
+        else {
+            return false;
+        };
+        let json = |value: &Expr| value.ty.data_type == DataType::Json;
+        if self.source.dialect != Dialect::MySql
+            || self.output.dialect != Dialect::MySql
+            || list.len() < 2
+            || !(json(operand) || list.iter().any(json))
+        {
+            return false;
+        }
+        let compared = self.input_has(Construct::JsonInCompared);
+        if compared == self.has(Construct::JsonInCompared) {
+            return false;
+        }
+        let reading = |compared: bool| {
+            if compared {
+                "by the rules of JSON"
+            } else {
+                "as its text or as a number"
+            }
+        };
+        let message = format!(
+            "{} compares a `JSON` of `IN` {}, {} {}",
+            self.source_name(),
+            reading(compared),
+            self.target(),
+            reading(!compared)
+        );
+        if !compared {
+            self.error("json.in", &message, expr.span);
+            return false;
+        }
+        if !json(operand) {
+            let message = format!(
+                "{message}, and its other values by the rules of JSON too: not supported yet by Prisme"
+            );
+            self.error("json.in", &message, expr.span);
+            return false;
+        }
+        let (level, separator, comparison) = if *negated {
+            (AND, " AND ", " <> ")
+        } else {
+            (OR, " OR ", " = ")
+        };
+        let message = format!("{message}: emulated by comparisons `{}`", comparison.trim());
+        self.step("json.in", StepKind::Emulation, message, expr.span);
+        let parenthesized = level < min;
+        if parenthesized {
+            self.write("(");
+        }
+        for (index, value) in list.iter().enumerate() {
+            if index > 0 {
+                self.write(separator);
+            }
+            self.number_expr(operand, PREDICATE);
+            self.write(comparison);
+            self.number_expr(value, PREDICATE + 1);
+        }
+        if parenthesized {
+            self.write(")");
+        }
+        true
     }
 
     /// Message telling how the input and the output read a `JSON` in `what`

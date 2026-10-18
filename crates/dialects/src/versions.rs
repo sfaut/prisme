@@ -169,6 +169,9 @@ pub enum Construct {
     /// `XOR` reads its operands as compared with 0 (MariaDB); as integers
     /// otherwise.
     XorCompared,
+    /// `IN` of a list compares all its values by the rules of JSON when one
+    /// is a `JSON` (MySQL); a `JSON` as its text or as a number otherwise.
+    JsonInCompared,
 }
 
 /// Construct refused in a dialect or a version.
@@ -334,6 +337,7 @@ impl Construct {
             Self::LocateCharset => "`LOCATE` in the collation of its string",
             Self::ConditionCompared => "conditions read as compared with 0",
             Self::XorCompared => "`XOR` of operands read as compared with 0",
+            Self::JsonInCompared => "`IN` comparing a `JSON` by the rules of JSON",
         }
     }
 }

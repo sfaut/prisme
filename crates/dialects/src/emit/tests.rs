@@ -2789,3 +2789,49 @@ fn a_json_compared_is_read_as_the_input_reads_it() {
         );
     }
 }
+
+#[test]
+fn in_of_a_json_list_is_read_as_the_input_reads_it() {
+    let mysql_8_0_16 = mysql_at(8, 0, 16);
+    let mysql_8_4 = mysql_at(8, 4, 0);
+    for (text, written) in [
+        (
+            "SELECT s FROM g WHERE js IN ('b', 1)",
+            "SELECT s FROM g WHERE js = 'b' OR js = 1",
+        ),
+        (
+            "SELECT js NOT IN ('b', 1) AS a FROM g",
+            "SELECT js <> 'b' AND js <> 1 AS a FROM g",
+        ),
+        (
+            "SELECT s FROM g WHERE js IN ('b', 1) AND s = 'x'",
+            "SELECT s FROM g WHERE (js = 'b' OR js = 1) AND s = 'x'",
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, mysql_8_4, output(mysql_8_0_16));
+        assert_eq!(sql, written);
+        assert_eq!(rules, ["json.in"], "{text}");
+    }
+    for (text, input, target) in [
+        (
+            "SELECT s FROM g WHERE js IN ('b', 1)",
+            mysql_8_0_16,
+            mysql_8_4,
+        ),
+        (
+            "SELECT s FROM g WHERE 'b' IN (js, 'x')",
+            mysql_8_4,
+            mysql_8_0_16,
+        ),
+    ] {
+        assert_eq!(errors(text, input, output(target)), ["json.in"], "{text}");
+    }
+    for (text, target) in [
+        ("SELECT s FROM g WHERE js IN ('b')", mysql_8_0_16),
+        ("SELECT s FROM g WHERE js IN ('b', 1)", mysql_at(8, 0, 17)),
+    ] {
+        let (sql, rules) = transpiled(text, mysql_8_4, output(target));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{rules:?}");
+    }
+}

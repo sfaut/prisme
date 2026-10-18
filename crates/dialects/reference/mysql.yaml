@@ -540,6 +540,20 @@ constructs:
       No entry in the release notes; bisected on the images 8.0.11 to 8.0.17
       (crates/probe/cases/json-truth.txt, fraction-truth.txt). MariaDB reads
       its `JSON`, a `LONGTEXT`, as a string (`'true'` 0).
+  - id: json_in_compared
+    since: "8.0.17"
+    source: https://github.com/mysql/mysql-server/blob/mysql-8.0.17/sql/item_cmpfunc.cc
+    comment: >-
+      `IN` of a list compares all its values by the rules of JSON when one
+      of them is a `JSON` (`compare_as_json` and `cmp_item_json` in
+      `Item_func_in::resolve_type`; no entry in the release notes): `v IN
+      ('b', 1)` is true for the JSON string `"b"` and the number `1`.
+      Before, with a warning (`unsupported_json_comparison`), a `JSON` as
+      its text against a string (`{"a": 1}` equals `'{"a": 1}'`, `"b"`
+      differs from `'b'`) and as a number against a number (`true` equals
+      1). A list of one value is a comparison `=`, alike in every version
+      (crates/probe/cases/json-text.txt, measured on 8.0.11 to 8.0.17 and
+      8.4.11).
   - id: string_charset
     since: "8.0.19"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-19.html
