@@ -517,7 +517,7 @@ impl Emitter<'_> {
         if let Some(filter) = block.filter {
             self.at(filter.span);
             self.clause(" WHERE ");
-            self.expr(&filter.predicate, 0);
+            self.truth_operand(&filter.predicate, 0, truth::Context::Clause("`WHERE`"));
         }
         if let Some(aggregate) = block.aggregate {
             self.group_by(aggregate, block.project);
@@ -533,7 +533,7 @@ impl Emitter<'_> {
         if let Some(having) = block.having {
             self.at(having.span);
             self.clause(" HAVING ");
-            self.expr(&having.predicate, 0);
+            self.truth_operand(&having.predicate, 0, truth::Context::Clause("`HAVING`"));
         }
         if let Some(window) = block.window {
             self.window_clause(&window.definitions);

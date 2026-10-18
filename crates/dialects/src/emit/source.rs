@@ -13,6 +13,7 @@ use prisme_plan::{
 };
 
 use super::Emitter;
+use super::truth::Context;
 use crate::report::StepKind;
 use crate::versions::Construct;
 
@@ -217,7 +218,7 @@ impl Emitter<'_> {
             }
             (None, Some(condition)) => {
                 self.write(" ON ");
-                self.expr(condition, 0);
+                self.truth_operand(condition, 0, Context::Clause("`ON`"));
             }
             _ => {}
         }

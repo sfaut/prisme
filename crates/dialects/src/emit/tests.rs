@@ -2550,3 +2550,117 @@ fn a_json_read_as_a_boolean_is_read_as_the_input_reads_it() {
         assert!(rules.is_empty(), "{rules:?}");
     }
 }
+
+#[test]
+fn a_fraction_read_as_a_boolean_is_read_as_the_input_reads_it() {
+    let mysql_8_0_16 = mysql_at(8, 0, 16);
+    let mysql_8_4 = mysql_at(8, 4, 0);
+    let mariadb_11_8_9 = InputDialect {
+        dialect: Dialect::MariaDb,
+        version: Version::new(11, 8, 9),
+    };
+    for (text, written, input, target) in [
+        // Towards the reading as an integer, compared with 0.
+        (
+            "SELECT s FROM g WHERE s",
+            "SELECT s FROM g WHERE s <> 0",
+            mysql_8_4,
+            mysql_8_0_16,
+        ),
+        (
+            "SELECT s FROM g GROUP BY s HAVING s",
+            "SELECT s FROM g GROUP BY s HAVING s <> 0",
+            mariadb(),
+            mysql_8_0_16,
+        ),
+        (
+            "SELECT g.s FROM g JOIN t ON de",
+            "SELECT g.s FROM g JOIN t ON de <> 0",
+            mysql_8_4,
+            mysql_8_0_16,
+        ),
+        (
+            "SELECT s XOR 1 AS a FROM g",
+            "SELECT s <> 0 XOR 1 AS a FROM g",
+            mysql_8_4,
+            mariadb(),
+        ),
+        (
+            "SELECT f XOR i AS a FROM d",
+            "SELECT f <> 0 XOR i AS a FROM d",
+            mariadb_11_8_9,
+            mysql_8_0_16,
+        ),
+        // The left operand of `NOT (a XOR b)` is read alike.
+        (
+            "SELECT NOT (s XOR de) AS a FROM g",
+            "SELECT NOT (s XOR de <> 0) AS a FROM g",
+            mysql_8_4,
+            mysql_8_0_16,
+        ),
+        // Towards the comparison, converted to an integer.
+        (
+            "SELECT s FROM g WHERE s",
+            "SELECT s FROM g WHERE CAST(s AS SIGNED)",
+            mysql_8_0_16,
+            mysql_8_4,
+        ),
+        (
+            "SELECT s FROM g WHERE vb",
+            "SELECT s FROM g WHERE CAST(vb AS SIGNED)",
+            mysql_8_0_16,
+            mariadb(),
+        ),
+        (
+            "SELECT de XOR 1 AS a FROM g",
+            "SELECT CAST(de AS SIGNED) XOR 1 AS a FROM g",
+            mariadb(),
+            mysql_8_4,
+        ),
+        (
+            "SELECT dt3 XOR 1 AS a FROM g",
+            "SELECT CAST(dt3 AS SIGNED) XOR 1 AS a FROM g",
+            mariadb(),
+            mariadb_11_8_9,
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, written);
+        assert_eq!(rules, ["boolean.fraction"], "{text}");
+    }
+    // A time, or a value of unknown type, of another dialect read as an
+    // integer.
+    for (text, input, target) in [
+        ("SELECT s FROM g WHERE dt3", mysql_8_0_16, mariadb()),
+        ("SELECT dt3 XOR 1 FROM g", mariadb(), mysql_8_0_16),
+        ("SELECT dt3 XOR 1 FROM g", mariadb(), mysql_8_4),
+        ("SELECT s FROM g WHERE LENGTH(s)", mysql_8_0_16, mariadb()),
+    ] {
+        assert_eq!(
+            errors(text, input, output(target)),
+            ["boolean.fraction"],
+            "{text}"
+        );
+    }
+    // Read alike.
+    for (text, input, target) in [
+        ("SELECT s FROM g WHERE s", mysql_8_4, mariadb()),
+        ("SELECT s XOR 1 AS a FROM g", mysql_8_0_16, mariadb()),
+        ("SELECT NOT (s XOR 1) AS a FROM g", mysql_8_4, mysql_8_0_16),
+        ("SELECT s FROM g WHERE dd AND tm", mysql_8_0_16, mysql_8_4),
+        (
+            "SELECT n FROM d WHERE i XOR n",
+            mysql_8_0_16,
+            mariadb_11_8_9,
+        ),
+        (
+            "SELECT s FROM g WHERE NOT de OR s IS TRUE",
+            mysql_8_0_16,
+            mysql_8_4,
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{rules:?}");
+    }
+}

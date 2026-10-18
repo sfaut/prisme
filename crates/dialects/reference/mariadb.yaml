@@ -483,6 +483,40 @@ constructs:
       00:00:00')` and `FROM_UNIXTIME(0)` give NULL in UTC, 0 and the epoch
       before; a fraction of a second after it stays in the range. Same change
       as `timestamp_now`. Measured on 11.6.2 and 11.7.2.
+  # `XOR` of a fraction, fixed in a patch version of each branch maintained
+  # then (crates/probe/cases/fraction-truth.txt).
+  - id: xor_compared
+    since: "10.11.19"
+    until: "11.0.0"
+    source: https://jira.mariadb.org/browse/MDEV-40593
+    comment: >-
+      `XOR` reads its operands as compared with 0, as `WHERE` does (`0.4 XOR
+      0` gives 1); before, as integers (0), a time truncated, and `NOT (a XOR
+      b)` as `(NOT a) XOR b`. Measured on 10.6.28, 10.7.8 to 10.10.7, 10.11.2,
+      10.11.6, 10.11.10, 10.11.14 to 10.11.19, 11.0.2, 11.1.2, 11.2.6, 11.7.2.
+  - id: xor_compared
+    since: "11.4.13"
+    until: "11.5.0"
+    source: https://jira.mariadb.org/browse/MDEV-40593
+    comment: >-
+      The same fix in the branch 11.4, measured on 11.4.11 to 11.4.13.
+  - id: xor_compared
+    since: "11.8.9"
+    until: "12.0.0"
+    source: https://jira.mariadb.org/browse/MDEV-40593
+    comment: >-
+      The same fix in the branch 11.8, measured on 11.8.7 to 11.8.9.
+  - id: xor_compared
+    since: "12.3.3"
+    until: "13.0.0"
+    source: https://jira.mariadb.org/browse/MDEV-40593
+    comment: >-
+      The same fix in the branch 12.3, by the ticket, not measured.
+  - id: xor_compared
+    since: "13.0.2"
+    source: https://jira.mariadb.org/browse/MDEV-40593
+    comment: >-
+      The same fix in the branch 13.0, by the ticket, not measured.
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:

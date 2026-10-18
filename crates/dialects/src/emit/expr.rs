@@ -214,13 +214,28 @@ impl Emitter<'_> {
                 let word = match op {
                     Logical::And => " AND ",
                     Logical::Or => " OR ",
-                    Logical::Xor => " XOR ",
+                    Logical::Xor => return self.xor(a, b, left, right, false),
                 };
                 self.binary(a, word, b, left, right);
             }
             ExprKind::Not(operand) => {
                 self.write("NOT ");
-                self.number_expr(operand, NOT);
+                // Some versions read `NOT (a XOR b)` as `(NOT a) XOR b`
+                // (`truth` module).
+                if let ExprKind::Logical {
+                    op: Logical::Xor,
+                    left: a,
+                    right: b,
+                } = &operand.kind
+                {
+                    let (_, left, right) = levels(operand);
+                    self.write("(");
+                    self.at(operand.span);
+                    self.xor(a, b, left, right, true);
+                    self.write(")");
+                } else {
+                    self.number_expr(operand, NOT);
+                }
             }
             ExprKind::IsNull { operand, negated } => {
                 self.number_expr(operand, left);

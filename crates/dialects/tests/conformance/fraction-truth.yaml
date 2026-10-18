@@ -1,0 +1,67 @@
+# Rule `boolean.fraction`: a string, a float, a decimal or a time with a
+# fraction, read as an integer by `WHERE`, `HAVING`, `ON` and `XOR` in MySQL
+# before 8.0.17, by `XOR` in MariaDB before the fix of MDEV-40593 (10.11.19,
+# 11.4.13, 11.8.9), compared with 0 otherwise (crates/probe/cases/
+# fraction-truth.txt). A time is converted otherwise by each dialect: refused
+# between an integer reading and another dialect.
+setup:
+  - DROP TABLE IF EXISTS fraction_truth
+  - >-
+    CREATE TABLE fraction_truth (id INT NOT NULL PRIMARY KEY, s VARCHAR(20) NULL, f DOUBLE NULL,
+    d DECIMAL(5,2) NULL, t TIME(1) NULL, b VARBINARY(10) NULL)
+  - >-
+    INSERT INTO fraction_truth VALUES (1, '0.5', 0.5, 0.40, '00:00:00.4', '0.5'),
+    (2, '2e-400', 0.4, 0.50, '00:00:00.5', 'x'), (3, '-0.4', -0.4, -0.40, '-00:00:00.4', '1e3'),
+    (4, '1abc', 1.5, 1.50, '00:00:01', ''), (5, NULL, NULL, NULL, NULL, NULL)
+cases:
+  - from: mysql
+    sql: SELECT id FROM fraction_truth WHERE s ORDER BY id
+  - from: mysql
+    sql: SELECT id FROM fraction_truth WHERE f ORDER BY id
+  - from: mysql
+    sql: SELECT id FROM fraction_truth WHERE b ORDER BY id
+  - from: mysql
+    sql: SELECT id FROM fraction_truth GROUP BY id, d HAVING d ORDER BY id
+  - from: mysql
+    sql: >-
+      SELECT a.id FROM fraction_truth AS a JOIN fraction_truth AS b ON b.d WHERE a.id = b.id
+      ORDER BY a.id
+  - from: mysql
+    sql: SELECT id FROM fraction_truth WHERE t ORDER BY id
+    inputs: mysql >= 8.0.17
+  - from: mysql
+    sql: SELECT id FROM fraction_truth WHERE t ORDER BY id
+    inputs: mysql < 8.0.17
+    refused: boolean.fraction
+  - from: mariadb
+    sql: SELECT id FROM fraction_truth WHERE s ORDER BY id
+  - from: mariadb
+    sql: SELECT id FROM fraction_truth WHERE t ORDER BY id
+  - from: mariadb
+    sql: SELECT id FROM fraction_truth GROUP BY id, f HAVING f ORDER BY id
+  - from: mysql
+    sql: >-
+      SELECT id, s XOR 0 AS a, f XOR 0 AS b, d XOR 1 AS c, b XOR 0 AS e, NOT (s XOR 1) AS g,
+      NOT (1 XOR f) AS h, NOT (d XOR 0 XOR 1) AS k FROM fraction_truth ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, s XOR 0 AS a, f XOR 0 AS b, d XOR 1 AS c, b XOR 0 AS e, NOT (s XOR 1) AS g,
+      NOT (1 XOR f) AS h, NOT (d XOR 0 XOR 1) AS k FROM fraction_truth ORDER BY id
+  - from: mysql
+    sql: SELECT 0.4 XOR 0 AS a, (-0.01) XOR 1 AS b, NOT ((-0.01) XOR 1) AS c
+  - from: mariadb
+    sql: SELECT 0.4 XOR 0 AS a, (-0.01) XOR 1 AS b, NOT ((-0.01) XOR 1) AS c
+  - from: mysql
+    sql: SELECT id, t XOR 0 AS a FROM fraction_truth ORDER BY id
+    inputs: mysql >= 8.0.17
+  - from: mysql
+    sql: SELECT id, t XOR 0 AS a FROM fraction_truth ORDER BY id
+    inputs: mysql < 8.0.17
+    refused: boolean.fraction
+  - from: mariadb
+    sql: SELECT id, t XOR 0 AS a FROM fraction_truth ORDER BY id
+    inputs: mariadb >= 11.8.9
+  - from: mariadb
+    sql: SELECT id, t XOR 0 AS a FROM fraction_truth ORDER BY id
+    inputs: mariadb < 11.8.9
+    refused: boolean.fraction
