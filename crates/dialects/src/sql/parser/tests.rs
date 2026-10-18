@@ -63,13 +63,17 @@ fn error(text: &str, options: &ParseOptions) -> (String, String) {
     )
 }
 
-/// Literal written for a prefix tree, a character set before its literal
-/// (`_latin1'a'`).
+/// Literal written for a prefix tree: bytes in hexadecimal after their form
+/// (`HexNumber:41`), a character set before its literal (`_latin1'a'`).
 fn literal_tree(literal: &Literal) -> String {
     match literal {
         Literal::Integer(text) | Literal::Decimal(text) | Literal::Float(text) => text.clone(),
         Literal::String(strings) => format!("'{}'", strings.value),
         Literal::National(strings) => format!("N'{}'", strings.value),
+        Literal::Bytes { bytes, form } => {
+            let digits: String = bytes.iter().map(|byte| format!("{byte:02X}")).collect();
+            format!("{form:?}:{digits}")
+        }
         Literal::Introduced { charset, literal } => format!("_{charset}{}", literal_tree(literal)),
         Literal::Null => "NULL".to_string(),
         Literal::True => "TRUE".to_string(),
@@ -620,13 +624,22 @@ fn reads_aliases_with_their_form() {
 }
 
 #[test]
-fn reads_national_and_introduced_strings() {
+fn reads_national_hexadecimal_bit_and_introduced_literals() {
     for (text, expected) in [
         ("N'a' 'b'", "N'ab'"),
         ("n'a'", "N'a'"),
         ("_latin1'a' 'b'", "_latin1'ab'"),
         ("_UTF8MB4 'é'", "_utf8mb4'é'"),
         ("_binary /* bytes */ 'a' + 1", "(+ _binary'a' 1)"),
+        ("X'41'", "HexString:41"),
+        ("x''", "HexString:"),
+        ("0x4", "HexNumber:04"),
+        ("0x0102", "HexNumber:0102"),
+        ("b'1'", "BitString:01"),
+        ("0b101000001", "BitNumber:0141"),
+        ("_UTF8MB4 X'C3A9'", "_utf8mb4HexString:C3A9"),
+        ("_binary /* bytes */ b'1'", "_binaryBitString:01"),
+        ("_binary 0x41 + 1", "(+ _binaryHexNumber:41 1)"),
     ] {
         assert_eq!(expr(text), expected, "{text}");
     }
@@ -643,10 +656,6 @@ fn reads_national_and_introduced_strings() {
     assert_eq!(
         error("SELECT _latin1 N'a'", &mysql()).0,
         "expected a string, a hexadecimal or a bit literal, found `N'a'`"
-    );
-    assert_eq!(
-        error("SELECT _latin1 X'41'", &mysql()).0,
-        "hexadecimal and bit literals: not supported yet by the parser of Prisme"
     );
 }
 

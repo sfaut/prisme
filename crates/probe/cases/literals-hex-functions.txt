@@ -1,0 +1,302 @@
+# Hexadecimal literals as arguments of the numeric functions (a DOUBLE in MySQL, an integer
+# in MariaDB), the emulations tried (`+ 0e0`, `+ 0`, `_binary`), then a literal of 11 bytes
+# as an argument of the string functions, read as bytes alike. Measured on MySQL 8.0.11 and
+# 8.4.11, MariaDB 10.6.28 and 11.8.9.
+neg -0x41
+abs ABS(0x41)
+ceil CEIL(0x41)
+floor FLOOR(0x41)
+round ROUND(0x41)
+round_0 ROUND(0x41, 0)
+round_m1 ROUND(0x41, -1)
+truncate TRUNCATE(0x41, 0)
+sign SIGN(0x41)
+mod MOD(0x41, 7)
+mod_op 0x41 % 7
+div 0x41 DIV 2
+mul 0x41 * 1
+quot 0x41 / 1
+plus 0x41 + 0
+minus 0x41 - 0
+sqrt SQRT(0x41)
+pow POW(0x41, 1)
+ln LN(0x41)
+degrees DEGREES(0x41)
+conv CONV(0x41, 10, 16)
+hex HEX(0x41)
+bin BIN(0x41)
+oct OCT(0x41)
+char CHAR(0x41)
+format FORMAT(0x41, 0)
+inet INET_NTOA(0x41)
+is_true 0x41 IS TRUE
+not NOT 0x41
+and 0x41 AND 1
+xor 0x41 XOR 0
+if IF(0x41, 1, 0)
+cast_signed CAST(0x41 AS SIGNED)
+cast_decimal CAST(0x41 AS DECIMAL(30,0))
+cast_double CAST(0x41 AS DOUBLE)
+cast_char CAST(0x41 AS CHAR)
+sum SUM(0x41)
+avg AVG(0x41)
+min MIN(0x41)
+min_plus MIN(0x41) + 0
+max_plus MAX(0x41) + 0
+count_distinct COUNT(DISTINCT 0x41)
+group_concat GROUP_CONCAT(0x41)
+greatest GREATEST(0x41, 1)
+least LEAST(0x41, 1)
+greatest_str GREATEST(0x41, 'B')
+between 0x41 BETWEEN 1 AND 100
+in 0x41 IN (65)
+eq 0x41 = 65
+eq_dec 0x41 = 65.0
+eq_float 0x41 = 65e0
+eq_digits 0x41 = '65'
+eq_char 0x41 = 'A'
+concat CONCAT(0x41)
+length LENGTH(0x41)
+like 0x41 LIKE 'A'
+interval DATE_ADD('2024-01-01', INTERVAL 0x41 DAY)
+elt ELT(1, 0x41)
+field FIELD(0x41, 65)
+interval_fn INTERVAL(0x41, 1, 100)
+makedate MAKEDATE(2024, 0x41)
+sec_to_time SEC_TO_TIME(0x41)
+repeat REPEAT('a', 0x02)
+left LEFT('abc', 0x02)
+substring SUBSTRING('abcdef', 0x02)
+lpad LPAD('a', 0x03, 'b')
+round_arg ROUND(1.2345, 0x02)
+shift 0x41 << 1
+bitnot ~0x41
+bit_count BIT_COUNT(0x41)
+case_when CASE 0x41 WHEN 65 THEN 1 ELSE 0 END
+case_when_char CASE 0x41 WHEN 'A' THEN 1 ELSE 0 END
+limit_like 0x41 LIKE 0x41
+# The same with 2^53 + 1.
+l_neg -0x20000000000001
+l_abs ABS(0x20000000000001)
+l_ceil CEIL(0x20000000000001)
+l_floor FLOOR(0x20000000000001)
+l_round ROUND(0x20000000000001)
+l_round_0 ROUND(0x20000000000001, 0)
+l_truncate TRUNCATE(0x20000000000001, 0)
+l_sign SIGN(0x20000000000001)
+l_mod MOD(0x20000000000001, 7)
+l_div 0x20000000000001 DIV 2
+l_mul 0x20000000000001 * 1
+l_quot 0x20000000000001 / 1
+l_plus 0x20000000000001 + 0
+l_minus 0x20000000000001 - 1
+l_cast_signed CAST(0x20000000000001 AS SIGNED)
+l_cast_decimal CAST(0x20000000000001 AS DECIMAL(30,0))
+l_sum SUM(0x20000000000001)
+l_avg AVG(0x20000000000001)
+l_min_plus MIN(0x20000000000001) + 0
+l_greatest GREATEST(0x20000000000001, 1)
+l_eq 0x20000000000001 = 9007199254740993
+l_eq_float 0x20000000000001 = 9007199254740992e0
+l_in 0x20000000000001 IN (9007199254740993)
+l_between 0x20000000000001 BETWEEN 9007199254740993 AND 9007199254740993
+l_conv CONV(0x20000000000001, 10, 16)
+l_format FORMAT(0x20000000000001, 0)
+l_shift 0x20000000000001 << 1
+l_bitnot ~0x20000000000001
+l_case CASE 0x20000000000001 WHEN 9007199254740993 THEN 1 ELSE 0 END
+s_neg_h -0x41
+s_neg_d -(0x41 + 0e0)
+s_neg_i -(0x41 + 0)
+s_abs_h ABS(0x41)
+s_abs_d ABS((0x41 + 0e0))
+s_abs_i ABS((0x41 + 0))
+s_ceil_h CEIL(0x41)
+s_ceil_d CEIL((0x41 + 0e0))
+s_ceil_i CEIL((0x41 + 0))
+s_floor_h FLOOR(0x41)
+s_floor_d FLOOR((0x41 + 0e0))
+s_floor_i FLOOR((0x41 + 0))
+s_round_h ROUND(0x41)
+s_round_d ROUND((0x41 + 0e0))
+s_round_i ROUND((0x41 + 0))
+s_round_m1_h ROUND(0x41, -1)
+s_round_m1_d ROUND((0x41 + 0e0), -1)
+s_round_m1_i ROUND((0x41 + 0), -1)
+s_round_1_h ROUND(0x41, 1)
+s_round_1_d ROUND((0x41 + 0e0), 1)
+s_round_1_i ROUND((0x41 + 0), 1)
+s_trunc_m1_h TRUNCATE(0x41, -1)
+s_trunc_m1_d TRUNCATE((0x41 + 0e0), -1)
+s_trunc_m1_i TRUNCATE((0x41 + 0), -1)
+s_trunc_1_h TRUNCATE(0x41, 1)
+s_trunc_1_d TRUNCATE((0x41 + 0e0), 1)
+s_trunc_1_i TRUNCATE((0x41 + 0), 1)
+s_abs_div_h ABS(0x41) / 3
+s_abs_div_d ABS((0x41 + 0e0)) / 3
+s_abs_div_i ABS((0x41 + 0)) / 3
+s_neg_div_h -0x41 / 3
+s_neg_div_d -(0x41 + 0e0) / 3
+s_neg_div_i -(0x41 + 0) / 3
+l_neg_h -0x20000000000001
+l_neg_d -(0x20000000000001 + 0e0)
+l_neg_i -(0x20000000000001 + 0)
+l_abs_h ABS(0x20000000000001)
+l_abs_d ABS((0x20000000000001 + 0e0))
+l_abs_i ABS((0x20000000000001 + 0))
+l_ceil_h CEIL(0x20000000000001)
+l_ceil_d CEIL((0x20000000000001 + 0e0))
+l_ceil_i CEIL((0x20000000000001 + 0))
+l_floor_h FLOOR(0x20000000000001)
+l_floor_d FLOOR((0x20000000000001 + 0e0))
+l_floor_i FLOOR((0x20000000000001 + 0))
+l_round_h ROUND(0x20000000000001)
+l_round_d ROUND((0x20000000000001 + 0e0))
+l_round_i ROUND((0x20000000000001 + 0))
+l_round_m1_h ROUND(0x20000000000001, -1)
+l_round_m1_d ROUND((0x20000000000001 + 0e0), -1)
+l_round_m1_i ROUND((0x20000000000001 + 0), -1)
+l_round_1_h ROUND(0x20000000000001, 1)
+l_round_1_d ROUND((0x20000000000001 + 0e0), 1)
+l_round_1_i ROUND((0x20000000000001 + 0), 1)
+l_trunc_m1_h TRUNCATE(0x20000000000001, -1)
+l_trunc_m1_d TRUNCATE((0x20000000000001 + 0e0), -1)
+l_trunc_m1_i TRUNCATE((0x20000000000001 + 0), -1)
+l_trunc_1_h TRUNCATE(0x20000000000001, 1)
+l_trunc_1_d TRUNCATE((0x20000000000001 + 0e0), 1)
+l_trunc_1_i TRUNCATE((0x20000000000001 + 0), 1)
+l_abs_div_h ABS(0x20000000000001) / 3
+l_abs_div_d ABS((0x20000000000001 + 0e0)) / 3
+l_abs_div_i ABS((0x20000000000001 + 0)) / 3
+l_neg_div_h -0x20000000000001 / 3
+l_neg_div_d -(0x20000000000001 + 0e0) / 3
+l_neg_div_i -(0x20000000000001 + 0) / 3
+m_neg_h -0x8000000000000000
+m_neg_d -(0x8000000000000000 + 0e0)
+m_neg_i -(0x8000000000000000 + 0)
+m_abs_h ABS(0x8000000000000000)
+m_abs_d ABS((0x8000000000000000 + 0e0))
+m_abs_i ABS((0x8000000000000000 + 0))
+m_ceil_h CEIL(0x8000000000000000)
+m_ceil_d CEIL((0x8000000000000000 + 0e0))
+m_ceil_i CEIL((0x8000000000000000 + 0))
+m_floor_h FLOOR(0x8000000000000000)
+m_floor_d FLOOR((0x8000000000000000 + 0e0))
+m_floor_i FLOOR((0x8000000000000000 + 0))
+m_round_h ROUND(0x8000000000000000)
+m_round_d ROUND((0x8000000000000000 + 0e0))
+m_round_i ROUND((0x8000000000000000 + 0))
+m_round_m1_h ROUND(0x8000000000000000, -1)
+m_round_m1_d ROUND((0x8000000000000000 + 0e0), -1)
+m_round_m1_i ROUND((0x8000000000000000 + 0), -1)
+m_round_1_h ROUND(0x8000000000000000, 1)
+m_round_1_d ROUND((0x8000000000000000 + 0e0), 1)
+m_round_1_i ROUND((0x8000000000000000 + 0), 1)
+m_trunc_m1_h TRUNCATE(0x8000000000000000, -1)
+m_trunc_m1_d TRUNCATE((0x8000000000000000 + 0e0), -1)
+m_trunc_m1_i TRUNCATE((0x8000000000000000 + 0), -1)
+m_trunc_1_h TRUNCATE(0x8000000000000000, 1)
+m_trunc_1_d TRUNCATE((0x8000000000000000 + 0e0), 1)
+m_trunc_1_i TRUNCATE((0x8000000000000000 + 0), 1)
+m_abs_div_h ABS(0x8000000000000000) / 3
+m_abs_div_d ABS((0x8000000000000000 + 0e0)) / 3
+m_abs_div_i ABS((0x8000000000000000 + 0)) / 3
+m_neg_div_h -0x8000000000000000 / 3
+m_neg_div_d -(0x8000000000000000 + 0e0) / 3
+m_neg_div_i -(0x8000000000000000 + 0) / 3
+f_neg_h -0xFFFFFFFFFFFFFFFF
+f_neg_d -(0xFFFFFFFFFFFFFFFF + 0e0)
+f_neg_i -(0xFFFFFFFFFFFFFFFF + 0)
+f_abs_h ABS(0xFFFFFFFFFFFFFFFF)
+f_abs_d ABS((0xFFFFFFFFFFFFFFFF + 0e0))
+f_abs_i ABS((0xFFFFFFFFFFFFFFFF + 0))
+f_ceil_h CEIL(0xFFFFFFFFFFFFFFFF)
+f_ceil_d CEIL((0xFFFFFFFFFFFFFFFF + 0e0))
+f_ceil_i CEIL((0xFFFFFFFFFFFFFFFF + 0))
+f_floor_h FLOOR(0xFFFFFFFFFFFFFFFF)
+f_floor_d FLOOR((0xFFFFFFFFFFFFFFFF + 0e0))
+f_floor_i FLOOR((0xFFFFFFFFFFFFFFFF + 0))
+f_round_h ROUND(0xFFFFFFFFFFFFFFFF)
+f_round_d ROUND((0xFFFFFFFFFFFFFFFF + 0e0))
+f_round_i ROUND((0xFFFFFFFFFFFFFFFF + 0))
+f_round_m1_h ROUND(0xFFFFFFFFFFFFFFFF, -1)
+f_round_m1_d ROUND((0xFFFFFFFFFFFFFFFF + 0e0), -1)
+f_round_m1_i ROUND((0xFFFFFFFFFFFFFFFF + 0), -1)
+f_round_1_h ROUND(0xFFFFFFFFFFFFFFFF, 1)
+f_round_1_d ROUND((0xFFFFFFFFFFFFFFFF + 0e0), 1)
+f_round_1_i ROUND((0xFFFFFFFFFFFFFFFF + 0), 1)
+f_trunc_m1_h TRUNCATE(0xFFFFFFFFFFFFFFFF, -1)
+f_trunc_m1_d TRUNCATE((0xFFFFFFFFFFFFFFFF + 0e0), -1)
+f_trunc_m1_i TRUNCATE((0xFFFFFFFFFFFFFFFF + 0), -1)
+f_trunc_1_h TRUNCATE(0xFFFFFFFFFFFFFFFF, 1)
+f_trunc_1_d TRUNCATE((0xFFFFFFFFFFFFFFFF + 0e0), 1)
+f_trunc_1_i TRUNCATE((0xFFFFFFFFFFFFFFFF + 0), 1)
+f_abs_div_h ABS(0xFFFFFFFFFFFFFFFF) / 3
+f_abs_div_d ABS((0xFFFFFFFFFFFFFFFF + 0e0)) / 3
+f_abs_div_i ABS((0xFFFFFFFFFFFFFFFF + 0)) / 3
+f_neg_div_h -0xFFFFFFFFFFFFFFFF / 3
+f_neg_div_d -(0xFFFFFFFFFFFFFFFF + 0e0) / 3
+f_neg_div_i -(0xFFFFFFFFFFFFFFFF + 0) / 3
+conv_h CONV(0x41, 10, 16)
+conv_i CONV((0x41 + 0), 10, 16)
+conv_b CONV(_binary X'41', 10, 16)
+conv_h2 CONV(0x3635, 10, 16)
+conv_b2 CONV(_binary X'3635', 10, 16)
+bin_h BIN(0x41)
+bin_i BIN((0x41 + 0))
+bin_b BIN(_binary X'41')
+bin_h2 BIN(0x3635)
+bin_b2 BIN(_binary X'3635')
+oct_h OCT(0x41)
+oct_i OCT((0x41 + 0))
+oct_b OCT(_binary X'41')
+oct_h2 OCT(0x3635)
+oct_b2 OCT(_binary X'3635')
+conv16_h CONV(0x41, 16, 10)
+conv16_i CONV((0x41 + 0), 16, 10)
+conv16_b CONV(_binary X'41', 16, 10)
+conv16_h2 CONV(0x3635, 16, 10)
+conv16_b2 CONV(_binary X'3635', 16, 10)
+f_length LENGTH(0x48656C6C6F20576F726C64)
+f_octet_length OCTET_LENGTH(0x48656C6C6F20576F726C64)
+f_bit_length BIT_LENGTH(0x48656C6C6F20576F726C64)
+f_char_length CHAR_LENGTH(0x48656C6C6F20576F726C64)
+f_upper UPPER(0x48656C6C6F20576F726C64)
+f_lower LOWER(0x48656C6C6F20576F726C64)
+f_substring SUBSTRING(0x48656C6C6F20576F726C64, 2, 3)
+f_left LEFT(0x48656C6C6F20576F726C64, 2)
+f_right RIGHT(0x48656C6C6F20576F726C64, 2)
+f_replace REPLACE(0x48656C6C6F20576F726C64, 'l', 'L')
+f_reverse REVERSE(0x48656C6C6F20576F726C64)
+f_md5 MD5(0x48656C6C6F20576F726C64)
+f_sha1 SHA1(0x48656C6C6F20576F726C64)
+f_sha2 SHA2(0x48656C6C6F20576F726C64, 256)
+f_to_base64 TO_BASE64(0x48656C6C6F20576F726C64)
+f_lpad LPAD(0x48656C6C6F20576F726C64, 13, '*')
+f_rpad RPAD(0x48656C6C6F20576F726C64, 13, '*')
+f_instr INSTR(0x48656C6C6F20576F726C64, 'W')
+f_locate LOCATE('W', 0x48656C6C6F20576F726C64)
+f_concat_ws CONCAT_WS('-', 0x48656C6C6F20576F726C64, 'x')
+f_insert INSERT(0x48656C6C6F20576F726C64, 1, 1, 'J')
+f_repeat REPEAT(0x48656C6C6F20576F726C64, 2)
+f_ascii ASCII(0x48656C6C6F20576F726C64)
+f_ord ORD(0x48656C6C6F20576F726C64)
+f_quote QUOTE(0x48656C6C6F20576F726C64)
+f_crc32 CRC32(0x48656C6C6F20576F726C64)
+f_unhex UNHEX(0x48656C6C6F20576F726C64)
+f_charset CHARSET(0x48656C6C6F20576F726C64)
+f_strcmp STRCMP(0x48656C6C6F20576F726C64, 'Hello World')
+f_field FIELD(0x48656C6C6F20576F726C64, 'Hello World')
+f_find_in_set FIND_IN_SET(0x48656C6C6F20576F726C64, 'Hello World')
+f_elt ELT(1, 0x48656C6C6F20576F726C64)
+f_soundex SOUNDEX(0x48656C6C6F20576F726C64)
+f_space_trim TRIM(0x48656C6C6F20576F726C64)
+f_mid MID(0x48656C6C6F20576F726C64, 2, 3)
+f_substring_index SUBSTRING_INDEX(0x48656C6C6F20576F726C64, ' ', 1)
+f_hex_short UPPER(0x61)
+f_lower_short LOWER(0x41)
+f_length_short LENGTH(0x41)
+f_ascii_short ASCII(0x41)
+f_crc32_short CRC32(0x41)
+f_strcmp_short STRCMP(0x41, 'A')
+f_field_short FIELD(0x41, 'A')

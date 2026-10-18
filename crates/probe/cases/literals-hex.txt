@@ -1,0 +1,129 @@
+# Hexadecimal, bit and national literals and charset introducers: their type, their value
+# as a string and as a number, in comparisons, bit operations, CAST, truth values, and
+# with an introducer.
+# Hexadecimal literals.
+hex_x X'41'
+hex_x_lower x'41'
+hex_0x 0x41
+hex_empty X''
+hex_odd 0x4
+hex_plus X'41' + 0
+hex_0x_plus 0x41 + 0
+hex_empty_plus X'' + 0
+hex_8_bytes 0xFFFFFFFFFFFFFFFF + 0
+hex_9_bytes 0x010000000000000000 + 0
+hex_10_bytes X'0102030405060708090A' + 0
+hex_minus -X'41'
+hex_div X'41' / 2
+hex_mul_decimal X'41' * 1.5
+hex_mul_float 0x41 * 1e0
+hex_eq_string X'41' = 'A'
+hex_eq_lower X'41' = 'a'
+hex_eq_number X'41' = 65
+hex_eq_string_number X'3635' = 65
+hex_lt 0x41 < 0x5A
+hex_lt_string 0x41 < 'B'
+hex_in X'41' IN (65)
+hex_in_string X'41' IN ('A')
+hex_in_mixed X'41' IN ('A', 65)
+hex_between X'41' BETWEEN 60 AND 70
+hex_concat CONCAT(X'41', 'b')
+hex_length LENGTH(X'C3A9')
+hex_char_length CHAR_LENGTH(X'C3A9')
+hex_upper UPPER(X'61')
+hex_like X'41' LIKE 'A'
+hex_like_lower X'41' LIKE 'a'
+hex_cast_signed CAST(X'31' AS SIGNED)
+hex_cast_unsigned CAST(0x41 AS UNSIGNED)
+hex_cast_char CAST(X'41' AS CHAR)
+hex_cast_decimal CAST(X'41' AS DECIMAL)
+hex_cast_date CAST(X'323032342D30312D3032' AS DATE)
+hex_or X'01' | X'02'
+hex_and X'0F' & X'01'
+hex_xor 0x0F ^ 0x01
+hex_not ~X'00'
+hex_shift X'01' << 1
+hex_or_number X'01' | 2
+hex_or_long X'0102030405060708090A' | 0
+hex_bit_count BIT_COUNT(X'FF')
+hex_bit_count_long BIT_COUNT(X'FFFFFFFFFFFFFFFFFF')
+hex_true X'30' IS TRUE
+hex_zero_true X'00' IS TRUE
+hex_not_op NOT X'30'
+hex_and_op X'30' AND 1
+hex_if IF(X'30', 1, 0)
+hex_case CASE WHEN 1 THEN X'41' END
+hex_case_plus CASE WHEN 1 THEN X'41' END + 0
+hex_coalesce_plus COALESCE(X'41') + 0
+hex_if_string IF(1, X'41', 'b')
+hex_greatest GREATEST(X'41', 1)
+hex_greatest_string GREATEST(X'41', 'B')
+hex_sum_list X'41' + X'01'
+hex_abs ABS(X'41')
+hex_round ROUND(X'41')
+hex_floor FLOOR(X'41')
+hex_hex HEX(X'41')
+hex_hex_number HEX(0x41 + 0)
+hex_interval DATE_ADD('2024-01-01', INTERVAL X'02' DAY)
+hex_date_plus X'3230323430313031' + INTERVAL 1 DAY
+hex_utc 0x41 = _binary'A'
+hex_div_int X'41' DIV 2
+hex_mod X'41' % 10
+# Bit literals.
+bit_b b'1000001'
+bit_upper B'1000001'
+bit_0b 0b1000001
+bit_empty b''
+bit_pad b'1'
+bit_plus b'101' + 0
+bit_0b_plus 0b101 + 0
+bit_long b'11111111111111111111111111111111111111111111111111111111111111111' + 0
+bit_eq b'1000001' = 'A'
+bit_eq_number b'1000001' = 65
+bit_or b'01' | b'10'
+bit_true b'0' IS TRUE
+bit_concat CONCAT(b'1000001', 'b')
+bit_cast_signed CAST(b'110001' AS SIGNED)
+bit_cast_char CAST(b'1000001' AS CHAR)
+# National strings.
+nat N'abc'
+nat_lower n'abc'
+nat_charset CHARSET(N'abc')
+nat_collation COLLATION(N'abc')
+nat_accent N'é'
+nat_adjacent N'a' 'b'
+nat_plus N'12' + 0
+# Introducers.
+intro_utf8mb4 _utf8mb4'abc'
+intro_charset CHARSET(_latin1'abc')
+intro_collation_latin1 COLLATION(_latin1'abc')
+intro_collation_utf8mb4 COLLATION(_utf8mb4'a')
+intro_collation_utf8 COLLATION(_utf8'a')
+intro_collation_utf8mb3 COLLATION(_utf8mb3'a')
+intro_space _utf8mb4 'abc'
+intro_adjacent _utf8mb4'a' 'b'
+intro_hex _utf8mb4 X'C3A9'
+intro_0x _utf8mb4 0xC3A9
+intro_bit _latin1 b'1000001'
+intro_hex_plus _utf8mb4 X'31' + 0
+intro_0x_plus _utf8mb4 0x31 + 0
+intro_binary _binary'abc'
+intro_binary_collation COLLATION(_binary'a')
+intro_binary_hex_or _binary X'01' | _binary X'02'
+intro_binary_hex_plus _binary X'31' + 0
+intro_binary_string_or _binary'1' | _binary'2'
+intro_binary_true _binary X'30' IS TRUE
+intro_hex_true _utf8mb4 X'30' IS TRUE
+intro_latin1_eq _latin1'é' = 'é'
+intro_latin1_hex_cast CAST(_latin1 X'E9' AS CHAR CHARACTER SET utf8mb4)
+intro_invalid _utf8mb4 X'FF'
+intro_invalid_string _ascii'é'
+intro_gb18030 CHARSET(_gb18030'a')
+intro_utf16 CHAR_LENGTH(_utf16 X'00410042')
+intro_ucs2_odd _ucs2 X'41'
+intro_escape _binary'a\nb'
+intro_national_hex N X'41'
+intro_unknown _foo'a'
+intro_upper CHARSET(_UTF8MB4'a')
+intro_quoted CHARSET(`_utf8mb4`'a')
+intro_column _utf8mb4 'a' = 'a'

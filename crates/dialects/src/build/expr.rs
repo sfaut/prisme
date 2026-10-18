@@ -483,6 +483,10 @@ impl Builder<'_> {
             Literal::National(Strings { value, .. }) => {
                 Expr::literal(Value::Text(value.clone()), types::national_string(value))
             }
+            Literal::Bytes { bytes, form } => Expr::literal(
+                Value::Binary(bytes.clone()),
+                types::bytes_literal(bytes.len(), *form, self.dialect),
+            ),
             Literal::Introduced { charset, literal } => match literal.as_ref() {
                 Literal::String(Strings { value, .. }) if charset == "binary" => Expr::literal(
                     Value::Binary(value.as_bytes().to_vec()),
@@ -492,7 +496,17 @@ impl Builder<'_> {
                     Value::Text(value.clone()),
                     types::introduced_string(charset, value),
                 ),
-                _ => unreachable!("an introducer introduces a string"),
+                // The bytes of a character set but `binary`: a string of
+                // that character set, its value kept as bytes.
+                Literal::Bytes { bytes, .. } if charset == "binary" => Expr::literal(
+                    Value::Binary(bytes.clone()),
+                    types::byte_string(bytes.len()),
+                ),
+                Literal::Bytes { bytes, .. } => Expr::literal(
+                    Value::Binary(bytes.clone()),
+                    types::introduced_bytes(charset),
+                ),
+                _ => unreachable!("an introducer introduces a string or bytes"),
             },
             Literal::Null => Expr::literal(Value::Null, DataType::Null),
             Literal::True => Expr::literal(Value::Boolean(true), DataType::Boolean),

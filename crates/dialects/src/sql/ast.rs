@@ -743,11 +743,20 @@ pub enum Literal {
     /// National string, `N'...'`, adjacent strings joined: a string of the
     /// character set `utf8mb3`.
     National(Strings),
-    /// String after a character set introducer (`_latin1'abc'`).
+    /// Hexadecimal or bit literal (`X'41'`, `0x41`, `b'1'`, `0b1`): its
+    /// bytes, the digits padded on the left to whole bytes.
+    Bytes {
+        /// Bytes.
+        bytes: Vec<u8>,
+        /// Form written.
+        form: BytesForm,
+    },
+    /// String, hexadecimal or bit literal after a character set introducer
+    /// (`_latin1'abc'`, `_utf8mb4 X'C3A9'`, `_binary b'1'`).
     Introduced {
         /// Character set, in lower case.
         charset: String,
-        /// Literal introduced: a `String`.
+        /// Literal introduced: a `String` or `Bytes`.
         literal: Box<Literal>,
     },
     /// `NULL`.
@@ -764,6 +773,19 @@ pub enum Literal {
         /// String, as written.
         value: String,
     },
+}
+
+/// Form of a hexadecimal or bit literal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum BytesForm {
+    /// `X'41'`: a byte string in MariaDB.
+    HexString,
+    /// `0x41`.
+    HexNumber,
+    /// `b'1000001'`.
+    BitString,
+    /// `0b1000001`.
+    BitNumber,
 }
 
 /// Value of adjacent strings (`'a' 'b'`).

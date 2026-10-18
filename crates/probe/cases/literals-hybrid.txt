@@ -1,0 +1,159 @@
+# X'..' of MariaDB is a binary string, 0x.. and b'..' read as numbers in a numeric context, as all
+# three in MySQL: each context, for each form (crates/probe/cases/literals-hex.txt).
+# Reading of 0x.. and b'..' in MariaDB, against MySQL.
+plus_x X'41' + 0
+plus_0x 0x41 + 0
+plus_b b'01000001' + 0
+minus_x -X'41'
+minus_0x -0x41
+minus_b -b'01000001'
+div_x X'41' / 2
+div_0x 0x41 / 2
+div_b b'01000001' / 2
+int_div_x X'41' DIV 2
+int_div_0x 0x41 DIV 2
+int_div_b b'01000001' DIV 2
+mod_x X'41' % 10
+mod_0x 0x41 % 10
+mod_b b'01000001' % 10
+mul_decimal_x X'41' * 1.5
+mul_decimal_0x 0x41 * 1.5
+mul_decimal_b b'01000001' * 1.5
+abs_x ABS(X'41')
+abs_0x ABS(0x41)
+abs_b ABS(b'01000001')
+round_x ROUND(X'41')
+round_0x ROUND(0x41)
+round_b ROUND(b'01000001')
+eq_number_x X'41' = 65
+eq_number_0x 0x41 = 65
+eq_number_b b'01000001' = 65
+eq_digits_x X'3635' = 65
+eq_digits_0x 0x3635 = 65
+eq_digits_b b'0011011000110101' = 65
+eq_string_x X'41' = 'A'
+eq_string_0x 0x41 = 'A'
+eq_string_b b'01000001' = 'A'
+in_number_x X'41' IN (65)
+in_number_0x 0x41 IN (65)
+in_number_b b'01000001' IN (65)
+between_x X'41' BETWEEN 60 AND 70
+between_0x 0x41 BETWEEN 60 AND 70
+between_b b'01000001' BETWEEN 60 AND 70
+cast_signed_x CAST(X'31' AS SIGNED)
+cast_signed_0x CAST(0x31 AS SIGNED)
+cast_signed_b CAST(b'00110001' AS SIGNED)
+cast_unsigned_x CAST(X'41' AS UNSIGNED)
+cast_unsigned_0x CAST(0x41 AS UNSIGNED)
+cast_unsigned_b CAST(b'01000001' AS UNSIGNED)
+cast_decimal_x CAST(X'41' AS DECIMAL)
+cast_decimal_0x CAST(0x41 AS DECIMAL)
+cast_decimal_b CAST(b'01000001' AS DECIMAL)
+cast_char_x CAST(X'41' AS CHAR)
+cast_char_0x CAST(0x41 AS CHAR)
+cast_char_b CAST(b'01000001' AS CHAR)
+is_true_x X'30' IS TRUE
+is_true_0x 0x30 IS TRUE
+is_true_b b'00110000' IS TRUE
+not_x NOT X'30'
+not_0x NOT 0x30
+not_b NOT b'00110000'
+and_x X'30' AND 1
+and_0x 0x30 AND 1
+and_b b'00110000' AND 1
+if_x IF(X'30', 1, 0)
+if_0x IF(0x30, 1, 0)
+if_b IF(b'00110000', 1, 0)
+where_x (SELECT 1 FROM sample WHERE X'30') IS NOT NULL
+where_0x (SELECT 1 FROM sample WHERE 0x30) IS NOT NULL
+where_b (SELECT 1 FROM sample WHERE b'00110000') IS NOT NULL
+or_x X'01' | X'02'
+or_0x 0x01 | 0x02
+or_b b'00000001' | b'00000010'
+or_number_x X'01' | 2
+or_number_0x 0x01 | 2
+or_number_b b'00000001' | 2
+xor_x X'0F' ^ X'01'
+xor_0x 0x0F ^ 0x01
+xor_b b'00001111' ^ b'00000001'
+not_bits_x ~X'00'
+not_bits_0x ~0x00
+not_bits_b ~b'00000000'
+shift_x X'01' << 1
+shift_0x 0x01 << 1
+shift_b b'00000001' << 1
+bit_count_x BIT_COUNT(X'FF')
+bit_count_0x BIT_COUNT(0xFF)
+bit_count_b BIT_COUNT(b'11111111')
+interval_x DATE_ADD('2024-01-01', INTERVAL X'02' DAY)
+interval_0x DATE_ADD('2024-01-01', INTERVAL 0x02 DAY)
+interval_b DATE_ADD('2024-01-01', INTERVAL b'00000010' DAY)
+case_plus_x CASE WHEN 1 THEN X'41' END + 0
+case_plus_0x CASE WHEN 1 THEN 0x41 END + 0
+case_plus_b CASE WHEN 1 THEN b'01000001' END + 0
+if_plus_x IF(1, X'41', X'41') + 0
+if_plus_0x IF(1, 0x41, 0x41) + 0
+if_plus_b IF(1, b'01000001', b'01000001') + 0
+coalesce_plus_x COALESCE(X'41') + 0
+coalesce_plus_0x COALESCE(0x41) + 0
+coalesce_plus_b COALESCE(b'01000001') + 0
+greatest_x GREATEST(X'41', 1)
+greatest_0x GREATEST(0x41, 1)
+greatest_b GREATEST(b'01000001', 1)
+least_strings_x LEAST(X'41', X'42')
+least_strings_0x LEAST(0x41, 0x42)
+least_strings_b LEAST(b'01000001', b'01000010')
+sum_x (SELECT SUM(X'41') FROM sample)
+sum_0x (SELECT SUM(0x41) FROM sample)
+sum_b (SELECT SUM(b'01000001') FROM sample)
+concat_x CONCAT(X'41', 'b')
+concat_0x CONCAT(0x41, 'b')
+concat_b CONCAT(b'01000001', 'b')
+length_x LENGTH(X'41')
+length_0x LENGTH(0x41)
+length_b LENGTH(b'01000001')
+hex_x HEX(X'41')
+hex_0x HEX(0x41)
+hex_b HEX(b'01000001')
+long_9_x X'010000000000000001' + 0
+long_9_0x 0x010000000000000001 + 0
+long_9_b b'000000010000000000000000000000000000000000000000000000000000000000000001' + 0
+long_9_or_x X'010000000000000001' | 0
+long_9_or_0x 0x010000000000000001 | 0
+long_9_or_b b'000000010000000000000000000000000000000000000000000000000000000000000001' | 0
+long_9_cast_x CAST(X'010000000000000001' AS UNSIGNED)
+long_9_cast_0x CAST(0x010000000000000001 AS UNSIGNED)
+long_9_cast_b CAST(b'000000010000000000000000000000000000000000000000000000000000000000000001' AS UNSIGNED)
+long_9_eq_x X'010000000000000001' = 1
+long_9_eq_0x 0x010000000000000001 = 1
+long_9_eq_b b'000000010000000000000000000000000000000000000000000000000000000000000001' = 1
+eq_hybrid_x X'41' = X'41'
+eq_hybrid_0x 0x41 = 0x41
+eq_hybrid_b b'01000001' = b'01000001'
+lt_hybrid_x X'41' < X'0100'
+lt_hybrid_0x 0x41 < 0x0100
+lt_hybrid_b b'01000001' < b'0000000100000000'
+in_hybrid_x X'41' IN (X'41')
+in_hybrid_0x 0x41 IN (0x41)
+in_hybrid_b b'01000001' IN (b'01000001')
+json_x JSON_ARRAY(X'41')
+json_0x JSON_ARRAY(0x41)
+json_b JSON_ARRAY(b'01000001')
+regexp_x X'41' REGEXP 'A'
+regexp_0x 0x41 REGEXP 'A'
+regexp_b b'01000001' REGEXP 'A'
+like_x X'41' LIKE 'A'
+like_0x 0x41 LIKE 'A'
+like_b b'01000001' LIKE 'A'
+is_null_x X'41' IS NULL
+is_null_0x 0x41 IS NULL
+is_null_b b'01000001' IS NULL
+values_union_x (SELECT MAX(v) FROM (SELECT X'41' AS v UNION ALL SELECT X'42') u) + 0
+values_union_0x (SELECT MAX(v) FROM (SELECT 0x41 AS v UNION ALL SELECT 0x42) u) + 0
+values_union_b (SELECT MAX(v) FROM (SELECT b'01000001' AS v UNION ALL SELECT b'01000010') u) + 0
+derived_plus_x (SELECT v + 0 FROM (SELECT X'41' AS v) d)
+derived_plus_0x (SELECT v + 0 FROM (SELECT 0x41 AS v) d)
+derived_plus_b (SELECT v + 0 FROM (SELECT b'01000001' AS v) d)
+limit_x (SELECT COUNT(*) FROM (SELECT 1 FROM sample LIMIT 1) l)
+limit_0x (SELECT COUNT(*) FROM (SELECT 1 FROM sample LIMIT 1) l)
+limit_b (SELECT COUNT(*) FROM (SELECT 1 FROM sample LIMIT 1) l)

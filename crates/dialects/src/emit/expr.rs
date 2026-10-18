@@ -19,6 +19,7 @@ use prisme_types::{DataType, TextType, Value};
 
 use super::Emitter;
 use super::case::Reading;
+use super::hexadecimal::{bytes_canonical, reads_as_string};
 use crate::Dialect;
 use crate::build::is_internal_name;
 use crate::report::StepKind;
@@ -104,11 +105,13 @@ fn levels(expr: &Expr) -> (u8, u8, u8) {
 impl Emitter<'_> {
     /// Writes `expr`, between parentheses when its level is below `min`.
     pub(super) fn expr(&mut self, expr: &Expr, min: u8) {
-        // Read as a value of its type, as a number, a `JSON` kept as is:
-        // this expression, never its operands.
+        // Read as a value of its type, as a number, a `JSON` kept as is, as
+        // bytes: this expression, never its operands.
         let column = std::mem::take(&mut self.column);
         let number = std::mem::take(&mut self.number);
         let json_as_is = std::mem::take(&mut self.json_as_is);
+        let as_bytes = std::mem::take(&mut self.as_bytes) || column;
+        self.hybrids(expr, as_bytes);
         if let ExprKind::ToBoolean(inner) | ExprKind::ToInteger(inner) = &expr.kind {
             if matches!(expr.kind, ExprKind::ToBoolean(_)) && inner.ty.data_type == DataType::Json {
                 self.json_condition(inner, min, true);
@@ -201,7 +204,7 @@ impl Emitter<'_> {
                 op,
                 left: a,
                 right: b,
-            } => self.binary(a, comparison(*op), b, left, right),
+            } => self.compared(a, comparison(*op), b, left, right),
             ExprKind::NotDistinct {
                 left: a,
                 right: b,
@@ -217,10 +220,10 @@ impl Emitter<'_> {
                 }
                 if *negated {
                     self.write("NOT (");
-                    self.binary(a, " <=> ", b, PREDICATE, PREDICATE + 1);
+                    self.compared(a, " <=> ", b, PREDICATE, PREDICATE + 1);
                     self.write(")");
                 } else {
-                    self.binary(a, " <=> ", b, left, right);
+                    self.compared(a, " <=> ", b, left, right);
                 }
             }
             ExprKind::Logical {
@@ -299,15 +302,16 @@ impl Emitter<'_> {
                 high,
                 negated,
             } => {
-                self.number_expr(operand, left);
+                let strings = reads_as_string(low) || reads_as_string(high);
+                self.compared_expr(operand, left, strings);
                 self.write(if *negated {
                     " NOT BETWEEN "
                 } else {
                     " BETWEEN "
                 });
-                self.number_expr(low, right);
+                self.compared_expr(low, right, reads_as_string(operand));
                 self.write(" AND ");
-                self.number_expr(high, right);
+                self.compared_expr(high, right, reads_as_string(operand));
             }
             ExprKind::Like {
                 operand,
@@ -320,15 +324,19 @@ impl Emitter<'_> {
                     Dialect::MySql => PREFIX,
                     Dialect::MariaDb => right,
                 };
-                // Both dialects read the text of a `JSON` there.
+                // Both dialects read the text of a `JSON` there, the bytes
+                // of a hexadecimal literal.
                 self.json_as_is = true;
+                self.as_bytes = true;
                 self.expr(operand, left);
                 self.write(if *negated { " NOT LIKE " } else { " LIKE " });
                 self.json_as_is = true;
+                self.as_bytes = true;
                 self.expr(pattern, right);
                 if let Some(escape) = escape {
                     self.write(" ESCAPE ");
                     self.json_as_is = true;
+                    self.as_bytes = true;
                     self.expr(escape, right);
                 }
             }
@@ -337,9 +345,14 @@ impl Emitter<'_> {
                 list,
                 negated,
             } => {
-                self.number_expr(operand, left);
+                self.compared_expr(operand, left, list.iter().any(reads_as_string));
                 self.write(if *negated { " NOT IN (" } else { " IN (" });
-                self.number_list(list);
+                for (index, item) in list.iter().enumerate() {
+                    if index > 0 {
+                        self.write(", ");
+                    }
+                    self.compared_expr(item, 0, reads_as_string(operand));
+                }
                 self.write(")");
             }
             ExprKind::ScalarSubquery(_)
@@ -421,20 +434,25 @@ impl Emitter<'_> {
         self.number_expr(b, right);
     }
 
+    /// `a op b`, a comparison, the operands at levels `left` and `right` at
+    /// least, each read as bytes when the other is a string.
+    fn compared(&mut self, a: &Expr, op: &str, b: &Expr, left: u8, right: u8) {
+        self.compared_expr(a, left, reads_as_string(b));
+        self.write(op);
+        self.compared_expr(b, right, reads_as_string(a));
+    }
+
+    /// Writes `expr`, an operand of a comparison, read as bytes when
+    /// `as_bytes`, as a number otherwise.
+    fn compared_expr(&mut self, expr: &Expr, min: u8, as_bytes: bool) {
+        self.as_bytes = as_bytes;
+        self.number_expr(expr, min);
+    }
+
     /// Writes `expr` read as a number (see `Emitter::number`).
     pub(super) fn number_expr(&mut self, expr: &Expr, min: u8) {
         self.number = true;
         self.expr(expr, min);
-    }
-
-    /// Writes `exprs` separated by commas, each read as a number.
-    pub(super) fn number_list(&mut self, exprs: &[Expr]) {
-        for (index, expr) in exprs.iter().enumerate() {
-            if index > 0 {
-                self.write(", ");
-            }
-            self.number_expr(expr, 0);
-        }
     }
 
     /// Literal: its text in the input when the output reads it the same way,
@@ -453,6 +471,12 @@ impl Emitter<'_> {
             return;
         }
         self.introducer(expr);
+        if let Value::Binary(bytes) = value
+            && let Some(text) = self.bytes_text(expr, bytes)
+        {
+            self.write(&text);
+            return;
+        }
         let same_reading = self.source.mode.ansi_quotes == self.output.mode.ansi_quotes
             && self.source.mode.no_backslash_escapes == self.output.mode.no_backslash_escapes;
         if same_reading
@@ -476,11 +500,7 @@ impl Emitter<'_> {
                 }) => self.introduced_string(expr, value, charset),
                 _ => self.string(value),
             },
-            // A byte string, `_binary X'...'` in both dialects.
-            Value::Binary(bytes) => {
-                let digits: String = bytes.iter().map(|byte| format!("{byte:02X}")).collect();
-                format!("_binary X'{digits}'")
-            }
+            Value::Binary(bytes) => bytes_canonical(expr, bytes),
             Value::Date(text) => format!("DATE {}", self.string(text)),
             Value::Time(text) => format!("TIME {}", self.string(text)),
             Value::DateTime(text) => format!("TIMESTAMP {}", self.string(text)),

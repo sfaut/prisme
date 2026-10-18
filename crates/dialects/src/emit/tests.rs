@@ -340,6 +340,7 @@ fn strings_follow_the_sql_mode_of_the_output() {
         column: false,
         number: false,
         json_as_is: false,
+        as_bytes: false,
         compared_rows: false,
         steps: Vec::new(),
         errors: Vec::new(),
@@ -414,6 +415,146 @@ fn introduced_strings_keep_the_collation_of_the_input() {
             "{text}"
         );
     }
+}
+
+#[test]
+fn hexadecimal_literals_are_read_as_the_input_reads_them() {
+    let mysql_at = |minor, patch| input_at(Dialect::MySql, 8, minor, patch);
+    let mariadb_at = |major, minor, patch| input_at(Dialect::MariaDb, major, minor, patch);
+    let long = "0x48656C6C6F20576F726C64";
+    // `X'41'`, a hybrid in MySQL, a byte string in MariaDB.
+    for (text, input, target, expected) in [
+        (
+            "SELECT X'41' + 0 AS v FROM t",
+            mysql(),
+            mariadb(),
+            "SELECT 0x41 + 0 AS v FROM t",
+        ),
+        (
+            "SELECT X'41' + 0 AS v FROM t",
+            mariadb(),
+            mysql(),
+            "SELECT _binary X'41' + 0 AS v FROM t",
+        ),
+        (
+            "SELECT X'' + 0 AS v FROM t",
+            mysql(),
+            mariadb(),
+            "SELECT b'' + 0 AS v FROM t",
+        ),
+        (
+            "SELECT X'' + 0 AS v FROM t",
+            mariadb(),
+            mysql(),
+            "SELECT _binary X'' + 0 AS v FROM t",
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, expected);
+        assert!(rules.is_empty(), "{text}");
+    }
+    // Read alike: as numbers up to 8 bytes, as bytes beyond, as results
+    // between versions that read them alike.
+    let alike = [
+        "SELECT 0x41 + 0, b'101' | 0, b'', 0x41 = 65 AS v FROM t".to_string(),
+        "SELECT _latin1 X'E9', _binary 0x41, _binary X'' + 0 AS v FROM t".to_string(),
+        format!("SELECT {long} AS v FROM t"),
+        format!("SELECT {long} = 'Hello World', HEX({long}), CAST({long} AS BINARY) AS v FROM t"),
+        format!("SELECT {long} LIKE 'H%', {long} IN ('a', 'b'), 'a' <=> {long} AS v FROM t"),
+        format!("SELECT LEFT({long}, 2), {long} BETWEEN 'A' AND 'Z' AS v FROM t"),
+        "SELECT IF(a, 0x41, 0x42), COALESCE(0x41, 'a') = 'b' AS v FROM t".to_string(),
+        "SELECT ROUND(0x41 + 0, -1), -(0x41 + 0), BIN(_binary 0x41) AS v FROM t".to_string(),
+    ];
+    for text in &alike {
+        for (input, target) in [(mysql(), mariadb()), (mariadb(), mysql())] {
+            let (sql, rules) = transpiled(text, input, output(target));
+            assert_eq!(&sql, text);
+            assert!(rules.is_empty(), "{text}");
+        }
+    }
+    for (text, input, target) in [
+        (
+            "SELECT 0x01020304050607080910 + 0 AS v FROM t",
+            mysql_at(0, 11),
+            mysql_at(0, 26),
+        ),
+        (
+            "SELECT IF(a, 0x41, 0x42) + 0 AS v FROM t",
+            mariadb(),
+            mariadb_at(11, 8, 8),
+        ),
+        (
+            "SELECT IF(a, 0x41, 0x42) + 0 AS v FROM t",
+            mariadb_at(11, 4, 13),
+            mariadb_at(11, 8, 9),
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{text}");
+    }
+    // Read otherwise as numbers.
+    for (text, input, target) in [
+        (
+            "SELECT 0x01020304050607080910 + 0 AS v FROM t",
+            mysql(),
+            mariadb(),
+        ),
+        (
+            "SELECT 0x01020304050607080910 + 0 AS v FROM t",
+            mysql_at(0, 26),
+            mysql_at(0, 27),
+        ),
+        (
+            "SELECT a FROM t WHERE 0x01020304050607080910",
+            mariadb(),
+            mysql(),
+        ),
+        (
+            "SELECT b'1000000000000000000000000000000000000000000000000000000000000000' + 0 AS v FROM t",
+            mysql(),
+            mariadb(),
+        ),
+        ("SELECT -0x41 AS v FROM t", mysql(), mariadb()),
+        ("SELECT ROUND(0x41, -1) AS v FROM t", mariadb(), mysql()),
+        ("SELECT BIN(0x41) AS v FROM t", mysql(), mariadb()),
+        (
+            "SELECT IF(a, 0x41, 'b') + 0 AS v FROM t",
+            mysql(),
+            mariadb(),
+        ),
+        (
+            "SELECT a FROM t WHERE CASE a WHEN 1 THEN 0x41 END",
+            mariadb(),
+            mysql(),
+        ),
+        ("SELECT NULLIF(0x41, a) + 0 AS v FROM t", mysql(), mariadb()),
+        (
+            "SELECT IFNULL(0x41, 0x42) + 0 AS v FROM t",
+            mariadb(),
+            mariadb_at(10, 11, 19),
+        ),
+        (
+            "SELECT COALESCE(b, 0x42) + 0 AS v FROM t",
+            mariadb_at(11, 8, 9),
+            mariadb_at(11, 7, 2),
+        ),
+    ] {
+        assert_eq!(
+            errors(text, input, output(target)),
+            ["literal.hexadecimal"],
+            "{text}"
+        );
+    }
+    // A hybrid compared with a number, against a string in `GREATEST`.
+    assert_eq!(
+        errors(
+            "SELECT GREATEST(0x41, 1) AS v FROM t",
+            mysql(),
+            output(mariadb())
+        ),
+        ["function.greatest"]
+    );
 }
 
 #[test]

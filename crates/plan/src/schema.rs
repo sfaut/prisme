@@ -54,6 +54,19 @@ impl Schema {
         })
     }
 
+    /// Same columns, of the types of their values once stored
+    /// (`DataType::stored`): the columns of a derived table or of a common
+    /// table expression.
+    pub fn stored(self) -> Schema {
+        self.map(|column| Column {
+            ty: Type {
+                data_type: column.ty.data_type.stored(),
+                ..column.ty
+            },
+            ..column
+        })
+    }
+
     /// Same columns, all belonging to `qualifier`.
     pub fn qualified(self, qualifier: &Ident) -> Schema {
         self.map(|column| Column {

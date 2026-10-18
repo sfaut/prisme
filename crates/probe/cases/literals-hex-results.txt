@@ -1,0 +1,32 @@
+# Hybrids as results of CASE, IF, IFNULL, COALESCE and NULLIF read as numbers, alone, with a
+# string, a number, a byte string or NULL: MySQL reads them as numbers in CASE, IF and NULLIF,
+# as strings in IFNULL and COALESCE; MariaDB as strings, as numbers when all the results are
+# hybrids from 10.11.19, 11.4.13 and 11.8.9. Measured on MySQL 8.0.11 and 8.4.11, MariaDB
+# 10.5.29 to 10.10.7, 10.11.2, 10.11.10, 10.11.14 to 10.11.19, 11.1.6, 11.4.11 to 11.4.13,
+# 11.8.7 to 11.8.9.
+case_x CASE WHEN 1 THEN X'41' END + 0
+case_0x CASE WHEN 1 THEN 0x41 END + 0
+case_b CASE WHEN 1 THEN b'01000001' END + 0
+if_0x IF(1, 0x41, 0x42) + 0
+ifnull_0x IFNULL(0x41, 0x42) + 0
+coalesce_0x COALESCE(0x41) + 0
+coalesce_x COALESCE(X'41') + 0
+nullif_0x NULLIF(0x41, 0x42) + 0
+case_type CASE WHEN 1 THEN 0x41 END
+greatest_0x GREATEST(0x41, 1)
+if_hex IF(1, 0x41, 'b') + 0
+ifnull_hex IFNULL(0x41, 'b') + 0
+coalesce_hex COALESCE(0x41, 'b') + 0
+nullif_hex NULLIF(0x41, 'b') + 0
+case_hex CASE WHEN 1 THEN 0x41 ELSE 'b' END + 0
+if_hex_only IF(1, 0x41, 0x42) + 0
+if_num IF(1, 0x41, 1) + 0
+if_null IF(1, 0x41, NULL) + 0
+case_num CASE WHEN 1 THEN 0x41 ELSE 2 END + 0
+coalesce_null COALESCE(NULL, 0x41) + 0
+ifnull_num IFNULL(0x41, 1) + 0
+if_bin IF(1, 0x41, _binary 'b') + 0
+if_hex_eq IF(1, 0x41, 0x42) = 'A'
+if_hex_concat CONCAT(IF(1, 0x41, 0x42))
+if_where (SELECT 1 FROM sample WHERE IF(1, 0x41, 0x42))
+if_long IF(1, 0x0102030405060708090A, 0x42) + 0

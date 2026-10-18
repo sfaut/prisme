@@ -183,6 +183,13 @@ pub enum Construct {
     RegexpBinaryError,
     /// `BIT_AND`, `BIT_OR` and `BIT_XOR` as window functions.
     BitWindow,
+    /// A hexadecimal literal of more than 8 bytes read as the number 0
+    /// (MySQL), 2^64 - 1 before.
+    HexLongZero,
+    /// A hexadecimal literal as a result of `CASE`, `IF`, `IFNULL`,
+    /// `COALESCE` and `NULLIF`, all results being such literals, read as a
+    /// number (MariaDB), as a string before.
+    HybridResultNumber,
     /// `utf8mb4_uca1400_ai_ci` as the default collation of `utf8mb4`
     /// (MariaDB).
     Utf8mb4Uca1400,
@@ -359,6 +366,10 @@ impl Construct {
             Self::RegexpBinary => "`REGEXP` reading a binary string byte by byte",
             Self::RegexpBinaryError => "`REGEXP` refusing a binary string with a character string",
             Self::BitWindow => "`BIT_AND`, `BIT_OR` and `BIT_XOR` as window functions",
+            Self::HexLongZero => "a hexadecimal literal of more than 8 bytes read as 0",
+            Self::HybridResultNumber => {
+                "a hexadecimal literal as a result of a conditional function read as a number"
+            }
             Self::Utf8mb4Uca1400 => "`utf8mb4_uca1400_ai_ci` as the default collation of `utf8mb4`",
             Self::UnicodeUca1400 => {
                 "`uca1400_ai_ci` as the default collation of `utf8mb3`, `ucs2`, `utf16` and `utf32`"

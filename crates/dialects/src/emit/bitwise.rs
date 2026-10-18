@@ -344,6 +344,8 @@ impl Count {
             }) => Self::Big,
             DataType::Integer(_) => Self::Same,
             DataType::Bit { width } if *width <= 32 => Self::Same,
+            DataType::Hybrid { length, .. } if *length <= 4 => Self::Same,
+            DataType::Hybrid { .. } => Self::Big,
             DataType::Decimal(decimal) if decimal.precision() - decimal.scale() <= 9 => Self::Same,
             _ => Self::Other,
         }
@@ -375,6 +377,7 @@ fn below_2_31(arg: &Expr) -> bool {
             unsigned: true,
         }) => true,
         DataType::Bit { width } => *width <= 31,
+        DataType::Hybrid { length, .. } => *length <= 3,
         _ => false,
     }
 }

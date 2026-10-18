@@ -536,6 +536,39 @@ constructs:
       in the image 11.4.13, nothing in 11.3.2), measured on 11.3.2 and 11.4.13
       (crates/probe/cases/literals-collations.txt). A server set otherwise
       is not detected.
+  # Hexadecimal literals as results of the conditional functions, fixed in a
+  # patch version of each branch maintained then, with the type of the
+  # hexadecimal literals in `ROUND` (MDEV-38061, of the same versions; its
+  # ticket does not describe this change). Measured with
+  # crates/probe/cases/literals-hex-results.txt.
+  - id: hybrid_result_number
+    since: "10.11.19"
+    until: "11.0.0"
+    source: https://jira.mariadb.org/browse/MDEV-38061
+    comment: >-
+      `CASE`, `IF`, `IFNULL`, `COALESCE` and `NULLIF` whose results are all
+      hexadecimal or bit literals (`NULL` aside) give an integer read as a
+      number (`IF(1, 0x41, 0x42) + 0` gives 65), a string before (0).
+      Measured on 10.5.29 to 10.10.7, 10.11.2, 10.11.10, 10.11.14, 10.11.18
+      and 10.11.19, 11.1.6.
+  - id: hybrid_result_number
+    since: "11.4.13"
+    until: "11.5.0"
+    source: https://jira.mariadb.org/browse/MDEV-38061
+    comment: >-
+      The same change in the branch 11.4, measured on 11.4.12 and 11.4.13.
+  - id: hybrid_result_number
+    since: "11.8.9"
+    until: "12.0.0"
+    source: https://jira.mariadb.org/browse/MDEV-38061
+    comment: >-
+      The same change in the branch 11.8, measured on 11.8.7 to 11.8.9.
+  - id: hybrid_result_number
+    since: "12.3.3"
+    source: https://jira.mariadb.org/browse/MDEV-38061
+    comment: >-
+      The same change in the branch 12.3, by the versions of the ticket, not
+      measured.
   - id: unicode_uca1400
     since: "11.5.1"
     source: https://jira.mariadb.org/browse/MDEV-25829

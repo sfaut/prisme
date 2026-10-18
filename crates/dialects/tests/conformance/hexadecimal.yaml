@@ -1,0 +1,78 @@
+# Hexadecimal and bit literals: hybrids read alike as numbers up to 8 bytes
+# and as bytes, `X'41'` written `0x41` towards MariaDB and `_binary X'41'`
+# towards MySQL, a byte string once stored; refused when read as a number
+# otherwise (rule `literal.hexadecimal`) (crates/probe/cases/literals-hex.txt,
+# literals-hybrid.txt, literals-hex-long.txt, literals-hex-functions.txt,
+# literals-hex-contexts.txt, literals-hex-results.txt).
+cases:
+  # Alike, implicit names included.
+  - from: mysql
+    sql: SELECT X'41', x'4142', 0x41, b'1000001', 0b101, X'', _binary X'41', _latin1 X'E9'
+  - from: mariadb
+    sql: SELECT X'41', x'4142', 0x41, b'1000001', 0b101, X'', _binary X'41', _latin1 X'E9'
+  # As numbers up to 8 bytes, and as strings.
+  - from: mysql
+    sql: >-
+      SELECT X'41' + 0 AS a, x'4142' | 0 AS b, 0x41 + 0 AS c, b'101' * 2 AS d, 0b101 | 0 AS e,
+      X'' + 0 AS f, 0x41 = 'A' AS g, 0x41 = 65 AS h, 0x0102030405060708 + 0 AS i,
+      0x41 IN (65, 'B') AS j, CAST(0x41 AS UNSIGNED) AS k, BIT_COUNT(0x0F) AS l,
+      1 << 0x02 AS m, HEX(0x0102) AS n, CONCAT(0x41, 'b') AS o
+  - from: mariadb
+    sql: >-
+      SELECT X'41' + 0 AS a, x'4142' | 0 AS b, 0x41 + 0 AS c, b'101' * 2 AS d, 0b101 | 0 AS e,
+      X'' + 0 AS f, 0x41 = 'A' AS g, 0x41 = 65 AS h, 0x0102030405060708 + 0 AS i,
+      0x41 IN (65, 'B') AS j, CAST(0x41 AS UNSIGNED) AS k, BIT_COUNT(0x0F) AS l,
+      1 << 0x02 AS m, HEX(0x0102) AS n, CONCAT(0x41, 'b') AS o
+  # Beyond 8 bytes, as bytes.
+  - from: mysql
+    sql: >-
+      SELECT 0x48656C6C6F20576F726C64 AS a, 0x48656C6C6F20576F726C64 = 'Hello World' AS b,
+      HEX(0x48656C6C6F20576F726C64) AS c, LENGTH(0x48656C6C6F20576F726C64) AS d,
+      0x48656C6C6F20576F726C64 LIKE 'H%' AS e, LEFT(0x48656C6C6F20576F726C64, 2) AS f,
+      0x48656C6C6F20576F726C64 BETWEEN 'A' AND 'Z' AS g,
+      CAST(0x48656C6C6F20576F726C64 AS BINARY) AS h, s = 0x68656C6C6F20776F726C64 AS i
+      FROM sample
+  - from: mariadb
+    sql: >-
+      SELECT 0x48656C6C6F20576F726C64 AS a, 0x48656C6C6F20576F726C64 = 'Hello World' AS b,
+      HEX(0x48656C6C6F20576F726C64) AS c, LENGTH(0x48656C6C6F20576F726C64) AS d,
+      0x48656C6C6F20576F726C64 LIKE 'H%' AS e, LEFT(0x48656C6C6F20576F726C64, 2) AS f,
+      0x48656C6C6F20576F726C64 BETWEEN 'A' AND 'Z' AS g,
+      CAST(0x48656C6C6F20576F726C64 AS BINARY) AS h, s = 0x68656C6C6F20776F726C64 AS i
+      FROM sample
+  # Stored, a byte string; the forms read alike as numbers.
+  - from: mysql
+    sql: >-
+      SELECT d.v + 0 AS a, (SELECT MIN(0x41)) + 0 AS b, ROUND(0x41 + 0, -1) AS c,
+      -(0x41 + 0) AS d, BIN(_binary 0x41) AS e, IF(1, 0x41 + 0, 0x42 + 0) + 0 AS f
+      FROM (SELECT 0x41 AS v) AS d
+  - from: mariadb
+    sql: >-
+      SELECT d.v + 0 AS a, (SELECT MIN(0x41)) + 0 AS b, ROUND(0x41 + 0, -1) AS c,
+      -(0x41 + 0) AS d, BIN(_binary 0x41) AS e, IF(1, 0x41 + 0, 0x42 + 0) + 0 AS f
+      FROM (SELECT 0x41 AS v) AS d
+  # Read otherwise as numbers: refused.
+  - from: mysql
+    sql: SELECT 0x01020304050607080910 + 0 AS v
+    refused: literal.hexadecimal
+  - from: mariadb
+    sql: SELECT 0x01020304050607080910 + 0 AS v
+    refused: literal.hexadecimal
+  - from: mysql
+    sql: SELECT b'1111111111111111111111111111111111111111111111111111111111111111' + 0 AS v
+    refused: literal.hexadecimal
+  - from: mysql
+    sql: SELECT -0x41 AS v
+    refused: literal.hexadecimal
+  - from: mariadb
+    sql: SELECT ROUND(0x41, -1) AS v
+    refused: literal.hexadecimal
+  - from: mysql
+    sql: SELECT BIN(0x41) AS v
+    refused: literal.hexadecimal
+  - from: mysql
+    sql: SELECT IF(1, 0x41, 0x42) + 0 AS v
+    refused: literal.hexadecimal
+  - from: mariadb
+    sql: SELECT CASE WHEN 1 THEN 0x41 ELSE 'b' END + 0 AS v
+    refused: literal.hexadecimal

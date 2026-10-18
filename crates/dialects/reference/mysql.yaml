@@ -625,6 +625,15 @@ constructs:
       `BIT_AND`, `BIT_OR` and `BIT_XOR` as window functions (WL#11573);
       error 1235 before (crates/probe/cases/bitwise-windows.sql, measured on
       8.0.11, 8.0.12 and 8.4.11).
+  - id: hex_long_zero
+    since: "8.0.27"
+    source: https://github.com/mysql/mysql-server/blob/mysql-8.0.27/sql/item.cc
+    comment: >-
+      A hexadecimal or bit literal of more than 8 bytes, a byte before the
+      last 8 not zero, read as a number: 0, 2^64 - 1 before, with the warning
+      1292 (`Item_hex_string::val_int` returns 0 in 8.0.27, -1 in 8.0.26).
+      Measured on 8.0.11 to 8.0.23, 8.0.25 to 8.0.28 and 8.4.11
+      (crates/probe/cases/literals-hex-long.txt).
 
 # Built-in functions, by family, each family with the page of the manual that
 # describes it. Each function:

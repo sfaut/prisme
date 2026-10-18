@@ -62,7 +62,8 @@ pub(super) fn aggregate(name: &str, args: &[Expr], dialect: Dialect) -> (DataTyp
         "COUNT" => (types::bigint(), OnEmpty::Value),
         "SUM" => (types::sum(&first), OnEmpty::Null),
         "AVG" => (types::avg(&first), OnEmpty::Null),
-        "MIN" | "MAX" => (first, OnEmpty::Null),
+        // `MIN(0x41) + 0` gives 0: a byte string.
+        "MIN" | "MAX" => (first.stored(), OnEmpty::Null),
         // Over an empty set, `BIT_AND` gives all bits set, the others 0.
         "BIT_AND" | "BIT_OR" | "BIT_XOR" => (
             DataType::Integer(IntegerType::unsigned(IntegerSize::Big)),

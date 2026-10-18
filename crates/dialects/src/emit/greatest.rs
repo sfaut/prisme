@@ -468,6 +468,7 @@ fn type_label(data_type: &DataType) -> Option<String> {
     Some(match data_type {
         DataType::Year => "`YEAR`".to_string(),
         DataType::Bit { .. } => "`BIT`".to_string(),
+        DataType::Hybrid { .. } => "a hexadecimal or bit literal".to_string(),
         DataType::Json => "`JSON`".to_string(),
         DataType::Geometry => "`GEOMETRY`".to_string(),
         DataType::Other(name) => format!("`{}`", name.to_ascii_uppercase()),

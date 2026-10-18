@@ -1,0 +1,47 @@
+# Hybrids in subqueries, aggregates, conditional functions, casts, comparisons with strings
+# and numbers, and bit literals from 2^63. Measured on MySQL 8.0.11 and 8.4.11, MariaDB
+# 10.6.28 and 11.8.9.
+sub_0x (SELECT 0x41) + 0
+sub_x (SELECT X'41') + 0
+sub_b (SELECT b'01000001') + 0
+bit_or_0x (SELECT BIT_OR(0x41) FROM sample)
+bit_or_x (SELECT BIT_OR(X'41') FROM sample)
+bit_or_long (SELECT BIT_OR(0x010000000000000001) FROM sample)
+if_string IF(1, 0x41, 'b')
+if_string_plus IF(1, 0x41, 'b') + 0
+ifnull_plus IFNULL(0x41, 1) + 0
+nullif_plus NULLIF(0x41, 1) + 0
+elt_plus ELT(1, 0x41) + 0
+cast_date CAST(0x323032342D30312D3032 AS DATE)
+cast_date_x CAST(X'323032342D30312D3032' AS DATE)
+in_mixed 0x41 IN (65, 'A')
+in_mixed_b 0x41 IN ('B', 65)
+neg_b -b'1'
+from_unixtime FROM_UNIXTIME(0x41)
+plus_double 0x41 + 0e0
+plus_double_x X'41' + 0e0
+eq_decimal 0x41 = 65.0
+eq_float 0x41 = 65e0
+eq_column (SELECT COUNT(*) FROM sample WHERE s = 0x48656C6C6F20576F726C64)
+eq_column_x (SELECT COUNT(*) FROM sample WHERE s = X'48656C6C6F20576F726C64')
+long_eq_column (SELECT COUNT(*) FROM sample WHERE CAST(s AS BINARY) = 0x48656C6C6F20576F726C64)
+long_in (SELECT COUNT(*) FROM sample WHERE CAST(s AS BINARY) IN (0x48656C6C6F20576F726C64))
+long_like 0x48656C6C6F20576F726C64 LIKE 'Hello%'
+long_hex HEX(0x48656C6C6F20576F726C64)
+long_concat CONCAT(0x48656C6C6F20576F726C64, '!')
+long_cast_char CAST(0x48656C6C6F20576F726C64 AS CHAR)
+long_eq_string 0x48656C6C6F20576F726C64 = 'Hello World'
+long_lt_string 0x48656C6C6F20576F726C64 < 'Z'
+long_between 0x48656C6C6F20576F726C64 BETWEEN 'A' AND 'Z'
+long_eq_number 0x48656C6C6F20576F726C64 = 0
+bits_top_or b'1111111111111111111111111111111111111111111111111111111111111111' | 0
+bits_top_cast CAST(b'1111111111111111111111111111111111111111111111111111111111111111' AS UNSIGNED)
+bits_top_eq b'1111111111111111111111111111111111111111111111111111111111111111' = 18446744073709551615
+bits_top_div b'1111111111111111111111111111111111111111111111111111111111111111' DIV 1
+bits_mul b'101' * 2
+bits_sum (SELECT SUM(b'101') FROM sample)
+hex_sign SIGN(0x41)
+hex_mod MOD(0x41, 10)
+hex_pow POW(0x41, 1)
+hex_format FORMAT(0x41, 1)
+hex_char CHAR(0x41)

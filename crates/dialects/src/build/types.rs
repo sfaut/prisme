@@ -17,6 +17,7 @@ use prisme_types::{
 };
 
 use crate::Dialect;
+use crate::sql::ast::BytesForm;
 
 /// Largest scale of a `DECIMAL` in the MySQL family.
 const MAX_SCALE: u8 = 30;
@@ -110,8 +111,35 @@ pub(crate) fn introduced_string(charset: &str, value: &str) -> DataType {
     })
 }
 
-/// Type of a byte string of `length` bytes, a literal (`_binary'abc'`): a
-/// `VARBINARY`.
+/// Type of bytes after the introducer `charset`, but `binary`
+/// (`_latin1 X'E9'`): a `VARCHAR` of that character set, of its default
+/// collation, of a length unknown.
+pub(crate) fn introduced_bytes(charset: &str) -> DataType {
+    DataType::Text(TextType {
+        length: None,
+        fixed: false,
+        charset: Some(charset.to_string()),
+        collation: None,
+    })
+}
+
+/// Type of a hexadecimal or bit literal of `length` bytes, of the form
+/// `form`, in `dialect`: a hybrid, signed for a bit literal of MySQL
+/// (`b'101' + 0` is an `INT`, an `INT UNSIGNED` in MariaDB), but `X'41'` in
+/// MariaDB, a byte string (`X'41' + 0` gives 65 in MySQL, 0 in MariaDB).
+pub(crate) fn bytes_literal(length: usize, form: BytesForm, dialect: Dialect) -> DataType {
+    let bits = matches!(form, BytesForm::BitString | BytesForm::BitNumber);
+    match (form, dialect) {
+        (BytesForm::HexString, Dialect::MariaDb) => byte_string(length),
+        _ => DataType::Hybrid {
+            length: u32::try_from(length).unwrap_or(u32::MAX),
+            signed: bits && dialect == Dialect::MySql,
+        },
+    }
+}
+
+/// Type of a byte string of `length` bytes, a literal (`_binary'abc'`, and
+/// `X'41'` in MariaDB): a `VARBINARY`.
 pub(crate) fn byte_string(length: usize) -> DataType {
     DataType::Binary(BinaryType {
         length: u32::try_from(length).ok(),
@@ -140,6 +168,19 @@ fn numeric(data_type: &DataType) -> Numeric {
         DataType::Integer(integer) => Numeric::Integer(*integer),
         DataType::Year => Numeric::Integer(IntegerType::unsigned(IntegerSize::Small)),
         DataType::Bit { .. } => Numeric::Integer(IntegerType::unsigned(IntegerSize::Big)),
+        // `0x41 + 0` is an `INT UNSIGNED`, `0x0102030405 + 0` a `BIGINT
+        // UNSIGNED`.
+        DataType::Hybrid { length, signed } => {
+            let size = if *length <= 4 {
+                IntegerSize::Int
+            } else {
+                IntegerSize::Big
+            };
+            Numeric::Integer(IntegerType {
+                size,
+                unsigned: !signed,
+            })
+        }
         DataType::Decimal(decimal) => Numeric::Decimal(
             usize::from(decimal.precision() - decimal.scale()),
             usize::from(decimal.scale()),
@@ -319,8 +360,9 @@ pub(crate) fn case<'a>(
 }
 
 /// Type that holds the values of two types, as a `CASE` merges them in
-/// both dialects, the integers aside.
+/// both dialects, the integers aside; a hybrid merges as a byte string.
 fn merge(left: &DataType, right: &DataType) -> DataType {
+    let (left, right) = (&left.stored(), &right.stored());
     let text = || {
         DataType::Text(TextType {
             length: None,

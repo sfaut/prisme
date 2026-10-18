@@ -48,7 +48,10 @@ impl StringKind {
     /// Kind of string of `arg`.
     pub(super) fn of(arg: &Expr) -> Self {
         match &arg.ty.data_type {
-            DataType::Binary(_) | DataType::Bit { .. } | DataType::Geometry => Self::Binary,
+            DataType::Binary(_)
+            | DataType::Hybrid { .. }
+            | DataType::Bit { .. }
+            | DataType::Geometry => Self::Binary,
             DataType::Unknown | DataType::Other(_) => Self::Unknown,
             _ => Self::Character,
         }

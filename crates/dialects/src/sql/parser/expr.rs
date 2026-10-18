@@ -478,9 +478,7 @@ impl Parser<'_> {
             TokenKind::HexString(_)
             | TokenKind::BitString(_)
             | TokenKind::HexNumber(_)
-            | TokenKind::BitNumber(_) => {
-                Err(self.unsupported("hexadecimal and bit literals", token.span))
-            }
+            | TokenKind::BitNumber(_) => Ok(self.bytes_literal()),
             TokenKind::UserVariable { .. } | TokenKind::SystemVariable => {
                 Err(self.unsupported("variables", token.span))
             }

@@ -30,6 +30,7 @@ mod charset;
 mod expr;
 mod extract;
 mod greatest;
+mod hexadecimal;
 mod interval;
 mod json;
 mod literal;
@@ -108,6 +109,7 @@ pub(crate) fn emit(statement: &Statement, output: &OutputDialect, source: &Sourc
         column: false,
         number: false,
         json_as_is: false,
+        as_bytes: false,
         compared_rows: false,
         steps: Vec::new(),
         errors: Vec::new(),
@@ -164,6 +166,11 @@ struct Emitter<'a> {
     /// result, an operand of `LIKE` or `IS NULL`, an argument of `CONCAT` or
     /// of a `JSON_` function (`json` module).
     json_as_is: bool,
+    /// Tells whether the next expression is read as bytes, a hexadecimal or
+    /// bit literal as its bytes alike in both dialects: an operand of a
+    /// comparison with a string, of `LIKE`, an argument of `CAST` to a
+    /// string or of a string function (`hexadecimal` module).
+    as_bytes: bool,
     /// Tells whether the rows of the next query are compared: an operand of
     /// a set operation other than `UNION ALL`, a subquery of `IN`, `ANY` or
     /// `ALL`. Its `JSON` columns are then read as the input reads them

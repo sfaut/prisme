@@ -33,6 +33,18 @@ pub enum DataType {
     Text(TextType),
     /// Byte string.
     Binary(BinaryType),
+    /// Hexadecimal or bit literal (`0x41`, `b'1000001'`, and `X'41'` in
+    /// MySQL): a byte string read as a string, an integer read as a number
+    /// (`0x41 = 'A'` and `0x41 = 65` are both true). A value of this type
+    /// stored or merged with another one (a column of a derived table,
+    /// `MIN`, `CASE`) is a byte string.
+    Hybrid {
+        /// Number of bytes.
+        length: u32,
+        /// Tells whether it reads as a signed integer (a bit literal of
+        /// MySQL: `b'101' + 0` is an `INT`), unsigned otherwise.
+        signed: bool,
+    },
     /// Calendar date.
     Date,
     /// Time of day or duration (`TIME` of MySQL ranges over ±838 hours).
@@ -148,6 +160,22 @@ pub struct Type {
     pub data_type: DataType,
     /// `true` when the value can be NULL.
     pub nullable: bool,
+}
+
+impl DataType {
+    /// Type of a value of this type once stored, as a column of a derived
+    /// table or of a common table expression: a hybrid is a byte string
+    /// (`(SELECT v + 0 FROM (SELECT 0x41 AS v) d)` gives 0), any other type
+    /// itself.
+    pub fn stored(&self) -> DataType {
+        match self {
+            Self::Hybrid { length, .. } => Self::Binary(BinaryType {
+                length: Some(*length),
+                fixed: false,
+            }),
+            _ => self.clone(),
+        }
+    }
 }
 
 impl IntegerSize {

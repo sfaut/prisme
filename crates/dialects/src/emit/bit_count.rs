@@ -108,7 +108,10 @@ impl Reading {
             | DataType::Year
             | DataType::Enum
             | DataType::Set
-            | DataType::Date => Self::Same,
+            | DataType::Date
+            // Beyond 8 bytes or from 2^63, a hybrid is an error of its own
+            // (`hexadecimal` module).
+            | DataType::Hybrid { .. } => Self::Same,
             DataType::Time { fraction }
             | DataType::DateTime { fraction }
             | DataType::Timestamp { fraction } => {

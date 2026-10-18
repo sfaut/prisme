@@ -252,7 +252,7 @@ impl Cte {
     /// `PlanError::ColumnCount` when the column list differs in length from
     /// the columns of the query.
     pub fn new(name: Ident, columns: Vec<Ident>, plan: Plan) -> Result<Self, PlanError> {
-        let schema = unqualified(plan.schema()).renamed(&columns)?;
+        let schema = unqualified(plan.schema().stored()).renamed(&columns)?;
         Ok(Self {
             name,
             columns,
@@ -290,7 +290,7 @@ impl Derived {
     /// `PlanError::ColumnCount` when the column list of the alias differs in
     /// length from the columns of the subquery.
     pub fn new(input: Plan, alias: TableAlias) -> Result<Self, PlanError> {
-        let schema = aliased(input.schema(), &alias.name, Some(&alias))?;
+        let schema = aliased(input.schema().stored(), &alias.name, Some(&alias))?;
         Ok(Self {
             input: Box::new(input),
             alias,

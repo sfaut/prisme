@@ -65,8 +65,10 @@ impl Emitter<'_> {
             self.number_expr(&cast.operand, 0);
         } else {
             // A string takes the text of a `JSON` in both dialects (`json`
-            // module).
-            self.json_as_is = matches!(cast.target, CastTarget::Char(_) | CastTarget::Binary(_));
+            // module), the bytes of a hexadecimal literal.
+            let string = matches!(cast.target, CastTarget::Char(_) | CastTarget::Binary(_));
+            self.json_as_is = string;
+            self.as_bytes = string;
             self.expr(&cast.operand, 0);
         }
         match &cast.form {
@@ -432,7 +434,11 @@ fn bytes_difference(data_type: &DataType, target: &CharTarget) -> Option<(&'stat
         || target.charset == Some(Charset::Ascii);
     let bytes = matches!(
         data_type,
-        DataType::Binary(_) | DataType::Unknown | DataType::Other(_) | DataType::Geometry
+        DataType::Binary(_)
+            | DataType::Hybrid { .. }
+            | DataType::Unknown
+            | DataType::Other(_)
+            | DataType::Geometry
     );
     (bytes && !any_byte).then(|| {
         (
