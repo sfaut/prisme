@@ -35,7 +35,7 @@ use crate::versions::Construct;
 
 /// Kind of string of an argument.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum StringKind {
+pub(super) enum StringKind {
     /// A binary string: `BINARY`, `VARBINARY`, `BLOB`, `BIT`, a geometry.
     Binary,
     /// A character string, or a value read as one (a number, a date...).
@@ -46,7 +46,7 @@ enum StringKind {
 
 impl StringKind {
     /// Kind of string of `arg`.
-    fn of(arg: &Expr) -> Self {
+    pub(super) fn of(arg: &Expr) -> Self {
         match &arg.ty.data_type {
             DataType::Binary(_) | DataType::Bit { .. } | DataType::Geometry => Self::Binary,
             DataType::Unknown | DataType::Other(_) => Self::Unknown,

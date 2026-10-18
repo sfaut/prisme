@@ -572,6 +572,26 @@ constructs:
       `DECIMAL` from 8.0.12. `NOT REGEXP`, the `NOT` of a `REGEXP`, gives
       an integer in every version (crates/probe/cases/regexp-type.txt,
       measured on 8.0.11 to 8.0.14 and 8.4.11).
+  - id: regexp_binary
+    since: "8.0.12"
+    source: https://github.com/mysql/mysql-server/blob/mysql-8.0.12/sql/item_regexp_func.cc
+    comment: >-
+      `REGEXP` reads a binary string byte by byte, case-sensitive, a
+      character string with it in its character set (`CONVERT('é' USING
+      utf8mb4) REGEXP CAST('^..$' AS BINARY)` gives 0). In 8.0.11, a binary
+      string otherwise: `CAST('aBc' AS BINARY) REGEXP CAST('B' AS BINARY)`
+      gives 0, `CAST(CONVERT('é' USING utf8mb4) AS BINARY) REGEXP '^.$'` 1.
+      No entry in the release notes; bisected on the images 8.0.11 and
+      8.0.12 (crates/probe/cases/regexp-binary.txt).
+  - id: regexp_binary_error
+    since: "8.0.22"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-22.html
+    comment: >-
+      `REGEXP` and the functions of regular expressions refuse a binary
+      string with a character string, error 3995 (Bug #98950), and read two
+      binary strings byte by byte, as before
+      (crates/probe/cases/regexp-binary.txt, measured on 8.0.12, 8.0.15 to
+      8.0.17, 8.0.20 to 8.0.23 and 8.4.11).
   - id: string_charset
     since: "8.0.19"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-19.html

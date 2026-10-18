@@ -2424,6 +2424,38 @@ fn regexp_read_as_a_number_keeps_the_type_of_the_input() {
 }
 
 #[test]
+fn regexp_refuses_a_binary_string_read_otherwise() {
+    let (v11, v12, v21, v22) = (
+        mysql_at(8, 0, 11),
+        mysql_at(8, 0, 12),
+        mysql_at(8, 0, 21),
+        mysql_at(8, 0, 22),
+    );
+    for (text, input, target, expected) in [
+        // A binary string with a character string, read byte by byte, then
+        // refused from 8.0.22; an argument of unknown type may be one.
+        ("SELECT s FROM g WHERE vb REGEXP 'a'", v21, v22, true),
+        ("SELECT s FROM g WHERE s REGEXP vb", v22, v21, true),
+        ("SELECT s FROM g WHERE UPPER(s) REGEXP 'a'", v21, v22, true),
+        ("SELECT s FROM g WHERE vb REGEXP 'a'", v12, v21, false),
+        (
+            "SELECT s FROM g WHERE UPPER(s) REGEXP 'a'",
+            v22,
+            mysql_at(8, 4, 0),
+            false,
+        ),
+        // Two binary strings, read otherwise in 8.0.11 only.
+        ("SELECT s FROM g WHERE vb REGEXP vb", v21, v22, false),
+        ("SELECT s FROM g WHERE vb REGEXP vb", v12, v11, true),
+        ("SELECT s FROM g WHERE s REGEXP 'a'", v11, v22, false),
+    ] {
+        let rules = errors(text, input, output(target));
+        let expected: &[&str] = if expected { &["regexp.binary"] } else { &[] };
+        assert_eq!(rules, expected, "{text}: {input:?} to {target:?}");
+    }
+}
+
+#[test]
 fn regexp_and_member_of_refuse_what_the_output_reads_otherwise() {
     // ICU against PCRE2.
     for (input, target) in [(mysql(), mariadb()), (mariadb(), mysql())] {

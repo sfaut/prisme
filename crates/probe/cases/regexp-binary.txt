@@ -1,0 +1,26 @@
+# REGEXP with a binary string, between versions of MySQL and against MariaDB: MySQL 8.0.11 reads
+# it otherwise than its bytes, 8.0.12 to 8.0.21 byte by byte (a character string with it in
+# its character set), 8.0.22 refuses it with a character string (error 3995); the reading of
+# the character operand read as binary.
+subject_binary CAST('aBc' AS BINARY) REGEXP 'B'
+subject_binary_lower CAST('aBc' AS BINARY) REGEXP 'b'
+pattern_binary 'aBc' REGEXP CAST('B' AS BINARY)
+pattern_binary_lower 'aBc' REGEXP CAST('b' AS BINARY)
+both_binary CAST('aBc' AS BINARY) REGEXP CAST('B' AS BINARY)
+both_binary_lower CAST('aBc' AS BINARY) REGEXP CAST('b' AS BINARY)
+hex_subject X'614263' REGEXP 'B'
+hex_both X'614263' REGEXP X'42'
+binary_dot CAST(CONVERT('é' USING utf8mb4) AS BINARY) REGEXP '^.$'
+binary_dot2 CAST(CONVERT('é' USING utf8mb4) AS BINARY) REGEXP '^..$'
+like_binary REGEXP_LIKE(CAST('aBc' AS BINARY), 'B')
+cast_subject CAST('aBc' AS BINARY) REGEXP CAST('B' AS BINARY)
+cast_pattern CAST('aBc' AS BINARY) REGEXP CAST('b' AS BINARY)
+mb_binary_subject CAST(CONVERT('é' USING utf8mb4) AS BINARY) REGEXP '^..$'
+mb_cast_subject CAST(CONVERT('é' USING utf8mb4) AS BINARY) REGEXP CAST('^..$' AS BINARY)
+mb_binary_pattern CONVERT('é' USING utf8mb4) REGEXP CAST('^..$' AS BINARY)
+mb_cast_pattern CAST(CONVERT('é' USING utf8mb4) AS BINARY) REGEXP CAST('^..$' AS BINARY)
+latin1_binary_pattern CONVERT('é' USING latin1) REGEXP X'5EE924'
+latin1_cast CAST(CONVERT('é' USING latin1) AS BINARY) REGEXP X'5EE924'
+ci_binary_pattern 'ABC' REGEXP CAST('b' AS BINARY)
+number_binary_pattern 123 REGEXP CAST('2' AS BINARY)
+number_cast CAST(123 AS BINARY) REGEXP CAST('2' AS BINARY)

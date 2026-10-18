@@ -175,6 +175,12 @@ pub enum Construct {
     /// `REGEXP` and `REGEXP_LIKE` give an integer (MySQL); a `DOUBLE`
     /// before.
     RegexpInteger,
+    /// `REGEXP` reads a binary string byte by byte (MySQL); otherwise
+    /// before.
+    RegexpBinary,
+    /// `REGEXP` refuses a binary string with a character string, error 3995
+    /// (MySQL).
+    RegexpBinaryError,
 }
 
 /// Construct refused in a dialect or a version.
@@ -342,6 +348,8 @@ impl Construct {
             Self::XorCompared => "`XOR` of operands read as compared with 0",
             Self::JsonInCompared => "`IN` comparing a `JSON` by the rules of JSON",
             Self::RegexpInteger => "`REGEXP` giving an integer",
+            Self::RegexpBinary => "`REGEXP` reading a binary string byte by byte",
+            Self::RegexpBinaryError => "`REGEXP` refusing a binary string with a character string",
         }
     }
 }
