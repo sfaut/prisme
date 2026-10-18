@@ -65,6 +65,18 @@ const PREPARATION: &str = indoc! {r#"
     );
 "#};
 
+/// Tables of a measure resumed after the server stopped: the results whose
+/// type is measured are kept, the others measured again, as are the
+/// expressions pending.
+const RESUMPTION: &str = indoc! {"
+    DELETE FROM probe_results WHERE column_type IS NULL AND type_failure IS NULL;
+    DROP TABLE IF EXISTS probe_pending;
+    CREATE TABLE probe_pending (
+      owner BIGINT NOT NULL, place INT NOT NULL, result_seq INT NOT NULL, expression LONGTEXT NOT NULL,
+      PRIMARY KEY (owner, place)
+    );
+"};
+
 /// Procedures of the measurement, created after the statements of the user:
 /// they run with their SQL mode.
 ///
@@ -323,13 +335,15 @@ const STOPS: &str = "stops the server";
 
 /// Measures `cases` on `server`: a result per identifier. A case that stops
 /// the server (a crash, `REGEXP_SUBSTR(1, NULL)` on MySQL 8.0.11) has the
-/// failure `STOPS`: the server starts again and the cases are measured again
-/// without it. The case is the one whose query the log of the server gives;
-/// the cases of a batch that stops it are measured again in batches of
-/// their own, until the query names a single case.
+/// failure `STOPS`: the server starts again and the measure resumes without
+/// it, the results already measured kept. The case is the one whose query
+/// the log of the server gives; the cases of a batch that stops it are
+/// measured again in batches of their own, until the query names a single
+/// case.
 pub fn measure(server: &Server, cases: &Cases) -> anyhow::Result<HashMap<String, Measure>> {
     let mut stopping = BTreeSet::new();
     let mut alone = HashSet::new();
+    let mut resumed = false;
     loop {
         let kept = Cases {
             setup: cases.setup.clone(),
@@ -338,7 +352,7 @@ pub fn measure(server: &Server, cases: &Cases) -> anyhow::Result<HashMap<String,
                 .cloned()
                 .collect(),
         };
-        let outcome = measure_once(server, &kept, &alone);
+        let outcome = measure_once(server, &kept, &alone, resumed);
         let Some(query) = server.stopped_by()? else {
             let mut measures = outcome?;
             for id in stopping {
@@ -372,6 +386,7 @@ pub fn measure(server: &Server, cases: &Cases) -> anyhow::Result<HashMap<String,
             alone.extend(suspects.iter().map(|case| case.id.clone()));
         }
         server.restart()?;
+        resumed = true;
     }
 }
 
@@ -389,16 +404,36 @@ fn stopped_by(query: &str, case: &Case) -> bool {
 }
 
 /// Measures `cases` on `server` once, those of `alone` each in a batch of
-/// its own. The cases are shared among `SESSIONS` sessions of the server,
-/// which measure at once, each after the statements of the file.
+/// its own; when `resumed`, after the server stopped, only those whose type
+/// is not measured yet. The cases are shared among `SESSIONS` sessions of
+/// the server, which measure at once, each after the statements of the
+/// file.
 fn measure_once(
     server: &Server,
     cases: &Cases,
     alone: &HashSet<String>,
+    resumed: bool,
 ) -> anyhow::Result<HashMap<String, Measure>> {
     let setup = setup_script(cases);
-    server.run_checked(&format!("{PREPARATION}{setup}{PROCEDURE}"), &[])?;
-    in_sessions(cases, |chunk| {
+    let measured: HashSet<String> = if resumed {
+        server.run_checked(&format!("{RESUMPTION}{setup}{PROCEDURE}"), &[])?;
+        let ids = server.run_checked(
+            "SELECT case_id FROM probe_results;\n",
+            &["--batch", "--skip-column-names"],
+        )?;
+        ids.lines().map(str::to_string).collect()
+    } else {
+        server.run_checked(&format!("{PREPARATION}{setup}{PROCEDURE}"), &[])?;
+        HashSet::new()
+    };
+    let pending = Cases {
+        setup: cases.setup.clone(),
+        cases: (cases.cases.iter())
+            .filter(|case| !measured.contains(&case.id))
+            .cloned()
+            .collect(),
+    };
+    in_sessions(&pending, |chunk| {
         let mut script = setup.clone();
         for batch in chunk.chunks(BATCH) {
             for case in batch {
