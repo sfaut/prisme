@@ -1,0 +1,41 @@
+-- Bit operators of byte strings: MySQL computes byte by byte when every operand is a byte
+-- string other than a hexadecimal or bit literal (the left one for a shift), MariaDB reads
+-- each operand as a number. Columns of each type, literals, NULL, functions.
+DROP TABLE IF EXISTS bw;
+CREATE TABLE bw (id INT NOT NULL PRIMARY KEY, b VARBINARY(4) NULL, c BINARY(2) NULL, s VARCHAR(4) NULL, i INT NULL, t BIT(8) NULL);
+INSERT INTO bw VALUES (1, X'0F', X'0F0F', '3', 5, b'00000110'), (2, '12', X'3132', '12', 12, b'1');
+SELECT id, HEX(b | b) AS v FROM bw ORDER BY id;
+SELECT id, HEX(b & b) AS v FROM bw ORDER BY id;
+SELECT id, HEX(b ^ b) AS v FROM bw ORDER BY id;
+SELECT id, HEX(~b) AS v FROM bw ORDER BY id;
+SELECT id, HEX(b << 1) AS v FROM bw ORDER BY id;
+SELECT id, HEX(b >> 1) AS v FROM bw ORDER BY id;
+SELECT id, HEX(b | 1) AS v FROM bw ORDER BY id;
+SELECT id, HEX(1 | b) AS v FROM bw ORDER BY id;
+SELECT id, HEX(b | 0x01) AS v FROM bw ORDER BY id;
+SELECT id, HEX(b | i) AS v FROM bw ORDER BY id;
+SELECT id, HEX(b | s) AS v FROM bw ORDER BY id;
+SELECT id, HEX(b | t) AS v FROM bw ORDER BY id;
+SELECT id, HEX(t | t) AS v FROM bw ORDER BY id;
+SELECT id, HEX(~t) AS v FROM bw ORDER BY id;
+SELECT id, HEX(b | NULL) AS v FROM bw ORDER BY id;
+SELECT id, HEX(c | c) AS v FROM bw ORDER BY id;
+SELECT id, HEX(c | b) AS v FROM bw ORDER BY id;
+SELECT id, HEX(~c) AS v FROM bw ORDER BY id;
+SELECT id, HEX(c << 4) AS v FROM bw ORDER BY id;
+SELECT id, HEX(1 << c) AS v FROM bw ORDER BY id;
+SELECT id, HEX(c | _binary X'0101') AS v FROM bw ORDER BY id;
+SELECT id, HEX(c | X'0101') AS v FROM bw ORDER BY id;
+SELECT id, HEX(c & 0xFFFF) AS v FROM bw ORDER BY id;
+SELECT HEX(_binary X'01' | _binary X'02') AS v;
+SELECT HEX(CAST('1' AS BINARY) | CAST('2' AS BINARY)) AS v;
+SELECT HEX(_binary'3' << 1) AS v;
+SELECT HEX(~_binary'3') AS v;
+SELECT HEX(_binary'3.7' | 0) AS v;
+SELECT HEX(_binary'3.7' | _binary'0') AS v;
+SELECT HEX(CONCAT(_binary'1') | _binary'2') AS v;
+SELECT HEX(_binary X'0102' | _binary X'01') AS v;
+SELECT HEX(_binary X'0102' | NULL) AS v;
+SELECT HEX(NULL | NULL) AS v;
+SELECT HEX(_binary'12' | CAST('12' AS CHAR)) AS v;
+DROP TABLE bw;

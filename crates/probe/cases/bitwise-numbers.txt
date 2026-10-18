@@ -1,0 +1,35 @@
+# Bit operators of values other than integers: strings, decimals, floats, dates and times, read
+# as unsigned integers, rounded or truncated; a time rounded up to the next minute; byte strings
+# with hexadecimal literals.
+string_fraction '3.7' | 0
+string_half '3.5' | 0
+string_negative '-1' | 0
+string_negative_fraction '-3.7' | 0
+string_exponent '1e3' | 0
+string_space ' 12' | 0
+string_trailing '12abc' | 0
+string_large '18446744073709551616' | 0
+string_not ~'3.7'
+string_shift '3.7' << 1
+string_and '3.7' & '2.6'
+decimal_fraction 3.7 | 0
+decimal_half 2.5 | 0
+decimal_negative -3.7 | 0
+decimal_large 18446744073709551616.5 | 0
+float_fraction 3.7e0 | 0
+float_half 2.5e0 | 0
+float_negative -3.7e0 | 0
+float_large 1e20 | 0
+float_negative_large -1e20 | 0
+time_fraction TIME'10:00:00.6' | 0
+time_plain TIME'10:00:00' | 0
+date_plain DATE'2024-01-01' | 0
+datetime_fraction TIMESTAMP'2024-01-01 10:00:00.5' | 0
+not_decimal ~3.7
+time_carry TIME'10:00:59.5' | 0
+time_negative_carry TIME'-10:00:59.6' | 0
+timestamp_carry TIMESTAMP'1999-12-31 23:59:59.6' | 0
+bit_count_time_carry BIT_COUNT(TIME'10:00:59.5')
+binary_or HEX(CAST('1' AS BINARY) | CAST('2' AS BINARY))
+binary_hex_or HEX(CAST('1' AS BINARY) | 0x02)
+hex_or HEX(0x31 | 0x02)

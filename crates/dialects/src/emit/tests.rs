@@ -1370,6 +1370,231 @@ fn bit_count_reads_its_argument_as_the_input_does() {
 }
 
 #[test]
+fn bit_operators_read_their_operands_as_the_input_does() {
+    for (text, input, target) in [
+        (
+            "SELECT a | 1, a & b, a ^ 2, ~a, a << 2, a >> 1, 1 << 3.7 AS v FROM t",
+            mysql(),
+            mariadb(),
+        ),
+        (
+            "SELECT dd | 0, tm & 1, e & 1, y ^ 1, 1 << y AS v FROM g, d",
+            mysql(),
+            mariadb(),
+        ),
+        ("SELECT p | i, ~n, dt | ts AS v FROM d", mariadb(), mysql()),
+        ("SELECT vb | vb, ~vb AS v FROM g", mysql(), mysql()),
+        // Counts of a shift in `[-2^31, 2^32)`.
+        (
+            "SELECT a << b, a >> i, 1 << iu, 1 << 3.7, 1 << '3abc', 1 << -2147483648, 1 << 4294967295.4 AS v FROM t, d",
+            mysql(),
+            mariadb(),
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{text}");
+    }
+    let mariadb_bits = |value: &str| {
+        format!(
+            "CAST((GREATEST(LEAST(ROUND({value}), 18446744073709551615), -9223372036854775808) + 18446744073709551616) % 18446744073709551616 AS UNSIGNED)"
+        )
+    };
+    let decimal = |column: &str| mariadb_bits(&format!("CAST({column} AS DECIMAL(65, 30))"));
+    for (text, input, target, expected, count) in [
+        (
+            "SELECT '3.7' | a AS v FROM t",
+            mysql(),
+            mariadb(),
+            "SELECT CAST('3.7' AS SIGNED) | a AS v FROM t".to_string(),
+            1,
+        ),
+        (
+            "SELECT ~'5' AS v",
+            mysql(),
+            mariadb(),
+            "SELECT ~CAST('5' AS SIGNED) AS v".to_string(),
+            1,
+        ),
+        (
+            "SELECT de & 1 AS v FROM g",
+            mysql(),
+            mariadb(),
+            "SELECT LEAST(de, 9223372036854775807) & 1 AS v FROM g".to_string(),
+            1,
+        ),
+        (
+            "SELECT s | 1 AS v FROM g",
+            mariadb(),
+            mysql(),
+            format!("SELECT {} | 1 AS v FROM g", decimal("s")),
+            1,
+        ),
+        (
+            "SELECT vb | vb AS v FROM g",
+            mariadb(),
+            mysql(),
+            format!("SELECT {} | {} AS v FROM g", decimal("vb"), decimal("vb")),
+            2,
+        ),
+        (
+            "SELECT vb << 2 AS v FROM g",
+            mariadb(),
+            mysql(),
+            format!("SELECT {} << 2 AS v FROM g", decimal("vb")),
+            1,
+        ),
+        (
+            "SELECT de ^ 1 AS v FROM g",
+            mariadb(),
+            mysql(),
+            format!("SELECT {} ^ 1 AS v FROM g", mariadb_bits("de")),
+            1,
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, expected);
+        assert_eq!(rules, vec!["bitwise.operand"; count], "{text}");
+    }
+    // Counts of a `BIGINT`, a literal included.
+    for (text, input, target, expected) in [
+        (
+            "SELECT 1 << n, a >> 4294967297 AS v FROM d, t",
+            mysql(),
+            mariadb(),
+            "SELECT 1 << GREATEST(LEAST(n, 64), -1) AS `1 << n`, a >> GREATEST(LEAST(4294967297, 64), -1) AS v FROM d, t",
+        ),
+        (
+            "SELECT 1 << n + 1 AS v FROM d",
+            mariadb(),
+            mysql(),
+            "SELECT 1 << (n + 1 & 4294967295) AS v FROM d",
+        ),
+    ] {
+        let (sql, rules) = transpiled(text, input, output(target));
+        assert_eq!(sql, expected);
+        assert!(rules.contains(&"bitwise.shift"), "{text}");
+        assert!(
+            rules
+                .iter()
+                .all(|rule| ["bitwise.shift", "column.implicit-name"].contains(rule)),
+            "{text}: {rules:?}"
+        );
+    }
+    // Byte strings computed byte by byte, a string other than a literal or
+    // a byte string read as an integer by MySQL, a floating point number, a
+    // type unknown, a literal starting with a line break.
+    for (text, input, target, rule) in [
+        (
+            "SELECT vb | vb AS v FROM g",
+            mysql(),
+            mariadb(),
+            "bitwise.binary",
+        ),
+        (
+            "SELECT ~vb AS v FROM g",
+            mysql(),
+            mariadb(),
+            "bitwise.binary",
+        ),
+        (
+            "SELECT vb << 1 AS v FROM g",
+            mysql(),
+            mariadb(),
+            "bitwise.binary",
+        ),
+        (
+            "SELECT s | 1 AS v FROM g",
+            mysql(),
+            mariadb(),
+            "bitwise.operand",
+        ),
+        (
+            "SELECT vb | 1 AS v FROM g",
+            mysql(),
+            mariadb(),
+            "bitwise.operand",
+        ),
+        (
+            "SELECT f | 1 AS v FROM d",
+            mysql(),
+            mariadb(),
+            "bitwise.operand",
+        ),
+        (
+            "SELECT f | 1 AS v FROM d",
+            mariadb(),
+            mysql(),
+            "bitwise.operand",
+        ),
+        (
+            "SELECT ABS(a) | 1 AS v FROM t",
+            mysql(),
+            mariadb(),
+            "bitwise.operand",
+        ),
+        (
+            "SELECT ' \\n5' | 1 AS v",
+            mysql(),
+            mariadb(),
+            "bitwise.operand",
+        ),
+        (
+            "SELECT dt3 | 0 AS v FROM g",
+            mysql(),
+            mariadb(),
+            "bitwise.operand",
+        ),
+        (
+            "SELECT ~dt3 AS v FROM g",
+            mariadb(),
+            mysql(),
+            "bitwise.operand",
+        ),
+        (
+            "SELECT js & 1 AS v FROM g",
+            mariadb(),
+            mysql(),
+            "bitwise.operand",
+        ),
+        // Counts that may reach 2^32.
+        (
+            "SELECT 1 << s AS v FROM g",
+            mysql(),
+            mariadb(),
+            "bitwise.shift",
+        ),
+        (
+            "SELECT 1 >> f AS v FROM d",
+            mariadb(),
+            mysql(),
+            "bitwise.shift",
+        ),
+        (
+            "SELECT 1 << de AS v FROM g",
+            mysql(),
+            mariadb(),
+            "bitwise.shift",
+        ),
+        ("SELECT 1 << 1e10 AS v", mysql(), mariadb(), "bitwise.shift"),
+        (
+            "SELECT 1 << '4294967297' AS v",
+            mariadb(),
+            mysql(),
+            "bitwise.shift",
+        ),
+        (
+            "SELECT 1 << '\\n3' AS v",
+            mysql(),
+            mariadb(),
+            "bitwise.shift",
+        ),
+    ] {
+        assert_eq!(errors(text, input, output(target)), [rule], "{text}");
+    }
+}
+
+#[test]
 fn aes_keeps_the_arguments_the_output_reads_alike() {
     let mysql_8_4 = input_at(Dialect::MySql, 8, 4, 0);
     let mariadb_10_6 = input_at(Dialect::MariaDb, 10, 6, 0);

@@ -21,6 +21,7 @@
 
 mod aes;
 mod bit_count;
+mod bitwise;
 mod builtin;
 mod call;
 mod case;

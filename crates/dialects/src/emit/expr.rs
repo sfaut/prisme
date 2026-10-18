@@ -291,20 +291,8 @@ impl Emitter<'_> {
                 op,
                 left: a,
                 right: b,
-            } => {
-                let symbol = match op {
-                    Bitwise::And => " & ",
-                    Bitwise::Or => " | ",
-                    Bitwise::Xor => " ^ ",
-                    Bitwise::ShiftLeft => " << ",
-                    Bitwise::ShiftRight => " >> ",
-                };
-                self.binary(a, symbol, b, left, right);
-            }
-            ExprKind::BitNot(operand) => {
-                self.write("~");
-                self.number_expr(operand, right);
-            }
+            } => self.bitwise(expr, *op, (a, b), (left, right)),
+            ExprKind::BitNot(operand) => self.bit_not(expr, operand, right),
             ExprKind::Between {
                 operand,
                 low,

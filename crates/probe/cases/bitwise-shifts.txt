@@ -1,0 +1,76 @@
+# Counts of the shifts << and >>: read alike (a string as its integer prefix, a decimal and a float
+# rounded), then MySQL shifts out every bit from 64, MariaDB takes the count modulo 2^32; the
+# emulations of a BIGINT count, GREATEST(LEAST(n, 64), -1) for MariaDB, n & 4294967295 for MySQL.
+shift_count 1 << 3.7
+shift_count_string 1 << '3.7'
+shift_large 1 << 64
+shift_negative 1 << -1
+shift_float 1 << 2.5e0
+shift_decimal 1 << 2.5
+shift_string 1 << '2.5'
+shift_string_up 1 << '2.7'
+shift_large_decimal 1 << 63.6
+shift_small_decimal 1 << -0.4
+string_min 1 << '-9223372036854775808'
+string_below 1 << '-9223372036854775809'
+string_below_far 1 << '-18446744073709551617'
+string_exponent_below 1 << '-1e19'
+string_above 1 << '18446744073709551616'
+decimal_min 1 << -9223372036854775808
+decimal_below 1 << -9223372036854775809
+decimal_below_fraction 1 << -9223372036854775808.5
+decimal_above 1 << 18446744073709551616
+float_below 1 << -1e19
+float_above 1 << 1e20
+string_negative 1 << '-1'
+string_negative_fraction 1 << '-0.5'
+decimal_negative_fraction 1 << -0.5
+right_string_below 8 >> '-9223372036854775809'
+right_decimal_below 8 >> -9223372036854775809
+cast_below 1 << CAST('-9223372036854775809' AS DECIMAL(30, 0))
+concat_below 1 << CONCAT('-9223372036854775809')
+count_2_32 1 << 4294967296
+count_2_32_plus_1 1 << 4294967297
+count_2_32_minus_1 1 << 4294967295
+count_2_63 1 << 9223372036854775808
+count_2_63_plus_1 1 << 9223372036854775809
+count_2_64_minus_1 1 << 18446744073709551615
+count_negative_2_32 1 << -4294967296
+count_negative_2_32_plus_1 1 << -4294967295
+count_bigint_2_32 1 << CAST(4294967297 AS SIGNED)
+count_unsigned_2_63 1 << CAST(9223372036854775809 AS UNSIGNED)
+count_string_2_32 1 << '4294967297'
+count_right_2_32 8 >> 4294967297
+count_float_2_32 1 << 4294967297e0
+float_fraction 1 << 2.7e0
+float_half_odd 1 << 3.5e0
+float_half_even 1 << 2.5e0
+float_negative_small 1 << -0.4e0
+string_exponent 1 << '1e1'
+string_space 1 << ' 3'
+string_line_break 1 << '\n3'
+string_trailing 1 << '3abc'
+towards_mariadb_negative 1 << LEAST(CAST(CAST(-4294967296 AS SIGNED) AS UNSIGNED), 64)
+towards_mariadb_large 1 << LEAST(CAST(CAST(4294967297 AS SIGNED) AS UNSIGNED), 64)
+towards_mariadb_small 1 << LEAST(CAST(CAST(3 AS SIGNED) AS UNSIGNED), 64)
+towards_mariadb_minus_one 1 << LEAST(CAST(CAST(-1 AS SIGNED) AS UNSIGNED), 64)
+towards_mariadb_unsigned 1 << LEAST(CAST(CAST(18446744073709551615 AS UNSIGNED) AS UNSIGNED), 64)
+towards_mysql_large 1 << (CAST(4294967297 AS SIGNED) & 4294967295)
+towards_mysql_negative 1 << (CAST(-4294967295 AS SIGNED) & 4294967295)
+towards_mysql_minus_one 1 << (CAST(-1 AS SIGNED) & 4294967295)
+towards_mysql_min 1 << (CAST(-9223372036854775808 AS SIGNED) & 4294967295)
+bigint_minus_one 1 << CAST(-1 AS SIGNED)
+bigint_min 1 << CAST(-9223372036854775808 AS SIGNED)
+bounded_negative_2_32 1 << GREATEST(LEAST(CAST(-4294967296 AS SIGNED), 64), -1)
+bounded_minus_one 1 << GREATEST(LEAST(CAST(-1 AS SIGNED), 64), -1)
+bounded_small 1 << GREATEST(LEAST(CAST(3 AS SIGNED), 64), -1)
+bounded_63 1 << GREATEST(LEAST(CAST(63 AS SIGNED), 64), -1)
+bounded_2_32_plus_1 1 << GREATEST(LEAST(CAST(4294967297 AS SIGNED), 64), -1)
+bounded_min 1 << GREATEST(LEAST(CAST(-9223372036854775808 AS SIGNED), 64), -1)
+bounded_unsigned_max 1 << GREATEST(LEAST(CAST(18446744073709551615 AS UNSIGNED), 64), -1)
+bounded_unsigned_2_63 1 << GREATEST(LEAST(CAST(9223372036854775808 AS UNSIGNED), 64), -1)
+bounded_unsigned_2_32 1 << GREATEST(LEAST(CAST(4294967296 AS UNSIGNED), 64), -1)
+bounded_unsigned_small 1 << GREATEST(LEAST(CAST(5 AS UNSIGNED), 64), -1)
+bounded_null 1 << GREATEST(LEAST(CAST(NULL AS SIGNED), 64), -1)
+bounded_right 256 >> GREATEST(LEAST(CAST(4294967300 AS SIGNED), 64), -1)
+bounded_type GREATEST(LEAST(CAST(3 AS SIGNED), 64), -1)

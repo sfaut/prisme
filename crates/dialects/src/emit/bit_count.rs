@@ -26,7 +26,9 @@
 //!
 //! Measured on MySQL 8.0.11 and 8.4.11, MariaDB 10.6.28 and 11.8.9; the
 //! readings of a string by expression also on MySQL 8.0.17, 8.0.22, 8.0.28
-//! and 9.3.0.
+//! and 9.3.0. The bit operators read their operands as `BIT_COUNT` reads its
+//! argument, on each server and for each expression (`bitwise` module): the
+//! readings, their refusals and their emulations are shared.
 
 use prisme_plan::{Expr, ExprKind, FunctionCall};
 use prisme_types::{DataType, Value};
@@ -52,9 +54,10 @@ const MARIADB_BITS: (&str, &str) = (
     "), 18446744073709551615), -9223372036854775808) + 18446744073709551616) % 18446744073709551616 AS UNSIGNED)",
 );
 
-/// How a value is read before its bits are counted.
+/// How a value is read as an unsigned integer, before its bits are counted
+/// or by a bit operator.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Reading {
+pub(super) enum Reading {
     /// Alike in both dialects.
     Same,
     /// A character string.
@@ -73,9 +76,30 @@ enum Reading {
     Other,
 }
 
+/// Why a value that the dialects read otherwise cannot be read as the input
+/// does.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Refusal {
+    /// A floating point number.
+    Float,
+    /// A time with a fraction of a second.
+    Fraction,
+    /// A `JSON`.
+    Json,
+    /// A value of unknown type.
+    Unknown,
+    /// A type whose reading was not measured.
+    Unmeasured,
+    /// Towards MariaDB, a string literal that starts with a line break or a
+    /// vertical space.
+    VerticalSpace,
+    /// Towards MariaDB, a string other than a literal.
+    NotLiteral,
+}
+
 impl Reading {
     /// Reading of `arg`.
-    fn of(arg: &Expr) -> Self {
+    pub(super) fn of(arg: &Expr) -> Self {
         match &arg.ty.data_type {
             DataType::Null
             | DataType::Boolean
@@ -110,6 +134,43 @@ impl Reading {
             _ => Self::Other,
         }
     }
+
+    /// Refusal of `arg`, of this reading, written for MariaDB when
+    /// `towards_mariadb`, for MySQL otherwise; `None` when it is read as the
+    /// input does, as written or emulated (`Emitter::input_bits`).
+    pub(super) fn refusal(self, arg: &Expr, towards_mariadb: bool) -> Option<Refusal> {
+        match self {
+            Self::Same | Self::Large => None,
+            Self::Float => Some(Refusal::Float),
+            Self::Fraction => Some(Refusal::Fraction),
+            Self::Json => Some(Refusal::Json),
+            Self::Other if arg.ty.data_type == DataType::Unknown => Some(Refusal::Unknown),
+            Self::Other => Some(Refusal::Unmeasured),
+            Self::Text | Self::Binary if towards_mariadb => match &arg.kind {
+                ExprKind::Literal(Value::Text(text)) if !vertical_space_first(text) => None,
+                ExprKind::Literal(_) => Some(Refusal::VerticalSpace),
+                _ => Some(Refusal::NotLiteral),
+            },
+            Self::Text | Self::Binary => None,
+        }
+    }
+
+    /// How a value of this reading is written so that the output reads it
+    /// as the input does, for the report.
+    pub(super) const fn emulation(self, towards_mariadb: bool) -> &'static str {
+        match (self, towards_mariadb) {
+            (Self::Text | Self::Binary, true) => {
+                "`CAST(x AS SIGNED)` reads a literal as MySQL does, taken as unsigned from 2^63"
+            }
+            (_, true) => "`LEAST(x, 9223372036854775807)` bounds it as MySQL does",
+            (Self::Large, false) => {
+                "rounded, bounded and taken as an unsigned integer as MariaDB does"
+            }
+            (_, false) => {
+                "read as a decimal, rounded, bounded and taken as an unsigned integer as MariaDB does"
+            }
+        }
+    }
 }
 
 impl Emitter<'_> {
@@ -122,39 +183,36 @@ impl Emitter<'_> {
             return;
         };
         let reading = Reading::of(arg);
+        if reading == Reading::Same {
+            self.input_call(expr, call);
+            return;
+        }
         let towards_mariadb = self.output.dialect == Dialect::MariaDb;
-        let message = match reading {
-            Reading::Same => {
-                self.input_call(expr, call);
-                return;
-            }
-            Reading::Float => {
-                "`BIT_COUNT` of a floating point number: MySQL rounds it half to even, MariaDB half away from zero (`BIT_COUNT(2.5e0)` gives 1, 2 in MariaDB), and they bound it differently from 2^63"
-            }
-            Reading::Fraction => {
-                "`BIT_COUNT` of a time with a fraction of a second: MySQL rounds the time to the second, MariaDB the number it reads (`BIT_COUNT(TIME'10:00:59.5')` gives 6, 9 in MariaDB)"
-            }
-            Reading::Json => {
-                "`BIT_COUNT` of a `JSON`: MySQL reads its value, MariaDB its text, or a decimal for a function of JSON (`BIT_COUNT(JSON_EXTRACT('{\"a\": \"3.7\"}', '$.a'))` gives 2, 1 in MariaDB)"
-            }
-            Reading::Other if arg.ty.data_type == DataType::Unknown => {
-                "`BIT_COUNT` of an argument whose type is unknown: MySQL and MariaDB read a string and a number from 2^63 differently"
-            }
-            Reading::Other => {
-                "`BIT_COUNT` of a value of this type: its reading in MySQL and MariaDB is not established"
-            }
-            Reading::Text if towards_mariadb => match &arg.kind {
-                ExprKind::Literal(Value::Text(text)) if !vertical_space_first(text) => "",
-                ExprKind::Literal(_) => {
+        let bytes = towards_mariadb && reading == Reading::Binary;
+        if let Some(refusal) = reading.refusal(arg, towards_mariadb).filter(|_| !bytes) {
+            let message = match refusal {
+                Refusal::Float => {
+                    "`BIT_COUNT` of a floating point number: MySQL rounds it half to even, MariaDB half away from zero (`BIT_COUNT(2.5e0)` gives 1, 2 in MariaDB), and they bound it differently from 2^63"
+                }
+                Refusal::Fraction => {
+                    "`BIT_COUNT` of a time with a fraction of a second: MySQL rounds the time to the second, MariaDB the number it reads (`BIT_COUNT(TIME'10:00:59.5')` gives 6, 9 in MariaDB)"
+                }
+                Refusal::Json => {
+                    "`BIT_COUNT` of a `JSON`: MySQL reads its value, MariaDB its text, or a decimal for a function of JSON (`BIT_COUNT(JSON_EXTRACT('{\"a\": \"3.7\"}', '$.a'))` gives 2, 1 in MariaDB)"
+                }
+                Refusal::Unknown => {
+                    "`BIT_COUNT` of an argument whose type is unknown: MySQL and MariaDB read a string and a number from 2^63 differently"
+                }
+                Refusal::Unmeasured => {
+                    "`BIT_COUNT` of a value of this type: its reading in MySQL and MariaDB is not established"
+                }
+                Refusal::VerticalSpace => {
                     "`BIT_COUNT` of a string that starts with a line break or a vertical space: MySQL reads it as 0, MariaDB skips them"
                 }
-                _ => {
+                Refusal::NotLiteral => {
                     "`BIT_COUNT` of a string other than a literal: MySQL bounds the integer it reads to 2^63 - 1 or takes it as unsigned from 2^63 according to the expression (a column of a table, of a view or of a derived table, a function) and to the version"
                 }
-            },
-            Reading::Text | Reading::Binary | Reading::Large => "",
-        };
-        if !message.is_empty() {
+            };
             self.error(rule.id(), message, expr.span);
             self.input_call(expr, call);
             return;
@@ -170,18 +228,10 @@ impl Emitter<'_> {
                 "`BIT_COUNT` of a number from 2^63 counts the bits of 2^63 - 1 in MySQL, those of the number taken as unsigned in MariaDB"
             }
         };
-        let how = match (reading, towards_mariadb) {
-            (Reading::Text, true) => {
-                "`CAST(x AS SIGNED)` reads a literal as MySQL does, taken as unsigned from 2^63"
-            }
-            (Reading::Binary, true) => "its bits are counted by `HEX` and `REPLACE`",
-            (_, true) => "`LEAST(x, 9223372036854775807)` bounds it as MySQL does",
-            (Reading::Large, false) => {
-                "rounded, bounded and taken as an unsigned integer as MariaDB does"
-            }
-            (_, false) => {
-                "read as a decimal, rounded, bounded and taken as an unsigned integer as MariaDB does"
-            }
+        let how = if bytes {
+            "its bits are counted by `HEX` and `REPLACE`"
+        } else {
+            reading.emulation(towards_mariadb)
         };
         self.step(
             rule.id(),
@@ -189,14 +239,23 @@ impl Emitter<'_> {
             format!("{context}: {how}"),
             expr.span,
         );
-        if towards_mariadb && reading == Reading::Binary {
+        if bytes {
             self.bit_count_of_bytes(arg);
             return;
         }
         let form = self.form(&call.name, expr.span);
         self.call_name(&call.name.value, form);
-        match (reading, towards_mariadb) {
-            (Reading::Text, true) => {
+        self.input_bits(reading, arg);
+        self.write(")");
+    }
+
+    /// Writes `arg`, of reading `reading`, so that the output reads it as an
+    /// unsigned integer as the input does: towards MariaDB, a string read by
+    /// `CAST(x AS SIGNED)`, a number bounded to 2^63 - 1; towards MySQL, a
+    /// value rounded, bounded and taken as unsigned as MariaDB does.
+    pub(super) fn input_bits(&mut self, reading: Reading, arg: &Expr) {
+        match (reading, self.output.dialect == Dialect::MariaDb) {
+            (Reading::Text | Reading::Binary, true) => {
                 self.write("CAST(");
                 self.expr(arg, 0);
                 self.write(" AS SIGNED)");
@@ -218,7 +277,6 @@ impl Emitter<'_> {
                 self.write(MARIADB_BITS.1);
             }
         }
-        self.write(")");
     }
 
     /// Number of bits set in the bytes of `arg`, in MariaDB: each digit of
@@ -240,7 +298,7 @@ impl Emitter<'_> {
 /// Tells whether `text` starts with a line break or a vertical space after
 /// its spaces and tabs: MySQL reads a literal as an integer after spaces
 /// and tabs only, `CAST(x AS SIGNED)` of MariaDB after all of them.
-fn vertical_space_first(text: &str) -> bool {
+pub(super) fn vertical_space_first(text: &str) -> bool {
     text.trim_start_matches([' ', '\t'])
         .starts_with(['\n', '\u{b}', '\u{c}', '\r'])
 }
