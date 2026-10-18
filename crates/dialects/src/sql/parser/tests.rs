@@ -715,6 +715,9 @@ fn a_reserved_word_is_a_name_only_between_backticks_or_after_a_dot() {
     assert_eq!(error("SELECT order FROM t", &mysql()).1, "order");
     assert_eq!(expr("`order`"), "order");
     assert_eq!(expr("t.order"), "t.order");
+    // `OF`, reserved in MySQL from 8.0, is a name in MariaDB.
+    assert_eq!(error("SELECT 1 AS of", &mysql()).1, "of");
+    assert_eq!(expr_with("of", &mariadb()), "of");
 }
 
 #[test]

@@ -179,7 +179,8 @@ keywords:
     - NO_WRITE_TO_BINLOG
     - NTH_VALUE
     - NTILE
-    - OF
+    # OF: a name in MariaDB (`SELECT 1 AS of`, `FROM t AS of`), measured on
+    # each local image, 10.5.29 to 11.8.9; reserved in MySQL from 8.0.
     - ON
     - OPTIMIZE
     - OPTIMIZER_COSTS
