@@ -54,9 +54,13 @@ cases:
     sql: >-
       SELECT id, BIT_COUNT(x) AS v FROM bit_count JOIN (SELECT id AS k, s AS x FROM bit_count) AS q
       ON q.k = id ORDER BY id
-  # The type of the result of a function is unknown for now.
+  # A function typed by the reference file: a character string.
   - from: mariadb
     sql: SELECT id, BIT_COUNT(CONCAT(s)) AS v FROM bit_count ORDER BY id
+  # The type of the result of `NULLIF`, which depends on its arguments
+  # otherwise, is unknown for now.
+  - from: mariadb
+    sql: SELECT id, BIT_COUNT(NULLIF(s, '')) AS v FROM bit_count ORDER BY id
     refused: function.bit-count
   - from: mysql
     sql: >-

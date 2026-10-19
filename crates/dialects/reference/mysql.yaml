@@ -950,6 +950,8 @@ constructs:
 #                              #   quoted name is the built-in function
 #     touching: true           # and so does a space before `(` (`NOW ()`),
 #                              #   unless the SQL mode IGNORE_SPACE is set
+#     type: text               # type of the result, below
+#     nulls: args              # NULL only when an argument may be
 #     mariadb: same            # translation to MariaDB, below
 #
 # Translation to MariaDB, measured on the servers of `checked`:
@@ -968,6 +970,23 @@ constructs:
 #   { error: reason }  untranslatable, an explicit error.
 # Without translation, the function is absent from MariaDB or not studied
 # yet: an explicit error.
+#
+# Type of the result, in the dialect of the file, from the calls generated
+# by `probe calls` and measured on each local image (`function_types`):
+#   int, int unsigned, bigint, bigint unsigned, double, date, year, json,
+#   geometry, uuid, text (any character string), bytes (any byte string):
+#                      the same type whatever the arguments;
+#   { string: [1, 3] } a string of bytes when one of the arguments at these
+#   { string: from 2 } positions (or from this one) is a byte string, or
+#                      when they are all NULL, of characters otherwise;
+#   [int, "8.0.24", bigint]
+#                      a type per period: the type of the first versions,
+#                      then each version from which another type holds,
+#                      followed by it.
+# Without type, a type that depends on the arguments otherwise, unknown to
+# Prisme. `nulls`: `args`, NULL only when one of the arguments may be NULL;
+# `never`; without it, NULL whatever the arguments. The aggregate and window
+# functions are typed by the plan builder (`build::functions`).
 #
 # Types and values that differ only outside the domain of a function (an
 # invalid argument) are noted in a comment after the name.
@@ -997,79 +1016,120 @@ functions:
         grammar: true
         mariadb: same
       - name: GREATEST
+        nulls: args
         mariadb: { rule: function.greatest }
       - name: INTERVAL
         grammar: true
+        type: int
+        nulls: never
         mariadb: same
       - name: ISNULL
+        type: [int, "8.0.27", int unsigned, "8.0.28", int]
+        nulls: never
         mariadb: same
       - name: LEAST
+        nulls: args
         mariadb: { rule: function.greatest }
   - family: Numeric
     manual: https://dev.mysql.com/doc/refman/8.4/en/mathematical-functions.html
     checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
     functions:
       - name: ABS
+        nulls: args
         mariadb: same
       - name: ACOS
+        type: double
         mariadb: same
       - name: ASIN
+        type: double
         mariadb: same
       - name: ATAN
+        type: double
         mariadb: same
       - name: ATAN2
+        type: double
         mariadb: same
       - name: CEIL
+        nulls: args
         mariadb: same
       - name: CEILING
+        nulls: args
         mariadb: same
       - name: CONV
+        type: text
         mariadb: same
       - name: COS
+        type: double
         mariadb: same
       - name: COT
+        type: double
         mariadb: same
       - name: CRC32
+        type: int unsigned
+        nulls: args
         mariadb: same
       - name: DEGREES
+        type: double
+        nulls: args
         mariadb: same
       - name: EXP
+        type: double
         mariadb: same
       - name: FLOOR
+        nulls: args
         mariadb: same
       - name: LN  # 0 or a negative number: NULL in both, with different warnings
+        type: double
         mariadb: same
       - name: LOG  # 0 or a negative number: NULL in both, with different warnings
+        type: double
         mariadb: same
       - name: LOG10
+        type: double
         mariadb: same
       - name: LOG2
+        type: double
         mariadb: same
       - name: MOD
         grammar: true
         mariadb: same
       - name: PI
+        type: double
+        nulls: args
         mariadb: same
       - name: POW
+        type: double
         mariadb: same
       - name: POWER
+        type: double
         mariadb: same
       - name: RADIANS
+        type: double
+        nulls: args
         mariadb: same
       - name: RAND
+        type: double
+        nulls: args
         mariadb: same
       - name: ROUND
+        nulls: args
         mariadb: same
       - name: SIGN
+        type: bigint
+        nulls: args
         mariadb: same
       - name: SIN
+        type: double
         mariadb: same
       - name: SQRT
+        type: double
         mariadb: same
       - name: TAN
+        type: double
         mariadb: same
       - name: TRUNCATE
         grammar: true
+        nulls: args
         mariadb: same
   - family: Date and time
     manual: https://dev.mysql.com/doc/refman/8.4/en/date-and-time-functions.html
@@ -1086,30 +1146,40 @@ functions:
       - name: CURDATE
         grammar: true
         touching: true
+        type: date
+        nulls: args
         mariadb: same
       - name: CURRENT_DATE
         grammar: true
+        type: date
+        nulls: args
         mariadb: same
       - name: CURRENT_TIME
         grammar: true
+        nulls: args
         mariadb: same
       - name: CURRENT_TIMESTAMP
         grammar: true
+        nulls: args
         mariadb: { rule: function.now }
       - name: CURTIME
         grammar: true
         touching: true
+        nulls: args
         mariadb: same
       - name: DATE
         grammar: true
+        type: date
         mariadb: same
       - name: DATEDIFF
+        type: int
         mariadb: same
       - name: DATE_ADD
         grammar: true
         touching: true
         mariadb: same
       - name: DATE_FORMAT
+        type: text
         mariadb: same
       - name: DATE_SUB
         grammar: true
@@ -1117,20 +1187,27 @@ functions:
         mariadb: same
       - name: DAY
         grammar: true
+        type: int
         mariadb: same
       - name: DAYNAME
+        type: text
         mariadb: same
       - name: DAYOFMONTH
+        type: int
         mariadb: same
       - name: DAYOFWEEK
+        type: int
         mariadb: same
       - name: DAYOFYEAR
+        type: int
         mariadb: same
       - name: EXTRACT
         grammar: true
         touching: true
         mariadb: { rule: function.extract }
       - name: FROM_DAYS
+        type: date
+        nulls: args
         mariadb: same
       - name: FROM_UNIXTIME
         mariadb: { rule: function.from-unixtime }
@@ -1139,43 +1216,59 @@ functions:
         mariadb: same
       - name: HOUR
         grammar: true
+        type: int
         mariadb: same
       - name: LAST_DAY
+        type: date
         mariadb: same
       - name: LOCALTIME
         grammar: true
+        nulls: args
         mariadb: { rule: function.now }
       - name: LOCALTIMESTAMP
         grammar: true
+        nulls: args
         mariadb: same
       - name: MAKEDATE
+        type: date
         mariadb: same
       - name: MAKETIME
         mariadb: same
       - name: MICROSECOND
         grammar: true
+        type: bigint
         mariadb: same
       - name: MINUTE
         grammar: true
+        type: int
         mariadb: same
       - name: MONTH
         grammar: true
+        type: int
         mariadb: same
       - name: MONTHNAME
+        type: text
         mariadb: same
       - name: NOW
         grammar: true
         touching: true
+        nulls: args
         mariadb: { rule: function.now }
       - name: PERIOD_ADD
+        type: [int, "8.0.24", bigint]
+        nulls: args
         mariadb: same
       - name: PERIOD_DIFF
+        type: [int, "8.0.24", bigint]
+        nulls: args
         mariadb: same
       - name: QUARTER
         grammar: true
+        type: int
         mariadb: same
       - name: SECOND
         grammar: true
+        type: int
         mariadb: same
       - name: SEC_TO_TIME
         mariadb: same
@@ -1190,6 +1283,7 @@ functions:
       - name: SYSDATE
         grammar: true
         touching: true
+        nulls: args
         mariadb: { rule: function.now }
       - name: TIME
         grammar: true
@@ -1206,35 +1300,49 @@ functions:
         grammar: true
         mariadb: same
       - name: TIME_FORMAT
+        type: text
         mariadb: same
       - name: TIME_TO_SEC
+        type: int
         mariadb: { rule: function.time-to-sec }
       - name: TO_DAYS
+        type: int
         mariadb: same
       - name: TO_SECONDS
+        type: [int, "8.0.16", bigint]
         mariadb: same
       - name: UNIX_TIMESTAMP
+        nulls: args
         mariadb: { rule: function.unix-timestamp }
       - name: UTC_DATE
         grammar: true
+        type: date
+        nulls: args
         mariadb: same
       - name: UTC_TIME
         grammar: true
+        nulls: args
         mariadb: same
       - name: UTC_TIMESTAMP
         grammar: true
+        nulls: args
         mariadb: same
       - name: WEEK
         grammar: true
+        type: int
         mariadb: same
       - name: WEEKDAY
+        type: int
         mariadb: same
       - name: WEEKOFYEAR
+        type: int
         mariadb: same
       - name: YEAR  # a YEAR in MySQL 8.4, an INT elsewhere: same values
         grammar: true
+        type: [int, "8.0.14", int unsigned, "8.0.17", int, "8.1.0", year]
         mariadb: same
       - name: YEARWEEK
+        type: int
         mariadb: same
   - family: String
     manual: https://dev.mysql.com/doc/refman/8.4/en/string-functions.html
@@ -1242,82 +1350,136 @@ functions:
     functions:
       - name: ASCII
         grammar: true
+        type: int
+        nulls: args
         mariadb: same
       - name: BIN
+        type: text
         mariadb: same
       - name: BIT_LENGTH
+        type: int
+        nulls: args
         mariadb: same
       - name: CHAR  # an invalid character with USING: NULL in MySQL, an error in MariaDB
         grammar: true
         mariadb: same
       - name: CHARACTER_LENGTH
+        type: int
+        nulls: args
         mariadb: same
       - name: CHAR_LENGTH
+        type: int
+        nulls: args
         mariadb: same
       - name: CONCAT
+        type: { string: from 1 }
+        nulls: args
         mariadb: same
       - name: CONCAT_WS
+        type: { string: from 1 }
+        nulls: args
         mariadb: same
       - name: ELT
+        type: { string: from 2 }
         mariadb: same
       - name: EXPORT_SET
+        type: { string: [2, 3, 4] }
+        nulls: args
         mariadb: same
       - name: FIELD
+        type: int
+        nulls: never
         mariadb: same
       - name: FIND_IN_SET
+        type: int
+        nulls: args
         mariadb: same
       - name: FORMAT
         grammar: true
+        type: text
+        nulls: args
         mariadb: same
       - name: FROM_BASE64
+        type: bytes
         mariadb: same
       - name: HEX
+        type: text
+        nulls: args
         mariadb:
           same_except: [float, wide_decimal]
           reason: "MySQL rounds a floating point number half to even, MariaDB half away from zero (`HEX(2.5e0)` gives 2 in MySQL 8.4.11, 3 in MariaDB 11.8.9), MariaDB reads a `DECIMAL` of more than 15 digits as a `DOUBLE` (`HEX(123456789012345678.5)` gives 1B69B4BA630F34F in MySQL 8.4.11, 1B69B4BA630F350 in MariaDB 11.8.9), and MySQL bounds a number to the range of `BIGINT` (`HEX(18446744073709551616)` gives 7FFFFFFFFFFFFFFF in MySQL 8.4.11, FFFFFFFFFFFFFFFF in MariaDB 11.8.9)"
       - name: INSERT
         grammar: true
+        nulls: args
         mariadb: same
       - name: INSTR
+        type: int
+        nulls: args
         mariadb: { rule: function.binary-argument }
       - name: LCASE
+        type: { string: [1] }
+        nulls: args
         mariadb: same
       - name: LEFT
         grammar: true
+        type: { string: [1] }
+        nulls: args
         mariadb: same
       - name: LENGTH
+        type: int
+        nulls: args
         mariadb: same
       - name: LOAD_FILE
         mariadb: same
       - name: LOCATE
+        type: int
+        nulls: args
         mariadb: { rule: function.binary-argument }
       - name: LOWER
+        type: { string: [1] }
+        nulls: args
         mariadb: same
       - name: LPAD
         mariadb: { rule: function.pad }
       - name: LTRIM
+        type: { string: [1] }
+        nulls: args
         mariadb: same
       - name: MAKE_SET
+        type: { string: from 2 }
+        nulls: args
         mariadb: same
       - name: MID
         grammar: true
         touching: true
+        type: { string: [1] }
+        nulls: args
         mariadb: same
       - name: OCT
+        type: text
         mariadb: same
       - name: OCTET_LENGTH
+        type: int
+        nulls: args
         mariadb: same
       - name: ORD
+        type: bigint
+        nulls: args
         mariadb: same
       - name: POSITION
         grammar: true
         touching: true
         mariadb: { rule: function.binary-argument }
       - name: QUOTE
+        nulls: args
         mariadb: same
       - name: REGEXP_INSTR
+        type: [double, "8.0.12", bigint]
+        nulls: args
         mariadb: { rule: function.regexp }
       - name: REGEXP_LIKE
+        type: [double, "8.0.12", bigint, "8.0.14", int, "8.0.27", int unsigned, "8.0.28", int]
+        nulls: args
         mariadb: { rule: function.regexp }
       - name: REGEXP_REPLACE
         mariadb: { rule: function.regexp }
@@ -1325,48 +1487,75 @@ functions:
         mariadb: { rule: function.regexp }
       - name: REPEAT
         grammar: true
+        type: { string: [1] }
         mariadb: same
       - name: REPLACE
         grammar: true
+        nulls: args
         mariadb: { rule: function.binary-argument }
       - name: REVERSE
+        type: { string: [1] }
+        nulls: args
         mariadb: same
       - name: RIGHT
         grammar: true
+        type: { string: [1] }
+        nulls: args
         mariadb: same
       - name: RPAD
         mariadb: { rule: function.pad }
       - name: RTRIM
+        type: { string: [1] }
+        nulls: args
         mariadb: same
       - name: SOUNDEX
+        type: { string: [1] }
+        nulls: args
         mariadb: same
       - name: SPACE
+        type: text
         mariadb: same
       - name: STRCMP
+        type: int
+        nulls: args
         mariadb:
           same_except: [temporal]
           reason: "MySQL and MariaDB compare a date or a time with the other argument otherwise (`STRCMP(d, 20240506)`, `d` a `DATE` of 2024-05-06, gives 1 in MySQL 8.4.11, -1 in MariaDB 11.8.9)"
       - name: SUBSTR
         grammar: true
         touching: true
+        type: { string: [1] }
+        nulls: args
         mariadb: same
       - name: SUBSTRING
         grammar: true
         touching: true
+        type: { string: [1] }
+        nulls: args
         mariadb: same
       - name: SUBSTRING_INDEX
+        nulls: args
         mariadb: { rule: function.binary-argument }
       - name: TO_BASE64
+        type: text
+        nulls: args
         mariadb: same
       - name: TRIM
         grammar: true
         touching: true
+        type: { string: [1] }
+        nulls: args
         mariadb: { rule: function.binary-argument }
       - name: UCASE
+        type: { string: [1] }
+        nulls: args
         mariadb: same
       - name: UNHEX  # an invalid hexadecimal string: an error in MySQL, NULL in MariaDB
+        type: bytes
         mariadb: same
       - name: UPPER
+        type: { string: [1] }
+        nulls: args
         mariadb: same
       - name: WEIGHT_STRING
         grammar: true
@@ -1384,42 +1573,66 @@ functions:
     checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
     functions:
       - name: EXTRACTVALUE
+        type: { string: [1, 2] }
         mariadb: same
       - name: UPDATEXML
+        type: { string: [1, 2, 3] }
         mariadb: same
   - family: Bit
     manual: https://dev.mysql.com/doc/refman/8.4/en/bit-functions.html
     checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
     functions:
       - name: BIT_COUNT
+        type: bigint
+        nulls: args
         mariadb: { rule: function.bit-count }
   - family: Encryption and compression
     manual: https://dev.mysql.com/doc/refman/8.4/en/encryption-functions.html
     checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
     functions:
       - name: AES_DECRYPT
+        type: bytes
         mariadb: { rule: function.aes }
       - name: AES_ENCRYPT
+        type: bytes
+        nulls: args
         mariadb: { rule: function.aes }
       - name: COMPRESS
+        type: bytes
+        nulls: args
         mariadb: same
       - name: MD5
+        type: text
+        nulls: args
         mariadb: same
       - name: RANDOM_BYTES
+        type: bytes
+        nulls: args
         mariadb: same
       - name: SHA
+        type: text
+        nulls: args
         mariadb: same
       - name: SHA1
+        type: text
+        nulls: args
         mariadb: same
       - name: SHA2
+        type: text
         mariadb: same
       - name: STATEMENT_DIGEST
+        type: text
       - name: STATEMENT_DIGEST_TEXT
+        type: text
       - name: UNCOMPRESS
+        type: bytes
         mariadb: same
       - name: UNCOMPRESSED_LENGTH
+        type: int
+        nulls: args
         mariadb: same
       - name: VALIDATE_PASSWORD_STRENGTH
+        type: int
   - family: Locking
     manual: https://dev.mysql.com/doc/refman/8.4/en/locking-functions.html
     checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
@@ -1442,84 +1655,143 @@ functions:
         mariadb: same
       - name: CHARSET
         grammar: true
+        type: text
+        nulls: never
         mariadb: same
       - name: COERCIBILITY
+        type: int
+        nulls: never
         mariadb: { error: "MariaDB 11.8 gives another coercibility to a literal (6, MySQL 4)" }
       - name: COLLATION
         grammar: true
+        type: text
+        nulls: never
         mariadb: same
       - name: CONNECTION_ID
+        type: bigint unsigned
+        nulls: args
         mariadb: same
       - name: CURRENT_ROLE
+        type: text
         mariadb: { error: "MySQL lists the roles as `role`@`host` or NONE, MariaDB gives the name of one role or NULL" }
       - name: CURRENT_USER
         grammar: true
+        type: text
+        nulls: args
         mariadb: same
       - name: DATABASE
         grammar: true
+        type: text
         mariadb: same
       - name: FOUND_ROWS
+        type: bigint
+        nulls: args
         mariadb: same
       - name: ICU_VERSION
+        type: text
+        nulls: args
       - name: LAST_INSERT_ID
+        nulls: args
         mariadb: same
       - name: ROLES_GRAPHML
+        type: text
+        nulls: args
       - name: ROW_COUNT
         grammar: true
+        type: bigint
+        nulls: args
         mariadb: same
       - name: SCHEMA
         grammar: true
+        type: text
         mariadb: same
       - name: SESSION_USER
         grammar: true
         touching: true
+        type: text
+        nulls: args
         mariadb: same
       - name: SYSTEM_USER
         grammar: true
         touching: true
+        type: text
+        nulls: args
         mariadb: same
       - name: USER
         grammar: true
+        type: text
+        nulls: args
         mariadb: same
       - name: VERSION
+        type: text
+        nulls: args
         mariadb: same
   - family: JSON
     manual: https://dev.mysql.com/doc/refman/8.4/en/json-function-reference.html
     functions:
       - name: JSON_ARRAY
+        type: json
       - name: JSON_ARRAY_APPEND
+        type: json
       - name: JSON_ARRAY_INSERT
+        type: json
       - name: JSON_CONTAINS
+        type: bigint
       - name: JSON_CONTAINS_PATH
+        type: bigint
       - name: JSON_DEPTH
+        type: bigint
       - name: JSON_EXTRACT
+        type: json
       - name: JSON_INSERT
+        type: json
       - name: JSON_KEYS
+        type: json
       - name: JSON_LENGTH
+        type: bigint
       - name: JSON_MERGE
+        type: json
       - name: JSON_MERGE_PATCH
+        type: json
       - name: JSON_MERGE_PRESERVE
+        type: json
       - name: JSON_OBJECT
+        type: json
       - name: JSON_OVERLAPS
         since: "8.0.17"
         source: https://dev.mysql.com/doc/refman/8.0/en/json-search-functions.html#function_json-overlaps
+        type: [int, "8.0.27", int unsigned, "8.0.28", int]
       - name: JSON_PRETTY
+        type: text
+        nulls: args
       - name: JSON_QUOTE
+        type: text
       - name: JSON_REMOVE
+        type: json
       - name: JSON_REPLACE
+        type: json
       - name: JSON_SCHEMA_VALID
         since: "8.0.17"
         source: https://dev.mysql.com/doc/refman/8.0/en/json-validation-functions.html
       - name: JSON_SCHEMA_VALIDATION_REPORT
         since: "8.0.17"
         source: https://dev.mysql.com/doc/refman/8.0/en/json-validation-functions.html
+        type: json
       - name: JSON_SEARCH
+        type: json
       - name: JSON_SET
+        type: json
       - name: JSON_STORAGE_FREE
+        type: bigint
+        nulls: args
       - name: JSON_STORAGE_SIZE
+        type: bigint
       - name: JSON_TYPE
+        type: text
       - name: JSON_UNQUOTE
+        type: text
       - name: JSON_VALID
+        type: bigint
       - name: JSON_VALUE
         since: "8.0.21"
         source: https://dev.mysql.com/doc/refman/8.0/en/json-search-functions.html#function_json-value
@@ -1529,19 +1801,30 @@ functions:
     functions:
       - name: GEOMCOLLECTION
         grammar: true
+        type: geometry
       - name: GEOMETRYCOLLECTION
         grammar: true
+        type: geometry
       - name: LINESTRING
         grammar: true
       - name: MBRCONTAINS
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: MBRCOVEREDBY
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: MBRCOVERS
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: MBRDISJOINT
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: MBREQUALS
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: MBRINTERSECTS
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: MBROVERLAPS
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: MBRTOUCHES
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: MBRWITHIN
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: MULTILINESTRING
         grammar: true
       - name: MULTIPOINT
@@ -1550,115 +1833,203 @@ functions:
         grammar: true
       - name: POINT
         grammar: true
+        type: geometry
       - name: POLYGON
         grammar: true
       - name: ST_AREA
+        type: double
       - name: ST_ASBINARY
+        type: bytes
       - name: ST_ASGEOJSON
       - name: ST_ASTEXT
+        type: text
       - name: ST_ASWKB
+        type: bytes
       - name: ST_ASWKT
+        type: text
       - name: ST_BUFFER
       - name: ST_BUFFER_STRATEGY
+        type: bytes
       - name: ST_CENTROID
+        type: geometry
       - name: ST_CONTAINS
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: ST_CONVEXHULL
+        type: geometry
       - name: ST_CROSSES
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: ST_DIFFERENCE
+        type: geometry
       - name: ST_DIMENSION
+        type: int
       - name: ST_DISJOINT
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: ST_DISTANCE
+        type: double
       - name: ST_DISTANCE_SPHERE
+        type: double
       - name: ST_ENDPOINT
+        type: geometry
       - name: ST_ENVELOPE
+        type: geometry
       - name: ST_EQUALS
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: ST_EXTERIORRING
+        type: geometry
       - name: ST_FRECHETDISTANCE
         since: "8.0.23"
         source: https://dev.mysql.com/doc/refman/8.0/en/spatial-relation-functions-object-shapes.html#function_st-frechetdistance
+        type: double
       - name: ST_GEOHASH
+        type: text
+        nulls: args
       - name: ST_GEOMCOLLFROMTEXT
+        type: geometry
       - name: ST_GEOMCOLLFROMTXT
+        type: geometry
       - name: ST_GEOMCOLLFROMWKB
+        type: geometry
       - name: ST_GEOMETRYCOLLECTIONFROMTEXT
+        type: geometry
       - name: ST_GEOMETRYCOLLECTIONFROMWKB
+        type: geometry
       - name: ST_GEOMETRYFROMTEXT
+        type: geometry
       - name: ST_GEOMETRYFROMWKB
+        type: geometry
       - name: ST_GEOMETRYN
+        type: geometry
       - name: ST_GEOMETRYTYPE
+        type: text
       - name: ST_GEOMFROMGEOJSON
+        type: geometry
       - name: ST_GEOMFROMTEXT
+        type: geometry
       - name: ST_GEOMFROMWKB
+        type: geometry
       - name: ST_HAUSDORFFDISTANCE
         since: "8.0.23"
         source: https://dev.mysql.com/doc/refman/8.0/en/spatial-relation-functions-object-shapes.html#function_st-hausdorffdistance
+        type: double
       - name: ST_INTERIORRINGN
+        type: geometry
       - name: ST_INTERSECTION
+        type: geometry
       - name: ST_INTERSECTS
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: ST_ISCLOSED
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: ST_ISEMPTY
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: ST_ISSIMPLE
+        type: [int, "8.0.27", int unsigned, "8.0.28", int]
       - name: ST_ISVALID
+        type: [int, "8.0.27", int unsigned, "8.0.28", int]
       - name: ST_LATFROMGEOHASH
+        type: double
       - name: ST_LATITUDE
         since: "8.0.12"
         source: https://dev.mysql.com/doc/refman/8.0/en/gis-point-property-functions.html#function_st-latitude
       - name: ST_LENGTH
+        type: double
       - name: ST_LINEFROMTEXT
+        type: geometry
       - name: ST_LINEFROMWKB
+        type: geometry
       - name: ST_LINEINTERPOLATEPOINT
         since: "8.0.24"
         source: https://dev.mysql.com/doc/refman/8.0/en/spatial-operator-functions.html#function_st-lineinterpolatepoint
+        type: geometry
       - name: ST_LINEINTERPOLATEPOINTS
         since: "8.0.24"
         source: https://dev.mysql.com/doc/refman/8.0/en/spatial-operator-functions.html#function_st-lineinterpolatepoints
+        type: geometry
       - name: ST_LINESTRINGFROMTEXT
+        type: geometry
       - name: ST_LINESTRINGFROMWKB
+        type: geometry
       - name: ST_LONGFROMGEOHASH
+        type: double
       - name: ST_LONGITUDE
         since: "8.0.12"
         source: https://dev.mysql.com/doc/refman/8.0/en/gis-point-property-functions.html#function_st-longitude
       - name: ST_MAKEENVELOPE
+        type: geometry
       - name: ST_MLINEFROMTEXT
+        type: geometry
       - name: ST_MLINEFROMWKB
+        type: geometry
       - name: ST_MPOINTFROMTEXT
+        type: geometry
       - name: ST_MPOINTFROMWKB
+        type: geometry
       - name: ST_MPOLYFROMTEXT
+        type: geometry
       - name: ST_MPOLYFROMWKB
+        type: geometry
       - name: ST_MULTILINESTRINGFROMTEXT
+        type: geometry
       - name: ST_MULTILINESTRINGFROMWKB
+        type: geometry
       - name: ST_MULTIPOINTFROMTEXT
+        type: geometry
       - name: ST_MULTIPOINTFROMWKB
+        type: geometry
       - name: ST_MULTIPOLYGONFROMTEXT
+        type: geometry
       - name: ST_MULTIPOLYGONFROMWKB
+        type: geometry
       - name: ST_NUMGEOMETRIES
+        type: int
       - name: ST_NUMINTERIORRING
+        type: int
       - name: ST_NUMINTERIORRINGS
+        type: int
       - name: ST_NUMPOINTS
+        type: int
       - name: ST_OVERLAPS
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: ST_POINTATDISTANCE
         since: "8.0.24"
         source: https://dev.mysql.com/doc/refman/8.0/en/spatial-operator-functions.html#function_st-pointatdistance
+        type: geometry
       - name: ST_POINTFROMGEOHASH
+        type: geometry
       - name: ST_POINTFROMTEXT
+        type: geometry
       - name: ST_POINTFROMWKB
+        type: geometry
       - name: ST_POINTN
+        type: geometry
       - name: ST_POLYFROMTEXT
+        type: geometry
       - name: ST_POLYFROMWKB
+        type: geometry
       - name: ST_POLYGONFROMTEXT
+        type: geometry
       - name: ST_POLYGONFROMWKB
+        type: geometry
       - name: ST_SIMPLIFY
+        type: geometry
       - name: ST_SRID
       - name: ST_STARTPOINT
+        type: geometry
       - name: ST_SWAPXY
+        type: geometry
       - name: ST_SYMDIFFERENCE
+        type: geometry
       - name: ST_TOUCHES
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: ST_TRANSFORM
         since: "8.0.13"
         source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-13.html
+        type: geometry
       - name: ST_UNION
+        type: geometry
       - name: ST_VALIDATE
+        type: geometry
       - name: ST_WITHIN
+        type: [bigint, "8.0.27", int unsigned, "8.0.28", int]
       - name: ST_X
       - name: ST_Y
   - family: Replication
@@ -1679,8 +2050,12 @@ functions:
       - name: ASYNCHRONOUS_CONNECTION_FAILOVER_RESET
         since: "8.0.27"
         source: https://dev.mysql.com/doc/refman/8.0/en/replication-functions-async-failover.html
+        type: text
+        nulls: args
       - name: GTID_SUBSET
+        type: bigint
       - name: GTID_SUBTRACT
+        type: text
       - name: MASTER_POS_WAIT
       - name: SOURCE_POS_WAIT
         since: "8.0.26"
@@ -1696,53 +2071,77 @@ functions:
       - name: FORMAT_BYTES
         since: "8.0.16"
         source: https://dev.mysql.com/doc/refman/8.0/en/performance-schema-functions.html#function_format-bytes
+        type: text
         mariadb: same
       - name: FORMAT_PICO_TIME
         since: "8.0.16"
         source: https://dev.mysql.com/doc/refman/8.0/en/performance-schema-functions.html#function_format-pico-time
+        type: text
         mariadb: same
       - name: PS_CURRENT_THREAD_ID
         since: "8.0.16"
         source: https://dev.mysql.com/doc/refman/8.0/en/performance-schema-functions.html#function_ps-current-thread-id
+        type: bigint unsigned
       - name: PS_THREAD_ID
         since: "8.0.16"
         source: https://dev.mysql.com/doc/refman/8.0/en/performance-schema-functions.html#function_ps-thread-id
+        type: bigint unsigned
   - family: Miscellaneous
     manual: https://dev.mysql.com/doc/refman/8.4/en/miscellaneous-functions.html
     checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
     functions:
       - name: ANY_VALUE
+        nulls: args
       - name: BIN_TO_UUID
+        type: text
       - name: DEFAULT
         grammar: true
       - name: GROUPING
         grammar: true
       - name: INET6_ATON
+        type: bytes
         mariadb: same
       - name: INET6_NTOA
+        type: text
         mariadb: same
       - name: INET_ATON
+        type: bigint unsigned
         mariadb: same
       - name: INET_NTOA
+        type: text
         mariadb: same
       - name: IS_IPV4
+        type: [int, "8.0.27", int unsigned, "8.0.28", int]
+        nulls: args
         mariadb: same
       - name: IS_IPV4_COMPAT
+        type: [int, "8.0.27", int unsigned, "8.0.28", int]
+        nulls: args
         mariadb: same
       - name: IS_IPV4_MAPPED
+        type: [int, "8.0.27", int unsigned, "8.0.28", int]
+        nulls: args
         mariadb: same
       - name: IS_IPV6
+        type: [int, "8.0.27", int unsigned, "8.0.28", int]
+        nulls: args
         mariadb: same
       - name: IS_UUID
+        type: [int, "8.0.27", int unsigned, "8.0.28", int]
       - name: NAME_CONST
         mariadb: same
       - name: SLEEP
         mariadb: same
       - name: UUID
+        type: text
+        nulls: args
         mariadb: { rule: function.uuid }
       - name: UUID_SHORT
+        type: bigint unsigned
+        nulls: args
         mariadb: same
       - name: UUID_TO_BIN
+        type: bytes
       - name: VALUES
         grammar: true
   - family: Aggregate

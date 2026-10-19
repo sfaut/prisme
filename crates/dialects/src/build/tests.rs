@@ -1,5 +1,5 @@
 use prisme_plan::{ExprKind, LockStrength, LockWait, SortReference};
-use prisme_types::{DataType, IntegerSize, IntegerType, TextType};
+use prisme_types::{BinaryType, DataType, IntegerSize, IntegerType, TextType};
 
 use super::*;
 use crate::lexer::SqlMode;
@@ -960,21 +960,30 @@ fn types_the_current_date_and_time_after_the_version() {
         types(Dialect::MariaDb, Version::new(11, 7, 1)),
         expected(timestamp, DataType::Time { fraction: 0 })
     );
-    // An argument the servers refuse leaves the type unknown.
+    // An argument the servers refuse leaves the type of the reference file.
     assert_eq!(
         column_types("SELECT NOW(7), CURDATE(1)", Dialect::MySql),
-        [(DataType::Unknown, true), (DataType::Unknown, true)]
+        [(DataType::Unknown, false), (DataType::Date, false)]
     );
 }
 
 #[test]
-fn types_the_json_of_the_functions_of_mysql() {
+fn types_the_functions_from_the_reference_files() {
     let text = concat!(
         "SELECT JSON_ARRAY(), JSON_OBJECT('k', 1), JSON_EXTRACT('{}', '$.a'), ",
         "JSON_SET('{}', '$.b', 1), JSON_LENGTH('[1]'), JSON_UNQUOTE('\"a\"')"
     );
     let json = (DataType::Json, true);
-    let unknown = (DataType::Unknown, true);
+    let string = |nullable| {
+        let text = TextType {
+            length: None,
+            fixed: false,
+            charset: None,
+            collation: None,
+        };
+        (DataType::Text(text), nullable)
+    };
+    let integer = |size, nullable| (DataType::Integer(IntegerType::signed(size)), nullable);
     assert_eq!(
         column_types(text, Dialect::MySql),
         [
@@ -982,12 +991,59 @@ fn types_the_json_of_the_functions_of_mysql() {
             json.clone(),
             json.clone(),
             json,
-            unknown.clone(),
-            unknown.clone()
+            integer(IntegerSize::Big, true),
+            string(true)
         ]
     );
-    // MariaDB gives a string, of a type unknown as its other functions.
-    assert_eq!(column_types(text, Dialect::MariaDb), vec![unknown; 6]);
+    // MariaDB gives a string, `NOT NULL` from arguments that are.
+    assert_eq!(
+        column_types(text, Dialect::MariaDb),
+        [
+            string(false),
+            string(false),
+            string(true),
+            string(true),
+            integer(IntegerSize::Int, true),
+            string(true)
+        ]
+    );
+    // A string of bytes after its arguments, `NULL` after the arguments or
+    // never, a type unknown without one in the file.
+    let bytes = BinaryType {
+        length: None,
+        fixed: false,
+    };
+    assert_eq!(
+        column_types(
+            "SELECT LOWER(b), CONCAT(a, 0x41), ELT(1, 'x'), ISNULL(b), ROUND(a), db.f(a) FROM t",
+            Dialect::MySql
+        ),
+        [
+            string(true),
+            (DataType::Binary(bytes), false),
+            string(true),
+            integer(IntegerSize::Int, false),
+            (DataType::Unknown, false),
+            (DataType::Unknown, true)
+        ]
+    );
+    // A type per period of versions.
+    for (version, size) in [
+        (Version::new(8, 0, 23), IntegerSize::Int),
+        (Version::new(8, 0, 24), IntegerSize::Big),
+    ] {
+        let plan = plan_at(
+            "SELECT PERIOD_ADD(202401, a) FROM t",
+            Dialect::MySql,
+            version,
+        )
+        .unwrap();
+        let column = &plan.schema().columns[0];
+        assert_eq!(
+            (column.ty.data_type.clone(), column.ty.nullable),
+            integer(size, false)
+        );
+    }
 }
 
 #[test]

@@ -20,6 +20,7 @@ mod builtins;
 mod charsets;
 pub mod classify;
 pub mod emit;
+mod function_types;
 mod functions;
 pub mod keywords;
 mod layout;

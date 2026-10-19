@@ -1,7 +1,7 @@
 //! Function calls of the MySQL family in the plan: scalar functions, built-in
-//! or stored in the database (typed as unknown until the types of the
-//! function catalog, those of the current date and time aside, `now`, and
-//! those of MySQL that give a `JSON`, `json`),
+//! (typed by the reference file of the dialect, `function_types`, those of
+//! the current date and time aside, `now`) or stored in the database (of a
+//! type unknown),
 //! aggregate functions (read by the aggregation of their block) and window
 //! functions (read by the window node of their block), with their named
 //! windows.
@@ -14,7 +14,7 @@ use prisme_types::{DataType, Type};
 
 use super::group::Clause;
 use super::scope::Scope;
-use super::{BuildError, Builder, functions, json, now, same_name};
+use super::{BuildError, Builder, functions, now, same_name};
 use crate::Dialect;
 use crate::builtins::{self, Kind};
 use crate::sql::ast;
@@ -37,10 +37,10 @@ impl Builder<'_> {
         if call.is_aggregate() {
             return self.aggregate_call(call, &name, span, scope);
         }
-        let kind = (!call.stored)
+        let builtin = (!call.stored)
             .then(|| builtins::builtin(self.dialect, self.version, &name))
-            .flatten()
-            .map(|builtin| builtin.kind);
+            .flatten();
+        let kind = builtin.map(|builtin| builtin.kind);
         match kind {
             Some(Kind::Aggregate) => {
                 let message = format!("aggregate function `{name}`: not supported yet by Prisme");
@@ -62,14 +62,11 @@ impl Builder<'_> {
             [qualifier, function] => (Some(qualifier.clone()), function.clone()),
             parts => (None, parts[parts.len() - 1].clone()),
         };
-        let ty = kind
-            .is_some()
-            .then(|| {
-                now::now_type(&name, &args, self.dialect, self.version)
-                    .or_else(|| json::json_type(&name, self.dialect))
-            })
-            .flatten()
-            .unwrap_or_else(|| Type::nullable(DataType::Unknown));
+        let ty = match builtin {
+            Some(builtin) => now::now_type(&name, &args, self.dialect, self.version)
+                .unwrap_or_else(|| builtin.function.result_type(&args, self.version)),
+            None => Type::nullable(DataType::Unknown),
+        };
         let call = FunctionCall {
             qualifier,
             name: function,

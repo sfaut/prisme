@@ -26,7 +26,6 @@ mod expr;
 pub(crate) mod functions;
 mod group;
 mod interval;
-mod json;
 mod lock;
 mod now;
 mod recursive;

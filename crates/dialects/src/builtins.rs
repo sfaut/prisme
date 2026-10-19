@@ -1,8 +1,9 @@
 //! Built-in functions of each dialect, read from the `functions` section of
 //! its reference file (`reference` module): their family, their period, the
 //! forms of their name that call a stored function instead (between
-//! backticks, followed by a space), and their translation to the other
-//! dialects (`docs/DEV-DIALECTS.md`, step 7).
+//! backticks, followed by a space), the type of their result
+//! (`function_types` module) and their translation to the other dialects
+//! (`docs/DEV-DIALECTS.md`, step 7).
 //!
 //! A name the dialect does not know, or does not know in the chosen version,
 //! calls a stored function of the database. The emitter writes a built-in
@@ -14,10 +15,12 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use prisme_types::DataType;
+use prisme_plan::Expr;
+use prisme_types::{DataType, Type};
 use serde::Deserialize;
 
 use crate::Dialect;
+use crate::function_types::{Nulls, ResultType};
 use crate::reference::reference;
 use crate::versions::{self, Version};
 
@@ -81,6 +84,12 @@ pub(crate) struct Function {
     /// SQL mode `IGNORE_SPACE` is set.
     #[serde(default)]
     pub(crate) touching: bool,
+    /// Type of the result, when Prisme knows it.
+    #[serde(default, rename = "type")]
+    result: Option<ResultType>,
+    /// When the result is `NULL`.
+    #[serde(default)]
+    nulls: Nulls,
     /// Translation to MySQL.
     #[serde(default)]
     mysql: Option<Translation>,
@@ -292,6 +301,17 @@ impl Function {
         within(self.since, self.until, version)
     }
 
+    /// Type of the result of a scalar call with `args` in `version`: of a
+    /// type unknown to Prisme when the file gives none.
+    pub(crate) fn result_type(&self, args: &[Expr], version: Version) -> Type {
+        let data_type = (self.result.as_ref())
+            .map_or(DataType::Unknown, |result| result.data_type(args, version));
+        Type {
+            data_type,
+            nullable: self.nulls.nullable(args),
+        }
+    }
+
     /// Translation to `dialect`, when the file gives one.
     pub(crate) fn translation(&self, dialect: Dialect) -> Option<&Translation> {
         match dialect {
@@ -329,12 +349,20 @@ pub(crate) fn families(dialect: Dialect) -> &'static [Family] {
     &reference(dialect).functions
 }
 
-/// Versions where a built-in function of `dialect` appears or disappears.
+/// Versions where a built-in function of `dialect` appears, disappears or
+/// changes the type of its result.
 pub(crate) fn changes(dialect: Dialect) -> impl Iterator<Item = Version> {
     families(dialect)
         .iter()
         .flat_map(|family| &family.functions)
-        .flat_map(|function| function.since.into_iter().chain(function.until))
+        .flat_map(|function| {
+            let types = function.result.iter().flat_map(ResultType::versions);
+            function
+                .since
+                .into_iter()
+                .chain(function.until)
+                .chain(types)
+        })
 }
 
 /// Built-in function of a reference file, as the servers must show it:

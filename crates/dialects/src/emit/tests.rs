@@ -3148,6 +3148,8 @@ fn a_binary_argument_is_read_as_the_input_reads_it() {
         ("REPLACE(s, vb, '-')", mysql_8_0_18, mariadb()),
         ("LOCATE(s, vb)", mysql_8_4, mariadb()),
         ("REPLACE(LOWER(s), 'a', '-')", mysql_8_4, mariadb()),
+        // A function typed by the reference file, a character string.
+        ("INSTR(s, LOWER(s))", mysql_8_4, mariadb()),
     ] {
         let text = format!("SELECT {call} AS a FROM g");
         let (sql, rules) = transpiled(&text, input, output(target));
@@ -3159,7 +3161,7 @@ fn a_binary_argument_is_read_as_the_input_reads_it() {
         ("REPLACE(s, vb, '-')", mysql_8_4, mariadb()),
         ("LOCATE(vb, s)", mysql_8_4, mariadb()),
         ("REPLACE(s, IFNULL(s, vb), '-')", mariadb(), mysql_8_4),
-        ("INSTR(s, LOWER(s))", mysql_8_4, mariadb()),
+        ("INSTR(s, f(s))", mysql_8_4, mariadb()),
         // The start counted in characters, then the bytes.
         ("LOCATE(vb, s, 2)", mariadb(), mysql_8_4),
     ] {
@@ -3298,7 +3300,8 @@ fn regexp_refuses_a_binary_string_read_otherwise() {
         // refused from 8.0.22; an argument of unknown type may be one.
         ("SELECT s FROM g WHERE vb REGEXP 'a'", v21, v22, true),
         ("SELECT s FROM g WHERE s REGEXP vb", v22, v21, true),
-        ("SELECT s FROM g WHERE UPPER(s) REGEXP 'a'", v21, v22, true),
+        ("SELECT s FROM g WHERE f(s) REGEXP 'a'", v21, v22, true),
+        ("SELECT s FROM g WHERE UPPER(s) REGEXP 'a'", v21, v22, false),
         ("SELECT s FROM g WHERE vb REGEXP 'a'", v12, v21, false),
         (
             "SELECT s FROM g WHERE UPPER(s) REGEXP 'a'",
@@ -3391,7 +3394,7 @@ fn trim_and_position_read_a_binary_argument_as_the_input() {
     for text in [
         "SELECT TRIM(vb FROM s) FROM g",
         "SELECT POSITION(vb IN s) FROM g",
-        "SELECT TRIM(LOWER(s) FROM s) FROM g",
+        "SELECT TRIM(f(s) FROM s) FROM g",
     ] {
         assert_eq!(
             errors(text, mysql_8_4, output(mariadb())),
@@ -3660,7 +3663,7 @@ fn a_fraction_read_as_a_boolean_is_read_as_the_input_reads_it() {
         ("SELECT s FROM g WHERE dt3", mysql_8_0_16, mariadb()),
         ("SELECT dt3 XOR 1 FROM g", mariadb(), mysql_8_0_16),
         ("SELECT dt3 XOR 1 FROM g", mariadb(), mysql_8_4),
-        ("SELECT s FROM g WHERE LENGTH(s)", mysql_8_0_16, mariadb()),
+        ("SELECT s FROM g WHERE f(s)", mysql_8_0_16, mariadb()),
     ] {
         assert_eq!(
             errors(text, input, output(target)),
