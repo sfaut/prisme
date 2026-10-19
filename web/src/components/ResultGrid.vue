@@ -12,7 +12,8 @@
     opens or closes the data explorer.
   - Data explorer: the grid on screen (`displayed`) gives the panel on the
     right the selected values of a JSON or XML column (`dataExplorer`
-    store).
+    store): a column of type `JSON`, or a text column that holds JSON or
+    XML.
   - Selection: click on a cell, on a row number or on a column name;
     Shift+click extends, Ctrl+click adds, dragging extends too (on the row
     numbers, dragging selects a group of rows). A click on the top left
@@ -669,7 +670,10 @@ function explorerContent(): ExplorerContent {
     return { state: 'several' }
   }
   const column = props.columns[selected.column] ?? ''
-  const kind = contentKinds.value[selected.column]
+  const kind =
+    props.columnTypes[selected.column]?.family === 'json'
+      ? 'json'
+      : contentKinds.value[selected.column]
   return kind === 'json' || kind === 'xml'
     ? { state: 'values', column, kind, cells: selected.cells }
     : { state: 'scalar', column }

@@ -169,6 +169,30 @@ describe('ResultGrid and the data explorer', () => {
     expect(explorer.content).toEqual({ state: 'none' })
   })
 
+  it('takes a column of type JSON as JSON, scalars included', async () => {
+    const explorer = useDataExplorerStore()
+    explorer.open = true
+    const wrapper = mount(ResultGrid, {
+      props: {
+        columns: ['value'],
+        rightAligned: [false],
+        columnTypes: [{ family: 'json', name: 'JSON' }],
+        rows: [['1.50']],
+        rowCount: 1,
+        sql: 'SELECT JSON_EXTRACT(doc, "$.a") AS value FROM t',
+        displayed: true,
+      },
+    })
+    // Without layout, jsdom draws no row: the column is selected by its name.
+    await wrapper.find('.grid-column-name').trigger('pointerdown')
+    expect(explorer.content).toEqual({
+      state: 'values',
+      column: 'value',
+      kind: 'json',
+      cells: [{ row: 1, value: '1.50' }],
+    })
+  })
+
   it('gives nothing while it is off screen', async () => {
     const explorer = useDataExplorerStore()
     explorer.open = true
