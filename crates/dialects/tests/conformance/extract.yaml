@@ -93,5 +93,5 @@ cases:
     sql: SELECT EXTRACT(DAY FROM i) FROM extract_values
     refused: function.extract
   - from: mysql
-    sql: SELECT EXTRACT(YEAR FROM IFNULL(s, d)) FROM extract_values
+    sql: SELECT EXTRACT(YEAR FROM @@timestamp) AS v
     refused: function.extract

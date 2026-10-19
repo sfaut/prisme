@@ -50,6 +50,9 @@ cases:
   - from: mariadb
     outputs: mysql >= 8.0.26
     sql: SELECT INSTR(s, IFNULL(b, s)) FROM binary_argument
+  - from: mariadb
+    outputs: mysql >= 8.0.26
+    sql: SELECT INSTR(s, @@collation_connection) FROM binary_argument
     refused: function.binary-argument
   - from: mariadb
     outputs: mysql >= 8.0.26

@@ -57,10 +57,12 @@ cases:
   # A function typed by the reference file: a character string.
   - from: mariadb
     sql: SELECT id, BIT_COUNT(CONCAT(s)) AS v FROM bit_count ORDER BY id
-  # The type of the result of `NULLIF`, which depends on its arguments
-  # otherwise, is unknown for now.
+  # A function typed by its arguments: a character string; a system
+  # variable, of a type unknown to Prisme.
   - from: mariadb
     sql: SELECT id, BIT_COUNT(NULLIF(s, '')) AS v FROM bit_count ORDER BY id
+  - from: mariadb
+    sql: SELECT BIT_COUNT(@@max_connections) AS v
     refused: function.bit-count
   - from: mysql
     sql: >-
@@ -89,6 +91,8 @@ cases:
       ON q.k = id ORDER BY id
   - from: mysql
     sql: SELECT id, BIT_COUNT(COALESCE(de, de)) AS v FROM bit_count ORDER BY id
+  - from: mysql
+    sql: SELECT BIT_COUNT(@@max_connections) AS v
     refused: function.bit-count
   - from: mariadb
     sql: SELECT id, BIT_COUNT(de) AS v FROM bit_count ORDER BY id
