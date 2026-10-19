@@ -301,6 +301,9 @@ pub enum Construct {
     /// The system variables `transaction_isolation` and
     /// `transaction_read_only` (MySQL; MariaDB from 11.1.1).
     TransactionVariables,
+    /// A column of adjacent strings without alias named after their value,
+    /// `'a' 'b'` named `ab` (MariaDB); after the first string otherwise.
+    StringValueName,
 }
 
 /// Construct refused in a dialect or a version.
@@ -562,6 +565,7 @@ impl Construct {
             Self::TransactionVariables => {
                 "the system variables `transaction_isolation` and `transaction_read_only`"
             }
+            Self::StringValueName => "a column of adjacent strings named after their value",
         }
     }
 }

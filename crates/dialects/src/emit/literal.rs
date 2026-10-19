@@ -22,9 +22,9 @@ use prisme_plan::Expr;
 use prisme_types::DataType;
 
 use super::Emitter;
-use crate::Dialect;
 use crate::charsets::{default_collation, is_charset};
 use crate::lexer::{LexerOptions, TokenKind, tokenize};
+use crate::versions::Construct;
 
 impl Emitter<'_> {
     /// Records the error of the introduced string `expr` that the output
@@ -78,8 +78,9 @@ impl Emitter<'_> {
     }
 
     /// Name the output gives to the string `text` written, of `value`,
-    /// without alias: the value of its first string in MySQL (`'a' 'b'` is
-    /// named `a`), its value in MariaDB.
+    /// without alias: its value when the output names adjacent strings so
+    /// (`'a' 'b'` is named `ab`, construct `StringValueName`), the value of
+    /// its first string otherwise (`a`).
     pub(super) fn string_name(&self, text: &str, value: &str) -> String {
         let options = LexerOptions {
             dialect: self.output.dialect,
@@ -92,8 +93,8 @@ impl Emitter<'_> {
                 _ => None,
             })
         });
-        match (self.output.dialect, first) {
-            (Dialect::MySql, Some(first)) => first,
+        match first {
+            Some(first) if !self.has(Construct::StringValueName) => first,
             _ => value.to_string(),
         }
     }

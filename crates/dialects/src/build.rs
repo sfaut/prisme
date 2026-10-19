@@ -827,7 +827,7 @@ impl Builder<'_> {
                     let (name, form) = match alias {
                         Some(alias) => (alias.name.clone(), alias.form),
                         None => (
-                            implicit_name(expr, self.text, self.dialect),
+                            implicit_name(expr, self.text, self.has(Construct::StringValueName)),
                             AliasForm::Implicit,
                         ),
                     };
@@ -948,7 +948,7 @@ impl Builder<'_> {
                 .collect(),
             Dialect::MariaDb => first
                 .iter()
-                .map(|value| implicit_name(value, self.text, Dialect::MariaDb))
+                .map(|value| implicit_name(value, self.text, self.has(Construct::StringValueName)))
                 .collect(),
         };
         let data_types = (0..first.len())
@@ -1181,11 +1181,12 @@ pub(crate) fn is_dual(plan: &Plan) -> bool {
     matches!(plan, Plan::Values(values) if values.schema.is_empty() && values.rows.len() == 1)
 }
 
-/// Name `dialect` gives to a column without alias: the name of a column,
+/// Name a dialect gives to a column without alias: the name of a column,
 /// the value of a string, national or introduced (`N'a'` and `_latin1'a'`
-/// are named `a`), of its first string in MySQL (`'a' 'b'` is named `a`,
-/// `ab` in MariaDB), the text written otherwise.
-fn implicit_name(expr: &ast::Expr, text: &str, dialect: Dialect) -> Ident {
+/// are named `a`), of adjacent strings their value when `value_name`
+/// (`'a' 'b'` is named `ab`, construct `StringValueName`) or their first
+/// string (`a`), the text written for any other expression.
+fn implicit_name(expr: &ast::Expr, text: &str, value_name: bool) -> Ident {
     let string = match &expr.kind {
         ExprKind::Column(name) => return name.parts[name.parts.len() - 1].clone(),
         ExprKind::Literal(Literal::String(strings) | Literal::National(strings)) => strings,
@@ -1196,9 +1197,10 @@ fn implicit_name(expr: &ast::Expr, text: &str, dialect: Dialect) -> Ident {
         }
         _ => return Ident::new(&text[expr.span.start..expr.span.end]),
     };
-    Ident::new(match dialect {
-        Dialect::MySql => string.first(),
-        Dialect::MariaDb => &string.value,
+    Ident::new(if value_name {
+        &string.value
+    } else {
+        string.first()
     })
 }
 

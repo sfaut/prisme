@@ -11,11 +11,18 @@ cases:
   - from: mariadb
     sql: SELECT N'a', _latin1'é', _binary'c', N'', _latin1 'd'
   # Adjacent strings, named after the first in MySQL, after their value in
-  # MariaDB.
+  # MariaDB from the fix of MDEV-33460 (construct `string_value_name`),
+  # after the first before.
   - from: mysql
     sql: SELECT 'a' 'b', N'c' 'd', _latin1'e' 'f', '' 'g', _binary'h' /* x */ 'i'
   - from: mariadb
     sql: SELECT 'a' 'b', N'c' 'd', _latin1'e' 'f', '' 'g', _binary'h' /* x */ 'i'
+  - from: mysql
+    sql: SELECT * FROM (SELECT 'a' 'b', _binary'c' 'd') AS q
+  - from: mariadb
+    sql: SELECT * FROM (SELECT 'a' 'b', _binary'c' 'd') AS q
+  - from: mariadb
+    sql: VALUES ('a' 'b', N'c' 'd', 'e')
   - from: mysql
     sql: >-
       SELECT N'a' 'b' AS a, HEX(_latin1'é') AS b, N'ß' = N'ss' AS c, N'a' = N'a ' AS d,

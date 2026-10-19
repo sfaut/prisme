@@ -762,6 +762,56 @@ constructs:
     comment: >-
       The same change in the branch 12.3, by the versions of the ticket, not
       measured.
+  # Name of a column of adjacent strings without alias, fixed in a patch
+  # version of each branch maintained then (MDEV-33460, absent from the
+  # release notes, docs/sources/mariadb/MDEV-33460.md). Measured with
+  # crates/probe/cases/literals-names.sql on each local image.
+  - id: string_value_name
+    since: "10.6.18"
+    until: "10.7.0"
+    source: https://jira.mariadb.org/browse/MDEV-33460
+    comment: >-
+      `SELECT 'a' 'b'` names its column after the value of the strings,
+      `ab`, as `N'a' 'b'`, `_latin1'a' 'b'`, `_binary'a' /* x */ 'b'`, a
+      row of `VALUES` and the column of a derived table; after the first
+      string before, `a`, as MySQL names it. Measured on 10.6.3, 10.6.10,
+      10.6.16 and 10.6.17 (`a`), 10.6.18 to 10.6.20 and 10.6.28 (`ab`).
+  - id: string_value_name
+    since: "10.11.8"
+    until: "11.0.0"
+    source: https://jira.mariadb.org/browse/MDEV-33460
+    comment: >-
+      The same fix in the branch 10.11, the branches 10.7 to 10.10 never
+      fixed: `a` on 10.7.1 to 10.10.7, 10.11.2, 10.11.6 and 10.11.7, `ab`
+      on 10.11.8 to 10.11.19.
+  - id: string_value_name
+    since: "11.0.6"
+    until: "11.1.0"
+    source: https://jira.mariadb.org/browse/MDEV-33460
+    comment: >-
+      The same fix in the branch 11.0: `a` on 11.0.2 to 11.0.5, `ab` on
+      11.0.6.
+  - id: string_value_name
+    since: "11.1.5"
+    until: "11.2.0"
+    source: https://jira.mariadb.org/browse/MDEV-33460
+    comment: >-
+      The same fix in the branch 11.1: `a` on 11.1.2 to 11.1.4, `ab` on
+      11.1.5 and 11.1.6.
+  - id: string_value_name
+    since: "11.2.4"
+    until: "11.3.0"
+    source: https://jira.mariadb.org/browse/MDEV-33460
+    comment: >-
+      The same fix in the branch 11.2, the branch 11.3 never fixed: `a` on
+      11.2.2, 11.2.3 and 11.3.2, `ab` on 11.2.4 to 11.2.6.
+  - id: string_value_name
+    since: "11.4.2"
+    source: https://jira.mariadb.org/browse/MDEV-33460
+    comment: >-
+      The same fix from the first GA version of 11.4, absent from the
+      versions of the ticket: `ab` on 11.4.2, 11.4.11 to 11.4.13 and 11.5.2
+      to 11.8.9.
   - id: unicode_uca1400
     since: "11.5.1"
     source: https://jira.mariadb.org/browse/MDEV-25829
