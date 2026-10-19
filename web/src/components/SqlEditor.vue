@@ -13,8 +13,8 @@
   is analysed by the server shortly after each keystroke. Ctrl+Enter
   (Cmd+Enter on Mac) emits `run` with the cursor position;
   Ctrl+Shift+Enter emits `run-all`. Tab and Shift+Tab indent by stops of
-  four spaces, Enter goes to a new line without indentation
-  (`editorIndent.ts`). The text binds with `v-model`.
+  four spaces, Enter goes to a new line at the indentation of the line it
+  leaves (`editorIndent.ts`). The text binds with `v-model`.
 -->
 <script setup lang="ts">
 import { autocompletion } from '@codemirror/autocomplete'
@@ -32,7 +32,7 @@ import type { Flavor } from '@/api/generated/Flavor'
 import { fetchKeywords } from '@/api/keywords'
 
 import { currentStatement, setStatements } from './currentStatement'
-import { dedentLines, indentOrInsertSpaces, insertPlainNewline } from './editorIndent'
+import { dedentLines, indentOrInsertSpaces, insertNewlineKeepingIndentation } from './editorIndent'
 import { editorTheme } from './editorTheme'
 import { editorDialect } from './sqlDialect'
 
@@ -203,8 +203,13 @@ onMounted(() => {
         },
         // Escape then Tab, or Ctrl+M, give Tab back to the browser (CodeMirror).
         { key: 'Tab', run: indentOrInsertSpaces, shift: dedentLines },
-        // Without added indentation; completion, which takes precedence, keeps Enter to accept.
-        { key: 'Enter', run: insertPlainNewline, shift: insertPlainNewline },
+        // Indentation of the line left, without the SQL language's; completion,
+        // which takes precedence, keeps Enter to accept.
+        {
+          key: 'Enter',
+          run: insertNewlineKeepingIndentation,
+          shift: insertNewlineKeepingIndentation,
+        },
       ]),
       basicSetup,
       // Strict completion: start of the name or initials, never scattered letters.

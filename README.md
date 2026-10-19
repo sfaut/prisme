@@ -138,7 +138,7 @@ Each editor has its own connection, its own session (and therefore its own trans
 
 - **Completion** (Ctrl+Space, or while typing): databases, tables, views, functions and procedures of the current database, and columns after `table.` or `alias.`. Only names are suggested, never keywords.
 - **Tab** moves to the next tab stop (every 4 spaces), or indents the selected lines. **Shift+Tab** unindents them.
-- **Enter** starts a new line at the first column, without indentation.
+- **Enter** starts a new line at the indentation of the current line.
 - To leave the editor with the keyboard: **Esc** then **Tab**, or **Ctrl+M** (Tab then moves the focus again).
 - **Enjoliver** (Beautify) rewrites the query in a consistent style: keywords and function names in capitals, table and column names as written in the catalog, `AS` before aliases, one clause per line, spaces around operators. Stored procedures and `DELIMITER` blocks are supported. Ctrl+Z undoes it. The button is active once the connection's catalog is loaded.
 

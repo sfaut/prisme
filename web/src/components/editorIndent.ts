@@ -1,14 +1,16 @@
 /**
  * Indentation in the SQL editor: Tab and Shift+Tab indent instead of moving
  * the focus to the next element of the page (ticket #2), and Enter goes to a
- * new line without indentation (ticket #5): CodeMirror's SQL language would
- * add two spaces to each continuation of a query.
+ * new line at the indentation of the line it leaves (ticket #13), without the
+ * two spaces CodeMirror's SQL language would add to each continuation of a
+ * query (ticket #5).
  *
  * - Tab without a selection: spaces up to the next tab stop (every four
  *   characters), at the cursor position.
  * - Tab with a selection: the touched lines move forward one level.
  * - Shift+Tab: the touched lines move back one level, with or without a
  *   selection.
+ * - Enter: the new line takes the indentation of the line the cursor leaves.
  *
  * A reindented line has its leading tabs replaced by spaces: its
  * indentation is recomputed in columns, then rewritten in spaces only,
@@ -149,14 +151,31 @@ export const indentOrInsertSpaces: StateCommand = ({ state, dispatch }) => {
 }
 
 /**
- * Enter: a line break at each cursor (the selection is replaced), the cursor
- * in the first column of the new line, without indentation.
+ * Enter: a line break at each cursor (the selection is replaced), the new
+ * line indented like the line the cursor leaves, in spaces only.
+ *
+ * The blanks that follow the cursor are removed: they would add to this
+ * indentation. A cursor that only has blanks before it on its line (in the
+ * indentation, or on a blank line) carries the indentation to the new line
+ * and leaves an empty line behind.
  */
-export const insertPlainNewline: StateCommand = ({ state, dispatch }) => {
+export const insertNewlineKeepingIndentation: StateCommand = ({ state, dispatch }) => {
   if (state.readOnly) {
     return false
   }
-  dispatch(state.update(state.replaceSelection('\n'), { scrollIntoView: true, userEvent: 'input' }))
+  const transaction = state.changeByRange((range) => {
+    const line = state.doc.lineAt(range.from)
+    const indentation = /^[ \t]*/.exec(line.text)?.[0] ?? ''
+    const from = range.from - line.from <= indentation.length ? line.from : range.from
+    const end = state.doc.lineAt(range.to)
+    const blanksAfter = /^[ \t]*/.exec(state.doc.sliceString(range.to, end.to))?.[0] ?? ''
+    const insert = `\n${' '.repeat(countColumn(indentation, TAB_SIZE))}`
+    return {
+      changes: { from, to: range.to + blanksAfter.length, insert },
+      range: EditorSelection.cursor(from + insert.length),
+    }
+  })
+  dispatch(state.update(transaction, { scrollIntoView: true, userEvent: 'input' }))
   return true
 }
 

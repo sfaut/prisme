@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest'
 import {
   dedentLines,
   indentOrInsertSpaces,
-  insertPlainNewline,
+  insertNewlineKeepingIndentation,
   reindented,
   spacesToNextStop,
 } from '../editorIndent'
@@ -101,17 +101,47 @@ describe('Tab', () => {
 })
 
 describe('Enter', () => {
-  it('goes to a new line in the first column, even after an indented line', () => {
-    expect(apply(insertPlainNewline, 'SELECT a', [[8, 8]])).toMatchObject({
+  it('goes to a new line at the indentation of the line it leaves', () => {
+    expect(apply(insertNewlineKeepingIndentation, 'SELECT a', [[8, 8]])).toMatchObject({
       handled: true,
       text: 'SELECT a\n',
       ranges: [[9, 9]],
     })
-    expect(apply(insertPlainNewline, '    FROM t', [[10, 10]]).text).toBe('    FROM t\n')
+    expect(apply(insertNewlineKeepingIndentation, '    FROM t', [[10, 10]])).toMatchObject({
+      text: '    FROM t\n    ',
+      ranges: [[15, 15]],
+    })
+  })
+
+  it('writes the indentation in spaces, a tab up to its tab stop', () => {
+    expect(apply(insertNewlineKeepingIndentation, '\t  a', [[4, 4]]).text).toBe('\t  a\n      ')
+  })
+
+  it('removes the blanks after the cursor, which would add to the indentation', () => {
+    expect(apply(insertNewlineKeepingIndentation, '    a,   b', [[6, 6]]).text).toBe(
+      '    a,\n    b',
+    )
+  })
+
+  it('carries the indentation along from inside it, leaving an empty line', () => {
+    expect(apply(insertNewlineKeepingIndentation, '    FROM t', [[2, 2]])).toMatchObject({
+      text: '\n    FROM t',
+      ranges: [[5, 5]],
+    })
+    expect(apply(insertNewlineKeepingIndentation, 'a\n    ', [[6, 6]]).text).toBe('a\n\n    ')
   })
 
   it('replaces the selection with the line break', () => {
-    expect(apply(insertPlainNewline, 'SELECT a, b', [[8, 11]]).text).toBe('SELECT a\n')
+    expect(apply(insertNewlineKeepingIndentation, 'SELECT a, b', [[8, 11]]).text).toBe('SELECT a\n')
+  })
+
+  it('breaks the line at each cursor, with the indentation of its line', () => {
+    expect(
+      apply(insertNewlineKeepingIndentation, 'a\n  b', [
+        [1, 1],
+        [5, 5],
+      ]).text,
+    ).toBe('a\n\n  b\n  ')
   })
 })
 

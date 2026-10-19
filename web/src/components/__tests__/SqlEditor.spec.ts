@@ -67,7 +67,7 @@ describe('SqlEditor', () => {
     wrapper.unmount()
   })
 
-  it('goes to a new line without indentation on Enter, in the middle of a query', () => {
+  it('keeps the indentation of the line on Enter, without that of the SQL language', () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mysql',
@@ -80,12 +80,12 @@ describe('SqlEditor', () => {
       attachTo: document.body,
     })
     // Open parenthesis: the SQL language would indent what follows by two spaces.
-    wrapper.vm.replaceText('SELECT (a')
+    wrapper.vm.replaceText('    SELECT (a')
     wrapper
       .find('.cm-content')
       .element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13 }))
     const updates = wrapper.emitted('update:modelValue') ?? []
-    expect(updates[updates.length - 1]).toEqual(['SELECT (a\n'])
+    expect(updates[updates.length - 1]).toEqual(['    SELECT (a\n    '])
     wrapper.unmount()
   })
 
