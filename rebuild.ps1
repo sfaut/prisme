@@ -53,8 +53,18 @@ $name = if ($Force) { 'prisme*' } else { 'prisme' }
 $running = Get-Process -Name $name -ErrorAction SilentlyContinue
 if ($running) {
     Write-Host "Stopping Prisme (PID $($running.Id -join ', '))"
-    $running | Stop-Process -Force
+    $running | Stop-Process -Force -ErrorAction SilentlyContinue -ErrorVariable stop_errors
     $running | Wait-Process -Timeout 10 -ErrorAction SilentlyContinue
+    # A Prisme run as administrator refuses to be stopped from a terminal that is not.
+    # The name check leaves out a process that reused the PID of a stopped one.
+    $left = Get-Process -Id $running.Id -ErrorAction SilentlyContinue |
+        Where-Object { $_.ProcessName -like $name }
+    if ($left) {
+        $reason = if ($stop_errors) { " ($($stop_errors[0].Exception.Message))" } else { '' }
+        throw "Prisme (PID $($left.Id -join ', ')) could not be stopped$reason. " +
+            'If it runs as administrator, stop it from its own terminal, ' +
+            'or run this script as administrator.'
+    }
 }
 
 Write-Host 'Compiling the interface'
