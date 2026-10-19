@@ -1,5 +1,11 @@
 # Prisme
 
+[![CI](https://img.shields.io/github/actions/workflow/status/sfaut/prisme/ci.yaml?branch=master&event=push&label=CI)](https://github.com/sfaut/prisme/actions/workflows/ci.yaml)
+[![Release](https://img.shields.io/github/v/release/sfaut/prisme)](https://github.com/sfaut/prisme/releases/latest)
+[![License](https://img.shields.io/github/license/sfaut/prisme)](LICENSE)
+![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-informational)
+![Databases](https://img.shields.io/badge/databases-MySQL%20%7C%20MariaDB-informational)
+
 Prisme is a multi-database web client shaped like a SQL notebook: several sources, one view. It runs on your computer as a single executable and opens in your browser.
 
 Prisme is at the start of its first version (v1). Today it queries **MySQL and MariaDB**, in **read-only** mode. PostgreSQL, SQLite, DuckDB and translation between SQL dialects come next.
