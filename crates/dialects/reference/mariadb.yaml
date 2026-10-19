@@ -1182,14 +1182,14 @@ functions:
         touching: true
         nulls: args
         mysql: { rule: function.now }
-      - name: PERIOD_ADD
+      - name: PERIOD_ADD  # an invalid period (not positive, of a month other than 1 to 12): an error in MySQL, a value in MariaDB
         type: int
         nulls: args
-        mysql: same
-      - name: PERIOD_DIFF
+        mysql: { rule: function.period }
+      - name: PERIOD_DIFF  # an invalid period (not positive, of a month other than 1 to 12): an error in MySQL, a value in MariaDB
         type: int
         nulls: args
-        mysql: same
+        mysql: { rule: function.period }
       - name: QUARTER
         type: int
         mysql: same

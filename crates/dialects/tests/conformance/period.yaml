@@ -1,0 +1,58 @@
+# Rule `function.period`: `PERIOD_ADD` and `PERIOD_DIFF` of periods beyond
+# 999912, which MySQL reads as years after 9999 and MariaDB as 0 months, and
+# of periods MySQL refuses, which MariaDB reads (crates/probe/cases/period.txt,
+# period-arguments.txt and period-forms.sql). `p`, `q` and `r` are periods
+# MySQL reads, `z` periods MariaDB reads.
+setup:
+  - DROP TABLE IF EXISTS period_values
+  - >-
+    CREATE TABLE period_values (id INT NOT NULL PRIMARY KEY, p INT UNSIGNED NULL, q INT UNSIGNED NULL,
+    m TINYINT NULL, z INT NULL, r INT NULL)
+  - >-
+    INSERT INTO period_values VALUES
+    (1, 202401, 202301, 1, 202401, 202401),
+    (2, 7001, 999912, -12, 0, 999912),
+    (3, 1000001, 10001, 5, -202404, 1000012),
+    (4, 20240506, 202401, -1, 1000001, 20240501),
+    (5, 2147483601, 101, 127, 999913, 2147483612),
+    (6, NULL, 202401, 1, NULL, NULL),
+    (7, 202412, NULL, NULL, 20240506, 101)
+cases:
+  # Towards MariaDB, the months of MySQL written out beyond 999912.
+  - from: mysql
+    sql: >-
+      SELECT id, PERIOD_ADD(p, m) AS a, PERIOD_DIFF(p, q) AS b, PERIOD_ADD(p, 1) AS c,
+      2 * PERIOD_DIFF(q, p) AS e FROM period_values ORDER BY id
+  - from: mysql
+    inputs: mysql >= 8.0.16
+    sql: >-
+      SELECT id, PERIOD_ADD(r, m) AS a, PERIOD_DIFF(r, q) AS b, PERIOD_DIFF(p, r) AS c
+      FROM period_values ORDER BY id
+  # Towards MySQL, the period 7001 for the 0 months of MariaDB in
+  # `PERIOD_DIFF`, the period 0, which MySQL refuses, in `PERIOD_ADD`:
+  # only the periods both read.
+  - from: mariadb
+    sql: >-
+      SELECT id, PERIOD_DIFF(p, q) AS b, PERIOD_DIFF(z, p) AS c, PERIOD_DIFF(q, z) + 1 AS e
+      FROM period_values ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, PERIOD_ADD(p, m) AS a, PERIOD_ADD(p, 1) AS c, PERIOD_ADD(202401, z) AS e
+      FROM period_values WHERE id IN (1, 2, 6, 7) ORDER BY id
+  # Literals both read alike.
+  - from: mysql
+    sql: SELECT PERIOD_ADD(202401, -1) AS a, PERIOD_DIFF('202401', 202301.4) AS b, PERIOD_ADD(7001, 0) AS c
+  - from: mariadb
+    sql: SELECT PERIOD_ADD(202401, -1) AS a, PERIOD_DIFF('202401', 202301.4) AS b, PERIOD_ADD(7001, 0) AS c
+  # Months that may take the period before the year 0, a period of MariaDB
+  # beyond 999912, a negative period of MySQL before 8.0.16.
+  - from: mysql
+    sql: SELECT PERIOD_ADD(202401, z) FROM period_values
+    refused: function.period
+  - from: mariadb
+    sql: SELECT PERIOD_ADD(1000001, m) FROM period_values
+    refused: function.period
+  - from: mysql
+    inputs: mysql < 8.0.16
+    sql: SELECT PERIOD_DIFF(z, 202401) FROM period_values
+    refused: function.period

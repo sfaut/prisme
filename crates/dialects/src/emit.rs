@@ -44,6 +44,7 @@ mod lock;
 mod nullif;
 mod options;
 mod parentheses;
+mod period;
 mod predicate;
 mod recursive;
 mod rounding;

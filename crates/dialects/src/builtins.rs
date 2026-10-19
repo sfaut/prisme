@@ -166,6 +166,10 @@ pub(crate) enum Rule {
     /// `LPAD`, `RPAD` with an empty padding.
     #[serde(rename = "function.pad")]
     Pad,
+    /// `PERIOD_ADD`, `PERIOD_DIFF` of a period beyond 999912 or that MySQL
+    /// refuses, of months beyond 32 bits (`emit::period` module).
+    #[serde(rename = "function.period")]
+    Period,
     /// `REGEXP_INSTR`, `REGEXP_LIKE`, `REGEXP_REPLACE`, `REGEXP_SUBSTR`: the
     /// libraries of MySQL (ICU) and MariaDB (PCRE) read the patterns
     /// differently.
@@ -236,6 +240,7 @@ impl Rule {
             Self::Now => "function.now",
             Self::Nullif => "function.nullif",
             Self::Pad => "function.pad",
+            Self::Period => "function.period",
             Self::Regexp => "function.regexp",
             Self::Rounding => "function.rounding",
             Self::TimeToSec => "function.time-to-sec",

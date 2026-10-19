@@ -387,7 +387,7 @@ fn literal_number(expr: &Expr) -> Option<Option<i128>> {
 }
 
 /// Integer nearest to the decimal `text`, halves away from zero.
-fn round(text: &str) -> Option<i128> {
+pub(super) fn round(text: &str) -> Option<i128> {
     let (integer, fraction) = text.split_once('.').unwrap_or((text, ""));
     let magnitude: i128 = integer.trim_start_matches('-').parse().ok()?;
     let up = i128::from(fraction.starts_with(['5', '6', '7', '8', '9']));

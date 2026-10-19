@@ -5229,3 +5229,109 @@ fn nullif_gives_a_date_a_time_and_a_constant_as_the_input() {
         ["function.nullif"]
     );
 }
+
+#[test]
+fn period_keeps_the_periods_and_the_months_of_the_input() {
+    // Beyond 999912, MariaDB reads 0 months: towards it, the months of
+    // MySQL written out.
+    let (sql, rules) = transpiled(
+        "SELECT PERIOD_ADD(i, 1) AS a, PERIOD_DIFF(i, 202401) AS b, PERIOD_DIFF(202401, n) + 1 AS c, 2 * PERIOD_DIFF(n, i) AS e FROM d",
+        mysql(),
+        output(mariadb()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT IF(i > 999912, (i DIV 100 * 12 + i MOD 100 - 1 + 1) DIV 12 * 100 + (i DIV 100 * 12 + i MOD 100 - 1 + 1) MOD 12 + 1, PERIOD_ADD(i, 1)) AS a, PERIOD_DIFF(i, 202401) + IF(i > 999912, i DIV 100 * 12 + i MOD 100 - 1, 0) AS b, PERIOD_DIFF(202401, n) - IF(n > 999912, n DIV 100 * 12 + n MOD 100 - 1, 0) + 1 AS c, 2 * (PERIOD_DIFF(n, i) + IF(n > 999912, n DIV 100 * 12 + n MOD 100 - 1, 0) - IF(i > 999912, i DIV 100 * 12 + i MOD 100 - 1, 0)) AS e FROM d"
+    );
+    assert_eq!(rules, ["function.period"; 4]);
+    // An unsigned integer: a signed one by `CAST`, which MariaDB merges
+    // with `PERIOD_ADD` into an integer.
+    assert_eq!(
+        transpiled(
+            "SELECT PERIOD_ADD(iu, 1) AS a, PERIOD_DIFF(iu, 1) AS b FROM d",
+            mysql(),
+            output(mariadb())
+        )
+        .0,
+        "SELECT IF(iu > 999912, CAST((iu DIV 100 * 12 + iu MOD 100 - 1 + 1) DIV 12 * 100 + (iu DIV 100 * 12 + iu MOD 100 - 1 + 1) MOD 12 + 1 AS SIGNED), PERIOD_ADD(iu, 1)) AS a, PERIOD_DIFF(iu, 1) + IF(iu > 999912, CAST(iu DIV 100 * 12 + iu MOD 100 - 1 AS SIGNED), 0) AS b FROM d"
+    );
+    // Towards MySQL, the period 0, which it refuses, for `PERIOD_ADD`; the
+    // period 7001, its months taken off, for `PERIOD_DIFF`.
+    let (sql, rules) = transpiled(
+        "SELECT PERIOD_ADD(i, 1) AS a, PERIOD_DIFF(i, 202401) AS b, PERIOD_ADD(202401, i) AS c, PERIOD_ADD(i, iu) AS e, PERIOD_ADD(i, i) AS g FROM d",
+        mariadb(),
+        output(mysql()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT PERIOD_ADD(IF(i NOT BETWEEN 1 AND 999912, i * 0, i), 1) AS a, PERIOD_DIFF(IF(i NOT BETWEEN 1 AND 999912, 7001, i), 202401) - IF(i NOT BETWEEN 1 AND 999912, 23640, 0) AS b, PERIOD_ADD(IF(i < -24288, 202401 * 0, 202401), i) AS c, PERIOD_ADD(IF(i NOT BETWEEN 1 AND 999912 OR iu NOT BETWEEN -2147483648 AND 2147483647, i * 0, i), iu) AS e, PERIOD_ADD(IF(i NOT BETWEEN 1 AND 999912 OR i < -23640 - PERIOD_DIFF(i, 7001), i * 0, i), i) AS g FROM d"
+    );
+    assert_eq!(rules, ["function.period"; 5]);
+    // Values both read alike: as written.
+    for input in [mysql(), mariadb()] {
+        let target = output(match input.dialect {
+            Dialect::MySql => mariadb(),
+            Dialect::MariaDb => mysql(),
+        });
+        let text = "SELECT PERIOD_ADD(y, 1) AS a, PERIOD_DIFF(y, y) AS b, PERIOD_ADD(202401, y) AS c, PERIOD_ADD(202401, -1) AS e, PERIOD_DIFF('202401', 202301.4) AS g, PERIOD_ADD(NULL, i) AS h FROM d, g";
+        let (sql, rules) = transpiled(text, input, target);
+        assert_eq!(sql, text);
+        assert!(rules.is_empty(), "{rules:?}");
+        // Read otherwise, or computed otherwise.
+        for text in [
+            "SELECT PERIOD_ADD(dd, 1) FROM g",
+            "SELECT PERIOD_ADD(tm, 1) FROM g",
+            "SELECT PERIOD_DIFF(f, 1) FROM d",
+            "SELECT PERIOD_DIFF(p, 1) FROM d",
+            "SELECT PERIOD_ADD(s, 1) FROM g",
+            "SELECT PERIOD_ADD(f(i), 1) FROM d",
+            "SELECT PERIOD_ADD('2024.01e2', 1)",
+            "SELECT PERIOD_ADD(202413, 1)",
+            "SELECT PERIOD_ADD(1000001, 1)",
+            "SELECT PERIOD_DIFF(1000001, 202401)",
+            "SELECT PERIOD_ADD(202401, 4294967296)",
+            "SELECT PERIOD_ADD(1000001, i) FROM d",
+            "SELECT PERIOD_ADD(i, 4294967296) FROM d",
+            "SELECT PERIOD_ADD((SELECT a FROM t LIMIT 1), 1)",
+        ] {
+            assert_eq!(errors(text, input, target), ["function.period"], "{text}");
+        }
+    }
+    // Months that may take the period before the year 0, or beyond 32
+    // bits: values of their own in MariaDB.
+    for text in [
+        "SELECT PERIOD_ADD(202401, i) FROM d",
+        "SELECT PERIOD_ADD(i, -1201) FROM d",
+        "SELECT PERIOD_ADD(i, iu) FROM d",
+    ] {
+        assert_eq!(
+            errors(text, mysql(), output(mariadb())),
+            ["function.period"],
+            "{text}"
+        );
+    }
+    assert_eq!(
+        transpiled(
+            "SELECT PERIOD_ADD(i, -1200) FROM d",
+            mysql(),
+            output(mariadb())
+        )
+        .0,
+        "SELECT IF(i > 999912, (i DIV 100 * 12 + i MOD 100 - 1 + (-1200)) DIV 12 * 100 + (i DIV 100 * 12 + i MOD 100 - 1 + (-1200)) MOD 12 + 1, PERIOD_ADD(i, -1200)) AS `PERIOD_ADD(i, -1200)` FROM d"
+    );
+    // MySQL before 8.0.16 reads a negative period as unsigned.
+    let mysql_8_0_15 = input_at(Dialect::MySql, 8, 0, 15);
+    for text in [
+        "SELECT PERIOD_ADD(i, 1) FROM d",
+        "SELECT PERIOD_DIFF(y, i) FROM d, g",
+        "SELECT PERIOD_ADD(-202404, 1)",
+    ] {
+        assert_eq!(
+            errors(text, mysql_8_0_15, output(mariadb())),
+            ["function.period"],
+            "{text}"
+        );
+    }
+    let text = "SELECT PERIOD_DIFF(y, 1) FROM g";
+    assert_eq!(transpiled(text, mysql_8_0_15, output(mariadb())).0, text);
+}

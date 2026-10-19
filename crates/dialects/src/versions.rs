@@ -313,6 +313,11 @@ pub enum Construct {
     /// `NULLIF` of a `YEAR` giving a string, as of a date or a time (MySQL);
     /// an `INT` or a `YEAR` before.
     NullifYearString,
+    /// `PERIOD_ADD` and `PERIOD_DIFF` reading their arguments as signed
+    /// 64-bit integers (MySQL, from 8.0.16): a negative period refused,
+    /// months beyond 32 bits; a period read as unsigned and months of 32
+    /// bits before.
+    PeriodLongLong,
 }
 
 /// Construct refused in a dialect or a version.
@@ -580,6 +585,7 @@ impl Construct {
             }
             Self::NullifYearInteger => "`NULLIF` of a `YEAR` giving an `INT`",
             Self::NullifYearString => "`NULLIF` of a `YEAR` giving a string",
+            Self::PeriodLongLong => "`PERIOD_ADD` and `PERIOD_DIFF` of signed 64-bit arguments",
         }
     }
 }

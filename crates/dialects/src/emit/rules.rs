@@ -111,6 +111,7 @@ impl Emitter<'_> {
             Rule::Now => self.now(rule, expr, call),
             Rule::Nullif => self.nullif(rule, expr, call, reading),
             Rule::Pad => self.pad(rule, expr, call),
+            Rule::Period => self.period(rule, expr, call, min),
             Rule::Rounding => self.rounding(rule, expr, call),
             Rule::TimeToSec => self.time_to_sec(rule, expr, call, min),
             Rule::UnixTimestamp => self.unix_timestamp(rule, expr, call),
