@@ -48,6 +48,25 @@ describe('SqlEditor', () => {
     wrapper.unmount()
   })
 
+  it('gives the selected passages, without the cursors', () => {
+    const wrapper = mount(SqlEditor, {
+      props: {
+        flavor: 'mysql',
+        schema: {},
+        version: null,
+        ansiQuotes: false,
+        defaultSchema: null,
+        modelValue: 'SELECT 1;\nSELECT 2;',
+      },
+      attachTo: document.body,
+    })
+    expect(wrapper.vm.selection()).toEqual([])
+    const view = EditorView.findFromDOM(wrapper.find('.cm-editor').element as HTMLElement)!
+    view.dispatch({ selection: { anchor: 7, head: 12 } })
+    expect(wrapper.vm.selection()).toEqual([{ start: 7, end: 12 }])
+    wrapper.unmount()
+  })
+
   it('appends a generated query to the text, cursor on the next line', () => {
     const wrapper = mount(SqlEditor, {
       props: {
