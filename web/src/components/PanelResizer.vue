@@ -1,12 +1,26 @@
 <!--
-  Vertical handle placed on the right edge of the left panel: dragging it
-  changes the width of the panel, a double click resets it to its default
-  value. A grip, in the middle, shows where to grab it. The width is remembered from one visit to the next (`siderWidth.ts`).
+  Vertical handle placed on the inner edge of a side panel (right edge of a
+  panel on the left, left edge of a panel on the right): dragging it changes
+  the width of the panel, a double click resets it to its default value. A
+  grip, in the middle, shows where to grab it. The width is remembered from
+  one visit to the next (`panelWidth.ts`).
 -->
 <script setup lang="ts">
 import { ref } from 'vue'
 
-import { DEFAULT_SIDER_WIDTH, clampSiderWidth, saveSiderWidth } from './siderWidth'
+import { type PanelWidth, clampPanelWidth, savePanelWidth } from './panelWidth'
+
+const props = defineProps<{
+  /**
+   * Bounds and memory of the panel's width.
+   */
+  panel: PanelWidth
+  /**
+   * Edge of the window the panel stands against: `start` (left) or `end`
+   * (right).
+   */
+  side: 'start' | 'end'
+}>()
 
 /**
  * Width of the panel, in pixels.
@@ -29,14 +43,17 @@ function start(event: PointerEvent): void {
 }
 
 /**
- * Follows the pointer during the drag.
+ * Follows the pointer during the drag: a panel on the right widens when the
+ * pointer goes left.
  *
  * @param event Pointer move.
  */
 function move(event: PointerEvent): void {
   if (drag.value !== null) {
-    width.value = clampSiderWidth(
-      drag.value.width + event.clientX - drag.value.x,
+    const shift = event.clientX - drag.value.x
+    width.value = clampPanelWidth(
+      props.panel,
+      drag.value.width + (props.side === 'start' ? shift : -shift),
       window.innerWidth,
     )
   }
@@ -48,7 +65,7 @@ function move(event: PointerEvent): void {
 function stop(): void {
   if (drag.value !== null) {
     drag.value = null
-    saveSiderWidth(width.value)
+    savePanelWidth(props.panel, width.value)
   }
 }
 
@@ -56,16 +73,19 @@ function stop(): void {
  * Resets the default width.
  */
 function reset(): void {
-  width.value = DEFAULT_SIDER_WIDTH
-  saveSiderWidth(width.value)
+  width.value = props.panel.defaultWidth
+  savePanelWidth(props.panel, width.value)
 }
 </script>
 
 <template>
   <div
-    class="sider-resizer"
+    class="panel-resizer"
     :class="{ dragging: drag !== null }"
-    :style="{ insetInlineStart: `calc(${width}px - var(--resize-handle-width) / 2)` }"
+    :style="{
+      [side === 'start' ? 'insetInlineStart' : 'insetInlineEnd']:
+        `calc(${width}px - var(--resize-handle-width) / 2)`,
+    }"
     title="Glisser pour élargir, double clic pour revenir à la position initiale"
     @pointerdown.prevent="start"
     @pointermove="move"
@@ -76,7 +96,7 @@ function reset(): void {
 </template>
 
 <style scoped>
-.sider-resizer {
+.panel-resizer {
   position: absolute;
   inset-block: 0;
   z-index: 10;

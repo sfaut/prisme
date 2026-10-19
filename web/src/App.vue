@@ -25,10 +25,10 @@ import AppTopBar from './components/AppTopBar.vue'
 import EditorTabBar from './components/EditorTabBar.vue'
 import ObjectExplorer from './components/ObjectExplorer.vue'
 import QueryCell from './components/QueryCell.vue'
-import SiderResizer from './components/SiderResizer.vue'
+import PanelResizer from './components/PanelResizer.vue'
 import UiAlert from './components/ui/UiAlert.vue'
 import UiToaster from './components/ui/UiToaster.vue'
-import { clampSiderWidth, loadSiderWidth } from './components/siderWidth'
+import { SIDER, clampPanelWidth, loadPanelWidth } from './components/panelWidth'
 
 const connections = useConnectionsStore()
 const editors = useEditorsStore()
@@ -36,7 +36,7 @@ const editors = useEditorsStore()
 /**
  * Width of the left panel, in pixels.
  */
-const siderWidth = ref(clampSiderWidth(loadSiderWidth(), window.innerWidth))
+const siderWidth = ref(clampPanelWidth(SIDER, loadPanelWidth(SIDER), window.innerWidth))
 
 /**
  * Error loading or saving the editors, `null` if none.
@@ -188,7 +188,7 @@ function selectSource(connectionId: number): void {
           @use-database="useDatabase"
         />
       </aside>
-      <sider-resizer v-model="siderWidth" />
+      <panel-resizer v-model="siderWidth" :panel="SIDER" side="start" />
       <main class="flex h-full min-w-0 flex-1 flex-col gap-gap p-panel">
         <ui-alert
           v-if="editorsError"
