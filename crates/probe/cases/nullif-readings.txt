@@ -1,0 +1,1271 @@
+# NULLIF of a date or a time read by the expression around it, as MySQL gives it (o),
+# and the forms towards MariaDB: CAST AS CHAR (c) and CONCAT (k).
+o_d_plain NULLIF(d, 1)
+c_d_plain CAST(NULLIF(d, 1) AS CHAR)
+k_d_plain CONCAT(NULLIF(d, 1))
+o_d_plus NULLIF(d, 1) + 0
+c_d_plus CAST(NULLIF(d, 1) AS CHAR) + 0
+k_d_plus CONCAT(NULLIF(d, 1)) + 0
+o_d_plusd NULLIF(d, 1) + 0.0
+c_d_plusd CAST(NULLIF(d, 1) AS CHAR) + 0.0
+k_d_plusd CONCAT(NULLIF(d, 1)) + 0.0
+o_d_div NULLIF(d, 1) / 7
+c_d_div CAST(NULLIF(d, 1) AS CHAR) / 7
+k_d_div CONCAT(NULLIF(d, 1)) / 7
+o_d_mul NULLIF(d, 1) * 1.5
+c_d_mul CAST(NULLIF(d, 1) AS CHAR) * 1.5
+k_d_mul CONCAT(NULLIF(d, 1)) * 1.5
+o_d_concat CONCAT(NULLIF(d, 1))
+c_d_concat CONCAT(CAST(NULLIF(d, 1) AS CHAR))
+k_d_concat CONCAT(CONCAT(NULLIF(d, 1)))
+o_d_len LENGTH(NULLIF(d, 1))
+c_d_len LENGTH(CAST(NULLIF(d, 1) AS CHAR))
+k_d_len LENGTH(CONCAT(NULLIF(d, 1)))
+o_d_cmp_str NULLIF(d, 1) < '2024-05-10'
+c_d_cmp_str CAST(NULLIF(d, 1) AS CHAR) < '2024-05-10'
+k_d_cmp_str CONCAT(NULLIF(d, 1)) < '2024-05-10'
+o_d_cmp_int NULLIF(d, 1) < 20240510
+c_d_cmp_int CAST(NULLIF(d, 1) AS CHAR) < 20240510
+k_d_cmp_int CONCAT(NULLIF(d, 1)) < 20240510
+o_d_isnull NULLIF(d, 1) IS NULL
+c_d_isnull CAST(NULLIF(d, 1) AS CHAR) IS NULL
+k_d_isnull CONCAT(NULLIF(d, 1)) IS NULL
+o_d_year YEAR(NULLIF(d, 1))
+c_d_year YEAR(CAST(NULLIF(d, 1) AS CHAR))
+k_d_year YEAR(CONCAT(NULLIF(d, 1)))
+o_d_hour HOUR(NULLIF(d, 1))
+c_d_hour HOUR(CAST(NULLIF(d, 1) AS CHAR))
+k_d_hour HOUR(CONCAT(NULLIF(d, 1)))
+o_d_ifnull IFNULL(NULLIF(d, 1), 'x')
+c_d_ifnull IFNULL(CAST(NULLIF(d, 1) AS CHAR), 'x')
+k_d_ifnull IFNULL(CONCAT(NULLIF(d, 1)), 'x')
+o_d_coalesce COALESCE(NULLIF(d, 1), d)
+c_d_coalesce COALESCE(CAST(NULLIF(d, 1) AS CHAR), d)
+k_d_coalesce COALESCE(CONCAT(NULLIF(d, 1)), d)
+o_d_greatest GREATEST(NULLIF(d, 1), d)
+c_d_greatest GREATEST(CAST(NULLIF(d, 1) AS CHAR), d)
+k_d_greatest GREATEST(CONCAT(NULLIF(d, 1)), d)
+o_d_if IF(TRUE, NULLIF(d, 1), NULL)
+c_d_if IF(TRUE, CAST(NULLIF(d, 1) AS CHAR), NULL)
+k_d_if IF(TRUE, CONCAT(NULLIF(d, 1)), NULL)
+o_d_datediff DATEDIFF(NULLIF(d, 1), '2024-01-01')
+c_d_datediff DATEDIFF(CAST(NULLIF(d, 1) AS CHAR), '2024-01-01')
+k_d_datediff DATEDIFF(CONCAT(NULLIF(d, 1)), '2024-01-01')
+o_d_dformat DATE_FORMAT(NULLIF(d, 1), '%Y')
+c_d_dformat DATE_FORMAT(CAST(NULLIF(d, 1) AS CHAR), '%Y')
+k_d_dformat DATE_FORMAT(CONCAT(NULLIF(d, 1)), '%Y')
+o_d_unix UNIX_TIMESTAMP(NULLIF(d, 1))
+c_d_unix UNIX_TIMESTAMP(CAST(NULLIF(d, 1) AS CHAR))
+k_d_unix UNIX_TIMESTAMP(CONCAT(NULLIF(d, 1)))
+o_d_round ROUND(NULLIF(d, 1))
+c_d_round ROUND(CAST(NULLIF(d, 1) AS CHAR))
+k_d_round ROUND(CONCAT(NULLIF(d, 1)))
+o_d_round2 ROUND(NULLIF(d, 1), 2)
+c_d_round2 ROUND(CAST(NULLIF(d, 1) AS CHAR), 2)
+k_d_round2 ROUND(CONCAT(NULLIF(d, 1)), 2)
+o_d_sum SUM(NULLIF(d, 1))
+c_d_sum SUM(CAST(NULLIF(d, 1) AS CHAR))
+k_d_sum SUM(CONCAT(NULLIF(d, 1)))
+o_d_avg AVG(NULLIF(d, 1))
+c_d_avg AVG(CAST(NULLIF(d, 1) AS CHAR))
+k_d_avg AVG(CONCAT(NULLIF(d, 1)))
+o_d_max MAX(NULLIF(d, 1))
+c_d_max MAX(CAST(NULLIF(d, 1) AS CHAR))
+k_d_max MAX(CONCAT(NULLIF(d, 1)))
+o_d_signed CAST(NULLIF(d, 1) AS SIGNED)
+c_d_signed CAST(CAST(NULLIF(d, 1) AS CHAR) AS SIGNED)
+k_d_signed CAST(CONCAT(NULLIF(d, 1)) AS SIGNED)
+o_d_decimal CAST(NULLIF(d, 1) AS DECIMAL(30, 6))
+c_d_decimal CAST(CAST(NULLIF(d, 1) AS CHAR) AS DECIMAL(30, 6))
+k_d_decimal CAST(CONCAT(NULLIF(d, 1)) AS DECIMAL(30, 6))
+o_d_double CAST(NULLIF(d, 1) AS DOUBLE)
+c_d_double CAST(CAST(NULLIF(d, 1) AS CHAR) AS DOUBLE)
+k_d_double CAST(CONCAT(NULLIF(d, 1)) AS DOUBLE)
+o_d_bool NULLIF(d, 1) AND TRUE
+c_d_bool CAST(NULLIF(d, 1) AS CHAR) AND TRUE
+k_d_bool CONCAT(NULLIF(d, 1)) AND TRUE
+o_d_like NULLIF(d, 1) LIKE '2024%'
+c_d_like CAST(NULLIF(d, 1) AS CHAR) LIKE '2024%'
+k_d_like CONCAT(NULLIF(d, 1)) LIKE '2024%'
+o_d_in NULLIF(d, 1) IN ('2024-05-06', 'x')
+c_d_in CAST(NULLIF(d, 1) AS CHAR) IN ('2024-05-06', 'x')
+k_d_in CONCAT(NULLIF(d, 1)) IN ('2024-05-06', 'x')
+o_d_between NULLIF(d, 1) BETWEEN '2024-01-01' AND '2024-12-31'
+c_d_between CAST(NULLIF(d, 1) AS CHAR) BETWEEN '2024-01-01' AND '2024-12-31'
+k_d_between CONCAT(NULLIF(d, 1)) BETWEEN '2024-01-01' AND '2024-12-31'
+o_d_cmp_d NULLIF(d, 1) = d
+c_d_cmp_d CAST(NULLIF(d, 1) AS CHAR) = d
+k_d_cmp_d CONCAT(NULLIF(d, 1)) = d
+o_d_cmp_t NULLIF(d, 1) = t
+c_d_cmp_t CAST(NULLIF(d, 1) AS CHAR) = t
+k_d_cmp_t CONCAT(NULLIF(d, 1)) = t
+o_d_date CAST(NULLIF(d, 1) AS DATE)
+c_d_date CAST(CAST(NULLIF(d, 1) AS CHAR) AS DATE)
+k_d_date CAST(CONCAT(NULLIF(d, 1)) AS DATE)
+o_d_datetime CAST(NULLIF(d, 1) AS DATETIME)
+c_d_datetime CAST(CAST(NULLIF(d, 1) AS CHAR) AS DATETIME)
+k_d_datetime CAST(CONCAT(NULLIF(d, 1)) AS DATETIME)
+o_d_datetime6 CAST(NULLIF(d, 1) AS DATETIME(6))
+c_d_datetime6 CAST(CAST(NULLIF(d, 1) AS CHAR) AS DATETIME(6))
+k_d_datetime6 CAST(CONCAT(NULLIF(d, 1)) AS DATETIME(6))
+o_d_time CAST(NULLIF(d, 1) AS TIME)
+c_d_time CAST(CAST(NULLIF(d, 1) AS CHAR) AS TIME)
+k_d_time CAST(CONCAT(NULLIF(d, 1)) AS TIME)
+o_d_time6 CAST(NULLIF(d, 1) AS TIME(6))
+c_d_time6 CAST(CAST(NULLIF(d, 1) AS CHAR) AS TIME(6))
+k_d_time6 CAST(CONCAT(NULLIF(d, 1)) AS TIME(6))
+o_d_char CAST(NULLIF(d, 1) AS CHAR)
+c_d_char CAST(CAST(NULLIF(d, 1) AS CHAR) AS CHAR)
+k_d_char CAST(CONCAT(NULLIF(d, 1)) AS CHAR)
+o_d_binary CAST(NULLIF(d, 1) AS BINARY)
+c_d_binary CAST(CAST(NULLIF(d, 1) AS CHAR) AS BINARY)
+k_d_binary CAST(CONCAT(NULLIF(d, 1)) AS BINARY)
+o_d_hex HEX(NULLIF(d, 1))
+c_d_hex HEX(CAST(NULLIF(d, 1) AS CHAR))
+k_d_hex HEX(CONCAT(NULLIF(d, 1)))
+o_d_upper UPPER(NULLIF(d, 1))
+c_d_upper UPPER(CAST(NULLIF(d, 1) AS CHAR))
+k_d_upper UPPER(CONCAT(NULLIF(d, 1)))
+o_d_json JSON_ARRAY(NULLIF(d, 1))
+c_d_json JSON_ARRAY(CAST(NULLIF(d, 1) AS CHAR))
+k_d_json JSON_ARRAY(CONCAT(NULLIF(d, 1)))
+o_d_sec TIME_TO_SEC(NULLIF(d, 1))
+c_d_sec TIME_TO_SEC(CAST(NULLIF(d, 1) AS CHAR))
+k_d_sec TIME_TO_SEC(CONCAT(NULLIF(d, 1)))
+o_d_abs ABS(NULLIF(d, 1))
+c_d_abs ABS(CAST(NULLIF(d, 1) AS CHAR))
+k_d_abs ABS(CONCAT(NULLIF(d, 1)))
+o_d_floor FLOOR(NULLIF(d, 1))
+c_d_floor FLOOR(CAST(NULLIF(d, 1) AS CHAR))
+k_d_floor FLOOR(CONCAT(NULLIF(d, 1)))
+o_d_sqrt SQRT(NULLIF(d, 1))
+c_d_sqrt SQRT(CAST(NULLIF(d, 1) AS CHAR))
+k_d_sqrt SQRT(CONCAT(NULLIF(d, 1)))
+o_dt_plain NULLIF(dt, 1)
+c_dt_plain CAST(NULLIF(dt, 1) AS CHAR)
+k_dt_plain CONCAT(NULLIF(dt, 1))
+o_dt_plus NULLIF(dt, 1) + 0
+c_dt_plus CAST(NULLIF(dt, 1) AS CHAR) + 0
+k_dt_plus CONCAT(NULLIF(dt, 1)) + 0
+o_dt_plusd NULLIF(dt, 1) + 0.0
+c_dt_plusd CAST(NULLIF(dt, 1) AS CHAR) + 0.0
+k_dt_plusd CONCAT(NULLIF(dt, 1)) + 0.0
+o_dt_div NULLIF(dt, 1) / 7
+c_dt_div CAST(NULLIF(dt, 1) AS CHAR) / 7
+k_dt_div CONCAT(NULLIF(dt, 1)) / 7
+o_dt_mul NULLIF(dt, 1) * 1.5
+c_dt_mul CAST(NULLIF(dt, 1) AS CHAR) * 1.5
+k_dt_mul CONCAT(NULLIF(dt, 1)) * 1.5
+o_dt_concat CONCAT(NULLIF(dt, 1))
+c_dt_concat CONCAT(CAST(NULLIF(dt, 1) AS CHAR))
+k_dt_concat CONCAT(CONCAT(NULLIF(dt, 1)))
+o_dt_len LENGTH(NULLIF(dt, 1))
+c_dt_len LENGTH(CAST(NULLIF(dt, 1) AS CHAR))
+k_dt_len LENGTH(CONCAT(NULLIF(dt, 1)))
+o_dt_cmp_str NULLIF(dt, 1) < '2024-05-10'
+c_dt_cmp_str CAST(NULLIF(dt, 1) AS CHAR) < '2024-05-10'
+k_dt_cmp_str CONCAT(NULLIF(dt, 1)) < '2024-05-10'
+o_dt_cmp_int NULLIF(dt, 1) < 20240510
+c_dt_cmp_int CAST(NULLIF(dt, 1) AS CHAR) < 20240510
+k_dt_cmp_int CONCAT(NULLIF(dt, 1)) < 20240510
+o_dt_isnull NULLIF(dt, 1) IS NULL
+c_dt_isnull CAST(NULLIF(dt, 1) AS CHAR) IS NULL
+k_dt_isnull CONCAT(NULLIF(dt, 1)) IS NULL
+o_dt_year YEAR(NULLIF(dt, 1))
+c_dt_year YEAR(CAST(NULLIF(dt, 1) AS CHAR))
+k_dt_year YEAR(CONCAT(NULLIF(dt, 1)))
+o_dt_hour HOUR(NULLIF(dt, 1))
+c_dt_hour HOUR(CAST(NULLIF(dt, 1) AS CHAR))
+k_dt_hour HOUR(CONCAT(NULLIF(dt, 1)))
+o_dt_ifnull IFNULL(NULLIF(dt, 1), 'x')
+c_dt_ifnull IFNULL(CAST(NULLIF(dt, 1) AS CHAR), 'x')
+k_dt_ifnull IFNULL(CONCAT(NULLIF(dt, 1)), 'x')
+o_dt_coalesce COALESCE(NULLIF(dt, 1), d)
+c_dt_coalesce COALESCE(CAST(NULLIF(dt, 1) AS CHAR), d)
+k_dt_coalesce COALESCE(CONCAT(NULLIF(dt, 1)), d)
+o_dt_greatest GREATEST(NULLIF(dt, 1), d)
+c_dt_greatest GREATEST(CAST(NULLIF(dt, 1) AS CHAR), d)
+k_dt_greatest GREATEST(CONCAT(NULLIF(dt, 1)), d)
+o_dt_if IF(TRUE, NULLIF(dt, 1), NULL)
+c_dt_if IF(TRUE, CAST(NULLIF(dt, 1) AS CHAR), NULL)
+k_dt_if IF(TRUE, CONCAT(NULLIF(dt, 1)), NULL)
+o_dt_datediff DATEDIFF(NULLIF(dt, 1), '2024-01-01')
+c_dt_datediff DATEDIFF(CAST(NULLIF(dt, 1) AS CHAR), '2024-01-01')
+k_dt_datediff DATEDIFF(CONCAT(NULLIF(dt, 1)), '2024-01-01')
+o_dt_dformat DATE_FORMAT(NULLIF(dt, 1), '%Y')
+c_dt_dformat DATE_FORMAT(CAST(NULLIF(dt, 1) AS CHAR), '%Y')
+k_dt_dformat DATE_FORMAT(CONCAT(NULLIF(dt, 1)), '%Y')
+o_dt_unix UNIX_TIMESTAMP(NULLIF(dt, 1))
+c_dt_unix UNIX_TIMESTAMP(CAST(NULLIF(dt, 1) AS CHAR))
+k_dt_unix UNIX_TIMESTAMP(CONCAT(NULLIF(dt, 1)))
+o_dt_round ROUND(NULLIF(dt, 1))
+c_dt_round ROUND(CAST(NULLIF(dt, 1) AS CHAR))
+k_dt_round ROUND(CONCAT(NULLIF(dt, 1)))
+o_dt_round2 ROUND(NULLIF(dt, 1), 2)
+c_dt_round2 ROUND(CAST(NULLIF(dt, 1) AS CHAR), 2)
+k_dt_round2 ROUND(CONCAT(NULLIF(dt, 1)), 2)
+o_dt_sum SUM(NULLIF(dt, 1))
+c_dt_sum SUM(CAST(NULLIF(dt, 1) AS CHAR))
+k_dt_sum SUM(CONCAT(NULLIF(dt, 1)))
+o_dt_avg AVG(NULLIF(dt, 1))
+c_dt_avg AVG(CAST(NULLIF(dt, 1) AS CHAR))
+k_dt_avg AVG(CONCAT(NULLIF(dt, 1)))
+o_dt_max MAX(NULLIF(dt, 1))
+c_dt_max MAX(CAST(NULLIF(dt, 1) AS CHAR))
+k_dt_max MAX(CONCAT(NULLIF(dt, 1)))
+o_dt_signed CAST(NULLIF(dt, 1) AS SIGNED)
+c_dt_signed CAST(CAST(NULLIF(dt, 1) AS CHAR) AS SIGNED)
+k_dt_signed CAST(CONCAT(NULLIF(dt, 1)) AS SIGNED)
+o_dt_decimal CAST(NULLIF(dt, 1) AS DECIMAL(30, 6))
+c_dt_decimal CAST(CAST(NULLIF(dt, 1) AS CHAR) AS DECIMAL(30, 6))
+k_dt_decimal CAST(CONCAT(NULLIF(dt, 1)) AS DECIMAL(30, 6))
+o_dt_double CAST(NULLIF(dt, 1) AS DOUBLE)
+c_dt_double CAST(CAST(NULLIF(dt, 1) AS CHAR) AS DOUBLE)
+k_dt_double CAST(CONCAT(NULLIF(dt, 1)) AS DOUBLE)
+o_dt_bool NULLIF(dt, 1) AND TRUE
+c_dt_bool CAST(NULLIF(dt, 1) AS CHAR) AND TRUE
+k_dt_bool CONCAT(NULLIF(dt, 1)) AND TRUE
+o_dt_like NULLIF(dt, 1) LIKE '2024%'
+c_dt_like CAST(NULLIF(dt, 1) AS CHAR) LIKE '2024%'
+k_dt_like CONCAT(NULLIF(dt, 1)) LIKE '2024%'
+o_dt_in NULLIF(dt, 1) IN ('2024-05-06', 'x')
+c_dt_in CAST(NULLIF(dt, 1) AS CHAR) IN ('2024-05-06', 'x')
+k_dt_in CONCAT(NULLIF(dt, 1)) IN ('2024-05-06', 'x')
+o_dt_between NULLIF(dt, 1) BETWEEN '2024-01-01' AND '2024-12-31'
+c_dt_between CAST(NULLIF(dt, 1) AS CHAR) BETWEEN '2024-01-01' AND '2024-12-31'
+k_dt_between CONCAT(NULLIF(dt, 1)) BETWEEN '2024-01-01' AND '2024-12-31'
+o_dt_cmp_d NULLIF(dt, 1) = d
+c_dt_cmp_d CAST(NULLIF(dt, 1) AS CHAR) = d
+k_dt_cmp_d CONCAT(NULLIF(dt, 1)) = d
+o_dt_cmp_t NULLIF(dt, 1) = t
+c_dt_cmp_t CAST(NULLIF(dt, 1) AS CHAR) = t
+k_dt_cmp_t CONCAT(NULLIF(dt, 1)) = t
+o_dt_date CAST(NULLIF(dt, 1) AS DATE)
+c_dt_date CAST(CAST(NULLIF(dt, 1) AS CHAR) AS DATE)
+k_dt_date CAST(CONCAT(NULLIF(dt, 1)) AS DATE)
+o_dt_datetime CAST(NULLIF(dt, 1) AS DATETIME)
+c_dt_datetime CAST(CAST(NULLIF(dt, 1) AS CHAR) AS DATETIME)
+k_dt_datetime CAST(CONCAT(NULLIF(dt, 1)) AS DATETIME)
+o_dt_datetime6 CAST(NULLIF(dt, 1) AS DATETIME(6))
+c_dt_datetime6 CAST(CAST(NULLIF(dt, 1) AS CHAR) AS DATETIME(6))
+k_dt_datetime6 CAST(CONCAT(NULLIF(dt, 1)) AS DATETIME(6))
+o_dt_time CAST(NULLIF(dt, 1) AS TIME)
+c_dt_time CAST(CAST(NULLIF(dt, 1) AS CHAR) AS TIME)
+k_dt_time CAST(CONCAT(NULLIF(dt, 1)) AS TIME)
+o_dt_time6 CAST(NULLIF(dt, 1) AS TIME(6))
+c_dt_time6 CAST(CAST(NULLIF(dt, 1) AS CHAR) AS TIME(6))
+k_dt_time6 CAST(CONCAT(NULLIF(dt, 1)) AS TIME(6))
+o_dt_char CAST(NULLIF(dt, 1) AS CHAR)
+c_dt_char CAST(CAST(NULLIF(dt, 1) AS CHAR) AS CHAR)
+k_dt_char CAST(CONCAT(NULLIF(dt, 1)) AS CHAR)
+o_dt_binary CAST(NULLIF(dt, 1) AS BINARY)
+c_dt_binary CAST(CAST(NULLIF(dt, 1) AS CHAR) AS BINARY)
+k_dt_binary CAST(CONCAT(NULLIF(dt, 1)) AS BINARY)
+o_dt_hex HEX(NULLIF(dt, 1))
+c_dt_hex HEX(CAST(NULLIF(dt, 1) AS CHAR))
+k_dt_hex HEX(CONCAT(NULLIF(dt, 1)))
+o_dt_upper UPPER(NULLIF(dt, 1))
+c_dt_upper UPPER(CAST(NULLIF(dt, 1) AS CHAR))
+k_dt_upper UPPER(CONCAT(NULLIF(dt, 1)))
+o_dt_json JSON_ARRAY(NULLIF(dt, 1))
+c_dt_json JSON_ARRAY(CAST(NULLIF(dt, 1) AS CHAR))
+k_dt_json JSON_ARRAY(CONCAT(NULLIF(dt, 1)))
+o_dt_sec TIME_TO_SEC(NULLIF(dt, 1))
+c_dt_sec TIME_TO_SEC(CAST(NULLIF(dt, 1) AS CHAR))
+k_dt_sec TIME_TO_SEC(CONCAT(NULLIF(dt, 1)))
+o_dt_abs ABS(NULLIF(dt, 1))
+c_dt_abs ABS(CAST(NULLIF(dt, 1) AS CHAR))
+k_dt_abs ABS(CONCAT(NULLIF(dt, 1)))
+o_dt_floor FLOOR(NULLIF(dt, 1))
+c_dt_floor FLOOR(CAST(NULLIF(dt, 1) AS CHAR))
+k_dt_floor FLOOR(CONCAT(NULLIF(dt, 1)))
+o_dt_sqrt SQRT(NULLIF(dt, 1))
+c_dt_sqrt SQRT(CAST(NULLIF(dt, 1) AS CHAR))
+k_dt_sqrt SQRT(CONCAT(NULLIF(dt, 1)))
+o_ts_plain NULLIF(ts, 1)
+c_ts_plain CAST(NULLIF(ts, 1) AS CHAR)
+k_ts_plain CONCAT(NULLIF(ts, 1))
+o_ts_plus NULLIF(ts, 1) + 0
+c_ts_plus CAST(NULLIF(ts, 1) AS CHAR) + 0
+k_ts_plus CONCAT(NULLIF(ts, 1)) + 0
+o_ts_plusd NULLIF(ts, 1) + 0.0
+c_ts_plusd CAST(NULLIF(ts, 1) AS CHAR) + 0.0
+k_ts_plusd CONCAT(NULLIF(ts, 1)) + 0.0
+o_ts_div NULLIF(ts, 1) / 7
+c_ts_div CAST(NULLIF(ts, 1) AS CHAR) / 7
+k_ts_div CONCAT(NULLIF(ts, 1)) / 7
+o_ts_mul NULLIF(ts, 1) * 1.5
+c_ts_mul CAST(NULLIF(ts, 1) AS CHAR) * 1.5
+k_ts_mul CONCAT(NULLIF(ts, 1)) * 1.5
+o_ts_concat CONCAT(NULLIF(ts, 1))
+c_ts_concat CONCAT(CAST(NULLIF(ts, 1) AS CHAR))
+k_ts_concat CONCAT(CONCAT(NULLIF(ts, 1)))
+o_ts_len LENGTH(NULLIF(ts, 1))
+c_ts_len LENGTH(CAST(NULLIF(ts, 1) AS CHAR))
+k_ts_len LENGTH(CONCAT(NULLIF(ts, 1)))
+o_ts_cmp_str NULLIF(ts, 1) < '2024-05-10'
+c_ts_cmp_str CAST(NULLIF(ts, 1) AS CHAR) < '2024-05-10'
+k_ts_cmp_str CONCAT(NULLIF(ts, 1)) < '2024-05-10'
+o_ts_cmp_int NULLIF(ts, 1) < 20240510
+c_ts_cmp_int CAST(NULLIF(ts, 1) AS CHAR) < 20240510
+k_ts_cmp_int CONCAT(NULLIF(ts, 1)) < 20240510
+o_ts_isnull NULLIF(ts, 1) IS NULL
+c_ts_isnull CAST(NULLIF(ts, 1) AS CHAR) IS NULL
+k_ts_isnull CONCAT(NULLIF(ts, 1)) IS NULL
+o_ts_year YEAR(NULLIF(ts, 1))
+c_ts_year YEAR(CAST(NULLIF(ts, 1) AS CHAR))
+k_ts_year YEAR(CONCAT(NULLIF(ts, 1)))
+o_ts_hour HOUR(NULLIF(ts, 1))
+c_ts_hour HOUR(CAST(NULLIF(ts, 1) AS CHAR))
+k_ts_hour HOUR(CONCAT(NULLIF(ts, 1)))
+o_ts_ifnull IFNULL(NULLIF(ts, 1), 'x')
+c_ts_ifnull IFNULL(CAST(NULLIF(ts, 1) AS CHAR), 'x')
+k_ts_ifnull IFNULL(CONCAT(NULLIF(ts, 1)), 'x')
+o_ts_coalesce COALESCE(NULLIF(ts, 1), d)
+c_ts_coalesce COALESCE(CAST(NULLIF(ts, 1) AS CHAR), d)
+k_ts_coalesce COALESCE(CONCAT(NULLIF(ts, 1)), d)
+o_ts_greatest GREATEST(NULLIF(ts, 1), d)
+c_ts_greatest GREATEST(CAST(NULLIF(ts, 1) AS CHAR), d)
+k_ts_greatest GREATEST(CONCAT(NULLIF(ts, 1)), d)
+o_ts_if IF(TRUE, NULLIF(ts, 1), NULL)
+c_ts_if IF(TRUE, CAST(NULLIF(ts, 1) AS CHAR), NULL)
+k_ts_if IF(TRUE, CONCAT(NULLIF(ts, 1)), NULL)
+o_ts_datediff DATEDIFF(NULLIF(ts, 1), '2024-01-01')
+c_ts_datediff DATEDIFF(CAST(NULLIF(ts, 1) AS CHAR), '2024-01-01')
+k_ts_datediff DATEDIFF(CONCAT(NULLIF(ts, 1)), '2024-01-01')
+o_ts_dformat DATE_FORMAT(NULLIF(ts, 1), '%Y')
+c_ts_dformat DATE_FORMAT(CAST(NULLIF(ts, 1) AS CHAR), '%Y')
+k_ts_dformat DATE_FORMAT(CONCAT(NULLIF(ts, 1)), '%Y')
+o_ts_unix UNIX_TIMESTAMP(NULLIF(ts, 1))
+c_ts_unix UNIX_TIMESTAMP(CAST(NULLIF(ts, 1) AS CHAR))
+k_ts_unix UNIX_TIMESTAMP(CONCAT(NULLIF(ts, 1)))
+o_ts_round ROUND(NULLIF(ts, 1))
+c_ts_round ROUND(CAST(NULLIF(ts, 1) AS CHAR))
+k_ts_round ROUND(CONCAT(NULLIF(ts, 1)))
+o_ts_round2 ROUND(NULLIF(ts, 1), 2)
+c_ts_round2 ROUND(CAST(NULLIF(ts, 1) AS CHAR), 2)
+k_ts_round2 ROUND(CONCAT(NULLIF(ts, 1)), 2)
+o_ts_sum SUM(NULLIF(ts, 1))
+c_ts_sum SUM(CAST(NULLIF(ts, 1) AS CHAR))
+k_ts_sum SUM(CONCAT(NULLIF(ts, 1)))
+o_ts_avg AVG(NULLIF(ts, 1))
+c_ts_avg AVG(CAST(NULLIF(ts, 1) AS CHAR))
+k_ts_avg AVG(CONCAT(NULLIF(ts, 1)))
+o_ts_max MAX(NULLIF(ts, 1))
+c_ts_max MAX(CAST(NULLIF(ts, 1) AS CHAR))
+k_ts_max MAX(CONCAT(NULLIF(ts, 1)))
+o_ts_signed CAST(NULLIF(ts, 1) AS SIGNED)
+c_ts_signed CAST(CAST(NULLIF(ts, 1) AS CHAR) AS SIGNED)
+k_ts_signed CAST(CONCAT(NULLIF(ts, 1)) AS SIGNED)
+o_ts_decimal CAST(NULLIF(ts, 1) AS DECIMAL(30, 6))
+c_ts_decimal CAST(CAST(NULLIF(ts, 1) AS CHAR) AS DECIMAL(30, 6))
+k_ts_decimal CAST(CONCAT(NULLIF(ts, 1)) AS DECIMAL(30, 6))
+o_ts_double CAST(NULLIF(ts, 1) AS DOUBLE)
+c_ts_double CAST(CAST(NULLIF(ts, 1) AS CHAR) AS DOUBLE)
+k_ts_double CAST(CONCAT(NULLIF(ts, 1)) AS DOUBLE)
+o_ts_bool NULLIF(ts, 1) AND TRUE
+c_ts_bool CAST(NULLIF(ts, 1) AS CHAR) AND TRUE
+k_ts_bool CONCAT(NULLIF(ts, 1)) AND TRUE
+o_ts_like NULLIF(ts, 1) LIKE '2024%'
+c_ts_like CAST(NULLIF(ts, 1) AS CHAR) LIKE '2024%'
+k_ts_like CONCAT(NULLIF(ts, 1)) LIKE '2024%'
+o_ts_in NULLIF(ts, 1) IN ('2024-05-06', 'x')
+c_ts_in CAST(NULLIF(ts, 1) AS CHAR) IN ('2024-05-06', 'x')
+k_ts_in CONCAT(NULLIF(ts, 1)) IN ('2024-05-06', 'x')
+o_ts_between NULLIF(ts, 1) BETWEEN '2024-01-01' AND '2024-12-31'
+c_ts_between CAST(NULLIF(ts, 1) AS CHAR) BETWEEN '2024-01-01' AND '2024-12-31'
+k_ts_between CONCAT(NULLIF(ts, 1)) BETWEEN '2024-01-01' AND '2024-12-31'
+o_ts_cmp_d NULLIF(ts, 1) = d
+c_ts_cmp_d CAST(NULLIF(ts, 1) AS CHAR) = d
+k_ts_cmp_d CONCAT(NULLIF(ts, 1)) = d
+o_ts_cmp_t NULLIF(ts, 1) = t
+c_ts_cmp_t CAST(NULLIF(ts, 1) AS CHAR) = t
+k_ts_cmp_t CONCAT(NULLIF(ts, 1)) = t
+o_ts_date CAST(NULLIF(ts, 1) AS DATE)
+c_ts_date CAST(CAST(NULLIF(ts, 1) AS CHAR) AS DATE)
+k_ts_date CAST(CONCAT(NULLIF(ts, 1)) AS DATE)
+o_ts_datetime CAST(NULLIF(ts, 1) AS DATETIME)
+c_ts_datetime CAST(CAST(NULLIF(ts, 1) AS CHAR) AS DATETIME)
+k_ts_datetime CAST(CONCAT(NULLIF(ts, 1)) AS DATETIME)
+o_ts_datetime6 CAST(NULLIF(ts, 1) AS DATETIME(6))
+c_ts_datetime6 CAST(CAST(NULLIF(ts, 1) AS CHAR) AS DATETIME(6))
+k_ts_datetime6 CAST(CONCAT(NULLIF(ts, 1)) AS DATETIME(6))
+o_ts_time CAST(NULLIF(ts, 1) AS TIME)
+c_ts_time CAST(CAST(NULLIF(ts, 1) AS CHAR) AS TIME)
+k_ts_time CAST(CONCAT(NULLIF(ts, 1)) AS TIME)
+o_ts_time6 CAST(NULLIF(ts, 1) AS TIME(6))
+c_ts_time6 CAST(CAST(NULLIF(ts, 1) AS CHAR) AS TIME(6))
+k_ts_time6 CAST(CONCAT(NULLIF(ts, 1)) AS TIME(6))
+o_ts_char CAST(NULLIF(ts, 1) AS CHAR)
+c_ts_char CAST(CAST(NULLIF(ts, 1) AS CHAR) AS CHAR)
+k_ts_char CAST(CONCAT(NULLIF(ts, 1)) AS CHAR)
+o_ts_binary CAST(NULLIF(ts, 1) AS BINARY)
+c_ts_binary CAST(CAST(NULLIF(ts, 1) AS CHAR) AS BINARY)
+k_ts_binary CAST(CONCAT(NULLIF(ts, 1)) AS BINARY)
+o_ts_hex HEX(NULLIF(ts, 1))
+c_ts_hex HEX(CAST(NULLIF(ts, 1) AS CHAR))
+k_ts_hex HEX(CONCAT(NULLIF(ts, 1)))
+o_ts_upper UPPER(NULLIF(ts, 1))
+c_ts_upper UPPER(CAST(NULLIF(ts, 1) AS CHAR))
+k_ts_upper UPPER(CONCAT(NULLIF(ts, 1)))
+o_ts_json JSON_ARRAY(NULLIF(ts, 1))
+c_ts_json JSON_ARRAY(CAST(NULLIF(ts, 1) AS CHAR))
+k_ts_json JSON_ARRAY(CONCAT(NULLIF(ts, 1)))
+o_ts_sec TIME_TO_SEC(NULLIF(ts, 1))
+c_ts_sec TIME_TO_SEC(CAST(NULLIF(ts, 1) AS CHAR))
+k_ts_sec TIME_TO_SEC(CONCAT(NULLIF(ts, 1)))
+o_ts_abs ABS(NULLIF(ts, 1))
+c_ts_abs ABS(CAST(NULLIF(ts, 1) AS CHAR))
+k_ts_abs ABS(CONCAT(NULLIF(ts, 1)))
+o_ts_floor FLOOR(NULLIF(ts, 1))
+c_ts_floor FLOOR(CAST(NULLIF(ts, 1) AS CHAR))
+k_ts_floor FLOOR(CONCAT(NULLIF(ts, 1)))
+o_ts_sqrt SQRT(NULLIF(ts, 1))
+c_ts_sqrt SQRT(CAST(NULLIF(ts, 1) AS CHAR))
+k_ts_sqrt SQRT(CONCAT(NULLIF(ts, 1)))
+o_t_plain NULLIF(t, 1)
+c_t_plain CAST(NULLIF(t, 1) AS CHAR)
+k_t_plain CONCAT(NULLIF(t, 1))
+o_t_plus NULLIF(t, 1) + 0
+c_t_plus CAST(NULLIF(t, 1) AS CHAR) + 0
+k_t_plus CONCAT(NULLIF(t, 1)) + 0
+o_t_plusd NULLIF(t, 1) + 0.0
+c_t_plusd CAST(NULLIF(t, 1) AS CHAR) + 0.0
+k_t_plusd CONCAT(NULLIF(t, 1)) + 0.0
+o_t_div NULLIF(t, 1) / 7
+c_t_div CAST(NULLIF(t, 1) AS CHAR) / 7
+k_t_div CONCAT(NULLIF(t, 1)) / 7
+o_t_mul NULLIF(t, 1) * 1.5
+c_t_mul CAST(NULLIF(t, 1) AS CHAR) * 1.5
+k_t_mul CONCAT(NULLIF(t, 1)) * 1.5
+o_t_concat CONCAT(NULLIF(t, 1))
+c_t_concat CONCAT(CAST(NULLIF(t, 1) AS CHAR))
+k_t_concat CONCAT(CONCAT(NULLIF(t, 1)))
+o_t_len LENGTH(NULLIF(t, 1))
+c_t_len LENGTH(CAST(NULLIF(t, 1) AS CHAR))
+k_t_len LENGTH(CONCAT(NULLIF(t, 1)))
+o_t_cmp_str NULLIF(t, 1) < '2024-05-10'
+c_t_cmp_str CAST(NULLIF(t, 1) AS CHAR) < '2024-05-10'
+k_t_cmp_str CONCAT(NULLIF(t, 1)) < '2024-05-10'
+o_t_cmp_int NULLIF(t, 1) < 20240510
+c_t_cmp_int CAST(NULLIF(t, 1) AS CHAR) < 20240510
+k_t_cmp_int CONCAT(NULLIF(t, 1)) < 20240510
+o_t_isnull NULLIF(t, 1) IS NULL
+c_t_isnull CAST(NULLIF(t, 1) AS CHAR) IS NULL
+k_t_isnull CONCAT(NULLIF(t, 1)) IS NULL
+o_t_year YEAR(NULLIF(t, 1))
+c_t_year YEAR(CAST(NULLIF(t, 1) AS CHAR))
+k_t_year YEAR(CONCAT(NULLIF(t, 1)))
+o_t_hour HOUR(NULLIF(t, 1))
+c_t_hour HOUR(CAST(NULLIF(t, 1) AS CHAR))
+k_t_hour HOUR(CONCAT(NULLIF(t, 1)))
+o_t_ifnull IFNULL(NULLIF(t, 1), 'x')
+c_t_ifnull IFNULL(CAST(NULLIF(t, 1) AS CHAR), 'x')
+k_t_ifnull IFNULL(CONCAT(NULLIF(t, 1)), 'x')
+o_t_coalesce COALESCE(NULLIF(t, 1), d)
+c_t_coalesce COALESCE(CAST(NULLIF(t, 1) AS CHAR), d)
+k_t_coalesce COALESCE(CONCAT(NULLIF(t, 1)), d)
+o_t_greatest GREATEST(NULLIF(t, 1), d)
+c_t_greatest GREATEST(CAST(NULLIF(t, 1) AS CHAR), d)
+k_t_greatest GREATEST(CONCAT(NULLIF(t, 1)), d)
+o_t_if IF(TRUE, NULLIF(t, 1), NULL)
+c_t_if IF(TRUE, CAST(NULLIF(t, 1) AS CHAR), NULL)
+k_t_if IF(TRUE, CONCAT(NULLIF(t, 1)), NULL)
+o_t_datediff DATEDIFF(NULLIF(t, 1), '2024-01-01')
+c_t_datediff DATEDIFF(CAST(NULLIF(t, 1) AS CHAR), '2024-01-01')
+k_t_datediff DATEDIFF(CONCAT(NULLIF(t, 1)), '2024-01-01')
+o_t_dformat DATE_FORMAT(NULLIF(t, 1), '%Y')
+c_t_dformat DATE_FORMAT(CAST(NULLIF(t, 1) AS CHAR), '%Y')
+k_t_dformat DATE_FORMAT(CONCAT(NULLIF(t, 1)), '%Y')
+o_t_unix UNIX_TIMESTAMP(NULLIF(t, 1))
+c_t_unix UNIX_TIMESTAMP(CAST(NULLIF(t, 1) AS CHAR))
+k_t_unix UNIX_TIMESTAMP(CONCAT(NULLIF(t, 1)))
+o_t_round ROUND(NULLIF(t, 1))
+c_t_round ROUND(CAST(NULLIF(t, 1) AS CHAR))
+k_t_round ROUND(CONCAT(NULLIF(t, 1)))
+o_t_round2 ROUND(NULLIF(t, 1), 2)
+c_t_round2 ROUND(CAST(NULLIF(t, 1) AS CHAR), 2)
+k_t_round2 ROUND(CONCAT(NULLIF(t, 1)), 2)
+o_t_sum SUM(NULLIF(t, 1))
+c_t_sum SUM(CAST(NULLIF(t, 1) AS CHAR))
+k_t_sum SUM(CONCAT(NULLIF(t, 1)))
+o_t_avg AVG(NULLIF(t, 1))
+c_t_avg AVG(CAST(NULLIF(t, 1) AS CHAR))
+k_t_avg AVG(CONCAT(NULLIF(t, 1)))
+o_t_max MAX(NULLIF(t, 1))
+c_t_max MAX(CAST(NULLIF(t, 1) AS CHAR))
+k_t_max MAX(CONCAT(NULLIF(t, 1)))
+o_t_signed CAST(NULLIF(t, 1) AS SIGNED)
+c_t_signed CAST(CAST(NULLIF(t, 1) AS CHAR) AS SIGNED)
+k_t_signed CAST(CONCAT(NULLIF(t, 1)) AS SIGNED)
+o_t_decimal CAST(NULLIF(t, 1) AS DECIMAL(30, 6))
+c_t_decimal CAST(CAST(NULLIF(t, 1) AS CHAR) AS DECIMAL(30, 6))
+k_t_decimal CAST(CONCAT(NULLIF(t, 1)) AS DECIMAL(30, 6))
+o_t_double CAST(NULLIF(t, 1) AS DOUBLE)
+c_t_double CAST(CAST(NULLIF(t, 1) AS CHAR) AS DOUBLE)
+k_t_double CAST(CONCAT(NULLIF(t, 1)) AS DOUBLE)
+o_t_bool NULLIF(t, 1) AND TRUE
+c_t_bool CAST(NULLIF(t, 1) AS CHAR) AND TRUE
+k_t_bool CONCAT(NULLIF(t, 1)) AND TRUE
+o_t_like NULLIF(t, 1) LIKE '2024%'
+c_t_like CAST(NULLIF(t, 1) AS CHAR) LIKE '2024%'
+k_t_like CONCAT(NULLIF(t, 1)) LIKE '2024%'
+o_t_in NULLIF(t, 1) IN ('2024-05-06', 'x')
+c_t_in CAST(NULLIF(t, 1) AS CHAR) IN ('2024-05-06', 'x')
+k_t_in CONCAT(NULLIF(t, 1)) IN ('2024-05-06', 'x')
+o_t_between NULLIF(t, 1) BETWEEN '2024-01-01' AND '2024-12-31'
+c_t_between CAST(NULLIF(t, 1) AS CHAR) BETWEEN '2024-01-01' AND '2024-12-31'
+k_t_between CONCAT(NULLIF(t, 1)) BETWEEN '2024-01-01' AND '2024-12-31'
+o_t_cmp_d NULLIF(t, 1) = d
+c_t_cmp_d CAST(NULLIF(t, 1) AS CHAR) = d
+k_t_cmp_d CONCAT(NULLIF(t, 1)) = d
+o_t_cmp_t NULLIF(t, 1) = t
+c_t_cmp_t CAST(NULLIF(t, 1) AS CHAR) = t
+k_t_cmp_t CONCAT(NULLIF(t, 1)) = t
+o_t_date CAST(NULLIF(t, 1) AS DATE)
+c_t_date CAST(CAST(NULLIF(t, 1) AS CHAR) AS DATE)
+k_t_date CAST(CONCAT(NULLIF(t, 1)) AS DATE)
+o_t_datetime CAST(NULLIF(t, 1) AS DATETIME)
+c_t_datetime CAST(CAST(NULLIF(t, 1) AS CHAR) AS DATETIME)
+k_t_datetime CAST(CONCAT(NULLIF(t, 1)) AS DATETIME)
+o_t_datetime6 CAST(NULLIF(t, 1) AS DATETIME(6))
+c_t_datetime6 CAST(CAST(NULLIF(t, 1) AS CHAR) AS DATETIME(6))
+k_t_datetime6 CAST(CONCAT(NULLIF(t, 1)) AS DATETIME(6))
+o_t_time CAST(NULLIF(t, 1) AS TIME)
+c_t_time CAST(CAST(NULLIF(t, 1) AS CHAR) AS TIME)
+k_t_time CAST(CONCAT(NULLIF(t, 1)) AS TIME)
+o_t_time6 CAST(NULLIF(t, 1) AS TIME(6))
+c_t_time6 CAST(CAST(NULLIF(t, 1) AS CHAR) AS TIME(6))
+k_t_time6 CAST(CONCAT(NULLIF(t, 1)) AS TIME(6))
+o_t_char CAST(NULLIF(t, 1) AS CHAR)
+c_t_char CAST(CAST(NULLIF(t, 1) AS CHAR) AS CHAR)
+k_t_char CAST(CONCAT(NULLIF(t, 1)) AS CHAR)
+o_t_binary CAST(NULLIF(t, 1) AS BINARY)
+c_t_binary CAST(CAST(NULLIF(t, 1) AS CHAR) AS BINARY)
+k_t_binary CAST(CONCAT(NULLIF(t, 1)) AS BINARY)
+o_t_hex HEX(NULLIF(t, 1))
+c_t_hex HEX(CAST(NULLIF(t, 1) AS CHAR))
+k_t_hex HEX(CONCAT(NULLIF(t, 1)))
+o_t_upper UPPER(NULLIF(t, 1))
+c_t_upper UPPER(CAST(NULLIF(t, 1) AS CHAR))
+k_t_upper UPPER(CONCAT(NULLIF(t, 1)))
+o_t_json JSON_ARRAY(NULLIF(t, 1))
+c_t_json JSON_ARRAY(CAST(NULLIF(t, 1) AS CHAR))
+k_t_json JSON_ARRAY(CONCAT(NULLIF(t, 1)))
+o_t_sec TIME_TO_SEC(NULLIF(t, 1))
+c_t_sec TIME_TO_SEC(CAST(NULLIF(t, 1) AS CHAR))
+k_t_sec TIME_TO_SEC(CONCAT(NULLIF(t, 1)))
+o_t_abs ABS(NULLIF(t, 1))
+c_t_abs ABS(CAST(NULLIF(t, 1) AS CHAR))
+k_t_abs ABS(CONCAT(NULLIF(t, 1)))
+o_t_floor FLOOR(NULLIF(t, 1))
+c_t_floor FLOOR(CAST(NULLIF(t, 1) AS CHAR))
+k_t_floor FLOOR(CONCAT(NULLIF(t, 1)))
+o_t_sqrt SQRT(NULLIF(t, 1))
+c_t_sqrt SQRT(CAST(NULLIF(t, 1) AS CHAR))
+k_t_sqrt SQRT(CONCAT(NULLIF(t, 1)))
+o_dn_plain NULLIF(dn, 1)
+c_dn_plain CAST(NULLIF(dn, 1) AS CHAR)
+k_dn_plain CONCAT(NULLIF(dn, 1))
+o_dn_plus NULLIF(dn, 1) + 0
+c_dn_plus CAST(NULLIF(dn, 1) AS CHAR) + 0
+k_dn_plus CONCAT(NULLIF(dn, 1)) + 0
+o_dn_plusd NULLIF(dn, 1) + 0.0
+c_dn_plusd CAST(NULLIF(dn, 1) AS CHAR) + 0.0
+k_dn_plusd CONCAT(NULLIF(dn, 1)) + 0.0
+o_dn_div NULLIF(dn, 1) / 7
+c_dn_div CAST(NULLIF(dn, 1) AS CHAR) / 7
+k_dn_div CONCAT(NULLIF(dn, 1)) / 7
+o_dn_mul NULLIF(dn, 1) * 1.5
+c_dn_mul CAST(NULLIF(dn, 1) AS CHAR) * 1.5
+k_dn_mul CONCAT(NULLIF(dn, 1)) * 1.5
+o_dn_concat CONCAT(NULLIF(dn, 1))
+c_dn_concat CONCAT(CAST(NULLIF(dn, 1) AS CHAR))
+k_dn_concat CONCAT(CONCAT(NULLIF(dn, 1)))
+o_dn_len LENGTH(NULLIF(dn, 1))
+c_dn_len LENGTH(CAST(NULLIF(dn, 1) AS CHAR))
+k_dn_len LENGTH(CONCAT(NULLIF(dn, 1)))
+o_dn_cmp_str NULLIF(dn, 1) < '2024-05-10'
+c_dn_cmp_str CAST(NULLIF(dn, 1) AS CHAR) < '2024-05-10'
+k_dn_cmp_str CONCAT(NULLIF(dn, 1)) < '2024-05-10'
+o_dn_cmp_int NULLIF(dn, 1) < 20240510
+c_dn_cmp_int CAST(NULLIF(dn, 1) AS CHAR) < 20240510
+k_dn_cmp_int CONCAT(NULLIF(dn, 1)) < 20240510
+o_dn_isnull NULLIF(dn, 1) IS NULL
+c_dn_isnull CAST(NULLIF(dn, 1) AS CHAR) IS NULL
+k_dn_isnull CONCAT(NULLIF(dn, 1)) IS NULL
+o_dn_year YEAR(NULLIF(dn, 1))
+c_dn_year YEAR(CAST(NULLIF(dn, 1) AS CHAR))
+k_dn_year YEAR(CONCAT(NULLIF(dn, 1)))
+o_dn_hour HOUR(NULLIF(dn, 1))
+c_dn_hour HOUR(CAST(NULLIF(dn, 1) AS CHAR))
+k_dn_hour HOUR(CONCAT(NULLIF(dn, 1)))
+o_dn_ifnull IFNULL(NULLIF(dn, 1), 'x')
+c_dn_ifnull IFNULL(CAST(NULLIF(dn, 1) AS CHAR), 'x')
+k_dn_ifnull IFNULL(CONCAT(NULLIF(dn, 1)), 'x')
+o_dn_coalesce COALESCE(NULLIF(dn, 1), d)
+c_dn_coalesce COALESCE(CAST(NULLIF(dn, 1) AS CHAR), d)
+k_dn_coalesce COALESCE(CONCAT(NULLIF(dn, 1)), d)
+o_dn_greatest GREATEST(NULLIF(dn, 1), d)
+c_dn_greatest GREATEST(CAST(NULLIF(dn, 1) AS CHAR), d)
+k_dn_greatest GREATEST(CONCAT(NULLIF(dn, 1)), d)
+o_dn_if IF(TRUE, NULLIF(dn, 1), NULL)
+c_dn_if IF(TRUE, CAST(NULLIF(dn, 1) AS CHAR), NULL)
+k_dn_if IF(TRUE, CONCAT(NULLIF(dn, 1)), NULL)
+o_dn_datediff DATEDIFF(NULLIF(dn, 1), '2024-01-01')
+c_dn_datediff DATEDIFF(CAST(NULLIF(dn, 1) AS CHAR), '2024-01-01')
+k_dn_datediff DATEDIFF(CONCAT(NULLIF(dn, 1)), '2024-01-01')
+o_dn_dformat DATE_FORMAT(NULLIF(dn, 1), '%Y')
+c_dn_dformat DATE_FORMAT(CAST(NULLIF(dn, 1) AS CHAR), '%Y')
+k_dn_dformat DATE_FORMAT(CONCAT(NULLIF(dn, 1)), '%Y')
+o_dn_unix UNIX_TIMESTAMP(NULLIF(dn, 1))
+c_dn_unix UNIX_TIMESTAMP(CAST(NULLIF(dn, 1) AS CHAR))
+k_dn_unix UNIX_TIMESTAMP(CONCAT(NULLIF(dn, 1)))
+o_dn_round ROUND(NULLIF(dn, 1))
+c_dn_round ROUND(CAST(NULLIF(dn, 1) AS CHAR))
+k_dn_round ROUND(CONCAT(NULLIF(dn, 1)))
+o_dn_round2 ROUND(NULLIF(dn, 1), 2)
+c_dn_round2 ROUND(CAST(NULLIF(dn, 1) AS CHAR), 2)
+k_dn_round2 ROUND(CONCAT(NULLIF(dn, 1)), 2)
+o_dn_sum SUM(NULLIF(dn, 1))
+c_dn_sum SUM(CAST(NULLIF(dn, 1) AS CHAR))
+k_dn_sum SUM(CONCAT(NULLIF(dn, 1)))
+o_dn_avg AVG(NULLIF(dn, 1))
+c_dn_avg AVG(CAST(NULLIF(dn, 1) AS CHAR))
+k_dn_avg AVG(CONCAT(NULLIF(dn, 1)))
+o_dn_max MAX(NULLIF(dn, 1))
+c_dn_max MAX(CAST(NULLIF(dn, 1) AS CHAR))
+k_dn_max MAX(CONCAT(NULLIF(dn, 1)))
+o_dn_signed CAST(NULLIF(dn, 1) AS SIGNED)
+c_dn_signed CAST(CAST(NULLIF(dn, 1) AS CHAR) AS SIGNED)
+k_dn_signed CAST(CONCAT(NULLIF(dn, 1)) AS SIGNED)
+o_dn_decimal CAST(NULLIF(dn, 1) AS DECIMAL(30, 6))
+c_dn_decimal CAST(CAST(NULLIF(dn, 1) AS CHAR) AS DECIMAL(30, 6))
+k_dn_decimal CAST(CONCAT(NULLIF(dn, 1)) AS DECIMAL(30, 6))
+o_dn_double CAST(NULLIF(dn, 1) AS DOUBLE)
+c_dn_double CAST(CAST(NULLIF(dn, 1) AS CHAR) AS DOUBLE)
+k_dn_double CAST(CONCAT(NULLIF(dn, 1)) AS DOUBLE)
+o_dn_bool NULLIF(dn, 1) AND TRUE
+c_dn_bool CAST(NULLIF(dn, 1) AS CHAR) AND TRUE
+k_dn_bool CONCAT(NULLIF(dn, 1)) AND TRUE
+o_dn_like NULLIF(dn, 1) LIKE '2024%'
+c_dn_like CAST(NULLIF(dn, 1) AS CHAR) LIKE '2024%'
+k_dn_like CONCAT(NULLIF(dn, 1)) LIKE '2024%'
+o_dn_in NULLIF(dn, 1) IN ('2024-05-06', 'x')
+c_dn_in CAST(NULLIF(dn, 1) AS CHAR) IN ('2024-05-06', 'x')
+k_dn_in CONCAT(NULLIF(dn, 1)) IN ('2024-05-06', 'x')
+o_dn_between NULLIF(dn, 1) BETWEEN '2024-01-01' AND '2024-12-31'
+c_dn_between CAST(NULLIF(dn, 1) AS CHAR) BETWEEN '2024-01-01' AND '2024-12-31'
+k_dn_between CONCAT(NULLIF(dn, 1)) BETWEEN '2024-01-01' AND '2024-12-31'
+o_dn_cmp_d NULLIF(dn, 1) = d
+c_dn_cmp_d CAST(NULLIF(dn, 1) AS CHAR) = d
+k_dn_cmp_d CONCAT(NULLIF(dn, 1)) = d
+o_dn_cmp_t NULLIF(dn, 1) = t
+c_dn_cmp_t CAST(NULLIF(dn, 1) AS CHAR) = t
+k_dn_cmp_t CONCAT(NULLIF(dn, 1)) = t
+o_dn_date CAST(NULLIF(dn, 1) AS DATE)
+c_dn_date CAST(CAST(NULLIF(dn, 1) AS CHAR) AS DATE)
+k_dn_date CAST(CONCAT(NULLIF(dn, 1)) AS DATE)
+o_dn_datetime CAST(NULLIF(dn, 1) AS DATETIME)
+c_dn_datetime CAST(CAST(NULLIF(dn, 1) AS CHAR) AS DATETIME)
+k_dn_datetime CAST(CONCAT(NULLIF(dn, 1)) AS DATETIME)
+o_dn_datetime6 CAST(NULLIF(dn, 1) AS DATETIME(6))
+c_dn_datetime6 CAST(CAST(NULLIF(dn, 1) AS CHAR) AS DATETIME(6))
+k_dn_datetime6 CAST(CONCAT(NULLIF(dn, 1)) AS DATETIME(6))
+o_dn_time CAST(NULLIF(dn, 1) AS TIME)
+c_dn_time CAST(CAST(NULLIF(dn, 1) AS CHAR) AS TIME)
+k_dn_time CAST(CONCAT(NULLIF(dn, 1)) AS TIME)
+o_dn_time6 CAST(NULLIF(dn, 1) AS TIME(6))
+c_dn_time6 CAST(CAST(NULLIF(dn, 1) AS CHAR) AS TIME(6))
+k_dn_time6 CAST(CONCAT(NULLIF(dn, 1)) AS TIME(6))
+o_dn_char CAST(NULLIF(dn, 1) AS CHAR)
+c_dn_char CAST(CAST(NULLIF(dn, 1) AS CHAR) AS CHAR)
+k_dn_char CAST(CONCAT(NULLIF(dn, 1)) AS CHAR)
+o_dn_binary CAST(NULLIF(dn, 1) AS BINARY)
+c_dn_binary CAST(CAST(NULLIF(dn, 1) AS CHAR) AS BINARY)
+k_dn_binary CAST(CONCAT(NULLIF(dn, 1)) AS BINARY)
+o_dn_hex HEX(NULLIF(dn, 1))
+c_dn_hex HEX(CAST(NULLIF(dn, 1) AS CHAR))
+k_dn_hex HEX(CONCAT(NULLIF(dn, 1)))
+o_dn_upper UPPER(NULLIF(dn, 1))
+c_dn_upper UPPER(CAST(NULLIF(dn, 1) AS CHAR))
+k_dn_upper UPPER(CONCAT(NULLIF(dn, 1)))
+o_dn_json JSON_ARRAY(NULLIF(dn, 1))
+c_dn_json JSON_ARRAY(CAST(NULLIF(dn, 1) AS CHAR))
+k_dn_json JSON_ARRAY(CONCAT(NULLIF(dn, 1)))
+o_dn_sec TIME_TO_SEC(NULLIF(dn, 1))
+c_dn_sec TIME_TO_SEC(CAST(NULLIF(dn, 1) AS CHAR))
+k_dn_sec TIME_TO_SEC(CONCAT(NULLIF(dn, 1)))
+o_dn_abs ABS(NULLIF(dn, 1))
+c_dn_abs ABS(CAST(NULLIF(dn, 1) AS CHAR))
+k_dn_abs ABS(CONCAT(NULLIF(dn, 1)))
+o_dn_floor FLOOR(NULLIF(dn, 1))
+c_dn_floor FLOOR(CAST(NULLIF(dn, 1) AS CHAR))
+k_dn_floor FLOOR(CONCAT(NULLIF(dn, 1)))
+o_dn_sqrt SQRT(NULLIF(dn, 1))
+c_dn_sqrt SQRT(CAST(NULLIF(dn, 1) AS CHAR))
+k_dn_sqrt SQRT(CONCAT(NULLIF(dn, 1)))
+o_dlit_plain NULLIF(DATE '2024-05-06', 1)
+c_dlit_plain CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR)
+k_dlit_plain CONCAT(NULLIF(DATE '2024-05-06', 1))
+o_dlit_plus NULLIF(DATE '2024-05-06', 1) + 0
+c_dlit_plus CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) + 0
+k_dlit_plus CONCAT(NULLIF(DATE '2024-05-06', 1)) + 0
+o_dlit_plusd NULLIF(DATE '2024-05-06', 1) + 0.0
+c_dlit_plusd CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) + 0.0
+k_dlit_plusd CONCAT(NULLIF(DATE '2024-05-06', 1)) + 0.0
+o_dlit_div NULLIF(DATE '2024-05-06', 1) / 7
+c_dlit_div CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) / 7
+k_dlit_div CONCAT(NULLIF(DATE '2024-05-06', 1)) / 7
+o_dlit_mul NULLIF(DATE '2024-05-06', 1) * 1.5
+c_dlit_mul CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) * 1.5
+k_dlit_mul CONCAT(NULLIF(DATE '2024-05-06', 1)) * 1.5
+o_dlit_concat CONCAT(NULLIF(DATE '2024-05-06', 1))
+c_dlit_concat CONCAT(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR))
+k_dlit_concat CONCAT(CONCAT(NULLIF(DATE '2024-05-06', 1)))
+o_dlit_len LENGTH(NULLIF(DATE '2024-05-06', 1))
+c_dlit_len LENGTH(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR))
+k_dlit_len LENGTH(CONCAT(NULLIF(DATE '2024-05-06', 1)))
+o_dlit_cmp_str NULLIF(DATE '2024-05-06', 1) < '2024-05-10'
+c_dlit_cmp_str CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) < '2024-05-10'
+k_dlit_cmp_str CONCAT(NULLIF(DATE '2024-05-06', 1)) < '2024-05-10'
+o_dlit_cmp_int NULLIF(DATE '2024-05-06', 1) < 20240510
+c_dlit_cmp_int CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) < 20240510
+k_dlit_cmp_int CONCAT(NULLIF(DATE '2024-05-06', 1)) < 20240510
+o_dlit_isnull NULLIF(DATE '2024-05-06', 1) IS NULL
+c_dlit_isnull CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) IS NULL
+k_dlit_isnull CONCAT(NULLIF(DATE '2024-05-06', 1)) IS NULL
+o_dlit_year YEAR(NULLIF(DATE '2024-05-06', 1))
+c_dlit_year YEAR(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR))
+k_dlit_year YEAR(CONCAT(NULLIF(DATE '2024-05-06', 1)))
+o_dlit_hour HOUR(NULLIF(DATE '2024-05-06', 1))
+c_dlit_hour HOUR(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR))
+k_dlit_hour HOUR(CONCAT(NULLIF(DATE '2024-05-06', 1)))
+o_dlit_ifnull IFNULL(NULLIF(DATE '2024-05-06', 1), 'x')
+c_dlit_ifnull IFNULL(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR), 'x')
+k_dlit_ifnull IFNULL(CONCAT(NULLIF(DATE '2024-05-06', 1)), 'x')
+o_dlit_coalesce COALESCE(NULLIF(DATE '2024-05-06', 1), d)
+c_dlit_coalesce COALESCE(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR), d)
+k_dlit_coalesce COALESCE(CONCAT(NULLIF(DATE '2024-05-06', 1)), d)
+o_dlit_greatest GREATEST(NULLIF(DATE '2024-05-06', 1), d)
+c_dlit_greatest GREATEST(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR), d)
+k_dlit_greatest GREATEST(CONCAT(NULLIF(DATE '2024-05-06', 1)), d)
+o_dlit_if IF(TRUE, NULLIF(DATE '2024-05-06', 1), NULL)
+c_dlit_if IF(TRUE, CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR), NULL)
+k_dlit_if IF(TRUE, CONCAT(NULLIF(DATE '2024-05-06', 1)), NULL)
+o_dlit_datediff DATEDIFF(NULLIF(DATE '2024-05-06', 1), '2024-01-01')
+c_dlit_datediff DATEDIFF(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR), '2024-01-01')
+k_dlit_datediff DATEDIFF(CONCAT(NULLIF(DATE '2024-05-06', 1)), '2024-01-01')
+o_dlit_dformat DATE_FORMAT(NULLIF(DATE '2024-05-06', 1), '%Y')
+c_dlit_dformat DATE_FORMAT(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR), '%Y')
+k_dlit_dformat DATE_FORMAT(CONCAT(NULLIF(DATE '2024-05-06', 1)), '%Y')
+o_dlit_unix UNIX_TIMESTAMP(NULLIF(DATE '2024-05-06', 1))
+c_dlit_unix UNIX_TIMESTAMP(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR))
+k_dlit_unix UNIX_TIMESTAMP(CONCAT(NULLIF(DATE '2024-05-06', 1)))
+o_dlit_round ROUND(NULLIF(DATE '2024-05-06', 1))
+c_dlit_round ROUND(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR))
+k_dlit_round ROUND(CONCAT(NULLIF(DATE '2024-05-06', 1)))
+o_dlit_round2 ROUND(NULLIF(DATE '2024-05-06', 1), 2)
+c_dlit_round2 ROUND(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR), 2)
+k_dlit_round2 ROUND(CONCAT(NULLIF(DATE '2024-05-06', 1)), 2)
+o_dlit_sum SUM(NULLIF(DATE '2024-05-06', 1))
+c_dlit_sum SUM(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR))
+k_dlit_sum SUM(CONCAT(NULLIF(DATE '2024-05-06', 1)))
+o_dlit_avg AVG(NULLIF(DATE '2024-05-06', 1))
+c_dlit_avg AVG(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR))
+k_dlit_avg AVG(CONCAT(NULLIF(DATE '2024-05-06', 1)))
+o_dlit_max MAX(NULLIF(DATE '2024-05-06', 1))
+c_dlit_max MAX(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR))
+k_dlit_max MAX(CONCAT(NULLIF(DATE '2024-05-06', 1)))
+o_dlit_signed CAST(NULLIF(DATE '2024-05-06', 1) AS SIGNED)
+c_dlit_signed CAST(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) AS SIGNED)
+k_dlit_signed CAST(CONCAT(NULLIF(DATE '2024-05-06', 1)) AS SIGNED)
+o_dlit_decimal CAST(NULLIF(DATE '2024-05-06', 1) AS DECIMAL(30, 6))
+c_dlit_decimal CAST(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) AS DECIMAL(30, 6))
+k_dlit_decimal CAST(CONCAT(NULLIF(DATE '2024-05-06', 1)) AS DECIMAL(30, 6))
+o_dlit_double CAST(NULLIF(DATE '2024-05-06', 1) AS DOUBLE)
+c_dlit_double CAST(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) AS DOUBLE)
+k_dlit_double CAST(CONCAT(NULLIF(DATE '2024-05-06', 1)) AS DOUBLE)
+o_dlit_bool NULLIF(DATE '2024-05-06', 1) AND TRUE
+c_dlit_bool CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) AND TRUE
+k_dlit_bool CONCAT(NULLIF(DATE '2024-05-06', 1)) AND TRUE
+o_dlit_like NULLIF(DATE '2024-05-06', 1) LIKE '2024%'
+c_dlit_like CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) LIKE '2024%'
+k_dlit_like CONCAT(NULLIF(DATE '2024-05-06', 1)) LIKE '2024%'
+o_dlit_in NULLIF(DATE '2024-05-06', 1) IN ('2024-05-06', 'x')
+c_dlit_in CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) IN ('2024-05-06', 'x')
+k_dlit_in CONCAT(NULLIF(DATE '2024-05-06', 1)) IN ('2024-05-06', 'x')
+o_dlit_between NULLIF(DATE '2024-05-06', 1) BETWEEN '2024-01-01' AND '2024-12-31'
+c_dlit_between CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) BETWEEN '2024-01-01' AND '2024-12-31'
+k_dlit_between CONCAT(NULLIF(DATE '2024-05-06', 1)) BETWEEN '2024-01-01' AND '2024-12-31'
+o_dlit_cmp_d NULLIF(DATE '2024-05-06', 1) = d
+c_dlit_cmp_d CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) = d
+k_dlit_cmp_d CONCAT(NULLIF(DATE '2024-05-06', 1)) = d
+o_dlit_cmp_t NULLIF(DATE '2024-05-06', 1) = t
+c_dlit_cmp_t CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) = t
+k_dlit_cmp_t CONCAT(NULLIF(DATE '2024-05-06', 1)) = t
+o_dlit_date CAST(NULLIF(DATE '2024-05-06', 1) AS DATE)
+c_dlit_date CAST(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) AS DATE)
+k_dlit_date CAST(CONCAT(NULLIF(DATE '2024-05-06', 1)) AS DATE)
+o_dlit_datetime CAST(NULLIF(DATE '2024-05-06', 1) AS DATETIME)
+c_dlit_datetime CAST(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) AS DATETIME)
+k_dlit_datetime CAST(CONCAT(NULLIF(DATE '2024-05-06', 1)) AS DATETIME)
+o_dlit_datetime6 CAST(NULLIF(DATE '2024-05-06', 1) AS DATETIME(6))
+c_dlit_datetime6 CAST(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) AS DATETIME(6))
+k_dlit_datetime6 CAST(CONCAT(NULLIF(DATE '2024-05-06', 1)) AS DATETIME(6))
+o_dlit_time CAST(NULLIF(DATE '2024-05-06', 1) AS TIME)
+c_dlit_time CAST(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) AS TIME)
+k_dlit_time CAST(CONCAT(NULLIF(DATE '2024-05-06', 1)) AS TIME)
+o_dlit_time6 CAST(NULLIF(DATE '2024-05-06', 1) AS TIME(6))
+c_dlit_time6 CAST(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) AS TIME(6))
+k_dlit_time6 CAST(CONCAT(NULLIF(DATE '2024-05-06', 1)) AS TIME(6))
+o_dlit_char CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR)
+c_dlit_char CAST(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) AS CHAR)
+k_dlit_char CAST(CONCAT(NULLIF(DATE '2024-05-06', 1)) AS CHAR)
+o_dlit_binary CAST(NULLIF(DATE '2024-05-06', 1) AS BINARY)
+c_dlit_binary CAST(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR) AS BINARY)
+k_dlit_binary CAST(CONCAT(NULLIF(DATE '2024-05-06', 1)) AS BINARY)
+o_dlit_hex HEX(NULLIF(DATE '2024-05-06', 1))
+c_dlit_hex HEX(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR))
+k_dlit_hex HEX(CONCAT(NULLIF(DATE '2024-05-06', 1)))
+o_dlit_upper UPPER(NULLIF(DATE '2024-05-06', 1))
+c_dlit_upper UPPER(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR))
+k_dlit_upper UPPER(CONCAT(NULLIF(DATE '2024-05-06', 1)))
+o_dlit_json JSON_ARRAY(NULLIF(DATE '2024-05-06', 1))
+c_dlit_json JSON_ARRAY(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR))
+k_dlit_json JSON_ARRAY(CONCAT(NULLIF(DATE '2024-05-06', 1)))
+o_dlit_sec TIME_TO_SEC(NULLIF(DATE '2024-05-06', 1))
+c_dlit_sec TIME_TO_SEC(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR))
+k_dlit_sec TIME_TO_SEC(CONCAT(NULLIF(DATE '2024-05-06', 1)))
+o_dlit_abs ABS(NULLIF(DATE '2024-05-06', 1))
+c_dlit_abs ABS(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR))
+k_dlit_abs ABS(CONCAT(NULLIF(DATE '2024-05-06', 1)))
+o_dlit_floor FLOOR(NULLIF(DATE '2024-05-06', 1))
+c_dlit_floor FLOOR(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR))
+k_dlit_floor FLOOR(CONCAT(NULLIF(DATE '2024-05-06', 1)))
+o_dlit_sqrt SQRT(NULLIF(DATE '2024-05-06', 1))
+c_dlit_sqrt SQRT(CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR))
+k_dlit_sqrt SQRT(CONCAT(NULLIF(DATE '2024-05-06', 1)))
+o_tlit_plain NULLIF(TIME '10:20:30.5', 1)
+c_tlit_plain CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR)
+k_tlit_plain CONCAT(NULLIF(TIME '10:20:30.5', 1))
+o_tlit_plus NULLIF(TIME '10:20:30.5', 1) + 0
+c_tlit_plus CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) + 0
+k_tlit_plus CONCAT(NULLIF(TIME '10:20:30.5', 1)) + 0
+o_tlit_plusd NULLIF(TIME '10:20:30.5', 1) + 0.0
+c_tlit_plusd CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) + 0.0
+k_tlit_plusd CONCAT(NULLIF(TIME '10:20:30.5', 1)) + 0.0
+o_tlit_div NULLIF(TIME '10:20:30.5', 1) / 7
+c_tlit_div CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) / 7
+k_tlit_div CONCAT(NULLIF(TIME '10:20:30.5', 1)) / 7
+o_tlit_mul NULLIF(TIME '10:20:30.5', 1) * 1.5
+c_tlit_mul CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) * 1.5
+k_tlit_mul CONCAT(NULLIF(TIME '10:20:30.5', 1)) * 1.5
+o_tlit_concat CONCAT(NULLIF(TIME '10:20:30.5', 1))
+c_tlit_concat CONCAT(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR))
+k_tlit_concat CONCAT(CONCAT(NULLIF(TIME '10:20:30.5', 1)))
+o_tlit_len LENGTH(NULLIF(TIME '10:20:30.5', 1))
+c_tlit_len LENGTH(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR))
+k_tlit_len LENGTH(CONCAT(NULLIF(TIME '10:20:30.5', 1)))
+o_tlit_cmp_str NULLIF(TIME '10:20:30.5', 1) < '2024-05-10'
+c_tlit_cmp_str CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) < '2024-05-10'
+k_tlit_cmp_str CONCAT(NULLIF(TIME '10:20:30.5', 1)) < '2024-05-10'
+o_tlit_cmp_int NULLIF(TIME '10:20:30.5', 1) < 20240510
+c_tlit_cmp_int CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) < 20240510
+k_tlit_cmp_int CONCAT(NULLIF(TIME '10:20:30.5', 1)) < 20240510
+o_tlit_isnull NULLIF(TIME '10:20:30.5', 1) IS NULL
+c_tlit_isnull CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) IS NULL
+k_tlit_isnull CONCAT(NULLIF(TIME '10:20:30.5', 1)) IS NULL
+o_tlit_year YEAR(NULLIF(TIME '10:20:30.5', 1))
+c_tlit_year YEAR(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR))
+k_tlit_year YEAR(CONCAT(NULLIF(TIME '10:20:30.5', 1)))
+o_tlit_hour HOUR(NULLIF(TIME '10:20:30.5', 1))
+c_tlit_hour HOUR(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR))
+k_tlit_hour HOUR(CONCAT(NULLIF(TIME '10:20:30.5', 1)))
+o_tlit_ifnull IFNULL(NULLIF(TIME '10:20:30.5', 1), 'x')
+c_tlit_ifnull IFNULL(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR), 'x')
+k_tlit_ifnull IFNULL(CONCAT(NULLIF(TIME '10:20:30.5', 1)), 'x')
+o_tlit_coalesce COALESCE(NULLIF(TIME '10:20:30.5', 1), d)
+c_tlit_coalesce COALESCE(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR), d)
+k_tlit_coalesce COALESCE(CONCAT(NULLIF(TIME '10:20:30.5', 1)), d)
+o_tlit_greatest GREATEST(NULLIF(TIME '10:20:30.5', 1), d)
+c_tlit_greatest GREATEST(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR), d)
+k_tlit_greatest GREATEST(CONCAT(NULLIF(TIME '10:20:30.5', 1)), d)
+o_tlit_if IF(TRUE, NULLIF(TIME '10:20:30.5', 1), NULL)
+c_tlit_if IF(TRUE, CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR), NULL)
+k_tlit_if IF(TRUE, CONCAT(NULLIF(TIME '10:20:30.5', 1)), NULL)
+o_tlit_datediff DATEDIFF(NULLIF(TIME '10:20:30.5', 1), '2024-01-01')
+c_tlit_datediff DATEDIFF(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR), '2024-01-01')
+k_tlit_datediff DATEDIFF(CONCAT(NULLIF(TIME '10:20:30.5', 1)), '2024-01-01')
+o_tlit_dformat DATE_FORMAT(NULLIF(TIME '10:20:30.5', 1), '%Y')
+c_tlit_dformat DATE_FORMAT(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR), '%Y')
+k_tlit_dformat DATE_FORMAT(CONCAT(NULLIF(TIME '10:20:30.5', 1)), '%Y')
+o_tlit_unix UNIX_TIMESTAMP(NULLIF(TIME '10:20:30.5', 1))
+c_tlit_unix UNIX_TIMESTAMP(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR))
+k_tlit_unix UNIX_TIMESTAMP(CONCAT(NULLIF(TIME '10:20:30.5', 1)))
+o_tlit_round ROUND(NULLIF(TIME '10:20:30.5', 1))
+c_tlit_round ROUND(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR))
+k_tlit_round ROUND(CONCAT(NULLIF(TIME '10:20:30.5', 1)))
+o_tlit_round2 ROUND(NULLIF(TIME '10:20:30.5', 1), 2)
+c_tlit_round2 ROUND(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR), 2)
+k_tlit_round2 ROUND(CONCAT(NULLIF(TIME '10:20:30.5', 1)), 2)
+o_tlit_sum SUM(NULLIF(TIME '10:20:30.5', 1))
+c_tlit_sum SUM(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR))
+k_tlit_sum SUM(CONCAT(NULLIF(TIME '10:20:30.5', 1)))
+o_tlit_avg AVG(NULLIF(TIME '10:20:30.5', 1))
+c_tlit_avg AVG(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR))
+k_tlit_avg AVG(CONCAT(NULLIF(TIME '10:20:30.5', 1)))
+o_tlit_max MAX(NULLIF(TIME '10:20:30.5', 1))
+c_tlit_max MAX(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR))
+k_tlit_max MAX(CONCAT(NULLIF(TIME '10:20:30.5', 1)))
+o_tlit_signed CAST(NULLIF(TIME '10:20:30.5', 1) AS SIGNED)
+c_tlit_signed CAST(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) AS SIGNED)
+k_tlit_signed CAST(CONCAT(NULLIF(TIME '10:20:30.5', 1)) AS SIGNED)
+o_tlit_decimal CAST(NULLIF(TIME '10:20:30.5', 1) AS DECIMAL(30, 6))
+c_tlit_decimal CAST(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) AS DECIMAL(30, 6))
+k_tlit_decimal CAST(CONCAT(NULLIF(TIME '10:20:30.5', 1)) AS DECIMAL(30, 6))
+o_tlit_double CAST(NULLIF(TIME '10:20:30.5', 1) AS DOUBLE)
+c_tlit_double CAST(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) AS DOUBLE)
+k_tlit_double CAST(CONCAT(NULLIF(TIME '10:20:30.5', 1)) AS DOUBLE)
+o_tlit_bool NULLIF(TIME '10:20:30.5', 1) AND TRUE
+c_tlit_bool CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) AND TRUE
+k_tlit_bool CONCAT(NULLIF(TIME '10:20:30.5', 1)) AND TRUE
+o_tlit_like NULLIF(TIME '10:20:30.5', 1) LIKE '2024%'
+c_tlit_like CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) LIKE '2024%'
+k_tlit_like CONCAT(NULLIF(TIME '10:20:30.5', 1)) LIKE '2024%'
+o_tlit_in NULLIF(TIME '10:20:30.5', 1) IN ('2024-05-06', 'x')
+c_tlit_in CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) IN ('2024-05-06', 'x')
+k_tlit_in CONCAT(NULLIF(TIME '10:20:30.5', 1)) IN ('2024-05-06', 'x')
+o_tlit_between NULLIF(TIME '10:20:30.5', 1) BETWEEN '2024-01-01' AND '2024-12-31'
+c_tlit_between CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) BETWEEN '2024-01-01' AND '2024-12-31'
+k_tlit_between CONCAT(NULLIF(TIME '10:20:30.5', 1)) BETWEEN '2024-01-01' AND '2024-12-31'
+o_tlit_cmp_d NULLIF(TIME '10:20:30.5', 1) = d
+c_tlit_cmp_d CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) = d
+k_tlit_cmp_d CONCAT(NULLIF(TIME '10:20:30.5', 1)) = d
+o_tlit_cmp_t NULLIF(TIME '10:20:30.5', 1) = t
+c_tlit_cmp_t CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) = t
+k_tlit_cmp_t CONCAT(NULLIF(TIME '10:20:30.5', 1)) = t
+o_tlit_date CAST(NULLIF(TIME '10:20:30.5', 1) AS DATE)
+c_tlit_date CAST(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) AS DATE)
+k_tlit_date CAST(CONCAT(NULLIF(TIME '10:20:30.5', 1)) AS DATE)
+o_tlit_datetime CAST(NULLIF(TIME '10:20:30.5', 1) AS DATETIME)
+c_tlit_datetime CAST(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) AS DATETIME)
+k_tlit_datetime CAST(CONCAT(NULLIF(TIME '10:20:30.5', 1)) AS DATETIME)
+o_tlit_datetime6 CAST(NULLIF(TIME '10:20:30.5', 1) AS DATETIME(6))
+c_tlit_datetime6 CAST(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) AS DATETIME(6))
+k_tlit_datetime6 CAST(CONCAT(NULLIF(TIME '10:20:30.5', 1)) AS DATETIME(6))
+o_tlit_time CAST(NULLIF(TIME '10:20:30.5', 1) AS TIME)
+c_tlit_time CAST(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) AS TIME)
+k_tlit_time CAST(CONCAT(NULLIF(TIME '10:20:30.5', 1)) AS TIME)
+o_tlit_time6 CAST(NULLIF(TIME '10:20:30.5', 1) AS TIME(6))
+c_tlit_time6 CAST(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) AS TIME(6))
+k_tlit_time6 CAST(CONCAT(NULLIF(TIME '10:20:30.5', 1)) AS TIME(6))
+o_tlit_char CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR)
+c_tlit_char CAST(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) AS CHAR)
+k_tlit_char CAST(CONCAT(NULLIF(TIME '10:20:30.5', 1)) AS CHAR)
+o_tlit_binary CAST(NULLIF(TIME '10:20:30.5', 1) AS BINARY)
+c_tlit_binary CAST(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR) AS BINARY)
+k_tlit_binary CAST(CONCAT(NULLIF(TIME '10:20:30.5', 1)) AS BINARY)
+o_tlit_hex HEX(NULLIF(TIME '10:20:30.5', 1))
+c_tlit_hex HEX(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR))
+k_tlit_hex HEX(CONCAT(NULLIF(TIME '10:20:30.5', 1)))
+o_tlit_upper UPPER(NULLIF(TIME '10:20:30.5', 1))
+c_tlit_upper UPPER(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR))
+k_tlit_upper UPPER(CONCAT(NULLIF(TIME '10:20:30.5', 1)))
+o_tlit_json JSON_ARRAY(NULLIF(TIME '10:20:30.5', 1))
+c_tlit_json JSON_ARRAY(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR))
+k_tlit_json JSON_ARRAY(CONCAT(NULLIF(TIME '10:20:30.5', 1)))
+o_tlit_sec TIME_TO_SEC(NULLIF(TIME '10:20:30.5', 1))
+c_tlit_sec TIME_TO_SEC(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR))
+k_tlit_sec TIME_TO_SEC(CONCAT(NULLIF(TIME '10:20:30.5', 1)))
+o_tlit_abs ABS(NULLIF(TIME '10:20:30.5', 1))
+c_tlit_abs ABS(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR))
+k_tlit_abs ABS(CONCAT(NULLIF(TIME '10:20:30.5', 1)))
+o_tlit_floor FLOOR(NULLIF(TIME '10:20:30.5', 1))
+c_tlit_floor FLOOR(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR))
+k_tlit_floor FLOOR(CONCAT(NULLIF(TIME '10:20:30.5', 1)))
+o_tlit_sqrt SQRT(NULLIF(TIME '10:20:30.5', 1))
+c_tlit_sqrt SQRT(CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR))
+k_tlit_sqrt SQRT(CONCAT(NULLIF(TIME '10:20:30.5', 1)))
+o_tslit_plain NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)
+c_tslit_plain CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR)
+k_tslit_plain CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+o_tslit_plus NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) + 0
+c_tslit_plus CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) + 0
+k_tslit_plus CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) + 0
+o_tslit_plusd NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) + 0.0
+c_tslit_plusd CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) + 0.0
+k_tslit_plusd CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) + 0.0
+o_tslit_div NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) / 7
+c_tslit_div CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) / 7
+k_tslit_div CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) / 7
+o_tslit_mul NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) * 1.5
+c_tslit_mul CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) * 1.5
+k_tslit_mul CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) * 1.5
+o_tslit_concat CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+c_tslit_concat CONCAT(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR))
+k_tslit_concat CONCAT(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)))
+o_tslit_len LENGTH(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+c_tslit_len LENGTH(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR))
+k_tslit_len LENGTH(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)))
+o_tslit_cmp_str NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) < '2024-05-10'
+c_tslit_cmp_str CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) < '2024-05-10'
+k_tslit_cmp_str CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) < '2024-05-10'
+o_tslit_cmp_int NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) < 20240510
+c_tslit_cmp_int CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) < 20240510
+k_tslit_cmp_int CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) < 20240510
+o_tslit_isnull NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) IS NULL
+c_tslit_isnull CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) IS NULL
+k_tslit_isnull CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) IS NULL
+o_tslit_year YEAR(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+c_tslit_year YEAR(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR))
+k_tslit_year YEAR(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)))
+o_tslit_hour HOUR(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+c_tslit_hour HOUR(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR))
+k_tslit_hour HOUR(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)))
+o_tslit_ifnull IFNULL(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1), 'x')
+c_tslit_ifnull IFNULL(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR), 'x')
+k_tslit_ifnull IFNULL(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)), 'x')
+o_tslit_coalesce COALESCE(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1), d)
+c_tslit_coalesce COALESCE(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR), d)
+k_tslit_coalesce COALESCE(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)), d)
+o_tslit_greatest GREATEST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1), d)
+c_tslit_greatest GREATEST(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR), d)
+k_tslit_greatest GREATEST(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)), d)
+o_tslit_if IF(TRUE, NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1), NULL)
+c_tslit_if IF(TRUE, CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR), NULL)
+k_tslit_if IF(TRUE, CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)), NULL)
+o_tslit_datediff DATEDIFF(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1), '2024-01-01')
+c_tslit_datediff DATEDIFF(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR), '2024-01-01')
+k_tslit_datediff DATEDIFF(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)), '2024-01-01')
+o_tslit_dformat DATE_FORMAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1), '%Y')
+c_tslit_dformat DATE_FORMAT(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR), '%Y')
+k_tslit_dformat DATE_FORMAT(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)), '%Y')
+o_tslit_unix UNIX_TIMESTAMP(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+c_tslit_unix UNIX_TIMESTAMP(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR))
+k_tslit_unix UNIX_TIMESTAMP(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)))
+o_tslit_round ROUND(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+c_tslit_round ROUND(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR))
+k_tslit_round ROUND(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)))
+o_tslit_round2 ROUND(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1), 2)
+c_tslit_round2 ROUND(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR), 2)
+k_tslit_round2 ROUND(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)), 2)
+o_tslit_sum SUM(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+c_tslit_sum SUM(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR))
+k_tslit_sum SUM(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)))
+o_tslit_avg AVG(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+c_tslit_avg AVG(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR))
+k_tslit_avg AVG(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)))
+o_tslit_max MAX(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+c_tslit_max MAX(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR))
+k_tslit_max MAX(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)))
+o_tslit_signed CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS SIGNED)
+c_tslit_signed CAST(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) AS SIGNED)
+k_tslit_signed CAST(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) AS SIGNED)
+o_tslit_decimal CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS DECIMAL(30, 6))
+c_tslit_decimal CAST(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) AS DECIMAL(30, 6))
+k_tslit_decimal CAST(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) AS DECIMAL(30, 6))
+o_tslit_double CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS DOUBLE)
+c_tslit_double CAST(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) AS DOUBLE)
+k_tslit_double CAST(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) AS DOUBLE)
+o_tslit_bool NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AND TRUE
+c_tslit_bool CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) AND TRUE
+k_tslit_bool CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) AND TRUE
+o_tslit_like NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) LIKE '2024%'
+c_tslit_like CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) LIKE '2024%'
+k_tslit_like CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) LIKE '2024%'
+o_tslit_in NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) IN ('2024-05-06', 'x')
+c_tslit_in CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) IN ('2024-05-06', 'x')
+k_tslit_in CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) IN ('2024-05-06', 'x')
+o_tslit_between NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) BETWEEN '2024-01-01' AND '2024-12-31'
+c_tslit_between CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) BETWEEN '2024-01-01' AND '2024-12-31'
+k_tslit_between CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) BETWEEN '2024-01-01' AND '2024-12-31'
+o_tslit_cmp_d NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) = d
+c_tslit_cmp_d CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) = d
+k_tslit_cmp_d CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) = d
+o_tslit_cmp_t NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) = t
+c_tslit_cmp_t CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) = t
+k_tslit_cmp_t CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) = t
+o_tslit_date CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS DATE)
+c_tslit_date CAST(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) AS DATE)
+k_tslit_date CAST(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) AS DATE)
+o_tslit_datetime CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS DATETIME)
+c_tslit_datetime CAST(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) AS DATETIME)
+k_tslit_datetime CAST(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) AS DATETIME)
+o_tslit_datetime6 CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS DATETIME(6))
+c_tslit_datetime6 CAST(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) AS DATETIME(6))
+k_tslit_datetime6 CAST(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) AS DATETIME(6))
+o_tslit_time CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS TIME)
+c_tslit_time CAST(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) AS TIME)
+k_tslit_time CAST(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) AS TIME)
+o_tslit_time6 CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS TIME(6))
+c_tslit_time6 CAST(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) AS TIME(6))
+k_tslit_time6 CAST(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) AS TIME(6))
+o_tslit_char CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR)
+c_tslit_char CAST(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) AS CHAR)
+k_tslit_char CAST(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) AS CHAR)
+o_tslit_binary CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS BINARY)
+c_tslit_binary CAST(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR) AS BINARY)
+k_tslit_binary CAST(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)) AS BINARY)
+o_tslit_hex HEX(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+c_tslit_hex HEX(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR))
+k_tslit_hex HEX(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)))
+o_tslit_upper UPPER(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+c_tslit_upper UPPER(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR))
+k_tslit_upper UPPER(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)))
+o_tslit_json JSON_ARRAY(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+c_tslit_json JSON_ARRAY(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR))
+k_tslit_json JSON_ARRAY(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)))
+o_tslit_sec TIME_TO_SEC(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+c_tslit_sec TIME_TO_SEC(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR))
+k_tslit_sec TIME_TO_SEC(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)))
+o_tslit_abs ABS(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+c_tslit_abs ABS(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR))
+k_tslit_abs ABS(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)))
+o_tslit_floor FLOOR(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+c_tslit_floor FLOOR(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR))
+k_tslit_floor FLOOR(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)))
+o_tslit_sqrt SQRT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+c_tslit_sqrt SQRT(CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR))
+k_tslit_sqrt SQRT(CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)))
+o_dtint_plain NULLIF(dt + INTERVAL 1 DAY, 1)
+c_dtint_plain CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR)
+k_dtint_plain CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1))
+o_dtint_plus NULLIF(dt + INTERVAL 1 DAY, 1) + 0
+c_dtint_plus CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) + 0
+k_dtint_plus CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) + 0
+o_dtint_plusd NULLIF(dt + INTERVAL 1 DAY, 1) + 0.0
+c_dtint_plusd CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) + 0.0
+k_dtint_plusd CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) + 0.0
+o_dtint_div NULLIF(dt + INTERVAL 1 DAY, 1) / 7
+c_dtint_div CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) / 7
+k_dtint_div CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) / 7
+o_dtint_mul NULLIF(dt + INTERVAL 1 DAY, 1) * 1.5
+c_dtint_mul CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) * 1.5
+k_dtint_mul CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) * 1.5
+o_dtint_concat CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1))
+c_dtint_concat CONCAT(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR))
+k_dtint_concat CONCAT(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)))
+o_dtint_len LENGTH(NULLIF(dt + INTERVAL 1 DAY, 1))
+c_dtint_len LENGTH(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR))
+k_dtint_len LENGTH(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)))
+o_dtint_cmp_str NULLIF(dt + INTERVAL 1 DAY, 1) < '2024-05-10'
+c_dtint_cmp_str CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) < '2024-05-10'
+k_dtint_cmp_str CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) < '2024-05-10'
+o_dtint_cmp_int NULLIF(dt + INTERVAL 1 DAY, 1) < 20240510
+c_dtint_cmp_int CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) < 20240510
+k_dtint_cmp_int CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) < 20240510
+o_dtint_isnull NULLIF(dt + INTERVAL 1 DAY, 1) IS NULL
+c_dtint_isnull CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) IS NULL
+k_dtint_isnull CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) IS NULL
+o_dtint_year YEAR(NULLIF(dt + INTERVAL 1 DAY, 1))
+c_dtint_year YEAR(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR))
+k_dtint_year YEAR(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)))
+o_dtint_hour HOUR(NULLIF(dt + INTERVAL 1 DAY, 1))
+c_dtint_hour HOUR(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR))
+k_dtint_hour HOUR(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)))
+o_dtint_ifnull IFNULL(NULLIF(dt + INTERVAL 1 DAY, 1), 'x')
+c_dtint_ifnull IFNULL(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR), 'x')
+k_dtint_ifnull IFNULL(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)), 'x')
+o_dtint_coalesce COALESCE(NULLIF(dt + INTERVAL 1 DAY, 1), d)
+c_dtint_coalesce COALESCE(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR), d)
+k_dtint_coalesce COALESCE(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)), d)
+o_dtint_greatest GREATEST(NULLIF(dt + INTERVAL 1 DAY, 1), d)
+c_dtint_greatest GREATEST(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR), d)
+k_dtint_greatest GREATEST(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)), d)
+o_dtint_if IF(TRUE, NULLIF(dt + INTERVAL 1 DAY, 1), NULL)
+c_dtint_if IF(TRUE, CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR), NULL)
+k_dtint_if IF(TRUE, CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)), NULL)
+o_dtint_datediff DATEDIFF(NULLIF(dt + INTERVAL 1 DAY, 1), '2024-01-01')
+c_dtint_datediff DATEDIFF(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR), '2024-01-01')
+k_dtint_datediff DATEDIFF(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)), '2024-01-01')
+o_dtint_dformat DATE_FORMAT(NULLIF(dt + INTERVAL 1 DAY, 1), '%Y')
+c_dtint_dformat DATE_FORMAT(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR), '%Y')
+k_dtint_dformat DATE_FORMAT(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)), '%Y')
+o_dtint_unix UNIX_TIMESTAMP(NULLIF(dt + INTERVAL 1 DAY, 1))
+c_dtint_unix UNIX_TIMESTAMP(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR))
+k_dtint_unix UNIX_TIMESTAMP(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)))
+o_dtint_round ROUND(NULLIF(dt + INTERVAL 1 DAY, 1))
+c_dtint_round ROUND(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR))
+k_dtint_round ROUND(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)))
+o_dtint_round2 ROUND(NULLIF(dt + INTERVAL 1 DAY, 1), 2)
+c_dtint_round2 ROUND(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR), 2)
+k_dtint_round2 ROUND(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)), 2)
+o_dtint_sum SUM(NULLIF(dt + INTERVAL 1 DAY, 1))
+c_dtint_sum SUM(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR))
+k_dtint_sum SUM(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)))
+o_dtint_avg AVG(NULLIF(dt + INTERVAL 1 DAY, 1))
+c_dtint_avg AVG(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR))
+k_dtint_avg AVG(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)))
+o_dtint_max MAX(NULLIF(dt + INTERVAL 1 DAY, 1))
+c_dtint_max MAX(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR))
+k_dtint_max MAX(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)))
+o_dtint_signed CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS SIGNED)
+c_dtint_signed CAST(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) AS SIGNED)
+k_dtint_signed CAST(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) AS SIGNED)
+o_dtint_decimal CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS DECIMAL(30, 6))
+c_dtint_decimal CAST(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) AS DECIMAL(30, 6))
+k_dtint_decimal CAST(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) AS DECIMAL(30, 6))
+o_dtint_double CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS DOUBLE)
+c_dtint_double CAST(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) AS DOUBLE)
+k_dtint_double CAST(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) AS DOUBLE)
+o_dtint_bool NULLIF(dt + INTERVAL 1 DAY, 1) AND TRUE
+c_dtint_bool CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) AND TRUE
+k_dtint_bool CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) AND TRUE
+o_dtint_like NULLIF(dt + INTERVAL 1 DAY, 1) LIKE '2024%'
+c_dtint_like CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) LIKE '2024%'
+k_dtint_like CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) LIKE '2024%'
+o_dtint_in NULLIF(dt + INTERVAL 1 DAY, 1) IN ('2024-05-06', 'x')
+c_dtint_in CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) IN ('2024-05-06', 'x')
+k_dtint_in CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) IN ('2024-05-06', 'x')
+o_dtint_between NULLIF(dt + INTERVAL 1 DAY, 1) BETWEEN '2024-01-01' AND '2024-12-31'
+c_dtint_between CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) BETWEEN '2024-01-01' AND '2024-12-31'
+k_dtint_between CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) BETWEEN '2024-01-01' AND '2024-12-31'
+o_dtint_cmp_d NULLIF(dt + INTERVAL 1 DAY, 1) = d
+c_dtint_cmp_d CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) = d
+k_dtint_cmp_d CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) = d
+o_dtint_cmp_t NULLIF(dt + INTERVAL 1 DAY, 1) = t
+c_dtint_cmp_t CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) = t
+k_dtint_cmp_t CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) = t
+o_dtint_date CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS DATE)
+c_dtint_date CAST(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) AS DATE)
+k_dtint_date CAST(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) AS DATE)
+o_dtint_datetime CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS DATETIME)
+c_dtint_datetime CAST(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) AS DATETIME)
+k_dtint_datetime CAST(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) AS DATETIME)
+o_dtint_datetime6 CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS DATETIME(6))
+c_dtint_datetime6 CAST(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) AS DATETIME(6))
+k_dtint_datetime6 CAST(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) AS DATETIME(6))
+o_dtint_time CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS TIME)
+c_dtint_time CAST(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) AS TIME)
+k_dtint_time CAST(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) AS TIME)
+o_dtint_time6 CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS TIME(6))
+c_dtint_time6 CAST(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) AS TIME(6))
+k_dtint_time6 CAST(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) AS TIME(6))
+o_dtint_char CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR)
+c_dtint_char CAST(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) AS CHAR)
+k_dtint_char CAST(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) AS CHAR)
+o_dtint_binary CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS BINARY)
+c_dtint_binary CAST(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR) AS BINARY)
+k_dtint_binary CAST(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)) AS BINARY)
+o_dtint_hex HEX(NULLIF(dt + INTERVAL 1 DAY, 1))
+c_dtint_hex HEX(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR))
+k_dtint_hex HEX(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)))
+o_dtint_upper UPPER(NULLIF(dt + INTERVAL 1 DAY, 1))
+c_dtint_upper UPPER(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR))
+k_dtint_upper UPPER(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)))
+o_dtint_json JSON_ARRAY(NULLIF(dt + INTERVAL 1 DAY, 1))
+c_dtint_json JSON_ARRAY(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR))
+k_dtint_json JSON_ARRAY(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)))
+o_dtint_sec TIME_TO_SEC(NULLIF(dt + INTERVAL 1 DAY, 1))
+c_dtint_sec TIME_TO_SEC(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR))
+k_dtint_sec TIME_TO_SEC(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)))
+o_dtint_abs ABS(NULLIF(dt + INTERVAL 1 DAY, 1))
+c_dtint_abs ABS(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR))
+k_dtint_abs ABS(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)))
+o_dtint_floor FLOOR(NULLIF(dt + INTERVAL 1 DAY, 1))
+c_dtint_floor FLOOR(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR))
+k_dtint_floor FLOOR(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)))
+o_dtint_sqrt SQRT(NULLIF(dt + INTERVAL 1 DAY, 1))
+c_dtint_sqrt SQRT(CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR))
+k_dtint_sqrt SQRT(CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1)))
