@@ -41,9 +41,7 @@ describe('App', () => {
   it('shows the version of Prisme beneath its name', () => {
     const wrapper = mount(App)
     expect(__PRISME_VERSION__).toMatch(/^\d+\.\d+\.\d+/)
-    expect(wrapper.find('header [title="Version de Prisme"]').text()).toBe(
-      `v${__PRISME_VERSION__}`,
-    )
+    expect(wrapper.find('header [title="Version de Prisme"]').text()).toBe(`v${__PRISME_VERSION__}`)
   })
 
   it('puts the options button in the top bar, above the explorer', async () => {
