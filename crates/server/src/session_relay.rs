@@ -33,7 +33,9 @@ use prisme_connectors::mysql::{MysqlTarget, ServerInfo};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, sleep_until};
+use tracing::Instrument;
 
+use crate::api_log;
 use crate::query_session::{Cancellation, ClientMessage, ServerMessage, SessionRequest};
 use crate::recorder::Recorder;
 
@@ -176,16 +178,20 @@ impl Relay {
         }
     }
 
-    /// Attaches `socket`: the reading of its messages starts.
+    /// Attaches `socket`: the reading of its messages starts, in the span of
+    /// the session.
     fn attach(&self, socket: WebSocket) -> Attached {
         let (sink, incoming) = socket.split();
-        let reader = tokio::spawn(read_messages(
-            incoming,
-            self.requests.clone(),
-            self.outbox.clone(),
-            Arc::clone(&self.cancellation),
-            self.target.clone(),
-        ));
+        let reader = tokio::spawn(
+            read_messages(
+                incoming,
+                self.requests.clone(),
+                self.outbox.clone(),
+                Arc::clone(&self.cancellation),
+                self.target.clone(),
+            )
+            .in_current_span(),
+        );
         Attached { sink, reader }
     }
 
@@ -284,14 +290,16 @@ async fn until(deadline: Option<Instant>) {
     }
 }
 
-/// Sends a message to the client, in JSON.
+/// Sends a message to the client, in JSON, and writes it in the log of the API.
 async fn send(
     sink: &mut SplitSink<WebSocket, Message>,
     message: &ServerMessage,
 ) -> Result<(), axum::Error> {
     let json = serde_json::to_string(message)
         .expect("a server message always serialises: its fields are plain data");
-    sink.send(Message::Text(json.into())).await
+    sink.send(Message::Text(json.into())).await?;
+    api_log::sent(message);
+    Ok(())
 }
 
 /// Reads the client's messages as long as its WebSocket is open.
@@ -311,7 +319,9 @@ async fn read_messages(
             // Ping, pong and binary are ignored; Close ends the loop on the next turn.
             continue;
         };
-        match serde_json::from_str::<ClientMessage>(text.as_str()) {
+        let message = serde_json::from_str::<ClientMessage>(text.as_str());
+        api_log::received(message.as_ref().ok());
+        match message {
             Ok(ClientMessage::Run(request)) => {
                 if requests
                     .send(SessionRequest::Run {

@@ -77,6 +77,7 @@ use std::time::Duration;
 use axum::extract::ws::WebSocket;
 use prisme_connectors::mysql::MysqlTarget;
 use tokio::sync::{mpsc, watch};
+use tracing::Instrument;
 
 use crate::api::AppState;
 use crate::recorder::Recorder;
@@ -93,8 +94,10 @@ const OUTBOX_SIZE: usize = 64;
 ///
 /// Two tasks share the session: one runs the client's requests (`serve`), the
 /// other relays the messages to the current WebSocket and, for an editor's
-/// session, saves them (`session_relay.rs`). Without an attached WebSocket for
-/// `keep_alive`, the session stops; `on_end` is then called.
+/// session, saves them (`session_relay.rs`). Both run in the current span,
+/// that of the session in the log of the API (`api_log.rs`). Without an
+/// attached WebSocket for `keep_alive`, the session stops; `on_end` is then
+/// called.
 pub(crate) fn start(
     socket: WebSocket,
     state: AppState,
@@ -121,15 +124,18 @@ pub(crate) fn start(
         keep_alive,
         on_end: Some(on_end),
     };
-    tokio::spawn(serve(
-        Outbox { sender },
-        requests,
-        stop,
-        state,
-        user_id,
-        target,
-        cancellation,
-    ));
-    tokio::spawn(relay.run(socket));
+    tokio::spawn(
+        serve(
+            Outbox { sender },
+            requests,
+            stop,
+            state,
+            user_id,
+            target,
+            cancellation,
+        )
+        .in_current_span(),
+    );
+    tokio::spawn(relay.run(socket).in_current_span());
     SessionHandle::new(commands)
 }

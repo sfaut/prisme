@@ -59,6 +59,12 @@ pub struct Config {
     /// saves the new answers.
     #[arg(long)]
     pub setup: bool,
+
+    /// Writes the use of the API in the log: each request (method, path,
+    /// status, duration) and each message of the query sessions, summed up
+    /// without SQL texts, values or passwords.
+    #[arg(long)]
+    pub verbose: bool,
 }
 
 impl Config {
@@ -108,6 +114,12 @@ mod tests {
     fn rejects_network_addresses() {
         assert!(config_listening_on("0.0.0.0:8484").validate().is_err());
         assert!(config_listening_on("192.168.1.10:8484").validate().is_err());
+    }
+
+    #[test]
+    fn verbose_is_off_unless_asked() {
+        assert!(!Config::parse_from(["prisme"]).verbose);
+        assert!(Config::parse_from(["prisme", "--verbose"]).verbose);
     }
 
     #[test]

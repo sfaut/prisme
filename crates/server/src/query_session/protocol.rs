@@ -46,14 +46,14 @@ pub(crate) struct QueryRequest {
     /// cursor runs. Absent: the queries of `selection`, or all of them, in
     /// parallel.
     #[ts(optional)]
-    pub(super) cursor: Option<usize>,
+    pub(crate) cursor: Option<usize>,
     /// Passages selected in the text, without a cursor: the queries they
     /// touch run, in parallel. Absent or empty: all the queries.
     #[ts(optional)]
-    pub(super) selection: Option<Vec<SelectionRange>>,
+    pub(crate) selection: Option<Vec<SelectionRange>>,
     /// Row limit for these queries only, among the allowed choices.
     #[ts(optional)]
-    pub(super) row_limit: Option<u32>,
+    pub(crate) row_limit: Option<u32>,
 }
 
 /// Passage of the editor's text selected by the user.

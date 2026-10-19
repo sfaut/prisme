@@ -114,7 +114,7 @@ Run from the repository root. The Rust version is pinned by `rust-toolchain.toml
 
 ```
 cargo run                         # starts Prisme on http://127.0.0.1:8484
-cargo run -- --help               # options (--listen, --data-dir, --user-email, --setup)
+cargo run -- --help               # options (--listen, --data-dir, --user-email, --setup, --verbose)
 cargo run -- --data-dir ./tmp     # throwaway data folder, outside %APPDATA%\Prisme
 cargo test                        # tests of all crates, without Docker
 cargo test -- --include-ignored   # also tests on real servers (Docker Desktop running)

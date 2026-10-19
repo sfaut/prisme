@@ -1,6 +1,7 @@
 //! Entry point of Prisme.
 //!
-//! Reads the configuration, announces the version of Prisme, prepares the
+//! Reads the configuration, starts the log (with that of the API under
+//! `--verbose`, `api_log.rs`), announces the version of Prisme, prepares the
 //! data folder (master key and internal database), settles the listening
 //! port and the single user of the workstation mode, asked on first launch
 //! (`setup.rs`), then starts the web server: the API and the interface
@@ -9,6 +10,7 @@
 mod analyze;
 mod api;
 mod api_error;
+mod api_log;
 mod auth;
 mod config;
 mod connections;
@@ -37,12 +39,15 @@ use crate::config::Config;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Log level adjustable through the RUST_LOG variable (e.g. RUST_LOG=debug).
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+    let config = Config::parse();
+
+    // Log level adjustable through the RUST_LOG variable (e.g. RUST_LOG=debug);
+    // --verbose adds the log of the API to it.
+    let mut filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    if config.verbose {
+        filter = filter.add_directive(api_log::directive());
+    }
+    tracing_subscriber::fmt().with_env_filter(filter).init();
 
     // A panic goes to the logs, with its location and message, before the default
     // hook prints its backtrace on the standard error output.
@@ -52,7 +57,6 @@ async fn main() -> anyhow::Result<()> {
         default_hook(info);
     }));
 
-    let config = Config::parse();
     tracing::info!("Prisme v{}", env!("CARGO_PKG_VERSION"));
     config.validate()?;
 

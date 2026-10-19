@@ -39,10 +39,12 @@ use prisme_dialects::beautify::{BeautifyOptions, beautify_with};
 use prisme_dialects::keywords::keywords;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use tracing::Instrument;
 use ts_rs::TS;
 
 use crate::analyze::{self, Analysis, AnalyzeRequest, dialect_of};
 use crate::api_error::ApiError;
+use crate::api_log;
 use crate::auth::CurrentUser;
 use crate::connections::{self, ConnectionSummary, NewConnection, ProbeRequest};
 use crate::editors;
@@ -146,6 +148,8 @@ pub fn router(state: AppState) -> Router {
         .merge(editors::routes())
         .fallback(web_assets::serve)
         .layer(middleware::from_fn(request_guard::local_only))
+        // Outermost layer: the requests refused by the guard are written too.
+        .layer(middleware::from_fn(api_log::requests))
         .with_state(state)
 }
 
@@ -239,9 +243,12 @@ async fn query_socket(
         })
         .await?;
     let target = connections::with_read_only(target.ok_or(ApiError::NotFound)?, read_only);
-    Ok(upgrade.on_upgrade(move |socket| async move {
-        let on_end = Box::new(|| {});
-        query_session::start(socket, state, user_id, target, None, Duration::ZERO, on_end);
+    Ok(upgrade.on_upgrade(move |socket| {
+        async move {
+            let on_end = Box::new(|| {});
+            query_session::start(socket, state, user_id, target, None, Duration::ZERO, on_end);
+        }
+        .instrument(api_log::connection_span(id))
     }))
 }
 
@@ -277,20 +284,23 @@ async fn editor_session(
         .ok_or(ApiError::NotFound)?;
     let target = connections::with_read_only(target, read_only);
     let keep_alive = Duration::from_secs(u64::from(minutes) * 60);
-    Ok(upgrade.on_upgrade(move |socket| async move {
-        let sessions = Arc::clone(&state.sessions);
-        sessions.attach(id, connection_id, socket, |socket, on_end| {
-            let recorder = Recorder::new(state.clone(), id);
-            query_session::start(
-                socket,
-                state,
-                user_id,
-                target,
-                Some(recorder),
-                keep_alive,
-                on_end,
-            )
-        });
+    Ok(upgrade.on_upgrade(move |socket| {
+        async move {
+            let sessions = Arc::clone(&state.sessions);
+            sessions.attach(id, connection_id, socket, |socket, on_end| {
+                let recorder = Recorder::new(state.clone(), id);
+                query_session::start(
+                    socket,
+                    state,
+                    user_id,
+                    target,
+                    Some(recorder),
+                    keep_alive,
+                    on_end,
+                )
+            });
+        }
+        .instrument(api_log::editor_span(id))
     }))
 }
 
