@@ -12,7 +12,8 @@
   and syntax errors are underlined, with their message on hover: the text
   is analysed by the server shortly after each keystroke. Ctrl+Enter
   (Cmd+Enter on Mac) emits `run` with the cursor position;
-  Ctrl+Shift+Enter emits `run-all`. Tab and Shift+Tab indent by stops of
+  Ctrl+Shift+Enter emits `run-all` with the selected passages (none: all
+  the queries). Tab and Shift+Tab indent by stops of
   four spaces, Enter goes to a new line at the indentation of the line it
   leaves (`editorIndent.ts`). Ctrl+Up and Ctrl+Down scroll the text by one
   line without moving the cursor (`editorScroll.ts`). The text binds with
@@ -31,6 +32,7 @@ import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
 import { analyzeSql } from '@/api/analyze'
 import type { DialectKeywords } from '@/api/generated/DialectKeywords'
 import type { Flavor } from '@/api/generated/Flavor'
+import type { SelectionRange } from '@/api/generated/SelectionRange'
 import { fetchKeywords } from '@/api/keywords'
 
 import { currentStatement, setStatements } from './currentStatement'
@@ -74,9 +76,10 @@ const emit = defineEmits<{
    */
   run: [cursor: number]
   /**
-   * The user asks to run all the queries (Ctrl+Shift+Enter).
+   * The user asks to run the queries the selected passages touch, or all of
+   * them if nothing is selected (Ctrl+Shift+Enter).
    */
-  'run-all': []
+  'run-all': [selection: SelectionRange[]]
 }>()
 
 const host = useTemplateRef<HTMLDivElement>('host')
@@ -199,8 +202,8 @@ onMounted(() => {
         },
         {
           key: 'Mod-Shift-Enter',
-          run: () => {
-            emit('run-all')
+          run: (editor) => {
+            emit('run-all', selectedPassages(editor))
             return true
           },
         },
@@ -255,6 +258,18 @@ onBeforeUnmount(() => {
   view?.destroy()
   view = null
 })
+
+/**
+ * Passages selected in the editor, in UTF-16 units; the cursors without a
+ * selection are left out.
+ *
+ * @param editor View of the editor.
+ */
+function selectedPassages(editor: EditorView): SelectionRange[] {
+  return editor.state.selection.ranges
+    .filter((range) => !range.empty)
+    .map((range) => ({ start: range.from, end: range.to }))
+}
 
 /**
  * Position of the cursor in the text, in UTF-16 units (0 before mounting).

@@ -43,12 +43,27 @@ pub(crate) struct QueryRequest {
     /// Whole text of the editor, one or more queries.
     pub(super) sql: String,
     /// Position of the cursor in UTF-16 units: only the query under the
-    /// cursor runs. Absent: all the queries, in parallel.
+    /// cursor runs. Absent: the queries of `selection`, or all of them, in
+    /// parallel.
     #[ts(optional)]
     pub(super) cursor: Option<usize>,
+    /// Passages selected in the text, without a cursor: the queries they
+    /// touch run, in parallel. Absent or empty: all the queries.
+    #[ts(optional)]
+    pub(super) selection: Option<Vec<SelectionRange>>,
     /// Row limit for these queries only, among the allowed choices.
     #[ts(optional)]
     pub(super) row_limit: Option<u32>,
+}
+
+/// Passage of the editor's text selected by the user.
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub(crate) struct SelectionRange {
+    /// Start of the passage, in UTF-16 units.
+    pub(super) start: usize,
+    /// End of the passage, in UTF-16 units, excluded.
+    pub(super) end: usize,
 }
 
 /// Query of a batch, as announced to the client.

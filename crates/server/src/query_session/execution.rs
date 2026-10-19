@@ -9,12 +9,12 @@ use futures_util::future::join_all;
 use prisme_connectors::mysql::{self, Cell, Connection};
 use prisme_dialects::Dialect;
 use prisme_dialects::limit::{LimitOutcome, apply_default_limit, written_limit};
-use prisme_splitter::{Statement, statement_at};
+use prisme_splitter::{Statement, statement_at, statements_in};
 use tokio::sync::Semaphore;
 
 use super::limits::{report, write_refusal};
 use super::outbox::SessionStopped;
-use super::protocol::ServerMessage;
+use super::protocol::{SelectionRange, ServerMessage};
 use super::session::{Session, Summary};
 
 /// Number of rows of the first `rows` message of a result: the first rows
@@ -339,15 +339,30 @@ impl RowBatches {
     }
 }
 
-/// Queries to run: the one under the cursor, or all of them without a cursor.
-pub(super) fn chosen_statements(
-    statements: &[Statement],
+/// Queries to run, in the order of the text: the one under the cursor; without
+/// a cursor, those the selected passages touch; without either, all of them.
+pub(super) fn chosen_statements<'a>(
+    statements: &'a [Statement],
     cursor: Option<usize>,
-) -> Vec<&Statement> {
-    match cursor {
-        Some(cursor) => statement_at(statements, cursor)
+    selection: &[SelectionRange],
+) -> Vec<&'a Statement> {
+    if let Some(cursor) = cursor {
+        return statement_at(statements, cursor)
             .map(|index| vec![&statements[index]])
-            .unwrap_or_default(),
-        None => statements.iter().collect(),
+            .unwrap_or_default();
     }
+    if selection.is_empty() {
+        return statements.iter().collect();
+    }
+    let mut touched = vec![false; statements.len()];
+    for range in selection {
+        for index in statements_in(statements, range.start, range.end) {
+            touched[index] = true;
+        }
+    }
+    statements
+        .iter()
+        .zip(touched)
+        .filter_map(|(statement, touched)| touched.then_some(statement))
+        .collect()
 }

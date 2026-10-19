@@ -3,7 +3,8 @@
  *
  * The client sends (`run`) the editor's whole text, with the cursor position
  * to run only the query found there (Ctrl+Enter), or without a cursor to run
- * them all in parallel (Ctrl+Shift+Enter). The server announces the queries
+ * in parallel the queries touched by the selected passages, or all of them
+ * (Ctrl+Shift+Enter). The server announces the queries
  * of the batch (`batch`), then streams their results, each message carrying
  * the number of its query: `started` when it starts (in parallel, it may wait
  * for its turn), `columns`, batches of `rows`, then `done` (or `error`).
@@ -36,6 +37,7 @@ import type { LimitReport } from './generated/LimitReport'
 import type { ClientMessage } from './generated/ClientMessage'
 import type { ResultTab } from './generated/ResultTab'
 import type { ResumedQuery } from './generated/ResumedQuery'
+import type { SelectionRange } from './generated/SelectionRange'
 import type { ServerInfo } from './generated/ServerInfo'
 import type { ServerMessage } from './generated/ServerMessage'
 
@@ -50,6 +52,21 @@ const FLUSH_DELAY = 100
  * Result cell: text, or `null` for NULL.
  */
 export type Cell = string | null
+
+/**
+ * Queries of the text to run: the one under the cursor; without a cursor,
+ * those touched by the selected passages; without either, all of them.
+ */
+export interface RunTarget {
+  /**
+   * Position of the cursor, in UTF-16 units: only the query found there runs.
+   */
+  cursor?: number
+  /**
+   * Passages selected in the text: the queries they touch run, in parallel.
+   */
+  selection?: SelectionRange[]
+}
 
 /**
  * Stage of the session.
@@ -800,17 +817,23 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
    * Sends the editor's text, if the session is ready.
    *
    * @param sql Whole text of the editor.
-   * @param cursor
-   *     Position of the cursor (UTF-16 units): only the query found there
-   *     runs. When absent: all of them, in parallel.
+   * @param target
+   *     Queries to run: the one under the cursor, those of the selection,
+   *     or, by default, all of them, in parallel.
    * @param rowLimit Row limit; when absent, the one of the settings applies.
    */
-  function run(sql: string, cursor?: number, rowLimit?: number): void {
+  function run(sql: string, target: RunTarget = {}, rowLimit?: number): void {
     if (state.status !== 'ready') {
       return
     }
     startBatch(state)
-    send({ type: 'run', sql, cursor, row_limit: rowLimit })
+    send({
+      type: 'run',
+      sql,
+      cursor: target.cursor,
+      selection: target.selection,
+      row_limit: rowLimit,
+    })
   }
 
   /**

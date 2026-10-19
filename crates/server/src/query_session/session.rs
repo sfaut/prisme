@@ -148,7 +148,8 @@ impl Session<'_> {
     }
 
     /// Handles a request of the client: splits the text, then runs the query
-    /// under the cursor, or all the queries in parallel.
+    /// under the cursor, or in parallel the queries of the selection, or all
+    /// of them.
     async fn handle(
         &self,
         connection: &mut Connection,
@@ -160,7 +161,8 @@ impl Session<'_> {
             Err(message) => return self.outbox.error(None, message).await,
         };
         let statements = split(&request.sql);
-        let chosen = chosen_statements(&statements, request.cursor);
+        let selection = request.selection.as_deref().unwrap_or_default();
+        let chosen = chosen_statements(&statements, request.cursor, selection);
         if chosen.is_empty() {
             let message = "no query to run".to_string();
             return self.outbox.error(None, message).await;

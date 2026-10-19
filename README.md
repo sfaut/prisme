@@ -129,6 +129,7 @@ Each editor has its own connection, its own session (and therefore its own trans
 |---|---|---|
 | Run the query under the cursor | Ctrl+Enter | **Exécuter** (Run) |
 | Run every query of the editor, in parallel | Ctrl+Shift+Enter | **Tout exécuter** (Run all) |
+| Run the queries touched by the selected text, in parallel | Ctrl+Shift+Enter, with text selected | |
 | Stop every running query | | **Stopper** (Stop) |
 
 - When the editor holds several queries, the one Ctrl+Enter would run is **highlighted**.

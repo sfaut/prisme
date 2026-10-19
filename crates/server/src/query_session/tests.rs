@@ -125,8 +125,12 @@ async fn run_one(socket: &mut ClientSocket, sql: &str, row_limit: Option<u32>) -
 }
 
 #[test]
-fn chooses_the_statement_under_the_cursor_or_all_of_them() {
-    let statements = prisme_splitter::split("SELECT 1;\nSELECT 2;");
+fn chooses_the_statement_under_the_cursor_those_of_the_selection_or_all() {
+    use super::execution::chosen_statements;
+    use super::protocol::SelectionRange;
+
+    // Queries at 0..9, 10..19 and 20..29.
+    let statements = prisme_splitter::split("SELECT 1;\nSELECT 2;\nSELECT 3;");
     let sql = |chosen: Vec<&prisme_splitter::Statement>| {
         chosen
             .into_iter()
@@ -134,14 +138,31 @@ fn chooses_the_statement_under_the_cursor_or_all_of_them() {
             .collect::<Vec<_>>()
     };
     assert_eq!(
-        sql(super::execution::chosen_statements(&statements, Some(12))),
+        sql(chosen_statements(&statements, Some(12), &[])),
         ["SELECT 2"]
     );
     assert_eq!(
-        sql(super::execution::chosen_statements(&statements, None)),
+        sql(chosen_statements(&statements, None, &[])),
+        ["SELECT 1", "SELECT 2", "SELECT 3"]
+    );
+    assert!(chosen_statements(&[], Some(0), &[]).is_empty());
+
+    // Selected passages: the queries they touch, once each, in the order of the text.
+    let range = |start, end| SelectionRange { start, end };
+    assert_eq!(
+        sql(chosen_statements(&statements, None, &[range(5, 12)])),
         ["SELECT 1", "SELECT 2"]
     );
-    assert!(super::execution::chosen_statements(&[], Some(0)).is_empty());
+    assert_eq!(
+        sql(chosen_statements(
+            &statements,
+            None,
+            &[range(25, 27), range(2, 3), range(1, 4)]
+        )),
+        ["SELECT 1", "SELECT 3"]
+    );
+    // A passage between two queries touches none.
+    assert!(chosen_statements(&statements, None, &[range(9, 10)]).is_empty());
 }
 
 #[test]

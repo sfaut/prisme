@@ -7,7 +7,8 @@
   their name, their pinning, their order and their closing. Ctrl+Enter or
   "Exécuter" runs
   the query under the cursor; Ctrl+Shift+Enter or "Tout exécuter" runs
-  all the queries in parallel. "Stopper" stops them all.
+  all the queries in parallel, Ctrl+Shift+Enter only those the selected
+  text touches, if any. "Stopper" stops them all.
   "Enjoliver" rewrites the text as "beautiful SQL", once the connection's
   catalog is loaded (it gives the case of the user's functions).
   Each query has its result tab (`ResultTab.vue`), with its progress bar. A
@@ -29,6 +30,7 @@ import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { beautify } from '@/api/beautify'
 import { deleteResult, listResults, reorderResults, updateResult } from '@/api/editors'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
+import type { SelectionRange } from '@/api/generated/SelectionRange'
 import { type QueryTab, useQuerySession } from '@/api/querySession'
 import { useCatalogStore } from '@/stores/catalog'
 import { useSettingsStore } from '@/stores/settings'
@@ -212,7 +214,7 @@ function closeTab(tab: QueryTab): void {
  */
 function run(cursor?: number): void {
   if (sql.value.trim() !== '') {
-    session.run(sql.value, cursor ?? editor.value?.cursor() ?? 0)
+    session.run(sql.value, { cursor: cursor ?? editor.value?.cursor() ?? 0 })
   }
 }
 
@@ -267,7 +269,7 @@ function showTableWhenReady(schema: string, table: string): void {
     } else {
       sql.value = query
     }
-    session.run(query, 0)
+    session.run(query, { cursor: 0 })
   })
 }
 
@@ -318,11 +320,14 @@ async function prettify(): Promise<void> {
 }
 
 /**
- * Runs all the editor's queries, in parallel.
+ * Runs the editor's queries in parallel: those the selected passages touch,
+ * or all of them.
+ *
+ * @param selection Passages selected in the editor; empty or absent: all the queries.
  */
-function runAll(): void {
+function runAll(selection: SelectionRange[] = []): void {
   if (sql.value.trim() !== '') {
-    session.run(sql.value)
+    session.run(sql.value, selection.length > 0 ? { selection } : {})
   }
 }
 
@@ -377,7 +382,7 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
           label="Tout exécuter"
           title="Toutes les requêtes, en parallèle (Ctrl-Maj-Entrée)"
           :disabled="state.status !== 'ready'"
-          @click="runAll"
+          @click="runAll()"
         />
         <ui-button
           label="Stopper"

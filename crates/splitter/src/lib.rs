@@ -1,5 +1,5 @@
 //! Query splitter: splits a SQL text into queries, and finds the one under
-//! the cursor (Ctrl+Enter).
+//! the cursor (Ctrl+Enter) or those a selection touches (Ctrl+Shift+Enter).
 //!
 //! Splitting follows the lexical rules of MySQL and MariaDB, without parsing
 //! the SQL: a `;` separates two queries, except inside a string (`'…'`,
@@ -215,6 +215,23 @@ pub fn statement_at(statements: &[Statement], cursor: usize) -> Option<usize> {
     )
 }
 
+/// Indexes of the queries that the passage from `start` to `end` (UTF-16
+/// units, `end` excluded) touches: those that share at least one character
+/// with it, from their first significant character to their separator. The
+/// comments and spaces before a query are not part of it. An empty passage
+/// touches none.
+pub fn statements_in(statements: &[Statement], start: usize, end: usize) -> Vec<usize> {
+    if start >= end {
+        return Vec::new();
+    }
+    statements
+        .iter()
+        .enumerate()
+        .filter(|(_, statement)| statement.start < end && start < statement.end)
+        .map(|(index, _)| index)
+        .collect()
+}
+
 /// Builds a query from its byte positions.
 fn statement(text: &str, first: usize, body_end: usize, end: usize) -> Statement {
     Statement {
@@ -425,6 +442,22 @@ mod tests {
         assert_eq!(statement_at(&statements, second), Some(1));
         assert_eq!(statement_at(&statements, text.len()), Some(1));
         assert_eq!(statement_at(&[], 0), None);
+    }
+
+    #[test]
+    fn finds_the_statements_a_passage_touches() {
+        // Queries at 12..21, 23..32 and 34..43.
+        let text = "-- comment\n\nSELECT 1;\n\nSELECT 2;\n\nSELECT 3;\n";
+        let statements = split(text);
+        assert_eq!(statements_in(&statements, 0, text.len()), [0, 1, 2]);
+        // A single character of the query, or its separator, is enough.
+        assert_eq!(statements_in(&statements, 30, 31), [1]);
+        assert_eq!(statements_in(&statements, 20, 24), [0, 1]);
+        // The comment before a query and the blanks between two do not count.
+        assert!(statements_in(&statements, 0, 12).is_empty());
+        assert!(statements_in(&statements, 21, 23).is_empty());
+        // An empty passage, a cursor, touches nothing.
+        assert!(statements_in(&statements, 25, 25).is_empty());
     }
 
     #[test]

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { EditorView } from '@codemirror/view'
 import { mount } from '@vue/test-utils'
 import SqlEditor from '../SqlEditor.vue'
 
@@ -120,6 +121,39 @@ describe('SqlEditor', () => {
     )
     expect(scrollTop).toBeGreaterThan(0)
     expect(wrapper.vm.cursor()).toBe(cursor)
+    wrapper.unmount()
+  })
+
+  it('runs the queries of the selection on Ctrl+Shift+Enter, all of them without one', () => {
+    const wrapper = mount(SqlEditor, {
+      props: {
+        flavor: 'mysql',
+        schema: {},
+        version: null,
+        ansiQuotes: false,
+        defaultSchema: null,
+        modelValue: 'SELECT 1;\nSELECT 2;\nSELECT 3;',
+      },
+      attachTo: document.body,
+    })
+    const view = EditorView.findFromDOM(wrapper.find('.cm-editor').element as HTMLElement)!
+    const press = () =>
+      wrapper
+        .find('.cm-content')
+        .element.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'Enter',
+            keyCode: 13,
+            ctrlKey: true,
+            shiftKey: true,
+          }),
+        )
+    view.dispatch({ selection: { anchor: 3 } })
+    press()
+    // Selected backwards: the passage still goes from its start to its end.
+    view.dispatch({ selection: { anchor: 15, head: 5 } })
+    press()
+    expect(wrapper.emitted('run-all')).toEqual([[[]], [[{ start: 5, end: 15 }]]])
     wrapper.unmount()
   })
 
