@@ -72,11 +72,13 @@ Options given on the command line replace the saved settings for that launch, wi
 
 ## Using Prisme
 
-The screen has three areas:
+The screen has these areas:
 
+- **Top bar**: the name and version of Prisme, the synchronisation state, the theme and the **Options** menu (see [Top bar](#top-bar)).
 - **Left panel**: the object explorer, with your connections and their databases.
 - **Editor tabs**: several SQL editors, each one on its own connection.
 - **SQL cell and results**: the editor, its buttons, and one result tab per query.
+- **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).
 
 The version of Prisme shows under its name, at the top left.
 
@@ -95,7 +97,7 @@ Passwords are encrypted on disk and never sent back to the browser.
 
 The tree shows, for each source:
 
-- its **databases**, then their **tables**, **views**, **procedures** and **functions**;
+- its **databases**, then their **tables**, **views**, **procedures**, **functions** and **events** (**Événements** folder; a disabled event is marked **désactivé**);
 - for each table, its **columns**, **indexes**, **foreign keys** and **triggers**.
 
 How it behaves:
@@ -104,6 +106,7 @@ How it behaves:
 - A **double-click** on a source makes it the connection of the active editor; on a database, makes it the current database (like `USE`); on a table or view, shows its content: its `SELECT` goes after the last query of the editor, without overwriting anything, and runs.
 - The catalog loads progressively, and the selected connection opens by itself. **Tout rafraîchir** (Refresh all) in the root menu reloads the catalogs already read.
 - The current database is in **bold**.
+- While the tree scrolls, the source, the database and the table of the rows on screen stay pinned at the top; they open, close and act like the rows of the tree.
 
 Columns show, on three aligned columns: a symbol, the name, then the type, nullability and `AUTO_INCREMENT`.
 
@@ -135,7 +138,7 @@ Each editor has its own connection, its own session (and therefore its own trans
 - When the editor holds several queries, the one Ctrl+Enter would run is **highlighted**.
 - Syntax errors are **underlined in red** as you type, with the message on hover.
 - **Row limit**: when a query has no `LIMIT`, Prisme shows at most 1,000 rows (adjustable up to 50,000 with the list next to the buttons) and reports a truncated result. A query that has its own `LIMIT` runs as written.
-- **Read-only**: only reads are allowed for now (`SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN`, `USE`). Writes are refused.
+- **Read-only**: only reads are allowed for now (`SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN`, `USE`). Writes are refused. On top of that, the **Sessions en lecture seule** (Read-only sessions) setting, on by default, makes the database itself refuse the writes (see [Top bar](#top-bar)).
 
 ### Writing SQL
 
@@ -176,9 +179,13 @@ Each query gets its own tab:
 - **Display**: the header shows each column's type (hover for the full name). Numbers and dates are right-aligned, `CHAR` columns use a monospaced font, web addresses are clickable, `NULL` is shown in small grey capitals.
 - **Data explorer**: a panel on the right of the screen shows the values selected in a column of type `JSON`, or in a text column that holds JSON or XML: a cell, the whole column, or ranges of it. The values are indented with 4 spaces and highlighted; numbers and texts stay exactly as stored. Several values are gathered into one document: a `[…]` array for JSON (`NULL` becomes `null`), a `<data>…</data>` element for XML (`NULL` is left out, `<?xml?>` declarations are removed). Each level folds with the arrows in the margin; the buttons fold or unfold everything, or every node at the depth of the cursor. The copy button, or Ctrl+A then Ctrl+C, copies valid JSON or XML, folded parts included. The panel follows the selection, and the grid of the active editor; drag its left edge to resize it (double-click to reset), the width is remembered.
 
-### Theme
+### Top bar
 
-The **Système / Clair / Sombre** (System / Light / Dark) list at the top of the left panel sets the theme of the whole interface. **Système** follows your computer's setting.
+- **Synchronisation**: Prisme saves every change as you go. **Synchronisé** (Synced) means everything is saved, **Synchronisation…** (Syncing…) that a save is running, **Échec de la synchronisation** (Sync failed) that the last one was refused.
+- **Theme**: the **Système / Clair / Sombre** (System / Light / Dark) list sets the theme of the whole interface. **Système** follows your computer's setting.
+- **Options** menu (gear icon):
+  - **Paramètres** (Settings): the default row limit, and the language of the interface (French only for now);
+  - **Profil** (Profile): your last and first names, your email address (read-only), and **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check.
 
 ## Your data
 
