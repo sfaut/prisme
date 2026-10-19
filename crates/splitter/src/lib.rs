@@ -18,6 +18,9 @@
 //! The scan goes byte by byte: all the characters that matter (quotes,
 //! separators, comment markers) are ASCII, and the bytes of a multi-byte UTF-8
 //! character are always at least 0x80, so they cannot be mistaken for them.
+//! The scan may therefore stand inside a character: the separator is looked
+//! for among the bytes, never by slicing the text there. A UTF-8 separator
+//! can only match from the first byte of a character.
 
 /// Default query separator.
 const DEFAULT_DELIMITER: &str = ";";
@@ -155,7 +158,7 @@ fn scan(text: &str) -> Vec<Event> {
             chunk_start = i;
             continue;
         }
-        if text[i..].starts_with(delimiter.as_str()) {
+        if bytes[i..].starts_with(delimiter.as_bytes()) {
             events.push(Event::Statement {
                 chunk_start,
                 first: start.take(),
@@ -394,6 +397,19 @@ mod tests {
         let statements = split("SELECT 'é😀';\nSELECT 2;");
         assert_eq!(statements[0].end, 13);
         assert_eq!(statements[1].start, 14);
+    }
+
+    #[test]
+    fn splits_around_multibyte_characters_outside_strings() {
+        // Ticket #12: the scan stood inside "é" when looking for the separator.
+        assert_eq!(
+            sqls("SELECT prénom FROM élève; SELECT 'à' AS ça"),
+            ["SELECT prénom FROM élève", "SELECT 'à' AS ça"]
+        );
+        assert_eq!(
+            sqls("DELIMITER €\nSELECT ç€SELECT 2"),
+            ["SELECT ç", "SELECT 2"]
+        );
     }
 
     #[test]
