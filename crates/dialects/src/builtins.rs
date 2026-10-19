@@ -166,6 +166,10 @@ pub(crate) enum Rule {
     /// differently.
     #[serde(rename = "function.regexp")]
     Regexp,
+    /// `ABS`, `CEIL`, `CEILING`, `FLOOR`, `ROUND` and `TRUNCATE` of a date
+    /// or a time (`emit::rounding` module).
+    #[serde(rename = "function.rounding")]
+    Rounding,
     /// `TIME_TO_SEC` of a fractional time.
     #[serde(rename = "function.time-to-sec")]
     TimeToSec,
@@ -227,6 +231,7 @@ impl Rule {
             Self::Now => "function.now",
             Self::Pad => "function.pad",
             Self::Regexp => "function.regexp",
+            Self::Rounding => "function.rounding",
             Self::TimeToSec => "function.time-to-sec",
             Self::UnixTimestamp => "function.unix-timestamp",
             Self::Uuid => "function.uuid",

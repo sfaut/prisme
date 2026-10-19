@@ -110,6 +110,7 @@ impl Emitter<'_> {
             Rule::If => self.if_call(expr, call),
             Rule::Now => self.now(rule, expr, call),
             Rule::Pad => self.pad(rule, expr, call),
+            Rule::Rounding => self.rounding(rule, expr, call),
             Rule::TimeToSec => self.time_to_sec(rule, expr, call, min),
             Rule::UnixTimestamp => self.unix_timestamp(rule, expr, call),
             Rule::Uuid => self.uuid(rule, expr, call),

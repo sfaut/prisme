@@ -45,6 +45,7 @@ mod options;
 mod parentheses;
 mod predicate;
 mod recursive;
+mod rounding;
 mod rules;
 mod source;
 mod string;

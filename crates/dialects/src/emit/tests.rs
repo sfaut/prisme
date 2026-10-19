@@ -1133,6 +1133,67 @@ fn arguments_the_dialects_read_otherwise_are_errors() {
 }
 
 #[test]
+fn rounding_reads_a_date_or_a_time_as_the_input() {
+    // MySQL reads a date or a time as a `DOUBLE`, MariaDB as a temporal
+    // value.
+    let (sql, rules) = transpiled(
+        "SELECT CEIL(dt), ABS(dd) AS b, ROUND(tm, 1) AS c, TRUNCATE(dt3, -1) AS e, FLOOR(i) AS g FROM d, g",
+        mysql(),
+        output(mariadb()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT CEIL(dt + 0e0) AS `CEIL(dt)`, ABS(dd + 0e0) AS b, ROUND(tm + 0e0, 1) AS c, TRUNCATE(dt3 + 0e0, -1) AS e, FLOOR(i) AS g FROM d, g"
+    );
+    assert_eq!(
+        rules,
+        [
+            "column.implicit-name",
+            "function.rounding",
+            "function.rounding",
+            "function.rounding",
+            "function.rounding"
+        ]
+    );
+    let (sql, rules) = transpiled(
+        "SELECT CEIL(dd) AS a, ROUND(dd, -1) AS b, ABS(dd) AS c, ABS(dt3) AS e, ABS(tm) AS h, ABS(ts) AS k, ROUND(i) AS l FROM d, g",
+        mariadb(),
+        output(mysql()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT CEIL(dd + 0) AS a, ROUND(dd + 0, -1) AS b, ABS(CAST(dd AS DECIMAL(8))) AS c, ABS(CAST(dt3 AS DECIMAL(17, 3))) AS e, ABS(CAST(tm AS DECIMAL(7))) AS h, ABS(CAST(ts AS DECIMAL(14))) AS k, ROUND(i) AS l FROM d, g"
+    );
+    assert_eq!(rules, ["function.rounding"; 6]);
+    // MariaDB rounds a date and time or a time as a value of its type; an
+    // argument of a type unknown may be one.
+    for text in [
+        "SELECT CEIL(dt) FROM d",
+        "SELECT ROUND(tm, 1) FROM g",
+        "SELECT TRUNCATE(ts, 0) FROM d",
+    ] {
+        assert_eq!(
+            errors(text, mariadb(), output(mysql())),
+            ["function.rounding"],
+            "{text}"
+        );
+    }
+    for input in [mysql(), mariadb()] {
+        let target = output(match input.dialect {
+            Dialect::MySql => mariadb(),
+            Dialect::MariaDb => mysql(),
+        });
+        assert_eq!(
+            errors("SELECT ROUND(f(dt)) FROM d", input, target),
+            ["function.rounding"]
+        );
+        // Towards its own dialect, the call goes through.
+        let text = "SELECT CEIL(dt) AS a FROM d";
+        assert_eq!(transpiled(text, input, output(input)).0, text);
+    }
+}
+
+#[test]
 fn time_to_sec_drops_the_fraction_towards_mariadb() {
     for (text, expected, rules) in [
         (

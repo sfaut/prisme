@@ -955,7 +955,7 @@ functions:
     functions:
       - name: ABS
         nulls: args
-        mysql: same
+        mysql: { rule: function.rounding }
       - name: ACOS
         type: double
         mysql: same
@@ -969,9 +969,9 @@ functions:
         type: double
         mysql: same
       - name: CEIL
-        mysql: same
+        mysql: { rule: function.rounding }
       - name: CEILING
-        mysql: same
+        mysql: { rule: function.rounding }
       - name: CONV
         type: text
         mysql: same
@@ -998,7 +998,7 @@ functions:
         type: double
         mysql: same
       - name: FLOOR
-        mysql: same
+        mysql: { rule: function.rounding }
       - name: LN  # 0 or a negative number: NULL in both, with different warnings
         type: double
         mysql: same
@@ -1035,7 +1035,7 @@ functions:
         nulls: args
         mysql: same
       - name: ROUND
-        mysql: same
+        mysql: { rule: function.rounding }
       - name: SIGN
         type: int
         nulls: args
@@ -1052,7 +1052,7 @@ functions:
       - name: TRUNCATE
         grammar: true
         nulls: args
-        mysql: same
+        mysql: { rule: function.rounding }
   - family: Date and time
     manual: https://mariadb.com/docs/server/reference/sql-functions/date-time-functions
     checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]
