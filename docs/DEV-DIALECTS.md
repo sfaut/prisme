@@ -4,6 +4,8 @@ This document orders the work on the dialects of the v1, step by step: the parse
 
 Each step ends on a state usable end to end, with its tests and its documents updated. The **[to decide]** marks and the numbered points ("point 39") refer to the open points of `docs/QUESTIONS.md` (section 5).
 
+Section 7 gives the state of the work and what remains, for a resumption.
+
 ## 1. Decisions the plan relies on
 
 - **Input dialects** of the v1: MySQL, MariaDB, PRQL, plus "Selon source de données" (according to the data source), which is the native SQL of the target. The choice is a setting of the user's profile, "Dialecte préféré" (Preferred dialect), which the editor tab can override (`docs/V1.md`, section 2.1).
@@ -665,3 +667,74 @@ Difficulties met, their solutions, and the particularities of the servers and ve
 - **`NULLIF` of MySQL** (`docs/sources/mysql/nullif.md`, measured on each local image): its type comes from its first argument, but `Item_func_nullif` keeps the result type of that argument while it changes its data type, and the two disagree. A date or a time becomes a `VARCHAR`, read as a string; a `YEAR`, a temporal type from 8.0.24 (Bug #32395335), becomes a string read as an integer, an `INT` through `CREATE TABLE ... AS SELECT` but a byte string of its text in the metadata of the results, until 8.1.0 makes it a `VARCHAR`. Before 8.0.24, the collation of the result is aggregated with that of the second argument, so that a byte string there makes the result a byte string (a literal yields). The comparison of `NULLIF` is that of `=`, which converts a constant compared with a column of `BIGINT`, `YEAR`, a date or a time to the type of the column, and `NULLIF` gives the converted value. The conformance also showed that MySQL compares a time with a string as strings where MariaDB reads the string as a time (`CAST(x AS TIME) < '-05:00:00'` in MySQL 8.0.11, a string with `TIME '-05:00:00'` in every version): a difference of the comparisons, outside `NULLIF`.
 - **`PERIOD_ADD` and `PERIOD_DIFF`** (`docs/sources/mysql/period.md`, `docs/sources/mariadb/period.md`): both servers share `convert_period_to_month` and `convert_month_to_period`, but MariaDB reads 0 months beyond 999912 and adds the months in 32 bits, the sum read as unsigned, so that a sum before the year 0 wraps around 2^32 there and around 2^64 in MySQL. The fix of Bug #29175262 in MySQL 8.0.16, given as a fix for Windows, also changed Linux: the arguments became `long long`, so that a negative period is refused instead of read as unsigned, and months beyond 32 bits keep their value. Prisme writes out the months of MySQL towards MariaDB, and towards MySQL reaches the error of MySQL itself by the period 0, where no expression of MySQL computes the values of MariaDB.
 - **Type of `YEAR()` in MySQL** (`docs/sources/mysql/year.md`): three changes for one value. 8.0.14 makes it unsigned to fix an overflow of `AVG(YEAR(dt))` (Bug #28562930), 8.0.17 reverts it as the subtractions below 0 failed (Bug #29668676), and 8.1.0 gives it the data type `YEAR`, unsigned again, without an entry in the release notes. An unsigned result of 4 digits merges with a signed integer into a `DECIMAL` from 8.0.14 to 8.0.16, where an `INT UNSIGNED` column merges into a `BIGINT`: the type of a merge depends on the expression, beyond its type. A `YEAR` of 8.1.0 holds every year of a date, 1 and 1000 as well, out of the range 1901 to 2155 of a `YEAR` column, which `CAST(x AS YEAR)` keeps (1 read as 2001, 1000 as NULL): no `CAST` gives that type to an expression of the same value, in MariaDB, which has no `CAST` to `YEAR`, nor in MySQL.
+
+## 7. State of the work (2026-10-19)
+
+Where the transpilation between MySQL and MariaDB stands, and what remains, for the resumption.
+
+### 7.1 Branch and resumption
+
+- The work is on the branch `mysql-mariadb-transpilation`, pushed to `origin`. It starts at `5df27c6` and sits on `d1c5c8d`, the last commit of `master` outside the dialects.
+- `master` stays at `d1c5c8d`. The 68 commits from `origin/master` to `d1c5c8d` (interface, server, CI) reach `origin` through this branch only, `origin/master` unchanged.
+- To resume: `git switch mysql-mariadb-transpilation`, then section 7.3 first, then section 7.4 in order.
+- The branch goes into `master` by `git merge --no-ff`, with a message, once the maintainer has reviewed it.
+
+### 7.2 Done
+
+- Steps 0 to 4: decisions, types and plan, registry of the versions, lexer, first vertical slice (transpiler, server, interface).
+- Step 5, `SELECT` of the MySQL family, read, built and written towards MySQL and MariaDB:
+  - sources, joins, set operations, subqueries;
+  - function calls, aggregation, windows, `WITH RECURSIVE`;
+  - the expressions with a syntax of their own (`CASE`, `CAST`, `CONVERT`, typed literals, `INTERVAL`, `EXTRACT`, `TRIM`, `POSITION`, `IS TRUE`, `REGEXP`, JSON arrows, bit operators, hexadecimal and bit literals, introducers);
+  - the aliases read inside expressions, the options and locking clauses of `SELECT`, user and system variables.
+- Step 7, in progress: the catalog of the built-in functions per dialect and version (`crates/dialects/reference/*.yaml`), the result types of the scalar functions, the flow functions typed from their arguments, 19 rules `function.*`.
+- Tools: `probe` (`expr`, `sql`, `functions`, `calls`; `--all`, `--group`, `--layout rows`), the conformance suite (38 files, 559 cases, on every local image by groups).
+- In figures: 103 rules of the report, 324 unit tests, 111 local images of MySQL and MariaDB.
+
+### 7.3 Work in progress: `NULLIF` of a date towards MariaDB
+
+- The rule `function.nullif` writes `CAST(NULLIF(a, b) AS CHAR)` towards MariaDB for a date or a time, the string MySQL gives.
+- MySQL reads that string in a column of the result and in the string functions, but the number of the date in a numeric context: `NULLIF(d, 1) + 0` gives 20240506 in MySQL, `CAST(NULLIF(d, 1) AS CHAR) + 0` gives 2024 in MariaDB.
+- The conformance file `nullif.yaml` has no numeric context on a date from MySQL, hence the defect was committed.
+- Measure: `crates/probe/cases/nullif-readings.txt`, 9 dates and times × 47 contexts × 3 forms (`o_` as MySQL reads it, `c_` the `CAST AS CHAR`, `k_` `CONCAT`), run on MySQL 8.0.11, 8.0.23, 8.4.11 and 9.3.0, MariaDB 10.6.28 and 11.8.9. Each `o_` case of MySQL is compared with each form on MariaDB.
+- Results:
+  - every form agrees in a column and in the string, logical and list contexts (`CONCAT`, `LENGTH`, `LIKE`, `IN`, `BETWEEN`, `IS NULL`, `IFNULL`, `IF`, `MAX`, `HEX`, `CAST AS CHAR`, `CAST AS BINARY`);
+  - `CONCAT` fails where `CAST AS CHAR` fails, context for context;
+  - as written (`NULLIF` of MariaDB, a date) agrees with MySQL where `CAST AS CHAR` fails on `+ 0` of a date, `CAST AS DECIMAL`, `SQRT`, and fails where `CAST AS CHAR` agrees (`CAST AS SIGNED`, `GREATEST`, `COALESCE`, `YEAR`, `DATEDIFF`, `DATE_FORMAT`, comparison with a string);
+  - no form agrees on `/`, `*`, `AVG`, `ROUND(x, 2)`, `JSON_ARRAY`, `UNIX_TIMESTAMP`, `CAST AS TIME(6)` of most sources: `NULLIF(dt, 1) + 0` gives `20240506070809.12` or `20240506070809.120` in MySQL depending on the version, `dt` holding `.123`.
+- Next: choose the form by the reading of the parent (`Reading`, `emit/case.rs`): `CAST AS CHAR` in a column and in string contexts, as written where it agrees, an explicit error where no form agrees; then conformance cases for each context, on every local image.
+
+### 7.4 What remains, in the order of the plan
+
+Step 5, `SELECT`:
+
+- emulate `INTERSECT` and `EXCEPT` (`EXISTS` with `<=>`), `LATERAL` and the outer references of a derived table, towards the versions without them: explicit errors today;
+- row subqueries (`(a, b) = (SELECT x, y ...)`, refused by the builder) and `JSON_TABLE` (refused by the parser);
+- the forms "not supported yet": `WITH` inside a recursive common table expression, `WITH` between parentheses followed by `ORDER BY`, the several levels of `ORDER BY` and `LIMIT` of MySQL before 8.0.31, the aliases whose rewriting would compute an expression again (`emit/alias.rs`), some aggregate and window functions (`build/call.rs`);
+- `INSERT`, `REPLACE`, `UPDATE`, `DELETE`: postponed until the maintainer says otherwise.
+
+Step 6, what only MariaDB has:
+
+- `FOR SYSTEM_TIME` (`AS OF`, `BETWEEN`, `FROM ... TO`, `ALL`), the sequences (`NEXT VALUE FOR`, `NEXTVAL()`, `PREVIOUS VALUE FOR`, `LASTVAL()`), `LIMIT ... ROWS EXAMINED`, `OFFSET ... FETCH`: known to the registry (`versions.rs`), read by no parser yet;
+- the explicit refusal of `sql_mode=ORACLE`;
+- the first list of the untranslatable constructs (`docs/QUESTIONS.md`, point 32);
+- `RETURNING`, with the write statements.
+
+Step 7, function catalog:
+
+- `NULLIF` of a date towards MariaDB (section 7.3);
+- the value differences of `CAST` between the dialects;
+- the refusal of byte strings in the JSON functions;
+- the generated calls (`probe calls`) measured on every image, the functions typed from them, their smaller differences handled;
+- the type of the opposite of an integer literal beyond `BIGINT`;
+- the types of the numeric functions, `GREATEST`, `LEAST` (the `DECIMAL(4,0)` of `YEAR()` in MySQL 8.0.14 to 8.0.16 included), `MOD` and the user variables;
+- a date or a time computed, compared with a number or a string as the input compares it, and the error 1292 of MySQL from 8.0.16 on a string that is no date compared with a date column, where MariaDB warns and compares (Bug #28940878; `crates/probe/cases/nullif-convert.txt`).
+
+Steps 8 to 13:
+
+- step 8, catalog and session statements: the whole step (`SHOW`, `DESCRIBE`, the relations of the catalog over `information_schema`, `USE`, `SET`, `EXPLAIN`);
+- step 9, PRQL: the whole step;
+- step 10, analyses and native SQL on the transpiler: the whole step;
+- step 11, beautifier: postponed;
+- step 12: `sqlparser` is still in the `[dependencies]` of `crates/dialects`;
+- step 13, audit and execution plan: the whole step.
