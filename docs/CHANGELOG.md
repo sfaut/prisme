@@ -2,6 +2,54 @@
 
 Changelogs of the published versions of Prisme, most recent first. Each entry is also the notes of its GitHub release. The interface is in French: its labels are quoted as they appear, with a translation.
 
+## v0.3.0 (2026-10-19)
+
+### 🚀 Launch
+
+We are proud to announce Prisme v0.3.0. This version brings a data explorer that shows the JSON and XML values of the grid indented and foldable, a top bar with the settings and the profile, and a SQL editor that keeps the indentation, scrolls without moving the cursor and runs the queries a selection touches. Query sessions are now read-only on the database side by default, and the local server refuses the requests of other sites. The first rows of a result show sooner, and large results no longer freeze the interface.
+
+### ✨ New features
+
+- Data explorer: a panel on the right of the screen, opened from the bar under the grid, shows the values selected in a JSON or XML column (a cell, the whole column, ranges of it), indented with four spaces and highlighted, numbers and texts exactly as stored. Several values are gathered into one document, `[…]` for JSON, `<data>…</data>` for XML. Each level folds; buttons fold or unfold everything, or the level of the cursor; the copy gives valid JSON or XML. The panel follows the selection and the active editor; its width is set by dragging its left edge, and remembered ([#11](https://github.com/sfaut/prisme/issues/11)).
+- Top bar, across the screen: the theme choice moves there, and its **Options** menu opens the settings (default row limit; interface language, French only for now) and the profile (first and last names). A marker tells whether every change is saved by the server, pending or refused.
+- The version of Prisme shows beneath its name, and in the terminal at launch ([#14](https://github.com/sfaut/prisme/issues/14)).
+- SQL editor:
+  - Enter starts the new line at the indentation of the current line ([#13](https://github.com/sfaut/prisme/issues/13));
+  - Ctrl+Up and Ctrl+Down scroll by one line without moving the cursor ([#17](https://github.com/sfaut/prisme/issues/17));
+  - the spaces at the end of a line are removed when the cursor leaves it, except inside a string or a quoted identifier ([#15](https://github.com/sfaut/prisme/issues/15));
+  - with text selected, Ctrl+Shift+Enter and the **Tout exécuter** (Run all) button run only the queries the selection touches; without a selection, all of them ([#16](https://github.com/sfaut/prisme/issues/16)).
+- Results: the first 50 rows show without waiting for a full batch of 500 ([#9](https://github.com/sfaut/prisme/issues/9)).
+- Object explorer: the source, the database and the table stay pinned at the top while their content scrolls ([#8](https://github.com/sfaut/prisme/issues/8)); the events of each database show in an **Événements** (Events) folder.
+- Result grid: after a reconnection, a result with the same columns keeps its column order, widths, sort and filter; a result with other columns keeps the filter text.
+
+### 🐞 Bug fixes
+
+- Opening a table from the explorer no longer replaces the text of the editor: its `SELECT` goes after the last query, which gets its missing separator, and runs ([#10](https://github.com/sfaut/prisme/issues/10)).
+- The server no longer fails on a text with an accented character outside a string, such as `è` in a name ([#12](https://github.com/sfaut/prisme/issues/12)).
+- **Stopper** (Stop) pressed right after a run stops it: the whole batch could still run.
+- A text typed less than half a second before the page closes is saved.
+- A pin or a rename of a result tab that the server refuses is undone, with an error message.
+- The keyboard focus of the result grid is visible.
+- **Enjoliver** (Beautify): a column named like a time unit (`day`) no longer goes to capitals after `EXTRACT`, and `INTERVAL f(x) DAY` keeps its unit in capitals.
+- A source whose connection was deleted no longer offers a menu that opened the wrong window; two quick changes of dialect no longer mix their keywords; an unreadable message of the session shows an error instead of stopping its updates.
+
+### 🔒 Security
+
+- The local server only accepts the requests of this machine: a page of another site can no longer reach it, by DNS rebinding, to run queries on the saved connections.
+- Query sessions are read-only on the database side by default: the profile setting **Sessions en lecture seule** (Read-only sessions), on by default, makes each connection run `SET SESSION TRANSACTION READ ONLY`, so that the server refuses a write Prisme could not classify.
+
+### ⚙️ Internal improvements
+
+- Performance: a sorted grid merges the new rows instead of sorting the whole result again (15 s of main thread for 50,000 rows before), and computes a large result frame by frame; beautify and analysis run outside the server's async threads, and go faster on long texts.
+- The continuous integration builds the executables for the releases only, and skips the changes of documentation alone.
+- The query session is split into modules; panics are logged with their location.
+- The repository is in English (code, comments, commits, tickets); the interface stays in French.
+- For developers, `rebuild.ps1` rebuilds and restarts Prisme.
+
+### 📝 Documentation
+
+- Design documents, developer guide and changelog in English; the README describes every new feature.
+
 ## v0.2.0 (2026-10-16)
 
 ### 🚀 Launch
