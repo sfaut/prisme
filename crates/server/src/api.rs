@@ -112,10 +112,19 @@ struct Created {
     id: i64,
 }
 
+/// Version of Prisme, as returned by the API.
+#[derive(Serialize, TS)]
+#[ts(export)]
+struct AppVersion {
+    /// Version of the executable (`version` of `Cargo.toml`), for example `0.2.0`.
+    version: &'static str,
+}
+
 /// Builds the router of the API.
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/api/health", get(health))
+        .route("/api/version", get(version))
         .route(
             "/api/connections",
             get(list_connections).post(create_connection),
@@ -143,6 +152,14 @@ pub fn router(state: AppState) -> Router {
 /// `GET /api/health`: answers `ok`.
 async fn health() -> &'static str {
     "ok"
+}
+
+/// `GET /api/version`: version of Prisme, that of the executable, the engine:
+/// the interface shows it beneath the name.
+async fn version() -> Json<AppVersion> {
+    Json(AppVersion {
+        version: env!("CARGO_PKG_VERSION"),
+    })
 }
 
 /// `GET /api/connections`: connections of the current user, without passwords.
@@ -533,6 +550,13 @@ mod tests {
     async fn health_answers() {
         let (status, _) = send(&test_app(), "GET", "/api/health", None).await;
         assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn answers_the_version_of_the_executable() {
+        let (status, body) = send(&test_app(), "GET", "/api/version", None).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["version"], env!("CARGO_PKG_VERSION"));
     }
 
     #[tokio::test]

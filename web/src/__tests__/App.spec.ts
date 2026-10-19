@@ -8,6 +8,10 @@ vi.mock('@/api/connections', () => ({
   listConnections: async () => [],
 }))
 
+vi.mock('@/api/version', () => ({
+  getVersion: async () => ({ version: '1.2.3' }),
+}))
+
 // No saved editor: the interface creates one, without a connection.
 vi.mock('@/api/editors', () => ({
   listEditors: async () => [],
@@ -38,10 +42,11 @@ describe('App', () => {
     )
   })
 
-  it('shows the version of Prisme beneath its name', () => {
+  it('shows the version of the server beneath the name', async () => {
     const wrapper = mount(App)
-    expect(__PRISME_VERSION__).toMatch(/^\d+\.\d+\.\d+/)
-    expect(wrapper.find('header [title="Version de Prisme"]').text()).toBe(`v${__PRISME_VERSION__}`)
+    await vi.waitFor(() =>
+      expect(wrapper.find('header [title="Version de Prisme"]').text()).toBe('v1.2.3'),
+    )
   })
 
   it('puts the options button in the top bar, above the explorer', async () => {

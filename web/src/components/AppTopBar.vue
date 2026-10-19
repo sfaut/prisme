@@ -1,6 +1,7 @@
 <!--
   Top bar of the application, across the whole width of the screen: name of
-  the application with its version beneath, synchronisation state
+  the application with its version beneath (that of the executable, read
+  from the server), synchronisation state
   (`SyncStatus`), theme choice, and the "Options" menu, which opens the
   settings (row limit, language) and the user's profile.
 
@@ -8,8 +9,9 @@
 -->
 <script setup lang="ts">
 import { Monitor, Moon, Settings, Sun, UserRound } from 'lucide-vue-next'
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 
+import { getVersion } from '@/api/version'
 import { type ColorMode, colorMode } from '@/colorMode'
 
 import ProfileDialog from './ProfileDialog.vue'
@@ -21,9 +23,18 @@ import UiSelect from './ui/UiSelect.vue'
 import type { MenuItem } from './ui/menuItem'
 
 /**
- * Version of Prisme, shown beneath its name.
+ * Version of Prisme shown beneath its name ("v0.2.0"), `null` as long as the
+ * server has not given it.
  */
-const VERSION = `v${__PRISME_VERSION__}`
+const version = ref<string | null>(null)
+
+onMounted(async () => {
+  try {
+    version.value = `v${(await getVersion()).version}`
+  } catch {
+    // Server unreachable: the version stays hidden, nothing else depends on it.
+  }
+})
 
 /**
  * Choice of the theme.
@@ -58,8 +69,9 @@ const menuItems: MenuItem[] = [
     <!-- Name and version without leading: together, the height of a control. -->
     <div class="flex flex-col gap-0.5">
       <h1 class="text-heading leading-none font-semibold text-fg-strong">Prisme</h1>
+      <!-- A non-breaking space keeps the room of the version while waiting for it. -->
       <span class="text-small leading-none text-fg-dimmed" title="Version de Prisme">
-        {{ VERSION }}
+        {{ version ?? '\u00a0' }}
       </span>
     </div>
     <div class="ms-auto flex items-center gap-gap">
