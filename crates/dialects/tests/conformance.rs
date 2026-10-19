@@ -10,7 +10,9 @@
 //! variable `PRISME_CONFORMANCE_SERVERS` (by default `mysql:8.0.11`,
 //! `mysql:8.4`, `mariadb:10.6` and `mariadb:11.8`), or `all` for every local
 //! image of MySQL and MariaDB, one per version: a new version is checked by
-//! adding its image, without writing the cases again.
+//! adding its image, without writing the cases again. The images older than
+//! the floor of their dialect (`versions::Registry::floor`), which Prisme
+//! refuses, are left out.
 //! `PRISME_CONFORMANCE_FILES` limits the run to some files (`grammar,cast`).
 //! The version of each image is read from its environment before the run, so
 //! that the servers need not run together: they start by groups of 5
@@ -39,7 +41,7 @@ use prisme_dialects::build::Tables;
 use prisme_dialects::emit::OutputDialect;
 use prisme_dialects::lexer::SqlMode;
 use prisme_dialects::transpile::{InputDialect, prepare};
-use prisme_dialects::versions::Version;
+use prisme_dialects::versions::{Version, registry};
 use prisme_plan::Ident;
 use secrecy::SecretString;
 use serde::Deserialize;
@@ -384,7 +386,8 @@ async fn start_servers(images: &[Image]) -> Vec<Server> {
 /// Images of the run, MySQL first, then by version: those of
 /// `PRISME_CONFORMANCE_SERVERS`, separated by commas, or every local image
 /// of MySQL and MariaDB for `all`, one per version (of the most precise
-/// tag: `mariadb:11.8.9` rather than `mariadb:11.8`).
+/// tag: `mariadb:11.8.9` rather than `mariadb:11.8`), from the floor of
+/// their dialect.
 ///
 /// # Panics
 ///
@@ -418,6 +421,14 @@ fn images() -> Vec<Image> {
             None => images.push(image),
         }
     }
+    images.retain(|image| {
+        let floor = registry(image.dialect).floor();
+        let kept = image.version >= floor;
+        if !kept {
+            println!("{}: left out, older than the floor {floor}", image.name);
+        }
+        kept
+    });
     images.sort_by_key(|image| (image.dialect == Dialect::MariaDb, image.version));
     images
 }
