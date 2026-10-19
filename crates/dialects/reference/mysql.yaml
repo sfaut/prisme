@@ -806,9 +806,12 @@ constructs:
       counts among the temporal types from 8.0.24 (`is_temporal_type`, "Some
       internal functions used with temporal column types did not provide
       proper handling for `YEAR` values", Bug #32395335), which `NULLIF`
-      gives as a string of their length, read as an integer. A `YEAR`
-      before. Measured on 8.0.22, 8.0.23, 8.0.24, 8.0.42, 8.1.0 and 9.3.0
-      (crates/probe/cases/flow-direct.txt).
+      gives as a string of their length, read as an integer: an `INT`
+      through `CREATE TABLE ... AS SELECT`, a byte string of its text in the
+      metadata of the results. A `YEAR` before. Measured on 8.0.22, 8.0.23,
+      8.0.24, 8.0.42, 8.1.0 and 9.3.0 (crates/probe/cases/flow-direct.txt),
+      the column of the result on each local image
+      (crates/dialects/tests/conformance/nullif.yaml).
   - id: nullif_year_string
     since: "8.1.0"
     source: https://github.com/mysql/mysql-server/blob/mysql-8.1.0/sql/item_cmpfunc.cc
@@ -1043,7 +1046,7 @@ functions:
       - name: IFNULL
         mariadb: same
       - name: NULLIF
-        mariadb: same
+        mariadb: { rule: function.nullif }
   - family: Comparison
     manual: https://dev.mysql.com/doc/refman/8.4/en/comparison-operators.html
     checked: [MySQL 8.0.11, MySQL 8.4.11, MariaDB 10.6.28, MariaDB 11.8.9]

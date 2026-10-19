@@ -1,0 +1,654 @@
+# NULLIF of a date or a time (rule `function.nullif`): a VARCHAR in MySQL,
+# the temporal type in MariaDB, of the same text; then the forms written by
+# Prisme, a CAST of each side to the type of the other, and NULLIF inside
+# other expressions. NULLIF of a constant and a time: another value in MySQL.
+nullif_d_str NULLIF(d, '2024-05-06')
+nullif_d_str_char CAST(NULLIF(d, '2024-05-06') AS CHAR)
+nullif_d_str_charset CHARSET(NULLIF(d, '2024-05-06'))
+nullif_d_str_collation COLLATION(NULLIF(d, '2024-05-06'))
+nullif_d_int NULLIF(d, 1)
+nullif_d_int_char CAST(NULLIF(d, 1) AS CHAR)
+nullif_d_int_charset CHARSET(NULLIF(d, 1))
+nullif_d_int_collation COLLATION(NULLIF(d, 1))
+nullif_d_null NULLIF(d, NULL)
+nullif_d_null_char CAST(NULLIF(d, NULL) AS CHAR)
+nullif_d_null_charset CHARSET(NULLIF(d, NULL))
+nullif_d_null_collation COLLATION(NULLIF(d, NULL))
+nullif_d_same NULLIF(d, d)
+nullif_d_same_char CAST(NULLIF(d, d) AS CHAR)
+nullif_d_same_charset CHARSET(NULLIF(d, d))
+nullif_d_same_collation COLLATION(NULLIF(d, d))
+nullif_d_cast_date CAST(NULLIF(d, 1) AS DATE)
+nullif_d_cast_datetime CAST(NULLIF(d, 1) AS DATETIME)
+nullif_d_cast_datetime3 CAST(NULLIF(d, 1) AS DATETIME(3))
+nullif_d_cast_datetime6 CAST(NULLIF(d, 1) AS DATETIME(6))
+nullif_d_cast_time CAST(NULLIF(d, 1) AS TIME)
+nullif_d_cast_time1 CAST(NULLIF(d, 1) AS TIME(1))
+nullif_d_cast_time6 CAST(NULLIF(d, 1) AS TIME(6))
+nullif_d_in_plus NULLIF(d, 1) + 0
+nullif_d_in_plusd NULLIF(d, 1) + 0.0
+nullif_d_in_div NULLIF(d, 1) / 7
+nullif_d_in_concat CONCAT(NULLIF(d, 1))
+nullif_d_in_len LENGTH(NULLIF(d, 1))
+nullif_d_in_interval NULLIF(d, 1) + INTERVAL 1 DAY
+nullif_d_in_cmp_str NULLIF(d, 1) < '2024-05-10'
+nullif_d_in_cmp_int NULLIF(d, 1) < 20240510
+nullif_d_in_isnull NULLIF(d, 1) IS NULL
+nullif_d_in_year YEAR(NULLIF(d, 1))
+nullif_d_in_hour HOUR(NULLIF(d, 1))
+nullif_d_in_ifnull IFNULL(NULLIF(d, 1), 'x')
+nullif_d_in_coalesce COALESCE(NULLIF(d, 1), d)
+nullif_d_in_greatest GREATEST(NULLIF(d, 1), d)
+nullif_d_in_if IF(TRUE, NULLIF(d, 1), NULL)
+nullif_d_in_datediff DATEDIFF(NULLIF(d, 1), '2024-01-01')
+nullif_d_in_dformat DATE_FORMAT(NULLIF(d, 1), '%Y')
+nullif_d_in_unix UNIX_TIMESTAMP(NULLIF(d, 1))
+nullif_d_in_round ROUND(NULLIF(d, 1))
+nullif_d_in_sum SUM(NULLIF(d, 1))
+nullif_d_in_max MAX(NULLIF(d, 1))
+nullif_d_in_cast_signed CAST(NULLIF(d, 1) AS SIGNED)
+nullif_d_in_cast_decimal CAST(NULLIF(d, 1) AS DECIMAL(30, 6))
+nullif_d_in_bool NULLIF(d, 1) AND TRUE
+nullif_d_in_like NULLIF(d, 1) LIKE '2024%'
+nullif_d_in_in NULLIF(d, 1) IN ('2024-05-06', 'x')
+nullif_d_in_between NULLIF(d, 1) BETWEEN '2024-01-01' AND '2024-12-31'
+nullif_d_in_cmp_d NULLIF(d, 1) = d
+nullif_d_in_cmp_t NULLIF(d, 1) = t
+nullif_dt_str NULLIF(dt, '2024-05-06')
+nullif_dt_str_char CAST(NULLIF(dt, '2024-05-06') AS CHAR)
+nullif_dt_str_charset CHARSET(NULLIF(dt, '2024-05-06'))
+nullif_dt_str_collation COLLATION(NULLIF(dt, '2024-05-06'))
+nullif_dt_int NULLIF(dt, 1)
+nullif_dt_int_char CAST(NULLIF(dt, 1) AS CHAR)
+nullif_dt_int_charset CHARSET(NULLIF(dt, 1))
+nullif_dt_int_collation COLLATION(NULLIF(dt, 1))
+nullif_dt_null NULLIF(dt, NULL)
+nullif_dt_null_char CAST(NULLIF(dt, NULL) AS CHAR)
+nullif_dt_null_charset CHARSET(NULLIF(dt, NULL))
+nullif_dt_null_collation COLLATION(NULLIF(dt, NULL))
+nullif_dt_same NULLIF(dt, dt)
+nullif_dt_same_char CAST(NULLIF(dt, dt) AS CHAR)
+nullif_dt_same_charset CHARSET(NULLIF(dt, dt))
+nullif_dt_same_collation COLLATION(NULLIF(dt, dt))
+nullif_dt_cast_date CAST(NULLIF(dt, 1) AS DATE)
+nullif_dt_cast_datetime CAST(NULLIF(dt, 1) AS DATETIME)
+nullif_dt_cast_datetime3 CAST(NULLIF(dt, 1) AS DATETIME(3))
+nullif_dt_cast_datetime6 CAST(NULLIF(dt, 1) AS DATETIME(6))
+nullif_dt_cast_time CAST(NULLIF(dt, 1) AS TIME)
+nullif_dt_cast_time1 CAST(NULLIF(dt, 1) AS TIME(1))
+nullif_dt_cast_time6 CAST(NULLIF(dt, 1) AS TIME(6))
+nullif_dt_in_plus NULLIF(dt, 1) + 0
+nullif_dt_in_plusd NULLIF(dt, 1) + 0.0
+nullif_dt_in_div NULLIF(dt, 1) / 7
+nullif_dt_in_concat CONCAT(NULLIF(dt, 1))
+nullif_dt_in_len LENGTH(NULLIF(dt, 1))
+nullif_dt_in_interval NULLIF(dt, 1) + INTERVAL 1 DAY
+nullif_dt_in_cmp_str NULLIF(dt, 1) < '2024-05-10'
+nullif_dt_in_cmp_int NULLIF(dt, 1) < 20240510
+nullif_dt_in_isnull NULLIF(dt, 1) IS NULL
+nullif_dt_in_year YEAR(NULLIF(dt, 1))
+nullif_dt_in_hour HOUR(NULLIF(dt, 1))
+nullif_dt_in_ifnull IFNULL(NULLIF(dt, 1), 'x')
+nullif_dt_in_coalesce COALESCE(NULLIF(dt, 1), d)
+nullif_dt_in_greatest GREATEST(NULLIF(dt, 1), d)
+nullif_dt_in_if IF(TRUE, NULLIF(dt, 1), NULL)
+nullif_dt_in_datediff DATEDIFF(NULLIF(dt, 1), '2024-01-01')
+nullif_dt_in_dformat DATE_FORMAT(NULLIF(dt, 1), '%Y')
+nullif_dt_in_unix UNIX_TIMESTAMP(NULLIF(dt, 1))
+nullif_dt_in_round ROUND(NULLIF(dt, 1))
+nullif_dt_in_sum SUM(NULLIF(dt, 1))
+nullif_dt_in_max MAX(NULLIF(dt, 1))
+nullif_dt_in_cast_signed CAST(NULLIF(dt, 1) AS SIGNED)
+nullif_dt_in_cast_decimal CAST(NULLIF(dt, 1) AS DECIMAL(30, 6))
+nullif_dt_in_bool NULLIF(dt, 1) AND TRUE
+nullif_dt_in_like NULLIF(dt, 1) LIKE '2024%'
+nullif_dt_in_in NULLIF(dt, 1) IN ('2024-05-06', 'x')
+nullif_dt_in_between NULLIF(dt, 1) BETWEEN '2024-01-01' AND '2024-12-31'
+nullif_dt_in_cmp_d NULLIF(dt, 1) = d
+nullif_dt_in_cmp_t NULLIF(dt, 1) = t
+nullif_ts_str NULLIF(ts, '2024-05-06')
+nullif_ts_str_char CAST(NULLIF(ts, '2024-05-06') AS CHAR)
+nullif_ts_str_charset CHARSET(NULLIF(ts, '2024-05-06'))
+nullif_ts_str_collation COLLATION(NULLIF(ts, '2024-05-06'))
+nullif_ts_int NULLIF(ts, 1)
+nullif_ts_int_char CAST(NULLIF(ts, 1) AS CHAR)
+nullif_ts_int_charset CHARSET(NULLIF(ts, 1))
+nullif_ts_int_collation COLLATION(NULLIF(ts, 1))
+nullif_ts_null NULLIF(ts, NULL)
+nullif_ts_null_char CAST(NULLIF(ts, NULL) AS CHAR)
+nullif_ts_null_charset CHARSET(NULLIF(ts, NULL))
+nullif_ts_null_collation COLLATION(NULLIF(ts, NULL))
+nullif_ts_same NULLIF(ts, ts)
+nullif_ts_same_char CAST(NULLIF(ts, ts) AS CHAR)
+nullif_ts_same_charset CHARSET(NULLIF(ts, ts))
+nullif_ts_same_collation COLLATION(NULLIF(ts, ts))
+nullif_ts_cast_date CAST(NULLIF(ts, 1) AS DATE)
+nullif_ts_cast_datetime CAST(NULLIF(ts, 1) AS DATETIME)
+nullif_ts_cast_datetime3 CAST(NULLIF(ts, 1) AS DATETIME(3))
+nullif_ts_cast_datetime6 CAST(NULLIF(ts, 1) AS DATETIME(6))
+nullif_ts_cast_time CAST(NULLIF(ts, 1) AS TIME)
+nullif_ts_cast_time1 CAST(NULLIF(ts, 1) AS TIME(1))
+nullif_ts_cast_time6 CAST(NULLIF(ts, 1) AS TIME(6))
+nullif_ts_in_plus NULLIF(ts, 1) + 0
+nullif_ts_in_plusd NULLIF(ts, 1) + 0.0
+nullif_ts_in_div NULLIF(ts, 1) / 7
+nullif_ts_in_concat CONCAT(NULLIF(ts, 1))
+nullif_ts_in_len LENGTH(NULLIF(ts, 1))
+nullif_ts_in_interval NULLIF(ts, 1) + INTERVAL 1 DAY
+nullif_ts_in_cmp_str NULLIF(ts, 1) < '2024-05-10'
+nullif_ts_in_cmp_int NULLIF(ts, 1) < 20240510
+nullif_ts_in_isnull NULLIF(ts, 1) IS NULL
+nullif_ts_in_year YEAR(NULLIF(ts, 1))
+nullif_ts_in_hour HOUR(NULLIF(ts, 1))
+nullif_ts_in_ifnull IFNULL(NULLIF(ts, 1), 'x')
+nullif_ts_in_coalesce COALESCE(NULLIF(ts, 1), d)
+nullif_ts_in_greatest GREATEST(NULLIF(ts, 1), d)
+nullif_ts_in_if IF(TRUE, NULLIF(ts, 1), NULL)
+nullif_ts_in_datediff DATEDIFF(NULLIF(ts, 1), '2024-01-01')
+nullif_ts_in_dformat DATE_FORMAT(NULLIF(ts, 1), '%Y')
+nullif_ts_in_unix UNIX_TIMESTAMP(NULLIF(ts, 1))
+nullif_ts_in_round ROUND(NULLIF(ts, 1))
+nullif_ts_in_sum SUM(NULLIF(ts, 1))
+nullif_ts_in_max MAX(NULLIF(ts, 1))
+nullif_ts_in_cast_signed CAST(NULLIF(ts, 1) AS SIGNED)
+nullif_ts_in_cast_decimal CAST(NULLIF(ts, 1) AS DECIMAL(30, 6))
+nullif_ts_in_bool NULLIF(ts, 1) AND TRUE
+nullif_ts_in_like NULLIF(ts, 1) LIKE '2024%'
+nullif_ts_in_in NULLIF(ts, 1) IN ('2024-05-06', 'x')
+nullif_ts_in_between NULLIF(ts, 1) BETWEEN '2024-01-01' AND '2024-12-31'
+nullif_ts_in_cmp_d NULLIF(ts, 1) = d
+nullif_ts_in_cmp_t NULLIF(ts, 1) = t
+nullif_t_str NULLIF(t, '2024-05-06')
+nullif_t_str_char CAST(NULLIF(t, '2024-05-06') AS CHAR)
+nullif_t_str_charset CHARSET(NULLIF(t, '2024-05-06'))
+nullif_t_str_collation COLLATION(NULLIF(t, '2024-05-06'))
+nullif_t_int NULLIF(t, 1)
+nullif_t_int_char CAST(NULLIF(t, 1) AS CHAR)
+nullif_t_int_charset CHARSET(NULLIF(t, 1))
+nullif_t_int_collation COLLATION(NULLIF(t, 1))
+nullif_t_null NULLIF(t, NULL)
+nullif_t_null_char CAST(NULLIF(t, NULL) AS CHAR)
+nullif_t_null_charset CHARSET(NULLIF(t, NULL))
+nullif_t_null_collation COLLATION(NULLIF(t, NULL))
+nullif_t_same NULLIF(t, t)
+nullif_t_same_char CAST(NULLIF(t, t) AS CHAR)
+nullif_t_same_charset CHARSET(NULLIF(t, t))
+nullif_t_same_collation COLLATION(NULLIF(t, t))
+nullif_t_cast_date CAST(NULLIF(t, 1) AS DATE)
+nullif_t_cast_datetime CAST(NULLIF(t, 1) AS DATETIME)
+nullif_t_cast_datetime3 CAST(NULLIF(t, 1) AS DATETIME(3))
+nullif_t_cast_datetime6 CAST(NULLIF(t, 1) AS DATETIME(6))
+nullif_t_cast_time CAST(NULLIF(t, 1) AS TIME)
+nullif_t_cast_time1 CAST(NULLIF(t, 1) AS TIME(1))
+nullif_t_cast_time6 CAST(NULLIF(t, 1) AS TIME(6))
+nullif_t_in_plus NULLIF(t, 1) + 0
+nullif_t_in_plusd NULLIF(t, 1) + 0.0
+nullif_t_in_div NULLIF(t, 1) / 7
+nullif_t_in_concat CONCAT(NULLIF(t, 1))
+nullif_t_in_len LENGTH(NULLIF(t, 1))
+nullif_t_in_interval NULLIF(t, 1) + INTERVAL 1 DAY
+nullif_t_in_cmp_str NULLIF(t, 1) < '2024-05-10'
+nullif_t_in_cmp_int NULLIF(t, 1) < 20240510
+nullif_t_in_isnull NULLIF(t, 1) IS NULL
+nullif_t_in_year YEAR(NULLIF(t, 1))
+nullif_t_in_hour HOUR(NULLIF(t, 1))
+nullif_t_in_ifnull IFNULL(NULLIF(t, 1), 'x')
+nullif_t_in_coalesce COALESCE(NULLIF(t, 1), d)
+nullif_t_in_greatest GREATEST(NULLIF(t, 1), d)
+nullif_t_in_if IF(TRUE, NULLIF(t, 1), NULL)
+nullif_t_in_datediff DATEDIFF(NULLIF(t, 1), '2024-01-01')
+nullif_t_in_dformat DATE_FORMAT(NULLIF(t, 1), '%Y')
+nullif_t_in_unix UNIX_TIMESTAMP(NULLIF(t, 1))
+nullif_t_in_round ROUND(NULLIF(t, 1))
+nullif_t_in_sum SUM(NULLIF(t, 1))
+nullif_t_in_max MAX(NULLIF(t, 1))
+nullif_t_in_cast_signed CAST(NULLIF(t, 1) AS SIGNED)
+nullif_t_in_cast_decimal CAST(NULLIF(t, 1) AS DECIMAL(30, 6))
+nullif_t_in_bool NULLIF(t, 1) AND TRUE
+nullif_t_in_like NULLIF(t, 1) LIKE '2024%'
+nullif_t_in_in NULLIF(t, 1) IN ('2024-05-06', 'x')
+nullif_t_in_between NULLIF(t, 1) BETWEEN '2024-01-01' AND '2024-12-31'
+nullif_t_in_cmp_d NULLIF(t, 1) = d
+nullif_t_in_cmp_t NULLIF(t, 1) = t
+nullif_dn_str NULLIF(dn, '2024-05-06')
+nullif_dn_str_char CAST(NULLIF(dn, '2024-05-06') AS CHAR)
+nullif_dn_str_charset CHARSET(NULLIF(dn, '2024-05-06'))
+nullif_dn_str_collation COLLATION(NULLIF(dn, '2024-05-06'))
+nullif_dn_int NULLIF(dn, 1)
+nullif_dn_int_char CAST(NULLIF(dn, 1) AS CHAR)
+nullif_dn_int_charset CHARSET(NULLIF(dn, 1))
+nullif_dn_int_collation COLLATION(NULLIF(dn, 1))
+nullif_dn_null NULLIF(dn, NULL)
+nullif_dn_null_char CAST(NULLIF(dn, NULL) AS CHAR)
+nullif_dn_null_charset CHARSET(NULLIF(dn, NULL))
+nullif_dn_null_collation COLLATION(NULLIF(dn, NULL))
+nullif_dn_same NULLIF(dn, dn)
+nullif_dn_same_char CAST(NULLIF(dn, dn) AS CHAR)
+nullif_dn_same_charset CHARSET(NULLIF(dn, dn))
+nullif_dn_same_collation COLLATION(NULLIF(dn, dn))
+nullif_dn_cast_date CAST(NULLIF(dn, 1) AS DATE)
+nullif_dn_cast_datetime CAST(NULLIF(dn, 1) AS DATETIME)
+nullif_dn_cast_datetime3 CAST(NULLIF(dn, 1) AS DATETIME(3))
+nullif_dn_cast_datetime6 CAST(NULLIF(dn, 1) AS DATETIME(6))
+nullif_dn_cast_time CAST(NULLIF(dn, 1) AS TIME)
+nullif_dn_cast_time1 CAST(NULLIF(dn, 1) AS TIME(1))
+nullif_dn_cast_time6 CAST(NULLIF(dn, 1) AS TIME(6))
+nullif_dn_in_plus NULLIF(dn, 1) + 0
+nullif_dn_in_plusd NULLIF(dn, 1) + 0.0
+nullif_dn_in_div NULLIF(dn, 1) / 7
+nullif_dn_in_concat CONCAT(NULLIF(dn, 1))
+nullif_dn_in_len LENGTH(NULLIF(dn, 1))
+nullif_dn_in_interval NULLIF(dn, 1) + INTERVAL 1 DAY
+nullif_dn_in_cmp_str NULLIF(dn, 1) < '2024-05-10'
+nullif_dn_in_cmp_int NULLIF(dn, 1) < 20240510
+nullif_dn_in_isnull NULLIF(dn, 1) IS NULL
+nullif_dn_in_year YEAR(NULLIF(dn, 1))
+nullif_dn_in_hour HOUR(NULLIF(dn, 1))
+nullif_dn_in_ifnull IFNULL(NULLIF(dn, 1), 'x')
+nullif_dn_in_coalesce COALESCE(NULLIF(dn, 1), d)
+nullif_dn_in_greatest GREATEST(NULLIF(dn, 1), d)
+nullif_dn_in_if IF(TRUE, NULLIF(dn, 1), NULL)
+nullif_dn_in_datediff DATEDIFF(NULLIF(dn, 1), '2024-01-01')
+nullif_dn_in_dformat DATE_FORMAT(NULLIF(dn, 1), '%Y')
+nullif_dn_in_unix UNIX_TIMESTAMP(NULLIF(dn, 1))
+nullif_dn_in_round ROUND(NULLIF(dn, 1))
+nullif_dn_in_sum SUM(NULLIF(dn, 1))
+nullif_dn_in_max MAX(NULLIF(dn, 1))
+nullif_dn_in_cast_signed CAST(NULLIF(dn, 1) AS SIGNED)
+nullif_dn_in_cast_decimal CAST(NULLIF(dn, 1) AS DECIMAL(30, 6))
+nullif_dn_in_bool NULLIF(dn, 1) AND TRUE
+nullif_dn_in_like NULLIF(dn, 1) LIKE '2024%'
+nullif_dn_in_in NULLIF(dn, 1) IN ('2024-05-06', 'x')
+nullif_dn_in_between NULLIF(dn, 1) BETWEEN '2024-01-01' AND '2024-12-31'
+nullif_dn_in_cmp_d NULLIF(dn, 1) = d
+nullif_dn_in_cmp_t NULLIF(dn, 1) = t
+nullif_dlit_str NULLIF(DATE '2024-05-06', '2024-05-06')
+nullif_dlit_str_char CAST(NULLIF(DATE '2024-05-06', '2024-05-06') AS CHAR)
+nullif_dlit_str_charset CHARSET(NULLIF(DATE '2024-05-06', '2024-05-06'))
+nullif_dlit_str_collation COLLATION(NULLIF(DATE '2024-05-06', '2024-05-06'))
+nullif_dlit_int NULLIF(DATE '2024-05-06', 1)
+nullif_dlit_int_char CAST(NULLIF(DATE '2024-05-06', 1) AS CHAR)
+nullif_dlit_int_charset CHARSET(NULLIF(DATE '2024-05-06', 1))
+nullif_dlit_int_collation COLLATION(NULLIF(DATE '2024-05-06', 1))
+nullif_dlit_null NULLIF(DATE '2024-05-06', NULL)
+nullif_dlit_null_char CAST(NULLIF(DATE '2024-05-06', NULL) AS CHAR)
+nullif_dlit_null_charset CHARSET(NULLIF(DATE '2024-05-06', NULL))
+nullif_dlit_null_collation COLLATION(NULLIF(DATE '2024-05-06', NULL))
+nullif_dlit_same NULLIF(DATE '2024-05-06', DATE '2024-05-06')
+nullif_dlit_same_char CAST(NULLIF(DATE '2024-05-06', DATE '2024-05-06') AS CHAR)
+nullif_dlit_same_charset CHARSET(NULLIF(DATE '2024-05-06', DATE '2024-05-06'))
+nullif_dlit_same_collation COLLATION(NULLIF(DATE '2024-05-06', DATE '2024-05-06'))
+nullif_dlit_cast_date CAST(NULLIF(DATE '2024-05-06', 1) AS DATE)
+nullif_dlit_cast_datetime CAST(NULLIF(DATE '2024-05-06', 1) AS DATETIME)
+nullif_dlit_cast_datetime3 CAST(NULLIF(DATE '2024-05-06', 1) AS DATETIME(3))
+nullif_dlit_cast_datetime6 CAST(NULLIF(DATE '2024-05-06', 1) AS DATETIME(6))
+nullif_dlit_cast_time CAST(NULLIF(DATE '2024-05-06', 1) AS TIME)
+nullif_dlit_cast_time1 CAST(NULLIF(DATE '2024-05-06', 1) AS TIME(1))
+nullif_dlit_cast_time6 CAST(NULLIF(DATE '2024-05-06', 1) AS TIME(6))
+nullif_dlit_in_plus NULLIF(DATE '2024-05-06', 1) + 0
+nullif_dlit_in_plusd NULLIF(DATE '2024-05-06', 1) + 0.0
+nullif_dlit_in_div NULLIF(DATE '2024-05-06', 1) / 7
+nullif_dlit_in_concat CONCAT(NULLIF(DATE '2024-05-06', 1))
+nullif_dlit_in_len LENGTH(NULLIF(DATE '2024-05-06', 1))
+nullif_dlit_in_interval NULLIF(DATE '2024-05-06', 1) + INTERVAL 1 DAY
+nullif_dlit_in_cmp_str NULLIF(DATE '2024-05-06', 1) < '2024-05-10'
+nullif_dlit_in_cmp_int NULLIF(DATE '2024-05-06', 1) < 20240510
+nullif_dlit_in_isnull NULLIF(DATE '2024-05-06', 1) IS NULL
+nullif_dlit_in_year YEAR(NULLIF(DATE '2024-05-06', 1))
+nullif_dlit_in_hour HOUR(NULLIF(DATE '2024-05-06', 1))
+nullif_dlit_in_ifnull IFNULL(NULLIF(DATE '2024-05-06', 1), 'x')
+nullif_dlit_in_coalesce COALESCE(NULLIF(DATE '2024-05-06', 1), d)
+nullif_dlit_in_greatest GREATEST(NULLIF(DATE '2024-05-06', 1), d)
+nullif_dlit_in_if IF(TRUE, NULLIF(DATE '2024-05-06', 1), NULL)
+nullif_dlit_in_datediff DATEDIFF(NULLIF(DATE '2024-05-06', 1), '2024-01-01')
+nullif_dlit_in_dformat DATE_FORMAT(NULLIF(DATE '2024-05-06', 1), '%Y')
+nullif_dlit_in_unix UNIX_TIMESTAMP(NULLIF(DATE '2024-05-06', 1))
+nullif_dlit_in_round ROUND(NULLIF(DATE '2024-05-06', 1))
+nullif_dlit_in_sum SUM(NULLIF(DATE '2024-05-06', 1))
+nullif_dlit_in_max MAX(NULLIF(DATE '2024-05-06', 1))
+nullif_dlit_in_cast_signed CAST(NULLIF(DATE '2024-05-06', 1) AS SIGNED)
+nullif_dlit_in_cast_decimal CAST(NULLIF(DATE '2024-05-06', 1) AS DECIMAL(30, 6))
+nullif_dlit_in_bool NULLIF(DATE '2024-05-06', 1) AND TRUE
+nullif_dlit_in_like NULLIF(DATE '2024-05-06', 1) LIKE '2024%'
+nullif_dlit_in_in NULLIF(DATE '2024-05-06', 1) IN ('2024-05-06', 'x')
+nullif_dlit_in_between NULLIF(DATE '2024-05-06', 1) BETWEEN '2024-01-01' AND '2024-12-31'
+nullif_dlit_in_cmp_d NULLIF(DATE '2024-05-06', 1) = d
+nullif_dlit_in_cmp_t NULLIF(DATE '2024-05-06', 1) = t
+nullif_tlit_str NULLIF(TIME '10:20:30.5', '2024-05-06')
+nullif_tlit_str_char CAST(NULLIF(TIME '10:20:30.5', '2024-05-06') AS CHAR)
+nullif_tlit_str_charset CHARSET(NULLIF(TIME '10:20:30.5', '2024-05-06'))
+nullif_tlit_str_collation COLLATION(NULLIF(TIME '10:20:30.5', '2024-05-06'))
+nullif_tlit_int NULLIF(TIME '10:20:30.5', 1)
+nullif_tlit_int_char CAST(NULLIF(TIME '10:20:30.5', 1) AS CHAR)
+nullif_tlit_int_charset CHARSET(NULLIF(TIME '10:20:30.5', 1))
+nullif_tlit_int_collation COLLATION(NULLIF(TIME '10:20:30.5', 1))
+nullif_tlit_null NULLIF(TIME '10:20:30.5', NULL)
+nullif_tlit_null_char CAST(NULLIF(TIME '10:20:30.5', NULL) AS CHAR)
+nullif_tlit_null_charset CHARSET(NULLIF(TIME '10:20:30.5', NULL))
+nullif_tlit_null_collation COLLATION(NULLIF(TIME '10:20:30.5', NULL))
+nullif_tlit_same NULLIF(TIME '10:20:30.5', TIME '10:20:30.5')
+nullif_tlit_same_char CAST(NULLIF(TIME '10:20:30.5', TIME '10:20:30.5') AS CHAR)
+nullif_tlit_same_charset CHARSET(NULLIF(TIME '10:20:30.5', TIME '10:20:30.5'))
+nullif_tlit_same_collation COLLATION(NULLIF(TIME '10:20:30.5', TIME '10:20:30.5'))
+nullif_tlit_cast_date CAST(NULLIF(TIME '10:20:30.5', 1) AS DATE)
+nullif_tlit_cast_datetime CAST(NULLIF(TIME '10:20:30.5', 1) AS DATETIME)
+nullif_tlit_cast_datetime3 CAST(NULLIF(TIME '10:20:30.5', 1) AS DATETIME(3))
+nullif_tlit_cast_datetime6 CAST(NULLIF(TIME '10:20:30.5', 1) AS DATETIME(6))
+nullif_tlit_cast_time CAST(NULLIF(TIME '10:20:30.5', 1) AS TIME)
+nullif_tlit_cast_time1 CAST(NULLIF(TIME '10:20:30.5', 1) AS TIME(1))
+nullif_tlit_cast_time6 CAST(NULLIF(TIME '10:20:30.5', 1) AS TIME(6))
+nullif_tlit_in_plus NULLIF(TIME '10:20:30.5', 1) + 0
+nullif_tlit_in_plusd NULLIF(TIME '10:20:30.5', 1) + 0.0
+nullif_tlit_in_div NULLIF(TIME '10:20:30.5', 1) / 7
+nullif_tlit_in_concat CONCAT(NULLIF(TIME '10:20:30.5', 1))
+nullif_tlit_in_len LENGTH(NULLIF(TIME '10:20:30.5', 1))
+nullif_tlit_in_interval NULLIF(TIME '10:20:30.5', 1) + INTERVAL 1 DAY
+nullif_tlit_in_cmp_str NULLIF(TIME '10:20:30.5', 1) < '2024-05-10'
+nullif_tlit_in_cmp_int NULLIF(TIME '10:20:30.5', 1) < 20240510
+nullif_tlit_in_isnull NULLIF(TIME '10:20:30.5', 1) IS NULL
+nullif_tlit_in_year YEAR(NULLIF(TIME '10:20:30.5', 1))
+nullif_tlit_in_hour HOUR(NULLIF(TIME '10:20:30.5', 1))
+nullif_tlit_in_ifnull IFNULL(NULLIF(TIME '10:20:30.5', 1), 'x')
+nullif_tlit_in_coalesce COALESCE(NULLIF(TIME '10:20:30.5', 1), d)
+nullif_tlit_in_greatest GREATEST(NULLIF(TIME '10:20:30.5', 1), d)
+nullif_tlit_in_if IF(TRUE, NULLIF(TIME '10:20:30.5', 1), NULL)
+nullif_tlit_in_datediff DATEDIFF(NULLIF(TIME '10:20:30.5', 1), '2024-01-01')
+nullif_tlit_in_dformat DATE_FORMAT(NULLIF(TIME '10:20:30.5', 1), '%Y')
+nullif_tlit_in_unix UNIX_TIMESTAMP(NULLIF(TIME '10:20:30.5', 1))
+nullif_tlit_in_round ROUND(NULLIF(TIME '10:20:30.5', 1))
+nullif_tlit_in_sum SUM(NULLIF(TIME '10:20:30.5', 1))
+nullif_tlit_in_max MAX(NULLIF(TIME '10:20:30.5', 1))
+nullif_tlit_in_cast_signed CAST(NULLIF(TIME '10:20:30.5', 1) AS SIGNED)
+nullif_tlit_in_cast_decimal CAST(NULLIF(TIME '10:20:30.5', 1) AS DECIMAL(30, 6))
+nullif_tlit_in_bool NULLIF(TIME '10:20:30.5', 1) AND TRUE
+nullif_tlit_in_like NULLIF(TIME '10:20:30.5', 1) LIKE '2024%'
+nullif_tlit_in_in NULLIF(TIME '10:20:30.5', 1) IN ('2024-05-06', 'x')
+nullif_tlit_in_between NULLIF(TIME '10:20:30.5', 1) BETWEEN '2024-01-01' AND '2024-12-31'
+nullif_tlit_in_cmp_d NULLIF(TIME '10:20:30.5', 1) = d
+nullif_tlit_in_cmp_t NULLIF(TIME '10:20:30.5', 1) = t
+nullif_tslit_str NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', '2024-05-06')
+nullif_tslit_str_char CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', '2024-05-06') AS CHAR)
+nullif_tslit_str_charset CHARSET(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', '2024-05-06'))
+nullif_tslit_str_collation COLLATION(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', '2024-05-06'))
+nullif_tslit_int NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1)
+nullif_tslit_int_char CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS CHAR)
+nullif_tslit_int_charset CHARSET(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+nullif_tslit_int_collation COLLATION(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+nullif_tslit_null NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', NULL)
+nullif_tslit_null_char CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', NULL) AS CHAR)
+nullif_tslit_null_charset CHARSET(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', NULL))
+nullif_tslit_null_collation COLLATION(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', NULL))
+nullif_tslit_same NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', TIMESTAMP '2024-05-06 07:08:09.5')
+nullif_tslit_same_char CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', TIMESTAMP '2024-05-06 07:08:09.5') AS CHAR)
+nullif_tslit_same_charset CHARSET(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', TIMESTAMP '2024-05-06 07:08:09.5'))
+nullif_tslit_same_collation COLLATION(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', TIMESTAMP '2024-05-06 07:08:09.5'))
+nullif_tslit_cast_date CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS DATE)
+nullif_tslit_cast_datetime CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS DATETIME)
+nullif_tslit_cast_datetime3 CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS DATETIME(3))
+nullif_tslit_cast_datetime6 CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS DATETIME(6))
+nullif_tslit_cast_time CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS TIME)
+nullif_tslit_cast_time1 CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS TIME(1))
+nullif_tslit_cast_time6 CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS TIME(6))
+nullif_tslit_in_plus NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) + 0
+nullif_tslit_in_plusd NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) + 0.0
+nullif_tslit_in_div NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) / 7
+nullif_tslit_in_concat CONCAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+nullif_tslit_in_len LENGTH(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+nullif_tslit_in_interval NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) + INTERVAL 1 DAY
+nullif_tslit_in_cmp_str NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) < '2024-05-10'
+nullif_tslit_in_cmp_int NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) < 20240510
+nullif_tslit_in_isnull NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) IS NULL
+nullif_tslit_in_year YEAR(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+nullif_tslit_in_hour HOUR(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+nullif_tslit_in_ifnull IFNULL(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1), 'x')
+nullif_tslit_in_coalesce COALESCE(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1), d)
+nullif_tslit_in_greatest GREATEST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1), d)
+nullif_tslit_in_if IF(TRUE, NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1), NULL)
+nullif_tslit_in_datediff DATEDIFF(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1), '2024-01-01')
+nullif_tslit_in_dformat DATE_FORMAT(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1), '%Y')
+nullif_tslit_in_unix UNIX_TIMESTAMP(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+nullif_tslit_in_round ROUND(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+nullif_tslit_in_sum SUM(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+nullif_tslit_in_max MAX(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1))
+nullif_tslit_in_cast_signed CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS SIGNED)
+nullif_tslit_in_cast_decimal CAST(NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AS DECIMAL(30, 6))
+nullif_tslit_in_bool NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) AND TRUE
+nullif_tslit_in_like NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) LIKE '2024%'
+nullif_tslit_in_in NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) IN ('2024-05-06', 'x')
+nullif_tslit_in_between NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) BETWEEN '2024-01-01' AND '2024-12-31'
+nullif_tslit_in_cmp_d NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) = d
+nullif_tslit_in_cmp_t NULLIF(TIMESTAMP '2024-05-06 07:08:09.5', 1) = t
+nullif_now_str NULLIF(NOW(), '2024-05-06')
+nullif_now_str_char CAST(NULLIF(NOW(), '2024-05-06') AS CHAR)
+nullif_now_str_charset CHARSET(NULLIF(NOW(), '2024-05-06'))
+nullif_now_str_collation COLLATION(NULLIF(NOW(), '2024-05-06'))
+nullif_now_int NULLIF(NOW(), 1)
+nullif_now_int_char CAST(NULLIF(NOW(), 1) AS CHAR)
+nullif_now_int_charset CHARSET(NULLIF(NOW(), 1))
+nullif_now_int_collation COLLATION(NULLIF(NOW(), 1))
+nullif_now_null NULLIF(NOW(), NULL)
+nullif_now_null_char CAST(NULLIF(NOW(), NULL) AS CHAR)
+nullif_now_null_charset CHARSET(NULLIF(NOW(), NULL))
+nullif_now_null_collation COLLATION(NULLIF(NOW(), NULL))
+nullif_now_same NULLIF(NOW(), NOW())
+nullif_now_same_char CAST(NULLIF(NOW(), NOW()) AS CHAR)
+nullif_now_same_charset CHARSET(NULLIF(NOW(), NOW()))
+nullif_now_same_collation COLLATION(NULLIF(NOW(), NOW()))
+nullif_now_cast_date CAST(NULLIF(NOW(), 1) AS DATE)
+nullif_now_cast_datetime CAST(NULLIF(NOW(), 1) AS DATETIME)
+nullif_now_cast_datetime3 CAST(NULLIF(NOW(), 1) AS DATETIME(3))
+nullif_now_cast_datetime6 CAST(NULLIF(NOW(), 1) AS DATETIME(6))
+nullif_now_cast_time CAST(NULLIF(NOW(), 1) AS TIME)
+nullif_now_cast_time1 CAST(NULLIF(NOW(), 1) AS TIME(1))
+nullif_now_cast_time6 CAST(NULLIF(NOW(), 1) AS TIME(6))
+nullif_now_in_plus NULLIF(NOW(), 1) + 0
+nullif_now_in_plusd NULLIF(NOW(), 1) + 0.0
+nullif_now_in_div NULLIF(NOW(), 1) / 7
+nullif_now_in_concat CONCAT(NULLIF(NOW(), 1))
+nullif_now_in_len LENGTH(NULLIF(NOW(), 1))
+nullif_now_in_interval NULLIF(NOW(), 1) + INTERVAL 1 DAY
+nullif_now_in_cmp_str NULLIF(NOW(), 1) < '2024-05-10'
+nullif_now_in_cmp_int NULLIF(NOW(), 1) < 20240510
+nullif_now_in_isnull NULLIF(NOW(), 1) IS NULL
+nullif_now_in_year YEAR(NULLIF(NOW(), 1))
+nullif_now_in_hour HOUR(NULLIF(NOW(), 1))
+nullif_now_in_ifnull IFNULL(NULLIF(NOW(), 1), 'x')
+nullif_now_in_coalesce COALESCE(NULLIF(NOW(), 1), d)
+nullif_now_in_greatest GREATEST(NULLIF(NOW(), 1), d)
+nullif_now_in_if IF(TRUE, NULLIF(NOW(), 1), NULL)
+nullif_now_in_datediff DATEDIFF(NULLIF(NOW(), 1), '2024-01-01')
+nullif_now_in_dformat DATE_FORMAT(NULLIF(NOW(), 1), '%Y')
+nullif_now_in_unix UNIX_TIMESTAMP(NULLIF(NOW(), 1))
+nullif_now_in_round ROUND(NULLIF(NOW(), 1))
+nullif_now_in_sum SUM(NULLIF(NOW(), 1))
+nullif_now_in_max MAX(NULLIF(NOW(), 1))
+nullif_now_in_cast_signed CAST(NULLIF(NOW(), 1) AS SIGNED)
+nullif_now_in_cast_decimal CAST(NULLIF(NOW(), 1) AS DECIMAL(30, 6))
+nullif_now_in_bool NULLIF(NOW(), 1) AND TRUE
+nullif_now_in_like NULLIF(NOW(), 1) LIKE '2024%'
+nullif_now_in_in NULLIF(NOW(), 1) IN ('2024-05-06', 'x')
+nullif_now_in_between NULLIF(NOW(), 1) BETWEEN '2024-01-01' AND '2024-12-31'
+nullif_now_in_cmp_d NULLIF(NOW(), 1) = d
+nullif_now_in_cmp_t NULLIF(NOW(), 1) = t
+nullif_curdate_str NULLIF(CURDATE(), '2024-05-06')
+nullif_curdate_str_char CAST(NULLIF(CURDATE(), '2024-05-06') AS CHAR)
+nullif_curdate_str_charset CHARSET(NULLIF(CURDATE(), '2024-05-06'))
+nullif_curdate_str_collation COLLATION(NULLIF(CURDATE(), '2024-05-06'))
+nullif_curdate_int NULLIF(CURDATE(), 1)
+nullif_curdate_int_char CAST(NULLIF(CURDATE(), 1) AS CHAR)
+nullif_curdate_int_charset CHARSET(NULLIF(CURDATE(), 1))
+nullif_curdate_int_collation COLLATION(NULLIF(CURDATE(), 1))
+nullif_curdate_null NULLIF(CURDATE(), NULL)
+nullif_curdate_null_char CAST(NULLIF(CURDATE(), NULL) AS CHAR)
+nullif_curdate_null_charset CHARSET(NULLIF(CURDATE(), NULL))
+nullif_curdate_null_collation COLLATION(NULLIF(CURDATE(), NULL))
+nullif_curdate_same NULLIF(CURDATE(), CURDATE())
+nullif_curdate_same_char CAST(NULLIF(CURDATE(), CURDATE()) AS CHAR)
+nullif_curdate_same_charset CHARSET(NULLIF(CURDATE(), CURDATE()))
+nullif_curdate_same_collation COLLATION(NULLIF(CURDATE(), CURDATE()))
+nullif_curdate_cast_date CAST(NULLIF(CURDATE(), 1) AS DATE)
+nullif_curdate_cast_datetime CAST(NULLIF(CURDATE(), 1) AS DATETIME)
+nullif_curdate_cast_datetime3 CAST(NULLIF(CURDATE(), 1) AS DATETIME(3))
+nullif_curdate_cast_datetime6 CAST(NULLIF(CURDATE(), 1) AS DATETIME(6))
+nullif_curdate_cast_time CAST(NULLIF(CURDATE(), 1) AS TIME)
+nullif_curdate_cast_time1 CAST(NULLIF(CURDATE(), 1) AS TIME(1))
+nullif_curdate_cast_time6 CAST(NULLIF(CURDATE(), 1) AS TIME(6))
+nullif_curdate_in_plus NULLIF(CURDATE(), 1) + 0
+nullif_curdate_in_plusd NULLIF(CURDATE(), 1) + 0.0
+nullif_curdate_in_div NULLIF(CURDATE(), 1) / 7
+nullif_curdate_in_concat CONCAT(NULLIF(CURDATE(), 1))
+nullif_curdate_in_len LENGTH(NULLIF(CURDATE(), 1))
+nullif_curdate_in_interval NULLIF(CURDATE(), 1) + INTERVAL 1 DAY
+nullif_curdate_in_cmp_str NULLIF(CURDATE(), 1) < '2024-05-10'
+nullif_curdate_in_cmp_int NULLIF(CURDATE(), 1) < 20240510
+nullif_curdate_in_isnull NULLIF(CURDATE(), 1) IS NULL
+nullif_curdate_in_year YEAR(NULLIF(CURDATE(), 1))
+nullif_curdate_in_hour HOUR(NULLIF(CURDATE(), 1))
+nullif_curdate_in_ifnull IFNULL(NULLIF(CURDATE(), 1), 'x')
+nullif_curdate_in_coalesce COALESCE(NULLIF(CURDATE(), 1), d)
+nullif_curdate_in_greatest GREATEST(NULLIF(CURDATE(), 1), d)
+nullif_curdate_in_if IF(TRUE, NULLIF(CURDATE(), 1), NULL)
+nullif_curdate_in_datediff DATEDIFF(NULLIF(CURDATE(), 1), '2024-01-01')
+nullif_curdate_in_dformat DATE_FORMAT(NULLIF(CURDATE(), 1), '%Y')
+nullif_curdate_in_unix UNIX_TIMESTAMP(NULLIF(CURDATE(), 1))
+nullif_curdate_in_round ROUND(NULLIF(CURDATE(), 1))
+nullif_curdate_in_sum SUM(NULLIF(CURDATE(), 1))
+nullif_curdate_in_max MAX(NULLIF(CURDATE(), 1))
+nullif_curdate_in_cast_signed CAST(NULLIF(CURDATE(), 1) AS SIGNED)
+nullif_curdate_in_cast_decimal CAST(NULLIF(CURDATE(), 1) AS DECIMAL(30, 6))
+nullif_curdate_in_bool NULLIF(CURDATE(), 1) AND TRUE
+nullif_curdate_in_like NULLIF(CURDATE(), 1) LIKE '2024%'
+nullif_curdate_in_in NULLIF(CURDATE(), 1) IN ('2024-05-06', 'x')
+nullif_curdate_in_between NULLIF(CURDATE(), 1) BETWEEN '2024-01-01' AND '2024-12-31'
+nullif_curdate_in_cmp_d NULLIF(CURDATE(), 1) = d
+nullif_curdate_in_cmp_t NULLIF(CURDATE(), 1) = t
+nullif_dtint_str NULLIF(dt + INTERVAL 1 DAY, '2024-05-06')
+nullif_dtint_str_char CAST(NULLIF(dt + INTERVAL 1 DAY, '2024-05-06') AS CHAR)
+nullif_dtint_str_charset CHARSET(NULLIF(dt + INTERVAL 1 DAY, '2024-05-06'))
+nullif_dtint_str_collation COLLATION(NULLIF(dt + INTERVAL 1 DAY, '2024-05-06'))
+nullif_dtint_int NULLIF(dt + INTERVAL 1 DAY, 1)
+nullif_dtint_int_char CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS CHAR)
+nullif_dtint_int_charset CHARSET(NULLIF(dt + INTERVAL 1 DAY, 1))
+nullif_dtint_int_collation COLLATION(NULLIF(dt + INTERVAL 1 DAY, 1))
+nullif_dtint_null NULLIF(dt + INTERVAL 1 DAY, NULL)
+nullif_dtint_null_char CAST(NULLIF(dt + INTERVAL 1 DAY, NULL) AS CHAR)
+nullif_dtint_null_charset CHARSET(NULLIF(dt + INTERVAL 1 DAY, NULL))
+nullif_dtint_null_collation COLLATION(NULLIF(dt + INTERVAL 1 DAY, NULL))
+nullif_dtint_same NULLIF(dt + INTERVAL 1 DAY, dt + INTERVAL 1 DAY)
+nullif_dtint_same_char CAST(NULLIF(dt + INTERVAL 1 DAY, dt + INTERVAL 1 DAY) AS CHAR)
+nullif_dtint_same_charset CHARSET(NULLIF(dt + INTERVAL 1 DAY, dt + INTERVAL 1 DAY))
+nullif_dtint_same_collation COLLATION(NULLIF(dt + INTERVAL 1 DAY, dt + INTERVAL 1 DAY))
+nullif_dtint_cast_date CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS DATE)
+nullif_dtint_cast_datetime CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS DATETIME)
+nullif_dtint_cast_datetime3 CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS DATETIME(3))
+nullif_dtint_cast_datetime6 CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS DATETIME(6))
+nullif_dtint_cast_time CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS TIME)
+nullif_dtint_cast_time1 CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS TIME(1))
+nullif_dtint_cast_time6 CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS TIME(6))
+nullif_dtint_in_plus NULLIF(dt + INTERVAL 1 DAY, 1) + 0
+nullif_dtint_in_plusd NULLIF(dt + INTERVAL 1 DAY, 1) + 0.0
+nullif_dtint_in_div NULLIF(dt + INTERVAL 1 DAY, 1) / 7
+nullif_dtint_in_concat CONCAT(NULLIF(dt + INTERVAL 1 DAY, 1))
+nullif_dtint_in_len LENGTH(NULLIF(dt + INTERVAL 1 DAY, 1))
+nullif_dtint_in_interval NULLIF(dt + INTERVAL 1 DAY, 1) + INTERVAL 1 DAY
+nullif_dtint_in_cmp_str NULLIF(dt + INTERVAL 1 DAY, 1) < '2024-05-10'
+nullif_dtint_in_cmp_int NULLIF(dt + INTERVAL 1 DAY, 1) < 20240510
+nullif_dtint_in_isnull NULLIF(dt + INTERVAL 1 DAY, 1) IS NULL
+nullif_dtint_in_year YEAR(NULLIF(dt + INTERVAL 1 DAY, 1))
+nullif_dtint_in_hour HOUR(NULLIF(dt + INTERVAL 1 DAY, 1))
+nullif_dtint_in_ifnull IFNULL(NULLIF(dt + INTERVAL 1 DAY, 1), 'x')
+nullif_dtint_in_coalesce COALESCE(NULLIF(dt + INTERVAL 1 DAY, 1), d)
+nullif_dtint_in_greatest GREATEST(NULLIF(dt + INTERVAL 1 DAY, 1), d)
+nullif_dtint_in_if IF(TRUE, NULLIF(dt + INTERVAL 1 DAY, 1), NULL)
+nullif_dtint_in_datediff DATEDIFF(NULLIF(dt + INTERVAL 1 DAY, 1), '2024-01-01')
+nullif_dtint_in_dformat DATE_FORMAT(NULLIF(dt + INTERVAL 1 DAY, 1), '%Y')
+nullif_dtint_in_unix UNIX_TIMESTAMP(NULLIF(dt + INTERVAL 1 DAY, 1))
+nullif_dtint_in_round ROUND(NULLIF(dt + INTERVAL 1 DAY, 1))
+nullif_dtint_in_sum SUM(NULLIF(dt + INTERVAL 1 DAY, 1))
+nullif_dtint_in_max MAX(NULLIF(dt + INTERVAL 1 DAY, 1))
+nullif_dtint_in_cast_signed CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS SIGNED)
+nullif_dtint_in_cast_decimal CAST(NULLIF(dt + INTERVAL 1 DAY, 1) AS DECIMAL(30, 6))
+nullif_dtint_in_bool NULLIF(dt + INTERVAL 1 DAY, 1) AND TRUE
+nullif_dtint_in_like NULLIF(dt + INTERVAL 1 DAY, 1) LIKE '2024%'
+nullif_dtint_in_in NULLIF(dt + INTERVAL 1 DAY, 1) IN ('2024-05-06', 'x')
+nullif_dtint_in_between NULLIF(dt + INTERVAL 1 DAY, 1) BETWEEN '2024-01-01' AND '2024-12-31'
+nullif_dtint_in_cmp_d NULLIF(dt + INTERVAL 1 DAY, 1) = d
+nullif_dtint_in_cmp_t NULLIF(dt + INTERVAL 1 DAY, 1) = t
+nullif_rev_1_t NULLIF(1, t)
+nullif_rev_1_d NULLIF(1, d)
+nullif_rev_1_dt NULLIF(1, dt)
+nullif_rev_1_ts NULLIF(1, ts)
+nullif_rev_1_tlit NULLIF(1, TIME '10:20:30')
+nullif_rev_1_dlit NULLIF(1, DATE '2024-05-06')
+nullif_rev_2_t NULLIF(2, t)
+nullif_rev_2_d NULLIF(2, d)
+nullif_rev_2_dt NULLIF(2, dt)
+nullif_rev_2_ts NULLIF(2, ts)
+nullif_rev_2_tlit NULLIF(2, TIME '10:20:30')
+nullif_rev_2_dlit NULLIF(2, DATE '2024-05-06')
+nullif_rev_m1_t NULLIF(-1, t)
+nullif_rev_m1_d NULLIF(-1, d)
+nullif_rev_m1_dt NULLIF(-1, dt)
+nullif_rev_m1_ts NULLIF(-1, ts)
+nullif_rev_m1_tlit NULLIF(-1, TIME '10:20:30')
+nullif_rev_m1_dlit NULLIF(-1, DATE '2024-05-06')
+nullif_rev_big_t NULLIF(20240506, t)
+nullif_rev_big_d NULLIF(20240506, d)
+nullif_rev_big_dt NULLIF(20240506, dt)
+nullif_rev_big_ts NULLIF(20240506, ts)
+nullif_rev_big_tlit NULLIF(20240506, TIME '10:20:30')
+nullif_rev_big_dlit NULLIF(20240506, DATE '2024-05-06')
+nullif_rev_dec_t NULLIF(1.5, t)
+nullif_rev_dec_d NULLIF(1.5, d)
+nullif_rev_dec_dt NULLIF(1.5, dt)
+nullif_rev_dec_ts NULLIF(1.5, ts)
+nullif_rev_dec_tlit NULLIF(1.5, TIME '10:20:30')
+nullif_rev_dec_dlit NULLIF(1.5, DATE '2024-05-06')
+nullif_rev_dbl_t NULLIF(1e0, t)
+nullif_rev_dbl_d NULLIF(1e0, d)
+nullif_rev_dbl_dt NULLIF(1e0, dt)
+nullif_rev_dbl_ts NULLIF(1e0, ts)
+nullif_rev_dbl_tlit NULLIF(1e0, TIME '10:20:30')
+nullif_rev_dbl_dlit NULLIF(1e0, DATE '2024-05-06')
+nullif_rev_str_t NULLIF('a', t)
+nullif_rev_str_d NULLIF('a', d)
+nullif_rev_str_dt NULLIF('a', dt)
+nullif_rev_str_ts NULLIF('a', ts)
+nullif_rev_str_tlit NULLIF('a', TIME '10:20:30')
+nullif_rev_str_dlit NULLIF('a', DATE '2024-05-06')
+nullif_rev_strt_t NULLIF('10:20:30', t)
+nullif_rev_strt_d NULLIF('10:20:30', d)
+nullif_rev_strt_dt NULLIF('10:20:30', dt)
+nullif_rev_strt_ts NULLIF('10:20:30', ts)
+nullif_rev_strt_tlit NULLIF('10:20:30', TIME '10:20:30')
+nullif_rev_strt_dlit NULLIF('10:20:30', DATE '2024-05-06')
+nullif_rev_i_t NULLIF(i, t)
+nullif_rev_i_d NULLIF(i, d)
+nullif_rev_i_dt NULLIF(i, dt)
+nullif_rev_i_ts NULLIF(i, ts)
+nullif_rev_i_tlit NULLIF(i, TIME '10:20:30')
+nullif_rev_i_dlit NULLIF(i, DATE '2024-05-06')
+nullif_rev_n_t NULLIF(n, t)
+nullif_rev_n_d NULLIF(n, d)
+nullif_rev_n_dt NULLIF(n, dt)
+nullif_rev_n_ts NULLIF(n, ts)
+nullif_rev_n_tlit NULLIF(n, TIME '10:20:30')
+nullif_rev_n_dlit NULLIF(n, DATE '2024-05-06')
+nullif_rev_f_t NULLIF(f, t)
+nullif_rev_f_d NULLIF(f, d)
+nullif_rev_f_dt NULLIF(f, dt)
+nullif_rev_f_ts NULLIF(f, ts)
+nullif_rev_f_tlit NULLIF(f, TIME '10:20:30')
+nullif_rev_f_dlit NULLIF(f, DATE '2024-05-06')
+nullif_rev_s_t NULLIF(s, t)
+nullif_rev_s_d NULLIF(s, d)
+nullif_rev_s_dt NULLIF(s, dt)
+nullif_rev_s_ts NULLIF(s, ts)
+nullif_rev_s_tlit NULLIF(s, TIME '10:20:30')
+nullif_rev_s_dlit NULLIF(s, DATE '2024-05-06')
+nullif_rev_null_t NULLIF(NULL, t)
+nullif_rev_null_d NULLIF(NULL, d)
+nullif_rev_null_dt NULLIF(NULL, dt)
+nullif_rev_null_ts NULLIF(NULL, ts)
+nullif_rev_null_tlit NULLIF(NULL, TIME '10:20:30')
+nullif_rev_null_dlit NULLIF(NULL, DATE '2024-05-06')

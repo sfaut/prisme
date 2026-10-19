@@ -9,6 +9,7 @@ use prisme_types::{DataType, IntegerSize, IntegerType, MAX_FRACTION_DIGITS, Valu
 
 use super::Emitter;
 use super::builtin::NameForm;
+use super::case::Reading;
 use super::expr::MULTIPLY;
 use crate::Dialect;
 use crate::builtins::Rule;
@@ -91,24 +92,24 @@ impl Unixtime {
 
 impl Emitter<'_> {
     /// Writes the call `expr` of the built-in function `call` by `rule`, at
-    /// level `min` at least, read as a value of its type when `column`
-    /// (see `Emitter::column`).
+    /// level `min` at least, read by its parent as `reading` says.
     pub(super) fn builtin_rule(
         &mut self,
         rule: Rule,
         expr: &Expr,
         call: &FunctionCall,
         min: u8,
-        column: bool,
+        reading: Reading,
     ) {
         match rule {
             Rule::Aes => self.aes(rule, expr, call),
             Rule::BinaryArgument => self.binary_argument(rule, expr, call),
             Rule::BitCount => self.bit_count(rule, expr, call),
             Rule::FromUnixtime => self.date_from_unixtime(rule, expr, call),
-            Rule::Greatest => self.greatest(rule, expr, call, column),
+            Rule::Greatest => self.greatest(rule, expr, call, reading.column),
             Rule::If => self.if_call(expr, call),
             Rule::Now => self.now(rule, expr, call),
+            Rule::Nullif => self.nullif(rule, expr, call, reading),
             Rule::Pad => self.pad(rule, expr, call),
             Rule::Rounding => self.rounding(rule, expr, call),
             Rule::TimeToSec => self.time_to_sec(rule, expr, call, min),

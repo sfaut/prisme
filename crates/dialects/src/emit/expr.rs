@@ -117,6 +117,11 @@ impl Emitter<'_> {
         let number = std::mem::take(&mut self.number);
         let json_as_is = std::mem::take(&mut self.json_as_is);
         let as_bytes = std::mem::take(&mut self.as_bytes) || column;
+        let reading = Reading {
+            column,
+            result: column && json_as_is,
+            number,
+        };
         self.hybrids(expr, as_bytes);
         if let ExprKind::ToBoolean(inner) | ExprKind::ToInteger(inner) = &expr.kind {
             if matches!(expr.kind, ExprKind::ToBoolean(_)) && inner.ty.data_type == DataType::Json {
@@ -141,11 +146,11 @@ impl Emitter<'_> {
         self.at(expr.span);
         // A rule may write a call as an expression of a lower level.
         if let ExprKind::Function(call) = &expr.kind {
-            self.function_call(expr, call, min, column);
+            self.function_call(expr, call, min, reading);
             return;
         }
         if let ExprKind::Case(case) = &expr.kind {
-            self.case(expr, case, Reading { column, number });
+            self.case(expr, case, reading);
             return;
         }
         if let ExprKind::Cast(cast) = &expr.kind {
@@ -436,7 +441,7 @@ impl Emitter<'_> {
 
     /// `a op b`, a comparison, the operands at levels `left` and `right` at
     /// least, each read as bytes when the other is a string.
-    fn compared(&mut self, a: &Expr, op: &str, b: &Expr, left: u8, right: u8) {
+    pub(super) fn compared(&mut self, a: &Expr, op: &str, b: &Expr, left: u8, right: u8) {
         self.compared_expr(a, left, reads_as_string(b));
         self.write(op);
         self.compared_expr(b, right, reads_as_string(a));

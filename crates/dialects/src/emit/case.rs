@@ -26,12 +26,15 @@ use crate::Dialect;
 use crate::build::types;
 use crate::report::StepKind;
 
-/// How the parent of a `CASE` reads it.
+/// How the parent of an expression reads it.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Reading {
     /// As a value of its type: a column of the result, a key of `ORDER BY`
     /// or `GROUP BY` (see `Emitter::column`).
     pub(super) column: bool,
+    /// As a column of the result whose rows are not compared, of its text
+    /// and its type (`Emitter::column` and `Emitter::json_as_is`).
+    pub(super) result: bool,
     /// As a number (see `Emitter::number`).
     pub(super) number: bool,
 }

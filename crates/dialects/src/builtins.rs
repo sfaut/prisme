@@ -158,6 +158,11 @@ pub(crate) enum Rule {
     /// `NOW`, `CURRENT_TIMESTAMP`, `SYSDATE`, `LOCALTIME`: their type.
     #[serde(rename = "function.now")]
     Now,
+    /// `NULLIF` of a date, a time, a `YEAR`, of a string compared with a
+    /// byte string, of a constant compared with a column (`emit::nullif`
+    /// module).
+    #[serde(rename = "function.nullif")]
+    Nullif,
     /// `LPAD`, `RPAD` with an empty padding.
     #[serde(rename = "function.pad")]
     Pad,
@@ -229,6 +234,7 @@ impl Rule {
             Self::Greatest => "function.greatest",
             Self::If => "function.if",
             Self::Now => "function.now",
+            Self::Nullif => "function.nullif",
             Self::Pad => "function.pad",
             Self::Regexp => "function.regexp",
             Self::Rounding => "function.rounding",

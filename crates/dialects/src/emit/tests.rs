@@ -5099,3 +5099,133 @@ fn user_variables_take_their_type_from_the_catalog() {
     };
     assert_eq!(item.expr.ty.data_type, DataType::Unknown);
 }
+
+#[test]
+fn nullif_gives_a_date_a_time_and_a_constant_as_the_input() {
+    // A date or a time is a string in MySQL, of the same text: written of
+    // the type of the input, in a column of the result too.
+    let (sql, rules) = transpiled(
+        "SELECT NULLIF(dd, 1) AS a, YEAR(NULLIF(dd, 1)) AS b, NULLIF(dt3, 1) + INTERVAL 1 DAY AS c, NULLIF(ts, '') < 20240510 AS e, NULLIF(i, 1) + 1 AS g FROM d, g ORDER BY NULLIF(tm, 1)",
+        mariadb(),
+        output(mysql()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT CAST(CAST(NULLIF(dd, 1) AS CHAR) AS DATE) AS a, YEAR(CAST(CAST(NULLIF(dd, 1) AS CHAR) AS DATE)) AS b, CAST(CAST(NULLIF(dt3, 1) AS CHAR) AS DATETIME(3)) + INTERVAL 1 DAY AS c, CAST(CAST(NULLIF(ts, '') AS CHAR) AS DATETIME) < 20240510 AS e, NULLIF(i, 1) + 1 AS g FROM d, g ORDER BY CAST(CAST(NULLIF(tm, 1) AS CHAR) AS TIME)"
+    );
+    assert_eq!(rules, ["function.nullif"; 5]);
+    let (sql, rules) = transpiled(
+        "SELECT NULLIF(dd, 1) AS a, NULLIF(dd, 1) + 0 AS b FROM g ORDER BY NULLIF(tm, 1)",
+        mysql(),
+        output(mariadb()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT CAST(NULLIF(dd, 1) AS CHAR) AS a, CAST(NULLIF(dd, 1) AS CHAR) + 0 AS b FROM g ORDER BY CAST(NULLIF(tm, 1) AS CHAR)"
+    );
+    assert_eq!(rules, ["function.nullif"; 3]);
+    // A constant compared with a column of `BIGINT`, `YEAR`, a date or a
+    // time: MySQL gives it in the type of the column.
+    let (sql, rules) = transpiled(
+        "SELECT NULLIF(1, tm) AS a, NULLIF(24, y) AS b, NULLIF(1 + 1, n) AS c, NULLIF('10:20:31', tm) AS e, NULLIF('2024-05-07', dd) AS g FROM d, g",
+        mariadb(),
+        output(mysql()),
+    );
+    assert_eq!(
+        sql,
+        "SELECT CASE WHEN 1 = tm THEN NULL ELSE 1 END AS a, CASE WHEN 24 = y THEN NULL ELSE 24 END AS b, CASE WHEN 1 + 1 = n THEN NULL ELSE 1 + 1 END AS c, CASE WHEN '10:20:31' = tm THEN NULL ELSE '10:20:31' END AS e, NULLIF('2024-05-07', dd) AS g FROM d, g"
+    );
+    assert_eq!(rules, ["function.nullif"; 4]);
+    for text in [
+        "SELECT NULLIF(1, tm) FROM g",
+        "SELECT NULLIF(24, y) FROM g",
+        "SELECT NULLIF(20240506, dt) FROM d",
+    ] {
+        assert_eq!(
+            errors(text, mysql(), output(mariadb())),
+            ["function.nullif"],
+            "{text}"
+        );
+    }
+    // A column, an expression or a `NULL` is never replaced.
+    for input in [mysql(), mariadb()] {
+        let target = output(match input.dialect {
+            Dialect::MySql => mariadb(),
+            Dialect::MariaDb => mysql(),
+        });
+        let text = "SELECT NULLIF(i, tm) AS a, NULLIF(1, tm + INTERVAL 0 DAY) AS b, NULLIF(NULL, y) AS c FROM d, g";
+        assert_eq!(transpiled(text, input, target).0, text);
+        // A type unknown may be a date or a time.
+        assert_eq!(
+            errors("SELECT NULLIF(f(dt), 1) + 0 FROM d", input, target),
+            ["function.nullif"]
+        );
+        let text = "SELECT NULLIF(f(dt), 1) AS a FROM d";
+        assert_eq!(transpiled(text, input, target).0, text);
+        // Towards its own dialect, the call goes through.
+        let text = "SELECT NULLIF(1, tm) + 0 AS a, YEAR(NULLIF(dd, 1)) AS b FROM g";
+        assert_eq!(transpiled(text, input, output(input)).0, text);
+    }
+    // A `YEAR` is a byte string read as an integer in MySQL 8.0 from
+    // 8.0.24, a string from 8.1.0.
+    let text = "SELECT NULLIF(y, 1) AS a, NULLIF(y, 1) + 0 AS b FROM g";
+    assert_eq!(transpiled(text, mariadb(), output(mysql())).0, text);
+    for version in [(8, 0, 24), (8, 4, 0)] {
+        let target = output(input_at(Dialect::MySql, version.0, version.1, version.2));
+        assert_eq!(
+            transpiled(text, mariadb(), target).0,
+            "SELECT CAST(CAST(NULLIF(y, 1) AS CHAR) AS YEAR) AS a, CAST(CAST(NULLIF(y, 1) AS CHAR) AS YEAR) + 0 AS b FROM g"
+        );
+    }
+    assert_eq!(transpiled(text, mysql(), output(mariadb())).0, text);
+    assert_eq!(
+        transpiled(text, input_at(Dialect::MySql, 8, 0, 24), output(mariadb())).0,
+        "SELECT CAST(NULLIF(y, 1) AS BINARY) AS a, CAST(NULLIF(y, 1) AS SIGNED) + 0 AS b FROM g"
+    );
+    assert_eq!(
+        transpiled(text, input_at(Dialect::MySql, 8, 4, 0), output(mariadb())).0,
+        "SELECT CAST(NULLIF(y, 1) AS CHAR) AS a, CAST(NULLIF(y, 1) AS CHAR) + 0 AS b FROM g"
+    );
+    // Before 8.0.24, a string, a date or a time compared with a byte string
+    // is a byte string in MySQL.
+    let text = "SELECT NULLIF(s, vb) AS a, NULLIF(dd, vb) AS b FROM g";
+    assert_eq!(
+        transpiled(text, mysql(), output(mariadb())).0,
+        "SELECT CAST(NULLIF(s, vb) AS BINARY) AS a, CAST(NULLIF(dd, vb) AS BINARY) AS b FROM g"
+    );
+    assert_eq!(
+        errors(text, mariadb(), output(mysql())),
+        ["function.nullif"]
+    );
+    assert_eq!(
+        transpiled(
+            "SELECT NULLIF(dd, vb) AS b FROM g",
+            mariadb(),
+            output(mysql())
+        )
+        .0,
+        "SELECT CAST(CAST(NULLIF(dd, vb) AS CHAR) AS DATE) AS b FROM g"
+    );
+    let mysql_8_4 = input_at(Dialect::MySql, 8, 4, 0);
+    assert_eq!(
+        transpiled(text, mysql_8_4, output(mariadb())).0,
+        "SELECT NULLIF(s, vb) AS a, CAST(NULLIF(dd, vb) AS CHAR) AS b FROM g"
+    );
+    assert_eq!(
+        transpiled(
+            "SELECT NULLIF(s, vb) AS a FROM g",
+            mariadb(),
+            output(mysql_8_4)
+        )
+        .0,
+        "SELECT NULLIF(s, vb) AS a FROM g"
+    );
+    assert_eq!(
+        errors(
+            "SELECT NULLIF(f(s), vb) AS a FROM g",
+            mysql(),
+            output(mariadb())
+        ),
+        ["function.nullif"]
+    );
+}

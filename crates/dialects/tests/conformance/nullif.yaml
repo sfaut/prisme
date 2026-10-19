@@ -1,0 +1,67 @@
+# Rule `function.nullif`: `NULLIF` of a date, a time or a `YEAR`, which MySQL
+# gives as a string, of a string compared with a byte string, which MySQL
+# gives as a byte string before 8.0.24, and of a constant compared with a
+# column of `BIGINT`, `YEAR`, a date or a time, which MySQL gives in the type
+# of the column (crates/probe/cases/nullif.txt, flow-types.txt and
+# flow-direct.txt).
+setup:
+  - DROP TABLE IF EXISTS nullif_values
+  - >-
+    CREATE TABLE nullif_values (id INT NOT NULL PRIMARY KEY, d DATE NULL, dt DATETIME(3) NULL,
+    t TIME(1) NULL, y YEAR NULL, s VARCHAR(30) NULL, b VARBINARY(30) NULL, n BIGINT NULL)
+  - >-
+    INSERT INTO nullif_values VALUES
+    (1, '2024-05-06', '2024-05-06 07:08:09.123', '10:20:30.5', 2024, '2024-05-06', 'abc', 5),
+    (2, '2024-05-07', '2024-05-07 00:00:00', '-01:00:00', 2000, 'abc', 'abc', 1),
+    (3, '2024-05-08', '2024-05-08 10:00:00.5', '-10:00:00', 1999, 'x', 'y', 2024),
+    (4, NULL, NULL, NULL, NULL, NULL, NULL, NULL)
+cases:
+  # A date, a time or a `YEAR`: of the type of the input, in a column, in an
+  # expression and in a sort. A time compared with a string, a string with a
+  # time, the dialects compare otherwise, whatever `NULLIF`: MySQL 8.0.11
+  # compares `CAST(x AS TIME) < '-05:00:00'` as strings.
+  - from: mariadb
+    sql: >-
+      SELECT id, NULLIF(d, '2024-05-06') AS a, NULLIF(dt, d) AS b, NULLIF(t, '10:20:30.5') AS c,
+      NULLIF(y, 2000) AS e FROM nullif_values ORDER BY id
+  - from: mariadb
+    sql: >-
+      SELECT id, DAYOFYEAR(NULLIF(d, '2024-05-07')) AS a, NULLIF(dt, d) + INTERVAL 1 DAY AS b,
+      NULLIF(y, 2000) + 0 AS c, NULLIF(t, '00:00:00') < TIME '-05:00:00' AS e FROM nullif_values ORDER BY id
+  - from: mariadb
+    sql: SELECT id FROM nullif_values ORDER BY NULLIF(t, '00:00:00'), id
+  - from: mysql
+    sql: >-
+      SELECT id, NULLIF(d, '2024-05-06') AS a, NULLIF(dt, d) AS b, NULLIF(t, '10:20:30.5') AS c,
+      NULLIF(y, 2000) AS e FROM nullif_values ORDER BY id
+  - from: mysql
+    sql: >-
+      SELECT id, DAYOFYEAR(NULLIF(d, '2024-05-07')) AS a, NULLIF(y, 2000) + 0 AS c,
+      NULLIF(t, '00:00:00') < '-05:00:00' AS e FROM nullif_values ORDER BY id
+  - from: mysql
+    sql: SELECT id FROM nullif_values ORDER BY NULLIF(t, '00:00:00'), id
+  # A string compared with a byte string: a byte string in MySQL before
+  # 8.0.24, of a character set unknown to the transpiler towards it.
+  - from: mysql
+    sql: SELECT id, NULLIF(s, b) AS a, NULLIF(d, b) AS e FROM nullif_values ORDER BY id
+  - from: mariadb
+    outputs: mysql >= 8.0.24
+    sql: SELECT id, NULLIF(s, b) AS a, NULLIF(d, b) AS e FROM nullif_values ORDER BY id
+  - from: mariadb
+    outputs: mysql < 8.0.24
+    sql: SELECT id, NULLIF(s, b) AS a FROM nullif_values ORDER BY id
+    refused: function.nullif
+  - from: mariadb
+    sql: SELECT id, NULLIF(d, b) AS e FROM nullif_values ORDER BY id
+  # A constant compared with a column that MySQL converts: `CASE` gives the
+  # constant, MySQL its value in the type of the column.
+  - from: mariadb
+    sql: >-
+      SELECT id, NULLIF(1, t) AS a, NULLIF(24, y) AS b, NULLIF(2024, n) AS c, NULLIF('2024-05-07', d) AS e
+      FROM nullif_values ORDER BY id
+  - from: mysql
+    sql: SELECT id, NULLIF(1, t) AS a FROM nullif_values ORDER BY id
+    refused: function.nullif
+  - from: mysql
+    sql: SELECT id, NULLIF(24, y) AS b FROM nullif_values ORDER BY id
+    refused: function.nullif

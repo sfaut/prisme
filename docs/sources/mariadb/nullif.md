@@ -1,7 +1,9 @@
 # MariaDB: `NULLIF`, its type and its value
 
 Type of `NULLIF` (`crates/dialects/src/build/flow.rs`, measures
-`crates/probe/cases/flow-types.txt` and `flow-direct.txt`) and value it gives.
+`crates/probe/cases/flow-types.txt` and `flow-direct.txt`) and value it gives
+(rule `function.nullif` of `docs/DEV-DIALECTS.md`, measures
+`crates/probe/cases/nullif.txt`).
 
 Source:
 

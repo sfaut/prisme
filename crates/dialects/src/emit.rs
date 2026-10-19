@@ -41,6 +41,7 @@ mod interval;
 mod json;
 mod literal;
 mod lock;
+mod nullif;
 mod options;
 mod parentheses;
 mod predicate;

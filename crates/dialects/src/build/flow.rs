@@ -16,7 +16,8 @@
 //!   of the other one when MariaDB reads the `NULL` literal (`IF(c, u,
 //!   NULL)` of an `INT UNSIGNED` keeps it, `CASE` gives a `DECIMAL`);
 //! - `NULLIF`: of its first argument, always nullable. MySQL gives a date or
-//!   a time as a `VARCHAR` of its text; a `YEAR` as an `INT` from 8.0.24
+//!   a time as a `VARCHAR` of its text; a `YEAR` as an `INT` from 8.0.24,
+//!   which a column of the result gives as a byte string of its text
 //!   (construct `nullif_year_integer`), as a `VARCHAR` from 8.1.0
 //!   (`nullif_year_string`); before 8.0.24, a string, a date or a time
 //!   compared with a byte string, other than a literal, as a byte string
@@ -114,7 +115,11 @@ fn is_null(expr: &Expr) -> bool {
 /// (`Item_func_nullif::resolve_type`): the type of `first`, a date or a time
 /// becoming a string of its text, a byte string before 8.0.24 when
 /// `second` is one.
-fn mysql_nullif(first: &Expr, second: &Expr, has: impl Fn(Construct) -> bool) -> DataType {
+pub(crate) fn mysql_nullif(
+    first: &Expr,
+    second: &Expr,
+    has: impl Fn(Construct) -> bool,
+) -> DataType {
     // The collation of the result aggregated with that of `second`, but for
     // a literal, whose collation yields.
     let bytes = !has(Construct::NullifOwnCollation)

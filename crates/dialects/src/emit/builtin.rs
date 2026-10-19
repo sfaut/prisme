@@ -24,6 +24,7 @@ use prisme_plan::{CallForm, Expr, ExprKind, FunctionCall, Ident, Span};
 use prisme_types::{DataType, Value};
 
 use super::Emitter;
+use super::case::Reading;
 use super::hexadecimal::reads_bytes;
 use super::json::reads_json_as_is;
 use crate::builtins::{self, ArgumentType, Kind, Rule, Translation};
@@ -53,14 +54,14 @@ enum Target {
 }
 
 impl Emitter<'_> {
-    /// Call to a scalar function, at level `min` at least, read as a value
-    /// of its type when `column` (see `Emitter::column`).
+    /// Call to a scalar function, at level `min` at least, read by its
+    /// parent as `reading` says.
     pub(super) fn function_call(
         &mut self,
         expr: &Expr,
         call: &FunctionCall,
         min: u8,
-        column: bool,
+        reading: Reading,
     ) {
         if call.stored {
             self.stored_call(expr, call);
@@ -73,7 +74,7 @@ impl Emitter<'_> {
                     self.call_text(&name, form, &call.args);
                 }
             }
-            Some(Target::Rule(rule)) => self.builtin_rule(rule, expr, call, min, column),
+            Some(Target::Rule(rule)) => self.builtin_rule(rule, expr, call, min, reading),
             // The error is recorded: the call is written as in the input.
             None => self.input_call(expr, call),
         }

@@ -926,7 +926,7 @@ functions:
       - name: IFNULL
         mysql: same
       - name: NULLIF
-        mysql: same
+        mysql: { rule: function.nullif }
       - name: NVL
       - name: NVL2
         nulls: args
