@@ -1884,3 +1884,45 @@ fn a_locking_clause_that_locks_no_row_in_the_input_is_refused() {
         plan_at(text, dialect, version).unwrap_or_else(|error| panic!("{text}: {error}"));
     }
 }
+
+#[test]
+fn types_the_merges_of_year_as_mysql_8_0_14_to_8_0_16_does() {
+    let text = "SELECT CASE WHEN a > 0 THEN YEAR(b) ELSE 1 END, COALESCE(YEAR(b), a), \
+                IFNULL(YEAR(b), 1), IF(a > 0, YEAR(b), YEAR(b)) FROM t";
+    let types = |version| -> Vec<DataType> {
+        plan_at(text, Dialect::MySql, version)
+            .unwrap_or_else(|error| panic!("{text}: {error}"))
+            .schema()
+            .columns
+            .into_iter()
+            .map(|column| column.ty.data_type)
+            .collect()
+    };
+    // An unsigned `YEAR()` with a signed integer: a `DECIMAL` of the digits
+    // of the largest; with itself, an unsigned `INT`.
+    let unsigned = DataType::Integer(IntegerType {
+        size: IntegerSize::Int,
+        unsigned: true,
+    });
+    for version in [Version::new(8, 0, 14), Version::new(8, 0, 16)] {
+        assert_eq!(
+            types(version),
+            [
+                types::decimal(4, 0),
+                types::decimal(10, 0),
+                types::decimal(4, 0),
+                unsigned.clone()
+            ],
+            "{version}"
+        );
+    }
+    for version in [Version::new(8, 0, 13), Version::new(8, 0, 17)] {
+        let merged = types(version);
+        assert!(
+            merged
+                .iter()
+                .all(|data_type| matches!(data_type, DataType::Integer(_))),
+            "{version}: {merged:?}"
+        );
+    }
+}

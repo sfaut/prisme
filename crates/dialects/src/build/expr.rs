@@ -14,7 +14,8 @@ use prisme_plan::{
 use prisme_types::{DataType, Decimal, IntegerSize, IntegerType, Type, Value};
 
 use super::scope::Scope;
-use super::{BuildError, Builder, as_predicate, plan_error, temporal, types};
+use super::{BuildError, Builder, as_predicate, flow, plan_error, temporal, types};
+use crate::Dialect;
 use crate::sql::ast::{self, BinaryOp, ExprKind, Literal, Strings, UnaryOp};
 
 /// Operator of the plan for a binary operator of the tree.
@@ -435,11 +436,17 @@ impl Builder<'_> {
             .map(|branch| &branch.then)
             .chain(otherwise.as_ref())
             .collect();
+        let merged = match self.dialect {
+            Dialect::MySql => flow::mysql_year_merge(results.iter().copied()),
+            Dialect::MariaDb => None,
+        };
         let ty = Type {
-            data_type: types::case(
-                self.dialect,
-                results.iter().map(|result| &result.ty.data_type),
-            ),
+            data_type: merged.unwrap_or_else(|| {
+                types::case(
+                    self.dialect,
+                    results.iter().map(|result| &result.ty.data_type),
+                )
+            }),
             nullable: otherwise.is_none() || results.iter().any(|result| result.ty.nullable),
         };
         let case = Case {

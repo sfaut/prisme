@@ -12,7 +12,7 @@ use super::builtin::NameForm;
 use super::case::Reading;
 use super::expr::MULTIPLY;
 use crate::Dialect;
-use crate::builtins::Rule;
+use crate::builtins::{self, Rule};
 use crate::report::StepKind;
 use crate::versions::Construct;
 
@@ -116,6 +116,7 @@ impl Emitter<'_> {
             Rule::TimeToSec => self.time_to_sec(rule, expr, call, min),
             Rule::UnixTimestamp => self.unix_timestamp(rule, expr, call),
             Rule::Uuid => self.uuid(rule, expr, call),
+            Rule::Year => self.year(rule, expr, call, reading),
             _ => {
                 self.rule_not_written(rule, &call.name, expr.span);
                 self.input_call(expr, call);
@@ -162,6 +163,65 @@ impl Emitter<'_> {
                 self.error(rule.id(), &message, expr.span);
                 self.input_call(expr, call);
             }
+        }
+    }
+
+    /// `YEAR`: the same value in both dialects, an `INT` in MariaDB and in
+    /// MySQL but for an unsigned `INT` from 8.0.14 to 8.0.16 and an unsigned
+    /// `YEAR` from 8.1.0, which a column of the result, `CASE`, `COALESCE`
+    /// and `IF` give, and whose subtraction below 0 is an error. A `CAST`
+    /// gives the output the sign of the input, `AS SIGNED` towards those
+    /// versions, `AS UNSIGNED` from 8.0.14 to 8.0.16 towards MariaDB (whose
+    /// `CASE` of an unsigned and a signed integer gives a `DECIMAL`, as
+    /// those versions do with `YEAR`), but as an operand of a comparison, of
+    /// the same result, where a functional index on the call stays usable.
+    /// Towards MariaDB, from a `YEAR`, the call gives an `INT` of the same
+    /// value: MariaDB has no `CAST` to `YEAR` (MySQL reads 1 as 2001 there,
+    /// 1000 as NULL), a loss of precision but where it is read as a number.
+    fn year(&mut self, rule: Rule, expr: &Expr, call: &FunctionCall, reading: Reading) {
+        let output = builtins::lookup(self.output.dialect, "YEAR").map(|builtin| {
+            (builtin.function)
+                .result_type(&call.args, self.output.version)
+                .data_type
+        });
+        let signed = |data_type: &DataType| matches!(data_type, DataType::Integer(integer) if !integer.unsigned);
+        let unsigned = |data_type: &DataType| matches!(data_type, DataType::Integer(integer) if integer.unsigned);
+        let input = &expr.ty.data_type;
+        let cast = match &output {
+            Some(DataType::Year) if signed(input) => Some(("a `YEAR`", "a signed `INT`", "SIGNED")),
+            Some(output) if unsigned(output) && signed(input) => {
+                Some(("an unsigned `INT`", "a signed `INT`", "SIGNED"))
+            }
+            Some(output) if signed(output) && unsigned(input) => {
+                Some(("a signed `INT`", "an unsigned `INT`", "UNSIGNED"))
+            }
+            _ => None,
+        };
+        match output {
+            _ if let Some((given, read, target)) = cast
+                && !reading.compared =>
+            {
+                let message = format!(
+                    "{} gives `YEAR` {given}, {} {read}, of the same value: `CAST(... AS {target})` gives that integer",
+                    self.target(),
+                    self.source_name()
+                );
+                self.step(rule.id(), StepKind::Emulation, message, expr.span);
+                self.write("CAST(");
+                self.input_call(expr, call);
+                self.write(&format!(" AS {target})"));
+            }
+            Some(output) if *input == DataType::Year && signed(&output) && !reading.number => {
+                let message = format!(
+                    "{} gives `YEAR` an `INT`, {} a `YEAR`, of the same value: {} has no `CAST` to `YEAR`",
+                    self.target(),
+                    self.source_name(),
+                    self.output.dialect.label()
+                );
+                self.step(rule.id(), StepKind::LossOfPrecision, message, expr.span);
+                self.input_call(expr, call);
+            }
+            _ => self.input_call(expr, call),
         }
     }
 

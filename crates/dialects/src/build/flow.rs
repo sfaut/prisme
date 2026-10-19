@@ -62,7 +62,10 @@ pub(super) fn flow_type(
     let (results, all_null) = match (name, args) {
         ("COALESCE", [_, ..]) => (args, true),
         ("IFNULL", [_, _]) | ("NVL", [_, _]) if name == "IFNULL" || mariadb => {
-            if !mariadb && let Some(integer) = mysql_ifnull_integer(args) {
+            if !mariadb
+                && mysql_year_merge(args).is_none()
+                && let Some(integer) = mysql_ifnull_integer(args)
+            {
                 let nullable = args.iter().all(|arg| arg.ty.nullable);
                 return Some(Type {
                     data_type: integer,
@@ -94,7 +97,11 @@ pub(super) fn flow_type(
         }
         _ => return None,
     };
-    let data_type = types::case(dialect, results.iter().map(|arg| &arg.ty.data_type));
+    let data_type = match dialect {
+        Dialect::MySql => mysql_year_merge(results),
+        Dialect::MariaDb => None,
+    }
+    .unwrap_or_else(|| types::case(dialect, results.iter().map(|arg| &arg.ty.data_type)));
     let nullable = if all_null {
         results.iter().all(|arg| arg.ty.nullable)
     } else {
@@ -109,6 +116,57 @@ pub(super) fn flow_type(
 /// Tells whether `expr` is the `NULL` literal.
 fn is_null(expr: &Expr) -> bool {
     matches!(expr.kind, ExprKind::Literal(Value::Null))
+}
+
+/// Type MySQL from 8.0.14 to 8.0.16 gives the merge of `results` by `CASE`,
+/// `COALESCE`, `IFNULL` or `IF` when `YEAR`, an unsigned `INT` of 4 digits
+/// in those versions, meets a signed integer: a `DECIMAL` of the digits of
+/// the largest (`CASE WHEN c THEN YEAR(d) ELSE 1 END` gives a
+/// `DECIMAL(4, 0)`, an `INT UNSIGNED` column a `BIGINT`); `None` otherwise
+/// (`crates/probe/cases/year.txt`, `year-merges.txt`).
+pub(super) fn mysql_year_merge<'a>(
+    results: impl IntoIterator<Item = &'a Expr>,
+) -> Option<DataType> {
+    let results: Vec<&Expr> = results.into_iter().collect();
+    let unsigned_year = |expr: &Expr| {
+        matches!(&expr.kind, ExprKind::Function(call)
+            if !call.stored && call.name.value.eq_ignore_ascii_case("YEAR"))
+            && matches!(
+                expr.ty.data_type,
+                DataType::Integer(IntegerType { unsigned: true, .. })
+            )
+    };
+    let signed = |expr: &Expr| {
+        matches!(
+            expr.ty.data_type,
+            DataType::Integer(IntegerType {
+                unsigned: false,
+                ..
+            })
+        )
+    };
+    let integers = results
+        .iter()
+        .all(|expr| matches!(expr.ty.data_type, DataType::Integer(_) | DataType::Null));
+    if !integers
+        || !results.iter().any(|expr| unsigned_year(expr))
+        || !results.iter().any(|expr| signed(expr))
+    {
+        return None;
+    }
+    let digits = results
+        .iter()
+        .filter_map(|expr| match (&expr.kind, &expr.ty.data_type) {
+            _ if unsigned_year(expr) => Some(YEAR_LENGTH as usize),
+            (ExprKind::Literal(Value::Integer(value)), _) => {
+                Some(value.unsigned_abs().to_string().len())
+            }
+            (_, DataType::Integer(integer)) => Some(types::integer_digits(*integer)),
+            _ => None,
+        })
+        .max()
+        .unwrap_or(YEAR_LENGTH as usize);
+    Some(types::decimal(digits, 0))
 }
 
 /// Type MySQL gives `NULLIF(first, second)`, its constructs read by `has`

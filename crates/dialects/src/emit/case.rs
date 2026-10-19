@@ -37,6 +37,8 @@ pub(super) struct Reading {
     pub(super) result: bool,
     /// As a number (see `Emitter::number`).
     pub(super) number: bool,
+    /// As an operand of a comparison (see `Emitter::compared`).
+    pub(super) compared: bool,
 }
 
 impl Emitter<'_> {

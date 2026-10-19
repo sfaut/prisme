@@ -1389,10 +1389,10 @@ functions:
       - name: WEEKOFYEAR
         type: int
         mariadb: same
-      - name: YEAR  # a YEAR in MySQL 8.4, an INT elsewhere: same values
+      - name: YEAR  # an unsigned YEAR in MySQL from 8.1.0, an unsigned INT from 8.0.14 to 8.0.16, an INT elsewhere: same values
         grammar: true
         type: [int, "8.0.14", int unsigned, "8.0.17", int, "8.1.0", year]
-        mariadb: same
+        mariadb: { rule: function.year }
       - name: YEARWEEK
         type: int
         mariadb: same

@@ -40,8 +40,9 @@ pub enum StepKind {
     Rewrite,
     /// A construct written with other means of the output dialect.
     Emulation,
-    /// The output gives less than the same request written in the output
-    /// dialect.
+    /// The output gives less than the input (a type it gives no expression
+    /// of, the `YEAR` of MySQL an `INT` in MariaDB), or than the same request
+    /// written in the output dialect (a catalog statement).
     LossOfPrecision,
     /// A construct without effect on the result, left out.
     Omission,

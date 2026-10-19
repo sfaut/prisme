@@ -115,12 +115,14 @@ impl Emitter<'_> {
         // bytes: this expression, never its operands.
         let column = std::mem::take(&mut self.column);
         let number = std::mem::take(&mut self.number);
+        let compared = std::mem::take(&mut self.compared);
         let json_as_is = std::mem::take(&mut self.json_as_is);
         let as_bytes = std::mem::take(&mut self.as_bytes) || column;
         let reading = Reading {
             column,
             result: column && json_as_is,
             number,
+            compared,
         };
         self.hybrids(expr, as_bytes);
         if let ExprKind::ToBoolean(inner) | ExprKind::ToInteger(inner) = &expr.kind {
@@ -451,6 +453,7 @@ impl Emitter<'_> {
     /// `as_bytes`, as a number otherwise.
     fn compared_expr(&mut self, expr: &Expr, min: u8, as_bytes: bool) {
         self.as_bytes = as_bytes;
+        self.compared = true;
         self.number_expr(expr, min);
     }
 

@@ -1,0 +1,16 @@
+# Merges of an unsigned integer with a signed one in MySQL 8.0.14 to 8.0.16:
+# YEAR() against columns of each unsigned size.
+! DROP TABLE IF EXISTS uu
+! CREATE TABLE uu (ui INT UNSIGNED NULL, us SMALLINT UNSIGNED NULL, ut TINYINT UNSIGNED NULL, ub BIGINT UNSIGNED NULL, ui4 INT(4) UNSIGNED NULL)
+! INSERT INTO uu VALUES (2024, 2024, 202, 2024, 2024)
+m_year CASE WHEN i > 0 THEN YEAR(d) ELSE 1 END
+m_year_col CASE WHEN i > 0 THEN YEAR(d) ELSE i END
+m_ui (SELECT CASE WHEN ui > 0 THEN ui ELSE 1 END FROM uu)
+m_us (SELECT CASE WHEN us > 0 THEN us ELSE 1 END FROM uu)
+m_ut (SELECT CASE WHEN ut > 0 THEN ut ELSE 1 END FROM uu)
+m_ub (SELECT CASE WHEN ub > 0 THEN ub ELSE 1 END FROM uu)
+m_ui4 (SELECT CASE WHEN ui4 > 0 THEN ui4 ELSE 1 END FROM uu)
+m_year_sub (SELECT CASE WHEN ui > 0 THEN YEAR(d) ELSE 1 END FROM uu)
+m_coalesce_ui (SELECT COALESCE(ui, 1) FROM uu)
+m_coalesce_year COALESCE(YEAR(d), 1)
+m_cast_year CASE WHEN i > 0 THEN CAST(YEAR(d) AS SIGNED) ELSE 1 END

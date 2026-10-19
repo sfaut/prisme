@@ -205,7 +205,8 @@ pub enum ReportStepKind {
     Rewrite,
     /// A construct written with other means of the server's dialect.
     Emulation,
-    /// The server gives less than the same request written in its dialect.
+    /// The server gives less than the request (a type it gives no expression
+    /// of), or than the same request written in its dialect.
     LossOfPrecision,
     /// A construct without effect on the result, left out.
     Omission,

@@ -124,6 +124,7 @@ pub(crate) fn emit(statement: &Statement, output: &OutputDialect, source: &Sourc
         head: true,
         column: false,
         number: false,
+        compared: false,
         json_as_is: false,
         as_bytes: false,
         compared_rows: false,
@@ -186,6 +187,11 @@ struct Emitter<'a> {
     /// string at the scale of each result (`42` for an integer), as a
     /// number at the scale of its type.
     number: bool,
+    /// Tells whether the next expression is an operand of a comparison
+    /// (`=`, `<=>`, `BETWEEN`, `IN` of a list), read as a number or a string
+    /// alike whatever its type: a rule keeps it as written there, so that a
+    /// functional index on it stays usable.
+    compared: bool,
     /// Tells whether the next expression keeps a `JSON` as written, both
     /// dialects reading its text or its value there: a column of the
     /// result, an operand of `LIKE` or `IS NULL`, an argument of `CONCAT` or

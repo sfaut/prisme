@@ -195,7 +195,7 @@ fn numeric(data_type: &DataType) -> Numeric {
 }
 
 /// Digits of the largest value of an integer type.
-fn integer_digits(integer: IntegerType) -> usize {
+pub(super) fn integer_digits(integer: IntegerType) -> usize {
     integer.max().max(-integer.min()).to_string().len()
 }
 

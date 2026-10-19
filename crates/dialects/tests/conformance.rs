@@ -40,6 +40,7 @@ use prisme_dialects::Dialect;
 use prisme_dialects::build::Tables;
 use prisme_dialects::emit::OutputDialect;
 use prisme_dialects::lexer::SqlMode;
+use prisme_dialects::report::StepKind;
 use prisme_dialects::transpile::{InputDialect, prepare};
 use prisme_dialects::versions::{Version, registry};
 use prisme_plan::Ident;
@@ -268,7 +269,14 @@ enum Transpiled {
     /// expected.
     Failed(String),
     /// Text run on the output.
-    Sql(String),
+    Sql {
+        /// Text of the transpilation.
+        sql: String,
+        /// The transpilation reports a `YEAR` of the input given as an
+        /// integer (rule `function.year`, MariaDB having no `CAST` to
+        /// `YEAR`).
+        year_integer: bool,
+    },
 }
 
 /// Result of a query on a server: its answer, or the error of the server.
@@ -573,9 +581,15 @@ fn same_family(left: TypeFamily, right: TypeFamily) -> bool {
     left == TypeFamily::Other || right == TypeFamily::Other || family(left) == family(right)
 }
 
-/// Compares the answers of the query and of its transpilation; `None` when
-/// they give the same result.
-fn difference(expected: &Answer, got: &Answer, compare: Compare) -> Option<String> {
+/// Compares the answers of the query and of its transpilation, a `YEAR`
+/// accepted as an integer when `year_integer`; `None` when they give the
+/// same result.
+fn difference(
+    expected: &Answer,
+    got: &Answer,
+    compare: Compare,
+    year_integer: bool,
+) -> Option<String> {
     if expected.names != got.names {
         return Some(format!(
             "columns {:?}, transpiled {:?}",
@@ -583,10 +597,10 @@ fn difference(expected: &Answer, got: &Answer, compare: Compare) -> Option<Strin
         ));
     }
     let families = expected.families.iter().zip(&got.families);
-    if !families
-        .clone()
-        .all(|(left, right)| same_family(*left, *right))
-    {
+    if !families.clone().all(|(left, right)| {
+        same_family(*left, *right)
+            || year_integer && *left == TypeFamily::Year && *right == TypeFamily::Integer
+    }) {
         return Some(format!(
             "types {:?}, transpiled {:?}",
             expected.families, got.families
@@ -678,7 +692,7 @@ async fn run_output(
         let outcome = transpile(case, input, server, &mut target)
             .await
             .unwrap_or_else(Transpiled::Failed);
-        if let Transpiled::Sql(sql) = &outcome
+        if let Transpiled::Sql { sql, .. } = &outcome
             && !runs.contains_key(sql)
         {
             let run = answer(&mut target, sql).await;
@@ -754,7 +768,13 @@ async fn transpile(
             transpilation.sql
         )),
         (_, false) => Transpiled::Failed(format!("refused: {:?}", transpilation.errors)),
-        (None, true) => Transpiled::Sql(transpilation.sql),
+        (None, true) => Transpiled::Sql {
+            year_integer: transpilation
+                .steps
+                .iter()
+                .any(|step| step.rule == "function.year" && step.kind == StepKind::LossOfPrecision),
+            sql: transpilation.sql,
+        },
     })
 }
 
@@ -894,17 +914,19 @@ async fn transpilations_give_the_same_result() {
                 continue;
             }
             Transpiled::Failed(failure) => failure,
-            Transpiled::Sql(sql) => {
+            Transpiled::Sql { sql, year_integer } => {
                 let failure = match (&expected[&(key, input)], &got[&(key, output, sql.clone())]) {
                     (Err(error), _) => format!("{}: {error}", images[input].label()),
                     (_, Err(error)) => format!("{}: {error}", images[output].label()),
-                    (Ok(expected), Ok(got)) => match difference(expected, got, case.compare) {
-                        Some(difference) => difference,
-                        None => {
-                            same += 1;
-                            continue;
+                    (Ok(expected), Ok(got)) => {
+                        match difference(expected, got, case.compare, year_integer) {
+                            Some(difference) => difference,
+                            None => {
+                                same += 1;
+                                continue;
+                            }
                         }
-                    },
+                    }
                 };
                 format!("{failure}\n  transpiled {sql}")
             }

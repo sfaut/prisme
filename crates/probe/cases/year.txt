@@ -1,0 +1,53 @@
+# YEAR() and its type: a YEAR in MySQL from 8.1.0 (`set_data_type_year`,
+# unsigned), an INT elsewhere; its values out of 1901 to 2155, and the
+# expressions that read it.
+y_d YEAR(d)
+y_dn YEAR(dn)
+y_dt YEAR(dt)
+y_1000 YEAR('1000-01-01')
+y_0001 YEAR('0001-01-01')
+y_0000 YEAR('0000-01-01')
+y_zero YEAR('0000-00-00')
+y_9999 YEAR('9999-12-31')
+y_1900 YEAR(DATE '1900-01-01')
+y_1901 YEAR(DATE '1901-01-01')
+y_2156 YEAR(DATE '2156-01-01')
+y_int YEAR(20240506)
+y_str YEAR('2024')
+y_minus YEAR(d) - 3000
+y_minus_small YEAR(d) - 1
+y_plus YEAR(d) + 1
+y_plus0 YEAR(d) + 0
+y_neg -YEAR(d)
+y_div YEAR(d) / 2
+y_intdiv YEAR(d) DIV 2
+y_bit YEAR(d) | 0
+y_eq24 YEAR(d) = 24
+y_eq2024 YEAR(d) = 2024
+y_eq_str YEAR(d) = '2024'
+y_eq_str24 YEAR(d) = '24'
+y_in YEAR(d) IN (24, 2024)
+y_between YEAR(d) BETWEEN 0 AND 70
+y_lt_date YEAR(d) < DATE '2024-01-01'
+y_eq_date YEAR(d) = d
+y_lt_dt YEAR(d) < dt
+y_concat CONCAT(YEAR(d))
+y_concat_1 CONCAT(YEAR('0001-01-01'))
+y_case CASE WHEN i > 0 THEN YEAR(d) END
+y_case_int CASE WHEN i > 0 THEN YEAR(d) ELSE 1 END
+y_coalesce COALESCE(YEAR(d))
+y_coalesce_int COALESCE(YEAR(d), 1)
+y_ifnull IFNULL(YEAR(d), 1)
+y_if IF(i > 0, YEAR(d), YEAR(dt))
+y_greatest GREATEST(YEAR(d), 1)
+y_cast CAST(YEAR(d) AS SIGNED)
+y_cast_1 CAST(YEAR('0001-01-01') AS SIGNED)
+y_cast_char CAST(YEAR(d) AS CHAR)
+y_json JSON_ARRAY(YEAR(d))
+y_json_1 JSON_ARRAY(YEAR('0001-01-01'))
+y_hex HEX(YEAR(d))
+y_length LENGTH(YEAR('0001-01-01'))
+y_sum (SELECT SUM(YEAR(d)) FROM sample)
+y_max (SELECT MAX(YEAR(d)) FROM sample)
+y_sub (SELECT YEAR(d) FROM sample)
+y_sub_1 (SELECT YEAR('0001-01-01'))

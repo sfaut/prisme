@@ -188,6 +188,9 @@ pub(crate) enum Rule {
     /// `UUID`: its type.
     #[serde(rename = "function.uuid")]
     Uuid,
+    /// `YEAR`: its type, a `YEAR` in MySQL from 8.1.0.
+    #[serde(rename = "function.year")]
+    Year,
 }
 
 /// Type of an argument that a function reads otherwise in the other
@@ -246,6 +249,7 @@ impl Rule {
             Self::TimeToSec => "function.time-to-sec",
             Self::UnixTimestamp => "function.unix-timestamp",
             Self::Uuid => "function.uuid",
+            Self::Year => "function.year",
         }
     }
 }

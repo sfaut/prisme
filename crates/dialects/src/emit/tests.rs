@@ -338,6 +338,7 @@ fn strings_follow_the_sql_mode_of_the_output() {
         head: true,
         column: false,
         number: false,
+        compared: false,
         json_as_is: false,
         as_bytes: false,
         compared_rows: false,
@@ -5334,4 +5335,61 @@ fn period_keeps_the_periods_and_the_months_of_the_input() {
     }
     let text = "SELECT PERIOD_DIFF(y, 1) FROM g";
     assert_eq!(transpiled(text, mysql_8_0_15, output(mariadb())).0, text);
+}
+
+#[test]
+fn year_keeps_the_integer_of_the_input() {
+    // Towards MySQL from 8.1.0, a `YEAR`; from 8.0.14 to 8.0.16, an
+    // unsigned `INT`: the signed `INT` of MariaDB by `CAST`, but compared.
+    let text = "SELECT YEAR(dt) AS a, COALESCE(YEAR(dn), 1) AS b, YEAR(dt) - 3000 AS c FROM d WHERE YEAR(dt) = 2024 AND YEAR(dn) BETWEEN 2000 AND 2024 ORDER BY YEAR(dt)";
+    let cast = "SELECT CAST(YEAR(dt) AS SIGNED) AS a, COALESCE(CAST(YEAR(dn) AS SIGNED), 1) AS b, CAST(YEAR(dt) AS SIGNED) - 3000 AS c FROM d WHERE YEAR(dt) = 2024 AND YEAR(dn) BETWEEN 2000 AND 2024 ORDER BY CAST(YEAR(dt) AS SIGNED)";
+    for version in [(8, 0, 14), (8, 0, 16), (8, 1, 0), (8, 4, 0)] {
+        let target = output(input_at(Dialect::MySql, version.0, version.1, version.2));
+        let (sql, rules) = transpiled(text, mariadb(), target);
+        assert_eq!(sql, cast, "{version:?}");
+        assert_eq!(rules, ["function.year"; 4], "{version:?}");
+    }
+    for version in [(8, 0, 13), (8, 0, 17), (8, 0, 33)] {
+        let target = output(input_at(Dialect::MySql, version.0, version.1, version.2));
+        assert_eq!(
+            transpiled(text, mariadb(), target),
+            (text.to_string(), Vec::new())
+        );
+    }
+    // Towards MariaDB, the `YEAR` of MySQL from 8.1.0 an `INT` of the same
+    // value, a loss of precision but read as a number.
+    let mysql_8_4 = input_at(Dialect::MySql, 8, 4, 0);
+    let text = "SELECT YEAR(dt) AS a, YEAR(dt) + 1 AS b FROM d WHERE YEAR(dt) = 2024";
+    let transpilation = run(text, mysql_8_4, output(mariadb())).unwrap();
+    assert_eq!(transpilation.sql, text);
+    let steps: Vec<_> = transpilation
+        .steps
+        .iter()
+        .map(|step| (step.rule, step.kind))
+        .collect();
+    assert_eq!(
+        steps,
+        [("function.year", crate::report::StepKind::LossOfPrecision)]
+    );
+    // An `INT` of MySQL: as written; an unsigned `INT`, from 8.0.14 to
+    // 8.0.16, by `CAST`, but compared, its `CASE` with a signed integer a
+    // `DECIMAL` in both.
+    assert_eq!(
+        transpiled(text, mysql(), output(mariadb())),
+        (text.to_string(), Vec::new())
+    );
+    let mysql_8_0_16 = input_at(Dialect::MySql, 8, 0, 16);
+    let (sql, rules) = transpiled(text, mysql_8_0_16, output(mariadb()));
+    assert_eq!(
+        sql,
+        "SELECT CAST(YEAR(dt) AS UNSIGNED) AS a, CAST(YEAR(dt) AS UNSIGNED) + 1 AS b FROM d WHERE YEAR(dt) = 2024"
+    );
+    assert_eq!(rules, ["function.year"; 2]);
+    let text =
+        "SELECT CASE WHEN i > 0 THEN YEAR(dt) ELSE 1 END AS a, COALESCE(YEAR(dn), i) AS b FROM d";
+    let (sql, _) = transpiled(text, mysql_8_0_16, output(mariadb()));
+    assert_eq!(
+        sql,
+        "SELECT CASE WHEN i > 0 THEN CAST(YEAR(dt) AS UNSIGNED) ELSE 1 END AS a, COALESCE(CAST(YEAR(dn) AS UNSIGNED), i) AS b FROM d"
+    );
 }
