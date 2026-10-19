@@ -16,8 +16,9 @@
   the queries). Tab and Shift+Tab indent by stops of
   four spaces, Enter goes to a new line at the indentation of the line it
   leaves (`editorIndent.ts`). Ctrl+Up and Ctrl+Down scroll the text by one
-  line without moving the cursor (`editorScroll.ts`). The text binds with
-  `v-model`.
+  line without moving the cursor (`editorScroll.ts`). The blanks at the end
+  of a line go when the cursor leaves it, except inside a string
+  (`editorTrim.ts`). The text binds with `v-model`.
 -->
 <script setup lang="ts">
 import { autocompletion } from '@codemirror/autocomplete'
@@ -39,6 +40,7 @@ import { currentStatement, setStatements } from './currentStatement'
 import { dedentLines, indentOrInsertSpaces, insertNewlineKeepingIndentation } from './editorIndent'
 import { scrollKeymap } from './editorScroll'
 import { editorTheme } from './editorTheme'
+import { trimTrailingBlanks } from './editorTrim'
 import { editorDialect } from './sqlDialect'
 
 const props = defineProps<{
@@ -224,6 +226,7 @@ onMounted(() => {
       editorTheme(),
       language.of(currentLanguage()),
       currentStatement(),
+      trimTrailingBlanks(),
       EditorView.updateListener.of((update) => {
         if (update.docChanged) {
           text.value = update.state.doc.toString()
