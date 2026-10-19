@@ -68,6 +68,8 @@ struct Received {
     columns: Value,
     /// Number of rows received.
     rows: usize,
+    /// Number of rows of each `rows` message, in order.
+    batch_sizes: Vec<usize>,
     /// Last message of the query: `done` or `error`.
     end: Value,
     /// Has the `started` message arrived?
@@ -103,7 +105,11 @@ async fn run(socket: &mut ClientSocket, mut request: Value) -> (Value, Vec<Recei
         match kind.as_str() {
             "started" => result.started = true,
             "columns" => result.columns = message,
-            "rows" => result.rows += message["rows"].as_array().unwrap().len(),
+            "rows" => {
+                let size = message["rows"].as_array().unwrap().len();
+                result.rows += size;
+                result.batch_sizes.push(size);
+            }
             _ => result.end = message,
         }
     }
@@ -136,6 +142,23 @@ fn chooses_the_statement_under_the_cursor_or_all_of_them() {
         ["SELECT 1", "SELECT 2"]
     );
     assert!(super::execution::chosen_statements(&[], Some(0)).is_empty());
+}
+
+#[test]
+fn sends_a_short_first_batch_of_rows_then_full_ones() {
+    let mut batches = super::execution::RowBatches::new();
+    let sizes: Vec<usize> = (0..1_200)
+        .filter_map(|_| batches.push(Vec::new()))
+        .map(|batch| batch.len())
+        .collect();
+    assert_eq!(sizes, [50, 500, 500]);
+    assert_eq!(batches.rest().map(|batch| batch.len()), Some(150));
+
+    // A result shorter than the first batch goes in a single message.
+    let mut batches = super::execution::RowBatches::new();
+    assert!(batches.push(Vec::new()).is_none());
+    assert_eq!(batches.rest().map(|batch| batch.len()), Some(1));
+    assert!(super::execution::RowBatches::new().rest().is_none());
 }
 
 #[tokio::test]
@@ -235,6 +258,8 @@ async fn streams_results_with_the_default_limit() {
         "SELECT seq FROM seq_1_to_2500 LIMIT 1001"
     );
     assert_eq!(result.rows, 1000);
+    // A short first batch shows quickly, full batches follow.
+    assert_eq!(result.batch_sizes, [50, 500, 450]);
     assert_eq!(result.end["truncated"], true);
 
     // Written limit: it applies as is, beyond the default limit.

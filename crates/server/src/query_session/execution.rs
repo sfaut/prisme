@@ -1,11 +1,12 @@
 //! Execution of the queries of a session: one query on the session's
 //! connection, or the queries of a batch in parallel, each on its own
-//! connection, with their rows streamed to the client.
+//! connection, with their rows streamed to the client: a short first batch,
+//! shown without waiting for a full one, then full batches.
 
 use std::time::Instant;
 
 use futures_util::future::join_all;
-use prisme_connectors::mysql::{self, Connection};
+use prisme_connectors::mysql::{self, Cell, Connection};
 use prisme_dialects::Dialect;
 use prisme_dialects::limit::{LimitOutcome, apply_default_limit, written_limit};
 use prisme_splitter::{Statement, statement_at};
@@ -16,7 +17,11 @@ use super::outbox::SessionStopped;
 use super::protocol::ServerMessage;
 use super::session::{Session, Summary};
 
-/// Number of rows per `rows` message.
+/// Number of rows of the first `rows` message of a result: the first rows
+/// show quickly, without waiting for a full batch.
+const FIRST_BATCH_SIZE: usize = 50;
+
+/// Number of rows of the next `rows` messages.
 const ROW_BATCH_SIZE: usize = 500;
 
 /// Maximum number of queries run at the same time (one connection each).
@@ -205,7 +210,7 @@ impl Session<'_> {
             })
             .await?;
 
-        let mut batch = Vec::with_capacity(ROW_BATCH_SIZE);
+        let mut batches = RowBatches::new();
         let mut row_count = 0;
         let mut truncated = false;
         loop {
@@ -239,18 +244,16 @@ impl Session<'_> {
                 }
                 break;
             }
-            batch.push(row);
             row_count += 1;
-            if batch.len() == ROW_BATCH_SIZE {
-                let rows = std::mem::replace(&mut batch, Vec::with_capacity(ROW_BATCH_SIZE));
+            if let Some(rows) = batches.push(row) {
                 self.outbox
                     .send(ServerMessage::Rows { query, rows })
                     .await?;
             }
         }
-        if !batch.is_empty() {
+        if let Some(rows) = batches.rest() {
             self.outbox
-                .send(ServerMessage::Rows { query, rows: batch })
+                .send(ServerMessage::Rows { query, rows })
                 .await?;
         }
 
@@ -296,6 +299,43 @@ impl Session<'_> {
                 database,
             })
             .await
+    }
+}
+
+/// Rows of a result gathered into the batches of the `rows` messages: the
+/// first one holds `FIRST_BATCH_SIZE` rows, the next ones `ROW_BATCH_SIZE`.
+pub(super) struct RowBatches {
+    /// Batch being filled.
+    batch: Vec<Vec<Cell>>,
+    /// Number of rows that fills it.
+    size: usize,
+}
+
+impl RowBatches {
+    /// Starts the first batch.
+    pub(super) fn new() -> Self {
+        Self {
+            batch: Vec::with_capacity(FIRST_BATCH_SIZE),
+            size: FIRST_BATCH_SIZE,
+        }
+    }
+
+    /// Adds a row; returns the batch once it is full, to send.
+    pub(super) fn push(&mut self, row: Vec<Cell>) -> Option<Vec<Vec<Cell>>> {
+        self.batch.push(row);
+        if self.batch.len() < self.size {
+            return None;
+        }
+        self.size = ROW_BATCH_SIZE;
+        Some(std::mem::replace(
+            &mut self.batch,
+            Vec::with_capacity(ROW_BATCH_SIZE),
+        ))
+    }
+
+    /// Last batch, not full, at the end of the result; `None` if it is empty.
+    pub(super) fn rest(self) -> Option<Vec<Vec<Cell>>> {
+        (!self.batch.is_empty()).then_some(self.batch)
     }
 }
 

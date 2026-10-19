@@ -163,7 +163,7 @@ Prisme first announces the queries of the batch (`batch`, each one numbered), th
 
 1. `started`: the query starts (in parallel, it may wait for its turn).
 2. `columns`: column names and types, columns right-aligned by the grid (numbers, dates and times), the text actually run, how the limit was handled (`added` if Prisme added `LIMIT N + 1`, `user_limit` if the query had one, `not_applicable` for `SHOW` or `EXPLAIN`), the maximum row count (`expected_rows`, `null` if unknown) and the execution time measured by the server (`execution_us`, in microseconds).
-3. `rows`: the rows, in batches of 500, each cell as text or `null`.
+3. `rows`: the rows, a first batch of 50 that shows without waiting for a full one, then batches of 500, each cell as text or `null`.
 4. `done`: row count, `truncated` (rows beyond the limit were dropped), affected rows, duration.
 
 On failure or cancellation, an `error` message replaces the rest of that query, and the session goes on. `batch_done` ends the batch. In parallel, messages of different queries interleave.

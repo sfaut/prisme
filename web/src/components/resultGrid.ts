@@ -340,7 +340,8 @@ export function sameColumns(a: string[], b: string[]): boolean {
 /**
  * Updates the view after rows were received. Only the rows added since the
  * last update are filtered and sorted, then merged into the view: a sort of
- * 50 000 rows takes about 0.2 s, and the rows arrive by batches of 500.
+ * 50 000 rows takes about 0.2 s, and the rows arrive by batches of 500
+ * (50 for the first one).
  *
  * The result is the one `visibleRows` gives on the whole array, as long as
  * the comparison is consistent. A new array, a new user filter or a new sort
