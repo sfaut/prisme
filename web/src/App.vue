@@ -1,9 +1,11 @@
 <!--
   Layout of the screen: on top, the application bar (`AppTopBar`), across the
   whole width; below, on the left, the explorer of the data sources, in a
-  panel whose width is set by dragging its right edge; on the right, the SQL
+  panel whose width is set by dragging its right edge; in the middle, the SQL
   editors, one tab each (`EditorTabBar`), each with its cell (`QueryCell`): its
-  connection, its session and its result tabs. Layout in Tailwind classes.
+  connection, its session and its result tabs; on the right, when it is open,
+  the data explorer (`DataExplorer`), whose width is set by dragging its left
+  edge. Layout in Tailwind classes.
 
   The explorer acts on the active editor: the chosen source becomes its
   connection, an opened table or a chosen database (`USE`) runs there. The
@@ -19,24 +21,34 @@ import { TabsContent, TabsRoot } from 'reka-ui'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import { useConnectionsStore } from './stores/connections'
+import { useDataExplorerStore } from './stores/dataExplorer'
 import { useEditorsStore } from './stores/editors'
 
 import AppTopBar from './components/AppTopBar.vue'
+import DataExplorer from './components/DataExplorer.vue'
 import EditorTabBar from './components/EditorTabBar.vue'
 import ObjectExplorer from './components/ObjectExplorer.vue'
 import QueryCell from './components/QueryCell.vue'
 import PanelResizer from './components/PanelResizer.vue'
 import UiAlert from './components/ui/UiAlert.vue'
 import UiToaster from './components/ui/UiToaster.vue'
-import { SIDER, clampPanelWidth, loadPanelWidth } from './components/panelWidth'
+import { DATA_PANEL, SIDER, clampPanelWidth, loadPanelWidth } from './components/panelWidth'
 
 const connections = useConnectionsStore()
 const editors = useEditorsStore()
+const explorer = useDataExplorerStore()
 
 /**
  * Width of the left panel, in pixels.
  */
 const siderWidth = ref(clampPanelWidth(SIDER, loadPanelWidth(SIDER), window.innerWidth))
+
+/**
+ * Width of the data explorer, in pixels.
+ */
+const dataPanelWidth = ref(
+  clampPanelWidth(DATA_PANEL, loadPanelWidth(DATA_PANEL), window.innerWidth),
+)
 
 /**
  * Error loading or saving the editors, `null` if none.
@@ -219,6 +231,7 @@ function selectSource(connectionId: number): void {
               "
               :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
               :editor-id="editor.id"
+              :active="editor.id === editors.activeId"
               :connection="connectionOf(editor.connectionId)!"
               :sql="editor.sql"
               @update:sql="(sql) => editors.setSql(editor.id, sql)"
@@ -237,6 +250,15 @@ function selectSource(connectionId: number): void {
           </tabs-content>
         </tabs-root>
       </main>
+      <template v-if="explorer.open">
+        <panel-resizer v-model="dataPanelWidth" :panel="DATA_PANEL" side="end" />
+        <aside
+          class="flex shrink-0 flex-col border-s border-line p-panel"
+          :style="{ width: `${dataPanelWidth}px` }"
+        >
+          <data-explorer />
+        </aside>
+      </template>
     </div>
   </div>
   <ui-toaster />

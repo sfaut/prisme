@@ -13,6 +13,8 @@
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Cell } from '@/api/querySession'
 
+import type { DataCell } from './dataFormat'
+
 /**
  * Direction of the sort.
  */
@@ -648,6 +650,39 @@ export function selectionToText(
     )
   }
   return lines.join('\n')
+}
+
+/**
+ * Cells of a selection that lies in a single column, for the data explorer:
+ * from top to bottom, each with the number of its row in the grid (from 1).
+ *
+ * @param selection Selection.
+ * @param view View: indexes of the source rows.
+ * @param rows Rows of the result.
+ * @param order Index in the `SELECT` of each displayed column.
+ * @returns
+ *     The index in the `SELECT` of the column and its selected cells; `null`
+ *     without a selection, `'several'` if it covers several columns.
+ */
+export function selectedColumnCells(
+  selection: GridSelection,
+  view: number[],
+  rows: Cell[][],
+  order: number[],
+): { column: number; cells: DataCell[] } | 'several' | null {
+  const positions = coveredIndexes(selection.ranges, 'left', 'right')
+  if (positions.length === 0) {
+    return null
+  }
+  if (positions.length > 1) {
+    return 'several'
+  }
+  const column = order[positions[0]!] ?? positions[0]!
+  const cells = coveredIndexes(selection.ranges, 'top', 'bottom').map((row) => {
+    const source = view[row]
+    return { row: row + 1, value: source === undefined ? null : (rows[source]?.[column] ?? null) }
+  })
+  return { column, cells }
 }
 
 /**

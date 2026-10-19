@@ -57,6 +57,11 @@ const props = defineProps<{
    */
   editorId: number
   /**
+   * Is the editor the active one, on screen? The grid of its active tab
+   * then feeds the data explorer.
+   */
+  active: boolean
+  /**
    * Connection on which the queries run.
    */
   connection: ConnectionSummary
@@ -510,7 +515,7 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
         :value="tab.id"
         class="flex min-h-0 flex-1 outline-none"
       >
-        <query-tab-view :tab="tab" />
+        <query-tab-view :tab="tab" :displayed="active && selectedTab === tab.id" />
       </tabs-content>
     </tabs-root>
   </div>

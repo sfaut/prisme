@@ -30,6 +30,11 @@ const props = defineProps<{
    * Displayed query.
    */
   tab: QueryTab
+  /**
+   * Is the tab on screen (active tab of the active editor)? Its grid then
+   * feeds the data explorer.
+   */
+  displayed: boolean
 }>()
 
 const clock = useClock()
@@ -98,6 +103,7 @@ const durations = computed(() => {
       :row-count="tab.result.rowCount"
       :shown-count="shownCount"
       :sql="tab.sql"
+      :displayed="displayed"
     >
       <template #footer>
         <template v-if="durations">&nbsp;· {{ durations }}</template>

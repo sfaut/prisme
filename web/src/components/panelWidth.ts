@@ -1,7 +1,7 @@
 /**
  * Width of the side panels, set with the mouse (`PanelResizer.vue`) and
  * remembered from one visit to the next: on the left, the connections and
- * the explorer.
+ * the explorer; on the right, the data explorer.
  *
  * The width is kept in the browser's local storage: it is a display
  * preference specific to this machine. If storage is unavailable (private
@@ -39,6 +39,17 @@ export const SIDER: PanelWidth = {
   defaultWidth: 300,
   minWidth: 200,
   maxRatio: 0.7,
+}
+
+/**
+ * Right panel: data explorer. At least enough for its buttons; at most half
+ * of the window, to leave room for the grid.
+ */
+export const DATA_PANEL: PanelWidth = {
+  storageKey: 'prisme.dataPanelWidth',
+  defaultWidth: 420,
+  minWidth: 240,
+  maxRatio: 0.5,
 }
 
 /**

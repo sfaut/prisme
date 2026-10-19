@@ -1,10 +1,14 @@
-import { describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { mount } from '@vue/test-utils'
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
+import { useDataExplorerStore } from '@/stores/dataExplorer'
 
 import ResultGrid from '../ResultGrid.vue'
+
+beforeEach(() => setActivePinia(createPinia()))
 
 /**
  * Mounts the grid.
@@ -113,6 +117,73 @@ describe('ResultGrid with a large result', () => {
       () => expect(wrapper.find('.grid-body').attributes('style')).toContain('height: 110000px'),
       { timeout: 5000 },
     )
+  })
+})
+
+describe('ResultGrid and the data explorer', () => {
+  // jsdom has no pointer capture, used by a press on a column name.
+  beforeEach(() => {
+    HTMLElement.prototype.setPointerCapture = () => {}
+  })
+
+  const columns = ['id', 'doc']
+  const rows = [
+    ['1', '{"a":1}'],
+    ['2', '{"b":2}'],
+  ]
+  const columnTypes: ColumnTypeInfo[] = [
+    { family: 'integer', name: 'INT' },
+    { family: 'text', name: 'LONGTEXT' },
+  ]
+
+  it('opens the explorer, and gives it the selected values of a JSON column', async () => {
+    const explorer = useDataExplorerStore()
+    const wrapper = mount(ResultGrid, {
+      props: {
+        columns,
+        rightAligned: [true, false],
+        columnTypes,
+        rows,
+        rowCount: 2,
+        sql: 'SELECT id, doc FROM t',
+        displayed: true,
+      },
+    })
+    await wrapper.find('.grid-explorer-toggle').trigger('click')
+    expect(explorer.open).toBe(true)
+    expect(explorer.content).toEqual({ state: 'none' })
+    await wrapper.findAll('.grid-column-name')[1]!.trigger('pointerdown')
+    expect(explorer.content).toEqual({
+      state: 'values',
+      column: 'doc',
+      kind: 'json',
+      cells: [
+        { row: 1, value: '{"a":1}' },
+        { row: 2, value: '{"b":2}' },
+      ],
+    })
+    await wrapper.find('.grid-corner').trigger('mousedown')
+    expect(explorer.content).toEqual({ state: 'several' })
+    // Off screen (another tab, another editor): the explorer no longer shows it.
+    await wrapper.setProps({ displayed: false })
+    expect(explorer.content).toEqual({ state: 'none' })
+  })
+
+  it('gives nothing while it is off screen', async () => {
+    const explorer = useDataExplorerStore()
+    explorer.open = true
+    const wrapper = mount(ResultGrid, {
+      props: {
+        columns,
+        rightAligned: [true, false],
+        columnTypes,
+        rows,
+        rowCount: 2,
+        sql: 'SELECT id, doc FROM t',
+      },
+    })
+    await wrapper.findAll('.grid-column-name')[0]!.trigger('pointerdown')
+    expect(explorer.content).toEqual({ state: 'none' })
   })
 })
 

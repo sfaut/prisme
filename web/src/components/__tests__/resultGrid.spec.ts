@@ -21,6 +21,7 @@ import {
   selectColumn,
   selectRow,
   selectionToText,
+  selectedColumnCells,
   createViewMemory,
   sameColumns,
   type UserFilter,
@@ -173,6 +174,41 @@ describe('copy', () => {
   it('also writes out the control characters of column names', () => {
     const selection = selectColumn(emptySelection(), 0, 1, 'replace')
     expect(selectionToText(selection, [0], [['1']], ['a\tb'], true)).toBe('a\\tb\n1')
+  })
+})
+
+describe('cells of a single column', () => {
+  it('lists the selected cells from top to bottom, in the displayed column', () => {
+    let selection = selectCell(emptySelection(), 2, 0, 'replace')
+    selection = selectCell(selection, 0, 0, 'add')
+    // Columns moved: the first displayed one is "city".
+    expect(selectedColumnCells(selection, [0, 1, 2], rows, [2, 0, 1])).toEqual({
+      column: 2,
+      cells: [
+        { row: 1, value: 'Lyon' },
+        { row: 3, value: 'Paris' },
+      ],
+    })
+  })
+
+  it('follows the sorted view, NULL included', () => {
+    const sorted = visibleRows(rows, noFilter, { column: 0, direction: 'asc' })
+    const selection = selectColumn(emptySelection(), 2, 3, 'replace')
+    expect(selectedColumnCells(selection, sorted, rows, [0, 1, 2])).toEqual({
+      column: 2,
+      cells: [
+        { row: 1, value: 'Paris' },
+        { row: 2, value: null },
+        { row: 3, value: 'Lyon' },
+      ],
+    })
+  })
+
+  it('tells an empty selection from one over several columns', () => {
+    expect(selectedColumnCells(emptySelection(), [0], rows, [0, 1, 2])).toBeNull()
+    expect(
+      selectedColumnCells(selectRow(emptySelection(), 0, 3, 'replace'), [0], rows, [0, 1, 2]),
+    ).toBe('several')
   })
 })
 

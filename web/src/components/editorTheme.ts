@@ -1,11 +1,11 @@
 /**
- * Theme of the SQL editor (CodeMirror), light or dark like the rest of the
- * interface.
+ * Theme of the CodeMirror editors, light or dark like the rest of the
+ * interface: the SQL editor, and the data explorer (JSON and XML).
  *
  * All the colors are CSS variables of the theme (`assets/main.css`):
  * background, text, borders and tooltips, highlights (`--editor-*`) and
- * syntax highlighting (`--sql-*`). Switching from light to dark changes these
- * variables, without reconfiguring the editor.
+ * syntax highlighting (`--sql-*`, `--data-*`). Switching from light to dark
+ * changes these variables, without reconfiguring the editor.
  */
 
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
@@ -51,15 +51,26 @@ const chrome = EditorView.theme({
   },
   '.cm-completionDetail': { color: 'var(--fg-muted)' },
   '.cm-panels': { backgroundColor: 'var(--surface-elevated)', color: 'var(--fg)' },
+  // Folded content ("…"), in place of the browser's grey.
+  '.cm-foldPlaceholder': {
+    backgroundColor: 'var(--surface-accented)',
+    border: 'none',
+    color: 'var(--fg-muted)',
+  },
 })
 
 /**
- * Syntax highlighting of SQL, after the categories of `@codemirror/lang-sql`.
+ * Syntax highlighting, after the categories of `@codemirror/lang-sql`, then
+ * of `@codemirror/lang-json` and `@codemirror/lang-xml`: names of the
+ * members and of the elements, names of the attributes; values as in SQL.
  */
 const highlight = HighlightStyle.define([
   { tag: tags.keyword, color: 'var(--sql-keyword)' },
   { tag: tags.typeName, color: 'var(--sql-type)' },
-  { tag: [tags.string, tags.special(tags.string)], color: 'var(--sql-string)' },
+  {
+    tag: [tags.string, tags.special(tags.string), tags.attributeValue],
+    color: 'var(--sql-string)',
+  },
   // Numbers and values: NULL, booleans, words that designate a value (CURRENT_DATE...).
   {
     tag: [tags.number, tags.bool, tags.null, tags.standard(tags.name)],
@@ -68,6 +79,8 @@ const highlight = HighlightStyle.define([
   { tag: tags.special(tags.name), color: 'var(--sql-variable)' },
   { tag: [tags.lineComment, tags.blockComment], color: 'var(--sql-comment)', fontStyle: 'italic' },
   { tag: [tags.operator, tags.punctuation], color: 'var(--fg-muted)' },
+  { tag: [tags.propertyName, tags.tagName], color: 'var(--data-name)' },
+  { tag: tags.attributeName, color: 'var(--data-attribute)' },
 ])
 
 /**

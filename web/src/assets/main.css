@@ -173,6 +173,12 @@
   --sql-variable: light-dark(var(--pink-700), var(--pink-300));
   --sql-comment: light-dark(var(--zinc-500), var(--zinc-400));
 
+  /* Syntax highlighting of the data explorer (JSON and XML), beyond the
+     colors of SQL: names of the members and of the elements, names of the
+     attributes. */
+  --data-name: light-dark(var(--blue-600), var(--blue-300));
+  --data-attribute: light-dark(var(--cyan-700), var(--cyan-300));
+
   /* Highlights of the SQL editor: cursor line and its gutter, selection and
      its other occurrences, matched or unmatched bracket, query that
      Ctrl+Enter would run. */

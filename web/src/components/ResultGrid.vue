@@ -8,7 +8,11 @@
     stays applied, the button shows it).
   - Bottom bar: user filter button, number of loaded rows ("120 /
     5 000 lignes" when a user filter is active), then the content of the
-    `footer` slot (duration of the query).
+    `footer` slot (duration of the query); at the far right, the button that
+    opens or closes the data explorer.
+  - Data explorer: the grid on screen (`displayed`) gives the panel on the
+    right the selected values of a JSON or XML column (`dataExplorer`
+    store).
   - Selection: click on a cell, on a row number or on a column name;
     Shift+click extends, Ctrl+click adds, dragging extends too (on the row
     numbers, dragging selects a group of rows). A click on the top left
@@ -39,7 +43,14 @@
   selection, copy) is in `resultGrid.ts`.
 -->
 <script setup lang="ts">
-import { ExternalLink, ListFilter, Search, X } from 'lucide-vue-next'
+import {
+  ExternalLink,
+  ListFilter,
+  PanelRightClose,
+  PanelRightOpen,
+  Search,
+  X,
+} from 'lucide-vue-next'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import {
   computed,
@@ -55,6 +66,7 @@ import {
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Cell } from '@/api/querySession'
 import { cssPixels } from '@/cssLength'
+import { type ExplorerContent, useDataExplorerStore } from '@/stores/dataExplorer'
 
 import {
   type UserFilter,
@@ -79,6 +91,7 @@ import {
   selectColumn,
   selectRow,
   selectionToText,
+  selectedColumnCells,
   createViewMemory,
   sameColumns,
   updateView,
@@ -124,6 +137,11 @@ const props = defineProps<{
    * again if it is run again.
    */
   sql: string
+  /**
+   * Is the grid on screen (active result tab of the active editor)? Only
+   * this grid feeds the data explorer.
+   */
+  displayed?: boolean
 }>()
 
 /**
@@ -632,6 +650,47 @@ function onKeydown(event: KeyboardEvent): void {
   }
 }
 
+const explorer = useDataExplorerStore()
+
+/**
+ * Identity of the grid with the data explorer.
+ */
+const gridId = Symbol('result grid')
+
+/**
+ * What the selection gives the data explorer.
+ */
+function explorerContent(): ExplorerContent {
+  const selected = selectedColumnCells(selection.value, view.value, props.rows, order.value)
+  if (selected === null) {
+    return { state: 'none' }
+  }
+  if (selected === 'several') {
+    return { state: 'several' }
+  }
+  const column = props.columns[selected.column] ?? ''
+  const kind = contentKinds.value[selected.column]
+  return kind === 'json' || kind === 'xml'
+    ? { state: 'values', column, kind, cells: selected.cells }
+    : { state: 'scalar', column }
+}
+
+// The grid on screen keeps the open explorer up to date: selection, new rows
+// (a sorted view moves them), detected content. Off screen, it withdraws.
+watch(
+  [() => props.displayed, () => explorer.open, selection, view, contentKinds],
+  () => {
+    if (!props.displayed) {
+      explorer.release(gridId)
+    } else if (explorer.open) {
+      explorer.show(gridId, explorerContent())
+    }
+  },
+  { immediate: true },
+)
+
+onBeforeUnmount(() => explorer.release(gridId))
+
 /**
  * Value of the targeted column list: -1 for the global filter, all the columns.
  */
@@ -788,6 +847,21 @@ const userFilterColumn = computed({
       />
       <!-- The slot follows the number in the same text, without the container's gap. -->
       <span class="grid-count">{{ countLabel }}<slot name="footer" /></span>
+      <ui-button
+        :icon="explorer.open ? PanelRightClose : PanelRightOpen"
+        variant="ghost"
+        :tone="explorer.open ? 'accent' : 'neutral'"
+        small
+        :aria-pressed="explorer.open"
+        :aria-label="explorer.open ? 'Fermer l’explorateur de données' : 'Explorer les données'"
+        :title="
+          explorer.open
+            ? 'Fermer l’explorateur de données'
+            : 'Explorer les données : valeurs JSON ou XML sélectionnées, indentées et repliables'
+        "
+        class="grid-explorer-toggle"
+        @click="explorer.open = !explorer.open"
+      />
     </div>
   </div>
 </template>
@@ -813,6 +887,10 @@ const userFilterColumn = computed({
 
 .grid-user-filter-column {
   max-inline-size: var(--grid-user-filter-column-width);
+}
+
+.grid-explorer-toggle {
+  margin-inline-start: auto;
 }
 
 .grid-footer {
