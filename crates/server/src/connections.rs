@@ -336,7 +336,12 @@ pub fn delete(db: &Connection, user_id: i64, id: i64) -> Result<bool, Connection
 
 /// Statement that puts a connection in read-only mode: the database then
 /// refuses the writes of its transactions (`docs/V1.md`, section 2.4).
-const READ_ONLY_STATEMENT: &str = "SET SESSION transaction_read_only = ON";
+///
+/// The standard statement, known by every version of MySQL and MariaDB. The
+/// variable it sets is named `transaction_read_only` in MySQL and from
+/// MariaDB 11.1 only, `tx_read_only` before: `SET SESSION
+/// transaction_read_only = ON` fails on MariaDB 10.x and 11.0 (error 1193).
+const READ_ONLY_STATEMENT: &str = "SET SESSION TRANSACTION READ ONLY";
 
 /// Adds the read-only mode to the initialisation of each connection of a query
 /// session, when `read_only` is set. It comes last, after the statements of the
@@ -471,6 +476,10 @@ pub fn probe_target(
 mod tests {
     use super::*;
     use crate::store;
+    use prisme_connectors::mysql::{connect, execute};
+    use testcontainers_modules::mariadb::Mariadb;
+    use testcontainers_modules::testcontainers::ImageExt;
+    use testcontainers_modules::testcontainers::runners::AsyncRunner;
 
     fn new_connection(name: &str) -> NewConnection {
         NewConnection {
@@ -726,5 +735,41 @@ mod tests {
             with_read_only(target, false).init_statements,
             ["SET NAMES utf8mb4"]
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "requires Docker Desktop running"]
+    async fn read_only_session_refuses_writes_on_mariadb_before_11_1() {
+        // MariaDB 10.6 knows `tx_read_only`, not `transaction_read_only`.
+        let server = Mariadb::default()
+            .with_tag("10.6.28")
+            .start()
+            .await
+            .unwrap();
+        let target = MysqlTarget {
+            host: server.get_host().await.unwrap().to_string(),
+            port: server.get_host_port_ipv4(3306).await.unwrap(),
+            username: "root".to_string(),
+            password: SecretString::from(""),
+            database_name: "test".to_string(),
+            init_statements: Vec::new(),
+        };
+        let mut writer = connect(&target).await.unwrap();
+        execute(&mut writer, "CREATE TABLE t (a INT)")
+            .await
+            .unwrap()
+            .discard()
+            .await;
+
+        let mut reader = connect(&with_read_only(target, true)).await.unwrap();
+        execute(&mut reader, "SELECT a FROM t")
+            .await
+            .unwrap()
+            .discard()
+            .await;
+        let Err(error) = execute(&mut reader, "INSERT INTO t VALUES (1)").await else {
+            panic!("the write went through a read-only session");
+        };
+        assert!(error.to_string().contains("READ ONLY"), "{error}");
     }
 }
