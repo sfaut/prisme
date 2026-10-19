@@ -58,10 +58,17 @@ cases:
     sql: SELECT id, t XOR 0 AS a FROM fraction_truth ORDER BY id
     inputs: mysql < 8.0.17
     refused: boolean.fraction
+  # The fix of MDEV-40593, by branch (construct `xor_compared`).
   - from: mariadb
     sql: SELECT id, t XOR 0 AS a FROM fraction_truth ORDER BY id
-    inputs: mariadb >= 11.8.9
+    inputs: >-
+      mariadb >= 10.11.19 and mariadb < 11.0.0 or mariadb >= 11.4.13 and mariadb < 11.5.0
+      or mariadb >= 11.8.9 and mariadb < 12.0.0 or mariadb >= 12.3.3 and mariadb < 13.0.0
+      or mariadb >= 13.0.2
   - from: mariadb
     sql: SELECT id, t XOR 0 AS a FROM fraction_truth ORDER BY id
-    inputs: mariadb < 11.8.9
+    inputs: >-
+      mariadb < 10.11.19 or mariadb >= 11.0.0 and mariadb < 11.4.13 or mariadb >= 11.5.0
+      and mariadb < 11.8.9 or mariadb >= 12.0.0 and mariadb < 12.3.3 or mariadb >= 13.0.0
+      and mariadb < 13.0.2
     refused: boolean.fraction
