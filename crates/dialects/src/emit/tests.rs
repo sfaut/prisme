@@ -2814,7 +2814,7 @@ fn intervals_of_values_read_otherwise_are_errors() {
         ("'2024-05-06' + INTERVAL 1 MICROSECOND", "interval.string"),
         ("'2024-05-06' + INTERVAL 1.5 SECOND", "interval.string"),
         // An operand of unknown type.
-        ("IFNULL(s, dd) + INTERVAL 1 DAY", "interval.unknown"),
+        ("f(dd) + INTERVAL 1 DAY", "interval.unknown"),
         // Years that may reach 2^31.
         ("dd + INTERVAL 4294967297 YEAR", "interval.year"),
         ("dd + INTERVAL n YEAR", "interval.year"),
@@ -2893,10 +2893,7 @@ fn timestampdiff_keeps_its_form_and_refuses_values_read_otherwise() {
             "TIMESTAMPDIFF(DAY, 20240506.1234567, dd)",
             "timestampdiff.operand",
         ),
-        (
-            "TIMESTAMPDIFF(DAY, IFNULL(s, dd), dd)",
-            "timestampdiff.unknown",
-        ),
+        ("TIMESTAMPDIFF(DAY, f(dd), dd)", "timestampdiff.unknown"),
     ];
     for (written, rule) in cases {
         let text = format!("SELECT {written} FROM d, g");
@@ -3143,11 +3140,7 @@ fn extract_refuses_the_parts_read_otherwise() {
         ),
         // Another type, a type unknown.
         ("SELECT EXTRACT(YEAR FROM y) FROM g", mysql(), mariadb()),
-        (
-            "SELECT EXTRACT(YEAR FROM IFNULL(s, dd)) FROM g",
-            mariadb(),
-            mysql(),
-        ),
+        ("SELECT EXTRACT(YEAR FROM f(dd)) FROM g", mariadb(), mysql()),
         // The week of the zero date.
         ("SELECT EXTRACT(WEEK FROM tm) FROM g", mariadb(), mysql()),
         // An operand written twice that may give two values.
@@ -3219,7 +3212,7 @@ fn a_binary_argument_is_read_as_the_input_reads_it() {
     for (call, input, target) in [
         ("REPLACE(s, vb, '-')", mysql_8_4, mariadb()),
         ("LOCATE(vb, s)", mysql_8_4, mariadb()),
-        ("REPLACE(s, IFNULL(s, vb), '-')", mariadb(), mysql_8_4),
+        ("REPLACE(s, f(vb), '-')", mariadb(), mysql_8_4),
         ("INSTR(s, f(s))", mysql_8_4, mariadb()),
         // The start counted in characters, then the bytes.
         ("LOCATE(vb, s, 2)", mariadb(), mysql_8_4),

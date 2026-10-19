@@ -748,6 +748,144 @@ fn types_case_from_its_results_after_the_dialect() {
 }
 
 #[test]
+fn types_the_flow_functions_from_their_arguments() {
+    let integer = |size, unsigned| DataType::Integer(IntegerType { size, unsigned });
+    let int = integer(IntegerSize::Int, false);
+    let text = |length| {
+        DataType::Text(TextType {
+            length,
+            fixed: false,
+            charset: None,
+            collation: None,
+        })
+    };
+    let binary = |length| {
+        DataType::Binary(BinaryType {
+            length,
+            fixed: false,
+        })
+    };
+    let types = |text: &str, dialect, version| -> Vec<(DataType, bool)> {
+        plan_at(&format!("SELECT {text} FROM t"), dialect, version)
+            .unwrap_or_else(|error| panic!("{text}: {error}"))
+            .schema()
+            .columns
+            .into_iter()
+            .map(|column| (column.ty.data_type, column.ty.nullable))
+            .collect()
+    };
+    let mysql = Version::new(8, 4, 0);
+    let mariadb = Version::new(11, 8, 0);
+    // `NULL` when all the arguments may be, as `CASE` merges them.
+    for (dialect, version) in [(Dialect::MySql, mysql), (Dialect::MariaDb, mariadb)] {
+        assert_eq!(
+            types(
+                "COALESCE(b, b), COALESCE(b, a), IFNULL(a, NULL)",
+                dialect,
+                version
+            ),
+            [
+                (text(Some(10)), true),
+                (text(None), false),
+                (int.clone(), false)
+            ]
+        );
+    }
+    // An integer other than a column is a `BIGINT` for `IFNULL` of MySQL.
+    let text_ifnull =
+        "IFNULL(a, a), IFNULL(a, 1), IFNULL(a, a + 1), IFNULL(a, CAST(a AS UNSIGNED))";
+    assert_eq!(
+        types(text_ifnull, Dialect::MySql, mysql),
+        [
+            (int.clone(), false),
+            (types::bigint(), false),
+            (types::bigint(), false),
+            (types::decimal(20, 0), false),
+        ]
+    );
+    assert_eq!(
+        types(text_ifnull, Dialect::MariaDb, mariadb)[..2],
+        [(int.clone(), false), (int.clone(), false)]
+    );
+    // A `NULL` result of `IF` gives the type of the other one in MariaDB.
+    let big_unsigned = integer(IntegerSize::Big, true);
+    assert_eq!(
+        types(
+            "IF(a > 1, NULL, CAST(a AS UNSIGNED)), NVL2(b, CAST(a AS UNSIGNED), NULL), NVL(b, a)",
+            Dialect::MariaDb,
+            mariadb
+        ),
+        [
+            (big_unsigned.clone(), true),
+            (big_unsigned.clone(), true),
+            (text(None), false),
+        ]
+    );
+    assert_eq!(
+        types(
+            "IF(a > 1, NULL, CAST(a AS UNSIGNED))",
+            Dialect::MySql,
+            mysql
+        ),
+        [(big_unsigned, true)]
+    );
+    // `NULLIF` of a date or a time: a string of its text in MySQL.
+    let nullif = "NULLIF(CAST(b AS DATE), 1), NULLIF(CAST(a AS DATETIME(3)), b), NULLIF(CAST(b AS TIME(1)), a), NULLIF(a, 1)";
+    assert_eq!(
+        types(nullif, Dialect::MySql, mysql),
+        [
+            (text(Some(10)), true),
+            (text(Some(23)), true),
+            (text(Some(12)), true),
+            (int.clone(), true),
+        ]
+    );
+    assert_eq!(
+        types(nullif, Dialect::MariaDb, mariadb),
+        [
+            (DataType::Date, true),
+            (DataType::DateTime { fraction: 3 }, true),
+            (DataType::Time { fraction: 1 }, true),
+            (int.clone(), true),
+        ]
+    );
+    // A `YEAR` after the version of MySQL, a byte string before 8.0.24.
+    let nullif = "NULLIF(CAST(a AS YEAR), 1), NULLIF(b, CAST(b AS BINARY)), NULLIF(CAST(b AS DATE), CAST(b AS BINARY)), NULLIF(b, x'01')";
+    let b = text(Some(10));
+    for (version, year, string, date) in [
+        (
+            Version::new(8, 0, 23),
+            DataType::Year,
+            binary(None),
+            binary(Some(10)),
+        ),
+        (
+            Version::new(8, 0, 24),
+            int.clone(),
+            b.clone(),
+            text(Some(10)),
+        ),
+        (
+            Version::new(8, 1, 0),
+            text(Some(4)),
+            b.clone(),
+            text(Some(10)),
+        ),
+    ] {
+        assert_eq!(
+            types(nullif, Dialect::MySql, version),
+            [
+                (year, true),
+                (string, true),
+                (date, true),
+                (b.clone(), true)
+            ],
+            "{version}"
+        );
+    }
+}
+
+#[test]
 fn types_cast_after_its_target() {
     let text = |length, charset: Option<&str>| {
         DataType::Text(TextType {

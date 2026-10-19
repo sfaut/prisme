@@ -781,6 +781,42 @@ constructs:
       Measured on 8.0.11 to 8.0.23, 8.0.25 to 8.0.28 and 8.4.11
       (crates/probe/cases/literals-hex-long.txt); the code in
       docs/sources/mysql/item-hex-string-val-int.md.
+  # Type of `NULLIF` (crates/dialects/src/build/flow.rs; the code in
+  # docs/sources/mysql/nullif.md).
+  - id: nullif_own_collation
+    since: "8.0.24"
+    source: https://github.com/mysql/mysql-server/blob/mysql-8.0.24/sql/item_cmpfunc.cc
+    comment: >-
+      `NULLIF(s, CAST(s AS BINARY))` of a `VARCHAR(30)` gives a
+      `VARCHAR(30)`; before, the collation of the result is aggregated with
+      that of the second argument, a `VARBINARY(120)`, and a date or a time
+      compared with a byte string becomes a `VARBINARY` of its text
+      (`Item_func_nullif::resolve_type_inner` aggregates into
+      `cmp.cmp_collation` from 8.0.24, into `collation` before; no entry in
+      the release notes). A literal yields its collation:
+      `NULLIF(s, x'01')` stays a `VARCHAR`. Measured on 8.0.22, 8.0.23,
+      8.0.24, 8.0.42, 8.1.0 and 9.3.0 (crates/probe/cases/flow-direct.txt),
+      the dates and times on each local image (flow-types.txt).
+  - id: nullif_year_integer
+    since: "8.0.24"
+    until: "8.1.0"
+    source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-24.html
+    comment: >-
+      `NULLIF(y, 1)` of a `YEAR` gives an `INT` of the same value: `YEAR`
+      counts among the temporal types from 8.0.24 (`is_temporal_type`, "Some
+      internal functions used with temporal column types did not provide
+      proper handling for `YEAR` values", Bug #32395335), which `NULLIF`
+      gives as a string of their length, read as an integer. A `YEAR`
+      before. Measured on 8.0.22, 8.0.23, 8.0.24, 8.0.42, 8.1.0 and 9.3.0
+      (crates/probe/cases/flow-direct.txt).
+  - id: nullif_year_string
+    since: "8.1.0"
+    source: https://github.com/mysql/mysql-server/blob/mysql-8.1.0/sql/item_cmpfunc.cc
+    comment: >-
+      `NULLIF(y, 1)` of a `YEAR` gives a `VARCHAR(4)` of its text, as a date
+      or a time gives its own: `Item_func_nullif::resolve_type_inner` reads
+      the result of a temporal type as a string from 8.1.0 (no entry in the
+      release notes). Measured with `nullif_year_integer`.
   - id: union_all_found_rows
     since: "8.0.18"
     source: https://dev.mysql.com/doc/relnotes/mysql/8.0/en/news-8-0-18.html

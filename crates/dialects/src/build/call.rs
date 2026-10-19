@@ -1,7 +1,7 @@
 //! Function calls of the MySQL family in the plan: scalar functions, built-in
 //! (typed by the reference file of the dialect, `function_types`, those of
-//! the current date and time aside, `now`) or stored in the database (of a
-//! type unknown),
+//! the current date and time aside, `now`, and those of flow control,
+//! `flow`) or stored in the database (of a type unknown),
 //! aggregate functions (read by the aggregation of their block) and window
 //! functions (read by the window node of their block), with their named
 //! windows.
@@ -14,7 +14,7 @@ use prisme_types::{DataType, Type};
 
 use super::group::Clause;
 use super::scope::Scope;
-use super::{BuildError, Builder, functions, now, same_name};
+use super::{BuildError, Builder, flow, functions, now, same_name};
 use crate::Dialect;
 use crate::builtins::{self, Kind};
 use crate::sql::ast;
@@ -64,6 +64,7 @@ impl Builder<'_> {
         };
         let ty = match builtin {
             Some(builtin) => now::now_type(&name, &args, self.dialect, self.version)
+                .or_else(|| flow::flow_type(&name, &args, self.dialect, self.version))
                 .unwrap_or_else(|| builtin.function.result_type(&args, self.version)),
             None => Type::nullable(DataType::Unknown),
         };

@@ -304,6 +304,15 @@ pub enum Construct {
     /// A column of adjacent strings without alias named after their value,
     /// `'a' 'b'` named `ab` (MariaDB); after the first string otherwise.
     StringValueName,
+    /// `NULLIF` of a string, a date or a time compared with a byte string
+    /// keeping its character set (MySQL); a byte string before.
+    NullifOwnCollation,
+    /// `NULLIF` of a `YEAR` giving an `INT` (MySQL 8.0, from 8.0.24); a
+    /// `YEAR` before.
+    NullifYearInteger,
+    /// `NULLIF` of a `YEAR` giving a string, as of a date or a time (MySQL);
+    /// an `INT` or a `YEAR` before.
+    NullifYearString,
 }
 
 /// Construct refused in a dialect or a version.
@@ -566,6 +575,11 @@ impl Construct {
                 "the system variables `transaction_isolation` and `transaction_read_only`"
             }
             Self::StringValueName => "a column of adjacent strings named after their value",
+            Self::NullifOwnCollation => {
+                "`NULLIF` keeping the character set of its first argument against a byte string"
+            }
+            Self::NullifYearInteger => "`NULLIF` of a `YEAR` giving an `INT`",
+            Self::NullifYearString => "`NULLIF` of a `YEAR` giving a string",
         }
     }
 }

@@ -1,0 +1,24 @@
+# Types of IFNULL, COALESCE, CASE, IF and NULLIF read directly from `sample`,
+# without a subquery that would widen the integers of MySQL.
+ifnull_i_i IFNULL(i, i)
+ifnull_i_lit IFNULL(i, 1)
+ifnull_i_null IFNULL(i, NULL)
+ifnull_lit_lit IFNULL(1, 2)
+ifnull_i_u IFNULL(i, CAST(i AS UNSIGNED))
+ifnull_u_u IFNULL(CAST(i AS UNSIGNED), CAST(i AS UNSIGNED))
+ifnull_i_expr IFNULL(i, i + 1)
+ifnull_i_n IFNULL(i, n)
+coalesce_i_lit COALESCE(i, 1)
+coalesce_i_i COALESCE(i, i)
+case_i_lit CASE WHEN i = 1 THEN i ELSE 1 END
+nullif_y_lit NULLIF(CAST(i AS YEAR), 1)
+case_y CASE WHEN i = 0 THEN NULL ELSE CAST(i AS YEAR) END
+nullif_y_bin NULLIF(CAST(i AS YEAR), CAST(s AS BINARY))
+nullif_s_hex NULLIF(s, x'01')
+nullif_s_bin NULLIF(s, CAST(s AS BINARY))
+nullif_d_bin NULLIF(d, CAST(s AS BINARY))
+nullif_d_hex NULLIF(d, x'01')
+nullif_i_bin NULLIF(i, CAST(s AS BINARY))
+nullif_n_bin NULLIF(n, CAST(s AS BINARY))
+if_i_null IF(i = 1, i, NULL)
+if_null_u IF(i = 1, NULL, CAST(i AS UNSIGNED))
