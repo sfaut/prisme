@@ -13,7 +13,7 @@ cases:
       LEAST(sn, 1) AS e FROM sample
   - from: mysql
     sql: >-
-      SELECT LEAST('10', 9) + 0 AS a, LEAST('10', '9') + 0 AS b, ABS(LEAST('10', '9')) AS c,
+      SELECT LEAST('10', 9) + 0 AS a, LEAST('10', '9') + 0 AS b, LEAST('10', '9') * 2 AS c,
       (SELECT LEAST('10', '9')) + 0 AS d
   - from: mysql
     sql: SELECT v + 0 AS a, v AS b FROM (SELECT LEAST('10', '9') AS v) AS q
