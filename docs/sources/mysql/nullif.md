@@ -3,7 +3,7 @@
 Type of `NULLIF` (`crates/dialects/src/build/flow.rs`, measures
 `crates/probe/cases/flow-types.txt` and `flow-direct.txt`) and value it gives
 (rule `function.nullif` of `docs/DEV-DIALECTS.md`, measures
-`crates/probe/cases/nullif.txt`).
+`crates/probe/cases/nullif.txt` and `nullif-convert.txt`).
 
 Sources:
 
@@ -19,6 +19,8 @@ Sources:
 - https://github.com/mysql/mysql-server/blob/mysql-9.3.0/sql/item_cmpfunc.cc (lines 605, 727, 745, 3824, 3867)
 - https://github.com/mysql/mysql-server/blob/mysql-9.3.0/sql/field.h (lines 2432, 2786, 3124)
 - https://github.com/mysql/mysql-server/blob/mysql-9.3.0/sql/item_func.cc (line 793)
+- https://github.com/mysql/mysql-server/blob/mysql-9.3.0/sql/field.cc (line 5756)
+- https://github.com/mysql/mysql-server/blob/mysql-9.3.0/mysys/my_time.cc (lines 943, 1455)
 
 ## Type: a date or a time becomes a string
 
@@ -216,3 +218,67 @@ In 8.0.11, a `YEAR` takes the branch of the integers, `Item_int_with_ref` of
 the year stored. `NULLIF(1, t)` of a `TIME` column thus gives 16777216, the packed
 value of `00:00:01`, where `NULLIF(1, TIME '10:20:30')` and `NULLIF(i, t)`
 give 1 and 42.
+
+The store fails, and the constant stays as written, for an integer the column
+refuses: a year below 0, from 100 to 1900 or beyond 2155, a time of 60
+minutes or seconds or beyond 838:59:59 (but from 10^10, read as a date and
+time), a date below 101 but 0. Against a `BIGINT`, an integer of the type of
+the column (a literal) is not converted, and a fraction stores another value
+(`stored_field_cmp_to_item`): both stay as written.
+
+```cpp
+// 9.3.0, sql/field.cc
+type_conversion_status Field_year::store(longlong nr, bool) {
+  ASSERT_COLUMN_MARKED_FOR_WRITE;
+  if (nr < 0 || (nr >= 100 && nr < MIN_YEAR) || nr > MAX_YEAR) {
+    *ptr = 0;
+    set_warning(Sql_condition::SL_WARNING, ER_WARN_DATA_OUT_OF_RANGE, 1);
+    return TYPE_WARN_OUT_OF_RANGE;
+  }
+  // [...]
+  return TYPE_OK;
+}
+
+// 9.3.0, mysys/my_time.cc
+bool number_to_time(longlong nr, MYSQL_TIME *ltime, int *warnings) {
+  if (nr > TIME_MAX_VALUE) {
+    /* For huge numbers try full DATETIME, like str_to_time does. */
+    if (nr >= 10000000000LL) /* '0001-00-00 00-00-00' */
+    {
+      const int warnings_backup = *warnings;
+      if (number_to_datetime(nr, ltime, 0, warnings) != -1LL) return false;
+      *warnings = warnings_backup;
+    }
+    set_max_time(ltime, false);
+    *warnings |= MYSQL_TIME_WARN_OUT_OF_RANGE;
+    return true;
+  }
+  if (nr < -TIME_MAX_VALUE) {
+    set_max_time(ltime, true);
+    *warnings |= MYSQL_TIME_WARN_OUT_OF_RANGE;
+    return true;
+  }
+  if ((ltime->neg = (nr < 0))) nr = -nr;
+  if (nr % 100 >= 60 || nr / 100 % 100 >= 60) /* Check hours and minutes */
+  {
+    set_zero_time(ltime, MYSQL_TIMESTAMP_TIME);
+    *warnings |= MYSQL_TIME_WARN_OUT_OF_RANGE;
+    return true;
+  }
+  // [...]
+}
+
+longlong number_to_datetime(longlong nr, MYSQL_TIME *time_res,
+                            my_time_flags_t flags, int *was_cut) {
+  // [...]
+  if (nr == 0LL || nr >= 10000101000000LL) {
+    // [...]
+    goto ok;
+  }
+  if (nr < 101) goto err;
+  // [...]
+```
+
+Once converted, the constant takes the type of the column even of the same
+value: `NULLIF(2024, y)` gives a `BIGINT UNSIGNED` in 8.0, a `VARCHAR(22)` from
+8.1.0, where MariaDB gives an `INT`.

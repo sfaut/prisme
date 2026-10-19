@@ -16,7 +16,10 @@
 //! - a constant compared with a column of `BIGINT`, `YEAR`, a date or a
 //!   time is replaced by its value in the type of the column, which
 //!   `NULLIF` gives: `NULLIF(1, t)` gives 16777216, the packed value of
-//!   `00:00:01`, `NULLIF(24, y)` 2024.
+//!   `00:00:01`, `NULLIF(24, y)` 2024; but where the column refuses it
+//!   (`NULLIF(-1, y)`, `NULLIF(160, t)`, `NULLIF(24, d)`) and against a
+//!   `BIGINT` an integer or a fraction (`NULLIF(1 + 1, n)`,
+//!   `NULLIF(2.5, n)`), of the same value (`crates/probe/cases/nullif-convert.txt`).
 //!
 //! A date, a time or a `YEAR` is written `CAST(CAST(NULLIF(a, b) AS CHAR)
 //! AS type)` towards MySQL, the type of MariaDB; towards MariaDB,
@@ -33,7 +36,7 @@
 //! END` towards MySQL, an error towards MariaDB.
 
 use prisme_plan::{Expr, ExprKind, FunctionCall};
-use prisme_types::{DataType, IntegerSize, IntegerType};
+use prisme_types::{DataType, IntegerSize, IntegerType, Value};
 
 use super::Emitter;
 use super::case::Reading;
@@ -193,27 +196,75 @@ impl Emitter<'_> {
     }
 }
 
-/// Tells whether MySQL replaces `first`, a constant, by its value in the
+/// Tells whether MySQL may replace `first`, a constant, by its value in the
 /// type of `second`, a column of `BIGINT`, `YEAR`, a date or a time, in
-/// `NULLIF(first, second)`; a string compared with a date stays a string.
+/// `NULLIF(first, second)` (`convert_constant_item`): when the column
+/// stores it without an error, and for a `BIGINT` keeps its value. A string
+/// compared with a date stays a string; an integer stays as written against
+/// a `BIGINT`, of the same value, and where the column refuses it (measured
+/// on each local image, `crates/probe/cases/nullif-convert.txt`).
 fn converted_constant(first: &Expr, second: &Expr) -> bool {
     let ExprKind::Column(_) = &second.kind else {
         return false;
     };
-    let date = match &second.ty.data_type {
-        DataType::Date | DataType::DateTime { .. } | DataType::Timestamp { .. } => true,
+    if !constant(first) || !repeatable(first) || first.ty.data_type == DataType::Null {
+        return false;
+    }
+    let integer = integer_constant(first);
+    match &second.ty.data_type {
         DataType::Integer(IntegerType {
             size: IntegerSize::Big,
             ..
-        })
-        | DataType::Time { .. }
-        | DataType::Year => false,
-        _ => return false,
-    };
-    constant(first)
-        && repeatable(first)
-        && first.ty.data_type != DataType::Null
-        && !(date && matches!(first.ty.data_type, DataType::Text(_)))
+        }) => {
+            !matches!(first.ty.data_type, DataType::Integer(_))
+                && integer.is_none()
+                && !fraction(first)
+        }
+        DataType::Year => {
+            integer.is_none_or(|n| (0..=99).contains(&n) || (1901..=2155).contains(&n))
+        }
+        DataType::Time { .. } => integer.is_none_or(stored_as_time),
+        DataType::Date | DataType::DateTime { .. } | DataType::Timestamp { .. } => {
+            !matches!(first.ty.data_type, DataType::Text(_))
+                && integer.is_none_or(|n| n == 0 || n >= 101)
+        }
+        _ => false,
+    }
+}
+
+/// Value of `expr`, an integer, a boolean or their opposite as written.
+fn integer_constant(expr: &Expr) -> Option<i128> {
+    match &expr.kind {
+        ExprKind::Literal(Value::Integer(value)) => Some(*value),
+        ExprKind::Literal(Value::Boolean(value)) => Some(i128::from(*value)),
+        ExprKind::Negate(operand) => integer_constant(operand).map(|value| -value),
+        _ => None,
+    }
+}
+
+/// Tells whether `expr` is a decimal or a floating point literal of a
+/// fraction, which a `BIGINT` stores of another value: MySQL keeps it.
+fn fraction(expr: &Expr) -> bool {
+    match &expr.kind {
+        ExprKind::Literal(Value::Decimal(decimal)) => (decimal.as_str())
+            .split_once('.')
+            .is_some_and(|(_, digits)| digits.bytes().any(|digit| digit != b'0')),
+        ExprKind::Literal(Value::Float(value)) => value.fract() != 0.0,
+        ExprKind::Negate(operand) => fraction(operand),
+        _ => false,
+    }
+}
+
+/// Tells whether a `TIME` column may store the integer `n` without an error
+/// (`number_to_time`): of minutes and seconds below 60 up to 838:59:59, a
+/// date and time from 10^10.
+fn stored_as_time(n: i128) -> bool {
+    const TIME_MAX_VALUE: i128 = 8_385_959;
+    match n.abs() {
+        _ if n >= 10_000_000_000 => true,
+        absolute if absolute > TIME_MAX_VALUE => false,
+        absolute => absolute % 100 < 60 && absolute / 100 % 100 < 60,
+    }
 }
 
 /// Tells whether `expr` is a literal or an expression of literals, which

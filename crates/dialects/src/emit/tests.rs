@@ -5128,13 +5128,13 @@ fn nullif_gives_a_date_a_time_and_a_constant_as_the_input() {
     // A constant compared with a column of `BIGINT`, `YEAR`, a date or a
     // time: MySQL gives it in the type of the column.
     let (sql, rules) = transpiled(
-        "SELECT NULLIF(1, tm) AS a, NULLIF(24, y) AS b, NULLIF(1 + 1, n) AS c, NULLIF('10:20:31', tm) AS e, NULLIF('2024-05-07', dd) AS g FROM d, g",
+        "SELECT NULLIF(1, tm) AS a, NULLIF(24, y) AS b, NULLIF(2.0, n) AS c, NULLIF('10:20:31', tm) AS e, NULLIF('2024-05-07', dd) AS g FROM d, g",
         mariadb(),
         output(mysql()),
     );
     assert_eq!(
         sql,
-        "SELECT CASE WHEN 1 = tm THEN NULL ELSE 1 END AS a, CASE WHEN 24 = y THEN NULL ELSE 24 END AS b, CASE WHEN 1 + 1 = n THEN NULL ELSE 1 + 1 END AS c, CASE WHEN '10:20:31' = tm THEN NULL ELSE '10:20:31' END AS e, NULLIF('2024-05-07', dd) AS g FROM d, g"
+        "SELECT CASE WHEN 1 = tm THEN NULL ELSE 1 END AS a, CASE WHEN 24 = y THEN NULL ELSE 24 END AS b, CASE WHEN 2.0 = n THEN NULL ELSE 2.0 END AS c, CASE WHEN '10:20:31' = tm THEN NULL ELSE '10:20:31' END AS e, NULLIF('2024-05-07', dd) AS g FROM d, g"
     );
     assert_eq!(rules, ["function.nullif"; 4]);
     for text in [
@@ -5148,13 +5148,17 @@ fn nullif_gives_a_date_a_time_and_a_constant_as_the_input() {
             "{text}"
         );
     }
-    // A column, an expression or a `NULL` is never replaced.
+    // A column, an expression or a `NULL` is never replaced, nor an integer
+    // against a `BIGINT` or that the column refuses, nor a fraction against a
+    // `BIGINT`.
     for input in [mysql(), mariadb()] {
         let target = output(match input.dialect {
             Dialect::MySql => mariadb(),
             Dialect::MariaDb => mysql(),
         });
         let text = "SELECT NULLIF(i, tm) AS a, NULLIF(1, tm + INTERVAL 0 DAY) AS b, NULLIF(NULL, y) AS c FROM d, g";
+        let kept = "SELECT NULLIF(1 + 1, n) AS a, NULLIF(2.5, n) AS b, NULLIF(-1, y) AS c, NULLIF(1900, y) AS e, NULLIF(20240506, tm) AS g, NULLIF(160, tm) AS h, NULLIF(24, dd) AS j FROM d, g";
+        assert_eq!(transpiled(kept, input, target).0, kept);
         assert_eq!(transpiled(text, input, target).0, text);
         // A type unknown may be a date or a time.
         assert_eq!(

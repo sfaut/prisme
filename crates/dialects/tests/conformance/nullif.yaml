@@ -59,6 +59,17 @@ cases:
     sql: >-
       SELECT id, NULLIF(1, t) AS a, NULLIF(24, y) AS b, NULLIF(2024, n) AS c, NULLIF('2024-05-07', d) AS e
       FROM nullif_values ORDER BY id
+  # An integer against a `BIGINT`, an integer the column refuses (out of the
+  # years, of 60 seconds, not a date) and a fraction against a `BIGINT`: kept
+  # as written (crates/probe/cases/nullif-convert.txt).
+  - from: mariadb
+    sql: >-
+      SELECT id, NULLIF(1 + 1, n) AS a, NULLIF(2.5, n) AS b, NULLIF(-1, y) AS c, NULLIF(1900, y) AS e,
+      NULLIF(20240506, t) AS g, NULLIF(160, t) AS h, NULLIF(24, d) AS j FROM nullif_values ORDER BY id
+  - from: mysql
+    sql: >-
+      SELECT id, NULLIF(1 + 1, n) AS a, NULLIF(2.5, n) AS b, NULLIF(-1, y) AS c, NULLIF(1900, y) AS e,
+      NULLIF(20240506, t) AS g, NULLIF(160, t) AS h, NULLIF(24, d) AS j FROM nullif_values ORDER BY id
   - from: mysql
     sql: SELECT id, NULLIF(1, t) AS a FROM nullif_values ORDER BY id
     refused: function.nullif
