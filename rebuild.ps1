@@ -14,17 +14,24 @@
 .PARAMETER Release
     Builds and starts the release executable (target/release) instead of the debug one.
 
+.PARAMETER Force
+    Also stops the other Prisme executables, every process whose name starts with
+    prisme: a downloaded release (prisme-v0.3.0-windows-x86_64.exe) holds the port
+    too, but is not named prisme.exe.
+
 .PARAMETER PrismeArgs
     Options passed to Prisme, for example `-- --data-dir ./tmp`.
 
 .EXAMPLE
     ./rebuild.ps1
     ./rebuild.ps1 -Release
+    ./rebuild.ps1 -Force
     ./rebuild.ps1 -Verbose
     ./rebuild.ps1 -- --data-dir ./tmp
 #>
 param(
     [switch] $Release,
+    [switch] $Force,
     [Parameter(ValueFromRemainingArguments)]
     [string[]] $PrismeArgs = @()
 )
@@ -41,7 +48,9 @@ function Assert-Success([string] $step) {
     }
 }
 
-$running = Get-Process -Name prisme -ErrorAction SilentlyContinue
+# Without -Force, only the executable this script builds; with it, any Prisme.
+$name = if ($Force) { 'prisme*' } else { 'prisme' }
+$running = Get-Process -Name $name -ErrorAction SilentlyContinue
 if ($running) {
     Write-Host "Stopping Prisme (PID $($running.Id -join ', '))"
     $running | Stop-Process -Force
