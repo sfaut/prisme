@@ -10,7 +10,8 @@
 //!
 //! `split` gives the queries to run; `chunks` gives the whole text in pieces
 //! (`DELIMITER` commands, queries with their comments and their separator),
-//! for whoever must rewrite it without losing anything (the beautifier).
+//! for whoever must rewrite it without losing anything (the beautifier);
+//! `text_end` tells how a query can be appended to the text (the explorer).
 //!
 //! Positions (`start`, `end`) are counted in UTF-16 units, like those of the
 //! interface's editor (CodeMirror): a cursor compares to them directly.
@@ -57,6 +58,28 @@ pub enum Chunk {
     },
 }
 
+/// End of a text, for whoever appends a query to it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextEnd {
+    /// Separator in force at the end of the text: `;`, or that of the last
+    /// `DELIMITER` command.
+    pub delimiter: String,
+    /// Where the separator of the last query is missing, in UTF-16 units:
+    /// right after its last significant character, before the comments and
+    /// spaces that follow it. `None` if the text ends with no open query.
+    pub open_end: Option<usize>,
+}
+
+/// Result of the scan of a text.
+struct Scan {
+    /// Commands and pieces, in order.
+    events: Vec<Event>,
+    /// Separator in force at the end of the text.
+    delimiter: String,
+    /// Byte that follows the last significant character of the text, 0 if there is none.
+    token_end: usize,
+}
+
 /// What the scan of the text comes across.
 enum Event {
     /// `DELIMITER` command, from byte `start` to the end of its line `end`.
@@ -82,6 +105,7 @@ enum Event {
 /// Splits `text` into queries. Empty pieces (spaces, comments only) are ignored.
 pub fn split(text: &str) -> Vec<Statement> {
     scan(text)
+        .events
         .into_iter()
         .filter_map(|event| match event {
             Event::Statement {
@@ -99,6 +123,7 @@ pub fn split(text: &str) -> Vec<Statement> {
 /// queries with their comments, whitespace and comments at the end of the text.
 pub fn chunks(text: &str) -> Vec<Chunk> {
     scan(text)
+        .events
         .into_iter()
         .map(|event| match event {
             Event::Command {
@@ -122,15 +147,30 @@ pub fn chunks(text: &str) -> Vec<Chunk> {
         .collect()
 }
 
+/// Tells how a query can be appended to `text`: with which separator, and
+/// where the last query lacks its own, so that the two do not make one.
+pub fn text_end(text: &str) -> TextEnd {
+    let scan = scan(text);
+    let open = matches!(
+        scan.events.last(),
+        Some(Event::Statement { first: Some(_), delimiter, .. }) if delimiter.is_empty()
+    );
+    TextEnd {
+        open_end: open.then(|| utf16_offset(text, scan.token_end)),
+        delimiter: scan.delimiter,
+    }
+}
+
 /// Scans `text` and collects, in order, the `DELIMITER` commands and the
 /// pieces that end with a separator or with the end of the text.
-fn scan(text: &str) -> Vec<Event> {
+fn scan(text: &str) -> Scan {
     let bytes = text.as_bytes();
     let mut events = Vec::new();
     let mut delimiter = DEFAULT_DELIMITER.to_string();
     // Start of the current piece, and its first significant byte if there is one.
     let mut chunk_start = 0;
     let mut start: Option<usize> = None;
+    let mut token_end = 0;
     let mut i = 0;
 
     while i < bytes.len() {
@@ -178,10 +218,12 @@ fn scan(text: &str) -> Vec<Event> {
             quote @ (b'\'' | b'"' | b'`') => {
                 start.get_or_insert(i);
                 i = quoted_end(bytes, i, quote);
+                token_end = i;
             }
             _ => {
                 start.get_or_insert(i);
                 i += 1;
+                token_end = i;
             }
         }
     }
@@ -194,7 +236,11 @@ fn scan(text: &str) -> Vec<Event> {
             delimiter: String::new(),
         });
     }
-    events
+    Scan {
+        events,
+        delimiter,
+        token_end,
+    }
 }
 
 /// Index of the query under the cursor `cursor` (in UTF-16 units).
@@ -458,6 +504,26 @@ mod tests {
         assert!(statements_in(&statements, 21, 23).is_empty());
         // An empty passage, a cursor, touches nothing.
         assert!(statements_in(&statements, 25, 25).is_empty());
+    }
+
+    #[test]
+    fn tells_how_to_append_a_query() {
+        let end = |text: &str| {
+            let end = text_end(text);
+            (end.delimiter, end.open_end)
+        };
+        assert_eq!(end("SELECT 1;\n"), (";".to_string(), None));
+        assert_eq!(end(""), (";".to_string(), None));
+        assert_eq!(end("-- notes only\n"), (";".to_string(), None));
+        // Last query without its separator: it goes before the comment that follows.
+        assert_eq!(
+            end("SELECT 1;\nSELECT 'é' -- note\n"),
+            (";".to_string(), Some(20))
+        );
+        assert_eq!(end("SELECT `a;b`"), (";".to_string(), Some(12)));
+        // Separator of the last DELIMITER command.
+        assert_eq!(end("DELIMITER //\nCALL p()//\n"), ("//".to_string(), None));
+        assert_eq!(end("DELIMITER //\nCALL p()"), ("//".to_string(), Some(21)));
     }
 
     #[test]

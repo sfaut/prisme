@@ -1,6 +1,7 @@
 //! Analysis of the editor's text, requested by the interface shortly after
 //! each keystroke: splitting into queries, to highlight the one Ctrl+Enter
-//! would run, and syntax errors, to underline them.
+//! would run, and syntax errors, to underline them. It also tells how a query
+//! can be appended to the text, for the explorer's generated queries.
 //!
 //! The splitting is that of the query sessions (`splitter` crate): the
 //! interface shows exactly the query that will be sent. Each query is then
@@ -10,7 +11,7 @@
 use prisme_connectors::mysql::Flavor;
 use prisme_dialects::Dialect;
 use prisme_dialects::syntax::syntax_error;
-use prisme_splitter::{Statement, split};
+use prisme_splitter::{Statement, split, text_end};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -32,6 +33,21 @@ pub struct Analysis {
     pub statements: Vec<StatementSpan>,
     /// Syntax errors, at most one per query.
     pub errors: Vec<SyntaxIssue>,
+    /// End of the text, for a query appended to it.
+    pub text_end: TextEnd,
+}
+
+/// What a query appended at the end of the text needs.
+#[derive(Debug, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct TextEnd {
+    /// Separator in force at the end of the text: `;`, or that of the last
+    /// `DELIMITER` command.
+    pub delimiter: String,
+    /// Where the separator of the last query is missing, in UTF-16 units:
+    /// right after its last significant character. `null` if the text ends
+    /// with no open query.
+    pub open_end: Option<usize>,
 }
 
 /// Syntax error to underline in the editor.
@@ -80,6 +96,13 @@ pub fn analyze(request: &AnalyzeRequest) -> Analysis {
                 end: statement.end,
             })
             .collect(),
+        text_end: {
+            let end = text_end(&request.sql);
+            TextEnd {
+                delimiter: end.delimiter,
+                open_end: end.open_end,
+            }
+        },
     }
 }
 
@@ -147,6 +170,21 @@ mod tests {
                 StatementSpan { start: 0, end: 9 },
                 StatementSpan { start: 15, end: 23 },
             ]
+        );
+    }
+
+    #[test]
+    fn tells_where_the_last_statement_lacks_its_separator() {
+        let request = AnalyzeRequest {
+            sql: "SELECT 1;\nSELECT 2 # note".to_string(),
+            flavor: Flavor::MySql,
+        };
+        assert_eq!(
+            analyze(&request).text_end,
+            TextEnd {
+                delimiter: ";".to_string(),
+                open_end: Some(18),
+            }
         );
     }
 

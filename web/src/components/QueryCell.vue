@@ -27,10 +27,12 @@ import { LoaderCircle, Play, Square, WandSparkles } from 'lucide-vue-next'
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 
+import { analyzeSql } from '@/api/analyze'
 import { beautify } from '@/api/beautify'
 import { deleteResult, listResults, reorderResults, updateResult } from '@/api/editors'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { SelectionRange } from '@/api/generated/SelectionRange'
+import type { TextEnd } from '@/api/generated/TextEnd'
 import { type QueryTab, useQuerySession } from '@/api/querySession'
 import { useCatalogStore } from '@/stores/catalog'
 import { useSettingsStore } from '@/stores/settings'
@@ -42,6 +44,7 @@ import SqlEditor from './SqlEditor.vue'
 import { movedItems, useTabDrag } from './tabDrag'
 import { loadEditorSplit } from './editorSplit'
 import { selectAllQuery } from './explorerNodes'
+import { appendQuery } from './queryAppend'
 import { completionSchema } from './sqlCompletion'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
@@ -252,25 +255,45 @@ function runWhenReady(cursor?: number): void {
 }
 
 /**
- * Shows the content of a table as soon as the session is ready: the editor
- * receives the query, ended by ";", with the cursor on the next line, ready
- * to edit it; the query starts right away. The names are quoted according
- * to the session's `ANSI_QUOTES` mode, known only once it is
- * ready.
+ * Shows the content of a table as soon as the session is ready. The names
+ * are quoted according to the session's `ANSI_QUOTES` mode, known only once
+ * it is ready.
  *
  * @param schema Name of the database.
  * @param table Name of the table.
  */
 function showTableWhenReady(schema: string, table: string): void {
-  whenReady(() => {
-    const query = `${selectAllQuery(schema, table, state.server?.ansi_quotes ?? false)};\n`
+  whenReady(() => void showTable(schema, table))
+}
+
+/**
+ * Shows the content of a table: its query is appended after the last query
+ * of the editor, without overwriting anything (`queryAppend.ts`), the cursor
+ * on the next line, ready to edit it; the query starts right away. The end of
+ * the text is analysed by the server again if the text changes meanwhile.
+ *
+ * @param schema Name of the database.
+ * @param table Name of the table.
+ */
+async function showTable(schema: string, table: string): Promise<void> {
+  const query = selectAllQuery(schema, table, state.server?.ansi_quotes ?? false)
+  try {
+    let text: string
+    let end: TextEnd
+    do {
+      text = sql.value
+      end = (await analyzeSql(text, state.server?.flavor ?? 'mysql')).text_end
+    } while (text !== sql.value)
+    const appending = appendQuery(text, query, end)
     if (editor.value) {
-      editor.value.replaceText(query)
+      editor.value.changeText(appending.changes, appending.text.length)
     } else {
-      sql.value = query
+      sql.value = appending.text
     }
-    session.run(query, { cursor: 0 })
-  })
+    session.run(appending.text, { cursor: appending.start })
+  } catch (failure) {
+    state.error = errorMessage(failure)
+  }
 }
 
 /**

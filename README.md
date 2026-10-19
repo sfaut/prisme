@@ -101,7 +101,7 @@ The tree shows, for each source:
 How it behaves:
 
 - A **click** on a row opens or closes it.
-- A **double-click** on a source makes it the connection of the active editor; on a database, makes it the current database (like `USE`); on a table or view, shows its content.
+- A **double-click** on a source makes it the connection of the active editor; on a database, makes it the current database (like `USE`); on a table or view, shows its content: its `SELECT` goes after the last query of the editor, without overwriting anything, and runs.
 - The catalog loads progressively, and the selected connection opens by itself. **Tout rafraîchir** (Refresh all) in the root menu reloads the catalogs already read.
 - The current database is in **bold**.
 
