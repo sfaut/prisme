@@ -601,7 +601,9 @@ fn difference(expected: &Answer, got: &Answer, compare: Compare) -> Option<Strin
 
 /// Rows of `answer` as they compare: a decimal by its value, `42` as
 /// `42.00` (MySQL writes the values of a `DECIMAL` `CASE` at the scale of
-/// each result, MariaDB at the scale of the type).
+/// each result, MariaDB at the scale of the type), a floating point number
+/// by its value too, `20240506070809.120` as `20240506070809.12` (MySQL
+/// writes the `DOUBLE` of a date and time with the digits of its fraction).
 fn values(answer: &Answer) -> Vec<Vec<Cell>> {
     answer
         .rows
@@ -611,11 +613,20 @@ fn values(answer: &Answer) -> Vec<Vec<Cell>> {
                 .zip(&answer.families)
                 .map(|(cell, family)| match (cell, family) {
                     (Some(text), TypeFamily::Decimal) => Some(decimal_value(text)),
+                    (Some(text), TypeFamily::Float) => Some(float_value(text)),
                     _ => cell.clone(),
                 })
                 .collect()
         })
         .collect()
+}
+
+/// Floating point number `text` written as Rust writes its value, the
+/// shortest text that reads it back (`-0` kept); `text` when it is not a
+/// number.
+fn float_value(text: &str) -> String {
+    text.parse::<f64>()
+        .map_or_else(|_| text.to_string(), |value| value.to_string())
 }
 
 /// Decimal `text` without the zeros that end its fraction.
