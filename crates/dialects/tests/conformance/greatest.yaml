@@ -39,7 +39,17 @@ cases:
     sql: >-
       SELECT LEAST(s, 9) AS a, LEAST('10', 9) AS b, GREATEST('10', 9) AS c, LEAST('abc', 5) AS d,
       LEAST('10', 9.5) AS e, LEAST(' 5', 3) AS g, LEAST('1e3', 999) AS h, LEAST('', 1) AS k,
-      GREATEST('-0', -1) AS l, LEAST('10', 18446744073709551615) AS m FROM sample
+      LEAST('10', 18446744073709551615) AS m FROM sample
+  # The negative zero of a string, written `0` by MariaDB from the fix of
+  # MDEV-38670, `-0` before as by MySQL, where the conversion written
+  # towards MySQL (`'-0' + 0e0`) gives `0`: the same value, its text aside
+  # (docs/QUESTIONS.md, point 52).
+  - from: mariadb
+    inputs: >-
+      mariadb >= 10.6.26 and mariadb < 10.7.0 or mariadb >= 10.11.17 and mariadb < 11.0.0
+      or mariadb >= 11.4.11 and mariadb < 11.5.0 or mariadb >= 11.8.7 and mariadb < 12.0.0
+      or mariadb >= 12.3.2
+    sql: SELECT GREATEST('-0', -1) AS l FROM sample
   - from: mariadb
     sql: >-
       SELECT LEAST('10', 9) + 0 AS a, CONCAT(LEAST('10', 9)) AS b, LEAST(s, i, NULL) AS c, LEAST(sn, 1) AS e,

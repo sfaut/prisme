@@ -5,3 +5,12 @@ concat CONCAT(-(f - f))
 cast_char CAST(-(f - f) AS CHAR)
 plus -(f - f) + 0
 compare -(f - f) = 0
+# Written by MariaDB before the fix of MDEV-38670 as by MySQL.
+greatest_str GREATEST('-0', -1)
+greatest_dbl GREATEST(-0e0, -1)
+least_str LEAST('-0', 1)
+cast_double CAST('-0' AS DOUBLE)
+str_plus '-0' + 0e0
+str_times '-0' * 1e0
+round ROUND(-0.4e0)
+ceil CEILING(-0.5e0)
