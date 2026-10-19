@@ -66,7 +66,7 @@ The answers are saved, and later launches start without asking. To change them, 
 | `--data-dir <folder>` | Data folder (see [Your data](#your-data)). |
 | `--user-email <email>` | User for this launch only, created if needed. |
 | `--setup` | Asks the first-launch questions again and saves the answers. |
-| `-v`, `--version` | Prints the version. |
+| `-v`, `--version` | Prints the version. Prisme also writes it on the first line of its log at each launch. |
 
 Options given on the command line replace the saved settings for that launch, without changing them.
 
@@ -77,6 +77,8 @@ The screen has three areas:
 - **Left panel**: the object explorer, with your connections and their databases.
 - **Editor tabs**: several SQL editors, each one on its own connection.
 - **SQL cell and results**: the editor, its buttons, and one result tab per query.
+
+The version of Prisme shows under its name, at the top left.
 
 ### Connections
 

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 
 import { type Plugin, defineConfig } from 'vite'
@@ -8,6 +9,12 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 // Address of the Prisme server (cargo run) to which Vite's development server
 // forwards the API and the WebSockets.
 const PRISME_SERVER = 'http://127.0.0.1:8484'
+
+// Version of Prisme, that of `package.json`: a release checks that it is also
+// that of `Cargo.toml` (`.github/workflows/ci.yaml`).
+const PRISME_VERSION: string = JSON.parse(
+  readFileSync(new URL('./package.json', import.meta.url), 'utf-8'),
+).version
 
 /**
  * Local date and time in ISO 8601 format, to the second, with the time zone
@@ -60,6 +67,9 @@ export default defineConfig({
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
+  },
+  define: {
+    __PRISME_VERSION__: JSON.stringify(PRISME_VERSION),
   },
   build: {
     rolldownOptions: {

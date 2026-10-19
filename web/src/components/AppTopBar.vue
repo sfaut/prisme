@@ -1,8 +1,8 @@
 <!--
   Top bar of the application, across the whole width of the screen: name of
-  the application, synchronisation state (`SyncStatus`), theme choice, and the
-  "Options" menu, which opens the settings (row limit, language) and the
-  user's profile.
+  the application with its version beneath, synchronisation state
+  (`SyncStatus`), theme choice, and the "Options" menu, which opens the
+  settings (row limit, language) and the user's profile.
 
   The windows it opens are its own: the menu only chooses which one shows.
 -->
@@ -19,6 +19,11 @@ import UiButton from './ui/UiButton.vue'
 import UiDropdownMenu from './ui/UiDropdownMenu.vue'
 import UiSelect from './ui/UiSelect.vue'
 import type { MenuItem } from './ui/menuItem'
+
+/**
+ * Version of Prisme, shown beneath its name.
+ */
+const VERSION = `v${__PRISME_VERSION__}`
 
 /**
  * Choice of the theme.
@@ -50,7 +55,13 @@ const menuItems: MenuItem[] = [
 
 <template>
   <header class="flex items-center gap-gap border-b border-line px-panel py-1">
-    <h1 class="text-heading font-semibold text-fg-strong">Prisme</h1>
+    <!-- Name and version without leading: together, the height of a control. -->
+    <div class="flex flex-col gap-0.5">
+      <h1 class="text-heading leading-none font-semibold text-fg-strong">Prisme</h1>
+      <span class="text-small leading-none text-fg-dimmed" title="Version de Prisme">
+        {{ VERSION }}
+      </span>
+    </div>
     <div class="ms-auto flex items-center gap-gap">
       <sync-status />
       <ui-select v-model="colorMode" :items="COLOR_MODES" label="Thème" class="w-28" />

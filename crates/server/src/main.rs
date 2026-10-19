@@ -1,10 +1,10 @@
 //! Entry point of Prisme.
 //!
-//! Reads the configuration, prepares the data folder (master key and internal
-//! database), settles the listening port and the single user of the
-//! workstation mode, asked on first launch (`setup.rs`), then starts the web
-//! server: the API and the interface (`web_assets.rs`). See `docs/V1.md`,
-//! section 2.8.
+//! Reads the configuration, announces the version of Prisme, prepares the
+//! data folder (master key and internal database), settles the listening
+//! port and the single user of the workstation mode, asked on first launch
+//! (`setup.rs`), then starts the web server: the API and the interface
+//! (`web_assets.rs`). See `docs/V1.md`, section 2.8.
 
 mod analyze;
 mod api;
@@ -53,6 +53,7 @@ async fn main() -> anyhow::Result<()> {
     }));
 
     let config = Config::parse();
+    tracing::info!("Prisme v{}", env!("CARGO_PKG_VERSION"));
     config.validate()?;
 
     let data_dir = config.data_dir()?;
