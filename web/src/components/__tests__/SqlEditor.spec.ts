@@ -89,6 +89,40 @@ describe('SqlEditor', () => {
     wrapper.unmount()
   })
 
+  it('scrolls on Ctrl+Down without moving the cursor', () => {
+    const wrapper = mount(SqlEditor, {
+      props: {
+        flavor: 'mysql',
+        schema: {},
+        version: null,
+        ansiQuotes: false,
+        defaultSchema: null,
+        modelValue: '',
+      },
+      attachTo: document.body,
+    })
+    wrapper.vm.replaceText('SELECT 1;\nSELECT 2;\n')
+    const cursor = wrapper.vm.cursor()
+    const scroller = wrapper.find('.cm-scroller').element
+    let scrollTop = 0
+    Object.defineProperty(scroller, 'scrollTop', {
+      get: () => scrollTop,
+      set: (value: number) => (scrollTop = value),
+    })
+    wrapper.find('.cm-content').element.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'ArrowDown',
+        keyCode: 40,
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    )
+    expect(scrollTop).toBeGreaterThan(0)
+    expect(wrapper.vm.cursor()).toBe(cursor)
+    wrapper.unmount()
+  })
+
   it('replaces the content when the text changes from outside', async () => {
     const wrapper = mount(SqlEditor, {
       props: {

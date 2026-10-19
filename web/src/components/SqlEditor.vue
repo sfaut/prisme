@@ -14,7 +14,9 @@
   (Cmd+Enter on Mac) emits `run` with the cursor position;
   Ctrl+Shift+Enter emits `run-all`. Tab and Shift+Tab indent by stops of
   four spaces, Enter goes to a new line at the indentation of the line it
-  leaves (`editorIndent.ts`). The text binds with `v-model`.
+  leaves (`editorIndent.ts`). Ctrl+Up and Ctrl+Down scroll the text by one
+  line without moving the cursor (`editorScroll.ts`). The text binds with
+  `v-model`.
 -->
 <script setup lang="ts">
 import { autocompletion } from '@codemirror/autocomplete'
@@ -33,6 +35,7 @@ import { fetchKeywords } from '@/api/keywords'
 
 import { currentStatement, setStatements } from './currentStatement'
 import { dedentLines, indentOrInsertSpaces, insertNewlineKeepingIndentation } from './editorIndent'
+import { scrollKeymap } from './editorScroll'
 import { editorTheme } from './editorTheme'
 import { editorDialect } from './sqlDialect'
 
@@ -210,6 +213,7 @@ onMounted(() => {
           run: insertNewlineKeepingIndentation,
           shift: insertNewlineKeepingIndentation,
         },
+        ...scrollKeymap,
       ]),
       basicSetup,
       // Strict completion: start of the name or initials, never scattered letters.
