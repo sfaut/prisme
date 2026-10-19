@@ -8,6 +8,9 @@
     `npm run build` in web/, `cargo build`, then starts the new executable in this
     terminal (Ctrl+C stops it). Stops at the first step that fails.
 
+    -Verbose, the common parameter, also starts Prisme with --verbose: its log then
+    shows each request to the API and each message of the query sessions.
+
 .PARAMETER Release
     Builds and starts the release executable (target/release) instead of the debug one.
 
@@ -17,6 +20,7 @@
 .EXAMPLE
     ./rebuild.ps1
     ./rebuild.ps1 -Release
+    ./rebuild.ps1 -Verbose
     ./rebuild.ps1 -- --data-dir ./tmp
 #>
 param(
@@ -57,6 +61,12 @@ $profile_dir = if ($Release) { 'release' } else { 'debug' }
 Write-Host "Compiling the backend ($profile_dir)"
 if ($Release) { cargo build --release } else { cargo build }
 Assert-Success 'cargo build'
+
+# The [Parameter()] attribute makes this script an advanced one: -Verbose is its
+# common parameter.
+if ($PSBoundParameters['Verbose']) {
+    $PrismeArgs = @('--verbose') + $PrismeArgs
+}
 
 Write-Host 'Starting Prisme'
 & "target/$profile_dir/prisme.exe" @PrismeArgs
