@@ -25,6 +25,7 @@ Prisme then serves the API and the compiled interface on <http://127.0.0.1:8484>
 
 - Options go after `--`, for example `cargo run -- --data-dir ./tmp` for a throwaway data folder (ignored by Git). `cargo run -- --help` lists them.
 - More detailed logs: set `RUST_LOG` first, `$env:RUST_LOG="debug"` in PowerShell.
+- `./rebuild.ps1` stops the running Prisme, compiles the interface (`npm run build`) and the backend (`cargo build`), then starts Prisme again in the terminal. `-Release` uses the release build; Prisme's options go after `--` (`./rebuild.ps1 -- --data-dir ./tmp`).
 
 ## Working on the interface
 
