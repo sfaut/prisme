@@ -1,5 +1,7 @@
 # Prisme: developer guide
 
+[![Rust](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsfaut%2Fprisme%2Fmaster%2Frust-toolchain.toml&query=%24.toolchain.channel&label=rust)](../rust-toolchain.toml)
+
 How to build Prisme from source, run it in development, test it, and how it is delivered. For using Prisme, see the [README](../README.md).
 
 The backend is written in Rust (`tokio`, `axum`), the interface in Vue 3 and TypeScript (Vite). Both are delivered as a single executable that embeds the compiled interface. Design decisions are in the [other documents](#design-documents) of this folder.
