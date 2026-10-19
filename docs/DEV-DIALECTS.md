@@ -4,7 +4,7 @@ This document orders the work on the dialects of the v1, step by step: the parse
 
 Each step ends on a state usable end to end, with its tests and its documents updated. The **[to decide]** marks and the numbered points ("point 39") refer to the open points of `docs/QUESTIONS.md` (section 5).
 
-Section 7 gives the state of the work and what remains, for a resumption.
+Section 7 gives the state of the work and what remains, for a resumption; section 8 reviews the process and proposes how to shorten it.
 
 ## 1. Decisions the plan relies on
 
@@ -738,3 +738,93 @@ Steps 8 to 13:
 - step 11, beautifier: postponed;
 - step 12: `sqlparser` is still in the `[dependencies]` of `crates/dialects`;
 - step 13, audit and execution plan: the whole step.
+
+## 8. Review of the process (2026-10-19)
+
+The transpilation between MySQL and MariaDB takes too long for what it delivers. This section measures where the time went, why, and what changes.
+
+### 8.1 Figures
+
+- **Duration**: from 2026-10-17 02:39 to 2026-10-19 10:02 (+02:00), 55 h 23 min of wall clock, 185 commits (96 on 2026-10-17, 70 on 2026-10-18, 19 on 2026-10-19). At least one commit fell in 49 different hours: the work ran almost without a pause.
+- **Pace of the last rules**: the rules of the function catalog of 2026-10-19 were committed 21 to 132 minutes apart (types of the scalar functions 132, flow functions 84, `PERIOD_ADD` 45, `YEAR()` 47, `NULLIF` of a constant 21). These intervals understate the work: the measures of a rule ran during the previous one.
+- **Volume**: 627 files and 90,561 lines added from `d1c5c8d`:
+  - `crates/dialects/src`: 43,307 lines, 5,399 of them in `emit/tests.rs`; 324 unit tests;
+  - reference files: 4,677 lines;
+  - cases of `probe`: 132 files, 16,937 lines;
+  - conformance: 38 files, 559 cases;
+  - `docs/sources`: 260 files, 14,664 lines;
+  - this document: 667 lines and 35,176 words before sections 7 and 8.
+- **Share of the code**: 97 of the 185 commits (52 %) leave `crates/dialects/src` untouched (documents, sources, cases, tools).
+- **Runs**:
+  - conformance of one file on every local image (111 images, groups of 3): 786 s;
+  - two files: 990 s;
+  - one file on 6 servers: 36 s; four files on 8 servers: 63 s;
+  - one measure of 2,176 cases on every image: 214,731 lines of output.
+- **Context of the agent**: two sessions carried the dialects.
+  - The first (from 2026-10-17 00:43 UTC) was compacted 14 times.
+  - The second, 41.5 h until 2026-10-19 08:09 UTC, was compacted 49 times, once every 51 minutes on average; its transcript weighs 400 MiB.
+  - Shell calls dominate: about 8,700 occurrences, against 253 reads, 453 edits and 157 searches by the dedicated tools.
+- **Result**: steps 0 to 4 done, step 5 almost, step 7 in progress, steps 6, 8, 9, 10, 12 and 13 not started (section 7.4). The time went into the long tail of the functions, while the plan aimed first at a usable translation of common queries.
+
+### 8.2 Where the time went
+
+1. **The long tail of the function catalog first.**
+   - The generated calls (`probe calls`: each function, each value of a fixed set at each argument, each image) found hundreds of differences; each one taken up became a rule.
+   - Examples: the packed value of `NULLIF(1, t)`, the sum of months of `PERIOD_ADD` beyond 2^32, the type of `YEAR()` in three ranges of patch versions of MySQL, the carry of `BIT_COUNT` at 59.5 seconds, the classes of `REGEXP` over 134,637 code points.
+   - These rules are exact and documented, but concern rare queries; no measure of frequency ordered them.
+   - Meanwhile, what every user meets waits: `SHOW`, `USE`, `SET`, `EXPLAIN` (step 8), the syntax errors and the classification of the editor (step 10).
+2. **A fixed and heavy cycle per rule.**
+   - Each rule goes through: a measure on a few servers, the same measure on every image, the source of the servers at the tags around each threshold, an excerpt archived in `docs/sources`, the code, the unit tests, a conformance file, the conformance on the thresholds then on every image, a bullet of section 3 and one of section 6.3, the commit.
+   - The fixed part of that cycle costs more than the code of most rules.
+3. **Measures on every image, at each round.**
+   - The method (section 6.1) runs the cases on the 111 local images to find the exact thresholds.
+   - Most images are patch versions where nothing changed; the 13 to 17 minutes of a run are paid again at each correction of a rule.
+4. **Rounds caused by incomplete first measures.**
+   - `YEAR()`: the first rule left out the merges of MySQL 8.0.14 to 8.0.16 (`CASE` of `YEAR()` and 1 gives a `DECIMAL(4,0)`), which the conformance found. Then came a typing of the plan (`mysql_year_merge`), a second direction of `CAST`, a new reading of the emitter (`compared`), and several runs of the conformance.
+   - `NULLIF`: the rule of `88512f2` took every constant against a column of `BIGINT`, `YEAR`, a date or a time as converted. A measure of 2,176 cases narrowed it (`1edb10b`); the measure of the forms then found that its form towards MariaDB is wrong in the numeric contexts (section 7.3).
+   - Section 6.2 already asks to measure each rule inside `+ 0`, `CONCAT(...)` and `CAST(... AS SIGNED)`. No tool enforces it, and the first cases of `NULLIF` left it out.
+5. **The same facts written up to eight times.**
+   - A rule is described in its commit message, its bullet of section 3, its particularity of section 6.3, the comment of its module, the `comment` of its reference file, its excerpt of `docs/sources`, and the headers of its conformance file and of its file of cases.
+   - The bullets of this document reach 2,930 characters on one line, 47 lines over 1,000: reading and editing them costs context at each change.
+6. **The context of the agent saturated.**
+   - 49 compactions in 41.5 h. Each one loses the exact state (files read, results in progress, reasons of a choice), which then has to be read and decided again.
+   - Causes: long outputs printed (listings of measures of several hundred lines), large files read whole (`emit/tests.rs`, the long lines of this document), long deliberations, shell commands where the dedicated tools give shorter outputs.
+7. **Analyses written again each time.**
+   - `probe` compares the servers on the same text; a rule compares the input text on the input servers with the transpiled text on the output servers.
+   - Each such comparison was a script written for the occasion: six for `NULLIF` alone, to generate the cases and compare them.
+   - Seeing the text the transpiler writes required a temporary unit test: no command transpiles a query.
+8. **Waits and contention.**
+   - Runs of `probe` and of the conformance sometimes ran together on Docker, slowing both.
+   - A rule waited for a run of 13 minutes before its commit; some of those waits went into reading again rather than into the next rule.
+   - The questions to the maintainer came one at a time, when met (the type of `YEAR()`).
+9. **Complexity accumulated in the emitter.**
+   - Each rule added its reading flag (`column`, `result`, `number`, `compared`) and its exceptions.
+   - The readings of a parent form no single model, so each new rule has to find again which flags apply.
+
+### 8.3 Root causes
+
+- **No priority by use**: the order of the work followed the differences the tools found, rather than the queries the users write.
+- **Depth first**: each construct was taken to its exact behaviour on every version before the next. Rule 2 of `CLAUDE.md` allows an explicit error, the cheapest correct result; the work used it as a last resort only.
+- **A method tuned for exhaustiveness** (every image, exact thresholds, sources archived), applied to every rule whatever its frequency.
+- **Tools that measure servers**: the comparison of an input and its translation was done again by hand for each rule.
+- **Documentation as a by-product of each rule**, in several places, as long paragraphs.
+- **No budget per rule**: nothing stopped a rule that grew (`NULLIF`: three commits and at least four measures).
+
+### 8.4 Changes proposed, to be decided by the maintainer
+
+1. **Order by use.** A corpus of real queries (the notebooks of the maintainer, queries of BI tools, TPC-H and TPC-DS written for MySQL) ranks the constructs and the functions. The frequent ones get their emulation, the others an explicit error with its test; an emulation of the long tail waits for a ticket.
+2. **Breadth before depth.** Steps 6, 8, 10 and 12 before the remaining tasks of step 7: a transpilation usable on common queries first, deepened afterwards.
+3. **A pivot set of servers.** About 10 images: the first and the last of each branch (MySQL 8.0, 8.4, 9; MariaDB 10.6, 10.11, 11.4, 11.8), and the images on both sides of each threshold of the registry. The development runs there, in about a minute; every image runs once per batch of rules, not at each correction.
+4. **A measure of the translations.** A mode of `probe`, to design with the maintainer (tools are discussed before they are built):
+   - from a file of expressions, it crosses each one with the contexts of reading (`+ 0`, `/ 7`, `CONCAT`, `CAST AS SIGNED`, a temporal function, a comparison, a sort, a column of the result);
+   - it runs the input on the input servers and the transpiled text on the output servers;
+   - it lists the differences per range of versions.
+
+   It replaces the scripts written for the occasion, and would have found the defect of `NULLIF` before its commit.
+5. **A command that transpiles**: a query, its dialects and versions in; the text written, the steps and the errors out.
+6. **A budget per rule**, about two hours. Beyond it: an explicit error with its test, the case recorded in `docs/QUESTIONS.md`, and the next rule.
+7. **One description per rule.**
+   - One line per rule in this document (id, effect, module); the details in the comment of the module only; in `docs/sources`, the excerpt that decides; short commit messages.
+   - This document split: plan (sections 1 to 5), rules, particularities of the servers, feedback.
+8. **Hygiene of the context.** Outputs written to files, summaries of at most 30 lines; the dedicated tools to read, search and edit; `emit/tests.rs` split by module; the scripts of analysis kept in the repository when they serve twice.
+9. **Organisation.** Questions to the maintainer by batch, at the start of a batch of rules; one Docker run at a time; the measures of the next rule run while the current one is coded.
