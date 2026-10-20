@@ -12,6 +12,12 @@ vi.mock('@/api/version', () => ({
   getVersion: async () => ({ version: '1.2.3' }),
 }))
 
+// Empty history, without events.
+vi.mock('@/api/console', () => ({
+  listHistory: async () => [],
+  followConsole: () => () => {},
+}))
+
 // No saved editor: the interface creates one, without a connection.
 vi.mock('@/api/editors', () => ({
   listEditors: async () => [],
@@ -65,6 +71,18 @@ describe('App', () => {
 
     await wrapper.find('[aria-label="Déplier : Explorateur de données"]').trigger('click')
     expect(wrapper.find('[aria-label="Replier : Explorateur de données"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('opens the console on its history, and folds it on its rail', async () => {
+    window.localStorage.clear()
+    const wrapper = mount(App)
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Aucune requête envoyée'))
+    await wrapper.find('[aria-label="Replier : Console"]').trigger('click')
+    expect(wrapper.text()).not.toContain('Aucune requête envoyée')
+    expect(window.localStorage.getItem('prisme.consoleOpen')).toBe('false')
+    await wrapper.find('[aria-label="Déplier : Console"]').trigger('click')
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Aucune requête envoyée'))
     wrapper.unmount()
   })
 

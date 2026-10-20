@@ -20,6 +20,7 @@
 //! | `POST /api/beautify`                | Beautifies SQL (keywords in capitals...).                     |
 //! | `POST /api/analyze`                 | Analyses the editor's text (see `analyze.rs`).                |
 //! | `GET /api/dialects/{flavor}/keywords` | Keywords of the dialect (`?version=`: those of the version). |
+//! | `GET /api/console/...`              | History of the queries, and its stream (see `console.rs`).    |
 //! | `GET /` and any other path          | Files of the interface (see `web_assets.rs`).                 |
 
 use std::sync::{Arc, Mutex};
@@ -39,6 +40,7 @@ use prisme_dialects::beautify::{BeautifyOptions, beautify_with};
 use prisme_dialects::keywords::keywords;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use tokio::sync::broadcast;
 use tracing::Instrument;
 use ts_rs::TS;
 
@@ -46,7 +48,8 @@ use crate::analyze::{self, Analysis, AnalyzeRequest, dialect_of};
 use crate::api_error::ApiError;
 use crate::api_log;
 use crate::auth::CurrentUser;
-use crate::connections::{self, ConnectionSummary, NewConnection, ProbeRequest};
+use crate::connections::{self, ConnectionSummary, ConnectionsError, NewConnection, ProbeRequest};
+use crate::console::{self, Action, ConsoleEvent};
 use crate::editors;
 use crate::explorer;
 use crate::master_key::MasterKey;
@@ -69,6 +72,8 @@ pub struct AppState {
     pub local_user_id: i64,
     /// Query sessions of the editors, kept open beyond their WebSocket.
     pub sessions: Arc<Sessions>,
+    /// Elements saved for the console, announced to the interfaces (`console.rs`).
+    pub console: broadcast::Sender<ConsoleEvent>,
 }
 
 impl AppState {
@@ -79,6 +84,7 @@ impl AppState {
             key: Arc::new(key),
             local_user_id,
             sessions: Arc::default(),
+            console: broadcast::Sender::new(console::EVENTS_CAPACITY),
         }
     }
 
@@ -145,6 +151,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/analyze", post(analyze_sql))
         .route("/api/dialects/{flavor}/keywords", get(dialect_keywords))
         .merge(explorer::routes())
+        .merge(console::routes())
         .merge(editors::routes())
         .fallback(web_assets::serve)
         .layer(middleware::from_fn(request_guard::local_only))
@@ -235,20 +242,24 @@ async fn query_socket(
     upgrade: WebSocketUpgrade,
 ) -> Result<Response, ApiError> {
     let user_id = user.id;
-    let (target, read_only) = state
+    let (target, read_only, name) = state
         .with_db(move |db, key| {
             let target = connections::load_target(db, key, user_id, id)?;
             let read_only = profile::load(db, user_id)?.read_only_session;
-            Ok::<_, ApiError>((target, read_only))
+            let name = connections::name_of(db, user_id, id)?;
+            Ok::<_, ApiError>((target, read_only, name))
         })
         .await?;
     let target = connections::with_read_only(target.ok_or(ApiError::NotFound)?, read_only);
     Ok(upgrade.on_upgrade(move |socket| {
+        let span = api_log::connection_span(id);
+        let history = span.in_scope(|| console::connection_span(user_id, &name));
         async move {
             let on_end = Box::new(|| {});
             query_session::start(socket, state, user_id, target, None, Duration::ZERO, on_end);
         }
-        .instrument(api_log::connection_span(id))
+        .instrument(history)
+        .instrument(span)
     }))
 }
 
@@ -269,15 +280,16 @@ async fn editor_session(
         .await?
         .ok_or(ApiError::NotFound)?
         .ok_or_else(|| ApiError::BadRequest("no connection chosen for this editor".to_string()))?;
-    let (target, minutes, read_only) = state
+    let (target, minutes, read_only, name) = state
         .with_db(move |db, key| {
             let target = connections::load_target(db, key, user_id, connection_id)?;
             let minutes = connections::session_timeout(db, user_id, connection_id)?;
             let read_only = profile::load(db, user_id)?.read_only_session;
+            let name = connections::name_of(db, user_id, connection_id)?;
             Ok::<_, ApiError>(
                 target
                     .zip(minutes)
-                    .map(|(target, minutes)| (target, minutes, read_only)),
+                    .map(|(target, minutes)| (target, minutes, read_only, name)),
             )
         })
         .await?
@@ -285,6 +297,8 @@ async fn editor_session(
     let target = connections::with_read_only(target, read_only);
     let keep_alive = Duration::from_secs(u64::from(minutes) * 60);
     Ok(upgrade.on_upgrade(move |socket| {
+        let span = api_log::editor_span(id);
+        let history = span.in_scope(|| console::connection_span(user_id, &name));
         async move {
             let sessions = Arc::clone(&state.sessions);
             sessions.attach(id, connection_id, socket, |socket, on_end| {
@@ -300,7 +314,8 @@ async fn editor_session(
                 )
             });
         }
-        .instrument(api_log::editor_span(id))
+        .instrument(history)
+        .instrument(span)
     }))
 }
 
@@ -477,12 +492,15 @@ async fn probe_settings(
     user: CurrentUser,
     Json(request): Json<ProbeRequest>,
 ) -> Result<Json<ServerInfo>, ApiError> {
+    let user_id = user.id;
+    let name = request.connection.name.clone();
     let target = state
-        .with_db(move |db, key| connections::probe_target(db, key, user.id, request))
+        .with_db(move |db, key| connections::probe_target(db, key, user_id, request))
         .await?
         .ok_or(ApiError::NotFound)?;
 
-    Ok(Json(mysql::probe(&target).await?))
+    let span = console::sql_span(user_id, &name, Action::Probe);
+    Ok(Json(mysql::probe(&target).instrument(span).await?))
 }
 
 /// `POST /api/connections/{id}/probe`: connects to the server and returns its identity.
@@ -492,12 +510,17 @@ async fn probe_connection(
     Path(id): Path<i64>,
 ) -> Result<Json<ServerInfo>, ApiError> {
     let user_id = user.id;
-    let target = state
-        .with_db(move |db, key| connections::load_target(db, key, user_id, id))
+    let (target, name) = state
+        .with_db(move |db, key| {
+            let target = connections::load_target(db, key, user_id, id)?;
+            let name = connections::name_of(db, user_id, id)?;
+            Ok::<_, ConnectionsError>(target.map(|target| (target, name)))
+        })
         .await?
         .ok_or(ApiError::NotFound)?;
 
-    let info = mysql::probe(&target).await?;
+    let span = console::sql_span(user_id, &name, Action::Probe);
+    let info = mysql::probe(&target).instrument(span).await?;
     let flavor = info.flavor;
     state
         .with_db(move |db, _| connections::remember_flavor(db, user_id, id, flavor))

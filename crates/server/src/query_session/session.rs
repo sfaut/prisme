@@ -8,6 +8,7 @@ use prisme_connectors::mysql::{self, Connection, MysqlTarget};
 use prisme_dialects::Dialect;
 use prisme_splitter::split;
 use tokio::sync::{mpsc, watch};
+use tracing::Instrument;
 
 use super::cancellation::Cancellation;
 use super::execution::chosen_statements;
@@ -15,6 +16,7 @@ use super::limits::row_limit;
 use super::outbox::{Outbox, SessionStopped};
 use super::protocol::{BatchQuery, QueryRequest, ServerMessage, SessionRequest};
 use crate::api::AppState;
+use crate::console::{self, Action};
 
 /// Runs a session: connection to the target server, then the client's
 /// requests until the session stops.
@@ -35,10 +37,11 @@ pub(super) async fn serve(
         cancellation: &cancellation,
         batch: 0,
     };
-    let Some(mut connection) = session.open().await else {
+    let opening = console::action_span(Action::Session);
+    let Some(mut connection) = session.open().instrument(opening.clone()).await else {
         return;
     };
-    if let Ok(dialect) = session.ready(&mut connection).await {
+    if let Ok(dialect) = session.ready(&mut connection).instrument(opening).await {
         loop {
             let request = tokio::select! {
                 _ = stop.changed() => break,
@@ -51,10 +54,17 @@ pub(super) async fn serve(
             let handled = match request {
                 SessionRequest::Run { batch, request } => {
                     let session = Session { batch, ..session };
-                    session.handle(&mut connection, dialect, request).await
+                    let span = console::action_span(action_of(&request));
+                    session
+                        .handle(&mut connection, dialect, request)
+                        .instrument(span)
+                        .await
                 }
                 SessionRequest::Use(database) => {
-                    session.use_database(&mut connection, &database).await
+                    session
+                        .use_database(&mut connection, &database)
+                        .instrument(console::action_span(Action::Use))
+                        .await
                 }
             };
             if handled.is_err() {
@@ -63,6 +73,16 @@ pub(super) async fn serve(
         }
     }
     let _ = connection.disconnect().await;
+}
+
+/// Action of a request, for the history of the queries: a refresh, the
+/// query under the cursor, or the queries run in parallel.
+fn action_of(request: &QueryRequest) -> Action {
+    match (request.tab, request.cursor) {
+        (Some(_), _) => Action::Refresh,
+        (None, Some(_)) => Action::Run,
+        (None, None) => Action::RunAll,
+    }
 }
 
 /// What the queries need while running.

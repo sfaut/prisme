@@ -30,6 +30,7 @@ Prisme is at the start of its first version (v1). Today it queries **MySQL and M
   - [Searching the data explorer](#searching-the-data-explorer)
     - [JSONPath](#jsonpath)
     - [XPath](#xpath)
+  - [Console](#console)
   - [Top bar](#top-bar)
 - [Your data](#your-data)
 - [Developers](#developers)
@@ -109,8 +110,9 @@ The screen has these areas:
 - **Editor tabs**: several SQL editors, each one on its own connection.
 - **SQL cell and results**: the editor, its buttons, and one result tab per query.
 - **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).
+- **Console**, under the editors: the history of the queries sent to the servers (see [Console](#console)).
 
-The side panels go from the top bar to the bottom of the window. The button at the right of a panel's title folds it towards its edge, where it leaves a narrow rail with its name; a click on the rail opens it again. The object explorer is open by default, the data explorer closed; your choice for the object explorer is remembered.
+The side panels go from the top bar to the bottom of the window. The button at the right of a panel's title folds it towards its edge, where it leaves a narrow rail with its name; a click on the rail opens it again. The object explorer and the console are open by default, the data explorer closed; your choice for the object explorer and the console is remembered.
 
 The version of Prisme shows next to its name, at the top left.
 
@@ -262,6 +264,23 @@ XPath is the version built into browsers, [XPath 1.0](https://www.w3.org/TR/1999
 - **Namespaces**: the prefixes declared in the document can be used (`//p:item`). XPath 1.0 has no default namespace: an element in a namespace without prefix is found with `//*[local-name() = 'item']`.
 - **Blanks**: the indentation the explorer adds between elements is not part of the document, so `//text()` finds only the texts of the values.
 
+### Console
+
+The console, under the editors, shows what Prisme does besides the results. Drag its top edge to change its height; double-click the edge to restore its default height.
+
+The **Historique** (History) tab lists every query sent to your servers, the oldest at the top: those of your editors, and those Prisme sends itself (opening of a session, object explorer, connection test, interruption). New queries show as they are sent. Each line gives:
+
+| Column | Content |
+|---|---|
+| **#** | Number of the query in the history |
+| **Heure** (Time) | Time it was sent; the date shows in its tooltip |
+| **Action** | What sent it: **Session**, **Exécuter** (Run), **Tout exécuter** (Run all), **Rafraîchir** (Refresh), **Base courante** (Current database), **Interruption**, **Explorateur** (Explorer), **Test de connexion** (Connection test); the connection shows in its tooltip |
+| **Message** | The query on one line, then its outcome: number of rows read or changed, or the error; the full query shows in its tooltip |
+| **Durée** (Duration) | Execution time, until the result, or until the columns for a result read row by row |
+| **Transmission** | Transfer time of the rows of a result read row by row; "—" when not measured |
+
+The history is kept in the internal database. The interface shows the last 2,000 queries; **Afficher les requêtes précédentes** (Show the previous queries) reads the older ones.
+
 ### Top bar
 
 - **Synchronisation**: Prisme saves every change as you go. **Synchronisé** (Synced) means everything is saved, **Synchronisation…** (Syncing…) that a save is running, **Échec de la synchronisation** (Sync failed) that the last one was refused.
@@ -281,7 +300,7 @@ Prisme keeps its data in a folder of your user account:
 
 It holds two files that go together:
 
-- **`prisme.db`**: the internal database (settings, connections, editors, results).
+- **`prisme.db`**: the internal database (settings, connections, editors, results, history of the queries).
 - **`prisme.key`**: the master key, created on first launch. It encrypts the passwords of your connections.
 
 - **Back up** both files. Without the key, saved passwords cannot be read and must be typed again; everything else is kept.

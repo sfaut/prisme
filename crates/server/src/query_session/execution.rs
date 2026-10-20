@@ -6,16 +6,19 @@
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use futures_util::future::join_all;
+use prisme_connectors::mysql::sql_log::{self, Sent};
 use prisme_connectors::mysql::{self, Cell, Connection};
 use prisme_dialects::Dialect;
 use prisme_dialects::limit::{LimitOutcome, apply_default_limit, written_limit};
 use prisme_splitter::{Statement, statement_at, statements_in};
 use tokio::sync::Semaphore;
+use tracing::Instrument;
 
 use super::limits::{report, write_refusal};
 use super::outbox::SessionStopped;
 use super::protocol::{SelectionRange, ServerMessage};
 use super::session::{Session, Summary};
+use crate::console::{self, Action};
 
 /// Number of rows of the first `rows` message of a result: the first rows
 /// show quickly, without waiting for a full batch.
@@ -144,7 +147,9 @@ impl Session<'_> {
         }
     }
 
-    /// Runs a query and streams its columns and its rows.
+    /// Runs a query and streams its columns and its rows, then traces it for
+    /// the history of the queries (`sql_log`): its execution time, until the
+    /// columns, and the transfer time of its rows.
     ///
     /// Returns the summary of the result, or `None` if the query failed (the
     /// error has then already gone to the client).
@@ -187,11 +192,30 @@ impl Session<'_> {
         let mut stream = match mysql::execute(connection, &limited.sql).await {
             Ok(stream) => stream,
             Err(error) => {
-                self.outbox
-                    .error(Some(query), self.failure(query, error))
-                    .await?;
+                let message = self.failure(query, error);
+                sql_log::record(&Sent {
+                    sql: &limited.sql,
+                    duration: executing.elapsed(),
+                    error: Some(&message),
+                    ..Sent::default()
+                });
+                self.outbox.error(Some(query), message).await?;
                 return Ok(None);
             }
+        };
+        let execution = executing.elapsed();
+        let transferring = Instant::now();
+        let returns_rows = !stream.column_names().is_empty();
+        let trace = |rows: usize, truncated: bool, affected_rows: u64, error: Option<&str>| {
+            sql_log::record(&Sent {
+                sql: &limited.sql,
+                duration: execution,
+                transfer: transferring.elapsed(),
+                rows: returns_rows.then_some(rows as u64),
+                affected_rows,
+                truncated,
+                error,
+            });
         };
         self.outbox
             .send(ServerMessage::Columns {
@@ -206,7 +230,7 @@ impl Session<'_> {
                     LimitOutcome::UserLimit => written_limit(sql, dialect),
                     LimitOutcome::NotApplicable => None,
                 },
-                execution_us: u64::try_from(executing.elapsed().as_micros()).unwrap_or(u64::MAX),
+                execution_us: u64::try_from(execution.as_micros()).unwrap_or(u64::MAX),
                 executed_at: unix_millis(),
             })
             .await?;
@@ -220,15 +244,16 @@ impl Session<'_> {
                 Ok(None) => break,
                 Err(error) => {
                     stream.discard().await;
-                    self.outbox
-                        .error(Some(query), self.failure(query, error))
-                        .await?;
+                    let message = self.failure(query, error);
+                    trace(row_count, false, 0, Some(&message));
+                    self.outbox.error(Some(query), message).await?;
                     return Ok(None);
                 }
             };
             if self.is_cancelled(query) {
                 // The server has already received KILL QUERY: reading stops.
                 stream.discard().await;
+                trace(row_count, false, 0, Some(CANCELLED));
                 self.outbox
                     .error(Some(query), CANCELLED.to_string())
                     .await?;
@@ -239,7 +264,9 @@ impl Session<'_> {
                 truncated = true;
                 if limited.outcome == LimitOutcome::Unparsed {
                     // Without LIMIT, the server would keep sending rows: it is interrupted.
-                    if let Err(error) = mysql::kill_query(self.target, connection_id).await {
+                    let killing = mysql::kill_query(self.target, connection_id)
+                        .instrument(console::action_span(Action::Cancel));
+                    if let Err(error) = killing.await {
                         tracing::warn!("cannot interrupt the query: {error}");
                     }
                 }
@@ -260,6 +287,7 @@ impl Session<'_> {
 
         let affected_rows = stream.affected_rows();
         stream.discard().await;
+        trace(row_count, truncated, affected_rows, None);
         Ok(Some(Summary {
             row_count,
             truncated,

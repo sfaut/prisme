@@ -6,10 +6,12 @@
   connection, its session and its result tabs; on the right, the data
   explorer (`DataExplorer`), whose width is set by dragging its left edge.
   Both side panels go from the top bar down to the bottom of the window.
-  Each one folds with the button of its header (`PanelHeader`) and leaves a
+  Under the editors, between the side panels, the console
+  (`ConsolePanel`), whose height is set by dragging its top edge. Each
+  panel folds with the button of its header (`PanelHeader`) and leaves a
   rail on its edge, which opens it again (`PanelRail`): the object explorer
-  is open by default (`layout` store), the data explorer closed. Layout in
-  Tailwind classes.
+  and the console are open by default (`layout` and `console` stores), the
+  data explorer closed. Layout in Tailwind classes.
 
   The explorer acts on the active editor: the chosen source becomes its
   connection, an opened table or a chosen database (`USE`) runs there. The
@@ -25,11 +27,13 @@ import { TabsContent, TabsRoot } from 'reka-ui'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 
 import { useConnectionsStore } from './stores/connections'
+import { useConsoleStore } from './stores/console'
 import { useDataExplorerStore } from './stores/dataExplorer'
 import { useEditorsStore } from './stores/editors'
 import { useLayoutStore } from './stores/layout'
 
 import AppTopBar from './components/AppTopBar.vue'
+import ConsolePanel from './components/ConsolePanel.vue'
 import DataExplorer from './components/DataExplorer.vue'
 import EditorTabBar from './components/EditorTabBar.vue'
 import ObjectExplorer from './components/ObjectExplorer.vue'
@@ -38,24 +42,28 @@ import PanelRail from './components/PanelRail.vue'
 import PanelResizer from './components/PanelResizer.vue'
 import UiAlert from './components/ui/UiAlert.vue'
 import UiToaster from './components/ui/UiToaster.vue'
-import { DATA_PANEL, SIDER, clampPanelWidth, loadPanelWidth } from './components/panelWidth'
+import { CONSOLE, DATA_PANEL, SIDER, clampPanelSize, loadPanelSize } from './components/panelSize'
 
 const connections = useConnectionsStore()
 const editors = useEditorsStore()
 const explorer = useDataExplorerStore()
 const layout = useLayoutStore()
+const consoleStore = useConsoleStore()
 
 /**
  * Width of the left panel, in pixels.
  */
-const siderWidth = ref(clampPanelWidth(SIDER, loadPanelWidth(SIDER), window.innerWidth))
+const siderWidth = ref(clampPanelSize(SIDER, loadPanelSize(SIDER), window.innerWidth))
 
 /**
  * Width of the data explorer, in pixels.
  */
-const dataPanelWidth = ref(
-  clampPanelWidth(DATA_PANEL, loadPanelWidth(DATA_PANEL), window.innerWidth),
-)
+const dataPanelWidth = ref(clampPanelSize(DATA_PANEL, loadPanelSize(DATA_PANEL), window.innerWidth))
+
+/**
+ * Height of the console, in pixels.
+ */
+const consoleHeight = ref(clampPanelSize(CONSOLE, loadPanelSize(CONSOLE), window.innerHeight))
 
 /**
  * Error loading or saving the editors, `null` if none.
@@ -216,55 +224,67 @@ function selectSource(connectionId: number): void {
         side="start"
         @expand="layout.objectsOpen = true"
       />
-      <main class="flex h-full min-w-0 flex-1 flex-col gap-gap p-panel">
-        <ui-alert
-          v-if="editorsError"
-          tone="error"
-          :title="editorsError"
-          closable
-          @close="editorsError = null"
-        />
-        <tabs-root
-          v-model="activeTab"
-          :unmount-on-hide="false"
-          class="flex min-h-0 flex-1 flex-col gap-gap"
-        >
-          <editor-tab-bar />
-          <tabs-content
-            v-for="editor in editors.editors"
-            :key="editor.id"
-            :value="editor.id"
-            class="flex min-h-0 flex-1 flex-col outline-none"
+      <div class="relative flex min-w-0 flex-1 flex-col">
+        <main class="flex min-h-0 min-w-0 flex-1 flex-col gap-gap p-panel">
+          <ui-alert
+            v-if="editorsError"
+            tone="error"
+            :title="editorsError"
+            closable
+            @close="editorsError = null"
+          />
+          <tabs-root
+            v-model="activeTab"
+            :unmount-on-hide="false"
+            class="flex min-h-0 flex-1 flex-col gap-gap"
           >
-            <query-cell
-              v-if="connectionOf(editor.connectionId)"
-              :ref="
-                (cell) =>
-                  cell
-                    ? cells.set(editor.id, cell as InstanceType<typeof QueryCell>)
-                    : cells.delete(editor.id)
-              "
-              :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
-              :editor-id="editor.id"
-              :active="editor.id === editors.activeId"
-              :connection="connectionOf(editor.connectionId)!"
-              :sql="editor.sql"
-              @update:sql="(sql) => editors.setSql(editor.id, sql)"
-              @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
-              @database="(database) => (databases[editor.id] = database)"
-            />
-            <div v-else class="m-auto flex max-w-xs flex-col items-center gap-gap text-center">
-              <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
-                <Database class="size-4 text-fg-muted" />
-              </span>
-              <p class="text-balance text-fg-muted">
-                Double-cliquez sur une source de données pour la choisir pour cet éditeur, ou
-                ajoutez une connexion par le menu « ⋮ »
-              </p>
-            </div>
-          </tabs-content>
-        </tabs-root>
-      </main>
+            <editor-tab-bar />
+            <tabs-content
+              v-for="editor in editors.editors"
+              :key="editor.id"
+              :value="editor.id"
+              class="flex min-h-0 flex-1 flex-col outline-none"
+            >
+              <query-cell
+                v-if="connectionOf(editor.connectionId)"
+                :ref="
+                  (cell) =>
+                    cell
+                      ? cells.set(editor.id, cell as InstanceType<typeof QueryCell>)
+                      : cells.delete(editor.id)
+                "
+                :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
+                :editor-id="editor.id"
+                :active="editor.id === editors.activeId"
+                :connection="connectionOf(editor.connectionId)!"
+                :sql="editor.sql"
+                @update:sql="(sql) => editors.setSql(editor.id, sql)"
+                @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
+                @database="(database) => (databases[editor.id] = database)"
+              />
+              <div v-else class="m-auto flex max-w-xs flex-col items-center gap-gap text-center">
+                <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
+                  <Database class="size-4 text-fg-muted" />
+                </span>
+                <p class="text-balance text-fg-muted">
+                  Double-cliquez sur une source de données pour la choisir pour cet éditeur, ou
+                  ajoutez une connexion par le menu « ⋮ »
+                </p>
+              </div>
+            </tabs-content>
+          </tabs-root>
+        </main>
+        <template v-if="consoleStore.open">
+          <panel-resizer v-model="consoleHeight" :panel="CONSOLE" side="bottom" />
+          <section
+            class="shrink-0 border-t border-line px-panel pt-1 pb-panel"
+            :style="{ height: `${consoleHeight}px` }"
+          >
+            <console-panel />
+          </section>
+        </template>
+        <panel-rail v-else title="Console" side="bottom" @expand="consoleStore.open = true" />
+      </div>
       <template v-if="explorer.open">
         <panel-resizer v-model="dataPanelWidth" :panel="DATA_PANEL" side="end" />
         <aside

@@ -30,12 +30,14 @@ use prisme_connectors::mysql::catalog::{self, SchemaObjects, TableDetails};
 use prisme_connectors::mysql::{self, Connection, Flavor};
 use serde::Serialize;
 use tokio::sync::mpsc;
+use tracing::Instrument;
 use ts_rs::TS;
 
 use crate::api::AppState;
 use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
-use crate::connections;
+use crate::connections::{self, ConnectionsError};
+use crate::console::{self, Action};
 
 /// Databases provided by the server itself, read last.
 const SYSTEM_SCHEMAS: [&str; 4] = ["information_schema", "mysql", "performance_schema", "sys"];
@@ -84,21 +86,33 @@ async fn stream_catalog(
     Path(id): Path<i64>,
 ) -> Result<Response, ApiError> {
     let user_id = user.id;
-    let target = state
-        .with_db(move |db, key| connections::load_target(db, key, user_id, id))
+    let (target, name) = state
+        .with_db(move |db, key| {
+            let target = connections::load_target(db, key, user_id, id)?;
+            let name = connections::name_of(db, user_id, id)?;
+            Ok::<_, ConnectionsError>(target.map(|target| (target, name)))
+        })
         .await?
         .ok_or(ApiError::NotFound)?;
-    let mut connection = mysql::connect(&target).await?;
-    let flavor = mysql::server_info(&mut connection).await?.flavor;
+    // The queries of the catalog go to the history of the queries.
+    let span = console::sql_span(user_id, &name, Action::Explorer);
+    let mut connection = mysql::connect(&target).instrument(span.clone()).await?;
+    let flavor = mysql::server_info(&mut connection)
+        .instrument(span.clone())
+        .await?
+        .flavor;
     state
         .with_db(move |db, _| connections::remember_flavor(db, user_id, id, flavor))
         .await?;
 
     let (sender, receiver) = mpsc::channel(BUFFER);
-    tokio::spawn(async move {
-        read_catalog(&mut connection, &target.database_name, flavor, &sender).await;
-        let _ = connection.disconnect().await;
-    });
+    tokio::spawn(
+        async move {
+            read_catalog(&mut connection, &target.database_name, flavor, &sender).await;
+            let _ = connection.disconnect().await;
+        }
+        .instrument(span),
+    );
 
     let lines = stream::unfold(receiver, |mut receiver| async move {
         let event = receiver.recv().await?;

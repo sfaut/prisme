@@ -393,6 +393,19 @@ pub fn load_target(
     }))
 }
 
+/// Name of connection `id` of user `user_id`, empty if it does not exist or
+/// belongs to another user.
+pub fn name_of(db: &Connection, user_id: i64, id: i64) -> Result<String, ConnectionsError> {
+    let name = db
+        .query_row(
+            "SELECT name FROM connections WHERE id = ?1 AND user_id = ?2",
+            params![id, user_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(name.unwrap_or_default())
+}
+
 /// Remembers the server flavor of connection `id`, seen on a successful connection.
 pub fn remember_flavor(
     db: &Connection,

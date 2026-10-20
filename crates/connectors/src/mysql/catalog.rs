@@ -17,11 +17,11 @@
 
 use std::collections::BTreeMap;
 
-use mysql_async::prelude::Queryable;
+use mysql_async::prelude::{FromRow, Queryable};
 use serde::Serialize;
 use ts_rs::TS;
 
-use super::{Connection, MysqlError};
+use super::{Connection, MysqlError, sql_log};
 
 /// Table or view of a database.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
@@ -178,9 +178,24 @@ type TriggerRow = (String, String, String, String);
 
 /// Lists the server's databases, by name.
 pub async fn schemas(connection: &mut Connection) -> Result<Vec<String>, MysqlError> {
-    Ok(connection
-        .query("SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME")
-        .await?)
+    let sql = "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME";
+    Ok(sql_log::traced(sql, connection.query(sql), |rows| Some(rows.len() as u64)).await?)
+}
+
+/// Runs a catalog query on the database `schema`, its only parameter, and
+/// traces it.
+async fn rows_of<T: FromRow + Send + 'static>(
+    connection: &mut Connection,
+    sql: &str,
+    schema: &str,
+) -> Result<Vec<T>, MysqlError> {
+    let text = sql_log::bound(sql, &[schema]);
+    Ok(
+        sql_log::traced(&text, connection.exec(sql, (schema,)), |rows| {
+            Some(rows.len() as u64)
+        })
+        .await?,
+    )
 }
 
 /// Lists the objects of the database `schema`: tables, views, procedures and functions.
@@ -188,27 +203,27 @@ pub async fn objects(
     connection: &mut Connection,
     schema: &str,
 ) -> Result<SchemaObjects, MysqlError> {
-    let tables: Vec<(String, String)> = connection
-        .exec(
-            "SELECT TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES
+    let tables: Vec<(String, String)> = rows_of(
+        connection,
+        "SELECT TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES
              WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME",
-            (schema,),
-        )
-        .await?;
-    let routines: Vec<(String, String)> = connection
-        .exec(
-            "SELECT ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES
+        schema,
+    )
+    .await?;
+    let routines: Vec<(String, String)> = rows_of(
+        connection,
+        "SELECT ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES
              WHERE ROUTINE_SCHEMA = ? ORDER BY ROUTINE_NAME",
-            (schema,),
-        )
-        .await?;
-    let events: Vec<(String, String)> = connection
-        .exec(
-            "SELECT EVENT_NAME, STATUS FROM information_schema.EVENTS
+        schema,
+    )
+    .await?;
+    let events: Vec<(String, String)> = rows_of(
+        connection,
+        "SELECT EVENT_NAME, STATUS FROM information_schema.EVENTS
              WHERE EVENT_SCHEMA = ? ORDER BY EVENT_NAME",
-            (schema,),
-        )
-        .await?;
+        schema,
+    )
+    .await?;
     Ok(SchemaObjects {
         events: events
             .into_iter()
@@ -243,41 +258,41 @@ pub async fn details(
     connection: &mut Connection,
     schema: &str,
 ) -> Result<Vec<TableDetails>, MysqlError> {
-    let columns: Vec<ColumnRow> = connection
-        .exec(
-            "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, EXTRA
+    let columns: Vec<ColumnRow> = rows_of(
+        connection,
+        "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, EXTRA
              FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, ORDINAL_POSITION",
-            (schema,),
-        )
-        .await?;
-    let indexes: Vec<IndexRow> = connection
-        .exec(
-            "SELECT TABLE_NAME, INDEX_NAME, NON_UNIQUE, COLUMN_NAME
+        schema,
+    )
+    .await?;
+    let indexes: Vec<IndexRow> = rows_of(
+        connection,
+        "SELECT TABLE_NAME, INDEX_NAME, NON_UNIQUE, COLUMN_NAME
              FROM information_schema.STATISTICS
              WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX",
-            (schema,),
-        )
-        .await?;
-    let foreign_keys: Vec<ForeignKeyRow> = connection
-        .exec(
-            "SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME,
+        schema,
+    )
+    .await?;
+    let foreign_keys: Vec<ForeignKeyRow> = rows_of(
+        connection,
+        "SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME,
                     REFERENCED_TABLE_SCHEMA, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
              FROM information_schema.KEY_COLUMN_USAGE
              WHERE TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME IS NOT NULL
              ORDER BY TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION",
-            (schema,),
-        )
-        .await?;
-    let triggers: Vec<TriggerRow> = connection
-        .exec(
-            "SELECT EVENT_OBJECT_TABLE, TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION
+        schema,
+    )
+    .await?;
+    let triggers: Vec<TriggerRow> = rows_of(
+        connection,
+        "SELECT EVENT_OBJECT_TABLE, TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION
              FROM information_schema.TRIGGERS
              WHERE TRIGGER_SCHEMA = ?
              ORDER BY EVENT_OBJECT_TABLE, ACTION_TIMING, EVENT_MANIPULATION, ACTION_ORDER",
-            (schema,),
-        )
-        .await?;
+        schema,
+    )
+    .await?;
     Ok(assemble_details(columns, indexes, foreign_keys, triggers))
 }
 

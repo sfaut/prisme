@@ -11,6 +11,9 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use prisme_connectors::mysql::{self, MysqlTarget};
+use tracing::Instrument;
+
+use crate::console::{self, Action};
 
 /// Stopping of the running queries, requested by the client.
 ///
@@ -83,7 +86,9 @@ impl Cancellation {
             })
             .unwrap_or_default();
         for connection_id in connections {
-            if let Err(error) = mysql::kill_query(target, connection_id).await {
+            let killing = mysql::kill_query(target, connection_id)
+                .instrument(console::action_span(Action::Cancel));
+            if let Err(error) = killing.await {
                 tracing::warn!("cannot interrupt the query: {error}");
             }
         }

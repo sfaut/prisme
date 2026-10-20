@@ -8,7 +8,8 @@
 //! Results are read row by row (`execute`, then `ResultStream`), never
 //! loading the whole result in memory. The catalog (databases, tables,
 //! columns) is in the `catalog` submodule, the type of a result's columns in
-//! `column_type`.
+//! `column_type`. Each statement sent is traced for the history of the
+//! queries (`sql_log`).
 
 use std::time::Duration;
 
@@ -25,6 +26,7 @@ pub use mysql_async::Conn as Connection;
 pub mod catalog;
 mod column_type;
 mod connect_error;
+pub mod sql_log;
 
 pub use column_type::{ColumnTypeInfo, TypeFamily};
 
@@ -137,7 +139,8 @@ pub async fn connect(target: &MysqlTarget) -> Result<Conn, MysqlError> {
         }
     };
     for statement in &target.init_statements {
-        if let Err(error) = connection.query_drop(statement.as_str()).await {
+        let sent = connection.query_drop(statement.as_str());
+        if let Err(error) = sql_log::traced(statement, sent, |_| None).await {
             let _ = connection.disconnect().await;
             return Err(MysqlError::Init {
                 statement: statement.clone(),
@@ -150,9 +153,9 @@ pub async fn connect(target: &MysqlTarget) -> Result<Conn, MysqlError> {
 
 /// Reads the server's identity on an open connection.
 pub async fn server_info(connection: &mut Conn) -> Result<ServerInfo, MysqlError> {
-    let row: Option<(String, String)> = connection
-        .query_first("SELECT VERSION(), @@SESSION.sql_mode")
-        .await?;
+    let sql = "SELECT VERSION(), @@SESSION.sql_mode";
+    let row: Option<(String, String)> =
+        sql_log::traced(sql, connection.query_first(sql), first_row).await?;
     let (version, sql_mode) = row.ok_or(MysqlError::MissingVersion)?;
     Ok(ServerInfo {
         flavor: detect_flavor(&version),
@@ -173,15 +176,17 @@ fn has_ansi_quotes(sql_mode: &str) -> bool {
 ///
 /// It changes with `USE`, or with the database chosen in the saved connection.
 pub async fn current_database(connection: &mut Conn) -> Result<Option<String>, MysqlError> {
-    let database: Option<Option<String>> = connection.query_first("SELECT DATABASE()").await?;
+    let sql = "SELECT DATABASE()";
+    let database: Option<Option<String>> =
+        sql_log::traced(sql, connection.query_first(sql), first_row).await?;
     Ok(database.flatten())
 }
 
 /// Changes the current database (`USE`), for example so that an extra
 /// connection takes the database chosen in the session.
 pub async fn use_database(connection: &mut Conn, database: &str) -> Result<(), MysqlError> {
-    let quoted = database.replace('`', "``");
-    connection.query_drop(format!("USE `{quoted}`")).await?;
+    let sql = format!("USE `{}`", database.replace('`', "``"));
+    sql_log::traced(&sql, connection.query_drop(&sql), |_| None).await?;
     Ok(())
 }
 
@@ -199,11 +204,15 @@ pub async fn probe(target: &MysqlTarget) -> Result<ServerInfo, MysqlError> {
 /// The interrupted connection stays open and reusable.
 pub async fn kill_query(target: &MysqlTarget, connection_id: u32) -> Result<(), MysqlError> {
     let mut connection = connect(target).await?;
-    connection
-        .query_drop(format!("KILL QUERY {connection_id}"))
-        .await?;
+    let sql = format!("KILL QUERY {connection_id}");
+    sql_log::traced(&sql, connection.query_drop(&sql), |_| None).await?;
     connection.disconnect().await?;
     Ok(())
+}
+
+/// Number of rows of a `query_first` result: 1 or 0.
+fn first_row<T>(row: &Option<T>) -> Option<u64> {
+    Some(u64::from(row.is_some()))
 }
 
 /// Value of a result cell: `None` for NULL, otherwise text.
@@ -219,7 +228,9 @@ pub struct ResultStream<'a> {
     result: QueryResult<'a, 'static, TextProtocol>,
 }
 
-/// Runs the query `sql` and returns its result, to read row by row.
+/// Runs the query `sql` and returns its result, to read row by row. The
+/// reader traces the statement once read (`sql_log::record`): only it knows
+/// the transfer time and the end of the result.
 pub async fn execute<'a>(
     connection: &'a mut Conn,
     sql: &'a str,

@@ -1,11 +1,12 @@
 //! Entry point of Prisme.
 //!
 //! Reads the configuration, starts the log (with that of the API under
-//! `--verbose`, `api_log.rs`), announces the version of Prisme, prepares the
+//! `--verbose`, `api_log.rs`, and the history of the queries for the
+//! console, `console.rs`), announces the version of Prisme, prepares the
 //! data folder (master key and internal database), settles the listening
 //! port and the single user of the workstation mode, asked on first launch
-//! (`setup.rs`), then starts the web server: the API and the interface
-//! (`web_assets.rs`). See `docs/V1.md`, section 2.8.
+//! (`setup.rs`), then starts the console's writer and the web server: the
+//! API and the interface (`web_assets.rs`). See `docs/V1.md`, section 2.8.
 
 mod analyze;
 mod api;
@@ -14,6 +15,7 @@ mod api_log;
 mod auth;
 mod config;
 mod connections;
+mod console;
 mod editors;
 mod explorer;
 mod master_key;
@@ -33,7 +35,9 @@ use std::io::IsTerminal;
 
 use anyhow::Context;
 use clap::Parser;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, Layer};
 
 use crate::config::Config;
 
@@ -42,12 +46,17 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::parse();
 
     // Log level adjustable through the RUST_LOG variable (e.g. RUST_LOG=debug);
-    // --verbose adds the log of the API to it.
+    // --verbose adds the log of the API to it. The console's layer has its own
+    // filter: it receives the queries whatever the level of the log.
     let mut filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     if config.verbose {
         filter = filter.add_directive(api_log::directive());
     }
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    let (console_sender, console_receiver) = console::channel();
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer().with_filter(filter))
+        .with(console::layer(console_sender))
+        .init();
 
     // A panic goes to the logs, with its location and message, before the default
     // hook prints its backtrace on the standard error output.
@@ -86,7 +95,9 @@ async fn main() -> anyhow::Result<()> {
     let startup = setup::settle(&db, &config, first_launch, terminal, &setup::port_free)?;
     tracing::info!(user_id = startup.user_id, "local user: {}", startup.email);
 
-    let app = api::router(api::AppState::new(db, master_key, startup.user_id));
+    let state = api::AppState::new(db, master_key, startup.user_id);
+    tokio::spawn(console::write(state.clone(), console_receiver));
+    let app = api::router(state);
 
     let listener = tokio::net::TcpListener::bind(startup.listen)
         .await
