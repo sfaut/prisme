@@ -189,13 +189,11 @@
   --editor-bracket-match: color-mix(in oklab, var(--success) 25%, transparent);
   --editor-bracket-mismatch: color-mix(in oklab, var(--error) 25%, transparent);
   --editor-current-statement: color-mix(in oklab, var(--accent) 7%, transparent);
-  /* Search results: lemonchiffon, a veil of it in dark mode; the current
-     one also gets an outline. */
+  /* Search results: lemonchiffon, a veil of it in dark mode. */
   --editor-search-match: light-dark(
     lemonchiffon,
     color-mix(in oklab, lemonchiffon 12%, transparent)
   );
-  --editor-search-current-outline: var(--warning);
 
   /* Fonts and sizes. `--font-size-ui` is the regular size of the interface;
      windows, menus and tooltips use it too. */
