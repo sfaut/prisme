@@ -107,6 +107,7 @@ This document keeps track of the reasoning: what was kept, dropped or postponed,
 ### Security
 
 23. **Master encryption key**: settled, `prisme.key` key file in the data folder (see `docs/V1.md`, section 2.8).
+30. **Console in server mode**: each user sees their own history of the queries, already kept per user. The debug log is today the server's log, without users, seen whole by the single user of the workstation mode; what it shows to each user in server mode is to be decided with that mode.
 
 ### Federated engine
 
