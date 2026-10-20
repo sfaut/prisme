@@ -1,6 +1,6 @@
 <!--
   Top bar of the application, across the whole width of the screen: name of
-  the application with its version beneath (that of the executable, read
+  the application with its version next to it (that of the executable, read
   from the server), synchronisation state
   (`SyncStatus`), theme choice, and the "Options" menu, which opens the
   settings (row limit, language) and the user's profile.
@@ -23,7 +23,7 @@ import UiSelect from './ui/UiSelect.vue'
 import type { MenuItem } from './ui/menuItem'
 
 /**
- * Version of Prisme shown beneath its name ("v0.2.0"), `null` as long as the
+ * Version of Prisme shown next to its name ("v0.2.0"), `null` as long as the
  * server has not given it.
  */
 const version = ref<string | null>(null)
@@ -66,12 +66,11 @@ const menuItems: MenuItem[] = [
 
 <template>
   <header class="flex items-center gap-gap border-b border-line px-panel py-1">
-    <!-- Name and version without leading: together, the height of a control. -->
-    <div class="flex flex-col gap-0.5">
+    <!-- Name, then version in smaller type, on the same baseline. -->
+    <div class="flex items-baseline gap-1.5">
       <h1 class="text-heading leading-none font-semibold text-fg-strong">Prisme</h1>
-      <!-- A non-breaking space keeps the room of the version while waiting for it. -->
-      <span class="text-small leading-none text-fg-dimmed" title="Version de Prisme">
-        {{ version ?? '\u00a0' }}
+      <span v-if="version" class="text-tiny leading-none text-fg-dimmed" title="Version de Prisme">
+        {{ version }}
       </span>
     </div>
     <div class="ms-auto flex items-center gap-gap">

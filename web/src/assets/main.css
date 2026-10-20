@@ -46,6 +46,7 @@
   --color-overlay: var(--overlay);
 
   --text-*: initial;
+  --text-tiny: var(--font-size-tiny);
   --text-small: var(--font-size-small);
   --text-ui: var(--font-size-ui);
   --text-body: var(--font-size-body);
@@ -199,6 +200,8 @@
      windows, menus and tooltips use it too. */
   --font-ui: ui-sans-serif, system-ui, sans-serif;
   --font-code: ui-monospace, 'Cascadia Code', Consolas, monospace;
+  /* Discreet mentions: the version next to the name of Prisme. */
+  --font-size-tiny: 0.625rem;
   --font-size-small: 0.6875rem;
   --font-size-ui: 0.75rem;
   --font-size-body: 0.875rem;

@@ -134,7 +134,7 @@ On error (status 4xx or 5xx), PowerShell raises an exception, and Prisme's messa
 | Route | Role | Errors |
 |---|---|---|
 | `GET /api/health` | Answers `ok`. | — |
-| `GET /api/version` | Version of the executable: `{"version": "0.2.0"}`. The interface shows it beneath the name. | — |
+| `GET /api/version` | Version of the executable: `{"version": "0.2.0"}`. The interface shows it next to the name. | — |
 | `GET /api/connections` | Lists the connections, without passwords. | — |
 | `POST /api/connections` | Saves a connection, returns `{"id": ...}` (201). | 400 invalid input, 409 name already taken |
 | `POST /api/connections/{id}/probe` | Connects, returns `{"flavor": ..., "version": ...}`. | 404 unknown connection, 502 server unreachable or access denied, 504 no answer within 10 s |

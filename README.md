@@ -110,7 +110,7 @@ The screen has these areas:
 - **SQL cell and results**: the editor, its buttons, and one result tab per query.
 - **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).
 
-The version of Prisme shows under its name, at the top left.
+The version of Prisme shows next to its name, at the top left.
 
 ### Connections
 
