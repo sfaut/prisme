@@ -1,6 +1,6 @@
 # Prisme
 
-[![CI](https://img.shields.io/github/actions/workflow/status/sfaut/prisme/ci.yaml?branch=master&event=push&label=CI)](https://github.com/sfaut/prisme/actions/workflows/ci.yaml)
+[![CI](https://img.shields.io/github/actions/workflow/status/sfaut/prisme/ci.yaml?event=release&label=CI)](https://github.com/sfaut/prisme/actions/workflows/ci.yaml)
 [![Release](https://img.shields.io/github/v/release/sfaut/prisme)](https://github.com/sfaut/prisme/releases/latest)
 [![License](https://img.shields.io/github/license/sfaut/prisme)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platforms-Windows%20%7C%20Linux%20%7C%20macOS-informational)
