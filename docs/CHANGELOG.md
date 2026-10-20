@@ -2,6 +2,38 @@
 
 Changelogs of the published versions of Prisme, most recent first. Each entry is also the notes of its GitHub release. The interface is in French: its labels are quoted as they appear, with a translation.
 
+## v0.4.0 (2026-10-20)
+
+### 🚀 Launch
+
+We are proud to announce Prisme v0.4.0. This version brings a console under the editors, with the history of every query sent to the servers and a debug log, side panels that fold on a rail of their edge, and a JSONPath / XPath search in the data explorer. A result tab can now run its query again in place, and the queries that use the compound time units of MySQL and MariaDB are no longer refused.
+
+### ✨ New features
+
+- Console, under the editors, open by default:
+  - the **Historique** (History) tab lists every query sent to the servers, by the editors and by Prisme itself (opening of a session, object explorer, connection test, interruption): its time, action, SQL, error if any, number of rows (`+1 000` for a truncated result), duration and transfer time of the rows. The passwords of the server's own syntaxes (`IDENTIFIED BY`, `SET PASSWORD`, `MASTER_PASSWORD`…) are masked; the data of your databases stay as written;
+  - the **Debug** tab lists the messages that the terminal of Prisme shows, and the notifications of the interface;
+  - both are kept 30 days by default, from 1 to 3,650 days with the **Historique (jours)** and **Debug (jours)** fields of the profile; a button at the right of the tabs clears the list of the tab shown;
+  - its height is set by dragging its top edge, and it folds on a rail of the bottom edge.
+- Side panels: the object explorer and the data explorer fold towards their edge, where they leave a rail with their name that opens them again. The data explorer now opens from its rail on the right, instead of the button of the bar under the grid.
+- Result tabs: a button of the bar under the grid runs the tab's query again, in the same tab, and stops this refresh; the bar shows when the execution ended ([#18](https://github.com/sfaut/prisme/issues/18)).
+- Data explorer: a search field runs a JSONPath expression on JSON or an XPath expression on XML, highlights the results and moves from one to the next (Enter, Shift+Enter), or shows only the results; a button toggles line wrapping.
+- Top bar: the account menu opens from an avatar with your initials, with **Profil** (Profile) and **Paramètres** (Settings); the version shows next to the name of Prisme, in smaller type. The left panel is titled **Explorateur d’objets** (Object explorer), and the profile shows the email address right under the first name.
+- `--verbose` writes the use of the API in the log: each request (method, path, status, duration) and each message of the query sessions, without SQL texts, values or passwords.
+
+### 🐞 Bug fixes
+
+- The queries that use the compound time units of MySQL and MariaDB, such as `EXTRACT(YEAR_MONTH FROM d)` or `INTERVAL '1-2' YEAR_MONTH`, are no longer refused as not understood.
+
+### ⚙️ Internal improvements
+
+- A query session reads its current database again only after a query that can change it (`USE`, `DROP DATABASE`), instead of after every query; the queries run in parallel open their connection directly on it.
+- Development: `rebuild.ps1 -Force` stops any Prisme executable, `-Verbose` starts it with `--verbose`, and the script stops with its reason when Prisme cannot be stopped.
+
+### 📝 Documentation
+
+- README: table of contents, badges for the state of the CI (release runs), the last release and the license; the developer guide shows the pinned Rust version in a badge.
+
 ## v0.3.0 (2026-10-19)
 
 ### 🚀 Launch
