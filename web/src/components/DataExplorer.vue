@@ -38,7 +38,6 @@ import {
   Copy,
   FoldVertical,
   Funnel,
-  PanelRightClose,
   Search,
   TextWrap,
   UnfoldVertical,
@@ -61,6 +60,7 @@ import { cursorLevel, foldableNodes, foldingEffects } from './dataFolding'
 import { type MatchHighlight, matchHighlight, revealEffects, setMatches } from './dataMatches'
 import { type SearchRange, type SearchResult, searchData } from './dataSearch'
 import { editorTheme } from './editorTheme'
+import PanelHeader from './PanelHeader.vue'
 import UiButton from './ui/UiButton.vue'
 import UiInput from './ui/UiInput.vue'
 import { notify } from './ui/toasts'
@@ -438,14 +438,13 @@ watch(
 
 <template>
   <div class="data-explorer">
-    <div class="flex items-center gap-gap">
-      <div class="flex min-w-0 flex-1 flex-col gap-0.5">
-        <h2 class="text-title leading-none font-semibold text-fg-strong">Explorateur de données</h2>
+    <panel-header title="Explorateur de données" side="end" @collapse="explorer.open = false">
+      <template #subtitle>
         <span class="truncate text-small text-fg-muted" :title="subtitle">{{
           subtitle || ' '
         }}</span>
-      </div>
-      <div class="flex items-center">
+      </template>
+      <template #actions>
         <ui-button
           :icon="ChevronsDownUp"
           variant="ghost"
@@ -513,16 +512,8 @@ watch(
           :disabled="text === null"
           @click="copy"
         />
-        <ui-button
-          :icon="PanelRightClose"
-          variant="ghost"
-          small
-          aria-label="Fermer l’explorateur de données"
-          title="Fermer l’explorateur de données"
-          @click="explorer.open = false"
-        />
-      </div>
-    </div>
+      </template>
+    </panel-header>
     <div v-if="searchOpen && text !== null" ref="searchBar" class="data-explorer-search">
       <div class="flex items-center gap-gap">
         <ui-input

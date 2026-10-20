@@ -146,9 +146,9 @@ describe('DataExplorer', () => {
     wrapper.unmount()
   })
 
-  it('closes with its button', async () => {
+  it('folds with its button', async () => {
     const { explorer, wrapper } = mountExplorer()
-    await wrapper.find('[aria-label="Fermer l’explorateur de données"]').trigger('click')
+    await wrapper.find('[aria-label="Replier : Explorateur de données"]').trigger('click')
     expect(explorer.open).toBe(false)
     wrapper.unmount()
   })

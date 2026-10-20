@@ -1,6 +1,7 @@
 <!--
-  Object explorer: under its title, "Explorateur d’objets", and the
-  collapsible "Sources de données" root, one branch per source (saved
+  Object explorer: under its title, "Explorateur d’objets", with the button
+  that folds the panel to the left (`PanelHeader`), the collapsible
+  "Sources de données" root, one branch per source (saved
   connection), then its databases, tables and columns; next, the
   "Notebooks" root, empty for now.
 
@@ -50,9 +51,11 @@ import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import { cssPixels } from '@/cssLength'
 import { useCatalogStore } from '@/stores/catalog'
 import { useConnectionsStore } from '@/stores/connections'
+import { useLayoutStore } from '@/stores/layout'
 
 import ConnectionDialog from './ConnectionDialog.vue'
 import ExplorerLine from './ExplorerLine.vue'
+import PanelHeader from './PanelHeader.vue'
 import { type ExplorerNode, SOURCES_KEY, explorerTree, sourceKey } from './explorerNodes'
 import { pinnedRows, visibleRows } from './stickyRows'
 import UiAlert from './ui/UiAlert.vue'
@@ -89,6 +92,7 @@ const emit = defineEmits<{
 
 const catalog = useCatalogStore()
 const connections = useConnectionsStore()
+const layout = useLayoutStore()
 
 /**
  * Height of a line, in pixels, for virtual scrolling
@@ -463,7 +467,11 @@ watch(
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-gap">
-    <h2 class="text-title leading-none font-semibold text-fg-strong">Explorateur d’objets</h2>
+    <panel-header
+      title="Explorateur d’objets"
+      side="start"
+      @collapse="layout.objectsOpen = false"
+    />
     <ui-alert v-if="probed" tone="success" :title="probed" closable @close="probed = null" />
     <ui-alert v-if="listError" tone="error" :title="listError" />
     <!-- Index as key: the same message can come twice, from two errors of one source. -->

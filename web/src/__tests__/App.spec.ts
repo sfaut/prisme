@@ -49,6 +49,25 @@ describe('App', () => {
     )
   })
 
+  it('folds the side panels on their rail, and opens them again', async () => {
+    window.localStorage.clear()
+    const wrapper = mount(App)
+    const objects = () => wrapper.find('aside').element.style.display !== 'none'
+    expect(objects()).toBe(true)
+    // The data explorer is closed by default: only its rail shows.
+    expect(wrapper.find('[aria-label="Déplier : Explorateur de données"]').exists()).toBe(true)
+
+    await wrapper.find('[aria-label="Replier : Explorateur d’objets"]').trigger('click')
+    expect(objects()).toBe(false)
+    expect(window.localStorage.getItem('prisme.objectsOpen')).toBe('false')
+    await wrapper.find('[aria-label="Déplier : Explorateur d’objets"]').trigger('click')
+    expect(objects()).toBe(true)
+
+    await wrapper.find('[aria-label="Déplier : Explorateur de données"]').trigger('click')
+    expect(wrapper.find('[aria-label="Replier : Explorateur de données"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
   it('puts the options button in the top bar, above the explorer', async () => {
     const wrapper = mount(App)
     const bar = wrapper.find('header')

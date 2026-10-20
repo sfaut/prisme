@@ -110,6 +110,8 @@ The screen has these areas:
 - **SQL cell and results**: the editor, its buttons, and one result tab per query.
 - **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).
 
+The side panels go from the top bar to the bottom of the window. The button at the right of a panel's title folds it towards its edge, where it leaves a narrow rail with its name; a click on the rail opens it again. The object explorer is open by default, the data explorer closed; your choice for the object explorer is remembered.
+
 The version of Prisme shows next to its name, at the top left.
 
 ### Connections

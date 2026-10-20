@@ -1,11 +1,15 @@
 <!--
   Layout of the screen: on top, the application bar (`AppTopBar`), across the
-  whole width; below, on the left, the explorer of the data sources, in a
-  panel whose width is set by dragging its right edge; in the middle, the SQL
-  editors, one tab each (`EditorTabBar`), each with its cell (`QueryCell`): its
-  connection, its session and its result tabs; on the right, when it is open,
-  the data explorer (`DataExplorer`), whose width is set by dragging its left
-  edge. Layout in Tailwind classes.
+  whole width; below, on the left, the object explorer, in a panel whose
+  width is set by dragging its right edge; in the middle, the SQL editors,
+  one tab each (`EditorTabBar`), each with its cell (`QueryCell`): its
+  connection, its session and its result tabs; on the right, the data
+  explorer (`DataExplorer`), whose width is set by dragging its left edge.
+  Both side panels go from the top bar down to the bottom of the window.
+  Each one folds with the button of its header (`PanelHeader`) and leaves a
+  rail on its edge, which opens it again (`PanelRail`): the object explorer
+  is open by default (`layout` store), the data explorer closed. Layout in
+  Tailwind classes.
 
   The explorer acts on the active editor: the chosen source becomes its
   connection, an opened table or a chosen database (`USE`) runs there. The
@@ -23,12 +27,14 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useConnectionsStore } from './stores/connections'
 import { useDataExplorerStore } from './stores/dataExplorer'
 import { useEditorsStore } from './stores/editors'
+import { useLayoutStore } from './stores/layout'
 
 import AppTopBar from './components/AppTopBar.vue'
 import DataExplorer from './components/DataExplorer.vue'
 import EditorTabBar from './components/EditorTabBar.vue'
 import ObjectExplorer from './components/ObjectExplorer.vue'
 import QueryCell from './components/QueryCell.vue'
+import PanelRail from './components/PanelRail.vue'
 import PanelResizer from './components/PanelResizer.vue'
 import UiAlert from './components/ui/UiAlert.vue'
 import UiToaster from './components/ui/UiToaster.vue'
@@ -37,6 +43,7 @@ import { DATA_PANEL, SIDER, clampPanelWidth, loadPanelWidth } from './components
 const connections = useConnectionsStore()
 const editors = useEditorsStore()
 const explorer = useDataExplorerStore()
+const layout = useLayoutStore()
 
 /**
  * Width of the left panel, in pixels.
@@ -186,7 +193,9 @@ function selectSource(connectionId: number): void {
   <div class="flex h-full flex-col">
     <app-top-bar />
     <div class="relative flex min-h-0 flex-1">
+      <!-- Folded, the object explorer stays mounted: its tree keeps its state. -->
       <aside
+        v-show="layout.objectsOpen"
         class="flex shrink-0 flex-col gap-panel border-e border-line p-panel"
         :style="{ width: `${siderWidth}px` }"
       >
@@ -200,7 +209,13 @@ function selectSource(connectionId: number): void {
           @use-database="useDatabase"
         />
       </aside>
-      <panel-resizer v-model="siderWidth" :panel="SIDER" side="start" />
+      <panel-resizer v-if="layout.objectsOpen" v-model="siderWidth" :panel="SIDER" side="start" />
+      <panel-rail
+        v-else
+        title="Explorateur d’objets"
+        side="start"
+        @expand="layout.objectsOpen = true"
+      />
       <main class="flex h-full min-w-0 flex-1 flex-col gap-gap p-panel">
         <ui-alert
           v-if="editorsError"
@@ -259,6 +274,7 @@ function selectSource(connectionId: number): void {
           <data-explorer />
         </aside>
       </template>
+      <panel-rail v-else title="Explorateur de données" side="end" @expand="explorer.open = true" />
     </div>
   </div>
   <ui-toaster />

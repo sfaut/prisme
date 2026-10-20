@@ -234,6 +234,10 @@
   /* Indentation per level of the explorer's tree. */
   --tree-indent: 0.75rem;
 
+  /* Rail left by a folded panel on its edge: thickness, padding. */
+  --rail-size: 1.75rem;
+  --rail-padding: 0.5rem 0.375rem;
+
   /* Widths: label column of forms, menus (at least), windows (at most),
      transient messages, result tabs (at most). */
   --field-label-width: 7rem;
