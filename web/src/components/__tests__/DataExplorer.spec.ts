@@ -146,9 +146,14 @@ describe('DataExplorer', () => {
     wrapper.unmount()
   })
 
-  it('folds with its button', async () => {
+  it('folds with its button, left of its title, on the side of the editors', async () => {
     const { explorer, wrapper } = mountExplorer()
-    await wrapper.find('[aria-label="Replier : Explorateur de données"]').trigger('click')
+    const button = wrapper.find('[aria-label="Replier : Explorateur de données"]')
+    const title = wrapper.find('h2')
+    expect(
+      button.element.compareDocumentPosition(title.element) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    await button.trigger('click')
     expect(explorer.open).toBe(false)
     wrapper.unmount()
   })

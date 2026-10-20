@@ -112,7 +112,7 @@ The screen has these areas:
 - **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).
 - **Console**, under the editors: the history of the queries sent to the servers, and the debug log (see [Console](#console)).
 
-The side panels go from the top bar to the bottom of the window. The button at the right of a panel's title folds it towards its edge, where it leaves a narrow rail with its name; a click on the rail opens it again. The object explorer and the console are open by default, the data explorer closed; your choice for the object explorer and the console is remembered.
+The side panels go from the top bar to the bottom of the window. The fold button of a panel's header, on the side of the editors, folds it towards its edge, where it leaves a narrow rail with its name; a click on the rail opens it again. The object explorer and the console are open by default, the data explorer closed; your choice for the object explorer and the console is remembered.
 
 The version of Prisme shows next to its name, at the top left.
 
