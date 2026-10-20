@@ -1,7 +1,8 @@
 <!--
-  Object explorer: under the collapsible "Sources de données" root, one
-  branch per source (saved connection), then its databases, tables and
-  columns; next, the "Notebooks" root, empty for now.
+  Object explorer: under its title, "Explorateur d’objets", and the
+  collapsible "Sources de données" root, one branch per source (saved
+  connection), then its databases, tables and columns; next, the
+  "Notebooks" root, empty for now.
 
   Several sources sit side by side in the same tree. The catalog of a source
   is read when it is opened (that of the chosen connection opens by itself)
@@ -462,6 +463,7 @@ watch(
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-gap">
+    <h2 class="text-title leading-none font-semibold text-fg-strong">Explorateur d’objets</h2>
     <ui-alert v-if="probed" tone="success" :title="probed" closable @close="probed = null" />
     <ui-alert v-if="listError" tone="error" :title="listError" />
     <!-- Index as key: the same message can come twice, from two errors of one source. -->

@@ -105,7 +105,7 @@ Options given on the command line replace the saved settings for that launch, wi
 The screen has these areas:
 
 - **Top bar**: the name and version of Prisme, the synchronisation state, the theme and the **Options** menu (see [Top bar](#top-bar)).
-- **Left panel**: the object explorer, with your connections and their databases.
+- **Left panel**: the object explorer, **Explorateur d’objets** (Object explorer), with your connections and their databases.
 - **Editor tabs**: several SQL editors, each one on its own connection.
 - **SQL cell and results**: the editor, its buttons, and one result tab per query.
 - **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).

@@ -146,6 +146,7 @@ describe('ObjectExplorer', () => {
   it('puts the sources under a root and opens that of the chosen connection', async () => {
     savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
     const wrapper = mountExplorer({ selectedId: 1, currentDatabase: null })
+    expect(wrapper.find('h2').text()).toBe('Explorateur d’objets')
     await vi.waitFor(() =>
       expect(labels(wrapper)).toEqual([
         'Sources de données',
