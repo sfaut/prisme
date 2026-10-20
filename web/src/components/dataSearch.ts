@@ -52,14 +52,20 @@ export interface SearchRange {
  * - `empty`: no expression;
  * - `error`: the expression is invalid, or cannot be evaluated;
  * - `nodes`: the nodes found (`count`), the places of those found in the
- *   text, in the order of the text (`matches`), and the document of the
- *   results (`text`);
+ *   text, in the order of the text (`matches`), the document of the
+ *   results (`text`) and the place of each result in it (`results`);
  * - `value`: the number, string or boolean computed by an XPath expression.
  */
 export type SearchResult =
   | { state: 'empty' }
   | { state: 'error'; message: string }
-  | { state: 'nodes'; count: number; matches: SearchRange[]; text: string }
+  | {
+      state: 'nodes'
+      count: number
+      matches: SearchRange[]
+      text: string
+      results: SearchRange[]
+    }
   | { state: 'value'; text: string }
 
 /**
@@ -150,11 +156,14 @@ function searchJson(text: string, expression: string): SearchResult {
     matches.push(range)
     return text.slice(range.from, range.to)
   })
+  const results = reindentJson(`[${values.join(',')}]`)
+  const places = jsonRanges(results)
   return {
     state: 'nodes',
     count: nodes.length,
     matches: textOrder(matches),
-    text: reindentJson(`[${values.join(',')}]`),
+    text: results,
+    results: nodes.map((_, index) => places.get(JSON.stringify([index]))!),
   }
 }
 
@@ -251,19 +260,29 @@ function searchXml(text: string, expression: string): SearchResult {
   }
   const matches: SearchRange[] = []
   const lines: string[] = []
+  const results: SearchRange[] = []
+  // Each result starts on a new line, after `<data>` and its indentation.
+  let offset = '<data>\n'.length
   for (let index = 0; index < snapshot.snapshotLength; index++) {
     const node = snapshot.snapshotItem(index)!
     const range = ranges.get(node)
     if (range !== undefined) {
       matches.push(range)
     }
-    lines.push(...resultLines(text, node, range))
+    const own = resultLines(text, node, range)
+    if (own.length > 0) {
+      const length = own.reduce((total, line) => total + line.length + 1, 0) - 1
+      results.push({ from: offset + DATA_INDENT.length, to: offset + length })
+      offset += length + 1
+    }
+    lines.push(...own)
   }
   return {
     state: 'nodes',
     count: snapshot.snapshotLength,
     matches: textOrder(matches),
     text: lines.length === 0 ? '<data/>' : ['<data>', ...lines, '</data>'].join('\n'),
+    results,
   }
 }
 

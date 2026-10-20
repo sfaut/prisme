@@ -15,9 +15,10 @@
     button; the choice is remembered (`dataExplorer` store), off by default.
   - Search: a JSONPath (JSON) or XPath (XML) expression, run as it is typed
     on the document shown (`dataSearch.ts`). By default, the results are
-    highlighted in the document (`dataMatches.ts`), from one to the next
-    with Enter and Shift+Enter; the funnel button shows only them. While
-    the expression is invalid, the previous results stay.
+    highlighted in the document (`dataMatches.ts`); the funnel button
+    shows only them. In both modes, Enter and Shift+Enter go from one
+    result to the next. While the expression is invalid, the previous
+    results stay.
   - Copy: the text is that of the document shown, without the folding
     marks: Ctrl+A then Ctrl+C, or the copy button, give valid JSON or XML.
   - The panel follows the selection of the grid on screen, and the grid of
@@ -153,7 +154,7 @@ const expression = ref('')
 const filtering = ref(false)
 
 /**
- * Index of the current result among the highlighted ones.
+ * Index of the current result among the stops.
  */
 const current = ref(0)
 
@@ -212,6 +213,18 @@ const matches = computed<SearchRange[]>(() =>
 )
 
 /**
+ * Places the arrows go through: the results highlighted in the document, or
+ * the results shown alone in filter mode.
+ */
+const stops = computed<SearchRange[]>(() => {
+  const result = found.value
+  if (result.state !== 'nodes') {
+    return []
+  }
+  return filtering.value ? result.results : result.matches
+})
+
+/**
  * Number of results, or place of the current one, beside the field.
  */
 const searchStatus = computed(() => {
@@ -225,8 +238,8 @@ const searchStatus = computed(() => {
   if (result.count === 0) {
     return 'Aucun résultat'
   }
-  if (matches.value.length > 0) {
-    return `${(current.value + 1).toLocaleString('fr-FR')} / ${matches.value.length.toLocaleString('fr-FR')}`
+  if (stops.value.length > 0) {
+    return `${(current.value + 1).toLocaleString('fr-FR')} / ${stops.value.length.toLocaleString('fr-FR')}`
   }
   return `${result.count.toLocaleString('fr-FR')} ${result.count > 1 ? 'résultats' : 'résultat'}`
 })
@@ -257,7 +270,7 @@ async function toggleSearch(): Promise<void> {
  * @param step `1` for the next one, `-1` for the previous one.
  */
 function goToMatch(step: 1 | -1): void {
-  const ranges = matches.value
+  const ranges = stops.value
   if (!view || ranges.length === 0) {
     return
   }
@@ -266,7 +279,7 @@ function goToMatch(step: 1 | -1): void {
   view.dispatch({
     selection: { anchor: range.from },
     effects: [
-      setMatches.of({ matches: ranges, current: current.value }),
+      setMatches.of({ matches: matches.value, current: current.value }),
       ...revealEffects(view.state, range),
     ],
   })
@@ -378,14 +391,14 @@ onBeforeUnmount(() => {
 
 // New document (new values, or the results in filter mode): it replaces the
 // previous one, all unfolded, the cursor at the start. New results: they are
-// highlighted, the cursor goes to the first one.
-watch([shown, matches], ([value, ranges], [previous]) => {
+// highlighted in selection mode, the cursor goes to the first one.
+watch([shown, stops], ([value, ranges], [previous]) => {
   if (!view || value === null) {
     return
   }
   const replaced = value !== previous
   const first = ranges[0]
-  const effects: StateEffect<unknown>[] = [setMatches.of({ matches: ranges, current: 0 })]
+  const effects: StateEffect<unknown>[] = [setMatches.of({ matches: matches.value, current: 0 })]
   if (replaced) {
     effects.push(language.reconfigure(currentLanguage()))
   }
@@ -519,26 +532,24 @@ watch(
           aria-live="polite"
           >{{ searchStatus }}</span
         >
-        <template v-if="!filtering">
-          <ui-button
-            :icon="ChevronUp"
-            variant="ghost"
-            small
-            aria-label="Résultat précédent"
-            title="Résultat précédent (Maj+Entrée)"
-            :disabled="matches.length === 0"
-            @click="goToMatch(-1)"
-          />
-          <ui-button
-            :icon="ChevronDown"
-            variant="ghost"
-            small
-            aria-label="Résultat suivant"
-            title="Résultat suivant (Entrée)"
-            :disabled="matches.length === 0"
-            @click="goToMatch(1)"
-          />
-        </template>
+        <ui-button
+          :icon="ChevronUp"
+          variant="ghost"
+          small
+          aria-label="Résultat précédent"
+          title="Résultat précédent (Maj+Entrée)"
+          :disabled="stops.length === 0"
+          @click="goToMatch(-1)"
+        />
+        <ui-button
+          :icon="ChevronDown"
+          variant="ghost"
+          small
+          aria-label="Résultat suivant"
+          title="Résultat suivant (Entrée)"
+          :disabled="stops.length === 0"
+          @click="goToMatch(1)"
+        />
         <ui-button
           :icon="Funnel"
           variant="ghost"

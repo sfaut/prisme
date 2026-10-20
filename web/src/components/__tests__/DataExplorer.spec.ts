@@ -34,6 +34,16 @@ function editorText(wrapper: ReturnType<typeof mountExplorer>['wrapper']): strin
   )!.state.doc.toString()
 }
 
+/**
+ * Position of the cursor in the explorer's editor.
+ *
+ * @param wrapper Mounted explorer.
+ */
+function cursor(wrapper: ReturnType<typeof mountExplorer>['wrapper']): number {
+  return EditorView.findFromDOM(wrapper.find('.cm-editor').element as HTMLElement)!.state.selection
+    .main.head
+}
+
 describe('DataExplorer', () => {
   it('asks for a selection, then for a single column', async () => {
     const { explorer, wrapper } = mountExplorer()
@@ -124,8 +134,11 @@ describe('DataExplorer', () => {
     await field.setValue('$.a[?@ > 1]')
     await wrapper.find('[aria-label="Afficher seulement les résultats"]').trigger('click')
     expect(editorText(wrapper)).toBe('[\n    2,\n    3\n]')
-    expect(wrapper.find('.data-explorer-search-status').text()).toBe('2 résultats')
+    expect(wrapper.find('.data-explorer-search-status').text()).toBe('1 / 2')
     expect(highlighted()).toHaveLength(0)
+    await field.trigger('keydown', { key: 'Enter' })
+    expect(wrapper.find('.data-explorer-search-status').text()).toBe('2 / 2')
+    expect(cursor(wrapper)).toBe(editorText(wrapper).indexOf('3'))
 
     await wrapper.find('[aria-label="Rechercher"]').trigger('click')
     expect(editorText(wrapper)).toBe('{\n    "a": [\n        1,\n        2,\n        3\n    ]\n}')

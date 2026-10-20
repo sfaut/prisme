@@ -33,6 +33,15 @@ function matched(text: string, result: SearchResult): string[] {
   return result.matches.map((range) => text.slice(range.from, range.to))
 }
 
+/**
+ * Texts of the results in the document of the results.
+ *
+ * @param result Result of the search, with nodes.
+ */
+function placed(result: Extract<SearchResult, { state: 'nodes' }>): string[] {
+  return result.results.map((range) => result.text.slice(range.from, range.to))
+}
+
 describe('searchData, JSON', () => {
   it('finds nothing without an expression', () => {
     expect(searchData('json', '{}', '  ')).toEqual({ state: 'empty' })
@@ -81,7 +90,18 @@ describe('searchData, JSON', () => {
       count: 0,
       matches: [],
       text: '[]',
+      results: [],
     })
+  })
+
+  it('places each result in the document of the results, a node found twice included', () => {
+    const text = shown('json', '{"a":[{"b":1},2]}')
+    const result = searchData('json', text, '$.a[0,1,0]')
+    expect(result.state === 'nodes' && placed(result)).toEqual([
+      '{\n        "b": 1\n    }',
+      '2',
+      '{\n        "b": 1\n    }',
+    ])
   })
 
   it('reports an invalid expression', () => {
@@ -115,10 +135,20 @@ describe('searchData, XML', () => {
 
   it('shows the results in <data>, attributes and texts as text', () => {
     const text = shown('xml', '<a x="1 &amp; 2"><b><c/></b>t&lt;u</a>')
-    expect(searchData('xml', text, '//b | //@x | /a/text()')).toMatchObject({
+    const result = searchData('xml', text, '//b | //@x | /a/text()')
+    expect(result).toMatchObject({
       text: '<data>\n    1 &amp; 2\n    <b>\n        <c/>\n    </b>\n    t&lt;u\n</data>',
     })
-    expect(searchData('xml', text, '//z')).toMatchObject({ count: 0, text: '<data/>' })
+    expect(result.state === 'nodes' && placed(result)).toEqual([
+      '1 &amp; 2',
+      '<b>\n        <c/>\n    </b>',
+      't&lt;u',
+    ])
+    expect(searchData('xml', text, '//z')).toMatchObject({
+      count: 0,
+      text: '<data/>',
+      results: [],
+    })
   })
 
   it('searches the values gathered in <data>', () => {
