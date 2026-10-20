@@ -53,7 +53,10 @@ const chrome = EditorView.theme({
   '.cm-panels': { backgroundColor: 'var(--surface-elevated)', color: 'var(--fg)' },
   // Results of the search of the data explorer, and the current one.
   '.cm-dataMatch': { backgroundColor: 'var(--editor-search-match)' },
-  '.cm-dataMatch-current': { backgroundColor: 'var(--editor-search-current)' },
+  '.cm-dataMatch-current': {
+    backgroundColor: 'var(--editor-search-match)',
+    outline: 'var(--line-width) solid var(--editor-search-current-outline)',
+  },
   // Folded content ("…"), in place of the browser's grey.
   '.cm-foldPlaceholder': {
     backgroundColor: 'var(--surface-accented)',
