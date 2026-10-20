@@ -97,9 +97,13 @@ const ICONS = {
 .panel-rail-title {
   white-space: nowrap;
 
+  /* Written downwards, every character turned with the line: the
+     typographic apostrophe of "d’objets" would otherwise stay upright, in
+     a square of its own. */
   .start &,
   .end & {
     writing-mode: vertical-rl;
+    text-orientation: sideways;
   }
 }
 </style>
