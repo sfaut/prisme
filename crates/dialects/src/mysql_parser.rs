@@ -12,7 +12,8 @@
 //! The delegated methods are those `MySqlDialect` overrides in `sqlparser`
 //! 0.63 (`src/dialect/mysql.rs`); the version is pinned in `Cargo.toml`. On
 //! an upgrade, compare that list, or drop this dialect if `sqlparser` knows
-//! the compound units.
+//! the compound units: reported upstream in
+//! <https://github.com/apache/datafusion-sqlparser-rs/issues/2693>.
 
 use std::any::TypeId;
 
