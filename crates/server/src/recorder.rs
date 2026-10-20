@@ -4,11 +4,13 @@
 //! Each message sent to the client first goes through the recorder:
 //!
 //! - `batch`: the editor's unpinned tabs disappear, one tab per query is
-//!   created; its id goes to the client with the query;
+//!   created; its id goes to the client with the query. A refresh keeps
+//!   the tabs: its query runs again in its own tab;
 //! - `started`, `columns`, `rows`: the state and the rows of each query
 //!   accumulate in memory (rows are bounded by the row limit);
 //! - `done`, `error`: the complete result is written to the internal
-//!   database.
+//!   database. A refresh only writes a complete result: on failure, the
+//!   saved one stays as it was.
 //!
 //! The browser therefore never sends the results back: after a reload, it
 //! reads them again as the server received them. At the end of the session,
@@ -30,6 +32,7 @@ use ts_rs::TS;
 use crate::api::AppState;
 use crate::editors::{self, SavedColumns, SavedResult};
 use crate::query_session::ServerMessage;
+use crate::query_session::protocol::BatchQuery;
 
 /// Message of a query interrupted by the end of the session.
 const SESSION_CLOSED: &str = "session closed before the end of the query";
@@ -54,6 +57,9 @@ pub(crate) struct ResumedQuery {
     /// Time elapsed since its columns were received, in microseconds; absent
     /// before.
     columns_us_ago: Option<u64>,
+    /// Does the query refresh its tab? The saved result of the tab then
+    /// stays until the query ends successfully.
+    refresh: bool,
 }
 
 /// Recorder of an editor's results.
@@ -80,6 +86,8 @@ struct Record {
     started_at: Option<Instant>,
     /// Instant the columns were received, for the transfer time.
     columns_at: Option<Instant>,
+    /// Does the query refresh its tab? Only a complete result is then saved.
+    refresh: bool,
 }
 
 impl Recorder {
@@ -99,21 +107,10 @@ impl Recorder {
         let bytes = serde_json::to_vec(message).map_or(0, |json| json.len() as u64);
         match message {
             ServerMessage::Batch { queries } => {
-                let editor_id = self.editor_id;
-                let wanted: Vec<_> = queries.iter().map(|q| (q.query, q.sql.clone())).collect();
-                let created = self
-                    .state
-                    .with_db(move |db, _| editors::start_batch(db, editor_id, &wanted))
-                    .await;
                 records.clear();
-                match created {
-                    Ok(ids) => {
-                        for (query, tab_id) in queries.iter_mut().zip(ids) {
-                            query.tab = tab_id;
-                            records.insert(query.query, Record::new(tab_id, &query.sql));
-                        }
-                    }
-                    Err(_) => tracing::warn!("result tabs not created, editor {editor_id}"),
+                match queries.as_mut_slice() {
+                    [query] if query.tab > 0 => self.refresh(&mut records, query).await,
+                    _ => self.create_tabs(&mut records, queries).await,
                 }
             }
             ServerMessage::Started { query } => {
@@ -180,7 +177,9 @@ impl Recorder {
                 if let Some(record) = records.get_mut(query) {
                     record.result.done = true;
                     record.result.error = Some(message.clone());
-                    self.save(record).await;
+                    if !record.refresh {
+                        self.save(record).await;
+                    }
                 }
             }
             _ => {}
@@ -200,21 +199,62 @@ impl Recorder {
                 rows: record.rows.clone(),
                 started_us_ago: record.started_at.map(micros_since),
                 columns_us_ago: record.columns_at.map(micros_since),
+                refresh: record.refresh,
             })
             .collect();
         queries.sort_by_key(|query| query.query);
         queries
     }
 
-    /// End of the session: unfinished queries are saved as failed.
+    /// End of the session: unfinished queries are saved as failed, except a
+    /// refresh, whose tab keeps its saved result.
     pub async fn finish(&self) {
         let mut records = self.records.lock().await;
         for record in records.values_mut().filter(|record| !record.result.done) {
             record.result.done = true;
             record.result.error = Some(SESSION_CLOSED.to_string());
-            self.save(record).await;
+            if !record.refresh {
+                self.save(record).await;
+            }
         }
         records.clear();
+    }
+
+    /// New batch: the editor's unpinned tabs disappear, and each query gets a
+    /// new tab, whose id it takes.
+    async fn create_tabs(&self, records: &mut HashMap<u32, Record>, queries: &mut [BatchQuery]) {
+        let editor_id = self.editor_id;
+        let wanted: Vec<_> = queries.iter().map(|q| (q.query, q.sql.clone())).collect();
+        let created = self
+            .state
+            .with_db(move |db, _| editors::start_batch(db, editor_id, &wanted))
+            .await;
+        match created {
+            Ok(ids) => {
+                for (query, tab_id) in queries.iter_mut().zip(ids) {
+                    query.tab = tab_id;
+                    records.insert(query.query, Record::new(tab_id, &query.sql, false));
+                }
+            }
+            Err(_) => tracing::warn!("result tabs not created, editor {editor_id}"),
+        }
+    }
+
+    /// Refresh of a tab: the query runs again in it, the other tabs stay. A
+    /// tab that is not the editor's (closed in the meantime, or another
+    /// editor's) loses its id: the result is then not recorded.
+    async fn refresh(&self, records: &mut HashMap<u32, Record>, query: &mut BatchQuery) {
+        let editor_id = self.editor_id;
+        let tab_id = query.tab;
+        let owned = self
+            .state
+            .with_db(move |db, _| editors::has_result_tab(db, editor_id, tab_id))
+            .await;
+        if matches!(owned, Ok(true)) {
+            records.insert(query.query, Record::new(tab_id, &query.sql, true));
+        } else {
+            query.tab = 0;
+        }
     }
 
     /// Writes the result of a query to the internal database; a failure is
@@ -234,8 +274,9 @@ impl Recorder {
 }
 
 impl Record {
-    /// Empty result of tab `tab_id`, for the query `sql`.
-    fn new(tab_id: i64, sql: &str) -> Self {
+    /// Empty result of tab `tab_id`, for the query `sql`, which `refresh`es the
+    /// tab or not.
+    fn new(tab_id: i64, sql: &str, refresh: bool) -> Self {
         Self {
             tab_id,
             sql: sql.to_string(),
@@ -243,6 +284,7 @@ impl Record {
             rows: Vec::new(),
             started_at: None,
             columns_at: None,
+            refresh,
         }
     }
 }
@@ -258,7 +300,6 @@ mod tests {
     use crate::editors::NewEditor;
     use crate::master_key::MasterKey;
     use crate::query_session::LimitReport;
-    use crate::query_session::protocol::BatchQuery;
     use crate::store;
 
     #[tokio::test]
@@ -336,5 +377,123 @@ mod tests {
         assert_eq!(columns.executed_at, 1_792_500_000_000);
         assert!(tabs[0].result.bytes > 0);
         assert_eq!(tabs[1].result.error.as_deref(), Some(SESSION_CLOSED));
+    }
+
+    /// Batch of a single query, refreshing tab `tab` (0 for a new tab).
+    fn single_query(tab: i64) -> ServerMessage {
+        ServerMessage::Batch {
+            queries: vec![BatchQuery {
+                query: 0,
+                tab,
+                sql: "SELECT 1".to_string(),
+                start: 0,
+                end: 8,
+            }],
+        }
+    }
+
+    /// Tab id given by a batch message.
+    fn tab_of(batch: &ServerMessage) -> i64 {
+        let ServerMessage::Batch { queries } = batch else {
+            unreachable!()
+        };
+        queries[0].tab
+    }
+
+    #[tokio::test]
+    async fn a_refresh_keeps_the_tabs_and_saves_only_a_complete_result() {
+        let db = store::open_in_memory();
+        let user_id = store::ensure_user(&db, "test@example.com").unwrap();
+        let editor = create_editor(&db, user_id);
+        let other = create_editor(&db, user_id);
+        let state = AppState::new(db, MasterKey::generate(), user_id);
+        let recorder = Recorder::new(state.clone(), editor);
+        let saved = |row: &str| -> [ServerMessage; 4] {
+            [
+                ServerMessage::Started { query: 0 },
+                ServerMessage::Columns {
+                    query: 0,
+                    columns: vec!["x".to_string()],
+                    right_aligned: vec![true],
+                    types: Vec::new(),
+                    sql: "SELECT 1".to_string(),
+                    limit: LimitReport::NotApplicable,
+                    expected_rows: None,
+                    execution_us: 0,
+                    executed_at: 0,
+                },
+                ServerMessage::Rows {
+                    query: 0,
+                    rows: vec![vec![Some(row.to_string())]],
+                },
+                ServerMessage::Done {
+                    query: 0,
+                    row_count: 1,
+                    truncated: false,
+                    affected_rows: 0,
+                    elapsed_ms: 1,
+                    database: None,
+                },
+            ]
+        };
+        let rows_of = |state: AppState| async move {
+            state
+                .with_db(move |db, _| editors::results_of(db, user_id, editor))
+                .await
+                .unwrap()
+                .unwrap()
+                .into_iter()
+                .map(|tab| (tab.id, tab.rows))
+                .collect::<Vec<_>>()
+        };
+
+        let mut batch = single_query(0);
+        recorder.observe(&mut batch).await;
+        let tab = tab_of(&batch);
+        for mut message in saved("first") {
+            recorder.observe(&mut message).await;
+        }
+
+        // A failed refresh leaves the saved result as it was.
+        let mut refresh = single_query(tab);
+        recorder.observe(&mut refresh).await;
+        assert_eq!(tab_of(&refresh), tab);
+        assert!(recorder.snapshot().await[0].refresh);
+        let [mut started, mut columns, ..] = saved("second");
+        recorder.observe(&mut started).await;
+        recorder.observe(&mut columns).await;
+        recorder
+            .observe(&mut ServerMessage::Error {
+                query: Some(0),
+                message: "query interrupted by the user".to_string(),
+            })
+            .await;
+        let first = vec![vec![Some("first".to_string())]];
+        assert_eq!(rows_of(state.clone()).await, [(tab, first)]);
+
+        // A complete refresh replaces it, in the same tab.
+        recorder.observe(&mut single_query(tab)).await;
+        for mut message in saved("second") {
+            recorder.observe(&mut message).await;
+        }
+        let second = vec![vec![Some("second".to_string())]];
+        assert_eq!(rows_of(state.clone()).await, [(tab, second)]);
+
+        // The tab of another editor is not refreshed.
+        let foreign = state
+            .with_db(move |db, _| editors::start_batch(db, other, &[(0, "SELECT 2".into())]))
+            .await
+            .unwrap()[0];
+        let mut refresh = single_query(foreign);
+        recorder.observe(&mut refresh).await;
+        assert_eq!(tab_of(&refresh), 0);
+        assert!(recorder.snapshot().await.is_empty());
+    }
+
+    /// Creates an editor of the user, and returns its id.
+    fn create_editor(db: &rusqlite::Connection, user_id: i64) -> i64 {
+        editors::create(db, user_id, &NewEditor::default())
+            .unwrap()
+            .id
     }
 }

@@ -54,6 +54,11 @@ pub(crate) struct QueryRequest {
     /// Row limit for these queries only, among the allowed choices.
     #[ts(optional)]
     pub(crate) row_limit: Option<u32>,
+    /// Saved result tab to refresh: `sql` is then its query, run alone on the
+    /// session's connection (`cursor` and `selection` are ignored). The tab
+    /// stays, and only a complete result replaces its saved one.
+    #[ts(optional)]
+    pub(crate) tab: Option<i64>,
 }
 
 /// Passage of the editor's text selected by the user.

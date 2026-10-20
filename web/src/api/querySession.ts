@@ -16,6 +16,13 @@
  * except those the user pinned; a tab can also be renamed or closed (its
  * query is then stopped if it is running).
  *
+ * A tab can be refreshed: its query runs again alone, as a batch of its own
+ * (`run` with the tab's id), and the other tabs stay. While a batch runs, the
+ * refresh waits for its end (`refreshQueue`). The previous result stays
+ * displayed until the new columns arrive; if the refresh is stopped, the tab
+ * gets its previous result back as it was, and if it fails, with the error
+ * above it (`previous`).
+ *
  * The session is that of an editor: the server saves its results as they
  * run, and gives each tab the id of its record. On opening, the session
  * takes back the saved tabs (`savedTab`), then opens the WebSocket. On the
@@ -158,9 +165,15 @@ export interface QueryTab {
    */
   batch: number
   /**
-   * Number of the query in its batch.
+   * Number of the query in the batch that runs it, repeated by the server's
+   * messages (0 for a refresh).
    */
   query: number
+  /**
+   * Number of the query in the batch that created the tab, shown in its
+   * label: a refresh keeps it.
+   */
+  number: number
   /**
    * Text of the query, as split in the editor.
    */
@@ -204,6 +217,30 @@ export interface QueryTab {
    * Name given by the user, `null` for the default label.
    */
   name: string | null
+  /**
+   * State of the tab before its refresh, while the refresh runs: given back
+   * if it fails or is stopped. `null` outside a refresh.
+   */
+  previous: PreviousRun | null
+}
+
+/**
+ * State of a tab's run: what a refresh replaces.
+ */
+export type TabRun = Pick<
+  QueryTab,
+  'result' | 'error' | 'done' | 'startedAt' | 'columnsAt' | 'endedAt' | 'bytes'
+>
+
+/**
+ * State of a tab before its refresh.
+ */
+export interface PreviousRun extends TabRun {
+  /**
+   * Has the user stopped the refresh? Its failure then leaves the tab
+   * exactly as it was, without an error.
+   */
+  stopped: boolean
 }
 
 /**
@@ -243,6 +280,11 @@ export interface SessionState {
    * loading indicator in their place.
    */
   loading: boolean
+  /**
+   * Ids of the tabs whose refresh waits for the end of the running batch, in
+   * the order they were asked for.
+   */
+  refreshQueue: number[]
 }
 
 /**
@@ -258,6 +300,7 @@ export function initialState(): SessionState {
     nextTabId: 1,
     error: null,
     loading: false,
+    refreshQueue: [],
   }
 }
 
@@ -292,26 +335,33 @@ export function applyMessage(
       state.server = message.server
       state.database = message.database
       break
-    case 'batch':
-      state.tabs = [
-        ...state.tabs,
-        ...message.queries.map((query) => ({
-          id: query.tab > 0 ? query.tab : state.nextTabId++,
-          batch: state.batch,
-          query: query.query,
-          sql: query.sql,
-          result: null,
-          error: null,
-          done: false,
-          startedAt: null,
-          columnsAt: null,
-          endedAt: null,
-          bytes: 0,
-          pinned: false,
-          name: null,
-        })),
-      ]
+    case 'batch': {
+      // A refreshed tab is already in the batch.
+      const fresh = message.queries.filter((query) => !tabOf(state, query.query))
+      if (fresh.length > 0) {
+        state.tabs = [
+          ...state.tabs,
+          ...fresh.map((query) => ({
+            id: query.tab > 0 ? query.tab : state.nextTabId++,
+            batch: state.batch,
+            query: query.query,
+            number: query.query,
+            sql: query.sql,
+            result: null,
+            error: null,
+            done: false,
+            startedAt: null,
+            columnsAt: null,
+            endedAt: null,
+            bytes: 0,
+            pinned: false,
+            name: null,
+            previous: null,
+          })),
+        ]
+      }
       break
+    }
     case 'started': {
       const tab = tabOf(state, message.query)
       if (tab) {
@@ -354,6 +404,7 @@ export function applyMessage(
       if (tab) {
         tab.done = true
         tab.endedAt = now
+        tab.previous = null
         if (tab.result) {
           tab.result.truncated = message.truncated
           tab.result.affectedRows = message.affected_rows
@@ -366,7 +417,9 @@ export function applyMessage(
     case 'error': {
       if (message.query !== null) {
         const tab = tabOf(state, message.query)
-        if (tab) {
+        if (tab?.previous) {
+          endRefresh(tab, message.message)
+        } else if (tab) {
           tab.error = message.message
           tab.done = true
           tab.endedAt = now
@@ -374,6 +427,12 @@ export function applyMessage(
         break
       }
       state.error = message.message
+      // The session refused the request: a refresh in it did not run.
+      for (const tab of state.tabs) {
+        if (tab.batch === state.batch) {
+          endRefresh(tab, null)
+        }
+      }
       // Before `ready`, the error is that of the connection to the target
       // server: the server then closes the session.
       state.status = state.status === 'connecting' ? 'closed' : 'ready'
@@ -420,6 +479,36 @@ function resumeBatch(
       state.tabs[index] = tab
     }
   }
+}
+
+/**
+ * Ends a failed refresh: the tab gets back its state from before the refresh,
+ * with the error above its result, unless the user stopped it. Without effect
+ * outside a refresh.
+ *
+ * @param tab Refreshed tab.
+ * @param error Failure message, `null` for none.
+ */
+function endRefresh(tab: QueryTab, error: string | null): void {
+  if (tab.previous === null) {
+    return
+  }
+  const { stopped, ...run } = tab.previous
+  Object.assign(tab, run)
+  if (!stopped && error !== null) {
+    tab.error = error
+  }
+  tab.previous = null
+}
+
+/**
+ * State of a tab's run, to keep before its refresh.
+ *
+ * @param tab Tab of the query.
+ */
+function runOf(tab: QueryTab): TabRun {
+  const { result, error, done, startedAt, columnsAt, endedAt, bytes } = tab
+  return { result, error, done, startedAt, columnsAt, endedAt, bytes }
 }
 
 /**
@@ -633,7 +722,60 @@ export function startBatch(state: SessionState): void {
 }
 
 /**
- * Removes a tab from the state.
+ * Records the start of a tab's refresh in the state: a batch of its own, in
+ * which the tab, kept, runs its query again. Its current state is kept until
+ * the refresh succeeds.
+ *
+ * @param state State of the session.
+ * @param tab Refreshed tab.
+ */
+export function startRefresh(state: SessionState, tab: QueryTab): void {
+  state.status = 'running'
+  state.batch++
+  state.error = null
+  tab.previous = { ...(tab.previous ?? runOf(tab)), stopped: false }
+  Object.assign(tab, {
+    batch: state.batch,
+    query: 0,
+    result: null,
+    error: null,
+    done: false,
+    startedAt: null,
+    columnsAt: null,
+    endedAt: null,
+    bytes: 0,
+  })
+}
+
+/**
+ * Refresh of a tab, for its button:
+ *
+ * - `running`: the refresh runs, it can be stopped;
+ * - `queued`: it waits for the end of the running batch, it can be cancelled;
+ * - `idle`: the tab can be refreshed;
+ * - `unavailable`: no refresh (query still running, session closed).
+ */
+export type RefreshState = 'running' | 'queued' | 'idle' | 'unavailable'
+
+/**
+ * Refresh state of a tab.
+ *
+ * @param state State of the session.
+ * @param tab Tab of the query.
+ */
+export function refreshState(state: SessionState, tab: QueryTab): RefreshState {
+  if (tab.previous !== null) {
+    return 'running'
+  }
+  if (state.refreshQueue.includes(tab.id)) {
+    return 'queued'
+  }
+  const open = state.status === 'ready' || state.status === 'running'
+  return open && tab.done ? 'idle' : 'unavailable'
+}
+
+/**
+ * Removes a tab from the state, and from the refresh queue.
  *
  * @param state State of the session.
  * @param id Id of the tab.
@@ -642,6 +784,7 @@ export function startBatch(state: SessionState): void {
 export function removeTab(state: SessionState, id: number): QueryTab | undefined {
   const tab = state.tabs.find((item) => item.id === id)
   state.tabs = state.tabs.filter((item) => item.id !== id)
+  state.refreshQueue = state.refreshQueue.filter((item) => item !== id)
   return tab
 }
 
@@ -660,6 +803,7 @@ export function savedTab(saved: ResultTab): QueryTab {
     id: saved.id,
     batch: 0,
     query: saved.query,
+    number: saved.query,
     sql: saved.sql,
     result:
       columns === null
@@ -687,6 +831,7 @@ export function savedTab(saved: ResultTab): QueryTab {
     bytes: result.bytes,
     pinned: saved.pinned,
     name: saved.name === '' ? null : saved.name,
+    previous: null,
   }
 }
 
@@ -694,12 +839,15 @@ export function savedTab(saved: ResultTab): QueryTab {
  * Interface tab of a query of the batch taken back when reattaching to the
  * session. It belongs to the current batch: the next messages complete it.
  * For an unfinished query, its start and the reception of its columns are
- * placed from the elapsed time measured by the server.
+ * placed from the elapsed time measured by the server. A refresh keeps the
+ * state of the tab already shown, until it succeeds.
  *
  * @param query Resumed query.
  * @param batch Number of the current batch.
  * @param now Instant of reception (`performance.now()`).
- * @param existing Tab already shown for this query, whose name and pinning it keeps.
+ * @param existing
+ *     Tab already shown for this query, whose name, pinning and number it
+ *     keeps.
  */
 export function resumedTab(
   query: ResumedQuery,
@@ -717,11 +865,22 @@ export function resumedTab(
     rows: query.rows,
   })
   tab.batch = batch
+  tab.number = existing?.number ?? query.query
   if (!query.result.done) {
     const since = (microseconds: number | null) =>
       microseconds === null ? null : now - microseconds / 1000
     tab.startedAt = since(query.started_us_ago)
     tab.columnsAt = since(query.columns_us_ago)
+  }
+  if (query.refresh && existing) {
+    tab.previous = existing.previous ?? { ...runOf(existing), stopped: false }
+    if (tab.done) {
+      if (tab.error === null) {
+        tab.previous = null
+      } else {
+        endRefresh(tab, tab.error)
+      }
+    }
   }
   return tab
 }
@@ -791,6 +950,7 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
         }
       }
     }
+    startQueuedRefresh()
   }
 
   /**
@@ -814,6 +974,11 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
       clearTimeout(flushTimer)
       flush()
       state.status = 'closed'
+      // The refreshes will not end: the tabs get their result back.
+      state.refreshQueue = []
+      for (const tab of state.tabs) {
+        endRefresh(tab, null)
+      }
     })
   }
 
@@ -869,11 +1034,72 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
 
   /**
    * Stops all the running queries: they end with a "query interrupted"
-   * error, and those waiting for their turn do not start.
+   * error, and those waiting for their turn do not start. A stopped refresh
+   * gives its tab back as it was; the waiting refreshes are cancelled.
    */
   function cancel(): void {
     if (state.status === 'running') {
+      state.refreshQueue = []
+      for (const tab of state.tabs) {
+        if (tab.previous) {
+          tab.previous.stopped = true
+        }
+      }
       send({ type: 'cancel' })
+    }
+  }
+
+  /**
+   * Refreshes a tab: its query runs again, right away if the session is
+   * ready, otherwise at the end of the running batch.
+   *
+   * @param tab Tab to refresh.
+   */
+  function refresh(tab: QueryTab): void {
+    if (refreshState(state, tab) !== 'idle') {
+      return
+    }
+    if (state.status === 'ready') {
+      runRefresh(tab)
+    } else {
+      state.refreshQueue.push(tab.id)
+    }
+  }
+
+  /**
+   * Stops a tab's refresh, or cancels it while it waits: the tab keeps its
+   * result as it was.
+   *
+   * @param tab Refreshed tab.
+   */
+  function stopRefresh(tab: QueryTab): void {
+    state.refreshQueue = state.refreshQueue.filter((id) => id !== tab.id)
+    if (tab.previous && tab.batch === state.batch && state.status === 'running') {
+      tab.previous.stopped = true
+      send({ type: 'cancel_query', query: tab.query })
+    }
+  }
+
+  /**
+   * Sends the refresh of a tab: its query alone, in the tab.
+   *
+   * @param tab Tab to refresh.
+   */
+  function runRefresh(tab: QueryTab): void {
+    startRefresh(state, tab)
+    send({ type: 'run', sql: tab.sql, tab: tab.id })
+  }
+
+  /**
+   * Starts the next waiting refresh, once the session is ready again.
+   */
+  function startQueuedRefresh(): void {
+    while (state.status === 'ready' && state.refreshQueue.length > 0) {
+      const id = state.refreshQueue.shift()
+      const tab = state.tabs.find((item) => item.id === id)
+      if (tab) {
+        runRefresh(tab)
+      }
     }
   }
 
@@ -909,5 +1135,5 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
 
   onScopeDispose(close)
 
-  return { state, run, changeDatabase, cancel, closeTab, close }
+  return { state, run, changeDatabase, cancel, refresh, stopRefresh, closeTab, close }
 }

@@ -4,6 +4,8 @@ import {
   applyMessage,
   executionDuration,
   parseMessage,
+  refreshState,
+  startRefresh,
   formatBytes,
   formatDuration,
   formatInstant,
@@ -17,6 +19,7 @@ import {
   transferDuration,
   utf8Length,
 } from '../querySession'
+import type { ServerMessage } from '../generated/ServerMessage'
 
 /**
  * State of a ready session, on the `xlist` database.
@@ -483,6 +486,7 @@ describe('resume', () => {
             rows: [['1']],
             started_us_ago: 5_000_000,
             columns_us_ago: 3_000_000,
+            refresh: false,
           },
           {
             query: 1,
@@ -492,6 +496,7 @@ describe('resume', () => {
             rows: [],
             started_us_ago: null,
             columns_us_ago: null,
+            refresh: false,
           },
         ],
       },
@@ -509,6 +514,171 @@ describe('resume', () => {
     applyMessage(state, { type: 'rows', query: 0, rows: [['2']] }, 10_100)
     expect(first!.result?.rowCount).toBe(2)
     expect(transferDuration(first!, 10_100)).toBe(3_100)
+  })
+})
+
+/**
+ * Columns message of the query number `query`, executed at `executedAt`.
+ */
+function columns(query: number, executedAt: number): ServerMessage {
+  return {
+    type: 'columns',
+    query,
+    columns: ['x'],
+    right_aligned: [true],
+    types: [],
+    sql: 'SELECT x FROM t',
+    limit: 'added',
+    expected_rows: null,
+    execution_us: 0,
+    executed_at: executedAt,
+  }
+}
+
+/**
+ * Done message of the query number `query`.
+ */
+function done(query: number): ServerMessage {
+  return {
+    type: 'done',
+    query,
+    row_count: 1,
+    truncated: false,
+    affected_rows: 0,
+    elapsed_ms: 1,
+    database: null,
+  }
+}
+
+/**
+ * Ready session with two ended tabs, ids 7 and 8: its second query's tab,
+ * with a row executed at 1000.
+ */
+function stateWithResult() {
+  const state = readyState()
+  startBatch(state)
+  applyMessage(state, {
+    type: 'batch',
+    queries: [
+      { query: 0, tab: 7, sql: 'SELECT 1', start: 0, end: 8 },
+      { query: 1, tab: 8, sql: 'SELECT x FROM t', start: 9, end: 24 },
+    ],
+  })
+  for (const query of [0, 1]) {
+    applyMessage(state, columns(query, 1000))
+    applyMessage(state, { type: 'rows', query, rows: [['old']] })
+    applyMessage(state, done(query))
+  }
+  applyMessage(state, { type: 'batch_done' })
+  return { state, tab: state.tabs[1]! }
+}
+
+describe('refresh', () => {
+  it('runs the query again in its tab, the other tabs and its number kept', () => {
+    const { state, tab } = stateWithResult()
+    expect(refreshState(state, tab)).toBe('idle')
+
+    startRefresh(state, tab)
+    expect(state.status).toBe('running')
+    expect(refreshState(state, tab)).toBe('running')
+    expect(refreshState(state, state.tabs[0]!)).toBe('idle')
+    // The previous result stays until the new columns arrive.
+    expect(tab.result).toBeNull()
+    expect(tab.previous?.result?.rows).toEqual([['old']])
+
+    applyMessage(state, {
+      type: 'batch',
+      queries: [{ query: 0, tab: 8, sql: 'SELECT x FROM t', start: 0, end: 15 }],
+    })
+    expect(state.tabs.map((item) => item.id)).toEqual([7, 8])
+    applyMessage(state, columns(0, 2000))
+    applyMessage(state, { type: 'rows', query: 0, rows: [['new']] })
+    applyMessage(state, done(0))
+    applyMessage(state, { type: 'batch_done' })
+
+    expect(tab.result?.rows).toEqual([['new']])
+    expect(tab.result?.executedAt).toBe(2000)
+    expect([tab.previous, tab.number]).toEqual([null, 1])
+    expect(refreshState(state, tab)).toBe('idle')
+  })
+
+  it('gives the tab back as it was when stopped, with the error when it fails', () => {
+    const { state, tab } = stateWithResult()
+    const before = { ...tab }
+
+    startRefresh(state, tab)
+    applyMessage(state, columns(0, 2000))
+    applyMessage(state, { type: 'rows', query: 0, rows: [['new']] })
+    tab.previous!.stopped = true
+    applyMessage(state, { type: 'error', query: 0, message: 'query interrupted by the user' })
+    expect(tab.result?.rows).toEqual([['old']])
+    expect([tab.error, tab.done, tab.previous]).toEqual([null, true, null])
+    expect({ ...tab, batch: before.batch, query: before.query }).toEqual(before)
+    applyMessage(state, { type: 'batch_done' })
+
+    startRefresh(state, tab)
+    applyMessage(state, { type: 'error', query: 0, message: "Table 't' doesn't exist" })
+    expect(tab.result?.rows).toEqual([['old']])
+    expect([tab.error, tab.previous]).toEqual(["Table 't' doesn't exist", null])
+    applyMessage(state, { type: 'batch_done' })
+    expect(refreshState(state, tab)).toBe('idle')
+  })
+
+  it('waits in the queue during a batch, and is not offered for a running query', () => {
+    const { state, tab } = stateWithResult()
+    state.refreshQueue.push(tab.id)
+    expect(refreshState(state, tab)).toBe('queued')
+    removeTab(state, tab.id)
+    expect(state.refreshQueue).toEqual([])
+
+    startBatch(state)
+    applyMessage(state, {
+      type: 'batch',
+      queries: [{ query: 0, tab: 9, sql: 'SELECT 1', start: 0, end: 8 }],
+    })
+    const running = state.tabs[0]!
+    expect(refreshState(state, running)).toBe('unavailable')
+    applyMessage(state, done(0))
+    expect(refreshState(state, running)).toBe('idle')
+    state.status = 'closed'
+    expect(refreshState(state, running)).toBe('unavailable')
+  })
+
+  it('keeps the previous result of a refresh resumed after a reconnection', () => {
+    const { state, tab } = stateWithResult()
+    const running = {
+      started: true,
+      done: false,
+      error: null,
+      columns: null,
+      row_count: 0,
+      truncated: false,
+      affected_rows: 0,
+      transfer_us: 0,
+      bytes: 0,
+    }
+    applyMessage(state, {
+      type: 'resume',
+      running: true,
+      queries: [
+        {
+          query: 0,
+          tab: 8,
+          sql: 'SELECT x FROM t',
+          result: running,
+          rows: [],
+          started_us_ago: 1000,
+          columns_us_ago: null,
+          refresh: true,
+        },
+      ],
+    })
+    const resumed = state.tabs[1]!
+    expect([resumed.id, resumed.number, resumed.result]).toEqual([8, 1, null])
+    expect(resumed.previous?.result?.rows).toEqual(tab.result?.rows)
+
+    applyMessage(state, { type: 'error', query: 0, message: 'query interrupted by the user' })
+    expect(resumed.result?.rows).toEqual([['old']])
   })
 })
 

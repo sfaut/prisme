@@ -23,6 +23,7 @@
 //! ```text
 //! server → client  {"type": "ready", "server": {"flavor": "mariadb", "version": "11.3.2-MariaDB", "ansi_quotes": false}, "database": "xlist"}
 //! client → server  {"type": "run", "sql": "SELECT 1; SELECT 2", "cursor": 3, "row_limit": 2000}   cursor and row_limit optional
+//! client → server  {"type": "run", "sql": "SELECT 1", "tab": 12}       refreshes the saved result tab 12 with its query
 //! client → server  {"type": "cancel"}                                  stops all the running queries
 //! client → server  {"type": "cancel_query", "query": 2}                stops a single query of the running batch
 //! client → server  {"type": "use", "database": "xlist"}               changes the session's current database

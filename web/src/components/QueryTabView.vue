@@ -10,12 +10,19 @@
   per second (shared clock, `clock.ts`); at the end, they take their final
   value at once. A query without a grid (waiting, failed, or without
   columns) only shows its durations.
+
+  The refresh button, at the left of the bar under the grid, runs the query
+  again; during the refresh, or while it waits for the running batch, it
+  stops it. The previous result stays displayed until the new columns
+  arrive.
 -->
 <script setup lang="ts">
+import { RefreshCw, RefreshCwOff } from 'lucide-vue-next'
 import { computed, ref, watch } from 'vue'
 
 import {
   type QueryTab,
+  type RefreshState,
   executionDuration,
   formatBytes,
   formatDuration,
@@ -26,6 +33,7 @@ import {
 import { useClock } from './clock'
 import ResultGrid from './ResultGrid.vue'
 import UiAlert from './ui/UiAlert.vue'
+import UiButton from './ui/UiButton.vue'
 
 const props = defineProps<{
   /**
@@ -37,15 +45,55 @@ const props = defineProps<{
    * feeds the data explorer.
    */
   displayed: boolean
+  /**
+   * Refresh of the tab: running, waiting, possible or not.
+   */
+  refresh: RefreshState
+}>()
+
+const emit = defineEmits<{
+  /**
+   * The user asks to run the query again.
+   */
+  refresh: []
+  /**
+   * The user stops the refresh, or cancels it while it waits.
+   */
+  'stop-refresh': []
 }>()
 
 const clock = useClock()
 
 /**
+ * Displayed result: that of the query, or, during a refresh, the previous
+ * one until the new columns arrive.
+ */
+const shown = computed(() => props.tab.result ?? props.tab.previous?.result ?? null)
+
+/**
+ * Is a refresh running or waiting? Its button then stops it.
+ */
+const refreshing = computed(() => props.refresh === 'running' || props.refresh === 'queued')
+
+/**
+ * Hover text of the refresh button.
+ */
+const refreshTitle = computed(() => {
+  switch (props.refresh) {
+    case 'running':
+      return 'Arrêter le rafraîchissement : le résultat actuel est gardé'
+    case 'queued':
+      return 'Annuler le rafraîchissement, en attente de la fin des requêtes en cours'
+    default:
+      return 'Rafraîchir : relance la requête'
+  }
+})
+
+/**
  * Number of rows shown under the grid: read on each tick of the clock, and
  * at the end of the query.
  */
-const shownCount = ref(props.tab.result?.rowCount ?? 0)
+const shownCount = ref(shown.value?.rowCount ?? 0)
 
 /**
  * Received volume shown under the grid, in bytes, read like the number of rows.
@@ -53,9 +101,9 @@ const shownCount = ref(props.tab.result?.rowCount ?? 0)
 const shownBytes = ref(props.tab.bytes)
 
 watch(
-  [clock, () => props.tab.done, () => props.tab.result],
+  [clock, () => props.tab.done, shown],
   () => {
-    shownCount.value = props.tab.result?.rowCount ?? 0
+    shownCount.value = shown.value?.rowCount ?? 0
     shownBytes.value = props.tab.bytes
   },
   { immediate: true },
@@ -83,7 +131,7 @@ const durations = computed(() => {
     transfer === null ? null : `transfert ${formatDuration(transfer)}`,
     volume,
     rate,
-    props.tab.result?.executedAt ? formatInstant(props.tab.result.executedAt) : null,
+    shown.value?.executedAt ? formatInstant(shown.value.executedAt) : null,
   ]
     .filter((part) => part !== null)
     .join(' · ')
@@ -99,16 +147,28 @@ const durations = computed(() => {
   <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-gap">
     <ui-alert v-if="tab.error" tone="error" :title="tab.error" />
     <result-grid
-      v-if="tab.result && tab.result.columns.length > 0"
-      :columns="tab.result.columns"
-      :right-aligned="tab.result.rightAligned"
-      :column-types="tab.result.columnTypes"
-      :rows="tab.result.rows"
-      :row-count="tab.result.rowCount"
+      v-if="shown && shown.columns.length > 0"
+      :columns="shown.columns"
+      :right-aligned="shown.rightAligned"
+      :column-types="shown.columnTypes"
+      :rows="shown.rows"
+      :row-count="shown.rowCount"
       :shown-count="shownCount"
       :sql="tab.sql"
       :displayed="displayed"
     >
+      <template #actions>
+        <ui-button
+          :icon="refreshing ? RefreshCwOff : RefreshCw"
+          variant="ghost"
+          :tone="refreshing ? 'accent' : 'neutral'"
+          small
+          :disabled="refresh === 'unavailable'"
+          :aria-label="refreshing ? 'Arrêter le rafraîchissement' : 'Rafraîchir'"
+          :title="refreshTitle"
+          @click="refreshing ? emit('stop-refresh') : emit('refresh')"
+        />
+      </template>
       <template #footer>
         <template v-if="durations">&nbsp;· {{ durations }}</template>
       </template>

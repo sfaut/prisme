@@ -153,7 +153,7 @@ npx wscat -c ws://127.0.0.1:8484/api/connections/1/query
 
 Prisme answers `{"type":"ready",...}` once connected to the target server. Then each line typed is a JSON message:
 
-- `run` runs `sql`, one or more queries. With `cursor` (a position in the text), only the query under the cursor runs. Without it, the queries touched by the passages of `selection` (`start` and `end` positions, `end` excluded) run in parallel; without either, all of them. `row_limit` overrides the default limit for this run.
+- `run` runs `sql`, one or more queries. With `cursor` (a position in the text), only the query under the cursor runs. Without it, the queries touched by the passages of `selection` (`start` and `end` positions, `end` excluded) run in parallel; without either, all of them. `row_limit` overrides the default limit for this run. In the session of an editor, `tab` refreshes a saved result tab: `sql` is its query, run alone, and the tab is kept; only a complete result replaces the saved one.
 - `cancel` stops every running query; `cancel_query` stops one, given its number in the batch.
 
 ```

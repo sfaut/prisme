@@ -149,7 +149,7 @@ impl Session<'_> {
 
     /// Handles a request of the client: splits the text, then runs the query
     /// under the cursor, or in parallel the queries of the selection, or all
-    /// of them.
+    /// of them. A refresh runs its query alone, like a cursor at the start.
     async fn handle(
         &self,
         connection: &mut Connection,
@@ -161,8 +161,9 @@ impl Session<'_> {
             Err(message) => return self.outbox.error(None, message).await,
         };
         let statements = split(&request.sql);
+        let cursor = request.tab.map_or(request.cursor, |_| Some(0));
         let selection = request.selection.as_deref().unwrap_or_default();
-        let chosen = chosen_statements(&statements, request.cursor, selection);
+        let chosen = chosen_statements(&statements, cursor, selection);
         if chosen.is_empty() {
             let message = "no query to run".to_string();
             return self.outbox.error(None, message).await;
@@ -172,7 +173,7 @@ impl Session<'_> {
             .zip(chosen.iter())
             .map(|(query, statement)| BatchQuery {
                 query,
-                tab: 0,
+                tab: request.tab.unwrap_or(0),
                 sql: statement.sql.clone(),
                 start: statement.start,
                 end: statement.end,
@@ -180,7 +181,7 @@ impl Session<'_> {
             .collect();
         self.outbox.send(ServerMessage::Batch { queries }).await?;
 
-        if request.cursor.is_some() {
+        if cursor.is_some() {
             self.run_on_session(connection, dialect, &chosen[0].sql, max_rows)
                 .await?;
         } else {

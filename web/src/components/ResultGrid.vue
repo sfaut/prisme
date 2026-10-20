@@ -6,7 +6,8 @@
     column (targeted filter). The form is collapsed;
     the button of the bottom bar expands it (and collapses it: the user filter
     stays applied, the button shows it).
-  - Bottom bar: user filter button, number of loaded rows ("120 /
+  - Bottom bar: the content of the `actions` slot (refresh of the result),
+    user filter button, number of loaded rows ("120 /
     5 000 lignes" when a user filter is active), then the content of the
     `footer` slot (duration of the query); at the far right, the button that
     opens or closes the data explorer.
@@ -838,6 +839,8 @@ const userFilterColumn = computed({
     </div>
 
     <div class="grid-footer">
+      <!-- Actions of the result (refresh), left of the user filter. -->
+      <slot name="actions" />
       <ui-button
         :icon="ListFilter"
         variant="ghost"

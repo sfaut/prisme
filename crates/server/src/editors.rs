@@ -481,6 +481,17 @@ pub fn start_batch(
     Ok(ids)
 }
 
+/// Does the result tab `tab_id` belong to editor `editor_id`? A refresh only
+/// runs again a tab of its own editor.
+pub fn has_result_tab(db: &Connection, editor_id: i64, tab_id: i64) -> Result<bool, EditorsError> {
+    let found = db.query_row(
+        "SELECT EXISTS (SELECT 1 FROM result_tabs WHERE id = ?1 AND editor_id = ?2)",
+        params![tab_id, editor_id],
+        |row| row.get(0),
+    )?;
+    Ok(found)
+}
+
 /// Saves the state and the rows of a result tab. Without effect if the tab
 /// was deleted in the meantime (closed by the user).
 pub fn save_result(
@@ -748,6 +759,9 @@ mod tests {
         assert!(update_result_tab(&db, user_id, first[0], &pin).unwrap());
 
         let second = start_batch(&db, editor.id, &[(0, "SELECT 3".into())]).unwrap();
+        assert!(has_result_tab(&db, editor.id, second[0]).unwrap());
+        assert!(!has_result_tab(&db, editor.id, second[0] + 1).unwrap());
+        assert!(!has_result_tab(&db, editor.id + 1, second[0]).unwrap());
         let tabs = results_of(&db, user_id, editor.id).unwrap().unwrap();
         assert_eq!(
             tabs.iter().map(|t| t.id).collect::<Vec<_>>(),

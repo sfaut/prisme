@@ -23,4 +23,10 @@ selection?: Array<SelectionRange>,
 /**
  * Row limit for these queries only, among the allowed choices.
  */
-row_limit?: number, };
+row_limit?: number, 
+/**
+ * Saved result tab to refresh: `sql` is then its query, run alone on the
+ * session's connection (`cursor` and `selection` are ignored). The tab
+ * stays, and only a complete result replaces its saved one.
+ */
+tab?: number, };

@@ -14,7 +14,8 @@
   Each query has its result tab (`ResultTab.vue`), with its progress bar. A
   tab can be renamed, pinned (it stays when the query is run again), closed
   (its query is stopped if it is running) or moved by dragging it, like a
-  column of the grid.
+  column of the grid. Its result can be refreshed (button under the grid):
+  the query runs again in the tab, after the running batch if any.
   The row limit chosen here becomes the user's default limit.
   The buttons are above the editor. A horizontal bar, under the editor,
   splits the height between the editor (with its buttons) and the results:
@@ -33,7 +34,7 @@ import { deleteResult, listResults, reorderResults, updateResult } from '@/api/e
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { SelectionRange } from '@/api/generated/SelectionRange'
 import type { TextEnd } from '@/api/generated/TextEnd'
-import { type QueryTab, useQuerySession } from '@/api/querySession'
+import { type QueryTab, refreshState, useQuerySession } from '@/api/querySession'
 import { useCatalogStore } from '@/stores/catalog'
 import { useSettingsStore } from '@/stores/settings'
 
@@ -144,7 +145,7 @@ watch(
  */
 function tabLabel(tab: QueryTab): string {
   const short = tab.sql.replace(/\s+/g, ' ')
-  return `${tab.query + 1} · ${short.length > 40 ? `${short.slice(0, 40)}…` : short}`
+  return `${tab.number + 1} · ${short.length > 40 ? `${short.slice(0, 40)}…` : short}`
 }
 
 /**
@@ -515,7 +516,13 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
         :value="tab.id"
         class="flex min-h-0 flex-1 outline-none"
       >
-        <query-tab-view :tab="tab" :displayed="active && selectedTab === tab.id" />
+        <query-tab-view
+          :tab="tab"
+          :displayed="active && selectedTab === tab.id"
+          :refresh="refreshState(state, tab)"
+          @refresh="session.refresh(tab)"
+          @stop-refresh="session.stopRefresh(tab)"
+        />
       </tabs-content>
     </tabs-root>
   </div>

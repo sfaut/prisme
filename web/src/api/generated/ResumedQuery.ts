@@ -34,4 +34,9 @@ started_us_ago: number | null,
  * Time elapsed since its columns were received, in microseconds; absent
  * before.
  */
-columns_us_ago: number | null, };
+columns_us_ago: number | null, 
+/**
+ * Does the query refresh its tab? The saved result of the tab then
+ * stays until the query ends successfully.
+ */
+refresh: boolean, };

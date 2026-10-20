@@ -196,6 +196,7 @@ Each query gets its own tab:
 | Action | How |
 |---|---|
 | Sort | ⇅ button of a column header: ascending, descending, none |
+| Refresh | Refresh button, at the far left of the bar under the grid: the query runs again in its tab |
 | Filter | Filter button, left of the bar under the grid, on all columns or on one |
 | Move a column | Drag its name |
 | Resize a column | Drag the right edge of its header; double-click the edge to fit the longest value |
@@ -205,6 +206,7 @@ Each query gets its own tab:
 | Copy | Ctrl+C |
 | Explore JSON or XML values | Data explorer button, right of the bar under the grid |
 
+- **Refresh** keeps the tab, its name and its pin, and, while the columns stay the same, the sort and the filter. The current result stays displayed until the new one starts to arrive. While other queries run, the refresh waits for their end. During the refresh, or while it waits, the same button (crossed out) stops it: the result stays as it was. If the query fails, the result stays too, with the error above it.
 - **Copy** is a raw copy: values as they are, separated by tabs, with column names on the first line, ready to paste into a spreadsheet. `NULL` is copied as an empty cell. Control characters are written literally (`\t`, `\n`, `\r`, `\0`, `\b`, `\f`…, or `\xHH`), so each value stays in one cell.
 - **Display**: the header shows each column's type (hover for the full name). Numbers and dates are right-aligned, `CHAR` columns use a monospaced font, web addresses are clickable, `NULL` is shown in small grey capitals.
 - **Data explorer**: a panel on the right of the screen shows the values selected in a column of type `JSON`, or in a text column that holds JSON or XML: a cell, the whole column, or ranges of it. The values are indented with 4 spaces and highlighted; numbers and texts stay exactly as stored. Several values are gathered into one document: a `[…]` array for JSON (`NULL` becomes `null`), a `<data>…</data>` element for XML (`NULL` is left out, `<?xml?>` declarations are removed). Each level folds with the arrows in the margin; the buttons fold or unfold everything, or every node at the depth of the cursor. The line wrap button wraps long lines to the width of the panel; it is off by default and your choice is remembered. The search button finds values with JSONPath or XPath (see [Searching the data explorer](#searching-the-data-explorer)). The copy button, or Ctrl+A then Ctrl+C, copies valid JSON or XML, folded parts included. The panel follows the selection, and the grid of the active editor; drag its left edge to resize it (double-click to reset), the width is remembered.
