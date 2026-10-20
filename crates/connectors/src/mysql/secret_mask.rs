@@ -10,16 +10,18 @@
 //! - `IDENTIFIED WITH plugin BY | AS 'pw'`, `IDENTIFIED VIA plugin USING | AS
 //!   'pw'`, and the next plugins of MariaDB (`OR plugin USING 'pw'`);
 //! - `PASSWORD('pw')`;
-//! - a word ending with `password` followed by the string, with or without
-//!   `=`: `MASTER_PASSWORD = 'pw'`, `SOURCE_PASSWORD = 'pw'`,
-//!   `OPTIONS (PASSWORD 'pw')`, and also a comparison with a column named
-//!   `password` (`WHERE password = 'pw'`);
 //! - `SET PASSWORD [FOR user] = 'pw'`, and `REPLACE 'old'` in a statement
-//!   that sets a password.
+//!   that sets a password;
+//! - replication: `MASTER_PASSWORD = 'pw'`, `SOURCE_PASSWORD = 'pw'` of
+//!   `CHANGE MASTER` / `CHANGE REPLICATION SOURCE`, `PASSWORD = 'pw'` of
+//!   `START REPLICA` / `START SLAVE`;
+//! - servers of `FEDERATED` tables: `OPTIONS (PASSWORD 'pw')` of
+//!   `CREATE SERVER` / `ALTER SERVER`.
 //!
-//! The text stays as written otherwise. A statement without any of the
-//! words `password`, `identified` and `replace` is returned as is, without
-//! being read.
+//! Only these syntaxes of the server itself are masked: the data of the
+//! user's databases stay as written, a column named `password` included.
+//! A statement without any of the words `password`, `identified` and
+//! `replace` is returned as is, without being read.
 
 use std::borrow::Cow;
 
@@ -75,12 +77,10 @@ struct Masker {
     /// Last significant tokens, lowercase, the most recent last; a string
     /// is written `'`.
     recent: Vec<String>,
-    /// Number of significant tokens of the statement.
-    count: usize,
+    /// Two first tokens of the statement, which give its kind.
+    head: Vec<String>,
     /// Has the statement said `IDENTIFIED`?
     identified: bool,
-    /// Does the statement start with `SET PASSWORD`?
-    set_password: bool,
 }
 
 impl Masker {
@@ -91,10 +91,9 @@ impl Masker {
             return;
         }
         self.identified |= token == "identified";
-        if self.count == 1 && token == "password" && self.recent[0] == "set" {
-            self.set_password = true;
+        if self.head.len() < 2 {
+            self.head.push(token.clone());
         }
-        self.count += 1;
         if self.recent.len() == 3 {
             self.recent.remove(0);
         }
@@ -110,20 +109,32 @@ impl Masker {
             .map_or("", |index| self.recent[index].as_str())
     }
 
+    /// Do the first tokens of the statement match `first` then one of
+    /// `seconds` (any one when empty)?
+    fn starts_with(&self, first: &[&str], seconds: &[&str]) -> bool {
+        let token = |index: usize| self.head.get(index).map_or("", String::as_str);
+        first.contains(&token(0)) && (seconds.is_empty() || seconds.contains(&token(1)))
+    }
+
     /// Is a string read now a secret?
     fn is_secret(&self) -> bool {
         let (last, previous, third) = (self.before(0), self.before(1), self.before(2));
-        let password_word = |word: &str| word.ends_with("password");
+        let set_password = self.starts_with(&["set"], &["password"]);
         (self.identified
             && (matches!((previous, last), ("identified", "by"))
                 || matches!((third, previous, last), ("identified", "by", "password"))
                 || (third == "with" && matches!(last, "by" | "as"))
                 || (matches!(third, "via" | "or") && matches!(last, "using" | "as"))))
             || (last == "(" && previous == "password")
-            || password_word(last)
-            || (last == "=" && password_word(previous))
-            || (self.set_password && last == "=")
-            || ((self.identified || self.set_password) && last == "replace")
+            || (set_password && last == "=")
+            || ((self.identified || set_password) && last == "replace")
+            || (self.starts_with(&["change"], &[])
+                && last == "="
+                && matches!(previous, "master_password" | "source_password"))
+            || (self.starts_with(&["start"], &["replica", "slave"])
+                && last == "="
+                && previous == "password")
+            || (self.starts_with(&["create", "alter"], &["server"]) && last == "password")
     }
 }
 
@@ -266,9 +277,26 @@ mod tests {
             "CREATE SERVER s FOREIGN DATA WRAPPER mysql OPTIONS (USER 'r', PASSWORD '***')"
         );
         assert_eq!(
-            mask("SELECT id FROM `users` WHERE `password` = 'pw'"),
-            "SELECT id FROM `users` WHERE `password` = '***'"
+            mask("CHANGE REPLICATION SOURCE TO SOURCE_PASSWORD = 'pw'"),
+            "CHANGE REPLICATION SOURCE TO SOURCE_PASSWORD = '***'"
         );
+        assert_eq!(
+            mask("START REPLICA USER = 'r' PASSWORD = 'pw'"),
+            "START REPLICA USER = 'r' PASSWORD = '***'"
+        );
+    }
+
+    #[test]
+    fn leaves_the_data_of_the_user_as_written() {
+        let kept = [
+            "SELECT id FROM `users` WHERE `password` = 'pw'",
+            "UPDATE accounts SET password = 'pw', master_password = 'x' WHERE id = 1",
+            "INSERT INTO servers (name, password) VALUES ('s', 'pw')",
+            "SELECT password 'alias' FROM accounts",
+        ];
+        for sql in kept {
+            assert_eq!(mask(sql), sql);
+        }
     }
 
     #[test]

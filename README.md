@@ -268,7 +268,7 @@ XPath is the version built into browsers, [XPath 1.0](https://www.w3.org/TR/1999
 
 The console, under the editors, shows what Prisme does besides the results. Drag its top edge to change its height; double-click the edge to restore its default height.
 
-The **Historique** (History) tab lists every query sent to your servers, the oldest at the top: those of your editors, and those Prisme sends itself (opening of a session, object explorer, connection test, interruption). New queries show as they are sent. Passwords are masked (`'***'`): those of `IDENTIFIED BY`, `PASSWORD('…')`, `SET PASSWORD`, `MASTER_PASSWORD`…, and any string compared with a column named `password`; the text of your editors keeps them as typed. Each line gives:
+The **Historique** (History) tab lists every query sent to your servers, the oldest at the top: those of your editors, and those Prisme sends itself (opening of a session, object explorer, connection test, interruption). New queries show as they are sent. Passwords of the server's own syntaxes are masked (`'***'`): `IDENTIFIED BY`, `PASSWORD('…')`, `SET PASSWORD`, `MASTER_PASSWORD`, `OPTIONS (PASSWORD …)` of `CREATE SERVER`…; the data of your databases stay as written, and the text of your editors keeps everything as typed. Each line gives:
 
 | Column | Content |
 |---|---|
