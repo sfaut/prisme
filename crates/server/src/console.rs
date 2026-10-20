@@ -10,14 +10,17 @@
 //! would otherwise feed the log it saves.
 //!
 //! The elements older than the retention set in the profile are purged at
-//! startup, then every hour (`purge_regularly`).
+//! startup, then every hour (`purge_regularly`). The user clears either list
+//! from the console: their own history, or the whole debug log.
 //!
 //! | Route                             | Role                                                    |
 //! |-----------------------------------|---------------------------------------------------------|
 //! | `GET /api/console/history`        | Page of the history: `before` (id), `limit` (500 by default). |
+//! | `DELETE /api/console/history`     | Clears the user's history (204).                        |
 //! | `GET /api/console/debug`          | Page of the debug log, same parameters.                 |
+//! | `DELETE /api/console/debug`       | Clears the debug log (204).                             |
 //! | `POST /api/console/notifications` | Notification shown by the interface, for the debug log (204). |
-//! | `GET /api/console/stream`         | Server-sent events: `history` for each new query, `debug` for each new line, `lagged` when events were missed. |
+//! | `GET /api/console/stream`         | Server-sent events: `history` for each new query, `debug` for each new line, `history-cleared` / `debug-cleared` when a list is cleared, `lagged` when events were missed. |
 
 mod debug;
 mod history;
@@ -88,6 +91,13 @@ pub enum ConsoleEvent {
     },
     /// New line in the debug log, seen by all.
     Line(DebugEntry),
+    /// History of user `user_id` cleared.
+    HistoryCleared {
+        /// Owner of the history.
+        user_id: i64,
+    },
+    /// Debug log cleared, for all.
+    DebugCleared,
 }
 
 impl ConsoleEvent {
@@ -100,6 +110,11 @@ impl ConsoleEvent {
             } if *owner == user_id => Event::default().event("history").json_data(entry).ok(),
             Self::Query { .. } => None,
             Self::Line(entry) => Event::default().event("debug").json_data(entry).ok(),
+            Self::HistoryCleared { user_id: owner } if *owner == user_id => {
+                Some(Event::default().event("history-cleared").data(""))
+            }
+            Self::HistoryCleared { .. } => None,
+            Self::DebugCleared => Some(Event::default().event("debug-cleared").data("")),
         }
     }
 }
@@ -239,8 +254,11 @@ pub async fn purge_regularly(state: AppState) {
 /// Routes of the console, to merge into the API router.
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/api/console/history", get(list_history))
-        .route("/api/console/debug", get(list_debug))
+        .route(
+            "/api/console/history",
+            get(list_history).delete(clear_history),
+        )
+        .route("/api/console/debug", get(list_debug).delete(clear_debug))
         .route("/api/console/notifications", post(notify))
         .route("/api/console/stream", get(stream_events))
 }
@@ -268,6 +286,33 @@ async fn list_history(
         })
         .await?;
     Ok(Json(entries))
+}
+
+/// `DELETE /api/console/history`: clears the user's history (204).
+async fn clear_history(
+    State(state): State<AppState>,
+    user: CurrentUser,
+) -> Result<StatusCode, ApiError> {
+    state
+        .with_db(move |db, _| history::clear(db, user.id).map_err(ConsoleError::from))
+        .await?;
+    // Without a subscriber, the history is only cleared.
+    let _ = state
+        .console
+        .send(ConsoleEvent::HistoryCleared { user_id: user.id });
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// `DELETE /api/console/debug`: clears the debug log (204).
+async fn clear_debug(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+) -> Result<StatusCode, ApiError> {
+    state
+        .with_db(move |db, _| debug::clear(db).map_err(ConsoleError::from))
+        .await?;
+    let _ = state.console.send(ConsoleEvent::DebugCleared);
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// `GET /api/console/debug`: page of the debug log, in chronological order.
@@ -351,6 +396,40 @@ mod tests {
     use crate::store;
 
     #[test]
+    fn clears_the_history_of_a_user_and_the_debug_log() {
+        let db = store::open_in_memory();
+        let ada = store::ensure_user(&db, "a@example.com").unwrap();
+        let bob = store::ensure_user(&db, "b@example.com").unwrap();
+        for user_id in [ada, bob] {
+            db.execute(
+                "INSERT INTO query_history (user_id, started_at, action, sql)
+                 VALUES (?1, '2026-10-20T12:00:00.000Z', 'run', 'SELECT 1')",
+                [user_id],
+            )
+            .unwrap();
+        }
+        debug::insert(
+            &db,
+            &TracedLine::now(DebugLevel::Info, DebugSource::Server, "", "line"),
+        )
+        .unwrap();
+
+        assert_eq!(history::clear(&db, ada).unwrap(), 1);
+        assert!(history::list(&db, ada, None, 10).unwrap().is_empty());
+        assert_eq!(history::list(&db, bob, None, 10).unwrap().len(), 1);
+        assert_eq!(debug::clear(&db).unwrap(), 1);
+        assert!(debug::list(&db, None, 10).unwrap().is_empty());
+    }
+
+    #[test]
+    fn announces_a_cleared_history_to_its_owner_only() {
+        let cleared = ConsoleEvent::HistoryCleared { user_id: 1 };
+        assert!(cleared.to_sse(1).is_some());
+        assert!(cleared.to_sse(2).is_none());
+        assert!(ConsoleEvent::DebugCleared.to_sse(2).is_some());
+    }
+
+    #[test]
     fn purges_the_elements_past_their_retention() {
         let db = store::open_in_memory();
         let user_id = store::ensure_user(&db, "a@example.com").unwrap();
@@ -425,7 +504,7 @@ mod tests {
             .iter()
             .filter_map(|event| match event {
                 ConsoleEvent::Query { entry, .. } => Some(entry),
-                ConsoleEvent::Line(_) => None,
+                _ => None,
             })
             .collect();
         // Out of an action, a query counts as one of the session.

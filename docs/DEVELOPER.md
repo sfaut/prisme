@@ -143,9 +143,11 @@ On error (status 4xx or 5xx), PowerShell raises an exception, and Prisme's messa
 | `GET /api/profile` | Profile: `{"email": "...", "first_name": "", "last_name": "", "read_only_session": true, "history_retention_days": 30, "debug_retention_days": 30}`. | — |
 | `PUT /api/profile` | Changes the names (trimmed, 100 characters at most), the read-only sessions and the retention of the console (1 to 3,650 days), returns the profile. | 400 name too long, retention out of bounds |
 | `GET /api/console/history` | Page of the history of the queries, in chronological order: `?before=` (id of the oldest query already read), `?limit=` (500 by default, 2,000 at most). | — |
+| `DELETE /api/console/history` | Clears the history of the user (204). | — |
 | `GET /api/console/debug` | Page of the debug log (lines of the server's log, notifications of the interface), same parameters as the history. | — |
+| `DELETE /api/console/debug` | Clears the debug log (204). | — |
 | `POST /api/console/notifications` | Adds a notification of the interface to the debug log: `{"level": "info", "message": "..."}` (204). | 400 invalid level |
-| `GET /api/console/stream` | Server-sent events: `history` with each new query, `debug` with each new line of the debug log, `lagged` when events were dropped for a slow client. | — |
+| `GET /api/console/stream` | Server-sent events: `history` with each new query, `debug` with each new line of the debug log, `history-cleared` / `debug-cleared` when a list is cleared, `lagged` when events were dropped for a slow client. | — |
 
 ### Running queries over WebSocket
 

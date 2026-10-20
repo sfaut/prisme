@@ -7,13 +7,14 @@
  * The console is open on its History tab by default; its state is a
  * display preference specific to this machine, kept in the browser's local
  * storage. The interface keeps the last `MAX_ENTRIES` elements of each
- * list; the older ones are read again on request (`loadOlder`).
+ * list; the older ones are read again on request (`loadOlder`). Each list
+ * is cleared on request (`clear`), in every window.
  */
 
 import { defineStore } from 'pinia'
 import { reactive, ref, shallowRef, watch } from 'vue'
 
-import { followConsole, listDebug, listHistory } from '@/api/console'
+import { clearDebug, clearHistory, followConsole, listDebug, listHistory } from '@/api/console'
 import { errorMessage } from '@/api/errorMessage'
 
 import { loadFlag, saveFlag } from './layout'
@@ -85,6 +86,14 @@ export interface PagedList<T> {
    */
   add: (entry: T) => void
   /**
+   * Deletes all the elements on the server, then empties the list.
+   */
+  clear: () => Promise<void>
+  /**
+   * Empties the list, whose elements were deleted on the server.
+   */
+  empty: () => void
+  /**
    * Hides the failure of the last read.
    */
   dismissError: () => void
@@ -94,9 +103,11 @@ export interface PagedList<T> {
  * List of the console read by pages.
  *
  * @param readPage Reads a page: the elements before `before`, `limit` at most.
+ * @param deleteAll Deletes all the elements on the server.
  */
 export function pagedList<T extends { id: number }>(
   readPage: (before: number | undefined, limit: number) => Promise<T[]>,
+  deleteAll: () => Promise<void>,
 ): PagedList<T> {
   const entries = shallowRef<T[]>([])
   const hasOlder = ref(false)
@@ -137,6 +148,21 @@ export function pagedList<T extends { id: number }>(
     entries.value = next
   }
 
+  function empty(): void {
+    entries.value = []
+    hasOlder.value = false
+  }
+
+  async function clear(): Promise<void> {
+    try {
+      await deleteAll()
+      empty()
+      error.value = null
+    } catch (failure) {
+      error.value = errorMessage(failure)
+    }
+  }
+
   function dismissError(): void {
     error.value = null
   }
@@ -148,6 +174,8 @@ export function pagedList<T extends { id: number }>(
     reload,
     loadOlder,
     add,
+    clear,
+    empty,
     dismissError,
   }) as PagedList<T>
 }
@@ -176,12 +204,12 @@ export const useConsoleStore = defineStore('console', () => {
   /**
    * History of the queries.
    */
-  const history = pagedList(listHistory)
+  const history = pagedList(listHistory, clearHistory)
 
   /**
    * Debug log.
    */
-  const debug = pagedList(listDebug)
+  const debug = pagedList(listDebug, clearDebug)
 
   /**
    * Stops following the events, `null` when not following.
@@ -199,6 +227,8 @@ export const useConsoleStore = defineStore('console', () => {
     stop = followConsole({
       onQuery: history.add,
       onLine: debug.add,
+      onHistoryCleared: history.empty,
+      onDebugCleared: debug.empty,
       onGap: () => {
         void history.reload()
         void debug.reload()

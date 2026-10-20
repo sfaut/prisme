@@ -6,10 +6,13 @@ import type { QueryEntry } from '@/api/generated/QueryEntry'
 import { MAX_ENTRIES, useConsoleStore } from '../console'
 
 const listHistory = vi.fn<(before?: number, limit?: number) => Promise<QueryEntry[]>>()
+const clearHistory = vi.fn<() => Promise<void>>()
 
 vi.mock('@/api/console', () => ({
   listHistory: (before?: number, limit?: number) => listHistory(before, limit),
   listDebug: async () => [],
+  clearHistory: () => clearHistory(),
+  clearDebug: async () => {},
   followConsole: () => () => {},
 }))
 
@@ -36,6 +39,7 @@ function entry(id: number): QueryEntry {
 beforeEach(() => {
   setActivePinia(createPinia())
   listHistory.mockReset()
+  clearHistory.mockReset()
 })
 
 describe('console store', () => {
@@ -55,6 +59,20 @@ describe('console store', () => {
     await store.loadOlder()
     expect(listHistory).toHaveBeenCalledWith(10, 500)
     expect(store.entries.map((e) => e.id)).toEqual([8, 9, 10])
+  })
+
+  it('clears the history on the server, then empties it', async () => {
+    const store = useConsoleStore().history
+    store.add(entry(1))
+    clearHistory.mockRejectedValueOnce(new Error('unreachable'))
+    await store.clear()
+    expect(store.entries).toHaveLength(1)
+    expect(store.error).toBe('unreachable')
+    clearHistory.mockResolvedValueOnce()
+    await store.clear()
+    expect(store.entries).toHaveLength(0)
+    expect(store.hasOlder).toBe(false)
+    expect(store.error).toBeNull()
   })
 
   it('keeps the last queries only, and ignores a repeated one', () => {

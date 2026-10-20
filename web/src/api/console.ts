@@ -5,8 +5,9 @@
  * Both are read by pages, from the most recent (`listHistory`, `listDebug`),
  * then followed as they grow through server-sent events (`followConsole`):
  * one `history` event per new query, one `debug` event per new line,
- * `lagged` when the server dropped events for a client too slow, which then
- * reads them again.
+ * `history-cleared` / `debug-cleared` when a list is cleared (`clearHistory`,
+ * `clearDebug`), `lagged` when the server dropped events for a client too
+ * slow, which then reads them again.
  */
 
 import { request } from './http'
@@ -57,6 +58,20 @@ export function listDebug(before?: number, limit?: number): Promise<DebugEntry[]
 }
 
 /**
+ * Clears the user's history.
+ */
+export function clearHistory(): Promise<void> {
+  return request('DELETE', '/api/console/history')
+}
+
+/**
+ * Clears the debug log.
+ */
+export function clearDebug(): Promise<void> {
+  return request('DELETE', '/api/console/debug')
+}
+
+/**
  * Adds a notification of the interface to the debug log. A failure is
  * ignored: the notification is shown anyway, and the request is not one of
  * the user's changes (the synchronisation state does not follow it).
@@ -85,6 +100,14 @@ export interface ConsoleHandlers {
    * New line in the debug log.
    */
   onLine: (entry: DebugEntry) => void
+  /**
+   * History cleared, from this window or another one.
+   */
+  onHistoryCleared: () => void
+  /**
+   * Debug log cleared, from this window or another one.
+   */
+  onDebugCleared: () => void
   /**
    * Events were lost, or the stream reopened after a break: what was
    * received may be incomplete.
@@ -115,6 +138,8 @@ export function followConsole(handlers: ConsoleHandlers): () => void {
   source.addEventListener('debug', (event) => {
     handlers.onLine(JSON.parse((event as MessageEvent<string>).data) as DebugEntry)
   })
+  source.addEventListener('history-cleared', () => handlers.onHistoryCleared())
+  source.addEventListener('debug-cleared', () => handlers.onDebugCleared())
   source.addEventListener('lagged', () => handlers.onGap())
   return () => source.close()
 }

@@ -347,6 +347,12 @@ pub fn list(
     Ok(entries)
 }
 
+/// Deletes the whole history of `user_id`. Returns the number of queries
+/// deleted.
+pub fn clear(db: &Connection, user_id: i64) -> Result<usize, rusqlite::Error> {
+    db.execute("DELETE FROM query_history WHERE user_id = ?1", [user_id])
+}
+
 /// Counter as stored by SQLite, whose integers are signed: saturated at
 /// `i64::MAX`. The columns refuse negative values, read back with
 /// `unsigned_abs`.

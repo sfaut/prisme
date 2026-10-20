@@ -246,6 +246,11 @@ pub fn list(
     Ok(entries)
 }
 
+/// Deletes the whole debug log. Returns the number of lines deleted.
+pub fn clear(db: &Connection) -> Result<usize, rusqlite::Error> {
+    db.execute("DELETE FROM debug_log", [])
+}
+
 /// Reads a row of `debug_log` (columns `COLUMNS`).
 fn entry_of(row: &rusqlite::Row<'_>) -> Result<DebugEntry, rusqlite::Error> {
     Ok(DebugEntry {

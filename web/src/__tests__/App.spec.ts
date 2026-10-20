@@ -20,6 +20,8 @@ vi.mock('@/api/profile', () => ({
 vi.mock('@/api/console', () => ({
   listHistory: async () => [],
   listDebug: async () => [],
+  clearHistory: async () => {},
+  clearDebug: async () => {},
   logNotification: () => {},
   followConsole: () => () => {},
 }))
@@ -90,9 +92,12 @@ describe('App', () => {
     expect(
       fold.element.compareDocumentPosition(historyTab.element) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
+    // The button that clears the tab shown: nothing to clear in an empty list.
+    expect(wrapper.find('[aria-label="Effacer l’historique"]').attributes('disabled')).toBeDefined()
     const debugTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text() === 'Debug')!
     await debugTab.trigger('mousedown', { button: 0 })
     await vi.waitFor(() => expect(wrapper.text()).toContain('Aucun message pour le moment'))
+    expect(wrapper.find('[aria-label="Effacer le debug"]').exists()).toBe(true)
     expect(window.localStorage.getItem('prisme.consoleTab')).toBe('debug')
     await wrapper.find('[aria-label="Replier : Console"]').trigger('click')
     expect(wrapper.text()).not.toContain('Aucune requête envoyée')
