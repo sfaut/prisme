@@ -12,6 +12,10 @@ vi.mock('@/api/version', () => ({
   getVersion: async () => ({ version: '1.2.3' }),
 }))
 
+vi.mock('@/api/profile', () => ({
+  getProfile: async () => ({ email: 'ada@example.com', first_name: 'Ada', last_name: 'Lovelace' }),
+}))
+
 // Empty history, without events.
 vi.mock('@/api/console', () => ({
   listHistory: async () => [],
@@ -86,10 +90,11 @@ describe('App', () => {
     wrapper.unmount()
   })
 
-  it('puts the options button in the top bar, above the explorer', async () => {
+  it('puts the account avatar, with the initials, in the top bar', async () => {
     const wrapper = mount(App)
     const bar = wrapper.find('header')
-    expect(bar.find('[aria-label="Options"]').exists()).toBe(true)
+    await vi.waitFor(() => expect(bar.find('[aria-label="Compte"]').text()).toBe('AL'))
+    expect(bar.find('[aria-label="Compte"]').attributes('title')).toBe('Compte : Ada Lovelace')
     expect(bar.find('[aria-label="Thème"]').exists()).toBe(true)
   })
 })

@@ -1,13 +1,26 @@
 /**
- * Profile of the user: names and email address, read from the server.
+ * Profile of the user: names and email address, read from the server, and
+ * the initials shown in the avatar of the top bar.
  */
 
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import { getProfile, updateProfile } from '@/api/profile'
 import type { Profile } from '@/api/generated/Profile'
 import type { ProfileUpdate } from '@/api/generated/ProfileUpdate'
+
+/**
+ * Initials of a user: those of the first and last names, or, without names,
+ * the first letter of the email address; empty without any of them.
+ *
+ * @param profile Profile of the user.
+ */
+export function initialsOf(profile: Profile): string {
+  const first = (text: string) => Array.from(text.trim())[0] ?? ''
+  const names = `${first(profile.first_name)}${first(profile.last_name)}`
+  return (names === '' ? first(profile.email) : names).toLocaleUpperCase('fr-FR')
+}
 
 export const useProfileStore = defineStore('profile', () => {
   /**
@@ -32,5 +45,22 @@ export const useProfileStore = defineStore('profile', () => {
     profile.value = await updateProfile(update)
   }
 
-  return { profile, load, save }
+  /**
+   * Initials of the user, empty before the first load.
+   */
+  const initials = computed(() => (profile.value === null ? '' : initialsOf(profile.value)))
+
+  /**
+   * Name of the user as shown: first and last names, or the email address.
+   */
+  const displayName = computed(() => {
+    const value = profile.value
+    if (value === null) {
+      return ''
+    }
+    const names = `${value.first_name} ${value.last_name}`.trim()
+    return names === '' ? value.email : names
+  })
+
+  return { profile, initials, displayName, load, save }
 })

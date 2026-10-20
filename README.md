@@ -105,7 +105,7 @@ Options given on the command line replace the saved settings for that launch, wi
 
 The screen has these areas:
 
-- **Top bar**: the name and version of Prisme, the synchronisation state, the theme and the **Options** menu (see [Top bar](#top-bar)).
+- **Top bar**: the name and version of Prisme, the synchronisation state, the theme and your account menu (see [Top bar](#top-bar)).
 - **Left panel**: the object explorer, **Explorateur d’objets** (Object explorer), with your connections and their databases.
 - **Editor tabs**: several SQL editors, each one on its own connection.
 - **SQL cell and results**: the editor, its buttons, and one result tab per query.
@@ -285,9 +285,9 @@ The history is kept in the internal database. The interface shows the last 2,000
 
 - **Synchronisation**: Prisme saves every change as you go. **Synchronisé** (Synced) means everything is saved, **Synchronisation…** (Syncing…) that a save is running, **Échec de la synchronisation** (Sync failed) that the last one was refused.
 - **Theme**: the **Système / Clair / Sombre** (System / Light / Dark) list sets the theme of the whole interface. **Système** follows your computer's setting.
-- **Options** menu (gear icon):
-  - **Paramètres** (Settings): the default row limit, and the language of the interface (French only for now);
-  - **Profil** (Profile): your last and first names, your email address (read-only), and **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check.
+- **Account** menu, the round avatar with your initials (those of your first and last names, or the first letter of your email address):
+  - **Profil** (Profile): your last and first names, your email address (read-only), and **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check;
+  - **Paramètres** (Settings): the default row limit, and the language of the interface (French only for now).
 
 ## Your data
 
