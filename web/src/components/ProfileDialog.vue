@@ -90,6 +90,9 @@ async function save(): Promise<void> {
       <ui-field label="Prénom">
         <ui-input v-model="form.first_name" :maxlength="100" autocomplete="given-name" />
       </ui-field>
+      <ui-field label="E-mail">
+        <span class="truncate text-fg-muted" :title="email">{{ email }}</span>
+      </ui-field>
       <ui-field label="Requêtes">
         <label
           class="flex items-center gap-gap text-ui text-fg-strong"
@@ -98,9 +101,6 @@ async function save(): Promise<void> {
           <input v-model="form.read_only_session" type="checkbox" class="size-icon accent-accent" />
           Sessions en lecture seule
         </label>
-      </ui-field>
-      <ui-field label="E-mail">
-        <span class="truncate text-fg-muted" :title="email">{{ email }}</span>
       </ui-field>
       <ui-alert v-if="error" tone="error" :title="error" />
     </form>
