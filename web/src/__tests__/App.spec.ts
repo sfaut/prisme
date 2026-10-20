@@ -54,7 +54,7 @@ describe('App', () => {
     )
   })
 
-  it('shows the version of the server beneath the name', async () => {
+  it('shows the version of the server next to the name', async () => {
     const wrapper = mount(App)
     await vi.waitFor(() =>
       expect(wrapper.find('header [title="Version de Prisme"]').text()).toBe('v1.2.3'),
