@@ -208,7 +208,7 @@ Each query gets its own tab:
 | Extend / add to the selection | Shift+click / Ctrl+click |
 | Select all / clear | Ctrl+A / Esc |
 | Copy | Ctrl+C |
-| Explore JSON or XML values | Data explorer button, right of the bar under the grid |
+| Explore JSON or XML values | Rail of the data explorer, on the right edge of the window |
 
 - **Refresh** keeps the tab, its name and its pin, and, while the columns stay the same, the sort and the filter. The current result stays displayed until the new one starts to arrive. While other queries run, the refresh waits for their end. During the refresh, or while it waits, the same button (crossed out) stops it: the result stays as it was. If the query fails, the result stays too, with the error above it.
 - **Copy** is a raw copy: values as they are, separated by tabs, with column names on the first line, ready to paste into a spreadsheet. `NULL` is copied as an empty cell. Control characters are written literally (`\t`, `\n`, `\r`, `\0`, `\b`, `\f`…, or `\xHH`), so each value stays in one cell.

@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { mount } from '@vue/test-utils'
+import { nextTick } from 'vue'
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import { useDataExplorerStore } from '@/stores/dataExplorer'
@@ -149,8 +150,8 @@ describe('ResultGrid and the data explorer', () => {
         displayed: true,
       },
     })
-    await wrapper.find('.grid-explorer-toggle').trigger('click')
-    expect(explorer.open).toBe(true)
+    explorer.open = true
+    await nextTick()
     expect(explorer.content).toEqual({ state: 'none' })
     await wrapper.findAll('.grid-column-name')[1]!.trigger('pointerdown')
     expect(explorer.content).toEqual({

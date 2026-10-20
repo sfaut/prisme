@@ -9,8 +9,8 @@
   - Bottom bar: the content of the `actions` slot (refresh of the result),
     user filter button, number of loaded rows ("120 /
     5 000 lignes" when a user filter is active), then the content of the
-    `footer` slot (duration of the query); at the far right, the button that
-    opens or closes the data explorer.
+    `footer` slot (duration of the query). The data explorer opens from its
+    rail, on the right edge of the window.
   - Data explorer: the grid on screen (`displayed`) gives the panel on the
     right the selected values of a JSON or XML column (`dataExplorer`
     store): a column of type `JSON`, or a text column that holds JSON or
@@ -45,14 +45,7 @@
   selection, copy) is in `resultGrid.ts`.
 -->
 <script setup lang="ts">
-import {
-  ExternalLink,
-  ListFilter,
-  PanelRightClose,
-  PanelRightOpen,
-  Search,
-  X,
-} from 'lucide-vue-next'
+import { ExternalLink, ListFilter, Search, X } from 'lucide-vue-next'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import {
   computed,
@@ -854,21 +847,6 @@ const userFilterColumn = computed({
       />
       <!-- The slot follows the number in the same text, without the container's gap. -->
       <span class="grid-count">{{ countLabel }}<slot name="footer" /></span>
-      <ui-button
-        :icon="explorer.open ? PanelRightClose : PanelRightOpen"
-        variant="ghost"
-        :tone="explorer.open ? 'accent' : 'neutral'"
-        small
-        :aria-pressed="explorer.open"
-        :aria-label="explorer.open ? 'Fermer l’explorateur de données' : 'Explorer les données'"
-        :title="
-          explorer.open
-            ? 'Fermer l’explorateur de données'
-            : 'Explorer les données : valeurs JSON ou XML sélectionnées, indentées et repliables'
-        "
-        class="grid-explorer-toggle"
-        @click="explorer.open = !explorer.open"
-      />
     </div>
   </div>
 </template>
@@ -894,10 +872,6 @@ const userFilterColumn = computed({
 
 .grid-user-filter-column {
   max-inline-size: var(--grid-user-filter-column-width);
-}
-
-.grid-explorer-toggle {
-  margin-inline-start: auto;
 }
 
 .grid-footer {
