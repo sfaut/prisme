@@ -71,21 +71,22 @@ const history = useConsoleStore().history
 </template>
 
 <style scoped>
-/* Columns sized to their content, in characters; the message takes the rest. */
+/* Columns sized to their content, in characters, plus the padding of the
+   cells; the message takes the rest. */
 col.index {
-  inline-size: 7ch;
+  inline-size: calc(6ch + 2 * var(--control-padding-x));
 }
 
 col.time {
-  inline-size: 9ch;
+  inline-size: calc(9ch + 2 * var(--control-padding-x));
 }
 
 col.action {
-  inline-size: 16ch;
+  inline-size: calc(18ch + 2 * var(--control-padding-x));
 }
 
 col.duration {
-  inline-size: 13ch;
+  inline-size: calc(13ch + 2 * var(--control-padding-x));
 }
 
 /* Message: the SQL shrinks first, with an ellipsis; the outcome keeps its

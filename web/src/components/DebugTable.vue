@@ -48,20 +48,21 @@ const debug = useConsoleStore().debug
 </template>
 
 <style scoped>
-/* Columns sized to their content, in characters; the message takes the rest. */
+/* Columns sized to their content, in characters, plus the padding of the
+   cells; the message takes the rest. */
 col.index {
-  inline-size: 7ch;
+  inline-size: calc(6ch + 2 * var(--control-padding-x));
 }
 
 col.time {
-  inline-size: 9ch;
+  inline-size: calc(9ch + 2 * var(--control-padding-x));
 }
 
 col.level {
-  inline-size: 14ch;
+  inline-size: calc(14ch + 2 * var(--control-padding-x));
 }
 
 col.source {
-  inline-size: 10ch;
+  inline-size: calc(10ch + 2 * var(--control-padding-x));
 }
 </style>
