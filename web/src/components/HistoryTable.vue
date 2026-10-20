@@ -46,14 +46,14 @@ const history = useConsoleStore().history
         <tr v-for="entry in history.entries" :key="entry.id">
           <td class="end text-fg-dimmed">{{ entry.id }}</td>
           <td :title="dateTimeOf(entry.started_at)">{{ timeOf(entry.started_at) }}</td>
-          <td class="truncate" :title="entry.connection_name">
+          <td :title="entry.connection_name || undefined">
             {{ ACTION_LABELS[entry.action] }}
           </td>
           <td :title="entry.sql">
-            <div class="flex min-w-0 gap-1">
-              <span class="truncate font-mono text-fg-strong">{{ oneLine(entry.sql) }}</span>
+            <div class="message">
+              <span class="sql font-mono text-fg-strong">{{ oneLine(entry.sql) }}</span>
               <span
-                class="shrink-0 truncate"
+                class="outcome"
                 :class="entry.error === '' ? 'text-fg-muted' : 'text-error'"
                 :title="entry.error || undefined"
                 >— {{ outcomeOf(entry) }}</span
@@ -61,7 +61,9 @@ const history = useConsoleStore().history
             </div>
           </td>
           <td class="end">{{ formatMicros(entry.duration_us) }}</td>
-          <td class="end">{{ transferOf(entry) }}</td>
+          <td class="end" :class="{ 'text-fg-dimmed': entry.transfer_us === 0 }">
+            {{ transferOf(entry) }}
+          </td>
         </tr>
       </tbody>
     </table>
@@ -84,5 +86,30 @@ col.action {
 
 col.duration {
   inline-size: 13ch;
+}
+
+/* Message: the SQL shrinks first, with an ellipsis; the outcome keeps its
+   place, up to half of the cell. */
+.message {
+  display: flex;
+  gap: 0.5ch;
+  min-inline-size: 0;
+}
+
+.sql,
+.outcome {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sql {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+}
+
+.outcome {
+  flex: none;
+  max-inline-size: 50%;
 }
 </style>

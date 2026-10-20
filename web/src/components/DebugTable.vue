@@ -37,10 +37,8 @@ const debug = useConsoleStore().debug
           <td class="end text-fg-dimmed">{{ entry.id }}</td>
           <td :title="dateTimeOf(entry.logged_at)">{{ timeOf(entry.logged_at) }}</td>
           <td :class="LEVEL_TONES[entry.level]">{{ LEVEL_LABELS[entry.level] }}</td>
-          <td class="truncate" :title="entry.target || undefined">
-            {{ SOURCE_LABELS[entry.source] }}
-          </td>
-          <td class="truncate font-mono text-fg-strong" :title="entry.message">
+          <td :title="entry.target || undefined">{{ SOURCE_LABELS[entry.source] }}</td>
+          <td class="font-mono text-fg-strong" :title="entry.message">
             {{ entry.message }}
           </td>
         </tr>

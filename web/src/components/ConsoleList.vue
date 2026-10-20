@@ -73,44 +73,51 @@ watch(
   </div>
 </template>
 
-<style scoped>
-:slotted(table.console-table) {
+<!-- Not scoped: the tables come from the tabs, through the slot. -->
+<style>
+.console-table {
   inline-size: 100%;
   table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--font-size-small);
   font-variant-numeric: tabular-nums;
+  color: var(--fg);
 
   & thead {
     position: sticky;
+    z-index: 1;
     inset-block-start: 0;
     background: var(--surface);
+  }
+
+  & th {
+    border-block-end: var(--line-width) solid var(--line);
     color: var(--fg-muted);
+    font-weight: 500;
   }
 
-  & tr {
-    block-size: var(--grid-row-height);
-  }
+  & tbody tr {
+    border-block-end: var(--line-width) solid var(--line-muted);
 
-  & tbody tr:hover {
-    background: var(--surface-muted);
+    &:hover {
+      background: var(--surface-muted);
+    }
   }
 
   & th,
   & td {
+    block-size: var(--grid-row-height);
     padding-block: 0;
-    padding-inline: var(--grid-cell-padding-x);
-    font-weight: normal;
+    padding-inline: var(--control-padding-x);
+    overflow: hidden;
     text-align: start;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
+  /* Numbers, durations: aligned on the right. */
   & .end {
     text-align: end;
-  }
-
-  & thead th {
-    border-block-end: var(--line-width) solid var(--line);
   }
 }
 </style>
