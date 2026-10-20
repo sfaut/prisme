@@ -6,7 +6,14 @@ import { initialsOf } from '../profile'
  * Profile with the names `first_name` and `last_name`.
  */
 function profile(first_name: string, last_name: string, email = 'ada@example.com') {
-  return { email, first_name, last_name, read_only_session: true }
+  return {
+    email,
+    first_name,
+    last_name,
+    read_only_session: true,
+    history_retention_days: 30,
+    debug_retention_days: 30,
+  }
 }
 
 describe('initials of the user', () => {

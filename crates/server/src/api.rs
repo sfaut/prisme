@@ -15,8 +15,8 @@
 //! | `GET /api/connections/{id}/catalog` | Databases, tables and columns (see `explorer.rs`).            |
 //! | `GET /api/settings`                 | Settings of the user, with the allowed choices.               |
 //! | `PUT /api/settings`                 | Changes the settings, returns the updated settings.           |
-//! | `GET /api/profile`                  | Profile of the user: names, email address, read-only sessions. |
-//! | `PUT /api/profile`                  | Changes the names and the read-only sessions, returns the profile. |
+//! | `GET /api/profile`                  | Profile of the user: names, email address, read-only sessions, retention of the console. |
+//! | `PUT /api/profile`                  | Changes the names, the read-only sessions and the retention, returns the profile. |
 //! | `POST /api/beautify`                | Beautifies SQL (keywords in capitals...).                     |
 //! | `POST /api/analyze`                 | Analyses the editor's text (see `analyze.rs`).                |
 //! | `GET /api/dialects/{flavor}/keywords` | Keywords of the dialect (`?version=`: those of the version). |

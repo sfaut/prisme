@@ -9,6 +9,9 @@
 //! (`ConsoleEvent`). It never writes to the log itself: a failure to save
 //! would otherwise feed the log it saves.
 //!
+//! The elements older than the retention set in the profile are purged at
+//! startup, then every hour (`purge_regularly`).
+//!
 //! | Route                             | Role                                                    |
 //! |-----------------------------------|---------------------------------------------------------|
 //! | `GET /api/console/history`        | Page of the history: `before` (id), `limit` (500 by default). |
@@ -23,6 +26,7 @@ pub use debug::{DebugEntry, DebugLevel};
 pub use history::{Action, QueryEntry, action_span, connection_span, sql_span};
 
 use std::convert::Infallible;
+use std::time::Duration;
 
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
@@ -55,6 +59,9 @@ pub const EVENTS_CAPACITY: usize = 1024;
 
 /// Most elements saved in one transaction.
 const BATCH: usize = 500;
+
+/// Interval between two purges of the elements past their retention.
+const PURGE_INTERVAL: Duration = Duration::from_secs(3600);
 
 /// Size of a page of the history, by default and at most.
 const PAGE: u32 = 500;
@@ -190,6 +197,45 @@ fn save(
     Ok(events)
 }
 
+/// Deletes the elements past their retention: the queries of each user
+/// older than their `history_retention_days`, the lines of the debug log
+/// older than the `debug_retention_days` of `local_user_id`. Returns the
+/// number of elements deleted.
+pub fn purge(db: &Connection, local_user_id: i64) -> Result<usize, ConsoleError> {
+    let queries = db.execute(
+        "DELETE FROM query_history
+         WHERE started_at < (
+             SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-' || history_retention_days || ' days')
+             FROM users WHERE users.id = query_history.user_id
+         )",
+        [],
+    )?;
+    let lines = db.execute(
+        "DELETE FROM debug_log
+         WHERE logged_at < (
+             SELECT strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-' || debug_retention_days || ' days')
+             FROM users WHERE id = ?1
+         )",
+        [local_user_id],
+    )?;
+    Ok(queries + lines)
+}
+
+/// Purges the elements past their retention now, then every `PURGE_INTERVAL`.
+pub async fn purge_regularly(state: AppState) {
+    let mut interval = tokio::time::interval(PURGE_INTERVAL);
+    loop {
+        interval.tick().await;
+        let local_user_id = state.local_user_id;
+        match state.with_db(move |db, _| purge(db, local_user_id)).await {
+            Ok(0) | Err(_) => {}
+            Ok(deleted) => {
+                tracing::debug!("console: {deleted} elements past their retention purged")
+            }
+        }
+    }
+}
+
 /// Routes of the console, to merge into the API router.
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -303,6 +349,40 @@ mod tests {
 
     use super::*;
     use crate::store;
+
+    #[test]
+    fn purges_the_elements_past_their_retention() {
+        let db = store::open_in_memory();
+        let user_id = store::ensure_user(&db, "a@example.com").unwrap();
+        db.execute(
+            "UPDATE users SET history_retention_days = 2, debug_retention_days = 5",
+            [],
+        )
+        .unwrap();
+        for (sql, days) in [("old", 3), ("recent", 1)] {
+            db.execute(
+                "INSERT INTO query_history (user_id, started_at, action, sql)
+                 VALUES (?1, strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?2), 'run', ?3)",
+                rusqlite::params![user_id, format!("-{days} days"), sql],
+            )
+            .unwrap();
+            db.execute(
+                "INSERT INTO debug_log (logged_at, level, source, message)
+                 VALUES (strftime('%Y-%m-%dT%H:%M:%fZ', 'now', ?1), 'info', 'server', ?2)",
+                rusqlite::params![format!("-{} days", days * 2), sql],
+            )
+            .unwrap();
+        }
+
+        // History: 3 days > 2, deleted; debug log: 6 days > 5, deleted.
+        assert_eq!(purge(&db, user_id).unwrap(), 2);
+        let history = history::list(&db, user_id, None, 10).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].sql, "recent");
+        let lines = debug::list(&db, None, 10).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].message, "recent");
+    }
 
     #[test]
     fn saves_the_queries_traced_in_their_context() {

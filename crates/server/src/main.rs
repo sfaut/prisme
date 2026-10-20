@@ -5,8 +5,9 @@
 //! console, `console.rs`), announces the version of Prisme, prepares the
 //! data folder (master key and internal database), settles the listening
 //! port and the single user of the workstation mode, asked on first launch
-//! (`setup.rs`), then starts the console's writer and the web server: the
-//! API and the interface (`web_assets.rs`). See `docs/V1.md`, section 2.8.
+//! (`setup.rs`), then starts the console's writer and its purge, and the web
+//! server: the API and the interface (`web_assets.rs`). See `docs/V1.md`,
+//! section 2.8.
 
 mod analyze;
 mod api;
@@ -98,6 +99,7 @@ async fn main() -> anyhow::Result<()> {
 
     let state = api::AppState::new(db, master_key, startup.user_id);
     tokio::spawn(console::write(state.clone(), console_receiver));
+    tokio::spawn(console::purge_regularly(state.clone()));
     let app = api::router(state);
 
     let listener = tokio::net::TcpListener::bind(startup.listen)

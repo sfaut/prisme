@@ -140,8 +140,8 @@ On error (status 4xx or 5xx), PowerShell raises an exception, and Prisme's messa
 | `POST /api/connections/{id}/probe` | Connects, returns `{"flavor": ..., "version": ...}`. | 404 unknown connection, 502 server unreachable or access denied, 504 no answer within 10 s |
 | `GET /api/settings` | Settings: `{"row_limit": 1000, "row_limit_choices": [...]}`. | — |
 | `PUT /api/settings` | Changes the default limit, returns the updated settings. | 400 value not among the choices |
-| `GET /api/profile` | Profile: `{"email": "...", "first_name": "", "last_name": ""}`. | — |
-| `PUT /api/profile` | Changes the names (trimmed, 100 characters at most), returns the profile. | 400 name too long |
+| `GET /api/profile` | Profile: `{"email": "...", "first_name": "", "last_name": "", "read_only_session": true, "history_retention_days": 30, "debug_retention_days": 30}`. | — |
+| `PUT /api/profile` | Changes the names (trimmed, 100 characters at most), the read-only sessions and the retention of the console (1 to 3,650 days), returns the profile. | 400 name too long, retention out of bounds |
 | `GET /api/console/history` | Page of the history of the queries, in chronological order: `?before=` (id of the oldest query already read), `?limit=` (500 by default, 2,000 at most). | — |
 | `GET /api/console/debug` | Page of the debug log (lines of the server's log, notifications of the interface), same parameters as the history. | — |
 | `POST /api/console/notifications` | Adds a notification of the interface to the debug log: `{"level": "info", "message": "..."}` (204). | 400 invalid level |
