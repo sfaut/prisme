@@ -16,8 +16,8 @@
   - Search: a JSONPath (JSON) or XPath (XML) expression, run as it is typed
     on the document shown (`dataSearch.ts`). By default, the results are
     highlighted in the document (`dataMatches.ts`); the funnel button
-    shows only them. In both modes, Enter and Shift+Enter go from one
-    result to the next. While the expression is invalid, the previous
+    shows only them, the current one highlighted. In both modes, Enter and
+    Shift+Enter go from one result to the next. While the expression is invalid, the previous
     results stay.
   - Copy: the text is that of the document shown, without the folding
     marks: Ctrl+A then Ctrl+C, or the copy button, give valid JSON or XML.
@@ -58,7 +58,7 @@ import { useDataExplorerStore } from '@/stores/dataExplorer'
 
 import { dataDocument } from './dataFormat'
 import { cursorLevel, foldableNodes, foldingEffects } from './dataFolding'
-import { matchHighlight, revealEffects, setMatches } from './dataMatches'
+import { type MatchHighlight, matchHighlight, revealEffects, setMatches } from './dataMatches'
 import { type SearchRange, type SearchResult, searchData } from './dataSearch'
 import { editorTheme } from './editorTheme'
 import UiButton from './ui/UiButton.vue'
@@ -225,6 +225,19 @@ const stops = computed<SearchRange[]>(() => {
 })
 
 /**
+ * Results to highlight, with the current one: all of them in selection mode;
+ * in filter mode, where the whole document is results, the current one
+ * alone.
+ *
+ * @param index Index of the current result among the stops.
+ */
+function highlight(index: number): MatchHighlight {
+  return filtering.value
+    ? { matches: stops.value.slice(index, index + 1), current: 0 }
+    : { matches: matches.value, current: index }
+}
+
+/**
  * Number of results, or place of the current one, beside the field.
  */
 const searchStatus = computed(() => {
@@ -278,10 +291,7 @@ function goToMatch(step: 1 | -1): void {
   const range = ranges[current.value]!
   view.dispatch({
     selection: { anchor: range.from },
-    effects: [
-      setMatches.of({ matches: matches.value, current: current.value }),
-      ...revealEffects(view.state, range),
-    ],
+    effects: [setMatches.of(highlight(current.value)), ...revealEffects(view.state, range)],
   })
 }
 
@@ -391,14 +401,15 @@ onBeforeUnmount(() => {
 
 // New document (new values, or the results in filter mode): it replaces the
 // previous one, all unfolded, the cursor at the start. New results: they are
-// highlighted in selection mode, the cursor goes to the first one.
+// highlighted (the current one alone in filter mode), the cursor goes to the
+// first one.
 watch([shown, stops], ([value, ranges], [previous]) => {
   if (!view || value === null) {
     return
   }
   const replaced = value !== previous
   const first = ranges[0]
-  const effects: StateEffect<unknown>[] = [setMatches.of({ matches: matches.value, current: 0 })]
+  const effects: StateEffect<unknown>[] = [setMatches.of(highlight(0))]
   if (replaced) {
     effects.push(language.reconfigure(currentLanguage()))
   }

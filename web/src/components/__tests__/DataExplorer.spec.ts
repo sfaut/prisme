@@ -135,9 +135,10 @@ describe('DataExplorer', () => {
     await wrapper.find('[aria-label="Afficher seulement les résultats"]').trigger('click')
     expect(editorText(wrapper)).toBe('[\n    2,\n    3\n]')
     expect(wrapper.find('.data-explorer-search-status').text()).toBe('1 / 2')
-    expect(highlighted()).toHaveLength(0)
+    expect(highlighted().map((mark) => mark.text())).toEqual(['2'])
     await field.trigger('keydown', { key: 'Enter' })
     expect(wrapper.find('.data-explorer-search-status').text()).toBe('2 / 2')
+    expect(highlighted().map((mark) => mark.text())).toEqual(['3'])
     expect(cursor(wrapper)).toBe(editorText(wrapper).indexOf('3'))
 
     await wrapper.find('[aria-label="Rechercher"]').trigger('click')

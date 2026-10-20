@@ -214,7 +214,7 @@ Each query gets its own tab:
 The search button (magnifying glass) of the data explorer opens a field above the document. Type a JSONPath expression for JSON, an XPath expression for XML: the results follow as you type.
 
 - **Selection mode**, the default: the results are highlighted in the document. Enter and Shift+Enter, or the arrows beside the field, go to the next and previous result, unfolding what hides it. The counter shows the current result and the total.
-- **Filter mode**, with the funnel button: the document shows only the results, and the arrows and the counter go through them. For JSON, an array of the values found. For XML, a `<data>…</data>` element with the nodes found, attributes and texts as text. An XPath expression that computes a number, a string or a boolean (`count(//item)`) shows that value.
+- **Filter mode**, with the funnel button: the document shows only the results, and the arrows and the counter go through them, the current one highlighted. For JSON, an array of the values found. For XML, a `<data>…</data>` element with the nodes found, attributes and texts as text. An XPath expression that computes a number, a string or a boolean (`count(//item)`) shows that value.
 - The search runs on the document shown. With several values, that is the gathered `[…]` array or `<data>` element: `$[*].name`, `/data/client/name`.
 - While the expression is invalid, the error shows under the field and the previous results stay. Esc closes the field.
 - The copy button copies the document shown: in filter mode, the results.
