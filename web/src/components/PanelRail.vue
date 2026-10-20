@@ -2,7 +2,9 @@
   Rail left by a folded panel on its edge of the layout: a narrow bar, along
   the whole edge, with the icon that opens the panel again and its title
   (vertical on a side, horizontal at the bottom). The whole rail is the
-  button.
+  button. Its icon stands where the header of the open panel shows its fold
+  button: a control's height below the panel's padding on a side, after
+  the panel's padding at the bottom.
 -->
 <script setup lang="ts">
 import { PanelBottomOpen, PanelLeftOpen, PanelRightOpen } from 'lucide-vue-next'
@@ -44,7 +46,9 @@ const ICONS = {
     :title="`Déplier : ${title}`"
     @click="emit('expand')"
   >
-    <component :is="ICONS[props.side]" class="size-icon shrink-0" aria-hidden="true" />
+    <span class="panel-rail-icon">
+      <component :is="ICONS[props.side]" class="size-icon" aria-hidden="true" />
+    </span>
     <span class="panel-rail-title">{{ title }}</span>
   </button>
 </template>
@@ -77,6 +81,7 @@ const ICONS = {
   &.end {
     flex-direction: column;
     inline-size: var(--rail-size);
+    padding-block-start: var(--panel-padding);
   }
 
   &.start {
@@ -90,7 +95,26 @@ const ICONS = {
   /* At the bottom: along the whole width, the title on the line. */
   &.bottom {
     block-size: var(--rail-size);
+    padding-inline-start: var(--panel-padding);
     border-block-start: var(--line-width) solid var(--line);
+  }
+}
+
+/* Box of the icon, the size of the header's line (side) or of the small
+   fold button (bottom), the icon at its center. */
+.panel-rail-icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+
+  .start &,
+  .end & {
+    block-size: var(--control-height);
+  }
+
+  .bottom & {
+    inline-size: var(--control-height-sm);
   }
 }
 
