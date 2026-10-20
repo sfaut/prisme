@@ -1,10 +1,11 @@
 //! Prisme's SQL dialects: analysis and rewriting of queries per dialect.
 //!
-//! Relies on `sqlparser` (see `docs/V1.md`, section 3.2). For now: the
-//! default row limit (`limit` module), the read / write classification
-//! (`classify` module), the beautifier (`beautify` module), the keywords of
-//! each dialect (`keywords` module, `keywords/*.yaml` files) and the position
-//! of syntax errors (`syntax` module). The function catalog and the emitters
+//! Relies on `sqlparser` (see `docs/V1.md`, section 3.2), with a MySQL
+//! dialect of its own for the compound time units (`mysql_parser` module).
+//! For now: the default row limit (`limit` module), the read / write
+//! classification (`classify` module), the beautifier (`beautify` module),
+//! the keywords of each dialect (`keywords` module, `keywords/*.yaml` files)
+//! and the position of syntax errors (`syntax` module). The function catalog and the emitters
 //! per dialect will come with the translation.
 
 mod alias;
@@ -15,6 +16,7 @@ mod functions;
 pub mod keywords;
 mod layout;
 pub mod limit;
+mod mysql_parser;
 mod offsets;
 mod parse;
 pub mod syntax;
@@ -33,7 +35,7 @@ impl Dialect {
     /// `sqlparser` dialect used to parse a query of this dialect.
     fn parser_dialect(self) -> Box<dyn sqlparser::dialect::Dialect> {
         match self {
-            Self::MySql | Self::MariaDb => Box::new(sqlparser::dialect::MySqlDialect {}),
+            Self::MySql | Self::MariaDb => Box::new(mysql_parser::MySqlParserDialect::default()),
         }
     }
 }

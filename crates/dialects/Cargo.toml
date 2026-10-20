@@ -7,7 +7,9 @@ license.workspace = true
 [dependencies]
 prisme-splitter = { path = "../splitter" }
 serde = { version = "1.0.229", features = ["derive"] }
-sqlparser = { version = "0.63.0", features = ["visitor"] }
+# Pinned: `src/mysql_parser.rs` delegates the methods `MySqlDialect` overrides
+# in this version. On an upgrade, compare them (see its module comment).
+sqlparser = { version = "=0.63.0", features = ["visitor"] }
 thiserror = "2.0.21"
 yaml_serde = "0.10.7"
 

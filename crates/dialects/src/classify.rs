@@ -149,6 +149,9 @@ mod tests {
             "EXPLAIN SELECT * FROM t",
             "EXPLAIN UPDATE t SET a = 1",
             "USE test",
+            // Compound time units, unknown to `sqlparser` (`mysql_parser` module).
+            "select extract(year_month from operation_date) from accounts.operations",
+            "SELECT DATE_ADD(d, INTERVAL '1 2' DAY_HOUR) FROM t",
         ] {
             assert_eq!(kind(sql), StatementKind::Read, "query: {sql}");
         }

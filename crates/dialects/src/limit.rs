@@ -222,6 +222,14 @@ mod tests {
     }
 
     #[test]
+    fn adds_limit_to_a_query_with_a_compound_time_unit() {
+        assert_eq!(
+            added("SELECT EXTRACT(YEAR_MONTH FROM d) FROM t"),
+            "SELECT EXTRACT(YEAR_MONTH FROM d) FROM t LIMIT 1001"
+        );
+    }
+
+    #[test]
     fn keeps_the_user_text_intact() {
         assert_eq!(
             added("select  a,\n  b -- columns\nfrom t\nwhere x = 'é;' ;"),
