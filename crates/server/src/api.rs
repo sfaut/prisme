@@ -88,6 +88,12 @@ impl AppState {
         }
     }
 
+    /// Internal database, for the console's writer: it must not write to the
+    /// log on failure, as `with_db` does, since it saves the log itself.
+    pub fn database(&self) -> Arc<Mutex<Connection>> {
+        Arc::clone(&self.db)
+    }
+
     /// Runs `task` on the internal database in a blocking task, outside `tokio`'s threads.
     pub async fn with_db<T, E, F>(&self, task: F) -> Result<T, ApiError>
     where

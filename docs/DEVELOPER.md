@@ -143,7 +143,9 @@ On error (status 4xx or 5xx), PowerShell raises an exception, and Prisme's messa
 | `GET /api/profile` | Profile: `{"email": "...", "first_name": "", "last_name": ""}`. | — |
 | `PUT /api/profile` | Changes the names (trimmed, 100 characters at most), returns the profile. | 400 name too long |
 | `GET /api/console/history` | Page of the history of the queries, in chronological order: `?before=` (id of the oldest query already read), `?limit=` (500 by default, 2,000 at most). | — |
-| `GET /api/console/stream` | Server-sent events: `history` with each new query, `lagged` when events were dropped for a slow client. | — |
+| `GET /api/console/debug` | Page of the debug log (lines of the server's log, notifications of the interface), same parameters as the history. | — |
+| `POST /api/console/notifications` | Adds a notification of the interface to the debug log: `{"level": "info", "message": "..."}` (204). | 400 invalid level |
+| `GET /api/console/stream` | Server-sent events: `history` with each new query, `debug` with each new line of the debug log, `lagged` when events were dropped for a slow client. | — |
 
 ### Running queries over WebSocket
 

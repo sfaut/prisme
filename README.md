@@ -110,7 +110,7 @@ The screen has these areas:
 - **Editor tabs**: several SQL editors, each one on its own connection.
 - **SQL cell and results**: the editor, its buttons, and one result tab per query.
 - **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).
-- **Console**, under the editors: the history of the queries sent to the servers (see [Console](#console)).
+- **Console**, under the editors: the history of the queries sent to the servers, and the debug log (see [Console](#console)).
 
 The side panels go from the top bar to the bottom of the window. The button at the right of a panel's title folds it towards its edge, where it leaves a narrow rail with its name; a click on the rail opens it again. The object explorer and the console are open by default, the data explorer closed; your choice for the object explorer and the console is remembered.
 
@@ -279,7 +279,9 @@ The **Historique** (History) tab lists every query sent to your servers, the old
 | **Durée** (Duration) | Execution time, until the result, or until the columns for a result read row by row |
 | **Transmission** | Transfer time of the rows of a result read row by row; "—" when not measured |
 
-The history is kept in the internal database. The interface shows the last 2,000 queries; **Afficher les requêtes précédentes** (Show the previous queries) reads the older ones.
+The **Debug** tab lists the messages of Prisme: those its terminal shows (the same level, see [Command-line options](#command-line-options)), and the notifications of the interface, such as **Sélection copiée** (Selection copied). Each line gives its number, time, level (**Erreur**, **Avertissement**, **Info**, **Debug**, **Trace**), source (**Serveur** or **Interface**; the module of the server shows in its tooltip) and message.
+
+Both tabs are kept in the internal database. The interface shows their last 2,000 lines; **Afficher les éléments précédents** (Show the previous elements) reads the older ones.
 
 ### Top bar
 
@@ -300,7 +302,7 @@ Prisme keeps its data in a folder of your user account:
 
 It holds two files that go together:
 
-- **`prisme.db`**: the internal database (settings, connections, editors, results, history of the queries).
+- **`prisme.db`**: the internal database (settings, connections, editors, results, history of the queries, debug log).
 - **`prisme.key`**: the master key, created on first launch. It encrypts the passwords of your connections.
 
 - **Back up** both files. Without the key, saved passwords cannot be read and must be typed again; everything else is kept.

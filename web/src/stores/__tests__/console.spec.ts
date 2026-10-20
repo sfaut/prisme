@@ -9,6 +9,7 @@ const listHistory = vi.fn<(before?: number, limit?: number) => Promise<QueryEntr
 
 vi.mock('@/api/console', () => ({
   listHistory: (before?: number, limit?: number) => listHistory(before, limit),
+  listDebug: async () => [],
   followConsole: () => () => {},
 }))
 
@@ -39,7 +40,7 @@ beforeEach(() => {
 
 describe('console store', () => {
   it('reads the history, keeping the queries received meanwhile', async () => {
-    const store = useConsoleStore()
+    const store = useConsoleStore().history
     store.add(entry(3))
     listHistory.mockResolvedValueOnce([entry(1), entry(2)])
     await store.reload()
@@ -48,7 +49,7 @@ describe('console store', () => {
   })
 
   it('reads the older queries before the first one shown', async () => {
-    const store = useConsoleStore()
+    const store = useConsoleStore().history
     store.add(entry(10))
     listHistory.mockResolvedValueOnce([entry(8), entry(9)])
     await store.loadOlder()
@@ -57,7 +58,7 @@ describe('console store', () => {
   })
 
   it('keeps the last queries only, and ignores a repeated one', () => {
-    const store = useConsoleStore()
+    const store = useConsoleStore().history
     for (let id = 1; id <= MAX_ENTRIES + 2; id++) {
       store.add(entry(id))
     }

@@ -1,11 +1,14 @@
 /**
  * Transient messages ("Sélection copiée"...), shown at the bottom right by
- * `UiToaster.vue` then removed after a few seconds.
+ * `UiToaster.vue` then removed after a few seconds. Each one also goes to
+ * the debug log of the console.
  *
  * Any module adds one with `notify`, without a component to mount.
  */
 
 import { ref } from 'vue'
+
+import { logNotification } from '@/api/console'
 
 /**
  * A transient message.
@@ -43,6 +46,7 @@ let nextId = 1
  */
 export function notify(title: string, tone: Toast['tone'] = 'success'): void {
   toasts.value = [...toasts.value, { id: nextId++, title, tone }]
+  logNotification({ level: tone === 'error' ? 'error' : 'info', message: title })
 }
 
 /**

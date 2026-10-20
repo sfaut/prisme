@@ -1,11 +1,14 @@
 /**
- * Formats of the console's history: name of the actions, time, durations
- * and the message of a query, its SQL followed by its outcome
- * (« SELECT * FROM video — 120 lignes »).
+ * Formats of the console: for the history, name of the actions, time,
+ * durations and the message of a query, its SQL followed by its outcome
+ * (« SELECT * FROM video — 120 lignes »); for the debug log, name and tone
+ * of the levels and name of the sources.
  */
 
 import { formatDuration, formatInstant } from '@/api/querySession'
 import type { Action } from '@/api/generated/Action'
+import type { DebugLevel } from '@/api/generated/DebugLevel'
+import type { DebugSource } from '@/api/generated/DebugSource'
 import type { QueryEntry } from '@/api/generated/QueryEntry'
 
 /**
@@ -20,6 +23,36 @@ export const ACTION_LABELS: Record<Action, string> = {
   cancel: 'Interruption',
   explorer: 'Explorateur',
   probe: 'Test de connexion',
+}
+
+/**
+ * Name of each level of the debug log.
+ */
+export const LEVEL_LABELS: Record<DebugLevel, string> = {
+  error: 'Erreur',
+  warn: 'Avertissement',
+  info: 'Info',
+  debug: 'Debug',
+  trace: 'Trace',
+}
+
+/**
+ * Color class of each level: failures and warnings stand out.
+ */
+export const LEVEL_TONES: Record<DebugLevel, string> = {
+  error: 'text-error',
+  warn: 'text-warning',
+  info: 'text-fg',
+  debug: 'text-fg-muted',
+  trace: 'text-fg-dimmed',
+}
+
+/**
+ * Name of each source of the debug log.
+ */
+export const SOURCE_LABELS: Record<DebugSource, string> = {
+  server: 'Serveur',
+  interface: 'Interface',
 }
 
 /**

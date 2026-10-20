@@ -19,6 +19,8 @@ vi.mock('@/api/profile', () => ({
 // Empty history, without events.
 vi.mock('@/api/console', () => ({
   listHistory: async () => [],
+  listDebug: async () => [],
+  logNotification: () => {},
   followConsole: () => () => {},
 }))
 
@@ -82,11 +84,15 @@ describe('App', () => {
     window.localStorage.clear()
     const wrapper = mount(App)
     await vi.waitFor(() => expect(wrapper.text()).toContain('Aucune requête envoyée'))
+    const debugTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text() === 'Debug')!
+    await debugTab.trigger('mousedown', { button: 0 })
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Aucun message pour le moment'))
+    expect(window.localStorage.getItem('prisme.consoleTab')).toBe('debug')
     await wrapper.find('[aria-label="Replier : Console"]').trigger('click')
     expect(wrapper.text()).not.toContain('Aucune requête envoyée')
     expect(window.localStorage.getItem('prisme.consoleOpen')).toBe('false')
     await wrapper.find('[aria-label="Déplier : Console"]').trigger('click')
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Aucune requête envoyée'))
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Aucun message pour le moment'))
     wrapper.unmount()
   })
 

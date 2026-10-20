@@ -2,20 +2,31 @@
   Console, at the bottom of the main area, between the side panels: what
   Prisme does besides the results, in tabs. The History tab lists all the
   queries sent to the target servers, by the editors and by Prisme itself
-  (`HistoryTable.vue`). The console folds towards the bottom edge, where it
-  leaves a rail (`PanelRail.vue`); its height is set by dragging its top
-  edge (`PanelResizer.vue`, in `App.vue`).
+  (`HistoryTable.vue`); the Debug tab, the lines of the server's log and the
+  notifications of the interface (`DebugTable.vue`). The console folds
+  towards the bottom edge, where it leaves a rail (`PanelRail.vue`); its
+  height is set by dragging its top edge (`PanelResizer.vue`, in
+  `App.vue`).
 -->
 <script setup lang="ts">
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { onMounted, onUnmounted } from 'vue'
 
-import { useConsoleStore } from '@/stores/console'
+import { type ConsoleTab, useConsoleStore } from '@/stores/console'
 
+import DebugTable from './DebugTable.vue'
 import HistoryTable from './HistoryTable.vue'
 import PanelHeader from './PanelHeader.vue'
 
 const store = useConsoleStore()
+
+/**
+ * Tabs of the console.
+ */
+const TABS: { value: ConsoleTab; label: string }[] = [
+  { value: 'history', label: 'Historique' },
+  { value: 'debug', label: 'Debug' },
+]
 
 onMounted(() => store.start())
 onUnmounted(() => store.dispose())
@@ -26,15 +37,20 @@ onUnmounted(() => store.dispose())
     <panel-header title="Console" side="bottom" @collapse="store.open = false">
       <tabs-list class="flex items-center gap-1" aria-label="Console">
         <tabs-trigger
-          value="history"
+          v-for="tab in TABS"
+          :key="tab.value"
+          :value="tab.value"
           class="flex h-control-sm items-center rounded-control px-control-x text-ui font-medium text-fg-muted outline-none select-none hover:text-fg-strong focus-visible:bg-surface-muted data-[state=active]:bg-surface-elevated data-[state=active]:text-fg-strong"
         >
-          Historique
+          {{ tab.label }}
         </tabs-trigger>
       </tabs-list>
     </panel-header>
     <tabs-content value="history" class="flex min-h-0 flex-1 flex-col outline-none">
       <history-table />
+    </tabs-content>
+    <tabs-content value="debug" class="flex min-h-0 flex-1 flex-col outline-none">
+      <debug-table />
     </tabs-content>
   </tabs-root>
 </template>

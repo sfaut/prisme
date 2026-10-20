@@ -1,26 +1,33 @@
 //! Console of the interface: the history of the queries sent to the target
-//! servers (`history.rs`), kept in the internal database and streamed to the
-//! interface as it grows.
+//! servers (`history.rs`) and the debug log (`debug.rs`), kept in the
+//! internal database and streamed to the interface as they grow.
 //!
-//! `tracing` gathers what the console shows: a layer (`layer`), added to the
-//! log at startup, hands each traced element to the console's writer
-//! through a channel. The writer (`write`) saves the elements by batches,
-//! then announces them to the subscribed interfaces (`ConsoleEvent`).
+//! `tracing` gathers what the console shows: two layers (`layer`,
+//! `debug_layer`), added to the log at startup, hand each traced element to
+//! the console's writer through a channel. The writer (`write`) saves the
+//! elements by batches, then announces them to the subscribed interfaces
+//! (`ConsoleEvent`). It never writes to the log itself: a failure to save
+//! would otherwise feed the log it saves.
 //!
-//! | Route                          | Role                                                       |
-//! |--------------------------------|------------------------------------------------------------|
-//! | `GET /api/console/history`     | Page of the history: `before` (id), `limit` (500 by default). |
-//! | `GET /api/console/stream`      | Server-sent events: `history` for each new query, `lagged` when events were missed. |
+//! | Route                             | Role                                                    |
+//! |-----------------------------------|---------------------------------------------------------|
+//! | `GET /api/console/history`        | Page of the history: `before` (id), `limit` (500 by default). |
+//! | `GET /api/console/debug`          | Page of the debug log, same parameters.                 |
+//! | `POST /api/console/notifications` | Notification shown by the interface, for the debug log (204). |
+//! | `GET /api/console/stream`         | Server-sent events: `history` for each new query, `debug` for each new line, `lagged` when events were missed. |
 
+mod debug;
 mod history;
 
+pub use debug::{DebugEntry, DebugLevel};
 pub use history::{Action, QueryEntry, action_span, connection_span, sql_span};
 
 use std::convert::Infallible;
 
 use axum::extract::{Query, State};
+use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use futures_util::Stream;
 use futures_util::stream;
@@ -30,13 +37,16 @@ use serde::Deserialize;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 use tracing::{Level, Subscriber};
+use tracing_subscriber::EnvFilter;
 use tracing_subscriber::Layer;
 use tracing_subscriber::filter::Targets;
 use tracing_subscriber::registry::LookupSpan;
+use ts_rs::TS;
 
 use crate::api::AppState;
 use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
+use debug::{DebugLayer, DebugSource, TracedLine};
 use history::{HistoryLayer, TracedQuery};
 
 /// Number of console events kept for the slowest subscriber: beyond, it
@@ -55,6 +65,8 @@ const MAX_PAGE: u32 = 2000;
 pub enum Traced {
     /// Query sent to a target server.
     Query(TracedQuery),
+    /// Line of the debug log.
+    Line(TracedLine),
 }
 
 /// Element saved, announced to the interfaces.
@@ -67,10 +79,12 @@ pub enum ConsoleEvent {
         /// The query.
         entry: QueryEntry,
     },
+    /// New line in the debug log, seen by all.
+    Line(DebugEntry),
 }
 
 impl ConsoleEvent {
-    /// Server-sent event for user `user_id`, `None` if the element is not hers.
+    /// Server-sent event for user `user_id`, `None` if the element is not theirs.
     fn to_sse(&self, user_id: i64) -> Option<Event> {
         match self {
             Self::Query {
@@ -78,6 +92,7 @@ impl ConsoleEvent {
                 entry,
             } if *owner == user_id => Event::default().event("history").json_data(entry).ok(),
             Self::Query { .. } => None,
+            Self::Line(entry) => Event::default().event("debug").json_data(entry).ok(),
         }
     }
 }
@@ -115,6 +130,15 @@ where
     HistoryLayer { sender }.with_filter(Targets::new().with_target(TARGET, Level::TRACE))
 }
 
+/// Layer of the log that feeds the debug log: the lines that `filter` lets
+/// through, that of the terminal.
+pub fn debug_layer<S>(sender: mpsc::UnboundedSender<Traced>, filter: EnvFilter) -> impl Layer<S>
+where
+    S: Subscriber + for<'lookup> LookupSpan<'lookup>,
+{
+    DebugLayer { sender }.with_filter(filter)
+}
+
 /// Saves the traced elements, by batches, then announces them to the
 /// interfaces. Runs until the channel closes. A failure loses the batch,
 /// without stopping the writer.
@@ -127,9 +151,14 @@ pub async fn write(state: AppState, mut receiver: mpsc::UnboundedReceiver<Traced
             batch.push(next);
         }
         let local_user_id = state.local_user_id;
-        let saved = state
-            .with_db(move |db, _| save(db, local_user_id, &batch))
-            .await;
+        let db = state.database();
+        let saved = tokio::task::spawn_blocking(move || {
+            let db = db.lock().ok()?;
+            save(&db, local_user_id, &batch).ok()
+        })
+        .await
+        .ok()
+        .flatten();
         for event in saved.unwrap_or_default() {
             // Without a subscriber, the element is only saved.
             let _ = state.console.send(event);
@@ -152,6 +181,9 @@ fn save(
                 user_id: query.user_id.unwrap_or(local_user_id),
                 entry: history::insert(&transaction, local_user_id, query)?,
             }),
+            Traced::Line(line) => {
+                events.push(ConsoleEvent::Line(debug::insert(&transaction, line)?));
+            }
         }
     }
     transaction.commit()?;
@@ -162,6 +194,8 @@ fn save(
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/console/history", get(list_history))
+        .route("/api/console/debug", get(list_debug))
+        .route("/api/console/notifications", post(notify))
         .route("/api/console/stream", get(stream_events))
 }
 
@@ -188,6 +222,50 @@ async fn list_history(
         })
         .await?;
     Ok(Json(entries))
+}
+
+/// `GET /api/console/debug`: page of the debug log, in chronological order.
+async fn list_debug(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    Query(page): Query<Page>,
+) -> Result<Json<Vec<DebugEntry>>, ApiError> {
+    let limit = page.limit.unwrap_or(PAGE).min(MAX_PAGE);
+    let entries = state
+        .with_db(move |db, _| debug::list(db, page.before, limit).map_err(ConsoleError::from))
+        .await?;
+    Ok(Json(entries))
+}
+
+/// Notification shown by the interface.
+#[derive(Debug, Deserialize, TS)]
+#[ts(export)]
+pub struct Notification {
+    /// Level: `error` for a failure, `info` otherwise.
+    pub level: DebugLevel,
+    /// Text of the notification, cut beyond 2,000 characters.
+    pub message: String,
+}
+
+/// `POST /api/console/notifications`: adds a notification of the interface
+/// to the debug log (204).
+async fn notify(
+    State(state): State<AppState>,
+    _user: CurrentUser,
+    Json(notification): Json<Notification>,
+) -> Result<StatusCode, ApiError> {
+    let line = TracedLine::now(
+        notification.level,
+        DebugSource::Interface,
+        "",
+        &notification.message,
+    );
+    let entry = state
+        .with_db(move |db, _| debug::insert(db, &line).map_err(ConsoleError::from))
+        .await?;
+    // Without a subscriber, the line is only saved.
+    let _ = state.console.send(ConsoleEvent::Line(entry));
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// `GET /api/console/stream`: server-sent events, one per element saved for
@@ -232,7 +310,9 @@ mod tests {
         let local = store::ensure_user(&db, "a@example.com").unwrap();
         let owner = store::ensure_user(&db, "b@example.com").unwrap();
         let (sender, mut receiver) = channel();
-        let subscriber = tracing_subscriber::registry().with(layer(sender));
+        let subscriber = tracing_subscriber::registry()
+            .with(layer(sender.clone()))
+            .with(debug_layer(sender, EnvFilter::new("info")));
         tracing::subscriber::with_default(subscriber, || {
             let _connection = connection_span(owner, "Local").entered();
             sql_log::record(&Sent {
@@ -249,19 +329,24 @@ mod tests {
                 error: Some("lost"),
                 ..Sent::default()
             });
-            // Out of the target of the history: ignored.
-            tracing::info!("listening");
+            // Out of the target of the history: in the debug log only, with its fields.
+            tracing::info!(port = 8484, "listening");
+            // Under the level of the debug log: ignored.
+            tracing::debug!("detail");
         });
 
         let mut batch = Vec::new();
         while let Ok(traced) = receiver.try_recv() {
             batch.push(traced);
         }
-        assert_eq!(batch.len(), 2);
+        assert_eq!(batch.len(), 3);
         let events = save(&db, local, &batch).unwrap();
         let entries: Vec<&QueryEntry> = events
             .iter()
-            .map(|ConsoleEvent::Query { entry, .. }| entry)
+            .filter_map(|event| match event {
+                ConsoleEvent::Query { entry, .. } => Some(entry),
+                ConsoleEvent::Line(_) => None,
+            })
             .collect();
         // Out of an action, a query counts as one of the session.
         assert_eq!(entries[0].action, Action::Session);
@@ -276,5 +361,9 @@ mod tests {
         // The user of the span owns the queries, not the local user.
         assert!(matches!(events[0], ConsoleEvent::Query { user_id, .. } if user_id == owner));
         assert_eq!(history::list(&db, owner, None, 10).unwrap().len(), 2);
+        let lines = debug::list(&db, None, 10).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].message, "listening port=8484");
+        assert_eq!(lines[0].level, DebugLevel::Info);
     }
 }

@@ -46,15 +46,16 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::parse();
 
     // Log level adjustable through the RUST_LOG variable (e.g. RUST_LOG=debug);
-    // --verbose adds the log of the API to it. The console's layer has its own
-    // filter: it receives the queries whatever the level of the log.
-    let mut filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    if config.verbose {
-        filter = filter.add_directive(api_log::directive());
-    }
+    // --verbose adds the log of the API to it. The debug log of the console
+    // receives the same lines as the terminal; the history of the queries has
+    // its own filter: it receives the queries whatever the level of the log.
     let (console_sender, console_receiver) = console::channel();
     tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer().with_filter(filter))
+        .with(tracing_subscriber::fmt::layer().with_filter(log_filter(&config)))
+        .with(console::debug_layer(
+            console_sender.clone(),
+            log_filter(&config),
+        ))
         .with(console::layer(console_sender))
         .init();
 
@@ -106,4 +107,15 @@ async fn main() -> anyhow::Result<()> {
     axum::serve(listener, app).await?;
 
     Ok(())
+}
+
+/// Filter of the log: `RUST_LOG`, `info` by default, plus the log of the API
+/// under `--verbose`.
+fn log_filter(config: &Config) -> EnvFilter {
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    if config.verbose {
+        filter.add_directive(api_log::directive())
+    } else {
+        filter
+    }
 }
