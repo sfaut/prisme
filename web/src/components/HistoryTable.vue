@@ -1,7 +1,8 @@
 <!--
   History tab of the console: one line per query sent to a target server,
   with its number, its time, the action that sent it, its message (its SQL,
-  then its outcome), its execution time and the transfer time of its rows.
+  then its failure if any), its number of rows, its execution time and the
+  transfer time of its rows.
   Scrolling and older pages: `ConsoleList.vue`.
 -->
 <script setup lang="ts">
@@ -13,7 +14,9 @@ import {
   dateTimeOf,
   formatMicros,
   oneLine,
-  outcomeOf,
+  failureOf,
+  rowsOf,
+  rowsTitleOf,
   timeOf,
   transferOf,
 } from './consoleFormat'
@@ -29,6 +32,7 @@ const history = useConsoleStore().history
         <col class="time" />
         <col class="action" />
         <col />
+        <col class="rows" />
         <col class="duration" />
         <col class="duration" />
       </colgroup>
@@ -38,6 +42,7 @@ const history = useConsoleStore().history
           <th>Heure</th>
           <th>Action</th>
           <th>Message</th>
+          <th class="end">Lignes</th>
           <th class="end">Durée</th>
           <th class="end" title="Délai de transmission des lignes">Transmission</th>
         </tr>
@@ -52,13 +57,17 @@ const history = useConsoleStore().history
           <td :title="entry.sql">
             <div class="message">
               <span class="sql font-mono text-fg-strong">{{ oneLine(entry.sql) }}</span>
-              <span
-                class="outcome"
-                :class="entry.error === '' ? 'text-fg-muted' : 'text-error'"
-                :title="entry.error || undefined"
-                >— {{ outcomeOf(entry) }}</span
-              >
+              <span v-if="entry.error" class="outcome text-error" :title="entry.error">{{
+                failureOf(entry)
+              }}</span>
             </div>
+          </td>
+          <td
+            class="end"
+            :class="{ 'text-fg-dimmed': rowsOf(entry) === '—' }"
+            :title="rowsTitleOf(entry)"
+          >
+            {{ rowsOf(entry) }}
           </td>
           <td class="end">{{ formatMicros(entry.duration_us) }}</td>
           <td class="end" :class="{ 'text-fg-dimmed': entry.transfer_us === 0 }">
@@ -85,11 +94,15 @@ col.action {
   inline-size: calc(18ch + 2 * var(--control-padding-x));
 }
 
+col.rows {
+  inline-size: calc(9ch + 2 * var(--control-padding-x));
+}
+
 col.duration {
   inline-size: calc(13ch + 2 * var(--control-padding-x));
 }
 
-/* Message: the SQL shrinks first, with an ellipsis; the outcome keeps its
+/* Message: the SQL shrinks first, with an ellipsis; the failure keeps its
    place, up to half of the cell. */
 .message {
   display: flex;

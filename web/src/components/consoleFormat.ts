@@ -1,8 +1,8 @@
 /**
  * Formats of the console: for the history, name of the actions, time,
- * durations and the message of a query, its SQL followed by its outcome
- * (« SELECT * FROM video — 120 lignes »); for the debug log, name and tone
- * of the levels and name of the sources.
+ * durations, number of rows and the message of a query, its SQL followed by
+ * its failure if any (« SELECT * FROM t — erreur : … »); for the debug log,
+ * name and tone of the levels and name of the sources.
  */
 
 import { formatDuration, formatInstant } from '@/api/querySession'
@@ -101,41 +101,44 @@ export function oneLine(sql: string): string {
 }
 
 /**
- * Number of rows, in French: "1 ligne", "1 200 lignes".
- *
- * @param count Number of rows.
- * @param qualifier Word after "ligne", agreed in number ("modifiée").
- */
-function rows(count: number, qualifier = ''): string {
-  const plural = count > 1 ? 's' : ''
-  const word = qualifier === '' ? '' : ` ${qualifier}${plural}`
-  return `${count.toLocaleString('fr-FR')} ligne${plural}${word}`
-}
-
-/**
- * Outcome of a query: its failure, its number of rows read or changed, or
- * "OK".
+ * Number of rows of a query: those read, followed by "+" when the result
+ * was truncated, or those changed by a write; "—" without either.
  *
  * @param entry Query of the history.
  */
-export function outcomeOf(entry: QueryEntry): string {
-  if (entry.error !== '') {
-    return `erreur : ${entry.error}`
-  }
+export function rowsOf(entry: QueryEntry): string {
   if (entry.returns_rows) {
-    return `${rows(entry.row_count)}${entry.truncated ? ' (résultat tronqué)' : ''}`
+    return `${entry.row_count.toLocaleString('fr-FR')}${entry.truncated ? '+' : ''}`
   }
-  if (entry.affected_rows > 0) {
-    return rows(entry.affected_rows, 'modifiée')
-  }
-  return 'OK'
+  return entry.affected_rows > 0 ? entry.affected_rows.toLocaleString('fr-FR') : '—'
 }
 
 /**
- * Message of a query: its SQL on a single line, then its outcome.
+ * Tooltip of the number of rows: what it counts.
+ *
+ * @param entry Query of the history.
+ */
+export function rowsTitleOf(entry: QueryEntry): string | undefined {
+  if (entry.returns_rows) {
+    return entry.truncated ? 'Lignes lues, résultat tronqué' : 'Lignes lues'
+  }
+  return entry.affected_rows > 0 ? 'Lignes modifiées' : undefined
+}
+
+/**
+ * Failure of a query, after its SQL in the message; empty on success.
+ *
+ * @param entry Query of the history.
+ */
+export function failureOf(entry: QueryEntry): string {
+  return entry.error === '' ? '' : `— erreur : ${entry.error}`
+}
+
+/**
+ * Message of a query: its SQL on a single line, then its failure if any.
  *
  * @param entry Query of the history.
  */
 export function messageOf(entry: QueryEntry): string {
-  return `${oneLine(entry.sql)} — ${outcomeOf(entry)}`
+  return `${oneLine(entry.sql)} ${failureOf(entry)}`.trim()
 }

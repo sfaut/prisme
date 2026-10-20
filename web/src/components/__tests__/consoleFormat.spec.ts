@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { QueryEntry } from '@/api/generated/QueryEntry'
 
-import { messageOf, outcomeOf, transferOf } from '../consoleFormat'
+import { messageOf, rowsOf, rowsTitleOf, transferOf } from '../consoleFormat'
 
 /**
  * Query of the history, with `changes` over a successful SELECT.
@@ -26,15 +26,20 @@ function entry(changes: Partial<QueryEntry> = {}): QueryEntry {
 }
 
 describe('console formats', () => {
-  it('writes the SQL on one line, then the outcome', () => {
-    expect(messageOf(entry())).toBe('SELECT * FROM video — 120 lignes')
-    expect(outcomeOf(entry({ row_count: 1 }))).toBe('1 ligne')
-    expect(outcomeOf(entry({ row_count: 1200, truncated: true }))).toBe(
-      '1 200 lignes (résultat tronqué)',
+  it('writes the SQL on one line, then the failure if any', () => {
+    expect(messageOf(entry())).toBe('SELECT * FROM video')
+    expect(messageOf(entry({ error: 'Unknown table' }))).toBe(
+      'SELECT * FROM video — erreur : Unknown table',
     )
-    expect(outcomeOf(entry({ returns_rows: false, affected_rows: 3 }))).toBe('3 lignes modifiées')
-    expect(outcomeOf(entry({ returns_rows: false }))).toBe('OK')
-    expect(outcomeOf(entry({ error: 'Unknown table' }))).toBe('erreur : Unknown table')
+  })
+
+  it('counts the rows read or changed', () => {
+    expect(rowsOf(entry())).toBe('120')
+    expect(rowsOf(entry({ row_count: 1000, truncated: true }))).toBe('1 000+')
+    expect(rowsTitleOf(entry({ truncated: true }))).toBe('Lignes lues, résultat tronqué')
+    expect(rowsOf(entry({ returns_rows: false, affected_rows: 3 }))).toBe('3')
+    expect(rowsTitleOf(entry({ returns_rows: false, affected_rows: 3 }))).toBe('Lignes modifiées')
+    expect(rowsOf(entry({ returns_rows: false }))).toBe('—')
   })
 
   it('shows a dash for a transfer not measured', () => {
