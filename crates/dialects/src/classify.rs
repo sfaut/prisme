@@ -5,12 +5,15 @@
 //! `SELECT ... INTO` are writes, even though they start like a read. An allow
 //! list decides what a read is: everything else is a write.
 //!
+//! Also tells whether a query can change the current database of the
+//! session (`changes_database`): the session reads it again only then.
+//!
 //! The queries run when a connection opens (`SET NAMES`,
 //! `SET SESSION sql_mode`...) are checked separately
 //! (`session_setting_refusal`): only settings of the session itself are
 //! allowed.
 
-use sqlparser::ast::{ContextModifier, Set, Statement};
+use sqlparser::ast::{ContextModifier, ObjectType, Set, Statement};
 use sqlparser::parser::Parser;
 
 use crate::Dialect;
@@ -37,6 +40,25 @@ pub fn classify(sql: &str, dialect: Dialect) -> StatementKind {
     } else {
         StatementKind::Write
     }
+}
+
+/// Can the text `sql` change the current database of the session? `USE`,
+/// `DROP DATABASE` / `DROP SCHEMA` (the current database may disappear), and
+/// a text Prisme cannot parse, whose effect is unknown.
+pub fn changes_database(sql: &str, dialect: Dialect) -> bool {
+    let Ok(statements) = Parser::parse_sql(dialect.parser_dialect().as_ref(), sql) else {
+        return true;
+    };
+    statements.iter().any(|statement| {
+        matches!(
+            statement,
+            Statement::Use(_)
+                | Statement::Drop {
+                    object_type: ObjectType::Database | ObjectType::Schema,
+                    ..
+                }
+        )
+    })
 }
 
 /// Refusal of a query to run when a connection opens, `None` if it is
@@ -129,6 +151,18 @@ mod tests {
         assert!(refused("DELETE FROM t"));
         assert!(refused("SELECT 1"));
         assert!(refused("SET whatever you like"));
+    }
+
+    #[test]
+    fn tells_the_queries_that_can_change_the_current_database() {
+        let changes = |sql| changes_database(sql, Dialect::MySql);
+        assert!(changes("USE sakila"));
+        assert!(changes("DROP DATABASE sakila"));
+        assert!(changes("DROP SCHEMA IF EXISTS sakila"));
+        assert!(changes("SELECT 1 FROM"));
+        assert!(!changes("SELECT DATABASE()"));
+        assert!(!changes("SHOW TABLES"));
+        assert!(!changes("DROP TABLE t"));
     }
 
     fn kind(sql: &str) -> StatementKind {

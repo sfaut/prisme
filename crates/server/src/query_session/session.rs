@@ -1,8 +1,12 @@
 //! Session on a target server: opens the connection, then runs the client's
 //! requests (queries, database changes) until the session stops. The queries
 //! themselves run in `execution.rs`, and their row limit is set in `limits.rs`.
+//!
+//! The session remembers its current database: it reads it from the server
+//! (`SELECT DATABASE()`) when it opens, and again only after a query that can
+//! change it (`USE`...).
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use prisme_connectors::mysql::{self, Connection, MysqlTarget};
 use prisme_dialects::Dialect;
@@ -29,12 +33,14 @@ pub(super) async fn serve(
     target: MysqlTarget,
     cancellation: Arc<Cancellation>,
 ) {
+    let database = Mutex::new(None);
     let session = Session {
         outbox: &outbox,
         target: &target,
         state: &state,
         user_id,
         cancellation: &cancellation,
+        database: &database,
         batch: 0,
     };
     let opening = console::action_span(Action::Session);
@@ -100,6 +106,8 @@ pub(super) struct Session<'a> {
     pub(super) user_id: i64,
     /// Stopping of the running queries, requested by the client.
     pub(super) cancellation: &'a Cancellation,
+    /// Current database of the session's connection, as last read.
+    pub(super) database: &'a Mutex<Option<String>>,
 }
 
 /// Summary of a result read to the end.
@@ -111,6 +119,20 @@ pub(super) struct Summary {
 }
 
 impl Session<'_> {
+    /// Current database of the session's connection, as last read.
+    pub(super) fn current_database(&self) -> Option<String> {
+        self.database
+            .lock()
+            .map_or(None, |database| database.clone())
+    }
+
+    /// Remembers the current database, just read from the server.
+    pub(super) fn remember_database(&self, database: &Option<String>) {
+        if let Ok(mut current) = self.database.lock() {
+            current.clone_from(database);
+        }
+    }
+
     /// Opens the session's connection; on failure, the error goes to the client.
     async fn open(&self) -> Option<Connection> {
         match mysql::connect(self.target).await {
@@ -139,6 +161,7 @@ impl Session<'_> {
                 return Err(SessionStopped);
             }
         };
+        self.remember_database(&database);
         let dialect = crate::analyze::dialect_of(info.flavor);
         self.outbox
             .send(ServerMessage::Ready {
@@ -162,7 +185,10 @@ impl Session<'_> {
             Err(error) => Err(error),
         };
         match changed {
-            Ok(database) => self.outbox.send(ServerMessage::Database { database }).await,
+            Ok(database) => {
+                self.remember_database(&database);
+                self.outbox.send(ServerMessage::Database { database }).await
+            }
             Err(error) => self.outbox.error(None, error.to_string()).await,
         }
     }
@@ -205,10 +231,7 @@ impl Session<'_> {
             self.run_on_session(connection, dialect, &chosen[0].sql, max_rows)
                 .await?;
         } else {
-            let database = match mysql::current_database(connection).await {
-                Ok(database) => database,
-                Err(error) => return self.outbox.error(None, error.to_string()).await,
-            };
+            let database = self.current_database();
             self.run_in_parallel(&chosen, dialect, max_rows, &database)
                 .await?;
         }

@@ -1,14 +1,16 @@
 //! Execution of the queries of a session: one query on the session's
 //! connection, or the queries of a batch in parallel, each on its own
-//! connection, with their rows streamed to the client: a short first batch,
-//! shown without waiting for a full one, then full batches.
+//! connection, opened on the session's current database, with their rows
+//! streamed to the client: a short first batch, shown without waiting for a
+//! full one, then full batches.
 
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use futures_util::future::join_all;
 use prisme_connectors::mysql::sql_log::{self, Sent};
-use prisme_connectors::mysql::{self, Cell, Connection};
+use prisme_connectors::mysql::{self, Cell, Connection, MysqlTarget};
 use prisme_dialects::Dialect;
+use prisme_dialects::classify::changes_database;
 use prisme_dialects::limit::{LimitOutcome, apply_default_limit, written_limit};
 use prisme_splitter::{Statement, statement_at, statements_in};
 use tokio::sync::Semaphore;
@@ -34,7 +36,8 @@ const MAX_PARALLEL: usize = 8;
 const CANCELLED: &str = "query interrupted by the user";
 
 impl Session<'_> {
-    /// Runs a query on the session's connection.
+    /// Runs a query on the session's connection. The current database is read
+    /// again only if the query can change it.
     pub(super) async fn run_on_session(
         &self,
         connection: &mut Connection,
@@ -51,9 +54,16 @@ impl Session<'_> {
         else {
             return Ok(());
         };
-        let database = match mysql::current_database(connection).await {
-            Ok(database) => database,
-            Err(error) => return self.outbox.error(Some(0), error.to_string()).await,
+        let database = if changes_database(sql, dialect) {
+            match mysql::current_database(connection).await {
+                Ok(database) => {
+                    self.remember_database(&database);
+                    database
+                }
+                Err(error) => return self.outbox.error(Some(0), error.to_string()).await,
+            }
+        } else {
+            self.current_database()
         };
         self.done(0, summary, database).await
     }
@@ -103,7 +113,8 @@ impl Session<'_> {
             .await
     }
 
-    /// Runs a query on a new connection, placed on the database `database`.
+    /// Runs a query on a new connection, opened on the database `database`
+    /// (none when absent), without a `USE` of its own.
     pub(super) async fn run_on_new_connection(
         &self,
         dialect: Dialect,
@@ -112,39 +123,24 @@ impl Session<'_> {
         max_rows: usize,
         database: &Option<String>,
     ) -> Result<(), SessionStopped> {
-        let mut connection = match mysql::connect(self.target).await {
+        let target = MysqlTarget {
+            database_name: database.clone().unwrap_or_default(),
+            ..self.target.clone()
+        };
+        let mut connection = match mysql::connect(&target).await {
             Ok(connection) => connection,
             Err(error) => return self.outbox.error(Some(query), error.to_string()).await,
         };
-        let result = self
-            .run_on_connection(&mut connection, dialect, query, sql, max_rows, database)
-            .await;
+        let result = match self
+            .run_query(&mut connection, dialect, query, sql, max_rows)
+            .await
+        {
+            Ok(Some(summary)) => self.done(query, summary, database.clone()).await,
+            Ok(None) => Ok(()),
+            Err(stopped) => Err(stopped),
+        };
         let _ = connection.disconnect().await;
         result
-    }
-
-    /// Places the connection on the database `database`, then runs the query on it.
-    pub(super) async fn run_on_connection(
-        &self,
-        connection: &mut Connection,
-        dialect: Dialect,
-        query: u32,
-        sql: &str,
-        max_rows: usize,
-        database: &Option<String>,
-    ) -> Result<(), SessionStopped> {
-        if let Some(name) = database
-            && let Err(error) = mysql::use_database(connection, name).await
-        {
-            return self.outbox.error(Some(query), error.to_string()).await;
-        }
-        match self
-            .run_query(connection, dialect, query, sql, max_rows)
-            .await?
-        {
-            Some(summary) => self.done(query, summary, database.clone()).await,
-            None => Ok(()),
-        }
     }
 
     /// Runs a query and streams its columns and its rows, then traces it for
