@@ -8,9 +8,14 @@
 //! queries, server identity, current database, `USE`, `KILL QUERY` and the
 //! catalog; a result read in streaming (`execute`) is traced by its reader,
 //! which alone knows its transfer time and its end (`record`).
+//!
+//! The secrets of a statement (passwords of `CREATE USER`, `SET PASSWORD`...)
+//! are masked before it is traced (`secret_mask.rs`).
 
 use std::future::Future;
 use std::time::{Duration, Instant};
+
+use super::secret_mask::masked;
 
 /// Target of the trace events, and of the spans that give their context.
 pub const TARGET: &str = "prisme_sql";
@@ -36,11 +41,11 @@ pub struct Sent<'a> {
     pub error: Option<&'a str>,
 }
 
-/// Traces a statement sent to a server.
+/// Traces a statement sent to a server, its secrets masked.
 pub fn record(sent: &Sent<'_>) {
     tracing::debug!(
         target: TARGET,
-        sql = sent.sql,
+        sql = masked(sent.sql).as_ref(),
         duration_us = micros(sent.duration),
         transfer_us = micros(sent.transfer),
         returns_rows = sent.rows.is_some(),

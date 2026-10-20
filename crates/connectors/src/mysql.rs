@@ -26,6 +26,7 @@ pub use mysql_async::Conn as Connection;
 pub mod catalog;
 mod column_type;
 mod connect_error;
+mod secret_mask;
 pub mod sql_log;
 
 pub use column_type::{ColumnTypeInfo, TypeFamily};
