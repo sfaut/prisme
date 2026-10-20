@@ -7,10 +7,14 @@
  * withdraws it when it leaves the screen (`release`). The panel is closed
  * when the application starts; while it is closed, the grids publish
  * nothing.
+ *
+ * Wrapping of long lines (`wrap`) is a display preference specific to this
+ * machine, kept in the browser's local storage: off by default, and when
+ * storage is unavailable.
  */
 
 import { defineStore } from 'pinia'
-import { ref, shallowRef } from 'vue'
+import { ref, shallowRef, watch } from 'vue'
 
 import type { DataCell } from '@/components/dataFormat'
 
@@ -52,11 +56,46 @@ export function sameContent(a: ExplorerContent, b: ExplorerContent): boolean {
   return a.state === b.state && a.state !== 'values' && a.state !== 'scalar'
 }
 
+/**
+ * Key of the wrapping preference in local storage.
+ */
+const WRAP_KEY = 'prisme.dataExplorerWrap'
+
+/**
+ * Remembered wrapping, off if none is readable.
+ */
+function loadWrap(): boolean {
+  try {
+    return window.localStorage.getItem(WRAP_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Remembers the wrapping; no effect if storage is unavailable.
+ *
+ * @param wrap Are long lines wrapped?
+ */
+function saveWrap(wrap: boolean): void {
+  try {
+    window.localStorage.setItem(WRAP_KEY, String(wrap))
+  } catch {
+    // Display preference only: losing it harms nothing.
+  }
+}
+
 export const useDataExplorerStore = defineStore('dataExplorer', () => {
   /**
    * Is the panel open?
    */
   const open = ref(false)
+
+  /**
+   * Are long lines wrapped to the width of the panel?
+   */
+  const wrap = ref(loadWrap())
+  watch(wrap, saveWrap)
 
   /**
    * Content published by the grid on screen.
@@ -94,5 +133,5 @@ export const useDataExplorerStore = defineStore('dataExplorer', () => {
     }
   }
 
-  return { open, content, show, release }
+  return { open, wrap, content, show, release }
 })

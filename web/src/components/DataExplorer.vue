@@ -11,6 +11,8 @@
   - Reading: indented with four spaces, highlighted, everything unfolded at
     first. Each node folds by its arrow in the gutter; the buttons fold or
     unfold everything, or the level of the cursor (`dataFolding.ts`).
+  - Long lines: wrapped to the width of the panel or scrolled sideways, by a
+    button; the choice is remembered (`dataExplorer` store), off by default.
   - Copy: the text is that of the document, without the folding marks:
     Ctrl+A then Ctrl+C, or the copy button, give valid JSON or XML.
   - The panel follows the selection of the grid on screen, and the grid of
@@ -28,6 +30,7 @@ import {
   Copy,
   FoldVertical,
   PanelRightClose,
+  TextWrap,
   UnfoldVertical,
 } from 'lucide-vue-next'
 import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
@@ -53,6 +56,18 @@ let view: EditorView | null = null
  * Language of the editor, changed with the format of the values.
  */
 const language = new Compartment()
+
+/**
+ * Wrapping of long lines, changed with the preference of the store.
+ */
+const wrapping = new Compartment()
+
+/**
+ * Wrapping extension for the preference of the store.
+ */
+function currentWrapping() {
+  return explorer.wrap ? EditorView.lineWrapping : []
+}
 
 /**
  * Document of the selected values, `null` without values to show.
@@ -166,7 +181,7 @@ onMounted(() => {
       basicSetup,
       EditorState.readOnly.of(true),
       EditorState.tabSize.of(4),
-      EditorView.lineWrapping,
+      wrapping.of(currentWrapping()),
       editorTheme(),
       language.of(currentLanguage()),
       EditorView.updateListener.of((update) => {
@@ -197,6 +212,11 @@ watch(text, (value) => {
     scrollIntoView: true,
   })
 })
+
+watch(
+  () => explorer.wrap,
+  () => view?.dispatch({ effects: wrapping.reconfigure(currentWrapping()) }),
+)
 </script>
 
 <template>
@@ -244,6 +264,17 @@ watch(text, (value) => {
           title="Déplier le niveau du curseur : tous les nœuds de même profondeur"
           :disabled="text === null || !levelFoldable"
           @click="applyFolding(false, 'cursor')"
+        />
+        <ui-button
+          :icon="TextWrap"
+          variant="ghost"
+          :tone="explorer.wrap ? 'accent' : 'neutral'"
+          small
+          :aria-pressed="explorer.wrap"
+          aria-label="Retour à la ligne"
+          title="Retour à la ligne : coupe les lignes longues à la largeur du panneau"
+          :disabled="text === null"
+          @click="explorer.wrap = !explorer.wrap"
         />
         <ui-button
           :icon="Copy"

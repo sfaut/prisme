@@ -8,7 +8,10 @@ import { useDataExplorerStore } from '@/stores/dataExplorer'
 
 import DataExplorer from '../DataExplorer.vue'
 
-beforeEach(() => setActivePinia(createPinia()))
+beforeEach(() => {
+  localStorage.clear()
+  setActivePinia(createPinia())
+})
 
 /**
  * Mounts the explorer, open.
@@ -70,6 +73,28 @@ describe('DataExplorer', () => {
     await wrapper.vm.$nextTick()
     expect(editorText(wrapper)).toBe('<a>\n    <b/>\n</a>')
     wrapper.unmount()
+  })
+
+  it('wraps long lines on demand, off by default, and remembers the choice', async () => {
+    const { explorer, wrapper } = mountExplorer()
+    explorer.show(Symbol('grid'), {
+      state: 'values',
+      column: 'doc',
+      kind: 'json',
+      cells: [{ row: 1, value: '{"a":1}' }],
+    })
+    await wrapper.vm.$nextTick()
+    const editor = wrapper.find('.cm-content')
+    const button = wrapper.find('[aria-label="Retour à la ligne"]')
+    expect(editor.classes()).not.toContain('cm-lineWrapping')
+    expect(button.attributes('aria-pressed')).toBe('false')
+    await button.trigger('click')
+    expect(editor.classes()).toContain('cm-lineWrapping')
+    expect(button.attributes('aria-pressed')).toBe('true')
+    expect(localStorage.getItem('prisme.dataExplorerWrap')).toBe('true')
+    wrapper.unmount()
+    setActivePinia(createPinia())
+    expect(useDataExplorerStore().wrap).toBe(true)
   })
 
   it('closes with its button', async () => {
