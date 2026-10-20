@@ -13,8 +13,13 @@
     unfold everything, or the level of the cursor (`dataFolding.ts`).
   - Long lines: wrapped to the width of the panel or scrolled sideways, by a
     button; the choice is remembered (`dataExplorer` store), off by default.
-  - Copy: the text is that of the document, without the folding marks:
-    Ctrl+A then Ctrl+C, or the copy button, give valid JSON or XML.
+  - Search: a JSONPath (JSON) or XPath (XML) expression, run as it is typed
+    on the document shown (`dataSearch.ts`). By default, the results are
+    highlighted in the document (`dataMatches.ts`), from one to the next
+    with Enter and Shift+Enter; the funnel button shows only them. While
+    the expression is invalid, the previous results stay.
+  - Copy: the text is that of the document shown, without the folding
+    marks: Ctrl+A then Ctrl+C, or the copy button, give valid JSON or XML.
   - The panel follows the selection of the grid on screen, and the grid of
     the active editor when another editor becomes active.
 -->
@@ -22,30 +27,48 @@
 import { json } from '@codemirror/lang-json'
 import { xml } from '@codemirror/lang-xml'
 import { unfoldAll } from '@codemirror/language'
-import { Compartment, EditorState } from '@codemirror/state'
+import { Compartment, EditorState, type StateEffect } from '@codemirror/state'
 import { EditorView, basicSetup } from 'codemirror'
 import {
+  ChevronDown,
+  ChevronUp,
   ChevronsDownUp,
   ChevronsUpDown,
   Copy,
   FoldVertical,
+  Funnel,
   PanelRightClose,
+  Search,
   TextWrap,
   UnfoldVertical,
 } from 'lucide-vue-next'
-import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  useTemplateRef,
+  watch,
+} from 'vue'
 
 import { useDataExplorerStore } from '@/stores/dataExplorer'
 
 import { dataDocument } from './dataFormat'
 import { cursorLevel, foldableNodes, foldingEffects } from './dataFolding'
+import { matchHighlight, revealEffects, setMatches } from './dataMatches'
+import { type SearchRange, type SearchResult, searchData } from './dataSearch'
 import { editorTheme } from './editorTheme'
 import UiButton from './ui/UiButton.vue'
+import UiInput from './ui/UiInput.vue'
 import { notify } from './ui/toasts'
 
 const explorer = useDataExplorerStore()
 
 const host = useTemplateRef<HTMLDivElement>('host')
+
+const searchBar = useTemplateRef<HTMLDivElement>('searchBar')
 
 /**
  * Editor that shows the document, created when mounting.
@@ -114,6 +137,159 @@ const subtitle = computed(() => {
 })
 
 /**
+ * Is the search field shown?
+ */
+const searchOpen = ref(false)
+
+/**
+ * Expression typed in the search field.
+ */
+const expression = ref('')
+
+/**
+ * Filter mode: only the results are shown. Otherwise (selection mode), they
+ * are highlighted in the document.
+ */
+const filtering = ref(false)
+
+/**
+ * Index of the current result among the highlighted ones.
+ */
+const current = ref(0)
+
+/**
+ * Format of the shown values, `null` without values.
+ */
+const kind = computed(() => (explorer.content.state === 'values' ? explorer.content.kind : null))
+
+/**
+ * Result of the expression as typed, on the document.
+ */
+const search = computed<SearchResult>(() =>
+  searchOpen.value && text.value !== null && kind.value !== null
+    ? searchData(kind.value, text.value, expression.value)
+    : { state: 'empty' },
+)
+
+/**
+ * Last result without error: while an expression is being typed, the
+ * previous results stay. Emptied when the document changes.
+ */
+const found = shallowRef<SearchResult>({ state: 'empty' })
+
+watch([search, text], ([next, value], [, previous]) => {
+  if (next.state !== 'error') {
+    found.value = next
+  } else if (value !== previous) {
+    found.value = { state: 'empty' }
+  }
+})
+
+/**
+ * Error of the expression typed, empty if none.
+ */
+const searchError = computed(() => (search.value.state === 'error' ? search.value.message : ''))
+
+/**
+ * Text of the editor: the document, or only the results in filter mode;
+ * `null` when a message replaces it.
+ */
+const shown = computed(() => {
+  const result = found.value
+  if (text.value === null) {
+    return null
+  }
+  return filtering.value && (result.state === 'nodes' || result.state === 'value')
+    ? result.text
+    : text.value
+})
+
+/**
+ * Results highlighted in the document, in selection mode.
+ */
+const matches = computed<SearchRange[]>(() =>
+  !filtering.value && found.value.state === 'nodes' ? found.value.matches : [],
+)
+
+/**
+ * Number of results, or place of the current one, beside the field.
+ */
+const searchStatus = computed(() => {
+  const result = found.value
+  if (result.state === 'value') {
+    return `= ${result.text}`
+  }
+  if (result.state !== 'nodes') {
+    return ''
+  }
+  if (result.count === 0) {
+    return 'Aucun résultat'
+  }
+  if (matches.value.length > 0) {
+    return `${(current.value + 1).toLocaleString('fr-FR')} / ${matches.value.length.toLocaleString('fr-FR')}`
+  }
+  return `${result.count.toLocaleString('fr-FR')} ${result.count > 1 ? 'résultats' : 'résultat'}`
+})
+
+/**
+ * Example of expression in the empty field.
+ */
+const searchPlaceholder = computed(() =>
+  kind.value === 'xml'
+    ? 'XPath, par exemple //client/nom'
+    : 'JSONPath, par exemple $.clients[*].nom',
+)
+
+/**
+ * Shows or hides the search field; when shown, it takes the focus.
+ */
+async function toggleSearch(): Promise<void> {
+  searchOpen.value = !searchOpen.value
+  if (searchOpen.value) {
+    await nextTick()
+    searchBar.value?.querySelector('input')?.focus()
+  }
+}
+
+/**
+ * Goes to the next or previous result, from the last to the first and back.
+ *
+ * @param step `1` for the next one, `-1` for the previous one.
+ */
+function goToMatch(step: 1 | -1): void {
+  const ranges = matches.value
+  if (!view || ranges.length === 0) {
+    return
+  }
+  current.value = (current.value + step + ranges.length) % ranges.length
+  const range = ranges[current.value]!
+  view.dispatch({
+    selection: { anchor: range.from },
+    effects: [
+      setMatches.of({ matches: ranges, current: current.value }),
+      ...revealEffects(view.state, range),
+    ],
+  })
+}
+
+/**
+ * Keys of the search field: Enter and Shift+Enter go from one result to the
+ * next, Escape hides the field.
+ *
+ * @param event Key pressed.
+ */
+function onSearchKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    goToMatch(event.shiftKey ? -1 : 1)
+  } else if (event.key === 'Escape') {
+    event.preventDefault()
+    searchOpen.value = false
+    view?.focus()
+  }
+}
+
+/**
  * Does the level of the cursor hold a foldable node? Otherwise, the buttons
  * of the level have nothing to do.
  */
@@ -151,14 +327,14 @@ function applyFolding(fold: boolean, level: 'cursor' | 'all'): void {
 }
 
 /**
- * Copies the whole document, without the folding marks.
+ * Copies the whole document shown, without the folding marks.
  */
 async function copy(): Promise<void> {
-  if (text.value === null) {
+  if (shown.value === null) {
     return
   }
   try {
-    await navigator.clipboard.writeText(text.value)
+    await navigator.clipboard.writeText(shown.value)
     notify('Document copié')
   } catch {
     notify('Copie refusée par le navigateur', 'error')
@@ -176,7 +352,7 @@ function currentLanguage() {
 onMounted(() => {
   view = new EditorView({
     parent: host.value!,
-    doc: text.value ?? '',
+    doc: shown.value ?? '',
     extensions: [
       basicSetup,
       EditorState.readOnly.of(true),
@@ -184,6 +360,7 @@ onMounted(() => {
       wrapping.of(currentWrapping()),
       editorTheme(),
       language.of(currentLanguage()),
+      matchHighlight,
       EditorView.updateListener.of((update) => {
         if (update.docChanged || update.selectionSet) {
           updateLevel(update.state)
@@ -199,17 +376,33 @@ onBeforeUnmount(() => {
   view = null
 })
 
-// New values: the document replaces the previous one, all unfolded, the
-// cursor at the start.
-watch(text, (value) => {
+// New document (new values, or the results in filter mode): it replaces the
+// previous one, all unfolded, the cursor at the start. New results: they are
+// highlighted, the cursor goes to the first one.
+watch([shown, matches], ([value, ranges], [previous]) => {
   if (!view || value === null) {
     return
   }
+  const replaced = value !== previous
+  const first = ranges[0]
+  const effects: StateEffect<unknown>[] = [setMatches.of({ matches: ranges, current: 0 })]
+  if (replaced) {
+    effects.push(language.reconfigure(currentLanguage()))
+  }
+  if (first !== undefined) {
+    // A replaced document has no folded part left: scrolling is enough.
+    effects.push(
+      ...(replaced
+        ? [EditorView.scrollIntoView(first.from, { y: 'center' })]
+        : revealEffects(view.state, first)),
+    )
+  }
+  current.value = 0
   view.dispatch({
-    changes: { from: 0, to: view.state.doc.length, insert: value },
-    selection: { anchor: 0 },
-    effects: language.reconfigure(currentLanguage()),
-    scrollIntoView: true,
+    changes: replaced ? { from: 0, to: view.state.doc.length, insert: value } : undefined,
+    selection: first !== undefined ? { anchor: first.from } : replaced ? { anchor: 0 } : undefined,
+    effects,
+    scrollIntoView: replaced && first === undefined,
   })
 })
 
@@ -266,6 +459,17 @@ watch(
           @click="applyFolding(false, 'cursor')"
         />
         <ui-button
+          :icon="Search"
+          variant="ghost"
+          :tone="searchOpen ? 'accent' : 'neutral'"
+          small
+          :aria-pressed="searchOpen"
+          aria-label="Rechercher"
+          title="Rechercher : JSONPath pour le JSON, XPath pour le XML"
+          :disabled="text === null"
+          @click="toggleSearch"
+        />
+        <ui-button
           :icon="TextWrap"
           variant="ghost"
           :tone="explorer.wrap ? 'accent' : 'neutral'"
@@ -281,7 +485,7 @@ watch(
           variant="ghost"
           small
           aria-label="Copier le document"
-          title="Copier le document (JSON ou XML valide, sans les replis)"
+          title="Copier le document affiché (JSON ou XML valide, sans les replis)"
           :disabled="text === null"
           @click="copy"
         />
@@ -294,6 +498,59 @@ watch(
           @click="explorer.open = false"
         />
       </div>
+    </div>
+    <div v-if="searchOpen && text !== null" ref="searchBar" class="data-explorer-search">
+      <div class="flex items-center gap-gap">
+        <ui-input
+          v-model="expression"
+          :icon="Search"
+          :placeholder="searchPlaceholder"
+          aria-label="Expression de recherche"
+          :aria-invalid="searchError !== ''"
+          spellcheck="false"
+          autocomplete="off"
+          class="min-w-0 flex-1"
+          @keydown="onSearchKeydown"
+        />
+        <span
+          v-if="searchStatus !== ''"
+          class="data-explorer-search-status"
+          :title="searchStatus"
+          aria-live="polite"
+          >{{ searchStatus }}</span
+        >
+        <template v-if="!filtering">
+          <ui-button
+            :icon="ChevronUp"
+            variant="ghost"
+            small
+            aria-label="Résultat précédent"
+            title="Résultat précédent (Maj+Entrée)"
+            :disabled="matches.length === 0"
+            @click="goToMatch(-1)"
+          />
+          <ui-button
+            :icon="ChevronDown"
+            variant="ghost"
+            small
+            aria-label="Résultat suivant"
+            title="Résultat suivant (Entrée)"
+            :disabled="matches.length === 0"
+            @click="goToMatch(1)"
+          />
+        </template>
+        <ui-button
+          :icon="Funnel"
+          variant="ghost"
+          :tone="filtering ? 'accent' : 'neutral'"
+          small
+          :aria-pressed="filtering"
+          aria-label="Afficher seulement les résultats"
+          title="Filtrer : afficher seulement les résultats, au lieu de les surligner dans le document"
+          @click="filtering = !filtering"
+        />
+      </div>
+      <p v-if="searchError !== ''" class="data-explorer-search-error">{{ searchError }}</p>
     </div>
     <p v-if="text === null" class="data-explorer-message">{{ message }}</p>
     <div v-show="text !== null" ref="host" class="data-explorer-editor" />
@@ -312,6 +569,31 @@ watch(
 .data-explorer-message {
   color: var(--fg-muted);
   text-wrap: balance;
+}
+
+.data-explorer-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.data-explorer-search :deep(input[aria-invalid='true']) {
+  border-color: var(--error);
+}
+
+.data-explorer-search-status {
+  max-inline-size: var(--data-search-status-width);
+  overflow: hidden;
+  color: var(--fg-muted);
+  font-size: var(--font-size-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-explorer-search-error {
+  color: var(--error);
+  font-size: var(--font-size-small);
+  overflow-wrap: anywhere;
 }
 
 .data-explorer-editor {

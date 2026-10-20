@@ -179,9 +179,10 @@
   --data-name: light-dark(var(--blue-600), var(--blue-300));
   --data-attribute: light-dark(var(--cyan-700), var(--cyan-300));
 
-  /* Highlights of the SQL editor: cursor line and its gutter, selection and
+  /* Highlights of the editors: cursor line and its gutter, selection and
      its other occurrences, matched or unmatched bracket, query that
-     Ctrl+Enter would run. */
+     Ctrl+Enter would run, results of the data explorer's search and the
+     current one. */
   --editor-active-line: color-mix(in oklab, var(--fg) 4%, transparent);
   --editor-active-gutter: color-mix(in oklab, var(--fg) 8%, transparent);
   --editor-selection: color-mix(in oklab, var(--accent) 25%, transparent);
@@ -189,6 +190,8 @@
   --editor-bracket-match: color-mix(in oklab, var(--success) 25%, transparent);
   --editor-bracket-mismatch: color-mix(in oklab, var(--error) 25%, transparent);
   --editor-current-statement: color-mix(in oklab, var(--accent) 7%, transparent);
+  --editor-search-match: color-mix(in oklab, var(--warning) 18%, transparent);
+  --editor-search-current: color-mix(in oklab, var(--warning) 45%, transparent);
 
   /* Fonts and sizes. `--font-size-ui` is the regular size of the interface;
      windows, menus and tooltips use it too. */
@@ -243,6 +246,10 @@
   --grid-user-filter-width: 15rem;
   --grid-user-filter-column-width: 12.5rem;
   --grid-min-height: 7.5rem;
+
+  /* Data explorer: width of the number of results beside the search field
+     (at most). */
+  --data-search-status-width: 10rem;
 
   /* SQL editor: minimum height, whatever the share given to it
      (`editorSplit.ts`). */

@@ -184,7 +184,56 @@ Each query gets its own tab:
 
 - **Copy** is a raw copy: values as they are, separated by tabs, with column names on the first line, ready to paste into a spreadsheet. `NULL` is copied as an empty cell. Control characters are written literally (`\t`, `\n`, `\r`, `\0`, `\b`, `\f`…, or `\xHH`), so each value stays in one cell.
 - **Display**: the header shows each column's type (hover for the full name). Numbers and dates are right-aligned, `CHAR` columns use a monospaced font, web addresses are clickable, `NULL` is shown in small grey capitals.
-- **Data explorer**: a panel on the right of the screen shows the values selected in a column of type `JSON`, or in a text column that holds JSON or XML: a cell, the whole column, or ranges of it. The values are indented with 4 spaces and highlighted; numbers and texts stay exactly as stored. Several values are gathered into one document: a `[…]` array for JSON (`NULL` becomes `null`), a `<data>…</data>` element for XML (`NULL` is left out, `<?xml?>` declarations are removed). Each level folds with the arrows in the margin; the buttons fold or unfold everything, or every node at the depth of the cursor. The line wrap button wraps long lines to the width of the panel; it is off by default and your choice is remembered. The copy button, or Ctrl+A then Ctrl+C, copies valid JSON or XML, folded parts included. The panel follows the selection, and the grid of the active editor; drag its left edge to resize it (double-click to reset), the width is remembered.
+- **Data explorer**: a panel on the right of the screen shows the values selected in a column of type `JSON`, or in a text column that holds JSON or XML: a cell, the whole column, or ranges of it. The values are indented with 4 spaces and highlighted; numbers and texts stay exactly as stored. Several values are gathered into one document: a `[…]` array for JSON (`NULL` becomes `null`), a `<data>…</data>` element for XML (`NULL` is left out, `<?xml?>` declarations are removed). Each level folds with the arrows in the margin; the buttons fold or unfold everything, or every node at the depth of the cursor. The line wrap button wraps long lines to the width of the panel; it is off by default and your choice is remembered. The search button finds values with JSONPath or XPath (see [Searching the data explorer](#searching-the-data-explorer)). The copy button, or Ctrl+A then Ctrl+C, copies valid JSON or XML, folded parts included. The panel follows the selection, and the grid of the active editor; drag its left edge to resize it (double-click to reset), the width is remembered.
+
+### Searching the data explorer
+
+The search button (magnifying glass) of the data explorer opens a field above the document. Type a JSONPath expression for JSON, an XPath expression for XML: the results follow as you type.
+
+- **Selection mode**, the default: the results are highlighted in the document. Enter and Shift+Enter, or the arrows beside the field, go to the next and previous result, unfolding what hides it. The counter shows the current result and the total.
+- **Filter mode**, with the funnel button: the document shows only the results. For JSON, an array of the values found. For XML, a `<data>…</data>` element with the nodes found, attributes and texts as text. An XPath expression that computes a number, a string or a boolean (`count(//item)`) shows that value.
+- The search runs on the document shown. With several values, that is the gathered `[…]` array or `<data>` element: `$[*].name`, `/data/client/name`.
+- While the expression is invalid, the error shows under the field and the previous results stay. Esc closes the field.
+- The copy button copies the document shown: in filter mode, the results.
+
+#### JSONPath
+
+JSONPath follows its standard, [RFC 9535](https://www.rfc-editor.org/rfc/rfc9535) (2024), and only it: the extensions of other tools (`^`, `~`, `@parent`, JavaScript in filters) are refused.
+
+| Expression | Finds |
+|---|---|
+| `$` | The whole document |
+| `$.name`, `$['first name']` | Member `name` of the root object; brackets for a name with spaces or dashes |
+| `$.items[0]`, `$.items[-1]` | First, last element of the array `items` |
+| `$.items[0:3]`, `$.items[::2]` | Slices: the first three elements, every other element |
+| `$.items[*]`, `$.*` | All the elements of `items`, all the members of the root |
+| `$..name` | Every member `name`, at any depth |
+| `$.items[?@.price > 10]` | Filter: the elements whose `price` is above 10 |
+| `$.items[?@.tag == 'new' && @.stock]` | Conditions with `&&`, `\|\|`, `!` and parentheses; `@.stock` alone: the member exists |
+| `$.items[?length(@.tags) > 2]` | Functions: `length()`, `count()`, `match()` (the whole value matches a regular expression), `search()` (a part matches), `value()` |
+
+Comparisons: `==`, `!=`, `<`, `<=`, `>`, `>=`; strings between single or double quotes. In a filter, numbers are compared as JavaScript numbers: an integer beyond 2⁵³ is approximated. It is still shown as stored.
+
+#### XPath
+
+XPath is the version built into browsers, [XPath 1.0](https://www.w3.org/TR/1999/REC-xpath-19991116/) (W3C, 1999). XPath 2.0 and later (sequences, `if`, date functions…) are not available.
+
+| Expression | Finds |
+|---|---|
+| `/order` | The root element `order` |
+| `/order/item` | The children `item` of the root |
+| `//item` | Every `item`, at any depth |
+| `//item[1]`, `//item[last()]` | The first, the last `item` of each parent |
+| `//item/@id`, `//@*` | The attributes `id` of the `item`, all the attributes |
+| `//item[@id = '42']` | Filter on an attribute |
+| `//item[price > 10]` | Filter on the value of a child |
+| `//item[contains(name, 'blue')]` | Functions: `contains()`, `starts-with()`, `normalize-space()`, `string-length()`, `not()`… |
+| `//item/text()`, `//comment()` | Texts, comments |
+| `//a \| //b` | Union |
+| `count(//item)`, `sum(//price)` | A value: number, string or boolean |
+
+- **Namespaces**: the prefixes declared in the document can be used (`//p:item`). XPath 1.0 has no default namespace: an element in a namespace without prefix is found with `//*[local-name() = 'item']`.
+- **Blanks**: the indentation the explorer adds between elements is not part of the document, so `//text()` finds only the texts of the values.
 
 ### Top bar
 

@@ -212,7 +212,7 @@ function isXml(value: string): boolean {
  * - `declaration`: `<?xml…?>`; `doctype`: `<!DOCTYPE…>`; `other`: comment or
  *   processing instruction.
  */
-interface XmlNode {
+export interface XmlNode {
   kind: 'element' | 'text' | 'cdata' | 'declaration' | 'doctype' | 'other'
   from: number
   to: number
@@ -227,7 +227,7 @@ interface XmlNode {
  * @param text Well-formed XML text.
  * @returns The nodes of the top level.
  */
-function parseXml(text: string): XmlNode[] {
+export function parseXml(text: string): XmlNode[] {
   const top: XmlNode[] = []
   const open: XmlNode[] = []
   const add = (kind: XmlNode['kind'], from: number, to: number): XmlNode => {
@@ -318,6 +318,49 @@ function doctypeEnd(text: string, index: number): number {
 }
 
 /**
+ * Is the node a blank text (only spaces, tabs and line breaks)?
+ *
+ * @param text XML text of the node.
+ * @param node Node.
+ */
+export function isBlankXml(text: string, node: XmlNode): boolean {
+  return node.kind === 'text' && text.slice(node.from, node.to).trim() === ''
+}
+
+/**
+ * Is the element structured, written with one child per line? Its content is
+ * only elements (and comments), without `xml:space="preserve"`. The blanks
+ * between its children are then indentation, given by the explorer.
+ *
+ * @param text XML text of the node.
+ * @param node Node.
+ */
+export function isStructuredXml(text: string, node: XmlNode): boolean {
+  const children = node.children.filter((child) => !isBlankXml(text, child))
+  return (
+    node.kind === 'element' &&
+    children.length > 0 &&
+    children.every((child) => child.kind !== 'text' && child.kind !== 'cdata') &&
+    !/\sxml:space\s*=\s*["']preserve["']/.test(text.slice(node.from, node.openEnd))
+  )
+}
+
+/**
+ * Lines of a well-formed XML text, or of a fragment (an element, a
+ * comment...), indented from the level `depth`, without its `<?xml?>`
+ * declaration nor its DOCTYPE: the text is meant to go in an element.
+ *
+ * @param text XML text.
+ * @param depth Level of the text.
+ */
+export function xmlLines(text: string, depth: number): string[] {
+  const nodes = parseXml(text).filter(
+    (node) => node.kind !== 'declaration' && node.kind !== 'doctype',
+  )
+  return printXml(text, nodes, depth)
+}
+
+/**
  * Lines of the nodes, indented from the level `depth`. An element whose
  * content is only elements (and comments) puts each child on its own line;
  * one that holds text (mixed content), a CDATA section or
@@ -332,21 +375,17 @@ function printXml(text: string, nodes: XmlNode[], depth: number): string[] {
   const indent = DATA_INDENT.repeat(depth)
   const lines: string[] = []
   for (const node of nodes) {
-    if (node.kind === 'text' && text.slice(node.from, node.to).trim() === '') {
+    if (isBlankXml(text, node)) {
       continue
     }
-    const children = node.children.filter(
-      (child) => child.kind !== 'text' || text.slice(child.from, child.to).trim() !== '',
-    )
-    const structured =
-      node.kind === 'element' &&
-      children.length > 0 &&
-      children.every((child) => child.kind !== 'text' && child.kind !== 'cdata') &&
-      !/\sxml:space\s*=\s*["']preserve["']/.test(text.slice(node.from, node.openEnd))
-    if (structured) {
+    if (isStructuredXml(text, node)) {
       lines.push(
         `${indent}${text.slice(node.from, node.openEnd)}`,
-        ...printXml(text, children, depth + 1),
+        ...printXml(
+          text,
+          node.children.filter((child) => !isBlankXml(text, child)),
+          depth + 1,
+        ),
         `${indent}${text.slice(node.closeStart, node.to)}`,
       )
     } else {

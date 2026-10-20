@@ -97,6 +97,41 @@ describe('DataExplorer', () => {
     expect(useDataExplorerStore().wrap).toBe(true)
   })
 
+  it('searches as the expression is typed, highlights then filters the results', async () => {
+    const { explorer, wrapper } = mountExplorer()
+    explorer.show(Symbol('grid'), {
+      state: 'values',
+      column: 'doc',
+      kind: 'json',
+      cells: [{ row: 1, value: '{"a":[1,2,3]}' }],
+    })
+    await wrapper.vm.$nextTick()
+    await wrapper.find('[aria-label="Rechercher"]').trigger('click')
+    const field = wrapper.find('[aria-label="Expression de recherche"]')
+    await field.setValue('$.a[?@ > 1]')
+    const highlighted = () => wrapper.findAll('.cm-dataMatch, .cm-dataMatch-current')
+    expect(highlighted().map((mark) => mark.text())).toEqual(['2', '3'])
+    expect(wrapper.find('.cm-dataMatch-current').text()).toBe('2')
+    expect(wrapper.find('.data-explorer-search-status').text()).toBe('1 / 2')
+    await field.trigger('keydown', { key: 'Enter' })
+    expect(wrapper.find('.cm-dataMatch-current').text()).toBe('3')
+    expect(wrapper.find('.data-explorer-search-status').text()).toBe('2 / 2')
+
+    await field.setValue('$.a[?')
+    expect(wrapper.find('.data-explorer-search-error').text()).toMatch(/^JSONPath invalide/)
+    expect(highlighted()).toHaveLength(2)
+
+    await field.setValue('$.a[?@ > 1]')
+    await wrapper.find('[aria-label="Afficher seulement les résultats"]').trigger('click')
+    expect(editorText(wrapper)).toBe('[\n    2,\n    3\n]')
+    expect(wrapper.find('.data-explorer-search-status').text()).toBe('2 résultats')
+    expect(highlighted()).toHaveLength(0)
+
+    await wrapper.find('[aria-label="Rechercher"]').trigger('click')
+    expect(editorText(wrapper)).toBe('{\n    "a": [\n        1,\n        2,\n        3\n    ]\n}')
+    wrapper.unmount()
+  })
+
   it('closes with its button', async () => {
     const { explorer, wrapper } = mountExplorer()
     await wrapper.find('[aria-label="Fermer l’explorateur de données"]').trigger('click')
