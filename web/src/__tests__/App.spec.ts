@@ -84,6 +84,12 @@ describe('App', () => {
     window.localStorage.clear()
     const wrapper = mount(App)
     await vi.waitFor(() => expect(wrapper.text()).toContain('Aucune requête envoyée'))
+    // The fold button comes first, where the rail shows its icon.
+    const fold = wrapper.find('[aria-label="Replier : Console"]')
+    const historyTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text() === 'Historique')!
+    expect(
+      fold.element.compareDocumentPosition(historyTab.element) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
     const debugTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text() === 'Debug')!
     await debugTab.trigger('mousedown', { button: 0 })
     await vi.waitFor(() => expect(wrapper.text()).toContain('Aucun message pour le moment'))

@@ -2,11 +2,11 @@
   Header of a panel of the layout (object explorer, data explorer,
   console): its title, or what replaces it (default slot), a line under the
   title (`subtitle` slot), the panel's actions (`actions` slot), and the
-  button that folds the panel towards its edge. The button stands on the
-  side of the main area: last for the panels on the left and at the
-  bottom, first, left of the title, for the panel on the right. The folded
-  panel leaves a rail on its edge (`PanelRail.vue`), with the matching
-  icon.
+  button that folds the panel towards its edge. The button stands where
+  the folded panel's rail shows its icon, or on the side of the main area:
+  first, left of the title, for the panel on the right and the console at
+  the bottom; last for the panel on the left. The folded panel leaves a
+  rail on its edge (`PanelRail.vue`), with the matching icon.
 -->
 <script setup lang="ts">
 import { PanelBottomClose, PanelLeftClose, PanelRightClose } from 'lucide-vue-next'
@@ -32,6 +32,11 @@ const emit = defineEmits<{
 }>()
 
 /**
+ * Does the fold button come first, left of the title?
+ */
+const first = props.side !== 'start'
+
+/**
  * Icon of the fold button, by edge.
  */
 const ICONS = {
@@ -44,8 +49,8 @@ const ICONS = {
 <template>
   <div class="flex min-h-control items-center gap-gap">
     <ui-button
-      v-if="props.side === 'end'"
-      :icon="ICONS.end"
+      v-if="first"
+      :icon="ICONS[props.side]"
       variant="ghost"
       small
       :aria-label="`Replier : ${title}`"
@@ -61,7 +66,7 @@ const ICONS = {
     <div class="flex items-center">
       <slot name="actions" />
       <ui-button
-        v-if="props.side !== 'end'"
+        v-if="!first"
         :icon="ICONS[props.side]"
         variant="ghost"
         small
