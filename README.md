@@ -12,6 +12,29 @@ Prisme is at the start of its first version (v1). Today it queries **MySQL and M
 
 > The interface is currently in French. This guide quotes its labels as they appear on screen, with a translation, for example **Exécuter** (Run).
 
+## Contents
+
+- [Quick start](#quick-start)
+- [Installation](#installation)
+- [Starting Prisme](#starting-prisme)
+  - [First launch](#first-launch)
+  - [Command-line options](#command-line-options)
+- [Using Prisme](#using-prisme)
+  - [Connections](#connections)
+  - [Object explorer](#object-explorer)
+  - [Editors](#editors)
+  - [Running queries](#running-queries)
+  - [Writing SQL](#writing-sql)
+  - [Result tabs](#result-tabs)
+  - [Result grid](#result-grid)
+  - [Searching the data explorer](#searching-the-data-explorer)
+    - [JSONPath](#jsonpath)
+    - [XPath](#xpath)
+  - [Top bar](#top-bar)
+- [Your data](#your-data)
+- [Developers](#developers)
+- [License](#license)
+
 ## Quick start
 
 1. **Download** the executable for your system from the [latest release](https://github.com/sfaut/prisme/releases/latest): Windows (`.exe`), Linux, or macOS (Apple Silicon and Intel). Nothing else to install.
