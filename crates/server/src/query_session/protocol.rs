@@ -131,6 +131,9 @@ pub(crate) enum ServerMessage {
         /// Execution time of the query by the target server, in microseconds:
         /// from sending it to receiving its columns.
         execution_us: u64,
+        /// End of the execution (columns received), in milliseconds since the
+        /// Unix epoch: the instant the result reflects.
+        executed_at: u64,
     },
     /// Batch of rows.
     Rows { query: u32, rows: Vec<Vec<Cell>> },

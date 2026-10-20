@@ -168,7 +168,7 @@ Prisme answers `{"type":"ready",...}` once connected to the target server. Then 
 Prisme first announces the queries of the batch (`batch`, each one numbered), then, for each query, messages carrying its number (`query`), in this order:
 
 1. `started`: the query starts (in parallel, it may wait for its turn).
-2. `columns`: column names and types, columns right-aligned by the grid (numbers, dates and times), the text actually run, how the limit was handled (`added` if Prisme added `LIMIT N + 1`, `user_limit` if the query had one, `not_applicable` for `SHOW` or `EXPLAIN`), the maximum row count (`expected_rows`, `null` if unknown) and the execution time measured by the server (`execution_us`, in microseconds).
+2. `columns`: column names and types, columns right-aligned by the grid (numbers, dates and times), the text actually run, how the limit was handled (`added` if Prisme added `LIMIT N + 1`, `user_limit` if the query had one, `not_applicable` for `SHOW` or `EXPLAIN`), the maximum row count (`expected_rows`, `null` if unknown), the execution time measured by the server (`execution_us`, in microseconds) and the end of the execution (`executed_at`, in milliseconds since the Unix epoch).
 3. `rows`: the rows, a first batch of 50 that shows without waiting for a full one, then batches of 500, each cell as text or `null`.
 4. `done`: row count, `truncated` (rows beyond the limit were dropped), affected rows, duration.
 

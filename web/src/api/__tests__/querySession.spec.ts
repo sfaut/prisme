@@ -6,6 +6,7 @@ import {
   parseMessage,
   formatBytes,
   formatDuration,
+  formatInstant,
   initialState,
   removeTab,
   savedTab,
@@ -61,6 +62,7 @@ describe('applyMessage', () => {
       limit: 'added',
       expected_rows: null,
       execution_us: 0,
+      executed_at: 0,
     })
     applyMessage(state, {
       type: 'columns',
@@ -72,6 +74,7 @@ describe('applyMessage', () => {
       limit: 'added',
       expected_rows: null,
       execution_us: 0,
+      executed_at: 0,
     })
     applyMessage(state, { type: 'rows', query: 0, rows: [['1', 'a']] })
     applyMessage(state, { type: 'rows', query: 1, rows: [['7'], ['8']] })
@@ -210,6 +213,7 @@ describe('tabProgress', () => {
       limit: 'added',
       expected_rows: null,
       execution_us: 0,
+      executed_at: 0,
     })
     expect(tabProgress(first!)).toBe('loading')
 
@@ -259,6 +263,7 @@ describe('durations', () => {
         limit: 'added',
         expected_rows: null,
         execution_us: 0,
+        executed_at: 0,
       },
       1400,
     )
@@ -305,6 +310,7 @@ describe('durations', () => {
       limit: 'added',
       expected_rows: 100,
       execution_us: 0,
+      executed_at: 0,
     })
     applyMessage(state, { type: 'rows', query: 0, rows: [['1'], ['2'], ['3'], ['4']] })
     expect(tabFraction(tab)).toBe(0.04)
@@ -335,6 +341,7 @@ describe('durations', () => {
         limit: 'added',
         expected_rows: null,
         execution_us: 0,
+        executed_at: 0,
       },
       0,
       120,
@@ -371,6 +378,12 @@ describe('durations', () => {
     expect(formatDuration(3_600_000)).toBe('1 h 00 min')
     expect(formatDuration(3_725_000)).toBe('1 h 02 min')
   })
+
+  it('formats an instant to the second, in local time', () => {
+    expect(formatInstant(new Date(2026, 9, 20, 14, 32, 5, 900).getTime())).toBe(
+      '20/10/2026 14:32:05',
+    )
+  })
 })
 
 describe('savedTab', () => {
@@ -393,6 +406,7 @@ describe('savedTab', () => {
           limit: 'added',
           expected_rows: 1000,
           execution_us: 1500,
+          executed_at: 1_792_500_000_000,
         },
         row_count: 2,
         truncated: false,
@@ -404,6 +418,7 @@ describe('savedTab', () => {
     })
     expect([tab.id, tab.batch, tab.pinned, tab.name]).toEqual([42, 0, true, 'Gardé'])
     expect(tab.result?.rows).toEqual([['1'], ['2']])
+    expect(tab.result?.executedAt).toBe(1_792_500_000_000)
     expect(executionDuration(tab, 0)).toBe(1.5)
     expect(transferDuration(tab, 0)).toBe(4)
     expect(tabProgress(tab)).toBe('done')
@@ -446,6 +461,7 @@ describe('resume', () => {
         limit: 'added' as const,
         expected_rows: 1000,
         execution_us: 2000,
+        executed_at: 0,
       },
       row_count: 1,
       truncated: false,

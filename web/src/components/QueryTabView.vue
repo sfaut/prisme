@@ -2,8 +2,9 @@
   Content of a query's tab: error if any, result grid and, under the grid,
   the number of loaded rows and two durations: the execution time of the
   query by the server (until the columns arrive), then the transfer and
-  display time of the rows, followed by the received volume and the
-  throughput.
+  display time of the rows, followed by the received volume, the
+  throughput and the end of the execution (date and time to the second,
+  the instant the result reflects).
 
   During the query, the number of rows, the durations and the volume change once
   per second (shared clock, `clock.ts`); at the end, they take their final
@@ -18,6 +19,7 @@ import {
   executionDuration,
   formatBytes,
   formatDuration,
+  formatInstant,
   transferDuration,
 } from '@/api/querySession'
 
@@ -61,9 +63,10 @@ watch(
 
 /**
  * Durations of the query, formatted: "exécution 120 ms · transfert 2,4 s ·
- * 3,1 Mo · 1,3 Mo/s" (received volume and throughput during the transfer);
- * empty while it waits for its turn. The clock is only read during the
- * query: an ended query is no longer redrawn on each tick.
+ * 3,1 Mo · 1,3 Mo/s · 20/10/2026 14:32:05" (received volume and throughput
+ * during the transfer, then end of the execution, to the second); empty while
+ * it waits for its turn. The clock is only read during the query: an ended
+ * query is no longer redrawn on each tick.
  */
 const durations = computed(() => {
   const running = props.tab.startedAt !== null && !props.tab.done
@@ -80,6 +83,7 @@ const durations = computed(() => {
     transfer === null ? null : `transfert ${formatDuration(transfer)}`,
     volume,
     rate,
+    props.tab.result?.executedAt ? formatInstant(props.tab.result.executedAt) : null,
   ]
     .filter((part) => part !== null)
     .join(' · ')

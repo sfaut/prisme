@@ -118,6 +118,10 @@ pub struct SavedColumns {
     pub expected_rows: Option<u64>,
     /// Execution time measured by the server, in microseconds.
     pub execution_us: u64,
+    /// End of the execution, in milliseconds since the Unix epoch; 0 for a
+    /// result saved before it was recorded.
+    #[serde(default)]
+    pub executed_at: u64,
 }
 
 /// Saved state of a result, filled as the session's messages arrive.

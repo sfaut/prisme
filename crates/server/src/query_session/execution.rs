@@ -3,7 +3,7 @@
 //! connection, with their rows streamed to the client: a short first batch,
 //! shown without waiting for a full one, then full batches.
 
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use futures_util::future::join_all;
 use prisme_connectors::mysql::{self, Cell, Connection};
@@ -207,6 +207,7 @@ impl Session<'_> {
                     LimitOutcome::NotApplicable => None,
                 },
                 execution_us: u64::try_from(executing.elapsed().as_micros()).unwrap_or(u64::MAX),
+                executed_at: unix_millis(),
             })
             .await?;
 
@@ -337,6 +338,16 @@ impl RowBatches {
     pub(super) fn rest(self) -> Option<Vec<Vec<Cell>>> {
         (!self.batch.is_empty()).then_some(self.batch)
     }
+}
+
+/// Present instant, in milliseconds since the Unix epoch; 0 if the system clock
+/// is set before it.
+fn unix_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| {
+            u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
+        })
 }
 
 /// Queries to run, in the order of the text: the one under the cursor; without

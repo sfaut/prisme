@@ -34,4 +34,9 @@ expected_rows: number | null,
 /**
  * Execution time measured by the server, in microseconds.
  */
-execution_us: number, };
+execution_us: number, 
+/**
+ * End of the execution, in milliseconds since the Unix epoch; 0 for a
+ * result saved before it was recorded.
+ */
+executed_at: number, };

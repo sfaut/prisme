@@ -29,7 +29,7 @@
 //! server → client  {"type": "database", "database": "xlist"}          answer to use: the current database
 //! server → client  {"type": "batch", "queries": [{"query": 0, "sql": "SELECT 1", "start": 0, "end": 9}]}
 //! server → client  {"type": "started", "query": 0}                  the query starts (in parallel, it may wait for its turn)
-//! server → client  {"type": "columns", "query": 0, "columns": ["1"], "types": [{"family": "integer", "name": "INT"}], "sql": "SELECT 1 LIMIT 1001", "limit": "added", "expected_rows": 1000, "execution_us": 830}
+//! server → client  {"type": "columns", "query": 0, "columns": ["1"], "types": [{"family": "integer", "name": "INT"}], "sql": "SELECT 1 LIMIT 1001", "limit": "added", "expected_rows": 1000, "execution_us": 830, "executed_at": 1792500000000}
 //! server → client  {"type": "rows", "query": 0, "rows": [["1"]]}       as many batches as needed
 //! server → client  {"type": "done", "query": 0, "row_count": 1, "truncated": false, "affected_rows": 0, "elapsed_ms": 2, "database": "xlist"}
 //! server → client  {"type": "error", "query": 0, "message": "..."}     instead of the rest, on failure

@@ -189,7 +189,7 @@ Each query gets its own tab:
 - A **dot** shows its progress: grey while waiting its turn, blue and pulsing while running and receiving rows, green when done, red on failure.
 - A **progress bar** on its bottom edge fills while rows arrive.
 - **Double-click** the label to rename the tab. The **pin** keeps the tab when queries are run again. The **cross** (or a middle click) closes it and stops its query. Drag a tab to move it.
-- The bar under the grid shows the number of rows, the execution time, the transfer time, the data received and the throughput.
+- The bar under the grid shows the number of rows, the execution time, the transfer time, the data received, the throughput, and the date and time (to the second) the execution ended: the instant the result reflects.
 
 ### Result grid
 

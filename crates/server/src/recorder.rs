@@ -131,6 +131,7 @@ impl Recorder {
                 limit,
                 expected_rows,
                 execution_us,
+                executed_at,
             } => {
                 if let Some(record) = records.get_mut(query) {
                     record.result.columns = Some(SavedColumns {
@@ -141,6 +142,7 @@ impl Recorder {
                         limit: limit.clone(),
                         expected_rows: *expected_rows,
                         execution_us: *execution_us,
+                        executed_at: *executed_at,
                     });
                     record.result.bytes += bytes;
                     record.columns_at = Some(Instant::now());
@@ -295,6 +297,7 @@ mod tests {
                 limit: LimitReport::NotApplicable,
                 expected_rows: None,
                 execution_us: 120,
+                executed_at: 1_792_500_000_000,
             },
             ServerMessage::Rows {
                 query: 0,
@@ -328,7 +331,9 @@ mod tests {
             .unwrap();
         assert_eq!(tabs[0].rows, [vec![Some("0".to_string())]]);
         assert!(tabs[0].result.done && tabs[0].result.error.is_none());
-        assert_eq!(tabs[0].result.columns.as_ref().unwrap().execution_us, 120);
+        let columns = tabs[0].result.columns.as_ref().unwrap();
+        assert_eq!(columns.execution_us, 120);
+        assert_eq!(columns.executed_at, 1_792_500_000_000);
         assert!(tabs[0].result.bytes > 0);
         assert_eq!(tabs[1].result.error.as_deref(), Some(SESSION_CLOSED));
     }

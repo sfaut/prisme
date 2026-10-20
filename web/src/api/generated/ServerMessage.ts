@@ -28,7 +28,12 @@ expected_rows: number | null,
  * Execution time of the query by the target server, in microseconds:
  * from sending it to receiving its columns.
  */
-execution_us: number, } | { "type": "rows", query: number, rows: Array<Array<string | null>>, } | { "type": "done", query: number, row_count: number, truncated: boolean, affected_rows: number, elapsed_ms: number, 
+execution_us: number, 
+/**
+ * End of the execution (columns received), in milliseconds since the
+ * Unix epoch: the instant the result reflects.
+ */
+executed_at: number, } | { "type": "rows", query: number, rows: Array<Array<string | null>>, } | { "type": "done", query: number, row_count: number, truncated: boolean, affected_rows: number, elapsed_ms: number, 
 /**
  * Current database of the session after the query (it changes with `USE`).
  */

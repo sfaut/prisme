@@ -261,6 +261,7 @@ mod tests {
                 limit: LimitReport::Added,
                 expected_rows: Some(1000),
                 execution_us: 830,
+                executed_at: 1_792_500_000_000,
             }),
             "columns, query 0, 2 columns, limit added, executed in 830 µs"
         );

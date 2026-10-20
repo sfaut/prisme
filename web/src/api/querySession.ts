@@ -100,6 +100,12 @@ export interface QueryResult {
    */
   executionUs: number
   /**
+   * End of the execution (columns received), in milliseconds since the Unix
+   * epoch, by the server's clock: the instant the result reflects. 0 if
+   * unknown (result saved before it was recorded).
+   */
+  executedAt: number
+  /**
    * Names of the columns.
    */
   columns: string[]
@@ -322,6 +328,7 @@ export function applyMessage(
           limit: message.limit,
           expectedRows: message.expected_rows,
           executionUs: message.execution_us,
+          executedAt: message.executed_at,
           columns: message.columns,
           rightAligned: message.right_aligned,
           columnTypes: message.types,
@@ -603,6 +610,16 @@ export function formatDuration(milliseconds: number): string {
 }
 
 /**
+ * Formats an instant to the second, in local time and in French, like the rest
+ * of the interface: "20/10/2026 14:32:05".
+ *
+ * @param milliseconds Instant, in milliseconds since the Unix epoch.
+ */
+export function formatInstant(milliseconds: number): string {
+  return new Date(milliseconds).toLocaleString('fr-FR')
+}
+
+/**
  * Records the start of a batch in the state: the tabs of the previous batch
  * disappear, except the pinned ones.
  *
@@ -652,6 +669,7 @@ export function savedTab(saved: ResultTab): QueryTab {
             limit: columns.limit,
             expectedRows: columns.expected_rows,
             executionUs: columns.execution_us,
+            executedAt: columns.executed_at,
             columns: columns.columns,
             rightAligned: columns.right_aligned,
             columnTypes: columns.types,
