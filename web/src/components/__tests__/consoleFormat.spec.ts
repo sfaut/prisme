@@ -35,7 +35,7 @@ describe('console formats', () => {
 
   it('counts the rows read or changed', () => {
     expect(rowsOf(entry())).toBe('120')
-    expect(rowsOf(entry({ row_count: 1000, truncated: true }))).toBe('1 000+')
+    expect(rowsOf(entry({ row_count: 1000, truncated: true }))).toBe('+1 000')
     expect(rowsTitleOf(entry({ truncated: true }))).toBe('Lignes lues, résultat tronqué')
     expect(rowsOf(entry({ returns_rows: false, affected_rows: 3 }))).toBe('3')
     expect(rowsTitleOf(entry({ returns_rows: false, affected_rows: 3 }))).toBe('Lignes modifiées')

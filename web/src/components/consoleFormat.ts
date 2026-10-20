@@ -101,14 +101,14 @@ export function oneLine(sql: string): string {
 }
 
 /**
- * Number of rows of a query: those read, followed by "+" when the result
- * was truncated, or those changed by a write; "—" without either.
+ * Number of rows of a query: those read, preceded by "+" when the result
+ * was truncated ("+1 000"), or those changed by a write; "—" without either.
  *
  * @param entry Query of the history.
  */
 export function rowsOf(entry: QueryEntry): string {
   if (entry.returns_rows) {
-    return `${entry.row_count.toLocaleString('fr-FR')}${entry.truncated ? '+' : ''}`
+    return `${entry.truncated ? '+' : ''}${entry.row_count.toLocaleString('fr-FR')}`
   }
   return entry.affected_rows > 0 ? entry.affected_rows.toLocaleString('fr-FR') : '—'
 }
