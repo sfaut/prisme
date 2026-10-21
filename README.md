@@ -290,7 +290,7 @@ Both tabs are kept in the internal database, 30 days by default: the **Rétentio
 - **Theme**: the **Système / Clair / Sombre** (System / Light / Dark) list sets the theme of the whole interface. **Système** follows your computer's setting.
 - **Account** menu, the round avatar with your initials (those of your first and last names, or the first letter of your email address):
   - **Profil** (Profile): your last and first names, and your email address (read-only);
-  - **Paramètres** (Settings), applied as soon as they are changed: the language of the interface (French only for now); the default row limit; **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; and how many days the [console](#console) keeps its history and its debug log.
+  - **Paramètres** (Settings): the language of the interface (French only for now); the default row limit; **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; and how many days the [console](#console) keeps its history and its debug log.
 
 ## Your data
 
