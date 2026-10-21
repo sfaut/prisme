@@ -77,13 +77,13 @@ const reopenItems = computed<MenuItem[]>(() => {
 
 <template>
   <div class="flex items-center gap-1 border-b border-line">
-    <tabs-list class="flex min-w-0 overflow-x-auto" aria-label="Éditeurs">
+    <tabs-list class="-mb-px flex min-w-0 overflow-x-auto" aria-label="Éditeurs">
       <tabs-trigger
         v-for="(editor, index) in editors.editors"
         :key="editor.id"
         :value="editor.id"
         as="div"
-        class="group relative -mb-px flex h-control max-w-80 min-w-0 shrink-0 cursor-pointer items-center gap-1 rounded-t-control border-b-2 border-transparent ps-2 pe-1 text-ui font-medium text-fg-muted outline-none select-none hover:text-fg-strong focus-visible:bg-surface-muted data-[state=active]:border-accent data-[state=active]:text-fg-strong"
+        class="group relative flex h-control max-w-80 min-w-0 shrink-0 cursor-pointer items-center gap-1 rounded-t-control border-b-2 border-transparent ps-2 pe-1 text-ui font-medium text-fg-muted outline-none select-none hover:text-fg-strong focus-visible:bg-surface-muted data-[state=active]:border-accent data-[state=active]:text-fg-strong"
         :class="{
           'drop-before': tabDrag.dropAt.value === index,
           'drop-after':
