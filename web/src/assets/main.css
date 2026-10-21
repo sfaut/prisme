@@ -59,6 +59,7 @@
   /* The whole spacing scale (p-1, gap-2...) follows `--space-unit`. */
   --spacing: var(--space-unit);
   --spacing-gap: var(--gap);
+  --spacing-field: var(--field-gap);
   --spacing-panel: var(--panel-padding);
   --spacing-control-x: var(--control-padding-x);
   --spacing-control: var(--control-height);
@@ -212,9 +213,11 @@
   --editor-gutter-font-size: 0.6875rem;
 
   /* Spacing: unit of the scale (p-1 = 1 unit), gap between neighbouring
-     elements, padding of panels and controls. */
+     elements, between the fields of a short form (profile, settings),
+     padding of panels and controls. */
   --space-unit: 0.25rem;
   --gap: 0.5rem;
+  --field-gap: 0.875rem;
   --panel-padding: 0.75rem;
   --control-padding-x: 0.5rem;
 

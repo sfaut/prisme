@@ -136,7 +136,7 @@ async function save(): Promise<void> {
     title="Paramètres"
     description="Langue de l’interface, requêtes et conservation de la console"
   >
-    <form id="settings-form" class="flex flex-col gap-gap" @submit.prevent="save">
+    <form id="settings-form" class="flex flex-col gap-field" @submit.prevent="save">
       <ui-field label="Langue">
         <ui-select
           v-model="language"
