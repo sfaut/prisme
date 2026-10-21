@@ -272,6 +272,16 @@ describe('ObjectExplorer', () => {
     wrapper.unmount()
   })
 
+  it('moves to the line whose label starts with the letters typed', async () => {
+    savedConnections = [connection(1, 'Origen 2')]
+    const wrapper = mountExplorer({ selectedId: 1, currentDatabase: null })
+    await vi.waitFor(() => expect(row(wrapper, 'c')).toBeDefined())
+    ;(row(wrapper, 'a')?.element as HTMLElement | undefined)?.focus()
+    await row(wrapper, 'a')?.trigger('keydown', { key: 'c' })
+    await vi.waitFor(() => expect(document.activeElement).toBe(row(wrapper, 'c')?.element))
+    wrapper.unmount()
+  })
+
   it('follows the current database, even when going back to a database already chosen', async () => {
     savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
     const wrapper = mountExplorer({ selectedId: 1, currentDatabase: 'a' })

@@ -524,7 +524,7 @@ watch(
         <tree-virtualizer
           v-slot="{ item }"
           :estimate-size="ROW_HEIGHT"
-          :text-content="(flat) => flat.value.label"
+          :text-content="(node) => node.label"
         >
           <tree-item
             v-slot="{ isExpanded }"
