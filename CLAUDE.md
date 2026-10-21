@@ -64,7 +64,7 @@ Exception to the general "read-only" directive: in this repository, Claude Code 
 - **One commit = one reason for change**, that is a single reason to modify the repository. A reason can touch several files. Two distinct reasons make two commits, even in a single file: for example, a new working rule in `CLAUDE.md` and the documentation of the tests are two commits. The kind of file (documentation, code) does not define the reason.
 - Method: make the changes of a single reason, commit, then move on to the next reason. Before each commit, review `git diff --cached`: each line must serve the reason stated by the message.
 - Messages in English, following the Git convention: the subject is in the imperative mood ("Add…", "Fix…", "Document…"), starts with a capital letter, has no trailing period, and says what the change does, without a file, crate or module prefix ("README: …"): the files touched are visible in the commit.
-- Otherwise read-only: no push, no branch creation or deletion, no history rewriting. Only exception: publishing a version, below (push of the preparation commit and of the tag).
+- Otherwise read-only: no push, no branch creation or deletion, no history rewriting. Only exception: publishing a version, below (push of the preparation commit and of the tag, deletion of the merged branches).
 
 ### Handling GitHub tickets
 
@@ -85,7 +85,7 @@ Label cycle:
 
 ### Publishing a version
 
-In this context only, Claude Code pushes the preparation commit (`master`) and the tag to GitHub, then creates the release with `gh`. The published release triggers the checks and the build of the executables (`.github/workflows/ci.yaml`), which attaches them to it: a single build per version. The changelog is written by Claude Code and approved by the maintainer, never generated automatically.
+In this context only, Claude Code pushes the preparation commit (`master`) and the tag to GitHub, creates the release with `gh`, then deletes the merged branches. The published release triggers the checks and the build of the executables (`.github/workflows/ci.yaml`), which attaches them to it: a single build per version. The changelog is written by Claude Code and approved by the maintainer, never generated automatically.
 
 The tag and the changelog cover what is on GitHub (`origin/master`), never commits left local.
 
@@ -100,13 +100,14 @@ The tag and the changelog cover what is on GitHub (`origin/master`), never commi
    - 🔒 Security
    - ⚙️ Internal improvements
    - 📝 Documentation
-4. Submit the changelog to the maintainer, with the `origin/master` commit it covers. Nothing is pushed without approval.
+4. Submit the changelog to the maintainer, with the `origin/master` commit it covers and the list of the branches merged into `master`, local and remote (`git branch --all --merged origin/master`), to be deleted at step 9. Nothing is pushed without approval.
 5. After approval, commit the preparation of the version ("Prepare version X.Y.Z"):
    - add the approved changelog at the top of `docs/CHANGELOG.md`, above the previous ones, under a `## vX.Y.Z (YYYY-MM-DD)` heading; its sections are `###` headings there;
    - bump the version, if it is not X.Y.Z already: `version` of the root `Cargo.toml`, `Cargo.lock`, `web/package.json` and `web/package-lock.json` (`npm version X.Y.Z --no-git-tag-version`).
 6. After `git fetch`, check that `origin/master` is still the commit submitted at step 4, parent of the preparation commit: another commit arrived in between would be missing from the changelog. Otherwise, stop. Push `master` (`git push origin master`, without forcing).
 7. Without waiting for the CI of the push, create the annotated tag on that commit (`git tag --annotate vX.Y.Z --message "Prisme vX.Y.Z" origin/master`), push it (`git push origin vX.Y.Z`), then create the release: `gh release create vX.Y.Z --verify-tag --title vX.Y.Z --notes-file <changelog>`, where the notes file takes the entry of `docs/CHANGELOG.md` without its heading.
 8. Follow the CI of the release (`gh run watch`) until the three executables are attached. If it fails, the release stays without executables: report it to the maintainer, with the cause. The release and the tag are only deleted with the maintainer's agreement.
+9. Once the release is published, delete the branches approved at step 4: local (`git branch --delete <branch>`) and remote (`git push origin --delete <branch>`). A branch that is not merged is kept.
 
 ## Commands
 
