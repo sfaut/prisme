@@ -69,7 +69,7 @@ function close(): void {
     :class="TONES[tone].classes"
   >
     <component :is="TONES[tone].icon" class="size-icon shrink-0" aria-hidden="true" />
-    <span class="min-w-0 flex-1 break-words whitespace-pre-line">{{ title }}</span>
+    <span class="min-w-0 flex-1 wrap-break-word whitespace-pre-line">{{ title }}</span>
     <slot />
     <ui-button
       :icon="X"
