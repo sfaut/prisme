@@ -154,7 +154,11 @@ watch(open, async (isOpen) => {
 </script>
 
 <template>
-  <ui-dialog v-model:open="open" title="Paramètres">
+  <ui-dialog
+    v-model:open="open"
+    title="Paramètres"
+    description="Langue de l’interface, requêtes et conservation de la console"
+  >
     <div class="flex flex-col gap-gap">
       <ui-field label="Langue">
         <ui-select
