@@ -231,6 +231,23 @@ gh release create v0.1.0 --verify-tag --title v0.1.0 --notes-file changelog.md
 
 The published release runs the CI again on that commit. It checks the versions, then attaches `prisme-v0.1.0-windows-x86_64.exe`, `prisme-v0.1.0-linux-x86_64` and `prisme-v0.1.0-macos-universal` to the release, about twenty minutes after publication. Past changelogs are in [CHANGELOG.md](CHANGELOG.md).
 
+## Pinned versions
+
+Most dependencies accept any compatible version (`^` in `web/package.json`, the default in `Cargo.toml`). The ones below are fixed on purpose, to an exact version or to a minor version (`~`). They are not left behind: the update of the dependencies before each release moves them too, deliberately, under all the checks (see "Held-back dependencies").
+
+| Dependency | Constraint | Reason |
+|---|---|---|
+| Rust (`rust-toolchain.toml`) | `1.99.1` | Every machine and the CI build with the same compiler, `clippy` and `rustfmt`: each Rust version brings new `clippy` lints, which would otherwise break the "no warning" rule on one machine and not on another. |
+| `sqlparser` | `=0.63.0` | `crates/dialects/src/mysql_parser.rs` takes over methods of `MySqlDialect` written for this version, to parse the compound time units of MySQL and MariaDB (`YEAR_MONTH`...). An upgrade compares them first (see its module comment and [V1.md](V1.md), section 3.2). |
+| `json-p3` | `2.3.1` | 2.3.2 is published without its TypeScript declarations, and 3.x requires TypeScript 7 (see "Held-back dependencies"). |
+| `prettier` | `3.9.10` | Exact version, as Prettier recommends: a new version, even a patch, can format differently, and the CI checks the formatting. |
+| `typescript` | `~6.0.0` | TypeScript does not follow semantic versioning: a minor version can add type errors. `typescript-eslint` also requires a version below 6.1. |
+| `oxlint`, `eslint-plugin-oxlint` | `~1.88.0` | Both are released together and must keep the same version: the plugin turns off in ESLint the rules that Oxlint checks. A minor version adds rules. |
+| `eslint-plugin-vue` | `~10.11.0` | A minor version can report more errors (new rules, rule fixes, as ESLint's versioning policy allows). |
+| `@types/node` | `^24` | The types follow Node 24, the version of the TypeScript configuration (`@tsconfig/node24`) and of `engines` (`web/package.json`): the types of Node 26 would offer APIs that Node 24 lacks. |
+
+The constraints with `~` and the exact Prettier version come from the Vue project template (`create-vue`).
+
 ## Held-back dependencies
 
 Before each release, the dependencies go to their latest version, major versions included (process in [CLAUDE.md](../CLAUDE.md), section "Publishing a version"). A dependency whose upgrade breaks the checks and cannot be fixed simply goes back to its previous version, and is listed here, so that the next release does not try the same version again: it is only tried again once a newer version is out, or once the cause is gone.
@@ -240,7 +257,7 @@ Before each release, the dependencies go to their latest version, major versions
 | `typescript` | 6.0 | 7.0.2 | TypeScript 7, rewritten in Go, no longer provides the JavaScript API of the compiler. `vue-tsc` 3.3.11 crashes on start (`ERR_PACKAGE_PATH_NOT_EXPORTED: ./lib/tsc`), its support comes with Vue Language Tools v4 ([language-tools #5381](https://github.com/vuejs/language-tools/issues/5381)). `typescript-eslint` requires TypeScript `>=4.8.4 <6.1.0` ([typescript-eslint #12518](https://github.com/typescript-eslint/typescript-eslint/issues/12518)). Both expect TypeScript 7.1. | 2026-10-20 |
 | `json-p3` | 2.3.1 | 3.x | 3.x requires TypeScript 7 as a peer dependency (see `typescript`), and 2.3.2 is published without its TypeScript declarations. Its limits are in [V1.md](V1.md), section 3.1. | 2026-10-20 |
 
-Two other versions are chosen on purpose, outside this table: `sqlparser` is pinned (exact version, see [V1.md](V1.md), section 3.2), and `@types/node` follows the oldest Node version of `engines` (`web/package.json`), so that the types do not offer APIs that version lacks.
+The versions fixed on purpose, for another reason than a failed upgrade, are in "Pinned versions".
 
 ## Repository layout
 
