@@ -231,6 +231,17 @@ gh release create v0.1.0 --verify-tag --title v0.1.0 --notes-file changelog.md
 
 The published release runs the CI again on that commit. It checks the versions, then attaches `prisme-v0.1.0-windows-x86_64.exe`, `prisme-v0.1.0-linux-x86_64` and `prisme-v0.1.0-macos-universal` to the release, about twenty minutes after publication. Past changelogs are in [CHANGELOG.md](CHANGELOG.md).
 
+## Held-back dependencies
+
+Before each release, the dependencies go to their latest version, major versions included (process in [CLAUDE.md](../CLAUDE.md), section "Publishing a version"). A dependency whose upgrade breaks the checks and cannot be fixed simply goes back to its previous version, and is listed here, so that the next release does not try the same version again: it is only tried again once a newer version is out, or once the cause is gone.
+
+| Dependency | Version kept | Version tried | Cause | Date |
+|---|---|---|---|---|
+| `typescript` | 6.0 | 7.0.2 | TypeScript 7, rewritten in Go, no longer provides the JavaScript API of the compiler. `vue-tsc` 3.3.11 crashes on start (`ERR_PACKAGE_PATH_NOT_EXPORTED: ./lib/tsc`), its support comes with Vue Language Tools v4 ([language-tools #5381](https://github.com/vuejs/language-tools/issues/5381)). `typescript-eslint` requires TypeScript `>=4.8.4 <6.1.0` ([typescript-eslint #12518](https://github.com/typescript-eslint/typescript-eslint/issues/12518)). Both expect TypeScript 7.1. | 2026-10-20 |
+| `json-p3` | 2.3.1 | 3.x | 3.x requires TypeScript 7 as a peer dependency (see `typescript`), and 2.3.2 is published without its TypeScript declarations. Its limits are in [V1.md](V1.md), section 3.1. | 2026-10-20 |
+
+Two other versions are chosen on purpose, outside this table: `sqlparser` is pinned (exact version, see [V1.md](V1.md), section 3.2), and `@types/node` follows the oldest Node version of `engines` (`web/package.json`), so that the types do not offer APIs that version lacks.
+
 ## Repository layout
 
 ```
