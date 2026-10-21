@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError, request } from '../http'
+import { ApiError, UNREACHABLE, request } from '../http'
 import { beautify } from '../beautify'
 import { streamCatalog } from '../explorer'
 import type { CatalogEvent } from '../generated/CatalogEvent'
@@ -66,6 +66,16 @@ describe('request', () => {
     await expect(request('GET', '/api/health')).rejects.toThrow(
       'Le serveur Prisme a refusé la requête (statut 422) :\n\nFailed to deserialize the JSON body',
     )
+  })
+
+  it('tells that the server is out of reach when the network fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch')
+      }),
+    )
+    await expect(request('GET', '/api/health')).rejects.toThrow(UNREACHABLE)
   })
 })
 

@@ -4,8 +4,9 @@
  * All the routes answer in JSON. On failure, the server returns
  * `{"error": "message", "detail": {...}}` (`ErrorBody` type): the thrown
  * error carries the message that the interface writes from the detail
- * (`messages.ts`), ready to be shown to the user. An answer that is not
- * Prisme's JSON (a refusal of the HTTP layer) is quoted with its status.
+ * (`messages.ts`), ready to be shown to the user. A server out of reach, or
+ * an answer that is not Prisme's JSON (a refusal of the HTTP layer), gets a
+ * message of its own.
  */
 
 import type { ErrorBody } from './generated/ErrorBody'
@@ -18,10 +19,10 @@ import { trackRead, trackWrite } from './sync'
  */
 export class ApiError extends Error {
   /**
-   * @param status HTTP status of the response (400, 404, 502...).
+   * @param status HTTP status of the response (400, 404, 502...), 0 when the server is out of reach.
    * @param message Message for the user.
    * @param detail What went wrong, as the server told it; absent for an
-   *     answer that is not Prisme's JSON.
+   *     answer that is not Prisme's JSON, or a server out of reach.
    */
   constructor(
     readonly status: number,
@@ -30,6 +31,30 @@ export class ApiError extends Error {
   ) {
     super(message)
     this.name = 'ApiError'
+  }
+}
+
+/**
+ * Message when the Prisme server does not answer at all.
+ */
+export const UNREACHABLE = 'Serveur Prisme injoignable : vérifiez qu’il est lancé.'
+
+/**
+ * Sends a request with `fetch`; a network failure (server stopped) becomes
+ * an `ApiError` with a message for the user.
+ *
+ * @param path Path of the route.
+ * @param init Options of `fetch`.
+ * @throws {ApiError} If the server is out of reach.
+ */
+export async function fetchApi(path: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(path, init)
+  } catch (failure) {
+    if (failure instanceof TypeError) {
+      throw new ApiError(0, UNREACHABLE)
+    }
+    throw failure
   }
 }
 
@@ -100,7 +125,7 @@ async function send<T>(
   body: unknown,
   options: RequestOptions,
 ): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetchApi(path, {
     method,
     keepalive: options.keepalive === true,
     headers: body === undefined ? {} : { 'Content-Type': 'application/json' },

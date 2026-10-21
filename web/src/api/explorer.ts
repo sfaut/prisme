@@ -7,7 +7,7 @@
  * waiting for the end of the stream.
  */
 
-import { toApiError } from './http'
+import { ApiError, UNREACHABLE, fetchApi, toApiError } from './http'
 import type { CatalogEvent } from './generated/CatalogEvent'
 
 /**
@@ -21,14 +21,17 @@ export async function streamCatalog(
   connectionId: number,
   onEvent: (event: CatalogEvent) => void,
 ): Promise<void> {
-  const response = await fetch(`/api/connections/${connectionId}/catalog`)
+  const response = await fetchApi(`/api/connections/${connectionId}/catalog`)
   if (!response.ok || response.body === null) {
     throw await toApiError(response)
   }
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
   let pending = ''
   for (;;) {
-    const { value, done } = await reader.read()
+    const { value, done } = await reader.read().catch((failure: unknown) => {
+      // The server stopped while it was sending the catalog.
+      throw failure instanceof TypeError ? new ApiError(0, UNREACHABLE) : failure
+    })
     if (done) {
       break
     }
