@@ -12,7 +12,7 @@
   (`main.css`).
 -->
 <script setup lang="ts">
-import { LoaderCircle } from 'lucide-vue-next'
+import { LoaderCircle } from '@lucide/vue'
 import { type Component, computed } from 'vue'
 
 const props = withDefaults(

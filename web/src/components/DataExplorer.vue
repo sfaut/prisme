@@ -41,7 +41,7 @@ import {
   Search,
   TextWrap,
   UnfoldVertical,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import {
   computed,
   nextTick,

@@ -24,7 +24,7 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { LoaderCircle, Play, Square, WandSparkles } from 'lucide-vue-next'
+import { LoaderCircle, Play, Square, WandSparkles } from '@lucide/vue'
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 

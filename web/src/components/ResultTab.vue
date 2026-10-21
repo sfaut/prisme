@@ -13,7 +13,7 @@
     green once the query has ended, red on failure (`tabFraction`).
 -->
 <script setup lang="ts">
-import { Pin, X } from 'lucide-vue-next'
+import { Pin, X } from '@lucide/vue'
 import { computed } from 'vue'
 
 import { type QueryTab, tabFraction, tabProgress } from '@/api/querySession'

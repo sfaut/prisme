@@ -22,7 +22,7 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { Database } from 'lucide-vue-next'
+import { Database } from '@lucide/vue'
 import { TabsContent, TabsRoot } from 'reka-ui'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 

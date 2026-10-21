@@ -8,7 +8,7 @@
   message ("Reconnecter" button...).
 -->
 <script setup lang="ts">
-import { CircleAlert, CircleCheckBig, CircleX, Info, X } from 'lucide-vue-next'
+import { CircleAlert, CircleCheckBig, CircleX, Info, X } from '@lucide/vue'
 import { ref, watch } from 'vue'
 
 import UiButton from './UiButton.vue'

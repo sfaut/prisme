@@ -19,7 +19,7 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { Eye, EyeOff } from 'lucide-vue-next'
+import { Eye, EyeOff } from '@lucide/vue'
 import { computed, reactive, ref, watch } from 'vue'
 
 import { probeSettings, serverLabel } from '@/api/connections'

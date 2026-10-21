@@ -10,7 +10,7 @@
   `App.vue`).
 -->
 <script setup lang="ts">
-import { MessageCircleOff } from 'lucide-vue-next'
+import { MessageCircleOff } from '@lucide/vue'
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 

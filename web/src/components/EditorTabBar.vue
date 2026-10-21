@@ -13,7 +13,7 @@
   To place in the Reka UI `TabsRoot` that holds the editors (`App.vue`).
 -->
 <script setup lang="ts">
-import { History, Plus, X } from 'lucide-vue-next'
+import { History, Plus, X } from '@lucide/vue'
 import { TabsList, TabsTrigger } from 'reka-ui'
 import { computed } from 'vue'
 

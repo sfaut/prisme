@@ -28,7 +28,7 @@ import {
   SquareFunction,
   Table,
   Zap,
-} from 'lucide-vue-next'
+} from '@lucide/vue'
 import type { Component } from 'vue'
 
 import type { EntryKind, ExplorerNode } from './explorerNodes'

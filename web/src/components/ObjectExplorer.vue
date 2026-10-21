@@ -42,7 +42,7 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { NotebookPen, Pencil, PlugZap, Plus, RefreshCw, Trash2 } from 'lucide-vue-next'
+import { NotebookPen, Pencil, PlugZap, Plus, RefreshCw, Trash2 } from '@lucide/vue'
 import { TreeItem, type TreeItemSelectEvent, TreeRoot, TreeVirtualizer } from 'reka-ui'
 import { computed, onMounted, ref, watch } from 'vue'
 

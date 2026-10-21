@@ -45,7 +45,7 @@
   selection, copy) is in `resultGrid.ts`.
 -->
 <script setup lang="ts">
-import { ExternalLink, ListFilter, Search, X } from 'lucide-vue-next'
+import { ExternalLink, ListFilter, Search, X } from '@lucide/vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import {
   computed,

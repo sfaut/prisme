@@ -12,7 +12,7 @@
   the panels and the icons of the rails stand at the same height.
 -->
 <script setup lang="ts">
-import { PanelBottomClose, PanelLeftClose, PanelRightClose } from 'lucide-vue-next'
+import { PanelBottomClose, PanelLeftClose, PanelRightClose } from '@lucide/vue'
 
 import UiButton from './ui/UiButton.vue'
 

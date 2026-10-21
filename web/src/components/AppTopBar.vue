@@ -8,7 +8,7 @@
   The windows it opens are its own: the menu only chooses which one shows.
 -->
 <script setup lang="ts">
-import { Monitor, Moon, Settings, Sun, User } from 'lucide-vue-next'
+import { Monitor, Moon, Settings, Sun, User } from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 
 import { getVersion } from '@/api/version'

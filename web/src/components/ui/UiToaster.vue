@@ -4,7 +4,7 @@
   readers). To mount only once, in `App.vue`.
 -->
 <script setup lang="ts">
-import { CircleAlert, CircleCheck } from 'lucide-vue-next'
+import { CircleAlert, CircleCheck } from '@lucide/vue'
 import { ToastProvider, ToastRoot, ToastTitle, ToastViewport } from 'reka-ui'
 
 import { dismiss, toasts } from './toasts'

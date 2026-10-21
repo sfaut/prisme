@@ -6,7 +6,7 @@
   message shows where the write came from).
 -->
 <script setup lang="ts">
-import { CircleAlert, CircleCheck, LoaderCircle } from 'lucide-vue-next'
+import { CircleAlert, CircleCheck, LoaderCircle } from '@lucide/vue'
 import { computed } from 'vue'
 
 import { syncState } from '@/api/sync'

@@ -7,7 +7,7 @@
   the panel's padding at the bottom.
 -->
 <script setup lang="ts">
-import { PanelBottomOpen, PanelLeftOpen, PanelRightOpen } from 'lucide-vue-next'
+import { PanelBottomOpen, PanelLeftOpen, PanelRightOpen } from '@lucide/vue'
 
 const props = defineProps<{
   /**
