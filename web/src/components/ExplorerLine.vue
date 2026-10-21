@@ -133,8 +133,9 @@ function nodeIcon(node: ExplorerNode, expanded: boolean): Component {
   </span>
   <!--
     Other nodes: label, then the note if any (UNIQUE, chargement…), and for a
-    source the badge of the server's flavor, right after the name. The whole
-    takes the room left, which pushes the menu to the end of the line.
+    source the badge of the server's flavor, right after the name, whose
+    tooltip gives the name and version of the server. The whole takes the
+    room left, which pushes the menu to the end of the line.
   -->
   <span v-else class="flex min-w-0 flex-1 items-center gap-2">
     <span
@@ -149,7 +150,12 @@ function nodeIcon(node: ExplorerNode, expanded: boolean): Component {
         {{ node.note }}
       </span>
     </span>
-    <span v-if="node.badge" class="flavor-badge shrink-0 text-trim" :data-flavor="node.badge">
+    <span
+      v-if="node.badge"
+      v-tooltip="node.badgeTooltip"
+      class="flavor-badge shrink-0 text-trim"
+      :data-flavor="node.badge"
+    >
       {{ node.badge }}
     </span>
   </span>

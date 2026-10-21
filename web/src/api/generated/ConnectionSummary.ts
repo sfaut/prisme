@@ -51,6 +51,11 @@ show_system_schemas: boolean,
  */
 server_flavor: Flavor | null, 
 /**
+ * Version of the server seen on the last successful connection (raw
+ * result of `SELECT VERSION()`), `null` if the connection never succeeded.
+ */
+server_version: string | null, 
+/**
  * Date it was saved, in UTC, in ISO 8601 format.
  */
 created_at: string, };

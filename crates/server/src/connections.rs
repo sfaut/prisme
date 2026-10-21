@@ -14,7 +14,7 @@
 //! page is closed (see `sessions.rs`), and remembers the server's flavor
 //! (MySQL or MariaDB) seen on the last connection.
 
-use prisme_connectors::mysql::{Flavor, MysqlTarget};
+use prisme_connectors::mysql::{Flavor, MysqlTarget, ServerInfo};
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::{SettingRefusal, session_setting_refusal};
 use rusqlite::{Connection, OptionalExtension, ffi, params};
@@ -136,6 +136,9 @@ pub struct ConnectionSummary {
     /// Flavor of the server seen on the last successful connection, `null`
     /// if the connection never succeeded.
     pub server_flavor: Option<Flavor>,
+    /// Version of the server seen on the last successful connection (raw
+    /// result of `SELECT VERSION()`), `null` if the connection never succeeded.
+    pub server_version: Option<String>,
     /// Date it was saved, in UTC, in ISO 8601 format.
     pub created_at: String,
 }
@@ -325,7 +328,8 @@ fn name_error(error: rusqlite::Error, name: &str) -> ConnectionsError {
 pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, ConnectionsError> {
     let mut statement = db.prepare(
         "SELECT id, name, engine, host, port, username, database_name, init_sql,
-                session_timeout_minutes, show_system_schemas, server_flavor, created_at
+                session_timeout_minutes, show_system_schemas, server_flavor, server_version,
+                created_at
          FROM connections WHERE user_id = ?1 ORDER BY name",
     )?;
     let rows = statement.query_map(params![user_id], |row| {
@@ -341,7 +345,8 @@ pub fn list(db: &Connection, user_id: i64) -> Result<Vec<ConnectionSummary>, Con
             session_timeout_minutes: row.get(8)?,
             show_system_schemas: row.get(9)?,
             server_flavor: flavor_of(&row.get::<_, String>(10)?),
-            created_at: row.get(11)?,
+            server_version: Some(row.get::<_, String>(11)?).filter(|version| !version.is_empty()),
+            created_at: row.get(12)?,
         })
     })?;
     Ok(rows.collect::<Result<_, _>>()?)
@@ -430,20 +435,22 @@ pub fn name_of(db: &Connection, user_id: i64, id: i64) -> Result<String, Connect
     Ok(name.unwrap_or_default())
 }
 
-/// Remembers the server flavor of connection `id`, seen on a successful connection.
-pub fn remember_flavor(
+/// Remembers the flavor and the version of the server of connection `id`,
+/// seen on a successful connection.
+pub fn remember_server(
     db: &Connection,
     user_id: i64,
     id: i64,
-    flavor: Flavor,
+    server: &ServerInfo,
 ) -> Result<(), ConnectionsError> {
-    let name = match flavor {
+    let flavor = match server.flavor {
         Flavor::MySql => "mysql",
         Flavor::MariaDb => "mariadb",
     };
     db.execute(
-        "UPDATE connections SET server_flavor = ?3 WHERE id = ?1 AND user_id = ?2",
-        params![id, user_id, name],
+        "UPDATE connections SET server_flavor = ?3, server_version = ?4
+         WHERE id = ?1 AND user_id = ?2",
+        params![id, user_id, flavor, server.version],
     )?;
     Ok(())
 }
@@ -723,17 +730,25 @@ mod tests {
     }
 
     #[test]
-    fn remembers_the_server_flavor() {
+    fn remembers_the_server() {
         let db = store::open_in_memory();
         let key = MasterKey::generate();
         let user_id = store::ensure_user(&db, "a@example.com").unwrap();
         let id = insert(&db, &key, user_id, &new_connection("prod")).unwrap();
-        assert_eq!(list(&db, user_id).unwrap()[0].server_flavor, None);
-        remember_flavor(&db, user_id, id, Flavor::MariaDb).unwrap();
+        let summary = &list(&db, user_id).unwrap()[0];
         assert_eq!(
-            list(&db, user_id).unwrap()[0].server_flavor,
-            Some(Flavor::MariaDb)
+            (summary.server_flavor, &summary.server_version),
+            (None, &None)
         );
+        let server = ServerInfo {
+            flavor: Flavor::MariaDb,
+            version: "10.11.11-MariaDB".to_string(),
+            ansi_quotes: false,
+        };
+        remember_server(&db, user_id, id, &server).unwrap();
+        let summary = &list(&db, user_id).unwrap()[0];
+        assert_eq!(summary.server_flavor, Some(Flavor::MariaDb));
+        assert_eq!(summary.server_version.as_deref(), Some("10.11.11-MariaDB"));
     }
 
     #[test]

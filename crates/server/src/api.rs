@@ -528,9 +528,9 @@ async fn probe_connection(
 
     let span = console::sql_span(user_id, &name, Action::Probe);
     let info = mysql::probe(&target).instrument(span).await?;
-    let flavor = info.flavor;
+    let server = info.clone();
     state
-        .with_db(move |db, _| connections::remember_flavor(db, user_id, id, flavor))
+        .with_db(move |db, _| connections::remember_server(db, user_id, id, &server))
         .await?;
     Ok(Json(info))
 }

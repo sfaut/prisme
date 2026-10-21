@@ -174,6 +174,7 @@ const nodes = computed(() =>
       catalog: catalog.catalogOf(connection.id),
       currentDatabase: connection.id === props.selectedId ? props.currentDatabase : null,
       flavor: catalog.catalogOf(connection.id)?.flavor ?? connection.server_flavor,
+      version: catalog.catalogOf(connection.id)?.version ?? connection.server_version,
       showSystemSchemas: connection.show_system_schemas,
     })),
     receiving.value,

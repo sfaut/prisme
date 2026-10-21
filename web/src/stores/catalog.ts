@@ -70,6 +70,11 @@ export interface Catalog {
    */
   flavor: Flavor | null
   /**
+   * Version of the server (raw result of `SELECT VERSION()`), announced with
+   * the databases; `null` before.
+   */
+  version: string | null
+  /**
    * Has the whole catalog been received?
    */
   done: boolean
@@ -83,7 +88,7 @@ export interface Catalog {
  * Empty catalog, waiting for the first message.
  */
 export function emptyCatalog(): Catalog {
-  return { schemas: [], flavor: null, done: false, errors: [] }
+  return { schemas: [], flavor: null, version: null, done: false, errors: [] }
 }
 
 /**
@@ -111,6 +116,7 @@ export function applyCatalogEvent(catalog: Catalog, event: CatalogEvent): void {
         events: null,
       }))
       catalog.flavor = event.flavor
+      catalog.version = event.version
       break
     case 'objects': {
       const schema = catalog.schemas.find((candidate) => candidate.name === event.schema)

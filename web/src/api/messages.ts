@@ -20,6 +20,7 @@ import type { ErrorDetail } from './generated/ErrorDetail'
 import type { FailureCause } from './generated/FailureCause'
 import type { Field } from './generated/Field'
 import type { Flavor } from './generated/Flavor'
+import { FLAVOR_NAMES } from './flavors'
 
 /**
  * Label of each field, as the forms show it.
@@ -45,14 +46,6 @@ const FIELD_UNITS: Partial<Record<Field, string>> = {
   session_timeout_minutes: ' minutes',
   history_retention_days: ' jours',
   debug_retention_days: ' jours',
-}
-
-/**
- * Name of each flavor of server.
- */
-const FLAVOR_NAMES: Record<Flavor, string> = {
-  mysql: 'MySQL',
-  mariadb: 'MariaDB',
 }
 
 /**

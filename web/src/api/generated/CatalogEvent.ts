@@ -7,4 +7,4 @@ import type { TableDetails } from "./TableDetails";
 /**
  * Message of the catalog stream.
  */
-export type CatalogEvent = { "type": "schemas", schemas: Array<string>, flavor: Flavor, } | { "type": "objects", schema: string, objects: SchemaObjects, } | { "type": "details", schema: string, tables: Array<TableDetails>, } | { "type": "error", message: string, detail: ErrorDetail, } | { "type": "done" };
+export type CatalogEvent = { "type": "schemas", schemas: Array<string>, flavor: Flavor, version: string, } | { "type": "objects", schema: string, objects: SchemaObjects, } | { "type": "details", schema: string, tables: Array<TableDetails>, } | { "type": "error", message: string, detail: ErrorDetail, } | { "type": "done" };

@@ -29,6 +29,7 @@
 import type { ColumnInfo } from '@/api/generated/ColumnInfo'
 import type { EventInfo } from '@/api/generated/EventInfo'
 import type { Flavor } from '@/api/generated/Flavor'
+import { serverName } from '@/api/flavors'
 import type { ForeignKeyInfo } from '@/api/generated/ForeignKeyInfo'
 import type { IndexInfo } from '@/api/generated/IndexInfo'
 import type { RoutineInfo } from '@/api/generated/RoutineInfo'
@@ -75,6 +76,10 @@ export interface Source {
    * Flavor of the server (badge next to the name), `null` if still unknown.
    */
   flavor: Flavor | null
+  /**
+   * Version of the server (raw result of `SELECT VERSION()`), `null` if still unknown.
+   */
+  version: string | null
   /**
    * Are the system databases (`SYSTEM_SCHEMAS`) shown?
    */
@@ -150,6 +155,10 @@ export interface ExplorerNode extends Place {
    * (`mysql`, `mariadb`).
    */
   badge?: string
+  /**
+   * Tooltip of the badge: name and version of the server.
+   */
+  badgeTooltip?: string
   /**
    * Note shown after the label, in capitals, smaller and lighter:
    * `PRIMARY KEY` for the primary key, `UNIQUE` for a unique index.
@@ -259,6 +268,7 @@ export function sourceNodes(sources: Source[]): ExplorerNode[] {
       ...place,
       role: 'source' as const,
       badge: source.flavor ?? undefined,
+      badgeTooltip: source.flavor === null ? undefined : serverName(source.flavor, source.version),
       children:
         catalog === undefined || (!catalog.done && catalog.schemas.length === 0)
           ? [loadingNode(key, place)]

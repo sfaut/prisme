@@ -22,6 +22,7 @@ vi.mock('@/api/connections', () => ({
       session_timeout_minutes: 5,
       show_system_schemas: true,
       server_flavor: null,
+      server_version: null,
       created_at: '2026-10-12T20:00:00.000Z',
     },
   ],
@@ -67,10 +68,11 @@ describe('connections', () => {
     expect(store.selected?.name).toBe('prod')
   })
 
-  it('detects in the background the flavor of a connection never connected', async () => {
+  it('detects in the background the server of a connection never connected', async () => {
     const store = useConnectionsStore()
     await store.load()
     await vi.waitFor(() => expect(store.connections[0]?.server_flavor).toBe('mariadb'))
+    expect(store.connections[0]?.server_version).toBe('11.4.2-MariaDB')
   })
 })
 

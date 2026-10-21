@@ -60,12 +60,13 @@ export const useConnectionsStore = defineStore('connections', () => {
   }
 
   /**
-   * Tests in the background the connections of unknown flavor, not tested yet,
-   * and records the received flavor.
+   * Tests in the background the connections whose server is unknown, not
+   * tested yet, and records the received flavor and version. A connection
+   * whose flavor was saved before the version is tested once more.
    */
   function detectFlavors(): void {
     for (const connection of connections.value) {
-      if (connection.server_flavor !== null || probed.has(connection.id)) {
+      if (connection.server_version !== null || probed.has(connection.id)) {
         continue
       }
       probed.add(connection.id)
@@ -76,6 +77,7 @@ export const useConnectionsStore = defineStore('connections', () => {
           const current = connections.value.find((item) => item.id === id)
           if (current) {
             current.server_flavor = server.flavor
+            current.server_version = server.version
           }
         })
         .catch(() => {
@@ -112,6 +114,7 @@ export const useConnectionsStore = defineStore('connections', () => {
     const changed = connections.value.find((item) => item.id === id)
     if (changed) {
       changed.server_flavor = null
+      changed.server_version = null
     }
     detectFlavors()
   }

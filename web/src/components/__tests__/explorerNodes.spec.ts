@@ -85,17 +85,25 @@ describe('sourceNodes', () => {
       {
         connectionId: 1,
         name: 'MariaDB Origen 2 (II)',
-        catalog: { schemas: catalog, flavor: 'mariadb', done: true, errors: [] },
+        catalog: {
+          schemas: catalog,
+          flavor: 'mariadb',
+          version: '10.11.11-MariaDB',
+          done: true,
+          errors: [],
+        },
         currentDatabase: 'shop',
         flavor: 'mariadb',
+        version: '10.11.11-MariaDB',
         showSystemSchemas: true,
       },
       {
         connectionId: 2,
         name: 'Origen 2',
-        catalog: { schemas: catalog, flavor: 'mariadb', done: true, errors: [] },
+        catalog: { schemas: catalog, flavor: 'mariadb', version: null, done: true, errors: [] },
         currentDatabase: null,
         flavor: 'mysql',
+        version: null,
         showSystemSchemas: true,
       },
       {
@@ -104,6 +112,7 @@ describe('sourceNodes', () => {
         catalog: undefined,
         currentDatabase: null,
         flavor: null,
+        version: null,
         showSystemSchemas: true,
       },
     ])
@@ -118,6 +127,12 @@ describe('sourceNodes', () => {
     expect(labels(never)).toEqual(['chargement…'])
     // Badge of the server's flavor, absent as long as it is unknown.
     expect([first?.badge, second?.badge, never?.badge]).toEqual(['mariadb', 'mysql', undefined])
+    // Its tooltip names the server, with its version once known.
+    expect([first?.badgeTooltip, second?.badgeTooltip, never?.badgeTooltip]).toEqual([
+      'MariaDB 10.11.11-MariaDB',
+      'MySQL',
+      undefined,
+    ])
     // Same databases in two sources: distinct keys, and each node knows its connection.
     expect(first?.children?.[0]?.key).not.toBe(second?.children?.[0]?.key)
     expect(second?.children?.[0]?.children?.[0]?.children?.[0]?.connectionId).toBe(2)
@@ -135,9 +150,10 @@ describe('system databases', () => {
     const source = (showSystemSchemas: boolean) => ({
       connectionId: 1,
       name: 'Origen 2',
-      catalog: { schemas, flavor: null, done: true, errors: [] },
+      catalog: { schemas, flavor: null, version: null, done: true, errors: [] },
       currentDatabase: null,
       flavor: null,
+      version: null,
       showSystemSchemas,
     })
     expect(labels(sourceNodes([source(false)])[0])).toEqual(['shop'])
@@ -158,6 +174,7 @@ describe('explorerTree', () => {
       catalog: undefined,
       currentDatabase: null,
       flavor: null,
+      version: null,
       showSystemSchemas: true,
     }
     const [root, notebooks] = explorerTree([source], true)
@@ -262,9 +279,14 @@ describe('catalogNodes', () => {
 describe('applyCatalogEvent', () => {
   it('fills the catalog message by message', () => {
     const state = emptyCatalog()
-    applyCatalogEvent(state, { type: 'schemas', schemas: ['a'], flavor: 'mysql' })
+    applyCatalogEvent(state, {
+      type: 'schemas',
+      schemas: ['a'],
+      flavor: 'mysql',
+      version: '8.4.11',
+    })
     expect(state.schemas).toEqual([{ name: 'a', tables: null, routines: null, events: null }])
-    expect(state.flavor).toBe('mysql')
+    expect([state.flavor, state.version]).toEqual(['mysql', '8.4.11'])
 
     applyCatalogEvent(state, {
       type: 'objects',
