@@ -2,6 +2,64 @@
 
 Changelogs of the published versions of Prisme, most recent first. Each entry is also the notes of its GitHub release. The interface is in French: its labels are quoted as they appear, with a translation.
 
+## v0.5.0 (2026-10-22)
+
+### 🚀 Launch
+
+We are proud to announce Prisme v0.5.0. This version speaks French in its errors: the messages of Prisme are written by the interface, and the answers of the servers are quoted with who wrote them, a first step towards a multilingual interface. The object explorer acts on its lines with Ctrl+click, Enter or a button of the line, and no longer on a double click. The run buttons stop the queries they started, the settings get their own window with a save button, and every tooltip shows in a single themed bubble, above its element.
+
+### ✨ New features
+
+- Object explorer ([#19](https://github.com/sfaut/prisme/issues/19)):
+  - **Ctrl+click** (**Cmd+click** on macOS), or **Enter** on the focused line, acts on it without opening or closing it: chooses the source for the active editor, makes the database the current one (like `USE`), or shows the content of the table or view;
+  - on hovering a line, a button on its right does the same: the plug of a database, the eye of a table or view;
+  - the tooltip of the flavor badge of a source gives the name and version of its server, as `SELECT VERSION()` returns it (`MariaDB 10.11.11-MariaDB`, `MySQL 8.4.11`), even before its catalog is opened.
+- Errors: the errors of Prisme are written in French by the interface, from codes that the server sends with their parameters. This is a first step towards a multilingual interface: each message of Prisme is written in a single place, ready to be translated. The texts written outside Prisme are quoted as they are, introduced by who wrote them: the answer of the server with its error number and SQLSTATE, the message of the driver, of the system or of the SQL parser. When the Prisme server is out of reach, a message says so instead of the browser's text (`Failed to fetch`).
+- Run buttons: while queries run, the button that started them, **Exécuter** (Run) or **Exécuter tout** (Run all), turns into a red stop button; the other one stays disabled until the end. They replace the **Stopper** (Stop) button.
+- Settings: the read-only sessions and the retention of the console's history and debug log move from the profile to the **Paramètres** (Settings) window, ordered by subject; the window saves with **Enregistrer** (Save) and closes without saving with **Annuler** (Cancel).
+- Tooltips: every tooltip of the interface shows in a single themed bubble, above its element so that the pointer does not hide it, also on keyboard focus.
+- Top bar: the state of the synchronisation with the internal database shows as an icon, with its text in a tooltip.
+- Message banners: an icon per tone (information, success, warning, error), and every banner can be closed.
+- Look: thinner scrollbars, the result grid attached to its tabs, and the spacing of the windows and panels made even.
+
+### 💥 Breaking changes
+
+- Object explorer: a double click on a line no longer acts on it: it opens and closes the line. Use Ctrl+click, Enter or the button of the line.
+- API: the read-only sessions and the retentions of the console move from `/api/profile` to `/api/settings`.
+
+### 🗑️ Removed features
+
+- The tooltips of the values of the result grid.
+- The connection and server label next to the row limit of the query cell.
+
+### 🐞 Bug fixes
+
+- A target server out of reach no longer shows as a failed save in the top bar.
+- No more vertical scrollbar beside the editors' tabs.
+
+### 🔒 Security
+
+- `npm audit` reports [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) (`braces`, high), which has no patched version. No impact on Prisme: `braces` only serves the linting of the interface's sources, during development, and never gets into the executable.
+
+### ⚙️ Internal improvements
+
+- Dependencies:
+  - `lucide-vue-next` 1.0.0 replaced by `@lucide/vue` 1.61.0: Lucide now publishes its Vue icons under this name, and `lucide-vue-next` stopped at 1.0.0, without the new icons;
+  - `tokio` 1.53.3 → 1.54.1;
+  - `ts-rs` 12.0.1: `format` feature in the tests, which format the generated TypeScript types;
+  - `vite` 8.3.4 → 8.3.5;
+  - `@codemirror/autocomplete` 6.20.3 → 6.20.4, `@codemirror/view` 6.43.14 → 6.43.15;
+  - `@tanstack/vue-virtual` 3.13.46 → 3.13.47;
+  - `eslint` 10.12.0 → 10.13.0, `oxlint` and `eslint-plugin-oxlint` 1.88.0 → 1.89.0, `npm-run-all2` 9.0.3 → 9.0.4.
+- The generated TypeScript types are formatted, and readable.
+- The lengths of the interface are written on Tailwind's spacing scale, with its canonical classes, and containers space their children without external margins.
+- Release process: the dependencies are updated to their latest version and checked before each version, the security advisories are compared with the known ones, the changelog gives the reason of a replaced dependency, the merged branches are deleted once the version is published, and the local commits leave only once everything has been checked.
+
+### 📝 Documentation
+
+- Developer guide: badges of the main dependencies, and sections on the pinned versions, the held-back dependencies and the known security advisories.
+- README: the new gestures of the object explorer.
+
 ## v0.4.0 (2026-10-20)
 
 ### 🚀 Launch

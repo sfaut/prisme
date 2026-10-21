@@ -2290,7 +2290,7 @@ dependencies = [
 
 [[package]]
 name = "prisme-connectors"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "mysql_async",
  "secrecy",
@@ -2304,7 +2304,7 @@ dependencies = [
 
 [[package]]
 name = "prisme-dialects"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "prisme-splitter",
  "rusqlite",
@@ -2316,7 +2316,7 @@ dependencies = [
 
 [[package]]
 name = "prisme-server"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -2347,7 +2347,7 @@ dependencies = [
 
 [[package]]
 name = "prisme-splitter"
-version = "0.4.0"
+version = "0.5.0"
 
 [[package]]
 name = "proc-macro-crate"
