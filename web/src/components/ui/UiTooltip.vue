@@ -3,7 +3,8 @@
   `App.vue`): it shows the text that the `v-tooltip` directive gave to the
   element under the pointer, after a short hover, or to the element that
   takes the keyboard focus. A short text in a small font on a dark
-  background, under its element; above it when there is no room below.
+  background, above its element, so that the pointer does not hide it;
+  under it when there is no room above.
 
   Built on the browser's own tools: the `popover` attribute (`hint`: shows in
   the top layer, over the windows, and closes with Escape) and the anchor
@@ -152,8 +153,8 @@ watch(
       return
     }
     // Reopened for each element: an open bubble keeps the position it fell
-    // back to for the previous element (above it, near the bottom of the
-    // window), even where the next one leaves room below.
+    // back to for the previous element (under it, near the top of the
+    // window), even where the next one leaves room above.
     if (bubble.value.matches(':popover-open')) {
       bubble.value.hidePopover()
     }
@@ -197,20 +198,22 @@ onBeforeUnmount(() => {
 <style scoped>
 @reference "@/assets/main.css";
 
-/* Under its element, centered on it. Near an edge of the window, it lines up
-   with the element's side instead; above it when there is no room below. */
+/* Above its element, centered on it: the pointer, which covers the bottom of
+   the element, does not hide the text. Near an edge of the window, it lines up
+   with the element's side instead; under it when there is no room above. The
+   gap stands on both sides, whichever side the bubble falls back to. */
 .ui-tooltip {
   position-anchor: --tooltip;
   inset: auto;
-  position-area: bottom;
+  position-area: top;
   position-try-fallbacks:
-    bottom span-right,
-    bottom span-left,
-    flip-block,
     top span-right,
-    top span-left;
+    top span-left,
+    flip-block,
+    bottom span-right,
+    bottom span-left;
   margin: 0;
-  margin-block-start: var(--popup-offset);
+  margin-block: var(--popup-offset);
   max-inline-size: --spacing(72);
   padding: --spacing(1) --spacing(2);
   overflow: hidden;
