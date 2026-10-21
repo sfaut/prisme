@@ -11,6 +11,9 @@
   value at once. A query without a grid (waiting, failed, or without
   columns) only shows its durations.
 
+  The grid's frame covers the line under the result tabs; the error or the
+  durations, when they come first, keep a little room under that line.
+
   The refresh button, at the left of the bar under the grid, runs the query
   again; during the refresh, or while it waits for the running batch, it
   stops it. The previous result stays displayed until the new columns
@@ -145,7 +148,7 @@ const durations = computed(() => {
     instead of scrolling in its own area.
   -->
   <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-2">
-    <ui-alert v-if="tab.error" tone="error" :title="tab.error" />
+    <ui-alert v-if="tab.error" tone="error" :title="tab.error" class="first:mt-1" />
     <result-grid
       v-if="shown && shown.columns.length > 0"
       :columns="shown.columns"
@@ -173,6 +176,6 @@ const durations = computed(() => {
         <template v-if="durations">&nbsp;· {{ durations }}</template>
       </template>
     </result-grid>
-    <div v-else-if="durations" class="text-trim text-fg-muted">{{ durations }}</div>
+    <div v-else-if="durations" class="text-trim text-fg-muted first:mt-1">{{ durations }}</div>
   </div>
 </template>

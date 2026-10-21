@@ -862,10 +862,13 @@ const userFilterColumn = computed({
   min-height: 0;
 }
 
+/* A little room under the line of the result tabs, which the grid's frame
+   covers when the toolbar is closed. */
 .grid-toolbar {
   display: flex;
   align-items: center;
   gap: --spacing(2);
+  margin-block-start: --spacing(1);
 }
 
 .grid-user-filter {
