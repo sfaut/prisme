@@ -138,6 +138,7 @@ How it behaves:
 
 - A **click** on a row opens or closes it.
 - A **Ctrl+click** (**Cmd+click** on macOS), or **Enter** on the focused row, acts on it without opening or closing it: on a source, makes it the connection of the active editor; on a database, makes it the current database (like `USE`); on a table or view, shows its content: its `SELECT` goes after the last query of the editor, without overwriting anything, and runs.
+- On hovering a row, a button on its right does the same: the **plug** of a database makes it the current database, the **eye** of a table or view shows its content.
 - The catalog loads progressively, and the selected connection opens by itself. **Tout rafraîchir** (Refresh all) in the root menu reloads the catalogs already read.
 - The current database is in **bold**.
 - While the tree scrolls, the source, the database and the table of the rows on screen stay pinned at the top; they open, close and act like the rows of the tree.

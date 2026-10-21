@@ -16,7 +16,9 @@
   connection (emits `select`), which stays highlighted; on a database, makes
   it the current database, like `USE` (emits `use-database`); on a table or a
   view, emits `open-table`, to show its content. A double click would open
-  and close the line between its two clicks: it has no action.
+  and close the line between its two clicks: it has no action. On hovering
+  a database or a table, a button on the right of its line does the same
+  (plug: current database, eye: content).
 
   Each source carries as a badge the flavor of its server (`mysql`,
   `mariadb`), seen on the last connection or when reading the catalog.
@@ -539,6 +541,7 @@ watch(
               :node="item.value as ExplorerNode"
               :expanded="isExpanded"
               :menu="menuItems(item.value as ExplorerNode)"
+              @act="activate(item.value as ExplorerNode)"
             />
           </tree-item>
         </tree-virtualizer>
@@ -561,6 +564,7 @@ watch(
             :node="row.node"
             :expanded="expandedKeys.includes(row.node.key)"
             :menu="menuItems(row.node)"
+            @act="activate(row.node)"
           />
         </div>
       </div>

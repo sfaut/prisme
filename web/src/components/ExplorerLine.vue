@@ -1,7 +1,9 @@
 <!--
   Contents of a line of the object explorer: the chevron of a level that can
   open, the icon of its level, its label (or the three columns of a column),
-  the flavor badge of a source and its "⋮" menu. Shared by the lines of the
+  the flavor badge of a source and its "⋮" menu, the button that acts on a
+  database (makes it the current one) or a table (shows its content), as
+  Ctrl+click does (emits `act`). Shared by the lines of the
   tree and by the lines pinned at the top of the tree while it scrolls
   (`ObjectExplorer.vue`), which only differ by their container.
 -->
@@ -23,13 +25,14 @@ import {
   ListOrdered,
   LoaderCircle,
   Notebook,
+  PlugZap,
   ScrollText,
   Server,
   SquareFunction,
   Table,
   Zap,
 } from '@lucide/vue'
-import type { Component } from 'vue'
+import { type Component, computed } from 'vue'
 
 import type { EntryKind, ExplorerNode } from './explorerNodes'
 import UiButton from './ui/UiButton.vue'
@@ -37,7 +40,7 @@ import UiDropdownMenu from './ui/UiDropdownMenu.vue'
 import type { MenuItem } from './ui/menuItem'
 import { vTooltip } from './ui/tooltip'
 
-defineProps<{
+const props = defineProps<{
   /**
    * Node shown on the line.
    */
@@ -51,6 +54,28 @@ defineProps<{
    */
   menu: MenuItem[] | null
 }>()
+
+defineEmits<{
+  /**
+   * The button of the line asks to act on its node, as Ctrl+click does.
+   */
+  act: []
+}>()
+
+/**
+ * Button of the line, shown on hover: on a database, makes it the current
+ * database; on a table or a view, shows its content. `null` for the other
+ * nodes.
+ */
+const action = computed(() => {
+  if (props.node.role === 'database') {
+    return { icon: PlugZap, label: 'Utiliser cette base', tooltip: 'Utiliser cette base (USE)' }
+  }
+  if (props.node.table !== undefined) {
+    return { icon: Eye, label: 'Afficher le contenu', tooltip: 'Afficher le contenu (SELECT)' }
+  }
+  return null
+})
 
 /**
  * Icon of the catalog nodes, according to their nature (folder apart: its
@@ -159,6 +184,19 @@ function nodeIcon(node: ExplorerNode, expanded: boolean): Component {
       {{ node.badge }}
     </span>
   </span>
+
+  <!-- On hovering a database or a table: acts on it, like Ctrl+click. -->
+  <ui-button
+    v-if="action"
+    v-tooltip="action.tooltip"
+    :icon="action.icon"
+    variant="ghost"
+    small
+    :aria-label="action.label"
+    class="invisible group-hover:visible group-focus-visible:visible"
+    @click.stop="$emit('act')"
+    @keydown.stop
+  />
 
   <ui-dropdown-menu v-if="menu" :items="menu">
     <ui-button

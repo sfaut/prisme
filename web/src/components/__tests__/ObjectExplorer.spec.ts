@@ -221,6 +221,10 @@ describe('ObjectExplorer', () => {
       [1, 'a'],
       [1, 'a'],
     ])
+    // The button of the line too, without opening it.
+    await row(wrapper, 'a')?.find('[aria-label="Utiliser cette base"]').trigger('click')
+    expect(wrapper.emitted('use-database')).toHaveLength(3)
+    expect(row(wrapper, 'a')?.attributes('aria-expanded')).toBe('false')
     wrapper.unmount()
   })
 

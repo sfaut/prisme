@@ -135,7 +135,7 @@ export interface ExplorerNode extends Place {
    */
   entry?: EntryKind
   /**
-   * Table or view designated by the node, to open it with a double click.
+   * Table or view designated by the node, to show its content (Ctrl+click or the button of its line).
    */
   table?: string
   /**
