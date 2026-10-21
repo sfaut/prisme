@@ -26,8 +26,8 @@
     column; a double click on this edge fits it to its longest value (with a
     cap), a second one gives back its estimated width. The chosen widths are
     found again when the same query is run again
-    (`gridWidths.ts`). A text too long is truncated (…) and shows in full on
-    hover.
+    (`gridWidths.ts`). A text too long is truncated (…): widening its column
+    shows it in full.
   - Order: dragging a column name moves it. A new run restores the order of
     the `SELECT`. Selection and copy follow the displayed order; sort, user filter
     and widths stay attached to the column.
@@ -829,7 +829,6 @@ const userFilterColumn = computed({
               mono: monospaced[column],
               selected: isSelected(selection, item.index, position),
             }"
-            v-tooltip="cellAt(item.index, column) ?? NULL_TEXT"
             @mousedown.prevent="onCellDown($event, item.index, position)"
             @mouseenter="onCellEnter(item.index, position)"
           >
