@@ -7,8 +7,9 @@
   their name, their pinning, their order and their closing. Ctrl+Enter or
   "Exécuter" runs the query under the cursor; Ctrl+Shift+Enter or "Exécuter
   tout" runs in parallel the queries the selected text touches, all of them
-  without a selection. While queries run, both buttons turn into stop
-  buttons: a click on either stops them all.
+  without a selection. While queries run, the button that started them
+  turns into a stop button (a click stops them all), and the other one waits,
+  disabled.
   "Enjoliver" rewrites the text as "beautiful SQL", once the connection's
   catalog is loaded (it gives the case of the user's functions).
   Each query has its result tab (`ResultTab.vue`), with its progress bar. A
@@ -217,9 +218,28 @@ function closeTab(tab: QueryTab): void {
 const STOP_TIP = 'Arrête toutes les requêtes et tous les chargements en cours'
 
 /**
- * Do queries run? The run buttons then stop them.
+ * Do queries run?
  */
 const running = computed(() => state.status === 'running')
+
+/**
+ * Run button that started the running queries: "Exécuter" (`one`) or
+ * "Exécuter tout" (`all`). It changes only when a run really starts (a
+ * request while queries run is ignored). A run started elsewhere (a table opened from the
+ * explorer, a refreshed tab, a batch found again after a reload) counts as
+ * "Exécuter".
+ */
+const launcher = ref<'one' | 'all'>('one')
+
+/**
+ * Is "Exécuter" a stop button, the queries it started running?
+ */
+const stopsOne = computed(() => running.value && launcher.value === 'one')
+
+/**
+ * Is "Exécuter tout" a stop button, the queries it started running?
+ */
+const stopsAll = computed(() => running.value && launcher.value === 'all')
 
 /**
  * Runs the query under the cursor.
@@ -227,9 +247,23 @@ const running = computed(() => state.status === 'running')
  * @param cursor Position of the cursor; when absent, that of the editor.
  */
 function run(cursor?: number): void {
-  if (sql.value.trim() !== '') {
+  if (sql.value.trim() !== '' && state.status === 'ready') {
+    launcher.value = 'one'
     session.run(sql.value, { cursor: cursor ?? editor.value?.cursor() ?? 0 })
   }
+}
+
+/**
+ * Refreshes a tab. While a batch runs, the refresh waits for its end, and
+ * the batch keeps its stop button.
+ *
+ * @param tab Tab to refresh.
+ */
+function refresh(tab: QueryTab): void {
+  if (!running.value) {
+    launcher.value = 'one'
+  }
+  session.refresh(tab)
 }
 
 /**
@@ -301,7 +335,10 @@ async function showTable(schema: string, table: string): Promise<void> {
     } else {
       sql.value = appending.text
     }
-    session.run(appending.text, { cursor: appending.start })
+    if (state.status === 'ready') {
+      launcher.value = 'one'
+      session.run(appending.text, { cursor: appending.start })
+    }
   } catch (failure) {
     state.error = errorMessage(failure)
   }
@@ -360,7 +397,8 @@ async function prettify(): Promise<void> {
  * @param selection Passages selected in the editor; empty or absent: all the queries.
  */
 function runAll(selection: SelectionRange[] = []): void {
-  if (sql.value.trim() !== '') {
+  if (sql.value.trim() !== '' && state.status === 'ready') {
+    launcher.value = 'all'
     session.run(sql.value, selection.length > 0 ? { selection } : {})
   }
 }
@@ -404,25 +442,25 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
     <div class="editor-pane" :style="{ '--editor-split': `${editorSplit * 100}%` }">
       <div class="flex items-center gap-2">
         <ui-button
-          v-tooltip="running ? STOP_TIP : 'La requête sous le curseur (Ctrl-Entrée)'"
+          v-tooltip="stopsOne ? STOP_TIP : 'La requête sous le curseur (Ctrl-Entrée)'"
           label="Exécuter"
-          :icon="running ? Square : Play"
+          :icon="stopsOne ? Square : Play"
           variant="solid"
-          :tone="running ? 'error' : 'accent'"
-          :disabled="!running && state.status !== 'ready'"
-          @click="running ? session.cancel() : run()"
+          :tone="stopsOne ? 'error' : 'accent'"
+          :disabled="!stopsOne && state.status !== 'ready'"
+          @click="stopsOne ? session.cancel() : run()"
         />
         <ui-button
           v-tooltip="
-            running
+            stopsAll
               ? STOP_TIP
               : 'Toutes les requêtes en parallèle, ou celles que touche le texte sélectionné (Ctrl-Maj-Entrée)'
           "
           label="Exécuter tout"
-          :icon="running ? Square : FastForward"
-          :tone="running ? 'error' : 'neutral'"
-          :disabled="!running && state.status !== 'ready'"
-          @click="running ? session.cancel() : runAll(editor?.selection())"
+          :icon="stopsAll ? Square : FastForward"
+          :tone="stopsAll ? 'error' : 'neutral'"
+          :disabled="!stopsAll && state.status !== 'ready'"
+          @click="stopsAll ? session.cancel() : runAll(editor?.selection())"
         />
         <ui-button
           label="Enjoliver"
@@ -522,7 +560,7 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
           :tab="tab"
           :displayed="active && selectedTab === tab.id"
           :refresh="refreshState(state, tab)"
-          @refresh="session.refresh(tab)"
+          @refresh="refresh(tab)"
           @stop-refresh="session.stopRefresh(tab)"
         />
       </tabs-content>
