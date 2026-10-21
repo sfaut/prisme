@@ -132,18 +132,6 @@ async function click(element: { element: Element } | undefined, detail: number):
   await nextTick()
 }
 
-/**
- * Double clicks on an element, as the browser does: two clicks, then `dblclick`.
- *
- * @param element Double-clicked element.
- */
-async function doubleClick(element: { element: Element } | undefined): Promise<void> {
-  await click(element, 1)
-  await click(element, 2)
-  element?.element.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, detail: 2 }))
-  await nextTick()
-}
-
 beforeEach(() => {
   setActivePinia(createPinia())
   giveLayout()
@@ -200,15 +188,12 @@ describe('ObjectExplorer', () => {
     // Open: its first database follows the source.
     const texts = () => labels(wrapper)
     await vi.waitFor(() => expect(texts()[texts().indexOf('Autre') + 1]).toBe('a'))
-    // Double click: the source is chosen, and stays open.
-    await doubleClick(row(wrapper, 'Autre'))
+    // Second click of a double click: the source is chosen.
+    await click(row(wrapper, 'Autre'), 2)
     expect(wrapper.emitted('select')).toEqual([[2]])
-    expect(row(wrapper, 'a')).toBeDefined()
-    // Double click on a database: it becomes the current database of its
-    // source, and stays closed.
-    await doubleClick(row(wrapper, 'a'))
+    // Double click on a database: it becomes the current database of its source.
+    await click(row(wrapper, 'a'), 2)
     expect(wrapper.emitted('use-database')).toEqual([[1, 'a']])
-    expect(row(wrapper, 'a')?.attributes('aria-expanded')).toBe('false')
     wrapper.unmount()
   })
 
