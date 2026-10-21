@@ -298,9 +298,26 @@ describe('applyCatalogEvent', () => {
     expect(u?.details?.columns).toEqual([])
     expect(state.schemas[0]?.routines).toEqual([{ name: 'p', kind: 'procedure' }])
 
-    applyCatalogEvent(state, { type: 'error', message: 'refus' })
+    applyCatalogEvent(state, {
+      type: 'error',
+      message: '',
+      detail: {
+        code: 'catalog_unreadable',
+        schema: 'shop',
+        flavor: 'mysql',
+        cause: {
+          source: 'server',
+          number: 1142,
+          sqlstate: '42000',
+          message: 'SELECT command denied',
+        },
+      },
+    })
     applyCatalogEvent(state, { type: 'done' })
-    expect(state.errors).toEqual(['refus'])
+    expect(state.errors).toEqual([
+      'Lecture du catalogue impossible (base « shop »).\n\n' +
+        'Le serveur MySQL a répondu (erreur 1142, SQLSTATE 42000) :\n\nSELECT command denied',
+    ])
     expect(state.done).toBe(true)
   })
 })

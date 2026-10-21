@@ -8,7 +8,14 @@ vi.mock('@/api/analyze', () => ({
   analyzeSql: async (sql: string) => ({
     statements: [],
     errors: sql.startsWith('SELEC ')
-      ? [{ start: 0, end: 5, message: 'Query not understood by Prisme' }]
+      ? [
+          {
+            start: 0,
+            end: 5,
+            message: 'Query not understood by Prisme',
+            detail: { code: 'query_not_understood', cause: 'Expected: an SQL statement' },
+          },
+        ]
       : [],
   }),
 }))

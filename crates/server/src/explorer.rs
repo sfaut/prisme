@@ -38,6 +38,7 @@ use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
 use crate::connections::{self, ConnectionsError};
 use crate::console::{self, Action};
+use crate::error_detail::ErrorDetail;
 
 /// Databases provided by the server itself, read last.
 const SYSTEM_SCHEMAS: [&str; 4] = ["information_schema", "mysql", "performance_schema", "sys"];
@@ -65,8 +66,12 @@ pub enum CatalogEvent {
         schema: String,
         tables: Vec<TableDetails>,
     },
-    /// Failure of a read; the stream goes on with the next database.
-    Error { message: String },
+    /// Failure of a read; the stream goes on with the next database. The
+    /// English message of the logs, and the detail for the interface.
+    Error {
+        message: String,
+        detail: ErrorDetail,
+    },
     /// End of the catalog.
     Done,
 }
@@ -140,7 +145,7 @@ async fn read_catalog(
     let schemas = match catalog::schemas(connection).await {
         Ok(schemas) => schemas,
         Err(error) => {
-            let _ = sender.send(error_event("databases", &error)).await;
+            let _ = sender.send(error_event(None, flavor, &error)).await;
             return;
         }
     };
@@ -159,7 +164,7 @@ async fn read_catalog(
                 schema: schema.clone(),
                 objects,
             },
-            Err(error) => error_event(schema, &error),
+            Err(error) => error_event(Some(schema), flavor, &error),
         };
         if sender.send(event).await.is_err() {
             return;
@@ -171,7 +176,7 @@ async fn read_catalog(
                 schema: schema.clone(),
                 tables,
             },
-            Err(error) => error_event(schema, &error),
+            Err(error) => error_event(Some(schema), flavor, &error),
         };
         if sender.send(event).await.is_err() {
             return;
@@ -180,10 +185,17 @@ async fn read_catalog(
     let _ = sender.send(CatalogEvent::Done).await;
 }
 
-/// Error message for a failed catalog read.
-fn error_event(what: &str, error: &mysql::MysqlError) -> CatalogEvent {
+/// Error message for a failed catalog read: of the list of the databases
+/// (`schema` absent), or of a database.
+fn error_event(schema: Option<&str>, flavor: Flavor, error: &mysql::MysqlError) -> CatalogEvent {
+    let detail = ErrorDetail::CatalogUnreadable {
+        schema: schema.map(str::to_owned),
+        flavor,
+        cause: error.cause(),
+    };
     CatalogEvent::Error {
-        message: format!("cannot read the catalog ({what}): {error}"),
+        message: detail.to_string(),
+        detail,
     }
 }
 

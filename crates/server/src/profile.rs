@@ -5,6 +5,8 @@
 //! The names are stored in the `users` table (see `migrations/0010_users_names.sql`).
 //! Synchronous functions (`rusqlite`), called from blocking tasks.
 
+use crate::connections::count;
+use crate::error_detail::Field;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -41,7 +43,9 @@ pub enum ProfileError {
     #[error("{field}: at most {max} characters", max = NAME_MAX_CHARS)]
     NameTooLong {
         /// Field that is too long.
-        field: &'static str,
+        field: Field,
+        /// Characters received.
+        length: u32,
     },
 
     /// Error of the internal database.
@@ -58,13 +62,14 @@ pub enum ProfileError {
 pub fn check_update(update: &ProfileUpdate) -> Result<(String, String), ProfileError> {
     let first_name = update.first_name.trim();
     let last_name = update.last_name.trim();
-    if first_name.chars().count() > NAME_MAX_CHARS {
-        return Err(ProfileError::NameTooLong {
-            field: "first_name",
-        });
-    }
-    if last_name.chars().count() > NAME_MAX_CHARS {
-        return Err(ProfileError::NameTooLong { field: "last_name" });
+    for (field, name) in [(Field::FirstName, first_name), (Field::LastName, last_name)] {
+        let length = name.chars().count();
+        if length > NAME_MAX_CHARS {
+            return Err(ProfileError::NameTooLong {
+                field,
+                length: count(length),
+            });
+        }
     }
     Ok((first_name.to_string(), last_name.to_string()))
 }
@@ -141,7 +146,8 @@ mod tests {
         assert!(matches!(
             update(&db, user_id, &update_of(&too_long, "")),
             Err(ProfileError::NameTooLong {
-                field: "first_name"
+                field: Field::FirstName,
+                length: 101,
             })
         ));
         assert_eq!(load(&db, user_id).unwrap().first_name, "");

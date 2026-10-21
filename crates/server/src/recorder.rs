@@ -31,11 +31,9 @@ use ts_rs::TS;
 
 use crate::api::AppState;
 use crate::editors::{self, SavedColumns, SavedResult};
+use crate::error_detail::ErrorDetail;
 use crate::query_session::ServerMessage;
 use crate::query_session::protocol::BatchQuery;
-
-/// Message of a query interrupted by the end of the session.
-const SESSION_CLOSED: &str = "session closed before the end of the query";
 
 /// Query of the last batch, as sent to a WebSocket that reattaches.
 #[derive(Debug, Serialize, TS)]
@@ -173,10 +171,12 @@ impl Recorder {
             ServerMessage::Error {
                 query: Some(query),
                 message,
+                detail,
             } => {
                 if let Some(record) = records.get_mut(query) {
                     record.result.done = true;
                     record.result.error = Some(message.clone());
+                    record.result.error_detail = Some(detail.clone());
                     if !record.refresh {
                         self.save(record).await;
                     }
@@ -212,7 +212,9 @@ impl Recorder {
         let mut records = self.records.lock().await;
         for record in records.values_mut().filter(|record| !record.result.done) {
             record.result.done = true;
-            record.result.error = Some(SESSION_CLOSED.to_string());
+            let detail = ErrorDetail::SessionClosed;
+            record.result.error = Some(detail.to_string());
+            record.result.error_detail = Some(detail);
             if !record.refresh {
                 self.save(record).await;
             }
@@ -376,7 +378,14 @@ mod tests {
         assert_eq!(columns.execution_us, 120);
         assert_eq!(columns.executed_at, 1_792_500_000_000);
         assert!(tabs[0].result.bytes > 0);
-        assert_eq!(tabs[1].result.error.as_deref(), Some(SESSION_CLOSED));
+        assert_eq!(
+            tabs[1].result.error_detail,
+            Some(ErrorDetail::SessionClosed)
+        );
+        assert_eq!(
+            tabs[1].result.error.as_deref(),
+            Some("session closed before the end of the query")
+        );
     }
 
     /// Batch of a single query, refreshing tab `tab` (0 for a new tab).
@@ -466,6 +475,7 @@ mod tests {
             .observe(&mut ServerMessage::Error {
                 query: Some(0),
                 message: "query interrupted by the user".to_string(),
+                detail: ErrorDetail::QueryInterrupted,
             })
             .await;
         let first = vec![vec![Some("first".to_string())]];

@@ -37,6 +37,7 @@
  */
 
 import { errorMessage } from './errorMessage'
+import { describe } from './messages'
 import { markRaw, onScopeDispose, reactive } from 'vue'
 
 import type { ColumnTypeInfo } from './generated/ColumnTypeInfo'
@@ -415,18 +416,19 @@ export function applyMessage(
       break
     }
     case 'error': {
+      const text = describe(message.detail)
       if (message.query !== null) {
         const tab = tabOf(state, message.query)
         if (tab?.previous) {
-          endRefresh(tab, message.message)
+          endRefresh(tab, text)
         } else if (tab) {
-          tab.error = message.message
+          tab.error = text
           tab.done = true
           tab.endedAt = now
         }
         break
       }
-      state.error = message.message
+      state.error = text
       // The session refused the request: a refresh in it did not run.
       for (const tab of state.tabs) {
         if (tab.batch === state.batch) {
@@ -823,7 +825,8 @@ export function savedTab(saved: ResultTab): QueryTab {
             affectedRows: result.affected_rows,
             elapsedMs: 0,
           },
-    error: result.error,
+    // A result saved before the details existed shows its English text.
+    error: result.error_detail === null ? result.error : describe(result.error_detail),
     done: result.done,
     startedAt: result.started ? 0 : null,
     columnsAt: columns === null ? null : 0,
@@ -964,7 +967,7 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
     socket.addEventListener('message', (event: MessageEvent<string>) => {
       const message = parseMessage(event.data)
       if (message === null) {
-        state.error = 'Message illisible reçu du serveur'
+        state.error = 'Message illisible reçu du serveur.'
         return
       }
       pending.push([message, performance.now(), utf8Length(event.data)])

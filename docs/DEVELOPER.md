@@ -142,7 +142,7 @@ Invoke-RestMethod "$api/settings"
 Invoke-RestMethod "$api/settings" -Method Put -ContentType "application/json" -Body '{"row_limit": 5000, "read_only_session": true, "history_retention_days": 30, "debug_retention_days": 30}'
 ```
 
-On error (status 4xx or 5xx), PowerShell raises an exception, and Prisme's message is in the JSON body `{"error": "..."}`.
+On error (status 4xx or 5xx), PowerShell raises an exception, and the JSON body holds Prisme's message in English and its detail: `{"error": "...", "detail": {"code": "...", ...}}`. The interface writes its own message from the detail (`web/src/api/messages.ts`); the texts written outside Prisme (the target server's answer, the driver's message) stay in their own fields, quoted as they are.
 
 | Route | Role | Errors |
 |---|---|---|

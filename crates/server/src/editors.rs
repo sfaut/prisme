@@ -36,6 +36,8 @@ use ts_rs::TS;
 use crate::api::AppState;
 use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
+use crate::connections::count;
+use crate::error_detail::{ErrorDetail, Field};
 use crate::query_session::LimitReport;
 
 /// Maximum length of the name of an editor or a result tab, in characters.
@@ -53,7 +55,7 @@ const NOW: &str = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 pub enum EditorsError {
     /// Invalid input: the message says which field and why.
     #[error("{0}")]
-    Invalid(String),
+    Invalid(ErrorDetail),
 
     /// Error of the internal database.
     #[error("internal database: {0}")]
@@ -133,8 +135,11 @@ pub struct SavedResult {
     pub started: bool,
     /// Has the query ended, successfully or not?
     pub done: bool,
-    /// Failure message, absent if the query succeeded or is still running.
+    /// Failure message, in English, absent if the query succeeded or is still running.
     pub error: Option<String>,
+    /// What went wrong, for the interface to tell the user; absent for a
+    /// result saved before the details existed, whose `error` is shown as is.
+    pub error_detail: Option<ErrorDetail>,
     /// Columns, absent as long as they are not received (or without a result).
     pub columns: Option<SavedColumns>,
     /// Number of rows received.
@@ -207,9 +212,12 @@ pub struct NewEditor {
 fn check_name(name: &str) -> Result<(), EditorsError> {
     let length = name.chars().count();
     if length > NAME_MAX_LENGTH {
-        return Err(EditorsError::Invalid(format!(
-            "name: {NAME_MAX_LENGTH} characters at most, {length} received"
-        )));
+        return Err(EditorsError::Invalid(ErrorDetail::FieldLength {
+            field: Field::Name,
+            min: 0,
+            max: count(NAME_MAX_LENGTH),
+            length: count(length),
+        }));
     }
     Ok(())
 }

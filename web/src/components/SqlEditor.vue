@@ -35,6 +35,7 @@ import type { DialectKeywords } from '@/api/generated/DialectKeywords'
 import type { Flavor } from '@/api/generated/Flavor'
 import type { SelectionRange } from '@/api/generated/SelectionRange'
 import { fetchKeywords } from '@/api/keywords'
+import { describe } from '@/api/messages'
 
 import { currentStatement, setStatements } from './currentStatement'
 import { dedentLines, indentOrInsertSpaces, insertNewlineKeepingIndentation } from './editorIndent'
@@ -130,7 +131,7 @@ async function analyze(): Promise<void> {
         from: error.start,
         to: error.end,
         severity: 'error',
-        message: error.message,
+        message: describe(error.detail),
       }))
       view.dispatch(setDiagnostics(view.state, diagnostics), {
         effects: setStatements.of(analysis.statements),

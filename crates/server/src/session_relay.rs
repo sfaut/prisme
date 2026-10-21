@@ -36,6 +36,7 @@ use tokio::time::{Instant, sleep_until};
 use tracing::Instrument;
 
 use crate::api_log;
+use crate::error_detail::ErrorDetail;
 use crate::query_session::{Cancellation, ClientMessage, ServerMessage, SessionRequest};
 use crate::recorder::Recorder;
 
@@ -347,9 +348,13 @@ async fn read_messages(
                 let Some(sender) = outbox.upgrade() else {
                     break;
                 };
+                let detail = ErrorDetail::InvalidMessage {
+                    cause: error.to_string(),
+                };
                 let message = ServerMessage::Error {
                     query: None,
-                    message: format!("invalid message: {error}"),
+                    message: detail.to_string(),
+                    detail,
                 };
                 if sender.send(message).await.is_err() {
                     break;

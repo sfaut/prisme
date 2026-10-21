@@ -51,6 +51,7 @@ use crate::auth::CurrentUser;
 use crate::connections::{self, ConnectionSummary, ConnectionsError, NewConnection, ProbeRequest};
 use crate::console::{self, Action, ConsoleEvent};
 use crate::editors;
+use crate::error_detail::ErrorDetail;
 use crate::explorer;
 use crate::master_key::MasterKey;
 use crate::profile::{self, Profile, ProfileUpdate};
@@ -285,7 +286,7 @@ async fn editor_session(
         .with_db(move |db, _| editors::connection_of(db, user_id, id))
         .await?
         .ok_or(ApiError::NotFound)?
-        .ok_or_else(|| ApiError::BadRequest("no connection chosen for this editor".to_string()))?;
+        .ok_or(ApiError::BadRequest(ErrorDetail::NoConnection))?;
     let (target, minutes, read_only, name) = state
         .with_db(move |db, key| {
             let target = connections::load_target(db, key, user_id, connection_id)?;

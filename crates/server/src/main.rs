@@ -18,6 +18,7 @@ mod config;
 mod connections;
 mod console;
 mod editors;
+mod error_detail;
 mod explorer;
 mod master_key;
 mod profile;

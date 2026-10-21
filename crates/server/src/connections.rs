@@ -16,12 +16,13 @@
 
 use prisme_connectors::mysql::{Flavor, MysqlTarget};
 use prisme_dialects::Dialect;
-use prisme_dialects::classify::session_setting_refusal;
+use prisme_dialects::classify::{SettingRefusal, session_setting_refusal};
 use rusqlite::{Connection, OptionalExtension, ffi, params};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::error_detail::{ErrorDetail, Field};
 use crate::master_key::MasterKey;
 use crate::secrets::{self, SecretError};
 
@@ -142,9 +143,9 @@ pub struct ConnectionSummary {
 /// Errors managing saved connections.
 #[derive(Debug, thiserror::Error)]
 pub enum ConnectionsError {
-    /// Invalid input: the message says which field and why.
+    /// Invalid input: the detail says which field and why.
     #[error("{0}")]
-    Invalid(String),
+    Invalid(ErrorDetail),
 
     /// The user already has a connection with this name.
     #[error("a connection named \"{0}\" already exists")]
@@ -162,31 +163,37 @@ pub enum ConnectionsError {
 impl NewConnection {
     /// Checks the input, with the same limits as the `connections` table.
     pub fn validate(&self) -> Result<(), ConnectionsError> {
-        check_length("name", &self.name, 1, NAME_MAX_LENGTH)?;
-        check_length("host", &self.host, 1, HOST_MAX_LENGTH)?;
-        check_length("username", &self.username, 1, USERNAME_MAX_LENGTH)?;
+        check_length(Field::Name, &self.name, 1, NAME_MAX_LENGTH)?;
+        check_length(Field::Host, &self.host, 1, HOST_MAX_LENGTH)?;
+        check_length(Field::Username, &self.username, 1, USERNAME_MAX_LENGTH)?;
         check_length(
-            "database_name",
+            Field::DatabaseName,
             &self.database_name,
             0,
             DATABASE_NAME_MAX_LENGTH,
         )?;
         if self.port == 0 {
-            return Err(ConnectionsError::Invalid(
-                "port: must be between 1 and 65535".to_string(),
-            ));
+            return Err(ConnectionsError::Invalid(ErrorDetail::FieldRange {
+                field: Field::Port,
+                min: 1,
+                max: u16::MAX.into(),
+            }));
         }
-        check_length("init_sql", &self.init_sql, 0, INIT_SQL_MAX_LENGTH)?;
+        check_length(Field::InitSql, &self.init_sql, 0, INIT_SQL_MAX_LENGTH)?;
         if self.session_timeout_minutes > SESSION_TIMEOUT_MAX_MINUTES {
-            return Err(ConnectionsError::Invalid(format!(
-                "session_timeout_minutes: must be between 0 and {SESSION_TIMEOUT_MAX_MINUTES}"
-            )));
+            return Err(ConnectionsError::Invalid(ErrorDetail::FieldRange {
+                field: Field::SessionTimeoutMinutes,
+                min: 0,
+                max: SESSION_TIMEOUT_MAX_MINUTES,
+            }));
         }
         for statement in init_statements(&self.init_sql) {
             // The dialect is only known on connection: MySQL's also serves
             // MariaDB, which shares the syntax of settings.
             if let Some(refusal) = session_setting_refusal(&statement, Dialect::MySql) {
-                return Err(ConnectionsError::Invalid(format!("init_sql: {refusal}")));
+                return Err(ConnectionsError::Invalid(refused_setting(
+                    statement, refusal,
+                )));
             }
         }
         Ok(())
@@ -201,15 +208,32 @@ fn init_statements(init_sql: &str) -> Vec<String> {
         .collect()
 }
 
+/// Detail of an on-connect query refused, by the reason of its refusal.
+fn refused_setting(statement: String, refusal: SettingRefusal) -> ErrorDetail {
+    match refusal {
+        SettingRefusal::NotUnderstood => ErrorDetail::InitSqlNotUnderstood { statement },
+        SettingRefusal::Global => ErrorDetail::InitSqlGlobalSetting { statement },
+        SettingRefusal::NotASetting => ErrorDetail::InitSqlNotSetting { statement },
+    }
+}
+
 /// Checks that a field has between `min` and `max` characters (not bytes, like SQLite's `length()`).
-fn check_length(field: &str, value: &str, min: usize, max: usize) -> Result<(), ConnectionsError> {
+fn check_length(field: Field, value: &str, min: usize, max: usize) -> Result<(), ConnectionsError> {
     let length = value.chars().count();
     if length < min || length > max {
-        return Err(ConnectionsError::Invalid(format!(
-            "{field}: between {min} and {max} characters expected, {length} received"
-        )));
+        return Err(ConnectionsError::Invalid(ErrorDetail::FieldLength {
+            field,
+            min: count(min),
+            max: count(max),
+            length: count(length),
+        }));
     }
     Ok(())
+}
+
+/// A number of characters, for an error detail (saturates beyond `u32::MAX`).
+pub fn count(characters: usize) -> u32 {
+    u32::try_from(characters).unwrap_or(u32::MAX)
 }
 
 /// Saves a connection for user `user_id` and returns its id.

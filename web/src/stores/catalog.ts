@@ -27,6 +27,7 @@ import type { EventInfo } from '@/api/generated/EventInfo'
 import type { RoutineInfo } from '@/api/generated/RoutineInfo'
 import type { TableDetails } from '@/api/generated/TableDetails'
 import type { TableKind } from '@/api/generated/TableKind'
+import { describe } from '@/api/messages'
 
 /**
  * Table or view of the catalog.
@@ -135,7 +136,7 @@ export function applyCatalogEvent(catalog: Catalog, event: CatalogEvent): void {
       break
     }
     case 'error':
-      catalog.errors.push(event.message)
+      catalog.errors.push(describe(event.detail))
       break
     case 'done':
       catalog.done = true

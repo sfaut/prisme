@@ -1,6 +1,7 @@
 <!--
   Message in a colored banner: information, success, warning or error, each
-  with its icon.
+  with its icon. The line breaks of the message show: a text quoted from
+  elsewhere (`messages.ts`) comes after a blank line.
 
   Every banner can be closed: the cross on the right hides it and emits
   `close`, for the parent that holds the message to forget it. A new message
@@ -68,7 +69,7 @@ function close(): void {
     :class="TONES[tone].classes"
   >
     <component :is="TONES[tone].icon" class="size-icon shrink-0" aria-hidden="true" />
-    <span class="min-w-0 flex-1 break-words">{{ title }}</span>
+    <span class="min-w-0 flex-1 break-words whitespace-pre-line">{{ title }}</span>
     <slot />
     <ui-button
       :icon="X"

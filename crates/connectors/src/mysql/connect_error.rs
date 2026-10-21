@@ -1,14 +1,20 @@
-//! Messages for connection failures to a MySQL or MariaDB server.
+//! Connection failures to a MySQL or MariaDB server, and what the driver or
+//! the server said about them.
 //!
 //! The driver returns technical errors ("Input/output error: os error
-//! 10061", "Server error: ERROR 1045..."). This module turns them into a
-//! message that says what is wrong and what to check. The server's message,
-//! when there is one, stays quoted at the end for detail.
+//! 10061", "Server error: ERROR 1045..."). `describe` turns them into a
+//! `ConnectFailure` that says what is wrong and what to check. A failure
+//! carries its data, not a sentence: the interface writes its message in the
+//! user's language, and quotes as they are the texts written elsewhere (the
+//! server's answer, the driver's or the system's message, `FailureCause`).
+//! Their `Display` is the English text of the logs.
 
 use std::io::ErrorKind;
 use std::time::Duration;
 
 use mysql_async::{DriverError, IoError};
+use serde::{Deserialize, Serialize};
+use ts_rs::TS;
 
 use super::MysqlTarget;
 
@@ -24,55 +30,195 @@ const ER_BAD_DB: u16 = 1049;
 /// MySQL error code: connection refused for this host.
 const ER_HOST_NOT_PRIVILEGED: u16 = 1130;
 
-/// Message when the server `target` does not answer within `timeout`.
-pub fn timeout_message(target: &MysqlTarget, timeout: Duration) -> String {
-    format!(
-        "{} does not answer ({} s timeout exceeded): server down, wrong address or port, or firewall",
-        address(target),
-        timeout.as_secs()
-    )
+/// Text written outside Prisme that explains a failure, as it was written.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, thiserror::Error)]
+#[ts(export)]
+#[serde(tag = "source", rename_all = "snake_case")]
+pub enum FailureCause {
+    /// Answer of the target server, in the language of its `lc_messages`.
+    #[error("ERROR {number} ({sqlstate}): {message}")]
+    Server {
+        /// Error number of the server, for example 1146.
+        number: u16,
+        /// SQLSTATE of the error, for example `42S02`.
+        sqlstate: String,
+        /// Message of the server.
+        message: String,
+    },
+    /// Message of the driver (`mysql_async`), in English.
+    #[error("{message}")]
+    Driver {
+        /// Message of the driver.
+        message: String,
+    },
+    /// Message of the operating system (network), in its language.
+    #[error("{message}")]
+    System {
+        /// Message of the system.
+        message: String,
+    },
 }
 
-/// Message for a connection failure to `target`, reported by the driver.
-pub fn describe(target: &MysqlTarget, error: &mysql_async::Error) -> String {
+impl From<&mysql_async::Error> for FailureCause {
+    /// Sorts a driver error by the author of its text.
+    fn from(error: &mysql_async::Error) -> Self {
+        match error {
+            mysql_async::Error::Server(server) => Self::Server {
+                number: server.code,
+                sqlstate: server.state.clone(),
+                message: server.message.clone(),
+            },
+            mysql_async::Error::Io(IoError::Io(io)) => Self::System {
+                message: io.to_string(),
+            },
+            _ => Self::Driver {
+                message: error.to_string(),
+            },
+        }
+    }
+}
+
+/// Why a connection could not open. `address` is `host:port`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS, thiserror::Error)]
+#[ts(export)]
+#[serde(tag = "reason", rename_all = "snake_case")]
+pub enum ConnectFailure {
+    /// No server listens on the port, or it only accepts local connections.
+    #[error(
+        "{address} refuses the connection: no server listens on this port, \
+         or it only accepts local connections (bind-address)"
+    )]
+    Refused {
+        /// Address of the server.
+        address: String,
+    },
+    /// The network does not reach the server.
+    #[error("{address} is unreachable: server down, wrong address or firewall")]
+    Unreachable {
+        /// Address of the server.
+        address: String,
+    },
+    /// The server did not answer within the connection delay.
+    #[error(
+        "{address} does not answer ({seconds} s timeout exceeded): server down, \
+         wrong address or port, or firewall"
+    )]
+    Timeout {
+        /// Address of the server.
+        address: String,
+        /// Connection delay, in seconds.
+        seconds: u64,
+    },
+    /// Wrong password, or account not allowed from this machine.
+    #[error(
+        "access denied for the account \"{username}\": wrong password, or account not \
+         allowed from this machine (the server answers: {cause})"
+    )]
+    AccessDenied {
+        /// Connection account.
+        username: String,
+        /// Answer of the server.
+        cause: FailureCause,
+    },
+    /// No account of this name is allowed from this machine.
+    #[error(
+        "the server refuses connections from this machine: no account \"{username}\" is \
+         allowed from this address (the server answers: {cause})"
+    )]
+    HostNotAllowed {
+        /// Connection account.
+        username: String,
+        /// Answer of the server.
+        cause: FailureCause,
+    },
+    /// The database chosen for the connection does not exist.
+    #[error("the database \"{database}\" does not exist on {address}")]
+    UnknownDatabase {
+        /// Database chosen for the connection.
+        database: String,
+        /// Address of the server.
+        address: String,
+    },
+    /// The account has no access to the database chosen for the connection.
+    #[error("the account \"{username}\" has no access to the database \"{database}\"")]
+    DatabaseAccessDenied {
+        /// Connection account.
+        username: String,
+        /// Database chosen for the connection.
+        database: String,
+    },
+    /// The server refuses the connection for another reason.
+    #[error("{address} refuses the connection: {cause}")]
+    ServerRefused {
+        /// Address of the server.
+        address: String,
+        /// Answer of the server.
+        cause: FailureCause,
+    },
+    /// The account uses an authentication method the driver does not know.
+    #[error("the account \"{username}\" uses an unsupported authentication method ({plugin})")]
+    UnsupportedAuthentication {
+        /// Connection account.
+        username: String,
+        /// Authentication plugin of the account.
+        plugin: String,
+    },
+    /// Any other failure, told by the driver or the system.
+    #[error("cannot connect to {address}: {cause}")]
+    Other {
+        /// Address of the server.
+        address: String,
+        /// Message of the driver or of the system.
+        cause: FailureCause,
+    },
+}
+
+/// Failure when the server `target` does not answer within `timeout`.
+pub fn timeout(target: &MysqlTarget, timeout: Duration) -> ConnectFailure {
+    ConnectFailure::Timeout {
+        address: address(target),
+        seconds: timeout.as_secs(),
+    }
+}
+
+/// Failure of a connection to `target`, reported by the driver.
+pub fn describe(target: &MysqlTarget, error: &mysql_async::Error) -> ConnectFailure {
     let address = address(target);
+    let cause = FailureCause::from(error);
     match error {
         mysql_async::Error::Io(IoError::Io(io)) => match io.kind() {
-            ErrorKind::ConnectionRefused => format!(
-                "{address} refuses the connection: no server listens on this port, \
-                 or it only accepts local connections (bind-address)"
-            ),
+            ErrorKind::ConnectionRefused => ConnectFailure::Refused { address },
             ErrorKind::TimedOut | ErrorKind::HostUnreachable | ErrorKind::NetworkUnreachable => {
-                format!("{address} is unreachable: server down, wrong address or firewall")
+                ConnectFailure::Unreachable { address }
             }
-            _ => format!("cannot connect to {address}: {io}"),
+            _ => ConnectFailure::Other { address, cause },
         },
         mysql_async::Error::Server(server) => match server.code {
-            ER_ACCESS_DENIED => format!(
-                "access denied for the account \"{}\": wrong password, or account not \
-                 allowed from this machine (the server answers: {})",
-                target.username, server.message
-            ),
-            ER_HOST_NOT_PRIVILEGED => format!(
-                "the server refuses connections from this machine: no account \"{}\" is \
-                 allowed from this address (the server answers: {})",
-                target.username, server.message
-            ),
-            ER_BAD_DB => format!(
-                "the database \"{}\" does not exist on {address}",
-                target.database_name
-            ),
-            ER_DB_ACCESS_DENIED => format!(
-                "the account \"{}\" has no access to the database \"{}\"",
-                target.username, target.database_name
-            ),
-            _ => format!("{address} refuses the connection: {}", server.message),
+            ER_ACCESS_DENIED => ConnectFailure::AccessDenied {
+                username: target.username.clone(),
+                cause,
+            },
+            ER_HOST_NOT_PRIVILEGED => ConnectFailure::HostNotAllowed {
+                username: target.username.clone(),
+                cause,
+            },
+            ER_BAD_DB => ConnectFailure::UnknownDatabase {
+                database: target.database_name.clone(),
+                address,
+            },
+            ER_DB_ACCESS_DENIED => ConnectFailure::DatabaseAccessDenied {
+                username: target.username.clone(),
+                database: target.database_name.clone(),
+            },
+            _ => ConnectFailure::ServerRefused { address, cause },
         },
-        mysql_async::Error::Driver(DriverError::UnknownAuthPlugin { name }) => format!(
-            "the account \"{}\" uses an unsupported authentication method ({name})",
-            target.username
-        ),
-        _ => format!("cannot connect to {address}: {error}"),
+        mysql_async::Error::Driver(DriverError::UnknownAuthPlugin { name }) => {
+            ConnectFailure::UnsupportedAuthentication {
+                username: target.username.clone(),
+                plugin: name.clone(),
+            }
+        }
+        _ => ConnectFailure::Other { address, cause },
     }
 }
 
@@ -115,16 +261,30 @@ mod tests {
 
     #[test]
     fn explains_network_failures() {
-        assert!(
-            describe(&target(), &io_error(ErrorKind::ConnectionRefused))
-                .starts_with("192.168.0.4:3307 refuses the connection")
+        let address = "192.168.0.4:3307".to_string();
+        assert_eq!(
+            describe(&target(), &io_error(ErrorKind::ConnectionRefused)),
+            ConnectFailure::Refused {
+                address: address.clone()
+            }
+        );
+        assert_eq!(
+            describe(&target(), &io_error(ErrorKind::TimedOut)),
+            ConnectFailure::Unreachable {
+                address: address.clone()
+            }
+        );
+        let failure = timeout(&target(), Duration::from_secs(10));
+        assert_eq!(
+            failure,
+            ConnectFailure::Timeout {
+                address,
+                seconds: 10
+            }
         );
         assert!(
-            describe(&target(), &io_error(ErrorKind::TimedOut))
-                .starts_with("192.168.0.4:3307 is unreachable")
-        );
-        assert!(
-            timeout_message(&target(), Duration::from_secs(10))
+            failure
+                .to_string()
                 .starts_with("192.168.0.4:3307 does not answer (10 s timeout exceeded)")
         );
     }
@@ -132,15 +292,42 @@ mod tests {
     #[test]
     fn explains_server_refusals() {
         let denied = describe(&target(), &server_error(ER_ACCESS_DENIED));
-        assert!(denied.starts_with("access denied for the account \"root\""));
-        assert!(denied.ends_with("(the server answers: server message)"));
+        assert_eq!(
+            denied,
+            ConnectFailure::AccessDenied {
+                username: "root".to_string(),
+                cause: FailureCause::Server {
+                    number: ER_ACCESS_DENIED,
+                    sqlstate: "28000".to_string(),
+                    message: "server message".to_string(),
+                },
+            }
+        );
+        assert!(
+            denied
+                .to_string()
+                .starts_with("access denied for the account \"root\"")
+        );
         assert!(
             describe(&target(), &server_error(ER_HOST_NOT_PRIVILEGED))
+                .to_string()
                 .starts_with("the server refuses connections from this machine")
         );
         assert_eq!(
-            describe(&target(), &server_error(ER_BAD_DB)),
+            describe(&target(), &server_error(ER_BAD_DB)).to_string(),
             "the database \"shop\" does not exist on 192.168.0.4:3307"
         );
+    }
+
+    #[test]
+    fn sorts_the_causes_by_author() {
+        assert!(matches!(
+            FailureCause::from(&io_error(ErrorKind::BrokenPipe)),
+            FailureCause::System { .. }
+        ));
+        assert!(matches!(
+            FailureCause::from(&mysql_async::Error::Driver(DriverError::ConnectionClosed)),
+            FailureCause::Driver { .. }
+        ));
     }
 }

@@ -4,6 +4,7 @@
 use tokio::sync::mpsc;
 
 use super::protocol::ServerMessage;
+use crate::error_detail::ErrorDetail;
 
 /// The message relay is gone: the session stops.
 pub(super) struct SessionStopped;
@@ -25,12 +26,18 @@ impl Outbox {
         self.sender.send(message).await.map_err(|_| SessionStopped)
     }
 
-    /// Puts an error message in the queue.
+    /// Puts an error message in the queue, with its English text.
     pub(super) async fn error(
         &self,
         query: Option<u32>,
-        message: String,
+        detail: ErrorDetail,
     ) -> Result<(), SessionStopped> {
-        self.send(ServerMessage::Error { query, message }).await
+        let message = detail.to_string();
+        self.send(ServerMessage::Error {
+            query,
+            message,
+            detail,
+        })
+        .await
     }
 }

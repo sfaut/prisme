@@ -16,11 +16,13 @@ use prisme_splitter::{Statement, statement_at, statements_in};
 use tokio::sync::Semaphore;
 use tracing::Instrument;
 
-use super::limits::{report, write_refusal};
+use super::limits::{limit_error, report, write_refusal};
 use super::outbox::SessionStopped;
 use super::protocol::{SelectionRange, ServerMessage};
 use super::session::{Session, Summary};
+use crate::analyze::flavor_of;
 use crate::console::{self, Action};
+use crate::error_detail::ErrorDetail;
 
 /// Number of rows of the first `rows` message of a result: the first rows
 /// show quickly, without waiting for a full batch.
@@ -31,9 +33,6 @@ const ROW_BATCH_SIZE: usize = 500;
 
 /// Maximum number of queries run at the same time (one connection each).
 const MAX_PARALLEL: usize = 8;
-
-/// Error message of the queries stopped by the user.
-const CANCELLED: &str = "query interrupted by the user";
 
 impl Session<'_> {
     /// Runs a query on the session's connection. The current database is read
@@ -60,7 +59,10 @@ impl Session<'_> {
                     self.remember_database(&database);
                     database
                 }
-                Err(error) => return self.outbox.error(Some(0), error.to_string()).await,
+                Err(error) => {
+                    let detail = ErrorDetail::of_mysql(&error, Some(flavor_of(dialect)));
+                    return self.outbox.error(Some(0), detail).await;
+                }
             }
         } else {
             self.current_database()
@@ -106,7 +108,10 @@ impl Session<'_> {
     ) -> Result<(), SessionStopped> {
         let _permit = permits.acquire().await.map_err(|_| SessionStopped)?;
         if self.is_cancelled(query) {
-            return self.outbox.error(Some(query), CANCELLED.to_string()).await;
+            return self
+                .outbox
+                .error(Some(query), ErrorDetail::QueryInterrupted)
+                .await;
         }
         self.outbox.send(ServerMessage::Started { query }).await?;
         self.run_on_new_connection(dialect, query, sql, max_rows, database)
@@ -129,7 +134,10 @@ impl Session<'_> {
         };
         let mut connection = match mysql::connect(&target).await {
             Ok(connection) => connection,
-            Err(error) => return self.outbox.error(Some(query), error.to_string()).await,
+            Err(error) => {
+                let detail = ErrorDetail::of_mysql(&error, Some(flavor_of(dialect)));
+                return self.outbox.error(Some(query), detail).await;
+            }
         };
         let result = match self
             .run_query(&mut connection, dialect, query, sql, max_rows)
@@ -164,7 +172,7 @@ impl Session<'_> {
         let limited = match apply_default_limit(sql, dialect, max_rows as u64) {
             Ok(limited) => limited,
             Err(error) => {
-                self.outbox.error(Some(query), error.to_string()).await?;
+                self.outbox.error(Some(query), limit_error(&error)).await?;
                 return Ok(None);
             }
         };
@@ -180,7 +188,7 @@ impl Session<'_> {
         // Stop requested while the connection was opening: the query does not start.
         if self.is_cancelled(query) {
             self.outbox
-                .error(Some(query), CANCELLED.to_string())
+                .error(Some(query), ErrorDetail::QueryInterrupted)
                 .await?;
             return Ok(None);
         }
@@ -188,14 +196,14 @@ impl Session<'_> {
         let mut stream = match mysql::execute(connection, &limited.sql).await {
             Ok(stream) => stream,
             Err(error) => {
-                let message = self.failure(query, error);
+                let detail = self.failure(query, dialect, &error);
                 sql_log::record(&Sent {
                     sql: &limited.sql,
                     duration: executing.elapsed(),
-                    error: Some(&message),
+                    error: Some(&detail.to_string()),
                     ..Sent::default()
                 });
-                self.outbox.error(Some(query), message).await?;
+                self.outbox.error(Some(query), detail).await?;
                 return Ok(None);
             }
         };
@@ -240,19 +248,18 @@ impl Session<'_> {
                 Ok(None) => break,
                 Err(error) => {
                     stream.discard().await;
-                    let message = self.failure(query, error);
-                    trace(row_count, false, 0, Some(&message));
-                    self.outbox.error(Some(query), message).await?;
+                    let detail = self.failure(query, dialect, &error);
+                    trace(row_count, false, 0, Some(&detail.to_string()));
+                    self.outbox.error(Some(query), detail).await?;
                     return Ok(None);
                 }
             };
             if self.is_cancelled(query) {
                 // The server has already received KILL QUERY: reading stops.
                 stream.discard().await;
-                trace(row_count, false, 0, Some(CANCELLED));
-                self.outbox
-                    .error(Some(query), CANCELLED.to_string())
-                    .await?;
+                let detail = ErrorDetail::QueryInterrupted;
+                trace(row_count, false, 0, Some(&detail.to_string()));
+                self.outbox.error(Some(query), detail).await?;
                 return Ok(None);
             }
             if capped && row_count == max_rows {
@@ -297,13 +304,18 @@ impl Session<'_> {
         self.cancellation.is_cancelled(self.batch, query)
     }
 
-    /// Message of a failed query: "interrupted" if the stop was requested (the
+    /// Detail of a failed query: "interrupted" if the stop was requested (the
     /// server's error is then that of `KILL QUERY`).
-    pub(super) fn failure(&self, query: u32, error: mysql::MysqlError) -> String {
+    pub(super) fn failure(
+        &self,
+        query: u32,
+        dialect: Dialect,
+        error: &mysql::MysqlError,
+    ) -> ErrorDetail {
         if self.is_cancelled(query) {
-            CANCELLED.to_string()
+            ErrorDetail::QueryInterrupted
         } else {
-            error.to_string()
+            ErrorDetail::of_mysql(error, Some(flavor_of(dialect)))
         }
     }
 

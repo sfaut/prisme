@@ -19,7 +19,25 @@ import {
   transferDuration,
   utf8Length,
 } from '../querySession'
+import type { ErrorDetail } from '../generated/ErrorDetail'
 import type { ServerMessage } from '../generated/ServerMessage'
+import { describe as describeError } from '../messages'
+
+/**
+ * Error message of the server, for the query `query` (`null`: the session).
+ */
+function failed(query: number | null, detail: ErrorDetail): ServerMessage {
+  return { type: 'error', query, message: '', detail }
+}
+
+/**
+ * Failure of a query whose connection broke.
+ */
+const LOST: ErrorDetail = {
+  code: 'query_failed',
+  flavor: 'mariadb',
+  cause: { source: 'driver', message: 'Connection to the server is closed.' },
+}
 
 /**
  * State of a ready session, on the `xlist` database.
@@ -90,12 +108,12 @@ describe('applyMessage', () => {
       elapsed_ms: 5,
       database: 'xlist',
     })
-    applyMessage(state, { type: 'error', query: 0, message: 'interrompue' })
+    applyMessage(state, failed(0, { code: 'query_interrupted' }))
     applyMessage(state, { type: 'batch_done' })
 
     const [video, person] = state.tabs
     expect(video?.result?.rows).toEqual([['1', 'a']])
-    expect(video?.error).toBe('interrompue')
+    expect(video?.error).toBe('Requête interrompue par l’utilisateur.')
     expect(video?.done).toBe(true)
     expect(person?.result?.rows).toEqual([['7'], ['8']])
     expect(person?.result?.elapsedMs).toBe(5)
@@ -132,14 +150,14 @@ describe('applyMessage', () => {
   it('keeps the session open after a session error', () => {
     const state = readyState()
     startBatch(state)
-    applyMessage(state, { type: 'error', query: null, message: 'no query to run' })
+    applyMessage(state, failed(null, { code: 'no_query' }))
     expect(state.status).toBe('ready')
-    expect(state.error).toBe('no query to run')
+    expect(state.error).toBe('Aucune requête à exécuter.')
   })
 
   it('closes the session if the connection to the target server fails', () => {
     const state = initialState()
-    applyMessage(state, { type: 'error', query: null, message: 'Access denied' })
+    applyMessage(state, failed(null, { code: 'missing_version' }))
     expect(state.status).toBe('closed')
   })
 
@@ -231,7 +249,7 @@ describe('tabProgress', () => {
     })
     expect(tabProgress(first!)).toBe('done')
 
-    applyMessage(state, { type: 'error', query: 1, message: 'refus' })
+    applyMessage(state, failed(1, { code: 'write_refused' }))
     expect(tabProgress(second!)).toBe('error')
   })
 })
@@ -319,7 +337,7 @@ describe('durations', () => {
     expect(tabFraction(tab)).toBe(0.04)
     tab.result!.expectedRows = null
     expect(tabFraction(tab)).toBeNull()
-    applyMessage(state, { type: 'error', query: 0, message: 'perdu' })
+    applyMessage(state, failed(0, LOST))
     expect(tabFraction(tab)).toBe(1)
   })
 
@@ -401,6 +419,7 @@ describe('savedTab', () => {
         started: true,
         done: true,
         error: null,
+        error_detail: null,
         columns: {
           columns: ['x'],
           right_aligned: [true],
@@ -442,6 +461,7 @@ describe('resume', () => {
           started: false,
           done: false,
           error: null,
+          error_detail: null,
           columns: null,
           row_count: 0,
           truncated: false,
@@ -456,6 +476,7 @@ describe('resume', () => {
       started: true,
       done: false,
       error: null,
+      error_detail: null,
       columns: {
         columns: ['x'],
         right_aligned: [true],
@@ -610,16 +631,16 @@ describe('refresh', () => {
     applyMessage(state, columns(0, 2000))
     applyMessage(state, { type: 'rows', query: 0, rows: [['new']] })
     tab.previous!.stopped = true
-    applyMessage(state, { type: 'error', query: 0, message: 'query interrupted by the user' })
+    applyMessage(state, failed(0, { code: 'query_interrupted' }))
     expect(tab.result?.rows).toEqual([['old']])
     expect([tab.error, tab.done, tab.previous]).toEqual([null, true, null])
     expect({ ...tab, batch: before.batch, query: before.query }).toEqual(before)
     applyMessage(state, { type: 'batch_done' })
 
     startRefresh(state, tab)
-    applyMessage(state, { type: 'error', query: 0, message: "Table 't' doesn't exist" })
+    applyMessage(state, failed(0, LOST))
     expect(tab.result?.rows).toEqual([['old']])
-    expect([tab.error, tab.previous]).toEqual(["Table 't' doesn't exist", null])
+    expect([tab.error, tab.previous]).toEqual([describeError(LOST), null])
     applyMessage(state, { type: 'batch_done' })
     expect(refreshState(state, tab)).toBe('idle')
   })
@@ -650,6 +671,7 @@ describe('refresh', () => {
       started: true,
       done: false,
       error: null,
+      error_detail: null,
       columns: null,
       row_count: 0,
       truncated: false,
@@ -677,7 +699,7 @@ describe('refresh', () => {
     expect([resumed.id, resumed.number, resumed.result]).toEqual([8, 1, null])
     expect(resumed.previous?.result?.rows).toEqual(tab.result?.rows)
 
-    applyMessage(state, { type: 'error', query: 0, message: 'query interrupted by the user' })
+    applyMessage(state, failed(0, { code: 'query_interrupted' }))
     expect(resumed.result?.rows).toEqual([['old']])
   })
 })

@@ -25,7 +25,7 @@ const DURATION = 3000
     >
       <CircleCheck v-if="toast.tone === 'success'" class="size-4 shrink-0 text-success" />
       <CircleAlert v-else class="size-4 shrink-0 text-error" />
-      <toast-title class="text-trim">{{ toast.title }}</toast-title>
+      <toast-title class="text-trim whitespace-pre-line">{{ toast.title }}</toast-title>
     </toast-root>
     <toast-viewport class="fixed end-3 bottom-3 z-50 flex w-72 flex-col gap-2 outline-none" />
   </toast-provider>

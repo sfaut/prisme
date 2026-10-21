@@ -19,8 +19,10 @@ use super::execution::chosen_statements;
 use super::limits::row_limit;
 use super::outbox::{Outbox, SessionStopped};
 use super::protocol::{BatchQuery, QueryRequest, ServerMessage, SessionRequest};
+use crate::analyze::flavor_of;
 use crate::api::AppState;
 use crate::console::{self, Action};
+use crate::error_detail::ErrorDetail;
 
 /// Runs a session: connection to the target server, then the client's
 /// requests until the session stops.
@@ -68,7 +70,7 @@ pub(super) async fn serve(
                 }
                 SessionRequest::Use(database) => {
                     session
-                        .use_database(&mut connection, &database)
+                        .use_database(&mut connection, dialect, &database)
                         .instrument(console::action_span(Action::Use))
                         .await
                 }
@@ -138,7 +140,8 @@ impl Session<'_> {
         match mysql::connect(self.target).await {
             Ok(connection) => Some(connection),
             Err(error) => {
-                let _ = self.outbox.error(None, error.to_string()).await;
+                let detail = ErrorDetail::of_mysql(&error, None);
+                let _ = self.outbox.error(None, detail).await;
                 None
             }
         }
@@ -150,14 +153,16 @@ impl Session<'_> {
         let info = match mysql::server_info(connection).await {
             Ok(info) => info,
             Err(error) => {
-                self.outbox.error(None, error.to_string()).await?;
+                let detail = ErrorDetail::of_mysql(&error, None);
+                self.outbox.error(None, detail).await?;
                 return Err(SessionStopped);
             }
         };
         let database = match mysql::current_database(connection).await {
             Ok(database) => database,
             Err(error) => {
-                self.outbox.error(None, error.to_string()).await?;
+                let detail = ErrorDetail::of_mysql(&error, Some(info.flavor));
+                self.outbox.error(None, detail).await?;
                 return Err(SessionStopped);
             }
         };
@@ -178,6 +183,7 @@ impl Session<'_> {
     async fn use_database(
         &self,
         connection: &mut Connection,
+        dialect: Dialect,
         database: &str,
     ) -> Result<(), SessionStopped> {
         let changed = match mysql::use_database(connection, database).await {
@@ -189,7 +195,10 @@ impl Session<'_> {
                 self.remember_database(&database);
                 self.outbox.send(ServerMessage::Database { database }).await
             }
-            Err(error) => self.outbox.error(None, error.to_string()).await,
+            Err(error) => {
+                let detail = ErrorDetail::of_mysql(&error, Some(flavor_of(dialect)));
+                self.outbox.error(None, detail).await
+            }
         }
     }
 
@@ -204,15 +213,14 @@ impl Session<'_> {
     ) -> Result<(), SessionStopped> {
         let max_rows = match row_limit(self.state, self.user_id, request.row_limit).await {
             Ok(max_rows) => max_rows as usize,
-            Err(message) => return self.outbox.error(None, message).await,
+            Err(detail) => return self.outbox.error(None, detail).await,
         };
         let statements = split(&request.sql);
         let cursor = request.tab.map_or(request.cursor, |_| Some(0));
         let selection = request.selection.as_deref().unwrap_or_default();
         let chosen = chosen_statements(&statements, cursor, selection);
         if chosen.is_empty() {
-            let message = "no query to run".to_string();
-            return self.outbox.error(None, message).await;
+            return self.outbox.error(None, ErrorDetail::NoQuery).await;
         }
 
         let queries = (0_u32..)

@@ -8,6 +8,7 @@
 //! parsed on its own (`prisme_dialects::syntax`). Positions are in UTF-16
 //! units, like the editor's.
 
+use crate::error_detail::ErrorDetail;
 use prisme_connectors::mysql::Flavor;
 use prisme_dialects::Dialect;
 use prisme_dialects::syntax::syntax_error;
@@ -58,8 +59,10 @@ pub struct SyntaxIssue {
     pub start: usize,
     /// End of the underlined passage, in UTF-16 units.
     pub end: usize,
-    /// Message shown on hover.
+    /// Message shown on hover, in English.
     pub message: String,
+    /// What the SQL parser says, for the interface to introduce it.
+    pub detail: ErrorDetail,
 }
 
 /// Location of a query in the text, in UTF-16 units.
@@ -77,6 +80,14 @@ pub fn dialect_of(flavor: Flavor) -> Dialect {
     match flavor {
         Flavor::MySql => Dialect::MySql,
         Flavor::MariaDb => Dialect::MariaDb,
+    }
+}
+
+/// Flavor of a dialect's servers, the inverse of `dialect_of`.
+pub fn flavor_of(dialect: Dialect) -> Flavor {
+    match dialect {
+        Dialect::MySql => Flavor::MySql,
+        Dialect::MariaDb => Flavor::MariaDb,
     }
 }
 
@@ -119,6 +130,9 @@ fn issue(statement: &Statement, dialect: Dialect) -> Option<SyntaxIssue> {
         start: statement.start + start,
         end: statement.start + end,
         message: format!("Query not understood by Prisme: {}", error.message),
+        detail: ErrorDetail::QueryNotUnderstood {
+            cause: error.message,
+        },
     })
 }
 

@@ -2,11 +2,15 @@
  * HTTP client of the Prisme API.
  *
  * All the routes answer in JSON. On failure, the server returns
- * `{"error": "message"}` (`ErrorBody` type): this message becomes that of the
- * thrown error, ready to be shown to the user.
+ * `{"error": "message", "detail": {...}}` (`ErrorBody` type): the thrown
+ * error carries the message that the interface writes from the detail
+ * (`messages.ts`), ready to be shown to the user. An answer that is not
+ * Prisme's JSON (a refusal of the HTTP layer) is quoted with its status.
  */
 
 import type { ErrorBody } from './generated/ErrorBody'
+import type { ErrorDetail } from './generated/ErrorDetail'
+import { describe, quoted } from './messages'
 import { trackRead, trackWrite } from './sync'
 
 /**
@@ -15,11 +19,14 @@ import { trackRead, trackWrite } from './sync'
 export class ApiError extends Error {
   /**
    * @param status HTTP status of the response (400, 404, 502...).
-   * @param message Readable message, provided by the server.
+   * @param message Message for the user.
+   * @param detail What went wrong, as the server told it; absent for an
+   *     answer that is not Prisme's JSON.
    */
   constructor(
     readonly status: number,
     message: string,
+    readonly detail: ErrorDetail | null = null,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -107,25 +114,32 @@ async function send<T>(
 }
 
 /**
- * Turns an error response into an `ApiError`, with the server's message.
+ * Turns an error response into an `ApiError`: the message written from the
+ * server's detail, or, for an answer that is not Prisme's JSON, its status
+ * and its text, quoted.
  *
  * @param response Response whose status is an error.
  */
 export async function toApiError(response: Response): Promise<ApiError> {
-  return new ApiError(response.status, errorMessage(response, await response.text()))
+  const text = await response.text()
+  const detail = detailOf(text)
+  if (detail !== null) {
+    return new ApiError(response.status, describe(detail), detail)
+  }
+  const refusal = `Le serveur Prisme a refusé la requête (statut ${response.status})`
+  const message = text.trim() === '' ? `${refusal}.` : quoted(refusal, text.trim())
+  return new ApiError(response.status, message)
 }
 
 /**
- * Extracts the message of an error response: the server's if it is readable,
- * otherwise the HTTP status.
+ * Detail of an error body of Prisme, `null` if the body is not one.
  *
- * @param response Error response.
  * @param text Body of the response.
  */
-function errorMessage(response: Response, text: string): string {
+function detailOf(text: string): ErrorDetail | null {
   try {
-    return (JSON.parse(text) as ErrorBody).error
+    return (JSON.parse(text) as Partial<ErrorBody>).detail ?? null
   } catch {
-    return `${response.status} ${response.statusText}`.trim()
+    return null
   }
 }

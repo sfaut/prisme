@@ -30,6 +30,7 @@ mod secret_mask;
 pub mod sql_log;
 
 pub use column_type::{ColumnTypeInfo, TypeFamily};
+pub use connect_error::{ConnectFailure, FailureCause};
 
 /// Maximum delay to open a connection to the server.
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
@@ -80,13 +81,10 @@ pub struct ServerInfo {
 /// Errors of the MySQL / MariaDB connector.
 #[derive(Debug, thiserror::Error)]
 pub enum MysqlError {
-    /// Connection impossible, with a message that says what to check.
+    /// Connection impossible (refused, unreachable, no answer within
+    /// `CONNECT_TIMEOUT`, access denied...): what is wrong and what to check.
     #[error("{0}")]
-    Connect(String),
-
-    /// The server did not answer within `CONNECT_TIMEOUT`.
-    #[error("{0}")]
-    ConnectTimeout(String),
+    Connect(ConnectFailure),
 
     /// Driver error on an open connection: failed query, lost connection...
     #[error("{0}")]
@@ -97,13 +95,29 @@ pub enum MysqlError {
     MissingVersion,
 
     /// A query initialising the connection failed.
-    #[error("on-connect query \"{statement}\" failed: {message}")]
+    #[error("on-connect query \"{statement}\" failed: {cause}")]
     Init {
         /// The failed query.
         statement: String,
-        /// Message of the server.
-        message: String,
+        /// Answer of the server, or message of the driver.
+        cause: FailureCause,
     },
+}
+
+impl MysqlError {
+    /// Text written outside Prisme that explains the failure: the server's
+    /// answer, or the driver's or the system's message. A failure that Prisme
+    /// itself describes (`Connect`, `MissingVersion`) gives its English text,
+    /// as the driver's.
+    pub fn cause(&self) -> FailureCause {
+        match self {
+            Self::Driver(error) => FailureCause::from(error),
+            Self::Init { cause, .. } => cause.clone(),
+            Self::Connect(_) | Self::MissingVersion => FailureCause::Driver {
+                message: self.to_string(),
+            },
+        }
+    }
 }
 
 /// Deduces the server's flavor from the result of `SELECT VERSION()`.
@@ -133,7 +147,7 @@ pub async fn connect(target: &MysqlTarget) -> Result<Conn, MysqlError> {
         Ok(Ok(connection)) => connection,
         Ok(Err(error)) => return Err(MysqlError::Connect(connect_error::describe(target, &error))),
         Err(_) => {
-            return Err(MysqlError::ConnectTimeout(connect_error::timeout_message(
+            return Err(MysqlError::Connect(connect_error::timeout(
                 target,
                 CONNECT_TIMEOUT,
             )));
@@ -145,7 +159,7 @@ pub async fn connect(target: &MysqlTarget) -> Result<Conn, MysqlError> {
             let _ = connection.disconnect().await;
             return Err(MysqlError::Init {
                 statement: statement.clone(),
-                message: error.to_string(),
+                cause: FailureCause::from(&error),
             });
         }
     }

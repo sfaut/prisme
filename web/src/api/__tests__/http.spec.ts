@@ -46,17 +46,26 @@ describe('request', () => {
     )
   })
 
-  it('throws an ApiError with the message of the server', async () => {
-    mockFetch(409, '{"error":"a connection named \\"prod\\" already exists"}')
+  it('throws an ApiError with the message written from the detail of the server', async () => {
+    mockFetch(
+      409,
+      JSON.stringify({
+        error: 'a connection named "prod" already exists',
+        detail: { code: 'duplicate_connection_name', name: 'prod' },
+      }),
+    )
     const error = await request('POST', '/api/connections', {}).catch((error: unknown) => error)
     expect(error).toBeInstanceOf(ApiError)
     expect((error as ApiError).status).toBe(409)
-    expect((error as ApiError).message).toBe('a connection named "prod" already exists')
+    expect((error as ApiError).message).toBe('Une connexion nommée « prod » existe déjà.')
+    expect((error as ApiError).detail?.code).toBe('duplicate_connection_name')
   })
 
-  it('falls back on the status if the body is not JSON', async () => {
-    mockFetch(502, 'proxy indisponible')
-    await expect(request('GET', '/api/health')).rejects.toThrow('502 Bad Gateway')
+  it('quotes an answer that is not the JSON of Prisme, with its status', async () => {
+    mockFetch(422, 'Failed to deserialize the JSON body')
+    await expect(request('GET', '/api/health')).rejects.toThrow(
+      'Le serveur Prisme a refusé la requête (statut 422) :\n\nFailed to deserialize the JSON body',
+    )
   })
 })
 
@@ -86,8 +95,19 @@ describe('streamCatalog', () => {
   })
 
   it('throws an ApiError if the target server is unreachable', async () => {
-    mockFetch(504, '{"error":"192.168.0.4:3307 does not answer"}')
-    await expect(streamCatalog(3, () => {})).rejects.toThrow('192.168.0.4:3307 does not answer')
+    mockFetch(
+      504,
+      JSON.stringify({
+        error: '192.168.0.4:3307 does not answer',
+        detail: {
+          code: 'connect',
+          failure: { reason: 'timeout', address: '192.168.0.4:3307', seconds: 10 },
+        },
+      }),
+    )
+    await expect(streamCatalog(3, () => {})).rejects.toThrow(
+      '192.168.0.4:3307 ne répond pas (délai de 10 s dépassé)',
+    )
   })
 })
 

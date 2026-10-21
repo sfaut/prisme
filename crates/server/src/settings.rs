@@ -8,6 +8,7 @@
 //! `migrations/0014_users_console_retention.sql`).
 //! Synchronous functions (`rusqlite`), called from blocking tasks.
 
+use crate::error_detail::{ErrorDetail, Field};
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -61,12 +62,31 @@ pub enum SettingsError {
     #[error("{field}: between {min} and {max} days", min = RETENTION_DAYS.start(), max = RETENTION_DAYS.end())]
     RetentionOutOfRange {
         /// Field out of its bounds.
-        field: &'static str,
+        field: Field,
     },
 
     /// Error of the internal database.
     #[error("internal database: {0}")]
     Sqlite(#[from] rusqlite::Error),
+}
+
+impl SettingsError {
+    /// What went wrong, for the interface; `Internal` for a failure of the
+    /// internal database, detailed in the log only.
+    pub fn detail(&self) -> ErrorDetail {
+        match self {
+            Self::InvalidRowLimit(value) => ErrorDetail::RowLimitNotAllowed {
+                value: *value,
+                choices: ROW_LIMIT_CHOICES.to_vec(),
+            },
+            Self::RetentionOutOfRange { field } => ErrorDetail::FieldRange {
+                field: *field,
+                min: (*RETENTION_DAYS.start()).into(),
+                max: (*RETENTION_DAYS.end()).into(),
+            },
+            Self::Sqlite(_) => ErrorDetail::Internal,
+        }
+    }
 }
 
 /// Checks that a row limit is among the allowed choices.
@@ -88,8 +108,8 @@ pub fn check_row_limit(row_limit: u32) -> Result<u32, SettingsError> {
 pub fn check_update(update: &SettingsUpdate) -> Result<(), SettingsError> {
     check_row_limit(update.row_limit)?;
     for (field, days) in [
-        ("history_retention_days", update.history_retention_days),
-        ("debug_retention_days", update.debug_retention_days),
+        (Field::HistoryRetentionDays, update.history_retention_days),
+        (Field::DebugRetentionDays, update.debug_retention_days),
     ] {
         if !RETENTION_DAYS.contains(&days) {
             return Err(SettingsError::RetentionOutOfRange { field });
@@ -217,7 +237,7 @@ mod tests {
         assert!(matches!(
             update(&db, user_id, &changed),
             Err(SettingsError::RetentionOutOfRange {
-                field: "debug_retention_days"
+                field: Field::DebugRetentionDays
             })
         ));
         changed.debug_retention_days = 1;

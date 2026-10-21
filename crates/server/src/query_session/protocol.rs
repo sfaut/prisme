@@ -5,6 +5,7 @@ use prisme_connectors::mysql::{Cell, ColumnTypeInfo, ServerInfo};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::error_detail::ErrorDetail;
 use crate::recorder::ResumedQuery;
 
 /// Message sent by the client.
@@ -152,8 +153,13 @@ pub(crate) enum ServerMessage {
         /// Current database of the session after the query (it changes with `USE`).
         database: Option<String>,
     },
-    /// Failure of a query, or of the session if `query` is absent.
-    Error { query: Option<u32>, message: String },
+    /// Failure of a query, or of the session if `query` is absent: the
+    /// English message of the logs, and the detail for the interface.
+    Error {
+        query: Option<u32>,
+        message: String,
+        detail: ErrorDetail,
+    },
     /// All the queries of the batch have ended.
     BatchDone,
     /// Current database of the session, after a successful `use` request.

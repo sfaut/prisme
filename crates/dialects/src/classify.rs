@@ -66,26 +66,29 @@ pub fn changes_database(sql: &str, dialect: Dialect) -> bool {
 /// `SET @v = ...`, `SET TIME ZONE`...) are. A global setting (`SET GLOBAL`,
 /// `SET @@global.x`), which would change the whole server, and any other
 /// query are refused, like a query Prisme does not understand.
-pub fn session_setting_refusal(sql: &str, dialect: Dialect) -> Option<String> {
+pub fn session_setting_refusal(sql: &str, dialect: Dialect) -> Option<SettingRefusal> {
     let Ok(statements) = Parser::parse_sql(dialect.parser_dialect().as_ref(), sql) else {
-        return Some(format!("\"{sql}\": query not understood by Prisme"));
+        return Some(SettingRefusal::NotUnderstood);
     };
     for statement in &statements {
         match statement {
-            Statement::Set(set) if is_global(set) => {
-                return Some(format!(
-                    "\"{sql}\": a global setting would change the whole server; only session settings are allowed"
-                ));
-            }
+            Statement::Set(set) if is_global(set) => return Some(SettingRefusal::Global),
             Statement::Set(_) => {}
-            _ => {
-                return Some(format!(
-                    "\"{sql}\": only session settings (SET ...) are allowed"
-                ));
-            }
+            _ => return Some(SettingRefusal::NotASetting),
         }
     }
     None
+}
+
+/// Why a query to run when a connection opens is refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingRefusal {
+    /// Prisme does not understand the query.
+    NotUnderstood,
+    /// A global setting, which would change the whole server.
+    Global,
+    /// Not a setting (`SET ...`).
+    NotASetting,
 }
 
 /// Does a `SET` target the whole server (`GLOBAL`, `@@global.x`, `@@persist.x`)?

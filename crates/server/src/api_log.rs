@@ -192,6 +192,8 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use axum::Router;
+
+    use crate::error_detail::ErrorDetail;
     use axum::body::Body;
     use axum::http::StatusCode;
     use axum::middleware;
@@ -298,6 +300,7 @@ mod tests {
             server(ServerMessage::Error {
                 query: Some(1),
                 message: "near 'SELECT secret'".to_string(),
+                detail: ErrorDetail::NoQuery,
             }),
             "error, query 1"
         );
@@ -305,6 +308,7 @@ mod tests {
             server(ServerMessage::Error {
                 query: None,
                 message: "refused".to_string(),
+                detail: ErrorDetail::NoQuery,
             }),
             "error, session"
         );
