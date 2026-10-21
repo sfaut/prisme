@@ -165,9 +165,9 @@ Each editor has its own connection, its own session (and therefore its own trans
 | Action | Key | Button |
 |---|---|---|
 | Run the query under the cursor | Ctrl+Enter | **Exécuter** (Run) |
-| Run every query of the editor, in parallel | Ctrl+Shift+Enter | **Tout exécuter** (Run all) |
-| Run the queries touched by the selected text, in parallel | Ctrl+Shift+Enter, with text selected | **Tout exécuter**, with text selected |
-| Stop every running query | | **Stopper** (Stop) |
+| Run every query of the editor, in parallel | Ctrl+Shift+Enter | **Exécuter tout** (Run all) |
+| Run the queries touched by the selected text, in parallel | Ctrl+Shift+Enter, with text selected | **Exécuter tout**, with text selected |
+| Stop every running query | | **Exécuter** or **Exécuter tout** again, while queries run |
 
 - When the editor holds several queries, the one Ctrl+Enter would run is **highlighted**.
 - Syntax errors are **underlined in red** as you type, with the message on hover.
@@ -274,7 +274,7 @@ The **Historique** (History) tab lists every query sent to your servers, the old
 |---|---|
 | **#** | Number of the query in the history |
 | **Heure** (Time) | Time it was sent; the date shows in its tooltip |
-| **Action** | What sent it: **Session**, **Exécuter** (Run), **Tout exécuter** (Run all), **Rafraîchir** (Refresh), **Base courante** (Current database), **Interruption**, **Explorateur** (Explorer), **Test de connexion** (Connection test); the connection shows in its tooltip |
+| **Action** | What sent it: **Session**, **Exécuter** (Run), **Exécuter tout** (Run all), **Rafraîchir** (Refresh), **Base courante** (Current database), **Interruption**, **Explorateur** (Explorer), **Test de connexion** (Connection test); the connection shows in its tooltip |
 | **Message** | The query on one line, then its error if it failed; the full query shows in its tooltip |
 | **Lignes** (Rows) | Rows read, preceded by "+" when the result was truncated ("+1 000"), or rows changed by a write; "—" otherwise |
 | **Durée** (Duration) | Execution time, until the result, or until the columns for a result read row by row |

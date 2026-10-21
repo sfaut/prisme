@@ -5,10 +5,10 @@
   connection, and keeps it open as long as it exists. The results are saved
   by the server; the cell starts again from the saved tabs, and also saves
   their name, their pinning, their order and their closing. Ctrl+Enter or
-  "Exécuter" runs
-  the query under the cursor; Ctrl+Shift+Enter or "Tout exécuter" runs
-  in parallel the queries the selected text touches, all of them without a
-  selection. "Stopper" stops them all.
+  "Exécuter" runs the query under the cursor; Ctrl+Shift+Enter or "Exécuter
+  tout" runs in parallel the queries the selected text touches, all of them
+  without a selection. While queries run, both buttons turn into stop
+  buttons: a click on either stops them all.
   "Enjoliver" rewrites the text as "beautiful SQL", once the connection's
   catalog is loaded (it gives the case of the user's functions).
   Each query has its result tab (`ResultTab.vue`), with its progress bar. A
@@ -24,7 +24,7 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { LoaderCircle, Play, Square, WandSparkles } from '@lucide/vue'
+import { FastForward, LoaderCircle, Play, Square, WandSparkles } from '@lucide/vue'
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 
@@ -50,6 +50,7 @@ import { completionSchema } from './sqlCompletion'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
 import UiSelect from './ui/UiSelect.vue'
+import UiTooltip from './ui/UiTooltip.vue'
 import { notify } from './ui/toasts'
 
 const props = defineProps<{
@@ -215,6 +216,16 @@ function closeTab(tab: QueryTab): void {
   session.closeTab(tab.id)
   deleteResult(tab.id).catch(reportFailure)
 }
+
+/**
+ * Tooltip of the run buttons while queries run: a click stops them.
+ */
+const STOP_TIP = 'Arrête toutes les requêtes et tous les chargements en cours'
+
+/**
+ * Do queries run? The run buttons then stop them.
+ */
+const running = computed(() => state.status === 'running')
 
 /**
  * Runs the query under the cursor.
@@ -398,29 +409,31 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
     <!-- Top block: the buttons, then the editor, which takes the remaining room. -->
     <div class="editor-pane" :style="{ '--editor-split': `${editorSplit * 100}%` }">
       <div class="flex items-center gap-2">
-        <ui-button
-          label="Exécuter"
-          :icon="Play"
-          variant="solid"
-          tone="accent"
-          :disabled="state.status !== 'ready' && state.status !== 'running'"
-          :loading="state.status === 'running'"
-          @click="run()"
-        />
-        <ui-button
-          label="Tout exécuter"
-          title="Toutes les requêtes en parallèle, ou celles que touche le texte sélectionné (Ctrl-Maj-Entrée)"
-          :disabled="state.status !== 'ready'"
-          @click="runAll(editor?.selection())"
-        />
-        <ui-button
-          label="Stopper"
-          :icon="Square"
-          tone="error"
-          title="Arrête toutes les requêtes et tous les chargements en cours"
-          :disabled="state.status !== 'running'"
-          @click="session.cancel()"
-        />
+        <ui-tooltip :text="running ? STOP_TIP : 'La requête sous le curseur (Ctrl-Entrée)'">
+          <ui-button
+            label="Exécuter"
+            :icon="running ? Square : Play"
+            variant="solid"
+            :tone="running ? 'error' : 'accent'"
+            :disabled="!running && state.status !== 'ready'"
+            @click="running ? session.cancel() : run()"
+          />
+        </ui-tooltip>
+        <ui-tooltip
+          :text="
+            running
+              ? STOP_TIP
+              : 'Toutes les requêtes en parallèle, ou celles que touche le texte sélectionné (Ctrl-Maj-Entrée)'
+          "
+        >
+          <ui-button
+            label="Exécuter tout"
+            :icon="running ? Square : FastForward"
+            :tone="running ? 'error' : 'neutral'"
+            :disabled="!running && state.status !== 'ready'"
+            @click="running ? session.cancel() : runAll(editor?.selection())"
+          />
+        </ui-tooltip>
         <ui-button
           label="Enjoliver"
           :icon="WandSparkles"

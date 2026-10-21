@@ -17,7 +17,7 @@ import type { QueryEntry } from '@/api/generated/QueryEntry'
 export const ACTION_LABELS: Record<Action, string> = {
   session: 'Session',
   run: 'Exécuter',
-  run_all: 'Tout exécuter',
+  run_all: 'Exécuter tout',
   refresh: 'Rafraîchir',
   use: 'Base courante',
   cancel: 'Interruption',

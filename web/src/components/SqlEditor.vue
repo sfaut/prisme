@@ -282,7 +282,7 @@ function cursor(): number {
 }
 
 /**
- * Passages selected in the editor, for the "Tout exécuter" button: the same
+ * Passages selected in the editor, for the "Exécuter tout" button: the same
  * as Ctrl+Shift+Enter. None before mounting.
  */
 function selection(): SelectionRange[] {
