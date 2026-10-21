@@ -36,6 +36,7 @@ We are proud to announce Prisme v0.5.0. This version speaks French in its errors
 
 - A target server out of reach no longer shows as a failed save in the top bar.
 - No more vertical scrollbar beside the editors' tabs.
+- Object explorer: typing a letter on a line, to move to the line that starts with it, no longer throws an error.
 
 ### 🔒 Security
 
