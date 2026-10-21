@@ -367,7 +367,7 @@ function runAll(selection: SelectionRange[] = []): void {
  */
 async function changeLimit(rowLimit: number): Promise<void> {
   try {
-    await settings.setRowLimit(rowLimit)
+    await settings.update({ row_limit: rowLimit })
   } catch (failure) {
     state.error = errorMessage(failure)
   }

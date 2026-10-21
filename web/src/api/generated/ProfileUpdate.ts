@@ -11,16 +11,4 @@ first_name: string,
 /**
  * New last name, trimmed, at most `NAME_MAX_CHARS` characters.
  */
-last_name: string, 
-/**
- * New read-only mode of the query sessions.
- */
-read_only_session: boolean, 
-/**
- * New retention of the history, in days (`RETENTION_DAYS`).
- */
-history_retention_days: number, 
-/**
- * New retention of the debug log, in days (`RETENTION_DAYS`).
- */
-debug_retention_days: number, };
+last_name: string, };

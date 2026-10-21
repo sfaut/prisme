@@ -282,15 +282,15 @@ The **Historique** (History) tab lists every query sent to your servers, the old
 
 The **Debug** tab lists the messages of Prisme: those its terminal shows (the same level, see [Command-line options](#command-line-options)), and the notifications of the interface, such as **Sélection copiée** (Selection copied). Each line gives its number, time, level (**Erreur**, **Avertissement**, **Info**, **Debug**, **Trace**), source (**Serveur** or **Interface**; the module of the server shows in its tooltip) and message.
 
-Both tabs are kept in the internal database, 30 days by default: the **Historique (jours)** and **Debug (jours)** fields of your profile change it, from 1 to 3,650 days. Older lines are deleted when Prisme starts, then every hour. The interface shows their last 2,000 lines; **Afficher les éléments précédents** (Show the previous elements) reads the older ones. The button at the right of the tabs clears the list of the tab shown: **Effacer l’historique** (Clear the history) deletes your history, **Effacer le debug** (Clear the debug log) the whole debug log.
+Both tabs are kept in the internal database, 30 days by default: the **Délai rétention historique** and **Délai rétention debug** fields of the settings change it, from 1 to 3,650 days. Older lines are deleted when Prisme starts, then every hour. The interface shows their last 2,000 lines; **Afficher les éléments précédents** (Show the previous elements) reads the older ones. The button at the right of the tabs clears the list of the tab shown: **Effacer l’historique** (Clear the history) deletes your history, **Effacer le debug** (Clear the debug log) the whole debug log.
 
 ### Top bar
 
 - **Synchronisation**: Prisme saves every change as you go. **Synchronisé** (Synced) means everything is saved, **Synchronisation…** (Syncing…) that a save is running, **Échec de la synchronisation** (Sync failed) that the last one was refused.
 - **Theme**: the **Système / Clair / Sombre** (System / Light / Dark) list sets the theme of the whole interface. **Système** follows your computer's setting.
 - **Account** menu, the round avatar with your initials (those of your first and last names, or the first letter of your email address):
-  - **Profil** (Profile): your last and first names, your email address (read-only), and **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; and how many days the [console](#console) keeps its history and its debug log;
-  - **Paramètres** (Settings): the default row limit, and the language of the interface (French only for now).
+  - **Profil** (Profile): your last and first names, and your email address (read-only);
+  - **Paramètres** (Settings), applied as soon as they are changed: the language of the interface (French only for now); the default row limit; **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; and how many days the [console](#console) keeps its history and its debug log.
 
 ## Your data
 

@@ -1,7 +1,5 @@
 <!--
-  Window of the user's profile: first and last names, the read-only mode of
-  the query sessions, and the retention of the console's history and debug
-  log, in days, saved on the server.
+  Window of the user's profile: first and last names, saved on the server.
   The email address is shown but not editable: it identifies the user, and
   `prisme --setup` or `--user-email` change it.
   Window, fields and buttons of Prisme (`ui/`).
@@ -26,25 +24,11 @@ const open = defineModel<boolean>('open', { required: true })
 const profile = useProfileStore()
 
 /**
- * Retention of the console by default, in days.
- */
-const DEFAULT_RETENTION = 30
-
-/**
- * Bounds of a retention, in days: the server checks the same.
- */
-const RETENTION_MIN = 1
-const RETENTION_MAX = 3650
-
-/**
- * Current input: the names, as typed, the read-only mode and the retentions.
+ * Current input: the names, as typed.
  */
 const form = reactive({
   first_name: '',
   last_name: '',
-  read_only_session: true,
-  history_retention_days: DEFAULT_RETENTION,
-  debug_retention_days: DEFAULT_RETENTION,
 })
 
 /**
@@ -78,9 +62,6 @@ watch(open, async (isOpen) => {
   }
   form.first_name = profile.profile?.first_name ?? ''
   form.last_name = profile.profile?.last_name ?? ''
-  form.read_only_session = profile.profile?.read_only_session ?? true
-  form.history_retention_days = profile.profile?.history_retention_days ?? DEFAULT_RETENTION
-  form.debug_retention_days = profile.profile?.debug_retention_days ?? DEFAULT_RETENTION
   email.value = profile.profile?.email ?? ''
 })
 
@@ -102,11 +83,7 @@ async function save(): Promise<void> {
 </script>
 
 <template>
-  <ui-dialog
-    v-model:open="open"
-    title="Profil"
-    description="Nom et prénom de l’utilisateur, sessions et conservation de la console"
-  >
+  <ui-dialog v-model:open="open" title="Profil" description="Nom et prénom de l’utilisateur">
     <form id="profile-form" class="flex flex-col gap-gap" @submit.prevent="save">
       <ui-field label="Nom">
         <ui-input v-model="form.last_name" :maxlength="100" autocomplete="family-name" />
@@ -116,35 +93,6 @@ async function save(): Promise<void> {
       </ui-field>
       <ui-field label="E-mail">
         <span class="truncate text-fg-muted" :title="email">{{ email }}</span>
-      </ui-field>
-      <ui-field label="Requêtes">
-        <label
-          class="flex items-center gap-gap text-ui text-fg-strong"
-          title="La base refuse les écritures des sessions, en plus du contrôle de Prisme"
-        >
-          <input v-model="form.read_only_session" type="checkbox" class="size-icon accent-accent" />
-          Sessions en lecture seule
-        </label>
-      </ui-field>
-      <ui-field label="Historique (jours)">
-        <ui-input
-          v-model="form.history_retention_days"
-          type="number"
-          :min="RETENTION_MIN"
-          :max="RETENTION_MAX"
-          required
-          title="Durée de conservation des requêtes de la console"
-        />
-      </ui-field>
-      <ui-field label="Debug (jours)">
-        <ui-input
-          v-model="form.debug_retention_days"
-          type="number"
-          :min="RETENTION_MIN"
-          :max="RETENTION_MAX"
-          required
-          title="Durée de conservation des messages de débogage de la console"
-        />
       </ui-field>
       <ui-alert v-if="error" tone="error" :title="error" />
     </form>

@@ -2,6 +2,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { computed, isReactive } from 'vue'
 
+import type { SettingsUpdate } from '@/api/generated/SettingsUpdate'
+
 import { useCatalogStore } from '../catalog'
 import { useConnectionsStore } from '../connections'
 import { useSettingsStore } from '../settings'
@@ -40,9 +42,15 @@ vi.mock('@/api/explorer', () => ({
 }))
 
 vi.mock('@/api/settings', () => ({
-  getSettings: async () => ({ row_limit: 1000, row_limit_choices: [1000, 2000] }),
-  updateSettings: async ({ row_limit }: { row_limit: number }) => ({
-    row_limit,
+  getSettings: async () => ({
+    row_limit: 1000,
+    row_limit_choices: [1000, 2000],
+    read_only_session: true,
+    history_retention_days: 30,
+    debug_retention_days: 30,
+  }),
+  updateSettings: async (update: SettingsUpdate) => ({
+    ...update,
     row_limit_choices: [1000, 2000],
   }),
 }))
@@ -80,8 +88,18 @@ describe('settings', () => {
     const store = useSettingsStore()
     await store.load()
     expect(store.settings?.row_limit).toBe(1000)
-    await store.setRowLimit(2000)
+    await store.update({ row_limit: 2000 })
     expect(store.settings?.row_limit).toBe(2000)
+  })
+
+  it('keeps the settings not changed', async () => {
+    const store = useSettingsStore()
+    await store.load()
+    await store.update({ history_retention_days: 90 })
+    expect(store.settings?.history_retention_days).toBe(90)
+    expect(store.settings?.debug_retention_days).toBe(30)
+    expect(store.settings?.row_limit).toBe(1000)
+    expect(store.settings?.read_only_session).toBe(true)
   })
 })
 

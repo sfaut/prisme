@@ -13,10 +13,10 @@
 //! | `POST /api/connections/{id}/probe`  | Connects and returns the server's flavor and version.         |
 //! | `GET /api/connections/{id}/query`   | WebSocket: query session (see `query_session.rs`), closed with it. |
 //! | `GET /api/connections/{id}/catalog` | Databases, tables and columns (see `explorer.rs`).            |
-//! | `GET /api/settings`                 | Settings of the user, with the allowed choices.               |
+//! | `GET /api/settings`                 | Settings of the user: row limit (with the allowed choices), read-only sessions, retention of the console. |
 //! | `PUT /api/settings`                 | Changes the settings, returns the updated settings.           |
-//! | `GET /api/profile`                  | Profile of the user: names, email address, read-only sessions, retention of the console. |
-//! | `PUT /api/profile`                  | Changes the names, the read-only sessions and the retention, returns the profile. |
+//! | `GET /api/profile`                  | Profile of the user: names and email address.                 |
+//! | `PUT /api/profile`                  | Changes the names, returns the profile.                       |
 //! | `POST /api/beautify`                | Beautifies SQL (keywords in capitals...).                     |
 //! | `POST /api/analyze`                 | Analyses the editor's text (see `analyze.rs`).                |
 //! | `GET /api/dialects/{flavor}/keywords` | Keywords of the dialect (`?version=`: those of the version). |
@@ -251,7 +251,7 @@ async fn query_socket(
     let (target, read_only, name) = state
         .with_db(move |db, key| {
             let target = connections::load_target(db, key, user_id, id)?;
-            let read_only = profile::load(db, user_id)?.read_only_session;
+            let read_only = settings::load(db, user_id)?.read_only_session;
             let name = connections::name_of(db, user_id, id)?;
             Ok::<_, ApiError>((target, read_only, name))
         })
@@ -290,7 +290,7 @@ async fn editor_session(
         .with_db(move |db, key| {
             let target = connections::load_target(db, key, user_id, connection_id)?;
             let minutes = connections::session_timeout(db, user_id, connection_id)?;
-            let read_only = profile::load(db, user_id)?.read_only_session;
+            let read_only = settings::load(db, user_id)?.read_only_session;
             let name = connections::name_of(db, user_id, connection_id)?;
             Ok::<_, ApiError>(
                 target
@@ -807,24 +807,28 @@ mod tests {
             settings["row_limit_choices"],
             json!([1000, 2000, 5000, 10000, 50000])
         );
+        assert_eq!(settings["read_only_session"], true);
+        assert_eq!(settings["history_retention_days"], 30);
+        assert_eq!(settings["debug_retention_days"], 30);
 
-        let (status, settings) = send(
-            &app,
-            "PUT",
-            "/api/settings",
-            Some(json!({ "row_limit": 10000 })),
-        )
-        .await;
+        let update = |row_limit: u32, history_retention_days: u16| {
+            json!({
+                "row_limit": row_limit,
+                "read_only_session": false,
+                "history_retention_days": history_retention_days,
+                "debug_retention_days": 7,
+            })
+        };
+        let (status, settings) = send(&app, "PUT", "/api/settings", Some(update(10000, 90))).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(settings["row_limit"], 10000);
+        assert_eq!(settings["read_only_session"], false);
+        assert_eq!(settings["history_retention_days"], 90);
+        assert_eq!(settings["debug_retention_days"], 7);
 
-        let (status, _) = send(
-            &app,
-            "PUT",
-            "/api/settings",
-            Some(json!({ "row_limit": 3 })),
-        )
-        .await;
+        let (status, _) = send(&app, "PUT", "/api/settings", Some(update(3, 90))).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let (status, _) = send(&app, "PUT", "/api/settings", Some(update(1000, 0))).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
     }
 

@@ -72,7 +72,9 @@ impl From<SettingsError> for ApiError {
     /// Translates a settings management error into an HTTP error.
     fn from(error: SettingsError) -> Self {
         match error {
-            SettingsError::InvalidRowLimit(_) => Self::BadRequest(error.to_string()),
+            SettingsError::InvalidRowLimit(_) | SettingsError::RetentionOutOfRange { .. } => {
+                Self::BadRequest(error.to_string())
+            }
             SettingsError::Sqlite(_) => {
                 tracing::error!("{error}");
                 Self::Internal
@@ -85,9 +87,7 @@ impl From<ProfileError> for ApiError {
     /// Translates a profile management error into an HTTP error.
     fn from(error: ProfileError) -> Self {
         match error {
-            ProfileError::NameTooLong { .. } | ProfileError::RetentionOutOfRange { .. } => {
-                Self::BadRequest(error.to_string())
-            }
+            ProfileError::NameTooLong { .. } => Self::BadRequest(error.to_string()),
             ProfileError::Sqlite(_) => {
                 tracing::error!("{error}");
                 Self::Internal

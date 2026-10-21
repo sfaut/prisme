@@ -1,5 +1,6 @@
 /**
- * Settings of the user: for now, the default row limit.
+ * Settings of the user: default row limit, read-only sessions, retention of
+ * the console.
  */
 
 import { request } from './http'
@@ -16,7 +17,10 @@ export function getSettings(): Promise<Settings> {
 /**
  * Changes the settings and returns the updated settings.
  *
- * @param update New row limit, among the allowed choices.
+ * @param update
+ *     New settings: row limit among the allowed choices, retentions between
+ *     1 and 3,650 days.
+ * @throws {ApiError} If a value is not allowed.
  */
 export function updateSettings(update: SettingsUpdate): Promise<Settings> {
   return request('PUT', '/api/settings', update)
