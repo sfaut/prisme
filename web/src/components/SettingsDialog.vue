@@ -21,6 +21,7 @@ import UiDialog from './ui/UiDialog.vue'
 import UiField from './ui/UiField.vue'
 import UiInput from './ui/UiInput.vue'
 import UiSelect from './ui/UiSelect.vue'
+import { vTooltip } from './ui/tooltip'
 
 /**
  * Window open or closed.
@@ -156,7 +157,7 @@ async function save(): Promise<void> {
       <ui-field label="Requêtes">
         <label
           class="flex items-center gap-2 text-ui text-fg-strong"
-          title="La base refuse les écritures des sessions, en plus du contrôle de Prisme"
+          v-tooltip="'La base refuse les écritures des sessions, en plus du contrôle de Prisme'"
         >
           <input v-model="form.read_only_session" type="checkbox" class="size-icon accent-accent" />
           Sessions en lecture seule
@@ -172,7 +173,7 @@ async function save(): Promise<void> {
             required
             class="w-20"
             aria-label="Jours de conservation de l’historique"
-            title="Durée de conservation des requêtes de la console"
+            v-tooltip="'Durée de conservation des requêtes de la console'"
           />
           <span class="text-ui text-fg-muted">jours</span>
         </div>
@@ -187,7 +188,7 @@ async function save(): Promise<void> {
             required
             class="w-20"
             aria-label="Jours de conservation du debug"
-            title="Durée de conservation des messages de débogage de la console"
+            v-tooltip="'Durée de conservation des messages de débogage de la console'"
           />
           <span class="text-ui text-fg-muted">jours</span>
         </div>

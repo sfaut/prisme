@@ -20,6 +20,7 @@ import {
   timeOf,
   transferOf,
 } from './consoleFormat'
+import { vTooltip } from './ui/tooltip'
 
 const history = useConsoleStore().history
 </script>
@@ -44,20 +45,20 @@ const history = useConsoleStore().history
           <th>Message</th>
           <th class="end">Lignes</th>
           <th class="end">Durée</th>
-          <th class="end" title="Délai de transmission des lignes">Transmission</th>
+          <th class="end" v-tooltip="'Délai de transmission des lignes'">Transmission</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="entry in history.entries" :key="entry.id">
           <td class="end text-fg-dimmed">{{ entry.id }}</td>
-          <td :title="dateTimeOf(entry.started_at)">{{ timeOf(entry.started_at) }}</td>
-          <td :title="entry.connection_name || undefined">
+          <td v-tooltip="dateTimeOf(entry.started_at)">{{ timeOf(entry.started_at) }}</td>
+          <td v-tooltip="entry.connection_name || undefined">
             {{ ACTION_LABELS[entry.action] }}
           </td>
-          <td :title="entry.sql">
+          <td v-tooltip="entry.sql">
             <div class="message">
               <span class="sql font-mono text-fg-strong">{{ oneLine(entry.sql) }}</span>
-              <span v-if="entry.error" class="outcome text-error" :title="entry.error">{{
+              <span v-if="entry.error" class="outcome text-error" v-tooltip="entry.error">{{
                 failureOf(entry)
               }}</span>
             </div>
@@ -65,7 +66,7 @@ const history = useConsoleStore().history
           <td
             class="end"
             :class="{ 'text-fg-dimmed': rowsOf(entry) === '—' }"
-            :title="rowsTitleOf(entry)"
+            v-tooltip="rowsTitleOf(entry)"
           >
             {{ rowsOf(entry) }}
           </td>

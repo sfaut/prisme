@@ -41,7 +41,9 @@ describe('ResultGrid', () => {
     expect(wrapper.find('.grid-type-glyph').text()).toBe('123')
     expect(wrapper.findAll('.grid-type-icon')).toHaveLength(1)
     expect(wrapper.find('.grid-column-type').exists()).toBe(false)
-    const titles = wrapper.findAll('.grid-column-name').map((name) => name.attributes('title'))
+    const titles = wrapper
+      .findAll('.grid-column-name')
+      .map((name) => name.attributes('data-tooltip'))
     expect(titles[1]).toContain('VARCHAR(20)')
   })
 

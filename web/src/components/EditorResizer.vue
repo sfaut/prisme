@@ -10,6 +10,7 @@
 import { ref } from 'vue'
 
 import { DEFAULT_EDITOR_SPLIT, clampEditorSplit, saveEditorSplit } from './editorSplit'
+import { vTooltip } from './ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -76,7 +77,7 @@ function reset(): void {
     role="separator"
     aria-orientation="horizontal"
     aria-label="Partage entre l'éditeur et les résultats"
-    title="Glisser pour partager la hauteur, double clic pour revenir à la position initiale"
+    v-tooltip="'Glisser pour partager la hauteur, double clic pour revenir à la position initiale'"
     @pointerdown.prevent="start"
     @pointermove="move"
     @pointerup="stop"

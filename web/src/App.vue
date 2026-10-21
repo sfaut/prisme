@@ -18,7 +18,8 @@
   cells of all the editors stay mounted: each one keeps its session (and its
   transactions) open, even when another editor is displayed.
 
-  Transient messages (`notify`) show at the bottom right (`UiToaster`).
+  Transient messages (`notify`) show at the bottom right (`UiToaster`); the
+  tooltips of every element (`v-tooltip`), in a single bubble (`UiTooltip`).
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
@@ -42,6 +43,7 @@ import PanelRail from './components/PanelRail.vue'
 import PanelResizer from './components/PanelResizer.vue'
 import UiAlert from './components/ui/UiAlert.vue'
 import UiToaster from './components/ui/UiToaster.vue'
+import UiTooltip from './components/ui/UiTooltip.vue'
 import { CONSOLE, DATA_PANEL, SIDER, clampPanelSize, loadPanelSize } from './components/panelSize'
 
 const connections = useConnectionsStore()
@@ -298,4 +300,5 @@ function selectSource(connectionId: number): void {
     </div>
   </div>
   <ui-toaster />
+  <ui-tooltip />
 </template>

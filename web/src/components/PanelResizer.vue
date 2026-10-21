@@ -10,6 +10,7 @@
 import { computed, ref } from 'vue'
 
 import { type PanelSize, clampPanelSize, savePanelSize } from './panelSize'
+import { vTooltip } from './ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -115,7 +116,7 @@ const inset = computed(() => {
     class="panel-resizer"
     :class="{ dragging: drag !== null, horizontal }"
     :style="inset"
-    title="Glisser pour redimensionner, double clic pour revenir à la taille initiale"
+    v-tooltip="'Glisser pour redimensionner, double clic pour revenir à la taille initiale'"
     @pointerdown.prevent="start"
     @pointermove="move"
     @pointerup="stop"

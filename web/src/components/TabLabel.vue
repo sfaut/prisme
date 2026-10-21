@@ -5,6 +5,7 @@
 -->
 <script setup lang="ts">
 import { nextTick, ref, useTemplateRef } from 'vue'
+import { vTooltip } from './ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -74,7 +75,7 @@ function commit(): void {
   <span
     v-else
     class="truncate text-trim"
-    title="Double-cliquer pour renommer"
+    v-tooltip="'Double-cliquer pour renommer'"
     @dblclick="startEditing"
   >
     {{ name ?? defaultLabel }}

@@ -50,8 +50,8 @@ import { completionSchema } from './sqlCompletion'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
 import UiSelect from './ui/UiSelect.vue'
-import UiTooltip from './ui/UiTooltip.vue'
 import { notify } from './ui/toasts'
+import { vTooltip } from './ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -409,36 +409,32 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
     <!-- Top block: the buttons, then the editor, which takes the remaining room. -->
     <div class="editor-pane" :style="{ '--editor-split': `${editorSplit * 100}%` }">
       <div class="flex items-center gap-2">
-        <ui-tooltip :text="running ? STOP_TIP : 'La requête sous le curseur (Ctrl-Entrée)'">
-          <ui-button
-            label="Exécuter"
-            :icon="running ? Square : Play"
-            variant="solid"
-            :tone="running ? 'error' : 'accent'"
-            :disabled="!running && state.status !== 'ready'"
-            @click="running ? session.cancel() : run()"
-          />
-        </ui-tooltip>
-        <ui-tooltip
-          :text="
+        <ui-button
+          v-tooltip="running ? STOP_TIP : 'La requête sous le curseur (Ctrl-Entrée)'"
+          label="Exécuter"
+          :icon="running ? Square : Play"
+          variant="solid"
+          :tone="running ? 'error' : 'accent'"
+          :disabled="!running && state.status !== 'ready'"
+          @click="running ? session.cancel() : run()"
+        />
+        <ui-button
+          v-tooltip="
             running
               ? STOP_TIP
               : 'Toutes les requêtes en parallèle, ou celles que touche le texte sélectionné (Ctrl-Maj-Entrée)'
           "
-        >
-          <ui-button
-            label="Exécuter tout"
-            :icon="running ? Square : FastForward"
-            :tone="running ? 'error' : 'neutral'"
-            :disabled="!running && state.status !== 'ready'"
-            @click="running ? session.cancel() : runAll(editor?.selection())"
-          />
-        </ui-tooltip>
+          label="Exécuter tout"
+          :icon="running ? Square : FastForward"
+          :tone="running ? 'error' : 'neutral'"
+          :disabled="!running && state.status !== 'ready'"
+          @click="running ? session.cancel() : runAll(editor?.selection())"
+        />
         <ui-button
           label="Enjoliver"
           :icon="WandSparkles"
           :disabled="sql.trim() === '' || !catalogReady"
-          :title="
+          v-tooltip="
             catalogReady
               ? 'Réécrit les requêtes en « beau SQL » : mots-clefs en capitales (Ctrl-Z annule)'
               : 'Disponible une fois le catalogue de la connexion chargé'

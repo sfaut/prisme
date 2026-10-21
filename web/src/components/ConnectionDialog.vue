@@ -33,6 +33,7 @@ import UiDialog from './ui/UiDialog.vue'
 import UiField from './ui/UiField.vue'
 import UiInput from './ui/UiInput.vue'
 import UiTextarea from './ui/UiTextarea.vue'
+import { vTooltip } from './ui/tooltip'
 
 /**
  * Window open or closed.
@@ -233,7 +234,9 @@ async function save(): Promise<void> {
           rows="3"
           placeholder="SET NAMES utf8mb4;&#10;SET SESSION sql_mode = 'ANSI_QUOTES';"
           aria-label="Requêtes à exécuter à la connexion"
-          title="Réglages de la session exécutés à l'ouverture de chaque connexion, séparés par des « ; »"
+          v-tooltip="
+            'Réglages de la session exécutés à l’ouverture de chaque connexion, séparés par des « ; »'
+          "
         />
       </ui-field>
       <ui-field label="Session gardée">
@@ -245,7 +248,9 @@ async function save(): Promise<void> {
             :max="1440"
             class="w-20"
             aria-label="Minutes de garde de la session"
-            title="La session (connexion, transactions, requêtes en cours) reste ouverte ce nombre de minutes après la fermeture de la page, qui s'y raccroche à son retour ; 0 la ferme aussitôt"
+            v-tooltip="
+              'La session (connexion, transactions, requêtes en cours) reste ouverte ce nombre de minutes après la fermeture de la page, qui s’y raccroche à son retour ; 0 la ferme aussitôt'
+            "
           />
           <span class="text-ui text-fg-muted">min après la fermeture de la page</span>
         </div>
@@ -253,7 +258,9 @@ async function save(): Promise<void> {
       <ui-field label="Explorateur">
         <label
           class="flex items-center gap-2 text-ui text-fg-strong"
-          title="Bases fournies par le serveur : information_schema, mysql, performance_schema, sys"
+          v-tooltip="
+            'Bases fournies par le serveur : information_schema, mysql, performance_schema, sys'
+          "
         >
           <input
             v-model="form.show_system_schemas"

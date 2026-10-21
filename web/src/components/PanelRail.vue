@@ -8,6 +8,7 @@
 -->
 <script setup lang="ts">
 import { PanelBottomOpen, PanelLeftOpen, PanelRightOpen } from '@lucide/vue'
+import { vTooltip } from './ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -43,7 +44,7 @@ const ICONS = {
     class="panel-rail"
     :class="props.side"
     :aria-label="`Déplier : ${title}`"
-    :title="`Déplier : ${title}`"
+    v-tooltip="`Déplier : ${title}`"
     @click="emit('expand')"
   >
     <span class="panel-rail-icon">

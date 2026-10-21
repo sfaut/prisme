@@ -1,22 +1,19 @@
 <!--
-  Tooltip: a short text in a small dark bubble, shown under its trigger (the
-  default slot) after a short hover, or as soon as the trigger takes the
-  focus; it goes above when there is no room below.
+  Bubble of the tooltips, a single one for the whole page (mounted by
+  `App.vue`): it shows the text that the `v-tooltip` directive gave to the
+  element under the pointer, after a short hover, or to the element that
+  takes the keyboard focus. A short text in a small font on a dark
+  background, under its element; above it when there is no room below.
 
   Built on the browser's own tools: the `popover` attribute (`hint`: shows in
   the top layer, over the windows, and closes with Escape) and the anchor
-  positioning of CSS, which places it against its trigger without measuring
+  positioning of CSS, which places it against its element without measuring
   anything in script. Colors from the theme (`--tooltip-*`, `main.css`).
 -->
 <script setup lang="ts">
-import { onBeforeUnmount, useId, useTemplateRef } from 'vue'
+import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
 
-defineProps<{
-  /**
-   * Text of the tooltip.
-   */
-  text: string
-}>()
+import { TOOLTIP_ATTRIBUTE, shownTooltip } from './tooltip'
 
 /**
  * Delay of the hover before the tooltip shows, in milliseconds.
@@ -24,20 +21,14 @@ defineProps<{
 const SHOW_DELAY = 400
 
 /**
- * Identifier of the tooltip.
+ * Anchor name given to the element of the shown tooltip.
  */
-const id = useId()
+const ANCHOR = '--tooltip'
 
 /**
- * Name of the anchor of the trigger, a CSS dashed ident: the identifier with
- * any character other than a letter, a digit or a dash replaced.
+ * Element of the bubble, a popover.
  */
-const anchor = `--tip-${id.replace(/[^\w-]/g, '-')}`
-
-/**
- * Element of the tooltip, a popover.
- */
-const tip = useTemplateRef<HTMLElement>('tip')
+const bubble = useTemplateRef<HTMLElement>('bubble')
 
 /**
  * Timer of the hover delay, `undefined` when none is running.
@@ -45,62 +36,171 @@ const tip = useTemplateRef<HTMLElement>('tip')
 let timer: ReturnType<typeof setTimeout> | undefined
 
 /**
- * Shows the tooltip, after `delay` milliseconds.
+ * Element with a tooltip that contains the target of an event, if any.
  *
- * @param delay Delay before it shows: that of the hover, none for the focus.
+ * @param target Target of the event.
  */
-function show(delay: number): void {
-  clearTimeout(timer)
-  timer = setTimeout(() => {
-    if (tip.value && !tip.value.matches(':popover-open')) {
-      tip.value.showPopover()
-    }
-  }, delay)
+function elementOf(target: EventTarget | null): HTMLElement | null {
+  return target instanceof Element ? target.closest<HTMLElement>(`[${TOOLTIP_ATTRIBUTE}]`) : null
 }
 
 /**
- * Hides the tooltip, or cancels its coming display.
+ * Shows the tooltip of an element after `delay`, or hides the shown one.
+ * Passing from a shown tooltip to another element shows the next one at once.
+ *
+ * @param element Element whose tooltip to show, `null` to hide.
+ * @param delay Delay before it shows, in milliseconds.
  */
-function hide(): void {
+function schedule(element: HTMLElement | null, delay: number): void {
   clearTimeout(timer)
-  if (tip.value?.matches(':popover-open')) {
-    tip.value.hidePopover()
+  if (element === shownTooltip.element) {
+    return
+  }
+  if (element === null) {
+    shownTooltip.element = null
+    return
+  }
+  timer = setTimeout(
+    () => {
+      shownTooltip.text = element.getAttribute(TOOLTIP_ATTRIBUTE) ?? ''
+      shownTooltip.element = element
+    },
+    shownTooltip.element ? 0 : delay,
+  )
+}
+
+/**
+ * The pointer enters an element: its tooltip after the hover delay, or none.
+ *
+ * @param event Event of the pointer.
+ */
+function onPointerOver(event: PointerEvent): void {
+  schedule(elementOf(event.target), SHOW_DELAY)
+}
+
+/**
+ * The pointer leaves the page.
+ *
+ * @param event Event of the pointer.
+ */
+function onPointerOut(event: PointerEvent): void {
+  if (event.relatedTarget === null) {
+    schedule(null, 0)
   }
 }
 
-onBeforeUnmount(hide)
+/**
+ * A press hides the tooltip, until the pointer enters another element.
+ */
+function onPointerDown(): void {
+  clearTimeout(timer)
+  shownTooltip.element = null
+}
+
+/**
+ * The keyboard focus enters an element: its tooltip at once. Not for a text
+ * field, where the bubble would cover what is being typed.
+ *
+ * @param event Event of the focus.
+ */
+function onFocusIn(event: FocusEvent): void {
+  const target = event.target
+  if (
+    target instanceof HTMLElement &&
+    target.matches(':focus-visible') &&
+    !target.matches('input, textarea, [contenteditable]')
+  ) {
+    schedule(elementOf(target), 0)
+  }
+}
+
+/**
+ * The focus leaves the element of the shown tooltip.
+ *
+ * @param event Event of the focus.
+ */
+function onFocusOut(event: FocusEvent): void {
+  if (shownTooltip.element !== null && elementOf(event.target) === shownTooltip.element) {
+    schedule(null, 0)
+  }
+}
+
+/**
+ * The bubble closes by itself (Escape, another popover): the state follows.
+ *
+ * @param event Toggle event of the popover.
+ */
+function onToggle(event: ToggleEvent): void {
+  // The event comes after the fact: the bubble may be open again, for another element.
+  if (event.newState === 'closed' && !bubble.value?.matches(':popover-open')) {
+    shownTooltip.element = null
+  }
+}
+
+// The bubble follows the shown element: anchored to it, open while there is one.
+watch(
+  () => shownTooltip.element,
+  (element, previous) => {
+    previous?.style.removeProperty('anchor-name')
+    if (bubble.value === null) {
+      return
+    }
+    if (element === null) {
+      if (bubble.value.matches(':popover-open')) {
+        bubble.value.hidePopover()
+      }
+      return
+    }
+    // Reopened for each element: an open bubble keeps the position it fell
+    // back to for the previous element (above it, near the bottom of the
+    // window), even where the next one leaves room below.
+    if (bubble.value.matches(':popover-open')) {
+      bubble.value.hidePopover()
+    }
+    element.style.setProperty('anchor-name', ANCHOR)
+    bubble.value.showPopover()
+  },
+  { flush: 'post' },
+)
+
+/**
+ * Events listened to on the whole document, by type.
+ */
+const LISTENERS = {
+  pointerover: onPointerOver,
+  pointerout: onPointerOut,
+  pointerdown: onPointerDown,
+  focusin: onFocusIn,
+  focusout: onFocusOut,
+} as const
+
+onMounted(() => {
+  for (const [type, listener] of Object.entries(LISTENERS)) {
+    document.addEventListener(type, listener as EventListener, true)
+  }
+})
+
+onBeforeUnmount(() => {
+  clearTimeout(timer)
+  for (const [type, listener] of Object.entries(LISTENERS)) {
+    document.removeEventListener(type, listener as EventListener, true)
+  }
+})
 </script>
 
 <template>
-  <span
-    class="inline-flex"
-    :style="{ anchorName: anchor }"
-    @pointerenter="show(SHOW_DELAY)"
-    @pointerleave="hide"
-    @pointerdown="hide"
-    @focusin="show(0)"
-    @focusout="hide"
-  >
-    <slot />
-    <span
-      :id="id"
-      ref="tip"
-      popover="hint"
-      role="tooltip"
-      class="ui-tooltip"
-      :style="{ positionAnchor: anchor }"
-    >
-      {{ text }}
-    </span>
-  </span>
+  <div ref="bubble" popover="hint" role="tooltip" class="ui-tooltip" @toggle="onToggle">
+    {{ shownTooltip.text }}
+  </div>
 </template>
 
 <style scoped>
 @reference "@/assets/main.css";
 
-/* Under the trigger, centered on it. Near an edge of the window, it lines up
-   with the trigger's side instead; above it when there is no room below. */
+/* Under its element, centered on it. Near an edge of the window, it lines up
+   with the element's side instead; above it when there is no room below. */
 .ui-tooltip {
+  position-anchor: --tooltip;
   inset: auto;
   position-area: bottom;
   position-try-fallbacks:
@@ -113,12 +213,24 @@ onBeforeUnmount(hide)
   margin-block-start: var(--popup-offset);
   max-inline-size: --spacing(72);
   padding: --spacing(1) --spacing(2);
-  overflow: visible;
+  overflow: hidden;
   border: none;
   border-radius: var(--control-radius);
   background: var(--tooltip-bg);
   color: var(--tooltip-fg);
   font-size: var(--font-size-small);
   line-height: 1.4;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  /* A long value (a cell) shows its first lines only. */
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 12;
+  line-clamp: 12;
+  /* The pointer passes through: the bubble never hides what it explains. */
+  pointer-events: none;
+
+  &:popover-open {
+    display: -webkit-box;
+  }
 }
 </style>

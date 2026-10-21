@@ -10,7 +10,7 @@ import { Database, DatabaseArrowDown, DatabaseArrowUp, DatabaseCheck, DatabaseX 
 import { computed } from 'vue'
 
 import { syncState } from '@/api/sync'
-import UiTooltip from './ui/UiTooltip.vue'
+import { vTooltip } from './ui/tooltip'
 
 /**
  * Text, icon and tone of each state.
@@ -38,9 +38,13 @@ const current = computed(() => STATES[syncState.value])
 </script>
 
 <template>
-  <ui-tooltip :text="current.text">
-    <span role="status" :aria-label="current.text" class="inline-flex" :class="current.tone">
-      <component :is="current.icon" class="size-icon shrink-0" aria-hidden="true" />
-    </span>
-  </ui-tooltip>
+  <span
+    v-tooltip="current.text"
+    role="status"
+    :aria-label="current.text"
+    class="inline-flex"
+    :class="current.tone"
+  >
+    <component :is="current.icon" class="size-icon shrink-0" aria-hidden="true" />
+  </span>
 </template>

@@ -35,6 +35,7 @@ import type { EntryKind, ExplorerNode } from './explorerNodes'
 import UiButton from './ui/UiButton.vue'
 import UiDropdownMenu from './ui/UiDropdownMenu.vue'
 import type { MenuItem } from './ui/menuItem'
+import { vTooltip } from './ui/tooltip'
 
 defineProps<{
   /**
@@ -125,7 +126,7 @@ function nodeIcon(node: ExplorerNode, expanded: boolean): Component {
           {{ node.column.name }}
         </span>
       </span>
-      <span class="truncate text-small text-fg-dimmed text-trim" :title="node.column.details">
+      <span class="truncate text-small text-fg-dimmed text-trim" v-tooltip="node.column.details">
         {{ node.column.details }}
       </span>
     </span>

@@ -9,6 +9,7 @@ import { useConsoleStore } from '@/stores/console'
 
 import ConsoleList from './ConsoleList.vue'
 import { LEVEL_LABELS, LEVEL_TONES, SOURCE_LABELS, dateTimeOf, timeOf } from './consoleFormat'
+import { vTooltip } from './ui/tooltip'
 
 const debug = useConsoleStore().debug
 </script>
@@ -35,10 +36,10 @@ const debug = useConsoleStore().debug
       <tbody>
         <tr v-for="entry in debug.entries" :key="entry.id">
           <td class="end text-fg-dimmed">{{ entry.id }}</td>
-          <td :title="dateTimeOf(entry.logged_at)">{{ timeOf(entry.logged_at) }}</td>
+          <td v-tooltip="dateTimeOf(entry.logged_at)">{{ timeOf(entry.logged_at) }}</td>
           <td :class="LEVEL_TONES[entry.level]">{{ LEVEL_LABELS[entry.level] }}</td>
-          <td :title="entry.target || undefined">{{ SOURCE_LABELS[entry.source] }}</td>
-          <td class="font-mono text-fg-strong" :title="entry.message">
+          <td v-tooltip="entry.target || undefined">{{ SOURCE_LABELS[entry.source] }}</td>
+          <td class="font-mono text-fg-strong" v-tooltip="entry.message">
             {{ entry.message }}
           </td>
         </tr>

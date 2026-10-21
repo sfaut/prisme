@@ -21,6 +21,7 @@ import { type QueryTab, tabFraction, tabProgress } from '@/api/querySession'
 import ProgressDot from './ProgressDot.vue'
 import TabLabel from './TabLabel.vue'
 import UiButton from './ui/UiButton.vue'
+import { vTooltip } from './ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -79,7 +80,7 @@ const barTone = computed(() => {
         small
         :aria-pressed="tab.pinned"
         :aria-label="tab.pinned ? 'Désépingler l’onglet' : 'Épingler l’onglet'"
-        :title="
+        v-tooltip="
           tab.pinned
             ? 'Désépingler : l’onglet sera remplacé à la prochaine exécution'
             : 'Épingler : l’onglet reste quand la requête est relancée'
@@ -95,7 +96,7 @@ const barTone = computed(() => {
         variant="ghost"
         small
         aria-label="Fermer l’onglet"
-        title="Fermer l’onglet (arrête sa requête si elle tourne)"
+        v-tooltip="'Fermer l’onglet (arrête sa requête si elle tourne)'"
         class="invisible group-hover:visible group-data-[state=active]:visible"
         @mousedown.stop
         @click.stop="emit('close')"

@@ -20,6 +20,7 @@ import DebugTable from './DebugTable.vue'
 import HistoryTable from './HistoryTable.vue'
 import PanelHeader from './PanelHeader.vue'
 import UiButton from './ui/UiButton.vue'
+import { vTooltip } from './ui/tooltip'
 
 const store = useConsoleStore()
 
@@ -82,7 +83,7 @@ onUnmounted(() => store.dispose())
           :loading="clearing"
           :disabled="shown.list.entries.length === 0 && !shown.list.hasOlder"
           :aria-label="shown.clearLabel"
-          :title="shown.clearLabel"
+          v-tooltip="shown.clearLabel"
           @click="clearShown"
         />
       </template>

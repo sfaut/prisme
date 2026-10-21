@@ -59,7 +59,7 @@ describe('App', () => {
   it('shows the version of the server next to the name', async () => {
     const wrapper = mount(App)
     await vi.waitFor(() =>
-      expect(wrapper.find('header [title="Version de Prisme"]').text()).toBe('v1.2.3'),
+      expect(wrapper.find('header [data-tooltip="Version de Prisme"]').text()).toBe('v1.2.3'),
     )
   })
 
@@ -111,7 +111,9 @@ describe('App', () => {
     const wrapper = mount(App)
     const bar = wrapper.find('header')
     await vi.waitFor(() => expect(bar.find('[aria-label="Compte"]').text()).toBe('AL'))
-    expect(bar.find('[aria-label="Compte"]').attributes('title')).toBe('Compte : Ada Lovelace')
+    expect(bar.find('[aria-label="Compte"]').attributes('data-tooltip')).toBe(
+      'Compte : Ada Lovelace',
+    )
     expect(bar.find('[aria-label="Thème"]').exists()).toBe(true)
   })
 })

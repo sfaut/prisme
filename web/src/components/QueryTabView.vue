@@ -38,6 +38,7 @@ import { useClock } from './clock'
 import ResultGrid from './ResultGrid.vue'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
+import { vTooltip } from './ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -175,7 +176,7 @@ const durations = computed(() => {
           small
           :disabled="refresh === 'unavailable'"
           :aria-label="refreshing ? 'Arrêter le rafraîchissement' : 'Rafraîchir'"
-          :title="refreshTitle"
+          v-tooltip="refreshTitle"
           @click="refreshing ? emit('stop-refresh') : emit('refresh')"
         />
       </template>

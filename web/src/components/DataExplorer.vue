@@ -64,6 +64,7 @@ import PanelHeader from './PanelHeader.vue'
 import UiButton from './ui/UiButton.vue'
 import UiInput from './ui/UiInput.vue'
 import { notify } from './ui/toasts'
+import { vTooltip } from './ui/tooltip'
 
 const explorer = useDataExplorerStore()
 
@@ -440,7 +441,7 @@ watch(
   <div class="data-explorer">
     <panel-header title="Explorateur de données" side="end" @collapse="explorer.open = false">
       <template #subtitle>
-        <span class="truncate text-small text-fg-muted" :title="subtitle">{{
+        <span class="truncate text-small text-fg-muted" v-tooltip="subtitle">{{
           subtitle || ' '
         }}</span>
       </template>
@@ -450,7 +451,7 @@ watch(
           variant="ghost"
           small
           aria-label="Tout replier"
-          title="Tout replier"
+          v-tooltip="'Tout replier'"
           :disabled="text === null"
           @click="applyFolding(true, 'all')"
         />
@@ -459,7 +460,7 @@ watch(
           variant="ghost"
           small
           aria-label="Tout déplier"
-          title="Tout déplier"
+          v-tooltip="'Tout déplier'"
           :disabled="text === null"
           @click="applyFolding(false, 'all')"
         />
@@ -468,7 +469,7 @@ watch(
           variant="ghost"
           small
           aria-label="Replier le niveau du curseur"
-          title="Replier le niveau du curseur : tous les nœuds de même profondeur"
+          v-tooltip="'Replier le niveau du curseur : tous les nœuds de même profondeur'"
           :disabled="text === null || !levelFoldable"
           @click="applyFolding(true, 'cursor')"
         />
@@ -477,7 +478,7 @@ watch(
           variant="ghost"
           small
           aria-label="Déplier le niveau du curseur"
-          title="Déplier le niveau du curseur : tous les nœuds de même profondeur"
+          v-tooltip="'Déplier le niveau du curseur : tous les nœuds de même profondeur'"
           :disabled="text === null || !levelFoldable"
           @click="applyFolding(false, 'cursor')"
         />
@@ -488,7 +489,7 @@ watch(
           small
           :aria-pressed="searchOpen"
           aria-label="Rechercher"
-          title="Rechercher : JSONPath pour le JSON, XPath pour le XML"
+          v-tooltip="'Rechercher : JSONPath pour le JSON, XPath pour le XML'"
           :disabled="text === null"
           @click="toggleSearch"
         />
@@ -499,7 +500,7 @@ watch(
           small
           :aria-pressed="explorer.wrap"
           aria-label="Retour à la ligne"
-          title="Retour à la ligne : coupe les lignes longues à la largeur du panneau"
+          v-tooltip="'Retour à la ligne : coupe les lignes longues à la largeur du panneau'"
           :disabled="text === null"
           @click="explorer.wrap = !explorer.wrap"
         />
@@ -508,7 +509,7 @@ watch(
           variant="ghost"
           small
           aria-label="Copier le document"
-          title="Copier le document affiché (JSON ou XML valide, sans les replis)"
+          v-tooltip="'Copier le document affiché (JSON ou XML valide, sans les replis)'"
           :disabled="text === null"
           @click="copy"
         />
@@ -530,7 +531,7 @@ watch(
         <span
           v-if="searchStatus !== ''"
           class="data-explorer-search-status"
-          :title="searchStatus"
+          v-tooltip="searchStatus"
           aria-live="polite"
           >{{ searchStatus }}</span
         >
@@ -539,7 +540,7 @@ watch(
           variant="ghost"
           small
           aria-label="Résultat précédent"
-          title="Résultat précédent (Maj+Entrée)"
+          v-tooltip="'Résultat précédent (Maj+Entrée)'"
           :disabled="stops.length === 0"
           @click="goToMatch(-1)"
         />
@@ -548,7 +549,7 @@ watch(
           variant="ghost"
           small
           aria-label="Résultat suivant"
-          title="Résultat suivant (Entrée)"
+          v-tooltip="'Résultat suivant (Entrée)'"
           :disabled="stops.length === 0"
           @click="goToMatch(1)"
         />
@@ -559,7 +560,9 @@ watch(
           small
           :aria-pressed="filtering"
           aria-label="Afficher seulement les résultats"
-          title="Filtrer : afficher seulement les résultats, au lieu de les surligner dans le document"
+          v-tooltip="
+            'Filtrer : afficher seulement les résultats, au lieu de les surligner dans le document'
+          "
           @click="filtering = !filtering"
         />
       </div>

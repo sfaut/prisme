@@ -25,6 +25,7 @@ import { movedItems, useTabDrag } from './tabDrag'
 import UiButton from './ui/UiButton.vue'
 import UiDropdownMenu from './ui/UiDropdownMenu.vue'
 import type { MenuItem } from './ui/menuItem'
+import { vTooltip } from './ui/tooltip'
 
 const editors = useEditorsStore()
 const connections = useConnectionsStore()
@@ -110,7 +111,7 @@ const reopenItems = computed<MenuItem[]>(() => {
           variant="ghost"
           small
           aria-label="Fermer l’éditeur"
-          title="Fermer l’éditeur (rouvrable pendant 24 heures)"
+          v-tooltip="'Fermer l’éditeur (rouvrable pendant 24 heures)'"
           class="invisible group-hover:visible group-data-[state=active]:visible"
           @mousedown.stop
           @click.stop="editors.close(editor.id)"
@@ -123,7 +124,7 @@ const reopenItems = computed<MenuItem[]>(() => {
         variant="ghost"
         small
         aria-label="Nouvel éditeur"
-        title="Nouvel éditeur, sur la connexion de l’éditeur actif"
+        v-tooltip="'Nouvel éditeur, sur la connexion de l’éditeur actif'"
         @click="editors.create(editors.active?.connectionId ?? null)"
       />
       <ui-dropdown-menu :items="reopenItems">
@@ -132,7 +133,7 @@ const reopenItems = computed<MenuItem[]>(() => {
           variant="ghost"
           small
           aria-label="Rouvrir un éditeur fermé"
-          title="Rouvrir un éditeur fermé depuis moins de 24 heures"
+          v-tooltip="'Rouvrir un éditeur fermé depuis moins de 24 heures'"
           @click="editors.loadClosed()"
         />
       </ui-dropdown-menu>

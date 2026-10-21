@@ -98,6 +98,7 @@ import UiButton from './ui/UiButton.vue'
 import UiInput from './ui/UiInput.vue'
 import UiSelect from './ui/UiSelect.vue'
 import { notify } from './ui/toasts'
+import { vTooltip } from './ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -742,7 +743,11 @@ const userFilterColumn = computed({
       @keydown="onKeydown"
     >
       <div class="grid-row grid-header" :style="{ gridTemplateColumns: template }">
-        <div class="grid-corner" title="Tout sélectionner" @mousedown.prevent="selectEverything" />
+        <div
+          class="grid-corner"
+          v-tooltip="'Tout sélectionner'"
+          @mousedown.prevent="selectEverything"
+        />
         <div
           v-for="(column, position) in order"
           :key="column"
@@ -755,7 +760,7 @@ const userFilterColumn = computed({
         >
           <span
             class="grid-column-name"
-            :title="headerTitle(column)"
+            v-tooltip="headerTitle(column)"
             @pointerdown.prevent="onColumnHeader($event, position)"
             @pointermove="onColumnMove"
             @pointerup="onColumnDrop"
@@ -781,14 +786,16 @@ const userFilterColumn = computed({
           <button
             class="grid-sort"
             type="button"
-            :title="`Trier par ${columns[column]}`"
+            v-tooltip="`Trier par ${columns[column]}`"
             @click="toggleSort(column)"
           >
             {{ sort?.column === column ? (sort.direction === 'asc' ? '▲' : '▼') : '⇅' }}
           </button>
           <div
             class="grid-resizer"
-            title="Glisser pour changer la largeur, double clic pour l’ajuster au contenu ou revenir à la largeur estimée"
+            v-tooltip="
+              'Glisser pour changer la largeur, double clic pour l’ajuster au contenu ou revenir à la largeur estimée'
+            "
             @pointerdown.stop.prevent="onResizeStart($event, column)"
             @pointermove="onResizeMove"
             @pointerup="onResizeEnd"
@@ -822,7 +829,7 @@ const userFilterColumn = computed({
               mono: monospaced[column],
               selected: isSelected(selection, item.index, position),
             }"
-            :title="cellAt(item.index, column) ?? NULL_TEXT"
+            v-tooltip="cellAt(item.index, column) ?? NULL_TEXT"
             @mousedown.prevent="onCellDown($event, item.index, position)"
             @mouseenter="onCellEnter(item.index, position)"
           >
@@ -854,7 +861,7 @@ const userFilterColumn = computed({
         small
         :aria-pressed="userFilterOpen"
         :aria-label="userFilterOpen ? 'Replier le filtre' : 'Filtrer les lignes'"
-        :title="userFilterOpen ? 'Replier le filtre' : 'Filtrer les lignes'"
+        v-tooltip="userFilterOpen ? 'Replier le filtre' : 'Filtrer les lignes'"
         class="grid-user-filter-toggle"
         @click="toggleUserFilter"
       />

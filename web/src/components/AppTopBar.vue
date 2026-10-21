@@ -21,6 +21,7 @@ import SettingsDialog from './SettingsDialog.vue'
 import UiDropdownMenu from './ui/UiDropdownMenu.vue'
 import UiSelect from './ui/UiSelect.vue'
 import type { MenuItem } from './ui/menuItem'
+import { vTooltip } from './ui/tooltip'
 
 /**
  * Version of Prisme shown next to its name ("v0.2.0"), `null` as long as the
@@ -86,7 +87,11 @@ const menuItems: MenuItem[] = [
     <!-- Name, then version in smaller type, on the same baseline. -->
     <div class="flex items-baseline gap-2">
       <h1 class="text-heading leading-none font-semibold text-fg-strong">Prisme</h1>
-      <span v-if="version" class="text-tiny leading-none text-fg-dimmed" title="Version de Prisme">
+      <span
+        v-if="version"
+        class="text-tiny leading-none text-fg-dimmed"
+        v-tooltip="'Version de Prisme'"
+      >
         {{ version }}
       </span>
     </div>
@@ -99,7 +104,7 @@ const menuItems: MenuItem[] = [
           type="button"
           class="grid size-control shrink-0 cursor-pointer place-items-center rounded-full bg-accent-soft text-small leading-none font-semibold text-accent select-none hover:bg-accent hover:text-on-accent data-[state=open]:bg-accent data-[state=open]:text-on-accent"
           aria-label="Compte"
-          :title="accountTitle"
+          v-tooltip="accountTitle"
         >
           <template v-if="profile.initials">{{ profile.initials }}</template>
           <user v-else class="size-icon-sm" />

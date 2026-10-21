@@ -15,6 +15,7 @@
 import { PanelBottomClose, PanelLeftClose, PanelRightClose } from '@lucide/vue'
 
 import UiButton from './ui/UiButton.vue'
+import { vTooltip } from './ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -57,7 +58,7 @@ const ICONS = {
         variant="ghost"
         small
         :aria-label="`Replier : ${title}`"
-        :title="`Replier : ${title}`"
+        v-tooltip="`Replier : ${title}`"
         @click="emit('collapse')"
       />
     </div>
@@ -77,7 +78,7 @@ const ICONS = {
         variant="ghost"
         small
         :aria-label="`Replier : ${title}`"
-        :title="`Replier : ${title}`"
+        v-tooltip="`Replier : ${title}`"
         @click="emit('collapse')"
       />
     </div>

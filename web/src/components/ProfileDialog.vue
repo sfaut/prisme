@@ -15,6 +15,7 @@ import UiButton from './ui/UiButton.vue'
 import UiDialog from './ui/UiDialog.vue'
 import UiField from './ui/UiField.vue'
 import UiInput from './ui/UiInput.vue'
+import { vTooltip } from './ui/tooltip'
 
 /**
  * Window open or closed.
@@ -92,7 +93,7 @@ async function save(): Promise<void> {
         <ui-input v-model="form.first_name" :maxlength="100" autocomplete="given-name" />
       </ui-field>
       <ui-field label="E-mail">
-        <span class="truncate text-fg-muted" :title="email">{{ email }}</span>
+        <span class="truncate text-fg-muted" v-tooltip="email">{{ email }}</span>
       </ui-field>
       <ui-alert v-if="error" tone="error" :title="error" />
     </form>
