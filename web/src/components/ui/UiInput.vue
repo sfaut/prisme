@@ -40,7 +40,7 @@ function onInput(event: Event): void {
     <component
       :is="icon"
       v-if="icon"
-      class="pointer-events-none absolute start-2 size-icon text-fg-dimmed"
+      class="pointer-events-none absolute inset-s-2 size-icon text-fg-dimmed"
     />
     <input
       v-bind="{ ...$attrs, class: undefined }"
@@ -49,7 +49,7 @@ function onInput(event: Event): void {
       :class="{ 'ps-7': icon, 'pe-7': $slots.trailing }"
       @input="onInput"
     />
-    <div v-if="$slots.trailing" class="absolute end-1 flex items-center">
+    <div v-if="$slots.trailing" class="absolute inset-e-1 flex items-center">
       <slot name="trailing" />
     </div>
   </div>
