@@ -61,11 +61,11 @@ function focusFirst(event: Event): void {
     <dialog-portal>
       <dialog-overlay class="fixed inset-0 z-50 bg-overlay" />
       <dialog-content
-        class="fixed top-1/2 left-1/2 z-50 flex w-[calc(100vw-2rem)] max-w-dialog -translate-1/2 flex-col gap-panel rounded-panel border border-line bg-surface p-panel text-ui shadow-xl"
+        class="fixed top-1/2 left-1/2 z-50 flex w-[calc(100vw-(--spacing(8)))] max-w-112 -translate-1/2 flex-col gap-3 rounded-panel border border-line bg-surface p-3 text-ui shadow-xl"
         :aria-describedby="description ? undefined : ''"
         @open-auto-focus="focusFirst"
       >
-        <header class="flex items-start gap-gap">
+        <header class="flex items-start gap-2">
           <div class="flex min-w-0 flex-1 flex-col gap-1">
             <dialog-title class="text-title font-semibold text-fg-strong">{{ title }}</dialog-title>
             <dialog-description v-if="description" class="text-fg-muted">
@@ -77,7 +77,7 @@ function focusFirst(event: Event): void {
           </dialog-close>
         </header>
         <slot />
-        <footer v-if="$slots.footer" class="flex gap-gap">
+        <footer v-if="$slots.footer" class="flex gap-2">
           <slot name="footer" />
         </footer>
       </dialog-content>

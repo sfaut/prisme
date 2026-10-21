@@ -144,7 +144,7 @@ const durations = computed(() => {
     width of its content, and a wide grid overflowed, cut off on the right,
     instead of scrolling in its own area.
   -->
-  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-gap">
+  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-2">
     <ui-alert v-if="tab.error" tone="error" :title="tab.error" />
     <result-grid
       v-if="shown && shown.columns.length > 0"

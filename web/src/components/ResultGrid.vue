@@ -852,32 +852,34 @@ const userFilterColumn = computed({
 </template>
 
 <style scoped>
+@reference "@/assets/main.css";
+
 .result-grid {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: var(--gap);
+  gap: --spacing(2);
   min-height: 0;
 }
 
 .grid-toolbar {
   display: flex;
   align-items: center;
-  gap: var(--gap);
+  gap: --spacing(2);
 }
 
 .grid-user-filter {
-  max-inline-size: var(--grid-user-filter-width);
+  max-inline-size: --spacing(60);
 }
 
 .grid-user-filter-column {
-  max-inline-size: var(--grid-user-filter-column-width);
+  max-inline-size: --spacing(50);
 }
 
 .grid-footer {
   display: flex;
   align-items: center;
-  gap: var(--gap);
+  gap: --spacing(2);
   color: var(--fg-muted);
   font-size: var(--font-size-ui);
 
@@ -889,7 +891,7 @@ const userFilterColumn = computed({
 .grid-scroller {
   position: relative;
   flex: 1;
-  min-block-size: var(--grid-min-height);
+  min-block-size: --spacing(30);
   /* Safeguard: a scroll area taller than the window would draw all the rows
      and freeze the interface. */
   max-block-size: 100vh;
@@ -945,7 +947,7 @@ const userFilterColumn = computed({
 }
 
 .grid-row-header {
-  padding-inline: var(--grid-cell-padding-x);
+  padding-inline: --spacing(1);
   cursor: e-resize;
 }
 
@@ -991,9 +993,9 @@ const userFilterColumn = computed({
 .grid-column-name {
   display: flex;
   flex: 1;
-  gap: var(--grid-type-gap);
+  gap: --spacing(1);
   min-inline-size: 0;
-  padding-inline: var(--grid-cell-padding-x);
+  padding-inline: --spacing(1);
   white-space: nowrap;
   cursor: grab;
 }
@@ -1034,7 +1036,7 @@ const userFilterColumn = computed({
 
 .grid-sort {
   flex: none;
-  padding-inline: var(--grid-cell-padding-x);
+  padding-inline: --spacing(1);
   border: none;
   background: none;
   color: var(--fg-dimmed);
@@ -1047,7 +1049,7 @@ const userFilterColumn = computed({
 }
 
 .grid-cell {
-  padding-inline: var(--grid-cell-padding-x);
+  padding-inline: --spacing(1);
   overflow: hidden;
   border-block-end: var(--line-width) solid var(--line-muted);
   border-inline-start: var(--line-width) solid var(--line-muted);

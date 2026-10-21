@@ -136,7 +136,7 @@ async function save(): Promise<void> {
     title="Paramètres"
     description="Langue de l’interface, requêtes et conservation de la console"
   >
-    <form id="settings-form" class="flex flex-col gap-field" @submit.prevent="save">
+    <form id="settings-form" class="flex flex-col gap-3" @submit.prevent="save">
       <ui-field label="Langue">
         <ui-select
           v-model="language"
@@ -155,7 +155,7 @@ async function save(): Promise<void> {
       </ui-field>
       <ui-field label="Requêtes">
         <label
-          class="flex items-center gap-gap text-ui text-fg-strong"
+          class="flex items-center gap-2 text-ui text-fg-strong"
           title="La base refuse les écritures des sessions, en plus du contrôle de Prisme"
         >
           <input v-model="form.read_only_session" type="checkbox" class="size-icon accent-accent" />
@@ -163,7 +163,7 @@ async function save(): Promise<void> {
         </label>
       </ui-field>
       <ui-field label="Rétention historique">
-        <div class="flex items-center gap-gap">
+        <div class="flex items-center gap-2">
           <ui-input
             v-model="form.history_retention_days"
             type="number"
@@ -178,7 +178,7 @@ async function save(): Promise<void> {
         </div>
       </ui-field>
       <ui-field label="Rétention debug">
-        <div class="flex items-center gap-gap">
+        <div class="flex items-center gap-2">
           <ui-input
             v-model="form.debug_retention_days"
             type="number"

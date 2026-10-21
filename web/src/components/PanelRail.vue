@@ -54,12 +54,14 @@ const ICONS = {
 </template>
 
 <style scoped>
+@reference "@/assets/main.css";
+
 .panel-rail {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: var(--gap);
-  padding: var(--rail-padding);
+  gap: --spacing(2);
+  padding: --spacing(2);
   background: var(--surface);
   color: var(--fg-dimmed);
   font-size: var(--font-size-ui);
@@ -80,8 +82,8 @@ const ICONS = {
   &.start,
   &.end {
     flex-direction: column;
-    inline-size: var(--rail-size);
-    padding-block-start: var(--panel-padding);
+    inline-size: --spacing(7);
+    padding-block-start: --spacing(3);
   }
 
   &.start {
@@ -94,8 +96,8 @@ const ICONS = {
 
   /* At the bottom: along the whole width, the title on the line. */
   &.bottom {
-    block-size: var(--rail-size);
-    padding-inline-start: var(--panel-padding);
+    block-size: --spacing(7);
+    padding-inline-start: --spacing(3);
     border-block-start: var(--line-width) solid var(--line);
   }
 }

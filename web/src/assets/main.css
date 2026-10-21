@@ -1,11 +1,20 @@
 /*
   Stylesheet of the application: Tailwind CSS and Prisme's theme.
 
-  The theme fits in CSS variables, in `:root`: colors by role, font sizes,
-  spacing, heights and radii. Changing a value here changes the whole
-  interface. Tailwind turns them into classes (`@theme` block):
-  `bg-surface`, `text-fg-muted`, `border-line`, `text-ui`,
-  `h-control`, `p-panel`, `rounded-control`...
+  The theme fits in a few CSS variables, in `:root`: colors by role, font
+  sizes, the unit of the lengths, radii and strokes. Changing a value here
+  changes the whole interface. Tailwind turns them into classes (`@theme`
+  block): `bg-surface`, `text-fg-muted`, `border-line`, `text-ui`,
+  `rounded-control`...
+
+  Lengths: whole multiples of `--space-unit`, through Tailwind's spacing
+  scale. The components write the step, `gap-2`, `p-3`, `w-40` in their
+  classes, `--spacing(2)` in their `<style>` blocks (which start with
+  `@reference "@/assets/main.css";`), never a fraction (`gap-1.5`): changing
+  `--space-unit` scales every gap, padding, height and width. A length is
+  named here only when several components must keep it identical (height
+  of the controls, `h-control`) or the code reads it (`cssPixels`); it is
+  then defined as a multiple of `--space-unit` too.
 
   Colors: a palette (each hue only once), then variables by role that draw
   from it, the only ones used by the components. Light and dark: each role
@@ -56,21 +65,14 @@
   --font-sans: var(--font-ui);
   --font-mono: var(--font-code);
 
-  /* The whole spacing scale (p-1, gap-2...) follows `--space-unit`. */
+  /* The whole spacing scale (p-1, gap-2...) follows `--space-unit`, then
+     the named lengths, shared by several components. */
   --spacing: var(--space-unit);
-  --spacing-gap: var(--gap);
-  --spacing-field: var(--field-gap);
-  --spacing-panel: var(--panel-padding);
-  --spacing-control-x: var(--control-padding-x);
   --spacing-control: var(--control-height);
   --spacing-control-sm: var(--control-height-sm);
   --spacing-row: var(--row-height);
   --spacing-icon: var(--icon-size);
   --spacing-icon-sm: var(--icon-size-sm);
-  --spacing-menu: var(--menu-min-width);
-  --spacing-dialog: var(--dialog-width);
-  --spacing-toast: var(--toast-width);
-  --spacing-tab: var(--tab-max-width);
 
   --radius-control: var(--control-radius);
   --radius-panel: var(--panel-radius);
@@ -212,76 +214,41 @@
   --editor-font-size: 0.8125rem;
   --editor-gutter-font-size: 0.6875rem;
 
-  /* Spacing: unit of the scale (p-1 = 1 unit), gap between neighbouring
-     elements, between the fields of a short form (profile, settings),
-     padding of panels and controls. */
+  /* Unit of the lengths: step 1 of the spacing scale (p-1, gap-1). */
   --space-unit: 0.25rem;
-  --gap: 0.5rem;
-  --field-gap: 0.875rem;
-  --panel-padding: 0.75rem;
-  --control-padding-x: 0.5rem;
 
-  /* Heights: controls (buttons, fields), small buttons ("⋮" menu), lines of
-     the tree and of the grid. */
-  --control-height: 1.5rem;
-  --control-height-sm: 1.25rem;
-  --row-height: 1.5rem;
+  /* Named lengths, multiples of the unit. Heights: controls (buttons,
+     fields, lines of the menus), small buttons ("⋮" menu), lines of the
+     explorer's tree, whose height the code reads too (`h-control`,
+     `h-control-sm`, `h-row`). */
+  --control-height: calc(var(--space-unit) * 6);
+  --control-height-sm: calc(var(--space-unit) * 5);
+  --row-height: calc(var(--space-unit) * 6);
 
-  /* Gap between a menu, a list or a tooltip and its trigger. */
-  --popup-offset: 0.25rem;
+  /* Icons: regular (buttons, menus), small (chevrons of the tree, icons of
+     the grid header) (`size-icon`, `size-icon-sm`). */
+  --icon-size: calc(var(--space-unit) * 4);
+  --icon-size-sm: calc(var(--space-unit) * 3);
 
-  /* Icons: regular (buttons, menus), small (chevrons of the tree). */
-  --icon-size: 0.875rem;
-  --icon-size-sm: 0.75rem;
+  /* Read by the code (`cssPixels`): height of a line of the result grid
+     (virtual scrolling), gap between a menu or a list and its trigger
+     (positioning of Reka UI). */
+  --grid-row-height: calc(var(--space-unit) * 6);
+  --popup-offset: var(--space-unit);
 
-  /* Indentation per level of the explorer's tree. */
-  --tree-indent: 0.75rem;
+  /* Thickness of the progress bar drawn on each result tab: half a unit,
+     thinner than any step of the scale. */
+  --tab-progress-height: calc(var(--space-unit) / 2);
 
-  /* Rail left by a folded panel on its edge: thickness, padding. */
-  --rail-size: 1.75rem;
-  --rail-padding: 0.5rem 0.375rem;
-
-  /* Widths: label column of forms, menus (at least), windows (at most),
-     transient messages, result tabs (at most). */
-  --field-label-width: 7rem;
-  --menu-min-width: 10rem;
-  --dialog-width: 28rem;
-  --toast-width: 18rem;
-  --tab-max-width: 20rem;
-
-  /* Result grid: height of a row, padding of the cells, width of the filter
-     fields, minimum height. */
-  --grid-row-height: 1.375rem;
-  --grid-cell-padding-x: 0.25rem;
-  /* Gap between the type icon and the name in the grid header. */
-  --grid-type-gap: 0.375rem;
-  --grid-user-filter-width: 15rem;
-  --grid-user-filter-column-width: 12.5rem;
-  --grid-min-height: 7.5rem;
-
-  /* Data explorer: width of the number of results beside the search field
-     (at most). */
-  --data-search-status-width: 10rem;
-
-  /* SQL editor: minimum height, whatever the share given to it
-     (`editorSplit.ts`). */
-  --editor-min-height: 4rem;
-
-  /* Thickness of the progress bar drawn on each result tab. */
-  --tab-progress-height: 0.125rem;
-
-  /* Resize handles (left panel, grid columns) and progress dot of the
-     queries. */
-  --resize-handle-width: 0.375rem;
-  /* Central grip of the resize bars: length, thickness and color at rest,
-     that of the borders (blue on hover). */
-  --grip-length: 1.75rem;
-  --grip-thickness: 0.25rem;
+  /* Resize bars (left panel, editor, grid columns), whose width the code
+     reads too (`PanelResizer.vue`); their central grip: length, thickness
+     and color at rest, that of the borders (blue on hover). */
+  --resize-handle-width: calc(var(--space-unit) * 2);
+  --grip-length: calc(var(--space-unit) * 7);
+  --grip-thickness: var(--space-unit);
   --grip-color: var(--line);
-  --status-dot-size: 0.5rem;
 
-  /* Scrollbars: thickness, radius, thumb and hovered thumb. */
-  --scrollbar-size: 0.375rem;
+  /* Scrollbars: radius, thumb and hovered thumb. */
   --scrollbar-radius: 0.125rem;
   --scrollbar-thumb: light-dark(var(--zinc-300), var(--zinc-600));
   --scrollbar-thumb-hover: light-dark(var(--zinc-400), var(--zinc-500));
@@ -300,6 +267,26 @@
   --badge-padding: 0.2em 0.55em;
   --badge-radius: 1em;
   --badge-font-size: 0.625rem;
+}
+
+/* Lengths read by the code (`cssPixels`): registered as lengths, so that
+   the browser resolves their multiple of `--space-unit` into pixels. */
+@property --row-height {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --grid-row-height {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --popup-offset {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
 }
 
 :root.light {
@@ -329,8 +316,8 @@
      arrows; the other browsers, through the standard properties. */
   ::-webkit-scrollbar {
     /* Width of the vertical bar, height of the horizontal bar. */
-    width: var(--scrollbar-size);
-    height: var(--scrollbar-size);
+    width: --spacing(2);
+    height: --spacing(2);
   }
 
   ::-webkit-scrollbar-track,

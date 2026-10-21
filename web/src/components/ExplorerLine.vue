@@ -146,7 +146,7 @@ function nodeIcon(node: ExplorerNode, expanded: boolean): Component {
   <!-- Source: badge of the server's flavor, right after the name. -->
   <span
     v-if="node.badge"
-    class="flavor-badge ms-0.5 me-auto shrink-0 text-trim"
+    class="flavor-badge ms-1 me-auto shrink-0 text-trim"
     :data-flavor="node.badge"
   >
     {{ node.badge }}

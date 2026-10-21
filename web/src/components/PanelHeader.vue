@@ -50,7 +50,7 @@ const ICONS = {
 </script>
 
 <template>
-  <div class="flex items-start gap-gap">
+  <div class="flex items-start gap-2">
     <div v-if="first" class="flex h-control items-center">
       <ui-button
         :icon="ICONS[props.side]"
@@ -61,7 +61,7 @@ const ICONS = {
         @click="emit('collapse')"
       />
     </div>
-    <div class="flex min-w-0 flex-1 flex-col gap-0.5">
+    <div class="flex min-w-0 flex-1 flex-col gap-1">
       <div class="flex min-h-control items-center">
         <slot>
           <h2 class="text-title leading-none font-semibold text-fg-strong">{{ title }}</h2>

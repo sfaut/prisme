@@ -32,7 +32,7 @@
   levels, accessibility), with virtual scrolling (`TreeVirtualizer`); the
   rendering of the lines is Prisme's, in Tailwind classes. All the lines
   have the same height (`--row-height`), and each level is indented by
-  `--tree-indent` (variables of `main.css`).
+  three steps of the spacing scale (`main.css`).
 
   While the tree scrolls, each level leaves the top in full and stays pinned
   there as long as its section lasts (`stickyRows.ts`): the source, the
@@ -466,7 +466,7 @@ watch(
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col gap-gap">
+  <div class="flex min-h-0 flex-1 flex-col gap-2">
     <panel-header
       title="Explorateur d’objets"
       side="start"
@@ -545,7 +545,7 @@ watch(
         ultérieurement.
       </p>
       <template #footer>
-        <div class="flex w-full justify-end gap-gap">
+        <div class="flex w-full justify-end gap-2">
           <ui-button label="Annuler" @click="removing = null" />
           <ui-button label="Supprimer" variant="solid" tone="error" @click="confirmRemove" />
         </div>
@@ -555,8 +555,10 @@ watch(
 </template>
 
 <style scoped>
+@reference "@/assets/main.css";
+
 /* Indentation of each level: `--level` is set on the line (1 for the roots). */
 .tree-row {
-  padding-inline-start: calc(var(--space-unit) + var(--tree-indent) * (var(--level) - 1));
+  padding-inline-start: calc(--spacing(1) + --spacing(3) * (var(--level) - 1));
 }
 </style>

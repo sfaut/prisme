@@ -39,13 +39,13 @@ defineProps<{
       <dropdown-menu-content
         align="end"
         :side-offset="OFFSET"
-        class="z-50 min-w-menu rounded-panel border border-line bg-surface p-1 text-ui shadow-lg"
+        class="z-50 min-w-40 rounded-panel border border-line bg-surface p-1 text-ui shadow-lg"
       >
         <dropdown-menu-item
           v-for="item in items"
           :key="item.label"
           :disabled="item.disabled"
-          class="flex h-control cursor-pointer items-center gap-1.5 rounded-control px-control-x outline-none select-none data-disabled:cursor-not-allowed data-disabled:opacity-50 data-highlighted:bg-surface-elevated"
+          class="flex h-control cursor-pointer items-center gap-2 rounded-control px-2 outline-none select-none data-disabled:cursor-not-allowed data-disabled:opacity-50 data-highlighted:bg-surface-elevated"
           :class="item.tone === 'error' ? 'text-error' : 'text-fg data-highlighted:text-fg-strong'"
           @select="item.onSelect?.()"
         >

@@ -1,14 +1,17 @@
 /**
  * Reading a theme length (`main.css`) in pixels.
  *
- * The theme writes its lengths in `rem`, relative to the page's text size.
- * A few tools want a number of pixels though: virtual scrolling (height of a
- * row), the positioning of Reka UI's menus (gap with their button). They read
- * the variable here: the theme stays the only source of these lengths.
+ * The theme writes its lengths as multiples of `--space-unit`, in `rem`,
+ * relative to the page's text size. A few tools want a number of pixels
+ * though: virtual scrolling (height of a row), the positioning of Reka UI's
+ * menus (gap with their button). They read the variable here: the theme stays
+ * the only source of these lengths. These variables are registered as lengths
+ * (`@property` in `main.css`), so that the browser gives them in pixels.
  */
 
 /**
- * Value in pixels of a CSS variable of the theme, defined in `rem` or `px`.
+ * Value in pixels of a CSS variable of the theme, computed in `px` (registered
+ * length) or written in `rem`.
  *
  * @param name Name of the variable (`--row-height`).
  * @param fallback Value returned if the variable is missing or unreadable

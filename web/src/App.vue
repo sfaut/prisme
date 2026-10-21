@@ -204,7 +204,7 @@ function selectSource(connectionId: number): void {
       <!-- Folded, the object explorer stays mounted: its tree keeps its state. -->
       <aside
         v-show="layout.objectsOpen"
-        class="flex shrink-0 flex-col gap-panel border-e border-line p-panel"
+        class="flex shrink-0 flex-col gap-3 border-e border-line p-3"
         :style="{ width: `${siderWidth}px` }"
       >
         <object-explorer
@@ -225,7 +225,7 @@ function selectSource(connectionId: number): void {
         @expand="layout.objectsOpen = true"
       />
       <div class="relative flex min-w-0 flex-1 flex-col">
-        <main class="flex min-h-0 min-w-0 flex-1 flex-col gap-gap p-panel">
+        <main class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-3">
           <ui-alert
             v-if="editorsError"
             tone="error"
@@ -236,7 +236,7 @@ function selectSource(connectionId: number): void {
           <tabs-root
             v-model="activeTab"
             :unmount-on-hide="false"
-            class="flex min-h-0 flex-1 flex-col gap-gap"
+            class="flex min-h-0 flex-1 flex-col gap-2"
           >
             <editor-tab-bar />
             <tabs-content
@@ -262,7 +262,7 @@ function selectSource(connectionId: number): void {
                 @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
                 @database="(database) => (databases[editor.id] = database)"
               />
-              <div v-else class="m-auto flex max-w-xs flex-col items-center gap-gap text-center">
+              <div v-else class="m-auto flex max-w-xs flex-col items-center gap-2 text-center">
                 <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
                   <Database class="size-4 text-fg-muted" />
                 </span>
@@ -277,7 +277,7 @@ function selectSource(connectionId: number): void {
         <template v-if="consoleStore.open">
           <panel-resizer v-model="consoleHeight" :panel="CONSOLE" side="bottom" />
           <section
-            class="shrink-0 border-t border-line px-panel pt-1 pb-panel"
+            class="shrink-0 border-t border-line px-3 pt-1 pb-3"
             :style="{ height: `${consoleHeight}px` }"
           >
             <console-panel />
@@ -288,7 +288,7 @@ function selectSource(connectionId: number): void {
       <template v-if="explorer.open">
         <panel-resizer v-model="dataPanelWidth" :panel="DATA_PANEL" side="end" />
         <aside
-          class="flex shrink-0 flex-col border-s border-line p-panel"
+          class="flex shrink-0 flex-col border-s border-line p-3"
           :style="{ width: `${dataPanelWidth}px` }"
         >
           <data-explorer />

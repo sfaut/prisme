@@ -1,5 +1,5 @@
 <!--
-  Form field: label on the left, in a narrow column (`--field-label-width`),
+  Form field: label on the left, in a narrow column (28 steps of the spacing scale),
   control on the right, over the whole remaining width.
   The label wraps the control: a click on it gives the focus to the field. With
   `top`, the label aligns with the top of the control (multi-line field).
@@ -19,7 +19,7 @@ defineProps<{
 
 <template>
   <label
-    class="grid grid-cols-[var(--field-label-width)_minmax(0,1fr)] gap-gap"
+    class="grid grid-cols-[--spacing(28)_minmax(0,1fr)] gap-2"
     :class="top ? 'items-start' : 'items-center'"
   >
     <span class="text-fg-muted" :class="{ 'pt-1': top }">{{ label }}</span>

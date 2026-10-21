@@ -80,26 +80,28 @@ const history = useConsoleStore().history
 </template>
 
 <style scoped>
+@reference "@/assets/main.css";
+
 /* Columns sized to their content, in characters, plus the padding of the
    cells; the message takes the rest. */
 col.index {
-  inline-size: calc(6ch + 2 * var(--control-padding-x));
+  inline-size: calc(6ch + 2 * --spacing(2));
 }
 
 col.time {
-  inline-size: calc(9ch + 2 * var(--control-padding-x));
+  inline-size: calc(9ch + 2 * --spacing(2));
 }
 
 col.action {
-  inline-size: calc(18ch + 2 * var(--control-padding-x));
+  inline-size: calc(18ch + 2 * --spacing(2));
 }
 
 col.rows {
-  inline-size: calc(9ch + 2 * var(--control-padding-x));
+  inline-size: calc(9ch + 2 * --spacing(2));
 }
 
 col.duration {
-  inline-size: calc(13ch + 2 * var(--control-padding-x));
+  inline-size: calc(13ch + 2 * --spacing(2));
 }
 
 /* Message: the SQL shrinks first, with an ellipsis; the failure keeps its

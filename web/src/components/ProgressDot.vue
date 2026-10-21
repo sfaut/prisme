@@ -36,9 +36,11 @@ const progress = computed(() => tabProgress(props.tab))
 </template>
 
 <style scoped>
+@reference "@/assets/main.css";
+
 .progress-dot {
   flex: none;
-  width: var(--status-dot-size);
+  width: --spacing(2);
   aspect-ratio: 1;
   border-radius: 50%;
 }

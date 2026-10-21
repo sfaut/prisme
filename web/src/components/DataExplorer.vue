@@ -515,7 +515,7 @@ watch(
       </template>
     </panel-header>
     <div v-if="searchOpen && text !== null" ref="searchBar" class="data-explorer-search">
-      <div class="flex items-center gap-gap">
+      <div class="flex items-center gap-2">
         <ui-input
           v-model="expression"
           :icon="Search"
@@ -571,11 +571,13 @@ watch(
 </template>
 
 <style scoped>
+@reference "@/assets/main.css";
+
 .data-explorer {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: var(--gap);
+  gap: --spacing(2);
   min-block-size: 0;
 }
 
@@ -587,7 +589,7 @@ watch(
 .data-explorer-search {
   display: flex;
   flex-direction: column;
-  gap: var(--gap);
+  gap: --spacing(2);
 }
 
 .data-explorer-search :deep(input[aria-invalid='true']) {
@@ -595,7 +597,7 @@ watch(
 }
 
 .data-explorer-search-status {
-  max-inline-size: var(--data-search-status-width);
+  max-inline-size: --spacing(40);
   overflow: hidden;
   color: var(--fg-muted);
   font-size: var(--font-size-small);

@@ -20,15 +20,13 @@ const DURATION = 3000
     <toast-root
       v-for="toast in toasts"
       :key="toast.id"
-      class="flex items-center gap-gap rounded-panel border border-line bg-surface px-panel py-2 text-ui text-fg-strong shadow-lg"
+      class="flex items-center gap-2 rounded-panel border border-line bg-surface px-3 py-2 text-ui text-fg-strong shadow-lg"
       @update:open="(open: boolean) => open || dismiss(toast.id)"
     >
       <CircleCheck v-if="toast.tone === 'success'" class="size-4 shrink-0 text-success" />
       <CircleAlert v-else class="size-4 shrink-0 text-error" />
       <toast-title class="text-trim">{{ toast.title }}</toast-title>
     </toast-root>
-    <toast-viewport
-      class="fixed end-panel bottom-panel z-50 flex w-toast flex-col gap-gap outline-none"
-    />
+    <toast-viewport class="fixed end-3 bottom-3 z-50 flex w-72 flex-col gap-2 outline-none" />
   </toast-provider>
 </template>

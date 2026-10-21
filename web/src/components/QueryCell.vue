@@ -394,10 +394,10 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
 </script>
 
 <template>
-  <div ref="cellRoot" class="flex min-h-0 flex-1 flex-col gap-gap">
+  <div ref="cellRoot" class="flex min-h-0 flex-1 flex-col gap-2">
     <!-- Top block: the buttons, then the editor, which takes the remaining room. -->
     <div class="editor-pane" :style="{ '--editor-split': `${editorSplit * 100}%` }">
-      <div class="flex items-center gap-gap">
+      <div class="flex items-center gap-2">
         <ui-button
           label="Exécuter"
           :icon="Play"
@@ -465,7 +465,7 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
     <div
       v-if="state.loading"
       role="status"
-      class="m-auto flex items-center gap-gap text-ui text-fg-muted"
+      class="m-auto flex items-center gap-2 text-ui text-fg-muted"
     >
       <LoaderCircle class="size-icon animate-spin" />
       Chargement des résultats…
@@ -499,7 +499,7 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
           @pointermove="tabDrag.onMove"
           @pointerup="tabDrag.onDrop"
           @pointercancel="tabDrag.onDrop"
-          class="group relative flex h-control max-w-tab min-w-0 shrink-0 cursor-pointer items-center rounded-t-control ps-control-x pe-1 text-ui font-medium text-fg-muted outline-none select-none hover:text-fg-strong focus-visible:bg-surface-muted data-[state=active]:bg-surface-elevated data-[state=active]:text-fg-strong"
+          class="group relative flex h-control max-w-80 min-w-0 shrink-0 cursor-pointer items-center rounded-t-control ps-2 pe-1 text-ui font-medium text-fg-muted outline-none select-none hover:text-fg-strong focus-visible:bg-surface-muted data-[state=active]:bg-surface-elevated data-[state=active]:text-fg-strong"
         >
           <result-tab
             :tab="tab"
@@ -529,14 +529,16 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
 </template>
 
 <style scoped>
+@reference "@/assets/main.css";
+
 /* Top block (editor and buttons): the remembered share of the height
    (`--editor-split`); the editor keeps at least a few lines. */
 .editor-pane {
   display: flex;
   flex: 0 0 var(--editor-split);
   flex-direction: column;
-  gap: var(--gap);
-  min-block-size: calc(var(--editor-min-height) + var(--control-height) + var(--gap));
+  gap: --spacing(2);
+  min-block-size: calc(--spacing(16) + var(--control-height) + --spacing(2));
 }
 
 /* Insertion marker of a moved tab, as for the grid's columns. */

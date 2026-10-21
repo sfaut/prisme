@@ -67,7 +67,7 @@ const barTone = computed(() => {
 </script>
 
 <template>
-  <span class="flex min-w-0 items-center gap-1.5" @auxclick.middle.prevent="emit('close')">
+  <span class="flex min-w-0 items-center gap-2" @auxclick.middle.prevent="emit('close')">
     <progress-dot :tab="tab" />
     <tab-label :name="tab.name" :default-label="defaultLabel" @rename="emit('rename', $event)" />
     <!-- Pin and cross side by side, without the gap that sets the label apart. -->
@@ -96,7 +96,7 @@ const barTone = computed(() => {
         small
         aria-label="Fermer l’onglet"
         title="Fermer l’onglet (arrête sa requête si elle tourne)"
-        class="invisible -ms-0.5 group-hover:visible group-data-[state=active]:visible"
+        class="invisible -ms-1 group-hover:visible group-data-[state=active]:visible"
         @mousedown.stop
         @click.stop="emit('close')"
       />

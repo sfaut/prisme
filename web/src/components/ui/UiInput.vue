@@ -45,7 +45,7 @@ function onInput(event: Event): void {
     <input
       v-bind="{ ...$attrs, class: undefined }"
       :value="model"
-      class="h-control w-full min-w-0 rounded-control border border-line bg-surface px-control-x text-ui text-fg-strong [appearance:textfield] placeholder:text-fg-dimmed focus:border-accent focus:outline-none"
+      class="h-control w-full min-w-0 rounded-control border border-line bg-surface px-2 text-ui text-fg-strong [appearance:textfield] placeholder:text-fg-dimmed focus:border-accent focus:outline-none"
       :class="{ 'ps-7': icon, 'pe-7': $slots.trailing }"
       @input="onInput"
     />

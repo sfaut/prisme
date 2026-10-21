@@ -78,7 +78,7 @@ const LOOKS = {
 const classes = computed(() => [
   LOOKS[props.variant][props.tone],
   props.small ? 'h-control-sm' : 'h-control',
-  props.label ? 'px-control-x' : props.small ? 'w-control-sm' : 'w-control',
+  props.label ? 'px-2' : props.small ? 'w-control-sm' : 'w-control',
 ])
 </script>
 
@@ -86,7 +86,7 @@ const classes = computed(() => [
   <button
     :type="type"
     :disabled="disabled || loading"
-    class="inline-flex shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-control text-ui font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+    class="inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-control text-ui font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50"
     :class="classes"
   >
     <LoaderCircle v-if="loading" class="size-icon shrink-0 animate-spin" />

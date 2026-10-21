@@ -68,13 +68,15 @@ watch(
         Afficher les éléments précédents
       </ui-button>
     </div>
-    <p v-if="list.entries.length === 0" class="p-panel text-center text-fg-muted">{{ empty }}</p>
+    <p v-if="list.entries.length === 0" class="p-3 text-center text-fg-muted">{{ empty }}</p>
     <slot v-else />
   </div>
 </template>
 
 <!-- Not scoped: the tables come from the tabs, through the slot. -->
 <style>
+@reference "@/assets/main.css";
+
 .console-table {
   inline-size: 100%;
   table-layout: fixed;
@@ -108,7 +110,7 @@ watch(
   & td {
     block-size: var(--grid-row-height);
     padding-block: 0;
-    padding-inline: var(--control-padding-x);
+    padding-inline: --spacing(2);
     overflow: hidden;
     text-align: start;
     text-overflow: ellipsis;

@@ -44,7 +44,7 @@ const TONES = {
 <template>
   <div
     role="alert"
-    class="flex items-center gap-gap rounded-control px-control-x py-1.5 text-ui"
+    class="flex items-center gap-2 rounded-control px-2 py-2 text-ui"
     :class="TONES[tone]"
   >
     <span class="min-w-0 flex-1 break-words">{{ title }}</span>

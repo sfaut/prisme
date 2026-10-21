@@ -51,7 +51,7 @@ const current = computed(() => props.items.find((item) => item.value === model.v
   <select-root v-model="model">
     <select-trigger
       :aria-label="label"
-      class="inline-flex h-control cursor-pointer items-center gap-1.5 rounded-control border border-line bg-surface px-control-x text-ui text-fg-strong hover:bg-surface-muted"
+      class="inline-flex h-control cursor-pointer items-center gap-2 rounded-control border border-line bg-surface px-2 text-ui text-fg-strong hover:bg-surface-muted"
     >
       <component :is="current.icon" v-if="current?.icon" class="size-icon shrink-0" />
       <span class="min-w-0 flex-1 truncate text-start text-trim">{{ current?.label }}</span>
@@ -71,7 +71,7 @@ const current = computed(() => props.items.find((item) => item.value === model.v
             :key="item.value"
             :value="item.value"
             :disabled="item.disabled"
-            class="flex h-control cursor-pointer items-center gap-1.5 rounded-control px-control-x text-fg outline-none select-none data-highlighted:bg-surface-elevated data-highlighted:text-fg-strong"
+            class="flex h-control cursor-pointer items-center gap-2 rounded-control px-2 text-fg outline-none select-none data-highlighted:bg-surface-elevated data-highlighted:text-fg-strong"
           >
             <component :is="item.icon" v-if="item.icon" class="size-icon shrink-0" />
             <select-item-text class="flex-1 text-trim">{{ item.label }}</select-item-text>

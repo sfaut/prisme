@@ -192,7 +192,7 @@ async function save(): Promise<void> {
 
 <template>
   <ui-dialog v-model:open="open" :title="title">
-    <form id="connection-form" class="flex flex-col gap-gap" @submit.prevent="save">
+    <form id="connection-form" class="flex flex-col gap-2" @submit.prevent="save">
       <ui-field label="Nom">
         <ui-input v-model="form.name" :maxlength="100" placeholder="prod, local..." />
       </ui-field>
@@ -237,7 +237,7 @@ async function save(): Promise<void> {
         />
       </ui-field>
       <ui-field label="Session gardée">
-        <div class="flex items-center gap-gap">
+        <div class="flex items-center gap-2">
           <ui-input
             v-model="form.session_timeout_minutes"
             type="number"
@@ -252,7 +252,7 @@ async function save(): Promise<void> {
       </ui-field>
       <ui-field label="Explorateur">
         <label
-          class="flex items-center gap-gap text-ui text-fg-strong"
+          class="flex items-center gap-2 text-ui text-fg-strong"
           title="Bases fournies par le serveur : information_schema, mysql, performance_schema, sys"
         >
           <input
