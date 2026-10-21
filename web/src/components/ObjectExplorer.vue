@@ -10,11 +10,13 @@
   and arrives progressively: the databases first, then their objects (tables,
   views, procedures, functions), then the details of the tables (columns,
   indexes, foreign keys, triggers), each part shown as soon as it arrives.
-  It then stays in memory. A click on a line opens or closes its level. A
-  double click on a source chooses it as the working connection (emits
-  `select`); it stays highlighted. A double click on a database makes it the
-  current database, like `USE` (emits `use-database`). A double click on a
-  table or a view emits `open-table`, to show its content.
+  It then stays in memory. A click on a line opens or closes its level.
+  Ctrl+click (Cmd+click on macOS), or Enter on the focused line, acts on it
+  without opening or closing it: on a source, chooses it as the working
+  connection (emits `select`), which stays highlighted; on a database, makes
+  it the current database, like `USE` (emits `use-database`); on a table or a
+  view, emits `open-table`, to show its content. A double click would open
+  and close the line between its two clicks: it has no action.
 
   Each source carries as a badge the flavor of its server (`mysql`,
   `mariadb`), seen on the last connection or when reading the catalog.
@@ -43,7 +45,13 @@
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
 import { NotebookPen, Pencil, PlugZap, Plus, RefreshCw, Trash2 } from '@lucide/vue'
-import { TreeItem, type TreeItemSelectEvent, TreeRoot, TreeVirtualizer } from 'reka-ui'
+import {
+  TreeItem,
+  type TreeItemSelectEvent,
+  type TreeItemToggleEvent,
+  TreeRoot,
+  TreeVirtualizer,
+} from 'reka-ui'
 import { computed, onMounted, ref, watch } from 'vue'
 
 import { probeConnection, serverLabel } from '@/api/connections'
@@ -379,28 +387,51 @@ async function confirmRemove(): Promise<void> {
 }
 
 /**
- * Follows the clicks on the lines. The tree keeps no selection (the
- * highlighted source is that of the chosen connection); the click opens or
- * closes the level. The second click of a double click chooses the source,
- * changes the database or opens the table.
+ * Does an event ask to act on a line, without opening or closing it? A click
+ * with Ctrl (Cmd on macOS, where Ctrl+click opens the context menu), or
+ * Enter.
  *
- * @param event Selection requested by the tree, with the original click.
- * @param node Clicked node.
+ * @param event Original event of the tree, or of a pinned line.
  */
-function onSelect(event: TreeItemSelectEvent<ExplorerNode>, clicked: ExplorerNode): void {
-  event.preventDefault()
-  const original = event.detail.originalEvent
-  if (!(original instanceof MouseEvent) || original.detail !== 2) {
-    return
+function asksAction(event: Event): boolean {
+  if (event instanceof MouseEvent) {
+    return event.ctrlKey || event.metaKey
   }
-  activate(clicked)
+  return event instanceof KeyboardEvent && event.key === 'Enter'
 }
 
 /**
- * Acts on a node after a double click: chooses a source, changes the current
- * database or opens the table.
+ * Follows the selections that the tree requests, on a click, Enter or Space.
+ * The tree keeps no selection (the highlighted source is that of the chosen
+ * connection); a Ctrl+click or Enter acts on the line.
  *
- * @param node Double-clicked node.
+ * @param event Selection requested by the tree, with the original event.
+ * @param node Node of the line.
+ */
+function onSelect(event: TreeItemSelectEvent<ExplorerNode>, node: ExplorerNode): void {
+  event.preventDefault()
+  if (asksAction(event.detail.originalEvent)) {
+    activate(node)
+  }
+}
+
+/**
+ * Follows the openings and closings that the tree requests: a Ctrl+click
+ * acts on the line, which stays as it is.
+ *
+ * @param event Opening or closing requested by the tree, with the original event.
+ */
+function onToggle(event: TreeItemToggleEvent<ExplorerNode>): void {
+  if (asksAction(event.detail.originalEvent)) {
+    event.preventDefault()
+  }
+}
+
+/**
+ * Acts on a node, after a Ctrl+click or Enter: chooses a source, changes the
+ * current database or opens the table.
+ *
+ * @param node Node of the line.
  */
 function activate(node: ExplorerNode): void {
   if (node.role === 'source') {
@@ -414,21 +445,20 @@ function activate(node: ExplorerNode): void {
 
 /**
  * Follows the clicks on a pinned line, as the tree does: a click opens or
- * closes its level, and a double click acts on it.
+ * closes its level, a Ctrl+click acts on it.
  *
  * @param event Original click.
  * @param clicked Node of the pinned line.
  */
 function onPinnedClick(event: MouseEvent, clicked: ExplorerNode): void {
-  if (clicked.children?.length) {
+  if (asksAction(event)) {
+    activate(clicked)
+  } else if (clicked.children?.length) {
     expand(
       expandedKeys.value.includes(clicked.key)
         ? expandedKeys.value.filter((key) => key !== clicked.key)
         : [...expandedKeys.value, clicked.key],
     )
-  }
-  if (event.detail === 2) {
-    activate(clicked)
   }
 }
 
@@ -503,6 +533,7 @@ watch(
             @select="
               onSelect($event as TreeItemSelectEvent<ExplorerNode>, item.value as ExplorerNode)
             "
+            @toggle="onToggle($event as TreeItemToggleEvent<ExplorerNode>)"
           >
             <explorer-line
               :node="item.value as ExplorerNode"

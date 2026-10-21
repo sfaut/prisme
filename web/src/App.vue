@@ -269,8 +269,8 @@ function selectSource(connectionId: number): void {
                   <Database class="size-4 text-fg-muted" />
                 </span>
                 <p class="text-balance text-fg-muted">
-                  Double-cliquez sur une source de données pour la choisir pour cet éditeur, ou
-                  ajoutez une connexion par le menu « ⋮ »
+                  Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données pour la choisir
+                  pour cet éditeur, ou ajoutez une connexion par le menu « ⋮ »
                 </p>
               </div>
             </tabs-content>

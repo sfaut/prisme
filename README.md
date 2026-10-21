@@ -43,7 +43,7 @@ Prisme is at the start of its first version (v1). Today it queries **MySQL and M
 3. **Answer the two setup questions**: listening port and your email address. Press Enter to keep the defaults (`8484`, `me@local`).
 4. **Open** <http://127.0.0.1:8484> in your browser.
 5. **Add a connection**: in the left panel, open the **⋮** menu of **Sources de données** (Data sources), choose **Ajouter une connexion** (Add a connection), fill in host, port, user and password, click **Tester** (Test), then save.
-6. **Query**: double-click the new source, type a query in the editor, press **Ctrl+Enter**.
+6. **Query**: **Ctrl+click** the new source (**Cmd+click** on macOS), type a query in the editor, press **Ctrl+Enter**.
 
 ## Installation
 
@@ -137,7 +137,7 @@ The tree shows, for each source:
 How it behaves:
 
 - A **click** on a row opens or closes it.
-- A **double-click** on a source makes it the connection of the active editor; on a database, makes it the current database (like `USE`); on a table or view, shows its content: its `SELECT` goes after the last query of the editor, without overwriting anything, and runs.
+- A **Ctrl+click** (**Cmd+click** on macOS), or **Enter** on the focused row, acts on it without opening or closing it: on a source, makes it the connection of the active editor; on a database, makes it the current database (like `USE`); on a table or view, shows its content: its `SELECT` goes after the last query of the editor, without overwriting anything, and runs.
 - The catalog loads progressively, and the selected connection opens by itself. **Tout rafraîchir** (Refresh all) in the root menu reloads the catalogs already read.
 - The current database is in **bold**.
 - While the tree scrolls, the source, the database and the table of the rows on screen stay pinned at the top; they open, close and act like the rows of the tree.

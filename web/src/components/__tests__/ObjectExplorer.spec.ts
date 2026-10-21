@@ -132,6 +132,20 @@ async function click(element: { element: Element } | undefined, detail: number):
   await nextTick()
 }
 
+/**
+ * Clicks on an element with Ctrl held, or Cmd (`metaKey`) as on macOS.
+ *
+ * @param element Clicked element.
+ * @param key Modifier held.
+ */
+async function modifiedClick(
+  element: { element: Element } | undefined,
+  key: 'ctrlKey' | 'metaKey' = 'ctrlKey',
+): Promise<void> {
+  element?.element.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1, [key]: true }))
+  await nextTick()
+}
+
 beforeEach(() => {
   setActivePinia(createPinia())
   giveLayout()
@@ -179,7 +193,7 @@ describe('ObjectExplorer', () => {
     wrapper.unmount()
   })
 
-  it('opens a source with a click on its line and chooses it with a double click', async () => {
+  it('opens a source with a click on its line and chooses it with a Ctrl+click', async () => {
     savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
     const wrapper = mountExplorer({ selectedId: 1, currentDatabase: null })
     await vi.waitFor(() => expect(row(wrapper, 'Autre')).toBeDefined())
@@ -188,12 +202,25 @@ describe('ObjectExplorer', () => {
     // Open: its first database follows the source.
     const texts = () => labels(wrapper)
     await vi.waitFor(() => expect(texts()[texts().indexOf('Autre') + 1]).toBe('a'))
-    // Second click of a double click: the source is chosen.
-    await click(row(wrapper, 'Autre'), 2)
+    // Ctrl+click: the source is chosen, and stays open.
+    await modifiedClick(row(wrapper, 'Autre'))
     expect(wrapper.emitted('select')).toEqual([[2]])
-    // Double click on a database: it becomes the current database of its source.
-    await click(row(wrapper, 'a'), 2)
+    expect(row(wrapper, 'a')).toBeDefined()
+    // Cmd+click on a database: it becomes the current database of its source,
+    // and stays closed.
+    await modifiedClick(row(wrapper, 'a'), 'metaKey')
     expect(wrapper.emitted('use-database')).toEqual([[1, 'a']])
+    expect(row(wrapper, 'a')?.attributes('aria-expanded')).toBe('false')
+    // A double click is two clicks: the database opens and closes, nothing more.
+    await click(row(wrapper, 'a'), 1)
+    await click(row(wrapper, 'a'), 2)
+    expect(wrapper.emitted('use-database')).toHaveLength(1)
+    // Enter on the focused line acts on it.
+    await row(wrapper, 'a')?.trigger('keydown', { key: 'Enter' })
+    expect(wrapper.emitted('use-database')).toEqual([
+      [1, 'a'],
+      [1, 'a'],
+    ])
     wrapper.unmount()
   })
 

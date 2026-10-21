@@ -52,7 +52,9 @@ describe('App', () => {
     const wrapper = mount(App)
     expect(wrapper.text()).toContain('Prisme')
     await vi.waitFor(() =>
-      expect(wrapper.text()).toContain('Double-cliquez sur une source de données'),
+      expect(wrapper.text()).toContain(
+        'Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données',
+      ),
     )
   })
 
