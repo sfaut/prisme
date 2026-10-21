@@ -134,7 +134,9 @@ describe('SqlEditor', () => {
     let scrollTop = 0
     Object.defineProperty(scroller, 'scrollTop', {
       get: () => scrollTop,
-      set: (value: number) => (scrollTop = value),
+      set: (value: number) => {
+        scrollTop = value
+      },
     })
     wrapper.find('.cm-content').element.dispatchEvent(
       new KeyboardEvent('keydown', {

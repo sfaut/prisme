@@ -36,7 +36,9 @@ vi.mock('@/api/explorer', () => ({
  */
 function giveLayout(): void {
   const size = { width: 300, height: 500, top: 0, left: 0, right: 300, bottom: 500, x: 0, y: 0 }
-  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(500)
+  // The virtual scrolling measures its scrolling element by `clientHeight`.
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(300)
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(500)
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
     ...size,
     toJSON: () => size,
@@ -46,9 +48,7 @@ function giveLayout(): void {
     class {
       constructor(private readonly callback: (entries: unknown[]) => void) {}
       observe(target: Element) {
-        this.callback([
-          { target, contentRect: size, borderBoxSize: [{ inlineSize: 300, blockSize: 500 }] },
-        ])
+        this.callback([{ target, contentRect: size }])
       }
       unobserve() {}
       disconnect() {}
