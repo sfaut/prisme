@@ -321,8 +321,8 @@
      arrows; the other browsers, through the standard properties. */
   ::-webkit-scrollbar {
     /* Width of the vertical bar, height of the horizontal bar. */
-    width: --spacing(2);
-    height: --spacing(2);
+    width: --spacing(1);
+    height: --spacing(1);
   }
 
   ::-webkit-scrollbar-track,
