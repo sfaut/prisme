@@ -20,5 +20,7 @@ export async function fetchKeywords(
   version: string | null,
 ): Promise<DialectKeywords> {
   const query = version === null ? '' : `?version=${encodeURIComponent(version)}`
-  return request<DialectKeywords>('GET', `/api/dialects/${flavor}/keywords${query}`)
+  return request<DialectKeywords>('GET', `/api/dialects/${flavor}/keywords${query}`, undefined, {
+    sync: false,
+  })
 }

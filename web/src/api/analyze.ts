@@ -14,5 +14,5 @@ import type { Flavor } from './generated/Flavor'
  * @param flavor Flavor of the server, which sets the dialect of the analysis.
  */
 export function analyzeSql(sql: string, flavor: Flavor): Promise<Analysis> {
-  return request('POST', '/api/analyze', { sql, flavor })
+  return request('POST', '/api/analyze', { sql, flavor }, { sync: false })
 }

@@ -10,5 +10,5 @@ import type { AppVersion } from './generated/AppVersion'
  * Reads the version of the executable.
  */
 export function getVersion(): Promise<AppVersion> {
-  return request('GET', '/api/version')
+  return request('GET', '/api/version', undefined, { sync: false })
 }

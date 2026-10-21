@@ -31,13 +31,13 @@ afterEach(() => {
 })
 
 describe('synchronisation state of the editors', () => {
-  it('is pending after a change, then synced once the server has saved it', async () => {
+  it('is writing after a change, then synced once the server has saved it', async () => {
     const editors = useEditorsStore()
     await editors.create(null)
     expect(syncState.value).toBe('synced')
 
     editors.setSql(1, 'SELECT 1')
-    expect(syncState.value).toBe('pending')
+    expect(syncState.value).toBe('writing')
 
     await vi.waitFor(() => expect(syncState.value).toBe('synced'))
   })

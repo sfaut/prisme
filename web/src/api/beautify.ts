@@ -38,6 +38,6 @@ export interface BeautifyContext {
  */
 export async function beautify(sql: string, context: BeautifyContext = {}): Promise<string> {
   const body: BeautifyRequest = { sql, ...context }
-  const result = await request<SqlText>('POST', '/api/beautify', body)
+  const result = await request<SqlText>('POST', '/api/beautify', body, { sync: false })
   return result.sql
 }

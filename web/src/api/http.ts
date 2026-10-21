@@ -7,7 +7,7 @@
  */
 
 import type { ErrorBody } from './generated/ErrorBody'
-import { trackWrite } from './sync'
+import { trackRead, trackWrite } from './sync'
 
 /**
  * Error returned by the API, with its HTTP status.
@@ -40,6 +40,18 @@ export interface RequestOptions {
    * Such a request is limited in size by the browser.
    */
   keepalive?: boolean
+  /**
+   * Whether the request reads or writes the internal database (true by
+   * default): it then shows in the synchronisation state of the top bar,
+   * reading for a GET, writing otherwise.
+   *
+   * `false` for the requests that work elsewhere: on a target server (probe
+   * of a connection), or on the server's own data (version, keywords of a
+   * dialect, analysis or beautification of SQL). Counted, they would show a
+   * synchronisation that is not one, and the failure of a probe (a target
+   * server out of reach) would show as a failed save of the user's data.
+   */
+  sync?: boolean
 }
 
 /**
@@ -59,7 +71,10 @@ export async function request<T>(
   options: RequestOptions = {},
 ): Promise<T> {
   const sent = send<T>(method, path, body, options)
-  return method === 'GET' ? sent : trackWrite(sent)
+  if (options.sync === false) {
+    return sent
+  }
+  return method === 'GET' ? trackRead(sent) : trackWrite(sent)
 }
 
 /**

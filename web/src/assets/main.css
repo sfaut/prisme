@@ -159,6 +159,11 @@
     color-mix(in oklab, var(--black) 60%, transparent)
   );
   --resize-hover: color-mix(in oklab, var(--accent) 30%, transparent);
+
+  /* Tooltips (`UiTooltip.vue`): dark in both modes, light text. */
+  --tooltip-bg: light-dark(var(--zinc-800), var(--zinc-700));
+  --tooltip-fg: light-dark(var(--zinc-100), var(--zinc-100));
+
   --selection: color-mix(in oklab, var(--accent) 18%, transparent);
 
   /* Badge of a source's server flavor, in the explorer: text in the engine's
@@ -200,7 +205,7 @@
   );
 
   /* Fonts and sizes. `--font-size-ui` is the regular size of the interface;
-     windows, menus and tooltips use it too. */
+     windows and menus use it too, tooltips the small size. */
   --font-ui: ui-sans-serif, system-ui, sans-serif;
   --font-code: ui-monospace, 'Cascadia Code', Consolas, monospace;
   /* Discreet mentions: the version next to the name of Prisme. */

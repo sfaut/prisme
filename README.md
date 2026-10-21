@@ -286,7 +286,7 @@ Both tabs are kept in the internal database, 30 days by default: the **Rétentio
 
 ### Top bar
 
-- **Synchronisation**: Prisme saves every change as you go. **Synchronisé** (Synced) means everything is saved, **Synchronisation…** (Syncing…) that a save is running, **Échec de la synchronisation** (Sync failed) that the last one was refused.
+- **Synchronisation**: Prisme saves every change as you go in its local database, and reads it back from there. A database icon shows the state, explained by its tooltip: a check mark when everything is saved, a down arrow while reading, an up arrow while saving, a cross when the last save was refused (plain database icon: nothing exchanged yet).
 - **Theme**: the **Système / Clair / Sombre** (System / Light / Dark) list sets the theme of the whole interface. **Système** follows your computer's setting.
 - **Account** menu, the round avatar with your initials (those of your first and last names, or the first letter of your email address):
   - **Profil** (Profile): your last and first names, and your email address (read-only);

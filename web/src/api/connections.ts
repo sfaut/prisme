@@ -51,7 +51,7 @@ export function deleteConnection(id: number): Promise<void> {
  * @param id Id of the connection.
  */
 export function probeConnection(id: number): Promise<ServerInfo> {
-  return request('POST', `/api/connections/${id}/probe`)
+  return request('POST', `/api/connections/${id}/probe`, undefined, { sync: false })
 }
 
 /**
@@ -63,7 +63,7 @@ export function probeConnection(id: number): Promise<ServerInfo> {
  *     is taken if the field is empty.
  */
 export function probeSettings(probe: ProbeRequest): Promise<ServerInfo> {
-  return request('POST', '/api/connections/probe', probe)
+  return request('POST', '/api/connections/probe', probe, { sync: false })
 }
 
 /**
