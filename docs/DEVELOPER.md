@@ -259,6 +259,14 @@ Before each release, the dependencies go to their latest version, major versions
 
 The versions fixed on purpose, for another reason than a failed upgrade, are in "Pinned versions".
 
+## Known advisories
+
+Security advisories reported by `npm audit` that no update can fix, as no patched version exists. Before each release, they are checked again (process in [CLAUDE.md](../CLAUDE.md), section "Publishing a version"): an entry is removed once a patched version is installed; an advisory missing from this table is new, and is reported before the release.
+
+| Package | Advisory | Path | Exposure | Date |
+|---|---|---|---|---|
+| `braces` 3.0.3 | [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) (CVE-2026-93687, high): a deeply nested brace pattern exhausts the call stack and stops the Node.js process. Affects every version up to 3.0.3, the latest; no patched version. | `@vue/eslint-config-typescript` → `fast-glob` → `micromatch` → `braces` | None. Development only, when linting: nothing of it gets into the executable. The only pattern it receives is that of the configuration (`**/*.vue`), never outside data. | 2026-10-22 |
+
 ## Repository layout
 
 ```
