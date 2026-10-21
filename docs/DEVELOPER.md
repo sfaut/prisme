@@ -1,6 +1,19 @@
 # Prisme: developer guide
 
 [![Rust](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsfaut%2Fprisme%2Fmaster%2Frust-toolchain.toml&query=%24.toolchain.channel&label=rust)](../rust-toolchain.toml)
+[![vue](https://img.shields.io/github/package-json/dependency-version/sfaut/prisme/vue?filename=web%2Fpackage.json&label=vue)](../web/package.json)
+[![typescript](https://img.shields.io/github/package-json/dependency-version/sfaut/prisme/dev/typescript?filename=web%2Fpackage.json&label=typescript)](../web/package.json)
+[![axum](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsfaut%2Fprisme%2Fmaster%2Fcrates%2Fserver%2FCargo.toml&query=%24.dependencies.axum.version&label=axum)](../crates/server/Cargo.toml)
+[![tokio](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsfaut%2Fprisme%2Fmaster%2Fcrates%2Fserver%2FCargo.toml&query=%24.dependencies.tokio.version&label=tokio)](../crates/server/Cargo.toml)
+[![sqlparser](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsfaut%2Fprisme%2Fmaster%2Fcrates%2Fdialects%2FCargo.toml&query=%24.dependencies.sqlparser.version&label=sqlparser)](../crates/dialects/Cargo.toml)
+[![mysql_async](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsfaut%2Fprisme%2Fmaster%2Fcrates%2Fconnectors%2FCargo.toml&query=%24.dependencies.mysql_async&label=mysql_async)](../crates/connectors/Cargo.toml)
+[![rusqlite](https://img.shields.io/badge/dynamic/toml?url=https%3A%2F%2Fraw.githubusercontent.com%2Fsfaut%2Fprisme%2Fmaster%2Fcrates%2Fserver%2FCargo.toml&query=%24.dependencies.rusqlite.version&label=rusqlite)](../crates/server/Cargo.toml)
+[![vite](https://img.shields.io/github/package-json/dependency-version/sfaut/prisme/dev/vite?filename=web%2Fpackage.json&label=vite)](../web/package.json)
+[![tailwindcss](https://img.shields.io/github/package-json/dependency-version/sfaut/prisme/tailwindcss?filename=web%2Fpackage.json&label=tailwindcss)](../web/package.json)
+[![reka-ui](https://img.shields.io/github/package-json/dependency-version/sfaut/prisme/reka-ui?filename=web%2Fpackage.json&label=reka-ui)](../web/package.json)
+[![codemirror](https://img.shields.io/github/package-json/dependency-version/sfaut/prisme/codemirror?filename=web%2Fpackage.json&label=codemirror)](../web/package.json)
+[![pinia](https://img.shields.io/github/package-json/dependency-version/sfaut/prisme/pinia?filename=web%2Fpackage.json&label=pinia)](../web/package.json)
+[![lucide](https://img.shields.io/github/package-json/dependency-version/sfaut/prisme/@lucide/vue?filename=web%2Fpackage.json&label=lucide)](../web/package.json)
 
 How to build Prisme from source, run it in development, test it, and how it is delivered. For using Prisme, see the [README](../README.md).
 
