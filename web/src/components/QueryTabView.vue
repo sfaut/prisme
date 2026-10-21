@@ -11,8 +11,9 @@
   value at once. A query without a grid (waiting, failed, or without
   columns) only shows its durations.
 
-  The grid's frame covers the line under the result tabs; the error or the
-  durations, when they come first, keep a little room under that line.
+  The grid comes right under the line of the result tabs, which takes the
+  place of its frame's top border; the error or the durations, when they
+  come first, keep a little room under that line.
 
   The refresh button, at the left of the bar under the grid, runs the query
   again; during the refresh, or while it waits for the running batch, it
@@ -72,6 +73,11 @@ const clock = useClock()
  * one until the new columns arrive.
  */
 const shown = computed(() => props.tab.result ?? props.tab.previous?.result ?? null)
+
+/**
+ * Does the grid come first, right under the result tabs (no error above it)?
+ */
+const gridFirst = computed(() => !props.tab.error && (shown.value?.columns.length ?? 0) > 0)
 
 /**
  * Is a refresh running or waiting? Its button then stops it.
@@ -147,10 +153,11 @@ const durations = computed(() => {
     width of its content, and a wide grid overflowed, cut off on the right,
     instead of scrolling in its own area.
   -->
-  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-2">
-    <ui-alert v-if="tab.error" tone="error" :title="tab.error" class="first:mt-1" />
+  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-2" :class="{ 'pt-1': !gridFirst }">
+    <ui-alert v-if="tab.error" tone="error" :title="tab.error" />
     <result-grid
       v-if="shown && shown.columns.length > 0"
+      :attached="gridFirst"
       :columns="shown.columns"
       :right-aligned="shown.rightAligned"
       :column-types="shown.columnTypes"
@@ -176,6 +183,6 @@ const durations = computed(() => {
         <template v-if="durations">&nbsp;· {{ durations }}</template>
       </template>
     </result-grid>
-    <div v-else-if="durations" class="text-trim text-fg-muted first:mt-1">{{ durations }}</div>
+    <div v-else-if="durations" class="text-trim text-fg-muted">{{ durations }}</div>
   </div>
 </template>

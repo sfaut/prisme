@@ -137,6 +137,12 @@ const props = defineProps<{
    * this grid feeds the data explorer.
    */
   displayed?: boolean
+  /**
+   * Does the grid come right under a line (that of the result tabs)? Its
+   * frame then leaves out its top border while the filter is closed, so as
+   * not to double that line.
+   */
+  attached?: boolean
 }>()
 
 /**
@@ -728,7 +734,13 @@ const userFilterColumn = computed({
       />
     </div>
 
-    <div ref="scroller" class="grid-scroller" tabindex="0" @keydown="onKeydown">
+    <div
+      ref="scroller"
+      class="grid-scroller"
+      :class="{ attached: attached && !userFilterOpen }"
+      tabindex="0"
+      @keydown="onKeydown"
+    >
       <div class="grid-row grid-header" :style="{ gridTemplateColumns: template }">
         <div class="grid-corner" title="Tout sélectionner" @mousedown.prevent="selectEverything" />
         <div
@@ -821,9 +833,10 @@ const userFilterColumn = computed({
               target="_blank"
               rel="noopener noreferrer"
               @mousedown.stop
-              ><ExternalLink class="grid-link-icon" aria-hidden="true" />{{
-                cellAt(item.index, column)
-              }}</a
+              ><ExternalLink class="grid-link-icon" aria-hidden="true" /><span
+                class="grid-link-text"
+                >{{ cellAt(item.index, column) }}</span
+              ></a
             >
             <template v-else>{{ cellAt(item.index, column) ?? NULL_TEXT }}</template>
           </div>
@@ -862,13 +875,13 @@ const userFilterColumn = computed({
   min-height: 0;
 }
 
-/* A little room under the line of the result tabs, which the grid's frame
-   covers when the toolbar is closed. */
+/* A little room under the line of the result tabs, which takes the place
+   of the frame's top border when the toolbar is closed. */
 .grid-toolbar {
   display: flex;
   align-items: center;
   gap: --spacing(2);
-  margin-block-start: --spacing(1);
+  padding-block-start: --spacing(1);
 }
 
 .grid-user-filter {
@@ -902,6 +915,10 @@ const userFilterColumn = computed({
   border: var(--line-width) solid var(--line);
   font-size: var(--font-size-ui);
   user-select: none;
+
+  &.attached {
+    border-block-start-width: 0;
+  }
 }
 
 .grid-row {
@@ -1086,7 +1103,14 @@ const userFilterColumn = computed({
 }
 
 /* Web address of a column of links. */
+/* Link: the icon, then the address, cut with an ellipsis when the column is
+   too narrow. */
 .grid-link {
+  display: inline-flex;
+  align-items: center;
+  gap: --spacing(1);
+  max-inline-size: 100%;
+  vertical-align: top;
   color: var(--accent);
   text-decoration: none;
   cursor: pointer;
@@ -1098,10 +1122,14 @@ const userFilterColumn = computed({
 
 /* External link icon, before the address. */
 .grid-link-icon {
-  display: inline-block;
+  flex-shrink: 0;
   inline-size: var(--icon-size-sm);
   block-size: var(--icon-size-sm);
-  margin-inline-end: 0.25em;
-  vertical-align: -0.1em;
+}
+
+.grid-link-text {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>
