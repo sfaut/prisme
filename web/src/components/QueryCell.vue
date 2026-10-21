@@ -484,8 +484,7 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
       :unmount-on-hide="false"
       class="flex min-h-0 flex-1 flex-col"
     >
-      <!-- Pulled 1 px down: the grid's top border covers the line under the tabs. -->
-      <tabs-list class="-mb-px flex overflow-x-auto border-b border-line">
+      <tabs-list class="flex overflow-x-auto border-b border-line">
         <tabs-trigger
           v-for="(tab, index) in state.tabs"
           :key="tab.id"

@@ -137,6 +137,12 @@ const props = defineProps<{
    * this grid feeds the data explorer.
    */
   displayed?: boolean
+  /**
+   * Does the grid come right under a line (that of the result tabs)? Its
+   * frame then leaves out its top border while the filter is closed, so as
+   * not to double that line.
+   */
+  attached?: boolean
 }>()
 
 /**
@@ -728,7 +734,13 @@ const userFilterColumn = computed({
       />
     </div>
 
-    <div ref="scroller" class="grid-scroller" tabindex="0" @keydown="onKeydown">
+    <div
+      ref="scroller"
+      class="grid-scroller"
+      :class="{ attached: attached && !userFilterOpen }"
+      tabindex="0"
+      @keydown="onKeydown"
+    >
       <div class="grid-row grid-header" :style="{ gridTemplateColumns: template }">
         <div class="grid-corner" title="Tout sélectionner" @mousedown.prevent="selectEverything" />
         <div
@@ -863,8 +875,8 @@ const userFilterColumn = computed({
   min-height: 0;
 }
 
-/* A little room under the line of the result tabs, which the grid's frame
-   covers when the toolbar is closed. */
+/* A little room under the line of the result tabs, which takes the place
+   of the frame's top border when the toolbar is closed. */
 .grid-toolbar {
   display: flex;
   align-items: center;
@@ -903,6 +915,10 @@ const userFilterColumn = computed({
   border: var(--line-width) solid var(--line);
   font-size: var(--font-size-ui);
   user-select: none;
+
+  &.attached {
+    border-block-start-width: 0;
+  }
 }
 
 .grid-row {

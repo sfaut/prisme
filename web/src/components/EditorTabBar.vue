@@ -76,14 +76,19 @@ const reopenItems = computed<MenuItem[]>(() => {
 </script>
 
 <template>
-  <div class="flex items-center gap-1 border-b border-line">
-    <tabs-list class="-mb-px flex min-w-0 overflow-x-auto" aria-label="Éditeurs">
+  <!--
+    The line under the bar is drawn by each of its parts: the bottom border
+    of the tabs, accented and thicker for the active one, then that of the
+    rest of the bar, with its buttons.
+  -->
+  <div class="flex">
+    <tabs-list class="flex min-w-0 overflow-x-auto" aria-label="Éditeurs">
       <tabs-trigger
         v-for="(editor, index) in editors.editors"
         :key="editor.id"
         :value="editor.id"
         as="div"
-        class="group relative flex h-control max-w-80 min-w-0 shrink-0 cursor-pointer items-center gap-1 rounded-t-control border-b-2 border-transparent ps-2 pe-1 text-ui font-medium text-fg-muted outline-none select-none hover:text-fg-strong focus-visible:bg-surface-muted data-[state=active]:border-accent data-[state=active]:text-fg-strong"
+        class="group relative flex h-control max-w-80 min-w-0 shrink-0 cursor-pointer items-center gap-1 rounded-t-control border-b border-line ps-2 pe-1 text-ui font-medium text-fg-muted outline-none select-none hover:text-fg-strong focus-visible:bg-surface-muted data-[state=active]:border-b-2 data-[state=active]:border-accent data-[state=active]:text-fg-strong"
         :class="{
           'drop-before': tabDrag.dropAt.value === index,
           'drop-after':
@@ -112,25 +117,26 @@ const reopenItems = computed<MenuItem[]>(() => {
         />
       </tabs-trigger>
     </tabs-list>
-    <ui-button
-      :icon="Plus"
-      variant="ghost"
-      small
-      aria-label="Nouvel éditeur"
-      title="Nouvel éditeur, sur la connexion de l’éditeur actif"
-      @click="editors.create(editors.active?.connectionId ?? null)"
-    />
-    <ui-dropdown-menu :items="reopenItems">
+    <div class="flex flex-1 items-center justify-between gap-1 border-b border-line ps-1">
       <ui-button
-        :icon="History"
+        :icon="Plus"
         variant="ghost"
         small
-        aria-label="Rouvrir un éditeur fermé"
-        title="Rouvrir un éditeur fermé depuis moins de 24 heures"
-        class="ms-auto"
-        @click="editors.loadClosed()"
+        aria-label="Nouvel éditeur"
+        title="Nouvel éditeur, sur la connexion de l’éditeur actif"
+        @click="editors.create(editors.active?.connectionId ?? null)"
       />
-    </ui-dropdown-menu>
+      <ui-dropdown-menu :items="reopenItems">
+        <ui-button
+          :icon="History"
+          variant="ghost"
+          small
+          aria-label="Rouvrir un éditeur fermé"
+          title="Rouvrir un éditeur fermé depuis moins de 24 heures"
+          @click="editors.loadClosed()"
+        />
+      </ui-dropdown-menu>
+    </div>
   </div>
 </template>
 
