@@ -82,7 +82,7 @@ const menuItems: MenuItem[] = [
 </script>
 
 <template>
-  <header class="flex items-center gap-2 border-b border-line px-3 py-1">
+  <header class="flex items-center justify-between gap-2 border-b border-line px-3 py-1">
     <!-- Name, then version in smaller type, on the same baseline. -->
     <div class="flex items-baseline gap-2">
       <h1 class="text-heading leading-none font-semibold text-fg-strong">Prisme</h1>
@@ -90,7 +90,7 @@ const menuItems: MenuItem[] = [
         {{ version }}
       </span>
     </div>
-    <div class="ms-auto flex items-center gap-2">
+    <div class="flex items-center gap-2">
       <sync-status />
       <ui-select v-model="colorMode" :items="COLOR_MODES" label="Thème" class="w-28" />
       <ui-dropdown-menu :items="menuItems">

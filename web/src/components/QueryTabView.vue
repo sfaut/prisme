@@ -74,6 +74,11 @@ const clock = useClock()
 const shown = computed(() => props.tab.result ?? props.tab.previous?.result ?? null)
 
 /**
+ * Does the grid come first, right under the result tabs (no error above it)?
+ */
+const gridFirst = computed(() => !props.tab.error && (shown.value?.columns.length ?? 0) > 0)
+
+/**
  * Is a refresh running or waiting? Its button then stops it.
  */
 const refreshing = computed(() => props.refresh === 'running' || props.refresh === 'queued')
@@ -147,8 +152,8 @@ const durations = computed(() => {
     width of its content, and a wide grid overflowed, cut off on the right,
     instead of scrolling in its own area.
   -->
-  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-2">
-    <ui-alert v-if="tab.error" tone="error" :title="tab.error" class="first:mt-1" />
+  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-2" :class="{ 'pt-1': !gridFirst }">
+    <ui-alert v-if="tab.error" tone="error" :title="tab.error" />
     <result-grid
       v-if="shown && shown.columns.length > 0"
       :columns="shown.columns"
@@ -176,6 +181,6 @@ const durations = computed(() => {
         <template v-if="durations">&nbsp;· {{ durations }}</template>
       </template>
     </result-grid>
-    <div v-else-if="durations" class="text-trim text-fg-muted first:mt-1">{{ durations }}</div>
+    <div v-else-if="durations" class="text-trim text-fg-muted">{{ durations }}</div>
   </div>
 </template>

@@ -465,7 +465,7 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
     <div
       v-if="state.loading"
       role="status"
-      class="m-auto flex items-center gap-2 text-ui text-fg-muted"
+      class="flex flex-1 items-center justify-center gap-2 text-ui text-fg-muted"
     >
       <LoaderCircle class="size-icon animate-spin" />
       Chargement des résultats…

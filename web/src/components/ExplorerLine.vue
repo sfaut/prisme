@@ -116,40 +116,41 @@ function nodeIcon(node: ExplorerNode, expanded: boolean): Component {
       <KeyRound v-if="node.column.primaryKey" class="size-[1em]" aria-label="Clef primaire" />
       <Hash v-if="node.column.foreignKey" class="size-[1em]" aria-label="Clef étrangère" />
     </span>
-    <span
-      class="me-3 flex-none font-bold text-trim"
-      :style="{ minWidth: `${node.column.nameWidth}ch` }"
-    >
-      <span :class="{ 'font-normal': !node.column.indexed }">
-        {{ node.column.name }}
+    <span class="flex min-w-0 flex-1 items-center gap-3">
+      <span
+        class="flex-none font-bold text-trim"
+        :style="{ minWidth: `${node.column.nameWidth}ch` }"
+      >
+        <span :class="{ 'font-normal': !node.column.indexed }">
+          {{ node.column.name }}
+        </span>
+      </span>
+      <span class="truncate text-small text-fg-dimmed text-trim" :title="node.column.details">
+        {{ node.column.details }}
       </span>
     </span>
-    <span class="truncate text-small text-fg-dimmed text-trim" :title="node.column.details">
-      {{ node.column.details }}
-    </span>
   </span>
-  <!-- Other nodes: label, then the note if any (UNIQUE, chargement…). -->
-  <span
-    v-else
-    class="tree-label min-w-0 truncate text-trim"
-    :class="{
-      'flex-1': !node.badge,
-      'current-database': node.current,
-      'font-bold': node.current || node.role === 'sources' || node.role === 'notebooks',
-    }"
-  >
-    {{ node.label }}
-    <span v-if="node.note" class="ms-3 text-small font-normal text-fg-dimmed">
-      {{ node.note }}
+  <!--
+    Other nodes: label, then the note if any (UNIQUE, chargement…), and for a
+    source the badge of the server's flavor, right after the name. The whole
+    takes the room left, which pushes the menu to the end of the line.
+  -->
+  <span v-else class="flex min-w-0 flex-1 items-center gap-2">
+    <span
+      class="tree-label flex min-w-0 items-center gap-3"
+      :class="{
+        'current-database': node.current,
+        'font-bold': node.current || node.role === 'sources' || node.role === 'notebooks',
+      }"
+    >
+      <span class="truncate text-trim">{{ node.label }}</span>
+      <span v-if="node.note" class="shrink-0 text-small font-normal text-fg-dimmed text-trim">
+        {{ node.note }}
+      </span>
     </span>
-  </span>
-  <!-- Source: badge of the server's flavor, right after the name. -->
-  <span
-    v-if="node.badge"
-    class="flavor-badge ms-1 me-auto shrink-0 text-trim"
-    :data-flavor="node.badge"
-  >
-    {{ node.badge }}
+    <span v-if="node.badge" class="flavor-badge shrink-0 text-trim" :data-flavor="node.badge">
+      {{ node.badge }}
+    </span>
   </span>
 
   <ui-dropdown-menu v-if="menu" :items="menu">

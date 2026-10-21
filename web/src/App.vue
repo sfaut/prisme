@@ -244,6 +244,7 @@ function selectSource(connectionId: number): void {
               :key="editor.id"
               :value="editor.id"
               class="flex min-h-0 flex-1 flex-col outline-none"
+              :class="{ 'items-center justify-center': !connectionOf(editor.connectionId) }"
             >
               <query-cell
                 v-if="connectionOf(editor.connectionId)"
@@ -262,7 +263,7 @@ function selectSource(connectionId: number): void {
                 @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
                 @database="(database) => (databases[editor.id] = database)"
               />
-              <div v-else class="m-auto flex max-w-xs flex-col items-center gap-2 text-center">
+              <div v-else class="flex max-w-xs flex-col items-center gap-2 text-center">
                 <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
                   <Database class="size-4 text-fg-muted" />
                 </span>

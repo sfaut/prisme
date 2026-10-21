@@ -96,7 +96,7 @@ const barTone = computed(() => {
         small
         aria-label="Fermer l’onglet"
         title="Fermer l’onglet (arrête sa requête si elle tourne)"
-        class="invisible -ms-1 group-hover:visible group-data-[state=active]:visible"
+        class="invisible group-hover:visible group-data-[state=active]:visible"
         @mousedown.stop
         @click.stop="emit('close')"
       />
