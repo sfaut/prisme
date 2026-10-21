@@ -100,17 +100,6 @@ const limitOptions = computed(() =>
   })),
 )
 
-/**
- * Flavor and version of the server, for the header of the cell.
- */
-const serverLabel = computed(() => {
-  const server = state.server
-  if (!server) {
-    return 'Connexion…'
-  }
-  return `${server.flavor === 'mariadb' ? 'MariaDB' : 'MySQL'} ${server.version}`
-})
-
 const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
 
 const cellRoot = useTemplateRef<HTMLDivElement>('cellRoot')
@@ -453,7 +442,6 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
           class="w-32"
           @update:model-value="(limit) => limit !== undefined && changeLimit(limit)"
         />
-        <span class="text-trim text-fg-muted">{{ connection.name }} · {{ serverLabel }}</span>
       </div>
 
       <sql-editor
