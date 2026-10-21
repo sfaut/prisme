@@ -2,15 +2,18 @@
   Message in a colored banner: information, success, warning or error, each
   with its icon.
 
-  With `closable`, a cross on the right emits `close`. The default slot holds
-  actions on the right of the message ("Reconnecter" button...).
+  Every banner can be closed: the cross on the right hides it and emits
+  `close`, for the parent that holds the message to forget it. A new message
+  shows the banner again. The default slot holds actions on the right of the
+  message ("Reconnecter" button...).
 -->
 <script setup lang="ts">
 import { CircleAlert, CircleCheckBig, CircleX, Info, X } from 'lucide-vue-next'
+import { ref, watch } from 'vue'
 
 import UiButton from './UiButton.vue'
 
-defineProps<{
+const props = defineProps<{
   /**
    * Tone of the banner.
    */
@@ -19,13 +22,9 @@ defineProps<{
    * Message.
    */
   title: string
-  /**
-   * Shows a cross to close the banner.
-   */
-  closable?: boolean
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   /**
    * The user closes the banner.
    */
@@ -41,10 +40,29 @@ const TONES = {
   warning: { classes: 'bg-warning-soft text-warning', icon: CircleAlert },
   error: { classes: 'bg-error-soft text-error', icon: CircleX },
 } as const
+
+/**
+ * Banner closed by the user, until its message changes.
+ */
+const closed = ref(false)
+
+watch(
+  () => props.title,
+  () => (closed.value = false),
+)
+
+/**
+ * Hides the banner and tells the parent.
+ */
+function close(): void {
+  closed.value = true
+  emit('close')
+}
 </script>
 
 <template>
   <div
+    v-if="!closed"
     role="alert"
     class="flex items-center gap-2 rounded-control px-2 py-2 text-ui"
     :class="TONES[tone].classes"
@@ -53,13 +71,12 @@ const TONES = {
     <span class="min-w-0 flex-1 break-words">{{ title }}</span>
     <slot />
     <ui-button
-      v-if="closable"
       :icon="X"
       variant="ghost"
       small
       aria-label="Fermer"
       class="text-current"
-      @click="$emit('close')"
+      @click="close"
     />
   </div>
 </template>

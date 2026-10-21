@@ -472,7 +472,7 @@ watch(
       side="start"
       @collapse="layout.objectsOpen = false"
     />
-    <ui-alert v-if="probed" tone="success" :title="probed" closable @close="probed = null" />
+    <ui-alert v-if="probed" tone="success" :title="probed" @close="probed = null" />
     <ui-alert v-if="listError" tone="error" :title="listError" />
     <!-- Index as key: the same message can come twice, from two errors of one source. -->
     <ui-alert v-for="(message, index) in messages" :key="index" tone="warning" :title="message" />

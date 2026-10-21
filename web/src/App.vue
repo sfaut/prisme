@@ -230,7 +230,6 @@ function selectSource(connectionId: number): void {
             v-if="editorsError"
             tone="error"
             :title="editorsError"
-            closable
             @close="editorsError = null"
           />
           <tabs-root

@@ -56,13 +56,7 @@ watch(
 
 <template>
   <div ref="scroller" class="min-h-0 flex-1 overflow-auto">
-    <ui-alert
-      v-if="list.error"
-      tone="error"
-      :title="list.error"
-      closable
-      @close="list.dismissError()"
-    />
+    <ui-alert v-if="list.error" tone="error" :title="list.error" @close="list.dismissError()" />
     <div v-if="list.hasOlder" class="flex justify-center py-1">
       <ui-button variant="ghost" small @click="list.loadOlder()">
         Afficher les éléments précédents
