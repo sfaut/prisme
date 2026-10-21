@@ -128,7 +128,7 @@ async function change(update: Partial<SettingsUpdate>): Promise<void> {
 function changeRetention(field: keyof typeof retention): void {
   const days = retention[field]
   if (!Number.isInteger(days) || days < RETENTION_MIN || days > RETENTION_MAX) {
-    error.value = `Délai de rétention : entre ${RETENTION_MIN} et ${RETENTION_MAX.toLocaleString('fr-FR')} jours`
+    error.value = `Rétention : entre ${RETENTION_MIN} et ${RETENTION_MAX.toLocaleString('fr-FR')} jours`
     return
   }
   void change({ [field]: days })
@@ -181,7 +181,7 @@ watch(open, async (isOpen) => {
           Sessions en lecture seule
         </label>
       </ui-field>
-      <ui-field label="Délai rétention historique">
+      <ui-field label="Rétention historique">
         <div class="flex items-center gap-gap">
           <ui-input
             v-model="retention.history_retention_days"
@@ -196,7 +196,7 @@ watch(open, async (isOpen) => {
           <span class="text-ui text-fg-muted">jours</span>
         </div>
       </ui-field>
-      <ui-field label="Délai rétention debug">
+      <ui-field label="Rétention debug">
         <div class="flex items-center gap-gap">
           <ui-input
             v-model="retention.debug_retention_days"
