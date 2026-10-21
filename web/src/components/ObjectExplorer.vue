@@ -444,7 +444,9 @@ onMounted(async () => {
   try {
     await connections.load()
   } catch (failure) {
-    listError.value = `Connexions illisibles : ${errorMessage(failure)}`
+    listError.value = `Connexions illisibles.
+
+${errorMessage(failure)}`
   }
 })
 

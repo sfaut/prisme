@@ -107,7 +107,9 @@ describe('searchData, JSON', () => {
   it('reports an invalid expression', () => {
     const result = searchData('json', '{}', '$[?')
     expect(result.state).toBe('error')
-    expect(result.state === 'error' && result.message).toMatch(/^JSONPath invalide : /)
+    expect(result.state === 'error' && result.message).toMatch(
+      /^Expression JSONPath invalide. Le moteur JSONPath a signalé : /,
+    )
   })
 
   it('refuses the extensions outside RFC 9535', () => {
@@ -176,6 +178,8 @@ describe('searchData, XML', () => {
   it('reports an invalid expression', () => {
     const result = searchData('xml', '<a/>', '//[')
     expect(result.state).toBe('error')
-    expect(result.state === 'error' && result.message).toMatch(/^XPath invalide : /)
+    expect(result.state === 'error' && result.message).toMatch(
+      /^Expression XPath invalide. Le moteur XPath a signalé : /,
+    )
   })
 })

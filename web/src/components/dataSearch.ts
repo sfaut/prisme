@@ -97,7 +97,11 @@ function failure(language: 'JSONPath' | 'XPath', error: unknown): SearchResult {
     }
   }
   const detail = error instanceof Error ? error.message : String(error)
-  return { state: 'error', message: `${language} invalide : ${detail}` }
+  // The message of the engine is in English: it is introduced, quoted as it is.
+  return {
+    state: 'error',
+    message: `Expression ${language} invalide. Le moteur ${language} a signalé : ${detail}`,
+  }
 }
 
 /**

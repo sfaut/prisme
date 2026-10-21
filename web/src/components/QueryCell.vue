@@ -156,7 +156,12 @@ function tabLabel(tab: QueryTab): string {
  * @param failure Received error.
  */
 function reportFailure(failure: unknown): void {
-  notify(`Enregistrement refusé : ${errorMessage(failure)}`, 'error')
+  notify(
+    `Enregistrement refusé.
+
+${errorMessage(failure)}`,
+    'error',
+  )
 }
 
 /**

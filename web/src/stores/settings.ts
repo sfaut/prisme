@@ -33,7 +33,7 @@ export const useSettingsStore = defineStore('settings', () => {
   async function update(change: Partial<SettingsUpdate>): Promise<void> {
     const current = settings.value
     if (current === null) {
-      throw new Error('Paramètres non chargés')
+      throw new Error('Paramètres non chargés.')
     }
     settings.value = await updateSettings({
       row_limit: current.row_limit,

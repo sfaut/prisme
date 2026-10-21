@@ -359,9 +359,9 @@ async function copy(): Promise<void> {
   }
   try {
     await navigator.clipboard.writeText(shown.value)
-    notify('Document copié')
+    notify('Document copié.')
   } catch {
-    notify('Copie refusée par le navigateur', 'error')
+    notify('Copie refusée par le navigateur.', 'error')
   }
 }
 

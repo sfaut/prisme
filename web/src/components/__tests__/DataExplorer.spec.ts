@@ -128,7 +128,9 @@ describe('DataExplorer', () => {
     expect(wrapper.find('.data-explorer-search-status').text()).toBe('2 / 2')
 
     await field.setValue('$.a[?')
-    expect(wrapper.find('.data-explorer-search-error').text()).toMatch(/^JSONPath invalide/)
+    expect(wrapper.find('.data-explorer-search-error').text()).toMatch(
+      /^Expression JSONPath invalide/,
+    )
     expect(highlighted()).toHaveLength(2)
 
     await field.setValue('$.a[?@ > 1]')

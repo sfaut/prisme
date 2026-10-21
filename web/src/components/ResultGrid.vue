@@ -620,9 +620,9 @@ async function copy(withHeaders: boolean): Promise<void> {
   )
   try {
     await navigator.clipboard.writeText(text)
-    notify('Sélection copiée')
+    notify('Sélection copiée.')
   } catch {
-    notify('Copie refusée par le navigateur', 'error')
+    notify('Copie refusée par le navigateur.', 'error')
   }
 }
 

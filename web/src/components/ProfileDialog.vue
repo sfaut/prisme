@@ -7,7 +7,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
 
-import { ApiError } from '@/api/http'
+import { errorMessage } from '@/api/errorMessage'
 import { useProfileStore } from '@/stores/profile'
 
 import UiAlert from './ui/UiAlert.vue'
@@ -58,7 +58,7 @@ watch(open, async (isOpen) => {
   try {
     await profile.load()
   } catch (failure) {
-    error.value = failure instanceof ApiError ? failure.message : String(failure)
+    error.value = errorMessage(failure)
     return
   }
   form.first_name = profile.profile?.first_name ?? ''
@@ -76,7 +76,7 @@ async function save(): Promise<void> {
     await profile.save({ ...form })
     open.value = false
   } catch (failure) {
-    error.value = failure instanceof ApiError ? failure.message : String(failure)
+    error.value = errorMessage(failure)
   } finally {
     saving.value = false
   }

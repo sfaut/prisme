@@ -12,7 +12,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 
-import { ApiError } from '@/api/http'
+import { errorMessage } from '@/api/errorMessage'
 import { useSettingsStore } from '@/stores/settings'
 
 import UiAlert from './ui/UiAlert.vue'
@@ -105,7 +105,7 @@ watch(open, async (isOpen) => {
   try {
     await settings.load()
   } catch (failure) {
-    error.value = failure instanceof ApiError ? failure.message : String(failure)
+    error.value = errorMessage(failure)
     return
   }
   form.row_limit = settings.settings?.row_limit ?? DEFAULT_ROW_LIMIT
@@ -124,7 +124,7 @@ async function save(): Promise<void> {
     await settings.update({ ...form })
     open.value = false
   } catch (failure) {
-    error.value = failure instanceof ApiError ? failure.message : String(failure)
+    error.value = errorMessage(failure)
   } finally {
     saving.value = false
   }
