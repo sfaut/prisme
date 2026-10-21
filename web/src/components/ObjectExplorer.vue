@@ -379,21 +379,30 @@ async function confirmRemove(): Promise<void> {
 }
 
 /**
- * Follows the clicks on the lines. The tree keeps no selection (the
- * highlighted source is that of the chosen connection); the click opens or
- * closes the level. The second click of a double click chooses the source,
- * changes the database or opens the table.
+ * Refuses the selection that the tree requests on a click: it keeps none (the
+ * highlighted source is that of the chosen connection). The click only opens
+ * or closes the level.
  *
- * @param event Selection requested by the tree, with the original click.
- * @param node Clicked node.
+ * @param event Selection requested by the tree.
  */
-function onSelect(event: TreeItemSelectEvent<ExplorerNode>, clicked: ExplorerNode): void {
+function onSelect(event: TreeItemSelectEvent<ExplorerNode>): void {
   event.preventDefault()
-  const original = event.detail.originalEvent
-  if (!(original instanceof MouseEvent) || original.detail !== 2) {
+}
+
+/**
+ * Follows the double clicks on the lines (`dblclick`, which comes after the
+ * two clicks): chooses the source, changes the current database or opens the
+ * table. Each of the two clicks has opened or closed the level, which is
+ * therefore back to its state. A double click on the "⋮" menu does nothing.
+ *
+ * @param event Double click.
+ * @param node Double-clicked node.
+ */
+function onDoubleClick(event: MouseEvent, node: ExplorerNode): void {
+  if (event.target instanceof Element && event.target.closest('button') !== null) {
     return
   }
-  activate(clicked)
+  activate(node)
 }
 
 /**
@@ -414,21 +423,17 @@ function activate(node: ExplorerNode): void {
 
 /**
  * Follows the clicks on a pinned line, as the tree does: a click opens or
- * closes its level, and a double click acts on it.
+ * closes its level (its double click goes to `onDoubleClick`).
  *
- * @param event Original click.
  * @param clicked Node of the pinned line.
  */
-function onPinnedClick(event: MouseEvent, clicked: ExplorerNode): void {
+function onPinnedClick(clicked: ExplorerNode): void {
   if (clicked.children?.length) {
     expand(
       expandedKeys.value.includes(clicked.key)
         ? expandedKeys.value.filter((key) => key !== clicked.key)
         : [...expandedKeys.value, clicked.key],
     )
-  }
-  if (event.detail === 2) {
-    activate(clicked)
   }
 }
 
@@ -500,9 +505,8 @@ watch(
             :level="item.level"
             :class="rowClass(item.value as ExplorerNode)"
             :style="{ '--level': item.level }"
-            @select="
-              onSelect($event as TreeItemSelectEvent<ExplorerNode>, item.value as ExplorerNode)
-            "
+            @select="onSelect($event as TreeItemSelectEvent<ExplorerNode>)"
+            @dblclick="onDoubleClick($event, item.value as ExplorerNode)"
           >
             <explorer-line
               :node="item.value as ExplorerNode"
@@ -524,7 +528,8 @@ watch(
           :key="row.node.key"
           :class="rowClass(row.node)"
           :style="{ '--level': row.level }"
-          @click="onPinnedClick($event, row.node)"
+          @click="onPinnedClick(row.node)"
+          @dblclick="onDoubleClick($event, row.node)"
         >
           <explorer-line
             :node="row.node"
