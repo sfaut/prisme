@@ -15,5 +15,7 @@ ts-rs = "12.0.1"
 
 [dev-dependencies]
 testcontainers-modules = { version = "0.15.0", features = ["mysql", "mariadb"] }
+# Generated TypeScript types formatted (dprint), only in the tests that write them.
+ts-rs = { version = "12.0.1", features = ["format"] }
 tokio = { version = "1.53.3", features = ["macros", "rt-multi-thread", "time"] }
 

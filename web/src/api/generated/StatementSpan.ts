@@ -3,12 +3,13 @@
 /**
  * Location of a query in the text, in UTF-16 units.
  */
-export type StatementSpan = { 
-/**
- * First significant character of the query.
- */
-start: number, 
-/**
- * End of the query, separator included.
- */
-end: number, };
+export type StatementSpan = {
+  /**
+   * First significant character of the query.
+   */
+  start: number;
+  /**
+   * End of the query, separator included.
+   */
+  end: number;
+};

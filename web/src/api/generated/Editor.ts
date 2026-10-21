@@ -3,20 +3,21 @@
 /**
  * Open editor, as the interface receives it.
  */
-export type Editor = { 
-/**
- * Id of the editor.
- */
-id: number, 
-/**
- * Name given by the user, empty string for the default name.
- */
-name: string, 
-/**
- * Connection of the editor, absent as long as none is chosen.
- */
-connection_id: number | null, 
-/**
- * SQL text of the editor.
- */
-sql: string, };
+export type Editor = {
+  /**
+   * Id of the editor.
+   */
+  id: number;
+  /**
+   * Name given by the user, empty string for the default name.
+   */
+  name: string;
+  /**
+   * Connection of the editor, absent as long as none is chosen.
+   */
+  connection_id: number | null;
+  /**
+   * SQL text of the editor.
+   */
+  sql: string;
+};

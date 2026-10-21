@@ -4,32 +4,33 @@ import type { SavedResult } from "./SavedResult";
 /**
  * Saved result tab.
  */
-export type ResultTab = { 
-/**
- * Id of the tab.
- */
-id: number, 
-/**
- * Number of the query in its batch.
- */
-query: number, 
-/**
- * Text of the query.
- */
-sql: string, 
-/**
- * Name given by the user, empty string for the default label.
- */
-name: string, 
-/**
- * Pinned tab: it stays when the queries are run again.
- */
-pinned: boolean, 
-/**
- * State of the result.
- */
-result: SavedResult, 
-/**
- * Rows received.
- */
-rows: Array<Array<string | null>>, };
+export type ResultTab = {
+  /**
+   * Id of the tab.
+   */
+  id: number;
+  /**
+   * Number of the query in its batch.
+   */
+  query: number;
+  /**
+   * Text of the query.
+   */
+  sql: string;
+  /**
+   * Name given by the user, empty string for the default label.
+   */
+  name: string;
+  /**
+   * Pinned tab: it stays when the queries are run again.
+   */
+  pinned: boolean;
+  /**
+   * State of the result.
+   */
+  result: SavedResult;
+  /**
+   * Rows received.
+   */
+  rows: Array<Array<string | null>>;
+};

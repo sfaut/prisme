@@ -4,20 +4,21 @@ import type { ErrorDetail } from "./ErrorDetail";
 /**
  * Syntax error to underline in the editor.
  */
-export type SyntaxIssue = { 
-/**
- * Start of the underlined passage, in UTF-16 units.
- */
-start: number, 
-/**
- * End of the underlined passage, in UTF-16 units.
- */
-end: number, 
-/**
- * Message shown on hover, in English.
- */
-message: string, 
-/**
- * What the SQL parser says, for the interface to introduce it.
- */
-detail: ErrorDetail, };
+export type SyntaxIssue = {
+  /**
+   * Start of the underlined passage, in UTF-16 units.
+   */
+  start: number;
+  /**
+   * End of the underlined passage, in UTF-16 units.
+   */
+  end: number;
+  /**
+   * Message shown on hover, in English.
+   */
+  message: string;
+  /**
+   * What the SQL parser says, for the interface to introduce it.
+   */
+  detail: ErrorDetail;
+};

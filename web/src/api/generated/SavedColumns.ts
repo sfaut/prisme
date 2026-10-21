@@ -5,38 +5,39 @@ import type { LimitReport } from "./LimitReport";
 /**
  * Columns of a result and what comes with them (`columns` message).
  */
-export type SavedColumns = { 
-/**
- * Names of the columns.
- */
-columns: Array<string>, 
-/**
- * For each column, are its values right-aligned?
- */
-right_aligned: Array<boolean>, 
-/**
- * Type of each column; empty for a result saved before columns were
- * typed.
- */
-types: Array<ColumnTypeInfo>, 
-/**
- * Text actually run.
- */
-sql: string, 
-/**
- * Handling of the row limit.
- */
-limit: LimitReport, 
-/**
- * Maximum number of rows, `null` if unknown.
- */
-expected_rows: number | null, 
-/**
- * Execution time measured by the server, in microseconds.
- */
-execution_us: number, 
-/**
- * End of the execution, in milliseconds since the Unix epoch; 0 for a
- * result saved before it was recorded.
- */
-executed_at: number, };
+export type SavedColumns = {
+  /**
+   * Names of the columns.
+   */
+  columns: Array<string>;
+  /**
+   * For each column, are its values right-aligned?
+   */
+  right_aligned: Array<boolean>;
+  /**
+   * Type of each column; empty for a result saved before columns were
+   * typed.
+   */
+  types: Array<ColumnTypeInfo>;
+  /**
+   * Text actually run.
+   */
+  sql: string;
+  /**
+   * Handling of the row limit.
+   */
+  limit: LimitReport;
+  /**
+   * Maximum number of rows, `null` if unknown.
+   */
+  expected_rows: number | null;
+  /**
+   * Execution time measured by the server, in microseconds.
+   */
+  execution_us: number;
+  /**
+   * End of the execution, in milliseconds since the Unix epoch; 0 for a
+   * result saved before it was recorded.
+   */
+  executed_at: number;
+};

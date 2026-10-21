@@ -3,8 +3,9 @@
 /**
  * New order of a list: ids in display order.
  */
-export type Order = { 
-/**
- * Ids, from first to last.
- */
-ids: Array<number>, };
+export type Order = {
+  /**
+   * Ids, from first to last.
+   */
+  ids: Array<number>;
+};

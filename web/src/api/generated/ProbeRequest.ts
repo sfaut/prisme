@@ -4,13 +4,14 @@ import type { NewConnection } from "./NewConnection";
 /**
  * Typed settings to test, before saving them.
  */
-export type ProbeRequest = { 
-/**
- * Connection as typed; only the name is not used.
- */
-connection: NewConnection, 
-/**
- * Saved connection being edited: if the typed password is empty, its own
- * is used. Absent for a creation.
- */
-saved_id?: number, };
+export type ProbeRequest = {
+  /**
+   * Connection as typed; only the name is not used.
+   */
+  connection: NewConnection;
+  /**
+   * Saved connection being edited: if the typed password is empty, its own
+   * is used. Absent for a creation.
+   */
+  saved_id?: number;
+};

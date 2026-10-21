@@ -3,43 +3,44 @@
 /**
  * Connection to save, as typed by the user.
  */
-export type NewConnection = { 
-/**
- * Name chosen by the user, unique among their connections.
- */
-name: string, 
-/**
- * Host name or IP address of the server.
- */
-host: string, 
-/**
- * TCP port of the server.
- */
-port: number, 
-/**
- * Connection account.
- */
-username: string, 
-/**
- * Password of the account, encrypted before storage.
- */
-password: string, 
-/**
- * Database selected on connection. Absent or empty: none.
- */
-database_name?: string, 
-/**
- * Queries to run each time a connection opens, separated by ";":
- * session settings only. Absent or empty: none.
- */
-init_sql?: string, 
-/**
- * Delay during which a session stays open after its page is closed, in
- * minutes (0: closed at once). Absent: 5 minutes.
- */
-session_timeout_minutes?: number, 
-/**
- * Does the explorer show the system databases (`information_schema`,
- * `mysql`...)? Absent: yes.
- */
-show_system_schemas?: boolean, };
+export type NewConnection = {
+  /**
+   * Name chosen by the user, unique among their connections.
+   */
+  name: string;
+  /**
+   * Host name or IP address of the server.
+   */
+  host: string;
+  /**
+   * TCP port of the server.
+   */
+  port: number;
+  /**
+   * Connection account.
+   */
+  username: string;
+  /**
+   * Password of the account, encrypted before storage.
+   */
+  password: string;
+  /**
+   * Database selected on connection. Absent or empty: none.
+   */
+  database_name?: string;
+  /**
+   * Queries to run each time a connection opens, separated by ";":
+   * session settings only. Absent or empty: none.
+   */
+  init_sql?: string;
+  /**
+   * Delay during which a session stays open after its page is closed, in
+   * minutes (0: closed at once). Absent: 5 minutes.
+   */
+  session_timeout_minutes?: number;
+  /**
+   * Does the explorer show the system databases (`information_schema`,
+   * `mysql`...)? Absent: yes.
+   */
+  show_system_schemas?: boolean;
+};

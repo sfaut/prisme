@@ -4,13 +4,14 @@ import type { TypeFamily } from "./TypeFamily";
 /**
  * Type of a result column: its family and its native name.
  */
-export type ColumnTypeInfo = { 
-/**
- * Family of the type.
- */
-family: TypeFamily, 
-/**
- * Name of the type in the server's dialect: `INT UNSIGNED`,
- * `DECIMAL(10,2)`, `VARCHAR(20)`, `DATETIME(6)`...
- */
-name: string, };
+export type ColumnTypeInfo = {
+  /**
+   * Family of the type.
+   */
+  family: TypeFamily;
+  /**
+   * Name of the type in the server's dialect: `INT UNSIGNED`,
+   * `DECIMAL(10,2)`, `VARCHAR(20)`, `DATETIME(6)`...
+   */
+  name: string;
+};

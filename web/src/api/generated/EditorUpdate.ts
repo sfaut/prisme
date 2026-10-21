@@ -3,16 +3,17 @@
 /**
  * Change of an editor: name, text and connection, all sent.
  */
-export type EditorUpdate = { 
-/**
- * Name, empty string for the default name.
- */
-name: string, 
-/**
- * SQL text.
- */
-sql: string, 
-/**
- * Connection, absent for none.
- */
-connection_id: number | null, };
+export type EditorUpdate = {
+  /**
+   * Name, empty string for the default name.
+   */
+  name: string;
+  /**
+   * SQL text.
+   */
+  sql: string;
+  /**
+   * Connection, absent for none.
+   */
+  connection_id: number | null;
+};

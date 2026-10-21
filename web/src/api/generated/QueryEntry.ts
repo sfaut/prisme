@@ -4,54 +4,55 @@ import type { Action } from "./Action";
 /**
  * Query of the history, as the interface receives it.
  */
-export type QueryEntry = { 
-/**
- * Number of the query in the history.
- */
-id: number, 
-/**
- * Instant the query was sent, in UTC, in ISO 8601 format.
- */
-started_at: string, 
-/**
- * What sent the query.
- */
-action: Action, 
-/**
- * Name of the connection, empty if unknown.
- */
-connection_name: string, 
-/**
- * Text of the query, as sent.
- */
-sql: string, 
-/**
- * Execution time, in microseconds: until the result, or, for a result
- * read in streaming, until its columns.
- */
-duration_us: number, 
-/**
- * Transfer time of the rows of a result read in streaming, in
- * microseconds; 0 when not measured.
- */
-transfer_us: number, 
-/**
- * Does the query return rows?
- */
-returns_rows: boolean, 
-/**
- * Number of rows read.
- */
-row_count: number, 
-/**
- * Rows changed by a write.
- */
-affected_rows: number, 
-/**
- * Were rows beyond the limit dropped?
- */
-truncated: boolean, 
-/**
- * Failure message, empty on success.
- */
-error: string, };
+export type QueryEntry = {
+  /**
+   * Number of the query in the history.
+   */
+  id: number;
+  /**
+   * Instant the query was sent, in UTC, in ISO 8601 format.
+   */
+  started_at: string;
+  /**
+   * What sent the query.
+   */
+  action: Action;
+  /**
+   * Name of the connection, empty if unknown.
+   */
+  connection_name: string;
+  /**
+   * Text of the query, as sent.
+   */
+  sql: string;
+  /**
+   * Execution time, in microseconds: until the result, or, for a result
+   * read in streaming, until its columns.
+   */
+  duration_us: number;
+  /**
+   * Transfer time of the rows of a result read in streaming, in
+   * microseconds; 0 when not measured.
+   */
+  transfer_us: number;
+  /**
+   * Does the query return rows?
+   */
+  returns_rows: boolean;
+  /**
+   * Number of rows read.
+   */
+  row_count: number;
+  /**
+   * Rows changed by a write.
+   */
+  affected_rows: number;
+  /**
+   * Were rows beyond the limit dropped?
+   */
+  truncated: boolean;
+  /**
+   * Failure message, empty on success.
+   */
+  error: string;
+};

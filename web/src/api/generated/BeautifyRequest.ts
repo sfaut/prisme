@@ -5,20 +5,21 @@ import type { Flavor } from "./Flavor";
 /**
  * SQL to beautify, with the server's context.
  */
-export type BeautifyRequest = { 
-/**
- * SQL text, one or more queries.
- */
-sql: string, 
-/**
- * Names of the catalog: the names of the query take their spelling.
- */
-catalog?: BeautifyCatalog, 
-/**
- * Flavor of the server, for its keywords; when absent, MySQL.
- */
-flavor?: Flavor, 
-/**
- * Version announced by the server; when absent, all the dialect's keywords.
- */
-version?: string, };
+export type BeautifyRequest = {
+  /**
+   * SQL text, one or more queries.
+   */
+  sql: string;
+  /**
+   * Names of the catalog: the names of the query take their spelling.
+   */
+  catalog?: BeautifyCatalog;
+  /**
+   * Flavor of the server, for its keywords; when absent, MySQL.
+   */
+  flavor?: Flavor;
+  /**
+   * Version announced by the server; when absent, all the dialect's keywords.
+   */
+  version?: string;
+};

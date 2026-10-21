@@ -3,20 +3,21 @@
 /**
  * Editor closed less than 24 hours ago, reopenable.
  */
-export type ClosedEditor = { 
-/**
- * Id of the editor.
- */
-id: number, 
-/**
- * Name given by the user, empty string for the default name.
- */
-name: string, 
-/**
- * Start of the SQL text, to recognise it.
- */
-sql: string, 
-/**
- * Closing date, in UTC, in ISO 8601 format.
- */
-closed_at: string, };
+export type ClosedEditor = {
+  /**
+   * Id of the editor.
+   */
+  id: number;
+  /**
+   * Name given by the user, empty string for the default name.
+   */
+  name: string;
+  /**
+   * Start of the SQL text, to recognise it.
+   */
+  sql: string;
+  /**
+   * Closing date, in UTC, in ISO 8601 format.
+   */
+  closed_at: string;
+};

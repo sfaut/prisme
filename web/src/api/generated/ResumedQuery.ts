@@ -4,39 +4,40 @@ import type { SavedResult } from "./SavedResult";
 /**
  * Query of the last batch, as sent to a WebSocket that reattaches.
  */
-export type ResumedQuery = { 
-/**
- * Number of the query in the batch, repeated by its next messages.
- */
-query: number, 
-/**
- * Saved result tab of the query.
- */
-tab: number, 
-/**
- * Text of the query, without a separator.
- */
-sql: string, 
-/**
- * State of the result.
- */
-result: SavedResult, 
-/**
- * Rows received so far.
- */
-rows: Array<Array<string | null>>, 
-/**
- * Time elapsed since the query started, in microseconds; absent while
- * it waits for its turn.
- */
-started_us_ago: number | null, 
-/**
- * Time elapsed since its columns were received, in microseconds; absent
- * before.
- */
-columns_us_ago: number | null, 
-/**
- * Does the query refresh its tab? The saved result of the tab then
- * stays until the query ends successfully.
- */
-refresh: boolean, };
+export type ResumedQuery = {
+  /**
+   * Number of the query in the batch, repeated by its next messages.
+   */
+  query: number;
+  /**
+   * Saved result tab of the query.
+   */
+  tab: number;
+  /**
+   * Text of the query, without a separator.
+   */
+  sql: string;
+  /**
+   * State of the result.
+   */
+  result: SavedResult;
+  /**
+   * Rows received so far.
+   */
+  rows: Array<Array<string | null>>;
+  /**
+   * Time elapsed since the query started, in microseconds; absent while
+   * it waits for its turn.
+   */
+  started_us_ago: number | null;
+  /**
+   * Time elapsed since its columns were received, in microseconds; absent
+   * before.
+   */
+  columns_us_ago: number | null;
+  /**
+   * Does the query refresh its tab? The saved result of the tab then
+   * stays until the query ends successfully.
+   */
+  refresh: boolean;
+};

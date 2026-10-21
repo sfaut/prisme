@@ -5,28 +5,29 @@ import type { DebugSource } from "./DebugSource";
 /**
  * Line of the debug log, as the interface receives it.
  */
-export type DebugEntry = { 
-/**
- * Number of the line in the log.
- */
-id: number, 
-/**
- * Instant of the line, in UTC, in ISO 8601 format.
- */
-logged_at: string, 
-/**
- * Level of the line.
- */
-level: DebugLevel, 
-/**
- * Origin of the line.
- */
-source: DebugSource, 
-/**
- * Module that wrote it (`prisme::api`), empty for the interface.
- */
-target: string, 
-/**
- * Text of the line, with its fields (`key=value`).
- */
-message: string, };
+export type DebugEntry = {
+  /**
+   * Number of the line in the log.
+   */
+  id: number;
+  /**
+   * Instant of the line, in UTC, in ISO 8601 format.
+   */
+  logged_at: string;
+  /**
+   * Level of the line.
+   */
+  level: DebugLevel;
+  /**
+   * Origin of the line.
+   */
+  source: DebugSource;
+  /**
+   * Module that wrote it (`prisme::api`), empty for the interface.
+   */
+  target: string;
+  /**
+   * Text of the line, with its fields (`key=value`).
+   */
+  message: string;
+};

@@ -3,8 +3,9 @@
 /**
  * Beautified SQL.
  */
-export type SqlText = { 
-/**
- * SQL text, one or more queries.
- */
-sql: string, };
+export type SqlText = {
+  /**
+   * SQL text, one or more queries.
+   */
+  sql: string;
+};

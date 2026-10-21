@@ -3,16 +3,17 @@
 /**
  * Trigger of a table.
  */
-export type TriggerInfo = { 
-/**
- * Name of the trigger.
- */
-name: string, 
-/**
- * Timing: `BEFORE` or `AFTER`.
- */
-timing: string, 
-/**
- * Event: `INSERT`, `UPDATE` or `DELETE`.
- */
-event: string, };
+export type TriggerInfo = {
+  /**
+   * Name of the trigger.
+   */
+  name: string;
+  /**
+   * Timing: `BEFORE` or `AFTER`.
+   */
+  timing: string;
+  /**
+   * Event: `INSERT`, `UPDATE` or `DELETE`.
+   */
+  event: string;
+};

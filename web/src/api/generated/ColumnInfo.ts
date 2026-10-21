@@ -3,24 +3,25 @@
 /**
  * Column of a table.
  */
-export type ColumnInfo = { 
-/**
- * Name of the column.
- */
-name: string, 
-/**
- * Full type, as declared (`varchar(50)`, `int unsigned`...).
- */
-column_type: string, 
-/**
- * Does the column accept NULL?
- */
-nullable: boolean, 
-/**
- * Role in the indexes: `PRI`, `UNI`, `MUL`, or empty string.
- */
-key: string, 
-/**
- * Value assigned automatically on insert (`AUTO_INCREMENT`)?
- */
-auto_increment: boolean, };
+export type ColumnInfo = {
+  /**
+   * Name of the column.
+   */
+  name: string;
+  /**
+   * Full type, as declared (`varchar(50)`, `int unsigned`...).
+   */
+  column_type: string;
+  /**
+   * Does the column accept NULL?
+   */
+  nullable: boolean;
+  /**
+   * Role in the indexes: `PRI`, `UNI`, `MUL`, or empty string.
+   */
+  key: string;
+  /**
+   * Value assigned automatically on insert (`AUTO_INCREMENT`)?
+   */
+  auto_increment: boolean;
+};

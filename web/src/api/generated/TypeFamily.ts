@@ -3,4 +3,19 @@
 /**
  * Family of a column type, for the icon of the grid's header.
  */
-export type TypeFamily = "integer" | "decimal" | "float" | "text" | "binary" | "date" | "time" | "datetime" | "year" | "json" | "bit" | "enum" | "set" | "geometry" | "other";
+export type TypeFamily =
+  | "integer"
+  | "decimal"
+  | "float"
+  | "text"
+  | "binary"
+  | "date"
+  | "time"
+  | "datetime"
+  | "year"
+  | "json"
+  | "bit"
+  | "enum"
+  | "set"
+  | "geometry"
+  | "other";

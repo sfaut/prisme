@@ -3,12 +3,13 @@
 /**
  * Change of the profile requested by the user.
  */
-export type ProfileUpdate = { 
-/**
- * New first name, trimmed, at most `NAME_MAX_CHARS` characters.
- */
-first_name: string, 
-/**
- * New last name, trimmed, at most `NAME_MAX_CHARS` characters.
- */
-last_name: string, };
+export type ProfileUpdate = {
+  /**
+   * New first name, trimmed, at most `NAME_MAX_CHARS` characters.
+   */
+  first_name: string;
+  /**
+   * New last name, trimmed, at most `NAME_MAX_CHARS` characters.
+   */
+  last_name: string;
+};

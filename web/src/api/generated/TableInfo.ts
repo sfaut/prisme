@@ -4,12 +4,13 @@ import type { TableKind } from "./TableKind";
 /**
  * Table or view of a database.
  */
-export type TableInfo = { 
-/**
- * Name of the table.
- */
-name: string, 
-/**
- * Nature of the object.
- */
-kind: TableKind, };
+export type TableInfo = {
+  /**
+   * Name of the table.
+   */
+  name: string;
+  /**
+   * Nature of the object.
+   */
+  kind: TableKind;
+};

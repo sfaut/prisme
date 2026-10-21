@@ -3,12 +3,13 @@
 /**
  * Change of a result tab.
  */
-export type ResultTabUpdate = { 
-/**
- * Name, empty string for the default label.
- */
-name: string, 
-/**
- * Pinned tab?
- */
-pinned: boolean, };
+export type ResultTabUpdate = {
+  /**
+   * Name, empty string for the default label.
+   */
+  name: string;
+  /**
+   * Pinned tab?
+   */
+  pinned: boolean;
+};

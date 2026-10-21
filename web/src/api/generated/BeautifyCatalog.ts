@@ -4,20 +4,21 @@
  * Names of the connection's catalog, as defined (with their case), for the
  * beautifier. Empty if the catalog is not loaded.
  */
-export type BeautifyCatalog = { 
-/**
- * Databases.
- */
-schemas: Array<string>, 
-/**
- * Tables and views, all databases together.
- */
-tables: Array<string>, 
-/**
- * Columns, all tables together.
- */
-columns: Array<string>, 
-/**
- * Stored functions and procedures.
- */
-routines: Array<string>, };
+export type BeautifyCatalog = {
+  /**
+   * Databases.
+   */
+  schemas: Array<string>;
+  /**
+   * Tables and views, all databases together.
+   */
+  tables: Array<string>;
+  /**
+   * Columns, all tables together.
+   */
+  columns: Array<string>;
+  /**
+   * Stored functions and procedures.
+   */
+  routines: Array<string>;
+};

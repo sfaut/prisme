@@ -3,4 +3,15 @@
 /**
  * Field of an input checked by the server.
  */
-export type Field = "name" | "host" | "username" | "database_name" | "port" | "init_sql" | "session_timeout_minutes" | "first_name" | "last_name" | "history_retention_days" | "debug_retention_days";
+export type Field =
+  | "name"
+  | "host"
+  | "username"
+  | "database_name"
+  | "port"
+  | "init_sql"
+  | "session_timeout_minutes"
+  | "first_name"
+  | "last_name"
+  | "history_retention_days"
+  | "debug_retention_days";

@@ -4,58 +4,59 @@ import type { Flavor } from "./Flavor";
 /**
  * Saved connection, without its password.
  */
-export type ConnectionSummary = { 
-/**
- * Id of the connection.
- */
-id: number, 
-/**
- * Name chosen by the user.
- */
-name: string, 
-/**
- * Family of engines (`mysql` for MySQL and MariaDB).
- */
-engine: string, 
-/**
- * Host name or IP address of the server.
- */
-host: string, 
-/**
- * TCP port of the server.
- */
-port: number, 
-/**
- * Connection account.
- */
-username: string, 
-/**
- * Database selected on connection, empty string if none.
- */
-database_name: string, 
-/**
- * Queries run each time a connection opens, empty string if none.
- */
-init_sql: string, 
-/**
- * Keep-alive delay of a session after its page is closed, in minutes.
- */
-session_timeout_minutes: number, 
-/**
- * Does the explorer show the system databases?
- */
-show_system_schemas: boolean, 
-/**
- * Flavor of the server seen on the last successful connection, `null`
- * if the connection never succeeded.
- */
-server_flavor: Flavor | null, 
-/**
- * Version of the server seen on the last successful connection (raw
- * result of `SELECT VERSION()`), `null` if the connection never succeeded.
- */
-server_version: string | null, 
-/**
- * Date it was saved, in UTC, in ISO 8601 format.
- */
-created_at: string, };
+export type ConnectionSummary = {
+  /**
+   * Id of the connection.
+   */
+  id: number;
+  /**
+   * Name chosen by the user.
+   */
+  name: string;
+  /**
+   * Family of engines (`mysql` for MySQL and MariaDB).
+   */
+  engine: string;
+  /**
+   * Host name or IP address of the server.
+   */
+  host: string;
+  /**
+   * TCP port of the server.
+   */
+  port: number;
+  /**
+   * Connection account.
+   */
+  username: string;
+  /**
+   * Database selected on connection, empty string if none.
+   */
+  database_name: string;
+  /**
+   * Queries run each time a connection opens, empty string if none.
+   */
+  init_sql: string;
+  /**
+   * Keep-alive delay of a session after its page is closed, in minutes.
+   */
+  session_timeout_minutes: number;
+  /**
+   * Does the explorer show the system databases?
+   */
+  show_system_schemas: boolean;
+  /**
+   * Flavor of the server seen on the last successful connection, `null`
+   * if the connection never succeeded.
+   */
+  server_flavor: Flavor | null;
+  /**
+   * Version of the server seen on the last successful connection (raw
+   * result of `SELECT VERSION()`), `null` if the connection never succeeded.
+   */
+  server_version: string | null;
+  /**
+   * Date it was saved, in UTC, in ISO 8601 format.
+   */
+  created_at: string;
+};

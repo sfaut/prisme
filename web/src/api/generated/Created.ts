@@ -3,8 +3,9 @@
 /**
  * Response to the creation of a resource.
  */
-export type Created = { 
-/**
- * Id of the created resource.
- */
-id: number, };
+export type Created = {
+  /**
+   * Id of the created resource.
+   */
+  id: number;
+};

@@ -3,8 +3,9 @@
 /**
  * Version of Prisme, as returned by the API.
  */
-export type AppVersion = { 
-/**
- * Version of the executable (`version` of `Cargo.toml`), for example `0.2.0`.
- */
-version: string, };
+export type AppVersion = {
+  /**
+   * Version of the executable (`version` of `Cargo.toml`), for example `0.2.0`.
+   */
+  version: string;
+};

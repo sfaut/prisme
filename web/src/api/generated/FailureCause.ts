@@ -3,24 +3,30 @@
 /**
  * Text written outside Prisme that explains a failure, as it was written.
  */
-export type FailureCause = { "source": "server", 
-/**
- * Error number of the server, for example 1146.
- */
-number: number, 
-/**
- * SQLSTATE of the error, for example `42S02`.
- */
-sqlstate: string, 
-/**
- * Message of the server.
- */
-message: string, } | { "source": "driver", 
-/**
- * Message of the driver.
- */
-message: string, } | { "source": "system", 
-/**
- * Message of the system.
- */
-message: string, };
+export type FailureCause = {
+  "source": "server";
+  /**
+   * Error number of the server, for example 1146.
+   */
+  number: number;
+  /**
+   * SQLSTATE of the error, for example `42S02`.
+   */
+  sqlstate: string;
+  /**
+   * Message of the server.
+   */
+  message: string;
+} | {
+  "source": "driver";
+  /**
+   * Message of the driver.
+   */
+  message: string;
+} | {
+  "source": "system";
+  /**
+   * Message of the system.
+   */
+  message: string;
+};

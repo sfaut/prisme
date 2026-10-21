@@ -4,4 +4,8 @@ import type { QueryRequest } from "./QueryRequest";
 /**
  * Message sent by the client.
  */
-export type ClientMessage = { "type": "run" } & QueryRequest | { "type": "cancel" } | { "type": "cancel_query", query: number, } | { "type": "use", database: string, };
+export type ClientMessage =
+  | { "type": "run" } & QueryRequest
+  | { "type": "cancel" }
+  | { "type": "cancel_query"; query: number }
+  | { "type": "use"; database: string };

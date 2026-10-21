@@ -4,18 +4,19 @@ import type { Flavor } from "./Flavor";
 /**
  * Identity of a server, obtained on connection.
  */
-export type ServerInfo = { 
-/**
- * MySQL or MariaDB.
- */
-flavor: Flavor, 
-/**
- * Raw result of `SELECT VERSION()`, for example `8.1.0` or `11.3.2-MariaDB-1:11.3.2+maria~ubu2204`.
- */
-version: string, 
-/**
- * Is the `ANSI_QUOTES` mode active on the session (directly, or through
- * the `ANSI` mode)? Double quotes then delimit identifiers, no longer
- * strings.
- */
-ansi_quotes: boolean, };
+export type ServerInfo = {
+  /**
+   * MySQL or MariaDB.
+   */
+  flavor: Flavor;
+  /**
+   * Raw result of `SELECT VERSION()`, for example `8.1.0` or `11.3.2-MariaDB-1:11.3.2+maria~ubu2204`.
+   */
+  version: string;
+  /**
+   * Is the `ANSI_QUOTES` mode active on the session (directly, or through
+   * the `ANSI` mode)? Double quotes then delimit identifiers, no longer
+   * strings.
+   */
+  ansi_quotes: boolean;
+};

@@ -3,16 +3,17 @@
 /**
  * Profile of a user, as returned by the API.
  */
-export type Profile = { 
-/**
- * Email address, read only here.
- */
-email: string, 
-/**
- * First name, empty until the user fills it in.
- */
-first_name: string, 
-/**
- * Last name, empty until the user fills it in.
- */
-last_name: string, };
+export type Profile = {
+  /**
+   * Email address, read only here.
+   */
+  email: string;
+  /**
+   * First name, empty until the user fills it in.
+   */
+  first_name: string;
+  /**
+   * Last name, empty until the user fills it in.
+   */
+  last_name: string;
+};

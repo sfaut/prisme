@@ -5,45 +5,46 @@ import type { SavedColumns } from "./SavedColumns";
 /**
  * Saved state of a result, filled as the session's messages arrive.
  */
-export type SavedResult = { 
-/**
- * Has the query started?
- */
-started: boolean, 
-/**
- * Has the query ended, successfully or not?
- */
-done: boolean, 
-/**
- * Failure message, in English, absent if the query succeeded or is still running.
- */
-error: string | null, 
-/**
- * What went wrong, for the interface to tell the user; absent for a
- * result saved before the details existed, whose `error` is shown as is.
- */
-error_detail: ErrorDetail | null, 
-/**
- * Columns, absent as long as they are not received (or without a result).
- */
-columns: SavedColumns | null, 
-/**
- * Number of rows received.
- */
-row_count: number, 
-/**
- * Was the result truncated by the limit?
- */
-truncated: boolean, 
-/**
- * Rows affected by a write.
- */
-affected_rows: number, 
-/**
- * Transfer time of the rows, measured by the server, in microseconds.
- */
-transfer_us: number, 
-/**
- * Size of the result's messages, in bytes.
- */
-bytes: number, };
+export type SavedResult = {
+  /**
+   * Has the query started?
+   */
+  started: boolean;
+  /**
+   * Has the query ended, successfully or not?
+   */
+  done: boolean;
+  /**
+   * Failure message, in English, absent if the query succeeded or is still running.
+   */
+  error: string | null;
+  /**
+   * What went wrong, for the interface to tell the user; absent for a
+   * result saved before the details existed, whose `error` is shown as is.
+   */
+  error_detail: ErrorDetail | null;
+  /**
+   * Columns, absent as long as they are not received (or without a result).
+   */
+  columns: SavedColumns | null;
+  /**
+   * Number of rows received.
+   */
+  row_count: number;
+  /**
+   * Was the result truncated by the limit?
+   */
+  truncated: boolean;
+  /**
+   * Rows affected by a write.
+   */
+  affected_rows: number;
+  /**
+   * Transfer time of the rows, measured by the server, in microseconds.
+   */
+  transfer_us: number;
+  /**
+   * Size of the result's messages, in bytes.
+   */
+  bytes: number;
+};

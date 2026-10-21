@@ -3,15 +3,16 @@
 /**
  * What a query appended at the end of the text needs.
  */
-export type TextEnd = { 
-/**
- * Separator in force at the end of the text: `;`, or that of the last
- * `DELIMITER` command.
- */
-delimiter: string, 
-/**
- * Where the separator of the last query is missing, in UTF-16 units:
- * right after its last significant character. `null` if the text ends
- * with no open query.
- */
-open_end: number | null, };
+export type TextEnd = {
+  /**
+   * Separator in force at the end of the text: `;`, or that of the last
+   * `DELIMITER` command.
+   */
+  delimiter: string;
+  /**
+   * Where the separator of the last query is missing, in UTF-16 units:
+   * right after its last significant character. `null` if the text ends
+   * with no open query.
+   */
+  open_end: number | null;
+};

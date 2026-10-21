@@ -6,16 +6,17 @@ import type { TableInfo } from "./TableInfo";
 /**
  * Objects of a database: tables and views, procedures and functions, events, by name.
  */
-export type SchemaObjects = { 
-/**
- * Tables and views.
- */
-tables: Array<TableInfo>, 
-/**
- * Procedures and functions.
- */
-routines: Array<RoutineInfo>, 
-/**
- * Scheduled events.
- */
-events: Array<EventInfo>, };
+export type SchemaObjects = {
+  /**
+   * Tables and views.
+   */
+  tables: Array<TableInfo>;
+  /**
+   * Procedures and functions.
+   */
+  routines: Array<RoutineInfo>;
+  /**
+   * Scheduled events.
+   */
+  events: Array<EventInfo>;
+};

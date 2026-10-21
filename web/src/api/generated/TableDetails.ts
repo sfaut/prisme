@@ -7,24 +7,25 @@ import type { TriggerInfo } from "./TriggerInfo";
 /**
  * Details of a table: columns, indexes, foreign keys and triggers.
  */
-export type TableDetails = { 
-/**
- * Name of the table.
- */
-table: string, 
-/**
- * Columns, in declaration order.
- */
-columns: Array<ColumnInfo>, 
-/**
- * Indexes, the primary key first, then by name.
- */
-indexes: Array<IndexInfo>, 
-/**
- * Foreign keys, by name.
- */
-foreign_keys: Array<ForeignKeyInfo>, 
-/**
- * Triggers, by timing, event and execution order.
- */
-triggers: Array<TriggerInfo>, };
+export type TableDetails = {
+  /**
+   * Name of the table.
+   */
+  table: string;
+  /**
+   * Columns, in declaration order.
+   */
+  columns: Array<ColumnInfo>;
+  /**
+   * Indexes, the primary key first, then by name.
+   */
+  indexes: Array<IndexInfo>;
+  /**
+   * Foreign keys, by name.
+   */
+  foreign_keys: Array<ForeignKeyInfo>;
+  /**
+   * Triggers, by timing, event and execution order.
+   */
+  triggers: Array<TriggerInfo>;
+};

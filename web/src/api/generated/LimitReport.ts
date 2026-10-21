@@ -3,4 +3,8 @@
 /**
  * Handling of the limit, as announced to the client.
  */
-export type LimitReport = "added" | "user_limit" | "not_applicable" | "unparsed";
+export type LimitReport =
+  | "added"
+  | "user_limit"
+  | "not_applicable"
+  | "unparsed";

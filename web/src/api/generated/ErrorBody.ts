@@ -4,12 +4,13 @@ import type { ErrorDetail } from "./ErrorDetail";
 /**
  * JSON body of an error response.
  */
-export type ErrorBody = { 
-/**
- * Message in English, as the logs keep it.
- */
-error: string, 
-/**
- * What went wrong, for the interface to tell the user.
- */
-detail: ErrorDetail, };
+export type ErrorBody = {
+  /**
+   * Message in English, as the logs keep it.
+   */
+  error: string;
+  /**
+   * What went wrong, for the interface to tell the user.
+   */
+  detail: ErrorDetail;
+};

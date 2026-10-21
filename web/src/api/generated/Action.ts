@@ -3,4 +3,12 @@
 /**
  * What sent a query to the server.
  */
-export type Action = "session" | "run" | "run_all" | "refresh" | "use" | "cancel" | "explorer" | "probe";
+export type Action =
+  | "session"
+  | "run"
+  | "run_all"
+  | "refresh"
+  | "use"
+  | "cancel"
+  | "explorer"
+  | "probe";

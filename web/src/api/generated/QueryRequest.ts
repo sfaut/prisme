@@ -4,29 +4,30 @@ import type { SelectionRange } from "./SelectionRange";
 /**
  * Run request sent by the client.
  */
-export type QueryRequest = { 
-/**
- * Whole text of the editor, one or more queries.
- */
-sql: string, 
-/**
- * Position of the cursor in UTF-16 units: only the query under the
- * cursor runs. Absent: the queries of `selection`, or all of them, in
- * parallel.
- */
-cursor?: number, 
-/**
- * Passages selected in the text, without a cursor: the queries they
- * touch run, in parallel. Absent or empty: all the queries.
- */
-selection?: Array<SelectionRange>, 
-/**
- * Row limit for these queries only, among the allowed choices.
- */
-row_limit?: number, 
-/**
- * Saved result tab to refresh: `sql` is then its query, run alone on the
- * session's connection (`cursor` and `selection` are ignored). The tab
- * stays, and only a complete result replaces its saved one.
- */
-tab?: number, };
+export type QueryRequest = {
+  /**
+   * Whole text of the editor, one or more queries.
+   */
+  sql: string;
+  /**
+   * Position of the cursor in UTF-16 units: only the query under the
+   * cursor runs. Absent: the queries of `selection`, or all of them, in
+   * parallel.
+   */
+  cursor?: number;
+  /**
+   * Passages selected in the text, without a cursor: the queries they
+   * touch run, in parallel. Absent or empty: all the queries.
+   */
+  selection?: Array<SelectionRange>;
+  /**
+   * Row limit for these queries only, among the allowed choices.
+   */
+  row_limit?: number;
+  /**
+   * Saved result tab to refresh: `sql` is then its query, run alone on the
+   * session's connection (`cursor` and `selection` are ignored). The tab
+   * stays, and only a complete result replaces its saved one.
+   */
+  tab?: number;
+};

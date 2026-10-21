@@ -4,12 +4,13 @@ import type { DebugLevel } from "./DebugLevel";
 /**
  * Notification shown by the interface.
  */
-export type Notification = { 
-/**
- * Level: `error` for a failure, `info` otherwise.
- */
-level: DebugLevel, 
-/**
- * Text of the notification, cut beyond 2,000 characters.
- */
-message: string, };
+export type Notification = {
+  /**
+   * Level: `error` for a failure, `info` otherwise.
+   */
+  level: DebugLevel;
+  /**
+   * Text of the notification, cut beyond 2,000 characters.
+   */
+  message: string;
+};

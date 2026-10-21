@@ -3,25 +3,26 @@
 /**
  * Settings of a user, as returned by the API.
  */
-export type Settings = { 
-/**
- * Default row limit.
- */
-row_limit: number, 
-/**
- * Allowed limits, to build the interface's list of choices.
- */
-row_limit_choices: Array<number>, 
-/**
- * Are the query sessions in read-only mode? On by default: the database
- * then refuses the writes too.
- */
-read_only_session: boolean, 
-/**
- * Days the queries of the console's history are kept, 30 by default.
- */
-history_retention_days: number, 
-/**
- * Days the lines of the console's debug log are kept, 30 by default.
- */
-debug_retention_days: number, };
+export type Settings = {
+  /**
+   * Default row limit.
+   */
+  row_limit: number;
+  /**
+   * Allowed limits, to build the interface's list of choices.
+   */
+  row_limit_choices: Array<number>;
+  /**
+   * Are the query sessions in read-only mode? On by default: the database
+   * then refuses the writes too.
+   */
+  read_only_session: boolean;
+  /**
+   * Days the queries of the console's history are kept, 30 by default.
+   */
+  history_retention_days: number;
+  /**
+   * Days the lines of the console's debug log are kept, 30 by default.
+   */
+  debug_retention_days: number;
+};

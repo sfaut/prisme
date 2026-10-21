@@ -3,24 +3,25 @@
 /**
  * Foreign key of a table.
  */
-export type ForeignKeyInfo = { 
-/**
- * Name of the constraint.
- */
-name: string, 
-/**
- * Columns of the table, in the order of the key.
- */
-columns: Array<string>, 
-/**
- * Database of the referenced table.
- */
-referenced_schema: string, 
-/**
- * Referenced table.
- */
-referenced_table: string, 
-/**
- * Referenced columns, in the same order as `columns`.
- */
-referenced_columns: Array<string>, };
+export type ForeignKeyInfo = {
+  /**
+   * Name of the constraint.
+   */
+  name: string;
+  /**
+   * Columns of the table, in the order of the key.
+   */
+  columns: Array<string>;
+  /**
+   * Database of the referenced table.
+   */
+  referenced_schema: string;
+  /**
+   * Referenced table.
+   */
+  referenced_table: string;
+  /**
+   * Referenced columns, in the same order as `columns`.
+   */
+  referenced_columns: Array<string>;
+};

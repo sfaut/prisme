@@ -7,100 +7,152 @@ import type { Flavor } from "./Flavor";
 /**
  * What went wrong, for the user.
  */
-export type ErrorDetail = { "code": "not_found" } | { "code": "internal" } | { "code": "no_connection" } | { "code": "field_length", 
-/**
- * Field checked.
- */
-field: Field, 
-/**
- * Characters at least.
- */
-min: number, 
-/**
- * Characters at most.
- */
-max: number, 
-/**
- * Characters received.
- */
-length: number, } | { "code": "field_range", 
-/**
- * Field checked.
- */
-field: Field, 
-/**
- * Smallest value allowed.
- */
-min: number, 
-/**
- * Largest value allowed.
- */
-max: number, } | { "code": "row_limit_not_allowed", 
-/**
- * Limit received.
- */
-value: number, 
-/**
- * Limits allowed.
- */
-choices: Array<number>, } | { "code": "duplicate_connection_name", 
-/**
- * Name taken.
- */
-name: string, } | { "code": "init_sql_not_understood", 
-/**
- * Query refused.
- */
-statement: string, } | { "code": "init_sql_global_setting", 
-/**
- * Query refused.
- */
-statement: string, } | { "code": "init_sql_not_setting", 
-/**
- * Query refused.
- */
-statement: string, } | { "code": "connect", 
-/**
- * Why.
- */
-failure: ConnectFailure, } | { "code": "missing_version" } | { "code": "init_query_failed", 
-/**
- * Query that failed.
- */
-statement: string, 
-/**
- * Answer of the server, or message of the driver.
- */
-cause: FailureCause, } | { "code": "query_failed", 
-/**
- * Flavor of the server, when the connection told it.
- */
-flavor: Flavor | null, 
-/**
- * Answer of the server, or message of the driver or of the system.
- */
-cause: FailureCause, } | { "code": "catalog_unreadable", 
-/**
- * Database being read, absent for the list of the databases.
- */
-schema: string | null, 
-/**
- * Flavor of the server.
- */
-flavor: Flavor, 
-/**
- * Answer of the server, or message of the driver.
- */
-cause: FailureCause, } | { "code": "query_interrupted" } | { "code": "session_closed" } | { "code": "no_query" } | { "code": "multiple_queries", 
-/**
- * Queries received.
- */
-count: number, } | { "code": "write_refused" } | { "code": "unparsed_query_refused" } | { "code": "settings_unreadable" } | { "code": "invalid_message", 
-/**
- * Message of the JSON reader.
- */
-cause: string, } | { "code": "query_not_understood", 
-/**
- * Message of the SQL parser (`sqlparser`).
- */
-cause: string, };
+export type ErrorDetail =
+  | { "code": "not_found" }
+  | { "code": "internal" }
+  | { "code": "no_connection" }
+  | {
+    "code": "field_length";
+    /**
+     * Field checked.
+     */
+    field: Field;
+    /**
+     * Characters at least.
+     */
+    min: number;
+    /**
+     * Characters at most.
+     */
+    max: number;
+    /**
+     * Characters received.
+     */
+    length: number;
+  }
+  | {
+    "code": "field_range";
+    /**
+     * Field checked.
+     */
+    field: Field;
+    /**
+     * Smallest value allowed.
+     */
+    min: number;
+    /**
+     * Largest value allowed.
+     */
+    max: number;
+  }
+  | {
+    "code": "row_limit_not_allowed";
+    /**
+     * Limit received.
+     */
+    value: number;
+    /**
+     * Limits allowed.
+     */
+    choices: Array<number>;
+  }
+  | {
+    "code": "duplicate_connection_name";
+    /**
+     * Name taken.
+     */
+    name: string;
+  }
+  | {
+    "code": "init_sql_not_understood";
+    /**
+     * Query refused.
+     */
+    statement: string;
+  }
+  | {
+    "code": "init_sql_global_setting";
+    /**
+     * Query refused.
+     */
+    statement: string;
+  }
+  | {
+    "code": "init_sql_not_setting";
+    /**
+     * Query refused.
+     */
+    statement: string;
+  }
+  | {
+    "code": "connect";
+    /**
+     * Why.
+     */
+    failure: ConnectFailure;
+  }
+  | { "code": "missing_version" }
+  | {
+    "code": "init_query_failed";
+    /**
+     * Query that failed.
+     */
+    statement: string;
+    /**
+     * Answer of the server, or message of the driver.
+     */
+    cause: FailureCause;
+  }
+  | {
+    "code": "query_failed";
+    /**
+     * Flavor of the server, when the connection told it.
+     */
+    flavor: Flavor | null;
+    /**
+     * Answer of the server, or message of the driver or of the system.
+     */
+    cause: FailureCause;
+  }
+  | {
+    "code": "catalog_unreadable";
+    /**
+     * Database being read, absent for the list of the databases.
+     */
+    schema: string | null;
+    /**
+     * Flavor of the server.
+     */
+    flavor: Flavor;
+    /**
+     * Answer of the server, or message of the driver.
+     */
+    cause: FailureCause;
+  }
+  | { "code": "query_interrupted" }
+  | { "code": "session_closed" }
+  | { "code": "no_query" }
+  | {
+    "code": "multiple_queries";
+    /**
+     * Queries received.
+     */
+    count: number;
+  }
+  | { "code": "write_refused" }
+  | { "code": "unparsed_query_refused" }
+  | { "code": "settings_unreadable" }
+  | {
+    "code": "invalid_message";
+    /**
+     * Message of the JSON reader.
+     */
+    cause: string;
+  }
+  | {
+    "code": "query_not_understood";
+    /**
+     * Message of the SQL parser (`sqlparser`).
+     */
+    cause: string;
+  };

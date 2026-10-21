@@ -3,17 +3,18 @@
 /**
  * Index of a table.
  */
-export type IndexInfo = { 
-/**
- * Name of the index (`PRIMARY` for the primary key).
- */
-name: string, 
-/**
- * Indexed columns, in the order of the index. A computed part (MySQL
- * functional index) appears as `(expression)`.
- */
-columns: Array<string>, 
-/**
- * Unique index?
- */
-unique: boolean, };
+export type IndexInfo = {
+  /**
+   * Name of the index (`PRIMARY` for the primary key).
+   */
+  name: string;
+  /**
+   * Indexed columns, in the order of the index. A computed part (MySQL
+   * functional index) appears as `(expression)`.
+   */
+  columns: Array<string>;
+  /**
+   * Unique index?
+   */
+  unique: boolean;
+};

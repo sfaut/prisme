@@ -3,12 +3,13 @@
 /**
  * Scheduled event of a database (`CREATE EVENT`, MySQL and MariaDB).
  */
-export type EventInfo = { 
-/**
- * Name of the event.
- */
-name: string, 
-/**
- * Running on its schedule (`ENABLED`), or paused (`DISABLED`).
- */
-enabled: boolean, };
+export type EventInfo = {
+  /**
+   * Name of the event.
+   */
+  name: string;
+  /**
+   * Running on its schedule (`ENABLED`), or paused (`DISABLED`).
+   */
+  enabled: boolean;
+};

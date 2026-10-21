@@ -3,12 +3,13 @@
 /**
  * Passage of the editor's text selected by the user.
  */
-export type SelectionRange = { 
-/**
- * Start of the passage, in UTF-16 units.
- */
-start: number, 
-/**
- * End of the passage, in UTF-16 units, excluded.
- */
-end: number, };
+export type SelectionRange = {
+  /**
+   * Start of the passage, in UTF-16 units.
+   */
+  start: number;
+  /**
+   * End of the passage, in UTF-16 units, excluded.
+   */
+  end: number;
+};

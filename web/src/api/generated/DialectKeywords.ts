@@ -5,20 +5,21 @@
  * (`crates/dialects/keywords/*.yaml` files): the editor's highlighting sorts
  * them into its word classes.
  */
-export type DialectKeywords = { 
-/**
- * Reserved words.
- */
-reserved: Array<string>, 
-/**
- * Non-reserved keywords.
- */
-keywords: Array<string>, 
-/**
- * Column types.
- */
-types: Array<string>, 
-/**
- * Words that designate a value (`NULL`, `CURRENT_DATE`...).
- */
-literals: Array<string>, };
+export type DialectKeywords = {
+  /**
+   * Reserved words.
+   */
+  reserved: Array<string>;
+  /**
+   * Non-reserved keywords.
+   */
+  keywords: Array<string>;
+  /**
+   * Column types.
+   */
+  types: Array<string>;
+  /**
+   * Words that designate a value (`NULL`, `CURRENT_DATE`...).
+   */
+  literals: Array<string>;
+};

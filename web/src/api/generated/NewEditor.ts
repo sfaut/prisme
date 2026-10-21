@@ -3,8 +3,9 @@
 /**
  * Creation of an editor.
  */
-export type NewEditor = { 
-/**
- * Initial connection, absent for none.
- */
-connection_id?: number, };
+export type NewEditor = {
+  /**
+   * Initial connection, absent for none.
+   */
+  connection_id?: number;
+};

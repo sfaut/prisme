@@ -3,25 +3,26 @@
 /**
  * Query of a batch, as announced to the client.
  */
-export type BatchQuery = { 
-/**
- * Number of the query in the batch, repeated by its messages.
- */
-query: number, 
-/**
- * Saved result tab of the query (session of an editor), 0 if the session
- * does not save its results.
- */
-tab: number, 
-/**
- * Text of the query, without a separator.
- */
-sql: string, 
-/**
- * Start of the query in the editor's text, in UTF-16 units.
- */
-start: number, 
-/**
- * End of the query in the editor's text, in UTF-16 units.
- */
-end: number, };
+export type BatchQuery = {
+  /**
+   * Number of the query in the batch, repeated by its messages.
+   */
+  query: number;
+  /**
+   * Saved result tab of the query (session of an editor), 0 if the session
+   * does not save its results.
+   */
+  tab: number;
+  /**
+   * Text of the query, without a separator.
+   */
+  sql: string;
+  /**
+   * Start of the query in the editor's text, in UTF-16 units.
+   */
+  start: number;
+  /**
+   * End of the query in the editor's text, in UTF-16 units.
+   */
+  end: number;
+};

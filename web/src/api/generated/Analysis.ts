@@ -6,16 +6,17 @@ import type { TextEnd } from "./TextEnd";
 /**
  * Result of the analysis.
  */
-export type Analysis = { 
-/**
- * Queries of the text, in order.
- */
-statements: Array<StatementSpan>, 
-/**
- * Syntax errors, at most one per query.
- */
-errors: Array<SyntaxIssue>, 
-/**
- * End of the text, for a query appended to it.
- */
-text_end: TextEnd, };
+export type Analysis = {
+  /**
+   * Queries of the text, in order.
+   */
+  statements: Array<StatementSpan>;
+  /**
+   * Syntax errors, at most one per query.
+   */
+  errors: Array<SyntaxIssue>;
+  /**
+   * End of the text, for a query appended to it.
+   */
+  text_end: TextEnd;
+};
