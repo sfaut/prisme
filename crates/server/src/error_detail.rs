@@ -191,7 +191,8 @@ pub enum ErrorDetail {
         kinds: Vec<WriteKind>,
     },
     /// A write that no switch allows: procedure call, database, trigger,
-    /// account, file, server or session setting, transaction...
+    /// account, file, server setting, transaction, read-only mode or
+    /// autocommit of the session...
     #[error("write refused: no setting allows this statement")]
     WriteForbidden,
     /// A query that Prisme cannot parse, so cannot prove to be a read.

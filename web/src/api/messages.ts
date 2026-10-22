@@ -202,7 +202,7 @@ export function describe(detail: ErrorDetail): string {
         : `Écriture refusée : ${statements} n’est pas autorisé dans les Paramètres.`
     }
     case 'write_forbidden':
-      return 'Écriture refusée : aucun paramètre n’autorise cette instruction (appel de procédure, base de données, déclencheur, compte, fichier, réglage du serveur ou de la session, transaction…).'
+      return 'Écriture refusée : aucun paramètre n’autorise cette instruction (appel de procédure, base de données, déclencheur, compte, fichier, réglage du serveur, transaction, lecture seule ou autocommit de la session…).'
     case 'unparsed_query_refused':
       return 'Requête refusée : Prisme ne sait pas l’analyser, il ne peut donc pas vérifier qu’elle est une lecture.'
     case 'settings_unreadable':

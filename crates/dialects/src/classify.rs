@@ -11,6 +11,12 @@
 //! creates the view again. A write that no switch covers (`CALL`, database,
 //! trigger, account, file, server setting...) is forbidden.
 //!
+//! A setting of the session (`SET @v = 1`, `SET SESSION sql_mode = ...`,
+//! `SET NAMES`) writes nothing in the database: it is always allowed, except
+//! when it would lift the read-only mode or open a transaction
+//! (`transaction_read_only`, `tx_read_only`, `autocommit`,
+//! `SET TRANSACTION`).
+//!
 //! Also tells whether a query can change the current database of the
 //! session (`changes_database`): the session reads it again only then.
 //!
@@ -35,10 +41,14 @@ use crate::parse::{Parsed, parse_statements};
 pub enum StatementKind {
     /// Read: `SELECT` that returns rows, `SHOW`, `DESCRIBE`, `EXPLAIN`, `USE`.
     Read,
+    /// Setting of the session (`SET @v = 1`...), with reads at most: allowed,
+    /// it only makes sense on the connection of the session.
+    Setting,
     /// Write of data or schema, allowed when each of its kinds is.
     Write(BTreeSet<WriteKind>),
     /// Write that no switch allows: procedure call, database, trigger,
-    /// account, file, server or session setting, transaction...
+    /// account, file, server setting, transaction, read-only mode or
+    /// autocommit of the session...
     Forbidden,
     /// Query that cannot be parsed: its nature is unknown.
     Unparsed,
@@ -143,9 +153,14 @@ pub fn classify(sql: &str, dialect: Dialect) -> StatementKind {
         return StatementKind::Unparsed;
     };
     let mut kinds = BTreeSet::new();
+    let mut setting = false;
     for statement in &statements {
         let needed = match statement {
             Parsed::Sql(statement) if is_read(statement) => Some(Vec::new()),
+            Parsed::Sql(Statement::Set(set)) if is_session_setting(set) => {
+                setting = true;
+                Some(Vec::new())
+            }
             Parsed::Sql(statement) => write_kinds(statement),
             Parsed::MySql(statement) => Some(vec![mysql_write_kind(statement)]),
         };
@@ -154,10 +169,44 @@ pub fn classify(sql: &str, dialect: Dialect) -> StatementKind {
         };
         kinds.extend(needed);
     }
-    if kinds.is_empty() {
-        StatementKind::Read
-    } else {
+    if !kinds.is_empty() {
         StatementKind::Write(kinds)
+    } else if setting {
+        StatementKind::Setting
+    } else {
+        StatementKind::Read
+    }
+}
+
+/// Variables that keep the session in its mode: read-only, and one
+/// transaction per query (`autocommit`).
+const GUARDED_VARIABLES: [&str; 3] = ["transaction_read_only", "tx_read_only", "autocommit"];
+
+/// Is a `SET` a setting of the session that is always allowed? Neither
+/// global nor on a variable of `GUARDED_VARIABLES`; `SET TRANSACTION` and
+/// the other forms are not.
+fn is_session_setting(set: &Set) -> bool {
+    let guarded = |name: &str| {
+        let name = name.to_ascii_lowercase();
+        let name = name.strip_prefix("@@").unwrap_or(&name);
+        let name = ["session.", "local."]
+            .iter()
+            .find_map(|scope| name.strip_prefix(scope))
+            .unwrap_or(name);
+        GUARDED_VARIABLES.contains(&name)
+    };
+    match set {
+        Set::SingleAssignment { variable, .. } => {
+            !is_global(set) && !guarded(&variable.to_string())
+        }
+        Set::MultipleAssignments { assignments } => {
+            !is_global(set)
+                && !assignments
+                    .iter()
+                    .any(|assignment| guarded(&assignment.name.to_string()))
+        }
+        Set::SetNames { .. } | Set::SetNamesDefault {} | Set::SetTimeZone { .. } => true,
+        _ => false,
     }
 }
 
@@ -353,6 +402,27 @@ mod tests {
     }
 
     #[test]
+    fn allows_the_settings_of_the_session() {
+        for sql in [
+            "SET @a = 1",
+            "SET @a = 1, @b = 'x'",
+            "SET SESSION sql_mode = 'ANSI_QUOTES'",
+            "SET @@session.sql_mode = ''",
+            "SET LOCAL time_zone = '+00:00'",
+            "SET sql_safe_updates = 1",
+            "SET NAMES utf8mb4",
+            "SET @autocommit = 0",
+            "SET @a = 1; SELECT @a",
+        ] {
+            assert_eq!(kind(sql), StatementKind::Setting, "query: {sql}");
+        }
+        assert_eq!(
+            kind("SET @a = 1; DELETE FROM t"),
+            StatementKind::Write([WriteKind::Delete].into())
+        );
+    }
+
+    #[test]
     fn reads() {
         for sql in [
             "SELECT * FROM t",
@@ -448,6 +518,13 @@ mod tests {
             "DROP TRIGGER g",
             "GRANT SELECT ON t TO u",
             "SET GLOBAL max_connections = 10",
+            "SET @@global.sql_mode = ''",
+            "SET SESSION TRANSACTION READ WRITE",
+            "SET TRANSACTION ISOLATION LEVEL READ COMMITTED",
+            "SET SESSION transaction_read_only = OFF",
+            "SET @@tx_read_only = 0",
+            "SET autocommit = 0",
+            "SET @a = 1, @@session.autocommit = 0",
             "SELECT * INTO t2 FROM t",
             "START TRANSACTION",
             "DELETE FROM t; CALL p()",
@@ -457,6 +534,7 @@ mod tests {
         // Refused too, as `sqlparser` does not parse their MySQL syntax.
         for sql in [
             "LOAD DATA INFILE 'f.csv' INTO TABLE t",
+            "SET PERSIST max_connections = 10",
             "SELECT * INTO OUTFILE '/tmp/t.csv' FROM t",
             "CREATE TRIGGER g BEFORE INSERT ON t FOR EACH ROW SET NEW.a = 1",
         ] {

@@ -243,6 +243,12 @@ fn refuses_the_writes_not_allowed_and_unparsable_queries() {
     };
     assert_eq!(refusal("SELECT 1", None), None);
     assert_eq!(refusal("SHOW TABLES", None), None);
+    // A setting of the session, even read-only; not one that lifts it.
+    assert_eq!(refusal("SET @a = 1", None), None);
+    assert_eq!(
+        refusal("SET SESSION TRANSACTION READ WRITE", Some(&WriteKind::ALL)),
+        Some(ErrorDetail::WriteForbidden)
+    );
     // Read-only sessions: no write, whatever is allowed.
     assert_eq!(
         refusal("DELETE FROM t", None),

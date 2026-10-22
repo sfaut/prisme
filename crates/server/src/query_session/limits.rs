@@ -54,7 +54,7 @@ pub(super) fn write_refusal(
     writes: Option<&BTreeSet<WriteKind>>,
 ) -> Option<ErrorDetail> {
     match classify(sql, dialect) {
-        StatementKind::Read => None,
+        StatementKind::Read | StatementKind::Setting => None,
         StatementKind::Write(kinds) => {
             let Some(allowed) = writes else {
                 return Some(ErrorDetail::WriteReadOnly);
