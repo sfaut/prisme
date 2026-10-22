@@ -116,6 +116,35 @@ describe('SqlEditor', () => {
     wrapper.unmount()
   })
 
+  it('removes a whole tab stop with Backspace in the indentation and Ctrl+[', () => {
+    const wrapper = mount(SqlEditor, {
+      props: {
+        flavor: 'mysql',
+        schema: {},
+        version: null,
+        ansiQuotes: false,
+        defaultSchema: null,
+        modelValue: '',
+      },
+      attachTo: document.body,
+    })
+    const content = wrapper.find('.cm-content').element
+    const press = (init: KeyboardEventInit) =>
+      content.dispatchEvent(
+        new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }),
+      )
+    const last = () => {
+      const updates = wrapper.emitted('update:modelValue') ?? []
+      return updates[updates.length - 1]
+    }
+    wrapper.vm.changeText({ from: 0, insert: '        SELECT' }, 8)
+    press({ key: 'Backspace', keyCode: 8 })
+    expect(last()).toEqual(['    SELECT'])
+    press({ key: '[', keyCode: 219, ctrlKey: true })
+    expect(last()).toEqual(['SELECT'])
+    wrapper.unmount()
+  })
+
   it('scrolls on Ctrl+Down without moving the cursor', () => {
     const wrapper = mount(SqlEditor, {
       props: {

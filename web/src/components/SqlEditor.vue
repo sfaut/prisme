@@ -14,8 +14,9 @@
   (Cmd+Enter on Mac) emits `run` with the cursor position;
   Ctrl+Shift+Enter emits `run-all` with the selected passages (none: all
   the queries). Tab and Shift+Tab indent by stops of
-  four spaces, Enter goes to a new line at the indentation of the line it
-  leaves (`editorIndent.ts`). Ctrl+Up and Ctrl+Down scroll the text by one
+  four spaces, like Backspace in the indentation and Ctrl+[ / Ctrl+], Enter
+  goes to a new line at the indentation of the line it leaves
+  (`editorIndent.ts`). Ctrl+Up and Ctrl+Down scroll the text by one
   line without moving the cursor (`editorScroll.ts`). The blanks at the end
   of a line go when the cursor leaves it, except inside a string
   (`editorTrim.ts`). The text binds with `v-model`.
@@ -38,7 +39,12 @@ import { fetchKeywords } from '@/api/keywords'
 import { describe } from '@/api/messages'
 
 import { currentStatement, setStatements } from './currentStatement'
-import { dedentLines, indentOrInsertSpaces, insertNewlineKeepingIndentation } from './editorIndent'
+import {
+  dedentLines,
+  editorIndentation,
+  indentOrInsertSpaces,
+  insertNewlineKeepingIndentation,
+} from './editorIndent'
 import { scrollKeymap } from './editorScroll'
 import { editorTheme } from './editorTheme'
 import { trimTrailingBlanks } from './editorTrim'
@@ -222,6 +228,7 @@ onMounted(() => {
         ...scrollKeymap,
       ]),
       basicSetup,
+      editorIndentation,
       // Strict completion: start of the name or initials, never scattered letters.
       autocompletion({ filterStrict: true }),
       editorTheme(),

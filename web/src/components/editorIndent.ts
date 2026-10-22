@@ -11,6 +11,8 @@
  * - Shift+Tab: the touched lines move back one level, with or without a
  *   selection.
  * - Enter: the new line takes the indentation of the line the cursor leaves.
+ * - Backspace in the indentation, and CodeMirror's Ctrl+[ and Ctrl+]: one
+ *   tab stop, through CodeMirror's indentation unit (two spaces by default).
  *
  * A reindented line has its leading tabs replaced by spaces: its
  * indentation is recomputed in columns, then rewritten in spaces only,
@@ -20,6 +22,7 @@
  * Escape then Tab, or Ctrl+M which leaves Tab to the browser.
  */
 
+import { indentUnit } from '@codemirror/language'
 import {
   type ChangeSpec,
   EditorSelection,
@@ -33,6 +36,12 @@ import {
  * Gap between two tab stops, in columns.
  */
 export const TAB_SIZE = 4
+
+/**
+ * Indentation unit of CodeMirror, one tab stop in spaces: Backspace in the
+ * indentation and Ctrl+[ remove a whole level, Ctrl+] adds one.
+ */
+export const editorIndentation = indentUnit.of(' '.repeat(TAB_SIZE))
 
 /**
  * Direction of a reindentation: one level more, or one less.
