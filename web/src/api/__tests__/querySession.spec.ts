@@ -249,7 +249,7 @@ describe('tabProgress', () => {
     })
     expect(tabProgress(first!)).toBe('done')
 
-    applyMessage(state, failed(1, { code: 'write_refused' }))
+    applyMessage(state, failed(1, { code: 'write_read_only' }))
     expect(tabProgress(second!)).toBe('error')
   })
 })

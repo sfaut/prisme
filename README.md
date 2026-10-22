@@ -173,7 +173,7 @@ Each editor has its own connection, its own session (and therefore its own trans
 - When the editor holds several queries, the one Ctrl+Enter would run is **highlighted**.
 - Syntax errors are **underlined in red** as you type, with the message on hover.
 - **Row limit**: when a query has no `LIMIT`, Prisme shows at most 1,000 rows (adjustable up to 50,000 with the list next to the buttons) and reports a truncated result. A query that has its own `LIMIT` runs as written.
-- **Read-only**: only reads are allowed for now (`SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN`, `USE`). Writes are refused. On top of that, the **Sessions en lecture seule** (Read-only sessions) setting, on by default, makes the database itself refuse the writes (see [Top bar](#top-bar)).
+- **Writes**: reads are always allowed (`SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN`, `USE`). Each write is allowed by its own switch of the settings (**Écritures**, see [Top bar](#top-bar)), all off by default: `INSERT`, `UPDATE`, `DELETE`, then `CREATE`, `ALTER`, `RENAME`, `TRUNCATE`, `DROP` of the tables, `CREATE`, `DROP` of the views, functions and procedures, `CREATE`, `ALTER`, `DROP` of the events. `REPLACE` needs `INSERT` and `DELETE`, `INSERT ... ON DUPLICATE KEY UPDATE` needs `INSERT` and `UPDATE`, `CREATE INDEX` / `DROP INDEX` need `ALTER TABLE`, `ALTER VIEW` needs `CREATE VIEW`. The other writes are always refused: `CALL`, databases, triggers, `LOAD DATA`, accounts, `SET`, transactions, `SELECT ... INTO`. While **Sessions en lecture seule** (Read-only sessions), on by default, is on, the database itself refuses the writes, and Prisme refuses them all first. A procedure, function or event whose body is a `BEGIN ... END` block is written after a `DELIMITER` command (`DELIMITER //`, the body, `//`).
 
 ### Writing SQL
 
@@ -291,7 +291,7 @@ Both tabs are kept in the internal database, 30 days by default: the **Rétentio
 - **Theme**: the **Système / Clair / Sombre** (System / Light / Dark) list sets the theme of the whole interface. **Système** follows your computer's setting.
 - **Account** menu, the round avatar with your initials (those of your first and last names, or the first letter of your email address):
   - **Profil** (Profile): your last and first names, and your email address (read-only);
-  - **Paramètres** (Settings): the language of the interface (French only for now); the default row limit; **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; the **Indentation** of the SQL editor and of **Enjoliver**, from 1 to 8 spaces (4 by default); and how many days the [console](#console) keeps its history and its debug log.
+  - **Paramètres** (Settings): the language of the interface (French only for now); the default row limit; **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; **Écritures** (Writes), the switches of the writes allowed, greyed out while the sessions are read-only; the **Indentation** of the SQL editor and of **Enjoliver**, from 1 to 8 spaces (4 by default); and how many days the [console](#console) keeps its history and its debug log.
 
 ## Your data
 

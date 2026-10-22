@@ -1,6 +1,6 @@
 /**
- * Settings of the user: default row limit, read-only sessions, retention of
- * the console.
+ * Settings of the user: default row limit, read-only sessions and allowed
+ * writes, retention of the console, indentation.
  */
 
 import { request } from './http'

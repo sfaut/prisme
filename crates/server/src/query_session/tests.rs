@@ -12,20 +12,42 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
 use crate::api::{AppState, router};
 use crate::connections::{self, NewConnection};
 use crate::editors::{self, NewEditor};
+use crate::error_detail::ErrorDetail;
 use crate::master_key::MasterKey;
+use crate::settings::{self, SettingsUpdate};
 use crate::store;
 use prisme_dialects::Dialect;
+use prisme_dialects::classify::WriteKind;
+use std::collections::BTreeSet;
 
 type ClientSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 /// Starts Prisme on a free port, with a saved connection to `host:port`
 /// (root account without a password, `test` database) and an editor on
 /// this connection, and returns the server's address, the id of the
-/// connection and that of the editor.
+/// connection and that of the editor. The sessions are read-only.
 async fn start(host: &str, port: u16) -> (String, i64, i64) {
+    start_writing(host, port, None).await
+}
+
+/// Starts Prisme as `start` does; with `writes`, the sessions are not
+/// read-only and allow these writes.
+async fn start_writing(host: &str, port: u16, writes: Option<&[WriteKind]>) -> (String, i64, i64) {
     let db = store::open_in_memory();
     let key = MasterKey::generate();
     let user_id = store::ensure_user(&db, "test@example.com").unwrap();
+    if let Some(writes) = writes {
+        let current = settings::load(&db, user_id).unwrap();
+        let update = SettingsUpdate {
+            row_limit: current.row_limit,
+            read_only_session: false,
+            allowed_writes: writes.to_vec(),
+            history_retention_days: current.history_retention_days,
+            debug_retention_days: current.debug_retention_days,
+            indent_size: current.indent_size,
+        };
+        settings::update(&db, user_id, &update).unwrap();
+    }
     let new = NewConnection {
         name: "test".to_string(),
         host: host.to_string(),
@@ -213,23 +235,40 @@ async fn cancels_one_query_or_the_whole_batch() {
 }
 
 #[test]
-fn refuses_writes_and_unparsable_queries() {
+fn refuses_the_writes_not_allowed_and_unparsable_queries() {
+    let refusal = |sql: &str, writes: Option<&[WriteKind]>| {
+        let writes: Option<BTreeSet<WriteKind>> =
+            writes.map(|kinds| kinds.iter().copied().collect());
+        super::limits::write_refusal(sql, Dialect::MariaDb, writes.as_ref())
+    };
+    assert_eq!(refusal("SELECT 1", None), None);
+    assert_eq!(refusal("SHOW TABLES", None), None);
+    // Read-only sessions: no write, whatever is allowed.
     assert_eq!(
-        super::limits::write_refusal("SELECT 1", Dialect::MariaDb),
-        None
+        refusal("DELETE FROM t", None),
+        Some(ErrorDetail::WriteReadOnly)
     );
     assert_eq!(
-        super::limits::write_refusal("SHOW TABLES", Dialect::MariaDb),
-        None
+        refusal("WITH x AS (SELECT 1) DELETE FROM t", Some(&[])),
+        Some(ErrorDetail::WriteNotAllowed {
+            kinds: vec![WriteKind::Delete]
+        })
     );
-    assert!(super::limits::write_refusal("DELETE FROM t", Dialect::MariaDb).is_some());
-    assert!(
-        super::limits::write_refusal("WITH x AS (SELECT 1) DELETE FROM t", Dialect::MariaDb)
-            .is_some()
+    assert_eq!(refusal("DELETE FROM t", Some(&[WriteKind::Delete])), None);
+    // REPLACE needs both of its switches.
+    assert_eq!(
+        refusal("REPLACE INTO t VALUES (1)", Some(&[WriteKind::Insert])),
+        Some(ErrorDetail::WriteNotAllowed {
+            kinds: vec![WriteKind::Delete]
+        })
     );
-    assert!(
-        super::limits::write_refusal("SELECT * FROM t PROCEDURE ANALYSE()", Dialect::MariaDb)
-            .is_some()
+    assert_eq!(
+        refusal("CALL p()", Some(&WriteKind::ALL)),
+        Some(ErrorDetail::WriteForbidden)
+    );
+    assert_eq!(
+        refusal("SELECT * FROM t PROCEDURE ANALYSE()", Some(&WriteKind::ALL)),
+        Some(ErrorDetail::UnparsedQueryRefused)
     );
 }
 
@@ -252,6 +291,55 @@ async fn unknown_connection_is_refused() {
             .await
             .is_err()
     );
+}
+
+#[tokio::test]
+#[ignore = "requires Docker Desktop running"]
+async fn runs_the_writes_the_settings_allow() {
+    let server = Mariadb::default().start().await.unwrap();
+    let host = server.get_host().await.unwrap().to_string();
+    let port = server.get_host_port_ipv4(3306).await.unwrap();
+    let allowed = [
+        WriteKind::Insert,
+        WriteKind::CreateTable,
+        WriteKind::AlterTable,
+        WriteKind::CreateProcedure,
+    ];
+    let (address, id, _) = start_writing(&host, port, Some(&allowed)).await;
+    let (mut socket, _) = connect_async(format!("ws://{address}/api/connections/{id}/query"))
+        .await
+        .unwrap();
+    assert_eq!(next_json(&mut socket).await["type"], "ready");
+
+    for sql in [
+        "CREATE TABLE w (a INT)",
+        "INSERT INTO w VALUES (1), (2)",
+        "ALTER TABLE w ADD KEY k (a)",
+        "ALTER TABLE w RENAME KEY k TO j",
+        "ALTER TABLE w DROP KEY j",
+    ] {
+        let result = run_one(&mut socket, sql, None).await;
+        assert_eq!(result.end["type"], "done", "{sql}: {:?}", result.end);
+    }
+
+    // A procedure created after DELIMITER, its body kept whole.
+    let text =
+        "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT COUNT(*) FROM w; END//\nDELIMITER ;";
+    let (batch, results) = run(&mut socket, json!({ "sql": text, "cursor": 20 })).await;
+    assert_eq!(
+        batch["queries"][0]["sql"],
+        "CREATE PROCEDURE p() BEGIN SELECT COUNT(*) FROM w; END"
+    );
+    assert_eq!(results[0].end["type"], "done", "{:?}", results[0].end);
+
+    // A switch off, a write no switch allows.
+    let result = run_one(&mut socket, "DELETE FROM w", None).await;
+    assert_eq!(
+        result.end["detail"],
+        json!({ "code": "write_not_allowed", "kinds": ["delete"] })
+    );
+    let result = run_one(&mut socket, "CALL p()", None).await;
+    assert_eq!(result.end["detail"]["code"], "write_forbidden");
 }
 
 #[tokio::test]

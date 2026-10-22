@@ -11,6 +11,7 @@
 use std::fmt;
 
 use prisme_connectors::mysql::{ConnectFailure, FailureCause, Flavor, MysqlError};
+use prisme_dialects::classify::WriteKind;
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -177,9 +178,22 @@ pub enum ErrorDetail {
         /// Queries received.
         count: u32,
     },
-    /// A write, refused until the write switches exist.
-    #[error("write refused: writes are disabled until the write switches exist")]
-    WriteRefused,
+    /// A write, while the query sessions are read-only.
+    #[error("write refused: the query sessions are read-only")]
+    WriteReadOnly,
+    /// A write whose switches are off in the settings of the user.
+    #[error(
+        "write refused: {} not allowed in the settings",
+        kinds.iter().map(|kind| kind.as_str()).collect::<Vec<_>>().join(", ")
+    )]
+    WriteNotAllowed {
+        /// Kinds of write the query needs and the settings do not allow.
+        kinds: Vec<WriteKind>,
+    },
+    /// A write that no switch allows: procedure call, database, trigger,
+    /// account, file, server or session setting, transaction...
+    #[error("write refused: no setting allows this statement")]
+    WriteForbidden,
     /// A query that Prisme cannot parse, so cannot prove to be a read.
     #[error("query refused: Prisme cannot parse it, so it cannot check that it is a read")]
     UnparsedQueryRefused,

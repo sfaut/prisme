@@ -3,6 +3,7 @@ import type { ConnectFailure } from "./ConnectFailure";
 import type { FailureCause } from "./FailureCause";
 import type { Field } from "./Field";
 import type { Flavor } from "./Flavor";
+import type { WriteKind } from "./WriteKind";
 
 /**
  * What went wrong, for the user.
@@ -139,7 +140,15 @@ export type ErrorDetail =
      */
     count: number;
   }
-  | { "code": "write_refused" }
+  | { "code": "write_read_only" }
+  | {
+    "code": "write_not_allowed";
+    /**
+     * Kinds of write the query needs and the settings do not allow.
+     */
+    kinds: Array<WriteKind>;
+  }
+  | { "code": "write_forbidden" }
   | { "code": "unparsed_query_refused" }
   | { "code": "settings_unreadable" }
   | {

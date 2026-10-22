@@ -18,6 +18,15 @@ describe('messages of the errors', () => {
     )
   })
 
+  it('names the switches that a refused write needs', () => {
+    expect(describeError({ code: 'write_not_allowed', kinds: ['create_table'] })).toBe(
+      'Écriture refusée : CREATE [TEMPORARY] TABLE n’est pas autorisé dans les Paramètres.',
+    )
+    expect(describeError({ code: 'write_not_allowed', kinds: ['insert', 'delete'] })).toBe(
+      'Écriture refusée : INSERT, DELETE ne sont pas autorisés dans les Paramètres.',
+    )
+  })
+
   it('introduces the answer of the target server, quoted as it is', () => {
     expect(
       describeError({

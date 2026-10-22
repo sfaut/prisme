@@ -1,8 +1,10 @@
 //! Row limit and write refusal of the queries, as the client sees them. The
 //! rules are those of `docs/V1.md`, sections 2.3 and 2.4.
 
+use std::collections::BTreeSet;
+
 use prisme_dialects::Dialect;
-use prisme_dialects::classify::{StatementKind, classify};
+use prisme_dialects::classify::{StatementKind, WriteKind, classify};
 use prisme_dialects::limit::{LimitError, LimitOutcome};
 
 use super::protocol::LimitReport;
@@ -10,31 +12,57 @@ use crate::api::AppState;
 use crate::error_detail::ErrorDetail;
 use crate::settings::{self, check_row_limit};
 
-/// Row limit of a request: the requested one, otherwise the user's setting.
-pub(super) async fn row_limit(
+/// What the settings of the user let the queries of a request do, read when
+/// the request arrives.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct RunLimits {
+    /// Rows of a result shown at most: the requested limit, otherwise the
+    /// user's setting.
+    pub(super) max_rows: usize,
+    /// Writes allowed, `None` while the sessions are read-only.
+    pub(super) writes: Option<BTreeSet<WriteKind>>,
+}
+
+/// Limits of a request of user `user_id`, with its requested row limit.
+pub(super) async fn run_limits(
     state: &AppState,
     user_id: i64,
     requested: Option<u32>,
-) -> Result<u32, ErrorDetail> {
+) -> Result<RunLimits, ErrorDetail> {
     if let Some(row_limit) = requested {
-        return check_row_limit(row_limit).map_err(|error| error.detail());
+        check_row_limit(row_limit).map_err(|error| error.detail())?;
     }
-    state
+    let settings = state
         .with_db(move |db, _key| settings::load(db, user_id))
         .await
-        .map(|settings| settings.row_limit)
-        .map_err(|_| ErrorDetail::SettingsUnreadable)
+        .map_err(|_| ErrorDetail::SettingsUnreadable)?;
+    Ok(RunLimits {
+        max_rows: requested.unwrap_or(settings.row_limit) as usize,
+        writes: (!settings.read_only_session)
+            .then(|| settings.allowed_writes.into_iter().collect()),
+    })
 }
 
-/// Returns the reason for the refusal if the query is not a read.
+/// Returns the reason for the refusal if the query is neither a read nor a
+/// write of the kinds `writes` allows (`None`: read-only sessions).
 ///
-/// Writes stay refused as long as the write switches (stage 4 of the v1) do
-/// not exist. A query that cannot be parsed is refused too, as nothing proves
-/// it is a read.
-pub(super) fn write_refusal(sql: &str, dialect: Dialect) -> Option<ErrorDetail> {
+/// A write that no switch covers is refused, and so is a query that cannot
+/// be parsed, as nothing proves what it does.
+pub(super) fn write_refusal(
+    sql: &str,
+    dialect: Dialect,
+    writes: Option<&BTreeSet<WriteKind>>,
+) -> Option<ErrorDetail> {
     match classify(sql, dialect) {
         StatementKind::Read => None,
-        StatementKind::Write(_) | StatementKind::Forbidden => Some(ErrorDetail::WriteRefused),
+        StatementKind::Write(kinds) => {
+            let Some(allowed) = writes else {
+                return Some(ErrorDetail::WriteReadOnly);
+            };
+            let kinds: Vec<WriteKind> = kinds.difference(allowed).copied().collect();
+            (!kinds.is_empty()).then_some(ErrorDetail::WriteNotAllowed { kinds })
+        }
+        StatementKind::Forbidden => Some(ErrorDetail::WriteForbidden),
         StatementKind::Unparsed => Some(ErrorDetail::UnparsedQueryRefused),
     }
 }

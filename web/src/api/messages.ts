@@ -21,6 +21,7 @@ import type { FailureCause } from './generated/FailureCause'
 import type { Field } from './generated/Field'
 import type { Flavor } from './generated/Flavor'
 import { FLAVOR_NAMES } from './flavors'
+import { WRITE_KIND_STATEMENTS } from './writeKinds'
 
 /**
  * Label of each field, as the forms show it.
@@ -192,8 +193,16 @@ export function describe(detail: ErrorDetail): string {
       return 'Aucune requête à exécuter.'
     case 'multiple_queries':
       return `${number(detail.count)} requêtes reçues : une seule à la fois.`
-    case 'write_refused':
-      return 'Écriture refusée : les écritures restent désactivées tant que les interrupteurs d’écriture n’existent pas.'
+    case 'write_read_only':
+      return 'Écriture refusée : les sessions sont en lecture seule (Paramètres, « Sessions en lecture seule »).'
+    case 'write_not_allowed': {
+      const statements = detail.kinds.map((kind) => WRITE_KIND_STATEMENTS[kind]).join(', ')
+      return detail.kinds.length > 1
+        ? `Écriture refusée : ${statements} ne sont pas autorisés dans les Paramètres.`
+        : `Écriture refusée : ${statements} n’est pas autorisé dans les Paramètres.`
+    }
+    case 'write_forbidden':
+      return 'Écriture refusée : aucun paramètre n’autorise cette instruction (appel de procédure, base de données, déclencheur, compte, fichier, réglage du serveur ou de la session, transaction…).'
     case 'unparsed_query_refused':
       return 'Requête refusée : Prisme ne sait pas l’analyser, il ne peut donc pas vérifier qu’elle est une lecture.'
     case 'settings_unreadable':

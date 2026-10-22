@@ -1,15 +1,18 @@
 //! Settings of the user: the default row limit, added to the queries that do
 //! not write one (see `docs/V1.md`, section 2.3), the read-only mode of the
-//! query sessions (`docs/V1.md`, section 2.4), the retention of the
-//! console's history and debug log, and the indentation of the SQL editor.
+//! query sessions and the writes they allow (`docs/V1.md`, section 2.4), the
+//! retention of the console's history and debug log, and the indentation of
+//! the SQL editor.
 //!
 //! The settings are stored in the `users` table (see `migrations/0003_users_row_limit.sql`,
 //! `migrations/0011_users_read_only_session.sql`,
 //! `migrations/0014_users_console_retention.sql` and
-//! `migrations/0016_users_indent_size.sql`).
+//! `migrations/0016_users_indent_size.sql`), the allowed writes in the
+//! `user_allowed_writes` table (`migrations/0017_user_allowed_writes.sql`).
 //! Synchronous functions (`rusqlite`), called from blocking tasks.
 
 use crate::error_detail::{ErrorDetail, Field};
+use prisme_dialects::classify::WriteKind;
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -35,6 +38,9 @@ pub struct Settings {
     /// Are the query sessions in read-only mode? On by default: the database
     /// then refuses the writes too.
     pub read_only_session: bool,
+    /// Writes allowed when the sessions are not read-only, in the order of
+    /// `WriteKind::ALL`; none by default.
+    pub allowed_writes: Vec<WriteKind>,
     /// Days the queries of the console's history are kept, 30 by default.
     pub history_retention_days: u16,
     /// Days the lines of the console's debug log are kept, 30 by default.
@@ -51,6 +57,8 @@ pub struct SettingsUpdate {
     pub row_limit: u32,
     /// New read-only mode of the query sessions.
     pub read_only_session: bool,
+    /// New writes allowed (the others are not).
+    pub allowed_writes: Vec<WriteKind>,
     /// New retention of the history, in days (`RETENTION_DAYS`).
     pub history_retention_days: u16,
     /// New retention of the debug log, in days (`RETENTION_DAYS`).
@@ -151,13 +159,29 @@ pub fn load(db: &Connection, user_id: i64) -> Result<Settings, SettingsError> {
                 row_limit: row.get(0)?,
                 row_limit_choices: &ROW_LIMIT_CHOICES,
                 read_only_session: row.get(1)?,
+                allowed_writes: Vec::new(),
                 history_retention_days: row.get(2)?,
                 debug_retention_days: row.get(3)?,
                 indent_size: row.get(4)?,
             })
         },
     )?;
-    Ok(settings)
+    Ok(Settings {
+        allowed_writes: allowed_writes(db, user_id)?,
+        ..settings
+    })
+}
+
+/// Writes allowed to user `user_id`, in the order of `WriteKind::ALL`.
+fn allowed_writes(db: &Connection, user_id: i64) -> Result<Vec<WriteKind>, rusqlite::Error> {
+    let mut statement = db.prepare("SELECT kind FROM user_allowed_writes WHERE user_id = ?1")?;
+    let names = statement
+        .query_map(params![user_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(WriteKind::ALL
+        .into_iter()
+        .filter(|kind| names.iter().any(|name| name == kind.as_str()))
+        .collect())
 }
 
 /// Changes the settings of user `user_id` and returns the updated settings.
@@ -167,7 +191,8 @@ pub fn update(
     update: &SettingsUpdate,
 ) -> Result<Settings, SettingsError> {
     check_update(update)?;
-    db.execute(
+    let transaction = db.unchecked_transaction()?;
+    transaction.execute(
         "UPDATE users SET row_limit = ?1, read_only_session = ?2,
                 history_retention_days = ?3, debug_retention_days = ?4, indent_size = ?5
          WHERE id = ?6",
@@ -180,6 +205,17 @@ pub fn update(
             user_id
         ],
     )?;
+    transaction.execute(
+        "DELETE FROM user_allowed_writes WHERE user_id = ?1",
+        params![user_id],
+    )?;
+    for kind in &update.allowed_writes {
+        transaction.execute(
+            "INSERT OR IGNORE INTO user_allowed_writes (user_id, kind) VALUES (?1, ?2)",
+            params![user_id, kind.as_str()],
+        )?;
+    }
+    transaction.commit()?;
     load(db, user_id)
 }
 
@@ -193,10 +229,33 @@ mod tests {
         SettingsUpdate {
             row_limit,
             read_only_session: true,
+            allowed_writes: Vec::new(),
             history_retention_days: 30,
             debug_retention_days: 30,
             indent_size: 4,
         }
+    }
+
+    #[test]
+    fn allows_no_write_by_default_then_the_writes_chosen() {
+        let db = store::open_in_memory();
+        let user_id = store::ensure_user(&db, "a@example.com").unwrap();
+        assert!(load(&db, user_id).unwrap().allowed_writes.is_empty());
+
+        // Every kind is accepted by the table, and comes back in its order.
+        let mut changed = update_of(1_000);
+        changed.allowed_writes = WriteKind::ALL.into_iter().rev().collect();
+        assert_eq!(
+            update(&db, user_id, &changed).unwrap().allowed_writes,
+            WriteKind::ALL.to_vec()
+        );
+
+        changed.allowed_writes = vec![WriteKind::Delete, WriteKind::Insert, WriteKind::Insert];
+        update(&db, user_id, &changed).unwrap();
+        assert_eq!(
+            load(&db, user_id).unwrap().allowed_writes,
+            vec![WriteKind::Insert, WriteKind::Delete]
+        );
     }
 
     #[test]

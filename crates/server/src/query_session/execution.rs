@@ -16,7 +16,7 @@ use prisme_splitter::{Statement, statement_at, statements_in};
 use tokio::sync::Semaphore;
 use tracing::Instrument;
 
-use super::limits::{limit_error, report, write_refusal};
+use super::limits::{RunLimits, limit_error, report, write_refusal};
 use super::outbox::SessionStopped;
 use super::protocol::{SelectionRange, ServerMessage};
 use super::session::{Session, Summary};
@@ -42,15 +42,12 @@ impl Session<'_> {
         connection: &mut Connection,
         dialect: Dialect,
         sql: &str,
-        max_rows: usize,
+        limits: &RunLimits,
     ) -> Result<(), SessionStopped> {
         self.outbox
             .send(ServerMessage::Started { query: 0 })
             .await?;
-        let Some(summary) = self
-            .run_query(connection, dialect, 0, sql, max_rows)
-            .await?
-        else {
+        let Some(summary) = self.run_query(connection, dialect, 0, sql, limits).await? else {
             return Ok(());
         };
         let database = if changes_database(sql, dialect) {
@@ -76,7 +73,7 @@ impl Session<'_> {
         &self,
         statements: &[&Statement],
         dialect: Dialect,
-        max_rows: usize,
+        limits: &RunLimits,
         database: &Option<String>,
     ) -> Result<(), SessionStopped> {
         // All the queries start, but wait for a permit before opening their connection.
@@ -88,7 +85,7 @@ impl Session<'_> {
                 dialect,
                 query,
                 &statement.sql,
-                max_rows,
+                limits,
                 database,
             ));
         }
@@ -103,7 +100,7 @@ impl Session<'_> {
         dialect: Dialect,
         query: u32,
         sql: &str,
-        max_rows: usize,
+        limits: &RunLimits,
         database: &Option<String>,
     ) -> Result<(), SessionStopped> {
         let _permit = permits.acquire().await.map_err(|_| SessionStopped)?;
@@ -114,7 +111,7 @@ impl Session<'_> {
                 .await;
         }
         self.outbox.send(ServerMessage::Started { query }).await?;
-        self.run_on_new_connection(dialect, query, sql, max_rows, database)
+        self.run_on_new_connection(dialect, query, sql, limits, database)
             .await
     }
 
@@ -125,7 +122,7 @@ impl Session<'_> {
         dialect: Dialect,
         query: u32,
         sql: &str,
-        max_rows: usize,
+        limits: &RunLimits,
         database: &Option<String>,
     ) -> Result<(), SessionStopped> {
         let target = MysqlTarget {
@@ -140,7 +137,7 @@ impl Session<'_> {
             }
         };
         let result = match self
-            .run_query(&mut connection, dialect, query, sql, max_rows)
+            .run_query(&mut connection, dialect, query, sql, limits)
             .await
         {
             Ok(Some(summary)) => self.done(query, summary, database.clone()).await,
@@ -163,9 +160,10 @@ impl Session<'_> {
         dialect: Dialect,
         query: u32,
         sql: &str,
-        max_rows: usize,
+        limits: &RunLimits,
     ) -> Result<Option<Summary>, SessionStopped> {
-        if let Some(refusal) = write_refusal(sql, dialect) {
+        let max_rows = limits.max_rows;
+        if let Some(refusal) = write_refusal(sql, dialect, limits.writes.as_ref()) {
             self.outbox.error(Some(query), refusal).await?;
             return Ok(None);
         }

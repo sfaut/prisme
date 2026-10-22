@@ -836,6 +836,7 @@ mod tests {
             json!([1000, 2000, 5000, 10000, 50000])
         );
         assert_eq!(settings["read_only_session"], true);
+        assert_eq!(settings["allowed_writes"], json!([]));
         assert_eq!(settings["history_retention_days"], 30);
         assert_eq!(settings["debug_retention_days"], 30);
         assert_eq!(settings["indent_size"], 4);
@@ -844,6 +845,7 @@ mod tests {
             json!({
                 "row_limit": row_limit,
                 "read_only_session": false,
+                "allowed_writes": ["delete", "insert"],
                 "history_retention_days": history_retention_days,
                 "debug_retention_days": 7,
                 "indent_size": 2,
@@ -853,6 +855,7 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(settings["row_limit"], 10000);
         assert_eq!(settings["read_only_session"], false);
+        assert_eq!(settings["allowed_writes"], json!(["insert", "delete"]));
         assert_eq!(settings["history_retention_days"], 90);
         assert_eq!(settings["debug_retention_days"], 7);
         assert_eq!(settings["indent_size"], 2);
@@ -865,6 +868,10 @@ mod tests {
         wide["indent_size"] = json!(9);
         let (status, _) = send(&app, "PUT", "/api/settings", Some(wide)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
+        let mut unknown = update(1000, 90);
+        unknown["allowed_writes"] = json!(["grant"]);
+        let (status, _) = send(&app, "PUT", "/api/settings", Some(unknown)).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     }
 
     #[tokio::test]

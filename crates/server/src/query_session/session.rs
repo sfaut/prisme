@@ -16,7 +16,7 @@ use tracing::Instrument;
 
 use super::cancellation::Cancellation;
 use super::execution::chosen_statements;
-use super::limits::row_limit;
+use super::limits::run_limits;
 use super::outbox::{Outbox, SessionStopped};
 use super::protocol::{BatchQuery, QueryRequest, ServerMessage, SessionRequest};
 use crate::analyze::flavor_of;
@@ -211,8 +211,8 @@ impl Session<'_> {
         dialect: Dialect,
         request: QueryRequest,
     ) -> Result<(), SessionStopped> {
-        let max_rows = match row_limit(self.state, self.user_id, request.row_limit).await {
-            Ok(max_rows) => max_rows as usize,
+        let limits = match run_limits(self.state, self.user_id, request.row_limit).await {
+            Ok(limits) => limits,
             Err(detail) => return self.outbox.error(None, detail).await,
         };
         let statements = split(&request.sql);
@@ -236,11 +236,11 @@ impl Session<'_> {
         self.outbox.send(ServerMessage::Batch { queries }).await?;
 
         if cursor.is_some() {
-            self.run_on_session(connection, dialect, &chosen[0].sql, max_rows)
+            self.run_on_session(connection, dialect, &chosen[0].sql, &limits)
                 .await?;
         } else {
             let database = self.current_database();
-            self.run_in_parallel(&chosen, dialect, max_rows, &database)
+            self.run_in_parallel(&chosen, dialect, &limits, &database)
                 .await?;
         }
         self.outbox.send(ServerMessage::BatchDone).await

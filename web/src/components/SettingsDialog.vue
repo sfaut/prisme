@@ -1,8 +1,10 @@
 <!--
   Window of the settings, saved on the server: interface language, then those
-  of the queries, default row limit (shared with the choice in each SQL cell)
-  and read-only sessions, the indentation of the SQL editor, in spaces, then
-  the retention of the console's history and debug log, in days.
+  of the queries, default row limit (shared with the choice in each SQL cell),
+  read-only sessions and the writes they allow, by kind (greyed out while the
+  sessions are read-only: the database would refuse them), the indentation of
+  the SQL editor, in spaces, then the retention of the console's history and
+  debug log, in days.
   The language offers French only for now: the interface stays in French
   until it is made multilingual (see `docs/QUESTIONS.md`), and the choice is
   not saved yet. The planned languages (English, Spanish, German, Italian)
@@ -13,6 +15,8 @@
 import { computed, reactive, ref, watch } from 'vue'
 
 import { errorMessage } from '@/api/errorMessage'
+import type { WriteKind } from '@/api/generated/WriteKind'
+import { WRITE_KIND_GROUPS, WRITE_KIND_STATEMENTS, writeKindTooltip } from '@/api/writeKinds'
 import { useSettingsStore } from '@/stores/settings'
 
 import { DEFAULT_INDENT_SIZE } from './editorIndent'
@@ -72,12 +76,19 @@ const INDENT_MIN = 1
 const INDENT_MAX = 8
 
 /**
- * Current input: the row limit, the read-only mode, the indentation and the
- * retentions.
+ * Why the writes cannot be chosen while the sessions are read-only.
+ */
+const READ_ONLY_WRITES =
+  'Sans effet en lecture seule : décocher « Sessions en lecture seule » pour autoriser des écritures'
+
+/**
+ * Current input: the row limit, the read-only mode, the allowed writes, the
+ * indentation and the retentions.
  */
 const form = reactive({
   row_limit: DEFAULT_ROW_LIMIT,
   read_only_session: true,
+  allowed_writes: [] as WriteKind[],
   indent_size: DEFAULT_INDENT_SIZE,
   history_retention_days: DEFAULT_RETENTION,
   debug_retention_days: DEFAULT_RETENTION,
@@ -119,6 +130,7 @@ watch(open, async (isOpen) => {
   }
   form.row_limit = settings.settings?.row_limit ?? DEFAULT_ROW_LIMIT
   form.read_only_session = settings.settings?.read_only_session ?? true
+  form.allowed_writes = [...(settings.settings?.allowed_writes ?? [])]
   form.indent_size = settings.settings?.indent_size ?? DEFAULT_INDENT_SIZE
   form.history_retention_days = settings.settings?.history_retention_days ?? DEFAULT_RETENTION
   form.debug_retention_days = settings.settings?.debug_retention_days ?? DEFAULT_RETENTION
@@ -131,7 +143,7 @@ async function save(): Promise<void> {
   saving.value = true
   error.value = null
   try {
-    await settings.update({ ...form })
+    await settings.update({ ...form, allowed_writes: [...form.allowed_writes] })
     open.value = false
   } catch (failure) {
     error.value = errorMessage(failure)
@@ -173,6 +185,39 @@ async function save(): Promise<void> {
           Sessions en lecture seule
         </label>
       </ui-field>
+      <div
+        role="group"
+        aria-labelledby="settings-writes"
+        class="grid grid-cols-[--spacing(28)_minmax(0,1fr)] items-start gap-2"
+      >
+        <span id="settings-writes" class="text-fg-muted">Écritures</span>
+        <fieldset
+          :disabled="form.read_only_session"
+          class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 text-fg-strong disabled:opacity-50"
+          v-tooltip="form.read_only_session ? READ_ONLY_WRITES : null"
+        >
+          <template v-for="group in WRITE_KIND_GROUPS" :key="group.label">
+            <span class="text-fg-muted">{{ group.label }}</span>
+            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <label
+                v-for="{ kind, verb } in group.kinds"
+                :key="kind"
+                class="flex items-center gap-1 font-mono"
+                v-tooltip="form.read_only_session ? null : writeKindTooltip(kind)"
+              >
+                <input
+                  v-model="form.allowed_writes"
+                  type="checkbox"
+                  :value="kind"
+                  :aria-label="WRITE_KIND_STATEMENTS[kind]"
+                  class="size-icon accent-accent"
+                />
+                {{ verb }}
+              </label>
+            </div>
+          </template>
+        </fieldset>
+      </div>
       <ui-field label="Indentation">
         <div class="flex items-center gap-2">
           <ui-input
