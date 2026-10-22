@@ -193,6 +193,8 @@ export function describe(detail: ErrorDetail): string {
       return 'Aucune requête à exécuter.'
     case 'multiple_queries':
       return `${number(detail.count)} requêtes reçues : une seule à la fois.`
+    case 'query_skipped':
+      return 'Requête non exécutée : une requête précédente du lot a échoué.'
     case 'write_read_only':
       return 'Écriture refusée : les sessions sont en lecture seule (Paramètres, « Sessions en lecture seule »).'
     case 'write_not_allowed': {

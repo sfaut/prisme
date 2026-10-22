@@ -15,7 +15,7 @@ use tokio::sync::{mpsc, watch};
 use tracing::Instrument;
 
 use super::cancellation::Cancellation;
-use super::execution::chosen_statements;
+use super::execution::{chosen_statements, reads_only};
 use super::limits::run_limits;
 use super::outbox::{Outbox, SessionStopped};
 use super::protocol::{BatchQuery, QueryRequest, ServerMessage, SessionRequest};
@@ -203,8 +203,10 @@ impl Session<'_> {
     }
 
     /// Handles a request of the client: splits the text, then runs the query
-    /// under the cursor, or in parallel the queries of the selection, or all
-    /// of them. A refresh runs its query alone, like a cursor at the start.
+    /// under the cursor, or the queries of the selection, or all of them: in
+    /// parallel when they only read, otherwise one after the other on the
+    /// session's connection. A refresh runs its query alone, like a cursor at
+    /// the start.
     async fn handle(
         &self,
         connection: &mut Connection,
@@ -236,11 +238,14 @@ impl Session<'_> {
         self.outbox.send(ServerMessage::Batch { queries }).await?;
 
         if cursor.is_some() {
-            self.run_on_session(connection, dialect, &chosen[0].sql, &limits)
+            self.run_on_session(connection, dialect, 0, &chosen[0].sql, &limits)
                 .await?;
-        } else {
+        } else if reads_only(&chosen, dialect) {
             let database = self.current_database();
             self.run_in_parallel(&chosen, dialect, &limits, &database)
+                .await?;
+        } else {
+            self.run_in_sequence(connection, &chosen, dialect, &limits)
                 .await?;
         }
         self.outbox.send(ServerMessage::BatchDone).await

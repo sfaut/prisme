@@ -140,6 +140,7 @@ export type ErrorDetail =
      */
     count: number;
   }
+  | { "code": "query_skipped" }
   | { "code": "write_read_only" }
   | {
     "code": "write_not_allowed";

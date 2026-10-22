@@ -166,8 +166,8 @@ Each editor has its own connection, its own session (and therefore its own trans
 | Action | Key | Button |
 |---|---|---|
 | Run the query under the cursor | Ctrl+Enter | **Exécuter** (Run) |
-| Run every query of the editor, in parallel | Ctrl+Shift+Enter | **Exécuter tout** (Run all) |
-| Run the queries touched by the selected text, in parallel | Ctrl+Shift+Enter, with text selected | **Exécuter tout**, with text selected |
+| Run every query of the editor: in parallel if they only read, one after another as soon as one writes | Ctrl+Shift+Enter | **Exécuter tout** (Run all) |
+| Run the queries touched by the selected text, the same way | Ctrl+Shift+Enter, with text selected | **Exécuter tout**, with text selected |
 | Stop every running query | | The button that started them, **Exécuter** or **Exécuter tout**, again; the other one waits, disabled |
 
 - When the editor holds several queries, the one Ctrl+Enter would run is **highlighted**.

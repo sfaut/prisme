@@ -338,6 +338,20 @@ async fn runs_the_writes_the_settings_allow() {
     );
     assert_eq!(results[0].end["type"], "done", "{:?}", results[0].end);
 
+    // A batch that writes runs in the order of the text, on the session's
+    // connection (a temporary table is seen by the next queries), and stops
+    // at the first failure.
+    let text = "CREATE TEMPORARY TABLE tmp (a INT); INSERT INTO tmp VALUES (1); \
+                SELECT COUNT(*) FROM tmp; INSERT INTO missing VALUES (1); SELECT 1;";
+    let (_, results) = run(&mut socket, json!({ "sql": text })).await;
+    let ends: Vec<&str> = results
+        .iter()
+        .map(|result| result.end["type"].as_str().unwrap_or_default())
+        .collect();
+    assert_eq!(ends, ["done", "done", "done", "error", "error"]);
+    assert_eq!(results[2].rows, 1);
+    assert_eq!(results[4].end["detail"]["code"], "query_skipped");
+
     // A switch off, a write no switch allows.
     let result = run_one(&mut socket, "DELETE FROM w", None).await;
     assert_eq!(

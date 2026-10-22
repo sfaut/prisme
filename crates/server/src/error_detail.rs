@@ -178,6 +178,9 @@ pub enum ErrorDetail {
         /// Queries received.
         count: u32,
     },
+    /// Query of a batch run in sequence, not run because a previous one failed.
+    #[error("query not run: a previous query of the batch failed")]
+    QuerySkipped,
     /// A write, while the query sessions are read-only.
     #[error("write refused: the query sessions are read-only")]
     WriteReadOnly,

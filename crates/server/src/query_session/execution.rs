@@ -10,7 +10,7 @@ use futures_util::future::join_all;
 use prisme_connectors::mysql::sql_log::{self, Sent};
 use prisme_connectors::mysql::{self, Cell, Connection, MysqlTarget};
 use prisme_dialects::Dialect;
-use prisme_dialects::classify::changes_database;
+use prisme_dialects::classify::{StatementKind, changes_database, classify};
 use prisme_dialects::limit::{LimitOutcome, apply_default_limit, written_limit};
 use prisme_splitter::{Statement, statement_at, statements_in};
 use tokio::sync::Semaphore;
@@ -35,20 +35,25 @@ const ROW_BATCH_SIZE: usize = 500;
 const MAX_PARALLEL: usize = 8;
 
 impl Session<'_> {
-    /// Runs a query on the session's connection. The current database is read
-    /// again only if the query can change it.
+    /// Runs the query `query` of the batch on the session's connection. The
+    /// current database is read again only if the query can change it.
+    ///
+    /// Returns `false` if the query failed (the error has then already gone
+    /// to the client).
     pub(super) async fn run_on_session(
         &self,
         connection: &mut Connection,
         dialect: Dialect,
+        query: u32,
         sql: &str,
         limits: &RunLimits,
-    ) -> Result<(), SessionStopped> {
-        self.outbox
-            .send(ServerMessage::Started { query: 0 })
-            .await?;
-        let Some(summary) = self.run_query(connection, dialect, 0, sql, limits).await? else {
-            return Ok(());
+    ) -> Result<bool, SessionStopped> {
+        self.outbox.send(ServerMessage::Started { query }).await?;
+        let Some(summary) = self
+            .run_query(connection, dialect, query, sql, limits)
+            .await?
+        else {
+            return Ok(false);
         };
         let database = if changes_database(sql, dialect) {
             match mysql::current_database(connection).await {
@@ -58,13 +63,43 @@ impl Session<'_> {
                 }
                 Err(error) => {
                     let detail = ErrorDetail::of_mysql(&error, Some(flavor_of(dialect)));
-                    return self.outbox.error(Some(0), detail).await;
+                    self.outbox.error(Some(query), detail).await?;
+                    return Ok(false);
                 }
             }
         } else {
             self.current_database()
         };
-        self.done(0, summary, database).await
+        self.done(query, summary, database).await?;
+        Ok(true)
+    }
+
+    /// Runs the queries one after the other on the session's connection, in
+    /// the order of the text: a batch that writes or sets the session. After a
+    /// failure, the next queries do not run.
+    pub(super) async fn run_in_sequence(
+        &self,
+        connection: &mut Connection,
+        statements: &[&Statement],
+        dialect: Dialect,
+        limits: &RunLimits,
+    ) -> Result<(), SessionStopped> {
+        let mut failed = false;
+        for (query, statement) in (0_u32..).zip(statements.iter()) {
+            if failed {
+                let detail = if self.is_cancelled(query) {
+                    ErrorDetail::QueryInterrupted
+                } else {
+                    ErrorDetail::QuerySkipped
+                };
+                self.outbox.error(Some(query), detail).await?;
+                continue;
+            }
+            failed = !self
+                .run_on_session(connection, dialect, query, &statement.sql, limits)
+                .await?;
+        }
+        Ok(())
     }
 
     /// Runs all the queries in parallel, `MAX_PARALLEL` at most at a time, each
@@ -335,6 +370,15 @@ impl Session<'_> {
             })
             .await
     }
+}
+
+/// Do the queries only read? They can then run in parallel, each on its own
+/// connection. A write, a setting of the session or a query Prisme cannot
+/// parse needs the session's connection and the order of the text.
+pub(super) fn reads_only(statements: &[&Statement], dialect: Dialect) -> bool {
+    statements
+        .iter()
+        .all(|statement| classify(&statement.sql, dialect) == StatementKind::Read)
 }
 
 /// Rows of a result gathered into the batches of the `rows` messages: the

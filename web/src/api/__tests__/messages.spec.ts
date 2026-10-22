@@ -16,6 +16,9 @@ describe('messages of the errors', () => {
     expect(describeError({ code: 'query_interrupted' })).toBe(
       'Requête interrompue par l’utilisateur.',
     )
+    expect(describeError({ code: 'query_skipped' })).toBe(
+      'Requête non exécutée : une requête précédente du lot a échoué.',
+    )
   })
 
   it('names the switches that a refused write needs', () => {
