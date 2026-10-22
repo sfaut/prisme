@@ -2,8 +2,8 @@
   Contents of a line of the object explorer: the chevron of a level that can
   open, the icon of its level, its label (or the three columns of a column),
   the flavor badge of a source and its "⋮" menu, the button that acts on a
-  database (makes it the current one) or a table (shows its content), as
-  Ctrl+click does (emits `act`). Shared by the lines of the
+  database (makes it the current one), a table (shows its content) or an
+  index (writes the operations on it), as Ctrl+click does (emits `act`). Shared by the lines of the
   tree and by the lines pinned at the top of the tree while it scrolls
   (`ObjectExplorer.vue`), which only differ by their container.
 -->
@@ -25,6 +25,7 @@ import {
   ListOrdered,
   LoaderCircle,
   Notebook,
+  PencilRuler,
   PlugZap,
   ScrollText,
   Server,
@@ -64,8 +65,8 @@ defineEmits<{
 
 /**
  * Button of the line, shown on hover: on a database, makes it the current
- * database; on a table or a view, shows its content. `null` for the other
- * nodes.
+ * database; on a table or a view, shows its content; on an index, writes the
+ * operations on it. `null` for the other nodes.
  */
 const action = computed(() => {
   if (props.node.role === 'database') {
@@ -73,6 +74,13 @@ const action = computed(() => {
   }
   if (props.node.table !== undefined) {
     return { icon: Eye, label: 'Afficher le contenu', tooltip: 'Afficher le contenu (SELECT)' }
+  }
+  if (props.node.index !== undefined) {
+    return {
+      icon: PencilRuler,
+      label: 'Opérations sur l’index',
+      tooltip: 'Écrire les opérations sur l’index (ALTER TABLE), en commentaire',
+    }
   }
   return null
 })
@@ -185,7 +193,7 @@ function nodeIcon(node: ExplorerNode, expanded: boolean): Component {
     </span>
   </span>
 
-  <!-- On hovering a database or a table: acts on it, like Ctrl+click. -->
+  <!-- On hovering a database, a table or an index: acts on it, like Ctrl+click. -->
   <ui-button
     v-if="action"
     v-tooltip="action.tooltip"

@@ -42,6 +42,19 @@ describe('ExplorerLine', () => {
     expect(wrapper.emitted('act')).toHaveLength(1)
   })
 
+  it('gives an index a button that writes the operations on it', async () => {
+    const wrapper = mountLine({
+      key: 'index',
+      label: 'client_id (client_id)',
+      isLeaf: true,
+      entry: 'index',
+      index: { table: 'orders', name: 'client_id' },
+      ...place,
+    })
+    await wrapper.find('[aria-label="Opérations sur l’index"]').trigger('click')
+    expect(wrapper.emitted('act')).toHaveLength(1)
+  })
+
   it('gives no button to the other nodes', () => {
     const wrapper = mountLine({
       key: 'column',

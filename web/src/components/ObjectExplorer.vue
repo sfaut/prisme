@@ -15,10 +15,12 @@
   without opening or closing it: on a source, chooses it as the working
   connection (emits `select`), which stays highlighted; on a database, makes
   it the current database, like `USE` (emits `use-database`); on a table or a
-  view, emits `open-table`, to show its content. A double click would open
+  view, emits `open-table`, to show its content; on an index, emits
+  `index-operations`, to write the operations on it. A double click would open
   and close the line between its two clicks: it has no action. On hovering
-  a database or a table, a button on the right of its line does the same
-  (plug: current database, eye: content).
+  a database, a table or an index, a button on the right of its line does
+  the same (plug: current database, eye: content, pencil and ruler:
+  operations on the index).
 
   Each source carries as a badge the flavor of its server (`mysql`,
   `mariadb`), seen on the last connection or when reading the catalog.
@@ -90,6 +92,10 @@ const emit = defineEmits<{
    * The user wants to see the content of a table.
    */
   'open-table': [connectionId: number, schema: string, table: string]
+  /**
+   * The user wants to write the operations on an index.
+   */
+  'index-operations': [connectionId: number, schema: string, table: string, index: string]
   /**
    * The user chooses a source as the working connection.
    */
@@ -431,7 +437,7 @@ function onToggle(event: TreeItemToggleEvent<ExplorerNode>): void {
 
 /**
  * Acts on a node, after a Ctrl+click or Enter: chooses a source, changes the
- * current database or opens the table.
+ * current database, opens the table or writes the operations on the index.
  *
  * @param node Node of the line.
  */
@@ -442,6 +448,8 @@ function activate(node: ExplorerNode): void {
     emit('use-database', node.connectionId, node.schema)
   } else if (node.table !== undefined) {
     emit('open-table', node.connectionId, node.schema, node.table)
+  } else if (node.index !== undefined) {
+    emit('index-operations', node.connectionId, node.schema, node.index.table, node.index.name)
   }
 }
 

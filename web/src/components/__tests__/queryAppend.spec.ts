@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { appendQuery } from '../queryAppend'
+import { appendBlock, appendQuery } from '../queryAppend'
 
 /**
  * End of a text whose last query has its separator `;`.
@@ -65,5 +65,19 @@ describe('query appended after the last one', () => {
       start: 0,
     })
     expect(appendQuery('\n  \n', 'SELECT 2', CLOSED).text).toBe('SELECT 2;\n')
+  })
+})
+
+describe('block appended after the last query', () => {
+  it('goes on its own lines, the last query ended with its separator', () => {
+    const text = 'SELECT 1 -- note'
+    const block = '-- ALTER TABLE `t` DROP KEY `i`;\n-- ALTER TABLE `t` ADD KEY (c);'
+    const appending = appendBlock(text, block, { delimiter: ';', open_end: 8 })
+    expect(appending.text).toBe(`SELECT 1; -- note\n\n${block}\n`)
+    expect(applied(text, appending.changes)).toBe(appending.text)
+  })
+
+  it('replaces a text made of blanks', () => {
+    expect(appendBlock(' \n', '-- x;', CLOSED).text).toBe('-- x;\n')
   })
 })

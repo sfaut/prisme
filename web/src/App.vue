@@ -172,6 +172,28 @@ async function openTable(connectionId: number, schema: string, table: string): P
 }
 
 /**
+ * Writes the operations on an index chosen in the explorer, in the active
+ * editor, as `openTable` does for a table.
+ *
+ * @param connectionId Id of the index's connection.
+ * @param schema Name of the database.
+ * @param table Name of the table.
+ * @param index Name of the index.
+ */
+async function writeIndexOperations(
+  connectionId: number,
+  schema: string,
+  table: string,
+  index: string,
+): Promise<void> {
+  try {
+    ;(await activeCellOn(connectionId))?.writeIndexOperationsWhenReady(schema, table, index)
+  } catch (failure) {
+    report(failure)
+  }
+}
+
+/**
  * Makes a database chosen in the explorer the current database of the active
  * editor's session (like `USE`). A database of another source first gives
  * this connection to the editor.
@@ -215,6 +237,7 @@ function selectSource(connectionId: number): void {
             editors.activeId === null ? null : (databases[editors.activeId] ?? null)
           "
           @open-table="openTable"
+          @index-operations="writeIndexOperations"
           @select="selectSource"
           @use-database="useDatabase"
         />

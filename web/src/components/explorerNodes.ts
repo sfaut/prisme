@@ -139,6 +139,11 @@ export interface ExplorerNode extends Place {
    */
   table?: string
   /**
+   * Index designated by the node, to write the operations on it (Ctrl+click
+   * or the button of its line): its table and its name.
+   */
+  index?: { table: string; name: string }
+  /**
    * Children.
    */
   children?: ExplorerNode[]
@@ -457,6 +462,7 @@ function tableFolders(place: Place, kind: TableKind, details: TableDetails): Exp
       details.indexes.map((index) => ({
         ...item('index', 'index', index.name, indexLabel(index)),
         note: indexNote(index),
+        index: { table: details.table, name: index.name },
       })),
     ),
     folder(

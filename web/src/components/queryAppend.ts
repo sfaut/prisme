@@ -1,7 +1,8 @@
 /**
  * Query appended at the end of the editor's text (ticket #10): a double click
  * on a table of the explorer adds its `SELECT` after the last query, without
- * overwriting anything, then runs it.
+ * overwriting anything, then runs it. The operations on an index (ticket #21)
+ * are appended the same way, as a block of commented-out statements.
  *
  * The query goes after one empty line, ended by the separator in force at the
  * end of the text (`;`, or that of the last `DELIMITER`). A last query left
@@ -38,16 +39,28 @@ export interface Appending {
 const TRAILING_BLANKS = /[ \t\r\n]*$/
 
 /**
- * Appends a query at the end of a text. A text made only of blanks is
- * replaced by the query; the blanks at the end of the others give way to a
- * single empty line.
+ * Appends a query at the end of a text, ended by the separator in force.
  *
  * @param text Current text of the editor.
  * @param query Query to append, without its separator.
  * @param end End of the text, as analysed by the server.
  */
 export function appendQuery(text: string, query: string, end: TextEnd): Appending {
-  const statement = `${query}${end.delimiter}\n`
+  return appendBlock(text, `${query}${end.delimiter}`, end)
+}
+
+/**
+ * Appends a block (a query and its separator, commented-out statements) at
+ * the end of a text, on its own line. A text made only of blanks is replaced
+ * by the block; the blanks at the end of the others give way to a single
+ * empty line. A last query left without its separator gets it.
+ *
+ * @param text Current text of the editor.
+ * @param block Block to append, without a line break at its end.
+ * @param end End of the text, as analysed by the server.
+ */
+export function appendBlock(text: string, block: string, end: TextEnd): Appending {
+  const statement = `${block}\n`
   const contentEnd = text.length - (TRAILING_BLANKS.exec(text)?.[0].length ?? 0)
   if (contentEnd === 0) {
     return { changes: [{ from: 0, to: text.length, insert: statement }], text: statement, start: 0 }

@@ -47,7 +47,8 @@ import SqlEditor from './SqlEditor.vue'
 import { movedItems, useTabDrag } from './tabDrag'
 import { loadEditorSplit } from './editorSplit'
 import { selectAllQuery } from './explorerNodes'
-import { appendQuery } from './queryAppend'
+import { indexOperations } from './indexOperations'
+import { type Appending, appendBlock, appendQuery } from './queryAppend'
 import { completionSchema } from './sqlCompletion'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
@@ -313,10 +314,37 @@ function showTableWhenReady(schema: string, table: string): void {
 }
 
 /**
+ * Appends text after the last query of the editor, without overwriting
+ * anything (`queryAppend.ts`), the cursor on the next line. The end of the
+ * text is analysed by the server again if the text changes meanwhile.
+ *
+ * @param append
+ *     Change of the text, from the current text and its end as analysed by
+ *     the server.
+ * @returns The change made.
+ * @throws {ApiError} If the server cannot analyse the text.
+ */
+async function appendToEditor(
+  append: (text: string, end: TextEnd) => Appending,
+): Promise<Appending> {
+  let text: string
+  let end: TextEnd
+  do {
+    text = sql.value
+    end = (await analyzeSql(text, state.server?.flavor ?? 'mysql')).text_end
+  } while (text !== sql.value)
+  const appending = append(text, end)
+  if (editor.value) {
+    editor.value.changeText(appending.changes, appending.text.length)
+  } else {
+    sql.value = appending.text
+  }
+  return appending
+}
+
+/**
  * Shows the content of a table: its query is appended after the last query
- * of the editor, without overwriting anything (`queryAppend.ts`), the cursor
- * on the next line, ready to edit it; the query starts right away. The end of
- * the text is analysed by the server again if the text changes meanwhile.
+ * of the editor, ready to edit; the query starts right away.
  *
  * @param schema Name of the database.
  * @param table Name of the table.
@@ -324,22 +352,47 @@ function showTableWhenReady(schema: string, table: string): void {
 async function showTable(schema: string, table: string): Promise<void> {
   const query = selectAllQuery(schema, table, state.server?.ansi_quotes ?? false)
   try {
-    let text: string
-    let end: TextEnd
-    do {
-      text = sql.value
-      end = (await analyzeSql(text, state.server?.flavor ?? 'mysql')).text_end
-    } while (text !== sql.value)
-    const appending = appendQuery(text, query, end)
-    if (editor.value) {
-      editor.value.changeText(appending.changes, appending.text.length)
-    } else {
-      sql.value = appending.text
-    }
+    const appending = await appendToEditor((text, end) => appendQuery(text, query, end))
     if (state.status === 'ready') {
       launcher.value = 'one'
       session.run(appending.text, { cursor: appending.start })
     }
+  } catch (failure) {
+    state.error = errorMessage(failure)
+  }
+}
+
+/**
+ * Writes the operations on an index as soon as the session is ready: its
+ * server gives their syntax.
+ *
+ * @param schema Name of the database.
+ * @param table Name of the table.
+ * @param index Name of the index.
+ */
+function writeIndexOperationsWhenReady(schema: string, table: string, index: string): void {
+  whenReady(() => void writeIndexOperations(schema, table, index))
+}
+
+/**
+ * Writes the operations on an index (`indexOperations.ts`) after the last
+ * query of the editor, commented out: nothing runs.
+ *
+ * @param schema Name of the database.
+ * @param table Name of the table.
+ * @param index Name of the index.
+ */
+async function writeIndexOperations(schema: string, table: string, index: string): Promise<void> {
+  const server = state.server
+  if (server === null) {
+    return
+  }
+  const target = { schema, table, name: index }
+  const options = { flavor: server.flavor, version: server.version, ansiQuotes: server.ansi_quotes }
+  try {
+    await appendToEditor((text, end) =>
+      appendBlock(text, indexOperations(target, options, end.delimiter), end),
+    )
   } catch (failure) {
     state.error = errorMessage(failure)
   }
@@ -434,7 +487,13 @@ watch(
   (database) => emit('database', database),
 )
 
-defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
+defineExpose({
+  run,
+  runWhenReady,
+  showTableWhenReady,
+  writeIndexOperationsWhenReady,
+  changeDatabaseWhenReady,
+})
 </script>
 
 <template>
