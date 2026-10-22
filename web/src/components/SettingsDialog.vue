@@ -183,7 +183,9 @@ async function save(): Promise<void> {
             required
             class="w-20"
             aria-label="Espaces par niveau d’indentation"
-            v-tooltip="'Espaces d’un niveau d’indentation dans l’éditeur SQL (Tab, Maj-Tab)'"
+            v-tooltip="
+              'Espaces d’un niveau d’indentation dans l’éditeur SQL (Tab, Maj-Tab) et pour Enjoliver'
+            "
           />
           <span class="text-ui text-fg-muted">espaces</span>
         </div>
