@@ -14,10 +14,10 @@
 //! allowed.
 
 use sqlparser::ast::{ContextModifier, ObjectType, Set, Statement};
-use sqlparser::parser::Parser;
 
 use crate::Dialect;
 use crate::limit::returns_rows;
+use crate::parse::{Parsed, parse_statements};
 
 /// Nature of a query.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,10 +32,13 @@ pub enum StatementKind {
 
 /// Classifies the text `sql`. If it contains several queries, a single write is enough to classify it as a write.
 pub fn classify(sql: &str, dialect: Dialect) -> StatementKind {
-    let Ok(statements) = Parser::parse_sql(dialect.parser_dialect().as_ref(), sql) else {
+    let Ok(statements) = parse_statements(sql, dialect) else {
         return StatementKind::Unparsed;
     };
-    if statements.iter().all(is_read) {
+    if statements
+        .iter()
+        .all(|statement| matches!(statement, Parsed::Sql(statement) if is_read(statement)))
+    {
         StatementKind::Read
     } else {
         StatementKind::Write
@@ -46,17 +49,19 @@ pub fn classify(sql: &str, dialect: Dialect) -> StatementKind {
 /// `DROP DATABASE` / `DROP SCHEMA` (the current database may disappear), and
 /// a text Prisme cannot parse, whose effect is unknown.
 pub fn changes_database(sql: &str, dialect: Dialect) -> bool {
-    let Ok(statements) = Parser::parse_sql(dialect.parser_dialect().as_ref(), sql) else {
+    let Ok(statements) = parse_statements(sql, dialect) else {
         return true;
     };
     statements.iter().any(|statement| {
         matches!(
             statement,
-            Statement::Use(_)
-                | Statement::Drop {
-                    object_type: ObjectType::Database | ObjectType::Schema,
-                    ..
-                }
+            Parsed::Sql(
+                Statement::Use(_)
+                    | Statement::Drop {
+                        object_type: ObjectType::Database | ObjectType::Schema,
+                        ..
+                    }
+            )
         )
     })
 }
@@ -67,13 +72,15 @@ pub fn changes_database(sql: &str, dialect: Dialect) -> bool {
 /// `SET @@global.x`), which would change the whole server, and any other
 /// query are refused, like a query Prisme does not understand.
 pub fn session_setting_refusal(sql: &str, dialect: Dialect) -> Option<SettingRefusal> {
-    let Ok(statements) = Parser::parse_sql(dialect.parser_dialect().as_ref(), sql) else {
+    let Ok(statements) = parse_statements(sql, dialect) else {
         return Some(SettingRefusal::NotUnderstood);
     };
     for statement in &statements {
         match statement {
-            Statement::Set(set) if is_global(set) => return Some(SettingRefusal::Global),
-            Statement::Set(_) => {}
+            Parsed::Sql(Statement::Set(set)) if is_global(set) => {
+                return Some(SettingRefusal::Global);
+            }
+            Parsed::Sql(Statement::Set(_)) => {}
             _ => return Some(SettingRefusal::NotASetting),
         }
     }
@@ -211,6 +218,13 @@ mod tests {
             "SELECT * INTO t2 FROM t",
             "EXPLAIN ANALYZE DELETE FROM t",
             "SELECT 1; DELETE FROM t",
+            "CREATE PROCEDURE p() BEGIN SELECT 1; END",
+            "CREATE FUNCTION f() RETURNS INT RETURN 1",
+            "CREATE EVENT e ON SCHEDULE EVERY 1 DAY DO DELETE FROM t",
+            "ALTER EVENT e DISABLE",
+            "DROP EVENT e",
+            "ALTER TABLE t ALTER INDEX i INVISIBLE",
+            "ALTER TABLE t RENAME KEY i TO j",
         ] {
             assert_eq!(kind(sql), StatementKind::Write, "query: {sql}");
         }

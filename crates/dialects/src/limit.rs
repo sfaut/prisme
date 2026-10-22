@@ -17,6 +17,7 @@ use sqlparser::tokenizer::{Token, TokenWithSpan, Tokenizer};
 
 use crate::Dialect;
 use crate::offsets::OffsetIndex;
+use crate::parse::{Parsed, parse_statements};
 
 /// What Prisme did with the limit of a query.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,12 +66,12 @@ pub fn apply_default_limit(
         outcome,
     };
 
-    let Ok(statements) = Parser::parse_sql(parser_dialect.as_ref(), sql) else {
+    let Ok(statements) = parse_statements(sql, dialect) else {
         return Ok(unchanged(LimitOutcome::Unparsed));
     };
     let query = match statements.as_slice() {
         [] => return Err(LimitError::Empty),
-        [Statement::Query(query)] => query,
+        [Parsed::Sql(Statement::Query(query))] => query,
         [_] => return Ok(unchanged(LimitOutcome::NotApplicable)),
         _ => return Err(LimitError::MultipleStatements(statements.len())),
     };

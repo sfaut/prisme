@@ -17,6 +17,7 @@ pub mod keywords;
 mod layout;
 pub mod limit;
 mod mysql_parser;
+mod mysql_statements;
 mod offsets;
 mod parse;
 pub mod syntax;

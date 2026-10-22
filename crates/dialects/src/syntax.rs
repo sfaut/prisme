@@ -5,11 +5,14 @@
 //! Line: 2, Column: 8"): the position is extracted from it. A query valid for
 //! the server can be refused by `sqlparser` (procedure body, syntax specific
 //! to a version): the error then says that Prisme does not understand it,
-//! which stays true, since the session refuses queries it cannot parse.
+//! which stays true, since the session refuses queries it cannot parse. The
+//! routines, events and index operations of MySQL and MariaDB that
+//! `sqlparser` does not know are parsed by Prisme (`mysql_statements.rs`).
 
-use sqlparser::parser::{Parser, ParserError};
+use sqlparser::parser::ParserError;
 
 use crate::Dialect;
+use crate::parse::parse_statements;
 
 /// Syntax error of a query.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,7 +31,7 @@ const LOCATION_MARK: &str = " at Line: ";
 
 /// Parses a single query and returns its syntax error, `None` if it is understood.
 pub fn syntax_error(sql: &str, dialect: Dialect) -> Option<SyntaxError> {
-    let error = Parser::parse_sql(dialect.parser_dialect().as_ref(), sql).err()?;
+    let error = parse_statements(sql, dialect).err()?;
     let text = match error {
         ParserError::ParserError(text) | ParserError::TokenizerError(text) => text,
         ParserError::RecursionLimitExceeded => "query nested too deeply".to_string(),
