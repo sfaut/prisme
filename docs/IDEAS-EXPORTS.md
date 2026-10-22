@@ -39,7 +39,7 @@ The table can also be exported as an image **[decided]**: PNG and WebP, plus SVG
 - **Theme**: colors, font and spacing come from the theme's CSS variables (`web/src/assets/main.css`).
 - **Sharpness**: dimensions multiplied by `devicePixelRatio`; drawing after `document.fonts.ready`, so that the theme's font is loaded.
 - **DOM capture ruled out** (`html-to-image`): the grid is virtual, only the visible rows exist in the page; it would have to be rebuilt off screen.
-- **Scope**: the selection or the loaded rows. Browsers cap the canvas (about 16,000 pixels per side, 268 million pixels of area depending on the browser), that is a few hundred rows: beyond that, an explicit error states the cap. The full export by the server does not apply to images.
+- **Scope**: the selection or the displayed result. Browsers cap the canvas (about 16,000 pixels per side, 268 million pixels of area depending on the browser), that is a few hundred rows: beyond that, an explicit error states the cap. The full export by the server does not apply to images.
 - **Clipboard**: it only accepts `image/png` (`ClipboardItem`). "Copy as image" therefore produces PNG; WebP and SVG go through the file export.
 
 ## 3. Copy interface
@@ -52,21 +52,26 @@ Prisme has not used the right click so far, and it is better to keep it that way
 
 ## 4. Export to a file
 
-Two scopes:
+Three scopes **[decided]**:
 
-- **Loaded rows**: everything happens in the browser, with the copy's serialisers, a `Blob` and a download. Immediate.
-- **Full result**: the server runs the query again without the `LIMIT` added by Prisme; a limit written by the user goes through as is (rule 3 of `CLAUDE.md`). Only reads are accepted, with the AST classification already in place.
+- **Displayed result**, when the grid has no selection: the rows the grid holds, that is the N rows of Prisme's limit, or all the rows of a limit written by the user (rule 3 of `CLAUDE.md`). Everything happens in the browser, with the copy's serialisers, a `Blob` and a download. Immediate.
+- **Selection**, when the grid has one: the selected cells only, in the displayed order, with the rules of a non-contiguous selection (section 2). Also in the browser.
+- **Full result**: the server runs the query again without the `LIMIT` added by Prisme; a limit written by the user goes through as is. Only reads are accepted, with the AST classification already in place. This scope stays offered when the displayed result is not truncated: a large result then avoids going through the browser.
+
+The presence of a selection chooses between the displayed result and the selection. The export dialog states the scope ("Sélection : 3 lignes × 2 colonnes"), so that a forgotten selection shows. Postponed alternative: the dialog always offers "Displayed result" and "Selection", the selection being only the default choice when there is one.
 
 Export dialog, opened by a button of the bottom bar:
 
-- scope (loaded rows, or full result with the warning "the query will be run again");
-- format (those of section 2, images included for the loaded rows);
+- scope (displayed result or selection, or full result with the warning "the query will be run again, without the sorting and filtering of the grid");
+- format (those of section 2, images included except for the full result);
 - options: headers, NULL, separator, UTF-8 BOM for Excel;
 - proposed file name: `<tab>-YYYYMMDD-HHMMSS.<extension>`.
 
 ### 4.1 Grid state **[decided]**
 
-The export follows the grid's state: column order, sorting and filtering. For the loaded rows, it is direct (the view already exists). For the full result, the server must reproduce the same view on all the rows (see section 7, question 2).
+The export of the displayed result and of the selection follows the grid's state: column order, sorting and filtering. It is direct, the view already exists.
+
+The full result is the raw result of the query, columns in the order of the `SELECT`: the user writes the sorting and filtering in SQL (`ORDER BY`, `WHERE`), and the export dialog says that those of the grid are not applied. Reproducing them on the server would give an order different from the grid's (server collation versus `compareCells()` comparison), which rule 2 of `CLAUDE.md` forbids doing silently, and would require a Rust reimplementation of the grid's filter.
 
 ### 4.2 Export manager
 
@@ -87,7 +92,7 @@ The full export requires serialisers in Rust, whereas those of the copy are in T
 
 1. TypeScript serialisers and their tests.
 2. Copy button, Ctrl+Shift+C and `text/html` deposit of the tabular format.
-3. Export of the loaded rows.
+3. Export of the displayed result and of the selection.
 4. Images: common layout, PNG and WebP through the canvas, SVG.
 5. Rust serialisers and common reference files.
 6. Export manager and full export.
@@ -102,16 +107,16 @@ The full export requires serialisers in Rust, whereas those of the copy are in T
 | Numbers in JSON | JSON numbers, to adjust if needed. |
 | JSON columns | Nested objects. |
 | Duplicate column names | Export refused, whatever the format. |
-| Grid state | The export follows the column order, sorting and filtering. |
+| Export scopes | Displayed result or selection, depending on the presence of a selection, in the browser; full result run again by the server, offered even when the result is not truncated. |
+| Grid state | The export of the displayed result and of the selection follows the column order, sorting and filtering; the full result is the raw result of the query. |
 | Right click | To avoid. |
 
 ## 7. Open questions
 
 1. **Connection of the full export**: a dedicated connection leaves the session free, but sees neither temporary tables, nor session variables, nor a future running transaction. Running in the session sees all of that, but keeps it busy during the export. The export manager leans towards the dedicated connection; to think about.
-2. **Sorting and filtering the full result**: sorting can go into the SQL (`SELECT * FROM (…) AS t ORDER BY …`), at the risk of an order different from the grid's (server collation versus `compareCells()` comparison), which rule 2 of `CLAUDE.md` forbids doing silently. Filtering can be applied on the server side on the stream, with a Rust reimplementation of the grid's filter. Sorting on the server outside the database requires keeping everything in memory or on disk.
-3. **NULL in Box-Unicode**: `NULL` shown as is is confused with the string `'NULL'`; a symbol (`∅`) or a distinct style is to be chosen.
-4. **Width in Box-Unicode**: alignment requires the display width of characters (East Asian wide characters, emojis), different from their count.
-5. **Duplicate names and copying**: does the refusal also apply to copying to the clipboard, including tabular, where overwriting does not exist?
-6. **Invalid JSON column**: does a value of a JSON column that does not parse stay a string (the type then changes from one row to another), or does the export fail?
-7. **Clipboard volume**: should copying be capped (number of cells), with the export offered beyond?
-8. **Theme of the images**: the screen's, or always the light theme, more readable in a printed document or an email? A choice in the export dialog is possible.
+2. **NULL in Box-Unicode**: `NULL` shown as is is confused with the string `'NULL'`; a symbol (`∅`) or a distinct style is to be chosen.
+3. **Width in Box-Unicode**: alignment requires the display width of characters (East Asian wide characters, emojis), different from their count.
+4. **Duplicate names and copying**: does the refusal also apply to copying to the clipboard, including tabular, where overwriting does not exist?
+5. **Invalid JSON column**: does a value of a JSON column that does not parse stay a string (the type then changes from one row to another), or does the export fail?
+6. **Clipboard volume**: should copying be capped (number of cells), with the export offered beyond?
+7. **Theme of the images**: the screen's, or always the light theme, more readable in a printed document or an email? A choice in the export dialog is possible.
