@@ -71,7 +71,7 @@ Export dialog, opened by a button of the bottom bar:
 
 The export of the displayed result and of the selection follows the grid's state: column order, sorting and filtering. It is direct, the view already exists.
 
-The full result is the raw result of the query, columns in the order of the `SELECT`: the user writes the sorting and filtering in SQL (`ORDER BY`, `WHERE`), and the export dialog says that those of the grid are not applied. Reproducing them on the server would give an order different from the grid's (server collation versus `compareCells()` comparison), which rule 2 of `CLAUDE.md` forbids doing silently, and would require a Rust reimplementation of the grid's filter.
+The full result follows the column order of the grid: the export request carries it (indexes of the `SELECT`'s columns, in the displayed order), and the server reorders each row of the stream when writing it, without touching the query. Its rows are the raw result of the query: the user writes the sorting and filtering in SQL (`ORDER BY`, `WHERE`), and the export dialog says that those of the grid are not applied. Reproducing them on the server would give an order different from the grid's (server collation versus `compareCells()` comparison), which rule 2 of `CLAUDE.md` forbids doing silently, and would require a Rust reimplementation of the grid's filter.
 
 ### 4.2 Export manager
 
@@ -108,7 +108,7 @@ The full export requires serialisers in Rust, whereas those of the copy are in T
 | JSON columns | Nested objects. |
 | Duplicate column names | Export refused, whatever the format. |
 | Export scopes | Displayed result or selection, depending on the presence of a selection, in the browser; full result run again by the server, offered even when the result is not truncated. |
-| Grid state | The export of the displayed result and of the selection follows the column order, sorting and filtering; the full result is the raw result of the query. |
+| Grid state | The export of the displayed result and of the selection follows the column order, sorting and filtering; the full result follows the column order, its rows being the raw result of the query. |
 | Right click | To avoid. |
 
 ## 7. Open questions
