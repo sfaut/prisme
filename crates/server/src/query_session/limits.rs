@@ -34,7 +34,7 @@ pub(super) async fn row_limit(
 pub(super) fn write_refusal(sql: &str, dialect: Dialect) -> Option<ErrorDetail> {
     match classify(sql, dialect) {
         StatementKind::Read => None,
-        StatementKind::Write => Some(ErrorDetail::WriteRefused),
+        StatementKind::Write(_) | StatementKind::Forbidden => Some(ErrorDetail::WriteRefused),
         StatementKind::Unparsed => Some(ErrorDetail::UnparsedQueryRefused),
     }
 }

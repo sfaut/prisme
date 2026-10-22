@@ -11,8 +11,11 @@ serde = { version = "1.0.229", features = ["derive"] }
 # in this version. On an upgrade, compare them (see its module comment).
 sqlparser = { version = "=0.63.0", features = ["visitor"] }
 thiserror = "2.0.21"
+ts-rs = "12.0.1"
 yaml_serde = "0.10.7"
 
 [dev-dependencies]
 rusqlite = { version = "0.40.2", features = ["bundled"] }
+# Generated TypeScript types formatted (dprint), only in the tests that write them.
+ts-rs = { version = "12.0.1", features = ["format"] }
 
