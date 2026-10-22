@@ -44,7 +44,7 @@ const history = useConsoleStore().history
           <th>Action</th>
           <th>Message</th>
           <th class="end">Lignes</th>
-          <th class="end">Durée</th>
+          <th class="end">Exécution</th>
           <th class="end" v-tooltip="'Délai de transmission des lignes'">Transmission</th>
         </tr>
       </thead>

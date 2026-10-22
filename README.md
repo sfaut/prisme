@@ -278,7 +278,7 @@ The **Historique** (History) tab lists every query sent to your servers, the old
 | **Action** | What sent it: **Session**, **Exécuter** (Run), **Exécuter tout** (Run all), **Rafraîchir** (Refresh), **Base courante** (Current database), **Interruption**, **Explorateur** (Explorer), **Test de connexion** (Connection test); the connection shows in its tooltip |
 | **Message** | The query on one line, then its error if it failed; the full query shows in its tooltip |
 | **Lignes** (Rows) | Rows read, preceded by "+" when the result was truncated ("+1 000"), or rows changed by a write; "—" otherwise |
-| **Durée** (Duration) | Execution time, until the result, or until the columns for a result read row by row |
+| **Exécution** (Execution) | Execution time, until the result, or until the columns for a result read row by row |
 | **Transmission** | Transfer time of the rows of a result read row by row; "—" when not measured |
 
 The **Debug** tab lists the messages of Prisme: those its terminal shows (the same level, see [Command-line options](#command-line-options)), and the notifications of the interface, such as **Sélection copiée** (Selection copied). Each line gives its number, time, level (**Erreur**, **Avertissement**, **Info**, **Debug**, **Trace**), source (**Serveur** or **Interface**; the module of the server shows in its tooltip) and message.
