@@ -1,8 +1,8 @@
 <!--
   Window of the settings, saved on the server: interface language, then those
   of the queries, default row limit (shared with the choice in each SQL cell)
-  and read-only sessions, then the retention of the console's history and
-  debug log, in days.
+  and read-only sessions, the indentation of the SQL editor, in spaces, then
+  the retention of the console's history and debug log, in days.
   The language offers French only for now: the interface stays in French
   until it is made multilingual (see `docs/QUESTIONS.md`), and the choice is
   not saved yet. The planned languages (English, Spanish, German, Italian)
@@ -15,6 +15,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { errorMessage } from '@/api/errorMessage'
 import { useSettingsStore } from '@/stores/settings'
 
+import { DEFAULT_INDENT_SIZE } from './editorIndent'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
 import UiDialog from './ui/UiDialog.vue'
@@ -65,11 +66,19 @@ const RETENTION_MIN = 1
 const RETENTION_MAX = 3650
 
 /**
- * Current input: the row limit, the read-only mode and the retentions.
+ * Bounds of the indentation, in spaces: the server checks the same.
+ */
+const INDENT_MIN = 1
+const INDENT_MAX = 8
+
+/**
+ * Current input: the row limit, the read-only mode, the indentation and the
+ * retentions.
  */
 const form = reactive({
   row_limit: DEFAULT_ROW_LIMIT,
   read_only_session: true,
+  indent_size: DEFAULT_INDENT_SIZE,
   history_retention_days: DEFAULT_RETENTION,
   debug_retention_days: DEFAULT_RETENTION,
 })
@@ -110,6 +119,7 @@ watch(open, async (isOpen) => {
   }
   form.row_limit = settings.settings?.row_limit ?? DEFAULT_ROW_LIMIT
   form.read_only_session = settings.settings?.read_only_session ?? true
+  form.indent_size = settings.settings?.indent_size ?? DEFAULT_INDENT_SIZE
   form.history_retention_days = settings.settings?.history_retention_days ?? DEFAULT_RETENTION
   form.debug_retention_days = settings.settings?.debug_retention_days ?? DEFAULT_RETENTION
 })
@@ -135,7 +145,7 @@ async function save(): Promise<void> {
   <ui-dialog
     v-model:open="open"
     title="Paramètres"
-    description="Langue de l’interface, requêtes et conservation de la console"
+    description="Langue de l’interface, requêtes, éditeur et conservation de la console"
   >
     <form id="settings-form" class="flex flex-col gap-3" @submit.prevent="save">
       <ui-field label="Langue">
@@ -162,6 +172,21 @@ async function save(): Promise<void> {
           <input v-model="form.read_only_session" type="checkbox" class="size-icon accent-accent" />
           Sessions en lecture seule
         </label>
+      </ui-field>
+      <ui-field label="Indentation">
+        <div class="flex items-center gap-2">
+          <ui-input
+            v-model="form.indent_size"
+            type="number"
+            :min="INDENT_MIN"
+            :max="INDENT_MAX"
+            required
+            class="w-20"
+            aria-label="Espaces par niveau d’indentation"
+            v-tooltip="'Espaces d’un niveau d’indentation dans l’éditeur SQL (Tab, Maj-Tab)'"
+          />
+          <span class="text-ui text-fg-muted">espaces</span>
+        </div>
       </ui-field>
       <ui-field label="Rétention historique">
         <div class="flex items-center gap-2">

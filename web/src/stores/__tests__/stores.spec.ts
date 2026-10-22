@@ -49,6 +49,7 @@ vi.mock('@/api/settings', () => ({
     read_only_session: true,
     history_retention_days: 30,
     debug_retention_days: 30,
+    indent_size: 4,
   }),
   updateSettings: async (update: SettingsUpdate) => ({
     ...update,

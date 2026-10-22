@@ -1,11 +1,12 @@
 //! Settings of the user: the default row limit, added to the queries that do
 //! not write one (see `docs/V1.md`, section 2.3), the read-only mode of the
-//! query sessions (`docs/V1.md`, section 2.4) and the retention of the
-//! console's history and debug log.
+//! query sessions (`docs/V1.md`, section 2.4), the retention of the
+//! console's history and debug log, and the indentation of the SQL editor.
 //!
 //! The settings are stored in the `users` table (see `migrations/0003_users_row_limit.sql`,
-//! `migrations/0011_users_read_only_session.sql` and
-//! `migrations/0014_users_console_retention.sql`).
+//! `migrations/0011_users_read_only_session.sql`,
+//! `migrations/0014_users_console_retention.sql` and
+//! `migrations/0016_users_indent_size.sql`).
 //! Synchronous functions (`rusqlite`), called from blocking tasks.
 
 use crate::error_detail::{ErrorDetail, Field};
@@ -18,6 +19,9 @@ pub const ROW_LIMIT_CHOICES: [u32; 5] = [1_000, 2_000, 5_000, 10_000, 50_000];
 
 /// Bounds of a retention of the console, in days: the database checks the same.
 pub const RETENTION_DAYS: std::ops::RangeInclusive<u16> = 1..=3650;
+
+/// Bounds of the indentation of the SQL editor, in spaces: the database checks the same.
+pub const INDENT_SIZE: std::ops::RangeInclusive<u8> = 1..=8;
 
 /// Settings of a user, as returned by the API.
 #[derive(Debug, Serialize, TS)]
@@ -35,6 +39,8 @@ pub struct Settings {
     pub history_retention_days: u16,
     /// Days the lines of the console's debug log are kept, 30 by default.
     pub debug_retention_days: u16,
+    /// Spaces of an indentation level in the SQL editor, 4 by default.
+    pub indent_size: u8,
 }
 
 /// Change of settings requested by the user.
@@ -49,6 +55,8 @@ pub struct SettingsUpdate {
     pub history_retention_days: u16,
     /// New retention of the debug log, in days (`RETENTION_DAYS`).
     pub debug_retention_days: u16,
+    /// New indentation of the SQL editor, in spaces (`INDENT_SIZE`).
+    pub indent_size: u8,
 }
 
 /// Errors of settings management.
@@ -64,6 +72,10 @@ pub enum SettingsError {
         /// Field out of its bounds.
         field: Field,
     },
+
+    /// Indentation out of its bounds.
+    #[error("indent_size: between {min} and {max} spaces", min = INDENT_SIZE.start(), max = INDENT_SIZE.end())]
+    IndentSizeOutOfRange,
 
     /// Error of the internal database.
     #[error("internal database: {0}")]
@@ -84,6 +96,11 @@ impl SettingsError {
                 min: (*RETENTION_DAYS.start()).into(),
                 max: (*RETENTION_DAYS.end()).into(),
             },
+            Self::IndentSizeOutOfRange => ErrorDetail::FieldRange {
+                field: Field::IndentSize,
+                min: (*INDENT_SIZE.start()).into(),
+                max: (*INDENT_SIZE.end()).into(),
+            },
             Self::Sqlite(_) => ErrorDetail::Internal,
         }
     }
@@ -98,13 +115,14 @@ pub fn check_row_limit(row_limit: u32) -> Result<u32, SettingsError> {
     }
 }
 
-/// Checks the row limit and the retentions of an update.
+/// Checks the row limit, the retentions and the indentation of an update.
 ///
 /// # Errors
 ///
 /// Returns `SettingsError::InvalidRowLimit` if the limit is not among
 /// `ROW_LIMIT_CHOICES`, `SettingsError::RetentionOutOfRange` if a retention
-/// is out of `RETENTION_DAYS`.
+/// is out of `RETENTION_DAYS`, `SettingsError::IndentSizeOutOfRange` if the
+/// indentation is out of `INDENT_SIZE`.
 pub fn check_update(update: &SettingsUpdate) -> Result<(), SettingsError> {
     check_row_limit(update.row_limit)?;
     for (field, days) in [
@@ -115,13 +133,17 @@ pub fn check_update(update: &SettingsUpdate) -> Result<(), SettingsError> {
             return Err(SettingsError::RetentionOutOfRange { field });
         }
     }
+    if !INDENT_SIZE.contains(&update.indent_size) {
+        return Err(SettingsError::IndentSizeOutOfRange);
+    }
     Ok(())
 }
 
 /// Reads the settings of user `user_id`.
 pub fn load(db: &Connection, user_id: i64) -> Result<Settings, SettingsError> {
     let settings = db.query_row(
-        "SELECT row_limit, read_only_session, history_retention_days, debug_retention_days
+        "SELECT row_limit, read_only_session, history_retention_days, debug_retention_days,
+                indent_size
          FROM users WHERE id = ?1",
         params![user_id],
         |row| {
@@ -131,6 +153,7 @@ pub fn load(db: &Connection, user_id: i64) -> Result<Settings, SettingsError> {
                 read_only_session: row.get(1)?,
                 history_retention_days: row.get(2)?,
                 debug_retention_days: row.get(3)?,
+                indent_size: row.get(4)?,
             })
         },
     )?;
@@ -146,13 +169,14 @@ pub fn update(
     check_update(update)?;
     db.execute(
         "UPDATE users SET row_limit = ?1, read_only_session = ?2,
-                history_retention_days = ?3, debug_retention_days = ?4
-         WHERE id = ?5",
+                history_retention_days = ?3, debug_retention_days = ?4, indent_size = ?5
+         WHERE id = ?6",
         params![
             update.row_limit,
             update.read_only_session,
             update.history_retention_days,
             update.debug_retention_days,
+            update.indent_size,
             user_id
         ],
     )?;
@@ -171,6 +195,7 @@ mod tests {
             read_only_session: true,
             history_retention_days: 30,
             debug_retention_days: 30,
+            indent_size: 4,
         }
     }
 
@@ -244,5 +269,27 @@ mod tests {
         changed.history_retention_days = 3651;
         assert!(update(&db, user_id, &changed).is_err());
         assert_eq!(load(&db, user_id).unwrap().history_retention_days, 3650);
+    }
+
+    #[test]
+    fn indent_size_is_4_by_default_and_stays_in_its_bounds() {
+        let db = store::open_in_memory();
+        let user_id = store::ensure_user(&db, "a@example.com").unwrap();
+        assert_eq!(load(&db, user_id).unwrap().indent_size, 4);
+
+        let mut changed = update_of(1_000);
+        for size in [1, 2, 8] {
+            changed.indent_size = size;
+            assert_eq!(update(&db, user_id, &changed).unwrap().indent_size, size);
+        }
+
+        for size in [0, 9] {
+            changed.indent_size = size;
+            assert!(matches!(
+                update(&db, user_id, &changed),
+                Err(SettingsError::IndentSizeOutOfRange)
+            ));
+        }
+        assert_eq!(load(&db, user_id).unwrap().indent_size, 8);
     }
 }

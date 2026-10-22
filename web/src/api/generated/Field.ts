@@ -14,4 +14,5 @@ export type Field =
   | "first_name"
   | "last_name"
   | "history_retention_days"
-  | "debug_retention_days";
+  | "debug_retention_days"
+  | "indent_size";

@@ -29,6 +29,7 @@ describe('SqlEditor', () => {
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
+        indentSize: 4,
         modelValue: 'SELEC 1',
       },
       attachTo: document.body,
@@ -47,6 +48,7 @@ describe('SqlEditor', () => {
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
+        indentSize: 4,
         modelValue: 'SELECT 1',
       },
       attachTo: document.body,
@@ -63,6 +65,7 @@ describe('SqlEditor', () => {
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
+        indentSize: 4,
         modelValue: 'SELECT 1;\nSELECT 2;',
       },
       attachTo: document.body,
@@ -82,6 +85,7 @@ describe('SqlEditor', () => {
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
+        indentSize: 4,
         modelValue: 'SELECT 1;',
       },
       attachTo: document.body,
@@ -102,6 +106,7 @@ describe('SqlEditor', () => {
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
+        indentSize: 4,
         modelValue: '',
       },
       attachTo: document.body,
@@ -124,6 +129,7 @@ describe('SqlEditor', () => {
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
+        indentSize: 4,
         modelValue: '',
       },
       attachTo: document.body,
@@ -145,6 +151,31 @@ describe('SqlEditor', () => {
     wrapper.unmount()
   })
 
+  it('follows the indentation size when it changes', async () => {
+    const wrapper = mount(SqlEditor, {
+      props: {
+        flavor: 'mysql',
+        schema: {},
+        version: null,
+        ansiQuotes: false,
+        defaultSchema: null,
+        indentSize: 4,
+        modelValue: '',
+      },
+      attachTo: document.body,
+    })
+    await wrapper.setProps({ indentSize: 2 })
+    wrapper.vm.changeText({ from: 0, insert: 'SELECT' }, 0)
+    wrapper
+      .find('.cm-content')
+      .element.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Tab', keyCode: 9, bubbles: true, cancelable: true }),
+      )
+    const updates = wrapper.emitted('update:modelValue') ?? []
+    expect(updates[updates.length - 1]).toEqual(['  SELECT'])
+    wrapper.unmount()
+  })
+
   it('scrolls on Ctrl+Down without moving the cursor', () => {
     const wrapper = mount(SqlEditor, {
       props: {
@@ -153,6 +184,7 @@ describe('SqlEditor', () => {
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
+        indentSize: 4,
         modelValue: '',
       },
       attachTo: document.body,
@@ -189,6 +221,7 @@ describe('SqlEditor', () => {
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
+        indentSize: 4,
         modelValue: 'SELECT 1;\nSELECT 2;\nSELECT 3;',
       },
       attachTo: document.body,
@@ -220,6 +253,7 @@ describe('SqlEditor', () => {
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
+        indentSize: 4,
         modelValue: 'SELECT 1',
       },
       attachTo: document.body,

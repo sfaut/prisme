@@ -5,8 +5,8 @@
  * two spaces CodeMirror's SQL language would add to each continuation of a
  * query (ticket #5).
  *
- * - Tab without a selection: spaces up to the next tab stop (every four
- *   characters), at the cursor position.
+ * - Tab without a selection: spaces up to the next tab stop, at the cursor
+ *   position.
  * - Tab with a selection: the touched lines move forward one level.
  * - Shift+Tab: the touched lines move back one level, with or without a
  *   selection.
@@ -18,30 +18,41 @@
  * indentation is recomputed in columns, then rewritten in spaces only,
  * aligned on a tab stop.
  *
+ * The gap between two tab stops is the indentation size of the user's
+ * settings (four spaces by default): `editorIndentation()` gives it to the
+ * editor, as CodeMirror's indentation unit and tab size, where the commands
+ * read it.
+ *
  * To leave the editor with the keyboard, CodeMirror keeps its own shortcuts:
  * Escape then Tab, or Ctrl+M which leaves Tab to the browser.
  */
 
-import { indentUnit } from '@codemirror/language'
+import { getIndentUnit, indentUnit } from '@codemirror/language'
 import {
   type ChangeSpec,
   EditorSelection,
-  type EditorState,
+  EditorState,
+  type Extension,
   type StateCommand,
   type Transaction,
   countColumn,
 } from '@codemirror/state'
 
 /**
- * Gap between two tab stops, in columns.
+ * Gap between two tab stops, in columns, until the settings are read.
  */
-export const TAB_SIZE = 4
+export const DEFAULT_INDENT_SIZE = 4
 
 /**
- * Indentation unit of CodeMirror, one tab stop in spaces: Backspace in the
- * indentation and Ctrl+[ remove a whole level, Ctrl+] adds one.
+ * Gap between two tab stops given to the editor: CodeMirror's indentation
+ * unit, in spaces, so that Backspace in the indentation and Ctrl+[ remove a
+ * whole level and Ctrl+] adds one, and the width of a tab character.
+ *
+ * @param size Gap between two tab stops, in columns.
  */
-export const editorIndentation = indentUnit.of(' '.repeat(TAB_SIZE))
+export function editorIndentation(size: number): Extension {
+  return [indentUnit.of(' '.repeat(size)), EditorState.tabSize.of(size)]
+}
 
 /**
  * Direction of a reindentation: one level more, or one less.
@@ -52,9 +63,10 @@ export type IndentDirection = 'more' | 'less'
  * Number of spaces that lead from the cursor to the next tab stop.
  *
  * @param column Column of the cursor, from 0.
+ * @param size Gap between two tab stops, in columns.
  */
-export function spacesToNextStop(column: number): number {
-  return TAB_SIZE - (column % TAB_SIZE)
+export function spacesToNextStop(column: number, size: number): number {
+  return size - (column % size)
 }
 
 /**
@@ -65,14 +77,13 @@ export function spacesToNextStop(column: number): number {
  *
  * @param indentation Leading blanks of the line (spaces and tabs).
  * @param direction Direction of the reindentation.
+ * @param size Gap between two tab stops, in columns, also the width of a tab.
  */
-export function reindented(indentation: string, direction: IndentDirection): string {
-  const column = countColumn(indentation, TAB_SIZE)
+export function reindented(indentation: string, direction: IndentDirection, size: number): string {
+  const column = countColumn(indentation, size)
   const level =
-    direction === 'more'
-      ? Math.floor(column / TAB_SIZE) + 1
-      : Math.max(0, Math.ceil(column / TAB_SIZE) - 1)
-  return ' '.repeat(level * TAB_SIZE)
+    direction === 'more' ? Math.floor(column / size) + 1 : Math.max(0, Math.ceil(column / size) - 1)
+  return ' '.repeat(level * size)
 }
 
 /**
@@ -85,6 +96,7 @@ export function reindented(indentation: string, direction: IndentDirection): str
  * @returns The transaction, or `null` if no line changes.
  */
 function reindentLines(state: EditorState, direction: IndentDirection): Transaction | null {
+  const size = getIndentUnit(state)
   const changes: ChangeSpec[] = []
   const done = new Set<number>()
   for (const range of state.selection.ranges) {
@@ -100,7 +112,7 @@ function reindentLines(state: EditorState, direction: IndentDirection): Transact
       done.add(number)
       const line = state.doc.line(number)
       const indentation = /^[ \t]*/.exec(line.text)?.[0] ?? ''
-      const replacement = reindented(indentation, direction)
+      const replacement = reindented(indentation, direction, size)
       if (replacement !== indentation) {
         changes.push({
           from: line.from,
@@ -146,10 +158,11 @@ export const indentOrInsertSpaces: StateCommand = ({ state, dispatch }) => {
     }
     return true
   }
+  const size = getIndentUnit(state)
   const transaction = state.changeByRange((range) => {
     const line = state.doc.lineAt(range.head)
-    const column = countColumn(line.text.slice(0, range.head - line.from), TAB_SIZE)
-    const spaces = ' '.repeat(spacesToNextStop(column))
+    const column = countColumn(line.text.slice(0, range.head - line.from), state.tabSize)
+    const spaces = ' '.repeat(spacesToNextStop(column, size))
     return {
       changes: { from: range.head, insert: spaces },
       range: EditorSelection.cursor(range.head + spaces.length),
@@ -178,7 +191,7 @@ export const insertNewlineKeepingIndentation: StateCommand = ({ state, dispatch 
     const from = range.from - line.from <= indentation.length ? line.from : range.from
     const end = state.doc.lineAt(range.to)
     const blanksAfter = /^[ \t]*/.exec(state.doc.sliceString(range.to, end.to))?.[0] ?? ''
-    const insert = `\n${' '.repeat(countColumn(indentation, TAB_SIZE))}`
+    const insert = `\n${' '.repeat(countColumn(indentation, state.tabSize))}`
     return {
       changes: { from, to: range.to + blanksAfter.length, insert },
       range: EditorSelection.cursor(from + insert.length),

@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   dedentLines,
+  editorIndentation,
   indentOrInsertSpaces,
   insertNewlineKeepingIndentation,
   reindented,
@@ -20,14 +21,15 @@ import {
  * @param command Command to apply.
  * @param doc Initial text.
  * @param ranges Initial selection: `[anchor, head]` per range.
+ * @param size Gap between two tab stops, in columns.
  */
-function apply(command: StateCommand, doc: string, ranges: [number, number][]) {
+function apply(command: StateCommand, doc: string, ranges: [number, number][], size = 4) {
   let state = EditorState.create({
     doc,
     selection: EditorSelection.create(
       ranges.map(([anchor, head]) => EditorSelection.range(anchor, head)),
     ),
-    extensions: EditorState.allowMultipleSelections.of(true),
+    extensions: [EditorState.allowMultipleSelections.of(true), editorIndentation(size)],
   })
   const handled = command({
     state,
@@ -42,23 +44,30 @@ function apply(command: StateCommand, doc: string, ranges: [number, number][]) {
 
 describe('tab stops', () => {
   it('counts the spaces up to the next tab stop', () => {
-    expect(spacesToNextStop(0)).toBe(4)
-    expect(spacesToNextStop(1)).toBe(3)
-    expect(spacesToNextStop(4)).toBe(4)
-    expect(spacesToNextStop(7)).toBe(1)
+    expect(spacesToNextStop(0, 4)).toBe(4)
+    expect(spacesToNextStop(1, 4)).toBe(3)
+    expect(spacesToNextStop(4, 4)).toBe(4)
+    expect(spacesToNextStop(7, 4)).toBe(1)
+    expect(spacesToNextStop(3, 2)).toBe(1)
   })
 
   it('reindents in spaces only, aligned on a tab stop', () => {
-    expect(reindented('', 'more')).toBe('    ')
-    expect(reindented('  ', 'more')).toBe('    ')
-    expect(reindented('    ', 'more')).toBe('        ')
-    expect(reindented('    ', 'less')).toBe('')
-    expect(reindented('      ', 'less')).toBe('    ')
-    expect(reindented('', 'less')).toBe('')
+    expect(reindented('', 'more', 4)).toBe('    ')
+    expect(reindented('  ', 'more', 4)).toBe('    ')
+    expect(reindented('    ', 'more', 4)).toBe('        ')
+    expect(reindented('    ', 'less', 4)).toBe('')
+    expect(reindented('      ', 'less', 4)).toBe('    ')
+    expect(reindented('', 'less', 4)).toBe('')
     // A tab is worth one level, and becomes spaces.
-    expect(reindented('\t', 'more')).toBe('        ')
-    expect(reindented('\t\t', 'less')).toBe('    ')
-    expect(reindented('  \t', 'less')).toBe('')
+    expect(reindented('\t', 'more', 4)).toBe('        ')
+    expect(reindented('\t\t', 'less', 4)).toBe('    ')
+    expect(reindented('  \t', 'less', 4)).toBe('')
+  })
+
+  it('follows the indentation size', () => {
+    expect(reindented('    ', 'more', 2)).toBe('      ')
+    expect(reindented('     ', 'less', 2)).toBe('    ')
+    expect(reindented('\t', 'less', 8)).toBe('')
   })
 })
 
@@ -97,6 +106,11 @@ describe('Tab', () => {
 
   it('leaves the line where the selection stops, if it stops at its start', () => {
     expect(apply(indentOrInsertSpaces, 'a\nb', [[0, 2]]).text).toBe('    a\nb')
+  })
+
+  it('follows the indentation size of the editor', () => {
+    expect(apply(indentOrInsertSpaces, 'a', [[1, 1]], 2).text).toBe('a ')
+    expect(apply(indentOrInsertSpaces, '  a\nb', [[0, 5]], 2).text).toBe('    a\n  b')
   })
 })
 
@@ -156,6 +170,11 @@ describe('Shift+Tab', () => {
 
   it('dedents all the lines of a selection, leading tabs replaced', () => {
     expect(apply(dedentLines, '\t\ta\n    b\nc', [[0, 10]]).text).toBe('    a\nb\nc')
+  })
+
+  it('dedents by the indentation size of the editor', () => {
+    expect(apply(dedentLines, '        a', [[8, 8]], 8).text).toBe('a')
+    expect(apply(dedentLines, '   a', [[3, 3]], 2).text).toBe('  a')
   })
 
   it('changes nothing on a line without indentation, but keeps the key', () => {

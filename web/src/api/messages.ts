@@ -37,6 +37,7 @@ const FIELD_LABELS: Record<Field, string> = {
   last_name: 'Nom',
   history_retention_days: 'Rétention historique',
   debug_retention_days: 'Rétention debug',
+  indent_size: 'Indentation',
 }
 
 /**
@@ -46,6 +47,7 @@ const FIELD_UNITS: Partial<Record<Field, string>> = {
   session_timeout_minutes: ' minutes',
   history_retention_days: ' jours',
   debug_retention_days: ' jours',
+  indent_size: ' espaces',
 }
 
 /**

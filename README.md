@@ -178,7 +178,7 @@ Each editor has its own connection, its own session (and therefore its own trans
 ### Writing SQL
 
 - **Completion** (Ctrl+Space, or while typing): databases, tables, views, functions and procedures of the current database, and columns after `table.` or `alias.`. Only names are suggested, never keywords.
-- **Tab** moves to the next tab stop (every 4 spaces), or indents the selected lines. **Shift+Tab** unindents them.
+- **Tab** moves to the next tab stop (every 4 spaces, set by the **Indentation** field of the settings), or indents the selected lines. **Shift+Tab** unindents them, like **Backspace** in the indentation.
 - **Enter** starts a new line at the indentation of the current line.
 - When the cursor leaves a line, the spaces at its end are removed, except inside a string or a quoted identifier that goes on to the next line.
 - **Ctrl+Up** / **Ctrl+Down** scroll the editor by one line, without moving the cursor.
@@ -291,7 +291,7 @@ Both tabs are kept in the internal database, 30 days by default: the **Rétentio
 - **Theme**: the **Système / Clair / Sombre** (System / Light / Dark) list sets the theme of the whole interface. **Système** follows your computer's setting.
 - **Account** menu, the round avatar with your initials (those of your first and last names, or the first letter of your email address):
   - **Profil** (Profile): your last and first names, and your email address (read-only);
-  - **Paramètres** (Settings): the language of the interface (French only for now); the default row limit; **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; and how many days the [console](#console) keeps its history and its debug log.
+  - **Paramètres** (Settings): the language of the interface (French only for now); the default row limit; **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; the **Indentation** of the SQL editor, from 1 to 8 spaces (4 by default); and how many days the [console](#console) keeps its history and its debug log.
 
 ## Your data
 

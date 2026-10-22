@@ -46,6 +46,7 @@ static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
         M::up(include_str!(
             "../migrations/0015_connections_server_version.sql"
         )),
+        M::up(include_str!("../migrations/0016_users_indent_size.sql")),
     ])
 });
 

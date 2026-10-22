@@ -25,4 +25,8 @@ export type Settings = {
    * Days the lines of the console's debug log are kept, 30 by default.
    */
   debug_retention_days: number;
+  /**
+   * Spaces of an indentation level in the SQL editor, 4 by default.
+   */
+  indent_size: number;
 };

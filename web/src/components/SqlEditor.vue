@@ -13,11 +13,11 @@
   is analysed by the server shortly after each keystroke. Ctrl+Enter
   (Cmd+Enter on Mac) emits `run` with the cursor position;
   Ctrl+Shift+Enter emits `run-all` with the selected passages (none: all
-  the queries). Tab and Shift+Tab indent by stops of
-  four spaces, like Backspace in the indentation and Ctrl+[ / Ctrl+], Enter
-  goes to a new line at the indentation of the line it leaves
-  (`editorIndent.ts`). Ctrl+Up and Ctrl+Down scroll the text by one
-  line without moving the cursor (`editorScroll.ts`). The blanks at the end
+  the queries). Tab and Shift+Tab indent by stops of `indentSize` spaces (a
+  setting of the user), like Backspace in the indentation and Ctrl+[ /
+  Ctrl+], Enter goes to a new line at the indentation of the line it leaves
+  (`editorIndent.ts`). Ctrl+Up and Ctrl+Down scroll the text by one line
+  without moving the cursor (`editorScroll.ts`). The blanks at the end
   of a line go when the cursor leaves it, except inside a string
   (`editorTrim.ts`). The text binds with `v-model`.
 -->
@@ -72,6 +72,10 @@ const props = defineProps<{
    * Current database: its tables complete without a prefix. `null` if none.
    */
   defaultSchema: string | null
+  /**
+   * Gap between two tab stops, in spaces.
+   */
+  indentSize: number
 }>()
 
 /**
@@ -98,6 +102,11 @@ const host = useTemplateRef<HTMLDivElement>('host')
  * the catalog or the current database.
  */
 const language = new Compartment()
+
+/**
+ * Slot of the indentation in the configuration, to change it with the settings.
+ */
+const indentation = new Compartment()
 
 let view: EditorView | null = null
 
@@ -228,7 +237,7 @@ onMounted(() => {
         ...scrollKeymap,
       ]),
       basicSetup,
-      editorIndentation,
+      indentation.of(editorIndentation(props.indentSize)),
       // Strict completion: start of the name or initials, never scattered letters.
       autocompletion({ filterStrict: true }),
       editorTheme(),
@@ -256,6 +265,11 @@ watch(text, (value) => {
 watch(
   () => [props.flavor, props.ansiQuotes, props.schema, props.defaultSchema],
   () => view?.dispatch({ effects: language.reconfigure(currentLanguage()) }),
+)
+
+watch(
+  () => props.indentSize,
+  (size) => view?.dispatch({ effects: indentation.reconfigure(editorIndentation(size)) }),
 )
 
 // The dialect changes when the session opens: the analysis must be redone.

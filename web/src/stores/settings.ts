@@ -1,6 +1,7 @@
 /**
  * Settings of the user: default row limit and allowed choices, read-only
- * mode of the query sessions, retention of the console.
+ * mode of the query sessions, retention of the console, indentation of the
+ * SQL editor.
  */
 
 import { defineStore } from 'pinia'
@@ -40,6 +41,7 @@ export const useSettingsStore = defineStore('settings', () => {
       read_only_session: current.read_only_session,
       history_retention_days: current.history_retention_days,
       debug_retention_days: current.debug_retention_days,
+      indent_size: current.indent_size,
       ...change,
     })
   }

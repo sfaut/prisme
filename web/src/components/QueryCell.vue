@@ -42,6 +42,7 @@ import { useSettingsStore } from '@/stores/settings'
 import QueryTabView from './QueryTabView.vue'
 import EditorResizer from './EditorResizer.vue'
 import ResultTab from './ResultTab.vue'
+import { DEFAULT_INDENT_SIZE } from './editorIndent'
 import SqlEditor from './SqlEditor.vue'
 import { movedItems, useTabDrag } from './tabDrag'
 import { loadEditorSplit } from './editorSplit'
@@ -490,6 +491,7 @@ defineExpose({ run, runWhenReady, showTableWhenReady, changeDatabaseWhenReady })
         :ansi-quotes="state.server?.ansi_quotes ?? false"
         :schema="completion"
         :default-schema="state.database"
+        :indent-size="settings.settings?.indent_size ?? DEFAULT_INDENT_SIZE"
         @run="run"
         @run-all="runAll"
         class="min-h-0 flex-1"

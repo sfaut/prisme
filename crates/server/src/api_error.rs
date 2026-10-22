@@ -79,9 +79,9 @@ impl From<SettingsError> for ApiError {
     /// Translates a settings management error into an HTTP error.
     fn from(error: SettingsError) -> Self {
         match error {
-            SettingsError::InvalidRowLimit(_) | SettingsError::RetentionOutOfRange { .. } => {
-                Self::BadRequest(error.detail())
-            }
+            SettingsError::InvalidRowLimit(_)
+            | SettingsError::RetentionOutOfRange { .. }
+            | SettingsError::IndentSizeOutOfRange => Self::BadRequest(error.detail()),
             SettingsError::Sqlite(_) => {
                 tracing::error!("{error}");
                 Self::Internal

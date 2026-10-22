@@ -20,4 +20,8 @@ export type SettingsUpdate = {
    * New retention of the debug log, in days (`RETENTION_DAYS`).
    */
   debug_retention_days: number;
+  /**
+   * New indentation of the SQL editor, in spaces (`INDENT_SIZE`).
+   */
+  indent_size: number;
 };

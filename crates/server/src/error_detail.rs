@@ -41,6 +41,8 @@ pub enum Field {
     HistoryRetentionDays,
     /// Days the debug messages are kept.
     DebugRetentionDays,
+    /// Spaces of an indentation level in the SQL editor.
+    IndentSize,
 }
 
 impl fmt::Display for Field {
