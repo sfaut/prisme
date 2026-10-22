@@ -12,6 +12,9 @@ export default mergeConfig(
       execArgv: ['--no-experimental-webstorage'],
       // Text measurements missing from jsdom, which CodeMirror needs.
       setupFiles: ['./src/testSetup.ts'],
+      // One worker per core makes the tests that mount CodeMirror under jsdom
+      // exceed their 5 s, for no fault of theirs; four workers take as long.
+      maxWorkers: 4,
       exclude: [...configDefaults.exclude, 'e2e/**'],
       root: fileURLToPath(new URL('./', import.meta.url)),
     },
