@@ -39,9 +39,6 @@ use crate::offsets::OffsetIndex;
 
 mod program;
 
-/// Width of an indentation level.
-const INDENT: usize = 4;
-
 /// Clauses that start a line.
 const CLAUSES: &[&str] = &[
     "SELECT",
@@ -188,8 +185,9 @@ impl Query {
 /// Lays out `sql`. See the rules at the top of the module.
 ///
 /// With `program`, `sql` is a single query that can be a stored program,
-/// whose `;` separate the statements of the body (`program` module).
-pub(crate) fn layout(sql: &str, dialect: Dialect, program: bool) -> String {
+/// whose `;` separate the statements of the body (`program` module). An
+/// indentation level is `indent` spaces wide.
+pub(crate) fn layout(sql: &str, dialect: Dialect, program: bool, indent: usize) -> String {
     if has_delimiter_command(sql) {
         return sql.to_string();
     }
@@ -227,6 +225,7 @@ pub(crate) fn layout(sql: &str, dialect: Dialect, program: bool) -> String {
         space_before = false;
     }
     Printer {
+        indent,
         program,
         statement_start: program,
         ..Printer::default()
@@ -301,6 +300,8 @@ impl Default for QueryStack {
 /// Writes the laid-out text, token by token.
 #[derive(Default)]
 struct Printer {
+    /// Width of an indentation level, in spaces.
+    indent: usize,
     out: String,
     queries: QueryStack,
     parens: Vec<Paren>,
@@ -412,7 +413,7 @@ impl Printer {
                 self.injection = Some(Injection::Prefix {
                     constant,
                     connective,
-                    indent: query.indent + INDENT,
+                    indent: query.indent + self.indent,
                 });
             }
             if word == "SELECT"
@@ -428,6 +429,7 @@ impl Printer {
         }
 
         // First column of a list of several columns: new line, indented.
+        let step = self.indent;
         let query = self.query();
         if query.clause == Clause::Select
             && query.columns_pending
@@ -436,7 +438,7 @@ impl Printer {
         {
             query.columns_pending = false;
             if query.multi_columns {
-                let indent = query.indent + INDENT;
+                let indent = query.indent + step;
                 self.newline(indent);
             }
         }
@@ -448,7 +450,7 @@ impl Printer {
                 && query.multi_columns
                 && query.depth == self.parens.len()
             {
-                let indent = query.indent + INDENT;
+                let indent = query.indent + self.indent;
                 self.newline(indent);
             } else {
                 self.space_next = true;
@@ -528,7 +530,7 @@ impl Printer {
                 return;
             }
             if self.query().clause == Clause::Filter {
-                self.newline(query_indent + INDENT);
+                self.newline(query_indent + self.indent);
             }
             return;
         }
@@ -607,7 +609,7 @@ impl Printer {
             line_indent,
         });
         if subquery {
-            let indent = line_indent + INDENT;
+            let indent = line_indent + self.indent;
             self.queries.push(Query::new(self.parens.len(), indent));
             self.newline(indent);
         }
@@ -810,12 +812,12 @@ mod tests {
     use super::*;
 
     fn laid_out(sql: &str) -> String {
-        layout(sql, Dialect::MariaDb, false)
+        layout(sql, Dialect::MariaDb, false, 4)
     }
 
     /// Lays out the body of a stored program.
     fn program(sql: &str) -> String {
-        layout(sql, Dialect::MariaDb, true)
+        layout(sql, Dialect::MariaDb, true, 4)
     }
 
     #[test]

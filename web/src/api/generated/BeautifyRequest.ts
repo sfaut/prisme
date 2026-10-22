@@ -22,4 +22,9 @@ export type BeautifyRequest = {
    * Version announced by the server; when absent, all the dialect's keywords.
    */
   version?: string;
+  /**
+   * Width of an indentation level, in spaces (`settings::INDENT_SIZE`):
+   * that of the SQL editor; when absent, 4.
+   */
+  indent_size?: number;
 };

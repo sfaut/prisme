@@ -26,6 +26,10 @@ export interface BeautifyContext {
    * Version announced by the server; when absent, all the dialect's keywords.
    */
   version?: string
+  /**
+   * Width of an indentation level, in spaces, that of the SQL editor; when absent, 4.
+   */
+  indent_size?: number
 }
 
 /**
@@ -33,7 +37,7 @@ export interface BeautifyContext {
  * keywords go to capitals and its names take the catalog's spelling.
  *
  * @param sql Text to beautify.
- * @param context Catalog, flavor and version of the server.
+ * @param context Catalog, flavor and version of the server, indentation.
  * @returns The beautified text.
  */
 export async function beautify(sql: string, context: BeautifyContext = {}): Promise<string> {

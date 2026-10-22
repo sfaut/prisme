@@ -127,4 +127,10 @@ describe('beautify', () => {
     await expect(beautify('select a from t')).resolves.toBe('SELECT a FROM t')
     expect(fake.mock.calls[0]?.[0]).toBe('/api/beautify')
   })
+
+  it('sends the indentation of the editor', async () => {
+    const fake = mockFetch(200, '{"sql":"SELECT ALL\\n  a,\\n  b\\nFROM t"}')
+    await beautify('select a, b from t', { indent_size: 2 })
+    expect(fake.mock.calls[0]?.[1]?.body).toBe('{"sql":"select a, b from t","indent_size":2}')
+  })
 })

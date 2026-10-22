@@ -36,7 +36,7 @@ use axum::{Json, Router};
 use prisme_connectors::mysql::{self, Flavor, ServerInfo};
 use prisme_dialects::Dialect;
 use prisme_dialects::analysis::CatalogNames;
-use prisme_dialects::beautify::{BeautifyOptions, beautify_with};
+use prisme_dialects::beautify::{BeautifyOptions, DEFAULT_INDENT_SIZE, beautify_with};
 use prisme_dialects::keywords::keywords;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
@@ -59,7 +59,7 @@ use crate::query_session;
 use crate::recorder::Recorder;
 use crate::request_guard;
 use crate::sessions::Sessions;
-use crate::settings::{self, Settings, SettingsUpdate};
+use crate::settings::{self, Settings, SettingsError, SettingsUpdate};
 use crate::web_assets;
 
 /// State shared by all the routes.
@@ -368,11 +368,25 @@ struct BeautifyRequest {
     #[serde(default)]
     #[ts(optional)]
     version: Option<String>,
+    /// Width of an indentation level, in spaces (`settings::INDENT_SIZE`):
+    /// that of the SQL editor; when absent, 4.
+    #[serde(default)]
+    #[ts(optional)]
+    indent_size: Option<u8>,
 }
 
 /// `POST /api/beautify`: beautifies MySQL / MariaDB SQL (see `prisme_dialects::beautify`).
 /// The work is CPU-bound: it runs in a blocking task, off the threads of `tokio`.
 async fn beautify_sql(Json(request): Json<BeautifyRequest>) -> Result<Json<SqlText>, ApiError> {
+    let indent_size = match request.indent_size {
+        None => DEFAULT_INDENT_SIZE,
+        Some(size) if settings::INDENT_SIZE.contains(&size) => size.into(),
+        Some(_) => {
+            return Err(ApiError::BadRequest(
+                SettingsError::IndentSizeOutOfRange.detail(),
+            ));
+        }
+    };
     let sql = tokio::task::spawn_blocking(move || {
         let catalog = request.catalog.unwrap_or_default();
         let names = CatalogNames {
@@ -385,6 +399,7 @@ async fn beautify_sql(Json(request): Json<BeautifyRequest>) -> Result<Json<SqlTe
             dialect: request.flavor.map_or(Dialect::MySql, dialect_of),
             version: request.version.as_deref(),
             catalog: &names,
+            indent_size,
         };
         beautify_with(&request.sql, options)
     })
@@ -779,6 +794,18 @@ mod tests {
         .await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body["sql"], "SELECT ALL a\nFROM t");
+    }
+
+    #[tokio::test]
+    async fn beautifies_with_the_indentation_of_the_editor() {
+        let request =
+            |indent_size: u8| json!({ "sql": "select a, b from t", "indent_size": indent_size });
+        let (status, body) = send(&test_app(), "POST", "/api/beautify", Some(request(2))).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["sql"], "SELECT ALL\n  a,\n  b\nFROM t");
+
+        let (status, _) = send(&test_app(), "POST", "/api/beautify", Some(request(9))).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]

@@ -98,10 +98,16 @@ pub struct BeautifyOptions<'a> {
     pub version: Option<&'a str>,
     /// Names of the catalog, as defined: tables, columns, functions...
     pub catalog: &'a CatalogNames,
+    /// Width of an indentation level, in spaces (that of the SQL editor).
+    pub indent_size: usize,
 }
 
+/// Width of an indentation level without a setting, in spaces.
+pub const DEFAULT_INDENT_SIZE: usize = 4;
+
 /// Beautifies `sql` without a catalog or version: names stay as they are,
-/// all functions go to capitals. See `beautify_with`.
+/// all functions go to capitals, indentation of `DEFAULT_INDENT_SIZE`
+/// spaces. See `beautify_with`.
 pub fn beautify(sql: &str, dialect: Dialect) -> String {
     let catalog = CatalogNames::default();
     beautify_with(
@@ -110,6 +116,7 @@ pub fn beautify(sql: &str, dialect: Dialect) -> String {
             dialect,
             version: None,
             catalog: &catalog,
+            indent_size: DEFAULT_INDENT_SIZE,
         },
     )
 }
@@ -195,7 +202,7 @@ fn beautify_part(sql: &str, options: BeautifyOptions, program: bool) -> String {
         Some(words) => apply_roles(&functions, &words),
         None => uppercase_keywords(&functions, dialect, options.version),
     };
-    layout(&cased, dialect, program)
+    layout(&cased, dialect, program, options.indent_size)
 }
 
 /// Rewrites each word from its role: keyword in capitals, name in its
@@ -395,6 +402,28 @@ mod tests {
     }
 
     #[test]
+    fn indents_by_the_size_of_the_setting() {
+        let catalog = CatalogNames::default();
+        let options = BeautifyOptions {
+            dialect: Dialect::MariaDb,
+            version: None,
+            catalog: &catalog,
+            indent_size: 2,
+        };
+        assert_eq!(
+            beautify_with("select a, b from t where x in (select x from u)", options),
+            "SELECT ALL\n  a,\n  b\nFROM t\nWHERE x IN (\n  SELECT ALL x\n  FROM u\n)"
+        );
+        assert_eq!(
+            beautify_with(
+                "delimiter //\ncreate procedure p() begin if a then select 1; end if; end//",
+                options
+            ),
+            "DELIMITER //\nCREATE PROCEDURE p()\nBEGIN\n  IF a THEN\n    SELECT ALL 1;\n  END IF;\nEND //"
+        );
+    }
+
+    #[test]
     fn normalizes_exotic_blanks_before_layout() {
         assert_eq!(
             beautify(
@@ -422,6 +451,7 @@ mod tests {
                 BeautifyOptions {
                     dialect: Dialect::MySql,
                     version: None,
+                    indent_size: DEFAULT_INDENT_SIZE,
                     catalog: &CatalogNames {
                         routines: vec!["My_Function".to_string()],
                         ..CatalogNames::default()
@@ -467,6 +497,7 @@ mod tests {
             dialect: Dialect::MySql,
             version: Some("8.0.36"),
             catalog: &catalog,
+            indent_size: DEFAULT_INDENT_SIZE,
         };
         assert_eq!(
             beautify_with(

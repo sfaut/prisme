@@ -94,6 +94,12 @@ const state = session.state
 const settings = useSettingsStore()
 
 /**
+ * Width of an indentation level, in spaces: that of the settings, for the
+ * editor and the beautifier.
+ */
+const indentSize = computed(() => settings.settings?.indent_size ?? DEFAULT_INDENT_SIZE)
+
+/**
  * Choices of the row limit, formatted for the list.
  */
 const limitOptions = computed(() =>
@@ -429,8 +435,8 @@ const catalogReady = computed(() => catalog.catalogOf(props.connection.id)?.done
 /**
  * Beautifies the editor's text, after the analysis of the query by the
  * server: keywords in capitals, names (tables, columns, functions...) in the
- * catalog's spelling, according to the flavor and the version of the server.
- * Ctrl+Z undoes it.
+ * catalog's spelling, according to the flavor and the version of the server,
+ * indented like the editor. Ctrl+Z undoes it.
  */
 async function prettify(): Promise<void> {
   try {
@@ -438,6 +444,7 @@ async function prettify(): Promise<void> {
       catalog: catalog.catalogNames(props.connection.id),
       flavor: state.server?.flavor,
       version: state.server?.version,
+      indent_size: indentSize.value,
     })
   } catch (failure) {
     state.error = errorMessage(failure)
@@ -550,7 +557,7 @@ defineExpose({
         :ansi-quotes="state.server?.ansi_quotes ?? false"
         :schema="completion"
         :default-schema="state.database"
-        :indent-size="settings.settings?.indent_size ?? DEFAULT_INDENT_SIZE"
+        :indent-size="indentSize"
         @run="run"
         @run-all="runAll"
         class="min-h-0 flex-1"

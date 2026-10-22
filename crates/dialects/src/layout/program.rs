@@ -37,7 +37,7 @@
 
 use sqlparser::tokenizer::Token;
 
-use super::{INDENT, Item, Printer, Query};
+use super::{Item, Printer, Query};
 
 /// Open block of a program.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -153,7 +153,10 @@ impl Printer {
                 true
             }
             "WHEN" if top == Some(BlockKind::Case) => {
-                let indent = self.blocks.last().map_or(0, |block| block.indent + INDENT);
+                let indent = self
+                    .blocks
+                    .last()
+                    .map_or(0, |block| block.indent + self.indent);
                 self.newline(indent);
                 self.push_spaced("WHEN");
                 true
@@ -164,7 +167,7 @@ impl Printer {
                     .last()
                     .expect("ELSE is only matched under an open IF or CASE block");
                 let indent = if block.kind == BlockKind::Case {
-                    block.indent + INDENT
+                    block.indent + self.indent
                 } else {
                     block.indent
                 };
@@ -201,8 +204,8 @@ impl Printer {
     fn open_block(&mut self, kind: BlockKind, word: &str, body_now: bool) {
         let indent = self.current_line_indent();
         let body = match kind {
-            BlockKind::Case => indent + 2 * INDENT,
-            _ => indent + INDENT,
+            BlockKind::Case => indent + 2 * self.indent,
+            _ => indent + self.indent,
         };
         self.push_spaced(word);
         self.blocks.push(Block { kind, indent, body });

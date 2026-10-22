@@ -183,7 +183,7 @@ Each editor has its own connection, its own session (and therefore its own trans
 - When the cursor leaves a line, the spaces at its end are removed, except inside a string or a quoted identifier that goes on to the next line.
 - **Ctrl+Up** / **Ctrl+Down** scroll the editor by one line, without moving the cursor.
 - To leave the editor with the keyboard: **Esc** then **Tab**, or **Ctrl+M** (Tab then moves the focus again).
-- **Enjoliver** (Beautify) rewrites the query in a consistent style: keywords and function names in capitals, table and column names as written in the catalog, `AS` before aliases, one clause per line, spaces around operators. Stored procedures and `DELIMITER` blocks are supported. Ctrl+Z undoes it. The button is active once the connection's catalog is loaded.
+- **Enjoliver** (Beautify) rewrites the query in a consistent style: keywords and function names in capitals, table and column names as written in the catalog, `AS` before aliases, one clause per line, indented by the **Indentation** of the settings, spaces around operators. Stored procedures and `DELIMITER` blocks are supported. Ctrl+Z undoes it. The button is active once the connection's catalog is loaded.
 
 Drag the bar under the editor to share the height between editor and results; double-click it to restore the default.
 
@@ -291,7 +291,7 @@ Both tabs are kept in the internal database, 30 days by default: the **Rétentio
 - **Theme**: the **Système / Clair / Sombre** (System / Light / Dark) list sets the theme of the whole interface. **Système** follows your computer's setting.
 - **Account** menu, the round avatar with your initials (those of your first and last names, or the first letter of your email address):
   - **Profil** (Profile): your last and first names, and your email address (read-only);
-  - **Paramètres** (Settings): the language of the interface (French only for now); the default row limit; **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; the **Indentation** of the SQL editor, from 1 to 8 spaces (4 by default); and how many days the [console](#console) keeps its history and its debug log.
+  - **Paramètres** (Settings): the language of the interface (French only for now); the default row limit; **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; the **Indentation** of the SQL editor and of **Enjoliver**, from 1 to 8 spaces (4 by default); and how many days the [console](#console) keeps its history and its debug log.
 
 ## Your data
 
