@@ -1,19 +1,19 @@
 <!--
   Scrolling area of a tab of the console (history, debug log): the table of
-  the tab (default slot), oldest elements at the top. The area stays
-  scrolled to the bottom while the user does not scroll up, so that the new
-  elements show. The older elements are read on request, from the button at
-  the top; a failure to read shows above. Also gives the tables of the
-  console their common look (`console-table` class): dense lines, like those
-  of the result grid, and a header that stays visible.
+  the tab (default slot), oldest elements at the top. The area opens on the
+  most recent elements, and stays scrolled to the bottom while the user does
+  not scroll up, so that the new elements show. Scrolled near the top, it
+  reads the older elements, and keeps those in view at the same place; a
+  failure to read shows above. Also gives the tables of the console their
+  common look (`console-table` class): dense lines, like those of the result
+  grid, and a header that stays visible.
 -->
 <script setup lang="ts" generic="T extends { id: number }">
-import { nextTick, useTemplateRef, watch } from 'vue'
+import { nextTick, onMounted, useTemplateRef, watch } from 'vue'
 
 import type { PagedList } from '@/stores/console'
 
 import UiAlert from './ui/UiAlert.vue'
-import UiButton from './ui/UiButton.vue'
 
 const props = defineProps<{
   /**
@@ -32,6 +32,11 @@ const props = defineProps<{
 const scroller = useTemplateRef<HTMLElement>('scroller')
 
 /**
+ * Are the older elements being read?
+ */
+let readingOlder = false
+
+/**
  * Is the area scrolled to the bottom, or almost?
  *
  * @param element Scrolling area.
@@ -39,6 +44,44 @@ const scroller = useTemplateRef<HTMLElement>('scroller')
 function atBottom(element: HTMLElement): boolean {
   return element.scrollHeight - element.scrollTop - element.clientHeight < element.clientHeight / 4
 }
+
+/**
+ * Is the area scrolled to the top, or almost?
+ *
+ * @param element Scrolling area.
+ */
+function atTop(element: HTMLElement): boolean {
+  return element.scrollTop < element.clientHeight / 4
+}
+
+/**
+ * Reads the older elements when the area is scrolled near its top, one
+ * page at a time, then puts back the elements in view at the same distance
+ * from the bottom: they stay where they were on screen.
+ */
+async function readOlderAtTop(): Promise<void> {
+  const element = scroller.value
+  if (element === null || readingOlder || !props.list.hasOlder || !atTop(element)) {
+    return
+  }
+  readingOlder = true
+  const fromBottom = element.scrollHeight - element.scrollTop
+  try {
+    await props.list.loadOlder()
+    await nextTick()
+    element.scrollTop = element.scrollHeight - fromBottom
+  } finally {
+    readingOlder = false
+  }
+}
+
+// Shown again (another tab, console unfolded): the most recent elements.
+onMounted(() => {
+  const element = scroller.value
+  if (element !== null) {
+    element.scrollTop = element.scrollHeight
+  }
+})
 
 // Before the lines are drawn: stuck at the bottom, the area follows them.
 watch(
@@ -55,13 +98,8 @@ watch(
 </script>
 
 <template>
-  <div ref="scroller" class="min-h-0 flex-1 overflow-auto">
+  <div ref="scroller" class="min-h-0 flex-1 overflow-auto outline-none" @scroll="readOlderAtTop">
     <ui-alert v-if="list.error" tone="error" :title="list.error" @close="list.dismissError()" />
-    <div v-if="list.hasOlder" class="flex justify-center py-1">
-      <ui-button variant="ghost" small @click="list.loadOlder()">
-        Afficher les éléments précédents
-      </ui-button>
-    </div>
     <p v-if="list.entries.length === 0" class="p-3 text-center text-fg-muted">{{ empty }}</p>
     <slot v-else />
   </div>

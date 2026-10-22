@@ -88,10 +88,11 @@ onUnmounted(() => store.dispose())
         />
       </template>
     </panel-header>
-    <tabs-content value="history" class="flex min-h-0 flex-1 flex-col outline-none">
+    <!-- The scrolling area of each tab is the content of the tab itself. -->
+    <tabs-content value="history" as-child>
       <history-table />
     </tabs-content>
-    <tabs-content value="debug" class="flex min-h-0 flex-1 flex-col outline-none">
+    <tabs-content value="debug" as-child>
       <debug-table />
     </tabs-content>
   </tabs-root>
