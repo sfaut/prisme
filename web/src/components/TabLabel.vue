@@ -60,13 +60,12 @@ function commit(): void {
 </script>
 
 <template>
-  <!-- Focus ring without offset: the tab bar, barely higher than the field, would cut it. -->
   <input
     v-if="editing"
     ref="input"
     v-model="draft"
     aria-label="Nom de l'onglet"
-    class="h-control-sm w-40 min-w-0 rounded-control border border-line bg-surface px-1 text-ui text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-0 focus-visible:outline-focus-ring"
+    class="h-control-sm w-40 min-w-0 rounded-control border border-line bg-surface px-1 text-ui text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-focus-ring"
     @blur="commit"
     @keydown.stop
     @keydown.enter.prevent="commit"
