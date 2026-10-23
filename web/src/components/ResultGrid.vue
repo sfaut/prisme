@@ -994,11 +994,11 @@ const userFilterColumn = computed({
   }
 
   &.drop-before {
-    box-shadow: inset var(--focus-width) 0 0 var(--accent);
+    box-shadow: inset var(--marker-width) 0 0 var(--accent);
   }
 
   &.drop-after {
-    box-shadow: inset calc(-1 * var(--focus-width)) 0 0 var(--accent);
+    box-shadow: inset calc(-1 * var(--marker-width)) 0 0 var(--accent);
   }
 }
 

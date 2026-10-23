@@ -261,10 +261,11 @@
 
   /* Lines: the only lengths in pixels, to stay sharp on screen (a fraction
      of a pixel would blur a line). Borders, focus outline and move marker of
-     a column. */
+     a column or a tab. */
   --line-width: 1px;
-  --focus-width: 2px;
+  --focus-width: 1px;
   --focus-offset: 1px;
+  --marker-width: 2px;
 
   /* Radii: controls, then windows and menus. */
   --control-radius: 0.375rem;
