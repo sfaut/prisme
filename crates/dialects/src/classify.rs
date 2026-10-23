@@ -13,9 +13,10 @@
 //!
 //! The structure of the temporary tables has its own switches, their data
 //! stays under the switches of the data. `CREATE TEMPORARY TABLE` and
-//! `DROP TEMPORARY TABLE` need them by their syntax; `ALTER`, `RENAME`,
-//! `TRUNCATE` and `DROP TABLE` need them when all the tables they name are
-//! temporary tables known to the session (`classify_with`, `temporary.rs`).
+//! `DROP TEMPORARY TABLE` need them by their syntax; `ALTER`, `RENAME` and
+//! `DROP TABLE` need them when all the tables they name are temporary tables
+//! known to the session (`classify_with`, `temporary.rs`). `TRUNCATE TABLE`
+//! empties the data: it has its switch beside `DELETE`, for every table.
 //!
 //! A setting of the session (`SET @v = 1`, `SET SESSION sql_mode = ...`,
 //! `SET NAMES`) writes nothing in the database: it is always allowed, except
@@ -74,14 +75,14 @@ pub enum WriteKind {
     /// `DELETE`, single or multiple-table, and the deletion of `REPLACE`,
     /// temporary tables included.
     Delete,
+    /// `TRUNCATE TABLE`, temporary tables included.
+    TruncateTable,
     /// `CREATE TABLE`.
     CreateTable,
     /// `ALTER TABLE`, `CREATE INDEX`, `DROP INDEX`.
     AlterTable,
     /// `RENAME TABLE`.
     RenameTable,
-    /// `TRUNCATE TABLE`.
-    TruncateTable,
     /// `DROP TABLE`.
     DropTable,
     /// `CREATE TEMPORARY TABLE`.
@@ -90,8 +91,6 @@ pub enum WriteKind {
     AlterTemporaryTable,
     /// `RENAME TABLE` of temporary tables.
     RenameTemporaryTable,
-    /// `TRUNCATE TABLE` of a temporary table.
-    TruncateTemporaryTable,
     /// `DROP TEMPORARY TABLE`, and `DROP TABLE` of temporary tables only.
     DropTemporaryTable,
     /// `CREATE [OR REPLACE] VIEW`, `ALTER VIEW`.
@@ -116,19 +115,18 @@ pub enum WriteKind {
 
 impl WriteKind {
     /// Every kind, in the order of the settings.
-    pub const ALL: [Self; 22] = [
+    pub const ALL: [Self; 21] = [
         Self::Insert,
         Self::Update,
         Self::Delete,
+        Self::TruncateTable,
         Self::CreateTable,
         Self::AlterTable,
         Self::RenameTable,
-        Self::TruncateTable,
         Self::DropTable,
         Self::CreateTemporaryTable,
         Self::AlterTemporaryTable,
         Self::RenameTemporaryTable,
-        Self::TruncateTemporaryTable,
         Self::DropTemporaryTable,
         Self::CreateView,
         Self::DropView,
@@ -147,15 +145,14 @@ impl WriteKind {
             Self::Insert => "insert",
             Self::Update => "update",
             Self::Delete => "delete",
+            Self::TruncateTable => "truncate_table",
             Self::CreateTable => "create_table",
             Self::AlterTable => "alter_table",
             Self::RenameTable => "rename_table",
-            Self::TruncateTable => "truncate_table",
             Self::DropTable => "drop_table",
             Self::CreateTemporaryTable => "create_temporary_table",
             Self::AlterTemporaryTable => "alter_temporary_table",
             Self::RenameTemporaryTable => "rename_temporary_table",
-            Self::TruncateTemporaryTable => "truncate_temporary_table",
             Self::DropTemporaryTable => "drop_temporary_table",
             Self::CreateView => "create_view",
             Self::DropView => "drop_view",
@@ -314,14 +311,7 @@ fn write_kinds(
             RenameTable,
             RenameTemporaryTable,
         )],
-        Statement::Truncate(truncate) => vec![on(
-            all_temporary(
-                truncate.table_names.iter().map(|target| &target.name),
-                temporary,
-            ),
-            TruncateTable,
-            TruncateTemporaryTable,
-        )],
+        Statement::Truncate(_) => vec![TruncateTable],
         Statement::CreateView(_) | Statement::AlterView { .. } => vec![CreateView],
         Statement::Drop {
             object_type,
@@ -633,6 +623,7 @@ mod tests {
             ("REPLACE INTO shop.tmp2 VALUES (1)", vec![Insert, Delete]),
             ("UPDATE tmp SET a = 1", vec![Update]),
             ("DELETE FROM tmp", vec![Delete]),
+            ("TRUNCATE TABLE tmp", vec![TruncateTable]),
             ("ALTER TABLE tmp ADD b INT", vec![AlterTemporaryTable]),
             (
                 "ALTER TABLE tmp ALTER INDEX i INVISIBLE",
@@ -642,8 +633,6 @@ mod tests {
             ("DROP INDEX i ON tmp", vec![AlterTemporaryTable]),
             ("RENAME TABLE tmp TO tmp3", vec![RenameTemporaryTable]),
             ("RENAME TABLE tmp TO a, t TO b", vec![RenameTable]),
-            ("TRUNCATE TABLE tmp", vec![TruncateTemporaryTable]),
-            ("TRUNCATE TABLE t", vec![TruncateTable]),
             ("DROP TABLE tmp, shop.tmp2", vec![DropTemporaryTable]),
             // A permanent table among the tables: the switch of the tables.
             ("DROP TABLE tmp, t", vec![DropTable]),

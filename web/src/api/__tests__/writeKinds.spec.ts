@@ -12,8 +12,8 @@ describe('kinds of write', () => {
   it('tells in the tooltip what else a kind allows', () => {
     expect(writeKindTooltip('alter_table')).toBe('ALTER TABLE. Aussi CREATE INDEX et DROP INDEX.')
     expect(writeKindTooltip('drop_view')).toBe('DROP VIEW')
-    expect(writeKindTooltip('truncate_temporary_table')).toBe(
-      'TRUNCATE TABLE sur une table temporaire',
+    expect(writeKindTooltip('rename_temporary_table')).toBe(
+      'RENAME TABLE sur des tables temporaires',
     )
   })
 })

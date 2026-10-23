@@ -3,7 +3,7 @@
 //! Serves the write switches of the temporary tables (see `docs/V1.md`,
 //! section 2.4). Only `CREATE TEMPORARY TABLE` and `DROP TEMPORARY TABLE` say
 //! by their syntax that they target a temporary table: for the other changes
-//! (`ALTER`, `TRUNCATE`...), the session follows the temporary tables created
+//! (`ALTER`, `RENAME`...), the session follows the temporary tables created
 //! on its connection (`temporary_changes`), and a change counts as one of
 //! temporary tables when all the tables it names are among them.
 //!

@@ -358,7 +358,6 @@ async fn runs_the_writes_the_settings_allow() {
         WriteKind::CreateProcedure,
         WriteKind::CreateTemporaryTable,
         WriteKind::AlterTemporaryTable,
-        WriteKind::TruncateTemporaryTable,
         WriteKind::DropTemporaryTable,
     ];
     let (address, id, _) = start_writing(&host, port, Some(&allowed)).await;
@@ -405,7 +404,10 @@ async fn runs_the_writes_the_settings_allow() {
     // The switches of the temporary tables apply to the tables the session
     // created, followed when renamed, and only to them.
     let refused = |result: &Received| result.end["detail"].clone();
-    for sql in ["ALTER TABLE tmp RENAME TO tmp2", "TRUNCATE TABLE tmp2"] {
+    for sql in [
+        "ALTER TABLE tmp RENAME TO tmp2",
+        "ALTER TABLE tmp2 ADD b INT",
+    ] {
         let result = run_one(&mut socket, sql, None).await;
         assert_eq!(result.end["type"], "done", "{sql}: {:?}", result.end);
     }
@@ -414,18 +416,24 @@ async fn runs_the_writes_the_settings_allow() {
         refused(&result),
         json!({ "code": "write_not_allowed", "kinds": ["rename_temporary_table"] })
     );
-    let result = run_one(&mut socket, "TRUNCATE TABLE w", None).await;
-    assert_eq!(
-        refused(&result),
-        json!({ "code": "write_not_allowed", "kinds": ["truncate_table"] })
-    );
-    let result = run_one(&mut socket, "DROP TABLE tmp2", None).await;
-    assert_eq!(result.end["type"], "done", "{:?}", result.end);
-    // Dropped: a table of that name is a permanent table again.
+    // TRUNCATE empties the data: the switch of the data, for every table.
     let result = run_one(&mut socket, "TRUNCATE TABLE tmp2", None).await;
     assert_eq!(
         refused(&result),
         json!({ "code": "write_not_allowed", "kinds": ["truncate_table"] })
+    );
+    let result = run_one(&mut socket, "DROP TABLE w", None).await;
+    assert_eq!(
+        refused(&result),
+        json!({ "code": "write_not_allowed", "kinds": ["drop_table"] })
+    );
+    let result = run_one(&mut socket, "DROP TABLE tmp2", None).await;
+    assert_eq!(result.end["type"], "done", "{:?}", result.end);
+    // Dropped: a table of that name is a permanent table again.
+    let result = run_one(&mut socket, "RENAME TABLE tmp2 TO tmp3", None).await;
+    assert_eq!(
+        refused(&result),
+        json!({ "code": "write_not_allowed", "kinds": ["rename_table"] })
     );
 
     // A switch off, a write no switch allows.

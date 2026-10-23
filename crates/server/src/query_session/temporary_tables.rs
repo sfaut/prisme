@@ -1,6 +1,6 @@
 //! Temporary tables of a session's connection, followed query after query.
 //!
-//! A change of tables (`ALTER`, `RENAME`, `TRUNCATE`, `DROP`) needs the
+//! A change of tables (`ALTER`, `RENAME`, `DROP`) needs the
 //! switches of the temporary tables when all the tables it names are
 //! temporary tables of the connection
 //! (`prisme_dialects::classify::classify_with`). MySQL (checked on 8.4.11)
