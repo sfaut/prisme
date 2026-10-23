@@ -43,6 +43,7 @@
   --color-accent-hover: var(--accent-hover);
   --color-accent-soft: var(--accent-soft);
   --color-on-accent: var(--on-accent);
+  --color-focus-ring: var(--focus-ring);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
@@ -350,19 +351,11 @@
     }
   }
 
-  /* Focus ring: only on buttons, input fields and the entries of the menus
-     and drop-down lists, the same everywhere. The other focusable elements
-     (tabs, tree, result grid, SQL editor) show none; the tabs, buttons by
-     default in Reka UI, neither. */
+  /* No focus ring, except on the text input fields, which draw theirs with
+     the utilities `focus-visible:outline-*` (`UiInput`, `UiTextarea`,
+     renaming of a tab). The SQL editor shows none. */
   :focus-visible {
     outline: none;
-  }
-
-  :is(button, input, select, textarea, [role='menuitem'], [role='option']):not(
-      [role='tab']
-    ):focus-visible {
-    outline: var(--focus-width) solid var(--focus-ring);
-    outline-offset: var(--focus-offset);
   }
 }
 

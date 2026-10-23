@@ -74,12 +74,6 @@ const ICONS = {
     color: var(--fg-strong);
   }
 
-  /* The common ring, drawn inside: the rail touches the window's edges,
-     which would cut it outside. */
-  &:focus-visible {
-    outline-offset: calc(-1 * var(--focus-width));
-  }
-
   /* On a side: along the whole height, the title written downwards. */
   &.start,
   &.end {
