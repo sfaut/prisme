@@ -29,16 +29,22 @@ export function movedItems<T>(items: T[], from: number, to: number): T[] {
 }
 
 /**
- * Handling of the dragging of a bar's tabs.
- *
- * @param onMove Called on release, with the old position and the insertion position.
+ * Dragging of a bar's tabs: insertion position, and handlers of the pointer
+ * events of a tab.
  */
-export function useTabDrag(onMove: (from: number, to: number) => void): {
+export interface TabDrag {
   dropAt: Ref<number | null>
   onDown: (event: PointerEvent, index: number) => void
   onMove: (event: PointerEvent) => void
   onDrop: () => void
-} {
+}
+
+/**
+ * Handling of the dragging of a bar's tabs.
+ *
+ * @param onMove Called on release, with the old position and the insertion position.
+ */
+export function useTabDrag(onMove: (from: number, to: number) => void): TabDrag {
   /**
    * Move in progress: position of the grabbed tab, starting abscissa of the
    * pointer, element of the tab and pointer, and has the drag passed the

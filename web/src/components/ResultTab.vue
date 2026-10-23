@@ -1,5 +1,5 @@
 <!--
-  Content of a query's tab, in the cell's tab bar.
+  Tab of a query, in the cell's tab bar (a `DocumentTab`).
 
   - Progress dot, then label: the name given by the user, or the number and
     the start of the query; a double click renames it (`TabLabel`).
@@ -13,13 +13,15 @@
     green once the query has ended, red on failure (`tabFraction`).
 -->
 <script setup lang="ts">
-import { Pin, X } from '@lucide/vue'
+import { Pin } from '@lucide/vue'
 import { computed } from 'vue'
 
 import { type QueryTab, tabFraction, tabProgress } from '@/api/querySession'
 
+import DocumentTab from './DocumentTab.vue'
 import ProgressDot from './ProgressDot.vue'
 import TabLabel from './TabLabel.vue'
+import type { TabDrag } from './tabDrag'
 import UiButton from './ui/UiButton.vue'
 import { vTooltip } from './ui/tooltip'
 
@@ -32,6 +34,18 @@ const props = defineProps<{
    * Default label, without a given name.
    */
   defaultLabel: string
+  /**
+   * Position of the tab in the bar.
+   */
+  index: number
+  /**
+   * Number of tabs in the bar.
+   */
+  count: number
+  /**
+   * Dragging of the bar's tabs.
+   */
+  drag: TabDrag
 }>()
 
 const emit = defineEmits<{
@@ -68,11 +82,25 @@ const barTone = computed(() => {
 </script>
 
 <template>
-  <span class="flex min-w-0 items-center gap-2" @auxclick.middle.prevent="emit('close')">
+  <document-tab
+    :value="tab.id"
+    :index="index"
+    :count="count"
+    :drag="drag"
+    close-label="Fermer l’onglet"
+    close-tooltip="Fermer l’onglet (arrête sa requête si elle tourne)"
+    @close="emit('close')"
+  >
     <progress-dot :tab="tab" />
     <tab-label :name="tab.name" :default-label="defaultLabel" @rename="emit('rename', $event)" />
-    <!-- Pin and cross side by side, without the gap that sets the label apart. -->
-    <span class="flex items-center">
+    <span v-if="barTone" class="tab-progress" aria-hidden="true">
+      <span
+        class="tab-progress-bar"
+        :class="[barTone, { indeterminate: fraction === null }]"
+        :style="fraction === null ? undefined : { inlineSize: `${fraction * 100}%` }"
+      />
+    </span>
+    <template #actions>
       <ui-button
         :icon="Pin"
         variant="ghost"
@@ -91,25 +119,8 @@ const barTone = computed(() => {
         @mousedown.stop
         @click.stop="emit('toggle-pin')"
       />
-      <ui-button
-        :icon="X"
-        variant="ghost"
-        small
-        aria-label="Fermer l’onglet"
-        v-tooltip="'Fermer l’onglet (arrête sa requête si elle tourne)'"
-        class="invisible group-hover:visible group-data-[state=active]:visible"
-        @mousedown.stop
-        @click.stop="emit('close')"
-      />
-    </span>
-    <span v-if="barTone" class="tab-progress" aria-hidden="true">
-      <span
-        class="tab-progress-bar"
-        :class="[barTone, { indeterminate: fraction === null }]"
-        :style="fraction === null ? undefined : { inlineSize: `${fraction * 100}%` }"
-      />
-    </span>
-  </span>
+    </template>
+  </document-tab>
 </template>
 
 <style scoped>
