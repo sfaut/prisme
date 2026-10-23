@@ -52,6 +52,11 @@ pub(crate) struct QueryRequest {
     /// touch run, in parallel. Absent or empty: all the queries.
     #[ts(optional)]
     pub(crate) selection: Option<Vec<SelectionRange>>,
+    /// With `selection`, runs only the selected text: of each query the
+    /// passages touch, the part inside them ("Exécuter précisément").
+    /// Without a selection, nothing runs.
+    #[ts(optional)]
+    pub(crate) exact: Option<bool>,
     /// Row limit for these queries only, among the allowed choices.
     #[ts(optional)]
     pub(crate) row_limit: Option<u32>,

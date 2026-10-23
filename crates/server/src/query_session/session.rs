@@ -15,7 +15,7 @@ use tokio::sync::{mpsc, watch};
 use tracing::Instrument;
 
 use super::cancellation::Cancellation;
-use super::execution::{chosen_statements, reads_only};
+use super::execution::{chosen_statements, reads_only, selected_pieces};
 use super::limits::run_limits;
 use super::outbox::{Outbox, SessionStopped};
 use super::protocol::{BatchQuery, QueryRequest, ServerMessage, SessionRequest};
@@ -84,11 +84,13 @@ pub(super) async fn serve(
 }
 
 /// Action of a request, for the history of the queries: a refresh, the
-/// query under the cursor, or the queries run in parallel.
+/// query under the cursor, the selected text only, or the queries run in
+/// parallel.
 fn action_of(request: &QueryRequest) -> Action {
     match (request.tab, request.cursor) {
         (Some(_), _) => Action::Refresh,
         (None, Some(_)) => Action::Run,
+        (None, None) if request.exact == Some(true) => Action::RunExact,
         (None, None) => Action::RunAll,
     }
 }
@@ -203,10 +205,10 @@ impl Session<'_> {
     }
 
     /// Handles a request of the client: splits the text, then runs the query
-    /// under the cursor, or the queries of the selection, or all of them: in
-    /// parallel when they only read, otherwise one after the other on the
-    /// session's connection. A refresh runs its query alone, like a cursor at
-    /// the start.
+    /// under the cursor, or the queries of the selection (or only their
+    /// selected text), or all of them: in parallel when they only read,
+    /// otherwise one after the other on the session's connection. A refresh
+    /// runs its query alone, like a cursor at the start.
     async fn handle(
         &self,
         connection: &mut Connection,
@@ -220,7 +222,17 @@ impl Session<'_> {
         let statements = split(&request.sql);
         let cursor = request.tab.map_or(request.cursor, |_| Some(0));
         let selection = request.selection.as_deref().unwrap_or_default();
-        let chosen = chosen_statements(&statements, cursor, selection);
+        let exact = request.exact == Some(true) && cursor.is_none();
+        let pieces = if exact {
+            selected_pieces(&statements, selection)
+        } else {
+            Vec::new()
+        };
+        let chosen = if exact {
+            pieces.iter().collect()
+        } else {
+            chosen_statements(&statements, cursor, selection)
+        };
         if chosen.is_empty() {
             return self.outbox.error(None, ErrorDetail::NoQuery).await;
         }

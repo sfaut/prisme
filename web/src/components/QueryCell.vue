@@ -7,8 +7,10 @@
   their name, their pinning, their order and their closing. Ctrl+Enter or
   "Exécuter" runs the query under the cursor; Ctrl+Shift+Enter or "Exécuter
   tout" runs in parallel the queries the selected text touches, all of them
-  without a selection. While queries run, the button that started them
-  turns into a stop button (a click stops them all), and the other one waits,
+  without a selection; "Exécuter précisément" runs only the selected text
+  (the part of a query outside the selection does not run), and waits,
+  disabled, for a selection. While queries run, the button that started them
+  turns into a stop button (a click stops them all), and the others wait,
   disabled.
   "Enjoliver" rewrites the text as "beautiful SQL", once the connection's
   catalog is loaded (it gives the case of the user's functions).
@@ -25,7 +27,7 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { FastForward, LoaderCircle, Play, Square, WandSparkles } from '@lucide/vue'
+import { FastForward, LoaderCircle, Play, ScanText, Square, WandSparkles } from '@lucide/vue'
 import { TabsContent, TabsList, TabsRoot } from 'reka-ui'
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 
@@ -231,13 +233,13 @@ const STOP_TIP = 'Arrête toutes les requêtes et tous les chargements en cours'
 const running = computed(() => state.status === 'running')
 
 /**
- * Run button that started the running queries: "Exécuter" (`one`) or
- * "Exécuter tout" (`all`). It changes only when a run really starts (a
- * request while queries run is ignored). A run started elsewhere (a table opened from the
- * explorer, a refreshed tab, a batch found again after a reload) counts as
- * "Exécuter".
+ * Run button that started the running queries: "Exécuter" (`one`),
+ * "Exécuter précisément" (`exact`) or "Exécuter tout" (`all`). It changes
+ * only when a run really starts (a request while queries run is ignored). A
+ * run started elsewhere (a table opened from the explorer, a refreshed tab, a
+ * batch found again after a reload) counts as "Exécuter".
  */
-const launcher = ref<'one' | 'all'>('one')
+const launcher = ref<'one' | 'exact' | 'all'>('one')
 
 /**
  * Is "Exécuter" a stop button, the queries it started running?
@@ -245,9 +247,32 @@ const launcher = ref<'one' | 'all'>('one')
 const stopsOne = computed(() => running.value && launcher.value === 'one')
 
 /**
+ * Is "Exécuter précisément" a stop button, the queries it started running?
+ */
+const stopsExact = computed(() => running.value && launcher.value === 'exact')
+
+/**
  * Is "Exécuter tout" a stop button, the queries it started running?
  */
 const stopsAll = computed(() => running.value && launcher.value === 'all')
+
+/**
+ * Is text selected in the editor? "Exécuter précisément" waits for it.
+ */
+const textSelected = ref(false)
+
+/**
+ * Tooltip of "Exécuter précisément".
+ */
+const exactTip = computed(() => {
+  if (stopsExact.value) {
+    return STOP_TIP
+  }
+  if (!textSelected.value) {
+    return 'Sélectionnez le texte à exécuter'
+  }
+  return 'Le texte sélectionné seulement, tel quel : en parallèle si les requêtes ne font que lire, l’une après l’autre dès qu’une écrit (INSERT, UPDATE, DELETE…)'
+})
 
 /**
  * Runs the query under the cursor.
@@ -465,6 +490,19 @@ function runAll(selection: SelectionRange[] = []): void {
 }
 
 /**
+ * Runs only the selected text: of each query the passages touch, the part
+ * inside them. Nothing without a selection.
+ *
+ * @param selection Passages selected in the editor.
+ */
+function runExact(selection: SelectionRange[] = []): void {
+  if (selection.length > 0 && state.status === 'ready') {
+    launcher.value = 'exact'
+    session.run(sql.value, { selection, exact: true })
+  }
+}
+
+/**
  * Changes the user's default row limit.
  *
  * @param rowLimit New limit.
@@ -518,6 +556,14 @@ defineExpose({
           @click="stopsOne ? session.cancel() : run()"
         />
         <ui-button
+          v-tooltip="exactTip"
+          label="Exécuter précisément"
+          :icon="stopsExact ? Square : ScanText"
+          :tone="stopsExact ? 'error' : 'neutral'"
+          :disabled="!stopsExact && (state.status !== 'ready' || !textSelected)"
+          @click="stopsExact ? session.cancel() : runExact(editor?.selection())"
+        />
+        <ui-button
           v-tooltip="
             stopsAll
               ? STOP_TIP
@@ -560,6 +606,7 @@ defineExpose({
         :indent-size="indentSize"
         @run="run"
         @run-all="runAll"
+        @selection="(selected) => (textSelected = selected)"
         class="min-h-0 flex-1"
       />
     </div>

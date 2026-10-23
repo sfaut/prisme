@@ -48,6 +48,9 @@ static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
         )),
         M::up(include_str!("../migrations/0016_users_indent_size.sql")),
         M::up(include_str!("../migrations/0017_user_allowed_writes.sql")),
+        M::up(include_str!(
+            "../migrations/0018_query_history_run_exact.sql"
+        )),
     ])
 });
 

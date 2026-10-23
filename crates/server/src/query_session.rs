@@ -12,7 +12,9 @@
 //! - without a cursor (Ctrl+Shift+Enter): all the queries in parallel, each on
 //!   its own connection, opened on the session's current database. A query
 //!   that changes the state of its connection (`USE`, `SET`) therefore has no
-//!   effect on the others, nor on the session.
+//!   effect on the others, nor on the session;
+//! - with `exact` and a selection ("Exécuter précisément"): only the selected
+//!   text, cut out of the queries it touches, run like the previous ones.
 //!
 //! Results arrive streamed, in batches of rows, never loaded whole in memory.
 //! Each message of a result carries the number of its query (`query`): the
@@ -24,6 +26,7 @@
 //! server → client  {"type": "ready", "server": {"flavor": "mariadb", "version": "11.3.2-MariaDB", "ansi_quotes": false}, "database": "xlist"}
 //! client → server  {"type": "run", "sql": "SELECT 1; SELECT 2", "cursor": 3, "row_limit": 2000}   cursor and row_limit optional
 //! client → server  {"type": "run", "sql": "SELECT 1", "tab": 12}       refreshes the saved result tab 12 with its query
+//! client → server  {"type": "run", "sql": "SELECT 1 FROM t WHERE x", "selection": [{"start": 0, "end": 15}], "exact": true}   runs "SELECT 1 FROM t"
 //! client → server  {"type": "cancel"}                                  stops all the running queries
 //! client → server  {"type": "cancel_query", "query": 2}                stops a single query of the running batch
 //! client → server  {"type": "use", "database": "xlist"}               changes the session's current database

@@ -4,7 +4,8 @@
  * The client sends (`run`) the editor's whole text, with the cursor position
  * to run only the query found there (Ctrl+Enter), or without a cursor to run
  * in parallel the queries touched by the selected passages, or all of them
- * (Ctrl+Shift+Enter). The server announces the queries
+ * (Ctrl+Shift+Enter), or only the selected text (`exact`, "Exécuter
+ * précisément"). The server announces the queries
  * of the batch (`batch`), then streams their results, each message carrying
  * the number of its query: `started` when it starts (in parallel, it may wait
  * for its turn), `columns`, batches of `rows`, then `done` (or `error`).
@@ -63,7 +64,8 @@ export type Cell = string | null
 
 /**
  * Queries of the text to run: the one under the cursor; without a cursor,
- * those touched by the selected passages; without either, all of them.
+ * those touched by the selected passages, or only the selected text; without
+ * either, all of them.
  */
 export interface RunTarget {
   /**
@@ -74,6 +76,11 @@ export interface RunTarget {
    * Passages selected in the text: the queries they touch run, in parallel.
    */
   selection?: SelectionRange[]
+  /**
+   * With `selection`, runs only the selected text, cut out of the queries it
+   * touches; without a selection, nothing runs.
+   */
+  exact?: boolean
 }
 
 /**
@@ -1004,8 +1011,8 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
    *
    * @param sql Whole text of the editor.
    * @param target
-   *     Queries to run: the one under the cursor, those of the selection,
-   *     or, by default, all of them, in parallel.
+   *     Queries to run: the one under the cursor, those of the selection (or
+   *     only its text), or, by default, all of them, in parallel.
    * @param rowLimit Row limit; when absent, the one of the settings applies.
    */
   function run(sql: string, target: RunTarget = {}, rowLimit?: number): void {
@@ -1018,6 +1025,7 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
       sql,
       cursor: target.cursor,
       selection: target.selection,
+      exact: target.exact,
       row_limit: rowLimit,
     })
   }

@@ -12,7 +12,7 @@ use prisme_connectors::mysql::{self, Cell, Connection, MysqlTarget};
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::{StatementKind, changes_database, classify};
 use prisme_dialects::limit::{LimitOutcome, apply_default_limit, written_limit};
-use prisme_splitter::{Statement, statement_at, statements_in};
+use prisme_splitter::{Statement, pieces_in, statement_at, statements_in};
 use tokio::sync::Semaphore;
 use tracing::Instrument;
 
@@ -453,5 +453,31 @@ pub(super) fn chosen_statements<'a>(
         .iter()
         .zip(touched)
         .filter_map(|(statement, touched)| touched.then_some(statement))
+        .collect()
+}
+
+/// Selected text only, as queries in the order of the text: of each query
+/// the passages touch, the part inside them (`pieces_in`). Overlapping or
+/// adjacent passages count as one; a query touched by two separate passages
+/// gives two queries. Without a passage, none.
+pub(super) fn selected_pieces(
+    statements: &[Statement],
+    selection: &[SelectionRange],
+) -> Vec<Statement> {
+    let mut ranges: Vec<(usize, usize)> = selection
+        .iter()
+        .map(|range| (range.start, range.end))
+        .collect();
+    ranges.sort_unstable();
+    let mut merged: Vec<(usize, usize)> = Vec::with_capacity(ranges.len());
+    for (start, end) in ranges {
+        match merged.last_mut() {
+            Some(last) if start <= last.1 => last.1 = last.1.max(end),
+            _ => merged.push((start, end)),
+        }
+    }
+    merged
+        .into_iter()
+        .flat_map(|(start, end)| pieces_in(statements, start, end))
         .collect()
 }

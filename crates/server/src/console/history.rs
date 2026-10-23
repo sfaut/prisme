@@ -39,6 +39,8 @@ pub enum Action {
     Run,
     /// Queries of an editor run in parallel (Ctrl+Shift+Enter).
     RunAll,
+    /// Selected text of an editor only ("Exécuter précisément").
+    RunExact,
     /// Refresh of a result tab.
     Refresh,
     /// Change of the current database (`USE`), from the explorer.
@@ -58,6 +60,7 @@ impl Action {
             Self::Session => "session",
             Self::Run => "run",
             Self::RunAll => "run_all",
+            Self::RunExact => "run_exact",
             Self::Refresh => "refresh",
             Self::Use => "use",
             Self::Cancel => "cancel",
@@ -72,6 +75,7 @@ impl Action {
             Self::Session,
             Self::Run,
             Self::RunAll,
+            Self::RunExact,
             Self::Refresh,
             Self::Use,
             Self::Cancel,
@@ -432,7 +436,15 @@ mod tests {
     #[test]
     fn names_the_actions_both_ways() {
         for name in [
-            "session", "run", "run_all", "refresh", "use", "cancel", "explorer", "probe",
+            "session",
+            "run",
+            "run_all",
+            "run_exact",
+            "refresh",
+            "use",
+            "cancel",
+            "explorer",
+            "probe",
         ] {
             assert_eq!(Action::parse(name).unwrap().as_str(), name);
         }

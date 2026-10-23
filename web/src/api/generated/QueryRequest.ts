@@ -21,6 +21,12 @@ export type QueryRequest = {
    */
   selection?: Array<SelectionRange>;
   /**
+   * With `selection`, runs only the selected text: of each query the
+   * passages touch, the part inside them ("Exécuter précisément").
+   * Without a selection, nothing runs.
+   */
+  exact?: boolean;
+  /**
    * Row limit for these queries only, among the allowed choices.
    */
   row_limit?: number;

@@ -1,5 +1,6 @@
 //! Query splitter: splits a SQL text into queries, and finds the one under
-//! the cursor (Ctrl+Enter) or those a selection touches (Ctrl+Shift+Enter).
+//! the cursor (Ctrl+Enter), those a selection touches (Ctrl+Shift+Enter) or
+//! the selected parts of them ("Exécuter précisément").
 //!
 //! Splitting follows the lexical rules of MySQL and MariaDB, without parsing
 //! the SQL: a `;` separates two queries, except inside a string (`'…'`,
@@ -278,6 +279,47 @@ pub fn statements_in(statements: &[Statement], start: usize, end: usize) -> Vec<
         .collect()
 }
 
+/// Parts of the queries that the passage from `start` to `end` (UTF-16
+/// units, `end` excluded) touches, as `statements_in` finds them: of each
+/// one, only the text inside the passage, without the whitespace around it
+/// nor the separator. A part left with whitespace only is left out.
+pub fn pieces_in(statements: &[Statement], start: usize, end: usize) -> Vec<Statement> {
+    statements_in(statements, start, end)
+        .into_iter()
+        .filter_map(|index| piece(&statements[index], start, end))
+        .collect()
+}
+
+/// Part of `statement` inside the passage from `start` to `end` (UTF-16
+/// units of the whole text), trimmed; `None` if only whitespace remains.
+fn piece(statement: &Statement, start: usize, end: usize) -> Option<Statement> {
+    let text = &statement.sql;
+    let from = byte_at(text, start.saturating_sub(statement.start));
+    let to = byte_at(text, end.saturating_sub(statement.start));
+    let inside = &text[from..to];
+    let first = from + inside.len() - inside.trim_start().len();
+    let sql = inside.trim();
+    (!sql.is_empty()).then(|| Statement {
+        sql: sql.to_string(),
+        start: statement.start + utf16_offset(text, first),
+        end: statement.start + utf16_offset(text, first + sql.len()),
+    })
+}
+
+/// Byte of `text` that starts `unit` UTF-16 units after its start; a unit
+/// inside a character goes to the end of that character, a unit beyond the
+/// text to its end.
+fn byte_at(text: &str, unit: usize) -> usize {
+    let mut units = 0;
+    for (byte, character) in text.char_indices() {
+        if units >= unit {
+            return byte;
+        }
+        units += character.len_utf16();
+    }
+    text.len()
+}
+
 /// Builds a query from its byte positions.
 fn statement(text: &str, first: usize, body_end: usize, end: usize) -> Statement {
     Statement {
@@ -504,6 +546,54 @@ mod tests {
         assert!(statements_in(&statements, 21, 23).is_empty());
         // An empty passage, a cursor, touches nothing.
         assert!(statements_in(&statements, 25, 25).is_empty());
+    }
+
+    #[test]
+    fn cuts_out_the_selected_parts_of_the_statements() {
+        // Queries at 0..9 and 10..53.
+        let text = "SELECT 1;
+SELECT id, name FROM user WHERE id > 1;";
+        let statements = split(text);
+        let pieces = |start, end| {
+            pieces_in(&statements, start, end)
+                .into_iter()
+                .map(|piece| (piece.sql, piece.start, piece.end))
+                .collect::<Vec<_>>()
+        };
+        let user = text.find("user").unwrap();
+        // From the second SELECT to "user": its WHERE clause is left out.
+        assert_eq!(
+            pieces(10, user + 4),
+            [("SELECT id, name FROM user".to_string(), 10, user + 4)]
+        );
+        // From the first SELECT to "user": two queries, the second one cut.
+        assert_eq!(
+            pieces(0, user + 4),
+            [
+                ("SELECT 1".to_string(), 0, 8),
+                ("SELECT id, name FROM user".to_string(), 10, user + 4)
+            ]
+        );
+        // The blanks around a part go; a separator alone is no part.
+        let from = text.find(" FROM").unwrap();
+        assert_eq!(
+            pieces(from, user + 5),
+            [("FROM user".to_string(), from + 1, user + 4)]
+        );
+        assert!(pieces(8, 10).is_empty());
+        // Positions in UTF-16 units, past a character outside the BMP.
+        let statements = split("SELECT '😀', 2 FROM t;");
+        let piece = &pieces_in(&statements, 0, 14)[0];
+        assert_eq!((piece.sql.as_str(), piece.end), ("SELECT '😀', 2", 14));
+        // A separator set by DELIMITER is kept inside the parts.
+        let statements = split(
+            "DELIMITER //
+CREATE PROCEDURE p() BEGIN SELECT 1; END//",
+        );
+        assert_eq!(
+            pieces_in(&statements, 0, 100)[0].sql,
+            "CREATE PROCEDURE p() BEGIN SELECT 1; END"
+        );
     }
 
     #[test]

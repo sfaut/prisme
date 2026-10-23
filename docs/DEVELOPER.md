@@ -172,7 +172,7 @@ npx wscat -c ws://127.0.0.1:8484/api/connections/1/query
 
 Prisme answers `{"type":"ready",...}` once connected to the target server. Then each line typed is a JSON message:
 
-- `run` runs `sql`, one or more queries. With `cursor` (a position in the text), only the query under the cursor runs. Without it, the queries touched by the passages of `selection` (`start` and `end` positions, `end` excluded) run in parallel; without either, all of them. `row_limit` overrides the default limit for this run. In the session of an editor, `tab` refreshes a saved result tab: `sql` is its query, run alone, and the tab is kept; only a complete result replaces the saved one.
+- `run` runs `sql`, one or more queries. With `cursor` (a position in the text), only the query under the cursor runs. Without it, the queries touched by the passages of `selection` (`start` and `end` positions, `end` excluded) run in parallel; without either, all of them. With `exact` set to `true`, only the selected text runs: of each query the passages touch, the part inside them; without a selection, nothing runs. `row_limit` overrides the default limit for this run. In the session of an editor, `tab` refreshes a saved result tab: `sql` is its query, run alone, and the tab is kept; only a complete result replaces the saved one.
 - `cancel` stops every running query; `cancel_query` stops one, given its number in the batch.
 
 ```
@@ -180,6 +180,7 @@ Prisme answers `{"type":"ready",...}` once connected to the target server. Then 
 {"type": "run", "sql": "SELECT * FROM information_schema.COLUMNS", "cursor": 0, "row_limit": 2000}
 {"type": "run", "sql": "SELECT 1; SELECT 2"}
 {"type": "run", "sql": "SELECT 1; SELECT 2; SELECT 3", "selection": [{"start": 11, "end": 18}]}
+{"type": "run", "sql": "SELECT 1 FROM DUAL WHERE 1 = 0", "selection": [{"start": 0, "end": 18}], "exact": true}
 {"type": "cancel"}
 {"type": "cancel_query", "query": 1}
 ```

@@ -168,10 +168,12 @@ Each editor has its own connection, its own session (and therefore its own trans
 | Run the query under the cursor | Ctrl+Enter | **Exécuter** (Run) |
 | Run every query of the editor: in parallel if they only read, one after another as soon as one writes | Ctrl+Shift+Enter | **Exécuter tout** (Run all) |
 | Run the queries touched by the selected text, the same way | Ctrl+Shift+Enter, with text selected | **Exécuter tout**, with text selected |
-| Stop every running query | | The button that started them, **Exécuter** or **Exécuter tout**, again; the other one waits, disabled |
+| Run only the selected text, the same way: the part of a query outside the selection does not run | | **Exécuter précisément** (Run exactly), with text selected |
+| Stop every running query | | The button that started them, **Exécuter**, **Exécuter précisément** or **Exécuter tout**, again; the others wait, disabled |
 
 - When the editor holds several queries, the one Ctrl+Enter would run is **highlighted**.
-- **Exécuter tout** (Run all) opens one result tab per query. How the queries run depends on what they do:
+- **Exécuter précisément** (Run exactly) runs the selected text as it is. With `SELECT ALL id, name, email FROM user WHERE email LIKE '%.fr';` selected from `SELECT` to `user`, only `SELECT ALL id, name, email FROM user` runs. A selection over several queries runs each of their selected parts. Without a selection, the button is disabled.
+- **Exécuter tout** (Run all) and **Exécuter précisément** open one result tab per query. How the queries run depends on what they do:
   - When they all read, they run **in parallel**, each on its own connection, opened on the current database, eight at a time at most. A `USE` among them changes neither the other queries nor the editor's session.
   - As soon as one of them writes, sets the session (`SET`) or cannot be parsed by Prisme, they all run **one after another**, in the order of the text, on the editor's session. A temporary table, a variable or a `USE` is then seen by the queries that follow. The first query that fails stops the batch: the next ones are not run and say so.
 - Syntax errors are **underlined in red** as you type, with the message on hover.
@@ -278,7 +280,7 @@ The **Historique** (History) tab lists every query sent to your servers, the old
 |---|---|
 | **#** | Number of the query in the history |
 | **Heure** (Time) | Time it was sent; the date shows in its tooltip |
-| **Action** | What sent it: **Session**, **Exécuter** (Run), **Exécuter tout** (Run all), **Rafraîchir** (Refresh), **Base courante** (Current database), **Interruption**, **Explorateur** (Explorer), **Test de connexion** (Connection test); the connection shows in its tooltip |
+| **Action** | What sent it: **Session**, **Exécuter** (Run), **Exécuter tout** (Run all), **Exécuter précisément** (Run exactly), **Rafraîchir** (Refresh), **Base courante** (Current database), **Interruption**, **Explorateur** (Explorer), **Test de connexion** (Connection test); the connection shows in its tooltip |
 | **Message** | The query on one line, then its error if it failed; the full query shows in its tooltip |
 | **Lignes** (Rows) | Rows read, preceded by "+" when the result was truncated ("+1 000"), or rows changed by a write; "—" otherwise |
 | **Exécution** (Execution) | Execution time, until the result, or until the columns for a result read row by row |

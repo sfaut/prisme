@@ -18,6 +18,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   session: 'Session',
   run: 'Exécuter',
   run_all: 'Exécuter tout',
+  run_exact: 'Exécuter précisément',
   refresh: 'Rafraîchir',
   use: 'Base courante',
   cancel: 'Interruption',

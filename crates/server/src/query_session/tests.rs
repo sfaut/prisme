@@ -188,6 +188,52 @@ fn chooses_the_statement_under_the_cursor_those_of_the_selection_or_all() {
 }
 
 #[test]
+fn runs_only_the_selected_text_when_asked() {
+    use super::execution::selected_pieces;
+    use super::protocol::SelectionRange;
+
+    let text = "SELECT ALL id, name, unit_price
+FROM product;
+SELECT ALL id, name, email
+FROM user
+WHERE email LIKE '%.fr';";
+    let statements = prisme_splitter::split(text);
+    let range = |start, end| SelectionRange { start, end };
+    let pieces = |selection: &[SelectionRange]| {
+        selected_pieces(&statements, selection)
+            .into_iter()
+            .map(|piece| piece.sql)
+            .collect::<Vec<_>>()
+    };
+    let user = text.find("user").unwrap() + 4;
+    let second = text.find("SELECT ALL id, name, email").unwrap();
+    // From the second SELECT to "user": without its WHERE clause.
+    assert_eq!(
+        pieces(&[range(second, user)]),
+        ["SELECT ALL id, name, email
+FROM user"]
+    );
+    // From the first SELECT to "user": both queries, the second one cut.
+    assert_eq!(
+        pieces(&[range(0, user)]),
+        [
+            "SELECT ALL id, name, unit_price
+FROM product",
+            "SELECT ALL id, name, email
+FROM user"
+        ]
+    );
+    // Passages in any order, overlapping ones merged; two separate passages
+    // of a query give two queries.
+    assert_eq!(
+        pieces(&[range(second + 11, second + 13), range(0, 6), range(3, 10)]),
+        ["SELECT ALL", "id"]
+    );
+    // Without a selection, nothing runs.
+    assert!(pieces(&[]).is_empty());
+}
+
+#[test]
 fn sends_a_short_first_batch_of_rows_then_full_ones() {
     let mut batches = super::execution::RowBatches::new();
     let sizes: Vec<usize> = (0..1_200)
@@ -464,6 +510,20 @@ async fn streams_results_with_the_default_limit() {
     assert_eq!(families, [&json!("text"), &json!("integer")]);
     assert_eq!(results[1].end["database"], "mysql");
     assert!(results.iter().all(|result| result.started));
+
+    // Selected text only: the WHERE clause outside the selection does not run.
+    let text = "SELECT 1; SELECT 2 FROM DUAL WHERE 1 = 0;";
+    let selection = json!([{ "start": 0, "end": 28 }]);
+    let request = json!({ "sql": text, "selection": selection, "exact": true });
+    let (batch, results) = run(&mut socket, request).await;
+    let sqls: Vec<&Value> = batch["queries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|query| &query["sql"])
+        .collect();
+    assert_eq!(sqls, [&json!("SELECT 1"), &json!("SELECT 2 FROM DUAL")]);
+    assert_eq!(results[1].rows, 1);
 
     // Stop: the running queries are interrupted well before their end.
     let started = std::time::Instant::now();

@@ -7,6 +7,7 @@ export type Action =
   | "session"
   | "run"
   | "run_all"
+  | "run_exact"
   | "refresh"
   | "use"
   | "cancel"

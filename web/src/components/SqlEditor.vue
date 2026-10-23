@@ -13,7 +13,8 @@
   is analysed by the server shortly after each keystroke. Ctrl+Enter
   (Cmd+Enter on Mac) emits `run` with the cursor position;
   Ctrl+Shift+Enter emits `run-all` with the selected passages (none: all
-  the queries). Tab and Shift+Tab indent by stops of `indentSize` spaces (a
+  the queries); `selection` tells whether text is selected, for "Exécuter
+  précisément". Tab and Shift+Tab indent by stops of `indentSize` spaces (a
   setting of the user), like Backspace in the indentation and Ctrl+[ /
   Ctrl+], Enter goes to a new line at the indentation of the line it leaves
   (`editorIndent.ts`). Ctrl+Up and Ctrl+Down scroll the text by one line
@@ -93,6 +94,10 @@ const emit = defineEmits<{
    * them if nothing is selected (Ctrl+Shift+Enter).
    */
   'run-all': [selection: SelectionRange[]]
+  /**
+   * Text becomes selected in the editor (`true`), or no longer is (`false`).
+   */
+  selection: [selected: boolean]
 }>()
 
 const host = useTemplateRef<HTMLDivElement>('host')
@@ -109,6 +114,11 @@ const language = new Compartment()
 const indentation = new Compartment()
 
 let view: EditorView | null = null
+
+/**
+ * Was text selected in the editor, at the last change of the selection?
+ */
+let selected = false
 
 /**
  * Delay between the last keystroke and the analysis of the text, in milliseconds.
@@ -249,6 +259,11 @@ onMounted(() => {
           text.value = update.state.doc.toString()
           scheduleAnalysis()
         }
+        const selecting = update.state.selection.ranges.some((range) => !range.empty)
+        if (selecting !== selected) {
+          selected = selecting
+          emit('selection', selecting)
+        }
       }),
     ],
   })
@@ -304,8 +319,8 @@ function cursor(): number {
 }
 
 /**
- * Passages selected in the editor, for the "Exécuter tout" button: the same
- * as Ctrl+Shift+Enter. None before mounting.
+ * Passages selected in the editor, for the "Exécuter tout" and "Exécuter
+ * précisément" buttons: the same as Ctrl+Shift+Enter. None before mounting.
  */
 function selection(): SelectionRange[] {
   return view ? selectedPassages(view) : []

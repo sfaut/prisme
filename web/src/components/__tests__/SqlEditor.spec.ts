@@ -77,6 +77,29 @@ describe('SqlEditor', () => {
     wrapper.unmount()
   })
 
+  it('tells when text becomes selected, then no longer is', () => {
+    const wrapper = mount(SqlEditor, {
+      props: {
+        flavor: 'mysql',
+        schema: {},
+        version: null,
+        ansiQuotes: false,
+        defaultSchema: null,
+        indentSize: 4,
+        modelValue: 'SELECT 1;\nSELECT 2;',
+      },
+      attachTo: document.body,
+    })
+    const view = EditorView.findFromDOM(wrapper.find('.cm-editor').element as HTMLElement)!
+    view.dispatch({ selection: { anchor: 3 } })
+    view.dispatch({ selection: { anchor: 7, head: 12 } })
+    // Another selection: no new message.
+    view.dispatch({ selection: { anchor: 2, head: 4 } })
+    view.dispatch({ selection: { anchor: 4 } })
+    expect(wrapper.emitted('selection')).toEqual([[true], [false]])
+    wrapper.unmount()
+  })
+
   it('appends a generated query to the text, cursor on the next line', () => {
     const wrapper = mount(SqlEditor, {
       props: {
