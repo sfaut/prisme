@@ -167,7 +167,7 @@
 
   --selection: color-mix(in oklab, var(--accent) 18%, transparent);
 
-  /* Badge of a source's server flavor, in the explorer: text in the engine's
+  /* Badge of a source's server flavor, in the navigator: text in the engine's
      color (MySQL blue, MariaDB brown) on a background tinted with the same
      color. */
   --badge-mysql: light-dark(var(--blue-600), var(--blue-300));
@@ -225,7 +225,7 @@
 
   /* Named lengths, multiples of the unit. Heights: controls (buttons,
      fields, lines of the menus), small buttons ("⋮" menu), lines of the
-     explorer's tree, whose height the code reads too (`h-control`,
+     navigator's tree, whose height the code reads too (`h-control`,
      `h-control-sm`, `h-row`). */
   --control-height: calc(var(--space-unit) * 6);
   --control-height-sm: calc(var(--space-unit) * 5);

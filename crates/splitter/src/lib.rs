@@ -12,7 +12,7 @@
 //! `split` gives the queries to run; `chunks` gives the whole text in pieces
 //! (`DELIMITER` commands, queries with their comments and their separator),
 //! for whoever must rewrite it without losing anything (the beautifier);
-//! `text_end` tells how a query can be appended to the text (the explorer).
+//! `text_end` tells how a query can be appended to the text (the navigator).
 //!
 //! Positions (`start`, `end`) are counted in UTF-16 units, like those of the
 //! interface's editor (CodeMirror): a cursor compares to them directly.

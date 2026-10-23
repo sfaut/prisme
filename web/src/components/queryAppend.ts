@@ -1,6 +1,6 @@
 /**
  * Query appended at the end of the editor's text (ticket #10): a double click
- * on a table of the explorer adds its `SELECT` after the last query, without
+ * on a table of the navigator adds its `SELECT` after the last query, without
  * overwriting anything, then runs it. The operations on an index (ticket #21)
  * are appended the same way, as a block of commented-out statements.
  *

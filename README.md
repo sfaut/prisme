@@ -21,7 +21,7 @@ Prisme is at the start of its first version (v1). Today it queries **MySQL and M
   - [Command-line options](#command-line-options)
 - [Using Prisme](#using-prisme)
   - [Connections](#connections)
-  - [Object explorer](#object-explorer)
+  - [Object navigator](#object-navigator)
   - [Editors](#editors)
   - [Running queries](#running-queries)
   - [Writing SQL](#writing-sql)
@@ -106,19 +106,19 @@ Options given on the command line replace the saved settings for that launch, wi
 The screen has these areas:
 
 - **Top bar**: the name and version of Prisme, the synchronisation state, the theme and your account menu (see [Top bar](#top-bar)).
-- **Left panel**: the object explorer, **Explorateur d’objets** (Object explorer), with your connections and their databases.
+- **Left panel**: the object navigator, **Navigateur d’objets** (Object navigator), with your connections and their databases.
 - **Editor tabs**: several SQL editors, each one on its own connection.
 - **SQL cell and results**: the editor, its buttons, and one result tab per query.
 - **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).
 - **Console**, under the editors: the history of the queries sent to the servers, and the debug log (see [Console](#console)).
 
-The side panels go from the top bar to the bottom of the window. The fold button of a panel's header (left of the title for the data explorer and the console, at the right for the object explorer) folds it towards its edge, where it leaves a narrow rail with its name; a click on the rail opens it again. The object explorer and the console are open by default, the data explorer closed; your choice for the object explorer and the console is remembered.
+The side panels go from the top bar to the bottom of the window. The fold button of a panel's header (left of the title for the data explorer and the console, at the right for the object navigator) folds it towards its edge, where it leaves a narrow rail with its name; a click on the rail opens it again. The object navigator and the console are open by default, the data explorer closed; your choice for the object navigator and the console is remembered.
 
 The version of Prisme shows next to its name, at the top left.
 
 ### Connections
 
-Connections are managed from the explorer:
+Connections are managed from the navigator:
 
 - **Add**: **⋮** menu of **Sources de données** (Data sources) → **Ajouter une connexion** (Add a connection). **Tester** (Test) tries the settings before saving.
 - **Edit, refresh, test, delete**: **⋮** menu of each source. A blank password when editing keeps the current one. Deleting asks for confirmation.
@@ -127,7 +127,7 @@ Connections are managed from the explorer:
 
 Passwords are encrypted on disk and never sent back to the browser.
 
-### Object explorer
+### Object navigator
 
 The tree shows, for each source:
 
@@ -275,13 +275,13 @@ XPath is the version built into browsers, [XPath 1.0](https://www.w3.org/TR/1999
 
 The console, under the editors, shows what Prisme does besides the results. Drag its top edge to change its height; double-click the edge to restore its default height.
 
-The **Historique** (History) tab lists every query sent to your servers, the oldest at the top: those of your editors, and those Prisme sends itself (opening of a session, object explorer, connection test, interruption). New queries show as they are sent. Passwords of the server's own syntaxes are masked (`'***'`): `IDENTIFIED BY`, `PASSWORD('…')`, `SET PASSWORD`, `MASTER_PASSWORD`, `OPTIONS (PASSWORD …)` of `CREATE SERVER`…; the data of your databases stay as written, and the text of your editors keeps everything as typed. Each line gives:
+The **Historique** (History) tab lists every query sent to your servers, the oldest at the top: those of your editors, and those Prisme sends itself (opening of a session, object navigator, connection test, interruption). New queries show as they are sent. Passwords of the server's own syntaxes are masked (`'***'`): `IDENTIFIED BY`, `PASSWORD('…')`, `SET PASSWORD`, `MASTER_PASSWORD`, `OPTIONS (PASSWORD …)` of `CREATE SERVER`…; the data of your databases stay as written, and the text of your editors keeps everything as typed. Each line gives:
 
 | Column | Content |
 |---|---|
 | **#** | Number of the query in the history |
 | **Heure** (Time) | Time it was sent; the date shows in its tooltip |
-| **Action** | What sent it: **Session**, **Exécuter** (Run), **Exécuter tout** (Run all), **Exécuter précisément** (Run exactly), **Rafraîchir** (Refresh), **Base courante** (Current database), **Interruption**, **Explorateur** (Explorer), **Test de connexion** (Connection test); the connection shows in its tooltip |
+| **Action** | What sent it: **Session**, **Exécuter** (Run), **Exécuter tout** (Run all), **Exécuter précisément** (Run exactly), **Rafraîchir** (Refresh), **Base courante** (Current database), **Interruption**, **Navigateur** (Navigator), **Test de connexion** (Connection test); the connection shows in its tooltip |
 | **Message** | The query on one line, then its error if it failed; the full query shows in its tooltip |
 | **Lignes** (Rows) | Rows read, preceded by "+" when the result was truncated ("+1 000"), or rows changed by a write; "—" otherwise |
 | **Exécution** (Execution) | Execution time, until the result, or until the columns for a result read row by row |

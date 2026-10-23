@@ -154,13 +154,13 @@ matters to redraw the grid.
 4. With Playwright (`playwright-core`, `msedge` or `chrome` browser already installed): open the interface, choose the connection, type several queries on `seq_1_to_200000` (MariaDB's sequence table), click **Exécuter tout** (Run all), then click on the tabs during the run while measuring the delay, and collect the long tasks with a `PerformanceObserver` of type `longtask`.
 5. Most telling indicator: `document.querySelectorAll('.grid-row').length` during the run. It must stay in the order of a few dozen per visible tab, whatever the number of rows received.
 
-## 2. Explorer frozen during the initial load: the catalog was reactive
+## 2. Navigator frozen during the initial load: the catalog was reactive
 
-Problem met in October 2026 in the object explorer.
+Problem met in October 2026 in the object navigator.
 
 ### 2.1 Symptom
 
-On choosing a connection, the explorer stayed inert: a click on the connected
+On choosing a connection, the navigator stayed inert: a click on the connected
 database did not open it, whereas it should be available right away. The more
 databases and tables the server had, the longer the wait.
 
@@ -214,7 +214,7 @@ The principle is the same as for the grid's rows (section 1.5):
 - the catalog is a plain object (`markRaw`), outside Vue's tracking;
 - only a revision number per connection is reactive. It increases at most
   every 100 ms during reception, then at the end;
-- the explorer reads the catalog through `catalogOf()`, which also reads this
+- the navigator reads the catalog through `catalogOf()`, which also reads this
   number: the tree is rebuilt on each revision.
 
 ### 2.5 Takeaways

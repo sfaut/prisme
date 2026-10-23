@@ -20,7 +20,7 @@
   column of the grid. Its result can be refreshed (button under the grid):
   the query runs again in the tab, after the running batch if any.
   The row limit chosen here becomes the user's default limit.
-  The session can be closed from the object explorer ("Déconnecter",
+  The session can be closed from the object navigator ("Déconnecter",
   `disconnect`): the cell then shows it closed, with "Reconnecter".
   The buttons are above the editor. A horizontal bar, under the editor,
   splits the height between the editor (with its buttons) and the results:
@@ -61,7 +61,7 @@ import { DEFAULT_INDENT_SIZE } from './editorIndent'
 import SqlEditor from './SqlEditor.vue'
 import { movedItems, useTabDrag } from './tabDrag'
 import { loadEditorSplit } from './editorSplit'
-import { selectAllQuery } from './explorerNodes'
+import { selectAllQuery } from './navigatorNodes'
 import { indexOperations } from './indexOperations'
 import { type Appending, appendBlock, appendQuery } from './queryAppend'
 import { completionSchema } from './sqlCompletion'
@@ -253,7 +253,7 @@ const running = computed(() => state.status === 'running')
  * Run button that started the running queries: "Exécuter" (`one`),
  * "Exécuter précisément" (`exact`) or "Exécuter tout" (`all`). It changes
  * only when a run really starts (a request while queries run is ignored). A
- * run started elsewhere (a table opened from the explorer, a refreshed tab, a
+ * run started elsewhere (a table opened from the navigator, a refreshed tab, a
  * batch found again after a reload) counts as "Exécuter".
  */
 const launcher = ref<'one' | 'exact' | 'all'>('one')
@@ -457,7 +457,7 @@ function changeDatabaseWhenReady(database: string): void {
 
 /**
  * Databases, tables and columns offered by the editor's completion, after
- * the connection's catalog (loaded by the explorer).
+ * the connection's catalog (loaded by the navigator).
  */
 const completion = computed(() =>
   completionSchema(
@@ -559,7 +559,7 @@ watch(
 
 /**
  * Closes the session on the server at once ("Déconnecter" of the object
- * explorer): its connection to the target server closes, and the WebSocket
+ * navigator): its connection to the target server closes, and the WebSocket
  * with it; the cell then shows the session closed, with "Reconnecter".
  */
 async function disconnect(): Promise<void> {

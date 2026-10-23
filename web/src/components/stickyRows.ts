@@ -1,5 +1,5 @@
 /**
- * Rows of the object explorer as they are displayed, and the rows pinned at
+ * Rows of the object navigator as they are displayed, and the rows pinned at
  * the top of the tree while it scrolls.
  *
  * Each level of the hierarchy has its own slot at the top of the tree: the
@@ -11,10 +11,10 @@
  * the top only when its last line reaches it.
  *
  * The functions of this module do not depend on the display: the tree shows
- * the result (`ObjectExplorer.vue`).
+ * the result (`ObjectNavigator.vue`).
  */
 
-import type { ExplorerNode } from './explorerNodes'
+import type { NavigatorNode } from './navigatorNodes'
 
 /**
  * Row of the tree, as displayed.
@@ -23,7 +23,7 @@ export interface VisibleRow {
   /**
    * Node shown on the row.
    */
-  node: ExplorerNode
+  node: NavigatorNode
   /**
    * Depth of the row, 1 for the roots.
    */
@@ -61,7 +61,7 @@ export interface PinnedRow {
   /**
    * Node shown on the pinned row.
    */
-  node: ExplorerNode
+  node: NavigatorNode
   /**
    * Depth of the row, 1 for the roots: its slot is the level minus one.
    */
@@ -75,11 +75,11 @@ export interface PinnedRow {
  * @param nodes Roots of the tree.
  * @param openKeys Keys of the open nodes.
  */
-export function visibleRows(nodes: ExplorerNode[], openKeys: string[]): VisibleRows {
+export function visibleRows(nodes: NavigatorNode[], openKeys: string[]): VisibleRows {
   const open = new Set(openKeys)
   const rows: VisibleRow[] = []
   const byLevel: number[][] = []
-  const visit = (list: ExplorerNode[], level: number, parent: number | null): void => {
+  const visit = (list: NavigatorNode[], level: number, parent: number | null): void => {
     for (const node of list) {
       const index = rows.length
       const row: VisibleRow = { node, level, parent, end: index }

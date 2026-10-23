@@ -1,6 +1,6 @@
 <!--
   Layout of the screen: on top, the application bar (`AppTopBar`), across the
-  whole width; below, on the left, the object explorer, in a panel whose
+  whole width; below, on the left, the object navigator, in a panel whose
   width is set by dragging its right edge; in the middle, the SQL editors,
   one tab each (`EditorTabBar`), each with its cell (`QueryCell`): its
   connection, its session and its result tabs; on the right, the data
@@ -9,11 +9,11 @@
   Under the editors, between the side panels, the console
   (`ConsolePanel`), whose height is set by dragging its top edge. Each
   panel folds with the button of its header (`PanelHeader`) and leaves a
-  rail on its edge, which opens it again (`PanelRail`): the object explorer
+  rail on its edge, which opens it again (`PanelRail`): the object navigator
   and the console are open by default (`layout` and `console` stores), the
   data explorer closed. Layout in Tailwind classes.
 
-  The explorer acts on the active editor: the chosen source becomes its
+  The navigator acts on the active editor: the chosen source becomes its
   connection, an opened table or a chosen database (`USE`) runs there, and
   "Déconnecter" closes its session. The cells of all the editors stay
   mounted: each one keeps its session (and its transactions) open, even when
@@ -40,7 +40,7 @@ import AppTopBar from './components/AppTopBar.vue'
 import ConsolePanel from './components/ConsolePanel.vue'
 import DataExplorer from './components/DataExplorer.vue'
 import EditorTabBar from './components/EditorTabBar.vue'
-import ObjectExplorer from './components/ObjectExplorer.vue'
+import ObjectNavigator from './components/ObjectNavigator.vue'
 import QueryCell from './components/QueryCell.vue'
 import PanelRail from './components/PanelRail.vue'
 import PanelResizer from './components/PanelResizer.vue'
@@ -77,13 +77,13 @@ const editorsError = ref<string | null>(null)
 
 /**
  * Current database of each editor's session (it changes with `USE`); that
- * of the active editor is shown in bold in the explorer.
+ * of the active editor is shown in bold in the navigator.
  */
 const databases = ref<Record<number, string | null>>({})
 
 /**
  * Stage of each editor's session; that of the active editor enables
- * "Déconnecter" in the explorer.
+ * "Déconnecter" in the navigator.
  */
 const statuses = ref<Record<number, SessionStatus>>({})
 
@@ -117,7 +117,7 @@ const activeDatabase = computed(() => {
 const attempts = ref<Record<number, number>>({})
 
 /**
- * Mounted cells, by editor, to start a query there from the explorer.
+ * Mounted cells, by editor, to start a query there from the navigator.
  */
 const cells = new Map<number, InstanceType<typeof QueryCell>>()
 
@@ -151,7 +151,7 @@ onMounted(() => {
   editors.load().catch(report)
 })
 
-// The source highlighted in the explorer is the connection of the active editor.
+// The source highlighted in the navigator is the connection of the active editor.
 watch(
   () => editors.active?.connectionId ?? null,
   (connectionId) => {
@@ -187,7 +187,7 @@ async function activeCellOn(connectionId: number) {
 }
 
 /**
- * Shows the content of a table chosen in the explorer, in the active editor.
+ * Shows the content of a table chosen in the navigator, in the active editor.
  * A table of another source first gives this connection to the editor: the
  * query starts as soon as its session is open.
  *
@@ -204,7 +204,7 @@ async function openTable(connectionId: number, schema: string, table: string): P
 }
 
 /**
- * Writes the operations on an index chosen in the explorer, in the active
+ * Writes the operations on an index chosen in the navigator, in the active
  * editor, as `openTable` does for a table.
  *
  * @param connectionId Id of the index's connection.
@@ -226,7 +226,7 @@ async function writeIndexOperations(
 }
 
 /**
- * Makes a database chosen in the explorer the current database of the active
+ * Makes a database chosen in the navigator the current database of the active
  * editor's session (like `USE`). A database of another source first gives
  * this connection to the editor.
  *
@@ -242,7 +242,7 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
 }
 
 /**
- * Closes the session of the active editor ("Déconnecter" of the explorer).
+ * Closes the session of the active editor ("Déconnecter" of the navigator).
  */
 function disconnect(): void {
   if (editors.activeId !== null) {
@@ -266,13 +266,13 @@ function selectSource(connectionId: number): void {
   <div class="flex h-full flex-col">
     <app-top-bar />
     <div class="relative flex min-h-0 flex-1">
-      <!-- Folded, the object explorer stays mounted: its tree keeps its state. -->
+      <!-- Folded, the object navigator stays mounted: its tree keeps its state. -->
       <aside
         v-show="layout.objectsOpen"
         class="flex shrink-0 flex-col gap-3 border-e border-line p-3"
         :style="{ width: `${siderWidth}px` }"
       >
-        <object-explorer
+        <object-navigator
           :selected-id="connections.selectedId"
           :current-database="activeDatabase"
           :session-status="activeStatus"
@@ -286,7 +286,7 @@ function selectSource(connectionId: number): void {
       <panel-resizer v-if="layout.objectsOpen" v-model="siderWidth" :panel="SIDER" side="start" />
       <panel-rail
         v-else
-        title="Explorateur d’objets"
+        title="Navigateur d’objets"
         side="start"
         @expand="layout.objectsOpen = true"
       />

@@ -1,6 +1,6 @@
 //! Catalog of a MySQL or MariaDB server: databases, objects and table details.
 //!
-//! Serves the object explorer, which shows the elements as soon as they
+//! Serves the object navigator, which shows the elements as soon as they
 //! arrive, in three steps:
 //!
 //! 1. `schemas`: database names;

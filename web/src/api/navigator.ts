@@ -1,5 +1,5 @@
 /**
- * Object explorer: catalog of a connection, received progressively.
+ * Object navigator: catalog of a connection, received progressively.
  *
  * The server sends one JSON line per message (`CatalogEvent`): the
  * databases, then the tables database by database, then the columns database

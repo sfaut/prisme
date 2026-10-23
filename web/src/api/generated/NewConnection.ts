@@ -39,7 +39,7 @@ export type NewConnection = {
    */
   session_timeout_minutes?: number;
   /**
-   * Does the explorer show the system databases (`information_schema`,
+   * Does the navigator show the system databases (`information_schema`,
    * `mysql`...)? Absent: yes.
    */
   show_system_schemas?: boolean;

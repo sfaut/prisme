@@ -20,7 +20,7 @@ import type { BeautifyCatalog } from '@/api/generated/BeautifyCatalog'
 import { defineStore } from 'pinia'
 import { markRaw, ref, shallowRef, triggerRef } from 'vue'
 
-import { streamCatalog } from '@/api/explorer'
+import { streamCatalog } from '@/api/navigator'
 import type { CatalogEvent } from '@/api/generated/CatalogEvent'
 import type { Flavor } from '@/api/generated/Flavor'
 import type { EventInfo } from '@/api/generated/EventInfo'
@@ -198,7 +198,7 @@ export const useCatalogStore = defineStore('catalog', () => {
         timer ??= setTimeout(signal, REVISION_DELAY)
       })
     } catch (failure) {
-      // Nothing readable: the next opening of the explorer will try again.
+      // Nothing readable: the next opening of the navigator will try again.
       delete catalogs.value[connectionId]
       triggerRef(catalogs)
       throw failure

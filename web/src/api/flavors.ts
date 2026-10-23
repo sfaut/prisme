@@ -1,7 +1,7 @@
 /**
  * Names of the server flavors, as the interface writes them.
  *
- * Shared by the messages of the errors and by the explorer, which names the
+ * Shared by the messages of the errors and by the navigator, which names the
  * server of each source.
  */
 

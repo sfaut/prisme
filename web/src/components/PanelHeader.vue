@@ -1,5 +1,5 @@
 <!--
-  Header of a panel of the layout (object explorer, data explorer,
+  Header of a panel of the layout (object navigator, data explorer,
   console): its title, or what replaces it (default slot), a line under the
   title (`subtitle` slot), the panel's actions (`actions` slot), and the
   button that folds the panel towards its edge. The button stands where

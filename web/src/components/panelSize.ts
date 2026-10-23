@@ -33,7 +33,7 @@ export interface PanelSize {
 }
 
 /**
- * Left panel: object explorer. At least enough to read the connections'
+ * Left panel: object navigator. At least enough to read the connections'
  * buttons.
  */
 export const SIDER: PanelSize = {

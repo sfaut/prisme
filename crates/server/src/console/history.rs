@@ -1,5 +1,5 @@
 //! History of the queries: the SQL sent to the target servers, by the
-//! editors and by Prisme itself (session opening, explorer, connection test,
+//! editors and by Prisme itself (session opening, navigator, connection test,
 //! interruptions).
 //!
 //! The connector traces each statement as a `tracing` event of the target
@@ -35,7 +35,7 @@ pub enum Action {
     /// current database.
     Session,
     /// Query under the cursor of an editor (Ctrl+Enter), or a table opened
-    /// from the explorer.
+    /// from the navigator.
     Run,
     /// Queries of an editor run in parallel (Ctrl+Shift+Enter).
     RunAll,
@@ -43,12 +43,12 @@ pub enum Action {
     RunExact,
     /// Refresh of a result tab.
     Refresh,
-    /// Change of the current database (`USE`), from the explorer.
+    /// Change of the current database (`USE`), from the navigator.
     Use,
     /// Interruption of a running query (`KILL QUERY`).
     Cancel,
-    /// Reading of the catalog by the object explorer.
-    Explorer,
+    /// Reading of the catalog by the object navigator.
+    Navigator,
     /// Test of a connection.
     Probe,
 }
@@ -64,7 +64,7 @@ impl Action {
             Self::Refresh => "refresh",
             Self::Use => "use",
             Self::Cancel => "cancel",
-            Self::Explorer => "explorer",
+            Self::Navigator => "navigator",
             Self::Probe => "probe",
         }
     }
@@ -79,7 +79,7 @@ impl Action {
             Self::Refresh,
             Self::Use,
             Self::Cancel,
-            Self::Explorer,
+            Self::Navigator,
             Self::Probe,
         ]
         .into_iter()
@@ -443,7 +443,7 @@ mod tests {
             "refresh",
             "use",
             "cancel",
-            "explorer",
+            "navigator",
             "probe",
         ] {
             assert_eq!(Action::parse(name).unwrap().as_str(), name);

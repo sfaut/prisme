@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError, UNREACHABLE, request } from '../http'
 import { beautify } from '../beautify'
-import { streamCatalog } from '../explorer'
+import { streamCatalog } from '../navigator'
 import type { CatalogEvent } from '../generated/CatalogEvent'
 
 /**

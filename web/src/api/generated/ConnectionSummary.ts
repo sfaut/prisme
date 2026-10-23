@@ -42,7 +42,7 @@ export type ConnectionSummary = {
    */
   session_timeout_minutes: number;
   /**
-   * Does the explorer show the system databases?
+   * Does the navigator show the system databases?
    */
   show_system_schemas: boolean;
   /**

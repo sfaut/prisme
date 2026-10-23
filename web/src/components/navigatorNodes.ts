@@ -1,5 +1,5 @@
 /**
- * Nodes of the object explorer's tree.
+ * Nodes of the object navigator's tree.
  *
  * Structure of the tree (labels as displayed):
  *
@@ -88,7 +88,7 @@ export interface Source {
 
 /**
  * Databases provided by the server itself, which the connection's setting
- * can hide in the explorer.
+ * can hide in the navigator.
  */
 export const SYSTEM_SCHEMAS = ['information_schema', 'mysql', 'performance_schema', 'sys']
 
@@ -111,7 +111,7 @@ export type EntryKind =
 /**
  * Node of the tree, in the format expected by Reka UI's `TreeRoot`.
  */
-export interface ExplorerNode extends Place {
+export interface NavigatorNode extends Place {
   /**
    * Unique key in the tree.
    */
@@ -146,7 +146,7 @@ export interface ExplorerNode extends Place {
   /**
    * Children.
    */
-  children?: ExplorerNode[]
+  children?: NavigatorNode[]
   /**
    * Node that cannot be clicked ("chargement…").
    */
@@ -222,7 +222,7 @@ export const NOTEBOOKS_KEY = 'notebooks'
  * @param sources Sources, in display order.
  * @param receiving Is a catalog being received ("chargement…" note)?
  */
-export function explorerTree(sources: Source[], receiving: boolean): ExplorerNode[] {
+export function navigatorTree(sources: Source[], receiving: boolean): NavigatorNode[] {
   return [
     {
       key: SOURCES_KEY,
@@ -261,7 +261,7 @@ export function sourceKey(connectionId: number): string {
  *
  * @param sources Sources, in display order.
  */
-export function sourceNodes(sources: Source[]): ExplorerNode[] {
+export function sourceNodes(sources: Source[]): NavigatorNode[] {
   return sources.map((source) => {
     const place = { connectionId: source.connectionId, schema: '' }
     const key = sourceKey(source.connectionId)
@@ -299,7 +299,7 @@ export function catalogNodes(
   connectionId: number,
   schemas: CatalogSchema[],
   currentDatabase: string | null = null,
-): ExplorerNode[] {
+): NavigatorNode[] {
   return schemas.map((schema) => {
     const place = { connectionId, schema: schema.name }
     const key = `schema:${placeKey(place)}`
@@ -340,16 +340,16 @@ function schemaFolders(
   tables: CatalogTable[],
   routines: RoutineInfo[],
   events: EventInfo[],
-): ExplorerNode[] {
+): NavigatorNode[] {
   const base = placeKey(place)
-  const routineNode = (routine: RoutineInfo): ExplorerNode => ({
+  const routineNode = (routine: RoutineInfo): NavigatorNode => ({
     key: `routine:${base}.${routine.name}:${routine.kind}`,
     label: routine.name,
     isLeaf: true,
     entry: routine.kind === 'procedure' ? 'procedure' : 'function',
     ...place,
   })
-  const eventNode = (event: EventInfo): ExplorerNode => ({
+  const eventNode = (event: EventInfo): NavigatorNode => ({
     key: `event:${base}.${event.name}`,
     label: event.enabled ? event.name : `${event.name} · désactivé`,
     isLeaf: true,
@@ -391,7 +391,7 @@ function schemaFolders(
  * @param place Connection and database.
  * @param table Table or view.
  */
-function tableNode(place: Place, table: CatalogTable): ExplorerNode {
+function tableNode(place: Place, table: CatalogTable): NavigatorNode {
   const key = `table:${placeKey(place)}.${table.name}`
   return {
     key,
@@ -415,9 +415,9 @@ function tableNode(place: Place, table: CatalogTable): ExplorerNode {
  * @param kind Nature of the table.
  * @param details Details received from the server.
  */
-function tableFolders(place: Place, kind: TableKind, details: TableDetails): ExplorerNode[] {
+function tableFolders(place: Place, kind: TableKind, details: TableDetails): NavigatorNode[] {
   const base = `${placeKey(place)}.${details.table}`
-  const item = (entry: EntryKind, prefix: string, name: string, label: string): ExplorerNode => ({
+  const item = (entry: EntryKind, prefix: string, name: string, label: string): NavigatorNode => ({
     key: `${prefix}:${base}.${name}`,
     label,
     isLeaf: true,
@@ -492,7 +492,12 @@ function tableFolders(place: Place, kind: TableKind, details: TableDetails): Exp
  * @param place Connection and database.
  * @param children Items of the folder.
  */
-function folder(key: string, label: string, place: Place, children: ExplorerNode[]): ExplorerNode {
+function folder(
+  key: string,
+  label: string,
+  place: Place,
+  children: NavigatorNode[],
+): NavigatorNode {
   return {
     key: `folder:${key}`,
     label: `${label} (${children.length})`,
@@ -509,7 +514,7 @@ function folder(key: string, label: string, place: Place, children: ExplorerNode
  * @param parent Key of the parent node.
  * @param place Connection and database.
  */
-function loadingNode(parent: string, place: Place): ExplorerNode {
+function loadingNode(parent: string, place: Place): NavigatorNode {
   return {
     key: `${parent}:loading`,
     label: 'chargement…',

@@ -1,7 +1,7 @@
 /**
  * Completion of the SQL editor from the connection's catalog.
  *
- * The catalog loaded for the explorer becomes the namespace of
+ * The catalog loaded for the navigator becomes the namespace of
  * `@codemirror/lang-sql`: databases, then their tables, views, functions and
  * procedures, then the columns of the tables. Completion then offers the
  * names of the current database without a prefix, and the columns after
@@ -19,7 +19,7 @@ import type { SQLNamespace } from '@codemirror/lang-sql'
 import type { RoutineInfo } from '@/api/generated/RoutineInfo'
 import type { CatalogSchema, CatalogTable } from '@/stores/catalog'
 
-import { displayedType, quoteIdentifier, upperType } from './explorerNodes'
+import { displayedType, quoteIdentifier, upperType } from './navigatorNodes'
 
 /**
  * Plain identifier, written without quotes (same rule as `lang-sql`).

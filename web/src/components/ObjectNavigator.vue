@@ -1,5 +1,5 @@
 <!--
-  Object explorer: under its title, "Explorateur d’objets", with the button
+  Object navigator: under its title, "Navigateur d’objets", with the button
   that folds the panel to the left (`PanelHeader`), the collapsible
   "Sources de données" root, one branch per source (saved
   connection), then its databases, tables and columns; next, the
@@ -47,7 +47,7 @@
   While the tree scrolls, each level leaves the top in full and stays pinned
   there as long as its section lasts (`stickyRows.ts`): the source, the
   database and the table keep showing over their columns. The pinned lines are
-  the lines of the tree (`ExplorerLine.vue`), hidden from assistive
+  the lines of the tree (`NavigatorLine.vue`), hidden from assistive
   technologies, which read the tree.
 -->
 <script setup lang="ts">
@@ -71,9 +71,9 @@ import { useConnectionsStore } from '@/stores/connections'
 import { useLayoutStore } from '@/stores/layout'
 
 import ConnectionDialog from './ConnectionDialog.vue'
-import ExplorerLine from './ExplorerLine.vue'
+import NavigatorLine from './NavigatorLine.vue'
 import PanelHeader from './PanelHeader.vue'
-import { type ExplorerNode, SOURCES_KEY, explorerTree, sourceKey } from './explorerNodes'
+import { type NavigatorNode, SOURCES_KEY, navigatorTree, sourceKey } from './navigatorNodes'
 import { pinnedRows, visibleRows } from './stickyRows'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
@@ -197,7 +197,7 @@ const receiving = computed(() =>
  * Whole tree, built from the catalogs in memory.
  */
 const nodes = computed(() =>
-  explorerTree(
+  navigatorTree(
     connections.connections.map((connection) => ({
       connectionId: connection.id,
       name: connection.name,
@@ -237,7 +237,7 @@ const ROW_CLASSES =
  *
  * @param node Node shown on the line.
  */
-function rowClass(node: ExplorerNode): (string | Record<string, boolean>)[] {
+function rowClass(node: NavigatorNode): (string | Record<string, boolean>)[] {
   return [
     ROW_CLASSES,
     { 'bg-surface-elevated': node.role === 'source' && node.connectionId === props.selectedId },
@@ -319,7 +319,7 @@ function sessionOf(connectionId: number): SessionStatus | null {
  *
  * @param node Node of the tree.
  */
-function menuItems(node: ExplorerNode): MenuItem[] | null {
+function menuItems(node: NavigatorNode): MenuItem[] | null {
   const connection = connections.connections.find((item) => item.id === node.connectionId) ?? null
   switch (node.role) {
     case 'sources':
@@ -446,7 +446,7 @@ function asksAction(event: Event): boolean {
  * @param event Selection requested by the tree, with the original event.
  * @param node Node of the line.
  */
-function onSelect(event: TreeItemSelectEvent<ExplorerNode>, node: ExplorerNode): void {
+function onSelect(event: TreeItemSelectEvent<NavigatorNode>, node: NavigatorNode): void {
   event.preventDefault()
   if (asksAction(event.detail.originalEvent)) {
     activate(node)
@@ -459,7 +459,7 @@ function onSelect(event: TreeItemSelectEvent<ExplorerNode>, node: ExplorerNode):
  *
  * @param event Opening or closing requested by the tree, with the original event.
  */
-function onToggle(event: TreeItemToggleEvent<ExplorerNode>): void {
+function onToggle(event: TreeItemToggleEvent<NavigatorNode>): void {
   if (asksAction(event.detail.originalEvent)) {
     event.preventDefault()
   }
@@ -471,7 +471,7 @@ function onToggle(event: TreeItemToggleEvent<ExplorerNode>): void {
  *
  * @param node Node of the line.
  */
-function activate(node: ExplorerNode): void {
+function activate(node: NavigatorNode): void {
   if (node.role === 'source') {
     emit('select', node.connectionId)
   } else if (node.role === 'database') {
@@ -490,7 +490,7 @@ function activate(node: ExplorerNode): void {
  * @param event Original click.
  * @param clicked Node of the pinned line.
  */
-function onPinnedClick(event: MouseEvent, clicked: ExplorerNode): void {
+function onPinnedClick(event: MouseEvent, clicked: NavigatorNode): void {
   if (asksAction(event)) {
     activate(clicked)
   } else if (clicked.children?.length) {
@@ -540,11 +540,7 @@ watch(
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-2">
-    <panel-header
-      title="Explorateur d’objets"
-      side="start"
-      @collapse="layout.objectsOpen = false"
-    />
+    <panel-header title="Navigateur d’objets" side="start" @collapse="layout.objectsOpen = false" />
     <ui-alert v-if="probed" tone="success" :title="probed" @close="probed = null" />
     <ui-alert v-if="listError" tone="error" :title="listError" />
     <!-- Index as key: the same message can come twice, from two errors of one source. -->
@@ -553,7 +549,7 @@ watch(
     <div class="relative flex min-h-0 flex-1 flex-col">
       <tree-root
         :items="nodes"
-        :get-key="(node: ExplorerNode) => node.key"
+        :get-key="(node: NavigatorNode) => node.key"
         :expanded="expandedKeys"
         class="min-h-0 flex-1 overflow-y-auto"
         @update:expanded="expand"
@@ -568,19 +564,19 @@ watch(
             v-slot="{ isExpanded }"
             :value="item.value"
             :level="item.level"
-            :class="rowClass(item.value as ExplorerNode)"
+            :class="rowClass(item.value as NavigatorNode)"
             :style="{ '--level': item.level }"
             @select="
-              onSelect($event as TreeItemSelectEvent<ExplorerNode>, item.value as ExplorerNode)
+              onSelect($event as TreeItemSelectEvent<NavigatorNode>, item.value as NavigatorNode)
             "
-            @toggle="onToggle($event as TreeItemToggleEvent<ExplorerNode>)"
+            @toggle="onToggle($event as TreeItemToggleEvent<NavigatorNode>)"
           >
-            <explorer-line
-              :node="item.value as ExplorerNode"
+            <navigator-line
+              :node="item.value as NavigatorNode"
               :expanded="isExpanded"
-              :menu="menuItems(item.value as ExplorerNode)"
-              :session="sessionOf((item.value as ExplorerNode).connectionId)"
-              @act="activate(item.value as ExplorerNode)"
+              :menu="menuItems(item.value as NavigatorNode)"
+              :session="sessionOf((item.value as NavigatorNode).connectionId)"
+              @act="activate(item.value as NavigatorNode)"
               @disconnect="emit('disconnect')"
             />
           </tree-item>
@@ -600,7 +596,7 @@ watch(
           :style="{ '--level': row.level }"
           @click="onPinnedClick($event, row.node)"
         >
-          <explorer-line
+          <navigator-line
             :node="row.node"
             :expanded="expandedKeys.includes(row.node.key)"
             :menu="menuItems(row.node)"

@@ -1,5 +1,5 @@
 /**
- * Layout of the screen: which panels are open. The object explorer, on the
+ * Layout of the screen: which panels are open. The object navigator, on the
  * left, is open by default; a closed panel leaves a rail on its edge, which
  * opens it again (`PanelRail.vue`). The data explorer, on the right, has its
  * own store (`dataExplorer.ts`): it is closed when the application starts.
@@ -12,7 +12,7 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 
 /**
- * Key of the object explorer's state in local storage.
+ * Key of the object navigator's state in local storage.
  */
 const OBJECTS_OPEN_KEY = 'prisme.objectsOpen'
 
@@ -47,7 +47,7 @@ export function saveFlag(key: string, value: boolean): void {
 
 export const useLayoutStore = defineStore('layout', () => {
   /**
-   * Is the object explorer open?
+   * Is the object navigator open?
    */
   const objectsOpen = ref(loadFlag(OBJECTS_OPEN_KEY, true))
 

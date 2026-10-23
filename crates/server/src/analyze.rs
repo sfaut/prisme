@@ -1,7 +1,7 @@
 //! Analysis of the editor's text, requested by the interface shortly after
 //! each keystroke: splitting into queries, to highlight the one Ctrl+Enter
 //! would run, and syntax errors, to underline them. It also tells how a query
-//! can be appended to the text, for the explorer's generated queries.
+//! can be appended to the text, for the navigator's generated queries.
 //!
 //! The splitting is that of the query sessions (`splitter` crate): the
 //! interface shows exactly the query that will be sent. Each query is then

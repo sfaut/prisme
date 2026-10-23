@@ -12,7 +12,7 @@
 //! | `DELETE /api/connections/{id}`      | Deletes a connection (204).                                   |
 //! | `POST /api/connections/{id}/probe`  | Connects and returns the server's flavor and version.         |
 //! | `GET /api/connections/{id}/query`   | WebSocket: query session (see `query_session.rs`), closed with it. |
-//! | `GET /api/connections/{id}/catalog` | Databases, tables and columns (see `explorer.rs`).            |
+//! | `GET /api/connections/{id}/catalog` | Databases, tables and columns (see `navigator.rs`).           |
 //! | `GET /api/settings`                 | Settings of the user: row limit (with the allowed choices), read-only sessions, retention of the console. |
 //! | `PUT /api/settings`                 | Changes the settings, returns the updated settings.           |
 //! | `GET /api/profile`                  | Profile of the user: names and email address.                 |
@@ -52,8 +52,8 @@ use crate::connections::{self, ConnectionSummary, ConnectionsError, NewConnectio
 use crate::console::{self, Action, ConsoleEvent};
 use crate::editors;
 use crate::error_detail::ErrorDetail;
-use crate::explorer;
 use crate::master_key::MasterKey;
+use crate::navigator;
 use crate::profile::{self, Profile, ProfileUpdate};
 use crate::query_session;
 use crate::recorder::Recorder;
@@ -160,7 +160,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/beautify", post(beautify_sql))
         .route("/api/analyze", post(analyze_sql))
         .route("/api/dialects/{flavor}/keywords", get(dialect_keywords))
-        .merge(explorer::routes())
+        .merge(navigator::routes())
         .merge(console::routes())
         .merge(editors::routes())
         .fallback(web_assets::serve)
@@ -330,7 +330,7 @@ async fn editor_session(
 }
 
 /// `DELETE /api/editors/{id}/session`: closes the query session of an editor
-/// at once ("Déconnecter" of the object explorer): its running queries are
+/// at once ("Déconnecter" of the object navigator): its running queries are
 /// interrupted, its connection to the target server closed, and its
 /// WebSocket with them. The editor keeps its connection: a new WebSocket
 /// opens another session. Without an open session, nothing to close.

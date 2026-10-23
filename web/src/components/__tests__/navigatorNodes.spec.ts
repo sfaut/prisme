@@ -5,7 +5,7 @@ import { type CatalogSchema, applyCatalogEvent, emptyCatalog } from '@/stores/ca
 import {
   catalogNodes,
   displayedType,
-  explorerTree,
+  navigatorTree,
   foreignKeyLabel,
   indexLabel,
   indexNote,
@@ -13,7 +13,7 @@ import {
   sourceNodes,
   triggerLabel,
   upperType,
-} from '../explorerNodes'
+} from '../navigatorNodes'
 
 const catalog: CatalogSchema[] = [
   {
@@ -166,7 +166,7 @@ describe('system databases', () => {
   })
 })
 
-describe('explorerTree', () => {
+describe('navigatorTree', () => {
   it('puts the sources under "Sources de données", then "Notebooks"', () => {
     const source = {
       connectionId: 1,
@@ -177,12 +177,12 @@ describe('explorerTree', () => {
       version: null,
       showSystemSchemas: true,
     }
-    const [root, notebooks] = explorerTree([source], true)
+    const [root, notebooks] = navigatorTree([source], true)
     expect(notebooks?.label).toBe('Notebooks')
     expect(root?.label).toBe('Sources de données')
     expect(root?.note).toBe('chargement…')
     expect(labels(root)).toEqual(['Origen 2'])
-    expect(explorerTree([], false)[0]?.isLeaf).toBe(true)
+    expect(navigatorTree([], false)[0]?.isLeaf).toBe(true)
   })
 })
 

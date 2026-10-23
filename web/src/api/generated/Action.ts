@@ -11,5 +11,5 @@ export type Action =
   | "refresh"
   | "use"
   | "cancel"
-  | "explorer"
+  | "navigator"
   | "probe";

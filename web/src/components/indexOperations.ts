@@ -1,5 +1,5 @@
 /**
- * Operations on an index, written from the object explorer (ticket #21): the
+ * Operations on an index, written from the object navigator (ticket #21): the
  * button of an index's line appends to the editor the `ALTER TABLE`
  * statements that add an index or act on this one, commented out. The user
  * uncomments the one to run, then fills in the names left as placeholders
@@ -19,7 +19,7 @@
 
 import type { Flavor } from '@/api/generated/Flavor'
 
-import { quoteIdentifier } from './explorerNodes'
+import { quoteIdentifier } from './navigatorNodes'
 
 /**
  * Version of a server, as `[major, minor, patch]`.

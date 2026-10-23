@@ -156,7 +156,7 @@ More detailed logs: `$env:RUST_LOG="debug"` (PowerShell) before `cargo run`. Tes
 ## Development order of the v1
 
 1. Workspace, internal database, encrypted connections, MySQL/MariaDB connector, streaming query with default limit.
-2. Minimal interface: object explorer, SQL cell, paginated results.
+2. Minimal interface: object navigator, SQL cell, paginated results.
 3. Notebook, splitter, Ctrl+Enter and Ctrl+Shift+Enter, result tabs, successive execution.
 4. Transactions, cancellation, parallel execution, write switches.
 5. PostgreSQL and SQLite, then translation between dialects with the conformance suite.

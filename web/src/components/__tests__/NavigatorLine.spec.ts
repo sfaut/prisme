@@ -4,8 +4,8 @@ import { mount } from '@vue/test-utils'
 
 import type { SessionStatus } from '@/api/querySession'
 
-import ExplorerLine from '../ExplorerLine.vue'
-import type { ExplorerNode } from '../explorerNodes'
+import NavigatorLine from '../NavigatorLine.vue'
+import type { NavigatorNode } from '../navigatorNodes'
 
 /**
  * Mounts the line of a node.
@@ -13,13 +13,13 @@ import type { ExplorerNode } from '../explorerNodes'
  * @param node Node shown on the line.
  * @param session Stage of the active editor's session on the node's source.
  */
-function mountLine(node: ExplorerNode, session: SessionStatus | null = null) {
-  return mount(ExplorerLine, { props: { node, expanded: false, menu: null, session } })
+function mountLine(node: NavigatorNode, session: SessionStatus | null = null) {
+  return mount(NavigatorLine, { props: { node, expanded: false, menu: null, session } })
 }
 
 const place = { connectionId: 1, schema: 'shop' }
 
-describe('ExplorerLine', () => {
+describe('NavigatorLine', () => {
   it('gives a database a button that makes it the current database', async () => {
     const wrapper = mountLine({
       key: 'db',
@@ -59,7 +59,7 @@ describe('ExplorerLine', () => {
   })
 
   it('gives a source a disconnect button, enabled once its session is ready', async () => {
-    const source: ExplorerNode = {
+    const source: NavigatorNode = {
       key: 'source',
       label: 'visual',
       isLeaf: false,

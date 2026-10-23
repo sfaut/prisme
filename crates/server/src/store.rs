@@ -54,6 +54,9 @@ static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
         M::up(include_str!(
             "../migrations/0019_user_allowed_writes_temporary.sql"
         )),
+        M::up(include_str!(
+            "../migrations/0020_query_history_navigator.sql"
+        )),
     ])
 });
 
@@ -170,6 +173,42 @@ mod tests {
                 "delete",
                 "drop_table",
                 "drop_temporary_table"
+            ]
+        );
+    }
+
+    #[test]
+    fn renames_the_explorer_action_to_navigator() {
+        // Schema before the object navigator (migration 0020).
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", "ON")
+            .unwrap();
+        MIGRATIONS.to_version(&mut connection, 19).unwrap();
+        let user = ensure_user(&connection, "owner@example.com").unwrap();
+        connection
+            .execute(
+                "INSERT INTO query_history (user_id, started_at, action, sql) \
+                 VALUES (?1, '2026-10-23T10:00:00Z', 'explorer', 'SHOW DATABASES'), \
+                        (?1, '2026-10-23T10:00:01Z', 'run', 'SELECT 1')",
+                params![user],
+            )
+            .unwrap();
+
+        MIGRATIONS.to_latest(&mut connection).unwrap();
+        let mut statement = connection
+            .prepare("SELECT action, sql FROM query_history ORDER BY id")
+            .unwrap();
+        let rows: Vec<(String, String)> = statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            rows,
+            [
+                ("navigator".to_owned(), "SHOW DATABASES".to_owned()),
+                ("run".to_owned(), "SELECT 1".to_owned())
             ]
         );
     }

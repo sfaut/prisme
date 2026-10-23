@@ -1,11 +1,11 @@
-//! Object explorer: catalog of a saved connection, sent progressively.
+//! Object navigator: catalog of a saved connection, sent progressively.
 //!
 //! Route: `GET /api/connections/{id}/catalog`. The response is a stream of
 //! JSON lines (`application/x-ndjson`), one `CatalogEvent` message per line,
 //! sent as soon as it is ready:
 //!
 //! 1. `schemas`: names of all the databases, with the server's flavor (also
-//!    remembered on the connection, for the explorer's badge);
+//!    remembered on the connection, for the navigator's badge);
 //! 2. `objects`: tables, views, procedures, functions and events, database by
 //!    database;
 //! 3. `details`: columns, indexes, foreign keys and triggers of the tables,
@@ -78,7 +78,7 @@ pub enum CatalogEvent {
     Done,
 }
 
-/// Routes of the explorer, to merge into the API router.
+/// Routes of the navigator, to merge into the API router.
 pub fn routes() -> Router<AppState> {
     Router::new().route("/api/connections/{id}/catalog", get(stream_catalog))
 }
@@ -102,7 +102,7 @@ async fn stream_catalog(
         .await?
         .ok_or(ApiError::NotFound)?;
     // The queries of the catalog go to the history of the queries.
-    let span = console::sql_span(user_id, &name, Action::Explorer);
+    let span = console::sql_span(user_id, &name, Action::Navigator);
     let mut connection = mysql::connect(&target).instrument(span.clone()).await?;
     let server = mysql::server_info(&mut connection)
         .instrument(span.clone())
@@ -124,7 +124,7 @@ async fn stream_catalog(
     let lines = stream::unfold(receiver, |mut receiver| async move {
         let event = receiver.recv().await?;
         let json = serde_json::to_string(&event)
-            .expect("an explorer event always serialises: its fields are plain data");
+            .expect("a navigator event always serialises: its fields are plain data");
         let line = format!("{json}\n");
         Some((Ok::<_, Infallible>(line), receiver))
     });

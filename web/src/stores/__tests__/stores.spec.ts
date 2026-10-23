@@ -35,7 +35,7 @@ vi.mock('@/api/connections', () => ({
   deleteConnection: async () => undefined,
 }))
 
-vi.mock('@/api/explorer', () => ({
+vi.mock('@/api/navigator', () => ({
   streamCatalog: async (_id: number, onEvent: (event: unknown) => void) => {
     onEvent({ type: 'schemas', schemas: ['app', 'logs'] })
     onEvent({ type: 'done' })

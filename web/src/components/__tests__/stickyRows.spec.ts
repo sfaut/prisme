@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { ExplorerNode } from '../explorerNodes'
+import type { NavigatorNode } from '../navigatorNodes'
 import { pinnedRows, type VisibleRows, visibleRows } from '../stickyRows'
 
 const ROW_HEIGHT = 24
@@ -12,7 +12,7 @@ const ROW_HEIGHT = 24
  * @param label Displayed text of the node.
  * @param children Children of the node, none if omitted.
  */
-function node(key: string, label: string, children?: ExplorerNode[]): ExplorerNode {
+function node(key: string, label: string, children?: NavigatorNode[]): NavigatorNode {
   return {
     key,
     label,
@@ -57,7 +57,7 @@ const everythingOpen = [
  *
  * @param pinned Pinned rows.
  */
-function labels(pinned: { node: ExplorerNode }[]): string[] {
+function labels(pinned: { node: NavigatorNode }[]): string[] {
   return pinned.map((row) => row.node.label)
 }
 

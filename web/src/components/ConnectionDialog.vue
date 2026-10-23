@@ -255,7 +255,7 @@ async function save(): Promise<void> {
           <span class="text-ui text-fg-muted">min après la fermeture de la page</span>
         </div>
       </ui-field>
-      <ui-field label="Explorateur">
+      <ui-field label="Navigateur">
         <label
           class="flex items-center gap-2 text-ui text-fg-strong"
           v-tooltip="

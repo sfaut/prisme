@@ -34,7 +34,7 @@ const props = withDefaults(
      */
     tone?: 'neutral' | 'accent' | 'error'
     /**
-     * Small size (the explorer's "⋮" button).
+     * Small size (the navigator's "⋮" button).
      */
     small?: boolean
     /**

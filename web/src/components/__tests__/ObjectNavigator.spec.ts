@@ -6,7 +6,7 @@ import { mount } from '@vue/test-utils'
 
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 
-import ObjectExplorer from '../ObjectExplorer.vue'
+import ObjectNavigator from '../ObjectNavigator.vue'
 
 /**
  * Connections returned by the simulated server.
@@ -23,7 +23,7 @@ vi.mock('@/api/connections', () => ({
  */
 let schemaNames = ['a', 'b', 'c']
 
-vi.mock('@/api/explorer', () => ({
+vi.mock('@/api/navigator', () => ({
   streamCatalog: async (_: number, onEvent: (event: unknown) => void) => {
     onEvent({ type: 'schemas', schemas: schemaNames })
     onEvent({ type: 'done' })
@@ -94,12 +94,12 @@ function connection(id: number, name: string): ConnectionSummary {
 }
 
 /**
- * Mounts the explorer, attached to the page (the menus open in `body`).
+ * Mounts the navigator, attached to the page (the menus open in `body`).
  *
- * @param props Properties of the explorer.
+ * @param props Properties of the navigator.
  */
-function mountExplorer(props: { selectedId: number | null; currentDatabase: string | null }) {
-  return mount(ObjectExplorer, {
+function mountNavigator(props: { selectedId: number | null; currentDatabase: string | null }) {
+  return mount(ObjectNavigator, {
     props: { ...props, sessionStatus: null },
     attachTo: document.body,
   })
@@ -108,19 +108,19 @@ function mountExplorer(props: { selectedId: number | null; currentDatabase: stri
 /**
  * Labels of the displayed lines.
  *
- * @param wrapper Mounted explorer.
+ * @param wrapper Mounted navigator.
  */
-function labels(wrapper: ReturnType<typeof mountExplorer>): string[] {
+function labels(wrapper: ReturnType<typeof mountNavigator>): string[] {
   return wrapper.findAll('.tree-label').map((node) => node.text())
 }
 
 /**
  * Line of the tree whose label is given.
  *
- * @param wrapper Mounted explorer.
+ * @param wrapper Mounted navigator.
  * @param label Searched label.
  */
-function row(wrapper: ReturnType<typeof mountExplorer>, label: string) {
+function row(wrapper: ReturnType<typeof mountNavigator>, label: string) {
   return wrapper.findAll('.tree-row').find((item) => item.find('.tree-label').text() === label)
 }
 
@@ -160,11 +160,11 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('ObjectExplorer', () => {
+describe('ObjectNavigator', () => {
   it('puts the sources under a root and opens that of the chosen connection', async () => {
     savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
-    const wrapper = mountExplorer({ selectedId: 1, currentDatabase: null })
-    expect(wrapper.find('h2').text()).toBe('Explorateur d’objets')
+    const wrapper = mountNavigator({ selectedId: 1, currentDatabase: null })
+    expect(wrapper.find('h2').text()).toBe('Navigateur d’objets')
     await vi.waitFor(() =>
       expect(labels(wrapper)).toEqual([
         'Sources de données',
@@ -181,7 +181,7 @@ describe('ObjectExplorer', () => {
 
   it('offers a menu on the root and another one on each source', async () => {
     savedConnections = [connection(1, 'Origen 2')]
-    const wrapper = mountExplorer({ selectedId: null, currentDatabase: null })
+    const wrapper = mountNavigator({ selectedId: null, currentDatabase: null })
     await vi.waitFor(() => expect(wrapper.findAll('.node-menu')).toHaveLength(3))
     const [root, source] = wrapper.findAll('.node-menu')
     const options = () =>
@@ -198,7 +198,7 @@ describe('ObjectExplorer', () => {
 
   it('opens a source with a click on its line and chooses it with a Ctrl+click', async () => {
     savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
-    const wrapper = mountExplorer({ selectedId: 1, currentDatabase: null })
+    const wrapper = mountNavigator({ selectedId: 1, currentDatabase: null })
     await vi.waitFor(() => expect(row(wrapper, 'Autre')).toBeDefined())
     await click(row(wrapper, 'Autre'), 1)
     expect(wrapper.emitted('select')).toBeUndefined()
@@ -234,7 +234,7 @@ describe('ObjectExplorer', () => {
   it('pins the hierarchy of the top row while the tree scrolls', async () => {
     savedConnections = [connection(1, 'Origen 2')]
     schemaNames = Array.from({ length: 40 }, (_, index) => `db${index}`)
-    const wrapper = mountExplorer({ selectedId: 1, currentDatabase: null })
+    const wrapper = mountNavigator({ selectedId: 1, currentDatabase: null })
     await vi.waitFor(() => expect(row(wrapper, 'db0')).toBeDefined())
     const pinned = () =>
       wrapper.findAll('[aria-hidden="true"] .tree-label').map((node) => node.text())
@@ -257,7 +257,7 @@ describe('ObjectExplorer', () => {
   it('opens and closes a pinned line with a click', async () => {
     savedConnections = [connection(1, 'Origen 2')]
     schemaNames = Array.from({ length: 40 }, (_, index) => `db${index}`)
-    const wrapper = mountExplorer({ selectedId: 1, currentDatabase: null })
+    const wrapper = mountNavigator({ selectedId: 1, currentDatabase: null })
     await vi.waitFor(() => expect(row(wrapper, 'db0')).toBeDefined())
     const tree = wrapper.find('[role="tree"]')
     Object.defineProperty(tree.element, 'scrollTop', { value: 10 * 24, configurable: true })
@@ -277,7 +277,7 @@ describe('ObjectExplorer', () => {
 
   it('moves to the line whose label starts with the letters typed', async () => {
     savedConnections = [connection(1, 'Origen 2')]
-    const wrapper = mountExplorer({ selectedId: 1, currentDatabase: null })
+    const wrapper = mountNavigator({ selectedId: 1, currentDatabase: null })
     await vi.waitFor(() => expect(row(wrapper, 'c')).toBeDefined())
     ;(row(wrapper, 'a')?.element as HTMLElement | undefined)?.focus()
     await row(wrapper, 'a')?.trigger('keydown', { key: 'c' })
@@ -287,7 +287,7 @@ describe('ObjectExplorer', () => {
 
   it('follows the current database, even when going back to a database already chosen', async () => {
     savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
-    const wrapper = mountExplorer({ selectedId: 1, currentDatabase: 'a' })
+    const wrapper = mountNavigator({ selectedId: 1, currentDatabase: 'a' })
     const bold = () => wrapper.findAll('.current-database').map((node) => node.text())
     await vi.waitFor(() => expect(bold()).toEqual(['a']))
 

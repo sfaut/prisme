@@ -79,7 +79,7 @@ pub struct NewConnection {
     #[serde(default = "default_session_timeout")]
     #[ts(optional, as = "Option<u32>")]
     pub session_timeout_minutes: u32,
-    /// Does the explorer show the system databases (`information_schema`,
+    /// Does the navigator show the system databases (`information_schema`,
     /// `mysql`...)? Absent: yes.
     #[serde(default = "default_show_system_schemas")]
     #[ts(optional, as = "Option<bool>")]
@@ -131,7 +131,7 @@ pub struct ConnectionSummary {
     pub init_sql: String,
     /// Keep-alive delay of a session after its page is closed, in minutes.
     pub session_timeout_minutes: u32,
-    /// Does the explorer show the system databases?
+    /// Does the navigator show the system databases?
     pub show_system_schemas: bool,
     /// Flavor of the server seen on the last successful connection, `null`
     /// if the connection never succeeded.

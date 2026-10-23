@@ -1,5 +1,5 @@
 <!--
-  Contents of a line of the object explorer: the chevron of a level that can
+  Contents of a line of the object navigator: the chevron of a level that can
   open, the icon of its level, its label (or the three columns of a column),
   the flavor badge of a source and its "⋮" menu, the button that acts on a
   database (makes it the current one), a table (shows its content) or an
@@ -8,7 +8,7 @@
   closes the session of the active editor (emits `disconnect`), enabled once
   that session is ready on this source. Shared by the lines of the
   tree and by the lines pinned at the top of the tree while it scrolls
-  (`ObjectExplorer.vue`), which only differ by their container.
+  (`ObjectNavigator.vue`), which only differ by their container.
 -->
 <script setup lang="ts">
 import {
@@ -41,7 +41,7 @@ import { type Component, computed } from 'vue'
 
 import type { SessionStatus } from '@/api/querySession'
 
-import type { EntryKind, ExplorerNode } from './explorerNodes'
+import type { EntryKind, NavigatorNode } from './navigatorNodes'
 import UiButton from './ui/UiButton.vue'
 import UiDropdownMenu from './ui/UiDropdownMenu.vue'
 import type { MenuItem } from './ui/menuItem'
@@ -51,7 +51,7 @@ const props = defineProps<{
   /**
    * Node shown on the line.
    */
-  node: ExplorerNode
+  node: NavigatorNode
   /**
    * Is the node open? Changes its chevron and the icon of a folder.
    */
@@ -150,7 +150,7 @@ const ENTRY_ICONS: Record<Exclude<EntryKind, 'folder'>, Component> = {
  * @param node Node of the tree.
  * @param expanded Is the node open?
  */
-function nodeIcon(node: ExplorerNode, expanded: boolean): Component {
+function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
   switch (node.role) {
     case 'sources':
       return Server

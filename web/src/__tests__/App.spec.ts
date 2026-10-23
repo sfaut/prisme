@@ -34,7 +34,7 @@ vi.mock('@/api/editors', () => ({
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  // The explorer's tree (virtual scrolling) queries the media queries, missing
+  // The navigator's tree (virtual scrolling) queries the media queries, missing
   // from jsdom. Without layout, it shows no node anyway.
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
@@ -73,10 +73,10 @@ describe('App', () => {
     // The data explorer is closed by default: only its rail shows.
     expect(wrapper.find('[aria-label="Déplier : Explorateur de données"]').exists()).toBe(true)
 
-    await wrapper.find('[aria-label="Replier : Explorateur d’objets"]').trigger('click')
+    await wrapper.find('[aria-label="Replier : Navigateur d’objets"]').trigger('click')
     expect(objects()).toBe(false)
     expect(window.localStorage.getItem('prisme.objectsOpen')).toBe('false')
-    await wrapper.find('[aria-label="Déplier : Explorateur d’objets"]').trigger('click')
+    await wrapper.find('[aria-label="Déplier : Navigateur d’objets"]').trigger('click')
     expect(objects()).toBe(true)
 
     await wrapper.find('[aria-label="Déplier : Explorateur de données"]').trigger('click')

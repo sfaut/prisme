@@ -22,7 +22,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   refresh: 'Rafraîchir',
   use: 'Base courante',
   cancel: 'Interruption',
-  explorer: 'Explorateur',
+  navigator: 'Navigateur',
   probe: 'Test de connexion',
 }
 

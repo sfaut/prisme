@@ -1,7 +1,7 @@
 /**
  * Saved connections and connection selected in the interface.
  *
- * The server flavor of each connection (explorer badge) is detected in the
+ * The server flavor of each connection (navigator badge) is detected in the
  * background, without waiting for the source to be opened: after each load
  * of the list, a connection of unknown flavor is tested once
  * (`probeConnection`, which the server remembers); a changed connection is
