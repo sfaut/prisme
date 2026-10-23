@@ -14,9 +14,10 @@
   data explorer closed. Layout in Tailwind classes.
 
   The explorer acts on the active editor: the chosen source becomes its
-  connection, an opened table or a chosen database (`USE`) runs there. The
-  cells of all the editors stay mounted: each one keeps its session (and its
-  transactions) open, even when another editor is displayed.
+  connection, an opened table or a chosen database (`USE`) runs there, and
+  "Déconnecter" closes its session. The cells of all the editors stay
+  mounted: each one keeps its session (and its transactions) open, even when
+  another editor is displayed.
 
   Transient messages (`notify`) show at the bottom right (`UiToaster`); the
   tooltips of every element (`v-tooltip`), in a single bubble (`UiTooltip`).
@@ -26,6 +27,8 @@ import { errorMessage } from '@/api/errorMessage'
 import { Database } from '@lucide/vue'
 import { TabsContent, TabsRoot } from 'reka-ui'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
+
+import type { SessionStatus } from './api/querySession'
 
 import { useConnectionsStore } from './stores/connections'
 import { useConsoleStore } from './stores/console'
@@ -77,6 +80,35 @@ const editorsError = ref<string | null>(null)
  * of the active editor is shown in bold in the explorer.
  */
 const databases = ref<Record<number, string | null>>({})
+
+/**
+ * Stage of each editor's session; that of the active editor enables
+ * "Déconnecter" in the explorer.
+ */
+const statuses = ref<Record<number, SessionStatus>>({})
+
+/**
+ * Stage of the active editor's session, `null` without a session (no editor,
+ * or an editor without a connection).
+ */
+const activeStatus = computed(() => {
+  const editor = editors.active
+  if (!editor || !connectionOf(editor.connectionId)) {
+    return null
+  }
+  return statuses.value[editor.id] ?? null
+})
+
+/**
+ * Current database of the active editor's session, `null` if none or if the
+ * session is closed.
+ */
+const activeDatabase = computed(() => {
+  if (editors.activeId === null || activeStatus.value === 'closed') {
+    return null
+  }
+  return databases.value[editors.activeId] ?? null
+})
 
 /**
  * Number of reconnections requested, by editor: changing the key of its cell
@@ -210,6 +242,15 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
 }
 
 /**
+ * Closes the session of the active editor ("Déconnecter" of the explorer).
+ */
+function disconnect(): void {
+  if (editors.activeId !== null) {
+    void cells.get(editors.activeId)?.disconnect()
+  }
+}
+
+/**
  * Chooses a source as the connection of the active editor.
  *
  * @param connectionId Id of the connection.
@@ -233,13 +274,13 @@ function selectSource(connectionId: number): void {
       >
         <object-explorer
           :selected-id="connections.selectedId"
-          :current-database="
-            editors.activeId === null ? null : (databases[editors.activeId] ?? null)
-          "
+          :current-database="activeDatabase"
+          :session-status="activeStatus"
           @open-table="openTable"
           @index-operations="writeIndexOperations"
           @select="selectSource"
           @use-database="useDatabase"
+          @disconnect="disconnect"
         />
       </aside>
       <panel-resizer v-if="layout.objectsOpen" v-model="siderWidth" :panel="SIDER" side="start" />
@@ -286,6 +327,7 @@ function selectSource(connectionId: number): void {
                 @update:sql="(sql) => editors.setSql(editor.id, sql)"
                 @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
                 @database="(database) => (databases[editor.id] = database)"
+                @status="(status) => (statuses[editor.id] = status)"
               />
               <div v-else class="flex max-w-xs flex-col items-center gap-2 text-center">
                 <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">

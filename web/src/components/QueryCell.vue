@@ -20,6 +20,8 @@
   column of the grid. Its result can be refreshed (button under the grid):
   the query runs again in the tab, after the running batch if any.
   The row limit chosen here becomes the user's default limit.
+  The session can be closed from the object explorer ("Déconnecter",
+  `disconnect`): the cell then shows it closed, with "Reconnecter".
   The buttons are above the editor. A horizontal bar, under the editor,
   splits the height between the editor (with its buttons) and the results:
   the top third by default, a remembered setting
@@ -33,11 +35,22 @@ import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import { analyzeSql } from '@/api/analyze'
 import { beautify } from '@/api/beautify'
-import { deleteResult, listResults, reorderResults, updateResult } from '@/api/editors'
+import {
+  closeSession,
+  deleteResult,
+  listResults,
+  reorderResults,
+  updateResult,
+} from '@/api/editors'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { SelectionRange } from '@/api/generated/SelectionRange'
 import type { TextEnd } from '@/api/generated/TextEnd'
-import { type QueryTab, refreshState, useQuerySession } from '@/api/querySession'
+import {
+  type QueryTab,
+  type SessionStatus,
+  refreshState,
+  useQuerySession,
+} from '@/api/querySession'
 import { useCatalogStore } from '@/stores/catalog'
 import { useSettingsStore } from '@/stores/settings'
 
@@ -83,6 +96,10 @@ const emit = defineEmits<{
    * The current database has changed (connection, `USE`); `null` if none.
    */
   database: [database: string | null]
+  /**
+   * The stage of the session has changed (opening, ready, running, closed).
+   */
+  status: [status: SessionStatus]
 }>()
 
 /**
@@ -534,12 +551,32 @@ watch(
   { immediate: true },
 )
 
+watch(
+  () => state.status,
+  (status) => emit('status', status),
+  { immediate: true },
+)
+
+/**
+ * Closes the session on the server at once ("Déconnecter" of the object
+ * explorer): its connection to the target server closes, and the WebSocket
+ * with it; the cell then shows the session closed, with "Reconnecter".
+ */
+async function disconnect(): Promise<void> {
+  try {
+    await closeSession(props.editorId)
+  } catch (failure) {
+    state.error = errorMessage(failure)
+  }
+}
+
 defineExpose({
   run,
   runWhenReady,
   showTableWhenReady,
   writeIndexOperationsWhenReady,
   changeDatabaseWhenReady,
+  disconnect,
 })
 </script>
 

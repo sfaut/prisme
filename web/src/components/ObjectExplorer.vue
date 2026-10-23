@@ -20,7 +20,10 @@
   and close the line between its two clicks: it has no action. On hovering
   a database, a table or an index, a button on the right of its line does
   the same (plug: current database, eye: content, pencil and ruler:
-  operations on the index).
+  operations on the index). On hovering a source, and the current database
+  instead of its plug, an unplugged plug closes the session of the active
+  editor (emits `disconnect`): it is enabled on the active editor's source
+  only, once its session is ready, and disabled while queries run.
 
   Each source carries as a badge the flavor of its server (`mysql`,
   `mariadb`), seen on the last connection or when reading the catalog.
@@ -32,7 +35,8 @@
   On hovering the root, a "⋮" menu on the right adds a connection or reads
   again all the catalogs already read; on hovering each source, another one
   changes or tests the connection, reads its catalog again or deletes the
-  connection (after confirmation).
+  connection (after confirmation); "Déconnecter" there closes the session of
+  the active editor, like the button of the line.
 
   The tree is Reka UI's (`TreeRoot`, `TreeItem`: keyboard, opening of the
   levels, accessibility), with virtual scrolling (`TreeVirtualizer`); the
@@ -48,7 +52,7 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { NotebookPen, Pencil, PlugZap, Plus, RefreshCw, Trash2 } from '@lucide/vue'
+import { NotebookPen, Pencil, PlugZap, Plus, RefreshCw, Trash2, Unplug } from '@lucide/vue'
 import {
   TreeItem,
   type TreeItemSelectEvent,
@@ -60,6 +64,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 
 import { probeConnection, serverLabel } from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
+import type { SessionStatus } from '@/api/querySession'
 import { cssPixels } from '@/cssLength'
 import { useCatalogStore } from '@/stores/catalog'
 import { useConnectionsStore } from '@/stores/connections'
@@ -85,6 +90,11 @@ const props = defineProps<{
    * bold; `null` if none.
    */
   currentDatabase: string | null
+  /**
+   * Stage of the active editor's session, on the chosen connection; `null`
+   * without a session.
+   */
+  sessionStatus: SessionStatus | null
 }>()
 
 const emit = defineEmits<{
@@ -104,6 +114,10 @@ const emit = defineEmits<{
    * The user chooses a database as the current database (`USE`).
    */
   'use-database': [connectionId: number, schema: string]
+  /**
+   * The user closes the session of the active editor.
+   */
+  disconnect: []
 }>()
 
 const catalog = useCatalogStore()
@@ -291,6 +305,16 @@ function expand(keys: string[]): void {
 }
 
 /**
+ * Stage of the active editor's session for a source: that of the chosen
+ * connection, `null` for the other sources (no session of the active editor).
+ *
+ * @param connectionId Id of the source's connection.
+ */
+function sessionOf(connectionId: number): SessionStatus | null {
+  return connectionId === props.selectedId ? props.sessionStatus : null
+}
+
+/**
  * Choices of a node's "⋮" menu, `null` for a node without a menu.
  *
  * @param node Node of the tree.
@@ -322,6 +346,12 @@ function menuItems(node: ExplorerNode): MenuItem[] | null {
           label: 'Tester',
           icon: PlugZap,
           onSelect: () => void probe(node.connectionId),
+        },
+        {
+          label: 'Déconnecter',
+          icon: Unplug,
+          disabled: sessionOf(node.connectionId) !== 'ready',
+          onSelect: () => emit('disconnect'),
         },
         {
           label: 'Supprimer',
@@ -549,7 +579,9 @@ watch(
               :node="item.value as ExplorerNode"
               :expanded="isExpanded"
               :menu="menuItems(item.value as ExplorerNode)"
+              :session="sessionOf((item.value as ExplorerNode).connectionId)"
               @act="activate(item.value as ExplorerNode)"
+              @disconnect="emit('disconnect')"
             />
           </tree-item>
         </tree-virtualizer>
@@ -572,7 +604,9 @@ watch(
             :node="row.node"
             :expanded="expandedKeys.includes(row.node.key)"
             :menu="menuItems(row.node)"
+            :session="sessionOf(row.node.connectionId)"
             @act="activate(row.node)"
+            @disconnect="emit('disconnect')"
           />
         </div>
       </div>

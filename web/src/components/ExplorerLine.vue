@@ -3,7 +3,10 @@
   open, the icon of its level, its label (or the three columns of a column),
   the flavor badge of a source and its "⋮" menu, the button that acts on a
   database (makes it the current one), a table (shows its content) or an
-  index (writes the operations on it), as Ctrl+click does (emits `act`). Shared by the lines of the
+  index (writes the operations on it), as Ctrl+click does (emits `act`). On
+  a source, and on the current database instead of its plug, the button
+  closes the session of the active editor (emits `disconnect`), enabled once
+  that session is ready on this source. Shared by the lines of the
   tree and by the lines pinned at the top of the tree while it scrolls
   (`ObjectExplorer.vue`), which only differ by their container.
 -->
@@ -31,9 +34,12 @@ import {
   Server,
   SquareFunction,
   Table,
+  Unplug,
   Zap,
 } from '@lucide/vue'
 import { type Component, computed } from 'vue'
+
+import type { SessionStatus } from '@/api/querySession'
 
 import type { EntryKind, ExplorerNode } from './explorerNodes'
 import UiButton from './ui/UiButton.vue'
@@ -54,21 +60,56 @@ const props = defineProps<{
    * Choices of the "⋮" menu, `null` for a node without a menu.
    */
   menu: MenuItem[] | null
+  /**
+   * Stage of the active editor's session, when the node belongs to its
+   * source; `null` otherwise.
+   */
+  session?: SessionStatus | null
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   /**
    * The button of the line asks to act on its node, as Ctrl+click does.
    */
   act: []
+  /**
+   * The button of the line asks to close the session of the active editor.
+   */
+  disconnect: []
 }>()
 
 /**
- * Button of the line, shown on hover: on a database, makes it the current
- * database; on a table or a view, shows its content; on an index, writes the
- * operations on it. `null` for the other nodes.
+ * Tooltip of the disconnect button, by stage of the active editor's session.
+ *
+ * @param session Stage of the session on the line's source, `null` without one.
+ */
+function disconnectTip(session: SessionStatus | null): string {
+  if (session === 'ready') {
+    return 'Ferme la session de l’éditeur actif sur ce serveur'
+  }
+  if (session === 'running') {
+    return 'Déconnexion impossible pour le moment : arrêtez d’abord les requêtes en cours sur cette connexion'
+  }
+  return 'Aucune session ouverte sur cette source par l’éditeur actif'
+}
+
+/**
+ * Button of the line, shown on hover: on a source or the current database,
+ * closes the session of the active editor; on another database, makes it the
+ * current database; on a table or a view, shows its content; on an index,
+ * writes the operations on it. `null` for the other nodes.
  */
 const action = computed(() => {
+  if (props.node.role === 'source' || (props.node.role === 'database' && props.node.current)) {
+    const session = props.session ?? null
+    return {
+      icon: Unplug,
+      label: 'Déconnecter',
+      tooltip: disconnectTip(session),
+      disabled: session !== 'ready',
+      event: 'disconnect' as const,
+    }
+  }
   if (props.node.role === 'database') {
     return { icon: PlugZap, label: 'Utiliser cette base', tooltip: 'Utiliser cette base (USE)' }
   }
@@ -193,7 +234,10 @@ function nodeIcon(node: ExplorerNode, expanded: boolean): Component {
     </span>
   </span>
 
-  <!-- On hovering a database, a table or an index: acts on it, like Ctrl+click. -->
+  <!--
+    On hovering a database, a table or an index: acts on it, like Ctrl+click;
+    on a source or the current database: closes the active editor's session.
+  -->
   <ui-button
     v-if="action"
     v-tooltip="action.tooltip"
@@ -201,8 +245,9 @@ function nodeIcon(node: ExplorerNode, expanded: boolean): Component {
     variant="ghost"
     small
     :aria-label="action.label"
+    :disabled="'disabled' in action && action.disabled"
     class="invisible group-hover:visible group-focus-visible:visible"
-    @click.stop="$emit('act')"
+    @click.stop="'event' in action ? emit('disconnect') : emit('act')"
     @keydown.stop
   />
 

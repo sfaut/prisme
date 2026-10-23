@@ -99,7 +99,10 @@ function connection(id: number, name: string): ConnectionSummary {
  * @param props Properties of the explorer.
  */
 function mountExplorer(props: { selectedId: number | null; currentDatabase: string | null }) {
-  return mount(ObjectExplorer, { props, attachTo: document.body })
+  return mount(ObjectExplorer, {
+    props: { ...props, sessionStatus: null },
+    attachTo: document.body,
+  })
 }
 
 /**
@@ -188,7 +191,7 @@ describe('ObjectExplorer', () => {
     await click(root, 1)
     await click(source, 1)
     await vi.waitFor(() =>
-      expect(options()).toEqual(['Modifier', 'Rafraîchir', 'Tester', 'Supprimer']),
+      expect(options()).toEqual(['Modifier', 'Rafraîchir', 'Tester', 'Déconnecter', 'Supprimer']),
     )
     wrapper.unmount()
   })

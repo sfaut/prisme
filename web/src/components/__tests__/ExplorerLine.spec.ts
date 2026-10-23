@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import { mount } from '@vue/test-utils'
 
+import type { SessionStatus } from '@/api/querySession'
+
 import ExplorerLine from '../ExplorerLine.vue'
 import type { ExplorerNode } from '../explorerNodes'
 
@@ -9,9 +11,10 @@ import type { ExplorerNode } from '../explorerNodes'
  * Mounts the line of a node.
  *
  * @param node Node shown on the line.
+ * @param session Stage of the active editor's session on the node's source.
  */
-function mountLine(node: ExplorerNode) {
-  return mount(ExplorerLine, { props: { node, expanded: false, menu: null } })
+function mountLine(node: ExplorerNode, session: SessionStatus | null = null) {
+  return mount(ExplorerLine, { props: { node, expanded: false, menu: null, session } })
 }
 
 const place = { connectionId: 1, schema: 'shop' }
@@ -53,6 +56,38 @@ describe('ExplorerLine', () => {
     })
     await wrapper.find('[aria-label="Opérations sur l’index"]').trigger('click')
     expect(wrapper.emitted('act')).toHaveLength(1)
+  })
+
+  it('gives a source a disconnect button, enabled once its session is ready', async () => {
+    const source: ExplorerNode = {
+      key: 'source',
+      label: 'visual',
+      isLeaf: false,
+      role: 'source',
+      connectionId: 1,
+      schema: '',
+    }
+    const button = (session: SessionStatus | null) =>
+      mountLine(source, session).find('[aria-label="Déconnecter"]')
+    expect(button(null).attributes('disabled')).toBeDefined()
+    expect(button('connecting').attributes('disabled')).toBeDefined()
+    expect(button('running').attributes('data-tooltip')).toContain('arrêtez d’abord les requêtes')
+    expect(button('running').attributes('disabled')).toBeDefined()
+
+    const wrapper = mountLine(source, 'ready')
+    await wrapper.find('[aria-label="Déconnecter"]').trigger('click')
+    expect(wrapper.emitted('disconnect')).toHaveLength(1)
+    expect(wrapper.emitted('act')).toBeUndefined()
+  })
+
+  it('gives the current database the disconnect button instead of its plug', async () => {
+    const wrapper = mountLine(
+      { key: 'db', label: 'shop', isLeaf: false, role: 'database', current: true, ...place },
+      'ready',
+    )
+    expect(wrapper.find('[aria-label="Utiliser cette base"]').exists()).toBe(false)
+    await wrapper.find('[aria-label="Déconnecter"]').trigger('click')
+    expect(wrapper.emitted('disconnect')).toHaveLength(1)
   })
 
   it('gives no button to the other nodes', () => {

@@ -151,7 +151,10 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/connections/{id}/probe", post(probe_connection))
         .route("/api/connections/{id}/query", get(query_socket))
-        .route("/api/editors/{id}/session", get(editor_session))
+        .route(
+            "/api/editors/{id}/session",
+            get(editor_session).delete(close_editor_session),
+        )
         .route("/api/settings", get(get_settings).put(put_settings))
         .route("/api/profile", get(get_profile).put(put_profile))
         .route("/api/beautify", post(beautify_sql))
@@ -324,6 +327,25 @@ async fn editor_session(
         .instrument(history)
         .instrument(span)
     }))
+}
+
+/// `DELETE /api/editors/{id}/session`: closes the query session of an editor
+/// at once ("Déconnecter" of the object explorer): its running queries are
+/// interrupted, its connection to the target server closed, and its
+/// WebSocket with them. The editor keeps its connection: a new WebSocket
+/// opens another session. Without an open session, nothing to close.
+async fn close_editor_session(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, ApiError> {
+    let user_id = user.id;
+    state
+        .with_db(move |db, _| editors::connection_of(db, user_id, id))
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    state.sessions.stop_editor(id);
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Beautified SQL.
@@ -646,6 +668,11 @@ mod tests {
         // Without a chosen connection, the editor has no session.
         let (status, _) = send(&app, "GET", &format!("{uri}/session"), None).await;
         assert_ne!(status, StatusCode::OK);
+        // Closing its session: nothing to close, but the editor exists.
+        let (status, _) = send(&app, "DELETE", &format!("{uri}/session"), None).await;
+        assert_eq!(status, StatusCode::NO_CONTENT);
+        let (status, _) = send(&app, "DELETE", "/api/editors/999/session", None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
     }
 
     #[tokio::test]

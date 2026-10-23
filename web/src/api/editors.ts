@@ -51,6 +51,17 @@ export async function closeEditor(id: number): Promise<void> {
 }
 
 /**
+ * Closes the query session of an editor at once: its connection to the
+ * target server closes, and its WebSocket with it. The editor keeps its
+ * connection.
+ *
+ * @param id Id of the editor.
+ */
+export async function closeSession(id: number): Promise<void> {
+  await request('DELETE', `/api/editors/${id}/session`)
+}
+
+/**
  * Puts the open editors in the given order.
  *
  * @param ids Ids, from the first to the last.

@@ -11,7 +11,8 @@
 //! - A session without a WebSocket stops by itself after the delay set on its
 //!   connection, and then leaves the registry.
 //! - Closing the editor, editing or deleting its connection stops the session
-//!   at once.
+//!   at once, like closing the session itself ("Déconnecter" of the object
+//!   explorer).
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};

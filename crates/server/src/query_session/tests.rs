@@ -586,6 +586,51 @@ async fn streams_results_with_the_default_limit() {
 
 #[tokio::test]
 #[ignore = "requires Docker Desktop running"]
+async fn closing_the_editor_session_ends_it_at_once() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let server = Mariadb::default().start().await.unwrap();
+    let host = server.get_host().await.unwrap().to_string();
+    let port = server.get_host_port_ipv4(3306).await.unwrap();
+    let (address, _, editor_id) = start(&host, port).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    assert_eq!(next_json(&mut socket).await["database"], "test");
+    let result = run_one(&mut socket, "USE mysql", None).await;
+    assert_eq!(result.end["database"], "mysql");
+
+    // DELETE on the session, in plain HTTP: no HTTP client among the dependencies.
+    let mut http = TcpStream::connect(&address).await.unwrap();
+    let request = format!(
+        "DELETE /api/editors/{editor_id}/session HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n"
+    );
+    http.write_all(request.as_bytes()).await.unwrap();
+    let mut answer = String::new();
+    http.read_to_string(&mut answer).await.unwrap();
+    assert!(answer.starts_with("HTTP/1.1 204"), "{answer}");
+
+    // The WebSocket closes, without waiting for the keep-alive delay.
+    let closed = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while let Some(Ok(message)) = socket.next().await {
+            if matches!(message, ClientMessage::Close(_)) {
+                break;
+            }
+        }
+    })
+    .await;
+    assert!(closed.is_ok());
+
+    // A new WebSocket opens another session: back to the default database.
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    let ready = next_json(&mut socket).await;
+    assert_eq!(
+        (ready["type"].as_str(), ready["database"].as_str()),
+        (Some("ready"), Some("test"))
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires Docker Desktop running"]
 async fn editor_session_survives_a_disconnect() {
     let server = Mariadb::default().start().await.unwrap();
     let host = server.get_host().await.unwrap().to_string();
