@@ -26,7 +26,7 @@
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
 import { FastForward, LoaderCircle, Play, Square, WandSparkles } from '@lucide/vue'
-import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
+import { TabsContent, TabsList, TabsRoot } from 'reka-ui'
 import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import { analyzeSql } from '@/api/analyze'
@@ -593,30 +593,18 @@ defineExpose({
       class="flex min-h-0 flex-1 flex-col"
     >
       <tabs-list class="flex overflow-x-auto border-b border-line">
-        <tabs-trigger
+        <result-tab
           v-for="(tab, index) in state.tabs"
           :key="tab.id"
-          :value="tab.id"
-          as="div"
-          :class="{
-            'drop-before': tabDrag.dropAt.value === index,
-            'drop-after':
-              tabDrag.dropAt.value === state.tabs.length && index === state.tabs.length - 1,
-          }"
-          @pointerdown="tabDrag.onDown($event, index)"
-          @pointermove="tabDrag.onMove"
-          @pointerup="tabDrag.onDrop"
-          @pointercancel="tabDrag.onDrop"
-          class="group relative flex h-control max-w-80 min-w-0 shrink-0 cursor-pointer items-center rounded-t-control ps-2 pe-1 text-ui font-medium text-fg-muted outline-none select-none hover:text-fg-strong focus-visible:bg-surface-muted data-[state=active]:bg-surface-elevated data-[state=active]:text-fg-strong"
-        >
-          <result-tab
-            :tab="tab"
-            :default-label="tabLabel(tab)"
-            @close="closeTab(tab)"
-            @toggle-pin="togglePin(tab)"
-            @rename="(name) => renameTab(tab, name)"
-          />
-        </tabs-trigger>
+          :tab="tab"
+          :default-label="tabLabel(tab)"
+          :index="index"
+          :count="state.tabs.length"
+          :drag="tabDrag"
+          @close="closeTab(tab)"
+          @toggle-pin="togglePin(tab)"
+          @rename="(name) => renameTab(tab, name)"
+        />
       </tabs-list>
       <tabs-content
         v-for="tab in state.tabs"
@@ -647,14 +635,5 @@ defineExpose({
   flex-direction: column;
   gap: --spacing(2);
   min-block-size: calc(--spacing(16) + var(--control-height) + --spacing(2));
-}
-
-/* Insertion marker of a moved tab, as for the grid's columns. */
-.drop-before {
-  box-shadow: inset var(--focus-width) 0 0 var(--accent);
-}
-
-.drop-after {
-  box-shadow: inset calc(-1 * var(--focus-width)) 0 0 var(--accent);
 }
 </style>

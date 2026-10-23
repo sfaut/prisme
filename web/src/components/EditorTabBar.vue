@@ -13,13 +13,14 @@
   To place in the Reka UI `TabsRoot` that holds the editors (`App.vue`).
 -->
 <script setup lang="ts">
-import { History, Plus, X } from '@lucide/vue'
-import { TabsList, TabsTrigger } from 'reka-ui'
+import { History, Plus } from '@lucide/vue'
+import { TabsList } from 'reka-ui'
 import { computed } from 'vue'
 
 import { useConnectionsStore } from '@/stores/connections'
 import { type EditorEntry, useEditorsStore } from '@/stores/editors'
 
+import DocumentTab from './DocumentTab.vue'
 import TabLabel from './TabLabel.vue'
 import { movedItems, useTabDrag } from './tabDrag'
 import UiButton from './ui/UiButton.vue'
@@ -77,48 +78,27 @@ const reopenItems = computed<MenuItem[]>(() => {
 </script>
 
 <template>
-  <!--
-    The line under the bar is drawn by each of its parts: the bottom border
-    of the tabs, accented and thicker for the active one, then that of the
-    rest of the bar, with its buttons.
-  -->
-  <div class="flex">
+  <div class="flex border-b border-line">
     <tabs-list class="flex min-w-0 overflow-x-auto" aria-label="Éditeurs">
-      <tabs-trigger
+      <document-tab
         v-for="(editor, index) in editors.editors"
         :key="editor.id"
         :value="editor.id"
-        as="div"
-        class="group relative flex h-control max-w-80 min-w-0 shrink-0 cursor-pointer items-center gap-1 rounded-t-control border-b border-line ps-2 pe-1 text-ui font-medium text-fg-muted outline-none select-none hover:text-fg-strong focus-visible:bg-surface-muted data-[state=active]:border-b-2 data-[state=active]:border-accent data-[state=active]:text-fg-strong"
-        :class="{
-          'drop-before': tabDrag.dropAt.value === index,
-          'drop-after':
-            tabDrag.dropAt.value === editors.editors.length && index === editors.editors.length - 1,
-        }"
-        @pointerdown="tabDrag.onDown($event, index)"
-        @pointermove="tabDrag.onMove"
-        @pointerup="tabDrag.onDrop"
-        @pointercancel="tabDrag.onDrop"
-        @auxclick.middle.prevent="editors.close(editor.id)"
+        :index="index"
+        :count="editors.editors.length"
+        :drag="tabDrag"
+        close-label="Fermer l’éditeur"
+        close-tooltip="Fermer l’éditeur (rouvrable pendant 24 heures)"
+        @close="editors.close(editor.id)"
       >
         <tab-label
           :name="editor.name === '' ? null : editor.name"
           :default-label="defaultLabel(editor.connectionId)"
           @rename="(name) => rename(editor, name)"
         />
-        <ui-button
-          :icon="X"
-          variant="ghost"
-          small
-          aria-label="Fermer l’éditeur"
-          v-tooltip="'Fermer l’éditeur (rouvrable pendant 24 heures)'"
-          class="invisible group-hover:visible group-data-[state=active]:visible"
-          @mousedown.stop
-          @click.stop="editors.close(editor.id)"
-        />
-      </tabs-trigger>
+      </document-tab>
     </tabs-list>
-    <div class="flex flex-1 items-center justify-between gap-1 border-b border-line ps-1">
+    <div class="flex flex-1 items-center justify-between gap-1 ps-1">
       <ui-button
         :icon="Plus"
         variant="ghost"
@@ -140,14 +120,3 @@ const reopenItems = computed<MenuItem[]>(() => {
     </div>
   </div>
 </template>
-
-<style scoped>
-/* Insertion marker of a moved tab, as for the grid's columns. */
-.drop-before {
-  box-shadow: inset var(--focus-width) 0 0 var(--accent);
-}
-
-.drop-after {
-  box-shadow: inset calc(-1 * var(--focus-width)) 0 0 var(--accent);
-}
-</style>
