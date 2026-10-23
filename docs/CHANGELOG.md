@@ -2,6 +2,56 @@
 
 Changelogs of the published versions of Prisme, most recent first. Each entry is also the notes of its GitHub release. The interface is in French: its labels are quoted as they appear, with a translation.
 
+## v0.6.0 (2026-10-23)
+
+### 🚀 Launch
+
+We are proud to announce Prisme v0.6.0. This version opens the door to writes: each kind of write (`INSERT`, `UPDATE`, `CREATE TABLE`...) has its own switch in the settings, all off by default, and **Exécuter tout** (Run all) runs the batches that write one query after another, in the order of the text. The object explorer writes the operations on an index, the indentation of the SQL editor becomes a setting that the beautifier follows, and the interface gets a more even look: editor and result tabs alike, row numbers that stay visible in the result grid, and a focus ring kept for the text fields.
+
+### ✨ New features
+
+- Writes ([#20](https://github.com/sfaut/prisme/issues/20)):
+  - in the **Paramètres** (Settings) window, one switch per kind of write: data (`INSERT`, `UPDATE`, `DELETE`), tables (`CREATE`, `ALTER`, `RENAME`, `TRUNCATE`, `DROP`), views, functions, procedures and events. All are off by default, and greyed out while the sessions are read-only;
+  - a write runs when each switch it needs is on: `REPLACE` needs `INSERT` and `DELETE`, `INSERT ... ON DUPLICATE KEY UPDATE` needs `INSERT` and `UPDATE`, `CREATE INDEX` and `DROP INDEX` need `ALTER TABLE`. A refusal names the missing switches;
+  - the settings of the session (`SET @v`, `SET SESSION`, `SET NAMES`) run like a read, even in a read-only session; `SET TRANSACTION`, `autocommit` and the read-only variables stay refused;
+  - **Exécuter tout** (Run all) runs its queries in parallel only when they all read. A batch that writes, sets the session or holds a query Prisme cannot parse runs one query after another, in the order of the text, on the editor's session: a temporary table or a variable is seen by the next queries. The first failure stops the batch, and the next queries say they were not run;
+  - the stored procedures and functions, the events (`CREATE`, `ALTER`, `DROP EVENT`) and the index operations of MySQL and MariaDB (`ALTER INDEX`, `RENAME KEY`, `DROP KEY`) are now recognised, and no longer refused as queries Prisme cannot check.
+- Object explorer: on the line of an index, a button (or Ctrl+click) appends after the last query the `ALTER TABLE` statements that act on it, commented out: add an index, change its visibility (`VISIBLE` / `INVISIBLE` in MySQL from 8.0, `NOT IGNORED` / `IGNORED` in MariaDB from 10.6), remove or rename it. A primary key can only be removed ([#21](https://github.com/sfaut/prisme/issues/21)).
+- SQL editor: the indentation size (Tab, Shift+Tab, Backspace in the indentation, Ctrl+[ and Ctrl+]) is a setting of the **Paramètres** (Settings) window, from 1 to 8 spaces, 4 by default. **Enjoliver** (Beautify) indents by the same size.
+- Console: the older lines are read by scrolling to the top of the list, which opens on the most recent lines; the duration column of the history is renamed **Exécution** (Execution) ([#22](https://github.com/sfaut/prisme/issues/22)).
+- Result grid: the row numbers stay visible on the left when the grid scrolls sideways, set apart from the cells by a line.
+- Look:
+  - the editor tabs and the result tabs look and behave the same: the active tab is filled, the tabs are a little taller, their buttons side by side after the label;
+  - the focus ring only shows on the text fields, thinner; buttons, lists, menus and tabs no longer show one.
+
+### 💥 Breaking changes
+
+- Writes: in a session that is not read-only, a write now runs only if its switches are on in the settings, all off by default. The writes no switch covers are refused: `CALL`, databases, triggers, accounts, server settings...
+
+### 🐞 Bug fixes
+
+- SQL editor: Backspace in the indentation and Ctrl+[ remove a whole tab stop, and no longer two of its four spaces.
+- **Enjoliver** (Beautify) no longer indents by 4 spaces whatever the indentation setting.
+- Console: no more blank space between the tabs and the list, left by the button that read the older lines once it had lost its label ([#22](https://github.com/sfaut/prisme/issues/22)).
+
+### 🔒 Security
+
+- `npm audit` still reports [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) (`braces`, high), which has no patched version. No impact on Prisme: `braces` only serves the linting of the interface's sources, during development, and never gets into the executable.
+
+### ⚙️ Internal improvements
+
+- Dependencies:
+  - `ts-rs` 12.0.1 added to the `prisme-dialects` crate, with its `format` feature in the tests;
+  - `@tanstack/vue-virtual` 3.13.47 → 3.13.48;
+  - `@vitest/eslint-plugin` 1.6.27 → 1.6.28.
+- The editor and result tabs share one component, and the focus ring is set by utility classes from the theme's variables.
+- The interface tests run on four workers: the tests that mount CodeMirror no longer exceed their time.
+
+### 📝 Documentation
+
+- README: how **Exécuter tout** (Run all) runs its queries, in parallel or one after another.
+- Export ideas: the three scopes of an export to a file, the full export following the column order of the grid.
+
 ## v0.5.0 (2026-10-22)
 
 ### 🚀 Launch
