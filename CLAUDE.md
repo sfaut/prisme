@@ -9,6 +9,7 @@ This file is short. Detailed decisions are in `docs/`:
 - `docs/QUESTIONS.md`: ideas kept, dropped or postponed, and questions still open.
 - `docs/PERF.md`: performance problems met, with their cause, their fix and how they were measured.
 - `docs/IDEAS-EXPORTS.md`: ideas for copying and exporting results.
+- `docs/IDEAS-VIZ.md`: ideas for drawing a database and its relations as a graph.
 - `docs/CHANGELOG.md`: changelogs of the published versions, most recent first (see "Publishing a version").
 - `docs/DEVELOPER.md`: developer guide (build, tests, API, CI, releases). `README.md` is for the end user.
 

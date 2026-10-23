@@ -293,5 +293,6 @@ docs/              design decisions and notes
 - [QUESTIONS.md](QUESTIONS.md): ideas kept or dropped, open questions.
 - [PERF.md](PERF.md): performance problems met, their cause and fix.
 - [IDEAS-EXPORTS.md](IDEAS-EXPORTS.md): ideas for copying and exporting results.
+- [IDEAS-VIZ.md](IDEAS-VIZ.md): ideas for drawing a database and its relations as a graph.
 - [CHANGELOG.md](CHANGELOG.md): changelogs of the published versions.
 - [CLAUDE.md](../CLAUDE.md): working rules of the repository.
