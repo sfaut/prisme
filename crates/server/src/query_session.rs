@@ -69,6 +69,7 @@ mod limits;
 mod outbox;
 pub(crate) mod protocol;
 mod session;
+mod temporary_tables;
 #[cfg(test)]
 mod tests;
 

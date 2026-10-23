@@ -21,6 +21,7 @@ mod mysql_statements;
 mod offsets;
 mod parse;
 pub mod syntax;
+pub mod temporary;
 mod whitespace;
 
 /// SQL dialect of a query.

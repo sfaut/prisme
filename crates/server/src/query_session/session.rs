@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use prisme_connectors::mysql::{self, Connection, MysqlTarget};
 use prisme_dialects::Dialect;
+use prisme_dialects::temporary::{TableName, temporary_changes};
 use prisme_splitter::split;
 use tokio::sync::{mpsc, watch};
 use tracing::Instrument;
@@ -19,6 +20,7 @@ use super::execution::{chosen_statements, reads_only, selected_pieces};
 use super::limits::run_limits;
 use super::outbox::{Outbox, SessionStopped};
 use super::protocol::{BatchQuery, QueryRequest, ServerMessage, SessionRequest};
+use super::temporary_tables::TemporaryTables;
 use crate::analyze::flavor_of;
 use crate::api::AppState;
 use crate::console::{self, Action};
@@ -36,6 +38,7 @@ pub(super) async fn serve(
     cancellation: Arc<Cancellation>,
 ) {
     let database = Mutex::new(None);
+    let temporary = Mutex::new(TemporaryTables::default());
     let session = Session {
         outbox: &outbox,
         target: &target,
@@ -43,6 +46,7 @@ pub(super) async fn serve(
         user_id,
         cancellation: &cancellation,
         database: &database,
+        temporary: &temporary,
         batch: 0,
     };
     let opening = console::action_span(Action::Session);
@@ -112,6 +116,8 @@ pub(super) struct Session<'a> {
     pub(super) cancellation: &'a Cancellation,
     /// Current database of the session's connection, as last read.
     pub(super) database: &'a Mutex<Option<String>>,
+    /// Temporary tables of the session's connection.
+    pub(super) temporary: &'a Mutex<TemporaryTables>,
 }
 
 /// Summary of a result read to the end.
@@ -134,6 +140,33 @@ impl Session<'_> {
     pub(super) fn remember_database(&self, database: &Option<String>) {
         if let Ok(mut current) = self.database.lock() {
             current.clone_from(database);
+        }
+    }
+
+    /// Is `table`, named in a query run on the current database `database`,
+    /// a temporary table of the session's connection?
+    pub(super) fn is_temporary(&self, table: &TableName, database: Option<&str>) -> bool {
+        self.temporary
+            .lock()
+            .is_ok_and(|tables| tables.contains(table, database))
+    }
+
+    /// Follows the temporary tables that the query `sql`, run on the current
+    /// database `database`, created, dropped or renamed; `succeeded` tells
+    /// whether it succeeded.
+    pub(super) fn follow_temporary(
+        &self,
+        sql: &str,
+        dialect: Dialect,
+        database: Option<&str>,
+        succeeded: bool,
+    ) {
+        let changes = temporary_changes(sql, dialect);
+        if changes.is_empty() {
+            return;
+        }
+        if let Ok(mut tables) = self.temporary.lock() {
+            tables.follow(&changes, database, succeeded);
         }
     }
 

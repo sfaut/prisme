@@ -29,7 +29,7 @@ vi.mock('@/api/settings', () => api)
 /**
  * Checkbox of a kind of write, found by its statement.
  *
- * @param statement Statement of the kind (`INSERT`, `CREATE [TEMPORARY] TABLE`...).
+ * @param statement Statement of the kind (`INSERT`, `CREATE TABLE`...).
  */
 function writeBox(statement: string): HTMLInputElement {
   const box = document.querySelector<HTMLInputElement>(`input[aria-label="${statement}"]`)
@@ -73,7 +73,7 @@ describe('settings of the writes', () => {
     await flushPromises()
     expect(writeBox('INSERT').matches(':disabled')).toBe(false)
 
-    writeBox('CREATE [TEMPORARY] TABLE').click()
+    writeBox('CREATE TABLE').click()
     document.querySelector<HTMLFormElement>('#settings-form')?.requestSubmit()
     await flushPromises()
 

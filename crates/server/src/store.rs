@@ -51,6 +51,9 @@ static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
         M::up(include_str!(
             "../migrations/0018_query_history_run_exact.sql"
         )),
+        M::up(include_str!(
+            "../migrations/0019_user_allowed_writes_temporary.sql"
+        )),
     ])
 });
 
@@ -132,6 +135,44 @@ mod tests {
         let connection = open_in_memory();
         let email = format!("{}@example.com", "a".repeat(250));
         assert!(ensure_user(&connection, &email).is_err());
+    }
+
+    #[test]
+    fn gives_the_rights_on_the_tables_to_the_temporary_tables() {
+        // Schema before the switches of the temporary tables (migration 0019).
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", "ON")
+            .unwrap();
+        MIGRATIONS.to_version(&mut connection, 18).unwrap();
+        let user = ensure_user(&connection, "owner@example.com").unwrap();
+        connection
+            .execute(
+                "INSERT INTO user_allowed_writes (user_id, kind) \
+                 VALUES (?1, 'delete'), (?1, 'truncate_table'), (?1, 'create_view')",
+                params![user],
+            )
+            .unwrap();
+
+        MIGRATIONS.to_latest(&mut connection).unwrap();
+        let mut statement = connection
+            .prepare("SELECT kind FROM user_allowed_writes WHERE user_id = ?1 ORDER BY kind")
+            .unwrap();
+        let kinds: Vec<String> = statement
+            .query_map(params![user], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            kinds,
+            [
+                "create_view",
+                "delete",
+                "delete_temporary_table",
+                "truncate_table",
+                "truncate_temporary_table"
+            ]
+        );
     }
 
     #[test]

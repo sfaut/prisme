@@ -11,6 +11,12 @@
 //! creates the view again. A write that no switch covers (`CALL`, database,
 //! trigger, account, file, server setting...) is forbidden.
 //!
+//! The temporary tables have their own switches. `CREATE TEMPORARY TABLE`
+//! and `DROP TEMPORARY TABLE` need them by their syntax; another write on
+//! tables needs them when all the tables it names are temporary tables known
+//! to the session (`classify_with`, `temporary.rs`): the target of an
+//! `INSERT`, all the tables of a multiple-table `UPDATE` or `DELETE`.
+//!
 //! A setting of the session (`SET @v = 1`, `SET SESSION sql_mode = ...`,
 //! `SET NAMES`) writes nothing in the database: it is always allowed, except
 //! when it would lift the read-only mode or open a transaction
@@ -28,13 +34,17 @@
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
-use sqlparser::ast::{ContextModifier, ObjectType, OnInsert, Set, SetExpr, Statement};
+use sqlparser::ast::{
+    ContextModifier, FromTable, ObjectName, ObjectType, OnInsert, Set, SetExpr, Statement,
+    TableObject, UpdateTableFromKind,
+};
 use ts_rs::TS;
 
 use crate::Dialect;
 use crate::limit::returns_rows;
 use crate::mysql_statements::MySqlStatement;
 use crate::parse::{Parsed, parse_statements};
+use crate::temporary::{TableName, relation_names, table_name};
 
 /// Nature of a query.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,7 +75,7 @@ pub enum WriteKind {
     Update,
     /// `DELETE`, single or multiple-table, and the deletion of `REPLACE`.
     Delete,
-    /// `CREATE [TEMPORARY] TABLE`.
+    /// `CREATE TABLE`.
     CreateTable,
     /// `ALTER TABLE`, `CREATE INDEX`, `DROP INDEX`.
     AlterTable,
@@ -73,8 +83,24 @@ pub enum WriteKind {
     RenameTable,
     /// `TRUNCATE TABLE`.
     TruncateTable,
-    /// `DROP [TEMPORARY] TABLE`.
+    /// `DROP TABLE`.
     DropTable,
+    /// `CREATE TEMPORARY TABLE`.
+    CreateTemporaryTable,
+    /// `INSERT` into a temporary table, and the insertion of `REPLACE`.
+    InsertTemporaryTable,
+    /// `UPDATE` of temporary tables only, and `ON DUPLICATE KEY UPDATE`.
+    UpdateTemporaryTable,
+    /// `DELETE` from temporary tables only, and the deletion of `REPLACE`.
+    DeleteTemporaryTable,
+    /// `ALTER TABLE`, `CREATE INDEX`, `DROP INDEX` on a temporary table.
+    AlterTemporaryTable,
+    /// `RENAME TABLE` of temporary tables.
+    RenameTemporaryTable,
+    /// `TRUNCATE TABLE` of a temporary table.
+    TruncateTemporaryTable,
+    /// `DROP TEMPORARY TABLE`, and `DROP TABLE` of temporary tables only.
+    DropTemporaryTable,
     /// `CREATE [OR REPLACE] VIEW`, `ALTER VIEW`.
     CreateView,
     /// `DROP VIEW`.
@@ -97,7 +123,7 @@ pub enum WriteKind {
 
 impl WriteKind {
     /// Every kind, in the order of the settings.
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 25] = [
         Self::Insert,
         Self::Update,
         Self::Delete,
@@ -106,6 +132,14 @@ impl WriteKind {
         Self::RenameTable,
         Self::TruncateTable,
         Self::DropTable,
+        Self::CreateTemporaryTable,
+        Self::InsertTemporaryTable,
+        Self::UpdateTemporaryTable,
+        Self::DeleteTemporaryTable,
+        Self::AlterTemporaryTable,
+        Self::RenameTemporaryTable,
+        Self::TruncateTemporaryTable,
+        Self::DropTemporaryTable,
         Self::CreateView,
         Self::DropView,
         Self::CreateFunction,
@@ -128,6 +162,14 @@ impl WriteKind {
             Self::RenameTable => "rename_table",
             Self::TruncateTable => "truncate_table",
             Self::DropTable => "drop_table",
+            Self::CreateTemporaryTable => "create_temporary_table",
+            Self::InsertTemporaryTable => "insert_temporary_table",
+            Self::UpdateTemporaryTable => "update_temporary_table",
+            Self::DeleteTemporaryTable => "delete_temporary_table",
+            Self::AlterTemporaryTable => "alter_temporary_table",
+            Self::RenameTemporaryTable => "rename_temporary_table",
+            Self::TruncateTemporaryTable => "truncate_temporary_table",
+            Self::DropTemporaryTable => "drop_temporary_table",
             Self::CreateView => "create_view",
             Self::DropView => "drop_view",
             Self::CreateFunction => "create_function",
@@ -146,9 +188,20 @@ impl WriteKind {
     }
 }
 
-/// Classifies the text `sql`. If it contains several queries, it needs the
-/// kinds of all its writes; a single forbidden write forbids it.
+/// Classifies the text `sql`, without a known temporary table. If it
+/// contains several queries, it needs the kinds of all its writes; a single
+/// forbidden write forbids it.
 pub fn classify(sql: &str, dialect: Dialect) -> StatementKind {
+    classify_with(sql, dialect, &|_| false)
+}
+
+/// Classifies the text `sql` as `classify` does; `temporary` tells whether a
+/// table named in it is a temporary table of the connection.
+pub fn classify_with(
+    sql: &str,
+    dialect: Dialect,
+    temporary: &dyn Fn(&TableName) -> bool,
+) -> StatementKind {
     let Ok(statements) = parse_statements(sql, dialect) else {
         return StatementKind::Unparsed;
     };
@@ -161,8 +214,8 @@ pub fn classify(sql: &str, dialect: Dialect) -> StatementKind {
                 setting = true;
                 Some(Vec::new())
             }
-            Parsed::Sql(statement) => write_kinds(statement),
-            Parsed::MySql(statement) => Some(vec![mysql_write_kind(statement)]),
+            Parsed::Sql(statement) => write_kinds(statement, temporary),
+            Parsed::MySql(statement) => Some(vec![mysql_write_kind(statement, temporary)]),
         };
         let Some(needed) = needed else {
             return StatementKind::Forbidden;
@@ -210,42 +263,126 @@ fn is_session_setting(set: &Set) -> bool {
     }
 }
 
-/// Kinds of a write of `sqlparser`, `None` if no switch allows it.
-fn write_kinds(statement: &Statement) -> Option<Vec<WriteKind>> {
+/// Do the names designate temporary tables only? Never for an empty list.
+fn all_temporary<'a>(
+    names: impl IntoIterator<Item = &'a ObjectName>,
+    temporary: &dyn Fn(&TableName) -> bool,
+) -> bool {
+    let mut names = names.into_iter().peekable();
+    names.peek().is_some()
+        && names.all(|name| table_name(name).is_some_and(|table| temporary(&table)))
+}
+
+/// Kind of a write, according to whether it targets temporary tables only.
+fn on(temporary: bool, kind: WriteKind, temporary_kind: WriteKind) -> WriteKind {
+    if temporary { temporary_kind } else { kind }
+}
+
+/// Kinds of a write of `sqlparser`, `None` if no switch allows it;
+/// `temporary` tells the temporary tables of the connection.
+fn write_kinds(
+    statement: &Statement,
+    temporary: &dyn Fn(&TableName) -> bool,
+) -> Option<Vec<WriteKind>> {
     use WriteKind::*;
     let kinds = match statement {
         Statement::Insert(insert) => {
-            let mut kinds = vec![Insert];
+            let target = match &insert.table {
+                TableObject::TableName(name) => all_temporary([name], temporary),
+                _ => false,
+            };
+            let mut kinds = vec![on(target, Insert, InsertTemporaryTable)];
             if insert.replace_into {
-                kinds.push(Delete);
+                kinds.push(on(target, Delete, DeleteTemporaryTable));
             }
             if matches!(insert.on, Some(OnInsert::DuplicateKeyUpdate(_))) {
-                kinds.push(Update);
+                kinds.push(on(target, Update, UpdateTemporaryTable));
             }
             kinds
         }
-        Statement::Update(_) => vec![Update],
-        Statement::Delete(_) => vec![Delete],
+        Statement::Update(update) => {
+            let mut names = relation_names(std::slice::from_ref(&update.table));
+            if let Some(
+                UpdateTableFromKind::BeforeSet(from) | UpdateTableFromKind::AfterSet(from),
+            ) = &update.from
+            {
+                names.extend(relation_names(from));
+            }
+            vec![on(
+                all_temporary(names, temporary),
+                Update,
+                UpdateTemporaryTable,
+            )]
+        }
+        Statement::Delete(delete) => {
+            let (FromTable::WithFromKeyword(from) | FromTable::WithoutKeyword(from)) = &delete.from;
+            let mut names = relation_names(from);
+            if let Some(using) = &delete.using {
+                names.extend(relation_names(using));
+            }
+            vec![on(
+                all_temporary(names, temporary),
+                Delete,
+                DeleteTemporaryTable,
+            )]
+        }
         // WITH ... INSERT / UPDATE / DELETE; SELECT ... INTO stays forbidden.
         Statement::Query(query) => match query.body.as_ref() {
             SetExpr::Insert(statement)
             | SetExpr::Update(statement)
             | SetExpr::Delete(statement) => {
-                return write_kinds(statement);
+                return write_kinds(statement, temporary);
             }
             _ => return None,
         },
         // EXPLAIN ANALYZE runs the query.
-        Statement::Explain { statement, .. } => return write_kinds(statement),
-        Statement::CreateTable(_) => vec![CreateTable],
-        Statement::AlterTable(_) | Statement::CreateIndex(_) => vec![AlterTable],
-        Statement::RenameTable(_) => vec![RenameTable],
-        Statement::Truncate(_) => vec![TruncateTable],
+        Statement::Explain { statement, .. } => return write_kinds(statement, temporary),
+        Statement::CreateTable(create) => {
+            vec![on(create.temporary, CreateTable, CreateTemporaryTable)]
+        }
+        Statement::AlterTable(alter) => vec![on(
+            all_temporary([&alter.name], temporary),
+            AlterTable,
+            AlterTemporaryTable,
+        )],
+        Statement::CreateIndex(index) => vec![on(
+            all_temporary([&index.table_name], temporary),
+            AlterTable,
+            AlterTemporaryTable,
+        )],
+        Statement::RenameTable(renames) => vec![on(
+            all_temporary(renames.iter().map(|rename| &rename.old_name), temporary),
+            RenameTable,
+            RenameTemporaryTable,
+        )],
+        Statement::Truncate(truncate) => vec![on(
+            all_temporary(
+                truncate.table_names.iter().map(|target| &target.name),
+                temporary,
+            ),
+            TruncateTable,
+            TruncateTemporaryTable,
+        )],
         Statement::CreateView(_) | Statement::AlterView { .. } => vec![CreateView],
-        Statement::Drop { object_type, .. } => match object_type {
-            ObjectType::Table => vec![DropTable],
+        Statement::Drop {
+            object_type,
+            names,
+            temporary: drop_temporary,
+            table,
+            ..
+        } => match object_type {
+            // DROP TEMPORARY TABLE only drops temporary tables.
+            ObjectType::Table => vec![on(
+                *drop_temporary || all_temporary(names, temporary),
+                DropTable,
+                DropTemporaryTable,
+            )],
             ObjectType::View => vec![DropView],
-            ObjectType::Index => vec![AlterTable],
+            ObjectType::Index => vec![on(
+                all_temporary(table, temporary),
+                AlterTable,
+                AlterTemporaryTable,
+            )],
             _ => return None,
         },
         Statement::DropFunction(_) => vec![DropFunction],
@@ -255,15 +392,23 @@ fn write_kinds(statement: &Statement) -> Option<Vec<WriteKind>> {
     Some(kinds)
 }
 
-/// Kind of a write that `sqlparser` does not parse.
-fn mysql_write_kind(statement: &MySqlStatement) -> WriteKind {
+/// Kind of a write that `sqlparser` does not parse; `temporary` tells the
+/// temporary tables of the connection.
+fn mysql_write_kind(
+    statement: &MySqlStatement,
+    temporary: &dyn Fn(&TableName) -> bool,
+) -> WriteKind {
     match statement {
         MySqlStatement::CreateProcedure { .. } => WriteKind::CreateProcedure,
         MySqlStatement::CreateFunction { .. } => WriteKind::CreateFunction,
         MySqlStatement::CreateEvent { .. } => WriteKind::CreateEvent,
         MySqlStatement::AlterEvent { .. } => WriteKind::AlterEvent,
         MySqlStatement::DropEvent { .. } => WriteKind::DropEvent,
-        MySqlStatement::AlterTable { .. } => WriteKind::AlterTable,
+        MySqlStatement::AlterTable { name } => on(
+            all_temporary([name], temporary),
+            WriteKind::AlterTable,
+            WriteKind::AlterTemporaryTable,
+        ),
     }
 }
 
@@ -465,7 +610,10 @@ mod tests {
             ),
             ("EXPLAIN ANALYZE DELETE FROM t", vec![Delete]),
             ("CREATE TABLE t (a INT)", vec![CreateTable]),
-            ("CREATE TEMPORARY TABLE t (a INT)", vec![CreateTable]),
+            (
+                "CREATE TEMPORARY TABLE t (a INT)",
+                vec![CreateTemporaryTable],
+            ),
             ("CREATE TABLE t AS SELECT 1", vec![CreateTable]),
             ("ALTER TABLE t ADD b INT", vec![AlterTable]),
             ("ALTER TABLE t ALTER INDEX i INVISIBLE", vec![AlterTable]),
@@ -475,7 +623,7 @@ mod tests {
             ("RENAME TABLE t TO u", vec![RenameTable]),
             ("TRUNCATE TABLE t", vec![TruncateTable]),
             ("DROP TABLE t", vec![DropTable]),
-            ("DROP TEMPORARY TABLE IF EXISTS t", vec![DropTable]),
+            ("DROP TEMPORARY TABLE IF EXISTS t", vec![DropTemporaryTable]),
             ("CREATE VIEW v AS SELECT 1", vec![CreateView]),
             ("CREATE OR REPLACE VIEW v AS SELECT 1", vec![CreateView]),
             ("ALTER VIEW v AS SELECT 2", vec![CreateView]),
@@ -500,6 +648,74 @@ mod tests {
                 "SELECT 1; DELETE FROM t; INSERT INTO t VALUES (1)",
                 vec![Insert, Delete],
             ),
+        ] {
+            assert_eq!(
+                kind(sql),
+                StatementKind::Write(kinds.into_iter().collect()),
+                "query: {sql}"
+            );
+        }
+    }
+
+    #[test]
+    fn writes_on_temporary_tables_only_need_their_switches() {
+        use WriteKind::*;
+        // `tmp` and `shop.tmp2` are temporary tables of the connection.
+        let temporary = |table: &TableName| {
+            matches!(
+                (table.schema.as_deref(), table.name.as_str()),
+                (None, "tmp") | (Some("shop"), "tmp2")
+            )
+        };
+        let kind = |sql| classify_with(sql, Dialect::MySql, &temporary);
+        for (sql, kinds) in [
+            (
+                "INSERT INTO tmp SELECT * FROM t",
+                vec![InsertTemporaryTable],
+            ),
+            (
+                "REPLACE INTO shop.tmp2 VALUES (1)",
+                vec![InsertTemporaryTable, DeleteTemporaryTable],
+            ),
+            (
+                "INSERT INTO tmp VALUES (1) ON DUPLICATE KEY UPDATE a = 2",
+                vec![InsertTemporaryTable, UpdateTemporaryTable],
+            ),
+            ("INSERT INTO t SELECT * FROM tmp", vec![Insert]),
+            ("UPDATE tmp SET a = 1", vec![UpdateTemporaryTable]),
+            (
+                "UPDATE tmp JOIN shop.tmp2 ON tmp.a = tmp2.a SET tmp.b = 1",
+                vec![UpdateTemporaryTable],
+            ),
+            // A permanent table among the tables: the switch of the tables.
+            (
+                "UPDATE tmp JOIN t ON tmp.a = t.a SET tmp.b = 1",
+                vec![Update],
+            ),
+            ("DELETE FROM tmp", vec![DeleteTemporaryTable]),
+            ("DELETE x FROM tmp AS x", vec![DeleteTemporaryTable]),
+            ("DELETE tmp FROM tmp JOIN t ON tmp.a = t.a", vec![Delete]),
+            (
+                "DELETE FROM tmp WHERE a IN (SELECT a FROM t)",
+                vec![DeleteTemporaryTable],
+            ),
+            ("ALTER TABLE tmp ADD b INT", vec![AlterTemporaryTable]),
+            (
+                "ALTER TABLE tmp ALTER INDEX i INVISIBLE",
+                vec![AlterTemporaryTable],
+            ),
+            ("CREATE INDEX i ON tmp (a)", vec![AlterTemporaryTable]),
+            ("DROP INDEX i ON tmp", vec![AlterTemporaryTable]),
+            ("RENAME TABLE tmp TO tmp3", vec![RenameTemporaryTable]),
+            ("RENAME TABLE tmp TO a, t TO b", vec![RenameTable]),
+            ("TRUNCATE TABLE tmp", vec![TruncateTemporaryTable]),
+            ("TRUNCATE TABLE t", vec![TruncateTable]),
+            ("DROP TABLE tmp, shop.tmp2", vec![DropTemporaryTable]),
+            ("DROP TABLE tmp, t", vec![DropTable]),
+            ("DROP TEMPORARY TABLE t", vec![DropTemporaryTable]),
+            // Another database, or another case: another table.
+            ("DELETE FROM shop.tmp", vec![Delete]),
+            ("DELETE FROM TMP", vec![Delete]),
         ] {
             assert_eq!(
                 kind(sql),

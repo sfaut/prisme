@@ -12,6 +12,7 @@ use prisme_connectors::mysql::{self, Cell, Connection, MysqlTarget};
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::{StatementKind, changes_database, classify};
 use prisme_dialects::limit::{LimitOutcome, apply_default_limit, written_limit};
+use prisme_dialects::temporary::TableName;
 use prisme_splitter::{Statement, pieces_in, statement_at, statements_in};
 use tokio::sync::Semaphore;
 use tracing::Instrument;
@@ -198,7 +199,9 @@ impl Session<'_> {
         limits: &RunLimits,
     ) -> Result<Option<Summary>, SessionStopped> {
         let max_rows = limits.max_rows;
-        if let Some(refusal) = write_refusal(sql, dialect, limits.writes.as_ref()) {
+        let database = self.current_database();
+        let temporary = |table: &TableName| self.is_temporary(table, database.as_deref());
+        if let Some(refusal) = write_refusal(sql, dialect, limits.writes.as_ref(), &temporary) {
             self.outbox.error(Some(query), refusal).await?;
             return Ok(None);
         }
@@ -226,7 +229,10 @@ impl Session<'_> {
             return Ok(None);
         }
         let executing = Instant::now();
-        let mut stream = match mysql::execute(connection, &limited.sql).await {
+        let executed = mysql::execute(connection, &limited.sql).await;
+        // Only the session's connection writes: the parallel queries only read.
+        self.follow_temporary(sql, dialect, database.as_deref(), executed.is_ok());
+        let mut stream = match executed {
             Ok(stream) => stream,
             Err(error) => {
                 let detail = self.failure(query, dialect, &error);

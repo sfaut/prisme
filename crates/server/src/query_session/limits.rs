@@ -4,8 +4,9 @@
 use std::collections::BTreeSet;
 
 use prisme_dialects::Dialect;
-use prisme_dialects::classify::{StatementKind, WriteKind, classify};
+use prisme_dialects::classify::{StatementKind, WriteKind, classify_with};
 use prisme_dialects::limit::{LimitError, LimitOutcome};
+use prisme_dialects::temporary::TableName;
 
 use super::protocol::LimitReport;
 use crate::api::AppState;
@@ -44,7 +45,8 @@ pub(super) async fn run_limits(
 }
 
 /// Returns the reason for the refusal if the query is neither a read nor a
-/// write of the kinds `writes` allows (`None`: read-only sessions).
+/// write of the kinds `writes` allows (`None`: read-only sessions);
+/// `temporary` tells the temporary tables of the connection.
 ///
 /// A write that no switch covers is refused, and so is a query that cannot
 /// be parsed, as nothing proves what it does.
@@ -52,8 +54,9 @@ pub(super) fn write_refusal(
     sql: &str,
     dialect: Dialect,
     writes: Option<&BTreeSet<WriteKind>>,
+    temporary: &dyn Fn(&TableName) -> bool,
 ) -> Option<ErrorDetail> {
-    match classify(sql, dialect) {
+    match classify_with(sql, dialect, temporary) {
         StatementKind::Read | StatementKind::Setting => None,
         StatementKind::Write(kinds) => {
             let Some(allowed) = writes else {
