@@ -1,11 +1,10 @@
-//! Tables that a query writes, and the temporary tables it creates, drops or
-//! renames.
+//! Temporary tables that a query creates, drops or renames.
 //!
 //! Serves the write switches of the temporary tables (see `docs/V1.md`,
 //! section 2.4). Only `CREATE TEMPORARY TABLE` and `DROP TEMPORARY TABLE` say
-//! by their syntax that they target a temporary table: for the other writes
-//! (`INSERT`, `TRUNCATE`...), the session follows the temporary tables created
-//! on its connection (`temporary_changes`), and a write counts as one on
+//! by their syntax that they target a temporary table: for the other changes
+//! (`ALTER`, `TRUNCATE`...), the session follows the temporary tables created
+//! on its connection (`temporary_changes`), and a change counts as one of
 //! temporary tables when all the tables it names are among them.
 //!
 //! Names are compared as written, without folding their case: a name written
@@ -14,7 +13,6 @@
 
 use sqlparser::ast::{
     AlterTableOperation, ObjectName, ObjectNamePart, ObjectType, RenameTableNameKind, Statement,
-    TableFactor, TableWithJoins,
 };
 
 use crate::Dialect;
@@ -128,26 +126,6 @@ pub(crate) fn table_name(name: &ObjectName) -> Option<TableName> {
         }),
         _ => None,
     }
-}
-
-/// Names of the tables of `FROM`-like clauses, joins included; derived
-/// tables and the other forms, which cannot be written, are left out.
-pub(crate) fn relation_names(tables: &[TableWithJoins]) -> Vec<&ObjectName> {
-    let mut names = Vec::new();
-    for table in tables {
-        for factor in
-            std::iter::once(&table.relation).chain(table.joins.iter().map(|join| &join.relation))
-        {
-            match factor {
-                TableFactor::Table { name, .. } => names.push(name),
-                TableFactor::NestedJoin {
-                    table_with_joins, ..
-                } => names.extend(relation_names(std::slice::from_ref(table_with_joins))),
-                _ => {}
-            }
-        }
-    }
-    names
 }
 
 #[cfg(test)]

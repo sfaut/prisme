@@ -19,9 +19,6 @@ export const WRITE_KIND_STATEMENTS: Record<WriteKind, string> = {
   truncate_table: 'TRUNCATE TABLE',
   drop_table: 'DROP TABLE',
   create_temporary_table: 'CREATE TEMPORARY TABLE',
-  insert_temporary_table: 'INSERT sur une table temporaire',
-  update_temporary_table: 'UPDATE sur des tables temporaires',
-  delete_temporary_table: 'DELETE sur des tables temporaires',
   alter_temporary_table: 'ALTER TABLE sur une table temporaire',
   rename_temporary_table: 'RENAME TABLE sur des tables temporaires',
   truncate_temporary_table: 'TRUNCATE TABLE sur une table temporaire',
@@ -41,15 +38,14 @@ export const WRITE_KIND_STATEMENTS: Record<WriteKind, string> = {
  * Other statements that a kind allows, alone or with another kind.
  */
 export const WRITE_KIND_NOTES: Partial<Record<WriteKind, string>> = {
-  insert: 'Avec DELETE : REPLACE. Avec UPDATE : INSERT … ON DUPLICATE KEY UPDATE.',
-  update: 'Sur une table ou plusieurs (jointure).',
-  delete: 'Sur une table ou plusieurs (jointure). Avec INSERT : REPLACE.',
+  insert:
+    'Tables temporaires comprises. Avec DELETE : REPLACE. Avec UPDATE : INSERT … ON DUPLICATE KEY UPDATE.',
+  update: 'Sur une table ou plusieurs (jointure), tables temporaires comprises.',
+  delete:
+    'Sur une table ou plusieurs (jointure), tables temporaires comprises. Avec INSERT : REPLACE.',
   alter_table: 'Aussi CREATE INDEX et DROP INDEX.',
   create_temporary_table:
-    'Prisme suit les tables temporaires créées par la session : les écritures qui ne portent que sur elles relèvent de ce groupe.',
-  insert_temporary_table: 'Avec DELETE : REPLACE. Avec UPDATE : INSERT … ON DUPLICATE KEY UPDATE.',
-  update_temporary_table: 'Toutes les tables de la requête doivent être temporaires.',
-  delete_temporary_table: 'Toutes les tables de la requête doivent être temporaires.',
+    'Prisme suit les tables temporaires créées par la session : les changements qui ne portent que sur elles relèvent de ce groupe, leurs données du groupe Données.',
   alter_temporary_table: 'Aussi CREATE INDEX et DROP INDEX.',
   drop_temporary_table: 'Aussi DROP TABLE, quand toutes les tables nommées sont temporaires.',
   create_view: 'Aussi ALTER VIEW.',
@@ -95,9 +91,6 @@ export const WRITE_KIND_GROUPS: WriteKindGroup[] = [
     label: 'Tables temporaires',
     kinds: [
       { kind: 'create_temporary_table', verb: 'CREATE' },
-      { kind: 'insert_temporary_table', verb: 'INSERT' },
-      { kind: 'update_temporary_table', verb: 'UPDATE' },
-      { kind: 'delete_temporary_table', verb: 'DELETE' },
       { kind: 'alter_temporary_table', verb: 'ALTER' },
       { kind: 'rename_temporary_table', verb: 'RENAME' },
       { kind: 'truncate_temporary_table', verb: 'TRUNCATE' },

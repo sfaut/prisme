@@ -357,7 +357,6 @@ async fn runs_the_writes_the_settings_allow() {
         WriteKind::AlterTable,
         WriteKind::CreateProcedure,
         WriteKind::CreateTemporaryTable,
-        WriteKind::InsertTemporaryTable,
         WriteKind::AlterTemporaryTable,
         WriteKind::TruncateTemporaryTable,
         WriteKind::DropTemporaryTable,
@@ -410,10 +409,10 @@ async fn runs_the_writes_the_settings_allow() {
         let result = run_one(&mut socket, sql, None).await;
         assert_eq!(result.end["type"], "done", "{sql}: {:?}", result.end);
     }
-    let result = run_one(&mut socket, "DELETE FROM tmp2", None).await;
+    let result = run_one(&mut socket, "RENAME TABLE tmp2 TO tmp3", None).await;
     assert_eq!(
         refused(&result),
-        json!({ "code": "write_not_allowed", "kinds": ["delete_temporary_table"] })
+        json!({ "code": "write_not_allowed", "kinds": ["rename_temporary_table"] })
     );
     let result = run_one(&mut socket, "TRUNCATE TABLE w", None).await;
     assert_eq!(

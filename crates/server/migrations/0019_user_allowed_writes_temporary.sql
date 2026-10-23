@@ -2,14 +2,14 @@
 -- crates/dialects/src/classify.rs). SQLite cannot change a CHECK
 -- constraint: the table is rebuilt, with its rows. Until now, a switch of
 -- the tables also covered the temporary tables: each user keeps that right,
--- under the matching switch of the temporary tables.
+-- under the matching switch of the temporary tables. The data of the
+-- temporary tables stays under the switches of the data.
 CREATE TABLE user_allowed_writes_new (
     user_id INTEGER NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     kind TEXT NOT NULL CHECK (kind IN (
         'insert', 'update', 'delete',
         'create_table', 'alter_table', 'rename_table', 'truncate_table', 'drop_table',
-        'create_temporary_table', 'insert_temporary_table', 'update_temporary_table',
-        'delete_temporary_table', 'alter_temporary_table', 'rename_temporary_table',
+        'create_temporary_table', 'alter_temporary_table', 'rename_temporary_table',
         'truncate_temporary_table', 'drop_temporary_table',
         'create_view', 'drop_view',
         'create_function', 'drop_function',
@@ -21,16 +21,8 @@ CREATE TABLE user_allowed_writes_new (
 
 INSERT INTO user_allowed_writes_new SELECT user_id, kind FROM user_allowed_writes;
 INSERT INTO user_allowed_writes_new (user_id, kind)
-SELECT user_id, CASE kind
-    WHEN 'insert' THEN 'insert_temporary_table'
-    WHEN 'update' THEN 'update_temporary_table'
-    WHEN 'delete' THEN 'delete_temporary_table'
-    ELSE replace(kind, '_table', '_temporary_table')
-END
+SELECT user_id, replace(kind, '_table', '_temporary_table')
 FROM user_allowed_writes
-WHERE kind IN (
-    'insert', 'update', 'delete',
-    'create_table', 'alter_table', 'rename_table', 'truncate_table', 'drop_table'
-);
+WHERE kind IN ('create_table', 'alter_table', 'rename_table', 'truncate_table', 'drop_table');
 DROP TABLE user_allowed_writes;
 ALTER TABLE user_allowed_writes_new RENAME TO user_allowed_writes;

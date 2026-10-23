@@ -1,7 +1,8 @@
 //! Temporary tables of a session's connection, followed query after query.
 //!
-//! A write on tables needs the switches of the temporary tables when all the
-//! tables it names are temporary tables of the connection
+//! A change of tables (`ALTER`, `RENAME`, `TRUNCATE`, `DROP`) needs the
+//! switches of the temporary tables when all the tables it names are
+//! temporary tables of the connection
 //! (`prisme_dialects::classify::classify_with`). MySQL (checked on 8.4.11)
 //! and MariaDB before 11.2 (checked on 11.1.5) list no temporary table, in
 //! `information_schema.TABLES` or `SHOW TABLES`; MariaDB lists them from 11.2

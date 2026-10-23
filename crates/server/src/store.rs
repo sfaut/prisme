@@ -149,7 +149,7 @@ mod tests {
         connection
             .execute(
                 "INSERT INTO user_allowed_writes (user_id, kind) \
-                 VALUES (?1, 'delete'), (?1, 'truncate_table'), (?1, 'create_view')",
+                 VALUES (?1, 'delete'), (?1, 'drop_table'), (?1, 'create_view')",
                 params![user],
             )
             .unwrap();
@@ -168,9 +168,8 @@ mod tests {
             [
                 "create_view",
                 "delete",
-                "delete_temporary_table",
-                "truncate_table",
-                "truncate_temporary_table"
+                "drop_table",
+                "drop_temporary_table"
             ]
         );
     }

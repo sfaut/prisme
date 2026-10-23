@@ -11,11 +11,11 @@
 //! creates the view again. A write that no switch covers (`CALL`, database,
 //! trigger, account, file, server setting...) is forbidden.
 //!
-//! The temporary tables have their own switches. `CREATE TEMPORARY TABLE`
-//! and `DROP TEMPORARY TABLE` need them by their syntax; another write on
-//! tables needs them when all the tables it names are temporary tables known
-//! to the session (`classify_with`, `temporary.rs`): the target of an
-//! `INSERT`, all the tables of a multiple-table `UPDATE` or `DELETE`.
+//! The structure of the temporary tables has its own switches, their data
+//! stays under the switches of the data. `CREATE TEMPORARY TABLE` and
+//! `DROP TEMPORARY TABLE` need them by their syntax; `ALTER`, `RENAME`,
+//! `TRUNCATE` and `DROP TABLE` need them when all the tables they name are
+//! temporary tables known to the session (`classify_with`, `temporary.rs`).
 //!
 //! A setting of the session (`SET @v = 1`, `SET SESSION sql_mode = ...`,
 //! `SET NAMES`) writes nothing in the database: it is always allowed, except
@@ -34,17 +34,14 @@
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
-use sqlparser::ast::{
-    ContextModifier, FromTable, ObjectName, ObjectType, OnInsert, Set, SetExpr, Statement,
-    TableObject, UpdateTableFromKind,
-};
+use sqlparser::ast::{ContextModifier, ObjectName, ObjectType, OnInsert, Set, SetExpr, Statement};
 use ts_rs::TS;
 
 use crate::Dialect;
 use crate::limit::returns_rows;
 use crate::mysql_statements::MySqlStatement;
 use crate::parse::{Parsed, parse_statements};
-use crate::temporary::{TableName, relation_names, table_name};
+use crate::temporary::{TableName, table_name};
 
 /// Nature of a query.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,11 +66,13 @@ pub enum StatementKind {
 #[serde(rename_all = "snake_case")]
 #[ts(export)]
 pub enum WriteKind {
-    /// `INSERT`, and the insertion of `REPLACE`.
+    /// `INSERT`, and the insertion of `REPLACE`, temporary tables included.
     Insert,
-    /// `UPDATE`, single or multiple-table, and `ON DUPLICATE KEY UPDATE`.
+    /// `UPDATE`, single or multiple-table, and `ON DUPLICATE KEY UPDATE`,
+    /// temporary tables included.
     Update,
-    /// `DELETE`, single or multiple-table, and the deletion of `REPLACE`.
+    /// `DELETE`, single or multiple-table, and the deletion of `REPLACE`,
+    /// temporary tables included.
     Delete,
     /// `CREATE TABLE`.
     CreateTable,
@@ -87,12 +86,6 @@ pub enum WriteKind {
     DropTable,
     /// `CREATE TEMPORARY TABLE`.
     CreateTemporaryTable,
-    /// `INSERT` into a temporary table, and the insertion of `REPLACE`.
-    InsertTemporaryTable,
-    /// `UPDATE` of temporary tables only, and `ON DUPLICATE KEY UPDATE`.
-    UpdateTemporaryTable,
-    /// `DELETE` from temporary tables only, and the deletion of `REPLACE`.
-    DeleteTemporaryTable,
     /// `ALTER TABLE`, `CREATE INDEX`, `DROP INDEX` on a temporary table.
     AlterTemporaryTable,
     /// `RENAME TABLE` of temporary tables.
@@ -123,7 +116,7 @@ pub enum WriteKind {
 
 impl WriteKind {
     /// Every kind, in the order of the settings.
-    pub const ALL: [Self; 25] = [
+    pub const ALL: [Self; 22] = [
         Self::Insert,
         Self::Update,
         Self::Delete,
@@ -133,9 +126,6 @@ impl WriteKind {
         Self::TruncateTable,
         Self::DropTable,
         Self::CreateTemporaryTable,
-        Self::InsertTemporaryTable,
-        Self::UpdateTemporaryTable,
-        Self::DeleteTemporaryTable,
         Self::AlterTemporaryTable,
         Self::RenameTemporaryTable,
         Self::TruncateTemporaryTable,
@@ -163,9 +153,6 @@ impl WriteKind {
             Self::TruncateTable => "truncate_table",
             Self::DropTable => "drop_table",
             Self::CreateTemporaryTable => "create_temporary_table",
-            Self::InsertTemporaryTable => "insert_temporary_table",
-            Self::UpdateTemporaryTable => "update_temporary_table",
-            Self::DeleteTemporaryTable => "delete_temporary_table",
             Self::AlterTemporaryTable => "alter_temporary_table",
             Self::RenameTemporaryTable => "rename_temporary_table",
             Self::TruncateTemporaryTable => "truncate_temporary_table",
@@ -287,45 +274,17 @@ fn write_kinds(
     use WriteKind::*;
     let kinds = match statement {
         Statement::Insert(insert) => {
-            let target = match &insert.table {
-                TableObject::TableName(name) => all_temporary([name], temporary),
-                _ => false,
-            };
-            let mut kinds = vec![on(target, Insert, InsertTemporaryTable)];
+            let mut kinds = vec![Insert];
             if insert.replace_into {
-                kinds.push(on(target, Delete, DeleteTemporaryTable));
+                kinds.push(Delete);
             }
             if matches!(insert.on, Some(OnInsert::DuplicateKeyUpdate(_))) {
-                kinds.push(on(target, Update, UpdateTemporaryTable));
+                kinds.push(Update);
             }
             kinds
         }
-        Statement::Update(update) => {
-            let mut names = relation_names(std::slice::from_ref(&update.table));
-            if let Some(
-                UpdateTableFromKind::BeforeSet(from) | UpdateTableFromKind::AfterSet(from),
-            ) = &update.from
-            {
-                names.extend(relation_names(from));
-            }
-            vec![on(
-                all_temporary(names, temporary),
-                Update,
-                UpdateTemporaryTable,
-            )]
-        }
-        Statement::Delete(delete) => {
-            let (FromTable::WithFromKeyword(from) | FromTable::WithoutKeyword(from)) = &delete.from;
-            let mut names = relation_names(from);
-            if let Some(using) = &delete.using {
-                names.extend(relation_names(using));
-            }
-            vec![on(
-                all_temporary(names, temporary),
-                Delete,
-                DeleteTemporaryTable,
-            )]
-        }
+        Statement::Update(_) => vec![Update],
+        Statement::Delete(_) => vec![Delete],
         // WITH ... INSERT / UPDATE / DELETE; SELECT ... INTO stays forbidden.
         Statement::Query(query) => match query.body.as_ref() {
             SetExpr::Insert(statement)
@@ -658,7 +617,7 @@ mod tests {
     }
 
     #[test]
-    fn writes_on_temporary_tables_only_need_their_switches() {
+    fn changes_of_temporary_tables_only_need_their_switches() {
         use WriteKind::*;
         // `tmp` and `shop.tmp2` are temporary tables of the connection.
         let temporary = |table: &TableName| {
@@ -669,36 +628,11 @@ mod tests {
         };
         let kind = |sql| classify_with(sql, Dialect::MySql, &temporary);
         for (sql, kinds) in [
-            (
-                "INSERT INTO tmp SELECT * FROM t",
-                vec![InsertTemporaryTable],
-            ),
-            (
-                "REPLACE INTO shop.tmp2 VALUES (1)",
-                vec![InsertTemporaryTable, DeleteTemporaryTable],
-            ),
-            (
-                "INSERT INTO tmp VALUES (1) ON DUPLICATE KEY UPDATE a = 2",
-                vec![InsertTemporaryTable, UpdateTemporaryTable],
-            ),
-            ("INSERT INTO t SELECT * FROM tmp", vec![Insert]),
-            ("UPDATE tmp SET a = 1", vec![UpdateTemporaryTable]),
-            (
-                "UPDATE tmp JOIN shop.tmp2 ON tmp.a = tmp2.a SET tmp.b = 1",
-                vec![UpdateTemporaryTable],
-            ),
-            // A permanent table among the tables: the switch of the tables.
-            (
-                "UPDATE tmp JOIN t ON tmp.a = t.a SET tmp.b = 1",
-                vec![Update],
-            ),
-            ("DELETE FROM tmp", vec![DeleteTemporaryTable]),
-            ("DELETE x FROM tmp AS x", vec![DeleteTemporaryTable]),
-            ("DELETE tmp FROM tmp JOIN t ON tmp.a = t.a", vec![Delete]),
-            (
-                "DELETE FROM tmp WHERE a IN (SELECT a FROM t)",
-                vec![DeleteTemporaryTable],
-            ),
+            // The data of the temporary tables: the switches of the data.
+            ("INSERT INTO tmp SELECT * FROM t", vec![Insert]),
+            ("REPLACE INTO shop.tmp2 VALUES (1)", vec![Insert, Delete]),
+            ("UPDATE tmp SET a = 1", vec![Update]),
+            ("DELETE FROM tmp", vec![Delete]),
             ("ALTER TABLE tmp ADD b INT", vec![AlterTemporaryTable]),
             (
                 "ALTER TABLE tmp ALTER INDEX i INVISIBLE",
@@ -711,11 +645,12 @@ mod tests {
             ("TRUNCATE TABLE tmp", vec![TruncateTemporaryTable]),
             ("TRUNCATE TABLE t", vec![TruncateTable]),
             ("DROP TABLE tmp, shop.tmp2", vec![DropTemporaryTable]),
+            // A permanent table among the tables: the switch of the tables.
             ("DROP TABLE tmp, t", vec![DropTable]),
             ("DROP TEMPORARY TABLE t", vec![DropTemporaryTable]),
             // Another database, or another case: another table.
-            ("DELETE FROM shop.tmp", vec![Delete]),
-            ("DELETE FROM TMP", vec![Delete]),
+            ("DROP TABLE shop.tmp", vec![DropTable]),
+            ("DROP TABLE TMP", vec![DropTable]),
         ] {
             assert_eq!(
                 kind(sql),
