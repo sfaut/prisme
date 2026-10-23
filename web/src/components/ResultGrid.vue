@@ -975,6 +975,7 @@ const userFilterColumn = computed({
   position: sticky;
   inset-inline-start: 0;
   z-index: 2;
+  border-inline-end: var(--line-width) solid var(--line);
   background: var(--surface-elevated);
   color: var(--fg-dimmed);
   text-align: end;
@@ -987,6 +988,12 @@ const userFilterColumn = computed({
 
 .grid-corner {
   cursor: se-resize;
+}
+
+/* The first column is closed on the left by the border of the row numbers. */
+.grid-corner + .grid-column-header,
+.grid-row-header + .grid-cell {
+  border-inline-start: none;
 }
 
 .grid-column-header {
