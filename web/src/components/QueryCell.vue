@@ -610,7 +610,7 @@ defineExpose({
         v-for="tab in state.tabs"
         :key="tab.id"
         :value="tab.id"
-        class="flex min-h-0 flex-1 outline-none"
+        class="flex min-h-0 flex-1"
       >
         <query-tab-view
           :tab="tab"

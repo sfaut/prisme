@@ -350,7 +350,14 @@
     }
   }
 
+  /* Focus ring: only on buttons and input fields, the same everywhere. The
+     other focusable elements (tabs, tree, result grid, SQL editor, menus)
+     show none; the tabs, buttons by default in Reka UI, neither. */
   :focus-visible {
+    outline: none;
+  }
+
+  :is(button, input, select, textarea):not([role='tab']):focus-visible {
     outline: var(--focus-width) solid var(--focus-ring);
     outline-offset: var(--focus-offset);
   }

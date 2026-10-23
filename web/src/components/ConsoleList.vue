@@ -98,7 +98,7 @@ watch(
 </script>
 
 <template>
-  <div ref="scroller" class="min-h-0 flex-1 overflow-auto outline-none" @scroll="readOlderAtTop">
+  <div ref="scroller" class="min-h-0 flex-1 overflow-auto" @scroll="readOlderAtTop">
     <ui-alert v-if="list.error" tone="error" :title="list.error" @close="list.dismissError()" />
     <p v-if="list.entries.length === 0" class="p-3 text-center text-fg-muted">{{ empty }}</p>
     <slot v-else />

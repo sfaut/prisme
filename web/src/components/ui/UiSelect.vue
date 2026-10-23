@@ -71,7 +71,7 @@ const current = computed(() => props.items.find((item) => item.value === model.v
             :key="item.value"
             :value="item.value"
             :disabled="item.disabled"
-            class="flex h-control cursor-pointer items-center gap-2 rounded-control px-2 text-fg outline-none select-none data-highlighted:bg-surface-elevated data-highlighted:text-fg-strong"
+            class="flex h-control cursor-pointer items-center gap-2 rounded-control px-2 text-fg select-none data-highlighted:bg-surface-elevated data-highlighted:text-fg-strong"
           >
             <component :is="item.icon" v-if="item.icon" class="size-icon shrink-0" />
             <select-item-text class="flex-1 text-trim">{{ item.label }}</select-item-text>

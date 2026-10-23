@@ -216,7 +216,7 @@ const pinned = computed(() => pinnedRows(visible.value, scrollTop.value, ROW_HEI
  * Classes of a line of the tree, and of a pinned line, which look the same.
  */
 const ROW_CLASSES =
-  'tree-row group flex h-row w-full cursor-pointer items-center gap-1 rounded-control pe-1 text-start outline-none select-none hover:bg-surface-muted focus-visible:bg-surface-muted'
+  'tree-row group flex h-row w-full cursor-pointer items-center gap-1 rounded-control pe-1 text-start select-none hover:bg-surface-muted focus-visible:bg-surface-muted'
 
 /**
  * Classes of the line of a node: the chosen source is highlighted.

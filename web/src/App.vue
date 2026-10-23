@@ -267,7 +267,7 @@ function selectSource(connectionId: number): void {
               v-for="editor in editors.editors"
               :key="editor.id"
               :value="editor.id"
-              class="flex min-h-0 flex-1 flex-col outline-none"
+              class="flex min-h-0 flex-1 flex-col"
               :class="{ 'items-center justify-center': !connectionOf(editor.connectionId) }"
             >
               <query-cell

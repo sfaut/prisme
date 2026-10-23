@@ -18,6 +18,8 @@ import { tags } from '@lezer/highlight'
  */
 const chrome = EditorView.theme({
   '&': { backgroundColor: 'var(--surface)', color: 'var(--fg-strong)' },
+  // No focus outline: the focus ring is kept for buttons and input fields.
+  '&.cm-focused': { outline: 'none' },
   '.cm-content': { caretColor: 'var(--fg-strong)' },
   '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--fg-strong)' },
   '.cm-gutters': {
