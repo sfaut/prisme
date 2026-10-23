@@ -527,9 +527,11 @@ onMounted(async () => {
   }
 })
 
+// Immediate: a reopened session starts without the database of the previous one.
 watch(
   () => state.database,
   (database) => emit('database', database),
+  { immediate: true },
 )
 
 defineExpose({
