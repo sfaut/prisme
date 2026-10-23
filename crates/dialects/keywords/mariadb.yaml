@@ -249,6 +249,7 @@ keywords:
   - OFFSET
   - ROLLBACK
   - TABLES
+  - TEMPORARY
   - TRANSACTION
   - TRUNCATE
   - VIEW

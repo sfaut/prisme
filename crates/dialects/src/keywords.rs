@@ -222,6 +222,8 @@ mod tests {
             assert!(all.types.contains(&"VARCHAR".to_string()));
             assert!(all.literals.contains(&"NULL".to_string()));
             assert!(all.keywords.contains(&"COMMIT".to_string()));
+            // CREATE TEMPORARY TABLE, DROP TEMPORARY TABLE.
+            assert!(all.keywords.contains(&"TEMPORARY".to_string()));
         }
     }
 
