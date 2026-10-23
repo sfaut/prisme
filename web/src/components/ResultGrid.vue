@@ -15,6 +15,8 @@
     right the selected values of a JSON or XML column (`dataExplorer`
     store): a column of type `JSON`, or a text column that holds JSON or
     XML.
+  - Row numbers: they stay visible on the left when the grid scrolls
+    sideways, as the header stays on top.
   - Selection: click on a cell, on a row number or on a column name;
     Shift+click extends, Ctrl+click adds, dragging extends too (on the row
     numbers, dragging selects a group of rows). A click on the top left
@@ -965,8 +967,14 @@ const userFilterColumn = computed({
   }
 }
 
+/* Row numbers and corner stay on the left when the grid scrolls sideways,
+   above the cells and the headers (and their resize handles) that pass
+   under them. */
 .grid-corner,
 .grid-row-header {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 2;
   background: var(--surface-elevated);
   color: var(--fg-dimmed);
   text-align: end;
