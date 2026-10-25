@@ -160,14 +160,17 @@ const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
 
 /**
  * Heights of the cell's splitter, in pixels (`main.css`): default and
- * smallest editor (folded, it disappears); default and smallest results, folded results (their tabs and the gap
- * above them). The panels carry no padding: it would add to the size Reka
+ * smallest editor, folded editor (the gap under the editors' tabs, which
+ * leaves room for the grip of the line: the splitter clips what goes past
+ * its edge); default and smallest results, folded results (their tabs and
+ * the gap above them). The panels carry no padding: it would add to the size Reka
  * UI gives them (`flex-basis: 0`); their inner block has it. Reka UI scales
  * both default heights together to the cell's height: they set a share, a
  * third for the editor.
  */
 const EDITOR_HEIGHT = cssPixels('--editor-height', 200)
 const EDITOR_MIN_HEIGHT = cssPixels('--editor-min-height', 96)
+const EDITOR_FOLDED_HEIGHT = cssPixels('--editor-folded-height', 8)
 const RESULTS_HEIGHT = cssPixels('--results-height', 400)
 const RESULTS_MIN_HEIGHT = cssPixels('--results-min-height', 200)
 const RESULTS_FOLDED_HEIGHT = cssPixels('--tab-bar-height', 40)
@@ -655,9 +658,9 @@ defineExpose({
     class="min-h-0 flex-1"
   >
     <!--
-      Top panel: the buttons, then the editor, which takes the remaining room.
-      Folded, the panel keeps the height of the buttons: the editor, under
-      them, stays mounted.
+      Top panel: the gap under the editors' tabs, the buttons, then the
+      editor, which takes the remaining room. Folded, the panel keeps only
+      the gap: the buttons and the editor, under it, stay mounted.
     -->
     <splitter-panel
       ref="editorPanel"
@@ -667,10 +670,10 @@ defineExpose({
       :default-size="EDITOR_HEIGHT"
       :min-size="EDITOR_MIN_HEIGHT"
       collapsible
-      :collapsed-size="0"
+      :collapsed-size="EDITOR_FOLDED_HEIGHT"
       class="flex"
     >
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-3 pb-2">
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-3 py-2">
         <div class="flex shrink-0 items-center gap-2">
           <ui-button
             v-tooltip="stopsOne ? STOP_TIP : 'La requête sous le curseur (Ctrl-Entrée)'"

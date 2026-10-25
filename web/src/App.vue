@@ -408,7 +408,7 @@ function selectSource(connectionId: number): void {
               <tabs-root
                 v-model="activeTab"
                 :unmount-on-hide="false"
-                class="flex min-h-0 flex-1 flex-col gap-2"
+                class="flex min-h-0 flex-1 flex-col"
               >
                 <div class="flex px-3">
                   <editor-tab-bar class="flex-1">
