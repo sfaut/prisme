@@ -23,7 +23,9 @@
   tab, after the running batch if any.
   The row limit chosen here becomes the user's default limit.
   The session can be closed from the object navigator ("Déconnecter",
-  `disconnect`): the cell then shows it closed, with "Reconnecter".
+  `disconnect`): the cell then shows it closed, with "Reconnecter". A
+  session opened on a server older than the oldest version Prisme supports
+  shows a warning.
   The buttons are above the editor. The editor (with its buttons) and the
   results share the height in a splitter of Reka UI (`SplitterGroup`),
   which remembers it for this editor (`cellLayout.ts`): dragging the line
@@ -57,6 +59,7 @@ import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import { analyzeSql } from '@/api/analyze'
 import { beautify } from '@/api/beautify'
+import { serverLabel, versionWarning } from '@/api/connections'
 import {
   closeSession,
   deleteResult,
@@ -331,6 +334,15 @@ const STOP_TIP = 'Arrête toutes les requêtes et tous les chargements en cours'
  * Do queries run?
  */
 const running = computed(() => state.status === 'running')
+
+/**
+ * Warning of a session opened on a server older than the oldest version
+ * Prisme supports, `null` otherwise.
+ */
+const versionNotice = computed(() => {
+  const warning = state.server ? versionWarning(state.server) : null
+  return state.server && warning ? `${serverLabel(state.server)}\n${warning}` : null
+})
 
 /**
  * Run button that started the running queries: "Exécuter" (`one`),
@@ -779,6 +791,7 @@ defineExpose({
         <ui-alert v-if="state.status === 'closed'" tone="warning" title="Session fermée.">
           <ui-button label="Reconnecter" @click="emit('reconnect')" />
         </ui-alert>
+        <ui-alert v-if="versionNotice" tone="warning" :title="versionNotice" />
         <ui-alert v-if="state.error" tone="error" :title="state.error" />
 
         <div

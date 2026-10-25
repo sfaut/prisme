@@ -124,6 +124,7 @@ Connections are managed from the navigator:
 - **Edit, refresh, test, delete**: **⋮** menu of each source. A blank password when editing keeps the current one. Deleting asks for confirmation.
 - **Session settings**: the **À la connexion** (On connect) field runs queries each time a connection opens, separated by `;`, for example `SET NAMES utf8mb4; SET SESSION sql_mode = ...`. Only session settings are allowed.
 - **System databases** (`information_schema`, `mysql`, `performance_schema`, `sys`) can be hidden per source.
+- **Supported versions**: MySQL from 8.0.11, MariaDB from 10.6.3. An older server still works, without guarantee: the connection test and the editor connected to it show a warning.
 
 Passwords are encrypted on disk and never sent back to the browser.
 

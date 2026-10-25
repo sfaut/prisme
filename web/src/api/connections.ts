@@ -72,5 +72,41 @@ export function probeSettings(probe: ProbeRequest): Promise<ServerInfo> {
  * @param info Identity of the server.
  */
 export function serverLabel(info: ServerInfo): string {
-  return `${info.flavor === 'mariadb' ? 'MariaDB' : 'MySQL'} ${info.version}`
+  return `${flavorName(info)} ${info.version}`
+}
+
+/**
+ * Name of the flavor of a server, as displayed.
+ *
+ * @param info Identity of the server.
+ */
+function flavorName(info: ServerInfo): string {
+  return info.flavor === 'mariadb' ? 'MariaDB' : 'MySQL'
+}
+
+/**
+ * Warning on a server older than the oldest version Prisme supports
+ * (`docs/V1.md`, section 2.10), `null` for a supported server.
+ *
+ * @param info Identity of the server.
+ */
+export function versionWarning(info: ServerInfo): string | null {
+  if (info.oldest_supported === null) {
+    return null
+  }
+  return `Version antérieure à ${flavorName(info)} ${info.oldest_supported}, la plus ancienne prise en charge par Prisme : les requêtes s’exécutent, sans garantie.`
+}
+
+/**
+ * Message of a successful connection test: the flavor and the version of the
+ * server, then, on a line of its own, the warning of a version older than
+ * those supported, which turns the message into a warning.
+ *
+ * @param info Identity of the server.
+ */
+export function probeMessage(info: ServerInfo): { tone: 'success' | 'warning'; title: string } {
+  const warning = versionWarning(info)
+  return warning === null
+    ? { tone: 'success', title: serverLabel(info) }
+    : { tone: 'warning', title: `${serverLabel(info)}\n${warning}` }
 }

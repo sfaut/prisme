@@ -248,6 +248,7 @@ mod tests {
                     flavor: Flavor::MariaDb,
                     version: "10.6.28-MariaDB".to_string(),
                     ansi_quotes: false,
+                    oldest_supported: None,
                 },
                 database: Some("shop".to_string()),
             }),

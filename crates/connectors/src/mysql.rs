@@ -64,6 +64,18 @@ pub enum Flavor {
     MariaDb,
 }
 
+impl Flavor {
+    /// Oldest version of the flavor that Prisme supports: the first general
+    /// availability release of MySQL 8.0 and of MariaDB 10.6. An older server
+    /// still works, with a warning (`docs/V1.md`, section 2.10).
+    pub fn oldest_supported(self) -> &'static str {
+        match self {
+            Self::MySql => "8.0.11",
+            Self::MariaDb => "10.6.3",
+        }
+    }
+}
+
 /// Identity of a server, obtained on connection.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
@@ -76,6 +88,10 @@ pub struct ServerInfo {
     /// the `ANSI` mode)? Double quotes then delimit identifiers, no longer
     /// strings.
     pub ansi_quotes: bool,
+    /// Oldest version of the flavor that Prisme supports
+    /// (`Flavor::oldest_supported`), only when the server is older: it then
+    /// gets a warning. `None` for a supported server.
+    pub oldest_supported: Option<String>,
 }
 
 /// Errors of the MySQL / MariaDB connector.
@@ -172,11 +188,34 @@ pub async fn server_info(connection: &mut Conn) -> Result<ServerInfo, MysqlError
     let row: Option<(String, String)> =
         sql_log::traced(sql, connection.query_first(sql), first_row).await?;
     let (version, sql_mode) = row.ok_or(MysqlError::MissingVersion)?;
+    let flavor = detect_flavor(&version);
     Ok(ServerInfo {
-        flavor: detect_flavor(&version),
+        flavor,
         ansi_quotes: has_ansi_quotes(&sql_mode),
+        oldest_supported: (!is_supported(flavor, &version))
+            .then(|| flavor.oldest_supported().to_string()),
         version,
     })
+}
+
+/// Is `version`, as `SELECT VERSION()` gives it, at least the oldest version
+/// of `flavor` that Prisme supports?
+pub fn is_supported(flavor: Flavor, version: &str) -> bool {
+    version_numbers(version) >= version_numbers(flavor.oldest_supported())
+}
+
+/// Numbers of a version (`10.11.11-MariaDB` gives `[10, 11, 11]`), to compare
+/// two versions; missing numbers count as 0.
+fn version_numbers(version: &str) -> [u32; 3] {
+    let mut parts = version
+        .split(|character: char| !character.is_ascii_digit())
+        .take_while(|part| !part.is_empty())
+        .map(|part| part.parse().unwrap_or(0));
+    [
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+        parts.next().unwrap_or(0),
+    ]
 }
 
 /// Does `sql_mode` contain `ANSI_QUOTES`? The server expands the `ANSI` mode
@@ -433,5 +472,20 @@ mod tests {
     fn detects_mysql() {
         assert_eq!(detect_flavor("8.1.0"), Flavor::MySql);
         assert_eq!(detect_flavor("5.7.44-log"), Flavor::MySql);
+    }
+
+    #[test]
+    fn supports_the_versions_from_the_oldest_supported_one() {
+        assert!(is_supported(Flavor::MySql, "8.0.11"));
+        assert!(is_supported(Flavor::MySql, "8.4.11-log"));
+        assert!(!is_supported(Flavor::MySql, "8.0.4-rc"));
+        assert!(!is_supported(Flavor::MySql, "5.7.44"));
+        assert!(is_supported(
+            Flavor::MariaDb,
+            "10.6.3-MariaDB-1:10.6.3+maria~focal"
+        ));
+        assert!(is_supported(Flavor::MariaDb, "11.4.2-MariaDB"));
+        assert!(!is_supported(Flavor::MariaDb, "10.6.2-MariaDB"));
+        assert!(!is_supported(Flavor::MariaDb, "10.5.29-MariaDB"));
     }
 }

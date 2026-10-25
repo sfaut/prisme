@@ -31,6 +31,7 @@ vi.mock('@/api/connections', () => ({
     flavor: 'mariadb',
     version: '11.4.2-MariaDB',
     ansi_quotes: false,
+    oldest_supported: null,
   }),
   deleteConnection: async () => undefined,
 }))

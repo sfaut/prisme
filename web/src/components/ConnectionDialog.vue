@@ -22,7 +22,7 @@ import { errorMessage } from '@/api/errorMessage'
 import { Eye, EyeOff } from '@lucide/vue'
 import { computed, reactive, ref, watch } from 'vue'
 
-import { probeSettings, serverLabel } from '@/api/connections'
+import { probeMessage, probeSettings } from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { NewConnection } from '@/api/generated/NewConnection'
 import { useConnectionsStore } from '@/stores/connections'
@@ -82,9 +82,10 @@ const probing = ref(false)
 const showPassword = ref(false)
 
 /**
- * Result of the last successful test (flavor and version of the server), `null` if none.
+ * Message of the last successful test (flavor and version of the server, and
+ * the warning of an unsupported version), `null` if none.
  */
-const probed = ref<string | null>(null)
+const probed = ref<ReturnType<typeof probeMessage> | null>(null)
 
 /**
  * Title of the window.
@@ -161,7 +162,7 @@ async function probe(): Promise<void> {
   probed.value = null
   try {
     const info = await probeSettings({ connection: { ...form }, saved_id: props.connection?.id })
-    probed.value = serverLabel(info)
+    probed.value = probeMessage(info)
   } catch (failure) {
     error.value = errorMessage(failure)
   } finally {
@@ -271,7 +272,7 @@ async function save(): Promise<void> {
         </label>
       </ui-field>
       <ui-alert v-if="error" tone="error" :title="error" />
-      <ui-alert v-if="probed" tone="success" :title="probed" />
+      <ui-alert v-if="probed" :tone="probed.tone" :title="probed.title" />
     </form>
     <template #footer>
       <ui-button label="Tester" :loading="probing" @click="probe" />

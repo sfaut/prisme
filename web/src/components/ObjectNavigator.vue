@@ -62,7 +62,7 @@ import {
 } from 'reka-ui'
 import { computed, onMounted, ref, watch } from 'vue'
 
-import { probeConnection, serverLabel } from '@/api/connections'
+import { probeConnection, probeMessage } from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { SessionStatus } from '@/api/querySession'
 import { cssPixels } from '@/cssLength'
@@ -144,10 +144,10 @@ const loadingIds = ref<number[]>([])
 const listError = ref<string | null>(null)
 
 /**
- * Result of the last successful test of a source (name, flavor and version
- * of the server), `null` if none.
+ * Message of the last successful test of a source (name, flavor and version
+ * of the server, and the warning of an unsupported version), `null` if none.
  */
-const probed = ref<string | null>(null)
+const probed = ref<ReturnType<typeof probeMessage> | null>(null)
 
 /**
  * Last reading error of each connection, by id.
@@ -391,7 +391,8 @@ async function probe(connectionId: number): Promise<void> {
   probed.value = null
   delete failures.value[connectionId]
   try {
-    probed.value = `${name} : ${serverLabel(await probeConnection(connectionId))}`
+    const message = probeMessage(await probeConnection(connectionId))
+    probed.value = { ...message, title: `${name} : ${message.title}` }
   } catch (failure) {
     failures.value[connectionId] = errorMessage(failure)
   }
@@ -544,7 +545,7 @@ watch(
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-2">
     <panel-header title="Navigateur d’objets" side="start" @collapse="layout.objectsOpen = false" />
-    <ui-alert v-if="probed" tone="success" :title="probed" @close="probed = null" />
+    <ui-alert v-if="probed" :tone="probed.tone" :title="probed.title" @close="probed = null" />
     <ui-alert v-if="listError" tone="error" :title="listError" />
     <!-- Index as key: the same message can come twice, from two errors of one source. -->
     <ui-alert v-for="(message, index) in messages" :key="index" tone="warning" :title="message" />

@@ -19,4 +19,10 @@ export type ServerInfo = {
    * strings.
    */
   ansi_quotes: boolean;
+  /**
+   * Oldest version of the flavor that Prisme supports
+   * (`Flavor::oldest_supported`), only when the server is older: it then
+   * gets a warning. `None` for a supported server.
+   */
+  oldest_supported: string | null;
 };
