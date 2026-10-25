@@ -2,7 +2,9 @@
   SQL editor, based on CodeMirror 6.
 
   Highlighting according to the dialect and the version of the server (MySQL or
-  MariaDB: keywords read from the server, see `sqlDialect.ts`), line numbers,
+  MariaDB: keywords read from the server, see `sqlDialect.ts`), line numbers
+  alone in their gutter, like the row numbers of the grid (the fold arrows
+  of `basicSetup` hide; folding stays on Ctrl+Shift+[ and Ctrl+Shift+]),
   light or dark theme like the interface (`editorTheme.ts`), undo history,
   completion of names only: databases, tables, columns, functions and
   procedures (namespace built from the catalog, see `sqlCompletion.ts`).
@@ -124,6 +126,12 @@ let selected = false
  * Delay between the last keystroke and the analysis of the text, in milliseconds.
  */
 const ANALYSIS_DELAY = 250
+
+/**
+ * Gutter of the line numbers alone: the gutter of the fold arrows, which
+ * `basicSetup` adds, hides.
+ */
+const lineNumbersAlone = EditorView.theme({ '.cm-foldGutter': { display: 'none' } })
 
 /**
  * Pending deferred analysis, absent if none.
@@ -251,6 +259,7 @@ onMounted(() => {
       // Strict completion: start of the name or initials, never scattered letters.
       autocompletion({ filterStrict: true }),
       editorTheme(),
+      lineNumbersAlone,
       language.of(currentLanguage()),
       currentStatement(),
       trimTrailingBlanks(),
