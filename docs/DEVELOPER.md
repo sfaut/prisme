@@ -72,7 +72,7 @@ The icons come from Lucide (`@lucide/vue`). An action keeps the same icon wherev
 
 Rules:
 
-- **Size**: `size-icon` (16 px) for the buttons and the lines of the navigator, `size-icon-sm` (12 px) for the chevrons of the tree and the marks of the grid's headers.
+- **Size**: `size-icon` (16 px) for the buttons, the messages and the lines of the navigator, `size-icon-sm` (12 px) for the chevrons of the tree and the marks of the grid's headers, never a size of the spacing scale (`size-4`). The key marks of the navigator's columns are sized in `em` (`size-[1em]`), like the slots that align them.
 - **Icon-only button**: `UiButton` with `variant="ghost"` and `small` in a bar, an `aria-label` and a `v-tooltip`. The tooltip says the action, and may add what it does after a colon ("Rafraîchir : relance la requête").
 - **Toggle button**: `aria-pressed`. The accent color (`tone="accent"`) means the state is in effect: a filter keeps only some elements, a tab is pinned. The raised background (`bg-surface-elevated`) means the button shows its panel or form (the console's filters, the grid's filter).
 - **Place**: the actions of a bar stand at its right end, side by side, then the fold button, last; for the panel on the right, the fold button comes first, left of the title. The rail of a folded panel shows its unfold icon at the same place.

@@ -23,8 +23,8 @@ const DURATION = 3000
       class="flex items-center gap-2 rounded-panel border border-line bg-surface px-3 py-2 text-ui text-fg-strong shadow-lg"
       @update:open="(open: boolean) => open || dismiss(toast.id)"
     >
-      <CircleCheckBig v-if="toast.tone === 'success'" class="size-4 shrink-0 text-success" />
-      <CircleX v-else class="size-4 shrink-0 text-error" />
+      <CircleCheckBig v-if="toast.tone === 'success'" class="size-icon shrink-0 text-success" />
+      <CircleX v-else class="size-icon shrink-0 text-error" />
       <toast-title class="text-trim whitespace-pre-line">{{ toast.title }}</toast-title>
     </toast-root>
     <toast-viewport class="fixed inset-e-3 bottom-3 z-50 flex w-72 flex-col gap-2" />

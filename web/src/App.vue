@@ -445,7 +445,7 @@ function selectSource(connectionId: number): void {
                   />
                   <div v-else class="flex max-w-xs flex-col items-center gap-2 text-center">
                     <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
-                      <Database class="size-4 text-fg-muted" />
+                      <Database class="size-icon text-fg-muted" />
                     </span>
                     <p class="text-balance text-fg-muted">
                       Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données pour la
