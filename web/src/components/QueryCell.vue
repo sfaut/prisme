@@ -29,7 +29,9 @@
   button, by a drag below its smallest height, or, for the editor, by a
   double click on the line: the editor leaves its buttons, the results
   their tabs. Both are never folded at once: folding one unfolds the
-  other.
+  other. The padding of the sides is inside the panels: a panel clips its
+  content at its edge, which may fall between two pixels, and would cut
+  the left border of a field or of the grid set against it.
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
@@ -654,7 +656,7 @@ defineExpose({
       :collapsed-size="EDITOR_FOLDED_HEIGHT"
       class="flex"
     >
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 pb-2">
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-3 pb-2">
         <div class="flex shrink-0 items-center gap-2">
           <ui-button
             v-tooltip="stopsOne ? STOP_TIP : 'La requête sous le curseur (Ctrl-Entrée)'"
@@ -746,7 +748,7 @@ defineExpose({
       :collapsed-size="RESULTS_FOLDED_HEIGHT"
       class="flex"
     >
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 pt-2">
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-3 pt-2">
         <ui-alert v-if="state.status === 'closed'" tone="warning" title="Session fermée.">
           <ui-button label="Reconnecter" @click="emit('reconnect')" />
         </ui-alert>

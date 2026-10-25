@@ -385,19 +385,28 @@ function selectSource(connectionId: number): void {
           class="min-w-0 flex-1"
         >
           <splitter-panel :order="1" size-unit="px" :min-size="EDITORS_MIN_HEIGHT" class="flex">
-            <main class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-3">
-              <ui-alert
-                v-if="editorsError"
-                tone="error"
-                :title="editorsError"
-                @close="editorsError = null"
-              />
+            <!--
+              The padding of the sides is inside the panels of the cells
+              (`QueryCell`), which would cut a border set against their edge;
+              the other elements take it here.
+            -->
+            <main class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 py-3">
+              <div v-if="editorsError" class="flex px-3">
+                <ui-alert
+                  tone="error"
+                  :title="editorsError"
+                  class="flex-1"
+                  @close="editorsError = null"
+                />
+              </div>
               <tabs-root
                 v-model="activeTab"
                 :unmount-on-hide="false"
                 class="flex min-h-0 flex-1 flex-col gap-2"
               >
-                <editor-tab-bar />
+                <div class="flex px-3">
+                  <editor-tab-bar class="flex-1" />
+                </div>
                 <tabs-content
                   v-for="editor in editors.editors"
                   :key="editor.id"
