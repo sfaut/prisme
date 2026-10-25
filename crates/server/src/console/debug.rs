@@ -107,6 +107,18 @@ impl DebugSource {
     }
 }
 
+/// Lines kept by a page of the debug log, read from the query string
+/// (`level=error,warn&source=interface`).
+#[derive(Debug, Default, Deserialize)]
+pub struct DebugFilter {
+    /// Levels kept; all of them when empty.
+    #[serde(default, rename = "level", deserialize_with = "super::names")]
+    pub levels: Vec<DebugLevel>,
+    /// Sources kept; all of them when empty.
+    #[serde(default, rename = "source", deserialize_with = "super::names")]
+    pub sources: Vec<DebugSource>,
+}
+
 /// Line of the debug log, as the interface receives it.
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export)]
@@ -230,17 +242,31 @@ pub fn insert(db: &Connection, line: &TracedLine) -> Result<DebugEntry, rusqlite
     )
 }
 
-/// Lines of the debug log, at most `limit`, the most recent ones before
-/// line `before` (all of them when absent), in chronological order.
+/// Lines of the debug log that `filter` keeps, at most `limit`, the most
+/// recent ones before line `before` (all of them when absent), in
+/// chronological order.
 pub fn list(
     db: &Connection,
+    filter: &DebugFilter,
     before: Option<i64>,
     limit: u32,
 ) -> Result<Vec<DebugEntry>, rusqlite::Error> {
     let mut statement = db.prepare(&format!(
-        "SELECT {COLUMNS} FROM debug_log WHERE id < ?1 ORDER BY id DESC LIMIT ?2"
+        "SELECT {COLUMNS} FROM debug_log
+         WHERE id < ?1
+             AND (?2 = '[]' OR level IN (SELECT value FROM json_each(?2)))
+             AND (?3 = '[]' OR source IN (SELECT value FROM json_each(?3)))
+         ORDER BY id DESC LIMIT ?4"
     ))?;
-    let rows = statement.query_map(params![before.unwrap_or(i64::MAX), limit], entry_of)?;
+    let rows = statement.query_map(
+        params![
+            before.unwrap_or(i64::MAX),
+            super::json_array(&filter.levels)?,
+            super::json_array(&filter.sources)?,
+            limit
+        ],
+        entry_of,
+    )?;
     let mut entries = rows.collect::<Result<Vec<_>, _>>()?;
     entries.reverse();
     Ok(entries)
@@ -293,14 +319,60 @@ mod tests {
         let messages =
             |entries: Vec<DebugEntry>| entries.into_iter().map(|e| e.message).collect::<Vec<_>>();
         assert_eq!(
-            messages(list(&db, None, 10).unwrap()),
+            messages(list(&db, &DebugFilter::default(), None, 10).unwrap()),
             ["first", "second", "Échec"]
         );
-        assert_eq!(messages(list(&db, Some(second.id), 10).unwrap()), ["first"]);
         assert_eq!(
-            list(&db, None, 1).unwrap()[0].source,
+            messages(list(&db, &DebugFilter::default(), Some(second.id), 10).unwrap()),
+            ["first"]
+        );
+        assert_eq!(
+            list(&db, &DebugFilter::default(), None, 1).unwrap()[0].source,
             DebugSource::Interface
         );
+    }
+
+    #[test]
+    fn lists_the_lines_of_the_levels_and_sources_kept() {
+        let db = store::open_in_memory();
+        for (level, source, message) in [
+            (DebugLevel::Error, DebugSource::Server, "server error"),
+            (DebugLevel::Info, DebugSource::Server, "server info"),
+            (DebugLevel::Error, DebugSource::Interface, "interface error"),
+            (
+                DebugLevel::Warn,
+                DebugSource::Interface,
+                "interface warning",
+            ),
+        ] {
+            insert(&db, &TracedLine::now(level, source, "", message)).unwrap();
+        }
+        let messages = |levels: Vec<DebugLevel>, sources: Vec<DebugSource>| {
+            list(&db, &DebugFilter { levels, sources }, None, 10)
+                .unwrap()
+                .into_iter()
+                .map(|e| e.message)
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(
+            messages(vec![DebugLevel::Error], Vec::new()),
+            ["server error", "interface error"]
+        );
+        assert_eq!(
+            messages(Vec::new(), vec![DebugSource::Interface]),
+            ["interface error", "interface warning"]
+        );
+        // Both filters at once: a level kept and a source kept.
+        assert_eq!(
+            messages(
+                vec![DebugLevel::Error, DebugLevel::Info],
+                vec![DebugSource::Server]
+            ),
+            ["server error", "server info"]
+        );
+        assert!(messages(vec![DebugLevel::Trace], Vec::new()).is_empty());
+        assert_eq!(messages(Vec::new(), Vec::new()).len(), 4);
     }
 
     #[test]

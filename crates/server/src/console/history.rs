@@ -119,6 +119,15 @@ pub struct QueryEntry {
     pub error: String,
 }
 
+/// Queries kept by a page of the history, read from the query string
+/// (`action=run,run_all`).
+#[derive(Debug, Default, Deserialize)]
+pub struct HistoryFilter {
+    /// Actions kept; all of them when empty.
+    #[serde(default, rename = "action", deserialize_with = "super::names")]
+    pub actions: Vec<Action>,
+}
+
 /// Query traced by the connector, with its context, before it is saved.
 #[derive(Debug, Default)]
 pub struct TracedQuery {
@@ -329,21 +338,29 @@ pub fn insert(
     )
 }
 
-/// Queries of the history of `user_id`, at most `limit`, the most recent
-/// ones before query `before` (all of them when absent), in chronological
-/// order.
+/// Queries of the history of `user_id` that `filter` keeps, at most
+/// `limit`, the most recent ones before query `before` (all of them when
+/// absent), in chronological order.
 pub fn list(
     db: &Connection,
     user_id: i64,
+    filter: &HistoryFilter,
     before: Option<i64>,
     limit: u32,
 ) -> Result<Vec<QueryEntry>, rusqlite::Error> {
     let mut statement = db.prepare(&format!(
         "SELECT {COLUMNS} FROM query_history
-         WHERE user_id = ?1 AND id < ?2 ORDER BY id DESC LIMIT ?3"
+         WHERE user_id = ?1 AND id < ?2
+             AND (?3 = '[]' OR action IN (SELECT value FROM json_each(?3)))
+         ORDER BY id DESC LIMIT ?4"
     ))?;
     let rows = statement.query_map(
-        params![user_id, before.unwrap_or(i64::MAX), limit],
+        params![
+            user_id,
+            before.unwrap_or(i64::MAX),
+            super::json_array(&filter.actions)?,
+            limit
+        ],
         entry_of,
     )?;
     let mut entries = rows.collect::<Result<Vec<_>, _>>()?;
@@ -422,15 +439,55 @@ mod tests {
         let sqls =
             |entries: Vec<QueryEntry>| entries.into_iter().map(|e| e.sql).collect::<Vec<_>>();
         assert_eq!(
-            sqls(list(&db, user_id, None, 10).unwrap()),
+            sqls(list(&db, user_id, &HistoryFilter::default(), None, 10).unwrap()),
             ["SELECT 1", "SELECT 2"]
         );
-        assert_eq!(sqls(list(&db, user_id, None, 1).unwrap()), ["SELECT 2"]);
         assert_eq!(
-            sqls(list(&db, user_id, Some(second.id), 10).unwrap()),
+            sqls(list(&db, user_id, &HistoryFilter::default(), None, 1).unwrap()),
+            ["SELECT 2"]
+        );
+        assert_eq!(
+            sqls(list(&db, user_id, &HistoryFilter::default(), Some(second.id), 10).unwrap()),
             ["SELECT 1"]
         );
-        assert_eq!(sqls(list(&db, other, None, 10).unwrap()), ["SELECT 3"]);
+        assert_eq!(
+            sqls(list(&db, other, &HistoryFilter::default(), None, 10).unwrap()),
+            ["SELECT 3"]
+        );
+    }
+
+    #[test]
+    fn lists_the_queries_of_the_actions_kept() {
+        let db = store::open_in_memory();
+        let user_id = store::ensure_user(&db, "a@example.com").unwrap();
+        for (sql, action) in [
+            ("SELECT 1", Action::Run),
+            ("SHOW TABLES", Action::Navigator),
+            ("SELECT 2", Action::RunAll),
+            ("SELECT 3", Action::Run),
+        ] {
+            let mut query = traced(sql, 1_792_500_000_000);
+            query.action = Some(action);
+            insert(&db, user_id, &query).unwrap();
+        }
+        let sqls = |actions: Vec<Action>, before: Option<i64>, limit: u32| {
+            list(&db, user_id, &HistoryFilter { actions }, before, limit)
+                .unwrap()
+                .into_iter()
+                .map(|e| e.sql)
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(sqls(vec![Action::Navigator], None, 10), ["SHOW TABLES"]);
+        assert_eq!(
+            sqls(vec![Action::Run, Action::RunAll], None, 10),
+            ["SELECT 1", "SELECT 2", "SELECT 3"]
+        );
+        // The limit counts the queries kept, the others are skipped.
+        assert_eq!(sqls(vec![Action::Run], None, 1), ["SELECT 3"]);
+        assert_eq!(sqls(vec![Action::Run], Some(4), 1), ["SELECT 1"]);
+        assert!(sqls(vec![Action::Probe], None, 10).is_empty());
+        assert_eq!(sqls(Vec::new(), None, 10).len(), 4);
     }
 
     #[test]

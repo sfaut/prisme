@@ -4,17 +4,17 @@
   queries sent to the target servers, by the editors and by Prisme itself
   (`HistoryTable.vue`); the Debug tab, the lines of the server's log and the
   notifications of the interface (`DebugTable.vue`). A button, at the right
-  of the tabs, clears the list of the tab shown. The console folds
-  towards the bottom edge, where it leaves a rail (`PanelRail.vue`); its
-  height is set by dragging its top edge (`PanelResizer.vue`, in
-  `App.vue`).
+  of the tabs, clears the list of the tab shown, whatever its filter. The
+  console folds towards the bottom edge, where it leaves a rail
+  (`PanelRail.vue`); its height is set by dragging its top edge
+  (`PanelResizer.vue`, in `App.vue`).
 -->
 <script setup lang="ts">
 import { MessageCircleOff } from '@lucide/vue'
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 
-import { type ConsoleTab, useConsoleStore } from '@/stores/console'
+import { type ConsoleTab, isFiltering, useConsoleStore } from '@/stores/console'
 
 import DebugTable from './DebugTable.vue'
 import HistoryTable from './HistoryTable.vue'
@@ -33,12 +33,24 @@ const TABS: { value: ConsoleTab; label: string }[] = [
 ]
 
 /**
- * List of the tab shown, and the label of the button that clears it.
+ * List of the tab shown, its filter, and the label of the button that
+ * clears it.
  */
 const shown = computed(() =>
   store.tab === 'history'
-    ? { list: store.history, clearLabel: 'Effacer l’historique' }
-    : { list: store.debug, clearLabel: 'Effacer le debug' },
+    ? { list: store.history, filter: store.historyFilter, clearLabel: 'Effacer l’historique' }
+    : { list: store.debug, filter: store.debugFilter, clearLabel: 'Effacer le debug' },
+)
+
+/**
+ * Is the list of the tab shown empty, on the server too? A filtered list
+ * that shows nothing may hold elements outside its filter.
+ */
+const nothingToClear = computed(
+  () =>
+    shown.value.list.entries.length === 0 &&
+    !shown.value.list.hasOlder &&
+    !isFiltering(shown.value.filter),
 )
 
 /**
@@ -81,7 +93,7 @@ onUnmounted(() => store.dispose())
           variant="ghost"
           small
           :loading="clearing"
-          :disabled="shown.list.entries.length === 0 && !shown.list.hasOlder"
+          :disabled="nothingToClear"
           :aria-label="shown.clearLabel"
           v-tooltip="shown.clearLabel"
           @click="clearShown"

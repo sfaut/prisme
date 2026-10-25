@@ -2,11 +2,12 @@
   Scrolling area of a tab of the console (history, debug log): the table of
   the tab (default slot), oldest elements at the top. The area opens on the
   most recent elements, and stays scrolled to the bottom while the user does
-  not scroll up, so that the new elements show. Scrolled near the top, it
-  reads the older elements, and keeps those in view at the same place; a
-  failure to read shows above. Also gives the tables of the console their
-  common look (`console-table` class): dense lines, like those of the result
-  grid, and a header that stays visible.
+  not scroll up, so that the new elements show, and goes back to them when
+  the filter of the list changes. Scrolled near the top, it reads the older
+  elements, and keeps those in view at the same place; a failure to read
+  shows above. Also gives the tables of the console their common look
+  (`console-table` class): dense lines, like those of the result grid, and
+  a header that stays visible.
 -->
 <script setup lang="ts" generic="T extends { id: number }">
 import { nextTick, onMounted, useTemplateRef, watch } from 'vue'
@@ -83,13 +84,21 @@ onMounted(() => {
   }
 })
 
-// Before the lines are drawn: stuck at the bottom, the area follows them.
+/**
+ * Changes of the filter already followed.
+ */
+let refilters = props.list.refilters
+
+// Before the lines are drawn: stuck at the bottom, the area follows them,
+// unless older elements are being read (`readOlderAtTop` keeps them in
+// place). A new filter shows the most recent elements.
 watch(
   () => props.list.entries,
-  (entries, previous) => {
+  () => {
     const element = scroller.value
-    const appended = previous.length === 0 || entries[0]?.id === previous[0]?.id
-    if (element !== null && appended && atBottom(element)) {
+    const refiltered = props.list.refilters !== refilters
+    refilters = props.list.refilters
+    if (element !== null && !readingOlder && (refiltered || atBottom(element))) {
       void nextTick(() => element.scrollTo({ top: element.scrollHeight }))
     }
   },

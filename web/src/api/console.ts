@@ -8,23 +8,65 @@
  * `history-cleared` / `debug-cleared` when a list is cleared (`clearHistory`,
  * `clearDebug`), `lagged` when the server dropped events for a client too
  * slow, which then reads them again.
+ *
+ * A page holds only the elements its filter keeps (`HistoryFilter`,
+ * `DebugFilter`): the server skips the others.
  */
 
 import { request } from './http'
+import type { Action } from './generated/Action'
 import type { DebugEntry } from './generated/DebugEntry'
+import type { DebugLevel } from './generated/DebugLevel'
+import type { DebugSource } from './generated/DebugSource'
 import type { Notification } from './generated/Notification'
 import type { QueryEntry } from './generated/QueryEntry'
 
 /**
- * Path of a page: the elements before `before`, `limit` at most.
+ * Queries kept by the history.
+ */
+export interface HistoryFilter {
+  /**
+   * Actions kept; all of them when empty.
+   */
+  action: Action[]
+}
+
+/**
+ * Lines kept by the debug log: a level kept and a source kept.
+ */
+export interface DebugFilter {
+  /**
+   * Levels kept; all of them when empty.
+   */
+  level: DebugLevel[]
+  /**
+   * Sources kept; all of them when empty.
+   */
+  source: DebugSource[]
+}
+
+/**
+ * Path of a page: the elements that `filter` keeps, before `before`,
+ * `limit` at most.
  *
  * @param path Path of the route.
+ * @param filter Values kept, per field of the elements.
  * @param before Id of the oldest element already read; absent, the most
  *     recent elements.
  * @param limit Number of elements, 500 by default on the server's side.
  */
-function pagePath(path: string, before?: number, limit?: number): string {
+function pagePath(
+  path: string,
+  filter: HistoryFilter | DebugFilter,
+  before?: number,
+  limit?: number,
+): string {
   const parameters = new URLSearchParams()
+  for (const [field, values] of Object.entries(filter)) {
+    if (values.length > 0) {
+      parameters.set(field, values.join(','))
+    }
+  }
   if (before !== undefined) {
     parameters.set('before', String(before))
   }
@@ -38,23 +80,33 @@ function pagePath(path: string, before?: number, limit?: number): string {
 /**
  * Reads a page of the history, in chronological order.
  *
+ * @param filter Queries kept.
  * @param before Id of the oldest query already read; absent, the most
  *     recent queries.
  * @param limit Number of queries, 500 by default on the server's side.
  */
-export function listHistory(before?: number, limit?: number): Promise<QueryEntry[]> {
-  return request('GET', pagePath('/api/console/history', before, limit))
+export function listHistory(
+  filter: HistoryFilter,
+  before?: number,
+  limit?: number,
+): Promise<QueryEntry[]> {
+  return request('GET', pagePath('/api/console/history', filter, before, limit))
 }
 
 /**
  * Reads a page of the debug log, in chronological order.
  *
+ * @param filter Lines kept.
  * @param before Id of the oldest line already read; absent, the most
  *     recent lines.
  * @param limit Number of lines, 500 by default on the server's side.
  */
-export function listDebug(before?: number, limit?: number): Promise<DebugEntry[]> {
-  return request('GET', pagePath('/api/console/debug', before, limit))
+export function listDebug(
+  filter: DebugFilter,
+  before?: number,
+  limit?: number,
+): Promise<DebugEntry[]> {
+  return request('GET', pagePath('/api/console/debug', filter, before, limit))
 }
 
 /**

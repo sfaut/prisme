@@ -15,9 +15,9 @@
 //!
 //! | Route                             | Role                                                    |
 //! |-----------------------------------|---------------------------------------------------------|
-//! | `GET /api/console/history`        | Page of the history: `before` (id), `limit` (500 by default). |
+//! | `GET /api/console/history`        | Page of the history: `before` (id), `limit` (500 by default), `action` (actions kept, `run,run_all`; all when absent). |
 //! | `DELETE /api/console/history`     | Clears the user's history (204).                        |
-//! | `GET /api/console/debug`          | Page of the debug log, same parameters.                 |
+//! | `GET /api/console/debug`          | Page of the debug log: `before`, `limit`, `level` and `source` (levels and sources kept, `error,warn`; all when absent). |
 //! | `DELETE /api/console/debug`       | Clears the debug log (204).                             |
 //! | `POST /api/console/notifications` | Notification shown by the interface, for the debug log (204). |
 //! | `GET /api/console/stream`         | Server-sent events: `history` for each new query, `debug` for each new line, `history-cleared` / `debug-cleared` when a list is cleared, `lagged` when events were missed. |
@@ -40,7 +40,8 @@ use futures_util::Stream;
 use futures_util::stream;
 use prisme_connectors::mysql::sql_log::TARGET;
 use rusqlite::Connection;
-use serde::Deserialize;
+use serde::de::{DeserializeOwned, IntoDeserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 use tracing::{Level, Subscriber};
@@ -53,8 +54,8 @@ use ts_rs::TS;
 use crate::api::AppState;
 use crate::api_error::ApiError;
 use crate::auth::CurrentUser;
-use debug::{DebugLayer, DebugSource, TracedLine};
-use history::{HistoryLayer, TracedQuery};
+use debug::{DebugFilter, DebugLayer, DebugSource, TracedLine};
+use history::{HistoryFilter, HistoryLayer, TracedQuery};
 
 /// Number of console events kept for the slowest subscriber: beyond, it
 /// receives `lagged` and reads the history again.
@@ -273,16 +274,39 @@ struct Page {
     limit: Option<u32>,
 }
 
+/// Reads a list of names separated by commas (`run,run_all`), each one that
+/// of a value of `T`; an empty text is an empty list. An unknown name
+/// fails, and the request with it (400).
+fn names<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    String::deserialize(deserializer)?
+        .split(',')
+        .filter(|name| !name.is_empty())
+        .map(|name| T::deserialize(IntoDeserializer::<D::Error>::into_deserializer(name)))
+        .collect()
+}
+
+/// Values kept by a filter, as a JSON array (`["run","run_all"]`) that the
+/// queries read with `json_each`.
+fn json_array<T: Serialize>(values: &[T]) -> Result<String, rusqlite::Error> {
+    serde_json::to_string(values)
+        .map_err(|error| rusqlite::Error::ToSqlConversionFailure(Box::new(error)))
+}
+
 /// `GET /api/console/history`: page of the user's history, in chronological order.
 async fn list_history(
     State(state): State<AppState>,
     user: CurrentUser,
     Query(page): Query<Page>,
+    Query(filter): Query<HistoryFilter>,
 ) -> Result<Json<Vec<QueryEntry>>, ApiError> {
     let limit = page.limit.unwrap_or(PAGE).min(MAX_PAGE);
     let entries = state
         .with_db(move |db, _| {
-            history::list(db, user.id, page.before, limit).map_err(ConsoleError::from)
+            history::list(db, user.id, &filter, page.before, limit).map_err(ConsoleError::from)
         })
         .await?;
     Ok(Json(entries))
@@ -320,10 +344,13 @@ async fn list_debug(
     State(state): State<AppState>,
     _user: CurrentUser,
     Query(page): Query<Page>,
+    Query(filter): Query<DebugFilter>,
 ) -> Result<Json<Vec<DebugEntry>>, ApiError> {
     let limit = page.limit.unwrap_or(PAGE).min(MAX_PAGE);
     let entries = state
-        .with_db(move |db, _| debug::list(db, page.before, limit).map_err(ConsoleError::from))
+        .with_db(move |db, _| {
+            debug::list(db, &filter, page.before, limit).map_err(ConsoleError::from)
+        })
         .await?;
     Ok(Json(entries))
 }
@@ -415,10 +442,39 @@ mod tests {
         .unwrap();
 
         assert_eq!(history::clear(&db, ada).unwrap(), 1);
-        assert!(history::list(&db, ada, None, 10).unwrap().is_empty());
-        assert_eq!(history::list(&db, bob, None, 10).unwrap().len(), 1);
+        assert!(
+            history::list(&db, ada, &HistoryFilter::default(), None, 10)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            history::list(&db, bob, &HistoryFilter::default(), None, 10)
+                .unwrap()
+                .len(),
+            1
+        );
         assert_eq!(debug::clear(&db).unwrap(), 1);
-        assert!(debug::list(&db, None, 10).unwrap().is_empty());
+        assert!(
+            debug::list(&db, &DebugFilter::default(), None, 10)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn reads_the_filters_from_the_query_string() {
+        let read = |uri: &str| uri.parse::<axum::http::Uri>().unwrap();
+        let Query(history) =
+            Query::<HistoryFilter>::try_from_uri(&read("/h?before=9&action=run,run_all")).unwrap();
+        assert_eq!(history.actions, [Action::Run, Action::RunAll]);
+        let Query(debug) =
+            Query::<DebugFilter>::try_from_uri(&read("/d?level=error&source=interface")).unwrap();
+        assert_eq!(debug.levels, [DebugLevel::Error]);
+        assert_eq!(debug.sources, [DebugSource::Interface]);
+        let Query(all) = Query::<DebugFilter>::try_from_uri(&read("/d?level=")).unwrap();
+        assert!(all.levels.is_empty() && all.sources.is_empty());
+        // An unknown name refuses the request.
+        assert!(Query::<HistoryFilter>::try_from_uri(&read("/h?action=explorer")).is_err());
     }
 
     #[test]
@@ -455,10 +511,10 @@ mod tests {
 
         // History: 3 days > 2, deleted; debug log: 6 days > 5, deleted.
         assert_eq!(purge(&db, user_id).unwrap(), 2);
-        let history = history::list(&db, user_id, None, 10).unwrap();
+        let history = history::list(&db, user_id, &HistoryFilter::default(), None, 10).unwrap();
         assert_eq!(history.len(), 1);
         assert_eq!(history[0].sql, "recent");
-        let lines = debug::list(&db, None, 10).unwrap();
+        let lines = debug::list(&db, &DebugFilter::default(), None, 10).unwrap();
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].message, "recent");
     }
@@ -519,8 +575,13 @@ mod tests {
         assert_eq!(run.error, "lost");
         // The user of the span owns the queries, not the local user.
         assert!(matches!(events[0], ConsoleEvent::Query { user_id, .. } if user_id == owner));
-        assert_eq!(history::list(&db, owner, None, 10).unwrap().len(), 2);
-        let lines = debug::list(&db, None, 10).unwrap();
+        assert_eq!(
+            history::list(&db, owner, &HistoryFilter::default(), None, 10)
+                .unwrap()
+                .len(),
+            2
+        );
+        let lines = debug::list(&db, &DebugFilter::default(), None, 10).unwrap();
         assert_eq!(lines.len(), 1);
         assert_eq!(lines[0].message, "listening port=8484");
         assert_eq!(lines[0].level, DebugLevel::Info);

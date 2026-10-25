@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
-import { reactive } from 'vue'
+import { nextTick, reactive } from 'vue'
 
 import type { PagedList } from '@/stores/console'
 
@@ -16,8 +16,10 @@ function listOf(hasOlder: boolean): PagedList<{ id: number }> {
     entries: [{ id: 3 }, { id: 4 }, { id: 5 }],
     hasOlder,
     error: null,
+    refilters: 0,
     reload: vi.fn<() => Promise<void>>(async () => {}),
     loadOlder: vi.fn<() => Promise<void>>(async () => {}),
+    refilter: vi.fn<() => Promise<void>>(async () => {}),
     add: vi.fn<(entry: { id: number }) => void>(),
     clear: vi.fn<() => Promise<void>>(async () => {}),
     empty: vi.fn<() => void>(),
@@ -66,5 +68,25 @@ describe('ConsoleList', () => {
     const wrapper = mountScrolled(listOf(true), 300)
     expect(wrapper.find('button').exists()).toBe(false)
     expect(wrapper.element.firstElementChild?.tagName).toBe('TABLE')
+  })
+
+  it('goes back to the most recent elements when the filter changes', async () => {
+    const list = listOf(false)
+    const wrapper = mountScrolled(list, 0)
+    const element = wrapper.element as HTMLElement
+    const scrollTo = vi.fn<(options: ScrollToOptions) => void>()
+    element.scrollTo = scrollTo as typeof element.scrollTo
+
+    // Scrolled up, new elements do not move the area.
+    list.entries = [...list.entries, { id: 6 }]
+    await nextTick()
+    await nextTick()
+    expect(scrollTo).not.toHaveBeenCalled()
+
+    list.refilters++
+    list.entries = [{ id: 4 }]
+    await nextTick()
+    await nextTick()
+    expect(scrollTo).toHaveBeenCalledWith({ top: 400 })
   })
 })
