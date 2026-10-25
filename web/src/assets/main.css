@@ -246,19 +246,22 @@
      thinner than any step of the scale. */
   --tab-progress-height: calc(var(--space-unit) / 2);
 
-  /* Resize bars (left panel, editor, grid columns), whose width the code
-     reads too (`PanelResizer.vue`); their central grip: length, thickness
-     and color at rest, that of the borders (blue on hover). */
+  /* Resize bars (lines of the splitters, grid columns): the width grabbed
+     by the pointer; their central grip: length, thickness and color at
+     rest, that of the borders (blue on hover). */
   --resize-handle-width: calc(var(--space-unit) * 2);
   --grip-length: calc(var(--space-unit) * 7);
   --grip-thickness: var(--space-unit);
   --grip-color: var(--line);
 
   /* Splitters of the layout (`SplitterGroup` of Reka UI), whose sizes the
-     code reads (`cssPixels`): thickness of the rail left by a folded panel
-     (`rail`); bar left by a folded result list (`tab-bar`): the gap above
-     its tabs, then a tab at its own height, its padding (one unit above and
-     below, `DocumentTab`) around its small buttons, taller than its text,
+     code reads (`cssPixels`): default and smallest width of the object
+     navigator and of the data explorer, smallest width of the area of the
+     editors, enough for the buttons of the editor on one line; thickness
+     of the rail left by a folded panel (`rail`); bar left by a folded
+     result list (`tab-bar`): the gap above its tabs, then a tab at its own
+     height, its padding (one unit above and below, `DocumentTab`) around
+     its small buttons, taller than its text,
      and the line under the bar; a folded editor leaves its buttons and the
      gap under them. Default heights of the editor and of the result list:
      Reka UI scales them together to the cell's height, so that they set a
@@ -266,6 +269,11 @@
      result list (tabs, a few rows and the line under the grid); smallest
      area of the editors: both, plus the tab bar of the editors, the padding
      and the gaps. Default and smallest height of the console. */
+  --navigator-width: calc(var(--space-unit) * 75);
+  --navigator-min-width: calc(var(--space-unit) * 50);
+  --explorer-width: calc(var(--space-unit) * 105);
+  --explorer-min-width: calc(var(--space-unit) * 60);
+  --editors-min-width: calc(var(--space-unit) * 160);
   --rail-size: calc(var(--space-unit) * 7);
   --tab-bar-height: calc(var(--space-unit) * 4 + var(--control-height-sm) + var(--line-width));
   --editor-folded-height: calc(var(--control-height) + var(--space-unit) * 2);
@@ -316,6 +324,36 @@
 }
 
 @property --popup-offset {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --navigator-width {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --navigator-min-width {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --explorer-width {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --explorer-min-width {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --editors-min-width {
   syntax: '<length>';
   inherits: true;
   initial-value: 0px;

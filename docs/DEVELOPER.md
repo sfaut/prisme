@@ -274,7 +274,7 @@ Bugs of a dependency that Prisme works around in its own code. Before each relea
 
 | Dependency | Bug | Workaround | Upstream | Date |
 |---|---|---|---|---|
-| `reka-ui` 2.11.0 | A `SplitterPanel` sized in pixels (`size-unit="px"`), folded or unfolded by dragging its handle, emits neither `collapse` nor `expand`: `callPanelCallbacks` compares the size converted back to pixels (28.000000000095 for 28) with `collapsedSize` at 10 decimals. `isPanelCollapsed` (`data-state`, exposed `isCollapsed`) was fixed in 2.11.0 ([reka-ui #2742](https://github.com/unovue/reka-ui/issues/2742)), the events were not. | `web/src/App.vue`: the state of the console follows the panel's `isCollapsed` on each `resize`. | Ticket drafted, not posted yet: [reka-ui-splitter-px-collapse-events.md](upstream/reka-ui-splitter-px-collapse-events.md). | 2026-10-25 |
+| `reka-ui` 2.11.0 | A `SplitterPanel` sized in pixels (`size-unit="px"`), folded or unfolded by dragging its handle, emits neither `collapse` nor `expand`: `callPanelCallbacks` compares the size converted back to pixels (28.000000000095 for 28) with `collapsedSize` at 10 decimals. `isPanelCollapsed` (`data-state`, exposed `isCollapsed`) was fixed in 2.11.0 ([reka-ui #2742](https://github.com/unovue/reka-ui/issues/2742)), the events were not. | `web/src/App.vue`: the state of the console and of the side panels follows the panel's `isCollapsed` on each `resize`. | Ticket drafted, not posted yet: [reka-ui-splitter-px-collapse-events.md](upstream/reka-ui-splitter-px-collapse-events.md). | 2026-10-25 |
 
 ## Repository layout
 

@@ -75,20 +75,13 @@ const ICONS = {
     color: var(--fg-strong);
   }
 
-  /* On a side: along the whole height, the title written downwards. */
+  /* On a side: along the whole height, the title written downwards; the
+     line beside is that of the splitter's handle. */
   &.start,
   &.end {
     flex-direction: column;
     inline-size: var(--rail-size);
     padding-block-start: --spacing(3);
-  }
-
-  &.start {
-    border-inline-end: var(--line-width) solid var(--line);
-  }
-
-  &.end {
-    border-inline-start: var(--line-width) solid var(--line);
   }
 
   /* At the bottom: along the whole width, the title at the left end, the

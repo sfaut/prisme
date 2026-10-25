@@ -1,20 +1,20 @@
 <!--
   Layout of the screen: on top, the application bar (`AppTopBar`), across the
-  whole width; below, on the left, the object navigator, in a panel whose
-  width is set by dragging its right edge; in the middle, the SQL editors,
-  one tab each (`EditorTabBar`), each with its cell (`QueryCell`): its
-  connection, its session and its result tabs; on the right, the data
-  explorer (`DataExplorer`), whose width is set by dragging its left edge.
-  Both side panels go from the top bar down to the bottom of the window.
-  Under the editors, between the side panels, the console
-  (`ConsolePanel`). The editors and the console share the height in a
-  splitter of Reka UI (`SplitterGroup`): dragging the line between them
-  sets the height of the console, within the bounds of both (the editors
-  keep `--editors-min-height`), and the splitter remembers it. Each panel
-  folds with the button of its header (`PanelHeader`) and leaves a rail on
-  its edge, which opens it again (`PanelRail`); the console also folds by
-  dragging it below its smallest height, or by a double click on the line.
-  The object navigator and the console are open by default (`layout` and
+  whole width; below, three columns: on the left, the object navigator; in
+  the middle, the SQL editors, one tab each (`EditorTabBar`), each with its
+  cell (`QueryCell`): its connection, its session and its result tabs; on
+  the right, the data explorer (`DataExplorer`). Both side panels go from
+  the top bar down to the bottom of the window. Under the editors, between
+  the side panels, the console (`ConsolePanel`). The columns share the
+  width, and the editors and the console the height, in splitters of Reka
+  UI (`SplitterGroup`): dragging the line between two panels moves it
+  within their bounds (the editors keep `--editors-min-width` and
+  `--editors-min-height`); dragged further, it shrinks the next panel too,
+  down to folding it, and the splitters remember the layout. Each side panel
+  and the console fold with the button of their header (`PanelHeader`), by
+  a drag below their smallest size or by a double click on their line, and
+  leave a rail on their edge, which opens them again (`PanelRail`). The
+  object navigator and the console are open by default (`layout` and
   `console` stores), the data explorer closed. Layout in Tailwind
   classes.
 
@@ -48,12 +48,10 @@ import EditorTabBar from './components/EditorTabBar.vue'
 import ObjectNavigator from './components/ObjectNavigator.vue'
 import QueryCell from './components/QueryCell.vue'
 import PanelRail from './components/PanelRail.vue'
-import PanelResizer from './components/PanelResizer.vue'
 import SplitHandle from './components/SplitHandle.vue'
 import UiAlert from './components/ui/UiAlert.vue'
 import UiToaster from './components/ui/UiToaster.vue'
 import UiTooltip from './components/ui/UiTooltip.vue'
-import { DATA_PANEL, SIDER, clampPanelSize, loadPanelSize } from './components/panelSize'
 import { cssPixels } from './cssLength'
 
 const connections = useConnectionsStore()
@@ -63,48 +61,90 @@ const layout = useLayoutStore()
 const consoleStore = useConsoleStore()
 
 /**
- * Width of the left panel, in pixels.
+ * Sizes of the splitters, in pixels (`main.css`): default and smallest
+ * width of the object navigator and of the data explorer; smallest width
+ * and height of the area of the editors; default and smallest height of
+ * the console; a folded panel keeps its rail.
  */
-const siderWidth = ref(clampPanelSize(SIDER, loadPanelSize(SIDER), window.innerWidth))
-
-/**
- * Width of the data explorer, in pixels.
- */
-const dataPanelWidth = ref(clampPanelSize(DATA_PANEL, loadPanelSize(DATA_PANEL), window.innerWidth))
-
-/**
- * Heights of the central splitter, in pixels (`main.css`): smallest area of
- * the editors; default and smallest console; folded console, its rail.
- */
+const NAVIGATOR_WIDTH = cssPixels('--navigator-width', 300)
+const NAVIGATOR_MIN_WIDTH = cssPixels('--navigator-min-width', 200)
+const EXPLORER_WIDTH = cssPixels('--explorer-width', 420)
+const EXPLORER_MIN_WIDTH = cssPixels('--explorer-min-width', 240)
+const EDITORS_MIN_WIDTH = cssPixels('--editors-min-width', 640)
 const EDITORS_MIN_HEIGHT = cssPixels('--editors-min-height', 312)
 const CONSOLE_HEIGHT = cssPixels('--console-height', 220)
 const CONSOLE_MIN_HEIGHT = cssPixels('--console-min-height', 120)
 const RAIL_SIZE = cssPixels('--rail-size', 28)
 
 /**
- * Panel of the console in the central splitter.
+ * Foldable panels of the splitters: object navigator, data explorer,
+ * console.
  */
+const navigatorSplit = useTemplateRef<InstanceType<typeof SplitterPanel>>('navigatorSplit')
+const explorerSplit = useTemplateRef<InstanceType<typeof SplitterPanel>>('explorerSplit')
 const consoleSplit = useTemplateRef<InstanceType<typeof SplitterPanel>>('consoleSplit')
 
 /**
- * Folds or unfolds the console's panel as the console's state says.
+ * Folds or unfolds a panel of a splitter as its state says.
  *
- * @param open Is the console open?
+ * @param panel Panel of the splitter.
+ * @param open Is the panel open?
  */
-function showConsole(open: boolean): void {
+function showPanel(panel: InstanceType<typeof SplitterPanel> | null, open: boolean): void {
   if (open) {
-    consoleSplit.value?.expand()
+    panel?.expand()
   } else {
-    consoleSplit.value?.collapse()
+    panel?.collapse()
   }
 }
 
-// The console's state (header button, rail, double click) drives its panel;
-// the panel, folded or unfolded by a drag, updates the state in return. On
-// each resize, from Reka UI's `isCollapsed`: its `collapse` event compares
-// sizes in pixels to ten decimals and misses a fold by a drag.
-watch(() => consoleStore.open, showConsole)
-onMounted(() => nextTick(() => showConsole(consoleStore.open)))
+/**
+ * Do the foldable panels follow their states yet? Once mounted, each panel
+ * takes the state of its store; until then, the resizes of the default or
+ * saved layout leave the stores as they are.
+ */
+const laidOut = ref(false)
+
+/**
+ * After a resize of a foldable panel, gives its state to its store: open
+ * unless folded, from Reka UI's `isCollapsed`. Its `collapse` event misses a
+ * fold by a drag (`docs/DEVELOPER.md`, section "Worked-around bugs").
+ *
+ * @param panel Panel of the splitter.
+ * @param setOpen Sets the state in the store.
+ */
+function follow(
+  panel: InstanceType<typeof SplitterPanel> | null,
+  setOpen: (open: boolean) => void,
+): void {
+  if (laidOut.value && panel !== null) {
+    setOpen(!panel.isCollapsed)
+  }
+}
+
+// The state of each foldable panel (header button, rail, double click)
+// drives the panel; the panel, folded or unfolded by a drag, updates the
+// state in return (`follow`).
+watch(
+  () => layout.objectsOpen,
+  (open) => showPanel(navigatorSplit.value, open),
+)
+watch(
+  () => explorer.open,
+  (open) => showPanel(explorerSplit.value, open),
+)
+watch(
+  () => consoleStore.open,
+  (open) => showPanel(consoleSplit.value, open),
+)
+onMounted(() =>
+  nextTick(() => {
+    showPanel(navigatorSplit.value, layout.objectsOpen)
+    showPanel(explorerSplit.value, explorer.open)
+    showPanel(consoleSplit.value, consoleStore.open)
+    laidOut.value = true
+  }),
+)
 
 /**
  * Error loading or saving the editors, `null` if none.
@@ -301,129 +341,159 @@ function selectSource(connectionId: number): void {
 <template>
   <div class="flex h-full flex-col">
     <app-top-bar />
-    <div class="relative flex min-h-0 flex-1">
-      <!-- Folded, the object navigator stays mounted: its tree keeps its state. -->
-      <aside
-        v-show="layout.objectsOpen"
-        class="flex shrink-0 flex-col gap-3 border-e border-line p-3"
-        :style="{ width: `${siderWidth}px` }"
+    <splitter-group direction="horizontal" auto-save-id="prisme.layout" class="min-h-0 flex-1">
+      <splitter-panel
+        ref="navigatorSplit"
+        :order="1"
+        size-unit="px"
+        :default-size="NAVIGATOR_WIDTH"
+        :min-size="NAVIGATOR_MIN_WIDTH"
+        collapsible
+        :collapsed-size="RAIL_SIZE"
+        class="flex"
+        @resize="follow(navigatorSplit, (open) => (layout.objectsOpen = open))"
       >
-        <object-navigator
-          :selected-id="connections.selectedId"
-          :current-database="activeDatabase"
-          :session-status="activeStatus"
-          @open-table="openTable"
-          @index-operations="writeIndexOperations"
-          @select="selectSource"
-          @use-database="useDatabase"
-          @disconnect="disconnect"
-        />
-      </aside>
-      <panel-resizer v-if="layout.objectsOpen" v-model="siderWidth" :panel="SIDER" side="start" />
-      <panel-rail
-        v-else
-        title="Navigateur d’objets"
-        side="start"
-        @expand="layout.objectsOpen = true"
-      />
-      <splitter-group
-        direction="vertical"
-        auto-save-id="prisme.centerLayout"
-        class="min-w-0 flex-1"
-      >
-        <splitter-panel :order="1" size-unit="px" :min-size="EDITORS_MIN_HEIGHT" class="flex">
-          <main class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-3">
-            <ui-alert
-              v-if="editorsError"
-              tone="error"
-              :title="editorsError"
-              @close="editorsError = null"
-            />
-            <tabs-root
-              v-model="activeTab"
-              :unmount-on-hide="false"
-              class="flex min-h-0 flex-1 flex-col gap-2"
-            >
-              <editor-tab-bar />
-              <tabs-content
-                v-for="editor in editors.editors"
-                :key="editor.id"
-                :value="editor.id"
-                class="flex min-h-0 flex-1 flex-col"
-                :class="{ 'items-center justify-center': !connectionOf(editor.connectionId) }"
-              >
-                <query-cell
-                  v-if="connectionOf(editor.connectionId)"
-                  :ref="
-                    (cell) =>
-                      cell
-                        ? cells.set(editor.id, cell as InstanceType<typeof QueryCell>)
-                        : cells.delete(editor.id)
-                  "
-                  :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
-                  :editor-id="editor.id"
-                  :active="editor.id === editors.activeId"
-                  :connection="connectionOf(editor.connectionId)!"
-                  :sql="editor.sql"
-                  @update:sql="(sql) => editors.setSql(editor.id, sql)"
-                  @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
-                  @database="(database) => (databases[editor.id] = database)"
-                  @status="(status) => (statuses[editor.id] = status)"
-                />
-                <div v-else class="flex max-w-xs flex-col items-center gap-2 text-center">
-                  <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
-                    <Database class="size-4 text-fg-muted" />
-                  </span>
-                  <p class="text-balance text-fg-muted">
-                    Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données pour la choisir
-                    pour cet éditeur, ou ajoutez une connexion par le menu « ⋮ »
-                  </p>
-                </div>
-              </tabs-content>
-            </tabs-root>
-          </main>
-        </splitter-panel>
-        <split-handle
-          tooltip="Glisser pour redimensionner la console, double clic pour la replier ou la déplier"
-          @toggle="consoleStore.open = !consoleStore.open"
-        />
-        <splitter-panel
-          ref="consoleSplit"
-          :order="2"
-          size-unit="px"
-          :default-size="CONSOLE_HEIGHT"
-          :min-size="CONSOLE_MIN_HEIGHT"
-          collapsible
-          :collapsed-size="RAIL_SIZE"
-          class="flex"
-          @resize="consoleStore.open = !consoleSplit?.isCollapsed"
-        >
-          <section
-            v-if="consoleStore.open"
-            class="flex min-h-0 min-w-0 flex-1 flex-col px-3 pt-1 pb-3"
-          >
-            <console-panel />
-          </section>
-          <panel-rail
-            v-else
-            title="Console"
-            side="bottom"
-            class="flex-1"
-            @expand="consoleStore.open = true"
+        <!-- Folded, the object navigator stays mounted: its tree keeps its state. -->
+        <aside v-show="layout.objectsOpen" class="flex min-w-0 flex-1 flex-col gap-3 p-3">
+          <object-navigator
+            :selected-id="connections.selectedId"
+            :current-database="activeDatabase"
+            :session-status="activeStatus"
+            @open-table="openTable"
+            @index-operations="writeIndexOperations"
+            @select="selectSource"
+            @use-database="useDatabase"
+            @disconnect="disconnect"
           />
-        </splitter-panel>
-      </splitter-group>
-      <template v-if="explorer.open">
-        <panel-resizer v-model="dataPanelWidth" :panel="DATA_PANEL" side="end" />
-        <aside
-          class="flex shrink-0 flex-col border-s border-line p-3"
-          :style="{ width: `${dataPanelWidth}px` }"
+        </aside>
+        <panel-rail
+          v-if="!layout.objectsOpen"
+          title="Navigateur d’objets"
+          side="start"
+          class="flex-1"
+          @expand="layout.objectsOpen = true"
+        />
+      </splitter-panel>
+      <split-handle
+        tooltip="Glisser pour redimensionner le navigateur d’objets, double clic pour le replier ou le déplier"
+        @toggle="layout.objectsOpen = !layout.objectsOpen"
+      />
+      <splitter-panel :order="2" size-unit="px" :min-size="EDITORS_MIN_WIDTH" class="flex">
+        <splitter-group
+          direction="vertical"
+          auto-save-id="prisme.centerLayout"
+          class="min-w-0 flex-1"
         >
+          <splitter-panel :order="1" size-unit="px" :min-size="EDITORS_MIN_HEIGHT" class="flex">
+            <main class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-3">
+              <ui-alert
+                v-if="editorsError"
+                tone="error"
+                :title="editorsError"
+                @close="editorsError = null"
+              />
+              <tabs-root
+                v-model="activeTab"
+                :unmount-on-hide="false"
+                class="flex min-h-0 flex-1 flex-col gap-2"
+              >
+                <editor-tab-bar />
+                <tabs-content
+                  v-for="editor in editors.editors"
+                  :key="editor.id"
+                  :value="editor.id"
+                  class="flex min-h-0 flex-1 flex-col"
+                  :class="{ 'items-center justify-center': !connectionOf(editor.connectionId) }"
+                >
+                  <query-cell
+                    v-if="connectionOf(editor.connectionId)"
+                    :ref="
+                      (cell) =>
+                        cell
+                          ? cells.set(editor.id, cell as InstanceType<typeof QueryCell>)
+                          : cells.delete(editor.id)
+                    "
+                    :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
+                    :editor-id="editor.id"
+                    :active="editor.id === editors.activeId"
+                    :connection="connectionOf(editor.connectionId)!"
+                    :sql="editor.sql"
+                    @update:sql="(sql) => editors.setSql(editor.id, sql)"
+                    @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
+                    @database="(database) => (databases[editor.id] = database)"
+                    @status="(status) => (statuses[editor.id] = status)"
+                  />
+                  <div v-else class="flex max-w-xs flex-col items-center gap-2 text-center">
+                    <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
+                      <Database class="size-4 text-fg-muted" />
+                    </span>
+                    <p class="text-balance text-fg-muted">
+                      Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données pour la
+                      choisir pour cet éditeur, ou ajoutez une connexion par le menu « ⋮ »
+                    </p>
+                  </div>
+                </tabs-content>
+              </tabs-root>
+            </main>
+          </splitter-panel>
+          <split-handle
+            tooltip="Glisser pour redimensionner la console, double clic pour la replier ou la déplier"
+            @toggle="consoleStore.open = !consoleStore.open"
+          />
+          <splitter-panel
+            ref="consoleSplit"
+            :order="2"
+            size-unit="px"
+            :default-size="CONSOLE_HEIGHT"
+            :min-size="CONSOLE_MIN_HEIGHT"
+            collapsible
+            :collapsed-size="RAIL_SIZE"
+            class="flex"
+            @resize="follow(consoleSplit, (open) => (consoleStore.open = open))"
+          >
+            <section
+              v-if="consoleStore.open"
+              class="flex min-h-0 min-w-0 flex-1 flex-col px-3 pt-1 pb-3"
+            >
+              <console-panel />
+            </section>
+            <panel-rail
+              v-else
+              title="Console"
+              side="bottom"
+              class="flex-1"
+              @expand="consoleStore.open = true"
+            />
+          </splitter-panel>
+        </splitter-group>
+      </splitter-panel>
+      <split-handle
+        tooltip="Glisser pour redimensionner l’explorateur de données, double clic pour le replier ou le déplier"
+        @toggle="explorer.open = !explorer.open"
+      />
+      <splitter-panel
+        ref="explorerSplit"
+        :order="3"
+        size-unit="px"
+        :default-size="EXPLORER_WIDTH"
+        :min-size="EXPLORER_MIN_WIDTH"
+        collapsible
+        :collapsed-size="RAIL_SIZE"
+        class="flex"
+        @resize="follow(explorerSplit, (open) => (explorer.open = open))"
+      >
+        <aside v-if="explorer.open" class="flex min-w-0 flex-1 flex-col p-3">
           <data-explorer />
         </aside>
-      </template>
-      <panel-rail v-else title="Explorateur de données" side="end" @expand="explorer.open = true" />
-    </div>
+        <panel-rail
+          v-else
+          title="Explorateur de données"
+          side="end"
+          class="flex-1"
+          @expand="explorer.open = true"
+        />
+      </splitter-panel>
+    </splitter-group>
   </div>
   <ui-toaster />
   <ui-tooltip />
