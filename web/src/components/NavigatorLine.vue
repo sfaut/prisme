@@ -18,6 +18,7 @@ import {
   ChevronRight,
   Columns3,
   Database,
+  DatabaseZap,
   EllipsisVertical,
   Eye,
   Folder,
@@ -28,7 +29,6 @@ import {
   LoaderCircle,
   Notebook,
   PencilRuler,
-  PlugZap,
   ScrollText,
   Server,
   SquareFunction,
@@ -110,7 +110,11 @@ const action = computed(() => {
     }
   }
   if (props.node.role === 'database') {
-    return { icon: PlugZap, label: 'Utiliser cette base', tooltip: 'Utiliser cette base (USE)' }
+    return {
+      icon: DatabaseZap,
+      label: 'Utiliser cette base',
+      tooltip: 'Utiliser cette base (USE)',
+    }
   }
   if (props.node.table !== undefined) {
     return { icon: Eye, label: 'Afficher le contenu', tooltip: 'Afficher le contenu (SELECT)' }

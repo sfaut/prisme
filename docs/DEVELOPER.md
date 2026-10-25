@@ -138,7 +138,8 @@ Rules:
 | `Link` | A foreign key; column of a foreign key | tree; column's line |
 | `Zap` | A trigger | tree |
 | `KeyRound` | Column of the primary key | column's line |
-| `PlugZap` | Use this database (`USE`); test a connection | line's button; source's menu |
+| `DatabaseZap` | Use this database (`USE`) | line's button |
+| `PlugZap` | Test a connection | source's menu |
 | `Unplug` | Close the session ("Déconnecter") | line's button; source's menu |
 | `PencilRuler` | Write the operations on an index | line's button |
 | `Pencil` | Edit a connection | source's menu |
