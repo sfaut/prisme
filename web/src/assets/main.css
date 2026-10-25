@@ -261,9 +261,8 @@
      of the rail left by a folded panel (`rail`); bar left by a folded
      result list (`tab-bar`): the gap above its tabs, then a tab at its own
      height, its padding (one unit above and below, `DocumentTab`) around
-     its small buttons, taller than its text,
-     and the line under the bar; a folded editor leaves its buttons and the
-     gap under them. Default heights of the editor and of the result list:
+     its small buttons, taller than its text, and the line under the bar.
+     Default heights of the editor and of the result list:
      Reka UI scales them together to the cell's height, so that they set a
      share, a third for the editor. Smallest editor (buttons and a few lines) and
      result list (tabs, a few rows and the line under the grid); smallest
@@ -276,7 +275,6 @@
   --editors-min-width: calc(var(--space-unit) * 160);
   --rail-size: calc(var(--space-unit) * 7);
   --tab-bar-height: calc(var(--space-unit) * 4 + var(--control-height-sm) + var(--line-width));
-  --editor-folded-height: calc(var(--control-height) + var(--space-unit) * 2);
   --editor-height: calc(var(--space-unit) * 50);
   --results-height: calc(var(--space-unit) * 100);
   --editor-min-height: calc(var(--space-unit) * 24);
@@ -360,12 +358,6 @@
 }
 
 @property --rail-size {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --editor-folded-height {
   syntax: '<length>';
   inherits: true;
   initial-value: 0px;

@@ -29,9 +29,12 @@
   which remembers it for this editor (`cellLayout.ts`): dragging the line
   between them moves it within the bounds of both. Either one folds, by its
   button, by a drag below its smallest height, or, for the editor, by a
-  double click on the line: the editor leaves its buttons, the results
-  their tabs and their unfold button (the buttons of the tab shown hide). Both are never folded at once: folding one unfolds the
-  other. The padding of the sides is inside the panels: a panel clips its
+  double click on the line. The folded editor disappears with its buttons:
+  only the editors' tabs stay above the results, and its fold button,
+  which the active cell sends to the editors' bar (`actionsTarget`). The
+  folded results leave their tabs and their unfold button (the buttons of
+  the tab shown hide). Both are never folded at once: folding one unfolds
+  the other. The padding of the sides is inside the panels: a panel clips its
   content at its edge, which may fall between two pixels, and would cut
   the left border of a field or of the grid set against it.
 -->
@@ -105,6 +108,11 @@ const props = defineProps<{
    * Connection on which the queries run.
    */
   connection: ConnectionSummary
+  /**
+   * Place of the editor's fold button in the editors' bar, for the active
+   * cell; `null` for the others, which do not show it.
+   */
+  actionsTarget?: HTMLElement | null
 }>()
 
 const emit = defineEmits<{
@@ -152,8 +160,7 @@ const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
 
 /**
  * Heights of the cell's splitter, in pixels (`main.css`): default and
- * smallest editor, folded editor (its buttons and the gap under them);
- * default and smallest results, folded results (their tabs and the gap
+ * smallest editor (folded, it disappears); default and smallest results, folded results (their tabs and the gap
  * above them). The panels carry no padding: it would add to the size Reka
  * UI gives them (`flex-basis: 0`); their inner block has it. Reka UI scales
  * both default heights together to the cell's height: they set a share, a
@@ -161,7 +168,6 @@ const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
  */
 const EDITOR_HEIGHT = cssPixels('--editor-height', 200)
 const EDITOR_MIN_HEIGHT = cssPixels('--editor-min-height', 96)
-const EDITOR_FOLDED_HEIGHT = cssPixels('--editor-folded-height', 32)
 const RESULTS_HEIGHT = cssPixels('--results-height', 400)
 const RESULTS_MIN_HEIGHT = cssPixels('--results-min-height', 200)
 const RESULTS_FOLDED_HEIGHT = cssPixels('--tab-bar-height', 40)
@@ -661,7 +667,7 @@ defineExpose({
       :default-size="EDITOR_HEIGHT"
       :min-size="EDITOR_MIN_HEIGHT"
       collapsible
-      :collapsed-size="EDITOR_FOLDED_HEIGHT"
+      :collapsed-size="0"
       class="flex"
     >
       <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-3 pb-2">
@@ -713,14 +719,17 @@ defineExpose({
             class="w-32"
             @update:model-value="(limit) => limit !== undefined && changeLimit(limit)"
           />
-          <ui-button
-            :icon="isCollapsed ? PanelTopOpen : PanelTopClose"
-            variant="ghost"
-            class="ms-auto"
-            :aria-label="isCollapsed ? 'Déplier l’éditeur' : 'Replier l’éditeur'"
-            v-tooltip="isCollapsed ? 'Déplier l’éditeur' : 'Replier l’éditeur'"
-            @click="togglePanel(editorPanel, resultsPanel)"
-          />
+          <!-- The fold button stays visible in the editors' bar, editor folded. -->
+          <teleport v-if="actionsTarget" :to="actionsTarget">
+            <ui-button
+              :icon="isCollapsed ? PanelTopOpen : PanelTopClose"
+              variant="ghost"
+              small
+              :aria-label="isCollapsed ? 'Déplier l’éditeur' : 'Replier l’éditeur'"
+              v-tooltip="isCollapsed ? 'Déplier l’éditeur' : 'Replier l’éditeur'"
+              @click="togglePanel(editorPanel, resultsPanel)"
+            />
+          </teleport>
         </div>
 
         <sql-editor

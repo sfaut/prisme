@@ -9,6 +9,9 @@
     24 hours from the "Rouvrir" menu.
   - Dragging a tab moves it, like a column of the grid.
   - "+" opens a new editor, on the connection of the active editor.
+  - At the right end, the button that reopens a closed editor, then the
+    actions of the active editor (`actions` slot: its fold button, sent by
+    its cell).
 
   To place in the Reka UI `TabsRoot` that holds the editors (`App.vue`).
 -->
@@ -107,16 +110,19 @@ const reopenItems = computed<MenuItem[]>(() => {
         v-tooltip="'Nouvel éditeur, sur la connexion de l’éditeur actif'"
         @click="editors.create(editors.active?.connectionId ?? null)"
       />
-      <ui-dropdown-menu :items="reopenItems">
-        <ui-button
-          :icon="History"
-          variant="ghost"
-          small
-          aria-label="Rouvrir un éditeur fermé"
-          v-tooltip="'Rouvrir un éditeur fermé depuis moins de 24 heures'"
-          @click="editors.loadClosed()"
-        />
-      </ui-dropdown-menu>
+      <div class="flex items-center">
+        <ui-dropdown-menu :items="reopenItems">
+          <ui-button
+            :icon="History"
+            variant="ghost"
+            small
+            aria-label="Rouvrir un éditeur fermé"
+            v-tooltip="'Rouvrir un éditeur fermé depuis moins de 24 heures'"
+            @click="editors.loadClosed()"
+          />
+        </ui-dropdown-menu>
+        <slot name="actions" />
+      </div>
     </div>
   </div>
 </template>

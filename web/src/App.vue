@@ -198,6 +198,12 @@ const attempts = ref<Record<number, number>>({})
 const cells = new Map<number, InstanceType<typeof QueryCell>>()
 
 /**
+ * Place, in the editors' bar, of the actions of the active editor (its fold
+ * button), which its cell sends there.
+ */
+const editorActions = useTemplateRef<HTMLElement>('editorActions')
+
+/**
  * Active editor, in the form expected by Reka UI's tabs.
  */
 const activeTab = computed({
@@ -405,7 +411,11 @@ function selectSource(connectionId: number): void {
                 class="flex min-h-0 flex-1 flex-col gap-2"
               >
                 <div class="flex px-3">
-                  <editor-tab-bar class="flex-1" />
+                  <editor-tab-bar class="flex-1">
+                    <template #actions>
+                      <div ref="editorActions" class="contents" />
+                    </template>
+                  </editor-tab-bar>
                 </div>
                 <tabs-content
                   v-for="editor in editors.editors"
@@ -425,6 +435,7 @@ function selectSource(connectionId: number): void {
                     :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
                     :editor-id="editor.id"
                     :active="editor.id === editors.activeId"
+                    :actions-target="editor.id === editors.activeId ? editorActions : null"
                     :connection="connectionOf(editor.connectionId)!"
                     :sql="editor.sql"
                     @update:sql="(sql) => editors.setSql(editor.id, sql)"

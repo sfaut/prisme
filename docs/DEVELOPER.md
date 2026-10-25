@@ -86,7 +86,7 @@ Rules:
 | `PanelLeftClose` / `PanelLeftOpen` | Fold / unfold the object navigator | its header / its rail (`PanelHeader`, `PanelRail`) |
 | `PanelRightClose` / `PanelRightOpen` | Fold / unfold the data explorer | its header / its rail |
 | `PanelBottomClose` / `PanelBottomOpen` | Fold / unfold the console; fold / unfold the results | console's header / its rail; bar of the result tabs (`QueryCell`) |
-| `PanelTopClose` / `PanelTopOpen` | Fold / unfold the editor | bar of the editor's buttons (`QueryCell`) |
+| `PanelTopClose` / `PanelTopOpen` | Fold / unfold the active editor, with its buttons | editors' bar, right of the reopen button (`EditorTabBar`, sent by the `QueryCell`) |
 | `ChevronRight` / `ChevronDown` | Open / close a node of the tree | object navigator (`NavigatorLine`) |
 | `ChevronsDownUp` / `ChevronsUpDown` | Fold / unfold the whole document | data explorer |
 | `FoldVertical` / `UnfoldVertical` | Fold / unfold the cursor's level | data explorer |
