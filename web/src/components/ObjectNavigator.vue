@@ -127,6 +127,9 @@ const layout = useLayoutStore()
 /**
  * Height of a line, in pixels, for virtual scrolling
  * (`--row-height` of the theme).
+ *
+ * Fixed size: the virtualizer only takes pixels, so this theme length is
+ * read once (`docs/DEVELOPER.md`, section "Lengths in pixels").
  */
 const ROW_HEIGHT = cssPixels('--row-height', 24)
 

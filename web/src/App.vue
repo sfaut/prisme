@@ -65,6 +65,9 @@ const consoleStore = useConsoleStore()
  * width of the object navigator and of the data explorer; smallest width
  * and height of the area of the editors; default and smallest height of
  * the console; a folded panel keeps its rail.
+ *
+ * Fixed sizes: Reka UI's splitter only takes pixels or a percentage of the
+ * group, so these theme lengths are read once, in pixels (`docs/DEVELOPER.md`, section "Lengths in pixels").
  */
 const NAVIGATOR_WIDTH = cssPixels('--navigator-width', 300)
 const NAVIGATOR_MIN_WIDTH = cssPixels('--navigator-min-width', 200)

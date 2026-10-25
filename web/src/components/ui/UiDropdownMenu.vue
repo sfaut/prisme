@@ -19,6 +19,9 @@ import { cssPixels } from '@/cssLength'
 
 /**
  * Gap with the trigger, in pixels (`--popup-offset` of the theme).
+ *
+ * Fixed size: Reka UI's `side-offset` only takes pixels, so this theme
+ * length is read once (`docs/DEVELOPER.md`, section "Lengths in pixels").
  */
 const OFFSET = cssPixels('--popup-offset', 4)
 

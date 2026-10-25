@@ -162,6 +162,9 @@ const props = defineProps<{
  * the theme): the virtualizer reads the scroll position in pixels to know
  * which rows to draw. The page places the rows and sizes the body with the
  * theme's variable itself, in CSS.
+ *
+ * Fixed size: the virtualizer only takes pixels, so this theme length is
+ * read once (`docs/DEVELOPER.md`, section "Lengths in pixels").
  */
 const ROW_HEIGHT = cssPixels('--grid-row-height', 22)
 
@@ -438,7 +441,9 @@ let resizing: { column: number; x: number; width: number; rootSize: number } | n
 function onResizeStart(event: PointerEvent, column: number): void {
   const handle = event.currentTarget as HTMLElement
   handle.setPointerCapture(event.pointerId)
-  // The drag starts from the width drawn, in pixels like the pointer.
+  // Fixed sizes: the pointer only gives pixels; the drag starts from the
+  // width drawn, in pixels too, and the width it reaches converts into `rem`
+  // with the root's font size (`docs/DEVELOPER.md`, section "Lengths in pixels").
   const width = handle.parentElement?.getBoundingClientRect().width ?? 0
   const rootSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
   resizing = { column, x: event.clientX, width, rootSize }

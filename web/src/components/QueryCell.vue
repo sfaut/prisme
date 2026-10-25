@@ -167,6 +167,9 @@ const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
  * UI gives them (`flex-basis: 0`); their inner block has it. Reka UI scales
  * both default heights together to the cell's height: they set a share, a
  * third for the editor.
+ *
+ * Fixed sizes: Reka UI's splitter only takes pixels or a percentage of the
+ * group, so these theme lengths are read once, in pixels (`docs/DEVELOPER.md`, section "Lengths in pixels").
  */
 const EDITOR_HEIGHT = cssPixels('--editor-height', 200)
 const EDITOR_MIN_HEIGHT = cssPixels('--editor-min-height', 96)
