@@ -216,9 +216,11 @@
   --font-size-body: 0.875rem;
   --font-size-title: 0.875rem;
   --font-size-heading: 1.125rem;
-  /* Text of the SQL editor, then its line numbers. */
+  /* Text of the SQL editor. */
   --editor-font-size: 0.8125rem;
-  --editor-gutter-font-size: 0.6875rem;
+  /* Gutters: line numbers of the editors (`editorTheme.ts`) and row
+     numbers of the grid (`ResultGrid.vue`), in the code font. */
+  --gutter-font-size: var(--font-size-small);
 
   /* Unit of the lengths: step 1 of the spacing scale (p-1, gap-1). */
   --space-unit: 0.25rem;

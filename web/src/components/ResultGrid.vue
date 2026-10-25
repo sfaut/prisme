@@ -19,7 +19,9 @@
     store): a column of type `JSON`, or a text column that holds JSON or
     XML.
   - Row numbers: they stay visible on the left when the grid scrolls
-    sideways, as the header stays on top.
+    sideways, as the header stays on top. Their column looks like the gutter
+    of the SQL editor (code font, size, padding, alignment) and takes the
+    width of the largest number.
   - Selection: click on a cell, on a row number or on a column name;
     Shift+click extends, Ctrl+click adds, dragging extends too (on the row
     numbers, dragging selects a group of rows). A click on the top left
@@ -74,8 +76,6 @@ import {
   type SortState,
   MIN_COLUMN_WIDTH,
   MOVE_THRESHOLD,
-  CELL_PADDING,
-  CHAR_WIDTH,
   NULL_TEXT,
   dropPosition,
   emptySelection,
@@ -400,16 +400,22 @@ function headerText(column: number): string {
 }
 
 /**
- * Column template of the grid: row numbers, then each column, at its chosen
- * or estimated width.
+ * Column template of the grid: row numbers, as wide as their content, then
+ * each column, at its chosen or estimated width.
  */
 const template = computed(() => {
   const widths = order.value.map(
     (column) => resized.value[column] ?? estimated.value[column] ?? MIN_COLUMN_WIDTH,
   )
-  const numberWidth = String(props.rowCount).length * CHAR_WIDTH + CELL_PADDING
-  return [numberWidth, ...widths].map((width) => `${width}px`).join(' ')
+  return ['max-content', ...widths.map((width) => `${width}px`)].join(' ')
 })
+
+/**
+ * Number of digits of the largest row number: the row numbers and the
+ * corner take its width (`--row-digits`), so that their column keeps the
+ * same width in every row, as the gutter of CodeMirror does.
+ */
+const rowDigits = computed(() => String(props.rowCount).length)
 
 /**
  * Resizing in progress: column, starting position of the pointer and
@@ -759,6 +765,7 @@ const userFilterColumn = computed({
       ref="scroller"
       class="grid-scroller"
       :class="{ attached: attached && !userFilterOpen }"
+      :style="{ '--row-digits': rowDigits }"
       tabindex="0"
       @keydown="onKeydown"
     >
@@ -992,20 +999,27 @@ const userFilterColumn = computed({
 
 /* Row numbers and corner stay on the left when the grid scrolls sideways,
    above the cells and the headers (and their resize handles) that pass
-   under them. */
+   under them. They look like the gutter of the SQL editor (`editorTheme.ts`):
+   code font, its size, one unit on each side, on the right. Each one is as
+   wide as the largest number (`--row-digits` digits of the code font, whose
+   digits all have the width of `1ch`): the column, as wide as its content,
+   keeps the same width in every row. */
 .grid-corner,
 .grid-row-header {
   position: sticky;
   inset-inline-start: 0;
   z-index: 2;
+  padding-inline: --spacing(1);
   border-inline-end: var(--line-width) solid var(--line);
   background: var(--surface-elevated);
   color: var(--fg-dimmed);
+  font-family: var(--font-code);
+  font-size: var(--gutter-font-size);
   text-align: end;
+  inline-size: calc(var(--row-digits) * 1ch + --spacing(2) + var(--line-width));
 }
 
 .grid-row-header {
-  padding-inline: --spacing(1);
   cursor: e-resize;
 }
 

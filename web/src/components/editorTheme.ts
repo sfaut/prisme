@@ -27,12 +27,17 @@ const chrome = EditorView.theme({
     color: 'var(--fg-dimmed)',
     borderRight: 'var(--line-width) solid var(--line)',
   },
-  // Line numbers smaller than the text, centered on their line.
+  // Line numbers as the row numbers of the grid: code font smaller than the
+  // text, on the right, centered on their line, one unit on each side; as
+  // wide as the largest number (no minimum width).
   '.cm-lineNumbers .cm-gutterElement': {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    fontSize: 'var(--editor-gutter-font-size)',
+    minWidth: '0',
+    padding: '0 var(--space-unit)',
+    fontFamily: 'var(--font-code)',
+    fontSize: 'var(--gutter-font-size)',
   },
   '.cm-activeLine': { backgroundColor: 'var(--editor-active-line)' },
   '.cm-activeLineGutter': { backgroundColor: 'var(--editor-active-gutter)' },
