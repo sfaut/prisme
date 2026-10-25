@@ -17,8 +17,10 @@
   Each query has its result tab (`ResultTab.vue`), with its progress bar. A
   tab can be renamed, pinned (it stays when the query is run again), closed
   (its query is stopped if it is running) or moved by dragging it, like a
-  column of the grid. Its result can be refreshed (button under the grid):
-  the query runs again in the tab, after the running batch if any.
+  column of the grid. Its result can be refreshed (button right of the
+  tabs, with the grid's filter button, side by side with the fold button
+  of the results, as in the console's header): the query runs again in the
+  tab, after the running batch if any.
   The row limit chosen here becomes the user's default limit.
   The session can be closed from the object navigator ("Déconnecter",
   `disconnect`): the cell then shows it closed, with "Reconnecter".
@@ -195,6 +197,12 @@ function togglePanel(
  * Displayed tab: its id.
  */
 const selectedTab = ref<string | number>(0)
+
+/**
+ * Place, in the bar of the result tabs, of the buttons of the tab shown
+ * (refresh, filter), which its grid sends there.
+ */
+const tabActions = useTemplateRef<HTMLElement>('tabActions')
 
 // The tabs of a new batch arrive: the first one is displayed. Otherwise,
 // the displayed tab has disappeared: the first remaining one takes its place.
@@ -792,15 +800,21 @@ defineExpose({
                 @rename="(name) => renameTab(tab, name)"
               />
             </tabs-list>
-            <ui-button
-              :icon="isCollapsed ? PanelBottomOpen : PanelBottomClose"
-              variant="ghost"
-              small
-              class="self-center"
-              :aria-label="isCollapsed ? 'Déplier les résultats' : 'Replier les résultats'"
-              v-tooltip="isCollapsed ? 'Déplier les résultats' : 'Replier les résultats'"
-              @click="togglePanel(resultsPanel, editorPanel)"
-            />
+            <!--
+              Buttons of the tab shown (refresh, filter), then the fold button,
+              side by side as in the console's header.
+            -->
+            <div class="flex items-center self-center">
+              <div ref="tabActions" class="contents" />
+              <ui-button
+                :icon="isCollapsed ? PanelBottomOpen : PanelBottomClose"
+                variant="ghost"
+                small
+                :aria-label="isCollapsed ? 'Déplier les résultats' : 'Replier les résultats'"
+                v-tooltip="isCollapsed ? 'Déplier les résultats' : 'Replier les résultats'"
+                @click="togglePanel(resultsPanel, editorPanel)"
+              />
+            </div>
           </div>
           <tabs-content
             v-for="tab in state.tabs"
@@ -812,6 +826,7 @@ defineExpose({
               :tab="tab"
               :displayed="active && selectedTab === tab.id"
               :refresh="refreshState(state, tab)"
+              :actions-target="selectedTab === tab.id ? tabActions : null"
               @refresh="refresh(tab)"
               @stop-refresh="session.stopRefresh(tab)"
             />

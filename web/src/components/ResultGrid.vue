@@ -3,14 +3,17 @@
 
   - Sort: ▲▼ button of the header (ascending, descending, none).
   - User filter: text searched in all the columns (global filter) or in one
-    column (targeted filter). The form is collapsed;
-    the button of the bottom bar expands it (and collapses it: the user filter
-    stays applied, the button shows it).
-  - Bottom bar: the content of the `actions` slot (refresh of the result),
-    user filter button, number of loaded rows ("120 /
-    5 000 lignes" when a user filter is active), then the content of the
-    `footer` slot (duration of the query). The data explorer opens from its
-    rail, on the right edge of the window.
+    column (targeted filter). The form is collapsed; its button, a funnel
+    as in the console, expands it (and collapses it: the user filter stays
+    applied, the button shows it in the accent color).
+  - Buttons: the content of the `actions` slot (refresh of the result),
+    then the user filter button. For the result tab shown, they go to the
+    bar of the result tabs (`actionsTarget`, by a `Teleport` of Vue);
+    otherwise, they stay at the left of the bottom bar.
+  - Bottom bar: number of loaded rows ("120 / 5 000 lignes" when a user
+    filter is active), then the content of the `footer` slot (duration of
+    the query). The data explorer opens from its rail, on the right edge of
+    the window.
   - Data explorer: the grid on screen (`displayed`) gives the panel on the
     right the selected values of a JSON or XML column (`dataExplorer`
     store): a column of type `JSON`, or a text column that holds JSON or
@@ -47,7 +50,7 @@
   selection, copy) is in `resultGrid.ts`.
 -->
 <script setup lang="ts">
-import { ExternalLink, ListFilter, Search, X } from '@lucide/vue'
+import { ExternalLink, Funnel, Search, X } from '@lucide/vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import {
   computed,
@@ -146,6 +149,12 @@ const props = defineProps<{
    * not to double that line.
    */
   attached?: boolean
+  /**
+   * Where the buttons of the grid go (refresh, filter): the bar of the
+   * result tabs, for the tab shown. Absent, they stay at the left of the
+   * bottom bar.
+   */
+  actionsTarget?: HTMLElement | null
 }>()
 
 /**
@@ -164,6 +173,15 @@ const userFilter = reactive<UserFilter>({ text: '', column: null })
 const userFilterOpen = ref(false)
 
 const userFilterBox = useTemplateRef<HTMLDivElement>('userFilterBox')
+
+/**
+ * Label of the user filter button: what a click does, and whether the
+ * filter keeps only some rows.
+ */
+const userFilterLabel = computed(
+  () =>
+    `${userFilterOpen.value ? 'Masquer' : 'Afficher'} le filtre${userFilter.text === '' ? '' : ' (filtre actif)'}`,
+)
 
 /**
  * Expands or collapses the user filter form; when expanded, its field takes the focus.
@@ -853,19 +871,25 @@ const userFilterColumn = computed({
     </div>
 
     <div class="grid-footer">
-      <!-- Actions of the result (refresh), left of the user filter. -->
-      <slot name="actions" />
-      <ui-button
-        :icon="ListFilter"
-        variant="ghost"
-        :tone="userFilter.text === '' ? 'neutral' : 'accent'"
-        small
-        :aria-pressed="userFilterOpen"
-        :aria-label="userFilterOpen ? 'Replier le filtre' : 'Filtrer les lignes'"
-        v-tooltip="userFilterOpen ? 'Replier le filtre' : 'Filtrer les lignes'"
-        class="grid-user-filter-toggle"
-        @click="toggleUserFilter"
-      />
+      <!--
+        Actions of the result (refresh), then the user filter button: in the
+        bar of the result tabs for the tab shown, here otherwise.
+      -->
+      <teleport :to="actionsTarget" :disabled="!actionsTarget">
+        <slot name="actions" />
+        <ui-button
+          :icon="Funnel"
+          variant="ghost"
+          :tone="userFilter.text === '' ? 'neutral' : 'accent'"
+          small
+          :class="{ 'bg-surface-elevated': userFilterOpen }"
+          :aria-pressed="userFilterOpen"
+          :aria-label="userFilterLabel"
+          v-tooltip="userFilterLabel"
+          class="grid-user-filter-toggle"
+          @click="toggleUserFilter"
+        />
+      </teleport>
       <!-- The slot follows the number in the same text, without the container's gap. -->
       <span class="grid-count">{{ countLabel }}<slot name="footer" /></span>
     </div>

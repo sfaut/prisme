@@ -222,4 +222,22 @@ describe('ResultGrid filter', () => {
     await wrapper.setProps({ columns: ['id'], rows: [['1'], ['2']], rowCount: 2 })
     expect((wrapper.find('.grid-user-filter input').element as HTMLInputElement).value).toBe('2')
   })
+
+  it('sends its button to the bar of the result tabs, and takes it back', async () => {
+    const bar = document.createElement('div')
+    document.body.append(bar)
+    const wrapper = mountGrid(['id'], [['1']])
+    const inBar = () => bar.querySelector('[aria-label="Afficher le filtre"]') !== null
+    expect(inBar()).toBe(false)
+    expect(wrapper.find('.grid-footer .grid-user-filter-toggle').exists()).toBe(true)
+
+    await wrapper.setProps({ actionsTarget: bar })
+    expect(inBar()).toBe(true)
+    expect(wrapper.find('.grid-footer .grid-user-filter-toggle').exists()).toBe(false)
+
+    await wrapper.setProps({ actionsTarget: null })
+    expect(inBar()).toBe(false)
+    wrapper.unmount()
+    bar.remove()
+  })
 })

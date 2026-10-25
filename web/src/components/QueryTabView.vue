@@ -15,8 +15,8 @@
   place of its frame's top border; the error or the durations, when they
   come first, keep a little room under that line.
 
-  The refresh button, at the left of the bar under the grid, runs the query
-  again; during the refresh, or while it waits for the running batch, it
+  The refresh button, right of the result tabs with the grid's filter
+  button (`actionsTarget`), runs the query again; during the refresh, or while it waits for the running batch, it
   stops it. The previous result stays displayed until the new columns
   arrive.
 -->
@@ -54,6 +54,12 @@ const props = defineProps<{
    * Refresh of the tab: running, waiting, possible or not.
    */
   refresh: RefreshState
+  /**
+   * Place of the grid's buttons (refresh, filter) in the bar of the result
+   * tabs, for the tab shown; `null` for the others, which keep them under
+   * their grid.
+   */
+  actionsTarget: HTMLElement | null
 }>()
 
 const emit = defineEmits<{
@@ -167,6 +173,7 @@ const durations = computed(() => {
       :shown-count="shownCount"
       :sql="tab.sql"
       :displayed="displayed"
+      :actions-target="actionsTarget"
     >
       <template #actions>
         <ui-button
