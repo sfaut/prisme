@@ -6,6 +6,7 @@ import { mount } from '@vue/test-utils'
 import App from '../App.vue'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import { useConnectionsStore } from '@/stores/connections'
+import { useEditorsStore } from '@/stores/editors'
 
 vi.mock('@/api/version', () => ({
   getVersion: async () => ({ version: '1.2.3' }),
@@ -98,6 +99,7 @@ const Navigator = defineComponent({
   setup(_, { emit }) {
     return () => [
       h('button', { id: 'select', onClick: () => emit('select', 1) }),
+      h('button', { id: 'select-other', onClick: () => emit('select', 2) }),
       h('button', { id: 'use', onClick: () => emit('use-database', 1, 'shop') }),
       h('button', { id: 'disconnect', onClick: () => emit('disconnect') }),
     ]
@@ -177,6 +179,30 @@ describe('App, open transaction', () => {
     await vi.waitFor(() => expect(dialogButton('Déconnecter et annuler')).toBeDefined())
     dialogButton('Déconnecter et annuler')!.click()
     await vi.waitFor(() => expect(disconnects).toBe(1))
+    wrapper.unmount()
+  })
+
+  it('keeps the source of the editor when the change is not confirmed', async () => {
+    const wrapper = mount(App, {
+      attachTo: document.body,
+      global: { stubs: { QueryCell: TransactionCell, ObjectNavigator: Navigator } },
+    })
+    useConnectionsStore().connections = [
+      { id: 1, name: 'local' } as ConnectionSummary,
+      { id: 2, name: 'other' } as ConnectionSummary,
+    ]
+    await vi.waitFor(() => expect(transactionCells).toBe(1))
+
+    await wrapper.find('#select-other').trigger('click')
+    await vi.waitFor(() => expect(dialogButton('Changer et annuler')).toBeDefined())
+    dialogButton('Annuler')!.click()
+    await vi.waitFor(() => expect(dialogButton('Annuler')).toBeUndefined())
+    expect(useEditorsStore().active?.connectionId).toBe(1)
+
+    await wrapper.find('#select-other').trigger('click')
+    await vi.waitFor(() => expect(dialogButton('Changer et annuler')).toBeDefined())
+    dialogButton('Changer et annuler')!.click()
+    await vi.waitFor(() => expect(useEditorsStore().active?.connectionId).toBe(2))
     wrapper.unmount()
   })
 })

@@ -35,8 +35,9 @@
   On hovering the root, a "⋮" menu on the right adds a connection or reads
   again all the catalogs already read; on hovering each source, another one
   changes or tests the connection, reads its catalog again or deletes the
-  connection (after confirmation); "Déconnecter" there closes the session of
-  the active editor, like the button of the line.
+  connection (after confirmation, which warns of the transactions it rolls
+  back); "Déconnecter" there closes the session of the active editor, like
+  the button of the line.
 
   The tree is Reka UI's (`TreeRoot`, `TreeItem`: keyboard, opening of the
   levels, accessibility), with virtual scrolling (`TreeVirtualizer`); the
@@ -68,6 +69,7 @@ import type { SessionStatus } from '@/api/querySession'
 import { cssPixels } from '@/cssLength'
 import { useCatalogStore } from '@/stores/catalog'
 import { useConnectionsStore } from '@/stores/connections'
+import { useEditorsStore } from '@/stores/editors'
 import { useLayoutStore } from '@/stores/layout'
 
 import ConnectionDialog from './ConnectionDialog.vue'
@@ -75,6 +77,7 @@ import NavigatorLine from './NavigatorLine.vue'
 import PanelHeader from './PanelHeader.vue'
 import { type NavigatorNode, SOURCES_KEY, navigatorTree, sourceKey } from './navigatorNodes'
 import { pinnedRows, visibleRows } from './stickyRows'
+import { openTransactionsNotice } from './transactionNotice'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
 import UiDialog from './ui/UiDialog.vue'
@@ -122,6 +125,7 @@ const emit = defineEmits<{
 
 const catalog = useCatalogStore()
 const connections = useConnectionsStore()
+const editors = useEditorsStore()
 const layout = useLayoutStore()
 
 /**
@@ -411,6 +415,14 @@ function onUpdated(connectionId: number): void {
 }
 
 /**
+ * Editors of the connection waiting for deletion with a transaction open,
+ * which the deletion rolls back.
+ */
+const removedTransactions = computed(() =>
+  removing.value === null ? 0 : editors.inTransaction(removing.value.id).length,
+)
+
+/**
  * Deletes the connection that was waiting for confirmation.
  */
 async function confirmRemove(): Promise<void> {
@@ -624,10 +636,20 @@ watch(
         retirés, le serveur et ses bases ne sont pas touchés. La connexion pourra être recréée
         ultérieurement.
       </p>
+      <ui-alert
+        v-if="removedTransactions > 0"
+        tone="warning"
+        :title="openTransactionsNotice(removedTransactions, 'supprimer la connexion')"
+      />
       <template #footer>
         <div class="flex w-full justify-end gap-2">
           <ui-button label="Annuler" @click="removing = null" />
-          <ui-button label="Supprimer" variant="solid" tone="error" @click="confirmRemove" />
+          <ui-button
+            :label="removedTransactions > 0 ? 'Supprimer et annuler' : 'Supprimer'"
+            variant="solid"
+            tone="error"
+            @click="confirmRemove"
+          />
         </div>
       </template>
     </ui-dialog>

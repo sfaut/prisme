@@ -11,6 +11,10 @@
   `SET SESSION sql_mode`...) are allowed, the server refuses the rest on
   saving. "Tester" runs them too.
 
+  Saving a changed connection closes its sessions: while transactions are
+  open on them, a warning says so, and the button says that they will be
+  rolled back.
+
   The maximum lengths repeat the server's
   (`crates/server/src/connections.rs`). The other checks are made by the
   server, whose message shows in the window on refusal.
@@ -26,6 +30,9 @@ import { probeMessage, probeSettings } from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { NewConnection } from '@/api/generated/NewConnection'
 import { useConnectionsStore } from '@/stores/connections'
+import { useEditorsStore } from '@/stores/editors'
+
+import { openTransactionsNotice } from './transactionNotice'
 
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
@@ -55,6 +62,15 @@ const emit = defineEmits<{
 }>()
 
 const store = useConnectionsStore()
+const editors = useEditorsStore()
+
+/**
+ * Editors of the changed connection with a transaction open, which saving
+ * rolls back; 0 when creating.
+ */
+const transactionCount = computed(() =>
+  props.connection === null ? 0 : editors.inTransaction(props.connection.id).length,
+)
 
 /**
  * Current input.
@@ -273,15 +289,20 @@ async function save(): Promise<void> {
       </ui-field>
       <ui-alert v-if="error" tone="error" :title="error" />
       <ui-alert v-if="probed" :tone="probed.tone" :title="probed.title" />
+      <ui-alert
+        v-if="transactionCount > 0"
+        tone="warning"
+        :title="openTransactionsNotice(transactionCount, 'enregistrer')"
+      />
     </form>
     <template #footer>
       <ui-button label="Tester" :loading="probing" @click="probe" />
       <ui-button
         type="submit"
         form="connection-form"
-        label="Enregistrer"
+        :label="transactionCount > 0 ? 'Enregistrer et annuler' : 'Enregistrer'"
         variant="solid"
-        tone="accent"
+        :tone="transactionCount > 0 ? 'error' : 'accent'"
         :loading="saving"
         class="flex-1"
       />

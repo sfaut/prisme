@@ -6,6 +6,10 @@
  * the page opens, the editors come back (each cell reads its saved result
  * tabs again); the active editor is remembered in the browser. There is
  * always at least one open editor.
+ *
+ * The store also knows which editors have a transaction open on their
+ * session, as their cells tell it: closing such a session rolls the
+ * transaction back, which the interface confirms first.
  */
 
 import { defineStore } from 'pinia'
@@ -108,6 +112,22 @@ export const useEditorsStore = defineStore('editors', () => {
    * Editors closed less than 24 hours ago, which can be reopened.
    */
   const closed = ref<ClosedEditor[]>([])
+
+  /**
+   * Is a transaction open on each editor's session? Told by its cell.
+   */
+  const transactions = ref<Record<number, boolean>>({})
+
+  /**
+   * Open editors on a connection whose session has a transaction open.
+   *
+   * @param connectionId Id of the connection.
+   */
+  function inTransaction(connectionId: number): EditorEntry[] {
+    return editors.value.filter(
+      (editor) => editor.connectionId === connectionId && transactions.value[editor.id] === true,
+    )
+  }
 
   /**
    * Pending text saves, by editor.
@@ -327,6 +347,8 @@ export const useEditorsStore = defineStore('editors', () => {
     activeId,
     active,
     closed,
+    transactions,
+    inTransaction,
     activate,
     load,
     create,

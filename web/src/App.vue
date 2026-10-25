@@ -23,9 +23,10 @@
   "Déconnecter" closes its session, which any of these actions on its source
   opens again. The cells of all the editors stay mounted: each one keeps its
   session (and its transactions) open, even when another editor is
-  displayed. "Déconnecter", or closing an editor, while a transaction is
-  open on its session asks for a confirmation first: closing the session
-  rolls the transaction back.
+  displayed. Closing a session rolls its open transaction back: while one
+  is open, "Déconnecter", closing the editor and changing its source ask
+  for a confirmation first (changing or deleting the connection is
+  confirmed in its own window).
 
   Transient messages (`notify`) show at the bottom right (`UiToaster`); the
   tooltips of every element (`v-tooltip`), in a single bubble (`UiTooltip`).
@@ -174,21 +175,71 @@ const databases = ref<Record<number, string | null>>({})
 const statuses = ref<Record<number, SessionStatus>>({})
 
 /**
- * Is a transaction open on each editor's session?
+ * What ends a session: "Déconnecter", closing of the editor, change of its
+ * source.
  */
-const transactions = ref<Record<number, boolean>>({})
+type Ending = 'disconnect' | 'close' | 'change'
 
 /**
- * Ending of a session whose transaction is open, last asked for:
- * "Déconnecter" or closing of the editor. Kept after the confirmation
- * window closes, which keeps its texts while it fades out.
+ * Title of the confirmation window and label of its button, per ending.
  */
-const ending = ref<{ editorId: number; action: 'disconnect' | 'close' } | null>(null)
+const ENDING_TEXTS: Record<Ending, { title: string; confirm: string }> = {
+  disconnect: { title: 'Déconnecter la session', confirm: 'Déconnecter et annuler' },
+  close: { title: 'Fermer l’éditeur', confirm: 'Fermer et annuler' },
+  change: { title: 'Changer de source', confirm: 'Changer et annuler' },
+}
+
+/**
+ * Ending of a session whose transaction is open, last asked for, with the
+ * answer to give (`null` once given). Kept after the confirmation window
+ * closes, which keeps its texts while it fades out.
+ */
+const ending = ref<{ action: Ending; answer: ((confirmed: boolean) => void) | null } | null>(null)
 
 /**
  * Is the confirmation window of `ending` open?
  */
 const endingOpen = ref(false)
+
+/**
+ * May the session of an editor end? At once without a transaction open;
+ * otherwise once the user confirms, which rolls the transaction back.
+ *
+ * @param editorId Id of the editor.
+ * @param action What ends the session.
+ * @returns Whether the session may end.
+ */
+function mayEnd(editorId: number, action: Ending): Promise<boolean> {
+  if (!editors.transactions[editorId]) {
+    return Promise.resolve(true)
+  }
+  answerEnding(false)
+  return new Promise((answer) => {
+    ending.value = { action, answer }
+    endingOpen.value = true
+  })
+}
+
+/**
+ * Gives the answer of the confirmation window, and closes it.
+ *
+ * @param confirmed Does the user confirm the end of the session?
+ */
+function answerEnding(confirmed: boolean): void {
+  endingOpen.value = false
+  const answer = ending.value?.answer
+  if (ending.value) {
+    ending.value.answer = null
+  }
+  answer?.(confirmed)
+}
+
+// Escape or a click outside the window: no.
+watch(endingOpen, (open) => {
+  if (!open) {
+    answerEnding(false)
+  }
+})
 
 /**
  * Stage of the active editor's session, `null` without a session (no editor,
@@ -275,13 +326,22 @@ watch(
   },
 )
 
-// A created (or deleted) connection becomes (or stops being) that of the active editor.
+// A created (or deleted) connection becomes (or stops being) that of the
+// active editor; a created one after a confirmation if its transaction is
+// open, else the editor keeps its source. A deleted one has closed the
+// session already.
 watch(
   () => connections.selectedId,
-  (connectionId) => {
-    if (editors.active && editors.active.connectionId !== connectionId) {
-      editors.setConnection(editors.active.id, connectionId).catch(report)
+  async (connectionId) => {
+    const editor = editors.active
+    if (!editor || editor.connectionId === connectionId) {
+      return
     }
+    if (connectionId !== null && !(await mayEnd(editor.id, 'change'))) {
+      connections.selectedId = editor.connectionId
+      return
+    }
+    editors.setConnection(editor.id, connectionId).catch(report)
   },
 )
 
@@ -290,21 +350,30 @@ watch(
  * connection stays the same: choosing its source again in the navigator
  * reconnects it, like "Reconnecter".
  *
+ * Another connection closes the session: after a confirmation if its
+ * transaction is open.
+ *
  * @param editorId Id of the editor.
  * @param connectionId Id of the connection.
  * @param database
  *     Database to open the session on, when a session opens; absent: that of
  *     the connection.
- * @returns Does a session open (other connection, or closed session)?
+ * @returns
+ *     `opens` if a session opens (other connection, or closed session),
+ *     `keeps` if the open session stays, `cancelled` if the user keeps the
+ *     transaction and the connection.
  */
 async function connectEditor(
   editorId: number,
   connectionId: number,
   database?: string,
-): Promise<boolean> {
+): Promise<'opens' | 'keeps' | 'cancelled'> {
   const editor = editors.editors.find((item) => item.id === editorId)
   if (!editor) {
-    return false
+    return 'keeps'
+  }
+  if (editor.connectionId !== connectionId && !(await mayEnd(editorId, 'change'))) {
+    return 'cancelled'
   }
   const reopens = editor.connectionId === connectionId && statuses.value[editorId] === 'closed'
   const opens = reopens || editor.connectionId !== connectionId
@@ -315,7 +384,7 @@ async function connectEditor(
     attempts.value[editorId] = (attempts.value[editorId] ?? 0) + 1
   }
   await editors.setConnection(editorId, connectionId)
-  return opens
+  return opens ? 'opens' : 'keeps'
 }
 
 /**
@@ -345,7 +414,9 @@ async function activeCellOn(connectionId: number) {
   if (!editor) {
     return undefined
   }
-  await connectEditor(editor.id, connectionId)
+  if ((await connectEditor(editor.id, connectionId)) === 'cancelled') {
+    return undefined
+  }
   await nextTick()
   return cells.get(editor.id)
 }
@@ -405,7 +476,7 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
     return
   }
   try {
-    if (!(await connectEditor(editor.id, connectionId, schema))) {
+    if ((await connectEditor(editor.id, connectionId, schema)) === 'keeps') {
       cells.get(editor.id)?.changeDatabaseWhenReady(schema)
     }
   } catch (failure) {
@@ -417,16 +488,10 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
  * Closes the session of the active editor ("Déconnecter" of the navigator),
  * after a confirmation if its transaction is open.
  */
-function disconnect(): void {
+async function disconnect(): Promise<void> {
   const editorId = editors.activeId
-  if (editorId === null) {
-    return
-  }
-  if (transactions.value[editorId]) {
-    ending.value = { editorId, action: 'disconnect' }
-    endingOpen.value = true
-  } else {
-    void cells.get(editorId)?.disconnect()
+  if (editorId !== null && (await mayEnd(editorId, 'disconnect'))) {
+    await cells.get(editorId)?.disconnect()
   }
 }
 
@@ -435,25 +500,9 @@ function disconnect(): void {
  *
  * @param editorId Id of the editor.
  */
-function closeEditor(editorId: number): void {
-  if (transactions.value[editorId]) {
-    ending.value = { editorId, action: 'close' }
-    endingOpen.value = true
-  } else {
-    void editors.close(editorId)
-  }
-}
-
-/**
- * Ends the session the user confirmed to end: its transaction is rolled back.
- */
-function confirmEnding(): void {
-  const confirmed = ending.value
-  endingOpen.value = false
-  if (confirmed?.action === 'disconnect') {
-    void cells.get(confirmed.editorId)?.disconnect()
-  } else if (confirmed?.action === 'close') {
-    void editors.close(confirmed.editorId)
+async function closeEditor(editorId: number): Promise<void> {
+  if (await mayEnd(editorId, 'close')) {
+    await editors.close(editorId).catch(report)
   }
 }
 
@@ -568,7 +617,7 @@ function selectSource(connectionId: number): void {
                     @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
                     @database="(database) => (databases[editor.id] = database)"
                     @status="(status) => followStatus(editor.id, status)"
-                    @transaction="(open) => (transactions[editor.id] = open)"
+                    @transaction="(open) => (editors.transactions[editor.id] = open)"
                   />
                   <div v-else class="flex max-w-xs flex-col items-center gap-2 text-center">
                     <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
@@ -645,21 +694,21 @@ function selectSource(connectionId: number): void {
   <ui-toaster />
   <ui-dialog
     v-model:open="endingOpen"
-    :title="ending?.action === 'close' ? 'Fermer l’éditeur' : 'Déconnecter la session'"
+    :title="ENDING_TEXTS[ending?.action ?? 'disconnect'].title"
     description="Une transaction est ouverte sur la session."
   >
     <p class="text-fg-muted">
-      Fermer la session annule la transaction (ROLLBACK) : ses modifications non validées sont
-      perdues. Pour les garder, exécuter d’abord COMMIT.
+      La session se ferme, ce qui annule la transaction (ROLLBACK) : ses modifications non validées
+      sont perdues. Pour les garder, exécuter d’abord COMMIT.
     </p>
     <template #footer>
       <div class="flex w-full justify-end gap-2">
-        <ui-button label="Annuler" @click="endingOpen = false" />
+        <ui-button label="Annuler" @click="answerEnding(false)" />
         <ui-button
-          :label="ending?.action === 'close' ? 'Fermer et annuler' : 'Déconnecter et annuler'"
+          :label="ENDING_TEXTS[ending?.action ?? 'disconnect'].confirm"
           variant="solid"
           tone="error"
-          @click="confirmEnding"
+          @click="answerEnding(true)"
         />
       </div>
     </template>
