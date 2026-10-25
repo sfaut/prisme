@@ -191,7 +191,7 @@ The interface is built in lengths relative to the root, `:root` being fixed: mul
 
 The pointer also gives pixels: a column of the grid resized with the mouse converts its width into `rem` once, at the time of the drag (`resizedWidth` in `resultGrid.ts`).
 
-Once one of these APIs accepts a CSS length or a relative unit, the theme variable goes to it directly, and its `cssPixels` goes away, with its row here.
+Before each release, after the update of the dependencies, each API is checked again (process in [CLAUDE.md](../CLAUDE.md), section "Publishing a version"): once one accepts a CSS length or a relative unit, the theme variable goes to it directly, and its `cssPixels` goes away, with its row here.
 
 ## Building the single executable
 
