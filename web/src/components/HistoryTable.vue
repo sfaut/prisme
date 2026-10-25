@@ -2,7 +2,8 @@
   History tab of the console: one line per query sent to a target server,
   with its number, its time, the action that sent it, its message (its SQL,
   then its failure if any), its number of rows, its execution time and the
-  transfer time of its rows. Above, the actions kept (`ConsoleFilter.vue`).
+  transfer time of its rows. Above, on request, the actions kept
+  (`ConsoleFilter.vue`).
   Scrolling and older pages: `ConsoleList.vue`.
 -->
 <script setup lang="ts">
@@ -29,7 +30,7 @@ const history = store.history
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-1">
-    <div class="flex flex-wrap items-center gap-3">
+    <div v-if="store.filtersShown" class="flex flex-wrap items-center gap-3">
       <console-filter v-model="store.historyFilter.action" label="Action" :labels="ACTION_LABELS" />
     </div>
     <console-list

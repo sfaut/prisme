@@ -1,8 +1,9 @@
 <!--
   Debug tab of the console: the lines of the server's log, those its
   terminal shows, and the notifications of the interface, with their
-  number, time, level, source and message. Above, the levels and sources
-  kept (`ConsoleFilter.vue`). Scrolling and older pages: `ConsoleList.vue`.
+  number, time, level, source and message. Above, on request, the levels
+  and sources kept (`ConsoleFilter.vue`). Scrolling and older pages:
+  `ConsoleList.vue`.
 -->
 <script setup lang="ts">
 import { isFiltering, useConsoleStore } from '@/stores/console'
@@ -18,7 +19,7 @@ const debug = store.debug
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-1">
-    <div class="flex flex-wrap items-center gap-3">
+    <div v-if="store.filtersShown" class="flex flex-wrap items-center gap-3">
       <console-filter v-model="store.debugFilter.level" label="Niveau" :labels="LEVEL_LABELS" />
       <console-filter v-model="store.debugFilter.source" label="Source" :labels="SOURCE_LABELS" />
     </div>

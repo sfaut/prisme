@@ -84,6 +84,31 @@ describe('App', () => {
     wrapper.unmount()
   })
 
+  it('shows the filters of the console on request, in both tabs', async () => {
+    window.localStorage.clear()
+    const wrapper = mount(App)
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Aucune requête envoyée'))
+    const toggle = () => wrapper.find('[aria-pressed]')
+    expect(toggle().attributes('aria-label')).toBe('Afficher les filtres')
+    expect(wrapper.find('[aria-label="Action"]').exists()).toBe(false)
+
+    await toggle().trigger('click')
+    expect(toggle().attributes('aria-pressed')).toBe('true')
+    expect(wrapper.find('[aria-label="Action"]').exists()).toBe(true)
+    expect(window.localStorage.getItem('prisme.consoleFiltersShown')).toBe('true')
+    const debugTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text() === 'Debug')!
+    await debugTab.trigger('mousedown', { button: 0 })
+    await vi.waitFor(() => expect(wrapper.find('[aria-label="Niveau"]').exists()).toBe(true))
+
+    // Hidden, an active filter still shows on the button.
+    await wrapper.find('[aria-label="Niveau"] button').trigger('click')
+    await toggle().trigger('click')
+    expect(wrapper.find('[aria-label="Niveau"]').exists()).toBe(false)
+    expect(toggle().attributes('aria-label')).toBe('Afficher les filtres (filtres actifs)')
+    expect(toggle().classes()).toContain('text-accent')
+    wrapper.unmount()
+  })
+
   it('opens the console on its history, and folds it on its rail', async () => {
     window.localStorage.clear()
     const wrapper = mount(App)

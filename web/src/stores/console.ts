@@ -13,7 +13,8 @@
  * Each list has its filter (`historyFilter`, `debugFilter`), kept in local
  * storage too: the server reads only the elements it keeps, and the
  * elements received meanwhile go through it. A change of filter reads the
- * list again (`refilter`).
+ * list again (`refilter`). The buttons of the filters show on request
+ * (`filtersShown`, hidden by default); hidden, the filters still apply.
  */
 
 import { defineStore } from 'pinia'
@@ -42,6 +43,11 @@ const OPEN_KEY = 'prisme.consoleOpen'
  * Key of the tab shown in local storage.
  */
 const TAB_KEY = 'prisme.consoleTab'
+
+/**
+ * Key of the display of the filters in local storage.
+ */
+const FILTERS_SHOWN_KEY = 'prisme.consoleFiltersShown'
 
 /**
  * Keys of the filters of the history and of the debug log in local storage.
@@ -320,6 +326,13 @@ export const useConsoleStore = defineStore('console', () => {
   })
 
   /**
+   * Are the buttons of the filters shown, in both tabs?
+   */
+  const filtersShown = ref(loadFlag(FILTERS_SHOWN_KEY, false))
+
+  watch(filtersShown, (value) => saveFlag(FILTERS_SHOWN_KEY, value))
+
+  /**
    * Queries kept by the history.
    */
   const historyFilter = ref(
@@ -404,5 +417,15 @@ export const useConsoleStore = defineStore('console', () => {
     stop = null
   }
 
-  return { open, tab, historyFilter, debugFilter, history, debug, start, dispose }
+  return {
+    open,
+    tab,
+    filtersShown,
+    historyFilter,
+    debugFilter,
+    history,
+    debug,
+    start,
+    dispose,
+  }
 })
