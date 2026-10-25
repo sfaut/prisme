@@ -179,6 +179,20 @@ Rules:
 | `Monitor`, `Sun`, `Moon` | Color mode: system, light, dark | top bar |
 | `User`, `Settings` | Profile, settings | account menu |
 
+### Lengths in pixels
+
+The interface is built in lengths relative to the root, `:root` being fixed: multiples of `--space-unit`, in `rem`, and `ch` or `em` of a font (rule 10 of [CLAUDE.md](../CLAUDE.md)). Only the strokes of `:root` stay in pixels. A few APIs of dependencies accept nothing but a number of pixels, though. They receive a theme variable converted by `cssPixels` (`web/src/cssLength.ts`): the theme stays the only source of the length, read once, on loading. As `:root` is fixed, and the zoom of the browser does not change the ratio of a `rem` to a CSS pixel, the value stays exact for the whole session; only a change of the browser's default font size, with the page open, needs a reload.
+
+| Dependency | API in pixels | Variables | Where |
+|---|---|---|---|
+| `reka-ui` 2.11.0 | `SplitterPanel`: `default-size`, `min-size`, `max-size`, `collapsed-size`, with `size-unit="px"`. The other unit, `%`, is relative to the group, not to the root: a theme length in `%` would have to be measured in pixels and computed again on each resize of the window. | `--navigator-width`, `--explorer-width`, `--editors-min-width`, `--console-height`, `--rail-size`, `--editor-height`, `--results-height`… | `App.vue`, `QueryCell.vue` |
+| `reka-ui` 2.11.0 | `side-offset` of the menus and lists (a number, passed to Floating UI). | `--popup-offset` | `UiSelect.vue`, `UiDropdownMenu.vue` |
+| `@tanstack/vue-virtual` 3.13 | `estimateSize`: height of a row, to turn the scroll position (in pixels) into the rows to draw. The page itself places the rows of the result grid in CSS (`calc(var(--grid-row-height) * n)`). | `--grid-row-height`, `--row-height` | `ResultGrid.vue`, `ObjectNavigator.vue` |
+
+The pointer also gives pixels: a column of the grid resized with the mouse converts its width into `rem` once, at the time of the drag (`resizedWidth` in `resultGrid.ts`).
+
+Once one of these APIs accepts a CSS length or a relative unit, the theme variable goes to it directly, and its `cssPixels` goes away, with its row here.
+
 ## Building the single executable
 
 Compile the interface, then Prisme:

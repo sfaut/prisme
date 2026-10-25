@@ -2,11 +2,14 @@
  * Reading a theme length (`main.css`) in pixels.
  *
  * The theme writes its lengths as multiples of `--space-unit`, in `rem`,
- * relative to the page's text size. A few tools want a number of pixels
- * though: virtual scrolling (height of a row), the positioning of Reka UI's
- * menus (gap with their button). They read the variable here: the theme stays
- * the only source of these lengths. These variables are registered as lengths
- * (`@property` in `main.css`), so that the browser gives them in pixels.
+ * relative to the page's text size. A few APIs of dependencies want a number
+ * of pixels though: the sizes of Reka UI's splitter panels, the positioning
+ * of its menus (gap with their button), virtual scrolling (height of a row).
+ * They read the variable here, once: the theme stays the only source of
+ * these lengths. These variables are registered as lengths (`@property` in
+ * `main.css`), so that the browser gives them in pixels. The list of these
+ * APIs, to drop a reading once one accepts relative lengths, is in
+ * `docs/DEVELOPER.md`, section "Lengths in pixels".
  */
 
 /**
