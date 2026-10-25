@@ -268,6 +268,14 @@ Security advisories reported by `npm audit` that no update can fix, as no patche
 |---|---|---|---|---|
 | `braces` 3.0.3 | [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) (CVE-2026-93687, high): a deeply nested brace pattern exhausts the call stack and stops the Node.js process. Affects every version up to 3.0.3, the latest; no patched version. | `@vue/eslint-config-typescript` → `fast-glob` → `micromatch` → `braces` | None. Development only, when linting: nothing of it gets into the executable. The only pattern it receives is that of the configuration (`**/*.vue`), never outside data. | 2026-10-22 |
 
+## Worked-around bugs
+
+Bugs of a dependency that Prisme works around in its own code. Before each release, after the update of the dependencies, each entry is checked again: once a version fixes the bug, the workaround is removed, then the entry. The drafts of the upstream tickets are in `docs/upstream/`.
+
+| Dependency | Bug | Workaround | Upstream | Date |
+|---|---|---|---|---|
+| `reka-ui` 2.11.0 | A `SplitterPanel` sized in pixels (`size-unit="px"`), folded or unfolded by dragging its handle, emits neither `collapse` nor `expand`: `callPanelCallbacks` compares the size converted back to pixels (28.000000000095 for 28) with `collapsedSize` at 10 decimals. `isPanelCollapsed` (`data-state`, exposed `isCollapsed`) was fixed in 2.11.0 ([reka-ui #2742](https://github.com/unovue/reka-ui/issues/2742)), the events were not. | `web/src/App.vue`: the state of the console follows the panel's `isCollapsed` on each `resize`. | Ticket drafted, not posted yet: [reka-ui-splitter-px-collapse-events.md](upstream/reka-ui-splitter-px-collapse-events.md). | 2026-10-25 |
+
 ## Repository layout
 
 ```
@@ -284,6 +292,7 @@ web/               Vue interface
   src/components/  interface components
   src/stores/      shared state (connections, settings)
 docs/              design decisions and notes
+  upstream/        drafts of tickets for the dependencies
 ```
 
 ## Design documents
