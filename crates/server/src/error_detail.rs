@@ -206,6 +206,9 @@ pub enum ErrorDetail {
     /// WRITE`...), while the query sessions are read-only.
     #[error("transaction refused: it would lift the read-only mode of the query sessions")]
     ReadWriteTransactionReadOnly,
+    /// A statement of an XA transaction, which Prisme does not support.
+    #[error("query refused: Prisme does not support XA transactions")]
+    XaTransactionUnsupported,
     /// A query that Prisme cannot parse, so cannot prove to be a read.
     #[error("query refused: Prisme cannot parse it, so it cannot check that it is a read")]
     UnparsedQueryRefused,

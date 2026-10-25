@@ -209,6 +209,8 @@ export function describe(detail: ErrorDetail): string {
       return 'Écriture refusée : aucun paramètre n’autorise cette instruction (appel de procédure, base de données, déclencheur, compte, fichier, réglage du serveur…).'
     case 'read_write_transaction_read_only':
       return 'Transaction refusée : elle lèverait la lecture seule des sessions (Paramètres, « Sessions en lecture seule »). START TRANSACTION et BEGIN restent possibles.'
+    case 'xa_transaction_unsupported':
+      return 'Requêtes XA non prises en charge par Prisme (transactions distribuées : XA START, XA PREPARE, XA COMMIT…).'
     case 'unparsed_query_refused':
       return 'Requête refusée : Prisme ne sait pas l’analyser, il ne peut donc pas vérifier qu’elle est une lecture.'
     case 'settings_unreadable':

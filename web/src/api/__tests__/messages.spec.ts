@@ -36,6 +36,12 @@ describe('messages of the errors', () => {
     )
   })
 
+  it('refuses the XA statements with their own message', () => {
+    expect(describeError({ code: 'xa_transaction_unsupported' })).toContain(
+      'Requêtes XA non prises en charge par Prisme',
+    )
+  })
+
   it('introduces the answer of the target server, quoted as it is', () => {
     expect(
       describeError({

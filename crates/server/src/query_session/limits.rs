@@ -71,6 +71,7 @@ pub(super) fn write_refusal(
             (!kinds.is_empty()).then_some(ErrorDetail::WriteNotAllowed { kinds })
         }
         StatementKind::Forbidden => Some(ErrorDetail::WriteForbidden),
+        StatementKind::XaTransaction => Some(ErrorDetail::XaTransactionUnsupported),
         StatementKind::Unparsed => Some(ErrorDetail::UnparsedQueryRefused),
     }
 }

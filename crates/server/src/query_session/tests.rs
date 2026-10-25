@@ -340,6 +340,10 @@ fn refuses_the_writes_not_allowed_and_unparsable_queries() {
         refusal("SET GLOBAL TRANSACTION READ WRITE", Some(&WriteKind::ALL)),
         Some(ErrorDetail::WriteForbidden)
     );
+    assert_eq!(
+        refusal("XA START 'x1'", Some(&WriteKind::ALL)),
+        Some(ErrorDetail::XaTransactionUnsupported)
+    );
     // Read-only sessions: no write, whatever is allowed.
     assert_eq!(
         refusal("DELETE FROM t", None),

@@ -27,7 +27,8 @@
 //! the read-only mode of the session (`READ WRITE`, the variables
 //! `transaction_read_only` and `tx_read_only`) stand apart: a read-only
 //! session refuses them. `SET GLOBAL TRANSACTION` changes the whole server:
-//! forbidden.
+//! forbidden. XA transactions (`XA START`...) are refused apart, with their
+//! own message: a prepared one outlives its session and keeps its locks.
 //!
 //! Also tells whether a query can change the current database of the
 //! session (`changes_database`): the session reads it again only then.
@@ -74,6 +75,9 @@ pub enum StatementKind {
     /// Write that no switch allows: procedure call, database, trigger,
     /// account, file, server setting...
     Forbidden,
+    /// Statement of an XA (distributed) transaction, which Prisme does not
+    /// support: a prepared one outlives its session, with its locks.
+    XaTransaction,
     /// Query that cannot be parsed: its nature is unknown.
     Unparsed,
 }
@@ -217,6 +221,7 @@ pub fn classify_with(
             }
             Need::Write(needed) => kinds.extend(needed),
             Need::Forbidden => return StatementKind::Forbidden,
+            Need::Xa => return StatementKind::XaTransaction,
         }
     }
     match transaction {
@@ -244,6 +249,8 @@ enum Need {
     Write(Vec<WriteKind>),
     /// What no switch allows.
     Forbidden,
+    /// Nothing: an XA transaction, which Prisme refuses.
+    Xa,
 }
 
 /// What a statement needs; `temporary` tells the temporary tables of the
@@ -270,6 +277,7 @@ fn need(statement: &Parsed, temporary: &dyn Fn(&TableName) -> bool) -> Need {
         Parsed::MySql(MySqlStatement::EndTransaction { .. }) => {
             Need::Transaction { read_write: false }
         }
+        Parsed::MySql(MySqlStatement::Xa) => Need::Xa,
         Parsed::MySql(statement) => mysql_write_kind(statement, temporary)
             .map_or(Need::Forbidden, |kind| Need::Write(vec![kind])),
     }
@@ -467,7 +475,8 @@ fn mysql_write_kind(
         ),
         MySqlStatement::SetTransaction { .. }
         | MySqlStatement::StartTransaction { .. }
-        | MySqlStatement::EndTransaction { .. } => return None,
+        | MySqlStatement::EndTransaction { .. }
+        | MySqlStatement::Xa => return None,
     })
 }
 
@@ -871,6 +880,14 @@ mod tests {
                 StatementKind::ReadWriteTransaction,
                 "query: {sql}"
             );
+        }
+        // XA transactions are refused, whatever else the text holds.
+        for sql in [
+            "XA START 'x1'",
+            "SELECT 1; XA RECOVER",
+            "DELETE FROM t; XA END 'x1'",
+        ] {
+            assert_eq!(kind(sql), StatementKind::XaTransaction, "query: {sql}");
         }
         // A write in the text needs its switch.
         assert_eq!(

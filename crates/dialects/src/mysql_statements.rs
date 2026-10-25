@@ -3,8 +3,9 @@
 //! (`CREATE EVENT`, `ALTER EVENT`, `DROP EVENT`), the operations of
 //! `ALTER TABLE` on an existing index (`ALTER INDEX i VISIBLE`, MariaDB's
 //! `IGNORED`, `RENAME KEY i TO j`, `DROP KEY i`),
-//! `START TRANSACTION WITH CONSISTENT SNAPSHOT`, and the `RELEASE` of
-//! `COMMIT` and `ROLLBACK`. Also
+//! `START TRANSACTION WITH CONSISTENT SNAPSHOT`, the `RELEASE` of
+//! `COMMIT` and `ROLLBACK`, and the statements of XA transactions, only
+//! recognised, as Prisme refuses them. Also
 //! `SET [GLOBAL | SESSION | LOCAL] TRANSACTION`, which `sqlparser` parses
 //! without its scope: `SET GLOBAL TRANSACTION READ WRITE`, a setting of the
 //! whole server, would read as `SET TRANSACTION READ WRITE`.
@@ -109,6 +110,10 @@ pub enum MySqlStatement {
         /// `RELEASE`: the server closes the connection after the transaction.
         release: bool,
     },
+    /// Statement of an XA (distributed) transaction: `XA START`, `XA END`,
+    /// `XA PREPARE`, `XA COMMIT`, `XA ROLLBACK`, `XA RECOVER`. Only its verb is
+    /// read: Prisme refuses it.
+    Xa,
 }
 
 /// Parses a routine or an event at the position of the parser: `None`
@@ -252,6 +257,24 @@ fn end_transaction(parser: &mut Parser) -> Result<MySqlStatement, ParserError> {
     };
     expect_end(parser)?;
     Ok(MySqlStatement::EndTransaction { release })
+}
+
+/// Verbs of the XA statements, after `XA`.
+const XA_VERBS: [&str; 7] = [
+    "START", "BEGIN", "END", "PREPARE", "COMMIT", "ROLLBACK", "RECOVER",
+];
+
+/// Recognises a statement of an XA transaction at the position of the
+/// parser, up to its end. Called after `sqlparser` failed: `None` (nothing
+/// consumed) if the statement does not start with `XA` and its verb.
+pub(crate) fn parse_xa(parser: &mut Parser) -> Option<Result<MySqlStatement, ParserError>> {
+    if !(word_is(parser, 0, "XA") && XA_VERBS.iter().any(|verb| word_is(parser, 1, verb))) {
+        return None;
+    }
+    while !matches!(parser.peek_token_ref().token, Token::SemiColon | Token::EOF) {
+        parser.advance_token();
+    }
+    Some(Ok(MySqlStatement::Xa))
 }
 
 /// `ALTER TABLE` after its keywords: `[IF EXISTS] name operation, ...`.
@@ -697,9 +720,8 @@ mod tests {
             | MySqlStatement::AlterTable { name } => name.to_string(),
             MySqlStatement::SetTransaction { .. }
             | MySqlStatement::StartTransaction { .. }
-            | MySqlStatement::EndTransaction { .. } => {
-                panic!("a statement without a name: {statement:?}")
-            }
+            | MySqlStatement::EndTransaction { .. }
+            | MySqlStatement::Xa => panic!("a statement without a name: {statement:?}"),
         }
     }
 
@@ -863,6 +885,26 @@ mod tests {
         // Refused by MySQL 8.4.11 and MariaDB 11.4.2 (error 1064).
         error_of("COMMIT AND CHAIN RELEASE");
         error_of("ROLLBACK TO SAVEPOINT s RELEASE");
+    }
+
+    #[test]
+    fn recognises_the_xa_statements() {
+        for sql in [
+            "XA START 'x1'",
+            "XA BEGIN 'x1', 'b', 1 JOIN",
+            "XA END 'x1' SUSPEND FOR MIGRATE",
+            "XA PREPARE 'x1'",
+            "xa commit 'x1' ONE PHASE",
+            "XA ROLLBACK 'x1'",
+            "XA RECOVER CONVERT XID",
+        ] {
+            assert_eq!(parsed(sql), MySqlStatement::Xa, "{sql}");
+        }
+        assert!(matches!(
+            parse_statements("XA START 'x1'; SELECT 1", Dialect::MySql).as_deref(),
+            Ok([Parsed::MySql(MySqlStatement::Xa), Parsed::Sql(_)])
+        ));
+        error_of("XA SOMETHING");
     }
 
     #[test]

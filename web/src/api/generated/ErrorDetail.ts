@@ -152,6 +152,7 @@ export type ErrorDetail =
   }
   | { "code": "write_forbidden" }
   | { "code": "read_write_transaction_read_only" }
+  | { "code": "xa_transaction_unsupported" }
   | { "code": "unparsed_query_refused" }
   | { "code": "settings_unreadable" }
   | {
