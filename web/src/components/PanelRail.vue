@@ -3,8 +3,9 @@
   the whole edge, with the icon that opens the panel again and its title
   (vertical on a side, horizontal at the bottom). The whole rail is the
   button. Its icon stands where the header of the open panel shows its fold
-  button: a control's height below the panel's padding on a side, after
-  the panel's padding at the bottom.
+  button: a control's height below the panel's padding on a side; at the
+  bottom, at the right end, before the panel's padding, the title at the
+  left end.
 -->
 <script setup lang="ts">
 import { PanelBottomOpen, PanelLeftOpen, PanelRightOpen } from '@lucide/vue'
@@ -90,11 +91,14 @@ const ICONS = {
     border-inline-start: var(--line-width) solid var(--line);
   }
 
-  /* At the bottom: along the whole width, the title on the line; the line
-     above is that of the splitter's handle. */
+  /* At the bottom: along the whole width, the title at the left end, the
+     icon at the right end; the line above is that of the splitter's
+     handle. */
   &.bottom {
+    flex-direction: row-reverse;
+    justify-content: space-between;
     block-size: var(--rail-size);
-    padding-inline-start: --spacing(3);
+    padding-inline: --spacing(3);
   }
 }
 
