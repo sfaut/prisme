@@ -25,7 +25,7 @@ describe('SqlEditor', () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mysql',
-        schema: {},
+        schemas: [],
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
@@ -44,7 +44,7 @@ describe('SqlEditor', () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mysql',
-        schema: {},
+        schemas: [],
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
@@ -61,7 +61,7 @@ describe('SqlEditor', () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mysql',
-        schema: {},
+        schemas: [],
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
@@ -81,7 +81,7 @@ describe('SqlEditor', () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mysql',
-        schema: {},
+        schemas: [],
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
@@ -104,7 +104,7 @@ describe('SqlEditor', () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mysql',
-        schema: {},
+        schemas: [],
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
@@ -125,7 +125,7 @@ describe('SqlEditor', () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mysql',
-        schema: {},
+        schemas: [],
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
@@ -148,7 +148,7 @@ describe('SqlEditor', () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mysql',
-        schema: {},
+        schemas: [],
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
@@ -178,7 +178,7 @@ describe('SqlEditor', () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mysql',
-        schema: {},
+        schemas: [],
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
@@ -203,7 +203,7 @@ describe('SqlEditor', () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mysql',
-        schema: {},
+        schemas: [],
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
@@ -240,7 +240,7 @@ describe('SqlEditor', () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mysql',
-        schema: {},
+        schemas: [],
         version: null,
         ansiQuotes: false,
         defaultSchema: null,
@@ -272,7 +272,7 @@ describe('SqlEditor', () => {
     const wrapper = mount(SqlEditor, {
       props: {
         flavor: 'mariadb',
-        schema: {},
+        schemas: [],
         version: null,
         ansiQuotes: false,
         defaultSchema: null,

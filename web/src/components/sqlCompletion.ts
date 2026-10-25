@@ -8,9 +8,9 @@
  * `table.` or `alias.`. Each option shows its nature (database, table, view,
  * function, procedure) or, for a column, its type.
  *
- * A name that is not a plain identifier (space, dash, leading digit...) is
- * inserted quoted: double quotes if the `ANSI_QUOTES` mode is active on the
- * session, backticks otherwise.
+ * A name that is not a plain identifier (space, dash, leading digit...) or
+ * that is a reserved word of the server is inserted quoted: double quotes if
+ * the `ANSI_QUOTES` mode is active on the session, backticks otherwise.
  */
 
 import type { Completion } from '@codemirror/autocomplete'
@@ -30,27 +30,43 @@ import { displayedType, quoteIdentifier, upperType } from './navigatorNodes'
  * which it only applies to the names it receives as plain strings: the names
  * given here as `Completion` objects are quoted by Prisme.
  */
-const PLAIN_IDENTIFIER = /^[a-z_$\xa1-\uffff][\w$\xa1-\uffff]*$/i
+const PLAIN_IDENTIFIER = /^[a-z_$\xa1-￿][\w$\xa1-￿]*$/i
+
+/**
+ * How the names of the completion are quoted.
+ */
+interface Quoting {
+  /**
+   * Is the `ANSI_QUOTES` mode active on the session?
+   */
+  ansiQuotes: boolean
+  /**
+   * Reserved words of the server, in capitals. A name that is one is quoted,
+   * even after a dot, where the server would accept it bare: quotes keep it
+   * valid everywhere.
+   */
+  reserved: ReadonlySet<string>
+}
 
 /**
  * Completion option of a name, quoted on insertion if it is not a plain
- * identifier.
+ * identifier or if it is a reserved word.
  *
  * Workaround: `lang-sql` does not quote the names given as `Completion`
  * objects (`docs/DEVELOPER.md`, section "Workarounds").
  *
  * @param name Offered name.
- * @param ansiQuotes Is the `ANSI_QUOTES` mode active on the session?
+ * @param quoting How the names are quoted.
  * @param rest Nature and detail of the option.
  */
 function nameCompletion(
   name: string,
-  ansiQuotes: boolean,
+  quoting: Quoting,
   rest: Omit<Completion, 'label'>,
 ): Completion {
   const completion: Completion = { label: name, ...rest }
-  if (!PLAIN_IDENTIFIER.test(name)) {
-    completion.apply = quoteIdentifier(name, ansiQuotes)
+  if (!PLAIN_IDENTIFIER.test(name) || quoting.reserved.has(name.toUpperCase())) {
+    completion.apply = quoteIdentifier(name, quoting.ansiQuotes)
   }
   return completion
 }
@@ -61,19 +77,27 @@ function nameCompletion(
  *
  * @param schemas Databases of the catalog.
  * @param ansiQuotes Is the `ANSI_QUOTES` mode active on the session?
+ * @param reserved
+ *     Reserved words of the server, in capitals; none while they are not
+ *     received.
  */
-export function completionSchema(schemas: CatalogSchema[], ansiQuotes = false): SQLNamespace {
+export function completionSchema(
+  schemas: CatalogSchema[],
+  ansiQuotes = false,
+  reserved: ReadonlySet<string> = new Set(),
+): SQLNamespace {
+  const quoting: Quoting = { ansiQuotes, reserved }
   const namespace: Record<string, SQLNamespace> = {}
   for (const schema of schemas) {
     const children: Record<string, SQLNamespace> = {}
     for (const table of schema.tables ?? []) {
-      children[table.name] = tableNamespace(table, ansiQuotes)
+      children[table.name] = tableNamespace(table, quoting)
     }
     for (const routine of schema.routines ?? []) {
-      children[routine.name] = routineNamespace(routine, ansiQuotes)
+      children[routine.name] = routineNamespace(routine, quoting)
     }
     namespace[schema.name] = {
-      self: nameCompletion(schema.name, ansiQuotes, { type: 'namespace', detail: 'base' }),
+      self: nameCompletion(schema.name, quoting, { type: 'namespace', detail: 'base' }),
       children,
     }
   }
@@ -84,11 +108,11 @@ export function completionSchema(schemas: CatalogSchema[], ansiQuotes = false): 
  * Namespace of a stored function or procedure: its name only.
  *
  * @param routine Routine of the catalog.
- * @param ansiQuotes Is the `ANSI_QUOTES` mode active on the session?
+ * @param quoting How the names are quoted.
  */
-function routineNamespace(routine: RoutineInfo, ansiQuotes: boolean): SQLNamespace {
+function routineNamespace(routine: RoutineInfo, quoting: Quoting): SQLNamespace {
   return {
-    self: nameCompletion(routine.name, ansiQuotes, {
+    self: nameCompletion(routine.name, quoting, {
       type: 'function',
       detail: routine.kind === 'function' ? 'fonction' : 'procédure',
     }),
@@ -100,16 +124,16 @@ function routineNamespace(routine: RoutineInfo, ansiQuotes: boolean): SQLNamespa
  * Namespace of a table or a view: the table itself, then its columns with their type.
  *
  * @param table Table or view of the catalog.
- * @param ansiQuotes Is the `ANSI_QUOTES` mode active on the session?
+ * @param quoting How the names are quoted.
  */
-function tableNamespace(table: CatalogTable, ansiQuotes: boolean): SQLNamespace {
+function tableNamespace(table: CatalogTable, quoting: Quoting): SQLNamespace {
   return {
-    self: nameCompletion(table.name, ansiQuotes, {
+    self: nameCompletion(table.name, quoting, {
       type: 'type',
       detail: table.kind === 'table' ? 'table' : 'vue',
     }),
     children: (table.details?.columns ?? []).map((column) =>
-      nameCompletion(column.name, ansiQuotes, {
+      nameCompletion(column.name, quoting, {
         type: 'property',
         detail: upperType(displayedType(column.column_type)),
       }),

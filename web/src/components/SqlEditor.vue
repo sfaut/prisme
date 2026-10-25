@@ -28,11 +28,11 @@
 import { autocompletion } from '@codemirror/autocomplete'
 import { LanguageSupport } from '@codemirror/language'
 import { type Diagnostic, setDiagnostics } from '@codemirror/lint'
-import { MariaSQL, MySQL, type SQLNamespace, schemaCompletionSource } from '@codemirror/lang-sql'
+import { MariaSQL, MySQL, schemaCompletionSource } from '@codemirror/lang-sql'
 import { type ChangeSpec, Compartment } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
 import { EditorView } from 'codemirror'
-import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, shallowRef, useTemplateRef, watch } from 'vue'
 
 import { analyzeSql } from '@/api/analyze'
 import type { DialectKeywords } from '@/api/generated/DialectKeywords'
@@ -40,6 +40,7 @@ import type { Flavor } from '@/api/generated/Flavor'
 import type { SelectionRange } from '@/api/generated/SelectionRange'
 import { fetchKeywords } from '@/api/keywords'
 import { describe } from '@/api/messages'
+import type { CatalogSchema } from '@/stores/catalog'
 
 import { currentStatement, setStatements } from './currentStatement'
 import {
@@ -51,6 +52,7 @@ import {
 import { scrollKeymap } from './editorScroll'
 import { editorTheme } from './editorTheme'
 import { trimTrailingBlanks } from './editorTrim'
+import { completionSchema } from './sqlCompletion'
 import { editorDialect } from './sqlDialect'
 import { sqlSetup } from './sqlSetup'
 
@@ -69,9 +71,10 @@ const props = defineProps<{
    */
   ansiQuotes: boolean
   /**
-   * Databases, tables and columns offered by completion.
+   * Databases of the connection's catalog: their tables and columns are
+   * offered by completion.
    */
-  schema: SQLNamespace
+  schemas: CatalogSchema[]
   /**
    * Current database: its tables complete without a prefix. `null` if none.
    */
@@ -177,6 +180,18 @@ async function analyze(): Promise<void> {
 let keywords: DialectKeywords | null = null
 
 /**
+ * Reserved words of the server's dialect and version, in capitals: a name of
+ * the catalog that is one is quoted by completion. None as long as the
+ * keywords are not received.
+ */
+const reserved = shallowRef<ReadonlySet<string>>(new Set())
+
+/**
+ * Databases, tables and columns offered by completion, quoted when needed.
+ */
+const completion = computed(() => completionSchema(props.schemas, props.ansiQuotes, reserved.value))
+
+/**
  * Number of the last keywords request: an answer that arrives after a newer
  * request is ignored, as it may describe another dialect or version.
  */
@@ -194,6 +209,7 @@ async function loadKeywords(): Promise<void> {
       return
     }
     keywords = received
+    reserved.value = new Set(received.reserved)
     view?.dispatch({ effects: language.reconfigure(currentLanguage()) })
   } catch {
     // Server unreachable: lang-sql's highlighting stays in place.
@@ -212,7 +228,7 @@ function currentLanguage(): LanguageSupport {
   // (`docs/DEVELOPER.md`, section "Workarounds").
   const names = schemaCompletionSource({
     dialect,
-    schema: props.schema,
+    schema: completion.value,
     defaultSchema: props.defaultSchema ?? undefined,
   })
   return new LanguageSupport(dialect.language, [dialect.language.data.of({ autocomplete: names })])
@@ -282,7 +298,7 @@ watch(text, (value) => {
 })
 
 watch(
-  () => [props.flavor, props.ansiQuotes, props.schema, props.defaultSchema],
+  () => [props.flavor, props.ansiQuotes, completion.value, props.defaultSchema],
   () => view?.dispatch({ effects: language.reconfigure(currentLanguage()) }),
 )
 

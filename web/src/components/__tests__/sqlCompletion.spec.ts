@@ -37,6 +37,47 @@ describe('completionSchema', () => {
     expect(names['t1']!.self.apply).toBeUndefined()
   })
 
+  it('quotes the names that are reserved words of the server, whatever their case', () => {
+    const schemas: CatalogSchema[] = [
+      {
+        name: 'shop',
+        tables: [
+          {
+            name: 'order',
+            kind: 'table',
+            details: {
+              table: 'order',
+              columns: ['Select', 'total'].map((name) => ({
+                name,
+                column_type: 'int',
+                nullable: false,
+                key: '',
+                auto_increment: false,
+              })),
+              indexes: [],
+              foreign_keys: [],
+              triggers: [],
+            },
+          },
+        ],
+        routines: [],
+        events: [],
+      },
+    ]
+    const namespace = completionSchema(schemas, false, new Set(['ORDER', 'SELECT']))
+    expect(namespace).toMatchObject({
+      shop: {
+        children: {
+          order: {
+            self: { label: 'order', apply: '`order`' },
+            children: [{ label: 'Select', apply: '`Select`' }, { label: 'total' }],
+          },
+        },
+      },
+    })
+    expect(namespace).not.toHaveProperty(['shop', 'children', 'order', 'children', 1, 'apply'])
+  })
+
   it('offers databases, tables, columns and routines with their nature, even with an incomplete catalog', () => {
     const schemas: CatalogSchema[] = [
       {

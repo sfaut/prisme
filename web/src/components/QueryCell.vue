@@ -87,7 +87,6 @@ import { movedItems, useTabDrag } from './tabDrag'
 import { selectAllQuery } from './navigatorNodes'
 import { indexOperations } from './indexOperations'
 import { type Appending, appendBlock, appendQuery } from './queryAppend'
-import { completionSchema } from './sqlCompletion'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
 import UiSelect from './ui/UiSelect.vue'
@@ -530,15 +529,10 @@ function changeDatabaseWhenReady(database: string): void {
 }
 
 /**
- * Databases, tables and columns offered by the editor's completion, after
- * the connection's catalog (loaded by the navigator).
+ * Databases of the connection's catalog (loaded by the navigator), offered
+ * by the editor's completion.
  */
-const completion = computed(() =>
-  completionSchema(
-    catalog.catalogOf(props.connection.id)?.schemas ?? [],
-    state.server?.ansi_quotes ?? false,
-  ),
-)
+const catalogSchemas = computed(() => catalog.catalogOf(props.connection.id)?.schemas ?? [])
 
 /**
  * Is the connection's catalog fully loaded? Without it, the beautifier
@@ -744,7 +738,7 @@ defineExpose({
           :flavor="state.server?.flavor ?? 'mysql'"
           :version="state.server?.version ?? null"
           :ansi-quotes="state.server?.ansi_quotes ?? false"
-          :schema="completion"
+          :schemas="catalogSchemas"
           :default-schema="state.database"
           :indent-size="indentSize"
           @run="run"
