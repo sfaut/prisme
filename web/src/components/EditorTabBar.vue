@@ -5,8 +5,8 @@
 
   - Label: the name given by the user, otherwise the name of the editor's
     connection; a double click renames it (`TabLabel`).
-  - Cross (or middle click): closes the editor; it can be reopened for
-    24 hours from the "Rouvrir" menu.
+  - Cross (or middle click): asks to close the editor (`close`); it can
+    be reopened for 24 hours from the "Rouvrir" menu.
   - Dragging a tab moves it, like a column of the grid.
   - "+" opens a new editor, on the connection of the active editor.
   - At the right end, the button that reopens a closed editor, then the
@@ -30,6 +30,14 @@ import UiButton from './ui/UiButton.vue'
 import UiDropdownMenu from './ui/UiDropdownMenu.vue'
 import type { MenuItem } from './ui/menuItem'
 import { vTooltip } from './ui/tooltip'
+
+const emit = defineEmits<{
+  /**
+   * The user asks to close an editor: `App.vue` asks first for a
+   * confirmation if its transaction is open.
+   */
+  close: [editorId: number]
+}>()
 
 const editors = useEditorsStore()
 const connections = useConnectionsStore()
@@ -92,7 +100,7 @@ const reopenItems = computed<MenuItem[]>(() => {
         :drag="tabDrag"
         close-label="Fermer l’éditeur"
         close-tooltip="Fermer l’éditeur (rouvrable pendant 24 heures)"
-        @close="editors.close(editor.id)"
+        @close="emit('close', editor.id)"
       >
         <tab-label
           :name="editor.name === '' ? null : editor.name"

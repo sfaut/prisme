@@ -23,7 +23,9 @@
   "Déconnecter" closes its session, which any of these actions on its source
   opens again. The cells of all the editors stay mounted: each one keeps its
   session (and its transactions) open, even when another editor is
-  displayed.
+  displayed. "Déconnecter", or closing an editor, while a transaction is
+  open on its session asks for a confirmation first: closing the session
+  rolls the transaction back.
 
   Transient messages (`notify`) show at the bottom right (`UiToaster`); the
   tooltips of every element (`v-tooltip`), in a single bubble (`UiTooltip`).
@@ -51,6 +53,8 @@ import QueryCell from './components/QueryCell.vue'
 import PanelRail from './components/PanelRail.vue'
 import SplitHandle from './components/SplitHandle.vue'
 import UiAlert from './components/ui/UiAlert.vue'
+import UiButton from './components/ui/UiButton.vue'
+import UiDialog from './components/ui/UiDialog.vue'
 import UiToaster from './components/ui/UiToaster.vue'
 import UiTooltip from './components/ui/UiTooltip.vue'
 import { cssPixels } from './cssLength'
@@ -168,6 +172,23 @@ const databases = ref<Record<number, string | null>>({})
  * "Déconnecter" in the navigator.
  */
 const statuses = ref<Record<number, SessionStatus>>({})
+
+/**
+ * Is a transaction open on each editor's session?
+ */
+const transactions = ref<Record<number, boolean>>({})
+
+/**
+ * Ending of a session whose transaction is open, last asked for:
+ * "Déconnecter" or closing of the editor. Kept after the confirmation
+ * window closes, which keeps its texts while it fades out.
+ */
+const ending = ref<{ editorId: number; action: 'disconnect' | 'close' } | null>(null)
+
+/**
+ * Is the confirmation window of `ending` open?
+ */
+const endingOpen = ref(false)
 
 /**
  * Stage of the active editor's session, `null` without a session (no editor,
@@ -393,11 +414,46 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
 }
 
 /**
- * Closes the session of the active editor ("Déconnecter" of the navigator).
+ * Closes the session of the active editor ("Déconnecter" of the navigator),
+ * after a confirmation if its transaction is open.
  */
 function disconnect(): void {
-  if (editors.activeId !== null) {
-    void cells.get(editors.activeId)?.disconnect()
+  const editorId = editors.activeId
+  if (editorId === null) {
+    return
+  }
+  if (transactions.value[editorId]) {
+    ending.value = { editorId, action: 'disconnect' }
+    endingOpen.value = true
+  } else {
+    void cells.get(editorId)?.disconnect()
+  }
+}
+
+/**
+ * Closes an editor, after a confirmation if its transaction is open.
+ *
+ * @param editorId Id of the editor.
+ */
+function closeEditor(editorId: number): void {
+  if (transactions.value[editorId]) {
+    ending.value = { editorId, action: 'close' }
+    endingOpen.value = true
+  } else {
+    void editors.close(editorId)
+  }
+}
+
+/**
+ * Ends the session the user confirmed to end: its transaction is rolled back.
+ */
+function confirmEnding(): void {
+  const confirmed = ending.value
+  endingOpen.value = false
+  if (confirmed?.action === 'disconnect') {
+    void cells.get(confirmed.editorId)?.disconnect()
+  } else if (confirmed?.action === 'close') {
+    void editors.close(confirmed.editorId)
   }
 }
 
@@ -480,7 +536,7 @@ function selectSource(connectionId: number): void {
                 class="flex min-h-0 flex-1 flex-col"
               >
                 <div class="flex px-3">
-                  <editor-tab-bar class="flex-1">
+                  <editor-tab-bar class="flex-1" @close="closeEditor">
                     <template #actions>
                       <div ref="editorActions" class="contents" />
                     </template>
@@ -512,6 +568,7 @@ function selectSource(connectionId: number): void {
                     @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
                     @database="(database) => (databases[editor.id] = database)"
                     @status="(status) => followStatus(editor.id, status)"
+                    @transaction="(open) => (transactions[editor.id] = open)"
                   />
                   <div v-else class="flex max-w-xs flex-col items-center gap-2 text-center">
                     <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
@@ -586,5 +643,26 @@ function selectSource(connectionId: number): void {
     </splitter-group>
   </div>
   <ui-toaster />
+  <ui-dialog
+    v-model:open="endingOpen"
+    :title="ending?.action === 'close' ? 'Fermer l’éditeur' : 'Déconnecter la session'"
+    description="Une transaction est ouverte sur la session."
+  >
+    <p class="text-fg-muted">
+      Fermer la session annule la transaction (ROLLBACK) : ses modifications non validées sont
+      perdues. Pour les garder, exécuter d’abord COMMIT.
+    </p>
+    <template #footer>
+      <div class="flex w-full justify-end gap-2">
+        <ui-button label="Annuler" @click="endingOpen = false" />
+        <ui-button
+          :label="ending?.action === 'close' ? 'Fermer et annuler' : 'Déconnecter et annuler'"
+          variant="solid"
+          tone="error"
+          @click="confirmEnding"
+        />
+      </div>
+    </template>
+  </ui-dialog>
   <ui-tooltip />
 </template>

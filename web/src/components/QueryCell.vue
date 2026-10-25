@@ -138,6 +138,10 @@ const emit = defineEmits<{
    * The stage of the session has changed (opening, ready, running, closed).
    */
   status: [status: SessionStatus]
+  /**
+   * A transaction opened (`true`) or ended on the session.
+   */
+  transaction: [open: boolean]
 }>()
 
 /**
@@ -652,6 +656,12 @@ watch(
 watch(
   () => state.status,
   (status) => emit('status', status),
+  { immediate: true },
+)
+
+watch(
+  () => state.transaction,
+  (open) => emit('transaction', open),
   { immediate: true },
 )
 

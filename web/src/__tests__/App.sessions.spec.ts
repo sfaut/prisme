@@ -61,6 +61,36 @@ const ClosedCell = defineComponent({
 })
 
 /**
+ * Number of sessions closed by "Déconnecter".
+ */
+let disconnects = 0
+
+/**
+ * Number of cells mounted with a transaction open.
+ */
+let transactionCells = 0
+
+/**
+ * Cell whose session is ready, with a transaction open.
+ */
+const TransactionCell = defineComponent({
+  emits: ['status', 'database', 'transaction'],
+  setup(_, { emit, expose }) {
+    onMounted(() => {
+      emit('status', 'ready')
+      emit('transaction', true)
+      transactionCells += 1
+    })
+    expose({
+      disconnect: async () => {
+        disconnects += 1
+      },
+    })
+    return () => null
+  },
+})
+
+/**
  * Navigator reduced to the events of a source and of a database.
  */
 const Navigator = defineComponent({
@@ -69,6 +99,7 @@ const Navigator = defineComponent({
     return () => [
       h('button', { id: 'select', onClick: () => emit('select', 1) }),
       h('button', { id: 'use', onClick: () => emit('use-database', 1, 'shop') }),
+      h('button', { id: 'disconnect', onClick: () => emit('disconnect') }),
     ]
   },
 })
@@ -77,6 +108,8 @@ beforeEach(() => {
   setActivePinia(createPinia())
   openings = []
   changes = []
+  disconnects = 0
+  transactionCells = 0
 })
 
 afterEach(() => {
@@ -110,6 +143,40 @@ describe('App, closed session', () => {
     // Forgotten once used: the next opening is on the connection's database.
     await wrapper.find('#select').trigger('click')
     await vi.waitFor(() => expect(openings).toEqual([null, 'shop', null]))
+    wrapper.unmount()
+  })
+})
+
+describe('App, open transaction', () => {
+  /**
+   * Button of the confirmation window, found by its label.
+   *
+   * @param label Label of the button.
+   */
+  function dialogButton(label: string): HTMLButtonElement | undefined {
+    return [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
+      (button) => button.textContent?.trim() === label,
+    )
+  }
+
+  it('asks for a confirmation before disconnecting the session', async () => {
+    const wrapper = mount(App, {
+      attachTo: document.body,
+      global: { stubs: { QueryCell: TransactionCell, ObjectNavigator: Navigator } },
+    })
+    useConnectionsStore().connections = [{ id: 1, name: 'local' } as ConnectionSummary]
+    await vi.waitFor(() => expect(transactionCells).toBe(1))
+
+    await wrapper.find('#disconnect').trigger('click')
+    await vi.waitFor(() => expect(dialogButton('Annuler')).toBeDefined())
+    dialogButton('Annuler')!.click()
+    await vi.waitFor(() => expect(dialogButton('Annuler')).toBeUndefined())
+    expect(disconnects).toBe(0)
+
+    await wrapper.find('#disconnect').trigger('click')
+    await vi.waitFor(() => expect(dialogButton('Déconnecter et annuler')).toBeDefined())
+    dialogButton('Déconnecter et annuler')!.click()
+    await vi.waitFor(() => expect(disconnects).toBe(1))
     wrapper.unmount()
   })
 })
