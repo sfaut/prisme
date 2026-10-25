@@ -111,7 +111,7 @@ const laidOut = ref(false)
 /**
  * After a resize of a foldable panel, gives its state to its store: open
  * unless folded, from Reka UI's `isCollapsed`. Its `collapse` event misses a
- * fold by a drag (`docs/DEVELOPER.md`, section "Worked-around bugs").
+ * fold by a drag (`docs/DEVELOPER.md`, section "Workarounds").
  *
  * @param panel Panel of the splitter.
  * @param setOpen Sets the state in the store.
