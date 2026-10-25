@@ -116,7 +116,7 @@ The graph can be exported as an image **[decided, to note]**: SVG (vector, selec
 
 ## 8. Open questions
 
-1. **Volume of the tables**: `TABLE_ROWS` for MySQL / MariaDB **[decided]**, read with the other objects of the catalog, shown as an estimate (« ≈ N lignes »). Its cost when the tables are cold is measured in section 9.2. Later: `reltuples` (PostgreSQL, an estimate), `COUNT(*)` (SQLite, exact but costly).
+1. **Volume of the tables**: `TABLE_ROWS` for MySQL / MariaDB **[decided]**, read with the other objects of the catalog, shown as an estimate (« ≈ N lignes »). Its cost when the tables are cold (section 9.2) is accepted: the counts stay in the catalog's own query, as the server gives them. Later: `reltuples` (PostgreSQL, an estimate), `COUNT(*)` (SQLite, exact but costly).
 2. **Rendering**: Vue Flow + d3-force, prototype built (section 9); its performance on hundreds of tables is still to measure before deciding.
 3. **Place in the interface**: the « Visualiseur d’objets », in the right sidebar, in place of the data explorer **[decided]**; it shows the active source.
 4. **Saved positions**: per database, per exploration, per user? What happens to a saved position when a table is dropped or renamed?
@@ -130,7 +130,7 @@ The prototype lives on the branch `object-visualizer`, apart from `master` until
 
 ### 9.1 What it does
 
-The « Visualiseur d’objets » (`web/src/components/ObjectVisualizer.vue`) shares the right sidebar with the data explorer: one or the other is open, each with a button to switch to the other. It shows the tables of the active source, system databases left out.
+The « Visualiseur d’objets » (`web/src/components/ObjectVisualizer.vue`) shares the right sidebar with the data explorer: one or the other is open, each with a button to switch to the other. It shows the tables of the active source. System databases (`mysql`, `sys`, `information_schema`, `performance_schema`) are hidden, whatever the setting of the connection in the navigator **[decided]**: hundreds of tables without foreign keys.
 
 - **Tables**: colored by database (`--graph-1` to `--graph-6`), in one of two formats, switched by a button of the toolbar:
   - label (by default): the name inside a rounded box, its text scaled by `sqrt(r / 8)`, where `r` is the radius of the disc below (1 to 2.8 times the small size);
