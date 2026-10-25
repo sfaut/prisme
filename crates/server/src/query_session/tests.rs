@@ -162,6 +162,13 @@ async fn run_transaction(socket: &mut ClientSocket, sql: &str) -> (Vec<Value>, V
     }
 }
 
+/// Runs all the queries of `sql`, without a cursor, and returns the number
+/// of rows of each one.
+async fn run_all_rows(socket: &mut ClientSocket, sql: &str) -> Vec<usize> {
+    let (_, results) = run(socket, json!({ "sql": sql })).await;
+    results.iter().map(|result| result.rows).collect()
+}
+
 /// Runs the query under the cursor (here, the only text sent) and returns its result.
 async fn run_one(socket: &mut ClientSocket, sql: &str, row_limit: Option<u32>) -> Received {
     let mut request = json!({ "sql": sql, "cursor": 0 });
@@ -822,4 +829,26 @@ async fn editor_session_tells_its_open_transaction() {
         run_transaction(&mut socket, "COMMIT").await,
         (vec![json!(false)], Value::Null)
     );
+}
+
+#[tokio::test]
+#[ignore = "requires Docker Desktop running"]
+async fn runs_all_in_sequence_while_a_transaction_is_open() {
+    let server = Mariadb::default().start().await.unwrap();
+    let host = server.get_host().await.unwrap().to_string();
+    let port = server.get_host_port_ipv4(3306).await.unwrap();
+    let (address, _, editor_id) = start(&host, port).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    next_json(&mut socket).await;
+    // A variable of the session's connection, which the extra connections
+    // of a parallel run do not have.
+    run_one(&mut socket, "SET @x = 42", None).await;
+    let reads = "SELECT 1 FROM DUAL WHERE @x = 42; SELECT 2 FROM DUAL WHERE @x = 42";
+    assert_eq!(run_all_rows(&mut socket, reads).await, [0, 0]);
+
+    run_transaction(&mut socket, "START TRANSACTION").await;
+    assert_eq!(run_all_rows(&mut socket, reads).await, [1, 1]);
+    run_transaction(&mut socket, "COMMIT").await;
+    assert_eq!(run_all_rows(&mut socket, reads).await, [0, 0]);
 }

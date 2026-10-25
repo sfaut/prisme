@@ -264,9 +264,10 @@ impl Session<'_> {
 
     /// Handles a request of the client: splits the text, then runs the query
     /// under the cursor, or the queries of the selection (or only their
-    /// selected text), or all of them: in parallel when they only read,
-    /// otherwise one after the other on the session's connection. A refresh
-    /// runs its query alone, like a cursor at the start.
+    /// selected text), or all of them: in parallel when they only read and no
+    /// transaction is open, otherwise one after the other on the session's
+    /// connection, where the transaction lives. A refresh runs its query
+    /// alone, like a cursor at the start.
     async fn handle(
         &self,
         connection: &mut Connection,
@@ -310,7 +311,7 @@ impl Session<'_> {
         if cursor.is_some() {
             self.run_on_session(connection, dialect, 0, &chosen[0].sql, &limits)
                 .await?;
-        } else if reads_only(&chosen, dialect) {
+        } else if !self.transaction.load(Ordering::Relaxed) && reads_only(&chosen, dialect) {
             let database = self.current_database();
             self.run_in_parallel(&chosen, dialect, &limits, &database)
                 .await?;

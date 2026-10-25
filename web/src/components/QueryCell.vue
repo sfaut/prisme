@@ -723,7 +723,7 @@ defineExpose({
             v-tooltip="
               stopsAll
                 ? STOP_TIP
-                : 'Toutes les requêtes, ou celles que touche le texte sélectionné (Ctrl-Maj-Entrée) : en parallèle si elles ne font que lire, l’une après l’autre dès qu’une écrit (INSERT, UPDATE, DELETE…)'
+                : 'Toutes les requêtes, ou celles que touche le texte sélectionné (Ctrl-Maj-Entrée) : en parallèle si elles ne font que lire, l’une après l’autre dès qu’une écrit (INSERT, UPDATE, DELETE…) ou qu’une transaction est ouverte'
             "
             label="Exécuter tout"
             :icon="stopsAll ? Square : FastForward"
