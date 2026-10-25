@@ -20,9 +20,10 @@
 
   The navigator acts on the active editor: the chosen source becomes its
   connection, an opened table or a chosen database (`USE`) runs there, and
-  "Déconnecter" closes its session. The cells of all the editors stay
-  mounted: each one keeps its session (and its transactions) open, even when
-  another editor is displayed.
+  "Déconnecter" closes its session, which any of these actions on its source
+  opens again. The cells of all the editors stay mounted: each one keeps its
+  session (and its transactions) open, even when another editor is
+  displayed.
 
   Transient messages (`notify`) show at the bottom right (`UiToaster`); the
   tooltips of every element (`v-tooltip`), in a single bubble (`UiTooltip`).
@@ -257,6 +258,22 @@ watch(
 )
 
 /**
+ * Gives a connection to an editor. Its closed session reopens when the
+ * connection stays the same: choosing its source again in the navigator
+ * reconnects it, like "Reconnecter".
+ *
+ * @param editorId Id of the editor.
+ * @param connectionId Id of the connection.
+ */
+async function connectEditor(editorId: number, connectionId: number): Promise<void> {
+  const editor = editors.editors.find((item) => item.id === editorId)
+  if (editor?.connectionId === connectionId && statuses.value[editorId] === 'closed') {
+    attempts.value[editorId] = (attempts.value[editorId] ?? 0) + 1
+  }
+  await editors.setConnection(editorId, connectionId)
+}
+
+/**
  * Gives a connection to the active editor, then waits for its cell (reopened
  * on this connection) to be mounted.
  *
@@ -268,7 +285,7 @@ async function activeCellOn(connectionId: number) {
   if (!editor) {
     return undefined
   }
-  await editors.setConnection(editor.id, connectionId)
+  await connectEditor(editor.id, connectionId)
   await nextTick()
   return cells.get(editor.id)
 }
@@ -344,7 +361,7 @@ function disconnect(): void {
  */
 function selectSource(connectionId: number): void {
   if (editors.active) {
-    editors.setConnection(editors.active.id, connectionId).catch(report)
+    connectEditor(editors.active.id, connectionId).catch(report)
   }
 }
 </script>
