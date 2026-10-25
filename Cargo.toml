@@ -8,6 +8,6 @@ members = ["crates/*"]
 [workspace.package]
 # Version of Prisme, common to all the crates: it follows the Git tag of the
 # release (v0.1.0 → 0.1.0), like that of web/package.json.
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 license = "MIT"

@@ -2,6 +2,64 @@
 
 Changelogs of the published versions of Prisme, most recent first. Each entry is also the notes of its GitHub release. The interface is in French: its labels are quoted as they appear, with a translation.
 
+## v0.7.0 (2026-10-26)
+
+### 🚀 Launch
+
+We are proud to announce Prisme v0.7.0. This version brings transactions: `START TRANSACTION`, `COMMIT`, `ROLLBACK` and savepoints are always allowed, a **Transaction ouverte** (Transaction open) badge follows the transaction of each editor, and Prisme asks before closing a session whose transaction would be rolled back. The temporary tables get their own write switches, **Exécuter précisément** (Run exactly) runs only the selected text, and the object navigator closes and reopens the editor's session. The interface is laid out with splitters: the side panels, the editors, the results and the console share the room, fold into their rails and remember their sizes.
+
+### ✨ New features
+
+- Transactions:
+  - always allowed, without a switch, read-only sessions included: `START TRANSACTION` (`READ ONLY`, `WITH CONSISTENT SNAPSHOT`), `BEGIN`, `COMMIT`, `ROLLBACK` (`AND [NO] CHAIN`, `[NO] RELEASE`), savepoints, `SET [SESSION] TRANSACTION`, `SET autocommit`. The writes they hold stay under their switches. A read-only session only refuses what would lift its mode: `START TRANSACTION READ WRITE`, `SET TRANSACTION READ WRITE`, and the variables `transaction_read_only` and `tx_read_only`;
+  - a **Transaction ouverte** (Transaction open) badge shows at the end of the editor's buttons while a transaction is open, until its `COMMIT` or `ROLLBACK`, also after a page reload;
+  - while a transaction is open, **Exécuter tout** (Run all) runs every query one after another on the editor's session, reads included, so that they see the transaction;
+  - **Déconnecter** (Disconnect), closing the editor and choosing another source for it ask for a confirmation while a transaction is open, as closing the session rolls it back; the windows that change or delete the connection warn of the transactions open on it;
+  - when the server closes the session's connection (`COMMIT RELEASE`, `completion_type = 2`, `KILL`, restart of the server), the session ends with a message, and **Reconnecter** (Reconnect) opens a new one;
+  - `SET GLOBAL TRANSACTION` is refused, as it changes every session of the server, and so are XA transactions (`XA START`, `XA PREPARE`...), with their own message.
+- Temporary tables: a **Tables temporaires** (Temporary tables) group of write switches allows `CREATE`, `ALTER`, `RENAME` and `DROP` of the temporary tables created by the editor's session, without touching the permanent ones; their data stays under the switches of the data, which now hold `TRUNCATE` too ([#24](https://github.com/sfaut/prisme/issues/24)).
+- SQL editor:
+  - **Exécuter précisément** (Run exactly) runs only the selected text: the part of a query outside the selection does not run ([#23](https://github.com/sfaut/prisme/issues/23));
+  - the `TEMPORARY` keyword is highlighted ([#26](https://github.com/sfaut/prisme/issues/26));
+  - the completion quotes the names that are reserved words (`order`) or start with a digit (`1e5`), which the server would otherwise read as a keyword or a number;
+  - the line numbers stand alone in their gutter, as wide as the row numbers of the grid.
+- Object navigator:
+  - the object explorer is renamed **Navigateur d'objets** (Object navigator) ([#27](https://github.com/sfaut/prisme/issues/27));
+  - **Déconnecter** (Disconnect) closes the editor's session; choosing its source again, or one of its databases or tables, reopens it, directly on the chosen database ([#25](https://github.com/sfaut/prisme/issues/25));
+  - its own icons for showing the content of a table, using a database and the columns of a foreign key.
+- Layout: the object navigator, the editors and the data explorer share the width, and the editors, the results and the console share the height, with splitters that remember their sizes. Each panel folds into its rail by its button, by a drag below its smallest size or by a double click on its line; the console no longer covers the result grid. The fold buttons of the editor, the results and the console stand at the end of their bars, and the refresh and filter buttons of a result move next to its tabs.
+- Console: filters by action, level and source, shown with the funnel button; while hidden, they still apply, and the button says so.
+- Result grid: Ctrl+C on a single cell copies its value alone, without its column name.
+- Servers: each engine has an oldest supported version (MySQL 8.0.11, MariaDB 10.6.3, PostgreSQL 14.0). An older server still works, with a warning in the connection test and in the editor.
+- Look: the badges of the sources are larger, and the status under the grid shows whole, in the small size.
+
+### 🐞 Bug fixes
+
+- After **Reconnecter** (Reconnect), the object navigator no longer keeps the previous session's current database in bold.
+- Choosing a database of a closed session no longer shows the connection's database in bold for a moment ([#25](https://github.com/sfaut/prisme/issues/25)).
+- The fields and grids of a cell keep their left border, and the grip of the editor's line stays whole when the editor is folded.
+
+### 🔒 Security
+
+- The advisory [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) (`braces`), reported in v0.6.0, was withdrawn: `npm audit` reports no advisory.
+
+### ⚙️ Internal improvements
+
+- Dependencies:
+  - `axum-extra` 0.12.6 added, to read the repeated keys of the query strings (console filters);
+  - `@codemirror/commands` 6.11.1 and `@codemirror/search` 6.7.2 become direct dependencies, for the copy of CodeMirror's `basicSetup` without its fold gutter;
+  - the constraints of `web/package.json` follow the installed versions, unchanged;
+  - `rusqlite` stays at 0.40.2: `rusqlite_migration` 2.6.0 does not accept 0.41.0 yet.
+- The interface is sized in lengths relative to the root, the grid's columns and rows included; the few APIs that only take pixels are listed and checked at each release.
+- Every workaround of a dependency is marked in the code and listed in the developer guide, with the drafts of its upstream tickets.
+
+### 📝 Documentation
+
+- README: a section on the transactions, the switches of the temporary tables, and the oldest supported versions.
+- Developer guide: the icons of the interface and their actions, the lengths in pixels and the workarounds.
+- Design notes: `sqlparser` is kept, extended by Prisme for MariaDB, after weighing a parser of its own.
+- Ideas for a graph of the database relations, and the prototype of an object visualizer.
+
 ## v0.6.0 (2026-10-23)
 
 ### 🚀 Launch
