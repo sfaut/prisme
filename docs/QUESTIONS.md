@@ -76,7 +76,7 @@ This document keeps track of the reasoning: what was kept, dropped or postponed,
 
 1. **Result grid**: needs set (compact display, sorting, filtering, selection, copying). Proposal: own component with `@tanstack/vue-virtual` (see `docs/V1.md`, section 3.1). **[to confirm]** Volume test to do.
 2. **`ts-rs` or `specta`** to generate the TypeScript types: settled, `ts-rs`, simpler to read and sufficient.
-3. **MariaDB in `sqlparser-rs`**: check the support, otherwise extend the MySQL dialect.
+3. **MariaDB in `sqlparser-rs`**: settled (2026-10-25). `sqlparser-rs` has no MariaDB dialect and plans none: a syntax specific to one database is read by that database's dialect and by `GenericDialect`, and `MySqlDialect` serves MySQL and MariaDB. Prisme extends the MySQL dialect and tells the two apart itself (`docs/DEVELOPER.md`, section "Workarounds"; question 31).
 4. **DDL**: leave it in the native dialect in v1 (proposal)? **[to confirm]**
 5. **v1 metrics**: which ones exactly (size, estimated row count, cardinality, NULL rate, per-column statistics)? And how often to refresh them?
 6. **Authentication in v1**: settled. The v1 targets the workstation (a single user, `me@local` by default, asked on first launch, without authentication, listening on `127.0.0.1`) and must evolve easily towards a multi-user server. Roles come after the v1 (see `docs/V1.md`, section 2.8).
