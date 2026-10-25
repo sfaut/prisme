@@ -386,6 +386,7 @@ Before each release, the dependencies go to their latest version, major versions
 | Dependency | Version kept | Version tried | Cause | Date |
 |---|---|---|---|---|
 | `typescript` | 6.0 | 7.0.2 | TypeScript 7, rewritten in Go, no longer provides the JavaScript API of the compiler. `vue-tsc` 3.3.11 crashes on start (`ERR_PACKAGE_PATH_NOT_EXPORTED: ./lib/tsc`), its support comes with Vue Language Tools v4 ([language-tools #5381](https://github.com/vuejs/language-tools/issues/5381)). `typescript-eslint` requires TypeScript `>=4.8.4 <6.1.0` ([typescript-eslint #12518](https://github.com/typescript-eslint/typescript-eslint/issues/12518)). Both expect TypeScript 7.1. | 2026-10-20 |
+| `rusqlite` | 0.40.2 | 0.41.0 | `rusqlite_migration` 2.6.0, its latest version, requires `rusqlite` 0.40, and two versions of `rusqlite` cannot live in one build: both link the SQLite library (`libsqlite3-sys`, `links = "sqlite3"`). To try again with a version of `rusqlite_migration` that accepts 0.41. | 2026-10-26 |
 | `json-p3` | 2.3.1 | 3.x | 3.x requires TypeScript 7 as a peer dependency (see `typescript`), and 2.3.2 is published without its TypeScript declarations. Its limits are in [V1.md](V1.md), section 3.1. | 2026-10-20 |
 
 The versions fixed on purpose, for another reason than a failed upgrade, are in "Pinned versions".
@@ -394,9 +395,7 @@ The versions fixed on purpose, for another reason than a failed upgrade, are in 
 
 Security advisories reported by `npm audit` that no update can fix, as no patched version exists. Before each release, they are checked again (process in [CLAUDE.md](../CLAUDE.md), section "Publishing a version"): an entry is removed once a patched version is installed; an advisory missing from this table is new, and is reported before the release.
 
-| Package | Advisory | Path | Exposure | Date |
-|---|---|---|---|---|
-| `braces` 3.0.3 | [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm) (CVE-2026-93687, high): a deeply nested brace pattern exhausts the call stack and stops the Node.js process. Affects every version up to 3.0.3, the latest; no patched version. | `@vue/eslint-config-typescript` → `fast-glob` → `micromatch` → `braces` | None. Development only, when linting: nothing of it gets into the executable. The only pattern it receives is that of the configuration (`**/*.vue`), never outside data. | 2026-10-22 |
+None at the moment. An entry gives the package and its version, the advisory, the path of the dependency, the exposure of Prisme and the date.
 
 ## Workarounds
 
