@@ -191,6 +191,6 @@ const durations = computed(() => {
         <template v-if="durations">&nbsp;· {{ durations }}</template>
       </template>
     </result-grid>
-    <div v-else-if="durations" class="text-trim text-fg-muted">{{ durations }}</div>
+    <div v-else-if="durations" class="text-small text-trim text-fg-muted">{{ durations }}</div>
   </div>
 </template>

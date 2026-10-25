@@ -924,16 +924,15 @@ const userFilterColumn = computed({
   max-inline-size: --spacing(50);
 }
 
+/* Status of the result, discreet: in the small size, at the bottom of the
+   panel, which clips what goes past it. Its line keeps its full height, the
+   descenders included (no `text-box` trim). */
 .grid-footer {
   display: flex;
   align-items: center;
   gap: --spacing(2);
   color: var(--fg-muted);
-  font-size: var(--font-size-ui);
-
-  & > span {
-    text-box: trim-both cap alphabetic;
-  }
+  font-size: var(--font-size-small);
 }
 
 .grid-scroller {
