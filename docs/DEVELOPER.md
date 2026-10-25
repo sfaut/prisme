@@ -76,6 +76,7 @@ Rules:
 - **Icon-only button**: `UiButton` with `variant="ghost"` and `small` in a bar, an `aria-label` and a `v-tooltip`. The tooltip says the action, and may add what it does after a colon ("Rafraîchir : relance la requête").
 - **Toggle button**: `aria-pressed`. The accent color (`tone="accent"`) means the state is in effect: a filter keeps only some elements, a tab is pinned. The raised background (`bg-surface-elevated`) means the button shows its panel or form (the console's filters, the grid's filter).
 - **Place**: the actions of a bar stand at its right end, side by side, then the fold button, last; for the panel on the right, the fold button comes first, left of the title. The rail of a folded panel shows its unfold icon at the same place.
+- **Folded panel**: it keeps only its tabs, if any, and its unfold button; its other actions hide.
 - **Running action**: the button that starts a long action turns into its stop button while it runs, with the stop icon and the error color for queries.
 
 #### Panels and folding

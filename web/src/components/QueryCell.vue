@@ -30,7 +30,7 @@
   between them moves it within the bounds of both. Either one folds, by its
   button, by a drag below its smallest height, or, for the editor, by a
   double click on the line: the editor leaves its buttons, the results
-  their tabs. Both are never folded at once: folding one unfolds the
+  their tabs and their unfold button (the buttons of the tab shown hide). Both are never folded at once: folding one unfolds the
   other. The padding of the sides is inside the panels: a panel clips its
   content at its edge, which may fall between two pixels, and would cut
   the left border of a field or of the grid set against it.
@@ -802,7 +802,8 @@ defineExpose({
             </tabs-list>
             <!--
               Buttons of the tab shown (refresh, filter), then the fold button,
-              side by side as in the console's header.
+              side by side as in the console's header; folded, the results keep
+              only the fold button.
             -->
             <div class="flex items-center self-center">
               <div ref="tabActions" class="contents" />
@@ -826,7 +827,7 @@ defineExpose({
               :tab="tab"
               :displayed="active && selectedTab === tab.id"
               :refresh="refreshState(state, tab)"
-              :actions-target="selectedTab === tab.id ? tabActions : null"
+              :actions-target="selectedTab === tab.id && !isCollapsed ? tabActions : null"
               @refresh="refresh(tab)"
               @stop-refresh="session.stopRefresh(tab)"
             />
