@@ -373,7 +373,7 @@ Most dependencies accept any compatible version (`^` in `web/package.json`, the 
 | `json-p3` | `2.3.1` | 2.3.2 is published without its TypeScript declarations, and 3.x requires TypeScript 7 (see "Held-back dependencies"). |
 | `prettier` | `3.9.10` | Exact version, as Prettier recommends: a new version, even a patch, can format differently, and the CI checks the formatting. |
 | `typescript` | `~6.0.0` | TypeScript does not follow semantic versioning: a minor version can add type errors. `typescript-eslint` also requires a version below 6.1. |
-| `oxlint`, `eslint-plugin-oxlint` | `~1.88.0` | Both are released together and must keep the same version: the plugin turns off in ESLint the rules that Oxlint checks. A minor version adds rules. |
+| `oxlint`, `eslint-plugin-oxlint` | `~1.89.0` | Both are released together and must keep the same version: the plugin turns off in ESLint the rules that Oxlint checks. A minor version adds rules. |
 | `eslint-plugin-vue` | `~10.11.0` | A minor version can report more errors (new rules, rule fixes, as ESLint's versioning policy allows). |
 | `@types/node` | `^24` | The types follow Node 24, the version of the TypeScript configuration (`@tsconfig/node24`) and of `engines` (`web/package.json`): the types of Node 26 would offer APIs that Node 24 lacks. |
 
