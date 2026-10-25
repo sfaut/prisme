@@ -231,7 +231,7 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
     <span
       v-if="node.badge"
       v-tooltip="node.badgeTooltip"
-      class="flavor-badge inline-flex h-control-sm shrink-0 items-center rounded-full px-2 text-small font-medium"
+      class="flavor-badge inline-flex h-4 shrink-0 items-center rounded-full px-1 text-small font-medium"
       :data-flavor="node.badge"
     >
       <span class="text-trim">{{ node.badge }}</span>
