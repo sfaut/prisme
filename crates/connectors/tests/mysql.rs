@@ -223,7 +223,7 @@ async fn tells_an_open_transaction() {
         if let Ok(stream) = execute(&mut connection, sql).await {
             stream.discard().await;
         }
-        in_transaction(&mut connection).await.unwrap()
+        in_transaction(&mut connection, false).await.unwrap()
     };
 
     assert!(!run("CREATE TABLE t (a INT)").await);
@@ -238,4 +238,24 @@ async fn tells_an_open_transaction() {
     assert!(!run("SET autocommit = 0").await);
     assert!(run("SELECT * FROM t").await);
     assert!(!run("ROLLBACK").await);
+}
+
+#[tokio::test]
+#[ignore = "requires Docker Desktop running"]
+async fn tells_a_connection_the_server_closed() {
+    let server = Mariadb::default().start().await.unwrap();
+    let host = server.get_host().await.unwrap().to_string();
+    let port = server.get_host_port_ipv4(3306).await.unwrap();
+    let mut connection = connect(&target(host, port)).await.unwrap();
+    for sql in ["SET SESSION completion_type = 2", "START TRANSACTION"] {
+        execute(&mut connection, sql).await.unwrap().discard().await;
+    }
+    assert!(in_transaction(&mut connection, true).await.unwrap());
+    // The server closes the connection after the COMMIT.
+    execute(&mut connection, "COMMIT")
+        .await
+        .unwrap()
+        .discard()
+        .await;
+    assert!(in_transaction(&mut connection, true).await.is_err());
 }

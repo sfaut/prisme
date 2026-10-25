@@ -248,11 +248,17 @@ pub async fn use_database(connection: &mut Conn, database: &str) -> Result<(), M
 /// status of each successful answer (`SERVER_STATUS_IN_TRANS`), which the
 /// driver keeps from the last one. An error carries no status, and may have
 /// ended the transaction (deadlock, statement that commits implicitly): the
-/// status is then read again from a `DO 0`, which does nothing.
-pub async fn in_transaction(connection: &mut Conn) -> Result<bool, MysqlError> {
-    if connection.last_ok_packet().is_none() {
-        let sql = "DO 0";
-        sql_log::traced(sql, connection.query_drop(sql), |_| None).await?;
+/// status is then read again from the answer to a ping (`COM_PING`, a
+/// command of the protocol, without SQL). With `check`, the ping is sent in
+/// any case, after a `COMMIT` or a `ROLLBACK`, which can close the
+/// connection (`RELEASE`, `completion_type = 2`).
+///
+/// # Errors
+///
+/// Fails if the connection is lost: the server closed it, or the network.
+pub async fn in_transaction(connection: &mut Conn, check: bool) -> Result<bool, MysqlError> {
+    if check || connection.last_ok_packet().is_none() {
+        connection.ping().await?;
     }
     Ok(connection.last_ok_packet().is_some_and(|ok| {
         ok.status_flags()

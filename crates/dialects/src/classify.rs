@@ -468,6 +468,26 @@ fn mysql_write_kind(
     })
 }
 
+/// Does the text `sql` end a transaction with `COMMIT` or `ROLLBACK` (not
+/// to a savepoint)? The server may close the connection then
+/// (`completion_type = 2`).
+pub fn ends_transaction(sql: &str, dialect: Dialect) -> bool {
+    parse_statements(sql, dialect).is_ok_and(|statements| {
+        statements.iter().any(|statement| {
+            matches!(
+                statement,
+                Parsed::Sql(
+                    Statement::Commit { .. }
+                        | Statement::Rollback {
+                            savepoint: None,
+                            ..
+                        }
+                )
+            )
+        })
+    })
+}
+
 /// Can the text `sql` change the current database of the session? `USE`,
 /// `DROP DATABASE` / `DROP SCHEMA` (the current database may disappear), and
 /// a text Prisme cannot parse, whose effect is unknown.
@@ -596,6 +616,16 @@ mod tests {
         assert!(refused("DELETE FROM t"));
         assert!(refused("SELECT 1"));
         assert!(refused("SET whatever you like"));
+    }
+
+    #[test]
+    fn tells_the_queries_that_end_a_transaction() {
+        let ends = |sql| ends_transaction(sql, Dialect::MySql);
+        assert!(ends("COMMIT"));
+        assert!(ends("SELECT 1; ROLLBACK"));
+        assert!(!ends("ROLLBACK TO SAVEPOINT s"));
+        assert!(!ends("START TRANSACTION"));
+        assert!(!ends("SELECT 1 FROM"));
     }
 
     #[test]

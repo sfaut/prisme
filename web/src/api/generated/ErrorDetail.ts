@@ -132,6 +132,7 @@ export type ErrorDetail =
   }
   | { "code": "query_interrupted" }
   | { "code": "session_closed" }
+  | { "code": "connection_closed_by_server" }
   | { "code": "no_query" }
   | {
     "code": "multiple_queries";

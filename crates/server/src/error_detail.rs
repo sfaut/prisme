@@ -169,6 +169,10 @@ pub enum ErrorDetail {
     /// The session ended before the query.
     #[error("session closed before the end of the query")]
     SessionClosed,
+    /// The server closed the connection of the session (`completion_type =
+    /// 2`, `KILL`, restart...): the session ends.
+    #[error("the server closed the connection of the session")]
+    ConnectionClosedByServer,
     /// The text to run holds no query.
     #[error("no query to run")]
     NoQuery,

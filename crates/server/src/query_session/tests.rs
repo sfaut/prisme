@@ -852,3 +852,35 @@ async fn runs_all_in_sequence_while_a_transaction_is_open() {
     run_transaction(&mut socket, "COMMIT").await;
     assert_eq!(run_all_rows(&mut socket, reads).await, [0, 0]);
 }
+
+#[tokio::test]
+#[ignore = "requires Docker Desktop running"]
+async fn editor_session_ends_when_the_server_closes_its_connection() {
+    let server = Mariadb::default().start().await.unwrap();
+    let host = server.get_host().await.unwrap().to_string();
+    let port = server.get_host_port_ipv4(3306).await.unwrap();
+    let (address, _, editor_id) = start(&host, port).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    next_json(&mut socket).await;
+    run_one(&mut socket, "SET SESSION completion_type = 2", None).await;
+    run_transaction(&mut socket, "START TRANSACTION").await;
+
+    // The server closes the connection after the COMMIT: the session ends.
+    let request = json!({ "type": "run", "sql": "COMMIT", "cursor": 0 });
+    socket
+        .send(ClientMessage::Text(request.to_string().into()))
+        .await
+        .unwrap();
+    let error = loop {
+        let message = next_json(&mut socket).await;
+        if message["type"] == "error" && message["query"].is_null() {
+            break message;
+        }
+    };
+    assert_eq!(error["detail"]["code"], "connection_closed_by_server");
+    // Then the WebSocket closes.
+    while let Some(Ok(message)) = socket.next().await {
+        assert!(!matches!(message, ClientMessage::Text(_)), "{message:?}");
+    }
+}
