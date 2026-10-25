@@ -231,10 +231,10 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
     <span
       v-if="node.badge"
       v-tooltip="node.badgeTooltip"
-      class="flavor-badge shrink-0 text-trim"
+      class="flavor-badge inline-flex h-control-sm shrink-0 items-center rounded-full px-2 text-small font-medium"
       :data-flavor="node.badge"
     >
-      {{ node.badge }}
+      <span class="text-trim">{{ node.badge }}</span>
     </span>
   </span>
 
@@ -271,12 +271,6 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
 <style scoped>
 /* Badge of the server's flavor: pill tinted in the engine's colors. */
 .flavor-badge {
-  padding: var(--badge-padding);
-  border-radius: var(--badge-radius);
-  font-size: var(--badge-font-size);
-  font-weight: 500;
-  letter-spacing: 0.03em;
-
   &[data-flavor='mysql'] {
     background: var(--badge-mysql-bg);
     color: var(--badge-mysql);

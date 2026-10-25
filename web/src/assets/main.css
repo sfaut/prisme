@@ -329,10 +329,6 @@
   /* Radii: controls, then windows and menus. */
   --control-radius: 0.375rem;
   --panel-radius: 0.5rem;
-  /* Pill (badge): padding relative to its text, round corners. */
-  --badge-padding: 0.2em 0.55em;
-  --badge-radius: 1em;
-  --badge-font-size: 0.625rem;
 }
 
 /* Lengths read by the code (`cssPixels`): registered as lengths, so that
