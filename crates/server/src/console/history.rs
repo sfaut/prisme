@@ -120,11 +120,11 @@ pub struct QueryEntry {
 }
 
 /// Queries kept by a page of the history, read from the query string
-/// (`action=run,run_all`).
+/// (`action=run&action=run_all`). An unknown action refuses the request (400).
 #[derive(Debug, Default, Deserialize)]
 pub struct HistoryFilter {
     /// Actions kept; all of them when empty.
-    #[serde(default, rename = "action", deserialize_with = "super::names")]
+    #[serde(default, rename = "action")]
     pub actions: Vec<Action>,
 }
 

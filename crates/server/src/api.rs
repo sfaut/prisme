@@ -27,12 +27,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::response::Response;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
+use axum_extra::extract::Query;
 use prisme_connectors::mysql::{self, Flavor, ServerInfo};
 use prisme_dialects::Dialect;
 use prisme_dialects::analysis::CatalogNames;

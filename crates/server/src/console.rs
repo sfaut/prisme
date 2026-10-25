@@ -15,9 +15,9 @@
 //!
 //! | Route                             | Role                                                    |
 //! |-----------------------------------|---------------------------------------------------------|
-//! | `GET /api/console/history`        | Page of the history: `before` (id), `limit` (500 by default), `action` (actions kept, `run,run_all`; all when absent). |
+//! | `GET /api/console/history`        | Page of the history: `before` (id), `limit` (500 by default), `action` (an action kept, repeated: `action=run&action=run_all`; all when absent). |
 //! | `DELETE /api/console/history`     | Clears the user's history (204).                        |
-//! | `GET /api/console/debug`          | Page of the debug log: `before`, `limit`, `level` and `source` (levels and sources kept, `error,warn`; all when absent). |
+//! | `GET /api/console/debug`          | Page of the debug log: `before`, `limit`, `level` and `source` (a level or a source kept, repeated: `level=error&level=warn`; all when absent). |
 //! | `DELETE /api/console/debug`       | Clears the debug log (204).                             |
 //! | `POST /api/console/notifications` | Notification shown by the interface, for the debug log (204). |
 //! | `GET /api/console/stream`         | Server-sent events: `history` for each new query, `debug` for each new line, `history-cleared` / `debug-cleared` when a list is cleared, `lagged` when events were missed. |
@@ -31,17 +31,17 @@ pub use history::{Action, QueryEntry, action_span, connection_span, sql_span};
 use std::convert::Infallible;
 use std::time::Duration;
 
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use axum_extra::extract::Query;
 use futures_util::Stream;
 use futures_util::stream;
 use prisme_connectors::mysql::sql_log::TARGET;
 use rusqlite::Connection;
-use serde::de::{DeserializeOwned, IntoDeserializer};
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 use tracing::{Level, Subscriber};
@@ -274,21 +274,6 @@ struct Page {
     limit: Option<u32>,
 }
 
-/// Reads a list of names separated by commas (`run,run_all`), each one that
-/// of a value of `T`; an empty text is an empty list. An unknown name
-/// fails, and the request with it (400).
-fn names<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
-where
-    D: Deserializer<'de>,
-    T: DeserializeOwned,
-{
-    String::deserialize(deserializer)?
-        .split(',')
-        .filter(|name| !name.is_empty())
-        .map(|name| T::deserialize(IntoDeserializer::<D::Error>::into_deserializer(name)))
-        .collect()
-}
-
 /// Values kept by a filter, as a JSON array (`["run","run_all"]`) that the
 /// queries read with `json_each`.
 fn json_array<T: Serialize>(values: &[T]) -> Result<String, rusqlite::Error> {
@@ -465,13 +450,14 @@ mod tests {
     fn reads_the_filters_from_the_query_string() {
         let read = |uri: &str| uri.parse::<axum::http::Uri>().unwrap();
         let Query(history) =
-            Query::<HistoryFilter>::try_from_uri(&read("/h?before=9&action=run,run_all")).unwrap();
+            Query::<HistoryFilter>::try_from_uri(&read("/h?before=9&action=run&action=run_all"))
+                .unwrap();
         assert_eq!(history.actions, [Action::Run, Action::RunAll]);
         let Query(debug) =
             Query::<DebugFilter>::try_from_uri(&read("/d?level=error&source=interface")).unwrap();
         assert_eq!(debug.levels, [DebugLevel::Error]);
         assert_eq!(debug.sources, [DebugSource::Interface]);
-        let Query(all) = Query::<DebugFilter>::try_from_uri(&read("/d?level=")).unwrap();
+        let Query(all) = Query::<DebugFilter>::try_from_uri(&read("/d?before=9")).unwrap();
         assert!(all.levels.is_empty() && all.sources.is_empty());
         // An unknown name refuses the request.
         assert!(Query::<HistoryFilter>::try_from_uri(&read("/h?action=explorer")).is_err());

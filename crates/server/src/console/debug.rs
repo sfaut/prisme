@@ -108,14 +108,15 @@ impl DebugSource {
 }
 
 /// Lines kept by a page of the debug log, read from the query string
-/// (`level=error,warn&source=interface`).
+/// (`level=error&level=warn&source=interface`). An unknown level or source
+/// refuses the request (400).
 #[derive(Debug, Default, Deserialize)]
 pub struct DebugFilter {
     /// Levels kept; all of them when empty.
-    #[serde(default, rename = "level", deserialize_with = "super::names")]
+    #[serde(default, rename = "level")]
     pub levels: Vec<DebugLevel>,
     /// Sources kept; all of them when empty.
-    #[serde(default, rename = "source", deserialize_with = "super::names")]
+    #[serde(default, rename = "source")]
     pub sources: Vec<DebugSource>,
 }
 

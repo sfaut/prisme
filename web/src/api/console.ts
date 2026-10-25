@@ -62,9 +62,10 @@ function pagePath(
   limit?: number,
 ): string {
   const parameters = new URLSearchParams()
+  // One key per value kept: `level=error&level=warn`.
   for (const [field, values] of Object.entries(filter)) {
-    if (values.length > 0) {
-      parameters.set(field, values.join(','))
+    for (const value of values) {
+      parameters.append(field, value)
     }
   }
   if (before !== undefined) {
