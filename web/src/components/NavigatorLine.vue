@@ -29,6 +29,7 @@ import {
   LoaderCircle,
   Notebook,
   PencilRuler,
+  Rows3,
   ScrollText,
   Server,
   SquareFunction,
@@ -117,7 +118,7 @@ const action = computed(() => {
     }
   }
   if (props.node.table !== undefined) {
-    return { icon: Eye, label: 'Afficher le contenu', tooltip: 'Afficher le contenu (SELECT)' }
+    return { icon: Rows3, label: 'Afficher le contenu', tooltip: 'Afficher le contenu (SELECT)' }
   }
   if (props.node.index !== undefined) {
     return {

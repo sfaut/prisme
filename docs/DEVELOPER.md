@@ -129,7 +129,8 @@ Rules:
 | `NotebookPen` | Create a notebook (not available yet) | notebooks' menu |
 | `Folder` / `FolderOpen` | A closed / open folder (tables, views...) | tree |
 | `Table` | A table | tree |
-| `Eye` | A view; show the content of a table or a view (`SELECT`) | tree; line's button |
+| `Eye` | A view | tree |
+| `Rows3` | Show the content of a table or a view (`SELECT`) | line's button |
 | `ScrollText` | A procedure | tree |
 | `SquareFunction` | A function | tree |
 | `CalendarClock` | An event | tree |
