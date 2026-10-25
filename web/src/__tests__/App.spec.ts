@@ -113,11 +113,12 @@ describe('App', () => {
     window.localStorage.clear()
     const wrapper = mount(App)
     await vi.waitFor(() => expect(wrapper.text()).toContain('Aucune requête envoyée'))
-    // The fold button comes first, where the rail shows its icon.
+    // The fold button comes last, at the right end of the header, after the
+    // button that clears the tab shown.
     const fold = wrapper.find('[aria-label="Replier : Console"]')
-    const historyTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text() === 'Historique')!
+    const clear = wrapper.find('[aria-label="Effacer l’historique"]')
     expect(
-      fold.element.compareDocumentPosition(historyTab.element) & Node.DOCUMENT_POSITION_FOLLOWING,
+      fold.element.compareDocumentPosition(clear.element) & Node.DOCUMENT_POSITION_PRECEDING,
     ).toBeTruthy()
     // The button that clears the tab shown: nothing to clear in an empty list.
     expect(wrapper.find('[aria-label="Effacer l’historique"]').attributes('disabled')).toBeDefined()

@@ -2,11 +2,12 @@
   Header of a panel of the layout (object navigator, data explorer,
   console): its title, or what replaces it (default slot), a line under the
   title (`subtitle` slot), the panel's actions (`actions` slot), and the
-  button that folds the panel towards its edge. The button stands where
-  the folded panel's rail shows its icon, or on the side of the main area:
-  first, left of the title, for the panel on the right and the console at
-  the bottom; last for the panel on the left. The folded panel leaves a
-  rail on its edge (`PanelRail.vue`), with the matching icon.
+  button that folds the panel towards its edge. The button stands at the
+  right end of the header, after the actions, as the fold buttons of the
+  editor and of the results (`QueryCell.vue`); the panel on the right, which
+  folds towards the right edge, has it first, left of the title, where its
+  rail shows its icon. The folded panel leaves a rail on its edge
+  (`PanelRail.vue`), with the matching icon.
   The button and the title hold a first line of a control's height, at the
   top of the panel, whatever comes below (subtitle): the fold buttons of
   the panels and the icons of the rails stand at the same height.
@@ -38,7 +39,7 @@ const emit = defineEmits<{
 /**
  * Does the fold button come first, left of the title?
  */
-const first = props.side !== 'start'
+const first = props.side === 'end'
 
 /**
  * Icon of the fold button, by edge.
