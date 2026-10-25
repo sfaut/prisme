@@ -135,10 +135,9 @@ Rules:
 | `CalendarClock` | An event | tree |
 | `Columns3` | A column | tree |
 | `ListOrdered` | An index | tree |
-| `Link` | A foreign key | tree |
+| `Link` | A foreign key; column of a foreign key | tree; column's line |
 | `Zap` | A trigger | tree |
 | `KeyRound` | Column of the primary key | column's line |
-| `Hash` | Column of a foreign key | column's line |
 | `PlugZap` | Use this database (`USE`); test a connection | line's button; source's menu |
 | `Unplug` | Close the session ("Déconnecter") | line's button; source's menu |
 | `PencilRuler` | Write the operations on an index | line's button |

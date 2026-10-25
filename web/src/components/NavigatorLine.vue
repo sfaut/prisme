@@ -22,7 +22,6 @@ import {
   Eye,
   Folder,
   FolderOpen,
-  Hash,
   KeyRound,
   Link,
   ListOrdered,
@@ -189,7 +188,7 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
       :style="{ width: `${node.column.markSlots}em` }"
     >
       <KeyRound v-if="node.column.primaryKey" class="size-[1em]" aria-label="Clef primaire" />
-      <Hash v-if="node.column.foreignKey" class="size-[1em]" aria-label="Clef étrangère" />
+      <Link v-if="node.column.foreignKey" class="size-[1em]" aria-label="Clef étrangère" />
     </span>
     <span class="flex min-w-0 flex-1 items-center gap-3">
       <span
