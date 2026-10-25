@@ -199,6 +199,13 @@ const activeDatabase = computed(() => {
 const attempts = ref<Record<number, number>>({})
 
 /**
+ * Database chosen in the navigator for the session that opens, by editor:
+ * the session opens on it at once, in place of the connection's database.
+ * Forgotten once that session is open (or has failed).
+ */
+const openingDatabases = ref<Record<number, string>>({})
+
+/**
  * Mounted cells, by editor, to start a query there from the navigator.
  */
 const cells = new Map<number, InstanceType<typeof QueryCell>>()
@@ -264,13 +271,45 @@ watch(
  *
  * @param editorId Id of the editor.
  * @param connectionId Id of the connection.
+ * @param database
+ *     Database to open the session on, when a session opens; absent: that of
+ *     the connection.
+ * @returns Does a session open (other connection, or closed session)?
  */
-async function connectEditor(editorId: number, connectionId: number): Promise<void> {
+async function connectEditor(
+  editorId: number,
+  connectionId: number,
+  database?: string,
+): Promise<boolean> {
   const editor = editors.editors.find((item) => item.id === editorId)
-  if (editor?.connectionId === connectionId && statuses.value[editorId] === 'closed') {
+  if (!editor) {
+    return false
+  }
+  const reopens = editor.connectionId === connectionId && statuses.value[editorId] === 'closed'
+  const opens = reopens || editor.connectionId !== connectionId
+  if (opens && database !== undefined) {
+    openingDatabases.value[editorId] = database
+  }
+  if (reopens) {
     attempts.value[editorId] = (attempts.value[editorId] ?? 0) + 1
   }
   await editors.setConnection(editorId, connectionId)
+  return opens
+}
+
+/**
+ * Follows the stage of an editor's session: the database chosen for its
+ * opening is forgotten once it is open, so that "Reconnecter" opens on the
+ * connection's database again.
+ *
+ * @param editorId Id of the editor.
+ * @param status Stage of its session.
+ */
+function followStatus(editorId: number, status: SessionStatus): void {
+  statuses.value[editorId] = status
+  if (status !== 'connecting') {
+    delete openingDatabases.value[editorId]
+  }
 }
 
 /**
@@ -332,14 +371,22 @@ async function writeIndexOperations(
 /**
  * Makes a database chosen in the navigator the current database of the active
  * editor's session (like `USE`). A database of another source first gives
- * this connection to the editor.
+ * this connection to the editor. A session that opens for it (other source,
+ * or closed session) opens on this database at once: the navigator never
+ * shows the connection's database in between.
  *
  * @param connectionId Id of the database's connection.
  * @param schema Name of the database.
  */
 async function useDatabase(connectionId: number, schema: string): Promise<void> {
+  const editor = editors.active
+  if (!editor) {
+    return
+  }
   try {
-    ;(await activeCellOn(connectionId))?.changeDatabaseWhenReady(schema)
+    if (!(await connectEditor(editor.id, connectionId, schema))) {
+      cells.get(editor.id)?.changeDatabaseWhenReady(schema)
+    }
   } catch (failure) {
     report(failure)
   }
@@ -459,11 +506,12 @@ function selectSource(connectionId: number): void {
                     :active="editor.id === editors.activeId"
                     :actions-target="editor.id === editors.activeId ? editorActions : null"
                     :connection="connectionOf(editor.connectionId)!"
+                    :opening-database="openingDatabases[editor.id]"
                     :sql="editor.sql"
                     @update:sql="(sql) => editors.setSql(editor.id, sql)"
                     @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
                     @database="(database) => (databases[editor.id] = database)"
-                    @status="(status) => (statuses[editor.id] = status)"
+                    @status="(status) => followStatus(editor.id, status)"
                   />
                   <div v-else class="flex max-w-xs flex-col items-center gap-2 text-center">
                     <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">

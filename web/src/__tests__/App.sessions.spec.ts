@@ -31,21 +31,31 @@ vi.mock('@/api/editors', () => ({
 }))
 
 /**
- * Number of cells mounted: each mount opens a session.
+ * Database each mounted cell opens its session on (each mount opens one),
+ * `null` for that of the connection.
  */
-let mounts = 0
+let openings: (string | null)[] = []
+
+/**
+ * Databases changed by `USE` on an open session.
+ */
+let changes: string[] = []
 
 /**
  * Cell whose session ends closed, as after "Déconnecter".
  */
 const ClosedCell = defineComponent({
+  props: { openingDatabase: { type: String, default: null } },
   emits: ['status', 'database'],
-  setup(_, { emit, expose }) {
+  setup(props, { emit, expose }) {
     onMounted(() => {
-      mounts += 1
+      openings.push(props.openingDatabase)
       emit('status', 'closed')
     })
-    expose({ changeDatabaseWhenReady: () => {}, showTableWhenReady: () => {} })
+    expose({
+      changeDatabaseWhenReady: (database: string) => changes.push(database),
+      showTableWhenReady: () => {},
+    })
     return () => null
   },
 })
@@ -65,7 +75,8 @@ const Navigator = defineComponent({
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  mounts = 0
+  openings = []
+  changes = []
 })
 
 afterEach(() => {
@@ -78,13 +89,27 @@ describe('App, closed session', () => {
       global: { stubs: { QueryCell: ClosedCell, ObjectNavigator: Navigator } },
     })
     useConnectionsStore().connections = [{ id: 1, name: 'local' } as ConnectionSummary]
-    await vi.waitFor(() => expect(mounts).toBe(1))
+    await vi.waitFor(() => expect(openings).toEqual([null]))
 
     await wrapper.find('#select').trigger('click')
-    await vi.waitFor(() => expect(mounts).toBe(2))
+    await vi.waitFor(() => expect(openings).toEqual([null, null]))
+    wrapper.unmount()
+  })
+
+  it('opens the session on the chosen database at once, without USE after', async () => {
+    const wrapper = mount(App, {
+      global: { stubs: { QueryCell: ClosedCell, ObjectNavigator: Navigator } },
+    })
+    useConnectionsStore().connections = [{ id: 1, name: 'local' } as ConnectionSummary]
+    await vi.waitFor(() => expect(openings).toEqual([null]))
 
     await wrapper.find('#use').trigger('click')
-    await vi.waitFor(() => expect(mounts).toBe(3))
+    await vi.waitFor(() => expect(openings).toEqual([null, 'shop']))
+    expect(changes).toEqual([])
+
+    // Forgotten once used: the next opening is on the connection's database.
+    await wrapper.find('#select').trigger('click')
+    await vi.waitFor(() => expect(openings).toEqual([null, 'shop', null]))
     wrapper.unmount()
   })
 })

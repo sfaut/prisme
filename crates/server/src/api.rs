@@ -278,11 +278,13 @@ async fn query_socket(
 /// the editor's connection; its results are saved. If the editor's session is
 /// still open (page reloaded), the WebSocket reattaches to it; otherwise it
 /// opens, kept after a disconnection for the delay set on the connection (see
-/// `sessions.rs`).
+/// `sessions.rs`). A session that opens does so on the database of
+/// `?database=` when given, in place of the connection's.
 async fn editor_session(
     State(state): State<AppState>,
     user: CurrentUser,
     Path(id): Path<i64>,
+    Query(query): Query<SessionQuery>,
     upgrade: WebSocketUpgrade,
 ) -> Result<Response, ApiError> {
     let user_id = user.id;
@@ -305,7 +307,10 @@ async fn editor_session(
         })
         .await?
         .ok_or(ApiError::NotFound)?;
-    let target = connections::with_read_only(target, read_only);
+    let mut target = connections::with_read_only(target, read_only);
+    if let Some(database) = query.database {
+        target.database_name = database;
+    }
     let keep_alive = Duration::from_secs(u64::from(minutes) * 60);
     Ok(upgrade.on_upgrade(move |socket| {
         let span = api_log::editor_span(id);
@@ -432,6 +437,13 @@ async fn beautify_sql(Json(request): Json<BeautifyRequest>) -> Result<Json<SqlTe
         ApiError::Internal
     })?;
     Ok(Json(SqlText { sql }))
+}
+
+/// Database to open an editor's session on.
+#[derive(Debug, Deserialize)]
+struct SessionQuery {
+    /// Database selected on connection; when absent, that of the connection.
+    database: Option<String>,
 }
 
 /// Server version whose keywords are wanted.

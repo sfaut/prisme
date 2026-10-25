@@ -900,10 +900,14 @@ export function resumedTab(
  *
  * @param editorId Id of the editor.
  * @param location Address of the page.
+ * @param database
+ *     Database to open a new session on, in place of the connection's;
+ *     ignored by a session still open, which the WebSocket reattaches to.
  */
-export function sessionUrl(editorId: number, location: Location): string {
+export function sessionUrl(editorId: number, location: Location, database?: string): string {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${location.host}/api/editors/${editorId}/session`
+  const query = database === undefined ? '' : `?${new URLSearchParams({ database })}`
+  return `${protocol}//${location.host}/api/editors/${editorId}/session${query}`
 }
 
 /**
@@ -916,9 +920,16 @@ export function sessionUrl(editorId: number, location: Location): string {
  *
  * @param editorId Id of the editor.
  * @param loadSaved Reading of the editor's saved result tabs.
+ * @param database
+ *     Database to open a new session on, in place of the connection's (see
+ *     `sessionUrl`).
  * @returns The reactive state of the session, and the functions to run queries and close the session.
  */
-export function useQuerySession(editorId: number, loadSaved: () => Promise<ResultTab[]>) {
+export function useQuerySession(
+  editorId: number,
+  loadSaved: () => Promise<ResultTab[]>,
+  database?: string,
+) {
   const state = reactive(initialState())
 
   /**
@@ -970,7 +981,7 @@ export function useQuerySession(editorId: number, loadSaved: () => Promise<Resul
     if (closed) {
       return
     }
-    socket = new WebSocket(sessionUrl(editorId, window.location))
+    socket = new WebSocket(sessionUrl(editorId, window.location, database))
     socket.addEventListener('message', (event: MessageEvent<string>) => {
       const message = parseMessage(event.data)
       if (message === null) {

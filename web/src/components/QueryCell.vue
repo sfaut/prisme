@@ -108,6 +108,12 @@ const props = defineProps<{
    */
   connection: ConnectionSummary
   /**
+   * Database to open the session on, in place of the connection's: the one
+   * chosen in the navigator when its choice opens the session. Read once,
+   * when the cell is mounted.
+   */
+  openingDatabase?: string
+  /**
    * Place of the editor's fold button in the editors' bar, for the active
    * cell; `null` for the others, which do not show it.
    */
@@ -134,7 +140,11 @@ const emit = defineEmits<{
  */
 const sql = defineModel<string>('sql', { required: true })
 
-const session = useQuerySession(props.editorId, () => listResults(props.editorId))
+const session = useQuerySession(
+  props.editorId,
+  () => listResults(props.editorId),
+  props.openingDatabase,
+)
 const catalog = useCatalogStore()
 const state = session.state
 const settings = useSettingsStore()

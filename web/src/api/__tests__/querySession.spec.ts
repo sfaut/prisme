@@ -713,6 +713,13 @@ describe('sessionUrl', () => {
       'wss://prisme.example/api/editors/3/session',
     )
   })
+
+  it('carries the database to open the session on, encoded', () => {
+    const location = { protocol: 'http:', host: 'localhost:5173' } as Location
+    expect(sessionUrl(3, location, 'my shop&co')).toBe(
+      'ws://localhost:5173/api/editors/3/session?database=my+shop%26co',
+    )
+  })
 })
 
 describe('parseMessage', () => {

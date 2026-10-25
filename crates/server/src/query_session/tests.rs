@@ -669,6 +669,24 @@ async fn closing_the_editor_session_ends_it_at_once() {
 
 #[tokio::test]
 #[ignore = "requires Docker Desktop running"]
+async fn editor_session_opens_on_the_requested_database() {
+    let server = Mariadb::default().start().await.unwrap();
+    let host = server.get_host().await.unwrap().to_string();
+    let port = server.get_host_port_ipv4(3306).await.unwrap();
+    let (address, _, editor_id) = start(&host, port).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session?database=mysql");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    // Ready on the requested database at once, without going through the
+    // connection's database (`test`).
+    let ready = next_json(&mut socket).await;
+    assert_eq!(
+        (ready["type"].as_str(), ready["database"].as_str()),
+        (Some("ready"), Some("mysql"))
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires Docker Desktop running"]
 async fn editor_session_survives_a_disconnect() {
     let server = Mariadb::default().start().await.unwrap();
     let host = server.get_host().await.unwrap().to_string();
