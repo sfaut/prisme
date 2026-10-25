@@ -604,7 +604,9 @@ export function isSelected(selection: GridSelection, row: number, column: number
  * @param view View: indexes of the source rows.
  * @param rows Rows of the result.
  * @param columns Names of the columns.
- * @param withHeaders Adds a first line with the names of the copied columns.
+ * @param withHeaders
+ *     Adds a first line with the names of the copied columns, except for a
+ *     single cell, copied as its value alone.
  * @param order
  *     Index in the `SELECT` of each displayed column, when the columns have
  *     been moved: the selection is on the displayed positions.
@@ -629,7 +631,8 @@ export function selectionToText(
       })
       .join('\t'),
   )
-  if (withHeaders && columnIndexes.length > 0) {
+  const singleCell = rowIndexes.length === 1 && columnIndexes.length === 1
+  if (withHeaders && columnIndexes.length > 0 && !singleCell) {
     lines.unshift(
       columnIndexes.map((column) => rawCell(columns[order[column] ?? column] ?? '')).join('\t'),
     )

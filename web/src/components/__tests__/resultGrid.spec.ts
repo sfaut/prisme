@@ -130,6 +130,14 @@ describe('copy', () => {
     expect(selectionToText(selection, view, rows, columns, true)).toBe('id\n10\n2\n1')
   })
 
+  it('copies a single cell without its header, its value alone', () => {
+    const selection = selectCell(emptySelection(), 0, 1, 'replace')
+    expect(selectionToText(selection, view, rows, columns, true)).toBe('Zoé')
+    // Two cells of one column keep the header.
+    const two = selectCell(selection, 1, 1, 'extend')
+    expect(selectionToText(two, view, rows, columns, true)).toBe('name\nZoé\nadam')
+  })
+
   it('follows the sorted view', () => {
     const sorted = visibleRows(rows, noFilter, { column: 0, direction: 'asc' })
     const selection = selectRow(emptySelection(), 0, 3, 'replace')
@@ -169,8 +177,8 @@ describe('copy', () => {
   })
 
   it('also writes out the control characters of column names', () => {
-    const selection = selectColumn(emptySelection(), 0, 1, 'replace')
-    expect(selectionToText(selection, [0], [['1']], ['a\tb'], true)).toBe('a\\tb\n1')
+    const selection = selectColumn(emptySelection(), 0, 2, 'replace')
+    expect(selectionToText(selection, [0, 1], [['1'], ['2']], ['a\tb'], true)).toBe('a\\tb\n1\n2')
   })
 })
 

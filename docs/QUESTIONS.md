@@ -98,7 +98,7 @@ This document keeps track of the reasoning: what was kept, dropped or postponed,
 
 26. **Partial rebuild of the navigator tree.** The whole tree is rebuilt on each revision of the catalog (at most 0.4 s over 1,000 tables, see chapter 2 of `docs/PERF.md`). With many sources and many tables, columns, indexes, only the modified databases will have to be rebuilt, or nodes built only when opened. Decision: to do later.
 
-27. **Copy with or without headers, profile setting.** Ctrl+C copies the grid selection with the column names on the first line. Decision: this will be an option of the user's profile, with headers by default. To do with profiles (server mode, or settings of the single user).
+27. **Copy with or without headers, profile setting.** Ctrl+C copies the grid selection with the column names on the first line, except a single cell, copied as its value alone (a single column of several cells keeps its name). Decision: this will be an option of the user's profile, with headers by default. To do with profiles (server mode, or settings of the single user).
 
 28. **Next steps for the SQL editor (CodeMirror), to do.** Already in place: completion of databases, tables and columns from the catalog, highlighting of the query under the cursor, syntax errors underlined, light / dark theme on the interface's tokens. Decided and still to do:
     - underline in the editor the emulated or untranslatable functions, with the translation between dialects (rule 2 of `CLAUDE.md`);

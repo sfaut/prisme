@@ -27,8 +27,8 @@
     numbers, dragging selects a group of rows). A click on the top left
     corner selects everything.
   - Copy: Ctrl+C copies the selection with the column names on the first
-    line (a profile setting may remove them). Ctrl+A selects everything,
-    Escape clears the selection.
+    line (a profile setting may remove them), a single cell as its value
+    alone. Ctrl+A selects everything, Escape clears the selection.
   - Width: dragging the right edge of a header changes the width of the
     column; a double click on this edge fits it to its longest value (with a
     cap), a second one gives back its estimated width. The chosen widths are
@@ -647,7 +647,9 @@ function toggleSort(column: number): void {
 /**
  * Copies the selection to the clipboard.
  *
- * @param withHeaders Adds the column names on the first line.
+ * @param withHeaders
+ *     Adds the column names on the first line, except for a single cell
+ *     (`selectionToText`).
  */
 async function copy(withHeaders: boolean): Promise<void> {
   if (selection.value.ranges.length === 0) {
