@@ -22,7 +22,11 @@ import type { CatalogSchema, CatalogTable } from '@/stores/catalog'
 import { displayedType, quoteIdentifier, upperType } from './navigatorNodes'
 
 /**
- * Plain identifier, written without quotes (same rule as `lang-sql`).
+ * Plain identifier, written without quotes: letters, digits, `_`, `$` and
+ * the characters from U+00A1. `lang-sql` has its own rule
+ * (`^[a-z_][a-z_\d]*$`), which it only applies to the names it receives as
+ * plain strings: the names given here as `Completion` objects are quoted by
+ * Prisme.
  */
 const PLAIN_IDENTIFIER = /^[\w$\xa1-\uffff][\w$\d\xa1-\uffff]*$/
 
