@@ -759,13 +759,14 @@ defineExpose({
             class="w-32"
             @update:model-value="(limit) => limit !== undefined && changeLimit(limit)"
           />
+          <!-- Status of the session, as tall as the buttons. -->
           <span
             v-if="state.transaction"
             v-tooltip="TRANSACTION_TIP"
             role="status"
-            class="transaction-badge ms-auto shrink-0 text-trim"
+            class="ms-auto inline-flex h-control shrink-0 items-center rounded-full bg-info-soft px-3 text-ui font-medium whitespace-nowrap text-info"
           >
-            Transaction ouverte
+            <span class="text-trim">Transaction ouverte</span>
           </span>
           <!-- The fold button stays visible in the editors' bar, editor folded. -->
           <teleport v-if="actionsTarget" :to="actionsTarget">
@@ -895,17 +896,3 @@ defineExpose({
     </splitter-panel>
   </splitter-group>
 </template>
-
-<style scoped>
-/* Badge of the open transaction: pill in the colors of a warning, as the
-   transaction holds its locks until its end. */
-.transaction-badge {
-  padding: var(--badge-padding);
-  border-radius: var(--badge-radius);
-  font-size: var(--badge-font-size);
-  font-weight: 500;
-  letter-spacing: 0.03em;
-  background: var(--warning-soft);
-  color: var(--warning);
-}
-</style>

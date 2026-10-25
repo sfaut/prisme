@@ -48,6 +48,8 @@
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
   --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
   --color-error: var(--error);
   --color-error-soft: var(--error-soft);
   --color-error-hover: var(--error-hover);
@@ -112,6 +114,8 @@
   --red-400: #f87171;
   --red-600: #dc2626;
   --red-700: #b91c1c;
+  --indigo-300: #a5b4fc;
+  --indigo-600: #4f46e5;
   --violet-300: #c4b5fd;
   --violet-600: #7c3aed;
   --cyan-300: #67e8f9;
@@ -146,6 +150,9 @@
   --success-soft: color-mix(in oklab, var(--success) 12%, transparent);
   --warning: light-dark(var(--amber-600), var(--amber-400));
   --warning-soft: color-mix(in oklab, var(--warning) 12%, transparent);
+  /* State of a session (open transaction), told without alarm. */
+  --info: light-dark(var(--indigo-600), var(--indigo-300));
+  --info-soft: color-mix(in oklab, var(--info) 14%, transparent);
   --error: light-dark(var(--red-600), var(--red-400));
   --error-soft: color-mix(in oklab, var(--error) 12%, transparent);
   --error-hover: light-dark(var(--red-700), var(--red-300));
