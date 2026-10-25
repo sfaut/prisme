@@ -66,6 +66,117 @@ npm run dev
 
 Then open <http://localhost:5173>. The page on port 8484 keeps showing the last `npm run build` until the next one.
 
+### Icons and actions
+
+The icons come from Lucide (`@lucide/vue`). An action keeps the same icon wherever it appears, and an icon keeps the same meaning: before adding a button, look for its action below, and add any new icon to these tables in the same change.
+
+Rules:
+
+- **Size**: `size-icon` (16 px) for the buttons and the lines of the navigator, `size-icon-sm` (12 px) for the chevrons of the tree and the marks of the grid's headers.
+- **Icon-only button**: `UiButton` with `variant="ghost"` and `small` in a bar, an `aria-label` and a `v-tooltip`. The tooltip says the action, and may add what it does after a colon ("Rafraîchir : relance la requête").
+- **Toggle button**: `aria-pressed`. The accent color (`tone="accent"`) means the state is in effect: a filter keeps only some elements, a tab is pinned. The raised background (`bg-surface-elevated`) means the button shows its panel or form (the console's filters, the grid's filter).
+- **Place**: the actions of a bar stand at its right end, side by side, then the fold button, last; for the panel on the right, the fold button comes first, left of the title. The rail of a folded panel shows its unfold icon at the same place.
+- **Running action**: the button that starts a long action turns into its stop button while it runs, with the stop icon and the error color for queries.
+
+#### Panels and folding
+
+| Icon | Action | Where |
+|---|---|---|
+| `PanelLeftClose` / `PanelLeftOpen` | Fold / unfold the object navigator | its header / its rail (`PanelHeader`, `PanelRail`) |
+| `PanelRightClose` / `PanelRightOpen` | Fold / unfold the data explorer | its header / its rail |
+| `PanelBottomClose` / `PanelBottomOpen` | Fold / unfold the console; fold / unfold the results | console's header / its rail; bar of the result tabs (`QueryCell`) |
+| `PanelTopClose` / `PanelTopOpen` | Fold / unfold the editor | bar of the editor's buttons (`QueryCell`) |
+| `ChevronRight` / `ChevronDown` | Open / close a node of the tree | object navigator (`NavigatorLine`) |
+| `ChevronsDownUp` / `ChevronsUpDown` | Fold / unfold the whole document | data explorer |
+| `FoldVertical` / `UnfoldVertical` | Fold / unfold the cursor's level | data explorer |
+
+#### Queries and results
+
+| Icon | Action | Where |
+|---|---|---|
+| `Play` | Run the query under the cursor ("Exécuter") | editor's buttons |
+| `ScanText` | Run the selected text only ("Exécuter précisément") | editor's buttons |
+| `FastForward` | Run all the queries ("Exécuter tout") | editor's buttons |
+| `Square` | Stop the running queries (the run button, while they run) | editor's buttons |
+| `WandSparkles` | Rewrite as "beautiful SQL" ("Enjoliver") | editor's buttons |
+| `RefreshCw` / `RefreshCwOff` | Run the result's query again / stop that refresh | bar of the result tabs (`QueryTabView`) |
+| `Funnel` | Show / hide the filter of a list; in the data explorer, keep only the search results | bar of the result tabs (`ResultGrid`), console's header, data explorer's search |
+| `Search` | Mark of a search or filter field; open the search | grid's filter field; data explorer |
+| `ChevronUp` / `ChevronDown` | Previous / next search result | data explorer |
+| `Pin` | Pin / unpin a result tab | result tab (`ResultTab`) |
+| `Copy` | Copy the document shown | data explorer |
+| `TextWrap` | Wrap the long lines | data explorer |
+| `ExternalLink` | Open a web address of a cell in a new tab | grid's cells |
+| `MessageCircleOff` | Clear the list of the console's tab | console's header |
+
+#### Editors and tabs
+
+| Icon | Action | Where |
+|---|---|---|
+| `Plus` | New editor; add a connection | editors' bar (`EditorTabBar`); navigator's menu |
+| `History` | Reopen a closed editor | editors' bar |
+| `X` | Close a tab, a dialog or a message; empty a field | tabs (`DocumentTab`), `UiDialog`, `UiAlert`, grid's filter field |
+
+#### Object navigator
+
+| Icon | Meaning or action | Where |
+|---|---|---|
+| `Server` | Root of the data sources | tree |
+| `Cable` | A data source (connection) | tree |
+| `Database` | A database | tree; also the empty state of an editor (`App.vue`) |
+| `Notebook` | Root of the notebooks | tree |
+| `NotebookPen` | Create a notebook (not available yet) | notebooks' menu |
+| `Folder` / `FolderOpen` | A closed / open folder (tables, views...) | tree |
+| `Table` | A table | tree |
+| `Eye` | A view; show the content of a table or a view (`SELECT`) | tree; line's button |
+| `ScrollText` | A procedure | tree |
+| `SquareFunction` | A function | tree |
+| `CalendarClock` | An event | tree |
+| `Columns3` | A column | tree |
+| `ListOrdered` | An index | tree |
+| `Link` | A foreign key | tree |
+| `Zap` | A trigger | tree |
+| `KeyRound` | Column of the primary key | column's line |
+| `Hash` | Column of a foreign key | column's line |
+| `PlugZap` | Use this database (`USE`); test a connection | line's button; source's menu |
+| `Unplug` | Close the session ("Déconnecter") | line's button; source's menu |
+| `PencilRuler` | Write the operations on an index | line's button |
+| `Pencil` | Edit a connection | source's menu |
+| `RefreshCw` | Reload the catalog of a connection, of all of them | source's menu; sources' menu |
+| `Trash2` | Delete a connection | source's menu |
+| `EllipsisVertical` | Menu of a line | line's button |
+
+#### Types of the grid's columns (`typeIcons.ts`)
+
+| Mark | Type family or content |
+|---|---|
+| `123` (text) | integer |
+| `.00` (text) | decimal |
+| `Hash` | float |
+| `CaseSensitive` | text |
+| `Binary` | binary |
+| `Calendar` / `Clock` / `CalendarClock` / `CalendarDays` | date / time / date and time / year |
+| `Braces` | JSON, as a type or as the content of a text column |
+| `CodeXml` | XML content of a text column |
+| `Link` | web addresses in a text column |
+| `ToggleRight` | bit |
+| `List` / `ListChecks` | enum / set |
+| `Shapes` | geometry |
+| `CircleDashed` | other types |
+
+#### States and messages
+
+| Icon | Meaning | Where |
+|---|---|---|
+| `LoaderCircle` (spinning) | Loading, action in progress | `UiButton` (`loading`), results, tree |
+| `Database`, `DatabaseArrowDown`, `DatabaseArrowUp`, `DatabaseCheck`, `DatabaseX` | Exchanges with the internal database: none, reading, writing, synced, failed | top bar (`SyncStatus`) |
+| `Info`, `CircleCheckBig`, `CircleAlert`, `CircleX` | Message: information, success, warning, error | `UiAlert` |
+| `CircleCheck`, `CircleAlert` | Transient message: success, error | `UiToaster` |
+| `Eye` / `EyeOff` | Show / hide the password | connection dialog |
+| `ChevronDown`, `Check` | Open a list; chosen item | `UiSelect` |
+| `Monitor`, `Sun`, `Moon` | Color mode: system, light, dark | top bar |
+| `User`, `Settings` | Profile, settings | account menu |
+
 ## Building the single executable
 
 Compile the interface, then Prisme:
