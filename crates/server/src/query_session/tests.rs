@@ -863,11 +863,10 @@ async fn editor_session_ends_when_the_server_closes_its_connection() {
     let url = format!("ws://{address}/api/editors/{editor_id}/session");
     let (mut socket, _) = connect_async(&url).await.unwrap();
     next_json(&mut socket).await;
-    run_one(&mut socket, "SET SESSION completion_type = 2", None).await;
     run_transaction(&mut socket, "START TRANSACTION").await;
 
     // The server closes the connection after the COMMIT: the session ends.
-    let request = json!({ "type": "run", "sql": "COMMIT", "cursor": 0 });
+    let request = json!({ "type": "run", "sql": "COMMIT RELEASE", "cursor": 0 });
     socket
         .send(ClientMessage::Text(request.to_string().into()))
         .await

@@ -267,6 +267,9 @@ fn need(statement: &Parsed, temporary: &dyn Fn(&TableName) -> bool) -> Need {
         ) => Need::Transaction {
             read_write: *read_write,
         },
+        Parsed::MySql(MySqlStatement::EndTransaction { .. }) => {
+            Need::Transaction { read_write: false }
+        }
         Parsed::MySql(statement) => mysql_write_kind(statement, temporary)
             .map_or(Need::Forbidden, |kind| Need::Write(vec![kind])),
     }
@@ -462,15 +465,15 @@ fn mysql_write_kind(
             WriteKind::AlterTable,
             WriteKind::AlterTemporaryTable,
         ),
-        MySqlStatement::SetTransaction { .. } | MySqlStatement::StartTransaction { .. } => {
-            return None;
-        }
+        MySqlStatement::SetTransaction { .. }
+        | MySqlStatement::StartTransaction { .. }
+        | MySqlStatement::EndTransaction { .. } => return None,
     })
 }
 
 /// Does the text `sql` end a transaction with `COMMIT` or `ROLLBACK` (not
-/// to a savepoint)? The server may close the connection then
-/// (`completion_type = 2`).
+/// to a savepoint)? The server may close the connection then (`RELEASE`,
+/// `completion_type = 2`).
 pub fn ends_transaction(sql: &str, dialect: Dialect) -> bool {
     parse_statements(sql, dialect).is_ok_and(|statements| {
         statements.iter().any(|statement| {
@@ -482,7 +485,7 @@ pub fn ends_transaction(sql: &str, dialect: Dialect) -> bool {
                             savepoint: None,
                             ..
                         }
-                )
+                ) | Parsed::MySql(MySqlStatement::EndTransaction { .. })
             )
         })
     })
@@ -623,6 +626,7 @@ mod tests {
         let ends = |sql| ends_transaction(sql, Dialect::MySql);
         assert!(ends("COMMIT"));
         assert!(ends("SELECT 1; ROLLBACK"));
+        assert!(ends("COMMIT RELEASE"));
         assert!(!ends("ROLLBACK TO SAVEPOINT s"));
         assert!(!ends("START TRANSACTION"));
         assert!(!ends("SELECT 1 FROM"));
@@ -838,6 +842,8 @@ mod tests {
             "BEGIN WORK",
             "COMMIT",
             "COMMIT AND CHAIN",
+            "COMMIT RELEASE",
+            "ROLLBACK NO RELEASE",
             "ROLLBACK",
             "ROLLBACK TO SAVEPOINT s",
             "SAVEPOINT s",

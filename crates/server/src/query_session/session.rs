@@ -9,7 +9,8 @@
 //! It also follows the transaction open on its connection: at the end of each
 //! request, it tells the client when one opened or ended
 //! (`ServerMessage::Transaction`). A connection the server closed (after a
-//! `COMMIT` with `completion_type = 2`, a `KILL`...) ends the session.
+//! `COMMIT RELEASE`, a `COMMIT` with `completion_type = 2`, a `KILL`...)
+//! ends the session.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};

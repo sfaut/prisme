@@ -2,8 +2,9 @@
 //! stored routines (`CREATE PROCEDURE`, `CREATE FUNCTION`), scheduled events
 //! (`CREATE EVENT`, `ALTER EVENT`, `DROP EVENT`), the operations of
 //! `ALTER TABLE` on an existing index (`ALTER INDEX i VISIBLE`, MariaDB's
-//! `IGNORED`, `RENAME KEY i TO j`, `DROP KEY i`), and
-//! `START TRANSACTION WITH CONSISTENT SNAPSHOT`. Also
+//! `IGNORED`, `RENAME KEY i TO j`, `DROP KEY i`),
+//! `START TRANSACTION WITH CONSISTENT SNAPSHOT`, and the `RELEASE` of
+//! `COMMIT` and `ROLLBACK`. Also
 //! `SET [GLOBAL | SESSION | LOCAL] TRANSACTION`, which `sqlparser` parses
 //! without its scope: `SET GLOBAL TRANSACTION READ WRITE`, a setting of the
 //! whole server, would read as `SET TRANSACTION READ WRITE`.
@@ -102,6 +103,11 @@ pub enum MySqlStatement {
     StartTransaction {
         /// Does it give the `READ WRITE` access mode?
         read_write: bool,
+    },
+    /// `{COMMIT | ROLLBACK} [WORK] [AND [NO] CHAIN] [NO] RELEASE`.
+    EndTransaction {
+        /// `RELEASE`: the server closes the connection after the transaction.
+        release: bool,
     },
 }
 
@@ -205,6 +211,47 @@ fn start_transaction(parser: &mut Parser) -> Result<MySqlStatement, ParserError>
     }
     expect_end(parser)?;
     Ok(MySqlStatement::StartTransaction { read_write })
+}
+
+/// Parses a `COMMIT` or a `ROLLBACK` with `[NO] RELEASE` at the position of
+/// the parser. Called after `sqlparser` failed: `None` (nothing consumed)
+/// if the statement is neither.
+///
+/// Workaround: `sqlparser` does not parse `RELEASE`
+/// (`docs/DEVELOPER.md`, section "Workarounds").
+pub(crate) fn parse_end_transaction(
+    parser: &mut Parser,
+) -> Option<Result<MySqlStatement, ParserError>> {
+    parser
+        .try_parse(|parser| {
+            if parse_word(parser, "COMMIT") || parse_word(parser, "ROLLBACK") {
+                Ok(())
+            } else {
+                expected(parser, "COMMIT or ROLLBACK")
+            }
+        })
+        .ok()?;
+    Some(end_transaction(parser))
+}
+
+/// `COMMIT` or `ROLLBACK` after its keyword:
+/// `[WORK] [AND [NO] CHAIN] [NO] RELEASE`. `AND CHAIN` and `RELEASE`
+/// exclude each other, as on the servers (error 1064).
+fn end_transaction(parser: &mut Parser) -> Result<MySqlStatement, ParserError> {
+    parse_word(parser, "WORK");
+    let chain = parse_words(parser, &["AND", "CHAIN"]);
+    if !chain {
+        parse_words(parser, &["AND", "NO", "CHAIN"]);
+    }
+    let release = if parse_words(parser, &["NO", "RELEASE"]) {
+        false
+    } else if !chain && parse_word(parser, "RELEASE") {
+        true
+    } else {
+        return expected(parser, "NO RELEASE or RELEASE");
+    };
+    expect_end(parser)?;
+    Ok(MySqlStatement::EndTransaction { release })
 }
 
 /// `ALTER TABLE` after its keywords: `[IF EXISTS] name operation, ...`.
@@ -648,7 +695,9 @@ mod tests {
             | MySqlStatement::AlterEvent { name }
             | MySqlStatement::DropEvent { name }
             | MySqlStatement::AlterTable { name } => name.to_string(),
-            MySqlStatement::SetTransaction { .. } | MySqlStatement::StartTransaction { .. } => {
+            MySqlStatement::SetTransaction { .. }
+            | MySqlStatement::StartTransaction { .. }
+            | MySqlStatement::EndTransaction { .. } => {
                 panic!("a statement without a name: {statement:?}")
             }
         }
@@ -811,6 +860,31 @@ mod tests {
         error_of("SET GLOBAL TRANSACTION READ SOMETHING");
         error_of("START TRANSACTION WITH CONSISTENT");
         error_of("START TRANSACTION WITH CONSISTENT SNAPSHOT,");
+        // Refused by MySQL 8.4.11 and MariaDB 11.4.2 (error 1064).
+        error_of("COMMIT AND CHAIN RELEASE");
+        error_of("ROLLBACK TO SAVEPOINT s RELEASE");
+    }
+
+    #[test]
+    fn parses_the_release_of_a_transaction() {
+        for (sql, release) in [
+            ("COMMIT RELEASE", true),
+            ("ROLLBACK WORK RELEASE", true),
+            ("ROLLBACK AND NO CHAIN RELEASE", true),
+            ("COMMIT NO RELEASE", false),
+            ("COMMIT AND CHAIN NO RELEASE", false),
+        ] {
+            assert_eq!(
+                parsed(sql),
+                MySqlStatement::EndTransaction { release },
+                "{sql}"
+            );
+        }
+        // Without `RELEASE`, `sqlparser` parses it.
+        assert!(matches!(
+            parse_statements("COMMIT AND CHAIN", Dialect::MySql).as_deref(),
+            Ok([Parsed::Sql(_)])
+        ));
     }
 
     #[test]

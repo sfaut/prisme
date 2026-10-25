@@ -54,8 +54,9 @@ pub(crate) fn parse_statements(sql: &str, dialect: Dialect) -> Result<Vec<Parsed
 /// end of the text: a routine, an event or a `SET ... TRANSACTION` (whose
 /// scope `sqlparser` drops), else a statement of `sqlparser`, else an
 /// `ALTER TABLE` with an operation on an existing index (`sqlparser` reads
-/// `DROP INDEX IF EXISTS i` as the index `IF`, then stops) or a
-/// `START TRANSACTION WITH CONSISTENT SNAPSHOT`.
+/// `DROP INDEX IF EXISTS i` as the index `IF`, then stops), a
+/// `START TRANSACTION WITH CONSISTENT SNAPSHOT`, or a `COMMIT` or
+/// `ROLLBACK` with `RELEASE`.
 ///
 /// Workaround: the bugs of `sqlparser` on `DROP INDEX IF EXISTS` and on the
 /// scope of `SET TRANSACTION`, and the statements it does not parse
@@ -76,6 +77,7 @@ fn parse_statement(parser: &mut Parser) -> Result<Parsed, ParserError> {
         .or_else(|error| {
             mysql_statements::parse_alter_table(parser)
                 .or_else(|| mysql_statements::parse_start_transaction(parser))
+                .or_else(|| mysql_statements::parse_end_transaction(parser))
                 .map_or(Err(error), |statement| statement.map(Parsed::MySql))
         })
 }

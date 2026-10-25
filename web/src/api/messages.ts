@@ -190,7 +190,7 @@ export function describe(detail: ErrorDetail): string {
     case 'session_closed':
       return 'Session fermée avant la fin de la requête.'
     case 'connection_closed_by_server':
-      return 'Le serveur a fermé la connexion de la session (completion_type = 2, KILL, arrêt ou redémarrage du serveur…) : « Reconnecter » en ouvre une nouvelle.'
+      return 'Le serveur a fermé la connexion de la session (COMMIT RELEASE ou ROLLBACK RELEASE, completion_type = 2, KILL, arrêt ou redémarrage du serveur…) : « Reconnecter » en ouvre une nouvelle.'
     case 'no_query':
       return 'Aucune requête à exécuter.'
     case 'multiple_queries':
