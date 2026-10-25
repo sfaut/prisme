@@ -21,6 +21,8 @@
 //! A loadable function (`CREATE FUNCTION f RETURNS STRING SONAME 'lib.so'`),
 //! which installs a library on the server, is not a stored routine: it stays
 //! refused, like a query Prisme does not understand.
+//!
+//! Workaround: `sqlparser` does not parse these statements (`docs/DEVELOPER.md`, section "Workarounds").
 
 use sqlparser::ast::ObjectName;
 use sqlparser::parser::{Parser, ParserError};

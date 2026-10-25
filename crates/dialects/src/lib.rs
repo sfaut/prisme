@@ -30,6 +30,8 @@ pub enum Dialect {
     /// MySQL.
     MySql,
     /// MariaDB. `sqlparser` has no MariaDB dialect: the MySQL one serves as a base.
+    ///
+    /// Workaround: the missing MariaDB dialect of `sqlparser` (`docs/DEVELOPER.md`, section "Workarounds").
     MariaDb,
 }
 

@@ -21,6 +21,9 @@ export function cellLayoutId(editorId: number): string {
  * `autoSaveId`, prefixed by `reka:`. If storage is unavailable (private
  * browsing, blocked storage), there is nothing to forget.
  *
+ * Workaround: Reka UI has no API to forget a saved layout; its prefix is
+ * its own (`docs/DEVELOPER.md`, section "Workarounds").
+ *
  * @param editorId Id of the editor.
  */
 export function forgetCellLayout(editorId: number): void {

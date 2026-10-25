@@ -207,8 +207,9 @@ async function loadKeywords(): Promise<void> {
 function currentLanguage(): LanguageSupport {
   const fallback = props.flavor === 'mariadb' ? MariaSQL : MySQL
   const dialect = keywords === null ? fallback : editorDialect(keywords, props.ansiQuotes)
-  // Language assembled by hand, because `sql()` would add the completion of
-  // keywords: only the names of the catalog are offered.
+  // Workaround: language assembled by hand, because `sql()` always adds the
+  // completion of keywords; only the names of the catalog are offered
+  // (`docs/DEVELOPER.md`, section "Workarounds").
   const names = schemaCompletionSource({
     dialect,
     schema: props.schema,

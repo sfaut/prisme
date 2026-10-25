@@ -53,6 +53,9 @@ pub(crate) fn parse_statements(sql: &str, dialect: Dialect) -> Result<Vec<Parsed
 /// end of the text: a routine or an event, else a statement of `sqlparser`,
 /// else an `ALTER TABLE` with an operation on an existing index (`sqlparser`
 /// reads `DROP INDEX IF EXISTS i` as the index `IF`, then stops).
+///
+/// Workaround: the bug of `sqlparser` on `DROP INDEX IF EXISTS` and the
+/// statements it does not parse (`docs/DEVELOPER.md`, section "Workarounds").
 fn parse_statement(parser: &mut Parser) -> Result<Parsed, ParserError> {
     if let Some(statement) = mysql_statements::parse_routine_or_event(parser) {
         return statement.map(Parsed::MySql);

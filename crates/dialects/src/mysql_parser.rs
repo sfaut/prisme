@@ -1,6 +1,9 @@
 //! `sqlparser` dialect for MySQL and MariaDB: that of `sqlparser`, plus the
 //! compound time units.
 //!
+//! Workaround: `sqlparser` does not parse the compound units, and has no
+//! MariaDB dialect (`docs/DEVELOPER.md`, section "Workarounds").
+//!
 //! `sqlparser` (0.63) knows the simple units (`DAY`, `MONTH`...), not the
 //! compound units of MySQL and MariaDB (`YEAR_MONTH`, `DAY_HOUR`...): it
 //! fails on `EXTRACT(YEAR_MONTH FROM d)` and `INTERVAL '1-2' YEAR_MONTH`, and

@@ -5,6 +5,9 @@
  * grid; folding stays on the keyboard (`foldKeymap`: Ctrl+Shift+[ and
  * Ctrl+Shift+]). The data explorer keeps `basicSetup`, whose fold arrows
  * fold its JSON and XML nodes.
+ *
+ * Workaround: `basicSetup` takes no options; this copy follows it when it
+ * changes (`docs/DEVELOPER.md`, section "Workarounds").
  */
 import {
   autocompletion,

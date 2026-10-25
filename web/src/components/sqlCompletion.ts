@@ -34,6 +34,9 @@ const PLAIN_IDENTIFIER = /^[\w$\xa1-\uffff][\w$\d\xa1-\uffff]*$/
  * Completion option of a name, quoted on insertion if it is not a plain
  * identifier.
  *
+ * Workaround: `lang-sql` does not quote the names given as `Completion`
+ * objects (`docs/DEVELOPER.md`, section "Workarounds").
+ *
  * @param name Offered name.
  * @param ansiQuotes Is the `ANSI_QUOTES` mode active on the session?
  * @param rest Nature and detail of the option.

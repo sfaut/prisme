@@ -40,6 +40,9 @@ pub fn syntax_error(sql: &str, dialect: Dialect) -> Option<SyntaxError> {
 }
 
 /// Separates a `sqlparser` message from its final position, if it has one.
+///
+/// Workaround: `ParserError` only gives its position in its text, in
+/// English; a change of the wording gives line 0 (`docs/DEVELOPER.md`, section "Workarounds").
 fn with_location(text: &str) -> SyntaxError {
     let parsed = text
         .rsplit_once(LOCATION_MARK)
