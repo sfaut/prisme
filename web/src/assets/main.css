@@ -244,6 +244,20 @@
   --grid-row-height: calc(var(--space-unit) * 6);
   --popup-offset: var(--space-unit);
 
+  /* Columns of the result grid (`resultGrid.ts`): smallest width, enough
+     for the sort button and the start of the name; average width of a
+     character, to estimate a width from a number of characters, in `em` of
+     the grid's font (`ch`, the width of a zero, falls short of the names in
+     bold capitals of the headers), not registered (`@property`) so that the
+     `em` is that of the grid; room beside the text of an estimated or
+     fitted width; caps of the estimated width and of the width fitted to
+     the content. */
+  --grid-column-min-width: calc(var(--space-unit) * 10);
+  --grid-char-width: 0.6em;
+  --grid-cell-room: calc(var(--space-unit) * 4);
+  --grid-estimated-max-width: calc(var(--space-unit) * 90);
+  --grid-fitted-max-width: calc(var(--space-unit) * 180);
+
   /* Thickness of the progress bar drawn on each result tab: half a unit,
      thinner than any step of the scale. */
   --tab-progress-height: calc(var(--space-unit) / 2);

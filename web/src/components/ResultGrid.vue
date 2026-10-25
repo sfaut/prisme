@@ -294,7 +294,7 @@ onBeforeUnmount(() => {
  * Widths chosen with the mouse, by column index; the other columns keep
  * their estimated width.
  */
-const resized = ref<Record<number, number>>(rememberedWidths(props.sql, props.columns))
+const resized = ref<Record<number, string>>(rememberedWidths(props.sql, props.columns))
 
 // New columns: the widths remembered for the query, the order of the SELECT,
 // and no sort. The targeted filter's column index would point to another
@@ -401,14 +401,17 @@ function headerText(column: number): string {
 
 /**
  * Column template of the grid: row numbers, as wide as their content, then
- * each column, at its chosen or estimated width.
+ * each column, at its chosen or estimated width (CSS lengths relative to
+ * the root or to the grid's font).
  */
-const template = computed(() => {
-  const widths = order.value.map(
-    (column) => resized.value[column] ?? estimated.value[column] ?? MIN_COLUMN_WIDTH,
-  )
-  return ['max-content', ...widths.map((width) => `${width}px`)].join(' ')
-})
+const template = computed(() =>
+  [
+    'max-content',
+    ...order.value.map(
+      (column) => resized.value[column] ?? estimated.value[column] ?? MIN_COLUMN_WIDTH,
+    ),
+  ].join(' '),
+)
 
 /**
  * Number of digits of the largest row number: the row numbers and the
@@ -421,7 +424,7 @@ const rowDigits = computed(() => String(props.rowCount).length)
  * Resizing in progress: column, starting position of the pointer and
  * starting width.
  */
-let resizing: { column: number; x: number; width: number } | null = null
+let resizing: { column: number; x: number; width: number; rootSize: number } | null = null
 
 /**
  * Starts resizing a column; the pointer stays captured even outside the
@@ -431,9 +434,12 @@ let resizing: { column: number; x: number; width: number } | null = null
  * @param column Index of the column.
  */
 function onResizeStart(event: PointerEvent, column: number): void {
-  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-  const width = resized.value[column] ?? estimated.value[column] ?? 0
-  resizing = { column, x: event.clientX, width }
+  const handle = event.currentTarget as HTMLElement
+  handle.setPointerCapture(event.pointerId)
+  // The drag starts from the width drawn, in pixels like the pointer.
+  const width = handle.parentElement?.getBoundingClientRect().width ?? 0
+  const rootSize = Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
+  resizing = { column, x: event.clientX, width, rootSize }
 }
 
 /**
@@ -445,7 +451,11 @@ function onResizeMove(event: PointerEvent): void {
   if (resizing !== null) {
     resized.value = {
       ...resized.value,
-      [resizing.column]: resizedWidth(resizing.width, event.clientX - resizing.x),
+      [resizing.column]: resizedWidth(
+        resizing.width,
+        event.clientX - resizing.x,
+        resizing.rootSize,
+      ),
     }
   }
 }
@@ -982,7 +992,6 @@ const userFilterColumn = computed({
   inline-size: max-content;
   min-inline-size: 100%;
   background: var(--surface-elevated);
-  font-weight: 600;
 }
 
 .grid-body {
@@ -1033,11 +1042,15 @@ const userFilterColumn = computed({
   border-inline-start: none;
 }
 
+/* The bold goes on the headers, not on their row: the widths in `em` of the
+   template are read with the row's font, which must be that of the body's
+   rows for the columns to line up. */
 .grid-column-header {
   position: relative;
   display: flex;
   min-inline-size: 0;
   border-inline-start: var(--line-width) solid var(--line);
+  font-weight: 600;
 
   /* Only the last column carries a right border: the others are closed by
      the left border of their neighbour. */

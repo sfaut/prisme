@@ -23,9 +23,10 @@ interface RememberedWidths {
    */
   columns: string[]
   /**
-   * Chosen width, in pixels, by column index in the `SELECT`.
+   * Chosen width, a CSS length relative to the root, by column index in the
+   * `SELECT`.
    */
-  widths: Record<number, number>
+  widths: Record<number, string>
 }
 
 /**
@@ -40,7 +41,7 @@ const remembered = new Map<string, RememberedWidths>()
  * @param sql Text of the query.
  * @param columns Names of the result's columns.
  */
-export function rememberedWidths(sql: string, columns: string[]): Record<number, number> {
+export function rememberedWidths(sql: string, columns: string[]): Record<number, string> {
   const entry = remembered.get(sql)
   if (entry === undefined || entry.columns.join('\u0000') !== columns.join('\u0000')) {
     return {}
@@ -58,7 +59,7 @@ export function rememberedWidths(sql: string, columns: string[]): Record<number,
 export function rememberWidths(
   sql: string,
   columns: string[],
-  widths: Record<number, number>,
+  widths: Record<number, string>,
 ): void {
   // Delete then put back: the query becomes the most recent.
   remembered.delete(sql)

@@ -91,10 +91,10 @@ export type SelectMode = 'replace' | 'extend' | 'add'
 export const NULL_TEXT = 'NULL'
 
 /**
- * Minimum width of a resized column, in pixels: enough to keep the sort
+ * Smallest width of a column, from the theme: enough to keep the sort
  * button and the start of the name.
  */
-export const MIN_COLUMN_WIDTH = 40
+export const MIN_COLUMN_WIDTH = 'var(--grid-column-min-width)'
 
 /**
  * Tells whether a column is fixed-length text (`CHAR`), shown in monospace:
@@ -151,47 +151,27 @@ export function dropPosition(centers: number[], x: number): number {
 }
 
 /**
- * Width of a character, in pixels, to estimate the width of the columns.
- */
-export const CHAR_WIDTH = 7
-
-/**
- * Room added beside a text, in pixels, so that it does not touch the edges of
- * its cell.
- */
-export const CELL_PADDING = 16
-
-/**
- * Maximum estimated width of a column, in pixels.
- */
-export const MAX_ESTIMATED_WIDTH = 360
-
-/**
- * Maximum width of a column fitted to its content (double click on the edge
- * of its header), in pixels.
- */
-export const MAX_FITTED_WIDTH = 720
-
-/**
  * Number of rows read to estimate the width of the columns.
  */
 const WIDTH_SAMPLE = 200
 
 /**
- * Width of a column after its longest text: header (plus the room of the
- * sort button) and given rows.
+ * Width of a column after its longest text, header (plus the room of the
+ * sort button) and given rows: a CSS length that the browser computes, from
+ * the average width of a character of the grid's font plus the room beside
+ * the text, between the smallest width and a cap of the theme.
  *
  * @param name Name of the column.
  * @param rows Rows to measure.
  * @param column Index of the column.
- * @param max Maximum width, in pixels.
+ * @param max Variable of the theme that caps the width.
  */
-function contentWidth(name: string, rows: Cell[][], column: number, max: number): number {
+function contentWidth(name: string, rows: Cell[][], column: number, max: string): string {
   let longest = name.length + 2
   for (const row of rows) {
     longest = Math.max(longest, (row[column] ?? NULL_TEXT).length)
   }
-  return Math.min(max, Math.max(48, longest * CHAR_WIDTH + CELL_PADDING))
+  return `clamp(${MIN_COLUMN_WIDTH}, calc(${longest} * var(--grid-char-width) + var(--grid-cell-room)), var(${max}))`
 }
 
 /**
@@ -202,8 +182,8 @@ function contentWidth(name: string, rows: Cell[][], column: number, max: number)
  * @param rows Rows of the result.
  * @param column Index of the column.
  */
-export function estimatedWidth(name: string, rows: Cell[][], column: number): number {
-  return contentWidth(name, rows.slice(0, WIDTH_SAMPLE), column, MAX_ESTIMATED_WIDTH)
+export function estimatedWidth(name: string, rows: Cell[][], column: number): string {
+  return contentWidth(name, rows.slice(0, WIDTH_SAMPLE), column, '--grid-estimated-max-width')
 }
 
 /**
@@ -214,18 +194,23 @@ export function estimatedWidth(name: string, rows: Cell[][], column: number): nu
  * @param rows Rows of the result.
  * @param column Index of the column.
  */
-export function fittedWidth(name: string, rows: Cell[][], column: number): number {
-  return contentWidth(name, rows, column, MAX_FITTED_WIDTH)
+export function fittedWidth(name: string, rows: Cell[][], column: number): string {
+  return contentWidth(name, rows, column, '--grid-fitted-max-width')
 }
 
 /**
- * Width of a column after dragging its right edge.
+ * Width of a column after dragging its right edge: a CSS length in `rem`,
+ * so that it follows the root, not below the smallest width. The pointer
+ * only gives pixels: the width it reaches converts here, with the root's
+ * font size at the time of the drag.
  *
- * @param start Width at the start of the drag, in pixels.
+ * @param start Width of the column at the start of the drag, in pixels.
  * @param delta Horizontal move of the pointer, in pixels.
+ * @param rootSize Font size of the root, in pixels: one `rem`.
  */
-export function resizedWidth(start: number, delta: number): number {
-  return Math.max(MIN_COLUMN_WIDTH, Math.round(start + delta))
+export function resizedWidth(start: number, delta: number, rootSize: number): string {
+  const rem = Math.max(0, Math.round(start + delta)) / rootSize
+  return `max(${MIN_COLUMN_WIDTH}, ${Number(rem.toFixed(4))}rem)`
 }
 
 /**

@@ -56,13 +56,19 @@ describe('ResultGrid', () => {
 
   it('fits a column to its content, then gives back its estimated width', async () => {
     const wrapper = mountGrid(['texte'], [['x'.repeat(100)]], 'SELECT texte FROM double_clic')
+    // The width of the only column: the template after the row numbers.
     const width = () =>
-      (wrapper.find('.grid-header').element as HTMLElement).style.gridTemplateColumns.split(' ')[1]
-    expect(width()).toBe('360px')
+      (wrapper.find('.grid-header').element as HTMLElement).style.gridTemplateColumns.replace(
+        /^max-content /,
+        '',
+      )
+    const estimated = 'var(--grid-estimated-max-width)'
+    const fitted = 'var(--grid-fitted-max-width)'
+    expect(width()).toContain(estimated)
     await wrapper.find('.grid-resizer').trigger('dblclick')
-    expect(width()).toBe('716px')
+    expect(width()).toContain(fitted)
     await wrapper.find('.grid-resizer').trigger('dblclick')
-    expect(width()).toBe('360px')
+    expect(width()).toContain(estimated)
   })
 
   it('shows the headers and the number of rows', () => {

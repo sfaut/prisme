@@ -5,11 +5,8 @@ import type { Cell } from '@/api/querySession'
 import {
   dropPosition,
   moveColumn,
-  MAX_ESTIMATED_WIDTH,
-  MAX_FITTED_WIDTH,
   estimatedWidth,
   fittedWidth,
-  MIN_COLUMN_WIDTH,
   resizedWidth,
   compareCells,
   emptySelection,
@@ -213,26 +210,42 @@ describe('cells of a single column', () => {
 })
 
 describe('column width', () => {
-  it('follows the pointer without going below the minimum', () => {
-    expect(resizedWidth(120, 35.6)).toBe(156)
-    expect(resizedWidth(120, -30)).toBe(90)
-    expect(resizedWidth(120, -500)).toBe(MIN_COLUMN_WIDTH)
+  it('follows the pointer in rem, without going below the minimum', () => {
+    expect(resizedWidth(120, 35.6, 16)).toBe('max(var(--grid-column-min-width), 9.75rem)')
+    expect(resizedWidth(120, -30, 16)).toBe('max(var(--grid-column-min-width), 5.625rem)')
+    expect(resizedWidth(120, -500, 16)).toBe('max(var(--grid-column-min-width), 0rem)')
+    // A larger root text: the same pixels make fewer rem.
+    expect(resizedWidth(120, 40, 20)).toBe('max(var(--grid-column-min-width), 8rem)')
   })
 })
 
 describe('estimated or fitted width', () => {
   const rows: Cell[][] = [['a'], ['x'.repeat(80)], ...Array.from({ length: 300 }, () => ['b'])]
 
+  /**
+   * Width the browser computes for a text of `chars` characters, capped by
+   * `max`.
+   *
+   * @param chars Number of characters.
+   * @param max Variable of the cap.
+   */
+  const width = (chars: number, max: string) =>
+    `clamp(var(--grid-column-min-width), calc(${chars} * var(--grid-char-width) + var(--grid-cell-room)), var(${max}))`
+
   it('estimates on the first rows, with a cap', () => {
-    expect(estimatedWidth('id', [['1']], 0)).toBe(48)
-    expect(estimatedWidth('texte', rows, 0)).toBe(MAX_ESTIMATED_WIDTH)
+    // The name and the room of the sort button: 2 + 2 characters.
+    expect(estimatedWidth('id', [['1']], 0)).toBe(width(4, '--grid-estimated-max-width'))
+    expect(estimatedWidth('texte', rows, 0)).toBe(width(80, '--grid-estimated-max-width'))
     // Long value beyond the first 200 rows: ignored by the estimate.
-    expect(estimatedWidth('texte', [...rows.slice(2), ['x'.repeat(80)]], 0)).toBe(65)
+    expect(estimatedWidth('texte', [...rows.slice(2), ['x'.repeat(80)]], 0)).toBe(
+      width(7, '--grid-estimated-max-width'),
+    )
   })
 
   it('fits on all the rows, with a higher cap', () => {
-    expect(fittedWidth('texte', [...rows.slice(2), ['x'.repeat(80)]], 0)).toBe(80 * 7 + 16)
-    expect(fittedWidth('texte', [['x'.repeat(500)]], 0)).toBe(MAX_FITTED_WIDTH)
+    expect(fittedWidth('texte', [...rows.slice(2), ['x'.repeat(80)]], 0)).toBe(
+      width(80, '--grid-fitted-max-width'),
+    )
   })
 })
 
