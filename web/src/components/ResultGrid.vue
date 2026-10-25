@@ -158,8 +158,10 @@ const props = defineProps<{
 }>()
 
 /**
- * Height of a row, in pixels, for virtual scrolling
- * (`--grid-row-height` of the theme).
+ * Height of a row, in pixels, for virtual scrolling (`--grid-row-height` of
+ * the theme): the virtualizer reads the scroll position in pixels to know
+ * which rows to draw. The page places the rows and sizes the body with the
+ * theme's variable itself, in CSS.
  */
 const ROW_HEIGHT = cssPixels('--grid-row-height', 22)
 
@@ -842,12 +844,18 @@ const userFilterColumn = computed({
         </div>
       </div>
 
-      <div class="grid-body" :style="{ height: `${virtualizer.getTotalSize()}px` }">
+      <div
+        class="grid-body"
+        :style="{ blockSize: `calc(var(--grid-row-height) * ${virtualizer.options.count})` }"
+      >
         <div
           v-for="item in virtualizer.getVirtualItems()"
           :key="item.index"
           class="grid-row"
-          :style="{ gridTemplateColumns: template, transform: `translateY(${item.start}px)` }"
+          :style="{
+            gridTemplateColumns: template,
+            transform: `translateY(calc(var(--grid-row-height) * ${item.index}))`,
+          }"
         >
           <div
             class="grid-row-header"

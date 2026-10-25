@@ -121,9 +121,12 @@ describe('ResultGrid with a large result', () => {
   it('ends with every row in the view, computed a chunk per frame', async () => {
     const rows = Array.from({ length: 5000 }, (_, index) => [String(index)])
     const wrapper = mountGrid(['id'], rows)
-    // The height of the list is the number of rows of the view, at 22 px each (default).
+    // The height of the list is the number of rows of the view, at the theme's row height.
     await vi.waitFor(
-      () => expect(wrapper.find('.grid-body').attributes('style')).toContain('height: 110000px'),
+      () =>
+        expect(wrapper.find('.grid-body').attributes('style')).toContain(
+          'calc(var(--grid-row-height) * 5000)',
+        ),
       { timeout: 5000 },
     )
   })
