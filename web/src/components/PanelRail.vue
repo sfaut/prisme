@@ -78,7 +78,7 @@ const ICONS = {
   &.start,
   &.end {
     flex-direction: column;
-    inline-size: --spacing(7);
+    inline-size: var(--rail-size);
     padding-block-start: --spacing(3);
   }
 
@@ -90,11 +90,11 @@ const ICONS = {
     border-inline-start: var(--line-width) solid var(--line);
   }
 
-  /* At the bottom: along the whole width, the title on the line. */
+  /* At the bottom: along the whole width, the title on the line; the line
+     above is that of the splitter's handle. */
   &.bottom {
-    block-size: --spacing(7);
+    block-size: var(--rail-size);
     padding-inline-start: --spacing(3);
-    border-block-start: var(--line-width) solid var(--line);
   }
 }
 

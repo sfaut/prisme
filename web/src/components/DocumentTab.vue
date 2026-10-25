@@ -5,6 +5,9 @@
   - Look: the active tab is filled (`surface-elevated`), its text darker;
     the line under the bar is drawn by the bar itself. The bottom edge of a
     tab stays free for the progress bar of the result tabs.
+  - Height: its padding around its small buttons, taller than its text. A
+    folded result list keeps that height (`--tab-bar-height`, `main.css`),
+    which follows any change of the padding or of the buttons.
   - Focus: no outline. The tabs activate as they get the focus (arrow keys),
     so the focused tab is the active, filled one.
   - Content: what the bar puts in the default slot (label, progress), then

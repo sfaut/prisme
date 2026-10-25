@@ -8,8 +8,8 @@
   another one, before it, shows or hides the filters of both tabs, and
   takes the accent color while the filter of the tab shown keeps only some
   elements, hidden or not. The console folds towards the bottom edge, where
-  it leaves a rail (`PanelRail.vue`); its height is set by dragging its top
-  edge (`PanelResizer.vue`, in `App.vue`).
+  it leaves a rail (`PanelRail.vue`); its height is set by dragging the line
+  above it (the splitter of `App.vue`).
 -->
 <script setup lang="ts">
 import { Funnel, MessageCircleOff } from '@lucide/vue'

@@ -56,6 +56,21 @@ describe('synchronisation state of the editors', () => {
   })
 })
 
+describe('closing an editor', () => {
+  it('forgets the layout of its cell', async () => {
+    const editors = useEditorsStore()
+    await editors.create(null)
+    window.localStorage.setItem('reka:prisme.cellLayout.1', '{}')
+    window.localStorage.setItem('reka:prisme.cellLayout.2', '{}')
+
+    await editors.close(1)
+
+    expect(window.localStorage.getItem('reka:prisme.cellLayout.1')).toBeNull()
+    expect(window.localStorage.getItem('reka:prisme.cellLayout.2')).toBe('{}')
+    window.localStorage.clear()
+  })
+})
+
 describe('saves when the page closes', () => {
   it('sends the text waiting for its delay at once, outliving the page', async () => {
     const editors = useEditorsStore()

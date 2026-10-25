@@ -7,11 +7,16 @@
   explorer (`DataExplorer`), whose width is set by dragging its left edge.
   Both side panels go from the top bar down to the bottom of the window.
   Under the editors, between the side panels, the console
-  (`ConsolePanel`), whose height is set by dragging its top edge. Each
-  panel folds with the button of its header (`PanelHeader`) and leaves a
-  rail on its edge, which opens it again (`PanelRail`): the object navigator
-  and the console are open by default (`layout` and `console` stores), the
-  data explorer closed. Layout in Tailwind classes.
+  (`ConsolePanel`). The editors and the console share the height in a
+  splitter of Reka UI (`SplitterGroup`): dragging the line between them
+  sets the height of the console, within the bounds of both (the editors
+  keep `--editors-min-height`), and the splitter remembers it. Each panel
+  folds with the button of its header (`PanelHeader`) and leaves a rail on
+  its edge, which opens it again (`PanelRail`); the console also folds by
+  dragging it below its smallest height, or by a double click on the line.
+  The object navigator and the console are open by default (`layout` and
+  `console` stores), the data explorer closed. Layout in Tailwind
+  classes.
 
   The navigator acts on the active editor: the chosen source becomes its
   connection, an opened table or a chosen database (`USE`) runs there, and
@@ -25,8 +30,8 @@
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
 import { Database } from '@lucide/vue'
-import { TabsContent, TabsRoot } from 'reka-ui'
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { SplitterGroup, SplitterPanel, TabsContent, TabsRoot } from 'reka-ui'
+import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import type { SessionStatus } from './api/querySession'
 
@@ -44,10 +49,12 @@ import ObjectNavigator from './components/ObjectNavigator.vue'
 import QueryCell from './components/QueryCell.vue'
 import PanelRail from './components/PanelRail.vue'
 import PanelResizer from './components/PanelResizer.vue'
+import SplitHandle from './components/SplitHandle.vue'
 import UiAlert from './components/ui/UiAlert.vue'
 import UiToaster from './components/ui/UiToaster.vue'
 import UiTooltip from './components/ui/UiTooltip.vue'
-import { CONSOLE, DATA_PANEL, SIDER, clampPanelSize, loadPanelSize } from './components/panelSize'
+import { DATA_PANEL, SIDER, clampPanelSize, loadPanelSize } from './components/panelSize'
+import { cssPixels } from './cssLength'
 
 const connections = useConnectionsStore()
 const editors = useEditorsStore()
@@ -66,9 +73,38 @@ const siderWidth = ref(clampPanelSize(SIDER, loadPanelSize(SIDER), window.innerW
 const dataPanelWidth = ref(clampPanelSize(DATA_PANEL, loadPanelSize(DATA_PANEL), window.innerWidth))
 
 /**
- * Height of the console, in pixels.
+ * Heights of the central splitter, in pixels (`main.css`): smallest area of
+ * the editors; default and smallest console; folded console, its rail.
  */
-const consoleHeight = ref(clampPanelSize(CONSOLE, loadPanelSize(CONSOLE), window.innerHeight))
+const EDITORS_MIN_HEIGHT = cssPixels('--editors-min-height', 312)
+const CONSOLE_HEIGHT = cssPixels('--console-height', 220)
+const CONSOLE_MIN_HEIGHT = cssPixels('--console-min-height', 120)
+const RAIL_SIZE = cssPixels('--rail-size', 28)
+
+/**
+ * Panel of the console in the central splitter.
+ */
+const consoleSplit = useTemplateRef<InstanceType<typeof SplitterPanel>>('consoleSplit')
+
+/**
+ * Folds or unfolds the console's panel as the console's state says.
+ *
+ * @param open Is the console open?
+ */
+function showConsole(open: boolean): void {
+  if (open) {
+    consoleSplit.value?.expand()
+  } else {
+    consoleSplit.value?.collapse()
+  }
+}
+
+// The console's state (header button, rail, double click) drives its panel;
+// the panel, folded or unfolded by a drag, updates the state in return. On
+// each resize, from Reka UI's `isCollapsed`: its `collapse` event compares
+// sizes in pixels to ten decimals and misses a fold by a drag.
+watch(() => consoleStore.open, showConsole)
+onMounted(() => nextTick(() => showConsole(consoleStore.open)))
 
 /**
  * Error loading or saving the editors, `null` if none.
@@ -290,68 +326,93 @@ function selectSource(connectionId: number): void {
         side="start"
         @expand="layout.objectsOpen = true"
       />
-      <div class="relative flex min-w-0 flex-1 flex-col">
-        <main class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-3">
-          <ui-alert
-            v-if="editorsError"
-            tone="error"
-            :title="editorsError"
-            @close="editorsError = null"
-          />
-          <tabs-root
-            v-model="activeTab"
-            :unmount-on-hide="false"
-            class="flex min-h-0 flex-1 flex-col gap-2"
-          >
-            <editor-tab-bar />
-            <tabs-content
-              v-for="editor in editors.editors"
-              :key="editor.id"
-              :value="editor.id"
-              class="flex min-h-0 flex-1 flex-col"
-              :class="{ 'items-center justify-center': !connectionOf(editor.connectionId) }"
+      <splitter-group
+        direction="vertical"
+        auto-save-id="prisme.centerLayout"
+        class="min-w-0 flex-1"
+      >
+        <splitter-panel :order="1" size-unit="px" :min-size="EDITORS_MIN_HEIGHT" class="flex">
+          <main class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 p-3">
+            <ui-alert
+              v-if="editorsError"
+              tone="error"
+              :title="editorsError"
+              @close="editorsError = null"
+            />
+            <tabs-root
+              v-model="activeTab"
+              :unmount-on-hide="false"
+              class="flex min-h-0 flex-1 flex-col gap-2"
             >
-              <query-cell
-                v-if="connectionOf(editor.connectionId)"
-                :ref="
-                  (cell) =>
-                    cell
-                      ? cells.set(editor.id, cell as InstanceType<typeof QueryCell>)
-                      : cells.delete(editor.id)
-                "
-                :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
-                :editor-id="editor.id"
-                :active="editor.id === editors.activeId"
-                :connection="connectionOf(editor.connectionId)!"
-                :sql="editor.sql"
-                @update:sql="(sql) => editors.setSql(editor.id, sql)"
-                @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
-                @database="(database) => (databases[editor.id] = database)"
-                @status="(status) => (statuses[editor.id] = status)"
-              />
-              <div v-else class="flex max-w-xs flex-col items-center gap-2 text-center">
-                <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
-                  <Database class="size-4 text-fg-muted" />
-                </span>
-                <p class="text-balance text-fg-muted">
-                  Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données pour la choisir
-                  pour cet éditeur, ou ajoutez une connexion par le menu « ⋮ »
-                </p>
-              </div>
-            </tabs-content>
-          </tabs-root>
-        </main>
-        <template v-if="consoleStore.open">
-          <panel-resizer v-model="consoleHeight" :panel="CONSOLE" side="bottom" />
+              <editor-tab-bar />
+              <tabs-content
+                v-for="editor in editors.editors"
+                :key="editor.id"
+                :value="editor.id"
+                class="flex min-h-0 flex-1 flex-col"
+                :class="{ 'items-center justify-center': !connectionOf(editor.connectionId) }"
+              >
+                <query-cell
+                  v-if="connectionOf(editor.connectionId)"
+                  :ref="
+                    (cell) =>
+                      cell
+                        ? cells.set(editor.id, cell as InstanceType<typeof QueryCell>)
+                        : cells.delete(editor.id)
+                  "
+                  :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
+                  :editor-id="editor.id"
+                  :active="editor.id === editors.activeId"
+                  :connection="connectionOf(editor.connectionId)!"
+                  :sql="editor.sql"
+                  @update:sql="(sql) => editors.setSql(editor.id, sql)"
+                  @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
+                  @database="(database) => (databases[editor.id] = database)"
+                  @status="(status) => (statuses[editor.id] = status)"
+                />
+                <div v-else class="flex max-w-xs flex-col items-center gap-2 text-center">
+                  <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
+                    <Database class="size-4 text-fg-muted" />
+                  </span>
+                  <p class="text-balance text-fg-muted">
+                    Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données pour la choisir
+                    pour cet éditeur, ou ajoutez une connexion par le menu « ⋮ »
+                  </p>
+                </div>
+              </tabs-content>
+            </tabs-root>
+          </main>
+        </splitter-panel>
+        <split-handle
+          tooltip="Glisser pour redimensionner la console, double clic pour la replier ou la déplier"
+          @toggle="consoleStore.open = !consoleStore.open"
+        />
+        <splitter-panel
+          ref="consoleSplit"
+          :order="2"
+          size-unit="px"
+          :default-size="CONSOLE_HEIGHT"
+          :min-size="CONSOLE_MIN_HEIGHT"
+          collapsible
+          :collapsed-size="RAIL_SIZE"
+          class="flex"
+          @resize="consoleStore.open = !consoleSplit?.isCollapsed"
+        >
           <section
-            class="shrink-0 border-t border-line px-3 pt-1 pb-3"
-            :style="{ height: `${consoleHeight}px` }"
+            v-if="consoleStore.open"
+            class="flex min-h-0 min-w-0 flex-1 flex-col px-3 pt-1 pb-3"
           >
             <console-panel />
           </section>
-        </template>
-        <panel-rail v-else title="Console" side="bottom" @expand="consoleStore.open = true" />
-      </div>
+          <panel-rail
+            v-else
+            title="Console"
+            side="bottom"
+            class="flex-1"
+            @expand="consoleStore.open = true"
+          />
+        </splitter-panel>
+      </splitter-group>
       <template v-if="explorer.open">
         <panel-resizer v-model="dataPanelWidth" :panel="DATA_PANEL" side="end" />
         <aside

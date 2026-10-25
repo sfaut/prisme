@@ -1,8 +1,7 @@
 /**
  * Size of the panels of the layout, set with the mouse (`PanelResizer.vue`)
  * and remembered from one visit to the next: the width of the side panels,
- * the object explorer on the left and the data explorer on the right, and
- * the height of the console, at the bottom.
+ * the object explorer on the left and the data explorer on the right.
  *
  * The size is kept in the browser's local storage: it is a display
  * preference specific to this machine. If storage is unavailable (private
@@ -10,8 +9,7 @@
  */
 
 /**
- * Bounds and memory of a panel's size: its width for a side panel, its
- * height for the console.
+ * Bounds and memory of a side panel's width.
  */
 export interface PanelSize {
   /**
@@ -52,17 +50,6 @@ export const DATA_PANEL: PanelSize = {
   defaultSize: 420,
   minSize: 240,
   maxRatio: 0.5,
-}
-
-/**
- * Console, at the bottom: a few lines at least; at most two thirds of the
- * window, to leave room for the editor.
- */
-export const CONSOLE: PanelSize = {
-  storageKey: 'prisme.consoleHeight',
-  defaultSize: 220,
-  minSize: 120,
-  maxRatio: 0.66,
 }
 
 /**

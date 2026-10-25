@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { CONSOLE, SIDER, clampPanelSize, loadPanelSize, savePanelSize } from '../panelSize'
+import { SIDER, clampPanelSize, loadPanelSize, savePanelSize } from '../panelSize'
 
 // Under Node 26, Node's `localStorage` (inactive without a file) hides that of
 // jsdom: an in-memory storage replaces it for the tests.
@@ -29,12 +29,5 @@ describe('width of the left panel', () => {
     expect(loadPanelSize(SIDER)).toBe(420)
     window.localStorage.setItem('prisme.siderWidth', 'abc')
     expect(loadPanelSize(SIDER)).toBe(SIDER.defaultSize)
-  })
-})
-
-describe('height of the console', () => {
-  it('stays between the minimum and two thirds of the window', () => {
-    expect(clampPanelSize(CONSOLE, 10, 900)).toBe(CONSOLE.minSize)
-    expect(clampPanelSize(CONSOLE, 800, 900)).toBe(594)
   })
 })

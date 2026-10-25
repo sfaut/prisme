@@ -12,6 +12,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { clearPending, markPending } from '@/api/sync'
+import { forgetCellLayout } from '@/components/cellLayout'
 
 import {
   closeEditor,
@@ -258,8 +259,9 @@ export const useEditorsStore = defineStore('editors', () => {
   }
 
   /**
-   * Closes an editor (can be reopened for 24 hours); its neighbour becomes
-   * active. The last editor closed is replaced by an empty editor.
+   * Closes an editor (can be reopened for 24 hours) and forgets the layout of
+   * its cell; its neighbour becomes active. The last editor closed is
+   * replaced by an empty editor.
    *
    * @param id Id of the editor.
    */
@@ -268,6 +270,7 @@ export const useEditorsStore = defineStore('editors', () => {
       await save(id)
     }
     await closeEditor(id)
+    forgetCellLayout(id)
     const index = editors.value.findIndex((editor) => editor.id === id)
     editors.value = editors.value.filter((editor) => editor.id !== id)
     if (editors.value.length === 0) {

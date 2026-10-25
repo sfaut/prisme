@@ -254,6 +254,31 @@
   --grip-thickness: var(--space-unit);
   --grip-color: var(--line);
 
+  /* Splitters of the layout (`SplitterGroup` of Reka UI), whose sizes the
+     code reads (`cssPixels`): thickness of the rail left by a folded panel
+     (`rail`); bar left by a folded result list (`tab-bar`): the gap above
+     its tabs, then a tab at its own height, its padding (one unit above and
+     below, `DocumentTab`) around its small buttons, taller than its text,
+     and the line under the bar; a folded editor leaves its buttons and the
+     gap under them. Default heights of the editor and of the result list:
+     Reka UI scales them together to the cell's height, so that they set a
+     share, a third for the editor. Smallest editor (buttons and a few lines) and
+     result list (tabs, a few rows and the line under the grid); smallest
+     area of the editors: both, plus the tab bar of the editors, the padding
+     and the gaps. Default and smallest height of the console. */
+  --rail-size: calc(var(--space-unit) * 7);
+  --tab-bar-height: calc(var(--space-unit) * 4 + var(--control-height-sm) + var(--line-width));
+  --editor-folded-height: calc(var(--control-height) + var(--space-unit) * 2);
+  --editor-height: calc(var(--space-unit) * 50);
+  --results-height: calc(var(--space-unit) * 100);
+  --editor-min-height: calc(var(--space-unit) * 24);
+  --results-min-height: calc(var(--space-unit) * 50);
+  --editors-min-height: calc(
+    var(--editor-min-height) + var(--results-min-height) + var(--space-unit) * 18
+  );
+  --console-height: calc(var(--space-unit) * 55);
+  --console-min-height: calc(var(--space-unit) * 30);
+
   /* Scrollbars: radius, thumb and hovered thumb. */
   --scrollbar-radius: 0.125rem;
   --scrollbar-thumb: light-dark(var(--zinc-300), var(--zinc-600));
@@ -291,6 +316,66 @@
 }
 
 @property --popup-offset {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --rail-size {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --editor-folded-height {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --tab-bar-height {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --editor-height {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --results-height {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --editor-min-height {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --results-min-height {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --editors-min-height {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --console-height {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --console-min-height {
   syntax: '<length>';
   inherits: true;
   initial-value: 0px;
