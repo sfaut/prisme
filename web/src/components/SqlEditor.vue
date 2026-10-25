@@ -3,8 +3,8 @@
 
   Highlighting according to the dialect and the version of the server (MySQL or
   MariaDB: keywords read from the server, see `sqlDialect.ts`), line numbers
-  alone in their gutter, like the row numbers of the grid (the fold arrows
-  of `basicSetup` hide; folding stays on Ctrl+Shift+[ and Ctrl+Shift+]),
+  alone in their gutter, like the row numbers of the grid (`sqlSetup.ts`:
+  no fold arrows, folding stays on Ctrl+Shift+[ and Ctrl+Shift+]),
   light or dark theme like the interface (`editorTheme.ts`), undo history,
   completion of names only: databases, tables, columns, functions and
   procedures (namespace built from the catalog, see `sqlCompletion.ts`).
@@ -31,7 +31,7 @@ import { type Diagnostic, setDiagnostics } from '@codemirror/lint'
 import { MariaSQL, MySQL, type SQLNamespace, schemaCompletionSource } from '@codemirror/lang-sql'
 import { type ChangeSpec, Compartment } from '@codemirror/state'
 import { keymap } from '@codemirror/view'
-import { EditorView, basicSetup } from 'codemirror'
+import { EditorView } from 'codemirror'
 import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
 
 import { analyzeSql } from '@/api/analyze'
@@ -52,6 +52,7 @@ import { scrollKeymap } from './editorScroll'
 import { editorTheme } from './editorTheme'
 import { trimTrailingBlanks } from './editorTrim'
 import { editorDialect } from './sqlDialect'
+import { sqlSetup } from './sqlSetup'
 
 const props = defineProps<{
   /**
@@ -126,12 +127,6 @@ let selected = false
  * Delay between the last keystroke and the analysis of the text, in milliseconds.
  */
 const ANALYSIS_DELAY = 250
-
-/**
- * Gutter of the line numbers alone: the gutter of the fold arrows, which
- * `basicSetup` adds, hides.
- */
-const lineNumbersAlone = EditorView.theme({ '.cm-foldGutter': { display: 'none' } })
 
 /**
  * Pending deferred analysis, absent if none.
@@ -227,7 +222,7 @@ onMounted(() => {
     parent: host.value!,
     doc: text.value,
     extensions: [
-      // Before basicSetup, to take precedence over its own shortcuts.
+      // Before sqlSetup, to take precedence over its own shortcuts.
       keymap.of([
         {
           key: 'Mod-Enter',
@@ -254,12 +249,11 @@ onMounted(() => {
         },
         ...scrollKeymap,
       ]),
-      basicSetup,
+      sqlSetup,
       indentation.of(editorIndentation(props.indentSize)),
       // Strict completion: start of the name or initials, never scattered letters.
       autocompletion({ filterStrict: true }),
       editorTheme(),
-      lineNumbersAlone,
       language.of(currentLanguage()),
       currentStatement(),
       trimTrailingBlanks(),
