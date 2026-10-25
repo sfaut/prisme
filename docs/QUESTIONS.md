@@ -85,6 +85,10 @@ This document keeps track of the reasoning: what was kept, dropped or postponed,
 9. **Parallel and transactions**: parallel execution on distinct connections, hence outside the session's transaction. Behaviour and message to set.
 10. **Tutorial D in v1**: placed last, as a subset on a single source. Is that fine?
 11. **Code language**: settled, the repository is in English (see `CLAUDE.md`, "Languages"); the interface stays in French for now.
+31. **Own SQL parser in place of `sqlparser-rs`.** Needs behind it: the gaps of `sqlparser-rs` (see `docs/DEVELOPER.md`, section "Workarounds"); a parser strict per dialect and per version, which rejects what the target server rejects (`sqlparser-rs` is permissive by design, and reads MariaDB with its MySQL dialect); a tree that Prisme masters, for the translation between dialects and the logical plan (nullability, types, rule 5 of `CLAUDE.md`); error messages in the language of the interface.
+    - Gains: the `sqlparser` workarounds go away (`mysql_statements.rs`, `mysql_parser.rs` and the pin of the version, the position read from the error text, `offsets.rs`); MySQL and MariaDB are told apart by the parser itself.
+    - Costs: `sqlparser` 0.63 counts about 66,500 lines (22,000 for its parser) for about ten dialects, against 5,800 for Prisme's `dialects` crate; five engines in the end (MySQL, MariaDB, PostgreSQL, SQLite, DuckDB), each followed version after version without the fixes of a community; the official grammars of MySQL and MariaDB are under the GPL, so nothing of them can be copied into Prisme (MIT): the parser would be written from the documentation, measured on the servers; several weeks before getting back to the current level, taken from the stages of the v1.
+    - Decision (2026-10-25): keep `sqlparser-rs` for now, its gaps being covered by small isolated workarounds. To reopen when one of these signs appears: the workarounds of `sqlparser` keep growing; rejecting what the target server rejects becomes a requirement (strict validation per dialect and version); the translation or the federated engine needs a tree that `sqlparser-rs` cannot carry.
 
 ### Execution
 
