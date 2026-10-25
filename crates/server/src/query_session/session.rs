@@ -5,7 +5,12 @@
 //! The session remembers its current database: it reads it from the server
 //! (`SELECT DATABASE()`) when it opens, and again only after a query that can
 //! change it (`USE`...).
+//!
+//! It also follows the transaction open on its connection: at the end of each
+//! request, it tells the client when one opened or ended
+//! (`ServerMessage::Transaction`).
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use prisme_connectors::mysql::{self, Connection, MysqlTarget};
@@ -39,6 +44,7 @@ pub(super) async fn serve(
 ) {
     let database = Mutex::new(None);
     let temporary = Mutex::new(TemporaryTables::default());
+    let transaction = AtomicBool::new(false);
     let session = Session {
         outbox: &outbox,
         target: &target,
@@ -47,6 +53,7 @@ pub(super) async fn serve(
         cancellation: &cancellation,
         database: &database,
         temporary: &temporary,
+        transaction: &transaction,
         batch: 0,
     };
     let opening = console::action_span(Action::Session);
@@ -118,6 +125,9 @@ pub(super) struct Session<'a> {
     pub(super) database: &'a Mutex<Option<String>>,
     /// Temporary tables of the session's connection.
     pub(super) temporary: &'a Mutex<TemporaryTables>,
+    /// Is a transaction open on the session's connection, as last told to
+    /// the client?
+    pub(super) transaction: &'a AtomicBool,
 }
 
 /// Summary of a result read to the end.
@@ -207,9 +217,24 @@ impl Session<'_> {
             .send(ServerMessage::Ready {
                 server: info,
                 database,
+                transaction: false,
             })
             .await?;
         Ok(dialect)
+    }
+
+    /// Tells the client when a transaction opened or ended on the session's
+    /// connection since the last request. A failure to read it, which only a
+    /// broken connection gives, keeps the last state: the next query reports
+    /// the broken connection.
+    async fn follow_transaction(&self, connection: &mut Connection) -> Result<(), SessionStopped> {
+        let Ok(open) = mysql::in_transaction(connection).await else {
+            return Ok(());
+        };
+        if self.transaction.swap(open, Ordering::Relaxed) == open {
+            return Ok(());
+        }
+        self.outbox.send(ServerMessage::Transaction { open }).await
     }
 
     /// Changes the session's current database and announces the new database
@@ -293,6 +318,7 @@ impl Session<'_> {
             self.run_in_sequence(connection, &chosen, dialect, &limits)
                 .await?;
         }
+        self.follow_transaction(connection).await?;
         self.outbox.send(ServerMessage::BatchDone).await
     }
 }

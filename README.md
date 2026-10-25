@@ -161,7 +161,7 @@ The tab bar above the SQL cell holds several editors:
 - **Double-click** a tab to rename it. Drag it to move it.
 - The **cross** (or a middle click) closes it. A closed editor can be reopened for 24 hours from the **Rouvrir** (Reopen) button, the clock icon.
 
-Each editor has its own connection, its own session (and therefore its own transactions) and its own results. Everything is saved as you type: texts, editors, result tabs and rows. A page reload or a browser restart brings everything back.
+Each editor has its own connection, its own session (and therefore its own transactions) and its own results. While a transaction is open on the session, a **Transaction ouverte** (Transaction open) badge shows at the end of the editor's buttons, until its `COMMIT` or `ROLLBACK`; a page that comes back during the transaction shows it again. Everything is saved as you type: texts, editors, result tabs and rows. A page reload or a browser restart brings everything back.
 
 ### Running queries
 

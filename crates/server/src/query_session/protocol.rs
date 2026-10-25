@@ -118,6 +118,9 @@ pub(crate) enum ServerMessage {
     Ready {
         server: ServerInfo,
         database: Option<String>,
+        /// Is a transaction open on the session's connection? Always false
+        /// when it opens; true for a WebSocket that reattaches during one.
+        transaction: bool,
     },
     /// Queries about to run.
     Batch { queries: Vec<BatchQuery> },
@@ -169,6 +172,9 @@ pub(crate) enum ServerMessage {
     BatchDone,
     /// Current database of the session, after a successful `use` request.
     Database { database: Option<String> },
+    /// A transaction opened (`open`) or ended on the session's connection,
+    /// at the end of a request, before `batch_done`.
+    Transaction { open: bool },
     /// Last batch of the session, sent to a WebSocket that reattaches to it.
     Resume {
         /// Is the batch still running?

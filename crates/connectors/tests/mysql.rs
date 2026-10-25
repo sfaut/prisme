@@ -7,7 +7,9 @@
 use std::time::{Duration, Instant};
 
 use prisme_connectors::mysql::catalog::{self, RoutineKind, TableKind};
-use prisme_connectors::mysql::{Flavor, MysqlTarget, connect, execute, kill_query, probe};
+use prisme_connectors::mysql::{
+    Flavor, MysqlTarget, connect, execute, in_transaction, kill_query, probe,
+};
 use secrecy::SecretString;
 use testcontainers_modules::mariadb::Mariadb;
 use testcontainers_modules::mysql::Mysql;
@@ -208,4 +210,32 @@ async fn reads_the_catalog_schema_by_schema() {
         (t.triggers[0].timing.as_str(), t.triggers[0].event.as_str()),
         ("BEFORE", "INSERT")
     );
+}
+
+#[tokio::test]
+#[ignore = "requires Docker Desktop running"]
+async fn tells_an_open_transaction() {
+    let server = Mariadb::default().start().await.unwrap();
+    let host = server.get_host().await.unwrap().to_string();
+    let port = server.get_host_port_ipv4(3306).await.unwrap();
+    let mut connection = connect(&target(host, port)).await.unwrap();
+    let mut run = async |sql: &str| {
+        if let Ok(stream) = execute(&mut connection, sql).await {
+            stream.discard().await;
+        }
+        in_transaction(&mut connection).await.unwrap()
+    };
+
+    assert!(!run("CREATE TABLE t (a INT)").await);
+    assert!(run("START TRANSACTION").await);
+    assert!(run("INSERT INTO t VALUES (1)").await);
+    // An error leaves the transaction open.
+    assert!(run("SELECT * FROM missing").await);
+    assert!(!run("COMMIT").await);
+    assert!(run("BEGIN").await);
+    // A statement that commits implicitly ends it, even when it fails.
+    assert!(!run("CREATE TABLE t (a INT)").await);
+    assert!(!run("SET autocommit = 0").await);
+    assert!(run("SELECT * FROM t").await);
+    assert!(!run("ROLLBACK").await);
 }

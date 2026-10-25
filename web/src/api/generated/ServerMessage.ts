@@ -10,7 +10,16 @@ import type { ServerInfo } from "./ServerInfo";
  * Message sent to the client.
  */
 export type ServerMessage =
-  | { "type": "ready"; server: ServerInfo; database: string | null }
+  | {
+    "type": "ready";
+    server: ServerInfo;
+    database: string | null;
+    /**
+     * Is a transaction open on the session's connection? Always false
+     * when it opens; true for a WebSocket that reattaches during one.
+     */
+    transaction: boolean;
+  }
   | { "type": "batch"; queries: Array<BatchQuery> }
   | { "type": "started"; query: number }
   | {
@@ -66,6 +75,7 @@ export type ServerMessage =
   }
   | { "type": "batch_done" }
   | { "type": "database"; database: string | null }
+  | { "type": "transaction"; open: boolean }
   | {
     "type": "resume";
     /**

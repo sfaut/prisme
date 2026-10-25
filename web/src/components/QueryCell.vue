@@ -22,6 +22,8 @@
   of the results, as in the console's header): the query runs again in the
   tab, after the running batch if any.
   The row limit chosen here becomes the user's default limit.
+  While a transaction is open on the session's connection, a status badge
+  says so at the end of the buttons, until its COMMIT or ROLLBACK.
   The session can be closed from the object navigator ("Déconnecter",
   `disconnect`): the cell then shows it closed, with "Reconnecter". A
   session opened on a server older than the oldest version Prisme supports
@@ -324,6 +326,12 @@ function closeTab(tab: QueryTab): void {
   session.closeTab(tab.id)
   deleteResult(tab.id).catch(reportFailure)
 }
+
+/**
+ * Tooltip of the badge of the open transaction.
+ */
+const TRANSACTION_TIP =
+  'Une transaction est ouverte sur la session : COMMIT la valide, ROLLBACK l’annule. Fermer la session l’annule.'
 
 /**
  * Tooltip of the run buttons while queries run: a click stops them.
@@ -741,6 +749,14 @@ defineExpose({
             class="w-32"
             @update:model-value="(limit) => limit !== undefined && changeLimit(limit)"
           />
+          <span
+            v-if="state.transaction"
+            v-tooltip="TRANSACTION_TIP"
+            role="status"
+            class="transaction-badge ms-auto shrink-0 text-trim"
+          >
+            Transaction ouverte
+          </span>
           <!-- The fold button stays visible in the editors' bar, editor folded. -->
           <teleport v-if="actionsTarget" :to="actionsTarget">
             <ui-button
@@ -869,3 +885,17 @@ defineExpose({
     </splitter-panel>
   </splitter-group>
 </template>
+
+<style scoped>
+/* Badge of the open transaction: pill in the colors of a warning, as the
+   transaction holds its locks until its end. */
+.transaction-badge {
+  padding: var(--badge-padding);
+  border-radius: var(--badge-radius);
+  font-size: var(--badge-font-size);
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+</style>

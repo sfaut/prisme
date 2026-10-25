@@ -48,6 +48,7 @@ function readyState() {
     type: 'ready',
     server: { flavor: 'mariadb', version: '11.3.2', ansi_quotes: false, oldest_supported: null },
     database: 'xlist',
+    transaction: false,
   })
   return state
 }
@@ -145,6 +146,23 @@ describe('applyMessage', () => {
     applyMessage(state, { type: 'database', database: 'shop' })
     expect(state.database).toBe('shop')
     expect(state.status).toBe('ready')
+  })
+
+  it('follows the transaction open on the session', () => {
+    const state = readyState()
+    expect(state.transaction).toBe(false)
+    applyMessage(state, { type: 'transaction', open: true })
+    expect(state.transaction).toBe(true)
+    applyMessage(state, { type: 'transaction', open: false })
+    expect(state.transaction).toBe(false)
+    // A page that comes back during a transaction.
+    applyMessage(state, {
+      type: 'ready',
+      server: { flavor: 'mysql', version: '8.4.11', ansi_quotes: false, oldest_supported: null },
+      database: null,
+      transaction: true,
+    })
+    expect(state.transaction).toBe(true)
   })
 
   it('keeps the session open after a session error', () => {

@@ -155,6 +155,8 @@ impl fmt::Display for Sent<'_> {
             ServerMessage::Error { query: None, .. } => f.write_str("error, session"),
             ServerMessage::BatchDone => f.write_str("batch_done"),
             ServerMessage::Database { .. } => f.write_str("database"),
+            ServerMessage::Transaction { open: true } => f.write_str("transaction, open"),
+            ServerMessage::Transaction { open: false } => f.write_str("transaction, ended"),
             ServerMessage::Resume { running, queries } => {
                 write!(f, "resume, {}", Count(queries.len(), "query", "queries"))?;
                 if *running {
@@ -251,8 +253,13 @@ mod tests {
                     oldest_supported: None,
                 },
                 database: Some("shop".to_string()),
+                transaction: false,
             }),
             "ready, server 10.6.28-MariaDB"
+        );
+        assert_eq!(
+            server(ServerMessage::Transaction { open: true }),
+            "transaction, open"
         );
         assert_eq!(
             server(ServerMessage::Columns {

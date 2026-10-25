@@ -117,6 +117,10 @@ async fn run(socket: &mut ClientSocket, mut request: Value) -> (Value, Vec<Recei
         if kind == "error" && message["query"].is_null() {
             return (message, results);
         }
+        if kind == "transaction" {
+            // State of the session, outside the results.
+            continue;
+        }
         if kind == "batch" {
             let count = message["queries"].as_array().unwrap().len();
             results = (0..count).map(|_| Received::default()).collect();
@@ -133,6 +137,27 @@ async fn run(socket: &mut ClientSocket, mut request: Value) -> (Value, Vec<Recei
                 result.batch_sizes.push(size);
             }
             _ => result.end = message,
+        }
+    }
+}
+
+/// Runs `sql` under the cursor and returns the `transaction` messages
+/// received before `batch_done`, with the error of the query, if any.
+async fn run_transaction(socket: &mut ClientSocket, sql: &str) -> (Vec<Value>, Value) {
+    let request = json!({ "type": "run", "sql": sql, "cursor": 0 });
+    socket
+        .send(ClientMessage::Text(request.to_string().into()))
+        .await
+        .unwrap();
+    let mut transactions = Vec::new();
+    let mut error = Value::Null;
+    loop {
+        let message = next_json(socket).await;
+        match message["type"].as_str().unwrap() {
+            "batch_done" => return (transactions, error),
+            "transaction" => transactions.push(message["open"].clone()),
+            "error" => error = message["detail"]["code"].clone(),
+            _ => {}
         }
     }
 }
@@ -761,4 +786,40 @@ async fn editor_session_survives_a_disconnect() {
     }
     done.sort_unstable();
     assert_eq!(done, [0, 1]);
+}
+
+#[tokio::test]
+#[ignore = "requires Docker Desktop running"]
+async fn editor_session_tells_its_open_transaction() {
+    let server = Mariadb::default().start().await.unwrap();
+    let host = server.get_host().await.unwrap().to_string();
+    let port = server.get_host_port_ipv4(3306).await.unwrap();
+    // Read-only sessions, as by default.
+    let (address, _, editor_id) = start(&host, port).await;
+    let url = format!("ws://{address}/api/editors/{editor_id}/session");
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    assert_eq!(next_json(&mut socket).await["transaction"], false);
+
+    // What would lift the read-only mode is refused, and opens nothing.
+    assert_eq!(
+        run_transaction(&mut socket, "START TRANSACTION READ WRITE").await,
+        (Vec::new(), json!("read_write_transaction_read_only"))
+    );
+    assert_eq!(
+        run_transaction(&mut socket, "START TRANSACTION").await,
+        (vec![json!(true)], Value::Null)
+    );
+    // Told on a change only.
+    assert_eq!(
+        run_transaction(&mut socket, "SELECT 1").await,
+        (Vec::new(), Value::Null)
+    );
+    // The page comes back during the transaction.
+    drop(socket);
+    let (mut socket, _) = connect_async(&url).await.unwrap();
+    assert_eq!(next_json(&mut socket).await["transaction"], true);
+    assert_eq!(
+        run_transaction(&mut socket, "COMMIT").await,
+        (vec![json!(false)], Value::Null)
+    );
 }

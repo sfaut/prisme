@@ -268,6 +268,12 @@ export interface SessionState {
    */
   database: string | null
   /**
+   * Is a transaction open on the session's connection? Told by the server
+   * at the end of each batch; false once the WebSocket closes, until a
+   * `ready` tells it again.
+   */
+  transaction: boolean
+  /**
    * Tabs: the pinned ones of the previous batches, then the queries of the current batch.
    */
   tabs: QueryTab[]
@@ -303,6 +309,7 @@ export function initialState(): SessionState {
     status: 'connecting',
     server: null,
     database: null,
+    transaction: false,
     tabs: [],
     batch: 0,
     nextTabId: 1,
@@ -342,6 +349,7 @@ export function applyMessage(
       state.status = 'ready'
       state.server = message.server
       state.database = message.database
+      state.transaction = message.transaction
       break
     case 'batch': {
       // A refreshed tab is already in the batch.
@@ -452,6 +460,9 @@ export function applyMessage(
       break
     case 'database':
       state.database = message.database
+      break
+    case 'transaction':
+      state.transaction = message.open
       break
     case 'resume':
       resumeBatch(state, message.queries, message.running, now)
@@ -995,6 +1006,7 @@ export function useQuerySession(
       clearTimeout(flushTimer)
       flush()
       state.status = 'closed'
+      state.transaction = false
       // The refreshes will not end: the tabs get their result back.
       state.refreshQueue = []
       for (const tab of state.tabs) {

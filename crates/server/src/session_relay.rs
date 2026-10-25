@@ -12,8 +12,8 @@
 //! - it reads the client's messages (`read_messages`) and passes them on to
 //!   the session; a stop (`cancel`) is handled at once;
 //! - a new WebSocket replaces the previous one (closed) and first receives
-//!   the state of the session: `ready`, with the current database, then
-//!   `resume`, the last batch where it stands;
+//!   the state of the session: `ready`, with the current database and the
+//!   open transaction, then `resume`, the last batch where it stands;
 //! - without a WebSocket for the keep-alive delay, it stops the session: the
 //!   running queries are interrupted, the connection to the target server is
 //!   closed (an open transaction is then rolled back by the server).
@@ -84,6 +84,8 @@ struct Replay {
     server: Option<ServerInfo>,
     /// Current database of the session.
     database: Option<String>,
+    /// Is a transaction open on the session's connection?
+    transaction: bool,
     /// Is a batch running?
     running: bool,
 }
@@ -210,6 +212,7 @@ impl Relay {
         let ready = ServerMessage::Ready {
             server: server.clone(),
             database: replay.database.clone(),
+            transaction: replay.transaction,
         };
         send(sink, &ready).await?;
         if let Some(recorder) = &self.recorder {
@@ -232,10 +235,16 @@ impl Relay {
             recorder.observe(message).await;
         }
         match message {
-            ServerMessage::Ready { server, database } => {
+            ServerMessage::Ready {
+                server,
+                database,
+                transaction,
+            } => {
                 replay.server = Some(server.clone());
                 replay.database = database.clone();
+                replay.transaction = *transaction;
             }
+            ServerMessage::Transaction { open } => replay.transaction = *open,
             ServerMessage::Database { database } | ServerMessage::Done { database, .. } => {
                 replay.database = database.clone();
             }

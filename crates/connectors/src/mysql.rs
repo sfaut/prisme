@@ -13,7 +13,7 @@
 
 use std::time::Duration;
 
-use mysql_async::consts::ColumnType;
+use mysql_async::consts::{ColumnType, StatusFlags};
 use mysql_async::prelude::Queryable;
 use mysql_async::{Conn, OptsBuilder, QueryResult, TextProtocol, Value};
 use secrecy::{ExposeSecret, SecretString};
@@ -242,6 +242,22 @@ pub async fn use_database(connection: &mut Conn, database: &str) -> Result<(), M
     let sql = format!("USE `{}`", database.replace('`', "``"));
     sql_log::traced(&sql, connection.query_drop(&sql), |_| None).await?;
     Ok(())
+}
+
+/// Is a transaction open on the connection? The server tells it in the
+/// status of each successful answer (`SERVER_STATUS_IN_TRANS`), which the
+/// driver keeps from the last one. An error carries no status, and may have
+/// ended the transaction (deadlock, statement that commits implicitly): the
+/// status is then read again from a `DO 0`, which does nothing.
+pub async fn in_transaction(connection: &mut Conn) -> Result<bool, MysqlError> {
+    if connection.last_ok_packet().is_none() {
+        let sql = "DO 0";
+        sql_log::traced(sql, connection.query_drop(sql), |_| None).await?;
+    }
+    Ok(connection.last_ok_packet().is_some_and(|ok| {
+        ok.status_flags()
+            .contains(StatusFlags::SERVER_STATUS_IN_TRANS)
+    }))
 }
 
 /// Connects to the server, reads its identity, then disconnects.
