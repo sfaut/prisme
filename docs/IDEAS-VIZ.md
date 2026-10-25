@@ -116,10 +116,40 @@ The graph can be exported as an image **[decided, to note]**: SVG (vector, selec
 
 ## 8. Open questions
 
-1. **Volume of the tables**: `TABLE_ROWS` (MySQL / MariaDB, an estimate for InnoDB), `reltuples` (PostgreSQL, an estimate), `COUNT(*)` (SQLite, exact but costly). To read on demand when the graph opens, database per database? An estimate must be shown as such (rule 2). Other measures possible: data size (`DATA_LENGTH`), number of columns, number of relations (free, from the catalog).
-2. **Rendering**: vis-network, Vue Flow, own rendering or sigma.js (section 6)? Vue Flow fits the theme and the unfolded mode; its performance with a live simulation is to measure before deciding.
-3. **Place in the interface**: a document tab opened from a database node of the object navigator? From a table node, opening the exploration from that table?
+1. **Volume of the tables**: `TABLE_ROWS` for MySQL / MariaDB **[decided]**, read with the other objects of the catalog, shown as an estimate (« ≈ N lignes »). Its cost when the tables are cold is measured in section 9.2. Later: `reltuples` (PostgreSQL, an estimate), `COUNT(*)` (SQLite, exact but costly).
+2. **Rendering**: Vue Flow + d3-force, prototype built (section 9); its performance on hundreds of tables is still to measure before deciding.
+3. **Place in the interface**: the « Visualiseur d’objets », in the right sidebar, in place of the data explorer **[decided]**; it shows the active source.
 4. **Saved positions**: per database, per exploration, per user? What happens to a saved position when a table is dropped or renamed?
 5. **Settings shown to the user**: depth, scope, forces (repulsion, cluster strength), or only a few presets?
 6. **Cardinalities on the edges**: crow's feet, labels (`0..1`, `1:N`), or only on hover?
 7. **Large schemas**: from how many tables does the graph refuse "everything" and offer the exploration?
+
+## 9. Prototype: Vue Flow + d3-force (2026-10-23)
+
+The prototype lives on the branch `object-visualizer`, apart from `master` until it is accepted.
+
+### 9.1 What it does
+
+The « Visualiseur d’objets » (`web/src/components/ObjectVisualizer.vue`) shares the right sidebar with the data explorer: one or the other is open, each with a button to switch to the other. It shows the tables of the active source, system databases left out.
+
+- **Tables**: colored by database (`--graph-1` to `--graph-6`), in one of two formats, switched by a button of the toolbar:
+  - label (by default): the name inside a rounded box, its text scaled by `sqrt(r / 8)`, where `r` is the radius of the disc below (1 to 2.8 times the small size);
+  - disc: a radius that grows with the number of rows (`8 + rows^0.2`, capped at 64; 12 when unknown), the name under it.
+
+  A double click unfolds a table into a card of its columns (primary and foreign keys marked), and folds it back.
+- **Weight and box**: the weight of a table (the radius of its disc) sets the repulsion and the length of its springs; its box on screen (disc, label or card, measured once drawn, estimated before) sets the collision, rectangular (`forceBoxCollide`, a sweep from left to right). A collision by circles kept wide labels as far apart vertically as horizontally, and a repulsion by the box spread the graph out.
+- **Relations**: one arrow per foreign key, from the referencing table to the referenced one; from the column itself when the table is unfolded; dashed between two databases.
+- **Databases**: each one pulls its tables towards its own centre, and gets an outline (convex hull) with its name, when there are several.
+- **Layout**: the forces of section 5.6 (`schemaLayout.ts`), computed at once before the first display, then alive while a table is moved. Tables without relations form a grid under the graph.
+- **Interaction**: a table dropped stays where it is (pinned, dashed border); its pin button frees it. The places are kept for the life of the page, per source.
+- **Scope**: everything, or an exploration from one or more tables (search field, or the selection) up to a depth set with − and +. The tables one step beyond are shown dimmed; a click on one adds it to the exploration. Beyond 1,000 tables, only the exploration is offered.
+
+### 9.2 Cost of `TABLE_ROWS`
+
+Measured on 2,000 InnoDB tables (MySQL 8.4.11, MariaDB 10.6.28 and 11.4.13): 20 to 40 ms when the tables are warm, as for the names alone; 3 to 8 s cold (after a restart). MariaDB then opens each table (`Open_full_table` instead of `Open_frm_only`), and does so on every read when the database has more tables than `table_open_cache` (146 to 226 ms with a cache of 400), evicting the server's own cache. MySQL 8.4 opens nothing but writes its statistics cache (`information_schema_stats_expiry`, 24 h by default): its values can be a day old; `SET SESSION information_schema_stats_expiry = 0` gives fresh values (140 ms cold), the `SET_VAR` hint being refused (warning 3637). Views give `NULL`. The estimates measured are close to the real counts.
+
+### 9.3 Not done yet
+
+- Positions saved in the internal database (section 4): they last as long as the page.
+- Cardinalities on the edges, exports (section 7).
+- Performance with hundreds of tables moved at each step of the simulation.
