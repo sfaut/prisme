@@ -187,7 +187,8 @@ The interface is built in lengths relative to the root, `:root` being fixed: mul
 |---|---|---|---|
 | `reka-ui` 2.11.0 | `SplitterPanel`: `default-size`, `min-size`, `max-size`, `collapsed-size`, with `size-unit="px"`. The other unit, `%`, is relative to the group, not to the root: a theme length in `%` would have to be measured in pixels and computed again on each resize of the window. | `--navigator-width`, `--explorer-width`, `--editors-min-width`, `--console-height`, `--rail-size`, `--editor-height`, `--results-height`… | `App.vue`, `QueryCell.vue` |
 | `reka-ui` 2.11.0 | `side-offset` of the menus and lists (a number, passed to Floating UI). | `--popup-offset` | `UiSelect.vue`, `UiDropdownMenu.vue` |
-| `@tanstack/vue-virtual` 3.13 | `estimateSize`: height of a row, to turn the scroll position (in pixels) into the rows to draw. The page itself places the rows of the result grid in CSS (`calc(var(--grid-row-height) * n)`). | `--grid-row-height`, `--row-height` | `ResultGrid.vue`, `ObjectNavigator.vue` |
+| `reka-ui` 2.11.0 | `estimate-size` of `TreeVirtualizer` (built on `@tanstack/vue-virtual`): height of a line of the tree, to turn the scroll position (in pixels) into the lines to draw. | `--row-height` | `ObjectNavigator.vue` |
+| `@tanstack/vue-virtual` 3.13 | `estimateSize`: height of a row, to turn the scroll position (in pixels) into the rows to draw. The page itself places the rows of the result grid in CSS (`calc(var(--grid-row-height) * n)`). | `--grid-row-height` | `ResultGrid.vue` |
 
 The pointer also gives pixels: a column of the grid resized with the mouse converts its width into `rem` once, at the time of the drag (`resizedWidth` in `resultGrid.ts`).
 
