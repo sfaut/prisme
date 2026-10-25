@@ -150,6 +150,7 @@ export type ErrorDetail =
     kinds: Array<WriteKind>;
   }
   | { "code": "write_forbidden" }
+  | { "code": "read_write_transaction_read_only" }
   | { "code": "unparsed_query_refused" }
   | { "code": "settings_unreadable" }
   | {

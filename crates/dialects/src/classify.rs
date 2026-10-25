@@ -19,10 +19,15 @@
 //! empties the data: it has its switch beside `DELETE`, for every table.
 //!
 //! A setting of the session (`SET @v = 1`, `SET SESSION sql_mode = ...`,
-//! `SET NAMES`) writes nothing in the database: it is always allowed, except
-//! when it would lift the read-only mode or open a transaction
-//! (`transaction_read_only`, `tx_read_only`, `autocommit`,
-//! `SET TRANSACTION`).
+//! `SET NAMES`) writes nothing in the database: it is always allowed.
+//!
+//! The control of transactions is always allowed too (`docs/V1.md`,
+//! section 2.5): `START TRANSACTION`, `BEGIN`, `COMMIT`, `ROLLBACK`,
+//! savepoints, `SET TRANSACTION`, `SET autocommit`. Its forms that can lift
+//! the read-only mode of the session (`READ WRITE`, the variables
+//! `transaction_read_only` and `tx_read_only`) stand apart: a read-only
+//! session refuses them. `SET GLOBAL TRANSACTION` changes the whole server:
+//! forbidden.
 //!
 //! Also tells whether a query can change the current database of the
 //! session (`changes_database`): the session reads it again only then.
@@ -35,7 +40,10 @@
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
-use sqlparser::ast::{ContextModifier, ObjectName, ObjectType, OnInsert, Set, SetExpr, Statement};
+use sqlparser::ast::{
+    ContextModifier, ObjectName, ObjectType, OnInsert, Set, SetExpr, Statement,
+    TransactionAccessMode, TransactionMode,
+};
 use ts_rs::TS;
 
 use crate::Dialect;
@@ -52,11 +60,19 @@ pub enum StatementKind {
     /// Setting of the session (`SET @v = 1`...), with reads at most: allowed,
     /// it only makes sense on the connection of the session.
     Setting,
+    /// Control of a transaction (`START TRANSACTION`, `COMMIT`, `ROLLBACK`,
+    /// savepoints, `SET TRANSACTION`, `SET autocommit`), with reads and
+    /// settings at most: always allowed, on the connection of the session.
+    Transaction,
+    /// Control of a transaction that can lift the read-only mode of the
+    /// session (`START TRANSACTION READ WRITE`, `SET TRANSACTION READ WRITE`,
+    /// `transaction_read_only`, `tx_read_only`): allowed, except in a
+    /// read-only session.
+    ReadWriteTransaction,
     /// Write of data or schema, allowed when each of its kinds is.
     Write(BTreeSet<WriteKind>),
     /// Write that no switch allows: procedure call, database, trigger,
-    /// account, file, server setting, transaction, read-only mode or
-    /// autocommit of the session...
+    /// account, file, server setting...
     Forbidden,
     /// Query that cannot be parsed: its nature is unknown.
     Unparsed,
@@ -191,57 +207,144 @@ pub fn classify_with(
     };
     let mut kinds = BTreeSet::new();
     let mut setting = false;
+    let mut transaction = None;
     for statement in &statements {
-        let needed = match statement {
-            Parsed::Sql(statement) if is_read(statement) => Some(Vec::new()),
-            Parsed::Sql(Statement::Set(set)) if is_session_setting(set) => {
-                setting = true;
-                Some(Vec::new())
+        match need(statement, temporary) {
+            Need::Read => {}
+            Need::Setting => setting = true,
+            Need::Transaction { read_write } => {
+                transaction = Some(read_write || transaction == Some(true));
             }
-            Parsed::Sql(statement) => write_kinds(statement, temporary),
-            Parsed::MySql(statement) => Some(vec![mysql_write_kind(statement, temporary)]),
-        };
-        let Some(needed) = needed else {
-            return StatementKind::Forbidden;
-        };
-        kinds.extend(needed);
+            Need::Write(needed) => kinds.extend(needed),
+            Need::Forbidden => return StatementKind::Forbidden,
+        }
     }
-    if !kinds.is_empty() {
-        StatementKind::Write(kinds)
-    } else if setting {
-        StatementKind::Setting
-    } else {
-        StatementKind::Read
+    match transaction {
+        _ if !kinds.is_empty() => StatementKind::Write(kinds),
+        Some(true) => StatementKind::ReadWriteTransaction,
+        Some(false) => StatementKind::Transaction,
+        None if setting => StatementKind::Setting,
+        None => StatementKind::Read,
     }
 }
 
-/// Variables that keep the session in its mode: read-only, and one
-/// transaction per query (`autocommit`).
-const GUARDED_VARIABLES: [&str; 3] = ["transaction_read_only", "tx_read_only", "autocommit"];
+/// What one statement needs to run.
+enum Need {
+    /// Nothing: a read.
+    Read,
+    /// The connection of the session: a setting of the session.
+    Setting,
+    /// The connection of the session: a control of the transaction; with
+    /// `read_write`, a read-write session too.
+    Transaction {
+        /// Can it lift the read-only mode of the session?
+        read_write: bool,
+    },
+    /// The switches of these kinds of write.
+    Write(Vec<WriteKind>),
+    /// What no switch allows.
+    Forbidden,
+}
 
-/// Is a `SET` a setting of the session that is always allowed? Neither
-/// global nor on a variable of `GUARDED_VARIABLES`; `SET TRANSACTION` and
-/// the other forms are not.
-fn is_session_setting(set: &Set) -> bool {
-    let guarded = |name: &str| {
+/// What a statement needs; `temporary` tells the temporary tables of the
+/// connection.
+fn need(statement: &Parsed, temporary: &dyn Fn(&TableName) -> bool) -> Need {
+    match statement {
+        Parsed::Sql(statement) if is_read(statement) => Need::Read,
+        Parsed::Sql(statement) => {
+            if let Some(read_write) = transaction_control(statement) {
+                Need::Transaction { read_write }
+            } else if matches!(statement, Statement::Set(set) if is_session_setting(set)) {
+                Need::Setting
+            } else {
+                write_kinds(statement, temporary).map_or(Need::Forbidden, Need::Write)
+            }
+        }
+        Parsed::MySql(MySqlStatement::SetTransaction { global: true, .. }) => Need::Forbidden,
+        Parsed::MySql(
+            MySqlStatement::SetTransaction { read_write, .. }
+            | MySqlStatement::StartTransaction { read_write },
+        ) => Need::Transaction {
+            read_write: *read_write,
+        },
+        Parsed::MySql(statement) => mysql_write_kind(statement, temporary)
+            .map_or(Need::Forbidden, |kind| Need::Write(vec![kind])),
+    }
+}
+
+/// Variables that set the read-only mode of the session.
+const READ_ONLY_VARIABLES: [&str; 2] = ["transaction_read_only", "tx_read_only"];
+
+/// Is a statement of `sqlparser` a control of the transaction? `Some`, with
+/// whether it can lift the read-only mode of the session; `None` for any
+/// other statement. A `BEGIN ... END` block, which holds statements, is none.
+fn transaction_control(statement: &Statement) -> Option<bool> {
+    match statement {
+        Statement::StartTransaction {
+            modes,
+            statements,
+            exception,
+            ..
+        } if statements.is_empty() && exception.is_none() => Some(gives_read_write(modes)),
+        Statement::Commit { .. }
+        | Statement::Rollback { .. }
+        | Statement::Savepoint { .. }
+        | Statement::ReleaseSavepoint { .. } => Some(false),
+        Statement::Set(Set::SetTransaction { modes, .. }) => Some(gives_read_write(modes)),
+        Statement::Set(set) if !is_global(set) => {
+            let names = assigned_variables(set);
+            if names
+                .iter()
+                .any(|name| READ_ONLY_VARIABLES.contains(&name.as_str()))
+            {
+                Some(true)
+            } else {
+                names
+                    .iter()
+                    .any(|name| name == "autocommit")
+                    .then_some(false)
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Do transaction modes give the `READ WRITE` access mode?
+fn gives_read_write(modes: &[TransactionMode]) -> bool {
+    modes.contains(&TransactionMode::AccessMode(
+        TransactionAccessMode::ReadWrite,
+    ))
+}
+
+/// Names of the variables a `SET` assigns, in lowercase, without their
+/// session scope (`@@session.autocommit` gives `autocommit`); none for the
+/// other forms of `SET`.
+fn assigned_variables(set: &Set) -> Vec<String> {
+    let bare = |name: String| {
         let name = name.to_ascii_lowercase();
         let name = name.strip_prefix("@@").unwrap_or(&name);
-        let name = ["session.", "local."]
+        ["session.", "local."]
             .iter()
             .find_map(|scope| name.strip_prefix(scope))
-            .unwrap_or(name);
-        GUARDED_VARIABLES.contains(&name)
+            .unwrap_or(name)
+            .to_string()
     };
     match set {
-        Set::SingleAssignment { variable, .. } => {
-            !is_global(set) && !guarded(&variable.to_string())
-        }
-        Set::MultipleAssignments { assignments } => {
-            !is_global(set)
-                && !assignments
-                    .iter()
-                    .any(|assignment| guarded(&assignment.name.to_string()))
-        }
+        Set::SingleAssignment { variable, .. } => vec![bare(variable.to_string())],
+        Set::MultipleAssignments { assignments } => assignments
+            .iter()
+            .map(|assignment| bare(assignment.name.to_string()))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Is a `SET` a setting of the session that is always allowed? Not global;
+/// the controls of the transaction are told apart before
+/// (`transaction_control`).
+fn is_session_setting(set: &Set) -> bool {
+    match set {
+        Set::SingleAssignment { .. } | Set::MultipleAssignments { .. } => !is_global(set),
         Set::SetNames { .. } | Set::SetNamesDefault {} | Set::SetTimeZone { .. } => true,
         _ => false,
     }
@@ -341,13 +444,14 @@ fn write_kinds(
     Some(kinds)
 }
 
-/// Kind of a write that `sqlparser` does not parse; `temporary` tells the
+/// Kind of a write that `sqlparser` does not parse, `None` for a statement
+/// that writes nothing (a control of the transaction); `temporary` tells the
 /// temporary tables of the connection.
 fn mysql_write_kind(
     statement: &MySqlStatement,
     temporary: &dyn Fn(&TableName) -> bool,
-) -> WriteKind {
-    match statement {
+) -> Option<WriteKind> {
+    Some(match statement {
         MySqlStatement::CreateProcedure { .. } => WriteKind::CreateProcedure,
         MySqlStatement::CreateFunction { .. } => WriteKind::CreateFunction,
         MySqlStatement::CreateEvent { .. } => WriteKind::CreateEvent,
@@ -358,7 +462,10 @@ fn mysql_write_kind(
             WriteKind::AlterTable,
             WriteKind::AlterTemporaryTable,
         ),
-    }
+        MySqlStatement::SetTransaction { .. } | MySqlStatement::StartTransaction { .. } => {
+            return None;
+        }
+    })
 }
 
 /// Can the text `sql` change the current database of the session? `USE`,
@@ -396,7 +503,11 @@ pub fn session_setting_refusal(sql: &str, dialect: Dialect) -> Option<SettingRef
             Parsed::Sql(Statement::Set(set)) if is_global(set) => {
                 return Some(SettingRefusal::Global);
             }
-            Parsed::Sql(Statement::Set(_)) => {}
+            Parsed::MySql(MySqlStatement::SetTransaction { global: true, .. }) => {
+                return Some(SettingRefusal::Global);
+            }
+            Parsed::Sql(Statement::Set(_))
+            | Parsed::MySql(MySqlStatement::SetTransaction { .. }) => {}
             _ => return Some(SettingRefusal::NotASetting),
         }
     }
@@ -472,8 +583,16 @@ mod tests {
         assert!(!refused("SET SESSION sql_mode = 'ANSI_QUOTES'"));
         assert!(!refused("SET @start = NOW()"));
         assert!(!refused("SET time_zone = '+00:00'"));
+        assert!(!refused(
+            "SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED"
+        ));
         assert!(refused("SET GLOBAL max_connections = 10"));
         assert!(refused("SET @@global.sql_mode = ''"));
+        assert_eq!(
+            session_setting_refusal("SET GLOBAL TRANSACTION READ WRITE", Dialect::MariaDb),
+            Some(SettingRefusal::Global)
+        );
+        assert!(refused("START TRANSACTION"));
         assert!(refused("DELETE FROM t"));
         assert!(refused("SELECT 1"));
         assert!(refused("SET whatever you like"));
@@ -659,15 +778,12 @@ mod tests {
             "GRANT SELECT ON t TO u",
             "SET GLOBAL max_connections = 10",
             "SET @@global.sql_mode = ''",
-            "SET SESSION TRANSACTION READ WRITE",
-            "SET TRANSACTION ISOLATION LEVEL READ COMMITTED",
-            "SET SESSION transaction_read_only = OFF",
-            "SET @@tx_read_only = 0",
-            "SET autocommit = 0",
-            "SET @a = 1, @@session.autocommit = 0",
+            "SET GLOBAL TRANSACTION READ WRITE",
+            "SET GLOBAL TRANSACTION ISOLATION LEVEL READ COMMITTED",
+            "SET GLOBAL autocommit = 0",
             "SELECT * INTO t2 FROM t",
-            "START TRANSACTION",
             "DELETE FROM t; CALL p()",
+            "COMMIT; CALL p()",
         ] {
             assert_eq!(kind(sql), StatementKind::Forbidden, "query: {sql}");
         }
@@ -680,6 +796,56 @@ mod tests {
         ] {
             assert_eq!(kind(sql), StatementKind::Unparsed, "query: {sql}");
         }
+    }
+
+    #[test]
+    fn allows_the_control_of_transactions() {
+        for sql in [
+            "START TRANSACTION",
+            "START TRANSACTION READ ONLY",
+            "START TRANSACTION WITH CONSISTENT SNAPSHOT",
+            "BEGIN",
+            "BEGIN WORK",
+            "COMMIT",
+            "COMMIT AND CHAIN",
+            "ROLLBACK",
+            "ROLLBACK TO SAVEPOINT s",
+            "SAVEPOINT s",
+            "RELEASE SAVEPOINT s",
+            "SET TRANSACTION ISOLATION LEVEL READ COMMITTED",
+            "SET SESSION TRANSACTION READ ONLY",
+            "SET autocommit = 0",
+            "SET @a = 1, @@session.autocommit = 0",
+            "START TRANSACTION; SELECT 1; COMMIT",
+        ] {
+            assert_eq!(kind(sql), StatementKind::Transaction, "query: {sql}");
+        }
+        // The forms that can lift the read-only mode of the session.
+        for sql in [
+            "START TRANSACTION READ WRITE",
+            "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ WRITE",
+            "SET TRANSACTION READ WRITE",
+            "SET SESSION TRANSACTION ISOLATION LEVEL SERIALIZABLE, READ WRITE",
+            "SET SESSION transaction_read_only = OFF",
+            "SET @@tx_read_only = 0",
+            "BEGIN; SET TRANSACTION READ WRITE",
+        ] {
+            assert_eq!(
+                kind(sql),
+                StatementKind::ReadWriteTransaction,
+                "query: {sql}"
+            );
+        }
+        // A write in the text needs its switch.
+        assert_eq!(
+            kind("START TRANSACTION; DELETE FROM t"),
+            StatementKind::Write([WriteKind::Delete].into_iter().collect())
+        );
+        // `transaction_isolation` is a setting of the session.
+        assert_eq!(
+            kind("SET SESSION transaction_isolation = 'READ-COMMITTED'"),
+            StatementKind::Setting
+        );
     }
 
     #[test]

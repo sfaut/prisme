@@ -30,6 +30,12 @@ describe('messages of the errors', () => {
     )
   })
 
+  it('tells the transactions still possible in read-only sessions', () => {
+    expect(describeError({ code: 'read_write_transaction_read_only' })).toContain(
+      'START TRANSACTION et BEGIN restent possibles',
+    )
+  })
+
   it('introduces the answer of the target server, quoted as it is', () => {
     expect(
       describeError({

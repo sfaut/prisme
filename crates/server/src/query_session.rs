@@ -1,7 +1,7 @@
 //! Query session on a saved connection, over a WebSocket.
 //!
-//! A session keeps a connection open to the target server (transactions will
-//! need it). It outlives its WebSocket: after a disconnection (page reloaded,
+//! A session keeps a connection open to the target server, on which its
+//! transactions live. It outlives its WebSocket: after a disconnection (page reloaded,
 //! browser closed), it stays open for the delay set on the connection, and a
 //! new WebSocket reattaches to it (`session_relay.rs`, `sessions.rs`). The
 //! client sends the editor's whole text; the session splits it into queries

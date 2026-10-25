@@ -194,10 +194,14 @@ pub enum ErrorDetail {
         kinds: Vec<WriteKind>,
     },
     /// A write that no switch allows: procedure call, database, trigger,
-    /// account, file, server setting, transaction, read-only mode or
-    /// autocommit of the session...
+    /// account, file, server setting...
     #[error("write refused: no setting allows this statement")]
     WriteForbidden,
+    /// A control of the transaction that would lift the read-only mode of
+    /// the session (`START TRANSACTION READ WRITE`, `SET TRANSACTION READ
+    /// WRITE`...), while the query sessions are read-only.
+    #[error("transaction refused: it would lift the read-only mode of the query sessions")]
+    ReadWriteTransactionReadOnly,
     /// A query that Prisme cannot parse, so cannot prove to be a read.
     #[error("query refused: Prisme cannot parse it, so it cannot check that it is a read")]
     UnparsedQueryRefused,

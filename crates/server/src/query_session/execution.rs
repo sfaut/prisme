@@ -379,8 +379,9 @@ impl Session<'_> {
 }
 
 /// Do the queries only read? They can then run in parallel, each on its own
-/// connection. A write, a setting of the session or a query Prisme cannot
-/// parse needs the session's connection and the order of the text.
+/// connection. A write, a setting of the session, a control of the
+/// transaction or a query Prisme cannot parse needs the session's connection
+/// and the order of the text.
 pub(super) fn reads_only(statements: &[&Statement], dialect: Dialect) -> bool {
     statements
         .iter()

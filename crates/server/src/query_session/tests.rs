@@ -289,10 +289,23 @@ fn refuses_the_writes_not_allowed_and_unparsable_queries() {
     };
     assert_eq!(refusal("SELECT 1", None), None);
     assert_eq!(refusal("SHOW TABLES", None), None);
-    // A setting of the session, even read-only; not one that lifts it.
+    // A setting of the session, even read-only.
     assert_eq!(refusal("SET @a = 1", None), None);
+    // The control of transactions, even read-only; not what would lift it.
+    assert_eq!(refusal("START TRANSACTION", None), None);
+    assert_eq!(refusal("COMMIT", None), None);
+    assert_eq!(refusal("SET autocommit = 0", None), None);
     assert_eq!(
-        refusal("SET SESSION TRANSACTION READ WRITE", Some(&WriteKind::ALL)),
+        refusal("SET SESSION TRANSACTION READ WRITE", None),
+        Some(ErrorDetail::ReadWriteTransactionReadOnly)
+    );
+    assert_eq!(
+        refusal("START TRANSACTION READ WRITE", None),
+        Some(ErrorDetail::ReadWriteTransactionReadOnly)
+    );
+    assert_eq!(refusal("START TRANSACTION READ WRITE", Some(&[])), None);
+    assert_eq!(
+        refusal("SET GLOBAL TRANSACTION READ WRITE", Some(&WriteKind::ALL)),
         Some(ErrorDetail::WriteForbidden)
     );
     // Read-only sessions: no write, whatever is allowed.

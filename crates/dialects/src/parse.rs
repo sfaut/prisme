@@ -26,7 +26,8 @@ use crate::mysql_statements::{self, MySqlStatement, expect_end};
 pub(crate) enum Parsed {
     /// Statement of `sqlparser`.
     Sql(Statement),
-    /// Routine, event, or `ALTER TABLE` on an existing index.
+    /// Routine, event, `ALTER TABLE` on an existing index, or transaction
+    /// statement whose syntax `sqlparser` misses.
     MySql(MySqlStatement),
 }
 
@@ -50,14 +51,19 @@ pub(crate) fn parse_statements(sql: &str, dialect: Dialect) -> Result<Vec<Parsed
 }
 
 /// Parses the statement at the position of the parser, up to its `;` or the
-/// end of the text: a routine or an event, else a statement of `sqlparser`,
-/// else an `ALTER TABLE` with an operation on an existing index (`sqlparser`
-/// reads `DROP INDEX IF EXISTS i` as the index `IF`, then stops).
+/// end of the text: a routine, an event or a `SET ... TRANSACTION` (whose
+/// scope `sqlparser` drops), else a statement of `sqlparser`, else an
+/// `ALTER TABLE` with an operation on an existing index (`sqlparser` reads
+/// `DROP INDEX IF EXISTS i` as the index `IF`, then stops) or a
+/// `START TRANSACTION WITH CONSISTENT SNAPSHOT`.
 ///
-/// Workaround: the bug of `sqlparser` on `DROP INDEX IF EXISTS` and the
-/// statements it does not parse (`docs/DEVELOPER.md`, section "Workarounds").
+/// Workaround: the bugs of `sqlparser` on `DROP INDEX IF EXISTS` and on the
+/// scope of `SET TRANSACTION`, and the statements it does not parse
+/// (`docs/DEVELOPER.md`, section "Workarounds").
 fn parse_statement(parser: &mut Parser) -> Result<Parsed, ParserError> {
-    if let Some(statement) = mysql_statements::parse_routine_or_event(parser) {
+    if let Some(statement) = mysql_statements::parse_routine_or_event(parser)
+        .or_else(|| mysql_statements::parse_set_transaction(parser))
+    {
         return statement.map(Parsed::MySql);
     }
     parser
@@ -69,6 +75,7 @@ fn parse_statement(parser: &mut Parser) -> Result<Parsed, ParserError> {
         .map(Parsed::Sql)
         .or_else(|error| {
             mysql_statements::parse_alter_table(parser)
+                .or_else(|| mysql_statements::parse_start_transaction(parser))
                 .map_or(Err(error), |statement| statement.map(Parsed::MySql))
         })
 }

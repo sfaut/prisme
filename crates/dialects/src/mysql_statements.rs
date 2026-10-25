@@ -1,8 +1,12 @@
 //! MySQL and MariaDB statements that `sqlparser` (0.63) does not parse:
 //! stored routines (`CREATE PROCEDURE`, `CREATE FUNCTION`), scheduled events
-//! (`CREATE EVENT`, `ALTER EVENT`, `DROP EVENT`), and the operations of
+//! (`CREATE EVENT`, `ALTER EVENT`, `DROP EVENT`), the operations of
 //! `ALTER TABLE` on an existing index (`ALTER INDEX i VISIBLE`, MariaDB's
-//! `IGNORED`, `RENAME KEY i TO j`, `DROP KEY i`).
+//! `IGNORED`, `RENAME KEY i TO j`, `DROP KEY i`), and
+//! `START TRANSACTION WITH CONSISTENT SNAPSHOT`. Also
+//! `SET [GLOBAL | SESSION | LOCAL] TRANSACTION`, which `sqlparser` parses
+//! without its scope: `SET GLOBAL TRANSACTION READ WRITE`, a setting of the
+//! whole server, would read as `SET TRANSACTION READ WRITE`.
 //!
 //! Prisme refuses a query it cannot parse, as nothing proves what it does:
 //! these statements need their own tree for the write switches (see
@@ -24,7 +28,7 @@
 //!
 //! Workaround: `sqlparser` does not parse these statements (`docs/DEVELOPER.md`, section "Workarounds").
 
-use sqlparser::ast::ObjectName;
+use sqlparser::ast::{ObjectName, TransactionAccessMode, TransactionMode};
 use sqlparser::parser::{Parser, ParserError};
 use sqlparser::tokenizer::{Token, TokenWithSpan};
 
@@ -86,6 +90,19 @@ pub enum MySqlStatement {
         /// Name of the table.
         name: ObjectName,
     },
+    /// `SET [GLOBAL | SESSION | LOCAL] TRANSACTION characteristic, ...`.
+    SetTransaction {
+        /// `GLOBAL`: the default of the sessions that open later, on the
+        /// whole server.
+        global: bool,
+        /// Does it give the `READ WRITE` access mode?
+        read_write: bool,
+    },
+    /// `START TRANSACTION characteristic, ...` with `WITH CONSISTENT SNAPSHOT`.
+    StartTransaction {
+        /// Does it give the `READ WRITE` access mode?
+        read_write: bool,
+    },
 }
 
 /// Parses a routine or an event at the position of the parser: `None`
@@ -118,6 +135,76 @@ pub(crate) fn parse_alter_table(
         })
         .ok()?;
     Some(alter_table(parser))
+}
+
+/// Parses a `SET [GLOBAL | SESSION | LOCAL] TRANSACTION` at the position of
+/// the parser, before `sqlparser`, which reads it without its scope: `None`
+/// (nothing consumed) if the statement is not one.
+///
+/// Workaround: `sqlparser` drops the scope of `SET TRANSACTION`
+/// (`docs/DEVELOPER.md`, section "Workarounds").
+pub(crate) fn parse_set_transaction(
+    parser: &mut Parser,
+) -> Option<Result<MySqlStatement, ParserError>> {
+    let global = parser
+        .try_parse(|parser| {
+            expect_word(parser, "SET")?;
+            let global = parse_word(parser, "GLOBAL");
+            if !global {
+                let _ = parse_word(parser, "SESSION") || parse_word(parser, "LOCAL");
+            }
+            expect_word(parser, "TRANSACTION")?;
+            Ok(global)
+        })
+        .ok()?;
+    Some(set_transaction(parser, global))
+}
+
+/// `SET ... TRANSACTION` after its keywords: `ISOLATION LEVEL level`,
+/// `READ WRITE` or `READ ONLY`, separated by commas.
+fn set_transaction(parser: &mut Parser, global: bool) -> Result<MySqlStatement, ParserError> {
+    let modes = parser.parse_transaction_modes()?;
+    expect_end(parser)?;
+    let read_write = modes.contains(&TransactionMode::AccessMode(
+        TransactionAccessMode::ReadWrite,
+    ));
+    Ok(MySqlStatement::SetTransaction { global, read_write })
+}
+
+/// Parses a `START TRANSACTION` at the position of the parser, with the
+/// characteristics `sqlparser` does not know (`WITH CONSISTENT SNAPSHOT`).
+/// Called after `sqlparser` failed: `None` (nothing consumed) if the
+/// statement is not a `START TRANSACTION`.
+///
+/// Workaround: `sqlparser` does not parse `WITH CONSISTENT SNAPSHOT`
+/// (`docs/DEVELOPER.md`, section "Workarounds").
+pub(crate) fn parse_start_transaction(
+    parser: &mut Parser,
+) -> Option<Result<MySqlStatement, ParserError>> {
+    parser
+        .try_parse(|parser| expect_words(parser, &["START", "TRANSACTION"]))
+        .ok()?;
+    Some(start_transaction(parser))
+}
+
+/// `START TRANSACTION` after its keywords: `WITH CONSISTENT SNAPSHOT`,
+/// `READ WRITE` or `READ ONLY`, separated by commas.
+fn start_transaction(parser: &mut Parser) -> Result<MySqlStatement, ParserError> {
+    let mut read_write = false;
+    loop {
+        if parse_words(parser, &["READ", "WRITE"]) {
+            read_write = true;
+        } else if !(parse_words(parser, &["READ", "ONLY"])
+            || parse_words(parser, &["WITH", "CONSISTENT", "SNAPSHOT"]))
+        {
+            return expected(parser, "WITH CONSISTENT SNAPSHOT, READ WRITE or READ ONLY");
+        }
+        if !parser.consume_token(&Token::Comma) {
+            break;
+        }
+    }
+    expect_end(parser)?;
+    Ok(MySqlStatement::StartTransaction { read_write })
 }
 
 /// `ALTER TABLE` after its keywords: `[IF EXISTS] name operation, ...`.
@@ -561,6 +648,9 @@ mod tests {
             | MySqlStatement::AlterEvent { name }
             | MySqlStatement::DropEvent { name }
             | MySqlStatement::AlterTable { name } => name.to_string(),
+            MySqlStatement::SetTransaction { .. } | MySqlStatement::StartTransaction { .. } => {
+                panic!("a statement without a name: {statement:?}")
+            }
         }
     }
 
@@ -718,5 +808,65 @@ mod tests {
         error_of("DROP EVENT e f");
         error_of("ALTER TABLE t ALTER INDEX i HIDDEN");
         error_of("ALTER TABLE t RENAME KEY i");
+        error_of("SET GLOBAL TRANSACTION READ SOMETHING");
+        error_of("START TRANSACTION WITH CONSISTENT");
+        error_of("START TRANSACTION WITH CONSISTENT SNAPSHOT,");
+    }
+
+    #[test]
+    fn parses_set_transaction_with_its_scope() {
+        for (sql, global, read_write) in [
+            ("SET TRANSACTION READ WRITE", false, true),
+            ("SET SESSION TRANSACTION READ ONLY", false, false),
+            ("set local transaction read write", false, true),
+            ("SET GLOBAL TRANSACTION READ WRITE", true, true),
+            (
+                "SET GLOBAL TRANSACTION ISOLATION LEVEL SERIALIZABLE",
+                true,
+                false,
+            ),
+            (
+                "SET TRANSACTION ISOLATION LEVEL READ COMMITTED, READ WRITE",
+                false,
+                true,
+            ),
+        ] {
+            assert_eq!(
+                parsed(sql),
+                MySqlStatement::SetTransaction { global, read_write },
+                "{sql}"
+            );
+        }
+        // Another `SET` stays with `sqlparser`.
+        assert!(matches!(
+            parse_statements("SET SESSION sql_mode = ''", Dialect::MySql).as_deref(),
+            Ok([Parsed::Sql(_)])
+        ));
+    }
+
+    #[test]
+    fn parses_start_transaction_with_a_consistent_snapshot() {
+        for (sql, read_write) in [
+            ("START TRANSACTION WITH CONSISTENT SNAPSHOT", false),
+            (
+                "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ WRITE",
+                true,
+            ),
+            (
+                "START TRANSACTION READ ONLY, WITH CONSISTENT SNAPSHOT",
+                false,
+            ),
+        ] {
+            assert_eq!(
+                parsed(sql),
+                MySqlStatement::StartTransaction { read_write },
+                "{sql}"
+            );
+        }
+        // Without `WITH CONSISTENT SNAPSHOT`, `sqlparser` parses it.
+        assert!(matches!(
+            parse_statements("START TRANSACTION READ WRITE", Dialect::MySql).as_deref(),
+            Ok([Parsed::Sql(_)])
+        ));
     }
 }

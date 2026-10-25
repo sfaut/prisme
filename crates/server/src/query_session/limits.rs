@@ -44,12 +44,14 @@ pub(super) async fn run_limits(
     })
 }
 
-/// Returns the reason for the refusal if the query is neither a read nor a
-/// write of the kinds `writes` allows (`None`: read-only sessions);
-/// `temporary` tells the temporary tables of the connection.
+/// Returns the reason for the refusal if the query is neither a read, a
+/// setting, a control of the transaction nor a write of the kinds `writes`
+/// allows (`None`: read-only sessions); `temporary` tells the temporary
+/// tables of the connection.
 ///
 /// A write that no switch covers is refused, and so is a query that cannot
-/// be parsed, as nothing proves what it does.
+/// be parsed, as nothing proves what it does. A read-only session refuses
+/// the controls of the transaction that would lift its mode.
 pub(super) fn write_refusal(
     sql: &str,
     dialect: Dialect,
@@ -57,7 +59,10 @@ pub(super) fn write_refusal(
     temporary: &dyn Fn(&TableName) -> bool,
 ) -> Option<ErrorDetail> {
     match classify_with(sql, dialect, temporary) {
-        StatementKind::Read | StatementKind::Setting => None,
+        StatementKind::Read | StatementKind::Setting | StatementKind::Transaction => None,
+        StatementKind::ReadWriteTransaction => writes
+            .is_none()
+            .then_some(ErrorDetail::ReadWriteTransactionReadOnly),
         StatementKind::Write(kinds) => {
             let Some(allowed) = writes else {
                 return Some(ErrorDetail::WriteReadOnly);
