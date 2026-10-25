@@ -24,6 +24,19 @@ describe('completionSchema', () => {
     expect(ansi['ma base']!.children.clients!.self.apply).toBeUndefined()
   })
 
+  it('quotes the names starting with a digit, which the server could read as numbers', () => {
+    const schemas: CatalogSchema[] = ['123', '1e5', '2fa', 'été_2026', '$total', 't1'].map(
+      (name) => ({ name, tables: [], routines: [], events: [] }),
+    )
+    const names = completionSchema(schemas) as Record<string, { self: { apply?: string } }>
+    expect(names['123']!.self.apply).toBe('`123`')
+    expect(names['1e5']!.self.apply).toBe('`1e5`')
+    expect(names['2fa']!.self.apply).toBe('`2fa`')
+    expect(names['été_2026']!.self.apply).toBeUndefined()
+    expect(names['$total']!.self.apply).toBeUndefined()
+    expect(names['t1']!.self.apply).toBeUndefined()
+  })
+
   it('offers databases, tables, columns and routines with their nature, even with an incomplete catalog', () => {
     const schemas: CatalogSchema[] = [
       {

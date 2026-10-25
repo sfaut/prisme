@@ -8,9 +8,9 @@
  * `table.` or `alias.`. Each option shows its nature (database, table, view,
  * function, procedure) or, for a column, its type.
  *
- * A name that is not a plain identifier (space, dash...) is inserted quoted:
- * double quotes if the `ANSI_QUOTES` mode is active on the session, backticks
- * otherwise.
+ * A name that is not a plain identifier (space, dash, leading digit...) is
+ * inserted quoted: double quotes if the `ANSI_QUOTES` mode is active on the
+ * session, backticks otherwise.
  */
 
 import type { Completion } from '@codemirror/autocomplete'
@@ -23,12 +23,14 @@ import { displayedType, quoteIdentifier, upperType } from './navigatorNodes'
 
 /**
  * Plain identifier, written without quotes: letters, digits, `_`, `$` and
- * the characters from U+00A1. `lang-sql` has its own rule
- * (`^[a-z_][a-z_\d]*$`), which it only applies to the names it receives as
- * plain strings: the names given here as `Completion` objects are quoted by
- * Prisme.
+ * the characters from U+00A1, not starting with a digit. MySQL and MariaDB
+ * accept a leading digit, but read `123`, `1e5` or `0x1F` as numbers: such
+ * names are quoted, as are the other names starting with a digit, which
+ * quotes keep valid. `lang-sql` has its own rule (`^[a-z_][a-z_\d]*$`),
+ * which it only applies to the names it receives as plain strings: the names
+ * given here as `Completion` objects are quoted by Prisme.
  */
-const PLAIN_IDENTIFIER = /^[\w$\xa1-\uffff][\w$\d\xa1-\uffff]*$/
+const PLAIN_IDENTIFIER = /^[a-z_$\xa1-\uffff][\w$\xa1-\uffff]*$/i
 
 /**
  * Completion option of a name, quoted on insertion if it is not a plain
