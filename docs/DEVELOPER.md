@@ -172,7 +172,7 @@ Rules:
 | `LoaderCircle` (spinning) | Loading, action in progress | `UiButton` (`loading`), results, tree |
 | `Database`, `DatabaseArrowDown`, `DatabaseArrowUp`, `DatabaseCheck`, `DatabaseX` | Exchanges with the internal database: none, reading, writing, synced, failed | top bar (`SyncStatus`) |
 | `Info`, `CircleCheckBig`, `CircleAlert`, `CircleX` | Message: information, success, warning, error | `UiAlert` |
-| `CircleCheck`, `CircleAlert` | Transient message: success, error | `UiToaster` |
+| `CircleCheckBig`, `CircleX` | Transient message: success, error, as in `UiAlert` | `UiToaster` |
 | `Eye` / `EyeOff` | Show / hide the password | connection dialog |
 | `ChevronDown`, `Check` | Open a list; chosen item | `UiSelect` |
 | `Monitor`, `Sun`, `Moon` | Color mode: system, light, dark | top bar |
