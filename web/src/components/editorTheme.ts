@@ -28,13 +28,14 @@ const chrome = EditorView.theme({
     borderRight: 'var(--line-width) solid var(--line)',
   },
   // Line numbers as the row numbers of the grid: code font smaller than the
-  // text, on the right, centered on their line, one unit on each side; as
-  // wide as the largest number (no minimum width).
+  // text, on the right, centered on their line, one unit on each side; room
+  // for `--gutter-digits` digits at least (the digits of the code font all
+  // have the width of `1ch`), more for a larger number.
   '.cm-lineNumbers .cm-gutterElement': {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    minWidth: '0',
+    minWidth: 'calc(var(--gutter-digits) * 1ch + var(--space-unit) * 2)',
     padding: '0 var(--space-unit)',
     fontFamily: 'var(--font-code)',
     fontSize: 'var(--gutter-font-size)',

@@ -219,8 +219,11 @@
   /* Text of the SQL editor. */
   --editor-font-size: 0.8125rem;
   /* Gutters: line numbers of the editors (`editorTheme.ts`) and row
-     numbers of the grid (`ResultGrid.vue`), in the code font. */
+     numbers of the grid (`ResultGrid.vue`), in the code font; room for a
+     number of digits at least, so that both gutters have the same width as
+     long as their numbers do not go beyond it. */
   --gutter-font-size: var(--font-size-small);
+  --gutter-digits: 4;
 
   /* Unit of the lengths: step 1 of the spacing scale (p-1, gap-1). */
   --space-unit: 0.25rem;

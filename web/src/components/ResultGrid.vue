@@ -1019,8 +1019,9 @@ const userFilterColumn = computed({
    under them. They look like the gutter of the SQL editor (`editorTheme.ts`):
    code font, its size, one unit on each side, on the right. Each one is as
    wide as the largest number (`--row-digits` digits of the code font, whose
-   digits all have the width of `1ch`): the column, as wide as its content,
-   keeps the same width in every row. */
+   digits all have the width of `1ch`), and has room for `--gutter-digits`
+   digits at least, like the editor's gutter: the column, as wide as its
+   content, keeps the same width in every row. */
 .grid-corner,
 .grid-row-header {
   position: sticky;
@@ -1033,7 +1034,9 @@ const userFilterColumn = computed({
   font-family: var(--font-code);
   font-size: var(--gutter-font-size);
   text-align: end;
-  inline-size: calc(var(--row-digits) * 1ch + --spacing(2) + var(--line-width));
+  inline-size: calc(
+    max(var(--gutter-digits), var(--row-digits)) * 1ch + --spacing(2) + var(--line-width)
+  );
 }
 
 .grid-row-header {
