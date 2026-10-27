@@ -7,7 +7,7 @@ This file is short. Detailed decisions are in `docs/`:
 - `docs/V1.md`: scope, technical decisions and development order of the v1 (read first).
 - `docs/FEDERATED.md`: vision after the v1 (logical plan, optimizer, languages, NULL, CSV, workspace).
 - `docs/QUESTIONS.md`: ideas kept, dropped or postponed, and questions still open.
-- `docs/PERF.md`: performance problems met, with their cause, their fix and how they were measured.
+- `docs/PERFORMANCES.md`: performance problems met, with their cause, their fix and how they were measured.
 - `docs/IDEAS-EXPORTS.md`: ideas for copying and exporting results.
 - `docs/IDEAS-VIZ.md`: ideas for drawing a database and its relations as a graph.
 - `docs/CHANGELOG.md`: changelogs of the published versions, most recent first (see "Publishing a version").

@@ -441,7 +441,7 @@ docs/              design decisions and notes
 - [V1.md](V1.md): scope, decisions, detailed Rust stack, development order of the v1.
 - [FEDERATED.md](FEDERATED.md): the federated engine, after the v1.
 - [QUESTIONS.md](QUESTIONS.md): ideas kept or dropped, open questions.
-- [PERF.md](PERF.md): performance problems met, their cause and fix.
+- [PERFORMANCES.md](PERFORMANCES.md): performance problems met, their cause and fix.
 - [IDEAS-EXPORTS.md](IDEAS-EXPORTS.md): ideas for copying and exporting results.
 - [IDEAS-VIZ.md](IDEAS-VIZ.md): ideas for drawing a database and its relations as a graph.
 - [CHANGELOG.md](CHANGELOG.md): changelogs of the published versions.
