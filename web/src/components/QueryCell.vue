@@ -759,12 +759,12 @@ defineExpose({
             class="w-32"
             @update:model-value="(limit) => limit !== undefined && changeLimit(limit)"
           />
-          <!-- Status of the session, as tall as the buttons. -->
+          <!-- Status of the session, stretched to the height of the buttons. -->
           <span
             v-if="state.transaction"
             v-tooltip="TRANSACTION_TIP"
             role="status"
-            class="ms-auto inline-flex h-control shrink-0 items-center rounded-full bg-info-soft px-3 text-ui font-medium whitespace-nowrap text-info"
+            class="ms-auto inline-flex shrink-0 self-stretch items-center rounded-full bg-info-soft px-3 text-ui font-medium whitespace-nowrap text-info"
           >
             <span class="text-trim">Transaction ouverte</span>
           </span>
