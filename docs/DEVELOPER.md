@@ -196,6 +196,17 @@ In the code, each of these places carries a comment that starts with "Fixed size
 
 These are workarounds too (see "Workarounds"). Before each release, after the update of the dependencies, each API is checked again (process in [CLAUDE.md](../CLAUDE.md), section "Publishing a version"): once one accepts a CSS length or a relative unit, the theme variable goes to it directly, and its `cssPixels` goes away, with its row here.
 
+### Lines
+
+A line of the interface (border of a panel, of a field, of the grid, line of a splitter) is one CSS pixel thick (`--line-width`). At a display scale that is not whole (Windows at 125% or 150%, zoom of the browser), a CSS pixel covers a pixel and a quarter or a half of the screen. The browser then treats two ways of drawing a line differently:
+
+- **Border** (or outline): its width is rounded to whole pixels of the screen. The line is one pixel thick wherever it falls.
+- **Box one line wide, filled by its background** (`inline-size: var(--line-width)`, `w-px`): its edges are rounded to the pixels of the screen one by one, so the box is painted one or two pixels thick according to its position. A splitter's position changes with the size of the window: the line looks thicker for some sizes, thin for others.
+
+So a line is always a border. The splitters of Reka UI (`SplitHandle.vue`) draw theirs with the handle's border, the band of the hover and the grip being centered on it. A first fix, on 2026-10-14, rounded the position of the line to whole pixels (`round()` in CSS); it lived in a component replaced by the splitters of Reka UI on 2026-10-25, and the problem came back with them. `web/src/__tests__/lines.spec.ts` now fails on any box sized to the thickness of a line, in a `<style>` block or in a class.
+
+To check a change on screen, the scale must be a real one: `Emulation.setDeviceMetricsOverride` of the Chrome DevTools Protocol scales the rendering without rounding the edges the same way, and does not show the problem. Start Chrome with `--force-device-scale-factor=1.5`, resize the window one pixel at a time, and read the pixels across each line in a screenshot: one inked pixel at every size, never two.
+
 ## Building the single executable
 
 Compile the interface, then Prisme:

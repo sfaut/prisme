@@ -211,7 +211,14 @@
 
   /* Lines: the only lengths in pixels, to stay sharp on screen (a fraction
      of a pixel would blur a line). Borders, focus outline and move marker of
-     a column or a tab. */
+     a column or a tab. A line is always a border (or an outline), never a
+     box of `--line-width` filled by its background: the browser rounds the
+     width of a border to whole pixels of the screen, whereas at a scale of
+     125% or 150% (Windows, zoom of the browser) a box of one CSS pixel
+     covers a pixel and a quarter or a half, and is painted one or two
+     pixels thick according to its position, which changes with the size of
+     the window (`docs/DEVELOPER.md`, section "Lines";
+     `__tests__/lines.spec.ts`). */
   --line-width: 1px;
   --focus-width: 1px;
   --focus-offset: 1px;
