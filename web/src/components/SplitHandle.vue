@@ -30,15 +30,21 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
-/* Above its neighbours: the band of the hover overlaps them. */
+/* Above its neighbours: the band of the hover overlaps them. The line is
+   the handle's border, never its background: the browser rounds the width
+   of a border to whole pixels of the screen, where a box of one CSS pixel
+   would cover one and a half at a scale of 150% and be painted one or two
+   pixels thick, according to its position. */
 .split-handle {
   position: relative;
   z-index: 1;
   flex: none;
-  background: var(--color-line);
+  border: 0 solid var(--color-line);
   outline: none;
 
-  /* Band of the hover, wider than the line, and the grip, centered on it. */
+  /* Band of the hover, wider than the line, and the grip, centered on it:
+     the border fills the handle, whose inner box is empty, so the center
+     of the line lies half a line before it. */
   &::before,
   &::after {
     position: absolute;
@@ -52,17 +58,17 @@ const emit = defineEmits<{
 
   /* Between panels side by side: a vertical line. */
   &[data-orientation='horizontal'] {
-    inline-size: var(--line-width);
+    border-inline-start-width: var(--line-width);
 
     &::before {
       inset-block: 0;
-      inset-inline-start: calc(50% - var(--resize-handle-width) / 2);
+      inset-inline-start: calc((var(--line-width) + var(--resize-handle-width)) / -2);
       inline-size: var(--resize-handle-width);
     }
 
     &::after {
       inset-block-start: calc(50% - var(--grip-length) / 2);
-      inset-inline-start: calc(50% - var(--grip-thickness) / 2);
+      inset-inline-start: calc((var(--line-width) + var(--grip-thickness)) / -2);
       inline-size: var(--grip-thickness);
       block-size: var(--grip-length);
     }
@@ -70,16 +76,16 @@ const emit = defineEmits<{
 
   /* Between panels one above the other: a horizontal line. */
   &[data-orientation='vertical'] {
-    block-size: var(--line-width);
+    border-block-start-width: var(--line-width);
 
     &::before {
       inset-inline: 0;
-      inset-block-start: calc(50% - var(--resize-handle-width) / 2);
+      inset-block-start: calc((var(--line-width) + var(--resize-handle-width)) / -2);
       block-size: var(--resize-handle-width);
     }
 
     &::after {
-      inset-block-start: calc(50% - var(--grip-thickness) / 2);
+      inset-block-start: calc((var(--line-width) + var(--grip-thickness)) / -2);
       inset-inline-start: calc(50% - var(--grip-length) / 2);
       inline-size: var(--grip-length);
       block-size: var(--grip-thickness);
