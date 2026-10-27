@@ -1,20 +1,19 @@
 /*
   Stylesheet of the application: Tailwind CSS and Prisme's theme.
 
-  The theme fits in a few CSS variables, in `:root`: colors by role, font
-  sizes, the unit of the lengths, radii and strokes. Changing a value here
-  changes the whole interface. Tailwind turns them into classes (`@theme`
-  block): `bg-surface`, `text-fg-muted`, `border-line`, `text-ui`,
-  `rounded-control`...
+  The interface uses Tailwind's default scales as they are: font sizes and
+  their line heights (`text-base`, `text-sm`...), spacing (`p-3`, `gap-2`,
+  `h-8`), radii (`rounded-lg`). The root's font size, 75% of the browser's
+  (12 px by default), sets them all: `text-base` is the regular text of the
+  interface, and changing that one value scales the whole interface. The
+  theme fits in a few CSS variables: colors by role, the code font, strokes.
 
-  Lengths: whole multiples of `--space-unit`, through Tailwind's spacing
-  scale. The components write the step, `gap-2`, `p-3`, `w-40` in their
-  classes, `--spacing(2)` in their `<style>` blocks (which start with
-  `@reference "@/assets/main.css";`), never a fraction (`gap-1.5`): changing
-  `--space-unit` scales every gap, padding, height and width. A length is
-  named here only when several components must keep it identical (height
-  of the controls, `h-control`) or the code reads it (`cssPixels`); it is
-  then defined as a multiple of `--space-unit` too.
+  Lengths: whole steps of Tailwind's spacing scale (`--spacing`, a quarter
+  of the root's size). The components write the step, `gap-2`, `p-3`,
+  `w-40` in their classes, `--spacing(2)` in their `<style>` blocks (which
+  start with `@reference "@/assets/main.css";`), never a fraction
+  (`gap-1.5`). A length is named here only when the code reads it
+  (`cssPixels`); it is then written with `--spacing()` too.
 
   Colors: a palette (each hue only once), then variables by role that draw
   from it, the only ones used by the components. Light and dark: each role
@@ -56,29 +55,12 @@
   --color-error-border: var(--error-border);
   --color-accent-border: var(--accent-border);
   --color-overlay: var(--overlay);
+}
 
-  --text-*: initial;
-  --text-tiny: var(--font-size-tiny);
-  --text-small: var(--font-size-small);
-  --text-ui: var(--font-size-ui);
-  --text-body: var(--font-size-body);
-  --text-title: var(--font-size-title);
-  --text-heading: var(--font-size-heading);
-
-  --font-sans: var(--font-ui);
-  --font-mono: var(--font-code);
-
-  /* The whole spacing scale (p-1, gap-2...) follows `--space-unit`, then
-     the named lengths, shared by several components. */
-  --spacing: var(--space-unit);
-  --spacing-control: var(--control-height);
-  --spacing-control-sm: var(--control-height-sm);
-  --spacing-row: var(--row-height);
-  --spacing-icon: var(--icon-size);
-  --spacing-icon-sm: var(--icon-size-sm);
-
-  --radius-control: var(--control-radius);
-  --radius-panel: var(--panel-radius);
+/* Font of the code (SQL editor, grid, data explorer): Cascadia Code, the
+   monospaced font of Windows, before Tailwind's list. */
+@theme {
+  --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
 }
 
 :root {
@@ -212,47 +194,22 @@
     color-mix(in oklab, lemonchiffon 12%, transparent)
   );
 
-  /* Fonts and sizes. `--font-size-ui` is the regular size of the interface;
-     windows and menus use it too, tooltips the small size. */
-  --font-ui: ui-sans-serif, system-ui, sans-serif;
-  --font-code: ui-monospace, 'Cascadia Code', Consolas, monospace;
-  /* Discreet mentions: the version next to the name of Prisme. */
-  --font-size-tiny: 0.625rem;
-  --font-size-small: 0.6875rem;
-  --font-size-ui: 0.75rem;
-  --font-size-body: 0.875rem;
-  --font-size-title: 0.875rem;
-  --font-size-heading: 1.125rem;
-  /* Text of the SQL editor. */
-  --editor-font-size: 0.8125rem;
+  /* Text of the SQL editor and of the data explorer. */
+  --editor-font-size: var(--text-lg);
   /* Gutters: line numbers of the editors (`editorTheme.ts`) and row
      numbers of the grid (`ResultGrid.vue`), in the code font; room for a
      number of digits at least, so that both gutters have the same width as
      long as their numbers do not go beyond it. */
-  --gutter-font-size: var(--font-size-small);
+  --gutter-font-size: var(--text-sm);
   --gutter-digits: 4;
 
-  /* Unit of the lengths: step 1 of the spacing scale (p-1, gap-1). */
-  --space-unit: 0.25rem;
-
-  /* Named lengths, multiples of the unit. Heights: controls (buttons,
-     fields, lines of the menus), small buttons ("⋮" menu), lines of the
-     navigator's tree, whose height the code reads too (`h-control`,
-     `h-control-sm`, `h-row`). */
-  --control-height: calc(var(--space-unit) * 6);
-  --control-height-sm: calc(var(--space-unit) * 5);
-  --row-height: calc(var(--space-unit) * 6);
-
-  /* Icons: regular (buttons, menus), small (chevrons of the tree, icons of
-     the grid header) (`size-icon`, `size-icon-sm`). */
-  --icon-size: calc(var(--space-unit) * 4);
-  --icon-size-sm: calc(var(--space-unit) * 3);
-
-  /* Read by the code (`cssPixels`): height of a line of the result grid
-     (virtual scrolling), gap between a menu or a list and its trigger
-     (positioning of Reka UI). */
-  --grid-row-height: calc(var(--space-unit) * 6);
-  --popup-offset: var(--space-unit);
+  /* Read by the code (`cssPixels`): height of a line of the navigator's
+     tree (`h-(--row-height)`) and of the result grid (virtual scrolling),
+     gap between a menu or a list and its trigger (positioning of Reka
+     UI). */
+  --row-height: --spacing(8);
+  --grid-row-height: --spacing(8);
+  --popup-offset: --spacing(1);
 
   /* Columns of the result grid (`resultGrid.ts`): smallest width, enough
      for the sort button and the start of the name; average width of a
@@ -262,22 +219,22 @@
      `em` is that of the grid; room beside the text of an estimated or
      fitted width; caps of the estimated width and of the width fitted to
      the content. */
-  --grid-column-min-width: calc(var(--space-unit) * 10);
+  --grid-column-min-width: --spacing(13);
   --grid-char-width: 0.6em;
-  --grid-cell-room: calc(var(--space-unit) * 4);
-  --grid-estimated-max-width: calc(var(--space-unit) * 90);
-  --grid-fitted-max-width: calc(var(--space-unit) * 180);
+  --grid-cell-room: --spacing(5);
+  --grid-estimated-max-width: --spacing(120);
+  --grid-fitted-max-width: --spacing(240);
 
-  /* Thickness of the progress bar drawn on each result tab: half a unit,
+  /* Thickness of the progress bar drawn on each result tab: a stroke,
      thinner than any step of the scale. */
-  --tab-progress-height: calc(var(--space-unit) / 2);
+  --tab-progress-height: 2px;
 
   /* Resize bars (lines of the splitters, grid columns): the width grabbed
      by the pointer; their central grip: length, thickness and color at
      rest, that of the borders (blue on hover). */
-  --resize-handle-width: calc(var(--space-unit) * 2);
-  --grip-length: calc(var(--space-unit) * 7);
-  --grip-thickness: var(--space-unit);
+  --resize-handle-width: --spacing(3);
+  --grip-length: --spacing(9);
+  --grip-thickness: --spacing(1);
   --grip-color: var(--line);
 
   /* Splitters of the layout (`SplitterGroup` of Reka UI), whose sizes the
@@ -286,8 +243,9 @@
      editors, enough for the buttons of the editor on one line; thickness
      of the rail left by a folded panel (`rail`); bar left by a folded
      result list (`tab-bar`): the gap above its tabs, then a tab at its own
-     height, its padding (one unit above and below, `DocumentTab`) around
-     its small buttons, taller than its text, and the line under the bar;
+     height, its padding (one step above and below, `DocumentTab`) around
+     its small buttons (`h-7`), taller than its text, and the line under
+     the bar;
      a folded editor leaves the gap under the editors' tabs, where the grip
      of the line stays whole. Default heights of the editor and of the result list:
      Reka UI scales them together to the cell's height, so that they set a
@@ -295,26 +253,23 @@
      result list (tabs, a few rows and the line under the grid); smallest
      area of the editors: both, plus the tab bar of the editors, the padding
      and the gaps. Default and smallest height of the console. */
-  --navigator-width: calc(var(--space-unit) * 75);
-  --navigator-min-width: calc(var(--space-unit) * 50);
-  --explorer-width: calc(var(--space-unit) * 105);
-  --explorer-min-width: calc(var(--space-unit) * 60);
-  --editors-min-width: calc(var(--space-unit) * 160);
-  --rail-size: calc(var(--space-unit) * 7);
-  --tab-bar-height: calc(var(--space-unit) * 4 + var(--control-height-sm) + var(--line-width));
-  --editor-folded-height: calc(var(--space-unit) * 2);
-  --editor-height: calc(var(--space-unit) * 50);
-  --results-height: calc(var(--space-unit) * 100);
-  --editor-min-height: calc(var(--space-unit) * 24);
-  --results-min-height: calc(var(--space-unit) * 50);
-  --editors-min-height: calc(
-    var(--editor-min-height) + var(--results-min-height) + var(--space-unit) * 18
-  );
-  --console-height: calc(var(--space-unit) * 55);
-  --console-min-height: calc(var(--space-unit) * 30);
+  --navigator-width: --spacing(100);
+  --navigator-min-width: --spacing(67);
+  --explorer-width: --spacing(140);
+  --explorer-min-width: --spacing(80);
+  --editors-min-width: --spacing(213);
+  --rail-size: --spacing(9);
+  --tab-bar-height: calc(--spacing(5) + --spacing(7) + var(--line-width));
+  --editor-folded-height: --spacing(3);
+  --editor-height: --spacing(67);
+  --results-height: --spacing(133);
+  --editor-min-height: --spacing(32);
+  --results-min-height: --spacing(67);
+  --editors-min-height: calc(var(--editor-min-height) + var(--results-min-height) + --spacing(24));
+  --console-height: --spacing(73);
+  --console-min-height: --spacing(40);
 
-  /* Scrollbars: radius, thumb and hovered thumb. */
-  --scrollbar-radius: 0.125rem;
+  /* Scrollbars: thumb and hovered thumb. */
   --scrollbar-thumb: light-dark(var(--zinc-300), var(--zinc-600));
   --scrollbar-thumb-hover: light-dark(var(--zinc-400), var(--zinc-500));
 
@@ -325,14 +280,10 @@
   --focus-width: 1px;
   --focus-offset: 1px;
   --marker-width: 2px;
-
-  /* Radii: controls, then windows and menus. */
-  --control-radius: 0.375rem;
-  --panel-radius: 0.5rem;
 }
 
 /* Lengths read by the code (`cssPixels`): registered as lengths, so that
-   the browser resolves their multiple of `--space-unit` into pixels. */
+   the browser resolves their steps of `--spacing` into pixels. */
 @property --row-height {
   syntax: '<length>';
   inherits: true;
@@ -450,6 +401,12 @@
 }
 
 @layer base {
+  /* Size of the root, which sets all of Tailwind's scales: 75% of the
+     browser's size, whose choice by the user it follows. */
+  html {
+    font-size: 75%;
+  }
+
   html,
   body,
   #app {
@@ -459,8 +416,6 @@
   body {
     background: var(--surface);
     color: var(--fg);
-    font-family: var(--font-ui);
-    font-size: var(--font-size-ui);
   }
 
   /* Thin scrollbars, in the theme's colors, without arrows. Chromium (Edge,
@@ -478,7 +433,7 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    border-radius: var(--scrollbar-radius);
+    border-radius: var(--radius-xs);
     background: var(--scrollbar-thumb);
 
     &:hover {

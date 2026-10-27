@@ -66,7 +66,7 @@ const emit = defineEmits<{
   <tabs-trigger
     :value="value"
     as="div"
-    class="group relative flex max-w-80 min-w-0 shrink-0 cursor-pointer items-center gap-2 rounded-t-control py-1 ps-2 pe-1 text-ui font-medium text-fg-muted select-none hover:text-fg-strong data-[state=active]:bg-surface-elevated data-[state=active]:text-fg-strong"
+    class="group relative flex max-w-107 min-w-0 shrink-0 cursor-pointer items-center gap-3 rounded-t-lg py-1 ps-3 pe-1 text-base font-medium text-fg-muted select-none hover:text-fg-strong data-[state=active]:bg-surface-elevated data-[state=active]:text-fg-strong"
     :class="{
       'drop-before': drag.dropAt.value === index,
       'drop-after': drag.dropAt.value === count && index === count - 1,

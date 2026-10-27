@@ -65,10 +65,10 @@ function close(): void {
   <div
     v-if="!closed"
     role="alert"
-    class="flex items-center gap-2 rounded-control px-2 py-2 text-ui"
+    class="flex items-center gap-3 rounded-lg px-3 py-3 text-base"
     :class="TONES[tone].classes"
   >
-    <component :is="TONES[tone].icon" class="size-icon shrink-0" aria-hidden="true" />
+    <component :is="TONES[tone].icon" class="size-5 shrink-0" aria-hidden="true" />
     <span class="min-w-0 flex-1 wrap-break-word whitespace-pre-line">{{ title }}</span>
     <slot />
     <ui-button

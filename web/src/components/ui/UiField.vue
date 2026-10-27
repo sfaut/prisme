@@ -19,7 +19,7 @@ defineProps<{
 
 <template>
   <label
-    class="grid grid-cols-[--spacing(28)_minmax(0,1fr)] gap-2"
+    class="grid grid-cols-[--spacing(37)_minmax(0,1fr)] gap-3"
     :class="top ? 'items-start' : 'items-center'"
   >
     <span class="text-fg-muted" :class="{ 'pt-1': top }">{{ label }}</span>

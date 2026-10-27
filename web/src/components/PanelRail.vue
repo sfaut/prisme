@@ -49,7 +49,7 @@ const ICONS = {
     @click="emit('expand')"
   >
     <span class="panel-rail-icon">
-      <component :is="ICONS[props.side]" class="size-icon" aria-hidden="true" />
+      <component :is="ICONS[props.side]" class="size-5" aria-hidden="true" />
     </span>
     <span class="panel-rail-title">{{ title }}</span>
   </button>
@@ -62,11 +62,11 @@ const ICONS = {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: --spacing(2);
-  padding: --spacing(2);
+  gap: --spacing(3);
+  padding: --spacing(3);
   background: var(--surface);
   color: var(--fg-dimmed);
-  font-size: var(--font-size-ui);
+  font-size: var(--text-base);
   font-weight: 600;
   cursor: pointer;
 
@@ -81,7 +81,7 @@ const ICONS = {
   &.end {
     flex-direction: column;
     inline-size: var(--rail-size);
-    padding-block-start: --spacing(3);
+    padding-block-start: --spacing(4);
   }
 
   /* At the bottom: along the whole width, the title at the left end, the
@@ -91,7 +91,7 @@ const ICONS = {
     flex-direction: row-reverse;
     justify-content: space-between;
     block-size: var(--rail-size);
-    padding-inline: --spacing(3);
+    padding-inline: --spacing(4);
   }
 }
 
@@ -105,11 +105,11 @@ const ICONS = {
 
   .start &,
   .end & {
-    block-size: var(--control-height);
+    block-size: --spacing(8);
   }
 
   .bottom & {
-    inline-size: var(--control-height-sm);
+    inline-size: --spacing(7);
   }
 }
 

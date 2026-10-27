@@ -109,7 +109,7 @@ watch(
 <template>
   <div ref="scroller" class="min-h-0 flex-1 overflow-auto" @scroll="readOlderAtTop">
     <ui-alert v-if="list.error" tone="error" :title="list.error" @close="list.dismissError()" />
-    <p v-if="list.entries.length === 0" class="p-3 text-center text-fg-muted">{{ empty }}</p>
+    <p v-if="list.entries.length === 0" class="p-4 text-center text-fg-muted">{{ empty }}</p>
     <slot v-else />
   </div>
 </template>
@@ -122,7 +122,7 @@ watch(
   inline-size: 100%;
   table-layout: fixed;
   border-collapse: collapse;
-  font-size: var(--font-size-small);
+  font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
   color: var(--fg);
 
@@ -150,7 +150,7 @@ watch(
   & th,
   & td {
     padding-block: --spacing(1);
-    padding-inline: --spacing(2);
+    padding-inline: --spacing(3);
     overflow: hidden;
     text-align: start;
     text-overflow: ellipsis;

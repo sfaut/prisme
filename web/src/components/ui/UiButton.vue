@@ -78,21 +78,21 @@ const LOOKS = {
 
 const classes = computed(() => [
   LOOKS[props.variant][props.tone],
-  props.small ? 'h-control-sm gap-1 text-small' : 'h-control gap-2 text-ui',
-  props.label ? (props.small ? 'px-1' : 'px-2') : props.small ? 'w-control-sm' : 'w-control',
+  props.small ? 'h-7 gap-1 text-sm' : 'h-8 gap-3 text-base',
+  props.label ? (props.small ? 'px-1' : 'px-3') : props.small ? 'w-7' : 'w-8',
 ])
 
 /**
  * Size of the icon, by size of the button.
  */
-const iconSize = computed(() => (props.small ? 'size-icon-sm' : 'size-icon'))
+const iconSize = computed(() => (props.small ? 'size-4' : 'size-5'))
 </script>
 
 <template>
   <button
     :type="type"
     :disabled="disabled || loading"
-    class="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-control font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+    class="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-lg font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50"
     :class="classes"
   >
     <LoaderCircle v-if="loading" class="shrink-0 animate-spin" :class="iconSize" />

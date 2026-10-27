@@ -237,7 +237,7 @@ const pinned = computed(() => pinnedRows(visible.value, scrollTop.value, ROW_HEI
  * Classes of a line of the tree, and of a pinned line, which look the same.
  */
 const ROW_CLASSES =
-  'tree-row group flex h-row w-full cursor-pointer items-center gap-1 rounded-control pe-1 text-start select-none hover:bg-surface-muted focus-visible:bg-surface-muted'
+  'tree-row group flex h-(--row-height) w-full cursor-pointer items-center gap-1 rounded-lg pe-1 text-start select-none hover:bg-surface-muted focus-visible:bg-surface-muted'
 
 /**
  * Classes of the line of a node: the chosen source is highlighted.
@@ -555,7 +555,7 @@ watch(
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col gap-2">
+  <div class="flex min-h-0 flex-1 flex-col gap-3">
     <panel-header title="Navigateur d’objets" side="start" @collapse="layout.objectsOpen = false" />
     <ui-alert v-if="probed" :tone="probed.tone" :title="probed.title" @close="probed = null" />
     <ui-alert v-if="listError" tone="error" :title="listError" />
@@ -642,7 +642,7 @@ watch(
         :title="openTransactionsNotice(removedTransactions, 'supprimer la connexion')"
       />
       <template #footer>
-        <div class="flex w-full justify-end gap-2">
+        <div class="flex w-full justify-end gap-3">
           <ui-button label="Annuler" @click="removing = null" />
           <ui-button
             :label="removedTransactions > 0 ? 'Supprimer et annuler' : 'Supprimer'"
@@ -661,6 +661,6 @@ watch(
 
 /* Indentation of each level: `--level` is set on the line (1 for the roots). */
 .tree-row {
-  padding-inline-start: calc(--spacing(1) + --spacing(3) * (var(--level) - 1));
+  padding-inline-start: calc(--spacing(1) + --spacing(4) * (var(--level) - 1));
 }
 </style>

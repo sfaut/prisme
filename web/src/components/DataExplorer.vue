@@ -441,7 +441,7 @@ watch(
   <div class="data-explorer">
     <panel-header title="Explorateur de données" side="end" @collapse="explorer.open = false">
       <template #subtitle>
-        <span class="truncate text-small text-fg-muted" v-tooltip="subtitle">{{
+        <span class="truncate text-sm text-fg-muted" v-tooltip="subtitle">{{
           subtitle || ' '
         }}</span>
       </template>
@@ -516,7 +516,7 @@ watch(
       </template>
     </panel-header>
     <div v-if="searchOpen && text !== null" ref="searchBar" class="data-explorer-search">
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-3">
         <ui-input
           v-model="expression"
           :icon="Search"
@@ -580,7 +580,7 @@ watch(
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: --spacing(2);
+  gap: --spacing(3);
   min-block-size: 0;
 }
 
@@ -592,7 +592,7 @@ watch(
 .data-explorer-search {
   display: flex;
   flex-direction: column;
-  gap: --spacing(2);
+  gap: --spacing(3);
 }
 
 .data-explorer-search :deep(input[aria-invalid='true']) {
@@ -600,17 +600,17 @@ watch(
 }
 
 .data-explorer-search-status {
-  max-inline-size: --spacing(40);
+  max-inline-size: --spacing(53);
   overflow: hidden;
   color: var(--fg-muted);
-  font-size: var(--font-size-small);
+  font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .data-explorer-search-error {
   color: var(--error);
-  font-size: var(--font-size-small);
+  font-size: var(--text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -618,7 +618,7 @@ watch(
   flex: 1;
   min-block-size: 0;
   border: var(--line-width) solid var(--line);
-  border-radius: var(--control-radius);
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
@@ -628,6 +628,6 @@ watch(
 }
 
 .data-explorer-editor :deep(.cm-scroller) {
-  font-family: var(--font-code);
+  font-family: var(--font-mono);
 }
 </style>

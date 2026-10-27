@@ -45,6 +45,6 @@ const current = computed(() => STATES[syncState.value])
     class="inline-flex"
     :class="current.tone"
   >
-    <component :is="current.icon" class="size-icon shrink-0" aria-hidden="true" />
+    <component :is="current.icon" class="size-5 shrink-0" aria-hidden="true" />
   </span>
 </template>

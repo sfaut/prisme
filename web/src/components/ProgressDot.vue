@@ -40,7 +40,7 @@ const progress = computed(() => tabProgress(props.tab))
 
 .progress-dot {
   flex: none;
-  width: --spacing(2);
+  width: --spacing(3);
   aspect-ratio: 1;
   border-radius: 50%;
 }

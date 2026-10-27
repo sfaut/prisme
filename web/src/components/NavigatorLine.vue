@@ -176,12 +176,12 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
   <component
     :is="expanded ? ChevronDown : ChevronRight"
     v-if="node.children?.length"
-    class="size-icon-sm shrink-0 text-fg-dimmed"
+    class="size-4 shrink-0 text-fg-dimmed"
   />
-  <span v-else class="size-icon-sm shrink-0" />
+  <span v-else class="size-4 shrink-0" />
   <component
     :is="nodeIcon(node, expanded)"
-    class="size-icon shrink-0 text-fg-muted"
+    class="size-5 shrink-0 text-fg-muted"
     :class="{ 'animate-spin': node.entry === 'loading' }"
   />
 
@@ -195,7 +195,7 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
       <KeyRound v-if="node.column.primaryKey" class="size-[1em]" aria-label="Clef primaire" />
       <Link v-if="node.column.foreignKey" class="size-[1em]" aria-label="Clef étrangère" />
     </span>
-    <span class="flex min-w-0 flex-1 items-center gap-3">
+    <span class="flex min-w-0 flex-1 items-center gap-4">
       <span
         class="flex-none font-bold text-trim"
         :style="{ minWidth: `${node.column.nameWidth}ch` }"
@@ -204,7 +204,7 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
           {{ node.column.name }}
         </span>
       </span>
-      <span class="truncate text-small text-fg-dimmed text-trim" v-tooltip="node.column.details">
+      <span class="truncate text-sm text-fg-dimmed text-trim" v-tooltip="node.column.details">
         {{ node.column.details }}
       </span>
     </span>
@@ -215,23 +215,23 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
     tooltip gives the name and version of the server. The whole takes the
     room left, which pushes the menu to the end of the line.
   -->
-  <span v-else class="flex min-w-0 flex-1 items-center gap-2">
+  <span v-else class="flex min-w-0 flex-1 items-center gap-3">
     <span
-      class="tree-label flex min-w-0 items-center gap-3"
+      class="tree-label flex min-w-0 items-center gap-4"
       :class="{
         'current-database': node.current,
         'font-bold': node.current || node.role === 'sources' || node.role === 'notebooks',
       }"
     >
       <span class="truncate text-trim">{{ node.label }}</span>
-      <span v-if="node.note" class="shrink-0 text-small font-normal text-fg-dimmed text-trim">
+      <span v-if="node.note" class="shrink-0 text-sm font-normal text-fg-dimmed text-trim">
         {{ node.note }}
       </span>
     </span>
     <span
       v-if="node.badge"
       v-tooltip="node.badgeTooltip"
-      class="flavor-badge inline-flex shrink-0 items-center rounded-full px-1 text-tiny font-medium"
+      class="flavor-badge inline-flex shrink-0 items-center rounded-full px-1 text-xs font-medium"
       :data-flavor="node.badge"
     >
       <span class="text-trim">{{ node.badge }}</span>

@@ -30,7 +30,7 @@ const history = store.history
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-1">
-    <div v-if="store.filtersShown" class="flex flex-wrap items-center gap-3">
+    <div v-if="store.filtersShown" class="flex flex-wrap items-center gap-4">
       <console-filter v-model="store.historyFilter.action" label="Action" :labels="ACTION_LABELS" />
     </div>
     <console-list
@@ -101,23 +101,23 @@ const history = store.history
 /* Columns sized to their content, in characters, plus the padding of the
    cells; the message takes the rest. */
 col.index {
-  inline-size: calc(6ch + 2 * --spacing(2));
+  inline-size: calc(6ch + 2 * --spacing(3));
 }
 
 col.time {
-  inline-size: calc(9ch + 2 * --spacing(2));
+  inline-size: calc(9ch + 2 * --spacing(3));
 }
 
 col.action {
-  inline-size: calc(18ch + 2 * --spacing(2));
+  inline-size: calc(18ch + 2 * --spacing(3));
 }
 
 col.rows {
-  inline-size: calc(9ch + 2 * --spacing(2));
+  inline-size: calc(9ch + 2 * --spacing(3));
 }
 
 col.duration {
-  inline-size: calc(13ch + 2 * --spacing(2));
+  inline-size: calc(13ch + 2 * --spacing(3));
 }
 
 /* Message: the SQL shrinks first, with an ellipsis; the failure keeps its

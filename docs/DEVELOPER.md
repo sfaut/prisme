@@ -72,7 +72,7 @@ The icons come from Lucide (`@lucide/vue`). An action keeps the same icon wherev
 
 Rules:
 
-- **Size**: `size-icon` (16 px) for the buttons, the messages and the lines of the navigator, `size-icon-sm` (12 px) for the chevrons of the tree and the marks of the grid's headers, never a size of the spacing scale (`size-4`). The key marks of the navigator's columns are sized in `em` (`size-[1em]`), like the slots that align them.
+- **Size**: `size-5` for the buttons, the messages and the lines of the navigator, `size-4` for the small buttons, the chevrons of the tree and the marks of the grid's headers. The key marks of the navigator's columns are sized in `em` (`size-[1em]`), like the slots that align them.
 - **Icon-only button**: `UiButton` with `variant="ghost"` and `small` in a bar, an `aria-label` and a `v-tooltip`. The tooltip says the action, and may add what it does after a colon ("Rafraîchir : relance la requête").
 - **Toggle button**: `aria-pressed`. The accent color (`tone="accent"`) means the state is in effect: a filter keeps only some elements, a tab is pinned. The raised background (`bg-surface-elevated`) means the button shows its panel or form (the console's filters, the grid's filter).
 - **Place**: the actions of a bar stand at its right end, side by side, then the fold button, last; for the panel on the right, the fold button comes first, left of the title. The rail of a folded panel shows its unfold icon at the same place.
@@ -181,7 +181,7 @@ Rules:
 
 ### Lengths in pixels
 
-The interface is built in lengths relative to the root, `:root` being fixed: multiples of `--space-unit`, in `rem`, and `ch` or `em` of a font (rule 10 of [CLAUDE.md](../CLAUDE.md)). Only the strokes of `:root` stay in pixels. A few APIs of dependencies accept nothing but a number of pixels, though. They receive a theme variable converted by `cssPixels` (`web/src/cssLength.ts`): the theme stays the only source of the length, read once, on loading. As `:root` is fixed, and the zoom of the browser does not change the ratio of a `rem` to a CSS pixel, the value stays exact for the whole session; only a change of the browser's default font size, with the page open, needs a reload.
+The interface is built in lengths relative to the root, `:root` being fixed: steps of Tailwind's `--spacing`, in `rem`, and `ch` or `em` of a font (rule 10 of [CLAUDE.md](../CLAUDE.md)). Only the strokes of `:root` stay in pixels. A few APIs of dependencies accept nothing but a number of pixels, though. They receive a theme variable converted by `cssPixels` (`web/src/cssLength.ts`): the theme stays the only source of the length, read once, on loading. As `:root` is fixed, and the zoom of the browser does not change the ratio of a `rem` to a CSS pixel, the value stays exact for the whole session; only a change of the browser's default font size, with the page open, needs a reload.
 
 | Dependency | API in pixels | Variables | Where |
 |---|---|---|---|

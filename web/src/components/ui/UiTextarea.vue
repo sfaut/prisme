@@ -15,6 +15,6 @@ const model = defineModel<string>({ required: true })
   <textarea
     v-model="model"
     spellcheck="false"
-    class="min-w-0 resize-y rounded-control border border-line bg-surface px-2 py-1 font-mono text-ui text-fg-strong placeholder:text-fg-dimmed focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-focus-ring"
+    class="min-w-0 resize-y rounded-lg border border-line bg-surface px-3 py-1 font-mono text-base text-fg-strong placeholder:text-fg-dimmed focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-focus-ring"
   />
 </template>

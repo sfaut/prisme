@@ -935,7 +935,7 @@ const userFilterColumn = computed({
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: --spacing(2);
+  gap: --spacing(3);
   min-height: 0;
 }
 
@@ -944,16 +944,16 @@ const userFilterColumn = computed({
 .grid-toolbar {
   display: flex;
   align-items: center;
-  gap: --spacing(2);
+  gap: --spacing(3);
   padding-block-start: --spacing(1);
 }
 
 .grid-user-filter {
-  max-inline-size: --spacing(60);
+  max-inline-size: --spacing(80);
 }
 
 .grid-user-filter-column {
-  max-inline-size: --spacing(50);
+  max-inline-size: --spacing(67);
 }
 
 /* Status of the result, discreet: in the small size, at the bottom of the
@@ -962,21 +962,21 @@ const userFilterColumn = computed({
 .grid-footer {
   display: flex;
   align-items: center;
-  gap: --spacing(2);
+  gap: --spacing(3);
   color: var(--fg-muted);
-  font-size: var(--font-size-small);
+  font-size: var(--text-sm);
 }
 
 .grid-scroller {
   position: relative;
   flex: 1;
-  min-block-size: --spacing(30);
+  min-block-size: --spacing(40);
   /* Safeguard: a scroll area taller than the window would draw all the rows
      and freeze the interface. */
   max-block-size: 100vh;
   overflow: auto;
   border: var(--line-width) solid var(--line);
-  font-size: var(--font-size-ui);
+  font-size: var(--text-base);
   user-select: none;
 
   &.attached {
@@ -1038,11 +1038,11 @@ const userFilterColumn = computed({
   border-inline-end: var(--line-width) solid var(--line);
   background: var(--surface-elevated);
   color: var(--fg-dimmed);
-  font-family: var(--font-code);
+  font-family: var(--font-mono);
   font-size: var(--gutter-font-size);
   text-align: end;
   inline-size: calc(
-    max(var(--gutter-digits), var(--row-digits)) * 1ch + --spacing(2) + var(--line-width)
+    max(var(--gutter-digits), var(--row-digits)) * 1ch + --spacing(3) + var(--line-width)
   );
 }
 
@@ -1113,8 +1113,8 @@ const userFilterColumn = computed({
 .grid-type-icon {
   flex: none;
   align-self: center;
-  inline-size: var(--icon-size-sm);
-  block-size: var(--icon-size-sm);
+  inline-size: --spacing(4);
+  block-size: --spacing(4);
   color: var(--fg-dimmed);
 }
 
@@ -1123,8 +1123,8 @@ const userFilterColumn = computed({
   flex: none;
   align-content: center;
   color: var(--fg-dimmed);
-  font-family: var(--font-code);
-  font-size: var(--font-size-small);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
   font-weight: 500;
   letter-spacing: -0.05em;
   text-box: trim-both cap alphabetic;
@@ -1149,7 +1149,7 @@ const userFilterColumn = computed({
   border: none;
   background: none;
   color: var(--fg-dimmed);
-  font-size: var(--font-size-small);
+  font-size: var(--text-sm);
   cursor: pointer;
 
   &:hover {
@@ -1176,7 +1176,7 @@ const userFilterColumn = computed({
 
   /* Fixed-length text (CHAR): codes and references, in monospace. */
   &.mono {
-    font-family: var(--font-code);
+    font-family: var(--font-mono);
   }
 
   /* NULL in small capitals: more discreet than a value of the column. */
@@ -1212,8 +1212,8 @@ const userFilterColumn = computed({
 /* External link icon, before the address. */
 .grid-link-icon {
   flex-shrink: 0;
-  inline-size: var(--icon-size-sm);
-  block-size: var(--icon-size-sm);
+  inline-size: --spacing(4);
+  block-size: --spacing(4);
 }
 
 .grid-link-text {
