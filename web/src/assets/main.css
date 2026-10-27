@@ -339,9 +339,13 @@
     height: 100%;
   }
 
+  /* Regular text of the interface: Tailwind's `text-base`, with its line
+     height. */
   body {
     background: var(--color-surface);
     color: var(--color-fg);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
   }
 
   /* Thin scrollbars, in the theme's colors, without arrows. Chromium (Edge,
