@@ -44,8 +44,8 @@ export const LEVEL_TONES: Record<DebugLevel, string> = {
   error: 'text-error',
   warn: 'text-warning',
   info: 'text-fg',
-  debug: 'text-fg-muted',
-  trace: 'text-fg-dimmed',
+  debug: 'text-fg-secondary',
+  trace: 'text-fg-faint',
 }
 
 /**

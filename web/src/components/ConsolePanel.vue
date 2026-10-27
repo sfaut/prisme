@@ -6,7 +6,7 @@
   notifications of the interface (`DebugTable.vue`). A button, at the right
   of the tabs, clears the list of the tab shown, whatever its filter;
   another one, before it, shows or hides the filters of both tabs, and
-  takes the accent color while the filter of the tab shown keeps only some
+  takes the primary color while the filter of the tab shown keeps only some
   elements, hidden or not. The console folds towards the bottom edge, where
   it leaves a rail (`PanelRail.vue`); its height is set by dragging the line
   above it (the splitter of `App.vue`).
@@ -94,7 +94,7 @@ onUnmounted(() => store.dispose())
           v-for="tab in TABS"
           :key="tab.value"
           :value="tab.value"
-          class="flex h-7 items-center rounded-lg px-1 text-sm font-medium text-fg-muted select-none hover:text-fg-strong data-[state=active]:bg-surface-elevated data-[state=active]:text-fg-strong"
+          class="flex h-7 items-center rounded-lg px-1 text-sm font-medium text-fg-secondary select-none hover:text-fg-strong data-[state=active]:bg-surface-raised data-[state=active]:text-fg-strong"
         >
           {{ tab.label }}
         </tabs-trigger>
@@ -103,9 +103,9 @@ onUnmounted(() => store.dispose())
         <ui-button
           :icon="Funnel"
           variant="ghost"
-          :tone="filtering ? 'accent' : 'neutral'"
+          :tone="filtering ? 'primary' : 'neutral'"
           small
-          :class="{ 'bg-surface-elevated': store.filtersShown }"
+          :class="{ 'bg-surface-raised': store.filtersShown }"
           :aria-pressed="store.filtersShown"
           :aria-label="filtersLabel"
           v-tooltip="filtersLabel"

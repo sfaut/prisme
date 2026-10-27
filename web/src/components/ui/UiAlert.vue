@@ -36,10 +36,10 @@ const emit = defineEmits<{
  * Classes and icon of each tone, the classes written out so that Tailwind finds them.
  */
 const TONES = {
-  info: { classes: 'bg-accent-soft text-accent', icon: Info },
-  success: { classes: 'bg-success-soft text-success', icon: CircleCheckBig },
-  warning: { classes: 'bg-warning-soft text-warning', icon: CircleAlert },
-  error: { classes: 'bg-error-soft text-error', icon: CircleX },
+  info: { classes: 'bg-primary/15 text-primary', icon: Info },
+  success: { classes: 'bg-success/12 text-success', icon: CircleCheckBig },
+  warning: { classes: 'bg-warning/12 text-warning', icon: CircleAlert },
+  error: { classes: 'bg-error/12 text-error', icon: CircleX },
 } as const
 
 /**

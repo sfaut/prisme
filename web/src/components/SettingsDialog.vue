@@ -181,7 +181,7 @@ async function save(): Promise<void> {
           class="flex items-center gap-3 text-base text-fg-strong"
           v-tooltip="'La base refuse les écritures des sessions, en plus du contrôle de Prisme'"
         >
-          <input v-model="form.read_only_session" type="checkbox" class="size-5 accent-accent" />
+          <input v-model="form.read_only_session" type="checkbox" class="size-5 accent-primary" />
           Sessions en lecture seule
         </label>
       </ui-field>
@@ -190,14 +190,14 @@ async function save(): Promise<void> {
         aria-labelledby="settings-writes"
         class="grid grid-cols-[--spacing(37)_minmax(0,1fr)] items-start gap-3"
       >
-        <span id="settings-writes" class="text-fg-muted">Écritures</span>
+        <span id="settings-writes" class="text-fg-secondary">Écritures</span>
         <fieldset
           :disabled="form.read_only_session"
           class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 text-fg-strong disabled:opacity-50"
           v-tooltip="form.read_only_session ? READ_ONLY_WRITES : null"
         >
           <template v-for="group in WRITE_KIND_GROUPS" :key="group.label">
-            <span class="text-fg-muted">{{ group.label }}</span>
+            <span class="text-fg-secondary">{{ group.label }}</span>
             <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
               <label
                 v-for="{ kind, verb } in group.kinds"
@@ -210,7 +210,7 @@ async function save(): Promise<void> {
                   type="checkbox"
                   :value="kind"
                   :aria-label="WRITE_KIND_STATEMENTS[kind]"
-                  class="size-5 accent-accent"
+                  class="size-5 accent-primary"
                 />
                 {{ verb }}
               </label>
@@ -232,7 +232,7 @@ async function save(): Promise<void> {
               'Espaces d’un niveau d’indentation dans l’éditeur SQL (Tab, Maj-Tab) et pour Enjoliver'
             "
           />
-          <span class="text-base text-fg-muted">espaces</span>
+          <span class="text-base text-fg-secondary">espaces</span>
         </div>
       </ui-field>
       <ui-field label="Rétention historique">
@@ -247,7 +247,7 @@ async function save(): Promise<void> {
             aria-label="Jours de conservation de l’historique"
             v-tooltip="'Durée de conservation des requêtes de la console'"
           />
-          <span class="text-base text-fg-muted">jours</span>
+          <span class="text-base text-fg-secondary">jours</span>
         </div>
       </ui-field>
       <ui-field label="Rétention debug">
@@ -262,7 +262,7 @@ async function save(): Promise<void> {
             aria-label="Jours de conservation du debug"
             v-tooltip="'Durée de conservation des messages de débogage de la console'"
           />
-          <span class="text-base text-fg-muted">jours</span>
+          <span class="text-base text-fg-secondary">jours</span>
         </div>
       </ui-field>
       <ui-alert v-if="error" tone="error" :title="error" />
@@ -274,7 +274,7 @@ async function save(): Promise<void> {
         form="settings-form"
         label="Enregistrer"
         variant="solid"
-        tone="accent"
+        tone="primary"
         :loading="saving"
         class="flex-1"
       />

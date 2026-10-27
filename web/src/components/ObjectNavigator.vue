@@ -237,7 +237,7 @@ const pinned = computed(() => pinnedRows(visible.value, scrollTop.value, ROW_HEI
  * Classes of a line of the tree, and of a pinned line, which look the same.
  */
 const ROW_CLASSES =
-  'tree-row group flex h-(--row-height) w-full cursor-pointer items-center gap-1 rounded-lg pe-1 text-start select-none hover:bg-surface-muted focus-visible:bg-surface-muted'
+  'tree-row group flex h-(--row-height) w-full cursor-pointer items-center gap-1 rounded-lg pe-1 text-start select-none hover:bg-surface-sunken focus-visible:bg-surface-sunken'
 
 /**
  * Classes of the line of a node: the chosen source is highlighted.
@@ -247,7 +247,7 @@ const ROW_CLASSES =
 function rowClass(node: NavigatorNode): (string | Record<string, boolean>)[] {
   return [
     ROW_CLASSES,
-    { 'bg-surface-elevated': node.role === 'source' && node.connectionId === props.selectedId },
+    { 'bg-surface-raised': node.role === 'source' && node.connectionId === props.selectedId },
   ]
 }
 
@@ -631,7 +631,7 @@ watch(
       title="Supprimer la connexion"
       :description="`Supprimer la connexion « ${removing?.name} » ?`"
     >
-      <p class="text-fg-muted">
+      <p class="text-fg-secondary">
         Aucune donnée n'est perdue : seuls les paramètres de connexion enregistrés dans Prisme sont
         retirés, le serveur et ses bases ne sont pas touchés. La connexion pourra être recréée
         ultérieurement.

@@ -4,7 +4,7 @@
   Three looks (`variant`): filled (`solid`), outlined (`outline`, the
   default) or discreet (`ghost`, without background: on hover, only its icon
   or its text darkens); three tones (`tone`): neutral (the default),
-  action (`accent`) or danger (`error`). A Lucide icon goes on the left of the
+  action (`primary`) or danger (`error`). A Lucide icon goes on the left of the
   label; without a label, the button is square. During `loading`, a spinner
   replaces the icon and the button is inactive.
 
@@ -32,7 +32,7 @@ const props = withDefaults(
     /**
      * Tone.
      */
-    tone?: 'neutral' | 'accent' | 'error'
+    tone?: 'neutral' | 'primary' | 'error'
     /**
      * Small size (the navigator's "⋮" button): height, text, icon, padding
      * and gap of the small controls.
@@ -61,17 +61,17 @@ const props = withDefaults(
 const LOOKS = {
   solid: {
     neutral: 'bg-fg-strong text-surface hover:bg-fg',
-    accent: 'bg-accent text-on-accent hover:bg-accent-hover',
-    error: 'bg-error text-on-accent hover:bg-error-hover',
+    primary: 'bg-primary text-on-primary hover:bg-primary-hover',
+    error: 'bg-error text-on-primary hover:bg-error-hover',
   },
   outline: {
-    neutral: 'border border-line bg-surface text-fg-strong hover:bg-surface-muted',
-    accent: 'border border-accent-border text-accent hover:bg-accent-soft',
-    error: 'border border-error-border text-error hover:bg-error-soft',
+    neutral: 'border border-line bg-surface text-fg-strong hover:bg-surface-sunken',
+    primary: 'border border-primary/50 text-primary hover:bg-primary/15',
+    error: 'border border-error/50 text-error hover:bg-error/12',
   },
   ghost: {
-    neutral: 'text-fg-dimmed hover:text-fg-strong',
-    accent: 'text-accent hover:text-accent-hover',
+    neutral: 'text-fg-faint hover:text-fg-strong',
+    primary: 'text-primary hover:text-primary-hover',
     error: 'text-error hover:text-error-hover',
   },
 } as const

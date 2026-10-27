@@ -176,12 +176,12 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
   <component
     :is="expanded ? ChevronDown : ChevronRight"
     v-if="node.children?.length"
-    class="size-4 shrink-0 text-fg-dimmed"
+    class="size-4 shrink-0 text-fg-faint"
   />
   <span v-else class="size-4 shrink-0" />
   <component
     :is="nodeIcon(node, expanded)"
-    class="size-5 shrink-0 text-fg-muted"
+    class="size-5 shrink-0 text-fg-secondary"
     :class="{ 'animate-spin': node.entry === 'loading' }"
   />
 
@@ -189,7 +189,7 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
   <span v-if="node.column" class="tree-label flex min-w-0 flex-1 items-center">
     <span
       v-if="node.column.markSlots > 0"
-      class="inline-flex flex-none text-fg-muted"
+      class="inline-flex flex-none text-fg-secondary"
       :style="{ width: `${node.column.markSlots}em` }"
     >
       <KeyRound v-if="node.column.primaryKey" class="size-[1em]" aria-label="Clef primaire" />
@@ -204,7 +204,7 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
           {{ node.column.name }}
         </span>
       </span>
-      <span class="truncate text-sm text-fg-dimmed text-trim" v-tooltip="node.column.details">
+      <span class="truncate text-sm text-fg-faint text-trim" v-tooltip="node.column.details">
         {{ node.column.details }}
       </span>
     </span>
@@ -224,7 +224,7 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
       }"
     >
       <span class="truncate text-trim">{{ node.label }}</span>
-      <span v-if="node.note" class="shrink-0 text-sm font-normal text-fg-dimmed text-trim">
+      <span v-if="node.note" class="shrink-0 text-sm font-normal text-fg-faint text-trim">
         {{ node.note }}
       </span>
     </span>

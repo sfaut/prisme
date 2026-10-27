@@ -64,15 +64,15 @@ const ICONS = {
   align-items: center;
   gap: --spacing(3);
   padding: --spacing(3);
-  background: var(--surface);
-  color: var(--fg-dimmed);
+  background: var(--color-surface);
+  color: var(--color-fg-faint);
   font-size: var(--text-base);
   font-weight: 600;
   cursor: pointer;
 
   &:hover {
-    background: var(--surface-muted);
-    color: var(--fg-strong);
+    background: var(--color-surface-sunken);
+    color: var(--color-fg-strong);
   }
 
   /* On a side: along the whole height, the title written downwards; the

@@ -179,7 +179,7 @@ const durations = computed(() => {
         <ui-button
           :icon="refreshing ? RefreshCwOff : RefreshCw"
           variant="ghost"
-          :tone="refreshing ? 'accent' : 'neutral'"
+          :tone="refreshing ? 'primary' : 'neutral'"
           small
           :disabled="refresh === 'unavailable'"
           :aria-label="refreshing ? 'Arrêter le rafraîchissement' : 'Rafraîchir'"
@@ -191,6 +191,6 @@ const durations = computed(() => {
         <template v-if="durations">&nbsp;· {{ durations }}</template>
       </template>
     </result-grid>
-    <div v-else-if="durations" class="text-sm text-trim text-fg-muted">{{ durations }}</div>
+    <div v-else-if="durations" class="text-sm text-trim text-fg-secondary">{{ durations }}</div>
   </div>
 </template>

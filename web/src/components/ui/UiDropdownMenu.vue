@@ -48,7 +48,7 @@ defineProps<{
           v-for="item in items"
           :key="item.label"
           :disabled="item.disabled"
-          class="flex h-8 cursor-pointer items-center gap-3 rounded-lg px-3 select-none data-disabled:cursor-not-allowed data-disabled:opacity-50 data-highlighted:bg-surface-elevated"
+          class="flex h-8 cursor-pointer items-center gap-3 rounded-lg px-3 select-none data-disabled:cursor-not-allowed data-disabled:opacity-50 data-highlighted:bg-surface-raised"
           :class="item.tone === 'error' ? 'text-error' : 'text-fg data-highlighted:text-fg-strong'"
           @select="item.onSelect?.()"
         >

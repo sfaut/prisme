@@ -269,7 +269,7 @@ async function save(): Promise<void> {
               'La session (connexion, transactions, requêtes en cours) reste ouverte ce nombre de minutes après la fermeture de la page, qui s’y raccroche à son retour ; 0 la ferme aussitôt'
             "
           />
-          <span class="text-base text-fg-muted">min après la fermeture de la page</span>
+          <span class="text-base text-fg-secondary">min après la fermeture de la page</span>
         </div>
       </ui-field>
       <ui-field label="Navigateur">
@@ -279,7 +279,7 @@ async function save(): Promise<void> {
             'Bases fournies par le serveur : information_schema, mysql, performance_schema, sys'
           "
         >
-          <input v-model="form.show_system_schemas" type="checkbox" class="size-5 accent-accent" />
+          <input v-model="form.show_system_schemas" type="checkbox" class="size-5 accent-primary" />
           Afficher les bases système
         </label>
       </ui-field>
@@ -298,7 +298,7 @@ async function save(): Promise<void> {
         form="connection-form"
         :label="transactionCount > 0 ? 'Enregistrer et annuler' : 'Enregistrer'"
         variant="solid"
-        :tone="transactionCount > 0 ? 'error' : 'accent'"
+        :tone="transactionCount > 0 ? 'error' : 'primary'"
         :loading="saving"
         class="flex-1"
       />

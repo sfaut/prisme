@@ -64,7 +64,7 @@ const history = store.history
         </thead>
         <tbody>
           <tr v-for="entry in history.entries" :key="entry.id">
-            <td class="end text-fg-dimmed">{{ entry.id }}</td>
+            <td class="end text-fg-faint">{{ entry.id }}</td>
             <td v-tooltip="dateTimeOf(entry.started_at)">{{ timeOf(entry.started_at) }}</td>
             <td v-tooltip="entry.connection_name || undefined">
               {{ ACTION_LABELS[entry.action] }}
@@ -79,13 +79,13 @@ const history = store.history
             </td>
             <td
               class="end"
-              :class="{ 'text-fg-dimmed': rowsOf(entry) === '—' }"
+              :class="{ 'text-fg-faint': rowsOf(entry) === '—' }"
               v-tooltip="rowsTitleOf(entry)"
             >
               {{ rowsOf(entry) }}
             </td>
             <td class="end">{{ formatMicros(entry.duration_us) }}</td>
-            <td class="end" :class="{ 'text-fg-dimmed': entry.transfer_us === 0 }">
+            <td class="end" :class="{ 'text-fg-faint': entry.transfer_us === 0 }">
               {{ transferOf(entry) }}
             </td>
           </tr>

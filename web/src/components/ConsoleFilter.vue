@@ -26,7 +26,7 @@ const model = defineModel<V[]>({ required: true })
 
 <template>
   <div class="flex items-center gap-3">
-    <span class="text-sm text-fg-muted">{{ label }}</span>
+    <span class="text-sm text-fg-secondary">{{ label }}</span>
     <toggle-group-root
       type="multiple"
       :model-value="model"
@@ -38,7 +38,7 @@ const model = defineModel<V[]>({ required: true })
         v-for="(text, value) in labels"
         :key="value"
         :value="value"
-        class="flex h-7 cursor-pointer items-center rounded-lg border border-line px-1 text-sm font-medium whitespace-nowrap text-fg-muted transition-colors select-none hover:bg-surface-muted hover:text-fg-strong data-[state=on]:border-accent-border data-[state=on]:bg-accent-soft data-[state=on]:text-accent"
+        class="flex h-7 cursor-pointer items-center rounded-lg border border-line px-1 text-sm font-medium whitespace-nowrap text-fg-secondary transition-colors select-none hover:bg-surface-sunken hover:text-fg-strong data-[state=on]:border-primary/50 data-[state=on]:bg-primary/15 data-[state=on]:text-primary"
       >
         <span class="text-trim">{{ text }}</span>
       </toggle-group-item>

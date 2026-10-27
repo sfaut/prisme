@@ -717,7 +717,7 @@ defineExpose({
             label="Exécuter"
             :icon="stopsOne ? Square : Play"
             variant="solid"
-            :tone="stopsOne ? 'error' : 'accent'"
+            :tone="stopsOne ? 'error' : 'primary'"
             :disabled="!stopsOne && state.status !== 'ready'"
             @click="stopsOne ? session.cancel() : run()"
           />
@@ -764,7 +764,7 @@ defineExpose({
             v-if="state.transaction"
             v-tooltip="TRANSACTION_TIP"
             role="status"
-            class="ms-auto inline-flex shrink-0 self-stretch items-center rounded-full bg-info-soft px-4 text-base font-medium whitespace-nowrap text-info"
+            class="ms-auto inline-flex shrink-0 self-stretch items-center rounded-full bg-info/14 px-4 text-base font-medium whitespace-nowrap text-info"
           >
             <span class="text-trim">Transaction ouverte</span>
           </span>
@@ -824,7 +824,7 @@ defineExpose({
         <div
           v-if="state.loading"
           role="status"
-          class="flex flex-1 items-center justify-center gap-3 text-base text-fg-muted"
+          class="flex flex-1 items-center justify-center gap-3 text-base text-fg-secondary"
         >
           <LoaderCircle class="size-5 animate-spin" />
           Chargement des résultats…

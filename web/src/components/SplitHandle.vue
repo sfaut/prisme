@@ -35,7 +35,7 @@ const emit = defineEmits<{
   position: relative;
   z-index: 1;
   flex: none;
-  background: var(--line);
+  background: var(--color-line);
   outline: none;
 
   /* Band of the hover, wider than the line, and the grip, centered on it. */
@@ -94,7 +94,7 @@ const emit = defineEmits<{
     }
 
     &::after {
-      background: var(--accent);
+      background: var(--color-primary);
     }
   }
 }

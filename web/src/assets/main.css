@@ -15,46 +15,57 @@
   (`gap-1.5`). A length is named here only when the code reads it
   (`cssPixels`); it is then written with `--spacing()` too.
 
-  Colors: a palette (each hue only once), then variables by role that draw
-  from it, the only ones used by the components. Light and dark: each role
-  variable gives its two values with `light-dark(light, dark)`, chosen
-  according to `color-scheme`. By default, that of the system; the `light`
-  or `dark` class on `<html>` forces one or the other
-  (`colorMode.ts`).
+  Colors: Tailwind's palette, then colors by role declared in `@theme`,
+  which draw from it and are the only ones used by the components
+  (`bg-surface`, `text-fg-secondary`, `border-line`, `bg-primary`...).
+  Changing a role here changes it everywhere. Shades go through Tailwind's
+  opacity modifiers (`bg-primary/15`, `border-error/50`) in the classes,
+  `--alpha()` in the `<style>` blocks. Light and dark: each role gives its
+  two values with `light-dark(light, dark)`, chosen according to
+  `color-scheme`. By default, that of the system; the `light` or `dark`
+  class on `<html>` forces one or the other (`colorMode.ts`).
 */
 @import 'tailwindcss';
 
-/* Tailwind classes drawn from the variables: only Prisme's colors and font
-   sizes exist, so as not to use others by mistake. */
-@theme inline {
-  --color-*: initial;
-  --color-surface: var(--surface);
-  --color-surface-muted: var(--surface-muted);
-  --color-surface-elevated: var(--surface-elevated);
-  --color-surface-accented: var(--surface-accented);
-  --color-fg: var(--fg);
-  --color-fg-muted: var(--fg-muted);
-  --color-fg-dimmed: var(--fg-dimmed);
-  --color-fg-strong: var(--fg-strong);
-  --color-line: var(--line);
-  --color-line-muted: var(--line-muted);
-  --color-accent: var(--accent);
-  --color-accent-hover: var(--accent-hover);
-  --color-accent-soft: var(--accent-soft);
-  --color-on-accent: var(--on-accent);
-  --color-focus-ring: var(--focus-ring);
-  --color-success: var(--success);
-  --color-success-soft: var(--success-soft);
-  --color-warning: var(--warning);
-  --color-warning-soft: var(--warning-soft);
-  --color-info: var(--info);
-  --color-info-soft: var(--info-soft);
-  --color-error: var(--error);
-  --color-error-soft: var(--error-soft);
-  --color-error-hover: var(--error-hover);
-  --color-error-border: var(--error-border);
-  --color-accent-border: var(--accent-border);
-  --color-overlay: var(--overlay);
+/* Colors by role, drawn from Tailwind's palette: Tailwind turns them into
+   classes for every property (`bg-surface`, `text-fg`, `border-line`,
+   `accent-primary`). */
+@theme {
+  /* Backgrounds: page, recessed areas, menus and headers, strong hover. */
+  --color-surface: light-dark(var(--color-white), var(--color-zinc-900));
+  --color-surface-sunken: light-dark(var(--color-zinc-100), var(--color-zinc-800));
+  --color-surface-raised: light-dark(var(--color-zinc-100), var(--color-zinc-800));
+  --color-surface-strong: light-dark(var(--color-zinc-200), var(--color-zinc-700));
+
+  /* Texts: regular, secondary, faint, strong. */
+  --color-fg: light-dark(var(--color-zinc-700), var(--color-zinc-200));
+  --color-fg-secondary: light-dark(var(--color-zinc-500), var(--color-zinc-400));
+  --color-fg-faint: light-dark(var(--color-zinc-400), var(--color-zinc-500));
+  --color-fg-strong: light-dark(var(--color-zinc-900), var(--color-white));
+
+  /* Borders: regular, faint. */
+  --color-line: light-dark(var(--color-zinc-200), var(--color-zinc-700));
+  --color-line-faint: light-dark(var(--color-zinc-100), var(--color-zinc-800));
+
+  /* Action color (main buttons, selection, focus), its hover, and the
+     text written on it. */
+  --color-primary: light-dark(var(--color-blue-500), var(--color-blue-400));
+  --color-primary-hover: light-dark(var(--color-blue-600), var(--color-blue-300));
+  --color-on-primary: light-dark(var(--color-white), var(--color-zinc-900));
+
+  /* States; info is the state of a session (open transaction), told
+     without alarm. */
+  --color-success: light-dark(var(--color-green-600), var(--color-green-400));
+  --color-warning: light-dark(var(--color-amber-600), var(--color-amber-400));
+  --color-info: light-dark(var(--color-indigo-600), var(--color-indigo-300));
+  --color-error: light-dark(var(--color-red-600), var(--color-red-400));
+  --color-error-hover: light-dark(var(--color-red-700), var(--color-red-300));
+
+  /* Veil behind the windows. */
+  --color-overlay: light-dark(
+    --alpha(var(--color-zinc-900) / 40%),
+    --alpha(var(--color-black) / 60%)
+  );
 }
 
 /* Font of the code (SQL editor, grid, data explorer): Cascadia Code, the
@@ -66,133 +77,48 @@
 :root {
   color-scheme: light dark;
 
-  /* Palette: each hue only once. The variables that follow (by role) draw
-     their two values from it, light and dark; the components only use the
-     latter. */
-  --white: #fff;
-  --black: #000;
-  --zinc-100: #f4f4f5;
-  --zinc-200: #e4e4e7;
-  --zinc-300: #d4d4d8;
-  --zinc-400: #a1a1aa;
-  --zinc-500: #71717a;
-  --zinc-600: #52525b;
-  --zinc-700: #3f3f46;
-  --zinc-800: #27272a;
-  --zinc-900: #18181b;
-  --blue-300: #93c5fd;
-  --blue-400: #60a5fa;
-  --blue-500: #3b82f6;
-  --blue-600: #2563eb;
-  --green-300: #86efac;
-  --green-400: #4ade80;
-  --green-600: #16a34a;
-  --green-700: #15803d;
-  --amber-300: #fcd34d;
-  --amber-400: #fbbf24;
-  --amber-600: #d97706;
-  --amber-700: #b45309;
-  --red-300: #fca5a5;
-  --red-400: #f87171;
-  --red-600: #dc2626;
-  --red-700: #b91c1c;
-  --indigo-300: #a5b4fc;
-  --indigo-600: #4f46e5;
-  --violet-300: #c4b5fd;
-  --violet-600: #7c3aed;
-  --cyan-300: #67e8f9;
-  --cyan-700: #0e7490;
-  --pink-300: #f9a8d4;
-  --pink-700: #be185d;
-
-  /* Backgrounds: page, recessed areas, menus and headers, strong hover. */
-  --surface: light-dark(var(--white), var(--zinc-900));
-  --surface-muted: light-dark(var(--zinc-100), var(--zinc-800));
-  --surface-elevated: light-dark(var(--zinc-100), var(--zinc-800));
-  --surface-accented: light-dark(var(--zinc-200), var(--zinc-700));
-
-  /* Texts: regular, secondary, discreet, strong. */
-  --fg: light-dark(var(--zinc-700), var(--zinc-200));
-  --fg-muted: light-dark(var(--zinc-500), var(--zinc-400));
-  --fg-dimmed: light-dark(var(--zinc-400), var(--zinc-500));
-  --fg-strong: light-dark(var(--zinc-900), var(--white));
-
-  /* Borders. */
-  --line: light-dark(var(--zinc-200), var(--zinc-700));
-  --line-muted: light-dark(var(--zinc-100), var(--zinc-800));
-
-  /* Action color (main buttons, selection, focus). */
-  --accent: light-dark(var(--blue-500), var(--blue-400));
-  --accent-hover: light-dark(var(--blue-600), var(--blue-300));
-  --accent-soft: color-mix(in oklab, var(--accent) 15%, transparent);
-  --on-accent: light-dark(var(--white), var(--zinc-900));
-
-  /* States. The "soft" versions are the background of alerts and badges. */
-  --success: light-dark(var(--green-600), var(--green-400));
-  --success-soft: color-mix(in oklab, var(--success) 12%, transparent);
-  --warning: light-dark(var(--amber-600), var(--amber-400));
-  --warning-soft: color-mix(in oklab, var(--warning) 12%, transparent);
-  /* State of a session (open transaction), told without alarm. */
-  --info: light-dark(var(--indigo-600), var(--indigo-300));
-  --info-soft: color-mix(in oklab, var(--info) 14%, transparent);
-  --error: light-dark(var(--red-600), var(--red-400));
-  --error-soft: color-mix(in oklab, var(--error) 12%, transparent);
-  --error-hover: light-dark(var(--red-700), var(--red-300));
-
-  /* Derived colors: focus outline, edges of outlined buttons, veil behind
-     the windows, hover of the resize bars, selection of the grid. */
-  --focus-ring: color-mix(in oklab, var(--accent) 60%, transparent);
-  --accent-border: color-mix(in oklab, var(--accent) 50%, transparent);
-  --error-border: color-mix(in oklab, var(--error) 50%, transparent);
-  --overlay: light-dark(
-    color-mix(in oklab, var(--zinc-900) 40%, transparent),
-    color-mix(in oklab, var(--black) 60%, transparent)
-  );
-  --resize-hover: color-mix(in oklab, var(--accent) 30%, transparent);
+  /* Hover of the resize bars, selection of the grid. */
+  --resize-hover: --alpha(var(--color-primary) / 30%);
+  --selection: --alpha(var(--color-primary) / 18%);
 
   /* Tooltips (`UiTooltip.vue`): dark in both modes, light text. */
-  --tooltip-bg: light-dark(var(--zinc-800), var(--zinc-700));
-  --tooltip-fg: light-dark(var(--zinc-100), var(--zinc-100));
-
-  --selection: color-mix(in oklab, var(--accent) 18%, transparent);
+  --tooltip-bg: light-dark(var(--color-zinc-800), var(--color-zinc-700));
+  --tooltip-fg: light-dark(var(--color-zinc-100), var(--color-zinc-100));
 
   /* Badge of a source's server flavor, in the navigator: text in the engine's
      color (MySQL blue, MariaDB brown) on a background tinted with the same
      color. */
-  --badge-mysql: light-dark(var(--blue-600), var(--blue-300));
-  --badge-mysql-bg: color-mix(in oklab, var(--badge-mysql) 14%, transparent);
-  --badge-mariadb: light-dark(var(--amber-700), var(--amber-300));
-  --badge-mariadb-bg: color-mix(in oklab, var(--badge-mariadb) 16%, transparent);
+  --badge-mysql: light-dark(var(--color-blue-600), var(--color-blue-300));
+  --badge-mysql-bg: --alpha(var(--badge-mysql) / 14%);
+  --badge-mariadb: light-dark(var(--color-amber-700), var(--color-amber-300));
+  --badge-mariadb-bg: --alpha(var(--badge-mariadb) / 16%);
 
   /* Syntax highlighting of the SQL editor (`editorTheme.ts`). */
-  --sql-keyword: light-dark(var(--violet-600), var(--violet-300));
-  --sql-type: light-dark(var(--cyan-700), var(--cyan-300));
-  --sql-string: light-dark(var(--amber-700), var(--amber-300));
-  --sql-number: light-dark(var(--green-700), var(--green-300));
-  --sql-variable: light-dark(var(--pink-700), var(--pink-300));
-  --sql-comment: light-dark(var(--zinc-500), var(--zinc-400));
+  --sql-keyword: light-dark(var(--color-violet-600), var(--color-violet-300));
+  --sql-type: light-dark(var(--color-cyan-700), var(--color-cyan-300));
+  --sql-string: light-dark(var(--color-amber-700), var(--color-amber-300));
+  --sql-number: light-dark(var(--color-green-700), var(--color-green-300));
+  --sql-variable: light-dark(var(--color-pink-700), var(--color-pink-300));
+  --sql-comment: light-dark(var(--color-zinc-500), var(--color-zinc-400));
 
   /* Syntax highlighting of the data explorer (JSON and XML), beyond the
      colors of SQL: names of the members and of the elements, names of the
      attributes. */
-  --data-name: light-dark(var(--blue-600), var(--blue-300));
-  --data-attribute: light-dark(var(--cyan-700), var(--cyan-300));
+  --data-name: light-dark(var(--color-blue-600), var(--color-blue-300));
+  --data-attribute: light-dark(var(--color-cyan-700), var(--color-cyan-300));
 
   /* Highlights of the editors: cursor line and its gutter, selection and
      its other occurrences, matched or unmatched bracket, query that
      Ctrl+Enter would run, results of the data explorer's search. */
-  --editor-active-line: color-mix(in oklab, var(--fg) 4%, transparent);
-  --editor-active-gutter: color-mix(in oklab, var(--fg) 8%, transparent);
-  --editor-selection: color-mix(in oklab, var(--accent) 25%, transparent);
-  --editor-selection-match: color-mix(in oklab, var(--accent) 12%, transparent);
-  --editor-bracket-match: color-mix(in oklab, var(--success) 25%, transparent);
-  --editor-bracket-mismatch: color-mix(in oklab, var(--error) 25%, transparent);
-  --editor-current-statement: color-mix(in oklab, var(--accent) 7%, transparent);
+  --editor-active-line: --alpha(var(--color-fg) / 4%);
+  --editor-active-gutter: --alpha(var(--color-fg) / 8%);
+  --editor-selection: --alpha(var(--color-primary) / 25%);
+  --editor-selection-match: --alpha(var(--color-primary) / 12%);
+  --editor-bracket-match: --alpha(var(--color-success) / 25%);
+  --editor-bracket-mismatch: --alpha(var(--color-error) / 25%);
+  --editor-current-statement: --alpha(var(--color-primary) / 7%);
   /* Search results: lemonchiffon, a veil of it in dark mode. */
-  --editor-search-match: light-dark(
-    lemonchiffon,
-    color-mix(in oklab, lemonchiffon 12%, transparent)
-  );
+  --editor-search-match: light-dark(lemonchiffon, --alpha(lemonchiffon / 12%));
 
   /* Text of the SQL editor and of the data explorer. */
   --editor-font-size: var(--text-lg);
@@ -235,7 +161,7 @@
   --resize-handle-width: --spacing(3);
   --grip-length: --spacing(9);
   --grip-thickness: --spacing(1);
-  --grip-color: var(--line);
+  --grip-color: var(--color-line);
 
   /* Splitters of the layout (`SplitterGroup` of Reka UI), whose sizes the
      code reads (`cssPixels`): default and smallest width of the object
@@ -270,8 +196,8 @@
   --console-min-height: --spacing(40);
 
   /* Scrollbars: thumb and hovered thumb. */
-  --scrollbar-thumb: light-dark(var(--zinc-300), var(--zinc-600));
-  --scrollbar-thumb-hover: light-dark(var(--zinc-400), var(--zinc-500));
+  --scrollbar-thumb: light-dark(var(--color-zinc-300), var(--color-zinc-600));
+  --scrollbar-thumb-hover: light-dark(var(--color-zinc-400), var(--color-zinc-500));
 
   /* Lines: the only lengths in pixels, to stay sharp on screen (a fraction
      of a pixel would blur a line). Borders, focus outline and move marker of
@@ -414,8 +340,8 @@
   }
 
   body {
-    background: var(--surface);
-    color: var(--fg);
+    background: var(--color-surface);
+    color: var(--color-fg);
   }
 
   /* Thin scrollbars, in the theme's colors, without arrows. Chromium (Edge,

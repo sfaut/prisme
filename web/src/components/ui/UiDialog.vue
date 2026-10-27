@@ -68,7 +68,7 @@ function focusFirst(event: Event): void {
         <header class="flex items-start gap-3">
           <div class="flex min-w-0 flex-1 flex-col gap-1">
             <dialog-title class="text-lg font-semibold text-fg-strong">{{ title }}</dialog-title>
-            <dialog-description v-if="description" class="text-fg-muted">
+            <dialog-description v-if="description" class="text-fg-secondary">
               {{ description }}
             </dialog-description>
           </div>

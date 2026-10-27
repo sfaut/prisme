@@ -77,7 +77,7 @@ const barTone = computed(() => {
   if (progress === 'waiting') {
     return null
   }
-  return progress === 'error' ? 'error' : progress === 'done' ? 'success' : 'accent'
+  return progress === 'error' ? 'error' : progress === 'done' ? 'success' : 'primary'
 })
 </script>
 
@@ -104,7 +104,7 @@ const barTone = computed(() => {
       <ui-button
         :icon="Pin"
         variant="ghost"
-        :tone="tab.pinned ? 'accent' : 'neutral'"
+        :tone="tab.pinned ? 'primary' : 'neutral'"
         small
         :aria-pressed="tab.pinned"
         :aria-label="tab.pinned ? 'Désépingler l’onglet' : 'Épingler l’onglet'"
@@ -138,16 +138,16 @@ const barTone = computed(() => {
   block-size: 100%;
   transition: inline-size 0.3s ease-out;
 
-  &.accent {
-    background: var(--accent);
+  &.primary {
+    background: var(--color-primary);
   }
 
   &.success {
-    background: var(--success);
+    background: var(--color-success);
   }
 
   &.error {
-    background: var(--error);
+    background: var(--color-error);
   }
 
   /* Unknown share: a segment goes back and forth from one edge to the other. */

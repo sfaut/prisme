@@ -105,7 +105,7 @@ describe('App', () => {
     await toggle().trigger('click')
     expect(wrapper.find('[aria-label="Niveau"]').exists()).toBe(false)
     expect(toggle().attributes('aria-label')).toBe('Afficher les filtres (filtres actifs)')
-    expect(toggle().classes()).toContain('text-accent')
+    expect(toggle().classes()).toContain('text-primary')
     wrapper.unmount()
   })
 

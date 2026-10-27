@@ -89,7 +89,7 @@ const menuItems: MenuItem[] = [
       <h1 class="text-2xl leading-none font-semibold text-fg-strong">Prisme</h1>
       <span
         v-if="version"
-        class="text-xs leading-none text-fg-dimmed"
+        class="text-xs leading-none text-fg-faint"
         v-tooltip="'Version de Prisme'"
       >
         {{ version }}
@@ -102,7 +102,7 @@ const menuItems: MenuItem[] = [
         <!-- Round avatar with the user's initials, the user icon before they are known. -->
         <button
           type="button"
-          class="grid size-8 shrink-0 cursor-pointer place-items-center rounded-full bg-accent-soft text-sm leading-none font-semibold text-accent select-none hover:bg-accent hover:text-on-accent data-[state=open]:bg-accent data-[state=open]:text-on-accent"
+          class="grid size-8 shrink-0 cursor-pointer place-items-center rounded-full bg-primary/15 text-sm leading-none font-semibold text-primary select-none hover:bg-primary hover:text-on-primary data-[state=open]:bg-primary data-[state=open]:text-on-primary"
           aria-label="Compte"
           v-tooltip="accountTitle"
         >

@@ -50,7 +50,7 @@ const debug = store.debug
         </thead>
         <tbody>
           <tr v-for="entry in debug.entries" :key="entry.id">
-            <td class="end text-fg-dimmed">{{ entry.id }}</td>
+            <td class="end text-fg-faint">{{ entry.id }}</td>
             <td v-tooltip="dateTimeOf(entry.logged_at)">{{ timeOf(entry.logged_at) }}</td>
             <td :class="LEVEL_TONES[entry.level]">{{ LEVEL_LABELS[entry.level] }}</td>
             <td v-tooltip="entry.target || undefined">{{ SOURCE_LABELS[entry.source] }}</td>

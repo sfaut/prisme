@@ -620,10 +620,10 @@ function selectSource(connectionId: number): void {
                     @transaction="(open) => (editors.transactions[editor.id] = open)"
                   />
                   <div v-else class="flex max-w-xs flex-col items-center gap-3 text-center">
-                    <span class="flex rounded-full bg-surface-elevated p-4">
-                      <Database class="size-5 text-fg-muted" />
+                    <span class="flex rounded-full bg-surface-raised p-4">
+                      <Database class="size-5 text-fg-secondary" />
                     </span>
-                    <p class="text-balance text-fg-muted">
+                    <p class="text-balance text-fg-secondary">
                       Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données pour la
                       choisir pour cet éditeur, ou ajoutez une connexion par le menu « ⋮ »
                     </p>
@@ -697,7 +697,7 @@ function selectSource(connectionId: number): void {
     :title="ENDING_TEXTS[ending?.action ?? 'disconnect'].title"
     description="Une transaction est ouverte sur la session."
   >
-    <p class="text-fg-muted">
+    <p class="text-fg-secondary">
       La session se ferme, ce qui annule la transaction (ROLLBACK) : ses modifications non validées
       sont perdues. Pour les garder, exécuter d’abord COMMIT.
     </p>

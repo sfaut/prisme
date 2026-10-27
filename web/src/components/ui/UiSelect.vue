@@ -54,12 +54,12 @@ const current = computed(() => props.items.find((item) => item.value === model.v
   <select-root v-model="model">
     <select-trigger
       :aria-label="label"
-      class="inline-flex h-8 cursor-pointer items-center gap-3 rounded-lg border border-line bg-surface px-3 text-base text-fg-strong hover:bg-surface-muted"
+      class="inline-flex h-8 cursor-pointer items-center gap-3 rounded-lg border border-line bg-surface px-3 text-base text-fg-strong hover:bg-surface-sunken"
     >
       <component :is="current.icon" v-if="current?.icon" class="size-5 shrink-0" />
       <span class="min-w-0 flex-1 truncate text-start text-trim">{{ current?.label }}</span>
       <select-icon as-child>
-        <ChevronDown class="size-5 shrink-0 text-fg-dimmed" />
+        <ChevronDown class="size-5 shrink-0 text-fg-faint" />
       </select-icon>
     </select-trigger>
     <select-portal>
@@ -74,12 +74,12 @@ const current = computed(() => props.items.find((item) => item.value === model.v
             :key="item.value"
             :value="item.value"
             :disabled="item.disabled"
-            class="flex h-8 cursor-pointer items-center gap-3 rounded-lg px-3 text-fg select-none data-highlighted:bg-surface-elevated data-highlighted:text-fg-strong"
+            class="flex h-8 cursor-pointer items-center gap-3 rounded-lg px-3 text-fg select-none data-highlighted:bg-surface-raised data-highlighted:text-fg-strong"
           >
             <component :is="item.icon" v-if="item.icon" class="size-5 shrink-0" />
             <select-item-text class="flex-1 text-trim">{{ item.label }}</select-item-text>
             <select-item-indicator>
-              <Check class="size-5 text-accent" />
+              <Check class="size-5 text-primary" />
             </select-item-indicator>
           </select-item>
         </select-viewport>
