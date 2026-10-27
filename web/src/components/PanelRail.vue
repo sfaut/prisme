@@ -2,10 +2,11 @@
   Rail left by a folded panel on its edge of the layout: a narrow bar, along
   the whole edge, with the icon that opens the panel again and its title
   (vertical on a side, horizontal at the bottom). The whole rail is the
-  button. Its icon stands where the header of the open panel shows its fold
-  button: a control's height below the panel's padding on a side; at the
-  bottom, at the right end, before the panel's padding, the title at the
-  left end.
+  button. Its icon, at the size of the fold button's (a small button,
+  `size-4`), stands where the header of the open panel shows that button:
+  a control's height below the panel's padding on a side; at the bottom,
+  at the right end, before the panel's padding, the title at the left
+  end.
 -->
 <script setup lang="ts">
 import { PanelBottomOpen, PanelLeftOpen, PanelRightOpen } from '@lucide/vue'
@@ -49,7 +50,7 @@ const ICONS = {
     @click="emit('expand')"
   >
     <span class="panel-rail-icon">
-      <component :is="ICONS[props.side]" class="size-5" aria-hidden="true" />
+      <component :is="ICONS[props.side]" class="size-4" aria-hidden="true" />
     </span>
     <span class="panel-rail-title">{{ title }}</span>
   </button>
