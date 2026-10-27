@@ -38,7 +38,7 @@ const model = defineModel<V[]>({ required: true })
         v-for="(text, value) in labels"
         :key="value"
         :value="value"
-        class="flex h-control-sm cursor-pointer items-center rounded-control border border-line px-2 text-small font-medium whitespace-nowrap text-fg-muted transition-colors select-none hover:bg-surface-muted hover:text-fg-strong data-[state=on]:border-accent-border data-[state=on]:bg-accent-soft data-[state=on]:text-accent"
+        class="flex h-control-sm cursor-pointer items-center rounded-control border border-line px-1 text-small font-medium whitespace-nowrap text-fg-muted transition-colors select-none hover:bg-surface-muted hover:text-fg-strong data-[state=on]:border-accent-border data-[state=on]:bg-accent-soft data-[state=on]:text-accent"
       >
         <span class="text-trim">{{ text }}</span>
       </toggle-group-item>

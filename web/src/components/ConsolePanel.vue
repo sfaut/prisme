@@ -94,7 +94,7 @@ onUnmounted(() => store.dispose())
           v-for="tab in TABS"
           :key="tab.value"
           :value="tab.value"
-          class="flex h-control-sm items-center rounded-control px-2 text-ui font-medium text-fg-muted select-none hover:text-fg-strong data-[state=active]:bg-surface-elevated data-[state=active]:text-fg-strong"
+          class="flex h-control-sm items-center rounded-control px-1 text-small font-medium text-fg-muted select-none hover:text-fg-strong data-[state=active]:bg-surface-elevated data-[state=active]:text-fg-strong"
         >
           {{ tab.label }}
         </tabs-trigger>
