@@ -3,8 +3,8 @@
 
   The interface uses Tailwind's default scales as they are: font sizes and
   their line heights (`text-base`, `text-sm`...), spacing (`p-3`, `gap-2`,
-  `h-8`), radii (`rounded-lg`). The root's font size, 75% of the browser's
-  (12 px by default), sets them all: `text-base` is the regular text of the
+  `h-8`), radii (`rounded-lg`). The root's font size (`--root-font-size`,
+  75% of the browser's) sets them all: `text-base` is the regular text of the
   interface, and changing that one value scales the whole interface. The
   theme fits in a few CSS variables: colors by role, the code font, strokes.
 
@@ -76,6 +76,11 @@
 
 :root {
   color-scheme: light dark;
+
+  /* Size of the root, which sets all of Tailwind's scales (text, spacing,
+     radii): a share of the browser's size, whose choice by the user it
+     follows. */
+  --root-font-size: 75%;
 
   /* Hover of the resize bars, selection of the grid. */
   --resize-hover: --alpha(var(--color-primary) / 30%);
@@ -327,10 +332,8 @@
 }
 
 @layer base {
-  /* Size of the root, which sets all of Tailwind's scales: 75% of the
-     browser's size, whose choice by the user it follows. */
   html {
-    font-size: 75%;
+    font-size: var(--root-font-size);
   }
 
   html,
