@@ -6,8 +6,8 @@
   the filter of the list changes. Scrolled near the top, it reads the older
   elements, and keeps those in view at the same place; a failure to read
   shows above. Also gives the tables of the console their common look
-  (`console-table` class): dense lines, like those of the result grid, and
-  a header that stays visible.
+  (`console-table` class): dense lines, at the natural height of their
+  text, and a header that stays visible.
 -->
 <script setup lang="ts" generic="T extends { id: number }">
 import { nextTick, onMounted, useTemplateRef, watch } from 'vue'
@@ -149,8 +149,7 @@ watch(
 
   & th,
   & td {
-    block-size: var(--grid-row-height);
-    padding-block: 0;
+    padding-block: --spacing(1);
     padding-inline: --spacing(2);
     overflow: hidden;
     text-align: start;
