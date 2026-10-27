@@ -458,3 +458,96 @@ allocating.
   visitor says what a node is, the shape only suggests it.
 - **A table of words read once is the normal form of a keyword list**: a
   scan per token only makes sense for a handful of words.
+
+## 8. Navigator without virtual scrolling: a trial measured
+
+Trial made in October 2026 on the object navigator, without a commit: should
+the tree keep its virtual scrolling?
+
+### 8.1 Question
+
+The navigator draws only its visible lines (`TreeVirtualizer` of Reka UI).
+The lines pinned at the top while the tree scrolls (`stickyRows.ts`) are
+therefore computed from the scroll position, then drawn a second time in a
+layer above the tree. Without virtual scrolling, a nested tree, where each
+open node is a section holding its line and its children, gets the same
+behaviour from CSS alone: each line is `position: sticky` at
+`calc((var(--level) - 1) * var(--row-height))`, and a sticky element never
+leaves its containing block, so the line stays at the top while its section
+scrolls. The code of `stickyRows.ts`, the second layer and their tests would
+go. Reka UI allows it: `TreeItem` only needs its value and its level, and the
+keyboard navigation reads the lines in the order of the page.
+
+### 8.2 Measurement
+
+- MariaDB 11.8.9 in Docker: 10 databases of 3,000 tables of 100 columns, that
+  is 30,000 tables and 3 million columns.
+- Prisme v0.7.0 built in release, on another port and a throwaway data folder.
+- Headless Chrome, window of 1,600 × 1,000, driven over the DevTools protocol;
+  long tasks collected by a `PerformanceObserver` of type `longtask`.
+- Two variants of the same build: the current tree (virtual), and a nested
+  prototype without virtual scrolling, its lines sticky in CSS.
+- Scenario: open the source, then `perf00`, its "Tables (3000)" folder, the
+  table `t0000` and its "Colonnes (100)" folder, during the reception of the
+  catalog then once it is complete; last, open the "Tables" folders of nine
+  databases (27,000 lines).
+
+| Measure | Virtual | Nested |
+|---|---|---|
+| Opening "Tables (3000)" during the reception | 0.14 s | 6.2 s |
+| Opening `t0000` during the reception | 3.0 s (waiting for its details) | 20.6 s |
+| Longest blocking task during the reception | 4.7 s | 12.8 s |
+| Opening "Tables (3000)", catalog complete | 0.07 s | 1.9 s |
+| Opening a table, then its columns (3,000 lines open) | 0.08 s, 0.06 s | 2.6 s, 2.4 s |
+| Opening the ninth "Tables" folder (24,000 lines open) | under 0.1 s | 431 s |
+| Elements in the page, 27,000 lines open | 6,600 | 466,000 |
+| Duration of a frame while scrolling, 27,000 lines (median) | 67 ms | 513 ms |
+| JavaScript memory used | 1.3 GB | 2.0 GB |
+
+Headless Chrome draws in software: even the virtual tree stays above 40 ms per
+frame. The durations of frames are only compared between the two variants.
+
+### 8.3 Cause
+
+Without virtual scrolling, each open line is a `TreeItem` of Reka UI, with its
+focus management and its entry in the collection: about 0.6 ms per line on
+mounting. The cost also grows faster than the number of lines: each
+`TreeItem` computes whether it is open by looking for its key in the list of
+the open keys, so an opening costs the number of lines times the number of
+open nodes. The prototype added its own share, a context rebuilt on each
+opening that redrew every branch; an optimised version would reduce the gap
+without closing it.
+
+### 8.4 Decision
+
+The navigator keeps its virtual scrolling, and the pinned lines stay computed
+by `stickyRows.ts`. Sticky lines in CSS need a nested tree, which a virtual
+list, flat by nature, cannot give.
+
+### 8.5 Takeaways
+
+- **A tree whose lines come from the catalog keeps a virtual scrolling**: a
+  single database can open thousands of lines.
+- **The catalog itself weighs at this volume**, virtual scrolling or not:
+  279 MB of JSON, received in 27 to 63 s, about 1.4 GB of memory, and blocking
+  tasks of 4.7 to 10 s during the reception (question 26 of
+  `docs/QUESTIONS.md`).
+
+### 8.6 Measuring again
+
+1. Generate the catalog: one SQL file per database, `CREATE TABLE tNNNN (id
+   INT NOT NULL PRIMARY KEY, c001 …, c099 …)` with types in rotation (`INT`,
+   `VARCHAR(50)`, `DECIMAL(12,2)`, `DATETIME`).
+2. Start a dedicated MariaDB:
+   `docker run --detach --name prisme-perf-navigator --publish 127.0.0.1:3311:3306 --env MARIADB_ROOT_PASSWORD=secret --env MARIADB_DATABASE=test mariadb:11.8.9 --innodb-flush-log-at-trx-commit=0 --skip-log-bin --innodb-file-per-table=0 --table-definition-cache=40000 --table-open-cache=40000`,
+   then load the ten files in parallel (`docker exec -i … mariadb < perfNN.sql`):
+   about 15 minutes.
+3. Start Prisme in release on a throwaway data folder (`--listen`,
+   `--data-dir`), and save the connection through `POST /api/connections`.
+4. Start Chrome headless with `--window-size=1600,1000`: the interface folds
+   the navigator in a narrow window and keeps it folded
+   (`prisme.objectsOpen` in `localStorage`). Check the height of the tree
+   (`[role=tree]`) before measuring.
+5. Time each click until the expected line is in the page, then one frame.
+   In the virtual tree, the number of lines in the page does not grow when a
+   folder opens: wait for a given line, or read the long tasks.
