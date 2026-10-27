@@ -620,7 +620,7 @@ function selectSource(connectionId: number): void {
                     @transaction="(open) => (editors.transactions[editor.id] = open)"
                   />
                   <div v-else class="flex max-w-xs flex-col items-center gap-2 text-center">
-                    <span class="grid size-9 place-items-center rounded-full bg-surface-elevated">
+                    <span class="flex rounded-full bg-surface-elevated p-3">
                       <Database class="size-icon text-fg-muted" />
                     </span>
                     <p class="text-balance text-fg-muted">
