@@ -34,8 +34,9 @@ const props = withDefaults(
      */
     tone?: 'neutral' | 'primary' | 'error'
     /**
-     * Small size (the navigator's "⋮" button): height, text, icon, padding
-     * and gap of the small controls.
+     * Small size (the navigator's "⋮" button): height, text, padding and gap
+     * of the small controls. The icon keeps its size: an icon has the same
+     * size wherever it appears, beside icons of the same size.
      */
     small?: boolean
     /**
@@ -81,11 +82,6 @@ const classes = computed(() => [
   props.small ? 'h-7 gap-1 text-sm' : 'h-8 gap-3 text-base',
   props.label ? (props.small ? 'px-1' : 'px-3') : props.small ? 'w-7' : 'w-8',
 ])
-
-/**
- * Size of the icon, by size of the button.
- */
-const iconSize = computed(() => (props.small ? 'size-4' : 'size-5'))
 </script>
 
 <template>
@@ -95,8 +91,8 @@ const iconSize = computed(() => (props.small ? 'size-4' : 'size-5'))
     class="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-lg font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50"
     :class="classes"
   >
-    <LoaderCircle v-if="loading" class="shrink-0 animate-spin" :class="iconSize" />
-    <component :is="icon" v-else-if="icon" class="shrink-0" :class="iconSize" />
+    <LoaderCircle v-if="loading" class="size-5 shrink-0 animate-spin" />
+    <component :is="icon" v-else-if="icon" class="size-5 shrink-0" />
     <span v-if="label" class="text-trim">{{ label }}</span>
   </button>
 </template>

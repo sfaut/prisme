@@ -72,7 +72,7 @@ The icons come from Lucide (`@lucide/vue`). An action keeps the same icon wherev
 
 Rules:
 
-- **Size**: `size-5` for the buttons, the messages and the lines of the navigator, `size-4` for the small buttons, the chevrons of the tree and the marks of the grid's headers. The key marks of the navigator's columns are sized in `em` (`size-[1em]`), like the slots that align them.
+- **Size**: one size, `size-5`, small buttons included: an icon keeps the same size wherever it appears (the fold and unfold icons of a panel, in its header and on its rail), and icons side by side have the same size. Only the marks that go with a text keep their own size: `size-4` for the chevrons of the tree and the marks of the grid (type of a column, link), `size-[1em]` for the key marks of the navigator's columns. The key marks of the navigator's columns are sized in `em` (`size-[1em]`), like the slots that align them.
 - **Icon-only button**: `UiButton` with `variant="ghost"` and `small` in a bar, an `aria-label` and a `v-tooltip`. The tooltip says the action, and may add what it does after a colon ("Rafraîchir : relance la requête").
 - **Toggle button**: `aria-pressed`. The primary color (`tone="primary"`) means the state is in effect: a filter keeps only some elements, a tab is pinned. The raised background (`bg-surface-raised`) means the button shows its panel or form (the console's filters, the grid's filter).
 - **Place**: the actions of a bar stand at its right end, side by side, then the fold button, last; for the panel on the right, the fold button comes first, left of the title. The rail of a folded panel shows its unfold icon at the same place.
