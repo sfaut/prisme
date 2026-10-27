@@ -78,8 +78,13 @@
   color-scheme: light dark;
 
   /* Size of the root, which sets all of Tailwind's scales (text, spacing,
-     radii): a share of the browser's size, whose choice by the user it
-     follows. */
+     radii). Tailwind builds its scales around `text-base` = 1rem, the
+     regular text of a page meant for reading. Prisme is a dense tool
+     (grids, trees, SQL), whose regular text is three quarters of that
+     size: at 75%, `text-base` is that regular text, and Tailwind's scales
+     stay as they are, instead of being rewritten one by one. A percentage
+     keeps the size the user chose in the browser, which a length in pixels
+     would override. */
   --root-font-size: 75%;
 
   /* Hover of the resize bars, selection of the grid. */
