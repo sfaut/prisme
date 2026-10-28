@@ -227,9 +227,8 @@ describe('catalogNodes', () => {
     expect(columns.map((node) => node.column?.primaryKey)).toEqual([true, false, false])
     expect(columns.map((node) => node.column?.foreignKey)).toEqual([false, false, true])
     expect(columns.map((node) => node.column?.indexed)).toEqual([true, false, true])
-    // Alignment: the longest name (client_id) and at most one symbol per column.
+    // Alignment: the longest name (client_id).
     expect(columns.map((node) => node.column?.nameWidth)).toEqual([9, 9, 9])
-    expect(columns.map((node) => node.column?.markSlots)).toEqual([1, 1, 1])
     // An index designates its table and its name, not a table to show.
     const indexes = orders?.children?.[1]?.children ?? []
     expect(indexes.map((node) => node.index)).toEqual([

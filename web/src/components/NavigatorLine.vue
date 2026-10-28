@@ -149,7 +149,9 @@ const ENTRY_ICONS: Record<Exclude<EntryKind, 'folder'>, Component> = {
 
 /**
  * Icon of a node, before its label: each level has its own (roots, source,
- * database, open or closed folder, table, view, column...).
+ * database, open or closed folder, table, view, column...). A column has a
+ * single icon, which tells its key: a key for the primary key, a link for a
+ * foreign key, the column icon otherwise.
  *
  * @param node Node of the tree.
  * @param expanded Is the node open?
@@ -165,10 +167,29 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
     case 'notebooks':
       return Notebook
   }
+  if (node.column?.primaryKey) {
+    return KeyRound
+  }
+  if (node.column?.foreignKey) {
+    return Link
+  }
   if (node.entry === undefined || node.entry === 'folder') {
     return expanded ? FolderOpen : Folder
   }
   return ENTRY_ICONS[node.entry]
+}
+
+/**
+ * Name of a column's key icon, for screen readers; none for the other
+ * icons, which repeat the label.
+ *
+ * @param node Node of the tree.
+ */
+function iconLabel(node: NavigatorNode): string | undefined {
+  if (node.column?.primaryKey) {
+    return 'Clef primaire'
+  }
+  return node.column?.foreignKey ? 'Clef étrangère' : undefined
 }
 </script>
 
@@ -182,24 +203,12 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
   <component
     :is="nodeIcon(node, expanded)"
     class="size-5 shrink-0 text-fg-secondary"
+    :aria-label="iconLabel(node)"
     :class="{ 'animate-spin': node.entry === 'loading' }"
   />
 
-  <!--
-    Column: symbols, name (bold if indexed), type and nullability. The
-    symbols take one slot of 1em each, their padding outside the slots
-    (`box-content`), so that the names stay aligned from one column to the
-    next.
-  -->
+  <!-- Column: name (bold if indexed), type and nullability. -->
   <span v-if="node.column" class="tree-label flex min-w-0 flex-1 items-center">
-    <span
-      v-if="node.column.markSlots > 0"
-      class="box-content inline-flex flex-none px-1 text-fg-secondary"
-      :style="{ width: `${node.column.markSlots}em` }"
-    >
-      <KeyRound v-if="node.column.primaryKey" class="size-[1em]" aria-label="Clef primaire" />
-      <Link v-if="node.column.foreignKey" class="size-[1em]" aria-label="Clef étrangère" />
-    </span>
     <span class="flex min-w-0 flex-1 items-center gap-4">
       <span
         class="flex-none font-bold text-trim"

@@ -170,8 +170,9 @@ export interface NavigatorNode extends Place {
    */
   note?: string
   /**
-   * For a column: what is needed to show it in three columns (symbols,
-   * name, detail), aligned over all the columns of the table.
+   * For a column: what is needed to show it in two columns (name, detail),
+   * aligned over all the columns of the table, and the keys that choose
+   * its icon.
    */
   column?: {
     name: string
@@ -185,12 +186,7 @@ export interface NavigatorNode extends Place {
      */
     nameWidth: number
     /**
-     * Width of the symbols column, in symbols: 0 if no column of the table
-     * has any, 2 if one has a key and a hash.
-     */
-    markSlots: number
-    /**
-     * The column is part of the primary key (preceded by a key).
+     * The column is part of the primary key (its icon is a key).
      */
     primaryKey: boolean
     /**
@@ -199,7 +195,8 @@ export interface NavigatorNode extends Place {
      */
     indexed: boolean
     /**
-     * The column is part of a foreign key (preceded by a hash).
+     * The column is part of a foreign key (its icon is a link, unless the
+     * column is part of the primary key too).
      */
     foreignKey: boolean
   }
@@ -426,10 +423,7 @@ function tableFolders(place: Place, kind: TableKind, details: TableDetails): Nav
   })
   const foreignKeyColumns = new Set(details.foreign_keys.flatMap((key) => key.columns))
   const indexedColumns = new Set(details.indexes.flatMap((index) => index.columns))
-  const marks = (column: ColumnInfo) =>
-    Number(column.key === 'PRI') + Number(foreignKeyColumns.has(column.name))
   const nameWidth = Math.max(0, ...details.columns.map((column) => column.name.length))
-  const markSlots = Math.max(0, ...details.columns.map(marks))
   const columns = folder(
     `columns:${base}`,
     'Colonnes',
@@ -442,7 +436,6 @@ function tableFolders(place: Place, kind: TableKind, details: TableDetails): Nav
           name: column.name,
           details: columnDetails(column),
           nameWidth,
-          markSlots,
           primaryKey: column.key === 'PRI',
           indexed: indexedColumns.has(column.name),
           foreignKey,

@@ -90,6 +90,28 @@ describe('NavigatorLine', () => {
     expect(wrapper.emitted('disconnect')).toHaveLength(1)
   })
 
+  it('gives a column one icon: a key, a link or the column icon', () => {
+    const icon = (primaryKey: boolean, foreignKey: boolean) =>
+      mountLine({
+        key: 'column',
+        label: 'id',
+        isLeaf: true,
+        entry: 'column',
+        column: { name: 'id', details: 'INT', nameWidth: 2, primaryKey, indexed: true, foreignKey },
+        ...place,
+      }).findAll('svg')
+    const classes = (primaryKey: boolean, foreignKey: boolean) =>
+      icon(primaryKey, foreignKey).map((svg) =>
+        svg.classes().find((name) => name.startsWith('lucide-')),
+      )
+    expect(classes(true, false)).toEqual(['lucide-key-round'])
+    expect(classes(false, true)).toEqual(['lucide-link'])
+    expect(classes(true, true)).toEqual(['lucide-key-round'])
+    expect(classes(false, false)).toEqual(['lucide-columns-3'])
+    expect(icon(true, false)[0]?.attributes('aria-label')).toBe('Clef primaire')
+    expect(icon(false, true)[0]?.attributes('aria-label')).toBe('Clef étrangère')
+  })
+
   it('gives no button to the other nodes', () => {
     const wrapper = mountLine({
       key: 'column',
