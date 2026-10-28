@@ -716,8 +716,12 @@ defineExpose({
       Top panel: the gap under the editors' tabs, the buttons, then the
       editor, which takes the remaining room. Folded, the panel keeps only
       the gap: the buttons and the editor, under it, stay mounted.
+      Both panels have ids of their own, unique to the editor, as the
+      panels of the layout (`App.vue`): Reka UI keys the size a folded
+      panel unfolds to by its id.
     -->
     <splitter-panel
+      :id="`cell-${editorId}-editor-panel`"
       ref="editorPanel"
       :order="1"
       size-unit="px"
@@ -810,6 +814,7 @@ defineExpose({
 
     <!-- Bottom panel: the results. Folded, it keeps the height of their tabs. -->
     <splitter-panel
+      :id="`cell-${editorId}-results-panel`"
       ref="resultsPanel"
       v-slot="{ isCollapsed }"
       :order="2"

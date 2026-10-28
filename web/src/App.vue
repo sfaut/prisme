@@ -540,8 +540,15 @@ function selectSource(connectionId: number): void {
 <template>
   <div class="flex h-full flex-col">
     <app-top-bar />
+    <!--
+      Each panel of the splitters has an id of its own: Reka UI keys the
+      size a folded panel unfolds to by its id, and the id it generates
+      otherwise follows the order of the components, which changes with
+      what is shown (a folded console renders less).
+    -->
     <splitter-group direction="horizontal" auto-save-id="prisme.layout" class="min-h-0 flex-1">
       <splitter-panel
+        id="navigator-panel"
         ref="navigatorSplit"
         :order="1"
         size-unit="px"
@@ -577,13 +584,25 @@ function selectSource(connectionId: number): void {
         tooltip="Glisser pour redimensionner le navigateur d’objets, double clic pour le replier ou le déplier"
         @toggle="layout.objectsOpen = !layout.objectsOpen"
       />
-      <splitter-panel :order="2" size-unit="px" :min-size="EDITORS_MIN_WIDTH" class="flex">
+      <splitter-panel
+        id="center-panel"
+        :order="2"
+        size-unit="px"
+        :min-size="EDITORS_MIN_WIDTH"
+        class="flex"
+      >
         <splitter-group
           direction="vertical"
           auto-save-id="prisme.centerLayout"
           class="min-w-0 flex-1"
         >
-          <splitter-panel :order="1" size-unit="px" :min-size="EDITORS_MIN_HEIGHT" class="flex">
+          <splitter-panel
+            id="editors-panel"
+            :order="1"
+            size-unit="px"
+            :min-size="EDITORS_MIN_HEIGHT"
+            class="flex"
+          >
             <!--
               The padding of the sides is inside the panels of the cells
               (`QueryCell`), which would cut a border set against their edge;
@@ -664,6 +683,7 @@ function selectSource(connectionId: number): void {
             @toggle="consoleStore.open = !consoleStore.open"
           />
           <splitter-panel
+            id="console-panel"
             ref="consoleSplit"
             :order="2"
             size-unit="px"
@@ -695,6 +715,7 @@ function selectSource(connectionId: number): void {
         @toggle="explorer.open = !explorer.open"
       />
       <splitter-panel
+        id="explorer-panel"
         ref="explorerSplit"
         :order="3"
         size-unit="px"
