@@ -170,6 +170,7 @@ const durations = computed(() => {
       :rows="shown.rows"
       :row-count="shown.rowCount"
       :shown-count="shownCount"
+      :durations="durations"
       :sql="tab.sql"
       :displayed="displayed"
       :actions-target="actionsTarget"
@@ -186,10 +187,8 @@ const durations = computed(() => {
           @click="refreshing ? emit('stop-refresh') : emit('refresh')"
         />
       </template>
-      <template #footer>
-        <template v-if="durations">&nbsp;· {{ durations }}</template>
-      </template>
     </result-grid>
-    <div v-else-if="durations" class="text-sm text-trim text-fg-secondary">{{ durations }}</div>
+    <!-- Without a grid, the durations alone, in the style of the grid's bottom bar. -->
+    <div v-else-if="durations" class="text-sm text-fg-secondary">{{ durations }}</div>
   </div>
 </template>

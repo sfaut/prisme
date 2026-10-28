@@ -11,8 +11,8 @@
     (`actionsTarget`, by a `Teleport` of Vue), for the tab shown only: a
     hidden tab, or folded results, show none.
   - Bottom bar: number of loaded rows ("120 / 5 000 lignes" when a user
-    filter is active), then the content of the `footer` slot (duration of
-    the query). The data explorer opens from its rail, on the right edge of
+    filter is active), then the durations of the query (`durations`), in a
+    single line of text. The data explorer opens from its rail, on the right edge of
     the window.
   - Data explorer: the grid on screen (`displayed`) gives the panel on the
     right the selected values of a JSON or XML column (`dataExplorer`
@@ -134,6 +134,11 @@ const props = defineProps<{
    */
   shownCount?: number
   /**
+   * Durations of the query, after the number of rows in the bottom bar
+   * ("exécution 12 ms · transfert 3 ms"); absent or empty, the number alone.
+   */
+  durations?: string
+  /**
    * Text of the query: the chosen widths are remembered for it, and found
    * again if it is run again.
    */
@@ -199,13 +204,15 @@ async function toggleUserFilter(): Promise<void> {
 }
 
 /**
- * Number of rows of the bottom bar: loaded rows, preceded by the kept rows
- * when a user filter is active.
+ * Text of the bottom bar: loaded rows, preceded by the kept rows when a user
+ * filter is active, then the durations of the query.
  */
-const countLabel = computed(() => {
+const status = computed(() => {
   const loaded = props.shownCount ?? props.rowCount
   const total = `${loaded.toLocaleString('fr-FR')} ${loaded > 1 ? 'lignes' : 'ligne'}`
-  return userFilter.text === '' ? total : `${view.value.length.toLocaleString('fr-FR')} / ${total}`
+  const count =
+    userFilter.text === '' ? total : `${view.value.length.toLocaleString('fr-FR')} / ${total}`
+  return props.durations ? `${count} · ${props.durations}` : count
 })
 const sort = ref<SortState | null>(null)
 const selection = shallowRef(emptySelection())
@@ -919,8 +926,7 @@ const userFilterColumn = computed({
     </teleport>
 
     <div class="grid-footer">
-      <!-- The slot follows the number in the same text, without the container's gap. -->
-      <span class="grid-count">{{ countLabel }}<slot name="footer" /></span>
+      <span class="grid-count">{{ status }}</span>
     </div>
   </div>
 </template>

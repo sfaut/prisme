@@ -111,6 +111,12 @@ describe('ResultGrid', () => {
     expect(wrapper.find('.grid-count').text()).toBe('2 lignes')
   })
 
+  it('follows the number of rows with the durations of the query', async () => {
+    const wrapper = mountGrid(['id'], [['1']])
+    await wrapper.setProps({ durations: 'exécution 12 ms' })
+    expect(wrapper.find('.grid-count').text()).toBe('1 ligne · exécution 12 ms')
+  })
+
   it('filters the rows', async () => {
     const { wrapper, bar, toggleFilter } = mountGridWithBar(
       ['id', 'name'],
