@@ -250,6 +250,7 @@ keywords:
   - CONSISTENT
   - END
   - FORMAT
+  - GLOBAL
   - ISOLATION
   - LEVEL
   - MIGRATE
@@ -265,6 +266,7 @@ keywords:
   - ROLLBACK
   - SAVEPOINT
   - SERIALIZABLE
+  - SESSION
   - SNAPSHOT
   - START
   - SUSPEND
