@@ -1,6 +1,9 @@
 # Prisme: design brief for Claude Design
 
-This document is the prompt given to Claude Design. It describes the interface of Prisme as it stands on 2026-10-28 (v0.7.0 and the commits after it), the rules any design keeps, and what is expected. It is pasted whole; screenshots of the current screen, light and dark, go with it when available.
+This document is the prompt given to Claude Design. It describes the interface of Prisme as it stands on 2026-10-28 (v0.7.0 and the commits after it), the rules any design keeps, and what is expected. It is pasted whole, with the screenshots of `screenshots/`, taken at a scale of 150% on the test databases of section 9:
+
+- `main-light.png`, `main-dark.png`: the main screen, data explorer folded;
+- `explorer-light.png`, `explorer-dark.png`: the same screen, data explorer open on the `attributes` of the first four rows of the grid.
 
 ## 1. The product
 
@@ -76,7 +79,7 @@ Other variables of the theme:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│ Prisme v0.7.0                                                (sync)  [Système ▾]  (SF) │
+│ Prisme v0.7.0                                                 (sync)  [Système ▾]  (M) │
 ├─────────────────┬────────────────────────────────────────────────────────────┬─────────┤
 │ Navigateur  [«] │ [boutique ×] [prod ×]  [+]                          [h][^] │ [»]     │
 │ d’objets        │ [▶ Exécuter] [Exécuter précisément] [Exécuter tout]        │ Explo-  │
@@ -90,14 +93,14 @@ Other variables of the theme:
 │ ▸ Notebooks     │ │    123 id   Aa name        {} attributes               │ │         │
 │                 │ │  1   1042   Ada Martin     {"plan":"pro",…}            │ │         │
 │                 │ └────────────────────────────────────────────────────────┘ │         │
-│                 │ 4 lignes · exécution 12 ms · transfert 4 ms · …            │         │
+│                 │ 1 000 lignes · exécution 4 ms · transfert 6 ms · …         │         │
 │                 ├────────────────────────────────────────────────────────────┤         │
 │                 │ [Historique] [Debug]                             [f][c][v] │         │
 │                 │ #    Heure     Action          Message           Lignes …  │         │
 └─────────────────┴────────────────────────────────────────────────────────────┴─────────┘
 ```
 
-Legend: `[«]`, `[^]`, `[v]` fold buttons (`PanelLeftClose`, `PanelTopClose`, `PanelBottomClose`); `[»]` icon of the explorer's rail (`PanelRightOpen`); `[+]` new editor; `[h]` reopen a closed editor (`History`); `[r]` refresh (`RefreshCw`); `[f]` filters (`Funnel`); `[c]` clear the console (`MessageCircleOff`); `(sync)` synchronisation icon; `(SF)` avatar; `●` progress dot; `*` pin; `×` close. The buttons of the SQL cell stand on a single line; the diagram wraps them.
+Legend: `[«]`, `[^]`, `[v]` fold buttons (`PanelLeftClose`, `PanelTopClose`, `PanelBottomClose`); `[»]` icon of the explorer's rail (`PanelRightOpen`); `[+]` new editor; `[h]` reopen a closed editor (`History`); `[r]` refresh (`RefreshCw`); `[f]` filters (`Funnel`); `[c]` clear the console (`MessageCircleOff`); `(sync)` synchronisation icon; `(M)` avatar; `●` progress dot; `*` pin; `×` close. The buttons of the SQL cell stand on a single line; the diagram wraps them.
 
 - **Top bar** across the whole width. Below it, three columns share the width in splitters: the object navigator on the left (default width 100 steps, smallest 67), the editors in the middle (smallest width 213 steps), the data explorer on the right (default width 140 steps, smallest 80; closed by default). Both side panels go from the top bar down to the bottom of the window.
 - **Console** under the editors, between the side panels (default height 73 steps, smallest 40); the editors and the console share the height in a splitter.
@@ -145,7 +148,7 @@ Legend: `[«]`, `[^]`, `[v]` fold buttons (`PanelLeftClose`, `PanelTopClose`, `P
 
 Header **Navigateur d’objets** (Object navigator), then a tree with virtual scrolling, `gap-3`.
 
-- Rows all of the same height (`--row-height`, 8 steps), `rounded-lg`, `gap-1`, hover `bg-surface-sunken`; each level indented by 4 steps. A row: chevron (`ChevronRight` / `ChevronDown`, `size-4 fg-faint`; an empty box of the same size without children), icon of its level (`size-5 fg-secondary`), label truncated with "…", optional note (`text-sm fg-faint`: `UNIQUE`, `désactivé` (disabled), `chargement…` (loading)), then the buttons that show on hover.
+- Rows all of the same height (`--row-height`, 8 steps), `rounded-lg`, `gap-1`, hover `bg-surface-sunken`; each level indented by 4 steps. A row: chevron (`ChevronRight` / `ChevronDown`, `size-4 fg-faint`; an empty box of the same size without children), icon of its level (`size-5 fg-secondary`), label truncated with "…", optional note (`text-sm fg-faint`: `PRIMARY KEY` or `UNIQUE` on an index, `chargement…` (loading) on the root), then the buttons that show on hover.
 - Structure and icons:
   - **Sources de données** (Data sources, `Server`, bold): one branch per saved connection;
     - source (`Cable`), with its flavor badge right after the name (`mysql`, `mariadb`: `rounded-full px-1 text-xs` medium, in the engine's colors; tooltip: name and version of the server); the source of the active editor is highlighted (`bg-surface-raised`);
@@ -247,10 +250,10 @@ Shows the JSON or XML values selected in a column of the grid, in a read-only co
 
 ## 9. Sample data
 
-- Sources: **local** (MariaDB 11.4.4, badge `mariadb`) with the databases `shop` and `crm`; **prod** (MySQL 8.4.3, badge `mysql`).
-- `shop`: tables `customer`, `order`, `order_item`, `product`; view `customer_total`; procedure `refresh_stats`; function `vat`; event `purge_carts`.
-- `customer`, as its columns show in the navigator: `id` `INT UNSIGNED AUTO_INCREMENT` (primary key), `email` `VARCHAR(254)` (unique index `email (email)`), `name` `VARCHAR(100)`, `country` `CHAR(2) NULL`, `website` `VARCHAR(200) NULL`, `attributes` `JSON NULL`, `created_at` `DATETIME(6)`.
-- Editor **boutique** (on **local**, current database `shop`), next to an editor **prod** (on **prod**):
+- Sources: **local** (MariaDB 11.4.13, badge `mariadb`) with the databases `crm` and `shop`; **prod** (MySQL 8.4.11, badge `mysql`) with the database `billing`. The account has no first or last name: the avatar shows the first letter of `me@local`, **M**.
+- `shop`: tables `customer` (1,042 rows), `order` (3,000), `order_item`, `product` (40); view `customer_total`; procedure `refresh_stats`; function `vat`; event `purge_carts`, disabled (label `purge_carts · désactivé`).
+- `customer`, as its columns show in the navigator: `id` `INT UNSIGNED AUTO_INCREMENT` (primary key), `email` `VARCHAR(254)` (unique index `email (email)`), `name` `VARCHAR(100)`, `country` `CHAR(2) NULL`, `website` `VARCHAR(200) NULL`, `attributes` `LONGTEXT NULL` (MariaDB stores `JSON` as `LONGTEXT`; the grid recognizes its JSON content and gives it the `Braces` icon), `created_at` `DATETIME(6)`.
+- Editor **boutique** (on **local**, current database `shop`), next to an editor **prod** (on **prod**, whose query names a table that does not exist, `invoices`):
 
 ```sql
 SELECT c.id, c.name, c.email, c.country, c.website, c.attributes, c.created_at
@@ -272,7 +275,8 @@ GROUP BY country;
 | 1040 | Inès Garcia | ines.garcia@example.org | ES | https://ines.example.org | NULL | 2026-10-25 21:47:03.000000 |
 | 1039 | Noah Weber | noah.weber@example.org | NULL | NULL | `{"plan":"pro","tags":["eu"]}` | 2026-10-25 08:30:59.000000 |
 
-- History of the console: a **Session** row (`SET NAMES utf8mb4`), two **Exécuter tout** rows (the two queries above, `+1 000` and `4` rows, durations in ms), a **Navigateur** row (`SELECT … FROM information_schema.TABLES …`), a failed **Exécuter** row (`SELECT * FROM custome` — `Table 'shop.custome' doesn't exist`).
+- First query: 1,042 rows match, the grid shows the first 1,000 (**1 000 lignes**, truncated result). Second query: 7 rows, one per country and `NULL`.
+- History of the console, oldest first: **Session** rows (`SET NAMES utf8mb4`, `SET SESSION TRANSACTION READ ONLY`, `SELECT VERSION(), @@SESSION.sql_mode`, `SELECT DATABASE()`); **Navigateur** rows (`SELECT TABLE_NAME, … FROM information_schema…`); a failed **Exécuter** row on **prod** (`SELECT number, issued_on, amount, status FROM invoices WHERE status = 'late' LIMIT 1001` — `erreur : ERROR 1146 (42S02): Table 'billing.invoices' doesn't exist`); then **Exécuter tout** rows, each query on its own connection (`SET NAMES utf8mb4`, `SET SESSION TRANSACTION READ ONLY`, then the query with the `LIMIT 1001` Prisme adds: `7` rows, then `+1 000`).
 
 ## 10. Coming next (context only)
 
