@@ -160,7 +160,7 @@ const durations = computed(() => {
     width of its content, and a wide grid overflowed, cut off on the right,
     instead of scrolling in its own area.
   -->
-  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-2" :class="{ 'pt-1': !gridFirst }">
+  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3" :class="{ 'pt-1': !gridFirst }">
     <ui-alert v-if="tab.error" tone="error" :title="tab.error" />
     <result-grid
       v-if="shown && shown.columns.length > 0"
@@ -179,7 +179,7 @@ const durations = computed(() => {
         <ui-button
           :icon="refreshing ? RefreshCwOff : RefreshCw"
           variant="ghost"
-          :tone="refreshing ? 'accent' : 'neutral'"
+          :tone="refreshing ? 'primary' : 'neutral'"
           small
           :disabled="refresh === 'unavailable'"
           :aria-label="refreshing ? 'Arrêter le rafraîchissement' : 'Rafraîchir'"
@@ -191,6 +191,6 @@ const durations = computed(() => {
         <template v-if="durations">&nbsp;· {{ durations }}</template>
       </template>
     </result-grid>
-    <div v-else-if="durations" class="text-small text-trim text-fg-muted">{{ durations }}</div>
+    <div v-else-if="durations" class="text-sm text-trim text-fg-secondary">{{ durations }}</div>
   </div>
 </template>

@@ -16,19 +16,27 @@ import { vTooltip } from './ui/tooltip'
  * Text, icon and tone of each state.
  */
 const STATES = {
-  idle: { text: 'Base locale : aucun échange', icon: Database, tone: 'text-fg-muted' },
-  reading: { text: 'Lecture de la base locale…', icon: DatabaseArrowDown, tone: 'text-fg-muted' },
+  idle: { text: 'Base locale : aucun échange', icon: Database, tone: 'text-fg-secondary' },
+  reading: {
+    text: 'Lecture de la base locale…',
+    icon: DatabaseArrowDown,
+    tone: 'text-fg-secondary',
+  },
   writing: {
     text: 'Enregistrement dans la base locale…',
     icon: DatabaseArrowUp,
-    tone: 'text-fg-muted',
+    tone: 'text-fg-secondary',
   },
   failed: {
     text: 'Échec de l’enregistrement dans la base locale',
     icon: DatabaseX,
     tone: 'text-error',
   },
-  synced: { text: 'Synchronisé avec la base locale', icon: DatabaseCheck, tone: 'text-fg-muted' },
+  synced: {
+    text: 'Synchronisé avec la base locale',
+    icon: DatabaseCheck,
+    tone: 'text-fg-secondary',
+  },
 } as const
 
 /**
@@ -45,6 +53,6 @@ const current = computed(() => STATES[syncState.value])
     class="inline-flex"
     :class="current.tone"
   >
-    <component :is="current.icon" class="size-icon shrink-0" aria-hidden="true" />
+    <component :is="current.icon" class="size-5 shrink-0" aria-hidden="true" />
   </span>
 </template>

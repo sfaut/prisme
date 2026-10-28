@@ -72,9 +72,9 @@ The icons come from Lucide (`@lucide/vue`). An action keeps the same icon wherev
 
 Rules:
 
-- **Size**: `size-icon` (16 px) for the buttons, the messages and the lines of the navigator, `size-icon-sm` (12 px) for the chevrons of the tree and the marks of the grid's headers, never a size of the spacing scale (`size-4`). The key marks of the navigator's columns are sized in `em` (`size-[1em]`), like the slots that align them.
+- **Size**: one size, `size-5`, small buttons included: an icon keeps the same size wherever it appears (the fold and unfold icons of a panel, in its header and on its rail), and icons side by side have the same size. Only the marks that go with a text keep their own size: `size-4` for the chevrons of the tree and the marks of the grid (type of a column, link).
 - **Icon-only button**: `UiButton` with `variant="ghost"` and `small` in a bar, an `aria-label` and a `v-tooltip`. The tooltip says the action, and may add what it does after a colon ("Rafraîchir : relance la requête").
-- **Toggle button**: `aria-pressed`. The accent color (`tone="accent"`) means the state is in effect: a filter keeps only some elements, a tab is pinned. The raised background (`bg-surface-elevated`) means the button shows its panel or form (the console's filters, the grid's filter).
+- **Toggle button**: `aria-pressed`. The primary color (`tone="primary"`) means the state is in effect: a filter keeps only some elements, a tab is pinned. The raised background (`bg-surface-raised`) means the button shows its panel or form (the console's filters, the grid's filter).
 - **Place**: the actions of a bar stand at its right end, side by side, then the fold button, last; for the panel on the right, the fold button comes first, left of the title. The rail of a folded panel shows its unfold icon at the same place.
 - **Folded panel**: it keeps only its tabs, if any, and its unfold button; its other actions hide.
 - **Running action**: the button that starts a long action turns into its stop button while it runs, with the stop icon and the error color for queries.
@@ -134,11 +134,11 @@ Rules:
 | `ScrollText` | A procedure | tree |
 | `SquareFunction` | A function | tree |
 | `CalendarClock` | An event | tree |
-| `Columns3` | A column | tree |
+| `Columns3` | A column outside any key | tree |
 | `ListOrdered` | An index | tree |
-| `Link` | A foreign key; column of a foreign key | tree; column's line |
+| `Link` | A foreign key; column of a foreign key, in place of `Columns3` | tree |
 | `Zap` | A trigger | tree |
-| `KeyRound` | Column of the primary key | column's line |
+| `KeyRound` | Column of the primary key, in place of `Columns3` (and of `Link` if it is part of a foreign key too) | tree |
 | `DatabaseZap` | Use this database (`USE`) | line's button |
 | `PlugZap` | Test a connection | source's menu |
 | `Unplug` | Close the session ("Déconnecter") | line's button; source's menu |
@@ -181,7 +181,7 @@ Rules:
 
 ### Lengths in pixels
 
-The interface is built in lengths relative to the root, `:root` being fixed: multiples of `--space-unit`, in `rem`, and `ch` or `em` of a font (rule 10 of [CLAUDE.md](../CLAUDE.md)). Only the strokes of `:root` stay in pixels. A few APIs of dependencies accept nothing but a number of pixels, though. They receive a theme variable converted by `cssPixels` (`web/src/cssLength.ts`): the theme stays the only source of the length, read once, on loading. As `:root` is fixed, and the zoom of the browser does not change the ratio of a `rem` to a CSS pixel, the value stays exact for the whole session; only a change of the browser's default font size, with the page open, needs a reload.
+The interface is built in lengths relative to the root, `:root` being fixed: steps of Tailwind's `--spacing`, in `rem`, and `ch` or `em` of a font (rule 10 of [CLAUDE.md](../CLAUDE.md)). Only the strokes of `:root` stay in pixels. A few APIs of dependencies accept nothing but a number of pixels, though. They receive a theme variable converted by `cssPixels` (`web/src/cssLength.ts`): the theme stays the only source of the length, read once, on loading. As `:root` is fixed, and the zoom of the browser does not change the ratio of a `rem` to a CSS pixel, the value stays exact for the whole session; only a change of the browser's default font size, with the page open, needs a reload.
 
 | Dependency | API in pixels | Variables | Where |
 |---|---|---|---|
@@ -195,6 +195,17 @@ The pointer also gives pixels: a column of the grid resized with the mouse conve
 In the code, each of these places carries a comment that starts with "Fixed size" and refers to this section.
 
 These are workarounds too (see "Workarounds"). Before each release, after the update of the dependencies, each API is checked again (process in [CLAUDE.md](../CLAUDE.md), section "Publishing a version"): once one accepts a CSS length or a relative unit, the theme variable goes to it directly, and its `cssPixels` goes away, with its row here.
+
+### Lines
+
+A line of the interface (border of a panel, of a field, of the grid, line of a splitter) is one CSS pixel thick (`--line-width`). At a display scale that is not whole (Windows at 125% or 150%, zoom of the browser), a CSS pixel covers a pixel and a quarter or a half of the screen. The browser then treats two ways of drawing a line differently:
+
+- **Border** (or outline): its width is rounded to whole pixels of the screen. The line is one pixel thick wherever it falls.
+- **Box one line wide, filled by its background** (`inline-size: var(--line-width)`, `w-px`): its edges are rounded to the pixels of the screen one by one, so the box is painted one or two pixels thick according to its position. A splitter's position changes with the size of the window: the line looks thicker for some sizes, thin for others.
+
+So a line is always a border. The splitters of Reka UI (`SplitHandle.vue`) draw theirs with the handle's border, the band of the hover and the grip being centered on it. A first fix, on 2026-10-14, rounded the position of the line to whole pixels (`round()` in CSS); it lived in a component replaced by the splitters of Reka UI on 2026-10-25, and the problem came back with them. `web/src/__tests__/lines.spec.ts` now fails on any box sized to the thickness of a line, in a `<style>` block or in a class.
+
+To check a change on screen, the scale must be a real one: `Emulation.setDeviceMetricsOverride` of the Chrome DevTools Protocol scales the rendering without rounding the edges the same way, and does not show the problem. Start Chrome with `--force-device-scale-factor=1.5`, resize the window one pixel at a time, and read the pixels across each line in a screenshot: one inked pixel at every size, never two.
 
 ## Building the single executable
 

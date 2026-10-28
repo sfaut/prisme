@@ -441,7 +441,7 @@ watch(
   <div class="data-explorer">
     <panel-header title="Explorateur de données" side="end" @collapse="explorer.open = false">
       <template #subtitle>
-        <span class="truncate text-small text-fg-muted" v-tooltip="subtitle">{{
+        <span class="truncate text-sm text-fg-secondary" v-tooltip="subtitle">{{
           subtitle || ' '
         }}</span>
       </template>
@@ -485,7 +485,7 @@ watch(
         <ui-button
           :icon="Search"
           variant="ghost"
-          :tone="searchOpen ? 'accent' : 'neutral'"
+          :tone="searchOpen ? 'primary' : 'neutral'"
           small
           :aria-pressed="searchOpen"
           aria-label="Rechercher"
@@ -496,7 +496,7 @@ watch(
         <ui-button
           :icon="TextWrap"
           variant="ghost"
-          :tone="explorer.wrap ? 'accent' : 'neutral'"
+          :tone="explorer.wrap ? 'primary' : 'neutral'"
           small
           :aria-pressed="explorer.wrap"
           aria-label="Retour à la ligne"
@@ -516,7 +516,7 @@ watch(
       </template>
     </panel-header>
     <div v-if="searchOpen && text !== null" ref="searchBar" class="data-explorer-search">
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-3">
         <ui-input
           v-model="expression"
           :icon="Search"
@@ -556,7 +556,7 @@ watch(
         <ui-button
           :icon="Funnel"
           variant="ghost"
-          :tone="filtering ? 'accent' : 'neutral'"
+          :tone="filtering ? 'primary' : 'neutral'"
           small
           :aria-pressed="filtering"
           aria-label="Afficher seulement les résultats"
@@ -580,45 +580,45 @@ watch(
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: --spacing(2);
+  gap: --spacing(3);
   min-block-size: 0;
 }
 
 .data-explorer-message {
-  color: var(--fg-muted);
+  color: var(--color-fg-secondary);
   text-wrap: balance;
 }
 
 .data-explorer-search {
   display: flex;
   flex-direction: column;
-  gap: --spacing(2);
+  gap: --spacing(3);
 }
 
 .data-explorer-search :deep(input[aria-invalid='true']) {
-  border-color: var(--error);
+  border-color: var(--color-error);
 }
 
 .data-explorer-search-status {
-  max-inline-size: --spacing(40);
+  max-inline-size: --spacing(53);
   overflow: hidden;
-  color: var(--fg-muted);
-  font-size: var(--font-size-small);
+  color: var(--color-fg-secondary);
+  font-size: var(--text-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .data-explorer-search-error {
-  color: var(--error);
-  font-size: var(--font-size-small);
+  color: var(--color-error);
+  font-size: var(--text-sm);
   overflow-wrap: anywhere;
 }
 
 .data-explorer-editor {
   flex: 1;
   min-block-size: 0;
-  border: var(--line-width) solid var(--line);
-  border-radius: var(--control-radius);
+  border: var(--line-width) solid var(--color-line);
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
@@ -628,6 +628,6 @@ watch(
 }
 
 .data-explorer-editor :deep(.cm-scroller) {
-  font-family: var(--font-code);
+  font-family: var(--font-mono);
 }
 </style>

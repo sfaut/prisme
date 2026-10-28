@@ -210,7 +210,7 @@ async function save(): Promise<void> {
 
 <template>
   <ui-dialog v-model:open="open" :title="title">
-    <form id="connection-form" class="flex flex-col gap-2" @submit.prevent="save">
+    <form id="connection-form" class="flex flex-col gap-3" @submit.prevent="save">
       <ui-field label="Nom">
         <ui-input v-model="form.name" :maxlength="100" placeholder="prod, local..." />
       </ui-field>
@@ -257,33 +257,29 @@ async function save(): Promise<void> {
         />
       </ui-field>
       <ui-field label="Session gardée">
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-3">
           <ui-input
             v-model="form.session_timeout_minutes"
             type="number"
             :min="0"
             :max="1440"
-            class="w-20"
+            class="w-27"
             aria-label="Minutes de garde de la session"
             v-tooltip="
               'La session (connexion, transactions, requêtes en cours) reste ouverte ce nombre de minutes après la fermeture de la page, qui s’y raccroche à son retour ; 0 la ferme aussitôt'
             "
           />
-          <span class="text-ui text-fg-muted">min après la fermeture de la page</span>
+          <span class="text-base text-fg-secondary">min après la fermeture de la page</span>
         </div>
       </ui-field>
       <ui-field label="Navigateur">
         <label
-          class="flex items-center gap-2 text-ui text-fg-strong"
+          class="flex items-center gap-3 text-base text-fg-strong"
           v-tooltip="
             'Bases fournies par le serveur : information_schema, mysql, performance_schema, sys'
           "
         >
-          <input
-            v-model="form.show_system_schemas"
-            type="checkbox"
-            class="size-icon accent-accent"
-          />
+          <input v-model="form.show_system_schemas" type="checkbox" class="size-5 accent-primary" />
           Afficher les bases système
         </label>
       </ui-field>
@@ -302,7 +298,7 @@ async function save(): Promise<void> {
         form="connection-form"
         :label="transactionCount > 0 ? 'Enregistrer et annuler' : 'Enregistrer'"
         variant="solid"
-        :tone="transactionCount > 0 ? 'error' : 'accent'"
+        :tone="transactionCount > 0 ? 'error' : 'primary'"
         :loading="saving"
         class="flex-1"
       />

@@ -30,7 +30,7 @@ const history = store.history
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-1">
-    <div v-if="store.filtersShown" class="flex flex-wrap items-center gap-3">
+    <div v-if="store.filtersShown" class="flex flex-wrap items-center gap-4">
       <console-filter v-model="store.historyFilter.action" label="Action" :labels="ACTION_LABELS" />
     </div>
     <console-list
@@ -64,7 +64,7 @@ const history = store.history
         </thead>
         <tbody>
           <tr v-for="entry in history.entries" :key="entry.id">
-            <td class="end text-fg-dimmed">{{ entry.id }}</td>
+            <td class="end text-fg-faint">{{ entry.id }}</td>
             <td v-tooltip="dateTimeOf(entry.started_at)">{{ timeOf(entry.started_at) }}</td>
             <td v-tooltip="entry.connection_name || undefined">
               {{ ACTION_LABELS[entry.action] }}
@@ -79,13 +79,13 @@ const history = store.history
             </td>
             <td
               class="end"
-              :class="{ 'text-fg-dimmed': rowsOf(entry) === '—' }"
+              :class="{ 'text-fg-faint': rowsOf(entry) === '—' }"
               v-tooltip="rowsTitleOf(entry)"
             >
               {{ rowsOf(entry) }}
             </td>
             <td class="end">{{ formatMicros(entry.duration_us) }}</td>
-            <td class="end" :class="{ 'text-fg-dimmed': entry.transfer_us === 0 }">
+            <td class="end" :class="{ 'text-fg-faint': entry.transfer_us === 0 }">
               {{ transferOf(entry) }}
             </td>
           </tr>
@@ -101,23 +101,23 @@ const history = store.history
 /* Columns sized to their content, in characters, plus the padding of the
    cells; the message takes the rest. */
 col.index {
-  inline-size: calc(6ch + 2 * --spacing(2));
+  inline-size: calc(6ch + 2 * --spacing(3));
 }
 
 col.time {
-  inline-size: calc(9ch + 2 * --spacing(2));
+  inline-size: calc(9ch + 2 * --spacing(3));
 }
 
 col.action {
-  inline-size: calc(18ch + 2 * --spacing(2));
+  inline-size: calc(18ch + 2 * --spacing(3));
 }
 
 col.rows {
-  inline-size: calc(9ch + 2 * --spacing(2));
+  inline-size: calc(9ch + 2 * --spacing(3));
 }
 
 col.duration {
-  inline-size: calc(13ch + 2 * --spacing(2));
+  inline-size: calc(13ch + 2 * --spacing(3));
 }
 
 /* Message: the SQL shrinks first, with an ellipsis; the failure keeps its

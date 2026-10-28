@@ -710,14 +710,14 @@ defineExpose({
       :collapsed-size="EDITOR_FOLDED_HEIGHT"
       class="flex"
     >
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-3 py-2">
-        <div class="flex shrink-0 items-center gap-2">
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 py-3">
+        <div class="flex shrink-0 items-center gap-3">
           <ui-button
             v-tooltip="stopsOne ? STOP_TIP : 'La requête sous le curseur (Ctrl-Entrée)'"
             label="Exécuter"
             :icon="stopsOne ? Square : Play"
             variant="solid"
-            :tone="stopsOne ? 'error' : 'accent'"
+            :tone="stopsOne ? 'error' : 'primary'"
             :disabled="!stopsOne && state.status !== 'ready'"
             @click="stopsOne ? session.cancel() : run()"
           />
@@ -756,7 +756,7 @@ defineExpose({
             :model-value="settings.settings?.row_limit"
             :items="limitOptions"
             label="Limite de lignes"
-            class="w-32"
+            class="w-43"
             @update:model-value="(limit) => limit !== undefined && changeLimit(limit)"
           />
           <!-- Status of the session, stretched to the height of the buttons. -->
@@ -764,7 +764,7 @@ defineExpose({
             v-if="state.transaction"
             v-tooltip="TRANSACTION_TIP"
             role="status"
-            class="ms-auto inline-flex shrink-0 self-stretch items-center rounded-full bg-info-soft px-3 text-ui font-medium whitespace-nowrap text-info"
+            class="ms-auto inline-flex shrink-0 self-stretch items-center rounded-full bg-info/14 px-4 text-base font-medium whitespace-nowrap text-info"
           >
             <span class="text-trim">Transaction ouverte</span>
           </span>
@@ -814,7 +814,7 @@ defineExpose({
       :collapsed-size="RESULTS_FOLDED_HEIGHT"
       class="flex"
     >
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-3 pt-2">
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pt-3">
         <ui-alert v-if="state.status === 'closed'" tone="warning" title="Session fermée.">
           <ui-button label="Reconnecter" @click="emit('reconnect')" />
         </ui-alert>
@@ -824,9 +824,9 @@ defineExpose({
         <div
           v-if="state.loading"
           role="status"
-          class="flex flex-1 items-center justify-center gap-2 text-ui text-fg-muted"
+          class="flex flex-1 items-center justify-center gap-3 text-base text-fg-secondary"
         >
-          <LoaderCircle class="size-icon animate-spin" />
+          <LoaderCircle class="size-5 animate-spin" />
           Chargement des résultats…
         </div>
 

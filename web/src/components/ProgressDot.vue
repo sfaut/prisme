@@ -40,19 +40,19 @@ const progress = computed(() => tabProgress(props.tab))
 
 .progress-dot {
   flex: none;
-  width: --spacing(2);
+  width: --spacing(3);
   aspect-ratio: 1;
   border-radius: 50%;
 }
 
 .waiting {
-  background: var(--fg-dimmed);
+  background: var(--color-fg-faint);
   animation: pulse 3s ease-in-out infinite;
 }
 
 .executing,
 .loading {
-  background: var(--accent);
+  background: var(--color-primary);
   animation: pulse 1.4s ease-in-out infinite;
 }
 
@@ -61,11 +61,11 @@ const progress = computed(() => tabProgress(props.tab))
 }
 
 .done {
-  background: var(--success);
+  background: var(--color-success);
 }
 
 .error {
-  background: var(--error);
+  background: var(--color-error);
 }
 
 @keyframes pulse {

@@ -1,258 +1,151 @@
 /*
   Stylesheet of the application: Tailwind CSS and Prisme's theme.
 
-  The theme fits in a few CSS variables, in `:root`: colors by role, font
-  sizes, the unit of the lengths, radii and strokes. Changing a value here
-  changes the whole interface. Tailwind turns them into classes (`@theme`
-  block): `bg-surface`, `text-fg-muted`, `border-line`, `text-ui`,
-  `rounded-control`...
+  The interface uses Tailwind's default scales as they are: font sizes and
+  their line heights (`text-base`, `text-sm`...), spacing (`p-3`, `gap-2`,
+  `h-8`), radii (`rounded-lg`). The root's font size (`--root-font-size`,
+  75% of the browser's) sets them all: `text-base` is the regular text of the
+  interface, and changing that one value scales the whole interface. The
+  theme fits in a few CSS variables: colors by role, the code font, strokes.
 
-  Lengths: whole multiples of `--space-unit`, through Tailwind's spacing
-  scale. The components write the step, `gap-2`, `p-3`, `w-40` in their
-  classes, `--spacing(2)` in their `<style>` blocks (which start with
-  `@reference "@/assets/main.css";`), never a fraction (`gap-1.5`): changing
-  `--space-unit` scales every gap, padding, height and width. A length is
-  named here only when several components must keep it identical (height
-  of the controls, `h-control`) or the code reads it (`cssPixels`); it is
-  then defined as a multiple of `--space-unit` too.
+  Lengths: whole steps of Tailwind's spacing scale (`--spacing`, a quarter
+  of the root's size). The components write the step, `gap-2`, `p-3`,
+  `w-40` in their classes, `--spacing(2)` in their `<style>` blocks (which
+  start with `@reference "@/assets/main.css";`), never a fraction
+  (`gap-1.5`). A length is named here only when the code reads it
+  (`cssPixels`); it is then written with `--spacing()` too.
 
-  Colors: a palette (each hue only once), then variables by role that draw
-  from it, the only ones used by the components. Light and dark: each role
-  variable gives its two values with `light-dark(light, dark)`, chosen
-  according to `color-scheme`. By default, that of the system; the `light`
-  or `dark` class on `<html>` forces one or the other
-  (`colorMode.ts`).
+  Colors: Tailwind's palette, then colors by role declared in `@theme`,
+  which draw from it and are the only ones used by the components
+  (`bg-surface`, `text-fg-secondary`, `border-line`, `bg-primary`...).
+  Changing a role here changes it everywhere. Shades go through Tailwind's
+  opacity modifiers (`bg-primary/15`, `border-error/50`) in the classes,
+  `--alpha()` in the `<style>` blocks. Light and dark: each role gives its
+  two values with `light-dark(light, dark)`, chosen according to
+  `color-scheme`. By default, that of the system; the `light` or `dark`
+  class on `<html>` forces one or the other (`colorMode.ts`).
 */
 @import 'tailwindcss';
 
-/* Tailwind classes drawn from the variables: only Prisme's colors and font
-   sizes exist, so as not to use others by mistake. */
-@theme inline {
-  --color-*: initial;
-  --color-surface: var(--surface);
-  --color-surface-muted: var(--surface-muted);
-  --color-surface-elevated: var(--surface-elevated);
-  --color-surface-accented: var(--surface-accented);
-  --color-fg: var(--fg);
-  --color-fg-muted: var(--fg-muted);
-  --color-fg-dimmed: var(--fg-dimmed);
-  --color-fg-strong: var(--fg-strong);
-  --color-line: var(--line);
-  --color-line-muted: var(--line-muted);
-  --color-accent: var(--accent);
-  --color-accent-hover: var(--accent-hover);
-  --color-accent-soft: var(--accent-soft);
-  --color-on-accent: var(--on-accent);
-  --color-focus-ring: var(--focus-ring);
-  --color-success: var(--success);
-  --color-success-soft: var(--success-soft);
-  --color-warning: var(--warning);
-  --color-warning-soft: var(--warning-soft);
-  --color-info: var(--info);
-  --color-info-soft: var(--info-soft);
-  --color-error: var(--error);
-  --color-error-soft: var(--error-soft);
-  --color-error-hover: var(--error-hover);
-  --color-error-border: var(--error-border);
-  --color-accent-border: var(--accent-border);
-  --color-overlay: var(--overlay);
+/* Colors by role, drawn from Tailwind's palette: Tailwind turns them into
+   classes for every property (`bg-surface`, `text-fg`, `border-line`,
+   `accent-primary`). */
+@theme {
+  /* Backgrounds: page, recessed areas, menus and headers, strong hover. */
+  --color-surface: light-dark(var(--color-white), var(--color-zinc-900));
+  --color-surface-sunken: light-dark(var(--color-zinc-100), var(--color-zinc-800));
+  --color-surface-raised: light-dark(var(--color-zinc-100), var(--color-zinc-800));
+  --color-surface-strong: light-dark(var(--color-zinc-200), var(--color-zinc-700));
 
-  --text-*: initial;
-  --text-tiny: var(--font-size-tiny);
-  --text-small: var(--font-size-small);
-  --text-ui: var(--font-size-ui);
-  --text-body: var(--font-size-body);
-  --text-title: var(--font-size-title);
-  --text-heading: var(--font-size-heading);
+  /* Texts: regular, secondary, faint, strong. */
+  --color-fg: light-dark(var(--color-zinc-700), var(--color-zinc-200));
+  --color-fg-secondary: light-dark(var(--color-zinc-500), var(--color-zinc-400));
+  --color-fg-faint: light-dark(var(--color-zinc-400), var(--color-zinc-500));
+  --color-fg-strong: light-dark(var(--color-zinc-900), var(--color-white));
 
-  --font-sans: var(--font-ui);
-  --font-mono: var(--font-code);
+  /* Borders: regular, faint. */
+  --color-line: light-dark(var(--color-zinc-200), var(--color-zinc-700));
+  --color-line-faint: light-dark(var(--color-zinc-100), var(--color-zinc-800));
 
-  /* The whole spacing scale (p-1, gap-2...) follows `--space-unit`, then
-     the named lengths, shared by several components. */
-  --spacing: var(--space-unit);
-  --spacing-control: var(--control-height);
-  --spacing-control-sm: var(--control-height-sm);
-  --spacing-row: var(--row-height);
-  --spacing-icon: var(--icon-size);
-  --spacing-icon-sm: var(--icon-size-sm);
+  /* Action color (main buttons, selection, focus), its hover, and the
+     text written on it. */
+  --color-primary: light-dark(var(--color-blue-500), var(--color-blue-400));
+  --color-primary-hover: light-dark(var(--color-blue-600), var(--color-blue-300));
+  --color-on-primary: light-dark(var(--color-white), var(--color-zinc-900));
 
-  --radius-control: var(--control-radius);
-  --radius-panel: var(--panel-radius);
+  /* States; info is the state of a session (open transaction), told
+     without alarm. */
+  --color-success: light-dark(var(--color-green-600), var(--color-green-400));
+  --color-warning: light-dark(var(--color-amber-600), var(--color-amber-400));
+  --color-info: light-dark(var(--color-indigo-600), var(--color-indigo-300));
+  --color-error: light-dark(var(--color-red-600), var(--color-red-400));
+  --color-error-hover: light-dark(var(--color-red-700), var(--color-red-300));
+
+  /* Veil behind the windows. */
+  --color-overlay: light-dark(
+    --alpha(var(--color-zinc-900) / 40%),
+    --alpha(var(--color-black) / 60%)
+  );
+}
+
+/* Font of the code (SQL editor, grid, data explorer): Cascadia Code, the
+   monospaced font of Windows, before Tailwind's list. */
+@theme {
+  --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
 }
 
 :root {
   color-scheme: light dark;
 
-  /* Palette: each hue only once. The variables that follow (by role) draw
-     their two values from it, light and dark; the components only use the
-     latter. */
-  --white: #fff;
-  --black: #000;
-  --zinc-100: #f4f4f5;
-  --zinc-200: #e4e4e7;
-  --zinc-300: #d4d4d8;
-  --zinc-400: #a1a1aa;
-  --zinc-500: #71717a;
-  --zinc-600: #52525b;
-  --zinc-700: #3f3f46;
-  --zinc-800: #27272a;
-  --zinc-900: #18181b;
-  --blue-300: #93c5fd;
-  --blue-400: #60a5fa;
-  --blue-500: #3b82f6;
-  --blue-600: #2563eb;
-  --green-300: #86efac;
-  --green-400: #4ade80;
-  --green-600: #16a34a;
-  --green-700: #15803d;
-  --amber-300: #fcd34d;
-  --amber-400: #fbbf24;
-  --amber-600: #d97706;
-  --amber-700: #b45309;
-  --red-300: #fca5a5;
-  --red-400: #f87171;
-  --red-600: #dc2626;
-  --red-700: #b91c1c;
-  --indigo-300: #a5b4fc;
-  --indigo-600: #4f46e5;
-  --violet-300: #c4b5fd;
-  --violet-600: #7c3aed;
-  --cyan-300: #67e8f9;
-  --cyan-700: #0e7490;
-  --pink-300: #f9a8d4;
-  --pink-700: #be185d;
+  /* Size of the root, which sets all of Tailwind's scales (text, spacing,
+     radii). Tailwind builds its scales around `text-base` = 1rem, the
+     regular text of a page meant for reading. Prisme is a dense tool
+     (grids, trees, SQL), whose regular text is three quarters of that
+     size: at 75%, `text-base` is that regular text, and Tailwind's scales
+     stay as they are, instead of being rewritten one by one. A percentage
+     keeps the size the user chose in the browser, which a length in pixels
+     would override. */
+  --root-font-size: 75%;
 
-  /* Backgrounds: page, recessed areas, menus and headers, strong hover. */
-  --surface: light-dark(var(--white), var(--zinc-900));
-  --surface-muted: light-dark(var(--zinc-100), var(--zinc-800));
-  --surface-elevated: light-dark(var(--zinc-100), var(--zinc-800));
-  --surface-accented: light-dark(var(--zinc-200), var(--zinc-700));
-
-  /* Texts: regular, secondary, discreet, strong. */
-  --fg: light-dark(var(--zinc-700), var(--zinc-200));
-  --fg-muted: light-dark(var(--zinc-500), var(--zinc-400));
-  --fg-dimmed: light-dark(var(--zinc-400), var(--zinc-500));
-  --fg-strong: light-dark(var(--zinc-900), var(--white));
-
-  /* Borders. */
-  --line: light-dark(var(--zinc-200), var(--zinc-700));
-  --line-muted: light-dark(var(--zinc-100), var(--zinc-800));
-
-  /* Action color (main buttons, selection, focus). */
-  --accent: light-dark(var(--blue-500), var(--blue-400));
-  --accent-hover: light-dark(var(--blue-600), var(--blue-300));
-  --accent-soft: color-mix(in oklab, var(--accent) 15%, transparent);
-  --on-accent: light-dark(var(--white), var(--zinc-900));
-
-  /* States. The "soft" versions are the background of alerts and badges. */
-  --success: light-dark(var(--green-600), var(--green-400));
-  --success-soft: color-mix(in oklab, var(--success) 12%, transparent);
-  --warning: light-dark(var(--amber-600), var(--amber-400));
-  --warning-soft: color-mix(in oklab, var(--warning) 12%, transparent);
-  /* State of a session (open transaction), told without alarm. */
-  --info: light-dark(var(--indigo-600), var(--indigo-300));
-  --info-soft: color-mix(in oklab, var(--info) 14%, transparent);
-  --error: light-dark(var(--red-600), var(--red-400));
-  --error-soft: color-mix(in oklab, var(--error) 12%, transparent);
-  --error-hover: light-dark(var(--red-700), var(--red-300));
-
-  /* Derived colors: focus outline, edges of outlined buttons, veil behind
-     the windows, hover of the resize bars, selection of the grid. */
-  --focus-ring: color-mix(in oklab, var(--accent) 60%, transparent);
-  --accent-border: color-mix(in oklab, var(--accent) 50%, transparent);
-  --error-border: color-mix(in oklab, var(--error) 50%, transparent);
-  --overlay: light-dark(
-    color-mix(in oklab, var(--zinc-900) 40%, transparent),
-    color-mix(in oklab, var(--black) 60%, transparent)
-  );
-  --resize-hover: color-mix(in oklab, var(--accent) 30%, transparent);
+  /* Hover of the resize bars, selection of the grid. */
+  --resize-hover: --alpha(var(--color-primary) / 30%);
+  --selection: --alpha(var(--color-primary) / 18%);
 
   /* Tooltips (`UiTooltip.vue`): dark in both modes, light text. */
-  --tooltip-bg: light-dark(var(--zinc-800), var(--zinc-700));
-  --tooltip-fg: light-dark(var(--zinc-100), var(--zinc-100));
-
-  --selection: color-mix(in oklab, var(--accent) 18%, transparent);
+  --tooltip-bg: light-dark(var(--color-zinc-800), var(--color-zinc-700));
+  --tooltip-fg: light-dark(var(--color-zinc-100), var(--color-zinc-100));
 
   /* Badge of a source's server flavor, in the navigator: text in the engine's
      color (MySQL blue, MariaDB brown) on a background tinted with the same
      color. */
-  --badge-mysql: light-dark(var(--blue-600), var(--blue-300));
-  --badge-mysql-bg: color-mix(in oklab, var(--badge-mysql) 14%, transparent);
-  --badge-mariadb: light-dark(var(--amber-700), var(--amber-300));
-  --badge-mariadb-bg: color-mix(in oklab, var(--badge-mariadb) 16%, transparent);
+  --badge-mysql: light-dark(var(--color-blue-600), var(--color-blue-300));
+  --badge-mysql-bg: --alpha(var(--badge-mysql) / 14%);
+  --badge-mariadb: light-dark(var(--color-amber-700), var(--color-amber-300));
+  --badge-mariadb-bg: --alpha(var(--badge-mariadb) / 16%);
 
   /* Syntax highlighting of the SQL editor (`editorTheme.ts`). */
-  --sql-keyword: light-dark(var(--violet-600), var(--violet-300));
-  --sql-type: light-dark(var(--cyan-700), var(--cyan-300));
-  --sql-string: light-dark(var(--amber-700), var(--amber-300));
-  --sql-number: light-dark(var(--green-700), var(--green-300));
-  --sql-variable: light-dark(var(--pink-700), var(--pink-300));
-  --sql-comment: light-dark(var(--zinc-500), var(--zinc-400));
+  --sql-keyword: light-dark(var(--color-violet-600), var(--color-violet-300));
+  --sql-type: light-dark(var(--color-cyan-700), var(--color-cyan-300));
+  --sql-string: light-dark(var(--color-amber-700), var(--color-amber-300));
+  --sql-number: light-dark(var(--color-green-700), var(--color-green-300));
+  --sql-variable: light-dark(var(--color-pink-700), var(--color-pink-300));
+  --sql-comment: light-dark(var(--color-zinc-500), var(--color-zinc-400));
 
   /* Syntax highlighting of the data explorer (JSON and XML), beyond the
      colors of SQL: names of the members and of the elements, names of the
      attributes. */
-  --data-name: light-dark(var(--blue-600), var(--blue-300));
-  --data-attribute: light-dark(var(--cyan-700), var(--cyan-300));
+  --data-name: light-dark(var(--color-blue-600), var(--color-blue-300));
+  --data-attribute: light-dark(var(--color-cyan-700), var(--color-cyan-300));
 
   /* Highlights of the editors: cursor line and its gutter, selection and
      its other occurrences, matched or unmatched bracket, query that
      Ctrl+Enter would run, results of the data explorer's search. */
-  --editor-active-line: color-mix(in oklab, var(--fg) 4%, transparent);
-  --editor-active-gutter: color-mix(in oklab, var(--fg) 8%, transparent);
-  --editor-selection: color-mix(in oklab, var(--accent) 25%, transparent);
-  --editor-selection-match: color-mix(in oklab, var(--accent) 12%, transparent);
-  --editor-bracket-match: color-mix(in oklab, var(--success) 25%, transparent);
-  --editor-bracket-mismatch: color-mix(in oklab, var(--error) 25%, transparent);
-  --editor-current-statement: color-mix(in oklab, var(--accent) 7%, transparent);
+  --editor-active-line: --alpha(var(--color-fg) / 4%);
+  --editor-active-gutter: --alpha(var(--color-fg) / 8%);
+  --editor-selection: --alpha(var(--color-primary) / 25%);
+  --editor-selection-match: --alpha(var(--color-primary) / 12%);
+  --editor-bracket-match: --alpha(var(--color-success) / 25%);
+  --editor-bracket-mismatch: --alpha(var(--color-error) / 25%);
+  --editor-current-statement: --alpha(var(--color-primary) / 7%);
   /* Search results: lemonchiffon, a veil of it in dark mode. */
-  --editor-search-match: light-dark(
-    lemonchiffon,
-    color-mix(in oklab, lemonchiffon 12%, transparent)
-  );
+  --editor-search-match: light-dark(lemonchiffon, --alpha(lemonchiffon / 12%));
 
-  /* Fonts and sizes. `--font-size-ui` is the regular size of the interface;
-     windows and menus use it too, tooltips the small size. */
-  --font-ui: ui-sans-serif, system-ui, sans-serif;
-  --font-code: ui-monospace, 'Cascadia Code', Consolas, monospace;
-  /* Discreet mentions: the version next to the name of Prisme. */
-  --font-size-tiny: 0.625rem;
-  --font-size-small: 0.6875rem;
-  --font-size-ui: 0.75rem;
-  --font-size-body: 0.875rem;
-  --font-size-title: 0.875rem;
-  --font-size-heading: 1.125rem;
-  /* Text of the SQL editor. */
-  --editor-font-size: 0.8125rem;
+  /* Text of the SQL editor and of the data explorer. */
+  --editor-font-size: var(--text-lg);
   /* Gutters: line numbers of the editors (`editorTheme.ts`) and row
      numbers of the grid (`ResultGrid.vue`), in the code font; room for a
      number of digits at least, so that both gutters have the same width as
      long as their numbers do not go beyond it. */
-  --gutter-font-size: var(--font-size-small);
+  --gutter-font-size: var(--text-sm);
   --gutter-digits: 4;
 
-  /* Unit of the lengths: step 1 of the spacing scale (p-1, gap-1). */
-  --space-unit: 0.25rem;
-
-  /* Named lengths, multiples of the unit. Heights: controls (buttons,
-     fields, lines of the menus), small buttons ("⋮" menu), lines of the
-     navigator's tree, whose height the code reads too (`h-control`,
-     `h-control-sm`, `h-row`). */
-  --control-height: calc(var(--space-unit) * 6);
-  --control-height-sm: calc(var(--space-unit) * 5);
-  --row-height: calc(var(--space-unit) * 6);
-
-  /* Icons: regular (buttons, menus), small (chevrons of the tree, icons of
-     the grid header) (`size-icon`, `size-icon-sm`). */
-  --icon-size: calc(var(--space-unit) * 4);
-  --icon-size-sm: calc(var(--space-unit) * 3);
-
-  /* Read by the code (`cssPixels`): height of a line of the result grid
-     (virtual scrolling), gap between a menu or a list and its trigger
-     (positioning of Reka UI). */
-  --grid-row-height: calc(var(--space-unit) * 6);
-  --popup-offset: var(--space-unit);
+  /* Read by the code (`cssPixels`): height of a line of the navigator's
+     tree (`h-(--row-height)`) and of the result grid (virtual scrolling),
+     gap between a menu or a list and its trigger (positioning of Reka
+     UI). */
+  --row-height: --spacing(8);
+  --grid-row-height: --spacing(8);
+  --popup-offset: --spacing(1);
 
   /* Columns of the result grid (`resultGrid.ts`): smallest width, enough
      for the sort button and the start of the name; average width of a
@@ -262,23 +155,23 @@
      `em` is that of the grid; room beside the text of an estimated or
      fitted width; caps of the estimated width and of the width fitted to
      the content. */
-  --grid-column-min-width: calc(var(--space-unit) * 10);
+  --grid-column-min-width: --spacing(13);
   --grid-char-width: 0.6em;
-  --grid-cell-room: calc(var(--space-unit) * 4);
-  --grid-estimated-max-width: calc(var(--space-unit) * 90);
-  --grid-fitted-max-width: calc(var(--space-unit) * 180);
+  --grid-cell-room: --spacing(5);
+  --grid-estimated-max-width: --spacing(120);
+  --grid-fitted-max-width: --spacing(240);
 
-  /* Thickness of the progress bar drawn on each result tab: half a unit,
+  /* Thickness of the progress bar drawn on each result tab: a stroke,
      thinner than any step of the scale. */
-  --tab-progress-height: calc(var(--space-unit) / 2);
+  --tab-progress-height: 2px;
 
   /* Resize bars (lines of the splitters, grid columns): the width grabbed
      by the pointer; their central grip: length, thickness and color at
      rest, that of the borders (blue on hover). */
-  --resize-handle-width: calc(var(--space-unit) * 2);
-  --grip-length: calc(var(--space-unit) * 7);
-  --grip-thickness: var(--space-unit);
-  --grip-color: var(--line);
+  --resize-handle-width: --spacing(3);
+  --grip-length: --spacing(9);
+  --grip-thickness: --spacing(1);
+  --grip-color: var(--color-line);
 
   /* Splitters of the layout (`SplitterGroup` of Reka UI), whose sizes the
      code reads (`cssPixels`): default and smallest width of the object
@@ -286,8 +179,9 @@
      editors, enough for the buttons of the editor on one line; thickness
      of the rail left by a folded panel (`rail`); bar left by a folded
      result list (`tab-bar`): the gap above its tabs, then a tab at its own
-     height, its padding (one unit above and below, `DocumentTab`) around
-     its small buttons, taller than its text, and the line under the bar;
+     height, its padding (one step above and below, `DocumentTab`) around
+     its small buttons (`h-7`), taller than its text, and the line under
+     the bar;
      a folded editor leaves the gap under the editors' tabs, where the grip
      of the line stays whole. Default heights of the editor and of the result list:
      Reka UI scales them together to the cell's height, so that they set a
@@ -295,44 +189,44 @@
      result list (tabs, a few rows and the line under the grid); smallest
      area of the editors: both, plus the tab bar of the editors, the padding
      and the gaps. Default and smallest height of the console. */
-  --navigator-width: calc(var(--space-unit) * 75);
-  --navigator-min-width: calc(var(--space-unit) * 50);
-  --explorer-width: calc(var(--space-unit) * 105);
-  --explorer-min-width: calc(var(--space-unit) * 60);
-  --editors-min-width: calc(var(--space-unit) * 160);
-  --rail-size: calc(var(--space-unit) * 7);
-  --tab-bar-height: calc(var(--space-unit) * 4 + var(--control-height-sm) + var(--line-width));
-  --editor-folded-height: calc(var(--space-unit) * 2);
-  --editor-height: calc(var(--space-unit) * 50);
-  --results-height: calc(var(--space-unit) * 100);
-  --editor-min-height: calc(var(--space-unit) * 24);
-  --results-min-height: calc(var(--space-unit) * 50);
-  --editors-min-height: calc(
-    var(--editor-min-height) + var(--results-min-height) + var(--space-unit) * 18
-  );
-  --console-height: calc(var(--space-unit) * 55);
-  --console-min-height: calc(var(--space-unit) * 30);
+  --navigator-width: --spacing(100);
+  --navigator-min-width: --spacing(67);
+  --explorer-width: --spacing(140);
+  --explorer-min-width: --spacing(80);
+  --editors-min-width: --spacing(213);
+  --rail-size: --spacing(9);
+  --tab-bar-height: calc(--spacing(5) + --spacing(7) + var(--line-width));
+  --editor-folded-height: --spacing(3);
+  --editor-height: --spacing(67);
+  --results-height: --spacing(133);
+  --editor-min-height: --spacing(32);
+  --results-min-height: --spacing(67);
+  --editors-min-height: calc(var(--editor-min-height) + var(--results-min-height) + --spacing(24));
+  --console-height: --spacing(73);
+  --console-min-height: --spacing(40);
 
-  /* Scrollbars: radius, thumb and hovered thumb. */
-  --scrollbar-radius: 0.125rem;
-  --scrollbar-thumb: light-dark(var(--zinc-300), var(--zinc-600));
-  --scrollbar-thumb-hover: light-dark(var(--zinc-400), var(--zinc-500));
+  /* Scrollbars: thumb and hovered thumb. */
+  --scrollbar-thumb: light-dark(var(--color-zinc-300), var(--color-zinc-600));
+  --scrollbar-thumb-hover: light-dark(var(--color-zinc-400), var(--color-zinc-500));
 
   /* Lines: the only lengths in pixels, to stay sharp on screen (a fraction
      of a pixel would blur a line). Borders, focus outline and move marker of
-     a column or a tab. */
+     a column or a tab. A line is always a border (or an outline), never a
+     box of `--line-width` filled by its background: the browser rounds the
+     width of a border to whole pixels of the screen, whereas at a scale of
+     125% or 150% (Windows, zoom of the browser) a box of one CSS pixel
+     covers a pixel and a quarter or a half, and is painted one or two
+     pixels thick according to its position, which changes with the size of
+     the window (`docs/DEVELOPER.md`, section "Lines";
+     `__tests__/lines.spec.ts`). */
   --line-width: 1px;
   --focus-width: 1px;
   --focus-offset: 1px;
   --marker-width: 2px;
-
-  /* Radii: controls, then windows and menus. */
-  --control-radius: 0.375rem;
-  --panel-radius: 0.5rem;
 }
 
 /* Lengths read by the code (`cssPixels`): registered as lengths, so that
-   the browser resolves their multiple of `--space-unit` into pixels. */
+   the browser resolves their steps of `--spacing` into pixels. */
 @property --row-height {
   syntax: '<length>';
   inherits: true;
@@ -450,26 +344,33 @@
 }
 
 @layer base {
+  html {
+    font-size: var(--root-font-size);
+  }
+
   html,
   body,
   #app {
     height: 100%;
   }
 
+  /* Regular text of the interface: Tailwind's `text-base`, with its line
+     height. */
   body {
-    background: var(--surface);
-    color: var(--fg);
-    font-family: var(--font-ui);
-    font-size: var(--font-size-ui);
+    background: var(--color-surface);
+    color: var(--color-fg);
+    font-size: var(--text-base);
+    line-height: var(--text-base--line-height);
   }
 
   /* Thin scrollbars, in the theme's colors, without arrows. Chromium (Edge,
      Chrome) goes through its pseudo-elements, the only way to remove the
      arrows; the other browsers, through the standard properties. */
   ::-webkit-scrollbar {
-    /* Width of the vertical bar, height of the horizontal bar. */
-    width: --spacing(1);
-    height: --spacing(1);
+    /* Width of the vertical bar, height of the horizontal bar: two steps,
+       thin but easy to grab. */
+    width: --spacing(2);
+    height: --spacing(2);
   }
 
   ::-webkit-scrollbar-track,
@@ -477,8 +378,9 @@
     background: transparent;
   }
 
+  /* Thumb rounded at its ends: a radius of half the bar's width. */
   ::-webkit-scrollbar-thumb {
-    border-radius: var(--scrollbar-radius);
+    border-radius: var(--radius-sm);
     background: var(--scrollbar-thumb);
 
     &:hover {

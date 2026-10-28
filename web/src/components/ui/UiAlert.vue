@@ -36,10 +36,10 @@ const emit = defineEmits<{
  * Classes and icon of each tone, the classes written out so that Tailwind finds them.
  */
 const TONES = {
-  info: { classes: 'bg-accent-soft text-accent', icon: Info },
-  success: { classes: 'bg-success-soft text-success', icon: CircleCheckBig },
-  warning: { classes: 'bg-warning-soft text-warning', icon: CircleAlert },
-  error: { classes: 'bg-error-soft text-error', icon: CircleX },
+  info: { classes: 'bg-primary/15 text-primary', icon: Info },
+  success: { classes: 'bg-success/12 text-success', icon: CircleCheckBig },
+  warning: { classes: 'bg-warning/12 text-warning', icon: CircleAlert },
+  error: { classes: 'bg-error/12 text-error', icon: CircleX },
 } as const
 
 /**
@@ -65,10 +65,10 @@ function close(): void {
   <div
     v-if="!closed"
     role="alert"
-    class="flex items-center gap-2 rounded-control px-2 py-2 text-ui"
+    class="flex items-center gap-3 rounded-lg px-3 py-3 text-base"
     :class="TONES[tone].classes"
   >
-    <component :is="TONES[tone].icon" class="size-icon shrink-0" aria-hidden="true" />
+    <component :is="TONES[tone].icon" class="size-5 shrink-0" aria-hidden="true" />
     <span class="min-w-0 flex-1 wrap-break-word whitespace-pre-line">{{ title }}</span>
     <slot />
     <ui-button

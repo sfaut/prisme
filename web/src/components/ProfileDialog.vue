@@ -85,7 +85,7 @@ async function save(): Promise<void> {
 
 <template>
   <ui-dialog v-model:open="open" title="Profil" description="Nom et prénom de l’utilisateur">
-    <form id="profile-form" class="flex flex-col gap-3" @submit.prevent="save">
+    <form id="profile-form" class="flex flex-col gap-4" @submit.prevent="save">
       <ui-field label="Nom">
         <ui-input v-model="form.last_name" :maxlength="100" autocomplete="family-name" />
       </ui-field>
@@ -93,7 +93,7 @@ async function save(): Promise<void> {
         <ui-input v-model="form.first_name" :maxlength="100" autocomplete="given-name" />
       </ui-field>
       <ui-field label="E-mail">
-        <span class="truncate text-fg-muted" v-tooltip="email">{{ email }}</span>
+        <span class="truncate text-fg-secondary" v-tooltip="email">{{ email }}</span>
       </ui-field>
       <ui-alert v-if="error" tone="error" :title="error" />
     </form>
@@ -104,7 +104,7 @@ async function save(): Promise<void> {
         form="profile-form"
         label="Enregistrer"
         variant="solid"
-        tone="accent"
+        tone="primary"
         :loading="saving"
         class="flex-1"
       />

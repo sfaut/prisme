@@ -214,14 +214,14 @@ onBeforeUnmount(() => {
     bottom span-left;
   margin: 0;
   margin-block: var(--popup-offset);
-  max-inline-size: --spacing(72);
-  padding: --spacing(1) --spacing(2);
+  max-inline-size: --spacing(96);
+  padding: --spacing(1) --spacing(3);
   overflow: hidden;
   border: none;
-  border-radius: var(--control-radius);
+  border-radius: var(--radius-lg);
   background: var(--tooltip-bg);
   color: var(--tooltip-fg);
-  font-size: var(--font-size-small);
+  font-size: var(--text-sm);
   line-height: 1.4;
   white-space: pre-line;
   overflow-wrap: anywhere;

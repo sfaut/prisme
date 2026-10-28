@@ -149,7 +149,9 @@ const ENTRY_ICONS: Record<Exclude<EntryKind, 'folder'>, Component> = {
 
 /**
  * Icon of a node, before its label: each level has its own (roots, source,
- * database, open or closed folder, table, view, column...).
+ * database, open or closed folder, table, view, column...). A column has a
+ * single icon, which tells its key: a key for the primary key, a link for a
+ * foreign key, the column icon otherwise.
  *
  * @param node Node of the tree.
  * @param expanded Is the node open?
@@ -165,10 +167,29 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
     case 'notebooks':
       return Notebook
   }
+  if (node.column?.primaryKey) {
+    return KeyRound
+  }
+  if (node.column?.foreignKey) {
+    return Link
+  }
   if (node.entry === undefined || node.entry === 'folder') {
     return expanded ? FolderOpen : Folder
   }
   return ENTRY_ICONS[node.entry]
+}
+
+/**
+ * Name of a column's key icon, for screen readers; none for the other
+ * icons, which repeat the label.
+ *
+ * @param node Node of the tree.
+ */
+function iconLabel(node: NavigatorNode): string | undefined {
+  if (node.column?.primaryKey) {
+    return 'Clef primaire'
+  }
+  return node.column?.foreignKey ? 'Clef étrangère' : undefined
 }
 </script>
 
@@ -176,26 +197,19 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
   <component
     :is="expanded ? ChevronDown : ChevronRight"
     v-if="node.children?.length"
-    class="size-icon-sm shrink-0 text-fg-dimmed"
+    class="size-4 shrink-0 text-fg-faint"
   />
-  <span v-else class="size-icon-sm shrink-0" />
+  <span v-else class="size-4 shrink-0" />
   <component
     :is="nodeIcon(node, expanded)"
-    class="size-icon shrink-0 text-fg-muted"
+    class="size-5 shrink-0 text-fg-secondary"
+    :aria-label="iconLabel(node)"
     :class="{ 'animate-spin': node.entry === 'loading' }"
   />
 
-  <!-- Column: symbols, name (bold if indexed), type and nullability. -->
+  <!-- Column: name (bold if indexed), type and nullability. -->
   <span v-if="node.column" class="tree-label flex min-w-0 flex-1 items-center">
-    <span
-      v-if="node.column.markSlots > 0"
-      class="inline-flex flex-none text-fg-muted"
-      :style="{ width: `${node.column.markSlots}em` }"
-    >
-      <KeyRound v-if="node.column.primaryKey" class="size-[1em]" aria-label="Clef primaire" />
-      <Link v-if="node.column.foreignKey" class="size-[1em]" aria-label="Clef étrangère" />
-    </span>
-    <span class="flex min-w-0 flex-1 items-center gap-3">
+    <span class="flex min-w-0 flex-1 items-center gap-4">
       <span
         class="flex-none font-bold text-trim"
         :style="{ minWidth: `${node.column.nameWidth}ch` }"
@@ -204,7 +218,7 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
           {{ node.column.name }}
         </span>
       </span>
-      <span class="truncate text-small text-fg-dimmed text-trim" v-tooltip="node.column.details">
+      <span class="truncate text-sm text-fg-faint text-trim" v-tooltip="node.column.details">
         {{ node.column.details }}
       </span>
     </span>
@@ -215,23 +229,23 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
     tooltip gives the name and version of the server. The whole takes the
     room left, which pushes the menu to the end of the line.
   -->
-  <span v-else class="flex min-w-0 flex-1 items-center gap-2">
+  <span v-else class="flex min-w-0 flex-1 items-center gap-3">
     <span
-      class="tree-label flex min-w-0 items-center gap-3"
+      class="tree-label flex min-w-0 items-center gap-4"
       :class="{
         'current-database': node.current,
         'font-bold': node.current || node.role === 'sources' || node.role === 'notebooks',
       }"
     >
       <span class="truncate text-trim">{{ node.label }}</span>
-      <span v-if="node.note" class="shrink-0 text-small font-normal text-fg-dimmed text-trim">
+      <span v-if="node.note" class="shrink-0 text-sm font-normal text-fg-faint text-trim">
         {{ node.note }}
       </span>
     </span>
     <span
       v-if="node.badge"
       v-tooltip="node.badgeTooltip"
-      class="flavor-badge inline-flex shrink-0 items-center rounded-full px-1 text-tiny font-medium"
+      class="flavor-badge inline-flex shrink-0 items-center rounded-full px-1 text-xs font-medium"
       :data-flavor="node.badge"
     >
       <span class="text-trim">{{ node.badge }}</span>

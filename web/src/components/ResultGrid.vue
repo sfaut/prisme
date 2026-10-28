@@ -5,7 +5,7 @@
   - User filter: text searched in all the columns (global filter) or in one
     column (targeted filter). The form is collapsed; its button, a funnel
     as in the console, expands it (and collapses it: the user filter stays
-    applied, the button shows it in the accent color).
+    applied, the button shows it in the primary color).
   - Buttons: the content of the `actions` slot (refresh of the result),
     then the user filter button. For the result tab shown, they go to the
     bar of the result tabs (`actionsTarget`, by a `Teleport` of Vue);
@@ -912,9 +912,9 @@ const userFilterColumn = computed({
         <ui-button
           :icon="Funnel"
           variant="ghost"
-          :tone="userFilter.text === '' ? 'neutral' : 'accent'"
+          :tone="userFilter.text === '' ? 'neutral' : 'primary'"
           small
-          :class="{ 'bg-surface-elevated': userFilterOpen }"
+          :class="{ 'bg-surface-raised': userFilterOpen }"
           :aria-pressed="userFilterOpen"
           :aria-label="userFilterLabel"
           v-tooltip="userFilterLabel"
@@ -935,7 +935,7 @@ const userFilterColumn = computed({
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: --spacing(2);
+  gap: --spacing(3);
   min-height: 0;
 }
 
@@ -944,16 +944,16 @@ const userFilterColumn = computed({
 .grid-toolbar {
   display: flex;
   align-items: center;
-  gap: --spacing(2);
+  gap: --spacing(3);
   padding-block-start: --spacing(1);
 }
 
 .grid-user-filter {
-  max-inline-size: --spacing(60);
+  max-inline-size: --spacing(80);
 }
 
 .grid-user-filter-column {
-  max-inline-size: --spacing(50);
+  max-inline-size: --spacing(67);
 }
 
 /* Status of the result, discreet: in the small size, at the bottom of the
@@ -962,21 +962,21 @@ const userFilterColumn = computed({
 .grid-footer {
   display: flex;
   align-items: center;
-  gap: --spacing(2);
-  color: var(--fg-muted);
-  font-size: var(--font-size-small);
+  gap: --spacing(3);
+  color: var(--color-fg-secondary);
+  font-size: var(--text-sm);
 }
 
 .grid-scroller {
   position: relative;
   flex: 1;
-  min-block-size: --spacing(30);
+  min-block-size: --spacing(40);
   /* Safeguard: a scroll area taller than the window would draw all the rows
      and freeze the interface. */
   max-block-size: 100vh;
   overflow: auto;
-  border: var(--line-width) solid var(--line);
-  font-size: var(--font-size-ui);
+  border: var(--line-width) solid var(--color-line);
+  font-size: var(--text-base);
   user-select: none;
 
   &.attached {
@@ -1006,7 +1006,7 @@ const userFilterColumn = computed({
   z-index: 1;
   inline-size: max-content;
   min-inline-size: 100%;
-  background: var(--surface-elevated);
+  background: var(--color-surface-raised);
 }
 
 .grid-body {
@@ -1035,14 +1035,14 @@ const userFilterColumn = computed({
   inset-inline-start: 0;
   z-index: 2;
   padding-inline: --spacing(1);
-  border-inline-end: var(--line-width) solid var(--line);
-  background: var(--surface-elevated);
-  color: var(--fg-dimmed);
-  font-family: var(--font-code);
+  border-inline-end: var(--line-width) solid var(--color-line);
+  background: var(--color-surface-raised);
+  color: var(--color-fg-faint);
+  font-family: var(--font-mono);
   font-size: var(--gutter-font-size);
   text-align: end;
   inline-size: calc(
-    max(var(--gutter-digits), var(--row-digits)) * 1ch + --spacing(2) + var(--line-width)
+    max(var(--gutter-digits), var(--row-digits)) * 1ch + --spacing(3) + var(--line-width)
   );
 }
 
@@ -1067,21 +1067,21 @@ const userFilterColumn = computed({
   position: relative;
   display: flex;
   min-inline-size: 0;
-  border-inline-start: var(--line-width) solid var(--line);
+  border-inline-start: var(--line-width) solid var(--color-line);
   font-weight: 600;
 
   /* Only the last column carries a right border: the others are closed by
      the left border of their neighbour. */
   &:last-child {
-    border-inline-end: var(--line-width) solid var(--line);
+    border-inline-end: var(--line-width) solid var(--color-line);
   }
 
   &.drop-before {
-    box-shadow: inset var(--marker-width) 0 0 var(--accent);
+    box-shadow: inset var(--marker-width) 0 0 var(--color-primary);
   }
 
   &.drop-after {
-    box-shadow: inset calc(-1 * var(--marker-width)) 0 0 var(--accent);
+    box-shadow: inset calc(-1 * var(--marker-width)) 0 0 var(--color-primary);
   }
 }
 
@@ -1113,18 +1113,18 @@ const userFilterColumn = computed({
 .grid-type-icon {
   flex: none;
   align-self: center;
-  inline-size: var(--icon-size-sm);
-  block-size: var(--icon-size-sm);
-  color: var(--fg-dimmed);
+  inline-size: --spacing(4);
+  block-size: --spacing(4);
+  color: var(--color-fg-faint);
 }
 
 /* Text mark (123, .00), as tall as the icons. */
 .grid-type-glyph {
   flex: none;
   align-content: center;
-  color: var(--fg-dimmed);
-  font-family: var(--font-code);
-  font-size: var(--font-size-small);
+  color: var(--color-fg-faint);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
   font-weight: 500;
   letter-spacing: -0.05em;
   text-box: trim-both cap alphabetic;
@@ -1148,26 +1148,26 @@ const userFilterColumn = computed({
   padding-inline: --spacing(1);
   border: none;
   background: none;
-  color: var(--fg-dimmed);
-  font-size: var(--font-size-small);
+  color: var(--color-fg-faint);
+  font-size: var(--text-sm);
   cursor: pointer;
 
   &:hover {
-    color: var(--fg-strong);
+    color: var(--color-fg-strong);
   }
 }
 
 .grid-cell {
   padding-inline: --spacing(1);
   overflow: hidden;
-  border-block-end: var(--line-width) solid var(--line-muted);
-  border-inline-start: var(--line-width) solid var(--line-muted);
+  border-block-end: var(--line-width) solid var(--color-line-faint);
+  border-inline-start: var(--line-width) solid var(--color-line-faint);
   text-overflow: ellipsis;
   white-space: nowrap;
   cursor: cell;
 
   &:last-child {
-    border-inline-end: var(--line-width) solid var(--line-muted);
+    border-inline-end: var(--line-width) solid var(--color-line-faint);
   }
 
   &.right {
@@ -1176,12 +1176,12 @@ const userFilterColumn = computed({
 
   /* Fixed-length text (CHAR): codes and references, in monospace. */
   &.mono {
-    font-family: var(--font-code);
+    font-family: var(--font-mono);
   }
 
   /* NULL in small capitals: more discreet than a value of the column. */
   &.null {
-    color: var(--fg-dimmed);
+    color: var(--color-fg-faint);
     font-style: italic;
     font-variant-caps: all-small-caps;
   }
@@ -1200,7 +1200,7 @@ const userFilterColumn = computed({
   gap: --spacing(1);
   max-inline-size: 100%;
   vertical-align: top;
-  color: var(--accent);
+  color: var(--color-primary);
   text-decoration: none;
   cursor: pointer;
 
@@ -1212,8 +1212,8 @@ const userFilterColumn = computed({
 /* External link icon, before the address. */
 .grid-link-icon {
   flex-shrink: 0;
-  inline-size: var(--icon-size-sm);
-  block-size: var(--icon-size-sm);
+  inline-size: --spacing(4);
+  block-size: --spacing(4);
 }
 
 .grid-link-text {

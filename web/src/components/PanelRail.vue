@@ -2,10 +2,11 @@
   Rail left by a folded panel on its edge of the layout: a narrow bar, along
   the whole edge, with the icon that opens the panel again and its title
   (vertical on a side, horizontal at the bottom). The whole rail is the
-  button. Its icon stands where the header of the open panel shows its fold
-  button: a control's height below the panel's padding on a side; at the
-  bottom, at the right end, before the panel's padding, the title at the
-  left end.
+  button. Its icon, at the size of the fold button's (`size-5`, like every
+  icon), stands where the header of the open panel shows that button:
+  a control's height below the panel's padding on a side; at the bottom,
+  at the right end, before the panel's padding, the title at the left
+  end.
 -->
 <script setup lang="ts">
 import { PanelBottomOpen, PanelLeftOpen, PanelRightOpen } from '@lucide/vue'
@@ -49,7 +50,7 @@ const ICONS = {
     @click="emit('expand')"
   >
     <span class="panel-rail-icon">
-      <component :is="ICONS[props.side]" class="size-icon" aria-hidden="true" />
+      <component :is="ICONS[props.side]" class="size-5" aria-hidden="true" />
     </span>
     <span class="panel-rail-title">{{ title }}</span>
   </button>
@@ -62,17 +63,17 @@ const ICONS = {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: --spacing(2);
-  padding: --spacing(2);
-  background: var(--surface);
-  color: var(--fg-dimmed);
-  font-size: var(--font-size-ui);
+  gap: --spacing(3);
+  padding: --spacing(3);
+  background: var(--color-surface);
+  color: var(--color-fg-faint);
+  font-size: var(--text-base);
   font-weight: 600;
   cursor: pointer;
 
   &:hover {
-    background: var(--surface-muted);
-    color: var(--fg-strong);
+    background: var(--color-surface-sunken);
+    color: var(--color-fg-strong);
   }
 
   /* On a side: along the whole height, the title written downwards; the
@@ -81,7 +82,7 @@ const ICONS = {
   &.end {
     flex-direction: column;
     inline-size: var(--rail-size);
-    padding-block-start: --spacing(3);
+    padding-block-start: --spacing(4);
   }
 
   /* At the bottom: along the whole width, the title at the left end, the
@@ -91,7 +92,7 @@ const ICONS = {
     flex-direction: row-reverse;
     justify-content: space-between;
     block-size: var(--rail-size);
-    padding-inline: --spacing(3);
+    padding-inline: --spacing(4);
   }
 }
 
@@ -105,11 +106,11 @@ const ICONS = {
 
   .start &,
   .end & {
-    block-size: var(--control-height);
+    block-size: --spacing(8);
   }
 
   .bottom & {
-    inline-size: var(--control-height-sm);
+    inline-size: --spacing(7);
   }
 }
 

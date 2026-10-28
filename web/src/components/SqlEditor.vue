@@ -372,8 +372,8 @@ defineExpose({ cursor, selection, changeText })
 <style scoped>
 .sql-editor {
   block-size: 100%;
-  border: var(--line-width) solid var(--line);
-  border-radius: var(--control-radius);
+  border: var(--line-width) solid var(--color-line);
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
@@ -383,6 +383,6 @@ defineExpose({ cursor, selection, changeText })
 }
 
 .sql-editor :deep(.cm-scroller) {
-  font-family: var(--font-code);
+  font-family: var(--font-mono);
 }
 </style>

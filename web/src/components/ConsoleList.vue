@@ -109,7 +109,7 @@ watch(
 <template>
   <div ref="scroller" class="min-h-0 flex-1 overflow-auto" @scroll="readOlderAtTop">
     <ui-alert v-if="list.error" tone="error" :title="list.error" @close="list.dismissError()" />
-    <p v-if="list.entries.length === 0" class="p-3 text-center text-fg-muted">{{ empty }}</p>
+    <p v-if="list.entries.length === 0" class="p-4 text-center text-fg-secondary">{{ empty }}</p>
     <slot v-else />
   </div>
 </template>
@@ -122,35 +122,35 @@ watch(
   inline-size: 100%;
   table-layout: fixed;
   border-collapse: collapse;
-  font-size: var(--font-size-small);
+  font-size: var(--text-sm);
   font-variant-numeric: tabular-nums;
-  color: var(--fg);
+  color: var(--color-fg);
 
   & thead {
     position: sticky;
     z-index: 1;
     inset-block-start: 0;
-    background: var(--surface);
+    background: var(--color-surface);
   }
 
   & th {
-    border-block-end: var(--line-width) solid var(--line);
-    color: var(--fg-muted);
+    border-block-end: var(--line-width) solid var(--color-line);
+    color: var(--color-fg-secondary);
     font-weight: 500;
   }
 
   & tbody tr {
-    border-block-end: var(--line-width) solid var(--line-muted);
+    border-block-end: var(--line-width) solid var(--color-line-faint);
 
     &:hover {
-      background: var(--surface-muted);
+      background: var(--color-surface-sunken);
     }
   }
 
   & th,
   & td {
     padding-block: --spacing(1);
-    padding-inline: --spacing(2);
+    padding-inline: --spacing(3);
     overflow: hidden;
     text-align: start;
     text-overflow: ellipsis;

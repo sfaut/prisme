@@ -40,13 +40,13 @@ function onInput(event: Event): void {
     <component
       :is="icon"
       v-if="icon"
-      class="pointer-events-none absolute inset-s-2 size-icon text-fg-dimmed"
+      class="pointer-events-none absolute inset-s-2 size-5 text-fg-faint"
     />
     <input
       v-bind="{ ...$attrs, class: undefined }"
       :value="model"
-      class="h-control w-full min-w-0 rounded-control border border-line bg-surface px-2 text-ui text-fg-strong [appearance:textfield] placeholder:text-fg-dimmed focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-focus-ring"
-      :class="{ 'ps-7': icon, 'pe-7': $slots.trailing }"
+      class="h-8 w-full min-w-0 rounded-lg border border-line bg-surface px-3 text-base text-fg-strong [appearance:textfield] placeholder:text-fg-faint focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary/60"
+      :class="{ 'ps-9': icon, 'pe-9': $slots.trailing }"
       @input="onInput"
     />
     <div v-if="$slots.trailing" class="absolute inset-e-1 flex items-center">

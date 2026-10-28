@@ -534,7 +534,7 @@ function selectSource(connectionId: number): void {
         @resize="follow(navigatorSplit, (open) => (layout.objectsOpen = open))"
       >
         <!-- Folded, the object navigator stays mounted: its tree keeps its state. -->
-        <aside v-show="layout.objectsOpen" class="flex min-w-0 flex-1 flex-col gap-3 p-3">
+        <aside v-show="layout.objectsOpen" class="flex min-w-0 flex-1 flex-col gap-4 p-4">
           <object-navigator
             :selected-id="connections.selectedId"
             :current-database="activeDatabase"
@@ -570,8 +570,8 @@ function selectSource(connectionId: number): void {
               (`QueryCell`), which would cut a border set against their edge;
               the other elements take it here.
             -->
-            <main class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 py-3">
-              <div v-if="editorsError" class="flex px-3">
+            <main class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 py-4">
+              <div v-if="editorsError" class="flex px-4">
                 <ui-alert
                   tone="error"
                   :title="editorsError"
@@ -584,7 +584,7 @@ function selectSource(connectionId: number): void {
                 :unmount-on-hide="false"
                 class="flex min-h-0 flex-1 flex-col"
               >
-                <div class="flex px-3">
+                <div class="flex px-4">
                   <editor-tab-bar class="flex-1" @close="closeEditor">
                     <template #actions>
                       <div ref="editorActions" class="contents" />
@@ -619,11 +619,11 @@ function selectSource(connectionId: number): void {
                     @status="(status) => followStatus(editor.id, status)"
                     @transaction="(open) => (editors.transactions[editor.id] = open)"
                   />
-                  <div v-else class="flex max-w-xs flex-col items-center gap-2 text-center">
-                    <span class="flex rounded-full bg-surface-elevated p-3">
-                      <Database class="size-icon text-fg-muted" />
+                  <div v-else class="flex max-w-xs flex-col items-center gap-3 text-center">
+                    <span class="flex rounded-full bg-surface-raised p-4">
+                      <Database class="size-5 text-fg-secondary" />
                     </span>
-                    <p class="text-balance text-fg-muted">
+                    <p class="text-balance text-fg-secondary">
                       Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données pour la
                       choisir pour cet éditeur, ou ajoutez une connexion par le menu « ⋮ »
                     </p>
@@ -649,7 +649,7 @@ function selectSource(connectionId: number): void {
           >
             <section
               v-if="consoleStore.open"
-              class="flex min-h-0 min-w-0 flex-1 flex-col px-3 pt-1 pb-3"
+              class="flex min-h-0 min-w-0 flex-1 flex-col px-4 pt-1 pb-4"
             >
               <console-panel />
             </section>
@@ -678,7 +678,7 @@ function selectSource(connectionId: number): void {
         class="flex"
         @resize="follow(explorerSplit, (open) => (explorer.open = open))"
       >
-        <aside v-if="explorer.open" class="flex min-w-0 flex-1 flex-col p-3">
+        <aside v-if="explorer.open" class="flex min-w-0 flex-1 flex-col p-4">
           <data-explorer />
         </aside>
         <panel-rail
@@ -697,12 +697,12 @@ function selectSource(connectionId: number): void {
     :title="ENDING_TEXTS[ending?.action ?? 'disconnect'].title"
     description="Une transaction est ouverte sur la session."
   >
-    <p class="text-fg-muted">
+    <p class="text-fg-secondary">
       La session se ferme, ce qui annule la transaction (ROLLBACK) : ses modifications non validées
       sont perdues. Pour les garder, exécuter d’abord COMMIT.
     </p>
     <template #footer>
-      <div class="flex w-full justify-end gap-2">
+      <div class="flex w-full justify-end gap-3">
         <ui-button label="Annuler" @click="answerEnding(false)" />
         <ui-button
           :label="ENDING_TEXTS[ending?.action ?? 'disconnect'].confirm"

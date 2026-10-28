@@ -52,8 +52,8 @@ const ICONS = {
 </script>
 
 <template>
-  <div class="flex items-start gap-2">
-    <div v-if="first" class="flex h-control items-center">
+  <div class="flex items-start gap-3">
+    <div v-if="first" class="flex h-8 items-center">
       <ui-button
         :icon="ICONS[props.side]"
         variant="ghost"
@@ -64,14 +64,14 @@ const ICONS = {
       />
     </div>
     <div class="flex min-w-0 flex-1 flex-col gap-1">
-      <div class="flex min-h-control items-center">
+      <div class="flex min-h-8 items-center">
         <slot>
-          <h2 class="text-title leading-none font-semibold text-fg-strong">{{ title }}</h2>
+          <h2 class="text-lg leading-none font-semibold text-fg-strong">{{ title }}</h2>
         </slot>
       </div>
       <slot name="subtitle" />
     </div>
-    <div class="flex min-h-control items-center">
+    <div class="flex min-h-8 items-center">
       <slot name="actions" />
       <ui-button
         v-if="!first"

@@ -65,7 +65,7 @@ function commit(): void {
     ref="input"
     v-model="draft"
     aria-label="Nom de l'onglet"
-    class="h-control-sm w-40 min-w-0 rounded-control border border-line bg-surface px-1 text-small text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-focus-ring"
+    class="h-7 w-53 min-w-0 rounded-lg border border-line bg-surface px-1 text-sm text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary/60"
     @blur="commit"
     @keydown.stop
     @keydown.enter.prevent="commit"

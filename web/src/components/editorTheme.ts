@@ -17,15 +17,15 @@ import { tags } from '@lezer/highlight'
  * Background, gutter, cursor, selection, tooltips and completion list.
  */
 const chrome = EditorView.theme({
-  '&': { backgroundColor: 'var(--surface)', color: 'var(--fg-strong)' },
+  '&': { backgroundColor: 'var(--color-surface)', color: 'var(--color-fg-strong)' },
   // No focus outline: only the text input fields have a focus ring.
   '&.cm-focused': { outline: 'none' },
-  '.cm-content': { caretColor: 'var(--fg-strong)' },
-  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--fg-strong)' },
+  '.cm-content': { caretColor: 'var(--color-fg-strong)' },
+  '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--color-fg-strong)' },
   '.cm-gutters': {
-    backgroundColor: 'var(--surface-muted)',
-    color: 'var(--fg-dimmed)',
-    borderRight: 'var(--line-width) solid var(--line)',
+    backgroundColor: 'var(--color-surface-sunken)',
+    color: 'var(--color-fg-faint)',
+    borderRight: 'var(--line-width) solid var(--color-line)',
   },
   // Line numbers as the row numbers of the grid: code font smaller than the
   // text, on the right, centered on their line, one unit on each side; room
@@ -35,9 +35,9 @@ const chrome = EditorView.theme({
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    minWidth: 'calc(var(--gutter-digits) * 1ch + var(--space-unit) * 2)',
-    padding: '0 var(--space-unit)',
-    fontFamily: 'var(--font-code)',
+    minWidth: 'calc(var(--gutter-digits) * 1ch + var(--spacing) * 3)',
+    padding: '0 var(--spacing)',
+    fontFamily: 'var(--font-mono)',
     fontSize: 'var(--gutter-font-size)',
   },
   '.cm-activeLine': { backgroundColor: 'var(--editor-active-line)' },
@@ -48,24 +48,24 @@ const chrome = EditorView.theme({
   '&.cm-focused .cm-matchingBracket': { backgroundColor: 'var(--editor-bracket-match)' },
   '&.cm-focused .cm-nonmatchingBracket': { backgroundColor: 'var(--editor-bracket-mismatch)' },
   '.cm-tooltip': {
-    backgroundColor: 'var(--surface-elevated)',
-    color: 'var(--fg)',
-    border: 'var(--line-width) solid var(--line)',
-    borderRadius: 'var(--control-radius)',
+    backgroundColor: 'var(--color-surface-raised)',
+    color: 'var(--color-fg)',
+    border: 'var(--line-width) solid var(--color-line)',
+    borderRadius: 'var(--radius-lg)',
   },
   '.cm-tooltip-autocomplete > ul > li[aria-selected]': {
-    backgroundColor: 'var(--accent)',
-    color: 'var(--surface)',
+    backgroundColor: 'var(--color-primary)',
+    color: 'var(--color-surface)',
   },
-  '.cm-completionDetail': { color: 'var(--fg-muted)' },
-  '.cm-panels': { backgroundColor: 'var(--surface-elevated)', color: 'var(--fg)' },
+  '.cm-completionDetail': { color: 'var(--color-fg-secondary)' },
+  '.cm-panels': { backgroundColor: 'var(--color-surface-raised)', color: 'var(--color-fg)' },
   // Results of the search of the data explorer, the current one alike.
   '.cm-dataMatch, .cm-dataMatch-current': { backgroundColor: 'var(--editor-search-match)' },
   // Folded content ("…"), in place of the browser's grey.
   '.cm-foldPlaceholder': {
-    backgroundColor: 'var(--surface-accented)',
+    backgroundColor: 'var(--color-surface-strong)',
     border: 'none',
-    color: 'var(--fg-muted)',
+    color: 'var(--color-fg-secondary)',
   },
 })
 
@@ -88,7 +88,7 @@ const highlight = HighlightStyle.define([
   },
   { tag: tags.special(tags.name), color: 'var(--sql-variable)' },
   { tag: [tags.lineComment, tags.blockComment], color: 'var(--sql-comment)', fontStyle: 'italic' },
-  { tag: [tags.operator, tags.punctuation], color: 'var(--fg-muted)' },
+  { tag: [tags.operator, tags.punctuation], color: 'var(--color-fg-secondary)' },
   { tag: [tags.propertyName, tags.tagName], color: 'var(--data-name)' },
   { tag: tags.attributeName, color: 'var(--data-attribute)' },
 ])

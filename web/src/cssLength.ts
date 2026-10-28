@@ -1,7 +1,7 @@
 /**
  * Reading a theme length (`main.css`) in pixels.
  *
- * The theme writes its lengths as multiples of `--space-unit`, in `rem`,
+ * The theme writes its lengths as steps of `--spacing`, in `rem`,
  * relative to the page's text size. A few APIs of dependencies want a number
  * of pixels though: the sizes of Reka UI's splitter panels, the positioning
  * of its menus (gap with their button), virtual scrolling (height of a row).

@@ -4,7 +4,7 @@
   Three looks (`variant`): filled (`solid`), outlined (`outline`, the
   default) or discreet (`ghost`, without background: on hover, only its icon
   or its text darkens); three tones (`tone`): neutral (the default),
-  action (`accent`) or danger (`error`). A Lucide icon goes on the left of the
+  action (`primary`) or danger (`error`). A Lucide icon goes on the left of the
   label; without a label, the button is square. During `loading`, a spinner
   replaces the icon and the button is inactive.
 
@@ -32,10 +32,11 @@ const props = withDefaults(
     /**
      * Tone.
      */
-    tone?: 'neutral' | 'accent' | 'error'
+    tone?: 'neutral' | 'primary' | 'error'
     /**
-     * Small size (the navigator's "⋮" button): height, text, icon, padding
-     * and gap of the small controls.
+     * Small size (the navigator's "⋮" button): height, text, padding and gap
+     * of the small controls. The icon keeps its size: an icon has the same
+     * size wherever it appears, beside icons of the same size.
      */
     small?: boolean
     /**
@@ -61,42 +62,37 @@ const props = withDefaults(
 const LOOKS = {
   solid: {
     neutral: 'bg-fg-strong text-surface hover:bg-fg',
-    accent: 'bg-accent text-on-accent hover:bg-accent-hover',
-    error: 'bg-error text-on-accent hover:bg-error-hover',
+    primary: 'bg-primary text-on-primary hover:bg-primary-hover',
+    error: 'bg-error text-on-primary hover:bg-error-hover',
   },
   outline: {
-    neutral: 'border border-line bg-surface text-fg-strong hover:bg-surface-muted',
-    accent: 'border border-accent-border text-accent hover:bg-accent-soft',
-    error: 'border border-error-border text-error hover:bg-error-soft',
+    neutral: 'border border-line bg-surface text-fg-strong hover:bg-surface-sunken',
+    primary: 'border border-primary/50 text-primary hover:bg-primary/15',
+    error: 'border border-error/50 text-error hover:bg-error/12',
   },
   ghost: {
-    neutral: 'text-fg-dimmed hover:text-fg-strong',
-    accent: 'text-accent hover:text-accent-hover',
+    neutral: 'text-fg-faint hover:text-fg-strong',
+    primary: 'text-primary hover:text-primary-hover',
     error: 'text-error hover:text-error-hover',
   },
 } as const
 
 const classes = computed(() => [
   LOOKS[props.variant][props.tone],
-  props.small ? 'h-control-sm gap-1 text-small' : 'h-control gap-2 text-ui',
-  props.label ? (props.small ? 'px-1' : 'px-2') : props.small ? 'w-control-sm' : 'w-control',
+  props.small ? 'h-7 gap-1 text-sm' : 'h-8 gap-3 text-base',
+  props.label ? (props.small ? 'px-1' : 'px-3') : props.small ? 'w-7' : 'w-8',
 ])
-
-/**
- * Size of the icon, by size of the button.
- */
-const iconSize = computed(() => (props.small ? 'size-icon-sm' : 'size-icon'))
 </script>
 
 <template>
   <button
     :type="type"
     :disabled="disabled || loading"
-    class="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-control font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+    class="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-lg font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50"
     :class="classes"
   >
-    <LoaderCircle v-if="loading" class="shrink-0 animate-spin" :class="iconSize" />
-    <component :is="icon" v-else-if="icon" class="shrink-0" :class="iconSize" />
+    <LoaderCircle v-if="loading" class="size-5 shrink-0 animate-spin" />
+    <component :is="icon" v-else-if="icon" class="size-5 shrink-0" />
     <span v-if="label" class="text-trim">{{ label }}</span>
   </button>
 </template>

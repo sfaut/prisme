@@ -19,7 +19,7 @@ const debug = store.debug
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-1">
-    <div v-if="store.filtersShown" class="flex flex-wrap items-center gap-3">
+    <div v-if="store.filtersShown" class="flex flex-wrap items-center gap-4">
       <console-filter v-model="store.debugFilter.level" label="Niveau" :labels="LEVEL_LABELS" />
       <console-filter v-model="store.debugFilter.source" label="Source" :labels="SOURCE_LABELS" />
     </div>
@@ -50,7 +50,7 @@ const debug = store.debug
         </thead>
         <tbody>
           <tr v-for="entry in debug.entries" :key="entry.id">
-            <td class="end text-fg-dimmed">{{ entry.id }}</td>
+            <td class="end text-fg-faint">{{ entry.id }}</td>
             <td v-tooltip="dateTimeOf(entry.logged_at)">{{ timeOf(entry.logged_at) }}</td>
             <td :class="LEVEL_TONES[entry.level]">{{ LEVEL_LABELS[entry.level] }}</td>
             <td v-tooltip="entry.target || undefined">{{ SOURCE_LABELS[entry.source] }}</td>
@@ -70,18 +70,18 @@ const debug = store.debug
 /* Columns sized to their content, in characters, plus the padding of the
    cells; the message takes the rest. */
 col.index {
-  inline-size: calc(6ch + 2 * --spacing(2));
+  inline-size: calc(6ch + 2 * --spacing(3));
 }
 
 col.time {
-  inline-size: calc(9ch + 2 * --spacing(2));
+  inline-size: calc(9ch + 2 * --spacing(3));
 }
 
 col.level {
-  inline-size: calc(14ch + 2 * --spacing(2));
+  inline-size: calc(14ch + 2 * --spacing(3));
 }
 
 col.source {
-  inline-size: calc(10ch + 2 * --spacing(2));
+  inline-size: calc(10ch + 2 * --spacing(3));
 }
 </style>

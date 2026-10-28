@@ -83,31 +83,31 @@ const menuItems: MenuItem[] = [
 </script>
 
 <template>
-  <header class="flex items-center justify-between gap-2 border-b border-line px-3 py-1">
+  <header class="flex items-center justify-between gap-3 border-b border-line px-4 py-1">
     <!-- Name, then version in smaller type, on the same baseline. -->
-    <div class="flex items-baseline gap-2">
-      <h1 class="text-heading leading-none font-semibold text-fg-strong">Prisme</h1>
+    <div class="flex items-baseline gap-3">
+      <h1 class="text-2xl leading-none font-semibold text-fg-strong">Prisme</h1>
       <span
         v-if="version"
-        class="text-tiny leading-none text-fg-dimmed"
+        class="text-xs leading-none text-fg-faint"
         v-tooltip="'Version de Prisme'"
       >
         {{ version }}
       </span>
     </div>
-    <div class="flex items-center gap-2">
+    <div class="flex items-center gap-3">
       <sync-status />
-      <ui-select v-model="colorMode" :items="COLOR_MODES" label="Thème" class="w-28" />
+      <ui-select v-model="colorMode" :items="COLOR_MODES" label="Thème" class="w-37" />
       <ui-dropdown-menu :items="menuItems">
         <!-- Round avatar with the user's initials, the user icon before they are known. -->
         <button
           type="button"
-          class="grid size-control shrink-0 cursor-pointer place-items-center rounded-full bg-accent-soft text-small leading-none font-semibold text-accent select-none hover:bg-accent hover:text-on-accent data-[state=open]:bg-accent data-[state=open]:text-on-accent"
+          class="grid size-8 shrink-0 cursor-pointer place-items-center rounded-full bg-primary/15 text-sm leading-none font-semibold text-primary select-none hover:bg-primary hover:text-on-primary data-[state=open]:bg-primary data-[state=open]:text-on-primary"
           aria-label="Compte"
           v-tooltip="accountTitle"
         >
           <template v-if="profile.initials">{{ profile.initials }}</template>
-          <user v-else class="size-icon-sm" />
+          <user v-else class="size-4" />
         </button>
       </ui-dropdown-menu>
     </div>
