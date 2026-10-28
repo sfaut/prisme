@@ -10,8 +10,8 @@
   - Dragging a tab moves it, like a column of the grid.
   - "+" opens a new editor, on the connection of the active editor.
   - At the right end, the button that reopens a closed editor, then the
-    actions of the active editor (`actions` slot: its fold button, sent by
-    its cell).
+    actions of the active editor (`actions` slot: its fold button, drawn by
+    `App.vue` for the active cell).
 
   To place in the Reka UI `TabsRoot` that holds the editors (`App.vue`).
 -->

@@ -33,9 +33,9 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { Database } from '@lucide/vue'
+import { Database, PanelTopClose, PanelTopOpen } from '@lucide/vue'
 import { SplitterGroup, SplitterPanel, TabsContent, TabsRoot } from 'reka-ui'
-import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, shallowReactive, useTemplateRef, watch } from 'vue'
 
 import type { SessionStatus } from './api/querySession'
 
@@ -58,6 +58,7 @@ import UiButton from './components/ui/UiButton.vue'
 import UiDialog from './components/ui/UiDialog.vue'
 import UiToaster from './components/ui/UiToaster.vue'
 import UiTooltip from './components/ui/UiTooltip.vue'
+import { vTooltip } from './components/ui/tooltip'
 import { cssPixels } from './cssLength'
 
 const connections = useConnectionsStore()
@@ -278,15 +279,24 @@ const attempts = ref<Record<number, number>>({})
 const openingDatabases = ref<Record<number, string>>({})
 
 /**
- * Mounted cells, by editor, to start a query there from the navigator.
+ * Mounted cells, by editor, to start a query there from the navigator, and
+ * to fold the active editor from the editors' bar.
  */
-const cells = new Map<number, InstanceType<typeof QueryCell>>()
+const cells = shallowReactive(new Map<number, InstanceType<typeof QueryCell>>())
 
 /**
- * Place, in the editors' bar, of the actions of the active editor (its fold
- * button), which its cell sends there.
+ * Cell of the active editor, absent without a connection.
  */
-const editorActions = useTemplateRef<HTMLElement>('editorActions')
+const activeCell = computed(() =>
+  editors.activeId === null ? undefined : cells.get(editors.activeId),
+)
+
+/**
+ * Label of the fold button of the active editor.
+ */
+const editorFoldLabel = computed(() =>
+  activeCell.value?.editorFolded ? 'Déplier l’éditeur' : 'Replier l’éditeur',
+)
 
 /**
  * Active editor, in the form expected by Reka UI's tabs.
@@ -586,8 +596,17 @@ function selectSource(connectionId: number): void {
               >
                 <div class="flex px-4">
                   <editor-tab-bar class="flex-1" @close="closeEditor">
+                    <!-- Fold button of the active editor, visible when it is folded. -->
                     <template #actions>
-                      <div ref="editorActions" class="contents" />
+                      <ui-button
+                        v-if="activeCell"
+                        :icon="activeCell.editorFolded ? PanelTopOpen : PanelTopClose"
+                        variant="ghost"
+                        small
+                        :aria-label="editorFoldLabel"
+                        v-tooltip="editorFoldLabel"
+                        @click="activeCell.toggleEditor()"
+                      />
                     </template>
                   </editor-tab-bar>
                 </div>
@@ -609,7 +628,6 @@ function selectSource(connectionId: number): void {
                     :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
                     :editor-id="editor.id"
                     :active="editor.id === editors.activeId"
-                    :actions-target="editor.id === editors.activeId ? editorActions : null"
                     :connection="connectionOf(editor.connectionId)!"
                     :opening-database="openingDatabases[editor.id]"
                     :sql="editor.sql"

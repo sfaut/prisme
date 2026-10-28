@@ -1,6 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { defineComponent, h, onMounted } from 'vue'
+import { defineComponent, h, onMounted, ref } from 'vue'
 
 import { mount } from '@vue/test-utils'
 import App from '../App.vue'
@@ -92,6 +92,28 @@ const TransactionCell = defineComponent({
 })
 
 /**
+ * Number of folds asked to the cell.
+ */
+let folds = 0
+
+/**
+ * Cell whose editor folds, as its splitter does.
+ */
+const FoldingCell = defineComponent({
+  setup(_, { expose }) {
+    const editorFolded = ref(false)
+    expose({
+      editorFolded,
+      toggleEditor: () => {
+        folds += 1
+        editorFolded.value = !editorFolded.value
+      },
+    })
+    return () => null
+  },
+})
+
+/**
  * Navigator reduced to the events of a source and of a database.
  */
 const Navigator = defineComponent({
@@ -112,10 +134,27 @@ beforeEach(() => {
   changes = []
   disconnects = 0
   transactionCells = 0
+  folds = 0
 })
 
 afterEach(() => {
   vi.unstubAllGlobals()
+})
+
+describe("App, editors' bar", () => {
+  it('folds and unfolds the active editor by its button', async () => {
+    const wrapper = mount(App, {
+      global: { stubs: { QueryCell: FoldingCell, ObjectNavigator: Navigator } },
+    })
+    useConnectionsStore().connections = [{ id: 1, name: 'local' } as ConnectionSummary]
+    const button = () => wrapper.find('[aria-label$="plier l’éditeur"]')
+    await vi.waitFor(() => expect(button().attributes('aria-label')).toBe('Replier l’éditeur'))
+
+    await button().trigger('click')
+    expect(folds).toBe(1)
+    expect(button().attributes('aria-label')).toBe('Déplier l’éditeur')
+    wrapper.unmount()
+  })
 })
 
 describe('App, closed session', () => {

@@ -34,8 +34,9 @@
   between them moves it within the bounds of both. Either one folds, by its
   button, by a drag below its smallest height, or, for the editor, by a
   double click on the line. The folded editor disappears with its buttons:
-  only the editors' tabs stay above the results, and its fold button,
-  which the active cell sends to the editors' bar (`actionsTarget`). The
+  only the editors' tabs stay above the results, with its fold button, which
+  the editors' bar draws for the active cell (`editorFolded`,
+  `toggleEditor`). The
   folded results leave their tabs and their unfold button (the buttons of
   the tab shown hide). Both are never folded at once: folding one unfolds
   the other. The padding of the sides is inside the panels: a panel clips its
@@ -49,8 +50,6 @@ import {
   LoaderCircle,
   PanelBottomClose,
   PanelBottomOpen,
-  PanelTopClose,
-  PanelTopOpen,
   Play,
   ScanText,
   Square,
@@ -119,11 +118,6 @@ const props = defineProps<{
    * when the cell is mounted.
    */
   openingDatabase?: string
-  /**
-   * Place of the editor's fold button in the editors' bar, for the active
-   * cell; `null` for the others, which do not show it.
-   */
-  actionsTarget?: HTMLElement | null
 }>()
 
 const emit = defineEmits<{
@@ -222,6 +216,18 @@ function togglePanel(
     other.expand()
   }
   panel?.collapse()
+}
+
+/**
+ * Is the editor folded?
+ */
+const editorFolded = computed(() => editorPanel.value?.isCollapsed ?? false)
+
+/**
+ * Folds or unfolds the editor; folding it unfolds the results.
+ */
+function toggleEditor(): void {
+  togglePanel(editorPanel.value, resultsPanel.value)
 }
 
 /**
@@ -689,6 +695,8 @@ async function disconnect(): Promise<void> {
 }
 
 defineExpose({
+  editorFolded,
+  toggleEditor,
   run,
   runWhenReady,
   showTableWhenReady,
@@ -711,7 +719,6 @@ defineExpose({
     -->
     <splitter-panel
       ref="editorPanel"
-      v-slot="{ isCollapsed }"
       :order="1"
       size-unit="px"
       :default-size="EDITOR_HEIGHT"
@@ -778,17 +785,6 @@ defineExpose({
           >
             <span class="text-trim">Transaction ouverte</span>
           </span>
-          <!-- The fold button stays visible in the editors' bar, editor folded. -->
-          <teleport v-if="actionsTarget" :to="actionsTarget">
-            <ui-button
-              :icon="isCollapsed ? PanelTopOpen : PanelTopClose"
-              variant="ghost"
-              small
-              :aria-label="isCollapsed ? 'Déplier l’éditeur' : 'Replier l’éditeur'"
-              v-tooltip="isCollapsed ? 'Déplier l’éditeur' : 'Replier l’éditeur'"
-              @click="togglePanel(editorPanel, resultsPanel)"
-            />
-          </teleport>
         </div>
 
         <sql-editor
@@ -809,7 +805,7 @@ defineExpose({
     </splitter-panel>
     <split-handle
       tooltip="Glisser pour partager la hauteur entre l’éditeur et les résultats, double clic pour replier ou déplier l’éditeur"
-      @toggle="togglePanel(editorPanel, resultsPanel)"
+      @toggle="toggleEditor"
     />
 
     <!-- Bottom panel: the results. Folded, it keeps the height of their tabs. -->
