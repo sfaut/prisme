@@ -704,6 +704,19 @@ export function utf8Length(text: string): number {
 }
 
 /**
+ * Formats the number of rows of a result, for its status bar: "5 000
+ * lignes", or, when a user filter keeps only some of them, "120 / 5 000
+ * lignes".
+ *
+ * @param loaded Number of rows received.
+ * @param kept Number of rows the user filter keeps, `null` without a filter.
+ */
+export function formatRowCount(loaded: number, kept: number | null): string {
+  const total = `${loaded.toLocaleString('fr-FR')} ${loaded > 1 ? 'lignes' : 'ligne'}`
+  return kept === null ? total : `${kept.toLocaleString('fr-FR')} / ${total}`
+}
+
+/**
  * Formats a data volume in the unit that suits it: bytes, then kB, MB, GB and
  * TB (by 1,000), with one decimal beyond the byte. Units are displayed in
  * French (o, ko, Mo, Go, To), like the rest of the interface.

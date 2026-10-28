@@ -5,14 +5,12 @@
   - User filter: the grid shows the rows that the filter it receives keeps
     (`filter`); its form and its button belong to the result tab
     (`ResultFilter.vue`, `ResultTabActions.vue`).
-  - Status bar: number of loaded rows ("120 / 5 000 lignes" when a user
-    filter is active), then the items of the `status` slot (durations of
-    the query). The data explorer opens from its rail, on the right edge of
-    the window.
+  - Kept rows: the grid exposes how many rows the filter keeps
+    (`keptCount`), which the result tab shows in its status bar.
   - Data explorer: the grid on screen (`displayed`) gives the panel on the
     right the selected values of a JSON or XML column (`dataExplorer`
     store): a column of type `JSON`, or a text column that holds JSON or
-    XML.
+    XML. The explorer opens from its rail, on the right edge of the window.
   - Row numbers: they stay visible on the left when the grid scrolls
     sideways, as the header stays on top. Their column looks like the gutter
     of the SQL editor (code font, size, padding, alignment) and takes the
@@ -84,7 +82,6 @@ import {
 import { rememberWidths, rememberedWidths } from './gridWidths'
 import { type ContentKind, detectContent, isWebAddress } from './contentKind'
 import { columnIcon } from './typeIcons'
-import UiStatusBar from './ui/UiStatusBar.vue'
 import { notify } from './ui/toasts'
 import { vTooltip } from './ui/tooltip'
 
@@ -111,11 +108,6 @@ const props = defineProps<{
    * Number of rows received.
    */
   rowCount: number
-  /**
-   * Number of rows shown in the status bar, refreshed less often than
-   * `rowCount` during the reception; when absent, `rowCount`.
-   */
-  shownCount?: number
   /**
    * Text of the query: the chosen widths are remembered for it, and found
    * again if it is run again.
@@ -150,17 +142,6 @@ const ROW_HEIGHT = cssPixels('--grid-row-height', 22)
 
 const scroller = useTemplateRef<HTMLDivElement>('scroller')
 
-/**
- * Number of rows of the status bar: loaded rows, preceded by the kept rows
- * when a user filter is active.
- */
-const countLabel = computed(() => {
-  const loaded = props.shownCount ?? props.rowCount
-  const total = `${loaded.toLocaleString('fr-FR')} ${loaded > 1 ? 'lignes' : 'ligne'}`
-  return props.filter.text === ''
-    ? total
-    : `${view.value.length.toLocaleString('fr-FR')} / ${total}`
-})
 const sort = ref<SortState | null>(null)
 const selection = shallowRef(emptySelection())
 
@@ -681,150 +662,136 @@ watch(
 )
 
 onBeforeUnmount(() => explorer.release(gridId))
+
+/**
+ * Number of rows the user filter keeps, among those examined so far.
+ */
+const keptCount = computed(() => view.value.length)
+
+defineExpose({ keptCount })
 </script>
 
 <template>
-  <div class="result-grid">
-    <div
-      ref="scroller"
-      class="grid-scroller"
-      :class="{ attached }"
-      :style="{ '--row-digits': rowDigits }"
-      tabindex="0"
-      @keydown="onKeydown"
-    >
-      <div class="grid-row grid-header" :style="{ gridTemplateColumns: template }">
-        <div
-          class="grid-corner"
-          v-tooltip="'Tout sélectionner'"
-          @mousedown.prevent="selectEverything"
-        />
-        <div
-          v-for="(column, position) in order"
-          :key="column"
-          class="grid-column-header"
-          :class="{
-            selected: view.length > 0 && isSelected(selection, 0, position),
-            'drop-before': dropAt === position,
-            'drop-after': dropAt === order.length && position === order.length - 1,
-          }"
-        >
-          <span
-            class="grid-column-name"
-            v-tooltip="headerTitle(column)"
-            @pointerdown.prevent="onColumnHeader($event, position)"
-            @pointermove="onColumnMove"
-            @pointerup="onColumnDrop"
-            @pointercancel="onColumnDrop"
-          >
-            <template v-if="columnMarks[column]">
-              <span
-                v-if="typeof columnMarks[column] === 'string'"
-                class="grid-type-glyph"
-                aria-hidden="true"
-              >
-                {{ columnMarks[column] }}
-              </span>
-              <component
-                :is="columnMarks[column]"
-                v-else
-                class="grid-type-icon"
-                aria-hidden="true"
-              />
-            </template>
-            <span class="grid-column-label">{{ columns[column] }}</span>
-          </span>
-          <button
-            class="grid-sort"
-            type="button"
-            v-tooltip="`Trier par ${columns[column]}`"
-            @click="toggleSort(column)"
-          >
-            {{ sort?.column === column ? (sort.direction === 'asc' ? '▲' : '▼') : '⇅' }}
-          </button>
-          <div
-            class="grid-resizer"
-            v-tooltip="
-              'Glisser pour changer la largeur, double clic pour l’ajuster au contenu ou revenir à la largeur estimée'
-            "
-            @pointerdown.stop.prevent="onResizeStart($event, column)"
-            @pointermove="onResizeMove"
-            @pointerup="onResizeEnd"
-            @pointercancel="onResizeEnd"
-            @dblclick="fitWidth(column)"
-          />
-        </div>
-      </div>
-
+  <div
+    ref="scroller"
+    class="grid-scroller"
+    :class="{ attached }"
+    :style="{ '--row-digits': rowDigits }"
+    tabindex="0"
+    @keydown="onKeydown"
+  >
+    <div class="grid-row grid-header" :style="{ gridTemplateColumns: template }">
       <div
-        class="grid-body"
-        :style="{ blockSize: `calc(var(--grid-row-height) * ${virtualizer.options.count})` }"
+        class="grid-corner"
+        v-tooltip="'Tout sélectionner'"
+        @mousedown.prevent="selectEverything"
+      />
+      <div
+        v-for="(column, position) in order"
+        :key="column"
+        class="grid-column-header"
+        :class="{
+          selected: view.length > 0 && isSelected(selection, 0, position),
+          'drop-before': dropAt === position,
+          'drop-after': dropAt === order.length && position === order.length - 1,
+        }"
       >
-        <div
-          v-for="item in virtualizer.getVirtualItems()"
-          :key="item.index"
-          class="grid-row"
-          :style="{
-            gridTemplateColumns: template,
-            transform: `translateY(calc(var(--grid-row-height) * ${item.index}))`,
-          }"
+        <span
+          class="grid-column-name"
+          v-tooltip="headerTitle(column)"
+          @pointerdown.prevent="onColumnHeader($event, position)"
+          @pointermove="onColumnMove"
+          @pointerup="onColumnDrop"
+          @pointercancel="onColumnDrop"
         >
-          <div
-            class="grid-row-header"
-            @mousedown.prevent="onRowHeader($event, item.index)"
-            @mouseenter="onRowEnter(item.index)"
-          >
-            {{ item.index + 1 }}
-          </div>
-          <div
-            v-for="(column, position) in order"
-            :key="column"
-            class="grid-cell"
-            :class="{
-              null: cellAt(item.index, column) === null,
-              right: rightAligned[column],
-              mono: monospaced[column],
-              selected: isSelected(selection, item.index, position),
-            }"
-            @mousedown.prevent="onCellDown($event, item.index, position)"
-            @mouseenter="onCellEnter(item.index, position)"
-          >
-            <a
-              v-if="contentKinds[column] === 'url' && isWebAddress(cellAt(item.index, column))"
-              class="grid-link"
-              :href="cellAt(item.index, column) ?? undefined"
-              target="_blank"
-              rel="noopener noreferrer"
-              @mousedown.stop
-              ><ExternalLink class="grid-link-icon" aria-hidden="true" /><span
-                class="grid-link-text"
-                >{{ cellAt(item.index, column) }}</span
-              ></a
+          <template v-if="columnMarks[column]">
+            <span
+              v-if="typeof columnMarks[column] === 'string'"
+              class="grid-type-glyph"
+              aria-hidden="true"
             >
-            <template v-else>{{ cellAt(item.index, column) ?? NULL_TEXT }}</template>
-          </div>
-        </div>
+              {{ columnMarks[column] }}
+            </span>
+            <component :is="columnMarks[column]" v-else class="grid-type-icon" aria-hidden="true" />
+          </template>
+          <span class="grid-column-label">{{ columns[column] }}</span>
+        </span>
+        <button
+          class="grid-sort"
+          type="button"
+          v-tooltip="`Trier par ${columns[column]}`"
+          @click="toggleSort(column)"
+        >
+          {{ sort?.column === column ? (sort.direction === 'asc' ? '▲' : '▼') : '⇅' }}
+        </button>
+        <div
+          class="grid-resizer"
+          v-tooltip="
+            'Glisser pour changer la largeur, double clic pour l’ajuster au contenu ou revenir à la largeur estimée'
+          "
+          @pointerdown.stop.prevent="onResizeStart($event, column)"
+          @pointermove="onResizeMove"
+          @pointerup="onResizeEnd"
+          @pointercancel="onResizeEnd"
+          @dblclick="fitWidth(column)"
+        />
       </div>
     </div>
 
-    <!-- Status of the result: number of rows, then the items of the caller. -->
-    <ui-status-bar>
-      <span class="grid-count">{{ countLabel }}</span>
-      <slot name="status" />
-    </ui-status-bar>
+    <div
+      class="grid-body"
+      :style="{ blockSize: `calc(var(--grid-row-height) * ${virtualizer.options.count})` }"
+    >
+      <div
+        v-for="item in virtualizer.getVirtualItems()"
+        :key="item.index"
+        class="grid-row"
+        :style="{
+          gridTemplateColumns: template,
+          transform: `translateY(calc(var(--grid-row-height) * ${item.index}))`,
+        }"
+      >
+        <div
+          class="grid-row-header"
+          @mousedown.prevent="onRowHeader($event, item.index)"
+          @mouseenter="onRowEnter(item.index)"
+        >
+          {{ item.index + 1 }}
+        </div>
+        <div
+          v-for="(column, position) in order"
+          :key="column"
+          class="grid-cell"
+          :class="{
+            null: cellAt(item.index, column) === null,
+            right: rightAligned[column],
+            mono: monospaced[column],
+            selected: isSelected(selection, item.index, position),
+          }"
+          @mousedown.prevent="onCellDown($event, item.index, position)"
+          @mouseenter="onCellEnter(item.index, position)"
+        >
+          <a
+            v-if="contentKinds[column] === 'url' && isWebAddress(cellAt(item.index, column))"
+            class="grid-link"
+            :href="cellAt(item.index, column) ?? undefined"
+            target="_blank"
+            rel="noopener noreferrer"
+            @mousedown.stop
+            ><ExternalLink class="grid-link-icon" aria-hidden="true" /><span
+              class="grid-link-text"
+              >{{ cellAt(item.index, column) }}</span
+            ></a
+          >
+          <template v-else>{{ cellAt(item.index, column) ?? NULL_TEXT }}</template>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
 @reference "@/assets/main.css";
-
-.result-grid {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: --spacing(3);
-  min-height: 0;
-}
 
 .grid-scroller {
   position: relative;

@@ -1,15 +1,19 @@
 <!--
-  Content of a query's tab: error if any, result grid and, under the grid,
-  the number of loaded rows and two durations: the execution time of the
-  query by the server (until the columns arrive), then the transfer and
-  display time of the rows, followed by the received volume, the
-  throughput and the end of the execution (date and time to the second,
-  the instant the result reflects).
+  Content of a query's tab: error if any, form of the user filter, result
+  grid, then the status bar, one item each:
 
-  During the query, the number of rows, the durations and the volume change once
-  per second (shared clock, `clock.ts`); at the end, they take their final
-  value at once. A query without a grid (waiting, failed, or without
-  columns) only shows its durations.
+  - number of rows, with a grid: those received, preceded by those the user
+    filter keeps ("120 / 5 000 lignes");
+  - execution time of the query by the server (until the columns arrive);
+  - transfer and display time of the rows, then the received volume and the
+    throughput;
+  - end of the execution, date and time to the second: the instant the
+    result reflects.
+
+  During the query, the number of rows, the durations and the volume change
+  once per second (shared clock, `clock.ts`); at the end, they take their
+  final value at once. A query without a grid (waiting, failed, or without
+  columns) shows only its durations.
 
   The user filter belongs to the tab (`filter`, `v-model:filter`): its form
   (`ResultFilter.vue`) shows above the grid while its button, right of the
@@ -24,7 +28,7 @@
   columns arrive.
 -->
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useTemplateRef, watch } from 'vue'
 
 import {
   type QueryTab,
@@ -33,6 +37,7 @@ import {
   formatBytes,
   formatDuration,
   formatInstant,
+  formatRowCount,
   shownResult,
   showsGrid,
   transferDuration,
@@ -91,14 +96,24 @@ watch(
   },
 )
 
+const grid = useTemplateRef<InstanceType<typeof ResultGrid>>('grid')
+
 /**
- * Number of rows shown under the grid: read on each tick of the clock, and
- * at the end of the query.
+ * Number of rows the user filter keeps, `null` without a filter.
+ */
+const keptCount = computed(() =>
+  filter.value.text === '' ? null : (grid.value?.keptCount ?? null),
+)
+
+/**
+ * Number of rows shown in the status bar: read on each tick of the clock,
+ * and at the end of the query.
  */
 const shownCount = ref(shown.value?.rowCount ?? 0)
 
 /**
- * Received volume shown under the grid, in bytes, read like the number of rows.
+ * Received volume shown in the status bar, in bytes, read like the number of
+ * rows.
  */
 const shownBytes = ref(props.tab.bytes)
 
@@ -112,30 +127,40 @@ watch(
 )
 
 /**
- * Durations of the query, formatted, one item each of the status bar:
- * "exécution 120 ms", "transfert 2,4 s", "3,1 Mo", "1,3 Mo/s", "20/10/2026
- * 14:32:05" (received volume and throughput during the transfer, then end of
- * the execution, to the second); none while it waits for its turn. The clock is only read during the query: an ended
- * query is no longer redrawn on each tick.
+ * Instant the durations are measured at: the clock's during the query, the
+ * current one after, so that an ended query is no longer redrawn on each tick.
  */
-const durations = computed(() => {
-  const running = props.tab.startedAt !== null && !props.tab.done
-  const now = running ? clock.value : performance.now()
-  const execution = executionDuration(props.tab, now)
-  const transfer = transferDuration(props.tab, now)
-  const volume = transfer === null ? null : formatBytes(shownBytes.value)
-  const rate =
-    transfer === null || transfer <= 0
-      ? null
-      : `${formatBytes((shownBytes.value * 1000) / transfer)}/s`
-  return [
-    execution === null ? null : `exécution ${formatDuration(execution)}`,
-    transfer === null ? null : `transfert ${formatDuration(transfer)}`,
-    volume,
-    rate,
-    shown.value?.executedAt ? formatInstant(shown.value.executedAt) : null,
-  ].filter((part) => part !== null)
-})
+const now = computed(() =>
+  props.tab.startedAt !== null && !props.tab.done ? clock.value : performance.now(),
+)
+
+/**
+ * Execution time of the query, in milliseconds; `null` while it waits for
+ * its turn.
+ */
+const execution = computed(() => executionDuration(props.tab, now.value))
+
+/**
+ * Transfer time of the rows, in milliseconds; `null` before the columns.
+ */
+const transfer = computed(() => transferDuration(props.tab, now.value))
+
+/**
+ * Throughput of the transfer, in bytes per second; `null` before it has
+ * lasted.
+ */
+const rate = computed(() =>
+  transfer.value === null || transfer.value <= 0
+    ? null
+    : (shownBytes.value * 1000) / transfer.value,
+)
+
+/**
+ * Does the status bar have an item to show?
+ */
+const hasStatus = computed(
+  () => showsGrid(props.tab) || execution.value !== null || transfer.value !== null,
+)
 </script>
 
 <template>
@@ -153,6 +178,7 @@ const durations = computed(() => {
     />
     <result-grid
       v-if="shown && showsGrid(tab)"
+      ref="grid"
       :attached="attached"
       :filter="filter"
       :columns="shown.columns"
@@ -160,17 +186,18 @@ const durations = computed(() => {
       :column-types="shown.columnTypes"
       :rows="shown.rows"
       :row-count="shown.rowCount"
-      :shown-count="shownCount"
       :sql="tab.sql"
       :displayed="displayed"
-    >
-      <template #status>
-        <span v-for="duration in durations" :key="duration">{{ duration }}</span>
+    />
+    <ui-status-bar v-if="hasStatus">
+      <span v-if="showsGrid(tab)">{{ formatRowCount(shownCount, keptCount) }}</span>
+      <span v-if="execution !== null">exécution {{ formatDuration(execution) }}</span>
+      <template v-if="transfer !== null">
+        <span>transfert {{ formatDuration(transfer) }}</span>
+        <span>{{ formatBytes(shownBytes) }}</span>
       </template>
-    </result-grid>
-    <!-- Without a grid, the durations alone. -->
-    <ui-status-bar v-else-if="durations.length > 0">
-      <span v-for="duration in durations" :key="duration">{{ duration }}</span>
+      <span v-if="rate !== null">{{ formatBytes(rate) }}/s</span>
+      <span v-if="shown?.executedAt">{{ formatInstant(shown.executedAt) }}</span>
     </ui-status-bar>
   </div>
 </template>

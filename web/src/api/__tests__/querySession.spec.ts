@@ -9,6 +9,7 @@ import {
   formatBytes,
   formatDuration,
   formatInstant,
+  formatRowCount,
   initialState,
   removeTab,
   savedTab,
@@ -394,6 +395,12 @@ describe('durations', () => {
     expect(utf8Length('é')).toBe(2)
     expect(utf8Length('€')).toBe(3)
     expect(utf8Length('😀')).toBe(4)
+  })
+
+  it('formats the number of rows, preceded by the kept ones with a filter', () => {
+    expect(formatRowCount(1, null)).toBe('1 ligne')
+    expect(formatRowCount(5000, null)).toBe('5 000 lignes')
+    expect(formatRowCount(5000, 120)).toBe('120 / 5 000 lignes')
   })
 
   it('formats the volumes', () => {
