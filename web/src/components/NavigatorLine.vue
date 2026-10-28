@@ -185,11 +185,16 @@ function nodeIcon(node: NavigatorNode, expanded: boolean): Component {
     :class="{ 'animate-spin': node.entry === 'loading' }"
   />
 
-  <!-- Column: symbols, name (bold if indexed), type and nullability. -->
+  <!--
+    Column: symbols, name (bold if indexed), type and nullability. The
+    symbols take one slot of 1em each, their padding outside the slots
+    (`box-content`), so that the names stay aligned from one column to the
+    next.
+  -->
   <span v-if="node.column" class="tree-label flex min-w-0 flex-1 items-center">
     <span
       v-if="node.column.markSlots > 0"
-      class="inline-flex flex-none text-fg-secondary"
+      class="box-content inline-flex flex-none px-1 text-fg-secondary"
       :style="{ width: `${node.column.markSlots}em` }"
     >
       <KeyRound v-if="node.column.primaryKey" class="size-[1em]" aria-label="Clef primaire" />
