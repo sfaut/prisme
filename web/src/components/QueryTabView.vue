@@ -56,8 +56,7 @@ const props = defineProps<{
   refresh: RefreshState
   /**
    * Place of the grid's buttons (refresh, filter) in the bar of the result
-   * tabs, for the tab shown; `null` for the others, which keep them under
-   * their grid.
+   * tabs, for the tab shown; `null` for the others, hidden, which show none.
    */
   actionsTarget: HTMLElement | null
 }>()

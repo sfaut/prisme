@@ -7,9 +7,9 @@
     as in the console, expands it (and collapses it: the user filter stays
     applied, the button shows it in the primary color).
   - Buttons: the content of the `actions` slot (refresh of the result),
-    then the user filter button. For the result tab shown, they go to the
-    bar of the result tabs (`actionsTarget`, by a `Teleport` of Vue);
-    otherwise, they stay at the left of the bottom bar.
+    then the user filter button. They go to the bar of the result tabs
+    (`actionsTarget`, by a `Teleport` of Vue), for the tab shown only: a
+    hidden tab, or folded results, show none.
   - Bottom bar: number of loaded rows ("120 / 5 000 lignes" when a user
     filter is active), then the content of the `footer` slot (duration of
     the query). The data explorer opens from its rail, on the right edge of
@@ -151,8 +151,7 @@ const props = defineProps<{
   attached?: boolean
   /**
    * Where the buttons of the grid go (refresh, filter): the bar of the
-   * result tabs, for the tab shown. Absent, they stay at the left of the
-   * bottom bar.
+   * result tabs, for the tab shown. Absent, the grid shows no buttons.
    */
   actionsTarget?: HTMLElement | null
 }>()
@@ -902,26 +901,24 @@ const userFilterColumn = computed({
       </div>
     </div>
 
+    <!-- Actions of the result (refresh), then the user filter button. -->
+    <teleport v-if="actionsTarget" :to="actionsTarget">
+      <slot name="actions" />
+      <ui-button
+        :icon="Funnel"
+        variant="ghost"
+        :tone="userFilter.text === '' ? 'neutral' : 'primary'"
+        small
+        :class="{ 'bg-surface-raised': userFilterOpen }"
+        :aria-pressed="userFilterOpen"
+        :aria-label="userFilterLabel"
+        v-tooltip="userFilterLabel"
+        class="grid-user-filter-toggle"
+        @click="toggleUserFilter"
+      />
+    </teleport>
+
     <div class="grid-footer">
-      <!--
-        Actions of the result (refresh), then the user filter button: in the
-        bar of the result tabs for the tab shown, here otherwise.
-      -->
-      <teleport :to="actionsTarget" :disabled="!actionsTarget">
-        <slot name="actions" />
-        <ui-button
-          :icon="Funnel"
-          variant="ghost"
-          :tone="userFilter.text === '' ? 'neutral' : 'primary'"
-          small
-          :class="{ 'bg-surface-raised': userFilterOpen }"
-          :aria-pressed="userFilterOpen"
-          :aria-label="userFilterLabel"
-          v-tooltip="userFilterLabel"
-          class="grid-user-filter-toggle"
-          @click="toggleUserFilter"
-        />
-      </teleport>
       <!-- The slot follows the number in the same text, without the container's gap. -->
       <span class="grid-count">{{ countLabel }}<slot name="footer" /></span>
     </div>
