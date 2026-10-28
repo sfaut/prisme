@@ -136,7 +136,7 @@ Legend: `[«]`, `[^]`, `[v]` fold buttons (`PanelLeftClose`, `PanelTopClose`, `P
 
 ### 7.1 Top bar
 
-`border-b border-line px-4 py-1`, items `gap-3`.
+`border-b border-line px-4 py-2`, items `gap-3`.
 
 - Left: **Prisme** (`text-2xl` semibold `fg-strong`), then the version `v0.7.0` (`text-xs fg-faint`), on the same baseline.
 - Right:

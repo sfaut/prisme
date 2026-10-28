@@ -83,7 +83,7 @@ const menuItems: MenuItem[] = [
 </script>
 
 <template>
-  <header class="flex items-center justify-between gap-3 border-b border-line px-4 py-1">
+  <header class="flex items-center justify-between gap-3 border-b border-line px-4 py-2">
     <!-- Name, then version in smaller type, on the same baseline. -->
     <div class="flex items-baseline gap-3">
       <h1 class="text-2xl leading-none font-semibold text-fg-strong">Prisme</h1>
