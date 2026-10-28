@@ -108,13 +108,13 @@ describe('ResultGrid', () => {
     )
     const headers = wrapper.findAll('.grid-column-name').map((header) => header.text())
     expect(headers).toEqual(['id', 'name'])
-    expect(wrapper.find('.grid-count').text()).toBe('2 lignes')
+    expect(wrapper.find('.grid-status').text()).toBe('2 lignes')
   })
 
   it('follows the number of rows with the durations of the query', async () => {
     const wrapper = mountGrid(['id'], [['1']])
     await wrapper.setProps({ durations: 'exécution 12 ms' })
-    expect(wrapper.find('.grid-count').text()).toBe('1 ligne · exécution 12 ms')
+    expect(wrapper.find('.grid-status').text()).toBe('1 ligne · exécution 12 ms')
   })
 
   it('filters the rows', async () => {
@@ -129,7 +129,7 @@ describe('ResultGrid', () => {
     expect(wrapper.find('.grid-user-filter').exists()).toBe(false)
     await toggleFilter()
     await wrapper.find('.grid-user-filter input').setValue('null')
-    expect(wrapper.find('.grid-count').text()).toBe('1 / 2 lignes')
+    expect(wrapper.find('.grid-status').text()).toBe('1 / 2 lignes')
     wrapper.unmount()
     bar.remove()
   })

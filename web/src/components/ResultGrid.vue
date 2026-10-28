@@ -925,9 +925,12 @@ const userFilterColumn = computed({
       />
     </teleport>
 
-    <div class="grid-footer">
-      <span class="grid-count">{{ status }}</span>
-    </div>
+    <!--
+      Status of the result, discreet: in the small size, at the bottom of the
+      panel, which clips what goes past it. Its line keeps its full height,
+      the descenders included (no `text-box` trim).
+    -->
+    <p class="grid-status text-sm text-fg-secondary">{{ status }}</p>
   </div>
 </template>
 
@@ -957,17 +960,6 @@ const userFilterColumn = computed({
 
 .grid-user-filter-column {
   max-inline-size: --spacing(67);
-}
-
-/* Status of the result, discreet: in the small size, at the bottom of the
-   panel, which clips what goes past it. Its line keeps its full height, the
-   descenders included (no `text-box` trim). */
-.grid-footer {
-  display: flex;
-  align-items: center;
-  gap: --spacing(3);
-  color: var(--color-fg-secondary);
-  font-size: var(--text-sm);
 }
 
 .grid-scroller {
