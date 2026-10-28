@@ -175,13 +175,14 @@
 
   /* Splitters of the layout (`SplitterGroup` of Reka UI), whose sizes the
      code reads (`cssPixels`): default and smallest width of the object
-     navigator and of the data explorer, smallest width of the area of the
-     editors, enough for the buttons of the editor on one line; thickness
-     of the rail left by a folded panel (`rail`); bar left by a folded
-     result list (`tab-bar`): the gap above its tabs, then a tab at its own
-     height, its padding (one step above and below, `DocumentTab`) around
-     its small buttons (`h-7`), taller than its text, and the line under
-     the bar;
+     navigator and of the data explorer, the latter enough for its header
+     on one line (title and buttons, with the panel's padding); smallest
+     width of the area of the editors, enough for the buttons of the editor
+     on one line; thickness of the rail left by a folded panel (`rail`);
+     bar left by a folded result list (`tab-bar`): the gap above its tabs,
+     then a tab at its own height, its padding (one step above and below,
+     `DocumentTab`) around its small buttons (`h-7`), taller than its text,
+     and the line under the bar;
      a folded editor leaves the gap under the editors' tabs, where the grip
      of the line stays whole. Default heights of the editor and of the result list:
      Reka UI scales them together to the cell's height, so that they set a
@@ -192,7 +193,7 @@
   --navigator-width: --spacing(100);
   --navigator-min-width: --spacing(67);
   --explorer-width: --spacing(140);
-  --explorer-min-width: --spacing(80);
+  --explorer-min-width: --spacing(120);
   --editors-min-width: --spacing(213);
   --rail-size: --spacing(9);
   --tab-bar-height: calc(--spacing(5) + --spacing(7) + var(--line-width));
