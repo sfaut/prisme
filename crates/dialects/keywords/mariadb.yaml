@@ -243,16 +243,23 @@ reserved:
 # Non-reserved keywords, unambiguous in practice.
 keywords:
   - BEGIN
+  - CHAIN
   - COLUMNS
   - COMMIT
+  - CONSISTENT
   - END
+  - NO
   - OFFSET
+  - ONLY
   - ROLLBACK
+  - SNAPSHOT
+  - START
   - TABLES
   - TEMPORARY
   - TRANSACTION
   - TRUNCATE
   - VIEW
+  - WORK
 
 # Column types, reserved.
 types:

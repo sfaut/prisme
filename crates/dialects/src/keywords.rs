@@ -228,6 +228,27 @@ mod tests {
     }
 
     #[test]
+    fn knows_every_word_of_the_transaction_statements() {
+        // Syntax of START TRANSACTION, BEGIN, COMMIT and ROLLBACK, the same
+        // in MySQL and MariaDB.
+        let statements = [
+            "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ WRITE, READ ONLY",
+            "BEGIN WORK",
+            "COMMIT WORK AND NO CHAIN NO RELEASE",
+            "ROLLBACK WORK AND NO CHAIN NO RELEASE",
+        ];
+        for dialect in [Dialect::MySql, Dialect::MariaDb] {
+            for word in statements
+                .iter()
+                .flat_map(|statement| statement.split([' ', ',']))
+                .filter(|word| !word.is_empty())
+            {
+                assert!(is_keyword(word, dialect, None), "{word} in {dialect:?}");
+            }
+        }
+    }
+
+    #[test]
     fn keeps_only_the_words_of_the_server_version() {
         let reserved = |version| keywords(Dialect::MySql, version).reserved;
         assert!(reserved(Some("8.0.36")).contains(&"WINDOW".to_string()));
