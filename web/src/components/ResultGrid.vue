@@ -10,9 +10,9 @@
     then the user filter button. They go to the bar of the result tabs
     (`actionsTarget`, by a `Teleport` of Vue), for the tab shown only: a
     hidden tab, or folded results, show none.
-  - Bottom bar: number of loaded rows ("120 / 5 000 lignes" when a user
-    filter is active), then the durations of the query (`durations`), in a
-    single line of text. The data explorer opens from its rail, on the right edge of
+  - Status bar: number of loaded rows ("120 / 5 000 lignes" when a user
+    filter is active), then the items of the `status` slot (durations of
+    the query). The data explorer opens from its rail, on the right edge of
     the window.
   - Data explorer: the grid on screen (`displayed`) gives the panel on the
     right the selected values of a JSON or XML column (`dataExplorer`
@@ -102,6 +102,7 @@ import { columnIcon } from './typeIcons'
 import UiButton from './ui/UiButton.vue'
 import UiInput from './ui/UiInput.vue'
 import UiSelect from './ui/UiSelect.vue'
+import UiStatusBar from './ui/UiStatusBar.vue'
 import { notify } from './ui/toasts'
 import { vTooltip } from './ui/tooltip'
 
@@ -129,15 +130,10 @@ const props = defineProps<{
    */
   rowCount: number
   /**
-   * Number of rows shown in the bottom bar, refreshed less often than
+   * Number of rows shown in the status bar, refreshed less often than
    * `rowCount` during the reception; when absent, `rowCount`.
    */
   shownCount?: number
-  /**
-   * Durations of the query, after the number of rows in the bottom bar
-   * ("exécution 12 ms · transfert 3 ms"); absent or empty, the number alone.
-   */
-  durations?: string
   /**
    * Text of the query: the chosen widths are remembered for it, and found
    * again if it is run again.
@@ -204,15 +200,13 @@ async function toggleUserFilter(): Promise<void> {
 }
 
 /**
- * Text of the bottom bar: loaded rows, preceded by the kept rows when a user
- * filter is active, then the durations of the query.
+ * Number of rows of the status bar: loaded rows, preceded by the kept rows
+ * when a user filter is active.
  */
-const status = computed(() => {
+const countLabel = computed(() => {
   const loaded = props.shownCount ?? props.rowCount
   const total = `${loaded.toLocaleString('fr-FR')} ${loaded > 1 ? 'lignes' : 'ligne'}`
-  const count =
-    userFilter.text === '' ? total : `${view.value.length.toLocaleString('fr-FR')} / ${total}`
-  return props.durations ? `${count} · ${props.durations}` : count
+  return userFilter.text === '' ? total : `${view.value.length.toLocaleString('fr-FR')} / ${total}`
 })
 const sort = ref<SortState | null>(null)
 const selection = shallowRef(emptySelection())
@@ -925,12 +919,11 @@ const userFilterColumn = computed({
       />
     </teleport>
 
-    <!--
-      Status of the result, discreet: in the small size, at the bottom of the
-      panel, which clips what goes past it. Its line keeps its full height,
-      the descenders included (no `text-box` trim).
-    -->
-    <p class="grid-status text-sm text-fg-secondary">{{ status }}</p>
+    <!-- Status of the result: number of rows, then the items of the caller. -->
+    <ui-status-bar>
+      <span class="grid-count">{{ countLabel }}</span>
+      <slot name="status" />
+    </ui-status-bar>
   </div>
 </template>
 

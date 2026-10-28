@@ -108,13 +108,27 @@ describe('ResultGrid', () => {
     )
     const headers = wrapper.findAll('.grid-column-name').map((header) => header.text())
     expect(headers).toEqual(['id', 'name'])
-    expect(wrapper.find('.grid-status').text()).toBe('2 lignes')
+    expect(wrapper.find('.grid-count').text()).toBe('2 lignes')
   })
 
-  it('follows the number of rows with the durations of the query', async () => {
-    const wrapper = mountGrid(['id'], [['1']])
-    await wrapper.setProps({ durations: 'exécution 12 ms' })
-    expect(wrapper.find('.grid-status').text()).toBe('1 ligne · exécution 12 ms')
+  it('follows the number of rows with the items of the caller in its status bar', () => {
+    const wrapper = mount(ResultGrid, {
+      props: {
+        columns: ['id'],
+        rightAligned: [false],
+        columnTypes: [],
+        rows: [['1']],
+        rowCount: 1,
+        sql: 'SELECT 1',
+      },
+      slots: { status: '<span>exécution 12 ms</span><span>12 o</span>' },
+    })
+    const items = wrapper.find('.grid-count').element.parentElement!.children
+    expect([...items].map((item) => item.textContent)).toEqual([
+      '1 ligne',
+      'exécution 12 ms',
+      '12 o',
+    ])
   })
 
   it('filters the rows', async () => {
@@ -129,7 +143,7 @@ describe('ResultGrid', () => {
     expect(wrapper.find('.grid-user-filter').exists()).toBe(false)
     await toggleFilter()
     await wrapper.find('.grid-user-filter input').setValue('null')
-    expect(wrapper.find('.grid-status').text()).toBe('1 / 2 lignes')
+    expect(wrapper.find('.grid-count').text()).toBe('1 / 2 lignes')
     wrapper.unmount()
     bar.remove()
   })

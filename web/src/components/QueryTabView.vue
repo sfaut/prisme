@@ -38,6 +38,7 @@ import { useClock } from './clock'
 import ResultGrid from './ResultGrid.vue'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
+import UiStatusBar from './ui/UiStatusBar.vue'
 import { vTooltip } from './ui/tooltip'
 
 const props = defineProps<{
@@ -125,10 +126,10 @@ watch(
 )
 
 /**
- * Durations of the query, formatted: "exécution 120 ms · transfert 2,4 s ·
- * 3,1 Mo · 1,3 Mo/s · 20/10/2026 14:32:05" (received volume and throughput
- * during the transfer, then end of the execution, to the second); empty while
- * it waits for its turn. The clock is only read during the query: an ended
+ * Durations of the query, formatted, one item each of the status bar:
+ * "exécution 120 ms", "transfert 2,4 s", "3,1 Mo", "1,3 Mo/s", "20/10/2026
+ * 14:32:05" (received volume and throughput during the transfer, then end of
+ * the execution, to the second); none while it waits for its turn. The clock is only read during the query: an ended
  * query is no longer redrawn on each tick.
  */
 const durations = computed(() => {
@@ -147,9 +148,7 @@ const durations = computed(() => {
     volume,
     rate,
     shown.value?.executedAt ? formatInstant(shown.value.executedAt) : null,
-  ]
-    .filter((part) => part !== null)
-    .join(' · ')
+  ].filter((part) => part !== null)
 })
 </script>
 
@@ -170,7 +169,6 @@ const durations = computed(() => {
       :rows="shown.rows"
       :row-count="shown.rowCount"
       :shown-count="shownCount"
-      :durations="durations"
       :sql="tab.sql"
       :displayed="displayed"
       :actions-target="actionsTarget"
@@ -187,8 +185,13 @@ const durations = computed(() => {
           @click="refreshing ? emit('stop-refresh') : emit('refresh')"
         />
       </template>
+      <template #status>
+        <span v-for="duration in durations" :key="duration">{{ duration }}</span>
+      </template>
     </result-grid>
-    <!-- Without a grid, the durations alone, in the style of the grid's bottom bar. -->
-    <div v-else-if="durations" class="text-sm text-fg-secondary">{{ durations }}</div>
+    <!-- Without a grid, the durations alone. -->
+    <ui-status-bar v-else-if="durations.length > 0">
+      <span v-for="duration in durations" :key="duration">{{ duration }}</span>
+    </ui-status-bar>
   </div>
 </template>
