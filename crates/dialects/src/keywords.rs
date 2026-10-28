@@ -130,13 +130,14 @@ pub(crate) fn is_known_in_version(word: &str, dialect: Dialect, version: Option<
     entries.is_empty() || entries.iter().any(|entry| entry.exists_in(version))
 }
 
-/// Tells whether an unquoted word is a keyword that does not designate a value
-/// (`SELECT`, `AND`, `IN`...): it cannot precede a binary operator.
+/// Tells whether an unquoted word is a reserved word that does not designate a
+/// value (`SELECT`, `AND`, `IN`, `INT`...): it cannot precede a binary
+/// operator. A non-reserved keyword can be a name (`start = 1`), and `END`
+/// closes a `CASE` expression (`END + 1`).
 pub(crate) fn is_structural_keyword(word: &str, dialect: Dialect) -> bool {
-    is_keyword(word, dialect, None)
-        && !index_of(dialect)
-            .values
-            .contains(&word.to_ascii_uppercase())
+    index_of(dialect)
+        .structural
+        .contains(&word.to_ascii_uppercase())
 }
 
 /// Lookup tables of a dialect's file, built once: a word is found by its name
@@ -145,8 +146,8 @@ pub(crate) fn is_structural_keyword(word: &str, dialect: Dialect) -> bool {
 struct NameIndex {
     /// Entries of each name, in capitals, all categories together.
     entries: HashMap<String, Vec<&'static Entry>>,
-    /// Names of the values (`literals`), in capitals.
-    values: HashSet<String>,
+    /// Names of the reserved words and types, in capitals.
+    structural: HashSet<String>,
 }
 
 /// Lookup tables of a dialect, read only once.
@@ -172,9 +173,9 @@ fn name_index(file: &'static KeywordFile) -> NameIndex {
             .or_default()
             .push(entry);
     }
-    index.values = file
-        .literals
-        .iter()
+    index.structural = [&file.reserved, &file.types]
+        .into_iter()
+        .flatten()
         .map(|entry| entry.name().to_ascii_uppercase())
         .collect();
     index
@@ -277,7 +278,10 @@ mod tests {
             Some("5.7.44")
         ));
         assert!(is_structural_keyword("and", Dialect::MySql));
+        assert!(is_structural_keyword("int", Dialect::MySql));
         assert!(!is_structural_keyword("current_date", Dialect::MySql));
+        assert!(!is_structural_keyword("temporary", Dialect::MySql));
+        assert!(!is_structural_keyword("my_table", Dialect::MySql));
         assert!(!is_keyword("my_table", Dialect::MariaDb, None));
     }
 }

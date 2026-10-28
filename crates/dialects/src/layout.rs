@@ -116,7 +116,7 @@ struct Item<'a> {
     text: &'a str,
     /// Did the original text have a space (or a line break) before this token?
     space_before: bool,
-    /// Keyword of the dialect that does not designate a value (`SELECT`,
+    /// Reserved word of the dialect that does not designate a value (`SELECT`,
     /// `AND`...), computed while tokenising, where the dialect is known.
     structural: bool,
 }
@@ -992,6 +992,16 @@ mod tests {
         assert_eq!(
             laid_out("SELECT a-b, -1, a - -1, t.*, x=-1 FROM t WHERE (a+b)*2>=c"),
             "SELECT ALL\n    a - b,\n    -1,\n    a - -1,\n    t.*,\n    x = -1\nFROM t\nWHERE (a + b) * 2 >= c"
+        );
+    }
+
+    #[test]
+    fn spaces_the_operator_after_a_non_reserved_keyword() {
+        // A non-reserved keyword can be a name (`start`, `temporary`), and
+        // `END` closes a CASE expression: the operator that follows is binary.
+        assert_eq!(
+            laid_out("SELECT CASE WHEN a THEN 1 END+1 FROM t WHERE temporary=1 AND start-1>0"),
+            "SELECT ALL CASE WHEN a THEN 1 END + 1\nFROM t\nWHERE TRUE\n    AND temporary = 1\n    AND start - 1 > 0"
         );
     }
 
