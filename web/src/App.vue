@@ -95,16 +95,25 @@ const explorerSplit = useTemplateRef<InstanceType<typeof SplitterPanel>>('explor
 const consoleSplit = useTemplateRef<InstanceType<typeof SplitterPanel>>('consoleSplit')
 
 /**
- * Folds or unfolds a panel of a splitter as its state says.
+ * Folds or unfolds a panel of a splitter as its state says, unless it is
+ * so already.
+ *
+ * Workaround: `collapse` on a panel already folded (a layout saved folded,
+ * on loading) replaces the width it unfolds to by its folded width, and
+ * the panel would unfold at its smallest width (`docs/DEVELOPER.md`,
+ * section "Workarounds").
  *
  * @param panel Panel of the splitter.
  * @param open Is the panel open?
  */
 function showPanel(panel: InstanceType<typeof SplitterPanel> | null, open: boolean): void {
+  if (panel === null || panel.isCollapsed !== open) {
+    return
+  }
   if (open) {
-    panel?.expand()
+    panel.expand()
   } else {
-    panel?.collapse()
+    panel.collapse()
   }
 }
 
