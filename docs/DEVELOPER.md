@@ -446,6 +446,9 @@ web/               Vue interface
   src/stores/      shared state (connections, settings)
 docs/              design decisions and notes
   upstream/        drafts of tickets for the dependencies
+design/            brief of the interface for Claude Design (README.md)
+  capture/         test databases and script that retake the screenshots
+  screenshots/     screenshots of the interface, referred to by the brief
 ```
 
 ## Design documents

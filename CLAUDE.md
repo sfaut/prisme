@@ -53,6 +53,7 @@ crates/        Cargo workspace
   server/      notebook sessions, API, authentication
 web/           Vue application
 docs/          decisions and notes
+design/        brief of the interface for Claude Design, its screenshots and their capture
 ```
 
 In development, Vite serves the interface and forwards the API to `axum`. In production, `rust-embed` embeds `web/dist`.
