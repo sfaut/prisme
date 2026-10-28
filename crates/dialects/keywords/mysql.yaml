@@ -266,20 +266,36 @@ keywords:
   - CHAIN
   - COLUMNS
   - COMMIT
+  - COMMITTED
   - CONSISTENT
   - END
+  - ISOLATION
+  - LEVEL
+  - MIGRATE
   - NO
   - OFFSET
+  - ONE
   - ONLY
+  - PHASE
+  - PREPARE
+  - RECOVER
+  - REPEATABLE
+  - RESUME
   - ROLLBACK
+  - SAVEPOINT
+  - SERIALIZABLE
   - SNAPSHOT
   - START
+  - SUSPEND
   - TABLES
   - TEMPORARY
   - TRANSACTION
   - TRUNCATE
+  - UNCOMMITTED
   - VIEW
   - WORK
+  - XA
+  - XID
 
 # Column types, reserved.
 types:

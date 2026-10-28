@@ -230,17 +230,33 @@ mod tests {
 
     #[test]
     fn knows_every_word_of_the_transaction_statements() {
-        // Syntax of START TRANSACTION, BEGIN, COMMIT and ROLLBACK, the same
-        // in MySQL and MariaDB.
+        // Syntax of START TRANSACTION, BEGIN, COMMIT, ROLLBACK, SAVEPOINT,
+        // SET TRANSACTION and XA, without their names and values: the same in
+        // MySQL and MariaDB, except the options of XA RECOVER.
         let statements = [
             "START TRANSACTION WITH CONSISTENT SNAPSHOT, READ WRITE, READ ONLY",
             "BEGIN WORK",
             "COMMIT WORK AND NO CHAIN NO RELEASE",
             "ROLLBACK WORK AND NO CHAIN NO RELEASE",
+            "SAVEPOINT",
+            "ROLLBACK WORK TO SAVEPOINT",
+            "RELEASE SAVEPOINT",
+            "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ COMMITTED",
+            "READ UNCOMMITTED, SERIALIZABLE",
+            "XA START JOIN",
+            "XA BEGIN RESUME",
+            "XA END SUSPEND FOR MIGRATE",
+            "XA PREPARE",
+            "XA COMMIT ONE PHASE",
+            "XA ROLLBACK",
         ];
-        for dialect in [Dialect::MySql, Dialect::MariaDb] {
+        for (dialect, recover) in [
+            (Dialect::MySql, "XA RECOVER CONVERT XID"),
+            (Dialect::MariaDb, "XA RECOVER FORMAT"),
+        ] {
             for word in statements
                 .iter()
+                .chain([&recover])
                 .flat_map(|statement| statement.split([' ', ',']))
                 .filter(|word| !word.is_empty())
             {
