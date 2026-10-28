@@ -3,7 +3,8 @@
 This document is the prompt given to Claude Design. It describes the interface of Prisme as it stands on 2026-10-28 (v0.7.0 and the commits after it), the rules any design keeps, and what is expected. It is pasted whole, with the screenshots of `screenshots/`, taken at a scale of 150% on the test databases of section 9:
 
 - `main-light.png`, `main-dark.png`: the main screen, data explorer folded;
-- `explorer-light.png`, `explorer-dark.png`: the same screen, data explorer open on the `attributes` of the first four rows of the grid.
+- `explorer-light.png`, `explorer-dark.png`: the same screen, data explorer open on the `attributes` of the first four rows of the grid;
+- `menu-*-light.png`, `menu-*-dark.png`: each menu and list of choices of the main screen open, cut around it and its trigger, the pointer on its first item: `menu-theme` (theme list of the top bar), `menu-account` (account menu), `menu-sources`, `menu-source` and `menu-notebooks` ("⋮" menus of **Sources de données**, of the source **local** and of **Notebooks**, with their row), `menu-reopen` (editors closed less than 24 hours ago), `menu-limit` (row limit of the SQL cell), `menu-filter` (column of the result filter, beside its field).
 
 ## 1. The product
 
@@ -266,6 +267,7 @@ FROM customer
 GROUP BY country;
 ```
 
+- Two editors on **local** closed less than 24 hours ago, most recent first in the **Rouvrir** menu: **brouillon** (`` SELECT COUNT(*) FROM `order`; ``), then an editor without a name, listed by the start of its query (`SELECT name, price FROM product WHERE price > 100;`).
 - Rows of the first query:
 
 | id | name | email | country | website | attributes | created_at |

@@ -39,9 +39,10 @@ free.
 
    The script starts Prisme on `127.0.0.1:8485` with a throwaway data folder, and a headless Chrome
    with a throwaway profile. It prepares the connections and the editors through the API, runs the
-   queries, then writes `main-light.png`, `main-dark.png`, `explorer-light.png` and
-   `explorer-dark.png` into `design/screenshots/`. At the end, even after a failure, it stops both
-   programs and removes their folders. A folder given as argument receives the screenshots instead;
+   queries, then writes into `design/screenshots/`, each in light and dark (`-light.png`,
+   `-dark.png`): the main screen (`main`), each menu open, cut around it and its trigger (`menu-*`),
+   and the data explorer (`explorer`). At the end, even after a failure, it stops both programs and
+   removes their folders. A folder given as argument receives the screenshots instead;
    `PRISME_BIN` and `CHROME_BIN` name other executables.
 
 The data are the same from one run to the next; durations and times change.

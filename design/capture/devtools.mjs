@@ -161,6 +161,18 @@ export async function connect(port) {
   }
 
   /**
+   * Presses and releases a key.
+   *
+   * @param {string} name Name of the key (`Escape`, `Enter`...).
+   * @param {number} code Windows virtual key code of the key (27 for Escape).
+   */
+  async function key(name, code) {
+    const common = { key: name, code: name, windowsVirtualKeyCode: code }
+    await send('Input.dispatchKeyEvent', { type: 'keyDown', ...common })
+    await send('Input.dispatchKeyEvent', { type: 'keyUp', ...common })
+  }
+
+  /**
    * Waits until an expression of the page is true.
    *
    * @param {string} expression JavaScript expression.
@@ -199,12 +211,15 @@ export async function connect(port) {
   }
 
   /**
-   * Saves a screenshot of the page as PNG.
+   * Saves a screenshot of the page, or of a region of it, as PNG.
    *
    * @param {string} path File written.
+   * @param {{ x: number, y: number, width: number, height: number }} [region]
+   *     Region taken, in CSS pixels; the whole page without it.
    */
-  async function screenshot(path) {
-    const { data } = await send('Page.captureScreenshot', { format: 'png' })
+  async function screenshot(path, region) {
+    const clip = region === undefined ? undefined : { ...region, scale: 1 }
+    const { data } = await send('Page.captureScreenshot', { format: 'png', clip })
     writeFileSync(path, Buffer.from(data, 'base64'))
   }
 
@@ -216,6 +231,7 @@ export async function connect(port) {
     move,
     click,
     clickOn,
+    key,
     until,
     resize,
     scheme,

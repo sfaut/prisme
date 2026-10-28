@@ -1,10 +1,11 @@
 // Retakes the screenshots of the design brief (`design/screenshots/`).
 // Starts Prisme on a throwaway data folder, then a headless Chrome at a
-// scale of 150 % on a throwaway profile; prepares two connections and two
-// editors through the API, runs their queries, opens the tree down to the
-// columns of `customer`, then takes the main screen and the data explorer,
-// each in light and dark. Stops both programs and removes their folders at
-// the end, even after a failure. Prerequisites in `design/README.md`.
+// scale of 150 % on a throwaway profile; prepares two connections, two
+// editors and two closed editors through the API, runs the queries, opens
+// the tree down to the columns of `customer`, then takes the main screen,
+// each menu open with its trigger, and the data explorer, each in light and
+// dark. Stops both programs and removes their folders at the end, even after
+// a failure. Prerequisites in `design/README.md`.
 //
 // From the root of the repository: node design/capture/capture.mjs [folder]
 
@@ -120,8 +121,10 @@ async function api(method, path, body) {
 
 /**
  * Prepares the state of the screenshots: the connections "local" (MariaDB)
- * and "prod" (MySQL), the editor "boutique" with two queries, and an editor
- * without a name on "prod", whose query names a table that does not exist.
+ * and "prod" (MySQL), the editor "boutique" with two queries, an editor
+ * without a name on "prod", whose query names a table that does not exist,
+ * and two closed editors for the "Rouvrir" menu, one with a name, the other
+ * known by the start of its query.
  */
 async function prepare() {
   const local = await api('POST', '/api/connections', {
@@ -165,6 +168,14 @@ async function prepare() {
     connection_id: prod.id,
     sql: "SELECT number, issued_on, amount, status\nFROM invoices\nWHERE status = 'late';\n",
   })
+  for (const [name, sql] of [
+    ['', 'SELECT name, price\nFROM product\nWHERE price > 100;\n'],
+    ['brouillon', 'SELECT COUNT(*) FROM `order`;\n'],
+  ]) {
+    const closed = await api('POST', '/api/editors', { connection_id: local.id })
+    await api('PUT', `/api/editors/${closed.id}`, { name, connection_id: local.id, sql })
+    await api('DELETE', `/api/editors/${closed.id}`)
+  }
 }
 
 /**
@@ -242,21 +253,145 @@ async function explorerScreen(page) {
 }
 
 /**
- * Takes the screen in light and dark, the mouse out of the way.
+ * Takes the screen, or a region of it, in light and dark; for the whole
+ * screen, the mouse out of the way.
  *
  * @param {Awaited<ReturnType<typeof connect>>} page Page of Prisme.
  * @param {string} name Start of the files' names.
+ * @param {{ x: number, y: number, width: number, height: number }} [region]
+ *     Region taken, in CSS pixels.
  */
-async function shots(page, name) {
+async function shots(page, name, region) {
   for (const scheme of ['light', 'dark']) {
     await page.scheme(scheme)
-    await page.move(1000, 8)
+    if (region === undefined) {
+      await page.move(1000, 8)
+    }
     await page.wait(800)
     const path = join(OUTPUT, `${name}-${scheme}.png`)
-    await page.screenshot(path)
+    await page.screenshot(path, region)
     console.log(`written: ${path}`)
   }
   await page.scheme('light')
+}
+
+/**
+ * Open menu or list of choices.
+ */
+const OPEN_MENU = '[role="menu"], [role="listbox"]'
+
+/**
+ * Room kept around a menu and its trigger in their screenshot, in CSS
+ * pixels: enough for the menu's shadow.
+ */
+const MENU_MARGIN = 24
+
+/**
+ * JavaScript expression giving the first visible element matching a selector.
+ *
+ * @param {string} selector CSS selector.
+ */
+function visible(selector) {
+  return `[...document.querySelectorAll(${JSON.stringify(selector)})].find(
+    (element) => element.getBoundingClientRect().width > 0,
+  )`
+}
+
+/**
+ * JavaScript expression giving the row of the tree whose text starts with a
+ * label.
+ *
+ * @param {string} label Start of the row's text.
+ */
+function treeRow(label) {
+  return `[...document.querySelectorAll('[role="treeitem"]')].find(
+    (row) => row.textContent.trim().startsWith(${JSON.stringify(label)}),
+  )`
+}
+
+/**
+ * Center of an element, in CSS pixels.
+ *
+ * @param {Awaited<ReturnType<typeof connect>>} page Page of Prisme.
+ * @param {string} element JavaScript expression giving the element.
+ * @returns {Promise<{ x: number, y: number }>}
+ */
+function centerOf(page, element) {
+  return page.evaluate(`(() => {
+    const rect = (${element}).getBoundingClientRect()
+    return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+  })()`)
+}
+
+/**
+ * Opens a menu or a list of choices, takes it in light and dark, cut around
+ * it and the element shown with it, then closes it with Escape. The pointer
+ * rests on its first item, highlighted as under the mouse.
+ *
+ * @param {Awaited<ReturnType<typeof connect>>} page Page of Prisme.
+ * @param {string} name Start of the files' names.
+ * @param {string} trigger JavaScript expression giving the element that opens it.
+ * @param {string} [context]
+ *     JavaScript expression giving the element shown with it; the trigger
+ *     when left out.
+ */
+async function menuShots(page, name, trigger, context = trigger) {
+  const { x, y } = await centerOf(page, trigger)
+  // The "⋮" button of a tree row only shows while the row is hovered.
+  await page.move(x, y)
+  await page.wait(200)
+  await page.click(x, y)
+  await page.until(`document.querySelector('${OPEN_MENU}') !== null`)
+  await page.wait(500)
+  const item = await centerOf(page, `document.querySelector('[role="menuitem"], [role="option"]')`)
+  await page.move(item.x, item.y)
+  const region = await page.evaluate(`(() => {
+    const rects = [${context}, document.querySelector('${OPEN_MENU}')].map((element) =>
+      element.getBoundingClientRect(),
+    )
+    const left = Math.max(0, Math.min(...rects.map((rect) => rect.left)) - ${MENU_MARGIN})
+    const top = Math.max(0, Math.min(...rects.map((rect) => rect.top)) - ${MENU_MARGIN})
+    const right = Math.min(innerWidth, Math.max(...rects.map((rect) => rect.right)) + ${MENU_MARGIN})
+    const bottom = Math.min(innerHeight, Math.max(...rects.map((rect) => rect.bottom)) + ${MENU_MARGIN})
+    return { x: left, y: top, width: right - left, height: bottom - top }
+  })()`)
+  await shots(page, name, region)
+  await page.key('Escape', 27)
+  await page.until(`document.querySelector('${OPEN_MENU}') === null`)
+}
+
+/**
+ * Takes each menu and list of choices of the main screen open: theme and
+ * account of the top bar; "⋮" menus of the root, of a source and of the
+ * notebooks, with their row; editors to reopen; row limit of the SQL cell;
+ * column of the result filter, with the filter's field.
+ *
+ * @param {Awaited<ReturnType<typeof connect>>} page Page of Prisme.
+ */
+async function menusScreen(page) {
+  await menuShots(page, 'menu-theme', visible('button[aria-label="Thème"]'))
+  await menuShots(page, 'menu-account', visible('button[aria-label="Compte"]'))
+  for (const [name, label] of [
+    ['menu-sources', 'Sources de données'],
+    ['menu-source', 'local'],
+    ['menu-notebooks', 'Notebooks'],
+  ]) {
+    const row = treeRow(label)
+    await menuShots(page, name, `(${row}).querySelector('button[aria-label="Actions"]')`, row)
+  }
+  await menuShots(page, 'menu-reopen', visible('button[aria-label="Rouvrir un éditeur fermé"]'))
+  await menuShots(page, 'menu-limit', visible('button[aria-label="Limite de lignes"]'))
+
+  await page.clickOn('button', 'Afficher le filtre')
+  await page.wait(300)
+  await menuShots(
+    page,
+    'menu-filter',
+    visible('button[aria-label="Colonne filtrée"]'),
+    visible('input[placeholder="Filtrer"]'),
+  )
+  await page.clickOn('button', 'Masquer le filtre')
+  await page.wait(300)
 }
 
 /**
@@ -309,6 +444,7 @@ try {
   try {
     await mainScreen(page)
     await shots(page, 'main')
+    await menusScreen(page)
     await explorerScreen(page)
     await shots(page, 'explorer')
   } finally {
