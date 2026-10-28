@@ -367,9 +367,10 @@
      Chrome) goes through its pseudo-elements, the only way to remove the
      arrows; the other browsers, through the standard properties. */
   ::-webkit-scrollbar {
-    /* Width of the vertical bar, height of the horizontal bar. */
-    width: --spacing(1);
-    height: --spacing(1);
+    /* Width of the vertical bar, height of the horizontal bar: two steps,
+       thin but easy to grab. */
+    width: --spacing(2);
+    height: --spacing(2);
   }
 
   ::-webkit-scrollbar-track,
@@ -377,8 +378,9 @@
     background: transparent;
   }
 
+  /* Thumb rounded at its ends: a radius of half the bar's width. */
   ::-webkit-scrollbar-thumb {
-    border-radius: var(--radius-xs);
+    border-radius: var(--radius-sm);
     background: var(--scrollbar-thumb);
 
     &:hover {
