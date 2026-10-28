@@ -15,7 +15,8 @@
  *
  * Each query has its tab. A new batch replaces the tabs of the previous one,
  * except those the user pinned; a tab can also be renamed or closed (its
- * query is then stopped if it is running).
+ * query is then stopped if it is running). A tab also carries the user filter
+ * of its grid (`filter`), which a refresh and a resumed session keep.
  *
  * A tab can be refreshed: its query runs again alone, as a batch of its own
  * (`run` with the tab's id), and the other tabs stay. While a batch runs, the
@@ -159,6 +160,27 @@ export interface QueryResult {
 }
 
 /**
+ * User filter of a result tab's grid. Two forms: the global filter searches
+ * the text in all the columns (`column` is `null`); the targeted filter
+ * searches it in the column at the index `column` of the `SELECT`.
+ */
+export interface UserFilter {
+  /**
+   * Searched text, case-insensitive. Empty: no text to search.
+   */
+  text: string
+  /**
+   * Index of the targeted column, or `null` for the global filter.
+   */
+  column: number | null
+}
+
+/**
+ * User filter that keeps every row.
+ */
+export const NO_FILTER: Readonly<UserFilter> = Object.freeze({ text: '', column: null })
+
+/**
  * Query of a batch, shown in its own tab.
  */
 export interface QueryTab {
@@ -230,6 +252,15 @@ export interface QueryTab {
    * if it fails or is stopped. `null` outside a refresh.
    */
   previous: PreviousRun | null
+  /**
+   * User filter of the tab's grid, replaced as a whole on each change.
+   */
+  filter: UserFilter
+  /**
+   * Is the form of the user filter expanded? Collapsed, the filter stays
+   * applied.
+   */
+  filterOpen: boolean
 }
 
 /**
@@ -373,6 +404,8 @@ export function applyMessage(
             pinned: false,
             name: null,
             previous: null,
+            filter: NO_FILTER,
+            filterOpen: false,
           })),
         ]
       }
@@ -795,6 +828,25 @@ export function refreshState(state: SessionState, tab: QueryTab): RefreshState {
 }
 
 /**
+ * Result shown by a tab: that of its query, or, during a refresh, the
+ * previous one until the new columns arrive.
+ *
+ * @param tab Tab of the query.
+ */
+export function shownResult(tab: QueryTab): QueryResult | null {
+  return tab.result ?? tab.previous?.result ?? null
+}
+
+/**
+ * Does a tab show a grid, that is a result with columns?
+ *
+ * @param tab Tab of the query.
+ */
+export function showsGrid(tab: QueryTab): boolean {
+  return (shownResult(tab)?.columns.length ?? 0) > 0
+}
+
+/**
  * Removes a tab from the state, and from the refresh queue.
  *
  * @param state State of the session.
@@ -853,6 +905,8 @@ export function savedTab(saved: ResultTab): QueryTab {
     pinned: saved.pinned,
     name: saved.name === '' ? null : saved.name,
     previous: null,
+    filter: NO_FILTER,
+    filterOpen: false,
   }
 }
 
@@ -867,8 +921,8 @@ export function savedTab(saved: ResultTab): QueryTab {
  * @param batch Number of the current batch.
  * @param now Instant of reception (`performance.now()`).
  * @param existing
- *     Tab already shown for this query, whose name, pinning and number it
- *     keeps.
+ *     Tab already shown for this query, whose name, pinning, number and user
+ *     filter it keeps.
  */
 export function resumedTab(
   query: ResumedQuery,
@@ -887,6 +941,8 @@ export function resumedTab(
   })
   tab.batch = batch
   tab.number = existing?.number ?? query.query
+  tab.filter = existing?.filter ?? NO_FILTER
+  tab.filterOpen = existing?.filterOpen ?? false
   if (!query.result.done) {
     const since = (microseconds: number | null) =>
       microseconds === null ? null : now - microseconds / 1000

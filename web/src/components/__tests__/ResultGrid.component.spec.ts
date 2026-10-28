@@ -1,10 +1,11 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { flushPromises, mount } from '@vue/test-utils'
+import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
+import { NO_FILTER } from '@/api/querySession'
 import { useDataExplorerStore } from '@/stores/dataExplorer'
 
 import ResultGrid from '../ResultGrid.vue'
@@ -27,35 +28,16 @@ function mountGrid(
 ) {
   const rightAligned = columns.map(() => false)
   return mount(ResultGrid, {
-    props: { columns, rightAligned, columnTypes, rows, rowCount: rows.length, sql },
-  })
-}
-
-/**
- * Mounts a grid with the bar of the result tabs, where its buttons go.
- *
- * @param columns Names of the columns.
- * @param rows Rows of the result.
- */
-function mountGridWithBar(columns: string[], rows: (string | null)[][]) {
-  const bar = document.createElement('div')
-  document.body.append(bar)
-  const wrapper = mount(ResultGrid, {
     props: {
       columns,
-      rightAligned: columns.map(() => false),
-      columnTypes: [],
+      rightAligned,
+      columnTypes,
       rows,
       rowCount: rows.length,
-      sql: 'SELECT 1',
-      actionsTarget: bar,
+      sql,
+      filter: NO_FILTER,
     },
   })
-  const toggleFilter = async () => {
-    bar.querySelector<HTMLButtonElement>('.grid-user-filter-toggle')!.click()
-    await flushPromises()
-  }
-  return { wrapper, bar, toggleFilter }
 }
 
 describe('ResultGrid', () => {
@@ -120,6 +102,7 @@ describe('ResultGrid', () => {
         rows: [['1']],
         rowCount: 1,
         sql: 'SELECT 1',
+        filter: NO_FILTER,
       },
       slots: { status: '<span>exécution 12 ms</span><span>12 o</span>' },
     })
@@ -131,21 +114,20 @@ describe('ResultGrid', () => {
     ])
   })
 
-  it('filters the rows', async () => {
-    const { wrapper, bar, toggleFilter } = mountGridWithBar(
+  it('shows the rows that its filter keeps, in all the columns or in one', async () => {
+    const wrapper = mountGrid(
       ['id', 'name'],
       [
         ['1', 'a'],
         ['2', null],
       ],
     )
-    // Collapsed at first: the button of the bar of the result tabs expands the form.
-    expect(wrapper.find('.grid-user-filter').exists()).toBe(false)
-    await toggleFilter()
-    await wrapper.find('.grid-user-filter input').setValue('null')
+    await wrapper.setProps({ filter: { text: 'null', column: null } })
     expect(wrapper.find('.grid-count').text()).toBe('1 / 2 lignes')
-    wrapper.unmount()
-    bar.remove()
+    await wrapper.setProps({ filter: { text: '1', column: 1 } })
+    expect(wrapper.find('.grid-count').text()).toBe('0 / 2 lignes')
+    await wrapper.setProps({ filter: { text: '1', column: 0 } })
+    expect(wrapper.find('.grid-count').text()).toBe('1 / 2 lignes')
   })
 })
 
@@ -208,6 +190,7 @@ describe('ResultGrid and the data explorer', () => {
         rowCount: 2,
         sql: 'SELECT id, doc FROM t',
         displayed: true,
+        filter: NO_FILTER,
       },
     })
     explorer.open = true
@@ -242,6 +225,7 @@ describe('ResultGrid and the data explorer', () => {
         rowCount: 1,
         sql: 'SELECT JSON_EXTRACT(doc, "$.a") AS value FROM t',
         displayed: true,
+        filter: NO_FILTER,
       },
     })
     // Without layout, jsdom draws no row: the column is selected by its name.
@@ -265,39 +249,10 @@ describe('ResultGrid and the data explorer', () => {
         rows,
         rowCount: 2,
         sql: 'SELECT id, doc FROM t',
+        filter: NO_FILTER,
       },
     })
     await wrapper.findAll('.grid-column-name')[0]!.trigger('pointerdown')
     expect(explorer.content).toEqual({ state: 'none' })
-  })
-})
-
-describe('ResultGrid filter', () => {
-  it('keeps the filter text when the same columns come back', async () => {
-    const { wrapper, bar, toggleFilter } = mountGridWithBar(['id'], [['1'], ['2']])
-    await toggleFilter()
-    await wrapper.find('.grid-user-filter input').setValue('2')
-    await wrapper.setProps({ columns: ['id'], rows: [['1'], ['2']], rowCount: 2 })
-    expect((wrapper.find('.grid-user-filter input').element as HTMLInputElement).value).toBe('2')
-    wrapper.unmount()
-    bar.remove()
-  })
-
-  it('shows its button in the bar of the result tabs, none without it', async () => {
-    const bar = document.createElement('div')
-    document.body.append(bar)
-    const wrapper = mountGrid(['id'], [['1']])
-    const inBar = () => bar.querySelector('[aria-label="Afficher le filtre"]') !== null
-    expect(inBar()).toBe(false)
-    expect(wrapper.find('.grid-user-filter-toggle').exists()).toBe(false)
-
-    await wrapper.setProps({ actionsTarget: bar })
-    expect(inBar()).toBe(true)
-
-    await wrapper.setProps({ actionsTarget: null })
-    expect(inBar()).toBe(false)
-    expect(wrapper.find('.grid-user-filter-toggle').exists()).toBe(false)
-    wrapper.unmount()
-    bar.remove()
   })
 })

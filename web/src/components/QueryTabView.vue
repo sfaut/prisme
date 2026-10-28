@@ -11,35 +11,39 @@
   value at once. A query without a grid (waiting, failed, or without
   columns) only shows its durations.
 
-  The grid comes right under the line of the result tabs, which takes the
-  place of its frame's top border; the error or the durations, when they
-  come first, keep a little room under that line.
+  The user filter belongs to the tab (`filter`, `v-model:filter`): its form
+  (`ResultFilter.vue`) shows above the grid while its button, right of the
+  result tabs, keeps it expanded. New columns make it global, its text kept:
+  the index of a targeted column would point to another column.
 
-  The refresh button, right of the result tabs with the grid's filter
-  button (`actionsTarget`), runs the query again; during the refresh, or while it waits for the running batch, it
-  stops it. The previous result stays displayed until the new columns
-  arrive.
+  The grid comes right under the line of the result tabs, which takes the
+  place of its frame's top border; the error, the filter's form or the
+  durations, when they come first, keep a little room under that line.
+
+  During a refresh, the previous result stays displayed until the new
+  columns arrive.
 -->
 <script setup lang="ts">
-import { RefreshCw, RefreshCwOff } from '@lucide/vue'
 import { computed, ref, watch } from 'vue'
 
 import {
   type QueryTab,
-  type RefreshState,
+  type UserFilter,
   executionDuration,
   formatBytes,
   formatDuration,
   formatInstant,
+  shownResult,
+  showsGrid,
   transferDuration,
 } from '@/api/querySession'
 
 import { useClock } from './clock'
+import { sameColumns } from './resultGrid'
+import ResultFilter from './ResultFilter.vue'
 import ResultGrid from './ResultGrid.vue'
 import UiAlert from './ui/UiAlert.vue'
-import UiButton from './ui/UiButton.vue'
 import UiStatusBar from './ui/UiStatusBar.vue'
-import { vTooltip } from './ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -51,59 +55,41 @@ const props = defineProps<{
    * feeds the data explorer.
    */
   displayed: boolean
-  /**
-   * Refresh of the tab: running, waiting, possible or not.
-   */
-  refresh: RefreshState
-  /**
-   * Place of the grid's buttons (refresh, filter) in the bar of the result
-   * tabs, for the tab shown; `null` for the others, hidden, which show none.
-   */
-  actionsTarget: HTMLElement | null
 }>()
 
-const emit = defineEmits<{
-  /**
-   * The user asks to run the query again.
-   */
-  refresh: []
-  /**
-   * The user stops the refresh, or cancels it while it waits.
-   */
-  'stop-refresh': []
-}>()
+/**
+ * User filter of the tab's grid.
+ */
+const filter = defineModel<UserFilter>('filter', { required: true })
 
 const clock = useClock()
 
 /**
- * Displayed result: that of the query, or, during a refresh, the previous
- * one until the new columns arrive.
+ * Displayed result (see `shownResult`).
  */
-const shown = computed(() => props.tab.result ?? props.tab.previous?.result ?? null)
+const shown = computed(() => shownResult(props.tab))
 
 /**
- * Does the grid come first, right under the result tabs (no error above it)?
+ * Does the grid come first, right under the result tabs (no error nor
+ * filter form above it)?
  */
-const gridFirst = computed(() => !props.tab.error && (shown.value?.columns.length ?? 0) > 0)
+const attached = computed(() => !props.tab.error && !props.tab.filterOpen && showsGrid(props.tab))
 
-/**
- * Is a refresh running or waiting? Its button then stops it.
- */
-const refreshing = computed(() => props.refresh === 'running' || props.refresh === 'queued')
-
-/**
- * Hover text of the refresh button.
- */
-const refreshTitle = computed(() => {
-  switch (props.refresh) {
-    case 'running':
-      return 'Arrêter le rafraîchissement : le résultat actuel est gardé'
-    case 'queued':
-      return 'Annuler le rafraîchissement, en attente de la fin des requêtes en cours'
-    default:
-      return 'Rafraîchir : relance la requête'
-  }
-})
+// New columns: a targeted filter becomes global, its text kept. The same
+// columns again (a session resumed after a reconnection) keep it.
+watch(
+  () => shown.value?.columns,
+  (columns, previous) => {
+    if (
+      columns !== undefined &&
+      previous !== undefined &&
+      !sameColumns(columns, previous) &&
+      filter.value.column !== null
+    ) {
+      filter.value = { ...filter.value, column: null }
+    }
+  },
+)
 
 /**
  * Number of rows shown under the grid: read on each tick of the clock, and
@@ -158,11 +144,17 @@ const durations = computed(() => {
     width of its content, and a wide grid overflowed, cut off on the right,
     instead of scrolling in its own area.
   -->
-  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3" :class="{ 'pt-1': !gridFirst }">
+  <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3" :class="{ 'pt-1': !attached }">
     <ui-alert v-if="tab.error" tone="error" :title="tab.error" />
+    <result-filter
+      v-if="shown && showsGrid(tab) && tab.filterOpen"
+      v-model="filter"
+      :columns="shown.columns"
+    />
     <result-grid
-      v-if="shown && shown.columns.length > 0"
-      :attached="gridFirst"
+      v-if="shown && showsGrid(tab)"
+      :attached="attached"
+      :filter="filter"
       :columns="shown.columns"
       :right-aligned="shown.rightAligned"
       :column-types="shown.columnTypes"
@@ -171,20 +163,7 @@ const durations = computed(() => {
       :shown-count="shownCount"
       :sql="tab.sql"
       :displayed="displayed"
-      :actions-target="actionsTarget"
     >
-      <template #actions>
-        <ui-button
-          :icon="refreshing ? RefreshCwOff : RefreshCw"
-          variant="ghost"
-          :tone="refreshing ? 'primary' : 'neutral'"
-          small
-          :disabled="refresh === 'unavailable'"
-          :aria-label="refreshing ? 'Arrêter le rafraîchissement' : 'Rafraîchir'"
-          v-tooltip="refreshTitle"
-          @click="refreshing ? emit('stop-refresh') : emit('refresh')"
-        />
-      </template>
       <template #status>
         <span v-for="duration in durations" :key="duration">{{ duration }}</span>
       </template>

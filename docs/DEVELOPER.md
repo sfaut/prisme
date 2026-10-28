@@ -100,9 +100,9 @@ Rules:
 | `FastForward` | Run all the queries ("Exécuter tout") | editor's buttons |
 | `Square` | Stop the running queries (the run button, while they run) | editor's buttons |
 | `WandSparkles` | Rewrite as "beautiful SQL" ("Enjoliver") | editor's buttons |
-| `RefreshCw` / `RefreshCwOff` | Run the result's query again / stop that refresh | bar of the result tabs (`QueryTabView`) |
-| `Funnel` | Show / hide the filter of a list; in the data explorer, keep only the search results | bar of the result tabs (`ResultGrid`), console's header, data explorer's search |
-| `Search` | Mark of a search or filter field; open the search | grid's filter field; data explorer |
+| `RefreshCw` / `RefreshCwOff` | Run the result's query again / stop that refresh | bar of the result tabs (`ResultTabActions`) |
+| `Funnel` | Show / hide the filter of a list; in the data explorer, keep only the search results | bar of the result tabs (`ResultTabActions`), console's header, data explorer's search |
+| `Search` | Mark of a search or filter field; open the search | result's filter field (`ResultFilter`); data explorer |
 | `ChevronUp` / `ChevronDown` | Previous / next search result | data explorer |
 | `Pin` | Pin / unpin a result tab | result tab (`ResultTab`) |
 | `Copy` | Copy the document shown | data explorer |
@@ -116,7 +116,7 @@ Rules:
 |---|---|---|
 | `Plus` | New editor; add a connection | editors' bar (`EditorTabBar`); navigator's menu |
 | `History` | Reopen a closed editor | editors' bar |
-| `X` | Close a tab, a dialog or a message; empty a field | tabs (`DocumentTab`), `UiDialog`, `UiAlert`, grid's filter field |
+| `X` | Close a tab, a dialog or a message; empty a field | tabs (`DocumentTab`), `UiDialog`, `UiAlert`, result's filter field (`ResultFilter`) |
 
 #### Object navigator
 

@@ -490,6 +490,8 @@ describe('resume', () => {
         rows: [],
       }),
     ]
+    state.tabs[0]!.filter = { text: 'a', column: 0 }
+    state.tabs[0]!.filterOpen = true
     const running = {
       started: true,
       done: false,
@@ -547,6 +549,8 @@ describe('resume', () => {
       [8, null, 1],
     ])
     const [first, second] = state.tabs
+    // The user filter stays, as the name.
+    expect([first!.filter, first!.filterOpen]).toEqual([{ text: 'a', column: 0 }, true])
     expect([first!.startedAt, first!.columnsAt]).toEqual([5_000, 7_000])
     expect(tabProgress(second!)).toBe('waiting')
 

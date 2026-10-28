@@ -1,3 +1,4 @@
+import type { UserFilter } from '@/api/querySession'
 import { describe, expect, it } from 'vitest'
 
 import type { Cell } from '@/api/querySession'
@@ -21,7 +22,6 @@ import {
   selectedColumnCells,
   createViewMemory,
   sameColumns,
-  type UserFilter,
   type SortState,
   updateView,
   visibleRows,

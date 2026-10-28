@@ -2,14 +2,9 @@
   Compact result grid.
 
   - Sort: ▲▼ button of the header (ascending, descending, none).
-  - User filter: text searched in all the columns (global filter) or in one
-    column (targeted filter). The form is collapsed; its button, a funnel
-    as in the console, expands it (and collapses it: the user filter stays
-    applied, the button shows it in the primary color).
-  - Buttons: the content of the `actions` slot (refresh of the result),
-    then the user filter button. They go to the bar of the result tabs
-    (`actionsTarget`, by a `Teleport` of Vue), for the tab shown only: a
-    hidden tab, or folded results, show none.
+  - User filter: the grid shows the rows that the filter it receives keeps
+    (`filter`); its form and its button belong to the result tab
+    (`ResultFilter.vue`, `ResultTabActions.vue`).
   - Status bar: number of loaded rows ("120 / 5 000 lignes" when a user
     filter is active), then the items of the `status` slot (durations of
     the query). The data explorer opens from its rail, on the right edge of
@@ -52,26 +47,16 @@
   selection, copy) is in `resultGrid.ts`.
 -->
 <script setup lang="ts">
-import { ExternalLink, Funnel, Search, X } from '@lucide/vue'
+import { ExternalLink } from '@lucide/vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import {
-  computed,
-  nextTick,
-  onBeforeUnmount,
-  reactive,
-  ref,
-  shallowRef,
-  useTemplateRef,
-  watch,
-} from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, useTemplateRef, watch } from 'vue'
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
-import type { Cell } from '@/api/querySession'
+import type { Cell, UserFilter } from '@/api/querySession'
 import { cssPixels } from '@/cssLength'
 import { type ExplorerContent, useDataExplorerStore } from '@/stores/dataExplorer'
 
 import {
-  type UserFilter,
   type SelectMode,
   type SortState,
   MIN_COLUMN_WIDTH,
@@ -99,9 +84,6 @@ import {
 import { rememberWidths, rememberedWidths } from './gridWidths'
 import { type ContentKind, detectContent, isWebAddress } from './contentKind'
 import { columnIcon } from './typeIcons'
-import UiButton from './ui/UiButton.vue'
-import UiInput from './ui/UiInput.vue'
-import UiSelect from './ui/UiSelect.vue'
 import UiStatusBar from './ui/UiStatusBar.vue'
 import { notify } from './ui/toasts'
 import { vTooltip } from './ui/tooltip'
@@ -146,15 +128,13 @@ const props = defineProps<{
   displayed?: boolean
   /**
    * Does the grid come right under a line (that of the result tabs)? Its
-   * frame then leaves out its top border while the filter is closed, so as
-   * not to double that line.
+   * frame then leaves out its top border, so as not to double that line.
    */
   attached?: boolean
   /**
-   * Where the buttons of the grid go (refresh, filter): the bar of the
-   * result tabs, for the tab shown. Absent, the grid shows no buttons.
+   * User filter: only the rows it keeps are shown.
    */
-  actionsTarget?: HTMLElement | null
+  filter: UserFilter
 }>()
 
 /**
@@ -170,35 +150,6 @@ const ROW_HEIGHT = cssPixels('--grid-row-height', 22)
 
 const scroller = useTemplateRef<HTMLDivElement>('scroller')
 
-const userFilter = reactive<UserFilter>({ text: '', column: null })
-
-/**
- * Is the user filter form expanded?
- */
-const userFilterOpen = ref(false)
-
-const userFilterBox = useTemplateRef<HTMLDivElement>('userFilterBox')
-
-/**
- * Label of the user filter button: what a click does, and whether the
- * filter keeps only some rows.
- */
-const userFilterLabel = computed(
-  () =>
-    `${userFilterOpen.value ? 'Masquer' : 'Afficher'} le filtre${userFilter.text === '' ? '' : ' (filtre actif)'}`,
-)
-
-/**
- * Expands or collapses the user filter form; when expanded, its field takes the focus.
- */
-async function toggleUserFilter(): Promise<void> {
-  userFilterOpen.value = !userFilterOpen.value
-  if (userFilterOpen.value) {
-    await nextTick()
-    userFilterBox.value?.querySelector('input')?.focus()
-  }
-}
-
 /**
  * Number of rows of the status bar: loaded rows, preceded by the kept rows
  * when a user filter is active.
@@ -206,7 +157,9 @@ async function toggleUserFilter(): Promise<void> {
 const countLabel = computed(() => {
   const loaded = props.shownCount ?? props.rowCount
   const total = `${loaded.toLocaleString('fr-FR')} ${loaded > 1 ? 'lignes' : 'ligne'}`
-  return userFilter.text === '' ? total : `${view.value.length.toLocaleString('fr-FR')} / ${total}`
+  return props.filter.text === ''
+    ? total
+    : `${view.value.length.toLocaleString('fr-FR')} / ${total}`
 })
 const sort = ref<SortState | null>(null)
 const selection = shallowRef(emptySelection())
@@ -275,7 +228,7 @@ async function refreshView(): Promise<void> {
   const run = ++viewRun
   const rows = props.rows
   for (;;) {
-    view.value = updateView(viewMemory, rows, userFilter, sort.value, VIEW_CHUNK)
+    view.value = updateView(viewMemory, rows, props.filter, sort.value, VIEW_CHUNK)
     if (viewMemory.scanned >= rows.length || run !== viewRun) {
       return
     }
@@ -283,13 +236,9 @@ async function refreshView(): Promise<void> {
   }
 }
 
-watch(
-  () => [props.rows, props.rowCount, userFilter.text, userFilter.column, sort.value],
-  refreshView,
-  {
-    immediate: true,
-  },
-)
+watch(() => [props.rows, props.rowCount, props.filter, sort.value], refreshView, {
+  immediate: true,
+})
 
 onBeforeUnmount(() => {
   viewRun++
@@ -302,10 +251,8 @@ onBeforeUnmount(() => {
 const resized = ref<Record<number, string>>(rememberedWidths(props.sql, props.columns))
 
 // New columns: the widths remembered for the query, the order of the SELECT,
-// and no sort. The targeted filter's column index would point to another
-// column, so the user filter becomes global; its text is kept. The same columns
-// again (a session resumed after a reconnection) keep everything, as chosen by
-// the user.
+// and no sort. The same columns again (a session resumed after a
+// reconnection) keep everything, as chosen by the user.
 watch(
   () => props.columns,
   (columns, previous) => {
@@ -315,7 +262,6 @@ watch(
     resized.value = rememberedWidths(props.sql, columns)
     order.value = columns.map((_, index) => index)
     sort.value = null
-    userFilter.column = null
   },
 )
 
@@ -491,11 +437,6 @@ function fitWidth(column: number): void {
   }
 }
 
-const userFilterOptions = computed(() => [
-  { label: 'Toutes les colonnes', value: -1 },
-  ...props.columns.map((name, index) => ({ label: name, value: index })),
-])
-
 const virtualizer = useVirtualizer(
   computed(() => ({
     count: view.value.length,
@@ -506,7 +447,7 @@ const virtualizer = useVirtualizer(
 )
 
 // Sort or user filter changed: the positions change, the selection no longer makes sense.
-watch([userFilter, sort], () => {
+watch([() => props.filter, sort], () => {
   selection.value = emptySelection()
 })
 
@@ -740,50 +681,14 @@ watch(
 )
 
 onBeforeUnmount(() => explorer.release(gridId))
-
-/**
- * Value of the targeted column list: -1 for the global filter, all the columns.
- */
-const userFilterColumn = computed({
-  get: () => userFilter.column ?? -1,
-  set: (value: number | undefined) => {
-    userFilter.column = value === undefined || value < 0 ? null : value
-  },
-})
 </script>
 
 <template>
   <div class="result-grid">
-    <div v-if="userFilterOpen" ref="userFilterBox" class="grid-toolbar">
-      <ui-input
-        v-model="userFilter.text"
-        :icon="Search"
-        placeholder="Filtrer"
-        aria-label="Texte cherché"
-        class="grid-user-filter"
-      >
-        <template v-if="userFilter.text !== ''" #trailing>
-          <ui-button
-            :icon="X"
-            variant="ghost"
-            small
-            aria-label="Vider le filtre"
-            @click="userFilter.text = ''"
-          />
-        </template>
-      </ui-input>
-      <ui-select
-        v-model="userFilterColumn"
-        :items="userFilterOptions"
-        label="Colonne filtrée"
-        class="grid-user-filter-column"
-      />
-    </div>
-
     <div
       ref="scroller"
       class="grid-scroller"
-      :class="{ attached: attached && !userFilterOpen }"
+      :class="{ attached }"
       :style="{ '--row-digits': rowDigits }"
       tabindex="0"
       @keydown="onKeydown"
@@ -902,23 +807,6 @@ const userFilterColumn = computed({
       </div>
     </div>
 
-    <!-- Actions of the result (refresh), then the user filter button. -->
-    <teleport v-if="actionsTarget" :to="actionsTarget">
-      <slot name="actions" />
-      <ui-button
-        :icon="Funnel"
-        variant="ghost"
-        :tone="userFilter.text === '' ? 'neutral' : 'primary'"
-        small
-        :class="{ 'bg-surface-raised': userFilterOpen }"
-        :aria-pressed="userFilterOpen"
-        :aria-label="userFilterLabel"
-        v-tooltip="userFilterLabel"
-        class="grid-user-filter-toggle"
-        @click="toggleUserFilter"
-      />
-    </teleport>
-
     <!-- Status of the result: number of rows, then the items of the caller. -->
     <ui-status-bar>
       <span class="grid-count">{{ countLabel }}</span>
@@ -936,23 +824,6 @@ const userFilterColumn = computed({
   flex-direction: column;
   gap: --spacing(3);
   min-height: 0;
-}
-
-/* A little room under the line of the result tabs, which takes the place
-   of the frame's top border when the toolbar is closed. */
-.grid-toolbar {
-  display: flex;
-  align-items: center;
-  gap: --spacing(3);
-  padding-block-start: --spacing(1);
-}
-
-.grid-user-filter {
-  max-inline-size: --spacing(80);
-}
-
-.grid-user-filter-column {
-  max-inline-size: --spacing(67);
 }
 
 .grid-scroller {

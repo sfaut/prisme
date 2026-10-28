@@ -85,6 +85,7 @@ import { cssPixels } from '@/cssLength'
 import QueryTabView from './QueryTabView.vue'
 import { cellLayoutId } from './cellLayout'
 import ResultTab from './ResultTab.vue'
+import ResultTabActions from './ResultTabActions.vue'
 import SplitHandle from './SplitHandle.vue'
 import { DEFAULT_INDENT_SIZE } from './editorIndent'
 import SqlEditor from './SqlEditor.vue'
@@ -229,10 +230,19 @@ function togglePanel(
 const selectedTab = ref<string | number>(0)
 
 /**
- * Place, in the bar of the result tabs, of the buttons of the tab shown
- * (refresh, filter), which its grid sends there.
+ * Tab shown, whose buttons (refresh, filter) stand right of the result tabs.
  */
-const tabActions = useTemplateRef<HTMLElement>('tabActions')
+const shownTab = computed(() => state.tabs.find((tab) => tab.id === selectedTab.value))
+
+/**
+ * Expands or collapses the form of a tab's user filter; collapsed, the filter
+ * stays applied.
+ *
+ * @param tab Tab of the query.
+ */
+function toggleFilter(tab: QueryTab): void {
+  tab.filterOpen = !tab.filterOpen
+}
 
 // The tabs of a new batch arrive: the first one is displayed. Otherwise,
 // the displayed tab has disappeared: the first remaining one takes its place.
@@ -865,7 +875,14 @@ defineExpose({
               only the fold button.
             -->
             <div class="flex items-center self-center">
-              <div ref="tabActions" class="contents" />
+              <result-tab-actions
+                v-if="shownTab && !isCollapsed"
+                :tab="shownTab"
+                :refresh="refreshState(state, shownTab)"
+                @refresh="refresh(shownTab)"
+                @stop-refresh="session.stopRefresh(shownTab)"
+                @toggle-filter="toggleFilter(shownTab)"
+              />
               <ui-button
                 :icon="isCollapsed ? PanelBottomOpen : PanelBottomClose"
                 variant="ghost"
@@ -883,12 +900,9 @@ defineExpose({
             class="flex min-h-0 flex-1"
           >
             <query-tab-view
+              v-model:filter="tab.filter"
               :tab="tab"
               :displayed="active && selectedTab === tab.id"
-              :refresh="refreshState(state, tab)"
-              :actions-target="selectedTab === tab.id && !isCollapsed ? tabActions : null"
-              @refresh="refresh(tab)"
-              @stop-refresh="session.stopRefresh(tab)"
             />
           </tabs-content>
         </tabs-root>

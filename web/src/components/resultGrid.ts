@@ -11,7 +11,7 @@
  */
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
-import type { Cell } from '@/api/querySession'
+import type { Cell, UserFilter } from '@/api/querySession'
 
 import type { DataCell } from './dataFormat'
 
@@ -32,22 +32,6 @@ export interface SortState {
    * Direction of the sort.
    */
   direction: SortDirection
-}
-
-/**
- * User filter of the grid. Two forms: the global filter searches the text in
- * all the columns (`column` is `null`); the targeted filter searches it in
- * the column at the index `column` of the `SELECT`.
- */
-export interface UserFilter {
-  /**
-   * Searched text, case-insensitive. Empty: no text to search.
-   */
-  text: string
-  /**
-   * Index of the targeted column, or `null` for the global filter.
-   */
-  column: number | null
 }
 
 /**
