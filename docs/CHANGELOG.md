@@ -2,6 +2,62 @@
 
 Changelogs of the published versions of Prisme, most recent first. Each entry is also the notes of its GitHub release. The interface is in French: its labels are quoted as they appear, with a translation.
 
+## v0.8.0 (2026-10-29)
+
+### 🚀 Launch
+
+We are proud to announce Prisme v0.8.0. This version downloads results as CSV files that Excel in French opens with a double click: the selection or the displayed result, built in the page, and the full result of a query, run again by the server without Prisme's row limit, however many rows. An exports manager in the top bar follows the full exports, tells when a file is ready, and keeps the files until you remove them. The interface is redrawn on Tailwind's default scales and palette, and every keyword of the transaction statements is highlighted.
+
+### ✨ New features
+
+- Download as CSV for Excel in French (UTF-8 with a BOM, `;` as separator), with the download button right of the bar under the grid:
+  - the selection, or the displayed result without one, sorted and filtered as on screen, its columns in the displayed order; the menu says which one it downloads, with its size;
+  - `NULL` is an empty field and an empty string `""`; decimal numbers take the decimal comma, so that Excel reads them as numbers; columns sharing a name refuse the download;
+  - the file is built in the page by chunks of rows: a large result does not freeze the interface.
+- Full export, **Résultat complet en CSV (requête relancée)** (Full result as CSV, query run again) in the same menu:
+  - the server runs the query again as written, without Prisme's row limit (a `LIMIT` you wrote still applies), and writes its rows to a file of the `exports` folder of your data as they arrive, however many rows;
+  - only reads can be exported, on a read-only connection of its own, on the current database of the editor; the columns keep their displayed order;
+  - the query shows in the history of the console, under the **Export** action.
+- Exports manager, a button of the top bar, with a dot that pulses while an export runs:
+  - each export shows its state in a colored badge (**en cours**, **prêt**, **échoué**, **arrêté**, **interrompu**: running, ready, failed, stopped, interrupted), its rows, the size of its file, its duration and its throughput, followed live; the completed share too, when the total is known in advance;
+  - a message tells when a file is ready, with a **Télécharger** (Download) button; a failure gets an error message;
+  - a running export can be stopped: its query stops on the server at once; the file of an ended export can be downloaded, partial for a stopped, failed or interrupted one;
+  - **Retirer** (Remove) deletes an export with its file; nothing is deleted automatically, and the head of the manager shows the room the files take; a file deleted outside Prisme gets a **fichier manquant** (missing file) badge, and the files no export references are counted apart, with a **Retirer** button of their own;
+  - an export running when Prisme stops shows as **interrompu** (interrupted) at the next start, with the rows of its partial file;
+  - warnings tell of more rows than Excel opens (1,048,576) and of the cause of a failure.
+- SQL editor: every keyword of the transaction statements is highlighted, and **Enjoliver** (Beautify) puts it in capitals: `START TRANSACTION ... WITH CONSISTENT SNAPSHOT`, `READ ONLY`, `COMMIT WORK AND NO CHAIN`, the savepoints, `SET GLOBAL | SESSION TRANSACTION ISOLATION LEVEL ...` and the XA statements ([#28](https://github.com/sfaut/prisme/issues/28)).
+- Results: the user filter belongs to its result tab, kept by a refresh and when a session resumes; a query in error can be refreshed.
+- Object navigator: each column has a single icon that tells its key: a key for the primary key, a link for a foreign key.
+- Look:
+  - the interface follows Tailwind's default scales, at 75% of the browser's text size, and its palette, in light and dark;
+  - each icon keeps one size wherever it appears, and the scrollbars are a little wider;
+  - the split lines are one screen pixel thick, whatever the scale of the screen and the size of the window;
+  - the status under the grid is a bar of items; the rows of the console take the height of their text; the top bar has more room;
+  - the data explorer is wide enough, at its smallest, for its header on one line.
+
+### 🐞 Bug fixes
+
+- The data explorer, and the editor and the results of a cell, no longer reopen at their smallest size after a reload. The layouts saved by the previous version start again once from their default sizes.
+- **Enjoliver** (Beautify) keeps the space after an operator that follows a non-reserved keyword used as a name: `start = 1`, `temporary = 1`, `END + 1` ([#28](https://github.com/sfaut/prisme/issues/28)).
+- The JSONPath search of the data explorer finds a very large number of nodes (a million measured), where it reported too many results beyond about 200,000; `$.a-b` is refused, as RFC 9535 writes it `$['a-b']`.
+
+### ⚙️ Internal improvements
+
+- Dependencies:
+  - `tokio-util` 0.7.20 added, with the `fs` and `io-util` features of `tokio`, to write the files of the full exports and send them;
+  - `json-p3` 2.3.1 → 3.0.2: 3.0.2 no longer requires TypeScript 7;
+  - `@lucide/vue` 1.61.0 → 1.64.0, `@tanstack/vue-virtual` 3.13.48 → 3.13.49, `oxlint` and `eslint-plugin-oxlint` 1.89.0 → 1.90.0, `eslint-plugin-vue` 10.11.1 → 10.12.0;
+  - `rusqlite` stays at 0.40.2: `rusqlite_migration` 2.6.0 does not accept 0.41.1 yet; `typescript` stays at 6.0: `vue-tsc` and `typescript-eslint` do not support TypeScript 7 yet.
+- The CSV of the browser and that of the server are checked against the same reference files.
+- The colors of the interface are roles declared in the theme, each with its light and dark values; the sizes are Tailwind's own classes.
+
+### 📝 Documentation
+
+- README: the download as CSV, the full export and the exports manager, with the limits of Excel (rows, digits, leading zeros, formulas); the refresh and filter buttons placed right of the result tabs.
+- Design brief of the interface, with its screenshots and the scripts that take them again (`design/`).
+- Developer guide: the routes of the exports; the lines drawn as borders.
+- Design notes: the decisions on copying and exporting results (`docs/IDEAS-EXPORTS.md`); the trial of the object navigator without virtual scrolling (`docs/PERFORMANCES.md`, formerly `docs/PERF.md`); the idea of reading the details of a table on opening (`docs/QUESTIONS.md`).
+
 ## v0.7.0 (2026-10-26)
 
 ### 🚀 Launch
