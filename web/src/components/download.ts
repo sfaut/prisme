@@ -1,7 +1,7 @@
 /**
  * Files the interface hands to the browser, which saves them like any
  * download (folder, progress, history): a file built in the page, and its
- * name.
+ * name, or a file of the server.
  */
 
 /**
@@ -29,6 +29,19 @@ export function saveBlob(blob: Blob, name: string): void {
   link.download = name
   link.click()
   setTimeout(() => URL.revokeObjectURL(url), LINK_LIFETIME)
+}
+
+/**
+ * Saves a file of the server, under the name the server gives it
+ * (`Content-Disposition`).
+ *
+ * @param url Address of the file.
+ */
+export function saveUrl(url: string): void {
+  const link = document.createElement('a')
+  link.href = url
+  link.download = ''
+  link.click()
 }
 
 /**

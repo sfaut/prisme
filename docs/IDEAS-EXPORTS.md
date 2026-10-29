@@ -1,6 +1,6 @@
 # Copying and exporting results
 
-This document gathers the ideas kept for copying the grid selection in several formats and for exporting a result to a file. Only the CSV for Excel in French is implemented, as a download (section 4.4). Settled points are marked **[decided]**, the others stay open (section 7).
+This document gathers the ideas kept for copying the grid selection in several formats and for exporting a result to a file. Only the CSV for Excel in French is implemented, as a download (section 4.4) and as a full export (section 4.2). Settled points are marked **[decided]**, the others stay open (section 7).
 
 ## 1. Starting point
 
@@ -73,16 +73,20 @@ The export of the displayed result and of the selection follows the grid's state
 
 The full result follows the column order of the grid: the export request carries it (indexes of the `SELECT`'s columns, in the displayed order), and the server reorders each row of the stream when writing it, without touching the query. Its rows are the raw result of the query: the user writes the sorting and filtering in SQL (`ORDER BY`, `WHERE`), and the export dialog says that those of the grid are not applied. Reproducing them on the server would give an order different from the grid's (server collation versus `compareCells()` comparison), which rule 2 of `CLAUDE.md` forbids doing silently, and would require a Rust reimplementation of the grid's filter.
 
-### 4.2 Export manager
+### 4.2 Export manager **[decided]**
 
-The full export runs as a background task, and an export manager tells when the file is ready to download. Ideas:
+The full export runs as a background task, and an export manager tells when the file is ready to download.
 
-- the server reads the driver's stream and writes directly to a temporary file of the data folder, with constant memory;
-- the manager lists the exports (running, ready, failed, cancelled), with the number of rows written and the size;
-- a notification reports the end, then the file is downloaded through `GET /api/exports/{id}` (`Content-Disposition: attachment`);
-- cancelling an export stops the query (`KILL QUERY`, like `cancel`) and deletes the partial file;
-- ready files are deleted after download or after a delay;
-- this mechanism foreshadows the `Export` node of the federated engine (`docs/FEDERATED.md`, section 8).
+- The full export is the entry "Résultat complet en CSV (requête relancée)" of the download menu, offered with or without a selection, whether the displayed result is truncated or not.
+- It runs on a dedicated connection, read-only (section 7, question 1).
+- The server reads the driver's stream and writes directly to a file of `<data-dir>/exports/`, with constant memory. The exports are kept in the internal database (`exports` table), so that their list survives a restart.
+- The manager is a button of the top bar, with a progress dot while exports run, which opens the list of the exports (running, ready, failed, stopped, interrupted): rows written, size, duration, throughput, and the cause of a failure. Its head gives the room the files take.
+- The completed share shows only when the total is known in advance, sent with the export request: the number of rows of a displayed result that the limit of Prisme did not cut. Otherwise, the total only comes with the last row: the MySQL / MariaDB protocol sends the columns, then the rows as they are produced, then an OK packet. A `COUNT(*)` alongside would give it in advance, at the price of a second execution of the query: not kept.
+- A toast reports the end, with a "Télécharger" action: the file is downloaded through `GET /api/exports/{id}/file` (`Content-Disposition: attachment`, `Content-Length`, so that the browser shows an exact progress). A failure gets an error toast.
+- Stopping an export closes its connection on the server (`KILL CONNECTION`): a `KILL QUERY` leaves the rows already on their way to be read, nearly a million rows through the ports of Docker Desktop. The partial file stays.
+- The folder is cleaned from the manager only, never automatically: "Retirer" stops a running export, deletes its file, then its row. An export left running by a stop of Prisme becomes "interrupted" at the next start, its partial file kept.
+- The folder and the table are compared on each reading of the list. Only the files named by Prisme (`<id>-<milliseconds>.csv`) count. An export whose file is missing is listed as such, its download refused, its removal allowed. A file that no export references (copied into the folder, internal database replaced) is counted apart, with a removal of its own.
+- This mechanism foreshadows the `Export` node of the federated engine (`docs/FEDERATED.md`, section 8).
 
 ### 4.3 Duplicate serialisers
 
@@ -98,7 +102,7 @@ The first format implemented, through the download button of the bar under the g
 - Numbers of the `decimal` and `float` families take the decimal comma: with a dot, Excel in French reads `3.14` as text and `1.5` as the 1st of May. The other values go as the server sent them, dates included (`2026-10-12 09:05:00`, which Excel recognises).
 - Excel's own limits are documented in the `README.md`, without a workaround, which would change the values: 1,048,576 rows at most, integers rounded beyond 15 digits, leading zeros of a code dropped.
 - The file is built in the page by chunks of 2,000 rows, with a pause between two chunks: a large result of a `LIMIT` written by the user does not freeze the interface.
-- Serialiser: `web/src/components/csv.ts`; reference files: `tests/fixtures/export/csv-excel-fr/` (section 4.3).
+- Serialisers: `web/src/components/csv.ts` in the browser, `crates/server/src/exports/csv.rs` for the full export (section 4.2); reference files: `tests/fixtures/export/csv-excel-fr/`, read by both test suites (section 4.3).
 
 ## 5. Planned order
 
@@ -120,12 +124,14 @@ The first format implemented, through the download button of the bar under the g
 | JSON columns | Nested objects. |
 | Duplicate column names | Export refused, whatever the format. |
 | Export scopes | Displayed result or selection, depending on the presence of a selection, in the browser; full result run again by the server, offered even when the result is not truncated. |
+| Full export | Dedicated connection, read-only; followed by the export manager of the top bar, a toast when the file is ready; completed share only with a total known in advance, without `COUNT(*)`. |
+| Exports folder | Cleaned from the manager only, never automatically; a missing file and a file no export references are both shown. |
 | Grid state | The export of the displayed result and of the selection follows the column order, sorting and filtering; the full result follows the column order, its rows being the raw result of the query. |
 | Right click | To avoid. |
 
 ## 7. Open questions
 
-1. **Connection of the full export**: a dedicated connection leaves the session free, but sees neither temporary tables, nor session variables, nor a future running transaction. Running in the session sees all of that, but keeps it busy during the export. The export manager leans towards the dedicated connection; to think about.
+1. **Connection of the full export** **[decided]**: a dedicated connection, read-only. It leaves the session free, but sees neither temporary tables, nor session variables, nor a running transaction; the `README.md` says so. Running in the session would see all of that, but keep it busy during the export.
 2. **NULL in Box-Unicode**: `NULL` shown as is is confused with the string `'NULL'`; a symbol (`∅`) or a distinct style is to be chosen.
 3. **Width in Box-Unicode**: alignment requires the display width of characters (East Asian wide characters, emojis), different from their count.
 4. **Duplicate names and copying**: does the refusal also apply to copying to the clipboard, including tabular, where overwriting does not exist?

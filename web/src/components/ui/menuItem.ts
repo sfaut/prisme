@@ -21,6 +21,10 @@ export interface MenuItem {
    */
   tone?: 'error'
   /**
+   * Explanation of the choice, in its tooltip.
+   */
+  hint?: string
+  /**
    * Inactive choice.
    */
   disabled?: boolean

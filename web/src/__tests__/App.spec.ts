@@ -26,6 +26,15 @@ vi.mock('@/api/console', () => ({
   followConsole: () => () => {},
 }))
 
+// No export, without events.
+vi.mock('@/api/exports', () => ({
+  listExports: async () => ({
+    exports: [],
+    orphans: { count: 0, bytes: 0 },
+  }),
+  followExports: () => () => {},
+}))
+
 // No saved editor: the interface creates one, without a connection.
 vi.mock('@/api/editors', () => ({
   listEditors: async () => [],

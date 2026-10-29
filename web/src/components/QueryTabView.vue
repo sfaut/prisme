@@ -30,12 +30,20 @@
   Right of the status bar, a button downloads the result as CSV for Excel
   in French (`csv.ts`): the selection of the grid, or the whole displayed
   result without one, sorted and filtered as on screen, its columns in the
-  displayed order. The file is built in the page, by chunks of rows.
+  displayed order. The file is built in the page, by chunks of rows. The
+  menu also offers the full result: the server runs the query again, as it
+  is written, without the limit of Prisme, on the current database of the
+  editor, and writes its rows in the displayed order of the columns, neither
+  sorted nor filtered by the grid; the exports manager of the top bar
+  follows it (`stores/exports.ts`). Its total, when known in advance, gives
+  a completed share: the number of rows of a displayed result that the limit
+  did not cut.
 -->
 <script setup lang="ts">
-import { Download, FileSpreadsheet } from '@lucide/vue'
+import { DatabaseZap, Download, FileSpreadsheet } from '@lucide/vue'
 import { computed, ref, useTemplateRef, watch } from 'vue'
 
+import { errorMessage } from '@/api/errorMessage'
 import {
   type QueryTab,
   type UserFilter,
@@ -48,6 +56,7 @@ import {
   showsGrid,
   transferDuration,
 } from '@/api/querySession'
+import { useExportsStore } from '@/stores/exports'
 
 import { useClock } from './clock'
 import { csvBlob, duplicateNames } from './csv'
@@ -73,6 +82,14 @@ const props = defineProps<{
    * feeds the data explorer.
    */
   displayed: boolean
+  /**
+   * Connection of the editor, on which the full export runs.
+   */
+  connectionId: number
+  /**
+   * Current database of the editor, `null` if none.
+   */
+  database: string | null
 }>()
 
 /**
@@ -175,9 +192,17 @@ const hasStatus = computed(
   () => showsGrid(props.tab) || execution.value !== null || transfer.value !== null,
 )
 
+const exports = useExportsStore()
+
+/**
+ * Name of the downloaded files, before their date: that of the tab.
+ */
+const fileLabel = computed(() => props.tab.name ?? `requête-${props.tab.number + 1}`)
+
 /**
  * Choices of the download menu. The first one says what it downloads, so that
- * a forgotten selection shows; it waits for the end of the query.
+ * a forgotten selection shows; it waits for the end of the query. The second
+ * one exports the full result.
  */
 const downloadItems = computed<MenuItem[]>(() => {
   const size = grid.value?.selectedSize ?? null
@@ -187,8 +212,25 @@ const downloadItems = computed<MenuItem[]>(() => {
       : `Sélection en CSV (${formatRowCount(size.rows, null)} × ${size.columns} ${size.columns > 1 ? 'colonnes' : 'colonne'})`
   return [
     { label, icon: FileSpreadsheet, disabled: !props.tab.done, onSelect: () => void downloadCsv() },
+    {
+      label: 'Résultat complet en CSV (requête relancée)',
+      icon: DatabaseZap,
+      hint: 'Relance la requête sans la limite de Prisme et suit l’export dans le gestionnaire d’exports, en haut à droite. Les colonnes gardent leur ordre affiché ; le tri et le filtre de la grille ne s’appliquent pas.',
+      onSelect: () => void exportFull(),
+    },
   ]
 })
+
+/**
+ * Names shared by several displayed columns, refused by a download: they
+ * could not be told apart in the file.
+ *
+ * @param fields Index of each downloaded column in the result.
+ */
+function sharedNames(fields: number[]): string[] {
+  const columns = shown.value?.columns ?? []
+  return duplicateNames(fields.map((field) => columns[field] ?? ''))
+}
 
 /**
  * Downloads the selection, or the displayed result, as CSV. Columns sharing a
@@ -200,14 +242,47 @@ async function downloadCsv(): Promise<void> {
     return
   }
   const frame = await grid.value.exportFrame()
-  const duplicates = duplicateNames(frame.fields.map((field) => result.columns[field] ?? ''))
+  const duplicates = sharedNames(frame.fields)
   if (duplicates.length > 0) {
     notify(`Téléchargement refusé : colonnes de même nom (${duplicates.join(', ')}).`, 'error')
     return
   }
   const blob = await csvBlob(frame, result.rows, result.columns, result.columnTypes)
-  saveBlob(blob, downloadName(props.tab.name ?? `requête-${props.tab.number + 1}`, 'csv'))
+  saveBlob(blob, downloadName(fileLabel.value, 'csv'))
   notify(`CSV téléchargé : ${formatRowCount(frame.rows.length, null)}.`)
+}
+
+/**
+ * Exports the full result, its columns in the displayed order. The total is
+ * known in advance when the displayed result is complete: ended without
+ * error, and not cut by the limit of Prisme.
+ */
+async function exportFull(): Promise<void> {
+  const result = shown.value
+  if (result === null || grid.value === null) {
+    return
+  }
+  const columns = [...grid.value.order]
+  const duplicates = sharedNames(columns)
+  if (duplicates.length > 0) {
+    notify(`Export refusé : colonnes de même nom (${duplicates.join(', ')}).`, 'error')
+    return
+  }
+  const complete = props.tab.done && props.tab.error === null && !result.truncated
+  const name = downloadName(fileLabel.value, 'csv')
+  try {
+    await exports.begin({
+      connection_id: props.connectionId,
+      database: props.database ?? undefined,
+      sql: props.tab.sql,
+      columns,
+      name,
+      expected_rows: complete ? result.rowCount : undefined,
+    })
+    notify(`Export lancé : ${name}. Suivi dans le gestionnaire d’exports, en haut à droite.`)
+  } catch (failure) {
+    notify(errorMessage(failure), 'error')
+  }
 }
 </script>
 

@@ -2,7 +2,7 @@
   Dropdown menu, on Reka UI's `DropdownMenu` (keyboard, positioning, closing
   with Escape or a click outside, accessibility). The trigger is the content
   of the default slot (a button); each choice has a label, a Lucide icon and
-  an action, or is inactive.
+  an action, or is inactive, and possibly an explanation in its tooltip.
 -->
 <script setup lang="ts">
 import {
@@ -14,6 +14,7 @@ import {
 } from 'reka-ui'
 
 import type { MenuItem } from './menuItem'
+import { vTooltip } from './tooltip'
 
 import { cssPixels } from '@/cssLength'
 
@@ -50,6 +51,7 @@ defineProps<{
           :disabled="item.disabled"
           class="flex h-8 cursor-pointer items-center gap-3 rounded-lg px-3 select-none data-disabled:cursor-not-allowed data-disabled:opacity-50 data-highlighted:bg-surface-raised"
           :class="item.tone === 'error' ? 'text-error' : 'text-fg data-highlighted:text-fg-strong'"
+          v-tooltip="item.hint"
           @select="item.onSelect?.()"
         >
           <component :is="item.icon" class="size-5 shrink-0" />

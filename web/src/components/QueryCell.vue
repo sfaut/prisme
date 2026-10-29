@@ -904,6 +904,8 @@ defineExpose({
               v-model:filter="tab.filter"
               :tab="tab"
               :displayed="active && selectedTab === tab.id"
+              :connection-id="connection.id"
+              :database="state.database"
             />
           </tabs-content>
         </tabs-root>

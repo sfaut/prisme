@@ -230,11 +230,13 @@ Each query gets its own tab:
 | Select all / clear | Ctrl+A / Esc |
 | Copy | Ctrl+C |
 | Download as CSV | Download button, right of the bar under the grid |
+| Export the full result as CSV | Download button, then **Résultat complet en CSV (requête relancée)**; followed in the exports manager of the top bar |
 | Explore JSON or XML values | Rail of the data explorer, on the right edge of the window |
 
 - **Refresh** keeps the tab, its name and its pin, and, while the columns stay the same, the sort and the filter. The current result stays displayed until the new one starts to arrive. While other queries run, the refresh waits for their end. During the refresh, or while it waits, the same button (crossed out) stops it: the result stays as it was. If the query fails, the result stays too, with the error above it.
 - **Copy** is a raw copy: values as they are, separated by tabs, with column names on the first line, ready to paste into a spreadsheet. A single cell is copied as its value alone, without its column name. `NULL` is copied as an empty cell. Control characters are written literally (`\t`, `\n`, `\r`, `\0`, `\b`, `\f`…, or `\xHH`), so each value stays in one cell.
 - **Download** saves a CSV file that Excel in French opens with a double click: UTF-8 with a BOM, `;` as separator. With a selection, it holds the selected cells only, an unselected cell among the selected rows and columns left empty; without one, the displayed result, sorted and filtered as on screen. The menu says which one it downloads, with its size. Columns come in the displayed order, with their names on the first line. `NULL` is an empty field and an empty string is `""`, which Excel both shows as an empty cell. Decimal numbers take the decimal comma (`3,14`), so that Excel reads them as numbers; other values are written as stored, line breaks included. Columns sharing a name refuse the download. Excel itself opens at most 1,048,576 rows, rounds integers beyond 15 digits and drops the leading zeros of codes such as `007`: the file keeps them all.
+- **Full export** (**Résultat complet en CSV (requête relancée)** in the download menu) runs the query again on the server, as written, without Prisme's row limit (a `LIMIT` you wrote still applies), and writes the same CSV file in the `exports` folder of [your data](#your-data), however many rows. Columns keep their displayed order; the sort and the filter of the grid do not apply: write them in SQL (`ORDER BY`, `WHERE`). Only reads can be exported. The export runs on a read-only connection of its own, on the current database of the editor: it sees neither the temporary tables nor the variables of the editor's session, nor its open transaction. The [exports manager](#top-bar) follows it, and a message tells when its file is ready, with a **Télécharger** (Download) button.
 - **Display**: the header shows each column's type (hover for the full name). Numbers and dates are right-aligned, `CHAR` columns use a monospaced font, web addresses are clickable, `NULL` is shown in small grey capitals.
 - **Data explorer**: a panel on the right of the screen shows the values selected in a column of type `JSON`, or in a text column that holds JSON or XML: a cell, the whole column, or ranges of it. The values are indented with 4 spaces and highlighted; numbers and texts stay exactly as stored. Several values are gathered into one document: a `[…]` array for JSON (`NULL` becomes `null`), a `<data>…</data>` element for XML (`NULL` is left out, `<?xml?>` declarations are removed). Each level folds with the arrows in the margin; the buttons fold or unfold everything, or every node at the depth of the cursor. The line wrap button wraps long lines to the width of the panel; it is off by default and your choice is remembered. The search button finds values with JSONPath or XPath (see [Searching the data explorer](#searching-the-data-explorer)). The copy button, or Ctrl+A then Ctrl+C, copies valid JSON or XML, folded parts included. The panel follows the selection, and the grid of the active editor; drag its left edge to resize it (double-click to reset), the width is remembered.
 
@@ -297,7 +299,7 @@ The **Historique** (History) tab lists every query sent to your servers, the old
 |---|---|
 | **#** | Number of the query in the history |
 | **Heure** (Time) | Time it was sent; the date shows in its tooltip |
-| **Action** | What sent it: **Session**, **Exécuter** (Run), **Exécuter tout** (Run all), **Exécuter précisément** (Run exactly), **Rafraîchir** (Refresh), **Base courante** (Current database), **Interruption**, **Navigateur** (Navigator), **Test de connexion** (Connection test); the connection shows in its tooltip |
+| **Action** | What sent it: **Session**, **Exécuter** (Run), **Exécuter tout** (Run all), **Exécuter précisément** (Run exactly), **Rafraîchir** (Refresh), **Base courante** (Current database), **Interruption**, **Navigateur** (Navigator), **Test de connexion** (Connection test), **Export** (full export); the connection shows in its tooltip |
 | **Message** | The query on one line, then its error if it failed; the full query shows in its tooltip |
 | **Lignes** (Rows) | Rows read, preceded by "+" when the result was truncated ("+1 000"), or rows changed by a write; "—" otherwise |
 | **Exécution** (Execution) | Execution time, until the result, or until the columns for a result read row by row |
@@ -309,6 +311,7 @@ Both tabs are kept in the internal database, 30 days by default: the **Rétentio
 
 ### Top bar
 
+- **Exports**: the file icon opens the exports manager, the list of your [full exports](#result-grid), the most recent first; a blue dot pulses beside the icon while an export runs. Each export shows its file name (the query in its tooltip), its state, its connection, the rows written, the size of its file, its duration and its throughput; while it runs, the completed share too, when the total is known in advance: that of a displayed result that Prisme's limit did not cut. Its buttons stop a running export (its partial file stays), download a ready one, and **Retirer** (Remove) an export with its file. The folder is never cleaned automatically: the head of the manager shows the room the files take. Warnings tell of a file deleted outside Prisme, of more rows than Excel opens, or of the cause of a failure. Files of the folder that no export lists (copied there, internal database replaced) are counted apart, with a **Retirer** button that deletes them. An export running when Prisme stops shows as **interrompu** (interrupted) at the next start, its partial file kept.
 - **Synchronisation**: Prisme saves every change as you go in its local database, and reads it back from there. A database icon shows the state, explained by its tooltip: a check mark when everything is saved, a down arrow while reading, an up arrow while saving, a cross when the last save was refused (plain database icon: nothing exchanged yet).
 - **Theme**: the **Système / Clair / Sombre** (System / Light / Dark) list sets the theme of the whole interface. **Système** follows your computer's setting.
 - **Account** menu, the round avatar with your initials (those of your first and last names, or the first letter of your email address):
@@ -328,6 +331,8 @@ It holds two files that go together:
 
 - **`prisme.db`**: the internal database (settings, connections, editors, results, history of the queries, debug log).
 - **`prisme.key`**: the master key, created on first launch. It encrypts the passwords of your connections.
+
+The **`exports`** folder holds the files of the full exports, until you remove them from the exports manager.
 
 - **Back up** both files. Without the key, saved passwords cannot be read and must be typed again; everything else is kept.
 - **Protect** the folder: whoever has both files can read the saved passwords. By default, only your user account can read it.

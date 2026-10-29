@@ -259,7 +259,8 @@ watch(resized, (widths) => rememberWidths(props.sql, props.columns, widths))
 /**
  * Display order: index in the `SELECT` of each displayed column. The
  * displayed positions serve the selection; the indexes of the `SELECT`
- * serve the sort, the user filter and the widths.
+ * serve the sort, the user filter and the widths. The full export of the
+ * result writes its columns in this order.
  */
 const order = ref(props.columns.map((_, index) => index))
 
@@ -695,7 +696,7 @@ async function exportFrame(): Promise<GridFrame> {
     : viewFrame(view.value, order.value)
 }
 
-defineExpose({ keptCount, selectedSize, exportFrame })
+defineExpose({ keptCount, selectedSize, exportFrame, order })
 </script>
 
 <template>

@@ -1,9 +1,11 @@
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
+import type { ExportInfo } from '@/api/generated/ExportInfo'
+import type { ExportRequest } from '@/api/generated/ExportRequest'
 import { type QueryTab, formatInstant } from '@/api/querySession'
 
 import QueryTabView from '../QueryTabView.vue'
@@ -12,15 +14,56 @@ import UiDropdownMenu from '../ui/UiDropdownMenu.vue'
 import UiStatusBar from '../ui/UiStatusBar.vue'
 import { finishedTab } from './resultTabs'
 
-beforeEach(() => setActivePinia(createPinia()))
+const startExport = vi.fn<(requested: ExportRequest) => Promise<ExportInfo>>()
+
+vi.mock('@/api/exports', () => ({
+  startExport: (requested: ExportRequest) => startExport(requested),
+  listExports: async () => ({
+    exports: [],
+    orphans: { count: 0, bytes: 0 },
+  }),
+}))
+
+beforeEach(() => {
+  setActivePinia(createPinia())
+  startExport.mockReset()
+})
 
 /**
- * Mounts the content of a tab, with its filter.
+ * Mounts the content of a tab, with its filter, on connection 7 and
+ * database `shop`.
  *
  * @param tab Tab of the query.
  */
 function mountTab(tab: QueryTab) {
-  return mount(QueryTabView, { props: { tab, displayed: false, filter: tab.filter } })
+  return mount(QueryTabView, {
+    props: { tab, displayed: false, filter: tab.filter, connectionId: 7, database: 'shop' },
+  })
+}
+
+/**
+ * Runs the full export offered by the download menu of a mounted tab.
+ *
+ * @param wrapper Mounted tab.
+ */
+async function exportFull(wrapper: ReturnType<typeof mountTab>): Promise<void> {
+  await nextTick()
+  wrapper.findComponent(UiDropdownMenu).props('items')[1]?.onSelect?.()
+  await flushPromises()
+}
+
+/**
+ * Tab of a result with two columns `id` and `name`, three rows.
+ */
+function threeRows(): QueryTab {
+  return finishedTab(
+    ['id', 'name'],
+    [
+      ['1', 'a'],
+      ['2', 'b'],
+      ['3', 'c'],
+    ],
+  )
 }
 
 describe('QueryTabView', () => {
@@ -81,6 +124,29 @@ describe('QueryTabView', () => {
 
     await wrapper.find('.grid-corner').trigger('mousedown')
     expect(label()).toBe('Sélection en CSV (3 lignes × 2 colonnes)')
+  })
+
+  it('exports the full result, with its total when the displayed result is complete', async () => {
+    startExport.mockRejectedValue(new Error('Serveur Prisme injoignable.'))
+    await exportFull(mountTab(threeRows()))
+    expect(startExport).toHaveBeenCalledWith({
+      connection_id: 7,
+      database: 'shop',
+      sql: 'SELECT 1',
+      columns: [0, 1],
+      name: expect.stringMatching(/^requête-1-\d{8}-\d{6}\.csv$/),
+      expected_rows: 3,
+    })
+
+    const truncated = threeRows()
+    truncated.result = { ...truncated.result!, truncated: true }
+    await exportFull(mountTab(truncated))
+    expect(startExport.mock.calls[1]?.[0].expected_rows).toBeUndefined()
+  })
+
+  it('refuses the full export of columns of the same name', async () => {
+    await exportFull(mountTab(finishedTab(['id', 'id'], [['1', '2']])))
+    expect(startExport).not.toHaveBeenCalled()
   })
 
   it('has no download without a grid', () => {

@@ -1,7 +1,7 @@
 <!--
   Top bar of the application, across the whole width of the screen: name of
   the application with its version next to it (that of the executable, read
-  from the server), synchronisation state
+  from the server), exports manager (`ExportManager`), synchronisation state
   (`SyncStatus`), theme choice, and the "Options" menu, which opens the
   settings (row limit, language) and the user's profile.
 
@@ -15,6 +15,7 @@ import { getVersion } from '@/api/version'
 import { type ColorMode, colorMode } from '@/colorMode'
 import { useProfileStore } from '@/stores/profile'
 
+import ExportManager from './ExportManager.vue'
 import ProfileDialog from './ProfileDialog.vue'
 import SyncStatus from './SyncStatus.vue'
 import SettingsDialog from './SettingsDialog.vue'
@@ -96,6 +97,7 @@ const menuItems: MenuItem[] = [
       </span>
     </div>
     <div class="flex items-center gap-3">
+      <export-manager />
       <sync-status />
       <ui-select v-model="colorMode" :items="COLOR_MODES" label="Thème" class="w-37" />
       <ui-dropdown-menu :items="menuItems">
