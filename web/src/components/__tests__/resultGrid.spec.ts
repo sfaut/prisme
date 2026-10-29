@@ -11,6 +11,7 @@ import {
   resizedWidth,
   compareCells,
   emptySelection,
+  frameCell,
   isFixedLengthText,
   isSelected,
   nextSort,
@@ -18,12 +19,14 @@ import {
   selectCell,
   selectColumn,
   selectRow,
+  selectionFrame,
   selectionToText,
   selectedColumnCells,
   createViewMemory,
   sameColumns,
   type SortState,
   updateView,
+  viewFrame,
   visibleRows,
 } from '../resultGrid'
 
@@ -179,6 +182,36 @@ describe('copy', () => {
   it('also writes out the control characters of column names', () => {
     const selection = selectColumn(emptySelection(), 0, 2, 'replace')
     expect(selectionToText(selection, [0, 1], [['1'], ['2']], ['a\tb'], true)).toBe('a\\tb\n1\n2')
+  })
+})
+
+describe('frames', () => {
+  it('covers the rows and columns of a selection, in the displayed order', () => {
+    let selection = selectCell(emptySelection(), 2, 0, 'replace')
+    selection = selectCell(selection, 0, 1, 'add')
+    // Columns moved: the displayed order is city, id, name.
+    const frame = selectionFrame(selection, [2, 0, 1], [2, 0, 1])
+    expect(frame.rows).toEqual([2, 1])
+    expect(frame.fields).toEqual([2, 0])
+    // Frame row 0 is view row 0, frame row 1 is view row 2.
+    expect(frameCell(frame, rows, 0, 0)).toBeUndefined()
+    expect(frameCell(frame, rows, 1, 1)).toBeUndefined()
+    expect(frameCell(frame, rows, 0, 1)).toBe('1')
+    expect(frameCell(frame, rows, 1, 0)).toBeNull()
+  })
+
+  it('gives NULL apart from an unselected cell', () => {
+    const frame = selectionFrame(selectRow(emptySelection(), 1, 3, 'replace'), [0, 1, 2], [0, 1, 2])
+    expect(frameCell(frame, rows, 0, 2)).toBeNull()
+  })
+
+  it('covers the whole view, every cell selected', () => {
+    const sorted = visibleRows(rows, noFilter, { column: 0, direction: 'asc' })
+    const frame = viewFrame(sorted, [1, 0, 2])
+    expect(frame.rows).toEqual([2, 1, 0])
+    expect(frame.selected).toBeUndefined()
+    expect(frameCell(frame, rows, 0, 0)).toBe('Éric')
+    expect(frameCell(frame, rows, 2, 1)).toBe('10')
   })
 })
 

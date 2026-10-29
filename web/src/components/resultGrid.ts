@@ -1,5 +1,6 @@
 /**
- * Logic of the result grid: sorting, filtering, selection and copy.
+ * Logic of the result grid: sorting, filtering, selection, and the frames
+ * that the copy and the export read.
  *
  * These functions do not depend on the display (see `ResultGrid.vue`). The
  * rows of the result are never copied: the sorted and filtered view is a
@@ -576,13 +577,94 @@ export function isSelected(selection: GridSelection, row: number, column: number
 }
 
 /**
+ * Part of the grid to copy or to export: rows and columns, in the displayed
+ * order. It holds indexes only, never the rows themselves; a serialiser
+ * (tabular copy, CSV...) reads its cells with `frameCell`.
+ */
+export interface GridFrame {
+  /**
+   * Source row of each row of the frame, from top to bottom; `undefined` for
+   * a view row that no longer exists.
+   */
+  rows: (number | undefined)[]
+  /**
+   * Index in the `SELECT` of each column of the frame, from left to right.
+   */
+  fields: number[]
+  /**
+   * Tells whether a cell, given by its row and its column in the frame, is
+   * selected: an unselected cell, inside the frame of a discontinuous
+   * selection, is written empty. Absent when every cell is selected.
+   */
+  selected?: (row: number, column: number) => boolean
+}
+
+/**
+ * Frame of a selection: the rows and the columns it touches, an unselected
+ * cell inside this frame being left out.
+ *
+ * @param selection Selection.
+ * @param view View: indexes of the source rows.
+ * @param order Index in the `SELECT` of each displayed column.
+ */
+export function selectionFrame(
+  selection: GridSelection,
+  view: number[],
+  order: number[],
+): GridFrame {
+  const rowIndexes = coveredIndexes(selection.ranges, 'top', 'bottom')
+  const columnIndexes = coveredIndexes(selection.ranges, 'left', 'right')
+  return {
+    rows: rowIndexes.map((row) => view[row]),
+    fields: columnIndexes.map((column) => order[column] ?? column),
+    selected: (row, column) =>
+      isSelected(selection, rowIndexes[row] ?? -1, columnIndexes[column] ?? -1),
+  }
+}
+
+/**
+ * Frame of the whole view: its rows, sorted and filtered, and all the
+ * columns, in the displayed order.
+ *
+ * @param view View: indexes of the source rows.
+ * @param order Index in the `SELECT` of each displayed column.
+ */
+export function viewFrame(view: number[], order: number[]): GridFrame {
+  return { rows: view, fields: order }
+}
+
+/**
+ * Cell of a frame.
+ *
+ * @param frame Frame.
+ * @param rows Rows of the result.
+ * @param row Row in the frame.
+ * @param column Column in the frame.
+ * @returns The value, `null` for NULL, `undefined` for an unselected cell.
+ */
+export function frameCell(
+  frame: GridFrame,
+  rows: Cell[][],
+  row: number,
+  column: number,
+): Cell | undefined {
+  if (frame.selected && !frame.selected(row, column)) {
+    return undefined
+  }
+  const source = frame.rows[row]
+  const field = frame.fields[column]
+  return source === undefined || field === undefined ? null : (rows[source]?.[field] ?? null)
+}
+
+/**
  * Raw copy of the selection: the values as they are, separated by tabs, one
  * line per row of the result, ready to paste into a spreadsheet.
  *
- * The text covers the rows and the columns touched by the selection; an
- * unselected cell inside this frame is copied empty. NULL is copied as an
- * empty cell. Quotes go through as they are; the control characters of a
- * value or of a column name are written out (`rawCell`).
+ * The text covers the rows and the columns touched by the selection
+ * (`selectionFrame`); an unselected cell inside this frame is copied empty.
+ * NULL is copied as an empty cell. Quotes go through as they are; the
+ * control characters of a value or of a column name are written out
+ * (`rawCell`).
  *
  * @param selection Selection.
  * @param view View: indexes of the source rows.
@@ -603,23 +685,31 @@ export function selectionToText(
   withHeaders: boolean,
   order: number[] = columns.map((_, index) => index),
 ): string {
-  const rowIndexes = coveredIndexes(selection.ranges, 'top', 'bottom')
-  const columnIndexes = coveredIndexes(selection.ranges, 'left', 'right')
-  const lines = rowIndexes.map((row) =>
-    columnIndexes
-      .map((column) => {
-        const source = view[row]
-        const field = order[column] ?? column
-        const cell = source === undefined ? null : (rows[source]?.[field] ?? null)
-        return isSelected(selection, row, column) ? rawCell(cell ?? '') : ''
-      })
-      .join('\t'),
+  return frameToText(selectionFrame(selection, view, order), rows, columns, withHeaders)
+}
+
+/**
+ * Tabular text of a frame (see `selectionToText`).
+ *
+ * @param frame Frame.
+ * @param rows Rows of the result.
+ * @param columns Names of the columns.
+ * @param withHeaders
+ *     Adds a first line with the names of the columns, except for a single
+ *     cell.
+ */
+function frameToText(
+  frame: GridFrame,
+  rows: Cell[][],
+  columns: string[],
+  withHeaders: boolean,
+): string {
+  const lines = frame.rows.map((_, row) =>
+    frame.fields.map((_, column) => rawCell(frameCell(frame, rows, row, column) ?? '')).join('\t'),
   )
-  const singleCell = rowIndexes.length === 1 && columnIndexes.length === 1
-  if (withHeaders && columnIndexes.length > 0 && !singleCell) {
-    lines.unshift(
-      columnIndexes.map((column) => rawCell(columns[order[column] ?? column] ?? '')).join('\t'),
-    )
+  const singleCell = frame.rows.length === 1 && frame.fields.length === 1
+  if (withHeaders && frame.fields.length > 0 && !singleCell) {
+    lines.unshift(frame.fields.map((field) => rawCell(columns[field] ?? '')).join('\t'))
   }
   return lines.join('\n')
 }
