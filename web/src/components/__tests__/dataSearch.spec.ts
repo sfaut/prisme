@@ -81,6 +81,8 @@ describe('searchData, JSON', () => {
     const text = shown('json', '{"0":"key","a-b":[true]}')
     expect(matched(text, searchData('json', text, "$['0']"))).toEqual(['"key"'])
     expect(matched(text, searchData('json', text, "$['a-b'][0]"))).toEqual(['true'])
+    // RFC 9535 writes it `$['a-b']`.
+    expect(searchData('json', text, '$.a-b').state).toBe('error')
   })
 
   it('finds nothing as an empty array', () => {

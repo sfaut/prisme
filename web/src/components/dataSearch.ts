@@ -147,7 +147,7 @@ function searchJson(text: string, expression: string): SearchResult {
   }
   let nodes
   try {
-    nodes = jsonpath.query(expression, jsonSource.value).nodes
+    nodes = jsonpath.find(expression, jsonSource.value)
   } catch (error) {
     return failure('JSONPath', error)
   }
