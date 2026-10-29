@@ -164,7 +164,9 @@ async fn lists_the_exports_with_the_files_of_the_folder() {
     assert_eq!(list["exports"][1]["id"], present);
     assert_eq!(list["exports"][1]["file_missing"], false);
     assert_eq!(list["exports"][1]["state"], "ready");
-    assert_eq!(list["usage"], json!({ "count": 1, "bytes": 5 }));
+    // The size of the file, the table's without one.
+    assert_eq!(list["exports"][1]["bytes"], 5);
+    assert_eq!(list["exports"][0]["bytes"], 3);
     // The file of the other program is not counted.
     assert_eq!(list["orphans"], json!({ "count": 1, "bytes": 6 }));
 }

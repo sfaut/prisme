@@ -3,17 +3,14 @@ import type { ExportInfo } from "./ExportInfo";
 import type { FolderUsage } from "./FolderUsage";
 
 /**
- * Exports of the user and the exports folder.
+ * Exports of the user, and the files of the exports folder that no export
+ * references.
  */
 export type ExportList = {
   /**
    * Exports, the most recent first.
    */
   exports: Array<ExportInfo>;
-  /**
-   * Files of these exports in the folder.
-   */
-  usage: FolderUsage;
   /**
    * Files of Prisme in the folder that no export references (copied
    * there, internal database replaced...).

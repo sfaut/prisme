@@ -176,9 +176,11 @@ pub struct ExportInfo {
     pub sql: String,
     /// State of the export.
     pub state: ExportState,
-    /// Rows written.
+    /// Rows written; 0 for an interrupted export, whose counters were not
+    /// saved.
     pub rows: u64,
-    /// Bytes written.
+    /// Bytes written; in the list of the exports, the size of the file of an
+    /// ended export, interrupted ones included.
     pub bytes: u64,
     /// Rows the result should have, when known in advance.
     pub expected_rows: Option<u64>,
@@ -210,14 +212,13 @@ impl FolderUsage {
     }
 }
 
-/// Exports of the user and the exports folder.
+/// Exports of the user, and the files of the exports folder that no export
+/// references.
 #[derive(Debug, Serialize, TS)]
 #[ts(export)]
 pub struct ExportList {
     /// Exports, the most recent first.
     pub exports: Vec<ExportInfo>,
-    /// Files of these exports in the folder.
-    pub usage: FolderUsage,
     /// Files of Prisme in the folder that no export references (copied
     /// there, internal database replaced...).
     pub orphans: FolderUsage,
@@ -591,16 +592,15 @@ async fn list_exports(
         })
         .await?;
 
-    let mut usage = FolderUsage::default();
     let mut exports = Vec::with_capacity(saved.len());
     for (export, file) in saved {
         let size = files.get(&file).copied();
-        if let Some(size) = size {
-            usage.add(size);
-        }
         let export = match state.exports.running(export.id, user_id) {
             Some(running) => running.snapshot(),
-            None => export,
+            None => ExportInfo {
+                bytes: size.unwrap_or(export.bytes),
+                ..export
+            },
         };
         exports.push(ExportInfo {
             file_missing: size.is_none(),
@@ -613,11 +613,7 @@ async fn list_exports(
             orphans.add(*size);
         }
     }
-    Ok(Json(ExportList {
-        exports,
-        usage,
-        orphans,
-    }))
+    Ok(Json(ExportList { exports, orphans }))
 }
 
 /// `GET /api/exports/stream`: server-sent events `export`, one per export of

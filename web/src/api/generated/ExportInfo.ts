@@ -27,11 +27,13 @@ export type ExportInfo = {
    */
   state: ExportState;
   /**
-   * Rows written.
+   * Rows written; 0 for an interrupted export, whose counters were not
+   * saved.
    */
   rows: number;
   /**
-   * Bytes written.
+   * Bytes written; in the list of the exports, the size of the file of an
+   * ended export, interrupted ones included.
    */
   bytes: number;
   /**
