@@ -1,0 +1,7 @@
+﻿id;nom;prix;taux;créé le;"note ""libre""";code;vide
+1;Zoé;12,50;0,125;2026-10-12 09:05:00;"dit ""oui""";007;""
+-2;"a;b";-3,00;1,5e-7;;"ligne 1
+ligne 2";1.5;
+3;;1000000,00;-0,5;2026-01-01 00:00:00;tab	here; espace ;x
+4;"retourseul";0,00;1e+20;2026-02-03 04:05:06.789000;"saut
+seul";"";€

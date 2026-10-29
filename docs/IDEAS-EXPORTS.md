@@ -1,6 +1,6 @@
 # Copying and exporting results
 
-This document gathers the ideas kept for copying the grid selection in several formats and for exporting a result to a file. Nothing is implemented. Settled points are marked **[decided]**, the others stay open (section 7).
+This document gathers the ideas kept for copying the grid selection in several formats and for exporting a result to a file. Only the CSV for Excel in French is implemented, as a download (section 4.4). Settled points are marked **[decided]**, the others stay open (section 7).
 
 ## 1. Starting point
 
@@ -16,7 +16,7 @@ Each format is a pure serialiser (columns, types, rows, options → text), teste
 |---|---|---|
 | Tabular | empty | Current behaviour, to paste into a spreadsheet **[decided]**. A `text/html` version is put in the clipboard at the same time (`ClipboardItem`), so that Excel or an email receives a real table. |
 | Box-Unicode | to set | Table drawn with box characters (`┌─┬─┐`, `│`, `├─┼─┤`), in the spirit of the `mysql` client's output **[decided]**. Numbers, dates and times right-aligned, as in the grid. ASCII variant (`+---+`) possible. |
-| CSV | empty, adjustable (`\N`, `NULL`) | RFC 4180. `,` or `;` separator (Excel in French). |
+| CSV | empty, adjustable (`\N`, `NULL`) | RFC 4180. `,` or `;` separator (Excel in French). The variant for Excel in French is implemented (section 4.4). |
 | TSV | `\N` | Strict TSV: `\t`, `\n` and `\\` escaped, like `LOAD DATA` and `COPY`, to load back into a database without loss. |
 | JSON | `null` | Array of objects. |
 | NDJSON | `null` | One object per line. |
@@ -88,6 +88,18 @@ The full export runs as a background task, and an export manager tells when the 
 
 The full export requires serialisers in Rust, whereas those of the copy are in TypeScript. For both to stay identical, common reference files (`tests/fixtures/export/`: an input in JSON, the expected output per format) are read by both test suites, in the spirit of the conformance suite.
 
+### 4.4 CSV for Excel in French **[decided]**
+
+The first format implemented, through the download button of the bar under the grid, without the export dialog. Its menu says what it downloads: "Sélection en CSV (3 lignes × 2 colonnes)", or "Résultat affiché en CSV (1 000 lignes)" without a selection.
+
+- UTF-8 with a BOM, `;` as separator, CRLF line endings, the column names on the first line: Excel in French opens the file with a double click.
+- RFC 4180 quoting: a field that holds `;`, `"`, CR or LF goes between quotes, its quotes doubled. Control characters stay raw, the quotes carrying them.
+- `NULL` is an empty field, an empty string is `""`, as in PostgreSQL's `COPY ... CSV`: Excel shows both as an empty cell, a CSV reader tells them apart. An unselected cell is an empty field.
+- Numbers of the `decimal` and `float` families take the decimal comma: with a dot, Excel in French reads `3.14` as text and `1.5` as the 1st of May. The other values go as the server sent them, dates included (`2026-10-12 09:05:00`, which Excel recognises).
+- Excel's own limits are documented in the `README.md`, without a workaround, which would change the values: 1,048,576 rows at most, integers rounded beyond 15 digits, leading zeros of a code dropped.
+- The file is built in the page by chunks of 2,000 rows, with a pause between two chunks: a large result of a `LIMIT` written by the user does not freeze the interface.
+- Serialiser: `web/src/components/csv.ts`; reference files: `tests/fixtures/export/csv-excel-fr/` (section 4.3).
+
 ## 5. Planned order
 
 1. TypeScript serialisers and their tests.
@@ -120,3 +132,4 @@ The full export requires serialisers in Rust, whereas those of the copy are in T
 5. **Invalid JSON column**: does a value of a JSON column that does not parse stay a string (the type then changes from one row to another), or does the export fail?
 6. **Clipboard volume**: should copying be capped (number of cells), with the export offered beyond?
 7. **Theme of the images**: the screen's, or always the light theme, more readable in a printed document or an email? A choice in the export dialog is possible.
+8. **Formulas in a CSV**: Excel reads a field that starts with `=`, `+`, `-` or `@` as a formula ("CSV injection"). Prefixing such a value with `'` protects the reader but changes the value, and `-3` is a number. For now, values are written as they are.

@@ -577,6 +577,46 @@ export function isSelected(selection: GridSelection, row: number, column: number
 }
 
 /**
+ * Size of a selection's frame: number of rows and of columns it touches,
+ * counted without listing them (a whole column of a large result).
+ *
+ * @param selection Selection.
+ * @returns `null` without a selection.
+ */
+export function selectionSize(selection: GridSelection): { rows: number; columns: number } | null {
+  if (selection.ranges.length === 0) {
+    return null
+  }
+  return {
+    rows: coveredCount(selection.ranges, 'top', 'bottom'),
+    columns: coveredCount(selection.ranges, 'left', 'right'),
+  }
+}
+
+/**
+ * Number of indexes covered by at least one range, between the given bounds.
+ *
+ * @param ranges Ranges.
+ * @param start Start bound (`top` or `left`).
+ * @param end End bound (`bottom` or `right`).
+ */
+function coveredCount(ranges: CellRange[], start: 'top' | 'left', end: 'bottom' | 'right'): number {
+  const spans = ranges.map((range) => [range[start], range[end]] as const)
+  spans.sort((a, b) => a[0] - b[0])
+  let count = 0
+  // Last index counted: the spans are sorted by their start.
+  let reached = Number.NEGATIVE_INFINITY
+  for (const [first, last] of spans) {
+    const from = Math.max(first, reached + 1)
+    if (last >= from) {
+      count += last - from + 1
+      reached = last
+    }
+  }
+  return count
+}
+
+/**
  * Part of the grid to copy or to export: rows and columns, in the displayed
  * order. It holds indexes only, never the rows themselves; a serialiser
  * (tabular copy, CSV...) reads its cells with `frameCell`.

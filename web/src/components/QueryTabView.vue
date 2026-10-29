@@ -26,8 +26,14 @@
 
   During a refresh, the previous result stays displayed until the new
   columns arrive.
+
+  Right of the status bar, a button downloads the result as CSV for Excel
+  in French (`csv.ts`): the selection of the grid, or the whole displayed
+  result without one, sorted and filtered as on screen, its columns in the
+  displayed order. The file is built in the page, by chunks of rows.
 -->
 <script setup lang="ts">
+import { Download, FileSpreadsheet } from '@lucide/vue'
 import { computed, ref, useTemplateRef, watch } from 'vue'
 
 import {
@@ -44,10 +50,17 @@ import {
 } from '@/api/querySession'
 
 import { useClock } from './clock'
+import { csvBlob, duplicateNames } from './csv'
+import { downloadName, saveBlob } from './download'
 import { sameColumns } from './resultGrid'
 import ResultFilter from './ResultFilter.vue'
 import ResultGrid from './ResultGrid.vue'
+import type { MenuItem } from './ui/menuItem'
+import { notify } from './ui/toasts'
+import { vTooltip } from './ui/tooltip'
 import UiAlert from './ui/UiAlert.vue'
+import UiButton from './ui/UiButton.vue'
+import UiDropdownMenu from './ui/UiDropdownMenu.vue'
 import UiStatusBar from './ui/UiStatusBar.vue'
 
 const props = defineProps<{
@@ -161,6 +174,41 @@ const rate = computed(() =>
 const hasStatus = computed(
   () => showsGrid(props.tab) || execution.value !== null || transfer.value !== null,
 )
+
+/**
+ * Choices of the download menu. The first one says what it downloads, so that
+ * a forgotten selection shows; it waits for the end of the query.
+ */
+const downloadItems = computed<MenuItem[]>(() => {
+  const size = grid.value?.selectedSize ?? null
+  const label =
+    size === null
+      ? `Résultat affiché en CSV (${formatRowCount(grid.value?.keptCount ?? 0, null)})`
+      : `Sélection en CSV (${formatRowCount(size.rows, null)} × ${size.columns} ${size.columns > 1 ? 'colonnes' : 'colonne'})`
+  return [
+    { label, icon: FileSpreadsheet, disabled: !props.tab.done, onSelect: () => void downloadCsv() },
+  ]
+})
+
+/**
+ * Downloads the selection, or the displayed result, as CSV. Columns sharing a
+ * name refuse the download: they could not be told apart in the file.
+ */
+async function downloadCsv(): Promise<void> {
+  const result = shown.value
+  if (result === null || grid.value === null) {
+    return
+  }
+  const frame = await grid.value.exportFrame()
+  const duplicates = duplicateNames(frame.fields.map((field) => result.columns[field] ?? ''))
+  if (duplicates.length > 0) {
+    notify(`Téléchargement refusé : colonnes de même nom (${duplicates.join(', ')}).`, 'error')
+    return
+  }
+  const blob = await csvBlob(frame, result.rows, result.columns, result.columnTypes)
+  saveBlob(blob, downloadName(props.tab.name ?? `requête-${props.tab.number + 1}`, 'csv'))
+  notify(`CSV téléchargé : ${formatRowCount(frame.rows.length, null)}.`)
+}
 </script>
 
 <template>
@@ -189,15 +237,26 @@ const hasStatus = computed(
       :sql="tab.sql"
       :displayed="displayed"
     />
-    <ui-status-bar v-if="hasStatus">
-      <span v-if="showsGrid(tab)">{{ formatRowCount(shownCount, keptCount) }}</span>
-      <span v-if="execution !== null">exécution {{ formatDuration(execution) }}</span>
-      <template v-if="transfer !== null">
-        <span>transfert {{ formatDuration(transfer) }}</span>
-        <span>{{ formatBytes(shownBytes) }}</span>
-      </template>
-      <span v-if="rate !== null">{{ formatBytes(rate) }}/s</span>
-      <span v-if="shown?.executedAt">{{ formatInstant(shown.executedAt) }}</span>
-    </ui-status-bar>
+    <div v-if="hasStatus" class="flex items-center justify-between gap-3">
+      <ui-status-bar>
+        <span v-if="showsGrid(tab)">{{ formatRowCount(shownCount, keptCount) }}</span>
+        <span v-if="execution !== null">exécution {{ formatDuration(execution) }}</span>
+        <template v-if="transfer !== null">
+          <span>transfert {{ formatDuration(transfer) }}</span>
+          <span>{{ formatBytes(shownBytes) }}</span>
+        </template>
+        <span v-if="rate !== null">{{ formatBytes(rate) }}/s</span>
+        <span v-if="shown?.executedAt">{{ formatInstant(shown.executedAt) }}</span>
+      </ui-status-bar>
+      <ui-dropdown-menu v-if="shown && showsGrid(tab)" :items="downloadItems">
+        <ui-button
+          :icon="Download"
+          variant="ghost"
+          small
+          aria-label="Télécharger"
+          v-tooltip="'Télécharger'"
+        />
+      </ui-dropdown-menu>
+    </div>
   </div>
 </template>

@@ -22,6 +22,9 @@
   - Copy: Ctrl+C copies the selection with the column names on the first
     line (a profile setting may remove them), a single cell as its value
     alone. Ctrl+A selects everything, Escape clears the selection.
+  - Download: the grid exposes the size of its selection (`selectedSize`)
+    and the part to download (`exportFrame`): the selection, or the whole
+    view without one, in the displayed order.
   - Width: dragging the right edge of a header changes the width of the
     column; a double click on this edge fits it to its longest value (with a
     cap), a second one gives back its estimated width. The chosen widths are
@@ -55,6 +58,7 @@ import { cssPixels } from '@/cssLength'
 import { type ExplorerContent, useDataExplorerStore } from '@/stores/dataExplorer'
 
 import {
+  type GridFrame,
   type SelectMode,
   type SortState,
   MIN_COLUMN_WIDTH,
@@ -73,11 +77,14 @@ import {
   selectCell,
   selectColumn,
   selectRow,
+  selectionFrame,
+  selectionSize,
   selectionToText,
   selectedColumnCells,
   createViewMemory,
   sameColumns,
   updateView,
+  viewFrame,
 } from './resultGrid'
 import { rememberWidths, rememberedWidths } from './gridWidths'
 import { type ContentKind, detectContent, isWebAddress } from './contentKind'
@@ -668,7 +675,27 @@ onBeforeUnmount(() => explorer.release(gridId))
  */
 const keptCount = computed(() => view.value.length)
 
-defineExpose({ keptCount })
+/**
+ * Number of rows and columns the selection touches, for the download menu;
+ * `null` without a selection.
+ */
+const selectedSize = computed(() => selectionSize(selection.value))
+
+/**
+ * Part of the grid to download: the selection, or the whole view without
+ * one. The view of a large result is computed over several frames
+ * (`refreshView`): the frame waits for its end.
+ */
+async function exportFrame(): Promise<GridFrame> {
+  while (viewMemory.scanned < props.rows.length) {
+    await nextFrame()
+  }
+  return selection.value.ranges.length > 0
+    ? selectionFrame(selection.value, view.value, order.value)
+    : viewFrame(view.value, order.value)
+}
+
+defineExpose({ keptCount, selectedSize, exportFrame })
 </script>
 
 <template>

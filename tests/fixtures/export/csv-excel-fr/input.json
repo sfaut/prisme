@@ -1,0 +1,11 @@
+{
+  "comment": "Reference of the CSV-Excel-FR format, read by the tests of the TypeScript serialiser (web/src/components/__tests__/csv.spec.ts) and of the Rust one (crates/server/src/exports/csv.rs): both must write expected.csv byte for byte. Cells are text, null for NULL, with the family of each column's type (TypeFamily).",
+  "columns": ["id", "nom", "prix", "taux", "créé le", "note \"libre\"", "code", "vide"],
+  "families": ["integer", "text", "decimal", "float", "datetime", "text", "text", "text"],
+  "rows": [
+    ["1", "Zoé", "12.50", "0.125", "2026-10-12 09:05:00", "dit \"oui\"", "007", ""],
+    ["-2", "a;b", "-3.00", "1.5e-7", null, "ligne 1\r\nligne 2", "1.5", null],
+    ["3", null, "1000000.00", "-0.5", "2026-01-01 00:00:00", "tab\there", " espace ", "x"],
+    ["4", "retour\rseul", "0.00", "1e+20", "2026-02-03 04:05:06.789000", "saut\nseul", "", "€"]
+  ]
+}

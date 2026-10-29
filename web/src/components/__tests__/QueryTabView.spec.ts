@@ -1,5 +1,6 @@
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { nextTick } from 'vue'
 
 import { mount } from '@vue/test-utils'
 
@@ -7,6 +8,7 @@ import { type QueryTab, formatInstant } from '@/api/querySession'
 
 import QueryTabView from '../QueryTabView.vue'
 import ResultFilter from '../ResultFilter.vue'
+import UiDropdownMenu from '../ui/UiDropdownMenu.vue'
 import UiStatusBar from '../ui/UiStatusBar.vue'
 import { finishedTab } from './resultTabs'
 
@@ -59,6 +61,31 @@ describe('QueryTabView', () => {
     await wrapper.setProps({ tab: { ...tab, filterOpen: true } })
     expect(wrapper.findComponent(ResultFilter).exists()).toBe(true)
     expect(wrapper.find('.grid-scroller').classes()).not.toContain('attached')
+  })
+
+  it('offers to download the displayed result, or the selection when there is one', async () => {
+    const wrapper = mountTab(
+      finishedTab(
+        ['id', 'name'],
+        [
+          ['1', 'a'],
+          ['2', 'b'],
+          ['3', 'c'],
+        ],
+      ),
+    )
+    const label = () => wrapper.findComponent(UiDropdownMenu).props('items')[0]?.label
+    // The grid counts its rows once mounted: the menu follows on the next render.
+    await nextTick()
+    expect(label()).toBe('Résultat affiché en CSV (3 lignes)')
+
+    await wrapper.find('.grid-corner').trigger('mousedown')
+    expect(label()).toBe('Sélection en CSV (3 lignes × 2 colonnes)')
+  })
+
+  it('has no download without a grid', () => {
+    const wrapper = mountTab(finishedTab([]))
+    expect(wrapper.findComponent(UiDropdownMenu).exists()).toBe(false)
   })
 
   it('makes a targeted filter global for new columns, and keeps it for the same ones', async () => {

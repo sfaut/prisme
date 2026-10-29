@@ -20,6 +20,7 @@ import {
   selectColumn,
   selectRow,
   selectionFrame,
+  selectionSize,
   selectionToText,
   selectedColumnCells,
   createViewMemory,
@@ -198,6 +199,16 @@ describe('frames', () => {
     expect(frameCell(frame, rows, 1, 1)).toBeUndefined()
     expect(frameCell(frame, rows, 0, 1)).toBe('1')
     expect(frameCell(frame, rows, 1, 0)).toBeNull()
+  })
+
+  it('counts the rows and columns of a selection, overlaps once', () => {
+    expect(selectionSize(emptySelection())).toBeNull()
+    let selection = selectCell(emptySelection(), 0, 0, 'replace')
+    selection = selectCell(selection, 3, 2, 'extend')
+    selection = selectCell(selection, 2, 1, 'add')
+    selection = selectCell(selection, 9, 1, 'add')
+    // Rows 0 to 3, plus 9; columns 0 to 2.
+    expect(selectionSize(selection)).toEqual({ rows: 5, columns: 3 })
   })
 
   it('gives NULL apart from an unselected cell', () => {
