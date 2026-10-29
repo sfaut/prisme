@@ -6,15 +6,13 @@
   when the result is complete, red on failure.
 -->
 <script setup lang="ts">
-import { computed } from 'vue'
+import type { TabProgress } from '@/api/querySession'
 
-import { type QueryTab, tabProgress } from '@/api/querySession'
-
-const props = defineProps<{
+defineProps<{
   /**
-   * Tracked query.
+   * Progress shown (`tabProgress` for a query).
    */
-  tab: QueryTab
+  progress: TabProgress
 }>()
 
 /**
@@ -27,8 +25,6 @@ const LABELS = {
   done: 'Terminé',
   error: 'Échec',
 } as const
-
-const progress = computed(() => tabProgress(props.tab))
 </script>
 
 <template>

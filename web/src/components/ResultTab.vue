@@ -91,7 +91,7 @@ const barTone = computed(() => {
     close-tooltip="Fermer l’onglet (arrête sa requête si elle tourne)"
     @close="emit('close')"
   >
-    <progress-dot :tab="tab" />
+    <progress-dot :progress="tabProgress(tab)" />
     <tab-label :name="tab.name" :default-label="defaultLabel" @rename="emit('rename', $event)" />
     <span v-if="barTone" class="tab-progress" aria-hidden="true">
       <span
