@@ -100,7 +100,7 @@ The first format implemented, through the download button of the bar under the g
 - RFC 4180 quoting: a field that holds `;`, `"`, CR or LF goes between quotes, its quotes doubled. Control characters stay raw, the quotes carrying them.
 - `NULL` is an empty field, an empty string is `""`, as in PostgreSQL's `COPY ... CSV`: Excel shows both as an empty cell, a CSV reader tells them apart. An unselected cell is an empty field.
 - Numbers of the `decimal` and `float` families take the decimal comma: with a dot, Excel in French reads `3.14` as text and `1.5` as the 1st of May. The other values go as the server sent them, dates included (`2026-10-12 09:05:00`, which Excel recognises).
-- Excel's own limits are documented in the `README.md`, without a workaround, which would change the values: 1,048,576 rows at most, integers rounded beyond 15 digits, leading zeros of a code dropped.
+- Excel's own limits are documented in the `README.md`, without a workaround, which would change the values: 1,048,576 rows at most, integers rounded beyond 15 digits, leading zeros of a code dropped, a value starting with `=`, `+`, `-` or `@` read as a formula (section 7, question 8).
 - The file is built in the page by chunks of 2,000 rows, with a pause between two chunks: a large result of a `LIMIT` written by the user does not freeze the interface.
 - Serialisers: `web/src/components/csv.ts` in the browser, `crates/server/src/exports/csv.rs` for the full export (section 4.2); reference files: `tests/fixtures/export/csv-excel-fr/`, read by both test suites (section 4.3).
 
@@ -126,6 +126,7 @@ The first format implemented, through the download button of the bar under the g
 | Export scopes | Displayed result or selection, depending on the presence of a selection, in the browser; full result run again by the server, offered even when the result is not truncated. |
 | Full export | Dedicated connection, read-only; followed by the export manager of the top bar, a toast when the file is ready; completed share only with a total known in advance, without `COUNT(*)`. |
 | Exports folder | Cleaned from the manager only, never automatically; a missing file and a file no export references are both shown. |
+| Formulas in a CSV | Values written as they are, without a prefix. |
 | Grid state | The export of the displayed result and of the selection follows the column order, sorting and filtering; the full result follows the column order, its rows being the raw result of the query. |
 | Right click | To avoid. |
 
@@ -138,4 +139,4 @@ The first format implemented, through the download button of the bar under the g
 5. **Invalid JSON column**: does a value of a JSON column that does not parse stay a string (the type then changes from one row to another), or does the export fail?
 6. **Clipboard volume**: should copying be capped (number of cells), with the export offered beyond?
 7. **Theme of the images**: the screen's, or always the light theme, more readable in a printed document or an email? A choice in the export dialog is possible.
-8. **Formulas in a CSV**: Excel reads a field that starts with `=`, `+`, `-` or `@` as a formula ("CSV injection"). Prefixing such a value with `'` protects the reader but changes the value, and `-3` is a number. For now, values are written as they are.
+8. **Formulas in a CSV** **[decided]**: values are written as they are. Excel reads a field that starts with `=`, `+`, `-` or `@` as a formula ("CSV injection"); prefixing such a value with `'` would protect the reader, but would change the value, and `-3` is a number. The `README.md` says so.
