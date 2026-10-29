@@ -97,10 +97,12 @@ describe('ExportItem', () => {
     expect(wrapper.text()).toContain('interrompu')
   })
 
-  it('offers the partial file of a stopped export', () => {
-    const wrapper = mountItem(entry({ state: 'cancelled' }))
-    expect(wrapper.text()).toContain('arrêté')
-    expect(buttons(wrapper)).toEqual(['Télécharger', 'Retirer'])
+  it('offers the partial file of a stopped, failed or interrupted export, unless empty', () => {
+    for (const state of ['cancelled', 'failed', 'interrupted'] as const) {
+      expect(buttons(mountItem(entry({ state })))).toEqual(['Télécharger', 'Retirer'])
+    }
+    const empty = mountItem(entry({ state: 'failed', rows: 0, bytes: 0 }))
+    expect(buttons(empty)).toEqual(['Télécharger (inactif)', 'Retirer'])
   })
 
   it('shows the completed share of a running export whose total is known', () => {
@@ -134,6 +136,6 @@ describe('ExportItem', () => {
     const failed = mountItem(entry({ state: 'failed', error: { code: 'export_not_read' } }))
     expect(failed.text()).toContain('échoué')
     expect(failed.text()).toContain('Export refusé : seule une lecture')
-    expect(buttons(failed)).toEqual(['Retirer'])
+    expect(buttons(failed)).toEqual(['Télécharger', 'Retirer'])
   })
 })

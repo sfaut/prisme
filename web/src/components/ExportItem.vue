@@ -11,8 +11,9 @@
     duration runs (shared clock, `clock.ts`). An interrupted export gives
     the rows of its partial file, and ends with its last write.
   - Warnings: more rows than Excel opens, the cause of a failure.
-  - Actions: stop a running export, download a ready one, or the partial
-    file of a stopped one, remove any of them with its file.
+  - Actions: stop a running export, download the file of an ended one,
+    partial unless ready (unless empty or missing), remove any of them with
+    its file.
 -->
 <script setup lang="ts">
 import { CircleStop, Download, Trash2 } from '@lucide/vue'
@@ -168,11 +169,11 @@ const rows = computed(() => {
         @click="store.cancel(entry.id)"
       />
       <ui-button
-        v-if="entry.state === 'ready' || entry.state === 'cancelled'"
+        v-if="entry.state !== 'running'"
         :icon="Download"
         variant="ghost"
         small
-        :disabled="entry.file_missing"
+        :disabled="entry.file_missing || entry.bytes === 0"
         aria-label="Télécharger"
         v-tooltip="entry.state === 'ready' ? 'Télécharger' : 'Télécharger le fichier partiel'"
         @click="store.download(entry.id)"
