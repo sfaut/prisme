@@ -74,6 +74,7 @@ mod temporary_tables;
 mod tests;
 
 pub(crate) use cancellation::Cancellation;
+pub(crate) use limits::limit_error;
 pub(crate) use protocol::{ClientMessage, LimitReport, ServerMessage, SessionRequest};
 
 use std::sync::Arc;

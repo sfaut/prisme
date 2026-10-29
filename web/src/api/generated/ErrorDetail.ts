@@ -168,4 +168,26 @@ export type ErrorDetail =
      * Message of the SQL parser (`sqlparser`).
      */
     cause: string;
+  }
+  | { "code": "export_not_read" }
+  | {
+    "code": "duplicate_columns";
+    /**
+     * Each name given to several columns, once.
+     */
+    names: Array<string>;
+  }
+  | {
+    "code": "export_file";
+    /**
+     * Message of the system.
+     */
+    cause: string;
+  }
+  | {
+    "code": "export_file_missing";
+    /**
+     * Name of the file in the exports folder.
+     */
+    file: string;
   };

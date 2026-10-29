@@ -51,6 +51,8 @@ pub enum Action {
     Navigator,
     /// Test of a connection.
     Probe,
+    /// Export of a full result to a CSV file (`exports.rs`).
+    Export,
 }
 
 impl Action {
@@ -66,6 +68,7 @@ impl Action {
             Self::Cancel => "cancel",
             Self::Navigator => "navigator",
             Self::Probe => "probe",
+            Self::Export => "export",
         }
     }
 
@@ -81,6 +84,7 @@ impl Action {
             Self::Cancel,
             Self::Navigator,
             Self::Probe,
+            Self::Export,
         ]
         .into_iter()
         .find(|action| action.as_str() == name)

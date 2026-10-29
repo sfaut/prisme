@@ -227,6 +227,28 @@ pub enum ErrorDetail {
         /// Message of the SQL parser (`sqlparser`).
         cause: String,
     },
+    /// An export of a query that is not a read: only a read returns rows.
+    #[error("export refused: only a read can be exported")]
+    ExportNotRead,
+    /// An export whose columns cannot be told apart: several have the same name.
+    #[error("export refused: several columns are named {}", names.join(", "))]
+    DuplicateColumns {
+        /// Each name given to several columns, once.
+        names: Vec<String>,
+    },
+    /// Failure of the exports folder: file not created, not written or not
+    /// deleted (opened in another program...).
+    #[error("exports folder: {cause}")]
+    ExportFile {
+        /// Message of the system.
+        cause: String,
+    },
+    /// The file of an export is no longer in the exports folder.
+    #[error("export file missing from the exports folder: {file}")]
+    ExportFileMissing {
+        /// Name of the file in the exports folder.
+        file: String,
+    },
 }
 
 impl ErrorDetail {

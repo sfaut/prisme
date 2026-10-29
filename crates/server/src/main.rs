@@ -5,9 +5,10 @@
 //! console, `console.rs`), announces the version of Prisme, prepares the
 //! data folder (master key and internal database), settles the listening
 //! port and the single user of the workstation mode, asked on first launch
-//! (`setup.rs`), then starts the console's writer and its purge, and the web
-//! server: the API and the interface (`web_assets.rs`). See `docs/V1.md`,
-//! section 2.8.
+//! (`setup.rs`), marks the exports left running by the last stop as
+//! interrupted (`exports.rs`), then starts the console's writer and its
+//! purge, and the web server: the API and the interface (`web_assets.rs`).
+//! See `docs/V1.md`, section 2.8.
 
 mod analyze;
 mod api;
@@ -19,6 +20,7 @@ mod connections;
 mod console;
 mod editors;
 mod error_detail;
+mod exports;
 mod master_key;
 mod navigator;
 mod profile;
@@ -98,7 +100,18 @@ async fn main() -> anyhow::Result<()> {
     let startup = setup::settle(&db, &config, first_launch, terminal, &setup::port_free)?;
     tracing::info!(user_id = startup.user_id, "local user: {}", startup.email);
 
-    let state = api::AppState::new(db, master_key, startup.user_id);
+    // Exports that were running when Prisme stopped: their partial files stay.
+    let interrupted = exports::interrupt_unfinished(&db)?;
+    if interrupted > 0 {
+        tracing::info!("{interrupted} export(s) interrupted by the last stop");
+    }
+
+    let state = api::AppState::new(
+        db,
+        master_key,
+        startup.user_id,
+        data_dir.join(exports::FOLDER),
+    );
     tokio::spawn(console::write(state.clone(), console_receiver));
     tokio::spawn(console::purge_regularly(state.clone()));
     let app = api::router(state);

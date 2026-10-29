@@ -219,5 +219,13 @@ export function describe(detail: ErrorDetail): string {
       return `Le serveur ne comprend pas un message de l’interface.\n\n${quoted('Le lecteur JSON a signalé', detail.cause)}`
     case 'query_not_understood':
       return `Requête non comprise par Prisme.\n\n${quoted('L’analyseur SQL a signalé', detail.cause)}`
+    case 'export_not_read':
+      return 'Export refusé : seule une lecture (SELECT, SHOW…) a des lignes à exporter.'
+    case 'duplicate_columns':
+      return `Export refusé : colonnes de même nom (${detail.names.join(', ')}).`
+    case 'export_file':
+      return `Fichier d’export non créé, non écrit ou non supprimé : il est peut-être ouvert dans un autre programme.\n\n${quoted('Le système a signalé', detail.cause)}`
+    case 'export_file_missing':
+      return `Fichier d’export absent du dossier des exports (${detail.file}) : il a été supprimé ou déplacé hors de Prisme.`
   }
 }

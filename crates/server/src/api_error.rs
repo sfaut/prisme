@@ -16,6 +16,7 @@ use prisme_connectors::mysql::{ConnectFailure, MysqlError};
 use crate::connections::ConnectionsError;
 use crate::editors::EditorsError;
 use crate::error_detail::ErrorDetail;
+use crate::exports::ExportsError;
 use crate::profile::ProfileError;
 use crate::settings::SettingsError;
 
@@ -38,6 +39,8 @@ pub enum ApiError {
     NotFound,
     /// Conflict with what exists, for example a name already taken (409).
     Conflict(ErrorDetail),
+    /// Resource gone, for example the file of an export deleted outside Prisme (410).
+    Gone(ErrorDetail),
     /// The target server refused or failed (502).
     BadGateway(ErrorDetail),
     /// The target server did not answer in time (504).
@@ -68,6 +71,22 @@ impl From<EditorsError> for ApiError {
         match error {
             EditorsError::Invalid(detail) => Self::BadRequest(detail),
             EditorsError::Sqlite(_) | EditorsError::Json(_) => {
+                tracing::error!("{error}");
+                Self::Internal
+            }
+        }
+    }
+}
+
+impl From<ExportsError> for ApiError {
+    /// Translates an export management error into an HTTP error: a failure
+    /// of the exports folder is told to the user, with the system's message.
+    fn from(error: ExportsError) -> Self {
+        match error {
+            ExportsError::Folder(cause) => Self::Conflict(ErrorDetail::ExportFile {
+                cause: cause.to_string(),
+            }),
+            ExportsError::Sqlite(_) => {
                 tracing::error!("{error}");
                 Self::Internal
             }
@@ -129,6 +148,7 @@ impl IntoResponse for ApiError {
             Self::BadRequest(detail) => (StatusCode::BAD_REQUEST, detail),
             Self::NotFound => (StatusCode::NOT_FOUND, ErrorDetail::NotFound),
             Self::Conflict(detail) => (StatusCode::CONFLICT, detail),
+            Self::Gone(detail) => (StatusCode::GONE, detail),
             Self::BadGateway(detail) => (StatusCode::BAD_GATEWAY, detail),
             Self::GatewayTimeout(detail) => (StatusCode::GATEWAY_TIMEOUT, detail),
             Self::Internal => (StatusCode::INTERNAL_SERVER_ERROR, ErrorDetail::Internal),

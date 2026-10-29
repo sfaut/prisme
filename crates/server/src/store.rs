@@ -57,6 +57,8 @@ static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
         M::up(include_str!(
             "../migrations/0020_query_history_navigator.sql"
         )),
+        M::up(include_str!("../migrations/0021_exports.sql")),
+        M::up(include_str!("../migrations/0022_query_history_export.sql")),
     ])
 });
 

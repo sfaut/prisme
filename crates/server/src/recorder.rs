@@ -300,6 +300,7 @@ fn micros_since(instant: Instant) -> u64 {
 mod tests {
     use super::*;
     use crate::editors::NewEditor;
+    use crate::exports;
     use crate::master_key::MasterKey;
     use crate::query_session::LimitReport;
     use crate::store;
@@ -309,7 +310,7 @@ mod tests {
         let db = store::open_in_memory();
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
         let editor = editors::create(&db, user_id, &NewEditor::default()).unwrap();
-        let state = AppState::new(db, MasterKey::generate(), user_id);
+        let state = AppState::new(db, MasterKey::generate(), user_id, exports::unused_folder());
         let recorder = Recorder::new(state.clone(), editor.id);
 
         let mut batch = ServerMessage::Batch {
@@ -415,7 +416,7 @@ mod tests {
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
         let editor = create_editor(&db, user_id);
         let other = create_editor(&db, user_id);
-        let state = AppState::new(db, MasterKey::generate(), user_id);
+        let state = AppState::new(db, MasterKey::generate(), user_id, exports::unused_folder());
         let recorder = Recorder::new(state.clone(), editor);
         let saved = |row: &str| -> [ServerMessage; 4] {
             [

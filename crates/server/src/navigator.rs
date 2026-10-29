@@ -233,6 +233,7 @@ mod tests {
 
     use crate::api::{AppState, router};
     use crate::connections::{self, NewConnection};
+    use crate::exports;
     use crate::master_key::MasterKey;
     use crate::store;
 
@@ -254,7 +255,7 @@ mod tests {
             show_system_schemas: true,
         };
         connections::insert(&db, &key, user_id, &new).unwrap();
-        let app = router(AppState::new(db, key, user_id));
+        let app = router(AppState::new(db, key, user_id, exports::unused_folder()));
 
         let request = Request::get(uri)
             .header("host", "localhost:8484")

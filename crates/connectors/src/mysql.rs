@@ -286,6 +286,21 @@ pub async fn kill_query(target: &MysqlTarget, connection_id: u32) -> Result<(), 
     Ok(())
 }
 
+/// Closes connection `connection_id` (`Conn::id()`) on the server, which
+/// stops its running query, through a second connection.
+///
+/// Unlike `kill_query`, a stop that reaches the server before the query
+/// stops it all the same: the connection is gone. Its owner has nothing more
+/// to read than the rows already on their way, which `Conn::disconnect`
+/// reads before closing.
+pub async fn kill_connection(target: &MysqlTarget, connection_id: u32) -> Result<(), MysqlError> {
+    let mut connection = connect(target).await?;
+    let sql = format!("KILL CONNECTION {connection_id}");
+    sql_log::traced(&sql, connection.query_drop(&sql), |_| None).await?;
+    connection.disconnect().await?;
+    Ok(())
+}
+
 /// Number of rows of a `query_first` result: 1 or 0.
 fn first_row<T>(row: &Option<T>) -> Option<u64> {
     Some(u64::from(row.is_some()))

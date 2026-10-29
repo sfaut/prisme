@@ -77,7 +77,7 @@ pub(super) fn write_refusal(
 }
 
 /// Detail of a text that cannot run: no query, or several.
-pub(super) fn limit_error(error: &LimitError) -> ErrorDetail {
+pub(crate) fn limit_error(error: &LimitError) -> ErrorDetail {
     match error {
         LimitError::Empty => ErrorDetail::NoQuery,
         LimitError::MultipleStatements(count) => ErrorDetail::MultipleQueries {

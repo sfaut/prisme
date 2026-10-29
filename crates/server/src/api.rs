@@ -21,8 +21,10 @@
 //! | `POST /api/analyze`                 | Analyses the editor's text (see `analyze.rs`).                |
 //! | `GET /api/dialects/{flavor}/keywords` | Keywords of the dialect (`?version=`: those of the version). |
 //! | `GET /api/console/...`              | History of the queries, and its stream (see `console.rs`).    |
+//! | `/api/exports...`                   | Exports of full results to CSV files (see `exports.rs`).      |
 //! | `GET /` and any other path          | Files of the interface (see `web_assets.rs`).                 |
 
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -53,6 +55,7 @@ use crate::connections::{self, ConnectionSummary, ConnectionsError, NewConnectio
 use crate::console::{self, Action, ConsoleEvent};
 use crate::editors;
 use crate::error_detail::ErrorDetail;
+use crate::exports::{self, Exports};
 use crate::master_key::MasterKey;
 use crate::navigator;
 use crate::profile::{self, Profile, ProfileUpdate};
@@ -76,17 +79,26 @@ pub struct AppState {
     pub sessions: Arc<Sessions>,
     /// Elements saved for the console, announced to the interfaces (`console.rs`).
     pub console: broadcast::Sender<ConsoleEvent>,
+    /// Exports of full results to CSV files (`exports.rs`).
+    pub exports: Arc<Exports>,
 }
 
 impl AppState {
-    /// Builds the state from the open internal database, the key and the local user.
-    pub fn new(db: Connection, key: MasterKey, local_user_id: i64) -> Self {
+    /// Builds the state from the open internal database, the key, the local
+    /// user and the folder of the exports.
+    pub fn new(
+        db: Connection,
+        key: MasterKey,
+        local_user_id: i64,
+        exports_folder: PathBuf,
+    ) -> Self {
         Self {
             db: Arc::new(Mutex::new(db)),
             key: Arc::new(key),
             local_user_id,
             sessions: Arc::default(),
             console: broadcast::Sender::new(console::EVENTS_CAPACITY),
+            exports: Arc::new(Exports::new(exports_folder)),
         }
     }
 
@@ -164,6 +176,7 @@ pub fn router(state: AppState) -> Router {
         .merge(navigator::routes())
         .merge(console::routes())
         .merge(editors::routes())
+        .merge(exports::routes())
         .fallback(web_assets::serve)
         .layer(middleware::from_fn(request_guard::local_only))
         // Outermost layer: the requests refused by the guard are written too.
@@ -598,7 +611,8 @@ mod tests {
     fn test_app() -> Router {
         let db = store::open_in_memory();
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
-        router(AppState::new(db, MasterKey::generate(), user_id))
+        let state = AppState::new(db, MasterKey::generate(), user_id, exports::unused_folder());
+        router(state)
     }
 
     /// Sends a request to the application and returns the status and the JSON body (Null if empty or text).

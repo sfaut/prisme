@@ -12,4 +12,5 @@ export type Action =
   | "use"
   | "cancel"
   | "navigator"
-  | "probe";
+  | "probe"
+  | "export";

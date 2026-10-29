@@ -13,6 +13,7 @@ use crate::api::{AppState, router};
 use crate::connections::{self, NewConnection};
 use crate::editors::{self, NewEditor};
 use crate::error_detail::ErrorDetail;
+use crate::exports;
 use crate::master_key::MasterKey;
 use crate::settings::{self, SettingsUpdate};
 use crate::store;
@@ -69,7 +70,7 @@ async fn start_writing(host: &str, port: u16, writes: Option<&[WriteKind]>) -> (
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap().to_string();
-    let app = router(AppState::new(db, key, user_id));
+    let app = router(AppState::new(db, key, user_id, exports::unused_folder()));
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     (address, id, editor.id)
 }

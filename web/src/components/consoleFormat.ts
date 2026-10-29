@@ -24,6 +24,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   cancel: 'Interruption',
   navigator: 'Navigateur',
   probe: 'Test de connexion',
+  export: 'Export',
 }
 
 /**
