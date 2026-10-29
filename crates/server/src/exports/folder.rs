@@ -1,13 +1,17 @@
 //! Exports folder: the names of its files, their reading against the table
-//! of the exports, and the name offered on download.
+//! of the exports, the lines of a file written after a given size, and the
+//! name offered on download.
 //!
 //! Prisme names its files `<id>-<instant in ms>.csv`. Only the files with a
 //! name of this form are its own: the other files of the folder are never
 //! listed nor deleted.
 
 use std::collections::{HashMap, HashSet};
-use std::io;
+use std::io::{self, Seek, SeekFrom};
 use std::path::Path;
+use std::time::SystemTime;
+
+use super::csv;
 
 /// Extension of the files.
 const EXTENSION: &str = ".csv";
@@ -68,6 +72,31 @@ pub fn remove_orphans(folder: &Path, referenced: &HashSet<String>) -> io::Result
         }
     }
     failure.map_or(Ok(()), Err)
+}
+
+/// End of a file, beyond a size known to end a line.
+#[derive(Debug)]
+pub struct Tail {
+    /// Lines that end beyond that size.
+    pub lines: u64,
+    /// Size of the file, in bytes.
+    pub size: u64,
+    /// Instant of the last write to the file.
+    pub modified: SystemTime,
+}
+
+/// Reads file `path` beyond its first `offset` bytes, which end a line (or
+/// are 0): the lines that end there, its size and the instant of its last
+/// write.
+pub fn tail(path: &Path, offset: u64) -> io::Result<Tail> {
+    let mut file = std::fs::File::open(path)?;
+    let metadata = file.metadata()?;
+    file.seek(SeekFrom::Start(offset))?;
+    Ok(Tail {
+        lines: csv::count_lines(file)?,
+        size: metadata.len(),
+        modified: metadata.modified()?,
+    })
 }
 
 /// Value of the `Content-Disposition` header that offers to save the file as
@@ -132,6 +161,22 @@ mod tests {
         remove(folder.path(), "1-10.csv").unwrap();
         remove(folder.path(), "1-10.csv").unwrap();
         assert!(scan(folder.path()).unwrap().is_empty());
+    }
+
+    #[test]
+    fn reads_the_end_of_a_file() {
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("1-10.csv");
+        std::fs::write(&path, "a\r\n\"b\r\nc\"\r\nd").unwrap();
+        let tail = tail(&path, 3).unwrap();
+        // The quoted line break is in a field, the last line is cut short.
+        assert_eq!((tail.lines, tail.size), (1, 12));
+        assert_eq!(
+            tail.modified,
+            std::fs::metadata(&path).unwrap().modified().unwrap()
+        );
+        // Beyond the end of the file: nothing.
+        assert_eq!(super::tail(&path, 20).unwrap().lines, 0);
     }
 
     #[test]

@@ -27,8 +27,7 @@ export type ExportInfo = {
    */
   state: ExportState;
   /**
-   * Rows written; 0 for an interrupted export, whose counters were not
-   * saved.
+   * Rows written.
    */
   rows: number;
   /**
@@ -45,7 +44,8 @@ export type ExportInfo = {
    */
   created_at: string;
   /**
-   * Instant the export ended, in UTC, in ISO 8601 format; `None` while it runs.
+   * Instant the export ended, in UTC, in ISO 8601 format; `None` while it
+   * runs. For an interrupted export, the last write to its file.
    */
   ended_at: string | null;
   /**

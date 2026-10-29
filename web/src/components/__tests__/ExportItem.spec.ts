@@ -73,10 +73,16 @@ describe('ExportItem', () => {
     expect(buttons(wrapper)).toEqual(['Télécharger', 'Retirer'])
   })
 
-  it('gives only the connection and the size of an interrupted export', () => {
-    const wrapper = mountItem(entry({ state: 'interrupted', rows: 0 }))
+  it('gives the rows and the duration of an interrupted export', () => {
+    const wrapper = mountItem(entry({ state: 'interrupted' }))
     const items = wrapper.findComponent(UiStatusBar).findAll('span')
-    expect(items.map((item) => item.text())).toEqual(['local', '2,0 Mo'])
+    expect(items.map((item) => item.text())).toEqual([
+      'local',
+      '2\u202f000 lignes',
+      '2,0 Mo',
+      '4,0 s',
+      '500,0 ko/s',
+    ])
     expect(wrapper.text()).toContain('interrompu')
   })
 

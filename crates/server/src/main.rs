@@ -101,17 +101,13 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(user_id = startup.user_id, "local user: {}", startup.email);
 
     // Exports that were running when Prisme stopped: their partial files stay.
-    let interrupted = exports::interrupt_unfinished(&db)?;
+    let exports_folder = data_dir.join(exports::FOLDER);
+    let interrupted = exports::interrupt_unfinished(&db, &exports_folder)?;
     if interrupted > 0 {
         tracing::info!("{interrupted} export(s) interrupted by the last stop");
     }
 
-    let state = api::AppState::new(
-        db,
-        master_key,
-        startup.user_id,
-        data_dir.join(exports::FOLDER),
-    );
+    let state = api::AppState::new(db, master_key, startup.user_id, exports_folder);
     tokio::spawn(console::write(state.clone(), console_receiver));
     tokio::spawn(console::purge_regularly(state.clone()));
     let app = api::router(state);

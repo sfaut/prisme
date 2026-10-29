@@ -3,8 +3,11 @@
 //!
 //! The memory stays the same whatever the size of the result: the driver
 //! reads the rows one by one, without buffering the result, and they are
-//! written by chunks of `CHUNK` bytes. The progress is announced every
-//! `PROGRESS_INTERVAL` at most. The query goes to the history of the queries
+//! written by chunks of `CHUNK` bytes. Every `PROGRESS_INTERVAL` at most,
+//! the rows read are written down to the file, then the counters saved in
+//! the internal database and announced: an export interrupted by a stop of
+//! Prisme starts from them (`interrupt_unfinished`), and counts in its file
+//! the rows written after them. The query goes to the history of the queries
 //! (`sql_log`), with its execution time, until the columns, and the transfer
 //! time of its rows.
 //!
@@ -27,14 +30,14 @@ use prisme_connectors::mysql::{self, Connection, Flavor, MysqlError, ResultStrea
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
-use super::{ExportEvent, Exports, Running, csv};
+use super::{ExportEvent, ExportsError, Running, csv, table};
 use crate::api::AppState;
 use crate::error_detail::ErrorDetail;
 
 /// Bytes of rows gathered before a write to the file.
 const CHUNK: usize = 256 * 1024;
 
-/// Least interval between two announcements of the progress.
+/// Least interval between two saves of the progress.
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(500);
 
 /// Outcome of an export.
@@ -91,7 +94,7 @@ impl Job {
             mut file,
         } = self;
         let writer = Writer {
-            exports: &state.exports,
+            state: &state,
             running: &running,
             flavor,
         };
@@ -109,8 +112,9 @@ impl Job {
 
 /// Writing of an export: where its progress goes.
 struct Writer<'a> {
-    /// Registry of the exports, which announces the progress.
-    exports: &'a Exports,
+    /// State of the application: the internal database saves the progress,
+    /// the registry of the exports announces it.
+    state: &'a AppState,
     /// The export and its counters.
     running: &'a Running,
     /// Flavor of the server, for its error messages.
@@ -174,7 +178,7 @@ impl Writer<'_> {
         let mut chunk = String::with_capacity(CHUNK);
         csv::write_start(&mut chunk, order.iter().map(|&index| names[index].as_str()));
         let mut rows = 0;
-        let mut announced = Instant::now();
+        let mut progressed = Instant::now();
         loop {
             let row = match stream.next_row().await {
                 Ok(Some(row)) => row,
@@ -191,17 +195,16 @@ impl Writer<'_> {
             csv::write_row(&mut chunk, &row, &order, &families);
             rows += 1;
             self.running.rows.store(rows, Ordering::Relaxed);
-            if chunk.len() >= CHUNK
-                && let Err(error) = self.save(file, &mut chunk).await
-            {
+            let written = if progressed.elapsed() >= PROGRESS_INTERVAL {
+                progressed = Instant::now();
+                self.progress(file, &mut chunk).await
+            } else if chunk.len() >= CHUNK {
+                self.save(file, &mut chunk).await
+            } else {
+                Ok(())
+            };
+            if let Err(error) = written {
                 return self.abandon(file_failure(&error)).await;
-            }
-            if announced.elapsed() >= PROGRESS_INTERVAL {
-                let event = ExportEvent::Changed {
-                    export: Box::new(self.running.snapshot()),
-                };
-                self.exports.announce(self.running.user_id, event);
-                announced = Instant::now();
             }
         }
         self.close(file, &mut chunk, Outcome::Ready).await
@@ -218,6 +221,27 @@ impl Writer<'_> {
             Ok(()) => outcome,
             Err(error) => file_failure(&error),
         }
+    }
+
+    /// Writes the rows read down to the file, saves the counters, which now
+    /// tell the rows and the bytes of the file, then announces them.
+    async fn progress(&self, file: &mut File, chunk: &mut String) -> std::io::Result<()> {
+        self.save(file, chunk).await?;
+        // The rows reach the system before their counters are saved.
+        file.flush().await?;
+        let export = self.running.snapshot();
+        let (id, rows, bytes) = (export.id, export.rows, export.bytes);
+        // A failure to save is already in the log (`ApiError`): the export
+        // goes on, its counters saved at its end.
+        let _ = self
+            .state
+            .with_db(move |db, _| table::progress(db, id, rows, bytes).map_err(ExportsError::from))
+            .await;
+        let event = ExportEvent::Changed {
+            export: Box::new(export),
+        };
+        self.state.exports.announce(self.running.user_id, event);
+        Ok(())
     }
 
     /// Writes the chunk to the file and empties it.

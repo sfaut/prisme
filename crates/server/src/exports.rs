@@ -11,8 +11,10 @@
 //!
 //! The list of the exports is kept in the internal database (`table.rs`), and
 //! survives a restart: an export that was running when Prisme stopped becomes
-//! interrupted. A file is only deleted by removing its export from the
-//! manager, never automatically. The table and the folder are read together
+//! interrupted, with the rows of its partial file: those of its progress
+//! saved last, and those written after it, counted in the file. A file is
+//! only deleted by removing its export from the manager, never
+//! automatically. The table and the folder are read together
 //! (`folder.rs`): an export whose file is gone is listed as such, and the
 //! files of Prisme that no export references are counted apart, to be removed.
 //!
@@ -176,8 +178,7 @@ pub struct ExportInfo {
     pub sql: String,
     /// State of the export.
     pub state: ExportState,
-    /// Rows written; 0 for an interrupted export, whose counters were not
-    /// saved.
+    /// Rows written.
     pub rows: u64,
     /// Bytes written; in the list of the exports, the size of the file of an
     /// ended export, interrupted ones included.
@@ -186,7 +187,8 @@ pub struct ExportInfo {
     pub expected_rows: Option<u64>,
     /// Instant the export started, in UTC, in ISO 8601 format.
     pub created_at: String,
-    /// Instant the export ended, in UTC, in ISO 8601 format; `None` while it runs.
+    /// Instant the export ended, in UTC, in ISO 8601 format; `None` while it
+    /// runs. For an interrupted export, the last write to its file.
     pub ended_at: Option<String>,
     /// Failure, for a failed export.
     pub error: Option<ErrorDetail>,
@@ -363,9 +365,36 @@ impl Exports {
 }
 
 /// Marks the exports that were running when Prisme stopped as interrupted,
-/// at startup. Their files stay. Returns their number.
-pub fn interrupt_unfinished(db: &rusqlite::Connection) -> rusqlite::Result<usize> {
-    table::interrupt_unfinished(db)
+/// at startup. Their files stay in `folder`, and give their counters: the
+/// rows of the progress saved last, plus those written after it, counted in
+/// the file; its size; its last write as their end. An export whose file
+/// cannot be read keeps its last saved counters. Returns their number.
+pub fn interrupt_unfinished(
+    db: &rusqlite::Connection,
+    folder: &std::path::Path,
+) -> rusqlite::Result<usize> {
+    let unfinished = table::unfinished(db)?;
+    for export in &unfinished {
+        let (rows, bytes, ended) = match folder::tail(&folder.join(&export.file), export.bytes) {
+            // Before the first save, the file starts with the line of the
+            // column names.
+            Ok(tail) if export.bytes == 0 => {
+                (tail.lines.saturating_sub(1), tail.size, Some(tail.modified))
+            }
+            Ok(tail) => (export.rows + tail.lines, tail.size, Some(tail.modified)),
+            Err(error) => {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    tracing::warn!("cannot read the file of export {}: {error}", export.id);
+                }
+                (export.rows, export.bytes, None)
+            }
+        };
+        let ended_millis = ended
+            .and_then(|instant| instant.duration_since(UNIX_EPOCH).ok())
+            .map(|since| since.as_millis());
+        table::interrupt(db, export.id, rows, bytes, ended_millis)?;
+    }
+    Ok(unfinished.len())
 }
 
 /// Exports folder of the tests that start no export: never created.

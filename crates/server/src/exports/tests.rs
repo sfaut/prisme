@@ -2,8 +2,9 @@
 //! removals, download, then exports on a real MariaDB server
 //! (`testcontainers`).
 
+use std::fs::File;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, UNIX_EPOCH};
 
 use axum::Router;
 use axum::body::Body;
@@ -15,8 +16,8 @@ use testcontainers_modules::mariadb::Mariadb;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use tower::ServiceExt;
 
-use super::ExportState;
 use super::table::{self, NewExport};
+use super::{ExportState, interrupt_unfinished};
 use crate::api::{AppState, router};
 use crate::connections::{self, NewConnection};
 use crate::master_key::MasterKey;
@@ -26,6 +27,8 @@ use crate::store;
 struct TestApp {
     /// Router of the API.
     app: Router,
+    /// State of the application, to read its internal database.
+    state: AppState,
     /// Exports folder.
     folder: PathBuf,
     /// Temporary folder holding the exports folder, deleted with the test.
@@ -56,9 +59,10 @@ impl TestApp {
         let data = tempfile::tempdir().unwrap();
         let folder = data.path().join(super::FOLDER);
         std::fs::create_dir(&folder).unwrap();
-        let app = router(AppState::new(db, key, user_id, folder.clone()));
+        let state = AppState::new(db, key, user_id, folder.clone());
         Self {
-            app,
+            app: router(state.clone()),
+            state,
             folder,
             _data: data,
         }
@@ -104,6 +108,19 @@ impl TestApp {
             .find(|export| export["id"] == id)
             .unwrap()
             .clone()
+    }
+
+    /// Rows of export `id` saved in the internal database.
+    async fn saved_rows(&self, id: i64) -> u64 {
+        let user_id = self.state.local_user_id;
+        self.state
+            .with_db(move |db, _| {
+                let exports = table::list(db, user_id)?;
+                let saved = exports.iter().find(|(export, _)| export.id == id);
+                Ok::<_, super::ExportsError>(saved.map_or(0, |(export, _)| export.rows))
+            })
+            .await
+            .unwrap()
     }
 
     /// Waits until export `id` satisfies `until`, and returns it.
@@ -258,6 +275,63 @@ async fn refuses_an_invalid_export_before_connecting() {
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
+/// Running export of `user_id`, its progress saved at `rows` rows and
+/// `bytes` bytes; returns its id and its file.
+fn running_export(db: &rusqlite::Connection, user_id: i64, rows: u64, bytes: u64) -> (i64, String) {
+    let new = NewExport {
+        connection_name: "test",
+        name: "ventes.csv",
+        sql: "SELECT 1",
+        expected_rows: None,
+    };
+    let (export, file) = table::insert(db, user_id, &new, 1).unwrap();
+    table::progress(db, export.id, rows, bytes).unwrap();
+    (export.id, file)
+}
+
+#[test]
+fn interrupts_the_running_exports_with_the_rows_of_their_files() {
+    let db = store::open_in_memory();
+    let user_id = store::ensure_user(&db, "test@example.com").unwrap();
+    let folder = tempfile::tempdir().unwrap();
+    let start = "\u{FEFF}n\r\n1\r\n";
+    // Saved after its first row, then 2 rows written, the last one cut short.
+    let (saved, saved_file) = running_export(&db, user_id, 1, start.len() as u64);
+    write(folder.path(), &saved_file, &format!("{start}2\r\n3\r\n4"));
+    let last_write = UNIX_EPOCH + Duration::from_millis(1_792_500_000_123);
+    File::options()
+        .write(true)
+        .open(folder.path().join(&saved_file))
+        .unwrap()
+        .set_modified(last_write)
+        .unwrap();
+    // Never saved: its file starts with the line of the names.
+    let (unsaved, unsaved_file) = running_export(&db, user_id, 0, 0);
+    write(folder.path(), &unsaved_file, start);
+    // Its file gone: its saved counters.
+    let (gone, _) = running_export(&db, user_id, 7, 70);
+
+    assert_eq!(interrupt_unfinished(&db, folder.path()).unwrap(), 3);
+    let exports = table::list(&db, user_id).unwrap();
+    let export_of = |id| {
+        &exports
+            .iter()
+            .find(|(export, _)| export.id == id)
+            .unwrap()
+            .0
+    };
+    let saved = export_of(saved);
+    assert_eq!(saved.state, ExportState::Interrupted);
+    assert_eq!((saved.rows, saved.bytes), (3, start.len() as u64 + 7));
+    assert_eq!(saved.ended_at.as_deref(), Some("2026-10-20T12:40:00.123Z"));
+    assert_eq!(export_of(unsaved).rows, 1);
+    let gone = export_of(gone);
+    assert_eq!((gone.rows, gone.bytes), (7, 70));
+    assert!(gone.ended_at.is_some());
+    // Their files stay.
+    assert!(folder.path().join(&saved_file).exists());
+}
+
 /// Request of an export of `sql` on the connection of the test application.
 fn export_request(sql: &str, columns: &[u32]) -> Value {
     json!({ "connection_id": 1, "sql": sql, "columns": columns, "name": "export.csv" })
@@ -322,8 +396,16 @@ async fn stops_refuses_and_fails_exports() {
         .send("POST", "/api/exports", Some(export_request(sql, &[])))
         .await;
     let id = started["id"].as_i64().unwrap();
-    test.wait_for(id, |export| export["rows"].as_u64() > Some(0))
-        .await;
+    // The progress is saved while the export runs.
+    let mut saved = 0;
+    for _ in 0..600 {
+        saved = test.saved_rows(id).await;
+        if saved > 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(saved > 0, "progress of export {id} never saved");
     let (status, _) = test
         .send("POST", &format!("/api/exports/{id}/cancel"), None)
         .await;

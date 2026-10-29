@@ -6,9 +6,8 @@
   - Its connection, its rows (with the completed share while it runs, when
     the total is known in advance), the size of its file, its duration and
     its throughput. While it runs, the numbers follow its progress and the
-    duration runs (shared clock, `clock.ts`). An interrupted export only
-    gives its connection and the size of its partial file: its counters and
-    its end were never saved.
+    duration runs (shared clock, `clock.ts`). An interrupted export gives
+    the rows of its partial file, and ends with its last write.
   - Warnings: a file missing from the folder, more rows than Excel opens,
     the cause of a failure.
   - Actions: stop a running export, download a ready one, remove any of
@@ -143,12 +142,10 @@ const rows = computed(() => {
     </div>
     <ui-status-bar>
       <span>{{ entry.connection_name }}</span>
-      <span v-if="entry.state !== 'interrupted'">{{ rows }}</span>
+      <span>{{ rows }}</span>
       <span>{{ formatBytes(entry.bytes) }}</span>
-      <template v-if="entry.state !== 'interrupted'">
-        <span>{{ formatDuration(duration) }}</span>
-        <span v-if="rate !== null">{{ formatBytes(rate) }}/s</span>
-      </template>
+      <span>{{ formatDuration(duration) }}</span>
+      <span v-if="rate !== null">{{ formatBytes(rate) }}/s</span>
     </ui-status-bar>
     <p v-if="entry.file_missing" class="text-sm text-error">
       Fichier manquant : supprimé ou déplacé hors de Prisme.

@@ -6,6 +6,11 @@
 //! empty field, an empty string `""`; the numbers of the `decimal` and
 //! `float` families take the decimal comma. The reference files of
 //! `tests/fixtures/export/csv-excel-fr/` keep both writers identical.
+//!
+//! The lines of a file are counted again at startup, for an export that a
+//! stop of Prisme interrupted (`count_lines`).
+
+use std::io::{self, Read};
 
 use prisme_connectors::mysql::{Cell, TypeFamily};
 
@@ -67,6 +72,34 @@ fn write_field(out: &mut String, value: &str) {
     }
 }
 
+/// Counts the lines that end in `reader`, which starts at the start of a
+/// line: the line feeds outside quotes, those of a field being quoted. A
+/// line cut short at the end does not count.
+///
+/// The bytes are read one by one: in UTF-8, those of a character of
+/// several bytes are never a quote nor a line feed.
+pub fn count_lines(mut reader: impl Read) -> io::Result<u64> {
+    let mut buffer = vec![0; 64 * 1024];
+    let mut quoted = false;
+    let mut lines = 0;
+    loop {
+        let read = match reader.read(&mut buffer) {
+            Ok(0) => return Ok(lines),
+            Ok(read) => read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        for &byte in &buffer[..read] {
+            match byte {
+                // A doubled quote, in a field, closes and opens again.
+                b'"' => quoted = !quoted,
+                b'\n' if !quoted => lines += 1,
+                _ => {}
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -114,5 +147,16 @@ mod tests {
             &[TypeFamily::Decimal, TypeFamily::Integer, TypeFamily::Text],
         );
         assert_eq!(out, "2,5;1;\r\n");
+    }
+
+    #[test]
+    fn counts_the_lines_of_the_reference_file() {
+        let expected = std::fs::read(references().join("expected.csv")).unwrap();
+        // The line of the names, then the 4 rows, line breaks in fields.
+        assert_eq!(count_lines(expected.as_slice()).unwrap(), 5);
+        // The last line cut short.
+        let cut = &expected[..expected.len() - 2];
+        assert_eq!(count_lines(cut).unwrap(), 4);
+        assert_eq!(count_lines(&b""[..]).unwrap(), 0);
     }
 }

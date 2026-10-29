@@ -1,5 +1,5 @@
 //! Table of the exports in the internal database (`exports`): an export is
-//! saved as it starts, its outcome as it ends.
+//! saved as it starts, its counters as it progresses, its outcome as it ends.
 
 use std::collections::HashSet;
 
@@ -60,6 +60,16 @@ pub fn insert(
     Ok((info, file))
 }
 
+/// Saves the counters of running export `id`, as it progresses. An export
+/// already ended keeps those of its outcome.
+pub fn progress(db: &Connection, id: i64, rows: u64, bytes: u64) -> rusqlite::Result<()> {
+    db.execute(
+        "UPDATE exports SET row_count = ?1, byte_count = ?2 WHERE id = ?3 AND state = 'running'",
+        params![stored(rows), stored(bytes), id],
+    )?;
+    Ok(())
+}
+
 /// Saves the outcome of export `id`, and returns it; `None` if the export
 /// was removed in the meantime.
 pub fn finish(
@@ -85,15 +95,57 @@ pub fn finish(
     .optional()
 }
 
-/// Marks the exports still running as interrupted: at startup, those that
-/// Prisme was writing when it stopped. Their files stay. Returns their number.
-pub fn interrupt_unfinished(db: &Connection) -> rusqlite::Result<usize> {
+/// Export still running at startup, which Prisme was writing when it
+/// stopped, with its last saved counters.
+pub struct Unfinished {
+    /// Id of the export.
+    pub id: i64,
+    /// File of the export in the exports folder.
+    pub file: String,
+    /// Rows written, as last saved.
+    pub rows: u64,
+    /// Bytes written, as last saved: the rows above end there in the file.
+    pub bytes: u64,
+}
+
+/// Exports still running: at startup, those that Prisme was writing when it
+/// stopped.
+pub fn unfinished(db: &Connection) -> rusqlite::Result<Vec<Unfinished>> {
+    let mut statement =
+        db.prepare("SELECT id, file, row_count, byte_count FROM exports WHERE state = 'running'")?;
+    statement
+        .query_map([], |row| {
+            Ok(Unfinished {
+                id: row.get(0)?,
+                file: row.get(1)?,
+                rows: row.get::<_, i64>(2)?.unsigned_abs(),
+                bytes: row.get::<_, i64>(3)?.unsigned_abs(),
+            })
+        })?
+        .collect()
+}
+
+/// Marks export `id` as interrupted, with its counters, ended at instant
+/// `ended_millis` (ms since the Unix epoch), or now if unknown.
+pub fn interrupt(
+    db: &Connection,
+    id: i64,
+    rows: u64,
+    bytes: u64,
+    ended_millis: Option<u128>,
+) -> rusqlite::Result<()> {
+    let ended_millis = ended_millis.and_then(|millis| i64::try_from(millis).ok());
+    // Without an instant, `strftime` gives NULL: now.
     db.execute(
         &format!(
-            "UPDATE exports SET state = 'interrupted', ended_at = {NOW} WHERE state = 'running'"
+            "UPDATE exports SET state = 'interrupted', row_count = ?1, byte_count = ?2,
+                 ended_at = COALESCE(
+                     strftime('%Y-%m-%dT%H:%M:%fZ', ?3 / 1000.0, 'unixepoch'), {NOW})
+             WHERE id = ?4"
         ),
-        [],
-    )
+        params![stored(rows), stored(bytes), ended_millis, id],
+    )?;
+    Ok(())
 }
 
 /// Exports of `user_id`, the most recent first, each with its file.
@@ -218,7 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn interrupts_the_exports_left_running() {
+    fn saves_the_progress_then_interrupts_the_exports_left_running() {
         let db = store::open_in_memory();
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
         let new = NewExport {
@@ -227,22 +279,41 @@ mod tests {
             sql: "SELECT 1",
             expected_rows: Some(10),
         };
-        let (running, _) = insert(&db, user_id, &new, 1).unwrap();
+        let (running, file) = insert(&db, user_id, &new, 1).unwrap();
         let (ready, _) = insert(&db, user_id, &new, 2).unwrap();
         finish(&db, ready.id, ExportState::Ready, 10, 20, None).unwrap();
+        progress(&db, running.id, 4, 30).unwrap();
+        // An ended export keeps the counters of its outcome.
+        progress(&db, ready.id, 1, 1).unwrap();
 
-        assert_eq!(interrupt_unfinished(&db).unwrap(), 1);
+        let unfinished = unfinished(&db).unwrap();
+        assert_eq!(unfinished.len(), 1);
+        assert_eq!((unfinished[0].id, &unfinished[0].file), (running.id, &file));
+        assert_eq!((unfinished[0].rows, unfinished[0].bytes), (4, 30));
+
+        interrupt(&db, running.id, 6, 50, Some(1_792_500_000_123)).unwrap();
         let exports = list(&db, user_id).unwrap();
-        let state_of = |id| {
-            exports
+        let export_of = |id| {
+            &exports
                 .iter()
                 .find(|(export, _)| export.id == id)
                 .unwrap()
                 .0
-                .state
         };
-        assert_eq!(state_of(running.id), ExportState::Interrupted);
-        assert_eq!(state_of(ready.id), ExportState::Ready);
-        assert_eq!(exports[0].0.expected_rows, Some(10));
+        let interrupted = export_of(running.id);
+        assert_eq!(interrupted.state, ExportState::Interrupted);
+        assert_eq!((interrupted.rows, interrupted.bytes), (6, 50));
+        assert_eq!(
+            interrupted.ended_at.as_deref(),
+            Some("2026-10-20T12:40:00.123Z")
+        );
+        assert_eq!(interrupted.expected_rows, Some(10));
+        let ready = export_of(ready.id);
+        assert_eq!((ready.state, ready.rows), (ExportState::Ready, 10));
+
+        // Without the instant of its end: now.
+        let (other, _) = insert(&db, user_id, &new, 3).unwrap();
+        interrupt(&db, other.id, 0, 0, None).unwrap();
+        assert!(list(&db, user_id).unwrap()[0].0.ended_at.is_some());
     }
 }
