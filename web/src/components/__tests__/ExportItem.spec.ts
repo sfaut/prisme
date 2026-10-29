@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 
 import type { ExportInfo } from '@/api/generated/ExportInfo'
+import type { ExportState } from '@/api/generated/ExportState'
 
 import ExportItem from '../ExportItem.vue'
+import ProgressDot from '../ProgressDot.vue'
 import UiButton from '../ui/UiButton.vue'
 import UiStatusBar from '../ui/UiStatusBar.vue'
 
@@ -42,6 +44,15 @@ function entry(changes: Partial<ExportInfo> = {}): ExportInfo {
  */
 function mountItem(shown: ExportInfo) {
   return mount(ExportItem, { props: { entry: shown } })
+}
+
+/**
+ * Labels of the badges of a mounted export: its pills.
+ *
+ * @param wrapper Mounted export.
+ */
+function badges(wrapper: ReturnType<typeof mountItem>): string[] {
+  return wrapper.findAll('.rounded-full').map((badge) => badge.text())
 }
 
 /**
@@ -98,9 +109,25 @@ describe('ExportItem', () => {
     expect(buttons(wrapper)).toEqual(['Arrêter l’export', 'Retirer'])
   })
 
+  it('shows its state as a badge', () => {
+    const labels = {
+      running: 'en cours',
+      ready: 'prêt',
+      failed: 'échoué',
+      cancelled: 'arrêté',
+      interrupted: 'interrompu',
+    } satisfies Record<ExportState, string>
+    for (const [state, label] of Object.entries(labels)) {
+      expect(badges(mountItem(entry({ state: state as ExportState })))).toEqual([label])
+    }
+    // While it runs, with a progress dot.
+    const running = mountItem(entry({ state: 'running' }))
+    expect(running.findComponent(ProgressDot).exists()).toBe(true)
+  })
+
   it('warns of a missing file, of rows Excel does not open, and of a failure', () => {
     const missing = mountItem(entry({ file_missing: true, rows: 1_048_576 }))
-    expect(missing.text()).toContain('Fichier manquant')
+    expect(badges(missing)).toEqual(['prêt', 'fichier manquant'])
     expect(missing.text()).toContain('Excel n’en ouvre que les 1 048 575 premières lignes.')
     expect(buttons(missing)).toEqual(['Télécharger (inactif)', 'Retirer'])
 
