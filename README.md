@@ -221,8 +221,8 @@ Each query gets its own tab:
 | Action | How |
 |---|---|
 | Sort | ⇅ button of a column header: ascending, descending, none |
-| Refresh | Refresh button, at the far left of the bar under the grid: the query runs again in its tab |
-| Filter | Filter button, left of the bar under the grid, on all columns or on one |
+| Refresh | Refresh button, right of the result tabs: the query runs again in its tab |
+| Filter | Funnel button, right of the result tabs: its form shows above the grid, on all columns or on one |
 | Move a column | Drag its name |
 | Resize a column | Drag the right edge of its header; double-click the edge to fit the longest value |
 | Select | Click a cell, a row number or a column name; drag for a range; click the top-left corner for everything |
