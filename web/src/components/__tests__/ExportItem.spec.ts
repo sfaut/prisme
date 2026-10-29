@@ -86,6 +86,12 @@ describe('ExportItem', () => {
     expect(wrapper.text()).toContain('interrompu')
   })
 
+  it('offers the partial file of a stopped export', () => {
+    const wrapper = mountItem(entry({ state: 'cancelled' }))
+    expect(wrapper.text()).toContain('arrêté')
+    expect(buttons(wrapper)).toEqual(['Télécharger', 'Retirer'])
+  })
+
   it('shows the completed share of a running export whose total is known', () => {
     const wrapper = mountItem(entry({ state: 'running', ended_at: null, expected_rows: 8000 }))
     expect(wrapper.findComponent(UiStatusBar).text()).toContain('2 000 lignes (25 %)')
