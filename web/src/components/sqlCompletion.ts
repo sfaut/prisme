@@ -19,18 +19,7 @@ import type { SQLNamespace } from '@codemirror/lang-sql'
 import type { RoutineInfo } from '@/api/generated/RoutineInfo'
 import type { CatalogSchema, CatalogTable } from '@/stores/catalog'
 
-import { displayedType, quoteIdentifier, upperType } from './navigatorNodes'
-
-/**
- * Plain identifier, written without quotes: letters, digits, `_`, `$` and
- * the characters from U+00A1, not starting with a digit. MySQL and MariaDB
- * accept a leading digit, but read `123`, `1e5` or `0x1F` as numbers: such
- * names are quoted, as are the other names starting with a digit, which
- * quotes keep valid. `lang-sql` has its own rule (`^[a-z_][a-z_\d]*$`),
- * which it only applies to the names it receives as plain strings: the names
- * given here as `Completion` objects are quoted by Prisme.
- */
-const PLAIN_IDENTIFIER = /^[a-z_$\xa1-￿][\w$\xa1-￿]*$/i
+import { displayedType, quoteIfNeeded, upperType } from './navigatorNodes'
 
 /**
  * How the names of the completion are quoted.
@@ -50,10 +39,12 @@ interface Quoting {
 
 /**
  * Completion option of a name, quoted on insertion if it is not a plain
- * identifier or if it is a reserved word.
+ * identifier or if it is a reserved word (`quoteIfNeeded`).
  *
  * Workaround: `lang-sql` does not quote the names given as `Completion`
- * objects (`docs/DEVELOPER.md`, section "Workarounds").
+ * objects (`docs/DEVELOPER.md`, section "Workarounds"). It has its own rule
+ * (`^[a-z_][a-z_\d]*$`), which it only applies to the names it receives as
+ * plain strings.
  *
  * @param name Offered name.
  * @param quoting How the names are quoted.
@@ -65,8 +56,9 @@ function nameCompletion(
   rest: Omit<Completion, 'label'>,
 ): Completion {
   const completion: Completion = { label: name, ...rest }
-  if (!PLAIN_IDENTIFIER.test(name) || quoting.reserved.has(name.toUpperCase())) {
-    completion.apply = quoteIdentifier(name, quoting.ansiQuotes)
+  const written = quoteIfNeeded(name, quoting.ansiQuotes, quoting.reserved)
+  if (written !== name) {
+    completion.apply = written
   }
   return completion
 }

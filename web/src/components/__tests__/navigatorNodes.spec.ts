@@ -9,6 +9,7 @@ import {
   foreignKeyLabel,
   indexLabel,
   indexNote,
+  quoteIfNeeded,
   selectAllQuery,
   sourceNodes,
   triggerLabel,
@@ -279,6 +280,16 @@ describe('catalogNodes', () => {
     expect(selectAllQuery('ma base', 'dit "x"', true)).toBe(
       'SELECT ALL * FROM "ma base"."dit ""x"""',
     )
+  })
+
+  it('quotes a name only when it is not a plain identifier or is a reserved word', () => {
+    const reserved = new Set(['SELECT'])
+    expect(quoteIfNeeded('created_at', false, reserved)).toBe('created_at')
+    expect(quoteIfNeeded('créé', false, reserved)).toBe('créé')
+    expect(quoteIfNeeded('a b', false, reserved)).toBe('`a b`')
+    expect(quoteIfNeeded('1e5', false, reserved)).toBe('`1e5`')
+    expect(quoteIfNeeded('select', false, reserved)).toBe('`select`')
+    expect(quoteIfNeeded('select', true, reserved)).toBe('"select"')
   })
 })
 

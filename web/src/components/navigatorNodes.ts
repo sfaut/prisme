@@ -632,3 +632,30 @@ export function quoteIdentifier(name: string, ansiQuotes: boolean): string {
   const quote = ansiQuotes ? '"' : '`'
   return `${quote}${name.split(quote).join(quote + quote)}${quote}`
 }
+
+/**
+ * Plain identifier, written without quotes: letters, digits, `_`, `$` and
+ * the characters from U+00A1, not starting with a digit. MySQL and MariaDB
+ * accept a leading digit, but read `123`, `1e5` or `0x1F` as numbers: such
+ * names are quoted, as are the other names starting with a digit, which
+ * quotes keep valid.
+ */
+const PLAIN_IDENTIFIER = /^[a-z_$\xa1-￿][\w$\xa1-￿]*$/i
+
+/**
+ * Writes a MySQL name, quoted only when needed: when it is not a plain
+ * identifier, or when it is a reserved word of the server, whatever its case.
+ *
+ * @param name Name to write.
+ * @param ansiQuotes Is the `ANSI_QUOTES` mode active on the session?
+ * @param reserved Reserved words of the server, in capitals.
+ */
+export function quoteIfNeeded(
+  name: string,
+  ansiQuotes: boolean,
+  reserved: ReadonlySet<string>,
+): string {
+  return PLAIN_IDENTIFIER.test(name) && !reserved.has(name.toUpperCase())
+    ? name
+    : quoteIdentifier(name, ansiQuotes)
+}
