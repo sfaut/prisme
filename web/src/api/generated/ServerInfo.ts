@@ -20,6 +20,11 @@ export type ServerInfo = {
    */
   ansi_quotes: boolean;
   /**
+   * Is the `NO_BACKSLASH_ESCAPES` mode active on the session? The backslash
+   * is then an ordinary character in strings, no longer an escape.
+   */
+  no_backslash_escapes: boolean;
+  /**
    * Oldest version of the flavor that Prisme supports
    * (`Flavor::oldest_supported`), only when the server is older: it then
    * gets a warning. `None` for a supported server.

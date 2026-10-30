@@ -744,6 +744,7 @@ mod tests {
             flavor: Flavor::MariaDb,
             version: "10.11.11-MariaDB".to_string(),
             ansi_quotes: false,
+            no_backslash_escapes: false,
             oldest_supported: None,
         };
         remember_server(&db, user_id, id, &server).unwrap();

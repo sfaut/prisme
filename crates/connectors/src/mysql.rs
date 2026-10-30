@@ -88,6 +88,9 @@ pub struct ServerInfo {
     /// the `ANSI` mode)? Double quotes then delimit identifiers, no longer
     /// strings.
     pub ansi_quotes: bool,
+    /// Is the `NO_BACKSLASH_ESCAPES` mode active on the session? The backslash
+    /// is then an ordinary character in strings, no longer an escape.
+    pub no_backslash_escapes: bool,
     /// Oldest version of the flavor that Prisme supports
     /// (`Flavor::oldest_supported`), only when the server is older: it then
     /// gets a warning. `None` for a supported server.
@@ -191,7 +194,8 @@ pub async fn server_info(connection: &mut Conn) -> Result<ServerInfo, MysqlError
     let flavor = detect_flavor(&version);
     Ok(ServerInfo {
         flavor,
-        ansi_quotes: has_ansi_quotes(&sql_mode),
+        ansi_quotes: has_mode(&sql_mode, "ANSI_QUOTES"),
+        no_backslash_escapes: has_mode(&sql_mode, "NO_BACKSLASH_ESCAPES"),
         oldest_supported: (!is_supported(flavor, &version))
             .then(|| flavor.oldest_supported().to_string()),
         version,
@@ -218,12 +222,13 @@ fn version_numbers(version: &str) -> [u32; 3] {
     ]
 }
 
-/// Does `sql_mode` contain `ANSI_QUOTES`? The server expands the `ANSI` mode
-/// into its components in `@@sql_mode`, `ANSI_QUOTES` included.
-fn has_ansi_quotes(sql_mode: &str) -> bool {
+/// Does `sql_mode` contain the mode `name`? The server expands the combined
+/// modes into their components in `@@sql_mode` (`ANSI` gives `ANSI_QUOTES`,
+/// among others).
+fn has_mode(sql_mode: &str, name: &str) -> bool {
     sql_mode
         .split(',')
-        .any(|mode| mode.trim().eq_ignore_ascii_case("ANSI_QUOTES"))
+        .any(|mode| mode.trim().eq_ignore_ascii_case(name))
 }
 
 /// Current database on an open connection (`SELECT DATABASE()`), `None` if none.
@@ -461,14 +466,28 @@ mod tests {
 
     #[test]
     fn detects_ansi_quotes_in_sql_mode() {
-        assert!(has_ansi_quotes(
-            "REAL_AS_FLOAT,PIPES_AS_CONCAT,ANSI_QUOTES,IGNORE_SPACE,ANSI"
+        assert!(has_mode(
+            "REAL_AS_FLOAT,PIPES_AS_CONCAT,ANSI_QUOTES,IGNORE_SPACE,ANSI",
+            "ANSI_QUOTES"
         ));
-        assert!(has_ansi_quotes("ANSI_QUOTES"));
-        assert!(!has_ansi_quotes(
-            "STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION"
+        assert!(has_mode("ANSI_QUOTES", "ANSI_QUOTES"));
+        assert!(!has_mode(
+            "STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION",
+            "ANSI_QUOTES"
         ));
-        assert!(!has_ansi_quotes(""));
+        assert!(!has_mode("", "ANSI_QUOTES"));
+    }
+
+    #[test]
+    fn detects_no_backslash_escapes_in_sql_mode() {
+        assert!(has_mode(
+            "STRICT_TRANS_TABLES,NO_BACKSLASH_ESCAPES",
+            "NO_BACKSLASH_ESCAPES"
+        ));
+        assert!(!has_mode(
+            "STRICT_TRANS_TABLES,NO_ENGINE_SUBSTITUTION",
+            "NO_BACKSLASH_ESCAPES"
+        ));
     }
 
     #[test]

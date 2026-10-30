@@ -19,6 +19,7 @@ vi.mock('@/api/connections', () => ({
     flavor: 'mysql',
     version: '8.4.0',
     ansi_quotes: false,
+    no_backslash_escapes: false,
     oldest_supported: null,
   }),
 }))

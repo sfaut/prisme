@@ -11,6 +11,7 @@ function server(overrides: Partial<ServerInfo>): ServerInfo {
     flavor: 'mysql',
     version: '8.4.11',
     ansi_quotes: false,
+    no_backslash_escapes: false,
     oldest_supported: null,
     ...overrides,
   }

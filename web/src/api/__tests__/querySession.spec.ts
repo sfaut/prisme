@@ -47,7 +47,13 @@ function readyState() {
   const state = initialState()
   applyMessage(state, {
     type: 'ready',
-    server: { flavor: 'mariadb', version: '11.3.2', ansi_quotes: false, oldest_supported: null },
+    server: {
+      flavor: 'mariadb',
+      version: '11.3.2',
+      ansi_quotes: false,
+      no_backslash_escapes: false,
+      oldest_supported: null,
+    },
     database: 'xlist',
     transaction: false,
   })
@@ -159,7 +165,13 @@ describe('applyMessage', () => {
     // A page that comes back during a transaction.
     applyMessage(state, {
       type: 'ready',
-      server: { flavor: 'mysql', version: '8.4.11', ansi_quotes: false, oldest_supported: null },
+      server: {
+        flavor: 'mysql',
+        version: '8.4.11',
+        ansi_quotes: false,
+        no_backslash_escapes: false,
+        oldest_supported: null,
+      },
       database: null,
       transaction: true,
     })
