@@ -1,6 +1,6 @@
 # Copying and exporting results
 
-This document gathers the ideas kept for copying the grid selection in several formats and for exporting a result to a file. Only the CSV for Excel in French is implemented, as a download (section 4.4) and as a full export (section 4.2). Settled points are marked **[decided]**, the others stay open (section 7).
+This document gathers the ideas kept for copying the grid selection in several formats and for exporting a result to a file. Two formats are implemented: the CSV for Excel in French, as a download (section 4.4) and as a full export (section 4.2), and the CTE for MySQL and MariaDB (section 4.5). Settled points are marked **[decided]**, the others stay open (section 7).
 
 ## 1. Starting point
 
@@ -22,6 +22,7 @@ Each format is a pure serialiser (columns, types, rows, options → text), teste
 | NDJSON | `null` | One object per line. |
 | HTML | empty cell, `null` class | `<table>` with `<thead>`, escaped entities. |
 | XML | `xsi:nil="true"` | Form of `mysql --xml`: `<row><field name="…">`, which accepts any column name. |
+| CTE | `NULL` | `WITH ds (…) AS (VALUES …)` for MySQL or MariaDB, each value a typed literal (section 4.5) **[decided]**. |
 
 Common rules:
 
@@ -104,6 +105,50 @@ The first format implemented, through the download button right of the result ta
 - The file is built in the page by chunks of 2,000 rows, with a pause between two chunks: a large result of a `LIMIT` written by the user does not freeze the interface.
 - Serialisers: `web/src/components/csv.ts` in the browser, `crates/server/src/exports/csv.rs` for the full export (section 4.2); reference files: `tests/fixtures/export/csv-excel-fr/`, read by both test suites (section 4.3).
 
+### 4.5 CTE for MySQL and MariaDB **[decided]**
+
+The rows written as a query that gives them back: a `WITH` whose rows are a `VALUES`, to query them again on the same server or to carry them to another one ([#30](https://github.com/sfaut/prisme/issues/30)).
+
+```sql
+WITH ds (id, name, created_at) AS (
+    VALUES
+        ROW (1, 'Ada', TIMESTAMP'2026-10-12 09:32:00'),
+        ROW (2, NULL, NULL)
+)
+SELECT ALL id, name, created_at
+FROM ds
+;
+```
+
+- **Form**: the CTE is always named `ds`; the final `SELECT ALL` lists the columns; the separator stands alone on the last line. The indentation is that of the settings.
+- **Dialects**: MySQL writes each row `ROW (…)`; MariaDB writes it `(…)` and refuses `ROW`, which MySQL requires.
+- **Minimum versions**, measured with the reference files below:
+
+  | Server | Accepts the CTE | Refuses it |
+  |---|---|---|
+  | MySQL | 8.0.19, 8.0.42, 8.4.11, 9.3.0 | 8.0.11, 8.0.18: `VALUES ROW` unknown |
+  | MariaDB | 10.5.29, 10.6.3, 10.11.19, 11.4.13, 11.8.9 | 10.3.2: `VALUES` unknown; 10.3.3 loses the connection on it |
+
+  The CTE for MySQL requires MySQL 8.0.19. The CTE for MariaDB runs on every version that Prisme supports (10.6.3 and later).
+- **Types**: each value is a literal of its column's type, so that the columns of the CTE keep it (types read back from MySQL 8.0.19 to 9.3.0 and MariaDB 10.6.3 to 11.8.9):
+
+  | Family | Literal | Type read back |
+  |---|---|---|
+  | Integer, decimal | as sent (`42`, `-3.50`) | integer, `DECIMAL` |
+  | Floating | with an exponent (`1.5E0`, `1e20`) | `DOUBLE` (without the exponent, `DECIMAL`) |
+  | Date, date-time, time | `DATE'2026-10-12'`, `TIMESTAMP'2026-10-12 09:32:00'`, `TIME'12:00:00'` | `DATE`, `DATETIME`, `TIME`, fractions of seconds kept |
+  | JSON | MySQL: `CAST('…' AS JSON)`; MariaDB: string | MySQL: `JSON`; MariaDB: text, as its JSON type is |
+  | Binary, geometry | `X'FF001A'` for bytes sent in hexadecimal, `_binary'abc'` for bytes sent as UTF-8 text | binary string |
+  | Bit | `b'101'` | binary string |
+  | Year | as sent (`2026`) | integer |
+  | Text, enumeration, set, other | `'…'` | text |
+
+  A value of a numeric column that does not read as a number is written as a string, never as is.
+- **Zero dates**: under its default modes (`NO_ZERO_DATE`, `NO_ZERO_IN_DATE`), MySQL refuses a typed date whose month or day is zero (`DATE'0000-00-00'`, `DATE'2026-10-00'`; a year 0000 alone is accepted), and `CAST('0000-00-00' AS DATE)` gives `NULL`. Such a date is therefore written as a string for MySQL: the value stays, its column becomes text. MariaDB reads it typed.
+- **Modes of the session**: a name is quoted only when it is not a plain identifier or is a reserved word of the dialect (the completion's rule), with double quotes under `ANSI_QUOTES`, backticks otherwise. A string doubles its quotes; unless `NO_BACKSLASH_ESCAPES` is active, it also doubles its backslashes and writes NUL `\0`.
+- **Limits**: bytes that are valid UTF-8 reach the interface as text, the others in hexadecimal (`0x…`): a binary value holding the text `0xAB` is read as the byte AB. A geometry becomes a binary string in the server's internal format (SRID, then WKB). The collation of strings, the display width of a `ZEROFILL` integer and the types `YEAR`, `BIT`, `ENUM` and `SET` are not kept.
+- **Serialiser**: `web/src/components/cte.ts`. The reference files of `tests/fixtures/export/cte/` (an input, then the expected file per dialect, in the default modes and under `ANSI_QUOTES` and `NO_BACKSLASH_ESCAPES`) are written byte for byte by its tests, and run on real servers by `crates/connectors/tests/cte.rs`, which reads back the names, the cells and the expected types. The full export (section 4.2) stays in CSV: there is no Rust serialiser of the CTE.
+
 ## 5. Planned order
 
 1. TypeScript serialisers and their tests.
@@ -129,6 +174,7 @@ The first format implemented, through the download button right of the result ta
 | Formulas in a CSV | Values written as they are, without a prefix. |
 | Grid state | The export of the displayed result and of the selection follows the column order, sorting and filtering; the full result follows the column order, its rows being the raw result of the query. |
 | Right click | To avoid. |
+| CTE | `WITH ds (…) AS (VALUES …)`, `ROW (…)` for MySQL (8.0.19 and later), `(…)` for MariaDB; typed literals; quoting and escapes of the session's modes. |
 
 ## 7. Open questions
 

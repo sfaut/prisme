@@ -674,6 +674,27 @@ export function viewFrame(view: number[], order: number[]): GridFrame {
 }
 
 /**
+ * Is every cell of a frame selected? A discontinuous selection leaves some
+ * out, among the rows and the columns it touches.
+ *
+ * @param frame Frame.
+ */
+export function frameIsFull(frame: GridFrame): boolean {
+  const selected = frame.selected
+  if (selected === undefined) {
+    return true
+  }
+  for (let row = 0; row < frame.rows.length; row++) {
+    for (let column = 0; column < frame.fields.length; column++) {
+      if (!selected(row, column)) {
+        return false
+      }
+    }
+  }
+  return true
+}
+
+/**
  * Cell of a frame.
  *
  * @param frame Frame.

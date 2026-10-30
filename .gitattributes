@@ -1,5 +1,7 @@
 # LF line endings everywhere, whatever the machine's core.autocrlf setting.
 * text=auto eol=lf
 
-# Reference exports, compared byte for byte: their CRLF line endings stay as they are.
+# Reference exports, compared byte for byte: their CRLF line endings, and the
+# CR of their values, stay as they are.
 tests/fixtures/export/**/*.csv -text
+tests/fixtures/export/**/*.sql -text

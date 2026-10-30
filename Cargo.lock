@@ -2318,6 +2318,7 @@ dependencies = [
  "mysql_async",
  "secrecy",
  "serde",
+ "serde_json",
  "testcontainers-modules",
  "thiserror",
  "tokio",

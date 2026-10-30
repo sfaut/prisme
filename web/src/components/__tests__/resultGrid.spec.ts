@@ -12,6 +12,7 @@ import {
   compareCells,
   emptySelection,
   frameCell,
+  frameIsFull,
   isFixedLengthText,
   isSelected,
   nextSort,
@@ -223,6 +224,17 @@ describe('frames', () => {
     expect(frame.selected).toBeUndefined()
     expect(frameCell(frame, rows, 0, 0)).toBe('Éric')
     expect(frameCell(frame, rows, 2, 1)).toBe('10')
+  })
+
+  it('tells a frame whose every cell is selected from a discontinuous one', () => {
+    expect(frameIsFull(viewFrame([0, 1, 2], [0, 1, 2]))).toBe(true)
+    let selection = selectCell(emptySelection(), 0, 0, 'replace')
+    selection = selectCell(selection, 1, 1, 'extend')
+    expect(frameIsFull(selectionFrame(selection, [0, 1, 2], [0, 1, 2]))).toBe(true)
+    // Two cells on a diagonal: the two others of their square are left out.
+    selection = selectCell(emptySelection(), 0, 0, 'replace')
+    selection = selectCell(selection, 1, 1, 'add')
+    expect(frameIsFull(selectionFrame(selection, [0, 1, 2], [0, 1, 2]))).toBe(false)
   })
 })
 
