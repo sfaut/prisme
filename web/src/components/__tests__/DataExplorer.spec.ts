@@ -134,7 +134,7 @@ describe('DataExplorer', () => {
     expect(highlighted()).toHaveLength(2)
 
     await field.setValue('$.a[?@ > 1]')
-    await wrapper.find('[aria-label="Afficher seulement les résultats"]').trigger('click')
+    await wrapper.find('[aria-label="Filtrer"]').trigger('click')
     expect(editorText(wrapper)).toBe('[\n    2,\n    3\n]')
     expect(wrapper.find('.data-explorer-search-status').text()).toBe('1 / 2')
     expect(highlighted().map((mark) => mark.text())).toEqual(['2'])

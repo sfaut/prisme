@@ -62,7 +62,7 @@ const nothingToClear = computed(
  */
 const filtersLabel = computed(
   () =>
-    `${store.filtersShown ? 'Masquer' : 'Afficher'} les filtres${filtering.value ? ' (filtres actifs)' : ''}`,
+    `${store.filtersShown ? 'Masquer les filtres' : 'Filtrer'}${filtering.value ? ' (filtres actifs)' : ''}`,
 )
 
 /**

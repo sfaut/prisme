@@ -98,7 +98,7 @@ describe('App', () => {
     const wrapper = mount(App)
     await vi.waitFor(() => expect(wrapper.text()).toContain('Aucune requête envoyée'))
     const toggle = () => wrapper.find('[aria-pressed]')
-    expect(toggle().attributes('aria-label')).toBe('Afficher les filtres')
+    expect(toggle().attributes('aria-label')).toBe('Filtrer')
     expect(wrapper.find('[aria-label="Action"]').exists()).toBe(false)
 
     await toggle().trigger('click')
@@ -113,7 +113,7 @@ describe('App', () => {
     await wrapper.find('[aria-label="Niveau"] button').trigger('click')
     await toggle().trigger('click')
     expect(wrapper.find('[aria-label="Niveau"]').exists()).toBe(false)
-    expect(toggle().attributes('aria-label')).toBe('Afficher les filtres (filtres actifs)')
+    expect(toggle().attributes('aria-label')).toBe('Filtrer (filtres actifs)')
     expect(toggle().classes()).toContain('text-primary')
     wrapper.unmount()
   })

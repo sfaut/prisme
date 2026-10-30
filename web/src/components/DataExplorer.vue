@@ -559,7 +559,7 @@ watch(
           :tone="filtering ? 'primary' : 'neutral'"
           small
           :aria-pressed="filtering"
-          aria-label="Afficher seulement les résultats"
+          aria-label="Filtrer"
           v-tooltip="
             'Filtrer : afficher seulement les résultats, au lieu de les surligner dans le document'
           "
