@@ -20,6 +20,7 @@ import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { TypeFamily } from '@/api/generated/TypeFamily'
 import type { Cell } from '@/api/querySession'
 
+import { writeByChunks } from './chunks'
 import { type GridFrame, frameCell } from './resultGrid'
 
 /**
@@ -46,12 +47,6 @@ const LINE_END = '\r\n'
  * Characters that require putting a field between quotes.
  */
 const NEEDS_QUOTES = /[;"\r\n]/
-
-/**
- * Rows written between two pauses, during which the browser handles the
- * user's actions: a large result does not freeze the page.
- */
-const CHUNK = 2000
 
 /**
  * Field of a line, between quotes when needed.
@@ -98,16 +93,7 @@ export function duplicateNames(names: string[]): string[] {
 }
 
 /**
- * Lets the browser handle the waiting events before the next chunk. A timer
- * keeps going when the tab is hidden, at a slower pace, where a frame of the
- * display would wait for its return.
- */
-function pause(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve))
-}
-
-/**
- * CSV file of a frame of the grid, written by chunks of rows.
+ * CSV file of a frame of the grid, written by chunks of rows (`chunks.ts`).
  *
  * @param frame Rows and columns to write, in the displayed order.
  * @param rows Rows of the result.
@@ -122,20 +108,11 @@ export async function csvBlob(
 ): Promise<Blob> {
   const families = frame.fields.map((field) => types[field]?.family)
   const header = frame.fields.map((field) => csvField(columns[field] ?? '')).join(SEPARATOR)
-  const parts = [`${BOM}${header}${LINE_END}`]
-  for (let start = 0; start < frame.rows.length; start += CHUNK) {
-    const end = Math.min(frame.rows.length, start + CHUNK)
-    let text = ''
-    for (let row = start; row < end; row++) {
-      const fields = families.map((family, column) =>
-        csvCell(frameCell(frame, rows, row, column), family),
-      )
-      text += `${fields.join(SEPARATOR)}${LINE_END}`
-    }
-    parts.push(text)
-    if (end < frame.rows.length) {
-      await pause()
-    }
-  }
-  return new Blob(parts, { type: CSV_TYPE })
+  const lines = await writeByChunks(frame.rows.length, (row) => {
+    const fields = families.map((family, column) =>
+      csvCell(frameCell(frame, rows, row, column), family),
+    )
+    return `${fields.join(SEPARATOR)}${LINE_END}`
+  })
+  return new Blob([`${BOM}${header}${LINE_END}`, ...lines], { type: CSV_TYPE })
 }
