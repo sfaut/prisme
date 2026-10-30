@@ -229,7 +229,7 @@ Each query gets its own tab:
 | Extend / add to the selection | Shift+click / Ctrl+click |
 | Select all / clear | Ctrl+A / Esc |
 | Copy | Ctrl+C |
-| Download as CSV | Download button, right of the bar under the grid |
+| Download as CSV | Download button, right of the result tabs |
 | Export the full result as CSV | Download button, then **Résultat complet en CSV (requête relancée)**; followed in the exports manager of the top bar |
 | Explore JSON or XML values | Rail of the data explorer, on the right edge of the window |
 

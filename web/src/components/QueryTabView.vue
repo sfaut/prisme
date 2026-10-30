@@ -27,8 +27,10 @@
   During a refresh, the previous result stays displayed until the new
   columns arrive.
 
-  Right of the status bar, a button downloads the result as CSV for Excel
-  in French (`csv.ts`): the selection of the grid, or the whole displayed
+  The tab gives the menu of its download button (`downloadItems`), which the
+  cell draws right of the result tabs, beside the refresh and filter buttons
+  (`ResultTabActions.vue`). It downloads the result as CSV for Excel in
+  French (`csv.ts`): the selection of the grid, or the whole displayed
   result without one, sorted and filtered as on screen, its columns in the
   displayed order. The file is built in the page, by chunks of rows. The
   menu also offers the full result: the server runs the query again, as it
@@ -40,7 +42,7 @@
   did not cut.
 -->
 <script setup lang="ts">
-import { DatabaseZap, Download, FileSpreadsheet } from '@lucide/vue'
+import { DatabaseZap, FileSpreadsheet } from '@lucide/vue'
 import { computed, ref, useTemplateRef, watch } from 'vue'
 
 import { errorMessage } from '@/api/errorMessage'
@@ -66,10 +68,7 @@ import ResultFilter from './ResultFilter.vue'
 import ResultGrid from './ResultGrid.vue'
 import type { MenuItem } from './ui/menuItem'
 import { notify } from './ui/toasts'
-import { vTooltip } from './ui/tooltip'
 import UiAlert from './ui/UiAlert.vue'
-import UiButton from './ui/UiButton.vue'
-import UiDropdownMenu from './ui/UiDropdownMenu.vue'
 import UiStatusBar from './ui/UiStatusBar.vue'
 
 const props = defineProps<{
@@ -200,9 +199,9 @@ const exports = useExportsStore()
 const fileLabel = computed(() => props.tab.name ?? `requête-${props.tab.number + 1}`)
 
 /**
- * Choices of the download menu. The first one says what it downloads, so that
- * a forgotten selection shows; it waits for the end of the query. The second
- * one exports the full result.
+ * Choices of the download menu, drawn by the cell right of the result tabs.
+ * The first one says what it downloads, so that a forgotten selection shows;
+ * it waits for the end of the query. The second one exports the full result.
  */
 const downloadItems = computed<MenuItem[]>(() => {
   const size = grid.value?.selectedSize ?? null
@@ -284,6 +283,8 @@ async function exportFull(): Promise<void> {
     notify(errorMessage(failure), 'error')
   }
 }
+
+defineExpose({ downloadItems })
 </script>
 
 <template>
@@ -312,26 +313,15 @@ async function exportFull(): Promise<void> {
       :sql="tab.sql"
       :displayed="displayed"
     />
-    <div v-if="hasStatus" class="flex items-center justify-between gap-3">
-      <ui-status-bar>
-        <span v-if="showsGrid(tab)">{{ formatRowCount(shownCount, keptCount) }}</span>
-        <span v-if="execution !== null">exécution {{ formatDuration(execution) }}</span>
-        <template v-if="transfer !== null">
-          <span>transfert {{ formatDuration(transfer) }}</span>
-          <span>{{ formatBytes(shownBytes) }}</span>
-        </template>
-        <span v-if="rate !== null">{{ formatBytes(rate) }}/s</span>
-        <span v-if="shown?.executedAt">{{ formatInstant(shown.executedAt) }}</span>
-      </ui-status-bar>
-      <ui-dropdown-menu v-if="shown && showsGrid(tab)" :items="downloadItems">
-        <ui-button
-          :icon="Download"
-          variant="ghost"
-          small
-          aria-label="Télécharger"
-          v-tooltip="'Télécharger'"
-        />
-      </ui-dropdown-menu>
-    </div>
+    <ui-status-bar v-if="hasStatus">
+      <span v-if="showsGrid(tab)">{{ formatRowCount(shownCount, keptCount) }}</span>
+      <span v-if="execution !== null">exécution {{ formatDuration(execution) }}</span>
+      <template v-if="transfer !== null">
+        <span>transfert {{ formatDuration(transfer) }}</span>
+        <span>{{ formatBytes(shownBytes) }}</span>
+      </template>
+      <span v-if="rate !== null">{{ formatBytes(rate) }}/s</span>
+      <span v-if="shown?.executedAt">{{ formatInstant(shown.executedAt) }}</span>
+    </ui-status-bar>
   </div>
 </template>

@@ -18,9 +18,9 @@
   tab can be renamed, pinned (it stays when the query is run again), closed
   (its query is stopped if it is running) or moved by dragging it, like a
   column of the grid. Its result can be refreshed (button right of the
-  tabs, with the grid's filter button, side by side with the fold button
-  of the results, as in the console's header): the query runs again in the
-  tab, after the running batch if any.
+  tabs, with the grid's filter and download buttons, side by side with the
+  fold button of the results, as in the console's header): the query runs
+  again in the tab, after the running batch if any.
   The row limit chosen here becomes the user's default limit.
   While a transaction is open on the session's connection, a status badge
   says so at the end of the buttons, until its COMMIT or ROLLBACK.
@@ -56,7 +56,7 @@ import {
   WandSparkles,
 } from '@lucide/vue'
 import { SplitterGroup, SplitterPanel, TabsContent, TabsList, TabsRoot } from 'reka-ui'
-import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
+import { computed, onMounted, ref, shallowReactive, useTemplateRef, watch } from 'vue'
 
 import { analyzeSql } from '@/api/analyze'
 import { beautify } from '@/api/beautify'
@@ -236,9 +236,16 @@ function toggleEditor(): void {
 const selectedTab = ref<string | number>(0)
 
 /**
- * Tab shown, whose buttons (refresh, filter) stand right of the result tabs.
+ * Tab shown, whose buttons (refresh, filter, download) stand right of the
+ * result tabs.
  */
 const shownTab = computed(() => state.tabs.find((tab) => tab.id === selectedTab.value))
+
+/**
+ * Mounted views of the tabs, by tab id: the view of the tab shown gives the
+ * choices of its download menu.
+ */
+const tabViews = shallowReactive(new Map<number, InstanceType<typeof QueryTabView>>())
 
 /**
  * Expands or collapses the form of a tab's user filter; collapsed, the filter
@@ -871,15 +878,16 @@ defineExpose({
               />
             </tabs-list>
             <!--
-              Buttons of the tab shown (refresh, filter), then the fold button,
-              side by side as in the console's header; folded, the results keep
-              only the fold button.
+              Buttons of the tab shown (refresh, filter, download), then the
+              fold button, side by side as in the console's header; folded,
+              the results keep only the fold button.
             -->
             <div class="flex items-center self-center">
               <result-tab-actions
                 v-if="shownTab && !isCollapsed"
                 :tab="shownTab"
                 :refresh="refreshState(state, shownTab)"
+                :download="tabViews.get(shownTab.id)?.downloadItems"
                 @refresh="refresh(shownTab)"
                 @stop-refresh="session.stopRefresh(shownTab)"
                 @toggle-filter="toggleFilter(shownTab)"
@@ -901,6 +909,12 @@ defineExpose({
             class="flex min-h-0 flex-1"
           >
             <query-tab-view
+              :ref="
+                (view) =>
+                  view
+                    ? tabViews.set(tab.id, view as InstanceType<typeof QueryTabView>)
+                    : tabViews.delete(tab.id)
+              "
               v-model:filter="tab.filter"
               :tab="tab"
               :displayed="active && selectedTab === tab.id"

@@ -1,3 +1,4 @@
+import { Download } from '@lucide/vue'
 import { describe, expect, it } from 'vitest'
 
 import { mount } from '@vue/test-utils'
@@ -5,6 +6,8 @@ import { mount } from '@vue/test-utils'
 import type { QueryTab, RefreshState } from '@/api/querySession'
 
 import ResultTabActions from '../ResultTabActions.vue'
+import type { MenuItem } from '../ui/menuItem'
+import UiDropdownMenu from '../ui/UiDropdownMenu.vue'
 import { finishedTab } from './resultTabs'
 
 /**
@@ -12,9 +15,10 @@ import { finishedTab } from './resultTabs'
  *
  * @param tab Tab shown.
  * @param refresh Refresh state of the tab.
+ * @param download Choices of the download menu.
  */
-function mountActions(tab: QueryTab, refresh: RefreshState = 'idle') {
-  return mount(ResultTabActions, { props: { tab, refresh } })
+function mountActions(tab: QueryTab, refresh: RefreshState = 'idle', download?: MenuItem[]) {
+  return mount(ResultTabActions, { props: { tab, refresh, download } })
 }
 
 describe('ResultTabActions', () => {
@@ -52,5 +56,15 @@ describe('ResultTabActions', () => {
 
     await wrapper.setProps({ tab: { ...tab, filter: { text: 'a', column: null } } })
     expect(button().attributes('aria-label')).toBe('Afficher le filtre (filtre actif)')
+  })
+
+  it('offers the download menu of a tab that shows a grid', () => {
+    const download: MenuItem[] = [{ label: 'Résultat affiché en CSV (1 ligne)', icon: Download }]
+    const grid = mountActions(finishedTab(['id'], [['1']]), 'idle', download)
+    expect(grid.findComponent(UiDropdownMenu).props('items')).toEqual(download)
+    expect(grid.find('[aria-label="Télécharger"]').exists()).toBe(true)
+
+    const empty = mountActions(finishedTab([]), 'idle', download)
+    expect(empty.findComponent(UiDropdownMenu).exists()).toBe(false)
   })
 })

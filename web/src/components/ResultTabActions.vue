@@ -7,14 +7,19 @@
   - User filter, when the tab shows a grid: a funnel, as in the console,
     expands or collapses the filter's form. Collapsed, the filter stays
     applied; the button shows it in the primary color.
+  - Download, when the tab shows a grid: its menu, given by the view of the
+    tab (`QueryTabView.vue`), downloads the selection or the displayed
+    result as CSV, or exports the full result.
 -->
 <script setup lang="ts">
-import { Funnel, RefreshCw, RefreshCwOff } from '@lucide/vue'
+import { Download, Funnel, RefreshCw, RefreshCwOff } from '@lucide/vue'
 import { computed } from 'vue'
 
 import { type QueryTab, type RefreshState, showsGrid } from '@/api/querySession'
 
+import type { MenuItem } from './ui/menuItem'
 import UiButton from './ui/UiButton.vue'
+import UiDropdownMenu from './ui/UiDropdownMenu.vue'
 import { vTooltip } from './ui/tooltip'
 
 const props = defineProps<{
@@ -26,6 +31,11 @@ const props = defineProps<{
    * Refresh of the tab: running, waiting, possible or not.
    */
   refresh: RefreshState
+  /**
+   * Choices of the download menu, given by the view of the tab; absent until
+   * that view is mounted.
+   */
+  download?: MenuItem[]
 }>()
 
 const emit = defineEmits<{
@@ -95,4 +105,13 @@ const filterLabel = computed(
     v-tooltip="filterLabel"
     @click="emit('toggle-filter')"
   />
+  <ui-dropdown-menu v-if="showsGrid(tab) && download" :items="download">
+    <ui-button
+      :icon="Download"
+      variant="ghost"
+      small
+      aria-label="Télécharger"
+      v-tooltip="'Télécharger'"
+    />
+  </ui-dropdown-menu>
 </template>

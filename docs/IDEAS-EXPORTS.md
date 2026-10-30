@@ -94,7 +94,7 @@ The full export requires serialisers in Rust, whereas those of the copy are in T
 
 ### 4.4 CSV for Excel in French **[decided]**
 
-The first format implemented, through the download button of the bar under the grid, without the export dialog. Its menu says what it downloads: "Sélection en CSV (3 lignes × 2 colonnes)", or "Résultat affiché en CSV (1 000 lignes)" without a selection.
+The first format implemented, through the download button right of the result tabs, beside the refresh and filter buttons, without the export dialog. Its menu says what it downloads: "Sélection en CSV (3 lignes × 2 colonnes)", or "Résultat affiché en CSV (1 000 lignes)" without a selection.
 
 - UTF-8 with a BOM, `;` as separator, CRLF line endings, the column names on the first line: Excel in French opens the file with a double click.
 - RFC 4180 quoting: a field that holds `;`, `"`, CR or LF goes between quotes, its quotes doubled. Control characters stay raw, the quotes carrying them.
