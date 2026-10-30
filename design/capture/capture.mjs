@@ -382,7 +382,7 @@ async function menusScreen(page) {
   await menuShots(page, 'menu-reopen', visible('button[aria-label="Rouvrir un éditeur fermé"]'))
   await menuShots(page, 'menu-limit', visible('button[aria-label="Limite de lignes"]'))
 
-  await page.clickOn('button', 'Afficher le filtre')
+  await page.clickOn('button[aria-label="Filtrer"]')
   await page.wait(300)
   await menuShots(
     page,

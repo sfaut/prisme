@@ -78,7 +78,7 @@ const refreshTitle = computed(() => {
  */
 const filterLabel = computed(
   () =>
-    `${props.tab.filterOpen ? 'Masquer' : 'Afficher'} le filtre${props.tab.filter.text === '' ? '' : ' (filtre actif)'}`,
+    `${props.tab.filterOpen ? 'Masquer le filtre' : 'Filtrer'}${props.tab.filter.text === '' ? '' : ' (filtre actif)'}`,
 )
 </script>
 

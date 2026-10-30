@@ -46,7 +46,7 @@ describe('ResultTabActions', () => {
     const tab = finishedTab(['id'], [['1']])
     const wrapper = mountActions(tab)
     const button = () => wrapper.find('[aria-pressed]')
-    expect(button().attributes('aria-label')).toBe('Afficher le filtre')
+    expect(button().attributes('aria-label')).toBe('Filtrer')
     await button().trigger('click')
     expect(wrapper.emitted('toggle-filter')).toHaveLength(1)
 
@@ -55,7 +55,7 @@ describe('ResultTabActions', () => {
     expect(button().attributes('aria-label')).toBe('Masquer le filtre')
 
     await wrapper.setProps({ tab: { ...tab, filter: { text: 'a', column: null } } })
-    expect(button().attributes('aria-label')).toBe('Afficher le filtre (filtre actif)')
+    expect(button().attributes('aria-label')).toBe('Filtrer (filtre actif)')
   })
 
   it('offers the download menu of a tab that shows a grid', () => {
