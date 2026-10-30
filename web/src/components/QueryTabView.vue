@@ -33,19 +33,33 @@
   French (`csv.ts`): the selection of the grid, or the whole displayed
   result without one, sorted and filtered as on screen, its columns in the
   displayed order. The file is built in the page, by chunks of rows. The
-  menu also offers the full result: the server runs the query again, as it
-  is written, without the limit of Prisme, on the current database of the
-  editor, and writes its rows in the displayed order of the columns, neither
-  sorted nor filtered by the grid; the exports manager of the top bar
-  follows it (`stores/exports.ts`). Its total, when known in advance, gives
-  a completed share: the number of rows of a displayed result that the limit
-  did not cut.
+  same rows can become a CTE (`cte.ts`): downloaded or copied, for MySQL or
+  MariaDB, or written in the editor in the dialect of its server, which the
+  cell does (`insert-cte`). Columns sharing a name, or a discontinuous
+  selection, refuse it. The menu also offers the full result: the server
+  runs the query again, as it is written, without the limit of Prisme, on
+  the current database of the editor, and writes its rows in the displayed
+  order of the columns, neither sorted nor filtered by the grid; the exports
+  manager of the top bar follows it (`stores/exports.ts`). Its total, when
+  known in advance, gives a completed share: the number of rows of a
+  displayed result that the limit did not cut.
 -->
 <script setup lang="ts">
-import { DatabaseZap, FileSpreadsheet } from '@lucide/vue'
+import {
+  ClipboardCopy,
+  Database,
+  DatabaseZap,
+  FileCode,
+  FileSpreadsheet,
+  TextCursorInput,
+} from '@lucide/vue'
 import { computed, ref, useTemplateRef, watch } from 'vue'
 
 import { errorMessage } from '@/api/errorMessage'
+import { FLAVOR_NAMES } from '@/api/flavors'
+import type { Flavor } from '@/api/generated/Flavor'
+import type { ServerInfo } from '@/api/generated/ServerInfo'
+import { fetchKeywords } from '@/api/keywords'
 import {
   type QueryTab,
   type UserFilter,
@@ -62,8 +76,10 @@ import { useExportsStore } from '@/stores/exports'
 
 import { useClock } from './clock'
 import { csvBlob, duplicateNames } from './csv'
+import { MYSQL_VALUES_SINCE, SQL_TYPE, cteStatement, cteText } from './cte'
 import { downloadName, saveBlob } from './download'
-import { sameColumns } from './resultGrid'
+import { versionAtLeast } from './indexOperations'
+import { frameIsFull, sameColumns } from './resultGrid'
 import ResultFilter from './ResultFilter.vue'
 import ResultGrid from './ResultGrid.vue'
 import type { MenuItem } from './ui/menuItem'
@@ -89,6 +105,23 @@ const props = defineProps<{
    * Current database of the editor, `null` if none.
    */
   database: string | null
+  /**
+   * Server of the editor, `null` until its session is ready: its flavor,
+   * its version and its modes write the CTE.
+   */
+  server: ServerInfo | null
+  /**
+   * Width of an indentation level of the editor, in spaces.
+   */
+  indentSize: number
+}>()
+
+const emit = defineEmits<{
+  /**
+   * The user writes the rows as a CTE in the editor, in the dialect of its
+   * server.
+   */
+  'insert-cte': [query: string]
 }>()
 
 /**
@@ -199,18 +232,74 @@ const exports = useExportsStore()
 const fileLabel = computed(() => props.tab.name ?? `requête-${props.tab.number + 1}`)
 
 /**
+ * What each dialect of the CTE reads, in the tooltip of its choice.
+ */
+const CTE_HINTS: Record<Flavor, string> = {
+  mysql: 'Lignes en VALUES ROW (…), que lit MySQL 8.0.19 et suivants.',
+  mariadb: 'Lignes en VALUES (…), que lit MariaDB.',
+}
+
+/**
+ * Does the server of the editor read the CTE of its own dialect? MySQL reads
+ * `VALUES ROW (…)` from 8.0.19.
+ */
+const readsCte = computed(
+  () =>
+    props.server !== null &&
+    (props.server.flavor === 'mariadb' || versionAtLeast(props.server.version, MYSQL_VALUES_SINCE)),
+)
+
+/**
  * Choices of the download menu, drawn by the cell right of the result tabs.
  * The first one says what it downloads, so that a forgotten selection shows;
- * it waits for the end of the query. The second one exports the full result.
+ * it waits for the end of the query. The CTE follows, as a file or in the
+ * clipboard, for each dialect (that of the editor's server first), then in
+ * the editor; it needs a row and the session. The last one exports the full
+ * result.
  */
 const downloadItems = computed<MenuItem[]>(() => {
   const size = grid.value?.selectedSize ?? null
+  const kept = grid.value?.keptCount ?? 0
   const label =
     size === null
-      ? `Résultat affiché en CSV (${formatRowCount(grid.value?.keptCount ?? 0, null)})`
+      ? `Résultat affiché en CSV (${formatRowCount(kept, null)})`
       : `Sélection en CSV (${formatRowCount(size.rows, null)} × ${size.columns} ${size.columns > 1 ? 'colonnes' : 'colonne'})`
+  const scope = size === null ? 'le résultat affiché' : 'la sélection'
+  const cteOff = !props.tab.done || props.server === null || (size?.rows ?? kept) === 0
+  const flavors: Flavor[] =
+    props.server?.flavor === 'mariadb' ? ['mariadb', 'mysql'] : ['mysql', 'mariadb']
+  const dialects = (action: (flavor: Flavor) => Promise<void>): MenuItem[] =>
+    flavors.map((flavor) => ({
+      label: FLAVOR_NAMES[flavor],
+      icon: Database,
+      hint: CTE_HINTS[flavor],
+      onSelect: () => void action(flavor),
+    }))
+  const server = props.server
   return [
     { label, icon: FileSpreadsheet, disabled: !props.tab.done, onSelect: () => void downloadCsv() },
+    {
+      label: `${size === null ? 'Résultat affiché' : 'Sélection'} en CTE (.sql)`,
+      icon: FileCode,
+      disabled: cteOff,
+      items: dialects(downloadCte),
+    },
+    {
+      label: `Copier ${scope} en CTE`,
+      icon: ClipboardCopy,
+      disabled: cteOff,
+      items: dialects(copyCte),
+    },
+    {
+      label: `Insérer ${scope} en CTE dans l’éditeur`,
+      icon: TextCursorInput,
+      disabled: cteOff || !readsCte.value,
+      hint:
+        server !== null && !readsCte.value
+          ? `MySQL ${server.version} ne lit pas VALUES ROW (…) : il faut MySQL 8.0.19 ou suivant.`
+          : 'Ajoute la CTE après la dernière requête de l’éditeur, sans l’exécuter, dans le dialecte de son serveur.',
+      onSelect: () => void insertCte(),
+    },
     {
       label: 'Résultat complet en CSV (requête relancée)',
       icon: DatabaseZap,
@@ -249,6 +338,104 @@ async function downloadCsv(): Promise<void> {
   const blob = await csvBlob(frame, result.rows, result.columns, result.columnTypes)
   saveBlob(blob, downloadName(fileLabel.value, 'csv'))
   notify(`CSV téléchargé : ${formatRowCount(frame.rows.length, null)}.`)
+}
+
+/**
+ * Writes the selection, or the displayed result, as a CTE (`cte.ts`), in the
+ * modes of the editor's session. Columns sharing a name, or a discontinuous
+ * selection, refuse it: the names of a CTE must differ, and an unselected
+ * cell has no value to write.
+ *
+ * @param flavor Dialect written.
+ * @returns
+ *     The CTE, without its separator, and its number of rows; `null` if
+ *     refused.
+ */
+async function cteOf(flavor: Flavor): Promise<{ query: string; rows: number } | null> {
+  const result = shown.value
+  const server = props.server
+  if (result === null || grid.value === null || server === null) {
+    return null
+  }
+  const frame = await grid.value.exportFrame()
+  const duplicates = sharedNames(frame.fields)
+  if (duplicates.length > 0) {
+    notify(`CTE refusée : colonnes de même nom (${duplicates.join(', ')}).`, 'error')
+    return null
+  }
+  if (!frameIsFull(frame)) {
+    notify(
+      'CTE refusée : la sélection est discontinue, une cellule non sélectionnée n’a pas de valeur à écrire.',
+      'error',
+    )
+    return null
+  }
+  const keywords = await fetchKeywords(flavor, flavor === server.flavor ? server.version : null)
+  const query = await cteText(frame, result.rows, result.columns, result.columnTypes, {
+    flavor,
+    ansiQuotes: server.ansi_quotes,
+    backslashEscapes: !server.no_backslash_escapes,
+    reserved: new Set(keywords.reserved),
+    indentSize: props.indentSize,
+  })
+  return { query, rows: frame.rows.length }
+}
+
+/**
+ * Downloads the CTE of the selection, or of the displayed result, as a
+ * `.sql` file.
+ *
+ * @param flavor Dialect written.
+ */
+async function downloadCte(flavor: Flavor): Promise<void> {
+  try {
+    const cte = await cteOf(flavor)
+    if (cte === null) {
+      return
+    }
+    const blob = new Blob([`${cteStatement(cte.query, ';')}\n`], { type: SQL_TYPE })
+    saveBlob(blob, downloadName(fileLabel.value, 'sql'))
+    notify(`CTE ${FLAVOR_NAMES[flavor]} téléchargée : ${formatRowCount(cte.rows, null)}.`)
+  } catch (failure) {
+    notify(errorMessage(failure), 'error')
+  }
+}
+
+/**
+ * Copies the CTE of the selection, or of the displayed result, to the
+ * clipboard.
+ *
+ * @param flavor Dialect written.
+ */
+async function copyCte(flavor: Flavor): Promise<void> {
+  try {
+    const cte = await cteOf(flavor)
+    if (cte === null) {
+      return
+    }
+    await navigator.clipboard.writeText(`${cteStatement(cte.query, ';')}\n`)
+    notify(`CTE ${FLAVOR_NAMES[flavor]} copiée : ${formatRowCount(cte.rows, null)}.`)
+  } catch (failure) {
+    notify(errorMessage(failure), 'error')
+  }
+}
+
+/**
+ * Hands the CTE of the selection, or of the displayed result, to the cell,
+ * which writes it in the editor, in the dialect of its server.
+ */
+async function insertCte(): Promise<void> {
+  if (props.server === null) {
+    return
+  }
+  try {
+    const cte = await cteOf(props.server.flavor)
+    if (cte !== null) {
+      emit('insert-cte', cte.query)
+    }
+  } catch (failure) {
+    notify(errorMessage(failure), 'error')
+  }
 }
 
 /**

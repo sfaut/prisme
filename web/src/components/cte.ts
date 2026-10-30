@@ -113,10 +113,6 @@ export interface CteOptions {
    * Width of an indentation level, in spaces.
    */
   indentSize: number
-  /**
-   * Separator that ends the query, alone on the last line.
-   */
-  delimiter: string
 }
 
 /**
@@ -223,9 +219,7 @@ export function cteLiteral(
  * @param columns Names of the columns.
  * @param types Type of each column; empty if unknown.
  * @param options How the CTE is written.
- * @returns
- *     The query, its separator alone on the last line, without a line break
- *     at its end.
+ * @returns The query, without its separator (`cteStatement`).
  */
 export async function cteText(
   frame: GridFrame,
@@ -250,6 +244,17 @@ export async function cteText(
   return [
     `WITH ${NAME} (${names}) AS (\n${indent}VALUES\n`,
     ...lines,
-    `)\nSELECT ALL ${names}\nFROM ${NAME}\n${options.delimiter}`,
+    `)\nSELECT ALL ${names}\nFROM ${NAME}`,
   ].join('')
+}
+
+/**
+ * CTE ended by its separator, alone on the last line: `;` in a file or the
+ * clipboard, the separator in force at the end of the editor's text there.
+ *
+ * @param query CTE, without its separator (`cteText`).
+ * @param delimiter Separator.
+ */
+export function cteStatement(query: string, delimiter: string): string {
+  return `${query}\n${delimiter}`
 }

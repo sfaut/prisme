@@ -6,6 +6,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 import type { ExportInfo } from '@/api/generated/ExportInfo'
 import type { ExportRequest } from '@/api/generated/ExportRequest'
+import type { ServerInfo } from '@/api/generated/ServerInfo'
 import { type QueryTab, formatInstant } from '@/api/querySession'
 
 import QueryTabView from '../QueryTabView.vue'
@@ -23,21 +24,55 @@ vi.mock('@/api/exports', () => ({
   }),
 }))
 
+vi.mock('@/api/keywords', () => ({
+  fetchKeywords: async () => ({ reserved: ['SELECT'], keywords: [], types: [], literals: [] }),
+}))
+
 beforeEach(() => {
   setActivePinia(createPinia())
   startExport.mockReset()
 })
 
 /**
+ * MariaDB server of the editor, in its default modes.
+ */
+const MARIADB: ServerInfo = {
+  flavor: 'mariadb',
+  version: '11.4.13-MariaDB',
+  ansi_quotes: false,
+  no_backslash_escapes: false,
+  oldest_supported: null,
+}
+
+/**
  * Mounts the content of a tab, with its filter, on connection 7 and
- * database `shop`.
+ * database `shop`, indented by 4 spaces.
  *
  * @param tab Tab of the query.
+ * @param server Server of the editor.
  */
-function mountTab(tab: QueryTab) {
+function mountTab(tab: QueryTab, server: ServerInfo | null = MARIADB) {
   return mount(QueryTabView, {
-    props: { tab, displayed: false, filter: tab.filter, connectionId: 7, database: 'shop' },
+    props: {
+      tab,
+      displayed: false,
+      filter: tab.filter,
+      connectionId: 7,
+      database: 'shop',
+      server,
+      indentSize: 4,
+    },
   })
+}
+
+/**
+ * Choice of the download menu of a mounted tab, by the start of its label.
+ *
+ * @param wrapper Mounted tab.
+ * @param start Start of the label.
+ */
+function menuItem(wrapper: ReturnType<typeof mountTab>, start: string) {
+  return wrapper.vm.downloadItems.find((item) => item.label.startsWith(start))
 }
 
 /**
@@ -47,7 +82,7 @@ function mountTab(tab: QueryTab) {
  */
 async function exportFull(wrapper: ReturnType<typeof mountTab>): Promise<void> {
   await nextTick()
-  wrapper.vm.downloadItems[1]?.onSelect?.()
+  menuItem(wrapper, 'Résultat complet')?.onSelect?.()
   await flushPromises()
 }
 
@@ -146,6 +181,93 @@ describe('QueryTabView', () => {
   it('refuses the full export of columns of the same name', async () => {
     await exportFull(mountTab(finishedTab(['id', 'id'], [['1', '2']])))
     expect(startExport).not.toHaveBeenCalled()
+  })
+
+  it('offers the CTE as a file and in the clipboard per dialect, that of the server first', async () => {
+    const wrapper = mountTab(threeRows())
+    await nextTick()
+    expect(wrapper.vm.downloadItems.map((item) => item.label)).toEqual([
+      'Résultat affiché en CSV (3 lignes)',
+      'Résultat affiché en CTE (.sql)',
+      'Copier le résultat affiché en CTE',
+      'Insérer le résultat affiché en CTE dans l’éditeur',
+      'Résultat complet en CSV (requête relancée)',
+    ])
+    const file = menuItem(wrapper, 'Résultat affiché en CTE')
+    expect(file?.disabled).toBe(false)
+    expect(file?.items?.map((item) => item.label)).toEqual(['MariaDB', 'MySQL'])
+
+    await wrapper.find('.grid-corner').trigger('mousedown')
+    expect(menuItem(wrapper, 'Copier')?.label).toBe('Copier la sélection en CTE')
+  })
+
+  it('copies the CTE of the chosen dialect to the clipboard', async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue()
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+    const wrapper = mountTab(threeRows())
+    await nextTick()
+    menuItem(wrapper, 'Copier')?.items?.[1]?.onSelect?.()
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith(
+      [
+        'WITH ds (id, name) AS (',
+        '    VALUES',
+        "        ROW ('1', 'a'),",
+        "        ROW ('2', 'b'),",
+        "        ROW ('3', 'c')",
+        ')',
+        'SELECT ALL id, name',
+        'FROM ds',
+        ';',
+        '',
+      ].join('\n'),
+    )
+    vi.unstubAllGlobals()
+  })
+
+  it('hands the CTE of the dialect of its server to the editor', async () => {
+    const wrapper = mountTab(threeRows())
+    await nextTick()
+    menuItem(wrapper, 'Insérer')?.onSelect?.()
+    await flushPromises()
+    expect(wrapper.emitted('insert-cte')?.[0]?.[0]).toBe(
+      [
+        'WITH ds (id, name) AS (',
+        '    VALUES',
+        "        ('1', 'a'),",
+        "        ('2', 'b'),",
+        "        ('3', 'c')",
+        ')',
+        'SELECT ALL id, name',
+        'FROM ds',
+      ].join('\n'),
+    )
+  })
+
+  it('refuses the CTE of columns of the same name', async () => {
+    const wrapper = mountTab(finishedTab(['id', 'id'], [['1', '2']]))
+    await nextTick()
+    menuItem(wrapper, 'Insérer')?.onSelect?.()
+    await flushPromises()
+    expect(wrapper.emitted('insert-cte')).toBeUndefined()
+  })
+
+  it('waits for the session and for a row, and for MySQL 8.0.19 to insert', async () => {
+    const without = mountTab(threeRows(), null)
+    await nextTick()
+    expect(menuItem(without, 'Résultat affiché en CTE')?.disabled).toBe(true)
+
+    const empty = mountTab(finishedTab(['id'], []))
+    await nextTick()
+    expect(menuItem(empty, 'Copier')?.disabled).toBe(true)
+
+    const old = mountTab(threeRows(), { ...MARIADB, flavor: 'mysql', version: '8.0.18' })
+    await nextTick()
+    expect(menuItem(old, 'Insérer')?.disabled).toBe(true)
+    expect(menuItem(old, 'Insérer')?.hint).toBe(
+      'MySQL 8.0.18 ne lit pas VALUES ROW (…) : il faut MySQL 8.0.19 ou suivant.',
+    )
+    expect(menuItem(old, 'Résultat affiché en CTE')?.disabled).toBe(false)
   })
 
   it('makes a targeted filter global for new columns, and keeps it for the same ones', async () => {

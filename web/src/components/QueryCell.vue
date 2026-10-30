@@ -20,7 +20,8 @@
   column of the grid. Its result can be refreshed (button right of the
   tabs, with the grid's filter and download buttons, side by side with the
   fold button of the results, as in the console's header): the query runs
-  again in the tab, after the running batch if any.
+  again in the tab, after the running batch if any. Its rows can also be
+  written as a CTE after the last query of the editor, without running it.
   The row limit chosen here becomes the user's default limit.
   While a transaction is open on the session's connection, a status badge
   says so at the end of the buttons, until its COMMIT or ROLLBACK.
@@ -90,6 +91,7 @@ import { DEFAULT_INDENT_SIZE } from './editorIndent'
 import SqlEditor from './SqlEditor.vue'
 import { movedItems, useTabDrag } from './tabDrag'
 import { selectAllQuery } from './navigatorNodes'
+import { cteStatement } from './cte'
 import { indexOperations } from './indexOperations'
 import { type Appending, appendBlock, appendQuery } from './queryAppend'
 import UiAlert from './ui/UiAlert.vue'
@@ -577,6 +579,20 @@ async function writeIndexOperations(schema: string, table: string, index: string
 }
 
 /**
+ * Writes the CTE of a result (`cte.ts`) after the last query of the editor,
+ * ended by the separator in force, alone on its line: nothing runs.
+ *
+ * @param query CTE, without its separator.
+ */
+async function insertCte(query: string): Promise<void> {
+  try {
+    await appendToEditor((text, end) => appendBlock(text, cteStatement(query, end.delimiter), end))
+  } catch (failure) {
+    state.error = errorMessage(failure)
+  }
+}
+
+/**
  * Changes the session's current database (like `USE`) as soon as it is ready.
  *
  * @param database Name of the database.
@@ -920,6 +936,9 @@ defineExpose({
               :displayed="active && selectedTab === tab.id"
               :connection-id="connection.id"
               :database="state.database"
+              :server="state.server"
+              :indent-size="indentSize"
+              @insert-cte="insertCte"
             />
           </tabs-content>
         </tabs-root>

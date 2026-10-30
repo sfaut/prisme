@@ -9,7 +9,8 @@
     applied; the button shows it in the primary color.
   - Download, when the tab shows a grid: its menu, given by the view of the
     tab (`QueryTabView.vue`), downloads the selection or the displayed
-    result as CSV, or exports the full result.
+    result as CSV, writes it as a CTE (file, clipboard or editor), or exports
+    the full result.
 -->
 <script setup lang="ts">
 import { Download, Funnel, RefreshCw, RefreshCwOff } from '@lucide/vue'

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { cteStatement } from '../cte'
 import { appendBlock, appendQuery } from '../queryAppend'
 
 /**
@@ -79,5 +80,12 @@ describe('block appended after the last query', () => {
 
   it('replaces a text made of blanks', () => {
     expect(appendBlock(' \n', '-- x;', CLOSED).text).toBe('-- x;\n')
+  })
+
+  it('ends a CTE with the separator in force, alone on its last line', () => {
+    const cte = 'WITH ds (a) AS (\n    VALUES\n        (1)\n)\nSELECT ALL a\nFROM ds'
+    const end = { delimiter: '//', open_end: null }
+    const appending = appendBlock('DELIMITER //\nCALL p()//', cteStatement(cte, end.delimiter), end)
+    expect(appending.text).toBe(`DELIMITER //\nCALL p()//\n\n${cte}\n//\n`)
   })
 })

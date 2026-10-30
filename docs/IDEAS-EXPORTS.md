@@ -120,7 +120,8 @@ FROM ds
 ;
 ```
 
-- **Form**: the CTE is always named `ds`; the final `SELECT ALL` lists the columns; the separator stands alone on the last line. The indentation is that of the settings.
+- **Scope and destinations**: the selection, or the displayed result without one, as the CSV of section 4.4. The download menu saves it as a `.sql` file or copies it to the clipboard, each in a submenu that offers both dialects (that of the editor's server first), as the CTE may go to another server; or writes it after the last query of the editor, in the dialect of its server, as the operations on an index (`appendBlock`), without running it.
+- **Form**: the CTE is always named `ds`; the final `SELECT ALL` lists the columns; the separator stands alone on the last line: `;` in a file or the clipboard, the separator in force at the end of the editor's text there. The indentation is that of the settings.
 - **Dialects**: MySQL writes each row `ROW (…)`; MariaDB writes it `(…)` and refuses `ROW`, which MySQL requires.
 - **Minimum versions**, measured with the reference files below:
 
@@ -129,7 +130,7 @@ FROM ds
   | MySQL | 8.0.19, 8.0.42, 8.4.11, 9.3.0 | 8.0.11, 8.0.18: `VALUES ROW` unknown |
   | MariaDB | 10.5.29, 10.6.3, 10.11.19, 11.4.13, 11.8.9 | 10.3.2: `VALUES` unknown; 10.3.3 loses the connection on it |
 
-  The CTE for MySQL requires MySQL 8.0.19. The CTE for MariaDB runs on every version that Prisme supports (10.6.3 and later).
+  The CTE for MySQL requires MySQL 8.0.19: the editor of an older MySQL does not offer the insertion, and says why; the file and the clipboard stay offered, for another server. The CTE for MariaDB runs on every version that Prisme supports (10.6.3 and later).
 - **Types**: each value is a literal of its column's type, so that the columns of the CTE keep it (types read back from MySQL 8.0.19 to 9.3.0 and MariaDB 10.6.3 to 11.8.9):
 
   | Family | Literal | Type read back |
@@ -145,7 +146,8 @@ FROM ds
 
   A value of a numeric column that does not read as a number is written as a string, never as is.
 - **Zero dates**: under its default modes (`NO_ZERO_DATE`, `NO_ZERO_IN_DATE`), MySQL refuses a typed date whose month or day is zero (`DATE'0000-00-00'`, `DATE'2026-10-00'`; a year 0000 alone is accepted), and `CAST('0000-00-00' AS DATE)` gives `NULL`. Such a date is therefore written as a string for MySQL: the value stays, its column becomes text. MariaDB reads it typed.
-- **Modes of the session**: a name is quoted only when it is not a plain identifier or is a reserved word of the dialect (the completion's rule), with double quotes under `ANSI_QUOTES`, backticks otherwise. A string doubles its quotes; unless `NO_BACKSLASH_ESCAPES` is active, it also doubles its backslashes and writes NUL `\0`.
+- **Modes of the session**: a name is quoted only when it is not a plain identifier or is a reserved word of the dialect (the completion's rule), with double quotes under `ANSI_QUOTES`, backticks otherwise. A string doubles its quotes; unless `NO_BACKSLASH_ESCAPES` is active, it also doubles its backslashes and writes NUL `\0`. The modes of the editor's session apply to the three destinations.
+- **Refusals**: columns sharing a name refuse the CTE, as they refuse the CSV; a discontinuous selection too, since an unselected cell has no value to write, and `NULL` would confuse it with a NULL. The choices wait for the end of the query, for the session, and for a row: `VALUES` needs one.
 - **Limits**: bytes that are valid UTF-8 reach the interface as text, the others in hexadecimal (`0x…`): a binary value holding the text `0xAB` is read as the byte AB. A geometry becomes a binary string in the server's internal format (SRID, then WKB). The collation of strings, the display width of a `ZEROFILL` integer and the types `YEAR`, `BIT`, `ENUM` and `SET` are not kept.
 - **Serialiser**: `web/src/components/cte.ts`. The reference files of `tests/fixtures/export/cte/` (an input, then the expected file per dialect, in the default modes and under `ANSI_QUOTES` and `NO_BACKSLASH_ESCAPES`) are written byte for byte by its tests, and run on real servers by `crates/connectors/tests/cte.rs`, which reads back the names, the cells and the expected types. The full export (section 4.2) stays in CSV: there is no Rust serialiser of the CTE.
 

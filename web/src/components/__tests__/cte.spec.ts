@@ -8,7 +8,7 @@ import type { Flavor } from '@/api/generated/Flavor'
 import type { TypeFamily } from '@/api/generated/TypeFamily'
 import type { Cell } from '@/api/querySession'
 
-import { type CteOptions, cteLiteral, cteString, cteText } from '../cte'
+import { type CteOptions, cteLiteral, cteStatement, cteString, cteText } from '../cte'
 import { viewFrame } from '../resultGrid'
 
 /**
@@ -27,7 +27,7 @@ const input = JSON.parse(readFileSync(resolve(FIXTURES, 'input.json'), 'utf-8'))
 }
 
 /**
- * Options of a CTE: MySQL, default modes, indentation of 4, `;`.
+ * Options of a CTE: MySQL, default modes, indentation of 4.
  *
  * @param changes Options that differ.
  */
@@ -38,7 +38,6 @@ function options(changes: Partial<CteOptions> = {}): CteOptions {
     backslashEscapes: true,
     reserved: new Set(['SELECT']),
     indentSize: 4,
-    delimiter: ';',
     ...changes,
   }
 }
@@ -70,7 +69,7 @@ describe('CTE', () => {
         }),
       )
       const file = `expected-${flavor}${modes ? '-modes' : ''}.sql`
-      expect(`${text}\n`).toBe(readFileSync(resolve(FIXTURES, file), 'utf-8'))
+      expect(`${cteStatement(text, ';')}\n`).toBe(readFileSync(resolve(FIXTURES, file), 'utf-8'))
     },
   )
 
@@ -85,7 +84,7 @@ describe('CTE', () => {
       name: '',
     }))
     const frame = viewFrame([0, 1], [0, 1, 2])
-    expect(await cteText(frame, rows, columns, types, options())).toBe(
+    expect(cteStatement(await cteText(frame, rows, columns, types, options()), ';')).toBe(
       [
         'WITH ds (id, name, created_at) AS (',
         '    VALUES',
@@ -102,12 +101,12 @@ describe('CTE', () => {
       rows,
       columns,
       types,
-      options({ flavor: 'mariadb', indentSize: 2, delimiter: '//' }),
+      options({ flavor: 'mariadb', indentSize: 2 }),
     )
     expect(mariadb).toContain(
       "\n    (1, 'Ada', TIMESTAMP'2026-10-12 09:32:00'),\n    (2, NULL, NULL)\n",
     )
-    expect(mariadb.endsWith('\nFROM ds\n//')).toBe(true)
+    expect(cteStatement(mariadb, '//').endsWith('\nFROM ds\n//')).toBe(true)
   })
 
   it('follows the order of the frame, and its sorted rows', async () => {
