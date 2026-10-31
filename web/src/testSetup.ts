@@ -10,6 +10,10 @@
  *
  * Nor do its elements scroll: `Element.scrollTo`, which the console calls to
  * follow its most recent lines, does nothing here.
+ *
+ * Nor does it observe sizes: `ResizeObserver`, which the result grid uses to
+ * follow the height of its visible area, observes nothing here; the grid then
+ * draws the margins of its virtual scrolling only.
  */
 
 if (typeof Range !== 'undefined') {
@@ -22,4 +26,12 @@ if (typeof Range !== 'undefined') {
 
 if (typeof Element !== 'undefined') {
   Element.prototype.scrollTo ??= () => {}
+}
+
+if (typeof window !== 'undefined') {
+  window.ResizeObserver ??= class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
 }

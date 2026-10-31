@@ -25,6 +25,7 @@ import {
   selectionToText,
   selectedColumnCells,
   createViewMemory,
+  drawnRange,
   sameColumns,
   type SortState,
   updateView,
@@ -443,5 +444,40 @@ describe('updateView by chunks', () => {
     } while (memory.scanned < rows.length)
     expect(calls).toBe(7)
     expect(view).toEqual(visibleRows(rows, userFilter, sort))
+  })
+})
+
+describe('drawnRange', () => {
+  /**
+   * Rows to draw for rows of 24 pixels, a visible area of 10 rows and 20 rows
+   * beyond each edge.
+   *
+   * @param scrollTop Scroll position, in pixels.
+   * @param count Number of rows of the view.
+   */
+  const range = (scrollTop: number, count: number) => drawnRange(scrollTop, 240, 24, count, 20)
+
+  it('draws the visible rows and their margins, at the top and further down', () => {
+    expect(range(0, 1000)).toEqual({ start: 0, end: 30 })
+    expect(range(2400, 1000)).toEqual({ start: 80, end: 130 })
+  })
+
+  it('stops at the last row, and draws nothing without rows', () => {
+    expect(range(23_760, 1000)).toEqual({ start: 970, end: 1000 })
+    expect(range(0, 0)).toEqual({ start: 0, end: 0 })
+  })
+
+  it('draws nothing beyond a view that shrank, until the scroll position follows', () => {
+    // Scrolled down to row 500, then a filter keeps 10 rows.
+    expect(range(12_000, 10)).toEqual({ start: 10, end: 10 })
+  })
+
+  it('costs the same whatever the number of rows', () => {
+    // A billion rows: two divisions, without going through the rows (a
+    // computation per row would not end within the time of the test).
+    expect(range(24_000_000_000, 1_000_000_000)).toEqual({
+      start: 999_999_980,
+      end: 1_000_000_000,
+    })
   })
 })

@@ -74,7 +74,7 @@ This document keeps track of the reasoning: what was kept, dropped or postponed,
 
 ### Product and v1
 
-1. **Result grid**: needs set (compact display, sorting, filtering, selection, copying). Proposal: own component with `@tanstack/vue-virtual` (see `docs/V1.md`, section 3.1). **[to confirm]** Volume test to do.
+1. **Result grid**: needs set (compact display, sorting, filtering, selection, copying). Proposal: own component, with its own virtual scrolling (see `docs/V1.md`, section 3.1). **[to confirm]** Volume test to do.
 2. **`ts-rs` or `specta`** to generate the TypeScript types: settled, `ts-rs`, simpler to read and sufficient.
 3. **MariaDB in `sqlparser-rs`**: settled (2026-10-25). `sqlparser-rs` has no MariaDB dialect and plans none: a syntax specific to one database is read by that database's dialect and by `GenericDialect`, and `MySqlDialect` serves MySQL and MariaDB. Prisme extends the MySQL dialect and tells the two apart itself (`docs/DEVELOPER.md`, section "Workarounds"; question 31).
 4. **DDL**: leave it in the native dialect in v1 (proposal)? **[to confirm]**

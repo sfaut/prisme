@@ -299,6 +299,44 @@ export function createViewMemory(): ViewMemory {
 }
 
 /**
+ * Rows to draw, by their positions in the view (virtual scrolling): those of
+ * the visible area, at the scroll position, and `overscan` more beyond each
+ * edge, so that a fast scroll shows no empty space before the next drawing.
+ * The header of the grid takes the top of the visible area: the margins
+ * cover it.
+ *
+ * All the rows of the grid have the same height: the rows to draw come from
+ * two divisions of the scroll position, at a cost that does not depend on
+ * the number of rows, and a reception that grows the view costs nothing here.
+ * A virtualizer of rows of any height, such as `@tanstack/vue-virtual`, used
+ * by the grid until 2026-10-31, computes again the position of every row
+ * whenever their number changes: at each batch of a reception, a cost that
+ * grows with the rows received, 7.6 s of the 32 s of work of the main thread
+ * for 1 million rows (`docs/PERFORMANCES.md`, chapter 12).
+ *
+ * @param scrollTop Scroll position of the grid, in pixels.
+ * @param viewportHeight Height of the visible area, in pixels.
+ * @param rowHeight Height of a row, in pixels.
+ * @param count Number of rows of the view.
+ * @param overscan Rows drawn beyond each edge of the visible area.
+ * @returns
+ *     Position of the first row to draw, and position after the last one;
+ *     both are equal when there is nothing to draw (a view that shrank,
+ *     until the scroll position follows it).
+ */
+export function drawnRange(
+  scrollTop: number,
+  viewportHeight: number,
+  rowHeight: number,
+  count: number,
+  overscan: number,
+): { start: number; end: number } {
+  const end = Math.min(count, Math.ceil((scrollTop + viewportHeight) / rowHeight) + overscan)
+  const start = Math.min(end, Math.max(0, Math.floor(scrollTop / rowHeight) - overscan))
+  return { start, end }
+}
+
+/**
  * Tells whether two results have the same columns, with the same names in the
  * same order.
  *
