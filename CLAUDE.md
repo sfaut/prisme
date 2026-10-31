@@ -11,6 +11,7 @@ This file is short. Detailed decisions are in `docs/`:
 - `docs/IDEAS-EXPORTS.md`: ideas for copying and exporting results.
 - `docs/IDEAS-VIZ.md`: ideas for drawing a database and its relations as a graph.
 - `docs/CHANGELOG.md`: changelogs of the published versions, most recent first (see "Publishing a version").
+- `docs/DROPPED-DEPENDENCIES.md`: dependencies dropped, as a record of experience: what each one served, why it left, what replaced it, what was lost and what it taught.
 - `docs/DEVELOPER.md`: developer guide (build, tests, API, CI, releases). `README.md` is for the end user.
 
 ## Code principles
@@ -39,7 +40,7 @@ This file is short. Detailed decisions are in `docs/`:
 - **Delivery**: a single executable, with `web/dist` embedded by `rust-embed`. No external service at runtime. npm and Cargo dependencies are accepted for development.
 - **Tests**: the development servers of `compose.yaml` (Docker) for MySQL and MariaDB, SQLite and DuckDB in memory.
 
-Each Rust crate is presented in section 3.2 of `docs/V1.md` (role, PHP equivalent, stage). Any dependency added to a `Cargo.toml` is documented there in the same change.
+Each Rust crate is presented in section 3.2 of `docs/V1.md` (role, PHP equivalent, stage). Any dependency added to a `Cargo.toml` is documented there in the same change. A dependency that leaves the project (`web/package.json`, every `Cargo.toml`) gets its entry in `docs/DROPPED-DEPENDENCIES.md`, in the same change.
 
 ## Repository layout
 

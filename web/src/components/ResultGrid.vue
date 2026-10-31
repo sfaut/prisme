@@ -44,13 +44,23 @@
     by an external link icon and opened in a new tab.
 
   Only the visible rows exist in the page (virtual scrolling): the grid
-  stays smooth with tens of thousands of rows. The logic (sort, user filter,
-  selection, copy) is in `resultGrid.ts`.
+  places them itself, as all its rows have the same height (`drawnRange`),
+  and stays smooth with a million rows, during their reception too. The
+  logic (sort, user filter, selection, copy, rows to draw) is in
+  `resultGrid.ts`.
 -->
 <script setup lang="ts">
 import { ExternalLink } from '@lucide/vue'
-import { useVirtualizer } from '@tanstack/vue-virtual'
-import { computed, onBeforeUnmount, ref, shallowRef, useTemplateRef, watch } from 'vue'
+import {
+  computed,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  shallowRef,
+  triggerRef,
+  useTemplateRef,
+  watch,
+} from 'vue'
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Cell, UserFilter } from '@/api/querySession'
@@ -82,6 +92,7 @@ import {
   selectionToText,
   selectedColumnCells,
   createViewMemory,
+  drawnRange,
   sameColumns,
   updateView,
   viewFrame,
@@ -138,12 +149,12 @@ const props = defineProps<{
 
 /**
  * Height of a row, in pixels, for virtual scrolling (`--grid-row-height` of
- * the theme): the virtualizer reads the scroll position in pixels to know
- * which rows to draw. The page places the rows and sizes the body with the
+ * the theme): the grid turns its scroll position into the rows to draw
+ * (`drawnRange`). The page places the rows and sizes the body with the
  * theme's variable itself, in CSS.
  *
- * Fixed size: the virtualizer only takes pixels, so this theme length is
- * read once (`docs/DEVELOPER.md`, section "Lengths in pixels").
+ * Fixed size: the scroll position is in pixels, so this theme length is read
+ * once (`docs/DEVELOPER.md`, section "Lengths in pixels").
  */
 const ROW_HEIGHT = cssPixels('--grid-row-height', 22)
 
@@ -183,15 +194,20 @@ function startDragging(kind: 'cells' | 'rows'): void {
 const viewMemory = createViewMemory()
 
 /**
- * Rows examined per frame when the view is computed: bounded, so that a large
- * result (a session resumed after a reconnection, for example) does not
- * freeze the interface.
+ * Rows examined per frame when the view is computed with a user filter or a
+ * sort: bounded, so that a large result (a session resumed after a
+ * reconnection, for example) does not freeze the interface. Without either,
+ * examining a row costs only its addition to the view: the view takes all the
+ * new rows at once, since each chunk costs an update of the grid and a drawing
+ * (three per batch of rows, during the reception of a large result). Measured
+ * on 2026-10-31 for 1 million rows: received in 10 to 12 s at once, 18 to 20 s
+ * by chunks (`docs/PERFORMANCES.md`, chapter 12).
  */
 const VIEW_CHUNK = 2000
 
 /**
  * View: indexes of the source rows, filtered and sorted. It covers the rows
- * examined so far (see `refreshView`).
+ * examined so far, and grows in place (see `refreshView`).
  */
 const view = shallowRef<number[]>([])
 
@@ -208,15 +224,21 @@ function nextFrame(): Promise<void> {
 }
 
 /**
- * Computes the view of the rows, one chunk per frame: the first chunk at once,
- * then the others while the browser draws. A newer computation (new rows,
- * user filter or sort) stops this one.
+ * Computes the view of the rows: all at once without a user filter nor a sort,
+ * otherwise one chunk per frame, the first chunk at once, then the others while
+ * the browser draws. A newer computation (new rows, user filter or sort) stops
+ * this one.
  */
 async function refreshView(): Promise<void> {
   const run = ++viewRun
   const rows = props.rows
+  // Without a filter nor a sort, the view takes all the new rows at once (see `VIEW_CHUNK`).
+  const chunk =
+    props.filter.text.trim() === '' && sort.value === null ? Number.POSITIVE_INFINITY : VIEW_CHUNK
   for (;;) {
-    view.value = updateView(viewMemory, rows, props.filter, sort.value, VIEW_CHUNK)
+    view.value = updateView(viewMemory, rows, props.filter, sort.value, chunk)
+    // The same array grown in place (`updateView`): Vue does not see the change by itself.
+    triggerRef(view)
     if (viewMemory.scanned >= rows.length || run !== viewRun) {
       return
     }
@@ -426,14 +448,60 @@ function fitWidth(column: number): void {
   }
 }
 
-const virtualizer = useVirtualizer(
-  computed(() => ({
-    count: view.value.length,
-    getScrollElement: () => scroller.value,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 20,
-  })),
-)
+/**
+ * Rows drawn beyond each edge of the visible area.
+ */
+const OVERSCAN = 20
+
+/**
+ * Scroll position of the grid, in pixels.
+ */
+const scrollTop = ref(0)
+
+/**
+ * Height of the visible area of the grid, in pixels.
+ */
+const viewportHeight = ref(0)
+
+/**
+ * Follows the scroll position of the grid.
+ */
+function onScroll(): void {
+  scrollTop.value = scroller.value?.scrollTop ?? 0
+}
+
+/**
+ * Follows the height of the visible area: window resized, panel of the
+ * results moved.
+ */
+let resizeObserver: ResizeObserver | null = null
+
+onMounted(() => {
+  resizeObserver = new ResizeObserver(() => {
+    viewportHeight.value = scroller.value?.clientHeight ?? 0
+  })
+  if (scroller.value) {
+    resizeObserver.observe(scroller.value)
+  }
+})
+
+onBeforeUnmount(() => resizeObserver?.disconnect())
+
+/**
+ * Positions in the view of the rows drawn. The grid places them itself, at a
+ * cost that does not depend on the number of rows: a virtualizer of rows of
+ * any height made the reception of a large result quadratic (`drawnRange`).
+ */
+const drawnRows = computed(() => {
+  const { start, end } = drawnRange(
+    scrollTop.value,
+    viewportHeight.value,
+    ROW_HEIGHT,
+    view.value.length,
+    OVERSCAN,
+  )
+  return Array.from({ length: end - start }, (_, offset) => start + offset)
+})
 
 // Sort or user filter changed: the positions change, the selection no longer makes sense.
 watch([() => props.filter, sort], () => {
@@ -707,6 +775,7 @@ defineExpose({ keptCount, selectedSize, exportFrame, order })
     :style="{ '--row-digits': rowDigits }"
     tabindex="0"
     @keydown="onKeydown"
+    @scroll.passive="onScroll"
   >
     <div class="grid-row grid-header" :style="{ gridTemplateColumns: template }">
       <div
@@ -766,52 +835,49 @@ defineExpose({ keptCount, selectedSize, exportFrame, order })
       </div>
     </div>
 
-    <div
-      class="grid-body"
-      :style="{ blockSize: `calc(var(--grid-row-height) * ${virtualizer.options.count})` }"
-    >
+    <div class="grid-body" :style="{ blockSize: `calc(var(--grid-row-height) * ${view.length})` }">
       <div
-        v-for="item in virtualizer.getVirtualItems()"
-        :key="item.index"
+        v-for="index in drawnRows"
+        :key="index"
         class="grid-row"
         :style="{
           gridTemplateColumns: template,
-          transform: `translateY(calc(var(--grid-row-height) * ${item.index}))`,
+          transform: `translateY(calc(var(--grid-row-height) * ${index}))`,
         }"
       >
         <div
           class="grid-row-header"
-          @mousedown.prevent="onRowHeader($event, item.index)"
-          @mouseenter="onRowEnter(item.index)"
+          @mousedown.prevent="onRowHeader($event, index)"
+          @mouseenter="onRowEnter(index)"
         >
-          {{ item.index + 1 }}
+          {{ index + 1 }}
         </div>
         <div
           v-for="(column, position) in order"
           :key="column"
           class="grid-cell"
           :class="{
-            null: cellAt(item.index, column) === null,
+            null: cellAt(index, column) === null,
             right: rightAligned[column],
             mono: monospaced[column],
-            selected: isSelected(selection, item.index, position),
+            selected: isSelected(selection, index, position),
           }"
-          @mousedown.prevent="onCellDown($event, item.index, position)"
-          @mouseenter="onCellEnter(item.index, position)"
+          @mousedown.prevent="onCellDown($event, index, position)"
+          @mouseenter="onCellEnter(index, position)"
         >
           <a
-            v-if="contentKinds[column] === 'url' && isWebAddress(cellAt(item.index, column))"
+            v-if="contentKinds[column] === 'url' && isWebAddress(cellAt(index, column))"
             class="grid-link"
-            :href="cellAt(item.index, column) ?? undefined"
+            :href="cellAt(index, column) ?? undefined"
             target="_blank"
             rel="noopener noreferrer"
             @mousedown.stop
             ><ExternalLink class="grid-link-icon" aria-hidden="true" /><span
               class="grid-link-text"
-              >{{ cellAt(item.index, column) }}</span
+              >{{ cellAt(index, column) }}</span
             ></a
           >
-          <template v-else>{{ cellAt(item.index, column) ?? NULL_TEXT }}</template>
+          <template v-else>{{ cellAt(index, column) ?? NULL_TEXT }}</template>
         </div>
       </div>
     </div>
