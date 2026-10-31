@@ -515,6 +515,7 @@ web/               Vue interface
   src/components/  interface components
   src/stores/      shared state (connections, settings)
 bench/             benchmarks, outside the workspace
+  prisme.mjs       Prisme on the real server, for the benchmarks that measure it
   pivot/           engine of the Pivoteur: native, WebAssembly, JavaScript (run.mjs)
   reload/          saved results: their save, and their reading again by the page (run.mjs)
 docs/              design decisions and notes

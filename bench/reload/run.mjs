@@ -17,102 +17,15 @@
  * go to `target/reload-bench/results.json`.
  */
 
-import { spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
-import { fileURLToPath } from 'node:url'
+import { ADDRESS, ROOT, build, call, peakMemory, plain, query, start } from '../prisme.mjs'
 
-/**
- * Address of the throwaway server, away from the port of the usual one.
- */
-const ADDRESS = '127.0.0.1:18484'
-
-/**
- * Port of the latest MariaDB LTS of the development servers.
- */
-const MARIADB_PORT = 3322
-
-const here = dirname(fileURLToPath(import.meta.url))
-const root = resolve(here, '../..')
-const workDir = join(root, 'target', 'reload-bench')
-const api = `http://${ADDRESS}/api`
+const workDir = join(ROOT, 'target', 'reload-bench')
 const counts = process.argv.slice(2).map(Number)
 if (counts.length === 0) {
   counts.push(1_000_000, 10_000_000)
-}
-
-/**
- * Query of `count` rows, with columns like those of the benchmark of the Pivoteur: texts,
- * datetime, integer with NULLs, decimal, float. `seq_1_to_<count>` is a table of the sequence
- * engine of MariaDB; the `LIMIT` written passes as it is.
- *
- * @param {number} count Number of rows.
- */
-function query(count) {
-  return `SELECT CONCAT('P', seq % 10) AS pays,
-  CONCAT('P', seq % 10, '-R', seq % 7 % 5) AS region,
-  CONCAT('Cat', LPAD(seq % 20, 2, '0')) AS categorie,
-  CONCAT('Cat', LPAD(seq % 20, 2, '0'), '-P', LPAD(seq % 50, 2, '0')) AS produit,
-  ELT(1 + seq % 4, 'web', 'magasin', 'telephone', 'partenaire') AS canal,
-  TIMESTAMP '2024-01-01 00:00:00' + INTERVAL (seq * 7919) % 94694400 SECOND AS d,
-  IF(seq % 20 = 0, NULL, 1 + seq % 100) AS qte,
-  CAST(((seq * 104729) % 9999999 + 1) / 100 AS DECIMAL(12, 2)) AS montant,
-  CAST((seq * 7) % 500000 / 1000000 AS DOUBLE) AS remise,
-  CONCAT('C', LPAD(seq % 100000, 6, '0')) AS client
-FROM seq_1_to_${count}
-LIMIT ${count}`
-}
-
-/**
- * Calls the API and returns the JSON of its answer.
- *
- * @param {string} method Method.
- * @param {string} path Path after `/api`.
- * @param {object} [body] Body, sent as JSON.
- */
-async function call(method, path, body) {
-  const response = await fetch(`${api}${path}`, {
-    method,
-    headers: body === undefined ? {} : { 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  })
-  if (!response.ok) {
-    throw new Error(`${method} ${path}: ${response.status} ${await response.text()}`)
-  }
-  return response.json()
-}
-
-/**
- * Waits until the server answers.
- */
-async function serverUp() {
-  for (let attempt = 0; attempt < 100; attempt++) {
-    try {
-      await fetch(`${api}/health`)
-      return
-    } catch {
-      await new Promise((done) => setTimeout(done, 100))
-    }
-  }
-  throw new Error('the server does not answer')
-}
-
-/**
- * Peak of the working set of a process, in gigabytes (Windows only, `null` elsewhere).
- *
- * @param {number} pid Id of the process.
- */
-function peakMemory(pid) {
-  if (process.platform !== 'win32') {
-    return null
-  }
-  const peak = spawnSync(
-    'powershell',
-    ['-NoProfile', '-Command', `(Get-Process -Id ${pid}).PeakWorkingSet64`],
-    { encoding: 'utf8' },
-  )
-  return Math.round(Number(peak.stdout.trim()) / 1e7) / 100
 }
 
 /**
@@ -170,7 +83,7 @@ function runQuery(editor, count) {
  */
 async function reload(editor) {
   const started = performance.now()
-  const response = await fetch(`${api}/editors/${editor}/results`)
+  const response = await fetch(`http://${ADDRESS}/api/editors/${editor}/results`)
   const answered = performance.now()
   const body = await response.arrayBuffer()
   const downloaded = performance.now()
@@ -192,66 +105,33 @@ async function reload(editor) {
   return result
 }
 
-const indexFile = join(root, 'web', 'dist', 'index.html')
-if (!existsSync(indexFile)) {
-  console.error('web/dist is missing: run npm run build in web/ first')
-  process.exit(1)
-}
-const build = spawnSync('cargo', ['build', '--release', '--package', 'prisme-server'], {
-  cwd: root,
-  stdio: 'inherit',
-})
-if (build.status !== 0) {
-  process.exit(build.status ?? 1)
-}
-
+build()
 const results = []
 for (const count of counts) {
-  const dataDir = join(workDir, `data-${count}`)
-  rmSync(dataDir, { recursive: true, force: true })
-  mkdirSync(dataDir, { recursive: true })
-  const executable = join(
-    root,
-    'target',
-    'release',
-    `prisme${process.platform === 'win32' ? '.exe' : ''}`,
-  )
-  const server = spawn(
-    executable,
-    ['--data-dir', dataDir, '--listen', ADDRESS, '--user-email', 'bench@local', '--verbose'],
-    { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] },
-  )
-  let log = ''
-  server.stdout.on('data', (chunk) => (log += chunk))
-  server.stderr.on('data', (chunk) => (log += chunk))
   const entry = { rows: count }
+  let prisme = null
   try {
-    await serverUp()
-    const connection = await call('POST', '/connections', {
-      name: 'bench',
-      host: '127.0.0.1',
-      port: MARIADB_PORT,
-      username: 'root',
-      password: '',
-      database_name: 'mysql',
-    })
-    const editor = await call('POST', '/editors', { connection_id: connection.id })
+    prisme = await start(join(workDir, `data-${count}`))
+    const editor = await call('POST', '/editors', { connection_id: prisme.connection })
     console.error(`reload: ${count} rows, query`)
     entry.query = await runQuery(editor.id, count)
-    entry.server_peak_gb_after_query = peakMemory(server.pid)
+    entry.server_peak_gb_after_query = peakMemory(prisme.pid)
     // A failed save leaves the tab without rows, and only a warning in the log.
-    entry.query.saved = !log.includes('result not saved')
+    entry.query.saved = !prisme.log().includes('result not saved')
     console.error(`reload: ${count} rows, reading the saved tabs again`)
     entry.reload = await reload(editor.id)
-    const lines = log.replace(/\u001b\[[0-9;]*m/g, '')
-    const answer = lines.match(new RegExp(`GET /api/editors/${editor.id}/results \\d+ (\\d+) ms`))
+    const answer = plain(prisme.log()).match(
+      new RegExp(`GET /api/editors/${editor.id}/results \\d+ (\\d+) ms`),
+    )
     entry.reload.server_s = answer === null ? null : Number(answer[1]) / 1000
-    entry.server_peak_gb = peakMemory(server.pid)
+    entry.server_peak_gb = peakMemory(prisme.pid)
   } catch (error) {
     entry.error = String(error)
   }
-  server.kill()
-  writeFileSync(join(workDir, `server-${count}.log`), log)
+  if (prisme !== null) {
+    prisme.stop()
+    writeFileSync(join(workDir, `server-${count}.log`), prisme.log())
+  }
   results.push(entry)
   console.log(JSON.stringify(entry))
 }
