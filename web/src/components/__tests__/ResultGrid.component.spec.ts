@@ -112,6 +112,20 @@ describe('ResultGrid', () => {
   })
 })
 
+describe('ResultGrid during a reception', () => {
+  it('follows the rows received into the same array', async () => {
+    const rows = [['1'], ['2']]
+    const wrapper = mountGrid(['id'], rows)
+    rows.push(['3'])
+    await wrapper.setProps({ rowCount: rows.length })
+    // The view grows in place: the grid must still see its new length.
+    expect(wrapper.vm.keptCount).toBe(3)
+    expect(wrapper.find('.grid-body').attributes('style')).toContain(
+      'calc(var(--grid-row-height) * 3)',
+    )
+  })
+})
+
 describe('ResultGrid after a new result', () => {
   it('keeps the sort when the same columns come back, after a reconnection', async () => {
     const wrapper = mountGrid(['id'], [['2'], ['1']])

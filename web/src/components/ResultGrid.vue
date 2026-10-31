@@ -50,7 +50,7 @@
 <script setup lang="ts">
 import { ExternalLink } from '@lucide/vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
-import { computed, onBeforeUnmount, ref, shallowRef, useTemplateRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, triggerRef, useTemplateRef, watch } from 'vue'
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Cell, UserFilter } from '@/api/querySession'
@@ -194,7 +194,7 @@ const VIEW_CHUNK = 2000
 
 /**
  * View: indexes of the source rows, filtered and sorted. It covers the rows
- * examined so far (see `refreshView`).
+ * examined so far, and grows in place (see `refreshView`).
  */
 const view = shallowRef<number[]>([])
 
@@ -223,6 +223,8 @@ async function refreshView(): Promise<void> {
     props.filter.text.trim() === '' && sort.value === null ? Number.POSITIVE_INFINITY : VIEW_CHUNK
   for (;;) {
     view.value = updateView(viewMemory, rows, props.filter, sort.value, chunk)
+    // The same array grown in place (`updateView`): Vue does not see the change by itself.
+    triggerRef(view)
     if (viewMemory.scanned >= rows.length || run !== viewRun) {
       return
     }

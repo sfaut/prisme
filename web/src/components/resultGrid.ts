@@ -329,7 +329,13 @@ export function sameColumns(a: string[], b: string[]): boolean {
  * @param userFilter User filter.
  * @param sort Sort, `null` for none.
  * @param chunk Maximum number of rows examined by this call.
- * @returns A new array each time, so that Vue sees the change.
+ * @returns
+ *     The view of the memory: grown in place by a call without a sort, a new
+ *     array when the view starts again or merges a sorted chunk. The caller
+ *     tells Vue of the change (`triggerRef`). A copy at each call costs the
+ *     whole view at each batch of a reception: 0.7 s of the main thread for
+ *     1 million rows, measured on 2026-10-31 (`docs/PERFORMANCES.md`,
+ *     chapter 12).
  */
 export function updateView(
   memory: ViewMemory,
@@ -369,7 +375,7 @@ export function updateView(
       memory.view.push(index)
     }
   }
-  return memory.view.slice()
+  return memory.view
 }
 
 /**
@@ -664,13 +670,15 @@ export function selectionFrame(
 
 /**
  * Frame of the whole view: its rows, sorted and filtered, and all the
- * columns, in the displayed order.
+ * columns, in the displayed order. The frame copies the view, which grows in
+ * place during a reception (`updateView`): a download keeps the rows of the
+ * moment it starts.
  *
  * @param view View: indexes of the source rows.
  * @param order Index in the `SELECT` of each displayed column.
  */
 export function viewFrame(view: number[], order: number[]): GridFrame {
-  return { rows: view, fields: order }
+  return { rows: view.slice(), fields: order }
 }
 
 /**

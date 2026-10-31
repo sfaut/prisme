@@ -221,6 +221,9 @@ describe('frames', () => {
     const sorted = visibleRows(rows, noFilter, { column: 0, direction: 'asc' })
     const frame = viewFrame(sorted, [1, 0, 2])
     expect(frame.rows).toEqual([2, 1, 0])
+    // The view grows in place; the frame keeps its rows.
+    sorted.push(3)
+    expect(frame.rows).toEqual([2, 1, 0])
     expect(frame.selected).toBeUndefined()
     expect(frameCell(frame, rows, 0, 0)).toBe('Éric')
     expect(frameCell(frame, rows, 2, 1)).toBe('10')
@@ -366,7 +369,8 @@ describe('updateView', () => {
     for (let start = 0; start < data.length; start += batch) {
       received.push(...data.slice(start, start + batch))
       pairs.push([
-        updateView(memory, received, userFilter, sort),
+        // A copy: the view grows in place.
+        updateView(memory, received, userFilter, sort).slice(),
         visibleRows(received, userFilter, sort),
       ])
     }
@@ -404,14 +408,16 @@ describe('updateView', () => {
     )
   })
 
-  it('returns a new array each time, so that Vue sees the change', () => {
+  it('grows the view in place, and starts a new one for a new array', () => {
     const received = data.slice(0, 5)
     const memory = createViewMemory()
     const first = updateView(memory, received, noFilter, null)
     received.push(...data.slice(5, 6))
-    const second = updateView(memory, received, noFilter, null)
-    expect(second).not.toBe(first)
-    expect(first).toHaveLength(5)
+    expect(updateView(memory, received, noFilter, null)).toBe(first)
+    expect(first).toEqual([0, 1, 2, 3, 4, 5])
+    const fresh = updateView(memory, data.slice(0, 2), noFilter, null)
+    expect(fresh).not.toBe(first)
+    expect(fresh).toEqual([0, 1])
   })
 })
 
