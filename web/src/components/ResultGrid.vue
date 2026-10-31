@@ -183,9 +183,12 @@ function startDragging(kind: 'cells' | 'rows'): void {
 const viewMemory = createViewMemory()
 
 /**
- * Rows examined per frame when the view is computed: bounded, so that a large
- * result (a session resumed after a reconnection, for example) does not
- * freeze the interface.
+ * Rows examined per frame when the view is computed with a user filter or a
+ * sort: bounded, so that a large result (a session resumed after a
+ * reconnection, for example) does not freeze the interface. Without either,
+ * examining a row costs only its addition to the view: the view takes all the
+ * new rows at once, since each chunk costs an update of the grid and a drawing
+ * (three per batch of rows, during the reception of a large result).
  */
 const VIEW_CHUNK = 2000
 
@@ -208,15 +211,18 @@ function nextFrame(): Promise<void> {
 }
 
 /**
- * Computes the view of the rows, one chunk per frame: the first chunk at once,
- * then the others while the browser draws. A newer computation (new rows,
- * user filter or sort) stops this one.
+ * Computes the view of the rows: all at once without a user filter nor a sort,
+ * otherwise one chunk per frame, the first chunk at once, then the others while
+ * the browser draws. A newer computation (new rows, user filter or sort) stops
+ * this one.
  */
 async function refreshView(): Promise<void> {
   const run = ++viewRun
   const rows = props.rows
+  const chunk =
+    props.filter.text.trim() === '' && sort.value === null ? Number.POSITIVE_INFINITY : VIEW_CHUNK
   for (;;) {
-    view.value = updateView(viewMemory, rows, props.filter, sort.value, VIEW_CHUNK)
+    view.value = updateView(viewMemory, rows, props.filter, sort.value, chunk)
     if (viewMemory.scanned >= rows.length || run !== viewRun) {
       return
     }

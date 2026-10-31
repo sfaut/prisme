@@ -379,7 +379,10 @@ frame that changed the rows, without a break.
 The grid (`ResultGrid.vue`) computes its view with `refreshView`: the first
 chunk at once, then one chunk per animation frame, until every row is in the
 view. A newer computation stops the previous one. A small result is still
-computed at once, in its first chunk.
+computed at once, in its first chunk. Without a user filter nor a sort, the
+whole view is computed at once: examining a row then costs only its addition
+to the view, while each chunk costs an update of the grid and a drawing,
+several per batch during the reception of a large result.
 
 ### 5.5 Takeaways
 

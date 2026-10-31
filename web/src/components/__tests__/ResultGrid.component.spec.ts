@@ -5,7 +5,7 @@ import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
-import { NO_FILTER } from '@/api/querySession'
+import { NO_FILTER, type UserFilter } from '@/api/querySession'
 import { useDataExplorerStore } from '@/stores/dataExplorer'
 
 import ResultGrid from '../ResultGrid.vue'
@@ -19,12 +19,14 @@ beforeEach(() => setActivePinia(createPinia()))
  * @param rows Rows of the result.
  * @param sql Text of the query.
  * @param columnTypes Types of the columns, none by default.
+ * @param filter User filter, none by default.
  */
 function mountGrid(
   columns: string[],
   rows: (string | null)[][],
   sql = 'SELECT 1',
   columnTypes: ColumnTypeInfo[] = [],
+  filter: UserFilter = NO_FILTER,
 ) {
   const rightAligned = columns.map(() => false)
   return mount(ResultGrid, {
@@ -35,7 +37,7 @@ function mountGrid(
       rows,
       rowCount: rows.length,
       sql,
-      filter: NO_FILTER,
+      filter,
     },
   })
 }
@@ -128,17 +130,26 @@ describe('ResultGrid after a new result', () => {
 })
 
 describe('ResultGrid with a large result', () => {
-  it('ends with every row in the view, computed a chunk per frame', async () => {
-    const rows = Array.from({ length: 5000 }, (_, index) => [String(index)])
-    const wrapper = mountGrid(['id'], rows)
-    // The height of the list is the number of rows of the view, at the theme's row height.
-    await vi.waitFor(
-      () =>
-        expect(wrapper.find('.grid-body').attributes('style')).toContain(
-          'calc(var(--grid-row-height) * 5000)',
-        ),
-      { timeout: 5000 },
-    )
+  const rows = Array.from({ length: 5000 }, (_, index) => [`row ${index}`])
+
+  /**
+   * Number of rows of the view: the height of the list, at the theme's row height.
+   *
+   * @param wrapper Mounted grid.
+   */
+  function viewLength(wrapper: ReturnType<typeof mountGrid>): number {
+    const style = wrapper.find('.grid-body').attributes('style') ?? ''
+    return Number(/var\(--grid-row-height\) \* (\d+)/.exec(style)?.[1])
+  }
+
+  it('takes every row at once without a filter nor a sort', () => {
+    expect(viewLength(mountGrid(['id'], rows))).toBe(5000)
+  })
+
+  it('computes a filtered view a chunk per frame, up to every kept row', async () => {
+    const wrapper = mountGrid(['id'], rows, 'SELECT 1', [], { text: 'row', column: null })
+    expect(viewLength(wrapper)).toBe(2000)
+    await vi.waitFor(() => expect(viewLength(wrapper)).toBe(5000), { timeout: 5000 })
   })
 })
 
