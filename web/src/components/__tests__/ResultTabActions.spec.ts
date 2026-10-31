@@ -6,7 +6,7 @@ import { mount } from '@vue/test-utils'
 import type { QueryTab, RefreshState } from '@/api/querySession'
 
 import ResultTabActions from '../ResultTabActions.vue'
-import type { MenuItem } from '../ui/menuItem'
+import type { MenuGroup } from '../ui/menuItem'
 import UiDropdownMenu from '../ui/UiDropdownMenu.vue'
 import { finishedTab } from './resultTabs'
 
@@ -15,10 +15,10 @@ import { finishedTab } from './resultTabs'
  *
  * @param tab Tab shown.
  * @param refresh Refresh state of the tab.
- * @param download Choices of the download menu.
+ * @param exportGroups Choices of the export menu.
  */
-function mountActions(tab: QueryTab, refresh: RefreshState = 'idle', download?: MenuItem[]) {
-  return mount(ResultTabActions, { props: { tab, refresh, download } })
+function mountActions(tab: QueryTab, refresh: RefreshState = 'idle', exportGroups?: MenuGroup[]) {
+  return mount(ResultTabActions, { props: { tab, refresh, exportGroups } })
 }
 
 describe('ResultTabActions', () => {
@@ -58,13 +58,15 @@ describe('ResultTabActions', () => {
     expect(button().attributes('aria-label')).toBe('Filtrer (filtre actif)')
   })
 
-  it('offers the download menu of a tab that shows a grid', () => {
-    const download: MenuItem[] = [{ label: 'Résultat affiché en CSV (1 ligne)', icon: Download }]
-    const grid = mountActions(finishedTab(['id'], [['1']]), 'idle', download)
-    expect(grid.findComponent(UiDropdownMenu).props('items')).toEqual(download)
-    expect(grid.find('[aria-label="Télécharger"]').exists()).toBe(true)
+  it('offers the export menu of a tab that shows a grid', () => {
+    const groups: MenuGroup[] = [
+      { label: 'Fichier', items: [{ label: 'Résultat affiché en CSV (1 ligne)', icon: Download }] },
+    ]
+    const grid = mountActions(finishedTab(['id'], [['1']]), 'idle', groups)
+    expect(grid.findComponent(UiDropdownMenu).props('groups')).toEqual(groups)
+    expect(grid.find('[aria-label="Exporter"]').exists()).toBe(true)
 
-    const empty = mountActions(finishedTab([]), 'idle', download)
+    const empty = mountActions(finishedTab([]), 'idle', groups)
     expect(empty.findComponent(UiDropdownMenu).exists()).toBe(false)
   })
 })

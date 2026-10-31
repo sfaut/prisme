@@ -48,8 +48,8 @@ The table can also be exported as an image **[decided]**: PNG and WebP, plus SVG
 Prisme has not used the right click so far, and it is better to keep it that way. Leads:
 
 - **Ctrl+C** copies in the default format (tabular at first). This default format joins the profile setting already planned for headers (`docs/QUESTIONS.md`, point 27).
-- **Copy button** in the bottom bar of the grid, with a dropdown menu (Reka UI `DropdownMenu`): one format per entry, plus "without headers".
-- **Ctrl+Shift+C** copies again in the last format chosen from this menu.
+- **"Presse-papiers" group** of the export menu (section 4.4), which already copies the CTE: one format per entry, plus "without headers".
+- **Ctrl+Shift+C** copies again in the last format chosen from this group.
 
 ## 4. Export to a file
 
@@ -78,7 +78,7 @@ The full result follows the column order of the grid: the export request carries
 
 The full export runs as a background task, and an export manager tells when the file is ready to download.
 
-- The full export is the entry "Résultat complet en CSV (requête relancée)" of the download menu, offered with or without a selection, whether the displayed result is truncated or not.
+- The full export is the entry "Résultat complet en CSV (requête relancée)" of the export menu (group "Fichier"), offered with or without a selection, whether the displayed result is truncated or not.
 - It runs on a dedicated connection, read-only (section 7, question 1).
 - The server reads the driver's stream and writes directly to a file of `<data-dir>/exports/`, with constant memory. The exports are kept in the internal database (`exports` table), so that their list survives a restart.
 - The manager is a button of the top bar, with a progress dot while exports run, which opens the list of the exports (running, ready, failed, stopped, interrupted): rows written, size, duration, throughput, and the cause of a failure. Its head gives the room the files take.
@@ -95,7 +95,7 @@ The full export requires serialisers in Rust, whereas those of the copy are in T
 
 ### 4.4 CSV for Excel in French **[decided]**
 
-The first format implemented, through the download button right of the result tabs, beside the refresh and filter buttons, without the export dialog. Its menu says what it downloads: "Sélection en CSV (3 lignes × 2 colonnes)", or "Résultat affiché en CSV (1 000 lignes)" without a selection.
+The first format implemented, through the export button ("Exporter") right of the result tabs, beside the refresh and filter buttons, without the export dialog. Its menu groups its choices by destination, each group under its heading: "Fichier" (file), "Presse-papiers" (clipboard), "Éditeur" (editor). The first choice says what it downloads: "Sélection en CSV (3 lignes × 2 colonnes)", or "Résultat affiché en CSV (1 000 lignes)" without a selection.
 
 - UTF-8 with a BOM, `;` as separator, CRLF line endings, the column names on the first line: Excel in French opens the file with a double click.
 - RFC 4180 quoting: a field that holds `;`, `"`, CR or LF goes between quotes, its quotes doubled. Control characters stay raw, the quotes carrying them.
@@ -120,7 +120,7 @@ FROM ds
 ;
 ```
 
-- **Scope and destinations**: the selection, or the displayed result without one, as the CSV of section 4.4. The download menu saves it as a `.sql` file or copies it to the clipboard, each in a submenu that offers both dialects (that of the editor's server first), as the CTE may go to another server; or writes it after the last query of the editor, in the dialect of its server, as the operations on an index (`appendBlock`), without running it.
+- **Scope and destinations**: the selection, or the displayed result without one, as the CSV of section 4.4. The export menu saves it as a `.sql` file (group "Fichier") or copies it to the clipboard (group "Presse-papiers"), each in a submenu that offers both dialects (that of the editor's server first), as the CTE may go to another server; or writes it after the last query of the editor (group "Éditeur"), in the dialect of its server, as the operations on an index (`appendBlock`), without running it.
 - **Form**: the CTE is always named `ds`; the final `SELECT ALL` lists the columns; the separator stands alone on the last line: `;` in a file or the clipboard, the separator in force at the end of the editor's text there. The indentation is that of the settings.
 - **Dialects**: MySQL writes each row `ROW (…)`; MariaDB writes it `(…)` and refuses `ROW`, which MySQL requires.
 - **Minimum versions**, measured with the reference files below:
@@ -154,7 +154,7 @@ FROM ds
 ## 5. Planned order
 
 1. TypeScript serialisers and their tests.
-2. Copy button, Ctrl+Shift+C and `text/html` deposit of the tabular format.
+2. Formats of the "Presse-papiers" group, Ctrl+Shift+C and `text/html` deposit of the tabular format.
 3. Export of the displayed result and of the selection.
 4. Images: common layout, PNG and WebP through the canvas, SVG.
 5. Rust serialisers and common reference files.
@@ -176,6 +176,7 @@ FROM ds
 | Formulas in a CSV | Values written as they are, without a prefix. |
 | Grid state | The export of the displayed result and of the selection follows the column order, sorting and filtering; the full result follows the column order, its rows being the raw result of the query. |
 | Right click | To avoid. |
+| Export button | One "Exporter" button right of the result tabs, its menu grouped by destination: "Fichier", "Presse-papiers", "Éditeur". |
 | CTE | `WITH ds (…) AS (VALUES …)`, `ROW (…)` for MySQL (8.0.19 and later), `(…)` for MariaDB; typed literals; quoting and escapes of the session's modes. |
 
 ## 7. Open questions

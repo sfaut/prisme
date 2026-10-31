@@ -27,9 +27,10 @@
   During a refresh, the previous result stays displayed until the new
   columns arrive.
 
-  The tab gives the menu of its download button (`downloadItems`), which the
+  The tab gives the menu of its export button (`exportGroups`), which the
   cell draws right of the result tabs, beside the refresh and filter buttons
-  (`ResultTabActions.vue`). It downloads the result as CSV for Excel in
+  (`ResultTabActions.vue`), its choices grouped by destination: file,
+  clipboard, editor. It downloads the result as CSV for Excel in
   French (`csv.ts`): the selection of the grid, or the whole displayed
   result without one, sorted and filtered as on screen, its columns in the
   displayed order. The file is built in the page, by chunks of rows. The
@@ -82,7 +83,7 @@ import { versionAtLeast } from './indexOperations'
 import { frameIsFull, sameColumns } from './resultGrid'
 import ResultFilter from './ResultFilter.vue'
 import ResultGrid from './ResultGrid.vue'
-import type { MenuItem } from './ui/menuItem'
+import type { MenuGroup, MenuItem } from './ui/menuItem'
 import { notify } from './ui/toasts'
 import UiAlert from './ui/UiAlert.vue'
 import UiStatusBar from './ui/UiStatusBar.vue'
@@ -250,21 +251,22 @@ const readsCte = computed(
 )
 
 /**
- * Choices of the download menu, drawn by the cell right of the result tabs.
- * The first one says what it downloads, so that a forgotten selection shows;
- * it waits for the end of the query. The CTE follows, as a file or in the
- * clipboard, for each dialect (that of the editor's server first), then in
- * the editor; it needs a row and the session. The last one exports the full
- * result.
+ * Choices of the export menu, drawn by the cell right of the result tabs,
+ * grouped by destination. In a file: the CSV first, whose label says what it
+ * holds, so that a forgotten selection shows; it waits for the end of the
+ * query. Then the CTE, for each dialect (that of the editor's server first),
+ * and the full result. In the clipboard: the CTE, for each dialect. In the
+ * editor: the CTE, in the dialect of its server. The CTE needs a row and the
+ * session.
  */
-const downloadItems = computed<MenuItem[]>(() => {
+const exportGroups = computed<MenuGroup[]>(() => {
   const size = grid.value?.selectedSize ?? null
   const kept = grid.value?.keptCount ?? 0
   const label =
     size === null
       ? `Résultat affiché en CSV (${formatRowCount(kept, null)})`
       : `Sélection en CSV (${formatRowCount(size.rows, null)} × ${size.columns} ${size.columns > 1 ? 'colonnes' : 'colonne'})`
-  const scope = size === null ? 'le résultat affiché' : 'la sélection'
+  const scope = size === null ? 'Résultat affiché' : 'Sélection'
   const cteOff = !props.tab.done || props.server === null || (size?.rows ?? kept) === 0
   const flavors: Flavor[] =
     props.server?.flavor === 'mariadb' ? ['mariadb', 'mysql'] : ['mysql', 'mariadb']
@@ -277,34 +279,54 @@ const downloadItems = computed<MenuItem[]>(() => {
     }))
   const server = props.server
   return [
-    { label, icon: FileSpreadsheet, disabled: !props.tab.done, onSelect: () => void downloadCsv() },
     {
-      label: `${size === null ? 'Résultat affiché' : 'Sélection'} en CTE (.sql)`,
-      icon: FileCode,
-      disabled: cteOff,
-      items: dialects(downloadCte),
+      label: 'Fichier',
+      items: [
+        {
+          label,
+          icon: FileSpreadsheet,
+          disabled: !props.tab.done,
+          onSelect: () => void downloadCsv(),
+        },
+        {
+          label: `${scope} en CTE (.sql)`,
+          icon: FileCode,
+          disabled: cteOff,
+          items: dialects(downloadCte),
+        },
+        {
+          label: 'Résultat complet en CSV (requête relancée)',
+          icon: DatabaseZap,
+          hint: 'Relance la requête sans la limite de Prisme et suit l’export dans le gestionnaire d’exports, en haut à droite. Les colonnes gardent leur ordre affiché ; le tri et le filtre de la grille ne s’appliquent pas.',
+          onSelect: () => void exportFull(),
+        },
+      ],
     },
     {
-      label: `Copier ${scope} en CTE`,
-      icon: ClipboardCopy,
-      disabled: cteOff,
-      items: dialects(copyCte),
+      label: 'Presse-papiers',
+      items: [
+        {
+          label: `${scope} en CTE`,
+          icon: ClipboardCopy,
+          disabled: cteOff,
+          items: dialects(copyCte),
+        },
+      ],
     },
     {
-      label: `Insérer ${scope} en CTE dans l’éditeur`,
-      icon: TextCursorInput,
-      disabled: cteOff || !readsCte.value,
-      hint:
-        server !== null && !readsCte.value
-          ? `MySQL ${server.version} ne lit pas VALUES ROW (…) : il faut MySQL 8.0.19 ou suivant.`
-          : 'Ajoute la CTE après la dernière requête de l’éditeur, sans l’exécuter, dans le dialecte de son serveur.',
-      onSelect: () => void insertCte(),
-    },
-    {
-      label: 'Résultat complet en CSV (requête relancée)',
-      icon: DatabaseZap,
-      hint: 'Relance la requête sans la limite de Prisme et suit l’export dans le gestionnaire d’exports, en haut à droite. Les colonnes gardent leur ordre affiché ; le tri et le filtre de la grille ne s’appliquent pas.',
-      onSelect: () => void exportFull(),
+      label: 'Éditeur',
+      items: [
+        {
+          label: `${scope} en CTE`,
+          icon: TextCursorInput,
+          disabled: cteOff || !readsCte.value,
+          hint:
+            server !== null && !readsCte.value
+              ? `MySQL ${server.version} ne lit pas VALUES ROW (…) : il faut MySQL 8.0.19 ou suivant.`
+              : 'Ajoute la CTE après la dernière requête de l’éditeur, sans l’exécuter, dans le dialecte de son serveur.',
+          onSelect: () => void insertCte(),
+        },
+      ],
     },
   ]
 })
@@ -471,7 +493,7 @@ async function exportFull(): Promise<void> {
   }
 }
 
-defineExpose({ downloadItems })
+defineExpose({ exportGroups })
 </script>
 
 <template>

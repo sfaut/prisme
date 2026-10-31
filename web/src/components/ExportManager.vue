@@ -120,8 +120,8 @@ function formatUsage(usage: FolderUsage): string {
           <export-item v-for="entry in store.exports" :key="entry.id" :entry="entry" />
         </ul>
         <p v-else class="text-fg-secondary">
-          Aucun export : « Résultat complet en CSV », dans le menu de téléchargement d’un résultat,
-          en lance un.
+          Aucun export : « Résultat complet en CSV », dans le menu « Exporter » d’un résultat, en
+          lance un.
         </p>
       </popover-content>
     </popover-portal>

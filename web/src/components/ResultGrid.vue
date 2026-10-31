@@ -677,7 +677,7 @@ onBeforeUnmount(() => explorer.release(gridId))
 const keptCount = computed(() => view.value.length)
 
 /**
- * Number of rows and columns the selection touches, for the download menu;
+ * Number of rows and columns the selection touches, for the export menu;
  * `null` without a selection.
  */
 const selectedSize = computed(() => selectionSize(selection.value))

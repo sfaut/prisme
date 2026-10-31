@@ -66,23 +66,27 @@ function mountTab(tab: QueryTab, server: ServerInfo | null = MARIADB) {
 }
 
 /**
- * Choice of the download menu of a mounted tab, by the start of its label.
+ * Choice of the export menu of a mounted tab, by the heading of its group and
+ * the start of its label.
  *
  * @param wrapper Mounted tab.
+ * @param group Heading of the group.
  * @param start Start of the label.
  */
-function menuItem(wrapper: ReturnType<typeof mountTab>, start: string) {
-  return wrapper.vm.downloadItems.find((item) => item.label.startsWith(start))
+function menuItem(wrapper: ReturnType<typeof mountTab>, group: string, start: string) {
+  return wrapper.vm.exportGroups
+    .find((candidate) => candidate.label === group)
+    ?.items.find((item) => item.label.startsWith(start))
 }
 
 /**
- * Runs the full export offered by the download menu of a mounted tab.
+ * Runs the full export offered by the export menu of a mounted tab.
  *
  * @param wrapper Mounted tab.
  */
 async function exportFull(wrapper: ReturnType<typeof mountTab>): Promise<void> {
   await nextTick()
-  menuItem(wrapper, 'Résultat complet')?.onSelect?.()
+  menuItem(wrapper, 'Fichier', 'Résultat complet')?.onSelect?.()
   await flushPromises()
 }
 
@@ -151,7 +155,7 @@ describe('QueryTabView', () => {
         ],
       ),
     )
-    const label = () => wrapper.vm.downloadItems[0]?.label
+    const label = () => wrapper.vm.exportGroups[0]?.items[0]?.label
     // The grid counts its rows once mounted: the menu follows on the next render.
     await nextTick()
     expect(label()).toBe('Résultat affiché en CSV (3 lignes)')
@@ -183,22 +187,29 @@ describe('QueryTabView', () => {
     expect(startExport).not.toHaveBeenCalled()
   })
 
-  it('offers the CTE as a file and in the clipboard per dialect, that of the server first', async () => {
+  it('groups the choices by destination, the CTE per dialect, that of the server first', async () => {
     const wrapper = mountTab(threeRows())
     await nextTick()
-    expect(wrapper.vm.downloadItems.map((item) => item.label)).toEqual([
-      'Résultat affiché en CSV (3 lignes)',
-      'Résultat affiché en CTE (.sql)',
-      'Copier le résultat affiché en CTE',
-      'Insérer le résultat affiché en CTE dans l’éditeur',
-      'Résultat complet en CSV (requête relancée)',
+    expect(
+      wrapper.vm.exportGroups.map((group) => [group.label, group.items.map((item) => item.label)]),
+    ).toEqual([
+      [
+        'Fichier',
+        [
+          'Résultat affiché en CSV (3 lignes)',
+          'Résultat affiché en CTE (.sql)',
+          'Résultat complet en CSV (requête relancée)',
+        ],
+      ],
+      ['Presse-papiers', ['Résultat affiché en CTE']],
+      ['Éditeur', ['Résultat affiché en CTE']],
     ])
-    const file = menuItem(wrapper, 'Résultat affiché en CTE')
+    const file = menuItem(wrapper, 'Fichier', 'Résultat affiché en CTE')
     expect(file?.disabled).toBe(false)
     expect(file?.items?.map((item) => item.label)).toEqual(['MariaDB', 'MySQL'])
 
     await wrapper.find('.grid-corner').trigger('mousedown')
-    expect(menuItem(wrapper, 'Copier')?.label).toBe('Copier la sélection en CTE')
+    expect(menuItem(wrapper, 'Presse-papiers', 'Sélection')?.label).toBe('Sélection en CTE')
   })
 
   it('copies the CTE of the chosen dialect to the clipboard', async () => {
@@ -206,7 +217,7 @@ describe('QueryTabView', () => {
     vi.stubGlobal('navigator', { clipboard: { writeText } })
     const wrapper = mountTab(threeRows())
     await nextTick()
-    menuItem(wrapper, 'Copier')?.items?.[1]?.onSelect?.()
+    menuItem(wrapper, 'Presse-papiers', 'Résultat affiché')?.items?.[1]?.onSelect?.()
     await flushPromises()
     expect(writeText).toHaveBeenCalledWith(
       [
@@ -228,7 +239,7 @@ describe('QueryTabView', () => {
   it('hands the CTE of the dialect of its server to the editor', async () => {
     const wrapper = mountTab(threeRows())
     await nextTick()
-    menuItem(wrapper, 'Insérer')?.onSelect?.()
+    menuItem(wrapper, 'Éditeur', 'Résultat affiché')?.onSelect?.()
     await flushPromises()
     expect(wrapper.emitted('insert-cte')?.[0]?.[0]).toBe(
       [
@@ -247,7 +258,7 @@ describe('QueryTabView', () => {
   it('refuses the CTE of columns of the same name', async () => {
     const wrapper = mountTab(finishedTab(['id', 'id'], [['1', '2']]))
     await nextTick()
-    menuItem(wrapper, 'Insérer')?.onSelect?.()
+    menuItem(wrapper, 'Éditeur', 'Résultat affiché')?.onSelect?.()
     await flushPromises()
     expect(wrapper.emitted('insert-cte')).toBeUndefined()
   })
@@ -255,19 +266,20 @@ describe('QueryTabView', () => {
   it('waits for the session and for a row, and for MySQL 8.0.19 to insert', async () => {
     const without = mountTab(threeRows(), null)
     await nextTick()
-    expect(menuItem(without, 'Résultat affiché en CTE')?.disabled).toBe(true)
+    expect(menuItem(without, 'Fichier', 'Résultat affiché en CTE')?.disabled).toBe(true)
 
     const empty = mountTab(finishedTab(['id'], []))
     await nextTick()
-    expect(menuItem(empty, 'Copier')?.disabled).toBe(true)
+    expect(menuItem(empty, 'Presse-papiers', 'Résultat affiché')?.disabled).toBe(true)
 
     const old = mountTab(threeRows(), { ...MARIADB, flavor: 'mysql', version: '8.0.18' })
     await nextTick()
-    expect(menuItem(old, 'Insérer')?.disabled).toBe(true)
-    expect(menuItem(old, 'Insérer')?.hint).toBe(
+    const insert = menuItem(old, 'Éditeur', 'Résultat affiché')
+    expect(insert?.disabled).toBe(true)
+    expect(insert?.hint).toBe(
       'MySQL 8.0.18 ne lit pas VALUES ROW (…) : il faut MySQL 8.0.19 ou suivant.',
     )
-    expect(menuItem(old, 'Résultat affiché en CTE')?.disabled).toBe(false)
+    expect(menuItem(old, 'Fichier', 'Résultat affiché en CTE')?.disabled).toBe(false)
   })
 
   it('makes a targeted filter global for new columns, and keeps it for the same ones', async () => {

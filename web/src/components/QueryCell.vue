@@ -18,7 +18,7 @@
   tab can be renamed, pinned (it stays when the query is run again), closed
   (its query is stopped if it is running) or moved by dragging it, like a
   column of the grid. Its result can be refreshed (button right of the
-  tabs, with the grid's filter and download buttons, side by side with the
+  tabs, with the grid's filter and export buttons, side by side with the
   fold button of the results, as in the console's header): the query runs
   again in the tab, after the running batch if any. Its rows can also be
   written as a CTE after the last query of the editor, without running it.
@@ -238,14 +238,14 @@ function toggleEditor(): void {
 const selectedTab = ref<string | number>(0)
 
 /**
- * Tab shown, whose buttons (refresh, filter, download) stand right of the
+ * Tab shown, whose buttons (refresh, filter, export) stand right of the
  * result tabs.
  */
 const shownTab = computed(() => state.tabs.find((tab) => tab.id === selectedTab.value))
 
 /**
  * Mounted views of the tabs, by tab id: the view of the tab shown gives the
- * choices of its download menu.
+ * choices of its export menu.
  */
 const tabViews = shallowReactive(new Map<number, InstanceType<typeof QueryTabView>>())
 
@@ -894,7 +894,7 @@ defineExpose({
               />
             </tabs-list>
             <!--
-              Buttons of the tab shown (refresh, filter, download), then the
+              Buttons of the tab shown (refresh, filter, export), then the
               fold button, side by side as in the console's header; folded,
               the results keep only the fold button.
             -->
@@ -903,7 +903,7 @@ defineExpose({
                 v-if="shownTab && !isCollapsed"
                 :tab="shownTab"
                 :refresh="refreshState(state, shownTab)"
-                :download="tabViews.get(shownTab.id)?.downloadItems"
+                :export-groups="tabViews.get(shownTab.id)?.exportGroups"
                 @refresh="refresh(shownTab)"
                 @stop-refresh="session.stopRefresh(shownTab)"
                 @toggle-filter="toggleFilter(shownTab)"

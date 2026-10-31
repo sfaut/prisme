@@ -7,18 +7,18 @@
   - User filter, when the tab shows a grid: a funnel, as in the console,
     expands or collapses the filter's form. Collapsed, the filter stays
     applied; the button shows it in the primary color.
-  - Download, when the tab shows a grid: its menu, given by the view of the
-    tab (`QueryTabView.vue`), downloads the selection or the displayed
-    result as CSV, writes it as a CTE (file, clipboard or editor), or exports
-    the full result.
+  - Export, when the tab shows a grid: its menu, given by the view of the
+    tab (`QueryTabView.vue`), groups its choices by destination. In a file,
+    the selection or the displayed result as CSV or as a CTE, or the full
+    result; in the clipboard or in the editor, as a CTE.
 -->
 <script setup lang="ts">
-import { Download, Funnel, RefreshCw, RefreshCwOff } from '@lucide/vue'
+import { Funnel, RefreshCw, RefreshCwOff, Share } from '@lucide/vue'
 import { computed } from 'vue'
 
 import { type QueryTab, type RefreshState, showsGrid } from '@/api/querySession'
 
-import type { MenuItem } from './ui/menuItem'
+import type { MenuGroup } from './ui/menuItem'
 import UiButton from './ui/UiButton.vue'
 import UiDropdownMenu from './ui/UiDropdownMenu.vue'
 import { vTooltip } from './ui/tooltip'
@@ -33,10 +33,10 @@ const props = defineProps<{
    */
   refresh: RefreshState
   /**
-   * Choices of the download menu, given by the view of the tab; absent until
-   * that view is mounted.
+   * Choices of the export menu, by destination, given by the view of the
+   * tab; absent until that view is mounted.
    */
-  download?: MenuItem[]
+  exportGroups?: MenuGroup[]
 }>()
 
 const emit = defineEmits<{
@@ -106,13 +106,7 @@ const filterLabel = computed(
     v-tooltip="filterLabel"
     @click="emit('toggle-filter')"
   />
-  <ui-dropdown-menu v-if="showsGrid(tab) && download" :items="download">
-    <ui-button
-      :icon="Download"
-      variant="ghost"
-      small
-      aria-label="Télécharger"
-      v-tooltip="'Télécharger'"
-    />
+  <ui-dropdown-menu v-if="showsGrid(tab) && exportGroups" :groups="exportGroups">
+    <ui-button :icon="Share" variant="ghost" small aria-label="Exporter" v-tooltip="'Exporter'" />
   </ui-dropdown-menu>
 </template>
