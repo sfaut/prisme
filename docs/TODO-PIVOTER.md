@@ -10,12 +10,13 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 
 ## 2. Engine benchmark (point A1)
 
-- ⬜ Data generator shared by Rust and JavaScript (same pseudo-random generator, fixed seed)
-- ⬜ Rust benchmark, on one thread and on all cores
-- ⬜ JavaScript benchmark under Node (V8)
-- ⬜ Same checksums on both sides
-- ⬜ Runs on 10 million rows, both profiles, with memory
-- ⬜ Results submitted to the maintainer
+- ✅ Data generator shared by Rust and JavaScript (same pseudo-random generator, fixed seed)
+- ✅ Rust benchmark, on one thread and on all cores
+- ✅ JavaScript benchmark under Node (V8)
+- ✅ Same checksums on both sides
+- ✅ One command reproduces it all, from the root of the repository: `node bench/pivot/run.mjs` (see `docs/DEVELOPER.md`, section "Benchmarks")
+- ✅ Runs on 10 million rows, both profiles, with memory
+- ✅ Results submitted to the maintainer
 - ⬜ Engine decided (A1)
 
 ## 3. Corrections of the specification
