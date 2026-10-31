@@ -23,7 +23,7 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Engine decided (A1): Rust compiled to WebAssembly, run in a Worker of the page, on the rows the page already holds; a server and a client of Prisme are expected in the long run, the client doing this work
 - ✅ Reception of a result broken down: database, server, JSON, page, interface (`node bench/store/run.mjs`, `node bench/store/trace.mjs`)
 - ✅ Round trip of the visible rows between the page and a Worker, idle and during the reception
-- ⬜ Results of the store submitted to the maintainer
+- ✅ Results of the store submitted to the maintainer
 
 ## 3. Corrections of the specification
 
