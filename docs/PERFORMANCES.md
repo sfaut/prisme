@@ -747,3 +747,138 @@ repository: `node bench/reload/run.mjs` (1 then 10 million rows, several
 minutes, up to 11 GB of memory for Prisme) or `node bench/reload/run.mjs
 100000`. The results go to `target/reload-bench/results.json`, with the log
 of each server (`server-<rows>.log`).
+
+## 11. Reception of a result, and a store of the rows in a Worker
+
+Benchmark of 2026-10-31, on the real server and in Chrome, before the
+specification of the single store of the results (`docs/QUESTIONS.md`,
+section 2).
+
+### 11.1 Question
+
+Where does the time of the reception of a large result go: database, server,
+transport, page? And can a Worker that holds the rows answer the grid fast
+enough, when it asks for the rows it shows?
+
+### 11.2 Measurement
+
+- `node bench/store/run.mjs [rows...]` (`docs/DEVELOPER.md`, section "Store of
+  the results"): Prisme v0.8.0 built in release, on a throwaway data folder;
+  MariaDB 12.3.3 of the development servers; Chrome 156 without a window,
+  1,600 × 1,000, driven over the DevTools protocol; same machine as
+  chapter 9.
+- The query of chapter 10 (10 columns, 104 MB of JSON per million rows), run
+  five times: by the client of MariaDB in its container, the rows thrown away
+  (database alone); in the interface of Prisme, run by Ctrl+Enter once the
+  interface is quiet; in a page that recognises the messages of rows by their
+  start and throws them away (server and transport); in a page that handles
+  them as `querySession.ts` does, without the interface; in a Worker that
+  keeps them in columns (UTF-8 bytes, offsets, validities, the layout of
+  `bench/pivot/js/transfer.mjs`), while the page asks it, at each frame, for
+  a window of rows at a random place.
+- Processor time of Prisme sampled every 100 ms, that of MariaDB read before
+  and after; main thread of the page by `Performance.getMetrics`, long tasks
+  by a `PerformanceObserver`; memory of the page after a garbage collection.
+- `node bench/store/trace.mjs` traces the interface during the same reception
+  (200,000 rows): own time of each kind of event of the main thread.
+
+1 million rows:
+
+| Step | Interface | Page, rows thrown away | Page, rows handled as the interface | Worker, store in columns |
+|---|---|---|---|---|
+| Last rows received | 33.2 s | 6.6 s | 7.5 s | 7.7 s |
+| `done` received | 37.7 s | 10.3 s | 11.4 s | 11.7 s |
+| Processor of Prisme, rows / save | 10.6 / 4.0 s | 9.4 / 3.3 s | 10.5 / 3.7 s | 11.2 / 3.7 s |
+| Processor of MariaDB | 6.0 s | 5.0 s | 7.4 s | 5.6 s |
+| Handling of the messages | | 0.07 s | 4.4 s | 2.8 s parsing, 1.3 s store |
+| Main thread busy | 34.0 s, scripts 5.1 s, layout 2.0 s | | | |
+| Long tasks: number, longest | 147, 0.17 s | none | 2, 0.10 s | none |
+| Memory of the page, before / after | 10 / 164 MB | 1 / 1 MB | 1 / 139 MB | 1 / 1 MB |
+| Store in columns, used / reserved | | | | 122 / 161 MB |
+
+The database alone runs the query in 3.6 s, with 3.5 s of processor. A first
+run gave 36.6 s for the interface and 6.9 to 7.5 s for the other steps.
+
+Windows of visible rows asked to the Worker (1 million rows, 1,002 frames):
+
+| Windows | Number | Median | 95th percentile | 99th percentile | Longest |
+|---|---|---|---|---|---|
+| 50 rows, during the reception | 429 | 2.0 ms | 9.7 ms | 16.1 ms | 20.1 ms |
+| 50 rows, Worker idle | 391 | 0.6 ms | 1.2 ms | 1.5 ms | 22.1 ms |
+| 1,000 rows, Worker idle | 168 | 3.0 ms | 7.3 ms | 10.8 ms | 10.8 ms |
+
+Main thread of the interface while it receives 200,000 rows (last rows after
+5.4 s, main thread busy 5.8 s):
+
+| Work | Events | Own time | Share |
+|---|---|---|---|
+| Microtasks (updates of Vue) | 157 | 1.45 s | 25 % |
+| Layers (`Layerize`) | 181 | 1.06 s | 18 % |
+| Scripts called by the page (messages, timers) | 1,361 | 0.95 s | 16 % |
+| Painting | 535 | 0.68 s | 12 % |
+| Layout | 246 | 0.42 s | 7 % |
+| Running of the tasks | 2,126 | 0.31 s | 5 % |
+| Styles, pre-painting, commit, messages of the browser | | 0.64 s | 12 % |
+
+### 11.3 Analysis
+
+- **The server sets the floor**: 6.6 s per million rows, rows thrown away by
+  the page. Through the network of Docker, the thread of MariaDB works 5.0 to
+  7.4 s, against 3.5 s when its client runs in the container: it is busy 73 to
+  98 % of the reception. Prisme works 9.4 to 11.2 s over the same time, on
+  several threads. The share of each in the floor is not told apart here.
+- **Parsing in a page does not lengthen the reception**: 4.4 s of main thread
+  per million rows, done while the server sends (7.5 s, within the spread of
+  the steps, 6.6 to 7.7 s).
+- **The interface makes the reception 5 times slower** (33.2 s). Its main
+  thread is busy 34 s of the 39.7 s from Ctrl+Enter to the drawing after
+  `done`, and Chrome reads the WebSocket only as fast as the page takes its
+  messages: the server waits, its processor time is the same as elsewhere,
+  spread over 33 s. Each update of the interface, at most 10 per second, costs the updates of Vue (25 %), drawing (layers, painting,
+  layout, styles: about 45 %) and the handling of the messages (16 %). The
+  interface stays usable (longest task 0.17 s), and slows down.
+- **The Worker receives at the speed of the server** (7.7 s), parses and
+  stores on its own thread (4.2 s), and leaves the main thread without any
+  long task. It answers a window of 50 rows in 0.6 ms (median), 2.0 ms during
+  the reception, where a window can wait for the batch being stored (20 ms at
+  most); 1,000 rows, 3.0 ms. A frame lasts 16.7 ms.
+- **Stored as text, the cells save little memory**: 122 MB in columns against
+  139 MB as JavaScript rows (164 MB with the interface). The offsets weigh
+  40 MB (4 bytes per cell). The typed columns of the Pivoteur take 0.09 GB per
+  million rows of its data (chapter 9), but the store must give back the exact
+  text of each cell.
+- Chrome without a window draws in software (chapter 8): the figures of the
+  drawing compare steps measured alike.
+
+### 11.4 Consequences
+
+- The second stage of the single store (the Worker owns the WebSocket of the
+  session) takes the reception off the main thread: it no longer waits for
+  the interface.
+- The cost of each update of the interface during a reception (Vue, drawing)
+  remains, with or without the store; it is a lead of its own.
+- The layout of the cells in the store (text, dictionary of the repeated
+  values, typed values that give back their exact text) is set with the lot 1
+  of the Pivoteur.
+
+These points are open in `docs/QUESTIONS.md` (section 2, single store of the
+results).
+
+### 11.5 Takeaways
+
+- **Measure in the real interface**: a page that does the same handling
+  without the interface receives 5 times faster, and hides the cost.
+- **The slowest reader sets the pace**: the WebSocket of Chrome holds the
+  server back as long as the main thread is busy.
+- **A store in a Worker answers within a frame**, even while it receives.
+
+### 11.6 Measuring again
+
+The development servers started (`docker compose up --detach --wait`) and
+the interface built (`npm run build` in `web/`), from the root of the
+repository: `node bench/store/run.mjs` (1 million rows, a few minutes) or
+`node bench/store/run.mjs 100000`; `node bench/store/trace.mjs` for the
+trace of the interface (200,000 rows). The results go to
+`target/store-bench/results-<rows>.json`, the trace to
+`target/store-bench/trace-<rows>.json`, which the Performance panel of
+DevTools opens.
