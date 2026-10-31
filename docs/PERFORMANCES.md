@@ -558,3 +558,192 @@ list, flat by nature, cannot give.
 5. Time each click until the expected line is in the page, then one frame.
    In the virtual tree, the number of lines in the page does not grow when a
    folder opens: wait for a given line, or read the long tasks.
+
+## 9. Engine of the Pivoteur: native, WebAssembly, JavaScript
+
+Benchmark of 2026-10-31, before the specification of the Pivoteur (the local
+pivot table under the result grid, `docs/TODO-PIVOTER.md`).
+
+### 9.1 Question
+
+The Pivoteur groups and aggregates a result already received. Where, and in
+what, should its engine run (point A1 of the specification): in the server,
+in Rust, or in the page, in Rust compiled to WebAssembly or in TypeScript,
+both run by V8?
+
+### 9.2 Measurement
+
+- `node bench/pivot/run.mjs [rows]` (`docs/DEVELOPER.md`, section "Engine of
+  the Pivoteur"): three sides, in processes of their own, on the same rows.
+- Intel Core Ultra 7 155H (22 logical cores), 33.8 GB, Windows 11, Node
+  26.7.0, Rust 1.99.1.
+- Rows generated alike on every side (Mulberry32, seed 42), as text cells,
+  the way they arrive: `pays` (10 values), `region` (50), `categorie` (20),
+  `produit` (1,000), `canal` (4), `d` (datetime, 2024 to 2026), `qte`
+  (integer, 5 % of NULL), `montant` (decimal with 2 digits), `remise`
+  (float), `client` (100,000).
+- Pivot: columns `YEAR(d)`, `MONTH(d)`; rows on 4 levels, in two profiles,
+  "high" (`pays`, `region`, `categorie`, `produit`) and "low" (`canal` in place
+  of `produit`); all the subtotals and totals, that is 15 grouping sets;
+  12 measures (`COUNT(*)`, `COUNT(qte)`, `SUM(qte)`, `SUM(montant)`,
+  `AVG(montant)`, `AVG(remise)`, `MIN` and `MAX` of `montant`, `d` and
+  `client`).
+- Preparation once per result (dictionaries of the texts, exact numbers
+  scaled to integers), first pass measured; pivot, best of 3 passes. The
+  WebAssembly side measures apart the copy of the cells into the memory of
+  the module. Every side gives the same pivot (groups, sizes of the grouping
+  sets, checksums of the states, grand total).
+
+10 million rows:
+
+| Step | Native, one thread | Native, all threads | WebAssembly | JavaScript |
+|---|---|---|---|---|
+| Copy of the cells into the module | | | 11.3 s | |
+| Preparation | 15.0 s | 6.1 s | 8.0 s | 41.9 s |
+| Pivot "high" (2,035,319 groups) | 5.2 s | 2.3 s | 4.9 s | 33.3 s |
+| Pivot "low" (202,440 groups) | 1.6 s | 0.95 s | 1.8 s | 9.4 s |
+| Peak memory | 7.25 GB | | 3.47 GB, module 1.13 GB | 4.02 GB |
+| JSON of the whole pivot, "high" / "low" | 304 MB in 4.1 s / 31 MB in 0.35 s | | | |
+
+1 million rows:
+
+| Step | Native, one thread | Native, all threads | WebAssembly | JavaScript |
+|---|---|---|---|---|
+| Copy of the cells into the module | | | 0.63 s | |
+| Preparation | 1.15 s | 0.47 s | 0.60 s | 1.25 s |
+| Pivot "high" (1,009,005 groups) | 0.39 s | 0.21 s | 0.46 s | 1.73 s |
+| Pivot "low" (202,290 groups) | 0.22 s | 0.11 s | 0.22 s | 0.58 s |
+| Peak memory | 1.27 GB | | 0.64 GB, module 0.23 GB | 0.86 GB |
+| JSON of the whole pivot, "high" / "low" | 144 MB in 1.6 s / 30 MB in 0.38 s | | | |
+
+Memory: private bytes for the native side, resident set for the others. The
+rows as JavaScript strings take 2.05 GB of V8 heap at 10 million rows
+(0.23 GB at 1 million); the typed columns of the module, 0.92 GB (0.09 GB).
+The memory of a WebAssembly module never shrinks. Timings vary up to 40 %
+from one run to the next on this laptop: the sides are compared within the
+same run.
+
+### 9.3 Analysis
+
+- **WebAssembly on one thread runs as fast as native on one thread** for
+  the pivot (4.9 s against 5.2 s at 10 million rows), and prepares faster
+  (8.0 s against 15.0 s): it reads each column from contiguous bytes, where
+  the native side reads its cells row by row, one string allocated per cell.
+- **JavaScript is 4 to 7 times slower than WebAssembly** on the pivot, and 5
+  times on the preparation at 10 million rows.
+- **Native on all threads halves the time of one thread**, but its pivot
+  must then reach the page: 304 MB of JSON for "high" at 10 million rows,
+  4.1 s to write alone, or windows of the visible lines asked as the user
+  scrolls.
+- **The copy of the cells into the module costs about as much as the
+  preparation** (11.3 s at 10 million rows). A first version took 1.85 s at
+  1 million rows: a first pass summed the lengths of the cells (0.42 s), on
+  top of the reading of the cells themselves (0.42 s for 10 columns). The
+  size reserved is now estimated from the first block, then grows if needed:
+  0.63 s. SIMD (`simd128`) gave no measurable gain at 1 million rows, and is
+  not enabled.
+
+### 9.4 Decision
+
+Engine in Rust compiled to WebAssembly, run in a Worker of the page, on the
+rows the page already holds (2026-10-31). Prisme runs locally, so an engine
+in the server spares no network; a server and a client of Prisme are
+expected in the long run, the client doing this work. The engine stays a
+crate independent of its target (native and `wasm32`), as in `bench/pivot`
+(`engine/` shared by `native/` and `wasm/`).
+
+### 9.5 Takeaways
+
+- **The layout of the data weighs as much as the language**: columns of
+  contiguous bytes beat cells allocated one by one.
+- **WebAssembly runs on one thread** here: the parallelism of the native
+  side is lost (2.3 s against 4.9 s for "high" at 10 million rows).
+- **The copy of the cells is the remaining cost**: it goes once the rows
+  reach the memory of the module directly (single store of the results,
+  `docs/QUESTIONS.md`, section 2).
+
+### 9.6 Measuring again
+
+`node bench/pivot/run.mjs` (10 million rows, several minutes, up to 8 GB of
+memory) or `node bench/pivot/run.mjs 1000000`, from the root of the
+repository. The command builds the Rust sides, adds the WebAssembly target
+of the toolchain when missing, checks the pivots, prints the table and
+writes the results to `target/pivot-bench/results-<rows>.json`.
+
+## 10. Saved results: their save and their reading again
+
+Benchmark of 2026-10-31, on the real server.
+
+### 10.1 Question
+
+The rows of a result exist in three places: in the page (every result tab of
+every open editor; the editors stay mounted, so coming back to a tab reads
+nothing again); in the memory of the server, for the last batch of each
+editor (`recorder.rs`); in the internal database, for every tab, as one JSON
+value (`rows` of `result_tabs`). The page reads them again on opening, on a
+reload and on a reconnection: all the tabs of the editor, with all their
+rows, in one answer (`GET /api/editors/{id}/results`). What do the save and
+this reading cost, for large results?
+
+### 10.2 Measurement
+
+- `node bench/reload/run.mjs [rows...]` (`docs/DEVELOPER.md`, section "Saved
+  results"): Prisme v0.8.0 built in release, on a throwaway data folder;
+  MariaDB 12.3.3 of the development servers (port 3322); a query of N rows
+  of 10 columns like those of chapter 9 (`seq_1_to_N` of the sequence
+  engine), with its own `LIMIT`; client under Node, over the WebSocket of
+  the session.
+- Same machine as chapter 9.
+
+| Step | 100,000 rows | 1,000,000 rows | 10,000,000 rows |
+|---|---|---|---|
+| JSON of the rows | 10.4 MB | 104 MB | about 1.04 GB |
+| Rows received (last batch) | 0.43 s | 8.3 s | 68 to 72 s |
+| Save, before `done` | 0.36 s | 3.3 s | fails after 37 to 46 s |
+| Reading again: answer of the server | 0.26 s | 3.0 s | empty tab |
+| Reading again: download | 0.05 s | 0.55 s | |
+| Reading again: parsing by the client | 0.18 s | 2.5 s | |
+| Peak memory of the server | | 1.3 GB | 10.8 GB |
+
+The answer of the server includes the reading of the internal database, the
+parsing of the JSON and its writing again. The 10 million rows were measured
+twice.
+
+### 10.3 Causes
+
+- **The save fails beyond 1,000,000,000 bytes**: SQLite caps a value at this
+  size (`SQLITE_MAX_LENGTH`, "string or blob too big"). The recorder only
+  logs a warning ("result not saved"); the tab keeps no rows, and the
+  result is gone at the next opening of Prisme.
+- **Even saved, it could not be read again in one answer**: 1.04 GB exceeds
+  the maximum length of a string in V8, 536,870,888 characters
+  (`buffer.constants.MAX_STRING_LENGTH` under Node 26).
+- **The memory of the server** holds the rows of the last batch, their copy
+  for the save, then their JSON: 10.8 GB at 10 million rows.
+- **The save delays `done`**: the server ends it before announcing the end
+  of the query, so the interface shows the query as running 3.3 s longer
+  per million rows.
+
+### 10.4 Decision
+
+Question 32 of `docs/QUESTIONS.md`, to do later (leads: rows saved and read
+again in chunks, a failed save shown to the user). For the Pivoteur, the
+engine runs in the page on the rows it holds (chapter 9): nothing to read
+again as long as the page is open.
+
+### 10.5 Takeaways
+
+- **Reading a saved tab again costs about 6 s per million rows** of this
+  shape (3.0 + 0.55 + 2.5 s), at each opening of Prisme, for each large tab
+  of the open editors.
+- **A failed save must not stay silent**: the user learns it only at the
+  next opening, when the tab comes back empty.
+
+### 10.6 Measuring again
+
+The development servers started (`docker compose up --detach --wait`) and
+the interface built (`npm run build` in `web/`), from the root of the
+repository: `node bench/reload/run.mjs` (1 then 10 million rows, several
+minutes, up to 11 GB of memory for Prisme) or `node bench/reload/run.mjs
+100000`. The results go to `target/reload-bench/results.json`, with the log
+of each server (`server-<rows>.log`).
