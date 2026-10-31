@@ -1,43 +1,56 @@
-//! Benchmark of the Pivoteur's engine (point A1 of its specification), Rust side.
+//! Engine of the benchmark of the Pivoteur (point A1 of its specification),
+//! shared by the native side (`../native`, run in the server) and the
+//! WebAssembly side (`../wasm`, run in the page).
 //!
-//! Generates the rows of a result as text cells, as the server receives them
-//! (`Option<String>`), prepares typed columns once, then computes the pivot
-//! several times: 4 row levels, 2 column levels (`YEAR(d)`, `MONTH(d)`),
-//! 12 measures, every subtotal and total. Each computation runs on one thread,
-//! then with the levels and the measures spread over threads. The JavaScript
-//! side (`../js/bench.mjs`) generates the same rows and must give the same
-//! checksums; `../run.mjs` runs both and compares them.
+//! Reads the text cells of a result into typed columns, once, then computes
+//! the pivot: 4 row levels, 2 column levels (`YEAR(d)`, `MONTH(d)`),
+//! 12 measures, every subtotal and total. The code has the shape of a generic
+//! engine: each level and each measure is an expression evaluated over whole
+//! columns, the groups are found through a hash table, and the totals merge
+//! the states of the finer groups. The JavaScript side (`../js/bench.mjs`)
+//! has the same shape, phase by phase, and must give the same checksums.
 //!
-//! The code has the shape of a generic engine: each level and each measure is
-//! an expression evaluated over whole columns, the groups are found through a
-//! hash table, and the totals merge the states of the finer groups.
-//!
-//! Progress goes to stderr, the results to stdout, as one JSON object.
+//! Columns of the generated result: `pays`, `region`, `categorie`, `produit`,
+//! `canal`, `d` (datetime), `qte` (integer), `montant` (decimal with
+//! 2 digits), `remise` (float), `client`.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::hash::{BuildHasherDefault, Hasher};
 use std::thread;
-use std::time::Instant;
 
-/// Cell of a result, as the server receives it: text, or `None` for NULL.
-type Cell = Option<String>;
+/// Number of columns of the generated result.
+pub const COLUMNS: usize = 10;
 
-/// Number of passes of each computation; the fastest one is kept.
-const PASSES: usize = 3;
+/// Profiles of the benchmark: name, and columns of the row levels, the
+/// outermost first.
+pub const PROFILES: [(&str, [usize; 4]); 2] = [
+    ("high", [0, 1, 2, 3]), // pays, region, categorie, produit
+    ("low", [0, 1, 2, 4]),  // pays, region, categorie, canal
+];
 
-/// Seed of the pseudo-random generator, shared with the JavaScript side.
-const SEED: u32 = 42;
+/// Seconds elapsed since the first call, to measure durations.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn seconds() -> f64 {
+    use std::sync::OnceLock;
+    use std::time::Instant;
 
-/// Days from 1970-01-01 to 2024-01-01, start of the dates of the rows.
-const START_DAYS: i64 = 19_723;
+    static START: OnceLock<Instant> = OnceLock::new();
+    START.get_or_init(Instant::now).elapsed().as_secs_f64()
+}
 
-/// Span of the dates of the rows: 1,096 days (2024 to 2026), in seconds.
-const SPAN_SECONDS: u32 = 1_096 * 86_400;
-
-/// Sales channels, values of the `canal` column.
-const CHANNELS: [&str; 4] = ["web", "magasin", "telephone", "partenaire"];
+/// Seconds given by the clock of the page, imported by the module:
+/// `std::time::Instant` has no clock on `wasm32-unknown-unknown`.
+#[cfg(target_arch = "wasm32")]
+pub fn seconds() -> f64 {
+    #[link(wasm_import_module = "env")]
+    unsafe extern "C" {
+        /// `performance.now()`, in milliseconds.
+        safe fn now() -> f64;
+    }
+    now() / 1000.0
+}
 
 /// Hasher of rustc (FxHash): the table of the groups needs a fast hash; the
 /// default one (SipHash) resists collision attacks, which the pivot does not
@@ -97,26 +110,6 @@ impl Hasher for FxHasher {
 /// Hash table with the fast hasher.
 type FxMap<K, V> = HashMap<K, V, BuildHasherDefault<FxHasher>>;
 
-/// Pseudo-random generator Mulberry32, written the same way on the
-/// JavaScript side, so that both generate the same rows.
-struct Rng(u32);
-
-impl Rng {
-    /// Next number, between 0 and 2^32 - 1.
-    fn next(&mut self) -> u32 {
-        self.0 = self.0.wrapping_add(0x6d2b_79f5);
-        let a = self.0;
-        let mut t = (a ^ (a >> 15)).wrapping_mul(1 | a);
-        t = t.wrapping_add((t ^ (t >> 7)).wrapping_mul(61 | t)) ^ t;
-        t ^ (t >> 14)
-    }
-
-    /// Next number, between 0 and `bound` - 1.
-    fn below(&mut self, bound: u32) -> u32 {
-        self.next() % bound
-    }
-}
-
 /// Days since 1970-01-01 of a date of the civil calendar (H. Hinnant's
 /// algorithm).
 fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
@@ -130,7 +123,7 @@ fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
 
 /// Date of the civil calendar of a number of days since 1970-01-01, as
 /// (year, month, day).
-fn civil_from_days(days: i64) -> (i64, i64, i64) {
+pub fn civil_from_days(days: i64) -> (i64, i64, i64) {
     let days = days + 719_468;
     let era = days.div_euclid(146_097);
     let day_of_era = days - era * 146_097;
@@ -158,84 +151,49 @@ fn month_of(days: i64) -> i64 {
     civil_from_days(days).1
 }
 
-/// Generates the rows: `pays`, `region`, `categorie`, `produit`, `canal`, `d`
-/// (datetime), `qte` (integer, 5 % of NULL), `montant` (decimal with 2 digits),
-/// `remise` (float), `client`.
-fn generate(count: usize) -> Vec<Vec<Cell>> {
-    let mut rng = Rng(SEED);
-    let mut rows = Vec::with_capacity(count);
-    for _ in 0..count {
-        let country = rng.below(10);
-        let region = rng.below(5);
-        let category = rng.below(20);
-        let product = rng.below(50);
-        let channel = rng.below(4);
-        let seconds = i64::from(rng.below(SPAN_SECONDS));
-        let quantity = if rng.below(20) == 0 {
-            None
-        } else {
-            Some(1 + rng.below(100))
-        };
-        let cents = 1 + rng.below(9_999_999);
-        let discount = rng.below(500_000);
-        let client = rng.below(100_000);
-        let (year, month, day) = civil_from_days(START_DAYS + seconds / 86_400);
-        let time = seconds % 86_400;
-        rows.push(vec![
-            Some(format!("P{country}")),
-            Some(format!("P{country}-R{region}")),
-            Some(format!("Cat{category:02}")),
-            Some(format!("Cat{category:02}-P{product:02}")),
-            Some(CHANNELS[channel as usize].to_owned()),
-            Some(format!(
-                "{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02}",
-                time / 3_600,
-                time / 60 % 60,
-                time % 60
-            )),
-            quantity.map(|quantity| quantity.to_string()),
-            Some(format!("{}.{:02}", cents / 100, cents % 100)),
-            Some(format!("0.{discount:06}")),
-            Some(format!("C{client:06}")),
-        ]);
-    }
-    rows
+/// Text cells of one column of a result, whatever their layout in memory.
+pub trait Column {
+    /// Number of rows.
+    fn rows(&self) -> usize;
+
+    /// Cells, in the order of the rows: text, or `None` for NULL.
+    fn cells(&self) -> impl Iterator<Item = Option<&str>>;
 }
 
 /// Text column encoded as a dictionary: one code per row, one value per code.
-struct Dictionary {
+pub struct Dictionary {
     /// Code of each row.
-    codes: Vec<u32>,
+    pub codes: Vec<u32>,
     /// Value of each code, in the order of their first appearance; NULL has
     /// its own code.
-    values: Vec<String>,
+    pub values: Vec<String>,
 }
 
 /// Column of exact numbers (integers, decimals scaled to integers, seconds),
 /// with the validity of each row (0 for NULL or an invalid value).
-struct Exact {
+pub struct Exact {
     /// Value of each row.
-    values: Vec<i64>,
+    pub values: Vec<i64>,
     /// Validity of each row.
-    valid: Vec<u8>,
+    pub valid: Vec<u8>,
 }
 
 /// Column of floats, with the validity of each row.
-struct Approx {
+pub struct Approx {
     /// Value of each row.
-    values: Vec<f64>,
+    pub values: Vec<f64>,
     /// Validity of each row.
-    valid: Vec<u8>,
+    pub valid: Vec<u8>,
 }
 
 /// Encodes a text column as a dictionary.
-fn dictionary(rows: &[Vec<Cell>], column: usize) -> Dictionary {
+fn dictionary(column: &impl Column) -> Dictionary {
     let mut index: FxMap<&str, u32> = FxMap::default();
     let mut values: Vec<String> = Vec::new();
     let mut null_code = None;
-    let mut codes = Vec::with_capacity(rows.len());
-    for row in rows {
-        let code = match row[column].as_deref() {
+    let mut codes = Vec::with_capacity(column.rows());
+    for cell in column.cells() {
+        let code = match cell {
             Some(text) => *index.entry(text).or_insert_with(|| {
                 values.push(text.to_owned());
                 (values.len() - 1) as u32
@@ -251,14 +209,11 @@ fn dictionary(rows: &[Vec<Cell>], column: usize) -> Dictionary {
 }
 
 /// Reads a column of exact numbers; an invalid value becomes NULL.
-fn exact(rows: &[Vec<Cell>], column: usize, parse: impl Fn(&[u8]) -> Option<i64>) -> Exact {
-    let mut values = Vec::with_capacity(rows.len());
-    let mut valid = Vec::with_capacity(rows.len());
-    for row in rows {
-        match row[column]
-            .as_deref()
-            .and_then(|text| parse(text.as_bytes()))
-        {
+fn exact(column: &impl Column, parse: impl Fn(&[u8]) -> Option<i64>) -> Exact {
+    let mut values = Vec::with_capacity(column.rows());
+    let mut valid = Vec::with_capacity(column.rows());
+    for cell in column.cells() {
+        match cell.and_then(|text| parse(text.as_bytes())) {
             Some(value) => {
                 values.push(value);
                 valid.push(1);
@@ -273,14 +228,11 @@ fn exact(rows: &[Vec<Cell>], column: usize, parse: impl Fn(&[u8]) -> Option<i64>
 }
 
 /// Reads a column of floats; an invalid value becomes NULL.
-fn approx(rows: &[Vec<Cell>], column: usize) -> Approx {
-    let mut values = Vec::with_capacity(rows.len());
-    let mut valid = Vec::with_capacity(rows.len());
-    for row in rows {
-        match row[column]
-            .as_deref()
-            .and_then(|text| text.parse::<f64>().ok())
-        {
+fn approx(column: &impl Column) -> Approx {
+    let mut values = Vec::with_capacity(column.rows());
+    let mut valid = Vec::with_capacity(column.rows());
+    for cell in column.cells() {
+        match cell.and_then(|text| text.parse::<f64>().ok()) {
             Some(value) => {
                 values.push(value);
                 valid.push(1);
@@ -383,81 +335,149 @@ fn ranks(values: &[String]) -> Vec<u32> {
     rank
 }
 
-/// Typed columns of the result, read once from the text cells.
-struct Prepared {
-    /// `pays`, `region`, `categorie`, `produit`, `canal`.
-    levels: Vec<Dictionary>,
-    /// `client`.
-    client: Dictionary,
-    /// `d`, in seconds.
-    date: Exact,
-    /// `qte`.
-    quantity: Exact,
-    /// `montant`, in hundredths.
-    amount: Exact,
-    /// `remise`.
-    discount: Approx,
-    /// Rank of the `client` of each row, in the binary order of the texts.
-    client_rank: Exact,
+/// Typed column, read from the text cells of a column of the result.
+pub enum Typed {
+    /// Text, encoded as a dictionary.
+    Dictionary(Dictionary),
+    /// Exact numbers.
+    Exact(Exact),
+    /// Floats.
+    Approx(Approx),
 }
 
-/// Reads the typed columns, one column per thread if `parallel`.
-fn prepare(rows: &[Vec<Cell>], parallel: bool) -> Prepared {
-    let client_rank = |client: &Dictionary| {
+impl Typed {
+    /// Dictionary of a text column.
+    fn into_dictionary(self) -> Dictionary {
+        match self {
+            Typed::Dictionary(dictionary) => dictionary,
+            _ => panic!("text column expected"),
+        }
+    }
+
+    /// Values of a column of exact numbers.
+    fn into_exact(self) -> Exact {
+        match self {
+            Typed::Exact(column) => column,
+            _ => panic!("column of exact numbers expected"),
+        }
+    }
+
+    /// Values of a column of floats.
+    fn into_approx(self) -> Approx {
+        match self {
+            Typed::Approx(column) => column,
+            _ => panic!("column of floats expected"),
+        }
+    }
+}
+
+/// Reads column `index` of the generated result as its type requires.
+pub fn read_column(index: usize, column: &impl Column) -> Typed {
+    match index {
+        5 => Typed::Exact(exact(column, parse_datetime)),
+        6 => Typed::Exact(exact(column, parse_integer)),
+        7 => Typed::Exact(exact(column, |text| parse_decimal(text, 2))),
+        8 => Typed::Approx(approx(column)),
+        _ => Typed::Dictionary(dictionary(column)),
+    }
+}
+
+/// Typed columns of the result, read once from the text cells.
+pub struct Prepared {
+    /// `pays`, `region`, `categorie`, `produit`, `canal`.
+    pub levels: Vec<Dictionary>,
+    /// `client`.
+    pub client: Dictionary,
+    /// `d`, in seconds.
+    pub date: Exact,
+    /// `qte`.
+    pub quantity: Exact,
+    /// `montant`, in hundredths.
+    pub amount: Exact,
+    /// `remise`.
+    pub discount: Approx,
+    /// Rank of the `client` of each row, in the binary order of the texts.
+    pub client_rank: Exact,
+}
+
+impl Prepared {
+    /// Assembles the typed columns of the result, given in the order of its
+    /// columns, and ranks the values of `client`.
+    pub fn new(columns: Vec<Typed>) -> Self {
+        assert_eq!(columns.len(), COLUMNS, "one typed column per column");
+        let mut columns = columns.into_iter();
+        let mut next = move || columns.next().expect("one typed column per column");
+        let levels = (0..5).map(|_| next().into_dictionary()).collect();
+        let date = next().into_exact();
+        let quantity = next().into_exact();
+        let amount = next().into_exact();
+        let discount = next().into_approx();
+        let client = next().into_dictionary();
         let rank = ranks(&client.values);
-        Exact {
+        let client_rank = Exact {
             values: client
                 .codes
                 .iter()
                 .map(|&code| i64::from(rank[code as usize]))
                 .collect(),
             valid: vec![1; client.codes.len()],
-        }
-    };
-    if !parallel {
-        let client = dictionary(rows, 9);
-        let client_rank = client_rank(&client);
-        return Prepared {
-            levels: (0..5).map(|column| dictionary(rows, column)).collect(),
-            client,
-            date: exact(rows, 5, parse_datetime),
-            quantity: exact(rows, 6, parse_integer),
-            amount: exact(rows, 7, |text| parse_decimal(text, 2)),
-            discount: approx(rows, 8),
-            client_rank,
         };
-    }
-    thread::scope(|scope| {
-        let levels: Vec<_> = (0..5)
-            .map(|column| scope.spawn(move || dictionary(rows, column)))
-            .collect();
-        let client = scope.spawn(|| {
-            let client = dictionary(rows, 9);
-            let rank = client_rank(&client);
-            (client, rank)
-        });
-        let date = scope.spawn(|| exact(rows, 5, parse_datetime));
-        let quantity = scope.spawn(|| exact(rows, 6, parse_integer));
-        let amount = scope.spawn(|| exact(rows, 7, |text| parse_decimal(text, 2)));
-        let discount = scope.spawn(|| approx(rows, 8));
-        let (client, client_rank) = client.join().unwrap();
         Prepared {
-            levels: levels
-                .into_iter()
-                .map(|handle| handle.join().unwrap())
-                .collect(),
+            levels,
             client,
-            date: date.join().unwrap(),
-            quantity: quantity.join().unwrap(),
-            amount: amount.join().unwrap(),
-            discount: discount.join().unwrap(),
+            date,
+            quantity,
+            amount,
+            discount,
             client_rank,
         }
-    })
+    }
+
+    /// Values of `client` in the binary order of the texts: the text of each
+    /// rank.
+    pub fn ranked(&self) -> Vec<&str> {
+        let rank = ranks(&self.client.values);
+        let mut ranked = vec![""; rank.len()];
+        for (code, &position) in rank.iter().enumerate() {
+            ranked[position as usize] = &self.client.values[code];
+        }
+        ranked
+    }
+
+    /// Measures of the benchmark, with the type of their values.
+    pub fn labels(&self) -> Vec<(Measure<'_>, Format)> {
+        vec![
+            (Measure::CountStar, Format::Integer),
+            (Measure::Count(&self.quantity), Format::Integer),
+            (Measure::Sum(&self.quantity), Format::Integer),
+            (Measure::Sum(&self.amount), Format::Decimal(2)),
+            (Measure::Avg(&self.amount), Format::Decimal(2)),
+            (Measure::AvgFloat(&self.discount), Format::Float),
+            (Measure::Min(&self.amount), Format::Decimal(2)),
+            (Measure::Max(&self.amount), Format::Decimal(2)),
+            (Measure::Min(&self.date), Format::Datetime),
+            (Measure::Max(&self.date), Format::Datetime),
+            (Measure::Min(&self.client_rank), Format::Text),
+            (Measure::Max(&self.client_rank), Format::Text),
+        ]
+    }
+
+    /// Levels of the rows of a profile.
+    pub fn row_levels(&self, columns: &[usize]) -> Vec<Level<'_>> {
+        columns
+            .iter()
+            .map(|&column| Level::Column(&self.levels[column]))
+            .collect()
+    }
+
+    /// Levels of the columns: `YEAR(d)`, `MONTH(d)`.
+    pub fn column_levels(&self) -> [Level<'_>; 2] {
+        [Level::Year(&self.date), Level::Month(&self.date)]
+    }
 }
 
 /// Expression of a level: a text column, or a part of a date.
-enum Level<'a> {
+pub enum Level<'a> {
     /// Text column, already encoded.
     Column(&'a Dictionary),
     /// `YEAR(d)`.
@@ -503,7 +523,7 @@ fn evaluate<'a>(level: &Level<'a>) -> (Cow<'a, [u32]>, u64) {
 
 /// Expression of a measure.
 #[derive(Clone, Copy)]
-enum Measure<'a> {
+pub enum Measure<'a> {
     /// `COUNT(*)`.
     CountStar,
     /// `COUNT(x)`.
@@ -521,7 +541,7 @@ enum Measure<'a> {
 }
 
 /// States of a measure, one per group.
-enum State {
+pub enum State {
     /// Count.
     Count(Vec<u64>),
     /// Exact sum and count of the values.
@@ -544,16 +564,16 @@ struct Grouping {
 }
 
 /// Computed pivot.
-struct Pivot {
+pub struct Pivot {
     /// Number of groups, all grouping sets included.
-    groups: usize,
+    pub groups: usize,
     /// First group and number of groups of each grouping set, by number of
     /// row levels then of column levels kept.
-    sets: Vec<Vec<(usize, usize)>>,
+    pub sets: Vec<Vec<(usize, usize)>>,
     /// States of each measure.
-    states: Vec<State>,
+    pub states: Vec<State>,
     /// Durations in seconds: levels, groups, grouping sets, measures.
-    phases: [f64; 4],
+    pub phases: [f64; 4],
 }
 
 /// Merges the states of each grouping set into those of the coarser one, by
@@ -664,19 +684,20 @@ fn product(cards: &[u64]) -> u64 {
     cards.iter().product()
 }
 
-/// Computes the pivot, every subtotal and total included.
+/// Computes the pivot, every subtotal and total included, with the levels and
+/// the measures spread over threads if `parallel`.
 ///
 /// Phases: the levels give a code per row; the codes of a row, read in a
 /// mixed radix, give the key of its finest group, numbered through a hash
 /// table; each grouping set is built from a finer one (rows, then columns);
 /// each measure fills its states, then merges them set by set.
-fn compute(
+pub fn compute(
     row_levels: &[Level],
     column_levels: &[Level],
     measures: &[Measure],
     parallel: bool,
 ) -> Pivot {
-    let started = Instant::now();
+    let started = seconds();
     let levels: Vec<&Level> = row_levels.iter().chain(column_levels).collect();
     let evaluated: Vec<(Cow<[u32]>, u64)> = if parallel {
         thread::scope(|scope| {
@@ -694,9 +715,9 @@ fn compute(
     };
     let cards: Vec<u64> = evaluated.iter().map(|(_, card)| *card).collect();
     let codes: Vec<&[u32]> = evaluated.iter().map(|(codes, _)| codes.as_ref()).collect();
-    let levels_done = started.elapsed().as_secs_f64();
+    let levels_done = seconds() - started;
 
-    let started = Instant::now();
+    let started = seconds();
     let rows = codes[0].len();
     let mut index: FxMap<u64, u32> = FxMap::default();
     let mut keys: Vec<u64> = Vec::new();
@@ -714,9 +735,9 @@ fn compute(
         group_of.push(group);
     }
     drop(index);
-    let groups_done = started.elapsed().as_secs_f64();
+    let groups_done = seconds() - started;
 
-    let started = Instant::now();
+    let started = seconds();
     let (row_count, column_count) = (row_levels.len(), column_levels.len());
     let (row_cards, column_cards) = cards.split_at(row_count);
     let column_product = product(column_cards);
@@ -756,9 +777,9 @@ fn compute(
         }
     }
     let groups = keys.len();
-    let sets_done = started.elapsed().as_secs_f64();
+    let sets_done = seconds() - started;
 
-    let started = Instant::now();
+    let started = seconds();
     let states: Vec<State> = if parallel {
         let (group_of, groupings) = (&group_of, &groupings);
         thread::scope(|scope| {
@@ -779,7 +800,7 @@ fn compute(
             .map(|measure| accumulate(measure, &group_of, groups, &groupings))
             .collect()
     };
-    let measures_done = started.elapsed().as_secs_f64();
+    let measures_done = seconds() - started;
 
     Pivot {
         groups,
@@ -792,7 +813,7 @@ fn compute(
 /// Checksum of the states: a 32-bit FNV-1a hash of the exact values, in the
 /// order of the measures then of the groups, and the bits of the sum of the
 /// float sums.
-fn checksum(states: &[State]) -> (u32, u64) {
+pub fn checksum(states: &[State]) -> (u32, u64) {
     let mut hash: u32 = 2_166_136_261;
     let mut float_total = 0f64;
     let mut mix = |value: i64| {
@@ -823,7 +844,7 @@ fn checksum(states: &[State]) -> (u32, u64) {
 
 /// Type of the values of a measure, for their text.
 #[derive(Clone, Copy)]
-enum Format {
+pub enum Format {
     /// Integer.
     Integer,
     /// Decimal scaled to an integer, with its number of digits after the point.
@@ -926,7 +947,7 @@ fn write_group(
 
 /// Serializes every group of the pivot as JSON, as the server would send it
 /// to the page: `[set, group, values...]` per group.
-fn serialize(pivot: &Pivot, labels: &[(Measure, Format)], ranked: &[&str]) -> String {
+pub fn serialize(pivot: &Pivot, labels: &[(Measure, Format)], ranked: &[&str]) -> String {
     let mut json = String::from("[");
     for (kept_rows, row) in pivot.sets.iter().enumerate() {
         for (kept_columns, &(start, len)) in row.iter().enumerate() {
@@ -944,187 +965,30 @@ fn serialize(pivot: &Pivot, labels: &[(Measure, Format)], ranked: &[&str]) -> St
     json
 }
 
-/// Memory counters of the process, from Windows.
-#[cfg(windows)]
-#[repr(C)]
-#[derive(Default)]
-struct MemoryCounters {
-    cb: u32,
-    page_fault_count: u32,
-    peak_working_set_size: usize,
-    working_set_size: usize,
-    quota_peak_paged_pool_usage: usize,
-    quota_paged_pool_usage: usize,
-    quota_peak_non_paged_pool_usage: usize,
-    quota_non_paged_pool_usage: usize,
-    pagefile_usage: usize,
-    peak_pagefile_usage: usize,
-}
-
-#[cfg(windows)]
-#[link(name = "kernel32")]
-unsafe extern "system" {
-    fn GetCurrentProcess() -> isize;
-    fn K32GetProcessMemoryInfo(process: isize, counters: *mut MemoryCounters, size: u32) -> i32;
-}
-
-/// Private memory of the process and its peak, in gigabytes (0 outside
-/// Windows).
-fn memory() -> (f64, f64) {
-    #[cfg(windows)]
-    {
-        let mut counters = MemoryCounters {
-            cb: size_of::<MemoryCounters>() as u32,
-            ..MemoryCounters::default()
-        };
-        // SAFETY: the counters are a valid PROCESS_MEMORY_COUNTERS, whose size
-        // is given; the pseudo-handle of the current process needs no closing.
-        let ok =
-            unsafe { K32GetProcessMemoryInfo(GetCurrentProcess(), &mut counters, counters.cb) };
-        if ok != 0 {
-            return (
-                counters.pagefile_usage as f64 / 1e9,
-                counters.peak_pagefile_usage as f64 / 1e9,
-            );
-        }
-    }
-    (0.0, 0.0)
-}
-
-/// Fastest of several passes of a computation, with its result.
-fn fastest<T>(mut run: impl FnMut() -> (T, f64)) -> (T, f64) {
-    let mut best = run();
-    for _ in 1..PASSES {
-        let next = run();
-        if next.1 < best.1 {
-            best = next;
-        }
-    }
-    best
+/// JSON fields of a computed pivot that every side of the benchmark gives, to
+/// compare them: number of groups, sizes of the grouping sets, checksums,
+/// grand total.
+pub fn pivot_json(pivot: &Pivot, labels: &[(Measure, Format)], ranked: &[&str]) -> String {
+    let (hash, float_bits) = checksum(&pivot.states);
+    let set_sizes: Vec<String> = pivot
+        .sets
+        .iter()
+        .flatten()
+        .map(|&(_, len)| len.to_string())
+        .collect();
+    let mut grand_total = String::new();
+    write_group(&mut grand_total, pivot, pivot.sets[0][0].0, labels, ranked);
+    format!(
+        "\"groups\":{},\"set_sizes\":[{}],\"checksum\":\"{hash:08x}\",\"float_bits\":\"{float_bits:016x}\",\"grand_total\":[{grand_total}]",
+        pivot.groups,
+        set_sizes.join(",")
+    )
 }
 
 /// JSON of the durations of a computation.
-fn timings_json(pivot: &Pivot, total: f64) -> String {
+pub fn timings_json(pivot: &Pivot, total: f64) -> String {
     let [levels, groups, sets, measures] = pivot.phases;
     format!(
         "{{\"total_s\":{total:.4},\"levels_s\":{levels:.4},\"groups_s\":{groups:.4},\"sets_s\":{sets:.4},\"measures_s\":{measures:.4}}}"
     )
-}
-
-fn main() {
-    let count: usize = std::env::args()
-        .nth(1)
-        .map_or(10_000_000, |arg| arg.parse().expect("number of rows"));
-    let threads = thread::available_parallelism().map_or(1, |threads| threads.get());
-
-    eprintln!("rust: generating {count} rows");
-    let started = Instant::now();
-    let rows = generate(count);
-    let generation = started.elapsed().as_secs_f64();
-    let after_generation = memory().0;
-
-    // The preparation runs once per result: its first pass is measured.
-    eprintln!("rust: preparing the typed columns");
-    let started = Instant::now();
-    let prepared = prepare(&rows, false);
-    let preparation = started.elapsed().as_secs_f64();
-    let after_preparation = memory().0;
-    let started = Instant::now();
-    let again = prepare(&rows, true);
-    let preparation_threads = started.elapsed().as_secs_f64();
-    drop(again);
-
-    let ranked: Vec<&str> = {
-        let rank = ranks(&prepared.client.values);
-        let mut ranked = vec![""; rank.len()];
-        for (code, &position) in rank.iter().enumerate() {
-            ranked[position as usize] = &prepared.client.values[code];
-        }
-        ranked
-    };
-    let labels: Vec<(Measure, Format)> = vec![
-        (Measure::CountStar, Format::Integer),
-        (Measure::Count(&prepared.quantity), Format::Integer),
-        (Measure::Sum(&prepared.quantity), Format::Integer),
-        (Measure::Sum(&prepared.amount), Format::Decimal(2)),
-        (Measure::Avg(&prepared.amount), Format::Decimal(2)),
-        (Measure::AvgFloat(&prepared.discount), Format::Float),
-        (Measure::Min(&prepared.amount), Format::Decimal(2)),
-        (Measure::Max(&prepared.amount), Format::Decimal(2)),
-        (Measure::Min(&prepared.date), Format::Datetime),
-        (Measure::Max(&prepared.date), Format::Datetime),
-        (Measure::Min(&prepared.client_rank), Format::Text),
-        (Measure::Max(&prepared.client_rank), Format::Text),
-    ];
-    let measures: Vec<Measure> = labels.iter().map(|&(measure, _)| measure).collect();
-    let column_levels = [Level::Year(&prepared.date), Level::Month(&prepared.date)];
-    let profiles = [
-        ("high", [0, 1, 2, 3]), // pays, region, categorie, produit
-        ("low", [0, 1, 2, 4]),  // pays, region, categorie, canal
-    ];
-
-    let mut profiles_json = Vec::new();
-    for (name, columns) in profiles {
-        let row_levels: Vec<Level> = columns
-            .iter()
-            .map(|&column| Level::Column(&prepared.levels[column]))
-            .collect();
-        let mut runs = Vec::new();
-        let mut pivots = Vec::new();
-        for parallel in [false, true] {
-            eprintln!(
-                "rust: profile {name}, {}",
-                if parallel {
-                    "all threads"
-                } else {
-                    "one thread"
-                }
-            );
-            let (pivot, total) = fastest(|| {
-                let started = Instant::now();
-                let pivot = compute(&row_levels, &column_levels, &measures, parallel);
-                let total = started.elapsed().as_secs_f64();
-                (pivot, total)
-            });
-            runs.push(timings_json(&pivot, total));
-            pivots.push(pivot);
-        }
-        let pivot = &pivots[0];
-        let (hash, float_bits) = checksum(&pivot.states);
-        let (parallel_hash, parallel_float_bits) = checksum(&pivots[1].states);
-        assert_eq!(
-            (hash, float_bits),
-            (parallel_hash, parallel_float_bits),
-            "same states on all threads"
-        );
-        let set_sizes: Vec<String> = pivot
-            .sets
-            .iter()
-            .flatten()
-            .map(|&(_, len)| len.to_string())
-            .collect();
-        let total_group = pivot.sets[0][0].0;
-        let mut total_values = String::new();
-        write_group(&mut total_values, pivot, total_group, &labels, &ranked);
-
-        eprintln!("rust: profile {name}, serialization");
-        let started = Instant::now();
-        let json = serialize(pivot, &labels, &ranked);
-        let serialization = started.elapsed().as_secs_f64();
-
-        profiles_json.push(format!(
-            "{{\"name\":\"{name}\",\"one_thread\":{},\"all_threads\":{},\"groups\":{},\"set_sizes\":[{}],\"checksum\":\"{hash:08x}\",\"float_bits\":\"{float_bits:016x}\",\"grand_total\":[{total_values}],\"serialization\":{{\"bytes\":{},\"seconds\":{serialization:.4}}}}}",
-            runs[0],
-            runs[1],
-            pivot.groups,
-            set_sizes.join(","),
-            json.len(),
-        ));
-    }
-
-    let (_, peak) = memory();
-    println!(
-        "{{\"engine\":\"rust\",\"rows\":{count},\"threads\":{threads},\"generation_s\":{generation:.2},\"preparation\":{{\"one_thread_s\":{preparation:.4},\"all_threads_s\":{preparation_threads:.4}}},\"memory_gb\":{{\"after_generation\":{after_generation:.2},\"after_preparation\":{after_preparation:.2},\"peak\":{peak:.2}}},\"profiles\":[{}]}}",
-        profiles_json.join(",")
-    );
 }

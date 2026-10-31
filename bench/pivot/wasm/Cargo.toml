@@ -1,0 +1,15 @@
+# WebAssembly side of the benchmark: the engine compiled to
+# wasm32-unknown-unknown, run by V8 as in the page (see ../js/wasm.mjs).
+
+[package]
+name = "pivot-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+pivot-engine = { path = "../engine" }

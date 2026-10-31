@@ -1,0 +1,15 @@
+# Benchmark of the Pivoteur's engine, Rust sides (see bench/pivot/run.mjs).
+# Workspace of its own, outside the one of Prisme: the engine (engine/), run
+# in the server (native/) or compiled to WebAssembly for the page (wasm/).
+# It only uses the standard library, and keeps the release profile of Prisme
+# (Cargo's default).
+
+[workspace]
+resolver = "3"
+members = ["engine", "native", "wasm"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false

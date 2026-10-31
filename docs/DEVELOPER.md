@@ -289,20 +289,26 @@ npm run format                       # formatting (Prettier)
 
 ### Engine of the Pivoteur
 
-`bench/pivot/` measures where the engine of the Pivoteur (the local pivot table, see `docs/TODO-PIVOTER.md`) should run: in the page (TypeScript, run by V8) or in the server (Rust). From the root of the repository, with nothing to install:
+`bench/pivot/` measures where and in what the engine of the Pivoteur (the local pivot table, see `docs/TODO-PIVOTER.md`) should run: in the server (Rust), or in the page, in Rust compiled to WebAssembly or in TypeScript (both run by V8). From the root of the repository; the command adds the WebAssembly target to the toolchain when it is missing:
 
 ```
 node bench/pivot/run.mjs             # 10,000,000 rows (several minutes, up to 8 GB of memory)
 node bench/pivot/run.mjs 1000000     # fewer rows, for a quick run
 ```
 
-The command builds the Rust side (`bench/pivot/rust/`, standard library only, release profile of Prisme), runs it, then runs the JavaScript side (`bench/pivot/js/bench.mjs`, under Node with a larger heap). Both generate the same rows (Mulberry32 generator, seed 42), as text cells, the way the server receives them: `pays` (10 values), `region` (50), `categorie` (20), `produit` (1,000), `canal` (4), `d` (datetime, 2024 to 2026), `qte` (integer, 5 % of NULL), `montant` (decimal with 2 digits), `remise` (float), `client` (100,000 values). The code has the same shape on both sides, phase by phase. Each side then:
+The command builds the Rust sides (workspace `bench/pivot/`, standard library only, release profile of Prisme), then runs, one after the other, in processes of their own:
 
-1. prepares the typed columns once (dictionaries of the texts, exact numbers scaled to integers); the first pass is measured, as the preparation runs once per result;
+- the native side (`native/`): the engine (`engine/`) in the server, on the rows as the server keeps them;
+- the WebAssembly side (`wasm/`, target `wasm32-unknown-unknown`, driven by `js/wasm.mjs` under Node): the same engine in the page, on one thread; the rows stay in JavaScript, as the grid holds them, and each column is copied once into the memory of the module (`js/transfer.mjs`), which reads only its own memory; the module keeps the default features of the target, SIMD (`simd128`) having given no measurable gain;
+- the JavaScript side (`js/bench.mjs`, under Node): the engine written again in JavaScript, with the same shape, phase by phase.
+
+Each generates the same rows (Mulberry32 generator, seed 42, `js/common.mjs` for both JavaScript drivers), as text cells, the way they arrive: `pays` (10 values), `region` (50), `categorie` (20), `produit` (1,000), `canal` (4), `d` (datetime, 2024 to 2026), `qte` (integer, 5 % of NULL), `montant` (decimal with 2 digits), `remise` (float), `client` (100,000 values). Each side then:
+
+1. prepares the typed columns once (dictionaries of the texts, exact numbers scaled to integers); the first pass is measured, as the preparation runs once per result; the WebAssembly side measures the copy of the cells apart;
 2. computes the pivot, best of 3 passes: rows `pays`, `region`, `categorie`, `produit` (profile "high") or `canal` in place of `produit` (profile "low"); columns `YEAR(d)`, `MONTH(d)`; 12 measures (`COUNT(*)`, `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` on integers, decimals, a float, datetimes and texts); every subtotal and total (15 grouping sets);
-3. Rust only: the same computation with the levels and the measures spread over threads, then the JSON of the whole pivot, which the server would send to the page.
+3. native side only: the same computation with the levels and the measures spread over threads, then the JSON of the whole pivot, which the server would send to the page.
 
-The command checks that both sides give the same pivot (groups, sizes of the grouping sets, checksums of the states, grand total), and exits with 1 otherwise. It prints a summary table and writes the full results, with the machine, to `target/pivot-bench/results-<rows>.json`.
+The command checks that every side gives the same pivot as the native one (groups, sizes of the grouping sets, checksums of the states, grand total), and exits with 1 otherwise. It prints a summary table and writes the full results, with the machine, to `target/pivot-bench/results-<rows>.json`.
 
 ## Testing the API by hand
 
@@ -498,7 +504,7 @@ web/               Vue interface
   src/components/  interface components
   src/stores/      shared state (connections, settings)
 bench/             benchmarks, outside the workspace
-  pivot/           engine of the Pivoteur, in Rust and in JavaScript (run.mjs)
+  pivot/           engine of the Pivoteur: native, WebAssembly, JavaScript (run.mjs)
 docs/              design decisions and notes
   upstream/        drafts of tickets for the dependencies
 design/            brief of the interface for Claude Design (README.md)
