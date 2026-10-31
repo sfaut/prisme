@@ -1,8 +1,10 @@
-# Performance problems
+# Performance problems and measures
 
 This document describes the performance problems met in Prisme: what could
 be seen, how they were measured, why they appeared and how they were fixed.
-It also serves as a guide to measure again. One chapter per problem.
+It also keeps every measure made to compare options (benchmarks), with their
+numbers and the decision they led to. It serves as a guide to measure again.
+One chapter per problem or per measure.
 
 ## 1. Interface frozen while running: the grid drew every row
 
