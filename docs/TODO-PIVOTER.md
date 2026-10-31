@@ -8,7 +8,7 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Settled: a dialect of the Pivoteur's own, close to MySQL, MariaDB and the others; the Pivoteur works on the result set as it is; the panel stays under the grid; the federated engine is set aside for now
 - ✅ Panel in three columns: fields, stacked zones, pivot table
 
-## 2. Engine benchmark (point A1)
+## 2. Benchmarks: engine (point A1), store of the results
 
 - ✅ Data generator shared by Rust and JavaScript (same pseudo-random generator, fixed seed)
 - ✅ Rust benchmark, on one thread and on all cores
@@ -21,9 +21,13 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Results with WebAssembly submitted to the maintainer
 - ✅ Saved results measured on the real server, 1 and 10 million rows: reception, save, reading again by the page (`node bench/reload/run.mjs`)
 - ✅ Engine decided (A1): Rust compiled to WebAssembly, run in a Worker of the page, on the rows the page already holds; a server and a client of Prisme are expected in the long run, the client doing this work
+- ⬜ Reception of a result broken down: database, server, JSON, page
+- ⬜ Round trip of the visible rows between the page and a Worker
+- ⬜ Results of the store submitted to the maintainer
 
 ## 3. Corrections of the specification
 
+- ⬜ Single store of the results (`docs/QUESTIONS.md`, section 2): the lot 1 builds it in the Worker, fed by a copy of the rows, as the future single store
 - ⬜ Expression language: the Pivoteur's dialect, conversions (`CONCAT`, date literals), invalid data
 - ⬜ New section on the cases that diverge from one database to another, each to be decided
 - ⬜ Catalog: `CAST(x AS DATE)`, `CAST(x AS DATETIME)`
