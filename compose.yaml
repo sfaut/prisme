@@ -1,6 +1,7 @@
 # Development database servers: for MySQL and MariaDB, the oldest version
 # Prisme supports (docs/V1.md, section 2.10), the latest LTS and the latest
-# version. The screenshots of design/ and the checks by hand use them.
+# version. The tests on real servers and the CI connect to them, the
+# screenshots of design/ and the checks by hand use them too.
 #
 #   docker compose up --detach --wait   # starts them, ready when it returns
 #   docker compose stop                 # stops them, data kept

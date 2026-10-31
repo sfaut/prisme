@@ -4,3 +4,5 @@
 //! `docs/V1.md`, section 3.2). For now: MySQL and MariaDB.
 
 pub mod mysql;
+#[cfg(feature = "test-servers")]
+pub mod test_servers;

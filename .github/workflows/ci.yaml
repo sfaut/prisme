@@ -77,7 +77,8 @@ jobs:
           if-no-files-found: error
 
   # Rust backend: formatting, static analysis, all the tests. The Ubuntu
-  # runners provide Docker: the tests on MySQL / MariaDB run too.
+  # runners provide Docker: the development servers of compose.yaml start
+  # there, and the tests on MySQL / MariaDB run too.
   rust:
     name: Backend
     runs-on: ubuntu-latest
@@ -102,12 +103,18 @@ jobs:
             echo "::error::The versions must be $expected: commit the version bump before the tag."
             exit 1
           fi
+      # Downloaded and started now, the servers load their data while the
+      # backend compiles; the tests wait until they are ready.
+      - name: Database servers (start)
+        run: docker compose up --detach
       - uses: Swatinem/rust-cache@v2
       - name: Formatting (cargo fmt)
         run: cargo fmt --all --check
       - name: Static analysis (cargo clippy)
         run: cargo clippy --all-targets -- --deny warnings
-      - name: Tests (including those that require Docker)
+      - name: Database servers (ready)
+        run: docker compose up --detach --wait
+      - name: Tests (including those on the database servers)
         run: cargo test -- --include-ignored
       # cargo test regenerates the TypeScript types (ts-rs): they must be
       # identical to those of the repository, otherwise a commit forgot them.

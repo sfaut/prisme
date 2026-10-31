@@ -1,10 +1,8 @@
-//! Tests of the query session, on a real MariaDB server (`testcontainers`).
+//! Tests of the query session, on the MariaDB development servers
+//! (`compose.yaml`).
 
 use futures_util::{SinkExt, StreamExt};
-use secrecy::SecretString;
 use serde_json::{Value, json};
-use testcontainers_modules::mariadb::Mariadb;
-use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Message as ClientMessage;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
@@ -17,23 +15,24 @@ use crate::exports;
 use crate::master_key::MasterKey;
 use crate::settings::{self, SettingsUpdate};
 use crate::store;
+use prisme_connectors::mysql::{Flavor, MysqlTarget};
+use prisme_connectors::test_servers;
 use prisme_dialects::Dialect;
 use prisme_dialects::classify::WriteKind;
 use std::collections::BTreeSet;
 
 type ClientSocket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-/// Starts Prisme on a free port, with a saved connection to `host:port`
-/// (root account without a password, `test` database) and an editor on
-/// this connection, and returns the server's address, the id of the
-/// connection and that of the editor. The sessions are read-only.
-async fn start(host: &str, port: u16) -> (String, i64, i64) {
-    start_writing(host, port, None).await
+/// Starts Prisme on a free port, with a saved connection to `target` and
+/// an editor on this connection, and returns the server's address, the id
+/// of the connection and that of the editor. The sessions are read-only.
+async fn start(target: &MysqlTarget) -> (String, i64, i64) {
+    start_writing(target, None).await
 }
 
 /// Starts Prisme as `start` does; with `writes`, the sessions are not
 /// read-only and allow these writes.
-async fn start_writing(host: &str, port: u16, writes: Option<&[WriteKind]>) -> (String, i64, i64) {
+async fn start_writing(target: &MysqlTarget, writes: Option<&[WriteKind]>) -> (String, i64, i64) {
     let db = store::open_in_memory();
     let key = MasterKey::generate();
     let user_id = store::ensure_user(&db, "test@example.com").unwrap();
@@ -51,11 +50,11 @@ async fn start_writing(host: &str, port: u16, writes: Option<&[WriteKind]>) -> (
     }
     let new = NewConnection {
         name: "test".to_string(),
-        host: host.to_string(),
-        port,
-        username: "root".to_string(),
-        password: SecretString::from(""),
-        database_name: "test".to_string(),
+        host: target.host.clone(),
+        port: target.port,
+        username: target.username.clone(),
+        password: target.password.clone(),
+        database_name: target.database_name.clone(),
         // On-connect queries: the variable exists on each open connection,
         // and double quotes delimit identifiers there.
         init_sql: "SET @prisme_init = 1; SET SESSION sql_mode = 'ANSI_QUOTES'".to_string(),
@@ -377,7 +376,7 @@ fn refuses_the_writes_not_allowed_and_unparsable_queries() {
 #[tokio::test]
 async fn unreachable_server_sends_an_error() {
     // Port 1: no server listens there.
-    let (address, id, _) = start("127.0.0.1", 1).await;
+    let (address, id, _) = start(&test_servers::unreachable()).await;
     let (mut socket, _) = connect_async(format!("ws://{address}/api/connections/{id}/query"))
         .await
         .unwrap();
@@ -387,7 +386,7 @@ async fn unreachable_server_sends_an_error() {
 
 #[tokio::test]
 async fn unknown_connection_is_refused() {
-    let (address, _, _) = start("127.0.0.1", 1).await;
+    let (address, _, _) = start(&test_servers::unreachable()).await;
     assert!(
         connect_async(format!("ws://{address}/api/connections/999/query"))
             .await
@@ -396,495 +395,524 @@ async fn unknown_connection_is_refused() {
 }
 
 #[tokio::test]
-#[ignore = "requires Docker Desktop running"]
+#[ignore = "requires the development servers (docker compose up --detach --wait)"]
 async fn runs_the_writes_the_settings_allow() {
-    let server = Mariadb::default().start().await.unwrap();
-    let host = server.get_host().await.unwrap().to_string();
-    let port = server.get_host_port_ipv4(3306).await.unwrap();
-    let allowed = [
-        WriteKind::Insert,
-        WriteKind::CreateTable,
-        WriteKind::AlterTable,
-        WriteKind::CreateProcedure,
-        WriteKind::CreateTemporaryTable,
-        WriteKind::AlterTemporaryTable,
-        WriteKind::DropTemporaryTable,
-    ];
-    let (address, id, _) = start_writing(&host, port, Some(&allowed)).await;
-    let (mut socket, _) = connect_async(format!("ws://{address}/api/connections/{id}/query"))
-        .await
-        .unwrap();
-    assert_eq!(next_json(&mut socket).await["type"], "ready");
-
-    for sql in [
-        "CREATE TABLE w (a INT)",
-        "INSERT INTO w VALUES (1), (2)",
-        "ALTER TABLE w ADD KEY k (a)",
-        "ALTER TABLE w RENAME KEY k TO j",
-        "ALTER TABLE w DROP KEY j",
-    ] {
-        let result = run_one(&mut socket, sql, None).await;
-        assert_eq!(result.end["type"], "done", "{sql}: {:?}", result.end);
-    }
-
-    // A procedure created after DELIMITER, its body kept whole.
-    let text =
-        "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT COUNT(*) FROM w; END//\nDELIMITER ;";
-    let (batch, results) = run(&mut socket, json!({ "sql": text, "cursor": 20 })).await;
-    assert_eq!(
-        batch["queries"][0]["sql"],
-        "CREATE PROCEDURE p() BEGIN SELECT COUNT(*) FROM w; END"
-    );
-    assert_eq!(results[0].end["type"], "done", "{:?}", results[0].end);
-
-    // A batch that writes runs in the order of the text, on the session's
-    // connection (a temporary table is seen by the next queries), and stops
-    // at the first failure.
-    let text = "CREATE TEMPORARY TABLE tmp (a INT); INSERT INTO tmp VALUES (1); \
-                SELECT COUNT(*) FROM tmp; INSERT INTO missing VALUES (1); SELECT 1;";
-    let (_, results) = run(&mut socket, json!({ "sql": text })).await;
-    let ends: Vec<&str> = results
-        .iter()
-        .map(|result| result.end["type"].as_str().unwrap_or_default())
-        .collect();
-    assert_eq!(ends, ["done", "done", "done", "error", "error"]);
-    assert_eq!(results[2].rows, 1);
-    assert_eq!(results[4].end["detail"]["code"], "query_skipped");
-
-    // The switches of the temporary tables apply to the tables the session
-    // created, followed when renamed, and only to them.
-    let refused = |result: &Received| result.end["detail"].clone();
-    for sql in [
-        "ALTER TABLE tmp RENAME TO tmp2",
-        "ALTER TABLE tmp2 ADD b INT",
-    ] {
-        let result = run_one(&mut socket, sql, None).await;
-        assert_eq!(result.end["type"], "done", "{sql}: {:?}", result.end);
-    }
-    let result = run_one(&mut socket, "RENAME TABLE tmp2 TO tmp3", None).await;
-    assert_eq!(
-        refused(&result),
-        json!({ "code": "write_not_allowed", "kinds": ["rename_temporary_table"] })
-    );
-    // TRUNCATE empties the data: the switch of the data, for every table.
-    let result = run_one(&mut socket, "TRUNCATE TABLE tmp2", None).await;
-    assert_eq!(
-        refused(&result),
-        json!({ "code": "write_not_allowed", "kinds": ["truncate_table"] })
-    );
-    let result = run_one(&mut socket, "DROP TABLE w", None).await;
-    assert_eq!(
-        refused(&result),
-        json!({ "code": "write_not_allowed", "kinds": ["drop_table"] })
-    );
-    let result = run_one(&mut socket, "DROP TABLE tmp2", None).await;
-    assert_eq!(result.end["type"], "done", "{:?}", result.end);
-    // Dropped: a table of that name is a permanent table again.
-    let result = run_one(&mut socket, "RENAME TABLE tmp2 TO tmp3", None).await;
-    assert_eq!(
-        refused(&result),
-        json!({ "code": "write_not_allowed", "kinds": ["rename_table"] })
-    );
-
-    // A switch off, a write no switch allows.
-    let result = run_one(&mut socket, "DELETE FROM w", None).await;
-    assert_eq!(
-        result.end["detail"],
-        json!({ "code": "write_not_allowed", "kinds": ["delete"] })
-    );
-    let result = run_one(&mut socket, "CALL p()", None).await;
-    assert_eq!(result.end["detail"]["code"], "write_forbidden");
-}
-
-#[tokio::test]
-#[ignore = "requires Docker Desktop running"]
-async fn streams_results_with_the_default_limit() {
-    let server = Mariadb::default().start().await.unwrap();
-    let host = server.get_host().await.unwrap().to_string();
-    let port = server.get_host_port_ipv4(3306).await.unwrap();
-    let (address, id, _) = start(&host, port).await;
-    let (mut socket, _) = connect_async(format!("ws://{address}/api/connections/{id}/query"))
-        .await
-        .unwrap();
-
-    let ready = next_json(&mut socket).await;
-    assert_eq!(ready["type"], "ready");
-    assert_eq!(ready["server"]["flavor"], "mariadb");
-    assert_eq!(ready["server"]["ansi_quotes"], true);
-    assert_eq!(ready["database"], "test");
-
-    // No limit written: 1,000 rows shown out of 2,500, truncated result.
-    let result = run_one(&mut socket, "SELECT seq FROM seq_1_to_2500", Some(1000)).await;
-    assert_eq!(result.columns["limit"], "added");
-    assert_eq!(
-        result.columns["sql"],
-        "SELECT seq FROM seq_1_to_2500 LIMIT 1001"
-    );
-    assert_eq!(result.rows, 1000);
-    // A short first batch shows quickly, full batches follow.
-    assert_eq!(result.batch_sizes, [50, 500, 450]);
-    assert_eq!(result.end["truncated"], true);
-
-    // Written limit: it applies as is, beyond the default limit.
-    let result = run_one(
-        &mut socket,
-        "SELECT seq FROM seq_1_to_2500 LIMIT 1500",
-        None,
-    )
-    .await;
-    assert_eq!(result.columns["limit"], "user_limit");
-    assert_eq!(result.rows, 1500);
-    assert_eq!(result.end["truncated"], false);
-
-    // An error does not interrupt the session.
-    let result = run_one(&mut socket, "SELECT * FROM missing", None).await;
-    assert_eq!(result.end["type"], "error");
-    let result = run_one(&mut socket, "SELECT 1", None).await;
-    assert_eq!(
-        (result.rows, result.end["type"].as_str()),
-        (1, Some("done"))
-    );
-
-    // USE changes the current database, announced at the end of the query.
-    let result = run_one(&mut socket, "USE mysql", None).await;
-    assert_eq!(result.end["database"], "mysql");
-
-    // use changes the current database without a result; an unknown database gives a session error.
-    for database in ["test", "missing", "mysql"] {
-        let request = json!({ "type": "use", "database": database });
-        socket
-            .send(ClientMessage::Text(request.to_string().into()))
+    for server in test_servers::of(Flavor::MariaDb) {
+        server.with_database("session_writes", async |target| {
+        let allowed = [
+            WriteKind::Insert,
+            WriteKind::CreateTable,
+            WriteKind::AlterTable,
+            WriteKind::CreateProcedure,
+            WriteKind::CreateTemporaryTable,
+            WriteKind::AlterTemporaryTable,
+            WriteKind::DropTemporaryTable,
+        ];
+        let (address, id, _) = start_writing(&target, Some(&allowed)).await;
+        let (mut socket, _) = connect_async(format!("ws://{address}/api/connections/{id}/query"))
             .await
             .unwrap();
-        let answer = next_json(&mut socket).await;
-        if database == "missing" {
-            assert_eq!(
-                (answer["type"].as_str(), answer["query"].is_null()),
-                (Some("error"), true)
-            );
-        } else {
-            assert_eq!(answer, json!({ "type": "database", "database": database }));
+        assert_eq!(next_json(&mut socket).await["type"], "ready");
+
+        for sql in [
+            "CREATE TABLE w (a INT)",
+            "INSERT INTO w VALUES (1), (2)",
+            "ALTER TABLE w ADD KEY k (a)",
+            "ALTER TABLE w RENAME KEY k TO j",
+            "ALTER TABLE w DROP KEY j",
+        ] {
+            let result = run_one(&mut socket, sql, None).await;
+            assert_eq!(result.end["type"], "done", "{sql}: {:?}", result.end);
         }
-    }
 
-    // Cursor on the empty line between two queries: the previous one runs.
-    let text = "SELECT 'a';\n\nSELECT 'b', 'c';";
-    let (batch, results) = run(&mut socket, json!({ "sql": text, "cursor": 12 })).await;
-    assert_eq!(batch["queries"][0]["sql"], "SELECT 'a'");
-    assert_eq!(results.len(), 1);
+        // A procedure created after DELIMITER, its body kept whole.
+        let text =
+            "DELIMITER //\nCREATE PROCEDURE p() BEGIN SELECT COUNT(*) FROM w; END//\nDELIMITER ;";
+        let (batch, results) = run(&mut socket, json!({ "sql": text, "cursor": 20 })).await;
+        assert_eq!(
+            batch["queries"][0]["sql"],
+            "CREATE PROCEDURE p() BEGIN SELECT COUNT(*) FROM w; END"
+        );
+        assert_eq!(results[0].end["type"], "done", "{:?}", results[0].end);
 
-    // On-connect query run on the session's connection and on those of the
-    // parallel queries.
-    let check = "SELECT 1 FROM DUAL WHERE @prisme_init = 1";
-    let (_, results) = run(&mut socket, json!({ "sql": check, "cursor": 0 })).await;
-    assert_eq!(results[0].rows, 1);
-    let request = json!({ "sql": format!("{check}; {check};") });
-    let (_, results) = run(&mut socket, request).await;
-    assert!(results.iter().all(|result| result.rows == 1));
+        // A batch that writes runs in the order of the text, on the session's
+        // connection (a temporary table is seen by the next queries), and stops
+        // at the first failure.
+        let text = "CREATE TEMPORARY TABLE tmp (a INT); INSERT INTO tmp VALUES (1); \
+                SELECT COUNT(*) FROM tmp; INSERT INTO missing VALUES (1); SELECT 1;";
+        let (_, results) = run(&mut socket, json!({ "sql": text })).await;
+        let ends: Vec<&str> = results
+            .iter()
+            .map(|result| result.end["type"].as_str().unwrap_or_default())
+            .collect();
+        assert_eq!(ends, ["done", "done", "done", "error", "error"]);
+        assert_eq!(results[2].rows, 1);
+        assert_eq!(results[4].end["detail"]["code"], "query_skipped");
 
-    // Without a cursor: all the queries, in parallel, on the current database (mysql).
-    let request = json!({ "sql": "SELECT 1; SELECT DATABASE(), 2;" });
-    let (batch, results) = run(&mut socket, request).await;
-    assert_eq!(batch["queries"].as_array().unwrap().len(), 2);
-    assert_eq!(results[0].rows, 1);
-    assert_eq!(results[1].columns["columns"], json!(["DATABASE()", "2"]));
-    assert_eq!(results[1].columns["right_aligned"], json!([false, true]));
-    let families: Vec<&Value> = results[1].columns["types"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|column| &column["family"])
-        .collect();
-    assert_eq!(families, [&json!("text"), &json!("integer")]);
-    assert_eq!(results[1].end["database"], "mysql");
-    assert!(results.iter().all(|result| result.started));
-
-    // Selected text only: the WHERE clause outside the selection does not run.
-    let text = "SELECT 1; SELECT 2 FROM DUAL WHERE 1 = 0;";
-    let selection = json!([{ "start": 0, "end": 28 }]);
-    let request = json!({ "sql": text, "selection": selection, "exact": true });
-    let (batch, results) = run(&mut socket, request).await;
-    let sqls: Vec<&Value> = batch["queries"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|query| &query["sql"])
-        .collect();
-    assert_eq!(sqls, [&json!("SELECT 1"), &json!("SELECT 2 FROM DUAL")]);
-    assert_eq!(results[1].rows, 1);
-
-    // Stop: the running queries are interrupted well before their end.
-    let started = std::time::Instant::now();
-    let request = json!({ "type": "run", "sql": "SELECT SLEEP(30); SELECT SLEEP(30);" });
-    socket
-        .send(ClientMessage::Text(request.to_string().into()))
-        .await
-        .unwrap();
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    let cancel = json!({ "type": "cancel" }).to_string();
-    socket
-        .send(ClientMessage::Text(cancel.into()))
-        .await
-        .unwrap();
-    let mut errors = 0;
-    loop {
-        let message = next_json(&mut socket).await;
-        match message["type"].as_str().unwrap() {
-            "error" => {
-                assert_eq!(message["message"], "query interrupted by the user");
-                errors += 1;
-            }
-            "batch_done" => break,
-            _ => {}
+        // The switches of the temporary tables apply to the tables the session
+        // created, followed when renamed, and only to them.
+        let refused = |result: &Received| result.end["detail"].clone();
+        for sql in [
+            "ALTER TABLE tmp RENAME TO tmp2",
+            "ALTER TABLE tmp2 ADD b INT",
+        ] {
+            let result = run_one(&mut socket, sql, None).await;
+            assert_eq!(result.end["type"], "done", "{sql}: {:?}", result.end);
         }
-    }
-    assert_eq!(errors, 2);
-    assert!(started.elapsed() < std::time::Duration::from_secs(10));
+        let result = run_one(&mut socket, "RENAME TABLE tmp2 TO tmp3", None).await;
+        assert_eq!(
+            refused(&result),
+            json!({ "code": "write_not_allowed", "kinds": ["rename_temporary_table"] })
+        );
+        // TRUNCATE empties the data: the switch of the data, for every table.
+        let result = run_one(&mut socket, "TRUNCATE TABLE tmp2", None).await;
+        assert_eq!(
+            refused(&result),
+            json!({ "code": "write_not_allowed", "kinds": ["truncate_table"] })
+        );
+        let result = run_one(&mut socket, "DROP TABLE w", None).await;
+        assert_eq!(
+            refused(&result),
+            json!({ "code": "write_not_allowed", "kinds": ["drop_table"] })
+        );
+        let result = run_one(&mut socket, "DROP TABLE tmp2", None).await;
+        assert_eq!(result.end["type"], "done", "{:?}", result.end);
+        // Dropped: a table of that name is a permanent table again.
+        let result = run_one(&mut socket, "RENAME TABLE tmp2 TO tmp3", None).await;
+        assert_eq!(
+            refused(&result),
+            json!({ "code": "write_not_allowed", "kinds": ["rename_table"] })
+        );
 
-    // Closing a tab: only its query is interrupted, the other one goes to the end.
-    let started = std::time::Instant::now();
-    let request = json!({ "type": "run", "sql": "SELECT SLEEP(30); SELECT SLEEP(1);" });
-    socket
-        .send(ClientMessage::Text(request.to_string().into()))
-        .await
-        .unwrap();
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    let cancel = json!({ "type": "cancel_query", "query": 0 }).to_string();
-    socket
-        .send(ClientMessage::Text(cancel.into()))
-        .await
-        .unwrap();
-    let (mut interrupted, mut finished) = (Vec::new(), Vec::new());
-    loop {
-        let message = next_json(&mut socket).await;
-        match message["type"].as_str().unwrap() {
-            "error" => interrupted.push(message["query"].clone()),
-            "done" => finished.push(message["query"].clone()),
-            "batch_done" => break,
-            _ => {}
-        }
+        // A switch off, a write no switch allows.
+        let result = run_one(&mut socket, "DELETE FROM w", None).await;
+        assert_eq!(
+            result.end["detail"],
+            json!({ "code": "write_not_allowed", "kinds": ["delete"] })
+        );
+        let result = run_one(&mut socket, "CALL p()", None).await;
+        assert_eq!(result.end["detail"]["code"], "write_forbidden");
+        }).await;
     }
-    assert_eq!((interrupted, finished), (vec![json!(0)], vec![json!(1)]));
-    assert!(started.elapsed() < std::time::Duration::from_secs(10));
-
-    // Nothing to run: session error.
-    let (error, _) = run(&mut socket, json!({ "sql": " -- nothing" })).await;
-    assert_eq!(error["message"], "no query to run");
 }
 
 #[tokio::test]
-#[ignore = "requires Docker Desktop running"]
+#[ignore = "requires the development servers (docker compose up --detach --wait)"]
+async fn streams_results_with_the_default_limit() {
+    for server in test_servers::of(Flavor::MariaDb) {
+        server
+            .with_database("session_streams", async |target| {
+                let (address, id, _) = start(&target).await;
+                let (mut socket, _) =
+                    connect_async(format!("ws://{address}/api/connections/{id}/query"))
+                        .await
+                        .unwrap();
+
+                let ready = next_json(&mut socket).await;
+                assert_eq!(ready["type"], "ready");
+                assert_eq!(ready["server"]["flavor"], "mariadb");
+                assert_eq!(ready["server"]["ansi_quotes"], true);
+                assert_eq!(ready["database"], target.database_name);
+
+                // No limit written: 1,000 rows shown out of 2,500, truncated result.
+                let result =
+                    run_one(&mut socket, "SELECT seq FROM seq_1_to_2500", Some(1000)).await;
+                assert_eq!(result.columns["limit"], "added");
+                assert_eq!(
+                    result.columns["sql"],
+                    "SELECT seq FROM seq_1_to_2500 LIMIT 1001"
+                );
+                assert_eq!(result.rows, 1000);
+                // A short first batch shows quickly, full batches follow.
+                assert_eq!(result.batch_sizes, [50, 500, 450]);
+                assert_eq!(result.end["truncated"], true);
+
+                // Written limit: it applies as is, beyond the default limit.
+                let result = run_one(
+                    &mut socket,
+                    "SELECT seq FROM seq_1_to_2500 LIMIT 1500",
+                    None,
+                )
+                .await;
+                assert_eq!(result.columns["limit"], "user_limit");
+                assert_eq!(result.rows, 1500);
+                assert_eq!(result.end["truncated"], false);
+
+                // An error does not interrupt the session.
+                let result = run_one(&mut socket, "SELECT * FROM missing", None).await;
+                assert_eq!(result.end["type"], "error");
+                let result = run_one(&mut socket, "SELECT 1", None).await;
+                assert_eq!(
+                    (result.rows, result.end["type"].as_str()),
+                    (1, Some("done"))
+                );
+
+                // USE changes the current database, announced at the end of the query.
+                let result = run_one(&mut socket, "USE mysql", None).await;
+                assert_eq!(result.end["database"], "mysql");
+
+                // use changes the current database without a result; an unknown database gives a session error.
+                for database in [target.database_name.as_str(), "missing", "mysql"] {
+                    let request = json!({ "type": "use", "database": database });
+                    socket
+                        .send(ClientMessage::Text(request.to_string().into()))
+                        .await
+                        .unwrap();
+                    let answer = next_json(&mut socket).await;
+                    if database == "missing" {
+                        assert_eq!(
+                            (answer["type"].as_str(), answer["query"].is_null()),
+                            (Some("error"), true)
+                        );
+                    } else {
+                        assert_eq!(answer, json!({ "type": "database", "database": database }));
+                    }
+                }
+
+                // Cursor on the empty line between two queries: the previous one runs.
+                let text = "SELECT 'a';\n\nSELECT 'b', 'c';";
+                let (batch, results) = run(&mut socket, json!({ "sql": text, "cursor": 12 })).await;
+                assert_eq!(batch["queries"][0]["sql"], "SELECT 'a'");
+                assert_eq!(results.len(), 1);
+
+                // On-connect query run on the session's connection and on those of the
+                // parallel queries.
+                let check = "SELECT 1 FROM DUAL WHERE @prisme_init = 1";
+                let (_, results) = run(&mut socket, json!({ "sql": check, "cursor": 0 })).await;
+                assert_eq!(results[0].rows, 1);
+                let request = json!({ "sql": format!("{check}; {check};") });
+                let (_, results) = run(&mut socket, request).await;
+                assert!(results.iter().all(|result| result.rows == 1));
+
+                // Without a cursor: all the queries, in parallel, on the current database (mysql).
+                let request = json!({ "sql": "SELECT 1; SELECT DATABASE(), 2;" });
+                let (batch, results) = run(&mut socket, request).await;
+                assert_eq!(batch["queries"].as_array().unwrap().len(), 2);
+                assert_eq!(results[0].rows, 1);
+                assert_eq!(results[1].columns["columns"], json!(["DATABASE()", "2"]));
+                assert_eq!(results[1].columns["right_aligned"], json!([false, true]));
+                let families: Vec<&Value> = results[1].columns["types"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|column| &column["family"])
+                    .collect();
+                assert_eq!(families, [&json!("text"), &json!("integer")]);
+                assert_eq!(results[1].end["database"], "mysql");
+                assert!(results.iter().all(|result| result.started));
+
+                // Selected text only: the WHERE clause outside the selection does not run.
+                let text = "SELECT 1; SELECT 2 FROM DUAL WHERE 1 = 0;";
+                let selection = json!([{ "start": 0, "end": 28 }]);
+                let request = json!({ "sql": text, "selection": selection, "exact": true });
+                let (batch, results) = run(&mut socket, request).await;
+                let sqls: Vec<&Value> = batch["queries"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|query| &query["sql"])
+                    .collect();
+                assert_eq!(sqls, [&json!("SELECT 1"), &json!("SELECT 2 FROM DUAL")]);
+                assert_eq!(results[1].rows, 1);
+
+                // Stop: the running queries are interrupted well before their end.
+                let started = std::time::Instant::now();
+                let request =
+                    json!({ "type": "run", "sql": "SELECT SLEEP(30); SELECT SLEEP(30);" });
+                socket
+                    .send(ClientMessage::Text(request.to_string().into()))
+                    .await
+                    .unwrap();
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                let cancel = json!({ "type": "cancel" }).to_string();
+                socket
+                    .send(ClientMessage::Text(cancel.into()))
+                    .await
+                    .unwrap();
+                let mut errors = 0;
+                loop {
+                    let message = next_json(&mut socket).await;
+                    match message["type"].as_str().unwrap() {
+                        "error" => {
+                            assert_eq!(message["message"], "query interrupted by the user");
+                            errors += 1;
+                        }
+                        "batch_done" => break,
+                        _ => {}
+                    }
+                }
+                assert_eq!(errors, 2);
+                assert!(started.elapsed() < std::time::Duration::from_secs(10));
+
+                // Closing a tab: only its query is interrupted, the other one goes to the end.
+                let started = std::time::Instant::now();
+                let request = json!({ "type": "run", "sql": "SELECT SLEEP(30); SELECT SLEEP(1);" });
+                socket
+                    .send(ClientMessage::Text(request.to_string().into()))
+                    .await
+                    .unwrap();
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                let cancel = json!({ "type": "cancel_query", "query": 0 }).to_string();
+                socket
+                    .send(ClientMessage::Text(cancel.into()))
+                    .await
+                    .unwrap();
+                let (mut interrupted, mut finished) = (Vec::new(), Vec::new());
+                loop {
+                    let message = next_json(&mut socket).await;
+                    match message["type"].as_str().unwrap() {
+                        "error" => interrupted.push(message["query"].clone()),
+                        "done" => finished.push(message["query"].clone()),
+                        "batch_done" => break,
+                        _ => {}
+                    }
+                }
+                assert_eq!((interrupted, finished), (vec![json!(0)], vec![json!(1)]));
+                assert!(started.elapsed() < std::time::Duration::from_secs(10));
+
+                // Nothing to run: session error.
+                let (error, _) = run(&mut socket, json!({ "sql": " -- nothing" })).await;
+                assert_eq!(error["message"], "no query to run");
+            })
+            .await;
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires the development servers (docker compose up --detach --wait)"]
 async fn closing_the_editor_session_ends_it_at_once() {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    let server = Mariadb::default().start().await.unwrap();
-    let host = server.get_host().await.unwrap().to_string();
-    let port = server.get_host_port_ipv4(3306).await.unwrap();
-    let (address, _, editor_id) = start(&host, port).await;
-    let url = format!("ws://{address}/api/editors/{editor_id}/session");
-    let (mut socket, _) = connect_async(&url).await.unwrap();
-    assert_eq!(next_json(&mut socket).await["database"], "test");
-    let result = run_one(&mut socket, "USE mysql", None).await;
-    assert_eq!(result.end["database"], "mysql");
+    for server in test_servers::of(Flavor::MariaDb) {
+        server.with_database("session_closing", async |target| {
+        let (address, _, editor_id) = start(&target).await;
+        let url = format!("ws://{address}/api/editors/{editor_id}/session");
+        let (mut socket, _) = connect_async(&url).await.unwrap();
+        assert_eq!(
+            next_json(&mut socket).await["database"],
+            target.database_name
+        );
+        let result = run_one(&mut socket, "USE mysql", None).await;
+        assert_eq!(result.end["database"], "mysql");
 
-    // DELETE on the session, in plain HTTP: no HTTP client among the dependencies.
-    let mut http = TcpStream::connect(&address).await.unwrap();
-    let request = format!(
-        "DELETE /api/editors/{editor_id}/session HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n"
-    );
-    http.write_all(request.as_bytes()).await.unwrap();
-    let mut answer = String::new();
-    http.read_to_string(&mut answer).await.unwrap();
-    assert!(answer.starts_with("HTTP/1.1 204"), "{answer}");
+        // DELETE on the session, in plain HTTP: no HTTP client among the dependencies.
+        let mut http = TcpStream::connect(&address).await.unwrap();
+        let request = format!(
+            "DELETE /api/editors/{editor_id}/session HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n"
+        );
+        http.write_all(request.as_bytes()).await.unwrap();
+        let mut answer = String::new();
+        http.read_to_string(&mut answer).await.unwrap();
+        assert!(answer.starts_with("HTTP/1.1 204"), "{answer}");
 
-    // The WebSocket closes, without waiting for the keep-alive delay.
-    let closed = tokio::time::timeout(std::time::Duration::from_secs(5), async {
-        while let Some(Ok(message)) = socket.next().await {
-            if matches!(message, ClientMessage::Close(_)) {
-                break;
+        // The WebSocket closes, without waiting for the keep-alive delay.
+        let closed = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while let Some(Ok(message)) = socket.next().await {
+                if matches!(message, ClientMessage::Close(_)) {
+                    break;
+                }
             }
-        }
-    })
-    .await;
-    assert!(closed.is_ok());
+        })
+        .await;
+        assert!(closed.is_ok());
 
-    // A new WebSocket opens another session: back to the default database.
-    let (mut socket, _) = connect_async(&url).await.unwrap();
-    let ready = next_json(&mut socket).await;
-    assert_eq!(
-        (ready["type"].as_str(), ready["database"].as_str()),
-        (Some("ready"), Some("test"))
-    );
-}
-
-#[tokio::test]
-#[ignore = "requires Docker Desktop running"]
-async fn editor_session_opens_on_the_requested_database() {
-    let server = Mariadb::default().start().await.unwrap();
-    let host = server.get_host().await.unwrap().to_string();
-    let port = server.get_host_port_ipv4(3306).await.unwrap();
-    let (address, _, editor_id) = start(&host, port).await;
-    let url = format!("ws://{address}/api/editors/{editor_id}/session?database=mysql");
-    let (mut socket, _) = connect_async(&url).await.unwrap();
-    // Ready on the requested database at once, without going through the
-    // connection's database (`test`).
-    let ready = next_json(&mut socket).await;
-    assert_eq!(
-        (ready["type"].as_str(), ready["database"].as_str()),
-        (Some("ready"), Some("mysql"))
-    );
-}
-
-#[tokio::test]
-#[ignore = "requires Docker Desktop running"]
-async fn editor_session_survives_a_disconnect() {
-    let server = Mariadb::default().start().await.unwrap();
-    let host = server.get_host().await.unwrap().to_string();
-    let port = server.get_host_port_ipv4(3306).await.unwrap();
-    let (address, _, editor_id) = start(&host, port).await;
-    let url = format!("ws://{address}/api/editors/{editor_id}/session");
-    let (mut socket, _) = connect_async(&url).await.unwrap();
-    assert_eq!(next_json(&mut socket).await["database"], "test");
-
-    // The current database changes on the session's connection.
-    let result = run_one(&mut socket, "USE mysql", None).await;
-    assert_eq!(result.end["database"], "mysql");
-
-    // A batch starts, then the page disappears before its end.
-    let request = json!({ "type": "run", "sql": "SELECT SLEEP(2); SELECT 1;" });
-    socket
-        .send(ClientMessage::Text(request.to_string().into()))
-        .await
-        .unwrap();
-    let batch = next_json(&mut socket).await;
-    assert_eq!(batch["type"], "batch");
-    drop(socket);
-    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
-
-    // The page comes back: same session (mysql database), running batch
-    // resumed with the same tabs, then continued to the end.
-    let (mut socket, _) = connect_async(&url).await.unwrap();
-    let ready = next_json(&mut socket).await;
-    assert_eq!(
-        (ready["type"].as_str(), ready["database"].as_str()),
-        (Some("ready"), Some("mysql"))
-    );
-    let resume = next_json(&mut socket).await;
-    assert_eq!(resume["type"], "resume");
-    assert_eq!(resume["running"], true);
-    let tabs = |message: &Value, key: &str| -> Vec<Value> {
-        message["queries"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|query| query[key].clone())
-            .collect()
-    };
-    assert_eq!(tabs(&resume, "tab"), tabs(&batch, "tab"));
-    let mut done: Vec<u64> = resume["queries"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|query| query["result"]["done"] == true)
-        .map(|query| query["query"].as_u64().unwrap())
-        .collect();
-    loop {
-        let message = next_json(&mut socket).await;
-        match message["type"].as_str().unwrap() {
-            "done" => done.push(message["query"].as_u64().unwrap()),
-            "batch_done" => break,
-            kind => assert_ne!(kind, "error", "{message}"),
-        }
+        // A new WebSocket opens another session: back to the default database.
+        let (mut socket, _) = connect_async(&url).await.unwrap();
+        let ready = next_json(&mut socket).await;
+        assert_eq!(
+            (ready["type"].as_str(), ready["database"].as_str()),
+            (Some("ready"), Some(target.database_name.as_str()))
+        );
+        }).await;
     }
-    done.sort_unstable();
-    assert_eq!(done, [0, 1]);
 }
 
 #[tokio::test]
-#[ignore = "requires Docker Desktop running"]
+#[ignore = "requires the development servers (docker compose up --detach --wait)"]
+async fn editor_session_opens_on_the_requested_database() {
+    for server in test_servers::of(Flavor::MariaDb) {
+        server
+            .with_database("session_requested_database", async |target| {
+                let (address, _, editor_id) = start(&target).await;
+                let url = format!("ws://{address}/api/editors/{editor_id}/session?database=mysql");
+                let (mut socket, _) = connect_async(&url).await.unwrap();
+                // Ready on the requested database at once, without going through the
+                // connection's database.
+                let ready = next_json(&mut socket).await;
+                assert_eq!(
+                    (ready["type"].as_str(), ready["database"].as_str()),
+                    (Some("ready"), Some("mysql"))
+                );
+            })
+            .await;
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires the development servers (docker compose up --detach --wait)"]
+async fn editor_session_survives_a_disconnect() {
+    for server in test_servers::of(Flavor::MariaDb) {
+        server
+            .with_database("session_disconnect", async |target| {
+                let (address, _, editor_id) = start(&target).await;
+                let url = format!("ws://{address}/api/editors/{editor_id}/session");
+                let (mut socket, _) = connect_async(&url).await.unwrap();
+                assert_eq!(
+                    next_json(&mut socket).await["database"],
+                    target.database_name
+                );
+
+                // The current database changes on the session's connection.
+                let result = run_one(&mut socket, "USE mysql", None).await;
+                assert_eq!(result.end["database"], "mysql");
+
+                // A batch starts, then the page disappears before its end.
+                let request = json!({ "type": "run", "sql": "SELECT SLEEP(2); SELECT 1;" });
+                socket
+                    .send(ClientMessage::Text(request.to_string().into()))
+                    .await
+                    .unwrap();
+                let batch = next_json(&mut socket).await;
+                assert_eq!(batch["type"], "batch");
+                drop(socket);
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+                // The page comes back: same session (mysql database), running batch
+                // resumed with the same tabs, then continued to the end.
+                let (mut socket, _) = connect_async(&url).await.unwrap();
+                let ready = next_json(&mut socket).await;
+                assert_eq!(
+                    (ready["type"].as_str(), ready["database"].as_str()),
+                    (Some("ready"), Some("mysql"))
+                );
+                let resume = next_json(&mut socket).await;
+                assert_eq!(resume["type"], "resume");
+                assert_eq!(resume["running"], true);
+                let tabs = |message: &Value, key: &str| -> Vec<Value> {
+                    message["queries"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|query| query[key].clone())
+                        .collect()
+                };
+                assert_eq!(tabs(&resume, "tab"), tabs(&batch, "tab"));
+                let mut done: Vec<u64> = resume["queries"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter(|query| query["result"]["done"] == true)
+                    .map(|query| query["query"].as_u64().unwrap())
+                    .collect();
+                loop {
+                    let message = next_json(&mut socket).await;
+                    match message["type"].as_str().unwrap() {
+                        "done" => done.push(message["query"].as_u64().unwrap()),
+                        "batch_done" => break,
+                        kind => assert_ne!(kind, "error", "{message}"),
+                    }
+                }
+                done.sort_unstable();
+                assert_eq!(done, [0, 1]);
+            })
+            .await;
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires the development servers (docker compose up --detach --wait)"]
 async fn editor_session_tells_its_open_transaction() {
-    let server = Mariadb::default().start().await.unwrap();
-    let host = server.get_host().await.unwrap().to_string();
-    let port = server.get_host_port_ipv4(3306).await.unwrap();
-    // Read-only sessions, as by default.
-    let (address, _, editor_id) = start(&host, port).await;
-    let url = format!("ws://{address}/api/editors/{editor_id}/session");
-    let (mut socket, _) = connect_async(&url).await.unwrap();
-    assert_eq!(next_json(&mut socket).await["transaction"], false);
+    for server in test_servers::of(Flavor::MariaDb) {
+        server
+            .with_database("session_transaction", async |target| {
+                // Read-only sessions, as by default.
+                let (address, _, editor_id) = start(&target).await;
+                let url = format!("ws://{address}/api/editors/{editor_id}/session");
+                let (mut socket, _) = connect_async(&url).await.unwrap();
+                assert_eq!(next_json(&mut socket).await["transaction"], false);
 
-    // What would lift the read-only mode is refused, and opens nothing.
-    assert_eq!(
-        run_transaction(&mut socket, "START TRANSACTION READ WRITE").await,
-        (Vec::new(), json!("read_write_transaction_read_only"))
-    );
-    assert_eq!(
-        run_transaction(&mut socket, "START TRANSACTION").await,
-        (vec![json!(true)], Value::Null)
-    );
-    // Told on a change only.
-    assert_eq!(
-        run_transaction(&mut socket, "SELECT 1").await,
-        (Vec::new(), Value::Null)
-    );
-    // The page comes back during the transaction.
-    drop(socket);
-    let (mut socket, _) = connect_async(&url).await.unwrap();
-    assert_eq!(next_json(&mut socket).await["transaction"], true);
-    assert_eq!(
-        run_transaction(&mut socket, "COMMIT").await,
-        (vec![json!(false)], Value::Null)
-    );
+                // What would lift the read-only mode is refused, and opens nothing.
+                assert_eq!(
+                    run_transaction(&mut socket, "START TRANSACTION READ WRITE").await,
+                    (Vec::new(), json!("read_write_transaction_read_only"))
+                );
+                assert_eq!(
+                    run_transaction(&mut socket, "START TRANSACTION").await,
+                    (vec![json!(true)], Value::Null)
+                );
+                // Told on a change only.
+                assert_eq!(
+                    run_transaction(&mut socket, "SELECT 1").await,
+                    (Vec::new(), Value::Null)
+                );
+                // The page comes back during the transaction.
+                drop(socket);
+                let (mut socket, _) = connect_async(&url).await.unwrap();
+                assert_eq!(next_json(&mut socket).await["transaction"], true);
+                assert_eq!(
+                    run_transaction(&mut socket, "COMMIT").await,
+                    (vec![json!(false)], Value::Null)
+                );
+            })
+            .await;
+    }
 }
 
 #[tokio::test]
-#[ignore = "requires Docker Desktop running"]
+#[ignore = "requires the development servers (docker compose up --detach --wait)"]
 async fn runs_all_in_sequence_while_a_transaction_is_open() {
-    let server = Mariadb::default().start().await.unwrap();
-    let host = server.get_host().await.unwrap().to_string();
-    let port = server.get_host_port_ipv4(3306).await.unwrap();
-    let (address, _, editor_id) = start(&host, port).await;
-    let url = format!("ws://{address}/api/editors/{editor_id}/session");
-    let (mut socket, _) = connect_async(&url).await.unwrap();
-    next_json(&mut socket).await;
-    // A variable of the session's connection, which the extra connections
-    // of a parallel run do not have.
-    run_one(&mut socket, "SET @x = 42", None).await;
-    let reads = "SELECT 1 FROM DUAL WHERE @x = 42; SELECT 2 FROM DUAL WHERE @x = 42";
-    assert_eq!(run_all_rows(&mut socket, reads).await, [0, 0]);
+    for server in test_servers::of(Flavor::MariaDb) {
+        server
+            .with_database("session_sequence", async |target| {
+                let (address, _, editor_id) = start(&target).await;
+                let url = format!("ws://{address}/api/editors/{editor_id}/session");
+                let (mut socket, _) = connect_async(&url).await.unwrap();
+                next_json(&mut socket).await;
+                // A variable of the session's connection, which the extra connections
+                // of a parallel run do not have.
+                run_one(&mut socket, "SET @x = 42", None).await;
+                let reads = "SELECT 1 FROM DUAL WHERE @x = 42; SELECT 2 FROM DUAL WHERE @x = 42";
+                assert_eq!(run_all_rows(&mut socket, reads).await, [0, 0]);
 
-    run_transaction(&mut socket, "START TRANSACTION").await;
-    assert_eq!(run_all_rows(&mut socket, reads).await, [1, 1]);
-    run_transaction(&mut socket, "COMMIT").await;
-    assert_eq!(run_all_rows(&mut socket, reads).await, [0, 0]);
+                run_transaction(&mut socket, "START TRANSACTION").await;
+                assert_eq!(run_all_rows(&mut socket, reads).await, [1, 1]);
+                run_transaction(&mut socket, "COMMIT").await;
+                assert_eq!(run_all_rows(&mut socket, reads).await, [0, 0]);
+            })
+            .await;
+    }
 }
 
 #[tokio::test]
-#[ignore = "requires Docker Desktop running"]
+#[ignore = "requires the development servers (docker compose up --detach --wait)"]
 async fn editor_session_ends_when_the_server_closes_its_connection() {
-    let server = Mariadb::default().start().await.unwrap();
-    let host = server.get_host().await.unwrap().to_string();
-    let port = server.get_host_port_ipv4(3306).await.unwrap();
-    let (address, _, editor_id) = start(&host, port).await;
-    let url = format!("ws://{address}/api/editors/{editor_id}/session");
-    let (mut socket, _) = connect_async(&url).await.unwrap();
-    next_json(&mut socket).await;
-    run_transaction(&mut socket, "START TRANSACTION").await;
+    for server in test_servers::of(Flavor::MariaDb) {
+        server
+            .with_database("session_closed_by_server", async |target| {
+                let (address, _, editor_id) = start(&target).await;
+                let url = format!("ws://{address}/api/editors/{editor_id}/session");
+                let (mut socket, _) = connect_async(&url).await.unwrap();
+                next_json(&mut socket).await;
+                run_transaction(&mut socket, "START TRANSACTION").await;
 
-    // The server closes the connection after the COMMIT: the session ends.
-    let request = json!({ "type": "run", "sql": "COMMIT RELEASE", "cursor": 0 });
-    socket
-        .send(ClientMessage::Text(request.to_string().into()))
-        .await
-        .unwrap();
-    let error = loop {
-        let message = next_json(&mut socket).await;
-        if message["type"] == "error" && message["query"].is_null() {
-            break message;
-        }
-    };
-    assert_eq!(error["detail"]["code"], "connection_closed_by_server");
-    // Then the WebSocket closes.
-    while let Some(Ok(message)) = socket.next().await {
-        assert!(!matches!(message, ClientMessage::Text(_)), "{message:?}");
+                // The server closes the connection after the COMMIT: the session ends.
+                let request = json!({ "type": "run", "sql": "COMMIT RELEASE", "cursor": 0 });
+                socket
+                    .send(ClientMessage::Text(request.to_string().into()))
+                    .await
+                    .unwrap();
+                let error = loop {
+                    let message = next_json(&mut socket).await;
+                    if message["type"] == "error" && message["query"].is_null() {
+                        break message;
+                    }
+                };
+                assert_eq!(error["detail"]["code"], "connection_closed_by_server");
+                // Then the WebSocket closes.
+                while let Some(Ok(message)) = socket.next().await {
+                    assert!(!matches!(message, ClientMessage::Text(_)), "{message:?}");
+                }
+            })
+            .await;
     }
 }

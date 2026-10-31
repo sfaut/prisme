@@ -13,10 +13,16 @@ tokio = { version = "1.54.1", features = ["time"] }
 tracing = "0.1.44"
 ts-rs = "12.0.1"
 
+[features]
+# The development servers of compose.yaml (src/test_servers.rs), for the
+# tests on real servers only.
+test-servers = []
+
 [dev-dependencies]
+# The crate itself, with the development servers for its tests on real servers.
+prisme-connectors = { path = ".", features = ["test-servers"] }
 # Reference files of the exports (tests/fixtures/export/), read by the tests on real servers.
 serde_json = "1.0.154"
-testcontainers-modules = { version = "0.15.0", features = ["mysql", "mariadb"] }
 # Generated TypeScript types formatted (dprint), only in the tests that write them.
 ts-rs = { version = "12.0.1", features = ["format"] }
 tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "time"] }

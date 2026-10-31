@@ -521,9 +521,7 @@ mod tests {
     use super::*;
     use crate::store;
     use prisme_connectors::mysql::{connect, execute};
-    use testcontainers_modules::mariadb::Mariadb;
-    use testcontainers_modules::testcontainers::ImageExt;
-    use testcontainers_modules::testcontainers::runners::AsyncRunner;
+    use prisme_connectors::test_servers::SERVERS;
 
     fn new_connection(name: &str) -> NewConnection {
         NewConnection {
@@ -792,38 +790,32 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires Docker Desktop running"]
-    async fn read_only_session_refuses_writes_on_mariadb_before_11_1() {
-        // MariaDB 10.6 knows `tx_read_only`, not `transaction_read_only`.
-        let server = Mariadb::default()
-            .with_tag("10.6.28")
-            .start()
-            .await
-            .unwrap();
-        let target = MysqlTarget {
-            host: server.get_host().await.unwrap().to_string(),
-            port: server.get_host_port_ipv4(3306).await.unwrap(),
-            username: "root".to_string(),
-            password: SecretString::from(""),
-            database_name: "test".to_string(),
-            init_statements: Vec::new(),
-        };
-        let mut writer = connect(&target).await.unwrap();
-        execute(&mut writer, "CREATE TABLE t (a INT)")
-            .await
-            .unwrap()
-            .discard()
-            .await;
+    #[ignore = "requires the development servers (docker compose up --detach --wait)"]
+    async fn read_only_session_refuses_writes() {
+        // Every server, MariaDB before 11.1 included: MariaDB 10.6 knows
+        // `tx_read_only`, not `transaction_read_only`.
+        for server in SERVERS {
+            server
+                .with_database("read_only_session", async |target| {
+                    let mut writer = connect(&target).await.unwrap();
+                    execute(&mut writer, "CREATE TABLE t (a INT)")
+                        .await
+                        .unwrap()
+                        .discard()
+                        .await;
 
-        let mut reader = connect(&with_read_only(target, true)).await.unwrap();
-        execute(&mut reader, "SELECT a FROM t")
-            .await
-            .unwrap()
-            .discard()
-            .await;
-        let Err(error) = execute(&mut reader, "INSERT INTO t VALUES (1)").await else {
-            panic!("the write went through a read-only session");
-        };
-        assert!(error.to_string().contains("READ ONLY"), "{error}");
+                    let mut reader = connect(&with_read_only(target, true)).await.unwrap();
+                    execute(&mut reader, "SELECT a FROM t")
+                        .await
+                        .unwrap()
+                        .discard()
+                        .await;
+                    let Err(error) = execute(&mut reader, "INSERT INTO t VALUES (1)").await else {
+                        panic!("the write went through a read-only session");
+                    };
+                    assert!(error.to_string().contains("READ ONLY"), "{error}");
+                })
+                .await;
+        }
     }
 }

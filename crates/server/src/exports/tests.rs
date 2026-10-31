@@ -1,6 +1,6 @@
 //! Tests of the export routes: the table and the folder read together,
-//! removals, download, then exports on a real MariaDB server
-//! (`testcontainers`).
+//! removals, download, then exports on the MariaDB development servers
+//! (`compose.yaml`).
 
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -9,11 +9,8 @@ use std::time::{Duration, UNIX_EPOCH};
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use secrecy::SecretString;
 use serde_json::{Value, json};
 use tempfile::TempDir;
-use testcontainers_modules::mariadb::Mariadb;
-use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use tower::ServiceExt;
 
 use super::table::{self, NewExport};
@@ -22,6 +19,8 @@ use crate::api::{AppState, router};
 use crate::connections::{self, NewConnection};
 use crate::master_key::MasterKey;
 use crate::store;
+use prisme_connectors::mysql::{Flavor, MysqlTarget};
+use prisme_connectors::test_servers;
 
 /// Application whose exports go to a temporary folder.
 struct TestApp {
@@ -36,20 +35,19 @@ struct TestApp {
 }
 
 impl TestApp {
-    /// Application with, for its user, a connection to `host:port` (root
-    /// account without a password, `test` database) and the exports that
-    /// `prepare` saves in its internal database.
-    fn new(host: &str, port: u16, prepare: impl FnOnce(&rusqlite::Connection, i64)) -> Self {
+    /// Application with, for its user, a connection to `target` and the
+    /// exports that `prepare` saves in its internal database.
+    fn new(target: &MysqlTarget, prepare: impl FnOnce(&rusqlite::Connection, i64)) -> Self {
         let db = store::open_in_memory();
         let key = MasterKey::generate();
         let user_id = store::ensure_user(&db, "test@example.com").unwrap();
         let connection = NewConnection {
             name: "test".to_string(),
-            host: host.to_string(),
-            port,
-            username: "root".to_string(),
-            password: SecretString::from(""),
-            database_name: "test".to_string(),
+            host: target.host.clone(),
+            port: target.port,
+            username: target.username.clone(),
+            password: target.password.clone(),
+            database_name: target.database_name.clone(),
             init_sql: String::new(),
             session_timeout_minutes: 5,
             show_system_schemas: true,
@@ -160,7 +158,7 @@ fn write(folder: &Path, name: &str, content: &str) {
 /// two exports and their files.
 fn app_with_exports() -> (TestApp, [(i64, String); 2]) {
     let mut exports = Vec::new();
-    let test = TestApp::new("127.0.0.1", 1, |db, user_id| {
+    let test = TestApp::new(&test_servers::unreachable(), |db, user_id| {
         exports.push(saved_export(db, user_id, 1));
         exports.push(saved_export(db, user_id, 2));
     });
@@ -338,113 +336,119 @@ fn export_request(sql: &str, columns: &[u32]) -> Value {
 }
 
 #[tokio::test]
-#[ignore = "requires Docker Desktop running"]
+#[ignore = "requires the development servers (docker compose up --detach --wait)"]
 async fn exports_a_full_result_in_the_displayed_order_then_removes_it() {
-    let server = Mariadb::default().start().await.unwrap();
-    let host = server.get_host().await.unwrap().to_string();
-    let port = server.get_host_port_ipv4(3306).await.unwrap();
-    let test = TestApp::new(&host, port, |_, _| {});
+    for server in test_servers::of(Flavor::MariaDb) {
+        server
+            .with_database("export_full_result", async |target| {
+                let test = TestApp::new(&target, |_, _| {});
 
-    let sql = "SELECT seq, seq / 2 AS half FROM seq_1_to_200000";
-    let (status, started) = test
-        .send("POST", "/api/exports", Some(export_request(sql, &[1, 0])))
-        .await;
-    assert_eq!(status, StatusCode::ACCEPTED);
-    assert_eq!(started["state"], "running");
-    let id = started["id"].as_i64().unwrap();
-    let ended = test
-        .wait_for(id, |export| export["state"] != "running")
-        .await;
-    assert_eq!(ended["state"], "ready", "{ended}");
-    assert_eq!(ended["rows"], 200_000);
+                let sql = "SELECT seq, seq / 2 AS half FROM seq_1_to_200000";
+                let (status, started) = test
+                    .send("POST", "/api/exports", Some(export_request(sql, &[1, 0])))
+                    .await;
+                assert_eq!(status, StatusCode::ACCEPTED);
+                assert_eq!(started["state"], "running");
+                let id = started["id"].as_i64().unwrap();
+                let ended = test
+                    .wait_for(id, |export| export["state"] != "running")
+                    .await;
+                assert_eq!(ended["state"], "ready", "{ended}");
+                assert_eq!(ended["rows"], 200_000);
 
-    let files: Vec<PathBuf> = std::fs::read_dir(&test.folder)
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .collect();
-    assert_eq!(files.len(), 1);
-    let bytes = std::fs::read(&files[0]).unwrap();
-    assert_eq!(ended["bytes"], bytes.len());
-    let text = String::from_utf8(bytes).unwrap();
-    let lines: Vec<&str> = text.split("\r\n").collect();
-    // Decimal comma for the DECIMAL column, columns in the requested order.
-    assert_eq!(lines[..3], ["\u{FEFF}half;seq", "0,5000;1", "1,0000;2"]);
-    assert_eq!(lines[200_000..], ["100000,0000;200000", ""]);
+                let files: Vec<PathBuf> = std::fs::read_dir(&test.folder)
+                    .unwrap()
+                    .map(|entry| entry.unwrap().path())
+                    .collect();
+                assert_eq!(files.len(), 1);
+                let bytes = std::fs::read(&files[0]).unwrap();
+                assert_eq!(ended["bytes"], bytes.len());
+                let text = String::from_utf8(bytes).unwrap();
+                let lines: Vec<&str> = text.split("\r\n").collect();
+                // Decimal comma for the DECIMAL column, columns in the requested order.
+                assert_eq!(lines[..3], ["\u{FEFF}half;seq", "0,5000;1", "1,0000;2"]);
+                assert_eq!(lines[200_000..], ["100000,0000;200000", ""]);
 
-    let (status, _) = test
-        .send("DELETE", &format!("/api/exports/{id}"), None)
-        .await;
-    assert_eq!(status, StatusCode::NO_CONTENT);
-    assert!(!files[0].exists());
+                let (status, _) = test
+                    .send("DELETE", &format!("/api/exports/{id}"), None)
+                    .await;
+                assert_eq!(status, StatusCode::NO_CONTENT);
+                assert!(!files[0].exists());
+            })
+            .await;
+    }
 }
 
 // Several threads, as in Prisme: the connection of the stopped export
 // closes in the background, while the test goes on.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "requires Docker Desktop running"]
+#[ignore = "requires the development servers (docker compose up --detach --wait)"]
 async fn stops_refuses_and_fails_exports() {
-    let server = Mariadb::default().start().await.unwrap();
-    let host = server.get_host().await.unwrap().to_string();
-    let port = server.get_host_port_ipv4(3306).await.unwrap();
-    let test = TestApp::new(&host, port, |_, _| {});
+    for server in test_servers::of(Flavor::MariaDb) {
+        server
+            .with_database("export_stops", async |target| {
+                let test = TestApp::new(&target, |_, _| {});
 
-    // A billion rows: stopped while they are written, the query interrupted
-    // on the server (otherwise the rest of the result would be read), the
-    // partial file kept.
-    let sql = "SELECT seq FROM seq_1_to_1000000000";
-    let (_, started) = test
-        .send("POST", "/api/exports", Some(export_request(sql, &[])))
-        .await;
-    let id = started["id"].as_i64().unwrap();
-    // The progress is saved while the export runs.
-    let mut saved = 0;
-    for _ in 0..600 {
-        saved = test.saved_rows(id).await;
-        if saved > 0 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
+                // A billion rows: stopped while they are written, the query interrupted
+                // on the server (otherwise the rest of the result would be read), the
+                // partial file kept.
+                let sql = "SELECT seq FROM seq_1_to_1000000000";
+                let (_, started) = test
+                    .send("POST", "/api/exports", Some(export_request(sql, &[])))
+                    .await;
+                let id = started["id"].as_i64().unwrap();
+                // The progress is saved while the export runs.
+                let mut saved = 0;
+                for _ in 0..600 {
+                    saved = test.saved_rows(id).await;
+                    if saved > 0 {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+                assert!(saved > 0, "progress of export {id} never saved");
+                let (status, _) = test
+                    .send("POST", &format!("/api/exports/{id}/cancel"), None)
+                    .await;
+                assert_eq!(status, StatusCode::NO_CONTENT);
+                let stopped = test
+                    .wait_for(id, |export| export["state"] != "running")
+                    .await;
+                assert_eq!(stopped["state"], "cancelled", "{stopped}");
+                assert!(stopped["rows"].as_u64() < Some(1_000_000_000));
+                assert_eq!(stopped["file_missing"], false);
+
+                let refusals = [
+                    ("DELETE FROM t", "export_not_read"),
+                    ("SELECT 1; SELECT 2", "multiple_queries"),
+                    ("SELECT 1 +", "unparsed_query_refused"),
+                ];
+                for (sql, code) in refusals {
+                    let request = export_request(sql, &[]);
+                    let (status, body) = test.send("POST", "/api/exports", Some(request)).await;
+                    assert_eq!(status, StatusCode::BAD_REQUEST, "{sql}");
+                    assert_eq!(body["detail"]["code"], code, "{sql}");
+                }
+
+                // Columns of the same name: the export starts, then fails on them.
+                let (status, started) = test
+                    .send(
+                        "POST",
+                        "/api/exports",
+                        Some(export_request("SELECT 1 AS a, 2 AS a", &[])),
+                    )
+                    .await;
+                assert_eq!(status, StatusCode::ACCEPTED);
+                let id = started["id"].as_i64().unwrap();
+                let failed = test
+                    .wait_for(id, |export| export["state"] != "running")
+                    .await;
+                assert_eq!(failed["state"], "failed");
+                assert_eq!(
+                    failed["error"],
+                    json!({ "code": "duplicate_columns", "names": ["a"] })
+                );
+            })
+            .await;
     }
-    assert!(saved > 0, "progress of export {id} never saved");
-    let (status, _) = test
-        .send("POST", &format!("/api/exports/{id}/cancel"), None)
-        .await;
-    assert_eq!(status, StatusCode::NO_CONTENT);
-    let stopped = test
-        .wait_for(id, |export| export["state"] != "running")
-        .await;
-    assert_eq!(stopped["state"], "cancelled", "{stopped}");
-    assert!(stopped["rows"].as_u64() < Some(1_000_000_000));
-    assert_eq!(stopped["file_missing"], false);
-
-    let refusals = [
-        ("DELETE FROM t", "export_not_read"),
-        ("SELECT 1; SELECT 2", "multiple_queries"),
-        ("SELECT 1 +", "unparsed_query_refused"),
-    ];
-    for (sql, code) in refusals {
-        let request = export_request(sql, &[]);
-        let (status, body) = test.send("POST", "/api/exports", Some(request)).await;
-        assert_eq!(status, StatusCode::BAD_REQUEST, "{sql}");
-        assert_eq!(body["detail"]["code"], code, "{sql}");
-    }
-
-    // Columns of the same name: the export starts, then fails on them.
-    let (status, started) = test
-        .send(
-            "POST",
-            "/api/exports",
-            Some(export_request("SELECT 1 AS a, 2 AS a", &[])),
-        )
-        .await;
-    assert_eq!(status, StatusCode::ACCEPTED);
-    let id = started["id"].as_i64().unwrap();
-    let failed = test
-        .wait_for(id, |export| export["state"] != "running")
-        .await;
-    assert_eq!(failed["state"], "failed");
-    assert_eq!(
-        failed["error"],
-        json!({ "code": "duplicate_columns", "names": ["a"] })
-    );
 }

@@ -222,7 +222,7 @@ cargo build --release
 
 ## Development servers
 
-`compose.yaml` defines the database servers of development, in Docker: for MySQL and MariaDB, the oldest version Prisme supports (section 2.10 of [V1.md](V1.md)), the latest LTS and the latest version. The screenshots of the design brief and the checks by hand use them.
+`compose.yaml` defines the database servers of development, in Docker: for MySQL and MariaDB, the oldest version Prisme supports (section 2.10 of [V1.md](V1.md)), the latest LTS and the latest version. The tests on real servers and the CI connect to them; the screenshots of the design brief and the checks by hand use them too.
 
 | Service | Port | Version |
 |---|---|---|
@@ -242,7 +242,7 @@ docker compose stop                              # stops them, their data kept
 docker compose ps                                # their state
 ```
 
-The servers only listen on `127.0.0.1`. Accounts: `root` and `reader`, both without a password; `reader` reads every database and writes nothing. On the first start of a server, the scripts of `servers/` load its data: the databases `shop` and `crm` on MariaDB (`mariadb.sql`), `billing` on MySQL (`mysql.sql`), and the `reader` account (`reader.sql`).
+The servers only listen on `127.0.0.1`. Accounts: `root` and `reader`, both without a password; `reader` reads every database and writes nothing. On the first start of a server, the scripts of `servers/` load its data: the databases `shop` and `crm` on MariaDB (`mariadb.sql`), `billing` on MySQL (`mysql.sql`), and the `reader` account (`reader.sql`). The tests create their own databases (`test_*`), then drop them.
 
 A container is named after its role: when a new LTS or a new version comes out, only its image changes in `compose.yaml`. The container keeps its name and its port, so the connections saved in Prisme keep working. It is created again, on an empty data folder, so that the scripts of `servers/` run on the new version. The same two commands reload a server after a change of these scripts:
 
@@ -263,13 +263,14 @@ Comparing versions (support of a function or of a syntax, the version a behaviou
 cargo test                           # all fast tests, without Docker
 cargo test -p prisme-server          # the tests of one crate
 cargo test connections               # the tests whose name contains "connections"
-cargo test -- --include-ignored      # also the tests on real MySQL and MariaDB servers
+cargo test -- --include-ignored      # also the tests on the development servers, started first
 cargo clippy --all-targets           # static analysis, must stay free of warnings
 cargo fmt                            # formatting
 ```
 
 - **Unit tests** sit at the bottom of each `.rs` file, in a `#[cfg(test)] mod tests` block. They also cover the API: HTTP requests go to the application in memory, on an in-memory internal database, without opening a port.
-- **Integration tests** sit in the `tests/` folder of each crate. Those of the MySQL / MariaDB connector start real servers in Docker. They are ignored by default: start Docker Desktop, then add `-- --include-ignored`. The first run downloads the server images.
+- **Integration tests** sit in the `tests/` folder of each crate.
+- **Tests on real servers** (connector, query sessions, exports) connect to the development servers (see "Development servers", and `crates/connectors/src/test_servers.rs`): each one runs on every server of the engines it concerns, in a database of its own, created for it, then dropped. They are ignored by default: start the servers (`docker compose up --detach --wait`), then add `-- --include-ignored`. A server that does not answer fails its tests, with that command.
 
 `cargo test` also regenerates the TypeScript types of `web/src/api/generated/` from the Rust structures (`ts-rs`). After changing a structure exchanged with the interface, run `cargo test`, then `npm run type-check`, and commit the generated types with the Rust change.
 
@@ -394,7 +395,7 @@ Syntax highlighting and the beautifier share the keywords of each dialect, one f
 GitHub Actions (`.github/workflows/ci.yaml`) checks every push to `master` and every pull request, in about two minutes:
 
 - interface: formatting, lint, types and tests;
-- backend: formatting, `clippy` and all tests, Docker ones included.
+- backend: formatting, `clippy` and all tests, those on the development servers included, started by Docker Compose on the runner.
 
 A change that only touches documentation (`*.md`, `docs/`, `.claude/`, `LICENSE`) runs nothing. The Windows, Linux and macOS executables are only built for a release, or when the workflow is run by hand ("Actions" tab, "CI", "Run workflow"): they are then downloadable from the run's artifacts (GitHub sign-in required, kept 90 days).
 
@@ -467,7 +468,7 @@ The APIs that only take pixels are workarounds too, listed apart, with their the
 ```
 crates/
   connectors/      access to target databases (MySQL / MariaDB for now)
-    tests/         integration tests on real servers (Docker)
+    tests/         integration tests on the development servers
   dialects/        query analysis: default limit, read / write, beautifier, keywords
   splitter/        splitting a text into queries, per dialect
   server/          the prisme executable: configuration, master key, internal database, API
