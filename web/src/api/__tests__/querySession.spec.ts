@@ -409,6 +409,15 @@ describe('durations', () => {
     expect(utf8Length('😀')).toBe(4)
   })
 
+  it('measures a long text by pieces, a surrogate pair astride two of them', () => {
+    // The first piece ends after 21,845 code units (64 kB / 3): an emoji starts on each side of
+    // this end in turn.
+    for (const before of [21_843, 21_844, 21_845, 21_846]) {
+      const text = `${'a'.repeat(before)}${'😀'.repeat(3)}${'é€'.repeat(40_000)}`
+      expect(utf8Length(text)).toBe(new TextEncoder().encode(text).length)
+    }
+  })
+
   it('formats the number of rows, preceded by the kept ones with a filter', () => {
     expect(formatRowCount(1, null)).toBe('1 ligne')
     expect(formatRowCount(5000, null)).toBe('5 000 lignes')

@@ -679,26 +679,45 @@ export function parseMessage(data: string): ServerMessage | null {
 }
 
 /**
- * Size in bytes of a text encoded in UTF-8, as it goes over the WebSocket,
- * without copying it (a message can hold thousands of rows).
+ * Encoder of `utf8Length`.
+ */
+const UTF8_ENCODER = new TextEncoder()
+
+/**
+ * Buffer that `utf8Length` encodes into, a piece of the text at a time: it
+ * keeps its size, whatever the size of a message.
+ */
+const UTF8_BUFFER = new Uint8Array(64 * 1024)
+
+/**
+ * Code units of a piece of text: each one takes at most 3 bytes in UTF-8 (a
+ * surrogate pair, 2 units, takes 4), so that a piece always fits in the buffer.
+ */
+const UTF8_PIECE = Math.floor(UTF8_BUFFER.length / 3)
+
+/**
+ * Size in bytes of a text encoded in UTF-8, as it goes over the WebSocket.
+ *
+ * The browser encodes the text (`TextEncoder.encodeInto`), piece by piece,
+ * into a buffer of a fixed size. Over a reception of 1 million rows, a loop
+ * over the characters in JavaScript took 1.7 s of the main thread, the
+ * encoder 0.7 s, and the scripts of the page run 0.35 to 0.70 s less
+ * (`docs/PERFORMANCES.md`, chapter 12).
  *
  * @param text Text of the message.
  */
 export function utf8Length(text: string): number {
   let bytes = 0
-  for (let index = 0; index < text.length; index++) {
-    const code = text.charCodeAt(index)
-    if (code < 0x80) {
-      bytes += 1
-    } else if (code < 0x800) {
-      bytes += 2
-    } else if (code >= 0xd800 && code < 0xdc00) {
-      // Surrogate pair: a character outside the basic plane, 4 bytes.
-      bytes += 4
-      index++
-    } else {
-      bytes += 3
+  for (let start = 0; start < text.length;) {
+    let end = Math.min(text.length, start + UTF8_PIECE)
+    const last = text.charCodeAt(end - 1)
+    // A piece does not end between the two halves of a surrogate pair: apart,
+    // each half would be encoded as a replacement character, of 3 bytes.
+    if (end < text.length && last >= 0xd800 && last < 0xdc00) {
+      end--
     }
+    bytes += UTF8_ENCODER.encodeInto(text.substring(start, end), UTF8_BUFFER).written
+    start = end
   }
   return bytes
 }
