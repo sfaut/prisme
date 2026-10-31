@@ -285,6 +285,25 @@ npm run lint                         # Oxlint and ESLint
 npm run format                       # formatting (Prettier)
 ```
 
+## Benchmarks
+
+### Engine of the Pivoteur
+
+`bench/pivot/` measures where the engine of the Pivoteur (the local pivot table, see `docs/TODO-PIVOTER.md`) should run: in the page (TypeScript, run by V8) or in the server (Rust). From the root of the repository, with nothing to install:
+
+```
+node bench/pivot/run.mjs             # 10,000,000 rows (several minutes, up to 8 GB of memory)
+node bench/pivot/run.mjs 1000000     # fewer rows, for a quick run
+```
+
+The command builds the Rust side (`bench/pivot/rust/`, standard library only, release profile of Prisme), runs it, then runs the JavaScript side (`bench/pivot/js/bench.mjs`, under Node with a larger heap). Both generate the same rows (Mulberry32 generator, seed 42), as text cells, the way the server receives them: `pays` (10 values), `region` (50), `categorie` (20), `produit` (1,000), `canal` (4), `d` (datetime, 2024 to 2026), `qte` (integer, 5 % of NULL), `montant` (decimal with 2 digits), `remise` (float), `client` (100,000 values). The code has the same shape on both sides, phase by phase. Each side then:
+
+1. prepares the typed columns once (dictionaries of the texts, exact numbers scaled to integers); the first pass is measured, as the preparation runs once per result;
+2. computes the pivot, best of 3 passes: rows `pays`, `region`, `categorie`, `produit` (profile "high") or `canal` in place of `produit` (profile "low"); columns `YEAR(d)`, `MONTH(d)`; 12 measures (`COUNT(*)`, `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` on integers, decimals, a float, datetimes and texts); every subtotal and total (15 grouping sets);
+3. Rust only: the same computation with the levels and the measures spread over threads, then the JSON of the whole pivot, which the server would send to the page.
+
+The command checks that both sides give the same pivot (groups, sizes of the grouping sets, checksums of the states, grand total), and exits with 1 otherwise. It prints a summary table and writes the full results, with the machine, to `target/pivot-bench/results-<rows>.json`.
+
 ## Testing the API by hand
 
 Start Prisme on a throwaway data folder, to delete to start from scratch:
@@ -478,6 +497,8 @@ web/               Vue interface
     generated/     TypeScript types generated from Rust (do not edit)
   src/components/  interface components
   src/stores/      shared state (connections, settings)
+bench/             benchmarks, outside the workspace
+  pivot/           engine of the Pivoteur, in Rust and in JavaScript (run.mjs)
 docs/              design decisions and notes
   upstream/        drafts of tickets for the dependencies
 design/            brief of the interface for Claude Design (README.md)
