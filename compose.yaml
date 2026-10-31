@@ -3,33 +3,58 @@
 # version. The tests on real servers and the CI connect to them, the
 # screenshots of design/ and the checks by hand use them too.
 #
-#   docker compose up --detach --wait   # starts them, ready when it returns
-#   docker compose stop                 # stops them, data kept
+#   docker compose up --detach --wait                # starts them, ready when it returns
+#   docker compose up --detach --wait mariadb-lts    # starts one, named by its service
+#   docker compose stop                              # stops them, data kept
+#   docker compose ps                                # their state
 #
 # A container is named after its role: a new version only changes its image
-# here, the container keeps its name and its port. Accounts, data, change of
-# version: docs/DEVELOPER.md, section "Development servers".
+# here, the container keeps its name and its port. The container is then
+# created again on an empty data folder, so that the scripts of servers/ run
+# on the new version:
+#
+#   docker compose rm --stop --force --volumes mariadb-lts
+#   docker compose up --detach --wait mariadb-lts
+#
+# Accounts, data and research containers: docs/DEVELOPER.md, section
+# "Development servers".
 
+# Name of the Compose project, whatever the folder of the clone (otherwise
+# its name, app-prisme): the containers and the network belong to `prisme`.
 name: prisme
 
-# Settings common to the servers of each engine: root account without a
-# password, port published on 127.0.0.1 only; on the first start, the
-# scripts of servers/ create the demo databases and the `reader` account.
-# A server is ready once its client runs a query over TCP, which the server
-# only accepts after these scripts (the client, as mysql:8.0.11 has no
-# mysqladmin).
+# Settings common to the three servers of an engine. Compose ignores the keys
+# that start with `x-`: each one only holds a block, anchored (`&mysql`), that
+# the services merge into theirs (`<<: *mysql`).
 x-mysql: &mysql
+  # Root account without a password: the servers only listen on 127.0.0.1
+  # (see `ports`), and nothing to keep secret goes into the repository.
   environment:
     MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+  # Scripts mounted read-only in the folder that the entrypoint of the image
+  # runs, in the alphabetical order of the names, on the first start only
+  # (empty data folder): the demo databases, then the `reader` account. The
+  # data folder itself is the anonymous volume of the image (/var/lib/mysql):
+  # kept by stop, start and up, removed by `rm --volumes`.
   volumes:
     - ./servers/mysql.sql:/docker-entrypoint-initdb.d/1-mysql.sql:ro
     - ./servers/reader.sql:/docker-entrypoint-initdb.d/2-reader.sql:ro
+  # Ready once the client of the image runs a query over TCP. During the
+  # first start, the entrypoint runs the scripts on a temporary server that
+  # only listens on its socket: the TCP answer comes from the final server,
+  # after the scripts. The client, as mysql:8.0.11 has no mysqladmin.
   healthcheck:
     test: ["CMD", "mysql", "--host=127.0.0.1", "--user=root", "--execute=SELECT 1"]
-    interval: 30s
+    # A failure only counts after 3 minutes (the first start of the six
+    # servers at once took 110 s on 2026-10-31); until then, a check every
+    # second, so that `up --wait` returns as soon as the server is ready.
+    # Then a check every 30 s.
     start_period: 3m
     start_interval: 1s
+    interval: 30s
 
+# The same settings for MariaDB, with the names of its image: the variable
+# `MARIADB_*`, the scripts of its demo databases, the client `mariadb`.
 x-mariadb: &mariadb
   environment:
     MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "1"
@@ -38,10 +63,16 @@ x-mariadb: &mariadb
     - ./servers/reader.sql:/docker-entrypoint-initdb.d/2-reader.sql:ro
   healthcheck:
     test: ["CMD", "mariadb", "--host=127.0.0.1", "--user=root", "--execute=SELECT 1"]
-    interval: 30s
     start_period: 3m
     start_interval: 1s
+    interval: 30s
 
+# One service per engine and role, its image at an exact version. Port
+# published on 127.0.0.1 only, so that no other machine reaches the root
+# account: 331x for MySQL, 332x for MariaDB, x being 1 for the oldest
+# version, 2 for the LTS, 3 for the latest. The versions of the LTS and of
+# the latest are those of the tags `lts` and `latest` of Docker Hub on
+# 2026-10-31.
 services:
   mysql-oldest:
     <<: *mysql
