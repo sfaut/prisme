@@ -19,6 +19,7 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Results submitted to the maintainer
 - ✅ Rust compiled to WebAssembly (`wasm32-unknown-unknown`), run by V8 in the page: no transfer of the pivot, one copy of the cells into the memory of WebAssembly
 - ✅ Results with WebAssembly submitted to the maintainer
+- ✅ Saved results measured on the real server, 1 and 10 million rows: reception, save, reading again by the page (`node bench/reload/run.mjs`)
 - ⬜ Engine decided (A1)
 
 ## 3. Corrections of the specification
