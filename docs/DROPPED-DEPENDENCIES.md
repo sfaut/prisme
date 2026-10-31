@@ -18,7 +18,6 @@ section "Held-back dependencies"; the workarounds of the dependencies still used
 | `lucide-vue-next` | interface | 2026-10-14 to 2026-10-21 | 1.0.0 | 1.0.0 | v0.1.0 | v0.4.0 | `@lucide/vue` | published under a new name |
 | `@nuxt/ui`, `@iconify-json/lucide` | interface | 2026-10-13 to 2026-10-14 | 4.11.3, 1.2.143 | 4.11.3, 1.2.143 | — | — | Reka UI and components of Prisme | its theme layer |
 | `naive-ui` | interface | 2026-10-12 to 2026-10-13 | 2.45.3 | 2.45.3 | — | — | Nuxt UI | rendering through classes, theme through tokens |
-| PrimeVue | interface | never installed | — | — | — | — | Naive UI | commercial license |
 
 The first and last versions are those of the lock files (`web/package-lock.json`, `Cargo.lock`)
 while the dependency was used. The first and last versions of Prisme are the published versions
@@ -131,12 +130,3 @@ An entry gives, as far as they apply:
   (`docs/PERFORMANCES.md`, chapter 1). The defaults of a layout component are checked with a large
   result, in a real browser.
 
-## PrimeVue
-
-- **Role**: the component library planned for the interface, never installed.
-- **Why it left**: a key-based commercial license since its v5 (July 2026), even for the free
-  community edition; v4.5.5, the last one under MIT, is frozen. Prisme is distributed as a single
-  executable under MIT.
-- **Replaced by**: Naive UI.
-- **Lessons**: the license of the latest version of a library, and where it is heading, are checked
-  before it is adopted.
