@@ -834,9 +834,11 @@ Main thread of the interface while it receives 200,000 rows (last rows after
   thread is busy 34 s of the 39.7 s from Ctrl+Enter to the drawing after
   `done`, and Chrome reads the WebSocket only as fast as the page takes its
   messages: the server waits, its processor time is the same as elsewhere,
-  spread over 33 s. Each update of the interface, at most 10 per second, costs the updates of Vue (25 %), drawing (layers, painting,
-  layout, styles: about 45 %) and the handling of the messages (16 %). The
-  interface stays usable (longest task 0.17 s), and slows down.
+  spread over 33 s. The page applies a batch every 100 ms, but draws about 30
+  frames per second (181 in 5.8 s for 200,000 rows, chapter 12 says why):
+  updates of Vue (25 %), drawing (layers, painting, layout, styles: about
+  45 %) and handling of the messages (16 %). The interface stays usable
+  (longest task 0.17 s), and slows down.
 - **The Worker receives at the speed of the server** (7.7 s), parses and
   stores on its own thread (4.2 s), and leaves the main thread without any
   long task. It answers a window of 50 rows in 0.6 ms (median), 2.0 ms during
