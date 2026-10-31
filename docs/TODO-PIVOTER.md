@@ -17,6 +17,8 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ One command reproduces it all, from the root of the repository: `node bench/pivot/run.mjs` (see `docs/DEVELOPER.md`, section "Benchmarks")
 - ✅ Runs on 10 million rows, both profiles, with memory
 - ✅ Results submitted to the maintainer
+- ✅ Rust compiled to WebAssembly (`wasm32-unknown-unknown`), run by V8 in the page: no transfer of the pivot, one copy of the cells into the memory of WebAssembly
+- ✅ Results with WebAssembly submitted to the maintainer
 - ⬜ Engine decided (A1)
 
 ## 3. Corrections of the specification
