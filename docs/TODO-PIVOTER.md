@@ -20,7 +20,7 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Rust compiled to WebAssembly (`wasm32-unknown-unknown`), run by V8 in the page: no transfer of the pivot, one copy of the cells into the memory of WebAssembly
 - ✅ Results with WebAssembly submitted to the maintainer
 - ✅ Saved results measured on the real server, 1 and 10 million rows: reception, save, reading again by the page (`node bench/reload/run.mjs`)
-- ⬜ Engine decided (A1)
+- ✅ Engine decided (A1): Rust compiled to WebAssembly, run in a Worker of the page, on the rows the page already holds; a server and a client of Prisme are expected in the long run, the client doing this work
 
 ## 3. Corrections of the specification
 
