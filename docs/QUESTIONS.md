@@ -108,6 +108,8 @@ This document keeps track of the reasoning: what was kept, dropped or postponed,
 
 29. **Grid filter when the columns change**: settled. The user filter is either global (all columns) or targeted (one column). When the columns of a grid change within the same tab (practically unreachable: a new query opens a new tab, and a resumed session keeps its query), the text of the user filter stays, the targeted filter goes back to global and the sort is reset. Decision: keep this behaviour, no need to reopen it.
 
+32. **Results beyond the size limit of SQLite.** The rows of a result tab are saved as one JSON value (`rows` of `result_tabs`), which SQLite caps at 1,000,000,000 bytes. A result of about 9.6 million rows of 10 short columns is therefore no longer saved ("string or blob too big"): the tab keeps no rows, only a warning of the log says so, and the result is gone at the next opening of Prisme. Saved, it could not be read again by the page either, in one answer: 1.04 GB exceeds the maximum length of a JavaScript string (536,870,888 characters). Measured on 2026-10-31 (`bench/reload/run.mjs`, see `docs/DEVELOPER.md`, section "Saved results"): at 1 million rows, the save takes 3.3 s, reading the tab again 3.0 s on the server and 3.1 s in the page; at 10 million rows, the server reaches 10.8 GB (rows kept, copied for the save, then their JSON). Leads: rows saved and read again in chunks; a failed save shown to the user. Decision: to do later.
+
 ### Security
 
 23. **Master encryption key**: settled, `prisme.key` key file in the data folder (see `docs/V1.md`, section 2.8).
