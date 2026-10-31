@@ -199,7 +199,9 @@ const viewMemory = createViewMemory()
  * reconnection, for example) does not freeze the interface. Without either,
  * examining a row costs only its addition to the view: the view takes all the
  * new rows at once, since each chunk costs an update of the grid and a drawing
- * (three per batch of rows, during the reception of a large result).
+ * (three per batch of rows, during the reception of a large result). Measured
+ * on 2026-10-31 for 1 million rows: received in 10 to 12 s at once, 18 to 20 s
+ * by chunks (`docs/PERFORMANCES.md`, chapter 12).
  */
 const VIEW_CHUNK = 2000
 
@@ -230,6 +232,7 @@ function nextFrame(): Promise<void> {
 async function refreshView(): Promise<void> {
   const run = ++viewRun
   const rows = props.rows
+  // Without a filter nor a sort, the view takes all the new rows at once (see `VIEW_CHUNK`).
   const chunk =
     props.filter.text.trim() === '' && sort.value === null ? Number.POSITIVE_INFINITY : VIEW_CHUNK
   for (;;) {
