@@ -129,4 +129,3 @@ An entry gives, as far as they apply:
   of the window: the result grid was left without a bound on its height and drew all its rows
   (`docs/PERFORMANCES.md`, chapter 1). The defaults of a layout component are checked with a large
   result, in a real browser.
-
