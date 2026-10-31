@@ -310,6 +310,17 @@ Each generates the same rows (Mulberry32 generator, seed 42, `js/common.mjs` for
 
 The command checks that every side gives the same pivot as the native one (groups, sizes of the grouping sets, checksums of the states, grand total), and exits with 1 otherwise. It prints a summary table and writes the full results, with the machine, to `target/pivot-bench/results-<rows>.json`.
 
+### Saved results
+
+`bench/reload/run.mjs` measures what a result of many rows costs on its way into a result tab, and when the page reads it again, on the real server: Prisme built in release, started on a throwaway data folder (`target/reload-bench/`), queries on the latest MariaDB LTS of the development servers. From the root of the repository, the development servers started (`docker compose up --detach --wait`) and the interface built (`npm run build` in `web/`):
+
+```
+node bench/reload/run.mjs            # 1,000,000 then 10,000,000 rows (several minutes, up to 11 GB of memory for Prisme)
+node bench/reload/run.mjs 100000     # fewer rows, for a quick run
+```
+
+For each number of rows, the command runs a query of that many rows in the session of an editor (`seq_1_to_<rows>` of the sequence engine of MariaDB, columns like those of the benchmark of the Pivoteur, with its own `LIMIT`). It notes the time of the rows received, then that of the save of the result, which the server ends before sending `done`, and whether the save succeeded. It then reads the saved tabs again (`GET /api/editors/{id}/results`), as the page does on opening: answer of the server (also read from its log, `--verbose`), download, parsing. The results go to `target/reload-bench/results.json`, with the log of each server.
+
 ## Testing the API by hand
 
 Start Prisme on a throwaway data folder, to delete to start from scratch:
@@ -505,6 +516,7 @@ web/               Vue interface
   src/stores/      shared state (connections, settings)
 bench/             benchmarks, outside the workspace
   pivot/           engine of the Pivoteur: native, WebAssembly, JavaScript (run.mjs)
+  reload/          saved results: their save, and their reading again by the page (run.mjs)
 docs/              design decisions and notes
   upstream/        drafts of tickets for the dependencies
 design/            brief of the interface for Claude Design (README.md)

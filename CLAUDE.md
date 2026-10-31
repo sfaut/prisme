@@ -52,7 +52,7 @@ crates/        Cargo workspace
   connectors/  common interface and one implementation per engine
   server/      notebook sessions, API, authentication
 web/           Vue application
-bench/         benchmarks outside the workspace (pivot/: engine of the Pivoteur, node bench/pivot/run.mjs)
+bench/         benchmarks outside the workspace (pivot/: engine of the Pivoteur; reload/: saved results; see docs/DEVELOPER.md)
 docs/          decisions and notes
 design/        brief of the interface for Claude Design, its screenshots and their capture
 servers/       data of the development database servers (compose.yaml)
