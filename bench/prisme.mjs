@@ -74,10 +74,21 @@ export async function call(method, path, body) {
 }
 
 /**
+ * Executable of Prisme: the one named by the `PRISME_EXECUTABLE` variable when set (another build,
+ * to compare), otherwise the release build of the repository.
+ */
+const EXECUTABLE =
+  process.env.PRISME_EXECUTABLE ??
+  join(ROOT, 'target', 'release', `prisme${process.platform === 'win32' ? '.exe' : ''}`)
+
+/**
  * Builds Prisme in release, with its interface embedded. Exits when the interface is not built
- * or when the build fails.
+ * or when the build fails. Builds nothing when `PRISME_EXECUTABLE` names another executable.
  */
 export function build() {
+  if (process.env.PRISME_EXECUTABLE !== undefined) {
+    return
+  }
   if (!existsSync(join(ROOT, 'web', 'dist', 'index.html'))) {
     console.error('web/dist is missing: run npm run build in web/ first')
     process.exit(1)
@@ -107,9 +118,8 @@ async function serverUp() {
 }
 
 /**
- * Starts Prisme built in release on an emptied data folder, with its log (`--verbose`), waits
- * until it answers, then saves a connection to MariaDB. The server is stopped if it fails to
- * start.
+ * Starts Prisme (`EXECUTABLE`) on an emptied data folder, with its log (`--verbose`), waits until
+ * it answers, then saves a connection to MariaDB. The server is stopped if it fails to start.
  *
  * @param {string} dataDir Data folder.
  * @returns {Promise<{ pid: number, connection: number, log: () => string, stop: () => void }>}
@@ -118,14 +128,8 @@ async function serverUp() {
 export async function start(dataDir) {
   rmSync(dataDir, { recursive: true, force: true })
   mkdirSync(dataDir, { recursive: true })
-  const executable = join(
-    ROOT,
-    'target',
-    'release',
-    `prisme${process.platform === 'win32' ? '.exe' : ''}`,
-  )
   const server = spawn(
-    executable,
+    EXECUTABLE,
     ['--data-dir', dataDir, '--listen', ADDRESS, '--user-email', 'bench@local', '--verbose'],
     { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] },
   )

@@ -22,7 +22,8 @@
  * From the root of the repository, the development servers started
  * (`docker compose up --detach --wait`) and the interface built (`npm run build` in `web/`):
  * `node bench/store/run.mjs [rows...]` (1,000,000 rows by default). The results go to
- * `target/store-bench/results-<rows>.json`.
+ * `target/store-bench/results-<rows>.json`. With `--interface`, only the steps 1 and 2 run, to
+ * compare changes of the interface; their results go to `results-<rows>-interface.json`.
  */
 
 import { spawn, spawnSync } from 'node:child_process'
@@ -47,7 +48,11 @@ const SETTLE_MS = 2_000
 const IDLE_MS = 3_000
 
 const workDir = join(ROOT, 'target', 'store-bench')
-const counts = process.argv.slice(2).map(Number)
+const interfaceOnly = process.argv.includes('--interface')
+const counts = process.argv
+  .slice(2)
+  .filter((arg) => !arg.startsWith('--'))
+  .map(Number)
 if (counts.length === 0) {
   counts.push(1_000_000)
 }
@@ -272,7 +277,13 @@ function rounded(value) {
  * @param {object} entry Measures, rounded.
  */
 function summary(entry) {
-  const steps = [entry.interface, entry.discard, entry.page, entry.worker]
+  const columns = [
+    ['Interface', entry.interface],
+    ['Page, rows thrown away', entry.discard],
+    ['Page, rows handled as the interface', entry.page],
+    ['Worker, store in columns', entry.worker],
+  ].filter(([, step]) => step !== undefined)
+  const steps = columns.map(([, step]) => step)
   const cells = (pick) => steps.map((step) => pick(step) ?? '').join(' | ')
   const cpu = (step) => step.prisme_cpu_s && `${step.prisme_cpu_s.rows} / ${step.prisme_cpu_s.save}`
   const megabytes = (bytes) => Math.round(bytes / 1e6)
@@ -280,8 +291,8 @@ function summary(entry) {
     `Store of the results: ${entry.rows.toLocaleString('en')} rows`,
     `${entry.machine.cpu}, ${entry.machine.logical_cores} logical cores, ${entry.machine.memory_gb} GB, ${entry.machine.os}, Node ${entry.machine.node}, ${entry.machine.browser}`,
     `Database alone: ${entry.database.duration_s} s, processor of MariaDB ${entry.database.mariadb_cpu_s} s`,
-    '| Step | Interface | Page, rows thrown away | Page, rows handled as the interface | Worker, store in columns |',
-    '| --- | ---: | ---: | ---: | ---: |',
+    `| Step | ${columns.map(([name]) => name).join(' | ')} |`,
+    `| --- |${' ---: |'.repeat(columns.length)}`,
     `| Last rows received (s) | ${cells((step) => step.rows_s)} |`,
     `| \`done\` received (s) | ${cells((step) => step.done_s)} |`,
     `| Processor of Prisme, rows / save (s) | ${cells(cpu)} |`,
@@ -291,11 +302,16 @@ function summary(entry) {
     `| Long tasks: number, longest (s) | ${cells((step) => `${step.long_tasks.count}, ${step.long_tasks.longest_s}`)} |`,
     `| Memory of the page, before / after (MB) | ${cells((step) => `${step.heap_before_mb} / ${step.heap_mb}`)} |`,
     `| Store in columns, used / reserved (MB) | ${cells((step) => step.store && `${megabytes(step.store.used)} / ${megabytes(step.store.reserved)}`)} |`,
+  ]
+  if (entry.worker === undefined) {
+    return lines.join('\n')
+  }
+  lines.push(
     '',
     `Windows of visible rows asked to the Worker (${entry.worker.frames} frames):`,
     '| Windows | Number | Median (ms) | 95th percentile (ms) | 99th percentile (ms) | Longest (ms) |',
     '| --- | ---: | ---: | ---: | ---: | ---: |',
-  ]
+  )
   const names = {
     reception: '50 rows, during the reception',
     'idle 50': '50 rows, Worker idle',
@@ -333,31 +349,33 @@ try {
       console.error(`store: ${count} rows, interface`)
       await openInterface(page, prisme.connection, sql)
       entry.interface = await measured(cpu, () => inInterface(page, count))
-      console.error(`store: ${count} rows, page throwing the rows away`)
-      entry.discard = await measured(cpu, () =>
-        inPage(page, prisme.connection, (editor) =>
-          evaluate(page, receiveInPage, utf8Length, ADDRESS, editor, sql, 'discard'),
-        ),
-      )
-      console.error(`store: ${count} rows, page handling the rows as the interface`)
-      entry.page = await measured(cpu, () =>
-        inPage(page, prisme.connection, (editor) =>
-          evaluate(page, receiveInPage, utf8Length, ADDRESS, editor, sql, 'page'),
-        ),
-      )
-      console.error(`store: ${count} rows, Worker and windows of visible rows`)
-      const source = `(${workerMain})(${utf8Length})`
-      entry.worker = await measured(cpu, () =>
-        inPage(page, prisme.connection, (editor) =>
-          evaluate(page, receiveInWorker, source, ADDRESS, editor, sql, IDLE_MS),
-        ),
-      )
+      if (!interfaceOnly) {
+        console.error(`store: ${count} rows, page throwing the rows away`)
+        entry.discard = await measured(cpu, () =>
+          inPage(page, prisme.connection, (editor) =>
+            evaluate(page, receiveInPage, utf8Length, ADDRESS, editor, sql, 'discard'),
+          ),
+        )
+        console.error(`store: ${count} rows, page handling the rows as the interface`)
+        entry.page = await measured(cpu, () =>
+          inPage(page, prisme.connection, (editor) =>
+            evaluate(page, receiveInPage, utf8Length, ADDRESS, editor, sql, 'page'),
+          ),
+        )
+        console.error(`store: ${count} rows, Worker and windows of visible rows`)
+        const source = `(${workerMain})(${utf8Length})`
+        entry.worker = await measured(cpu, () =>
+          inPage(page, prisme.connection, (editor) =>
+            evaluate(page, receiveInWorker, source, ADDRESS, editor, sql, IDLE_MS),
+          ),
+        )
+      }
     } finally {
       cpu.stop()
       prisme.stop()
       writeFileSync(join(workDir, `server-${count}.log`), prisme.log())
     }
-    const file = join(workDir, `results-${count}.json`)
+    const file = join(workDir, `results-${count}${interfaceOnly ? '-interface' : ''}.json`)
     writeFileSync(file, `${JSON.stringify(rounded(entry), null, 2)}\n`)
     console.log(summary(rounded(entry)))
     console.log(`Full results: ${file}`)
