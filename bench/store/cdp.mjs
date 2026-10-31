@@ -47,6 +47,7 @@ class Connection {
     this.lastId = 0
     this.pending = new Map()
     this.waiters = []
+    this.listeners = []
     socket.addEventListener('message', (event) => {
       const message = JSON.parse(event.data)
       if (message.id !== undefined) {
@@ -58,6 +59,11 @@ class Connection {
           resolve(message.result)
         }
         return
+      }
+      for (const listener of this.listeners) {
+        if (listener.method === message.method && listener.session === message.sessionId) {
+          listener.handler(message.params)
+        }
       }
       this.waiters = this.waiters.filter((waiter) => {
         const match = waiter.method === message.method && waiter.session === message.sessionId
@@ -91,6 +97,17 @@ class Connection {
   next(method, session = undefined) {
     return new Promise((resolve) => this.waiters.push({ method, session, resolve }))
   }
+
+  /**
+   * Calls a function on each event of a kind.
+   *
+   * @param {string} method Event, such as `Fetch.requestPaused`.
+   * @param {(params: object) => void} handler Function, given the parameters of the event.
+   * @param {string} [session] Session of a page.
+   */
+  on(method, handler, session = undefined) {
+    this.listeners.push({ method, session, handler })
+  }
 }
 
 /**
@@ -98,7 +115,9 @@ class Connection {
  *
  * @param {string} profileDir Folder of the profile.
  * @returns {Promise<{ send: (method: string, params?: object) => Promise<object>,
- *   next: (method: string) => Promise<object>, close: () => void, browser: string }>}
+ *   next: (method: string) => Promise<object>,
+ *   on: (method: string, handler: (params: object) => void) => void, close: () => void,
+ *   browser: string }>}
  *   Commands and events of the page, and the stop of the browser.
  */
 export async function launch(profileDir) {
@@ -149,6 +168,7 @@ export async function launch(profileDir) {
   return {
     send: (method, params) => connection.send(method, params, sessionId),
     next: (method) => connection.next(method, sessionId),
+    on: (method, handler) => connection.on(method, handler, sessionId),
     close: () => {
       socket.close()
       browser.kill()

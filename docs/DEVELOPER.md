@@ -332,7 +332,11 @@ node bench/store/run.mjs 100000      # fewer rows, for a quick run
 
 The same query of that many rows runs five times: by the client of MariaDB in its container, the rows thrown away (the database alone); in the interface of Prisme, written in an editor and run by Ctrl+Enter once the interface is quiet; in a page that throws the rows away without parsing them (the server and the transport); in a page that handles them as `querySession.ts` does, without the interface; in a Worker that keeps them in columns (UTF-8 bytes, offsets, validities, the layout of `bench/pivot/js/transfer.mjs`), while the page asks it, at each frame, for a window of visible rows. The code run in the browser is in `bench/store/browser.mjs`. Each step notes the instants of the query sent, of the last rows and of `done`, the processor time of Prisme until the last rows and during the save (sampled every 100 ms, Windows only), that of MariaDB, the work of the main thread of the page and its long tasks, and its memory. The command prints a summary table and writes the results to `target/store-bench/results-<rows>.json`, with the log of the server.
 
-`node bench/store/trace.mjs [rows]` (200,000 rows by default: the trace slows the page down) says on what the main thread of the interface spends its time during the same reception: it records a trace of Chrome from Ctrl+Enter to the drawing after `done`, and prints the own time of each kind of event of the main thread (scripts, microtasks of Vue, layout, painting, layers). The trace goes to `target/store-bench/trace-<rows>.json`, which the Performance panel of DevTools opens. The driving of the interface is shared by both commands (`bench/store/interface.mjs`).
+`node bench/store/trace.mjs [rows]` (200,000 rows by default: the trace slows the page down) says on what the main thread of the interface spends its time during the same reception: it records a trace of Chrome from Ctrl+Enter to the drawing after `done`, and prints the own time of each kind of event of the main thread (scripts, microtasks of Vue, layout, painting, layers). The trace goes to `target/store-bench/trace-<rows>.json`, which the Performance panel of DevTools opens.
+
+`node bench/store/profile.mjs [rows]` (1,000,000 rows by default) says which functions hold the main thread of the interface during the same reception. It builds the interface without minification into `target/store-bench/web-plain`, to keep the names of its functions, and gives its scripts to the page in place of those embedded in Prisme; the document, the API and the WebSocket stay those of the server. It samples the JavaScript of the page from Ctrl+Enter to the drawing after `done`, then prints the own time and the total time of the functions that take the most, and the composited layers of the page during the reception. The profile goes to `target/store-bench/profile-<rows>.cpuprofile`, which the Performance panel of DevTools opens. The sampling slows the reception down: the profile gives the shares, `run.mjs` the durations.
+
+The driving of the interface is shared by the three commands (`bench/store/interface.mjs`).
 
 ## Testing the API by hand
 
@@ -531,7 +535,7 @@ bench/             benchmarks, outside the workspace
   prisme.mjs       Prisme on the real server, for the benchmarks that measure it
   pivot/           engine of the Pivoteur: native, WebAssembly, JavaScript (run.mjs)
   reload/          saved results: their save, and their reading again by the page (run.mjs)
-  store/           reception of a result, and windows of rows asked to a Worker (run.mjs, trace.mjs)
+  store/           reception of a result, and windows of rows asked to a Worker (run.mjs, trace.mjs, profile.mjs)
 docs/              design decisions and notes
   upstream/        drafts of tickets for the dependencies
 design/            brief of the interface for Claude Design (README.md)
