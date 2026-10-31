@@ -321,6 +321,19 @@ node bench/reload/run.mjs 100000     # fewer rows, for a quick run
 
 For each number of rows, the command runs a query of that many rows in the session of an editor (`seq_1_to_<rows>` of the sequence engine of MariaDB, columns like those of the benchmark of the Pivoteur, with its own `LIMIT`). It notes the time of the rows received, then that of the save of the result, which the server ends before sending `done`, and whether the save succeeded. It then reads the saved tabs again (`GET /api/editors/{id}/results`), as the page does on opening: answer of the server (also read from its log, `--verbose`), download, parsing. The results go to `target/reload-bench/results.json`, with the log of each server.
 
+### Store of the results
+
+`bench/store/run.mjs` measures where the time of the reception of a large result goes, and the round trip of the visible rows between the page and a Worker that would hold the rows (single store of the results, `docs/QUESTIONS.md`, section 2). It starts Prisme as the benchmark of the saved results does, and Chrome without a window, driven over the DevTools protocol by `bench/store/cdp.mjs`, with nothing to install but the browser (Chrome or Edge at their usual place, or the one named by `CHROME`). From the root of the repository, the development servers started (`docker compose up --detach --wait`) and the interface built (`npm run build` in `web/`):
+
+```
+node bench/store/run.mjs             # 1,000,000 rows (a few minutes)
+node bench/store/run.mjs 100000      # fewer rows, for a quick run
+```
+
+The same query of that many rows runs five times: by the client of MariaDB in its container, the rows thrown away (the database alone); in the interface of Prisme, written in an editor and run by Ctrl+Enter once the interface is quiet; in a page that throws the rows away without parsing them (the server and the transport); in a page that handles them as `querySession.ts` does, without the interface; in a Worker that keeps them in columns (UTF-8 bytes, offsets, validities, the layout of `bench/pivot/js/transfer.mjs`), while the page asks it, at each frame, for a window of visible rows. The code run in the browser is in `bench/store/browser.mjs`. Each step notes the instants of the query sent, of the last rows and of `done`, the processor time of Prisme until the last rows and during the save (sampled every 100 ms, Windows only), that of MariaDB, the work of the main thread of the page and its long tasks, and its memory. The command prints a summary table and writes the results to `target/store-bench/results-<rows>.json`, with the log of the server.
+
+`node bench/store/trace.mjs [rows]` (200,000 rows by default: the trace slows the page down) says on what the main thread of the interface spends its time during the same reception: it records a trace of Chrome from Ctrl+Enter to the drawing after `done`, and prints the own time of each kind of event of the main thread (scripts, microtasks of Vue, layout, painting, layers). The trace goes to `target/store-bench/trace-<rows>.json`, which the Performance panel of DevTools opens. The driving of the interface is shared by both commands (`bench/store/interface.mjs`).
+
 ## Testing the API by hand
 
 Start Prisme on a throwaway data folder, to delete to start from scratch:
@@ -518,6 +531,7 @@ bench/             benchmarks, outside the workspace
   prisme.mjs       Prisme on the real server, for the benchmarks that measure it
   pivot/           engine of the Pivoteur: native, WebAssembly, JavaScript (run.mjs)
   reload/          saved results: their save, and their reading again by the page (run.mjs)
+  store/           reception of a result, and windows of rows asked to a Worker (run.mjs, trace.mjs)
 docs/              design decisions and notes
   upstream/        drafts of tickets for the dependencies
 design/            brief of the interface for Claude Design (README.md)

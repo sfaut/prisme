@@ -24,7 +24,7 @@ const encoder = new TextEncoder()
  *
  * @param {string} text Text.
  */
-function utf8Length(text) {
+export function utf8Length(text) {
   let length = 0
   for (let index = 0; index < text.length; index++) {
     const unit = text.charCodeAt(index)

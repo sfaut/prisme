@@ -54,7 +54,7 @@ LIMIT ${count}`
 }
 
 /**
- * Calls the API and returns the JSON of its answer.
+ * Calls the API and returns the JSON of its answer, `null` for an answer without a body.
  *
  * @param {string} method Method.
  * @param {string} path Path after `/api`.
@@ -69,7 +69,8 @@ export async function call(method, path, body) {
   if (!response.ok) {
     throw new Error(`${method} ${path}: ${response.status} ${await response.text()}`)
   }
-  return response.json()
+  const text = await response.text()
+  return text === '' ? null : JSON.parse(text)
 }
 
 /**
