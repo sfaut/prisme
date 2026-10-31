@@ -1,0 +1,11 @@
+# Native side of the benchmark: the engine run in the server.
+
+[package]
+name = "pivot-native"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pivot-engine = { path = "../engine" }

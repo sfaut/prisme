@@ -285,6 +285,62 @@ npm run lint                         # Oxlint and ESLint
 npm run format                       # formatting (Prettier)
 ```
 
+## Benchmarks
+
+### Engine of the Pivoteur
+
+`bench/pivot/` measures where and in what the engine of the Pivoteur (the local pivot table, see `docs/TODO-PIVOTER.md`) should run: in the server (Rust), or in the page, in Rust compiled to WebAssembly or in TypeScript (both run by V8). From the root of the repository; the command adds the WebAssembly target to the toolchain when it is missing:
+
+```
+node bench/pivot/run.mjs             # 10,000,000 rows (several minutes, up to 8 GB of memory)
+node bench/pivot/run.mjs 1000000     # fewer rows, for a quick run
+```
+
+The command builds the Rust sides (workspace `bench/pivot/`, standard library only, release profile of Prisme), then runs, one after the other, in processes of their own:
+
+- the native side (`native/`): the engine (`engine/`) in the server, on the rows as the server keeps them;
+- the WebAssembly side (`wasm/`, target `wasm32-unknown-unknown`, driven by `js/wasm.mjs` under Node): the same engine in the page, on one thread; the rows stay in JavaScript, as the grid holds them, and each column is copied once into the memory of the module (`js/transfer.mjs`), which reads only its own memory; the module keeps the default features of the target, SIMD (`simd128`) having given no measurable gain;
+- the JavaScript side (`js/bench.mjs`, under Node): the engine written again in JavaScript, with the same shape, phase by phase.
+
+Each generates the same rows (Mulberry32 generator, seed 42, `js/common.mjs` for both JavaScript drivers), as text cells, the way they arrive: `pays` (10 values), `region` (50), `categorie` (20), `produit` (1,000), `canal` (4), `d` (datetime, 2024 to 2026), `qte` (integer, 5 % of NULL), `montant` (decimal with 2 digits), `remise` (float), `client` (100,000 values). Each side then:
+
+1. prepares the typed columns once (dictionaries of the texts, exact numbers scaled to integers); the first pass is measured, as the preparation runs once per result; the WebAssembly side measures the copy of the cells apart;
+2. computes the pivot, best of 3 passes: rows `pays`, `region`, `categorie`, `produit` (profile "high") or `canal` in place of `produit` (profile "low"); columns `YEAR(d)`, `MONTH(d)`; 12 measures (`COUNT(*)`, `COUNT`, `SUM`, `AVG`, `MIN`, `MAX` on integers, decimals, a float, datetimes and texts); every subtotal and total (15 grouping sets);
+3. native side only: the same computation with the levels and the measures spread over threads, then the JSON of the whole pivot, which the server would send to the page.
+
+The command checks that every side gives the same pivot as the native one (groups, sizes of the grouping sets, checksums of the states, grand total), and exits with 1 otherwise. It prints a summary table and writes the full results, with the machine, to `target/pivot-bench/results-<rows>.json`.
+
+### Saved results
+
+`bench/reload/run.mjs` measures what a result of many rows costs on its way into a result tab, and when the page reads it again, on the real server: Prisme built in release, started on a throwaway data folder (`target/reload-bench/`), queries on the latest MariaDB LTS of the development servers. From the root of the repository, the development servers started (`docker compose up --detach --wait`) and the interface built (`npm run build` in `web/`):
+
+```
+node bench/reload/run.mjs            # 1,000,000 then 10,000,000 rows (several minutes, up to 11 GB of memory for Prisme)
+node bench/reload/run.mjs 100000     # fewer rows, for a quick run
+```
+
+For each number of rows, the command runs a query of that many rows in the session of an editor (`seq_1_to_<rows>` of the sequence engine of MariaDB, columns like those of the benchmark of the Pivoteur, with its own `LIMIT`). It notes the time of the rows received, then that of the save of the result, which the server ends before sending `done`, and whether the save succeeded. It then reads the saved tabs again (`GET /api/editors/{id}/results`), as the page does on opening: answer of the server (also read from its log, `--verbose`), download, parsing. The results go to `target/reload-bench/results.json`, with the log of each server.
+
+### Store of the results
+
+`bench/store/run.mjs` measures where the time of the reception of a large result goes, and the round trip of the visible rows between the page and a Worker that would hold the rows (single store of the results, `docs/QUESTIONS.md`, section 2). It starts Prisme as the benchmark of the saved results does, and Chrome without a window, driven over the DevTools protocol by `bench/store/cdp.mjs`, with nothing to install but the browser (Chrome or Edge at their usual place, or the one named by `CHROME`). From the root of the repository, the development servers started (`docker compose up --detach --wait`) and the interface built (`npm run build` in `web/`):
+
+```
+node bench/store/run.mjs             # 1,000,000 rows (a few minutes)
+node bench/store/run.mjs 100000      # fewer rows, for a quick run
+node bench/store/run.mjs --interface # the database alone and the interface only
+```
+
+The same query of that many rows runs five times: by the client of MariaDB in its container, the rows thrown away (the database alone); in the interface of Prisme, written in an editor and run by Ctrl+Enter once the interface is quiet; in a page that throws the rows away without parsing them (the server and the transport); in a page that handles them as `querySession.ts` does, without the interface; in a Worker that keeps them in columns (UTF-8 bytes, offsets, validities, the layout of `bench/pivot/js/transfer.mjs`), while the page asks it, at each frame, for a window of visible rows. The code run in the browser is in `bench/store/browser.mjs`. Each step notes the instants of the query sent, of the last rows and of `done`, the processor time of Prisme until the last rows and during the save (sampled every 100 ms, Windows only), that of MariaDB, the work of the main thread of the page and its long tasks, and its memory. The command prints a summary table and writes the results to `target/store-bench/results-<rows>.json`, with the log of the server. With `--interface`, only the database alone and the interface run, to compare changes of the interface; their results go to `results-<rows>-interface.json`.
+
+To compare builds of Prisme, each one is copied aside once built (`npm run build` in `web/`, then `cargo build --release`), then named by the `PRISME_EXECUTABLE` variable: every benchmark of the server (`bench/prisme.mjs`) then runs it in place of `target/release/prisme`, without building. The builds are measured in turns, several times each: on a laptop, the same measure varies by a third from one run to the next.
+
+`node bench/store/trace.mjs [rows]` (200,000 rows by default: the trace slows the page down) says on what the main thread of the interface spends its time during the same reception: it records a trace of Chrome from Ctrl+Enter to the drawing after `done`, and prints the own time of each kind of event of the main thread (scripts, microtasks of Vue, layout, painting, layers). The trace goes to `target/store-bench/trace-<rows>.json`, which the Performance panel of DevTools opens.
+
+`node bench/store/profile.mjs [rows]` (1,000,000 rows by default) says which functions hold the main thread of the interface during the same reception. It builds the interface without minification into `target/store-bench/web-plain`, to keep the names of its functions, and gives its scripts and its stylesheet to the page in place of those embedded in Prisme (the scoped styles of Vue are named after the source of their component); the document, the API and the WebSocket stay those of the server. It samples the JavaScript of the page from Ctrl+Enter to the drawing after `done`, then prints the own time and the total time of the functions that take the most, and the composited layers of the page during the reception. The profile goes to `target/store-bench/profile-<rows>.cpuprofile`, which the Performance panel of DevTools opens. The sampling slows the reception down: the profile gives the shares, `run.mjs` the durations.
+
+The driving of the interface is shared by the three commands (`bench/store/interface.mjs`).
+
 ## Testing the API by hand
 
 Start Prisme on a throwaway data folder, to delete to start from scratch:
@@ -478,6 +534,11 @@ web/               Vue interface
     generated/     TypeScript types generated from Rust (do not edit)
   src/components/  interface components
   src/stores/      shared state (connections, settings)
+bench/             benchmarks, outside the workspace
+  prisme.mjs       Prisme on the real server, for the benchmarks that measure it
+  pivot/           engine of the Pivoteur: native, WebAssembly, JavaScript (run.mjs)
+  reload/          saved results: their save, and their reading again by the page (run.mjs)
+  store/           reception of a result, and windows of rows asked to a Worker (run.mjs, trace.mjs, profile.mjs)
 docs/              design decisions and notes
   upstream/        drafts of tickets for the dependencies
 design/            brief of the interface for Claude Design (README.md)

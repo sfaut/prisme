@@ -7,7 +7,7 @@ This file is short. Detailed decisions are in `docs/`:
 - `docs/V1.md`: scope, technical decisions and development order of the v1 (read first).
 - `docs/FEDERATED.md`: vision after the v1 (logical plan, optimizer, languages, NULL, CSV, workspace).
 - `docs/QUESTIONS.md`: ideas kept, dropped or postponed, and questions still open.
-- `docs/PERFORMANCES.md`: performance problems met, with their cause, their fix and how they were measured.
+- `docs/PERFORMANCES.md`: performance problems met, with their cause, their fix and how they were measured, and every measure made to compare options (benchmarks), with its numbers and its decision.
 - `docs/IDEAS-EXPORTS.md`: ideas for copying and exporting results.
 - `docs/IDEAS-VIZ.md`: ideas for drawing a database and its relations as a graph.
 - `docs/CHANGELOG.md`: changelogs of the published versions, most recent first (see "Publishing a version").
@@ -52,6 +52,7 @@ crates/        Cargo workspace
   connectors/  common interface and one implementation per engine
   server/      notebook sessions, API, authentication
 web/           Vue application
+bench/         benchmarks outside the workspace (pivot/: engine of the Pivoteur; reload/: saved results; store/: store of the results; see docs/DEVELOPER.md)
 docs/          decisions and notes
 design/        brief of the interface for Claude Design, its screenshots and their capture
 servers/       data of the development database servers (compose.yaml)
