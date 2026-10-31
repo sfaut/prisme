@@ -5,11 +5,13 @@
  * them.
  *
  * Builds the interface without minification, to keep the names of its functions, into
- * `target/store-bench/web-plain`, and gives its scripts to Chrome in place of those embedded in
- * Prisme (`Fetch` domain of the DevTools protocol): the page asks for the entry script named by
- * the document of Prisme, and receives that of the plain build, which loads its own modules. The
- * document, its styles, the API and the WebSocket stay those of the server: a document given by
- * the protocol opens no WebSocket.
+ * `target/store-bench/web-plain`, and gives its files to Chrome in place of those embedded in
+ * Prisme (`Fetch` domain of the DevTools protocol): the page asks for the entry script and the
+ * stylesheet named by the document of Prisme, and receives those of the plain build, whose script
+ * loads its own modules. The stylesheet must come from the same build as the scripts: the scoped
+ * styles of Vue are named after the source of their component, so the embedded styles miss the
+ * components changed since the last `npm run build`. The document, the API and the WebSocket stay
+ * those of the server: a document given by the protocol opens no WebSocket.
  *
  * Starts Prisme and Chrome as `run.mjs` does, opens the interface on an editor that holds the
  * query of that many rows, then samples the JavaScript of the page from Ctrl+Enter to `done` and
@@ -82,27 +84,35 @@ function buildPlain() {
 }
 
 /**
- * Path of the entry script named by the document of a build, such as `assets/index-B3uHSGgs.js`.
+ * Paths of the entry script and of the stylesheet named by the document of a build, such as
+ * `assets/index-B3uHSGgs.js` and `assets/index-DRs19SGJ.css`.
  *
  * @param {string} dir Folder of the build.
+ * @returns {string[]} The script, then the stylesheet.
  */
-function entryScript(dir) {
-  return readFileSync(join(dir, 'index.html'), 'utf8').match(/src="\/(assets\/[^"]+\.js)"/)[1]
+function entryFiles(dir) {
+  const html = readFileSync(join(dir, 'index.html'), 'utf8')
+  return [
+    html.match(/src="\/(assets\/[^"]+\.js)"/)[1],
+    html.match(/href="\/(assets\/[^"]+\.css)"/)[1],
+  ]
 }
 
 /**
- * Gives the page the scripts of `plainDir` in place of those of Prisme: the entry script of
- * Prisme is answered with that of `plainDir`; the other files of `assets/` come from `plainDir`
- * when it holds them, from the server otherwise.
+ * Gives the page the files of `plainDir` in place of those of Prisme: the entry script and the
+ * stylesheet of Prisme are answered with those of `plainDir`; the other files of `assets/` come
+ * from `plainDir` when it holds them, from the server otherwise.
  *
  * @param {{ send: Function, on: Function }} page Page.
  */
 async function servePlain(page) {
-  const embedded = entryScript(join(ROOT, 'web', 'dist'))
-  const entry = entryScript(plainDir)
+  const plainFiles = entryFiles(plainDir)
+  const entries = new Map(
+    entryFiles(join(ROOT, 'web', 'dist')).map((embedded, index) => [embedded, plainFiles[index]]),
+  )
   page.on('Fetch.requestPaused', ({ requestId, request }) => {
     const path = new URL(request.url).pathname.slice(1)
-    const file = join(plainDir, path === embedded ? entry : path)
+    const file = join(plainDir, entries.get(path) ?? path)
     const type = TYPES[extname(file)] ?? 'application/octet-stream'
     const answer = existsSync(file)
       ? page.send('Fetch.fulfillRequest', {
