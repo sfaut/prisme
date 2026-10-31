@@ -1,6 +1,7 @@
 /**
- * Choice of a dropdown menu (`UiDropdownMenu.vue`), and the looks shared by
- * the menu and its submenus (`UiMenuEntries.vue`).
+ * Choice of a dropdown menu (`UiDropdownMenu.vue`), group of choices under a
+ * heading, and the looks shared by the menu and its submenus
+ * (`UiMenuEntries.vue`).
  */
 
 import type { Component } from 'vue'
@@ -40,6 +41,20 @@ export interface MenuItem {
 }
 
 /**
+ * Choices of a menu gathered under a heading, apart from the other groups.
+ */
+export interface MenuGroup {
+  /**
+   * Heading of the group, which names it for assistive technologies.
+   */
+  label: string
+  /**
+   * Choices of the group.
+   */
+  items: MenuItem[]
+}
+
+/**
  * Classes of the panel that holds the choices: that of the menu, or that of
  * a submenu.
  */
@@ -51,3 +66,8 @@ export const MENU_PANEL =
  */
 export const MENU_ENTRY =
   'flex h-8 cursor-pointer items-center gap-3 rounded-lg px-3 select-none data-disabled:cursor-not-allowed data-disabled:opacity-50 data-highlighted:bg-surface-raised'
+
+/**
+ * Classes of the heading of a group of choices.
+ */
+export const MENU_HEADING = 'px-3 py-1 text-sm font-medium text-fg-secondary select-none'

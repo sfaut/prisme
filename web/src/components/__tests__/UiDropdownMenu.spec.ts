@@ -4,7 +4,7 @@ import { h } from 'vue'
 
 import { mount } from '@vue/test-utils'
 
-import type { MenuItem } from '../ui/menuItem'
+import type { MenuGroup, MenuItem } from '../ui/menuItem'
 import UiDropdownMenu from '../ui/UiDropdownMenu.vue'
 
 /**
@@ -54,6 +54,30 @@ describe('UiDropdownMenu', () => {
     const mysql = [...document.querySelectorAll('[role="menuitem"]')][2] as HTMLElement
     mysql.click()
     expect(save).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+
+  it('gathers choices in groups, each named by its heading', async () => {
+    const groups: MenuGroup[] = [
+      { label: 'Fichier', items: [{ label: 'En CSV', icon: Download }] },
+      { label: 'Éditeur', items: [{ label: 'En CTE', icon: FileCode }] },
+    ]
+    const wrapper = mount(UiDropdownMenu, {
+      props: { groups },
+      slots: { default: () => h('button', { type: 'button' }, 'Menu') },
+      attachTo: document.body,
+    })
+    press(wrapper.find('button').element, 'Enter')
+    await vi.waitFor(() => expect(shownLabels()).toEqual(['En CSV', 'En CTE']))
+
+    const named = [...document.querySelectorAll('[role="group"]')].map((group) => [
+      document.getElementById(group.getAttribute('aria-labelledby') ?? '')?.textContent,
+      group.querySelector('[role="menuitem"]')?.textContent?.trim(),
+    ])
+    expect(named).toEqual([
+      ['Fichier', 'En CSV'],
+      ['Éditeur', 'En CTE'],
+    ])
     wrapper.unmount()
   })
 })
