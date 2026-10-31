@@ -1024,9 +1024,10 @@ stays open in `docs/QUESTIONS.md` (section 5, question 33).
 
 ### 12.5 Changes made
 
-Decision of 2026-10-31: P1, P3 and P4 are made in the interface. P2 and P5
-are left out: their gains stay within the spread of the measures, and
-`v-memo` would have to list every value a row shows, or leave a row stale.
+Decision of 2026-10-31: P1, P3 and P4 are made in the interface, then P5
+on 2026-11-01. P2 is left out: its gain stays within the spread of the
+measures, and `v-memo` would have to list every value a row shows, or leave
+a row stale.
 
 - The grid computes the rows to draw itself (`drawnRange` in
   `resultGrid.ts`): two divisions of the scroll position, at a cost that
@@ -1040,6 +1041,9 @@ are left out: their gains stay within the spread of the measures, and
   composited layer of its own.
 - Without a user filter nor a sort, the view takes all the new rows at once;
   with one of them, it keeps its chunks of 2,000 rows per frame (chapter 5).
+- The bytes of each message are counted by `TextEncoder.encodeInto`, by
+  pieces of a buffer of 64 kB (`utf8Length`), in place of a loop over its
+  characters in JavaScript.
 
 Each change carries its measure in a comment of the code, and a test that
 fails if it is undone:
@@ -1048,6 +1052,8 @@ fails if it is undone:
 - `ResultGrid.component.spec.ts`: the whole view at once without a filter,
   by chunks with one; the length of the view follows the rows received into
   the same array;
+- `querySession.spec.ts`: a long text measured by pieces, with a surrogate
+  pair on each side of the end of a piece in turn;
 - `resultGrid.spec.ts`: the view grown in place, a new one for a new array;
   a frame that keeps its rows while the view grows; `drawnRange` (margins,
   last row, view that shrank, a billion rows by two divisions).
@@ -1079,6 +1085,26 @@ thread busy 16.2 s): work of the browser outside JavaScript 6.2 s (39 %),
 `parseMessage` 4.6 s (28 %), updates of Vue 2.1 s (13 %), `utf8Length`
 1.7 s (10 %), garbage collection 1.1 s (7 %), `updateView` 0.05 s;
 `getMeasurements` is gone.
+
+P5, measured on 2026-11-01 against the build with the other changes, three
+rounds, the order of the builds reversed every other round (database alone
+3.1 to 7.4 s):
+
+| Build | Round 1 | Round 2 | Round 3 |
+|---|---|---|---|
+| Last rows, other changes | 11.5 s | 9.8 s | 10.4 s |
+| Last rows, with P5 too | 11.6 s | 10.5 s | 9.6 s |
+| Scripts of the page, other changes | 5.27 s | 5.47 s | 5.46 s |
+| Scripts of the page, with P5 too | 4.92 s | 4.77 s | 4.99 s |
+
+The last rows stay within the spread of the measures (main thread busy 10.0
+to 10.7 s without P5, 9.7 to 10.6 s with it); the scripts of the page run
+0.35 to 0.70 s less in each round. Profile with P5, 1 million rows (last
+rows after 14.7 s, main thread busy 13.9 s): work of the browser outside
+JavaScript 5.6 s (40 %), `parseMessage` 4.6 s (33 %), updates of Vue 1.9 s
+(14 %), garbage collection 0.7 s (5 %), `utf8Length` 0.7 s (5 %), of which
+`encodeInto` 0.6 s, against 1.7 s for the loop. `parseMessage` is now the
+first function of the page.
 
 Checked in Chrome, at 1,400 by 900 pixels then 1,400 by 1,400: on a result
 of 5,000 rows, at the top, in the middle, at the bottom, after the window
