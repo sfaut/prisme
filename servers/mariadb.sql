@@ -1,4 +1,8 @@
--- Test databases of the screenshots, on MariaDB: `shop` and `crm`.
+-- Demo databases of the MariaDB development servers (`compose.yaml`), loaded
+-- on their first start: `shop` and `crm`, also those of the screenshots of
+-- the design brief (`design/`).
+
+SET NAMES utf8mb4;
 
 CREATE DATABASE shop CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE shop;

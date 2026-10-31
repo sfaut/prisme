@@ -26,7 +26,7 @@ The backend is written in Rust (`tokio`, `axum`), the interface in Vue 3 and Typ
 | Rust (through `rustup`) | Backend build. The exact version is pinned by `rust-toolchain.toml` and installed on the first `cargo` command. | `winget install Rustlang.Rustup` |
 | Visual Studio Build Tools (C++) | MSVC linker, and build of the embedded SQLite. | `winget install Microsoft.VisualStudio.2022.BuildTools`, with the "Desktop development with C++" workload |
 | Node.js and npm | Vue interface. | `winget install OpenJS.NodeJS` |
-| Docker Desktop | Real MySQL and MariaDB servers for the integration tests. The engine must be running. | `winget install Docker.DockerDesktop` |
+| Docker Desktop | The MySQL and MariaDB development servers (see "Development servers"). The engine must be running. | `winget install Docker.DockerDesktop` |
 
 ## Running from source
 
@@ -220,6 +220,41 @@ cargo build --release
 
 `target/release/prisme.exe` then contains `web/dist` and runs on its own, without Node.js. On Windows, the C runtime is linked statically (`.cargo/config.toml`): the executable does not need the Visual C++ Redistributable.
 
+## Development servers
+
+`compose.yaml` defines the database servers of development, in Docker: for MySQL and MariaDB, the oldest version Prisme supports (section 2.10 of [V1.md](V1.md)), the latest LTS and the latest version. The screenshots of the design brief and the checks by hand use them.
+
+| Service | Port | Version |
+|---|---|---|
+| `mysql-oldest` | 3311 | 8.0.11, the oldest version Prisme supports |
+| `mysql-lts` | 3312 | the latest LTS |
+| `mysql-latest` | 3313 | the latest version |
+| `mariadb-oldest` | 3321 | 10.6.3, the oldest version Prisme supports |
+| `mariadb-lts` | 3322 | the latest LTS |
+| `mariadb-latest` | 3323 | the latest version |
+
+Each container bears the name of its service, prefixed with `prisme-` (`prisme-mariadb-lts`). The exact versions are those of the images, in `compose.yaml`.
+
+```
+docker compose up --detach --wait                # starts them; ready when the command returns
+docker compose up --detach --wait mariadb-lts    # starts one, named by its service
+docker compose stop                              # stops them, their data kept
+docker compose ps                                # their state
+```
+
+The servers only listen on `127.0.0.1`. Accounts: `root` and `reader`, both without a password; `reader` reads every database and writes nothing. On the first start of a server, the scripts of `servers/` load its data: the databases `shop` and `crm` on MariaDB (`mariadb.sql`), `billing` on MySQL (`mysql.sql`), and the `reader` account (`reader.sql`).
+
+A container is named after its role: when a new LTS or a new version comes out, only its image changes in `compose.yaml`. The container keeps its name and its port, so the connections saved in Prisme keep working. It is created again, on an empty data folder, so that the scripts of `servers/` run on the new version. The same two commands reload a server after a change of these scripts:
+
+```
+docker compose rm --stop --force --volumes mariadb-lts
+docker compose up --detach --wait mariadb-lts
+```
+
+### Containers of the version research
+
+Comparing versions (support of a function or of a syntax, the version a behaviour changed) uses other containers, one per exact version: `prisme-probe-<image>-<version>` (`prisme-probe-mariadb-10.11.19`), with a suffix for a server initialised with other settings (`prisme-probe-mysql-8.4.11-lctn1`: `lower_case_table_names = 1`, which only applies at the initialisation). Each one is created once, then kept stopped: a measurement starts the servers it needs, by groups of 5 at most, then stops them. A version that has its container never gets a second one, and development creates no other containers.
+
 ## Tests
 
 ### Backend
@@ -267,8 +302,8 @@ Invoke-RestMethod "$api/health"
 
 # Save a connection
 $connection = @{
-    name = "local"; host = "127.0.0.1"; port = 3306
-    username = "root"; password = "password"; database_name = ""
+    name = "local"; host = "127.0.0.1"; port = 3322
+    username = "root"; password = ""; database_name = ""
 } | ConvertTo-Json
 Invoke-RestMethod "$api/connections" -Method Post -ContentType "application/json" -Body $connection
 
@@ -344,16 +379,9 @@ On failure or cancellation, an `error` message replaces the rest of that query, 
 
 Only reads pass: `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN` and `USE`. Writes (`UPDATE`, `DELETE`, `DROP`, `CALL`...) are refused until the write switches exist, as are queries Prisme cannot analyse.
 
-### Throwaway database servers
+### Database servers
 
-To get servers without touching your usual databases (Docker Desktop running):
-
-```
-docker run --rm -d --name prisme-mariadb -p 3307:3306 -e MARIADB_ROOT_PASSWORD=secret mariadb:11
-docker run --rm -d --name prisme-mysql   -p 3308:3306 -e MYSQL_ROOT_PASSWORD=secret   mysql:8
-```
-
-Then save a connection to `127.0.0.1`, port `3307` or `3308`, user `root`, password `secret`. `docker stop prisme-mariadb prisme-mysql` removes them.
+The development servers serve here too (see "Development servers"): the connection above goes to the latest MariaDB LTS, port `3322`; the latest MySQL LTS answers on port `3312`, also as `root` without a password.
 
 To look at the internal database, open `./tmp/prisme.db` with any SQLite client (DBeaver, DB Browser for SQLite, `sqlite3`). The `password_secret` column only holds encrypted bytes.
 
@@ -452,8 +480,9 @@ web/               Vue interface
 docs/              design decisions and notes
   upstream/        drafts of tickets for the dependencies
 design/            brief of the interface for Claude Design (README.md)
-  capture/         test databases and script that retake the screenshots
+  capture/         script that retakes the screenshots
   screenshots/     screenshots of the interface, referred to by the brief
+servers/           data of the development servers (compose.yaml)
 ```
 
 ## Design documents

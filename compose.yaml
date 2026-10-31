@@ -1,0 +1,74 @@
+# Development database servers: for MySQL and MariaDB, the oldest version
+# Prisme supports (docs/V1.md, section 2.10), the latest LTS and the latest
+# version. The screenshots of design/ and the checks by hand use them.
+#
+#   docker compose up --detach --wait   # starts them, ready when it returns
+#   docker compose stop                 # stops them, data kept
+#
+# A container is named after its role: a new version only changes its image
+# here, the container keeps its name and its port. Accounts, data, change of
+# version: docs/DEVELOPER.md, section "Development servers".
+
+name: prisme
+
+# Settings common to the servers of each engine: root account without a
+# password, port published on 127.0.0.1 only; on the first start, the
+# scripts of servers/ create the demo databases and the `reader` account.
+# A server is ready once its client runs a query over TCP, which the server
+# only accepts after these scripts (the client, as mysql:8.0.11 has no
+# mysqladmin).
+x-mysql: &mysql
+  environment:
+    MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+  volumes:
+    - ./servers/mysql.sql:/docker-entrypoint-initdb.d/1-mysql.sql:ro
+    - ./servers/reader.sql:/docker-entrypoint-initdb.d/2-reader.sql:ro
+  healthcheck:
+    test: ["CMD", "mysql", "--host=127.0.0.1", "--user=root", "--execute=SELECT 1"]
+    interval: 30s
+    start_period: 3m
+    start_interval: 1s
+
+x-mariadb: &mariadb
+  environment:
+    MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "1"
+  volumes:
+    - ./servers/mariadb.sql:/docker-entrypoint-initdb.d/1-mariadb.sql:ro
+    - ./servers/reader.sql:/docker-entrypoint-initdb.d/2-reader.sql:ro
+  healthcheck:
+    test: ["CMD", "mariadb", "--host=127.0.0.1", "--user=root", "--execute=SELECT 1"]
+    interval: 30s
+    start_period: 3m
+    start_interval: 1s
+
+services:
+  mysql-oldest:
+    <<: *mysql
+    image: mysql:8.0.11
+    container_name: prisme-mysql-oldest
+    ports: ["127.0.0.1:3311:3306"]
+  mysql-lts:
+    <<: *mysql
+    image: mysql:9.7.4
+    container_name: prisme-mysql-lts
+    ports: ["127.0.0.1:3312:3306"]
+  mysql-latest:
+    <<: *mysql
+    image: mysql:26.10.0
+    container_name: prisme-mysql-latest
+    ports: ["127.0.0.1:3313:3306"]
+  mariadb-oldest:
+    <<: *mariadb
+    image: mariadb:10.6.3
+    container_name: prisme-mariadb-oldest
+    ports: ["127.0.0.1:3321:3306"]
+  mariadb-lts:
+    <<: *mariadb
+    image: mariadb:12.3.3
+    container_name: prisme-mariadb-lts
+    ports: ["127.0.0.1:3322:3306"]
+  mariadb-latest:
+    <<: *mariadb
+    image: mariadb:13.0.2
+    container_name: prisme-mariadb-latest
+    ports: ["127.0.0.1:3323:3306"]

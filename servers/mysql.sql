@@ -1,4 +1,8 @@
--- Test database of the screenshots, on MySQL: `billing`.
+-- Demo database of the MySQL development servers (`compose.yaml`), loaded on
+-- their first start: `billing`, also that of the screenshots of the design
+-- brief (`design/`).
+
+SET NAMES utf8mb4;
 
 CREATE DATABASE billing CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
 USE billing;

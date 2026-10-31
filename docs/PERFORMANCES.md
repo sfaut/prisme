@@ -148,8 +148,8 @@ matters to redraw the grid.
 
 ### 1.7 Measuring again
 
-1. Start a throwaway MariaDB: `docker run --rm -d --name prisme-perf -p 3310:3306 -e MARIADB_ROOT_PASSWORD=secret -e MARIADB_DATABASE=test mariadb:11.3`.
-2. Start an isolated Prisme: `cargo run -- --listen 127.0.0.1:8599 --data-dir ./tmp/perf`, then save a connection to `127.0.0.1:3310` in it (user `root`, database `test`).
+1. Start the latest MariaDB LTS of the development servers: `docker compose up --detach --wait mariadb-lts` (`docs/DEVELOPER.md`, section "Development servers").
+2. Start an isolated Prisme: `cargo run -- --listen 127.0.0.1:8599 --data-dir ./tmp/perf`, then save a connection to `127.0.0.1:3322` in it (user `root` without a password, database `shop`).
 3. Start Vite on another port, with a proxy to `127.0.0.1:8599`.
 4. With Playwright (`playwright-core`, `msedge` or `chrome` browser already installed): open the interface, choose the connection, type several queries on `seq_1_to_200000` (MariaDB's sequence table), click **Exécuter tout** (Run all), then click on the tabs during the run while measuring the delay, and collect the long tasks with a `PerformanceObserver` of type `longtask`.
 5. Most telling indicator: `document.querySelectorAll('.grid-row').length` during the run. It must stay in the order of a few dozen per visible tab, whatever the number of rows received.
@@ -538,10 +538,15 @@ list, flat by nature, cannot give.
 1. Generate the catalog: one SQL file per database, `CREATE TABLE tNNNN (id
    INT NOT NULL PRIMARY KEY, c001 …, c099 …)` with types in rotation (`INT`,
    `VARCHAR(50)`, `DECIMAL(12,2)`, `DATETIME`).
-2. Start a dedicated MariaDB:
-   `docker run --detach --name prisme-perf-navigator --publish 127.0.0.1:3311:3306 --env MARIADB_ROOT_PASSWORD=secret --env MARIADB_DATABASE=test mariadb:11.8.9 --innodb-flush-log-at-trx-commit=0 --skip-log-bin --innodb-file-per-table=0 --table-definition-cache=40000 --table-open-cache=40000`,
-   then load the ten files in parallel (`docker exec -i … mariadb < perfNN.sql`):
-   about 15 minutes.
+2. Load it into the latest MariaDB LTS of the development servers
+   (`docker compose up --detach --wait mariadb-lts`, port 3322;
+   `docs/DEVELOPER.md`, section "Development servers"): first
+   `SET GLOBAL innodb_flush_log_at_trx_commit = 0, innodb_file_per_table = OFF, table_definition_cache = 40000, table_open_cache = 40000`,
+   then the ten files in parallel
+   (`docker exec -i prisme-mariadb-lts mariadb < perfNN.sql`): about 15
+   minutes. Once measured, create the server again, with its demo databases
+   only (`docker compose rm --stop --force --volumes mariadb-lts`, then
+   `docker compose up --detach --wait mariadb-lts`).
 3. Start Prisme in release on a throwaway data folder (`--listen`,
    `--data-dir`), and save the connection through `POST /api/connections`.
 4. Start Chrome headless with `--window-size=1600,1000`: the interface folds

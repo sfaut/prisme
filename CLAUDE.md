@@ -54,6 +54,7 @@ crates/        Cargo workspace
 web/           Vue application
 docs/          decisions and notes
 design/        brief of the interface for Claude Design, its screenshots and their capture
+servers/       data of the development database servers (compose.yaml)
 ```
 
 In development, Vite serves the interface and forwards the API to `axum`. In production, `rust-embed` embeds `web/dist`.

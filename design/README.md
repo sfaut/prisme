@@ -6,32 +6,25 @@ Material for Claude Design, which draws proposals of interface from a brief:
   screenshots.
 - `screenshots/`: the screenshots the brief refers to, taken at a scale of 150 % on the test
   databases described in its section 9.
-- `capture/`: what retakes them: the test databases (`mariadb.sql`, `mysql.sql`) and the script
-  `capture.mjs`, which drives a headless Chrome through the DevTools protocol (`devtools.mjs`).
+- `capture/`: what retakes them: the script `capture.mjs`, which drives a headless Chrome through
+  the DevTools protocol (`devtools.mjs`).
+
+The test databases are those of the latest MariaDB and MySQL LTS among the development servers
+(`compose.yaml`, see `docs/DEVELOPER.md`, section "Development servers"), loaded by
+`servers/mariadb.sql` and `servers/mysql.sql`.
 
 ## Retaking the screenshots
 
 Prerequisites: Docker Desktop running, Node 22 or later, Google Chrome, and Prisme built with its
-interface (`npm run build` in `web/`, then `cargo build`). Ports 3400, 3401, 8485 and 9333 must be
-free.
+interface (`npm run build` in `web/`, then `cargo build`). Ports 8485 and 9333 must be free.
 
-1. Start the servers of the test databases. The first time:
-
-   ```
-   docker run --detach --name prisme-design-mariadb --publish 127.0.0.1:3400:3306 --env MARIADB_ROOT_PASSWORD=design mariadb:11.4.13
-   docker run --detach --name prisme-design-mysql --publish 127.0.0.1:3401:3306 --env MYSQL_ROOT_PASSWORD=design mysql:8.4.11
-   ```
-
-   The next times: `docker start prisme-design-mariadb prisme-design-mysql`.
-
-2. Load the databases, once the servers accept connections (the first time only):
+1. Start the servers of the test databases, from the root of the repository:
 
    ```
-   docker exec --interactive prisme-design-mariadb mariadb --user=root --password=design < design/capture/mariadb.sql
-   docker exec --interactive prisme-design-mysql mysql --user=root --password=design < design/capture/mysql.sql
+   docker compose up --detach --wait mariadb-lts mysql-lts
    ```
 
-3. From the root of the repository:
+2. Still from the root of the repository:
 
    ```
    node design/capture/capture.mjs

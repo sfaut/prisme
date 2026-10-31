@@ -51,11 +51,12 @@ const PRISME = `http://127.0.0.1:${PRISME_PORT}`
 const WINDOW = { width: 1707, height: 1060 }
 
 /**
- * Servers of the test databases (`design/README.md`).
+ * Servers of the test databases: the latest MariaDB and MySQL LTS of
+ * `compose.yaml` (`design/README.md`), root account without a password.
  */
-const MARIADB_PORT = 3400
-const MYSQL_PORT = 3401
-const PASSWORD = 'design'
+const MARIADB_PORT = 3322
+const MYSQL_PORT = 3312
+const PASSWORD = ''
 
 /**
  * Starts a program.
