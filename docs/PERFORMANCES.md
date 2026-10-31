@@ -856,7 +856,7 @@ Main thread of the interface while it receives 200,000 rows (last rows after
   session) takes the reception off the main thread: it no longer waits for
   the interface.
 - The cost of each update of the interface during a reception (Vue, drawing)
-  remains, with or without the store; it is a lead of its own.
+  remains, with or without the store; it is a lead of its own (chapter 12).
 - The layout of the cells in the store (text, dictionary of the repeated
   values, typed values that give back their exact text) is set with the lot 1
   of the Pivoteur.
@@ -882,3 +882,162 @@ trace of the interface (200,000 rows). The results go to
 `target/store-bench/results-<rows>.json`, the trace to
 `target/store-bench/trace-<rows>.json`, which the Performance panel of
 DevTools opens.
+
+## 12. Updates of the interface during a reception
+
+Study of 2026-10-31, after chapter 11: where the main thread of the interface
+goes while it receives a large result, and what five changes of the interface,
+tried as prototypes, give.
+
+### 12.1 Question
+
+The interface receives 1 million rows 4 to 5 times slower than a bare page
+that handles them the same way (chapter 11): its main thread is saturated,
+and Chrome reads the WebSocket only as fast as the page takes its messages.
+Which work of the interface fills the main thread, and how much does each
+change save?
+
+### 12.2 Measurement
+
+- `node bench/store/profile.mjs` (`docs/DEVELOPER.md`, section "Store of the
+  results"): the interface built without minification, sampled every 200 µs
+  from Ctrl+Enter to the drawing after `done`; own time and total time of
+  each function. The sampling slows the reception down (31.6 s against 25 to
+  40 s without it): the profile gives the shares, not the durations.
+- `node bench/store/trace.mjs`: kinds of work of the main thread
+  (chapter 11), 200,000 rows.
+- `node bench/store/run.mjs --interface`: the database alone and the
+  interface, 1 million rows, the query of chapter 10. Each prototype is built
+  once, then named by `PRISME_EXECUTABLE`; the builds of a series run in
+  turns, three rounds each.
+- Same machine, Chrome 156, MariaDB 12.3.3, Prisme v0.8.0 and its prototypes,
+  built in release. Over the evening, the database alone took 2.6 to 8.5 s for
+  the same query: the machine changes speed from one run to the next, and
+  only builds measured in the same round compare.
+
+Profile of the interface as it is, 1 million rows (main thread busy 32.3 s):
+
+| Work | Own time | Share |
+|---|---|---|
+| Work of the browser outside JavaScript (styles, layout, painting, layers) | 12.3 s | 38 % |
+| `getMeasurements` of the virtualizer of TanStack | 7.6 s | 24 % |
+| `parseMessage` (`JSON.parse` of the messages) | 3.2 s | 10 % |
+| Garbage collection | 1.9 s | 6 % |
+| `utf8Length` (bytes of each message) | 0.9 s | 3 % |
+| `setStyle` of Vue (styles of the rows drawn) | 0.9 s | 3 % |
+| `updateView` (copy of the view) | 0.7 s | 2 % |
+
+The updates of Vue take 13.0 s in all, the virtualizer included, called by
+the render of the grid. At 200,000 rows, `getMeasurements` takes 0.40 s: 5
+times more rows, 19 times more time. The page has 10 composited layers
+during the reception, the grid included.
+
+Prototypes, each one on top of the previous:
+
+- **P1**: the grid places its rows itself: they all have the same height,
+  so the first row drawn is the scroll position divided by the height of a
+  row, plus 20 rows on each side, in place of the virtualizer of TanStack;
+  the view grows in place (`triggerRef`), in place of a copy at each update.
+- **P2**: `v-memo` on each row drawn: a row whose source row, columns,
+  widths, selection and recognized contents did not change is not patched
+  again.
+- **P3**: the progress bar of the tab grows by a transform
+  (`transform: scaleX()`, drawn by the compositor), in place of a transition
+  of its width.
+- **P4**: without a filter nor a sort, the view takes all the new rows at
+  once, in place of 2,000 rows per frame (chapter 5).
+- **P5**: the bytes of each message are counted by `TextEncoder.encodeInto`,
+  by pieces of a buffer of 64 kB, in place of a loop over the characters.
+
+Last rows received, 1 million rows, three rounds per series:
+
+| Build | Series 1 | Series 2 | Series 3 | Long tasks |
+|---|---|---|---|---|
+| Interface as it is | 40.1, 34.7, 31.5 s | 26.2, 39.0, 38.1 s | | 53 to 191 |
+| P1 | 26.7, 17.9, 24.4 s | | | 8 to 12 |
+| P2 | 23.8, 16.5, 24.1 s | 22.7, 21.6, 23.2 s | | 5 to 14 |
+| P3 | | 17.1, 17.9, 19.4 s | 20.0, 19.7, 18.4 s | 7 to 14 |
+| P4 | | | 10.4, 12.3, 10.3 s | 4 to 7 |
+| P5 | | | 10.2, 10.1, 9.9 s | 5 to 6 |
+
+Whole benchmark of chapter 11 with P5, in one run (database alone 4.8 s):
+
+| Step | Interface (P5) | Page, rows thrown away | Page, rows handled as the interface | Worker, store in columns |
+|---|---|---|---|---|
+| Last rows received | 10.4 s | 8.0 s | 9.8 s | 11.2 s |
+| `done` received | 18.2 s | 13.4 s | 19.5 s | 19.3 s |
+| Long tasks: number, longest | 6, 0.13 s | none | 1, 0.14 s | 1, 0.05 s |
+
+Main thread of P3 while it receives 200,000 rows (last rows after 4.2 s,
+main thread busy 4.6 s): 129 frames, against 181 for the interface as it is
+(chapter 11); scripts 1.03 s, layers 0.73 s, updates of Vue 0.73 s (against
+1.45 s), painting 0.51 s, layout 0.37 s.
+
+Profile of P5, 1 million rows (main thread busy 13.1 s): work of the browser
+outside JavaScript 5.1 s (39 %), `parseMessage` 4.5 s (34 %), updates of Vue
+1.5 s (11 %), garbage collection 0.9 s, `encodeInto` 0.7 s.
+
+### 12.3 Analysis
+
+- **The virtualizer of TanStack costs the rows received so far at each
+  update.** When the number of rows changes, `getMeasurements` computes again
+  the position of every row (`@tanstack/virtual-core` 3.19.8, same code in
+  3.19.9): at 1 million rows, 7.6 s, quadratic in the rows, and its arrays
+  feed the garbage collection. The rows of the grid have a fixed height,
+  which its own windowing turns into two divisions.
+- **The copy of the view is linear at each update too**: 0.7 s.
+- **The progress bar of the tab made the page draw at every frame.** Its
+  width changes with each batch, every 100 ms, and each change starts a
+  transition of 0.3 s: a width is animated by the main thread (styles,
+  layout, painting, layers at each frame) during the whole reception. A
+  transform is animated by the compositor. P3 saves 3.7 to 5.6 s.
+- **Chunks of 2,000 rows multiplied the frames.** At 50,000 rows per second,
+  a batch of 100 ms takes three frames of the view, each with an update of
+  Vue and a drawing (about 16 ms of drawing per frame at 200,000 rows).
+  Without a filter nor a sort, examining a row costs a `push`: P4 saves
+  7.4 to 9.6 s. A filter or a sort keeps its chunks (chapter 5).
+- **`v-memo` and `encodeInto` save less than the spread of the measures**:
+  P2 is faster than P1 in each round, by 1 to 11 %, and P5 than P4, by 2 to
+  18 %, while the same build varies by a third from one round to the next.
+- **With the five changes, the interface receives at the speed of a bare
+  page** (10.4 s against 9.8 s in the same run), and its longest task stays
+  under 0.3 s. What remains on the main thread: the work of the browser
+  (39 %), the parsing of the messages (34 %) and the updates of Vue (11 %).
+- **`done` comes 5 to 10 s after the last rows in every step**: the server
+  saves the result before it ends the query (chapter 10).
+- The tree of the navigator draws its lines with the same virtualizer
+  (`TreeVirtualizer` of Reka UI): not measured here.
+
+### 12.4 Consequences
+
+- P1, P3 and P4 bring the large gains; P2 and P5, small ones. P1 removes
+  `@tanstack/vue-virtual` from the dependencies of the interface (Reka UI
+  keeps it for its own lists).
+- The parsing of the messages leaves the main thread with the second stage
+  of the single store, when the Worker owns the WebSocket (chapter 11).
+- The save of the result before `done` is a lead of the server, apart.
+
+These points are open in `docs/QUESTIONS.md` (section 5, question 33).
+
+### 12.5 Takeaways
+
+- **Profile by function before guessing**: the trace of chapter 11 gave
+  "updates of Vue" and "layers"; the profile named the virtualizer and the
+  progress bar.
+- **A dependency can be quadratic in a case it was not tried in**: a list
+  that grows while it is shown.
+- **An animation of a size draws at every frame**: animate a transform or an
+  opacity.
+- **On a laptop, compare builds in turns**: the same measure varies by a
+  third from one run to the next.
+
+### 12.6 Measuring again
+
+The development servers started (`docker compose up --detach --wait`) and
+the interface built (`npm run build` in `web/`), from the root of the
+repository: `node bench/store/profile.mjs` for the profile (1 million rows),
+`node bench/store/run.mjs --interface` for the reception by the interface
+alone. To compare builds, each one copied aside once built, then
+`PRISME_EXECUTABLE=<build> node bench/store/run.mjs --interface`, in turns.
+The profile goes to `target/store-bench/profile-<rows>.cpuprofile`, which the
+Performance panel of DevTools opens.
