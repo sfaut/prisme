@@ -11,17 +11,18 @@ Related records: the options set aside before any installation are in `docs/QUES
 section "Held-back dependencies"; the workarounds of the dependencies still used, in the section
 "Workarounds" of the same guide.
 
-| Dependency | Part | Used | First version | Last version | Replaced by | Reason |
-|---|---|---|---|---|---|---|
-| `@tanstack/vue-virtual` | interface | 2026-10-12 to 2026-10-31 | 3.13.43 | 3.13.49 | windowing of the result grid | cost of each update, quadratic over a reception |
-| `testcontainers-modules` | tests of the server | 2026-10-12 to 2026-10-31 | 0.15.0 | 0.15.0 | the servers of `compose.yaml` | one set of servers for the tests, the screenshots and the measures, on every supported version |
-| `lucide-vue-next` | interface | 2026-10-14 to 2026-10-21 | 1.0.0 | 1.0.0 | `@lucide/vue` | published under a new name |
-| `@nuxt/ui`, `@iconify-json/lucide` | interface | 2026-10-13 to 2026-10-14 | 4.11.3, 1.2.143 | 4.11.3, 1.2.143 | Reka UI and components of Prisme | its theme layer |
-| `naive-ui` | interface | 2026-10-12 to 2026-10-13 | 2.45.3 | 2.45.3 | Nuxt UI | rendering through classes, theme through tokens |
-| PrimeVue | interface | never installed | — | — | Naive UI | commercial license |
+| Dependency | Part | Used | First version | Last version | First Prisme | Last Prisme | Replaced by | Reason |
+|---|---|---|---|---|---|---|---|---|
+| `@tanstack/vue-virtual` | interface | 2026-10-12 to 2026-10-31 | 3.13.43 | 3.13.49 | v0.1.0 | v0.8.0 | windowing of the result grid | cost of each update, quadratic over a reception |
+| `testcontainers-modules` | tests of the server | 2026-10-12 to 2026-10-31 | 0.15.0 | 0.15.0 | v0.1.0 | v0.8.0 | the servers of `compose.yaml` | one set of servers for the tests, the screenshots and the measures, on every supported version |
+| `lucide-vue-next` | interface | 2026-10-14 to 2026-10-21 | 1.0.0 | 1.0.0 | v0.1.0 | v0.4.0 | `@lucide/vue` | published under a new name |
+| `@nuxt/ui`, `@iconify-json/lucide` | interface | 2026-10-13 to 2026-10-14 | 4.11.3, 1.2.143 | 4.11.3, 1.2.143 | — | — | Reka UI and components of Prisme | its theme layer |
+| `naive-ui` | interface | 2026-10-12 to 2026-10-13 | 2.45.3 | 2.45.3 | — | — | Nuxt UI | rendering through classes, theme through tokens |
+| PrimeVue | interface | never installed | — | — | — | — | Naive UI | commercial license |
 
 The first and last versions are those of the lock files (`web/package-lock.json`, `Cargo.lock`)
-while the dependency was used.
+while the dependency was used. The first and last versions of Prisme are the published versions
+(tags) that held it; a dash, when no published version held it.
 
 An entry gives, as far as they apply:
 
