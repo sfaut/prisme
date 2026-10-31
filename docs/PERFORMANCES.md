@@ -1019,9 +1019,80 @@ outside JavaScript 5.1 s (39 %), `parseMessage` 4.5 s (34 %), updates of Vue
   of the single store, when the Worker owns the WebSocket (chapter 11).
 - The save of the result before `done` is a lead of the server, apart.
 
-These points are open in `docs/QUESTIONS.md` (section 5, question 33).
+The changes made are in section 12.5. The save of the result before `done`
+stays open in `docs/QUESTIONS.md` (section 5, question 33).
 
-### 12.5 Takeaways
+### 12.5 Changes made
+
+Decision of 2026-10-31: P1, P3 and P4 are made in the interface. P2 and P5
+are left out: their gains stay within the spread of the measures, and
+`v-memo` would have to list every value a row shows, or leave a row stale.
+
+- The grid computes the rows to draw itself (`drawnRange` in
+  `resultGrid.ts`): two divisions of the scroll position, at a cost that
+  does not depend on the number of rows. `@tanstack/vue-virtual` leaves the
+  direct dependencies of the interface; Reka UI keeps it for the tree of the
+  navigator, whose count changes when a node opens.
+- The view grows in place (`updateView`): the grid tells Vue of the change
+  (`triggerRef`), and the frame of a download copies the view once
+  (`viewFrame`), so that rows received during the download stay out of it.
+- The progress bar of the tab grows by `transform: scaleX()`: it gets a
+  composited layer of its own.
+- Without a user filter nor a sort, the view takes all the new rows at once;
+  with one of them, it keeps its chunks of 2,000 rows per frame (chapter 5).
+
+Each change carries its measure in a comment of the code, and a test that
+fails if it is undone:
+
+- `ResultTab.spec.ts`: the bar is scaled, its width untouched;
+- `ResultGrid.component.spec.ts`: the whole view at once without a filter,
+  by chunks with one; the length of the view follows the rows received into
+  the same array;
+- `resultGrid.spec.ts`: the view grown in place, a new one for a new array;
+  a frame that keeps its rows while the view grows; `drawnRange` (margins,
+  last row, view that shrank, a billion rows by two divisions).
+
+A ticket for TanStack is drafted in
+`docs/upstream/tanstack-virtual-count-growth.md`. Its script, without a
+browser, grows a list by 5,000 items up to 1,000,000: the 200 updates take
+1.7 to 3.5 s, the last one 27 to 38 ms (`@tanstack/virtual-core` 3.19.9,
+three runs).
+
+Last rows received, 1 million rows, `run.mjs --interface`, the order of the
+builds reversed every other round (database alone 3.1 to 5.3 s):
+
+| Build | Round 1 | Round 2 | Round 3 |
+|---|---|---|---|
+| Interface before the changes | 37.8 s | 23.5 s | 36.1 s |
+| Interface with the changes | 11.8 s | 13.5 s | 9.0 s |
+
+| Measure | Before the changes | With the changes |
+|---|---|---|
+| `done` received | 28.2 to 47.3 s | 17.0 to 22.4 s |
+| Main thread busy | 23.7 to 38.4 s | 9.1 to 12.3 s |
+| Long tasks: number | 36 to 181 | 5 to 6 |
+| Long tasks: total, longest | 2.6 to 13.3 s, 0.20 to 0.43 s | 0.5 to 0.7 s, 0.20 to 0.26 s |
+| Memory of the page after the reception | 164 MB | 155 MB |
+
+Profile with the changes, 1 million rows (last rows after 16.2 s, main
+thread busy 16.2 s): work of the browser outside JavaScript 6.2 s (39 %),
+`parseMessage` 4.6 s (28 %), updates of Vue 2.1 s (13 %), `utf8Length`
+1.7 s (10 %), garbage collection 1.1 s (7 %), `updateView` 0.05 s;
+`getMeasurements` is gone.
+
+Checked in Chrome, at 1,400 by 900 pixels then 1,400 by 1,400: on a result
+of 5,000 rows, at the top, in the middle, at the bottom, after the window
+grew and after a fast scroll by the wheel, every visible row is drawn, with
+33 to 65 rows in the page; during the reception of 1 million rows, the bar
+of the tab is scaled to 10.7 % after 2.5 s.
+
+Limit seen, the same before and after the changes: Chrome caps the height of
+an element at 33,554,428 pixels. At 24 pixels per row (a row of `2rem`, the
+root at 75 % of 16 pixels), the grid scrolls down to row 1,398,101 at most:
+the rows beyond are received and counted, and cannot be reached by
+scrolling.
+
+### 12.6 Takeaways
 
 - **Profile by function before guessing**: the trace of chapter 11 gave
   "updates of Vue" and "layers"; the profile named the virtualizer and the
@@ -1032,8 +1103,11 @@ These points are open in `docs/QUESTIONS.md` (section 5, question 33).
   opacity.
 - **On a laptop, compare builds in turns**: the same measure varies by a
   third from one run to the next.
+- **A profile of a plain build needs its own styles**: the scoped styles of
+  Vue are named after the source of their component, so the styles of
+  another build leave a changed component without its styles.
 
-### 12.6 Measuring again
+### 12.7 Measuring again
 
 The development servers started (`docker compose up --detach --wait`) and
 the interface built (`npm run build` in `web/`), from the root of the
