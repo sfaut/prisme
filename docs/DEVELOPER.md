@@ -208,6 +208,46 @@ So a line is always a border. The splitters of Reka UI (`SplitHandle.vue`) draw 
 
 To check a change on screen, the scale must be a real one: `Emulation.setDeviceMetricsOverride` of the Chrome DevTools Protocol scales the rendering without rounding the edges the same way, and does not show the problem. Start Chrome with `--force-device-scale-factor=1.5`, resize the window one pixel at a time, and read the pixels across each line in a screenshot: one inked pixel at every size, never two.
 
+## Pivoteur
+
+The Pivoteur is the pivot table under the results of a cell. Its specification, in French, is the "Cahier des charges du Pivoteur de Prisme" (<https://claude.ai/artifact/UvfFRfmTaFLZ1d7kDPkDSD>): the code cites its references (F-27, C-11, N-05, D25). Its steps are in [TODO-PIVOTER.md](TODO-PIVOTER.md). The behaviours of the SQL engines it relies on are in [SQL-COMPARISON.md](SQL-COMPARISON.md), its measures in [PERFORMANCES.md](PERFORMANCES.md), chapters 9 to 13.
+
+The first slice of its lot 1 works on the columns of the result, without the dialect: a level is a column, by its index, with a precision for its dates; a measure is an aggregate of a column. The expressions come with the next slices.
+
+The engine runs in the page, in Rust compiled to WebAssembly, in a Worker, on the rows the page already holds. It sends no query. The server only stores the configuration, and sends the metadata of the columns.
+
+| Part | Role |
+|---|---|
+| `crates/store` (package `prisme-store`) | Rows of a result in columns: the text of each cell, then the forms derived from it, built once when a reader needs them (dictionary, exact numbers, floats). |
+| `crates/pivot` (package `prisme-pivot`) | The engine: groups (`groups.rs`), measures (`measures.rs`), precisions of the dates (`dates.rs`), layout of the table (`table.rs`). It does not depend on its target: its tests run natively. |
+| `crates/web-engine` (package `prisme-web-engine`, library `web_engine`, compiled file `web-engine-*.wasm`) | The WebAssembly side, without `wasm-bindgen`: its functions take and return numbers and addresses in the memory of the module. Those that answer with data write JSON (`json.rs`) and return its length; `output_address` gives its address. A refused call answers `{"error": {"kind", …}}`. |
+| `crates/server/src/tab_pivot.rs` | Types of the saved configuration (`TabPivot`, generated for the interface by `ts-rs`) and `carry_over`. |
+| `web/src/components/pivotWorker.ts` | The Worker: loads the module, runs the messages of the page. |
+| `web/src/components/pivotEngine.ts` | The engine as the Worker drives it, and the messages exchanged with the page. |
+| `web/src/components/pivotTransfer.ts` | Copy of a block of rows into the memory of the module. |
+| `web/src/components/pivotClient.ts` | Page side of the Worker: one Worker per result, fed once, then asked for tables and windows. |
+| `web/src/components/pivotConfig.ts` | The configuration, in pure functions: placing, naming, default aggregate (`defaultAggregate`), precisions (`precisionChoices`), request to the engine (`engineRequest`), fitting to a new result (`fittedConfig`). |
+| `web/src/components/pivotLayout.ts` | Header cells, corner and line labels of a window. |
+| `web/src/components/PivotPanel.vue` | The panel, under the results of `QueryCell.vue`: follows the tab shown, computes, saves. |
+| `web/src/components/PivotZones.vue` | The columns of the result and the zones, by drag and drop and menus. |
+| `web/src/components/PivotGrid.vue` | The table, windowed on both axes (`drawnRange`). |
+
+The stages of a table:
+
+1. Once the query has ended, while the panel is open, the client starts a Worker and copies the rows of the result into the module, block by block, with a pause between two blocks so that the page keeps answering. A folded panel computes nothing, and stops its Worker.
+2. The page ranks the values of each level in the order of the grid (`compareCells`), once per column; the module ranks the periods of a level with a precision, in the order of time.
+3. Each change of the configuration or of the filter of the grid gives a request (`engineRequest`). The panel computes again only when the request changes (`sameRequest`): a name changes only the labels. A level is sent as two numbers, its column and its precision (0 none, 1 year, 2 quarter, 3 month, 4 week, 5 date).
+4. The table stays in the module. The page reads the windows it shows; a window names its table by the id of the message that computed it, and a window asked for a replaced table is refused (`stale`).
+5. A refusal of the engine (`overflow`, `not_numeric`, `invalid_date`...) shows its message above the table, which keeps its last computation.
+
+**Configuration.** Saved as JSON in `result_tabs.pivot` (migration `0023_result_tabs_pivot.sql`, type `TabPivot`) by `PUT /api/results/{id}/pivot` on each change, and read with the tabs of the editor. `TabPivot` keeps the names of the columns it was made for (`fields`): its indexes read them, and a new result is compared to them. A new run replaces the unpinned tabs of an editor: only the server sees the tabs that leave and those that replace them at the same time, so `carry_over` gives each new tab the configuration of the tab of the same text at the same rank, else of the same text, else of the same rank. The page then fits it to the columns of its result (`fittedConfig`): an element follows its column by name, the element of a lost column leaves, except `COUNT(*)`, and a column that holds no dates any more loses its precision.
+
+**Keys of the columns.** `ColumnTypeInfo.origin` (`ColumnOrigin`) names the table and the column a column of a result reads, and flags a primary key, from the metadata of the protocol ([SQL-COMPARISON.md](SQL-COMPARISON.md), section 3.15); it is saved with the type of the column. A foreign key has no flag there: it comes from the catalog of the connection (`isForeignKey`, `web/src/stores/catalog.ts`), read while the panel is open, without waiting for it. The primary key wins over the foreign key.
+
+**Dates.** A date is read in the text of its cell, by the civil calendar (`crates/pivot/src/dates.rs`). A date without a day in the calendar keeps its fields, and gives NULL as an ISO year and an ISO week ([SQL-COMPARISON.md](SQL-COMPARISON.md), section 3.12). A cell that holds no date stops the computation (`invalid_date`).
+
+**Tests.** `cargo test -p prisme-store`, `-p prisme-pivot` (the example of the specification, `crates/pivot/src/tests.rs`) and `-p prisme-web-engine` run natively. In `web/`, the specs `pivotConfig`, `pivotLayout`, `pivotClient`, `pivotEngine` and `PivotZones.component` run with the other Vitest tests. `node bench/pivot/run.mjs` measures the engine (see "Benchmarks"). After a change of `crates/store`, `crates/pivot` or `crates/web-engine`, see "Working on the interface" for its rebuild.
+
 ## Building the single executable
 
 Compile the interface, then Prisme:
@@ -593,6 +633,7 @@ servers/           data of the development servers (compose.yaml)
 - [QUESTIONS.md](QUESTIONS.md): ideas kept or dropped, open questions.
 - [PERFORMANCES.md](PERFORMANCES.md): performance problems met, their cause and fix.
 - [SQL-COMPARISON.md](SQL-COMPARISON.md): behaviours of the SQL engines compared, measured or sourced.
+- [TODO-PIVOTER.md](TODO-PIVOTER.md): steps of the Pivoteur (see "Pivoteur").
 - [IDEAS-EXPORTS.md](IDEAS-EXPORTS.md): ideas for copying and exporting results.
 - [IDEAS-VIZ.md](IDEAS-VIZ.md): ideas for drawing a database and its relations as a graph.
 - [CHANGELOG.md](CHANGELOG.md): changelogs of the published versions.

@@ -64,6 +64,7 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ A dragged element frames in blue every zone it passes over; released outside the zones, it leaves its zone, in place of the entries "Retirer", "Monter" and "Descendre" of its menu; the aggregates of a measure read counts, sums, averages, extremes
 - ✅ The menu of a level of a `date` or `datetime` column sets its precision: ISO year (`2026`), quarter (`2026-T2`), month (`2026-01`), ISO week (`2026-S53`), date (`2026-01-15`). The engine groups the dates, in the order of time; a date without a day in the calendar keeps its fields, and gives NULL for the ISO year and week; a cell without a date stops the computation. A column that holds no dates any more gives its values as they are
 - ✅ Checks of the precision: `cargo test`, tests of the interface, screen in light and dark modes, on a `datetime`, a `date` and a `time` column; the message of a cell without a date is not reachable yet, the connectors of MySQL and MariaDB always writing a date
+- ✅ First slice documented: `README.md`, `docs/DEVELOPER.md` (section "Pivoteur") and the specification (requirements, section "Lots", acceptance)
 
 ### Next slices and lots
 

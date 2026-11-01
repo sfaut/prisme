@@ -31,6 +31,7 @@ Prisme is at the start of its first version (v1). Today it queries **MySQL and M
   - [Searching the data explorer](#searching-the-data-explorer)
     - [JSONPath](#jsonpath)
     - [XPath](#xpath)
+  - [Pivoteur](#pivoteur)
   - [Console](#console)
   - [Top bar](#top-bar)
 - [Your data](#your-data)
@@ -110,6 +111,7 @@ The screen has these areas:
 - **Left panel**: the object navigator, **Navigateur d’objets** (Object navigator), with your connections and their databases.
 - **Editor tabs**: several SQL editors, each one on its own connection.
 - **SQL cell and results**: the editor, its buttons, and one result tab per query.
+- **Pivoteur**, under the results, folded at first: the pivot table of the result shown (see [Pivoteur](#pivoteur)).
 - **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).
 - **Console**, under the editors: the history of the queries sent to the servers, and the debug log (see [Console](#console)).
 
@@ -303,6 +305,59 @@ XPath is the version built into browsers, [XPath 1.0](https://www.w3.org/TR/1999
 
 - **Namespaces**: the prefixes declared in the document can be used (`//p:item`). XPath 1.0 has no default namespace: an element in a namespace without prefix is found with `//*[local-name() = 'item']`.
 - **Blanks**: the indentation the explorer adds between elements is not part of the document, so `//text()` finds only the texts of the values.
+
+### Pivoteur
+
+The **Pivoteur** is the pivot table of the result shown, in a panel under the results of the cell. It works in the page, on the rows Prisme has received, after the filter of the grid: no query goes to the server, and a result limited to some rows gives the table of those rows. It computes once the query has ended; folded, as it is at first, it computes nothing. It unfolds and folds by its rail, by the button of its header, by a double click on the line above it, or by a drag. The editor, the results, the Pivoteur and the console can all be folded at once, and folding one leaves the others as they are.
+
+The panel has three columns: the columns of the result, with their type and a search by name; the zones **Lignes**, **Colonnes** and **Mesures** (Rows, Columns, Measures), stacked; the table, which takes the remaining width and scrolls on both axes, its headers and its labels staying in sight. The bar under the table shows the rows taken into account, the groups and the duration of the computation.
+
+| Action | How |
+|---|---|
+| Place a column in a zone | Drag it there, or the **+** button of its line |
+| Move an element, in its zone or to another one | Drag it: the zone it passes over is framed in blue |
+| Send a level to the other axis | Drag it, or its menu: **Passer en lignes**, **Passer en colonnes** (Move to rows, Move to columns) |
+| Remove an element | Drag it and release it outside the zones; Esc cancels the drag |
+| Name an element | Its menu, **Nommer…** (Name), or a double click on its label; Enter confirms, Esc cancels |
+| Change the aggregate of a measure | Its menu, group **Agrégat** (Aggregate) |
+| Keep a part of the dates of a level | Its menu, group **Précision** (Precision) |
+
+- **Levels**: the first element of a zone is the outermost level. A column is a level once at most: placing it again moves it. Its values rank in the order of the grid; `NULL` comes first, in a group of its own, apart from the text `NULL` and from the empty text. The lines are in compact form: one column of labels, indented by depth, the subtotal of a group on its line, the grand total last. A subtotal of columns stands right of its group.
+- **Names**: a name replaces the expression of its element in the zones and in the table, and the tooltip of the element recalls the expression; an empty name gives it back. A name only changes the labels, without a new computation. The corner of the table names the levels: each level of the columns at the end of its row of headers, those of the lines on the last row.
+- **Refusal**: a computation the engine refuses, such as a sum that overflows, shows its message above the table, which keeps its last computation.
+
+A column dropped into the measures takes its aggregate from what it holds; the keys come from the metadata of the result and from the catalog of the connection, and a computed column has none:
+
+| Column | Aggregate |
+|---|---|
+| Of a primary key | `COUNT(*)` |
+| Of a foreign key | `COUNT(col)` |
+| Another number | `SUM(col)` |
+| Anything else | `COUNT(col)` |
+
+The menu of a measure gives them all. `NULL` values are left out, and a total reads the rows of its whole group: the total of a `COUNT(DISTINCT col)` counts the distinct values of that group.
+
+| Aggregate | Columns | Result |
+|---|---|---|
+| `COUNT(*)`, `COUNT(col)`, `COUNT(DISTINCT col)` | Any | The rows, the values, the distinct values |
+| `SUM(col)`, `SUM(DISTINCT col)` | Numbers | Exact for integers and decimals, `DOUBLE` for floats; `NULL` without a value; an overflow stops the computation |
+| `AVG(col)`, `AVG(DISTINCT col)` | Numbers | Exact at the scale of the column + 4, rounded away from zero, as MySQL and MariaDB write it (`1.5000` for 1 and 2); `DOUBLE` for floats |
+| `MIN(col)`, `MAX(col)` | Any | Numbers compared by value, texts by code points (`A B a b`); the cell is shown as it is |
+
+The menu of a level of a `date` or `datetime` column sets its precision, what the level keeps of its dates. The periods rank in the order of time:
+
+| Précision | Keeps | For 2027-01-01 |
+|---|---|---|
+| **Année** (Year) | The ISO 8601 year, that of the ISO week | `2026` |
+| **Trimestre** (Quarter) | The quarter of the calendar | `2027-T1` |
+| **Mois** (Month) | The month of the calendar | `2027-01` |
+| **Semaine** (Week) | The ISO 8601 week, which starts on Monday | `2026-S53` |
+| **Date** | The day; on a `date` column, its values as they are | `2027-01-01` |
+| **Date et heure** (Date and time) | On a `datetime` column, its values as they are | `2027-01-01 10:30:00` |
+
+MySQL and MariaDB can hold a date without a day in the calendar (`0000-00-00`, `2026-03-00`): it keeps its year, its quarter and its month, and gives `NULL` as an ISO year and an ISO week.
+
+The configuration belongs to its result tab, and is saved with it: a page reload and a refresh find it again. A new run gives each new tab the configuration of the tab it replaces: the tab of the same text at the same rank, else of the same text, else of the same rank. An element follows its column by name; the element of a lost column leaves its zone, except `COUNT(*)`, and a column that holds no dates any more loses its precision.
 
 ### Console
 
