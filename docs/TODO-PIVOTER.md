@@ -39,12 +39,21 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Minor fixes: "clefs" (C-03), N-03, TypeScript block in English, checks and expected outputs of the acceptance, N-14, sources
 - ✅ Cases D1 to D35 decided by the maintainer
 - ✅ Decisions applied throughout the specification, typed literals written without a space (`DATE'2026-01-15'`)
-- ⬜ Types of the dialect: names, spellings in `CAST`, domains, families of the grid, literals, values outside their type
-- ⬜ Conversions: table of `CAST`, a text read where a date is expected, any value written where a text is built
-- ⬜ Types of the results of the operators, common type of mixed values
-- ⬜ Catalog written as prototypes, each with its case of conformance
+- ⬜ Dialect refocused: ANSI SQL over the rows of the grid for the lot 1, its extensions in the next lots; each lot types what it uses
 
 ## 4. Lots of the specification
+
+### First slice: panel with `COUNT` and `SUM`
+
+- ⬜ Crates `store`, `pivot` and `web-engine`, taken from the engine of the benchmark: rows in columns, groups through a hash table, totals by merging the states
+- ⬜ Dimension: a column of the grid, its value as it is, in binary order, NULL in a group of its own
+- ⬜ Measures `COUNT(*)`, `COUNT(col)` and `SUM(col)` on the families `integer`, `decimal` (exact) and `float` (`DOUBLE`); NULL ignored, `SUM` without a value gives NULL, an overflow is an error
+- ⬜ Worker of the page, fed by a copy of the rows
+- ⬜ Panel under the grid of `QueryCell.vue`, in three columns: fields with their type icon, zones Rows, Columns and Measures, windowed table with its totals
+- ⬜ A field dropped into the measures gives `SUM` for a number, `COUNT` otherwise; a menu changes the measure
+- ⬜ Checks: `cargo test`, tests of the interface, screen in light and dark modes
+
+### Next lots
 
 - ⬜ Lot 1: engine
 - ⬜ Lot 2: panel
