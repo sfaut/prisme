@@ -72,14 +72,7 @@ function pivotEngine(): Plugin {
     config() {
       execFileSync(
         'cargo',
-        [
-          'build',
-          '--release',
-          '--package',
-          'prisme-web-engine',
-          '--target',
-          'wasm32-unknown-unknown',
-        ],
+        ['build', '--release', '--package', 'web-engine', '--target', 'wasm32-unknown-unknown'],
         { cwd: repository, stdio: ['ignore', 'inherit', 'inherit'] },
       )
       const metadata = JSON.parse(
@@ -89,7 +82,7 @@ function pivotEngine(): Plugin {
         }),
       ) as { target_directory: string }
       const folder = join(metadata.target_directory, 'wasm32-unknown-unknown', 'release')
-      modulePath = normalizePath(join(folder, 'prisme_web_engine.wasm'))
+      modulePath = normalizePath(join(folder, 'web_engine.wasm'))
       return {
         resolve: {
           alias: [{ find: /^@pivot-engine(\?.*)?$/, replacement: `${modulePath}$1` }],
@@ -109,14 +102,13 @@ function pivotEngine(): Plugin {
 
 /**
  * Name of a compiled file in kebab-case, as the other files of `assets/`: the Worker takes its name
- * from its source (`pivotWorker` gives `pivot-worker`), and the engine from the output of Cargo,
- * without the prefix of the crates (`prisme_web_engine` gives `web-engine`).
+ * from its source (`pivotWorker` gives `pivot-worker`), and the engine from its crate, whose
+ * compiled file Cargo writes with underscores (`web_engine` gives `web-engine`).
  *
  * @param name Name given by the source, without its extension.
  */
-function assetName(name: string): string {
+function kebabCase(name: string): string {
   return name
-    .replace(/^prisme_/, '')
     .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
     .replaceAll('_', '-')
     .toLowerCase()
@@ -163,9 +155,9 @@ export default defineConfig({
   worker: {
     rolldownOptions: {
       output: {
-        entryFileNames: ({ name }) => `assets/${assetName(name)}-[hash].js`,
+        entryFileNames: ({ name }) => `assets/${kebabCase(name)}-[hash].js`,
         assetFileNames: ({ names }) =>
-          `assets/${assetName(parse(names[0] ?? 'asset').name)}-[hash][extname]`,
+          `assets/${kebabCase(parse(names[0] ?? 'asset').name)}-[hash][extname]`,
       },
     },
   },

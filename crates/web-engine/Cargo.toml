@@ -2,7 +2,7 @@
 # wasm32-unknown-unknown, for a Worker of the page.
 
 [package]
-name = "prisme-web-engine"
+name = "web-engine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
