@@ -49,7 +49,7 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Crates `store`, `pivot` and `web-engine`, taken from the engine of the benchmark: rows in columns, groups through a hash table, totals by merging the states
 - ✅ Dimension: a column of the grid, its value as it is, NULL in a group of its own, its values ranked by the page in the order of the grid (C-11)
 - ✅ Measures `COUNT(*)`, `COUNT(col)` and `SUM(col)` on the families `integer`, `decimal` (exact) and `float` (`DOUBLE`); NULL ignored, `SUM` without a value gives NULL, an overflow is an error
-- ⬜ Worker of the page, fed by a copy of the rows
+- ✅ Worker of the page, fed by a copy of the rows
 - ⬜ Panel under the grid of `QueryCell.vue`, in three columns: fields with their type icon, zones Rows, Columns and Measures, windowed table with its totals
 - ⬜ A field dropped into the measures gives `SUM` for a number, `COUNT` otherwise; a menu changes the measure
 - ⬜ Checks: `cargo test`, tests of the interface, screen in light and dark modes
