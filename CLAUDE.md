@@ -53,6 +53,7 @@ crates/        Cargo workspace
   splitter/    splitting queries per dialect (Ctrl+Enter)
   connectors/  common interface and one implementation per engine
   server/      notebook sessions, API, authentication
+  store/       rows of a result in columns: text of the cells, dictionaries, numbers
 web/           Vue application
 bench/         benchmarks outside the workspace (pivot/: engine of the Pivoteur; reload/: saved results; store/: store of the results; see docs/DEVELOPER.md)
 docs/          decisions and notes
