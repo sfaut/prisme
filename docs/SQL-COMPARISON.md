@@ -111,6 +111,8 @@ PostgreSQL reads an untyped literal with the type of the other operand (`'12'` a
 | `cast.timestamp_bad_hour` | `CAST('2026-01-15 25:00:00' AS TIMESTAMP)` | exception 22018 | NULL, warning | NULL, warning | error | NULL | error | |
 | `cast.try_cast` | `TRY_CAST('abc' AS INTEGER)` | absent from G2016 | error 1064 | error 1064 | error: syntax | error: syntax | NULL | `accurateCastOrNull`, `toInt32OrNull` give NULL |
 | `cast.varchar_decimal` | `CAST(1.50 AS VARCHAR(10))` | | `1.50` (`AS CHAR(10)`) | `1.50` | `1.50` | `1.5` | `1.50` | |
+| `cast.varchar_no_length` | `CAST(12 AS VARCHAR)` | `VARCHAR` takes a length (SQL-92 6.1) | `12` (`AS CHAR`) | `12` | `12` | `12` | `12` | |
+| `cast.char_no_length` | `CAST('abc' AS CHAR)` | `CHAR(1)`: a length of 1 when it is omitted (SQL-92 6.1 SR 4) | `abc` | `abc` | `a` (character) | `abc` | `abc` | |
 
 MySQL and MariaDB never stop on an invalid value: they give 0 or NULL, with a warning, and keep the prefix of a text that starts with digits. PostgreSQL and DuckDB raise an error, as the standard. SQLite converts what it can, without a warning. DuckDB offers `TRY_CAST` for NULL; ClickHouse, the functions `…OrNull`, `…OrZero` and `…OrDefault`.
 
@@ -204,6 +206,8 @@ The standard `LISTAGG` takes a literal separator and `WITHIN GROUP`, both requir
 |---|---|---|---|---|---|---|---|---|
 | `exact.decimal_sum` | `0.1 + 0.2 = 0.3` | true: exact literals | `1` | `1` | `true` | `0` (REAL) | `true` | |
 | `exact.float_sum` | the same in DOUBLE PRECISION | | `0` | `0` | `false` | `0` | `false` | |
+| `exact.product_scale` | `0.12 * 0.123` | scale S1 + S2 (SQL-92 6.12 SR 1c): 5 | `0.01476` | `0.01476` | `0.01476` | `0.014759999999999999` (REAL) | `0.01476` (DECIMAL(7,5)) | |
+| `exact.product_scale_wide` | `CAST(1.5 AS DECIMAL(38,20)) * CAST(1.5 AS DECIMAL(38,20))` | scale 40 | `2.25`, 30 decimals | `2.25`, 38 decimals | `2.25`, 40 decimals | `2.25` (REAL) | error: scale 40 needed, beyond the DECIMAL type | |
 | `round.half_exact` | `ROUND(2.5)` | no `ROUND` (absent from G2016) | `3` | `3` | `3` | `3.0` | `3` | `3` for a Decimal: away from zero |
 | `round.half_exact_negative` | `ROUND(-2.5)` | | `-3` | `-3` | `-3` | `-3.0` | `-3` | `-3` for a Decimal |
 | `round.half_float` | `ROUND(2.5)` in DOUBLE PRECISION | | `2` | `2` | `2` | `3.0` | `3.0` | `2`: to even for a Float |
@@ -231,6 +235,7 @@ The standard rounds only in `CAST` and assignments, rounding or truncating as th
 | `date.zero_format` | `DATE_FORMAT('0000-00-00', '%Y-%m-%d')` | | NULL, warning | `0000-00-00` | | | | |
 | `date.zero_datediff` | `DATEDIFF('0000-00-00', '2026-01-01')` | | NULL, warning | NULL, warning | | | | |
 | `date.year_zero` | `CAST('0000-01-01' AS DATE)` | exception 22007 | `0000-01-01` | `0000-01-01` | error: out of range | `0000-01-01` | `0001-01-01 (BC)` | Date32 accepts `0000-01-01`; Date starts on 1970-01-01 |
+| `date.time_beyond_day` | `TIME '25:00:00'` | invalid: hours 00 to 23 (SQL-92 6.1, table 10) | `25:00:00` (TIME) | `25:00:00` | error: field value out of range | NULL (`TIME()`) | error: time field value out of range | |
 | `date.dst_hour` | `EXTRACT(HOUR FROM TIMESTAMP '2026-03-29 02:30:00')` | | `2` (`HOUR`) | `2` | `2` | `02` (`STRFTIME('%H')`) | `2` | |
 | `date.equals_text` | `DATE '2026-01-15' = '2026-01-15'` | error: a date and a text are not comparable (SQL-92 4.5) | `1` | `1` | `true` | `1` (two texts) | `true` | allowed |
 | `date.equals_timestamp_text` | `DATE '2026-01-15' = '2026-01-15 00:00:00'` | error | `1` | `1` | `true` | `0` (two texts) | `true` | |

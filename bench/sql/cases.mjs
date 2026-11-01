@@ -187,6 +187,11 @@ export const CASES = [
     key: 'cast.varchar_decimal',
     forms: { shared: 'CAST(1.50 AS VARCHAR(10))', mysql: 'CAST(1.50 AS CHAR(10))' },
   },
+  {
+    key: 'cast.varchar_no_length',
+    forms: { shared: 'CAST(12 AS VARCHAR)', mysql: 'CAST(12 AS CHAR)' },
+  },
+  { key: 'cast.char_no_length', forms: { shared: "CAST('abc' AS CHAR)" } },
   // Division
   { key: 'div.by_zero', forms: { shared: '1 / 0' } },
   { key: 'div.modulo_zero', forms: { shared: 'MOD(1, 0)', sqlite: '1 % 0' } },
@@ -449,6 +454,10 @@ export const CASES = [
     forms: { shared: "CAST('0000-01-01' AS DATE)", sqlite: "DATE('0000-01-01')" },
   },
   {
+    key: 'date.time_beyond_day',
+    forms: { shared: "TIME '25:00:00'", sqlite: "TIME('25:00:00')" },
+  },
+  {
     key: 'date.dst_hour',
     forms: {
       shared: "EXTRACT(HOUR FROM TIMESTAMP '2026-03-29 02:30:00')",
@@ -567,6 +576,11 @@ export const CASES = [
       mysql: '0.1e0 + 0.2e0 = 0.3e0',
       sqlite: '0.1 + 0.2 = 0.3',
     },
+  },
+  { key: 'exact.product_scale', forms: { shared: '0.12 * 0.123' } },
+  {
+    key: 'exact.product_scale_wide',
+    forms: { shared: 'CAST(1.5 AS DECIMAL(38,20)) * CAST(1.5 AS DECIMAL(38,20))' },
   },
   // Types of the results
   { key: 'type.case_mixed', forms: { shared: "CASE WHEN TRUE THEN 1 ELSE 'a' END" } },
