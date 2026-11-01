@@ -18,13 +18,23 @@ import { compareCells } from './resultGrid'
 import { type TransferExports, copyBlock, releaseBlock } from './pivotTransfer'
 
 /**
- * Measure of a table: `COUNT(*)`, `COUNT(col)`, `COUNT(DISTINCT col)` or `SUM(col)`.
+ * Measure of a table: `COUNT(*)`, `COUNT`, `SUM` and `AVG` of a column or of its distinct values,
+ * `MIN` and `MAX` of a column.
  */
 export interface PivotMeasure {
   /**
    * Aggregate.
    */
-  aggregate: 'count_star' | 'count' | 'count_distinct' | 'sum'
+  aggregate:
+    | 'count_star'
+    | 'count'
+    | 'count_distinct'
+    | 'sum'
+    | 'sum_distinct'
+    | 'avg'
+    | 'avg_distinct'
+    | 'min'
+    | 'max'
   /**
    * Column the measure comes from; `COUNT(*)` keeps it, for its label and its menu.
    */
@@ -142,7 +152,7 @@ export interface PivotWindow {
 }
 
 /**
- * Refusal of the engine, as the module writes it: a cell that is not a number, a sum beyond
+ * Refusal of the engine, as the module writes it: a cell that is not a number, a value beyond
  * 128 bits, a call out of order...
  */
 export interface PivotFailure {
@@ -301,7 +311,17 @@ export function ranksOf(values: Cell[]): Uint32Array {
  * @param request Table asked.
  */
 export function requestWords(request: PivotRequest): Uint32Array {
-  const kinds = { count_star: 0, count: 1, sum: 2, count_distinct: 3 }
+  const kinds = {
+    count_star: 0,
+    count: 1,
+    sum: 2,
+    count_distinct: 3,
+    sum_distinct: 4,
+    avg: 5,
+    avg_distinct: 6,
+    min: 7,
+    max: 8,
+  }
   return Uint32Array.from([
     request.rows.length,
     request.columns.length,
@@ -463,7 +483,7 @@ export class PivotEngine {
    * @param request Table asked.
    * @returns Its shape.
    * @throws {PivotError}
-   *     If the engine refuses it: a cell that is not a number, a sum beyond 128 bits...
+   *     If the engine refuses it: a cell that is not a number, a value beyond 128 bits...
    */
   compute(request: PivotRequest): PivotShape {
     for (const column of [...request.rows, ...request.columns]) {

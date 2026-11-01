@@ -57,6 +57,8 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ A measure, a level of the rows and a level of the columns take a name, shown in their zone and in the table (F-12, F-17): the levels in the corner, those of the columns on the row of their headers
 - ✅ A new run of the queries carries the configuration of each tab over to the tab that replaces it, at the same position, when the columns of its result are the same
 - ✅ Checks of these additions: `cargo test`, tests of the interface, screen in light and dark modes
+- ✅ Measures `SUM(DISTINCT col)`, `AVG(col)` and `AVG(DISTINCT col)` on numbers, `MIN(col)` and `MAX(col)` on any column: numbers told apart and compared by value, an exact average at the scale of its column + 4, rounded away from zero (D16, D17), texts compared by code points (D7), a total reading the values of its whole group
+- ✅ Checks of these measures: `cargo test`, tests of the interface, screen in light and dark modes
 
 ### Next slices and lots
 

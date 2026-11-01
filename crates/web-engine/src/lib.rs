@@ -265,8 +265,9 @@ pub unsafe extern "C" fn set_kept(rows: *const u32, count: usize, all: u32) -> u
 /// Reads a request: the numbers of levels of the rows and of the columns,
 /// the number of measures, the columns of the levels of the rows, then of
 /// the columns, then a kind (0 `COUNT(*)`, 1 `COUNT(col)`, 2 `SUM(col)`,
-/// 3 `COUNT(DISTINCT col)`) and a column per measure. `None` if the words do
-/// not match.
+/// 3 `COUNT(DISTINCT col)`, 4 `SUM(DISTINCT col)`, 5 `AVG(col)`,
+/// 6 `AVG(DISTINCT col)`, 7 `MIN(col)`, 8 `MAX(col)`) and a column per
+/// measure. `None` if the words do not match.
 fn request(words: &[u32]) -> Option<Request> {
     let (&rows, &columns, &measures) = (words.first()?, words.get(1)?, words.get(2)?);
     let (rows, columns, measures) = (rows as usize, columns as usize, measures as usize);
@@ -283,6 +284,11 @@ fn request(words: &[u32]) -> Option<Request> {
             1 => Some(Measure::Count(pair[1] as usize)),
             2 => Some(Measure::Sum(pair[1] as usize)),
             3 => Some(Measure::CountDistinct(pair[1] as usize)),
+            4 => Some(Measure::SumDistinct(pair[1] as usize)),
+            5 => Some(Measure::Avg(pair[1] as usize)),
+            6 => Some(Measure::AvgDistinct(pair[1] as usize)),
+            7 => Some(Measure::Min(pair[1] as usize)),
+            8 => Some(Measure::Max(pair[1] as usize)),
             _ => None,
         })
         .collect::<Option<Vec<_>>>()?;
@@ -462,8 +468,20 @@ mod tests {
             request(&[0, 0, 1, 3, 4]).unwrap().measures,
             [Measure::CountDistinct(4)]
         );
+        assert_eq!(
+            request(&[0, 0, 5, 4, 1, 5, 2, 6, 3, 7, 4, 8, 5])
+                .unwrap()
+                .measures,
+            [
+                Measure::SumDistinct(1),
+                Measure::Avg(2),
+                Measure::AvgDistinct(3),
+                Measure::Min(4),
+                Measure::Max(5),
+            ]
+        );
         assert!(request(&[1, 0]).is_none());
         assert!(request(&[1, 0, 0]).is_none());
-        assert!(request(&[0, 0, 1, 7, 0]).is_none());
+        assert!(request(&[0, 0, 1, 9, 0]).is_none());
     }
 }

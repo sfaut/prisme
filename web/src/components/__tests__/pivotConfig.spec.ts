@@ -4,6 +4,7 @@ import {
   type NamedMeasure,
   type PivotConfig,
   type PivotLevel,
+  addsNumbers,
   columnAt,
   defaultMeasure,
   elementLabel,
@@ -61,6 +62,20 @@ describe('measureExpression', () => {
     expect(measureExpression(measure('count', 1), NAMES)).toBe('COUNT(ville)')
     expect(measureExpression(measure('count_distinct', 1), NAMES)).toBe('COUNT(DISTINCT ville)')
     expect(measureExpression(measure('count_star', 1), NAMES)).toBe('COUNT(*)')
+    expect(measureExpression(measure('sum_distinct', 4), NAMES)).toBe('SUM(DISTINCT montant)')
+    expect(measureExpression(measure('avg', 4), NAMES)).toBe('AVG(montant)')
+    expect(measureExpression(measure('avg_distinct', 4), NAMES)).toBe('AVG(DISTINCT montant)')
+    expect(measureExpression(measure('min', 1), NAMES)).toBe('MIN(ville)')
+    expect(measureExpression(measure('max', 1), NAMES)).toBe('MAX(ville)')
+  })
+})
+
+describe('addsNumbers', () => {
+  it('asks for numbers only for the aggregates that add them up', () => {
+    const adding = ['sum', 'sum_distinct', 'avg', 'avg_distinct'] as const
+    const others = ['count_star', 'count', 'count_distinct', 'min', 'max'] as const
+    expect(adding.every(addsNumbers)).toBe(true)
+    expect(others.some(addsNumbers)).toBe(false)
   })
 })
 

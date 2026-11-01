@@ -19,11 +19,14 @@
 <script setup lang="ts">
 import {
   ArrowDown,
+  ArrowDownToLine,
   ArrowLeftRight,
   ArrowUp,
+  ArrowUpToLine,
   Asterisk,
   Check,
   Columns3,
+  Divide,
   EllipsisVertical,
   FingerprintPattern,
   Hash,
@@ -32,6 +35,8 @@ import {
   Rows3,
   Search,
   Sigma,
+  SquareDivide,
+  SquareSigma,
   X,
 } from '@lucide/vue'
 import { type Component, computed, nextTick, ref, useTemplateRef } from 'vue'
@@ -42,6 +47,7 @@ import {
   type PivotConfig,
   type PivotZone,
   type ZonePlace,
+  addsNumbers,
   elementExpression,
   elementLabel,
   measureExpression,
@@ -212,9 +218,14 @@ function elementItems(zone: PivotZone, index: number): MenuItem[] {
  */
 const AGGREGATES: { aggregate: PivotMeasure['aggregate']; icon: Component }[] = [
   { aggregate: 'sum', icon: Sigma },
+  { aggregate: 'sum_distinct', icon: SquareSigma },
   { aggregate: 'count', icon: Hash },
   { aggregate: 'count_distinct', icon: FingerprintPattern },
   { aggregate: 'count_star', icon: Asterisk },
+  { aggregate: 'min', icon: ArrowDownToLine },
+  { aggregate: 'max', icon: ArrowUpToLine },
+  { aggregate: 'avg', icon: Divide },
+  { aggregate: 'avg_distinct', icon: SquareDivide },
 ]
 
 /**
@@ -228,16 +239,19 @@ function elementGroups(zone: PivotZone, index: number): MenuGroup[] {
   const groups: MenuGroup[] = []
   const measure = zone === 'measures' ? config.value.measures[index] : undefined
   if (measure !== undefined) {
-    const canSum = summable(props.types[measure.column]?.family)
+    const numbers = summable(props.types[measure.column]?.family)
     groups.push({
       label: 'Agrégat',
-      items: AGGREGATES.map(({ aggregate, icon }) => ({
-        label: measureExpression({ aggregate, column: measure.column }, props.names),
-        icon: aggregate === measure.aggregate ? Check : icon,
-        disabled: aggregate === 'sum' && !canSum,
-        hint: aggregate === 'sum' && !canSum ? 'SUM demande une colonne de nombres' : undefined,
-        onSelect: () => (config.value = withAggregate(config.value, index, aggregate)),
-      })),
+      items: AGGREGATES.map(({ aggregate, icon }) => {
+        const refused = addsNumbers(aggregate) && !numbers
+        return {
+          label: measureExpression({ aggregate, column: measure.column }, props.names),
+          icon: aggregate === measure.aggregate ? Check : icon,
+          disabled: refused,
+          hint: refused ? 'Demande une colonne de nombres' : undefined,
+          onSelect: () => (config.value = withAggregate(config.value, index, aggregate)),
+        }
+      }),
     })
   }
   groups.push({ label: 'Élément', items: elementItems(zone, index) })

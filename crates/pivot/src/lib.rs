@@ -5,8 +5,9 @@
 //!
 //! First slice of the lot 1 of its specification: a level is a column of the
 //! result, its value as it is; the measures are `COUNT(*)`, `COUNT(col)`,
-//! `COUNT(DISTINCT col)` and `SUM(col)`, in ANSI SQL. The dialect of the
-//! Pivoteur, with its expressions, comes with the next slices.
+//! `SUM(col)`, `AVG(col)`, `MIN(col)` and `MAX(col)`, in ANSI SQL, and
+//! `COUNT`, `SUM` and `AVG` of `DISTINCT col`. The dialect of the Pivoteur,
+//! with its expressions, comes with the next slices.
 //!
 //! The crate does not depend on its target: its tests run natively, and the
 //! Worker of the page runs it compiled to WebAssembly (`crates/web-engine`).
@@ -20,8 +21,8 @@ use std::fmt;
 
 use prisme_store::{Approx, Dictionary, Exact, NumberError, Store};
 
-use crate::measures::Input;
 pub use crate::measures::Value;
+use crate::measures::{Extreme, Input};
 pub use crate::table::{Header, Label, Line, Table};
 
 /// Family of the type of a column, as far as the measures need it.
@@ -31,7 +32,7 @@ pub enum Family {
     Exact,
     /// Floats: the `float` family (`DOUBLE`).
     Float,
-    /// Any other family, which `SUM` refuses.
+    /// Any other family, which `SUM` and `AVG` refuse.
     Other,
 }
 
@@ -48,6 +49,21 @@ pub enum Measure {
     /// `SUM(col)`: sum of the values of a column of numbers that are not
     /// NULL; NULL without any.
     Sum(usize),
+    /// `SUM(DISTINCT col)`: sum of the distinct numbers of a column, told
+    /// apart by value; NULL without any.
+    SumDistinct(usize),
+    /// `AVG(col)`: average of the values of a column of numbers that are not
+    /// NULL; NULL without any.
+    Avg(usize),
+    /// `AVG(DISTINCT col)`: average of the distinct numbers of a column, told
+    /// apart by value; NULL without any.
+    AvgDistinct(usize),
+    /// `MIN(col)`: first value of a column that is not NULL, numbers by
+    /// value, the rest by code points; NULL without any.
+    Min(usize),
+    /// `MAX(col)`: last value of a column that is not NULL, in the order of
+    /// `MIN`; NULL without any.
+    Max(usize),
 }
 
 /// Table asked of the engine.
@@ -71,7 +87,7 @@ pub enum Error {
     UnknownRow(u32),
     /// The ranks of the values of a column do not match its dictionary.
     Ranks(usize),
-    /// Measure `measure` sums a column that does not hold numbers.
+    /// Measure `measure` adds up a column that does not hold numbers.
     NotNumeric {
         /// Measure, by its index.
         measure: usize,
@@ -83,7 +99,7 @@ pub enum Error {
         /// The problem of the cell.
         error: NumberError,
     },
-    /// The sum of measure `measure` goes beyond 128 bits.
+    /// A value of measure `measure` goes beyond 128 bits.
     Overflow {
         /// Measure, by its index.
         measure: usize,
@@ -97,14 +113,11 @@ impl fmt::Display for Error {
             Error::UnknownRow(row) => write!(formatter, "no row {row}"),
             Error::Ranks(column) => write!(formatter, "ranks of column {column} inconsistent"),
             Error::NotNumeric { measure } => {
-                write!(
-                    formatter,
-                    "measure {measure}: sum of a column without numbers"
-                )
+                write!(formatter, "measure {measure}: column without numbers")
             }
             Error::Number { column, error } => write!(formatter, "column {column}, {error}"),
             Error::Overflow { measure } => {
-                write!(formatter, "measure {measure}: sum beyond 128 bits")
+                write!(formatter, "measure {measure}: value beyond 128 bits")
             }
         }
     }
@@ -118,6 +131,15 @@ enum Numbers {
     Exact(Exact),
     /// Floats.
     Float(Approx),
+}
+
+/// Rank of each code, from the codes in their order.
+fn ranks_of(order: &[u32]) -> Vec<u32> {
+    let mut ranks = vec![0u32; order.len()];
+    for (rank, &code) in order.iter().enumerate() {
+        ranks[code as usize] = rank as u32;
+    }
+    ranks
 }
 
 /// Engine of one result: its rows, and the forms derived from its columns,
@@ -134,6 +156,9 @@ pub struct Engine {
     /// Rank of each value of each column, by code: given by the page, in the
     /// order of the grid, or the binary order of the texts, NULL first.
     ranks: Vec<OnceCell<Vec<u32>>>,
+    /// Rank of each value of each column, by code, as `MIN` and `MAX` compare
+    /// them.
+    value_ranks: Vec<OnceCell<Vec<u32>>>,
     /// Rows kept by the filter of the grid, in their order; `None` for all.
     kept: Option<Vec<u32>>,
 }
@@ -157,6 +182,7 @@ impl Engine {
             dictionaries: (0..columns).map(|_| OnceCell::new()).collect(),
             numbers: (0..columns).map(|_| OnceCell::new()).collect(),
             ranks: (0..columns).map(|_| OnceCell::new()).collect(),
+            value_ranks: (0..columns).map(|_| OnceCell::new()).collect(),
             kept: None,
         }
     }
@@ -211,11 +237,35 @@ impl Engine {
         Ok(self.ranks[column].get_or_init(|| {
             let mut order: Vec<u32> = (0..dictionary.len() as u32).collect();
             order.sort_unstable_by_key(|&code| dictionary.value(cells, code));
-            let mut ranks = vec![0u32; order.len()];
-            for (rank, &code) in order.iter().enumerate() {
-                ranks[code as usize] = rank as u32;
+            ranks_of(&order)
+        }))
+    }
+
+    /// Ranks of the values of column `column`, as `MIN` and `MAX` compare
+    /// them: numbers by value, a `NaN` after the others, and any other value
+    /// by code points, the order of the bytes of UTF-8. The order of the page
+    /// only ranks the groups.
+    fn value_ranks(&self, measure: usize, column: usize) -> Result<&[u32], Error> {
+        let dictionary = self.dictionary(column)?;
+        let cells = self.store.column(column).expect("column of the dictionary");
+        let numbers = match self.families[column] {
+            Family::Other => None,
+            _ => Some(self.numbers(measure, column)?),
+        };
+        Ok(self.value_ranks[column].get_or_init(|| {
+            let row = |code: u32| dictionary.first_rows[code as usize] as usize;
+            let mut order: Vec<u32> = (0..dictionary.len() as u32).collect();
+            match numbers {
+                Some(Numbers::Exact(numbers)) => {
+                    order.sort_by_key(|&code| numbers.values[row(code)]);
+                }
+                Some(Numbers::Float(numbers)) => {
+                    let values = &numbers.values;
+                    order.sort_by(|&a, &b| values[row(a)].total_cmp(&values[row(b)]));
+                }
+                None => order.sort_unstable_by_key(|&code| dictionary.value(cells, code)),
             }
-            ranks
+            ranks_of(&order)
         }))
     }
 
@@ -252,24 +302,61 @@ impl Engine {
             })
     }
 
+    /// Validity of the cells of column `column`.
+    fn validity(&self, column: usize) -> Result<&[bool], Error> {
+        self.store
+            .column(column)
+            .map(|cells| cells.validity())
+            .ok_or(Error::UnknownColumn(column))
+    }
+
+    /// Numbers of column `column`, as `SUM` and `AVG` add them up.
+    fn addends(&self, index: usize, column: usize) -> Result<Input<'_>, Error> {
+        Ok(match self.numbers(index, column)? {
+            Numbers::Exact(numbers) => Input::Exact(numbers, self.validity(column)?),
+            Numbers::Float(numbers) => Input::Float(numbers, self.validity(column)?),
+        })
+    }
+
+    /// Numbers of column `column`, each added once per group.
+    fn distinct_addends(&self, index: usize, column: usize) -> Result<Input<'_>, Error> {
+        let numbers = self.numbers(index, column)?;
+        let valid = self.validity(column)?;
+        let dictionary = self.dictionary(column)?;
+        Ok(match numbers {
+            Numbers::Exact(numbers) => Input::DistinctExact(numbers, valid, dictionary),
+            Numbers::Float(numbers) => Input::DistinctFloat(numbers, valid, dictionary),
+        })
+    }
+
+    /// Values of column `column`, as `MIN` or, with `largest`, `MAX` compares
+    /// them.
+    fn extreme(&self, index: usize, column: usize, largest: bool) -> Result<Input<'_>, Error> {
+        Ok(Input::Extreme(Extreme {
+            column,
+            dictionary: self.dictionary(column)?,
+            ranks: self.value_ranks(index, column)?,
+            valid: self.validity(column)?,
+            largest,
+        }))
+    }
+
     /// Values measure `measure` reads.
     fn input(&self, index: usize, measure: Measure) -> Result<Input<'_>, Error> {
-        let validity = |column: usize| {
-            self.store
-                .column(column)
-                .map(|cells| cells.validity())
-                .ok_or(Error::UnknownColumn(column))
-        };
         Ok(match measure {
             Measure::CountStar => Input::Rows,
-            Measure::Count(column) => Input::Cells(validity(column)?),
+            Measure::Count(column) => Input::Cells(self.validity(column)?),
             Measure::CountDistinct(column) => {
-                Input::Distinct(&self.dictionary(column)?.codes, validity(column)?)
+                Input::Distinct(&self.dictionary(column)?.codes, self.validity(column)?)
             }
-            Measure::Sum(column) => match self.numbers(index, column)? {
-                Numbers::Exact(numbers) => Input::Exact(numbers, validity(column)?),
-                Numbers::Float(numbers) => Input::Float(numbers, validity(column)?),
-            },
+            Measure::Sum(column) => self.addends(index, column)?,
+            Measure::SumDistinct(column) => self.distinct_addends(index, column)?,
+            Measure::Avg(column) => Input::Average(Box::new(self.addends(index, column)?)),
+            Measure::AvgDistinct(column) => {
+                Input::Average(Box::new(self.distinct_addends(index, column)?))
+            }
+            Measure::Min(column) => self.extreme(index, column, false)?,
+            Measure::Max(column) => self.extreme(index, column, true)?,
         })
     }
 

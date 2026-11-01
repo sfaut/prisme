@@ -101,6 +101,21 @@ describe('requestWords', () => {
     }
     expect(Array.from(requestWords(request))).toEqual([2, 1, 3, 0, 1, 2, 2, 4, 0, 1, 3, 1])
   })
+
+  it('has a kind per aggregate', () => {
+    const request: PivotRequest = {
+      rows: [],
+      columns: [],
+      measures: [
+        { aggregate: 'sum_distinct', column: 0 },
+        { aggregate: 'avg', column: 0 },
+        { aggregate: 'avg_distinct', column: 0 },
+        { aggregate: 'min', column: 0 },
+        { aggregate: 'max', column: 0 },
+      ],
+    }
+    expect(Array.from(requestWords(request))).toEqual([0, 0, 5, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0])
+  })
 })
 
 describe('PivotEngine', () => {
@@ -113,6 +128,26 @@ describe('PivotEngine', () => {
     })
     // Nord: Lille and Arras; Sud: Nice and Toulon; the four in the total.
     expect(engine.window([0, 3], [0, 1]).cells).toEqual([['2'], ['2'], ['4']])
+  })
+
+  it('computes SUM(DISTINCT), AVG, AVG(DISTINCT), MIN and MAX with their totals', async () => {
+    const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES, 4)
+    engine.compute({
+      rows: [0],
+      columns: [],
+      measures: [
+        { aggregate: 'sum_distinct', column: 2 },
+        { aggregate: 'avg', column: 4 },
+        { aggregate: 'avg_distinct', column: 2 },
+        { aggregate: 'min', column: 1 },
+        { aggregate: 'max', column: 4 },
+      ],
+    })
+    expect(engine.window([0, 3], [0, 5]).cells).toEqual([
+      ['4051', '94.0000', '2025.5000', 'Arras', '150'],
+      ['4051', '76.0000', '2025.5000', 'Nice', '110'],
+      ['4051', '85.0000', '2025.5000', 'Arras', '150'],
+    ])
   })
 
   it('computes a table from rows copied block by block', async () => {

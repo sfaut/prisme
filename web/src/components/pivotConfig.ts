@@ -4,7 +4,7 @@
  * their elements.
  *
  * In this first slice, a level is a column of the result, by its index, and a measure is
- * `COUNT(*)`, `COUNT(col)`, `COUNT(DISTINCT col)` or `SUM(col)`; the expressions come with the
+ * `COUNT(*)` or an aggregate of a column (`measureExpression`); the expressions come with the
  * parser. Each element can take a name, its alias (F-17), shown instead of its expression (F-12):
  * the name of its column for a level. A column is a level at most once, on one of the two axes:
  * placing it again moves it, with its name. A measure can be placed several times. Each change
@@ -128,6 +128,15 @@ export function summable(family: TypeFamily | undefined): boolean {
 }
 
 /**
+ * Does an aggregate add up the numbers of its column? `SUM` and `AVG`, with or without `DISTINCT`.
+ *
+ * @param aggregate Aggregate.
+ */
+export function addsNumbers(aggregate: PivotMeasure['aggregate']): boolean {
+  return ['sum', 'sum_distinct', 'avg', 'avg_distinct'].includes(aggregate)
+}
+
+/**
  * Measure of a column dropped into the measures: `SUM` for a number, `COUNT` otherwise (F-15),
  * without a name.
  *
@@ -139,7 +148,7 @@ export function defaultMeasure(column: number, family: TypeFamily | undefined): 
 }
 
 /**
- * Expression of a measure: `SUM(montant)`, `COUNT(ville)`, `COUNT(DISTINCT ville)`, `COUNT(*)`.
+ * Expression of a measure: `SUM(montant)`, `COUNT(DISTINCT ville)`, `MIN(ville)`, `COUNT(*)`.
  *
  * @param measure Measure.
  * @param names Names of the columns of the result.
@@ -155,6 +164,16 @@ export function measureExpression(measure: PivotMeasure, names: string[]): strin
       return `COUNT(DISTINCT ${name})`
     case 'sum':
       return `SUM(${name})`
+    case 'sum_distinct':
+      return `SUM(DISTINCT ${name})`
+    case 'avg':
+      return `AVG(${name})`
+    case 'avg_distinct':
+      return `AVG(DISTINCT ${name})`
+    case 'min':
+      return `MIN(${name})`
+    case 'max':
+      return `MAX(${name})`
   }
 }
 

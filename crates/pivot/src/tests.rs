@@ -80,7 +80,7 @@ fn flat(engine: &Engine, table: &Table, levels: &[&str], measures: &[&str]) -> S
         for column in 0..table.column_count() {
             fields.push(match table.value(line, column) {
                 Value::Null => "NULL".to_owned(),
-                value => value.text().unwrap_or_default(),
+                value => value.text(store).unwrap_or_default(),
             });
         }
         lines.push(fields.join(";"));
@@ -406,4 +406,199 @@ Nord;2;2;2
 Sud;1;2;2
 Total;3;4;4";
     assert_eq!(flat(&engine, &table, &["region"], &["villes"]), expected);
+}
+
+/// Engine over rows of a level, a text, and of a number of family `family`.
+fn level_and_numbers(rows: &[(&str, Option<&str>)], family: Family) -> Engine {
+    let mut store = Store::new(2);
+    for &(level, number) in rows {
+        store.push_row(&[Some(level), number]);
+    }
+    Engine::new(store, vec![Family::Other, family])
+}
+
+/// Measures of each level of column 0, then their total, in the layout of the
+/// copy of a table.
+fn by_level(engine: &Engine, measures: &[Measure]) -> String {
+    let request = Request {
+        rows: vec![0],
+        columns: vec![],
+        measures: measures.to_vec(),
+    };
+    let table = engine.compute(&request).unwrap();
+    let store = engine.store();
+    let lines: Vec<String> = (0..table.line_count())
+        .map(|line| {
+            let label = table.line_path(store, line).first().copied().flatten();
+            let values = (0..table.column_count()).map(|column| {
+                let text = table.value(line, column).text(store);
+                text.unwrap_or_else(|| "NULL".to_owned())
+            });
+            let mut fields = vec![label.unwrap_or("Total").to_owned()];
+            fields.extend(values);
+            fields.join(";")
+        })
+        .collect();
+    lines.join("\n")
+}
+
+#[test]
+fn sums_and_averages_of_distinct_numbers_read_their_values_once_per_group() {
+    let engine = level_and_numbers(
+        &[
+            ("A", Some("1.0")),
+            ("A", Some("1.00")),
+            ("A", Some("2")),
+            ("B", Some("2")),
+            ("B", None),
+        ],
+        Family::Exact,
+    );
+    let measures = [
+        Measure::Sum(1),
+        Measure::SumDistinct(1),
+        Measure::Avg(1),
+        Measure::AvgDistinct(1),
+    ];
+    let expected = "\
+A;4.00;3.00;1.333333;1.500000
+B;2.00;2.00;2.000000;2.000000
+Total;6.00;3.00;1.500000;1.500000";
+    assert_eq!(by_level(&engine, &measures), expected);
+}
+
+#[test]
+fn averages_of_floats_are_doubles() {
+    let engine = level_and_numbers(
+        &[("A", Some("1")), ("A", Some("2")), ("B", Some("0.5"))],
+        Family::Float,
+    );
+    let measures = [Measure::Avg(1), Measure::AvgDistinct(1)];
+    let expected = "\
+A;1.5;1.5
+B;0.5;0.5
+Total;1.1666666666666667;1.1666666666666667";
+    assert_eq!(by_level(&engine, &measures), expected);
+}
+
+#[test]
+fn extremes_compare_numbers_by_value_and_give_their_cell_as_it_is() {
+    let engine = level_and_numbers(
+        &[
+            ("A", Some("100")),
+            ("A", Some("30.5")),
+            ("B", Some("9")),
+            ("B", None),
+            ("C", None),
+        ],
+        Family::Exact,
+    );
+    let measures = [Measure::Min(1), Measure::Max(1)];
+    let expected = "\
+A;30.5;100
+B;9;9
+C;NULL;NULL
+Total;9;100";
+    assert_eq!(by_level(&engine, &measures), expected);
+
+    let engine = level_and_numbers(
+        &[("A", Some("1e300")), ("A", Some("NaN")), ("A", Some("-1"))],
+        Family::Float,
+    );
+    let expected = "\
+A;-1;NaN
+Total;-1;NaN";
+    assert_eq!(by_level(&engine, &measures), expected);
+}
+
+#[test]
+fn extremes_compare_texts_by_code_points_whatever_the_order_of_the_page() {
+    let mut engine = single(
+        &[Some("b"), Some("B"), Some("é"), Some("a"), Some("A"), None],
+        Family::Other,
+    );
+    // Order of the grid: NULL, then a, A, b, B, é.
+    let values = engine.distinct(0).unwrap();
+    let order: Vec<u32> = [None, Some("a"), Some("A"), Some("b"), Some("B"), Some("é")]
+        .iter()
+        .map(|value| values.iter().position(|cell| cell == value).unwrap() as u32)
+        .collect();
+    let mut ranks = vec![0; order.len()];
+    for (rank, &code) in order.iter().enumerate() {
+        ranks[code as usize] = rank as u32;
+    }
+    engine.set_ranks(0, ranks).unwrap();
+    let request = Request {
+        measures: vec![Measure::Min(0), Measure::Max(0)],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    let text = |column| table.value(0, column).text(engine.store());
+    assert_eq!(text(0).as_deref(), Some("A"));
+    assert_eq!(text(1).as_deref(), Some("é"));
+}
+
+#[test]
+fn extremes_read_the_rows_kept_by_the_filter() {
+    let mut engine = single(&[Some("3"), Some("1"), Some("2")], Family::Exact);
+    engine.set_kept(Some(vec![0, 2])).unwrap();
+    let request = Request {
+        measures: vec![Measure::Min(0), Measure::Max(0)],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    let text = |column| table.value(0, column).text(engine.store());
+    assert_eq!(text(0).as_deref(), Some("2"));
+    assert_eq!(text(1).as_deref(), Some("3"));
+}
+
+#[test]
+fn only_columns_of_numbers_can_be_added_up() {
+    let engine = single(&[Some("a")], Family::Other);
+    for measure in [
+        Measure::SumDistinct(0),
+        Measure::Avg(0),
+        Measure::AvgDistinct(0),
+    ] {
+        let request = Request {
+            measures: vec![Measure::CountStar, measure],
+            ..Request::default()
+        };
+        assert_eq!(
+            engine.compute(&request).unwrap_err(),
+            Error::NotNumeric { measure: 1 }
+        );
+    }
+}
+
+#[test]
+fn numbers_that_cannot_be_read_stop_the_extremes_and_the_averages() {
+    let engine = single(&[Some("1"), Some("abc")], Family::Exact);
+    for measure in [Measure::Min(0), Measure::Max(0), Measure::Avg(0)] {
+        let request = Request {
+            measures: vec![measure],
+            ..Request::default()
+        };
+        assert_eq!(
+            engine.compute(&request).unwrap_err(),
+            Error::Number {
+                column: 0,
+                error: NumberError::Invalid { row: 1 }
+            }
+        );
+    }
+}
+
+#[test]
+fn an_average_that_does_not_hold_on_128_bits_is_an_error() {
+    let digits = format!("0.{}1", "0".repeat(34));
+    let engine = single(&[Some(&digits)], Family::Exact);
+    let request = Request {
+        measures: vec![Measure::CountStar, Measure::Avg(0)],
+        ..Request::default()
+    };
+    assert_eq!(
+        engine.compute(&request).unwrap_err(),
+        Error::Overflow { measure: 1 }
+    );
 }

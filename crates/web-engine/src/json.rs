@@ -123,7 +123,7 @@ pub fn window(
         array(json, columns.clone(), |json, column| {
             match table.value(line, column) {
                 Value::Empty => json.push_str("false"),
-                value => cell(json, value.text().as_deref()),
+                value => cell(json, value.text(store).as_deref()),
             }
         });
     });
