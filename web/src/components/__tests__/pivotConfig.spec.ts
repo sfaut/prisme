@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  type DatePrecision,
   type NamedMeasure,
   type PivotConfig,
   type PivotLevel,
@@ -14,10 +15,12 @@ import {
   isEmptyConfig,
   measureExpression,
   placeColumn,
+  precisionChoices,
   removeElement,
   sameRequest,
   withAggregate,
   withName,
+  withPrecision,
   zoneLabels,
 } from '../pivotConfig'
 
@@ -31,9 +34,10 @@ const NAMES = ['region', 'ville', 'annee', 'trimestre', 'montant']
  *
  * @param column Index of the column.
  * @param name Name given, none by default.
+ * @param precision What it keeps of its dates, its values as they are by default.
  */
-function level(column: number, name = ''): PivotLevel {
-  return { column, name }
+function level(column: number, name = '', precision: DatePrecision = 'none'): PivotLevel {
+  return { column, name, precision }
 }
 
 /**
@@ -112,14 +116,83 @@ describe('engineRequest', () => {
     }
     const request = engineRequest(config)
     expect(request).toEqual({
-      rows: [0],
-      columns: [2],
+      rows: [{ column: 0, precision: 'none' }],
+      columns: [{ column: 2, precision: 'none' }],
       measures: [{ aggregate: 'sum', column: 4 }],
     })
     expect(
       sameRequest(request, engineRequest(withName(config, { zone: 'rows', index: 0 }, 'R', NAMES))),
     ).toBe(true)
     expect(sameRequest(request, engineRequest(withAggregate(config, 0, 'count')))).toBe(false)
+  })
+
+  it('asks for another table when a precision changes', () => {
+    const config: PivotConfig = { rows: [level(0)], columns: [], measures: [] }
+    const changed = withPrecision(config, { zone: 'rows', index: 0 }, 'month')
+    expect(engineRequest(changed).rows).toEqual([{ column: 0, precision: 'month' }])
+    expect(sameRequest(engineRequest(config), engineRequest(changed))).toBe(false)
+  })
+})
+
+describe('precisionChoices', () => {
+  const choices = (family: Parameters<typeof precisionChoices>[0]) =>
+    precisionChoices(family).map(({ precision, label }) => [precision, label])
+
+  it('offers the periods of a date, a date being its own day', () => {
+    expect(choices('date')).toEqual([
+      ['year', 'Année'],
+      ['quarter', 'Trimestre'],
+      ['month', 'Mois'],
+      ['week', 'Semaine'],
+      ['none', 'Date'],
+    ])
+  })
+
+  it('offers the day of a date and time, then its values as they are', () => {
+    expect(choices('datetime').slice(-2)).toEqual([
+      ['date', 'Date'],
+      ['none', 'Date et heure'],
+    ])
+  })
+
+  it('offers nothing for a column that holds no dates', () => {
+    for (const family of ['time', 'year', 'text', 'integer', undefined] as const) {
+      expect(choices(family)).toEqual([])
+    }
+  })
+})
+
+describe('withPrecision', () => {
+  const config: PivotConfig = {
+    rows: [level(0), level(1, 'Ville')],
+    columns: [level(2)],
+    measures: [measure('count', 3)],
+  }
+
+  it('changes the precision of a level only, which keeps its name', () => {
+    const changed = withPrecision(config, { zone: 'rows', index: 1 }, 'week')
+    expect(changed.rows).toEqual([level(0), level(1, 'Ville', 'week')])
+    expect(changed.columns).toBe(config.columns)
+    expect(changed.measures).toBe(config.measures)
+    expect(withPrecision(config, { zone: 'columns', index: 0 }, 'year').columns).toEqual([
+      level(2, '', 'year'),
+    ])
+  })
+
+  it('shows the precision in the expression of the level, not over its name', () => {
+    const changed: PivotConfig = {
+      rows: [level(0, '', 'month'), level(1, 'Ville', 'week'), level(2, '', 'date')],
+      columns: [level(3, '', 'none')],
+      measures: [],
+    }
+    expect(zoneLabels(changed, 'rows', NAMES)).toEqual(['region (Mois)', 'Ville', 'annee (Date)'])
+    expect(zoneLabels(changed, 'columns', NAMES)).toEqual(['trimestre'])
+  })
+
+  it('removes a name equal to the expression with its precision', () => {
+    const changed = { ...config, rows: [level(0, '', 'month')] }
+    const named = withName(changed, { zone: 'rows', index: 0 }, 'region (Mois)', NAMES)
+    expect(named.rows[0]).toEqual(level(0, '', 'month'))
   })
 })
 
@@ -271,12 +344,12 @@ describe('fittedConfig', () => {
   }
 
   it('gives the configuration itself when the columns are the same', () => {
-    expect(fittedConfig({ fields: NAMES, config }, [...NAMES])).toBe(config)
+    expect(fittedConfig({ fields: NAMES, config }, [...NAMES], [])).toBe(config)
   })
 
   it('follows the columns by name', () => {
     const moved = ['montant', 'annee', 'region', 'ville', 'trimestre']
-    expect(fittedConfig({ fields: NAMES, config }, moved)).toEqual({
+    expect(fittedConfig({ fields: NAMES, config }, moved, [])).toEqual({
       rows: [level(2, 'Région')],
       columns: [level(3)],
       measures: [measure('sum', 0, 'Total'), measure('count_star', 1)],
@@ -284,7 +357,7 @@ describe('fittedConfig', () => {
   })
 
   it('removes the elements of a lost column, except COUNT(*), which reads none', () => {
-    expect(fittedConfig({ fields: NAMES, config }, ['ville', 'trimestre'])).toEqual({
+    expect(fittedConfig({ fields: NAMES, config }, ['ville', 'trimestre'], [])).toEqual({
       rows: [],
       columns: [level(0)],
       measures: [measure('count_star', 0)],
@@ -298,17 +371,59 @@ describe('fittedConfig', () => {
       columns: [],
       measures: [measure('count', 0)],
     }
-    expect(fittedConfig({ fields, config: repeated }, ['x', 'id', 'id'])).toEqual({
+    expect(fittedConfig({ fields, config: repeated }, ['x', 'id', 'id'], [])).toEqual({
       rows: [level(2)],
       columns: [],
       measures: [measure('count', 1)],
     })
-    expect(fittedConfig({ fields, config: repeated }, ['id']).rows).toEqual([])
+    expect(fittedConfig({ fields, config: repeated }, ['id'], []).rows).toEqual([])
   })
 
   it('keeps nothing to fit when the configuration is empty', () => {
     const empty = emptyConfig()
-    expect(fittedConfig({ fields: [], config: empty }, NAMES)).toBe(empty)
+    expect(fittedConfig({ fields: [], config: empty }, NAMES, [])).toBe(empty)
+  })
+
+  describe('with the types of the columns', () => {
+    const fields = ['d', 'x']
+    const dated: PivotConfig = {
+      rows: [level(0, 'Jour', 'date')],
+      columns: [level(1)],
+      measures: [],
+    }
+    const typed = (family: 'date' | 'datetime' | 'text') => [
+      { family, name: 'T' },
+      { family: 'text' as const, name: 'TEXT' },
+    ]
+
+    it('keeps a precision the column can take', () => {
+      expect(fittedConfig({ fields, config: dated }, fields, typed('datetime'))).toBe(dated)
+    })
+
+    it('keeps a precision while the column has no type', () => {
+      expect(fittedConfig({ fields, config: dated }, fields, [])).toBe(dated)
+    })
+
+    it('drops a precision the column can no longer take, with its name kept', () => {
+      for (const family of ['text', 'date'] as const) {
+        expect(fittedConfig({ fields, config: dated }, fields, typed(family)).rows).toEqual([
+          level(0, 'Jour'),
+        ])
+      }
+    })
+
+    it('follows a column by name with its precision', () => {
+      expect(
+        fittedConfig(
+          { fields, config: dated },
+          ['x', 'd'],
+          [
+            { family: 'text', name: 'TEXT' },
+            { family: 'datetime', name: 'T' },
+          ],
+        ).rows,
+      ).toEqual([level(1, 'Jour', 'date')])
+    })
   })
 })
 

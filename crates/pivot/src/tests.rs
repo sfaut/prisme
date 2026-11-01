@@ -10,6 +10,7 @@ use super::*;
 /// Columns of the example dataset.
 const REGION: usize = 0;
 const CITY: usize = 1;
+const DATE: usize = 2;
 const YEAR: usize = 3;
 const QUARTER: usize = 4;
 const AMOUNT: usize = 5;
@@ -51,10 +52,9 @@ fn single(cells: &[Option<&str>], family: Family) -> Engine {
 ///
 /// `levels` names the levels of the rows, `measures` the measures.
 fn flat(engine: &Engine, table: &Table, levels: &[&str], measures: &[&str]) -> String {
-    let store = engine.store();
     let mut header: Vec<String> = levels.iter().map(|&level| level.to_owned()).collect();
     for column in 0..table.column_count() {
-        let column = table.header(store, column);
+        let column = table.header(engine, column);
         let mut parts: Vec<&str> = column
             .path
             .iter()
@@ -69,7 +69,7 @@ fn flat(engine: &Engine, table: &Table, levels: &[&str], measures: &[&str]) -> S
     let mut lines = vec![header.join(";")];
     for line in 0..table.line_count() {
         let mut fields: Vec<String> = table
-            .line_path(store, line)
+            .line_path(engine, line)
             .into_iter()
             .map(|label| label.unwrap_or("NULL").to_owned())
             .collect();
@@ -80,7 +80,7 @@ fn flat(engine: &Engine, table: &Table, levels: &[&str], measures: &[&str]) -> S
         for column in 0..table.column_count() {
             fields.push(match table.value(line, column) {
                 Value::Null => "NULL".to_owned(),
-                value => value.text(store).unwrap_or_default(),
+                value => value.text(engine.store()).unwrap_or_default(),
             });
         }
         lines.push(fields.join(";"));
@@ -93,8 +93,8 @@ fn flat(engine: &Engine, table: &Table, levels: &[&str], measures: &[&str]) -> S
 fn example_table(rows: &[usize], columns: &[usize], measures: &[Measure]) -> String {
     let engine = example();
     let request = Request {
-        rows: rows.to_vec(),
-        columns: columns.to_vec(),
+        rows: rows.iter().map(|&column| column.into()).collect(),
+        columns: columns.iter().map(|&column| column.into()).collect(),
         measures: measures.to_vec(),
     };
     let table = engine.compute(&request).unwrap();
@@ -221,7 +221,7 @@ fn the_kept_rows_alone_are_measured() {
     // The rows of Lille only.
     engine.set_kept(Some(vec![0, 1, 2])).unwrap();
     let request = Request {
-        rows: vec![CITY],
+        rows: vec![CITY.into()],
         columns: vec![],
         measures: vec![Measure::Sum(AMOUNT), Measure::CountStar],
     };
@@ -241,7 +241,7 @@ fn the_ranks_given_by_the_page_order_the_values() {
     // Sud first, then Nord, by code (Nord appears first).
     engine.set_ranks(REGION, vec![1, 0]).unwrap();
     let request = Request {
-        rows: vec![REGION],
+        rows: vec![REGION.into()],
         columns: vec![],
         measures: vec![Measure::CountStar],
     };
@@ -272,7 +272,7 @@ fn null_is_a_group_apart_from_the_text_null_and_the_empty_text() {
         [Some("NULL"), None, Some(""), Some("a")]
     );
     let request = Request {
-        rows: vec![0],
+        rows: vec![0.into()],
         columns: vec![],
         measures: vec![Measure::CountStar, Measure::Count(0)],
     };
@@ -281,13 +281,10 @@ fn null_is_a_group_apart_from_the_text_null_and_the_empty_text() {
         flat(&engine, &table, &["x"], &["n", "c"]),
         "x;n;c\nNULL;2;0\n;1;1\nNULL;1;1\na;1;1\nTotal;5;3"
     );
-    assert_eq!(table.line(engine.store(), 0).label, Label::Value(None));
+    assert_eq!(table.line(&engine, 0).label, Label::Value(None));
+    assert_eq!(table.line(&engine, 2).label, Label::Value(Some("NULL")));
     assert_eq!(
-        table.line(engine.store(), 2).label,
-        Label::Value(Some("NULL"))
-    );
-    assert_eq!(
-        table.line(engine.store(), 4),
+        table.line(&engine, 4),
         Line {
             depth: 0,
             label: Label::Total
@@ -304,7 +301,7 @@ fn sums_ignore_null_and_give_null_without_a_value() {
     }
     let engine = Engine::new(store, vec![Family::Other, Family::Exact]);
     let request = Request {
-        rows: vec![0],
+        rows: vec![0.into()],
         columns: vec![],
         measures: vec![Measure::Sum(1), Measure::Count(1)],
     };
@@ -331,8 +328,8 @@ fn floats_are_summed_as_double() {
 fn a_result_without_rows_has_its_grand_total() {
     let engine = single(&[], Family::Exact);
     let request = Request {
-        rows: vec![0],
-        columns: vec![0],
+        rows: vec![0.into()],
+        columns: vec![0.into()],
         measures: vec![Measure::CountStar, Measure::Sum(0)],
     };
     let table = engine.compute(&request).unwrap();
@@ -345,7 +342,7 @@ fn a_result_without_rows_has_its_grand_total() {
 fn errors_give_no_table() {
     let engine = example();
     let request = |measures: Vec<Measure>| Request {
-        rows: vec![REGION],
+        rows: vec![REGION.into()],
         columns: vec![],
         measures,
     };
@@ -362,7 +359,7 @@ fn errors_give_no_table() {
         Error::UnknownColumn(9)
     );
     let unknown_level = Request {
-        rows: vec![9],
+        rows: vec![9.into()],
         ..Request::default()
     };
     assert_eq!(
@@ -395,8 +392,8 @@ fn errors_give_no_table() {
 fn a_total_of_count_distinct_counts_the_values_of_its_whole_group() {
     let engine = example();
     let request = Request {
-        rows: vec![REGION],
-        columns: vec![YEAR],
+        rows: vec![REGION.into()],
+        columns: vec![YEAR.into()],
         measures: vec![Measure::CountDistinct(CITY)],
     };
     let table = engine.compute(&request).unwrap();
@@ -421,7 +418,7 @@ fn level_and_numbers(rows: &[(&str, Option<&str>)], family: Family) -> Engine {
 /// copy of a table.
 fn by_level(engine: &Engine, measures: &[Measure]) -> String {
     let request = Request {
-        rows: vec![0],
+        rows: vec![0.into()],
         columns: vec![],
         measures: measures.to_vec(),
     };
@@ -429,7 +426,7 @@ fn by_level(engine: &Engine, measures: &[Measure]) -> String {
     let store = engine.store();
     let lines: Vec<String> = (0..table.line_count())
         .map(|line| {
-            let label = table.line_path(store, line).first().copied().flatten();
+            let label = table.line_path(engine, line).first().copied().flatten();
             let values = (0..table.column_count()).map(|column| {
                 let text = table.value(line, column).text(store);
                 text.unwrap_or_else(|| "NULL".to_owned())
@@ -587,6 +584,130 @@ fn numbers_that_cannot_be_read_stop_the_extremes_and_the_averages() {
             }
         );
     }
+}
+
+#[test]
+fn the_rows_of_a_table_can_group_dates_by_quarter() {
+    let engine = example();
+    let request = Request {
+        rows: vec![Level {
+            column: DATE,
+            precision: Some(Precision::Quarter),
+        }],
+        measures: vec![Measure::Sum(AMOUNT)],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    let expected = "\
+d;ca
+2025-T1;220
+2025-T2;210
+2026-T1;290
+2026-T2;130
+Total;850";
+    assert_eq!(flat(&engine, &table, &["d"], &["ca"]), expected);
+}
+
+#[test]
+fn the_columns_of_a_table_can_group_dates_by_iso_year() {
+    let engine = example();
+    let request = Request {
+        rows: vec![REGION.into()],
+        columns: vec![Level {
+            column: DATE,
+            precision: Some(Precision::Year),
+        }],
+        measures: vec![Measure::Sum(AMOUNT)],
+    };
+    let table = engine.compute(&request).unwrap();
+    let expected = "\
+region;2025 / ca;2026 / ca;Total / ca
+Nord;260;210;470
+Sud;170;210;380
+Total;430;420;850";
+    assert_eq!(flat(&engine, &table, &["region"], &["ca"]), expected);
+}
+
+#[test]
+fn a_column_keeps_its_values_next_to_its_periods() {
+    let engine = example();
+    let by_month = Request {
+        rows: vec![Level {
+            column: DATE,
+            precision: Some(Precision::Month),
+        }],
+        measures: vec![Measure::CountStar, Measure::CountDistinct(DATE)],
+        ..Request::default()
+    };
+    let table = engine.compute(&by_month).unwrap();
+    assert_eq!(table.finest_groups(), 10);
+    assert_eq!(table.line(&engine, 0).label, Label::Value(Some("2025-01")));
+    let by_value = Request {
+        rows: vec![DATE.into()],
+        ..Request::default()
+    };
+    let table = engine.compute(&by_value).unwrap();
+    assert_eq!(
+        table.line(&engine, 0).label,
+        Label::Value(Some("2025-01-15"))
+    );
+}
+
+#[test]
+fn a_cell_without_a_date_stops_the_computation() {
+    let engine = single(&[Some("2026-01-15"), None, Some("infinity")], Family::Other);
+    let request = Request {
+        rows: vec![Level {
+            column: 0,
+            precision: Some(Precision::Month),
+        }],
+        ..Request::default()
+    };
+    assert_eq!(
+        engine.compute(&request).unwrap_err(),
+        Error::InvalidDate { column: 0, row: 2 }
+    );
+    assert_eq!(
+        engine.compute(&request).unwrap_err().to_string(),
+        "column 0, row 2: no date"
+    );
+}
+
+#[test]
+fn a_level_with_a_precision_needs_its_column() {
+    let engine = single(&[Some("2026-01-15")], Family::Other);
+    let request = Request {
+        rows: vec![Level {
+            column: 9,
+            precision: Some(Precision::Month),
+        }],
+        ..Request::default()
+    };
+    assert_eq!(
+        engine.compute(&request).unwrap_err(),
+        Error::UnknownColumn(9)
+    );
+}
+
+#[test]
+fn a_precision_groups_only_the_rows_kept_by_the_filter() {
+    let mut engine = example();
+    engine.set_kept(Some(vec![5, 6])).unwrap();
+    let request = Request {
+        rows: vec![Level {
+            column: DATE,
+            precision: Some(Precision::Quarter),
+        }],
+        measures: vec![Measure::Sum(AMOUNT)],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    let expected = "\
+d;ca
+2025-T1;80
+2025-T2;90
+Total;170";
+    assert_eq!(flat(&engine, &table, &["d"], &["ca"]), expected);
 }
 
 #[test]

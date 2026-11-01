@@ -6,7 +6,8 @@
   refresh, and a new run of the queries, which carries it over on the server
   (`tab_pivot.rs`). When the columns of the result change, the configuration
   follows them by name, and the elements of a lost column leave it
-  (`fittedConfig`). The columns of the result and the zones (`PivotZones.vue`),
+  (`fittedConfig`), which also drops the precision of a column that holds no
+  dates any more. The columns of the result and the zones (`PivotZones.vue`),
   then the table (`PivotGrid.vue`), which takes the remaining width, with its
   status bar: rows taken into account, groups, duration of the computation
   (F-06).
@@ -125,8 +126,8 @@ function keepConfig(tab: QueryTab, columns: string[], value: PivotConfig): void 
 // once and for all. A result without columns, or in error, leaves it as it
 // is, for the next run.
 watch(
-  () => [props.tab, result.value?.columns] as const,
-  ([tab, columns]) => {
+  () => [props.tab, result.value?.columns, result.value?.columnTypes] as const,
+  ([tab, columns, types]) => {
     if (
       tab !== undefined &&
       columns !== undefined &&
@@ -134,7 +135,7 @@ watch(
       !isEmptyConfig(tab.pivot.config) &&
       !sameColumns(tab.pivot.fields, columns)
     ) {
-      keepConfig(tab, columns, fittedConfig(tab.pivot, columns))
+      keepConfig(tab, columns, fittedConfig(tab.pivot, columns, types ?? []))
     }
   },
   { immediate: true },
@@ -152,7 +153,7 @@ const config = computed<PivotConfig>({
   get() {
     const tab = props.tab
     const shown = result.value
-    return tab && shown ? fittedConfig(tab.pivot, shown.columns) : NO_CONFIG
+    return tab && shown ? fittedConfig(tab.pivot, shown.columns, shown.columnTypes) : NO_CONFIG
   },
   set(value) {
     if (props.tab && result.value) {
@@ -319,6 +320,8 @@ function refusalText(refusal: PivotFailure, refused: PivotConfig): string {
       return `La valeur de la ligne ${row} de « ${column} » n’est pas un nombre.`
     case 'too_large':
       return `La valeur de la ligne ${row} de « ${column} » dépasse 38 chiffres.`
+    case 'invalid_date':
+      return `La valeur de la ligne ${row} de « ${column} » n’est pas une date.`
     case 'overflow':
       return `${measure} dépasse 38 chiffres.`
     case 'not_numeric':

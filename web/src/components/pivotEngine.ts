@@ -8,9 +8,11 @@
  * A window names its table, by the id of the message that computed it: a window asked for a
  * table that another one has replaced since is refused (`stale`), and never mixes the shape of
  * one table with the cells of the next.
- * The values of each level are ranked in the order of the grid (`compareCells`), once per column.
+ * The values of each level are ranked in the order of the grid (`compareCells`), once per column;
+ * the module ranks the periods of a level with a precision, in the order of time.
  */
 
+import type { DatePrecision } from '@/api/generated/DatePrecision'
 import type { TypeFamily } from '@/api/generated/TypeFamily'
 import type { PivotAggregate } from '@/api/generated/PivotAggregate'
 import type { Cell } from '@/api/querySession'
@@ -34,17 +36,31 @@ export interface PivotMeasure {
 }
 
 /**
+ * Level of a table: the values of a column, or what a precision keeps of its dates.
+ */
+export interface PivotRequestLevel {
+  /**
+   * Index of the column.
+   */
+  column: number
+  /**
+   * What the level keeps of the dates of the column.
+   */
+  precision: DatePrecision
+}
+
+/**
  * Table asked of the engine.
  */
 export interface PivotRequest {
   /**
-   * Columns of the levels of the rows, the outermost first.
+   * Levels of the rows, the outermost first.
    */
-  rows: number[]
+  rows: PivotRequestLevel[]
   /**
-   * Columns of the levels of the columns, the outermost first.
+   * Levels of the columns, the outermost first.
    */
-  columns: number[]
+  columns: PivotRequestLevel[]
   /**
    * Measures, in the order of their zone.
    */
@@ -150,8 +166,8 @@ export interface PivotWindow {
 export interface PivotFailure {
   /**
    * Kind of the refusal: `invalid_number`, `too_large`, `overflow`, `not_numeric`,
-   * `unknown_column`, `unknown_row`, `ranks`, `block`, `not_loading`, `incomplete`,
-   * `no_result`, `no_table`, `request`, `stale` (a window of a replaced table).
+   * `invalid_date`, `unknown_column`, `unknown_row`, `ranks`, `block`, `not_loading`,
+   * `incomplete`, `no_result`, `no_table`, `request`, `stale` (a window of a replaced table).
    */
   kind: string
   /**
@@ -297,12 +313,14 @@ export function ranksOf(values: Cell[]): Uint32Array {
 }
 
 /**
- * Words of a request for the module: numbers of levels and of measures, the columns of the
- * levels, then a kind and a column per measure.
+ * Words of a request for the module: numbers of levels and of measures, a column and a precision
+ * per level, then a kind and a column per measure.
  *
  * @param request Table asked.
  */
 export function requestWords(request: PivotRequest): Uint32Array {
+  const precisions = { none: 0, year: 1, quarter: 2, month: 3, week: 4, date: 5 }
+  const levelWords = ({ column, precision }: PivotRequestLevel) => [column, precisions[precision]]
   const kinds = {
     count_star: 0,
     count: 1,
@@ -318,8 +336,8 @@ export function requestWords(request: PivotRequest): Uint32Array {
     request.rows.length,
     request.columns.length,
     request.measures.length,
-    ...request.rows,
-    ...request.columns,
+    ...request.rows.flatMap(levelWords),
+    ...request.columns.flatMap(levelWords),
     ...request.measures.flatMap((measure) => [kinds[measure.aggregate], measure.column]),
   ])
 }
@@ -478,8 +496,10 @@ export class PivotEngine {
    *     If the engine refuses it: a cell that is not a number, a value beyond 128 bits...
    */
   compute(request: PivotRequest): PivotShape {
-    for (const column of [...request.rows, ...request.columns]) {
-      this.rank(column)
+    for (const { column, precision } of [...request.rows, ...request.columns]) {
+      if (precision === 'none') {
+        this.rank(column)
+      }
     }
     const words = requestWords(request)
     return this.withWords(words, (address) =>

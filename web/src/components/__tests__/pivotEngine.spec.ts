@@ -9,6 +9,7 @@ import type { Cell } from '@/api/querySession'
 
 import {
   type PivotRequest,
+  type PivotRequestLevel,
   type WorkerState,
   PivotEngine,
   PivotError,
@@ -45,6 +46,15 @@ const EXAMPLE: Cell[][] = [
 ]
 
 const EXAMPLE_FAMILIES: TypeFamily[] = ['text', 'text', 'integer', 'text', 'decimal']
+
+/**
+ * Level of the values of a column, as they are.
+ *
+ * @param column Index of the column.
+ */
+function level(column: number): PivotRequestLevel {
+  return { column, precision: 'none' }
+}
 
 /**
  * Engine holding rows, copied in blocks of `block` rows.
@@ -91,15 +101,31 @@ describe('ranksOf', () => {
 describe('requestWords', () => {
   it('writes the levels then a kind and a column per measure', () => {
     const request: PivotRequest = {
-      rows: [0, 1],
-      columns: [2],
+      rows: [level(0), level(1)],
+      columns: [level(2)],
       measures: [
         { aggregate: 'sum', column: 4 },
         { aggregate: 'count_star', column: 1 },
         { aggregate: 'count_distinct', column: 1 },
       ],
     }
-    expect(Array.from(requestWords(request))).toEqual([2, 1, 3, 0, 1, 2, 2, 4, 0, 1, 3, 1])
+    expect(Array.from(requestWords(request))).toEqual([2, 1, 3, 0, 0, 1, 0, 2, 0, 2, 4, 0, 1, 3, 1])
+  })
+
+  it('has a number per precision', () => {
+    const request: PivotRequest = {
+      rows: [
+        { column: 7, precision: 'year' },
+        { column: 7, precision: 'quarter' },
+        { column: 7, precision: 'month' },
+      ],
+      columns: [
+        { column: 7, precision: 'week' },
+        { column: 7, precision: 'date' },
+      ],
+      measures: [],
+    }
+    expect(Array.from(requestWords(request))).toEqual([3, 2, 0, 7, 1, 7, 2, 7, 3, 7, 4, 7, 5])
   })
 
   it('has a kind per aggregate', () => {
@@ -122,7 +148,7 @@ describe('PivotEngine', () => {
   it('counts the distinct values of a group again in its total', async () => {
     const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES, 4)
     engine.compute({
-      rows: [0],
+      rows: [level(0)],
       columns: [],
       measures: [{ aggregate: 'count_distinct', column: 1 }],
     })
@@ -133,7 +159,7 @@ describe('PivotEngine', () => {
   it('computes SUM(DISTINCT), AVG, AVG(DISTINCT), MIN and MAX with their totals', async () => {
     const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES, 4)
     engine.compute({
-      rows: [0],
+      rows: [level(0)],
       columns: [],
       measures: [
         { aggregate: 'sum_distinct', column: 2 },
@@ -153,8 +179,8 @@ describe('PivotEngine', () => {
   it('computes a table from rows copied block by block', async () => {
     const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES, 3)
     const shape = engine.compute({
-      rows: [0, 1],
-      columns: [2],
+      rows: [level(0), level(1)],
+      columns: [level(2)],
       measures: [{ aggregate: 'sum', column: 4 }],
     })
     expect(shape).toEqual({
@@ -191,9 +217,62 @@ describe('PivotEngine', () => {
     ])
   })
 
+  it('groups the dates of a level by their precision, in the order of time', async () => {
+    const rows: Cell[][] = [
+      ['2027-01-01 12:00:00', '1'],
+      ['2026-12-31 10:00:00', '2'],
+      [null, '4'],
+      ['2027-01-04 09:30:00', '8'],
+      ['2026-03-15 08:00:00', '16'],
+    ]
+    const engine = await loaded(rows, ['datetime', 'integer'], 2)
+    const table = (precision: PivotRequestLevel['precision']) => {
+      engine.compute({
+        rows: [{ column: 0, precision }],
+        columns: [],
+        measures: [{ aggregate: 'sum', column: 1 }],
+      })
+      return engine.window([0, 9], [0, 1])
+    }
+    const labels = (precision: PivotRequestLevel['precision']) =>
+      table(precision).lines.map((line) => line.label)
+    expect(labels('year')).toEqual([null, '2026', '2027', null])
+    expect(table('year').cells).toEqual([['4'], ['19'], ['8'], ['31']])
+    expect(labels('quarter')).toEqual([null, '2026-T1', '2026-T4', '2027-T1', null])
+    expect(labels('month')).toEqual([null, '2026-03', '2026-12', '2027-01', null])
+    expect(labels('week')).toEqual([null, '2026-S11', '2026-S53', '2027-S01', null])
+    expect(table('week').cells).toEqual([['4'], ['16'], ['3'], ['8'], ['31']])
+    expect(labels('date')).toEqual([
+      null,
+      '2026-03-15',
+      '2026-12-31',
+      '2027-01-01',
+      '2027-01-04',
+      null,
+    ])
+  })
+
+  it('refuses a level with a precision over a cell without a date', async () => {
+    const engine = await loaded([['2026-01-15'], ['infinity']], ['date'])
+    expect(() =>
+      engine.compute({
+        rows: [{ column: 0, precision: 'month' }],
+        columns: [],
+        measures: [],
+      }),
+    ).toThrowError(
+      expect.objectContaining({ failure: { kind: 'invalid_date', column: 0, row: 1 } }),
+    )
+    expect(engine.compute({ rows: [level(0)], columns: [], measures: [] }).lines).toBe(3)
+  })
+
   it('gives a window bounded by the table', async () => {
     const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
-    engine.compute({ rows: [0], columns: [], measures: [{ aggregate: 'count_star', column: 0 }] })
+    engine.compute({
+      rows: [level(0)],
+      columns: [],
+      measures: [{ aggregate: 'count_star', column: 0 }],
+    })
     const window = engine.window([2, 50], [0, 50])
     expect(window.lines).toEqual([{ depth: 0, label: null }])
     expect(window.cells).toEqual([['10']])
@@ -208,7 +287,7 @@ describe('PivotEngine', () => {
     ]
     const engine = await loaded(rows, ['integer', 'text'], 3)
     engine.compute({
-      rows: [0, 1],
+      rows: [level(0), level(1)],
       columns: [],
       measures: [{ aggregate: 'count', column: 1 }],
     })
@@ -229,7 +308,7 @@ describe('PivotEngine', () => {
     const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
     engine.setKept(Uint32Array.from([5, 6, 7, 8]))
     const shape = engine.compute({
-      rows: [1],
+      rows: [level(1)],
       columns: [],
       measures: [{ aggregate: 'sum', column: 4 }],
     })
@@ -254,7 +333,11 @@ describe('PivotEngine', () => {
 
   it('keeps the last table when a computation is refused', async () => {
     const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
-    engine.compute({ rows: [0], columns: [], measures: [{ aggregate: 'count_star', column: 0 }] })
+    engine.compute({
+      rows: [level(0)],
+      columns: [],
+      measures: [{ aggregate: 'count_star', column: 0 }],
+    })
     expect(() =>
       engine.compute({ rows: [], columns: [], measures: [{ aggregate: 'sum', column: 0 }] }),
     ).toThrowError(PivotError)
@@ -288,7 +371,13 @@ describe('answerMessage', () => {
     const table = answerMessage(state, { type: 'compute', id: 2, request })
     expect(table).toMatchObject({ type: 'table', id: 2, shape: { lines: 1, columns: 1 } })
     expect(
-      answerMessage(state, { type: 'window', id: 3, table: 2, lines: [0, 1], columns: [0, 1] }),
+      answerMessage(state, {
+        type: 'window',
+        id: 3,
+        table: 2,
+        lines: [0, 1],
+        columns: [0, 1],
+      }),
     ).toEqual({
       type: 'window',
       id: 3,
@@ -306,11 +395,23 @@ describe('answerMessage', () => {
     })
     // The refused table leaves the previous one, whose windows are still read.
     expect(
-      answerMessage(state, { type: 'window', id: 5, table: 2, lines: [0, 1], columns: [0, 1] }),
+      answerMessage(state, {
+        type: 'window',
+        id: 5,
+        table: 2,
+        lines: [0, 1],
+        columns: [0, 1],
+      }),
     ).toMatchObject({ type: 'window', id: 5 })
     answerMessage(state, { type: 'compute', id: 6, request })
     expect(
-      answerMessage(state, { type: 'window', id: 7, table: 2, lines: [0, 1], columns: [0, 1] }),
+      answerMessage(state, {
+        type: 'window',
+        id: 7,
+        table: 2,
+        lines: [0, 1],
+        columns: [0, 1],
+      }),
     ).toEqual({ type: 'failure', id: 7, failure: { kind: 'stale' } })
   })
 })

@@ -4,14 +4,16 @@
 //! window by window.
 //!
 //! First slice of the lot 1 of its specification: a level is a column of the
-//! result, its value as it is; the measures are `COUNT(*)`, `COUNT(col)`,
-//! `SUM(col)`, `AVG(col)`, `MIN(col)` and `MAX(col)`, in ANSI SQL, and
-//! `COUNT`, `SUM` and `AVG` of `DISTINCT col`. The dialect of the Pivoteur,
-//! with its expressions, comes with the next slices.
+//! result, its value as it is or what a precision keeps of its dates (`dates`);
+//! the measures are `COUNT(*)`, `COUNT(col)`, `SUM(col)`, `AVG(col)`,
+//! `MIN(col)` and `MAX(col)`, in ANSI SQL, and `COUNT`, `SUM` and `AVG` of
+//! `DISTINCT col`. The dialect of the Pivoteur, with its expressions, comes with
+//! the next slices.
 //!
 //! The crate does not depend on its target: its tests run natively, and the
 //! Worker of the page runs it compiled to WebAssembly (`crates/web-engine`).
 
+mod dates;
 mod groups;
 mod measures;
 mod table;
@@ -21,6 +23,8 @@ use std::fmt;
 
 use prisme_store::{Approx, Dictionary, Exact, NumberError, Store};
 
+use crate::dates::DerivedLevel;
+pub use crate::dates::Precision;
 pub use crate::measures::Value;
 use crate::measures::{Extreme, Input};
 pub use crate::table::{Header, Label, Line, Table};
@@ -66,13 +70,33 @@ pub enum Measure {
     Max(usize),
 }
 
+/// Level of a table: the values of a column, or what a precision keeps of
+/// its dates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Level {
+    /// Column of the result.
+    pub column: usize,
+    /// Precision of its dates, `None` for its values as they are.
+    pub precision: Option<Precision>,
+}
+
+impl From<usize> for Level {
+    /// Level of the values of a column, as they are.
+    fn from(column: usize) -> Self {
+        Level {
+            column,
+            precision: None,
+        }
+    }
+}
+
 /// Table asked of the engine.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Request {
-    /// Columns of the levels of the rows, the outermost first.
-    pub rows: Vec<usize>,
-    /// Columns of the levels of the columns, the outermost first.
-    pub columns: Vec<usize>,
+    /// Levels of the rows, the outermost first.
+    pub rows: Vec<Level>,
+    /// Levels of the columns, the outermost first.
+    pub columns: Vec<Level>,
     /// Measures, in the order of their zone.
     pub measures: Vec<Measure>,
 }
@@ -104,6 +128,13 @@ pub enum Error {
         /// Measure, by its index.
         measure: usize,
     },
+    /// A cell of a level with a precision holds no date.
+    InvalidDate {
+        /// Column of the cell.
+        column: usize,
+        /// Row of the cell.
+        row: u32,
+    },
 }
 
 impl fmt::Display for Error {
@@ -118,6 +149,9 @@ impl fmt::Display for Error {
             Error::Number { column, error } => write!(formatter, "column {column}, {error}"),
             Error::Overflow { measure } => {
                 write!(formatter, "measure {measure}: value beyond 128 bits")
+            }
+            Error::InvalidDate { column, row } => {
+                write!(formatter, "column {column}, row {row}: no date")
             }
         }
     }
@@ -159,6 +193,9 @@ pub struct Engine {
     /// Rank of each value of each column, by code, as `MIN` and `MAX` compare
     /// them.
     value_ranks: Vec<OnceCell<Vec<u32>>>,
+    /// Levels of each column at each precision, or the row of the first cell
+    /// that holds no date.
+    derived: Vec<[OnceCell<Result<DerivedLevel, u32>>; Precision::COUNT]>,
     /// Rows kept by the filter of the grid, in their order; `None` for all.
     kept: Option<Vec<u32>>,
 }
@@ -183,6 +220,9 @@ impl Engine {
             numbers: (0..columns).map(|_| OnceCell::new()).collect(),
             ranks: (0..columns).map(|_| OnceCell::new()).collect(),
             value_ranks: (0..columns).map(|_| OnceCell::new()).collect(),
+            derived: (0..columns)
+                .map(|_| std::array::from_fn(|_| OnceCell::new()))
+                .collect(),
             kept: None,
         }
     }
@@ -267,6 +307,51 @@ impl Engine {
             }
             ranks_of(&order)
         }))
+    }
+
+    /// Level of column `column` at a precision.
+    fn derived(&self, column: usize, precision: Precision) -> Result<&DerivedLevel, Error> {
+        let dictionary = self.dictionary(column)?;
+        let cells = self.store.column(column).expect("column of the dictionary");
+        self.derived[column][precision as usize]
+            .get_or_init(|| DerivedLevel::of(cells, dictionary, precision))
+            .as_ref()
+            .map_err(|&row| Error::InvalidDate { column, row })
+    }
+
+    /// Code of each row and rank of each code of some levels.
+    fn levels(&self, levels: &[Level]) -> Result<(Vec<&Dictionary>, Vec<&[u32]>), Error> {
+        let mut dictionaries = Vec::with_capacity(levels.len());
+        let mut ranks = Vec::with_capacity(levels.len());
+        for &Level { column, precision } in levels {
+            match precision {
+                Some(precision) => {
+                    let derived = self.derived(column, precision)?;
+                    dictionaries.push(&derived.dictionary);
+                    ranks.push(derived.ranks.as_slice());
+                }
+                None => {
+                    dictionaries.push(self.dictionary(column)?);
+                    ranks.push(self.ranks(column)?);
+                }
+            }
+        }
+        Ok((dictionaries, ranks))
+    }
+
+    /// Value of a level at the first row of one of its nodes: the cell of its
+    /// column, or the label of its period, `None` for NULL.
+    pub(crate) fn level_value(&self, level: Level, row: u32) -> Option<&str> {
+        match level.precision {
+            Some(precision) => self
+                .derived(level.column, precision)
+                .ok()
+                .and_then(|derived| derived.label(row)),
+            None => self
+                .store
+                .column(level.column)
+                .and_then(|cells| cells.get(row as usize)),
+        }
     }
 
     /// Keeps only some rows, those the filter of the grid keeps; `None` keeps
@@ -370,29 +455,14 @@ impl Engine {
                 &all
             }
         };
-        let row_levels = request
-            .rows
-            .iter()
-            .map(|&column| self.dictionary(column))
-            .collect::<Result<Vec<_>, _>>()?;
-        let column_levels = request
-            .columns
-            .iter()
-            .map(|&column| self.dictionary(column))
-            .collect::<Result<Vec<_>, _>>()?;
+        let (row_levels, row_ranks) = self.levels(&request.rows)?;
+        let (column_levels, column_ranks) = self.levels(&request.columns)?;
         let inputs = request
             .measures
             .iter()
             .enumerate()
             .map(|(index, &measure)| self.input(index, measure))
             .collect::<Result<Vec<_>, _>>()?;
-        let ranks = |columns: &[usize]| {
-            columns
-                .iter()
-                .map(|&column| self.ranks(column))
-                .collect::<Result<Vec<_>, _>>()
-        };
-        let (row_ranks, column_ranks) = (ranks(&request.rows)?, ranks(&request.columns)?);
 
         let levels: Vec<&Dictionary> = row_levels.iter().chain(&column_levels).copied().collect();
         let (finest, first_rows) = groups::finest(&levels, selection);

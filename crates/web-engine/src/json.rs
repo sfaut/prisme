@@ -87,12 +87,11 @@ pub fn window(
     lines: std::ops::Range<usize>,
     columns: std::ops::Range<usize>,
 ) {
-    let store = engine.store();
     let lines = lines.start.min(table.line_count())..lines.end.min(table.line_count());
     let columns = columns.start.min(table.column_count())..columns.end.min(table.column_count());
     json.push_str(r#"{"lines":"#);
     array(json, lines.clone(), |json, index| {
-        let line = table.line(store, index);
+        let line = table.line(engine, index);
         let _ = write!(json, r#"{{"depth":{},"label":"#, line.depth);
         match line.label {
             Label::Value(value) => cell(json, value),
@@ -102,7 +101,7 @@ pub fn window(
     });
     json.push_str(r#","columns":"#);
     array(json, columns.clone(), |json, index| {
-        let header = table.header(store, index);
+        let header = table.header(engine, index);
         let _ = write!(json, r#"{{"node":{},"path":"#, header.node);
         array(json, &header.path, |json, &(node, value)| {
             let _ = write!(json, "[{node},");
@@ -123,7 +122,7 @@ pub fn window(
         array(json, columns.clone(), |json, column| {
             match table.value(line, column) {
                 Value::Empty => json.push_str("false"),
-                value => cell(json, value.text(store).as_deref()),
+                value => cell(json, value.text(engine.store()).as_deref()),
             }
         });
     });
@@ -150,6 +149,12 @@ pub fn error(json: &mut String, error: &Error) {
             write!(json, r#"{{"kind":"{kind}","column":{column},"row":{row}}}"#)
         }
         Error::Overflow { measure } => write!(json, r#"{{"kind":"overflow","measure":{measure}}}"#),
+        Error::InvalidDate { column, row } => {
+            write!(
+                json,
+                r#"{{"kind":"invalid_date","column":{column},"row":{row}}}"#
+            )
+        }
     };
     json.push('}');
 }
@@ -174,5 +179,15 @@ mod tests {
         let mut json = String::new();
         string(&mut json, "a\"b\\c\nd\u{1}é");
         assert_eq!(json, r#""a\"b\\c\nd\u0001é""#);
+    }
+
+    #[test]
+    fn a_cell_without_a_date_gives_its_column_and_its_row() {
+        let mut json = String::new();
+        error(&mut json, &Error::InvalidDate { column: 2, row: 7 });
+        assert_eq!(
+            json,
+            r#"{"error":{"kind":"invalid_date","column":2,"row":7}}"#
+        );
     }
 }

@@ -10,9 +10,10 @@
   one zone to another too, a level to the other axis by its menu too;
   released outside the zones, it leaves its zone (Escape cancels the drag).
   A column dropped into the measures gives its default aggregate
-  (`defaultAggregate`, F-15); the menu of a measure changes it. A column is
-  a level once at most: placing it again on an axis moves it there. An element
-  takes a name by its menu ("Nommer…") or a double click on its label
+  (`defaultAggregate`, F-15); the menu of a measure changes it. The menu of a
+  level of dates sets its precision, what it keeps of them (`precisionChoices`).
+  A column is a level once at most: placing it again on an axis moves it there.
+  An element takes a name by its menu ("Nommer…") or a double click on its label
   (F-17): Enter confirms, Escape cancels, an empty name gives back its
   expression, which the tooltip of a named element recalls. The logic of
   the zones is in `pivotConfig.ts`.
@@ -23,6 +24,12 @@ import {
   ArrowLeftRight,
   ArrowUpToLine,
   Asterisk,
+  Calendar,
+  Calendar1,
+  CalendarClock,
+  CalendarDays,
+  CalendarFold,
+  CalendarRange,
   Check,
   Columns3,
   Divide,
@@ -44,6 +51,7 @@ import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import {
   type PivotConfig,
   type PivotZone,
+  type PrecisionLabel,
   type ZonePlace,
   addsNumbers,
   defaultAggregate,
@@ -51,10 +59,12 @@ import {
   elementLabel,
   measureExpression,
   placeColumn,
+  precisionChoices,
   removeElement,
   summable,
   withAggregate,
   withName,
+  withPrecision,
 } from './pivotConfig'
 import type { PivotMeasure } from './pivotEngine'
 import { dropPosition } from './resultGrid'
@@ -215,8 +225,38 @@ const AGGREGATES: { aggregate: PivotMeasure['aggregate']; icon: Component }[] = 
 ]
 
 /**
- * Choices of the menu of an element: for a measure, its aggregate, then
- * its name and its place.
+ * Icon of each precision of a level.
+ */
+const PRECISION_ICONS: Record<PrecisionLabel, Component> = {
+  Année: Calendar,
+  Trimestre: CalendarRange,
+  Mois: CalendarDays,
+  Semaine: CalendarFold,
+  Date: Calendar1,
+  'Date et heure': CalendarClock,
+}
+
+/**
+ * Choices of the precision of a level, none for a column that holds no dates.
+ *
+ * @param zone Axis of the level.
+ * @param index Position of the level.
+ */
+function precisionItems(zone: 'rows' | 'columns', index: number): MenuItem[] {
+  const level = config.value[zone][index]
+  if (level === undefined) {
+    return []
+  }
+  return precisionChoices(props.types[level.column]?.family).map(({ precision, label }) => ({
+    label,
+    icon: precision === level.precision ? Check : PRECISION_ICONS[label],
+    onSelect: () => (config.value = withPrecision(config.value, { zone, index }, precision)),
+  }))
+}
+
+/**
+ * Choices of the menu of an element: for a measure, its aggregate, for a
+ * level of dates, its precision, then its name and its place.
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
@@ -239,6 +279,12 @@ function elementGroups(zone: PivotZone, index: number): MenuGroup[] {
         }
       }),
     })
+  }
+  if (zone !== 'measures') {
+    const items = precisionItems(zone, index)
+    if (items.length > 0) {
+      groups.push({ label: 'Précision', items })
+    }
   }
   groups.push({ label: 'Élément', items: elementItems(zone, index) })
   return groups

@@ -10,10 +10,9 @@
 //! The nodes of each level follow the ranks of their values, given by the
 //! page in the order of the grid.
 
-use prisme_store::Store;
-
 use crate::groups::{Groups, Tree};
 use crate::measures::{State, Value};
+use crate::{Engine, Level};
 
 /// Label of a line or of a level of the header of a column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -127,8 +126,8 @@ pub struct Table {
     rows: Tree,
     /// Tree of the columns.
     columns: Tree,
-    /// Columns of the result of the levels of the rows, then of the columns.
-    levels: Vec<usize>,
+    /// Levels of the rows, then of the columns.
+    levels: Vec<Level>,
     /// Number of levels of the rows.
     row_levels: usize,
     /// Number of levels of the columns.
@@ -156,10 +155,10 @@ pub struct Parts {
     pub rows: Tree,
     /// Tree of the columns.
     pub columns: Tree,
-    /// Columns of the result of the levels of the rows.
-    pub row_levels: Vec<usize>,
-    /// Columns of the result of the levels of the columns.
-    pub column_levels: Vec<usize>,
+    /// Levels of the rows.
+    pub row_levels: Vec<Level>,
+    /// Levels of the columns.
+    pub column_levels: Vec<Level>,
     /// States of each measure.
     pub states: Vec<State>,
     /// Number of finest groups.
@@ -232,11 +231,9 @@ impl Table {
         self.column_levels
     }
 
-    /// Value of the node of a level, read in the store.
-    fn label<'a>(&self, store: &'a Store, level: usize, row: u32) -> Option<&'a str> {
-        store
-            .column(self.levels[level])
-            .and_then(|column| column.get(row as usize))
+    /// Value of the node of a level, read by the engine.
+    fn label<'a>(&self, engine: &'a Engine, level: usize, row: u32) -> Option<&'a str> {
+        engine.level_value(self.levels[level], row)
     }
 
     /// Line `index`.
@@ -244,12 +241,12 @@ impl Table {
     /// # Panics
     ///
     /// If `index` is not a line of the table.
-    pub fn line<'a>(&self, store: &'a Store, index: usize) -> Line<'a> {
+    pub fn line<'a>(&self, engine: &'a Engine, index: usize) -> Line<'a> {
         let node = self.rows.nodes[self.lines[index] as usize];
         let depth = node.depth as usize;
         let label = match depth {
             0 => Label::Total,
-            _ => Label::Value(self.label(store, depth - 1, node.row)),
+            _ => Label::Value(self.label(engine, depth - 1, node.row)),
         };
         Line { depth, label }
     }
@@ -260,11 +257,11 @@ impl Table {
     /// # Panics
     ///
     /// If `index` is not a line of the table.
-    pub fn line_path<'a>(&self, store: &'a Store, index: usize) -> Vec<Option<&'a str>> {
+    pub fn line_path<'a>(&self, engine: &'a Engine, index: usize) -> Vec<Option<&'a str>> {
         let mut path = Vec::new();
         let mut node = self.rows.nodes[self.lines[index] as usize];
         while node.depth > 0 {
-            path.push(self.label(store, node.depth as usize - 1, node.row));
+            path.push(self.label(engine, node.depth as usize - 1, node.row));
             node = self.rows.nodes[node.parent as usize];
         }
         path.reverse();
@@ -276,14 +273,14 @@ impl Table {
     /// # Panics
     ///
     /// If `index` is not a column of the table.
-    pub fn header<'a>(&self, store: &'a Store, index: usize) -> Header<'a> {
+    pub fn header<'a>(&self, engine: &'a Engine, index: usize) -> Header<'a> {
         let node_id = self.column_nodes[index / self.slots];
         let mut path = Vec::new();
         let mut node = self.columns.nodes[node_id as usize];
         let mut id = node_id;
         while node.depth > 0 {
             let level = self.row_levels + node.depth as usize - 1;
-            path.push((id, self.label(store, level, node.row)));
+            path.push((id, self.label(engine, level, node.row)));
             id = node.parent;
             node = self.columns.nodes[id as usize];
         }

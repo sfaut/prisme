@@ -1,3 +1,4 @@
+import { Check } from '@lucide/vue'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { type VueWrapper, mount } from '@vue/test-utils'
@@ -5,6 +6,8 @@ import { nextTick } from 'vue'
 
 import PivotZones from '../PivotZones.vue'
 import type { PivotConfig } from '../pivotConfig'
+import type { MenuGroup } from '../ui/menuItem'
+import UiDropdownMenu from '../ui/UiDropdownMenu.vue'
 
 /**
  * Columns of the result.
@@ -15,7 +18,7 @@ const NAMES = ['region', 'ville', 'montant']
  * Configuration with one element in two zones.
  */
 const CONFIG: PivotConfig = {
-  rows: [{ column: 0, name: '' }],
+  rows: [{ column: 0, name: '', precision: 'none' }],
   columns: [],
   measures: [{ aggregate: 'sum', column: 2, name: '' }],
 }
@@ -60,6 +63,16 @@ function shownConfig(mounted: VueWrapper): PivotConfig {
  */
 function dropOnPage(): void {
   document.body.dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }))
+}
+
+/**
+ * Groups of the menu of the first element of the zones.
+ *
+ * @param mounted Mounted zones.
+ */
+function firstElementGroups(mounted: VueWrapper): MenuGroup[] {
+  const menu = mounted.findAllComponents(UiDropdownMenu).find((item) => item.props('groups'))
+  return menu?.props('groups') ?? []
 }
 
 describe('PivotZones', () => {
@@ -123,6 +136,48 @@ describe('PivotZones', () => {
       'count_star',
       'count',
     ])
+  })
+
+  it('gives a level of a date and time the precisions of its menu, the current one checked', async () => {
+    const mounted = mountZones()
+    await mounted.setProps({
+      types: [
+        { family: 'datetime', name: 'DATETIME' },
+        { family: 'text', name: 'TEXT' },
+        { family: 'decimal', name: 'DECIMAL(10,2)' },
+      ],
+    })
+    const precision = () => firstElementGroups(mounted).find((group) => group.label === 'Précision')
+    expect(precision()?.items.map((item) => item.label)).toEqual([
+      'Année',
+      'Trimestre',
+      'Mois',
+      'Semaine',
+      'Date',
+      'Date et heure',
+    ])
+    expect(precision()?.items[5]?.icon).toBe(Check)
+    precision()?.items[2]?.onSelect?.()
+    await nextTick()
+    expect(shownConfig(mounted).rows).toEqual([{ column: 0, name: '', precision: 'month' }])
+    expect(precision()?.items[2]?.icon).toBe(Check)
+    expect(precision()?.items[5]?.icon).not.toBe(Check)
+    expect(mounted.find('[data-element]').text()).toContain('region (Mois)')
+  })
+
+  it('gives no precision to a level without dates, nor to a measure', async () => {
+    const mounted = mountZones()
+    await mounted.setProps({
+      types: [
+        { family: 'text', name: 'TEXT' },
+        { family: 'text', name: 'TEXT' },
+        { family: 'date', name: 'DATE' },
+      ],
+    })
+    const labels = mounted
+      .findAllComponents(UiDropdownMenu)
+      .flatMap((menu) => (menu.props('groups') ?? []).map((group: MenuGroup) => group.label))
+    expect(labels).toEqual(['Élément', 'Agrégat', 'Élément'])
   })
 
   it('ignores a column of the list released outside the zones', async () => {

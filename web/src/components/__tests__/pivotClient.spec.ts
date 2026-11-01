@@ -9,6 +9,7 @@ import type { Cell, QueryResult } from '@/api/querySession'
 import { BLOCK_ROWS, PivotClient, type PivotWorkerPort } from '../pivotClient'
 import {
   type PivotAnswer,
+  type PivotRequestLevel,
   type PivotRequestMessage,
   type WorkerState,
   PivotEngine,
@@ -97,6 +98,15 @@ function result(
   }
 }
 
+/**
+ * Level of the values of a column, as they are.
+ *
+ * @param column Index of the column.
+ */
+function level(column: number): PivotRequestLevel {
+  return { column, precision: 'none' }
+}
+
 describe('PivotClient', () => {
   it('copies the rows in blocks, then computes and reads a table', async () => {
     const count = BLOCK_ROWS * 2 + 1
@@ -113,7 +123,7 @@ describe('PivotClient', () => {
     await client.loaded
     expect(worker.received).toEqual(['begin', 'rows', 'rows', 'rows', 'finish'])
     const table = await client.compute({
-      rows: [0],
+      rows: [level(0)],
       columns: [],
       measures: [{ aggregate: 'sum', column: 1 }],
     })
@@ -139,8 +149,8 @@ describe('PivotClient', () => {
 
   it('refuses a window of a table replaced since', async () => {
     const client = new PivotClient(new PageWorker(), result([['a'], ['b']], ['x']))
-    const first = await client.compute({ rows: [0], columns: [], measures: [] })
-    const second = await client.compute({ rows: [], columns: [0], measures: [] })
+    const first = await client.compute({ rows: [level(0)], columns: [], measures: [] })
+    const second = await client.compute({ rows: [], columns: [level(0)], measures: [] })
     await expect(client.window(first.id, [0, 1], [0, 1])).rejects.toEqual(
       new PivotError({ kind: 'stale' }),
     )
@@ -160,7 +170,7 @@ describe('PivotClient', () => {
     await client.loaded
     client.setKept([0, 2])
     const table = await client.compute({
-      rows: [0],
+      rows: [level(0)],
       columns: [],
       measures: [{ aggregate: 'count_star', column: 0 }],
     })

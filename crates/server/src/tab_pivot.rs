@@ -35,6 +35,26 @@ pub enum PivotAggregate {
     Max,
 }
 
+/// What a level of the Pivoteur keeps of the dates of its column.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum DatePrecision {
+    /// The values of the column, as they are.
+    #[default]
+    None,
+    /// ISO year, that of the ISO week of the date: `2026`.
+    Year,
+    /// Quarter: `2026-T2`.
+    Quarter,
+    /// Month: `2026-01`.
+    Month,
+    /// ISO week: `2026-S53`.
+    Week,
+    /// Day, without the time: `2026-01-15`.
+    Date,
+}
+
 /// Level of the rows or of the columns.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -42,8 +62,11 @@ pub struct PivotLevel {
     /// Index of the column of the result.
     pub column: u32,
     /// Name given to the level, empty string without one: the level then shows
-    /// the name of its column.
+    /// its expression.
     pub name: String,
+    /// What the level keeps of the dates of its column.
+    #[serde(default)]
+    pub precision: DatePrecision,
 }
 
 /// Measure of the configuration.
@@ -207,7 +230,8 @@ mod tests {
     #[test]
     fn reads_a_saved_configuration_as_the_page_writes_it() {
         let saved: TabPivot = serde_json::from_str(
-            r#"{"fields":["x","y"],"config":{"rows":[{"column":1,"name":"Y"}],"columns":[],
+            r#"{"fields":["x","y"],"config":{"rows":[{"column":1,"name":"Y"}],
+                "columns":[{"column":0,"name":"","precision":"week"}],
                 "measures":[{"aggregate":"count_star","column":0,"name":""}]}}"#,
         )
         .unwrap();
@@ -216,6 +240,8 @@ mod tests {
             PivotAggregate::CountStar
         );
         assert_eq!(saved.config.rows[0].name, "Y");
+        assert_eq!(saved.config.rows[0].precision, DatePrecision::None);
+        assert_eq!(saved.config.columns[0].precision, DatePrecision::Week);
         assert_eq!(
             serde_json::from_str::<TabPivot>("{}").unwrap(),
             TabPivot::default()

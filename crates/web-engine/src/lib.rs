@@ -20,7 +20,7 @@ use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
 use std::cell::RefCell;
 use std::slice;
 
-use prisme_pivot::{Engine, Family, Measure, Request, Table};
+use prisme_pivot::{Engine, Family, Level, Measure, Precision, Request, Table};
 use prisme_store::Store;
 
 /// Alignment of the memory reserved for JavaScript, enough for the offsets
@@ -262,9 +262,33 @@ pub unsafe extern "C" fn set_kept(rows: *const u32, count: usize, all: u32) -> u
     })
 }
 
+/// Reads levels: a column and a precision per level (0 its values as they
+/// are, 1 year, 2 quarter, 3 month, 4 week, 5 date). `None` for another
+/// precision.
+fn levels(words: &[u32]) -> Option<Vec<Level>> {
+    words
+        .chunks(2)
+        .map(|pair| {
+            let precision = match pair[1] {
+                0 => None,
+                1 => Some(Precision::Year),
+                2 => Some(Precision::Quarter),
+                3 => Some(Precision::Month),
+                4 => Some(Precision::Week),
+                5 => Some(Precision::Date),
+                _ => return None,
+            };
+            Some(Level {
+                column: pair[0] as usize,
+                precision,
+            })
+        })
+        .collect()
+}
+
 /// Reads a request: the numbers of levels of the rows and of the columns,
-/// the number of measures, the columns of the levels of the rows, then of
-/// the columns, then a kind (0 `COUNT(*)`, 1 `COUNT(col)`, 2 `SUM(col)`,
+/// the number of measures, the levels of the rows, then of the columns (see
+/// `levels`), then a kind (0 `COUNT(*)`, 1 `COUNT(col)`, 2 `SUM(col)`,
 /// 3 `COUNT(DISTINCT col)`, 4 `SUM(DISTINCT col)`, 5 `AVG(col)`,
 /// 6 `AVG(DISTINCT col)`, 7 `MIN(col)`, 8 `MAX(col)`) and a column per
 /// measure. `None` if the words do not match.
@@ -272,11 +296,11 @@ fn request(words: &[u32]) -> Option<Request> {
     let (&rows, &columns, &measures) = (words.first()?, words.get(1)?, words.get(2)?);
     let (rows, columns, measures) = (rows as usize, columns as usize, measures as usize);
     let rest = &words[3..];
-    if rest.len() != rows + columns + 2 * measures {
+    if rest.len() != 2 * (rows + columns + measures) {
         return None;
     }
-    let (row_levels, rest) = rest.split_at(rows);
-    let (column_levels, measure_words) = rest.split_at(columns);
+    let (row_levels, rest) = rest.split_at(2 * rows);
+    let (column_levels, measure_words) = rest.split_at(2 * columns);
     let measures = measure_words
         .chunks(2)
         .map(|pair| match pair[0] {
@@ -293,11 +317,8 @@ fn request(words: &[u32]) -> Option<Request> {
         })
         .collect::<Option<Vec<_>>>()?;
     Some(Request {
-        rows: row_levels.iter().map(|&column| column as usize).collect(),
-        columns: column_levels
-            .iter()
-            .map(|&column| column as usize)
-            .collect(),
+        rows: levels(row_levels)?,
+        columns: levels(column_levels)?,
         measures,
     })
 }
@@ -415,8 +436,8 @@ mod tests {
         assert_eq!(output(length), "{}");
 
         // Rows: column 0; measures: COUNT(*), SUM(column 1).
-        let words = [1u32, 0, 2, 0, 0, 0, 2, 1];
-        // SAFETY: eight words.
+        let words = [1u32, 0, 2, 0, 0, 0, 0, 2, 1];
+        // SAFETY: nine words.
         let length = unsafe { compute(words.as_ptr(), words.len()) };
         assert_eq!(
             output(length),
@@ -436,7 +457,7 @@ mod tests {
         // SAFETY: one row number.
         let length = unsafe { set_kept(kept.as_ptr(), 1, 0) };
         assert_eq!(output(length), "{}");
-        // SAFETY: eight words.
+        // SAFETY: nine words.
         let length = unsafe { compute(words.as_ptr(), words.len()) };
         assert!(output(length).ends_with(r#""groups":1,"rows":1}"#));
 
@@ -456,6 +477,19 @@ mod tests {
                 r#""cells":[["1"]]}"#
             )
         );
+    }
+
+    #[test]
+    fn a_level_reads_a_precision_of_its_dates() {
+        let request = request(&[1, 1, 0, 3, 4, 7, 0]).unwrap();
+        assert_eq!(
+            request.rows,
+            [Level {
+                column: 3,
+                precision: Some(Precision::Week),
+            }]
+        );
+        assert_eq!(request.columns, [Level::from(7)]);
     }
 
     #[test]
@@ -483,5 +517,7 @@ mod tests {
         assert!(request(&[1, 0]).is_none());
         assert!(request(&[1, 0, 0]).is_none());
         assert!(request(&[0, 0, 1, 9, 0]).is_none());
+        assert!(request(&[1, 0, 0, 0]).is_none());
+        assert!(request(&[1, 0, 0, 0, 6]).is_none());
     }
 }

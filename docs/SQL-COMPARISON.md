@@ -288,7 +288,7 @@ Every engine measured compares a date with a text by reading the text as a date 
 
 `%Y-%v` (calendar year, ISO week) gives `2027-53` for 1 January 2027, which belongs to week 53 of 2026: the year of an ISO week is `%x` in MySQL, `IYYY` in PostgreSQL, `%G` in SQLite and DuckDB.
 
-MySQL and MariaDB give nothing usable for the ISO week of a date without a day in the calendar: `0000-00-00` differs from one to the other, `2026-00-15` gives a week out of range, and the year -1 of `0000-01-01` comes back as an unsigned underflow (`4294967295`).
+MySQL and MariaDB give nothing usable for the ISO week of a date without a day in the calendar: `0000-00-00` differs from one to the other, `2026-00-15` gives a week out of range, and the year -1 of `0000-01-01` comes back as an unsigned underflow (`4294967295`). The precisions "Année" and "Semaine" of the Pivoteur give NULL for such a date, and `-001-S52` for `0000-01-01` (`crates/pivot/src/dates.rs`).
 
 ### 3.13 Types of results
 

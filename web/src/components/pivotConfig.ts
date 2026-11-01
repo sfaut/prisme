@@ -7,9 +7,10 @@
  * `COUNT(*)` or an aggregate of a column (`measureExpression`); the expressions come with the
  * parser. Each element can take a name, its alias (F-17), shown instead of its expression (F-12):
  * the name of its column for a level. A column is a level at most once, on one of the two axes:
- * placing it again moves it, with its name. A measure can be placed several times. Each change
- * gives a new configuration; the panel computes again only when the request to the engine
- * (`engineRequest`) changes, a name changing only the labels.
+ * placing it again moves it, with its name. A level of dates takes a precision, what it keeps of
+ * them (`precisionChoices`). A measure can be placed several times. Each change gives a new
+ * configuration; the panel computes again only when the request to the engine (`engineRequest`)
+ * changes, a name changing only the labels.
  *
  * The configuration is saved with its tab, whose query can change: it keeps the names of the
  * columns it was made for, and follows them in the columns of a new result (`fittedConfig`). Its
@@ -17,16 +18,18 @@
  */
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
+import type { DatePrecision } from '@/api/generated/DatePrecision'
 import type { PivotConfig } from '@/api/generated/PivotConfig'
+import type { PivotLevel } from '@/api/generated/PivotLevel'
 import type { TabPivot } from '@/api/generated/TabPivot'
 import type { TypeFamily } from '@/api/generated/TypeFamily'
 
-import type { PivotMeasure, PivotRequest } from './pivotEngine'
+import type { PivotMeasure, PivotRequest, PivotRequestLevel } from './pivotEngine'
 import { sameColumns } from './resultGrid'
 
+export type { DatePrecision } from '@/api/generated/DatePrecision'
 export type { NamedMeasure } from '@/api/generated/NamedMeasure'
-export type { PivotLevel } from '@/api/generated/PivotLevel'
-export type { PivotConfig }
+export type { PivotConfig, PivotLevel }
 
 /**
  * Zone of the panel.
@@ -45,6 +48,56 @@ export interface ZonePlace {
    * Position in the zone, from 0.
    */
   index: number
+}
+
+/**
+ * Label of a precision in the menu of a level.
+ */
+export type PrecisionLabel = 'Année' | 'Trimestre' | 'Mois' | 'Semaine' | 'Date' | 'Date et heure'
+
+/**
+ * Precision a level can take.
+ */
+export interface PrecisionChoice {
+  /**
+   * What the level keeps of the dates of its column.
+   */
+  precision: DatePrecision
+  /**
+   * Label of the choice.
+   */
+  label: PrecisionLabel
+}
+
+/**
+ * Precisions a level of this family can take, from the coarsest to the finest, the values of the
+ * column as they are last: a date is its own "Date". The year and the week are those of ISO 8601,
+ * so that 2027-01-01 falls in 2026 and in its week 53.
+ *
+ * @param family
+ *     Family of the type of the column; unknown for a result saved before its columns were
+ *     typed.
+ * @returns The choices, none for a column that holds no dates (`year` and `time` included).
+ */
+export function precisionChoices(family: TypeFamily | undefined): PrecisionChoice[] {
+  const periods: PrecisionChoice[] = [
+    { precision: 'year', label: 'Année' },
+    { precision: 'quarter', label: 'Trimestre' },
+    { precision: 'month', label: 'Mois' },
+    { precision: 'week', label: 'Semaine' },
+  ]
+  switch (family) {
+    case 'date':
+      return [...periods, { precision: 'none', label: 'Date' }]
+    case 'datetime':
+      return [
+        ...periods,
+        { precision: 'date', label: 'Date' },
+        { precision: 'none', label: 'Date et heure' },
+      ]
+    default:
+      return []
+  }
 }
 
 /**
@@ -78,19 +131,14 @@ function movedColumns(fields: string[], columns: string[]): (number | undefined)
 }
 
 /**
- * Configuration of a tab fitted to the columns of its result, which may have changed since it was
- * made. An element follows its column by name; the element of a lost column leaves, except
- * `COUNT(*)`, which reads no column, and takes the first one for its menu.
+ * Configuration whose levels follow their columns by name; the element of a lost column leaves,
+ * except `COUNT(*)`, which reads no column, and takes the first one for its menu.
  *
  * @param pivot Configuration, with the columns it was made for.
  * @param columns Names of the columns of the result.
- * @returns The configuration itself when there is nothing to fit.
  */
-export function fittedConfig(pivot: TabPivot, columns: string[]): PivotConfig {
+function followedConfig(pivot: TabPivot, columns: string[]): PivotConfig {
   const { fields, config } = pivot
-  if (isEmptyConfig(config) || sameColumns(fields, columns)) {
-    return config
-  }
   const moved = movedColumns(fields, columns)
   const follow = <T extends { column: number }>(item: T, column: number | undefined) =>
     column === undefined ? [] : [{ ...item, column }]
@@ -109,14 +157,65 @@ export function fittedConfig(pivot: TabPivot, columns: string[]): PivotConfig {
 }
 
 /**
+ * Configuration whose levels keep only the precisions their columns can take: a column that holds
+ * no dates any more gives its values as they are. A column without a type keeps its precision.
+ *
+ * @param config Configuration.
+ * @param types Type of each column of the result.
+ * @returns The configuration itself when each level keeps its precision.
+ */
+function withPossiblePrecisions(config: PivotConfig, types: ColumnTypeInfo[]): PivotConfig {
+  const possible = ({ column, precision }: PivotLevel) => {
+    const type = types[column]
+    return (
+      precision === 'none' ||
+      type === undefined ||
+      precisionChoices(type.family).some((choice) => choice.precision === precision)
+    )
+  }
+  if ([...config.rows, ...config.columns].every(possible)) {
+    return config
+  }
+  const fit = (levels: PivotLevel[]) =>
+    levels.map((level): PivotLevel => (possible(level) ? level : { ...level, precision: 'none' }))
+  return { ...config, rows: fit(config.rows), columns: fit(config.columns) }
+}
+
+/**
+ * Configuration of a tab fitted to the columns of its result, which may have changed since it was
+ * made: their names (`followedConfig`) and their types (`withPossiblePrecisions`).
+ *
+ * @param pivot Configuration, with the columns it was made for.
+ * @param columns Names of the columns of the result.
+ * @param types
+ *     Type of each column of the result; none for a result saved before its columns were typed.
+ * @returns The configuration itself when there is nothing to fit.
+ */
+export function fittedConfig(
+  pivot: TabPivot,
+  columns: string[],
+  types: ColumnTypeInfo[],
+): PivotConfig {
+  if (isEmptyConfig(pivot.config)) {
+    return pivot.config
+  }
+  const followed = sameColumns(pivot.fields, columns)
+    ? pivot.config
+    : followedConfig(pivot, columns)
+  return withPossiblePrecisions(followed, types)
+}
+
+/**
  * Table to ask the engine for a configuration, without the names, which it does not read.
  *
  * @param config Configuration.
  */
 export function engineRequest(config: PivotConfig): PivotRequest {
+  const levels = (items: PivotLevel[]) =>
+    items.map(({ column, precision }): PivotRequestLevel => ({ column, precision }))
   return {
-    rows: config.rows.map((level) => level.column),
-    columns: config.columns.map((level) => level.column),
+    rows: levels(config.rows),
+    columns: levels(config.columns),
     measures: config.measures.map(({ aggregate, column }) => ({ aggregate, column })),
   }
 }
@@ -200,7 +299,8 @@ export function measureExpression(measure: PivotMeasure, names: string[]): strin
 }
 
 /**
- * Expression of an element: the name of the column of a level, the expression of a measure.
+ * Expression of an element: the name of the column of a level, with its precision
+ * (`vendue_le (Mois)`), the expression of a measure.
  *
  * @param config Configuration.
  * @param place Place of the element.
@@ -211,7 +311,13 @@ export function elementExpression(config: PivotConfig, place: ZonePlace, names: 
     const measure = config.measures[place.index]
     return measure === undefined ? '?' : measureExpression(measure, names)
   }
-  return names[config[place.zone][place.index]?.column ?? -1] ?? '?'
+  const level = config[place.zone][place.index]
+  const name = names[level?.column ?? -1] ?? '?'
+  if (level === undefined || level.precision === 'none') {
+    return name
+  }
+  const choice = precisionChoices('datetime').find(({ precision }) => precision === level.precision)
+  return `${name} (${choice?.label})`
 }
 
 /**
@@ -306,7 +412,7 @@ export function placeColumn(
     }
   }
   const insert = <T>(items: T[], item: T) => [...items.slice(0, index), item, ...items.slice(index)]
-  const newLevel = level ?? { column, name: '' }
+  const newLevel: PivotLevel = level ?? { column, name: '', precision: 'none' }
   return {
     rows: to.zone === 'rows' ? insert(result.rows, newLevel) : result.rows,
     columns: to.zone === 'columns' ? insert(result.columns, newLevel) : result.columns,
@@ -333,6 +439,26 @@ export function withAggregate(
     ...config,
     measures: config.measures.map((measure, position) =>
       position === index ? { ...measure, aggregate } : measure,
+    ),
+  }
+}
+
+/**
+ * Changes the precision of a level, which keeps its name.
+ *
+ * @param config Configuration.
+ * @param place Place of the level.
+ * @param precision New precision.
+ */
+export function withPrecision(
+  config: PivotConfig,
+  place: ZonePlace & { zone: 'rows' | 'columns' },
+  precision: DatePrecision,
+): PivotConfig {
+  return {
+    ...config,
+    [place.zone]: config[place.zone].map((level, index) =>
+      index === place.index ? { ...level, precision } : level,
     ),
   }
 }
