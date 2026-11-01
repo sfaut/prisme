@@ -392,7 +392,7 @@ const groupsText = computed(() => {
 </script>
 
 <template>
-  <section class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-4 pt-1 pb-3" aria-label="Pivoteur">
+  <section class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-4 pt-1 pb-4" aria-label="Pivoteur">
     <panel-header title="Pivoteur" side="bottom" @collapse="emit('collapse')" />
     <p v-if="!analysable" class="text-fg-secondary">Rien à analyser</p>
     <p v-else-if="receiving" role="status" class="flex items-center gap-2 text-fg-secondary">

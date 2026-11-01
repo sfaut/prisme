@@ -863,7 +863,11 @@ defineExpose({
       @toggle="toggleEditor"
     />
 
-    <!-- Bottom panel: the results. Folded, it keeps the height of their tabs. -->
+    <!--
+      Middle panel: the results, with a padding at the bottom too, above
+      the Pivoteur. Folded, it keeps the height of their tabs: the
+      padding of the bottom then falls outside the panel.
+    -->
     <splitter-panel
       :id="`cell-${editorId}-results-panel`"
       ref="resultsPanel"
@@ -876,7 +880,7 @@ defineExpose({
       :collapsed-size="RESULTS_FOLDED_HEIGHT"
       class="flex"
     >
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pt-3">
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 py-3">
         <ui-alert v-if="state.status === 'closed'" tone="warning" title="Session fermée.">
           <ui-button label="Reconnecter" @click="emit('reconnect')" />
         </ui-alert>
