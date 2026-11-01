@@ -27,7 +27,7 @@
     "@codemirror/state": "^6.7.6",
     "@codemirror/view": "^6.43.15",
     "@lezer/highlight": "^1.2.5",
-    "@lucide/vue": "^1.64.0",
+    "@lucide/vue": "^1.66.0",
     "@tailwindcss/vite": "^4.3.3",
     "codemirror": "^6.0.2",
     "json-p3": "^3.0.2",
@@ -45,7 +45,7 @@
     "@vue/eslint-config-typescript": "^14.9.0",
     "@vue/test-utils": "^2.5.1",
     "@vue/tsconfig": "^0.9.1",
-    "eslint": "^10.13.0",
+    "eslint": "^10.14.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-oxlint": "~1.90.0",
     "eslint-plugin-vue": "~10.12.0",
@@ -59,7 +59,7 @@
     "vite-plugin-vue-devtools": "^8.2.1",
     "vitest": "^5.0.5",
     "vue-eslint-parser": "^10.4.1",
-    "vue-tsc": "^3.3.13"
+    "vue-tsc": "^3.3.14"
   },
   "engines": {
     "node": "^22.18.0 || >=24.12.0"
