@@ -341,6 +341,23 @@ To compare builds of Prisme, each one is copied aside once built (`npm run build
 
 The driving of the interface is shared by the three commands (`bench/store/interface.mjs`).
 
+## Comparison of the SQL engines
+
+`bench/sql/run.mjs` measures how the SQL engines answer the same expressions, for the reference `docs/SQL-COMPARISON.md`, whose section 2 describes the cases and their results. From the root of the repository, the development servers started (`docker compose up --detach --wait`):
+
+```
+node bench/sql/run.mjs
+```
+
+The command runs each case of `bench/sql/cases.mjs` alone, on every engine:
+
+- MySQL and MariaDB: the six servers of `compose.yaml`, through the client of each container;
+- PostgreSQL: the container of the version research `prisme-probe-postgres-<version>`, which the command starts when it is stopped, then stops again. It is created once, without a published port nor a password, and reached only by `docker exec`: `docker create --name prisme-probe-postgres-18.6 --env POSTGRES_HOST_AUTH_METHOD=trust postgres:latest` (the image `postgres:latest` of 2026-10-06 is PostgreSQL 18.6);
+- DuckDB: `@duckdb/node-api`, at the version named in `run.mjs`, which the first run installs into `target/sql-comparison/`, outside the dependencies of Prisme;
+- SQLite: the one of the Node that runs the command (`node:sqlite`), in memory.
+
+It prints the table of the values, one column per server, and writes the values, the types, the warnings and the errors to `target/sql-comparison/results.json`.
+
 ## Testing the API by hand
 
 Start Prisme on a throwaway data folder, to delete to start from scratch:
@@ -538,6 +555,7 @@ bench/             benchmarks, outside the workspace
   prisme.mjs       Prisme on the real server, for the benchmarks that measure it
   pivot/           engine of the Pivoteur: native, WebAssembly, JavaScript (run.mjs)
   reload/          saved results: their save, and their reading again by the page (run.mjs)
+  sql/             answers of the SQL engines to the same expressions, for docs/SQL-COMPARISON.md (run.mjs)
   store/           reception of a result, and windows of rows asked to a Worker (run.mjs, trace.mjs, profile.mjs)
 docs/              design decisions and notes
   upstream/        drafts of tickets for the dependencies
@@ -553,6 +571,7 @@ servers/           data of the development servers (compose.yaml)
 - [FEDERATED.md](FEDERATED.md): the federated engine, after the v1.
 - [QUESTIONS.md](QUESTIONS.md): ideas kept or dropped, open questions.
 - [PERFORMANCES.md](PERFORMANCES.md): performance problems met, their cause and fix.
+- [SQL-COMPARISON.md](SQL-COMPARISON.md): behaviours of the SQL engines compared, measured or sourced.
 - [IDEAS-EXPORTS.md](IDEAS-EXPORTS.md): ideas for copying and exporting results.
 - [IDEAS-VIZ.md](IDEAS-VIZ.md): ideas for drawing a database and its relations as a graph.
 - [CHANGELOG.md](CHANGELOG.md): changelogs of the published versions.

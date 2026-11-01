@@ -8,6 +8,7 @@ This file is short. Detailed decisions are in `docs/`:
 - `docs/FEDERATED.md`: vision after the v1 (logical plan, optimizer, languages, NULL, CSV, workspace).
 - `docs/QUESTIONS.md`: ideas kept, dropped or postponed, and questions still open.
 - `docs/PERFORMANCES.md`: performance problems met, with their cause, their fix and how they were measured, and every measure made to compare options (benchmarks), with its numbers and its decision.
+- `docs/SQL-COMPARISON.md`: behaviours of the SQL engines compared (standard, MySQL, MariaDB, PostgreSQL, SQLite, DuckDB, ClickHouse), each one measured or sourced; reference of the dialects.
 - `docs/IDEAS-EXPORTS.md`: ideas for copying and exporting results.
 - `docs/IDEAS-VIZ.md`: ideas for drawing a database and its relations as a graph.
 - `docs/CHANGELOG.md`: changelogs of the published versions, most recent first (see "Publishing a version").
