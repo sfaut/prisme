@@ -453,12 +453,13 @@ export class PivotEngine {
   }
 
   /**
-   * Computes a table, and keeps it for the windows.
+   * Computes a table, and keeps it for the windows in place of the previous one. A refused
+   * table keeps the previous one: the panel goes on showing it, with the error.
    *
    * @param request Table asked.
    * @returns Its shape.
-   * @throws {PivotError} If the engine refuses it: a cell that is not a number, a sum beyond
-   *     128 bits...
+   * @throws {PivotError}
+   *     If the engine refuses it: a cell that is not a number, a sum beyond 128 bits...
    */
   compute(request: PivotRequest): PivotShape {
     for (const column of [...request.rows, ...request.columns]) {

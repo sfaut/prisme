@@ -295,7 +295,9 @@ fn request(words: &[u32]) -> Option<Request> {
 }
 
 /// Computes the table of a request of `length` words (`u32`) at `words` (see
-/// `request`), keeps it, and writes its shape (`json::shape`) or an error.
+/// `request`), keeps it in place of the previous one, and writes its shape
+/// (`json::shape`) or an error. A refused request keeps the previous table:
+/// the page goes on showing it, with the error.
 ///
 /// # Safety
 ///
@@ -306,7 +308,6 @@ pub unsafe extern "C" fn compute(words: *const u32, length: usize) -> usize {
     let words = unsafe { slice::from_raw_parts(words, length) };
     let request = request(words);
     STATE.with_borrow_mut(|state| {
-        state.table = None;
         let result = match (&state.engine, request) {
             (Some(engine), Some(request)) => Some(engine.compute(&request)),
             _ => None,
@@ -439,7 +440,14 @@ mod tests {
             r#"{"error":{"kind":"not_numeric","measure":0}}"#
         );
         let length = window(0, 1, 0, 1);
-        assert_eq!(output(length), r#"{"error":{"kind":"no_table"}}"#);
+        assert_eq!(
+            output(length),
+            concat!(
+                r#"{"lines":[{"depth":1,"label":"Sud"}],"#,
+                r#""columns":[{"node":0,"path":[],"total":false,"measure":0}],"#,
+                r#""cells":[["1"]]}"#
+            )
+        );
     }
 
     #[test]

@@ -205,6 +205,15 @@ describe('PivotEngine', () => {
     )
   })
 
+  it('keeps the last table when a computation is refused', async () => {
+    const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
+    engine.compute({ rows: [0], columns: [], measures: [{ aggregate: 'count_star', column: 0 }] })
+    expect(() =>
+      engine.compute({ rows: [], columns: [], measures: [{ aggregate: 'sum', column: 0 }] }),
+    ).toThrowError(PivotError)
+    expect(engine.window([0, 3], [0, 1]).cells).toEqual([['5'], ['5'], ['10']])
+  })
+
   it('refuses a window before any table', async () => {
     const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
     expect(() => engine.window([0, 1], [0, 1])).toThrowError(
