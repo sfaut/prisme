@@ -507,10 +507,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
           <component :is="icon" class="size-4" aria-hidden="true" />
           {{ label }}
         </h3>
-        <ul
-          class="pivot-zone"
-          :class="{ 'drop-target': dropAt?.zone === zone && elements[zone].length === 0 }"
-        >
+        <ul class="pivot-zone" :class="{ 'drop-target': dropAt?.zone === zone }">
           <li
             v-for="(element, index) in elements[zone]"
             :key="`${zone}-${index}`"
