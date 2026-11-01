@@ -1,6 +1,8 @@
+import { execFileSync } from 'node:child_process'
+import { join, parse } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 
-import { type Plugin, defineConfig } from 'vite'
+import { type Plugin, defineConfig, normalizePath, searchForWorkspaceRoot } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import vueDevTools from 'vite-plugin-vue-devtools'
@@ -48,9 +50,81 @@ function buildTime(): Plugin {
   }
 }
 
+/**
+ * Module id under which the tests read the path of the engine's WebAssembly module, to load it
+ * from disk.
+ */
+const ENGINE_PATH_ID = 'virtual:pivot-engine-path'
+
+/**
+ * Builds the engine of the Pivoteur (`crates/web-engine`, compiled to WebAssembly) with Cargo
+ * before Vite serves the page, bundles it or runs the tests, then lets the page import the module:
+ * `import engineUrl from '@pivot-engine?url'` gives its address, served by the development server
+ * from Cargo's target folder, or copied into `web/dist` by the build. The tests read its path on
+ * disk from `virtual:pivot-engine-path`. Cargo builds again only what changed: after a change of
+ * the engine, restarting `npm run dev` is enough.
+ */
+function pivotEngine(): Plugin {
+  const repository = fileURLToPath(new URL('..', import.meta.url))
+  let modulePath = ''
+  return {
+    name: 'prisme-pivot-engine',
+    config() {
+      execFileSync(
+        'cargo',
+        [
+          'build',
+          '--release',
+          '--package',
+          'prisme-web-engine',
+          '--target',
+          'wasm32-unknown-unknown',
+        ],
+        { cwd: repository, stdio: ['ignore', 'inherit', 'inherit'] },
+      )
+      const metadata = JSON.parse(
+        execFileSync('cargo', ['metadata', '--format-version', '1', '--no-deps'], {
+          cwd: repository,
+          encoding: 'utf8',
+        }),
+      ) as { target_directory: string }
+      const folder = join(metadata.target_directory, 'wasm32-unknown-unknown', 'release')
+      modulePath = normalizePath(join(folder, 'web_engine.wasm'))
+      return {
+        resolve: {
+          alias: [{ find: /^@pivot-engine(\?.*)?$/, replacement: `${modulePath}$1` }],
+        },
+        // Setting the allowed folders replaces the default one, the workspace: it is given back.
+        server: { fs: { allow: [searchForWorkspaceRoot(process.cwd()), normalizePath(folder)] } },
+      }
+    },
+    resolveId(id) {
+      return id === ENGINE_PATH_ID ? `\0${ENGINE_PATH_ID}` : null
+    },
+    load(id) {
+      return id === `\0${ENGINE_PATH_ID}` ? `export default ${JSON.stringify(modulePath)}` : null
+    },
+  }
+}
+
+/**
+ * Name of a compiled file in kebab-case, as the other files of `assets/`: the Worker takes its name
+ * from its source (`pivotWorker` gives `pivot-worker`), and the engine from its library in Cargo,
+ * whose name holds underscores (`web_engine` gives `web-engine`).
+ *
+ * @param name Name given by the source, without its extension.
+ */
+function kebabCase(name: string): string {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replaceAll('_', '-')
+    .toLowerCase()
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
+    pivotEngine(),
     vue(),
     buildTime(),
     tailwindcss(),
@@ -82,6 +156,15 @@ export default defineConfig({
             { name: 'vendor', test: /node_modules[\\/]/, priority: 10 },
           ],
         },
+      },
+    },
+  },
+  worker: {
+    rolldownOptions: {
+      output: {
+        entryFileNames: ({ name }) => `assets/${kebabCase(name)}-[hash].js`,
+        assetFileNames: ({ names }) =>
+          `assets/${kebabCase(parse(names[0] ?? 'asset').name)}-[hash][extname]`,
       },
     },
   },

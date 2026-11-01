@@ -1146,3 +1146,100 @@ alone. To compare builds, each one copied aside once built, then
 `PRISME_EXECUTABLE=<build> node bench/store/run.mjs --interface`, in turns.
 The profile goes to `target/store-bench/profile-<rows>.cpuprofile`, which the
 Performance panel of DevTools opens.
+
+## 13. Parser of the Pivoteur: sqlparser compiled to WebAssembly
+
+Benchmark of 2026-11-01, step 3 of `docs/TODO-PIVOTER.md`.
+
+### 13.1 Question
+
+The Worker of the Pivoteur parses the expressions of its virtual columns and
+of its measures, written in its own dialect, in the engine compiled to
+WebAssembly (chapter 9). Prisme already parses SQL with `sqlparser`
+(`crates/dialects`, version pinned at 0.63.0). How much does `sqlparser` weigh
+in a WebAssembly module, and how long does a parse take there?
+
+### 13.2 Measurement
+
+- `node bench/parser/run.mjs` (`docs/DEVELOPER.md`, section "Parser of the
+  Pivoteur"): a module holding `sqlparser` 0.63.0 alone, with the features of
+  Prisme (`visitor`) and its generic dialect, target `wasm32-unknown-unknown`;
+  it parses one expression, and refuses a text with tokens left after it.
+- Two Cargo profiles: `release`, the profile of Prisme (Cargo's default), and
+  `lto`, the same with `lto = true` and `codegen-units = 1`.
+- Each module under Node 26.7.0 (V8), in a process of its own: the first
+  `WebAssembly.compile`, the instantiation, the first parse (`SUM(montant)`),
+  the first parse in a second module compiled from the same bytes, then each
+  expression, best of 5 rounds of 1,000 parses after 1,000 parses of warm-up.
+- Same machine as chapter 9: Intel Core Ultra 7 155H (22 logical cores),
+  33.8 GB, Windows 11, Rust 1.99.1. Three runs: the sizes are the same in
+  each, the times are given as the range of the three.
+
+| Measure | `release` | `lto` |
+|---|---|---|
+| Module | 4,532.2 kB | 2,386.8 kB |
+| gzip, level 9 | 1,100.9 kB | 586.6 kB |
+| Brotli, quality 11 | 561.6 kB | 395.7 kB |
+| Compilation | 10.1 to 12.6 ms | 6.8 to 8.2 ms |
+| Instantiation | 0.5 to 0.6 ms | 0.2 to 0.3 ms |
+| First parse | 11.4 to 12.5 ms | 13.4 to 14.7 ms |
+| First parse in a module compiled again from the same bytes | 0.14 to 0.42 ms | 0.12 to 0.14 ms |
+| Memory of the module after the parses | 3.6 MB | 3.5 MB |
+
+Parse of each expression, in microseconds:
+
+| Expression | Bytes | `release` | `lto` |
+|---|---|---|---|
+| `SUM(montant)` | 12 | 8.3 to 10.0 | 10.8 to 16.1 |
+| `SUM(montant) / NULLIF(SUM(qte), 0)` | 34 | 18.7 to 21.7 | 13.3 to 18.0 |
+| `CONCAT(EXTRACT(YEAR FROM d), '-T', QUARTER(d))` | 46 | 17.0 to 20.5 | 13.4 to 16.8 |
+| `CASE WHEN qte >= 10 THEN 'gros' WHEN qte > 0 THEN 'petit' ELSE 'aucun' END` | 74 | 16.4 to 19.0 | 13.2 to 14.4 |
+| `COUNT(*) FILTER (WHERE canal = 'web')` | 37 | 9.6 to 11.3 | 6.9 to 8.6 |
+| `LISTAGG(produit, ', ') WITHIN GROUP (ORDER BY produit)` | 54 | 12.8 to 16.8 | 9.3 to 11.3 |
+| `CAST(d AS DATE)` | 15 | 4.9 to 5.7 | 3.3 to 4.2 |
+| `c1 + c2 + … + c200` | 1,289 | 265.7 to 595.2 | 264.9 to 283.9 |
+| `SUM(montant`, refused | 11 | 4.0 to 13.7 | 4.2 to 6.1 |
+| `SUM(montant) montant`, refused | 20 | 4.4 to 16.3 | 5.1 to 6.6 |
+
+The generic dialect accepts every expression of the Pivoteur measured,
+`FILTER` and `LISTAGG … WITHIN GROUP` included, and refuses the two wrong
+texts.
+
+### 13.3 Analysis
+
+- **A parse takes tens of microseconds**, and grows with the text: 0.27 to
+  0.6 ms for a sum of 200 columns. Parsing at each key typed stays far below
+  a frame (16.7 ms).
+- **The first parse costs 11 to 15 ms**: V8 compiles the functions of a
+  module on their first call (`--wasm-lazy-compilation`, on by default). A
+  module compiled again from the same bytes in the same process reuses them
+  (`--wasm-native-module-cache`, on by default): its first parse takes 0.1 to
+  0.4 ms.
+- **The optimizations across crates halve the module**: 4.5 MB to 2.4 MB,
+  and 1.1 MB to 0.59 MB in gzip, with a compilation shorter by a third. The
+  parses differ less between the two profiles than from one run to the next.
+- The module reaches the page from the executable of Prisme, on the same
+  machine (section 9.4): its size weighs on the executable and on the loading
+  of the Worker.
+
+### 13.4 Consequences
+
+- `sqlparser` parses the dialect of the Pivoteur in the Worker, as the
+  specification states since step 3.
+- The profile of the module of the engine, `lto` or the one of Prisme, is
+  chosen with lot 1, once the engine and its parser form one module.
+
+### 13.5 Takeaways
+
+- **The first call of a WebAssembly function pays its compilation**: it is
+  measured apart from the others.
+- **V8 reuses a module compiled in the same process**: each module is
+  measured in a process of its own, for its first parse to start cold.
+
+### 13.6 Measuring again
+
+From the root of the repository: `node bench/parser/run.mjs` (a few minutes
+for the first build). The command adds the WebAssembly target of the
+toolchain when missing, builds the module in both profiles, checks that each
+one accepts the expressions of the Pivoteur and refuses the wrong texts,
+prints the table and writes the results to `target/parser-bench/results.json`.

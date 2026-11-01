@@ -1665,6 +1665,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "prisme-pivot"
+version = "0.8.0"
+dependencies = [
+ "prisme-store",
+]
+
+[[package]]
 name = "prisme-server"
 version = "0.8.0"
 dependencies = [
@@ -1699,6 +1706,18 @@ dependencies = [
 [[package]]
 name = "prisme-splitter"
 version = "0.8.0"
+
+[[package]]
+name = "prisme-store"
+version = "0.8.0"
+
+[[package]]
+name = "prisme-web-engine"
+version = "0.8.0"
+dependencies = [
+ "prisme-pivot",
+ "prisme-store",
+]
 
 [[package]]
 name = "proc-macro-crate"

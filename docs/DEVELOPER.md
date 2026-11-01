@@ -23,7 +23,7 @@ The backend is written in Rust (`tokio`, `axum`), the interface in Vue 3 and Typ
 
 | Tool | Role | Windows installation |
 |---|---|---|
-| Rust (through `rustup`) | Backend build. The exact version is pinned by `rust-toolchain.toml` and installed on the first `cargo` command. | `winget install Rustlang.Rustup` |
+| Rust (through `rustup`) | Backend build, and the engine of the Pivoteur compiled to WebAssembly for the interface. The exact version and the `wasm32-unknown-unknown` target are pinned by `rust-toolchain.toml` and installed on the first `cargo` command. | `winget install Rustlang.Rustup` |
 | Visual Studio Build Tools (C++) | MSVC linker, and build of the embedded SQLite. | `winget install Microsoft.VisualStudio.2022.BuildTools`, with the "Desktop development with C++" workload |
 | Node.js and npm | Vue interface. | `winget install OpenJS.NodeJS` |
 | Docker Desktop | The MySQL and MariaDB development servers (see "Development servers"). The engine must be running. | `winget install Docker.DockerDesktop` |
@@ -65,6 +65,8 @@ npm run dev
 ```
 
 Then open <http://localhost:5173>. The page on port 8484 keeps showing the last `npm run build` until the next one.
+
+`npm run dev`, `npm run build` and the Vitest tests first build the engine of the Pivoteur (`crates/web-engine`) with Cargo, for `wasm32-unknown-unknown` (`pivotEngine` in `web/vite.config.ts`): the page imports the module as `@pivot-engine?url`, which the development server serves from Cargo's target folder and the build copies into `web/dist`. After a change of `crates/store`, `crates/pivot` or `crates/web-engine`, restart `npm run dev`.
 
 ### Icons and actions
 
@@ -185,11 +187,11 @@ The interface is built in lengths relative to the root, `:root` being fixed: ste
 
 | Dependency | API in pixels | Variables | Where |
 |---|---|---|---|
-| `reka-ui` 2.11.0 | `SplitterPanel`: `default-size`, `min-size`, `max-size`, `collapsed-size`, with `size-unit="px"`. The other unit, `%`, is relative to the group, not to the root: a theme length in `%` would have to be measured in pixels and computed again on each resize of the window. | `--navigator-width`, `--explorer-width`, `--editors-min-width`, `--console-height`, `--rail-size`, `--editor-height`, `--results-height`… | `App.vue`, `QueryCell.vue` |
+| `reka-ui` 2.11.0 | `SplitterPanel`: `default-size`, `min-size`, `max-size`, `collapsed-size`, with `size-unit="px"`. The other unit, `%`, is relative to the group, not to the root: a theme length in `%` would have to be measured in pixels and computed again on each resize of the window. | `--navigator-width`, `--explorer-width`, `--editors-min-width`, `--console-height`, `--rail-size`, `--editor-height`, `--results-height`, `--pivot-min-height`… | `App.vue`, `QueryCell.vue` |
 | `reka-ui` 2.11.0 | `side-offset` of the menus and lists (a number, passed to Floating UI). | `--popup-offset` | `UiSelect.vue`, `UiDropdownMenu.vue` |
 | `reka-ui` 2.11.0 | `estimate-size` of `TreeVirtualizer` (built on `@tanstack/vue-virtual`): height of a line of the tree, to turn the scroll position (in pixels) into the lines to draw. | `--row-height` | `ObjectNavigator.vue` |
 
-The pointer and the scroll position also give pixels. A column of the grid resized with the mouse converts its width into `rem` once, at the time of the drag (`resizedWidth` in `resultGrid.ts`). The result grid turns its scroll position into the rows to draw with the height of a row, read once (`--grid-row-height`, `drawnRange` in `resultGrid.ts`), and places these rows itself in CSS (`calc(var(--grid-row-height) * n)`).
+The pointer and the scroll position also give pixels. A column of the grid resized with the mouse converts its width into `rem` once, at the time of the drag (`resizedWidth` in `resultGrid.ts`). The result grid turns its scroll position into the rows to draw with the height of a row, read once (`--grid-row-height`, `drawnRange` in `resultGrid.ts`), and places these rows itself in CSS (`calc(var(--grid-row-height) * n)`). The pivot table of the Pivoteur does the same on both axes, with the height of a row of the grid and the widths of its columns of values and of labels (`--grid-row-height`, `--pivot-column-width`, `--pivot-label-width`, in `PivotGrid.vue`).
 
 In the code, each of these places carries a comment that starts with "Fixed size" and refers to this section.
 
@@ -309,6 +311,16 @@ Each generates the same rows (Mulberry32 generator, seed 42, `js/common.mjs` for
 
 The command checks that every side gives the same pivot as the native one (groups, sizes of the grouping sets, checksums of the states, grand total), and exits with 1 otherwise. It prints a summary table and writes the full results, with the machine, to `target/pivot-bench/results-<rows>.json`.
 
+### Parser of the Pivoteur
+
+`bench/parser/` measures `sqlparser` compiled to WebAssembly, as the Worker of the Pivoteur would run it on the expressions of its virtual columns and measures: size of the module, raw and compressed, time to compile and instantiate it, time of a parse. From the root of the repository; the command adds the WebAssembly target to the toolchain when missing:
+
+```
+node bench/parser/run.mjs
+```
+
+The command builds the module (package `parser-wasm`, `sqlparser` at the version and with the features of Prisme, generic dialect) twice, in the release profile of Prisme and in the `lto` profile of `bench/parser/Cargo.toml` (optimizations across crates). It then measures each module under Node in a process of its own (`bench/parser/measure.mjs`), so that its first parse starts cold: compilation, instantiation, first parse, first parse in a second module compiled from the same bytes, then each expression, best of 5 rounds of 1,000 parses. It checks that every module accepts the expressions of the Pivoteur and refuses the wrong texts, and exits with 1 otherwise. It prints a summary table and writes the results, with the machine, to `target/parser-bench/results.json`.
+
 ### Saved results
 
 `bench/reload/run.mjs` measures what a result of many rows costs on its way into a result tab, and when the page reads it again, on the real server: Prisme built in release, started on a throwaway data folder (`target/reload-bench/`), queries on the latest MariaDB LTS of the development servers. From the root of the repository, the development servers started (`docker compose up --detach --wait`) and the interface built (`npm run build` in `web/`):
@@ -339,6 +351,23 @@ To compare builds of Prisme, each one is copied aside once built (`npm run build
 `node bench/store/profile.mjs [rows]` (1,000,000 rows by default) says which functions hold the main thread of the interface during the same reception. It builds the interface without minification into `target/store-bench/web-plain`, to keep the names of its functions, and gives its scripts and its stylesheet to the page in place of those embedded in Prisme (the scoped styles of Vue are named after the source of their component); the document, the API and the WebSocket stay those of the server. It samples the JavaScript of the page from Ctrl+Enter to the drawing after `done`, then prints the own time and the total time of the functions that take the most, and the composited layers of the page during the reception. The profile goes to `target/store-bench/profile-<rows>.cpuprofile`, which the Performance panel of DevTools opens. The sampling slows the reception down: the profile gives the shares, `run.mjs` the durations.
 
 The driving of the interface is shared by the three commands (`bench/store/interface.mjs`).
+
+## Comparison of the SQL engines
+
+`bench/sql/run.mjs` measures how the SQL engines answer the same expressions, for the reference `docs/SQL-COMPARISON.md`, whose section 2 describes the cases and their results. From the root of the repository, the development servers started (`docker compose up --detach --wait`):
+
+```
+node bench/sql/run.mjs
+```
+
+The command runs each case of `bench/sql/cases.mjs` alone, on every engine:
+
+- MySQL and MariaDB: the six servers of `compose.yaml`, through the client of each container;
+- PostgreSQL: the container of the version research `prisme-probe-postgres-<version>`, which the command starts when it is stopped, then stops again. It is created once, without a published port nor a password, and reached only by `docker exec`: `docker create --name prisme-probe-postgres-18.6 --env POSTGRES_HOST_AUTH_METHOD=trust postgres:latest` (the image `postgres:latest` of 2026-10-06 is PostgreSQL 18.6);
+- DuckDB: `@duckdb/node-api`, at the version named in `run.mjs`, which the first run installs into `target/sql-comparison/`, outside the dependencies of Prisme;
+- SQLite: the one of the Node that runs the command (`node:sqlite`), in memory.
+
+It prints the table of the values, one column per server, and writes the values, the types, the warnings and the errors to `target/sql-comparison/results.json`.
 
 ## Testing the API by hand
 
@@ -513,6 +542,7 @@ The APIs that only take pixels are workarounds too, listed apart, with their the
 | `sqlparser` 0.63.0 | Missing capability | No MariaDB dialect. `sqlparser` reads a syntax specific to one database in that database's dialect and in `GenericDialect` (rule of its README), and accepts queries the database rejects: `MySqlDialect` serves MySQL and MariaDB, and no ticket asks for a MariaDB dialect. | `crates/dialects/src/lib.rs`: MariaDB is parsed with Prisme's MySQL dialect (`mysql_parser.rs`). Telling MySQL from MariaDB stays with Prisme. | Lasting: no MariaDB dialect is planned. Checked again if one appears. | None | 2026-10-25 |
 | `reka-ui` 2.11.0 | Bug | A `SplitterPanel` sized in pixels (`size-unit="px"`), folded or unfolded by dragging its handle, emits neither `collapse` nor `expand`: `callPanelCallbacks` compares the size converted back to pixels (28.000000000095 for 28) with `collapsedSize` at 10 decimals. `isPanelCollapsed` (`data-state`, exposed `isCollapsed`) was fixed in 2.11.0 ([reka-ui #2742](https://github.com/unovue/reka-ui/issues/2742)), the events were not. | `web/src/App.vue`: the state of the console and of the side panels follows the panel's `isCollapsed` on each `resize`. | Reka emits `collapse` and `expand` for these panels. | Ticket drafted, not posted yet: [reka-ui-splitter-px-collapse-events.md](upstream/reka-ui-splitter-px-collapse-events.md). | 2026-10-25 |
 | `reka-ui` 2.11.0 | Bug | `collapse()` on a `SplitterPanel` already collapsed replaces the size it expands to by its collapsed size, and `expand()` then opens it at its `min-size`: `collapsePanel` tests `panelSize !== collapsedSize` strictly, in percent, where a px panel restored by `autoSaveId` differs by about 1e-10. `isPanelCollapsed` and `expandPanel` compare fuzzily. Seen on the data explorer, folded by default: after a reload, it opened at its smallest width. | `web/src/App.vue` (`showPanel`): the state of the side panels and of the console only folds an open panel and unfolds a folded one. | `collapsePanel` compares fuzzily too. | Ticket drafted, not posted yet: [reka-ui-splitter-collapse-overwrites-expand-size.md](upstream/reka-ui-splitter-collapse-overwrites-expand-size.md). | 2026-10-28 |
+| `reka-ui` 2.11.0 | Missing capability | A `SplitterGroup` always fills its height, so its panels cannot all be folded; the height of a panel that folds goes to its neighbour, which unfolds if it was folded (`adjustLayoutByDelta`); the constraints of a panel cannot change at runtime, as a change reloads the layout saved under `autoSaveId`; `resize` refuses a height it could only reach by folding a neighbour. | `web/src/components/QueryCell.vue`: an empty panel with a hidden handle, between the results and the Pivoteur, receives the height; `settle` gives it to an open panel on each change of the layout, `unfold` opens again the panels an unfolding folded, and `openResults` makes the height of the results go through the empty panel, as a height that would fold a neighbour is refused. | Reka lets the panels of a group leave height unused, and keeps a folded neighbour folded. | None | 2026-11-01 |
 | `reka-ui` 2.11.0 | Missing capability | No API to forget a layout saved by a splitter (`autoSaveId`). | `web/src/components/cellLayout.ts` removes the entry from the local storage itself, under Reka's own prefix `reka:`; a renamed prefix would leave the layouts of the closed editors behind, without error. | Reka can forget a saved layout, or takes a storage of Prisme. | None | 2026-10-25 |
 | `codemirror` 6.0.2 | Missing capability | `basicSetup` takes no options: its fold gutter cannot be left out. | `web/src/components/sqlSetup.ts`: a copy of `basicSetup` without `foldGutter()`, as CodeMirror's documentation advises; the copy follows `basicSetup` when it changes. | `basicSetup` takes options. | None | 2026-10-25 |
 | `@codemirror/lang-sql` 6.10.0 | Missing capability | `sql()` always adds the completion of the keywords. | `web/src/components/SqlEditor.vue` (`currentLanguage`) builds the language by hand, with the completion of the catalog's names only. | `sql()` can leave the keywords out. | None | 2026-10-25 |
@@ -526,6 +556,9 @@ crates/
     tests/         integration tests on the development servers
   dialects/        query analysis: default limit, read / write, beautifier, keywords
   splitter/        splitting a text into queries, per dialect
+  store/           rows of a result in columns, for the Worker of the Pivoteur
+  pivot/           engine of the Pivoteur: groups, measures, totals, layout of the table
+  web-engine/      the engine compiled to WebAssembly, for the Worker of the page
   server/          the prisme executable: configuration, master key, internal database, API
     migrations/    numbered SQL migrations of the internal database
 web/               Vue interface
@@ -535,8 +568,10 @@ web/               Vue interface
   src/stores/      shared state (connections, settings)
 bench/             benchmarks, outside the workspace
   prisme.mjs       Prisme on the real server, for the benchmarks that measure it
+  parser/          sqlparser compiled to WebAssembly: size of the module, time of a parse (run.mjs)
   pivot/           engine of the Pivoteur: native, WebAssembly, JavaScript (run.mjs)
   reload/          saved results: their save, and their reading again by the page (run.mjs)
+  sql/             answers of the SQL engines to the same expressions, for docs/SQL-COMPARISON.md (run.mjs)
   store/           reception of a result, and windows of rows asked to a Worker (run.mjs, trace.mjs, profile.mjs)
 docs/              design decisions and notes
   upstream/        drafts of tickets for the dependencies
@@ -552,6 +587,7 @@ servers/           data of the development servers (compose.yaml)
 - [FEDERATED.md](FEDERATED.md): the federated engine, after the v1.
 - [QUESTIONS.md](QUESTIONS.md): ideas kept or dropped, open questions.
 - [PERFORMANCES.md](PERFORMANCES.md): performance problems met, their cause and fix.
+- [SQL-COMPARISON.md](SQL-COMPARISON.md): behaviours of the SQL engines compared, measured or sourced.
 - [IDEAS-EXPORTS.md](IDEAS-EXPORTS.md): ideas for copying and exporting results.
 - [IDEAS-VIZ.md](IDEAS-VIZ.md): ideas for drawing a database and its relations as a graph.
 - [CHANGELOG.md](CHANGELOG.md): changelogs of the published versions.

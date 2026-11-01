@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  NO_PIVOT,
   applyMessage,
   executionDuration,
   parseMessage,
@@ -22,6 +23,7 @@ import {
 } from '../querySession'
 import type { ErrorDetail } from '../generated/ErrorDetail'
 import type { ServerMessage } from '../generated/ServerMessage'
+import type { TabPivot } from '../generated/TabPivot'
 import { describe as describeError } from '../messages'
 
 /**
@@ -453,6 +455,28 @@ describe('durations', () => {
   })
 })
 
+/**
+ * Configuration of the Pivoteur of a tab.
+ */
+const PIVOT: TabPivot = {
+  fields: ['x'],
+  config: { rows: [{ column: 0, name: '', precision: 'none' }], columns: [], measures: [] },
+}
+
+describe('a batch', () => {
+  it('gives a new tab the configuration of the tab it replaces, or none', () => {
+    const state = readyState()
+    applyMessage(state, {
+      type: 'batch',
+      queries: [
+        { query: 0, tab: 5, sql: 'a', start: 0, end: 1, pivot: PIVOT },
+        { query: 1, tab: 6, sql: 'b', start: 2, end: 3 },
+      ],
+    })
+    expect(state.tabs.map((tab) => tab.pivot)).toEqual([PIVOT, NO_PIVOT])
+  })
+})
+
 describe('savedTab', () => {
   it('takes back a saved tab, outside the batches of the session', () => {
     const tab = savedTab({
@@ -461,6 +485,7 @@ describe('savedTab', () => {
       sql: 'SELECT x FROM t',
       name: 'Gardé',
       pinned: true,
+      pivot: PIVOT,
       result: {
         started: true,
         done: true,
@@ -485,6 +510,7 @@ describe('savedTab', () => {
       rows: [['1'], ['2']],
     })
     expect([tab.id, tab.batch, tab.pinned, tab.name]).toEqual([42, 0, true, 'Gardé'])
+    expect(tab.pivot).toBe(PIVOT)
     expect(tab.result?.rows).toEqual([['1'], ['2']])
     expect(tab.result?.executedAt).toBe(1_792_500_000_000)
     expect(executionDuration(tab, 0)).toBe(1.5)
@@ -503,6 +529,7 @@ describe('resume', () => {
         sql: 'SELECT 1',
         name: 'Mon onglet',
         pinned: false,
+        pivot: PIVOT,
         result: {
           started: false,
           done: false,
@@ -577,8 +604,9 @@ describe('resume', () => {
       [8, null, 1],
     ])
     const [first, second] = state.tabs
-    // The user filter stays, as the name.
+    // The user filter and the configuration of the Pivoteur stay, as the name.
     expect([first!.filter, first!.filterOpen]).toEqual([{ text: 'a', column: 0 }, true])
+    expect([first!.pivot, second!.pivot]).toEqual([PIVOT, NO_PIVOT])
     expect([first!.startedAt, first!.columnsAt]).toEqual([5_000, 7_000])
     expect(tabProgress(second!)).toBe('waiting')
 

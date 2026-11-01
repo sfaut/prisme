@@ -8,6 +8,7 @@ This file is short. Detailed decisions are in `docs/`:
 - `docs/FEDERATED.md`: vision after the v1 (logical plan, optimizer, languages, NULL, CSV, workspace).
 - `docs/QUESTIONS.md`: ideas kept, dropped or postponed, and questions still open.
 - `docs/PERFORMANCES.md`: performance problems met, with their cause, their fix and how they were measured, and every measure made to compare options (benchmarks), with its numbers and its decision.
+- `docs/SQL-COMPARISON.md`: behaviours of the SQL engines compared (standard, MySQL, MariaDB, PostgreSQL, SQLite, DuckDB, ClickHouse), each one measured or sourced; reference of the dialects.
 - `docs/IDEAS-EXPORTS.md`: ideas for copying and exporting results.
 - `docs/IDEAS-VIZ.md`: ideas for drawing a database and its relations as a graph.
 - `docs/CHANGELOG.md`: changelogs of the published versions, most recent first (see "Publishing a version").
@@ -51,7 +52,10 @@ crates/        Cargo workspace
   dialects/    analysis and rewriting per dialect: default limit, read / write, then function catalog and emitters
   splitter/    splitting queries per dialect (Ctrl+Enter)
   connectors/  common interface and one implementation per engine
+  pivot/       engine of the Pivoteur: groups, measures, totals, layout of the pivot table
   server/      notebook sessions, API, authentication
+  store/       rows of a result in columns: text of the cells, dictionaries, numbers
+  web-engine/  engine of the Pivoteur compiled to WebAssembly, for the Worker of the page
 web/           Vue application
 bench/         benchmarks outside the workspace (pivot/: engine of the Pivoteur; reload/: saved results; store/: store of the results; see docs/DEVELOPER.md)
 docs/          decisions and notes
@@ -157,6 +161,7 @@ More detailed logs: `$env:RUST_LOG="debug"` (PowerShell) before `cargo run`. Tes
 8. **Conformance suite**: the same query is run on each database and the results are compared. Every translation rule added must have its test.
 9. **When in doubt about a design decision, ask the maintainer.** Open points are listed in `docs/QUESTIONS.md`. Do not decide silently.
 10. **Interface: everything goes through the theme** (`web/src/assets/main.css`), so that changing a few root values changes the whole interface. The interface uses Tailwind's default scales as they are, set by the root's font size (`--root-font-size`, 75% of the browser's): font sizes with their line heights (`text-base` for the regular text, `text-sm`, `text-lg`...), spacing, radii (`rounded-lg`). No class or variable doubles a Tailwind one. Colors: Tailwind's palette, from which the colors by role declared in `@theme` draw (`bg-surface`, `text-fg-secondary`, `border-line`, `bg-primary`); the components use only the roles, one class per property, without stacking variants (`dark:`): each role carries its light and dark values. Shades go through Tailwind's opacity modifiers (`bg-primary/15`). Strokes are named variables. Lengths (padding, margins, gaps, heights, widths, icons) are whole steps of Tailwind's spacing scale: `gap-2`, `p-3`, `h-8`, `size-5` in the classes, `--spacing(2)` in the `<style>` blocks (which start with `@reference "@/assets/main.css";`), never a fraction (`gap-1.5`). A length gets a name only when the code reads it (`cssPixels`); it is then defined in `main.css` with `--spacing()`, and the components use it through the variable (`h-(--row-height)`). No external margins to space elements: a container spaces its children with `gap` and `padding`, and aligns them with `justify-*` and `items-*`; flexbox's own margins (`ms-auto`, `m-auto`) only when no container can align. No overlap through negative margins: each element draws its own borders. No hard-coded value in a component. Only strokes (borders, focus outline) stay in pixels. Each color has its light and dark value; every new screen is checked in both modes.
+11. **`docs/SQL-COMPARISON.md` is the reference of the behaviours of the SQL engines.** A behaviour of an engine that a rule of Prisme relies on (dialect of the Pivoteur, translation between dialects, conformance suite) is measured by a case of `bench/sql/cases.mjs`, or quoted from a source given with its link, then recorded there with the date of the measure. A new case, a new version of an engine or a new source updates its entry in the same change.
 
 ## Development order of the v1
 

@@ -606,9 +606,12 @@ function selectSource(connectionId: number): void {
             <!--
               The padding of the sides is inside the panels of the cells
               (`QueryCell`), which would cut a border set against their edge;
-              the other elements take it here.
+              the other elements take it here. The padding of the bottom is
+              that of the last panel of a cell, the Pivoteur: open, it ends
+              with its own; folded, its rail closes the area, as the rail of
+              the console closes the window.
             -->
-            <main class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 py-4">
+            <main class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 pt-4">
               <div v-if="editorsError" class="flex px-4">
                 <ui-alert
                   tone="error"

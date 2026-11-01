@@ -1,0 +1,29 @@
+# Benchmark of sqlparser compiled to WebAssembly (see bench/parser/run.mjs):
+# size of the module and time of a parse, for the expressions that the
+# Worker of the Pivoteur parses. Package of its own, outside the workspace of
+# Prisme, with the version and the features of sqlparser that Prisme pins
+# (crates/dialects).
+
+[package]
+name = "parser-wasm"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+sqlparser = { version = "=0.63.0", features = ["visitor"] }
+
+# Workspace of its own: the package is outside the members of the workspace of
+# Prisme.
+[workspace]
+
+# The release profile of Prisme (Cargo's default), then this one: the same,
+# optimized across crates, which shrinks a module.
+[profile.lto]
+inherits = "release"
+lto = true
+codegen-units = 1

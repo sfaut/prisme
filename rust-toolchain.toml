@@ -2,3 +2,6 @@
 [toolchain]
 channel = "1.99.1"
 components = ["clippy", "rustfmt"]
+# The engine of the Pivoteur runs in the page, compiled to WebAssembly
+# (crates/web-engine, built by web/vite.config.ts).
+targets = ["wasm32-unknown-unknown"]

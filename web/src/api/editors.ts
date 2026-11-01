@@ -9,6 +9,7 @@ import type { Editor } from './generated/Editor'
 import type { EditorUpdate } from './generated/EditorUpdate'
 import type { ResultTab } from './generated/ResultTab'
 import type { ResultTabUpdate } from './generated/ResultTabUpdate'
+import type { TabPivot } from './generated/TabPivot'
 
 /**
  * Open editors, in order, with their saved result tabs.
@@ -113,6 +114,16 @@ export async function reorderResults(editorId: number, ids: number[]): Promise<v
  */
 export async function updateResult(id: number, tab: ResultTabUpdate): Promise<void> {
   await request('PUT', `/api/results/${id}`, tab)
+}
+
+/**
+ * Saves the configuration of the Pivoteur of a result tab.
+ *
+ * @param id Id of the tab.
+ * @param pivot Configuration, with the columns it was made for.
+ */
+export async function updateResultPivot(id: number, pivot: TabPivot): Promise<void> {
+  await request('PUT', `/api/results/${id}/pivot`, pivot)
 }
 
 /**

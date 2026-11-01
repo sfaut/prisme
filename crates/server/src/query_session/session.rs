@@ -314,6 +314,7 @@ impl Session<'_> {
                 sql: statement.sql.clone(),
                 start: statement.start,
                 end: statement.end,
+                pivot: None,
             })
             .collect();
         self.outbox.send(ServerMessage::Batch { queries }).await?;

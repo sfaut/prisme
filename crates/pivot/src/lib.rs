@@ -1,0 +1,495 @@
+//! Engine of the Pivoteur, the pivot table under the result grid: groups the
+//! rows of a result by the values of its levels, computes its measures with
+//! every subtotal and total, then lays out the table, which the page reads
+//! window by window.
+//!
+//! First slice of the lot 1 of its specification: a level is a column of the
+//! result, its value as it is or what a precision keeps of its dates (`dates`);
+//! the measures are `COUNT(*)`, `COUNT(col)`, `SUM(col)`, `AVG(col)`,
+//! `MIN(col)` and `MAX(col)`, in ANSI SQL, and `COUNT`, `SUM` and `AVG` of
+//! `DISTINCT col`. The dialect of the Pivoteur, with its expressions, comes with
+//! the next slices.
+//!
+//! The crate does not depend on its target: its tests run natively, and the
+//! Worker of the page runs it compiled to WebAssembly (`crates/web-engine`).
+
+mod dates;
+mod groups;
+mod measures;
+mod table;
+
+use std::cell::OnceCell;
+use std::fmt;
+
+use prisme_store::{Approx, Dictionary, Exact, NumberError, Store};
+
+use crate::dates::DerivedLevel;
+pub use crate::dates::Precision;
+pub use crate::measures::Value;
+use crate::measures::{Extreme, Input};
+pub use crate::table::{Header, Label, Line, Table};
+
+/// Family of the type of a column, as far as the measures need it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Family {
+    /// Exact numbers: the `integer` and `decimal` families.
+    Exact,
+    /// Floats: the `float` family (`DOUBLE`).
+    Float,
+    /// Any other family, which `SUM` and `AVG` refuse.
+    Other,
+}
+
+/// Measure of a table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Measure {
+    /// `COUNT(*)`: number of rows.
+    CountStar,
+    /// `COUNT(col)`: number of rows where the column is not NULL.
+    Count(usize),
+    /// `COUNT(DISTINCT col)`: number of distinct values of the column that
+    /// are not NULL, told apart as the levels group them.
+    CountDistinct(usize),
+    /// `SUM(col)`: sum of the values of a column of numbers that are not
+    /// NULL; NULL without any.
+    Sum(usize),
+    /// `SUM(DISTINCT col)`: sum of the distinct numbers of a column, told
+    /// apart by value; NULL without any.
+    SumDistinct(usize),
+    /// `AVG(col)`: average of the values of a column of numbers that are not
+    /// NULL; NULL without any.
+    Avg(usize),
+    /// `AVG(DISTINCT col)`: average of the distinct numbers of a column, told
+    /// apart by value; NULL without any.
+    AvgDistinct(usize),
+    /// `MIN(col)`: first value of a column that is not NULL, numbers by
+    /// value, the rest by code points; NULL without any.
+    Min(usize),
+    /// `MAX(col)`: last value of a column that is not NULL, in the order of
+    /// `MIN`; NULL without any.
+    Max(usize),
+}
+
+/// Level of a table: the values of a column, or what a precision keeps of
+/// its dates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Level {
+    /// Column of the result.
+    pub column: usize,
+    /// Precision of its dates, `None` for its values as they are.
+    pub precision: Option<Precision>,
+}
+
+impl From<usize> for Level {
+    /// Level of the values of a column, as they are.
+    fn from(column: usize) -> Self {
+        Level {
+            column,
+            precision: None,
+        }
+    }
+}
+
+/// Table asked of the engine.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Request {
+    /// Levels of the rows, the outermost first.
+    pub rows: Vec<Level>,
+    /// Levels of the columns, the outermost first.
+    pub columns: Vec<Level>,
+    /// Measures, in the order of their zone.
+    pub measures: Vec<Measure>,
+}
+
+/// Error of the engine. A computation that fails gives no table: its values
+/// would be wrong.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Error {
+    /// The result has no such column.
+    UnknownColumn(usize),
+    /// The result has no such row.
+    UnknownRow(u32),
+    /// The ranks of the values of a column do not match its dictionary.
+    Ranks(usize),
+    /// Measure `measure` adds up a column that does not hold numbers.
+    NotNumeric {
+        /// Measure, by its index.
+        measure: usize,
+    },
+    /// A cell of a column of numbers is not a number, or is too large.
+    Number {
+        /// Column of the cell.
+        column: usize,
+        /// The problem of the cell.
+        error: NumberError,
+    },
+    /// A value of measure `measure` goes beyond 128 bits.
+    Overflow {
+        /// Measure, by its index.
+        measure: usize,
+    },
+    /// A cell of a level with a precision holds no date.
+    InvalidDate {
+        /// Column of the cell.
+        column: usize,
+        /// Row of the cell.
+        row: u32,
+    },
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::UnknownColumn(column) => write!(formatter, "no column {column}"),
+            Error::UnknownRow(row) => write!(formatter, "no row {row}"),
+            Error::Ranks(column) => write!(formatter, "ranks of column {column} inconsistent"),
+            Error::NotNumeric { measure } => {
+                write!(formatter, "measure {measure}: column without numbers")
+            }
+            Error::Number { column, error } => write!(formatter, "column {column}, {error}"),
+            Error::Overflow { measure } => {
+                write!(formatter, "measure {measure}: value beyond 128 bits")
+            }
+            Error::InvalidDate { column, row } => {
+                write!(formatter, "column {column}, row {row}: no date")
+            }
+        }
+    }
+}
+
+impl std::error::Error for Error {}
+
+/// Numbers of a column, read by its family.
+enum Numbers {
+    /// Exact numbers.
+    Exact(Exact),
+    /// Floats.
+    Float(Approx),
+}
+
+/// Rank of each code, from the codes in their order.
+fn ranks_of(order: &[u32]) -> Vec<u32> {
+    let mut ranks = vec![0u32; order.len()];
+    for (rank, &code) in order.iter().enumerate() {
+        ranks[code as usize] = rank as u32;
+    }
+    ranks
+}
+
+/// Engine of one result: its rows, and the forms derived from its columns,
+/// built once, the first time a table needs them.
+pub struct Engine {
+    /// Rows of the result.
+    store: Store,
+    /// Family of each column.
+    families: Vec<Family>,
+    /// Dictionary of each column.
+    dictionaries: Vec<OnceCell<Dictionary>>,
+    /// Numbers of each column of numbers, or the cell it cannot read.
+    numbers: Vec<OnceCell<Result<Numbers, NumberError>>>,
+    /// Rank of each value of each column, by code: given by the page, in the
+    /// order of the grid, or the binary order of the texts, NULL first.
+    ranks: Vec<OnceCell<Vec<u32>>>,
+    /// Rank of each value of each column, by code, as `MIN` and `MAX` compare
+    /// them.
+    value_ranks: Vec<OnceCell<Vec<u32>>>,
+    /// Levels of each column at each precision, or the row of the first cell
+    /// that holds no date.
+    derived: Vec<[OnceCell<Result<DerivedLevel, u32>>; Precision::COUNT]>,
+    /// Rows kept by the filter of the grid, in their order; `None` for all.
+    kept: Option<Vec<u32>>,
+}
+
+impl Engine {
+    /// Creates the engine of a result, with the family of each column.
+    ///
+    /// # Panics
+    ///
+    /// If the store does not have one column per family.
+    pub fn new(store: Store, families: Vec<Family>) -> Self {
+        assert_eq!(
+            store.column_count(),
+            families.len(),
+            "one family per column"
+        );
+        let columns = families.len();
+        Engine {
+            store,
+            families,
+            dictionaries: (0..columns).map(|_| OnceCell::new()).collect(),
+            numbers: (0..columns).map(|_| OnceCell::new()).collect(),
+            ranks: (0..columns).map(|_| OnceCell::new()).collect(),
+            value_ranks: (0..columns).map(|_| OnceCell::new()).collect(),
+            derived: (0..columns)
+                .map(|_| std::array::from_fn(|_| OnceCell::new()))
+                .collect(),
+            kept: None,
+        }
+    }
+
+    /// Rows of the result.
+    pub fn store(&self) -> &Store {
+        &self.store
+    }
+
+    /// Dictionary of column `column`.
+    fn dictionary(&self, column: usize) -> Result<&Dictionary, Error> {
+        let cells = self
+            .store
+            .column(column)
+            .ok_or(Error::UnknownColumn(column))?;
+        Ok(self.dictionaries[column].get_or_init(|| Dictionary::of(cells)))
+    }
+
+    /// Distinct values of column `column`, by code: their text, `None` for
+    /// NULL. The page ranks them in the order of the grid (`set_ranks`).
+    pub fn distinct(&self, column: usize) -> Result<Vec<Option<&str>>, Error> {
+        let dictionary = self.dictionary(column)?;
+        let cells = &self.store.column(column).expect("column of the dictionary");
+        Ok((0..dictionary.len() as u32)
+            .map(|code| dictionary.value(cells, code))
+            .collect())
+    }
+
+    /// Sets the rank of each distinct value of column `column`, by code, in
+    /// the order of `distinct`.
+    pub fn set_ranks(&mut self, column: usize, ranks: Vec<u32>) -> Result<(), Error> {
+        let values = self.dictionary(column)?.len();
+        let mut seen = vec![false; values];
+        for &rank in &ranks {
+            match seen.get_mut(rank as usize) {
+                Some(slot) if !*slot => *slot = true,
+                _ => return Err(Error::Ranks(column)),
+            }
+        }
+        if ranks.len() != values {
+            return Err(Error::Ranks(column));
+        }
+        self.ranks[column] = OnceCell::from(ranks);
+        Ok(())
+    }
+
+    /// Ranks of the values of column `column`: those given by the page, or the
+    /// binary order of the texts, NULL first.
+    fn ranks(&self, column: usize) -> Result<&[u32], Error> {
+        let dictionary = self.dictionary(column)?;
+        let cells = self.store.column(column).expect("column of the dictionary");
+        Ok(self.ranks[column].get_or_init(|| {
+            let mut order: Vec<u32> = (0..dictionary.len() as u32).collect();
+            order.sort_unstable_by_key(|&code| dictionary.value(cells, code));
+            ranks_of(&order)
+        }))
+    }
+
+    /// Ranks of the values of column `column`, as `MIN` and `MAX` compare
+    /// them: numbers by value, a `NaN` after the others, and any other value
+    /// by code points, the order of the bytes of UTF-8. The order of the page
+    /// only ranks the groups.
+    fn value_ranks(&self, measure: usize, column: usize) -> Result<&[u32], Error> {
+        let dictionary = self.dictionary(column)?;
+        let cells = self.store.column(column).expect("column of the dictionary");
+        let numbers = match self.families[column] {
+            Family::Other => None,
+            _ => Some(self.numbers(measure, column)?),
+        };
+        Ok(self.value_ranks[column].get_or_init(|| {
+            let row = |code: u32| dictionary.first_rows[code as usize] as usize;
+            let mut order: Vec<u32> = (0..dictionary.len() as u32).collect();
+            match numbers {
+                Some(Numbers::Exact(numbers)) => {
+                    order.sort_by_key(|&code| numbers.values[row(code)]);
+                }
+                Some(Numbers::Float(numbers)) => {
+                    let values = &numbers.values;
+                    order.sort_by(|&a, &b| values[row(a)].total_cmp(&values[row(b)]));
+                }
+                None => order.sort_unstable_by_key(|&code| dictionary.value(cells, code)),
+            }
+            ranks_of(&order)
+        }))
+    }
+
+    /// Level of column `column` at a precision.
+    fn derived(&self, column: usize, precision: Precision) -> Result<&DerivedLevel, Error> {
+        let dictionary = self.dictionary(column)?;
+        let cells = self.store.column(column).expect("column of the dictionary");
+        self.derived[column][precision as usize]
+            .get_or_init(|| DerivedLevel::of(cells, dictionary, precision))
+            .as_ref()
+            .map_err(|&row| Error::InvalidDate { column, row })
+    }
+
+    /// Code of each row and rank of each code of some levels.
+    fn levels(&self, levels: &[Level]) -> Result<(Vec<&Dictionary>, Vec<&[u32]>), Error> {
+        let mut dictionaries = Vec::with_capacity(levels.len());
+        let mut ranks = Vec::with_capacity(levels.len());
+        for &Level { column, precision } in levels {
+            match precision {
+                Some(precision) => {
+                    let derived = self.derived(column, precision)?;
+                    dictionaries.push(&derived.dictionary);
+                    ranks.push(derived.ranks.as_slice());
+                }
+                None => {
+                    dictionaries.push(self.dictionary(column)?);
+                    ranks.push(self.ranks(column)?);
+                }
+            }
+        }
+        Ok((dictionaries, ranks))
+    }
+
+    /// Value of a level at the first row of one of its nodes: the cell of its
+    /// column, or the label of its period, `None` for NULL.
+    pub(crate) fn level_value(&self, level: Level, row: u32) -> Option<&str> {
+        match level.precision {
+            Some(precision) => self
+                .derived(level.column, precision)
+                .ok()
+                .and_then(|derived| derived.label(row)),
+            None => self
+                .store
+                .column(level.column)
+                .and_then(|cells| cells.get(row as usize)),
+        }
+    }
+
+    /// Keeps only some rows, those the filter of the grid keeps; `None` keeps
+    /// them all.
+    pub fn set_kept(&mut self, rows: Option<Vec<u32>>) -> Result<(), Error> {
+        let count = self.store.row_count();
+        if let Some(&row) = rows.iter().flatten().find(|&&row| row as usize >= count) {
+            return Err(Error::UnknownRow(row));
+        }
+        self.kept = rows;
+        Ok(())
+    }
+
+    /// Numbers of column `column`, read by its family.
+    fn numbers(&self, measure: usize, column: usize) -> Result<&Numbers, Error> {
+        let cells = self
+            .store
+            .column(column)
+            .ok_or(Error::UnknownColumn(column))?;
+        let family = self.families[column];
+        if family == Family::Other {
+            return Err(Error::NotNumeric { measure });
+        }
+        self.numbers[column]
+            .get_or_init(|| match family {
+                Family::Exact => Exact::of(cells).map(Numbers::Exact),
+                _ => Approx::of(cells).map(Numbers::Float),
+            })
+            .as_ref()
+            .map_err(|error| Error::Number {
+                column,
+                error: error.clone(),
+            })
+    }
+
+    /// Validity of the cells of column `column`.
+    fn validity(&self, column: usize) -> Result<&[bool], Error> {
+        self.store
+            .column(column)
+            .map(|cells| cells.validity())
+            .ok_or(Error::UnknownColumn(column))
+    }
+
+    /// Numbers of column `column`, as `SUM` and `AVG` add them up.
+    fn addends(&self, index: usize, column: usize) -> Result<Input<'_>, Error> {
+        Ok(match self.numbers(index, column)? {
+            Numbers::Exact(numbers) => Input::Exact(numbers, self.validity(column)?),
+            Numbers::Float(numbers) => Input::Float(numbers, self.validity(column)?),
+        })
+    }
+
+    /// Numbers of column `column`, each added once per group.
+    fn distinct_addends(&self, index: usize, column: usize) -> Result<Input<'_>, Error> {
+        let numbers = self.numbers(index, column)?;
+        let valid = self.validity(column)?;
+        let dictionary = self.dictionary(column)?;
+        Ok(match numbers {
+            Numbers::Exact(numbers) => Input::DistinctExact(numbers, valid, dictionary),
+            Numbers::Float(numbers) => Input::DistinctFloat(numbers, valid, dictionary),
+        })
+    }
+
+    /// Values of column `column`, as `MIN` or, with `largest`, `MAX` compares
+    /// them.
+    fn extreme(&self, index: usize, column: usize, largest: bool) -> Result<Input<'_>, Error> {
+        Ok(Input::Extreme(Extreme {
+            column,
+            dictionary: self.dictionary(column)?,
+            ranks: self.value_ranks(index, column)?,
+            valid: self.validity(column)?,
+            largest,
+        }))
+    }
+
+    /// Values measure `measure` reads.
+    fn input(&self, index: usize, measure: Measure) -> Result<Input<'_>, Error> {
+        Ok(match measure {
+            Measure::CountStar => Input::Rows,
+            Measure::Count(column) => Input::Cells(self.validity(column)?),
+            Measure::CountDistinct(column) => {
+                Input::Distinct(&self.dictionary(column)?.codes, self.validity(column)?)
+            }
+            Measure::Sum(column) => self.addends(index, column)?,
+            Measure::SumDistinct(column) => self.distinct_addends(index, column)?,
+            Measure::Avg(column) => Input::Average(Box::new(self.addends(index, column)?)),
+            Measure::AvgDistinct(column) => {
+                Input::Average(Box::new(self.distinct_addends(index, column)?))
+            }
+            Measure::Min(column) => self.extreme(index, column, false)?,
+            Measure::Max(column) => self.extreme(index, column, true)?,
+        })
+    }
+
+    /// Computes a table over the rows kept.
+    pub fn compute(&self, request: &Request) -> Result<Table, Error> {
+        let all: Vec<u32>;
+        let selection: &[u32] = match &self.kept {
+            Some(rows) => rows,
+            None => {
+                all = (0..self.store.row_count() as u32).collect();
+                &all
+            }
+        };
+        let (row_levels, row_ranks) = self.levels(&request.rows)?;
+        let (column_levels, column_ranks) = self.levels(&request.columns)?;
+        let inputs = request
+            .measures
+            .iter()
+            .enumerate()
+            .map(|(index, &measure)| self.input(index, measure))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let levels: Vec<&Dictionary> = row_levels.iter().chain(&column_levels).copied().collect();
+        let (finest, first_rows) = groups::finest(&levels, selection);
+        let (rows, row_leaves) = groups::tree(&row_levels, &first_rows);
+        let (columns, column_leaves) = groups::tree(&column_levels, &first_rows);
+        let groups = groups::Groups::new(&rows, &columns, &row_leaves, &column_leaves);
+        let states = inputs
+            .iter()
+            .enumerate()
+            .map(|(measure, input)| {
+                measures::accumulate(input, selection, &finest, groups.len(), &groups.merges)
+                    .map_err(|_| Error::Overflow { measure })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let parts = table::Parts {
+            groups,
+            rows,
+            columns,
+            row_levels: request.rows.clone(),
+            column_levels: request.columns.clone(),
+            states,
+            finest_groups: first_rows.len(),
+            selected_rows: selection.len(),
+        };
+        Ok(Table::new(parts, &row_ranks, &column_ranks))
+    }
+}
+
+#[cfg(test)]
+mod tests;

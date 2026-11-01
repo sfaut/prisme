@@ -1,6 +1,6 @@
 /**
- * Layout of an editor's cell (`QueryCell`): the heights of its editor and of
- * its results, and which one is folded. The splitter of Reka UI remembers it
+ * Layout of an editor's cell (`QueryCell`): the heights of its panels, and
+ * which ones are folded. The splitter of Reka UI remembers it
  * in the browser's local storage (`autoSaveId`), one entry per editor, so
  * that folding the editor of one tab leaves the others as they are. Closing
  * an editor forgets its entry: a reopened editor starts from the default

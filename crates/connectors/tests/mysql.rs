@@ -9,7 +9,9 @@
 use std::time::{Duration, Instant};
 
 use prisme_connectors::mysql::catalog::{self, RoutineKind, TableKind};
-use prisme_connectors::mysql::{connect, execute, in_transaction, kill_query, probe};
+use prisme_connectors::mysql::{
+    Connection, Flavor, connect, execute, in_transaction, kill_query, probe,
+};
 use prisme_connectors::test_servers::SERVERS;
 
 #[tokio::test]
@@ -227,6 +229,107 @@ async fn tells_an_open_transaction() {
                 assert!(!run("SET autocommit = 0").await);
                 assert!(run("SELECT * FROM t").await);
                 assert!(!run("ROLLBACK").await);
+            })
+            .await;
+    }
+}
+
+/// Table, column and primary key of the origin of each column of a query.
+async fn origins(connection: &mut Connection, sql: &str) -> Vec<Option<(String, String, bool)>> {
+    let stream = execute(connection, sql).await.unwrap();
+    let origins = stream
+        .column_types()
+        .into_iter()
+        .map(|column| column.origin.map(|o| (o.table, o.column, o.primary_key)))
+        .collect();
+    stream.discard().await;
+    origins
+}
+
+#[tokio::test]
+#[ignore = "requires the development servers (docker compose up --detach --wait)"]
+async fn tells_the_origin_of_the_columns_of_a_result() {
+    let origin = |table: &str, column: &str, primary_key| {
+        Some((table.to_string(), column.to_string(), primary_key))
+    };
+    for server in SERVERS {
+        server
+            .with_database("column_origins", async |target| {
+                let mut connection = connect(&target).await.unwrap();
+                for sql in [
+                    "CREATE TABLE p (id INT PRIMARY KEY)",
+                    "CREATE TABLE f (id INT PRIMARY KEY, p_id INT, amount INT, KEY (amount),
+                     FOREIGN KEY (p_id) REFERENCES p (id))",
+                    "CREATE TABLE c (a INT, b INT, PRIMARY KEY (a, b))",
+                    "CREATE VIEW w AS SELECT id, p_id FROM f",
+                ] {
+                    execute(&mut connection, sql).await.unwrap().discard().await;
+                }
+
+                assert_eq!(
+                    origins(&mut connection, "SELECT id, p_id, amount FROM f").await,
+                    [
+                        origin("f", "id", true),
+                        origin("f", "p_id", false),
+                        origin("f", "amount", false),
+                    ],
+                    "{}",
+                    server.name
+                );
+                assert_eq!(
+                    origins(&mut connection, "SELECT id AS x FROM f").await,
+                    [origin("f", "id", true)],
+                    "{}",
+                    server.name
+                );
+                assert_eq!(
+                    origins(&mut connection, "SELECT a, b FROM c").await,
+                    [origin("c", "a", true), origin("c", "b", true)],
+                    "{}",
+                    server.name
+                );
+                assert_eq!(
+                    origins(
+                        &mut connection,
+                        "SELECT f.id, p.id FROM f JOIN p ON p.id = f.p_id"
+                    )
+                    .await,
+                    [origin("f", "id", true), origin("p", "id", true)],
+                    "{}",
+                    server.name
+                );
+                assert_eq!(
+                    origins(&mut connection, "SELECT id FROM w").await,
+                    [origin("w", "id", true)],
+                    "{}",
+                    server.name
+                );
+                let derived = match server.flavor {
+                    Flavor::MySql => "f",
+                    Flavor::MariaDb => "d",
+                };
+                assert_eq!(
+                    origins(&mut connection, "SELECT id FROM (SELECT id FROM f) AS d").await,
+                    [origin(derived, "id", true)],
+                    "{}",
+                    server.name
+                );
+                for sql in [
+                    "SELECT id + 1 AS x FROM f",
+                    "SELECT id FROM f UNION ALL SELECT id FROM f",
+                ] {
+                    assert_eq!(
+                        origins(&mut connection, sql).await,
+                        [None],
+                        "{}",
+                        server.name
+                    );
+                }
+
+                let stream = execute(&mut connection, "SELECT id FROM f").await.unwrap();
+                let schema = stream.column_types()[0].origin.clone().unwrap().schema;
+                stream.discard().await;
+                assert_eq!(schema, target.database_name, "{}", server.name);
             })
             .await;
     }

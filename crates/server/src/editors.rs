@@ -22,6 +22,7 @@
 //! | `GET /api/editors/{id}/results`         | Result tabs of the editor, rows included.               |
 //! | `PUT /api/editors/{id}/results/order`   | Orders the result tabs as given (204).                  |
 //! | `PUT /api/results/{id}`                 | Renames or pins a result tab (204).                     |
+//! | `PUT /api/results/{id}/pivot`           | Saves the configuration of the Pivoteur of a tab (204). |
 //! | `DELETE /api/results/{id}`              | Deletes a result tab and its rows (204).                |
 
 use axum::extract::{Path, State};
@@ -39,6 +40,7 @@ use crate::auth::CurrentUser;
 use crate::connections::count;
 use crate::error_detail::{ErrorDetail, Field};
 use crate::query_session::LimitReport;
+use crate::tab_pivot::{ReplacedTab, TabPivot, carry_over};
 
 /// Maximum length of the name of an editor or a result tab, in characters.
 const NAME_MAX_LENGTH: usize = 100;
@@ -94,6 +96,8 @@ pub struct ResultTab {
     pub name: String,
     /// Pinned tab: it stays when the queries are run again.
     pub pinned: bool,
+    /// Configuration of the Pivoteur of the tab.
+    pub pivot: TabPivot,
     /// State of the result.
     pub result: SavedResult,
     /// Rows received.
@@ -271,7 +275,7 @@ pub fn results_of(
 /// Result tabs of an editor, in display order.
 fn result_tabs(db: &Connection, editor_id: i64) -> Result<Vec<ResultTab>, EditorsError> {
     let mut statement = db.prepare(
-        "SELECT id, query, sql, name, pinned, result, rows FROM result_tabs
+        "SELECT id, query, sql, name, pinned, pivot, result, rows FROM result_tabs
          WHERE editor_id = ?1 ORDER BY position, id",
     )?;
     let rows = statement.query_map(params![editor_id], |row| {
@@ -283,17 +287,19 @@ fn result_tabs(db: &Connection, editor_id: i64) -> Result<Vec<ResultTab>, Editor
             row.get::<_, bool>(4)?,
             row.get::<_, String>(5)?,
             row.get::<_, String>(6)?,
+            row.get::<_, String>(7)?,
         ))
     })?;
     let mut tabs = Vec::new();
     for row in rows {
-        let (id, query, sql, name, pinned, result, rows) = row?;
+        let (id, query, sql, name, pinned, pivot, result, rows) = row?;
         tabs.push(ResultTab {
             id,
             query,
             sql,
             name,
             pinned,
+            pivot: serde_json::from_str(&pivot)?,
             result: serde_json::from_str(&result)?,
             rows: serde_json::from_str(&rows)?,
         });
@@ -432,6 +438,22 @@ pub fn update_result_tab(
     Ok(updated == 1)
 }
 
+/// Saves the configuration of the Pivoteur of the result tab `id`, if it
+/// belongs to an editor of the user. Returns `false` otherwise.
+pub fn update_result_pivot(
+    db: &Connection,
+    user_id: i64,
+    id: i64,
+    pivot: &TabPivot,
+) -> Result<bool, EditorsError> {
+    let updated = db.execute(
+        "UPDATE result_tabs SET pivot = ?3
+         WHERE id = ?1 AND editor_id IN (SELECT id FROM editors WHERE user_id = ?2)",
+        params![id, user_id, serde_json::to_string(pivot)?],
+    )?;
+    Ok(updated == 1)
+}
+
 /// Deletes the result tab `id` and its rows, if it belongs to an editor of
 /// the user. Returns `false` otherwise.
 pub fn delete_result_tab(db: &Connection, user_id: i64, id: i64) -> Result<bool, EditorsError> {
@@ -461,14 +483,41 @@ pub fn reorder_result_tabs(
     Ok(())
 }
 
+/// Unpinned result tabs of an editor, which the next batch replaces.
+fn replaced_tabs(db: &Connection, editor_id: i64) -> Result<Vec<ReplacedTab>, EditorsError> {
+    let mut statement = db.prepare(
+        "SELECT query, sql, pivot FROM result_tabs
+         WHERE editor_id = ?1 AND pinned = 0 ORDER BY position, id",
+    )?;
+    let rows = statement.query_map(params![editor_id], |row| {
+        Ok((
+            row.get::<_, u32>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    let mut tabs = Vec::new();
+    for row in rows {
+        let (query, sql, pivot) = row?;
+        tabs.push(ReplacedTab {
+            query,
+            sql,
+            pivot: serde_json::from_str(&pivot)?,
+        });
+    }
+    Ok(tabs)
+}
+
 /// Start of a batch in editor `editor_id`: the unpinned tabs disappear, one
-/// tab per query is created after the pinned tabs. Returns the ids of the new
-/// tabs, in the order of the queries.
+/// tab per query is created after the pinned tabs, with the configuration of
+/// the Pivoteur of the tab it replaces. Returns the id and the configuration
+/// of the new tabs, in the order of the queries.
 pub fn start_batch(
     db: &Connection,
     editor_id: i64,
     queries: &[(u32, String)],
-) -> Result<Vec<i64>, EditorsError> {
+) -> Result<Vec<(i64, TabPivot)>, EditorsError> {
+    let pivots = carry_over(replaced_tabs(db, editor_id)?, queries);
     db.execute(
         "DELETE FROM result_tabs WHERE editor_id = ?1 AND pinned = 0",
         params![editor_id],
@@ -478,15 +527,22 @@ pub fn start_batch(
         params![editor_id],
         |row| row.get(0),
     )?;
-    let mut ids = Vec::with_capacity(queries.len());
-    for (position, (query, sql)) in (first..).zip(queries) {
+    let mut tabs = Vec::with_capacity(queries.len());
+    for ((position, (query, sql)), pivot) in (first..).zip(queries).zip(pivots) {
         db.execute(
-            "INSERT INTO result_tabs (editor_id, position, query, sql) VALUES (?1, ?2, ?3, ?4)",
-            params![editor_id, position, query, sql],
+            "INSERT INTO result_tabs (editor_id, position, query, sql, pivot)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                editor_id,
+                position,
+                query,
+                sql,
+                serde_json::to_string(&pivot)?
+            ],
         )?;
-        ids.push(db.last_insert_rowid());
+        tabs.push((db.last_insert_rowid(), pivot));
     }
-    Ok(ids)
+    Ok(tabs)
 }
 
 /// Does the result tab `tab_id` belong to editor `editor_id`? A refresh only
@@ -533,6 +589,7 @@ pub fn routes() -> Router<AppState> {
             "/api/results/{id}",
             put(update_result).delete(delete_result),
         )
+        .route("/api/results/{id}/pivot", put(update_pivot))
 }
 
 /// `GET /api/editors`: open editors, in order.
@@ -664,6 +721,20 @@ async fn update_result(
     no_content_or_not_found(found)
 }
 
+/// `PUT /api/results/{id}/pivot`: saves the configuration of the Pivoteur of
+/// a result tab.
+async fn update_pivot(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path(id): Path<i64>,
+    Json(pivot): Json<TabPivot>,
+) -> Result<StatusCode, ApiError> {
+    let found = state
+        .with_db(move |db, _| update_result_pivot(db, user.id, id, &pivot))
+        .await?;
+    no_content_or_not_found(found)
+}
+
 /// `DELETE /api/results/{id}`: deletes a result tab.
 async fn delete_result(
     State(state): State<AppState>,
@@ -680,6 +751,7 @@ async fn delete_result(
 mod tests {
     use super::*;
     use crate::store;
+    use crate::tab_pivot::{DatePrecision, PivotConfig, PivotLevel};
 
     /// Test database with one user.
     fn setup() -> (Connection, i64) {
@@ -747,12 +819,15 @@ mod tests {
     fn keeps_pinned_result_tabs_when_a_batch_starts() {
         let (db, user_id) = setup();
         let editor = create(&db, user_id, &NewEditor::default()).unwrap();
-        let first = start_batch(
+        let first: Vec<i64> = start_batch(
             &db,
             editor.id,
             &[(0, "SELECT 1".into()), (1, "SELECT 2".into())],
         )
-        .unwrap();
+        .unwrap()
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect();
         let result = SavedResult {
             started: true,
             done: true,
@@ -766,19 +841,19 @@ mod tests {
         };
         assert!(update_result_tab(&db, user_id, first[0], &pin).unwrap());
 
-        let second = start_batch(&db, editor.id, &[(0, "SELECT 3".into())]).unwrap();
-        assert!(has_result_tab(&db, editor.id, second[0]).unwrap());
-        assert!(!has_result_tab(&db, editor.id, second[0] + 1).unwrap());
-        assert!(!has_result_tab(&db, editor.id + 1, second[0]).unwrap());
+        let second = start_batch(&db, editor.id, &[(0, "SELECT 3".into())]).unwrap()[0].0;
+        assert!(has_result_tab(&db, editor.id, second).unwrap());
+        assert!(!has_result_tab(&db, editor.id, second + 1).unwrap());
+        assert!(!has_result_tab(&db, editor.id + 1, second).unwrap());
         let tabs = results_of(&db, user_id, editor.id).unwrap().unwrap();
         assert_eq!(
             tabs.iter().map(|t| t.id).collect::<Vec<_>>(),
-            [first[0], second[0]]
+            [first[0], second]
         );
         assert_eq!(tabs[0].rows, [vec![Some("1".to_string())]]);
         assert!(tabs[0].result.done && tabs[0].pinned);
 
-        assert!(delete_result_tab(&db, user_id, second[0]).unwrap());
+        assert!(delete_result_tab(&db, user_id, second).unwrap());
         assert_eq!(
             results_of(&db, user_id, editor.id).unwrap().unwrap().len(),
             1
@@ -789,5 +864,49 @@ mod tests {
         );
         let other = store::ensure_user(&db, "other@example.com").unwrap();
         assert!(results_of(&db, other, editor.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn saves_the_pivot_of_a_tab_and_carries_it_over_to_the_tab_that_replaces_it() {
+        let (db, user_id) = setup();
+        let editor = create(&db, user_id, &NewEditor::default()).unwrap();
+        let pivot = TabPivot {
+            fields: vec!["region".to_string()],
+            config: PivotConfig {
+                rows: vec![PivotLevel {
+                    column: 0,
+                    name: "Région".to_string(),
+                    precision: DatePrecision::Month,
+                }],
+                ..PivotConfig::default()
+            },
+        };
+        let queries = [(0, "SELECT region FROM t".to_string())];
+        let (first, empty) = start_batch(&db, editor.id, &queries).unwrap().remove(0);
+        assert_eq!(empty, TabPivot::default());
+
+        let other = store::ensure_user(&db, "other@example.com").unwrap();
+        assert!(!update_result_pivot(&db, other, first, &pivot).unwrap());
+        assert!(update_result_pivot(&db, user_id, first, &pivot).unwrap());
+        let tabs = results_of(&db, user_id, editor.id).unwrap().unwrap();
+        assert_eq!(tabs[0].pivot, pivot);
+
+        // A pinned tab keeps its configuration, and gives it to no other.
+        let (second, carried) = start_batch(&db, editor.id, &queries).unwrap().remove(0);
+        assert_eq!(carried, pivot);
+        let pin = ResultTabUpdate {
+            name: String::new(),
+            pinned: true,
+        };
+        assert!(update_result_tab(&db, user_id, second, &pin).unwrap());
+        let (third, none) = start_batch(&db, editor.id, &queries).unwrap().remove(0);
+        assert_eq!(none, TabPivot::default());
+        let tabs = results_of(&db, user_id, editor.id).unwrap().unwrap();
+        assert_eq!(
+            tabs.iter()
+                .map(|t| (t.id, t.pivot.clone()))
+                .collect::<Vec<_>>(),
+            [(second, pivot), (third, TabPivot::default())]
+        );
     }
 }

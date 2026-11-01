@@ -41,7 +41,8 @@ env:
 
 jobs:
   # Vue interface: formatting, lint, types, tests, then build of web/dist,
-  # passed on to the builds of the executable.
+  # passed on to the builds of the executable. Vite builds the engine of the
+  # Pivoteur first (crates/web-engine, compiled to WebAssembly by Cargo).
   web:
     name: Interface
     runs-on: ubuntu-latest
@@ -55,6 +56,9 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
+      # Installs the version pinned by rust-toolchain.toml, with its
+      # WebAssembly target.
+      - run: rustup toolchain install
       - run: npm ci
       # The project's lint and format scripts fix the files (--fix, --write):
       # the CI calls the tools in check mode.
