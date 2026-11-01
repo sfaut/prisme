@@ -502,7 +502,8 @@ export interface WorkerState {
  *
  * @param state State of the Worker.
  * @param message Message of the page.
- * @returns The answer to send back, `null` for a message without an answer. A refusal is an answer
+ * @returns
+ *     The answer to send back, `null` for a message without an answer. A refusal is an answer
  *     too, attached to the id of the message, `null` for a message without an id.
  */
 export function answerMessage(
