@@ -310,6 +310,16 @@ Each generates the same rows (Mulberry32 generator, seed 42, `js/common.mjs` for
 
 The command checks that every side gives the same pivot as the native one (groups, sizes of the grouping sets, checksums of the states, grand total), and exits with 1 otherwise. It prints a summary table and writes the full results, with the machine, to `target/pivot-bench/results-<rows>.json`.
 
+### Parser of the Pivoteur
+
+`bench/parser/` measures `sqlparser` compiled to WebAssembly, as the Worker of the Pivoteur would run it on the expressions of its virtual columns and measures: size of the module, raw and compressed, time to compile and instantiate it, time of a parse. From the root of the repository; the command adds the WebAssembly target to the toolchain when missing:
+
+```
+node bench/parser/run.mjs
+```
+
+The command builds the module (package `parser-wasm`, `sqlparser` at the version and with the features of Prisme, generic dialect) twice, in the release profile of Prisme and in the `lto` profile of `bench/parser/Cargo.toml` (optimizations across crates). It then measures each module under Node in a process of its own (`bench/parser/measure.mjs`), so that its first parse starts cold: compilation, instantiation, first parse, first parse in a second module compiled from the same bytes, then each expression, best of 5 rounds of 1,000 parses. It checks that every module accepts the expressions of the Pivoteur and refuses the wrong texts, and exits with 1 otherwise. It prints a summary table and writes the results, with the machine, to `target/parser-bench/results.json`.
+
 ### Saved results
 
 `bench/reload/run.mjs` measures what a result of many rows costs on its way into a result tab, and when the page reads it again, on the real server: Prisme built in release, started on a throwaway data folder (`target/reload-bench/`), queries on the latest MariaDB LTS of the development servers. From the root of the repository, the development servers started (`docker compose up --detach --wait`) and the interface built (`npm run build` in `web/`):
@@ -553,6 +563,7 @@ web/               Vue interface
   src/stores/      shared state (connections, settings)
 bench/             benchmarks, outside the workspace
   prisme.mjs       Prisme on the real server, for the benchmarks that measure it
+  parser/          sqlparser compiled to WebAssembly: size of the module, time of a parse (run.mjs)
   pivot/           engine of the Pivoteur: native, WebAssembly, JavaScript (run.mjs)
   reload/          saved results: their save, and their reading again by the page (run.mjs)
   sql/             answers of the SQL engines to the same expressions, for docs/SQL-COMPARISON.md (run.mjs)
