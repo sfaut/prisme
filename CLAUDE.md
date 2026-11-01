@@ -52,6 +52,7 @@ crates/        Cargo workspace
   dialects/    analysis and rewriting per dialect: default limit, read / write, then function catalog and emitters
   splitter/    splitting queries per dialect (Ctrl+Enter)
   connectors/  common interface and one implementation per engine
+  pivot/       engine of the Pivoteur: groups, measures, totals, layout of the pivot table
   server/      notebook sessions, API, authentication
   store/       rows of a result in columns: text of the cells, dictionaries, numbers
 web/           Vue application
