@@ -6,7 +6,7 @@ import {
   type PivotLevel,
   addsNumbers,
   columnAt,
-  defaultMeasure,
+  defaultAggregate,
   elementLabel,
   emptyConfig,
   engineRequest,
@@ -46,13 +46,36 @@ function measure(aggregate: NamedMeasure['aggregate'], column: number, name = ''
   return { aggregate, column, name }
 }
 
-describe('defaultMeasure', () => {
+describe('defaultAggregate', () => {
+  const origin = (primary_key: boolean) => ({ schema: 's', table: 't', column: 'c', primary_key })
+
   it('sums a number and counts the other columns', () => {
-    expect(defaultMeasure(4, 'decimal')).toEqual(measure('sum', 4))
-    expect(defaultMeasure(2, 'integer')).toEqual(measure('sum', 2))
-    expect(defaultMeasure(2, 'float')).toEqual(measure('sum', 2))
-    expect(defaultMeasure(0, 'text')).toEqual(measure('count', 0))
-    expect(defaultMeasure(0, undefined)).toEqual(measure('count', 0))
+    expect(defaultAggregate({ family: 'decimal', name: 'DECIMAL(10,2)' }, false)).toBe('sum')
+    expect(defaultAggregate({ family: 'integer', name: 'INT' }, false)).toBe('sum')
+    expect(defaultAggregate({ family: 'float', name: 'DOUBLE' }, false)).toBe('sum')
+    expect(defaultAggregate({ family: 'text', name: 'TEXT' }, false)).toBe('count')
+    expect(defaultAggregate(undefined, false)).toBe('count')
+    expect(defaultAggregate({ family: 'integer', name: 'INT', origin: origin(false) }, false)).toBe(
+      'sum',
+    )
+  })
+
+  it('counts the rows for a primary key, whatever its type', () => {
+    expect(defaultAggregate({ family: 'integer', name: 'INT', origin: origin(true) }, false)).toBe(
+      'count_star',
+    )
+    expect(defaultAggregate({ family: 'text', name: 'CHAR(2)', origin: origin(true) }, false)).toBe(
+      'count_star',
+    )
+  })
+
+  it('counts the values of a foreign key, unless it is part of the primary key too', () => {
+    expect(defaultAggregate({ family: 'integer', name: 'INT', origin: origin(false) }, true)).toBe(
+      'count',
+    )
+    expect(defaultAggregate({ family: 'integer', name: 'INT', origin: origin(true) }, true)).toBe(
+      'count_star',
+    )
   })
 })
 
@@ -134,9 +157,9 @@ describe('withName', () => {
 
 describe('placeColumn', () => {
   it('adds a level or a measure at a position', () => {
-    let config = placeColumn(emptyConfig(), 0, 'text', { zone: 'rows', index: 0 }, null)
-    config = placeColumn(config, 1, 'text', { zone: 'rows', index: 0 }, null)
-    config = placeColumn(config, 4, 'decimal', { zone: 'measures', index: 9 }, null)
+    let config = placeColumn(emptyConfig(), 0, 'count', { zone: 'rows', index: 0 }, null)
+    config = placeColumn(config, 1, 'count', { zone: 'rows', index: 0 }, null)
+    config = placeColumn(config, 4, 'sum', { zone: 'measures', index: 9 }, null)
     expect(config).toEqual({
       rows: [level(1), level(0)],
       columns: [],
@@ -152,12 +175,12 @@ describe('placeColumn', () => {
       columns: [level(2)],
       measures: [],
     }
-    expect(placeColumn(config, 0, 'text', { zone: 'columns', index: 0 }, null)).toEqual({
+    expect(placeColumn(config, 0, 'count', { zone: 'columns', index: 0 }, null)).toEqual({
       rows: [level(1)],
       columns: [level(0, 'Région'), level(2)],
       measures: [],
     })
-    expect(placeColumn(config, 0, 'text', { zone: 'rows', index: 2 }, null).rows).toEqual([
+    expect(placeColumn(config, 0, 'count', { zone: 'rows', index: 2 }, null).rows).toEqual([
       level(1),
       level(0, 'Région'),
     ])
@@ -167,15 +190,15 @@ describe('placeColumn', () => {
     const config: PivotConfig = { rows: [level(0), level(1), level(2)], columns: [], measures: [] }
     const from = { zone: 'rows' as const, index: 0 }
     const columns = (moved: PivotConfig) => moved.rows.map((item) => item.column)
-    expect(columns(placeColumn(config, 0, 'text', { zone: 'rows', index: 2 }, from))).toEqual([
+    expect(columns(placeColumn(config, 0, 'count', { zone: 'rows', index: 2 }, from))).toEqual([
       1, 0, 2,
     ])
-    expect(columns(placeColumn(config, 0, 'text', { zone: 'rows', index: 3 }, from))).toEqual([
+    expect(columns(placeColumn(config, 0, 'count', { zone: 'rows', index: 3 }, from))).toEqual([
       1, 2, 0,
     ])
     expect(
       columns(
-        placeColumn(config, 2, 'text', { zone: 'rows', index: 0 }, { zone: 'rows', index: 2 }),
+        placeColumn(config, 2, 'count', { zone: 'rows', index: 0 }, { zone: 'rows', index: 2 }),
       ),
     ).toEqual([2, 0, 1])
   })
@@ -189,7 +212,7 @@ describe('placeColumn', () => {
     const moved = placeColumn(
       config,
       1,
-      'text',
+      'count',
       { zone: 'measures', index: 2 },
       { zone: 'measures', index: 0 },
     )
@@ -197,7 +220,7 @@ describe('placeColumn', () => {
     const fromLevel = placeColumn(
       config,
       0,
-      'text',
+      'count',
       { zone: 'measures', index: 0 },
       { zone: 'rows', index: 0 },
     )
@@ -209,7 +232,7 @@ describe('placeColumn', () => {
     const fromMeasure = placeColumn(
       config,
       4,
-      'decimal',
+      'sum',
       { zone: 'columns', index: 0 },
       { zone: 'measures', index: 1 },
     )

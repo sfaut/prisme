@@ -9,10 +9,9 @@
   being the outermost level (F-27). An element moves by dragging it, from
   one zone to another too, a level to the other axis by its menu too;
   released outside the zones, it leaves its zone (Escape cancels the drag).
-  A column dropped into the
-  measures gives `SUM` for a number, `COUNT` otherwise
-  (F-15); the menu of a measure changes its aggregate. A column is a level
-  once at most: placing it again on an axis moves it there. An element
+  A column dropped into the measures gives its default aggregate
+  (`defaultAggregate`, F-15); the menu of a measure changes it. A column is
+  a level once at most: placing it again on an axis moves it there. An element
   takes a name by its menu ("Nommer…") or a double click on its label
   (F-17): Enter confirms, Escape cancels, an empty name gives back its
   expression, which the tooltip of a named element recalls. The logic of
@@ -47,6 +46,7 @@ import {
   type PivotZone,
   type ZonePlace,
   addsNumbers,
+  defaultAggregate,
   elementExpression,
   elementLabel,
   measureExpression,
@@ -79,6 +79,10 @@ const props = defineProps<{
    * Mark of each column (`columnIcon`), absent without a type.
    */
   marks: (TypeMark | undefined)[]
+  /**
+   * Is each column part of a foreign key of its table?
+   */
+  foreignKeys: boolean[]
 }>()
 
 /**
@@ -150,7 +154,8 @@ const elements = computed<Record<PivotZone, ZoneElement[]>>(() => {
  * @param from Place of the moved element, `null` for a new one.
  */
 function place(column: number, to: ZonePlace, from: ZonePlace | null): void {
-  config.value = placeColumn(config.value, column, props.types[column]?.family, to, from)
+  const aggregate = defaultAggregate(props.types[column], props.foreignKeys[column] ?? false)
+  config.value = placeColumn(config.value, column, aggregate, to, from)
 }
 
 /**

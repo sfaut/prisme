@@ -12,6 +12,7 @@
  * (`engineRequest`) changes, a name changing only the labels.
  */
 
+import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { TypeFamily } from '@/api/generated/TypeFamily'
 
 import type { PivotMeasure, PivotRequest } from './pivotEngine'
@@ -137,14 +138,21 @@ export function addsNumbers(aggregate: PivotMeasure['aggregate']): boolean {
 }
 
 /**
- * Measure of a column dropped into the measures: `SUM` for a number, `COUNT` otherwise (F-15),
- * without a name.
+ * Aggregate of a column dropped into the measures. The sum of a key means nothing: `COUNT(*)` for
+ * a column of a primary key, `COUNT(col)` for a foreign key, which can be NULL. Otherwise `SUM`
+ * for a number, `COUNT` for the others (F-15).
  *
- * @param column Index of the column.
- * @param family Family of its type.
+ * @param type Type of the column; none for a result saved before its columns were typed.
+ * @param foreignKey Is the column part of a foreign key of its table?
  */
-export function defaultMeasure(column: number, family: TypeFamily | undefined): NamedMeasure {
-  return { aggregate: summable(family) ? 'sum' : 'count', column, name: '' }
+export function defaultAggregate(
+  type: ColumnTypeInfo | undefined,
+  foreignKey: boolean,
+): PivotMeasure['aggregate'] {
+  if (type?.origin?.primary_key) {
+    return 'count_star'
+  }
+  return summable(type?.family) && !foreignKey ? 'sum' : 'count'
 }
 
 /**
@@ -244,19 +252,19 @@ export function removeElement(config: PivotConfig, place: ZonePlace): PivotConfi
  * Places a column in a zone, at a position: a new element, or one moved from another place.
  *
  * A level leaves the axis where it was, if it was a level already, and keeps its name. A measure
- * moved stays the same measure, with its name; a column that becomes a measure takes its default
- * measure (`defaultMeasure`), and a measure that becomes a level loses its name.
+ * moved stays the same measure, with its name; a column that becomes a measure takes the aggregate
+ * given, and a measure that becomes a level loses its name.
  *
  * @param config Configuration.
  * @param column Index of the column.
- * @param family Family of its type.
+ * @param aggregate Aggregate of the column if it becomes a measure (`defaultAggregate`).
  * @param to Zone and position of the element; a position beyond the end places it last.
  * @param from Place of the moved element, `null` for a new element.
  */
 export function placeColumn(
   config: PivotConfig,
   column: number,
-  family: TypeFamily | undefined,
+  aggregate: PivotMeasure['aggregate'],
   to: ZonePlace,
   from: ZonePlace | null,
 ): PivotConfig {
@@ -290,7 +298,7 @@ export function placeColumn(
     columns: to.zone === 'columns' ? insert(result.columns, newLevel) : result.columns,
     measures:
       to.zone === 'measures'
-        ? insert(result.measures, moved ?? defaultMeasure(column, family))
+        ? insert(result.measures, moved ?? { aggregate, column, name: '' })
         : result.measures,
   }
 }

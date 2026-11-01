@@ -22,6 +22,7 @@ import { markRaw, ref, shallowRef, triggerRef } from 'vue'
 
 import { streamCatalog } from '@/api/navigator'
 import type { CatalogEvent } from '@/api/generated/CatalogEvent'
+import type { ColumnOrigin } from '@/api/generated/ColumnOrigin'
 import type { Flavor } from '@/api/generated/Flavor'
 import type { EventInfo } from '@/api/generated/EventInfo'
 import type { RoutineInfo } from '@/api/generated/RoutineInfo'
@@ -98,6 +99,26 @@ export function emptyCatalog(): Catalog {
  */
 function emptyDetails(table: string): TableDetails {
   return { table, columns: [], indexes: [], foreign_keys: [], triggers: [] }
+}
+
+/**
+ * Is a column of a table part of a foreign key of that table? `false` as long as the catalog has
+ * not received the details of the table, and for a name it does not know: a view, or the alias of
+ * a derived table.
+ *
+ * @param catalog Catalog of the connection, absent if it was never read.
+ * @param origin Column of a table, absent for an expression.
+ */
+export function isForeignKey(
+  catalog: Catalog | undefined,
+  origin: ColumnOrigin | undefined,
+): boolean {
+  if (catalog === undefined || origin === undefined) {
+    return false
+  }
+  const schema = catalog.schemas.find((item) => item.name === origin.schema)
+  const table = schema?.tables?.find((item) => item.name === origin.table)
+  return table?.details?.foreign_keys.some((key) => key.columns.includes(origin.column)) ?? false
 }
 
 /**

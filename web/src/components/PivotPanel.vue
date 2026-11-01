@@ -12,7 +12,9 @@
   The engine runs in a Worker of the page (`pivotClient.ts`), one per
   result: the rows are copied once the query has ended (F-07), while the
   panel is open; folded, the panel computes nothing and stops its Worker
-  (F-02). Each change of the configuration or of the filter of the grid
+  (F-02). The foreign keys of the columns, for their default measure, come
+  from the catalog of the connection, read while the panel is open, without
+  waiting for it. Each change of the configuration or of the filter of the grid
   computes the table again; a new name only changes its labels. A refusal
   of the engine shows its message above the table, which keeps its last
   computation (F-22); a Worker that stops is replaced at the next change. A
@@ -48,6 +50,7 @@ import {
 import { type PivotFailure, type PivotRequest, type PivotWindow, PivotError } from './pivotEngine'
 import { TabConfigs } from './pivotTabs'
 import { visibleRows } from './resultGrid'
+import { isForeignKey, useCatalogStore } from '@/stores/catalog'
 import { columnIcon } from './typeIcons'
 import UiAlert from './ui/UiAlert.vue'
 import UiStatusBar from './ui/UiStatusBar.vue'
@@ -66,6 +69,10 @@ const props = defineProps<{
    * Is the panel unfolded?
    */
   open: boolean
+  /**
+   * Connection of the cell.
+   */
+  connectionId: number
 }>()
 
 const emit = defineEmits<{
@@ -175,6 +182,27 @@ const marks = computed(() => {
     const content = type.family === 'text' ? detectContent(toRaw(shown.rows), column) : null
     return columnIcon(type, content)
   })
+})
+
+const catalog = useCatalogStore()
+
+// Without a catalog, a foreign key takes the measure of any other column.
+watch(
+  source,
+  (shown) => {
+    if (shown !== null) {
+      catalog.load(props.connectionId).catch(() => {})
+    }
+  },
+  { immediate: true },
+)
+
+/**
+ * Is each column part of a foreign key of its table?
+ */
+const foreignKeys = computed(() => {
+  const known = catalog.catalogOf(props.connectionId)
+  return (result.value?.columnTypes ?? []).map((type) => isForeignKey(known, type.origin))
 })
 
 /**
@@ -425,6 +453,7 @@ const groupsText = computed(() => {
         :names="result?.columns ?? []"
         :types="result?.columnTypes ?? []"
         :marks="marks"
+        :foreign-keys="foreignKeys"
       />
       <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
         <ui-alert v-if="failure" tone="error" :title="failure" />

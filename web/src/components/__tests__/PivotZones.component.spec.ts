@@ -37,6 +37,7 @@ function mountZones() {
       names: NAMES,
       types: [],
       marks: [],
+      foreignKeys: [],
       config: CONFIG,
       'onUpdate:config': (config: PivotConfig) => mounted.setProps({ config }),
     },
@@ -96,6 +97,32 @@ describe('PivotZones', () => {
     await mounted.findAll('section')[1]!.trigger('drop', { clientY: 0 })
     expect(shownConfig(mounted).rows).toEqual([])
     expect(shownConfig(mounted).columns).toEqual(CONFIG.rows)
+  })
+
+  it('gives a column dropped into the measures its default aggregate', async () => {
+    const mounted = mountZones()
+    await mounted.setProps({
+      types: [
+        {
+          family: 'integer',
+          name: 'INT',
+          origin: { schema: 's', table: 't', column: 'id', primary_key: true },
+        },
+        { family: 'integer', name: 'INT' },
+        { family: 'decimal', name: 'DECIMAL(10,2)' },
+      ],
+      foreignKeys: [false, true, false],
+    })
+    const zone = mounted.findAll('section')[2]!
+    for (const column of [0, 1]) {
+      await mounted.findAll('li[draggable="true"]')[column]!.trigger('dragstart')
+      await zone.trigger('drop', { clientY: 0 })
+    }
+    expect(shownConfig(mounted).measures.map(({ aggregate }) => aggregate)).toEqual([
+      'sum',
+      'count_star',
+      'count',
+    ])
   })
 
   it('ignores a column of the list released outside the zones', async () => {

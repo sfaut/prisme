@@ -1003,6 +1003,7 @@ defineExpose({
         :tab="shownTab"
         :tab-ids="tabIds"
         :open="!isCollapsed"
+        :connection-id="connection.id"
         @collapse="pivotSplit?.collapse()"
       />
       <panel-rail
