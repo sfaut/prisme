@@ -217,15 +217,15 @@ function elementItems(zone: PivotZone, index: number): MenuItem[] {
  * Aggregates a measure can take, with their icon.
  */
 const AGGREGATES: { aggregate: PivotMeasure['aggregate']; icon: Component }[] = [
-  { aggregate: 'sum', icon: Sigma },
-  { aggregate: 'sum_distinct', icon: SquareSigma },
+  { aggregate: 'count_star', icon: Asterisk },
   { aggregate: 'count', icon: Hash },
   { aggregate: 'count_distinct', icon: FingerprintPattern },
-  { aggregate: 'count_star', icon: Asterisk },
-  { aggregate: 'min', icon: ArrowDownToLine },
-  { aggregate: 'max', icon: ArrowUpToLine },
+  { aggregate: 'sum', icon: Sigma },
+  { aggregate: 'sum_distinct', icon: SquareSigma },
   { aggregate: 'avg', icon: Divide },
   { aggregate: 'avg_distinct', icon: SquareDivide },
+  { aggregate: 'min', icon: ArrowDownToLine },
+  { aggregate: 'max', icon: ArrowUpToLine },
 ]
 
 /**
