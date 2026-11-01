@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { join } from 'node:path'
+import { join, parse } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 
 import { type Plugin, defineConfig, normalizePath, searchForWorkspaceRoot } from 'vite'
@@ -107,6 +107,21 @@ function pivotEngine(): Plugin {
   }
 }
 
+/**
+ * Name of a compiled file in kebab-case, as the other files of `assets/`: the Worker takes its name
+ * from its source (`pivotWorker` gives `pivot-worker`), and the engine from the output of Cargo,
+ * without the prefix of the crates (`prisme_web_engine` gives `web-engine`).
+ *
+ * @param name Name given by the source, without its extension.
+ */
+function assetName(name: string): string {
+  return name
+    .replace(/^prisme_/, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replaceAll('_', '-')
+    .toLowerCase()
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -142,6 +157,15 @@ export default defineConfig({
             { name: 'vendor', test: /node_modules[\\/]/, priority: 10 },
           ],
         },
+      },
+    },
+  },
+  worker: {
+    rolldownOptions: {
+      output: {
+        entryFileNames: ({ name }) => `assets/${assetName(name)}-[hash].js`,
+        assetFileNames: ({ names }) =>
+          `assets/${assetName(parse(names[0] ?? 'asset').name)}-[hash][extname]`,
       },
     },
   },
