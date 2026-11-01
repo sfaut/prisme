@@ -39,6 +39,10 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Minor fixes: "clefs" (C-03), N-03, TypeScript block in English, checks and expected outputs of the acceptance, N-14, sources
 - ✅ Cases D1 to D35 decided by the maintainer
 - ✅ Decisions applied throughout the specification, typed literals written without a space (`DATE'2026-01-15'`)
+- ⬜ Types of the dialect: names, spellings in `CAST`, domains, families of the grid, literals, values outside their type
+- ⬜ Conversions: table of `CAST`, a text read where a date is expected, any value written where a text is built
+- ⬜ Types of the results of the operators, common type of mixed values
+- ⬜ Catalog written as prototypes, each with its case of conformance
 
 ## 4. Lots of the specification
 
