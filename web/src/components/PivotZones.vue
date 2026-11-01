@@ -10,7 +10,10 @@
   one zone to another too, or by its menu, which also removes it. A column
   dropped into the measures gives `SUM` for a number, `COUNT` otherwise
   (F-15); the menu of a measure changes its aggregate. A column is a level
-  once at most: placing it again on an axis moves it there. The logic of
+  once at most: placing it again on an axis moves it there. An element
+  takes a name by its menu ("Nommer…") or a double click on its label
+  (F-17): Enter confirms, Escape cancels, an empty name gives back its
+  expression, which the tooltip of a named element recalls. The logic of
   the zones is in `pivotConfig.ts`.
 -->
 <script setup lang="ts">
@@ -24,26 +27,31 @@ import {
   EllipsisVertical,
   FingerprintPattern,
   Hash,
+  PenLine,
   Plus,
   Rows3,
   Search,
   Sigma,
   X,
 } from '@lucide/vue'
-import { type Component, computed, ref } from 'vue'
+import { type Component, computed, nextTick, ref, useTemplateRef } from 'vue'
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 
 import {
+  type PivotConfig,
   type PivotZone,
   type ZonePlace,
-  measureLabel,
+  elementExpression,
+  elementLabel,
+  measureExpression,
   placeColumn,
   removeElement,
   summable,
   withAggregate,
+  withName,
 } from './pivotConfig'
-import type { PivotMeasure, PivotRequest } from './pivotEngine'
+import type { PivotMeasure } from './pivotEngine'
 import { dropPosition } from './resultGrid'
 import type { TypeMark } from './typeIcons'
 import type { MenuGroup, MenuItem } from './ui/menuItem'
@@ -71,7 +79,7 @@ const props = defineProps<{
 /**
  * Configuration of the tab shown, replaced as a whole on each change.
  */
-const config = defineModel<PivotRequest>('config', { required: true })
+const config = defineModel<PivotConfig>('config', { required: true })
 
 /**
  * Zones, in their order on screen, with their label and their icon.
@@ -106,24 +114,27 @@ interface ZoneElement {
    */
   column: number
   /**
-   * Label: the name of the column of a level, the expression of a measure.
+   * Label: its name, or its expression without one.
    */
   label: string
+  /**
+   * Expression: the name of the column of a level, the expression of a
+   * measure.
+   */
+  expression: string
 }
 
 /**
  * Elements of each zone.
  */
 const elements = computed<Record<PivotZone, ZoneElement[]>>(() => {
-  const level = (column: number) => ({ column, label: props.names[column] ?? '?' })
-  return {
-    rows: config.value.rows.map(level),
-    columns: config.value.columns.map(level),
-    measures: config.value.measures.map((measure) => ({
-      column: measure.column,
-      label: measureLabel(measure, props.names),
-    })),
-  }
+  const shown = (zone: PivotZone) =>
+    config.value[zone].map((element, index) => ({
+      column: element.column,
+      label: elementLabel(config.value, { zone, index }, props.names),
+      expression: elementExpression(config.value, { zone, index }, props.names),
+    }))
+  return { rows: shown('rows'), columns: shown('columns'), measures: shown('measures') }
 })
 
 /**
@@ -151,16 +162,22 @@ function addItems(column: number): MenuItem[] {
 }
 
 /**
- * Choices that move or remove an element.
+ * Choices that name, move or remove an element.
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
  */
-function placeItems(zone: PivotZone, index: number): MenuItem[] {
+function elementItems(zone: PivotZone, index: number): MenuItem[] {
   const column = elements.value[zone][index]!.column
   const from = { zone, index }
   const count = elements.value[zone].length
   const items: MenuItem[] = [
+    {
+      label: 'Nommer…',
+      icon: PenLine,
+      // The field takes the focus once the menu has closed (`onMenuClosed`).
+      onSelect: () => startNaming(from),
+    },
     {
       label: 'Monter',
       icon: ArrowUp,
@@ -202,7 +219,7 @@ const AGGREGATES: { aggregate: PivotMeasure['aggregate']; icon: Component }[] = 
 
 /**
  * Choices of the menu of an element: for a measure, its aggregate, then
- * its place.
+ * its name and its place.
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
@@ -215,7 +232,7 @@ function elementGroups(zone: PivotZone, index: number): MenuGroup[] {
     groups.push({
       label: 'Agrégat',
       items: AGGREGATES.map(({ aggregate, icon }) => ({
-        label: measureLabel({ aggregate, column: measure.column }, props.names),
+        label: measureExpression({ aggregate, column: measure.column }, props.names),
         icon: aggregate === measure.aggregate ? Check : icon,
         disabled: aggregate === 'sum' && !canSum,
         hint: aggregate === 'sum' && !canSum ? 'SUM demande une colonne de nombres' : undefined,
@@ -223,8 +240,90 @@ function elementGroups(zone: PivotZone, index: number): MenuGroup[] {
       })),
     })
   }
-  groups.push({ label: 'Élément', items: placeItems(zone, index) })
+  groups.push({ label: 'Élément', items: elementItems(zone, index) })
   return groups
+}
+
+/**
+ * Element being named, `null` without one.
+ */
+const naming = ref<ZonePlace | null>(null)
+
+/**
+ * Name being typed.
+ */
+const draft = ref('')
+
+/**
+ * Field of the name, the only one shown (`v-for`).
+ */
+const nameInputs = useTemplateRef<HTMLInputElement[]>('nameInput')
+
+/**
+ * Is this element being named?
+ *
+ * @param zone Zone of the element.
+ * @param index Position of the element.
+ */
+function isNaming(zone: PivotZone, index: number): boolean {
+  return naming.value?.zone === zone && naming.value.index === index
+}
+
+/**
+ * Makes the label of an element editable, with its current label.
+ *
+ * @param place Place of the element.
+ */
+function startNaming(place: ZonePlace): void {
+  draft.value = elements.value[place.zone][place.index]?.label ?? ''
+  naming.value = place
+}
+
+/**
+ * Focuses the field of the name, its text selected.
+ */
+function focusName(): void {
+  const input = nameInputs.value?.[0]
+  input?.focus()
+  input?.select()
+}
+
+/**
+ * Double click on the label of an element: names it at once.
+ *
+ * @param place Place of the element.
+ */
+async function nameOnDoubleClick(place: ZonePlace): Promise<void> {
+  startNaming(place)
+  await nextTick()
+  focusName()
+}
+
+/**
+ * Closing of the menu of an element: when "Nommer…" was chosen, the field
+ * of the name takes the focus, which the menu would give back to its
+ * button. The menu sends the event while it is removed, before the field
+ * is reachable: the focus waits for the end of the update.
+ *
+ * @param event Return of the focus to the button.
+ */
+async function onMenuClosed(event: Event): Promise<void> {
+  if (naming.value !== null) {
+    event.preventDefault()
+    await nextTick()
+    focusName()
+  }
+}
+
+/**
+ * Confirms the name typed.
+ */
+function commitName(): void {
+  const place = naming.value
+  if (place !== null) {
+    naming.value = null
+    config.value = withName(config.value, place, draft.value, props.names)
+  }
 }
 
 /**
@@ -404,7 +503,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
             data-element
             class="pivot-line pivot-element group"
             :class="markerClass(zone, index)"
-            draggable="true"
+            :draggable="!isNaming(zone, index)"
             @dragstart="onDragStart($event, element.column, { zone, index })"
             @dragend="onDragEnd"
           >
@@ -416,8 +515,27 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
                 <component :is="marks[element.column]" v-else class="size-4" />
               </template>
             </span>
-            <span class="min-w-0 flex-1 truncate">{{ element.label }}</span>
-            <ui-dropdown-menu :groups="elementGroups(zone, index)">
+            <input
+              v-if="isNaming(zone, index)"
+              ref="nameInput"
+              v-model="draft"
+              :aria-label="`Nom de ${element.expression}`"
+              class="h-7 min-w-0 flex-1 rounded-lg border border-line bg-surface px-1 text-base text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary/60"
+              @blur="commitName"
+              @keydown.stop
+              @keydown.enter.prevent="commitName"
+              @keydown.escape.prevent="naming = null"
+              @mousedown.stop
+            />
+            <span
+              v-else
+              class="min-w-0 flex-1 truncate"
+              v-tooltip="element.label === element.expression ? undefined : element.expression"
+              @dblclick="nameOnDoubleClick({ zone, index })"
+            >
+              {{ element.label }}
+            </span>
+            <ui-dropdown-menu :groups="elementGroups(zone, index)" @close-auto-focus="onMenuClosed">
               <ui-button
                 :icon="EllipsisVertical"
                 variant="ghost"

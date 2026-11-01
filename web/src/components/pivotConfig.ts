@@ -1,12 +1,15 @@
 /**
  * Configuration of the Pivoteur for a result tab: the columns of the result placed in the zones
- * Lignes, Colonnes and Mesures (`PivotZones.vue`), and the labels of their elements.
+ * Lignes, Colonnes and Mesures (`PivotZones.vue`), the names given to them, and the labels of
+ * their elements.
  *
  * In this first slice, a level is a column of the result, by its index, and a measure is
  * `COUNT(*)`, `COUNT(col)`, `COUNT(DISTINCT col)` or `SUM(col)`; the expressions come with the
- * parser. A column is a
- * level at most once, on one of the two axes: placing it again moves it. A measure can be placed
- * several times. Each change gives a new configuration, which the panel computes.
+ * parser. Each element can take a name, its alias (F-17), shown instead of its expression (F-12):
+ * the name of its column for a level. A column is a level at most once, on one of the two axes:
+ * placing it again moves it, with its name. A measure can be placed several times. Each change
+ * gives a new configuration; the panel computes again only when the request to the engine
+ * (`engineRequest`) changes, a name changing only the labels.
  */
 
 import type { TypeFamily } from '@/api/generated/TypeFamily'
@@ -33,9 +36,51 @@ export interface ZonePlace {
 }
 
 /**
+ * Level of the rows or of the columns.
+ */
+export interface PivotLevel {
+  /**
+   * Index of the column of the result.
+   */
+  column: number
+  /**
+   * Name given to the level, `''` without one: the level then shows the name of its column.
+   */
+  name: string
+}
+
+/**
+ * Measure of the configuration.
+ */
+export interface NamedMeasure extends PivotMeasure {
+  /**
+   * Name given to the measure, `''` without one: the measure then shows its expression.
+   */
+  name: string
+}
+
+/**
+ * Configuration of a tab: the elements of each zone, the outermost level first.
+ */
+export interface PivotConfig {
+  /**
+   * Levels of the rows.
+   */
+  rows: PivotLevel[]
+  /**
+   * Levels of the columns.
+   */
+  columns: PivotLevel[]
+  /**
+   * Measures, in the order of their zone.
+   */
+  measures: NamedMeasure[]
+}
+
+/**
  * Configuration without any element.
  */
-export function emptyConfig(): PivotRequest {
+export function emptyConfig(): PivotConfig {
   return { rows: [], columns: [], measures: [] }
 }
 
@@ -44,8 +89,31 @@ export function emptyConfig(): PivotRequest {
  *
  * @param config Configuration.
  */
-export function isEmptyConfig(config: PivotRequest): boolean {
+export function isEmptyConfig(config: PivotConfig): boolean {
   return config.rows.length === 0 && config.columns.length === 0 && config.measures.length === 0
+}
+
+/**
+ * Table to ask the engine for a configuration, without the names, which it does not read.
+ *
+ * @param config Configuration.
+ */
+export function engineRequest(config: PivotConfig): PivotRequest {
+  return {
+    rows: config.rows.map((level) => level.column),
+    columns: config.columns.map((level) => level.column),
+    measures: config.measures.map(({ aggregate, column }) => ({ aggregate, column })),
+  }
+}
+
+/**
+ * Do two requests ask for the same table?
+ *
+ * @param a Request.
+ * @param b Other request.
+ */
+export function sameRequest(a: PivotRequest, b: PivotRequest): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
 }
 
 /**
@@ -60,23 +128,23 @@ export function summable(family: TypeFamily | undefined): boolean {
 }
 
 /**
- * Measure of a column dropped into the measures: `SUM` for a number, `COUNT` otherwise (F-15).
+ * Measure of a column dropped into the measures: `SUM` for a number, `COUNT` otherwise (F-15),
+ * without a name.
  *
  * @param column Index of the column.
  * @param family Family of its type.
  */
-export function defaultMeasure(column: number, family: TypeFamily | undefined): PivotMeasure {
-  return { aggregate: summable(family) ? 'sum' : 'count', column }
+export function defaultMeasure(column: number, family: TypeFamily | undefined): NamedMeasure {
+  return { aggregate: summable(family) ? 'sum' : 'count', column, name: '' }
 }
 
 /**
- * Label of a measure, as its expression: `SUM(montant)`, `COUNT(ville)`,
- * `COUNT(DISTINCT ville)`, `COUNT(*)`.
+ * Expression of a measure: `SUM(montant)`, `COUNT(ville)`, `COUNT(DISTINCT ville)`, `COUNT(*)`.
  *
  * @param measure Measure.
  * @param names Names of the columns of the result.
  */
-export function measureLabel(measure: PivotMeasure, names: string[]): string {
+export function measureExpression(measure: PivotMeasure, names: string[]): string {
   const name = names[measure.column] ?? '?'
   switch (measure.aggregate) {
     case 'count_star':
@@ -91,15 +159,51 @@ export function measureLabel(measure: PivotMeasure, names: string[]): string {
 }
 
 /**
+ * Expression of an element: the name of the column of a level, the expression of a measure.
+ *
+ * @param config Configuration.
+ * @param place Place of the element.
+ * @param names Names of the columns of the result.
+ */
+export function elementExpression(config: PivotConfig, place: ZonePlace, names: string[]): string {
+  if (place.zone === 'measures') {
+    const measure = config.measures[place.index]
+    return measure === undefined ? '?' : measureExpression(measure, names)
+  }
+  return names[config[place.zone][place.index]?.column ?? -1] ?? '?'
+}
+
+/**
+ * Label of an element: its name, or its expression without one (F-12).
+ *
+ * @param config Configuration.
+ * @param place Place of the element.
+ * @param names Names of the columns of the result.
+ */
+export function elementLabel(config: PivotConfig, place: ZonePlace, names: string[]): string {
+  const name = config[place.zone][place.index]?.name ?? ''
+  return name === '' ? elementExpression(config, place, names) : name
+}
+
+/**
+ * Labels of the elements of a zone.
+ *
+ * @param config Configuration.
+ * @param zone Zone.
+ * @param names Names of the columns of the result.
+ */
+export function zoneLabels(config: PivotConfig, zone: PivotZone, names: string[]): string[] {
+  return config[zone].map((_, index) => elementLabel(config, { zone, index }, names))
+}
+
+/**
  * Column of an element of a zone.
  *
  * @param config Configuration.
  * @param place Place of the element.
  */
-export function columnAt(config: PivotRequest, place: ZonePlace): number | undefined {
-  return place.zone === 'measures'
-    ? config.measures[place.index]?.column
-    : config[place.zone][place.index]
+export function columnAt(config: PivotConfig, place: ZonePlace): number | undefined {
+  return config[place.zone][place.index]?.column
 }
 
 /**
@@ -108,7 +212,7 @@ export function columnAt(config: PivotRequest, place: ZonePlace): number | undef
  * @param config Configuration.
  * @param place Place of the element to remove.
  */
-export function removeElement(config: PivotRequest, place: ZonePlace): PivotRequest {
+export function removeElement(config: PivotConfig, place: ZonePlace): PivotConfig {
   const without = <T>(items: T[]) => items.filter((_, index) => index !== place.index)
   return {
     rows: place.zone === 'rows' ? without(config.rows) : config.rows,
@@ -120,8 +224,9 @@ export function removeElement(config: PivotRequest, place: ZonePlace): PivotRequ
 /**
  * Places a column in a zone, at a position: a new element, or one moved from another place.
  *
- * A level leaves the axis where it was, if it was a level already. A measure moved stays the
- * same measure; a column that becomes a measure takes its default measure (`defaultMeasure`).
+ * A level leaves the axis where it was, if it was a level already, and keeps its name. A measure
+ * moved stays the same measure, with its name; a column that becomes a measure takes its default
+ * measure (`defaultMeasure`), and a measure that becomes a level loses its name.
  *
  * @param config Configuration.
  * @param column Index of the column.
@@ -130,13 +235,14 @@ export function removeElement(config: PivotRequest, place: ZonePlace): PivotRequ
  * @param from Place of the moved element, `null` for a new element.
  */
 export function placeColumn(
-  config: PivotRequest,
+  config: PivotConfig,
   column: number,
   family: TypeFamily | undefined,
   to: ZonePlace,
   from: ZonePlace | null,
-): PivotRequest {
+): PivotConfig {
   const moved = from?.zone === 'measures' ? config.measures[from.index] : undefined
+  let level = from !== null && from.zone !== 'measures' ? config[from.zone][from.index] : undefined
   let result = config
   let index = to.index
   // Removing an element before the target, in the same zone, shifts the target.
@@ -151,16 +257,18 @@ export function placeColumn(
   }
   if (to.zone !== 'measures') {
     for (const zone of ['rows', 'columns'] as const) {
-      const existing = result[zone].indexOf(column)
+      const existing = result[zone].findIndex((item) => item.column === column)
       if (existing >= 0) {
+        level ??= result[zone][existing]
         remove({ zone, index: existing })
       }
     }
   }
   const insert = <T>(items: T[], item: T) => [...items.slice(0, index), item, ...items.slice(index)]
+  const newLevel = level ?? { column, name: '' }
   return {
-    rows: to.zone === 'rows' ? insert(result.rows, column) : result.rows,
-    columns: to.zone === 'columns' ? insert(result.columns, column) : result.columns,
+    rows: to.zone === 'rows' ? insert(result.rows, newLevel) : result.rows,
+    columns: to.zone === 'columns' ? insert(result.columns, newLevel) : result.columns,
     measures:
       to.zone === 'measures'
         ? insert(result.measures, moved ?? defaultMeasure(column, family))
@@ -169,21 +277,47 @@ export function placeColumn(
 }
 
 /**
- * Changes the aggregate of a measure.
+ * Changes the aggregate of a measure, which keeps its name.
  *
  * @param config Configuration.
  * @param index Position of the measure.
  * @param aggregate New aggregate.
  */
 export function withAggregate(
-  config: PivotRequest,
+  config: PivotConfig,
   index: number,
   aggregate: PivotMeasure['aggregate'],
-): PivotRequest {
+): PivotConfig {
   return {
     ...config,
     measures: config.measures.map((measure, position) =>
       position === index ? { ...measure, aggregate } : measure,
     ),
+  }
+}
+
+/**
+ * Names an element. A name empty, or equal to the expression of the element, removes its name:
+ * the element shows its expression again.
+ *
+ * @param config Configuration.
+ * @param place Place of the element.
+ * @param name Name typed.
+ * @param names Names of the columns of the result.
+ */
+export function withName(
+  config: PivotConfig,
+  place: ZonePlace,
+  name: string,
+  names: string[],
+): PivotConfig {
+  const trimmed = name.trim()
+  const kept = trimmed === elementExpression(config, place, names) ? '' : trimmed
+  const rename = <T extends { name: string }>(items: T[]) =>
+    items.map((item, index) => (index === place.index ? { ...item, name: kept } : item))
+  return {
+    rows: place.zone === 'rows' ? rename(config.rows) : config.rows,
+    columns: place.zone === 'columns' ? rename(config.columns) : config.columns,
+    measures: place.zone === 'measures' ? rename(config.measures) : config.measures,
   }
 }

@@ -54,7 +54,7 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ A field dropped into the measures gives `SUM` for a number, `COUNT` otherwise; a menu changes the measure
 - ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes
 - ✅ Measure `COUNT(DISTINCT col)` on any column: its distinct values as the levels group them, NULL left out; a total counts those of its whole group
-- ⬜ A measure, a level of the rows and a level of the columns take a name, shown in their zone and in the table (F-12, F-17): the levels in the corner, those of the columns on the row of their headers
+- ✅ A measure, a level of the rows and a level of the columns take a name, shown in their zone and in the table (F-12, F-17): the levels in the corner, those of the columns on the row of their headers
 - ⬜ A new run of the queries carries the configuration of each tab over to the tab that replaces it, at the same position, when the columns of its result are the same
 - ⬜ Checks of these additions: `cargo test`, tests of the interface, screen in light and dark modes
 

@@ -5,7 +5,9 @@
   an action, or is inactive, and possibly an explanation in its tooltip. A
   choice can open a submenu of choices instead (`UiMenuEntries.vue`). The
   choices come as a list, or gathered in groups, each under its heading and
-  apart from the previous one by a line.
+  apart from the previous one by a line. Closed, the menu gives the focus
+  back to its trigger, unless the parent prevents it (`closeAutoFocus`), to
+  give it to a field opened by a choice.
 -->
 <script setup lang="ts">
 import {
@@ -40,6 +42,14 @@ defineProps<{
    */
   groups?: MenuGroup[]
 }>()
+
+const emit = defineEmits<{
+  /**
+   * The menu closes and gives the focus back to its trigger, unless the
+   * event is prevented.
+   */
+  closeAutoFocus: [event: Event]
+}>()
 </script>
 
 <template>
@@ -52,6 +62,7 @@ defineProps<{
         align="end"
         :side-offset="OFFSET"
         :class="[MENU_PANEL, { 'flex flex-col gap-1': groups }]"
+        @close-auto-focus="emit('closeAutoFocus', $event)"
       >
         <ui-menu-entries v-if="items" :items="items" />
         <dropdown-menu-group

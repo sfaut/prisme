@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { PivotColumn } from '../pivotEngine'
-import { headerCells, headerRowCount, lineLabel } from '../pivotLayout'
+import { cornerRows, headerCells, headerRowCount, lineLabel } from '../pivotLayout'
 
 /**
  * Columns of the years and quarters of the example, each year closed by its subtotal, then the
@@ -92,6 +92,18 @@ describe('headerCells', () => {
       { row: 1, rowSpan: 1, column: 0, span: 1, text: 'T2', kind: 'value' },
       { row: 1, rowSpan: 1, column: 1, span: 1, text: 'Total', kind: 'total' },
     ])
+  })
+})
+
+describe('cornerRows', () => {
+  it('names each level of the columns on its row, and those of the lines on the last row', () => {
+    expect(cornerRows(3, ['region', 'ville'], ['annee', 'trimestre'])).toEqual([
+      { start: '', end: 'annee' },
+      { start: '', end: 'trimestre' },
+      { start: 'region / ville', end: '' },
+    ])
+    expect(cornerRows(1, ['Pays'], ['Statut'])).toEqual([{ start: 'Pays', end: 'Statut' }])
+    expect(cornerRows(1, [], [])).toEqual([{ start: '', end: '' }])
   })
 })
 

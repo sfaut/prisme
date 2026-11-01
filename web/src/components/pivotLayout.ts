@@ -5,7 +5,8 @@
  * The columns of a window that share a node at a level share its header cell there; the total of
  * a node reads `Total` on the level after its path, down to the last level. A single measure adds
  * no level to the headers (F-28), unless there is no column level: its name then heads its
- * column. The lines are in compact form (C-07): the subtotal of a group stands on the line of the
+ * column. The corner names the levels: those of the columns each on its row, those of the lines
+ * on the last row. The lines are in compact form (C-07): the subtotal of a group stands on the line of the
  * group, its label indented by its depth.
  */
 
@@ -124,6 +125,41 @@ export function headerCells(
     })
   }
   return cells
+}
+
+/**
+ * Row of the corner of the headers, on the left of a row of the headers.
+ */
+export interface CornerRow {
+  /**
+   * Names of the levels of the lines, at the start of the last row, above their labels; `''`
+   * on the other rows.
+   */
+  start: string
+  /**
+   * Name of the level of the columns of the row, at its end, against its values; `''` on the row
+   * of the measures.
+   */
+  end: string
+}
+
+/**
+ * Rows of the corner of the headers: the name of each level of the columns on its row, the names
+ * of the levels of the lines on the last row.
+ *
+ * @param rowCount Number of rows of the headers (`headerRowCount`).
+ * @param rowNames Names of the levels of the lines, the outermost first.
+ * @param columnNames Names of the levels of the columns, the outermost first.
+ */
+export function cornerRows(
+  rowCount: number,
+  rowNames: string[],
+  columnNames: string[],
+): CornerRow[] {
+  return Array.from({ length: rowCount }, (_, row) => ({
+    start: row === rowCount - 1 ? rowNames.join(' / ') : '',
+    end: columnNames[row] ?? '',
+  }))
 }
 
 /**

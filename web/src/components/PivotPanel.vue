@@ -12,10 +12,10 @@
   result: the rows are copied once the query has ended (F-07), while the
   panel is open; folded, the panel computes nothing and stops its Worker
   (F-02). Each change of the configuration or of the filter of the grid
-  computes the table again. A refusal of the engine shows its message above
-  the table, which keeps its last computation (F-22); a Worker that stops
-  is replaced at the next change. A result without columns, or in error,
-  has nothing to analyse (F-08).
+  computes the table again; a new name only changes its labels. A refusal
+  of the engine shows its message above the table, which keeps its last
+  computation (F-22); a Worker that stops is replaced at the next change. A
+  result without columns, or in error, has nothing to analyse (F-08).
 -->
 <script setup lang="ts">
 import { LoaderCircle } from '@lucide/vue'
@@ -35,7 +35,15 @@ import PanelHeader from './PanelHeader.vue'
 import PivotGrid from './PivotGrid.vue'
 import PivotZones from './PivotZones.vue'
 import { PivotClient, type PivotTable } from './pivotClient'
-import { emptyConfig, isEmptyConfig, measureLabel } from './pivotConfig'
+import {
+  type PivotConfig,
+  elementLabel,
+  emptyConfig,
+  engineRequest,
+  isEmptyConfig,
+  sameRequest,
+  zoneLabels,
+} from './pivotConfig'
 import { type PivotFailure, type PivotRequest, type PivotWindow, PivotError } from './pivotEngine'
 import { sameColumns, visibleRows } from './resultGrid'
 import { columnIcon } from './typeIcons'
@@ -103,7 +111,7 @@ interface TabConfig {
   /**
    * Configuration.
    */
-  config: PivotRequest
+  config: PivotConfig
 }
 
 /**
@@ -133,7 +141,7 @@ const NO_CONFIG = emptyConfig()
  * Configuration of the tab shown: none when the columns of its result have
  * changed.
  */
-const config = computed<PivotRequest>({
+const config = computed<PivotConfig>({
   get() {
     const entry = props.tab ? configs.get(props.tab.id) : undefined
     return entry && result.value && sameColumns(entry.columns, result.value.columns)
@@ -145,6 +153,15 @@ const config = computed<PivotRequest>({
       configs.set(props.tab.id, { columns: result.value.columns, config: value })
     }
   },
+})
+
+/**
+ * Table to ask the engine for the configuration shown. The same object
+ * while only the names change: the table is not computed again.
+ */
+const request = computed<PivotRequest>((previous) => {
+  const next = engineRequest(config.value)
+  return previous !== undefined && sameRequest(previous, next) ? previous : next
 })
 
 /**
@@ -189,9 +206,13 @@ const copying = ref(false)
 const computing = ref(false)
 
 /**
- * Table shown, with the configuration it was computed for.
+ * Table shown, with the request and the configuration it was computed for.
  */
-const shownTable = shallowRef<{ table: PivotTable; request: PivotRequest } | null>(null)
+const shownTable = shallowRef<{
+  table: PivotTable
+  request: PivotRequest
+  config: PivotConfig
+} | null>(null)
 
 /**
  * Message of the last refusal of the engine, `null` without one.
@@ -256,16 +277,16 @@ function sendKept(current: PivotClient, shown: QueryResult): void {
  * Message of a refusal of the engine, in French.
  *
  * @param refusal Refusal of the engine.
- * @param request Configuration refused.
+ * @param refused Configuration refused.
  */
-function refusalText(refusal: PivotFailure, request: PivotRequest): string {
+function refusalText(refusal: PivotFailure, refused: PivotConfig): string {
   const names = result.value?.columns ?? []
   const column = refusal.column === undefined ? '?' : (names[refusal.column] ?? '?')
   const row = refusal.row === undefined ? '?' : (refusal.row + 1).toLocaleString('fr-FR')
   const measure =
-    refusal.measure === undefined || request.measures[refusal.measure] === undefined
+    refusal.measure === undefined
       ? '?'
-      : measureLabel(request.measures[refusal.measure]!, names)
+      : elementLabel(refused, { zone: 'measures', index: refusal.measure }, names)
   switch (refusal.kind) {
     case 'invalid_number':
       return `La valeur de la ligne ${row} de « ${column} » n’est pas un nombre.`
@@ -290,18 +311,19 @@ function refusalText(refusal: PivotFailure, request: PivotRequest): string {
  */
 async function compute(current: PivotClient): Promise<void> {
   const computation = ++computations
-  const request = config.value
+  const asked = request.value
+  const named = config.value
   computing.value = true
   try {
-    const table = await current.compute(request)
+    const table = await current.compute(asked)
     if (computation === computations) {
-      shownTable.value = { table, request }
+      shownTable.value = { table, request: asked, config: named }
       failure.value = null
     }
   } catch (error) {
     if (computation === computations && current === client) {
       failure.value =
-        error instanceof PivotError ? refusalText(error.failure, request) : errorMessage(error)
+        error instanceof PivotError ? refusalText(error.failure, named) : errorMessage(error)
       if (error instanceof PivotError && ['crash', 'module'].includes(error.failure.kind)) {
         closeClient()
       }
@@ -341,7 +363,7 @@ function update(): void {
   void compute(client)
 }
 
-watch([source, config, () => props.tab?.filter], update, { immediate: true })
+watch([source, request, () => props.tab?.filter], update, { immediate: true })
 
 /**
  * Reads a window of the table shown.
@@ -357,20 +379,25 @@ function readWindow(lines: [number, number], columns: [number, number]): Promise
 }
 
 /**
- * Label of each measure of the table shown.
+ * Configuration that names the elements of the table shown: the one
+ * shown, when only its names differ from that of the table.
  */
-const measureLabels = computed(() =>
-  (shownTable.value?.request.measures ?? []).map((measure) =>
-    measureLabel(measure, result.value?.columns ?? []),
-  ),
-)
+const tableConfig = computed(() => {
+  const shown = shownTable.value
+  return shown === null || shown.request === request.value ? config.value : shown.config
+})
 
 /**
- * Names of the levels of the lines of the table shown.
+ * Labels of the measures and names of the levels of the table shown.
  */
-const rowNames = computed(() =>
-  (shownTable.value?.request.rows ?? []).map((column) => result.value?.columns[column] ?? '?'),
-)
+const tableLabels = computed(() => {
+  const names = result.value?.columns ?? []
+  return {
+    measures: zoneLabels(tableConfig.value, 'measures', names),
+    rows: zoneLabels(tableConfig.value, 'rows', names),
+    columns: zoneLabels(tableConfig.value, 'columns', names),
+  }
+})
 
 /**
  * Rows taken into account, out of those of the result when the filter of
@@ -412,8 +439,9 @@ const groupsText = computed(() => {
           v-if="shownTable"
           :table="shownTable.table.id"
           :shape="shownTable.table.shape"
-          :measure-labels="measureLabels"
-          :row-names="rowNames"
+          :measure-labels="tableLabels.measures"
+          :row-names="tableLabels.rows"
+          :column-names="tableLabels.columns"
           :read="readWindow"
         />
         <p

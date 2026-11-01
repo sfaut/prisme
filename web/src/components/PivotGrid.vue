@@ -4,7 +4,10 @@
   exist in the page, read from the Worker by windows (`read`). The
   headers of the column levels stay on top when the table scrolls, the
   labels of the lines on the left (C-10). The label of a group of columns
-  stands at its start, and stays in sight while one of its columns is.
+  stands at its start, and stays in sight while one of its columns is. The
+  corner names the levels: each level of the columns at the end of its
+  row, against its values, the levels of the lines at the start of the
+  last row, above their labels.
 
   The lines are in compact form (C-07): one column of labels, indented by
   depth, the subtotal of a group on its line, the grand total last. Each
@@ -20,7 +23,7 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, 
 import { cssPixels } from '@/cssLength'
 
 import type { PivotShape, PivotWindow } from './pivotEngine'
-import { hasMeasureRow, headerCells, headerRowCount, lineLabel } from './pivotLayout'
+import { cornerRows, headerCells, headerRowCount, lineLabel } from './pivotLayout'
 import { NULL_TEXT, drawnRange } from './resultGrid'
 
 const props = defineProps<{
@@ -40,6 +43,10 @@ const props = defineProps<{
    * Names of the levels of the lines, the outermost first.
    */
   rowNames: string[]
+  /**
+   * Names of the levels of the columns, the outermost first.
+   */
+  columnNames: string[]
   /**
    * Reads a window of the table: lines and columns, start included, end
    * excluded.
@@ -258,17 +265,9 @@ const headers = computed(() =>
 )
 
 /**
- * Label of the single measure, on top of the corner, when no row of the
- * headers names it and the corner has room for two lines: the zone
- * Mesures names it otherwise.
+ * Rows of the corner, with the names of the levels.
  */
-const cornerMeasure = computed(() =>
-  props.measureLabels.length === 1 &&
-  !hasMeasureRow(props.shape.columnLevels, 1) &&
-  headerRows.value >= 2
-    ? props.measureLabels[0]
-    : null,
-)
+const corner = computed(() => cornerRows(headerRows.value, props.rowNames, props.columnNames))
 
 /**
  * Lines of the window, with their position in the table.
@@ -303,8 +302,10 @@ const lines = computed(() =>
         class="pivot-corner"
         :style="{ gridRow: `1 / span ${headerRows}`, gridColumn: 1 }"
       >
-        <span v-if="cornerMeasure" class="truncate text-fg-secondary">{{ cornerMeasure }}</span>
-        <span class="truncate">{{ rowNames.join(' / ') }}</span>
+        <div v-for="(row, index) in corner" :key="index" class="pivot-corner-row">
+          <span class="pivot-corner-text">{{ row.start }}</span>
+          <span class="pivot-corner-text">{{ row.end }}</span>
+        </div>
       </div>
       <div
         v-for="cell in headers"
@@ -376,7 +377,8 @@ const lines = computed(() =>
  */
 .pivot-label,
 .pivot-cell,
-.pivot-head-text {
+.pivot-head-text,
+.pivot-corner-text {
   overflow: hidden;
   align-content: center;
   text-overflow: ellipsis;
@@ -445,21 +447,30 @@ const lines = computed(() =>
   }
 }
 
-/* Corner: the single measure on top, the names of the levels of the lines
-   at the bottom; on the left of the headers when they scroll sideways. */
+/* Corner: a row facing each row of the headers (`subgrid`), with the
+   names of the levels; on the left of the headers when they scroll
+   sideways. */
 .pivot-corner {
   position: sticky;
   inset-inline-start: 0;
   z-index: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: --spacing(1);
-  padding: --spacing(1);
+  display: grid;
+  grid-template-rows: subgrid;
+  padding-inline: --spacing(1);
   border-block-end: var(--line-width) solid var(--color-line);
   border-inline-end: var(--line-width) solid var(--color-line);
   background: var(--color-surface-raised);
   font-weight: 600;
+}
+
+/* Names of the levels of the lines at the start of a row, that of a
+   level of the columns at its end; each one shrinks with an ellipsis
+   when the corner is too narrow for both. */
+.pivot-corner-row {
+  display: flex;
+  justify-content: space-between;
+  gap: --spacing(2);
+  min-inline-size: 0;
 }
 
 .pivot-body {
