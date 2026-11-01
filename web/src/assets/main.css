@@ -161,6 +161,12 @@
   --grid-estimated-max-width: --spacing(120);
   --grid-fitted-max-width: --spacing(240);
 
+  /* Pivot table of the Pivoteur (`PivotGrid.vue`), whose widths the code
+     reads to draw only the visible columns: width of the labels of the
+     lines, and of each column of values. */
+  --pivot-label-width: --spacing(60);
+  --pivot-column-width: --spacing(36);
+
   /* Thickness of the progress bar drawn on each result tab: a stroke,
      thinner than any step of the scale. */
   --tab-progress-height: 2px;
@@ -188,8 +194,13 @@
      Reka UI scales them together to the cell's height, so that they set a
      share, a third for the editor. Smallest editor (buttons and a few lines) and
      result list (tabs, a few rows and the line under the grid); smallest
-     area of the editors: both, plus the tab bar of the editors, the padding
-     and the gaps. Default and smallest height of the console. */
+     area of the editors: both, plus the tab bar of the editors, the rail
+     of the folded Pivoteur, the padding and the gaps. Smallest height of
+     the panel of the Pivoteur, which starts folded and unfolds first at
+     this height: that of the result list, so that unfolding it in a low
+     window takes the room of the results down to their smallest height,
+     where a taller one would fold them. Its zones and its table scroll.
+     Default and smallest height of the console. */
   --navigator-width: --spacing(100);
   --navigator-min-width: --spacing(67);
   --explorer-width: --spacing(140);
@@ -202,7 +213,10 @@
   --results-height: --spacing(133);
   --editor-min-height: --spacing(32);
   --results-min-height: --spacing(67);
-  --editors-min-height: calc(var(--editor-min-height) + var(--results-min-height) + --spacing(24));
+  --editors-min-height: calc(
+    var(--editor-min-height) + var(--results-min-height) + var(--rail-size) + --spacing(24)
+  );
+  --pivot-min-height: var(--results-min-height);
   --console-height: --spacing(73);
   --console-min-height: --spacing(40);
 
@@ -331,6 +345,24 @@
 }
 
 @property --console-min-height {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --pivot-min-height {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --pivot-label-width {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --pivot-column-width {
   syntax: '<length>';
   inherits: true;
   initial-value: 0px;

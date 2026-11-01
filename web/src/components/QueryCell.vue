@@ -43,6 +43,10 @@
   the other. The padding of the sides is inside the panels: a panel clips its
   content at its edge, which may fall between two pixels, and would cut
   the left border of a field or of the grid set against it.
+  Under the results, the panel of the Pivoteur (`PivotPanel.vue`) analyses
+  the result of the tab shown. It starts folded, as a rail; it unfolds and
+  folds by its rail, by the button of its header, by a double click on the
+  line above it, or by a drag, as the other panels.
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
@@ -82,6 +86,8 @@ import { useCatalogStore } from '@/stores/catalog'
 import { useSettingsStore } from '@/stores/settings'
 import { cssPixels } from '@/cssLength'
 
+import PanelRail from './PanelRail.vue'
+import PivotPanel from './PivotPanel.vue'
 import QueryTabView from './QueryTabView.vue'
 import { cellLayoutId } from './cellLayout'
 import ResultTab from './ResultTab.vue'
@@ -178,10 +184,11 @@ const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
  * smallest editor, folded editor (the gap under the editors' tabs, which
  * leaves room for the grip of the line: the splitter clips what goes past
  * its edge); default and smallest results, folded results (their tabs and
- * the gap above them). The panels carry no padding: it would add to the size Reka
- * UI gives them (`flex-basis: 0`); their inner block has it. Reka UI scales
- * both default heights together to the cell's height: they set a share, a
- * third for the editor.
+ * the gap above them); smallest panel of the Pivoteur, and its rail, which
+ * is also its default height. The panels carry no padding: it would add to
+ * the size Reka UI gives them (`flex-basis: 0`); their inner block has it.
+ * Reka UI scales both default heights together to the cell's height: they
+ * set a share, a third for the editor.
  *
  * Fixed sizes: Reka UI's splitter only takes pixels or a percentage of the
  * group, so these theme lengths are read once, in pixels (`docs/DEVELOPER.md`, section "Lengths in pixels").
@@ -192,12 +199,16 @@ const EDITOR_FOLDED_HEIGHT = cssPixels('--editor-folded-height', 8)
 const RESULTS_HEIGHT = cssPixels('--results-height', 400)
 const RESULTS_MIN_HEIGHT = cssPixels('--results-min-height', 200)
 const RESULTS_FOLDED_HEIGHT = cssPixels('--tab-bar-height', 40)
+const PIVOT_MIN_HEIGHT = cssPixels('--pivot-min-height', 200)
+const RAIL_SIZE = cssPixels('--rail-size', 28)
 
 /**
- * Panels of the editor and of the results in the cell's splitter.
+ * Panels of the editor, of the results and of the Pivoteur in the cell's
+ * splitter.
  */
 const editorPanel = useTemplateRef<InstanceType<typeof SplitterPanel>>('editorPanel')
 const resultsPanel = useTemplateRef<InstanceType<typeof SplitterPanel>>('resultsPanel')
+const pivotSplit = useTemplateRef<InstanceType<typeof SplitterPanel>>('pivotSplit')
 
 /**
  * Folds or unfolds a panel of the cell; folding it first unfolds the other,
@@ -233,6 +244,17 @@ function toggleEditor(): void {
 }
 
 /**
+ * Folds or unfolds the panel of the Pivoteur.
+ */
+function togglePivot(): void {
+  if (pivotSplit.value?.isCollapsed) {
+    pivotSplit.value.expand()
+  } else {
+    pivotSplit.value?.collapse()
+  }
+}
+
+/**
  * Displayed tab: its id.
  */
 const selectedTab = ref<string | number>(0)
@@ -242,6 +264,12 @@ const selectedTab = ref<string | number>(0)
  * result tabs.
  */
 const shownTab = computed(() => state.tabs.find((tab) => tab.id === selectedTab.value))
+
+/**
+ * Ids of the result tabs, for the Pivoteur, which keeps a configuration
+ * per tab.
+ */
+const tabIds = computed(() => state.tabs.map((tab) => tab.id))
 
 /**
  * Mounted views of the tabs, by tab id: the view of the tab shown gives the
@@ -943,6 +971,43 @@ defineExpose({
           </tabs-content>
         </tabs-root>
       </div>
+    </splitter-panel>
+    <split-handle
+      tooltip="Glisser pour redimensionner le Pivoteur, double clic pour le replier ou le déplier"
+      @toggle="togglePivot"
+    />
+
+    <!--
+      Panel of the Pivoteur, folded by default: its rail. Folded, the panel
+      stays mounted, hidden, and keeps the configuration of each tab; it
+      computes nothing and stops its Worker.
+    -->
+    <splitter-panel
+      :id="`cell-${editorId}-pivot-panel`"
+      ref="pivotSplit"
+      v-slot="{ isCollapsed }"
+      :order="3"
+      size-unit="px"
+      :default-size="RAIL_SIZE"
+      :min-size="PIVOT_MIN_HEIGHT"
+      collapsible
+      :collapsed-size="RAIL_SIZE"
+      class="flex"
+    >
+      <pivot-panel
+        v-show="!isCollapsed"
+        :tab="shownTab"
+        :tab-ids="tabIds"
+        :open="!isCollapsed"
+        @collapse="pivotSplit?.collapse()"
+      />
+      <panel-rail
+        v-if="isCollapsed"
+        title="Pivoteur"
+        side="bottom"
+        class="flex-1"
+        @expand="pivotSplit?.expand()"
+      />
     </splitter-panel>
   </splitter-group>
 </template>

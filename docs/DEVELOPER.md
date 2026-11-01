@@ -187,11 +187,11 @@ The interface is built in lengths relative to the root, `:root` being fixed: ste
 
 | Dependency | API in pixels | Variables | Where |
 |---|---|---|---|
-| `reka-ui` 2.11.0 | `SplitterPanel`: `default-size`, `min-size`, `max-size`, `collapsed-size`, with `size-unit="px"`. The other unit, `%`, is relative to the group, not to the root: a theme length in `%` would have to be measured in pixels and computed again on each resize of the window. | `--navigator-width`, `--explorer-width`, `--editors-min-width`, `--console-height`, `--rail-size`, `--editor-height`, `--results-height`… | `App.vue`, `QueryCell.vue` |
+| `reka-ui` 2.11.0 | `SplitterPanel`: `default-size`, `min-size`, `max-size`, `collapsed-size`, with `size-unit="px"`. The other unit, `%`, is relative to the group, not to the root: a theme length in `%` would have to be measured in pixels and computed again on each resize of the window. | `--navigator-width`, `--explorer-width`, `--editors-min-width`, `--console-height`, `--rail-size`, `--editor-height`, `--results-height`, `--pivot-min-height`… | `App.vue`, `QueryCell.vue` |
 | `reka-ui` 2.11.0 | `side-offset` of the menus and lists (a number, passed to Floating UI). | `--popup-offset` | `UiSelect.vue`, `UiDropdownMenu.vue` |
 | `reka-ui` 2.11.0 | `estimate-size` of `TreeVirtualizer` (built on `@tanstack/vue-virtual`): height of a line of the tree, to turn the scroll position (in pixels) into the lines to draw. | `--row-height` | `ObjectNavigator.vue` |
 
-The pointer and the scroll position also give pixels. A column of the grid resized with the mouse converts its width into `rem` once, at the time of the drag (`resizedWidth` in `resultGrid.ts`). The result grid turns its scroll position into the rows to draw with the height of a row, read once (`--grid-row-height`, `drawnRange` in `resultGrid.ts`), and places these rows itself in CSS (`calc(var(--grid-row-height) * n)`).
+The pointer and the scroll position also give pixels. A column of the grid resized with the mouse converts its width into `rem` once, at the time of the drag (`resizedWidth` in `resultGrid.ts`). The result grid turns its scroll position into the rows to draw with the height of a row, read once (`--grid-row-height`, `drawnRange` in `resultGrid.ts`), and places these rows itself in CSS (`calc(var(--grid-row-height) * n)`). The pivot table of the Pivoteur does the same on both axes, with the height of a row of the grid and the widths of its columns of values and of labels (`--grid-row-height`, `--pivot-column-width`, `--pivot-label-width`, in `PivotGrid.vue`).
 
 In the code, each of these places carries a comment that starts with "Fixed size" and refers to this section.
 
