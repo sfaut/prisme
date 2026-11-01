@@ -39,7 +39,7 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Minor fixes: "clefs" (C-03), N-03, TypeScript block in English, checks and expected outputs of the acceptance, N-14, sources
 - ✅ Cases D1 to D35 decided by the maintainer
 - ✅ Decisions applied throughout the specification, typed literals written without a space (`DATE'2026-01-15'`)
-- ⬜ Dialect refocused: ANSI SQL over the rows of the grid for the lot 1, its extensions in the next lots; each lot types what it uses
+- ✅ Dialect refocused: ANSI SQL over the rows of the grid for the lot 1, its extensions in the next lots; each lot types what it uses
 
 ## 4. Lots of the specification
 
