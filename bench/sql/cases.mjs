@@ -276,6 +276,13 @@ export const CASES = [
     forms: { shared: '(SELECT GROUP_CONCAT(k) FROM (SELECT 1 AS k UNION ALL SELECT 2) AS t)' },
   },
   {
+    key: 'agg.group_concat_limit',
+    forms: {
+      shared:
+        "(SELECT GROUP_CONCAT(k ORDER BY k SEPARATOR ',' LIMIT 2 OFFSET 1) FROM (SELECT 'b' AS k UNION ALL SELECT 'a' UNION ALL SELECT 'c') AS t)",
+    },
+  },
+  {
     key: 'agg.cut',
     forms: {
       shared:
@@ -502,6 +509,16 @@ export const CASES = [
   {
     key: 'date.month_label_ansi',
     forms: { shared: "CAST(DATE '2026-01-15' AS VARCHAR(7) FORMAT 'YYYY-MM')" },
+  },
+  {
+    key: 'date.quarter_label',
+    forms: {
+      shared: null,
+      mysql: "DATE_FORMAT('2026-04-15', '%Y-T%Q')",
+      postgres: "TO_CHAR(DATE '2026-04-15', 'YYYY-\"T\"Q')",
+      duckdb: "STRFTIME(DATE '2026-04-15', '%Y-T%Q')",
+      sqlite: "STRFTIME('%Y-T%Q', '2026-04-15')",
+    },
   },
   // Rounding
   { key: 'round.half_exact', forms: { shared: 'ROUND(2.5)' } },

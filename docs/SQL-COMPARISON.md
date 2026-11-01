@@ -155,6 +155,7 @@ MySQL, MariaDB and SQLite take NULL as the smallest value, PostgreSQL as the lar
 | `agg.string_agg` | `STRING_AGG(k, ',' ORDER BY k)` | | error 1064 | error 1064 | `a,b` | `a,b` | `a,b` | `string_agg`, alias of `groupConcat`; its order is not documented |
 | `agg.group_concat` | `GROUP_CONCAT(k ORDER BY k SEPARATOR ',')` | | `a,b` | `a,b` | error: syntax | `a,b` (`GROUP_CONCAT(k, ',' ORDER BY k)`) | error: syntax | `group_concat`, alias of `groupConcat` |
 | `agg.default_separator` | `GROUP_CONCAT(k)` of 1 and 2 | | `1,2` | `1,2` | error: function `group_concat` does not exist | `1,2` | `1,2` | |
+| `agg.group_concat_limit` | `GROUP_CONCAT(k ORDER BY k SEPARATOR ',' LIMIT 2 OFFSET 1)` of `b`, `a`, `c` | | error 1064 | `b,c` | error: syntax | error: syntax | error: syntax | `limit` argument of `groupConcat`, without offset |
 | `agg.cut` | length of two texts of 600 characters aggregated | `ON OVERFLOW ERROR` by default, exception 22001 | `1024`, warning (`group_concat_max_len`) | `1201` | `1201` | `1201` | `1201` | its `limit` argument drops the values beyond |
 | `agg.filter` | `SUM(k) FILTER (WHERE k > 1)` | SQL:2003, feature T612 | error 1064 | error 1064 | `5` | `5` | `5` | accepted; `sumIf` |
 | `agg.avg_integers` | `AVG(k)` of 1 and 2 | exact numeric, precision and scale implementation-defined (SQL-92 6.5 GR) | `1.5000` (DECIMAL) | `1.5000` (DECIMAL) | `1.5000000000000000` (numeric) | `1.5` (REAL) | `1.5` (DOUBLE) | |
@@ -241,6 +242,7 @@ The standard rounds only in `CAST` and assignments, rounding or truncating as th
 | `date.trunc_month` | `DATE_TRUNC('month', DATE '2026-01-15')` | absent from G2016 | error 1046: read as a stored function | error 1305: no such function | `2026-01-01 00:00:00+00` (timestamp with time zone) | error: syntax | `2026-01-01 00:00:00` (TIMESTAMP) | `DATE_TRUNC`, alias of `dateTrunc`: a Date for a month |
 | `date.month_label` | the month `2026-01` as a text | `CAST(d AS VARCHAR(7) FORMAT 'YYYY-MM')` (SQL:2016) | `2026-01` (`DATE_FORMAT`, `%Y-%m`) | `2026-01` | `2026-01` (`TO_CHAR`, `YYYY-MM`) | `2026-01` (`STRFTIME`) | `2026-01` (`STRFTIME`) | `formatDateTime`, alias `DATE_FORMAT`, in the style of MySQL; `%M` is the name of the month since 23.4, the minutes before |
 | `date.month_label_ansi` | `CAST(DATE '2026-01-15' AS VARCHAR(7) FORMAT 'YYYY-MM')` | valid (SQL:2016, G2016) | error 1064 | error 1064 | error: syntax | error: syntax | error: syntax | |
+| `date.quarter_label` | the quarter `2026-T2` as a text | | `2026-TQ` (`DATE_FORMAT`, `%Y-T%Q`): `%Q` writes a `Q` | `2026-TQ` | `2026-T2` (`TO_CHAR`, `YYYY-"T"Q`) | NULL (`STRFTIME`, `%Q`) | error: unrecognized format `%Q` (`STRFTIME`) | `%Q` of `formatDateTime`: the quarter, 1 to 4 |
 
 Every engine measured compares a date with a text by reading the text as a date (SQLite compares two texts), and a date with a timestamp as two instants: a date upper bound excludes the hours of its day. The standard refuses both comparisons without a `CAST`.
 
