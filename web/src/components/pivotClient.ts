@@ -3,7 +3,9 @@
  * copy of its rows, then asked for tables and for the windows of the table shown.
  *
  * The rows go to the Worker in blocks, with a pause between two blocks so that the page keeps
- * answering. Closing the client stops the Worker, and with it the memory of its module.
+ * answering. The other messages wait for the end of the copy: a table asked during it is
+ * computed on all the rows. Closing the client stops the Worker, and with it the memory of its
+ * module.
  */
 
 import { toRaw } from 'vue'
@@ -114,7 +116,8 @@ export class PivotClient {
   private closed = false
 
   /**
-   * Copy of the rows of the result into the Worker: resolved once the Worker holds them all.
+   * Copy of the rows of the result into the Worker: resolved once the Worker holds them all,
+   * refused with the refusal of a block.
    */
   readonly loaded: Promise<void>
 
@@ -130,6 +133,8 @@ export class PivotClient {
   ) {
     worker.onmessage = (event) => this.receive(event.data)
     this.loaded = this.load(result)
+    // A refused copy is given to the calls that wait for it.
+    this.loaded.catch(() => undefined)
   }
 
   /**
@@ -199,23 +204,32 @@ export class PivotClient {
   }
 
   /**
-   * Keeps only the rows the filter of the grid keeps, for the next tables.
+   * Keeps only the rows the filter of the grid keeps, for the next tables, once the copy is
+   * over.
    *
    * @param rows Rows kept, in their order; `null` for all.
    */
   setKept(rows: number[] | null): void {
-    if (!this.closed) {
-      this.worker.postMessage({ type: 'kept', rows: rows === null ? null : Uint32Array.from(rows) })
-    }
+    const kept = rows === null ? null : Uint32Array.from(rows)
+    this.loaded.then(
+      () => {
+        if (!this.closed) {
+          this.worker.postMessage({ type: 'kept', rows: kept })
+        }
+      },
+      // The tables refuse the copy.
+      () => undefined,
+    )
   }
 
   /**
-   * Computes a table.
+   * Computes a table, once the copy is over.
    *
    * @param request Table asked.
-   * @throws {PivotError} If the engine refuses it.
+   * @throws {PivotError} If the engine refuses it, or refused the copy.
    */
   async compute(request: PivotRequest): Promise<PivotTable> {
+    await this.loaded
     const answer = await this.ask({ type: 'compute', id: this.nextId++, request })
     if (answer.type !== 'table') {
       throw new Error(`Pivot client: unexpected answer ${answer.type}`)
@@ -230,6 +244,7 @@ export class PivotClient {
    * @param columns Columns of values, start included, end excluded.
    */
   async window(lines: [number, number], columns: [number, number]): Promise<PivotWindow> {
+    await this.loaded
     const answer = await this.ask({ type: 'window', id: this.nextId++, lines, columns })
     if (answer.type !== 'window') {
       throw new Error(`Pivot client: unexpected answer ${answer.type}`)

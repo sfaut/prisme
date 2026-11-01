@@ -121,6 +121,18 @@ describe('PivotClient', () => {
     expect(window.cells).toEqual([['400000000'], ['400020000'], ['800020000']])
   })
 
+  it('computes a table asked during the copy on all the rows', async () => {
+    const rows: Cell[][] = Array.from({ length: BLOCK_ROWS * 3 }, () => ['a'])
+    const client = new PivotClient(new PageWorker(), result(rows, ['x']))
+    client.setKept(null)
+    const table = await client.compute({
+      rows: [],
+      columns: [],
+      measures: [{ aggregate: 'count_star', column: 0 }],
+    })
+    expect(table.shape.rows).toBe(BLOCK_ROWS * 3)
+  })
+
   it('takes the families missing from a saved result as other families', async () => {
     const client = new PivotClient(new PageWorker(), result([['1'], ['2']], ['n']))
     await client.loaded
