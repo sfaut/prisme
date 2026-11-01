@@ -51,6 +51,10 @@ export interface PivotWorkerPort {
  */
 export interface PivotTable {
   /**
+   * Id of the table, which its windows name.
+   */
+  id: number
+  /**
    * Shape of the table.
    */
   shape: PivotShape
@@ -230,22 +234,29 @@ export class PivotClient {
    */
   async compute(request: PivotRequest): Promise<PivotTable> {
     await this.loaded
-    const answer = await this.ask({ type: 'compute', id: this.nextId++, request })
+    const id = this.nextId++
+    const answer = await this.ask({ type: 'compute', id, request })
     if (answer.type !== 'table') {
       throw new Error(`Pivot client: unexpected answer ${answer.type}`)
     }
-    return { shape: answer.shape, durationMs: answer.durationMs }
+    return { id, shape: answer.shape, durationMs: answer.durationMs }
   }
 
   /**
-   * Reads a window of the last table computed.
+   * Reads a window of a table.
    *
+   * @param table Id of the table (`PivotTable`).
    * @param lines Lines, start included, end excluded.
    * @param columns Columns of values, start included, end excluded.
+   * @throws {PivotError} If another table has replaced it since (`stale`).
    */
-  async window(lines: [number, number], columns: [number, number]): Promise<PivotWindow> {
+  async window(
+    table: number,
+    lines: [number, number],
+    columns: [number, number],
+  ): Promise<PivotWindow> {
     await this.loaded
-    const answer = await this.ask({ type: 'window', id: this.nextId++, lines, columns })
+    const answer = await this.ask({ type: 'window', id: this.nextId++, table, lines, columns })
     if (answer.type !== 'window') {
       throw new Error(`Pivot client: unexpected answer ${answer.type}`)
     }

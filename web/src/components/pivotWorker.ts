@@ -24,7 +24,11 @@ import {
 const ready: Promise<WorkerState | PivotFailure> = fetch(engineUrl)
   .then((response) => response.arrayBuffer())
   .then((bytes) => WebAssembly.compile(bytes))
-  .then(async (module) => ({ engine: await PivotEngine.create(module), columns: 0 }))
+  .then(async (module) => ({
+    engine: await PivotEngine.create(module),
+    columns: 0,
+    table: null,
+  }))
   .catch((error: unknown) => ({ kind: 'module', detail: String(error) }))
 
 /**

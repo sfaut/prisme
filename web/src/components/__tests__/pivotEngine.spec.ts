@@ -224,7 +224,11 @@ describe('PivotEngine', () => {
 
 describe('answerMessage', () => {
   it('answers the messages of the page in their order', async () => {
-    const state: WorkerState = { engine: await PivotEngine.create(module), columns: 0 }
+    const state: WorkerState = {
+      engine: await PivotEngine.create(module),
+      columns: 0,
+      table: null,
+    }
     expect(answerMessage(state, { type: 'begin', families: EXAMPLE_FAMILIES })).toBeNull()
     expect(answerMessage(state, { type: 'rows', rows: EXAMPLE })).toBeNull()
     expect(answerMessage(state, { type: 'finish', id: 1 })).toEqual({ type: 'finished', id: 1 })
@@ -236,22 +240,30 @@ describe('answerMessage', () => {
     }
     const table = answerMessage(state, { type: 'compute', id: 2, request })
     expect(table).toMatchObject({ type: 'table', id: 2, shape: { lines: 1, columns: 1 } })
-    expect(answerMessage(state, { type: 'window', id: 3, lines: [0, 1], columns: [0, 1] })).toEqual(
-      {
-        type: 'window',
-        id: 3,
-        window: {
-          lines: [{ depth: 0, label: null }],
-          columns: [{ node: 0, path: [], total: false, measure: 0 }],
-          cells: [['10']],
-        },
+    expect(
+      answerMessage(state, { type: 'window', id: 3, table: 2, lines: [0, 1], columns: [0, 1] }),
+    ).toEqual({
+      type: 'window',
+      id: 3,
+      window: {
+        lines: [{ depth: 0, label: null }],
+        columns: [{ node: 0, path: [], total: false, measure: 0 }],
+        cells: [['10']],
       },
-    )
+    })
     const sumOfText: PivotRequest = { ...request, measures: [{ aggregate: 'sum', column: 0 }] }
     expect(answerMessage(state, { type: 'compute', id: 4, request: sumOfText })).toEqual({
       type: 'failure',
       id: 4,
       failure: { kind: 'not_numeric', measure: 0 },
     })
+    // The refused table leaves the previous one, whose windows are still read.
+    expect(
+      answerMessage(state, { type: 'window', id: 5, table: 2, lines: [0, 1], columns: [0, 1] }),
+    ).toMatchObject({ type: 'window', id: 5 })
+    answerMessage(state, { type: 'compute', id: 6, request })
+    expect(
+      answerMessage(state, { type: 'window', id: 7, table: 2, lines: [0, 1], columns: [0, 1] }),
+    ).toEqual({ type: 'failure', id: 7, failure: { kind: 'stale' } })
   })
 })

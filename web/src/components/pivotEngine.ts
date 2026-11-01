@@ -5,6 +5,9 @@
  *
  * The Worker holds one result: the page sends its rows once, block by block, then asks for
  * tables, and for the windows of the table it shows; the whole table never leaves the module.
+ * A window names its table, by the id of the message that computed it: a window asked for a
+ * table that another one has replaced since is refused (`stale`), and never mixes the shape of
+ * one table with the cells of the next.
  * The values of each level are ranked in the order of the grid (`compareCells`), once per column.
  */
 
@@ -146,7 +149,7 @@ export interface PivotFailure {
   /**
    * Kind of the refusal: `invalid_number`, `too_large`, `overflow`, `not_numeric`,
    * `unknown_column`, `unknown_row`, `ranks`, `block`, `not_loading`, `incomplete`,
-   * `no_result`, `no_table`, `request`.
+   * `no_result`, `no_table`, `request`, `stale` (a window of a replaced table).
    */
   kind: string
   /**
@@ -222,11 +225,12 @@ export type PivotRequestMessage =
     }
   | {
       /**
-       * Asks for a window of the last table computed: lines and columns, start included, end
-       * excluded.
+       * Asks for a window of a table, by the id of the message that computed it: lines and
+       * columns, start included, end excluded.
        */
       type: 'window'
       id: number
+      table: number
       lines: [number, number]
       columns: [number, number]
     }
@@ -495,6 +499,11 @@ export interface WorkerState {
    * Number of columns of the result.
    */
   columns: number
+  /**
+   * Id of the message that computed the table of the engine, `null` before any. A refused
+   * table leaves the previous one.
+   */
+  table: number | null
 }
 
 /**
@@ -516,6 +525,7 @@ export function answerMessage(
       case 'begin':
         state.engine.begin(message.families)
         state.columns = message.families.length
+        state.table = null
         return null
       case 'rows':
         state.engine.append(message.rows, state.columns)
@@ -529,9 +539,13 @@ export function answerMessage(
       case 'compute': {
         const started = performance.now()
         const shape = state.engine.compute(message.request)
+        state.table = message.id
         return { type: 'table', id: message.id, shape, durationMs: performance.now() - started }
       }
       case 'window':
+        if (message.table !== state.table) {
+          return { type: 'failure', id, failure: { kind: 'stale' } }
+        }
         return {
           type: 'window',
           id: message.id,

@@ -45,7 +45,11 @@ class PageWorker implements PivotWorkerPort {
   private queue: Promise<WorkerState>
 
   constructor() {
-    this.queue = PivotEngine.create(module).then((engine) => ({ engine, columns: 0 }))
+    this.queue = PivotEngine.create(module).then((engine) => ({
+      engine,
+      columns: 0,
+      table: null,
+    }))
   }
 
   postMessage(message: PivotRequestMessage): void {
@@ -115,7 +119,7 @@ describe('PivotClient', () => {
     })
     expect(table.shape).toMatchObject({ lines: 3, columns: 1, groups: 2, rows: count })
     expect(table.durationMs).toBeGreaterThanOrEqual(0)
-    const window = await client.window([0, 3], [0, 1])
+    const window = await client.window(table.id, [0, 3], [0, 1])
     // Sum of the odd numbers below 40,001, of the even ones, of all.
     expect(window.lines.map((line) => line.label)).toEqual(['impair', 'pair', null])
     expect(window.cells).toEqual([['400000000'], ['400020000'], ['800020000']])
@@ -131,6 +135,16 @@ describe('PivotClient', () => {
       measures: [{ aggregate: 'count_star', column: 0 }],
     })
     expect(table.shape.rows).toBe(BLOCK_ROWS * 3)
+  })
+
+  it('refuses a window of a table replaced since', async () => {
+    const client = new PivotClient(new PageWorker(), result([['a'], ['b']], ['x']))
+    const first = await client.compute({ rows: [0], columns: [], measures: [] })
+    const second = await client.compute({ rows: [], columns: [0], measures: [] })
+    await expect(client.window(first.id, [0, 1], [0, 1])).rejects.toEqual(
+      new PivotError({ kind: 'stale' }),
+    )
+    expect((await client.window(second.id, [0, 1], [0, 3])).columns).toHaveLength(3)
   })
 
   it('takes the families missing from a saved result as other families', async () => {
@@ -161,6 +175,6 @@ describe('PivotClient', () => {
     client.close()
     expect(worker.terminated).toBe(true)
     await expect(computing).rejects.toThrowError('Pivot client closed')
-    await expect(client.window([0, 1], [0, 1])).rejects.toThrowError('Pivot client closed')
+    await expect(client.window(1, [0, 1], [0, 1])).rejects.toThrowError('Pivot client closed')
   })
 })
