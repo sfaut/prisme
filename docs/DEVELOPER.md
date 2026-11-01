@@ -23,7 +23,7 @@ The backend is written in Rust (`tokio`, `axum`), the interface in Vue 3 and Typ
 
 | Tool | Role | Windows installation |
 |---|---|---|
-| Rust (through `rustup`) | Backend build. The exact version is pinned by `rust-toolchain.toml` and installed on the first `cargo` command. | `winget install Rustlang.Rustup` |
+| Rust (through `rustup`) | Backend build, and the engine of the Pivoteur compiled to WebAssembly for the interface. The exact version and the `wasm32-unknown-unknown` target are pinned by `rust-toolchain.toml` and installed on the first `cargo` command. | `winget install Rustlang.Rustup` |
 | Visual Studio Build Tools (C++) | MSVC linker, and build of the embedded SQLite. | `winget install Microsoft.VisualStudio.2022.BuildTools`, with the "Desktop development with C++" workload |
 | Node.js and npm | Vue interface. | `winget install OpenJS.NodeJS` |
 | Docker Desktop | The MySQL and MariaDB development servers (see "Development servers"). The engine must be running. | `winget install Docker.DockerDesktop` |
@@ -65,6 +65,8 @@ npm run dev
 ```
 
 Then open <http://localhost:5173>. The page on port 8484 keeps showing the last `npm run build` until the next one.
+
+`npm run dev`, `npm run build` and the Vitest tests first build the engine of the Pivoteur (`crates/web-engine`) with Cargo, for `wasm32-unknown-unknown` (`pivotEngine` in `web/vite.config.ts`): the page imports the module as `@pivot-engine?url`, which the development server serves from Cargo's target folder and the build copies into `web/dist`. After a change of `crates/store`, `crates/pivot` or `crates/web-engine`, restart `npm run dev`.
 
 ### Icons and actions
 
@@ -553,6 +555,9 @@ crates/
     tests/         integration tests on the development servers
   dialects/        query analysis: default limit, read / write, beautifier, keywords
   splitter/        splitting a text into queries, per dialect
+  store/           rows of a result in columns, for the Worker of the Pivoteur
+  pivot/           engine of the Pivoteur: groups, measures, totals, layout of the table
+  web-engine/      the engine compiled to WebAssembly, for the Worker of the page
   server/          the prisme executable: configuration, master key, internal database, API
     migrations/    numbered SQL migrations of the internal database
 web/               Vue interface
