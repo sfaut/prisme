@@ -329,6 +329,71 @@ export const CASES = [
     key: 'agg.avg_integers',
     forms: { shared: '(SELECT AVG(k) FROM (SELECT 1 AS k UNION ALL SELECT 2) AS t)' },
   },
+  {
+    key: 'agg.avg_decimal',
+    forms: { shared: '(SELECT AVG(k) FROM (SELECT 1.25 AS k UNION ALL SELECT 2.50) AS t)' },
+  },
+  {
+    key: 'agg.avg_rounded',
+    forms: {
+      shared: '(SELECT AVG(k) FROM (SELECT 1 AS k UNION ALL SELECT 2 UNION ALL SELECT 2) AS t)',
+    },
+  },
+  {
+    key: 'agg.avg_rounded_negative',
+    forms: {
+      shared: '(SELECT AVG(k) FROM (SELECT -1 AS k UNION ALL SELECT -2 UNION ALL SELECT -2) AS t)',
+    },
+  },
+  {
+    key: 'agg.avg_half',
+    forms: {
+      shared:
+        '(SELECT AVG(a.k * b.k * c.k * d.k * e.k) FROM (SELECT 0 AS k UNION ALL SELECT 1) AS a, (SELECT 0 AS k UNION ALL SELECT 1) AS b, (SELECT 0 AS k UNION ALL SELECT 1) AS c, (SELECT 0 AS k UNION ALL SELECT 1) AS d, (SELECT 0 AS k UNION ALL SELECT 1) AS e)',
+    },
+  },
+  {
+    key: 'agg.avg_no_value',
+    forms: { shared: '(SELECT AVG(k) FROM (SELECT CAST(NULL AS DECIMAL(5, 2)) AS k) AS t)' },
+  },
+  {
+    key: 'agg.avg_distinct',
+    forms: {
+      shared:
+        '(SELECT AVG(DISTINCT k) FROM (SELECT 1 AS k UNION ALL SELECT 1 UNION ALL SELECT 2) AS t)',
+    },
+  },
+  {
+    key: 'agg.sum_distinct',
+    forms: {
+      shared:
+        '(SELECT SUM(DISTINCT k) FROM (SELECT 1 AS k UNION ALL SELECT 1 UNION ALL SELECT 2) AS t)',
+    },
+  },
+  {
+    key: 'agg.sum_distinct_scale',
+    forms: { shared: '(SELECT SUM(DISTINCT k) FROM (SELECT 1.0 AS k UNION ALL SELECT 1.00) AS t)' },
+  },
+  {
+    key: 'agg.count_distinct_scale',
+    forms: {
+      shared: '(SELECT COUNT(DISTINCT k) FROM (SELECT 1.0 AS k UNION ALL SELECT 1.00) AS t)',
+    },
+  },
+  {
+    key: 'agg.min_text',
+    forms: {
+      shared:
+        "(SELECT MIN(k) FROM (SELECT 'b' AS k UNION ALL SELECT 'B' UNION ALL SELECT 'a' UNION ALL SELECT 'A') AS t)",
+    },
+  },
+  {
+    key: 'agg.max_text',
+    forms: {
+      shared:
+        "(SELECT MAX(k) FROM (SELECT 'b' AS k UNION ALL SELECT 'B' UNION ALL SELECT 'a' UNION ALL SELECT 'A') AS t)",
+    },
+  },
   // Lengths
   { key: 'len.length', forms: { shared: "LENGTH('é')" } },
   { key: 'len.char_length', forms: { shared: "CHAR_LENGTH('é')" } },

@@ -161,6 +161,19 @@ MySQL, MariaDB and SQLite take NULL as the smallest value, PostgreSQL as the lar
 | `agg.cut` | length of two texts of 600 characters aggregated | `ON OVERFLOW ERROR` by default, exception 22001 | `1024`, warning (`group_concat_max_len`) | `1201` | `1201` | `1201` | `1201` | its `limit` argument drops the values beyond |
 | `agg.filter` | `SUM(k) FILTER (WHERE k > 1)` | SQL:2003, feature T612 | error 1064 | error 1064 | `5` | `5` | `5` | accepted; `sumIf` |
 | `agg.avg_integers` | `AVG(k)` of 1 and 2 | exact numeric, precision and scale implementation-defined (SQL-92 6.5 GR) | `1.5000` (DECIMAL) | `1.5000` (DECIMAL) | `1.5000000000000000` (numeric) | `1.5` (REAL) | `1.5` (DOUBLE) | |
+| `agg.avg_decimal` | `AVG(k)` of 1.25 and 2.50 | | `1.875000` (DECIMAL) | `1.875000` (DECIMAL) | `1.8750000000000000` (numeric) | `1.875` (REAL) | `1.875` (DOUBLE) | |
+| `agg.avg_rounded` | `AVG(k)` of 1, 2 and 2 | | `1.6667` | `1.6667` | `1.6666666666666667` | `1.6666666666666667` | `1.6666666666666667` | |
+| `agg.avg_rounded_negative` | `AVG(k)` of -1, -2 and -2 | | `-1.6667` | `-1.6667` | `-1.6666666666666667` | `-1.6666666666666667` | `-1.6666666666666667` | |
+| `agg.avg_half` | `AVG(k)` of 1 and 31 times 0 | | `0.0313` | `0.0313` | `0.03125000000000000000` | `0.03125` | `0.03125` | |
+| `agg.avg_no_value` | `AVG(k)` of NULL | | NULL | NULL | NULL | NULL | NULL | |
+| `agg.avg_distinct` | `AVG(DISTINCT k)` of 1, 1 and 2 | | `1.5000` | `1.5000` | `1.5000000000000000` | `1.5` | `1.5` | |
+| `agg.sum_distinct` | `SUM(DISTINCT k)` of 1, 1 and 2 | | `3` | `3` | `3` | `3` | `3` | |
+| `agg.sum_distinct_scale` | `SUM(DISTINCT k)` of 1.0 and 1.00 | | `1.00` | `1.00` | `1.0` | `1.0` | `1.00` | |
+| `agg.count_distinct_scale` | `COUNT(DISTINCT k)` of 1.0 and 1.00 | | `1` | `1` | `1` | `1` | `1` | |
+| `agg.min_text` | `MIN(k)` of `b`, `B`, `a`, `A` | | `a` | `a` | `a` | `A` | `A` | |
+| `agg.max_text` | `MAX(k)` of `b`, `B`, `a`, `A` | | `b` | `b` | `B` | `b` | `b` | |
+
+On exact numbers, MySQL and MariaDB give `AVG` at the scale of the column + 4 (`div_precision_increment`), rounded away from zero, a tie included (`agg.avg_half`). `DISTINCT` compares numbers by value: `1.0` and `1.00` are one value on every engine. `MIN` and `MAX` of texts follow the collation of the connection on MySQL, MariaDB and PostgreSQL, the code points on SQLite and DuckDB.
 
 The standard `LISTAGG` takes a literal separator and `WITHIN GROUP`, both required, and ignores NULL; none of the engines measured accepts this form. DuckDB accepts `LISTAGG` with its `ORDER BY` inside the parentheses, as `STRING_AGG`.
 
