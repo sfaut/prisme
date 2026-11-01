@@ -22,6 +22,7 @@ import {
   Check,
   Columns3,
   EllipsisVertical,
+  FingerprintPattern,
   Hash,
   Plus,
   Rows3,
@@ -195,6 +196,7 @@ function placeItems(zone: PivotZone, index: number): MenuItem[] {
 const AGGREGATES: { aggregate: PivotMeasure['aggregate']; icon: Component }[] = [
   { aggregate: 'sum', icon: Sigma },
   { aggregate: 'count', icon: Hash },
+  { aggregate: 'count_distinct', icon: FingerprintPattern },
   { aggregate: 'count_star', icon: Asterisk },
 ]
 

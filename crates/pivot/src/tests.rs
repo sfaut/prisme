@@ -390,3 +390,20 @@ fn errors_give_no_table() {
         Error::Overflow { measure: 1 }
     );
 }
+
+#[test]
+fn a_total_of_count_distinct_counts_the_values_of_its_whole_group() {
+    let engine = example();
+    let request = Request {
+        rows: vec![REGION],
+        columns: vec![YEAR],
+        measures: vec![Measure::CountDistinct(CITY)],
+    };
+    let table = engine.compute(&request).unwrap();
+    let expected = "\
+region;2025 / villes;2026 / villes;Total / villes
+Nord;2;2;2
+Sud;1;2;2
+Total;3;4;4";
+    assert_eq!(flat(&engine, &table, &["region"], &["villes"]), expected);
+}

@@ -5,11 +5,16 @@
 //!
 //! - `COUNT(*)` counts the rows, `COUNT(col)` the rows where the column is
 //!   not NULL.
+//! - `COUNT(DISTINCT col)` counts the distinct values of the column that are
+//!   not NULL, told apart as the levels group them (`Dictionary`). A count
+//!   of distinct values does not add up: each set of groups counts the
+//!   pairs of a group and a value, without duplicates, that it takes from
+//!   the finer set it merges.
 //! - `SUM(col)` adds the values that are not NULL; without any, it is NULL.
 //!   Exact numbers add up on 128 bits, and going beyond is an error; floats
 //!   add up as `DOUBLE`.
 
-use prisme_store::{Approx, Exact};
+use prisme_store::{Approx, Exact, FxMap};
 
 use crate::groups::Merge;
 
@@ -19,6 +24,9 @@ pub enum Input<'a> {
     Rows,
     /// Validity of the cells of a column (`COUNT(col)`).
     Cells(&'a [bool]),
+    /// Codes of the values of a column, by row, and their validity
+    /// (`COUNT(DISTINCT col)`).
+    Distinct(&'a [u32], &'a [bool]),
     /// Exact numbers of a column and their validity.
     Exact(&'a Exact, &'a [bool]),
     /// Floats of a column and their validity.
@@ -114,6 +122,68 @@ fn count(
     counts
 }
 
+/// Pair of a group and of the code of a value, in one word, the group in the
+/// high half: sorting the pairs gathers those of each group.
+fn pair(group: u32, code: u32) -> u64 {
+    (u64::from(group) << 32) | u64::from(code)
+}
+
+/// Removes the duplicate pairs, then counts the remaining ones of each
+/// group: its distinct values.
+fn count_pairs(pairs: &mut Vec<u64>, counts: &mut [u64]) {
+    pairs.sort_unstable();
+    pairs.dedup();
+    for &pair in pairs.iter() {
+        counts[(pair >> 32) as usize] += 1;
+    }
+}
+
+/// Counts the distinct valid codes of each group: the pairs of the finest
+/// groups and of the codes of their rows, then, merge after merge, those
+/// of each coarser set, taken from the pairs of the set it merges.
+///
+/// A set is known by its first group: the finest set starts at 0, and a
+/// coarser set at the parent of the first group it merges, its groups
+/// being numbered in that order.
+fn count_distinct(
+    codes: &[u32],
+    valid: &[bool],
+    selection: &[u32],
+    finest: &[u32],
+    groups: usize,
+    merges: &[Merge],
+) -> Vec<u64> {
+    let mut counts = vec![0u64; groups];
+    let mut pairs: Vec<u64> = selection
+        .iter()
+        .zip(finest)
+        .filter(|&(&row, _)| valid[row as usize])
+        .map(|(&row, &group)| pair(group, codes[row as usize]))
+        .collect();
+    count_pairs(&mut pairs, &mut counts);
+    let mut sets: FxMap<u32, Vec<u64>> = FxMap::default();
+    sets.insert(0, pairs);
+    for merge in merges {
+        let (Some(source), Some(&first)) = (sets.get(&merge.source), merge.parent_of.first())
+        else {
+            continue;
+        };
+        let mut pairs: Vec<u64> = source
+            .iter()
+            .map(|&child| {
+                let group = (child >> 32) as u32;
+                pair(
+                    merge.parent_of[(group - merge.source) as usize],
+                    child as u32,
+                )
+            })
+            .collect();
+        count_pairs(&mut pairs, &mut counts);
+        sets.insert(first, pairs);
+    }
+    counts
+}
+
 /// Computes the states of a measure over the selected rows.
 ///
 /// # Arguments
@@ -137,6 +207,9 @@ pub fn accumulate(
             finest,
             groups,
             merges,
+        ))),
+        Input::Distinct(codes, valid) => Ok(State::Count(count_distinct(
+            codes, valid, selection, finest, groups, merges,
         ))),
         Input::Exact(numbers, valid) => {
             let mut sums = vec![0i128; groups];
@@ -217,6 +290,52 @@ mod tests {
         assert_eq!(values, [Value::Count(1), Value::Count(1), Value::Count(2)]);
         let state = accumulate(&Input::Rows, &[0, 1, 2], &[0, 0, 1], 3, &merges()).unwrap();
         assert_eq!(state.value(2), Value::Count(3));
+    }
+
+    #[test]
+    fn distinct_values_are_counted_again_in_the_coarser_groups() {
+        // Codes 0, 1, 0 and a NULL (code 2, not valid): group 0 holds 0,
+        // group 1 holds 1, 0 and NULL; group 2 merges them.
+        let codes = [0, 1, 0, 2];
+        let valid = [true, true, true, false];
+        let state = accumulate(
+            &Input::Distinct(&codes, &valid),
+            &[0, 1, 2, 3],
+            &[0, 1, 1, 1],
+            3,
+            &merges(),
+        )
+        .unwrap();
+        let values: Vec<_> = (0..3).map(|group| state.value(group)).collect();
+        assert_eq!(values, [Value::Count(1), Value::Count(2), Value::Count(2)]);
+    }
+
+    #[test]
+    fn a_set_merged_twice_feeds_both_coarser_sets() {
+        // Set {0, 1} merges into {2, 3}, then again into {4}: the second
+        // merge reads the pairs of the first set, not those of {2, 3}.
+        let merges = [
+            Merge {
+                source: 0,
+                parent_of: vec![2, 3],
+            },
+            Merge {
+                source: 0,
+                parent_of: vec![4, 4],
+            },
+        ];
+        let codes = [7, 7, 8];
+        let valid = [true; 3];
+        let state = accumulate(
+            &Input::Distinct(&codes, &valid),
+            &[0, 1, 2],
+            &[0, 1, 1],
+            5,
+            &merges,
+        )
+        .unwrap();
+        let values: Vec<_> = (0..5).map(|group| state.value(group)).collect();
+        assert_eq!(values, [1, 2, 1, 2, 2].map(Value::Count),);
     }
 
     #[test]

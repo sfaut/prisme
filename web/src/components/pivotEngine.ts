@@ -18,13 +18,13 @@ import { compareCells } from './resultGrid'
 import { type TransferExports, copyBlock, releaseBlock } from './pivotTransfer'
 
 /**
- * Measure of a table: `COUNT(*)`, `COUNT(col)` or `SUM(col)`.
+ * Measure of a table: `COUNT(*)`, `COUNT(col)`, `COUNT(DISTINCT col)` or `SUM(col)`.
  */
 export interface PivotMeasure {
   /**
    * Aggregate.
    */
-  aggregate: 'count_star' | 'count' | 'sum'
+  aggregate: 'count_star' | 'count' | 'count_distinct' | 'sum'
   /**
    * Column the measure comes from; `COUNT(*)` keeps it, for its label and its menu.
    */
@@ -301,7 +301,7 @@ export function ranksOf(values: Cell[]): Uint32Array {
  * @param request Table asked.
  */
 export function requestWords(request: PivotRequest): Uint32Array {
-  const kinds = { count_star: 0, count: 1, sum: 2 }
+  const kinds = { count_star: 0, count: 1, sum: 2, count_distinct: 3 }
   return Uint32Array.from([
     request.rows.length,
     request.columns.length,

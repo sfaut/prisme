@@ -4,9 +4,9 @@
 //! window by window.
 //!
 //! First slice of the lot 1 of its specification: a level is a column of the
-//! result, its value as it is; the measures are `COUNT(*)`, `COUNT(col)` and
-//! `SUM(col)`, in ANSI SQL. The dialect of the Pivoteur, with its
-//! expressions, comes with the next slices.
+//! result, its value as it is; the measures are `COUNT(*)`, `COUNT(col)`,
+//! `COUNT(DISTINCT col)` and `SUM(col)`, in ANSI SQL. The dialect of the
+//! Pivoteur, with its expressions, comes with the next slices.
 //!
 //! The crate does not depend on its target: its tests run natively, and the
 //! Worker of the page runs it compiled to WebAssembly (`crates/web-engine`).
@@ -42,6 +42,9 @@ pub enum Measure {
     CountStar,
     /// `COUNT(col)`: number of rows where the column is not NULL.
     Count(usize),
+    /// `COUNT(DISTINCT col)`: number of distinct values of the column that
+    /// are not NULL, told apart as the levels group them.
+    CountDistinct(usize),
     /// `SUM(col)`: sum of the values of a column of numbers that are not
     /// NULL; NULL without any.
     Sum(usize),
@@ -260,6 +263,9 @@ impl Engine {
         Ok(match measure {
             Measure::CountStar => Input::Rows,
             Measure::Count(column) => Input::Cells(validity(column)?),
+            Measure::CountDistinct(column) => {
+                Input::Distinct(&self.dictionary(column)?.codes, validity(column)?)
+            }
             Measure::Sum(column) => match self.numbers(index, column)? {
                 Numbers::Exact(numbers) => Input::Exact(numbers, validity(column)?),
                 Numbers::Float(numbers) => Input::Float(numbers, validity(column)?),

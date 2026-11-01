@@ -264,8 +264,9 @@ pub unsafe extern "C" fn set_kept(rows: *const u32, count: usize, all: u32) -> u
 
 /// Reads a request: the numbers of levels of the rows and of the columns,
 /// the number of measures, the columns of the levels of the rows, then of
-/// the columns, then a kind (0 `COUNT(*)`, 1 `COUNT(col)`, 2 `SUM(col)`) and
-/// a column per measure. `None` if the words do not match.
+/// the columns, then a kind (0 `COUNT(*)`, 1 `COUNT(col)`, 2 `SUM(col)`,
+/// 3 `COUNT(DISTINCT col)`) and a column per measure. `None` if the words do
+/// not match.
 fn request(words: &[u32]) -> Option<Request> {
     let (&rows, &columns, &measures) = (words.first()?, words.get(1)?, words.get(2)?);
     let (rows, columns, measures) = (rows as usize, columns as usize, measures as usize);
@@ -281,6 +282,7 @@ fn request(words: &[u32]) -> Option<Request> {
             0 => Some(Measure::CountStar),
             1 => Some(Measure::Count(pair[1] as usize)),
             2 => Some(Measure::Sum(pair[1] as usize)),
+            3 => Some(Measure::CountDistinct(pair[1] as usize)),
             _ => None,
         })
         .collect::<Option<Vec<_>>>()?;
@@ -455,6 +457,10 @@ mod tests {
         assert_eq!(
             request(&[0, 0, 1, 0, 0]).unwrap().measures,
             [Measure::CountStar]
+        );
+        assert_eq!(
+            request(&[0, 0, 1, 3, 4]).unwrap().measures,
+            [Measure::CountDistinct(4)]
         );
         assert!(request(&[1, 0]).is_none());
         assert!(request(&[1, 0, 0]).is_none());

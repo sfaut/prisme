@@ -3,7 +3,8 @@
  * Lignes, Colonnes and Mesures (`PivotZones.vue`), and the labels of their elements.
  *
  * In this first slice, a level is a column of the result, by its index, and a measure is
- * `COUNT(*)`, `COUNT(col)` or `SUM(col)`; the expressions come with the parser. A column is a
+ * `COUNT(*)`, `COUNT(col)`, `COUNT(DISTINCT col)` or `SUM(col)`; the expressions come with the
+ * parser. A column is a
  * level at most once, on one of the two axes: placing it again moves it. A measure can be placed
  * several times. Each change gives a new configuration, which the panel computes.
  */
@@ -69,17 +70,24 @@ export function defaultMeasure(column: number, family: TypeFamily | undefined): 
 }
 
 /**
- * Label of a measure, as its expression: `SUM(montant)`, `COUNT(ville)`, `COUNT(*)`.
+ * Label of a measure, as its expression: `SUM(montant)`, `COUNT(ville)`,
+ * `COUNT(DISTINCT ville)`, `COUNT(*)`.
  *
  * @param measure Measure.
  * @param names Names of the columns of the result.
  */
 export function measureLabel(measure: PivotMeasure, names: string[]): string {
-  if (measure.aggregate === 'count_star') {
-    return 'COUNT(*)'
-  }
   const name = names[measure.column] ?? '?'
-  return `${measure.aggregate === 'sum' ? 'SUM' : 'COUNT'}(${name})`
+  switch (measure.aggregate) {
+    case 'count_star':
+      return 'COUNT(*)'
+    case 'count':
+      return `COUNT(${name})`
+    case 'count_distinct':
+      return `COUNT(DISTINCT ${name})`
+    case 'sum':
+      return `SUM(${name})`
+  }
 }
 
 /**

@@ -96,13 +96,25 @@ describe('requestWords', () => {
       measures: [
         { aggregate: 'sum', column: 4 },
         { aggregate: 'count_star', column: 1 },
+        { aggregate: 'count_distinct', column: 1 },
       ],
     }
-    expect(Array.from(requestWords(request))).toEqual([2, 1, 2, 0, 1, 2, 2, 4, 0, 1])
+    expect(Array.from(requestWords(request))).toEqual([2, 1, 3, 0, 1, 2, 2, 4, 0, 1, 3, 1])
   })
 })
 
 describe('PivotEngine', () => {
+  it('counts the distinct values of a group again in its total', async () => {
+    const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES, 4)
+    engine.compute({
+      rows: [0],
+      columns: [],
+      measures: [{ aggregate: 'count_distinct', column: 1 }],
+    })
+    // Nord: Lille and Arras; Sud: Nice and Toulon; the four in the total.
+    expect(engine.window([0, 3], [0, 1]).cells).toEqual([['2'], ['2'], ['4']])
+  })
+
   it('computes a table from rows copied block by block', async () => {
     const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES, 3)
     const shape = engine.compute({

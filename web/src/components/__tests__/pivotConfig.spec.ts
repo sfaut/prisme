@@ -31,6 +31,9 @@ describe('measureLabel', () => {
   it('writes the expression of the measure', () => {
     expect(measureLabel({ aggregate: 'sum', column: 4 }, NAMES)).toBe('SUM(montant)')
     expect(measureLabel({ aggregate: 'count', column: 1 }, NAMES)).toBe('COUNT(ville)')
+    expect(measureLabel({ aggregate: 'count_distinct', column: 1 }, NAMES)).toBe(
+      'COUNT(DISTINCT ville)',
+    )
     expect(measureLabel({ aggregate: 'count_star', column: 1 }, NAMES)).toBe('COUNT(*)')
   })
 })
