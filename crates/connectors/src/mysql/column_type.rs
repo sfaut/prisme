@@ -16,6 +16,11 @@
 //! connection's results: it is brought back to characters for the known sets
 //! (`charset_max_bytes`). For another set, the length is left out rather than
 //! guessed.
+//!
+//! The same metadata name the column of a table a result column reads, and
+//! tell whether it belongs to the primary key of that table (`origin`). A
+//! foreign key has no flag of its own: it shares `MULTIPLE_KEY_FLAG` with any
+//! other index, and only the catalog tells it (`catalog.rs`).
 
 use mysql_async::consts::{ColumnFlags, ColumnType};
 use serde::{Deserialize, Serialize};
@@ -58,7 +63,8 @@ pub enum TypeFamily {
     Other,
 }
 
-/// Type of a result column: its family and its native name.
+/// Type of a result column: its family and its native name, and the column
+/// of a table it reads.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct ColumnTypeInfo {
@@ -67,6 +73,38 @@ pub struct ColumnTypeInfo {
     /// Name of the type in the server's dialect: `INT UNSIGNED`,
     /// `DECIMAL(10,2)`, `VARCHAR(20)`, `DATETIME(6)`...
     pub name: String,
+    /// Column of a table the result column reads; absent for an expression, a
+    /// `UNION`, and a result saved before the origin was recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub origin: Option<ColumnOrigin>,
+}
+
+/// Column of a table a result column reads, as the metadata of the result
+/// tell it (`docs/SQL-COMPARISON.md`, section 3.15).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct ColumnOrigin {
+    /// Database of the table.
+    pub schema: String,
+    /// Table. A view gives its own name, and MariaDB the alias of a derived
+    /// table.
+    pub table: String,
+    /// Column of the table.
+    pub column: String,
+    /// Does the column belong to the primary key of its table? The values of
+    /// the result can still repeat, through a join.
+    pub primary_key: bool,
+}
+
+/// Origin of a result column, from its metadata: none without a table.
+pub fn origin(schema: &str, table: &str, column: &str, flags: ColumnFlags) -> Option<ColumnOrigin> {
+    (!table.is_empty()).then(|| ColumnOrigin {
+        schema: schema.to_string(),
+        table: table.to_string(),
+        column: column.to_string(),
+        primary_key: flags.contains(ColumnFlags::PRI_KEY_FLAG),
+    })
 }
 
 /// Collation of the `binary` character set: a byte string.
@@ -148,7 +186,11 @@ pub fn describe(
             _ => (TypeFamily::Other, "?".to_string()),
         }
     };
-    ColumnTypeInfo { family, name }
+    ColumnTypeInfo {
+        family,
+        name,
+        origin: None,
+    }
 }
 
 /// Name of a numeric type, followed by `UNSIGNED` when relevant.

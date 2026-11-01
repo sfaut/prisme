@@ -299,12 +299,30 @@ Every engine measured compares a date with a text by reading the text as a date 
 
 The expression names no column: an error on the column shows that the engine reads a name. MySQL and MariaDB read double quotes as a text under their default `sql_mode`; SQLite, DuckDB and ClickHouse accept both quotes for a name, PostgreSQL only the double quotes.
 
+### 3.15 Origin of the columns of a result
+
+What the metadata of a result tell of the column a result column reads, measured on 2026-11-01 by the test `tells_the_origin_of_the_columns_of_a_result` of `crates/connectors/tests/mysql.rs`, on the six servers of `compose.yaml`, and by `mysql --column-type-info`. This is the protocol of MySQL and MariaDB, without a case in `bench/sql/cases.mjs`, which compares expressions; the other engines have no connector yet, and are not measured.
+
+| Column of the result | `org_table`, `org_name` | `PRI_KEY_FLAG` |
+|---|---|---|
+| `id` of `SELECT id, v FROM t`, alias included | `t`, `id` | yes, on each column of a composite key |
+| `t.id` through a `JOIN` | `t`, `id` | yes; its values can then repeat, or be NULL through a `LEFT JOIN` |
+| `id` of a view | the view, `id` | yes |
+| `id` of a derived table or of a CTE | MySQL: `t`, `id`; MariaDB: the alias, `id` | yes |
+| `id` of `SELECT id, COUNT(*) … GROUP BY id` | `t`, `id` | yes, except on MySQL 8.0.11 |
+| `id + 1` | empty | no |
+| `id` of a `UNION` | empty | no |
+| A column of a `UNIQUE` index, or of another index | `t`, the column | no |
+
+`UNIQUE_KEY_FLAG` and `MULTIPLE_KEY_FLAG` tell the other indexes. A foreign key has no flag of its own: a column `p_id` referencing a table and a column `amount` under a plain index both give `MULTIPLE_KEY_FLAG`, and only `information_schema.KEY_COLUMN_USAGE` tells them apart.
+
 ## 4. Differences between versions of one engine
 
 | Engine | Subject | Versions |
 |---|---|---|
 | MySQL | type of `YEAR('0000-00-00')` | BIGINT on 8.0.11, YEAR on 9.7.4 and 26.10.0 |
 | MySQL | writing of `ROUND(1.005e0, 2)` | `1.00` on 8.0.11, `1` on 9.7.4 and 26.10.0 |
+| MySQL | `PRI_KEY_FLAG` of a column under `GROUP BY` | absent on 8.0.11, present on 9.7.4 and 26.10.0 |
 | MariaDB | default collation | `utf8mb4_general_ci` on 10.6.3, `utf8mb4_uca1400_ai_ci` on 12.3.3 and 13.0.2 |
 | MariaDB | error of `LISTAGG … WITHIN GROUP` | 1305 (no such function) on 10.6.3, 1064 (syntax) on 12.3.3 and 13.0.2 |
 | ClickHouse | `%M` of `formatDateTime` | the minutes before 23.4, the name of the month since |

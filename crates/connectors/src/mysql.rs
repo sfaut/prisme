@@ -356,14 +356,20 @@ impl ResultStream<'_> {
             .collect()
     }
 
-    /// Type of each column, from the result's metadata (see the
+    /// Type and origin of each column, from the result's metadata (see the
     /// `column_type` module).
     pub fn column_types(&self) -> Vec<ColumnTypeInfo> {
         self.result
             .columns_ref()
             .iter()
-            .map(|column| {
-                column_type::describe(
+            .map(|column| ColumnTypeInfo {
+                origin: column_type::origin(
+                    &column.schema_str(),
+                    &column.org_table_str(),
+                    &column.org_name_str(),
+                    column.flags(),
+                ),
+                ..column_type::describe(
                     column.column_type(),
                     column.flags(),
                     column.column_length(),
