@@ -2,6 +2,53 @@
 
 Changelogs of the published versions of Prisme, most recent first. Each entry is also the notes of its GitHub release. The interface is in French: its labels are quoted as they appear, with a translation.
 
+## v0.9.0 (2026-11-02)
+
+### 🚀 Launch
+
+We are proud to announce Prisme v0.9.0. This version brings the **Pivoteur**, a pivot table of the result shown, computed in the page without any query: rows, columns, nine aggregates with their subtotals and totals, names, precisions of the dates, and a configuration saved with its result tab. A result can also be exported as a CTE for MySQL or MariaDB, and a large result arrives about three times faster.
+
+### ✨ New features
+
+- **Pivoteur** (pivot table), a panel under the results of a cell, folded at first:
+  - it works in the page, on the rows received and after the filter of the grid: no query goes to the server, and a folded panel computes nothing;
+  - the panel shows the columns of the result, with a search by name, the zones **Lignes**, **Colonnes** and **Mesures** (Rows, Columns, Measures), and the table in compact form, with its subtotals and grand totals, which scrolls on both axes; a bar gives the rows taken into account, the groups and the duration of the computation;
+  - a column enters a zone by a drag, or by the **+** button of its line; an element moves by a drag, framing in blue each zone it passes over, and leaves its zone when released outside the zones;
+  - the measures are `COUNT(*)`, `COUNT(col)`, `COUNT(DISTINCT col)`, `SUM(col)`, `SUM(DISTINCT col)`, `AVG(col)`, `AVG(DISTINCT col)`, `MIN(col)` and `MAX(col)`; sums and averages of integers and decimals are exact, and a total reads the rows of its whole group;
+  - a column dropped into the measures takes `COUNT(*)` for a primary key, `COUNT(col)` for a foreign key, `SUM(col)` for another number, and `COUNT(col)` otherwise;
+  - an element takes a name by its menu, **Nommer…** (Name), or a double click on its label, shown in its zone and in the table;
+  - the menu of a level of dates sets its **Précision** (Precision): **Année** (ISO year), **Trimestre** (Quarter), **Mois** (Month), **Semaine** (ISO week) and **Date**;
+  - the configuration is saved with its result tab: it survives a page reload and a refresh, and a new run carries it over to the new tabs; an element follows its column by name, and the element of a lost column leaves its zone.
+- Export as a CTE ([#30](https://github.com/sfaut/prisme/issues/30)): the selection, or the displayed result, becomes a `WITH` query that gives its rows back with their types, for MySQL from 8.0.19 or for MariaDB. It can be saved as a `.sql` file, copied, or written after the last query of the editor, in the dialect of its server, without running it. Strings follow the `NO_BACKSLASH_ESCAPES` mode of the session.
+- The download button becomes **Exporter** (Export), right of the result tabs, beside the refresh and filter buttons, and its menu gathers its choices under **Fichier**, **Presse-papiers** and **Éditeur** (File, Clipboard, Editor) ([#30](https://github.com/sfaut/prisme/issues/30)). Every filter button reads **Filtrer** (Filter).
+- The editor, the results, the Pivoteur and the console can all be folded at once, and folding one leaves the others as they are.
+
+### 🐞 Bug fixes
+
+- A large result no longer saturates the page. Its last rows arrive after 9.0 to 13.5 s for 1 million rows, against 23.5 to 37.8 s, and the page is busy for 9.1 to 12.3 s of it, against 23.7 to 38.4 s: the grid places its rows itself and grows its view in place, and the progress bar of a tab grows by a transform.
+
+### ⚙️ Internal improvements
+
+- Dependencies:
+  - `@tanstack/vue-virtual` 3.13.49 removed: its cost per update followed the rows received, quadratic over a reception; the grid now computes the rows to draw from its scroll position;
+  - `testcontainers-modules` 0.15.0 removed, replaced by the servers of `compose.yaml`: one set of servers for the tests, the screenshots and the measures, on every supported version;
+  - `serde_json` 1.0.154 added to the tests of `prisme-connectors`, to read the reference files of the exports;
+  - `@lucide/vue` 1.64.0 → 1.66.0, `eslint` 10.13.0 → 10.14.0, `vue-tsc` 3.3.13 → 3.3.14;
+  - `rusqlite` stays at 0.40.2: `rusqlite_migration` 2.6.0 does not accept 0.41.1 yet; `typescript` stays at 6.0: `vue-tsc` and `typescript-eslint` do not support TypeScript 7 yet.
+- The engine of the Pivoteur lives in three new crates: `prisme-store` (the rows of a result in columns), `prisme-pivot` (groups, measures, totals) and `prisme-web-engine`, its WebAssembly side, run in a Worker of the page. The build of the interface compiles it, with the `wasm32-unknown-unknown` target pinned by `rust-toolchain.toml`.
+- The metadata of a result name the table and the column each of its columns reads, and flag the columns of a primary key.
+- The tests on real servers run on the development servers of `compose.yaml`.
+- New benchmarks: engine of the Pivoteur (`bench/pivot`), its parser (`bench/parser`), saved results (`bench/reload`), reception of a result (`bench/store`), and the comparison of the SQL engines (`bench/sql`).
+
+### 📝 Documentation
+
+- README: the Pivoteur; the export as a CTE and the **Exporter** button.
+- Developer guide: the parts of the Pivoteur and the stages of a table; the development servers; the advisories known on the development tools.
+- `docs/SQL-COMPARISON.md`: the behaviours of the SQL engines compared, each measured or sourced.
+- `docs/PERFORMANCES.md`: the engine of the Pivoteur, the saved results, the reception of a result and its updates of the interface, `sqlparser` compiled to WebAssembly.
+- `docs/DROPPED-DEPENDENCIES.md`: the dependencies dropped, what each one served and why it left.
+- `docs/TODO-PIVOTER.md`: the steps of the Pivoteur.
+
 ## v0.8.0 (2026-10-29)
 
 ### 🚀 Launch
