@@ -276,6 +276,10 @@ Every engine measured compares a date with a text by reading the text as a date 
 | `week.mysql_mode0` | `WEEK('2026-01-04')`, a Sunday | | `1` | `1` | | | | `toWeek`, modes 0 to 9 |
 | `week.iso_year_week` | ISO year and week of 2027-01-01 | | `2026-53` (`%x-%v`) | `2026-53` | `2026-53` (`IYYY-IW`) | `2026-53` (`%G-%V`) | `2026-53` (`%G-%V`) | |
 | `week.calendar_year_week` | calendar year and ISO week of 2027-01-01 | | `2027-53` (`%Y-%v`) | `2027-53` | `2027-53` (`YYYY-IW`) | `2027-53` (`%Y-%V`) | `2027-53` (`%Y-%V`) | |
+| `week.iso_zero_date` | ISO year and week of `0000-00-00` (`%x-%v`) | | NULL, warning | `0001-01` | | | | |
+| `week.iso_zero_day` | ISO year and week of `2026-03-00` (`%x-%v`) | | `2026-09` | `2026-09` | | | | |
+| `week.iso_zero_month` | ISO year and week of `2026-00-15` (`%x-%v`) | | `2026-613566755` | `2026-613566755` | | | | |
+| `week.iso_year_zero` | ISO year and week of `0000-01-01` (`%x-%v`) | | `4294967295-52` | `4294967295-52` | | | | |
 | `week.yearweek` | `YEARWEEK('2027-01-01')` | | `202652` (mode 0) | `202652` | | | `202653` (ISO) | |
 | `week.day_number_monday` | number of Monday 2026-01-05 | | `2` (`DAYOFWEEK`, Sunday = 1) | `2` | `1` (`EXTRACT(DOW)`, Sunday = 0) | `1` (`%w`) | `1` (`DAYOFWEEK`, Sunday = 0) | `DOW` |
 | `week.iso_day_number_monday` | ISO number of Monday 2026-01-05 | | `0` (`WEEKDAY`, Monday = 0) | `0` | `1` (`ISODOW`) | `1` (`%u`) | `1` (`ISODOW`) | `ISODOW` |
@@ -283,6 +287,8 @@ Every engine measured compares a date with a text by reading the text as a date 
 | `week.dayname_locale` | `DATE_FORMAT('2026-01-05', '%W %M', 'fr_FR')` | | error 1582: wrong number of arguments | `lundi janvier` | | | | |
 
 `%Y-%v` (calendar year, ISO week) gives `2027-53` for 1 January 2027, which belongs to week 53 of 2026: the year of an ISO week is `%x` in MySQL, `IYYY` in PostgreSQL, `%G` in SQLite and DuckDB.
+
+MySQL and MariaDB give nothing usable for the ISO week of a date without a day in the calendar: `0000-00-00` differs from one to the other, `2026-00-15` gives a week out of range, and the year -1 of `0000-01-01` comes back as an unsigned underflow (`4294967295`).
 
 ### 3.13 Types of results
 

@@ -463,6 +463,22 @@ export const CASES = [
     },
   },
   {
+    key: 'week.iso_zero_date',
+    forms: { shared: null, mysql: "DATE_FORMAT('0000-00-00', '%x-%v')" },
+  },
+  {
+    key: 'week.iso_zero_day',
+    forms: { shared: null, mysql: "DATE_FORMAT('2026-03-00', '%x-%v')" },
+  },
+  {
+    key: 'week.iso_zero_month',
+    forms: { shared: null, mysql: "DATE_FORMAT('2026-00-15', '%x-%v')" },
+  },
+  {
+    key: 'week.iso_year_zero',
+    forms: { shared: null, mysql: "DATE_FORMAT('0000-01-01', '%x-%v')" },
+  },
+  {
     key: 'week.yearweek',
     forms: { shared: null, mysql: "YEARWEEK('2027-01-01')", duckdb: "YEARWEEK(DATE '2027-01-01')" },
   },
