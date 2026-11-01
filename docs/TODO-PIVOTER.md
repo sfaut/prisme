@@ -54,8 +54,8 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ A field dropped into the measures gives `SUM` for a number, `COUNT` otherwise; a menu changes the measure
 - ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes
 
-### Next lots
+### Next slices and lots
 
-- ⬜ Lot 1: engine
-- ⬜ Lot 2: panel
-- ⬜ Lot 3: complements
+- ⬜ Lot 1, next slices (ANSI SQL): dialect (parsed by `sqlparser`, typing, ANSI catalog), calendar, editor, date levels, computed columns, filters, fold, caches, copy, CSV, conformance
+- ⬜ Lot 2: complements (advanced sorts, detail of a cell, filter by list, measures in rows, persistence with the tab)
+- ⬜ Lot 3: extensions (overflow syntax and functions of MySQL, MariaDB, PostgreSQL, DuckDB and ClickHouse, functions of Prisme's own, then a "global" Prisme dialect)
