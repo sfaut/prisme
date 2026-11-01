@@ -10,7 +10,13 @@
     it is running.
   - Progress bar drawn on the bottom edge of the tab: indeterminate (a
     segment that goes back and forth) when the completed share is unknown,
-    green once the query has ended, red on failure (`tabFraction`).
+    green once the query has ended, red on failure (`tabFraction`). It grows
+    by a transform, which the compositor of the browser animates alone: a
+    transition of its width, started again by each batch of rows, made the
+    page compute its layout and paint at every frame of a reception. Measured
+    on 2026-10-31 for 1 million rows: received in 17 to 20 s with the
+    transform, 22 to 23 s with the width (`docs/PERFORMANCES.md`,
+    chapter 12).
 -->
 <script setup lang="ts">
 import { Pin } from '@lucide/vue'
@@ -97,7 +103,7 @@ const barTone = computed(() => {
       <span
         class="tab-progress-bar"
         :class="[barTone, { indeterminate: fraction === null }]"
-        :style="fraction === null ? undefined : { inlineSize: `${fraction * 100}%` }"
+        :style="fraction === null ? undefined : { transform: `scaleX(${fraction})` }"
       />
     </span>
     <template #actions>
@@ -133,10 +139,14 @@ const barTone = computed(() => {
   overflow: hidden;
 }
 
+/* The completed share scales the bar from its left edge (`scaleX`). A
+   transition of its width would make the page draw at every frame of a
+   reception (see the comment at the top). */
 .tab-progress-bar {
   display: block;
   block-size: 100%;
-  transition: inline-size 0.3s ease-out;
+  transform-origin: left;
+  transition: transform 0.3s ease-out;
 
   &.primary {
     background: var(--color-primary);
