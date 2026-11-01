@@ -2,12 +2,14 @@
   Panel of the Pivoteur, under the results of a cell (`QueryCell.vue`,
   F-01): a pivot table of the result shown (`shownResult`), after the filter
   of its grid (C-01). It follows the result tab shown, each tab keeping its
-  own configuration (F-04), forgotten when the columns of its result
-  change; a new run of the queries carries it over to the tab of the same
-  rank, when the columns are the same (`pivotTabs.ts`). The columns of the
-  result and the zones (`PivotZones.vue`), then the table (`PivotGrid.vue`),
-  which takes the remaining width, with its status bar: rows taken into
-  account, groups, duration of the computation (F-06).
+  own configuration (F-04), saved with the tab: it survives a page reload, a
+  refresh, and a new run of the queries, which carries it over on the server
+  (`tab_pivot.rs`). When the columns of the result change, the configuration
+  follows them by name, and the elements of a lost column leave it
+  (`fittedConfig`). The columns of the result and the zones (`PivotZones.vue`),
+  then the table (`PivotGrid.vue`), which takes the remaining width, with its
+  status bar: rows taken into account, groups, duration of the computation
+  (F-06).
 
   The engine runs in a Worker of the page (`pivotClient.ts`), one per
   result: the rows are copied once the query has ended (F-07), while the
@@ -24,6 +26,7 @@
 import { LoaderCircle } from '@lucide/vue'
 import { computed, onBeforeUnmount, ref, shallowRef, toRaw, watch } from 'vue'
 
+import { updateResultPivot } from '@/api/editors'
 import { errorMessage } from '@/api/errorMessage'
 import {
   type QueryResult,
@@ -43,13 +46,13 @@ import {
   elementLabel,
   emptyConfig,
   engineRequest,
+  fittedConfig,
   isEmptyConfig,
   sameRequest,
   zoneLabels,
 } from './pivotConfig'
 import { type PivotFailure, type PivotRequest, type PivotWindow, PivotError } from './pivotEngine'
-import { TabConfigs } from './pivotTabs'
-import { visibleRows } from './resultGrid'
+import { sameColumns, visibleRows } from './resultGrid'
 import { isForeignKey, useCatalogStore } from '@/stores/catalog'
 import { columnIcon } from './typeIcons'
 import UiAlert from './ui/UiAlert.vue'
@@ -60,11 +63,6 @@ const props = defineProps<{
    * Result tab shown, absent without any tab.
    */
   tab: QueryTab | undefined
-  /**
-   * Ids of the tabs of the cell: the configuration of a removed tab goes
-   * to the tab that takes its rank.
-   */
-  tabIds: number[]
   /**
    * Is the panel unfolded?
    */
@@ -110,47 +108,55 @@ const source = computed(() =>
 )
 
 /**
- * Configuration of each tab.
+ * Keeps a configuration in its tab, and saves it with the tab. A refused save
+ * shows in the top bar (`sync.ts`); the tab keeps its configuration on the
+ * page.
+ *
+ * @param tab Tab of the configuration.
+ * @param columns Names of the columns of its result.
+ * @param value Configuration.
  */
-const configs = new TabConfigs()
+function keepConfig(tab: QueryTab, columns: string[], value: PivotConfig): void {
+  tab.pivot = { fields: [...columns], config: value }
+  updateResultPivot(tab.id, tab.pivot).catch(() => {})
+}
 
-// A removed tab, closed or replaced by a new run, takes its configuration
-// away, to the tab that will take its rank.
-watch(
-  () => props.tabIds,
-  (ids) => configs.keep(ids),
-)
-
-// A tab takes back the configuration of the tab it replaces, once the
-// columns of its result are known.
+// The columns of a result have changed: the configuration is fitted to them
+// once and for all. A result without columns, or in error, leaves it as it
+// is, for the next run.
 watch(
   () => [props.tab, result.value?.columns] as const,
   ([tab, columns]) => {
-    if (tab !== undefined && columns !== undefined) {
-      configs.adopt(tab.id, tab.number, columns)
+    if (
+      tab !== undefined &&
+      columns !== undefined &&
+      columns.length > 0 &&
+      !isEmptyConfig(tab.pivot.config) &&
+      !sameColumns(tab.pivot.fields, columns)
+    ) {
+      keepConfig(tab, columns, fittedConfig(tab.pivot, columns))
     }
   },
   { immediate: true },
 )
 
 /**
- * Configuration without any element, shared by the tabs without one.
+ * Configuration without any element, without a tab or a result.
  */
 const NO_CONFIG = emptyConfig()
 
 /**
- * Configuration of the tab shown: none when the columns of its result have
- * changed.
+ * Configuration of the tab shown.
  */
 const config = computed<PivotConfig>({
   get() {
     const tab = props.tab
     const shown = result.value
-    return (tab && shown && configs.get(tab.id, shown.columns)) ?? NO_CONFIG
+    return tab && shown ? fittedConfig(tab.pivot, shown.columns) : NO_CONFIG
   },
   set(value) {
     if (props.tab && result.value) {
-      configs.set(props.tab.id, props.tab.number, result.value.columns, value)
+      keepConfig(props.tab, result.value.columns, value)
     }
   },
 })

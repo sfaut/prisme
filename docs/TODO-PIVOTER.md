@@ -55,15 +55,15 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes
 - ✅ Measure `COUNT(DISTINCT col)` on any column: its distinct values as the levels group them, NULL left out; a total counts those of its whole group
 - ✅ A measure, a level of the rows and a level of the columns take a name, shown in their zone and in the table (F-12, F-17): the levels in the corner, those of the columns on the row of their headers
-- ✅ A new run of the queries carries the configuration of each tab over to the tab that replaces it, at the same position, when the columns of its result are the same
 - ✅ Checks of these additions: `cargo test`, tests of the interface, screen in light and dark modes
 - ✅ Measures `SUM(DISTINCT col)`, `AVG(col)` and `AVG(DISTINCT col)` on numbers, `MIN(col)` and `MAX(col)` on any column: numbers told apart and compared by value, an exact average at the scale of its column + 4, rounded away from zero (D16, D17), texts compared by code points (D7), a total reading the values of its whole group
 - ✅ Checks of these measures: `cargo test`, tests of the interface, screen in light and dark modes
 - ✅ The editor, the results, the Pivoteur and the console can all be folded at once; folding a panel leaves the others as they are
+- ✅ The configuration is saved with its tab: it survives a page reload and a refresh; a new run gives each new tab that of the tab of the same text, else of the same rank; an element follows its column by name, the element of a lost column leaves, `COUNT(*)` stays
 - ✅ A column of a primary key dropped into the measures gives `COUNT(*)`, a column of a foreign key `COUNT(col)`: the metadata of the result name the column of a table it reads (`docs/SQL-COMPARISON.md`, section 3.15), and the catalog tells its foreign keys
 
 ### Next slices and lots
 
 - ⬜ Lot 1, next slices (ANSI SQL): dialect (parsed by `sqlparser`, typing, ANSI catalog), calendar, editor, date levels, computed columns, filters, fold, caches, copy, CSV, conformance
-- ⬜ Lot 2: complements (advanced sorts, detail of a cell, filter by list, measures in rows, persistence with the tab)
+- ⬜ Lot 2: complements (advanced sorts, detail of a cell, filter by list, measures in rows)
 - ⬜ Lot 3: extensions (overflow syntax and functions of MySQL, MariaDB, PostgreSQL, DuckDB and ClickHouse, functions of Prisme's own, then a "global" Prisme dialect)

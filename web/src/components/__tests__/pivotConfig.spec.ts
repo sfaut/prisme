@@ -10,6 +10,7 @@ import {
   elementLabel,
   emptyConfig,
   engineRequest,
+  fittedConfig,
   isEmptyConfig,
   measureExpression,
   placeColumn,
@@ -259,6 +260,55 @@ describe('removeElement', () => {
     expect(removeElement(config, { zone: 'measures', index: 0 }).measures).toEqual([])
     expect(columnAt(config, { zone: 'columns', index: 0 })).toBe(2)
     expect(columnAt(config, { zone: 'measures', index: 0 })).toBe(4)
+  })
+})
+
+describe('fittedConfig', () => {
+  const config: PivotConfig = {
+    rows: [level(0, 'Région')],
+    columns: [level(1)],
+    measures: [measure('sum', 4, 'Total'), measure('count_star', 2)],
+  }
+
+  it('gives the configuration itself when the columns are the same', () => {
+    expect(fittedConfig({ fields: NAMES, config }, [...NAMES])).toBe(config)
+  })
+
+  it('follows the columns by name', () => {
+    const moved = ['montant', 'annee', 'region', 'ville', 'trimestre']
+    expect(fittedConfig({ fields: NAMES, config }, moved)).toEqual({
+      rows: [level(2, 'Région')],
+      columns: [level(3)],
+      measures: [measure('sum', 0, 'Total'), measure('count_star', 1)],
+    })
+  })
+
+  it('removes the elements of a lost column, except COUNT(*), which reads none', () => {
+    expect(fittedConfig({ fields: NAMES, config }, ['ville', 'trimestre'])).toEqual({
+      rows: [],
+      columns: [level(0)],
+      measures: [measure('count_star', 0)],
+    })
+  })
+
+  it('takes the n-th column of a repeated name for the n-th', () => {
+    const fields = ['id', 'id', 'x']
+    const repeated: PivotConfig = {
+      rows: [level(1)],
+      columns: [],
+      measures: [measure('count', 0)],
+    }
+    expect(fittedConfig({ fields, config: repeated }, ['x', 'id', 'id'])).toEqual({
+      rows: [level(2)],
+      columns: [],
+      measures: [measure('count', 1)],
+    })
+    expect(fittedConfig({ fields, config: repeated }, ['id']).rows).toEqual([])
+  })
+
+  it('keeps nothing to fit when the configuration is empty', () => {
+    const empty = emptyConfig()
+    expect(fittedConfig({ fields: [], config: empty }, NAMES)).toBe(empty)
   })
 })
 

@@ -50,6 +50,7 @@ import type { ResumedQuery } from './generated/ResumedQuery'
 import type { SelectionRange } from './generated/SelectionRange'
 import type { ServerInfo } from './generated/ServerInfo'
 import type { ServerMessage } from './generated/ServerMessage'
+import type { TabPivot } from './generated/TabPivot'
 
 /**
  * Grouping delay of the received messages, in milliseconds: the interface is
@@ -181,6 +182,14 @@ export interface UserFilter {
 export const NO_FILTER: Readonly<UserFilter> = Object.freeze({ text: '', column: null })
 
 /**
+ * Configuration of the Pivoteur without any element.
+ */
+export const NO_PIVOT: Readonly<TabPivot> = Object.freeze({
+  fields: [],
+  config: { rows: [], columns: [], measures: [] },
+})
+
+/**
  * Query of a batch, shown in its own tab.
  */
 export interface QueryTab {
@@ -261,6 +270,11 @@ export interface QueryTab {
    * applied.
    */
   filterOpen: boolean
+  /**
+   * Configuration of the Pivoteur of the tab, saved with it and replaced as a
+   * whole on each change (`PivotPanel.vue`).
+   */
+  pivot: TabPivot
 }
 
 /**
@@ -406,6 +420,7 @@ export function applyMessage(
             previous: null,
             filter: NO_FILTER,
             filterOpen: false,
+            pivot: query.pivot ?? NO_PIVOT,
           })),
         ]
       }
@@ -939,6 +954,7 @@ export function savedTab(saved: ResultTab): QueryTab {
     previous: null,
     filter: NO_FILTER,
     filterOpen: false,
+    pivot: saved.pivot,
   }
 }
 
@@ -953,8 +969,8 @@ export function savedTab(saved: ResultTab): QueryTab {
  * @param batch Number of the current batch.
  * @param now Instant of reception (`performance.now()`).
  * @param existing
- *     Tab already shown for this query, whose name, pinning, number and user
- *     filter it keeps.
+ *     Tab already shown for this query, whose name, pinning, number, user
+ *     filter and configuration of the Pivoteur it keeps.
  */
 export function resumedTab(
   query: ResumedQuery,
@@ -968,6 +984,7 @@ export function resumedTab(
     sql: query.sql,
     name: existing?.name ?? '',
     pinned: existing?.pinned ?? false,
+    pivot: existing?.pivot ?? NO_PIVOT,
     result: query.result,
     rows: query.rows,
   })

@@ -33,6 +33,7 @@ mod sessions;
 mod settings;
 mod setup;
 mod store;
+mod tab_pivot;
 mod web_assets;
 
 use std::io::IsTerminal;

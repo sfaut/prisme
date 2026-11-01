@@ -223,7 +223,7 @@ impl Recorder {
     }
 
     /// New batch: the editor's unpinned tabs disappear, and each query gets a
-    /// new tab, whose id it takes.
+    /// new tab, whose id and configuration of the Pivoteur it takes.
     async fn create_tabs(&self, records: &mut HashMap<u32, Record>, queries: &mut [BatchQuery]) {
         let editor_id = self.editor_id;
         let wanted: Vec<_> = queries.iter().map(|q| (q.query, q.sql.clone())).collect();
@@ -232,9 +232,10 @@ impl Recorder {
             .with_db(move |db, _| editors::start_batch(db, editor_id, &wanted))
             .await;
         match created {
-            Ok(ids) => {
-                for (query, tab_id) in queries.iter_mut().zip(ids) {
+            Ok(tabs) => {
+                for (query, (tab_id, pivot)) in queries.iter_mut().zip(tabs) {
                     query.tab = tab_id;
+                    query.pivot = Some(pivot);
                     records.insert(query.query, Record::new(tab_id, &query.sql, false));
                 }
             }
@@ -321,6 +322,7 @@ mod tests {
                     sql: format!("SELECT {query}"),
                     start: 0,
                     end: 8,
+                    pivot: None,
                 })
                 .collect(),
         };
@@ -329,6 +331,7 @@ mod tests {
             unreachable!()
         };
         assert!(queries.iter().all(|query| query.tab > 0));
+        assert!(queries.iter().all(|query| query.pivot.is_some()));
 
         for mut message in [
             ServerMessage::Started { query: 0 },
@@ -398,6 +401,7 @@ mod tests {
                 sql: "SELECT 1".to_string(),
                 start: 0,
                 end: 8,
+                pivot: None,
             }],
         }
     }
@@ -494,7 +498,8 @@ mod tests {
         let foreign = state
             .with_db(move |db, _| editors::start_batch(db, other, &[(0, "SELECT 2".into())]))
             .await
-            .unwrap()[0];
+            .unwrap()[0]
+            .0;
         let mut refresh = single_query(foreign);
         recorder.observe(&mut refresh).await;
         assert_eq!(tab_of(&refresh), 0);

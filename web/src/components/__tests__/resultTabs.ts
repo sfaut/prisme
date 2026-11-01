@@ -2,7 +2,7 @@
  * Result tabs for the tests of the components that show them: a finished
  * query, with its columns and its rows, as the server saves it.
  */
-import { type QueryTab, savedTab } from '@/api/querySession'
+import { NO_PIVOT, type QueryTab, savedTab } from '@/api/querySession'
 
 /**
  * Finished tab of a query.
@@ -17,6 +17,7 @@ export function finishedTab(columns: string[], rows: string[][] = []): QueryTab 
     sql: 'SELECT 1',
     name: '',
     pinned: false,
+    pivot: NO_PIVOT,
     result: {
       started: true,
       done: true,

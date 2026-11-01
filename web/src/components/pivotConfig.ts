@@ -10,12 +10,23 @@
  * placing it again moves it, with its name. A measure can be placed several times. Each change
  * gives a new configuration; the panel computes again only when the request to the engine
  * (`engineRequest`) changes, a name changing only the labels.
+ *
+ * The configuration is saved with its tab, whose query can change: it keeps the names of the
+ * columns it was made for, and follows them in the columns of a new result (`fittedConfig`). Its
+ * types are those of the server (`crates/server/src/tab_pivot.rs`).
  */
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
+import type { PivotConfig } from '@/api/generated/PivotConfig'
+import type { TabPivot } from '@/api/generated/TabPivot'
 import type { TypeFamily } from '@/api/generated/TypeFamily'
 
 import type { PivotMeasure, PivotRequest } from './pivotEngine'
+import { sameColumns } from './resultGrid'
+
+export type { NamedMeasure } from '@/api/generated/NamedMeasure'
+export type { PivotLevel } from '@/api/generated/PivotLevel'
+export type { PivotConfig }
 
 /**
  * Zone of the panel.
@@ -37,48 +48,6 @@ export interface ZonePlace {
 }
 
 /**
- * Level of the rows or of the columns.
- */
-export interface PivotLevel {
-  /**
-   * Index of the column of the result.
-   */
-  column: number
-  /**
-   * Name given to the level, `''` without one: the level then shows the name of its column.
-   */
-  name: string
-}
-
-/**
- * Measure of the configuration.
- */
-export interface NamedMeasure extends PivotMeasure {
-  /**
-   * Name given to the measure, `''` without one: the measure then shows its expression.
-   */
-  name: string
-}
-
-/**
- * Configuration of a tab: the elements of each zone, the outermost level first.
- */
-export interface PivotConfig {
-  /**
-   * Levels of the rows.
-   */
-  rows: PivotLevel[]
-  /**
-   * Levels of the columns.
-   */
-  columns: PivotLevel[]
-  /**
-   * Measures, in the order of their zone.
-   */
-  measures: NamedMeasure[]
-}
-
-/**
  * Configuration without any element.
  */
 export function emptyConfig(): PivotConfig {
@@ -92,6 +61,51 @@ export function emptyConfig(): PivotConfig {
  */
 export function isEmptyConfig(config: PivotConfig): boolean {
   return config.rows.length === 0 && config.columns.length === 0 && config.measures.length === 0
+}
+
+/**
+ * Where each column of a result went in the columns of a new one, by name, the n-th of a repeated
+ * name going to the n-th of that name.
+ *
+ * @param fields Names of the columns of the former result.
+ * @param columns Names of the columns of the new result.
+ * @returns Index of each former column in the new result, absent for a lost column.
+ */
+function movedColumns(fields: string[], columns: string[]): (number | undefined)[] {
+  const free = new Map<string, number[]>()
+  columns.forEach((name, index) => free.set(name, [...(free.get(name) ?? []), index]))
+  return fields.map((name) => free.get(name)?.shift())
+}
+
+/**
+ * Configuration of a tab fitted to the columns of its result, which may have changed since it was
+ * made. An element follows its column by name; the element of a lost column leaves, except
+ * `COUNT(*)`, which reads no column, and takes the first one for its menu.
+ *
+ * @param pivot Configuration, with the columns it was made for.
+ * @param columns Names of the columns of the result.
+ * @returns The configuration itself when there is nothing to fit.
+ */
+export function fittedConfig(pivot: TabPivot, columns: string[]): PivotConfig {
+  const { fields, config } = pivot
+  if (isEmptyConfig(config) || sameColumns(fields, columns)) {
+    return config
+  }
+  const moved = movedColumns(fields, columns)
+  const follow = <T extends { column: number }>(item: T, column: number | undefined) =>
+    column === undefined ? [] : [{ ...item, column }]
+  const levels = (items: PivotConfig['rows']) =>
+    items.flatMap((item) => follow(item, moved[item.column]))
+  return {
+    rows: levels(config.rows),
+    columns: levels(config.columns),
+    measures: config.measures.flatMap((measure) =>
+      follow(
+        measure,
+        moved[measure.column] ?? (measure.aggregate === 'count_star' ? 0 : undefined),
+      ),
+    ),
+  }
 }
 
 /**

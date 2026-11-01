@@ -12,6 +12,7 @@
  */
 
 import type { TypeFamily } from '@/api/generated/TypeFamily'
+import type { PivotAggregate } from '@/api/generated/PivotAggregate'
 import type { Cell } from '@/api/querySession'
 
 import { compareCells } from './resultGrid'
@@ -25,16 +26,7 @@ export interface PivotMeasure {
   /**
    * Aggregate.
    */
-  aggregate:
-    | 'count_star'
-    | 'count'
-    | 'count_distinct'
-    | 'sum'
-    | 'sum_distinct'
-    | 'avg'
-    | 'avg_distinct'
-    | 'min'
-    | 'max'
+  aggregate: PivotAggregate
   /**
    * Column the measure comes from; `COUNT(*)` keeps it, for its label and its menu.
    */

@@ -330,12 +330,6 @@ const selectedTab = ref<string | number>(0)
 const shownTab = computed(() => state.tabs.find((tab) => tab.id === selectedTab.value))
 
 /**
- * Ids of the result tabs, for the Pivoteur, which keeps a configuration
- * per tab.
- */
-const tabIds = computed(() => state.tabs.map((tab) => tab.id))
-
-/**
  * Mounted views of the tabs, by tab id: the view of the tab shown gives the
  * choices of its export menu.
  */
@@ -1081,7 +1075,6 @@ defineExpose({
       <pivot-panel
         v-show="!isCollapsed"
         :tab="shownTab"
-        :tab-ids="tabIds"
         :open="!isCollapsed"
         :connection-id="connection.id"
         @collapse="pivotSplit?.collapse()"

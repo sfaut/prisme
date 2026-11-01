@@ -7,6 +7,7 @@ use ts_rs::TS;
 
 use crate::error_detail::ErrorDetail;
 use crate::recorder::ResumedQuery;
+use crate::tab_pivot::TabPivot;
 
 /// Message sent by the client.
 #[derive(Debug, Deserialize, TS)]
@@ -92,6 +93,12 @@ pub(crate) struct BatchQuery {
     pub(crate) start: usize,
     /// End of the query in the editor's text, in UTF-16 units.
     pub(crate) end: usize,
+    /// Configuration of the Pivoteur its new tab takes from the tab it replaces
+    /// (session of an editor); absent for a refresh, which keeps its tab, or
+    /// if the session does not save its results.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub(crate) pivot: Option<TabPivot>,
 }
 
 /// Handling of the limit, as announced to the client.
