@@ -2,12 +2,14 @@
 # wasm32-unknown-unknown, for a Worker of the page.
 
 [package]
-name = "web-engine"
+name = "prisme-web-engine"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [lib]
+# Name of the compiled file, without the prefix of the packages.
+name = "web_engine"
 crate-type = ["cdylib"]
 
 [dependencies]

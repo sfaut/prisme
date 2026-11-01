@@ -1712,6 +1712,14 @@ name = "prisme-store"
 version = "0.8.0"
 
 [[package]]
+name = "prisme-web-engine"
+version = "0.8.0"
+dependencies = [
+ "prisme-pivot",
+ "prisme-store",
+]
+
+[[package]]
 name = "proc-macro-crate"
 version = "3.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2956,14 +2964,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23f0c9c52aa7cd7d77769a4cfe2a9adb1b331f489a41d912ce14513d5ab995c6"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "web-engine"
-version = "0.8.0"
-dependencies = [
- "prisme-pivot",
- "prisme-store",
 ]
 
 [[package]]

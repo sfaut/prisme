@@ -72,7 +72,14 @@ function pivotEngine(): Plugin {
     config() {
       execFileSync(
         'cargo',
-        ['build', '--release', '--package', 'web-engine', '--target', 'wasm32-unknown-unknown'],
+        [
+          'build',
+          '--release',
+          '--package',
+          'prisme-web-engine',
+          '--target',
+          'wasm32-unknown-unknown',
+        ],
         { cwd: repository, stdio: ['ignore', 'inherit', 'inherit'] },
       )
       const metadata = JSON.parse(
@@ -102,8 +109,8 @@ function pivotEngine(): Plugin {
 
 /**
  * Name of a compiled file in kebab-case, as the other files of `assets/`: the Worker takes its name
- * from its source (`pivotWorker` gives `pivot-worker`), and the engine from its crate, whose
- * compiled file Cargo writes with underscores (`web_engine` gives `web-engine`).
+ * from its source (`pivotWorker` gives `pivot-worker`), and the engine from its library in Cargo,
+ * whose name holds underscores (`web_engine` gives `web-engine`).
  *
  * @param name Name given by the source, without its extension.
  */
