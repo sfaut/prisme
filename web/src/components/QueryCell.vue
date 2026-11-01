@@ -246,14 +246,46 @@ async function settle(): Promise<void> {
 const editorFolded = computed(() => editorPanel.value?.isCollapsed ?? false)
 
 /**
- * Opens the results: at their smallest height, from the height below them;
- * without any, under an open editor, with half of the editor's.
+ * Opens the results and, if asked, the Pivoteur below them, at their smallest
+ * heights, with the height of the panels around them. Under a folded Pivoteur,
+ * the results take half of the editor's height. When the cell is too small for
+ * all of them, the Pivoteur stays folded.
+ *
+ * Workaround: Reka UI refuses a height it could only reach by folding the
+ * panel next to it (`docs/DEVELOPER.md`, section "Workarounds"). The height
+ * goes through the empty panel: the Pivoteur folds for a moment, the results
+ * take what they need, the editor gives what is missing, and the Pivoteur
+ * opens again with what is left.
+ *
+ * @param pivotOpen Should the Pivoteur be open?
  */
-function openResults(): void {
-  resultsPanel.value?.resize(RESULTS_MIN_HEIGHT)
-  if (resultsPanel.value?.isCollapsed && editorPanel.value) {
-    const height = editorPanel.value.getSize()
-    editorPanel.value.resize(height - Math.max(RESULTS_MIN_HEIGHT, height / 2))
+function openResults(pivotOpen: boolean): void {
+  const results = resultsPanel.value
+  const filler = fillerPanel.value
+  const pivot = pivotSplit.value
+  const editor = editorPanel.value
+  if (!results || !filler || !pivot || !editor) {
+    return
+  }
+  if (!pivot.isCollapsed) {
+    pivot.collapse()
+  }
+  results.resize(RESULTS_MIN_HEIGHT)
+  if (results.isCollapsed) {
+    const height = editor.getSize()
+    editor.resize(height - Math.max(RESULTS_MIN_HEIGHT, height / 2))
+  }
+  if (pivotOpen) {
+    results.resize(RESULTS_MIN_HEIGHT)
+    // One pixel more, as the sizes come back from percentages, with their rounding.
+    const missing = PIVOT_MIN_HEIGHT - RAIL_SIZE - filler.getSize() + 1
+    if (missing > 0 && editor.getSize() - missing >= EDITOR_MIN_HEIGHT) {
+      editor.resize(editor.getSize() - missing)
+      results.resize(RESULTS_MIN_HEIGHT)
+    }
+    if (RAIL_SIZE + filler.getSize() >= PIVOT_MIN_HEIGHT) {
+      pivot.resize(RAIL_SIZE + filler.getSize())
+    }
   }
 }
 
@@ -266,17 +298,19 @@ function openResults(): void {
  */
 function unfold(panel: InstanceType<typeof SplitterPanel>): void {
   const editorOpen = editorPanel.value?.isCollapsed === false
-  const resultsOpen = resultsPanel.value?.isCollapsed === false
-  const pivotOpen = pivotSplit.value?.isCollapsed === false
+  const resultsOpen = resultsPanel.value?.isCollapsed === false || panel === resultsPanel.value
+  const pivotOpen = pivotSplit.value?.isCollapsed === false || panel === pivotSplit.value
   panel.expand()
   if (editorOpen && editorPanel.value?.isCollapsed) {
     editorPanel.value.resize(EDITOR_MIN_HEIGHT)
   }
-  if ((resultsOpen || panel === resultsPanel.value) && resultsPanel.value?.isCollapsed) {
-    openResults()
-  }
-  if (pivotOpen && pivotSplit.value?.isCollapsed) {
+  if (pivotOpen && pivotSplit.value?.isCollapsed && !resultsOpen) {
     pivotSplit.value.resize(PIVOT_MIN_HEIGHT)
+  } else if (
+    (resultsOpen && resultsPanel.value?.isCollapsed) ||
+    (pivotOpen && pivotSplit.value?.isCollapsed)
+  ) {
+    openResults(pivotOpen)
   }
 }
 
