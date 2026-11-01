@@ -1,0 +1,15 @@
+# WebAssembly side of the Pivoteur: the engine of crates/pivot compiled to
+# wasm32-unknown-unknown, for a Worker of the page.
+
+[package]
+name = "prisme-web-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+prisme-pivot = { path = "../pivot" }
+prisme-store = { path = "../store" }

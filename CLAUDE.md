@@ -55,6 +55,7 @@ crates/        Cargo workspace
   pivot/       engine of the Pivoteur: groups, measures, totals, layout of the pivot table
   server/      notebook sessions, API, authentication
   store/       rows of a result in columns: text of the cells, dictionaries, numbers
+  web-engine/  engine of the Pivoteur compiled to WebAssembly, for the Worker of the page
 web/           Vue application
 bench/         benchmarks outside the workspace (pivot/: engine of the Pivoteur; reload/: saved results; store/: store of the results; see docs/DEVELOPER.md)
 docs/          decisions and notes
