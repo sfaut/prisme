@@ -27,14 +27,17 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 
 ## 3. Corrections of the specification
 
-- ⬜ Single store of the results (`docs/QUESTIONS.md`, section 2): the lot 1 builds it in the Worker, fed by a copy of the rows, as the future single store
-- ⬜ Expression language: the Pivoteur's dialect, conversions (`CONCAT`, date literals), invalid data
-- ⬜ New section on the cases that diverge from one database to another, each to be decided
-- ⬜ Catalog: `CAST(x AS DATE)`, `CAST(x AS DATETIME)`
-- ⬜ Conformance: reference file, binary collation, functions absent from MySQL or MariaDB
-- ⬜ A1 with the benchmark, and the heading of the points to decide
-- ⬜ Mockup of the panel in three columns, search in the field list (F-10)
-- ⬜ Minor fixes: "clefs" (C-03), N-03, TypeScript block in English, checks and expected outputs of the acceptance, N-14, sources
+- ✅ Single store of the results (`docs/QUESTIONS.md`, section 2): the lot 1 builds it in the Worker, fed by a copy of the rows, as the future single store
+- ✅ Expression language: the dialect of the Pivoteur, ANSI SQL first, the rest borrowed from MySQL, MariaDB, PostgreSQL, DuckDB, ClickHouse or another engine, with functions of its own; parsed by `sqlparser` with a dialect of Prisme; conversions (`CONCAT`, date literals), invalid data
+- ✅ Behaviours of the engines measured on their servers or sourced, in a reference kept up to date: `docs/SQL-COMPARISON.md` (`node bench/sql/run.mjs`)
+- ✅ New section on the cases that diverge from one database to another (D1 to D31), each with a recommendation to decide
+- ✅ Catalog: ANSI functions, then the others with their origin; `CAST(x AS DATE)`, `CAST(x AS TIMESTAMP)`
+- ✅ Conformance: reference file, binary collations without padding on the servers, functions absent from MySQL or MariaDB
+- ✅ `sqlparser` compiled to WebAssembly measured: size of the module, time of a parse (`node bench/parser/run.mjs`, `docs/PERFORMANCES.md`, chapter 13)
+- ✅ A1 with the benchmark, and the heading of the points to decide
+- ✅ Mockup of the panel in three columns, search in the field list (F-10)
+- ✅ Minor fixes: "clefs" (C-03), N-03, TypeScript block in English, checks and expected outputs of the acceptance, N-14, sources
+- ⬜ Cases D1 to D31 decided by the maintainer
 
 ## 4. Lots of the specification
 
