@@ -7,8 +7,9 @@
   A column enters a zone by dragging it there, or by the "+" menu of its
   line (F-11); the order in a zone sets the nesting, the first element
   being the outermost level (F-27). An element moves by dragging it, from
-  one zone to another too, or by its menu; released outside the zones, it
-  leaves its zone (Escape cancels the drag). A column dropped into the
+  one zone to another too, a level to the other axis by its menu too;
+  released outside the zones, it leaves its zone (Escape cancels the drag).
+  A column dropped into the
   measures gives `SUM` for a number, `COUNT` otherwise
   (F-15); the menu of a measure changes its aggregate. A column is a level
   once at most: placing it again on an axis moves it there. An element
@@ -19,10 +20,8 @@
 -->
 <script setup lang="ts">
 import {
-  ArrowDown,
   ArrowDownToLine,
   ArrowLeftRight,
-  ArrowUp,
   ArrowUpToLine,
   Asterisk,
   Check,
@@ -176,25 +175,12 @@ function addItems(column: number): MenuItem[] {
 function elementItems(zone: PivotZone, index: number): MenuItem[] {
   const column = elements.value[zone][index]!.column
   const from = { zone, index }
-  const count = elements.value[zone].length
   const items: MenuItem[] = [
     {
       label: 'Nommer…',
       icon: PenLine,
       // The field takes the focus once the menu has closed (`onMenuClosed`).
       onSelect: () => startNaming(from),
-    },
-    {
-      label: 'Monter',
-      icon: ArrowUp,
-      disabled: index === 0,
-      onSelect: () => place(column, { zone, index: index - 1 }, from),
-    },
-    {
-      label: 'Descendre',
-      icon: ArrowDown,
-      disabled: index === count - 1,
-      onSelect: () => place(column, { zone, index: index + 2 }, from),
     },
   ]
   if (zone !== 'measures') {
