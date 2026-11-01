@@ -3,10 +3,11 @@
   F-01): a pivot table of the result shown (`shownResult`), after the filter
   of its grid (C-01). It follows the result tab shown, each tab keeping its
   own configuration (F-04), forgotten when the columns of its result
-  change. The columns of the result and the zones (`PivotZones.vue`), then
-  the table (`PivotGrid.vue`), which takes the remaining width, with its
-  status bar: rows taken into account, groups, duration of the computation
-  (F-06).
+  change; a new run of the queries carries it over to the tab of the same
+  rank, when the columns are the same (`pivotTabs.ts`). The columns of the
+  result and the zones (`PivotZones.vue`), then the table (`PivotGrid.vue`),
+  which takes the remaining width, with its status bar: rows taken into
+  account, groups, duration of the computation (F-06).
 
   The engine runs in a Worker of the page (`pivotClient.ts`), one per
   result: the rows are copied once the query has ended (F-07), while the
@@ -19,7 +20,7 @@
 -->
 <script setup lang="ts">
 import { LoaderCircle } from '@lucide/vue'
-import { computed, onBeforeUnmount, ref, shallowReactive, shallowRef, toRaw, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, toRaw, watch } from 'vue'
 
 import { errorMessage } from '@/api/errorMessage'
 import {
@@ -45,7 +46,8 @@ import {
   zoneLabels,
 } from './pivotConfig'
 import { type PivotFailure, type PivotRequest, type PivotWindow, PivotError } from './pivotEngine'
-import { sameColumns, visibleRows } from './resultGrid'
+import { TabConfigs } from './pivotTabs'
+import { visibleRows } from './resultGrid'
 import { columnIcon } from './typeIcons'
 import UiAlert from './ui/UiAlert.vue'
 import UiStatusBar from './ui/UiStatusBar.vue'
@@ -56,8 +58,8 @@ const props = defineProps<{
    */
   tab: QueryTab | undefined
   /**
-   * Ids of the tabs of the cell: the configuration of a closed tab is
-   * forgotten.
+   * Ids of the tabs of the cell: the configuration of a removed tab goes
+   * to the tab that takes its rank.
    */
   tabIds: number[]
   /**
@@ -101,35 +103,27 @@ const source = computed(() =>
 )
 
 /**
- * Configuration of a tab, with the columns it was made for.
+ * Configuration of each tab.
  */
-interface TabConfig {
-  /**
-   * Names of the columns of the result, when the configuration was made.
-   */
-  columns: string[]
-  /**
-   * Configuration.
-   */
-  config: PivotConfig
-}
+const configs = new TabConfigs()
 
-/**
- * Configuration of each tab, by id. Shallow: a configuration goes to the
- * Worker as it is, and a reactive copy could not.
- */
-const configs = shallowReactive(new Map<number, TabConfig>())
-
-// A closed tab takes its configuration away.
+// A removed tab, closed or replaced by a new run, takes its configuration
+// away, to the tab that will take its rank.
 watch(
   () => props.tabIds,
-  (ids) => {
-    for (const id of configs.keys()) {
-      if (!ids.includes(id)) {
-        configs.delete(id)
-      }
+  (ids) => configs.keep(ids),
+)
+
+// A tab takes back the configuration of the tab it replaces, once the
+// columns of its result are known.
+watch(
+  () => [props.tab, result.value?.columns] as const,
+  ([tab, columns]) => {
+    if (tab !== undefined && columns !== undefined) {
+      configs.adopt(tab.id, tab.number, columns)
     }
   },
+  { immediate: true },
 )
 
 /**
@@ -143,14 +137,13 @@ const NO_CONFIG = emptyConfig()
  */
 const config = computed<PivotConfig>({
   get() {
-    const entry = props.tab ? configs.get(props.tab.id) : undefined
-    return entry && result.value && sameColumns(entry.columns, result.value.columns)
-      ? entry.config
-      : NO_CONFIG
+    const tab = props.tab
+    const shown = result.value
+    return (tab && shown && configs.get(tab.id, shown.columns)) ?? NO_CONFIG
   },
   set(value) {
     if (props.tab && result.value) {
-      configs.set(props.tab.id, { columns: result.value.columns, config: value })
+      configs.set(props.tab.id, props.tab.number, result.value.columns, value)
     }
   },
 })
