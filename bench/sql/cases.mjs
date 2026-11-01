@@ -381,6 +381,31 @@ export const CASES = [
     },
   },
   {
+    key: 'agg.distinct_nan',
+    forms: {
+      shared:
+        "(SELECT COUNT(DISTINCT k) FROM (SELECT CAST('NaN' AS DOUBLE PRECISION) AS k UNION ALL SELECT CAST('NaN' AS DOUBLE PRECISION)) AS t)",
+    },
+  },
+  {
+    key: 'agg.distinct_negative_zero',
+    forms: {
+      shared: '(SELECT COUNT(DISTINCT k) FROM (SELECT 0e0 AS k UNION ALL SELECT -0e0) AS t)',
+    },
+  },
+  {
+    key: 'agg.max_nan',
+    forms: {
+      shared: "(SELECT MAX(k) FROM (SELECT CAST('NaN' AS DOUBLE PRECISION) AS k UNION ALL SELECT 1e0) AS t)",
+    },
+  },
+  {
+    key: 'agg.min_nan',
+    forms: {
+      shared: "(SELECT MIN(k) FROM (SELECT CAST('NaN' AS DOUBLE PRECISION) AS k UNION ALL SELECT 1e0) AS t)",
+    },
+  },
+  {
     key: 'agg.min_text',
     forms: {
       shared:

@@ -170,10 +170,14 @@ MySQL, MariaDB and SQLite take NULL as the smallest value, PostgreSQL as the lar
 | `agg.sum_distinct` | `SUM(DISTINCT k)` of 1, 1 and 2 | | `3` | `3` | `3` | `3` | `3` | |
 | `agg.sum_distinct_scale` | `SUM(DISTINCT k)` of 1.0 and 1.00 | | `1.00` | `1.00` | `1.0` | `1.0` | `1.00` | |
 | `agg.count_distinct_scale` | `COUNT(DISTINCT k)` of 1.0 and 1.00 | | `1` | `1` | `1` | `1` | `1` | |
+| `agg.distinct_nan` | `COUNT(DISTINCT k)` of two `NaN` | | error 1064 (8.0.11), `1`, warning (9.7.4, 26.10.0) | error 1064 | `1` | `1` | `1` | |
+| `agg.distinct_negative_zero` | `COUNT(DISTINCT k)` of `0e0` and `-0e0` | | `2` (8.0.11), `1` (9.7.4, 26.10.0) | `2` (10.6.3), `1` (12.3.3, 13.0.2) | `1` | `1` | `1` | |
+| `agg.max_nan` | `MAX(k)` of `NaN` and 1 | | error 1064 (8.0.11), `1`, warning (9.7.4, 26.10.0) | error 1064 | `NaN` | `1.0` | `nan` | |
+| `agg.min_nan` | `MIN(k)` of `NaN` and 1 | | error 1064 (8.0.11), `0`, warning (9.7.4, 26.10.0) | error 1064 | `1` | `0.0` | `1.0` | |
 | `agg.min_text` | `MIN(k)` of `b`, `B`, `a`, `A` | | `a` | `a` | `a` | `A` | `A` | |
 | `agg.max_text` | `MAX(k)` of `b`, `B`, `a`, `A` | | `b` | `b` | `B` | `b` | `b` | |
 
-On exact numbers, MySQL and MariaDB give `AVG` at the scale of the column + 4 (`div_precision_increment`), rounded away from zero, a tie included (`agg.avg_half`). `DISTINCT` compares numbers by value: `1.0` and `1.00` are one value on every engine. `MIN` and `MAX` of texts follow the collation of the connection on MySQL, MariaDB and PostgreSQL, the code points on SQLite and DuckDB.
+On exact numbers, MySQL and MariaDB give `AVG` at the scale of the column + 4 (`div_precision_increment`), rounded away from zero, a tie included (`agg.avg_half`). `DISTINCT` compares numbers by value: `1.0` and `1.00` are one value on every engine. `MIN` and `MAX` of texts follow the collation of the connection on MySQL, MariaDB and PostgreSQL, the code points on SQLite and DuckDB. Only PostgreSQL and DuckDB read a `NaN`: it is one value under `DISTINCT`, and comes after every number; MySQL reads it as 0 with a warning, and SQLite as 0. `0` and `-0` are one value, except on MySQL 8.0.11 and MariaDB 10.6.3.
 
 The standard `LISTAGG` takes a literal separator and `WITHIN GROUP`, both required, and ignores NULL; none of the engines measured accepts this form. DuckDB accepts `LISTAGG` with its `ORDER BY` inside the parentheses, as `STRING_AGG`.
 
