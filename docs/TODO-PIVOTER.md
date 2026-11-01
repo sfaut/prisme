@@ -37,7 +37,7 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ A1 with the benchmark, and the heading of the points to decide
 - ✅ Mockup of the panel in three columns, search in the field list (F-10)
 - ✅ Minor fixes: "clefs" (C-03), N-03, TypeScript block in English, checks and expected outputs of the acceptance, N-14, sources
-- ✅ Cases D1 to D34 decided by the maintainer
+- ✅ Cases D1 to D35 decided by the maintainer
 - ✅ Decisions applied throughout the specification, typed literals written without a space (`DATE'2026-01-15'`)
 
 ## 4. Lots of the specification
