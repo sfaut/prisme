@@ -435,6 +435,11 @@ const lines = computed(() =>
   inset-inline-start: --spacing(1);
   min-inline-size: 0;
 
+  /* Clipped sideways only, for the ellipsis: trimmed to its capitals
+     (`text-box`), the box would cut the descenders below. */
+  overflow-x: clip;
+  overflow-y: visible;
+
   .labelled & {
     inset-inline-start: calc(var(--pivot-label-width) + --spacing(1));
   }
