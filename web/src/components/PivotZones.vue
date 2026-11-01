@@ -7,8 +7,9 @@
   A column enters a zone by dragging it there, or by the "+" menu of its
   line (F-11); the order in a zone sets the nesting, the first element
   being the outermost level (F-27). An element moves by dragging it, from
-  one zone to another too, or by its menu, which also removes it. A column
-  dropped into the measures gives `SUM` for a number, `COUNT` otherwise
+  one zone to another too, or by its menu; released outside the zones, it
+  leaves its zone (Escape cancels the drag). A column dropped into the
+  measures gives `SUM` for a number, `COUNT` otherwise
   (F-15); the menu of a measure changes its aggregate. A column is a level
   once at most: placing it again on an axis moves it there. An element
   takes a name by its menu ("Nommer…") or a double click on its label
@@ -37,9 +38,8 @@ import {
   Sigma,
   SquareDivide,
   SquareSigma,
-  X,
 } from '@lucide/vue'
-import { type Component, computed, nextTick, ref, useTemplateRef } from 'vue'
+import { type Component, computed, nextTick, onBeforeUnmount, ref, useTemplateRef } from 'vue'
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 
@@ -168,7 +168,7 @@ function addItems(column: number): MenuItem[] {
 }
 
 /**
- * Choices that name, move or remove an element.
+ * Choices that name or move an element.
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
@@ -205,11 +205,6 @@ function elementItems(zone: PivotZone, index: number): MenuItem[] {
       onSelect: () => place(column, { zone: other, index: elements.value[other].length }, from),
     })
   }
-  items.push({
-    label: 'Retirer',
-    icon: X,
-    onSelect: () => (config.value = removeElement(config.value, from)),
-  })
   return items
 }
 
@@ -354,6 +349,66 @@ const dragged = ref<{ column: number; from: ZonePlace | null } | null>(null)
 const dropAt = ref<ZonePlace | null>(null)
 
 /**
+ * Sections of the zones: a drop outside them removes the dragged element.
+ */
+const zoneSections = useTemplateRef<HTMLElement[]>('zoneSection')
+
+/**
+ * Does an event of the drag happen over a zone?
+ *
+ * @param event Event of the drag.
+ */
+function overZone(event: DragEvent): boolean {
+  const target = event.target
+  return target instanceof Node && (zoneSections.value ?? []).some((zone) => zone.contains(target))
+}
+
+/**
+ * Passage of an element of a zone over the rest of the page: the browser
+ * is told it can be dropped there, and what lies below does not hear of
+ * it (the SQL editor would take its text).
+ *
+ * @param event Passage over the page.
+ */
+function onDragOverPage(event: DragEvent): void {
+  if (!overZone(event)) {
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move'
+    }
+  }
+}
+
+/**
+ * Drop of an element of a zone on the rest of the page: it leaves its zone.
+ * Escape, or a release outside the page, sends no drop and changes nothing.
+ * The end of the drag is handled here: the browser may not tell it to an
+ * element that has just left the page.
+ *
+ * @param event Drop on the page.
+ */
+function onDropOnPage(event: DragEvent): void {
+  const from = dragged.value?.from ?? null
+  if (from !== null && !overZone(event)) {
+    event.preventDefault()
+    event.stopPropagation()
+    config.value = removeElement(config.value, from)
+    onDragEnd()
+  }
+}
+
+/**
+ * Stops following the drag over the page.
+ */
+function stopFollowingPage(): void {
+  document.removeEventListener('dragover', onDragOverPage, { capture: true })
+  document.removeEventListener('drop', onDropOnPage, { capture: true })
+}
+
+onBeforeUnmount(stopFollowingPage)
+
+/**
  * Starts dragging a column or an element.
  *
  * @param event Start of the drag.
@@ -366,6 +421,10 @@ function onDragStart(event: DragEvent, column: number, from: ZonePlace | null): 
     event.dataTransfer.effectAllowed = 'move'
     event.dataTransfer.setData('text/plain', props.names[column] ?? '')
   }
+  if (from !== null) {
+    document.addEventListener('dragover', onDragOverPage, { capture: true })
+    document.addEventListener('drop', onDropOnPage, { capture: true })
+  }
 }
 
 /**
@@ -374,6 +433,7 @@ function onDragStart(event: DragEvent, column: number, from: ZonePlace | null): 
 function onDragEnd(): void {
   dragged.value = null
   dropAt.value = null
+  stopFollowingPage()
 }
 
 /**
@@ -496,6 +556,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
     <div class="flex min-h-0 w-64 shrink-0 flex-col gap-3 overflow-y-auto">
       <section
         v-for="{ zone, label, icon } in ZONES"
+        ref="zoneSection"
         :key="zone"
         class="flex flex-col gap-1"
         :aria-label="label"
