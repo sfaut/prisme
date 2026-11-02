@@ -450,6 +450,22 @@ export const CASES = [
         "(SELECT MAX(k) FROM (SELECT 'b' AS k UNION ALL SELECT 'B' UNION ALL SELECT 'a' UNION ALL SELECT 'A') AS t)",
     },
   },
+  {
+    key: 'agg.having_rollup_total',
+    forms: {
+      shared:
+        "(SELECT MAX(s) FROM (SELECT k, SUM(v) AS s FROM (SELECT 'Lille' AS k, 370 AS v UNION ALL SELECT 'Arras', 100 UNION ALL SELECT 'Nice', 350 UNION ALL SELECT 'Toulon', 30) AS t GROUP BY ROLLUP(k) HAVING SUM(v) > 100) AS r WHERE k IS NULL)",
+      mysql:
+        "(SELECT MAX(s) FROM (SELECT k, SUM(v) AS s FROM (SELECT 'Lille' AS k, 370 AS v UNION ALL SELECT 'Arras', 100 UNION ALL SELECT 'Nice', 350 UNION ALL SELECT 'Toulon', 30) AS t GROUP BY k WITH ROLLUP HAVING SUM(v) > 100) AS r WHERE k IS NULL)",
+    },
+  },
+  {
+    key: 'agg.having_null',
+    forms: {
+      shared:
+        "(SELECT COUNT(*) FROM (SELECT g FROM (SELECT 'a' AS g, NULL AS v UNION ALL SELECT 'b', 1) AS t GROUP BY g HAVING SUM(v) <> 0) AS r)",
+    },
+  },
   // Lengths
   { key: 'len.length', forms: { shared: "LENGTH('é')" } },
   { key: 'len.char_length', forms: { shared: "CHAR_LENGTH('é')" } },

@@ -184,8 +184,12 @@ MySQL, MariaDB and SQLite take NULL as the smallest value, PostgreSQL as the lar
 | `agg.min_nan` | `MIN(k)` of `NaN` and 1 | | error 1064 (8.0.11), `0`, warning (9.7.4, 26.10.0) | error 1064 | `1` | `0.0` | `1.0` | |
 | `agg.min_text` | `MIN(k)` of `b`, `B`, `a`, `A` | | `a` | `a` | `a` | `A` | `A` | |
 | `agg.max_text` | `MAX(k)` of `b`, `B`, `a`, `A` | | `b` | `b` | `B` | `b` | `b` | |
+| `agg.having_rollup_total` | Total line of `GROUP BY ROLLUP(k) HAVING SUM(v) > 100` of 370, 100, 350 and 30 (`GROUP BY k WITH ROLLUP` on MySQL and MariaDB) | `ROLLUP`: SQL:1999, feature T431; `HAVING` keeps or drops the total as one more group | `850` | `850` | `850` | error: no such function: `ROLLUP` | `850` | |
+| `agg.having_null` | Number of groups left by `HAVING SUM(v) <> 0`, of a group of NULL and of a group of 1 | a group whose condition is not true leaves | `1` | `1` | `1` | `1` | `1` | |
 
 On exact numbers, MySQL and MariaDB give `AVG` at the scale of the column + 4 (`div_precision_increment`), rounded away from zero, a tie included (`agg.avg_half`). `DISTINCT` compares numbers by value: `1.0` and `1.00` are one value on every engine. `MIN` and `MAX` of texts follow the collation of the connection on MySQL, MariaDB and PostgreSQL, the code points on SQLite and DuckDB. Only PostgreSQL and DuckDB read a `NaN`: it is one value under `DISTINCT`, and comes after every number; MySQL reads it as 0 with a warning, and SQLite as 0. `0` and `-0` are one value, except on MySQL 8.0.11 and MariaDB 10.6.3.
+
+`HAVING` reads the groups once `ROLLUP` has computed them: the total keeps the rows of the groups it drops (`850`, the 100 and the 30 included), and no longer adds up. The filters on a measure of the Pivoteur keep rows, and the table is computed from those that remain: the same condition gives a total of `720`. A group whose measure is NULL leaves under any comparison, as under `HAVING` (`agg.having_null`).
 
 The standard `LISTAGG` aggregates a text, takes a literal separator and `WITHIN GROUP`, both required, and ignores NULL; none of the engines measured accepts this form. DuckDB accepts `LISTAGG` with its `ORDER BY` inside the parentheses, as `STRING_AGG`.
 
