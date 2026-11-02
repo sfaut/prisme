@@ -77,6 +77,7 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 
 ### Next slices and lots
 
+- ⬜ Filters of lot 1, decided in the specification (F-19, F-21, F-44): a source column by the list of its values with a search, a measure at a level chosen in the filter's menu (by default the deepest of the rows), an expression. Totals count the groups that remain, unlike `WITH ROLLUP … HAVING` (measured on MariaDB 12.3.3 and MySQL 9.7.4, to record in `bench/sql/cases.mjs` and `docs/SQL-COMPARISON.md` with this slice)
 - ⬜ Lot 1, next slices (ANSI SQL): dialect (parsed by `sqlparser`, typing, ANSI catalog), calendar, editor, nested date levels, computed columns, filters, fold, caches, copy, CSV, conformance
-- ⬜ Lot 2: complements (detail of a cell, filter by list, measures in rows)
+- ⬜ Lot 2: complements (detail of a cell, measures in rows)
 - ⬜ Lot 3: extensions (overflow syntax and functions of MySQL, MariaDB, PostgreSQL, DuckDB and ClickHouse, functions of Prisme's own, then a "global" Prisme dialect)
