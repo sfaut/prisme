@@ -18,4 +18,8 @@ export type PivotLevel = {
    * What the level keeps of the dates of its column.
    */
   precision: DatePrecision;
+  /**
+   * Are the values of the level in descending order?
+   */
+  descending?: boolean;
 };

@@ -2,19 +2,22 @@
 import { readFileSync } from 'node:fs'
 
 import enginePath from 'virtual:pivot-engine-path'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 
 import type { TypeFamily } from '@/api/generated/TypeFamily'
 import type { Cell } from '@/api/querySession'
 
 import {
+  type PivotOrder,
   type PivotRequest,
   type PivotRequestLevel,
   type WorkerState,
+  LABEL_ORDER,
   PivotEngine,
   PivotError,
   answerMessage,
   familyCode,
+  orderWords,
   ranksOf,
   requestWords,
 } from '../pivotEngine'
@@ -141,6 +144,25 @@ describe('requestWords', () => {
       ],
     }
     expect(Array.from(requestWords(request))).toEqual([0, 0, 5, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0])
+  })
+})
+
+describe('orderWords', () => {
+  it('writes each axis: its levels, then the values that rank it', () => {
+    const order: PivotOrder = {
+      rows: { descending: [true, false], values: null },
+      columns: {
+        descending: [],
+        values: { path: ['é', null, 'a'], measure: 2, descending: true },
+      },
+    }
+    expect(Array.from(orderWords(order))).toEqual([
+      2, 1, 0, 0, 0, 1, 2, 1, 3, 2, 0xc3, 0xa9, 0xffff_ffff, 1, 0x61,
+    ])
+  })
+
+  it('writes the order of a table just computed', () => {
+    expect(Array.from(orderWords(LABEL_ORDER))).toEqual([0, 0, 0, 0])
   })
 })
 
@@ -274,7 +296,7 @@ describe('PivotEngine', () => {
       measures: [{ aggregate: 'count_star', column: 0 }],
     })
     const window = engine.window([2, 50], [0, 50])
-    expect(window.lines).toEqual([{ depth: 0, label: null }])
+    expect(window.lines).toEqual([{ depth: 0, label: null, path: [] }])
     expect(window.cells).toEqual([['10']])
   })
 
@@ -344,6 +366,120 @@ describe('PivotEngine', () => {
     expect(engine.window([0, 3], [0, 1]).cells).toEqual([['5'], ['5'], ['10']])
   })
 
+  describe('with an order', () => {
+    /**
+     * Table of the example: regions and villes by years, sum of the amounts.
+     */
+    const TABLE: PivotRequest = {
+      rows: [level(0), level(1)],
+      columns: [level(2)],
+      measures: [{ aggregate: 'sum', column: 4 }],
+    }
+
+    /**
+     * Labels of the lines of a window of the table.
+     *
+     * @param engine Engine holding the table.
+     */
+    function labels(engine: PivotEngine): Cell[] {
+      return engine.window([0, 7], [0, 3]).lines.map((line) => line.label)
+    }
+
+    /**
+     * Labels of the columns of a window of the table.
+     *
+     * @param engine Engine holding the table.
+     */
+    function columns(engine: PivotEngine): (Cell | undefined)[] {
+      return engine.window([0, 1], [0, 3]).columns.map((column) => column.path[0]?.[1])
+    }
+
+    it('reverses the labels of a level in descending order', async () => {
+      const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
+      engine.compute(TABLE, {
+        rows: { descending: [true], values: null },
+        columns: { descending: [true], values: null },
+      })
+      expect(labels(engine)).toEqual(['Sud', 'Nice', 'Toulon', 'Nord', 'Arras', 'Lille', null])
+      expect(columns(engine)).toEqual(['2026', '2025', undefined])
+    })
+
+    it('ranks the lines by the values of a column, within their group', async () => {
+      const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
+      engine.compute(TABLE, {
+        rows: { descending: [], values: { path: ['2025'], measure: 0, descending: true } },
+        columns: { descending: [], values: null },
+      })
+      expect(labels(engine)).toEqual(['Nord', 'Lille', 'Arras', 'Sud', 'Nice', 'Toulon', null])
+      const line = engine.window([1, 2], [0, 3])
+      expect(line.lines[0]?.path).toEqual(['Nord', 'Lille'])
+      expect(line.cells).toEqual([['220', '150', '370']])
+    })
+
+    it('ranks the columns by the values of a line, with a text that is not ASCII', async () => {
+      const rows: Cell[][] = [
+        ['Été', 'a', '1'],
+        ['Été', 'b', '2'],
+        [null, 'a', '4'],
+        [null, 'b', '3'],
+      ]
+      const engine = await loaded(rows, ['text', 'text', 'integer'])
+      const request: PivotRequest = {
+        rows: [level(0)],
+        columns: [level(1)],
+        measures: [{ aggregate: 'sum', column: 2 }],
+      }
+      const by = (path: Cell[]) => {
+        engine.compute(request, {
+          rows: { descending: [], values: null },
+          columns: { descending: [], values: { path, measure: 0, descending: true } },
+        })
+        return columns(engine)
+      }
+      expect(by(['Été'])).toEqual(['b', 'a', undefined])
+      expect(by([null])).toEqual(['a', 'b', undefined])
+    })
+
+    it('lays the table out again without computing it', async () => {
+      const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
+      // The exports of a module are frozen: the engine reads a copy that counts its computations.
+      const held = engine as unknown as { engine: { compute: (...args: number[]) => number } }
+      const compute = vi.fn<(...args: number[]) => number>(held.engine.compute)
+      held.engine = { ...held.engine, compute }
+      const descending = {
+        rows: { descending: [true], values: null },
+        columns: { descending: [], values: null },
+      }
+      engine.compute(TABLE)
+      expect(compute).toHaveBeenCalledTimes(1)
+      const shape = engine.compute(TABLE, descending)
+      expect(compute).toHaveBeenCalledTimes(1)
+      expect(shape).toMatchObject({ lines: 7, columns: 3, groups: 7, rows: 10 })
+      expect(labels(engine)[0]).toBe('Sud')
+      // Back to the labels, then a table of the rows kept: a new computation.
+      engine.compute(TABLE)
+      expect(labels(engine)[0]).toBe('Nord')
+      expect(compute).toHaveBeenCalledTimes(1)
+      engine.setKept(Uint32Array.from([5, 6]))
+      expect(engine.compute(TABLE).rows).toBe(2)
+      expect(compute).toHaveBeenCalledTimes(2)
+    })
+
+    it('starts a table computed again from its labels', async () => {
+      const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
+      const descending = {
+        rows: { descending: [true], values: null },
+        columns: { descending: [], values: null },
+      }
+      engine.compute(TABLE, descending)
+      expect(labels(engine)[0]).toBe('Sud')
+      engine.compute({ ...TABLE, columns: [] }, descending)
+      expect(engine.window([0, 1], [0, 1]).lines[0]?.label).toBe('Sud')
+      engine.compute(TABLE)
+      expect(labels(engine)[0]).toBe('Nord')
+    })
+  })
+
   it('refuses a window before any table', async () => {
     const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
     expect(() => engine.window([0, 1], [0, 1])).toThrowError(
@@ -368,7 +504,8 @@ describe('answerMessage', () => {
       columns: [],
       measures: [{ aggregate: 'count_star', column: 0 }],
     }
-    const table = answerMessage(state, { type: 'compute', id: 2, request })
+    const order = LABEL_ORDER
+    const table = answerMessage(state, { type: 'compute', id: 2, request, order })
     expect(table).toMatchObject({ type: 'table', id: 2, shape: { lines: 1, columns: 1 } })
     expect(
       answerMessage(state, {
@@ -382,13 +519,13 @@ describe('answerMessage', () => {
       type: 'window',
       id: 3,
       window: {
-        lines: [{ depth: 0, label: null }],
+        lines: [{ depth: 0, label: null, path: [] }],
         columns: [{ node: 0, path: [], total: false, measure: 0 }],
         cells: [['10']],
       },
     })
     const sumOfText: PivotRequest = { ...request, measures: [{ aggregate: 'sum', column: 0 }] }
-    expect(answerMessage(state, { type: 'compute', id: 4, request: sumOfText })).toEqual({
+    expect(answerMessage(state, { type: 'compute', id: 4, request: sumOfText, order })).toEqual({
       type: 'failure',
       id: 4,
       failure: { kind: 'not_numeric', measure: 0 },
@@ -403,7 +540,7 @@ describe('answerMessage', () => {
         columns: [0, 1],
       }),
     ).toMatchObject({ type: 'window', id: 5 })
-    answerMessage(state, { type: 'compute', id: 6, request })
+    answerMessage(state, { type: 'compute', id: 6, request, order })
     expect(
       answerMessage(state, {
         type: 'window',

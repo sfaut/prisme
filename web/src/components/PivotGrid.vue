@@ -16,15 +16,39 @@
   lines and the columns to draw (`drawnRange`). A cell without any row
   stays empty, a measure that is NULL reads NULL, in the style of the grid
   (C-05). The layout of the headers is in `pivotLayout.ts`.
+
+  Sort buttons, as in the grid: the name of a level inverts its direction
+  (C-11), the header of a single column ranks the lines by its values, the
+  label of a line ranks the columns by its own, by their first measure (C-13).
+  The button of a line shows when the pointer is on that line, or when it
+  ranks the columns. The panel holds the order (`order`), and computes nothing
+  to lay the table out again. While the new window is read, the previous one
+  stays in place when it fits.
 -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
 
 import { cssPixels } from '@/cssLength'
 
-import type { PivotShape, PivotWindow } from './pivotEngine'
-import { cornerRows, headerCells, headerRowCount, lineLabel } from './pivotLayout'
+import type { PivotAxis } from './pivotConfig'
+import { sameTarget } from './pivotConfig'
+import type {
+  PivotLine,
+  PivotOrder,
+  PivotShape,
+  PivotValueTarget,
+  PivotWindow,
+} from './pivotEngine'
+import {
+  cornerRows,
+  headerCells,
+  headerRowCount,
+  lineLabel,
+  sameLayout,
+  sortMark,
+} from './pivotLayout'
 import { NULL_TEXT, drawnRange } from './resultGrid'
+import { vTooltip } from './ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -48,10 +72,25 @@ const props = defineProps<{
    */
   columnNames: string[]
   /**
+   * Order of the lines and of the columns.
+   */
+  order: PivotOrder
+  /**
    * Reads a window of the table: lines and columns, start included, end
    * excluded.
    */
   read: (lines: [number, number], columns: [number, number]) => Promise<PivotWindow>
+}>()
+
+const emit = defineEmits<{
+  /**
+   * The user clicks the sort of a level.
+   */
+  sortLevel: [axis: PivotAxis, level: number]
+  /**
+   * The user clicks the sort of a node, whose values rank the other axis.
+   */
+  sortValues: [axis: PivotAxis, target: PivotValueTarget]
 }>()
 
 /**
@@ -156,6 +195,10 @@ interface ShownWindow {
    */
   table: number
   /**
+   * Shape of the table.
+   */
+  shape: PivotShape
+  /**
    * Number of the reading that gave it, which keeps the latest one.
    */
   reading: number
@@ -208,6 +251,7 @@ watch(
         ) {
           shown.value = {
             table,
+            shape: props.shape,
             reading,
             firstLine: lines.start,
             firstColumn: columns.start,
@@ -223,9 +267,15 @@ watch(
 )
 
 /**
- * Window to draw: that of the table shown only.
+ * Window to draw: that of the table shown, or, while it is read, that of the
+ * previous table when it takes the same room.
  */
-const content = computed(() => (shown.value?.table === props.table ? shown.value : null))
+const content = computed(() => {
+  const window = shown.value
+  return window !== null && (window.table === props.table || sameLayout(window.shape, props.shape))
+    ? window
+    : null
+})
 
 /**
  * Columns of the grid of each line and of the headers: the labels, the room
@@ -279,6 +329,50 @@ const lines = computed(() =>
     cells: content.value?.content.cells[offset] ?? [],
   })),
 )
+
+/**
+ * Can the values of a column rank the lines? With lines to rank.
+ */
+const linesSortable = computed(() => props.shape.rowLevels > 0)
+
+/**
+ * Can the values of a line rank the columns? With columns to rank, and a
+ * measure to read.
+ */
+const columnsSortable = computed(
+  () => props.shape.columnLevels > 0 && props.measureLabels.length > 0,
+)
+
+/**
+ * Mark of the sort of a level: its direction, unless values rank its axis.
+ *
+ * @param axis Axis of the level.
+ * @param level Position of the level.
+ */
+function levelMark(axis: PivotAxis, level: number): string {
+  const { descending, values } = props.order[axis]
+  return sortMark(values === null ? descending[level] === true : null)
+}
+
+/**
+ * Direction of the sort by these values, `null` when they do not rank the axis.
+ *
+ * @param axis Axis the values rank.
+ * @param target Node and measure of the values.
+ */
+function valueDirection(axis: PivotAxis, target: PivotValueTarget): boolean | null {
+  const { values } = props.order[axis]
+  return values !== null && sameTarget(values, target) ? values.descending : null
+}
+
+/**
+ * Values of a line, as they can rank the columns: by their first measure.
+ *
+ * @param line Line of the table.
+ */
+function lineTarget(line: PivotLine): PivotValueTarget {
+  return { path: line.path, measure: 0 }
+}
 </script>
 
 <template>
@@ -303,8 +397,36 @@ const lines = computed(() =>
         :style="{ gridRow: `1 / span ${headerRows}`, gridColumn: 1 }"
       >
         <div v-for="(row, index) in corner" :key="index" class="pivot-corner-row">
-          <span class="pivot-corner-text">{{ row.start }}</span>
-          <span class="pivot-corner-text">{{ row.end }}</span>
+          <span class="pivot-corner-names">
+            <span v-for="{ level, name } in row.rows" :key="level" class="pivot-corner-name">
+              <span class="pivot-corner-text">{{ name }}</span>
+              <button
+                class="pivot-sort"
+                :class="{ active: order.rows.descending[level] && order.rows.values === null }"
+                type="button"
+                :aria-label="`Trier par ${name}`"
+                v-tooltip="`Trier par ${name}`"
+                @click="emit('sortLevel', 'rows', level)"
+              >
+                {{ levelMark('rows', level) }}
+              </button>
+            </span>
+          </span>
+          <span v-if="row.column" class="pivot-corner-name">
+            <span class="pivot-corner-text">{{ row.column.name }}</span>
+            <button
+              class="pivot-sort"
+              :class="{
+                active: order.columns.descending[row.column.level] && order.columns.values === null,
+              }"
+              type="button"
+              :aria-label="`Trier par ${row.column.name}`"
+              v-tooltip="`Trier par ${row.column.name}`"
+              @click="emit('sortLevel', 'columns', row.column!.level)"
+            >
+              {{ levelMark('columns', row.column.level) }}
+            </button>
+          </span>
         </div>
       </div>
       <div
@@ -318,6 +440,17 @@ const lines = computed(() =>
         }"
       >
         <span class="pivot-head-text">{{ cell.text ?? NULL_TEXT }}</span>
+        <button
+          v-if="cell.target && linesSortable"
+          class="pivot-sort"
+          :class="{ active: valueDirection('rows', cell.target) !== null }"
+          type="button"
+          aria-label="Trier les lignes par cette colonne"
+          v-tooltip="'Trier les lignes par cette colonne'"
+          @click="emit('sortValues', 'rows', cell.target!)"
+        >
+          {{ sortMark(valueDirection('rows', cell.target)) }}
+        </button>
       </div>
     </div>
 
@@ -341,7 +474,18 @@ const lines = computed(() =>
           :class="{ null: lineLabel(line) === null }"
           :style="{ '--indent': Math.max(0, line.depth - 1) }"
         >
-          {{ lineLabel(line) ?? NULL_TEXT }}
+          <span class="pivot-label-text">{{ lineLabel(line) ?? NULL_TEXT }}</span>
+          <button
+            v-if="columnsSortable"
+            class="pivot-sort"
+            :class="{ active: valueDirection('columns', lineTarget(line)) !== null }"
+            type="button"
+            aria-label="Trier les colonnes par cette ligne"
+            v-tooltip="'Trier les colonnes par cette ligne'"
+            @click="emit('sortValues', 'columns', lineTarget(line))"
+          >
+            {{ sortMark(valueDirection('columns', lineTarget(line))) }}
+          </button>
         </div>
         <div class="pivot-room" />
         <div
@@ -375,7 +519,7 @@ const lines = computed(() =>
  * (`text-box`) in the middle of the line (`align-content` on a block), cut
  * with an ellipsis when its column is too narrow.
  */
-.pivot-label,
+.pivot-label-text,
 .pivot-cell,
 .pivot-head-text,
 .pivot-corner-text {
@@ -418,7 +562,9 @@ const lines = computed(() =>
  */
 .pivot-head {
   display: flex;
+  justify-content: space-between;
   align-items: center;
+  gap: --spacing(1);
   border-block-end: var(--line-width) solid var(--color-line);
   border-inline-start: var(--line-width) solid var(--color-line);
   font-weight: 600;
@@ -427,8 +573,26 @@ const lines = computed(() =>
     color: var(--color-fg-strong);
   }
 
+  /* The label above the numbers, its sort button at the other end. */
   &.measure {
-    justify-content: flex-end;
+    flex-direction: row-reverse;
+  }
+}
+
+/* Sort button, as in the grid. */
+.pivot-sort {
+  flex: none;
+  padding-inline: --spacing(1);
+  border: none;
+  background: none;
+  color: var(--color-fg-faint);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  cursor: pointer;
+
+  &:hover,
+  &.active {
+    color: var(--color-fg-strong);
   }
 }
 
@@ -465,12 +629,22 @@ const lines = computed(() =>
 
 /* Names of the levels of the lines at the start of a row, that of a
    level of the columns at its end; each one shrinks with an ellipsis
-   when the corner is too narrow for both. */
+   when the corner is too narrow for both, its sort button in sight. */
 .pivot-corner-row {
   display: flex;
   justify-content: space-between;
   gap: --spacing(2);
   min-inline-size: 0;
+}
+
+.pivot-corner-names,
+.pivot-corner-name {
+  display: flex;
+  min-inline-size: 0;
+}
+
+.pivot-corner-names {
+  gap: --spacing(1);
 }
 
 .pivot-body {
@@ -496,15 +670,27 @@ const lines = computed(() =>
 }
 
 /* Labels of the lines, indented by depth, on the left of the cells that
-   pass under them. */
+   pass under them; the sort button shows with the pointer on the line. */
 .pivot-label {
   position: sticky;
   inset-inline-start: 0;
   z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: --spacing(1);
+  min-inline-size: 0;
   padding-inline-start: calc(--spacing(1) + --spacing(4) * var(--indent));
   border-block-end: var(--line-width) solid var(--color-line-faint);
   border-inline-end: var(--line-width) solid var(--color-line);
   background: var(--color-surface);
+
+  .pivot-sort:not(.active, :focus-visible) {
+    opacity: 0;
+  }
+}
+
+.pivot-line:hover .pivot-sort {
+  opacity: 1;
 }
 
 .pivot-cell {

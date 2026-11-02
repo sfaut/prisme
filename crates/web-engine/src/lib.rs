@@ -20,12 +20,17 @@ use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
 use std::cell::RefCell;
 use std::slice;
 
-use prisme_pivot::{Engine, Family, Level, Measure, Precision, Request, Table};
+use prisme_pivot::{
+    AxisOrder, Engine, Family, Level, Measure, Order, Precision, Request, Table, ValueOrder,
+};
 use prisme_store::Store;
 
 /// Alignment of the memory reserved for JavaScript, enough for the offsets
 /// and the row numbers (`u32`).
 const ALIGN: usize = 8;
+
+/// Word that stands for NULL in a path of values (see `order`).
+const NULL_STEP: u32 = u32::MAX;
 
 /// Copy of a result under way: its rows so far, the family of each column.
 struct Loading {
@@ -357,6 +362,83 @@ pub unsafe extern "C" fn compute(words: *const u32, length: usize) -> usize {
     })
 }
 
+/// Reads the value of a step of a path: `NULL_STEP` for NULL, otherwise its
+/// length in bytes, then one word per byte of its UTF-8 text.
+fn path_step(words: &mut impl Iterator<Item = u32>) -> Option<Option<String>> {
+    match words.next()? {
+        NULL_STEP => Some(None),
+        length => {
+            let bytes = (0..length)
+                .map(|_| words.next().map(|word| word as u8))
+                .collect::<Option<Vec<u8>>>()?;
+            String::from_utf8(bytes).ok().map(Some)
+        }
+    }
+}
+
+/// Reads the order of an axis: the number of its levels, a word per level (not
+/// 0 for descending), then 0 without values that rank it; otherwise 1, the
+/// measure, a word for the direction, the number of steps of the path, and each
+/// step (see `path_step`).
+fn axis_order(words: &mut impl Iterator<Item = u32>) -> Option<AxisOrder> {
+    let levels = words.next()?;
+    let descending = (0..levels)
+        .map(|_| words.next().map(|word| word != 0))
+        .collect::<Option<Vec<bool>>>()?;
+    let values = match words.next()? {
+        0 => None,
+        _ => {
+            let measure = words.next()? as usize;
+            let descending = words.next()? != 0;
+            let steps = words.next()?;
+            let path = (0..steps)
+                .map(|_| path_step(words))
+                .collect::<Option<Vec<_>>>()?;
+            Some(ValueOrder {
+                path,
+                measure,
+                descending,
+            })
+        }
+    };
+    Some(AxisOrder { descending, values })
+}
+
+/// Reads an order: that of the rows, then that of the columns (see
+/// `axis_order`). `None` if the words do not match.
+fn order(words: &[u32]) -> Option<Order> {
+    let mut words = words.iter().copied();
+    let rows = axis_order(&mut words)?;
+    let columns = axis_order(&mut words)?;
+    words.next().is_none().then_some(Order { rows, columns })
+}
+
+/// Lays the last table computed out again in an order of `length` words
+/// (`u32`) at `words` (see `order`), without computing anything. Writes `{}` or
+/// an error.
+///
+/// # Safety
+///
+/// `words` holds `length` numbers, untouched during the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn sort(words: *const u32, length: usize) -> usize {
+    // SAFETY: given by the caller.
+    let words = unsafe { slice::from_raw_parts(words, length) };
+    let order = order(words);
+    STATE.with_borrow_mut(|state| {
+        let result = match (&state.engine, &mut state.table, order) {
+            (Some(engine), Some(table), Some(order)) => Some(table.sort(engine, &order)),
+            _ => None,
+        };
+        answer(state, |json, state| match result {
+            Some(Ok(())) => json.push_str("{}"),
+            Some(Err(error)) => json::error(json, &error),
+            None if state.table.is_none() => json::state_error(json, "no_table", None),
+            None => json::state_error(json, "request", None),
+        })
+    })
+}
+
 /// Writes a window of the last table computed: lines `first_line` to
 /// `end_line` (excluded), columns of values `first_column` to `end_column`
 /// (excluded), both bounded by the table (`json::window`).
@@ -447,7 +529,7 @@ mod tests {
         assert_eq!(
             output(length),
             concat!(
-                r#"{"lines":[{"depth":1,"label":"Sud"},{"depth":1,"label":"Nord"},{"depth":0,"label":null}],"#,
+                r#"{"lines":[{"depth":1,"label":"Sud","path":["Sud"]},{"depth":1,"label":"Nord","path":["Nord"]},{"depth":0,"label":null,"path":[]}],"#,
                 r#""columns":[{"node":0,"path":[],"total":false,"measure":0},{"node":0,"path":[],"total":false,"measure":1}],"#,
                 r#""cells":[["1",null],["2","3.5"],["3","3.5"]]}"#
             )
@@ -472,11 +554,87 @@ mod tests {
         assert_eq!(
             output(length),
             concat!(
-                r#"{"lines":[{"depth":1,"label":"Sud"}],"#,
+                r#"{"lines":[{"depth":1,"label":"Sud","path":["Sud"]}],"#,
                 r#""columns":[{"node":0,"path":[],"total":false,"measure":0}],"#,
                 r#""cells":[["1"]]}"#
             )
         );
+    }
+
+    #[test]
+    fn a_sort_lays_the_table_out_again_without_a_new_computation() {
+        let families = [0u8, 1];
+        // SAFETY: two families.
+        unsafe { begin(families.as_ptr(), 2) };
+        assert_eq!(append_column(0, &[Some("a"), Some("b"), None]), 0);
+        assert_eq!(append_column(1, &[Some("3"), Some("1"), Some("2")]), 0);
+        assert_eq!(finish(), 0);
+
+        let no_table = [0u32, 0, 0, 0];
+        // SAFETY: four words.
+        let length = unsafe { sort(no_table.as_ptr(), no_table.len()) };
+        assert_eq!(output(length), r#"{"error":{"kind":"no_table"}}"#);
+
+        // Rows: column 0; measure: SUM(column 1).
+        let words = [1u32, 0, 1, 0, 0, 2, 1];
+        // SAFETY: seven words.
+        unsafe { compute(words.as_ptr(), words.len()) };
+        // Lines by the grand total, measure 0, ascending; columns as they are.
+        let by_value = [1u32, 0, 1, 0, 0, 0, 0, 0];
+        // SAFETY: eight words.
+        let length = unsafe { sort(by_value.as_ptr(), by_value.len()) };
+        assert_eq!(output(length), "{}");
+        let labels = || {
+            let length = window(0, 4, 0, 0);
+            let text = output(length);
+            text.split(r#""label":"#)
+                .skip(1)
+                .map(|part| part.split(',').next().unwrap().to_owned())
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(labels(), [r#""b""#, "null", r#""a""#, "null"]);
+
+        // The level of the rows in descending order: NULL comes last.
+        let descending = [1u32, 1, 0, 0, 0];
+        // SAFETY: five words.
+        unsafe { sort(descending.as_ptr(), descending.len()) };
+        assert_eq!(labels(), [r#""b""#, r#""a""#, "null", "null"]);
+
+        let wrong = [1u32, 0, 0, 0, 0, 7];
+        // SAFETY: six words.
+        let length = unsafe { sort(wrong.as_ptr(), wrong.len()) };
+        assert_eq!(output(length), r#"{"error":{"kind":"request"}}"#);
+    }
+
+    #[test]
+    fn an_order_reads_the_path_of_a_node() {
+        let text = "é";
+        let mut words = vec![0u32, 1, 2, 1, 2, NULL_STEP, text.len() as u32];
+        words.extend(text.bytes().map(u32::from));
+        words.extend([0, 0]);
+        let order = order(&words).unwrap();
+        assert_eq!(order.columns, AxisOrder::default());
+        assert_eq!(
+            order.rows,
+            AxisOrder {
+                descending: vec![],
+                values: Some(ValueOrder {
+                    path: vec![None, Some(text.to_owned())],
+                    measure: 2,
+                    descending: true,
+                }),
+            }
+        );
+    }
+
+    #[test]
+    fn orders_that_do_not_match_their_words_are_refused() {
+        assert!(super::order(&[0, 0]).is_none());
+        assert!(super::order(&[0, 0, 0, 0, 9]).is_none());
+        assert!(super::order(&[2, 1, 0, 0, 0]).is_none());
+        assert!(super::order(&[0, 1, 0, 0, 1, 5, 97, 0, 0]).is_none());
+        // A text that is not UTF-8.
+        assert!(super::order(&[0, 1, 0, 0, 1, 1, 0xFF, 0, 0]).is_none());
     }
 
     #[test]

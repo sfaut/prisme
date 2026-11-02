@@ -67,8 +67,16 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ First slice documented: `README.md`, `docs/DEVELOPER.md` (section "Pivoteur") and the specification (requirements, section "Lots", acceptance)
 - ✅ The forbidden cursor no longer blinks over the zones while a field is dragged: `dragenter` is accepted as `dragover` is, and the room between two zones belongs to the upper one
 
+### Sort of the table
+
+- ✅ The name of a level, in the corner, sorts its values, ascending or descending, and gives its axis back to its labels when values rank it (C-11)
+- ✅ The header of a column ranks the lines by its values, a total included, the label of a line ranks the columns by its own, by their first measure: ascending, descending, none (C-13). The hierarchy stays, a total stays last, a tie keeps the order of the labels, an empty cell ranks like NULL
+- ✅ A sort computes no aggregate: the same request lays the table out again, without a blank between two windows
+- ✅ The sorts are saved with the tab, and last as long as the levels of the other axis
+- ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes, reload and new run
+
 ### Next slices and lots
 
 - ⬜ Lot 1, next slices (ANSI SQL): dialect (parsed by `sqlparser`, typing, ANSI catalog), calendar, editor, nested date levels, computed columns, filters, fold, caches, copy, CSV, conformance
-- ⬜ Lot 2: complements (advanced sorts, detail of a cell, filter by list, measures in rows)
+- ⬜ Lot 2: complements (detail of a cell, filter by list, measures in rows)
 - ⬜ Lot 3: extensions (overflow syntax and functions of MySQL, MariaDB, PostgreSQL, DuckDB and ClickHouse, functions of Prisme's own, then a "global" Prisme dialect)

@@ -10,6 +10,7 @@ import {
   defaultAggregate,
   elementLabel,
   emptyConfig,
+  engineOrder,
   engineRequest,
   fittedConfig,
   isEmptyConfig,
@@ -17,10 +18,14 @@ import {
   placeColumn,
   precisionChoices,
   removeElement,
+  sameOrder,
   sameRequest,
+  sameTarget,
   withAggregate,
+  withLevelSort,
   withName,
   withPrecision,
+  withValueSort,
   zoneLabels,
 } from '../pivotConfig'
 
@@ -438,5 +443,200 @@ describe('withAggregate', () => {
       measure('sum', 4),
       measure('count', 2, 'Années'),
     ])
+  })
+})
+
+describe('the sorts', () => {
+  /**
+   * Configuration of the example: lines by the column 2025 on the second measure, columns by the
+   * line Nord.
+   */
+  const SORTED: PivotConfig = {
+    rows: [level(0), level(1)],
+    columns: [level(2)],
+    measures: [measure('sum', 4), measure('count', 4)],
+    sort_lines: { path: ['2025'], measure: 1, descending: true },
+    sort_columns: { path: ['Nord'], measure: 0, descending: false },
+  }
+
+  describe('engineOrder', () => {
+    it('reads the labels in ascending order without any sort', () => {
+      const config: PivotConfig = { rows: [level(0)], columns: [level(2)], measures: [] }
+      expect(engineOrder(config)).toEqual({
+        rows: { descending: [], values: null },
+        columns: { descending: [], values: null },
+      })
+    })
+
+    it('gives the direction of each level and the values that rank each axis', () => {
+      const config: PivotConfig = {
+        ...SORTED,
+        rows: [level(0), { ...level(1), descending: true }],
+      }
+      expect(engineOrder(config)).toEqual({
+        rows: {
+          descending: [false, true],
+          values: { path: ['2025'], measure: 1, descending: true },
+        },
+        columns: {
+          descending: [],
+          values: { path: ['Nord'], measure: 0, descending: false },
+        },
+      })
+    })
+
+    it('tells a level put back in ascending order from nothing', () => {
+      const config: PivotConfig = { rows: [level(0)], columns: [], measures: [] }
+      const back = withLevelSort(withLevelSort(config, 'rows', 0), 'rows', 0)
+      expect(sameOrder(engineOrder(back), engineOrder(config))).toBe(true)
+    })
+
+    it('asks for another layout when a sort changes, and for the same table', () => {
+      const sorted = withLevelSort(SORTED, 'rows', 0)
+      expect(sameOrder(engineOrder(sorted), engineOrder(SORTED))).toBe(false)
+      expect(sameRequest(engineRequest(sorted), engineRequest(SORTED))).toBe(true)
+    })
+  })
+
+  describe('withLevelSort', () => {
+    it('inverts the direction of one level', () => {
+      const config: PivotConfig = { rows: [level(0), level(1)], columns: [], measures: [] }
+      const once = withLevelSort(config, 'rows', 1)
+      expect(once.rows).toEqual([level(0), { ...level(1), descending: true }])
+      expect(withLevelSort(once, 'rows', 1).rows[1]?.descending).toBe(false)
+      expect(withLevelSort(config, 'columns', 0)).toEqual(config)
+    })
+
+    it('gives an axis ranked by values back to its labels, in their direction', () => {
+      const descending: PivotConfig = {
+        ...SORTED,
+        rows: [{ ...level(0), descending: true }, level(1)],
+      }
+      const labels = withLevelSort(descending, 'rows', 1)
+      expect(labels.sort_lines).toBeUndefined()
+      expect(labels.rows).toEqual(descending.rows)
+      expect(labels.sort_columns).toEqual(SORTED.sort_columns)
+    })
+  })
+
+  describe('withValueSort', () => {
+    it('goes through ascending, descending, then none, as in the grid', () => {
+      const config: PivotConfig = { rows: [level(0)], columns: [level(2)], measures: [] }
+      const target = { path: ['2025', null], measure: 1 }
+      const ascending = withValueSort(config, 'rows', target)
+      expect(ascending.sort_lines).toEqual({ ...target, descending: false })
+      const descending = withValueSort(ascending, 'rows', target)
+      expect(descending.sort_lines).toEqual({ ...target, descending: true })
+      expect(withValueSort(descending, 'rows', target).sort_lines).toBeUndefined()
+    })
+
+    it('starts in ascending order on another node or another measure', () => {
+      const other = withValueSort(SORTED, 'rows', { path: ['2026'], measure: 1 })
+      expect(other.sort_lines).toEqual({ path: ['2026'], measure: 1, descending: false })
+      const measureOf = withValueSort(SORTED, 'rows', { path: ['2025'], measure: 0 })
+      expect(measureOf.sort_lines).toEqual({ path: ['2025'], measure: 0, descending: false })
+      expect(other.sort_columns).toEqual(SORTED.sort_columns)
+    })
+
+    it('sorts the columns apart from the lines', () => {
+      const none = withValueSort(SORTED, 'columns', { path: ['Sud'], measure: 0 })
+      expect(none.sort_columns).toEqual({ path: ['Sud'], measure: 0, descending: false })
+      expect(none.sort_lines).toEqual(SORTED.sort_lines)
+    })
+  })
+
+  describe('sameTarget', () => {
+    it('compares the values of the path, NULL apart from the text, and the measure', () => {
+      const target = { path: ['a', null], measure: 0 }
+      expect(sameTarget(target, { path: ['a', null], measure: 0 })).toBe(true)
+      expect(sameTarget(target, { path: ['a', 'NULL'], measure: 0 })).toBe(false)
+      expect(sameTarget(target, { path: ['a'], measure: 0 })).toBe(false)
+      expect(sameTarget(target, { path: ['a', null], measure: 1 })).toBe(false)
+    })
+  })
+
+  describe('a change of the zones', () => {
+    it('drops the sort of the lines with a change of the levels of the columns', () => {
+      const added = placeColumn(SORTED, 3, 'sum', { zone: 'columns', index: 1 }, null)
+      expect(added.sort_lines).toBeUndefined()
+      expect(added.sort_columns).toEqual(SORTED.sort_columns)
+      const removed = removeElement(SORTED, { zone: 'columns', index: 0 })
+      expect(removed.sort_lines).toBeUndefined()
+    })
+
+    it('drops the sort of the columns with a change of the levels of the rows', () => {
+      const removed = removeElement(SORTED, { zone: 'rows', index: 1 })
+      expect(removed.sort_columns).toBeUndefined()
+      expect(removed.sort_lines).toEqual(SORTED.sort_lines)
+    })
+
+    it('drops the sort of the zone whose precision changes', () => {
+      const place = { zone: 'columns', index: 0 } as const
+      const month = withPrecision(SORTED, place, 'month')
+      expect(month.sort_lines).toBeUndefined()
+      expect(month.sort_columns).toEqual(SORTED.sort_columns)
+    })
+
+    it('keeps the sorts when an element changes its name', () => {
+      const named = withName(SORTED, { zone: 'rows', index: 0 }, 'Région', NAMES)
+      expect(named.sort_lines).toEqual(SORTED.sort_lines)
+      expect(named.sort_columns).toEqual(SORTED.sort_columns)
+    })
+
+    it('follows the measure that ranks the lines, and drops the sort without it', () => {
+      const moved = placeColumn(
+        SORTED,
+        4,
+        'sum',
+        { zone: 'measures', index: 0 },
+        { zone: 'measures', index: 1 },
+      )
+      expect(moved.measures).toEqual([measure('count', 4), measure('sum', 4)])
+      expect(moved.sort_lines?.measure).toBe(0)
+      const first = removeElement(SORTED, { zone: 'measures', index: 0 })
+      expect(first.sort_lines?.measure).toBe(0)
+      const ranking = removeElement(SORTED, { zone: 'measures', index: 1 })
+      expect(ranking.sort_lines).toBeUndefined()
+      expect(ranking.sort_columns).toEqual(SORTED.sort_columns)
+    })
+
+    it('drops the sort of the columns with the last measure', () => {
+      const one: PivotConfig = { ...SORTED, measures: [measure('sum', 4)], sort_lines: undefined }
+      expect(removeElement(one, { zone: 'measures', index: 0 }).sort_columns).toBeUndefined()
+    })
+
+    it('keeps the direction of a level that moves to the other axis', () => {
+      const config: PivotConfig = {
+        rows: [{ ...level(0), descending: true }],
+        columns: [],
+        measures: [],
+      }
+      const moved = placeColumn(
+        config,
+        0,
+        'sum',
+        { zone: 'columns', index: 0 },
+        { zone: 'rows', index: 0 },
+      )
+      expect(moved.columns[0]?.descending).toBe(true)
+    })
+  })
+
+  describe('fittedConfig', () => {
+    it('keeps the sorts of the columns that follow their names', () => {
+      const moved = ['montant', 'region', 'ville', 'annee', 'trimestre']
+      const fitted = fittedConfig({ fields: NAMES, config: SORTED }, moved, [])
+      expect(fitted.rows).toEqual([level(1), level(2)])
+      expect(fitted.sort_lines).toEqual(SORTED.sort_lines)
+      expect(fitted.sort_columns).toEqual(SORTED.sort_columns)
+    })
+
+    it('drops the sorts with an element lost', () => {
+      const lost = ['region', 'annee', 'trimestre', 'montant']
+      const fitted = fittedConfig({ fields: NAMES, config: SORTED }, lost, [])
+      expect(fitted.rows).toEqual([level(0)])
+      expect(fitted.sort_lines).toBeUndefined()
+      expect(fitted.sort_columns).toBeUndefined()
+    })
   })
 })

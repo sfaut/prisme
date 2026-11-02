@@ -8,11 +8,14 @@
 //!   column per measure in each group.
 //!
 //! The nodes of each level follow the ranks of their values, given by the
-//! page in the order of the grid.
+//! page in the order of the grid. A sort lays the same nodes out again in
+//! another order (`Order`), without computing anything.
+
+use std::cmp::Ordering;
 
 use crate::groups::{Groups, Tree};
-use crate::measures::{State, Value};
-use crate::{Engine, Level};
+use crate::measures::{SortKey, State, Value};
+use crate::{AxisOrder, Engine, Error, Level, Order};
 
 /// Label of a line or of a level of the header of a column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -48,10 +51,71 @@ pub struct Header<'a> {
     pub measure: Option<usize>,
 }
 
-/// Children of each node of a tree, in the order of the ranks of their
-/// values: those of node `n` are `order[starts[n]..starts[n + 1]]`.
+/// Axis of a table.
+#[derive(Clone, Copy)]
+enum Axis {
+    /// Rows: its nodes make the lines.
+    Rows,
+    /// Columns.
+    Columns,
+}
+
+/// What orders the children of a node.
+#[derive(Clone, Copy)]
+struct Siblings<'a> {
+    /// Rank of the value `code` of the level `level` (0 for the outermost):
+    /// `ranks[level][code]`.
+    ranks: &'a [&'a [u32]],
+    /// Is each level in descending order? A level left out is ascending.
+    descending: &'a [bool],
+    /// Key of each node, and is their order descending?
+    keys: Option<(&'a [SortKey], bool)>,
+}
+
+impl<'a> Siblings<'a> {
+    /// The labels alone, in ascending order.
+    fn by_labels(ranks: &'a [&'a [u32]]) -> Self {
+        Siblings {
+            ranks,
+            descending: &[],
+            keys: None,
+        }
+    }
+
+    /// The order asked for an axis, with the keys of its nodes.
+    fn of_axis(ranks: &'a [&'a [u32]], axis: &'a AxisOrder, keys: Option<&'a [SortKey]>) -> Self {
+        let direction = axis.values.as_ref().map(|values| values.descending);
+        Siblings {
+            ranks,
+            descending: &axis.descending,
+            keys: keys.zip(direction),
+        }
+    }
+
+    /// Compares two children of one node: by their keys, then by their labels.
+    fn compare(&self, tree: &Tree, a: u32, b: u32) -> Ordering {
+        let by_key = self.keys.map_or(Ordering::Equal, |(keys, descending)| {
+            let order = keys[a as usize].compare(keys[b as usize]);
+            if descending { order.reverse() } else { order }
+        });
+        by_key.then_with(|| {
+            let (a, b) = (&tree.nodes[a as usize], &tree.nodes[b as usize]);
+            let level = a.depth as usize - 1;
+            let ranks = self.ranks[level];
+            let order = ranks[a.code as usize].cmp(&ranks[b.code as usize]);
+            if self.descending.get(level) == Some(&true) {
+                order.reverse()
+            } else {
+                order
+            }
+        })
+    }
+}
+
+/// Children of each node of a tree, in their order: those of node `n` are
+/// `order[starts[n]..starts[n + 1]]`.
 struct Children {
-    /// Nodes other than the root, grouped by parent, in the order of the ranks.
+    /// Nodes other than the root, grouped by parent, in their order.
     order: Vec<u32>,
     /// Start of the children of each node in `order`, then its length.
     starts: Vec<u32>,
@@ -59,17 +123,14 @@ struct Children {
 
 impl Children {
     /// Sorts the children of each node.
-    ///
-    /// `ranks[level][code]` is the rank of the value `code` of the level
-    /// `level` (0 for the outermost).
-    fn new(tree: &Tree, ranks: &[&[u32]]) -> Self {
+    fn new(tree: &Tree, siblings: Siblings) -> Self {
         let mut order: Vec<u32> = (1..tree.nodes.len() as u32).collect();
-        order.sort_unstable_by_key(|&id| {
-            let node = &tree.nodes[id as usize];
-            (
-                node.parent,
-                ranks[node.depth as usize - 1][node.code as usize],
-            )
+        order.sort_unstable_by(|&a, &b| {
+            let (first, second) = (&tree.nodes[a as usize], &tree.nodes[b as usize]);
+            first
+                .parent
+                .cmp(&second.parent)
+                .then_with(|| siblings.compare(tree, a, b))
         });
         let mut starts = vec![0u32; tree.nodes.len() + 1];
         for &id in &order {
@@ -173,8 +234,9 @@ impl Table {
     /// `row_ranks` and `column_ranks` give the rank of each value of each
     /// level, by code.
     pub fn new(parts: Parts, row_ranks: &[&[u32]], column_ranks: &[&[u32]]) -> Self {
-        let lines = Children::new(&parts.rows, row_ranks).lines();
-        let column_nodes = Children::new(&parts.columns, column_ranks).columns();
+        let lines = Children::new(&parts.rows, Siblings::by_labels(row_ranks)).lines();
+        let column_nodes =
+            Children::new(&parts.columns, Siblings::by_labels(column_ranks)).columns();
         let (row_levels, column_levels) = (parts.row_levels.len(), parts.column_levels.len());
         let measures = parts.states.len();
         let slots = if column_levels > 0 {
@@ -198,6 +260,80 @@ impl Table {
             finest_groups: parts.finest_groups,
             selected_rows: parts.selected_rows,
         }
+    }
+
+    /// Lays the lines and the columns out again in an order. The groups and
+    /// their values stay as they are: nothing is computed again.
+    pub fn sort(&mut self, engine: &Engine, order: &Order) -> Result<(), Error> {
+        let (row_levels, column_levels) = self.levels.split_at(self.row_levels);
+        let (_, row_ranks) = engine.levels(row_levels)?;
+        let (_, column_ranks) = engine.levels(column_levels)?;
+        let row_keys = self.keys(engine, &order.rows, Axis::Rows)?;
+        let column_keys = self.keys(engine, &order.columns, Axis::Columns)?;
+        let rows = Siblings::of_axis(&row_ranks, &order.rows, row_keys.as_deref());
+        let columns = Siblings::of_axis(&column_ranks, &order.columns, column_keys.as_deref());
+        let lines = Children::new(&self.rows, rows).lines();
+        let column_nodes = Children::new(&self.columns, columns).columns();
+        self.lines = lines;
+        self.column_nodes = column_nodes;
+        Ok(())
+    }
+
+    /// Key of each node of an axis: its value at the node of the other axis
+    /// that the order names. `None` when no value ranks the axis, or when the
+    /// table holds no such node or measure.
+    fn keys(
+        &self,
+        engine: &Engine,
+        order: &AxisOrder,
+        axis: Axis,
+    ) -> Result<Option<Vec<SortKey>>, Error> {
+        let Some(values) = &order.values else {
+            return Ok(None);
+        };
+        let Some(state) = self.states.get(values.measure) else {
+            return Ok(None);
+        };
+        let (tree, other, first_level) = match axis {
+            Axis::Rows => (&self.rows, &self.columns, self.row_levels),
+            Axis::Columns => (&self.columns, &self.rows, 0),
+        };
+        let Some(target) = self.node_at(engine, other, first_level, &values.path) else {
+            return Ok(None);
+        };
+        (0..tree.nodes.len() as u32)
+            .map(|node| {
+                let group = match axis {
+                    Axis::Rows => self.groups.find(node, target),
+                    Axis::Columns => self.groups.find(target, node),
+                };
+                let value = group.map_or(Value::Empty, |group| state.value(group));
+                engine.sort_key(values.measure, value)
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(Some)
+    }
+
+    /// Node of a tree at a path of values, `None` if the tree holds none. The
+    /// levels of the tree start at `first_level`.
+    fn node_at(
+        &self,
+        engine: &Engine,
+        tree: &Tree,
+        first_level: usize,
+        path: &[Option<String>],
+    ) -> Option<u32> {
+        path.iter()
+            .zip(1u32..)
+            .try_fold(0, |parent, (value, depth)| {
+                let level = first_level + depth as usize - 1;
+                let node = tree.nodes.iter().position(|node| {
+                    node.depth == depth
+                        && node.parent == parent
+                        && self.label(engine, level, node.row) == value.as_deref()
+                })?;
+                Some(node as u32)
+            })
     }
 
     /// Number of lines.

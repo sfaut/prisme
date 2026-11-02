@@ -751,7 +751,7 @@ async fn delete_result(
 mod tests {
     use super::*;
     use crate::store;
-    use crate::tab_pivot::{DatePrecision, PivotConfig, PivotLevel};
+    use crate::tab_pivot::{DatePrecision, PivotConfig, PivotLevel, PivotValueSort};
 
     /// Test database with one user.
     fn setup() -> (Connection, i64) {
@@ -877,7 +877,13 @@ mod tests {
                     column: 0,
                     name: "Région".to_string(),
                     precision: DatePrecision::Month,
+                    descending: true,
                 }],
+                sort_lines: Some(PivotValueSort {
+                    path: vec![Some("2026".to_string()), None],
+                    measure: 0,
+                    descending: false,
+                }),
                 ..PivotConfig::default()
             },
         };

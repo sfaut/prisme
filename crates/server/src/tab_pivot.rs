@@ -67,6 +67,10 @@ pub struct PivotLevel {
     /// What the level keeps of the dates of its column.
     #[serde(default)]
     pub precision: DatePrecision,
+    /// Are the values of the level in descending order?
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub descending: bool,
 }
 
 /// Measure of the configuration.
@@ -83,7 +87,22 @@ pub struct NamedMeasure {
     pub name: String,
 }
 
-/// Elements of each zone, the outermost level first.
+/// Values of a node of the other axis, which rank the nodes of an axis: named
+/// by its values, so that it survives a new computation of the table. A node
+/// the table no longer holds ranks nothing, and ranks again once it comes back.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PivotValueSort {
+    /// Values of the levels of the node, the outermost first, `null` for NULL.
+    /// A shorter path reads a subtotal, an empty one the grand total.
+    pub path: Vec<Option<String>>,
+    /// Index of the measure.
+    pub measure: u32,
+    /// Is the order descending?
+    pub descending: bool,
+}
+
+/// Elements of each zone, the outermost level first, and the sorts by values.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct PivotConfig {
@@ -93,6 +112,14 @@ pub struct PivotConfig {
     pub columns: Vec<PivotLevel>,
     /// Measures, in the order of their zone.
     pub measures: Vec<NamedMeasure>,
+    /// Column of values that ranks the lines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub sort_lines: Option<PivotValueSort>,
+    /// Line whose values rank the columns, by their first measure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub sort_columns: Option<PivotValueSort>,
 }
 
 /// Configuration of the Pivoteur of a result tab.
@@ -246,5 +273,32 @@ mod tests {
             serde_json::from_str::<TabPivot>("{}").unwrap(),
             TabPivot::default()
         );
+    }
+
+    #[test]
+    fn a_configuration_saved_before_the_sorts_reads_in_the_order_of_its_labels() {
+        let saved =
+            r#"{"rows":[{"column":1,"name":"","precision":"none"}],"columns":[],"measures":[]}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        assert!(!config.rows[0].descending);
+        assert_eq!(config.sort_lines, None);
+        assert_eq!(config.sort_columns, None);
+        assert_eq!(serde_json::to_string(&config).unwrap(), saved);
+    }
+
+    #[test]
+    fn keeps_the_sorts_of_a_configuration() {
+        let saved = r#"{"rows":[{"column":1,"name":"","precision":"none","descending":true}],"columns":[],"measures":[],"sort_lines":{"path":["2026",null],"measure":1,"descending":true},"sort_columns":{"path":[],"measure":0,"descending":false}}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        assert!(config.rows[0].descending);
+        assert_eq!(
+            config.sort_lines,
+            Some(PivotValueSort {
+                path: vec![Some("2026".to_string()), None],
+                measure: 1,
+                descending: true,
+            })
+        );
+        assert_eq!(serde_json::to_string(&config).unwrap(), saved);
     }
 }

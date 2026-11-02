@@ -75,7 +75,8 @@ pub fn shape(json: &mut String, table: &Table) {
 /// the columns of values from `columns.start` to `columns.end`, both bounded
 /// by the table.
 ///
-/// - `lines`: `{"depth", "label"}` of each line, depth 0 for the grand total;
+/// - `lines`: `{"depth", "label", "path"}` of each line, depth 0 for the grand
+///   total, `path` holding the value of each of its levels;
 /// - `columns`: `{"node", "path", "total", "measure"}` of each column, `path`
 ///   holding `[node, value]` per level;
 /// - `cells`: one array per line, a value as a string, `null` for NULL,
@@ -97,6 +98,10 @@ pub fn window(
             Label::Value(value) => cell(json, value),
             Label::Total => json.push_str("null"),
         }
+        json.push_str(r#","path":"#);
+        array(json, table.line_path(engine, index), |json, value| {
+            cell(json, value)
+        });
         json.push('}');
     });
     json.push_str(r#","columns":"#);

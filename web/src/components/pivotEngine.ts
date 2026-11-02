@@ -9,7 +9,8 @@
  * table that another one has replaced since is refused (`stale`), and never mixes the shape of
  * one table with the cells of the next.
  * The values of each level are ranked in the order of the grid (`compareCells`), once per column;
- * the module ranks the periods of a level with a precision, in the order of time.
+ * the module ranks the periods of a level with a precision, in the order of time. A table asked
+ * again in another order is only laid out again, which makes it a new table for its windows.
  */
 
 import type { DatePrecision } from '@/api/generated/DatePrecision'
@@ -68,6 +69,68 @@ export interface PivotRequest {
 }
 
 /**
+ * Node of an axis whose values rank the other axis: a column of values for the lines, a line for
+ * the columns.
+ */
+export interface PivotValueTarget {
+  /**
+   * Values of the levels of the node, the outermost first: a shorter path reads a subtotal, an
+   * empty one the grand total.
+   */
+  path: Cell[]
+  /**
+   * Measure, by its index.
+   */
+  measure: number
+}
+
+/**
+ * Values that rank the nodes of an axis.
+ */
+export interface PivotValueOrder extends PivotValueTarget {
+  /**
+   * Is the order descending?
+   */
+  descending: boolean
+}
+
+/**
+ * Order of the nodes of an axis, among those of one parent.
+ */
+export interface PivotAxisOrder {
+  /**
+   * Is each level in descending order, the outermost first? A level left out is ascending.
+   */
+  descending: boolean[]
+  /**
+   * Values that rank the nodes before their labels, `null` without any.
+   */
+  values: PivotValueOrder | null
+}
+
+/**
+ * Order of the lines and of the columns of a table.
+ */
+export interface PivotOrder {
+  /**
+   * Order of the nodes of the rows, hence of the lines.
+   */
+  rows: PivotAxisOrder
+  /**
+   * Order of the nodes of the columns.
+   */
+  columns: PivotAxisOrder
+}
+
+/**
+ * Order of a table just computed: its labels, ascending.
+ */
+export const LABEL_ORDER: PivotOrder = {
+  rows: { descending: [], values: null },
+  columns: { descending: [], values: null },
+}
+
+/**
  * Shape of a computed table.
  */
 export interface PivotShape {
@@ -109,6 +172,10 @@ export interface PivotLine {
    * Value of its level, `null` for NULL or for the grand total.
    */
   label: Cell
+  /**
+   * Value of each of its levels, the outermost first: empty for the grand total.
+   */
+  path: Cell[]
 }
 
 /**
@@ -235,11 +302,12 @@ export type PivotRequestMessage =
     }
   | {
       /**
-       * Computes a table.
+       * Computes a table, and lays it out in an order: the same request only lays it out again.
        */
       type: 'compute'
       id: number
       request: PivotRequest
+      order: PivotOrder
     }
   | {
       /**
@@ -281,6 +349,7 @@ interface EngineExports extends TransferExports {
   set_ranks(column: number, ranks: number, count: number): number
   set_kept(rows: number, count: number, all: number): number
   compute(words: number, length: number): number
+  sort(words: number, length: number): number
   window(firstLine: number, endLine: number, firstColumn: number, endColumn: number): number
 }
 
@@ -342,6 +411,50 @@ export function requestWords(request: PivotRequest): Uint32Array {
   ])
 }
 
+/**
+ * Word that stands for NULL in a path of values.
+ */
+const NULL_STEP = 0xffff_ffff
+
+const encoder = new TextEncoder()
+
+/**
+ * Words of the order of an axis: the number of its levels and a word per level, then 0 without
+ * values that rank it; otherwise 1, the measure, a word for the direction, the number of steps of
+ * the path, and each step: `NULL_STEP` for NULL, or its length in bytes then one word per byte of
+ * its UTF-8 text.
+ *
+ * @param order Order of the axis.
+ */
+function axisWords({ descending, values }: PivotAxisOrder): number[] {
+  const words = [descending.length, ...descending.map(Number)]
+  if (values === null) {
+    return [...words, 0]
+  }
+  const steps = values.path.flatMap((step) => {
+    if (step === null) {
+      return [NULL_STEP]
+    }
+    const bytes = encoder.encode(step)
+    return [bytes.length, ...bytes]
+  })
+  return [...words, 1, values.measure, Number(values.descending), values.path.length, ...steps]
+}
+
+/**
+ * Words of an order for the module: that of the rows, then that of the columns.
+ *
+ * @param order Order of the table.
+ */
+export function orderWords(order: PivotOrder): Uint32Array {
+  return Uint32Array.from([...axisWords(order.rows), ...axisWords(order.columns)])
+}
+
+/**
+ * Words of the order of a table just computed.
+ */
+const LABEL_ORDER_KEY = orderWords(LABEL_ORDER).join()
+
 const decoder = new TextDecoder()
 
 /**
@@ -352,6 +465,17 @@ export class PivotEngine {
    * Values of each column already ranked, by column.
    */
   private readonly ranked = new Set<number>()
+
+  /**
+   * Words of the request of the table in the module, and its shape: asking for it again only lays
+   * it out again. `null` before any table, or once the rows taken into account have changed.
+   */
+  private computed: { key: string; shape: PivotShape } | null = null
+
+  /**
+   * Words of the order the table in the module is laid out in.
+   */
+  private laidOut = LABEL_ORDER_KEY
 
   /**
    * @param engine Exports of the module.
@@ -417,6 +541,7 @@ export class PivotEngine {
     this.engine.begin(address, families.length)
     this.engine.release(address, size)
     this.ranked.clear()
+    this.computed = null
   }
 
   /**
@@ -462,6 +587,7 @@ export class PivotEngine {
    * @param rows Rows kept, in their order; `null` for all.
    */
   setKept(rows: Uint32Array | null): void {
+    this.computed = null
     if (rows === null) {
       this.answer(this.engine.set_kept(0, 0, 1))
       return
@@ -487,24 +613,40 @@ export class PivotEngine {
   }
 
   /**
-   * Computes a table, and keeps it for the windows in place of the previous one. A refused
-   * table keeps the previous one: the panel goes on showing it, with the error.
+   * Computes a table, and keeps it for the windows in place of the previous one, then lays it out
+   * in an order. The table in the module, asked again, is only laid out again: a sort computes no
+   * aggregate. A refused table keeps the previous one: the panel goes on showing it, with the
+   * error.
    *
    * @param request Table asked.
+   * @param order Order of its lines and of its columns.
    * @returns Its shape.
    * @throws {PivotError}
    *     If the engine refuses it: a cell that is not a number, a value beyond 128 bits...
    */
-  compute(request: PivotRequest): PivotShape {
+  compute(request: PivotRequest, order: PivotOrder = LABEL_ORDER): PivotShape {
     for (const { column, precision } of [...request.rows, ...request.columns]) {
       if (precision === 'none') {
         this.rank(column)
       }
     }
     const words = requestWords(request)
-    return this.withWords(words, (address) =>
-      this.answer<PivotShape>(this.engine.compute(address, words.length)),
-    )
+    const key = words.join()
+    if (this.computed?.key !== key) {
+      const shape = this.withWords(words, (address) =>
+        this.answer<PivotShape>(this.engine.compute(address, words.length)),
+      )
+      this.computed = { key, shape }
+      this.laidOut = LABEL_ORDER_KEY
+    }
+    const { shape } = this.computed
+    const ordering = orderWords(order)
+    const layout = ordering.join()
+    if (layout !== this.laidOut) {
+      this.withWords(ordering, (address) => this.answer(this.engine.sort(address, ordering.length)))
+      this.laidOut = layout
+    }
+    return shape
   }
 
   /**
@@ -570,7 +712,7 @@ export function answerMessage(
         return null
       case 'compute': {
         const started = performance.now()
-        const shape = state.engine.compute(message.request)
+        const shape = state.engine.compute(message.request, message.order)
         state.table = message.id
         return { type: 'table', id: message.id, shape, durationMs: performance.now() - started }
       }

@@ -321,8 +321,12 @@ The panel has three columns: the columns of the result, with their type and a se
 | Name an element | Its menu, **Nommer…** (Name), or a double click on its label; Enter confirms, Esc cancels |
 | Change the aggregate of a measure | Its menu, group **Agrégat** (Aggregate) |
 | Keep a part of the dates of a level | Its menu, group **Précision** (Precision) |
+| Sort the values of a level | The ▲▼ button by its name, in the corner of the table: ascending, descending |
+| Rank the lines by the values of a column | The ⇅ button of its header, a total included: ascending, descending, none |
+| Rank the columns by the values of a line | The ⇅ button of its label, which shows under the pointer: ascending, descending, none |
 
 - **Levels**: the first element of a zone is the outermost level. A column is a level once at most: placing it again moves it. Its values rank in the order of the grid; `NULL` comes first, in a group of its own, apart from the text `NULL` and from the empty text. The lines are in compact form: one column of labels, indented by depth, the subtotal of a group on its line, the grand total last. A subtotal of columns stands right of its group.
+- **Sorts**: the hierarchy stays: the villes of a region rank among themselves, the regions by their subtotals, and a total stays last. A tie keeps the order of the labels, an empty cell ranks like `NULL`, first in ascending order. Several measures: each column of measure ranks the lines by its own, the label of a line ranks the columns by the first measure. A click on the name of a level gives its axis back to its labels. The sorts are saved with the tab; a change of the levels of the other axis drops the sort by values. A sort lays the table out again without computing it.
 - **Names**: a name replaces the expression of its element in the zones and in the table, and the tooltip of the element recalls the expression; an empty name gives it back. A name only changes the labels, without a new computation. The corner of the table names the levels: each level of the columns at the end of its row of headers, those of the lines on the last row.
 - **Refusal**: a computation the engine refuses, such as a sum that overflows, shows its message above the table, which keeps its last computation.
 

@@ -18,7 +18,8 @@
   (F-02). The foreign keys of the columns, for their default measure, come
   from the catalog of the connection, read while the panel is open, without
   waiting for it. Each change of the configuration or of the filter of the grid
-  computes the table again; a new name only changes its labels. A refusal
+  computes the table again; a new name only changes its labels, a sort (C-11,
+  C-13) lays the table out again, without computing any aggregate. A refusal
   of the engine shows its message above the table, which keeps its last
   computation (F-22); a Worker that stops is replaced at the next change. A
   result without columns, or in error, has nothing to analyse (F-08).
@@ -43,16 +44,28 @@ import PivotGrid from './PivotGrid.vue'
 import PivotZones from './PivotZones.vue'
 import { PivotClient, type PivotTable } from './pivotClient'
 import {
+  type PivotAxis,
   type PivotConfig,
   elementLabel,
   emptyConfig,
+  engineOrder,
   engineRequest,
   fittedConfig,
   isEmptyConfig,
+  sameOrder,
   sameRequest,
+  withLevelSort,
+  withValueSort,
   zoneLabels,
 } from './pivotConfig'
-import { type PivotFailure, type PivotRequest, type PivotWindow, PivotError } from './pivotEngine'
+import {
+  type PivotFailure,
+  type PivotOrder,
+  type PivotRequest,
+  type PivotValueTarget,
+  type PivotWindow,
+  PivotError,
+} from './pivotEngine'
 import { sameColumns, visibleRows } from './resultGrid'
 import { isForeignKey, useCatalogStore } from '@/stores/catalog'
 import { columnIcon } from './typeIcons'
@@ -170,6 +183,36 @@ const request = computed<PivotRequest>((previous) => {
   const next = engineRequest(config.value)
   return previous !== undefined && sameRequest(previous, next) ? previous : next
 })
+
+/**
+ * Order of the table of the configuration shown. The same object while it
+ * stays the same: a change of it lays the table out again, without computing
+ * it.
+ */
+const order = computed<PivotOrder>((previous) => {
+  const next = engineOrder(config.value)
+  return previous !== undefined && sameOrder(previous, next) ? previous : next
+})
+
+/**
+ * Inverts the direction of a level.
+ *
+ * @param axis Axis of the level.
+ * @param level Position of the level.
+ */
+function sortLevel(axis: PivotAxis, level: number): void {
+  config.value = withLevelSort(config.value, axis, level)
+}
+
+/**
+ * Changes the sort of an axis by the values of a node of the other axis.
+ *
+ * @param axis Axis the values rank.
+ * @param target Node and measure of the values.
+ */
+function sortValues(axis: PivotAxis, target: PivotValueTarget): void {
+  config.value = withValueSort(config.value, axis, target)
+}
 
 /**
  * Mark of the type of each column, as in the headers of the grid.
@@ -345,7 +388,7 @@ async function compute(current: PivotClient): Promise<void> {
   const named = config.value
   computing.value = true
   try {
-    const table = await current.compute(asked)
+    const table = await current.compute(asked, order.value)
     if (computation === computations) {
       shownTable.value = { table, request: asked, config: named }
       failure.value = null
@@ -393,7 +436,7 @@ function update(): void {
   void compute(client)
 }
 
-watch([source, request, () => props.tab?.filter], update, { immediate: true })
+watch([source, request, order, () => props.tab?.filter], update, { immediate: true })
 
 /**
  * Reads a window of the table shown.
@@ -473,7 +516,10 @@ const groupsText = computed(() => {
           :measure-labels="tableLabels.measures"
           :row-names="tableLabels.rows"
           :column-names="tableLabels.columns"
+          :order="order"
           :read="readWindow"
+          @sort-level="sortLevel"
+          @sort-values="sortValues"
         />
         <p
           v-else-if="isEmptyConfig(config)"

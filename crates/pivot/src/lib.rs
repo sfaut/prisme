@@ -7,8 +7,9 @@
 //! result, its value as it is or what a precision keeps of its dates (`dates`);
 //! the measures are `COUNT(*)`, `COUNT(col)`, `SUM(col)`, `AVG(col)`,
 //! `MIN(col)` and `MAX(col)`, in ANSI SQL, and `COUNT`, `SUM` and `AVG` of
-//! `DISTINCT col`. The dialect of the Pivoteur, with its expressions, comes with
-//! the next slices.
+//! `DISTINCT col`. The lines and the columns follow their labels or the values
+//! of a measure (`Order`). The dialect of the Pivoteur, with its expressions,
+//! comes with the next slices.
 //!
 //! The crate does not depend on its target: its tests run natively, and the
 //! Worker of the page runs it compiled to WebAssembly (`crates/web-engine`).
@@ -26,7 +27,7 @@ use prisme_store::{Approx, Dictionary, Exact, NumberError, Store};
 use crate::dates::DerivedLevel;
 pub use crate::dates::Precision;
 pub use crate::measures::Value;
-use crate::measures::{Extreme, Input};
+use crate::measures::{Extreme, Input, SortKey};
 pub use crate::table::{Header, Label, Line, Table};
 
 /// Family of the type of a column, as far as the measures need it.
@@ -99,6 +100,42 @@ pub struct Request {
     pub columns: Vec<Level>,
     /// Measures, in the order of their zone.
     pub measures: Vec<Measure>,
+}
+
+/// Order of the lines and of the columns of a table (C-11, C-13). A sort
+/// changes its layout alone, its values staying as they are.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Order {
+    /// Order of the nodes of the rows, hence of the lines.
+    pub rows: AxisOrder,
+    /// Order of the nodes of the columns.
+    pub columns: AxisOrder,
+}
+
+/// Order of the nodes of an axis, among those of one parent: a sort keeps the
+/// hierarchy, and a total stays in its place.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AxisOrder {
+    /// Is each level in descending order, the outermost first? A level left
+    /// out is ascending. The labels order the nodes, or those a value ties.
+    pub descending: Vec<bool>,
+    /// Values that rank the nodes before their labels.
+    pub values: Option<ValueOrder>,
+}
+
+/// Values of a node of the other axis, which rank the nodes of an axis: its
+/// column of values for the lines, its line for the columns. An empty cell
+/// comes with NULL, first in ascending order (D22). A node that the table no
+/// longer holds, the filter having left it out, ranks nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValueOrder {
+    /// Values of the levels of the node, the outermost first, `None` for NULL.
+    /// A shorter path reads a subtotal, an empty one the grand total.
+    pub path: Vec<Option<String>>,
+    /// Measure, by its index.
+    pub measure: usize,
+    /// Is the order descending?
+    pub descending: bool,
 }
 
 /// Error of the engine. A computation that fails gives no table: its values
@@ -445,7 +482,23 @@ impl Engine {
         })
     }
 
-    /// Computes a table over the rows kept.
+    /// What a sort compares of a value of measure `measure`: a cell by its
+    /// rank, as `MIN` and `MAX` compare it.
+    pub(crate) fn sort_key(&self, measure: usize, value: Value) -> Result<SortKey, Error> {
+        Ok(match value {
+            Value::Empty | Value::Null => SortKey::Missing,
+            Value::Count(count) => SortKey::Exact(i128::from(count)),
+            Value::Exact(number, _) => SortKey::Exact(number),
+            Value::Float(number) => SortKey::Float(number),
+            Value::Cell(column, row) => {
+                let code = self.dictionary(column)?.codes[row as usize];
+                let ranks = self.value_ranks(measure, column)?;
+                SortKey::Exact(i128::from(ranks[code as usize]))
+            }
+        })
+    }
+
+    /// Computes a table over the rows kept, in the order of the labels.
     pub fn compute(&self, request: &Request) -> Result<Table, Error> {
         let all: Vec<u32>;
         let selection: &[u32] = match &self.kept {

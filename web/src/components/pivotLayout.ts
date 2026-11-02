@@ -7,12 +7,13 @@
  * no level to the headers (F-28), unless there is no column level: its name then heads its
  * column. The corner names the levels: those of the columns each on its row, those of the lines
  * on the last row. The lines are in compact form (C-07): the subtotal of a group stands on the line of the
- * group, its label indented by its depth.
+ * group, its label indented by its depth. The header of a single column names the values that can
+ * rank the lines (`HeaderCell.target`, C-13).
  */
 
 import type { Cell } from '@/api/querySession'
 
-import type { PivotColumn, PivotLine } from './pivotEngine'
+import type { PivotColumn, PivotLine, PivotShape, PivotValueTarget } from './pivotEngine'
 
 /**
  * Label of a total, in the headers and on the line of the grand total.
@@ -47,6 +48,10 @@ export interface HeaderCell {
    * What the cell heads: a value of a level, a total, or a measure.
    */
   kind: 'value' | 'total' | 'measure'
+  /**
+   * Column whose values can rank the lines, when the cell heads a single one; `null` otherwise.
+   */
+  target: PivotValueTarget | null
 }
 
 /**
@@ -72,6 +77,17 @@ export function headerRowCount(columnLevels: number, measures: number): number {
 }
 
 /**
+ * Values of a column of a table, as they can rank its lines; `null` without any measure.
+ *
+ * @param column Column of the table.
+ */
+function columnTarget(column: PivotColumn): PivotValueTarget | null {
+  return column.measure === null
+    ? null
+    : { path: column.path.map(([, value]) => value), measure: column.measure }
+}
+
+/**
  * Header cells of the columns of a window.
  *
  * @param columns Columns of the window, in their order.
@@ -84,6 +100,7 @@ export function headerCells(
   measureLabels: string[],
 ): HeaderCell[] {
   const cells: HeaderCell[] = []
+  const measureRow = hasMeasureRow(columnLevels, measureLabels.length)
   for (let level = 0; level < columnLevels; level++) {
     // Cell being extended, and what it heads: a node, or the total of a node.
     let current: HeaderCell | null = null
@@ -93,10 +110,18 @@ export function headerCells(
       let cell: Omit<HeaderCell, 'column' | 'span'>
       let key: string
       if (step !== undefined) {
-        cell = { row: level, rowSpan: 1, text: step[1], kind: 'value' }
+        const last = !measureRow && level === columnLevels - 1
+        const target = last ? columnTarget(column) : null
+        cell = { row: level, rowSpan: 1, text: step[1], kind: 'value', target }
         key = `value ${step[0]}`
       } else if (column.total && level === column.path.length) {
-        cell = { row: level, rowSpan: columnLevels - level, text: TOTAL_TEXT, kind: 'total' }
+        cell = {
+          row: level,
+          rowSpan: columnLevels - level,
+          text: TOTAL_TEXT,
+          kind: 'total',
+          target: measureRow ? null : columnTarget(column),
+        }
         key = `total ${column.node}`
       } else {
         // Under the cell of its total.
@@ -112,7 +137,7 @@ export function headerCells(
       }
     })
   }
-  if (hasMeasureRow(columnLevels, measureLabels.length)) {
+  if (measureRow) {
     columns.forEach((column, index) => {
       cells.push({
         row: columnLevels,
@@ -121,6 +146,7 @@ export function headerCells(
         span: 1,
         text: column.measure === null ? '' : (measureLabels[column.measure] ?? ''),
         kind: 'measure',
+        target: columnTarget(column),
       })
     })
   }
@@ -128,24 +154,37 @@ export function headerCells(
 }
 
 /**
+ * Level named in the corner of the headers.
+ */
+export interface CornerLevel {
+  /**
+   * Position of the level on its axis.
+   */
+  level: number
+  /**
+   * Name of the level.
+   */
+  name: string
+}
+
+/**
  * Row of the corner of the headers, on the left of a row of the headers.
  */
 export interface CornerRow {
   /**
-   * Names of the levels of the lines, at the start of the last row, above their labels; `''`
-   * on the other rows.
+   * Levels of the lines, at the start of the last row, above their labels; none on the other rows.
    */
-  start: string
+  rows: CornerLevel[]
   /**
-   * Name of the level of the columns of the row, at its end, against its values; `''` on the row
-   * of the measures.
+   * Level of the columns of the row, at its end, against its values; `null` on the row of the
+   * measures.
    */
-  end: string
+  column: CornerLevel | null
 }
 
 /**
- * Rows of the corner of the headers: the name of each level of the columns on its row, the names
- * of the levels of the lines on the last row.
+ * Rows of the corner of the headers: each level of the columns on its row, the levels of the lines
+ * on the last row.
  *
  * @param rowCount Number of rows of the headers (`headerRowCount`).
  * @param rowNames Names of the levels of the lines, the outermost first.
@@ -156,10 +195,41 @@ export function cornerRows(
   rowNames: string[],
   columnNames: string[],
 ): CornerRow[] {
-  return Array.from({ length: rowCount }, (_, row) => ({
-    start: row === rowCount - 1 ? rowNames.join(' / ') : '',
-    end: columnNames[row] ?? '',
-  }))
+  return Array.from({ length: rowCount }, (_, row) => {
+    const column = columnNames[row]
+    return {
+      rows: row === rowCount - 1 ? rowNames.map((name, level) => ({ level, name })) : [],
+      column: column === undefined ? null : { level: row, name: column },
+    }
+  })
+}
+
+/**
+ * Mark of a sort button, as in the grid.
+ *
+ * @param descending Direction of the sort, `null` when the button does not drive the order.
+ */
+export function sortMark(descending: boolean | null): string {
+  if (descending === null) {
+    return '⇅'
+  }
+  return descending ? '▼' : '▲'
+}
+
+/**
+ * Do two tables take the same room? A window of one can stand in for a window of the other while
+ * it is read: a sort does not blink.
+ *
+ * @param a Shape of a table.
+ * @param b Shape of another table.
+ */
+export function sameLayout(a: PivotShape, b: PivotShape): boolean {
+  return (
+    a.lines === b.lines &&
+    a.columns === b.columns &&
+    a.rowLevels === b.rowLevels &&
+    a.columnLevels === b.columnLevels
+  )
 }
 
 /**
