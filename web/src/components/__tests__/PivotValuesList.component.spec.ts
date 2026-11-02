@@ -51,6 +51,12 @@ async function clickButton(label: string): Promise<void> {
 }
 
 describe('PivotValuesList', () => {
+  it('adds no element to its parent, which would shift the layout of its children', async () => {
+    const { mounted } = await mountList(() => Promise.resolve(['Nord']))
+    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
+    expect(mounted.vm.$el.parentElement.children).toHaveLength(0)
+  })
+
   it('checks and unchecks the values, in the order of the list', async () => {
     const { changes } = await mountList(() => Promise.resolve([null, 'Nord', 'Sud']), ['Sud'])
     await clickButton('Tout')

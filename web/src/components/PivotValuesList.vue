@@ -153,7 +153,8 @@ function checkShown(check: boolean): void {
 
 <template>
   <popover-root :open="true" @update:open="emit('close')">
-    <popover-anchor :reference="anchor" />
+    <!-- The element of the zones is the anchor: this part draws nothing among their children. -->
+    <popover-anchor as-child :reference="anchor" />
     <popover-portal>
       <popover-content
         side="right"
