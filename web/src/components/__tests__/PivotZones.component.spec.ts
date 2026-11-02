@@ -1,12 +1,14 @@
 import { Check } from '@lucide/vue'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { type VueWrapper, mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 
-import PivotValuesList from '../PivotValuesList.vue'
+import type { Cell } from '@/api/querySession'
+
+import PivotFilterPanel from '../PivotFilterPanel.vue'
 import PivotZones from '../PivotZones.vue'
-import type { PivotConfig } from '../pivotConfig'
+import type { PivotConfig, PivotFilter } from '../pivotConfig'
 import type { MenuGroup } from '../ui/menuItem'
 import UiDropdownMenu from '../ui/UiDropdownMenu.vue'
 
@@ -27,7 +29,7 @@ const CONFIG: PivotConfig = {
 
 let wrapper: VueWrapper | null = null
 
-// jsdom does not lay out the page: a list of values scrolls to its filter.
+// jsdom does not lay out the page: the settings of a filter scroll to it.
 Element.prototype.scrollIntoView = () => undefined
 
 afterEach(() => {
@@ -240,26 +242,66 @@ describe('PivotZones', () => {
     await nextTick()
   }
 
-  it('opens the list of the values of a column dropped into the filters', async () => {
+  /**
+   * Filter of a measure.
+   *
+   * @param changes What differs from it.
+   */
+  function onMeasure(changes: Partial<PivotFilter> = {}): PivotFilter {
+    return {
+      kind: 'measure',
+      aggregate: 'count_star',
+      column: 0,
+      name: '',
+      condition: 'greater',
+      operand: '1',
+      upper: '',
+      level_precision: 'none',
+      ...changes,
+    } as PivotFilter
+  }
+
+  it('opens the settings of a column dropped into the filters', async () => {
     const mounted = mountZones()
     await dropOnFilters(mounted, 'ul[aria-label="Colonnes du résultat"] li')
     expect(shownConfig(mounted).filters).toEqual([
-      { kind: 'values', column: 0, name: '', values: [] },
+      {
+        kind: 'column',
+        column: 0,
+        name: '',
+        precision: 'none',
+        condition: 'in_list',
+        values: [],
+        operand: '',
+        upper: '',
+      },
     ])
-    const list = mounted.findComponent(PivotValuesList)
-    expect(list.props('label')).toBe('region')
-    list.vm.$emit('update:kept', ['Nord'])
+    const panel = mounted.findComponent(PivotFilterPanel)
+    expect(panel.props('index')).toBe(0)
+    const filter = shownConfig(mounted).filters[0]!
+    panel.vm.$emit('change', { ...filter, values: ['Nord'] })
     await nextTick()
     expect(shownConfig(mounted).filters[0]).toMatchObject({ values: ['Nord'] })
     expect(mounted.find('section[aria-label="Filtres"] [data-element]').text()).toContain(
       "region IN ('Nord')",
     )
-    list.vm.$emit('close')
+    panel.vm.$emit('close')
     await nextTick()
-    expect(mounted.findComponent(PivotValuesList).exists()).toBe(false)
+    expect(mounted.findComponent(PivotFilterPanel).exists()).toBe(false)
   })
 
-  it('types the value of a measure dropped into the filters, and refuses a wrong one', async () => {
+  it('starts a column of numbers or of dates on its bounds, with its panel', async () => {
+    const mounted = mountZones()
+    await mounted.setProps({ types: [{ family: 'date', name: 'DATE' }] })
+    await dropOnFilters(mounted, 'ul[aria-label="Colonnes du résultat"] li')
+    expect(shownConfig(mounted).filters[0]).toMatchObject({ condition: 'between' })
+    expect(mounted.findComponent(PivotFilterPanel).exists()).toBe(true)
+    expect(mounted.find('section[aria-label="Filtres"] [data-element]').text()).toContain(
+      'region BETWEEN ? AND ?',
+    )
+  })
+
+  it('opens the settings of a measure dropped into the filters', async () => {
     const mounted = mountZones()
     await mounted.setProps({
       types: [
@@ -270,172 +312,128 @@ describe('PivotZones', () => {
     })
     await dropOnFilters(mounted, 'section[aria-label="Mesures"] [data-element]')
     expect(shownConfig(mounted).measures).toEqual(CONFIG.measures)
-    const zone = () => mounted.find('section[aria-label="Filtres"]')
-    const field = () => zone().find('input')
-    expect(field().attributes('aria-label')).toBe('Valeur de SUM(montant) > ?')
-    expect(document.activeElement).toBe(field().element)
-
-    await field().setValue('abc')
-    await field().trigger('keydown', { key: 'Enter' })
-    expect(zone().find('[role="alert"]').text()).toBe('Un nombre est attendu, comme 100 ou 12.5')
-    expect(field().exists()).toBe(true)
-
-    await field().setValue(' 100 ')
-    await field().trigger('keydown', { key: 'Enter' })
-    expect(zone().find('[role="alert"]').exists()).toBe(false)
-    expect(field().exists()).toBe(false)
-    expect(shownConfig(mounted).filters[0]).toMatchObject({ operand: '100' })
-    expect(zone().find('[data-element]').text()).toContain('SUM(montant) > 100')
-  })
-
-  it('keeps the former value when leaving the field on a wrong one, or on Escape', async () => {
-    const mounted = mountZones()
-    await mounted.setProps({
-      types: [{ family: 'decimal', name: 'DECIMAL' }],
-      config: {
-        ...CONFIG,
-        filters: [
-          {
-            kind: 'measure',
-            aggregate: 'count_star',
-            column: 0,
-            name: '',
-            comparison: 'greater',
-            operand: '1',
-            level_precision: 'none',
-          },
-        ],
-      },
-    })
-    const zone = () => mounted.find('section[aria-label="Filtres"]')
-    const groups = () =>
-      mounted
-        .findAllComponents(UiDropdownMenu)
-        .flatMap((menu) => (menu.props('groups') ?? []) as MenuGroup[])
-    const openValue = async () => {
-      const value = groups()
-        .find((group) => group.label === 'Comparaison')
-        ?.items.find((item) => item.label === 'Valeur…')
-      value?.onSelect?.()
-      await nextTick()
-    }
-
-    await openValue()
-    await zone().find('input').setValue('abc')
-    await zone().find('input').trigger('blur')
-    expect(zone().find('input').exists()).toBe(false)
-    expect(zone().find('[role="alert"]').exists()).toBe(false)
-    expect(shownConfig(mounted).filters[0]).toMatchObject({ operand: '1' })
-
-    await openValue()
-    await zone().find('input').setValue('2')
-    await zone().find('input').trigger('keydown', { key: 'Escape' })
-    expect(shownConfig(mounted).filters[0]).toMatchObject({ operand: '1' })
-  })
-
-  it('gives a measure the choice of a filter on it, and a filter its groups', async () => {
-    const mounted = mountZones()
-    const groups = () =>
-      mounted
-        .findAllComponents(UiDropdownMenu)
-        .flatMap((menu) => (menu.props('groups') ?? []) as MenuGroup[])
-    const item = (group: string, label: string) =>
-      groups()
-        .filter((candidate) => candidate.label === group)
-        .flatMap((candidate) => candidate.items)
-        .find((candidate) => candidate.label === label)
-    item('Élément', 'Filtrer sur cette mesure')?.onSelect?.()
-    await nextTick()
-    await mounted.find('section[aria-label="Filtres"] input').trigger('keydown', { key: 'Escape' })
     expect(shownConfig(mounted).filters).toMatchObject([
-      { kind: 'measure', aggregate: 'sum', column: 2, comparison: 'greater', operand: '' },
+      { kind: 'measure', aggregate: 'sum', column: 2, condition: 'between', operand: '' },
     ])
-    expect(groups().map((group) => group.label)).toEqual([
-      'Élément',
-      'Agrégat',
-      'Élément',
-      'Agrégat',
-      'Comparaison',
-      'Niveau',
-      'Élément',
-    ])
-
-    item('Comparaison', '<=')?.onSelect?.()
-    await nextTick()
-    expect(shownConfig(mounted).filters[0]).toMatchObject({ comparison: 'less_or_equal' })
-    expect(item('Comparaison', '<=')?.icon).toBe(Check)
-
-    const levels = () => groups().find((group) => group.label === 'Niveau')?.items ?? []
-    expect(levels().map(({ label }) => label)).toEqual(['Le niveau le plus fin', 'region'])
-    expect(levels()[0]?.icon).toBe(Check)
-    levels()[1]?.onSelect?.()
-    await nextTick()
-    expect(shownConfig(mounted).filters[0]).toMatchObject({ level: 0 })
-    expect(levels()[1]?.icon).toBe(Check)
+    expect(mounted.findComponent(PivotFilterPanel).exists()).toBe(true)
   })
 
-  it('opens the list of the filter just dropped, among filters on the same column', async () => {
+  it('gives a measure the choice of a filter on it, whose settings open', async () => {
+    const mounted = mountZones()
+    const groups = () =>
+      mounted
+        .findAllComponents(UiDropdownMenu)
+        .flatMap((menu) => (menu.props('groups') ?? []) as MenuGroup[])
+    groups()
+      .filter((group) => group.label === 'Élément')
+      .flatMap((group) => group.items)
+      .find((item) => item.label === 'Filtrer sur cette mesure')
+      ?.onSelect?.()
+    await nextTick()
+    expect(shownConfig(mounted).filters).toMatchObject([
+      { kind: 'measure', aggregate: 'sum', column: 2 },
+    ])
+    // A filter has no menu: its settings hold everything it sets.
+    expect(groups().map((group) => group.label)).toEqual(['Élément', 'Agrégat', 'Élément'])
+  })
+
+  it('opens and closes the settings of a filter with its button', async () => {
+    const mounted = mountZones()
+    await mounted.setProps({ config: { ...CONFIG, filters: [onMeasure(), onMeasure()] } })
+    const buttons = mounted.findAll('button[aria-label^="Réglages"]')
+    expect(buttons).toHaveLength(2)
+    await buttons[1]!.trigger('click')
+    await nextTick()
+    await nextTick()
+    expect(mounted.findComponent(PivotFilterPanel).props('index')).toBe(1)
+    expect(buttons[1]!.attributes('aria-expanded')).toBe('true')
+    await buttons[1]!.trigger('click')
+    await nextTick()
+    expect(mounted.findComponent(PivotFilterPanel).exists()).toBe(false)
+  })
+
+  it('names a filter from its settings, or with a double click', async () => {
+    const mounted = mountZones()
+    await mounted.setProps({ config: { ...CONFIG, filters: [onMeasure()] } })
+    const zone = () => mounted.find('section[aria-label="Filtres"]')
+    await zone().find('button[aria-label^="Réglages"]').trigger('click')
+    await nextTick()
+    await nextTick()
+    mounted.findComponent(PivotFilterPanel).vm.$emit('name')
+    await nextTick()
+    await nextTick()
+    expect(mounted.findComponent(PivotFilterPanel).exists()).toBe(false)
+    const field = zone().find('input')
+    expect(document.activeElement).toBe(field.element)
+    await field.setValue('Gros')
+    await field.trigger('keydown', { key: 'Enter' })
+    expect(shownConfig(mounted).filters[0]).toMatchObject({ name: 'Gros' })
+    await zone().find('[data-element] span.truncate').trigger('dblclick')
+    await nextTick()
+    expect(zone().find('input').exists()).toBe(true)
+  })
+
+  it('opens the settings of the filter just dropped, among filters on the same column', async () => {
     const mounted = mountZones()
     await dropOnFilters(mounted, 'ul[aria-label="Colonnes du résultat"] li')
-    const list = () => mounted.findComponent(PivotValuesList)
-    list().vm.$emit('update:kept', ['Nord'])
-    list().vm.$emit('close')
+    const panel = () => mounted.findComponent(PivotFilterPanel)
+    const change = (values: string[]) =>
+      panel().vm.$emit('change', { ...panel().props('filter'), values })
+    change(['Nord'])
+    panel().vm.$emit('close')
     await nextTick()
     await dropOnFilters(mounted, 'ul[aria-label="Colonnes du résultat"] li')
-    list().vm.$emit('update:kept', ['Sud'])
+    change(['Sud'])
     await nextTick()
     expect(shownConfig(mounted).filters).toMatchObject([{ values: ['Nord'] }, { values: ['Sud'] }])
   })
 
-  it('offers the same level placed twice as one level of a filter', async () => {
+  it('reads the values of a list at the precision of its filter', async () => {
+    const readValues = vi.fn<() => Promise<Cell[]>>(() => Promise.resolve(['2026-01']))
     const mounted = mountZones()
-    await mounted.setProps({
-      config: {
-        ...CONFIG,
-        rows: [
-          { column: 0, name: '', precision: 'none' },
-          { column: 0, name: '', precision: 'none' },
-        ],
-        filters: [
-          {
-            kind: 'measure',
-            aggregate: 'count_star',
-            column: 0,
-            name: '',
-            comparison: 'greater',
-            operand: '1',
-            level_precision: 'none',
-          },
-        ],
-      },
-    })
-    const groups = mounted
-      .findAllComponents(UiDropdownMenu)
-      .flatMap((menu) => (menu.props('groups') ?? []) as MenuGroup[])
-    const levels = groups.find((group) => group.label === 'Niveau')?.items ?? []
-    expect(levels.map(({ label }) => label)).toEqual(['Le niveau le plus fin', 'region'])
+    const filter: PivotFilter = {
+      kind: 'column',
+      column: 2,
+      name: '',
+      precision: 'month',
+      condition: 'in_list',
+      values: [],
+      operand: '',
+      upper: '',
+    }
+    await mounted.setProps({ readValues, config: { ...CONFIG, filters: [filter] } })
+    await mounted.find('button[aria-label^="Réglages"]').trigger('click')
+    await nextTick()
+    await nextTick()
+    expect(readValues).toHaveBeenCalledWith(2, 'month')
   })
 
-  it('marks a filter whose value no longer compares with its measure', async () => {
+  it('marks a filter whose value no longer compares with what it reads', async () => {
     const mounted = mountZones()
+    const element = () => mounted.find('section[aria-label="Filtres"] [data-element]')
+    await mounted.setProps({
+      config: {
+        ...CONFIG,
+        filters: [onMeasure({ aggregate: 'count', condition: 'equal', operand: 'abc' })],
+      },
+    })
+    expect(element().classes()).toContain('invalid')
     await mounted.setProps({
       config: {
         ...CONFIG,
         filters: [
-          {
-            kind: 'measure',
-            aggregate: 'count',
-            column: 0,
-            name: '',
-            comparison: 'equal',
-            operand: 'abc',
-            level_precision: 'none',
-          },
+          onMeasure({ aggregate: 'count', condition: 'between', operand: '1', upper: 'abc' }),
         ],
       },
     })
-    const element = mounted.find('section[aria-label="Filtres"] [data-element]')
-    expect(element.classes()).toContain('invalid')
+    expect(element().classes()).toContain('invalid')
+    await mounted.setProps({
+      config: {
+        ...CONFIG,
+        filters: [onMeasure({ aggregate: 'count', condition: 'is_null', operand: 'abc' })],
+      },
+    })
+    expect(element().classes()).not.toContain('invalid')
   })
 
   it('ignores a column of the list released outside the zones', async () => {

@@ -87,11 +87,11 @@ pub struct NamedMeasure {
     pub name: String,
 }
 
-/// Comparison of a filter on a measure.
+/// What a filter on a measure asks of its value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "snake_case")]
 #[ts(export)]
-pub enum PivotComparison {
+pub enum PivotTest {
     /// `=`.
     Equal,
     /// `<>`.
@@ -104,24 +104,85 @@ pub enum PivotComparison {
     Greater,
     /// `>=`.
     GreaterOrEqual,
+    /// `BETWEEN`, its bounds included.
+    Between,
+    /// `NOT BETWEEN`.
+    NotBetween,
+    /// `IS NULL`.
+    IsNull,
+    /// `IS NOT NULL`.
+    IsNotNull,
 }
 
-/// Filter of the Pivoteur.
+/// What a filter on a column asks of its value: a list of values, or the same
+/// tests as a filter on a measure.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum PivotCondition {
+    /// `IN`.
+    #[default]
+    InList,
+    /// `NOT IN`.
+    NotInList,
+    /// `=`.
+    Equal,
+    /// `<>`.
+    NotEqual,
+    /// `<`.
+    Less,
+    /// `<=`.
+    LessOrEqual,
+    /// `>`.
+    Greater,
+    /// `>=`.
+    GreaterOrEqual,
+    /// `BETWEEN`, its bounds included.
+    Between,
+    /// `NOT BETWEEN`.
+    NotBetween,
+    /// `IS NULL`.
+    IsNull,
+    /// `IS NOT NULL`.
+    IsNotNull,
+}
+
+/// Filter of the Pivoteur. A filter keeps the values typed under another
+/// condition: changing it back gives them back. What it has not given yet reads
+/// empty, which keeps a filter saved before its conditions (`kind` `values`,
+/// field `comparison`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[ts(export)]
 pub enum PivotFilter {
-    /// Keeps the rows whose cell is one of some values.
-    Values {
+    /// Keeps the rows whose value of a column passes a condition.
+    #[serde(alias = "values")]
+    Column {
         /// Index of the column of the result.
         column: u32,
         /// Name given to the filter, empty string without one: the filter then
         /// shows its expression.
         name: String,
-        /// Values kept, `null` for NULL. Without any, the filter keeps every row.
+        /// What the filter keeps of the dates of its column.
+        #[serde(default)]
+        precision: DatePrecision,
+        /// What the value of each row passes.
+        #[serde(default)]
+        condition: PivotCondition,
+        /// Values of the list, `null` for NULL. Without any, the filter keeps
+        /// every row.
+        #[serde(default)]
         values: Vec<Option<String>>,
+        /// Value compared to, or lower bound, empty string without one: the
+        /// filter then keeps every row.
+        #[serde(default)]
+        operand: String,
+        /// Upper bound, empty string without one: the filter then keeps every
+        /// row.
+        #[serde(default)]
+        upper: String,
     },
-    /// Keeps the rows of the groups whose measure passes a comparison.
+    /// Keeps the rows of the groups whose measure passes a test.
     Measure {
         /// Aggregate of the measure.
         aggregate: PivotAggregate,
@@ -131,11 +192,16 @@ pub enum PivotFilter {
         /// Name given to the filter, empty string without one: the filter then
         /// shows its expression.
         name: String,
-        /// Comparison of the value of each group to the operand.
-        comparison: PivotComparison,
-        /// Value compared to, empty string without one: the filter then keeps
-        /// every row.
+        /// What the value of each group passes.
+        #[serde(alias = "comparison")]
+        condition: PivotTest,
+        /// Value compared to, or lower bound, empty string without one: the
+        /// filter then keeps every row.
         operand: String,
+        /// Upper bound, empty string without one: the filter then keeps every
+        /// row.
+        #[serde(default)]
+        upper: String,
         /// Column of the level the measure reads. A column that is no level any
         /// more, or none, means the deepest level of the rows.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -355,14 +421,18 @@ mod tests {
 
     #[test]
     fn keeps_the_filters_of_a_configuration() {
-        let saved = r#"{"rows":[],"columns":[],"measures":[],"filters":[{"kind":"values","column":0,"name":"","values":["Nord",null]},{"kind":"measure","aggregate":"sum","column":2,"name":"Gros","comparison":"greater","operand":"100","level":1,"level_precision":"month"},{"kind":"measure","aggregate":"count_star","column":0,"name":"","comparison":"not_equal","operand":"","level_precision":"none"}]}"#;
+        let saved = r#"{"rows":[],"columns":[],"measures":[],"filters":[{"kind":"column","column":0,"name":"","precision":"month","condition":"not_in_list","values":["Nord",null],"operand":"1","upper":"2"},{"kind":"measure","aggregate":"sum","column":2,"name":"Gros","condition":"between","operand":"100","upper":"400","level":1,"level_precision":"month"},{"kind":"measure","aggregate":"count_star","column":0,"name":"","condition":"not_equal","operand":"","upper":"","level_precision":"none"}]}"#;
         let config: PivotConfig = serde_json::from_str(saved).unwrap();
         assert_eq!(
             config.filters[0],
-            PivotFilter::Values {
+            PivotFilter::Column {
                 column: 0,
                 name: String::new(),
+                precision: DatePrecision::Month,
+                condition: PivotCondition::NotInList,
                 values: vec![Some("Nord".to_string()), None],
+                operand: "1".to_string(),
+                upper: "2".to_string(),
             }
         );
         assert_eq!(
@@ -371,13 +441,45 @@ mod tests {
                 aggregate: PivotAggregate::Sum,
                 column: 2,
                 name: "Gros".to_string(),
-                comparison: PivotComparison::Greater,
+                condition: PivotTest::Between,
                 operand: "100".to_string(),
+                upper: "400".to_string(),
                 level: Some(1),
                 level_precision: DatePrecision::Month,
             }
         );
         assert_eq!(serde_json::to_string(&config).unwrap(), saved);
+    }
+
+    #[test]
+    fn a_filter_saved_before_its_conditions_keeps_what_it_held() {
+        let saved = r#"{"rows":[],"columns":[],"measures":[],"filters":[{"kind":"values","column":0,"name":"Zone","values":["Nord",null]},{"kind":"measure","aggregate":"sum","column":2,"name":"","comparison":"greater","operand":"100","level":1}]}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        assert_eq!(
+            config.filters[0],
+            PivotFilter::Column {
+                column: 0,
+                name: "Zone".to_string(),
+                precision: DatePrecision::None,
+                condition: PivotCondition::InList,
+                values: vec![Some("Nord".to_string()), None],
+                operand: String::new(),
+                upper: String::new(),
+            }
+        );
+        assert_eq!(
+            config.filters[1],
+            PivotFilter::Measure {
+                aggregate: PivotAggregate::Sum,
+                column: 2,
+                name: String::new(),
+                condition: PivotTest::Greater,
+                operand: "100".to_string(),
+                upper: String::new(),
+                level: Some(1),
+                level_precision: DatePrecision::None,
+            }
+        );
     }
 
     #[test]

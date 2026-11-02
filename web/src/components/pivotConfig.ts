@@ -16,11 +16,13 @@
  * node of the other axis can rank the nodes instead (C-13), named by their values. Such a sort
  * lasts as long as the levels of that other axis and its measure (`withFollowedSorts`).
  *
- * A filter (F-19) keeps the rows of some values of a column (F-21), or those of the groups whose
- * measure passes a comparison (F-44). Its groups are those of a level of an axis with the levels
- * above it, by default the deepest level of the rows (`filterLevels`). A filter without a value or
- * without an operand has no effect (`activeFilters`). A column dragged from an axis moves into the
- * filters, a measure dragged there is copied, and a column of the list gives a new filter each time.
+ * A filter (F-19) keeps the rows whose value of a column, at a precision of its dates, passes a
+ * condition: a list of values (F-21), or a test (`PivotTest`); or those of the groups whose measure
+ * passes a test (F-44). Its groups are those of a level of an axis with the levels above it, by
+ * default the deepest level of the rows (`filterLevels`). A filter that lacks a value has no effect
+ * (`activeFilters`). A column dragged from an axis moves into the filters with its precision, a
+ * measure dragged there is copied, and a column of the list gives a new filter each time; numbers
+ * and dates start on `BETWEEN`, the other columns on the list (`placeFilter`).
  *
  * The configuration is saved with its tab, whose query can change: it keeps the names of the
  * columns it was made for, and follows them in the columns of a new result (`fittedConfig`). Its
@@ -29,10 +31,11 @@
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { DatePrecision } from '@/api/generated/DatePrecision'
-import type { PivotComparison } from '@/api/generated/PivotComparison'
+import type { PivotCondition } from '@/api/generated/PivotCondition'
 import type { PivotConfig } from '@/api/generated/PivotConfig'
 import type { PivotFilter } from '@/api/generated/PivotFilter'
 import type { PivotLevel } from '@/api/generated/PivotLevel'
+import type { PivotTest } from '@/api/generated/PivotTest'
 import type { PivotValueSort } from '@/api/generated/PivotValueSort'
 import type { TabPivot } from '@/api/generated/TabPivot'
 import type { TypeFamily } from '@/api/generated/TypeFamily'
@@ -50,12 +53,17 @@ import { sameColumns } from './resultGrid'
 
 export type { DatePrecision } from '@/api/generated/DatePrecision'
 export type { NamedMeasure } from '@/api/generated/NamedMeasure'
-export type { PivotComparison, PivotConfig, PivotFilter, PivotLevel }
+export type { PivotCondition, PivotConfig, PivotFilter, PivotLevel, PivotTest }
 
 /**
  * Filter on a measure.
  */
 export type PivotMeasureFilter = Extract<PivotFilter, { kind: 'measure' }>
+
+/**
+ * Filter on a column.
+ */
+export type PivotColumnFilter = Extract<PivotFilter, { kind: 'column' }>
 
 /**
  * Zone of the panel.
@@ -200,7 +208,7 @@ function followedConfig(pivot: TabPivot, columns: string[]): PivotConfig {
       ),
     ),
     filters: config.filters.flatMap((filter): PivotFilter[] => {
-      if (filter.kind === 'values') {
+      if (filter.kind === 'column') {
         return follow(filter, moved[filter.column])
       }
       const column = moved[filter.column] ?? (filter.aggregate === 'count_star' ? 0 : undefined)
@@ -219,15 +227,17 @@ function followedConfig(pivot: TabPivot, columns: string[]): PivotConfig {
 }
 
 /**
- * Configuration whose levels keep only the precisions their columns can take: a column that holds
- * no dates any more gives its values as they are. A column without a type keeps its precision.
+ * Configuration whose levels and filters keep only the precisions their columns can take: a column
+ * that holds no dates any more gives its values as they are. A filter loses what it compared to,
+ * the values of a period having no meaning for the values as they are. A column without a type
+ * keeps its precision.
  *
  * @param config Configuration.
  * @param types Type of each column of the result.
  * @returns The configuration itself when each level keeps its precision.
  */
 function withPossiblePrecisions(config: PivotConfig, types: ColumnTypeInfo[]): PivotConfig {
-  const possible = ({ column, precision }: PivotLevel) => {
+  const possible = ({ column, precision }: Pick<PivotLevel, 'column' | 'precision'>) => {
     const type = types[column]
     return (
       precision === 'none' ||
@@ -235,19 +245,24 @@ function withPossiblePrecisions(config: PivotConfig, types: ColumnTypeInfo[]): P
       precisionChoices(type.family).some((choice) => choice.precision === precision)
     )
   }
-  if ([...config.rows, ...config.columns].every(possible)) {
-    return config
-  }
   const fit = (levels: PivotLevel[]) =>
     levels.map((level): PivotLevel => (possible(level) ? level : { ...level, precision: 'none' }))
-  // A filter goes on reading the level whose precision leaves.
   const filters = config.filters.map((filter): PivotFilter => {
+    if (filter.kind === 'column') {
+      return possible(filter)
+        ? filter
+        : { ...filter, precision: 'none', values: [], operand: '', upper: '' }
+    }
+    // A filter goes on reading the level whose precision leaves.
     const fits =
-      filter.kind === 'values' ||
       filter.level === undefined ||
-      possible({ column: filter.level, name: '', precision: filter.level_precision })
+      possible({ column: filter.level, precision: filter.level_precision })
     return fits ? filter : { ...filter, level_precision: 'none' }
   })
+  const fitted = filters.every((filter, index) => filter === config.filters[index])
+  if (fitted && [...config.rows, ...config.columns].every(possible)) {
+    return config
+  }
   return { ...config, rows: fit(config.rows), columns: fit(config.columns), filters }
 }
 
@@ -314,15 +329,54 @@ export function filterLevels(config: PivotConfig, filter: PivotMeasureFilter): P
 }
 
 /**
- * Filters that have an effect: those with a value, or with an operand. The engine reads only these
- * and names them by their rank here.
+ * Number of values a test compares to.
+ *
+ * @param condition Condition of a filter.
+ * @returns 2 for bounds, 1 for an operand, 0 for `IS NULL`, `IS NOT NULL` and the lists.
+ */
+export function operandCount(condition: PivotCondition): 0 | 1 | 2 {
+  switch (condition) {
+    case 'between':
+    case 'not_between':
+      return 2
+    case 'in_list':
+    case 'not_in_list':
+    case 'is_null':
+    case 'is_not_null':
+      return 0
+    default:
+      return 1
+  }
+}
+
+/**
+ * Does a filter have an effect? A list needs a value, and a test its operands. `NOT IN` writes no
+ * NULL: as in SQL, it would keep no row, which a click must not do by accident.
+ *
+ * @param filter Filter.
+ */
+function hasEffect(filter: PivotFilter): boolean {
+  switch (filter.condition) {
+    case 'in_list':
+      return filter.values.length > 0
+    case 'not_in_list':
+      return filter.values.some((value) => value !== null)
+    case 'is_null':
+    case 'is_not_null':
+      return true
+    default:
+      return filter.operand !== '' && (operandCount(filter.condition) === 1 || filter.upper !== '')
+  }
+}
+
+/**
+ * Filters that have an effect (`hasEffect`). The engine reads only these and names them by their
+ * rank here.
  *
  * @param config Configuration.
  */
 export function activeFilters(config: PivotConfig): PivotFilter[] {
-  return config.filters.filter((filter) =>
-    filter.kind === 'values' ? filter.values.length > 0 : filter.operand !== '',
-  )
+  return config.filters.filter(hasEffect)
 }
 
 /**
@@ -345,20 +399,28 @@ export function activeFilterPlace(config: PivotConfig, rank: number): ZonePlace 
 export function engineRequest(config: PivotConfig): PivotRequest {
   const levels = (items: PivotLevel[]) =>
     items.map(({ column, precision }): PivotRequestLevel => ({ column, precision }))
-  const filter = (item: PivotFilter): PivotRequestFilter =>
-    item.kind === 'values'
-      ? {
-          kind: 'values',
-          level: { column: item.column, precision: 'none' },
-          values: [...item.values],
-          excluded: false,
-        }
-      : {
-          kind: 'measure',
-          measure: { aggregate: item.aggregate, column: item.column },
-          levels: levels(filterLevels(config, item)),
-          test: { condition: item.comparison, operand: item.operand, upper: '' },
-        }
+  const filter = (item: PivotFilter): PivotRequestFilter => {
+    const { condition, operand, upper } = item
+    if (item.kind === 'measure') {
+      return {
+        kind: 'measure',
+        measure: { aggregate: item.aggregate, column: item.column },
+        levels: levels(filterLevels(config, item)),
+        test: { condition: item.condition, operand, upper },
+      }
+    }
+    const level = { column: item.column, precision: item.precision }
+    switch (condition) {
+      case 'in_list':
+        return { kind: 'values', level, values: [...item.values], excluded: false }
+      case 'not_in_list': {
+        const values = item.values.filter((value) => value !== null)
+        return { kind: 'values', level, values, excluded: true }
+      }
+      default:
+        return { kind: 'column', level, test: { condition, operand, upper } }
+    }
+  }
   return {
     rows: levels(config.rows),
     columns: levels(config.columns),
@@ -577,13 +639,25 @@ export function measureExpression(measure: PivotMeasure, names: string[]): strin
 /**
  * Sign of each comparison, as ANSI SQL writes it.
  */
-export const COMPARISON_SIGNS: Record<PivotComparison, string> = {
+const COMPARISON_SIGNS = {
   equal: '=',
   not_equal: '<>',
   less: '<',
   less_or_equal: '<=',
   greater: '>',
   greater_or_equal: '>=',
+}
+
+/**
+ * Family of the values of a filter at a precision, for their literals: a year is a number, a day a
+ * date, and the other periods are texts.
+ */
+const PERIOD_FAMILIES: Record<Exclude<DatePrecision, 'none'>, TypeFamily> = {
+  year: 'integer',
+  quarter: 'text',
+  month: 'text',
+  week: 'text',
+  date: 'date',
 }
 
 /**
@@ -633,8 +707,50 @@ function measureFamily(
 }
 
 /**
+ * Name of a column with its precision: `vendue_le (Mois)`.
+ *
+ * @param name Name of the column.
+ * @param precision What it keeps of its dates.
+ */
+function withPrecisionLabel(name: string, precision: DatePrecision): string {
+  if (precision === 'none') {
+    return name
+  }
+  const choice = precisionChoices('datetime').find((item) => item.precision === precision)
+  return `${name} (${choice?.label})`
+}
+
+/**
+ * Expression of a test: `montant BETWEEN 1 AND 5`, `x IS NULL`, `?` for an operand still to give.
+ *
+ * @param subject Expression of the value.
+ * @param test What the value passes, and what it compares to.
+ * @param family Family of the type of the value.
+ */
+function testExpression(
+  subject: string,
+  { condition, operand, upper }: { condition: PivotTest; operand: string; upper: string },
+  family: TypeFamily | undefined,
+): string {
+  const literal = (value: string) => (value === '' ? '?' : sqlLiteral(value, family))
+  switch (condition) {
+    case 'between':
+      return `${subject} BETWEEN ${literal(operand)} AND ${literal(upper)}`
+    case 'not_between':
+      return `${subject} NOT BETWEEN ${literal(operand)} AND ${literal(upper)}`
+    case 'is_null':
+      return `${subject} IS NULL`
+    case 'is_not_null':
+      return `${subject} IS NOT NULL`
+    default:
+      return `${subject} ${COMPARISON_SIGNS[condition]} ${literal(operand)}`
+  }
+}
+
+/**
  * Expression of a filter: `region IN ('Nord', 'Sud')`, `region IN ('Nord') OR region IS NULL`,
- * `SUM(montant) > 100`. Without a value, the name of its column, or `?` as its operand.
+ * `region NOT IN ('Nord')`, `d (Mois) BETWEEN '2026-01' AND '2026-03'`, `SUM(montant) > 100`.
+ * Without a value, the name of its column, or `?` as its operand.
  *
  * @param filter Filter.
  * @param names Names of the columns of the result.
@@ -642,20 +758,28 @@ function measureFamily(
  */
 function filterExpression(filter: PivotFilter, names: string[], types: ColumnTypeInfo[]): string {
   if (filter.kind === 'measure') {
-    const operand =
-      filter.operand === '' ? '?' : sqlLiteral(filter.operand, measureFamily(filter, types))
-    return `${measureExpression(filter, names)} ${COMPARISON_SIGNS[filter.comparison]} ${operand}`
+    const { condition, operand, upper } = filter
+    return testExpression(
+      measureExpression(filter, names),
+      { condition, operand, upper },
+      measureFamily(filter, types),
+    )
   }
-  const name = names[filter.column] ?? '?'
+  const name = withPrecisionLabel(names[filter.column] ?? '?', filter.precision)
+  const family =
+    filter.precision === 'none' ? types[filter.column]?.family : PERIOD_FAMILIES[filter.precision]
+  const { condition, operand, upper } = filter
+  if (condition !== 'in_list' && condition !== 'not_in_list') {
+    return testExpression(name, { condition, operand, upper }, family)
+  }
   const texts = filter.values.filter((value) => value !== null)
-  const hasNull = texts.length < filter.values.length
+  const hasNull = condition === 'in_list' && texts.length < filter.values.length
   if (texts.length === 0) {
     return hasNull ? `${name} IS NULL` : name
   }
-  const family = types[filter.column]?.family
   const literals = texts.slice(0, LISTED_VALUES).map((value) => sqlLiteral(value, family))
   const list = texts.length > LISTED_VALUES ? [...literals, '…'] : literals
-  const inList = `${name} IN (${list.join(', ')})`
+  const inList = `${name} ${condition === 'in_list' ? 'IN' : 'NOT IN'} (${list.join(', ')})`
   return hasNull ? `${inList} OR ${name} IS NULL` : inList
 }
 
@@ -684,39 +808,191 @@ function isCalendarDate(text: string): boolean {
 }
 
 /**
- * Why an operand cannot compare with the values of a measure. A date, an instant or an hour
- * compares as text: its form is required so that the order of the text is that of time.
- *
- * @param measure Measure.
- * @param operand Operand, not empty.
- * @param types Type of each column of the result.
- * @returns The message of the refusal, `null` for an operand accepted.
+ * Hour of the day, as the engine reads it: `25:00:00` stops a computation, and cannot be typed.
  */
-export function operandRefusal(
-  measure: PivotMeasure,
-  operand: string,
-  types: ColumnTypeInfo[],
-): string | null {
-  switch (measureFamily(measure, types)) {
+const HOUR = /^([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d+)?$/
+
+/**
+ * Form of the values a filter compares to.
+ */
+interface ValueForm {
+  /**
+   * Does a text have this form?
+   */
+  accepts: (text: string) => boolean
+  /**
+   * Message of the refusal of another text.
+   */
+  refusal: string
+  /**
+   * Text of this form, shown in an empty field.
+   */
+  example: string
+}
+
+/**
+ * Form of the values of a family; none for a text, which compares whatever it holds.
+ *
+ * @param family Family of the type of the values.
+ */
+function familyForm(family: TypeFamily | undefined): ValueForm | null {
+  switch (family) {
     case 'integer':
     case 'decimal':
-      return EXACT_NUMBER.test(operand) ? null : 'Un nombre est attendu, comme 100 ou 12.5'
+      return {
+        accepts: (text) => EXACT_NUMBER.test(text),
+        refusal: 'Un nombre est attendu, comme 100 ou 12.5',
+        example: '100',
+      }
     case 'float':
-      return FLOAT_NUMBER.test(operand) ? null : 'Un nombre est attendu, comme 100 ou 1.5e3'
+      return {
+        accepts: (text) => FLOAT_NUMBER.test(text),
+        refusal: 'Un nombre est attendu, comme 100 ou 1.5e3',
+        example: '100',
+      }
     case 'date':
-      return isCalendarDate(operand) ? null : 'Une date est attendue, comme 2026-01-15'
+      return {
+        accepts: isCalendarDate,
+        refusal: 'Une date est attendue, comme 2026-01-15',
+        example: '2026-01-15',
+      }
     case 'datetime':
-      return isCalendarDate(operand.slice(0, 10)) &&
-        /^ \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(operand.slice(10))
-        ? null
-        : 'Un instant est attendu, comme 2026-01-15 10:30:00'
+      return {
+        accepts: (text) =>
+          isCalendarDate(text.slice(0, 10)) && text[10] === ' ' && HOUR.test(text.slice(11)),
+        refusal: 'Un instant est attendu, comme 2026-01-15 10:30:00',
+        example: '2026-01-15 10:30:00',
+      }
     case 'time':
-      return /^-?\d{2,3}:\d{2}:\d{2}(\.\d+)?$/.test(operand)
-        ? null
-        : 'Une heure est attendue, comme 10:30:00'
+      return {
+        accepts: (text) => HOUR.test(text),
+        refusal: 'Une heure est attendue, comme 10:30:00',
+        example: '10:30:00',
+      }
+    case 'year':
+      return {
+        accepts: (text) => /^\d{4}$/.test(text),
+        refusal: 'Une année est attendue, comme 2026',
+        example: '2026',
+      }
     default:
       return null
   }
+}
+
+/**
+ * Form of the labels of a precision, which sort in the order of time.
+ *
+ * @param precision Precision of a filter.
+ */
+function periodForm(precision: Exclude<DatePrecision, 'none'>): ValueForm {
+  switch (precision) {
+    case 'year':
+      return {
+        accepts: (text) => /^(?!0000)\d{4}$/.test(text),
+        refusal: 'Une année est attendue, comme 2026',
+        example: '2026',
+      }
+    case 'quarter':
+      return {
+        accepts: (text) => /^(?!0000)\d{4}-T[1-4]$/.test(text),
+        refusal: 'Un trimestre est attendu, comme 2026-T1',
+        example: '2026-T1',
+      }
+    case 'month':
+      return {
+        accepts: (text) => /^(?!0000)\d{4}-(0[1-9]|1[0-2])$/.test(text),
+        refusal: 'Un mois est attendu, comme 2026-01',
+        example: '2026-01',
+      }
+    case 'week':
+      return {
+        accepts: (text) => /^(?!0000)\d{4}-S(0[1-9]|[1-4]\d|5[0-3])$/.test(text),
+        refusal: 'Une semaine est attendue, comme 2026-S03',
+        example: '2026-S03',
+      }
+    case 'date':
+      return {
+        accepts: isCalendarDate,
+        refusal: 'Une date est attendue, comme 2026-01-15',
+        example: '2026-01-15',
+      }
+  }
+}
+
+/**
+ * Form of the values a filter on a column or on a measure compares to.
+ *
+ * @param filter Filter, or its measure.
+ * @param types Type of each column of the result.
+ */
+function valueForm(
+  filter: PivotMeasure | PivotColumnFilter,
+  types: ColumnTypeInfo[],
+): ValueForm | null {
+  if ('aggregate' in filter) {
+    return familyForm(measureFamily(filter, types))
+  }
+  return filter.precision === 'none'
+    ? familyForm(types[filter.column]?.family)
+    : periodForm(filter.precision)
+}
+
+/**
+ * Why a value cannot compare with what a filter reads. A date, an instant, an hour or a period
+ * compares as text: its form is required so that the order of the text is that of time.
+ *
+ * @param filter Filter, or its measure.
+ * @param operand Value, not empty.
+ * @param types Type of each column of the result.
+ * @returns The message of the refusal, `null` for a value accepted.
+ */
+export function operandRefusal(
+  filter: PivotMeasure | PivotColumnFilter,
+  operand: string,
+  types: ColumnTypeInfo[],
+): string | null {
+  const form = valueForm(filter, types)
+  return form === null || form.accepts(operand) ? null : form.refusal
+}
+
+/**
+ * Text of the form a filter awaits, shown in an empty field.
+ *
+ * @param filter Filter.
+ * @param types Type of each column of the result.
+ * @returns The example, empty for a text.
+ */
+export function operandExample(filter: PivotFilter, types: ColumnTypeInfo[]): string {
+  return valueForm(filter, types)?.example ?? ''
+}
+
+/**
+ * Does a filter hold a value that cannot compare with what it reads, after a change of its aggregate
+ * or of the type of its column?
+ *
+ * @param filter Filter.
+ * @param types Type of each column of the result.
+ */
+export function isRefused(filter: PivotFilter, types: ColumnTypeInfo[]): boolean {
+  const count = operandCount(filter.condition)
+  const values = [filter.operand, filter.upper].slice(0, count)
+  return values.some((value) => value !== '' && operandRefusal(filter, value, types) !== null)
+}
+
+/**
+ * Do numbers or dates sit in an order that a range of values can read?
+ *
+ * @param family Family of the type of the values.
+ */
+function isRanged(family: TypeFamily | undefined): boolean {
+  return (
+    summable(family) ||
+    family === 'date' ||
+    family === 'datetime' ||
+    family === 'time' ||
+    family === 'year'
+  )
 }
 
 /**
@@ -743,12 +1019,7 @@ export function elementExpression(
     return filter === undefined ? '?' : filterExpression(filter, names, types)
   }
   const level = config[place.zone][place.index]
-  const name = names[level?.column ?? -1] ?? '?'
-  if (level === undefined || level.precision === 'none') {
-    return name
-  }
-  const choice = precisionChoices('datetime').find(({ precision }) => precision === level.precision)
-  return `${name} (${choice?.label})`
+  return withPrecisionLabel(names[level?.column ?? -1] ?? '?', level?.precision ?? 'none')
 }
 
 /**
@@ -819,19 +1090,22 @@ export function removeElement(config: PivotConfig, place: ZonePlace): PivotConfi
 
 /**
  * Places a column in the filters, at a position: a filter moved among the filters, a measure copied
- * into a filter on it, whose operand is still to give, or a column, which leaves its axis if it
- * comes from one, into a new filter on its values.
+ * into a filter on it, whose values are still to give, or a column, which leaves its axis with its
+ * precision if it comes from one, into a new filter. Numbers and dates start on `BETWEEN`, the other
+ * columns on the list of their values, and the other measures on `=`.
  *
  * @param config Configuration.
  * @param column Index of the column.
  * @param index Position of the filter.
  * @param from Place of the moved element, `null` for a new element.
+ * @param types Type of each column of the result.
  */
 function placeFilter(
   config: PivotConfig,
   column: number,
   index: number,
   from: ZonePlace | null,
+  types: ColumnTypeInfo[],
 ): PivotConfig {
   const insert = (base: PivotConfig, filter: PivotFilter, at: number) => ({
     ...base,
@@ -843,21 +1117,32 @@ function placeFilter(
   }
   const measure = from?.zone === 'measures' ? config.measures[from.index] : undefined
   if (measure !== undefined) {
-    const { aggregate } = measure
-    const comparison = 'greater'
     const filter: PivotFilter = {
       kind: 'measure',
-      aggregate,
+      aggregate: measure.aggregate,
       column,
       name: '',
-      comparison,
+      condition: isRanged(measureFamily(measure, types)) ? 'between' : 'equal',
       operand: '',
+      upper: '',
       level_precision: 'none',
     }
     return insert(config, filter, index)
   }
+  const level =
+    from?.zone === 'rows' || from?.zone === 'columns' ? config[from.zone][from.index] : undefined
   const base = from === null ? config : removeElement(config, from)
-  return insert(base, { kind: 'values', column, name: '', values: [] }, index)
+  const filter: PivotFilter = {
+    kind: 'column',
+    column,
+    name: '',
+    precision: level?.precision ?? 'none',
+    condition: isRanged(types[column]?.family) ? 'between' : 'in_list',
+    values: [],
+    operand: '',
+    upper: '',
+  }
+  return insert(base, filter, index)
 }
 
 /**
@@ -867,13 +1152,14 @@ function placeFilter(
  * A level moved keeps its name, and a measure moved stays the same measure, with its name; a column
  * that becomes a measure takes the aggregate given, and a measure that becomes a level loses its
  * name. A filter that leaves the filters also loses its name; on a measure, its aggregate stays
- * when it becomes a measure.
+ * when it becomes a measure, and on a column, its precision when it becomes a level.
  *
  * @param config Configuration.
  * @param column Index of the column.
  * @param aggregate Aggregate of the column if it becomes a measure (`defaultAggregate`).
  * @param to Zone and position of the element; a position beyond the end places it last.
  * @param from Place of the moved element, `null` for a new element.
+ * @param types Type of each column of the result, for the condition of a new filter.
  */
 export function placeColumn(
   config: PivotConfig,
@@ -881,9 +1167,10 @@ export function placeColumn(
   aggregate: PivotMeasure['aggregate'],
   to: ZonePlace,
   from: ZonePlace | null,
+  types: ColumnTypeInfo[] = [],
 ): PivotConfig {
   if (to.zone === 'filters') {
-    return placeFilter(config, column, to.index, from)
+    return placeFilter(config, column, to.index, from, types)
   }
   const moved = from?.zone === 'measures' ? config.measures[from.index] : undefined
   const filter = from?.zone === 'filters' ? config.filters[from.index] : undefined
@@ -893,7 +1180,11 @@ export function placeColumn(
   // Removing an element before the target, in the same zone, shifts the target.
   const index = from?.zone === to.zone && from.index < to.index ? to.index - 1 : to.index
   const insert = <T>(items: T[], item: T) => [...items.slice(0, index), item, ...items.slice(index)]
-  const newLevel: PivotLevel = level ?? { column, name: '', precision: 'none' }
+  const newLevel: PivotLevel = level ?? {
+    column,
+    name: '',
+    precision: filter?.kind === 'column' ? filter.precision : 'none',
+  }
   return withFollowedSorts(config, {
     ...result,
     rows: to.zone === 'rows' ? insert(result.rows, newLevel) : result.rows,

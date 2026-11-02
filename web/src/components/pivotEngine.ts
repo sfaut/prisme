@@ -18,7 +18,7 @@
 import type { DatePrecision } from '@/api/generated/DatePrecision'
 import type { TypeFamily } from '@/api/generated/TypeFamily'
 import type { PivotAggregate } from '@/api/generated/PivotAggregate'
-import type { PivotComparison } from '@/api/generated/PivotComparison'
+import type { PivotTest } from '@/api/generated/PivotTest'
 import type { Cell } from '@/api/querySession'
 
 import { compareCells } from './resultGrid'
@@ -60,7 +60,7 @@ export interface PivotRequestTest {
   /**
    * What the value passes.
    */
-  condition: PivotComparison | 'between' | 'not_between' | 'is_null' | 'is_not_null'
+  condition: PivotTest
   /**
    * Value compared to, or lower bound; `IS NULL` and `IS NOT NULL` do not read it.
    */

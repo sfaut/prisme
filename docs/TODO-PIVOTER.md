@@ -80,7 +80,12 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 
 - ✅ A date outside of the calendar stops the computation under a precision (A7, D25, D26) when a row taken into account holds it: the table empties, and the message gives the value and the number of its row, as for every error of calculation
 - ✅ Filters of lot 1 on the columns of the result (F-19, F-20, F-21, F-44): a source column by the list of its values with a search, a measure at a level chosen in the filter's menu (by default the deepest of the rows). Totals count the groups that remain, unlike `WITH ROLLUP … HAVING` (`agg.having_rollup_total`, `docs/SQL-COMPARISON.md`, section 3.6)
-- ⬜ Filters by an expression (F-19), with the dialect: an expression without an aggregate filters the rows, with one the groups; later, a custom expression in a filter on values (F-21)
+- ✅ A column can be placed several times in a zone and on both axes; a column of the list always adds an element, an element dragged moves (F-19)
+- ✅ One panel beside the element sets a filter, at its drop and from its ⋮, with its name at its foot (F-21, F-44): the menu and the inline value of a filter leave, with the nine aggregates, their refusal and the levels kept
+- ✅ Twelve conditions on a column (`IN`, `NOT IN`, `=`, `<>`, `<`, `<=`, `>`, `>=`, `BETWEEN`, `NOT BETWEEN`, `IS NULL`, `IS NOT NULL`), the same without the lists on a measure; numbers and dates start on `BETWEEN`, the other columns on the list. Measured: `null.not_in_*`, `null.between_*`, `null.not_between_*`, `agg.group_by_repeated` (`docs/SQL-COMPARISON.md`, sections 3.5 and 3.6)
+- ✅ Precision of a column of dates in a filter: the list reads the periods, a level dragged there keeps its precision, a comparison keeps whole periods
+- ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes, reload
+- ⬜ Filters by an expression (F-19), with the dialect: an expression without an aggregate filters the rows, with one the groups; later, a custom expression in a filter on values (F-21), `LIKE` and relative dates
 - ⬜ Lot 1, next slices (ANSI SQL): dialect (parsed by `sqlparser`, typing, ANSI catalog), calendar, editor, nested date levels, computed columns, filters, fold, caches, copy, CSV, conformance
 - ⬜ Lot 2: complements (detail of a cell, measures in rows)
 - ⬜ Lot 3: extensions (overflow syntax and functions of MySQL, MariaDB, PostgreSQL, DuckDB and ClickHouse, functions of Prisme's own, then a "global" Prisme dialect)

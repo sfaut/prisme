@@ -18,50 +18,23 @@
   (F-17): Enter confirms, Escape cancels, an empty name gives back its
   expression, which the tooltip of a named element recalls.
 
-  A column dropped into the filters opens the list of its values
-  (`PivotValuesList.vue`, F-21); a measure dropped there, or its menu
-  ("Filtrer sur cette mesure"), gives a filter on it, whose value is typed at
-  once in the place of the label (F-44): Enter confirms and refuses a value the
-  measure cannot compare with, showing why; Escape, or leaving the field, keeps
-  the former value. The menu of a filter on a measure sets its aggregate, its
-  comparison, its value and its level. The logic of the zones is in
-  `pivotConfig.ts`.
+  A column or a measure dropped into the filters, or a measure by its menu
+  ("Filtrer sur cette mesure"), gives a filter, whose settings open beside it
+  (`PivotFilterPanel.vue`, F-21, F-44); its "⋮" opens them again. The logic of the
+  zones is in `pivotConfig.ts`.
 -->
 <script setup lang="ts">
 import {
-  ArrowDownToLine,
   ArrowLeftRight,
-  ArrowUpToLine,
-  Asterisk,
-  Calendar,
-  Calendar1,
-  CalendarClock,
-  CalendarDays,
-  CalendarFold,
-  CalendarRange,
   Check,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   Columns3,
-  Divide,
   EllipsisVertical,
-  Equal,
-  EqualNot,
-  FingerprintPattern,
   Funnel,
-  Hash,
-  Layers,
-  ListChecks,
   PenLine,
   Plus,
   Rows3,
   Search,
   Sigma,
-  SquareDivide,
-  SquareSigma,
-  TextCursorInput,
 } from '@lucide/vue'
 import {
   type Component,
@@ -76,22 +49,19 @@ import {
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Cell } from '@/api/querySession'
 
+import { AGGREGATES, PRECISION_ICONS } from './pivotChoices'
 import {
-  type PivotComparison,
+  type DatePrecision,
   type PivotConfig,
-  type PivotLevel,
-  type PivotMeasureFilter,
+  type PivotFilter,
   type PivotZone,
-  type PrecisionLabel,
   type ZonePlace,
-  COMPARISON_SIGNS,
   addsNumbers,
-  chosenLevel,
   defaultAggregate,
   elementExpression,
   elementLabel,
+  isRefused,
   measureExpression,
-  operandRefusal,
   placeColumn,
   precisionChoices,
   removeElement,
@@ -102,7 +72,7 @@ import {
   withPrecision,
 } from './pivotConfig'
 import type { PivotMeasure } from './pivotEngine'
-import PivotValuesList from './PivotValuesList.vue'
+import PivotFilterPanel from './PivotFilterPanel.vue'
 import { dropPosition } from './resultGrid'
 import type { TypeMark } from './typeIcons'
 import type { MenuGroup, MenuItem } from './ui/menuItem'
@@ -130,9 +100,10 @@ const props = defineProps<{
    */
   foreignKeys: boolean[]
   /**
-   * Reads the distinct values of a column, for the list of a filter.
+   * Reads the distinct values of a column, or the periods of a precision of its dates, for the
+   * list of a filter.
    */
-  readValues: (column: number) => Promise<Cell[]>
+  readValues: (column: number, precision: DatePrecision) => Promise<Cell[]>
 }>()
 
 /**
@@ -183,8 +154,8 @@ interface ZoneElement {
    */
   expression: string
   /**
-   * Is the element in error (F-22): a filter whose value cannot compare with its measure, after a
-   * change of its aggregate or of the type of its column.
+   * Is the element in error (F-22): a filter whose value cannot compare with what it reads, after
+   * a change of its aggregate or of the type of its column.
    */
   invalid: boolean
 }
@@ -198,10 +169,7 @@ const elements = computed<Record<PivotZone, ZoneElement[]>>(() => {
       column: element.column,
       label: elementLabel(config.value, { zone, index }, props.names, props.types),
       expression: elementExpression(config.value, { zone, index }, props.names, props.types),
-      invalid:
-        'operand' in element &&
-        element.operand !== '' &&
-        operandRefusal(element, element.operand, props.types) !== null,
+      invalid: 'condition' in element && isRefused(element, props.types),
     }))
   return {
     rows: shown('rows'),
@@ -220,16 +188,10 @@ const elements = computed<Record<PivotZone, ZoneElement[]>>(() => {
  */
 function place(column: number, to: ZonePlace, from: ZonePlace | null): void {
   const aggregate = defaultAggregate(props.types[column], props.foreignKeys[column] ?? false)
-  const placed = placeColumn(config.value, column, aggregate, to, from)
+  const placed = placeColumn(config.value, column, aggregate, to, from, props.types)
   config.value = placed
-  if (to.zone !== 'filters' || from?.zone === 'filters') {
-    return
-  }
-  const index = Math.min(to.index, placed.filters.length - 1)
-  if (from?.zone === 'measures') {
-    startOperand(index, '')
-  } else {
-    pendingList = index
+  if (to.zone === 'filters' && from?.zone !== 'filters') {
+    pendingPanel = Math.min(to.index, placed.filters.length - 1)
   }
 }
 
@@ -283,33 +245,6 @@ function elementItems(zone: PivotZone, index: number): MenuItem[] {
 }
 
 /**
- * Aggregates a measure can take, with their icon.
- */
-const AGGREGATES: { aggregate: PivotMeasure['aggregate']; icon: Component }[] = [
-  { aggregate: 'count_star', icon: Asterisk },
-  { aggregate: 'count', icon: Hash },
-  { aggregate: 'count_distinct', icon: FingerprintPattern },
-  { aggregate: 'sum', icon: Sigma },
-  { aggregate: 'sum_distinct', icon: SquareSigma },
-  { aggregate: 'avg', icon: Divide },
-  { aggregate: 'avg_distinct', icon: SquareDivide },
-  { aggregate: 'min', icon: ArrowDownToLine },
-  { aggregate: 'max', icon: ArrowUpToLine },
-]
-
-/**
- * Icon of each precision of a level.
- */
-const PRECISION_ICONS: Record<PrecisionLabel, Component> = {
-  Année: Calendar,
-  Trimestre: CalendarRange,
-  Mois: CalendarDays,
-  Semaine: CalendarFold,
-  Date: Calendar1,
-  'Date et heure': CalendarClock,
-}
-
-/**
  * Choices of the precision of a level, none for a column that holds no dates.
  *
  * @param zone Axis of the level.
@@ -328,7 +263,7 @@ function precisionItems(zone: 'rows' | 'columns', index: number): MenuItem[] {
 }
 
 /**
- * Choices of the aggregate of a measure, or of a filter on a measure.
+ * Choices of the aggregate of a measure.
  *
  * @param measure Measure.
  * @param choose Takes the aggregate chosen.
@@ -351,111 +286,9 @@ function aggregateItems(
 }
 
 /**
- * Comparisons of a filter on a measure, with their icon.
- */
-const COMPARISONS: { comparison: PivotComparison; icon: Component }[] = [
-  { comparison: 'equal', icon: Equal },
-  { comparison: 'not_equal', icon: EqualNot },
-  { comparison: 'less', icon: ChevronLeft },
-  { comparison: 'less_or_equal', icon: ChevronsLeft },
-  { comparison: 'greater', icon: ChevronRight },
-  { comparison: 'greater_or_equal', icon: ChevronsRight },
-]
-
-/**
- * Choices of the level of a filter on a measure (F-44): the default one, then
- * each level of the two axes, the same level placed twice being one choice.
- *
- * @param filter Filter.
- * @param index Position of the filter.
- */
-function levelItems(filter: PivotMeasureFilter, index: number): MenuItem[] {
-  const chosen = chosenLevel(config.value, filter)
-  const choose = (level: PivotLevel | undefined) =>
-    (config.value = withFilter(config.value, index, {
-      ...filter,
-      level: level?.column,
-      level_precision: level?.precision ?? 'none',
-    }))
-  const same = (a: PivotLevel, b: PivotLevel | undefined) =>
-    a.column === b?.column && a.precision === b.precision
-  const axes = [
-    { zone: 'rows', icon: Rows3 },
-    { zone: 'columns', icon: Columns3 },
-  ] as const
-  return [
-    {
-      label: 'Le niveau le plus fin',
-      icon: chosen === undefined ? Check : Layers,
-      onSelect: () => choose(undefined),
-    },
-    ...axes.flatMap(({ zone, icon }) =>
-      config.value[zone].flatMap((level, position) =>
-        [...config.value.rows, ...config.value.columns].find((other) => same(other, level)) ===
-        level
-          ? [
-              {
-                label: elementLabel(config.value, { zone, index: position }, props.names),
-                icon: same(level, chosen) ? Check : icon,
-                onSelect: () => choose(level),
-              },
-            ]
-          : [],
-      ),
-    ),
-  ]
-}
-
-/**
- * Choices of a filter: the list of its values, or the aggregate, the comparison,
- * the value and the level of its measure.
- *
- * @param index Position of the filter.
- */
-function filterGroups(index: number): MenuGroup[] {
-  const filter = config.value.filters[index]
-  if (filter === undefined) {
-    return []
-  }
-  if (filter.kind === 'values') {
-    const items = [
-      {
-        label: 'Choisir les valeurs…',
-        icon: ListChecks,
-        // The list opens once the menu has closed (`onMenuClosed`).
-        onSelect: () => (pendingList = index),
-      },
-    ]
-    return [{ label: 'Valeurs', items }]
-  }
-  const change = (changed: Partial<PivotMeasureFilter>) =>
-    (config.value = withFilter(config.value, index, { ...filter, ...changed }))
-  return [
-    { label: 'Agrégat', items: aggregateItems(filter, (aggregate) => change({ aggregate })) },
-    {
-      label: 'Comparaison',
-      items: [
-        ...COMPARISONS.map(({ comparison, icon }) => ({
-          label: COMPARISON_SIGNS[comparison],
-          icon: comparison === filter.comparison ? Check : icon,
-          onSelect: () => change({ comparison }),
-        })),
-        {
-          label: 'Valeur…',
-          icon: TextCursorInput,
-          // The field takes the focus once the menu has closed (`onMenuClosed`).
-          onSelect: () => startOperand(index, filter.operand),
-        },
-      ],
-    },
-    { label: 'Niveau', items: levelItems(filter, index) },
-  ]
-}
-
-/**
  * Choices of the menu of an element: for a measure, its aggregate, for a
- * level of dates, its precision, for a filter, what it compares, then its name
- * and its place.
+ * level of dates, its precision, then its name and its place. A filter has its
+ * settings instead (`togglePanel`).
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
@@ -471,9 +304,6 @@ function elementGroups(zone: PivotZone, index: number): MenuGroup[] {
         (aggregate) => (config.value = withAggregate(config.value, index, aggregate)),
       ),
     })
-  }
-  if (zone === 'filters') {
-    groups.push(...filterGroups(index))
   }
   if (zone === 'rows' || zone === 'columns') {
     const items = precisionItems(zone, index)
@@ -491,23 +321,7 @@ function elementGroups(zone: PivotZone, index: number): MenuGroup[] {
 const naming = ref<ZonePlace | null>(null)
 
 /**
- * Does the field of the element being named hold the value of its filter,
- * instead of its name?
- */
-const typingOperand = ref(false)
-
-/**
- * Why the value typed is refused, `null` otherwise.
- */
-const operandRefused = ref<string | null>(null)
-
-/**
- * Line of the refusal of the value, the only one shown (`v-for`).
- */
-const refusalLines = useTemplateRef<HTMLElement[]>('refusalLine')
-
-/**
- * Name or value being typed.
+ * Name being typed.
  */
 const draft = ref('')
 
@@ -533,56 +347,38 @@ function isNaming(zone: PivotZone, index: number): boolean {
  */
 function startNaming(place: ZonePlace): void {
   draft.value = elements.value[place.zone][place.index]?.label ?? ''
-  typingOperand.value = false
   naming.value = place
 }
 
 /**
- * Makes the label of a filter on a measure a field for its value.
+ * Position of the filter whose settings are to open, `null` without one.
+ */
+let pendingPanel: number | null = null
+
+/**
+ * Filter whose settings are open, with the element they open beside.
+ */
+const panel = shallowRef<{ index: number; anchor: HTMLElement } | null>(null)
+
+/**
+ * Filter whose settings are open.
+ */
+const panelFilter = computed(() => panel.value && config.value.filters[panel.value.index])
+
+/**
+ * Changes the filter whose settings are open.
  *
- * @param index Position of the filter.
- * @param operand Current value.
+ * @param filter New filter.
  */
-function startOperand(index: number, operand: string): void {
-  draft.value = operand
-  typingOperand.value = true
-  operandRefused.value = null
-  naming.value = { zone: 'filters', index }
-}
-
-/**
- * Position of the filter whose list of values is to open, `null` without one.
- */
-let pendingList: number | null = null
-
-/**
- * Filter whose list of values is open, with the element it opens beside.
- */
-const listing = shallowRef<{ index: number; anchor: HTMLElement } | null>(null)
-
-/**
- * Filter whose list of values is open.
- */
-const listedFilter = computed(() => {
-  const filter = listing.value && config.value.filters[listing.value.index]
-  return filter?.kind === 'values' ? filter : undefined
-})
-
-/**
- * Keeps the values checked in the filter whose list is open.
- *
- * @param values Values kept.
- */
-function keepListed(values: Cell[]): void {
-  const index = listing.value?.index
-  if (index !== undefined && listedFilter.value !== undefined) {
-    config.value = withFilter(config.value, index, { ...listedFilter.value, values })
+function changePanelFilter(filter: PivotFilter): void {
+  if (panel.value !== null) {
+    config.value = withFilter(config.value, panel.value.index, filter)
   }
 }
 
 /**
- * Shows what the last action opens, once its element is on the page: the field
- * being typed, or the list of a filter.
+ * Shows what the last action opens, once its element is on the page: the field being named, or the
+ * settings of a filter.
  */
 async function showPending(): Promise<void> {
   await nextTick()
@@ -590,14 +386,28 @@ async function showPending(): Promise<void> {
     focusName()
     return
   }
-  const index = pendingList
-  pendingList = null
+  const index = pendingPanel
+  pendingPanel = null
   const section = zoneSections.value?.find((zone) => zone.dataset.zone === 'filters')
   const anchor = index === null ? undefined : section?.querySelectorAll('[data-element]')[index]
   if (index !== null && anchor instanceof HTMLElement) {
-    // The zones scroll in their column: the list opens beside an element in sight.
+    // The zones scroll in their column: the panel opens beside an element in sight.
     anchor.scrollIntoView({ block: 'nearest' })
-    listing.value = { index, anchor }
+    panel.value = { index, anchor }
+  }
+}
+
+/**
+ * Opens the settings of a filter, or closes them.
+ *
+ * @param index Position of the filter.
+ */
+function togglePanel(index: number): void {
+  if (panel.value?.index === index) {
+    panel.value = null
+  } else {
+    pendingPanel = index
+    void showPending()
   }
 }
 
@@ -611,18 +421,20 @@ function focusName(): void {
 }
 
 /**
- * Double click on the label of an element: names it at once.
+ * Double click on the label of an element, or the choice of the settings of a
+ * filter: names it at once.
  *
  * @param place Place of the element.
  */
-async function nameOnDoubleClick(place: ZonePlace): Promise<void> {
+async function nameAtOnce(place: ZonePlace): Promise<void> {
+  panel.value = null
   startNaming(place)
   await nextTick()
   focusName()
 }
 
 /**
- * Closing of a menu: when a choice opens a field or a list, it takes the focus,
+ * Closing of a menu: when a choice opens a field or settings, it takes the focus,
  * which the menu would give back to its button. The menu sends the event while
  * it is removed, before the field is reachable: the focus waits for the end of
  * the update.
@@ -630,35 +442,9 @@ async function nameOnDoubleClick(place: ZonePlace): Promise<void> {
  * @param event Return of the focus to the button.
  */
 async function onMenuClosed(event: Event): Promise<void> {
-  if (naming.value !== null || pendingList !== null) {
+  if (naming.value !== null || pendingPanel !== null) {
     event.preventDefault()
     await showPending()
-  }
-}
-
-/**
- * Confirms the value typed, or refuses it: when it was asked for (Enter), with
- * the reason and the field still open; otherwise the former value stays.
- *
- * @param index Position of the filter.
- * @param asked Did the user ask for the confirmation?
- */
-function commitOperand(index: number, asked: boolean): void {
-  const filter = config.value.filters[index]
-  const operand = draft.value.trim()
-  const refusal =
-    filter?.kind === 'measure' && operand !== ''
-      ? operandRefusal(filter, operand, props.types)
-      : null
-  if (refusal !== null && asked) {
-    operandRefused.value = refusal
-    // The zones scroll in their column: the reason shows under the field.
-    void nextTick(() => refusalLines.value?.[0]?.scrollIntoView({ block: 'nearest' }))
-    return
-  }
-  cancelName()
-  if (refusal === null && filter?.kind === 'measure') {
-    config.value = withFilter(config.value, index, { ...filter, operand })
   }
 }
 
@@ -667,21 +453,14 @@ function commitOperand(index: number, asked: boolean): void {
  */
 function cancelName(): void {
   naming.value = null
-  operandRefused.value = null
 }
 
 /**
- * Confirms what is being typed.
- *
- * @param asked Did the user ask for the confirmation (Enter), or leave the field?
+ * Confirms the name being typed.
  */
-function commitName(asked: boolean): void {
+function commitName(): void {
   const place = naming.value
   if (place === null) {
-    return
-  }
-  if (typingOperand.value) {
-    commitOperand(place.index, asked)
     return
   }
   naming.value = null
@@ -953,11 +732,11 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
               v-if="isNaming(zone, index)"
               ref="nameInput"
               v-model="draft"
-              :aria-label="`${typingOperand ? 'Valeur' : 'Nom'} de ${element.expression}`"
+              :aria-label="`Nom de ${element.expression}`"
               class="h-7 min-w-0 flex-1 rounded-lg border border-line bg-surface px-1 text-base text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary/60"
-              @blur="commitName(false)"
+              @blur="commitName"
               @keydown.stop
-              @keydown.enter.prevent="commitName(true)"
+              @keydown.enter.prevent="commitName"
               @keydown.escape.prevent="cancelName"
               @mousedown.stop
             />
@@ -969,11 +748,25 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
                   ? element.expression
                   : undefined
               "
-              @dblclick="nameOnDoubleClick({ zone, index })"
+              @dblclick="nameAtOnce({ zone, index })"
             >
               {{ element.label }}
             </span>
-            <ui-dropdown-menu :groups="elementGroups(zone, index)" @close-auto-focus="onMenuClosed">
+            <ui-button
+              v-if="zone === 'filters'"
+              :icon="EllipsisVertical"
+              variant="ghost"
+              small
+              aria-haspopup="dialog"
+              :aria-expanded="panel?.index === index"
+              :aria-label="`Réglages : ${element.label}`"
+              @click="togglePanel(index)"
+            />
+            <ui-dropdown-menu
+              v-else
+              :groups="elementGroups(zone, index)"
+              @close-auto-focus="onMenuClosed"
+            >
               <ui-button
                 :icon="EllipsisVertical"
                 variant="ghost"
@@ -985,26 +778,22 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
           <li v-if="elements[zone].length === 0" class="px-2 py-1 text-sm text-fg-faint">
             Glisser une colonne ici
           </li>
-          <li
-            v-if="zone === 'filters' && operandRefused"
-            ref="refusalLine"
-            role="alert"
-            class="px-2 py-1 text-sm text-error"
-          >
-            {{ operandRefused }}
-          </li>
         </ul>
       </section>
     </div>
-    <pivot-values-list
-      v-if="listing && listedFilter"
-      :key="listing.index"
-      :anchor="listing.anchor"
-      :label="names[listedFilter.column] ?? '?'"
-      :read="() => readValues(listedFilter?.column ?? -1)"
-      :kept="listedFilter.values"
-      @update:kept="keepListed"
-      @close="listing = null"
+    <pivot-filter-panel
+      v-if="panel && panelFilter"
+      :key="panel.index"
+      :anchor="panel.anchor"
+      :filter="panelFilter"
+      :index="panel.index"
+      :config="config"
+      :names="names"
+      :types="types"
+      :read-values="readValues"
+      @change="changePanelFilter"
+      @name="nameAtOnce({ zone: 'filters', index: panel?.index ?? 0 })"
+      @close="panel = null"
     />
   </div>
 </template>

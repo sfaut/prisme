@@ -6,6 +6,7 @@ import type { Cell } from '@/api/querySession'
 import {
   type DatePrecision,
   type NamedMeasure,
+  type PivotColumnFilter,
   type PivotConfig,
   type PivotFilter,
   type PivotLevel,
@@ -22,7 +23,9 @@ import {
   fittedConfig,
   hasTable,
   isEmptyConfig,
+  isRefused,
   measureExpression,
+  operandExample,
   operandRefusal,
   placeColumn,
   precisionChoices,
@@ -726,7 +729,26 @@ describe('the filters', () => {
    * @param values Values kept.
    */
   function values(column: number, kept: Cell[]): PivotFilter {
-    return { kind: 'values', column, name: '', values: kept }
+    return tested({ column, condition: 'in_list', values: kept })
+  }
+
+  /**
+   * Filter on a column of dates, without a value.
+   *
+   * @param changes What differs from it.
+   */
+  function tested(changes: Partial<PivotColumnFilter> = {}): PivotColumnFilter {
+    return {
+      kind: 'column',
+      column: 2,
+      name: '',
+      precision: 'none',
+      condition: 'between',
+      values: [],
+      operand: '',
+      upper: '',
+      ...changes,
+    }
   }
 
   /**
@@ -740,8 +762,9 @@ describe('the filters', () => {
       aggregate: 'sum',
       column: 4,
       name: '',
-      comparison: 'greater',
+      condition: 'greater',
       operand: '100',
+      upper: '',
       level_precision: 'none',
       ...changes,
     }
@@ -783,6 +806,52 @@ describe('the filters', () => {
           excluded: false,
         },
       ])
+    })
+
+    it('asks a test for all its values', () => {
+      const active = (changes: Partial<PivotColumnFilter>) =>
+        engineRequest(filtered(tested(changes))).filters.length
+      expect(active({})).toBe(0)
+      expect(active({ operand: '1' })).toBe(0)
+      expect(active({ upper: '2' })).toBe(0)
+      expect(active({ operand: '1', upper: '2' })).toBe(1)
+      expect(active({ condition: 'not_between', operand: '1' })).toBe(0)
+      expect(active({ condition: 'less', operand: '1' })).toBe(1)
+      expect(active({ condition: 'is_null' })).toBe(1)
+      expect(active({ condition: 'is_not_null' })).toBe(1)
+      const measures = (changes: Partial<PivotMeasureFilter>) =>
+        engineRequest(filtered(above(changes))).filters.length
+      expect(measures({ condition: 'between' })).toBe(0)
+      expect(measures({ condition: 'between', upper: '400' })).toBe(1)
+      expect(measures({ condition: 'is_null', operand: '' })).toBe(1)
+    })
+
+    it('sends a test at the precision of its filter', () => {
+      const condition = 'between'
+      const [filter] = engineRequest(
+        filtered(tested({ condition, precision: 'month', operand: '2026-01', upper: '2026-03' })),
+      ).filters
+      expect(filter).toEqual({
+        kind: 'column',
+        level: { column: 2, precision: 'month' },
+        test: { condition, operand: '2026-01', upper: '2026-03' },
+      })
+    })
+
+    it('sends a list at the precision of its filter, and NOT IN without NULL', () => {
+      const list = { precision: 'month', values: ['2026-01', null] } as const
+      const request = (condition: PivotColumnFilter['condition']) =>
+        engineRequest(filtered(tested({ ...list, values: [...list.values], condition }))).filters
+      const level = { column: 2, precision: 'month' }
+      expect(request('in_list')).toEqual([
+        { kind: 'values', level, values: ['2026-01', null], excluded: false },
+      ])
+      expect(request('not_in_list')).toEqual([
+        { kind: 'values', level, values: ['2026-01'], excluded: true },
+      ])
+      // NULL alone leaves no value to leave out: as `NOT IN (NULL)`, it would keep nothing.
+      const onlyNull = tested({ condition: 'not_in_list', values: [null] })
+      expect(engineRequest(filtered(onlyNull)).filters).toEqual([])
     })
 
     it('copies the values, which are reactive', () => {
@@ -913,13 +982,79 @@ describe('the filters', () => {
     it('writes a measure, its comparison and its operand', () => {
       expect(expression(above())).toBe('SUM(montant) > 100')
       expect(expression(above({ operand: '' }))).toBe('SUM(montant) > ?')
-      expect(expression(above({ comparison: 'not_equal' }))).toBe('SUM(montant) <> 100')
+      expect(expression(above({ condition: 'not_equal' }))).toBe('SUM(montant) <> 100')
+      expect(expression(above({ condition: 'between', upper: '400' }))).toBe(
+        'SUM(montant) BETWEEN 100 AND 400',
+      )
+      expect(expression(above({ condition: 'between' }))).toBe('SUM(montant) BETWEEN 100 AND ?')
+      expect(expression(above({ condition: 'is_not_null' }))).toBe('SUM(montant) IS NOT NULL')
       const dates = types('text', 'text', 'text', 'text', 'date')
       expect(expression(above({ aggregate: 'min', operand: '2026-01-15' }), dates)).toBe(
         "MIN(montant) > DATE'2026-01-15'",
       )
       expect(expression(above({ aggregate: 'count', operand: '2' }), dates)).toBe(
         'COUNT(montant) > 2',
+      )
+    })
+  })
+
+  describe('elementExpression of a filter on a column', () => {
+    /**
+     * Expression of a filter on the column `annee`.
+     *
+     * @param changes What differs from the filter.
+     * @param family Family of the column.
+     */
+    function expression(
+      changes: Partial<PivotColumnFilter>,
+      family: ColumnTypeInfo['family'] = 'date',
+    ): string {
+      const dates = types('text', 'text', family)
+      return elementExpression(
+        filtered(tested(changes)),
+        { zone: 'filters', index: 0 },
+        NAMES,
+        dates,
+      )
+    }
+
+    it('writes NOT IN without NULL', () => {
+      const condition = 'not_in_list'
+      expect(expression({ condition, values: ['a', null] }, 'text')).toBe("annee NOT IN ('a')")
+      expect(expression({ condition, values: [null] }, 'text')).toBe('annee')
+    })
+
+    it('writes each test', () => {
+      const values = { operand: '1', upper: '5' }
+      const write = (condition: PivotColumnFilter['condition']) =>
+        expression({ ...values, condition }, 'integer')
+      expect(write('between')).toBe('annee BETWEEN 1 AND 5')
+      expect(write('not_between')).toBe('annee NOT BETWEEN 1 AND 5')
+      expect(write('less')).toBe('annee < 1')
+      expect(write('less_or_equal')).toBe('annee <= 1')
+      expect(write('greater')).toBe('annee > 1')
+      expect(write('greater_or_equal')).toBe('annee >= 1')
+      expect(write('equal')).toBe('annee = 1')
+      expect(write('not_equal')).toBe('annee <> 1')
+      expect(write('is_null')).toBe('annee IS NULL')
+      expect(write('is_not_null')).toBe('annee IS NOT NULL')
+      expect(expression({}, 'integer')).toBe('annee BETWEEN ? AND ?')
+    })
+
+    it('writes a precision, with the literals of its periods', () => {
+      const months = { precision: 'month', operand: '2026-01', upper: '2026-03' } as const
+      expect(expression(months)).toBe("annee (Mois) BETWEEN '2026-01' AND '2026-03'")
+      expect(expression({ condition: 'in_list', precision: 'quarter', values: ['2026-T1'] })).toBe(
+        "annee (Trimestre) IN ('2026-T1')",
+      )
+      expect(expression({ condition: 'equal', precision: 'year', operand: '2026' })).toBe(
+        'annee (Année) = 2026',
+      )
+      expect(expression({ condition: 'less', precision: 'date', operand: '2026-01-15' })).toBe(
+        "annee (Date) < DATE'2026-01-15'",
+      )
+      expect(expression({ condition: 'is_null', precision: 'week' })).toBe(
+        'annee (Semaine) IS NULL',
       )
     })
   })
@@ -962,7 +1097,43 @@ describe('the filters', () => {
     it('copies a measure into a filter without an operand', () => {
       const placed = placeColumn(filtered(), 4, 'count', to(0), { zone: 'measures', index: 0 })
       expect(placed.measures).toEqual([measure('sum', 4)])
-      expect(placed.filters).toEqual([above({ operand: '' })])
+      expect(placed.filters).toEqual([above({ condition: 'between', operand: '' })])
+    })
+
+    it('starts numbers and dates on BETWEEN, the other columns on the list', () => {
+      const condition = (family: ColumnTypeInfo['family']) =>
+        placeColumn(filtered(), 0, 'count', to(0), null, types(family)).filters[0]?.condition
+      for (const family of ['integer', 'decimal', 'float', 'date', 'datetime', 'time', 'year']) {
+        expect(condition(family as ColumnTypeInfo['family'])).toBe('between')
+      }
+      expect(condition('text')).toBe('in_list')
+      expect(condition('binary')).toBe('in_list')
+    })
+
+    it('starts a measure on BETWEEN, unless it reads a text', () => {
+      const config = { ...filtered(), measures: [measure('max', 0), measure('count', 0)] }
+      const condition = (index: number) =>
+        placeColumn(config, 0, 'count', to(0), { zone: 'measures', index }, types('text'))
+          .filters[0]?.condition
+      expect(condition(0)).toBe('equal')
+      expect(condition(1)).toBe('between')
+    })
+
+    it('keeps the precision of a level moved into the filters, and back', () => {
+      const config = { ...filtered(), rows: [level(2, '', 'month')] }
+      const from = { zone: 'rows', index: 0 } as const
+      const placed = placeColumn(config, 2, 'count', to(0), from, types('text', 'text', 'date'))
+      expect(placed.rows).toEqual([])
+      expect(placed.filters).toEqual([tested({ precision: 'month' })])
+      const back = placeColumn(
+        placed,
+        2,
+        'count',
+        { zone: 'rows', index: 0 },
+        { zone: 'filters', index: 0 },
+      )
+      expect(back.rows).toEqual([level(2, '', 'month')])
+      expect(back.filters).toEqual([])
     })
 
     it('moves a filter among the filters', () => {
@@ -1038,6 +1209,18 @@ describe('the filters', () => {
       ])
     })
 
+    it('gives a filter its values as they are when its column holds no dates any more', () => {
+      const dated = tested({ precision: 'month', operand: '2026-01', upper: '2026-03' })
+      const fit = (family: ColumnTypeInfo['family']) =>
+        fittedConfig(
+          { fields: NAMES, config: filtered(dated) },
+          NAMES,
+          types('text', 'text', family),
+        ).filters
+      expect(fit('date')).toEqual([dated])
+      expect(fit('text')).toEqual([tested()])
+    })
+
     it('fits a configuration of filters alone', () => {
       const config = { ...emptyConfig(), filters: [values(0, ['Nord'])] }
       const fitted = fittedConfig({ fields: NAMES, config }, ['x', 'region'], [])
@@ -1086,9 +1269,48 @@ describe('the filters', () => {
       expect(refused('datetime', '2026-01-15 10:30:00')).toBe(false)
       expect(refused('datetime', '2026-01-15 10:30:00.5')).toBe(false)
       expect(refused('datetime', '2026-01-15')).toBe(true)
+      expect(refused('datetime', '2026-01-15T10:30:00')).toBe(true)
+      expect(refused('datetime', '2026-01-15 24:00:00')).toBe(true)
       expect(refused('time', '10:30:00')).toBe(false)
-      expect(refused('time', '-120:00:00')).toBe(false)
+      expect(refused('time', '23:59:59.5')).toBe(false)
       expect(refused('time', '10:30')).toBe(true)
+    })
+
+    it('asks for an hour of the day: the engine reads no other', () => {
+      expect(refused('time', '-120:00:00')).toBe(true)
+      expect(refused('time', '25:00:00')).toBe(true)
+      expect(refused('time', '10:60:00')).toBe(true)
+    })
+
+    it('asks for a year', () => {
+      expect(refused('year', '2026')).toBe(false)
+      expect(refused('year', '26')).toBe(true)
+    })
+
+    it('reads the values of a filter on a column by its type', () => {
+      const dates = types('text', 'text', 'date')
+      expect(operandRefusal(tested(), '2026-01-15', dates)).toBeNull()
+      expect(operandRefusal(tested(), 'abc', dates)).toBe('Une date est attendue, comme 2026-01-15')
+      expect(operandRefusal(tested(), 'abc', [])).toBeNull()
+    })
+
+    it('reads a value of a precision as the labels of its periods', () => {
+      const dates = types('text', 'text', 'datetime')
+      const refusal = (precision: DatePrecision, operand: string) =>
+        operandRefusal(tested({ precision }), operand, dates)
+      expect(refusal('year', '2026')).toBeNull()
+      expect(refusal('year', '0000')).toBe('Une année est attendue, comme 2026')
+      expect(refusal('quarter', '2026-T4')).toBeNull()
+      expect(refusal('quarter', '2026-T5')).toBe('Un trimestre est attendu, comme 2026-T1')
+      expect(refusal('month', '2026-12')).toBeNull()
+      expect(refusal('month', '2026-13')).toBe('Un mois est attendu, comme 2026-01')
+      expect(refusal('week', '2026-S53')).toBeNull()
+      expect(refusal('week', '2026-S54')).toBe('Une semaine est attendue, comme 2026-S03')
+      expect(refusal('date', '2026-01-15')).toBeNull()
+      expect(refusal('date', '2026-02-30')).toBe('Une date est attendue, comme 2026-01-15')
+      expect(refusal('none', '2026-01-15')).toBe(
+        'Un instant est attendu, comme 2026-01-15 10:30:00',
+      )
     })
 
     it('takes any text', () => {
@@ -1099,6 +1321,29 @@ describe('the filters', () => {
       const count = { aggregate: 'count', column: 0 } as const
       expect(operandRefusal(count, 'abc', types('text'))).not.toBeNull()
       expect(operandRefusal(count, '2', types('text'))).toBeNull()
+    })
+  })
+
+  describe('operandExample', () => {
+    it('shows the form the filter awaits', () => {
+      const dates = types('text', 'text', 'date')
+      expect(operandExample(tested(), dates)).toBe('2026-01-15')
+      expect(operandExample(tested({ precision: 'quarter' }), dates)).toBe('2026-T1')
+      expect(operandExample(above(), types('text', 'text', 'text', 'text', 'integer'))).toBe('100')
+      expect(operandExample(tested({ column: 0 }), dates)).toBe('')
+    })
+  })
+
+  describe('isRefused', () => {
+    const dates = types('text', 'text', 'date')
+
+    it('reads only the values its condition asks for', () => {
+      expect(isRefused(tested({ operand: 'abc' }), dates)).toBe(true)
+      expect(isRefused(tested({ upper: 'abc' }), dates)).toBe(true)
+      expect(isRefused(tested({ condition: 'less', upper: 'abc' }), dates)).toBe(false)
+      expect(isRefused(tested({ condition: 'is_null', operand: 'abc' }), dates)).toBe(false)
+      expect(isRefused(tested({ condition: 'in_list', operand: 'abc' }), dates)).toBe(false)
+      expect(isRefused(tested(), dates)).toBe(false)
     })
   })
 })

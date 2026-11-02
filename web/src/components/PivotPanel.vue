@@ -47,6 +47,7 @@ import PivotGrid from './PivotGrid.vue'
 import PivotZones from './PivotZones.vue'
 import { PivotClient, type PivotTable } from './pivotClient'
 import {
+  type DatePrecision,
   type PivotAxis,
   type PivotConfig,
   activeFilterPlace,
@@ -368,6 +369,7 @@ const CALCULATION_ERRORS = [
  */
 function refusalText(refusal: PivotFailure, refused: PivotConfig): string {
   const names = result.value?.columns ?? []
+  const types = result.value?.columnTypes ?? []
   const column = refusal.column === undefined ? '?' : (names[refusal.column] ?? '?')
   const row = refusal.row === undefined ? '?' : (refusal.row + 1).toLocaleString('fr-FR')
   const rows = result.value === null ? [] : toRaw(result.value.rows)
@@ -379,19 +381,16 @@ function refusalText(refusal: PivotFailure, refused: PivotConfig): string {
   const filter =
     refusal.filter === undefined
       ? '?'
-      : elementLabel(
-          refused,
-          activeFilterPlace(refused, refusal.filter),
-          names,
-          result.value?.columnTypes ?? [],
-        )
+      : elementLabel(refused, activeFilterPlace(refused, refusal.filter), names, types)
   switch (refusal.kind) {
     case 'invalid_number':
       return `La valeur « ${value} » de la ligne ${row} de « ${column} » n’est pas un nombre.`
     case 'too_large':
       return `La valeur « ${value} » de la ligne ${row} de « ${column} » dépasse 38 chiffres.`
     case 'invalid_date':
-      return `La valeur « ${value} » de la ligne ${row} de « ${column} » n’est pas une date du calendrier.`
+      return types[refusal.column ?? -1]?.family === 'time'
+        ? `La valeur « ${value} » de la ligne ${row} de « ${column} » n’est pas une heure de la journée.`
+        : `La valeur « ${value} » de la ligne ${row} de « ${column} » n’est pas une date du calendrier.`
     case 'overflow':
       return `${measure} dépasse 38 chiffres.`
     case 'not_numeric':
@@ -401,7 +400,7 @@ function refusalText(refusal: PivotFailure, refused: PivotConfig): string {
     case 'filter_not_numeric':
       return `Le filtre ${filter} demande une colonne de nombres.`
     case 'filter_operand':
-      return `La valeur du filtre ${filter} ne se compare pas à sa mesure.`
+      return `Une valeur du filtre ${filter} ne se compare pas à ce qu’il filtre.`
     case 'crash':
     case 'module':
       return `Le moteur du Pivoteur s’est arrêté : ${refusal.detail ?? refusal.kind}`
@@ -475,12 +474,14 @@ function update(): void {
 watch([source, request, order, () => props.tab?.filter], update, { immediate: true })
 
 /**
- * Reads the distinct values of a column of the result shown.
+ * Reads the distinct values of a column of the result shown, or the periods of a precision of its
+ * dates.
  *
  * @param column Index of the column.
+ * @param precision What the column keeps of its dates.
  */
-function readValues(column: number): Promise<Cell[]> {
-  return client ? client.values(column) : Promise.reject(new Error('No pivot engine'))
+function readValues(column: number, precision: DatePrecision): Promise<Cell[]> {
+  return client ? client.values(column, precision) : Promise.reject(new Error('No pivot engine'))
 }
 
 /**

@@ -1,10 +1,10 @@
 <!--
-  List of the distinct values of a column, in the order of the grid, which a
-  filter of the Pivoteur keeps (F-21), in a popover beside its element: a
+  List of the distinct values of a column, in the order of the grid, or of the
+  periods of a precision of its dates, in a filter of the Pivoteur (F-21): a
   search, the values to check, and "Tout" and "Aucun" on the values shown. Each
   tick applies at once; a value of the filter the column no longer holds leaves
-  at the next tick. Escape or a click outside closes the list. The values can be
-  many: the list draws those in sight (`ListboxVirtualizer`).
+  at the next tick. The values can be many: the list draws those in sight
+  (`ListboxVirtualizer`).
 -->
 <script setup lang="ts">
 import { Check } from '@lucide/vue'
@@ -15,10 +15,6 @@ import {
   ListboxItemIndicator,
   ListboxRoot,
   ListboxVirtualizer,
-  PopoverAnchor,
-  PopoverContent,
-  PopoverPortal,
-  PopoverRoot,
   useFilter,
 } from 'reka-ui'
 import { computed, ref, shallowRef } from 'vue'
@@ -28,16 +24,8 @@ import { cssPixels } from '@/cssLength'
 
 import { NULL_TEXT } from './resultGrid'
 import { INPUT_FIELD } from './ui/inputField'
-import { MENU_ENTRY, MENU_PANEL } from './ui/menuItem'
+import { MENU_ENTRY } from './ui/menuItem'
 import UiButton from './ui/UiButton.vue'
-
-/**
- * Gap with the element, in pixels (`--popup-offset` of the theme).
- *
- * Fixed size: Reka UI's `side-offset` only takes pixels, so this theme
- * length is read once (`docs/DEVELOPER.md`, section "Lengths in pixels").
- */
-const OFFSET = cssPixels('--popup-offset', 4)
 
 /**
  * Height of a value, in pixels (`--row-height` of the theme).
@@ -50,10 +38,6 @@ const ROW_HEIGHT = cssPixels('--row-height', 32)
 
 const props = defineProps<{
   /**
-   * Element the list opens beside.
-   */
-  anchor: HTMLElement
-  /**
    * Name of the column.
    */
   label: string
@@ -61,24 +45,22 @@ const props = defineProps<{
    * Reads the distinct values of the column.
    */
   read: () => Promise<Cell[]>
-}>()
-
-const emit = defineEmits<{
   /**
-   * The user closes the list.
+   * Does the list offer NULL? `NOT IN` leaves it out: as in SQL, a NULL in its
+   * list would keep no row.
    */
-  close: []
+  offersNull: boolean
 }>()
 
 /**
- * Values the filter keeps.
+ * Values the filter lists.
  */
 const kept = defineModel<Cell[]>('kept', { required: true })
 
 /**
  * Distinct values of the column, `null` until they are read.
  */
-const values = shallowRef<Cell[] | null>(null)
+const columnValues = shallowRef<Cell[] | null>(null)
 
 /**
  * Could the values not be read?
@@ -86,8 +68,15 @@ const values = shallowRef<Cell[] | null>(null)
 const failed = ref(false)
 
 props.read().then(
-  (read) => (values.value = read),
+  (values) => (columnValues.value = values),
   () => (failed.value = true),
+)
+
+/**
+ * Values the list offers.
+ */
+const values = computed(() =>
+  (columnValues.value ?? []).filter((value) => props.offersNull || value !== null),
 )
 
 /**
@@ -103,7 +92,7 @@ const { contains } = useFilter({ sensitivity: 'base' })
  * @param index Position of the value.
  */
 function text(index: number): string {
-  return values.value?.[index] ?? NULL_TEXT
+  return values.value[index] ?? NULL_TEXT
 }
 
 /**
@@ -111,15 +100,15 @@ function text(index: number): string {
  * could not be a value of the listbox.
  */
 const shown = computed(() =>
-  (values.value ?? []).flatMap((_, index) => (contains(text(index), search.value) ? [index] : [])),
+  values.value.flatMap((_, index) => (contains(text(index), search.value) ? [index] : [])),
 )
 
 /**
- * Positions of the values the filter keeps.
+ * Positions of the values the filter lists.
  */
 const checked = computed(() => {
   const keptValues = new Set(kept.value)
-  return (values.value ?? []).flatMap((value, index) => (keptValues.has(value) ? [index] : []))
+  return values.value.flatMap((value, index) => (keptValues.has(value) ? [index] : []))
 })
 
 /**
@@ -129,8 +118,9 @@ const checked = computed(() => {
  * @param positions Positions of the values.
  */
 function keep(positions: number[]): void {
-  const list = values.value ?? []
-  kept.value = [...positions].sort((a, b) => a - b).map((position) => list[position] ?? null)
+  kept.value = [...positions]
+    .sort((a, b) => a - b)
+    .map((position) => values.value[position] ?? null)
 }
 
 /**
@@ -152,70 +142,54 @@ function checkShown(check: boolean): void {
 </script>
 
 <template>
-  <popover-root :open="true" @update:open="emit('close')">
-    <!-- The element of the zones is the anchor: this part draws nothing among their children. -->
-    <popover-anchor as-child :reference="anchor" />
-    <popover-portal>
-      <popover-content
-        side="right"
-        align="start"
-        :side-offset="OFFSET"
-        :collision-padding="OFFSET"
-        :class="[MENU_PANEL, 'flex w-80 flex-col gap-2 p-2']"
-        :aria-label="`Valeurs de ${label}`"
-      >
-        <p v-if="failed" role="alert" class="px-2 py-1 text-error">
-          Les valeurs n’ont pas pu être lues
-        </p>
-        <p v-else-if="values === null" role="status" class="px-2 py-1 text-fg-secondary">
-          Lecture des valeurs…
-        </p>
-        <listbox-root
-          v-else
-          multiple
-          highlight-on-hover
-          :model-value="checked"
-          class="flex min-h-0 flex-col gap-2"
-          @update:model-value="keep($event as number[])"
+  <p v-if="failed" role="alert" class="py-1 text-error">Les valeurs n’ont pas pu être lues</p>
+  <p v-else-if="columnValues === null" role="status" class="py-1 text-fg-secondary">
+    Lecture des valeurs…
+  </p>
+  <template v-else>
+    <listbox-root
+      multiple
+      highlight-on-hover
+      :model-value="checked"
+      class="flex min-h-0 flex-col gap-2"
+      @update:model-value="keep($event as number[])"
+    >
+      <listbox-filter
+        v-model="search"
+        auto-focus
+        :class="INPUT_FIELD"
+        placeholder="Rechercher une valeur"
+        aria-label="Rechercher une valeur"
+      />
+      <listbox-content class="max-h-64 overflow-y-auto" :aria-label="`Valeurs de ${label}`">
+        <listbox-virtualizer
+          v-slot="{ option }"
+          :options="shown"
+          :estimate-size="ROW_HEIGHT"
+          :text-content="(option) => text(option as number)"
         >
-          <listbox-filter
-            v-model="search"
-            auto-focus
-            :class="INPUT_FIELD"
-            placeholder="Rechercher une valeur"
-            aria-label="Rechercher une valeur"
-          />
-          <listbox-content class="max-h-64 overflow-y-auto" :aria-label="`Valeurs de ${label}`">
-            <listbox-virtualizer
-              v-slot="{ option }"
-              :options="shown"
-              :estimate-size="ROW_HEIGHT"
-              :text-content="(option) => text(option as number)"
+          <listbox-item :value="option" :class="[MENU_ENTRY, 'w-full text-fg']">
+            <span class="flex size-5 shrink-0 items-center justify-center" aria-hidden="true">
+              <listbox-item-indicator>
+                <Check class="size-5" />
+              </listbox-item-indicator>
+            </span>
+            <span
+              class="min-w-0 flex-1 truncate"
+              :class="{ null: values[option as number] === null }"
             >
-              <listbox-item :value="option" :class="[MENU_ENTRY, 'w-full text-fg']">
-                <span class="flex size-5 shrink-0 items-center justify-center" aria-hidden="true">
-                  <listbox-item-indicator>
-                    <Check class="size-5" />
-                  </listbox-item-indicator>
-                </span>
-                <span
-                  class="min-w-0 flex-1 truncate"
-                  :class="{ null: values[option as number] === null }"
-                >
-                  {{ text(option as number) }}
-                </span>
-              </listbox-item>
-            </listbox-virtualizer>
-          </listbox-content>
-          <p v-if="shown.length === 0" class="px-2 py-1 text-fg-secondary">Aucune valeur</p>
-        </listbox-root>
-        <div v-if="values !== null" class="flex justify-end gap-2">
-          <ui-button label="Tout" variant="ghost" small @click="checkShown(true)" />
-          <ui-button label="Aucun" variant="ghost" small @click="checkShown(false)" />
-        </div>
-      </popover-content>
-    </popover-portal>
-  </popover-root>
+              {{ text(option as number) }}
+            </span>
+          </listbox-item>
+        </listbox-virtualizer>
+      </listbox-content>
+      <p v-if="shown.length === 0" class="py-1 text-fg-secondary">Aucune valeur</p>
+    </listbox-root>
+    <div class="flex justify-end gap-2">
+      <ui-button label="Tout" variant="ghost" small @click="checkShown(true)" />
+      <ui-button label="Aucun" variant="ghost" small @click="checkShown(false)" />
+    </div>
+  </template>
 </template>
 
 <style scoped>
