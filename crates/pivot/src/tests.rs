@@ -1072,6 +1072,38 @@ fn a_path_reads_null_and_the_labels_of_a_precision() {
     assert_eq!(table.line_path(&engine, 0), [Some("Sud")]);
 }
 
+#[test]
+fn a_column_can_be_a_level_several_times() {
+    // On one axis: each value of the second level falls under its own value.
+    assert_eq!(
+        example_table(&[REGION, REGION], &[], &[Measure::Sum(AMOUNT)]),
+        "region;region;ca\nNord;Total;470\nNord;Nord;470\nSud;Total;380\nSud;Sud;380\nTotal;;850"
+    );
+    // On both axes, at two precisions: the months of a year fill that year alone.
+    let engine = example();
+    let request = Request {
+        rows: vec![Level {
+            column: DATE,
+            precision: Some(Precision::Year),
+        }],
+        columns: vec![Level {
+            column: DATE,
+            precision: Some(Precision::Quarter),
+        }],
+        measures: vec![Measure::Sum(AMOUNT)],
+        ..Request::default()
+    };
+    assert_eq!(
+        flat(&engine, &engine.compute(&request).unwrap(), &["a"], &["m"]),
+        concat!(
+            "a;2025-T1 / m;2025-T2 / m;2026-T1 / m;2026-T2 / m;Total / m\n",
+            "2025;220;210;;;430\n",
+            "2026;;;290;130;420\n",
+            "Total;220;210;290;130;850"
+        )
+    );
+}
+
 /// `SUM(montant)` of the rows of the levels given, compared to an operand.
 fn amount_above(levels: &[usize], operand: &str) -> Filter {
     Filter::Measure {

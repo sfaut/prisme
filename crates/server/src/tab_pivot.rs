@@ -141,6 +141,9 @@ pub enum PivotFilter {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         level: Option<u32>,
+        /// Precision of that level: a column can be a level several times.
+        #[serde(default)]
+        level_precision: DatePrecision,
     },
 }
 
@@ -352,7 +355,7 @@ mod tests {
 
     #[test]
     fn keeps_the_filters_of_a_configuration() {
-        let saved = r#"{"rows":[],"columns":[],"measures":[],"filters":[{"kind":"values","column":0,"name":"","values":["Nord",null]},{"kind":"measure","aggregate":"sum","column":2,"name":"Gros","comparison":"greater","operand":"100","level":1},{"kind":"measure","aggregate":"count_star","column":0,"name":"","comparison":"not_equal","operand":""}]}"#;
+        let saved = r#"{"rows":[],"columns":[],"measures":[],"filters":[{"kind":"values","column":0,"name":"","values":["Nord",null]},{"kind":"measure","aggregate":"sum","column":2,"name":"Gros","comparison":"greater","operand":"100","level":1,"level_precision":"month"},{"kind":"measure","aggregate":"count_star","column":0,"name":"","comparison":"not_equal","operand":"","level_precision":"none"}]}"#;
         let config: PivotConfig = serde_json::from_str(saved).unwrap();
         assert_eq!(
             config.filters[0],
@@ -371,6 +374,7 @@ mod tests {
                 comparison: PivotComparison::Greater,
                 operand: "100".to_string(),
                 level: Some(1),
+                level_precision: DatePrecision::Month,
             }
         );
         assert_eq!(serde_json::to_string(&config).unwrap(), saved);

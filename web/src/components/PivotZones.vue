@@ -12,7 +12,8 @@
   A column dropped into the measures gives its default aggregate
   (`defaultAggregate`, F-15); the menu of a measure changes it. The menu of a
   level of dates sets its precision, what it keeps of them (`precisionChoices`).
-  A column is a level once at most: placing it again on an axis moves it there.
+  A column can be placed several times, in a zone and on both axes: dropping it
+  from the list always adds an element, dragging an element moves it.
   An element takes a name by its menu ("Nommer…") or a double click on its label
   (F-17): Enter confirms, Escape cancels, an empty name gives back its
   expression, which the tooltip of a named element recalls.
@@ -78,6 +79,7 @@ import type { Cell } from '@/api/querySession'
 import {
   type PivotComparison,
   type PivotConfig,
+  type PivotLevel,
   type PivotMeasureFilter,
   type PivotZone,
   type PrecisionLabel,
@@ -223,12 +225,11 @@ function place(column: number, to: ZonePlace, from: ZonePlace | null): void {
   if (to.zone !== 'filters' || from?.zone === 'filters') {
     return
   }
+  const index = Math.min(to.index, placed.filters.length - 1)
   if (from?.zone === 'measures') {
-    startOperand(Math.min(to.index, placed.filters.length - 1), '')
+    startOperand(index, '')
   } else {
-    pendingList = placed.filters.findIndex(
-      (filter) => filter.kind === 'values' && filter.column === column,
-    )
+    pendingList = index
   }
 }
 
@@ -363,15 +364,21 @@ const COMPARISONS: { comparison: PivotComparison; icon: Component }[] = [
 
 /**
  * Choices of the level of a filter on a measure (F-44): the default one, then
- * each level of the two axes.
+ * each level of the two axes, the same level placed twice being one choice.
  *
  * @param filter Filter.
  * @param index Position of the filter.
  */
 function levelItems(filter: PivotMeasureFilter, index: number): MenuItem[] {
   const chosen = chosenLevel(config.value, filter)
-  const choose = (level: number | undefined) =>
-    (config.value = withFilter(config.value, index, { ...filter, level }))
+  const choose = (level: PivotLevel | undefined) =>
+    (config.value = withFilter(config.value, index, {
+      ...filter,
+      level: level?.column,
+      level_precision: level?.precision ?? 'none',
+    }))
+  const same = (a: PivotLevel, b: PivotLevel | undefined) =>
+    a.column === b?.column && a.precision === b.precision
   const axes = [
     { zone: 'rows', icon: Rows3 },
     { zone: 'columns', icon: Columns3 },
@@ -383,11 +390,18 @@ function levelItems(filter: PivotMeasureFilter, index: number): MenuItem[] {
       onSelect: () => choose(undefined),
     },
     ...axes.flatMap(({ zone, icon }) =>
-      config.value[zone].map((level, position) => ({
-        label: elementLabel(config.value, { zone, index: position }, props.names),
-        icon: level.column === chosen ? Check : icon,
-        onSelect: () => choose(level.column),
-      })),
+      config.value[zone].flatMap((level, position) =>
+        [...config.value.rows, ...config.value.columns].find((other) => same(other, level)) ===
+        level
+          ? [
+              {
+                label: elementLabel(config.value, { zone, index: position }, props.names),
+                icon: same(level, chosen) ? Check : icon,
+                onSelect: () => choose(level),
+              },
+            ]
+          : [],
+      ),
     ),
   ]
 }

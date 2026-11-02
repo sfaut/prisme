@@ -6,10 +6,10 @@
  * In this first slice, a level is a column of the result, by its index, and a measure is
  * `COUNT(*)` or an aggregate of a column (`measureExpression`); the expressions come with the
  * parser. Each element can take a name, its alias (F-17), shown instead of its expression (F-12):
- * the name of its column for a level. A column is a level at most once, on one of the two axes:
- * placing it again moves it, with its name. A level of dates takes a precision, what it keeps of
- * them (`precisionChoices`). A measure can be placed several times. Each change gives a new
- * configuration; the panel computes again only when the request to the engine (`engineRequest`)
+ * the name of its column for a level. A level of dates takes a precision, what it keeps of them
+ * (`precisionChoices`). A column can be placed several times, in a zone and on both axes, each
+ * element on its own: `d (Année)` in the columns and `d (Mois)` in the rows. Each change gives a
+ * new configuration; the panel computes again only when the request to the engine (`engineRequest`)
  * changes, a name changing only the labels, a sort only their layout (`engineOrder`).
  *
  * A level has its direction (C-11), which it keeps wherever it goes; on each axis, the values of a
@@ -20,7 +20,7 @@
  * measure passes a comparison (F-44). Its groups are those of a level of an axis with the levels
  * above it, by default the deepest level of the rows (`filterLevels`). A filter without a value or
  * without an operand has no effect (`activeFilters`). A column dragged from an axis moves into the
- * filters, a measure dragged there is copied, and a column has one filter on values at most.
+ * filters, a measure dragged there is copied, and a column of the list gives a new filter each time.
  *
  * The configuration is saved with its tab, whose query can change: it keeps the names of the
  * columns it was made for, and follows them in the columns of a new result (`fittedConfig`). Its
@@ -205,7 +205,8 @@ function followedConfig(pivot: TabPivot, columns: string[]): PivotConfig {
       }
       const column = moved[filter.column] ?? (filter.aggregate === 'count_star' ? 0 : undefined)
       const level = filter.level === undefined ? undefined : moved[filter.level]
-      return follow({ ...filter, level }, column)
+      const level_precision = level === undefined ? 'none' : filter.level_precision
+      return follow({ ...filter, level, level_precision }, column)
     }),
   }
   const whole =
@@ -239,7 +240,15 @@ function withPossiblePrecisions(config: PivotConfig, types: ColumnTypeInfo[]): P
   }
   const fit = (levels: PivotLevel[]) =>
     levels.map((level): PivotLevel => (possible(level) ? level : { ...level, precision: 'none' }))
-  return { ...config, rows: fit(config.rows), columns: fit(config.columns) }
+  // A filter goes on reading the level whose precision leaves.
+  const filters = config.filters.map((filter): PivotFilter => {
+    const fits =
+      filter.kind === 'values' ||
+      filter.level === undefined ||
+      possible({ column: filter.level, name: '', precision: filter.level_precision })
+    return fits ? filter : { ...filter, level_precision: 'none' }
+  })
+  return { ...config, rows: fit(config.rows), columns: fit(config.columns), filters }
 }
 
 /**
@@ -267,15 +276,20 @@ export function fittedConfig(
 }
 
 /**
- * Level a filter on a measure was given, when it is still on an axis.
+ * Level a filter on a measure was given, by its column and its precision, when it is still on an
+ * axis. The same level placed twice reads the first.
  *
  * @param config Configuration.
  * @param filter Filter.
- * @returns Column of the level, none for the default level.
+ * @returns The level, none for the default level.
  */
-export function chosenLevel(config: PivotConfig, filter: PivotMeasureFilter): number | undefined {
-  const on = (axis: PivotLevel[]) => axis.some(({ column }) => column === filter.level)
-  return on(config.rows) || on(config.columns) ? filter.level : undefined
+export function chosenLevel(
+  config: PivotConfig,
+  filter: PivotMeasureFilter,
+): PivotLevel | undefined {
+  return [...config.rows, ...config.columns].find(
+    ({ column, precision }) => column === filter.level && precision === filter.level_precision,
+  )
 }
 
 /**
@@ -289,7 +303,9 @@ export function chosenLevel(config: PivotConfig, filter: PivotMeasureFilter): nu
 export function filterLevels(config: PivotConfig, filter: PivotMeasureFilter): PivotLevel[] {
   const level = chosenLevel(config, filter)
   for (const axis of [config.rows, config.columns]) {
-    const index = axis.findIndex(({ column }) => column === level)
+    const index = axis.findIndex(
+      ({ column, precision }) => column === level?.column && precision === level?.precision,
+    )
     if (index >= 0) {
       return axis.slice(0, index + 1)
     }
@@ -800,8 +816,7 @@ export function removeElement(config: PivotConfig, place: ZonePlace): PivotConfi
 /**
  * Places a column in the filters, at a position: a filter moved among the filters, a measure copied
  * into a filter on it, whose operand is still to give, or a column, which leaves its axis if it
- * comes from one, into a filter on its values; a filter on the values of this column stays the only
- * one.
+ * comes from one, into a new filter on its values.
  *
  * @param config Configuration.
  * @param column Index of the column.
@@ -833,22 +848,22 @@ function placeFilter(
       name: '',
       comparison,
       operand: '',
+      level_precision: 'none',
     }
     return insert(config, filter, index)
   }
   const base = from === null ? config : removeElement(config, from)
-  return base.filters.some((filter) => filter.kind === 'values' && filter.column === column)
-    ? base
-    : insert(base, { kind: 'values', column, name: '', values: [] }, index)
+  return insert(base, { kind: 'values', column, name: '', values: [] }, index)
 }
 
 /**
- * Places a column in a zone, at a position: a new element, or one moved from another place.
+ * Places a column in a zone, at a position: a new element, whatever the zones already hold, or one
+ * moved from another place.
  *
- * A level leaves the axis where it was, if it was a level already, and keeps its name. A measure
- * moved stays the same measure, with its name; a column that becomes a measure takes the aggregate
- * given, and a measure that becomes a level loses its name. A filter that leaves the filters also
- * loses its name; on a measure, its aggregate stays when it becomes a measure.
+ * A level moved keeps its name, and a measure moved stays the same measure, with its name; a column
+ * that becomes a measure takes the aggregate given, and a measure that becomes a level loses its
+ * name. A filter that leaves the filters also loses its name; on a measure, its aggregate stays
+ * when it becomes a measure.
  *
  * @param config Configuration.
  * @param column Index of the column.
@@ -868,29 +883,11 @@ export function placeColumn(
   }
   const moved = from?.zone === 'measures' ? config.measures[from.index] : undefined
   const filter = from?.zone === 'filters' ? config.filters[from.index] : undefined
-  let level =
+  const level =
     from?.zone === 'rows' || from?.zone === 'columns' ? config[from.zone][from.index] : undefined
-  let result = config
-  let index = to.index
+  const result = from === null ? config : withoutElement(config, from)
   // Removing an element before the target, in the same zone, shifts the target.
-  const remove = (place: ZonePlace) => {
-    result = withoutElement(result, place)
-    if (place.zone === to.zone && place.index < index) {
-      index--
-    }
-  }
-  if (from !== null) {
-    remove(from)
-  }
-  if (to.zone !== 'measures') {
-    for (const zone of ['rows', 'columns'] as const) {
-      const existing = result[zone].findIndex((item) => item.column === column)
-      if (existing >= 0) {
-        level ??= result[zone][existing]
-        remove({ zone, index: existing })
-      }
-    }
-  }
+  const index = from?.zone === to.zone && from.index < to.index ? to.index - 1 : to.index
   const insert = <T>(items: T[], item: T) => [...items.slice(0, index), item, ...items.slice(index)]
   const newLevel: PivotLevel = level ?? { column, name: '', precision: 'none' }
   return withFollowedSorts(config, {
@@ -932,7 +929,7 @@ export function withAggregate(
 }
 
 /**
- * Changes the precision of a level, which keeps its name.
+ * Changes the precision of a level, which keeps its name and the filters that read it.
  *
  * @param config Configuration.
  * @param place Place of the level.
@@ -943,10 +940,18 @@ export function withPrecision(
   place: ZonePlace & { zone: 'rows' | 'columns' },
   precision: DatePrecision,
 ): PivotConfig {
+  const changed = config[place.zone][place.index]
   return withFollowedSorts(config, {
     ...config,
     [place.zone]: config[place.zone].map((level, index) =>
       index === place.index ? { ...level, precision } : level,
+    ),
+    filters: config.filters.map((filter) =>
+      filter.kind === 'measure' &&
+      filter.level === changed?.column &&
+      filter.level_precision === changed?.precision
+        ? { ...filter, level_precision: precision }
+        : filter,
     ),
   })
 }

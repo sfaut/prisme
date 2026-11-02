@@ -265,7 +265,7 @@ describe('placeColumn', () => {
     expect(isEmptyConfig(emptyConfig())).toBe(true)
   })
 
-  it('moves a level already placed, with its name, instead of placing it twice', () => {
+  it('adds a new level for a column of the list, even one already placed', () => {
     const config: PivotConfig = {
       rows: [level(0, 'Région'), level(1)],
       columns: [level(2)],
@@ -273,15 +273,34 @@ describe('placeColumn', () => {
       filters: [],
     }
     expect(placeColumn(config, 0, 'count', { zone: 'columns', index: 0 }, null)).toEqual({
-      rows: [level(1)],
-      columns: [level(0, 'Région'), level(2)],
+      rows: [level(0, 'Région'), level(1)],
+      columns: [level(0), level(2)],
       measures: [],
       filters: [],
     })
     expect(placeColumn(config, 0, 'count', { zone: 'rows', index: 2 }, null).rows).toEqual([
-      level(1),
       level(0, 'Région'),
+      level(1),
+      level(0),
     ])
+  })
+
+  it('moves one level of a column placed twice, with its name and its precision', () => {
+    const config: PivotConfig = {
+      rows: [level(0, 'An', 'year'), level(0, 'Mois', 'month')],
+      columns: [],
+      measures: [],
+      filters: [],
+    }
+    const moved = placeColumn(
+      config,
+      0,
+      'count',
+      { zone: 'columns', index: 0 },
+      { zone: 'rows', index: 0 },
+    )
+    expect(moved.rows).toEqual([level(0, 'Mois', 'month')])
+    expect(moved.columns).toEqual([level(0, 'An', 'year')])
   })
 
   it('moves an element within its zone, the target counted before the move', () => {
@@ -723,6 +742,7 @@ describe('the filters', () => {
       name: '',
       comparison: 'greater',
       operand: '100',
+      level_precision: 'none',
       ...changes,
     }
   }
@@ -789,9 +809,39 @@ describe('the filters', () => {
       expect(levels(2)).toEqual([2])
       // A column that is no level goes back to the default level.
       expect(levels(3)).toEqual([0, 1])
-      const dated = { ...filtered(above({ level: 2 })), columns: [level(2, '', 'month')] }
+      const dated = {
+        ...filtered(above({ level: 2, level_precision: 'month' })),
+        columns: [level(2, '', 'month')],
+      }
       const [filter] = engineRequest(dated).filters
       expect(filter).toMatchObject({ levels: [{ column: 2, precision: 'month' }] })
+    })
+
+    it('tells two levels of a column by their precision', () => {
+      const config = {
+        ...filtered(),
+        rows: [level(2, '', 'year'), level(2, '', 'month')],
+        columns: [],
+      }
+      const levels = (level_precision: DatePrecision) => {
+        const filters = [above({ level: 2, level_precision })]
+        const [filter] = engineRequest({ ...config, filters }).filters
+        return filter?.kind === 'measure' ? filter.levels.map(({ precision }) => precision) : []
+      }
+      expect(levels('year')).toEqual(['year'])
+      expect(levels('month')).toEqual(['year', 'month'])
+      // A precision that no level has goes back to the default level.
+      expect(levels('week')).toEqual(['year', 'month'])
+    })
+
+    it('follows the level whose precision changes', () => {
+      const config = {
+        ...filtered(above({ level: 2 })),
+        rows: [level(2)],
+        columns: [],
+      }
+      const changed = withPrecision(config, { zone: 'rows', index: 0 }, 'month')
+      expect(changed.filters).toEqual([above({ level: 2, level_precision: 'month' })])
     })
 
     it('reads the columns without any level of the rows, and all the rows without any level', () => {
@@ -889,9 +939,12 @@ describe('the filters', () => {
       expect(again.rows).toEqual(filtered().rows)
     })
 
-    it('keeps one filter on the values of a column', () => {
+    it('gives a column already filtered a new filter', () => {
       const config = filtered(values(3, ['a']))
-      expect(placeColumn(config, 3, 'count', to(1), null).filters).toEqual([values(3, ['a'])])
+      expect(placeColumn(config, 3, 'count', to(1), null).filters).toEqual([
+        values(3, ['a']),
+        values(3, []),
+      ])
     })
 
     it('moves a level into the filters', () => {

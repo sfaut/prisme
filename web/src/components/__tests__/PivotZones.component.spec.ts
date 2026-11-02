@@ -302,6 +302,7 @@ describe('PivotZones', () => {
             name: '',
             comparison: 'greater',
             operand: '1',
+            level_precision: 'none',
           },
         ],
       },
@@ -373,6 +374,48 @@ describe('PivotZones', () => {
     expect(levels()[1]?.icon).toBe(Check)
   })
 
+  it('opens the list of the filter just dropped, among filters on the same column', async () => {
+    const mounted = mountZones()
+    await dropOnFilters(mounted, 'ul[aria-label="Colonnes du résultat"] li')
+    const list = () => mounted.findComponent(PivotValuesList)
+    list().vm.$emit('update:kept', ['Nord'])
+    list().vm.$emit('close')
+    await nextTick()
+    await dropOnFilters(mounted, 'ul[aria-label="Colonnes du résultat"] li')
+    list().vm.$emit('update:kept', ['Sud'])
+    await nextTick()
+    expect(shownConfig(mounted).filters).toMatchObject([{ values: ['Nord'] }, { values: ['Sud'] }])
+  })
+
+  it('offers the same level placed twice as one level of a filter', async () => {
+    const mounted = mountZones()
+    await mounted.setProps({
+      config: {
+        ...CONFIG,
+        rows: [
+          { column: 0, name: '', precision: 'none' },
+          { column: 0, name: '', precision: 'none' },
+        ],
+        filters: [
+          {
+            kind: 'measure',
+            aggregate: 'count_star',
+            column: 0,
+            name: '',
+            comparison: 'greater',
+            operand: '1',
+            level_precision: 'none',
+          },
+        ],
+      },
+    })
+    const groups = mounted
+      .findAllComponents(UiDropdownMenu)
+      .flatMap((menu) => (menu.props('groups') ?? []) as MenuGroup[])
+    const levels = groups.find((group) => group.label === 'Niveau')?.items ?? []
+    expect(levels.map(({ label }) => label)).toEqual(['Le niveau le plus fin', 'region'])
+  })
+
   it('marks a filter whose value no longer compares with its measure', async () => {
     const mounted = mountZones()
     await mounted.setProps({
@@ -386,6 +429,7 @@ describe('PivotZones', () => {
             name: '',
             comparison: 'equal',
             operand: 'abc',
+            level_precision: 'none',
           },
         ],
       },
