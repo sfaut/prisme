@@ -40,7 +40,8 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Cases D1 to D35 decided by the maintainer
 - ✅ Decisions applied throughout the specification, typed literals written without a space (`DATE'2026-01-15'`)
 - ✅ Dialect refocused: ANSI SQL over the rows of the grid for the lot 1, its extensions in the next lots; each lot types what it uses
-- ⬜ Cases D1 to D35 reviewed, the behaviour of ANSI SQL first
+- ✅ Cases D1 to D35 reviewed, the behaviour of ANSI SQL first: `||` and `LISTAGG` take texts, a date compares with a date only, `GREATEST` and `LEAST` give NULL on NULL, `UPPER('ß')` gives `SS`, an end of month that does not exist stops the computation, `VARCHAR` takes its length; a date without a day in the calendar stops the computation under a precision (A7)
+- ⬜ Case D36 to decide: what `CAST(d AS VARCHAR(n))` writes, `DATE '2026-01-15'` as in SQL-92, or `2026-01-15` as every engine measured
 
 ## 4. Lots of the specification
 
@@ -77,6 +78,7 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 
 ### Next slices and lots
 
+- ⬜ A date without a day in the calendar stops the computation under a precision (A7, D25), with the value and the number of its row; `crates/pivot/src/dates.rs`, `README.md` and `docs/DEVELOPER.md` follow
 - ⬜ Filters of lot 1, decided in the specification (F-19, F-21, F-44): a source column by the list of its values with a search, a measure at a level chosen in the filter's menu (by default the deepest of the rows), an expression. Totals count the groups that remain, unlike `WITH ROLLUP … HAVING` (measured on MariaDB 12.3.3 and MySQL 9.7.4, to record in `bench/sql/cases.mjs` and `docs/SQL-COMPARISON.md` with this slice)
 - ⬜ Lot 1, next slices (ANSI SQL): dialect (parsed by `sqlparser`, typing, ANSI catalog), calendar, editor, nested date levels, computed columns, filters, fold, caches, copy, CSV, conformance
 - ⬜ Lot 2: complements (detail of a cell, measures in rows)
