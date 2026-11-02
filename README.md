@@ -359,7 +359,7 @@ The menu of a level of a `date` or `datetime` column sets its precision, what th
 | **Date** | The day; on a `date` column, its values as they are | `2027-01-01` |
 | **Date et heure** (Date and time) | On a `datetime` column, its values as they are | `2027-01-01 10:30:00` |
 
-MySQL and MariaDB can hold a date without a day in the calendar (`0000-00-00`, `2026-03-00`): it keeps its year, its quarter and its month, and gives `NULL` as an ISO year and an ISO week.
+A date outside of the calendar stops the computation under a precision: the table empties, and the message gives the value and its row. MySQL and MariaDB can hold such dates (`0000-00-00`, `2026-03-00`); the calendar holds the years 0001 to 9999. Without a precision, it stays a value of its own. To leave its rows out, use the filter of the grid.
 
 The configuration belongs to its result tab, and is saved with it: a page reload and a refresh find it again. A new run gives each new tab the configuration of the tab it replaces: the tab of the same text at the same rank, else of the same text, else of the same rank. An element follows its column by name; the element of a lost column leaves its zone, except `COUNT(*)`, and a column that holds no dates any more loses its precision.
 

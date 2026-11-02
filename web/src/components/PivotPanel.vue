@@ -19,9 +19,10 @@
   from the catalog of the connection, read while the panel is open, without
   waiting for it. Each change of the configuration or of the filter of the grid
   computes the table again; a new name only changes its labels, a sort (C-11,
-  C-13) lays the table out again, without computing any aggregate. A refusal
-  of the engine shows its message above the table, which keeps its last
-  computation (F-22); a Worker that stops is replaced at the next change. A
+  C-13) lays the table out again, without computing any aggregate. An error of
+  calculation empties the table and shows the value in cause with its row; any
+  other refusal of the engine shows its message above the table, which keeps its
+  last computation (F-22); a Worker that stops is replaced at the next change. A
   result without columns, or in error, has nothing to analyse (F-08).
 -->
 <script setup lang="ts">
@@ -345,6 +346,11 @@ function sendKept(current: PivotClient, shown: QueryResult): void {
 }
 
 /**
+ * Refusals that are errors of calculation: the table empties, its values being wrong.
+ */
+const CALCULATION_ERRORS = ['invalid_number', 'too_large', 'invalid_date', 'overflow']
+
+/**
  * Message of a refusal of the engine, in French.
  *
  * @param refusal Refusal of the engine.
@@ -354,17 +360,19 @@ function refusalText(refusal: PivotFailure, refused: PivotConfig): string {
   const names = result.value?.columns ?? []
   const column = refusal.column === undefined ? '?' : (names[refusal.column] ?? '?')
   const row = refusal.row === undefined ? '?' : (refusal.row + 1).toLocaleString('fr-FR')
+  const rows = result.value === null ? [] : toRaw(result.value.rows)
+  const value = rows[refusal.row ?? -1]?.[refusal.column ?? -1] ?? '?'
   const measure =
     refusal.measure === undefined
       ? '?'
       : elementLabel(refused, { zone: 'measures', index: refusal.measure }, names)
   switch (refusal.kind) {
     case 'invalid_number':
-      return `La valeur de la ligne ${row} de « ${column} » n’est pas un nombre.`
+      return `La valeur « ${value} » de la ligne ${row} de « ${column} » n’est pas un nombre.`
     case 'too_large':
-      return `La valeur de la ligne ${row} de « ${column} » dépasse 38 chiffres.`
+      return `La valeur « ${value} » de la ligne ${row} de « ${column} » dépasse 38 chiffres.`
     case 'invalid_date':
-      return `La valeur de la ligne ${row} de « ${column} » n’est pas une date.`
+      return `La valeur « ${value} » de la ligne ${row} de « ${column} » n’est pas une date du calendrier.`
     case 'overflow':
       return `${measure} dépasse 38 chiffres.`
     case 'not_numeric':
@@ -397,6 +405,9 @@ async function compute(current: PivotClient): Promise<void> {
     if (computation === computations && current === client) {
       failure.value =
         error instanceof PivotError ? refusalText(error.failure, named) : errorMessage(error)
+      if (error instanceof PivotError && CALCULATION_ERRORS.includes(error.failure.kind)) {
+        shownTable.value = null
+      }
       if (error instanceof PivotError && ['crash', 'module'].includes(error.failure.kind)) {
         closeClient()
       }

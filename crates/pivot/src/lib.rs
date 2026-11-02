@@ -165,7 +165,8 @@ pub enum Error {
         /// Measure, by its index.
         measure: usize,
     },
-    /// A cell of a level with a precision holds no date.
+    /// A cell of a level with a precision, in a row taken into account, is
+    /// outside of the calendar.
     InvalidDate {
         /// Column of the cell.
         column: usize,
@@ -188,7 +189,10 @@ impl fmt::Display for Error {
                 write!(formatter, "measure {measure}: value beyond 128 bits")
             }
             Error::InvalidDate { column, row } => {
-                write!(formatter, "column {column}, row {row}: no date")
+                write!(
+                    formatter,
+                    "column {column}, row {row}: outside of the calendar"
+                )
             }
         }
     }
@@ -230,9 +234,8 @@ pub struct Engine {
     /// Rank of each value of each column, by code, as `MIN` and `MAX` compare
     /// them.
     value_ranks: Vec<OnceCell<Vec<u32>>>,
-    /// Levels of each column at each precision, or the row of the first cell
-    /// that holds no date.
-    derived: Vec<[OnceCell<Result<DerivedLevel, u32>>; Precision::COUNT]>,
+    /// Levels of each column at each precision.
+    derived: Vec<[OnceCell<DerivedLevel>; Precision::COUNT]>,
     /// Rows kept by the filter of the grid, in their order; `None` for all.
     kept: Option<Vec<u32>>,
 }
@@ -350,10 +353,21 @@ impl Engine {
     fn derived(&self, column: usize, precision: Precision) -> Result<&DerivedLevel, Error> {
         let dictionary = self.dictionary(column)?;
         let cells = self.store.column(column).expect("column of the dictionary");
-        self.derived[column][precision as usize]
-            .get_or_init(|| DerivedLevel::of(cells, dictionary, precision))
-            .as_ref()
-            .map_err(|&row| Error::InvalidDate { column, row })
+        Ok(self.derived[column][precision as usize]
+            .get_or_init(|| DerivedLevel::of(cells, dictionary, precision)))
+    }
+
+    /// Stops on the first selected row whose cell a precision of these levels
+    /// cannot read.
+    fn check_dates(&self, levels: &[Level], selection: &[u32]) -> Result<(), Error> {
+        for &Level { column, precision } in levels {
+            if let Some(precision) = precision
+                && let Some(row) = self.derived(column, precision)?.first_outside(selection)
+            {
+                return Err(Error::InvalidDate { column, row });
+            }
+        }
+        Ok(())
     }
 
     /// Code of each row and rank of each code of some levels.
@@ -510,6 +524,8 @@ impl Engine {
         };
         let (row_levels, row_ranks) = self.levels(&request.rows)?;
         let (column_levels, column_ranks) = self.levels(&request.columns)?;
+        self.check_dates(&request.rows, selection)?;
+        self.check_dates(&request.columns, selection)?;
         let inputs = request
             .measures
             .iter()

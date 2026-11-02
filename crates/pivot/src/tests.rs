@@ -669,8 +669,41 @@ fn a_cell_without_a_date_stops_the_computation() {
     );
     assert_eq!(
         engine.compute(&request).unwrap_err().to_string(),
-        "column 0, row 2: no date"
+        "column 0, row 2: outside of the calendar"
     );
+}
+
+#[test]
+fn a_date_without_a_day_in_the_calendar_stops_the_computation_under_a_precision() {
+    let cells = [Some("2026-01-15"), Some("0000-00-00"), Some("2026-03-00")];
+    let mut engine = single(&cells, Family::Other);
+    let by_month = Request {
+        rows: vec![Level {
+            column: 0,
+            precision: Some(Precision::Month),
+        }],
+        ..Request::default()
+    };
+    assert_eq!(
+        engine.compute(&by_month).unwrap_err(),
+        Error::InvalidDate { column: 0, row: 1 }
+    );
+
+    // Without a precision, it stays a value of its own.
+    let by_value = Request {
+        rows: vec![0.into()],
+        ..Request::default()
+    };
+    assert_eq!(engine.compute(&by_value).unwrap().line_count(), 4);
+
+    // A row the filter of the grid leaves out stops nothing.
+    engine.set_kept(Some(vec![2, 0])).unwrap();
+    assert_eq!(
+        engine.compute(&by_month).unwrap_err(),
+        Error::InvalidDate { column: 0, row: 2 }
+    );
+    engine.set_kept(Some(vec![0])).unwrap();
+    assert_eq!(engine.compute(&by_month).unwrap().line_count(), 2);
 }
 
 #[test]

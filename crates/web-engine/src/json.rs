@@ -187,7 +187,7 @@ mod tests {
     }
 
     #[test]
-    fn a_cell_without_a_date_gives_its_column_and_its_row() {
+    fn a_cell_outside_of_the_calendar_gives_its_column_and_its_row() {
         let mut json = String::new();
         error(&mut json, &Error::InvalidDate { column: 2, row: 7 });
         assert_eq!(
