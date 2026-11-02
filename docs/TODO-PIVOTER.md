@@ -40,8 +40,8 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Cases D1 to D35 decided by the maintainer
 - ✅ Decisions applied throughout the specification, typed literals written without a space (`DATE'2026-01-15'`)
 - ✅ Dialect refocused: ANSI SQL over the rows of the grid for the lot 1, its extensions in the next lots; each lot types what it uses
-- ✅ Cases D1 to D35 reviewed, the behaviour of ANSI SQL first: `||` and `LISTAGG` take texts, a date compares with a date only, `GREATEST` and `LEAST` give NULL on NULL, `UPPER('ß')` gives `SS`, an end of month that does not exist stops the computation, `VARCHAR` takes its length; a date without a day in the calendar stops the computation under a precision (A7)
-- ⬜ Case D36 to decide: what `CAST(d AS VARCHAR(n))` writes, `DATE '2026-01-15'` as in SQL-92, or `2026-01-15` as every engine measured
+- ✅ Cases D1 to D35 reviewed, the behaviour of ANSI SQL first: `||` and `LISTAGG` take texts, a date compares with a date only, `GREATEST` and `LEAST` give NULL on NULL, `UPPER('ß')` gives `SS`, an end of month that does not exist stops the computation; a date without a day in the calendar stops the computation under a precision (A7)
+- ✅ Departures from ANSI SQL kept in `CAST`: `VARCHAR` and `CHAR`, its synonym, take no length and give the whole text, `SUBSTRING` or `LEFT` cutting it (D33); a date gives `2026-01-15`, as every engine measured (D36)
 
 ## 4. Lots of the specification
 
