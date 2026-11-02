@@ -6,7 +6,7 @@ Each value is measured on the engine (`node bench/sql/run.mjs`, section 2) or qu
 
 ## 1. Engines and sources
 
-Measured on 2026-11-01:
+Measured on 2026-11-02:
 
 | Engine | Versions | Where |
 |---|---|---|
@@ -68,7 +68,7 @@ Notation: `1` and `0` are the integers that MySQL, MariaDB and SQLite give for t
 | `text.order` | `'a' < 'B'` | collation | `1` | `1` | `true` | `0` | `false` | false: byte order |
 | `text.least` | `LEAST('a', 'B')` | `GREATEST` / `LEAST`: SQL:2023 | `a` | `a` | `a` | `B` (`MIN`) | `B` | |
 | `text.replace_case` | `REPLACE('aA', 'a', 'x')` | | `xA` | `xA` | `xA` | `xA` | `xA` | |
-| `text.upper_sharp_s` | `UPPER('ß')` | | `ß` | `ß` | `ß` | `ß` | `ẞ` (U+1E9E) | |
+| `text.upper_sharp_s` | `UPPER('ß')` | `SS`, an example named by the standard according to PostgreSQL (section 5); its text is not read | `ß` | `ß` | `ß` | `ß` | `ẞ` (U+1E9E) | |
 | `agg.distinct_case` | distinct aggregated texts of `fr`, `FR`, `Fr` | | `fr` | `fr` | `fr,Fr,FR` | `FR,Fr,fr` | `FR,Fr,fr` | |
 | `agg.order_case` | aggregated texts of `b`, `B`, `a`, `A` in order | | `A a B b` | `A a B b` | `a A b B` | `A B a b` | `A B a b` | ordered by bytes; `COLLATE` makes the order case-insensitive |
 
@@ -113,8 +113,15 @@ PostgreSQL reads an untyped literal with the type of the other operand (`'12'` a
 | `cast.varchar_decimal` | `CAST(1.50 AS VARCHAR(10))` | | `1.50` (`AS CHAR(10)`) | `1.50` | `1.50` | `1.5` | `1.50` | |
 | `cast.varchar_no_length` | `CAST(12 AS VARCHAR)` | `VARCHAR` takes a length (SQL-92 6.1) | `12` (`AS CHAR`) | `12` | `12` | `12` | `12` | |
 | `cast.char_no_length` | `CAST('abc' AS CHAR)` | `CHAR(1)`: a length of 1 when it is omitted (SQL-92 6.1 SR 4) | `abc` | `abc` | `a` (character) | `abc` | `abc` | |
+| `cast.varchar_date` | `CAST(DATE '2026-01-15' AS VARCHAR(20))` | `DATE '2026-01-15'`: the shortest literal of the value (SQL-92 6.10 GR 6e); later versions not read | `2026-01-15` (`AS CHAR(20)`) | `2026-01-15` | `2026-01-15` | `2026-01-15` (`DATE('2026-01-15')`) | `2026-01-15` | |
+| `cast.varchar_short_text` | `CAST('abc' AS VARCHAR(2))` | `ab`, warning 01004, string data, right truncation (SQL-92 6.10 GR 6c) | `ab`, warning (`AS CHAR(2)`) | `ab`, warning | `ab` | `abc` | `abc` | |
+| `cast.varchar_short_number` | `CAST(123 AS VARCHAR(2))` | exception 22001, string data, right truncation (SQL-92 6.10 GR 6a) | `12`, warning (`AS CHAR(2)`) | `12`, warning | `12` | `123` | `123` | |
+| `cast.varchar_short_date` | `CAST(DATE '2026-01-15' AS VARCHAR(4))` | exception 22001 (SQL-92 6.10 GR 6e) | `2026`, warning (`AS CHAR(4)`) | `2026`, warning | `2026` | `2026-01-15` (`DATE('2026-01-15')`) | `2026-01-15` | |
+| `cast.char_padding` | `CONCAT(CAST('a' AS CHAR(3)), '\|')` | completed with spaces (SQL-92 6.10 GR 5c); no `CONCAT` | `a\|` | `a\|` | `a  \|` | `a\|` | `a\|` | |
 
 MySQL and MariaDB never stop on an invalid value: they give 0 or NULL, with a warning, and keep the prefix of a text that starts with digits. PostgreSQL and DuckDB raise an error, as the standard. SQLite converts what it can, without a warning. DuckDB offers `TRY_CAST` for NULL; ClickHouse, the functions `…OrNull`, `…OrZero` and `…OrDefault`.
+
+Beyond the length of a `CAST`, the standard cuts a text with a warning, and stops on a number or a date. MySQL, MariaDB and PostgreSQL cut all three, the first two with a warning; SQLite and DuckDB ignore the length.
 
 ### 3.4 Division and integers
 
@@ -152,9 +159,10 @@ MySQL, MariaDB and SQLite take NULL as the smallest value, PostgreSQL as the lar
 
 | Case | Expression | Standard | MySQL | MariaDB | PostgreSQL | SQLite | DuckDB | ClickHouse |
 |---|---|---|---|---|---|---|---|---|
-| `agg.listagg` | `LISTAGG(k, ',') WITHIN GROUP (ORDER BY k)` | SQL:2016, feature T625 | error 1064 | error 1305 (10.6.3), 1064 (12.3.3, 13.0.2) | error: function `listagg` does not exist | error: syntax | error: unknown ordered aggregate | no `LISTAGG`: `groupConcat` |
+| `agg.listagg` | `LISTAGG(k, ',') WITHIN GROUP (ORDER BY k)` | SQL:2016, feature T625; its argument is a text, a `<character value expression>` (10.9) | error 1064 | error 1305 (10.6.3), 1064 (12.3.3, 13.0.2) | error: function `listagg` does not exist | error: syntax | error: unknown ordered aggregate | no `LISTAGG`: `groupConcat` |
 | `agg.listagg_order_inside` | `LISTAGG(k, ',' ORDER BY k)` | | error 1064 | error 1064 | error | error: no such function | `a,b` | |
 | `agg.string_agg` | `STRING_AGG(k, ',' ORDER BY k)` | | error 1064 | error 1064 | `a,b` | `a,b` | `a,b` | `string_agg`, alias of `groupConcat`; its order is not documented |
+| `agg.string_agg_number` | `STRING_AGG(k, ',' ORDER BY k)` of 2 and 1 | | error 1064 | error 1064 | error: function `string_agg(integer, unknown)` does not exist | `1,2` | `1,2` | |
 | `agg.group_concat` | `GROUP_CONCAT(k ORDER BY k SEPARATOR ',')` | | `a,b` | `a,b` | error: syntax | `a,b` (`GROUP_CONCAT(k, ',' ORDER BY k)`) | error: syntax | `group_concat`, alias of `groupConcat` |
 | `agg.default_separator` | `GROUP_CONCAT(k)` of 1 and 2 | | `1,2` | `1,2` | error: function `group_concat` does not exist | `1,2` | `1,2` | |
 | `agg.group_concat_limit` | `GROUP_CONCAT(k ORDER BY k SEPARATOR ',' LIMIT 2 OFFSET 1)` of `b`, `a`, `c` | | error 1064 | `b,c` | error: syntax | error: syntax | error: syntax | `limit` argument of `groupConcat`, without offset |
@@ -179,7 +187,7 @@ MySQL, MariaDB and SQLite take NULL as the smallest value, PostgreSQL as the lar
 
 On exact numbers, MySQL and MariaDB give `AVG` at the scale of the column + 4 (`div_precision_increment`), rounded away from zero, a tie included (`agg.avg_half`). `DISTINCT` compares numbers by value: `1.0` and `1.00` are one value on every engine. `MIN` and `MAX` of texts follow the collation of the connection on MySQL, MariaDB and PostgreSQL, the code points on SQLite and DuckDB. Only PostgreSQL and DuckDB read a `NaN`: it is one value under `DISTINCT`, and comes after every number; MySQL reads it as 0 with a warning, and SQLite as 0. `0` and `-0` are one value, except on MySQL 8.0.11 and MariaDB 10.6.3.
 
-The standard `LISTAGG` takes a literal separator and `WITHIN GROUP`, both required, and ignores NULL; none of the engines measured accepts this form. DuckDB accepts `LISTAGG` with its `ORDER BY` inside the parentheses, as `STRING_AGG`.
+The standard `LISTAGG` aggregates a text, takes a literal separator and `WITHIN GROUP`, both required, and ignores NULL; none of the engines measured accepts this form. DuckDB accepts `LISTAGG` with its `ORDER BY` inside the parentheses, as `STRING_AGG`.
 
 ### 3.7 Lengths
 
@@ -246,6 +254,7 @@ The standard rounds only in `CAST` and assignments, rounding or truncating as th
 | `date.literal_impossible` | `DATE '2026-02-30'` | syntax error: the natural rules of the Gregorian calendar (SQL-92 5.3 SR 22) | error 1525 | error 1525 | error | error: syntax | error | |
 | `date.impossible_plus_day` | `CAST('2026-02-30' AS DATE) + INTERVAL '1' DAY` | exception 22018 | NULL, warning | NULL, warning | error | `2026-03-03` | error | |
 | `date.add_month_end` | `DATE '2026-01-31' + INTERVAL '1' MONTH` | exception 22008, datetime field overflow: the day is kept, and 31 February is invalid (SQL-92 6.14 GR 3) | `2026-02-28` | `2026-02-28` | `2026-02-28 00:00:00` (timestamp) | `2026-03-03` (`DATE(…, '+1 month')`) | `2026-02-28 00:00:00` (TIMESTAMP) | |
+| `date.date_add_month_end` | `DATE_ADD(DATE '2026-01-31', INTERVAL 1 MONTH)` | no `DATE_ADD` | `2026-02-28` | `2026-02-28` | error: syntax | error: syntax | `2026-02-28 00:00:00` (TIMESTAMP) | |
 | `date.zero` | `CAST('0000-00-00' AS DATE)` | exception 22007: years 0001 to 9999 (SQL-92 6.1, table 10) | NULL, warning | `0000-00-00` | error | NULL | error | not documented |
 | `date.zero_year` | `YEAR('0000-00-00')` | | NULL, warning (BIGINT on 8.0.11, YEAR on 9.7.4 and 26.10.0) | `0` | error | NULL | error | |
 | `date.zero_dayname` | `DAYNAME('0000-00-00')` | | NULL, warning | NULL, warning | | | | |
@@ -337,15 +346,15 @@ What the metadata of a result tell of the column a result column reads, measured
 
 ## 5. Sources
 
-SQL standard, read on 2026-11-01:
+SQL standard, read on 2026-11-01 and 2026-11-02:
 
-- [SQL-92, draft of July 1992](https://gist.github.com/zeroidentidad/e3d046f4c678c668cc8428c0fe39d1af): subclauses 4.2, 4.5, 4.6, 5.3, 6.1, 6.5, 6.6, 6.7, 6.9, 6.10, 6.12, 6.13, 6.14, 8.2, 9.3, 13.1.
+- [SQL-92, draft of July 1992](https://gist.github.com/zeroidentidad/e3d046f4c678c668cc8428c0fe39d1af), also [at Carnegie Mellon](https://www.contrib.andrew.cmu.edu/~shadow/sql/sql1992.txt): subclauses 4.2, 4.5, 4.6, 5.3, 6.1, 6.5, 6.6, 6.7, 6.9, 6.10, 6.12, 6.13, 6.14, 8.2, 9.3, 13.1, 22.1.
 - [Grammar of SQL:1999](https://ronsavage.github.io/SQL/sql-99.bnf.html) and [of SQL:2003](https://ronsavage.github.io/SQL/sql-2003-2.bnf.html): `IS DISTINCT FROM`, `OVERLAY`, `NULLS FIRST | LAST`, `FILTER`, `CEILING`, `BIGINT`.
-- [Grammar of the Foundation of SQL:2016](https://jakewheat.github.io/sql-overview/sql-2016-foundation-grammar.html): functions present and absent, `CAST … FORMAT`.
+- [Grammar of the Foundation of SQL:2016](https://jakewheat.github.io/sql-overview/sql-2016-foundation-grammar.html): functions present and absent, `CAST … FORMAT`, `LISTAGG` (10.9).
 - [LISTAGG](https://modern-sql.com/feature/listagg), [FILTER](https://modern-sql.com/feature/filter) and [GREATEST / LEAST](https://modern-sql.com/caniuse/greatest-least), on modern-sql.com.
 - [SQL:2023 is finished: here is what's new](https://peter.eisentraut.org/blog/2023/04/04/sql-2023-is-finished-here-is-whats-new), P. Eisentraut, and [SQL:2023](https://en.wikipedia.org/wiki/SQL:2023), [SQL:2016](https://en.wikipedia.org/wiki/SQL:2016), [Null (SQL)](https://en.wikipedia.org/wiki/Null_(SQL)) on Wikipedia.
 
-PostgreSQL: [conditional expressions](https://www.postgresql.org/docs/current/functions-conditional.html) (`GREATEST` and `LEAST` against the standard).
+PostgreSQL: [conditional expressions](https://www.postgresql.org/docs/current/functions-conditional.html) (`GREATEST` and `LEAST` against the standard), and [a commit on full case mapping](https://postgresql.org/message-id/E1tYwFg-0029Dk-Lm%40gemulon.postgresql.org), read on 2026-11-02, which says that the standard names `ß` uppercased as `SS`.
 
 ClickHouse, current documentation, read on 2026-11-01:
 

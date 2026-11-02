@@ -192,6 +192,31 @@ export const CASES = [
     forms: { shared: 'CAST(12 AS VARCHAR)', mysql: 'CAST(12 AS CHAR)' },
   },
   { key: 'cast.char_no_length', forms: { shared: "CAST('abc' AS CHAR)" } },
+  {
+    key: 'cast.varchar_short_text',
+    forms: { shared: "CAST('abc' AS VARCHAR(2))", mysql: "CAST('abc' AS CHAR(2))" },
+  },
+  {
+    key: 'cast.varchar_short_number',
+    forms: { shared: 'CAST(123 AS VARCHAR(2))', mysql: 'CAST(123 AS CHAR(2))' },
+  },
+  {
+    key: 'cast.varchar_date',
+    forms: {
+      shared: "CAST(DATE '2026-01-15' AS VARCHAR(20))",
+      mysql: "CAST(DATE '2026-01-15' AS CHAR(20))",
+      sqlite: "CAST(DATE('2026-01-15') AS VARCHAR(20))",
+    },
+  },
+  {
+    key: 'cast.varchar_short_date',
+    forms: {
+      shared: "CAST(DATE '2026-01-15' AS VARCHAR(4))",
+      mysql: "CAST(DATE '2026-01-15' AS CHAR(4))",
+      sqlite: "CAST(DATE('2026-01-15') AS VARCHAR(4))",
+    },
+  },
+  { key: 'cast.char_padding', forms: { shared: "CONCAT(CAST('a' AS CHAR(3)), '|')" } },
   // Division
   { key: 'div.by_zero', forms: { shared: '1 / 0' } },
   { key: 'div.modulo_zero', forms: { shared: 'MOD(1, 0)', sqlite: '1 % 0' } },
@@ -265,6 +290,12 @@ export const CASES = [
     forms: {
       shared:
         "(SELECT STRING_AGG(k, ',' ORDER BY k) FROM (SELECT 'b' AS k UNION ALL SELECT 'a') AS t)",
+    },
+  },
+  {
+    key: 'agg.string_agg_number',
+    forms: {
+      shared: "(SELECT STRING_AGG(k, ',' ORDER BY k) FROM (SELECT 2 AS k UNION ALL SELECT 1) AS t)",
     },
   },
   {
@@ -533,6 +564,10 @@ export const CASES = [
       mysql: "DATE '2026-01-31' + INTERVAL 1 MONTH",
       sqlite: "DATE('2026-01-31', '+1 month')",
     },
+  },
+  {
+    key: 'date.date_add_month_end',
+    forms: { shared: "DATE_ADD(DATE '2026-01-31', INTERVAL 1 MONTH)" },
   },
   {
     key: 'date.zero',
