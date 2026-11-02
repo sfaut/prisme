@@ -17,7 +17,7 @@ pub use column::{BlockError, TextColumn};
 pub use dictionary::Dictionary;
 pub use hash::FxMap;
 pub use numbers::{
-    Approx, Exact, NumberError, compare_exact, format_exact, format_float, parse_exact,
+    Approx, Exact, NumberError, compare_exact, format_exact, format_float, is_exact, parse_exact,
 };
 
 /// Rows of a result, one text column per column of the result.

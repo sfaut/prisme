@@ -8,9 +8,10 @@
 //! the measures are `COUNT(*)`, `COUNT(col)`, `SUM(col)`, `AVG(col)`,
 //! `MIN(col)` and `MAX(col)`, in ANSI SQL, and `COUNT`, `SUM` and `AVG` of
 //! `DISTINCT col`. The lines and the columns follow their labels or the values
-//! of a measure (`Order`). Filters keep rows, by the values of a column or by a
-//! measure at a level (`filters`). The dialect of the Pivoteur, with its
-//! expressions, comes with the next slices.
+//! of a measure (`Order`). Filters keep rows, by a list of values or a condition
+//! on a column, at a precision of its dates, or on a measure at a level
+//! (`filters`). The dialect of the Pivoteur, with its expressions, comes with the
+//! next slices.
 //!
 //! The crate does not depend on its target: its tests run natively, and the
 //! Worker of the page runs it compiled to WebAssembly (`crates/web-engine`).
@@ -28,20 +29,35 @@ use prisme_store::{Approx, Dictionary, Exact, NumberError, Store};
 
 use crate::dates::DerivedLevel;
 pub use crate::dates::Precision;
-pub use crate::filters::{Comparison, Filter};
+pub use crate::filters::{Comparison, Filter, Test};
 pub use crate::measures::Value;
 use crate::measures::{Extreme, Input, SortKey};
 pub use crate::table::{Header, Label, Line, Table};
 
-/// Family of the type of a column, as far as the measures need it.
+/// Family of the type of a column, as far as the measures and the filters need
+/// it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Family {
     /// Exact numbers: the `integer` and `decimal` families.
     Exact,
     /// Floats: the `float` family (`DOUBLE`).
     Float,
-    /// Any other family, which `SUM` and `AVG` refuse.
+    /// Dates: the `date` family, which a filter compares in the order of time.
+    Date,
+    /// Instants: the `datetime` family, which a filter compares in the order of
+    /// time.
+    Datetime,
+    /// Hours: the `time` family, which a filter compares in the order of time.
+    Time,
+    /// Any other family, which a filter compares by code points.
     Other,
+}
+
+impl Family {
+    /// Does the column hold numbers, which `SUM` and `AVG` add up?
+    fn is_number(self) -> bool {
+        matches!(self, Family::Exact | Family::Float)
+    }
 }
 
 /// Measure of a table.
@@ -180,13 +196,13 @@ pub enum Error {
         /// Filter, by its index.
         filter: usize,
     },
-    /// The operand of filter `filter` cannot compare with its measure.
+    /// An operand of filter `filter` cannot compare with its values.
     FilterOperand {
         /// Filter, by its index.
         filter: usize,
     },
-    /// A cell of a level with a precision, in a row taken into account, is
-    /// outside of the calendar.
+    /// A cell that a precision or a comparison reads, in a row taken into
+    /// account, is outside of the calendar, or of the day for an hour.
     InvalidDate {
         /// Column of the cell.
         column: usize,
@@ -320,6 +336,16 @@ impl Engine {
             .collect())
     }
 
+    /// Distinct values of a level, which the list of a filter offers: those of
+    /// `distinct`, or the labels of its periods in the order of time, NULL first,
+    /// without the cells outside of the calendar.
+    pub fn distinct_at(&self, level: Level) -> Result<Vec<Option<&str>>, Error> {
+        match level.precision {
+            Some(precision) => Ok(self.derived(level.column, precision)?.listed()),
+            None => self.distinct(level.column),
+        }
+    }
+
     /// Sets the rank of each distinct value of column `column`, by code, in
     /// the order of `distinct`.
     pub fn set_ranks(&mut self, column: usize, ranks: Vec<u32>) -> Result<(), Error> {
@@ -357,9 +383,10 @@ impl Engine {
     fn value_ranks(&self, measure: usize, column: usize) -> Result<&[u32], Error> {
         let dictionary = self.dictionary(column)?;
         let cells = self.store.column(column).expect("column of the dictionary");
-        let numbers = match self.families[column] {
-            Family::Other => None,
-            _ => Some(self.numbers(measure, column)?),
+        let numbers = if self.families[column].is_number() {
+            Some(self.numbers(measure, column)?)
+        } else {
+            None
         };
         Ok(self.value_ranks[column].get_or_init(|| {
             let row = |code: u32| dictionary.first_rows[code as usize] as usize;
@@ -452,7 +479,7 @@ impl Engine {
             .column(column)
             .ok_or(Error::UnknownColumn(column))?;
         let family = self.families[column];
-        if family == Family::Other {
+        if !family.is_number() {
             return Err(Error::NotNumeric { measure });
         }
         self.numbers[column]
@@ -542,7 +569,7 @@ impl Engine {
     }
 
     /// Computes a table over the rows kept and its filters leave, in the order
-    /// of the labels. As in SQL, the rows that a filter on values leaves out stop
+    /// of the labels. As in SQL, the rows that a filter on cells leaves out stop
     /// nothing, and those of a group a filter on a measure drops have been read.
     pub fn compute(&self, request: &Request) -> Result<Table, Error> {
         let all: Vec<u32>;
@@ -561,7 +588,7 @@ impl Engine {
             .enumerate()
             .map(|(index, &measure)| self.input(index, measure))
             .collect::<Result<Vec<_>, _>>()?;
-        let selection = self.keep_by_values(&request.filters, kept)?;
+        let selection = self.keep_by_cells(&request.filters, kept)?;
         self.check_dates(&request.rows, &selection)?;
         self.check_dates(&request.columns, &selection)?;
         let selection = self.keep_by_measures(&request.filters, selection)?;

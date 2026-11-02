@@ -11,7 +11,8 @@
  * The values of each level are ranked in the order of the grid (`compareCells`), once per column;
  * the module ranks the periods of a level with a precision, in the order of time. A table asked
  * again in another order is only laid out again, which makes it a new table for its windows.
- * The Worker also gives the distinct values of a column, for the list of a filter.
+ * The Worker also gives the distinct values of a column, or the periods of a precision of its
+ * dates, for the list of a filter.
  */
 
 import type { DatePrecision } from '@/api/generated/DatePrecision'
@@ -53,26 +54,62 @@ export interface PivotRequestLevel {
 }
 
 /**
+ * Test of a value by a filter.
+ */
+export interface PivotRequestTest {
+  /**
+   * What the value passes.
+   */
+  condition: PivotComparison | 'between' | 'not_between' | 'is_null' | 'is_not_null'
+  /**
+   * Value compared to, or lower bound; `IS NULL` and `IS NOT NULL` do not read it.
+   */
+  operand: string
+  /**
+   * Upper bound, which only `BETWEEN` and `NOT BETWEEN` read.
+   */
+  upper: string
+}
+
+/**
  * Filter of a table.
  */
 export type PivotRequestFilter =
   | {
       /**
-       * Keeps the rows whose cell is one of some values.
+       * Keeps the rows whose value is one of some values, or none of them.
        */
       kind: 'values'
       /**
-       * Index of the column.
+       * Column of the cells, and what its dates keep.
        */
-      column: number
+      level: PivotRequestLevel
       /**
-       * Values kept, `null` for NULL.
+       * Values listed, `null` for NULL.
        */
       values: Cell[]
+      /**
+       * Does the filter keep the values left out of the list (`NOT IN`)?
+       */
+      excluded: boolean
     }
   | {
       /**
-       * Keeps the rows of the groups whose measure passes a comparison.
+       * Keeps the rows whose value passes a test.
+       */
+      kind: 'column'
+      /**
+       * Column of the cells, and what its dates keep.
+       */
+      level: PivotRequestLevel
+      /**
+       * Test of the value of each row.
+       */
+      test: PivotRequestTest
+    }
+  | {
+      /**
+       * Keeps the rows of the groups whose measure passes a test.
        */
       kind: 'measure'
       /**
@@ -84,13 +121,9 @@ export type PivotRequestFilter =
        */
       levels: PivotRequestLevel[]
       /**
-       * Comparison of the value of each group to the operand.
+       * Test of the value of each group.
        */
-      comparison: PivotComparison
-      /**
-       * Value compared to.
-       */
-      operand: string
+      test: PivotRequestTest
     }
 
 /**
@@ -374,11 +407,13 @@ export type PivotRequestMessage =
     }
   | {
       /**
-       * Asks for the distinct values of a column, in the order of the grid.
+       * Asks for the distinct values of a column, in the order of the grid, or for the periods of
+       * a precision of its dates, in the order of time.
        */
       type: 'values'
       id: number
       column: number
+      precision: DatePrecision
     }
 
 /**
@@ -406,7 +441,7 @@ interface EngineExports extends TransferExports {
     rows: number,
   ): number
   finish(): number
-  distinct(column: number): number
+  distinct(column: number, precision: number): number
   set_ranks(column: number, ranks: number, count: number): number
   set_kept(rows: number, count: number, all: number): number
   compute(words: number, length: number): number
@@ -415,15 +450,27 @@ interface EngineExports extends TransferExports {
 }
 
 /**
- * Code of a family of types for the module: 1 exact numbers, 2 floats, 0 the others.
+ * Code of a family of types for the module: 1 exact numbers, 2 floats, 3 dates, 4 instants,
+ * 5 hours, 0 the others.
  *
  * @param family Family of the type of a column.
  */
 export function familyCode(family: TypeFamily): number {
-  if (family === 'integer' || family === 'decimal') {
-    return 1
+  switch (family) {
+    case 'integer':
+    case 'decimal':
+      return 1
+    case 'float':
+      return 2
+    case 'date':
+      return 3
+    case 'datetime':
+      return 4
+    case 'time':
+      return 5
+    default:
+      return 0
   }
-  return family === 'float' ? 2 : 0
 }
 
 /**
@@ -464,16 +511,61 @@ function valueWords(value: Cell): number[] {
 }
 
 /**
+ * Code of each precision for the module.
+ */
+const PRECISION_CODES: Record<DatePrecision, number> = {
+  none: 0,
+  year: 1,
+  quarter: 2,
+  month: 3,
+  week: 4,
+  date: 5,
+}
+
+/**
+ * Words of a test: the code of a comparison and its operand; 6 or 7 for `BETWEEN` and `NOT BETWEEN`
+ * and their two bounds; 8 or 9 for `IS NULL` and `IS NOT NULL`.
+ *
+ * @param test Test.
+ */
+function testWords({ condition, operand, upper }: PivotRequestTest): number[] {
+  switch (condition) {
+    case 'between':
+      return [6, ...valueWords(operand), ...valueWords(upper)]
+    case 'not_between':
+      return [7, ...valueWords(operand), ...valueWords(upper)]
+    case 'is_null':
+      return [8]
+    case 'is_not_null':
+      return [9]
+    default: {
+      const comparisons = {
+        equal: 0,
+        not_equal: 1,
+        less: 2,
+        less_or_equal: 3,
+        greater: 4,
+        greater_or_equal: 5,
+      }
+      return [comparisons[condition], ...valueWords(operand)]
+    }
+  }
+}
+
+/**
  * Words of a request for the module: numbers of levels and of measures, a column and a precision
- * per level, a kind and a column per measure, then the filters. A filter on values: 0, its column,
- * the number of its values and each value. A filter on a measure: 1, the measure, the number of
- * its levels and each level, the comparison and the operand.
+ * per level, a kind and a column per measure, then the filters. A filter on a list of values: 0,
+ * its level, a word for `NOT IN`, the number of its values and each value. A filter on a measure: 1,
+ * the measure, the number of its levels and each level, and the test. A filter on a column: 2, its
+ * level and the test.
  *
  * @param request Table asked.
  */
 export function requestWords(request: PivotRequest): Uint32Array {
-  const precisions = { none: 0, year: 1, quarter: 2, month: 3, week: 4, date: 5 }
-  const levelWords = ({ column, precision }: PivotRequestLevel) => [column, precisions[precision]]
+  const levelWords = ({ column, precision }: PivotRequestLevel) => [
+    column,
+    PRECISION_CODES[precision],
+  ]
   const kinds = {
     count_star: 0,
     count: 1,
@@ -486,25 +578,28 @@ export function requestWords(request: PivotRequest): Uint32Array {
     max: 8,
   }
   const measureWords = ({ aggregate, column }: PivotMeasure) => [kinds[aggregate], column]
-  const comparisons = {
-    equal: 0,
-    not_equal: 1,
-    less: 2,
-    less_or_equal: 3,
-    greater: 4,
-    greater_or_equal: 5,
-  }
-  const filterWords = (filter: PivotRequestFilter) =>
-    filter.kind === 'values'
-      ? [0, filter.column, filter.values.length, ...filter.values.flatMap(valueWords)]
-      : [
+  const filterWords = (filter: PivotRequestFilter): number[] => {
+    switch (filter.kind) {
+      case 'values':
+        return [
+          0,
+          ...levelWords(filter.level),
+          Number(filter.excluded),
+          filter.values.length,
+          ...filter.values.flatMap(valueWords),
+        ]
+      case 'measure':
+        return [
           1,
           ...measureWords(filter.measure),
           filter.levels.length,
           ...filter.levels.flatMap(levelWords),
-          comparisons[filter.comparison],
-          ...valueWords(filter.operand),
+          ...testWords(filter.test),
         ]
+      case 'column':
+        return [2, ...levelWords(filter.level), ...testWords(filter.test)]
+    }
+  }
   return Uint32Array.from([
     request.rows.length,
     request.columns.length,
@@ -695,7 +790,7 @@ export class PivotEngine {
     if (this.ranked.has(column)) {
       return
     }
-    const values = this.answer<Cell[]>(this.engine.distinct(column))
+    const values = this.answer<Cell[]>(this.engine.distinct(column, PRECISION_CODES.none))
     const ranks = ranksOf(values)
     this.withWords(ranks, (address) =>
       this.answer(this.engine.set_ranks(column, address, ranks.length)),
@@ -704,12 +799,15 @@ export class PivotEngine {
   }
 
   /**
-   * Distinct values of a column, in the order of the grid.
+   * Distinct values of a column, in the order of the grid; at a precision, the labels of its
+   * periods in the order of time, without the cells outside of the calendar.
    *
    * @param column Index of the column.
+   * @param precision What the column keeps of its dates.
    */
-  values(column: number): Cell[] {
-    return this.answer<Cell[]>(this.engine.distinct(column)).sort(compareCells)
+  values(column: number, precision: DatePrecision = 'none'): Cell[] {
+    const values = this.answer<Cell[]>(this.engine.distinct(column, PRECISION_CODES[precision]))
+    return precision === 'none' ? values.sort(compareCells) : values
   }
 
   /**
@@ -826,7 +924,11 @@ export function answerMessage(
           window: state.engine.window(message.lines, message.columns),
         }
       case 'values':
-        return { type: 'values', id: message.id, values: state.engine.values(message.column) }
+        return {
+          type: 'values',
+          id: message.id,
+          values: state.engine.values(message.column, message.precision),
+        }
     }
   } catch (failure) {
     if (failure instanceof PivotError) {

@@ -1109,8 +1109,31 @@ fn amount_above(levels: &[usize], operand: &str) -> Filter {
     Filter::Measure {
         measure: Measure::Sum(AMOUNT),
         levels: levels.iter().map(|&column| column.into()).collect(),
-        comparison: Comparison::Greater,
-        operand: operand.to_owned(),
+        test: Test::Compare(Comparison::Greater, operand.to_owned()),
+    }
+}
+
+/// Filter `col IN (…)` on the values of a column, as they are.
+fn listed(column: usize, values: &[Option<&str>]) -> Filter {
+    Filter::Values {
+        level: column.into(),
+        values: values
+            .iter()
+            .map(|value| value.map(str::to_owned))
+            .collect(),
+        excluded: false,
+    }
+}
+
+/// Filter `col NOT IN (…)` on the values of a column, as they are.
+fn left_out(column: usize, values: &[Option<&str>]) -> Filter {
+    Filter::Values {
+        level: column.into(),
+        values: values
+            .iter()
+            .map(|value| value.map(str::to_owned))
+            .collect(),
+        excluded: true,
     }
 }
 
@@ -1178,52 +1201,40 @@ fn a_filter_on_a_measure_without_a_level_reads_all_the_rows() {
 
 #[test]
 fn a_filter_on_values_keeps_the_rows_of_its_values() {
-    let values = |values: &[&str]| Filter::Values {
-        column: REGION,
-        values: values.iter().map(|&value| Some(value.to_owned())).collect(),
-    };
     assert_eq!(
-        filtered(&[CITY], &[], vec![values(&["Sud", "Absent"])]),
+        filtered(
+            &[CITY],
+            &[],
+            vec![listed(REGION, &[Some("Sud"), Some("Absent")])]
+        ),
         "Nice;350|Toulon;30|Total;380"
     );
-    assert_eq!(filtered(&[CITY], &[], vec![values(&[])]), "Total;NULL");
+    assert_eq!(
+        filtered(&[CITY], &[], vec![listed(REGION, &[])]),
+        "Total;NULL"
+    );
 }
 
 #[test]
 fn a_filter_on_values_can_keep_null() {
     let engine = single(&[Some("a"), None, Some("b")], Family::Other);
-    let request = |values: Vec<Option<String>>| Request {
-        rows: vec![0.into()],
-        filters: vec![Filter::Values { column: 0, values }],
-        ..Request::default()
+    let rows_of = |values: &[Option<&str>]| {
+        let request = Request {
+            rows: vec![0.into()],
+            filters: vec![listed(0, values)],
+            ..Request::default()
+        };
+        engine.compute(&request).unwrap().selected_rows()
     };
-    let lines = |table: Table| table.selected_rows();
-    assert_eq!(lines(engine.compute(&request(vec![None])).unwrap()), 1);
-    assert_eq!(
-        lines(
-            engine
-                .compute(&request(vec![Some("a".to_owned())]))
-                .unwrap()
-        ),
-        1
-    );
-    assert_eq!(
-        lines(
-            engine
-                .compute(&request(vec![Some("b".to_owned()), None]))
-                .unwrap()
-        ),
-        2
-    );
+    assert_eq!(rows_of(&[None]), 1);
+    assert_eq!(rows_of(&[Some("a")]), 1);
+    assert_eq!(rows_of(&[Some("b"), None]), 2);
 }
 
 #[test]
 fn filters_combine_by_and_and_read_the_same_rows() {
     // The filter on values first: among the cities of Sud, Nice stays.
-    let south = Filter::Values {
-        column: REGION,
-        values: vec![Some("Sud".to_owned())],
-    };
+    let south = listed(REGION, &[Some("Sud")]);
     assert_eq!(
         filtered(
             &[CITY],
@@ -1283,12 +1294,16 @@ fn kept_keys(
         filters: vec![Filter::Measure {
             measure,
             levels: vec![0.into()],
-            comparison,
-            operand: operand.to_owned(),
+            test: Test::Compare(comparison, operand.to_owned()),
         }],
         ..Request::default()
     };
-    let table = engine.compute(&request)?;
+    labels_of(engine, &request)
+}
+
+/// Labels of the lines of a table, without its grand total, `NULL` for NULL.
+fn labels_of(engine: &Engine, request: &Request) -> Result<Vec<String>, Error> {
+    let table = engine.compute(request)?;
     Ok((0..table.line_count() - 1)
         .map(|line| match table.line(engine, line).label {
             Label::Value(value) => value.unwrap_or("NULL").to_owned(),
@@ -1438,12 +1453,7 @@ fn a_filter_on_values_leaves_out_a_date_outside_of_the_calendar() {
         engine.compute(&by_month(vec![])).unwrap_err(),
         Error::InvalidDate { column: 0, row: 1 }
     );
-    let only = |value: &str| {
-        vec![Filter::Values {
-            column: 0,
-            values: vec![Some(value.to_owned())],
-        }]
-    };
+    let only = |value| vec![listed(0, &[Some(value)])];
     assert_eq!(
         engine
             .compute(&by_month(only("2026-01-15")))
@@ -1454,5 +1464,451 @@ fn a_filter_on_values_leaves_out_a_date_outside_of_the_calendar() {
     assert_eq!(
         engine.compute(&by_month(only("0000-00-00"))).unwrap_err(),
         Error::InvalidDate { column: 0, row: 1 }
+    );
+}
+
+/// Text of an operand.
+fn text(value: &str) -> String {
+    value.to_owned()
+}
+
+/// Values of a column of cells of a family that a test keeps, as its own level.
+fn tested(cells: &[Option<&str>], family: Family, test: Test) -> Result<Vec<String>, Error> {
+    let request = Request {
+        rows: vec![0.into()],
+        filters: vec![Filter::Column {
+            level: 0.into(),
+            test,
+        }],
+        ..Request::default()
+    };
+    labels_of(&single(cells, family), &request)
+}
+
+#[test]
+fn a_filter_on_a_column_compares_numbers_by_value() {
+    let cells = [Some("9"), Some("10"), Some("1.50"), None];
+    let keys = |comparison, operand: &str| {
+        tested(
+            &cells,
+            Family::Exact,
+            Test::Compare(comparison, text(operand)),
+        )
+        .unwrap()
+    };
+    assert_eq!(keys(Comparison::Greater, "9"), ["10"]);
+    assert_eq!(keys(Comparison::GreaterOrEqual, "9"), ["10", "9"]);
+    assert_eq!(keys(Comparison::Less, "9"), ["1.50"]);
+    assert_eq!(keys(Comparison::LessOrEqual, "1.5"), ["1.50"]);
+    assert_eq!(keys(Comparison::Equal, "1.5"), ["1.50"]);
+    // NULL gives neither true nor false, under `<>` too.
+    assert_eq!(keys(Comparison::NotEqual, "9"), ["1.50", "10"]);
+}
+
+#[test]
+fn between_includes_its_bounds_and_null_only_passes_is_null() {
+    let cells = [Some("1"), Some("5"), Some("10"), None];
+    let keys = |test| tested(&cells, Family::Exact, test).unwrap();
+    assert_eq!(keys(Test::Between(text("1"), text("5"))), ["1", "5"]);
+    assert_eq!(keys(Test::NotBetween(text("1"), text("5"))), ["10"]);
+    // Bounds in the wrong order: nothing is between them.
+    assert!(keys(Test::Between(text("10"), text("1"))).is_empty());
+    assert_eq!(
+        keys(Test::NotBetween(text("10"), text("1"))),
+        ["1", "10", "5"]
+    );
+    assert_eq!(keys(Test::IsNull), ["NULL"]);
+    assert_eq!(keys(Test::IsNotNull), ["1", "10", "5"]);
+}
+
+#[test]
+fn a_float_compares_as_a_float_and_nan_passes_no_comparison() {
+    let cells = [Some("1.5"), Some("NaN"), Some("1e3"), None];
+    let keys = |test| tested(&cells, Family::Float, test).unwrap();
+    assert_eq!(
+        keys(Test::Compare(Comparison::Greater, text("1"))),
+        ["1.5", "1e3"]
+    );
+    assert_eq!(keys(Test::NotBetween(text("0"), text("2"))), ["1e3"]);
+    assert_eq!(keys(Test::IsNotNull), ["1.5", "1e3", "NaN"]);
+}
+
+#[test]
+fn a_text_compares_by_code_points() {
+    let cells = [Some("Zoé"), Some("éa"), Some("a"), None];
+    let keys = |test| tested(&cells, Family::Other, test).unwrap();
+    assert_eq!(
+        keys(Test::Compare(Comparison::Greater, text("Zz"))),
+        ["a", "éa"]
+    );
+    assert_eq!(keys(Test::Between(text("Z"), text("a"))), ["Zoé", "a"]);
+}
+
+#[test]
+fn a_cell_that_is_no_number_stops_a_comparison_when_its_row_stays() {
+    let huge = "9".repeat(40);
+    let cells = [Some("1"), Some("x"), Some(huge.as_str())];
+    let mut engine = single(&cells, Family::Exact);
+    let request = Request {
+        rows: vec![0.into()],
+        filters: vec![Filter::Column {
+            level: 0.into(),
+            test: Test::Compare(Comparison::Greater, text("0")),
+        }],
+        ..Request::default()
+    };
+    assert_eq!(
+        engine.compute(&request).unwrap_err(),
+        Error::Number {
+            column: 0,
+            error: NumberError::Invalid { row: 1 },
+        }
+    );
+    engine.set_kept(Some(vec![0, 2])).unwrap();
+    assert_eq!(
+        engine.compute(&request).unwrap_err(),
+        Error::Number {
+            column: 0,
+            error: NumberError::TooLarge { row: 2 },
+        }
+    );
+    engine.set_kept(Some(vec![0])).unwrap();
+    assert_eq!(labels_of(&engine, &request).unwrap(), ["1"]);
+    assert_eq!(
+        tested(
+            &cells,
+            Family::Exact,
+            Test::Compare(Comparison::Equal, text("x"))
+        ),
+        Err(Error::FilterOperand { filter: 0 })
+    );
+}
+
+#[test]
+fn a_list_can_leave_out_its_values_as_not_in_does() {
+    let engine = single(&[Some("a"), Some("b"), None], Family::Other);
+    let keys = |values: &[Option<&str>]| {
+        labels_of(
+            &engine,
+            &Request {
+                rows: vec![0.into()],
+                filters: vec![left_out(0, values)],
+                ..Request::default()
+            },
+        )
+        .unwrap()
+    };
+    assert_eq!(keys(&[Some("a")]), ["b"]);
+    assert!(keys(&[None]).is_empty());
+    assert!(keys(&[Some("a"), None]).is_empty());
+}
+
+#[test]
+fn a_date_compares_in_the_order_of_time_and_stops_outside_of_the_calendar() {
+    let cells = [
+        Some("2026-01-15"),
+        Some("2026-03-01"),
+        Some("0000-00-00"),
+        None,
+    ];
+    let january = Filter::Column {
+        level: 0.into(),
+        test: Test::Between(text("2026-01-01"), text("2026-01-31")),
+    };
+    let engine = single(&cells, Family::Date);
+    let keys = |filters| {
+        labels_of(
+            &engine,
+            &Request {
+                rows: vec![0.into()],
+                filters,
+                ..Request::default()
+            },
+        )
+    };
+    assert_eq!(
+        keys(vec![january.clone()]),
+        Err(Error::InvalidDate { column: 0, row: 2 })
+    );
+    // A list without a precision comes first, wherever it stands: it leaves out
+    // the cell that the comparison cannot read.
+    let without_zero = left_out(0, &[Some("0000-00-00")]);
+    assert_eq!(
+        keys(vec![january.clone(), without_zero.clone()]).unwrap(),
+        ["2026-01-15"]
+    );
+    assert_eq!(keys(vec![without_zero, january]).unwrap(), ["2026-01-15"]);
+    // `IS NULL` reads no date.
+    assert_eq!(
+        tested(&cells, Family::Date, Test::IsNull).unwrap(),
+        ["NULL"]
+    );
+    assert_eq!(
+        tested(
+            &cells,
+            Family::Date,
+            Test::Compare(Comparison::Less, text("2026-02-30"))
+        ),
+        Err(Error::FilterOperand { filter: 0 })
+    );
+}
+
+#[test]
+fn an_instant_compares_with_a_whole_instant_whatever_the_zeros_of_its_fraction() {
+    let cells = [
+        Some("2026-01-15 10:30:00.500"),
+        Some("2026-01-15 23:59:59.000"),
+    ];
+    let keys = |test| tested(&cells, Family::Datetime, test);
+    assert_eq!(
+        keys(Test::Compare(
+            Comparison::Equal,
+            text("2026-01-15 10:30:00.5")
+        ))
+        .unwrap(),
+        ["2026-01-15 10:30:00.500"]
+    );
+    assert_eq!(
+        keys(Test::Compare(
+            Comparison::Equal,
+            text("2026-01-15 23:59:59")
+        ))
+        .unwrap(),
+        ["2026-01-15 23:59:59.000"]
+    );
+    assert_eq!(
+        keys(Test::Between(text("2026-01-15"), text("2026-01-16"))),
+        Err(Error::FilterOperand { filter: 0 })
+    );
+}
+
+#[test]
+fn an_hour_outside_of_the_day_stops_a_comparison() {
+    let cells = [Some("10:30:00"), Some("25:00:00")];
+    let keys = |test| tested(&cells, Family::Time, test);
+    assert_eq!(
+        keys(Test::Compare(Comparison::Less, text("11:00:00"))),
+        Err(Error::InvalidDate { column: 0, row: 1 })
+    );
+    assert_eq!(
+        keys(Test::Compare(Comparison::Less, text("25:00:00"))),
+        Err(Error::FilterOperand { filter: 0 })
+    );
+    assert_eq!(keys(Test::IsNotNull).unwrap(), ["10:30:00", "25:00:00"]);
+}
+
+#[test]
+fn a_filter_reads_a_precision_of_the_dates() {
+    let cells = [
+        Some("2026-01-15 10:00:00"),
+        Some("2026-03-31 23:59:59"),
+        Some("2026-04-01 00:00:00"),
+        Some("2027-01-01 00:00:00"),
+        None,
+    ];
+    let engine = single(&cells, Family::Datetime);
+    let at = |precision| Level {
+        column: 0,
+        precision: Some(precision),
+    };
+    let rows_kept = |filter| {
+        let request = Request {
+            rows: vec![0.into()],
+            filters: vec![filter],
+            ..Request::default()
+        };
+        engine.compute(&request).map(|table| table.selected_rows())
+    };
+    let month = at(Precision::Month);
+    // March keeps all its days, up to its last second.
+    assert_eq!(
+        rows_kept(Filter::Column {
+            level: month,
+            test: Test::Between(text("2026-01"), text("2026-03")),
+        }),
+        Ok(2)
+    );
+    // The ISO year of 2027-01-01 is 2026.
+    assert_eq!(
+        rows_kept(Filter::Column {
+            level: at(Precision::Year),
+            test: Test::Compare(Comparison::Equal, text("2026")),
+        }),
+        Ok(4)
+    );
+    assert_eq!(
+        rows_kept(Filter::Column {
+            level: at(Precision::Quarter),
+            test: Test::Compare(Comparison::LessOrEqual, text("2026-T1")),
+        }),
+        Ok(2)
+    );
+    assert_eq!(
+        rows_kept(Filter::Values {
+            level: month,
+            values: vec![Some(text("2026-04")), None],
+            excluded: false,
+        }),
+        Ok(2)
+    );
+    assert_eq!(
+        rows_kept(Filter::Values {
+            level: month,
+            values: vec![Some(text("2026-04"))],
+            excluded: true,
+        }),
+        Ok(3)
+    );
+    assert_eq!(
+        rows_kept(Filter::Column {
+            level: month,
+            test: Test::IsNull,
+        }),
+        Ok(1)
+    );
+    assert_eq!(
+        rows_kept(Filter::Column {
+            level: month,
+            test: Test::Compare(Comparison::Equal, text("2026-1")),
+        }),
+        Err(Error::FilterOperand { filter: 0 })
+    );
+}
+
+#[test]
+fn a_precision_stops_a_filter_on_a_cell_outside_of_the_calendar_unless_a_list_leaves_it_out() {
+    let cells = [Some("2026-01-15"), Some("0000-00-00"), None];
+    let engine = single(&cells, Family::Date);
+    let month = Level {
+        column: 0,
+        precision: Some(Precision::Month),
+    };
+    let keys = |filters| {
+        labels_of(
+            &engine,
+            &Request {
+                rows: vec![0.into()],
+                filters,
+                ..Request::default()
+            },
+        )
+    };
+    let is_null = Filter::Column {
+        level: month,
+        test: Test::IsNull,
+    };
+    assert_eq!(
+        keys(vec![is_null.clone()]),
+        Err(Error::InvalidDate { column: 0, row: 1 })
+    );
+    assert_eq!(
+        keys(vec![Filter::Values {
+            level: month,
+            values: vec![Some(text("2026-01"))],
+            excluded: false,
+        }]),
+        Err(Error::InvalidDate { column: 0, row: 1 })
+    );
+    assert_eq!(
+        keys(vec![is_null, left_out(0, &[Some("0000-00-00")])]),
+        Ok(vec![])
+    );
+}
+
+/// Keys of the rows a test of a measure of column 1 keeps, grouped by column 0.
+fn kept_by_test(engine: &Engine, measure: Measure, test: Test) -> Result<Vec<String>, Error> {
+    labels_of(
+        engine,
+        &Request {
+            rows: vec![0.into()],
+            filters: vec![Filter::Measure {
+                measure,
+                levels: vec![0.into()],
+                test,
+            }],
+            ..Request::default()
+        },
+    )
+}
+
+#[test]
+fn a_filter_on_a_measure_takes_each_test() {
+    let engine = pairs(
+        &[
+            ("a", Some("1")),
+            ("b", Some("5")),
+            ("c", Some("10")),
+            ("d", None),
+        ],
+        Family::Exact,
+    );
+    let keys = |test| kept_by_test(&engine, Measure::Sum(1), test).unwrap();
+    assert_eq!(keys(Test::Between(text("1"), text("5"))), ["a", "b"]);
+    assert_eq!(keys(Test::NotBetween(text("1"), text("5"))), ["c"]);
+    assert!(keys(Test::Between(text("10"), text("1"))).is_empty());
+    assert_eq!(keys(Test::IsNull), ["d"]);
+    assert_eq!(keys(Test::IsNotNull), ["a", "b", "c"]);
+}
+
+#[test]
+fn an_extreme_outside_of_the_calendar_stops_a_comparison() {
+    let engine = pairs(
+        &[("a", Some("0000-00-00")), ("b", Some("2026-01-15"))],
+        Family::Date,
+    );
+    let keys = |test| kept_by_test(&engine, Measure::Min(1), test);
+    assert_eq!(
+        keys(Test::Compare(Comparison::Greater, text("2026-01-01"))),
+        Err(Error::InvalidDate { column: 1, row: 0 })
+    );
+    assert_eq!(keys(Test::IsNotNull).unwrap(), ["a", "b"]);
+    assert_eq!(
+        keys(Test::Compare(Comparison::Greater, text("abc"))),
+        Err(Error::FilterOperand { filter: 0 })
+    );
+}
+
+#[test]
+fn the_values_of_a_list_can_be_the_periods_of_a_precision() {
+    let cells = [
+        Some("2026-03-15"),
+        Some("0000-00-00"),
+        None,
+        Some("2026-01-15"),
+    ];
+    let engine = single(&cells, Family::Date);
+    let month = Level {
+        column: 0,
+        precision: Some(Precision::Month),
+    };
+    assert_eq!(
+        engine.distinct_at(month).unwrap(),
+        [None, Some("2026-01"), Some("2026-03")]
+    );
+    assert_eq!(engine.distinct_at(0.into()).unwrap(), cells);
+    assert_eq!(
+        engine.distinct_at(9.into()).unwrap_err(),
+        Error::UnknownColumn(9)
+    );
+}
+
+#[test]
+fn a_date_column_is_no_column_of_numbers() {
+    let engine = pairs(&[("a", Some("2026-01-15"))], Family::Date);
+    let request = Request {
+        measures: vec![Measure::Sum(1)],
+        ..Request::default()
+    };
+    assert_eq!(
+        engine.compute(&request).unwrap_err(),
+        Error::NotNumeric { measure: 0 }
+    );
+    let extreme = Request {
+        measures: vec![Measure::Max(1)],
+        ..Request::default()
+    };
+    assert_eq!(
+        flat(&engine, &engine.compute(&extreme).unwrap(), &[], &["m"]),
+        "m\n2026-01-15"
     );
 }

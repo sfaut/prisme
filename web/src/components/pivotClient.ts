@@ -10,6 +10,7 @@
 
 import { toRaw } from 'vue'
 
+import type { DatePrecision } from '@/api/generated/DatePrecision'
 import type { TypeFamily } from '@/api/generated/TypeFamily'
 import type { Cell, QueryResult } from '@/api/querySession'
 
@@ -267,14 +268,16 @@ export class PivotClient {
   }
 
   /**
-   * Reads the distinct values of a column, in the order of the grid.
+   * Reads the distinct values of a column, in the order of the grid, or the periods of a precision
+   * of its dates, in the order of time.
    *
    * @param column Index of the column.
+   * @param precision What the column keeps of its dates.
    * @throws {PivotError} If the engine refuses it, or refused the copy.
    */
-  async values(column: number): Promise<Cell[]> {
+  async values(column: number, precision: DatePrecision = 'none'): Promise<Cell[]> {
     await this.loaded
-    const answer = await this.ask({ type: 'values', id: this.nextId++, column })
+    const answer = await this.ask({ type: 'values', id: this.nextId++, column, precision })
     if (answer.type !== 'values') {
       throw new Error(`Pivot client: unexpected answer ${answer.type}`)
     }

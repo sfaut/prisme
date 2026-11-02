@@ -347,13 +347,17 @@ export function engineRequest(config: PivotConfig): PivotRequest {
     items.map(({ column, precision }): PivotRequestLevel => ({ column, precision }))
   const filter = (item: PivotFilter): PivotRequestFilter =>
     item.kind === 'values'
-      ? { kind: 'values', column: item.column, values: [...item.values] }
+      ? {
+          kind: 'values',
+          level: { column: item.column, precision: 'none' },
+          values: [...item.values],
+          excluded: false,
+        }
       : {
           kind: 'measure',
           measure: { aggregate: item.aggregate, column: item.column },
           levels: levels(filterLevels(config, item)),
-          comparison: item.comparison,
-          operand: item.operand,
+          test: { condition: item.comparison, operand: item.operand, upper: '' },
         }
   return {
     rows: levels(config.rows),

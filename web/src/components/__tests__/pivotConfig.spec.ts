@@ -775,7 +775,14 @@ describe('the filters', () => {
       const request = engineRequest(
         filtered(values(0, []), values(1, ['Lille', null]), above({ operand: '' })),
       )
-      expect(request.filters).toEqual([{ kind: 'values', column: 1, values: ['Lille', null] }])
+      expect(request.filters).toEqual([
+        {
+          kind: 'values',
+          level: { column: 1, precision: 'none' },
+          values: ['Lille', null],
+          excluded: false,
+        },
+      ])
     })
 
     it('copies the values, which are reactive', () => {
@@ -794,8 +801,7 @@ describe('the filters', () => {
           { column: 0, precision: 'none' },
           { column: 1, precision: 'none' },
         ],
-        comparison: 'greater',
-        operand: '100',
+        test: { condition: 'greater', operand: '100', upper: '' },
       })
     })
 

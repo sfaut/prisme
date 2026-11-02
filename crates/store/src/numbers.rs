@@ -167,6 +167,11 @@ impl Approx {
     }
 }
 
+/// Is a text an exact number, whatever its number of digits?
+pub fn is_exact(text: &str) -> bool {
+    parts(text).is_some()
+}
+
 /// Reads an exact number written as text, with its scale: `12.50` gives 1250
 /// and 2. `None` for any other text, or beyond 128 bits.
 pub fn parse_exact(text: &str) -> Option<(i128, u32)> {

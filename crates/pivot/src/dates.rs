@@ -11,8 +11,14 @@
 //! hold (`0000-00-00`, `2026-03-00`, `2026-02-30`) and which the servers read
 //! each in their own way (`docs/SQL-COMPARISON.md`, section 3.12), a date before
 //! the Christian era (PostgreSQL, DuckDB), `infinity`, any other text.
+//!
+//! A filter compares dates, instants, hours and periods as their text, once their
+//! form is checked (`comparable`, `is_label`): that form makes the order of the
+//! text the order of time.
 
 use prisme_store::{Dictionary, FxMap, TextColumn};
+
+use crate::Family;
 
 /// What a level keeps of the dates of its column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -128,6 +134,74 @@ impl CellDate {
     }
 }
 
+/// Is a text an hour of the day, `HH:MM:SS` with an optional fraction? MySQL and
+/// MariaDB can hold others, such as `25:00:00` or `-120:00:00`.
+fn is_time(text: &str) -> bool {
+    let (clock, fraction) = match text.split_once('.') {
+        Some((clock, fraction)) => (clock, Some(fraction)),
+        None => (text, None),
+    };
+    let mut fields = clock.split(':');
+    let mut field = |largest: i64| {
+        fields
+            .next()
+            .filter(|field| field.len() == 2)
+            .and_then(digits)
+            .is_some_and(|value| value <= largest)
+    };
+    field(23)
+        && field(59)
+        && field(59)
+        && clock.len() == 8
+        && fraction.is_none_or(|digits| {
+            !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+        })
+}
+
+/// Text of a date, an instant or an hour that compares in the order of time: the
+/// cell without the zeros that end its fraction, so that `10:30:00.50` equals
+/// `10:30:00.5`. `None` for a text outside of the calendar or of the day.
+pub fn comparable(family: Family, cell: &str) -> Option<&str> {
+    let date = |text: &str| text.len() == 10 && CellDate::parse(text).is_some();
+    let valid = match family {
+        Family::Date => date(cell),
+        Family::Datetime => {
+            date(cell.get(..10)?) && cell.get(10..11)? == " " && cell.get(11..).is_some_and(is_time)
+        }
+        Family::Time => is_time(cell),
+        _ => true,
+    };
+    valid.then(|| {
+        if family != Family::Date && cell.contains('.') {
+            cell.trim_end_matches('0').trim_end_matches('.')
+        } else {
+            cell
+        }
+    })
+}
+
+/// Is a text a label a precision can give? A period that does not hold a date of
+/// a column, such as a week 53 of a year of 52 weeks, is one: it keeps nothing.
+pub fn is_label(precision: Precision, text: &str) -> bool {
+    let (Some(year), Some(rest)) = (text.get(..4), text.get(4..)) else {
+        return false;
+    };
+    let in_range = |field: Option<&str>, length: usize, largest: i64| {
+        field
+            .filter(|field| field.len() == length)
+            .and_then(digits)
+            .is_some_and(|value| (1..=largest).contains(&value))
+    };
+    in_range(Some(year), 4, 9999)
+        && match precision {
+            Precision::Year => rest.is_empty(),
+            Precision::Quarter => in_range(rest.strip_prefix("-T"), 1, 4),
+            Precision::Month => in_range(rest.strip_prefix('-'), 2, 12),
+            Precision::Week => in_range(rest.strip_prefix("-S"), 2, 53),
+            Precision::Date => text.len() == 10 && CellDate::parse(text).is_some(),
+        }
+}
+
 /// Label of a period.
 fn label(precision: Precision, (year, rank): Period) -> String {
     match precision {
@@ -217,7 +291,27 @@ impl DerivedLevel {
 
     /// Label of the period of a row, `None` for NULL.
     pub fn label(&self, row: u32) -> Option<&str> {
-        self.labels[self.dictionary.codes[row as usize] as usize].as_deref()
+        self.code_label(self.dictionary.codes[row as usize])
+    }
+
+    /// Label of a code, `None` for NULL or for the cells outside of the calendar.
+    pub fn code_label(&self, code: u32) -> Option<&str> {
+        self.labels[code as usize].as_deref()
+    }
+
+    /// Is this the code of the cells outside of the calendar?
+    pub fn is_outside(&self, code: u32) -> bool {
+        self.outside == Some(code)
+    }
+
+    /// Labels of the periods in the order of time, NULL first, without the cells
+    /// outside of the calendar, which have no period to offer.
+    pub fn listed(&self) -> Vec<Option<&str>> {
+        let mut codes: Vec<u32> = (0..self.labels.len() as u32)
+            .filter(|&code| !self.is_outside(code))
+            .collect();
+        codes.sort_unstable_by_key(|&code| self.ranks[code as usize]);
+        codes.iter().map(|&code| self.code_label(code)).collect()
     }
 }
 
@@ -407,6 +501,92 @@ mod tests {
         assert_eq!(level.dictionary.codes, [0, 1, 2, 1]);
         // NULL, outside of the calendar, 2026-01.
         assert_eq!(level.ranks, [2, 1, 0]);
+    }
+
+    #[test]
+    fn the_periods_are_listed_in_the_order_of_time_without_the_cells_outside() {
+        let cells = [
+            Some("2026-03-15"),
+            Some("0000-00-00"),
+            None,
+            Some("2026-01-15"),
+        ];
+        assert_eq!(
+            level(&cells, Precision::Month).listed(),
+            [None, Some("2026-01"), Some("2026-03")]
+        );
+    }
+
+    #[test]
+    fn a_date_an_instant_or_an_hour_compares_in_its_form() {
+        for (family, cell, expected) in [
+            (Family::Date, "2026-01-15", Some("2026-01-15")),
+            (Family::Date, "0000-00-00", None),
+            (Family::Date, "2026-02-30", None),
+            (Family::Date, "2026-01-15 10:00:00", None),
+            (Family::Date, "infinity", None),
+            (
+                Family::Datetime,
+                "2026-01-15 10:30:00",
+                Some("2026-01-15 10:30:00"),
+            ),
+            (
+                Family::Datetime,
+                "2026-01-15 10:30:00.500",
+                Some("2026-01-15 10:30:00.5"),
+            ),
+            (
+                Family::Datetime,
+                "2026-01-15 10:30:00.000",
+                Some("2026-01-15 10:30:00"),
+            ),
+            (Family::Datetime, "2026-01-15", None),
+            (Family::Datetime, "0000-00-00 00:00:00", None),
+            (Family::Datetime, "2026-01-15T10:30:00", None),
+            (Family::Datetime, "2026-01-15 10:30:00+01", None),
+            (Family::Time, "10:30:00", Some("10:30:00")),
+            (Family::Time, "10:30:00.10", Some("10:30:00.1")),
+            (Family::Time, "00:00:00", Some("00:00:00")),
+            (Family::Time, "23:59:59", Some("23:59:59")),
+            (Family::Time, "25:00:00", None),
+            (Family::Time, "-12:00:00", None),
+            (Family::Time, "100:00:00", None),
+            (Family::Time, "10:60:00", None),
+            (Family::Time, "10:30", None),
+            (Family::Time, "10:30:00.", None),
+            (Family::Time, "10:30:00.x", None),
+        ] {
+            assert_eq!(comparable(family, cell), expected, "{family:?} «{cell}»");
+        }
+    }
+
+    #[test]
+    fn a_label_has_the_form_of_its_precision() {
+        for (precision, text, expected) in [
+            (Precision::Year, "2026", true),
+            (Precision::Year, "0000", false),
+            (Precision::Year, "2026-01", false),
+            (Precision::Year, "26", false),
+            (Precision::Quarter, "2026-T1", true),
+            (Precision::Quarter, "2026-T5", false),
+            (Precision::Quarter, "2026-1", false),
+            (Precision::Month, "2026-12", true),
+            (Precision::Month, "2026-13", false),
+            (Precision::Month, "2026-1", false),
+            (Precision::Week, "2026-S53", true),
+            (Precision::Week, "2026-S54", false),
+            (Precision::Week, "2026-S00", false),
+            (Precision::Week, "2026-03", false),
+            (Precision::Date, "2026-01-15", true),
+            (Precision::Date, "2026-02-30", false),
+            (Precision::Date, "2026-01-15 10:00:00", false),
+        ] {
+            assert_eq!(
+                is_label(precision, text),
+                expected,
+                "{precision:?} «{text}»"
+            );
+        }
     }
 
     #[test]

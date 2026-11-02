@@ -22,7 +22,7 @@ use std::slice;
 
 use prisme_pivot::{
     AxisOrder, Comparison, Engine, Family, Filter, Level, Measure, Order, Precision, Request,
-    Table, ValueOrder,
+    Table, Test, ValueOrder,
 };
 use prisme_store::Store;
 
@@ -102,12 +102,15 @@ fn answer(state: &mut State, write: impl FnOnce(&mut String, &State)) -> usize {
     state.output.len()
 }
 
-/// Family of a column from its code: 1 exact numbers, 2 floats, any other
-/// code for the other families.
+/// Family of a column from its code: 1 exact numbers, 2 floats, 3 dates,
+/// 4 instants, 5 hours, any other code for the other families.
 fn family(code: u8) -> Family {
     match code {
         1 => Family::Exact,
         2 => Family::Float,
+        3 => Family::Date,
+        4 => Family::Datetime,
+        5 => Family::Time,
         _ => Family::Other,
     }
 }
@@ -204,17 +207,21 @@ pub extern "C" fn finish() -> usize {
     })
 }
 
-/// Writes the distinct values of column `column`, by code: the page ranks
-/// them in the order of the grid (`set_ranks`).
+/// Writes the distinct values of a column at a precision (see `level`). As they
+/// are, by code: the page ranks them in the order of the grid (`set_ranks`). At a
+/// precision, the labels of the periods in the order of time.
 #[unsafe(no_mangle)]
-pub extern "C" fn distinct(column: usize) -> usize {
+pub extern "C" fn distinct(column: u32, precision: u32) -> usize {
     STATE.with_borrow_mut(|state| {
-        answer(state, |json, state| match &state.engine {
-            Some(engine) => match engine.distinct(column) {
-                Ok(values) => json::distinct(json, &values),
-                Err(error) => json::error(json, &error),
-            },
-            None => json::state_error(json, "no_result", None),
+        answer(state, |json, state| {
+            match (&state.engine, level(column, precision)) {
+                (Some(engine), Some(level)) => match engine.distinct_at(level) {
+                    Ok(values) => json::distinct(json, &values),
+                    Err(error) => json::error(json, &error),
+                },
+                (None, _) => json::state_error(json, "no_result", None),
+                (_, None) => json::state_error(json, "request", None),
+            }
         })
     })
 }
@@ -328,23 +335,46 @@ fn comparison(code: u32) -> Option<Comparison> {
     }
 }
 
-/// Reads filters, up to the end of the words. A filter on values: 0, the column,
-/// the number of values, and each value (see `path_step`). A filter on a measure:
-/// 1, the measure (see `measure`), the number of its levels and each level (see
-/// `level`), the comparison (see `comparison`), and the operand (see
-/// `path_step`), which NULL cannot be.
+/// Reads an operand (see `path_step`), which NULL cannot be.
+fn operand(words: &mut impl Iterator<Item = u32>) -> Option<String> {
+    path_step(words)?
+}
+
+/// Reads a test: a comparison (see `comparison`) and its operand; 6 `BETWEEN` or
+/// 7 `NOT BETWEEN` and its two bounds; 8 `IS NULL`; 9 `IS NOT NULL`. `None` for
+/// another code.
+fn test(words: &mut impl Iterator<Item = u32>) -> Option<Test> {
+    Some(match words.next()? {
+        6 => Test::Between(operand(words)?, operand(words)?),
+        7 => Test::NotBetween(operand(words)?, operand(words)?),
+        8 => Test::IsNull,
+        9 => Test::IsNotNull,
+        code => Test::Compare(comparison(code)?, operand(words)?),
+    })
+}
+
+/// Reads filters, up to the end of the words. A filter on a list of values: 0, the
+/// level (see `level`), a word not 0 for `NOT IN`, the number of values, and each
+/// value (see `path_step`). A filter on a measure: 1, the measure (see `measure`),
+/// the number of its levels and each level, and the test (see `test`). A filter
+/// on a column: 2, the level and the test.
 fn filters(words: &[u32]) -> Option<Vec<Filter>> {
     let mut words = words.iter().copied();
     let mut filters = Vec::new();
     while let Some(kind) = words.next() {
         filters.push(match kind {
             0 => {
-                let column = words.next()? as usize;
+                let level = level(words.next()?, words.next()?)?;
+                let excluded = words.next()? != 0;
                 let count = words.next()?;
                 let values = (0..count)
                     .map(|_| path_step(&mut words))
                     .collect::<Option<Vec<_>>>()?;
-                Filter::Values { column, values }
+                Filter::Values {
+                    level,
+                    values,
+                    excluded,
+                }
             }
             1 => {
                 let measure = measure(words.next()?, words.next()?)?;
@@ -352,15 +382,17 @@ fn filters(words: &[u32]) -> Option<Vec<Filter>> {
                 let levels = (0..count)
                     .map(|_| level(words.next()?, words.next()?))
                     .collect::<Option<Vec<_>>>()?;
-                let comparison = comparison(words.next()?)?;
-                let operand = path_step(&mut words)??;
+                let test = test(&mut words)?;
                 Filter::Measure {
                     measure,
                     levels,
-                    comparison,
-                    operand,
+                    test,
                 }
             }
+            2 => Filter::Column {
+                level: level(words.next()?, words.next()?)?,
+                test: test(&mut words)?,
+            },
             _ => return None,
         });
     }
@@ -576,8 +608,10 @@ mod tests {
         assert_eq!(append_column(1, &[Some("1.5"), None, Some("2")]), 0);
         assert_eq!(finish(), 0);
 
-        let length = distinct(0);
+        let length = distinct(0, 0);
         assert_eq!(output(length), r#"["Nord","Sud"]"#);
+        let length = distinct(0, 9);
+        assert_eq!(output(length), r#"{"error":{"kind":"request"}}"#);
         let ranks = [1u32, 0];
         // SAFETY: two ranks.
         let length = unsafe { set_ranks(0, ranks.as_ptr(), 2) };
@@ -719,18 +753,40 @@ mod tests {
     #[test]
     fn a_request_reads_its_filters() {
         let text = "é";
-        // Measure: COUNT(*). Filters: column 2 IN (NULL, 'é'), then SUM(column 4)
-        // >= 'é' at the level of column 3, by month.
-        let mut words = vec![0u32, 0, 1, 0, 0, 0, 2, 2, NULL_STEP, text.len() as u32];
-        words.extend(text.bytes().map(u32::from));
+        let bytes = || text.bytes().map(u32::from);
+        // Measure: COUNT(*). Filters: column 2 NOT IN (NULL, 'é'), SUM(column 4)
+        // >= 'é' at the level of column 3, by month, then column 3 by year BETWEEN
+        // 'é' AND 'é', and column 1 IS NOT NULL.
+        let mut words = vec![
+            0u32,
+            0,
+            1,
+            0,
+            0,
+            0,
+            2,
+            0,
+            1,
+            2,
+            NULL_STEP,
+            text.len() as u32,
+        ];
+        words.extend(bytes());
         words.extend([1, 2, 4, 1, 3, 3, 5, text.len() as u32]);
-        words.extend(text.bytes().map(u32::from));
+        words.extend(bytes());
+        words.extend([2, 3, 1, 6, text.len() as u32]);
+        words.extend(bytes());
+        words.push(text.len() as u32);
+        words.extend(bytes());
+        words.extend([2, 1, 0, 9]);
+        let value = || text.to_owned();
         assert_eq!(
             request(&words).unwrap().filters,
             [
                 Filter::Values {
-                    column: 2,
-                    values: vec![None, Some(text.to_owned())],
+                    level: 2.into(),
+                    values: vec![None, Some(value())],
+                    excluded: true,
                 },
                 Filter::Measure {
                     measure: Measure::Sum(4),
@@ -738,20 +794,51 @@ mod tests {
                         column: 3,
                         precision: Some(Precision::Month),
                     }],
-                    comparison: Comparison::GreaterOrEqual,
-                    operand: text.to_owned(),
+                    test: Test::Compare(Comparison::GreaterOrEqual, value()),
+                },
+                Filter::Column {
+                    level: Level {
+                        column: 3,
+                        precision: Some(Precision::Year),
+                    },
+                    test: Test::Between(value(), value()),
+                },
+                Filter::Column {
+                    level: 1.into(),
+                    test: Test::IsNotNull,
                 },
             ]
         );
     }
 
     #[test]
+    fn a_request_reads_each_test() {
+        let tested = |words: &[u32]| {
+            let mut all = vec![0u32, 0, 1, 0, 0, 2, 0, 0];
+            all.extend_from_slice(words);
+            match request(&all).unwrap().filters.remove(0) {
+                Filter::Column { test, .. } => test,
+                other => panic!("{other:?}"),
+            }
+        };
+        let a = || "a".to_owned();
+        assert_eq!(tested(&[0, 1, 97]), Test::Compare(Comparison::Equal, a()));
+        assert_eq!(tested(&[6, 1, 97, 1, 97]), Test::Between(a(), a()));
+        assert_eq!(tested(&[7, 1, 97, 1, 97]), Test::NotBetween(a(), a()));
+        assert_eq!(tested(&[8]), Test::IsNull);
+        assert_eq!(tested(&[9]), Test::IsNotNull);
+    }
+
+    #[test]
     fn filters_that_do_not_match_their_words_are_refused() {
-        // An unknown kind, a missing value, an unknown comparison, a NULL operand.
+        // An unknown kind, a missing value, an unknown test, a NULL operand, a
+        // missing bound, an unknown precision.
         assert!(request(&[0, 0, 1, 0, 0, 7]).is_none());
-        assert!(request(&[0, 0, 1, 0, 0, 0, 2, 1]).is_none());
-        assert!(request(&[0, 0, 1, 0, 0, 1, 0, 0, 0, 6, 0]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 2, 0, 0, 1]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 1, 0, 0, 0, 10, 0]).is_none());
         assert!(request(&[0, 0, 1, 0, 0, 1, 0, 0, 0, 0, NULL_STEP]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 2, 0, 0, 6, 1, 97]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 2, 0, 9, 8]).is_none());
     }
 
     #[test]

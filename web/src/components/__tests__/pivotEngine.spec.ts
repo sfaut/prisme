@@ -10,7 +10,9 @@ import type { Cell } from '@/api/querySession'
 import {
   type PivotOrder,
   type PivotRequest,
+  type PivotRequestFilter,
   type PivotRequestLevel,
+  type PivotRequestTest,
   type WorkerState,
   LABEL_ORDER,
   PivotEngine,
@@ -85,12 +87,12 @@ describe('utf8Length', () => {
 })
 
 describe('familyCode', () => {
-  it('tells exact numbers and floats from the other families', () => {
+  it('tells numbers, floats, dates, instants and hours from the other families', () => {
     expect(
-      ['integer', 'decimal', 'float', 'text', 'date'].map((family) =>
+      ['integer', 'decimal', 'float', 'date', 'datetime', 'time', 'text', 'year'].map((family) =>
         familyCode(family as TypeFamily),
       ),
-    ).toEqual([1, 1, 2, 0, 0])
+    ).toEqual([1, 1, 2, 3, 4, 5, 0, 0])
   })
 })
 
@@ -609,13 +611,37 @@ describe('the filters', () => {
       columns: [],
       measures: [],
       filters: [
-        { kind: 'values', column: 2, values: [null, 'ab'] },
+        {
+          kind: 'values',
+          level: { column: 2, precision: 'none' },
+          values: [null, 'ab'],
+          excluded: true,
+        },
         {
           kind: 'measure',
           measure: { aggregate: 'sum', column: 4 },
           levels: [{ column: 1, precision: 'month' }],
-          comparison: 'greater_or_equal',
-          operand: '10',
+          test: { condition: 'greater_or_equal', operand: '10', upper: '' },
+        },
+        {
+          kind: 'column',
+          level: { column: 3, precision: 'year' },
+          test: { condition: 'between', operand: '1', upper: '2' },
+        },
+        {
+          kind: 'column',
+          level: { column: 3, precision: 'none' },
+          test: { condition: 'not_between', operand: '1', upper: '2' },
+        },
+        {
+          kind: 'column',
+          level: { column: 3, precision: 'none' },
+          test: { condition: 'is_null', operand: 'x', upper: '' },
+        },
+        {
+          kind: 'column',
+          level: { column: 3, precision: 'none' },
+          test: { condition: 'is_not_null', operand: '', upper: '' },
         },
       ],
     })
@@ -625,6 +651,8 @@ describe('the filters', () => {
       0,
       0,
       2,
+      0,
+      1,
       2,
       0xffff_ffff,
       ...text('ab'),
@@ -636,6 +664,26 @@ describe('the filters', () => {
       3,
       5,
       ...text('10'),
+      2,
+      3,
+      1,
+      6,
+      ...text('1'),
+      ...text('2'),
+      2,
+      3,
+      0,
+      7,
+      ...text('1'),
+      ...text('2'),
+      2,
+      3,
+      0,
+      8,
+      2,
+      3,
+      0,
+      9,
     ])
   })
 
@@ -647,8 +695,7 @@ describe('the filters', () => {
           kind: 'measure',
           measure: { aggregate: 'sum', column: 4 },
           levels: [level(1)],
-          comparison: 'greater',
-          operand: '100',
+          test: { condition: 'greater', operand: '100', upper: '' },
         },
       ]),
     ).toEqual([
@@ -660,12 +707,63 @@ describe('the filters', () => {
 
   it('keeps the rows of some values, NULL included', async () => {
     const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
-    expect(lines(engine, [{ kind: 'values', column: 0, values: ['Nord'] }])).toEqual([
+    const listed = (values: Cell[], excluded = false): PivotRequestFilter => ({
+      kind: 'values',
+      level: level(0),
+      values,
+      excluded,
+    })
+    expect(lines(engine, [listed(['Nord'])])).toEqual([
       ['Arras', '100'],
       ['Lille', '370'],
       [null, '470'],
     ])
-    expect(lines(engine, [{ kind: 'values', column: 0, values: ['Nord', 'Sud'] }])).toHaveLength(5)
+    expect(lines(engine, [listed(['Nord', 'Sud'])])).toHaveLength(5)
+    expect(lines(engine, [listed(['Nord'], true)])).toEqual([
+      ['Nice', '350'],
+      ['Toulon', '30'],
+      [null, '380'],
+    ])
+  })
+
+  it('keeps the rows whose value passes a test, numbers by value', async () => {
+    const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
+    const tested = (test: PivotRequestTest) =>
+      lines(engine, [{ kind: 'column', level: level(4), test }])
+    expect(tested({ condition: 'between', operand: '30', upper: '40' })).toEqual([
+      ['Arras', '40'],
+      ['Toulon', '30'],
+      [null, '70'],
+    ])
+    expect(tested({ condition: 'greater', operand: '140', upper: '' })).toEqual([
+      ['Lille', '150'],
+      [null, '150'],
+    ])
+    expect(tested({ condition: 'is_null', operand: '', upper: '' })).toEqual([[null, null]])
+  })
+
+  it('reads a precision of the dates, for a test and for the list of its values', async () => {
+    const dates = [['2026-01-15'], ['2026-03-31'], ['2026-04-01'], ['0000-00-00'], [null]]
+    const engine = await loaded(dates, ['date'])
+    expect(engine.values(0)).toEqual([null, '0000-00-00', '2026-01-15', '2026-03-31', '2026-04-01'])
+    expect(engine.values(0, 'month')).toEqual([null, '2026-01', '2026-03', '2026-04'])
+    const shape = (filters: PivotRequestFilter[]) =>
+      engine.compute({ rows: [], columns: [], measures: [], filters })
+    const months: PivotRequestFilter = {
+      kind: 'column',
+      level: { column: 0, precision: 'month' },
+      test: { condition: 'between', operand: '2026-01', upper: '2026-03' },
+    }
+    expect(() => shape([months])).toThrowError(
+      expect.objectContaining({ failure: { kind: 'invalid_date', column: 0, row: 3 } }),
+    )
+    const withoutZero: PivotRequestFilter = {
+      kind: 'values',
+      level: { column: 0, precision: 'none' },
+      values: ['0000-00-00'],
+      excluded: true,
+    }
+    expect(shape([months, withoutZero]).rows).toBe(2)
   })
 
   it('computes again when a filter changes', async () => {
@@ -676,8 +774,7 @@ describe('the filters', () => {
           kind: 'measure',
           measure: { aggregate: 'sum', column: 4 },
           levels: [level(1)],
-          comparison: 'greater',
-          operand,
+          test: { condition: 'greater', operand, upper: '' },
         },
       ]).pop()?.[1]
     expect(totalOf('100')).toBe('720')
@@ -688,13 +785,12 @@ describe('the filters', () => {
     const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
     const refused = () =>
       lines(engine, [
-        { kind: 'values', column: 0, values: ['Nord'] },
+        { kind: 'values', level: level(0), values: ['Nord'], excluded: false },
         {
           kind: 'measure',
           measure: { aggregate: 'count_star', column: 0 },
           levels: [],
-          comparison: 'equal',
-          operand: 'abc',
+          test: { condition: 'equal', operand: 'abc', upper: '' },
         },
       ])
     expect(refused).toThrowError(
@@ -706,12 +802,12 @@ describe('the filters', () => {
     const engine = await loaded([['b'], [null], ['10'], ['9'], ['b']], ['text'])
     expect(engine.values(0)).toEqual([null, '9', '10', 'b'])
     const state: WorkerState = { engine, columns: 1, table: null }
-    expect(answerMessage(state, { type: 'values', id: 3, column: 0 })).toEqual({
+    expect(answerMessage(state, { type: 'values', id: 3, column: 0, precision: 'none' })).toEqual({
       type: 'values',
       id: 3,
       values: [null, '9', '10', 'b'],
     })
-    expect(answerMessage(state, { type: 'values', id: 4, column: 7 })).toEqual({
+    expect(answerMessage(state, { type: 'values', id: 4, column: 7, precision: 'none' })).toEqual({
       type: 'failure',
       id: 4,
       failure: expect.objectContaining({ kind: 'unknown_column' }),
