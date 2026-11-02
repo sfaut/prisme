@@ -460,7 +460,12 @@ describe('durations', () => {
  */
 const PIVOT: TabPivot = {
   fields: ['x'],
-  config: { rows: [{ column: 0, name: '', precision: 'none' }], columns: [], measures: [] },
+  config: {
+    rows: [{ column: 0, name: '', precision: 'none' }],
+    columns: [],
+    measures: [],
+    filters: [],
+  },
 }
 
 describe('a batch', () => {

@@ -1,20 +1,29 @@
 import { describe, expect, it } from 'vitest'
 
+import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
+import type { Cell } from '@/api/querySession'
+
 import {
   type DatePrecision,
   type NamedMeasure,
   type PivotConfig,
+  type PivotFilter,
   type PivotLevel,
+  type PivotMeasureFilter,
+  activeFilterPlace,
   addsNumbers,
   columnAt,
   defaultAggregate,
+  elementExpression,
   elementLabel,
   emptyConfig,
   engineOrder,
   engineRequest,
   fittedConfig,
+  hasTable,
   isEmptyConfig,
   measureExpression,
+  operandRefusal,
   placeColumn,
   precisionChoices,
   removeElement,
@@ -22,6 +31,7 @@ import {
   sameRequest,
   sameTarget,
   withAggregate,
+  withFilter,
   withLevelSort,
   withName,
   withPrecision,
@@ -118,12 +128,14 @@ describe('engineRequest', () => {
       rows: [level(0, 'Région')],
       columns: [level(2)],
       measures: [measure('sum', 4, 'CA')],
+      filters: [],
     }
     const request = engineRequest(config)
     expect(request).toEqual({
       rows: [{ column: 0, precision: 'none' }],
       columns: [{ column: 2, precision: 'none' }],
       measures: [{ aggregate: 'sum', column: 4 }],
+      filters: [],
     })
     expect(
       sameRequest(request, engineRequest(withName(config, { zone: 'rows', index: 0 }, 'R', NAMES))),
@@ -132,7 +144,7 @@ describe('engineRequest', () => {
   })
 
   it('asks for another table when a precision changes', () => {
-    const config: PivotConfig = { rows: [level(0)], columns: [], measures: [] }
+    const config: PivotConfig = { rows: [level(0)], columns: [], measures: [], filters: [] }
     const changed = withPrecision(config, { zone: 'rows', index: 0 }, 'month')
     expect(engineRequest(changed).rows).toEqual([{ column: 0, precision: 'month' }])
     expect(sameRequest(engineRequest(config), engineRequest(changed))).toBe(false)
@@ -172,6 +184,7 @@ describe('withPrecision', () => {
     rows: [level(0), level(1, 'Ville')],
     columns: [level(2)],
     measures: [measure('count', 3)],
+    filters: [],
   }
 
   it('changes the precision of a level only, which keeps its name', () => {
@@ -189,6 +202,7 @@ describe('withPrecision', () => {
       rows: [level(0, '', 'month'), level(1, 'Ville', 'week'), level(2, '', 'date')],
       columns: [level(3, '', 'none')],
       measures: [],
+      filters: [],
     }
     expect(zoneLabels(changed, 'rows', NAMES)).toEqual(['region (Mois)', 'Ville', 'annee (Date)'])
     expect(zoneLabels(changed, 'columns', NAMES)).toEqual(['trimestre'])
@@ -207,6 +221,7 @@ describe('elementLabel', () => {
       rows: [level(0, 'Région'), level(1)],
       columns: [],
       measures: [measure('sum', 4, 'CA'), measure('count_star', 0)],
+      filters: [],
     }
     expect(zoneLabels(config, 'rows', NAMES)).toEqual(['Région', 'ville'])
     expect(zoneLabels(config, 'measures', NAMES)).toEqual(['CA', 'COUNT(*)'])
@@ -220,6 +235,7 @@ describe('withName', () => {
       rows: [level(0)],
       columns: [level(2)],
       measures: [measure('sum', 4)],
+      filters: [],
     }
     const named = withName(config, { zone: 'measures', index: 0 }, '  CA ', NAMES)
     expect(named.measures).toEqual([measure('sum', 4, 'CA')])
@@ -243,6 +259,7 @@ describe('placeColumn', () => {
       rows: [level(1), level(0)],
       columns: [],
       measures: [measure('sum', 4)],
+      filters: [],
     })
     expect(isEmptyConfig(config)).toBe(false)
     expect(isEmptyConfig(emptyConfig())).toBe(true)
@@ -253,11 +270,13 @@ describe('placeColumn', () => {
       rows: [level(0, 'Région'), level(1)],
       columns: [level(2)],
       measures: [],
+      filters: [],
     }
     expect(placeColumn(config, 0, 'count', { zone: 'columns', index: 0 }, null)).toEqual({
       rows: [level(1)],
       columns: [level(0, 'Région'), level(2)],
       measures: [],
+      filters: [],
     })
     expect(placeColumn(config, 0, 'count', { zone: 'rows', index: 2 }, null).rows).toEqual([
       level(1),
@@ -266,7 +285,12 @@ describe('placeColumn', () => {
   })
 
   it('moves an element within its zone, the target counted before the move', () => {
-    const config: PivotConfig = { rows: [level(0), level(1), level(2)], columns: [], measures: [] }
+    const config: PivotConfig = {
+      rows: [level(0), level(1), level(2)],
+      columns: [],
+      measures: [],
+      filters: [],
+    }
     const from = { zone: 'rows' as const, index: 0 }
     const columns = (moved: PivotConfig) => moved.rows.map((item) => item.column)
     expect(columns(placeColumn(config, 0, 'count', { zone: 'rows', index: 2 }, from))).toEqual([
@@ -287,6 +311,7 @@ describe('placeColumn', () => {
       rows: [level(0, 'Région')],
       columns: [],
       measures: [measure('count_star', 1, 'Lignes'), measure('sum', 4, 'CA')],
+      filters: [],
     }
     const moved = placeColumn(
       config,
@@ -307,6 +332,7 @@ describe('placeColumn', () => {
       rows: [],
       columns: [],
       measures: [measure('count', 0), ...config.measures],
+      filters: [],
     })
     const fromMeasure = placeColumn(
       config,
@@ -319,6 +345,7 @@ describe('placeColumn', () => {
       rows: [level(0, 'Région')],
       columns: [level(4)],
       measures: [measure('count_star', 1, 'Lignes')],
+      filters: [],
     })
   })
 })
@@ -329,11 +356,13 @@ describe('removeElement', () => {
       rows: [level(0), level(1)],
       columns: [level(2)],
       measures: [measure('sum', 4)],
+      filters: [],
     }
     expect(removeElement(config, { zone: 'rows', index: 0 })).toEqual({
       rows: [level(1)],
       columns: [level(2)],
       measures: config.measures,
+      filters: [],
     })
     expect(removeElement(config, { zone: 'measures', index: 0 }).measures).toEqual([])
     expect(columnAt(config, { zone: 'columns', index: 0 })).toBe(2)
@@ -346,6 +375,7 @@ describe('fittedConfig', () => {
     rows: [level(0, 'Région')],
     columns: [level(1)],
     measures: [measure('sum', 4, 'Total'), measure('count_star', 2)],
+    filters: [],
   }
 
   it('gives the configuration itself when the columns are the same', () => {
@@ -358,6 +388,7 @@ describe('fittedConfig', () => {
       rows: [level(2, 'Région')],
       columns: [level(3)],
       measures: [measure('sum', 0, 'Total'), measure('count_star', 1)],
+      filters: [],
     })
   })
 
@@ -366,6 +397,7 @@ describe('fittedConfig', () => {
       rows: [],
       columns: [level(0)],
       measures: [measure('count_star', 0)],
+      filters: [],
     })
   })
 
@@ -375,11 +407,13 @@ describe('fittedConfig', () => {
       rows: [level(1)],
       columns: [],
       measures: [measure('count', 0)],
+      filters: [],
     }
     expect(fittedConfig({ fields, config: repeated }, ['x', 'id', 'id'], [])).toEqual({
       rows: [level(2)],
       columns: [],
       measures: [measure('count', 1)],
+      filters: [],
     })
     expect(fittedConfig({ fields, config: repeated }, ['id'], []).rows).toEqual([])
   })
@@ -395,6 +429,7 @@ describe('fittedConfig', () => {
       rows: [level(0, 'Jour', 'date')],
       columns: [level(1)],
       measures: [],
+      filters: [],
     }
     const typed = (family: 'date' | 'datetime' | 'text') => [
       { family, name: 'T' },
@@ -438,6 +473,7 @@ describe('withAggregate', () => {
       rows: [],
       columns: [],
       measures: [measure('sum', 4), measure('sum', 2, 'Années')],
+      filters: [],
     }
     expect(withAggregate(config, 1, 'count').measures).toEqual([
       measure('sum', 4),
@@ -455,13 +491,19 @@ describe('the sorts', () => {
     rows: [level(0), level(1)],
     columns: [level(2)],
     measures: [measure('sum', 4), measure('count', 4)],
+    filters: [],
     sort_lines: { path: ['2025'], measure: 1, descending: true },
     sort_columns: { path: ['Nord'], measure: 0, descending: false },
   }
 
   describe('engineOrder', () => {
     it('reads the labels in ascending order without any sort', () => {
-      const config: PivotConfig = { rows: [level(0)], columns: [level(2)], measures: [] }
+      const config: PivotConfig = {
+        rows: [level(0)],
+        columns: [level(2)],
+        measures: [],
+        filters: [],
+      }
       expect(engineOrder(config)).toEqual({
         rows: { descending: [], values: null },
         columns: { descending: [], values: null },
@@ -486,7 +528,7 @@ describe('the sorts', () => {
     })
 
     it('tells a level put back in ascending order from nothing', () => {
-      const config: PivotConfig = { rows: [level(0)], columns: [], measures: [] }
+      const config: PivotConfig = { rows: [level(0)], columns: [], measures: [], filters: [] }
       const back = withLevelSort(withLevelSort(config, 'rows', 0), 'rows', 0)
       expect(sameOrder(engineOrder(back), engineOrder(config))).toBe(true)
     })
@@ -500,7 +542,12 @@ describe('the sorts', () => {
 
   describe('withLevelSort', () => {
     it('inverts the direction of one level', () => {
-      const config: PivotConfig = { rows: [level(0), level(1)], columns: [], measures: [] }
+      const config: PivotConfig = {
+        rows: [level(0), level(1)],
+        columns: [],
+        measures: [],
+        filters: [],
+      }
       const once = withLevelSort(config, 'rows', 1)
       expect(once.rows).toEqual([level(0), { ...level(1), descending: true }])
       expect(withLevelSort(once, 'rows', 1).rows[1]?.descending).toBe(false)
@@ -521,7 +568,12 @@ describe('the sorts', () => {
 
   describe('withValueSort', () => {
     it('goes through ascending, descending, then none, as in the grid', () => {
-      const config: PivotConfig = { rows: [level(0)], columns: [level(2)], measures: [] }
+      const config: PivotConfig = {
+        rows: [level(0)],
+        columns: [level(2)],
+        measures: [],
+        filters: [],
+      }
       const target = { path: ['2025', null], measure: 1 }
       const ascending = withValueSort(config, 'rows', target)
       expect(ascending.sort_lines).toEqual({ ...target, descending: false })
@@ -601,7 +653,12 @@ describe('the sorts', () => {
     })
 
     it('drops the sort of the columns with the last measure', () => {
-      const one: PivotConfig = { ...SORTED, measures: [measure('sum', 4)], sort_lines: undefined }
+      const one: PivotConfig = {
+        ...SORTED,
+        measures: [measure('sum', 4)],
+        filters: [],
+        sort_lines: undefined,
+      }
       expect(removeElement(one, { zone: 'measures', index: 0 }).sort_columns).toBeUndefined()
     })
 
@@ -610,6 +667,7 @@ describe('the sorts', () => {
         rows: [{ ...level(0), descending: true }],
         columns: [],
         measures: [],
+        filters: [],
       }
       const moved = placeColumn(
         config,
@@ -637,6 +695,351 @@ describe('the sorts', () => {
       expect(fitted.rows).toEqual([level(0)])
       expect(fitted.sort_lines).toBeUndefined()
       expect(fitted.sort_columns).toBeUndefined()
+    })
+  })
+})
+
+describe('the filters', () => {
+  /**
+   * Filter on the values of a column.
+   *
+   * @param column Index of the column.
+   * @param values Values kept.
+   */
+  function values(column: number, kept: Cell[]): PivotFilter {
+    return { kind: 'values', column, name: '', values: kept }
+  }
+
+  /**
+   * Filter `SUM(montant) > 100`.
+   *
+   * @param changes What differs from it.
+   */
+  function above(changes: Partial<PivotMeasureFilter> = {}): PivotMeasureFilter {
+    return {
+      kind: 'measure',
+      aggregate: 'sum',
+      column: 4,
+      name: '',
+      comparison: 'greater',
+      operand: '100',
+      ...changes,
+    }
+  }
+
+  /**
+   * Configuration of the filters given, on the levels of the example.
+   *
+   * @param filters Filters.
+   */
+  function filtered(...filters: PivotFilter[]): PivotConfig {
+    return {
+      rows: [level(0), level(1)],
+      columns: [level(2, '', 'none')],
+      measures: [measure('sum', 4)],
+      filters,
+    }
+  }
+
+  /**
+   * Types of the given families, one per column.
+   *
+   * @param families Families.
+   */
+  function types(...families: ColumnTypeInfo['family'][]): ColumnTypeInfo[] {
+    return families.map((family) => ({ family, name: family }))
+  }
+
+  describe('engineRequest', () => {
+    it('asks only for the filters that have an effect', () => {
+      const request = engineRequest(
+        filtered(values(0, []), values(1, ['Lille', null]), above({ operand: '' })),
+      )
+      expect(request.filters).toEqual([{ kind: 'values', column: 1, values: ['Lille', null] }])
+    })
+
+    it('copies the values, which are reactive', () => {
+      const kept = ['Lille']
+      const request = engineRequest(filtered(values(1, kept)))
+      expect(request.filters[0]).toMatchObject({ values: kept })
+      expect((request.filters[0] as { values: Cell[] }).values).not.toBe(kept)
+    })
+
+    it('reads by default the deepest level of the rows, with those above it', () => {
+      const [filter] = engineRequest(filtered(above())).filters
+      expect(filter).toEqual({
+        kind: 'measure',
+        measure: { aggregate: 'sum', column: 4 },
+        levels: [
+          { column: 0, precision: 'none' },
+          { column: 1, precision: 'none' },
+        ],
+        comparison: 'greater',
+        operand: '100',
+      })
+    })
+
+    it('reads the level chosen, on either axis, with its precision', () => {
+      const levels = (level: number, config = filtered(above({ level }))) => {
+        const [filter] = engineRequest(config).filters
+        return filter?.kind === 'measure' ? filter.levels.map(({ column }) => column) : []
+      }
+      expect(levels(0)).toEqual([0])
+      expect(levels(1)).toEqual([0, 1])
+      expect(levels(2)).toEqual([2])
+      // A column that is no level goes back to the default level.
+      expect(levels(3)).toEqual([0, 1])
+      const dated = { ...filtered(above({ level: 2 })), columns: [level(2, '', 'month')] }
+      const [filter] = engineRequest(dated).filters
+      expect(filter).toMatchObject({ levels: [{ column: 2, precision: 'month' }] })
+    })
+
+    it('reads the columns without any level of the rows, and all the rows without any level', () => {
+      const onColumns = { ...filtered(above()), rows: [] }
+      expect(engineRequest(onColumns).filters[0]).toMatchObject({
+        levels: [{ column: 2, precision: 'none' }],
+      })
+      const onNothing = { ...onColumns, columns: [] }
+      expect(engineRequest(onNothing).filters[0]).toMatchObject({ levels: [] })
+    })
+  })
+
+  describe('activeFilterPlace', () => {
+    it('finds a filter by its rank among those that have an effect', () => {
+      const config = filtered(values(0, []), above({ operand: '' }), above())
+      expect(activeFilterPlace(config, 0)).toEqual({ zone: 'filters', index: 2 })
+    })
+  })
+
+  describe('elementExpression', () => {
+    /**
+     * Expression of a filter.
+     *
+     * @param filter Filter.
+     * @param columnTypes Types of the columns.
+     */
+    function expression(filter: PivotFilter, columnTypes: ColumnTypeInfo[] = []): string {
+      return elementExpression(filtered(filter), { zone: 'filters', index: 0 }, NAMES, columnTypes)
+    }
+
+    it('writes the values kept', () => {
+      expect(expression(values(0, ['Nord', 'Sud']))).toBe("region IN ('Nord', 'Sud')")
+      expect(expression(values(0, ["l'Aube"]))).toBe("region IN ('l''Aube')")
+    })
+
+    it('writes NULL apart', () => {
+      expect(expression(values(0, [null]))).toBe('region IS NULL')
+      expect(expression(values(0, ['Nord', null]))).toBe("region IN ('Nord') OR region IS NULL")
+    })
+
+    it('gives the name of the column without a value', () => {
+      expect(expression(values(0, []))).toBe('region')
+    })
+
+    it('types the literals by the column', () => {
+      const write = (family: ColumnTypeInfo['family'], value: string) =>
+        expression(values(0, [value]), types(family))
+      expect(write('integer', '12')).toBe('region IN (12)')
+      expect(write('decimal', '1.5')).toBe('region IN (1.5)')
+      expect(write('date', '2026-01-15')).toBe("region IN (DATE'2026-01-15')")
+      expect(write('datetime', '2026-01-15 10:30:00')).toBe(
+        "region IN (TIMESTAMP'2026-01-15 10:30:00')",
+      )
+      expect(write('time', '10:30:00')).toBe("region IN (TIME'10:30:00')")
+    })
+
+    it('stops a long list', () => {
+      const many = Array.from({ length: 21 }, (_, index) => String(index))
+      const written = expression(values(0, many), types('integer'))
+      expect(written.endsWith('19, …)')).toBe(true)
+    })
+
+    it('writes a measure, its comparison and its operand', () => {
+      expect(expression(above())).toBe('SUM(montant) > 100')
+      expect(expression(above({ operand: '' }))).toBe('SUM(montant) > ?')
+      expect(expression(above({ comparison: 'not_equal' }))).toBe('SUM(montant) <> 100')
+      const dates = types('text', 'text', 'text', 'text', 'date')
+      expect(expression(above({ aggregate: 'min', operand: '2026-01-15' }), dates)).toBe(
+        "MIN(montant) > DATE'2026-01-15'",
+      )
+      expect(expression(above({ aggregate: 'count', operand: '2' }), dates)).toBe(
+        'COUNT(montant) > 2',
+      )
+    })
+  })
+
+  describe('elementLabel', () => {
+    it('gives the name of a filter, and withName removes one equal to its expression', () => {
+      const place = { zone: 'filters', index: 0 } as const
+      const named = withName(filtered(above()), place, 'Gros', NAMES)
+      expect(elementLabel(named, place, NAMES)).toBe('Gros')
+      expect(withName(named, place, 'SUM(montant) > 100', NAMES).filters[0]?.name).toBe('')
+    })
+  })
+
+  describe('placeColumn', () => {
+    const to = (index: number) => ({ zone: 'filters', index }) as const
+
+    it('gives a column of the list a filter on its values', () => {
+      const placed = placeColumn(filtered(), 3, 'count', to(0), null)
+      expect(placed.filters).toEqual([values(3, [])])
+      // The column stays where it is on the axes.
+      const again = placeColumn(filtered(), 0, 'count', to(0), null)
+      expect(again.filters).toEqual([values(0, [])])
+      expect(again.rows).toEqual(filtered().rows)
+    })
+
+    it('keeps one filter on the values of a column', () => {
+      const config = filtered(values(3, ['a']))
+      expect(placeColumn(config, 3, 'count', to(1), null).filters).toEqual([values(3, ['a'])])
+    })
+
+    it('moves a level into the filters', () => {
+      const placed = placeColumn(filtered(), 1, 'count', to(0), { zone: 'rows', index: 1 })
+      expect(placed.rows).toEqual([level(0)])
+      expect(placed.filters).toEqual([values(1, [])])
+    })
+
+    it('copies a measure into a filter without an operand', () => {
+      const placed = placeColumn(filtered(), 4, 'count', to(0), { zone: 'measures', index: 0 })
+      expect(placed.measures).toEqual([measure('sum', 4)])
+      expect(placed.filters).toEqual([above({ operand: '' })])
+    })
+
+    it('moves a filter among the filters', () => {
+      const config = filtered(values(0, []), values(1, []), values(3, []))
+      const moved = (from: number, index: number) =>
+        placeColumn(config, 0, 'count', to(index), { zone: 'filters', index: from }).filters.map(
+          ({ column }) => column,
+        )
+      expect(moved(0, 2)).toEqual([1, 0, 3])
+      expect(moved(0, 3)).toEqual([1, 3, 0])
+      expect(moved(2, 0)).toEqual([3, 0, 1])
+    })
+
+    it('turns a filter into a level or a measure', () => {
+      const config = filtered(above({ name: 'Gros' }), values(3, []))
+      const from = (index: number) => ({ zone: 'filters', index }) as const
+      const level3 = placeColumn(config, 3, 'count', { zone: 'rows', index: 2 }, from(1))
+      expect(level3.rows).toEqual([level(0), level(1), level(3)])
+      expect(level3.filters).toEqual([above({ name: 'Gros' })])
+      const measure4 = placeColumn(config, 4, 'count', { zone: 'measures', index: 1 }, from(0))
+      expect(measure4.measures).toEqual([measure('sum', 4), measure('sum', 4)])
+      expect(measure4.filters).toEqual([values(3, [])])
+      const measure3 = placeColumn(config, 3, 'count', { zone: 'measures', index: 0 }, from(1))
+      expect(measure3.measures[0]).toEqual(measure('count', 3))
+    })
+  })
+
+  describe('removeElement', () => {
+    it('removes a filter', () => {
+      const config = filtered(values(0, []), above())
+      expect(removeElement(config, { zone: 'filters', index: 0 }).filters).toEqual([above()])
+    })
+  })
+
+  describe('withFilter', () => {
+    it('replaces one filter', () => {
+      const config = filtered(values(0, []), above())
+      expect(withFilter(config, 1, above({ operand: '5' })).filters).toEqual([
+        values(0, []),
+        above({ operand: '5' }),
+      ])
+    })
+  })
+
+  describe('hasTable', () => {
+    it('asks for no table with filters alone, which still make a configuration', () => {
+      const config = { ...emptyConfig(), filters: [values(0, [])] }
+      expect(hasTable(config)).toBe(false)
+      expect(isEmptyConfig(config)).toBe(false)
+      expect(hasTable(filtered())).toBe(true)
+      expect(isEmptyConfig(emptyConfig())).toBe(true)
+    })
+  })
+
+  describe('fittedConfig', () => {
+    it('follows the columns by name, and drops the filters of a lost column', () => {
+      const config = filtered(
+        values(0, ['Nord']),
+        values(1, ['Lille']),
+        above({ level: 0 }),
+        above({ aggregate: 'count_star', column: 1, level: 1 }),
+        above({ aggregate: 'sum', column: 1 }),
+      )
+      const fitted = fittedConfig(
+        { fields: NAMES, config },
+        ['montant', 'region', 'annee', 'trimestre'],
+        [],
+      )
+      expect(fitted.filters).toEqual([
+        values(1, ['Nord']),
+        above({ column: 0, level: 1 }),
+        above({ aggregate: 'count_star', column: 0 }),
+      ])
+    })
+
+    it('fits a configuration of filters alone', () => {
+      const config = { ...emptyConfig(), filters: [values(0, ['Nord'])] }
+      const fitted = fittedConfig({ fields: NAMES, config }, ['x', 'region'], [])
+      expect(fitted.filters).toEqual([values(1, ['Nord'])])
+    })
+  })
+
+  describe('operandRefusal', () => {
+    /**
+     * Refusal of an operand of `MAX` over a column of a family.
+     *
+     * @param family Family of the column.
+     * @param operand Operand.
+     */
+    function refused(family: ColumnTypeInfo['family'], operand: string): boolean {
+      const measured = { aggregate: 'max', column: 0 } as const
+      return operandRefusal(measured, operand, types(family)) !== null
+    }
+
+    it('reads an exact number as the engine does', () => {
+      for (const operand of ['100', '-1.5', '+2', '.5', '5.']) {
+        expect(refused('integer', operand)).toBe(false)
+        expect(refused('decimal', operand)).toBe(false)
+      }
+      for (const operand of ['abc', '1e3', '.', '1,5']) {
+        expect(refused('decimal', operand)).toBe(true)
+      }
+    })
+
+    it('reads a float, with its exponent', () => {
+      expect(refused('float', '1.5e3')).toBe(false)
+      expect(refused('float', 'abc')).toBe(true)
+      expect(refused('float', 'Infinity')).toBe(true)
+    })
+
+    it('asks for a date of the calendar', () => {
+      expect(refused('date', '2026-01-15')).toBe(false)
+      expect(refused('date', '2024-02-29')).toBe(false)
+      expect(refused('date', '2026-02-29')).toBe(true)
+      expect(refused('date', '2026-13-01')).toBe(true)
+      expect(refused('date', '0000-00-00')).toBe(true)
+      expect(refused('date', '2026-1-5')).toBe(true)
+    })
+
+    it('asks for a whole instant, and for an hour', () => {
+      expect(refused('datetime', '2026-01-15 10:30:00')).toBe(false)
+      expect(refused('datetime', '2026-01-15 10:30:00.5')).toBe(false)
+      expect(refused('datetime', '2026-01-15')).toBe(true)
+      expect(refused('time', '10:30:00')).toBe(false)
+      expect(refused('time', '-120:00:00')).toBe(false)
+      expect(refused('time', '10:30')).toBe(true)
+    })
+
+    it('takes any text', () => {
+      expect(refused('text', 'abc')).toBe(false)
+    })
+
+    it('reads a count as a number, whatever its column', () => {
+      const count = { aggregate: 'count', column: 0 } as const
+      expect(operandRefusal(count, 'abc', types('text'))).not.toBeNull()
+      expect(operandRefusal(count, '2', types('text'))).toBeNull()
     })
   })
 })

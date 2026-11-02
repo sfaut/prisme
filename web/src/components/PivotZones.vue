@@ -1,8 +1,8 @@
 <!--
   Settings of the Pivoteur (`PivotPanel.vue`), in two columns: the columns
   of the result, with the mark of their type and a search by name above
-  them (F-10), then the zones Lignes, Colonnes and Mesures, stacked, which
-  scroll in their column when the panel is low (F-05).
+  them (F-10), then the zones Lignes, Colonnes, Mesures and Filtres, stacked,
+  which scroll in their column when the panel is low (F-05).
 
   A column enters a zone by dragging it there, or by the "+" menu of its
   line (F-11); the order in a zone sets the nesting, the first element
@@ -15,8 +15,16 @@
   A column is a level once at most: placing it again on an axis moves it there.
   An element takes a name by its menu ("Nommer…") or a double click on its label
   (F-17): Enter confirms, Escape cancels, an empty name gives back its
-  expression, which the tooltip of a named element recalls. The logic of
-  the zones is in `pivotConfig.ts`.
+  expression, which the tooltip of a named element recalls.
+
+  A column dropped into the filters opens the list of its values
+  (`PivotValuesList.vue`, F-21); a measure dropped there, or its menu
+  ("Filtrer sur cette mesure"), gives a filter on it, whose value is typed at
+  once in the place of the label (F-44): Enter confirms and refuses a value the
+  measure cannot compare with, showing why; Escape, or leaving the field, keeps
+  the former value. The menu of a filter on a measure sets its aggregate, its
+  comparison, its value and its level. The logic of the zones is in
+  `pivotConfig.ts`.
 -->
 <script setup lang="ts">
 import {
@@ -31,11 +39,20 @@ import {
   CalendarFold,
   CalendarRange,
   Check,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   Columns3,
   Divide,
   EllipsisVertical,
+  Equal,
+  EqualNot,
   FingerprintPattern,
+  Funnel,
   Hash,
+  Layers,
+  ListChecks,
   PenLine,
   Plus,
   Rows3,
@@ -43,30 +60,47 @@ import {
   Sigma,
   SquareDivide,
   SquareSigma,
+  TextCursorInput,
 } from '@lucide/vue'
-import { type Component, computed, nextTick, onBeforeUnmount, ref, useTemplateRef } from 'vue'
+import {
+  type Component,
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  ref,
+  shallowRef,
+  useTemplateRef,
+} from 'vue'
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
+import type { Cell } from '@/api/querySession'
 
 import {
+  type PivotComparison,
   type PivotConfig,
+  type PivotMeasureFilter,
   type PivotZone,
   type PrecisionLabel,
   type ZonePlace,
+  COMPARISON_SIGNS,
   addsNumbers,
+  chosenLevel,
   defaultAggregate,
   elementExpression,
   elementLabel,
   measureExpression,
+  operandRefusal,
   placeColumn,
   precisionChoices,
   removeElement,
   summable,
   withAggregate,
+  withFilter,
   withName,
   withPrecision,
 } from './pivotConfig'
 import type { PivotMeasure } from './pivotEngine'
+import PivotValuesList from './PivotValuesList.vue'
 import { dropPosition } from './resultGrid'
 import type { TypeMark } from './typeIcons'
 import type { MenuGroup, MenuItem } from './ui/menuItem'
@@ -93,6 +127,10 @@ const props = defineProps<{
    * Is each column part of a foreign key of its table?
    */
   foreignKeys: boolean[]
+  /**
+   * Reads the distinct values of a column, for the list of a filter.
+   */
+  readValues: (column: number) => Promise<Cell[]>
 }>()
 
 /**
@@ -107,6 +145,7 @@ const ZONES: { zone: PivotZone; label: string; icon: Component }[] = [
   { zone: 'rows', label: 'Lignes', icon: Rows3 },
   { zone: 'columns', label: 'Colonnes', icon: Columns3 },
   { zone: 'measures', label: 'Mesures', icon: Sigma },
+  { zone: 'filters', label: 'Filtres', icon: Funnel },
 ]
 
 /**
@@ -138,9 +177,14 @@ interface ZoneElement {
   label: string
   /**
    * Expression: the name of the column of a level, the expression of a
-   * measure.
+   * measure, of a filter.
    */
   expression: string
+  /**
+   * Is the element in error (F-22): a filter whose value cannot compare with its measure, after a
+   * change of its aggregate or of the type of its column.
+   */
+  invalid: boolean
 }
 
 /**
@@ -150,10 +194,19 @@ const elements = computed<Record<PivotZone, ZoneElement[]>>(() => {
   const shown = (zone: PivotZone) =>
     config.value[zone].map((element, index) => ({
       column: element.column,
-      label: elementLabel(config.value, { zone, index }, props.names),
-      expression: elementExpression(config.value, { zone, index }, props.names),
+      label: elementLabel(config.value, { zone, index }, props.names, props.types),
+      expression: elementExpression(config.value, { zone, index }, props.names, props.types),
+      invalid:
+        'operand' in element &&
+        element.operand !== '' &&
+        operandRefusal(element, element.operand, props.types) !== null,
     }))
-  return { rows: shown('rows'), columns: shown('columns'), measures: shown('measures') }
+  return {
+    rows: shown('rows'),
+    columns: shown('columns'),
+    measures: shown('measures'),
+    filters: shown('filters'),
+  }
 })
 
 /**
@@ -165,7 +218,18 @@ const elements = computed<Record<PivotZone, ZoneElement[]>>(() => {
  */
 function place(column: number, to: ZonePlace, from: ZonePlace | null): void {
   const aggregate = defaultAggregate(props.types[column], props.foreignKeys[column] ?? false)
-  config.value = placeColumn(config.value, column, aggregate, to, from)
+  const placed = placeColumn(config.value, column, aggregate, to, from)
+  config.value = placed
+  if (to.zone !== 'filters' || from?.zone === 'filters') {
+    return
+  }
+  if (from?.zone === 'measures') {
+    startOperand(Math.min(to.index, placed.filters.length - 1), '')
+  } else {
+    pendingList = placed.filters.findIndex(
+      (filter) => filter.kind === 'values' && filter.column === column,
+    )
+  }
 }
 
 /**
@@ -198,7 +262,15 @@ function elementItems(zone: PivotZone, index: number): MenuItem[] {
       onSelect: () => startNaming(from),
     },
   ]
-  if (zone !== 'measures') {
+  if (zone === 'measures') {
+    items.push({
+      label: 'Filtrer sur cette mesure',
+      icon: Funnel,
+      onSelect: () =>
+        place(column, { zone: 'filters', index: elements.value.filters.length }, from),
+    })
+  }
+  if (zone === 'rows' || zone === 'columns') {
     const other = zone === 'rows' ? 'columns' : 'rows'
     items.push({
       label: other === 'rows' ? 'Passer en lignes' : 'Passer en colonnes',
@@ -255,8 +327,121 @@ function precisionItems(zone: 'rows' | 'columns', index: number): MenuItem[] {
 }
 
 /**
+ * Choices of the aggregate of a measure, or of a filter on a measure.
+ *
+ * @param measure Measure.
+ * @param choose Takes the aggregate chosen.
+ */
+function aggregateItems(
+  measure: PivotMeasure,
+  choose: (aggregate: PivotMeasure['aggregate']) => void,
+): MenuItem[] {
+  const numbers = summable(props.types[measure.column]?.family)
+  return AGGREGATES.map(({ aggregate, icon }) => {
+    const refused = addsNumbers(aggregate) && !numbers
+    return {
+      label: measureExpression({ aggregate, column: measure.column }, props.names),
+      icon: aggregate === measure.aggregate ? Check : icon,
+      disabled: refused,
+      hint: refused ? 'Demande une colonne de nombres' : undefined,
+      onSelect: () => choose(aggregate),
+    }
+  })
+}
+
+/**
+ * Comparisons of a filter on a measure, with their icon.
+ */
+const COMPARISONS: { comparison: PivotComparison; icon: Component }[] = [
+  { comparison: 'equal', icon: Equal },
+  { comparison: 'not_equal', icon: EqualNot },
+  { comparison: 'less', icon: ChevronLeft },
+  { comparison: 'less_or_equal', icon: ChevronsLeft },
+  { comparison: 'greater', icon: ChevronRight },
+  { comparison: 'greater_or_equal', icon: ChevronsRight },
+]
+
+/**
+ * Choices of the level of a filter on a measure (F-44): the default one, then
+ * each level of the two axes.
+ *
+ * @param filter Filter.
+ * @param index Position of the filter.
+ */
+function levelItems(filter: PivotMeasureFilter, index: number): MenuItem[] {
+  const chosen = chosenLevel(config.value, filter)
+  const choose = (level: number | undefined) =>
+    (config.value = withFilter(config.value, index, { ...filter, level }))
+  const axes = [
+    { zone: 'rows', icon: Rows3 },
+    { zone: 'columns', icon: Columns3 },
+  ] as const
+  return [
+    {
+      label: 'Le niveau le plus fin',
+      icon: chosen === undefined ? Check : Layers,
+      onSelect: () => choose(undefined),
+    },
+    ...axes.flatMap(({ zone, icon }) =>
+      config.value[zone].map((level, position) => ({
+        label: elementLabel(config.value, { zone, index: position }, props.names),
+        icon: level.column === chosen ? Check : icon,
+        onSelect: () => choose(level.column),
+      })),
+    ),
+  ]
+}
+
+/**
+ * Choices of a filter: the list of its values, or the aggregate, the comparison,
+ * the value and the level of its measure.
+ *
+ * @param index Position of the filter.
+ */
+function filterGroups(index: number): MenuGroup[] {
+  const filter = config.value.filters[index]
+  if (filter === undefined) {
+    return []
+  }
+  if (filter.kind === 'values') {
+    const items = [
+      {
+        label: 'Choisir les valeurs…',
+        icon: ListChecks,
+        // The list opens once the menu has closed (`onMenuClosed`).
+        onSelect: () => (pendingList = index),
+      },
+    ]
+    return [{ label: 'Valeurs', items }]
+  }
+  const change = (changed: Partial<PivotMeasureFilter>) =>
+    (config.value = withFilter(config.value, index, { ...filter, ...changed }))
+  return [
+    { label: 'Agrégat', items: aggregateItems(filter, (aggregate) => change({ aggregate })) },
+    {
+      label: 'Comparaison',
+      items: [
+        ...COMPARISONS.map(({ comparison, icon }) => ({
+          label: COMPARISON_SIGNS[comparison],
+          icon: comparison === filter.comparison ? Check : icon,
+          onSelect: () => change({ comparison }),
+        })),
+        {
+          label: 'Valeur…',
+          icon: TextCursorInput,
+          // The field takes the focus once the menu has closed (`onMenuClosed`).
+          onSelect: () => startOperand(index, filter.operand),
+        },
+      ],
+    },
+    { label: 'Niveau', items: levelItems(filter, index) },
+  ]
+}
+
+/**
  * Choices of the menu of an element: for a measure, its aggregate, for a
- * level of dates, its precision, then its name and its place.
+ * level of dates, its precision, for a filter, what it compares, then its name
+ * and its place.
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
@@ -265,22 +450,18 @@ function elementGroups(zone: PivotZone, index: number): MenuGroup[] {
   const groups: MenuGroup[] = []
   const measure = zone === 'measures' ? config.value.measures[index] : undefined
   if (measure !== undefined) {
-    const numbers = summable(props.types[measure.column]?.family)
     groups.push({
       label: 'Agrégat',
-      items: AGGREGATES.map(({ aggregate, icon }) => {
-        const refused = addsNumbers(aggregate) && !numbers
-        return {
-          label: measureExpression({ aggregate, column: measure.column }, props.names),
-          icon: aggregate === measure.aggregate ? Check : icon,
-          disabled: refused,
-          hint: refused ? 'Demande une colonne de nombres' : undefined,
-          onSelect: () => (config.value = withAggregate(config.value, index, aggregate)),
-        }
-      }),
+      items: aggregateItems(
+        measure,
+        (aggregate) => (config.value = withAggregate(config.value, index, aggregate)),
+      ),
     })
   }
-  if (zone !== 'measures') {
+  if (zone === 'filters') {
+    groups.push(...filterGroups(index))
+  }
+  if (zone === 'rows' || zone === 'columns') {
     const items = precisionItems(zone, index)
     if (items.length > 0) {
       groups.push({ label: 'Précision', items })
@@ -296,7 +477,23 @@ function elementGroups(zone: PivotZone, index: number): MenuGroup[] {
 const naming = ref<ZonePlace | null>(null)
 
 /**
- * Name being typed.
+ * Does the field of the element being named hold the value of its filter,
+ * instead of its name?
+ */
+const typingOperand = ref(false)
+
+/**
+ * Why the value typed is refused, `null` otherwise.
+ */
+const operandRefused = ref<string | null>(null)
+
+/**
+ * Line of the refusal of the value, the only one shown (`v-for`).
+ */
+const refusalLines = useTemplateRef<HTMLElement[]>('refusalLine')
+
+/**
+ * Name or value being typed.
  */
 const draft = ref('')
 
@@ -322,7 +519,72 @@ function isNaming(zone: PivotZone, index: number): boolean {
  */
 function startNaming(place: ZonePlace): void {
   draft.value = elements.value[place.zone][place.index]?.label ?? ''
+  typingOperand.value = false
   naming.value = place
+}
+
+/**
+ * Makes the label of a filter on a measure a field for its value.
+ *
+ * @param index Position of the filter.
+ * @param operand Current value.
+ */
+function startOperand(index: number, operand: string): void {
+  draft.value = operand
+  typingOperand.value = true
+  operandRefused.value = null
+  naming.value = { zone: 'filters', index }
+}
+
+/**
+ * Position of the filter whose list of values is to open, `null` without one.
+ */
+let pendingList: number | null = null
+
+/**
+ * Filter whose list of values is open, with the element it opens beside.
+ */
+const listing = shallowRef<{ index: number; anchor: HTMLElement } | null>(null)
+
+/**
+ * Filter whose list of values is open.
+ */
+const listedFilter = computed(() => {
+  const filter = listing.value && config.value.filters[listing.value.index]
+  return filter?.kind === 'values' ? filter : undefined
+})
+
+/**
+ * Keeps the values checked in the filter whose list is open.
+ *
+ * @param values Values kept.
+ */
+function keepListed(values: Cell[]): void {
+  const index = listing.value?.index
+  if (index !== undefined && listedFilter.value !== undefined) {
+    config.value = withFilter(config.value, index, { ...listedFilter.value, values })
+  }
+}
+
+/**
+ * Shows what the last action opens, once its element is on the page: the field
+ * being typed, or the list of a filter.
+ */
+async function showPending(): Promise<void> {
+  await nextTick()
+  if (naming.value !== null) {
+    focusName()
+    return
+  }
+  const index = pendingList
+  pendingList = null
+  const section = zoneSections.value?.find((zone) => zone.dataset.zone === 'filters')
+  const anchor = index === null ? undefined : section?.querySelectorAll('[data-element]')[index]
+  if (index !== null && anchor instanceof HTMLElement) {
+    // The zones scroll in their column: the list opens beside an element in sight.
+    anchor.scrollIntoView({ block: 'nearest' })
+    listing.value = { index, anchor }
+  }
 }
 
 /**
@@ -346,30 +608,70 @@ async function nameOnDoubleClick(place: ZonePlace): Promise<void> {
 }
 
 /**
- * Closing of the menu of an element: when "Nommer…" was chosen, the field
- * of the name takes the focus, which the menu would give back to its
- * button. The menu sends the event while it is removed, before the field
- * is reachable: the focus waits for the end of the update.
+ * Closing of a menu: when a choice opens a field or a list, it takes the focus,
+ * which the menu would give back to its button. The menu sends the event while
+ * it is removed, before the field is reachable: the focus waits for the end of
+ * the update.
  *
  * @param event Return of the focus to the button.
  */
 async function onMenuClosed(event: Event): Promise<void> {
-  if (naming.value !== null) {
+  if (naming.value !== null || pendingList !== null) {
     event.preventDefault()
-    await nextTick()
-    focusName()
+    await showPending()
   }
 }
 
 /**
- * Confirms the name typed.
+ * Confirms the value typed, or refuses it: when it was asked for (Enter), with
+ * the reason and the field still open; otherwise the former value stays.
+ *
+ * @param index Position of the filter.
+ * @param asked Did the user ask for the confirmation?
  */
-function commitName(): void {
-  const place = naming.value
-  if (place !== null) {
-    naming.value = null
-    config.value = withName(config.value, place, draft.value, props.names)
+function commitOperand(index: number, asked: boolean): void {
+  const filter = config.value.filters[index]
+  const operand = draft.value.trim()
+  const refusal =
+    filter?.kind === 'measure' && operand !== ''
+      ? operandRefusal(filter, operand, props.types)
+      : null
+  if (refusal !== null && asked) {
+    operandRefused.value = refusal
+    // The zones scroll in their column: the reason shows under the field.
+    void nextTick(() => refusalLines.value?.[0]?.scrollIntoView({ block: 'nearest' }))
+    return
   }
+  cancelName()
+  if (refusal === null && filter?.kind === 'measure') {
+    config.value = withFilter(config.value, index, { ...filter, operand })
+  }
+}
+
+/**
+ * Closes the field being typed, without changing anything.
+ */
+function cancelName(): void {
+  naming.value = null
+  operandRefused.value = null
+}
+
+/**
+ * Confirms what is being typed.
+ *
+ * @param asked Did the user ask for the confirmation (Enter), or leave the field?
+ */
+function commitName(asked: boolean): void {
+  const place = naming.value
+  if (place === null) {
+    return
+  }
+  if (typingOperand.value) {
+    commitOperand(place.index, asked)
+    return
+  }
+  naming.value = null
+  config.value = withName(config.value, place, draft.value, props.names, props.types)
 }
 
 /**
@@ -532,6 +834,7 @@ function onDrop(event: DragEvent, zone: PivotZone): void {
   if (dragged.value !== null) {
     event.preventDefault()
     place(dragged.value.column, placeUnder(event, zone), dragged.value.from)
+    void showPending()
   }
   onDragEnd()
 }
@@ -581,7 +884,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
           <span class="min-w-0 flex-1 truncate" v-tooltip="types[column]?.name">
             {{ names[column] }}
           </span>
-          <ui-dropdown-menu :items="addItems(column)">
+          <ui-dropdown-menu :items="addItems(column)" @close-auto-focus="onMenuClosed">
             <ui-button
               :icon="Plus"
               variant="ghost"
@@ -603,6 +906,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
         :key="zone"
         class="flex flex-col gap-1 not-last:pb-3"
         :aria-label="label"
+        :data-zone="zone"
         @dragenter="onDragOver($event, zone)"
         @dragover="onDragOver($event, zone)"
         @dragleave="onDragLeave"
@@ -618,7 +922,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
             :key="`${zone}-${index}`"
             data-element
             class="pivot-line pivot-element group"
-            :class="markerClass(zone, index)"
+            :class="[markerClass(zone, index), { invalid: element.invalid }]"
             :draggable="!isNaming(zone, index)"
             @dragstart="onDragStart($event, element.column, { zone, index })"
             @dragend="onDragEnd"
@@ -635,18 +939,22 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
               v-if="isNaming(zone, index)"
               ref="nameInput"
               v-model="draft"
-              :aria-label="`Nom de ${element.expression}`"
+              :aria-label="`${typingOperand ? 'Valeur' : 'Nom'} de ${element.expression}`"
               class="h-7 min-w-0 flex-1 rounded-lg border border-line bg-surface px-1 text-base text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary/60"
-              @blur="commitName"
+              @blur="commitName(false)"
               @keydown.stop
-              @keydown.enter.prevent="commitName"
-              @keydown.escape.prevent="naming = null"
+              @keydown.enter.prevent="commitName(true)"
+              @keydown.escape.prevent="cancelName"
               @mousedown.stop
             />
             <span
               v-else
               class="min-w-0 flex-1 truncate"
-              v-tooltip="element.label === element.expression ? undefined : element.expression"
+              v-tooltip="
+                zone === 'filters' || element.label !== element.expression
+                  ? element.expression
+                  : undefined
+              "
               @dblclick="nameOnDoubleClick({ zone, index })"
             >
               {{ element.label }}
@@ -663,9 +971,27 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
           <li v-if="elements[zone].length === 0" class="px-2 py-1 text-sm text-fg-faint">
             Glisser une colonne ici
           </li>
+          <li
+            v-if="zone === 'filters' && operandRefused"
+            ref="refusalLine"
+            role="alert"
+            class="px-2 py-1 text-sm text-error"
+          >
+            {{ operandRefused }}
+          </li>
         </ul>
       </section>
     </div>
+    <pivot-values-list
+      v-if="listing && listedFilter"
+      :key="listing.index"
+      :anchor="listing.anchor"
+      :label="names[listedFilter.column] ?? '?'"
+      :read="() => readValues(listedFilter?.column ?? -1)"
+      :kept="listedFilter.values"
+      @update:kept="keepListed"
+      @close="listing = null"
+    />
   </div>
 </template>
 
@@ -713,6 +1039,10 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
 
   &.drop-after {
     box-shadow: inset 0 calc(-1 * var(--marker-width)) 0 var(--color-primary);
+  }
+
+  &.invalid {
+    border-color: var(--color-error);
   }
 }
 

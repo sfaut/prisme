@@ -11,7 +11,7 @@
 import { toRaw } from 'vue'
 
 import type { TypeFamily } from '@/api/generated/TypeFamily'
-import type { QueryResult } from '@/api/querySession'
+import type { Cell, QueryResult } from '@/api/querySession'
 
 import {
   type PivotAnswer,
@@ -264,6 +264,21 @@ export class PivotClient {
       throw new Error(`Pivot client: unexpected answer ${answer.type}`)
     }
     return answer.window
+  }
+
+  /**
+   * Reads the distinct values of a column, in the order of the grid.
+   *
+   * @param column Index of the column.
+   * @throws {PivotError} If the engine refuses it, or refused the copy.
+   */
+  async values(column: number): Promise<Cell[]> {
+    await this.loaded
+    const answer = await this.ask({ type: 'values', id: this.nextId++, column })
+    if (answer.type !== 'values') {
+      throw new Error(`Pivot client: unexpected answer ${answer.type}`)
+    }
+    return answer.values
   }
 
   /**

@@ -18,8 +18,9 @@
   (F-02). The foreign keys of the columns, for their default measure, come
   from the catalog of the connection, read while the panel is open, without
   waiting for it. Each change of the configuration or of the filter of the grid
-  computes the table again; a new name only changes its labels, a sort (C-11,
-  C-13) lays the table out again, without computing any aggregate. An error of
+  computes the table again; a filter of the panel leaves the grid as it is
+  (F-20); a new name only changes its labels, a sort (C-11, C-13) lays the table
+  out again, without computing any aggregate. An error of
   calculation empties the table and shows the value in cause with its row; any
   other refusal of the engine shows its message above the table, which keeps its
   last computation (F-22); a Worker that stops is replaced at the next change. A
@@ -32,6 +33,7 @@ import { computed, onBeforeUnmount, ref, shallowRef, toRaw, watch } from 'vue'
 import { updateResultPivot } from '@/api/editors'
 import { errorMessage } from '@/api/errorMessage'
 import {
+  type Cell,
   type QueryResult,
   type QueryTab,
   formatDuration,
@@ -47,11 +49,13 @@ import { PivotClient, type PivotTable } from './pivotClient'
 import {
   type PivotAxis,
   type PivotConfig,
+  activeFilterPlace,
   elementLabel,
   emptyConfig,
   engineOrder,
   engineRequest,
   fittedConfig,
+  hasTable,
   isEmptyConfig,
   sameOrder,
   sameRequest,
@@ -348,7 +352,13 @@ function sendKept(current: PivotClient, shown: QueryResult): void {
 /**
  * Refusals that are errors of calculation: the table empties, its values being wrong.
  */
-const CALCULATION_ERRORS = ['invalid_number', 'too_large', 'invalid_date', 'overflow']
+const CALCULATION_ERRORS = [
+  'invalid_number',
+  'too_large',
+  'invalid_date',
+  'overflow',
+  'filter_overflow',
+]
 
 /**
  * Message of a refusal of the engine, in French.
@@ -366,6 +376,15 @@ function refusalText(refusal: PivotFailure, refused: PivotConfig): string {
     refusal.measure === undefined
       ? '?'
       : elementLabel(refused, { zone: 'measures', index: refusal.measure }, names)
+  const filter =
+    refusal.filter === undefined
+      ? '?'
+      : elementLabel(
+          refused,
+          activeFilterPlace(refused, refusal.filter),
+          names,
+          result.value?.columnTypes ?? [],
+        )
   switch (refusal.kind) {
     case 'invalid_number':
       return `La valeur « ${value} » de la ligne ${row} de « ${column} » n’est pas un nombre.`
@@ -377,6 +396,12 @@ function refusalText(refusal: PivotFailure, refused: PivotConfig): string {
       return `${measure} dépasse 38 chiffres.`
     case 'not_numeric':
       return `${measure} demande une colonne de nombres.`
+    case 'filter_overflow':
+      return `Le filtre ${filter} dépasse 38 chiffres.`
+    case 'filter_not_numeric':
+      return `Le filtre ${filter} demande une colonne de nombres.`
+    case 'filter_operand':
+      return `La valeur du filtre ${filter} ne se compare pas à sa mesure.`
     case 'crash':
     case 'module':
       return `Le moteur du Pivoteur s’est arrêté : ${refusal.detail ?? refusal.kind}`
@@ -436,7 +461,7 @@ function update(): void {
   if (client === null || shown === null) {
     return
   }
-  if (isEmptyConfig(config.value)) {
+  if (!hasTable(config.value)) {
     computations++
     computing.value = false
     shownTable.value = null
@@ -448,6 +473,15 @@ function update(): void {
 }
 
 watch([source, request, order, () => props.tab?.filter], update, { immediate: true })
+
+/**
+ * Reads the distinct values of a column of the result shown.
+ *
+ * @param column Index of the column.
+ */
+function readValues(column: number): Promise<Cell[]> {
+  return client ? client.values(column) : Promise.reject(new Error('No pivot engine'))
+}
 
 /**
  * Reads a window of the table shown.
@@ -517,6 +551,7 @@ const groupsText = computed(() => {
         :types="result?.columnTypes ?? []"
         :marks="marks"
         :foreign-keys="foreignKeys"
+        :read-values="readValues"
       />
       <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
         <ui-alert v-if="failure" tone="error" :title="failure" />
@@ -533,7 +568,7 @@ const groupsText = computed(() => {
           @sort-values="sortValues"
         />
         <p
-          v-else-if="isEmptyConfig(config)"
+          v-else-if="!hasTable(config)"
           class="flex flex-1 items-center justify-center text-center text-balance text-fg-secondary"
         >
           Glissez des colonnes dans les zones Lignes, Colonnes et Mesures, ou ajoutez-les par leur

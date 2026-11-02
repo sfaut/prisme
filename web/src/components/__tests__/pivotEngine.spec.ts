@@ -111,6 +111,7 @@ describe('requestWords', () => {
         { aggregate: 'count_star', column: 1 },
         { aggregate: 'count_distinct', column: 1 },
       ],
+      filters: [],
     }
     expect(Array.from(requestWords(request))).toEqual([2, 1, 3, 0, 0, 1, 0, 2, 0, 2, 4, 0, 1, 3, 1])
   })
@@ -127,6 +128,7 @@ describe('requestWords', () => {
         { column: 7, precision: 'date' },
       ],
       measures: [],
+      filters: [],
     }
     expect(Array.from(requestWords(request))).toEqual([3, 2, 0, 7, 1, 7, 2, 7, 3, 7, 4, 7, 5])
   })
@@ -142,6 +144,7 @@ describe('requestWords', () => {
         { aggregate: 'min', column: 0 },
         { aggregate: 'max', column: 0 },
       ],
+      filters: [],
     }
     expect(Array.from(requestWords(request))).toEqual([0, 0, 5, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0])
   })
@@ -173,6 +176,7 @@ describe('PivotEngine', () => {
       rows: [level(0)],
       columns: [],
       measures: [{ aggregate: 'count_distinct', column: 1 }],
+      filters: [],
     })
     // Nord: Lille and Arras; Sud: Nice and Toulon; the four in the total.
     expect(engine.window([0, 3], [0, 1]).cells).toEqual([['2'], ['2'], ['4']])
@@ -190,6 +194,7 @@ describe('PivotEngine', () => {
         { aggregate: 'min', column: 1 },
         { aggregate: 'max', column: 4 },
       ],
+      filters: [],
     })
     expect(engine.window([0, 3], [0, 5]).cells).toEqual([
       ['4051', '94.0000', '2025.5000', 'Arras', '150'],
@@ -204,6 +209,7 @@ describe('PivotEngine', () => {
       rows: [level(0), level(1)],
       columns: [level(2)],
       measures: [{ aggregate: 'sum', column: 4 }],
+      filters: [],
     })
     expect(shape).toEqual({
       lines: 7,
@@ -253,6 +259,7 @@ describe('PivotEngine', () => {
         rows: [{ column: 0, precision }],
         columns: [],
         measures: [{ aggregate: 'sum', column: 1 }],
+        filters: [],
       })
       return engine.window([0, 9], [0, 1])
     }
@@ -281,11 +288,14 @@ describe('PivotEngine', () => {
         rows: [{ column: 0, precision: 'month' }],
         columns: [],
         measures: [],
+        filters: [],
       }),
     ).toThrowError(
       expect.objectContaining({ failure: { kind: 'invalid_date', column: 0, row: 1 } }),
     )
-    expect(engine.compute({ rows: [level(0)], columns: [], measures: [] }).lines).toBe(3)
+    expect(engine.compute({ rows: [level(0)], columns: [], measures: [], filters: [] }).lines).toBe(
+      3,
+    )
   })
 
   it('gives a window bounded by the table', async () => {
@@ -294,6 +304,7 @@ describe('PivotEngine', () => {
       rows: [level(0)],
       columns: [],
       measures: [{ aggregate: 'count_star', column: 0 }],
+      filters: [],
     })
     const window = engine.window([2, 50], [0, 50])
     expect(window.lines).toEqual([{ depth: 0, label: null, path: [] }])
@@ -312,6 +323,7 @@ describe('PivotEngine', () => {
       rows: [level(0), level(1)],
       columns: [],
       measures: [{ aggregate: 'count', column: 1 }],
+      filters: [],
     })
     const window = engine.window([0, 10], [0, 1])
     expect(window.lines.map((line) => line.label)).toEqual([
@@ -333,16 +345,22 @@ describe('PivotEngine', () => {
       rows: [level(1)],
       columns: [],
       measures: [{ aggregate: 'sum', column: 4 }],
+      filters: [],
     })
     expect(shape.rows).toBe(4)
     expect(engine.window([0, 2], [0, 1]).cells).toEqual([['350'], ['350']])
     engine.setKept(null)
-    expect(engine.compute({ rows: [], columns: [], measures: [] }).rows).toBe(10)
+    expect(engine.compute({ rows: [], columns: [], measures: [], filters: [] }).rows).toBe(10)
   })
 
   it('refuses a cell that is not a number, and a sum beyond 128 bits', async () => {
     const engine = await loaded([['1'], ['abc']], ['decimal'])
-    const sum: PivotRequest = { rows: [], columns: [], measures: [{ aggregate: 'sum', column: 0 }] }
+    const sum: PivotRequest = {
+      rows: [],
+      columns: [],
+      measures: [{ aggregate: 'sum', column: 0 }],
+      filters: [],
+    }
     expect(() => engine.compute(sum)).toThrowError(PivotError)
     expect(() => engine.compute(sum)).toThrowError(
       expect.objectContaining({ failure: { kind: 'invalid_number', column: 0, row: 1 } }),
@@ -359,9 +377,15 @@ describe('PivotEngine', () => {
       rows: [level(0)],
       columns: [],
       measures: [{ aggregate: 'count_star', column: 0 }],
+      filters: [],
     })
     expect(() =>
-      engine.compute({ rows: [], columns: [], measures: [{ aggregate: 'sum', column: 0 }] }),
+      engine.compute({
+        rows: [],
+        columns: [],
+        measures: [{ aggregate: 'sum', column: 0 }],
+        filters: [],
+      }),
     ).toThrowError(PivotError)
     expect(engine.window([0, 3], [0, 1]).cells).toEqual([['5'], ['5'], ['10']])
   })
@@ -374,6 +398,7 @@ describe('PivotEngine', () => {
       rows: [level(0), level(1)],
       columns: [level(2)],
       measures: [{ aggregate: 'sum', column: 4 }],
+      filters: [],
     }
 
     /**
@@ -428,6 +453,7 @@ describe('PivotEngine', () => {
         rows: [level(0)],
         columns: [level(1)],
         measures: [{ aggregate: 'sum', column: 2 }],
+        filters: [],
       }
       const by = (path: Cell[]) => {
         engine.compute(request, {
@@ -503,6 +529,7 @@ describe('answerMessage', () => {
       rows: [],
       columns: [],
       measures: [{ aggregate: 'count_star', column: 0 }],
+      filters: [],
     }
     const order = LABEL_ORDER
     const table = answerMessage(state, { type: 'compute', id: 2, request, order })
@@ -524,7 +551,11 @@ describe('answerMessage', () => {
         cells: [['10']],
       },
     })
-    const sumOfText: PivotRequest = { ...request, measures: [{ aggregate: 'sum', column: 0 }] }
+    const sumOfText: PivotRequest = {
+      ...request,
+      measures: [{ aggregate: 'sum', column: 0 }],
+      filters: [],
+    }
     expect(answerMessage(state, { type: 'compute', id: 4, request: sumOfText, order })).toEqual({
       type: 'failure',
       id: 4,
@@ -550,5 +581,140 @@ describe('answerMessage', () => {
         columns: [0, 1],
       }),
     ).toEqual({ type: 'failure', id: 7, failure: { kind: 'stale' } })
+  })
+})
+
+describe('the filters', () => {
+  /**
+   * Labels of the lines of a table of `SUM(montant)` by ville under some filters, with their value.
+   *
+   * @param engine Engine.
+   * @param filters Filters.
+   */
+  function lines(engine: PivotEngine, filters: PivotRequest['filters']): [Cell, unknown][] {
+    const shape = engine.compute({
+      rows: [level(1)],
+      columns: [],
+      measures: [{ aggregate: 'sum', column: 4 }],
+      filters,
+    })
+    const window = engine.window([0, shape.lines], [0, shape.columns])
+    return window.lines.map((line, index) => [line.label, window.cells[index]?.[0]])
+  }
+
+  it('writes each kind of filter after the measures', () => {
+    const text = (value: string) => [value.length, ...Array.from(value, (c) => c.charCodeAt(0))]
+    const words = requestWords({
+      rows: [],
+      columns: [],
+      measures: [],
+      filters: [
+        { kind: 'values', column: 2, values: [null, 'ab'] },
+        {
+          kind: 'measure',
+          measure: { aggregate: 'sum', column: 4 },
+          levels: [{ column: 1, precision: 'month' }],
+          comparison: 'greater_or_equal',
+          operand: '10',
+        },
+      ],
+    })
+    expect(Array.from(words)).toEqual([
+      0,
+      0,
+      0,
+      0,
+      2,
+      2,
+      0xffff_ffff,
+      ...text('ab'),
+      1,
+      2,
+      4,
+      1,
+      1,
+      3,
+      5,
+      ...text('10'),
+    ])
+  })
+
+  it('gives a table that adds up, a filter on a measure counting the groups that remain', async () => {
+    const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
+    expect(
+      lines(engine, [
+        {
+          kind: 'measure',
+          measure: { aggregate: 'sum', column: 4 },
+          levels: [level(1)],
+          comparison: 'greater',
+          operand: '100',
+        },
+      ]),
+    ).toEqual([
+      ['Lille', '370'],
+      ['Nice', '350'],
+      [null, '720'],
+    ])
+  })
+
+  it('keeps the rows of some values, NULL included', async () => {
+    const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
+    expect(lines(engine, [{ kind: 'values', column: 0, values: ['Nord'] }])).toEqual([
+      ['Arras', '100'],
+      ['Lille', '370'],
+      [null, '470'],
+    ])
+    expect(lines(engine, [{ kind: 'values', column: 0, values: ['Nord', 'Sud'] }])).toHaveLength(5)
+  })
+
+  it('computes again when a filter changes', async () => {
+    const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
+    const totalOf = (operand: string) =>
+      lines(engine, [
+        {
+          kind: 'measure',
+          measure: { aggregate: 'sum', column: 4 },
+          levels: [level(1)],
+          comparison: 'greater',
+          operand,
+        },
+      ]).pop()?.[1]
+    expect(totalOf('100')).toBe('720')
+    expect(totalOf('360')).toBe('370')
+  })
+
+  it('refuses an operand that cannot compare, naming the filter by its rank', async () => {
+    const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
+    const refused = () =>
+      lines(engine, [
+        { kind: 'values', column: 0, values: ['Nord'] },
+        {
+          kind: 'measure',
+          measure: { aggregate: 'count_star', column: 0 },
+          levels: [],
+          comparison: 'equal',
+          operand: 'abc',
+        },
+      ])
+    expect(refused).toThrowError(
+      expect.objectContaining({ failure: { kind: 'filter_operand', filter: 1 } }),
+    )
+  })
+
+  it('gives the distinct values of a column, in the order of the grid', async () => {
+    const engine = await loaded([['b'], [null], ['10'], ['9'], ['b']], ['text'])
+    expect(engine.values(0)).toEqual([null, '9', '10', 'b'])
+    const state: WorkerState = { engine, columns: 1, table: null }
+    expect(answerMessage(state, { type: 'values', id: 3, column: 0 })).toEqual({
+      type: 'values',
+      id: 3,
+      values: [null, '9', '10', 'b'],
+    })
+    expect(answerMessage(state, { type: 'values', id: 4, column: 7 })).toEqual({
+      type: 'failure',
+      id: 4,
+      failure: expect.objectContaining({ kind: 'unknown_column' }),
+    })
   })
 })

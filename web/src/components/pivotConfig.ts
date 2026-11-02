@@ -1,7 +1,7 @@
 /**
  * Configuration of the Pivoteur for a result tab: the columns of the result placed in the zones
- * Lignes, Colonnes and Mesures (`PivotZones.vue`), the names given to them, and the labels of
- * their elements.
+ * Lignes, Colonnes, Mesures and Filtres (`PivotZones.vue`), the names given to them, and the labels
+ * of their elements.
  *
  * In this first slice, a level is a column of the result, by its index, and a measure is
  * `COUNT(*)` or an aggregate of a column (`measureExpression`); the expressions come with the
@@ -16,6 +16,12 @@
  * node of the other axis can rank the nodes instead (C-13), named by their values. Such a sort
  * lasts as long as the levels of that other axis and its measure (`withFollowedSorts`).
  *
+ * A filter (F-19) keeps the rows of some values of a column (F-21), or those of the groups whose
+ * measure passes a comparison (F-44). Its groups are those of a level of an axis with the levels
+ * above it, by default the deepest level of the rows (`filterLevels`). A filter without a value or
+ * without an operand has no effect (`activeFilters`). A column dragged from an axis moves into the
+ * filters, a measure dragged there is copied, and a column has one filter on values at most.
+ *
  * The configuration is saved with its tab, whose query can change: it keeps the names of the
  * columns it was made for, and follows them in the columns of a new result (`fittedConfig`). Its
  * types are those of the server (`crates/server/src/tab_pivot.rs`).
@@ -23,7 +29,9 @@
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { DatePrecision } from '@/api/generated/DatePrecision'
+import type { PivotComparison } from '@/api/generated/PivotComparison'
 import type { PivotConfig } from '@/api/generated/PivotConfig'
+import type { PivotFilter } from '@/api/generated/PivotFilter'
 import type { PivotLevel } from '@/api/generated/PivotLevel'
 import type { PivotValueSort } from '@/api/generated/PivotValueSort'
 import type { TabPivot } from '@/api/generated/TabPivot'
@@ -34,6 +42,7 @@ import type {
   PivotMeasure,
   PivotOrder,
   PivotRequest,
+  PivotRequestFilter,
   PivotRequestLevel,
   PivotValueTarget,
 } from './pivotEngine'
@@ -41,12 +50,17 @@ import { sameColumns } from './resultGrid'
 
 export type { DatePrecision } from '@/api/generated/DatePrecision'
 export type { NamedMeasure } from '@/api/generated/NamedMeasure'
-export type { PivotConfig, PivotLevel }
+export type { PivotComparison, PivotConfig, PivotFilter, PivotLevel }
+
+/**
+ * Filter on a measure.
+ */
+export type PivotMeasureFilter = Extract<PivotFilter, { kind: 'measure' }>
 
 /**
  * Zone of the panel.
  */
-export type PivotZone = 'rows' | 'columns' | 'measures'
+export type PivotZone = 'rows' | 'columns' | 'measures' | 'filters'
 
 /**
  * Place of an element in a zone.
@@ -126,7 +140,7 @@ export function precisionChoices(family: TypeFamily | undefined): PrecisionChoic
  * Configuration without any element.
  */
 export function emptyConfig(): PivotConfig {
-  return { rows: [], columns: [], measures: [] }
+  return { rows: [], columns: [], measures: [], filters: [] }
 }
 
 /**
@@ -135,7 +149,16 @@ export function emptyConfig(): PivotConfig {
  * @param config Configuration.
  */
 export function isEmptyConfig(config: PivotConfig): boolean {
-  return config.rows.length === 0 && config.columns.length === 0 && config.measures.length === 0
+  return !hasTable(config) && config.filters.length === 0
+}
+
+/**
+ * Does the configuration ask for a table? Filters alone do not.
+ *
+ * @param config Configuration.
+ */
+export function hasTable(config: PivotConfig): boolean {
+  return config.rows.length > 0 || config.columns.length > 0 || config.measures.length > 0
 }
 
 /**
@@ -154,7 +177,8 @@ function movedColumns(fields: string[], columns: string[]): (number | undefined)
 
 /**
  * Configuration whose levels follow their columns by name; the element of a lost column leaves,
- * except `COUNT(*)`, which reads no column, and takes the first one for its menu.
+ * except `COUNT(*)`, which reads no column, and takes the first one for its menu. A filter whose
+ * level is lost goes back to the default level.
  *
  * @param pivot Configuration, with the columns it was made for.
  * @param columns Names of the columns of the result.
@@ -175,6 +199,14 @@ function followedConfig(pivot: TabPivot, columns: string[]): PivotConfig {
         moved[measure.column] ?? (measure.aggregate === 'count_star' ? 0 : undefined),
       ),
     ),
+    filters: config.filters.flatMap((filter): PivotFilter[] => {
+      if (filter.kind === 'values') {
+        return follow(filter, moved[filter.column])
+      }
+      const column = moved[filter.column] ?? (filter.aggregate === 'count_star' ? 0 : undefined)
+      const level = filter.level === undefined ? undefined : moved[filter.level]
+      return follow({ ...filter, level }, column)
+    }),
   }
   const whole =
     followed.rows.length === config.rows.length &&
@@ -235,17 +267,83 @@ export function fittedConfig(
 }
 
 /**
- * Table to ask the engine for a configuration, without the names, which it does not read.
+ * Level a filter on a measure was given, when it is still on an axis.
+ *
+ * @param config Configuration.
+ * @param filter Filter.
+ * @returns Column of the level, none for the default level.
+ */
+export function chosenLevel(config: PivotConfig, filter: PivotMeasureFilter): number | undefined {
+  const on = (axis: PivotLevel[]) => axis.some(({ column }) => column === filter.level)
+  return on(config.rows) || on(config.columns) ? filter.level : undefined
+}
+
+/**
+ * Levels whose values make the groups of a filter on a measure (F-44): its level and those above
+ * it; by default all those of the rows, then, without any, all those of the columns. Without any
+ * level, all the rows make one group.
+ *
+ * @param config Configuration.
+ * @param filter Filter.
+ */
+export function filterLevels(config: PivotConfig, filter: PivotMeasureFilter): PivotLevel[] {
+  const level = chosenLevel(config, filter)
+  for (const axis of [config.rows, config.columns]) {
+    const index = axis.findIndex(({ column }) => column === level)
+    if (index >= 0) {
+      return axis.slice(0, index + 1)
+    }
+  }
+  return config.rows.length > 0 ? config.rows : config.columns
+}
+
+/**
+ * Filters that have an effect: those with a value, or with an operand. The engine reads only these
+ * and names them by their rank here.
+ *
+ * @param config Configuration.
+ */
+export function activeFilters(config: PivotConfig): PivotFilter[] {
+  return config.filters.filter((filter) =>
+    filter.kind === 'values' ? filter.values.length > 0 : filter.operand !== '',
+  )
+}
+
+/**
+ * Place of a filter the engine names by its rank.
+ *
+ * @param config Configuration.
+ * @param rank Rank of the filter among those that have an effect (`activeFilters`).
+ */
+export function activeFilterPlace(config: PivotConfig, rank: number): ZonePlace {
+  const filter = activeFilters(config)[rank]
+  return { zone: 'filters', index: filter === undefined ? -1 : config.filters.indexOf(filter) }
+}
+
+/**
+ * Table to ask the engine for a configuration, without the names, which it does not read. It copies
+ * what it reads of the configuration, which is reactive and could not go to the Worker.
  *
  * @param config Configuration.
  */
 export function engineRequest(config: PivotConfig): PivotRequest {
   const levels = (items: PivotLevel[]) =>
     items.map(({ column, precision }): PivotRequestLevel => ({ column, precision }))
+  const filter = (item: PivotFilter): PivotRequestFilter =>
+    item.kind === 'values'
+      ? { kind: 'values', column: item.column, values: [...item.values] }
+      : {
+          kind: 'measure',
+          measure: { aggregate: item.aggregate, column: item.column },
+          levels: levels(filterLevels(config, item)),
+          comparison: item.comparison,
+          operand: item.operand,
+        }
   return {
     rows: levels(config.rows),
     columns: levels(config.columns),
     measures: config.measures.map(({ aggregate, column }) => ({ aggregate, column })),
+    filters: activeFilters(config).map(filter),
   }
 }
 
@@ -457,17 +555,172 @@ export function measureExpression(measure: PivotMeasure, names: string[]): strin
 }
 
 /**
+ * Sign of each comparison, as ANSI SQL writes it.
+ */
+export const COMPARISON_SIGNS: Record<PivotComparison, string> = {
+  equal: '=',
+  not_equal: '<>',
+  less: '<',
+  less_or_equal: '<=',
+  greater: '>',
+  greater_or_equal: '>=',
+}
+
+/**
+ * Values an expression of a filter writes at most.
+ */
+const LISTED_VALUES = 20
+
+/**
+ * Literal of a value in an expression: a number as it is, a date or an instant typed (D23), a text
+ * between quotes, its quotes doubled.
+ *
+ * @param value Value.
+ * @param family Family of the type of the value.
+ */
+function sqlLiteral(value: string, family: TypeFamily | undefined): string {
+  switch (family) {
+    case 'integer':
+    case 'decimal':
+    case 'float':
+    case 'year':
+      return value
+    case 'date':
+      return `DATE'${value}'`
+    case 'datetime':
+      return `TIMESTAMP'${value}'`
+    case 'time':
+      return `TIME'${value}'`
+    default:
+      return `'${value.replace(/'/g, "''")}'`
+  }
+}
+
+/**
+ * Family of the values of a measure: an integer for a count, that of its column otherwise; a sum
+ * or an average holds numbers, even of a column without a type.
+ *
+ * @param measure Measure.
+ * @param types Type of each column of the result.
+ */
+function measureFamily(
+  { aggregate, column }: PivotMeasure,
+  types: ColumnTypeInfo[],
+): TypeFamily | undefined {
+  return ['count_star', 'count', 'count_distinct'].includes(aggregate)
+    ? 'integer'
+    : (types[column]?.family ?? (addsNumbers(aggregate) ? 'decimal' : undefined))
+}
+
+/**
+ * Expression of a filter: `region IN ('Nord', 'Sud')`, `region IN ('Nord') OR region IS NULL`,
+ * `SUM(montant) > 100`. Without a value, the name of its column, or `?` as its operand.
+ *
+ * @param filter Filter.
+ * @param names Names of the columns of the result.
+ * @param types Type of each column of the result.
+ */
+function filterExpression(filter: PivotFilter, names: string[], types: ColumnTypeInfo[]): string {
+  if (filter.kind === 'measure') {
+    const operand =
+      filter.operand === '' ? '?' : sqlLiteral(filter.operand, measureFamily(filter, types))
+    return `${measureExpression(filter, names)} ${COMPARISON_SIGNS[filter.comparison]} ${operand}`
+  }
+  const name = names[filter.column] ?? '?'
+  const texts = filter.values.filter((value) => value !== null)
+  const hasNull = texts.length < filter.values.length
+  if (texts.length === 0) {
+    return hasNull ? `${name} IS NULL` : name
+  }
+  const family = types[filter.column]?.family
+  const literals = texts.slice(0, LISTED_VALUES).map((value) => sqlLiteral(value, family))
+  const list = texts.length > LISTED_VALUES ? [...literals, '…'] : literals
+  const inList = `${name} IN (${list.join(', ')})`
+  return hasNull ? `${inList} OR ${name} IS NULL` : inList
+}
+
+/**
+ * Exact number, as the engine reads it.
+ */
+const EXACT_NUMBER = /^[+-]?(\d+(\.\d*)?|\.\d+)$/
+
+/**
+ * Float, as the engine reads it.
+ */
+const FLOAT_NUMBER = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/
+
+/**
+ * Date of the calendar, years 0001 to 9999.
+ */
+function isCalendarDate(text: string): boolean {
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text)
+  if (parts === null) {
+    return false
+  }
+  const [year, month, day] = parts.slice(1).map(Number) as [number, number, number]
+  // The years 2000 to 2399 have the leap years of any cycle of 400 years.
+  const days = new Date(Date.UTC(2000 + (year % 400), month, 0)).getUTCDate()
+  return year >= 1 && month >= 1 && month <= 12 && day >= 1 && day <= days
+}
+
+/**
+ * Why an operand cannot compare with the values of a measure. A date, an instant or an hour
+ * compares as text: its form is required so that the order of the text is that of time.
+ *
+ * @param measure Measure.
+ * @param operand Operand, not empty.
+ * @param types Type of each column of the result.
+ * @returns The message of the refusal, `null` for an operand accepted.
+ */
+export function operandRefusal(
+  measure: PivotMeasure,
+  operand: string,
+  types: ColumnTypeInfo[],
+): string | null {
+  switch (measureFamily(measure, types)) {
+    case 'integer':
+    case 'decimal':
+      return EXACT_NUMBER.test(operand) ? null : 'Un nombre est attendu, comme 100 ou 12.5'
+    case 'float':
+      return FLOAT_NUMBER.test(operand) ? null : 'Un nombre est attendu, comme 100 ou 1.5e3'
+    case 'date':
+      return isCalendarDate(operand) ? null : 'Une date est attendue, comme 2026-01-15'
+    case 'datetime':
+      return isCalendarDate(operand.slice(0, 10)) &&
+        /^ \d{2}:\d{2}:\d{2}(\.\d+)?$/.test(operand.slice(10))
+        ? null
+        : 'Un instant est attendu, comme 2026-01-15 10:30:00'
+    case 'time':
+      return /^-?\d{2,3}:\d{2}:\d{2}(\.\d+)?$/.test(operand)
+        ? null
+        : 'Une heure est attendue, comme 10:30:00'
+    default:
+      return null
+  }
+}
+
+/**
  * Expression of an element: the name of the column of a level, with its precision
- * (`vendue_le (Mois)`), the expression of a measure.
+ * (`vendue_le (Mois)`), the expression of a measure or of a filter.
  *
  * @param config Configuration.
  * @param place Place of the element.
  * @param names Names of the columns of the result.
+ * @param types Type of each column of the result, for the literals of a filter.
  */
-export function elementExpression(config: PivotConfig, place: ZonePlace, names: string[]): string {
+export function elementExpression(
+  config: PivotConfig,
+  place: ZonePlace,
+  names: string[],
+  types: ColumnTypeInfo[] = [],
+): string {
   if (place.zone === 'measures') {
     const measure = config.measures[place.index]
     return measure === undefined ? '?' : measureExpression(measure, names)
+  }
+  if (place.zone === 'filters') {
+    const filter = config.filters[place.index]
+    return filter === undefined ? '?' : filterExpression(filter, names, types)
   }
   const level = config[place.zone][place.index]
   const name = names[level?.column ?? -1] ?? '?'
@@ -484,10 +737,16 @@ export function elementExpression(config: PivotConfig, place: ZonePlace, names: 
  * @param config Configuration.
  * @param place Place of the element.
  * @param names Names of the columns of the result.
+ * @param types Type of each column of the result, for the literals of a filter.
  */
-export function elementLabel(config: PivotConfig, place: ZonePlace, names: string[]): string {
+export function elementLabel(
+  config: PivotConfig,
+  place: ZonePlace,
+  names: string[],
+  types: ColumnTypeInfo[] = [],
+): string {
   const name = config[place.zone][place.index]?.name ?? ''
-  return name === '' ? elementExpression(config, place, names) : name
+  return name === '' ? elementExpression(config, place, names, types) : name
 }
 
 /**
@@ -524,6 +783,7 @@ function withoutElement(config: PivotConfig, place: ZonePlace): PivotConfig {
     rows: place.zone === 'rows' ? without(config.rows) : config.rows,
     columns: place.zone === 'columns' ? without(config.columns) : config.columns,
     measures: place.zone === 'measures' ? without(config.measures) : config.measures,
+    filters: place.zone === 'filters' ? without(config.filters) : config.filters,
   }
 }
 
@@ -538,11 +798,57 @@ export function removeElement(config: PivotConfig, place: ZonePlace): PivotConfi
 }
 
 /**
+ * Places a column in the filters, at a position: a filter moved among the filters, a measure copied
+ * into a filter on it, whose operand is still to give, or a column, which leaves its axis if it
+ * comes from one, into a filter on its values; a filter on the values of this column stays the only
+ * one.
+ *
+ * @param config Configuration.
+ * @param column Index of the column.
+ * @param index Position of the filter.
+ * @param from Place of the moved element, `null` for a new element.
+ */
+function placeFilter(
+  config: PivotConfig,
+  column: number,
+  index: number,
+  from: ZonePlace | null,
+): PivotConfig {
+  const insert = (base: PivotConfig, filter: PivotFilter, at: number) => ({
+    ...base,
+    filters: [...base.filters.slice(0, at), filter, ...base.filters.slice(at)],
+  })
+  const moved = from?.zone === 'filters' ? config.filters[from.index] : undefined
+  if (from !== null && moved !== undefined) {
+    return insert(withoutElement(config, from), moved, from.index < index ? index - 1 : index)
+  }
+  const measure = from?.zone === 'measures' ? config.measures[from.index] : undefined
+  if (measure !== undefined) {
+    const { aggregate } = measure
+    const comparison = 'greater'
+    const filter: PivotFilter = {
+      kind: 'measure',
+      aggregate,
+      column,
+      name: '',
+      comparison,
+      operand: '',
+    }
+    return insert(config, filter, index)
+  }
+  const base = from === null ? config : removeElement(config, from)
+  return base.filters.some((filter) => filter.kind === 'values' && filter.column === column)
+    ? base
+    : insert(base, { kind: 'values', column, name: '', values: [] }, index)
+}
+
+/**
  * Places a column in a zone, at a position: a new element, or one moved from another place.
  *
  * A level leaves the axis where it was, if it was a level already, and keeps its name. A measure
  * moved stays the same measure, with its name; a column that becomes a measure takes the aggregate
- * given, and a measure that becomes a level loses its name.
+ * given, and a measure that becomes a level loses its name. A filter that leaves the filters also
+ * loses its name; on a measure, its aggregate stays when it becomes a measure.
  *
  * @param config Configuration.
  * @param column Index of the column.
@@ -557,8 +863,13 @@ export function placeColumn(
   to: ZonePlace,
   from: ZonePlace | null,
 ): PivotConfig {
+  if (to.zone === 'filters') {
+    return placeFilter(config, column, to.index, from)
+  }
   const moved = from?.zone === 'measures' ? config.measures[from.index] : undefined
-  let level = from !== null && from.zone !== 'measures' ? config[from.zone][from.index] : undefined
+  const filter = from?.zone === 'filters' ? config.filters[from.index] : undefined
+  let level =
+    from?.zone === 'rows' || from?.zone === 'columns' ? config[from.zone][from.index] : undefined
   let result = config
   let index = to.index
   // Removing an element before the target, in the same zone, shifts the target.
@@ -588,7 +899,14 @@ export function placeColumn(
     columns: to.zone === 'columns' ? insert(result.columns, newLevel) : result.columns,
     measures:
       to.zone === 'measures'
-        ? insert(result.measures, moved ?? { aggregate, column, name: '' })
+        ? insert(
+            result.measures,
+            moved ?? {
+              aggregate: filter?.kind === 'measure' ? filter.aggregate : aggregate,
+              column,
+              name: '',
+            },
+          )
         : result.measures,
   })
 }
@@ -634,6 +952,20 @@ export function withPrecision(
 }
 
 /**
+ * Replaces a filter.
+ *
+ * @param config Configuration.
+ * @param index Position of the filter.
+ * @param filter New filter.
+ */
+export function withFilter(config: PivotConfig, index: number, filter: PivotFilter): PivotConfig {
+  return {
+    ...config,
+    filters: config.filters.map((item, position) => (position === index ? filter : item)),
+  }
+}
+
+/**
  * Names an element. A name empty, or equal to the expression of the element, removes its name:
  * the element shows its expression again.
  *
@@ -641,15 +973,17 @@ export function withPrecision(
  * @param place Place of the element.
  * @param name Name typed.
  * @param names Names of the columns of the result.
+ * @param types Type of each column of the result, for the literals of a filter.
  */
 export function withName(
   config: PivotConfig,
   place: ZonePlace,
   name: string,
   names: string[],
+  types: ColumnTypeInfo[] = [],
 ): PivotConfig {
   const trimmed = name.trim()
-  const kept = trimmed === elementExpression(config, place, names) ? '' : trimmed
+  const kept = trimmed === elementExpression(config, place, names, types) ? '' : trimmed
   const rename = <T extends { name: string }>(items: T[]) =>
     items.map((item, index) => (index === place.index ? { ...item, name: kept } : item))
   return {
@@ -657,5 +991,6 @@ export function withName(
     rows: place.zone === 'rows' ? rename(config.rows) : config.rows,
     columns: place.zone === 'columns' ? rename(config.columns) : config.columns,
     measures: place.zone === 'measures' ? rename(config.measures) : config.measures,
+    filters: place.zone === 'filters' ? rename(config.filters) : config.filters,
   }
 }

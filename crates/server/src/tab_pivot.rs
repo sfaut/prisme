@@ -87,6 +87,63 @@ pub struct NamedMeasure {
     pub name: String,
 }
 
+/// Comparison of a filter on a measure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum PivotComparison {
+    /// `=`.
+    Equal,
+    /// `<>`.
+    NotEqual,
+    /// `<`.
+    Less,
+    /// `<=`.
+    LessOrEqual,
+    /// `>`.
+    Greater,
+    /// `>=`.
+    GreaterOrEqual,
+}
+
+/// Filter of the Pivoteur.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[ts(export)]
+pub enum PivotFilter {
+    /// Keeps the rows whose cell is one of some values.
+    Values {
+        /// Index of the column of the result.
+        column: u32,
+        /// Name given to the filter, empty string without one: the filter then
+        /// shows its expression.
+        name: String,
+        /// Values kept, `null` for NULL. Without any, the filter keeps every row.
+        values: Vec<Option<String>>,
+    },
+    /// Keeps the rows of the groups whose measure passes a comparison.
+    Measure {
+        /// Aggregate of the measure.
+        aggregate: PivotAggregate,
+        /// Column the measure comes from; `COUNT(*)` keeps it, for its label and
+        /// its menu.
+        column: u32,
+        /// Name given to the filter, empty string without one: the filter then
+        /// shows its expression.
+        name: String,
+        /// Comparison of the value of each group to the operand.
+        comparison: PivotComparison,
+        /// Value compared to, empty string without one: the filter then keeps
+        /// every row.
+        operand: String,
+        /// Column of the level the measure reads. A column that is no level any
+        /// more, or none, means the deepest level of the rows.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        level: Option<u32>,
+    },
+}
+
 /// Values of a node of the other axis, which rank the nodes of an axis: named
 /// by its values, so that it survives a new computation of the table. A node
 /// the table no longer holds ranks nothing, and ranks again once it comes back.
@@ -112,6 +169,9 @@ pub struct PivotConfig {
     pub columns: Vec<PivotLevel>,
     /// Measures, in the order of their zone.
     pub measures: Vec<NamedMeasure>,
+    /// Filters, in the order of their zone.
+    #[serde(default)]
+    pub filters: Vec<PivotFilter>,
     /// Column of values that ranks the lines.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -276,19 +336,49 @@ mod tests {
     }
 
     #[test]
-    fn a_configuration_saved_before_the_sorts_reads_in_the_order_of_its_labels() {
+    fn a_configuration_saved_before_the_sorts_and_the_filters_keeps_its_elements() {
         let saved =
             r#"{"rows":[{"column":1,"name":"","precision":"none"}],"columns":[],"measures":[]}"#;
         let config: PivotConfig = serde_json::from_str(saved).unwrap();
         assert!(!config.rows[0].descending);
         assert_eq!(config.sort_lines, None);
         assert_eq!(config.sort_columns, None);
+        assert_eq!(config.filters, []);
+        assert_eq!(
+            serde_json::to_string(&config).unwrap(),
+            saved.replace(r#""measures":[]"#, r#""measures":[],"filters":[]"#)
+        );
+    }
+
+    #[test]
+    fn keeps_the_filters_of_a_configuration() {
+        let saved = r#"{"rows":[],"columns":[],"measures":[],"filters":[{"kind":"values","column":0,"name":"","values":["Nord",null]},{"kind":"measure","aggregate":"sum","column":2,"name":"Gros","comparison":"greater","operand":"100","level":1},{"kind":"measure","aggregate":"count_star","column":0,"name":"","comparison":"not_equal","operand":""}]}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        assert_eq!(
+            config.filters[0],
+            PivotFilter::Values {
+                column: 0,
+                name: String::new(),
+                values: vec![Some("Nord".to_string()), None],
+            }
+        );
+        assert_eq!(
+            config.filters[1],
+            PivotFilter::Measure {
+                aggregate: PivotAggregate::Sum,
+                column: 2,
+                name: "Gros".to_string(),
+                comparison: PivotComparison::Greater,
+                operand: "100".to_string(),
+                level: Some(1),
+            }
+        );
         assert_eq!(serde_json::to_string(&config).unwrap(), saved);
     }
 
     #[test]
     fn keeps_the_sorts_of_a_configuration() {
-        let saved = r#"{"rows":[{"column":1,"name":"","precision":"none","descending":true}],"columns":[],"measures":[],"sort_lines":{"path":["2026",null],"measure":1,"descending":true},"sort_columns":{"path":[],"measure":0,"descending":false}}"#;
+        let saved = r#"{"rows":[{"column":1,"name":"","precision":"none","descending":true}],"columns":[],"measures":[],"filters":[],"sort_lines":{"path":["2026",null],"measure":1,"descending":true},"sort_columns":{"path":[],"measure":0,"descending":false}}"#;
         let config: PivotConfig = serde_json::from_str(saved).unwrap();
         assert!(config.rows[0].descending);
         assert_eq!(

@@ -11,11 +11,13 @@
  * The values of each level are ranked in the order of the grid (`compareCells`), once per column;
  * the module ranks the periods of a level with a precision, in the order of time. A table asked
  * again in another order is only laid out again, which makes it a new table for its windows.
+ * The Worker also gives the distinct values of a column, for the list of a filter.
  */
 
 import type { DatePrecision } from '@/api/generated/DatePrecision'
 import type { TypeFamily } from '@/api/generated/TypeFamily'
 import type { PivotAggregate } from '@/api/generated/PivotAggregate'
+import type { PivotComparison } from '@/api/generated/PivotComparison'
 import type { Cell } from '@/api/querySession'
 
 import { compareCells } from './resultGrid'
@@ -51,6 +53,47 @@ export interface PivotRequestLevel {
 }
 
 /**
+ * Filter of a table.
+ */
+export type PivotRequestFilter =
+  | {
+      /**
+       * Keeps the rows whose cell is one of some values.
+       */
+      kind: 'values'
+      /**
+       * Index of the column.
+       */
+      column: number
+      /**
+       * Values kept, `null` for NULL.
+       */
+      values: Cell[]
+    }
+  | {
+      /**
+       * Keeps the rows of the groups whose measure passes a comparison.
+       */
+      kind: 'measure'
+      /**
+       * Measure compared.
+       */
+      measure: PivotMeasure
+      /**
+       * Levels of its groups, the outermost first; without any, all the rows make one group.
+       */
+      levels: PivotRequestLevel[]
+      /**
+       * Comparison of the value of each group to the operand.
+       */
+      comparison: PivotComparison
+      /**
+       * Value compared to.
+       */
+      operand: string
+    }
+
+/**
  * Table asked of the engine.
  */
 export interface PivotRequest {
@@ -66,6 +109,10 @@ export interface PivotRequest {
    * Measures, in the order of their zone.
    */
   measures: PivotMeasure[]
+  /**
+   * Filters, which combine by `AND`.
+   */
+  filters: PivotRequestFilter[]
 }
 
 /**
@@ -233,8 +280,9 @@ export interface PivotWindow {
 export interface PivotFailure {
   /**
    * Kind of the refusal: `invalid_number`, `too_large`, `overflow`, `not_numeric`,
-   * `invalid_date`, `unknown_column`, `unknown_row`, `ranks`, `block`, `not_loading`,
-   * `incomplete`, `no_result`, `no_table`, `request`, `stale` (a window of a replaced table).
+   * `invalid_date`, `filter_not_numeric`, `filter_overflow`, `filter_operand`, `unknown_column`,
+   * `unknown_row`, `ranks`, `block`, `not_loading`, `incomplete`, `no_result`, `no_table`,
+   * `request`, `stale` (a window of a replaced table).
    */
   kind: string
   /**
@@ -249,6 +297,10 @@ export interface PivotFailure {
    * Measure concerned, by its index.
    */
   measure?: number
+  /**
+   * Filter concerned, by its index in the request.
+   */
+  filter?: number
   /**
    * Detail, in English.
    */
@@ -320,6 +372,14 @@ export type PivotRequestMessage =
       lines: [number, number]
       columns: [number, number]
     }
+  | {
+      /**
+       * Asks for the distinct values of a column, in the order of the grid.
+       */
+      type: 'values'
+      id: number
+      column: number
+    }
 
 /**
  * Answer of the Worker to the message of id `id`.
@@ -328,6 +388,7 @@ export type PivotAnswer =
   | { type: 'finished'; id: number }
   | { type: 'table'; id: number; shape: PivotShape; durationMs: number }
   | { type: 'window'; id: number; window: PivotWindow }
+  | { type: 'values'; id: number; values: Cell[] }
   | { type: 'failure'; id: number | null; failure: PivotFailure }
 
 /**
@@ -382,8 +443,31 @@ export function ranksOf(values: Cell[]): Uint32Array {
 }
 
 /**
+ * Word that stands for NULL in a path of values.
+ */
+const NULL_STEP = 0xffff_ffff
+
+const encoder = new TextEncoder()
+
+/**
+ * Words of a value: `NULL_STEP` for NULL, or its length in bytes then one word per byte of its
+ * UTF-8 text.
+ *
+ * @param value Value.
+ */
+function valueWords(value: Cell): number[] {
+  if (value === null) {
+    return [NULL_STEP]
+  }
+  const bytes = encoder.encode(value)
+  return [bytes.length, ...bytes]
+}
+
+/**
  * Words of a request for the module: numbers of levels and of measures, a column and a precision
- * per level, then a kind and a column per measure.
+ * per level, a kind and a column per measure, then the filters. A filter on values: 0, its column,
+ * the number of its values and each value. A filter on a measure: 1, the measure, the number of
+ * its levels and each level, the comparison and the operand.
  *
  * @param request Table asked.
  */
@@ -401,28 +485,41 @@ export function requestWords(request: PivotRequest): Uint32Array {
     min: 7,
     max: 8,
   }
+  const measureWords = ({ aggregate, column }: PivotMeasure) => [kinds[aggregate], column]
+  const comparisons = {
+    equal: 0,
+    not_equal: 1,
+    less: 2,
+    less_or_equal: 3,
+    greater: 4,
+    greater_or_equal: 5,
+  }
+  const filterWords = (filter: PivotRequestFilter) =>
+    filter.kind === 'values'
+      ? [0, filter.column, filter.values.length, ...filter.values.flatMap(valueWords)]
+      : [
+          1,
+          ...measureWords(filter.measure),
+          filter.levels.length,
+          ...filter.levels.flatMap(levelWords),
+          comparisons[filter.comparison],
+          ...valueWords(filter.operand),
+        ]
   return Uint32Array.from([
     request.rows.length,
     request.columns.length,
     request.measures.length,
     ...request.rows.flatMap(levelWords),
     ...request.columns.flatMap(levelWords),
-    ...request.measures.flatMap((measure) => [kinds[measure.aggregate], measure.column]),
+    ...request.measures.flatMap(measureWords),
+    ...request.filters.flatMap(filterWords),
   ])
 }
 
 /**
- * Word that stands for NULL in a path of values.
- */
-const NULL_STEP = 0xffff_ffff
-
-const encoder = new TextEncoder()
-
-/**
  * Words of the order of an axis: the number of its levels and a word per level, then 0 without
  * values that rank it; otherwise 1, the measure, a word for the direction, the number of steps of
- * the path, and each step: `NULL_STEP` for NULL, or its length in bytes then one word per byte of
- * its UTF-8 text.
+ * the path, and each step (`valueWords`).
  *
  * @param order Order of the axis.
  */
@@ -431,13 +528,7 @@ function axisWords({ descending, values }: PivotAxisOrder): number[] {
   if (values === null) {
     return [...words, 0]
   }
-  const steps = values.path.flatMap((step) => {
-    if (step === null) {
-      return [NULL_STEP]
-    }
-    const bytes = encoder.encode(step)
-    return [bytes.length, ...bytes]
-  })
+  const steps = values.path.flatMap(valueWords)
   return [...words, 1, values.measure, Number(values.descending), values.path.length, ...steps]
 }
 
@@ -613,6 +704,15 @@ export class PivotEngine {
   }
 
   /**
+   * Distinct values of a column, in the order of the grid.
+   *
+   * @param column Index of the column.
+   */
+  values(column: number): Cell[] {
+    return this.answer<Cell[]>(this.engine.distinct(column)).sort(compareCells)
+  }
+
+  /**
    * Computes a table, and keeps it for the windows in place of the previous one, then lays it out
    * in an order. The table in the module, asked again, is only laid out again: a sort computes no
    * aggregate. A refused table keeps the previous one: the panel goes on showing it, with the
@@ -725,6 +825,8 @@ export function answerMessage(
           id: message.id,
           window: state.engine.window(message.lines, message.columns),
         }
+      case 'values':
+        return { type: 'values', id: message.id, values: state.engine.values(message.column) }
     }
   } catch (failure) {
     if (failure instanceof PivotError) {
