@@ -21,7 +21,8 @@ use std::cell::RefCell;
 use std::slice;
 
 use prisme_pivot::{
-    AxisOrder, Engine, Family, Level, Measure, Order, Precision, Request, Table, ValueOrder,
+    AxisOrder, Comparison, Engine, Family, Filter, Level, Measure, Order, Precision, Request,
+    Table, ValueOrder,
 };
 use prisme_store::Store;
 
@@ -267,64 +268,129 @@ pub unsafe extern "C" fn set_kept(rows: *const u32, count: usize, all: u32) -> u
     })
 }
 
-/// Reads levels: a column and a precision per level (0 its values as they
-/// are, 1 year, 2 quarter, 3 month, 4 week, 5 date). `None` for another
-/// precision.
+/// Reads a level: a column and a precision (0 its values as they are, 1 year,
+/// 2 quarter, 3 month, 4 week, 5 date). `None` for another precision.
+fn level(column: u32, precision: u32) -> Option<Level> {
+    let precision = match precision {
+        0 => None,
+        1 => Some(Precision::Year),
+        2 => Some(Precision::Quarter),
+        3 => Some(Precision::Month),
+        4 => Some(Precision::Week),
+        5 => Some(Precision::Date),
+        _ => return None,
+    };
+    Some(Level {
+        column: column as usize,
+        precision,
+    })
+}
+
+/// Reads levels, each by two words (see `level`).
 fn levels(words: &[u32]) -> Option<Vec<Level>> {
     words
         .chunks(2)
-        .map(|pair| {
-            let precision = match pair[1] {
-                0 => None,
-                1 => Some(Precision::Year),
-                2 => Some(Precision::Quarter),
-                3 => Some(Precision::Month),
-                4 => Some(Precision::Week),
-                5 => Some(Precision::Date),
-                _ => return None,
-            };
-            Some(Level {
-                column: pair[0] as usize,
-                precision,
-            })
-        })
+        .map(|pair| level(pair[0], pair[1]))
         .collect()
+}
+
+/// Reads a measure: a kind (0 `COUNT(*)`, 1 `COUNT(col)`, 2 `SUM(col)`,
+/// 3 `COUNT(DISTINCT col)`, 4 `SUM(DISTINCT col)`, 5 `AVG(col)`,
+/// 6 `AVG(DISTINCT col)`, 7 `MIN(col)`, 8 `MAX(col)`) and a column. `None` for
+/// another kind.
+fn measure(kind: u32, column: u32) -> Option<Measure> {
+    let column = column as usize;
+    match kind {
+        0 => Some(Measure::CountStar),
+        1 => Some(Measure::Count(column)),
+        2 => Some(Measure::Sum(column)),
+        3 => Some(Measure::CountDistinct(column)),
+        4 => Some(Measure::SumDistinct(column)),
+        5 => Some(Measure::Avg(column)),
+        6 => Some(Measure::AvgDistinct(column)),
+        7 => Some(Measure::Min(column)),
+        8 => Some(Measure::Max(column)),
+        _ => None,
+    }
+}
+
+/// Reads a comparison: 0 `=`, 1 `<>`, 2 `<`, 3 `<=`, 4 `>`, 5 `>=`. `None` for
+/// another code.
+fn comparison(code: u32) -> Option<Comparison> {
+    match code {
+        0 => Some(Comparison::Equal),
+        1 => Some(Comparison::NotEqual),
+        2 => Some(Comparison::Less),
+        3 => Some(Comparison::LessOrEqual),
+        4 => Some(Comparison::Greater),
+        5 => Some(Comparison::GreaterOrEqual),
+        _ => None,
+    }
+}
+
+/// Reads filters, up to the end of the words. A filter on values: 0, the column,
+/// the number of values, and each value (see `path_step`). A filter on a measure:
+/// 1, the measure (see `measure`), the number of its levels and each level (see
+/// `level`), the comparison (see `comparison`), and the operand (see
+/// `path_step`), which NULL cannot be.
+fn filters(words: &[u32]) -> Option<Vec<Filter>> {
+    let mut words = words.iter().copied();
+    let mut filters = Vec::new();
+    while let Some(kind) = words.next() {
+        filters.push(match kind {
+            0 => {
+                let column = words.next()? as usize;
+                let count = words.next()?;
+                let values = (0..count)
+                    .map(|_| path_step(&mut words))
+                    .collect::<Option<Vec<_>>>()?;
+                Filter::Values { column, values }
+            }
+            1 => {
+                let measure = measure(words.next()?, words.next()?)?;
+                let count = words.next()?;
+                let levels = (0..count)
+                    .map(|_| level(words.next()?, words.next()?))
+                    .collect::<Option<Vec<_>>>()?;
+                let comparison = comparison(words.next()?)?;
+                let operand = path_step(&mut words)??;
+                Filter::Measure {
+                    measure,
+                    levels,
+                    comparison,
+                    operand,
+                }
+            }
+            _ => return None,
+        });
+    }
+    Some(filters)
 }
 
 /// Reads a request: the numbers of levels of the rows and of the columns,
 /// the number of measures, the levels of the rows, then of the columns (see
-/// `levels`), then a kind (0 `COUNT(*)`, 1 `COUNT(col)`, 2 `SUM(col)`,
-/// 3 `COUNT(DISTINCT col)`, 4 `SUM(DISTINCT col)`, 5 `AVG(col)`,
-/// 6 `AVG(DISTINCT col)`, 7 `MIN(col)`, 8 `MAX(col)`) and a column per
-/// measure. `None` if the words do not match.
+/// `levels`), then the measures, each by two words (see `measure`), then the
+/// filters (see `filters`). `None` if the words do not match.
 fn request(words: &[u32]) -> Option<Request> {
     let (&rows, &columns, &measures) = (words.first()?, words.get(1)?, words.get(2)?);
     let (rows, columns, measures) = (rows as usize, columns as usize, measures as usize);
     let rest = &words[3..];
-    if rest.len() != 2 * (rows + columns + measures) {
+    let fixed = 2 * (rows + columns + measures);
+    if rest.len() < fixed {
         return None;
     }
+    let (rest, filter_words) = rest.split_at(fixed);
     let (row_levels, rest) = rest.split_at(2 * rows);
     let (column_levels, measure_words) = rest.split_at(2 * columns);
     let measures = measure_words
         .chunks(2)
-        .map(|pair| match pair[0] {
-            0 => Some(Measure::CountStar),
-            1 => Some(Measure::Count(pair[1] as usize)),
-            2 => Some(Measure::Sum(pair[1] as usize)),
-            3 => Some(Measure::CountDistinct(pair[1] as usize)),
-            4 => Some(Measure::SumDistinct(pair[1] as usize)),
-            5 => Some(Measure::Avg(pair[1] as usize)),
-            6 => Some(Measure::AvgDistinct(pair[1] as usize)),
-            7 => Some(Measure::Min(pair[1] as usize)),
-            8 => Some(Measure::Max(pair[1] as usize)),
-            _ => None,
-        })
+        .map(|pair| measure(pair[0], pair[1]))
         .collect::<Option<Vec<_>>>()?;
     Some(Request {
         rows: levels(row_levels)?,
         columns: levels(column_levels)?,
         measures,
+        filters: filters(filter_words)?,
     })
 }
 
@@ -648,6 +714,44 @@ mod tests {
             }]
         );
         assert_eq!(request.columns, [Level::from(7)]);
+    }
+
+    #[test]
+    fn a_request_reads_its_filters() {
+        let text = "é";
+        // Measure: COUNT(*). Filters: column 2 IN (NULL, 'é'), then SUM(column 4)
+        // >= 'é' at the level of column 3, by month.
+        let mut words = vec![0u32, 0, 1, 0, 0, 0, 2, 2, NULL_STEP, text.len() as u32];
+        words.extend(text.bytes().map(u32::from));
+        words.extend([1, 2, 4, 1, 3, 3, 5, text.len() as u32]);
+        words.extend(text.bytes().map(u32::from));
+        assert_eq!(
+            request(&words).unwrap().filters,
+            [
+                Filter::Values {
+                    column: 2,
+                    values: vec![None, Some(text.to_owned())],
+                },
+                Filter::Measure {
+                    measure: Measure::Sum(4),
+                    levels: vec![Level {
+                        column: 3,
+                        precision: Some(Precision::Month),
+                    }],
+                    comparison: Comparison::GreaterOrEqual,
+                    operand: text.to_owned(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn filters_that_do_not_match_their_words_are_refused() {
+        // An unknown kind, a missing value, an unknown comparison, a NULL operand.
+        assert!(request(&[0, 0, 1, 0, 0, 7]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 2, 1]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 1, 0, 0, 0, 6, 0]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 1, 0, 0, 0, 0, NULL_STEP]).is_none());
     }
 
     #[test]

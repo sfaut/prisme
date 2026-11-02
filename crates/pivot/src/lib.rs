@@ -8,13 +8,15 @@
 //! the measures are `COUNT(*)`, `COUNT(col)`, `SUM(col)`, `AVG(col)`,
 //! `MIN(col)` and `MAX(col)`, in ANSI SQL, and `COUNT`, `SUM` and `AVG` of
 //! `DISTINCT col`. The lines and the columns follow their labels or the values
-//! of a measure (`Order`). The dialect of the Pivoteur, with its expressions,
-//! comes with the next slices.
+//! of a measure (`Order`). Filters keep rows, by the values of a column or by a
+//! measure at a level (`filters`). The dialect of the Pivoteur, with its
+//! expressions, comes with the next slices.
 //!
 //! The crate does not depend on its target: its tests run natively, and the
 //! Worker of the page runs it compiled to WebAssembly (`crates/web-engine`).
 
 mod dates;
+mod filters;
 mod groups;
 mod measures;
 mod table;
@@ -26,6 +28,7 @@ use prisme_store::{Approx, Dictionary, Exact, NumberError, Store};
 
 use crate::dates::DerivedLevel;
 pub use crate::dates::Precision;
+pub use crate::filters::{Comparison, Filter};
 pub use crate::measures::Value;
 use crate::measures::{Extreme, Input, SortKey};
 pub use crate::table::{Header, Label, Line, Table};
@@ -100,6 +103,8 @@ pub struct Request {
     pub columns: Vec<Level>,
     /// Measures, in the order of their zone.
     pub measures: Vec<Measure>,
+    /// Filters, which combine by `AND`.
+    pub filters: Vec<Filter>,
 }
 
 /// Order of the lines and of the columns of a table (C-11, C-13). A sort
@@ -165,6 +170,21 @@ pub enum Error {
         /// Measure, by its index.
         measure: usize,
     },
+    /// Filter `filter` adds up a column that does not hold numbers.
+    FilterNotNumeric {
+        /// Filter, by its index.
+        filter: usize,
+    },
+    /// A value of the measure of filter `filter` goes beyond 128 bits.
+    FilterOverflow {
+        /// Filter, by its index.
+        filter: usize,
+    },
+    /// The operand of filter `filter` cannot compare with its measure.
+    FilterOperand {
+        /// Filter, by its index.
+        filter: usize,
+    },
     /// A cell of a level with a precision, in a row taken into account, is
     /// outside of the calendar.
     InvalidDate {
@@ -187,6 +207,15 @@ impl fmt::Display for Error {
             Error::Number { column, error } => write!(formatter, "column {column}, {error}"),
             Error::Overflow { measure } => {
                 write!(formatter, "measure {measure}: value beyond 128 bits")
+            }
+            Error::FilterNotNumeric { filter } => {
+                write!(formatter, "filter {filter}: column without numbers")
+            }
+            Error::FilterOverflow { filter } => {
+                write!(formatter, "filter {filter}: value beyond 128 bits")
+            }
+            Error::FilterOperand { filter } => {
+                write!(formatter, "filter {filter}: operand not comparable")
             }
             Error::InvalidDate { column, row } => {
                 write!(
@@ -512,10 +541,12 @@ impl Engine {
         })
     }
 
-    /// Computes a table over the rows kept, in the order of the labels.
+    /// Computes a table over the rows kept and its filters leave, in the order
+    /// of the labels. As in SQL, the rows that a filter on values leaves out stop
+    /// nothing, and those of a group a filter on a measure drops have been read.
     pub fn compute(&self, request: &Request) -> Result<Table, Error> {
         let all: Vec<u32>;
-        let selection: &[u32] = match &self.kept {
+        let kept: &[u32] = match &self.kept {
             Some(rows) => rows,
             None => {
                 all = (0..self.store.row_count() as u32).collect();
@@ -524,14 +555,17 @@ impl Engine {
         };
         let (row_levels, row_ranks) = self.levels(&request.rows)?;
         let (column_levels, column_ranks) = self.levels(&request.columns)?;
-        self.check_dates(&request.rows, selection)?;
-        self.check_dates(&request.columns, selection)?;
         let inputs = request
             .measures
             .iter()
             .enumerate()
             .map(|(index, &measure)| self.input(index, measure))
             .collect::<Result<Vec<_>, _>>()?;
+        let selection = self.keep_by_values(&request.filters, kept)?;
+        self.check_dates(&request.rows, &selection)?;
+        self.check_dates(&request.columns, &selection)?;
+        let selection = self.keep_by_measures(&request.filters, selection)?;
+        let selection = selection.as_ref();
 
         let levels: Vec<&Dictionary> = row_levels.iter().chain(&column_levels).copied().collect();
         let (finest, first_rows) = groups::finest(&levels, selection);

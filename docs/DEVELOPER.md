@@ -219,7 +219,7 @@ The engine runs in the page, in Rust compiled to WebAssembly, in a Worker, on th
 | Part | Role |
 |---|---|
 | `crates/store` (package `prisme-store`) | Rows of a result in columns: the text of each cell, then the forms derived from it, built once when a reader needs them (dictionary, exact numbers, floats). |
-| `crates/pivot` (package `prisme-pivot`) | The engine: groups (`groups.rs`), measures (`measures.rs`), precisions of the dates (`dates.rs`), layout of the table (`table.rs`). It does not depend on its target: its tests run natively. |
+| `crates/pivot` (package `prisme-pivot`) | The engine: groups (`groups.rs`), measures (`measures.rs`), precisions of the dates (`dates.rs`), filters (`filters.rs`), layout of the table (`table.rs`). It does not depend on its target: its tests run natively. |
 | `crates/web-engine` (package `prisme-web-engine`, library `web_engine`, compiled file `web-engine-*.wasm`) | The WebAssembly side, without `wasm-bindgen`: its functions take and return numbers and addresses in the memory of the module. Those that answer with data write JSON (`json.rs`) and return its length; `output_address` gives its address. A refused call answers `{"error": {"kind", …}}`. |
 | `crates/server/src/tab_pivot.rs` | Types of the saved configuration (`TabPivot`, generated for the interface by `ts-rs`) and `carry_over`. |
 | `web/src/components/pivotWorker.ts` | The Worker: loads the module, runs the messages of the page. |

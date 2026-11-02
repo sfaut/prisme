@@ -154,6 +154,15 @@ pub fn error(json: &mut String, error: &Error) {
             write!(json, r#"{{"kind":"{kind}","column":{column},"row":{row}}}"#)
         }
         Error::Overflow { measure } => write!(json, r#"{{"kind":"overflow","measure":{measure}}}"#),
+        Error::FilterNotNumeric { filter } => {
+            write!(json, r#"{{"kind":"filter_not_numeric","filter":{filter}}}"#)
+        }
+        Error::FilterOverflow { filter } => {
+            write!(json, r#"{{"kind":"filter_overflow","filter":{filter}}}"#)
+        }
+        Error::FilterOperand { filter } => {
+            write!(json, r#"{{"kind":"filter_operand","filter":{filter}}}"#)
+        }
         Error::InvalidDate { column, row } => {
             write!(
                 json,
@@ -184,6 +193,28 @@ mod tests {
         let mut json = String::new();
         string(&mut json, "a\"b\\c\nd\u{1}é");
         assert_eq!(json, r#""a\"b\\c\nd\u0001é""#);
+    }
+
+    #[test]
+    fn the_errors_of_a_filter_give_its_index() {
+        for (refusal, expected) in [
+            (
+                Error::FilterNotNumeric { filter: 1 },
+                r#"{"error":{"kind":"filter_not_numeric","filter":1}}"#,
+            ),
+            (
+                Error::FilterOverflow { filter: 2 },
+                r#"{"error":{"kind":"filter_overflow","filter":2}}"#,
+            ),
+            (
+                Error::FilterOperand { filter: 3 },
+                r#"{"error":{"kind":"filter_operand","filter":3}}"#,
+            ),
+        ] {
+            let mut json = String::new();
+            error(&mut json, &refusal);
+            assert_eq!(json, expected);
+        }
     }
 
     #[test]

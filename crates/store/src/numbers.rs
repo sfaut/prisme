@@ -7,6 +7,7 @@
 //! or a number beyond 38 digits, is an error: a wrong value would lead to a
 //! wrong total.
 
+use std::cmp::Ordering;
 use std::fmt;
 
 use crate::column::TextColumn;
@@ -166,6 +167,35 @@ impl Approx {
     }
 }
 
+/// Reads an exact number written as text, with its scale: `12.50` gives 1250
+/// and 2. `None` for any other text, or beyond 128 bits.
+pub fn parse_exact(text: &str) -> Option<(i128, u32)> {
+    let parts = parts(text)?;
+    let scale = parts.fraction.len();
+    Some((scaled(&parts, scale)?, scale as u32))
+}
+
+/// Compares two exact numbers, each given with its scale.
+pub fn compare_exact((a, a_scale): (i128, u32), (b, b_scale): (i128, u32)) -> Ordering {
+    let raised = |value: i128, digits: u32| {
+        if value == 0 {
+            return Some(0);
+        }
+        10i128
+            .checked_pow(digits)
+            .and_then(|factor| value.checked_mul(factor))
+    };
+    let scale = a_scale.max(b_scale);
+    // Only one of them is raised: beyond 128 bits, it is the larger in magnitude.
+    match (raised(a, scale - a_scale), raised(b, scale - b_scale)) {
+        (Some(a), Some(b)) => a.cmp(&b),
+        (None, _) if a < 0 => Ordering::Less,
+        (None, _) => Ordering::Greater,
+        (_, None) if b < 0 => Ordering::Greater,
+        (_, None) => Ordering::Less,
+    }
+}
+
 /// Writes an exact number scaled to `scale`: `-1250` with a scale of 2 gives
 /// `-12.50`.
 pub fn format_exact(value: i128, scale: u32) -> String {
@@ -203,6 +233,31 @@ pub fn format_float(value: f64) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_number_is_read_with_its_scale() {
+        assert_eq!(super::parse_exact("12.50"), Some((1250, 2)));
+        assert_eq!(super::parse_exact("-3"), Some((-3, 0)));
+        assert_eq!(super::parse_exact("abc"), None);
+        assert_eq!(super::parse_exact(""), None);
+        assert_eq!(super::parse_exact(&"9".repeat(40)), None);
+    }
+
+    #[test]
+    fn numbers_of_different_scales_compare_by_value() {
+        use std::cmp::Ordering::{Equal, Greater, Less};
+
+        use super::compare_exact;
+        assert_eq!(compare_exact((1250, 2), (125, 1)), Equal);
+        assert_eq!(compare_exact((1250, 2), (13, 0)), Less);
+        assert_eq!(compare_exact((-1, 0), (0, 3)), Less);
+        // Raised beyond 128 bits.
+        assert_eq!(compare_exact((1, 0), (1, 45)), Greater);
+        assert_eq!(compare_exact((-1, 0), (1, 45)), Less);
+        assert_eq!(compare_exact((1, 45), (1, 0)), Less);
+        assert_eq!(compare_exact((1, 45), (-1, 0)), Greater);
+        assert_eq!(compare_exact((0, 0), (1, 45)), Less);
+    }
+
     use super::*;
 
     fn column(cells: &[Option<&str>]) -> TextColumn {

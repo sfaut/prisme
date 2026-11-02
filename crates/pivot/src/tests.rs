@@ -96,6 +96,7 @@ fn example_table(rows: &[usize], columns: &[usize], measures: &[Measure]) -> Str
         rows: rows.iter().map(|&column| column.into()).collect(),
         columns: columns.iter().map(|&column| column.into()).collect(),
         measures: measures.to_vec(),
+        ..Request::default()
     };
     let table = engine.compute(&request).unwrap();
     let names = |columns: &[usize]| -> Vec<&str> {
@@ -224,6 +225,7 @@ fn the_kept_rows_alone_are_measured() {
         rows: vec![CITY.into()],
         columns: vec![],
         measures: vec![Measure::Sum(AMOUNT), Measure::CountStar],
+        ..Request::default()
     };
     let table = engine.compute(&request).unwrap();
     assert_eq!(table.selected_rows(), 3);
@@ -244,6 +246,7 @@ fn the_ranks_given_by_the_page_order_the_values() {
         rows: vec![REGION.into()],
         columns: vec![],
         measures: vec![Measure::CountStar],
+        ..Request::default()
     };
     let table = engine.compute(&request).unwrap();
     assert_eq!(
@@ -275,6 +278,7 @@ fn null_is_a_group_apart_from_the_text_null_and_the_empty_text() {
         rows: vec![0.into()],
         columns: vec![],
         measures: vec![Measure::CountStar, Measure::Count(0)],
+        ..Request::default()
     };
     let table = engine.compute(&request).unwrap();
     assert_eq!(
@@ -304,6 +308,7 @@ fn sums_ignore_null_and_give_null_without_a_value() {
         rows: vec![0.into()],
         columns: vec![],
         measures: vec![Measure::Sum(1), Measure::Count(1)],
+        ..Request::default()
     };
     let table = engine.compute(&request).unwrap();
     assert_eq!(
@@ -319,6 +324,7 @@ fn floats_are_summed_as_double() {
         rows: vec![],
         columns: vec![],
         measures: vec![Measure::Sum(0)],
+        ..Request::default()
     };
     let table = engine.compute(&request).unwrap();
     assert_eq!(table.value(0, 0), Value::Float(0.1 + 0.2));
@@ -331,6 +337,7 @@ fn a_result_without_rows_has_its_grand_total() {
         rows: vec![0.into()],
         columns: vec![0.into()],
         measures: vec![Measure::CountStar, Measure::Sum(0)],
+        ..Request::default()
     };
     let table = engine.compute(&request).unwrap();
     assert_eq!((table.line_count(), table.column_count()), (1, 2));
@@ -345,6 +352,7 @@ fn errors_give_no_table() {
         rows: vec![REGION.into()],
         columns: vec![],
         measures,
+        ..Request::default()
     };
     assert_eq!(
         engine
@@ -395,6 +403,7 @@ fn a_total_of_count_distinct_counts_the_values_of_its_whole_group() {
         rows: vec![REGION.into()],
         columns: vec![YEAR.into()],
         measures: vec![Measure::CountDistinct(CITY)],
+        ..Request::default()
     };
     let table = engine.compute(&request).unwrap();
     let expected = "\
@@ -421,6 +430,7 @@ fn by_level(engine: &Engine, measures: &[Measure]) -> String {
         rows: vec![0.into()],
         columns: vec![],
         measures: measures.to_vec(),
+        ..Request::default()
     };
     let table = engine.compute(&request).unwrap();
     let store = engine.store();
@@ -618,6 +628,7 @@ fn the_columns_of_a_table_can_group_dates_by_iso_year() {
             precision: Some(Precision::Year),
         }],
         measures: vec![Measure::Sum(AMOUNT)],
+        ..Request::default()
     };
     let table = engine.compute(&request).unwrap();
     let expected = "\
@@ -800,6 +811,7 @@ fn sorted_example(
         rows: rows.iter().map(|&column| column.into()).collect(),
         columns: columns.iter().map(|&column| column.into()).collect(),
         measures: measures.to_vec(),
+        ..Request::default()
     };
     let mut table = engine.compute(&request).unwrap();
     table.sort(&engine, order).unwrap();
@@ -958,6 +970,7 @@ fn a_sort_changes_the_layout_alone() {
         rows: vec![REGION.into(), CITY.into()],
         columns: vec![YEAR.into()],
         measures: vec![Measure::Sum(AMOUNT)],
+        ..Request::default()
     };
     let mut table = engine.compute(&request).unwrap();
     let before = flat(&engine, &table, &["region", "ville"], &["ca"]);
@@ -1029,6 +1042,7 @@ fn a_path_reads_null_and_the_labels_of_a_precision() {
         rows: vec![0.into()],
         columns: vec![1.into()],
         measures: vec![Measure::Sum(2)],
+        ..Request::default()
     };
     let mut table = engine.compute(&request).unwrap();
     let mut order = lines_by(&[], 0, false);
@@ -1049,10 +1063,364 @@ fn a_path_reads_null_and_the_labels_of_a_precision() {
             precision: Some(Precision::Month),
         }],
         measures: vec![Measure::Sum(AMOUNT)],
+        ..Request::default()
     };
     let mut table = engine.compute(&request).unwrap();
     table
         .sort(&engine, &lines_by(&["2026-02"], 0, false))
         .unwrap();
     assert_eq!(table.line_path(&engine, 0), [Some("Sud")]);
+}
+
+/// `SUM(montant)` of the rows of the levels given, compared to an operand.
+fn amount_above(levels: &[usize], operand: &str) -> Filter {
+    Filter::Measure {
+        measure: Measure::Sum(AMOUNT),
+        levels: levels.iter().map(|&column| column.into()).collect(),
+        comparison: Comparison::Greater,
+        operand: operand.to_owned(),
+    }
+}
+
+/// Table of `SUM(montant)` of the example dataset under some filters, line by
+/// line.
+fn filtered(rows: &[usize], columns: &[usize], filters: Vec<Filter>) -> String {
+    let engine = example();
+    let request = Request {
+        rows: rows.iter().map(|&column| column.into()).collect(),
+        columns: columns.iter().map(|&column| column.into()).collect(),
+        measures: vec![Measure::Sum(AMOUNT)],
+        filters,
+    };
+    let table = engine.compute(&request).unwrap();
+    let levels = vec!["level"; rows.len()];
+    flat(&engine, &table, &levels, &["ca"])
+        .lines()
+        .skip(1)
+        .collect::<Vec<_>>()
+        .join("|")
+}
+
+#[test]
+fn a_filter_on_a_measure_at_the_deepest_level_gives_a_table_that_adds_up() {
+    // F-44: Arras (100) and Toulon (30) leave, and the totals count the rest.
+    assert_eq!(
+        filtered(
+            &[REGION, CITY],
+            &[],
+            vec![amount_above(&[REGION, CITY], "100")]
+        ),
+        "Nord;Total;370|Nord;Lille;370|Sud;Total;350|Sud;Nice;350|Total;;720"
+    );
+}
+
+#[test]
+fn a_filter_on_a_measure_at_an_outer_level_keeps_the_whole_group() {
+    // F-44: Nord (470) stays with all its cities, Sud (380) leaves.
+    assert_eq!(
+        filtered(&[REGION, CITY], &[], vec![amount_above(&[REGION], "400")]),
+        "Nord;Total;470|Nord;Arras;100|Nord;Lille;370|Total;;470"
+    );
+}
+
+#[test]
+fn a_filter_on_a_measure_applies_to_a_level_of_the_columns() {
+    // F-44: 2025 (430) stays, 2026 (420) leaves.
+    assert_eq!(
+        filtered(&[REGION], &[YEAR], vec![amount_above(&[YEAR], "425")]),
+        "Nord;260;260|Sud;170;170|Total;430;430"
+    );
+}
+
+#[test]
+fn a_filter_on_a_measure_without_a_level_reads_all_the_rows() {
+    assert_eq!(
+        filtered(&[REGION], &[], vec![amount_above(&[], "849")]),
+        "Nord;470|Sud;380|Total;850"
+    );
+    assert_eq!(
+        filtered(&[REGION], &[], vec![amount_above(&[], "850")]),
+        "Total;NULL"
+    );
+}
+
+#[test]
+fn a_filter_on_values_keeps_the_rows_of_its_values() {
+    let values = |values: &[&str]| Filter::Values {
+        column: REGION,
+        values: values.iter().map(|&value| Some(value.to_owned())).collect(),
+    };
+    assert_eq!(
+        filtered(&[CITY], &[], vec![values(&["Sud", "Absent"])]),
+        "Nice;350|Toulon;30|Total;380"
+    );
+    assert_eq!(filtered(&[CITY], &[], vec![values(&[])]), "Total;NULL");
+}
+
+#[test]
+fn a_filter_on_values_can_keep_null() {
+    let engine = single(&[Some("a"), None, Some("b")], Family::Other);
+    let request = |values: Vec<Option<String>>| Request {
+        rows: vec![0.into()],
+        filters: vec![Filter::Values { column: 0, values }],
+        ..Request::default()
+    };
+    let lines = |table: Table| table.selected_rows();
+    assert_eq!(lines(engine.compute(&request(vec![None])).unwrap()), 1);
+    assert_eq!(
+        lines(
+            engine
+                .compute(&request(vec![Some("a".to_owned())]))
+                .unwrap()
+        ),
+        1
+    );
+    assert_eq!(
+        lines(
+            engine
+                .compute(&request(vec![Some("b".to_owned()), None]))
+                .unwrap()
+        ),
+        2
+    );
+}
+
+#[test]
+fn filters_combine_by_and_and_read_the_same_rows() {
+    // The filter on values first: among the cities of Sud, Nice stays.
+    let south = Filter::Values {
+        column: REGION,
+        values: vec![Some("Sud".to_owned())],
+    };
+    assert_eq!(
+        filtered(
+            &[CITY],
+            &[],
+            vec![amount_above(&[CITY], "100"), south.clone()]
+        ),
+        "Nice;350|Total;350"
+    );
+    // Two filters on measures read the same rows: each gives its groups, then
+    // both must accept a row. Nord and Lille alone pass both.
+    assert_eq!(
+        filtered(
+            &[REGION, CITY],
+            &[],
+            vec![amount_above(&[REGION], "400"), amount_above(&[CITY], "100")]
+        ),
+        "Nord;Total;370|Nord;Lille;370|Total;;370"
+    );
+}
+
+#[test]
+fn a_filter_keeps_the_rows_the_filter_of_the_grid_keeps() {
+    let mut engine = example();
+    // Without the first row of Lille (100), Lille is at 270.
+    engine.set_kept(Some((1..10).collect())).unwrap();
+    let request = Request {
+        rows: vec![CITY.into()],
+        measures: vec![Measure::Sum(AMOUNT)],
+        filters: vec![amount_above(&[CITY], "300")],
+        ..Request::default()
+    };
+    assert_eq!(
+        flat(&engine, &engine.compute(&request).unwrap(), &["v"], &["ca"]),
+        "v;ca\nNice;350\nTotal;350"
+    );
+    assert_eq!(engine.compute(&request).unwrap().selected_rows(), 4);
+}
+
+/// Engine over two columns: a text, and numbers of a family.
+fn pairs(rows: &[(&str, Option<&str>)], family: Family) -> Engine {
+    let mut store = Store::new(2);
+    for &(key, value) in rows {
+        store.push_row(&[Some(key), value]);
+    }
+    Engine::new(store, vec![Family::Other, family])
+}
+
+/// Keys of the rows a filter on a measure of column 1 keeps, grouped by column 0.
+fn kept_keys(
+    engine: &Engine,
+    measure: Measure,
+    comparison: Comparison,
+    operand: &str,
+) -> Result<Vec<String>, Error> {
+    let request = Request {
+        rows: vec![0.into()],
+        filters: vec![Filter::Measure {
+            measure,
+            levels: vec![0.into()],
+            comparison,
+            operand: operand.to_owned(),
+        }],
+        ..Request::default()
+    };
+    let table = engine.compute(&request)?;
+    Ok((0..table.line_count() - 1)
+        .map(|line| match table.line(engine, line).label {
+            Label::Value(value) => value.unwrap_or("NULL").to_owned(),
+            Label::Total => "Total".to_owned(),
+        })
+        .collect())
+}
+
+#[test]
+fn each_comparison_keeps_its_groups() {
+    let engine = pairs(
+        &[("a", Some("1")), ("b", Some("2")), ("c", Some("3"))],
+        Family::Exact,
+    );
+    for (comparison, keys) in [
+        (Comparison::Equal, vec!["b"]),
+        (Comparison::NotEqual, vec!["a", "c"]),
+        (Comparison::Less, vec!["a"]),
+        (Comparison::LessOrEqual, vec!["a", "b"]),
+        (Comparison::Greater, vec!["c"]),
+        (Comparison::GreaterOrEqual, vec!["b", "c"]),
+    ] {
+        assert_eq!(
+            kept_keys(&engine, Measure::Sum(1), comparison, "2").unwrap(),
+            keys,
+            "{comparison:?}"
+        );
+    }
+}
+
+#[test]
+fn an_operand_compares_with_a_number_at_another_scale() {
+    let engine = pairs(&[("a", Some("1.50")), ("b", Some("2.25"))], Family::Exact);
+    let keys = |operand| kept_keys(&engine, Measure::Sum(1), Comparison::Greater, operand);
+    assert_eq!(keys("1.5").unwrap(), ["b"]);
+    assert_eq!(keys("1.499").unwrap(), ["a", "b"]);
+    assert_eq!(keys("2").unwrap(), ["b"]);
+    // An average has four more digits than its column.
+    let keys = kept_keys(&engine, Measure::Avg(1), Comparison::Equal, "2.25").unwrap();
+    assert_eq!(keys, ["b"]);
+}
+
+#[test]
+fn a_group_whose_measure_is_null_passes_no_comparison() {
+    let engine = pairs(&[("a", None), ("b", Some("2"))], Family::Exact);
+    for comparison in [
+        Comparison::NotEqual,
+        Comparison::GreaterOrEqual,
+        Comparison::Less,
+    ] {
+        let keys = kept_keys(&engine, Measure::Sum(1), comparison, "0").unwrap();
+        assert!(!keys.contains(&"a".to_owned()), "{comparison:?}");
+    }
+    assert_eq!(
+        kept_keys(&engine, Measure::Min(1), Comparison::NotEqual, "0").unwrap(),
+        ["b"]
+    );
+}
+
+#[test]
+fn a_count_compares_with_a_number_whatever_its_column() {
+    let engine = pairs(
+        &[("a", Some("x")), ("a", Some("y")), ("b", None)],
+        Family::Other,
+    );
+    let keys = |measure, operand| kept_keys(&engine, measure, Comparison::Equal, operand);
+    assert_eq!(keys(Measure::CountStar, "1").unwrap(), ["b"]);
+    assert_eq!(keys(Measure::Count(1), "0").unwrap(), ["b"]);
+    assert_eq!(keys(Measure::CountDistinct(1), "2.0").unwrap(), ["a"]);
+    assert_eq!(
+        keys(Measure::CountStar, "x"),
+        Err(Error::FilterOperand { filter: 0 })
+    );
+}
+
+#[test]
+fn floats_compare_as_floats_and_nan_passes_nothing() {
+    let engine = pairs(
+        &[("a", Some("1.5")), ("b", Some("NaN")), ("c", Some("1e3"))],
+        Family::Float,
+    );
+    let keys = |measure, comparison, operand| kept_keys(&engine, measure, comparison, operand);
+    assert_eq!(
+        keys(Measure::Sum(1), Comparison::Greater, "1e2").unwrap(),
+        ["c"]
+    );
+    assert_eq!(
+        keys(Measure::Sum(1), Comparison::NotEqual, "0").unwrap(),
+        ["a", "c"]
+    );
+    assert_eq!(keys(Measure::Max(1), Comparison::Less, "2").unwrap(), ["a"]);
+    assert_eq!(
+        keys(Measure::Sum(1), Comparison::Equal, "x"),
+        Err(Error::FilterOperand { filter: 0 })
+    );
+}
+
+#[test]
+fn an_extreme_compares_as_its_column() {
+    let engine = pairs(
+        &[("a", Some("9")), ("a", Some("10")), ("b", Some("2"))],
+        Family::Exact,
+    );
+    // By value: 10, and not 9, is the largest of a.
+    assert_eq!(
+        kept_keys(&engine, Measure::Max(1), Comparison::Equal, "10").unwrap(),
+        ["a"]
+    );
+    let engine = pairs(&[("a", Some("Zoé")), ("b", Some("éa"))], Family::Other);
+    // By code points: `é` comes after `Z`.
+    assert_eq!(
+        kept_keys(&engine, Measure::Min(1), Comparison::Greater, "Zz").unwrap(),
+        ["b"]
+    );
+    assert_eq!(
+        kept_keys(&engine, Measure::Min(1), Comparison::Equal, "Zoé").unwrap(),
+        ["a"]
+    );
+}
+
+#[test]
+fn the_errors_of_a_filter_name_it() {
+    let engine = pairs(&[("a", Some("x"))], Family::Other);
+    let error = kept_keys(&engine, Measure::Sum(1), Comparison::Equal, "1").unwrap_err();
+    assert_eq!(error, Error::FilterNotNumeric { filter: 0 });
+    assert_eq!(error.to_string(), "filter 0: column without numbers");
+
+    let huge = "99999999999999999999999999999999999999";
+    let engine = pairs(&[("a", Some(huge)), ("a", Some(huge))], Family::Exact);
+    let error = kept_keys(&engine, Measure::Sum(1), Comparison::Equal, "1").unwrap_err();
+    assert_eq!(error, Error::FilterOverflow { filter: 0 });
+}
+
+#[test]
+fn a_filter_on_values_leaves_out_a_date_outside_of_the_calendar() {
+    let cells = [Some("2026-01-15"), Some("0000-00-00")];
+    let engine = single(&cells, Family::Other);
+    let by_month = |filters| Request {
+        rows: vec![Level {
+            column: 0,
+            precision: Some(Precision::Month),
+        }],
+        filters,
+        ..Request::default()
+    };
+    assert_eq!(
+        engine.compute(&by_month(vec![])).unwrap_err(),
+        Error::InvalidDate { column: 0, row: 1 }
+    );
+    let only = |value: &str| {
+        vec![Filter::Values {
+            column: 0,
+            values: vec![Some(value.to_owned())],
+        }]
+    };
+    assert_eq!(
+        engine
+            .compute(&by_month(only("2026-01-15")))
+            .unwrap()
+            .line_count(),
+        2
+    );
+    assert_eq!(
+        engine.compute(&by_month(only("0000-00-00"))).unwrap_err(),
+        Error::InvalidDate { column: 0, row: 1 }
+    );
 }
