@@ -248,6 +248,23 @@ export const CASES = [
   { key: 'null.concat_ws', forms: { shared: "CONCAT_WS(',', 'a', NULL, 'b')" } },
   { key: 'null.greatest', forms: { shared: 'GREATEST(1, NULL)', sqlite: 'MAX(1, NULL)' } },
   { key: 'null.in_list', forms: { shared: '1 IN (NULL, 2)' } },
+  { key: 'null.not_in_list', forms: { shared: '1 NOT IN (NULL, 2)' } },
+  { key: 'null.not_in_found', forms: { shared: '2 NOT IN (NULL, 2)' } },
+  { key: 'null.not_in_of_null', forms: { shared: 'NULL NOT IN (1, 2)' } },
+  { key: 'null.between_bounds_reversed', forms: { shared: '5 BETWEEN 10 AND 1' } },
+  { key: 'null.not_between_bounds_reversed', forms: { shared: '5 NOT BETWEEN 10 AND 1' } },
+  { key: 'null.between_includes_bounds', forms: { shared: '1 BETWEEN 1 AND 1' } },
+  { key: 'null.between_of_null', forms: { shared: 'NULL BETWEEN 1 AND 10' } },
+  { key: 'null.not_between_of_null', forms: { shared: 'NULL NOT BETWEEN 1 AND 10' } },
+  { key: 'null.between_null_bound_inside', forms: { shared: '5 BETWEEN 1 AND NULL' } },
+  { key: 'null.between_null_bound_outside', forms: { shared: '5 BETWEEN 10 AND NULL' } },
+  {
+    key: 'agg.group_by_repeated',
+    forms: {
+      shared:
+        "(SELECT COUNT(*) FROM (SELECT k FROM (SELECT 'a' AS k UNION ALL SELECT 'a' UNION ALL SELECT 'b') AS t GROUP BY k, k) AS g)",
+    },
+  },
   { key: 'null.is_distinct_from', forms: { shared: 'NULL IS DISTINCT FROM NULL' } },
   {
     key: 'null.sort_asc_first',

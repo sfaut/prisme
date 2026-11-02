@@ -148,6 +148,16 @@ The scale of a division of MySQL and MariaDB is that of the dividend plus `div_p
 | `null.concat_ws` | `CONCAT_WS(',', 'a', NULL, 'b')` | | `a,b` | `a,b` | `a,b` | `a,b` | `a,b` | |
 | `null.greatest` | `GREATEST(1, NULL)` | NULL (SQL:2023, feature T054) | NULL | NULL | `1` | NULL (`MAX(1, NULL)`) | `1` | `1` since 24.12, NULL before |
 | `null.in_list` | `1 IN (NULL, 2)` | unknown | NULL | NULL | NULL | NULL | NULL | |
+| `null.not_in_list` | `1 NOT IN (NULL, 2)` | unknown: `NOT (x IN …)` (SQL-92 8.4) | NULL | NULL | NULL | NULL | NULL | |
+| `null.not_in_found` | `2 NOT IN (NULL, 2)` | false | `0` | `0` | `false` | `0` | `false` | |
+| `null.not_in_of_null` | `NULL NOT IN (1, 2)` | unknown | NULL | NULL | NULL | NULL | NULL | |
+| `null.between_includes_bounds` | `1 BETWEEN 1 AND 1` | true: `x >= a AND x <= b` (SQL-92 8.3) | `1` | `1` | `true` | `1` | `true` | |
+| `null.between_bounds_reversed` | `5 BETWEEN 10 AND 1` | false | `0` | `0` | `false` | `0` | `false` | |
+| `null.not_between_bounds_reversed` | `5 NOT BETWEEN 10 AND 1` | true | `1` | `1` | `true` | `1` | `true` | |
+| `null.between_of_null` | `NULL BETWEEN 1 AND 10` | unknown | NULL | NULL | NULL | NULL | NULL | |
+| `null.not_between_of_null` | `NULL NOT BETWEEN 1 AND 10` | unknown | NULL | NULL | NULL | NULL | NULL | |
+| `null.between_null_bound_inside` | `5 BETWEEN 1 AND NULL` | unknown | NULL | NULL | NULL | NULL | NULL | |
+| `null.between_null_bound_outside` | `5 BETWEEN 10 AND NULL` | false: `5 >= 10` is false | `0` | `0` | `false` | `0` | `false` | |
 | `null.is_distinct_from` | `NULL IS DISTINCT FROM NULL` | false (distinct predicate, BNF99) | error 1064 | error 1064 | `false` | `0` | `false` | |
 | `null.sort_asc_first` | NULL first in `ORDER BY x` | implementation-defined, all NULLs on one side (SQL-92 13.1) | yes | yes | no | yes | no | no: values, then NaN, then NULL |
 | `null.sort_desc_first` | NULL first in `ORDER BY x DESC` | implementation-defined | no | no | yes | no | no | no |
@@ -155,10 +165,13 @@ The scale of a division of MySQL and MariaDB is that of the dividend plus `div_p
 
 MySQL, MariaDB and SQLite take NULL as the smallest value, PostgreSQL as the largest. DuckDB and ClickHouse put NULL last in both directions. PostgreSQL ignores NULL in `GREATEST` and `LEAST` on purpose, against the standard, which it says in its documentation.
 
+`BETWEEN` and `NOT IN` give the same answers everywhere, measured on 2026-11-02. Their conditions keep a row only when they are true: `x NOT IN (…)` leaves out the rows where `x` is NULL, whatever the list, and a NULL in the list leaves nothing. The filters of the Pivoteur follow them; the list of `Hors de la liste` does not offer NULL, which would empty the table.
+
 ### 3.6 Aggregates
 
 | Case | Expression | Standard | MySQL | MariaDB | PostgreSQL | SQLite | DuckDB | ClickHouse |
 |---|---|---|---|---|---|---|---|---|
+| `agg.group_by_repeated` | Number of groups of `GROUP BY k, k` of `a`, `a` and `b` | | `2` | `2` | `2` | `2` | `2` | |
 | `agg.listagg` | `LISTAGG(k, ',') WITHIN GROUP (ORDER BY k)` | SQL:2016, feature T625; its argument is a text, a `<character value expression>` (10.9) | error 1064 | error 1305 (10.6.3), 1064 (12.3.3, 13.0.2) | error: function `listagg` does not exist | error: syntax | error: unknown ordered aggregate | no `LISTAGG`: `groupConcat` |
 | `agg.listagg_order_inside` | `LISTAGG(k, ',' ORDER BY k)` | | error 1064 | error 1064 | error | error: no such function | `a,b` | |
 | `agg.string_agg` | `STRING_AGG(k, ',' ORDER BY k)` | | error 1064 | error 1064 | `a,b` | `a,b` | `a,b` | `string_agg`, alias of `groupConcat`; its order is not documented |
