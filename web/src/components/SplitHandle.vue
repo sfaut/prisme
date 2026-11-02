@@ -30,6 +30,8 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
+@reference "@/assets/main.css";
+
 /* Above its neighbours: the band of the hover overlaps them. The line is
    the handle's border, never its background: the browser rounds the width
    of a border to whole pixels of the screen, where a box of one CSS pixel
@@ -62,8 +64,8 @@ const emit = defineEmits<{
 
     &::before {
       inset-block: 0;
-      inset-inline-start: calc((var(--line-width) + var(--resize-handle-width)) / -2);
-      inline-size: var(--resize-handle-width);
+      inset-inline-start: calc((var(--line-width) + --spacing(2)) / -2);
+      inline-size: --spacing(2);
     }
 
     &::after {
@@ -80,8 +82,8 @@ const emit = defineEmits<{
 
     &::before {
       inset-inline: 0;
-      inset-block-start: calc((var(--line-width) + var(--resize-handle-width)) / -2);
-      block-size: var(--resize-handle-width);
+      inset-block-start: calc((var(--line-width) + --spacing(2)) / -2);
+      block-size: --spacing(2);
     }
 
     &::after {

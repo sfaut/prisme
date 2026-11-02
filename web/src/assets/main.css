@@ -171,9 +171,9 @@
      thinner than any step of the scale. */
   --tab-progress-height: 2px;
 
-  /* Resize bars (lines of the splitters, grid columns): the width grabbed
-     by the pointer; their central grip: length, thickness and color at
-     rest, that of the borders (blue on hover). */
+  /* Resize bar of a column of the grid: the width grabbed by the pointer.
+     Grip at the center of the line of a splitter: length, thickness and
+     color at rest, that of the borders (blue on hover). */
   --resize-handle-width: --spacing(3);
   --grip-length: --spacing(9);
   --grip-thickness: --spacing(1);
