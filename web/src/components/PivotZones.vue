@@ -401,11 +401,11 @@ function overZone(event: DragEvent): boolean {
 }
 
 /**
- * Passage of an element of a zone over the rest of the page: the browser
- * is told it can be dropped there, and what lies below does not hear of
- * it (the SQL editor would take its text).
+ * Entry or passage of an element of a zone over the rest of the page: the
+ * browser is told it can be dropped there, and what lies below does not hear
+ * of it (the SQL editor would take its text).
  *
- * @param event Passage over the page.
+ * @param event Entry in an element of the page, or passage over it.
  */
 function onDragOverPage(event: DragEvent): void {
   if (!overZone(event)) {
@@ -439,6 +439,7 @@ function onDropOnPage(event: DragEvent): void {
  * Stops following the drag over the page.
  */
 function stopFollowingPage(): void {
+  document.removeEventListener('dragenter', onDragOverPage, { capture: true })
   document.removeEventListener('dragover', onDragOverPage, { capture: true })
   document.removeEventListener('drop', onDropOnPage, { capture: true })
 }
@@ -459,6 +460,7 @@ function onDragStart(event: DragEvent, column: number, from: ZonePlace | null): 
     event.dataTransfer.setData('text/plain', props.names[column] ?? '')
   }
   if (from !== null) {
+    document.addEventListener('dragenter', onDragOverPage, { capture: true })
     document.addEventListener('dragover', onDragOverPage, { capture: true })
     document.addEventListener('drop', onDropOnPage, { capture: true })
   }
@@ -490,9 +492,12 @@ function placeUnder(event: DragEvent, zone: PivotZone): ZonePlace {
 }
 
 /**
- * Follows the dragged element over a zone, with the insertion marker.
+ * Accepts the dragged element over a zone, and follows it with the insertion
+ * marker. Both events ask for it: when the pointer changes of element, the
+ * browser sends only `dragenter`, and refused, it shows the forbidden cursor
+ * until the next `dragover`.
  *
- * @param event Passage over the zone.
+ * @param event Entry in the zone or in one of its elements, or passage over it.
  * @param zone Zone.
  */
 function onDragOver(event: DragEvent, zone: PivotZone): void {
@@ -590,13 +595,15 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
       </ul>
     </div>
 
-    <div class="flex min-h-0 w-64 shrink-0 flex-col gap-3 overflow-y-auto">
+    <!-- The room between two zones is the padding of the upper one: a drag never leaves them there. -->
+    <div class="flex min-h-0 w-64 shrink-0 flex-col overflow-y-auto">
       <section
         v-for="{ zone, label, icon } in ZONES"
         ref="zoneSection"
         :key="zone"
-        class="flex flex-col gap-1"
+        class="flex flex-col gap-1 not-last:pb-3"
         :aria-label="label"
+        @dragenter="onDragOver($event, zone)"
         @dragover="onDragOver($event, zone)"
         @dragleave="onDragLeave"
         @drop="onDrop($event, zone)"

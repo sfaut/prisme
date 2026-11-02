@@ -66,6 +66,19 @@ function dropOnPage(): void {
 }
 
 /**
+ * Sends an event of a drag and tells whether it is accepted: the browser
+ * shows the forbidden cursor otherwise.
+ *
+ * @param target Element under the pointer.
+ * @param type Type of the event.
+ */
+function accepted(target: EventTarget, type: 'dragenter' | 'dragover'): boolean {
+  const event = new Event(type, { bubbles: true, cancelable: true })
+  target.dispatchEvent(event)
+  return event.defaultPrevented
+}
+
+/**
  * Groups of the menu of the first element of the zones.
  *
  * @param mounted Mounted zones.
@@ -83,6 +96,34 @@ describe('PivotZones', () => {
     const frames = mounted.findAll('.pivot-zone')
     expect(frames[0]!.classes()).toContain('drop-target')
     expect(frames[1]!.classes()).not.toContain('drop-target')
+  })
+
+  it('accepts a column of the list at each entry in an element of a zone', async () => {
+    const mounted = mountZones()
+    await mounted.find('li[draggable="true"]').trigger('dragstart')
+    const inZone = mounted.find('section h3').element
+    expect(accepted(inZone, 'dragenter')).toBe(true)
+    expect(accepted(inZone, 'dragover')).toBe(true)
+    expect(accepted(document.body, 'dragenter')).toBe(false)
+  })
+
+  it('accepts an element of a zone everywhere in the page, until the end of its drag', async () => {
+    const mounted = mountZones()
+    const element = mounted.find('[data-element]')
+    await element.trigger('dragstart')
+    expect(accepted(element.element, 'dragenter')).toBe(true)
+    expect(accepted(document.body, 'dragenter')).toBe(true)
+    expect(accepted(document.body, 'dragover')).toBe(true)
+    await element.trigger('dragend')
+    expect(accepted(document.body, 'dragenter')).toBe(false)
+    expect(accepted(document.body, 'dragover')).toBe(false)
+  })
+
+  it('refuses what comes from outside the panel', () => {
+    const mounted = mountZones()
+    const inZone = mounted.find('section h3').element
+    expect(accepted(inZone, 'dragenter')).toBe(false)
+    expect(accepted(inZone, 'dragover')).toBe(false)
   })
 
   it('removes an element released outside the zones', async () => {
