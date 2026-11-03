@@ -121,12 +121,12 @@ export type PrecisionLabel =
   | 'Mois'
   | 'Semaine'
   | 'Date'
+  | 'Horodatage'
   | 'Horodatage (hh)'
   | 'Horodatage (hh:mm)'
   | 'Horodatage (hh:mm:ss)'
   | 'Horodatage (hh:mm:ss.ms)'
   | 'Horodatage (hh:mm:ss.µs)'
-  | 'Date et heure'
 
 /**
  * Precision a level can take.
@@ -144,9 +144,10 @@ export interface PrecisionChoice {
 
 /**
  * Precisions a level of this family can take, from the coarsest to the finest, the values of the
- * column as they are last: a date is its own "Date". The year and the week are those of ISO 8601,
- * so that 2027-01-01 falls in 2026 and in its week 53. An instant also gives its hour, its minute,
- * its second, its millisecond and its microsecond, the time truncated to that unit:
+ * column as they are among them: a date is its own "Date", an instant is its own "Horodatage",
+ * as the result grid shows it, right after "Date". The year and the week are those of ISO 8601,
+ * so that 2027-01-01 falls in 2026 and in its week 53. An instant then gives its hour, its
+ * minute, its second, its millisecond and its microsecond, the time truncated to that unit:
  * `2026-01-15 10:00:00` for its hour.
  *
  * @param family
@@ -168,12 +169,12 @@ export function precisionChoices(family: TypeFamily | undefined): PrecisionChoic
       return [
         ...periods,
         { precision: 'date', label: 'Date' },
+        { precision: 'none', label: 'Horodatage' },
         { precision: 'hour', label: 'Horodatage (hh)' },
         { precision: 'minute', label: 'Horodatage (hh:mm)' },
         { precision: 'second', label: 'Horodatage (hh:mm:ss)' },
         { precision: 'millisecond', label: 'Horodatage (hh:mm:ss.ms)' },
         { precision: 'microsecond', label: 'Horodatage (hh:mm:ss.µs)' },
-        { precision: 'none', label: 'Date et heure' },
       ]
     default:
       return []

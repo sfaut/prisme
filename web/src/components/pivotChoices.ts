@@ -54,10 +54,10 @@ export const PRECISION_ICONS: Record<PrecisionLabel, Component> = {
   Mois: CalendarDays,
   Semaine: CalendarFold,
   Date: Calendar1,
+  Horodatage: CalendarClock,
   'Horodatage (hh)': Clock3,
   'Horodatage (hh:mm)': Clock,
   'Horodatage (hh:mm:ss)': Timer,
   'Horodatage (hh:mm:ss.ms)': Hourglass,
   'Horodatage (hh:mm:ss.µs)': Atom,
-  'Date et heure': CalendarClock,
 }

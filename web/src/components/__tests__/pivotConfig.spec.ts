@@ -235,12 +235,12 @@ describe('precisionChoices', () => {
   it('offers the day of a date and time, its time to each unit, then its values as they are', () => {
     expect(choices('datetime').slice(4)).toEqual([
       ['date', 'Date'],
+      ['none', 'Horodatage'],
       ['hour', 'Horodatage (hh)'],
       ['minute', 'Horodatage (hh:mm)'],
       ['second', 'Horodatage (hh:mm:ss)'],
       ['millisecond', 'Horodatage (hh:mm:ss.ms)'],
       ['microsecond', 'Horodatage (hh:mm:ss.µs)'],
-      ['none', 'Date et heure'],
     ])
   })
 

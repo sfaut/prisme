@@ -369,12 +369,12 @@ The menu of a level of a `date` or `datetime` column sets its precision, what th
 | **Mois** (Month) | The month of the calendar | `2027-01` |
 | **Semaine** (Week) | The ISO 8601 week, which starts on Monday | `2026-S53` |
 | **Date** | The day; on a `date` column, its values as they are | `2027-01-01` |
-| **Horodatage (hh)** (Timestamp) | On a `datetime` column, the hour, its minutes and seconds at 0 | `2027-01-01 10:00:00` |
+| **Horodatage** (Timestamp) | On a `datetime` column, its values as they are, as the result grid shows them | `2027-01-01 10:30:15.123456` |
+| **Horodatage (hh)** | The hour, its minutes and seconds at 0 | `2027-01-01 10:00:00` |
 | **Horodatage (hh:mm)** | The minute, its seconds at 0 | `2027-01-01 10:30:00` |
 | **Horodatage (hh:mm:ss)** | The second, without its fraction | `2027-01-01 10:30:15` |
 | **Horodatage (hh:mm:ss.ms)** | The millisecond, three digits, as a `TIMESTAMP(3)` | `2027-01-01 10:30:15.123` |
 | **Horodatage (hh:mm:ss.µs)** | The microsecond, six digits, as a `TIMESTAMP(6)` | `2027-01-01 10:30:15.123456` |
-| **Date et heure** (Date and time) | On a `datetime` column, its values as they are | `2027-01-01 10:30:15.123456` |
 
 `COUNT(DISTINCT col)`, `MIN(col)` and `MAX(col)` of a `date` or `datetime` column take a precision too, in the group **Précision** of their menu: `COUNT(DISTINCT vendue_le (Mois))` counts the months that hold a row, `MIN(vendue_le (Mois))` gives the first one, `2026-01`. Another aggregate reads the values as they are, and a measure that changes to it leaves its precision.
 

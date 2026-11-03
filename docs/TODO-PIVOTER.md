@@ -123,6 +123,7 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes and at a real 150%
 - ✅ Documented: `README.md`, `docs/DEVELOPER.md`
 - ✅ Documented in the specification (F-45 and its acceptance)
+- ✅ The values of a `datetime` column as they are, as the result grid shows them, are named "Horodatage" and come right after "Date", before its precisions of the time; documented in `README.md` and in the specification (F-43, table "Précision")
 - ⬜ Filters by an expression (F-19), with the dialect: an expression without an aggregate filters the rows, with one the groups; later, a custom expression in a filter on values (F-21), `LIKE` and relative dates
 - ⬜ Lot 1, next slices (ANSI SQL): dialect (parsed by `sqlparser`, typing, ANSI catalog), calendar, editor, nested date levels, computed columns, filters, fold, caches, copy, CSV, conformance
 - ⬜ Lot 2: complements (detail of a cell, measures in rows)
