@@ -589,7 +589,7 @@ const groupsText = computed(() => {
 </script>
 
 <template>
-  <section class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-4 pt-1 pb-4" aria-label="Pivoteur">
+  <section class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-4 pt-1 pb-3" aria-label="Pivoteur">
     <panel-header title="Pivoteur" side="bottom" @collapse="emit('collapse')">
       <template v-if="analysable && !receiving" #actions>
         <pivot-layout-panel v-model:config="config" :names="result?.columns ?? []" />
