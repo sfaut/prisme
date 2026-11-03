@@ -1,6 +1,7 @@
 <!--
   Settings of a filter of the Pivoteur (F-19, F-21, F-44), in a popover beside
-  its element: the filter opens it at its drop, and its "⋮" opens it again.
+  its element: the filter opens it at its drop, and its menu opens it again
+  ("Réglages…").
 
   A filter on a column sets its precision, when it holds dates, and its condition;
   a filter on a measure, its aggregate, its condition and its level. The condition
@@ -409,19 +410,6 @@ function focusField(event: Event): void {
 }
 
 /**
- * The menu button of the element is the anchor: its click opens or closes the panel, which leaves
- * it the choice.
- *
- * @param event Interaction outside the panel.
- */
-function keepForButton(event: Event): void {
-  const target = event.target
-  if (target instanceof Node && props.anchor.querySelector('button')?.contains(target)) {
-    event.preventDefault()
-  }
-}
-
-/**
  * Escape forgets what is being typed, and gives the focus back to the menu button of the element.
  */
 function onEscape(): void {
@@ -446,7 +434,6 @@ function onEscape(): void {
         ]"
         :aria-label="`Réglages de ${expression}`"
         @open-auto-focus="focusField"
-        @interact-outside="keepForButton"
         @escape-key-down="onEscape"
       >
         <div v-if="measureFilter" class="field">

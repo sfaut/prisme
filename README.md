@@ -317,14 +317,14 @@ The panel has three columns: the columns of the result, with their type and a se
 | Place a column in a zone | Drag it there, or the **+** button of its line |
 | Move an element, in its zone or to another one | Drag it: the zone it passes over is framed in blue |
 | Send a level to the other axis | Drag it, or its menu: **Passer en lignes**, **Passer en colonnes** (Move to rows, Move to columns) |
-| Remove an element | Drag it and release it outside the zones; Esc cancels the drag |
+| Remove an element | Its menu, **Retirer** (Remove), or drag it and release it outside the zones; Esc cancels the drag |
 | Name an element | Its menu, **Nommer…** (Name), or a double click on its label; Enter confirms, Esc cancels |
 | Change the aggregate of a measure | Its menu, group **Agrégat** (Aggregate) |
 | Keep a part of the dates of a level | Its menu, group **Précision** (Precision) |
-| Filter on a column | Place it in **Filtres**: its settings open beside it, and its ⋮ opens them again. Choose a condition, then check values or type them: Enter or leaving the field applies, Esc closes and forgets what is being typed |
+| Filter on a column | Place it in **Filtres**: its settings open beside it, and its menu opens them again, **Réglages…** (Settings). Choose a condition, then check values or type them: Enter or leaving the field applies, Esc closes and forgets what is being typed |
 | Filter on the dates of a column | In the settings of its filter, group **Précision** (Precision) |
 | Keep the groups of a measure | Drag it into **Filtres**, or its menu, **Filtrer sur cette mesure** (Filter on this measure): the settings of the filter set its aggregate, its condition, its values and its level |
-| Name a filter | **Nommer…** at the foot of its settings, or a double click on its label |
+| Name a filter | **Nommer…** (Name) in its menu or at the foot of its settings, or a double click on its label |
 | Sort the values of a level | The ▲▼ button by its name, in the corner of the table: ascending, descending |
 | Rank the lines by the values of a column | The ⇅ button of its header, a total included: ascending, descending, none |
 | Rank the columns by the values of a line | The ⇅ button of its label, which shows under the pointer: ascending, descending, none |

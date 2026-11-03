@@ -96,6 +96,43 @@ function firstElementGroups(mounted: VueWrapper): MenuGroup[] {
   return menu?.props('groups') ?? []
 }
 
+/**
+ * Menu of an element of the zones.
+ *
+ * @param mounted Mounted zones.
+ * @param element Position of the element among those of the zones, in their order on screen.
+ */
+function elementMenu(mounted: VueWrapper, element: number) {
+  return mounted.findAllComponents(UiDropdownMenu).filter((item) => item.props('groups'))[element]!
+}
+
+/**
+ * Labels of the group "Élément" of the menu of an element.
+ *
+ * @param mounted Mounted zones.
+ * @param element Position of the element among those of the zones, in their order on screen.
+ */
+function elementEntries(mounted: VueWrapper, element: number): string[] {
+  const groups = elementMenu(mounted, element).props('groups') ?? []
+  return groups.find((group) => group.label === 'Élément')!.items.map((item) => item.label)
+}
+
+/**
+ * Chooses an entry of the menu of an element, then closes the menu, as a click on the entry does.
+ *
+ * @param mounted Mounted zones.
+ * @param element Position of the element among those of the zones, in their order on screen.
+ * @param label Label of the entry.
+ */
+async function choose(mounted: VueWrapper, element: number, label: string): Promise<void> {
+  const menu = elementMenu(mounted, element)
+  const groups = menu.props('groups') ?? []
+  groups.flatMap((group) => group.items).find((item) => item.label === label)!.onSelect!()
+  menu.vm.$emit('closeAutoFocus', new Event('focus', { cancelable: true }))
+  await nextTick()
+  await nextTick()
+}
+
 describe('PivotZones', () => {
   it('frames the zone under a dragged element, even with elements in it', async () => {
     const mounted = mountZones()
@@ -141,6 +178,31 @@ describe('PivotZones', () => {
     await nextTick()
     expect(shownConfig(mounted).rows).toEqual([])
     expect(shownConfig(mounted).measures).toEqual(CONFIG.measures)
+  })
+
+  it('removes an element by its menu, in each zone', async () => {
+    const mounted = mountZones()
+    const filter: PivotFilter = {
+      kind: 'column',
+      column: 0,
+      name: '',
+      precision: 'none',
+      condition: 'is_null',
+      values: [],
+      operand: '',
+      upper: '',
+    }
+    await mounted.setProps({ config: { ...CONFIG, columns: CONFIG.rows, filters: [filter] } })
+    expect(elementEntries(mounted, 0)).toEqual(['Nommer…', 'Passer en colonnes', 'Retirer'])
+    expect(elementEntries(mounted, 2)).toEqual(['Nommer…', 'Filtrer sur cette mesure', 'Retirer'])
+    expect(elementEntries(mounted, 3)).toEqual(['Réglages…', 'Nommer…', 'Retirer'])
+    await choose(mounted, 1, 'Retirer')
+    expect(shownConfig(mounted).columns).toEqual([])
+    expect(shownConfig(mounted).rows).toEqual(CONFIG.rows)
+    for (const element of [2, 1, 0]) {
+      await choose(mounted, element, 'Retirer')
+    }
+    expect(shownConfig(mounted)).toEqual({ rows: [], columns: [], measures: [], filters: [] })
   })
 
   it('keeps an element when the drag ends without a drop', async () => {
@@ -320,45 +382,25 @@ describe('PivotZones', () => {
 
   it('gives a measure the choice of a filter on it, whose settings open', async () => {
     const mounted = mountZones()
-    const groups = () =>
-      mounted
-        .findAllComponents(UiDropdownMenu)
-        .flatMap((menu) => (menu.props('groups') ?? []) as MenuGroup[])
-    groups()
-      .filter((group) => group.label === 'Élément')
-      .flatMap((group) => group.items)
-      .find((item) => item.label === 'Filtrer sur cette mesure')
-      ?.onSelect?.()
-    await nextTick()
+    await choose(mounted, 1, 'Filtrer sur cette mesure')
     expect(shownConfig(mounted).filters).toMatchObject([
       { kind: 'measure', aggregate: 'sum', column: 2 },
     ])
-    // A filter has no menu: its settings hold everything it sets.
-    expect(groups().map((group) => group.label)).toEqual(['Élément', 'Agrégat', 'Élément'])
+    expect(mounted.findComponent(PivotFilterPanel).props('index')).toBe(0)
   })
 
-  it('opens and closes the settings of a filter with its button', async () => {
+  it('opens the settings of a filter by its menu', async () => {
     const mounted = mountZones()
     await mounted.setProps({ config: { ...CONFIG, filters: [onMeasure(), onMeasure()] } })
-    const buttons = mounted.findAll('button[aria-label^="Réglages"]')
-    expect(buttons).toHaveLength(2)
-    await buttons[1]!.trigger('click')
-    await nextTick()
-    await nextTick()
+    await choose(mounted, 3, 'Réglages…')
     expect(mounted.findComponent(PivotFilterPanel).props('index')).toBe(1)
-    expect(buttons[1]!.attributes('aria-expanded')).toBe('true')
-    await buttons[1]!.trigger('click')
-    await nextTick()
-    expect(mounted.findComponent(PivotFilterPanel).exists()).toBe(false)
   })
 
   it('names a filter from its settings, or with a double click', async () => {
     const mounted = mountZones()
     await mounted.setProps({ config: { ...CONFIG, filters: [onMeasure()] } })
     const zone = () => mounted.find('section[aria-label="Filtres"]')
-    await zone().find('button[aria-label^="Réglages"]').trigger('click')
-    await nextTick()
-    await nextTick()
+    await choose(mounted, 2, 'Réglages…')
     mounted.findComponent(PivotFilterPanel).vm.$emit('name')
     await nextTick()
     await nextTick()
@@ -402,9 +444,7 @@ describe('PivotZones', () => {
       upper: '',
     }
     await mounted.setProps({ readValues, config: { ...CONFIG, filters: [filter] } })
-    await mounted.find('button[aria-label^="Réglages"]').trigger('click')
-    await nextTick()
-    await nextTick()
+    await choose(mounted, 2, 'Réglages…')
     expect(readValues).toHaveBeenCalledWith(2, 'month')
   })
 

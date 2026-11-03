@@ -7,8 +7,9 @@
   A column enters a zone by dragging it there, or by the "+" menu of its
   line (F-11); the order in a zone sets the nesting, the first element
   being the outermost level (F-27). An element moves by dragging it, from
-  one zone to another too, a level to the other axis by its menu too;
-  released outside the zones, it leaves its zone (Escape cancels the drag).
+  one zone to another too, a level to the other axis by its menu too. It
+  leaves its zone by its menu ("Retirer"), or released outside the zones
+  (Escape cancels the drag).
   A column dropped into the measures gives its default aggregate
   (`defaultAggregate`, F-15); the menu of a measure changes it. The menu of a
   level of dates sets its precision, what it keeps of them (`precisionChoices`).
@@ -20,8 +21,8 @@
 
   A column or a measure dropped into the filters, or a measure by its menu
   ("Filtrer sur cette mesure"), gives a filter, whose settings open beside it
-  (`PivotFilterPanel.vue`, F-21, F-44); its "⋮" opens them again. The logic of the
-  zones is in `pivotConfig.ts`.
+  (`PivotFilterPanel.vue`, F-21, F-44); its menu opens them again ("Réglages…").
+  The logic of the zones is in `pivotConfig.ts`.
 -->
 <script setup lang="ts">
 import {
@@ -35,6 +36,8 @@ import {
   Rows3,
   Search,
   Sigma,
+  SlidersHorizontal,
+  X,
 } from '@lucide/vue'
 import {
   type Component,
@@ -209,7 +212,7 @@ function addItems(column: number): MenuItem[] {
 }
 
 /**
- * Choices that name or move an element.
+ * Choices that set, name, move or remove an element, the settings of a filter first.
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
@@ -217,14 +220,21 @@ function addItems(column: number): MenuItem[] {
 function elementItems(zone: PivotZone, index: number): MenuItem[] {
   const column = elements.value[zone][index]!.column
   const from = { zone, index }
-  const items: MenuItem[] = [
-    {
-      label: 'Nommer…',
-      icon: PenLine,
-      // The field takes the focus once the menu has closed (`onMenuClosed`).
-      onSelect: () => startNaming(from),
-    },
-  ]
+  const items: MenuItem[] = []
+  if (zone === 'filters') {
+    items.push({
+      label: 'Réglages…',
+      icon: SlidersHorizontal,
+      // They open beside the element once the menu has closed (`onMenuClosed`).
+      onSelect: () => (pendingPanel = index),
+    })
+  }
+  items.push({
+    label: 'Nommer…',
+    icon: PenLine,
+    // The field takes the focus once the menu has closed (`onMenuClosed`).
+    onSelect: () => startNaming(from),
+  })
   if (zone === 'measures') {
     items.push({
       label: 'Filtrer sur cette mesure',
@@ -241,6 +251,11 @@ function elementItems(zone: PivotZone, index: number): MenuItem[] {
       onSelect: () => place(column, { zone: other, index: elements.value[other].length }, from),
     })
   }
+  items.push({
+    label: 'Retirer',
+    icon: X,
+    onSelect: () => (config.value = removeElement(config.value, from)),
+  })
   return items
 }
 
@@ -287,8 +302,8 @@ function aggregateItems(
 
 /**
  * Choices of the menu of an element: for a measure, its aggregate, for a
- * level of dates, its precision, then its name and its place. A filter has its
- * settings instead (`togglePanel`).
+ * level of dates, its precision, then the settings of a filter, its name, its
+ * place and its removal.
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
@@ -394,20 +409,6 @@ async function showPending(): Promise<void> {
     // The zones scroll in their column: the panel opens beside an element in sight.
     anchor.scrollIntoView({ block: 'nearest' })
     panel.value = { index, anchor }
-  }
-}
-
-/**
- * Opens the settings of a filter, or closes them.
- *
- * @param index Position of the filter.
- */
-function togglePanel(index: number): void {
-  if (panel.value?.index === index) {
-    panel.value = null
-  } else {
-    pendingPanel = index
-    void showPending()
   }
 }
 
@@ -752,21 +753,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
             >
               {{ element.label }}
             </span>
-            <ui-button
-              v-if="zone === 'filters'"
-              :icon="EllipsisVertical"
-              variant="ghost"
-              small
-              aria-haspopup="dialog"
-              :aria-expanded="panel?.index === index"
-              :aria-label="`Réglages : ${element.label}`"
-              @click="togglePanel(index)"
-            />
-            <ui-dropdown-menu
-              v-else
-              :groups="elementGroups(zone, index)"
-              @close-auto-focus="onMenuClosed"
-            >
+            <ui-dropdown-menu :groups="elementGroups(zone, index)" @close-auto-focus="onMenuClosed">
               <ui-button
                 :icon="EllipsisVertical"
                 variant="ghost"

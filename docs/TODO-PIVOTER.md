@@ -106,6 +106,7 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Twelve conditions on a column (`IN`, `NOT IN`, `=`, `<>`, `<`, `<=`, `>`, `>=`, `BETWEEN`, `NOT BETWEEN`, `IS NULL`, `IS NOT NULL`), the same without the lists on a measure; numbers and dates start on `BETWEEN`, the other columns on the list. Measured: `null.not_in_*`, `null.between_*`, `null.not_between_*`, `agg.group_by_repeated` (`docs/SQL-COMPARISON.md`, sections 3.5 and 3.6)
 - ✅ Precision of a column of dates in a filter: the list reads the periods, a level dragged there keeps its precision, a comparison keeps whole periods
 - ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes, reload
+- ✅ "Retirer" comes back to the menu of the elements of each zone, beside the release outside the zones; a filter gets the same menu, whose first entry, "Réglages…", opens its settings
 - ⬜ Filters by an expression (F-19), with the dialect: an expression without an aggregate filters the rows, with one the groups; later, a custom expression in a filter on values (F-21), `LIKE` and relative dates
 - ⬜ Lot 1, next slices (ANSI SQL): dialect (parsed by `sqlparser`, typing, ANSI catalog), calendar, editor, nested date levels, computed columns, filters, fold, caches, copy, CSV, conformance
 - ⬜ Lot 2: complements (detail of a cell, measures in rows)
