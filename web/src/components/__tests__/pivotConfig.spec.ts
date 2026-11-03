@@ -18,9 +18,11 @@ import {
   elementExpression,
   elementLabel,
   emptyConfig,
+  engineLayout,
   engineOrder,
   engineRequest,
   fittedConfig,
+  hasGrandTotal,
   hasTable,
   isEmptyConfig,
   isRefused,
@@ -32,12 +34,18 @@ import {
   removeElement,
   sameOrder,
   sameRequest,
+  sameTableLayout,
   sameTarget,
   withAggregate,
+  withAllSubtotals,
   withFilter,
+  withForm,
+  withGrandTotal,
   withLevelSort,
   withName,
   withPrecision,
+  withRepeatedLabels,
+  withSubtotal,
   withValueSort,
   zoneLabels,
 } from '../pivotConfig'
@@ -1345,5 +1353,94 @@ describe('the filters', () => {
       expect(isRefused(tested({ condition: 'in_list', operand: 'abc' }), dates)).toBe(false)
       expect(isRefused(tested(), dates)).toBe(false)
     })
+  })
+})
+
+describe('the layout', () => {
+  /**
+   * Three levels of rows and two of columns.
+   */
+  const LEVELS: PivotConfig = {
+    rows: [level(0), level(1), level(2)],
+    columns: [level(3), level(4)],
+    measures: [measure('count_star', 0)],
+    filters: [],
+  }
+
+  it('asks for the compact form and every total, as a table just computed', () => {
+    expect(engineLayout(LEVELS)).toEqual({
+      form: 'compact',
+      rows: { grandTotal: true, subtotals: [] },
+      columns: { grandTotal: true, subtotals: [] },
+    })
+    expect(hasGrandTotal(LEVELS, 'rows')).toBe(true)
+  })
+
+  it('asks for what is set, each axis apart', () => {
+    let config = withForm(LEVELS, 'tabular')
+    config = withGrandTotal(config, 'columns', false)
+    config = withSubtotal(config, 'rows', 1, false)
+    expect(engineLayout(config)).toEqual({
+      form: 'tabular',
+      rows: { grandTotal: true, subtotals: [true, false, true] },
+      columns: { grandTotal: false, subtotals: [] },
+    })
+    expect(hasGrandTotal(config, 'columns')).toBe(false)
+    expect(hasGrandTotal(config, 'rows')).toBe(true)
+  })
+
+  it('gives every subtotal back, or none', () => {
+    const none = withAllSubtotals(LEVELS, 'rows', false)
+    expect(engineLayout(none).rows.subtotals).toEqual([false, false, false])
+    expect(engineLayout(none).columns.subtotals).toEqual([])
+    const all = withAllSubtotals(none, 'rows', true)
+    expect(engineLayout(all).rows.subtotals).toEqual([])
+    expect(sameTableLayout(engineLayout(all), engineLayout(LEVELS))).toBe(true)
+    expect(sameTableLayout(engineLayout(none), engineLayout(LEVELS))).toBe(false)
+  })
+
+  it('computes nothing: the request stays the same', () => {
+    let config = withForm(LEVELS, 'outline')
+    config = withRepeatedLabels(config, true)
+    config = withGrandTotal(config, 'rows', false)
+    config = withAllSubtotals(config, 'columns', false)
+    expect(sameRequest(engineRequest(config), engineRequest(LEVELS))).toBe(true)
+    expect(sameOrder(engineOrder(config), engineOrder(LEVELS))).toBe(true)
+  })
+
+  it('reads the repetition of the labels apart from the layout of the engine', () => {
+    const repeated = withRepeatedLabels(LEVELS, true)
+    expect(repeated.repeat_labels).toBe(true)
+    expect(withRepeatedLabels(repeated, false).repeat_labels).toBe(false)
+    expect(sameTableLayout(engineLayout(repeated), engineLayout(LEVELS))).toBe(true)
+  })
+
+  it('lets the subtotal of a level follow it to its new place and its new axis', () => {
+    const config = withSubtotal(LEVELS, 'rows', 0, false)
+    const moved = placeColumn(
+      config,
+      0,
+      'count',
+      { zone: 'columns', index: 0 },
+      { zone: 'rows', index: 0 },
+    )
+    expect(engineLayout(moved).rows.subtotals).toEqual([])
+    expect(engineLayout(moved).columns.subtotals).toEqual([false, true, true])
+  })
+
+  it('keeps the layout when the columns of the result change', () => {
+    const config = withSubtotal(
+      withGrandTotal(withRepeatedLabels(withForm(LEVELS, 'tabular'), true), 'rows', false),
+      'columns',
+      0,
+      false,
+    )
+    const moved = ['montant', 'trimestre', 'annee', 'ville', 'region']
+    const fitted = fittedConfig({ fields: NAMES, config }, moved, [])
+    expect(fitted.form).toBe('tabular')
+    expect(fitted.repeat_labels).toBe(true)
+    expect(hasGrandTotal(fitted, 'rows')).toBe(false)
+    expect(fitted.rows.map(({ column }) => column)).toEqual([4, 3, 2])
+    expect(fitted.columns[0]?.without_subtotal).toBe(true)
   })
 })

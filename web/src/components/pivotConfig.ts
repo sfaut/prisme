@@ -16,6 +16,10 @@
  * node of the other axis can rank the nodes instead (C-13), named by their values. Such a sort
  * lasts as long as the levels of that other axis and its measure (`withFollowedSorts`).
  *
+ * The lines take a form (C-07), and repeat the labels of their groups if asked. Each axis shows its
+ * grand total and the subtotal of each level if asked, a setting that follows the level wherever
+ * it goes (F-36). All of it only lays the table out again (`engineLayout`).
+ *
  * A filter (F-19) keeps the rows whose value of a column, at a precision of its dates, passes a
  * condition: a list of values (F-21), or a test (`PivotTest`); or those of the groups whose measure
  * passes a test (F-44). Its groups are those of a level of an axis with the levels above it, by
@@ -33,6 +37,7 @@ import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { DatePrecision } from '@/api/generated/DatePrecision'
 import type { PivotCondition } from '@/api/generated/PivotCondition'
 import type { PivotConfig } from '@/api/generated/PivotConfig'
+import type { PivotForm } from '@/api/generated/PivotForm'
 import type { PivotFilter } from '@/api/generated/PivotFilter'
 import type { PivotLevel } from '@/api/generated/PivotLevel'
 import type { PivotTest } from '@/api/generated/PivotTest'
@@ -42,6 +47,8 @@ import type { TypeFamily } from '@/api/generated/TypeFamily'
 
 import type {
   PivotAxisOrder,
+  PivotAxisTotals,
+  PivotLayout,
   PivotMeasure,
   PivotOrder,
   PivotRequest,
@@ -93,6 +100,11 @@ export type PivotAxis = 'rows' | 'columns'
  * Field of the configuration that holds the sort by values of each axis.
  */
 const VALUE_SORT = { rows: 'sort_lines', columns: 'sort_columns' } as const
+
+/**
+ * Field of the configuration that leaves out the grand total of each axis.
+ */
+const WITHOUT_TOTAL = { rows: 'without_row_total', columns: 'without_column_total' } as const
 
 /**
  * Label of a precision in the menu of a level.
@@ -193,12 +205,14 @@ function movedColumns(fields: string[], columns: string[]): (number | undefined)
  */
 function followedConfig(pivot: TabPivot, columns: string[]): PivotConfig {
   const { fields, config } = pivot
+  const { sort_lines, sort_columns, ...settings } = config
   const moved = movedColumns(fields, columns)
   const follow = <T extends { column: number }>(item: T, column: number | undefined) =>
     column === undefined ? [] : [{ ...item, column }]
   const levels = (items: PivotConfig['rows']) =>
     items.flatMap((item) => follow(item, moved[item.column]))
   const followed: PivotConfig = {
+    ...settings,
     rows: levels(config.rows),
     columns: levels(config.columns),
     measures: config.measures.flatMap((measure) =>
@@ -221,9 +235,7 @@ function followedConfig(pivot: TabPivot, columns: string[]): PivotConfig {
     followed.rows.length === config.rows.length &&
     followed.columns.length === config.columns.length &&
     followed.measures.length === config.measures.length
-  return whole
-    ? { ...followed, sort_lines: config.sort_lines, sort_columns: config.sort_columns }
-    : followed
+  return whole ? { ...followed, sort_lines, sort_columns } : followed
 }
 
 /**
@@ -470,6 +482,128 @@ export function engineOrder(config: PivotConfig): PivotOrder {
  */
 export function sameOrder(a: PivotOrder, b: PivotOrder): boolean {
   return JSON.stringify(a) === JSON.stringify(b)
+}
+
+/**
+ * Totals of an axis, as the engine reads them.
+ *
+ * @param config Configuration.
+ * @param axis Axis.
+ */
+function axisTotals(config: PivotConfig, axis: PivotAxis): PivotAxisTotals {
+  const levels = config[axis]
+  return {
+    grandTotal: hasGrandTotal(config, axis),
+    // Every subtotal: the layout of a table just computed.
+    subtotals: levels.some(({ without_subtotal }) => without_subtotal)
+      ? levels.map(({ without_subtotal }) => without_subtotal !== true)
+      : [],
+  }
+}
+
+/**
+ * Layout to ask the engine for a configuration. It copies what it reads of the configuration,
+ * which is reactive and could not go to the Worker.
+ *
+ * @param config Configuration.
+ */
+export function engineLayout(config: PivotConfig): PivotLayout {
+  return {
+    form: config.form ?? 'compact',
+    rows: axisTotals(config, 'rows'),
+    columns: axisTotals(config, 'columns'),
+  }
+}
+
+/**
+ * Do two layouts lay a table out in the same way?
+ *
+ * @param a Layout.
+ * @param b Other layout.
+ */
+export function sameTableLayout(a: PivotLayout, b: PivotLayout): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
+/**
+ * Does an axis show its grand total?
+ *
+ * @param config Configuration.
+ * @param axis Axis.
+ */
+export function hasGrandTotal(config: PivotConfig, axis: PivotAxis): boolean {
+  return config[WITHOUT_TOTAL[axis]] !== true
+}
+
+/**
+ * Configuration with lines in a form.
+ *
+ * @param config Configuration.
+ * @param form Form of the lines.
+ */
+export function withForm(config: PivotConfig, form: PivotForm): PivotConfig {
+  return { ...config, form }
+}
+
+/**
+ * Configuration whose lines repeat the labels of their groups, or not.
+ *
+ * @param config Configuration.
+ * @param repeat Do the lines repeat them?
+ */
+export function withRepeatedLabels(config: PivotConfig, repeat: boolean): PivotConfig {
+  return { ...config, repeat_labels: repeat }
+}
+
+/**
+ * Configuration where an axis shows its grand total, or not.
+ *
+ * @param config Configuration.
+ * @param axis Axis.
+ * @param shown Is it shown?
+ */
+export function withGrandTotal(config: PivotConfig, axis: PivotAxis, shown: boolean): PivotConfig {
+  return { ...config, [WITHOUT_TOTAL[axis]]: !shown }
+}
+
+/**
+ * Configuration where a level shows its subtotal, or not.
+ *
+ * @param config Configuration.
+ * @param axis Axis of the level.
+ * @param index Position of the level.
+ * @param shown Is it shown?
+ */
+export function withSubtotal(
+  config: PivotConfig,
+  axis: PivotAxis,
+  index: number,
+  shown: boolean,
+): PivotConfig {
+  return {
+    ...config,
+    [axis]: config[axis].map((level, position) =>
+      position === index ? { ...level, without_subtotal: !shown } : level,
+    ),
+  }
+}
+
+/**
+ * Configuration where every level of an axis shows its subtotal, or none does.
+ *
+ * @param config Configuration.
+ * @param axis Axis of the levels.
+ * @param shown Are they shown?
+ */
+export function withAllSubtotals(
+  config: PivotConfig,
+  axis: PivotAxis,
+  shown: boolean,
+): PivotConfig {
+  return {
+    ...config,
+    [axis]: config[axis].map((level) => ({ ...level, without_subtotal: !shown })),
+  }
 }
 
 /**

@@ -43,6 +43,7 @@ import {
 
 import { detectContent } from './contentKind'
 import PanelHeader from './PanelHeader.vue'
+import PivotLayoutPanel from './PivotLayoutPanel.vue'
 import PivotGrid from './PivotGrid.vue'
 import PivotZones from './PivotZones.vue'
 import { PivotClient, type PivotTable } from './pivotClient'
@@ -53,6 +54,7 @@ import {
   activeFilterPlace,
   elementLabel,
   emptyConfig,
+  engineLayout,
   engineOrder,
   engineRequest,
   fittedConfig,
@@ -60,12 +62,14 @@ import {
   isEmptyConfig,
   sameOrder,
   sameRequest,
+  sameTableLayout,
   withLevelSort,
   withValueSort,
   zoneLabels,
 } from './pivotConfig'
 import {
   type PivotFailure,
+  type PivotLayout,
   type PivotOrder,
   type PivotRequest,
   type PivotValueTarget,
@@ -201,6 +205,16 @@ const order = computed<PivotOrder>((previous) => {
 })
 
 /**
+ * Layout of the table of the configuration shown. The same object while it
+ * stays the same: a change of it lays the table out again, without computing
+ * it.
+ */
+const layout = computed<PivotLayout>((previous) => {
+  const next = engineLayout(config.value)
+  return previous !== undefined && sameTableLayout(previous, next) ? previous : next
+})
+
+/**
  * Inverts the direction of a level.
  *
  * @param axis Axis of the level.
@@ -283,12 +297,14 @@ const copying = ref(false)
 const computing = ref(false)
 
 /**
- * Table shown, with the request and the configuration it was computed for.
+ * Table shown, with the request, the configuration and the layout it was
+ * computed for.
  */
 const shownTable = shallowRef<{
   table: PivotTable
   request: PivotRequest
   config: PivotConfig
+  layout: PivotLayout
 } | null>(null)
 
 /**
@@ -418,11 +434,12 @@ async function compute(current: PivotClient): Promise<void> {
   const computation = ++computations
   const asked = request.value
   const named = config.value
+  const arranged = layout.value
   computing.value = true
   try {
-    const table = await current.compute(asked, order.value)
+    const table = await current.compute(asked, order.value, arranged)
     if (computation === computations) {
-      shownTable.value = { table, request: asked, config: named }
+      shownTable.value = { table, request: asked, config: named, layout: arranged }
       failure.value = null
     }
   } catch (error) {
@@ -471,7 +488,7 @@ function update(): void {
   void compute(client)
 }
 
-watch([source, request, order, () => props.tab?.filter], update, { immediate: true })
+watch([source, request, order, layout, () => props.tab?.filter], update, { immediate: true })
 
 /**
  * Reads the distinct values of a column of the result shown, or the periods of a precision of its
@@ -539,7 +556,11 @@ const groupsText = computed(() => {
 
 <template>
   <section class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-4 pt-1 pb-4" aria-label="Pivoteur">
-    <panel-header title="Pivoteur" side="bottom" @collapse="emit('collapse')" />
+    <panel-header title="Pivoteur" side="bottom" @collapse="emit('collapse')">
+      <template v-if="analysable && !receiving" #actions>
+        <pivot-layout-panel v-model:config="config" :names="result?.columns ?? []" />
+      </template>
+    </panel-header>
     <p v-if="!analysable" class="text-fg-secondary">Rien à analyser</p>
     <p v-else-if="receiving" role="status" class="flex items-center gap-2 text-fg-secondary">
       <LoaderCircle class="size-5 animate-spin" aria-hidden="true" />
@@ -564,6 +585,8 @@ const groupsText = computed(() => {
           :row-names="tableLabels.rows"
           :column-names="tableLabels.columns"
           :order="order"
+          :layout="shownTable.layout"
+          :repeat-labels="config.repeat_labels === true"
           :read="readWindow"
           @sort-level="sortLevel"
           @sort-values="sortValues"

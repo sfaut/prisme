@@ -291,7 +291,8 @@ fn null_is_a_group_apart_from_the_text_null_and_the_empty_text() {
         table.line(&engine, 4),
         Line {
             depth: 0,
-            label: Label::Total
+            label: Label::Total,
+            shared: 0,
         }
     );
 }
@@ -806,6 +807,18 @@ fn sorted_example(
     measures: &[Measure],
     order: &Order,
 ) -> String {
+    arranged_example(rows, columns, measures, order, &Layout::default())
+}
+
+/// Table of the example dataset in an order and a layout, as its copy lays it
+/// out: one column per level, whatever the form.
+fn arranged_example(
+    rows: &[usize],
+    columns: &[usize],
+    measures: &[Measure],
+    order: &Order,
+    layout: &Layout,
+) -> String {
     let engine = example();
     let request = Request {
         rows: rows.iter().map(|&column| column.into()).collect(),
@@ -814,7 +827,7 @@ fn sorted_example(
         ..Request::default()
     };
     let mut table = engine.compute(&request).unwrap();
-    table.sort(&engine, order).unwrap();
+    table.lay_out(&engine, order, layout).unwrap();
     let names: Vec<&str> = rows
         .iter()
         .map(|&column| ["region", "ville", "d", "annee", "trimestre", "montant"][column])
@@ -974,13 +987,17 @@ fn a_sort_changes_the_layout_alone() {
     };
     let mut table = engine.compute(&request).unwrap();
     let before = flat(&engine, &table, &["region", "ville"], &["ca"]);
-    table.sort(&engine, &lines_by(&["2025"], 0, true)).unwrap();
+    table
+        .lay_out(&engine, &lines_by(&["2025"], 0, true), &Layout::default())
+        .unwrap();
     assert_eq!(table.line_count(), 7);
     assert_eq!(table.column_count(), 3);
     assert_eq!(table.finest_groups(), 7);
     assert_eq!(table.selected_rows(), 10);
     assert_ne!(flat(&engine, &table, &["region", "ville"], &["ca"]), before);
-    table.sort(&engine, &Order::default()).unwrap();
+    table
+        .lay_out(&engine, &Order::default(), &Layout::default())
+        .unwrap();
     assert_eq!(flat(&engine, &table, &["region", "ville"], &["ca"]), before);
 }
 
@@ -1001,7 +1018,9 @@ fn keys_by_value(engine: &Engine, measure: Measure) -> String {
         ..Request::default()
     };
     let mut table = engine.compute(&request).unwrap();
-    table.sort(engine, &lines_by(&[], 0, false)).unwrap();
+    table
+        .lay_out(engine, &lines_by(&[], 0, false), &Layout::default())
+        .unwrap();
     (0..table.line_count() - 1)
         .map(|line| table.line_path(engine, line)[0].unwrap_or("NULL"))
         .collect::<Vec<_>>()
@@ -1047,7 +1066,7 @@ fn a_path_reads_null_and_the_labels_of_a_precision() {
     let mut table = engine.compute(&request).unwrap();
     let mut order = lines_by(&[], 0, false);
     order.rows.values.as_mut().unwrap().path = vec![None];
-    table.sort(&engine, &order).unwrap();
+    table.lay_out(&engine, &order, &Layout::default()).unwrap();
     assert_eq!(
         (0..3)
             .map(|line| table.line_path(&engine, line)[0].unwrap())
@@ -1067,7 +1086,11 @@ fn a_path_reads_null_and_the_labels_of_a_precision() {
     };
     let mut table = engine.compute(&request).unwrap();
     table
-        .sort(&engine, &lines_by(&["2026-02"], 0, false))
+        .lay_out(
+            &engine,
+            &lines_by(&["2026-02"], 0, false),
+            &Layout::default(),
+        )
         .unwrap();
     assert_eq!(table.line_path(&engine, 0), [Some("Sud")]);
 }
@@ -1911,4 +1934,288 @@ fn a_date_column_is_no_column_of_numbers() {
         flat(&engine, &engine.compute(&extreme).unwrap(), &[], &["m"]),
         "m\n2026-01-15"
     );
+}
+
+/// Layout in a form, with the totals of the rows and every total of the columns.
+fn rows_layout(form: Form, grand_total: bool, subtotals: &[bool]) -> Layout {
+    Layout {
+        form,
+        rows: Totals {
+            grand_total,
+            subtotals: subtotals.to_vec(),
+        },
+        columns: Totals::default(),
+    }
+}
+
+/// Sum of the amounts by region and by town, in a layout.
+fn towns_in(layout: &Layout) -> String {
+    arranged_example(
+        &[REGION, CITY],
+        &[],
+        &[Measure::Sum(AMOUNT)],
+        &Order::default(),
+        layout,
+    )
+}
+
+#[test]
+fn compact_and_outline_forms_show_a_group_above_its_members() {
+    let expected = "\
+region;ville;ca
+Nord;Total;470
+Nord;Arras;100
+Nord;Lille;370
+Sud;Total;380
+Sud;Nice;350
+Sud;Toulon;30
+Total;;850";
+    assert_eq!(towns_in(&Layout::default()), expected);
+    assert_eq!(towns_in(&rows_layout(Form::Outline, true, &[])), expected);
+}
+
+#[test]
+fn tabular_form_shows_a_subtotal_below_its_members() {
+    assert_eq!(
+        towns_in(&rows_layout(Form::Tabular, true, &[])),
+        "\
+region;ville;ca
+Nord;Arras;100
+Nord;Lille;370
+Nord;Total;470
+Sud;Nice;350
+Sud;Toulon;30
+Sud;Total;380
+Total;;850"
+    );
+}
+
+#[test]
+fn a_group_without_its_subtotal_keeps_an_empty_line_above_its_members() {
+    let expected = "\
+region;ville;ca
+Nord;Total;
+Nord;Arras;100
+Nord;Lille;370
+Sud;Total;
+Sud;Nice;350
+Sud;Toulon;30
+Total;;850";
+    for form in [Form::Compact, Form::Outline] {
+        assert_eq!(towns_in(&rows_layout(form, true, &[false])), expected);
+    }
+}
+
+#[test]
+fn tabular_form_leaves_a_group_without_its_subtotal_out() {
+    assert_eq!(
+        towns_in(&rows_layout(Form::Tabular, true, &[false])),
+        "\
+region;ville;ca
+Nord;Arras;100
+Nord;Lille;370
+Sud;Nice;350
+Sud;Toulon;30
+Total;;850"
+    );
+}
+
+#[test]
+fn the_grand_total_of_the_rows_can_leave() {
+    for (form, expected) in [
+        (
+            Form::Compact,
+            "region;ville;ca\nNord;Total;\nNord;Arras;100\nNord;Lille;370\nSud;Total;\nSud;Nice;350\nSud;Toulon;30",
+        ),
+        (
+            Form::Tabular,
+            "region;ville;ca\nNord;Arras;100\nNord;Lille;370\nSud;Nice;350\nSud;Toulon;30",
+        ),
+    ] {
+        assert_eq!(towns_in(&rows_layout(form, false, &[false])), expected);
+    }
+}
+
+#[test]
+fn each_level_sets_its_subtotal() {
+    let by_year = |subtotals: &[bool]| {
+        arranged_example(
+            &[REGION, CITY, YEAR],
+            &[],
+            &[Measure::Sum(AMOUNT)],
+            &Order::default(),
+            &rows_layout(Form::Tabular, true, subtotals),
+        )
+    };
+    assert_eq!(
+        by_year(&[false, true]),
+        "\
+region;ville;annee;ca
+Nord;Arras;2025;40
+Nord;Arras;2026;60
+Nord;Arras;Total;100
+Nord;Lille;2025;220
+Nord;Lille;2026;150
+Nord;Lille;Total;370
+Sud;Nice;2025;170
+Sud;Nice;2026;180
+Sud;Nice;Total;350
+Sud;Toulon;2026;30
+Sud;Toulon;Total;30
+Total;;;850"
+    );
+    assert_eq!(
+        by_year(&[true, false]),
+        "\
+region;ville;annee;ca
+Nord;Arras;2025;40
+Nord;Arras;2026;60
+Nord;Lille;2025;220
+Nord;Lille;2026;150
+Nord;Total;;470
+Sud;Nice;2025;170
+Sud;Nice;2026;180
+Sud;Toulon;2026;30
+Sud;Total;;380
+Total;;;850"
+    );
+}
+
+#[test]
+fn a_level_of_columns_without_its_subtotal_loses_its_column() {
+    let quarters = |columns: Totals| {
+        arranged_example(
+            &[REGION],
+            &[YEAR, QUARTER],
+            &[Measure::Sum(AMOUNT)],
+            &Order::default(),
+            &Layout {
+                columns,
+                ..Layout::default()
+            },
+        )
+    };
+    assert_eq!(
+        quarters(Totals {
+            grand_total: true,
+            subtotals: vec![false],
+        }),
+        "\
+region;2025 / T1 / ca;2025 / T2 / ca;2026 / T1 / ca;2026 / T2 / ca;Total / ca
+Nord;140;120;150;60;470
+Sud;80;90;140;70;380
+Total;220;210;290;130;850"
+    );
+    assert_eq!(
+        quarters(Totals {
+            grand_total: false,
+            subtotals: vec![false],
+        }),
+        "\
+region;2025 / T1 / ca;2025 / T2 / ca;2026 / T1 / ca;2026 / T2 / ca
+Nord;140;120;150;60
+Sud;80;90;140;70
+Total;220;210;290;130"
+    );
+}
+
+#[test]
+fn an_axis_without_levels_keeps_its_only_node() {
+    let no_totals = Layout {
+        form: Form::Tabular,
+        rows: Totals {
+            grand_total: false,
+            subtotals: Vec::new(),
+        },
+        columns: Totals {
+            grand_total: false,
+            subtotals: Vec::new(),
+        },
+    };
+    let table = |rows: &[usize], columns: &[usize]| {
+        arranged_example(
+            rows,
+            columns,
+            &[Measure::Sum(AMOUNT)],
+            &Order::default(),
+            &no_totals,
+        )
+    };
+    assert_eq!(table(&[], &[]), "ca\n850");
+    assert_eq!(table(&[], &[YEAR]), "2025 / ca;2026 / ca\n430;420");
+    assert_eq!(table(&[REGION], &[]), "region;ca\nNord;470\nSud;380");
+}
+
+#[test]
+fn a_subtotal_not_shown_still_ranks_its_group() {
+    let by_total = lines_by(&[], 0, false);
+    let table = arranged_example(
+        &[REGION, CITY],
+        &[],
+        &[Measure::Sum(AMOUNT)],
+        &by_total,
+        &rows_layout(Form::Tabular, true, &[false]),
+    );
+    assert_eq!(
+        table,
+        "region;ville;ca\nSud;Toulon;30\nSud;Nice;350\nNord;Arras;100\nNord;Lille;370\nTotal;;850"
+    );
+}
+
+#[test]
+fn a_line_counts_the_levels_it_shares_with_the_previous_one() {
+    let engine = example();
+    let request = Request {
+        rows: vec![REGION.into(), CITY.into()],
+        measures: vec![Measure::CountStar],
+        ..Request::default()
+    };
+    let mut table = engine.compute(&request).unwrap();
+    let mut shared = |layout: &Layout, order: &Order| {
+        table.lay_out(&engine, order, layout).unwrap();
+        (0..table.line_count())
+            .map(|line| table.line(&engine, line).shared)
+            .collect::<Vec<_>>()
+    };
+    let tabular = rows_layout(Form::Tabular, true, &[]);
+    assert_eq!(shared(&tabular, &Order::default()), [0, 1, 1, 0, 1, 1, 0]);
+    let plain = rows_layout(Form::Tabular, true, &[false]);
+    assert_eq!(shared(&plain, &Order::default()), [0, 1, 0, 1, 0]);
+    assert_eq!(
+        shared(&Layout::default(), &Order::default()),
+        [0, 1, 1, 0, 1, 1, 0]
+    );
+    let descending = Order {
+        rows: AxisOrder {
+            descending: vec![true, true],
+            values: None,
+        },
+        ..Order::default()
+    };
+    assert_eq!(shared(&plain, &descending), [0, 1, 0, 1, 0]);
+}
+
+#[test]
+fn a_new_layout_starts_from_the_same_groups() {
+    let engine = example();
+    let request = Request {
+        rows: vec![REGION.into(), CITY.into()],
+        measures: vec![Measure::Sum(AMOUNT)],
+        ..Request::default()
+    };
+    let mut table = engine.compute(&request).unwrap();
+    let before = flat(&engine, &table, &["region", "ville"], &["ca"]);
+    table
+        .lay_out(
+            &engine,
+            &Order::default(),
+            &rows_layout(Form::Tabular, false, &[false]),
+        )
+        .unwrap();
+    assert_eq!(table.line_count(), 4);
+    assert_eq!(table.finest_groups(), 4);
+    table
+        .lay_out(&engine, &Order::default(), &Layout::default())
+        .unwrap();
+    assert_eq!(flat(&engine, &table, &["region", "ville"], &["ca"]), before);
 }

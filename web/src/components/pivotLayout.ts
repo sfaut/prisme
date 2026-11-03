@@ -6,14 +6,15 @@
  * a node reads `Total` on the level after its path, down to the last level. A single measure adds
  * no level to the headers (F-28), unless there is no column level: its name then heads its
  * column. The corner names the levels: those of the columns each on its row, those of the lines
- * on the last row. The lines are in compact form (C-07): the subtotal of a group stands on the line of the
- * group, its label indented by its depth. The header of a single column names the values that can
- * rank the lines (`HeaderCell.target`, C-13).
+ * on the last row. The form of the lines gives the columns of their labels (`labelCells`). The
+ * header of a single column names the values that can rank the lines (`HeaderCell.target`, C-13).
  */
 
+import type { PivotForm } from '@/api/generated/PivotForm'
 import type { Cell } from '@/api/querySession'
 
 import type { PivotColumn, PivotLine, PivotShape, PivotValueTarget } from './pivotEngine'
+import { NULL_TEXT } from './resultGrid'
 
 /**
  * Label of a total, in the headers and on the line of the grand total.
@@ -239,4 +240,58 @@ export function sameLayout(a: PivotShape, b: PivotShape): boolean {
  */
 export function lineLabel(line: PivotLine): Cell {
   return line.depth === 0 ? TOTAL_TEXT : line.label
+}
+
+/**
+ * Number of columns of labels of the lines: one in compact form, otherwise one per level of the
+ * rows, at least one.
+ *
+ * @param form Form of the lines.
+ * @param rowLevels Number of levels of the rows.
+ */
+export function labelColumnCount(form: PivotForm, rowLevels: number): number {
+  return form === 'compact' ? 1 : Math.max(1, rowLevels)
+}
+
+/**
+ * Labels of a line, one per column of labels, an empty string for a column left empty.
+ *
+ * A single column holds the label of the line. Otherwise, the label stands in the column of its
+ * level. In tabular form, a group reads `Total Nord`, and a member gives the levels it does not
+ * share with the previous line. Repeating gives each line the levels above its own; the group and
+ * the total of a group keep their empty columns below it.
+ *
+ * @param line Line of the table.
+ * @param rowLevels Number of levels of the rows.
+ * @param form Form of the lines.
+ * @param repeat Do the lines repeat the labels of their groups?
+ */
+export function labelCells(
+  line: PivotLine,
+  rowLevels: number,
+  form: PivotForm,
+  repeat: boolean,
+): Cell[] {
+  const count = labelColumnCount(form, rowLevels)
+  if (count === 1) {
+    return [lineLabel(line)]
+  }
+  const cells: Cell[] = Array.from({ length: count }, () => '')
+  if (line.depth === 0) {
+    cells[0] = TOTAL_TEXT
+    return cells
+  }
+  const own = line.depth - 1
+  const member = line.depth === rowLevels
+  line.path.forEach((value, level) => {
+    const shown =
+      form === 'tabular' && member ? repeat || level >= line.shared : repeat || level === own
+    if (shown) {
+      cells[level] = value
+    }
+  })
+  if (form === 'tabular' && !member) {
+    cells[own] = `${TOTAL_TEXT} ${line.label ?? NULL_TEXT}`
+  }
+  return cells
 }

@@ -10,7 +10,8 @@
  * one table with the cells of the next.
  * The values of each level are ranked in the order of the grid (`compareCells`), once per column;
  * the module ranks the periods of a level with a precision, in the order of time. A table asked
- * again in another order is only laid out again, which makes it a new table for its windows.
+ * again in another order or another layout is only laid out again, which makes it a new table for
+ * its windows.
  * The Worker also gives the distinct values of a column, or the periods of a precision of its
  * dates, for the list of a filter.
  */
@@ -18,6 +19,7 @@
 import type { DatePrecision } from '@/api/generated/DatePrecision'
 import type { TypeFamily } from '@/api/generated/TypeFamily'
 import type { PivotAggregate } from '@/api/generated/PivotAggregate'
+import type { PivotForm } from '@/api/generated/PivotForm'
 import type { PivotTest } from '@/api/generated/PivotTest'
 import type { Cell } from '@/api/querySession'
 
@@ -211,6 +213,48 @@ export const LABEL_ORDER: PivotOrder = {
 }
 
 /**
+ * Totals shown on an axis.
+ */
+export interface PivotAxisTotals {
+  /**
+   * Is the grand total shown?
+   */
+  grandTotal: boolean
+  /**
+   * Is the subtotal of each level shown, the outermost first? A level left out shows it, and the
+   * last level has none.
+   */
+  subtotals: boolean[]
+}
+
+/**
+ * Layout of a table: the form of its lines and the totals shown on each axis.
+ */
+export interface PivotLayout {
+  /**
+   * Form of the lines.
+   */
+  form: PivotForm
+  /**
+   * Totals of the rows.
+   */
+  rows: PivotAxisTotals
+  /**
+   * Totals of the columns.
+   */
+  columns: PivotAxisTotals
+}
+
+/**
+ * Layout of a table just computed: compact form, every total of both axes.
+ */
+export const FIRST_LAYOUT: PivotLayout = {
+  form: 'compact',
+  rows: { grandTotal: true, subtotals: [] },
+  columns: { grandTotal: true, subtotals: [] },
+}
+
+/**
  * Shape of a computed table.
  */
 export interface PivotShape {
@@ -256,6 +300,11 @@ export interface PivotLine {
    * Value of each of its levels, the outermost first: empty for the grand total.
    */
   path: Cell[]
+  /**
+   * Number of levels it shares with the previous line: the labels that tabular form does not
+   * repeat.
+   */
+  shared: number
 }
 
 /**
@@ -387,12 +436,14 @@ export type PivotRequestMessage =
     }
   | {
       /**
-       * Computes a table, and lays it out in an order: the same request only lays it out again.
+       * Computes a table, and lays it out in an order and a layout: the same request only lays it
+       * out again.
        */
       type: 'compute'
       id: number
       request: PivotRequest
       order: PivotOrder
+      layout: PivotLayout
     }
   | {
       /**
@@ -445,7 +496,7 @@ interface EngineExports extends TransferExports {
   set_ranks(column: number, ranks: number, count: number): number
   set_kept(rows: number, count: number, all: number): number
   compute(words: number, length: number): number
-  sort(words: number, length: number): number
+  lay_out(words: number, length: number): number
   window(firstLine: number, endLine: number, firstColumn: number, endColumn: number): number
 }
 
@@ -637,9 +688,39 @@ export function orderWords(order: PivotOrder): Uint32Array {
 }
 
 /**
- * Words of the order of a table just computed.
+ * Words of the totals of an axis: a word for its grand total, the number of its levels and a word
+ * per level for its subtotal.
+ *
+ * @param totals Totals of the axis.
  */
-const LABEL_ORDER_KEY = orderWords(LABEL_ORDER).join()
+function totalsWords({ grandTotal, subtotals }: PivotAxisTotals): number[] {
+  return [Number(grandTotal), subtotals.length, ...subtotals.map(Number)]
+}
+
+/**
+ * Words of a layout for the module: the form, then the totals of the rows and of the columns.
+ *
+ * @param layout Layout of the table.
+ */
+export function layoutWords({ form, rows, columns }: PivotLayout): Uint32Array {
+  const forms: Record<PivotForm, number> = { compact: 0, outline: 1, tabular: 2 }
+  return Uint32Array.from([forms[form], ...totalsWords(rows), ...totalsWords(columns)])
+}
+
+/**
+ * Words of what lays a table out, for the module: its order, then its layout.
+ *
+ * @param order Order of the table.
+ * @param layout Layout of the table.
+ */
+function arrangementWords(order: PivotOrder, layout: PivotLayout): Uint32Array {
+  return Uint32Array.from([...orderWords(order), ...layoutWords(layout)])
+}
+
+/**
+ * Words of what lays out a table just computed.
+ */
+const FIRST_ARRANGEMENT = arrangementWords(LABEL_ORDER, FIRST_LAYOUT).join()
 
 const decoder = new TextDecoder()
 
@@ -659,9 +740,9 @@ export class PivotEngine {
   private computed: { key: string; shape: PivotShape } | null = null
 
   /**
-   * Words of the order the table in the module is laid out in.
+   * Words of the order and of the layout the table in the module is laid out in.
    */
-  private laidOut = LABEL_ORDER_KEY
+  private laidOut = FIRST_ARRANGEMENT
 
   /**
    * @param engine Exports of the module.
@@ -812,17 +893,22 @@ export class PivotEngine {
 
   /**
    * Computes a table, and keeps it for the windows in place of the previous one, then lays it out
-   * in an order. The table in the module, asked again, is only laid out again: a sort computes no
-   * aggregate. A refused table keeps the previous one: the panel goes on showing it, with the
-   * error.
+   * in an order and a layout. The table in the module, asked again, is only laid out again: a sort
+   * or another layout computes no aggregate. A refused table keeps the previous one: the panel
+   * goes on showing it, with the error.
    *
    * @param request Table asked.
    * @param order Order of its lines and of its columns.
-   * @returns Its shape.
+   * @param layout Form of its lines and totals shown.
+   * @returns Its shape, which its layout changes.
    * @throws {PivotError}
    *     If the engine refuses it: a cell that is not a number, a value beyond 128 bits...
    */
-  compute(request: PivotRequest, order: PivotOrder = LABEL_ORDER): PivotShape {
+  compute(
+    request: PivotRequest,
+    order: PivotOrder = LABEL_ORDER,
+    layout: PivotLayout = FIRST_LAYOUT,
+  ): PivotShape {
     for (const { column, precision } of [...request.rows, ...request.columns]) {
       if (precision === 'none') {
         this.rank(column)
@@ -835,16 +921,17 @@ export class PivotEngine {
         this.answer<PivotShape>(this.engine.compute(address, words.length)),
       )
       this.computed = { key, shape }
-      this.laidOut = LABEL_ORDER_KEY
+      this.laidOut = FIRST_ARRANGEMENT
     }
-    const { shape } = this.computed
-    const ordering = orderWords(order)
-    const layout = ordering.join()
-    if (layout !== this.laidOut) {
-      this.withWords(ordering, (address) => this.answer(this.engine.sort(address, ordering.length)))
-      this.laidOut = layout
+    const arrangement = arrangementWords(order, layout)
+    const arrangementKey = arrangement.join()
+    if (arrangementKey !== this.laidOut) {
+      this.computed.shape = this.withWords(arrangement, (address) =>
+        this.answer<PivotShape>(this.engine.lay_out(address, arrangement.length)),
+      )
+      this.laidOut = arrangementKey
     }
-    return shape
+    return this.computed.shape
   }
 
   /**
@@ -910,7 +997,7 @@ export function answerMessage(
         return null
       case 'compute': {
         const started = performance.now()
-        const shape = state.engine.compute(message.request, message.order)
+        const shape = state.engine.compute(message.request, message.order, message.layout)
         state.table = message.id
         return { type: 'table', id: message.id, shape, durationMs: performance.now() - started }
       }

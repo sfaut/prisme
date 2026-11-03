@@ -76,6 +76,18 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ The sorts are saved with the tab, and last as long as the levels of the other axis
 - ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes, reload and new run
 
+### Layout of the table
+
+- ✅ Three forms of the lines (C-07): compact, outline (one column per level, a group on its line) and tabular (one column per level, a group on the line of its first member, its subtotal below them)
+- ✅ The labels of the groups repeated on demand, in outline and tabular forms: tabular, repeated and without subtotals gives the flat form
+- ✅ Grand total per axis and subtotal per level (F-34, F-35, F-39), in a single panel **Disposition** of the header of the Pivoteur; the setting of a level follows it (F-36)
+- ✅ A layout computes no aggregate: the same request lays the table out again, and a sort by a subtotal out of sight still ranks
+- ✅ The columns of labels stay on the left, unless they take more than half of the visible width: they then scroll with the values
+- ✅ Saved with the tab; a configuration saved earlier reads as compact, with every total
+- ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes, sorts and reload
+- ⬜ Fold of a group (F-40), copy and CSV in the form of the table (F-41)
+- ⬜ The engine computes only the levels shown (F-42), postponed: a layout stays immediate without it
+
 ### Next slices and lots
 
 - ✅ A date outside of the calendar stops the computation under a precision (A7, D25, D26) when a row taken into account holds it: the table empties, and the message gives the value and the number of its row, as for every error of calculation

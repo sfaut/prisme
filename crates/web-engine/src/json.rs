@@ -75,8 +75,9 @@ pub fn shape(json: &mut String, table: &Table) {
 /// the columns of values from `columns.start` to `columns.end`, both bounded
 /// by the table.
 ///
-/// - `lines`: `{"depth", "label", "path"}` of each line, depth 0 for the grand
-///   total, `path` holding the value of each of its levels;
+/// - `lines`: `{"depth", "label", "path", "shared"}` of each line, depth 0 for
+///   the grand total, `path` holding the value of each of its levels, `shared`
+///   the number of levels it shares with the previous line;
 /// - `columns`: `{"node", "path", "total", "measure"}` of each column, `path`
 ///   holding `[node, value]` per level;
 /// - `cells`: one array per line, a value as a string, `null` for NULL,
@@ -102,7 +103,7 @@ pub fn window(
         array(json, table.line_path(engine, index), |json, value| {
             cell(json, value)
         });
-        json.push('}');
+        let _ = write!(json, r#","shared":{}}}"#, line.shared);
     });
     json.push_str(r#","columns":"#);
     array(json, columns.clone(), |json, index| {

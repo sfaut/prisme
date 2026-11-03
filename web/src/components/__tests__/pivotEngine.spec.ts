@@ -14,11 +14,13 @@ import {
   type PivotRequestLevel,
   type PivotRequestTest,
   type WorkerState,
+  FIRST_LAYOUT,
   LABEL_ORDER,
   PivotEngine,
   PivotError,
   answerMessage,
   familyCode,
+  layoutWords,
   orderWords,
   ranksOf,
   requestWords,
@@ -171,6 +173,22 @@ describe('orderWords', () => {
   })
 })
 
+describe('layoutWords', () => {
+  it('writes the form, then the totals of each axis', () => {
+    const words = layoutWords({
+      form: 'tabular',
+      rows: { grandTotal: false, subtotals: [true, false] },
+      columns: { grandTotal: true, subtotals: [] },
+    })
+    expect(Array.from(words)).toEqual([2, 0, 2, 1, 0, 1, 0])
+    expect(Array.from(layoutWords({ ...FIRST_LAYOUT, form: 'outline' }))[0]).toBe(1)
+  })
+
+  it('writes the layout of a table just computed', () => {
+    expect(Array.from(layoutWords(FIRST_LAYOUT))).toEqual([0, 1, 0, 1, 0])
+  })
+})
+
 describe('PivotEngine', () => {
   it('counts the distinct values of a group again in its total', async () => {
     const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES, 4)
@@ -309,7 +327,7 @@ describe('PivotEngine', () => {
       filters: [],
     })
     const window = engine.window([2, 50], [0, 50])
-    expect(window.lines).toEqual([{ depth: 0, label: null, path: [] }])
+    expect(window.lines).toEqual([{ depth: 0, label: null, path: [], shared: 0 }])
     expect(window.cells).toEqual([['10']])
   })
 
@@ -493,6 +511,46 @@ describe('PivotEngine', () => {
       expect(compute).toHaveBeenCalledTimes(2)
     })
 
+    it('gives the lines and the shape of a layout, without computing the table', async () => {
+      const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
+      // The exports of a module are frozen: the engine reads a copy that counts its computations.
+      const held = engine as unknown as { engine: { compute: (...args: number[]) => number } }
+      const compute = vi.fn<(...args: number[]) => number>(held.engine.compute)
+      held.engine = { ...held.engine, compute }
+      expect(engine.compute(TABLE)).toMatchObject({ lines: 7, columns: 3 })
+      const shape = engine.compute(TABLE, LABEL_ORDER, {
+        form: 'tabular',
+        rows: { grandTotal: false, subtotals: [false, true] },
+        columns: { grandTotal: false, subtotals: [] },
+      })
+      expect(shape).toMatchObject({ lines: 4, columns: 2, groups: 7, rows: 10 })
+      const window = engine.window([0, 4], [0, 2])
+      expect(window.lines.map(({ path, shared }) => [path, shared])).toEqual([
+        [['Nord', 'Arras'], 0],
+        [['Nord', 'Lille'], 1],
+        [['Sud', 'Nice'], 0],
+        [['Sud', 'Toulon'], 1],
+      ])
+      expect(window.cells[0]).toEqual(['40', '60'])
+      expect(engine.compute(TABLE)).toMatchObject({ lines: 7, columns: 3 })
+      expect(compute).toHaveBeenCalledTimes(1)
+    })
+
+    it('empties the line of a group without its subtotal', async () => {
+      const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
+      engine.compute(TABLE, LABEL_ORDER, {
+        ...FIRST_LAYOUT,
+        form: 'outline',
+        rows: { grandTotal: true, subtotals: [false, true] },
+      })
+      const { lines, cells } = engine.window([0, 2], [0, 3])
+      expect(lines[0]?.label).toBe('Nord')
+      expect(cells).toEqual([
+        [false, false, false],
+        ['40', '60', '100'],
+      ])
+    })
+
     it('starts a table computed again from its labels', async () => {
       const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
       const descending = {
@@ -534,7 +592,8 @@ describe('answerMessage', () => {
       filters: [],
     }
     const order = LABEL_ORDER
-    const table = answerMessage(state, { type: 'compute', id: 2, request, order })
+    const layout = FIRST_LAYOUT
+    const table = answerMessage(state, { type: 'compute', id: 2, request, order, layout })
     expect(table).toMatchObject({ type: 'table', id: 2, shape: { lines: 1, columns: 1 } })
     expect(
       answerMessage(state, {
@@ -548,7 +607,7 @@ describe('answerMessage', () => {
       type: 'window',
       id: 3,
       window: {
-        lines: [{ depth: 0, label: null, path: [] }],
+        lines: [{ depth: 0, label: null, path: [], shared: 0 }],
         columns: [{ node: 0, path: [], total: false, measure: 0 }],
         cells: [['10']],
       },
@@ -558,7 +617,9 @@ describe('answerMessage', () => {
       measures: [{ aggregate: 'sum', column: 0 }],
       filters: [],
     }
-    expect(answerMessage(state, { type: 'compute', id: 4, request: sumOfText, order })).toEqual({
+    expect(
+      answerMessage(state, { type: 'compute', id: 4, request: sumOfText, order, layout }),
+    ).toEqual({
       type: 'failure',
       id: 4,
       failure: { kind: 'not_numeric', measure: 0 },
@@ -573,7 +634,7 @@ describe('answerMessage', () => {
         columns: [0, 1],
       }),
     ).toMatchObject({ type: 'window', id: 5 })
-    answerMessage(state, { type: 'compute', id: 6, request, order })
+    answerMessage(state, { type: 'compute', id: 6, request, order, layout })
     expect(
       answerMessage(state, {
         type: 'window',

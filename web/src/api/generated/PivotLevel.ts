@@ -22,4 +22,9 @@ export type PivotLevel = {
    * Are the values of the level in descending order?
    */
   descending?: boolean;
+  /**
+   * Does the level leave its subtotal out? The setting follows the level
+   * wherever it goes; the last level of an axis has no subtotal.
+   */
+  without_subtotal?: boolean;
 };

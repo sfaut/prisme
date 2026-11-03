@@ -1,21 +1,23 @@
-//! Layout of a computed table, in its compact form: every subtotal and the
-//! grand total on both axes.
+//! Layout of a computed table: its lines and its columns, among the nodes of
+//! each axis, which hold every subtotal and the grand total.
 //!
-//! - Lines: one per node of the rows, the value of a group on its own line,
-//!   above the lines of its members (its subtotal), the grand total last.
+//! - Lines, the grand total last. In compact and outline forms, a group has a
+//!   line above those of its members, which stays empty without its subtotal.
+//!   In tabular form, the line of a group comes after those of its members,
+//!   and only with its subtotal.
 //! - Columns: one group of columns per node of the columns, a group after
 //!   its members (its subtotal to their right), the grand total last; one
-//!   column per measure in each group.
+//!   column per measure in each group. A total not shown has no column.
 //!
 //! The nodes of each level follow the ranks of their values, given by the
-//! page in the order of the grid. A sort lays the same nodes out again in
-//! another order (`Order`), without computing anything.
+//! page in the order of the grid. A sort or another layout lays the same nodes
+//! out again (`Order`, `Layout`), without computing anything.
 
 use std::cmp::Ordering;
 
 use crate::groups::{Groups, Tree};
 use crate::measures::{SortKey, State, Value};
-use crate::{AxisOrder, Engine, Error, Level, Order};
+use crate::{AxisOrder, Engine, Error, Form, Layout, Level, Order};
 
 /// Label of a line or of a level of the header of a column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +36,9 @@ pub struct Line<'a> {
     pub depth: usize,
     /// Label: the value of its level, or `Total` for the grand total.
     pub label: Label<'a>,
+    /// Number of levels it shares with the previous line: the labels that
+    /// tabular form does not repeat.
+    pub shared: usize,
 }
 
 /// Header of a column of the table.
@@ -147,9 +152,8 @@ impl Children {
         &self.order[self.starts[node as usize] as usize..self.starts[node as usize + 1] as usize]
     }
 
-    /// Nodes in the order of the lines: each node before its children, the
-    /// root last.
-    fn lines(&self) -> Vec<u32> {
+    /// Nodes, each one before its children, the root last.
+    fn parents_first(&self) -> Vec<u32> {
         let mut lines = Vec::with_capacity(self.order.len() + 1);
         let mut stack: Vec<u32> = self.of(0).iter().rev().copied().collect();
         while let Some(node) = stack.pop() {
@@ -160,9 +164,8 @@ impl Children {
         lines
     }
 
-    /// Nodes in the order of the columns: each node after its children, the
-    /// root last.
-    fn columns(&self) -> Vec<u32> {
+    /// Nodes, each one after its children, the root last.
+    fn parents_last(&self) -> Vec<u32> {
         let mut columns = Vec::with_capacity(self.order.len() + 1);
         let mut stack = vec![(0u32, false)];
         while let Some((node, expanded)) = stack.pop() {
@@ -197,6 +200,8 @@ pub struct Table {
     lines: Vec<u32>,
     /// Node of the columns of each group of columns.
     column_nodes: Vec<u32>,
+    /// Layout of the lines and of the columns.
+    layout: Layout,
     /// Columns per group of columns: one per measure, one without a measure
     /// when the table has levels of columns.
     slots: usize,
@@ -234,9 +239,9 @@ impl Table {
     /// `row_ranks` and `column_ranks` give the rank of each value of each
     /// level, by code.
     pub fn new(parts: Parts, row_ranks: &[&[u32]], column_ranks: &[&[u32]]) -> Self {
-        let lines = Children::new(&parts.rows, Siblings::by_labels(row_ranks)).lines();
+        let lines = Children::new(&parts.rows, Siblings::by_labels(row_ranks)).parents_first();
         let column_nodes =
-            Children::new(&parts.columns, Siblings::by_labels(column_ranks)).columns();
+            Children::new(&parts.columns, Siblings::by_labels(column_ranks)).parents_last();
         let (row_levels, column_levels) = (parts.row_levels.len(), parts.column_levels.len());
         let measures = parts.states.len();
         let slots = if column_levels > 0 {
@@ -255,6 +260,7 @@ impl Table {
             column_levels,
             lines,
             column_nodes,
+            layout: Layout::default(),
             slots,
             states: parts.states,
             finest_groups: parts.finest_groups,
@@ -262,9 +268,14 @@ impl Table {
         }
     }
 
-    /// Lays the lines and the columns out again in an order. The groups and
-    /// their values stay as they are: nothing is computed again.
-    pub fn sort(&mut self, engine: &Engine, order: &Order) -> Result<(), Error> {
+    /// Lays the lines and the columns out again, in an order and a layout. The
+    /// groups and their values stay as they are: nothing is computed again.
+    pub fn lay_out(
+        &mut self,
+        engine: &Engine,
+        order: &Order,
+        layout: &Layout,
+    ) -> Result<(), Error> {
         let (row_levels, column_levels) = self.levels.split_at(self.row_levels);
         let (_, row_ranks) = engine.levels(row_levels)?;
         let (_, column_ranks) = engine.levels(column_levels)?;
@@ -272,10 +283,26 @@ impl Table {
         let column_keys = self.keys(engine, &order.columns, Axis::Columns)?;
         let rows = Siblings::of_axis(&row_ranks, &order.rows, row_keys.as_deref());
         let columns = Siblings::of_axis(&column_ranks, &order.columns, column_keys.as_deref());
-        let lines = Children::new(&self.rows, rows).lines();
-        let column_nodes = Children::new(&self.columns, columns).columns();
+        let rows = Children::new(&self.rows, rows);
+        let mut lines = match layout.form {
+            Form::Compact | Form::Outline => rows.parents_first(),
+            Form::Tabular => rows.parents_last(),
+        };
+        // A group keeps its line without its subtotal, except in tabular form,
+        // where its label stands on the line of its first member.
+        let group_lines = layout.form != Form::Tabular;
+        lines.retain(|&node| {
+            let depth = self.rows.nodes[node as usize].depth as usize;
+            (group_lines && depth > 0) || layout.rows.show(depth, self.row_levels)
+        });
+        let mut column_nodes = Children::new(&self.columns, columns).parents_last();
+        column_nodes.retain(|&node| {
+            let depth = self.columns.nodes[node as usize].depth as usize;
+            layout.columns.show(depth, self.column_levels)
+        });
         self.lines = lines;
         self.column_nodes = column_nodes;
+        self.layout = layout.clone();
         Ok(())
     }
 
@@ -384,7 +411,31 @@ impl Table {
             0 => Label::Total,
             _ => Label::Value(self.label(engine, depth - 1, node.row)),
         };
-        Line { depth, label }
+        Line {
+            depth,
+            label,
+            shared: self.shared_levels(index),
+        }
+    }
+
+    /// Number of levels line `index` shares with the previous one: the depth of
+    /// the deepest node both come from.
+    fn shared_levels(&self, index: usize) -> usize {
+        let Some(previous) = index.checked_sub(1) else {
+            return 0;
+        };
+        let nodes = &self.rows.nodes;
+        let (mut line, mut other) = (self.lines[index], self.lines[previous]);
+        while line != other {
+            let (node, other_node) = (nodes[line as usize], nodes[other as usize]);
+            if node.depth >= other_node.depth {
+                line = node.parent;
+            }
+            if other_node.depth >= node.depth {
+                other = other_node.parent;
+            }
+        }
+        nodes[line as usize].depth as usize
     }
 
     /// Values of the levels of line `index`, the outermost first: those of its
@@ -429,13 +480,18 @@ impl Table {
         }
     }
 
-    /// Value of the cell of line `line` and column `column`.
+    /// Value of the cell of line `line` and column `column`: empty on the line
+    /// of a group whose subtotal is not shown.
     ///
     /// # Panics
     ///
     /// If the line or the column is not in the table.
     pub fn value(&self, line: usize, column: usize) -> Value {
         let row_node = self.lines[line];
+        let depth = self.rows.nodes[row_node as usize].depth as usize;
+        if !self.layout.rows.show(depth, self.row_levels) {
+            return Value::Empty;
+        }
         let column_node = self.column_nodes[column / self.slots];
         let measure = column % self.slots;
         match (

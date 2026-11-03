@@ -2,7 +2,13 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import PivotGrid from '../PivotGrid.vue'
-import { LABEL_ORDER, type PivotOrder, type PivotShape, type PivotWindow } from '../pivotEngine'
+import {
+  FIRST_LAYOUT,
+  LABEL_ORDER,
+  type PivotOrder,
+  type PivotShape,
+  type PivotWindow,
+} from '../pivotEngine'
 
 /**
  * Table of two regions by two years, with its totals.
@@ -21,9 +27,9 @@ const SHAPE: PivotShape = {
  */
 const WINDOW: PivotWindow = {
   lines: [
-    { depth: 1, label: 'Nord', path: ['Nord'] },
-    { depth: 1, label: null, path: [null] },
-    { depth: 0, label: null, path: [] },
+    { depth: 1, label: 'Nord', path: ['Nord'], shared: 0 },
+    { depth: 1, label: null, path: [null], shared: 0 },
+    { depth: 0, label: null, path: [], shared: 0 },
   ],
   columns: [
     { node: 1, path: [[1, '2025']], total: false, measure: 0 },
@@ -70,6 +76,8 @@ async function mountGrid(props: Record<string, unknown> = {}) {
       rowNames: ['region'],
       columnNames: ['annee'],
       order: LABEL_ORDER,
+      layout: FIRST_LAYOUT,
+      repeatLabels: false,
       read: () => Promise.resolve(WINDOW),
       ...props,
     },
@@ -164,7 +172,7 @@ describe('the sort buttons of PivotGrid', () => {
       read: () =>
         Promise.resolve({
           ...WINDOW,
-          lines: [{ depth: 0, label: null, path: [] }],
+          lines: [{ depth: 0, label: null, path: [], shared: 0 }],
           cells: [['5', '7', '12']],
         }),
     })
@@ -226,5 +234,131 @@ describe('the window of PivotGrid', () => {
       read: () => new Promise<PivotWindow>(() => undefined),
     })
     expect(grid.findAll('.pivot-cell')).toHaveLength(0)
+  })
+})
+
+describe('the forms of the lines in PivotGrid', () => {
+  /**
+   * Table of two levels of rows, in a form that keeps the group above its members.
+   */
+  const TOWNS_SHAPE: PivotShape = { ...SHAPE, lines: 4, columns: 1, rowLevels: 2, columnLevels: 0 }
+
+  /**
+   * Whole window of that table, in outline form.
+   */
+  const TOWNS: PivotWindow = {
+    lines: [
+      { depth: 1, label: 'Nord', path: ['Nord'], shared: 0 },
+      { depth: 2, label: 'Arras', path: ['Nord', 'Arras'], shared: 1 },
+      { depth: 2, label: 'Lille', path: ['Nord', 'Lille'], shared: 1 },
+      { depth: 0, label: null, path: [], shared: 0 },
+    ],
+    columns: [{ node: 0, path: [], total: false, measure: 0 }],
+    cells: [['470'], ['100'], ['370'], ['470']],
+  }
+
+  /**
+   * Labels of each line, column by column.
+   *
+   * @param grid Table mounted.
+   */
+  function labels(grid: VueWrapper): string[][] {
+    return grid
+      .findAll('.pivot-label-cells')
+      .map((cells) => cells.findAll('.pivot-label-text').map((cell) => cell.text()))
+  }
+
+  /**
+   * Mounts the table of the towns.
+   *
+   * @param props Properties that differ.
+   */
+  function mountTowns(props: Record<string, unknown> = {}) {
+    return mountGrid({
+      shape: TOWNS_SHAPE,
+      rowNames: ['region', 'ville'],
+      columnNames: [],
+      read: () => Promise.resolve(TOWNS),
+      ...props,
+    })
+  }
+
+  it('indents one column of labels in compact form', async () => {
+    const grid = await mountTowns()
+    expect(labels(grid)).toEqual([['Nord'], ['Arras'], ['Lille'], ['Total']])
+    const indents = grid
+      .findAll<HTMLElement>('.pivot-label')
+      .map((label) => label.element.style.getPropertyValue('--indent'))
+    expect(indents).toEqual(['0', '1', '1', '0'])
+  })
+
+  it('gives each level its column in outline form', async () => {
+    const grid = await mountTowns({ layout: { ...FIRST_LAYOUT, form: 'outline' } })
+    expect(labels(grid)).toEqual([
+      ['Nord', ''],
+      ['', 'Arras'],
+      ['', 'Lille'],
+      ['Total', ''],
+    ])
+    const indents = grid
+      .findAll<HTMLElement>('.pivot-label')
+      .map((label) => label.element.style.getPropertyValue('--indent'))
+    expect(indents).toEqual(['0', '0', '0', '0'])
+    expect(grid.find('.pivot-corner-names').classes()).toContain('levels')
+  })
+
+  it('repeats the labels as asked, without reading the table again', async () => {
+    const read = vi.fn<() => Promise<PivotWindow>>(() => Promise.resolve(TOWNS))
+    const grid = await mountTowns({ layout: { ...FIRST_LAYOUT, form: 'outline' }, read })
+    const reads = read.mock.calls.length
+    await grid.setProps({ repeatLabels: true })
+    expect(labels(grid)[1]).toEqual(['Nord', 'Arras'])
+    expect(read).toHaveBeenCalledTimes(reads)
+  })
+
+  it('draws NULL in a column of its own, and an empty column without it', async () => {
+    const window: PivotWindow = {
+      ...TOWNS,
+      lines: [
+        { depth: 2, label: 'x', path: [null, 'x'], shared: 0 },
+        { depth: 2, label: 'y', path: [null, 'y'], shared: 1 },
+      ],
+    }
+    const grid = await mountTowns({
+      layout: { ...FIRST_LAYOUT, form: 'tabular' },
+      read: () => Promise.resolve(window),
+    })
+    const first = grid.findAll('.pivot-label-cells')[0]?.findAll('.pivot-label-text')
+    expect(first?.[0]?.text()).toBe('NULL')
+    expect(first?.[0]?.classes()).toContain('null')
+    expect(labels(grid)[1]).toEqual(['', 'y'])
+    expect(grid.findAll('.pivot-label-cells')[1]?.find('.null').exists()).toBe(false)
+  })
+
+  it('offers no sort on the line of a group without its subtotal', async () => {
+    const window: PivotWindow = {
+      ...TOWNS,
+      columns: [{ node: 1, path: [[1, '2025']], total: false, measure: 0 }],
+    }
+    const grid = await mountTowns({
+      shape: { ...TOWNS_SHAPE, columnLevels: 1 },
+      layout: {
+        ...FIRST_LAYOUT,
+        form: 'outline',
+        rows: { grandTotal: true, subtotals: [false, true] },
+      },
+      read: () => Promise.resolve(window),
+    })
+    const sorts = grid.findAll('.pivot-label').map((label) => label.find('.pivot-sort').exists())
+    expect(sorts).toEqual([false, true, true, true])
+  })
+
+  it('keeps a single column of labels in place, several only with room for the values', async () => {
+    const compact = await mountTowns()
+    expect(compact.find('.pivot-scroller').classes()).toContain('frozen')
+    compact.unmount()
+    // The size of the table is not known yet, or too small.
+    const outline = await mountTowns({ layout: { ...FIRST_LAYOUT, form: 'outline' } })
+    expect(outline.find('.pivot-scroller').classes()).not.toContain('frozen')
   })
 })

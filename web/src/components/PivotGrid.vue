@@ -3,14 +3,17 @@
   (N-05): only the lines and the columns of the visible area, with a margin,
   exist in the page, read from the Worker by windows (`read`). The
   headers of the column levels stay on top when the table scrolls, the
-  labels of the lines on the left (C-10). The label of a group of columns
-  stands at its start, and stays in sight while one of its columns is. The
-  corner names the levels: each level of the columns at the end of its
-  row, against its values, the levels of the lines at the start of the
-  last row, above their labels.
+  labels of the lines on the left (C-10), unless their columns take more
+  than half of the visible width: they then scroll with the values, which
+  stay within reach. The label of a group of columns stands at its start,
+  and stays in sight while one of its columns is. The corner names the
+  levels: each level of the columns at the end of its row, against its
+  values, the levels of the lines at the start of the last row, above their
+  labels.
 
-  The lines are in compact form (C-07): one column of labels, indented by
-  depth, the subtotal of a group on its line, the grand total last. Each
+  The form of the lines (`layout`) gives their labels: in compact form, one
+  column, indented by depth; in outline and tabular forms, one column per
+  level (`labelCells`). The grand total comes last. Each
   line has the height of a row of the result grid, each column of values
   the same width (`--pivot-column-width`): the scroll position gives the
   lines and the columns to draw (`drawnRange`). A cell without any row
@@ -33,6 +36,7 @@ import { cssPixels } from '@/cssLength'
 import type { PivotAxis } from './pivotConfig'
 import { sameTarget } from './pivotConfig'
 import type {
+  PivotLayout,
   PivotLine,
   PivotOrder,
   PivotShape,
@@ -43,7 +47,8 @@ import {
   cornerRows,
   headerCells,
   headerRowCount,
-  lineLabel,
+  labelCells,
+  labelColumnCount,
   sameLayout,
   sortMark,
 } from './pivotLayout'
@@ -76,6 +81,14 @@ const props = defineProps<{
    */
   order: PivotOrder
   /**
+   * Layout of the table: the form of its lines and its totals.
+   */
+  layout: PivotLayout
+  /**
+   * Do the lines repeat the labels of their groups?
+   */
+  repeatLabels: boolean
+  /**
    * Reads a window of the table: lines and columns, start included, end
    * excluded.
    */
@@ -94,9 +107,9 @@ const emit = defineEmits<{
 }>()
 
 /**
- * Height of a line and width of a column of values or of the labels, in
- * pixels, to turn the scroll position into the lines and the columns to
- * draw.
+ * Height of a line, and width of a column of values, of the labels in one
+ * column and of a column of labels per level, in pixels, to turn the scroll
+ * position into the lines and the columns to draw.
  *
  * Fixed sizes: read once (`docs/DEVELOPER.md`, section "Lengths in
  * pixels").
@@ -104,6 +117,7 @@ const emit = defineEmits<{
 const LINE_HEIGHT = cssPixels('--grid-row-height', 22)
 const COLUMN_WIDTH = cssPixels('--pivot-column-width', 108)
 const LABEL_WIDTH = cssPixels('--pivot-label-width', 180)
+const LEVEL_WIDTH = cssPixels('--pivot-level-width', 120)
 
 /**
  * Lines and columns drawn beyond each edge of the visible area.
@@ -157,6 +171,49 @@ onBeforeUnmount(() => resizeObserver?.disconnect())
 const labelled = computed(() => props.shape.rowLevels > 0 || props.shape.columnLevels > 0)
 
 /**
+ * Number of columns of labels of a line.
+ */
+const labelColumns = computed(() => labelColumnCount(props.layout.form, props.shape.rowLevels))
+
+/**
+ * Width of the labels of a line, as a CSS length.
+ */
+const labelsWidth = computed(() =>
+  labelColumns.value > 1
+    ? `calc(var(--pivot-level-width) * ${labelColumns.value})`
+    : 'var(--pivot-label-width)',
+)
+
+/**
+ * Width of the labels of a line in the table, in pixels.
+ */
+const labelsPixels = computed(() => {
+  if (!labelled.value) {
+    return 0
+  }
+  return labelColumns.value > 1 ? labelColumns.value * LEVEL_WIDTH : LABEL_WIDTH
+})
+
+/**
+ * Columns of the labels of a line: the last one takes what the sort button
+ * leaves.
+ */
+const labelTracks = computed(() =>
+  labelColumns.value > 1
+    ? `repeat(${labelColumns.value - 1}, var(--pivot-level-width)) minmax(0, 1fr)`
+    : 'minmax(0, 1fr)',
+)
+
+/**
+ * Do the labels stay on the left when the table scrolls sideways? A single
+ * column does; several as long as they leave the values half of the width.
+ */
+const frozen = computed(
+  () =>
+    labelled.value && (labelColumns.value === 1 || labelsPixels.value * 2 <= viewportWidth.value),
+)
+
+/**
  * Number of rows of the headers.
  */
 const headerRows = computed(() =>
@@ -178,8 +235,8 @@ const drawnLines = computed(() =>
 )
 const drawnColumns = computed(() =>
   drawnRange(
-    scrollLeft.value,
-    viewportWidth.value - (labelled.value ? LABEL_WIDTH : 0),
+    frozen.value ? scrollLeft.value : Math.max(0, scrollLeft.value - labelsPixels.value),
+    viewportWidth.value - (frozen.value ? labelsPixels.value : 0),
     COLUMN_WIDTH,
     props.shape.columns,
     COLUMN_OVERSCAN,
@@ -282,7 +339,7 @@ const content = computed(() => {
  * of the columns before the window, then the columns of the window.
  */
 const template = computed(() => {
-  const tracks = labelled.value ? ['var(--pivot-label-width)'] : []
+  const tracks = labelled.value ? [labelsWidth.value] : []
   tracks.push(`calc(var(--pivot-column-width) * ${content.value?.firstColumn ?? 0})`)
   const count = content.value?.content.columns.length ?? 0
   if (count > 0) {
@@ -296,7 +353,7 @@ const template = computed(() => {
  */
 const width = computed(
   () =>
-    `calc(${labelled.value ? 'var(--pivot-label-width) + ' : ''}var(--pivot-column-width) * ${props.shape.columns})`,
+    `calc(${labelled.value ? `${labelsWidth.value} + ` : ''}var(--pivot-column-width) * ${props.shape.columns})`,
 )
 
 /**
@@ -373,13 +430,28 @@ function valueDirection(axis: PivotAxis, target: PivotValueTarget): boolean | nu
 function lineTarget(line: PivotLine): PivotValueTarget {
   return { path: line.path, measure: 0 }
 }
+
+/**
+ * Does a line show values? Not that of a group without its subtotal, whose
+ * sort button would rank the columns by values out of sight.
+ *
+ * @param line Line of the table.
+ */
+function showsValues(line: PivotLine): boolean {
+  return (
+    line.depth === 0 ||
+    line.depth >= props.shape.rowLevels ||
+    props.layout.rows.subtotals[line.depth - 1] !== false
+  )
+}
 </script>
 
 <template>
   <div
     ref="scroller"
     class="pivot-scroller"
-    :class="{ labelled }"
+    :class="{ frozen }"
+    :style="{ '--labels-width': labelsWidth }"
     tabindex="0"
     @scroll.passive="onScroll"
   >
@@ -397,7 +469,11 @@ function lineTarget(line: PivotLine): PivotValueTarget {
         :style="{ gridRow: `1 / span ${headerRows}`, gridColumn: 1 }"
       >
         <div v-for="(row, index) in corner" :key="index" class="pivot-corner-row">
-          <span class="pivot-corner-names">
+          <span
+            class="pivot-corner-names"
+            :class="{ levels: labelColumns > 1 }"
+            :style="labelColumns > 1 ? { gridTemplateColumns: labelTracks } : undefined"
+          >
             <span v-for="{ level, name } in row.rows" :key="level" class="pivot-corner-name">
               <span class="pivot-corner-text">{{ name }}</span>
               <button
@@ -471,12 +547,19 @@ function lineTarget(line: PivotLine): PivotValueTarget {
         <div
           v-if="labelled"
           class="pivot-label"
-          :class="{ null: lineLabel(line) === null }"
-          :style="{ '--indent': Math.max(0, line.depth - 1) }"
+          :style="{ '--indent': labelColumns > 1 ? 0 : Math.max(0, line.depth - 1) }"
         >
-          <span class="pivot-label-text">{{ lineLabel(line) ?? NULL_TEXT }}</span>
+          <div class="pivot-label-cells" :style="{ gridTemplateColumns: labelTracks }">
+            <span
+              v-for="(text, level) in labelCells(line, shape.rowLevels, layout.form, repeatLabels)"
+              :key="level"
+              class="pivot-label-text"
+              :class="{ null: text === null }"
+              >{{ text ?? NULL_TEXT }}</span
+            >
+          </div>
           <button
-            v-if="columnsSortable"
+            v-if="columnsSortable && showsValues(line)"
             class="pivot-sort"
             :class="{ active: valueDirection('columns', lineTarget(line)) !== null }"
             type="button"
@@ -531,7 +614,7 @@ function lineTarget(line: PivotLine): PivotValueTarget {
 }
 
 .pivot-head,
-.pivot-label,
+.pivot-label-text,
 .pivot-cell {
   padding-inline: --spacing(1);
 
@@ -606,17 +689,21 @@ function lineTarget(line: PivotLine): PivotValueTarget {
   overflow-x: clip;
   overflow-y: visible;
 
-  .labelled & {
-    inset-inline-start: calc(var(--pivot-label-width) + --spacing(1));
+  .frozen & {
+    inset-inline-start: calc(var(--labels-width) + --spacing(1));
   }
 }
 
-/* Corner: a row facing each row of the headers (`subgrid`), with the
-   names of the levels; on the left of the headers when they scroll
-   sideways. */
-.pivot-corner {
+/* The corner and the labels stay on the left of what scrolls sideways. */
+.frozen .pivot-corner,
+.frozen .pivot-label {
   position: sticky;
   inset-inline-start: 0;
+}
+
+/* Corner: a row facing each row of the headers (`subgrid`), with the
+   names of the levels. */
+.pivot-corner {
   z-index: 1;
   display: grid;
   grid-template-rows: subgrid;
@@ -645,6 +732,14 @@ function lineTarget(line: PivotLine): PivotValueTarget {
 
 .pivot-corner-names {
   gap: --spacing(1);
+
+  /* One per column of labels, above it; the name of a level of the columns
+     takes the end of the last one. */
+  &.levels {
+    display: grid;
+    flex: 1;
+    gap: 0;
+  }
 }
 
 .pivot-body {
@@ -669,23 +764,36 @@ function lineTarget(line: PivotLine): PivotValueTarget {
   }
 }
 
-/* Labels of the lines, indented by depth, on the left of the cells that
-   pass under them; the sort button shows with the pointer on the line. */
+/* Labels of the lines, on the left of the cells that pass under them; the
+   sort button shows with the pointer on the line. */
 .pivot-label {
-  position: sticky;
-  inset-inline-start: 0;
   z-index: 1;
   display: flex;
   justify-content: space-between;
-  gap: --spacing(1);
   min-inline-size: 0;
-  padding-inline-start: calc(--spacing(1) + --spacing(4) * var(--indent));
+  padding-inline-end: --spacing(1);
   border-block-end: var(--line-width) solid var(--color-line-faint);
   border-inline-end: var(--line-width) solid var(--color-line);
   background: var(--color-surface);
 
   .pivot-sort:not(.active, :focus-visible) {
     opacity: 0;
+  }
+}
+
+/* One column of labels indented by depth, or one per level, each with its
+   line. */
+.pivot-label-cells {
+  display: grid;
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.pivot-label-text {
+  padding-inline-start: calc(--spacing(1) + --spacing(4) * var(--indent));
+
+  & + & {
+    border-inline-start: var(--line-width) solid var(--color-line-faint);
   }
 }
 

@@ -8,7 +8,8 @@
 //! the measures are `COUNT(*)`, `COUNT(col)`, `SUM(col)`, `AVG(col)`,
 //! `MIN(col)` and `MAX(col)`, in ANSI SQL, and `COUNT`, `SUM` and `AVG` of
 //! `DISTINCT col`. The lines and the columns follow their labels or the values
-//! of a measure (`Order`). Filters keep rows, by a list of values or a condition
+//! of a measure (`Order`), the lines take a form, and each axis shows the totals
+//! it is given (`Layout`). Filters keep rows, by a list of values or a condition
 //! on a column, at a precision of its dates, or on a measure at a level
 //! (`filters`). The dialect of the Pivoteur, with its expressions, comes with the
 //! next slices.
@@ -142,6 +143,67 @@ pub struct AxisOrder {
     pub descending: Vec<bool>,
     /// Values that rank the nodes before their labels.
     pub values: Option<ValueOrder>,
+}
+
+/// Layout of a table: the form of its lines and the totals shown on each axis.
+/// A change lays the same nodes out again, without computing anything: each
+/// total stays computed, and can still rank the nodes (`Order`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Layout {
+    /// Form of the lines.
+    pub form: Form,
+    /// Totals of the rows.
+    pub rows: Totals,
+    /// Totals of the columns.
+    pub columns: Totals,
+}
+
+/// Form of the lines of a table. The columns have none: their headers stack up.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Form {
+    /// One column of labels, indented (C-07): a group has a line of its own,
+    /// above its members, with its subtotal.
+    #[default]
+    Compact,
+    /// One column of labels per level: a group has a line of its own, above its
+    /// members, with its subtotal.
+    Outline,
+    /// One column of labels per level: a group starts on the line of its first
+    /// member, and its subtotal has a line of its own, below its members.
+    Tabular,
+}
+
+/// Totals shown on an axis.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Totals {
+    /// Is the grand total shown?
+    pub grand_total: bool,
+    /// Is the subtotal of each level shown, the outermost first? A level left
+    /// out shows it, and the last level has none.
+    pub subtotals: Vec<bool>,
+}
+
+impl Default for Totals {
+    /// Every total, as `GROUP BY ROLLUP`.
+    fn default() -> Self {
+        Totals {
+            grand_total: true,
+            subtotals: Vec::new(),
+        }
+    }
+}
+
+impl Totals {
+    /// Are the values of a node of depth `depth` shown, on an axis of `levels`
+    /// levels? The only node of an axis without levels holds all its values: it
+    /// stays whatever the setting.
+    pub(crate) fn show(&self, depth: usize, levels: usize) -> bool {
+        match depth {
+            0 => self.grand_total || levels == 0,
+            depth if depth < levels => self.subtotals.get(depth - 1) != Some(&false),
+            _ => true,
+        }
+    }
 }
 
 /// Values of a node of the other axis, which rank the nodes of an axis: its

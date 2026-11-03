@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import type { Cell } from '@/api/querySession'
 
-import type { PivotColumn } from '../pivotEngine'
+import type { PivotColumn, PivotLine } from '../pivotEngine'
 import {
   cornerRows,
   headerCells,
   headerRowCount,
+  labelCells,
+  labelColumnCount,
   lineLabel,
   sameLayout,
   sortMark,
@@ -210,8 +212,71 @@ describe('sameLayout', () => {
 
 describe('lineLabel', () => {
   it('names the grand total, and keeps NULL', () => {
-    expect(lineLabel({ depth: 0, label: null, path: [] })).toBe('Total')
-    expect(lineLabel({ depth: 1, label: null, path: [null] })).toBeNull()
-    expect(lineLabel({ depth: 2, label: 'Lille', path: ['Nord', 'Lille'] })).toBe('Lille')
+    expect(lineLabel({ depth: 0, label: null, path: [], shared: 0 })).toBe('Total')
+    expect(lineLabel({ depth: 1, label: null, path: [null], shared: 0 })).toBeNull()
+    expect(lineLabel({ depth: 2, label: 'Lille', path: ['Nord', 'Lille'], shared: 1 })).toBe(
+      'Lille',
+    )
+  })
+})
+
+describe('labelCells', () => {
+  /**
+   * Line of the table, its label being the last value of its path.
+   *
+   * @param path Values of its levels.
+   * @param shared Levels it shares with the previous line.
+   */
+  function line(path: Cell[], shared = 0): PivotLine {
+    return { depth: path.length, label: path[path.length - 1] ?? null, path, shared }
+  }
+
+  it('gives one column in compact form, or for a single level', () => {
+    expect(labelColumnCount('compact', 3)).toBe(1)
+    expect(labelColumnCount('outline', 3)).toBe(3)
+    expect(labelColumnCount('tabular', 2)).toBe(2)
+    expect(labelColumnCount('tabular', 1)).toBe(1)
+    expect(labelColumnCount('outline', 0)).toBe(1)
+    expect(labelCells(line(['Nord', 'Lille']), 2, 'compact', true)).toEqual(['Lille'])
+    expect(labelCells(line([]), 2, 'compact', false)).toEqual(['Total'])
+    expect(labelCells(line(['Nord']), 1, 'tabular', false)).toEqual(['Nord'])
+    expect(labelCells(line([]), 0, 'outline', false)).toEqual(['Total'])
+  })
+
+  it('stands in the column of its level in outline form', () => {
+    expect(labelCells(line(['Nord']), 2, 'outline', false)).toEqual(['Nord', ''])
+    expect(labelCells(line(['Nord', 'Lille'], 1), 2, 'outline', false)).toEqual(['', 'Lille'])
+    expect(labelCells(line([]), 2, 'outline', false)).toEqual(['Total', ''])
+  })
+
+  it('repeats the levels above a line in outline form, a group keeping its empty columns', () => {
+    expect(labelCells(line(['Nord', 'Lille'], 1), 2, 'outline', true)).toEqual(['Nord', 'Lille'])
+    expect(labelCells(line(['Nord']), 2, 'outline', true)).toEqual(['Nord', ''])
+    expect(labelCells(line(['a', 'b'], 1), 3, 'outline', true)).toEqual(['a', 'b', ''])
+  })
+
+  it('starts a group on the line of its first member in tabular form', () => {
+    expect(labelCells(line(['Nord', 'Arras'], 0), 2, 'tabular', false)).toEqual(['Nord', 'Arras'])
+    expect(labelCells(line(['Nord', 'Lille'], 1), 2, 'tabular', false)).toEqual(['', 'Lille'])
+    expect(labelCells(line(['a', 'b', 'c'], 1), 3, 'tabular', false)).toEqual(['', 'b', 'c'])
+  })
+
+  it('names the group of a subtotal in tabular form', () => {
+    expect(labelCells(line(['Nord'], 1), 2, 'tabular', false)).toEqual(['Total Nord', ''])
+    expect(labelCells(line([null], 1), 2, 'tabular', false)).toEqual(['Total NULL', ''])
+    expect(labelCells(line(['a', 'b'], 2), 3, 'tabular', false)).toEqual(['', 'Total b', ''])
+    expect(labelCells(line([]), 2, 'tabular', false)).toEqual(['Total', ''])
+  })
+
+  it('repeats every level in tabular form', () => {
+    expect(labelCells(line(['Nord', 'Lille'], 1), 2, 'tabular', true)).toEqual(['Nord', 'Lille'])
+    expect(labelCells(line(['a', 'b'], 2), 3, 'tabular', true)).toEqual(['a', 'Total b', ''])
+    expect(labelCells(line([]), 2, 'tabular', true)).toEqual(['Total', ''])
+  })
+
+  it('keeps NULL apart from an empty column', () => {
+    expect(labelCells(line([null, 'x'], 0), 2, 'tabular', false)).toEqual([null, 'x'])
+    expect(labelCells(line([null, 'x'], 1), 2, 'tabular', true)).toEqual([null, 'x'])
+    expect(labelCells(line([null, 'x'], 1), 2, 'tabular', false)).toEqual(['', 'x'])
   })
 })

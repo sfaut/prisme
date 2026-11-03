@@ -16,13 +16,13 @@
 
 mod json;
 
-use std::alloc::{Layout, alloc, dealloc, handle_alloc_error};
+use std::alloc::{Layout as MemoryLayout, alloc, dealloc, handle_alloc_error};
 use std::cell::RefCell;
 use std::slice;
 
 use prisme_pivot::{
-    AxisOrder, Comparison, Engine, Family, Filter, Level, Measure, Order, Precision, Request,
-    Table, Test, ValueOrder,
+    AxisOrder, Comparison, Engine, Family, Filter, Form, Layout, Level, Measure, Order, Precision,
+    Request, Table, Test, Totals, ValueOrder,
 };
 use prisme_store::Store;
 
@@ -60,8 +60,8 @@ thread_local! {
 }
 
 /// Layout of `size` bytes of memory reserved for JavaScript.
-fn layout(size: usize) -> Layout {
-    Layout::from_size_align(size.max(1), ALIGN).expect("size below the memory of the module")
+fn layout(size: usize) -> MemoryLayout {
+    MemoryLayout::from_size_align(size.max(1), ALIGN).expect("size below the memory of the module")
 }
 
 /// Reserves `size` bytes of memory for JavaScript, and returns their address.
@@ -502,34 +502,67 @@ fn axis_order(words: &mut impl Iterator<Item = u32>) -> Option<AxisOrder> {
     Some(AxisOrder { descending, values })
 }
 
-/// Reads an order: that of the rows, then that of the columns (see
-/// `axis_order`). `None` if the words do not match.
-fn order(words: &[u32]) -> Option<Order> {
+/// Reads the totals of an axis: a word for its grand total (0 to leave it out),
+/// the number of its levels, and a word per level for its subtotal (0 to leave
+/// it out).
+fn totals(words: &mut impl Iterator<Item = u32>) -> Option<Totals> {
+    let grand_total = words.next()? != 0;
+    let levels = words.next()?;
+    let subtotals = (0..levels)
+        .map(|_| words.next().map(|word| word != 0))
+        .collect::<Option<Vec<bool>>>()?;
+    Some(Totals {
+        grand_total,
+        subtotals,
+    })
+}
+
+/// Reads what lays a table out: the order of the rows, then that of the columns
+/// (see `axis_order`), the form (0 compact, 1 outline, 2 tabular), then the
+/// totals of the rows and those of the columns (see `totals`). `None` if the
+/// words do not match.
+fn arrangement(words: &[u32]) -> Option<(Order, Layout)> {
     let mut words = words.iter().copied();
     let rows = axis_order(&mut words)?;
     let columns = axis_order(&mut words)?;
-    words.next().is_none().then_some(Order { rows, columns })
+    let form = match words.next()? {
+        0 => Form::Compact,
+        1 => Form::Outline,
+        2 => Form::Tabular,
+        _ => return None,
+    };
+    let layout = Layout {
+        form,
+        rows: totals(&mut words)?,
+        columns: totals(&mut words)?,
+    };
+    words
+        .next()
+        .is_none()
+        .then_some((Order { rows, columns }, layout))
 }
 
-/// Lays the last table computed out again in an order of `length` words
-/// (`u32`) at `words` (see `order`), without computing anything. Writes `{}` or
-/// an error.
+/// Lays the last table computed out again, by `length` words (`u32`) at `words`
+/// (see `arrangement`), without computing anything. Writes its shape
+/// (`json::shape`), which the totals change, or an error.
 ///
 /// # Safety
 ///
 /// `words` holds `length` numbers, untouched during the call.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn sort(words: *const u32, length: usize) -> usize {
+pub unsafe extern "C" fn lay_out(words: *const u32, length: usize) -> usize {
     // SAFETY: given by the caller.
     let words = unsafe { slice::from_raw_parts(words, length) };
-    let order = order(words);
+    let arrangement = arrangement(words);
     STATE.with_borrow_mut(|state| {
-        let result = match (&state.engine, &mut state.table, order) {
-            (Some(engine), Some(table), Some(order)) => Some(table.sort(engine, &order)),
+        let result = match (&state.engine, &mut state.table, arrangement) {
+            (Some(engine), Some(table), Some((order, layout))) => {
+                Some(table.lay_out(engine, &order, &layout))
+            }
             _ => None,
         };
         answer(state, |json, state| match result {
-            Some(Ok(())) => json.push_str("{}"),
+            Some(Ok(())) => json::shape(json, state.table.as_ref().expect("table just laid out")),
             Some(Err(error)) => json::error(json, &error),
             None if state.table.is_none() => json::state_error(json, "no_table", None),
             None => json::state_error(json, "request", None),
@@ -564,6 +597,10 @@ pub extern "C" fn window(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Words of the layout of a table just computed: compact form, every total
+    /// of both axes.
+    const FIRST_LAYOUT: [u32; 5] = [0, 1, 0, 1, 0];
 
     /// Last answer written.
     fn output(length: usize) -> String {
@@ -629,7 +666,7 @@ mod tests {
         assert_eq!(
             output(length),
             concat!(
-                r#"{"lines":[{"depth":1,"label":"Sud","path":["Sud"]},{"depth":1,"label":"Nord","path":["Nord"]},{"depth":0,"label":null,"path":[]}],"#,
+                r#"{"lines":[{"depth":1,"label":"Sud","path":["Sud"],"shared":0},{"depth":1,"label":"Nord","path":["Nord"],"shared":0},{"depth":0,"label":null,"path":[],"shared":0}],"#,
                 r#""columns":[{"node":0,"path":[],"total":false,"measure":0},{"node":0,"path":[],"total":false,"measure":1}],"#,
                 r#""cells":[["1",null],["2","3.5"],["3","3.5"]]}"#
             )
@@ -654,7 +691,7 @@ mod tests {
         assert_eq!(
             output(length),
             concat!(
-                r#"{"lines":[{"depth":1,"label":"Sud","path":["Sud"]}],"#,
+                r#"{"lines":[{"depth":1,"label":"Sud","path":["Sud"],"shared":0}],"#,
                 r#""columns":[{"node":0,"path":[],"total":false,"measure":0}],"#,
                 r#""cells":[["1"]]}"#
             )
@@ -670,9 +707,9 @@ mod tests {
         assert_eq!(append_column(1, &[Some("3"), Some("1"), Some("2")]), 0);
         assert_eq!(finish(), 0);
 
-        let no_table = [0u32, 0, 0, 0];
-        // SAFETY: four words.
-        let length = unsafe { sort(no_table.as_ptr(), no_table.len()) };
+        let no_table = [0u32, 0, 0, 0, 0, 1, 0, 1, 0];
+        // SAFETY: nine words.
+        let length = unsafe { lay_out(no_table.as_ptr(), no_table.len()) };
         assert_eq!(output(length), r#"{"error":{"kind":"no_table"}}"#);
 
         // Rows: column 0; measure: SUM(column 1).
@@ -680,10 +717,13 @@ mod tests {
         // SAFETY: seven words.
         unsafe { compute(words.as_ptr(), words.len()) };
         // Lines by the grand total, measure 0, ascending; columns as they are.
-        let by_value = [1u32, 0, 1, 0, 0, 0, 0, 0];
-        // SAFETY: eight words.
-        let length = unsafe { sort(by_value.as_ptr(), by_value.len()) };
-        assert_eq!(output(length), "{}");
+        let by_value = [[1u32, 0, 1, 0, 0, 0, 0, 0].as_slice(), &FIRST_LAYOUT].concat();
+        // SAFETY: thirteen words.
+        let length = unsafe { lay_out(by_value.as_ptr(), by_value.len()) };
+        assert_eq!(
+            output(length),
+            r#"{"lines":4,"columns":1,"rowLevels":1,"columnLevels":0,"groups":3,"rows":3}"#
+        );
         let labels = || {
             let length = window(0, 4, 0, 0);
             let text = output(length);
@@ -695,14 +735,23 @@ mod tests {
         assert_eq!(labels(), [r#""b""#, "null", r#""a""#, "null"]);
 
         // The level of the rows in descending order: NULL comes last.
-        let descending = [1u32, 1, 0, 0, 0];
-        // SAFETY: five words.
-        unsafe { sort(descending.as_ptr(), descending.len()) };
+        let descending = [[1u32, 1, 0, 0, 0].as_slice(), &FIRST_LAYOUT].concat();
+        // SAFETY: ten words.
+        unsafe { lay_out(descending.as_ptr(), descending.len()) };
         assert_eq!(labels(), [r#""b""#, r#""a""#, "null", "null"]);
+
+        // Tabular form, without the grand total of the rows: the shape follows.
+        let tabular = [0u32, 0, 0, 0, 2, 0, 0, 1, 0];
+        // SAFETY: nine words.
+        let length = unsafe { lay_out(tabular.as_ptr(), tabular.len()) };
+        assert_eq!(
+            output(length),
+            r#"{"lines":3,"columns":1,"rowLevels":1,"columnLevels":0,"groups":3,"rows":3}"#
+        );
 
         let wrong = [1u32, 0, 0, 0, 0, 7];
         // SAFETY: six words.
-        let length = unsafe { sort(wrong.as_ptr(), wrong.len()) };
+        let length = unsafe { lay_out(wrong.as_ptr(), wrong.len()) };
         assert_eq!(output(length), r#"{"error":{"kind":"request"}}"#);
     }
 
@@ -712,7 +761,9 @@ mod tests {
         let mut words = vec![0u32, 1, 2, 1, 2, NULL_STEP, text.len() as u32];
         words.extend(text.bytes().map(u32::from));
         words.extend([0, 0]);
-        let order = order(&words).unwrap();
+        words.extend(FIRST_LAYOUT);
+        let (order, layout) = arrangement(&words).unwrap();
+        assert_eq!(layout, Layout::default());
         assert_eq!(order.columns, AxisOrder::default());
         assert_eq!(
             order.rows,
@@ -728,13 +779,37 @@ mod tests {
     }
 
     #[test]
-    fn orders_that_do_not_match_their_words_are_refused() {
-        assert!(super::order(&[0, 0]).is_none());
-        assert!(super::order(&[0, 0, 0, 0, 9]).is_none());
-        assert!(super::order(&[2, 1, 0, 0, 0]).is_none());
-        assert!(super::order(&[0, 1, 0, 0, 1, 5, 97, 0, 0]).is_none());
+    fn a_layout_reads_its_form_and_the_totals_of_each_axis() {
+        let (_, layout) = arrangement(&[0, 0, 0, 0, 1, 0, 2, 1, 0, 1, 1, 0]).unwrap();
+        assert_eq!(
+            layout,
+            Layout {
+                form: Form::Outline,
+                rows: Totals {
+                    grand_total: false,
+                    subtotals: vec![true, false],
+                },
+                columns: Totals {
+                    grand_total: true,
+                    subtotals: vec![false],
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn arrangements_that_do_not_match_their_words_are_refused() {
+        let refused = |words: &[u32]| arrangement(words).is_none();
+        assert!(refused(&[0, 0]));
+        assert!(refused(&[0, 0, 0, 0]));
+        assert!(refused(&[2, 1, 0, 0, 0]));
+        assert!(refused(&[0, 1, 0, 0, 1, 5, 97, 0, 0]));
         // A text that is not UTF-8.
-        assert!(super::order(&[0, 1, 0, 0, 1, 1, 0xFF, 0, 0]).is_none());
+        assert!(refused(&[0, 1, 0, 0, 1, 1, 0xFF, 0, 0]));
+        // An unknown form, totals cut short, a word too many.
+        assert!(refused(&[0, 0, 0, 0, 3, 1, 0, 1, 0]));
+        assert!(refused(&[0, 0, 0, 0, 0, 1, 2, 1, 1, 0]));
+        assert!(refused(&[0, 0, 0, 0, 0, 1, 0, 1, 0, 9]));
     }
 
     #[test]

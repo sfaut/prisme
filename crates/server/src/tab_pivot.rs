@@ -55,6 +55,28 @@ pub enum DatePrecision {
     Date,
 }
 
+/// Form of the lines of the Pivoteur.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum PivotForm {
+    /// One column of labels, indented: a group has a line of its own, above its
+    /// members, with its subtotal.
+    #[default]
+    Compact,
+    /// One column of labels per level: a group has a line of its own, above its
+    /// members, with its subtotal.
+    Outline,
+    /// One column of labels per level: a group starts on the line of its first
+    /// member, and its subtotal has a line of its own, below its members.
+    Tabular,
+}
+
+/// Is this the form of a configuration that does not name one?
+fn is_compact(form: &PivotForm) -> bool {
+    *form == PivotForm::Compact
+}
+
 /// Level of the rows or of the columns.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -71,6 +93,11 @@ pub struct PivotLevel {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[ts(as = "Option<bool>", optional)]
     pub descending: bool,
+    /// Does the level leave its subtotal out? The setting follows the level
+    /// wherever it goes; the last level of an axis has no subtotal.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub without_subtotal: bool,
 }
 
 /// Measure of the configuration.
@@ -228,7 +255,8 @@ pub struct PivotValueSort {
     pub descending: bool,
 }
 
-/// Elements of each zone, the outermost level first, and the sorts by values.
+/// Elements of each zone, the outermost level first, the sorts by values and
+/// the layout of the table.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct PivotConfig {
@@ -249,6 +277,23 @@ pub struct PivotConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub sort_columns: Option<PivotValueSort>,
+    /// Form of the lines.
+    #[serde(default, skip_serializing_if = "is_compact")]
+    #[ts(as = "Option<PivotForm>", optional)]
+    pub form: PivotForm,
+    /// Does each line give the labels of its groups, where its form leaves them
+    /// empty?
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub repeat_labels: bool,
+    /// Do the rows leave their grand total out?
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub without_row_total: bool,
+    /// Do the columns leave their grand total out?
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub without_column_total: bool,
 }
 
 /// Configuration of the Pivoteur of a result tab.
@@ -413,6 +458,11 @@ mod tests {
         assert_eq!(config.sort_lines, None);
         assert_eq!(config.sort_columns, None);
         assert_eq!(config.filters, []);
+        assert_eq!(config.form, PivotForm::Compact);
+        assert!(!config.repeat_labels);
+        assert!(!config.without_row_total);
+        assert!(!config.without_column_total);
+        assert!(!config.rows[0].without_subtotal);
         assert_eq!(
             serde_json::to_string(&config).unwrap(),
             saved.replace(r#""measures":[]"#, r#""measures":[],"filters":[]"#)
@@ -480,6 +530,18 @@ mod tests {
                 level_precision: DatePrecision::None,
             }
         );
+    }
+
+    #[test]
+    fn keeps_the_layout_of_a_configuration() {
+        let saved = r#"{"rows":[{"column":1,"name":"","precision":"none","without_subtotal":true}],"columns":[],"measures":[],"filters":[],"form":"tabular","repeat_labels":true,"without_row_total":true,"without_column_total":true}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        assert_eq!(config.form, PivotForm::Tabular);
+        assert!(config.repeat_labels);
+        assert!(config.without_row_total);
+        assert!(config.without_column_total);
+        assert!(config.rows[0].without_subtotal);
+        assert_eq!(serde_json::to_string(&config).unwrap(), saved);
     }
 
     #[test]

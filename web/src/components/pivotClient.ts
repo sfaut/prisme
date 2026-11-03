@@ -17,11 +17,13 @@ import type { Cell, QueryResult } from '@/api/querySession'
 import {
   type PivotAnswer,
   type PivotFailure,
+  type PivotLayout,
   type PivotOrder,
   type PivotRequest,
   type PivotRequestMessage,
   type PivotShape,
   type PivotWindow,
+  FIRST_LAYOUT,
   LABEL_ORDER,
   PivotError,
 } from './pivotEngine'
@@ -230,16 +232,22 @@ export class PivotClient {
   }
 
   /**
-   * Computes a table, once the copy is over, or lays it out again when only its order changes.
+   * Computes a table, once the copy is over, or lays it out again when only its order or its layout
+   * changes.
    *
    * @param request Table asked.
    * @param order Order of its lines and of its columns.
+   * @param layout Form of its lines and totals shown.
    * @throws {PivotError} If the engine refuses it, or refused the copy.
    */
-  async compute(request: PivotRequest, order: PivotOrder = LABEL_ORDER): Promise<PivotTable> {
+  async compute(
+    request: PivotRequest,
+    order: PivotOrder = LABEL_ORDER,
+    layout: PivotLayout = FIRST_LAYOUT,
+  ): Promise<PivotTable> {
     await this.loaded
     const id = this.nextId++
-    const answer = await this.ask({ type: 'compute', id, request, order })
+    const answer = await this.ask({ type: 'compute', id, request, order, layout })
     if (answer.type !== 'table') {
       throw new Error(`Pivot client: unexpected answer ${answer.type}`)
     }

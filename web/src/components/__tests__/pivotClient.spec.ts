@@ -12,6 +12,8 @@ import {
   type PivotRequestLevel,
   type PivotRequestMessage,
   type WorkerState,
+  FIRST_LAYOUT,
+  LABEL_ORDER,
   PivotEngine,
   PivotError,
   answerMessage,
@@ -108,6 +110,23 @@ function level(column: number): PivotRequestLevel {
 }
 
 describe('PivotClient', () => {
+  it('computes a table in a layout', async () => {
+    const types = [{ family: 'text' as const, name: 'VARCHAR(10)' }]
+    const client = new PivotClient(new PageWorker(), result([['a'], ['b']], ['x'], types))
+    const request = {
+      rows: [level(0)],
+      columns: [],
+      measures: [{ aggregate: 'count_star' as const, column: 0 }],
+      filters: [],
+    }
+    expect((await client.compute(request)).shape.lines).toBe(3)
+    const table = await client.compute(request, LABEL_ORDER, {
+      ...FIRST_LAYOUT,
+      rows: { grandTotal: false, subtotals: [] },
+    })
+    expect(table.shape.lines).toBe(2)
+  })
+
   it('copies the rows in blocks, then computes and reads a table', async () => {
     const count = BLOCK_ROWS * 2 + 1
     const rows: Cell[][] = Array.from({ length: count }, (_, row) => [
