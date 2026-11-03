@@ -1024,12 +1024,17 @@ function showsValues(line: PivotLine): boolean {
   cursor: col-resize;
   touch-action: none;
 
+  /* Only the middle of the width grabbed lights up, as thick as the band of
+     a splitter (`SplitHandle.vue`). */
+  padding-inline: calc((var(--resize-handle-width) - --spacing(2)) / 2);
+  background-clip: content-box;
+
   .pivot-corner > & {
     inset-inline-end: auto;
   }
 
   &:hover {
-    background: var(--resize-hover);
+    background-color: var(--resize-hover);
   }
 }
 
