@@ -1,19 +1,21 @@
 /**
  * Widths of the columns of the pivot table (`PivotGrid.vue`).
  *
- * A column of values takes the default width of the theme (`--pivot-column-width`), or the width
- * given by the user, in whole steps of the spacing scale (`--spacing`), saved with the tab. A width
- * names its column by the values of its node and its measure, as a sort does: the engine gives the
- * position of each one in the table (`positions` of `PivotTable`), and the grid places the columns
- * out of sight after them. The table being windowed, the room of the columns before a position
- * (`roomBefore`) and the column at a distance (`columnAt`) skip the widened columns one by one,
- * the others counting by the default width: the scroll position turns into the columns to draw
- * (`columnRange`), as `drawnRange` does for equal widths.
+ * A column of values takes a default width fitted to its texts, or the width given by the user,
+ * both in whole steps of the spacing scale (`--spacing`); a given width is saved with the tab. The
+ * default width follows the longest text of the column, its values or its header, as the result
+ * grid estimates its own (`estimatedWidth`): the engine gives the lengths of these texts with the
+ * table (`text_lengths` of the module), over all its lines, so that a column keeps its width
+ * whatever the scroll position. A given width names its column by the values of its node and its
+ * measure, as a sort does: the engine gives the position of each one in the table (`positions` of
+ * `PivotTable`). The steps before each column (`ColumnGeometry`) turn the scroll position into the
+ * columns to draw (`columnRange`), as `drawnRange` does for equal widths.
  */
 
 import type { PivotColumnWidth } from '@/api/generated/PivotColumnWidth'
 
-import type { PivotValueTarget } from './pivotEngine'
+import type { PivotTextLengths, PivotValueTarget } from './pivotEngine'
+import { SORT_ROOM } from './resultGrid'
 
 /**
  * Column of values given a width, by its position in the table.
@@ -34,36 +36,17 @@ export interface WidenedColumn {
  */
 export interface ColumnGeometry {
   /**
-   * Number of columns.
+   * Width of each column, in steps of the spacing scale.
    */
-  count: number
+  widths: number[]
   /**
-   * Default width of a column, in pixels.
+   * Steps before each column, then those of all the columns: one number more than the columns.
    */
-  standard: number
+  starts: number[]
   /**
    * Width of a step of the spacing scale, in pixels.
    */
   step: number
-  /**
-   * Columns given a width, in the order of the table.
-   */
-  widened: WidenedColumn[]
-}
-
-/**
- * Room taken by columns: a number of columns of the default width, and the steps of the widened
- * ones.
- */
-export interface ColumnRoom {
-  /**
-   * Columns of the default width.
-   */
-  standard: number
-  /**
-   * Steps of the spacing scale taken by the widened columns.
-   */
-  steps: number
 }
 
 /**
@@ -96,60 +79,73 @@ export function widenedColumns(
 }
 
 /**
- * Room taken by the columns before a position.
+ * Geometry of the columns of a table: their default widths, those given in their place.
+ *
+ * @param defaults Default width of each column, in steps.
+ * @param widened Columns given a width; one beyond the table is left out.
+ * @param step Width of a step, in pixels.
+ */
+export function columnGeometry(
+  defaults: number[],
+  widened: WidenedColumn[],
+  step: number,
+): ColumnGeometry {
+  const widths = [...defaults]
+  for (const { index, width } of widened) {
+    if (index < widths.length) {
+      widths[index] = width
+    }
+  }
+  const starts = [0]
+  let start = 0
+  for (const width of widths) {
+    start += width
+    starts.push(start)
+  }
+  return { widths, starts, step }
+}
+
+/**
+ * Steps taken by the columns before a position.
  *
  * @param geometry Columns of the table.
- * @param index Position of a column; beyond the table, the columns after it count by the default
- *     width.
+ * @param index Position of a column, bounded by the table: the number of columns gives the steps
+ *     of them all.
  */
-export function roomBefore({ widened }: ColumnGeometry, index: number): ColumnRoom {
-  let standard = index
-  let steps = 0
-  for (const column of widened) {
-    if (column.index >= index) {
-      break
-    }
-    standard--
-    steps += column.width
-  }
-  return { standard, steps }
+export function stepsBefore({ starts }: ColumnGeometry, index: number): number {
+  return starts[Math.min(Math.max(0, index), starts.length - 1)] ?? 0
 }
 
 /**
  * Distance of a column from the start of the first one, in pixels.
  *
  * @param geometry Columns of the table.
- * @param index Position of the column.
+ * @param index Position of the column, bounded by the table.
  */
 export function columnOffset(geometry: ColumnGeometry, index: number): number {
-  const { standard, steps } = roomBefore(geometry, index)
-  return standard * geometry.standard + steps * geometry.step
+  return stepsBefore(geometry, index) * geometry.step
 }
 
 /**
- * Position of the column at a distance from the start of the first one, as if the columns of the
- * default width went on at both ends of the table.
+ * Position of the column at a distance from the start of the first one: 0 before it, the number
+ * of columns beyond the last one.
  *
  * @param geometry Columns of the table.
  * @param distance Distance, in pixels.
  */
-export function columnAt(geometry: ColumnGeometry, distance: number): number {
-  let start = 0
-  let index = 0
-  for (const column of geometry.widened) {
-    const before = (column.index - index) * geometry.standard
-    if (distance < start + before) {
-      break
+export function columnAt({ starts, step }: ColumnGeometry, distance: number): number {
+  // The last column that starts at the distance or before it.
+  let low = 0
+  let high = starts.length - 1
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2)
+    if ((starts[middle] ?? 0) * step <= distance) {
+      low = middle
+    } else {
+      high = middle - 1
     }
-    start += before
-    const width = column.width * geometry.step
-    if (distance < start + width) {
-      return column.index
-    }
-    start += width
-    index = column.index + 1
   }
-  return index + Math.floor((distance - start) / geometry.standard)
+  return low
 }
 
 /**
@@ -170,10 +166,11 @@ export function columnRange(
   viewport: number,
   overscan: number,
 ): { start: number; end: number } {
+  const count = geometry.widths.length
   const edge = scroll + viewport
   const last = columnAt(geometry, edge)
   const reached = columnOffset(geometry, last) < edge ? last + 1 : last
-  const end = Math.min(geometry.count, reached + overscan)
+  const end = Math.min(count, reached + overscan)
   const start = Math.min(end, Math.max(0, columnAt(geometry, scroll) - overscan))
   return { start, end }
 }
@@ -188,43 +185,14 @@ export function stepsLength(width: number): string {
 }
 
 /**
- * CSS length of the room taken by columns.
+ * Tracks of the columns of a window: the width of each one.
  *
- * @param room Room of the columns.
- */
-export function roomLength({ standard, steps }: ColumnRoom): string {
-  return `calc(var(--pivot-column-width) * ${standard} + var(--spacing) * ${steps})`
-}
-
-/**
- * Tracks of the columns of a window: the default width, gathered by `repeat()`, or the width of a
- * widened column.
- *
- * @param widened Columns given a width.
+ * @param geometry Columns of the table.
  * @param first Position of the first column of the window.
  * @param count Number of columns of the window.
  */
-export function windowTracks(widened: WidenedColumn[], first: number, count: number): string[] {
-  const widths = new Map(widened.map(({ index, width }) => [index, width]))
-  const tracks: string[] = []
-  let plain = 0
-  const flush = () => {
-    if (plain > 0) {
-      tracks.push(`repeat(${plain}, var(--pivot-column-width))`)
-      plain = 0
-    }
-  }
-  for (let index = first; index < first + count; index++) {
-    const width = widths.get(index)
-    if (width === undefined) {
-      plain++
-    } else {
-      flush()
-      tracks.push(stepsLength(width))
-    }
-  }
-  flush()
-  return tracks
+export function windowTracks(geometry: ColumnGeometry, first: number, count: number): string[] {
+  return geometry.widths.slice(first, first + count).map(stepsLength)
 }
 
 /**
@@ -243,6 +211,51 @@ export interface WidthBounds {
    * Largest width fitted to the content, in steps.
    */
   max: number
+}
+
+/**
+ * Room of the texts of a column, to estimate its width from a number of characters, in pixels.
+ */
+export interface TextRoom {
+  /**
+   * Average width of a character.
+   */
+  character: number
+  /**
+   * Room beside the text.
+   */
+  padding: number
+}
+
+/**
+ * Default width of each column of values: that of its longest text, among its values and its
+ * header, the latter with the room of its sort button, as the result grid estimates a width
+ * (`estimatedWidth`), within the bounds.
+ *
+ * @param count Number of columns of the table.
+ * @param lengths Lengths of the texts of the columns, in characters, from the engine.
+ * @param measureLabels
+ *     Label of each measure when the headers hold a row of measures (`hasMeasureRow`), which then
+ *     heads each column; `null` otherwise, the last level of the columns heading it.
+ * @param room Room of the characters and beside the text.
+ * @param bounds Bounds of the width; the largest one caps the estimate.
+ * @returns Width of each column, in steps.
+ */
+export function defaultSteps(
+  count: number,
+  lengths: PivotTextLengths,
+  measureLabels: string[] | null,
+  { character, padding }: TextRoom,
+  { step, min, max }: WidthBounds,
+): number[] {
+  return Array.from({ length: count }, (_, column) => {
+    const header =
+      measureLabels === null || measureLabels.length === 0
+        ? (lengths.labels[column] ?? 0)
+        : (measureLabels[column % measureLabels.length]?.length ?? 0)
+    const characters = Math.max(lengths.values[column] ?? 0, header + SORT_ROOM)
+    return Math.min(max, Math.max(min, Math.ceil((characters * character + padding) / step)))
+  })
 }
 
 /**

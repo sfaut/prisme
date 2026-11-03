@@ -7,7 +7,9 @@
 //! result, its value as it is or what a precision keeps of its dates (`dates`);
 //! the measures are `COUNT(*)`, `COUNT(col)`, `SUM(col)`, `AVG(col)`,
 //! `MIN(col)` and `MAX(col)`, in ANSI SQL, and `COUNT`, `SUM` and `AVG` of
-//! `DISTINCT col`. The lines and the columns follow their labels or the values
+//! `DISTINCT col`; `COUNT(DISTINCT col)`, `MIN(col)` and `MAX(col)` read the
+//! values of a level, hence the periods of a precision too. The lines and the
+//! columns follow their labels or the values
 //! of a measure (`Order`), the lines take a form, and each axis shows the totals
 //! it is given (`Layout`). Filters keep rows, by a list of values or a condition
 //! on a column, at a precision of its dates, or on a measure at a level
@@ -33,7 +35,7 @@ pub use crate::dates::Precision;
 pub use crate::filters::{Comparison, Filter, Test};
 pub use crate::measures::Value;
 use crate::measures::{Extreme, Input, SortKey};
-pub use crate::table::{Header, Label, Line, Table};
+pub use crate::table::{Header, Label, Line, Table, TextLengths};
 
 /// Family of the type of a column, as far as the measures and the filters need
 /// it.
@@ -68,9 +70,10 @@ pub enum Measure {
     CountStar,
     /// `COUNT(col)`: number of rows where the column is not NULL.
     Count(usize),
-    /// `COUNT(DISTINCT col)`: number of distinct values of the column that
-    /// are not NULL, told apart as the levels group them.
-    CountDistinct(usize),
+    /// `COUNT(DISTINCT col)`: number of distinct values of a level whose cells
+    /// are not NULL, told apart as the levels group them: those of its column,
+    /// or its periods.
+    CountDistinct(Level),
     /// `SUM(col)`: sum of the values of a column of numbers that are not
     /// NULL; NULL without any.
     Sum(usize),
@@ -83,12 +86,26 @@ pub enum Measure {
     /// `AVG(DISTINCT col)`: average of the distinct numbers of a column, told
     /// apart by value; NULL without any.
     AvgDistinct(usize),
-    /// `MIN(col)`: first value of a column that is not NULL, numbers by
-    /// value, the rest by code points; NULL without any.
-    Min(usize),
-    /// `MAX(col)`: last value of a column that is not NULL, in the order of
-    /// `MIN`; NULL without any.
-    Max(usize),
+    /// `MIN(col)`: first value of a level whose cell is not NULL: numbers by
+    /// value, periods in the order of time, the rest by code points; NULL
+    /// without any.
+    Min(Level),
+    /// `MAX(col)`: last value of a level whose cell is not NULL, in the order
+    /// of `MIN`; NULL without any.
+    Max(Level),
+}
+
+impl Measure {
+    /// Level whose values the measure reads, for `COUNT(DISTINCT col)`,
+    /// `MIN(col)` and `MAX(col)`; the others read the cells of their column.
+    fn level(self) -> Option<Level> {
+        match self {
+            Measure::CountDistinct(level) | Measure::Min(level) | Measure::Max(level) => {
+                Some(level)
+            }
+            _ => None,
+        }
+    }
 }
 
 /// Level of a table: the values of a column, or what a precision keeps of
@@ -343,6 +360,8 @@ pub struct Engine {
     value_ranks: Vec<OnceCell<Vec<u32>>>,
     /// Levels of each column at each precision.
     derived: Vec<[OnceCell<DerivedLevel>; Precision::COUNT]>,
+    /// Longest text of the cells of each column, in characters.
+    longest: Vec<OnceCell<usize>>,
     /// Rows kept by the filter of the grid, in their order; `None` for all.
     kept: Option<Vec<u32>>,
 }
@@ -370,6 +389,7 @@ impl Engine {
             derived: (0..columns)
                 .map(|_| std::array::from_fn(|_| OnceCell::new()))
                 .collect(),
+            longest: (0..columns).map(|_| OnceCell::new()).collect(),
             kept: None,
         }
     }
@@ -475,6 +495,25 @@ impl Engine {
             .get_or_init(|| DerivedLevel::of(cells, dictionary, precision)))
     }
 
+    /// Code of each row of a level: one per value of its column, or one per
+    /// period of its dates.
+    fn level_dictionary(&self, level: Level) -> Result<&Dictionary, Error> {
+        match level.precision {
+            Some(precision) => Ok(&self.derived(level.column, precision)?.dictionary),
+            None => self.dictionary(level.column),
+        }
+    }
+
+    /// Rank of each code of a level as `MIN` and `MAX` of measure `measure`
+    /// compare them: its values (`value_ranks`), or its periods in the order of
+    /// time.
+    fn extreme_ranks(&self, measure: usize, level: Level) -> Result<&[u32], Error> {
+        match level.precision {
+            Some(precision) => Ok(&self.derived(level.column, precision)?.ranks),
+            None => self.value_ranks(measure, level.column),
+        }
+    }
+
     /// Stops on the first selected row whose cell a precision of these levels
     /// cannot read.
     fn check_dates(&self, levels: &[Level], selection: &[u32]) -> Result<(), Error> {
@@ -520,6 +559,27 @@ impl Engine {
                 .store
                 .column(level.column)
                 .and_then(|cells| cells.get(row as usize)),
+        }
+    }
+
+    /// Longest text of the values of a level, in characters: of the cells of
+    /// its column, or of the labels of its periods. No `MIN` or `MAX` of the
+    /// level is longer; `usize::MAX` for a level that cannot be read.
+    pub(crate) fn longest_text(&self, level: Level) -> usize {
+        match level.precision {
+            Some(precision) => self
+                .derived(level.column, precision)
+                .map_or(usize::MAX, |derived| derived.longest),
+            None => *self.longest[level.column].get_or_init(|| {
+                self.store.column(level.column).map_or(usize::MAX, |cells| {
+                    cells
+                        .cells()
+                        .flatten()
+                        .map(|text| text.chars().count())
+                        .max()
+                        .unwrap_or(0)
+                })
+            }),
         }
     }
 
@@ -583,14 +643,13 @@ impl Engine {
         })
     }
 
-    /// Values of column `column`, as `MIN` or, with `largest`, `MAX` compares
-    /// them.
-    fn extreme(&self, index: usize, column: usize, largest: bool) -> Result<Input<'_>, Error> {
+    /// Values of a level, as `MIN` or, with `largest`, `MAX` compares them.
+    fn extreme(&self, index: usize, level: Level, largest: bool) -> Result<Input<'_>, Error> {
         Ok(Input::Extreme(Extreme {
-            column,
-            dictionary: self.dictionary(column)?,
-            ranks: self.value_ranks(index, column)?,
-            valid: self.validity(column)?,
+            level,
+            dictionary: self.level_dictionary(level)?,
+            ranks: self.extreme_ranks(index, level)?,
+            valid: self.validity(level.column)?,
             largest,
         }))
     }
@@ -600,31 +659,32 @@ impl Engine {
         Ok(match measure {
             Measure::CountStar => Input::Rows,
             Measure::Count(column) => Input::Cells(self.validity(column)?),
-            Measure::CountDistinct(column) => {
-                Input::Distinct(&self.dictionary(column)?.codes, self.validity(column)?)
-            }
+            Measure::CountDistinct(level) => Input::Distinct(
+                &self.level_dictionary(level)?.codes,
+                self.validity(level.column)?,
+            ),
             Measure::Sum(column) => self.addends(index, column)?,
             Measure::SumDistinct(column) => self.distinct_addends(index, column)?,
             Measure::Avg(column) => Input::Average(Box::new(self.addends(index, column)?)),
             Measure::AvgDistinct(column) => {
                 Input::Average(Box::new(self.distinct_addends(index, column)?))
             }
-            Measure::Min(column) => self.extreme(index, column, false)?,
-            Measure::Max(column) => self.extreme(index, column, true)?,
+            Measure::Min(level) => self.extreme(index, level, false)?,
+            Measure::Max(level) => self.extreme(index, level, true)?,
         })
     }
 
-    /// What a sort compares of a value of measure `measure`: a cell by its
-    /// rank, as `MIN` and `MAX` compare it.
+    /// What a sort compares of a value of measure `measure`: a value of a
+    /// level by its rank, as `MIN` and `MAX` compare it.
     pub(crate) fn sort_key(&self, measure: usize, value: Value) -> Result<SortKey, Error> {
         Ok(match value {
             Value::Empty | Value::Null => SortKey::Missing,
             Value::Count(count) => SortKey::Exact(i128::from(count)),
             Value::Exact(number, _) => SortKey::Exact(number),
             Value::Float(number) => SortKey::Float(number),
-            Value::Cell(column, row) => {
-                let code = self.dictionary(column)?.codes[row as usize];
-                let ranks = self.value_ranks(measure, column)?;
+            Value::Cell(level, row) => {
+                let code = self.level_dictionary(level)?.codes[row as usize];
+                let ranks = self.extreme_ranks(measure, level)?;
                 SortKey::Exact(i128::from(ranks[code as usize]))
             }
         })
@@ -632,7 +692,9 @@ impl Engine {
 
     /// Computes a table over the rows kept and its filters leave, in the order
     /// of the labels. As in SQL, the rows that a filter on cells leaves out stop
-    /// nothing, and those of a group a filter on a measure drops have been read.
+    /// nothing, and those of a group a filter on a measure drops have been read:
+    /// a date outside of the calendar in one of them stops a precision of a
+    /// level or of a measure.
     pub fn compute(&self, request: &Request) -> Result<Table, Error> {
         let all: Vec<u32>;
         let kept: &[u32] = match &self.kept {
@@ -653,6 +715,9 @@ impl Engine {
         let selection = self.keep_by_cells(&request.filters, kept)?;
         self.check_dates(&request.rows, &selection)?;
         self.check_dates(&request.columns, &selection)?;
+        let measure_levels: Vec<Level> =
+            request.measures.iter().filter_map(|m| m.level()).collect();
+        self.check_dates(&measure_levels, &selection)?;
         let selection = self.keep_by_measures(&request.filters, selection)?;
         let selection = selection.as_ref();
 

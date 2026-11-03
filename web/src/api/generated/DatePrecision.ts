@@ -9,4 +9,9 @@ export type DatePrecision =
   | "quarter"
   | "month"
   | "week"
-  | "date";
+  | "date"
+  | "hour"
+  | "minute"
+  | "second"
+  | "millisecond"
+  | "microsecond";

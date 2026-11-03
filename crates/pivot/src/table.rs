@@ -13,10 +13,11 @@
 //! page in the order of the grid. A sort or another layout lays the same nodes
 //! out again (`Order`, `Layout`), without computing anything.
 
+use std::cell::OnceCell;
 use std::cmp::Ordering;
 
 use crate::groups::{Groups, Tree};
-use crate::measures::{SortKey, State, Value};
+use crate::measures::{Longest, SortKey, State, Value};
 use crate::{AxisOrder, Engine, Error, Form, Layout, Level, Order};
 
 /// Label of a line or of a level of the header of a column.
@@ -54,6 +55,17 @@ pub struct Header<'a> {
     pub total: bool,
     /// Measure of the column, `None` without any measure.
     pub measure: Option<usize>,
+}
+
+/// Lengths of the texts of a column of values, in characters: what its width
+/// fits.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TextLengths {
+    /// Longest text among its values.
+    pub values: usize,
+    /// Text of its header on the last level of the columns: the value of its
+    /// node there, or the total that covers it; 0 without any level of columns.
+    pub label: usize,
 }
 
 /// Axis of a table.
@@ -211,6 +223,9 @@ pub struct Table {
     finest_groups: usize,
     /// Number of rows taken into account.
     selected_rows: usize,
+    /// Longest text of the values of each measure, by node of the columns and
+    /// depth of the rows (`longest_values`), read once: no layout changes it.
+    longest: OnceCell<Vec<Vec<Longest>>>,
 }
 
 /// Parts of a table computed by the engine.
@@ -265,6 +280,7 @@ impl Table {
             states: parts.states,
             finest_groups: parts.finest_groups,
             selected_rows: parts.selected_rows,
+            longest: OnceCell::new(),
         }
     }
 
@@ -497,6 +513,73 @@ impl Table {
             path,
             measure: (!self.states.is_empty()).then_some(index % self.slots),
         }
+    }
+
+    /// Lengths of the texts of each column of values, as the table is laid out:
+    /// its values on the lines shown, and its header on the last level of the
+    /// columns (`TextLengths`). A NULL counts `null_length` characters and a
+    /// total `total_length`, as the page writes them, an empty cell none.
+    ///
+    /// The values are read once per table, by node of the columns and depth of
+    /// the rows (`longest_values`): a layout shows the values of the lines of
+    /// some depths, so that each layout only combines those of its depths.
+    pub fn text_lengths(
+        &self,
+        engine: &Engine,
+        null_length: usize,
+        total_length: usize,
+    ) -> Vec<TextLengths> {
+        let longest = self.longest.get_or_init(|| self.longest_values(engine));
+        let depths = self.row_levels + 1;
+        let shown: Vec<usize> = (0..depths)
+            .filter(|&depth| self.layout.rows.show(depth, self.row_levels))
+            .collect();
+        let mut lengths = vec![TextLengths::default(); self.column_count()];
+        for (position, &node_id) in self.column_nodes.iter().enumerate() {
+            let node = self.columns.nodes[node_id as usize];
+            let depth = node.depth as usize;
+            let label = if depth < self.column_levels {
+                total_length
+            } else if depth == 0 {
+                0
+            } else {
+                self.label(engine, self.row_levels + depth - 1, node.row)
+                    .map_or(null_length, |text| text.chars().count())
+            };
+            let first = position * self.slots;
+            let columns = lengths[first..first + self.slots].iter_mut();
+            for (measure, column) in columns.enumerate() {
+                column.label = label;
+                if let Some(longest) = longest.get(measure) {
+                    let node = &longest[node_id as usize * depths..][..depths];
+                    column.values = shown
+                        .iter()
+                        .map(|&depth| node[depth])
+                        .fold(Longest::default(), Longest::max)
+                        .length(null_length);
+                }
+            }
+        }
+        lengths
+    }
+
+    /// Longest text of the values of each measure, for each node of the columns
+    /// and each depth of the rows, at `node * (row_levels + 1) + depth`: every
+    /// group is read once.
+    fn longest_values(&self, engine: &Engine) -> Vec<Vec<Longest>> {
+        let depths = self.row_levels as u32 + 1;
+        let cells: Vec<(u32, u32)> = (0u32..)
+            .zip(self.groups.pairs())
+            .map(|(group, &(row, column))| {
+                let depth = self.rows.nodes[row as usize].depth;
+                (group, column * depths + depth)
+            })
+            .collect();
+        let sets = self.columns.nodes.len() * depths as usize;
+        self.states
+            .iter()
+            .map(|state| state.longest(engine, &cells, sets))
+            .collect()
     }
 
     /// Value of the cell of line `line` and column `column`: empty on the line

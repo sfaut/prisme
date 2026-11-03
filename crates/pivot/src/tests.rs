@@ -80,7 +80,7 @@ fn flat(engine: &Engine, table: &Table, levels: &[&str], measures: &[&str]) -> S
         for column in 0..table.column_count() {
             fields.push(match table.value(line, column) {
                 Value::Null => "NULL".to_owned(),
-                value => value.text(engine.store()).unwrap_or_default(),
+                value => value.text(engine).unwrap_or_default(),
             });
         }
         lines.push(fields.join(";"));
@@ -403,7 +403,7 @@ fn a_total_of_count_distinct_counts_the_values_of_its_whole_group() {
     let request = Request {
         rows: vec![REGION.into()],
         columns: vec![YEAR.into()],
-        measures: vec![Measure::CountDistinct(CITY)],
+        measures: vec![Measure::CountDistinct(CITY.into())],
         ..Request::default()
     };
     let table = engine.compute(&request).unwrap();
@@ -434,12 +434,11 @@ fn by_level(engine: &Engine, measures: &[Measure]) -> String {
         ..Request::default()
     };
     let table = engine.compute(&request).unwrap();
-    let store = engine.store();
     let lines: Vec<String> = (0..table.line_count())
         .map(|line| {
             let label = table.line_path(engine, line).first().copied().flatten();
             let values = (0..table.column_count()).map(|column| {
-                let text = table.value(line, column).text(store);
+                let text = table.value(line, column).text(engine);
                 text.unwrap_or_else(|| "NULL".to_owned())
             });
             let mut fields = vec![label.unwrap_or("Total").to_owned()];
@@ -501,7 +500,7 @@ fn extremes_compare_numbers_by_value_and_give_their_cell_as_it_is() {
         ],
         Family::Exact,
     );
-    let measures = [Measure::Min(1), Measure::Max(1)];
+    let measures = [Measure::Min(1.into()), Measure::Max(1.into())];
     let expected = "\
 A;30.5;100
 B;9;9
@@ -537,11 +536,11 @@ fn extremes_compare_texts_by_code_points_whatever_the_order_of_the_page() {
     }
     engine.set_ranks(0, ranks).unwrap();
     let request = Request {
-        measures: vec![Measure::Min(0), Measure::Max(0)],
+        measures: vec![Measure::Min(0.into()), Measure::Max(0.into())],
         ..Request::default()
     };
     let table = engine.compute(&request).unwrap();
-    let text = |column| table.value(0, column).text(engine.store());
+    let text = |column| table.value(0, column).text(&engine);
     assert_eq!(text(0).as_deref(), Some("A"));
     assert_eq!(text(1).as_deref(), Some("é"));
 }
@@ -551,11 +550,11 @@ fn extremes_read_the_rows_kept_by_the_filter() {
     let mut engine = single(&[Some("3"), Some("1"), Some("2")], Family::Exact);
     engine.set_kept(Some(vec![0, 2])).unwrap();
     let request = Request {
-        measures: vec![Measure::Min(0), Measure::Max(0)],
+        measures: vec![Measure::Min(0.into()), Measure::Max(0.into())],
         ..Request::default()
     };
     let table = engine.compute(&request).unwrap();
-    let text = |column| table.value(0, column).text(engine.store());
+    let text = |column| table.value(0, column).text(&engine);
     assert_eq!(text(0).as_deref(), Some("2"));
     assert_eq!(text(1).as_deref(), Some("3"));
 }
@@ -582,7 +581,11 @@ fn only_columns_of_numbers_can_be_added_up() {
 #[test]
 fn numbers_that_cannot_be_read_stop_the_extremes_and_the_averages() {
     let engine = single(&[Some("1"), Some("abc")], Family::Exact);
-    for measure in [Measure::Min(0), Measure::Max(0), Measure::Avg(0)] {
+    for measure in [
+        Measure::Min(0.into()),
+        Measure::Max(0.into()),
+        Measure::Avg(0),
+    ] {
         let request = Request {
             measures: vec![measure],
             ..Request::default()
@@ -648,7 +651,7 @@ fn a_column_keeps_its_values_next_to_its_periods() {
             column: DATE,
             precision: Some(Precision::Month),
         }],
-        measures: vec![Measure::CountStar, Measure::CountDistinct(DATE)],
+        measures: vec![Measure::CountStar, Measure::CountDistinct(DATE.into())],
         ..Request::default()
     };
     let table = engine.compute(&by_month).unwrap();
@@ -753,6 +756,134 @@ d;ca
 2025-T2;90
 Total;170";
     assert_eq!(flat(&engine, &table, &["d"], &["ca"]), expected);
+}
+
+/// Level of the dates of column `column` at a precision.
+fn dated(column: usize, precision: Precision) -> Level {
+    Level {
+        column,
+        precision: Some(precision),
+    }
+}
+
+#[test]
+fn distinct_counts_and_extremes_read_the_periods_of_a_precision() {
+    let engine = example();
+    let request = Request {
+        rows: vec![REGION.into()],
+        measures: vec![
+            Measure::CountDistinct(dated(DATE, Precision::Quarter)),
+            Measure::Min(dated(DATE, Precision::Month)),
+            Measure::Max(dated(DATE, Precision::Week)),
+        ],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    // A total counts the quarters of its whole group: 4, and not 4 + 4.
+    let expected = "\
+region;trimestres;premier;dernier
+Nord;4;2025-01;2026-S15
+Sud;4;2025-03;2026-S22
+Total;4;2025-01;2026-S22";
+    assert_eq!(
+        flat(
+            &engine,
+            &table,
+            &["region"],
+            &["trimestres", "premier", "dernier"]
+        ),
+        expected
+    );
+}
+
+#[test]
+fn an_extreme_at_a_precision_ranks_its_lines_in_the_order_of_time() {
+    let engine = keyed(
+        &[
+            ("a", Some("2026-01-15")),
+            ("b", Some("2025-12-31")),
+            ("c", None),
+        ],
+        Family::Date,
+    );
+    let by_month = Measure::Min(dated(1, Precision::Month));
+    assert_eq!(keys_by_value(&engine, by_month), "c b a");
+    // 2025-12-31 falls in the ISO year 2026: the tie keeps the order of the labels.
+    let by_year = Measure::Max(dated(1, Precision::Year));
+    assert_eq!(keys_by_value(&engine, by_year), "c a b");
+}
+
+#[test]
+fn a_date_outside_of_the_calendar_stops_a_measure_at_a_precision() {
+    let mut engine = single(&[Some("2026-01-15"), Some("0000-00-00")], Family::Date);
+    for measure in [
+        Measure::CountDistinct(dated(0, Precision::Month)),
+        Measure::Min(dated(0, Precision::Month)),
+        Measure::Max(dated(0, Precision::Year)),
+    ] {
+        let request = Request {
+            measures: vec![measure],
+            ..Request::default()
+        };
+        assert_eq!(
+            engine.compute(&request).unwrap_err(),
+            Error::InvalidDate { column: 0, row: 1 },
+            "{measure:?}"
+        );
+    }
+    // Without a precision, it stays a value of its own.
+    let request = Request {
+        measures: vec![Measure::Max(0.into())],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    assert_eq!(
+        table.value(0, 0).text(&engine).as_deref(),
+        Some("2026-01-15")
+    );
+    // A row the filter of the grid leaves out stops nothing.
+    engine.set_kept(Some(vec![0])).unwrap();
+    let request = Request {
+        measures: vec![Measure::Min(dated(0, Precision::Quarter))],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    assert_eq!(table.value(0, 0).text(&engine).as_deref(), Some("2026-T1"));
+}
+
+#[test]
+fn a_filter_on_an_extreme_at_a_precision_compares_periods() {
+    let engine = pairs(
+        &[
+            ("a", Some("2026-01-15")),
+            ("a", Some("2026-03-02")),
+            ("b", Some("2025-11-30")),
+        ],
+        Family::Date,
+    );
+    let last_month = Measure::Max(dated(1, Precision::Month));
+    let keys = |comparison, operand| kept_keys(&engine, last_month, comparison, operand);
+    assert_eq!(keys(Comparison::GreaterOrEqual, "2026-01").unwrap(), ["a"]);
+    assert_eq!(keys(Comparison::Equal, "2025-11").unwrap(), ["b"]);
+    // A date is no month.
+    assert_eq!(
+        keys(Comparison::Equal, "2026-03-02"),
+        Err(Error::FilterOperand { filter: 0 })
+    );
+    let months = Measure::CountDistinct(dated(1, Precision::Month));
+    assert_eq!(
+        kept_keys(&engine, months, Comparison::Equal, "2").unwrap(),
+        ["a"]
+    );
+
+    let engine = pairs(
+        &[("a", Some("2026-01-15")), ("b", Some("2026-02-30"))],
+        Family::Date,
+    );
+    assert_eq!(
+        kept_keys(&engine, last_month, Comparison::Equal, "2026-01"),
+        Err(Error::InvalidDate { column: 1, row: 1 })
+    );
 }
 
 #[test]
@@ -1044,10 +1175,10 @@ fn a_minimum_or_a_maximum_ranks_by_the_order_of_its_comparison() {
         &[("a", Some("b")), ("b", Some("B")), ("c", None)],
         Family::Other,
     );
-    assert_eq!(keys_by_value(&texts, Measure::Min(1)), "c b a");
-    assert_eq!(keys_by_value(&texts, Measure::Max(1)), "c b a");
+    assert_eq!(keys_by_value(&texts, Measure::Min(1.into())), "c b a");
+    assert_eq!(keys_by_value(&texts, Measure::Max(1.into())), "c b a");
     let numbers = keyed(&[("a", Some("10")), ("b", Some("9"))], Family::Exact);
-    assert_eq!(keys_by_value(&numbers, Measure::Min(1)), "b a");
+    assert_eq!(keys_by_value(&numbers, Measure::Min(1.into())), "b a");
 }
 
 #[test]
@@ -1296,6 +1427,197 @@ fn a_filter_keeps_the_rows_the_filter_of_the_grid_keeps() {
     assert_eq!(engine.compute(&request).unwrap().selected_rows(), 4);
 }
 
+/// Lengths of the texts of each column of a table, read cell by cell: what
+/// `Table::text_lengths` gives by reading the groups. A NULL counts 4
+/// characters, a total 5.
+fn read_lengths(engine: &Engine, table: &Table) -> Vec<TextLengths> {
+    (0..table.column_count())
+        .map(|column| {
+            let header = table.header(engine, column);
+            let label = match header.path.last() {
+                _ if header.total => 5,
+                Some(&(_, label)) => label.map_or(4, |text| text.chars().count()),
+                None => 0,
+            };
+            let values = (0..table.line_count())
+                .map(|line| match table.value(line, column) {
+                    Value::Null => 4,
+                    value => value.text(engine).map_or(0, |text| text.chars().count()),
+                })
+                .max()
+                .unwrap_or(0);
+            TextLengths { values, label }
+        })
+        .collect()
+}
+
+#[test]
+fn the_lengths_of_the_texts_of_the_columns_are_those_of_their_cells() {
+    let engine = example();
+    let request = Request {
+        rows: vec![0.into(), 1.into()],
+        columns: vec![3.into(), 4.into()],
+        measures: vec![
+            Measure::Sum(5),
+            Measure::Max(2.into()),
+            Measure::Avg(5),
+            Measure::CountStar,
+        ],
+        ..Request::default()
+    };
+    let mut table = engine.compute(&request).unwrap();
+    assert_eq!(
+        table.text_lengths(&engine, 4, 5),
+        read_lengths(&engine, &table)
+    );
+    // A layout hides lines and columns, and another order moves the columns.
+    let hidden = Totals {
+        grand_total: false,
+        subtotals: vec![false, false],
+    };
+    for (form, rows, columns) in [
+        (Form::Tabular, hidden.clone(), Totals::default()),
+        (Form::Outline, Totals::default(), hidden.clone()),
+    ] {
+        let order = Order {
+            columns: AxisOrder {
+                descending: vec![true, true],
+                values: None,
+            },
+            ..Order::default()
+        };
+        let layout = Layout {
+            form,
+            rows,
+            columns,
+        };
+        table.lay_out(&engine, &order, &layout).unwrap();
+        assert_eq!(
+            table.text_lengths(&engine, 4, 5),
+            read_lengths(&engine, &table)
+        );
+    }
+}
+
+#[test]
+fn the_longest_text_of_a_level_bounds_its_cells_but_not_a_null() {
+    let engine = pairs(
+        &[("a", Some("xy")), ("b", Some("longest value")), ("c", None)],
+        Family::Other,
+    );
+    // The column a never reaches the longest text of the level.
+    let by_columns = Request {
+        columns: vec![0.into()],
+        measures: vec![Measure::Min(1.into())],
+        ..Request::default()
+    };
+    let table = engine.compute(&by_columns).unwrap();
+    let lengths = table.text_lengths(&engine, 4, 5);
+    assert_eq!(lengths, read_lengths(&engine, &table));
+    let values: Vec<usize> = lengths.iter().map(|lengths| lengths.values).collect();
+    assert_eq!(values, [2, 13, 4, 13]);
+    // A NULL longer than the longest text counts once the column reaches it.
+    let by_lines = Request {
+        rows: vec![0.into()],
+        measures: vec![Measure::Min(1.into())],
+        ..Request::default()
+    };
+    let table = engine.compute(&by_lines).unwrap();
+    assert_eq!(table.text_lengths(&engine, 20, 5)[0].values, 20);
+}
+
+#[test]
+fn floats_and_periods_give_the_lengths_of_their_cells() {
+    let floats = pairs(
+        &[
+            ("a", Some("0.1")),
+            ("a", Some("0.2")),
+            ("b", Some("-1e300")),
+            ("c", None),
+        ],
+        Family::Float,
+    );
+    let dates = pairs(
+        &[
+            ("a", Some("2026-01-15")),
+            ("b", Some("2025-12-31")),
+            ("b", Some("1999-07-04")),
+            ("c", None),
+        ],
+        Family::Date,
+    );
+    let month = Level {
+        column: 1,
+        precision: Some(Precision::Month),
+    };
+    for (engine, measures) in [
+        (&floats, vec![Measure::Sum(1), Measure::Avg(1)]),
+        (&dates, vec![Measure::Min(month), Measure::Max(1.into())]),
+    ] {
+        for (rows, columns) in [(vec![0.into()], vec![]), (vec![], vec![0.into()])] {
+            let request = Request {
+                rows,
+                columns,
+                measures: measures.clone(),
+                ..Request::default()
+            };
+            let table = engine.compute(&request).unwrap();
+            assert_eq!(
+                table.text_lengths(engine, 4, 5),
+                read_lengths(engine, &table)
+            );
+        }
+    }
+}
+
+#[test]
+fn a_null_and_a_total_count_the_lengths_the_page_gives_them() {
+    let engine = pairs(
+        &[("a", None), ("bb", Some("-12.50")), ("bb", Some("3"))],
+        Family::Exact,
+    );
+    let request = Request {
+        rows: vec![1.into()],
+        columns: vec![0.into()],
+        measures: vec![Measure::Sum(1)],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    // Columns a (NULL on its line and its total), bb (-12.50, 3.00, -9.50),
+    // then the grand total (NULL, -12.50, 3.00, -9.50).
+    assert_eq!(
+        table.text_lengths(&engine, 9, 7),
+        [
+            TextLengths {
+                values: 9,
+                label: 1
+            },
+            TextLengths {
+                values: 6,
+                label: 2
+            },
+            TextLengths {
+                values: 9,
+                label: 7
+            },
+        ]
+    );
+    // Without any level of columns, the header has no label.
+    let request = Request {
+        rows: vec![0.into()],
+        measures: vec![Measure::CountStar],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    assert_eq!(
+        table.text_lengths(&engine, 4, 5),
+        [TextLengths {
+            values: 1,
+            label: 0
+        }]
+    );
+}
+
 /// Engine over two columns: a text, and numbers of a family.
 fn pairs(rows: &[(&str, Option<&str>)], family: Family) -> Engine {
     let mut store = Store::new(2);
@@ -1381,7 +1703,7 @@ fn a_group_whose_measure_is_null_passes_no_comparison() {
         assert!(!keys.contains(&"a".to_owned()), "{comparison:?}");
     }
     assert_eq!(
-        kept_keys(&engine, Measure::Min(1), Comparison::NotEqual, "0").unwrap(),
+        kept_keys(&engine, Measure::Min(1.into()), Comparison::NotEqual, "0").unwrap(),
         ["b"]
     );
 }
@@ -1395,7 +1717,10 @@ fn a_count_compares_with_a_number_whatever_its_column() {
     let keys = |measure, operand| kept_keys(&engine, measure, Comparison::Equal, operand);
     assert_eq!(keys(Measure::CountStar, "1").unwrap(), ["b"]);
     assert_eq!(keys(Measure::Count(1), "0").unwrap(), ["b"]);
-    assert_eq!(keys(Measure::CountDistinct(1), "2.0").unwrap(), ["a"]);
+    assert_eq!(
+        keys(Measure::CountDistinct(1.into()), "2.0").unwrap(),
+        ["a"]
+    );
     assert_eq!(
         keys(Measure::CountStar, "x"),
         Err(Error::FilterOperand { filter: 0 })
@@ -1417,7 +1742,10 @@ fn floats_compare_as_floats_and_nan_passes_nothing() {
         keys(Measure::Sum(1), Comparison::NotEqual, "0").unwrap(),
         ["a", "c"]
     );
-    assert_eq!(keys(Measure::Max(1), Comparison::Less, "2").unwrap(), ["a"]);
+    assert_eq!(
+        keys(Measure::Max(1.into()), Comparison::Less, "2").unwrap(),
+        ["a"]
+    );
     assert_eq!(
         keys(Measure::Sum(1), Comparison::Equal, "x"),
         Err(Error::FilterOperand { filter: 0 })
@@ -1432,17 +1760,17 @@ fn an_extreme_compares_as_its_column() {
     );
     // By value: 10, and not 9, is the largest of a.
     assert_eq!(
-        kept_keys(&engine, Measure::Max(1), Comparison::Equal, "10").unwrap(),
+        kept_keys(&engine, Measure::Max(1.into()), Comparison::Equal, "10").unwrap(),
         ["a"]
     );
     let engine = pairs(&[("a", Some("Zoé")), ("b", Some("éa"))], Family::Other);
     // By code points: `é` comes after `Z`.
     assert_eq!(
-        kept_keys(&engine, Measure::Min(1), Comparison::Greater, "Zz").unwrap(),
+        kept_keys(&engine, Measure::Min(1.into()), Comparison::Greater, "Zz").unwrap(),
         ["b"]
     );
     assert_eq!(
-        kept_keys(&engine, Measure::Min(1), Comparison::Equal, "Zoé").unwrap(),
+        kept_keys(&engine, Measure::Min(1.into()), Comparison::Equal, "Zoé").unwrap(),
         ["a"]
     );
 }
@@ -1799,6 +2127,79 @@ fn a_filter_reads_a_precision_of_the_dates() {
 }
 
 #[test]
+fn a_precision_of_the_time_groups_and_filters_the_instants() {
+    let engine = pairs(
+        &[
+            ("a", Some("2026-01-15 10:59:59.999999")),
+            ("b", Some("2026-01-15 10:00:00.000000")),
+            ("c", Some("2026-01-15 11:30:15.500000")),
+            ("d", Some("2026-01-15 11:30:15.250000")),
+        ],
+        Family::Datetime,
+    );
+    let at = |precision| Level {
+        column: 1,
+        precision: Some(precision),
+    };
+    let request = Request {
+        rows: vec![at(Precision::Hour)],
+        measures: vec![Measure::CountStar, Measure::Max(at(Precision::Millisecond))],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    let lines: Vec<String> = (0..table.line_count())
+        .map(|line| {
+            let label = table.line_path(&engine, line).first().copied().flatten();
+            let values = (0..table.column_count())
+                .map(|column| table.value(line, column).text(&engine).unwrap_or_default());
+            std::iter::once(label.unwrap_or("Total").to_owned())
+                .chain(values)
+                .collect::<Vec<_>>()
+                .join(";")
+        })
+        .collect();
+    // Truncated: 10:59:59.999999 stays in 10 h, and gives 10:59:59.999.
+    assert_eq!(
+        lines,
+        [
+            "2026-01-15 10:00:00;2;2026-01-15 10:59:59.999",
+            "2026-01-15 11:00:00;2;2026-01-15 11:30:15.500",
+            "Total;4;2026-01-15 11:30:15.500",
+        ]
+    );
+    let kept = |filter| {
+        let request = Request {
+            rows: vec![0.into()],
+            filters: vec![filter],
+            ..Request::default()
+        };
+        engine.compute(&request).map(|table| table.selected_rows())
+    };
+    assert_eq!(
+        kept(Filter::Column {
+            level: at(Precision::Minute),
+            test: Test::Compare(Comparison::Equal, text("2026-01-15 11:30:00")),
+        }),
+        Ok(2)
+    );
+    assert_eq!(
+        kept(Filter::Column {
+            level: at(Precision::Second),
+            test: Test::Between(text("2026-01-15 10:00:00"), text("2026-01-15 10:59:59")),
+        }),
+        Ok(2)
+    );
+    // A minute is no hour.
+    assert_eq!(
+        kept(Filter::Column {
+            level: at(Precision::Hour),
+            test: Test::Compare(Comparison::Equal, text("2026-01-15 11:30:00")),
+        }),
+        Err(Error::FilterOperand { filter: 0 })
+    );
+}
+
+#[test]
 fn a_precision_stops_a_filter_on_a_cell_outside_of_the_calendar_unless_a_list_leaves_it_out() {
     let cells = [Some("2026-01-15"), Some("0000-00-00"), None];
     let engine = single(&cells, Family::Date);
@@ -1879,7 +2280,7 @@ fn an_extreme_outside_of_the_calendar_stops_a_comparison() {
         &[("a", Some("0000-00-00")), ("b", Some("2026-01-15"))],
         Family::Date,
     );
-    let keys = |test| kept_by_test(&engine, Measure::Min(1), test);
+    let keys = |test| kept_by_test(&engine, Measure::Min(1.into()), test);
     assert_eq!(
         keys(Test::Compare(Comparison::Greater, text("2026-01-01"))),
         Err(Error::InvalidDate { column: 1, row: 0 })
@@ -1927,7 +2328,7 @@ fn a_date_column_is_no_column_of_numbers() {
         Error::NotNumeric { measure: 0 }
     );
     let extreme = Request {
-        measures: vec![Measure::Max(1)],
+        measures: vec![Measure::Max(1.into())],
         ..Request::default()
     };
     assert_eq!(

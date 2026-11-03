@@ -615,6 +615,7 @@ const groupsText = computed(() => {
           v-if="shownTable"
           :table="shownTable.table.id"
           :shape="shownTable.table.shape"
+          :lengths="shownTable.table.lengths"
           :measure-labels="tableLabels.measures"
           :row-names="tableLabels.rows"
           :column-names="tableLabels.columns"

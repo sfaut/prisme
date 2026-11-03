@@ -319,7 +319,12 @@ describe('PivotFilterPanel', () => {
       'Mois',
       'Semaine',
       'Date',
-      'Date et heure',
+      'Horodatage',
+      'Horodatage (hh)',
+      'Horodatage (hh:mm)',
+      'Horodatage (hh:mm:ss)',
+      'Horodatage (hh:mm:ss.ms)',
+      'Horodatage (hh:mm:ss.µs)',
     ])
     await choose(mounted, 'Précision', 'none')
     expect(changes).toEqual([])
@@ -333,10 +338,63 @@ describe('PivotFilterPanel', () => {
     expect(refusal()).toBeUndefined()
   })
 
-  it('offers no precision to a column without dates, nor to a measure', async () => {
+  it('offers no precision to a column without dates, nor to a measure that reads none', async () => {
     expect(select((await mountPanel(ON_COLUMN)).mounted, 'Précision')).toBeUndefined()
     wrapper?.unmount()
     expect(select((await mountPanel(ON_MEASURE)).mounted, 'Précision')).toBeUndefined()
+    wrapper?.unmount()
+    const summed = { ...ON_MEASURE, column: 1, aggregate: 'count' } as const
+    expect(select((await mountPanel(summed)).mounted, 'Précision')).toBeUndefined()
+  })
+
+  it('offers a precision to MIN and MAX of dates, which then compare periods', async () => {
+    const filter: PivotMeasureFilter = {
+      ...ON_MEASURE,
+      column: 1,
+      aggregate: 'max',
+      condition: 'greater_or_equal',
+      operand: '2026-01-15 10:00:00',
+    }
+    const { mounted, changes } = await mountPanel(filter)
+    expect(labels(mounted, 'Précision')).toEqual([
+      'Année',
+      'Trimestre',
+      'Mois',
+      'Semaine',
+      'Date',
+      'Horodatage',
+      'Horodatage (hh)',
+      'Horodatage (hh:mm)',
+      'Horodatage (hh:mm:ss)',
+      'Horodatage (hh:mm:ss.ms)',
+      'Horodatage (hh:mm:ss.µs)',
+    ])
+    expect(selectProps(mounted, 'Précision').modelValue).toBe('none')
+    await choose(mounted, 'Précision', 'month')
+    expect(changes).toEqual([{ ...filter, precision: 'month', operand: '', upper: '' }])
+    expect(field('Valeur').value).toBe('')
+    expect(field('Valeur').placeholder).toBe('2026-01')
+    await type('Valeur', '2026-01-15')
+    await pressEnter('Valeur')
+    expect(refusal()).toBe('Un mois est attendu, comme 2026-01')
+    await type('Valeur', '2026-02')
+    await pressEnter('Valeur')
+    expect(changes[changes.length - 1]).toEqual({
+      ...filter,
+      precision: 'month',
+      operand: '2026-02',
+      upper: '',
+    })
+    expect(labels(mounted, 'Agrégat')).toContain('MIN(vendue_le (Mois))')
+    // COUNT(DISTINCT) keeps the precision, COUNT drops it.
+    await choose(mounted, 'Agrégat', 'count_distinct')
+    expect(changes[changes.length - 1]).toMatchObject({
+      aggregate: 'count_distinct',
+      precision: 'month',
+    })
+    await choose(mounted, 'Agrégat', 'count')
+    expect(changes[changes.length - 1]).toMatchObject({ aggregate: 'count', precision: undefined })
+    expect(select(mounted, 'Précision')).toBeUndefined()
   })
 
   it('lists the values at its precision, NULL only in the list kept', async () => {

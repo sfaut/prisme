@@ -23,12 +23,14 @@ import type { PivotForm } from '@/api/generated/PivotForm'
 import type { PivotTest } from '@/api/generated/PivotTest'
 import type { Cell } from '@/api/querySession'
 
-import { compareCells } from './resultGrid'
+import { TOTAL_TEXT } from './pivotLayout'
+import { NULL_TEXT, compareCells } from './resultGrid'
 import { type TransferExports, copyBlock, releaseBlock } from './pivotTransfer'
 
 /**
  * Measure of a table: `COUNT(*)`, `COUNT`, `SUM` and `AVG` of a column or of its distinct values,
- * `MIN` and `MAX` of a column.
+ * `MIN` and `MAX` of a column. `COUNT(DISTINCT col)`, `MIN` and `MAX` can read the periods of a
+ * precision of its dates.
  */
 export interface PivotMeasure {
   /**
@@ -39,6 +41,11 @@ export interface PivotMeasure {
    * Column the measure comes from; `COUNT(*)` keeps it, for its label and its menu.
    */
   column: number
+  /**
+   * What `COUNT(DISTINCT col)`, `MIN` and `MAX` keep of the dates of the column; absent, the values
+   * as they are.
+   */
+  precision?: DatePrecision
 }
 
 /**
@@ -356,6 +363,23 @@ export interface PivotWindow {
 }
 
 /**
+ * Lengths of the texts of the columns of values of a table, in characters, one number per column
+ * in each list: what their default widths fit (`defaultSteps` in `pivotWidths.ts`).
+ */
+export interface PivotTextLengths {
+  /**
+   * Longest text among the values of each column, on the lines shown; a NULL counts as
+   * `NULL_TEXT`.
+   */
+  values: number[]
+  /**
+   * Text of the header of each column on the last level of the columns: the value of its node,
+   * `TOTAL_TEXT` for a total; 0 without any level of columns.
+   */
+  labels: number[]
+}
+
+/**
  * Refusal of the engine, as the module writes it: a cell that is not a number, a value beyond
  * 128 bits, a call out of order...
  */
@@ -481,6 +505,7 @@ export type PivotAnswer =
       id: number
       shape: PivotShape
       positions: (number | null)[]
+      lengths: PivotTextLengths
       durationMs: number
     }
   | { type: 'window'; id: number; window: PivotWindow }
@@ -508,6 +533,7 @@ interface EngineExports extends TransferExports {
   compute(words: number, length: number): number
   lay_out(words: number, length: number): number
   columns_at(words: number, length: number): number
+  text_lengths(nullLength: number, totalLength: number): number
   window(firstLine: number, endLine: number, firstColumn: number, endColumn: number): number
 }
 
@@ -582,6 +608,11 @@ const PRECISION_CODES: Record<DatePrecision, number> = {
   month: 3,
   week: 4,
   date: 5,
+  hour: 6,
+  minute: 7,
+  second: 8,
+  millisecond: 9,
+  microsecond: 10,
 }
 
 /**
@@ -616,7 +647,7 @@ function testWords({ condition, operand, upper }: PivotRequestTest): number[] {
 
 /**
  * Words of a request for the module: numbers of levels and of measures, a column and a precision
- * per level, a kind and a column per measure, then the filters. A filter on a list of values: 0,
+ * per level, a kind, a column and a precision per measure, then the filters. A filter on a list of values: 0,
  * its level, a word for `NOT IN`, the number of its values and each value. A filter on a measure: 1,
  * the measure, the number of its levels and each level, and the test. A filter on a column: 2, its
  * level and the test.
@@ -639,7 +670,11 @@ export function requestWords(request: PivotRequest): Uint32Array {
     min: 7,
     max: 8,
   }
-  const measureWords = ({ aggregate, column }: PivotMeasure) => [kinds[aggregate], column]
+  const measureWords = ({ aggregate, column, precision }: PivotMeasure) => [
+    kinds[aggregate],
+    column,
+    PRECISION_CODES[precision ?? 'none'],
+  ]
   const filterWords = (filter: PivotRequestFilter): number[] => {
     switch (filter.kind) {
       case 'values':
@@ -769,6 +804,12 @@ export class PivotEngine {
   private laidOut = FIRST_ARRANGEMENT
 
   /**
+   * Lengths of the texts of the columns of the table in the module, as it is laid out; `null`
+   * until they are read.
+   */
+  private lengths: PivotTextLengths | null = null
+
+  /**
    * @param engine Exports of the module.
    */
   private constructor(private readonly engine: EngineExports) {
@@ -833,6 +874,7 @@ export class PivotEngine {
     this.engine.release(address, size)
     this.ranked.clear()
     this.computed = null
+    this.lengths = null
   }
 
   /**
@@ -879,6 +921,7 @@ export class PivotEngine {
    */
   setKept(rows: Uint32Array | null): void {
     this.computed = null
+    this.lengths = null
     if (rows === null) {
       this.answer(this.engine.set_kept(0, 0, 1))
       return
@@ -946,6 +989,7 @@ export class PivotEngine {
       )
       this.computed = { key, shape }
       this.laidOut = FIRST_ARRANGEMENT
+      this.lengths = null
     }
     const arrangement = arrangementWords(order, layout)
     const arrangementKey = arrangement.join()
@@ -954,8 +998,21 @@ export class PivotEngine {
         this.answer<PivotShape>(this.engine.lay_out(address, arrangement.length)),
       )
       this.laidOut = arrangementKey
+      this.lengths = null
     }
     return this.computed.shape
+  }
+
+  /**
+   * Lengths of the texts of the columns of values of the last table laid out, asked once for each
+   * table and each layout, its values counted as the grid writes them, NULL and the totals
+   * included: the engine reads each group once per table, and each layout combines what it read.
+   */
+  textLengths(): PivotTextLengths {
+    this.lengths ??= this.answer<PivotTextLengths>(
+      this.engine.text_lengths(NULL_TEXT.length, TOTAL_TEXT.length),
+    )
+    return this.lengths
   }
 
   /**
@@ -1039,9 +1096,10 @@ export function answerMessage(
         const started = performance.now()
         const shape = state.engine.compute(message.request, message.order, message.layout)
         const positions = state.engine.columnsAt(message.targets)
+        const lengths = state.engine.textLengths()
         state.table = message.id
         const durationMs = performance.now() - started
-        return { type: 'table', id: message.id, shape, positions, durationMs }
+        return { type: 'table', id: message.id, shape, positions, lengths, durationMs }
       }
       case 'window':
         if (message.table !== state.table) {

@@ -414,6 +414,7 @@ impl Engine {
             .read(|text| self.operand(measure, text))
             .ok_or(Error::FilterOperand { filter })?;
         self.check_dates(levels, rows)?;
+        self.check_dates(measure.level().as_slice(), rows)?;
         let (dictionaries, _) = self.levels(levels)?;
         let (group_of_row, first_rows) = groups::finest(&dictionaries, rows);
         let state = measures::accumulate(&input, rows, &group_of_row, first_rows.len(), &[])
@@ -433,40 +434,46 @@ impl Engine {
     }
 
     /// Reads an operand by the kind of the values of a measure, whose column
-    /// exists. `None` if it cannot compare with them.
+    /// exists: a period for `MIN` and `MAX` at a precision. `None` if it cannot
+    /// compare with them.
     fn operand<'a>(&self, measure: Measure, text: &'a str) -> Option<Read<'a>> {
         let family = match measure {
             Measure::CountStar | Measure::Count(_) | Measure::CountDistinct(_) => Family::Exact,
+            Measure::Min(Level {
+                precision: Some(precision),
+                ..
+            })
+            | Measure::Max(Level {
+                precision: Some(precision),
+                ..
+            }) => return is_label(precision, text).then_some(Read::Text(text)),
+            Measure::Min(Level { column, .. }) | Measure::Max(Level { column, .. }) => {
+                self.families[column]
+            }
             Measure::Sum(column)
             | Measure::SumDistinct(column)
             | Measure::Avg(column)
-            | Measure::AvgDistinct(column)
-            | Measure::Min(column)
-            | Measure::Max(column) => self.families[column],
+            | Measure::AvgDistinct(column) => self.families[column],
         };
         read(family, text).ok()
     }
 
     /// Reads a value of a measure that is not NULL, `None` for a cell gone. A
-    /// date `MIN` or `MAX` chose outside of the calendar stops the computation.
+    /// date `MIN` or `MAX` chose outside of the calendar stops the computation;
+    /// a period compares as its label.
     fn read_value(&self, value: Value) -> Result<Option<Read<'_>>, Error> {
         Ok(match value {
             Value::Count(count) => Some(Read::Exact((i128::from(count), 0))),
             Value::Exact(number, scale) => Some(Read::Exact((number, scale))),
             Value::Float(number) => Some(Read::Float(number)),
-            Value::Cell(column, row) => {
-                match self
-                    .store
-                    .column(column)
-                    .and_then(|cells| cells.get(row as usize))
-                {
-                    Some(cell) => Some(
-                        read(self.families[column], cell)
-                            .map_err(|unreadable| unreadable.error(column, row))?,
-                    ),
-                    None => None,
-                }
-            }
+            Value::Cell(level, row) => match self.level_value(level, row) {
+                Some(label) if level.precision.is_some() => Some(Read::Text(label)),
+                Some(cell) => Some(
+                    read(self.families[level.column], cell)
+                        .map_err(|unreadable| unreadable.error(level.column, row))?,
+                ),
+                None => None,
+            },
             Value::Empty | Value::Null => None,
         })
     }

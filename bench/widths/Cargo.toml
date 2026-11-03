@@ -1,0 +1,17 @@
+# Benchmark of the default widths of the columns of the Pivoteur (see
+# src/main.rs): the engine of Prisme, native. Workspace of its own, outside
+# the one of Prisme, with the release profile of Prisme (Cargo's default).
+
+[workspace]
+resolver = "3"
+
+[package]
+name = "widths-bench"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+prisme-pivot = { path = "../../crates/pivot" }
+prisme-store = { path = "../../crates/store" }

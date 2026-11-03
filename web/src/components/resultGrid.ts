@@ -141,6 +141,12 @@ export function dropPosition(centers: number[], x: number): number {
 const WIDTH_SAMPLE = 200
 
 /**
+ * Room of the sort button of a header, in characters, added to its text to
+ * estimate the width of its column.
+ */
+export const SORT_ROOM = 2
+
+/**
  * Width of a column after its longest text, header (plus the room of the
  * sort button) and given rows: a CSS length that the browser computes, from
  * the average width of a character of the grid's font plus the room beside
@@ -152,7 +158,7 @@ const WIDTH_SAMPLE = 200
  * @param max Variable of the theme that caps the width.
  */
 function contentWidth(name: string, rows: Cell[][], column: number, max: string): string {
-  let longest = name.length + 2
+  let longest = name.length + SORT_ROOM
   for (const row of rows) {
     longest = Math.max(longest, (row[column] ?? NULL_TEXT).length)
   }

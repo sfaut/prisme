@@ -14,10 +14,12 @@
   The form of the lines (`layout`) gives their labels: in compact form, one
   column, indented by depth; in outline and tabular forms, one column per
   level (`labelCells`). The grand total comes last. Each
-  line has the height of a row of the result grid, each column its default
-  width (`--pivot-column-width` for the values) or the one given to it: the
-  scroll position gives the lines and the columns to draw (`drawnRange`,
-  `columnRange` in `pivotWidths.ts`). A cell without any row
+  line has the height of a row of the result grid, each column of labels its
+  default width or the one given to it, each column of values a width fitted
+  to its longest text, its values on every line or its header, as the result
+  grid estimates it (`defaultSteps` in `pivotWidths.ts`), or the one given to
+  it: the scroll position gives the lines and the columns to draw
+  (`drawnRange`, `columnRange`). A cell without any row
   stays empty, a measure that is NULL reads NULL, in the style of the grid
   (C-05). The layout of the headers is in `pivotLayout.ts`.
 
@@ -50,12 +52,14 @@ import type {
   PivotLine,
   PivotOrder,
   PivotShape,
+  PivotTextLengths,
   PivotValueTarget,
   PivotWindow,
 } from './pivotEngine'
 import {
   type HeaderCell,
   cornerRows,
+  hasMeasureRow,
   headerCells,
   headerRowCount,
   labelCells,
@@ -65,12 +69,14 @@ import {
 } from './pivotLayout'
 import {
   type ColumnGeometry,
+  type TextRoom,
   type WidthBounds,
+  columnGeometry,
   columnRange,
+  defaultSteps,
   draggedSteps,
   fittedSteps,
-  roomBefore,
-  roomLength,
+  stepsBefore,
   stepsLength,
   targetKey,
   widenedColumns,
@@ -88,6 +94,10 @@ const props = defineProps<{
    * Shape of the table.
    */
   shape: PivotShape
+  /**
+   * Lengths of the texts of its columns of values, which their default widths fit.
+   */
+  lengths: PivotTextLengths
   /**
    * Label of each measure, in the order of its zone.
    */
@@ -160,15 +170,14 @@ const emit = defineEmits<{
 }>()
 
 /**
- * Height of a line, and width of a column of values, of the labels in one
- * column and of a column of labels per level, in pixels, to turn the scroll
- * position into the lines and the columns to draw.
+ * Height of a line, and width of the labels in one column and of a column of
+ * labels per level, in pixels, to turn the scroll position into the lines and
+ * the columns to draw.
  *
  * Fixed sizes: read once (`docs/DEVELOPER.md`, section "Lengths in
  * pixels").
  */
 const LINE_HEIGHT = cssPixels('--grid-row-height', 22)
-const COLUMN_WIDTH = cssPixels('--pivot-column-width', 108)
 const LABEL_WIDTH = cssPixels('--pivot-label-width', 180)
 const LEVEL_WIDTH = cssPixels('--pivot-level-width', 120)
 
@@ -184,6 +193,21 @@ const BOUNDS: WidthBounds = {
   step: STEP,
   min: Math.ceil(cssPixels('--grid-column-min-width', 39) / STEP),
   max: Math.floor(cssPixels('--grid-fitted-max-width', 720) / STEP),
+}
+
+/**
+ * Room of the texts of a column of values, and bounds of its default width, those of the
+ * estimate of the result grid: an `em` of the table's font (`--text-base`) is one of the root.
+ *
+ * Fixed sizes: read once (`docs/DEVELOPER.md`, section "Lengths in pixels").
+ */
+const TEXT_ROOM: TextRoom = {
+  character: cssPixels('--grid-char-width', 7.2),
+  padding: cssPixels('--grid-cell-room', 15),
+}
+const ESTIMATE_BOUNDS: WidthBounds = {
+  ...BOUNDS,
+  max: Math.floor(cssPixels('--grid-estimated-max-width', 360) / STEP),
 }
 
 /**
@@ -286,8 +310,23 @@ const positions = computed<ReadonlyMap<string, number>>(() =>
 )
 
 /**
- * Columns of values of the table, with the widths given to them, that of the
- * column being dragged included.
+ * Default width of each column of values, in steps: that of its longest text.
+ */
+const defaultWidths = computed(() =>
+  defaultSteps(
+    props.shape.columns,
+    props.lengths,
+    hasMeasureRow(props.shape.columnLevels, props.measureLabels.length)
+      ? props.measureLabels
+      : null,
+    TEXT_ROOM,
+    ESTIMATE_BOUNDS,
+  ),
+)
+
+/**
+ * Columns of values of the table, with their default widths and those given
+ * to them, that of the column being dragged included.
  */
 const geometry = computed<ColumnGeometry>(() => {
   const widened = widenedColumns(props.columnWidths, positions.value)
@@ -298,7 +337,7 @@ const geometry = computed<ColumnGeometry>(() => {
     widened.splice(0, widened.length, ...others, { index, width: dragged.width })
     widened.sort((a, b) => a.index - b.index)
   }
-  return { count: props.shape.columns, standard: COLUMN_WIDTH, step: STEP, widened }
+  return columnGeometry(defaultWidths.value, widened, STEP)
 })
 
 /**
@@ -507,9 +546,9 @@ const firstColumn = computed(() => content.value?.firstColumn ?? 0)
  */
 const template = computed(() => {
   const tracks = labelled.value ? [labelsLength.value] : []
-  tracks.push(roomLength(roomBefore(geometry.value, firstColumn.value)))
+  tracks.push(stepsLength(stepsBefore(geometry.value, firstColumn.value)))
   const count = content.value?.content.columns.length ?? 0
-  tracks.push(...windowTracks(geometry.value.widened, firstColumn.value, count))
+  tracks.push(...windowTracks(geometry.value, firstColumn.value, count))
   return tracks.join(' ')
 })
 
@@ -517,7 +556,7 @@ const template = computed(() => {
  * Width of the whole table.
  */
 const width = computed(() => {
-  const columns = roomLength(roomBefore(geometry.value, props.shape.columns))
+  const columns = stepsLength(stepsBefore(geometry.value, props.shape.columns))
   return labelled.value ? `calc(${labelsLength.value} + ${columns})` : columns
 })
 
@@ -619,8 +658,7 @@ function columnPixels(resized: Resized): number {
   if (resized.kind === 'labels') {
     return labelPixels.value[resized.column] ?? 0
   }
-  const widened = geometry.value.widened.find((column) => column.index === resized.index)
-  return widened === undefined ? COLUMN_WIDTH : widened.width * STEP
+  return (geometry.value.widths[resized.index] ?? 0) * STEP
 }
 
 /**

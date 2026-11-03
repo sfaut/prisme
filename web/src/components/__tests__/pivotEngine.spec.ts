@@ -26,7 +26,9 @@ import {
   requestWords,
   targetWords,
 } from '../pivotEngine'
+import { TOTAL_TEXT } from '../pivotLayout'
 import { utf8Length } from '../pivotTransfer'
+import { NULL_TEXT } from '../resultGrid'
 
 /**
  * Module of the engine, built by Vite before the tests (`pivotEngine` in `vite.config.ts`).
@@ -107,7 +109,7 @@ describe('ranksOf', () => {
 })
 
 describe('requestWords', () => {
-  it('writes the levels then a kind and a column per measure', () => {
+  it('writes the levels then a kind, a column and a precision per measure', () => {
     const request: PivotRequest = {
       rows: [level(0), level(1)],
       columns: [level(2)],
@@ -115,10 +117,13 @@ describe('requestWords', () => {
         { aggregate: 'sum', column: 4 },
         { aggregate: 'count_star', column: 1 },
         { aggregate: 'count_distinct', column: 1 },
+        { aggregate: 'min', column: 7, precision: 'month' },
       ],
       filters: [],
     }
-    expect(Array.from(requestWords(request))).toEqual([2, 1, 3, 0, 0, 1, 0, 2, 0, 2, 4, 0, 1, 3, 1])
+    expect(Array.from(requestWords(request))).toEqual([
+      2, 1, 4, 0, 0, 1, 0, 2, 0, 2, 4, 0, 0, 1, 0, 3, 1, 0, 7, 7, 3,
+    ])
   })
 
   it('has a number per precision', () => {
@@ -131,11 +136,18 @@ describe('requestWords', () => {
       columns: [
         { column: 7, precision: 'week' },
         { column: 7, precision: 'date' },
+        { column: 7, precision: 'hour' },
+        { column: 7, precision: 'minute' },
+        { column: 7, precision: 'second' },
+        { column: 7, precision: 'millisecond' },
+        { column: 7, precision: 'microsecond' },
       ],
       measures: [],
       filters: [],
     }
-    expect(Array.from(requestWords(request))).toEqual([3, 2, 0, 7, 1, 7, 2, 7, 3, 7, 4, 7, 5])
+    expect(Array.from(requestWords(request))).toEqual([
+      3, 7, 0, 7, 1, 7, 2, 7, 3, 7, 4, 7, 5, 7, 6, 7, 7, 7, 8, 7, 9, 7, 10,
+    ])
   })
 
   it('has a kind per aggregate', () => {
@@ -151,7 +163,9 @@ describe('requestWords', () => {
       ],
       filters: [],
     }
-    expect(Array.from(requestWords(request))).toEqual([0, 0, 5, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0])
+    expect(Array.from(requestWords(request))).toEqual([
+      0, 0, 5, 4, 0, 0, 5, 0, 0, 6, 0, 0, 7, 0, 0, 8, 0, 0,
+    ])
   })
 })
 
@@ -266,6 +280,38 @@ describe('PivotEngine', () => {
     ])
   })
 
+  it('gives the lengths of the texts of the columns, as the grid writes them', async () => {
+    const rows: Cell[][] = [
+      ['Nord', '2026', '600'],
+      ['Nord', null, null],
+      ['Sud', '2026', '500.5'],
+    ]
+    const engine = await loaded(rows, ['text', 'text', 'decimal'])
+    engine.compute({
+      rows: [level(0)],
+      columns: [level(1)],
+      measures: [{ aggregate: 'sum', column: 2 }],
+      filters: [],
+    })
+    // Columns NULL (NULL on Nord and on the total), 2026 and Total (600.0, 500.5, 1100.5).
+    expect(engine.textLengths()).toEqual({
+      values: [NULL_TEXT.length, 6, 6],
+      labels: [NULL_TEXT.length, 4, TOTAL_TEXT.length],
+    })
+    // A layout without the grand total of the lines leaves out its values.
+    engine.compute(
+      {
+        rows: [level(0)],
+        columns: [level(1)],
+        measures: [{ aggregate: 'sum', column: 2 }],
+        filters: [],
+      },
+      LABEL_ORDER,
+      { ...FIRST_LAYOUT, rows: { grandTotal: false, subtotals: [true] } },
+    )
+    expect(engine.textLengths().values).toEqual([NULL_TEXT.length, 5, 5])
+  })
+
   it('groups the dates of a level by their precision, in the order of time', async () => {
     const rows: Cell[][] = [
       ['2027-01-01 12:00:00', '1'],
@@ -298,6 +344,59 @@ describe('PivotEngine', () => {
       '2026-12-31',
       '2027-01-01',
       '2027-01-04',
+      null,
+    ])
+    expect(labels('hour')).toEqual([
+      null,
+      '2026-03-15 08:00:00',
+      '2026-12-31 10:00:00',
+      '2027-01-01 12:00:00',
+      '2027-01-04 09:00:00',
+      null,
+    ])
+    expect(labels('minute')[4]).toBe('2027-01-04 09:30:00')
+    expect(labels('millisecond')[1]).toBe('2026-03-15 08:00:00.000')
+  })
+
+  it('reads the periods of a precision for COUNT(DISTINCT), MIN and MAX', async () => {
+    const rows: Cell[][] = [
+      ['a', '2026-01-15'],
+      ['a', '2026-01-20'],
+      ['a', '2026-03-02'],
+      ['b', '2025-11-30'],
+    ]
+    const engine = await loaded(rows, ['text', 'date'])
+    const shape = engine.compute({
+      rows: [level(0)],
+      columns: [],
+      measures: [
+        { aggregate: 'count_distinct', column: 1, precision: 'month' },
+        { aggregate: 'min', column: 1, precision: 'quarter' },
+        { aggregate: 'max', column: 1, precision: 'year' },
+      ],
+      filters: [],
+    })
+    expect(engine.window([0, shape.lines], [0, shape.columns]).cells).toEqual([
+      ['2', '2026-T1', '2026'],
+      ['1', '2025-T4', '2025'],
+      ['3', '2025-T4', '2026'],
+    ])
+    // A filter on MAX(d (Mois)) compares months.
+    const kept = engine.compute({
+      rows: [level(0)],
+      columns: [],
+      measures: [{ aggregate: 'count_star', column: 0 }],
+      filters: [
+        {
+          kind: 'measure',
+          measure: { aggregate: 'max', column: 1, precision: 'month' },
+          levels: [level(0)],
+          test: { condition: 'greater_or_equal', operand: '2026-02', upper: '' },
+        },
+      ],
+    })
+    expect(engine.window([0, kept.lines], [0, 1]).lines.map((line) => line.label)).toEqual([
+      'a',
       null,
     ])
   })
@@ -622,6 +721,7 @@ describe('answerMessage', () => {
       id: 2,
       shape: { lines: 1, columns: 1 },
       positions: [0],
+      lengths: { labels: [0] },
     })
     expect(
       answerMessage(state, {
@@ -755,6 +855,7 @@ describe('the filters', () => {
       1,
       2,
       4,
+      0,
       1,
       1,
       3,

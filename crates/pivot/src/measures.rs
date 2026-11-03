@@ -20,7 +20,9 @@
 //!   more digits after the point than its column, rounded away from zero; an
 //!   average of floats is a `DOUBLE`.
 //! - `MIN(col)` and `MAX(col)` keep the first or the last value of each
-//!   group, in the order of the column, and give its cell as it is.
+//!   group, in the order of the column, and give its cell as it is; at a
+//!   precision, the first or the last period, in the order of time, and give
+//!   its label.
 //!
 //! The behaviours of the engines these rules follow are measured in
 //! `docs/SQL-COMPARISON.md`, section 3.6 (cases `agg.*`).
@@ -28,9 +30,10 @@
 use std::cmp::Ordering;
 use std::hash::Hash;
 
-use prisme_store::{Approx, Dictionary, Exact, FxMap, Store};
+use prisme_store::{Approx, Dictionary, Exact, FxMap};
 
 use crate::groups::Merge;
+use crate::{Engine, Level};
 
 /// Digits an average of exact numbers adds after the point, as MySQL and
 /// MariaDB do.
@@ -46,8 +49,8 @@ pub enum Input<'a> {
     Rows,
     /// Validity of the cells of a column (`COUNT(col)`).
     Cells(&'a [bool]),
-    /// Codes of the values of a column, by row, and their validity
-    /// (`COUNT(DISTINCT col)`).
+    /// Codes of the values of a level, by row, and the validity of the cells
+    /// of its column (`COUNT(DISTINCT col)`).
     Distinct(&'a [u32], &'a [bool]),
     /// Exact numbers of a column and their validity.
     Exact(&'a Exact, &'a [bool]),
@@ -68,9 +71,9 @@ pub enum Input<'a> {
 /// Values `MIN` or `MAX` compares.
 #[derive(Clone, Copy)]
 pub struct Extreme<'a> {
-    /// Column of the values.
-    pub column: usize,
-    /// Codes of the values of the column.
+    /// Level of the values: its column, at a precision of its dates or not.
+    pub level: Level,
+    /// Codes of the values of the level.
     pub dictionary: &'a Dictionary,
     /// Rank of each code, in the order of the comparison.
     pub ranks: &'a [u32],
@@ -106,10 +109,10 @@ pub enum State {
         /// Number of values added in each group.
         counts: Vec<u64>,
     },
-    /// Cells of a column (`MIN`, `MAX`).
+    /// Values of a level (`MIN`, `MAX`).
     Cells {
-        /// Column of the cells.
-        column: usize,
+        /// Level of the values.
+        level: Level,
         /// Row of the cell of each group, `NO_VALUE` without one.
         rows: Vec<u32>,
     },
@@ -128,19 +131,72 @@ pub enum Value {
     Exact(i128, u32),
     /// Float.
     Float(f64),
-    /// Cell of the result, by its column and its row.
-    Cell(usize, u32),
+    /// Value of a level at a row of the result: its cell, or the label of its
+    /// period.
+    Cell(Level, u32),
 }
 
 impl Value {
     /// Text of the value: `None` for an empty cell or NULL.
-    pub fn text(self, store: &Store) -> Option<String> {
+    pub fn text(self, engine: &Engine) -> Option<String> {
         match self {
             Value::Empty | Value::Null => None,
             Value::Count(count) => Some(count.to_string()),
             Value::Exact(value, scale) => Some(prisme_store::format_exact(value, scale)),
             Value::Float(value) => Some(prisme_store::format_float(value)),
-            Value::Cell(column, row) => store.column(column)?.get(row as usize).map(str::to_owned),
+            Value::Cell(level, row) => engine.level_value(level, row).map(str::to_owned),
+        }
+    }
+
+    /// Number of characters of the text of the value (`text`), without
+    /// writing it: `None` for an empty cell or NULL.
+    pub fn length(self, engine: &Engine) -> Option<usize> {
+        let digits = |number: u128| {
+            number
+                .checked_ilog10()
+                .map_or(1, |power| power as usize + 1)
+        };
+        match self {
+            Value::Count(count) => Some(digits(u128::from(count))),
+            Value::Exact(value, scale) => {
+                let whole = value.unsigned_abs() / 10u128.pow(scale);
+                let fraction = if scale == 0 { 0 } else { 1 + scale as usize };
+                Some(usize::from(value < 0) + digits(whole) + fraction)
+            }
+            Value::Float(value) => Some(prisme_store::float_length(value)),
+            Value::Cell(level, row) => engine
+                .level_value(level, row)
+                .map(|text| text.chars().count()),
+            Value::Empty | Value::Null => None,
+        }
+    }
+}
+
+/// Longest text of the values of a measure in a set of cells, in characters,
+/// a NULL apart: the page gives it its own text.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Longest {
+    /// Longest text of a value that is not NULL, 0 without any.
+    pub text: usize,
+    /// Is one of the values NULL?
+    pub null: bool,
+}
+
+impl Longest {
+    /// Longest text of two sets of cells together.
+    pub fn max(self, other: Longest) -> Longest {
+        Longest {
+            text: self.text.max(other.text),
+            null: self.null || other.null,
+        }
+    }
+
+    /// Length of the longest text, a NULL counting `null_length` characters.
+    pub fn length(self, null_length: usize) -> usize {
+        if self.null {
+            self.text.max(null_length)
+        } else {
+            self.text
         }
     }
 }
@@ -486,7 +542,7 @@ pub fn accumulate(
             accumulate(input, selection, finest, groups, merges)?.averaged()
         }
         Input::Extreme(extreme) => Ok(State::Cells {
-            column: extreme.column,
+            level: extreme.level,
             rows: extreme_rows(extreme, feed),
         }),
     }
@@ -543,17 +599,123 @@ impl State {
             }
             State::Exact { sums, scale, .. } => Value::Exact(sums[group], *scale),
             State::Float { sums, .. } => Value::Float(sums[group]),
-            State::Cells { column, rows } => match rows[group] {
+            State::Cells { level, rows } => match rows[group] {
                 NO_VALUE => Value::Null,
-                row => Value::Cell(*column, row),
+                row => Value::Cell(*level, row),
             },
         }
+    }
+
+    /// Longest text of the values of the measure in each of `columns` sets
+    /// of cells: `cells` gives the group and the set of each cell to read.
+    ///
+    /// The text of a count or of an exact number grows with its magnitude
+    /// (`Value::length`): the smallest and the largest values of a set give
+    /// its longest text. Floats are measured one by one, and cells until their
+    /// set reaches the longest text of their level (`Engine::longest_text`):
+    /// no other cell of the set can be longer.
+    pub fn longest(&self, engine: &Engine, cells: &[(u32, u32)], columns: usize) -> Vec<Longest> {
+        let length = |value: Value| value.length(engine).unwrap_or(0);
+        let mut longest = vec![Longest::default(); columns];
+        match self {
+            State::Count(counts) => {
+                let mut largest = vec![None; columns];
+                for &(group, column) in cells {
+                    let count = &mut largest[column as usize];
+                    *count = (*count).max(Some(counts[group as usize]));
+                }
+                for (longest, largest) in longest.iter_mut().zip(largest) {
+                    longest.text = largest.map_or(0, |count| length(Value::Count(count)));
+                }
+            }
+            State::Exact {
+                sums,
+                counts,
+                scale,
+            } => {
+                let mut bounds: Vec<Option<(i128, i128)>> = vec![None; columns];
+                for &(group, column) in cells {
+                    let (group, column) = (group as usize, column as usize);
+                    if counts[group] == 0 {
+                        longest[column].null = true;
+                        continue;
+                    }
+                    let sum = sums[group];
+                    bounds[column] = Some(
+                        bounds[column]
+                            .map_or((sum, sum), |(low, high)| (low.min(sum), high.max(sum))),
+                    );
+                }
+                for (longest, bounds) in longest.iter_mut().zip(bounds) {
+                    longest.text = bounds.map_or(0, |(low, high)| {
+                        length(Value::Exact(low, *scale)).max(length(Value::Exact(high, *scale)))
+                    });
+                }
+            }
+            State::Float { sums, counts } => {
+                for &(group, column) in cells {
+                    let (group, longest) = (group as usize, &mut longest[column as usize]);
+                    match counts[group] {
+                        0 => longest.null = true,
+                        _ => {
+                            longest.text = longest.text.max(prisme_store::float_length(sums[group]))
+                        }
+                    }
+                }
+            }
+            State::Cells { level, rows } => {
+                let bound = engine.longest_text(*level);
+                for &(group, column) in cells {
+                    let longest = &mut longest[column as usize];
+                    match rows[group as usize] {
+                        NO_VALUE => longest.null = true,
+                        _ if longest.text >= bound => {}
+                        row => longest.text = longest.text.max(length(Value::Cell(*level, row))),
+                    }
+                }
+            }
+        }
+        longest
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use prisme_store::Store;
+
     use super::*;
+
+    /// Engine without a column: it writes the numbers of a measure.
+    fn no_engine() -> Engine {
+        Engine::new(Store::new(0), Vec::new())
+    }
+
+    #[test]
+    fn the_length_of_a_value_is_that_of_its_text() {
+        let engine = no_engine();
+        for value in [
+            Value::Empty,
+            Value::Null,
+            Value::Count(0),
+            Value::Count(9),
+            Value::Count(10),
+            Value::Count(u64::MAX),
+            Value::Exact(0, 0),
+            Value::Exact(-5, 3),
+            Value::Exact(123_456, 2),
+            Value::Exact(i128::MIN, 0),
+            Value::Exact(i128::MAX, 38),
+            Value::Float(-0.5),
+            Value::Float(1e300),
+            Value::Float(f64::NAN),
+        ] {
+            assert_eq!(
+                value.length(&engine),
+                value.text(&engine).map(|text| text.chars().count()),
+                "{value:?}"
+            );
+        }
+    }
 
     /// Groups 0 and 1 merge into group 2.
     fn merges() -> Vec<Merge> {
@@ -638,10 +800,7 @@ mod tests {
         assert_eq!(state.value(0), Value::Exact(1575, 2));
         assert_eq!(state.value(1), Value::Null);
         assert_eq!(state.value(2), Value::Exact(1575, 2));
-        assert_eq!(
-            state.value(0).text(&Store::new(0)).as_deref(),
-            Some("15.75")
-        );
+        assert_eq!(state.value(0).text(&no_engine()).as_deref(), Some("15.75"));
     }
 
     #[test]
@@ -680,7 +839,7 @@ mod tests {
         .unwrap();
         assert_eq!(state.value(2), Value::Float(0.1 + 0.2));
         assert_eq!(
-            state.value(2).text(&Store::new(0)).as_deref(),
+            state.value(2).text(&no_engine()).as_deref(),
             Some("0.30000000000000004")
         );
     }
@@ -809,7 +968,7 @@ mod tests {
         let valid = [true, true, true, true, false];
         let extreme = |largest| {
             Input::Extreme(Extreme {
-                column: 7,
+                level: Level::from(7),
                 dictionary: &dictionary,
                 ranks: &ranks,
                 valid: &valid,
@@ -822,8 +981,9 @@ mod tests {
             let state = accumulate(&extreme(largest), &selection, &finest, 3, &merges()).unwrap();
             [0, 1, 2].map(|group| state.value(group))
         };
-        assert_eq!(values(false), [0, 2, 2].map(|row| Value::Cell(7, row)));
-        assert_eq!(values(true), [1, 3, 3].map(|row| Value::Cell(7, row)));
+        let cell = |row| Value::Cell(Level::from(7), row);
+        assert_eq!(values(false), [0, 2, 2].map(cell));
+        assert_eq!(values(true), [1, 3, 3].map(cell));
 
         let state = accumulate(&extreme(false), &[4], &[0], 3, &merges()).unwrap();
         assert_eq!(state.value(2), Value::Null);

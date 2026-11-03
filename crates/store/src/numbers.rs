@@ -222,17 +222,42 @@ pub fn format_exact(value: i128, scale: u32) -> String {
 /// an exponent outside 10^-6 to 10^21, as MySQL and JavaScript do: `0.1`,
 /// `1e300`; `NaN`, `Infinity` and `-Infinity` as PostgreSQL writes them.
 pub fn format_float(value: f64) -> String {
+    let mut text = String::new();
+    write_float(&mut text, value).expect("a string takes any text");
+    text
+}
+
+/// Number of characters of the text of a float (`format_float`), counted
+/// without writing it: its characters are all ASCII, one byte each.
+pub fn float_length(value: f64) -> usize {
+    /// Writer that only counts the bytes written to it.
+    struct Counter(usize);
+
+    impl fmt::Write for Counter {
+        fn write_str(&mut self, text: &str) -> fmt::Result {
+            self.0 += text.len();
+            Ok(())
+        }
+    }
+
+    let mut counter = Counter(0);
+    write_float(&mut counter, value).expect("a counter takes any text");
+    counter.0
+}
+
+/// Writes a float as `format_float` gives it.
+fn write_float(out: &mut impl fmt::Write, value: f64) -> fmt::Result {
     if value.is_nan() {
-        return "NaN".to_owned();
+        return out.write_str("NaN");
     }
     if value.is_infinite() {
-        return if value > 0.0 { "Infinity" } else { "-Infinity" }.to_owned();
+        return out.write_str(if value > 0.0 { "Infinity" } else { "-Infinity" });
     }
     let magnitude = value.abs();
     if magnitude != 0.0 && !(1e-6..1e21).contains(&magnitude) {
-        format!("{value:e}")
+        write!(out, "{value:e}")
     } else {
-        format!("{value}")
+        write!(out, "{value}")
     }
 }
 
@@ -355,5 +380,28 @@ mod tests {
         assert_eq!(format_float(1.5e-7), "1.5e-7");
         assert_eq!(format_float(123_456.5), "123456.5");
         assert_eq!(format_float(f64::NEG_INFINITY), "-Infinity");
+    }
+
+    #[test]
+    fn the_length_of_a_float_is_that_of_its_text() {
+        for value in [
+            0.1 + 0.2,
+            1.0,
+            0.0,
+            -0.0,
+            1e300,
+            -1.5e-7,
+            123_456.5,
+            f64::NAN,
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+            f64::MIN_POSITIVE,
+        ] {
+            assert_eq!(
+                super::float_length(value),
+                format_float(value).len(),
+                "{value}"
+            );
+        }
     }
 }

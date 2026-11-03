@@ -225,6 +225,11 @@ impl Groups {
         self.pairs.len()
     }
 
+    /// Node of the rows and node of the columns of each group, by group.
+    pub fn pairs(&self) -> &[(u32, u32)] {
+        &self.pairs
+    }
+
     /// Group of a node of the rows and a node of the columns, `None` if no
     /// row falls into both.
     pub fn find(&self, row: u32, column: u32) -> Option<u32> {

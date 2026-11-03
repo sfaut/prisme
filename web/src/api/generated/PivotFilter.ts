@@ -61,6 +61,11 @@ export type PivotFilter = {
    */
   name: string;
   /**
+   * What `COUNT(DISTINCT col)`, `MIN(col)` and `MAX(col)` keep of the
+   * dates of their column.
+   */
+  precision?: DatePrecision;
+  /**
    * What the value of each group passes.
    */
   condition: PivotTest;
