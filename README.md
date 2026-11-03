@@ -360,7 +360,7 @@ The menu of a measure gives them all. `NULL` values are left out, and a total re
 | `AVG(col)`, `AVG(DISTINCT col)` | Numbers | Exact at the scale of the column + 4, rounded away from zero, as MySQL and MariaDB write it (`1.5000` for 1 and 2); `DOUBLE` for floats |
 | `MIN(col)`, `MAX(col)` | Any | Numbers compared by value, texts by code points (`A B a b`); the cell is shown as it is |
 
-The menu of a level of a `date` or `datetime` column sets its precision, what the level keeps of its dates. The periods rank in the order of time. A precision of the time truncates it to its unit, as `DATE_TRUNC` does: `10:59:59.999999` falls in the hour `10:00:00`.
+The menu of a level of a `date` or `datetime` column sets its precision, what the level keeps of its dates. The periods rank in the order of time. A precision of the time truncates it to its unit, as `DATE_TRUNC` does: `10:59:59.999999` falls in the hour `10:00:00`, and a date written without a time, at midnight.
 
 | Précision | Keeps | For 2027-01-01 10:30:15.123456 |
 |---|---|---|

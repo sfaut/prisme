@@ -113,6 +113,7 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Documented: `README.md`, `docs/DEVELOPER.md`
 - ✅ Documented in the specification: requirement F-46, after F-43, its lots and its acceptance
 - ✅ Precisions of the time of a `datetime` column, after "Date", for the levels, the filters and the measures: "Horodatage (hh)" (`2026-01-15 10:00:00`), "Horodatage (hh:mm)", "Horodatage (hh:mm:ss)", "Horodatage (hh:mm:ss.ms)" (as a `TIMESTAMP(3)`) and "Horodatage (hh:mm:ss.µs)" (as a `TIMESTAMP(6)`); the time is truncated to the unit, as `DATE_TRUNC` does, and a filter compares instants of that form (`TIMESTAMP'2026-01-15 10:00:00'`)
+- ✅ A date written without a time, such as `2026-01-15` in a `DATETIME` column of SQLite, falls at midnight at a precision of the time (`2026-01-15 00:00:00`); a time that is not one of the day (`25:00:00`) stops the computation
 - ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes and at a real 150%
 - ✅ Documented: `README.md`, `docs/DEVELOPER.md`
 - ✅ Documented in the specification (F-43, table "Précision")

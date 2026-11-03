@@ -7,8 +7,10 @@
 //! the day or coarser leaves out the time and the time zone that may follow it.
 //! A precision of the time reads the time as it is written, `HH:MM:SS` and its
 //! fraction, truncated to its unit, as `DATE_TRUNC` does: `10:30:15.9` falls in
-//! the second `10:30:15`. It leaves out the time zone; a cell without a time of
-//! the day has no period at such a precision.
+//! the second `10:30:15`. It leaves out the time zone. A date written without a
+//! time falls at midnight, `2026-01-15` in the hour `2026-01-15 00:00:00`; a time
+//! that is not one of the day, such as `25:00:00`, has no period at such a
+//! precision.
 //!
 //! The calendar holds the years 0001 to 9999, as in ANSI SQL. A cell outside of
 //! it has no period, and stops the computation when a row taken into account
@@ -152,7 +154,8 @@ struct CellDate {
     month: i64,
     /// Day.
     day: i64,
-    /// Microseconds in the day, `None` without a time of the day.
+    /// Microseconds in the day: 0, midnight, for a date written without a time;
+    /// `None` for a time that is not one of the day.
     time: Option<i64>,
 }
 
@@ -173,7 +176,10 @@ impl CellDate {
         let in_calendar = (1..=9999).contains(&year)
             && (1..=12).contains(&month)
             && (1..=days_in_month(year, month)).contains(&day);
-        let time = time.get(1..).and_then(time_of_day);
+        let time = match time.get(1..) {
+            Some(written) => time_of_day(written),
+            None => Some(0),
+        };
         in_calendar.then_some(CellDate {
             year,
             month,
@@ -200,7 +206,7 @@ impl CellDate {
     }
 
     /// Period of the date at a precision; `None` for a precision of the time
-    /// when the cell holds no time of the day.
+    /// when the time written is not one of the day.
     fn period(self, precision: Precision) -> Option<Period> {
         if let Some(unit) = precision.unit() {
             let day = (self.year * 100 + self.month) * 100 + self.day;
@@ -591,9 +597,24 @@ mod tests {
     }
 
     #[test]
-    fn a_cell_without_a_time_of_the_day_has_no_period_of_the_time() {
+    fn a_date_without_a_time_falls_at_midnight() {
+        assert_eq!(
+            single("2026-01-15", Precision::Hour).unwrap(),
+            "2026-01-15 00:00:00"
+        );
+        assert_eq!(
+            single("2026-01-15", Precision::Microsecond).unwrap(),
+            "2026-01-15 00:00:00.000000"
+        );
+        let cells = [Some("2026-01-15 00:59:59"), Some("2026-01-15")];
+        let level = level(&cells, Precision::Hour);
+        assert_eq!(level.dictionary.codes, [0, 0]);
+        assert_eq!(level.first_outside(&[0, 1]), None);
+    }
+
+    #[test]
+    fn a_time_out_of_the_day_has_no_period_of_the_time() {
         for cell in [
-            "2026-01-15",
             "2026-01-15 25:00:00",
             "2026-01-15 10:60:00",
             "2026-01-15 10:30",
