@@ -609,7 +609,7 @@ const groupsText = computed(() => {
         :foreign-keys="foreignKeys"
         :read-values="readValues"
       />
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
         <ui-alert v-if="failure" tone="error" :title="failure" />
         <pivot-grid
           v-if="shownTable"
