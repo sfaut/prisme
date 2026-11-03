@@ -5,14 +5,20 @@
 //! A date is read in the text of its cell, by the civil calendar: the time and
 //! the time zone that may follow it are left out, as they are written.
 //!
-//! MySQL and MariaDB can hold a date without a day in the calendar
-//! (`0000-00-00`, `2026-03-00`, `2026-02-30`). It keeps its fields, as `YEAR`
-//! and `DATE_FORMAT` read them in MariaDB; the ISO year and the ISO week, which
-//! ask for a real day, give NULL, where the servers give nothing usable
-//! (`docs/SQL-COMPARISON.md`, section 3.12). A cell that holds no such date
-//! stops the computation.
+//! The calendar holds the years 0001 to 9999, as in ANSI SQL. A cell outside of
+//! it has no period, and stops the computation when a row taken into account
+//! holds it: a date without a day in the calendar, which MySQL and MariaDB can
+//! hold (`0000-00-00`, `2026-03-00`, `2026-02-30`) and which the servers read
+//! each in their own way (`docs/SQL-COMPARISON.md`, section 3.12), a date before
+//! the Christian era (PostgreSQL, DuckDB), `infinity`, any other text.
+//!
+//! A filter compares dates, instants, hours and periods as their text, once their
+//! form is checked (`comparable`, `is_label`): that form makes the order of the
+//! text the order of time.
 
 use prisme_store::{Dictionary, FxMap, TextColumn};
+
+use crate::Family;
 
 /// What a level keeps of the dates of its column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,21 +74,20 @@ fn days_in_month(year: i64, month: i64) -> i64 {
     days_from_civil(next_year, next_month, 1) - days_from_civil(year, month, 1)
 }
 
-/// Date written in a cell, with its fields as they are.
+/// Date of the calendar written in a cell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CellDate {
     /// Year.
     year: i64,
-    /// Month, 0 in a zero date.
+    /// Month.
     month: i64,
-    /// Day, 0 in a zero date.
+    /// Day.
     day: i64,
 }
 
 impl CellDate {
-    /// Reads the date at the start of a cell: `YYYY-MM-DD`, with four digits
-    /// or more for the year, then nothing or a time. `None` for any other
-    /// text: a date before the Christian era (PostgreSQL, DuckDB), `infinity`.
+    /// Reads the date at the start of a cell: `YYYY-MM-DD`, then nothing or a
+    /// time. `None` for any other text, and for a date outside of the calendar.
     fn parse(cell: &str) -> Option<Self> {
         let (year, rest) = cell.split_once('-')?;
         let (month, rest) = rest.split_once('-')?;
@@ -94,15 +99,15 @@ impl CellDate {
             return None;
         }
         let (year, month, day) = (digits(year)?, digits(month)?, digits(day)?);
-        (month <= 12 && day <= 31).then_some(CellDate { year, month, day })
+        let in_calendar = (1..=9999).contains(&year)
+            && (1..=12).contains(&month)
+            && (1..=days_in_month(year, month)).contains(&day);
+        in_calendar.then_some(CellDate { year, month, day })
     }
 
     /// ISO year and ISO week: a week starts on Monday, and belongs to the year
-    /// of its Thursday. `None` without a day in the calendar.
-    fn iso_week(self) -> Option<Period> {
-        if self.month == 0 || self.day == 0 || self.day > days_in_month(self.year, self.month) {
-            return None;
-        }
+    /// of its Thursday.
+    fn iso_week(self) -> Period {
         let first_day = |year| days_from_civil(year, 1, 1);
         let days = days_from_civil(self.year, self.month, self.day);
         // 1970-01-01 was a Thursday.
@@ -114,19 +119,87 @@ impl CellDate {
         } else {
             self.year
         };
-        Some((year, (thursday - first_day(year)) / 7 + 1))
+        (year, (thursday - first_day(year)) / 7 + 1)
     }
 
-    /// Period of the date at a precision, `None` for NULL.
-    fn period(self, precision: Precision) -> Option<Period> {
+    /// Period of the date at a precision.
+    fn period(self, precision: Precision) -> Period {
         match precision {
-            Precision::Year => self.iso_week().map(|(year, _)| (year, 0)),
-            Precision::Quarter => Some((self.year, (self.month + 2) / 3)),
-            Precision::Month => Some((self.year, self.month)),
+            Precision::Year => (self.iso_week().0, 0),
+            Precision::Quarter => (self.year, (self.month + 2) / 3),
+            Precision::Month => (self.year, self.month),
             Precision::Week => self.iso_week(),
-            Precision::Date => Some((self.year, self.month * 100 + self.day)),
+            Precision::Date => (self.year, self.month * 100 + self.day),
         }
     }
+}
+
+/// Is a text an hour of the day, `HH:MM:SS` with an optional fraction? MySQL and
+/// MariaDB can hold others, such as `25:00:00` or `-120:00:00`.
+fn is_time(text: &str) -> bool {
+    let (clock, fraction) = match text.split_once('.') {
+        Some((clock, fraction)) => (clock, Some(fraction)),
+        None => (text, None),
+    };
+    let mut fields = clock.split(':');
+    let mut field = |largest: i64| {
+        fields
+            .next()
+            .filter(|field| field.len() == 2)
+            .and_then(digits)
+            .is_some_and(|value| value <= largest)
+    };
+    field(23)
+        && field(59)
+        && field(59)
+        && clock.len() == 8
+        && fraction.is_none_or(|digits| {
+            !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit())
+        })
+}
+
+/// Text of a date, an instant or an hour that compares in the order of time: the
+/// cell without the zeros that end its fraction, so that `10:30:00.50` equals
+/// `10:30:00.5`. `None` for a text outside of the calendar or of the day.
+pub fn comparable(family: Family, cell: &str) -> Option<&str> {
+    let date = |text: &str| text.len() == 10 && CellDate::parse(text).is_some();
+    let valid = match family {
+        Family::Date => date(cell),
+        Family::Datetime => {
+            date(cell.get(..10)?) && cell.get(10..11)? == " " && cell.get(11..).is_some_and(is_time)
+        }
+        Family::Time => is_time(cell),
+        _ => true,
+    };
+    valid.then(|| {
+        if family != Family::Date && cell.contains('.') {
+            cell.trim_end_matches('0').trim_end_matches('.')
+        } else {
+            cell
+        }
+    })
+}
+
+/// Is a text a label a precision can give? A period that does not hold a date of
+/// a column, such as a week 53 of a year of 52 weeks, is one: it keeps nothing.
+pub fn is_label(precision: Precision, text: &str) -> bool {
+    let (Some(year), Some(rest)) = (text.get(..4), text.get(4..)) else {
+        return false;
+    };
+    let in_range = |field: Option<&str>, length: usize, largest: i64| {
+        field
+            .filter(|field| field.len() == length)
+            .and_then(digits)
+            .is_some_and(|value| (1..=largest).contains(&value))
+    };
+    in_range(Some(year), 4, 9999)
+        && match precision {
+            Precision::Year => rest.is_empty(),
+            Precision::Quarter => in_range(rest.strip_prefix("-T"), 1, 4),
+            Precision::Month => in_range(rest.strip_prefix('-'), 2, 12),
+            Precision::Week => in_range(rest.strip_prefix("-S"), 2, 53),
+            Precision::Date => text.len() == 10 && CellDate::parse(text).is_some(),
+        }
 }
 
 /// Label of a period.
@@ -140,6 +213,18 @@ fn label(precision: Precision, (year, rank): Period) -> String {
     }
 }
 
+/// What a cell gives at a precision, in the order of the groups: NULL first, as
+/// in the grid, the cells outside of the calendar, then the periods.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Slot {
+    /// NULL.
+    Null,
+    /// A cell outside of the calendar.
+    Outside,
+    /// A period.
+    Period(Period),
+}
+
 /// Level of a column at a precision, built from the dictionary of the column:
 /// one read per distinct value, then one code per row.
 #[derive(Debug)]
@@ -150,33 +235,32 @@ pub struct DerivedLevel {
     pub ranks: Vec<u32>,
     /// Label of each code, `None` for NULL.
     labels: Vec<Option<String>>,
+    /// Code of the cells outside of the calendar, `None` without any.
+    outside: Option<u32>,
 }
 
 impl DerivedLevel {
     /// Reads the dates of a column.
-    ///
-    /// # Errors
-    ///
-    /// The row of the first cell that holds no date.
-    pub fn of(cells: &TextColumn, values: &Dictionary, precision: Precision) -> Result<Self, u32> {
-        let mut index: FxMap<Option<Period>, u32> = FxMap::default();
-        let mut periods = Vec::new();
+    pub fn of(cells: &TextColumn, values: &Dictionary, precision: Precision) -> Self {
+        let mut index: FxMap<Slot, u32> = FxMap::default();
+        let mut slots = Vec::new();
         let mut first_rows = Vec::new();
         let mut code_of_value = Vec::with_capacity(values.len());
         for &row in &values.first_rows {
-            let period = match cells.get(row as usize) {
-                Some(cell) => CellDate::parse(cell).ok_or(row)?.period(precision),
-                None => None,
+            let slot = match cells.get(row as usize) {
+                Some(cell) => CellDate::parse(cell)
+                    .map_or(Slot::Outside, |date| Slot::Period(date.period(precision))),
+                None => Slot::Null,
             };
-            code_of_value.push(*index.entry(period).or_insert_with(|| {
-                periods.push(period);
+            code_of_value.push(*index.entry(slot).or_insert_with(|| {
+                slots.push(slot);
                 first_rows.push(row);
-                (periods.len() - 1) as u32
+                (slots.len() - 1) as u32
             }));
         }
-        let mut order: Vec<u32> = (0..periods.len() as u32).collect();
-        order.sort_unstable_by_key(|&code| periods[code as usize]);
-        Ok(DerivedLevel {
+        let mut order: Vec<u32> = (0..slots.len() as u32).collect();
+        order.sort_unstable_by_key(|&code| slots[code as usize]);
+        DerivedLevel {
             dictionary: Dictionary {
                 codes: values
                     .codes
@@ -186,16 +270,48 @@ impl DerivedLevel {
                 first_rows,
             },
             ranks: crate::ranks_of(&order),
-            labels: periods
+            labels: slots
                 .iter()
-                .map(|period| period.map(|period| label(precision, period)))
+                .map(|slot| match slot {
+                    Slot::Period(period) => Some(label(precision, *period)),
+                    _ => None,
+                })
                 .collect(),
-        })
+            outside: index.get(&Slot::Outside).copied(),
+        }
+    }
+
+    /// First of some rows whose cell is outside of the calendar.
+    pub fn first_outside(&self, rows: &[u32]) -> Option<u32> {
+        let code = self.outside?;
+        rows.iter()
+            .copied()
+            .find(|&row| self.dictionary.codes[row as usize] == code)
     }
 
     /// Label of the period of a row, `None` for NULL.
     pub fn label(&self, row: u32) -> Option<&str> {
-        self.labels[self.dictionary.codes[row as usize] as usize].as_deref()
+        self.code_label(self.dictionary.codes[row as usize])
+    }
+
+    /// Label of a code, `None` for NULL or for the cells outside of the calendar.
+    pub fn code_label(&self, code: u32) -> Option<&str> {
+        self.labels[code as usize].as_deref()
+    }
+
+    /// Is this the code of the cells outside of the calendar?
+    pub fn is_outside(&self, code: u32) -> bool {
+        self.outside == Some(code)
+    }
+
+    /// Labels of the periods in the order of time, NULL first, without the cells
+    /// outside of the calendar, which have no period to offer.
+    pub fn listed(&self) -> Vec<Option<&str>> {
+        let mut codes: Vec<u32> = (0..self.labels.len() as u32)
+            .filter(|&code| !self.is_outside(code))
+            .collect();
+        codes.sort_unstable_by_key(|&code| self.ranks[code as usize]);
+        codes.iter().map(|&code| self.code_label(code)).collect()
     }
 }
 
@@ -204,7 +320,7 @@ mod tests {
     use super::*;
 
     /// Level of cells at a precision.
-    fn level(cells: &[Option<&str>], precision: Precision) -> Result<DerivedLevel, u32> {
+    fn level(cells: &[Option<&str>], precision: Precision) -> DerivedLevel {
         let mut column = TextColumn::default();
         for &cell in cells {
             column.push(cell);
@@ -215,7 +331,7 @@ mod tests {
     /// Label of each cell at a precision.
     fn labels(cells: &[&str], precision: Precision) -> Vec<Option<String>> {
         let cells: Vec<_> = cells.iter().map(|&cell| Some(cell)).collect();
-        let level = level(&cells, precision).unwrap();
+        let level = level(&cells, precision);
         (0..cells.len() as u32)
             .map(|row| level.label(row).map(str::to_owned))
             .collect()
@@ -294,7 +410,7 @@ mod tests {
             for month in 1..=12 {
                 for day in 1..=days_in_month(year, month) {
                     let date = CellDate { year, month, day };
-                    let week = date.iso_week().unwrap();
+                    let week = date.iso_week();
                     let monday = (days_from_civil(year, month, day) + 3).rem_euclid(7) == 0;
                     if let Some(previous) = previous {
                         assert_eq!(week != previous, monday, "{date:?}");
@@ -314,7 +430,7 @@ mod tests {
             Some("2026-03-01T23:59:59+02:00"),
             Some("2026-01-15"),
         ];
-        let level = level(&cells, Precision::Month).unwrap();
+        let level = level(&cells, Precision::Month);
         assert_eq!(level.dictionary.codes, [0, 1, 2, 0, 3]);
         assert_eq!(level.dictionary.first_rows, [0, 1, 2, 4]);
         // NULL, 2025-12, 2026-01, 2026-03.
@@ -324,43 +440,21 @@ mod tests {
     }
 
     #[test]
-    fn a_date_without_a_day_of_the_calendar_keeps_its_fields_without_iso() {
-        for (date, quarter, month) in [
-            ("0000-00-00", "0000-T0", "0000-00"),
-            ("2026-03-00", "2026-T1", "2026-03"),
-            ("2026-00-15", "2026-T0", "2026-00"),
-            ("2026-02-30", "2026-T1", "2026-02"),
-        ] {
-            assert_eq!(single(date, Precision::Quarter).unwrap(), quarter);
-            assert_eq!(single(date, Precision::Month).unwrap(), month);
-            assert_eq!(single(date, Precision::Date).unwrap(), date);
-            assert_eq!(single(date, Precision::Year), None);
-            assert_eq!(single(date, Precision::Week), None);
-        }
+    fn the_first_and_the_last_year_of_the_calendar_are_read() {
+        assert_eq!(single("0001-01-01", Precision::Week).unwrap(), "0001-S01");
+        assert_eq!(single("9999-12-31", Precision::Month).unwrap(), "9999-12");
     }
 
     #[test]
-    fn a_date_without_a_week_falls_in_the_group_of_null() {
-        let cells = [Some("0000-00-00"), None, Some("2027-01-04")];
-        let level = level(&cells, Precision::Week).unwrap();
-        assert_eq!(level.dictionary.codes, [0, 0, 1]);
-    }
-
-    #[test]
-    fn the_year_zero_is_a_year_of_the_calendar() {
-        // 0000-01-01 was a Saturday, in the last week of the year -1.
-        assert_eq!(single("0000-01-01", Precision::Week).unwrap(), "-001-S52");
-        assert_eq!(single("0000-01-01", Precision::Month).unwrap(), "0000-01");
-    }
-
-    #[test]
-    fn a_year_beyond_9999_stays_a_date() {
-        assert_eq!(single("12345-06-07", Precision::Month).unwrap(), "12345-06");
-    }
-
-    #[test]
-    fn a_cell_without_a_date_gives_its_row() {
+    fn a_cell_outside_of_the_calendar_gives_its_row() {
         for cell in [
+            "0000-00-00",
+            "2026-03-00",
+            "2026-00-15",
+            "2026-02-30",
+            "2025-02-29",
+            "0000-01-01",
+            "12345-06-07",
             "infinity",
             "Nord",
             "",
@@ -378,12 +472,126 @@ mod tests {
             "+026-01-15",
             "99999999999-01-15",
         ] {
-            let cells = [Some("2026-01-15"), None, Some(cell)];
+            for precision in [
+                Precision::Year,
+                Precision::Quarter,
+                Precision::Month,
+                Precision::Week,
+                Precision::Date,
+            ] {
+                let cells = [Some("2026-01-15"), None, Some(cell)];
+                let level = level(&cells, precision);
+                assert_eq!(level.first_outside(&[0, 1, 2]), Some(2), "«{cell}»");
+            }
+        }
+    }
+
+    #[test]
+    fn only_the_rows_given_can_be_outside_of_the_calendar() {
+        let cells = [Some("0000-00-00"), Some("2026-01-15"), Some("2026-03-00")];
+        let level = level(&cells, Precision::Month);
+        assert_eq!(level.first_outside(&[1]), None);
+        assert_eq!(level.first_outside(&[1, 2, 0]), Some(2));
+    }
+
+    #[test]
+    fn a_cell_outside_of_the_calendar_groups_apart_from_null() {
+        let cells = [Some("2026-01-15"), Some("0000-00-00"), None, Some("x")];
+        let level = level(&cells, Precision::Month);
+        assert_eq!(level.dictionary.codes, [0, 1, 2, 1]);
+        // NULL, outside of the calendar, 2026-01.
+        assert_eq!(level.ranks, [2, 1, 0]);
+    }
+
+    #[test]
+    fn the_periods_are_listed_in_the_order_of_time_without_the_cells_outside() {
+        let cells = [
+            Some("2026-03-15"),
+            Some("0000-00-00"),
+            None,
+            Some("2026-01-15"),
+        ];
+        assert_eq!(
+            level(&cells, Precision::Month).listed(),
+            [None, Some("2026-01"), Some("2026-03")]
+        );
+    }
+
+    #[test]
+    fn a_date_an_instant_or_an_hour_compares_in_its_form() {
+        for (family, cell, expected) in [
+            (Family::Date, "2026-01-15", Some("2026-01-15")),
+            (Family::Date, "0000-00-00", None),
+            (Family::Date, "2026-02-30", None),
+            (Family::Date, "2026-01-15 10:00:00", None),
+            (Family::Date, "infinity", None),
+            (
+                Family::Datetime,
+                "2026-01-15 10:30:00",
+                Some("2026-01-15 10:30:00"),
+            ),
+            (
+                Family::Datetime,
+                "2026-01-15 10:30:00.500",
+                Some("2026-01-15 10:30:00.5"),
+            ),
+            (
+                Family::Datetime,
+                "2026-01-15 10:30:00.000",
+                Some("2026-01-15 10:30:00"),
+            ),
+            (Family::Datetime, "2026-01-15", None),
+            (Family::Datetime, "0000-00-00 00:00:00", None),
+            (Family::Datetime, "2026-01-15T10:30:00", None),
+            (Family::Datetime, "2026-01-15 10:30:00+01", None),
+            (Family::Time, "10:30:00", Some("10:30:00")),
+            (Family::Time, "10:30:00.10", Some("10:30:00.1")),
+            (Family::Time, "00:00:00", Some("00:00:00")),
+            (Family::Time, "23:59:59", Some("23:59:59")),
+            (Family::Time, "25:00:00", None),
+            (Family::Time, "-12:00:00", None),
+            (Family::Time, "100:00:00", None),
+            (Family::Time, "10:60:00", None),
+            (Family::Time, "10:30", None),
+            (Family::Time, "10:30:00.", None),
+            (Family::Time, "10:30:00.x", None),
+        ] {
+            assert_eq!(comparable(family, cell), expected, "{family:?} «{cell}»");
+        }
+    }
+
+    #[test]
+    fn a_label_has_the_form_of_its_precision() {
+        for (precision, text, expected) in [
+            (Precision::Year, "2026", true),
+            (Precision::Year, "0000", false),
+            (Precision::Year, "2026-01", false),
+            (Precision::Year, "26", false),
+            (Precision::Quarter, "2026-T1", true),
+            (Precision::Quarter, "2026-T5", false),
+            (Precision::Quarter, "2026-1", false),
+            (Precision::Month, "2026-12", true),
+            (Precision::Month, "2026-13", false),
+            (Precision::Month, "2026-1", false),
+            (Precision::Week, "2026-S53", true),
+            (Precision::Week, "2026-S54", false),
+            (Precision::Week, "2026-S00", false),
+            (Precision::Week, "2026-03", false),
+            (Precision::Date, "2026-01-15", true),
+            (Precision::Date, "2026-02-30", false),
+            (Precision::Date, "2026-01-15 10:00:00", false),
+        ] {
             assert_eq!(
-                level(&cells, Precision::Month).unwrap_err(),
-                2,
-                "«{cell}» is no date"
+                is_label(precision, text),
+                expected,
+                "{precision:?} «{text}»"
             );
         }
+    }
+
+    #[test]
+    fn a_column_of_dates_of_the_calendar_has_no_cell_outside() {
+        let cells = [Some("2026-01-15"), None];
+        assert_eq!(level(&cells, Precision::Month).first_outside(&[0, 1]), None);
     }
 }

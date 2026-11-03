@@ -1,72 +1,81 @@
 <!--
   Settings of the Pivoteur (`PivotPanel.vue`), in two columns: the columns
   of the result, with the mark of their type and a search by name above
-  them (F-10), then the zones Lignes, Colonnes and Mesures, stacked, which
-  scroll in their column when the panel is low (F-05).
+  them (F-10), then the zones Lignes, Colonnes, Mesures and Filtres, stacked,
+  which scroll in their column when the panel is low (F-05).
 
   A column enters a zone by dragging it there, or by the "+" menu of its
   line (F-11); the order in a zone sets the nesting, the first element
   being the outermost level (F-27). An element moves by dragging it, from
-  one zone to another too, a level to the other axis by its menu too;
-  released outside the zones, it leaves its zone (Escape cancels the drag).
+  one zone to another too, a level to the other axis by its menu too. It
+  leaves its zone by its menu ("Retirer"), or released outside the zones
+  (Escape cancels the drag).
   A column dropped into the measures gives its default aggregate
   (`defaultAggregate`, F-15); the menu of a measure changes it. The menu of a
   level of dates sets its precision, what it keeps of them (`precisionChoices`).
-  A column is a level once at most: placing it again on an axis moves it there.
+  A column can be placed several times, in a zone and on both axes: dropping it
+  from the list always adds an element, dragging an element moves it.
   An element takes a name by its menu ("Nommer…") or a double click on its label
   (F-17): Enter confirms, Escape cancels, an empty name gives back its
-  expression, which the tooltip of a named element recalls. The logic of
-  the zones is in `pivotConfig.ts`.
+  expression, which the tooltip of a named element recalls.
+
+  A column or a measure dropped into the filters, or a measure by its menu
+  ("Filtrer sur cette mesure"), gives a filter, whose settings open beside it
+  (`PivotFilterPanel.vue`, F-21, F-44); its menu opens them again ("Réglages…").
+  The logic of the zones is in `pivotConfig.ts`.
 -->
 <script setup lang="ts">
 import {
-  ArrowDownToLine,
   ArrowLeftRight,
-  ArrowUpToLine,
-  Asterisk,
-  Calendar,
-  Calendar1,
-  CalendarClock,
-  CalendarDays,
-  CalendarFold,
-  CalendarRange,
   Check,
   Columns3,
-  Divide,
   EllipsisVertical,
-  FingerprintPattern,
-  Hash,
+  Funnel,
   PenLine,
   Plus,
   Rows3,
   Search,
   Sigma,
-  SquareDivide,
-  SquareSigma,
+  SlidersHorizontal,
+  X,
 } from '@lucide/vue'
-import { type Component, computed, nextTick, onBeforeUnmount, ref, useTemplateRef } from 'vue'
+import {
+  type Component,
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  ref,
+  shallowRef,
+  useTemplateRef,
+} from 'vue'
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
+import type { Cell } from '@/api/querySession'
 
+import { AGGREGATES, PRECISION_ICONS } from './pivotChoices'
 import {
+  type DatePrecision,
   type PivotConfig,
+  type PivotFilter,
   type PivotZone,
-  type PrecisionLabel,
   type ZonePlace,
   addsNumbers,
   defaultAggregate,
   elementExpression,
   elementLabel,
+  isRefused,
   measureExpression,
   placeColumn,
   precisionChoices,
   removeElement,
   summable,
   withAggregate,
+  withFilter,
   withName,
   withPrecision,
 } from './pivotConfig'
 import type { PivotMeasure } from './pivotEngine'
+import PivotFilterPanel from './PivotFilterPanel.vue'
 import { dropPosition } from './resultGrid'
 import type { TypeMark } from './typeIcons'
 import type { MenuGroup, MenuItem } from './ui/menuItem'
@@ -93,6 +102,11 @@ const props = defineProps<{
    * Is each column part of a foreign key of its table?
    */
   foreignKeys: boolean[]
+  /**
+   * Reads the distinct values of a column, or the periods of a precision of its dates, for the
+   * list of a filter.
+   */
+  readValues: (column: number, precision: DatePrecision) => Promise<Cell[]>
 }>()
 
 /**
@@ -107,6 +121,7 @@ const ZONES: { zone: PivotZone; label: string; icon: Component }[] = [
   { zone: 'rows', label: 'Lignes', icon: Rows3 },
   { zone: 'columns', label: 'Colonnes', icon: Columns3 },
   { zone: 'measures', label: 'Mesures', icon: Sigma },
+  { zone: 'filters', label: 'Filtres', icon: Funnel },
 ]
 
 /**
@@ -138,9 +153,14 @@ interface ZoneElement {
   label: string
   /**
    * Expression: the name of the column of a level, the expression of a
-   * measure.
+   * measure, of a filter.
    */
   expression: string
+  /**
+   * Is the element in error (F-22): a filter whose value cannot compare with what it reads, after
+   * a change of its aggregate or of the type of its column.
+   */
+  invalid: boolean
 }
 
 /**
@@ -150,10 +170,16 @@ const elements = computed<Record<PivotZone, ZoneElement[]>>(() => {
   const shown = (zone: PivotZone) =>
     config.value[zone].map((element, index) => ({
       column: element.column,
-      label: elementLabel(config.value, { zone, index }, props.names),
-      expression: elementExpression(config.value, { zone, index }, props.names),
+      label: elementLabel(config.value, { zone, index }, props.names, props.types),
+      expression: elementExpression(config.value, { zone, index }, props.names, props.types),
+      invalid: 'condition' in element && isRefused(element, props.types),
     }))
-  return { rows: shown('rows'), columns: shown('columns'), measures: shown('measures') }
+  return {
+    rows: shown('rows'),
+    columns: shown('columns'),
+    measures: shown('measures'),
+    filters: shown('filters'),
+  }
 })
 
 /**
@@ -165,7 +191,11 @@ const elements = computed<Record<PivotZone, ZoneElement[]>>(() => {
  */
 function place(column: number, to: ZonePlace, from: ZonePlace | null): void {
   const aggregate = defaultAggregate(props.types[column], props.foreignKeys[column] ?? false)
-  config.value = placeColumn(config.value, column, aggregate, to, from)
+  const placed = placeColumn(config.value, column, aggregate, to, from, props.types)
+  config.value = placed
+  if (to.zone === 'filters' && from?.zone !== 'filters') {
+    pendingPanel = Math.min(to.index, placed.filters.length - 1)
+  }
 }
 
 /**
@@ -182,7 +212,7 @@ function addItems(column: number): MenuItem[] {
 }
 
 /**
- * Choices that name or move an element.
+ * Choices that set, name, move or remove an element, the settings of a filter first.
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
@@ -190,15 +220,30 @@ function addItems(column: number): MenuItem[] {
 function elementItems(zone: PivotZone, index: number): MenuItem[] {
   const column = elements.value[zone][index]!.column
   const from = { zone, index }
-  const items: MenuItem[] = [
-    {
-      label: 'Nommer…',
-      icon: PenLine,
-      // The field takes the focus once the menu has closed (`onMenuClosed`).
-      onSelect: () => startNaming(from),
-    },
-  ]
-  if (zone !== 'measures') {
+  const items: MenuItem[] = []
+  if (zone === 'filters') {
+    items.push({
+      label: 'Réglages…',
+      icon: SlidersHorizontal,
+      // They open beside the element once the menu has closed (`onMenuClosed`).
+      onSelect: () => (pendingPanel = index),
+    })
+  }
+  items.push({
+    label: 'Nommer…',
+    icon: PenLine,
+    // The field takes the focus once the menu has closed (`onMenuClosed`).
+    onSelect: () => startNaming(from),
+  })
+  if (zone === 'measures') {
+    items.push({
+      label: 'Filtrer sur cette mesure',
+      icon: Funnel,
+      onSelect: () =>
+        place(column, { zone: 'filters', index: elements.value.filters.length }, from),
+    })
+  }
+  if (zone === 'rows' || zone === 'columns') {
     const other = zone === 'rows' ? 'columns' : 'rows'
     items.push({
       label: other === 'rows' ? 'Passer en lignes' : 'Passer en colonnes',
@@ -206,34 +251,12 @@ function elementItems(zone: PivotZone, index: number): MenuItem[] {
       onSelect: () => place(column, { zone: other, index: elements.value[other].length }, from),
     })
   }
+  items.push({
+    label: 'Retirer',
+    icon: X,
+    onSelect: () => (config.value = removeElement(config.value, from)),
+  })
   return items
-}
-
-/**
- * Aggregates a measure can take, with their icon.
- */
-const AGGREGATES: { aggregate: PivotMeasure['aggregate']; icon: Component }[] = [
-  { aggregate: 'count_star', icon: Asterisk },
-  { aggregate: 'count', icon: Hash },
-  { aggregate: 'count_distinct', icon: FingerprintPattern },
-  { aggregate: 'sum', icon: Sigma },
-  { aggregate: 'sum_distinct', icon: SquareSigma },
-  { aggregate: 'avg', icon: Divide },
-  { aggregate: 'avg_distinct', icon: SquareDivide },
-  { aggregate: 'min', icon: ArrowDownToLine },
-  { aggregate: 'max', icon: ArrowUpToLine },
-]
-
-/**
- * Icon of each precision of a level.
- */
-const PRECISION_ICONS: Record<PrecisionLabel, Component> = {
-  Année: Calendar,
-  Trimestre: CalendarRange,
-  Mois: CalendarDays,
-  Semaine: CalendarFold,
-  Date: Calendar1,
-  'Date et heure': CalendarClock,
 }
 
 /**
@@ -255,8 +278,32 @@ function precisionItems(zone: 'rows' | 'columns', index: number): MenuItem[] {
 }
 
 /**
+ * Choices of the aggregate of a measure.
+ *
+ * @param measure Measure.
+ * @param choose Takes the aggregate chosen.
+ */
+function aggregateItems(
+  measure: PivotMeasure,
+  choose: (aggregate: PivotMeasure['aggregate']) => void,
+): MenuItem[] {
+  const numbers = summable(props.types[measure.column]?.family)
+  return AGGREGATES.map(({ aggregate, icon }) => {
+    const refused = addsNumbers(aggregate) && !numbers
+    return {
+      label: measureExpression({ aggregate, column: measure.column }, props.names),
+      icon: aggregate === measure.aggregate ? Check : icon,
+      disabled: refused,
+      hint: refused ? 'Demande une colonne de nombres' : undefined,
+      onSelect: () => choose(aggregate),
+    }
+  })
+}
+
+/**
  * Choices of the menu of an element: for a measure, its aggregate, for a
- * level of dates, its precision, then its name and its place.
+ * level of dates, its precision, then the settings of a filter, its name, its
+ * place and its removal.
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
@@ -265,22 +312,15 @@ function elementGroups(zone: PivotZone, index: number): MenuGroup[] {
   const groups: MenuGroup[] = []
   const measure = zone === 'measures' ? config.value.measures[index] : undefined
   if (measure !== undefined) {
-    const numbers = summable(props.types[measure.column]?.family)
     groups.push({
       label: 'Agrégat',
-      items: AGGREGATES.map(({ aggregate, icon }) => {
-        const refused = addsNumbers(aggregate) && !numbers
-        return {
-          label: measureExpression({ aggregate, column: measure.column }, props.names),
-          icon: aggregate === measure.aggregate ? Check : icon,
-          disabled: refused,
-          hint: refused ? 'Demande une colonne de nombres' : undefined,
-          onSelect: () => (config.value = withAggregate(config.value, index, aggregate)),
-        }
-      }),
+      items: aggregateItems(
+        measure,
+        (aggregate) => (config.value = withAggregate(config.value, index, aggregate)),
+      ),
     })
   }
-  if (zone !== 'measures') {
+  if (zone === 'rows' || zone === 'columns') {
     const items = precisionItems(zone, index)
     if (items.length > 0) {
       groups.push({ label: 'Précision', items })
@@ -326,6 +366,53 @@ function startNaming(place: ZonePlace): void {
 }
 
 /**
+ * Position of the filter whose settings are to open, `null` without one.
+ */
+let pendingPanel: number | null = null
+
+/**
+ * Filter whose settings are open, with the element they open beside.
+ */
+const panel = shallowRef<{ index: number; anchor: HTMLElement } | null>(null)
+
+/**
+ * Filter whose settings are open.
+ */
+const panelFilter = computed(() => panel.value && config.value.filters[panel.value.index])
+
+/**
+ * Changes the filter whose settings are open.
+ *
+ * @param filter New filter.
+ */
+function changePanelFilter(filter: PivotFilter): void {
+  if (panel.value !== null) {
+    config.value = withFilter(config.value, panel.value.index, filter)
+  }
+}
+
+/**
+ * Shows what the last action opens, once its element is on the page: the field being named, or the
+ * settings of a filter.
+ */
+async function showPending(): Promise<void> {
+  await nextTick()
+  if (naming.value !== null) {
+    focusName()
+    return
+  }
+  const index = pendingPanel
+  pendingPanel = null
+  const section = zoneSections.value?.find((zone) => zone.dataset.zone === 'filters')
+  const anchor = index === null ? undefined : section?.querySelectorAll('[data-element]')[index]
+  if (index !== null && anchor instanceof HTMLElement) {
+    // The zones scroll in their column: the panel opens beside an element in sight.
+    anchor.scrollIntoView({ block: 'nearest' })
+    panel.value = { index, anchor }
+  }
+}
+
+/**
  * Focuses the field of the name, its text selected.
  */
 function focusName(): void {
@@ -335,41 +422,50 @@ function focusName(): void {
 }
 
 /**
- * Double click on the label of an element: names it at once.
+ * Double click on the label of an element, or the choice of the settings of a
+ * filter: names it at once.
  *
  * @param place Place of the element.
  */
-async function nameOnDoubleClick(place: ZonePlace): Promise<void> {
+async function nameAtOnce(place: ZonePlace): Promise<void> {
+  panel.value = null
   startNaming(place)
   await nextTick()
   focusName()
 }
 
 /**
- * Closing of the menu of an element: when "Nommer…" was chosen, the field
- * of the name takes the focus, which the menu would give back to its
- * button. The menu sends the event while it is removed, before the field
- * is reachable: the focus waits for the end of the update.
+ * Closing of a menu: when a choice opens a field or settings, it takes the focus,
+ * which the menu would give back to its button. The menu sends the event while
+ * it is removed, before the field is reachable: the focus waits for the end of
+ * the update.
  *
  * @param event Return of the focus to the button.
  */
 async function onMenuClosed(event: Event): Promise<void> {
-  if (naming.value !== null) {
+  if (naming.value !== null || pendingPanel !== null) {
     event.preventDefault()
-    await nextTick()
-    focusName()
+    await showPending()
   }
 }
 
 /**
- * Confirms the name typed.
+ * Closes the field being typed, without changing anything.
+ */
+function cancelName(): void {
+  naming.value = null
+}
+
+/**
+ * Confirms the name being typed.
  */
 function commitName(): void {
   const place = naming.value
-  if (place !== null) {
-    naming.value = null
-    config.value = withName(config.value, place, draft.value, props.names)
+  if (place === null) {
+    return
   }
+  naming.value = null
+  config.value = withName(config.value, place, draft.value, props.names, props.types)
 }
 
 /**
@@ -401,11 +497,11 @@ function overZone(event: DragEvent): boolean {
 }
 
 /**
- * Passage of an element of a zone over the rest of the page: the browser
- * is told it can be dropped there, and what lies below does not hear of
- * it (the SQL editor would take its text).
+ * Entry or passage of an element of a zone over the rest of the page: the
+ * browser is told it can be dropped there, and what lies below does not hear
+ * of it (the SQL editor would take its text).
  *
- * @param event Passage over the page.
+ * @param event Entry in an element of the page, or passage over it.
  */
 function onDragOverPage(event: DragEvent): void {
   if (!overZone(event)) {
@@ -439,6 +535,7 @@ function onDropOnPage(event: DragEvent): void {
  * Stops following the drag over the page.
  */
 function stopFollowingPage(): void {
+  document.removeEventListener('dragenter', onDragOverPage, { capture: true })
   document.removeEventListener('dragover', onDragOverPage, { capture: true })
   document.removeEventListener('drop', onDropOnPage, { capture: true })
 }
@@ -459,6 +556,7 @@ function onDragStart(event: DragEvent, column: number, from: ZonePlace | null): 
     event.dataTransfer.setData('text/plain', props.names[column] ?? '')
   }
   if (from !== null) {
+    document.addEventListener('dragenter', onDragOverPage, { capture: true })
     document.addEventListener('dragover', onDragOverPage, { capture: true })
     document.addEventListener('drop', onDropOnPage, { capture: true })
   }
@@ -490,9 +588,12 @@ function placeUnder(event: DragEvent, zone: PivotZone): ZonePlace {
 }
 
 /**
- * Follows the dragged element over a zone, with the insertion marker.
+ * Accepts the dragged element over a zone, and follows it with the insertion
+ * marker. Both events ask for it: when the pointer changes of element, the
+ * browser sends only `dragenter`, and refused, it shows the forbidden cursor
+ * until the next `dragover`.
  *
- * @param event Passage over the zone.
+ * @param event Entry in the zone or in one of its elements, or passage over it.
  * @param zone Zone.
  */
 function onDragOver(event: DragEvent, zone: PivotZone): void {
@@ -527,6 +628,7 @@ function onDrop(event: DragEvent, zone: PivotZone): void {
   if (dragged.value !== null) {
     event.preventDefault()
     place(dragged.value.column, placeUnder(event, zone), dragged.value.from)
+    void showPending()
   }
   onDragEnd()
 }
@@ -576,7 +678,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
           <span class="min-w-0 flex-1 truncate" v-tooltip="types[column]?.name">
             {{ names[column] }}
           </span>
-          <ui-dropdown-menu :items="addItems(column)">
+          <ui-dropdown-menu :items="addItems(column)" @close-auto-focus="onMenuClosed">
             <ui-button
               :icon="Plus"
               variant="ghost"
@@ -590,13 +692,16 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
       </ul>
     </div>
 
-    <div class="flex min-h-0 w-64 shrink-0 flex-col gap-3 overflow-y-auto">
+    <!-- The room between two zones is the padding of the upper one: a drag never leaves them there. -->
+    <div class="flex min-h-0 w-64 shrink-0 flex-col overflow-y-auto">
       <section
         v-for="{ zone, label, icon } in ZONES"
         ref="zoneSection"
         :key="zone"
-        class="flex flex-col gap-1"
+        class="flex flex-col gap-1 not-last:pb-3"
         :aria-label="label"
+        :data-zone="zone"
+        @dragenter="onDragOver($event, zone)"
         @dragover="onDragOver($event, zone)"
         @dragleave="onDragLeave"
         @drop="onDrop($event, zone)"
@@ -611,7 +716,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
             :key="`${zone}-${index}`"
             data-element
             class="pivot-line pivot-element group"
-            :class="markerClass(zone, index)"
+            :class="[markerClass(zone, index), { invalid: element.invalid }]"
             :draggable="!isNaming(zone, index)"
             @dragstart="onDragStart($event, element.column, { zone, index })"
             @dragend="onDragEnd"
@@ -633,14 +738,18 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
               @blur="commitName"
               @keydown.stop
               @keydown.enter.prevent="commitName"
-              @keydown.escape.prevent="naming = null"
+              @keydown.escape.prevent="cancelName"
               @mousedown.stop
             />
             <span
               v-else
               class="min-w-0 flex-1 truncate"
-              v-tooltip="element.label === element.expression ? undefined : element.expression"
-              @dblclick="nameOnDoubleClick({ zone, index })"
+              v-tooltip="
+                zone === 'filters' || element.label !== element.expression
+                  ? element.expression
+                  : undefined
+              "
+              @dblclick="nameAtOnce({ zone, index })"
             >
               {{ element.label }}
             </span>
@@ -659,6 +768,20 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
         </ul>
       </section>
     </div>
+    <pivot-filter-panel
+      v-if="panel && panelFilter"
+      :key="panel.index"
+      :anchor="panel.anchor"
+      :filter="panelFilter"
+      :index="panel.index"
+      :config="config"
+      :names="names"
+      :types="types"
+      :read-values="readValues"
+      @change="changePanelFilter"
+      @name="nameAtOnce({ zone: 'filters', index: panel?.index ?? 0 })"
+      @close="panel = null"
+    />
   </div>
 </template>
 
@@ -706,6 +829,10 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
 
   &.drop-after {
     box-shadow: inset 0 calc(-1 * var(--marker-width)) 0 var(--color-primary);
+  }
+
+  &.invalid {
+    border-color: var(--color-error);
   }
 }
 

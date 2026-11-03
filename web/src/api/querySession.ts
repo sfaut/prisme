@@ -186,7 +186,7 @@ export const NO_FILTER: Readonly<UserFilter> = Object.freeze({ text: '', column:
  */
 export const NO_PIVOT: Readonly<TabPivot> = Object.freeze({
   fields: [],
-  config: { rows: [], columns: [], measures: [] },
+  config: { rows: [], columns: [], measures: [], filters: [] },
 })
 
 /**

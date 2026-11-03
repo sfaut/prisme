@@ -25,6 +25,7 @@
 //! The behaviours of the engines these rules follow are measured in
 //! `docs/SQL-COMPARISON.md`, section 3.6 (cases `agg.*`).
 
+use std::cmp::Ordering;
 use std::hash::Hash;
 
 use prisme_store::{Approx, Dictionary, Exact, FxMap, Store};
@@ -140,6 +141,34 @@ impl Value {
             Value::Exact(value, scale) => Some(prisme_store::format_exact(value, scale)),
             Value::Float(value) => Some(prisme_store::format_float(value)),
             Value::Cell(column, row) => store.column(column)?.get(row as usize).map(str::to_owned),
+        }
+    }
+}
+
+/// What a sort compares of a value of a measure.
+#[derive(Debug, Clone, Copy)]
+pub enum SortKey {
+    /// Empty cell or NULL, smaller than any value (D22).
+    Missing,
+    /// Count, exact number, or rank of a cell: the values of a measure share
+    /// their scale.
+    Exact(i128),
+    /// Float, a `NaN` after the others.
+    Float(f64),
+}
+
+impl SortKey {
+    /// Compares two keys of a measure.
+    pub fn compare(self, other: Self) -> Ordering {
+        match (self, other) {
+            (SortKey::Missing, SortKey::Missing) => Ordering::Equal,
+            (SortKey::Missing, _) => Ordering::Less,
+            (_, SortKey::Missing) => Ordering::Greater,
+            (SortKey::Exact(a), SortKey::Exact(b)) => a.cmp(&b),
+            (SortKey::Float(a), SortKey::Float(b)) => a.total_cmp(&b),
+            // A measure gives a single kind of number: any order is total.
+            (SortKey::Exact(_), SortKey::Float(_)) => Ordering::Less,
+            (SortKey::Float(_), SortKey::Exact(_)) => Ordering::Greater,
         }
     }
 }

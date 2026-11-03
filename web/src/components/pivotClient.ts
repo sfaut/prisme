@@ -10,16 +10,22 @@
 
 import { toRaw } from 'vue'
 
+import type { DatePrecision } from '@/api/generated/DatePrecision'
 import type { TypeFamily } from '@/api/generated/TypeFamily'
-import type { QueryResult } from '@/api/querySession'
+import type { Cell, QueryResult } from '@/api/querySession'
 
 import {
   type PivotAnswer,
   type PivotFailure,
+  type PivotLayout,
+  type PivotOrder,
   type PivotRequest,
   type PivotRequestMessage,
   type PivotShape,
+  type PivotValueTarget,
   type PivotWindow,
+  FIRST_LAYOUT,
+  LABEL_ORDER,
   PivotError,
 } from './pivotEngine'
 
@@ -58,6 +64,11 @@ export interface PivotTable {
    * Shape of the table.
    */
   shape: PivotShape
+  /**
+   * Position in the table of each column named for the computation, `null` for a column it
+   * does not show.
+   */
+  positions: (number | null)[]
   /**
    * Duration of the computation in the Worker, in milliseconds.
    */
@@ -227,19 +238,29 @@ export class PivotClient {
   }
 
   /**
-   * Computes a table, once the copy is over.
+   * Computes a table, once the copy is over, or lays it out again when only its order or its layout
+   * changes.
    *
    * @param request Table asked.
+   * @param order Order of its lines and of its columns.
+   * @param layout Form of its lines and totals shown.
+   * @param targets Columns of values named by their values, whose positions the table gives.
    * @throws {PivotError} If the engine refuses it, or refused the copy.
    */
-  async compute(request: PivotRequest): Promise<PivotTable> {
+  async compute(
+    request: PivotRequest,
+    order: PivotOrder = LABEL_ORDER,
+    layout: PivotLayout = FIRST_LAYOUT,
+    targets: PivotValueTarget[] = [],
+  ): Promise<PivotTable> {
     await this.loaded
     const id = this.nextId++
-    const answer = await this.ask({ type: 'compute', id, request })
+    const answer = await this.ask({ type: 'compute', id, request, order, layout, targets })
     if (answer.type !== 'table') {
       throw new Error(`Pivot client: unexpected answer ${answer.type}`)
     }
-    return { id, shape: answer.shape, durationMs: answer.durationMs }
+    const { shape, positions, durationMs } = answer
+    return { id, shape, positions, durationMs }
   }
 
   /**
@@ -261,6 +282,23 @@ export class PivotClient {
       throw new Error(`Pivot client: unexpected answer ${answer.type}`)
     }
     return answer.window
+  }
+
+  /**
+   * Reads the distinct values of a column, in the order of the grid, or the periods of a precision
+   * of its dates, in the order of time.
+   *
+   * @param column Index of the column.
+   * @param precision What the column keeps of its dates.
+   * @throws {PivotError} If the engine refuses it, or refused the copy.
+   */
+  async values(column: number, precision: DatePrecision = 'none'): Promise<Cell[]> {
+    await this.loaded
+    const answer = await this.ask({ type: 'values', id: this.nextId++, column, precision })
+    if (answer.type !== 'values') {
+      throw new Error(`Pivot client: unexpected answer ${answer.type}`)
+    }
+    return answer.values
   }
 
   /**

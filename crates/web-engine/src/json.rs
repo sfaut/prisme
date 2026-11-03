@@ -1,6 +1,6 @@
 //! JSON answers of the module: the shape of a computed table, a window of
-//! it, the distinct values of a column, the errors. Written by hand: the
-//! module depends on the engine alone.
+//! it, positions of its columns, the distinct values of a column, the
+//! errors. Written by hand: the module depends on the engine alone.
 
 use std::fmt::Write as _;
 
@@ -71,11 +71,31 @@ pub fn shape(json: &mut String, table: &Table) {
     );
 }
 
+/// Writes positions of columns of values, `null` for a column the table does
+/// not show.
+pub fn positions(json: &mut String, positions: &[Option<usize>]) {
+    json.push('[');
+    for (index, position) in positions.iter().enumerate() {
+        if index > 0 {
+            json.push(',');
+        }
+        match position {
+            Some(position) => {
+                let _ = write!(json, "{position}");
+            }
+            None => json.push_str("null"),
+        }
+    }
+    json.push(']');
+}
+
 /// Writes a window of a table: the lines from `lines.start` to `lines.end`,
 /// the columns of values from `columns.start` to `columns.end`, both bounded
 /// by the table.
 ///
-/// - `lines`: `{"depth", "label"}` of each line, depth 0 for the grand total;
+/// - `lines`: `{"depth", "label", "path", "shared"}` of each line, depth 0 for
+///   the grand total, `path` holding the value of each of its levels, `shared`
+///   the number of levels it shares with the previous line;
 /// - `columns`: `{"node", "path", "total", "measure"}` of each column, `path`
 ///   holding `[node, value]` per level;
 /// - `cells`: one array per line, a value as a string, `null` for NULL,
@@ -97,7 +117,11 @@ pub fn window(
             Label::Value(value) => cell(json, value),
             Label::Total => json.push_str("null"),
         }
-        json.push('}');
+        json.push_str(r#","path":"#);
+        array(json, table.line_path(engine, index), |json, value| {
+            cell(json, value)
+        });
+        let _ = write!(json, r#","shared":{}}}"#, line.shared);
     });
     json.push_str(r#","columns":"#);
     array(json, columns.clone(), |json, index| {
@@ -149,6 +173,15 @@ pub fn error(json: &mut String, error: &Error) {
             write!(json, r#"{{"kind":"{kind}","column":{column},"row":{row}}}"#)
         }
         Error::Overflow { measure } => write!(json, r#"{{"kind":"overflow","measure":{measure}}}"#),
+        Error::FilterNotNumeric { filter } => {
+            write!(json, r#"{{"kind":"filter_not_numeric","filter":{filter}}}"#)
+        }
+        Error::FilterOverflow { filter } => {
+            write!(json, r#"{{"kind":"filter_overflow","filter":{filter}}}"#)
+        }
+        Error::FilterOperand { filter } => {
+            write!(json, r#"{{"kind":"filter_operand","filter":{filter}}}"#)
+        }
         Error::InvalidDate { column, row } => {
             write!(
                 json,
@@ -182,7 +215,29 @@ mod tests {
     }
 
     #[test]
-    fn a_cell_without_a_date_gives_its_column_and_its_row() {
+    fn the_errors_of_a_filter_give_its_index() {
+        for (refusal, expected) in [
+            (
+                Error::FilterNotNumeric { filter: 1 },
+                r#"{"error":{"kind":"filter_not_numeric","filter":1}}"#,
+            ),
+            (
+                Error::FilterOverflow { filter: 2 },
+                r#"{"error":{"kind":"filter_overflow","filter":2}}"#,
+            ),
+            (
+                Error::FilterOperand { filter: 3 },
+                r#"{"error":{"kind":"filter_operand","filter":3}}"#,
+            ),
+        ] {
+            let mut json = String::new();
+            error(&mut json, &refusal);
+            assert_eq!(json, expected);
+        }
+    }
+
+    #[test]
+    fn a_cell_outside_of_the_calendar_gives_its_column_and_its_row() {
         let mut json = String::new();
         error(&mut json, &Error::InvalidDate { column: 2, row: 7 });
         assert_eq!(

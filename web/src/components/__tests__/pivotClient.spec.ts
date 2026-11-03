@@ -12,6 +12,8 @@ import {
   type PivotRequestLevel,
   type PivotRequestMessage,
   type WorkerState,
+  FIRST_LAYOUT,
+  LABEL_ORDER,
   PivotEngine,
   PivotError,
   answerMessage,
@@ -108,6 +110,31 @@ function level(column: number): PivotRequestLevel {
 }
 
 describe('PivotClient', () => {
+  it('computes a table in a layout', async () => {
+    const types = [{ family: 'text' as const, name: 'VARCHAR(10)' }]
+    const client = new PivotClient(new PageWorker(), result([['a'], ['b']], ['x'], types))
+    const request = {
+      rows: [level(0)],
+      columns: [],
+      measures: [{ aggregate: 'count_star' as const, column: 0 }],
+      filters: [],
+    }
+    const first = await client.compute(request)
+    expect(first.shape.lines).toBe(3)
+    expect(first.positions).toEqual([])
+    const table = await client.compute(
+      request,
+      LABEL_ORDER,
+      { ...FIRST_LAYOUT, rows: { grandTotal: false, subtotals: [] } },
+      [
+        { path: [], measure: 0 },
+        { path: [], measure: 1 },
+      ],
+    )
+    expect(table.shape.lines).toBe(2)
+    expect(table.positions).toEqual([0, null])
+  })
+
   it('copies the rows in blocks, then computes and reads a table', async () => {
     const count = BLOCK_ROWS * 2 + 1
     const rows: Cell[][] = Array.from({ length: count }, (_, row) => [
@@ -126,6 +153,7 @@ describe('PivotClient', () => {
       rows: [level(0)],
       columns: [],
       measures: [{ aggregate: 'sum', column: 1 }],
+      filters: [],
     })
     expect(table.shape).toMatchObject({ lines: 3, columns: 1, groups: 2, rows: count })
     expect(table.durationMs).toBeGreaterThanOrEqual(0)
@@ -143,14 +171,20 @@ describe('PivotClient', () => {
       rows: [],
       columns: [],
       measures: [{ aggregate: 'count_star', column: 0 }],
+      filters: [],
     })
     expect(table.shape.rows).toBe(BLOCK_ROWS * 3)
   })
 
   it('refuses a window of a table replaced since', async () => {
     const client = new PivotClient(new PageWorker(), result([['a'], ['b']], ['x']))
-    const first = await client.compute({ rows: [level(0)], columns: [], measures: [] })
-    const second = await client.compute({ rows: [], columns: [level(0)], measures: [] })
+    const first = await client.compute({ rows: [level(0)], columns: [], measures: [], filters: [] })
+    const second = await client.compute({
+      rows: [],
+      columns: [level(0)],
+      measures: [],
+      filters: [],
+    })
     await expect(client.window(first.id, [0, 1], [0, 1])).rejects.toEqual(
       new PivotError({ kind: 'stale' }),
     )
@@ -161,7 +195,12 @@ describe('PivotClient', () => {
     const client = new PivotClient(new PageWorker(), result([['1'], ['2']], ['n']))
     await client.loaded
     await expect(
-      client.compute({ rows: [], columns: [], measures: [{ aggregate: 'sum', column: 0 }] }),
+      client.compute({
+        rows: [],
+        columns: [],
+        measures: [{ aggregate: 'sum', column: 0 }],
+        filters: [],
+      }),
     ).rejects.toEqual(new PivotError({ kind: 'not_numeric', measure: 0 }))
   })
 
@@ -173,15 +212,21 @@ describe('PivotClient', () => {
       rows: [level(0)],
       columns: [],
       measures: [{ aggregate: 'count_star', column: 0 }],
+      filters: [],
     })
     expect(table.shape.rows).toBe(2)
+  })
+
+  it('reads the distinct values of a column, once the copy is over', async () => {
+    const client = new PivotClient(new PageWorker(), result([['b'], [null], ['a']], ['x']))
+    await expect(client.values(0)).resolves.toEqual([null, 'a', 'b'])
   })
 
   it('refuses the answers still awaited once closed', async () => {
     const worker = new PageWorker()
     const client = new PivotClient(worker, result([['a']], ['x']))
     await client.loaded
-    const computing = client.compute({ rows: [], columns: [], measures: [] })
+    const computing = client.compute({ rows: [], columns: [], measures: [], filters: [] })
     client.close()
     expect(worker.terminated).toBe(true)
     await expect(computing).rejects.toThrowError('Pivot client closed')

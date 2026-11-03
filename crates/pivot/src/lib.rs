@@ -7,13 +7,18 @@
 //! result, its value as it is or what a precision keeps of its dates (`dates`);
 //! the measures are `COUNT(*)`, `COUNT(col)`, `SUM(col)`, `AVG(col)`,
 //! `MIN(col)` and `MAX(col)`, in ANSI SQL, and `COUNT`, `SUM` and `AVG` of
-//! `DISTINCT col`. The dialect of the Pivoteur, with its expressions, comes with
-//! the next slices.
+//! `DISTINCT col`. The lines and the columns follow their labels or the values
+//! of a measure (`Order`), the lines take a form, and each axis shows the totals
+//! it is given (`Layout`). Filters keep rows, by a list of values or a condition
+//! on a column, at a precision of its dates, or on a measure at a level
+//! (`filters`). The dialect of the Pivoteur, with its expressions, comes with the
+//! next slices.
 //!
 //! The crate does not depend on its target: its tests run natively, and the
 //! Worker of the page runs it compiled to WebAssembly (`crates/web-engine`).
 
 mod dates;
+mod filters;
 mod groups;
 mod measures;
 mod table;
@@ -25,19 +30,35 @@ use prisme_store::{Approx, Dictionary, Exact, NumberError, Store};
 
 use crate::dates::DerivedLevel;
 pub use crate::dates::Precision;
+pub use crate::filters::{Comparison, Filter, Test};
 pub use crate::measures::Value;
-use crate::measures::{Extreme, Input};
+use crate::measures::{Extreme, Input, SortKey};
 pub use crate::table::{Header, Label, Line, Table};
 
-/// Family of the type of a column, as far as the measures need it.
+/// Family of the type of a column, as far as the measures and the filters need
+/// it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Family {
     /// Exact numbers: the `integer` and `decimal` families.
     Exact,
     /// Floats: the `float` family (`DOUBLE`).
     Float,
-    /// Any other family, which `SUM` and `AVG` refuse.
+    /// Dates: the `date` family, which a filter compares in the order of time.
+    Date,
+    /// Instants: the `datetime` family, which a filter compares in the order of
+    /// time.
+    Datetime,
+    /// Hours: the `time` family, which a filter compares in the order of time.
+    Time,
+    /// Any other family, which a filter compares by code points.
     Other,
+}
+
+impl Family {
+    /// Does the column hold numbers, which `SUM` and `AVG` add up?
+    fn is_number(self) -> bool {
+        matches!(self, Family::Exact | Family::Float)
+    }
 }
 
 /// Measure of a table.
@@ -99,6 +120,105 @@ pub struct Request {
     pub columns: Vec<Level>,
     /// Measures, in the order of their zone.
     pub measures: Vec<Measure>,
+    /// Filters, which combine by `AND`.
+    pub filters: Vec<Filter>,
+}
+
+/// Order of the lines and of the columns of a table (C-11, C-13). A sort
+/// changes its layout alone, its values staying as they are.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Order {
+    /// Order of the nodes of the rows, hence of the lines.
+    pub rows: AxisOrder,
+    /// Order of the nodes of the columns.
+    pub columns: AxisOrder,
+}
+
+/// Order of the nodes of an axis, among those of one parent: a sort keeps the
+/// hierarchy, and a total stays in its place.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AxisOrder {
+    /// Is each level in descending order, the outermost first? A level left
+    /// out is ascending. The labels order the nodes, or those a value ties.
+    pub descending: Vec<bool>,
+    /// Values that rank the nodes before their labels.
+    pub values: Option<ValueOrder>,
+}
+
+/// Layout of a table: the form of its lines and the totals shown on each axis.
+/// A change lays the same nodes out again, without computing anything: each
+/// total stays computed, and can still rank the nodes (`Order`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Layout {
+    /// Form of the lines.
+    pub form: Form,
+    /// Totals of the rows.
+    pub rows: Totals,
+    /// Totals of the columns.
+    pub columns: Totals,
+}
+
+/// Form of the lines of a table. The columns have none: their headers stack up.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Form {
+    /// One column of labels, indented (C-07): a group has a line of its own,
+    /// above its members, with its subtotal.
+    #[default]
+    Compact,
+    /// One column of labels per level: a group has a line of its own, above its
+    /// members, with its subtotal.
+    Outline,
+    /// One column of labels per level: a group starts on the line of its first
+    /// member, and its subtotal has a line of its own, below its members.
+    Tabular,
+}
+
+/// Totals shown on an axis.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Totals {
+    /// Is the grand total shown?
+    pub grand_total: bool,
+    /// Is the subtotal of each level shown, the outermost first? A level left
+    /// out shows it, and the last level has none.
+    pub subtotals: Vec<bool>,
+}
+
+impl Default for Totals {
+    /// Every total, as `GROUP BY ROLLUP`.
+    fn default() -> Self {
+        Totals {
+            grand_total: true,
+            subtotals: Vec::new(),
+        }
+    }
+}
+
+impl Totals {
+    /// Are the values of a node of depth `depth` shown, on an axis of `levels`
+    /// levels? The only node of an axis without levels holds all its values: it
+    /// stays whatever the setting.
+    pub(crate) fn show(&self, depth: usize, levels: usize) -> bool {
+        match depth {
+            0 => self.grand_total || levels == 0,
+            depth if depth < levels => self.subtotals.get(depth - 1) != Some(&false),
+            _ => true,
+        }
+    }
+}
+
+/// Values of a node of the other axis, which rank the nodes of an axis: its
+/// column of values for the lines, its line for the columns. An empty cell
+/// comes with NULL, first in ascending order (D22). A node that the table no
+/// longer holds, the filter having left it out, ranks nothing.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValueOrder {
+    /// Values of the levels of the node, the outermost first, `None` for NULL.
+    /// A shorter path reads a subtotal, an empty one the grand total.
+    pub path: Vec<Option<String>>,
+    /// Measure, by its index.
+    pub measure: usize,
+    /// Is the order descending?
+    pub descending: bool,
 }
 
 /// Error of the engine. A computation that fails gives no table: its values
@@ -128,7 +248,23 @@ pub enum Error {
         /// Measure, by its index.
         measure: usize,
     },
-    /// A cell of a level with a precision holds no date.
+    /// Filter `filter` adds up a column that does not hold numbers.
+    FilterNotNumeric {
+        /// Filter, by its index.
+        filter: usize,
+    },
+    /// A value of the measure of filter `filter` goes beyond 128 bits.
+    FilterOverflow {
+        /// Filter, by its index.
+        filter: usize,
+    },
+    /// An operand of filter `filter` cannot compare with its values.
+    FilterOperand {
+        /// Filter, by its index.
+        filter: usize,
+    },
+    /// A cell that a precision or a comparison reads, in a row taken into
+    /// account, is outside of the calendar, or of the day for an hour.
     InvalidDate {
         /// Column of the cell.
         column: usize,
@@ -150,8 +286,20 @@ impl fmt::Display for Error {
             Error::Overflow { measure } => {
                 write!(formatter, "measure {measure}: value beyond 128 bits")
             }
+            Error::FilterNotNumeric { filter } => {
+                write!(formatter, "filter {filter}: column without numbers")
+            }
+            Error::FilterOverflow { filter } => {
+                write!(formatter, "filter {filter}: value beyond 128 bits")
+            }
+            Error::FilterOperand { filter } => {
+                write!(formatter, "filter {filter}: operand not comparable")
+            }
             Error::InvalidDate { column, row } => {
-                write!(formatter, "column {column}, row {row}: no date")
+                write!(
+                    formatter,
+                    "column {column}, row {row}: outside of the calendar"
+                )
             }
         }
     }
@@ -193,9 +341,8 @@ pub struct Engine {
     /// Rank of each value of each column, by code, as `MIN` and `MAX` compare
     /// them.
     value_ranks: Vec<OnceCell<Vec<u32>>>,
-    /// Levels of each column at each precision, or the row of the first cell
-    /// that holds no date.
-    derived: Vec<[OnceCell<Result<DerivedLevel, u32>>; Precision::COUNT]>,
+    /// Levels of each column at each precision.
+    derived: Vec<[OnceCell<DerivedLevel>; Precision::COUNT]>,
     /// Rows kept by the filter of the grid, in their order; `None` for all.
     kept: Option<Vec<u32>>,
 }
@@ -251,6 +398,16 @@ impl Engine {
             .collect())
     }
 
+    /// Distinct values of a level, which the list of a filter offers: those of
+    /// `distinct`, or the labels of its periods in the order of time, NULL first,
+    /// without the cells outside of the calendar.
+    pub fn distinct_at(&self, level: Level) -> Result<Vec<Option<&str>>, Error> {
+        match level.precision {
+            Some(precision) => Ok(self.derived(level.column, precision)?.listed()),
+            None => self.distinct(level.column),
+        }
+    }
+
     /// Sets the rank of each distinct value of column `column`, by code, in
     /// the order of `distinct`.
     pub fn set_ranks(&mut self, column: usize, ranks: Vec<u32>) -> Result<(), Error> {
@@ -288,9 +445,10 @@ impl Engine {
     fn value_ranks(&self, measure: usize, column: usize) -> Result<&[u32], Error> {
         let dictionary = self.dictionary(column)?;
         let cells = self.store.column(column).expect("column of the dictionary");
-        let numbers = match self.families[column] {
-            Family::Other => None,
-            _ => Some(self.numbers(measure, column)?),
+        let numbers = if self.families[column].is_number() {
+            Some(self.numbers(measure, column)?)
+        } else {
+            None
         };
         Ok(self.value_ranks[column].get_or_init(|| {
             let row = |code: u32| dictionary.first_rows[code as usize] as usize;
@@ -313,10 +471,21 @@ impl Engine {
     fn derived(&self, column: usize, precision: Precision) -> Result<&DerivedLevel, Error> {
         let dictionary = self.dictionary(column)?;
         let cells = self.store.column(column).expect("column of the dictionary");
-        self.derived[column][precision as usize]
-            .get_or_init(|| DerivedLevel::of(cells, dictionary, precision))
-            .as_ref()
-            .map_err(|&row| Error::InvalidDate { column, row })
+        Ok(self.derived[column][precision as usize]
+            .get_or_init(|| DerivedLevel::of(cells, dictionary, precision)))
+    }
+
+    /// Stops on the first selected row whose cell a precision of these levels
+    /// cannot read.
+    fn check_dates(&self, levels: &[Level], selection: &[u32]) -> Result<(), Error> {
+        for &Level { column, precision } in levels {
+            if let Some(precision) = precision
+                && let Some(row) = self.derived(column, precision)?.first_outside(selection)
+            {
+                return Err(Error::InvalidDate { column, row });
+            }
+        }
+        Ok(())
     }
 
     /// Code of each row and rank of each code of some levels.
@@ -372,7 +541,7 @@ impl Engine {
             .column(column)
             .ok_or(Error::UnknownColumn(column))?;
         let family = self.families[column];
-        if family == Family::Other {
+        if !family.is_number() {
             return Err(Error::NotNumeric { measure });
         }
         self.numbers[column]
@@ -445,10 +614,28 @@ impl Engine {
         })
     }
 
-    /// Computes a table over the rows kept.
+    /// What a sort compares of a value of measure `measure`: a cell by its
+    /// rank, as `MIN` and `MAX` compare it.
+    pub(crate) fn sort_key(&self, measure: usize, value: Value) -> Result<SortKey, Error> {
+        Ok(match value {
+            Value::Empty | Value::Null => SortKey::Missing,
+            Value::Count(count) => SortKey::Exact(i128::from(count)),
+            Value::Exact(number, _) => SortKey::Exact(number),
+            Value::Float(number) => SortKey::Float(number),
+            Value::Cell(column, row) => {
+                let code = self.dictionary(column)?.codes[row as usize];
+                let ranks = self.value_ranks(measure, column)?;
+                SortKey::Exact(i128::from(ranks[code as usize]))
+            }
+        })
+    }
+
+    /// Computes a table over the rows kept and its filters leave, in the order
+    /// of the labels. As in SQL, the rows that a filter on cells leaves out stop
+    /// nothing, and those of a group a filter on a measure drops have been read.
     pub fn compute(&self, request: &Request) -> Result<Table, Error> {
         let all: Vec<u32>;
-        let selection: &[u32] = match &self.kept {
+        let kept: &[u32] = match &self.kept {
             Some(rows) => rows,
             None => {
                 all = (0..self.store.row_count() as u32).collect();
@@ -463,6 +650,11 @@ impl Engine {
             .enumerate()
             .map(|(index, &measure)| self.input(index, measure))
             .collect::<Result<Vec<_>, _>>()?;
+        let selection = self.keep_by_cells(&request.filters, kept)?;
+        self.check_dates(&request.rows, &selection)?;
+        self.check_dates(&request.columns, &selection)?;
+        let selection = self.keep_by_measures(&request.filters, selection)?;
+        let selection = selection.as_ref();
 
         let levels: Vec<&Dictionary> = row_levels.iter().chain(&column_levels).copied().collect();
         let (finest, first_rows) = groups::finest(&levels, selection);

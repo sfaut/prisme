@@ -55,6 +55,28 @@ pub enum DatePrecision {
     Date,
 }
 
+/// Form of the lines of the Pivoteur.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum PivotForm {
+    /// One column of labels, indented: a group has a line of its own, above its
+    /// members, with its subtotal.
+    #[default]
+    Compact,
+    /// One column of labels per level: a group has a line of its own, above its
+    /// members, with its subtotal.
+    Outline,
+    /// One column of labels per level: a group starts on the line of its first
+    /// member, and its subtotal has a line of its own, below its members.
+    Tabular,
+}
+
+/// Is this the form of a configuration that does not name one?
+fn is_compact(form: &PivotForm) -> bool {
+    *form == PivotForm::Compact
+}
+
 /// Level of the rows or of the columns.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -67,6 +89,21 @@ pub struct PivotLevel {
     /// What the level keeps of the dates of its column.
     #[serde(default)]
     pub precision: DatePrecision,
+    /// Are the values of the level in descending order?
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub descending: bool,
+    /// Does the level leave its subtotal out? The setting follows the level
+    /// wherever it goes; the last level of an axis has no subtotal.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub without_subtotal: bool,
+    /// Width of its column of labels, when the lines give one per level, in
+    /// steps of the spacing scale (`--spacing`); the default width without
+    /// one. The width follows the level wherever it goes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub width: Option<u32>,
 }
 
 /// Measure of the configuration.
@@ -83,7 +120,165 @@ pub struct NamedMeasure {
     pub name: String,
 }
 
-/// Elements of each zone, the outermost level first.
+/// What a filter on a measure asks of its value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum PivotTest {
+    /// `=`.
+    Equal,
+    /// `<>`.
+    NotEqual,
+    /// `<`.
+    Less,
+    /// `<=`.
+    LessOrEqual,
+    /// `>`.
+    Greater,
+    /// `>=`.
+    GreaterOrEqual,
+    /// `BETWEEN`, its bounds included.
+    Between,
+    /// `NOT BETWEEN`.
+    NotBetween,
+    /// `IS NULL`.
+    IsNull,
+    /// `IS NOT NULL`.
+    IsNotNull,
+}
+
+/// What a filter on a column asks of its value: a list of values, or the same
+/// tests as a filter on a measure.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum PivotCondition {
+    /// `IN`.
+    #[default]
+    InList,
+    /// `NOT IN`.
+    NotInList,
+    /// `=`.
+    Equal,
+    /// `<>`.
+    NotEqual,
+    /// `<`.
+    Less,
+    /// `<=`.
+    LessOrEqual,
+    /// `>`.
+    Greater,
+    /// `>=`.
+    GreaterOrEqual,
+    /// `BETWEEN`, its bounds included.
+    Between,
+    /// `NOT BETWEEN`.
+    NotBetween,
+    /// `IS NULL`.
+    IsNull,
+    /// `IS NOT NULL`.
+    IsNotNull,
+}
+
+/// Filter of the Pivoteur. A filter keeps the values typed under another
+/// condition: changing it back gives them back. What it has not given yet reads
+/// empty, which keeps a filter saved before its conditions (`kind` `values`,
+/// field `comparison`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+#[ts(export)]
+pub enum PivotFilter {
+    /// Keeps the rows whose value of a column passes a condition.
+    #[serde(alias = "values")]
+    Column {
+        /// Index of the column of the result.
+        column: u32,
+        /// Name given to the filter, empty string without one: the filter then
+        /// shows its expression.
+        name: String,
+        /// What the filter keeps of the dates of its column.
+        #[serde(default)]
+        precision: DatePrecision,
+        /// What the value of each row passes.
+        #[serde(default)]
+        condition: PivotCondition,
+        /// Values of the list, `null` for NULL. Without any, the filter keeps
+        /// every row.
+        #[serde(default)]
+        values: Vec<Option<String>>,
+        /// Value compared to, or lower bound, empty string without one: the
+        /// filter then keeps every row.
+        #[serde(default)]
+        operand: String,
+        /// Upper bound, empty string without one: the filter then keeps every
+        /// row.
+        #[serde(default)]
+        upper: String,
+    },
+    /// Keeps the rows of the groups whose measure passes a test.
+    Measure {
+        /// Aggregate of the measure.
+        aggregate: PivotAggregate,
+        /// Column the measure comes from; `COUNT(*)` keeps it, for its label and
+        /// its menu.
+        column: u32,
+        /// Name given to the filter, empty string without one: the filter then
+        /// shows its expression.
+        name: String,
+        /// What the value of each group passes.
+        #[serde(alias = "comparison")]
+        condition: PivotTest,
+        /// Value compared to, or lower bound, empty string without one: the
+        /// filter then keeps every row.
+        operand: String,
+        /// Upper bound, empty string without one: the filter then keeps every
+        /// row.
+        #[serde(default)]
+        upper: String,
+        /// Column of the level the measure reads. A column that is no level any
+        /// more, or none, means the deepest level of the rows.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[ts(optional)]
+        level: Option<u32>,
+        /// Precision of that level: a column can be a level several times.
+        #[serde(default)]
+        level_precision: DatePrecision,
+    },
+}
+
+/// Values of a node of the other axis, which rank the nodes of an axis: named
+/// by its values, so that it survives a new computation of the table. A node
+/// the table no longer holds ranks nothing, and ranks again once it comes back.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PivotValueSort {
+    /// Values of the levels of the node, the outermost first, `null` for NULL.
+    /// A shorter path reads a subtotal, an empty one the grand total.
+    pub path: Vec<Option<String>>,
+    /// Index of the measure.
+    pub measure: u32,
+    /// Is the order descending?
+    pub descending: bool,
+}
+
+/// Width of a column of values, named by the values of its node and its
+/// measure, as a sort names it: a column the table no longer shows keeps its
+/// width, and finds it again once it comes back.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PivotColumnWidth {
+    /// Values of the levels of the node, the outermost first, `null` for NULL.
+    /// A shorter path reads a subtotal, an empty one the grand total.
+    pub path: Vec<Option<String>>,
+    /// Index of the measure; 0 for the column of a node in a table without
+    /// measures.
+    pub measure: u32,
+    /// Width, in steps of the spacing scale (`--spacing`).
+    pub width: u32,
+}
+
+/// Elements of each zone, the outermost level first, the sorts by values, the
+/// layout of the table and the widths of its columns.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct PivotConfig {
@@ -93,6 +288,44 @@ pub struct PivotConfig {
     pub columns: Vec<PivotLevel>,
     /// Measures, in the order of their zone.
     pub measures: Vec<NamedMeasure>,
+    /// Filters, in the order of their zone.
+    #[serde(default)]
+    pub filters: Vec<PivotFilter>,
+    /// Column of values that ranks the lines.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub sort_lines: Option<PivotValueSort>,
+    /// Line whose values rank the columns, by their first measure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub sort_columns: Option<PivotValueSort>,
+    /// Form of the lines.
+    #[serde(default, skip_serializing_if = "is_compact")]
+    #[ts(as = "Option<PivotForm>", optional)]
+    pub form: PivotForm,
+    /// Does each line give the labels of its groups, where its form leaves them
+    /// empty?
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub repeat_labels: bool,
+    /// Do the rows leave their grand total out?
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub without_row_total: bool,
+    /// Do the columns leave their grand total out?
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub without_column_total: bool,
+    /// Width of the labels of the lines when they stand in a single column,
+    /// in steps of the spacing scale (`--spacing`); the default width without
+    /// one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub labels_width: Option<u32>,
+    /// Widths of the columns of values given one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<PivotColumnWidth>>", optional)]
+    pub column_widths: Vec<PivotColumnWidth>,
 }
 
 /// Configuration of the Pivoteur of a result tab.
@@ -246,5 +479,136 @@ mod tests {
             serde_json::from_str::<TabPivot>("{}").unwrap(),
             TabPivot::default()
         );
+    }
+
+    #[test]
+    fn a_configuration_saved_before_the_sorts_and_the_filters_keeps_its_elements() {
+        let saved =
+            r#"{"rows":[{"column":1,"name":"","precision":"none"}],"columns":[],"measures":[]}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        assert!(!config.rows[0].descending);
+        assert_eq!(config.sort_lines, None);
+        assert_eq!(config.sort_columns, None);
+        assert_eq!(config.filters, []);
+        assert_eq!(config.form, PivotForm::Compact);
+        assert!(!config.repeat_labels);
+        assert!(!config.without_row_total);
+        assert!(!config.without_column_total);
+        assert!(!config.rows[0].without_subtotal);
+        assert_eq!(config.rows[0].width, None);
+        assert_eq!(config.labels_width, None);
+        assert_eq!(config.column_widths, []);
+        assert_eq!(
+            serde_json::to_string(&config).unwrap(),
+            saved.replace(r#""measures":[]"#, r#""measures":[],"filters":[]"#)
+        );
+    }
+
+    #[test]
+    fn keeps_the_filters_of_a_configuration() {
+        let saved = r#"{"rows":[],"columns":[],"measures":[],"filters":[{"kind":"column","column":0,"name":"","precision":"month","condition":"not_in_list","values":["Nord",null],"operand":"1","upper":"2"},{"kind":"measure","aggregate":"sum","column":2,"name":"Gros","condition":"between","operand":"100","upper":"400","level":1,"level_precision":"month"},{"kind":"measure","aggregate":"count_star","column":0,"name":"","condition":"not_equal","operand":"","upper":"","level_precision":"none"}]}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        assert_eq!(
+            config.filters[0],
+            PivotFilter::Column {
+                column: 0,
+                name: String::new(),
+                precision: DatePrecision::Month,
+                condition: PivotCondition::NotInList,
+                values: vec![Some("Nord".to_string()), None],
+                operand: "1".to_string(),
+                upper: "2".to_string(),
+            }
+        );
+        assert_eq!(
+            config.filters[1],
+            PivotFilter::Measure {
+                aggregate: PivotAggregate::Sum,
+                column: 2,
+                name: "Gros".to_string(),
+                condition: PivotTest::Between,
+                operand: "100".to_string(),
+                upper: "400".to_string(),
+                level: Some(1),
+                level_precision: DatePrecision::Month,
+            }
+        );
+        assert_eq!(serde_json::to_string(&config).unwrap(), saved);
+    }
+
+    #[test]
+    fn a_filter_saved_before_its_conditions_keeps_what_it_held() {
+        let saved = r#"{"rows":[],"columns":[],"measures":[],"filters":[{"kind":"values","column":0,"name":"Zone","values":["Nord",null]},{"kind":"measure","aggregate":"sum","column":2,"name":"","comparison":"greater","operand":"100","level":1}]}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        assert_eq!(
+            config.filters[0],
+            PivotFilter::Column {
+                column: 0,
+                name: "Zone".to_string(),
+                precision: DatePrecision::None,
+                condition: PivotCondition::InList,
+                values: vec![Some("Nord".to_string()), None],
+                operand: String::new(),
+                upper: String::new(),
+            }
+        );
+        assert_eq!(
+            config.filters[1],
+            PivotFilter::Measure {
+                aggregate: PivotAggregate::Sum,
+                column: 2,
+                name: String::new(),
+                condition: PivotTest::Greater,
+                operand: "100".to_string(),
+                upper: String::new(),
+                level: Some(1),
+                level_precision: DatePrecision::None,
+            }
+        );
+    }
+
+    #[test]
+    fn keeps_the_layout_of_a_configuration() {
+        let saved = r#"{"rows":[{"column":1,"name":"","precision":"none","without_subtotal":true}],"columns":[],"measures":[],"filters":[],"form":"tabular","repeat_labels":true,"without_row_total":true,"without_column_total":true}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        assert_eq!(config.form, PivotForm::Tabular);
+        assert!(config.repeat_labels);
+        assert!(config.without_row_total);
+        assert!(config.without_column_total);
+        assert!(config.rows[0].without_subtotal);
+        assert_eq!(serde_json::to_string(&config).unwrap(), saved);
+    }
+
+    #[test]
+    fn keeps_the_widths_of_a_configuration() {
+        let saved = r#"{"rows":[{"column":1,"name":"","precision":"none","width":30}],"columns":[],"measures":[],"filters":[],"labels_width":50,"column_widths":[{"path":["2025",null],"measure":1,"width":44}]}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        assert_eq!(config.rows[0].width, Some(30));
+        assert_eq!(config.labels_width, Some(50));
+        assert_eq!(
+            config.column_widths,
+            [PivotColumnWidth {
+                path: vec![Some("2025".to_string()), None],
+                measure: 1,
+                width: 44,
+            }]
+        );
+        assert_eq!(serde_json::to_string(&config).unwrap(), saved);
+    }
+
+    #[test]
+    fn keeps_the_sorts_of_a_configuration() {
+        let saved = r#"{"rows":[{"column":1,"name":"","precision":"none","descending":true}],"columns":[],"measures":[],"filters":[],"sort_lines":{"path":["2026",null],"measure":1,"descending":true},"sort_columns":{"path":[],"measure":0,"descending":false}}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        assert!(config.rows[0].descending);
+        assert_eq!(
+            config.sort_lines,
+            Some(PivotValueSort {
+                path: vec![Some("2026".to_string()), None],
+                measure: 1,
+                descending: true,
+            })
+        );
+        assert_eq!(serde_json::to_string(&config).unwrap(), saved);
     }
 }

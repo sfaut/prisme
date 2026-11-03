@@ -192,6 +192,31 @@ export const CASES = [
     forms: { shared: 'CAST(12 AS VARCHAR)', mysql: 'CAST(12 AS CHAR)' },
   },
   { key: 'cast.char_no_length', forms: { shared: "CAST('abc' AS CHAR)" } },
+  {
+    key: 'cast.varchar_short_text',
+    forms: { shared: "CAST('abc' AS VARCHAR(2))", mysql: "CAST('abc' AS CHAR(2))" },
+  },
+  {
+    key: 'cast.varchar_short_number',
+    forms: { shared: 'CAST(123 AS VARCHAR(2))', mysql: 'CAST(123 AS CHAR(2))' },
+  },
+  {
+    key: 'cast.varchar_date',
+    forms: {
+      shared: "CAST(DATE '2026-01-15' AS VARCHAR(20))",
+      mysql: "CAST(DATE '2026-01-15' AS CHAR(20))",
+      sqlite: "CAST(DATE('2026-01-15') AS VARCHAR(20))",
+    },
+  },
+  {
+    key: 'cast.varchar_short_date',
+    forms: {
+      shared: "CAST(DATE '2026-01-15' AS VARCHAR(4))",
+      mysql: "CAST(DATE '2026-01-15' AS CHAR(4))",
+      sqlite: "CAST(DATE('2026-01-15') AS VARCHAR(4))",
+    },
+  },
+  { key: 'cast.char_padding', forms: { shared: "CONCAT(CAST('a' AS CHAR(3)), '|')" } },
   // Division
   { key: 'div.by_zero', forms: { shared: '1 / 0' } },
   { key: 'div.modulo_zero', forms: { shared: 'MOD(1, 0)', sqlite: '1 % 0' } },
@@ -223,6 +248,23 @@ export const CASES = [
   { key: 'null.concat_ws', forms: { shared: "CONCAT_WS(',', 'a', NULL, 'b')" } },
   { key: 'null.greatest', forms: { shared: 'GREATEST(1, NULL)', sqlite: 'MAX(1, NULL)' } },
   { key: 'null.in_list', forms: { shared: '1 IN (NULL, 2)' } },
+  { key: 'null.not_in_list', forms: { shared: '1 NOT IN (NULL, 2)' } },
+  { key: 'null.not_in_found', forms: { shared: '2 NOT IN (NULL, 2)' } },
+  { key: 'null.not_in_of_null', forms: { shared: 'NULL NOT IN (1, 2)' } },
+  { key: 'null.between_bounds_reversed', forms: { shared: '5 BETWEEN 10 AND 1' } },
+  { key: 'null.not_between_bounds_reversed', forms: { shared: '5 NOT BETWEEN 10 AND 1' } },
+  { key: 'null.between_includes_bounds', forms: { shared: '1 BETWEEN 1 AND 1' } },
+  { key: 'null.between_of_null', forms: { shared: 'NULL BETWEEN 1 AND 10' } },
+  { key: 'null.not_between_of_null', forms: { shared: 'NULL NOT BETWEEN 1 AND 10' } },
+  { key: 'null.between_null_bound_inside', forms: { shared: '5 BETWEEN 1 AND NULL' } },
+  { key: 'null.between_null_bound_outside', forms: { shared: '5 BETWEEN 10 AND NULL' } },
+  {
+    key: 'agg.group_by_repeated',
+    forms: {
+      shared:
+        "(SELECT COUNT(*) FROM (SELECT k FROM (SELECT 'a' AS k UNION ALL SELECT 'a' UNION ALL SELECT 'b') AS t GROUP BY k, k) AS g)",
+    },
+  },
   { key: 'null.is_distinct_from', forms: { shared: 'NULL IS DISTINCT FROM NULL' } },
   {
     key: 'null.sort_asc_first',
@@ -265,6 +307,12 @@ export const CASES = [
     forms: {
       shared:
         "(SELECT STRING_AGG(k, ',' ORDER BY k) FROM (SELECT 'b' AS k UNION ALL SELECT 'a') AS t)",
+    },
+  },
+  {
+    key: 'agg.string_agg_number',
+    forms: {
+      shared: "(SELECT STRING_AGG(k, ',' ORDER BY k) FROM (SELECT 2 AS k UNION ALL SELECT 1) AS t)",
     },
   },
   {
@@ -419,6 +467,22 @@ export const CASES = [
         "(SELECT MAX(k) FROM (SELECT 'b' AS k UNION ALL SELECT 'B' UNION ALL SELECT 'a' UNION ALL SELECT 'A') AS t)",
     },
   },
+  {
+    key: 'agg.having_rollup_total',
+    forms: {
+      shared:
+        "(SELECT MAX(s) FROM (SELECT k, SUM(v) AS s FROM (SELECT 'Lille' AS k, 370 AS v UNION ALL SELECT 'Arras', 100 UNION ALL SELECT 'Nice', 350 UNION ALL SELECT 'Toulon', 30) AS t GROUP BY ROLLUP(k) HAVING SUM(v) > 100) AS r WHERE k IS NULL)",
+      mysql:
+        "(SELECT MAX(s) FROM (SELECT k, SUM(v) AS s FROM (SELECT 'Lille' AS k, 370 AS v UNION ALL SELECT 'Arras', 100 UNION ALL SELECT 'Nice', 350 UNION ALL SELECT 'Toulon', 30) AS t GROUP BY k WITH ROLLUP HAVING SUM(v) > 100) AS r WHERE k IS NULL)",
+    },
+  },
+  {
+    key: 'agg.having_null',
+    forms: {
+      shared:
+        "(SELECT COUNT(*) FROM (SELECT g FROM (SELECT 'a' AS g, NULL AS v UNION ALL SELECT 'b', 1) AS t GROUP BY g HAVING SUM(v) <> 0) AS r)",
+    },
+  },
   // Lengths
   { key: 'len.length', forms: { shared: "LENGTH('é')" } },
   { key: 'len.char_length', forms: { shared: "CHAR_LENGTH('é')" } },
@@ -533,6 +597,10 @@ export const CASES = [
       mysql: "DATE '2026-01-31' + INTERVAL 1 MONTH",
       sqlite: "DATE('2026-01-31', '+1 month')",
     },
+  },
+  {
+    key: 'date.date_add_month_end',
+    forms: { shared: "DATE_ADD(DATE '2026-01-31', INTERVAL 1 MONTH)" },
   },
   {
     key: 'date.zero',

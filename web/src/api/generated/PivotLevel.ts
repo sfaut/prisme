@@ -18,4 +18,19 @@ export type PivotLevel = {
    * What the level keeps of the dates of its column.
    */
   precision: DatePrecision;
+  /**
+   * Are the values of the level in descending order?
+   */
+  descending?: boolean;
+  /**
+   * Does the level leave its subtotal out? The setting follows the level
+   * wherever it goes; the last level of an axis has no subtotal.
+   */
+  without_subtotal?: boolean;
+  /**
+   * Width of its column of labels, when the lines give one per level, in
+   * steps of the spacing scale (`--spacing`); the default width without
+   * one. The width follows the level wherever it goes.
+   */
+  width?: number;
 };

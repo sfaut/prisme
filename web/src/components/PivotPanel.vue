@@ -18,9 +18,13 @@
   (F-02). The foreign keys of the columns, for their default measure, come
   from the catalog of the connection, read while the panel is open, without
   waiting for it. Each change of the configuration or of the filter of the grid
-  computes the table again; a new name only changes its labels. A refusal
-  of the engine shows its message above the table, which keeps its last
-  computation (F-22); a Worker that stops is replaced at the next change. A
+  computes the table again; a filter of the panel leaves the grid as it is
+  (F-20); a new name only changes its labels, a sort (C-11, C-13) lays the table
+  out again, without computing any aggregate, and a width only draws it again:
+  each table gives the position of the columns given a width. An error of
+  calculation empties the table and shows the value in cause with its row; any
+  other refusal of the engine shows its message above the table, which keeps its
+  last computation (F-22); a Worker that stops is replaced at the next change. A
   result without columns, or in error, has nothing to analyse (F-08).
 -->
 <script setup lang="ts">
@@ -30,6 +34,7 @@ import { computed, onBeforeUnmount, ref, shallowRef, toRaw, watch } from 'vue'
 import { updateResultPivot } from '@/api/editors'
 import { errorMessage } from '@/api/errorMessage'
 import {
+  type Cell,
   type QueryResult,
   type QueryTab,
   formatDuration,
@@ -39,20 +44,43 @@ import {
 
 import { detectContent } from './contentKind'
 import PanelHeader from './PanelHeader.vue'
+import PivotLayoutPanel from './PivotLayoutPanel.vue'
 import PivotGrid from './PivotGrid.vue'
 import PivotZones from './PivotZones.vue'
 import { PivotClient, type PivotTable } from './pivotClient'
 import {
+  type DatePrecision,
+  type PivotAxis,
   type PivotConfig,
+  activeFilterPlace,
   elementLabel,
   emptyConfig,
+  engineLayout,
+  engineOrder,
   engineRequest,
+  engineTargets,
   fittedConfig,
+  hasTable,
   isEmptyConfig,
+  sameOrder,
   sameRequest,
+  sameTableLayout,
+  withColumnWidth,
+  withLabelWidth,
+  withLevelSort,
+  withValueSort,
   zoneLabels,
 } from './pivotConfig'
-import { type PivotFailure, type PivotRequest, type PivotWindow, PivotError } from './pivotEngine'
+import {
+  type PivotFailure,
+  type PivotLayout,
+  type PivotOrder,
+  type PivotRequest,
+  type PivotValueTarget,
+  type PivotWindow,
+  PivotError,
+} from './pivotEngine'
+import { targetKey } from './pivotWidths'
 import { sameColumns, visibleRows } from './resultGrid'
 import { isForeignKey, useCatalogStore } from '@/stores/catalog'
 import { columnIcon } from './typeIcons'
@@ -172,6 +200,66 @@ const request = computed<PivotRequest>((previous) => {
 })
 
 /**
+ * Order of the table of the configuration shown. The same object while it
+ * stays the same: a change of it lays the table out again, without computing
+ * it.
+ */
+const order = computed<PivotOrder>((previous) => {
+  const next = engineOrder(config.value)
+  return previous !== undefined && sameOrder(previous, next) ? previous : next
+})
+
+/**
+ * Layout of the table of the configuration shown. The same object while it
+ * stays the same: a change of it lays the table out again, without computing
+ * it.
+ */
+const layout = computed<PivotLayout>((previous) => {
+  const next = engineLayout(config.value)
+  return previous !== undefined && sameTableLayout(previous, next) ? previous : next
+})
+
+/**
+ * Inverts the direction of a level.
+ *
+ * @param axis Axis of the level.
+ * @param level Position of the level.
+ */
+function sortLevel(axis: PivotAxis, level: number): void {
+  config.value = withLevelSort(config.value, axis, level)
+}
+
+/**
+ * Changes the sort of an axis by the values of a node of the other axis.
+ *
+ * @param axis Axis the values rank.
+ * @param target Node and measure of the values.
+ */
+function sortValues(axis: PivotAxis, target: PivotValueTarget): void {
+  config.value = withValueSort(config.value, axis, target)
+}
+
+/**
+ * Gives a column of values a width, or its default width back.
+ *
+ * @param target Values of the node of the column, and its measure.
+ * @param width Width, in steps of the spacing scale; `null` for the default width.
+ */
+function resizeColumn(target: PivotValueTarget, width: number | null): void {
+  config.value = withColumnWidth(config.value, target, width)
+}
+
+/**
+ * Gives the labels of the lines a width, or their default width back.
+ *
+ * @param level Level of the rows whose column it is; `null` for the labels in a single column.
+ * @param width Width, in steps of the spacing scale; `null` for the default width.
+ */
+function resizeLabels(level: number | null, width: number | null): void {
+  config.value = withLabelWidth(config.value, level, width)
+}
+
+/**
  * Mark of the type of each column, as in the headers of the grid.
  */
 const marks = computed(() => {
@@ -234,12 +322,16 @@ const copying = ref(false)
 const computing = ref(false)
 
 /**
- * Table shown, with the request and the configuration it was computed for.
+ * Table shown, with the request, the configuration and the layout it was
+ * computed for, and the position of each column given a width, by its key
+ * (`targetKey`).
  */
 const shownTable = shallowRef<{
   table: PivotTable
   request: PivotRequest
   config: PivotConfig
+  layout: PivotLayout
+  positions: ReadonlyMap<string, number>
 } | null>(null)
 
 /**
@@ -302,6 +394,17 @@ function sendKept(current: PivotClient, shown: QueryResult): void {
 }
 
 /**
+ * Refusals that are errors of calculation: the table empties, its values being wrong.
+ */
+const CALCULATION_ERRORS = [
+  'invalid_number',
+  'too_large',
+  'invalid_date',
+  'overflow',
+  'filter_overflow',
+]
+
+/**
  * Message of a refusal of the engine, in French.
  *
  * @param refusal Refusal of the engine.
@@ -309,23 +412,38 @@ function sendKept(current: PivotClient, shown: QueryResult): void {
  */
 function refusalText(refusal: PivotFailure, refused: PivotConfig): string {
   const names = result.value?.columns ?? []
+  const types = result.value?.columnTypes ?? []
   const column = refusal.column === undefined ? '?' : (names[refusal.column] ?? '?')
   const row = refusal.row === undefined ? '?' : (refusal.row + 1).toLocaleString('fr-FR')
+  const rows = result.value === null ? [] : toRaw(result.value.rows)
+  const value = rows[refusal.row ?? -1]?.[refusal.column ?? -1] ?? '?'
   const measure =
     refusal.measure === undefined
       ? '?'
       : elementLabel(refused, { zone: 'measures', index: refusal.measure }, names)
+  const filter =
+    refusal.filter === undefined
+      ? '?'
+      : elementLabel(refused, activeFilterPlace(refused, refusal.filter), names, types)
   switch (refusal.kind) {
     case 'invalid_number':
-      return `La valeur de la ligne ${row} de « ${column} » n’est pas un nombre.`
+      return `La valeur « ${value} » de la ligne ${row} de « ${column} » n’est pas un nombre.`
     case 'too_large':
-      return `La valeur de la ligne ${row} de « ${column} » dépasse 38 chiffres.`
+      return `La valeur « ${value} » de la ligne ${row} de « ${column} » dépasse 38 chiffres.`
     case 'invalid_date':
-      return `La valeur de la ligne ${row} de « ${column} » n’est pas une date.`
+      return types[refusal.column ?? -1]?.family === 'time'
+        ? `La valeur « ${value} » de la ligne ${row} de « ${column} » n’est pas une heure de la journée.`
+        : `La valeur « ${value} » de la ligne ${row} de « ${column} » n’est pas une date du calendrier.`
     case 'overflow':
       return `${measure} dépasse 38 chiffres.`
     case 'not_numeric':
       return `${measure} demande une colonne de nombres.`
+    case 'filter_overflow':
+      return `Le filtre ${filter} dépasse 38 chiffres.`
+    case 'filter_not_numeric':
+      return `Le filtre ${filter} demande une colonne de nombres.`
+    case 'filter_operand':
+      return `Une valeur du filtre ${filter} ne se compare pas à ce qu’il filtre.`
     case 'crash':
     case 'module':
       return `Le moteur du Pivoteur s’est arrêté : ${refusal.detail ?? refusal.kind}`
@@ -343,17 +461,28 @@ async function compute(current: PivotClient): Promise<void> {
   const computation = ++computations
   const asked = request.value
   const named = config.value
+  const arranged = layout.value
+  const targets = engineTargets(named)
   computing.value = true
   try {
-    const table = await current.compute(asked)
+    const table = await current.compute(asked, order.value, arranged, targets)
     if (computation === computations) {
-      shownTable.value = { table, request: asked, config: named }
+      const positions = new Map(
+        targets.flatMap((target, index): [string, number][] => {
+          const position = table.positions[index]
+          return position === null || position === undefined ? [] : [[targetKey(target), position]]
+        }),
+      )
+      shownTable.value = { table, request: asked, config: named, layout: arranged, positions }
       failure.value = null
     }
   } catch (error) {
     if (computation === computations && current === client) {
       failure.value =
         error instanceof PivotError ? refusalText(error.failure, named) : errorMessage(error)
+      if (error instanceof PivotError && CALCULATION_ERRORS.includes(error.failure.kind)) {
+        shownTable.value = null
+      }
       if (error instanceof PivotError && ['crash', 'module'].includes(error.failure.kind)) {
         closeClient()
       }
@@ -382,7 +511,7 @@ function update(): void {
   if (client === null || shown === null) {
     return
   }
-  if (isEmptyConfig(config.value)) {
+  if (!hasTable(config.value)) {
     computations++
     computing.value = false
     shownTable.value = null
@@ -393,7 +522,18 @@ function update(): void {
   void compute(client)
 }
 
-watch([source, request, () => props.tab?.filter], update, { immediate: true })
+watch([source, request, order, layout, () => props.tab?.filter], update, { immediate: true })
+
+/**
+ * Reads the distinct values of a column of the result shown, or the periods of a precision of its
+ * dates.
+ *
+ * @param column Index of the column.
+ * @param precision What the column keeps of its dates.
+ */
+function readValues(column: number, precision: DatePrecision): Promise<Cell[]> {
+  return client ? client.values(column, precision) : Promise.reject(new Error('No pivot engine'))
+}
 
 /**
  * Reads a window of the table shown.
@@ -450,7 +590,11 @@ const groupsText = computed(() => {
 
 <template>
   <section class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-4 pt-1 pb-4" aria-label="Pivoteur">
-    <panel-header title="Pivoteur" side="bottom" @collapse="emit('collapse')" />
+    <panel-header title="Pivoteur" side="bottom" @collapse="emit('collapse')">
+      <template v-if="analysable && !receiving" #actions>
+        <pivot-layout-panel v-model:config="config" :names="result?.columns ?? []" />
+      </template>
+    </panel-header>
     <p v-if="!analysable" class="text-fg-secondary">Rien à analyser</p>
     <p v-else-if="receiving" role="status" class="flex items-center gap-2 text-fg-secondary">
       <LoaderCircle class="size-5 animate-spin" aria-hidden="true" />
@@ -463,6 +607,7 @@ const groupsText = computed(() => {
         :types="result?.columnTypes ?? []"
         :marks="marks"
         :foreign-keys="foreignKeys"
+        :read-values="readValues"
       />
       <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
         <ui-alert v-if="failure" tone="error" :title="failure" />
@@ -473,10 +618,21 @@ const groupsText = computed(() => {
           :measure-labels="tableLabels.measures"
           :row-names="tableLabels.rows"
           :column-names="tableLabels.columns"
+          :order="order"
+          :layout="shownTable.layout"
+          :repeat-labels="config.repeat_labels === true"
+          :column-widths="tableConfig.column_widths ?? []"
+          :positions="shownTable.positions"
+          :labels-width="tableConfig.labels_width"
+          :level-widths="tableConfig.rows.map((level) => level.width)"
           :read="readWindow"
+          @sort-level="sortLevel"
+          @sort-values="sortValues"
+          @resize-column="resizeColumn"
+          @resize-labels="resizeLabels"
         />
         <p
-          v-else-if="isEmptyConfig(config)"
+          v-else-if="!hasTable(config)"
           class="flex flex-1 items-center justify-center text-center text-balance text-fg-secondary"
         >
           Glissez des colonnes dans les zones Lignes, Colonnes et Mesures, ou ajoutez-les par leur
