@@ -304,22 +304,32 @@ fn levels(words: &[u32]) -> Option<Vec<Level>> {
 
 /// Reads a measure: a kind (0 `COUNT(*)`, 1 `COUNT(col)`, 2 `SUM(col)`,
 /// 3 `COUNT(DISTINCT col)`, 4 `SUM(DISTINCT col)`, 5 `AVG(col)`,
-/// 6 `AVG(DISTINCT col)`, 7 `MIN(col)`, 8 `MAX(col)`) and a column. `None` for
-/// another kind.
-fn measure(kind: u32, column: u32) -> Option<Measure> {
-    let column = column as usize;
+/// 6 `AVG(DISTINCT col)`, 7 `MIN(col)`, 8 `MAX(col)`), a column and a precision
+/// (see `level`), which only kinds 3, 7 and 8 take. `None` for another kind, or
+/// another precision.
+fn measure(kind: u32, column: u32, precision: u32) -> Option<Measure> {
+    let level = level(column, precision)?;
+    let column = level.column;
+    if level.precision.is_some() && !matches!(kind, 3 | 7 | 8) {
+        return None;
+    }
     match kind {
         0 => Some(Measure::CountStar),
         1 => Some(Measure::Count(column)),
         2 => Some(Measure::Sum(column)),
-        3 => Some(Measure::CountDistinct(column)),
+        3 => Some(Measure::CountDistinct(level)),
         4 => Some(Measure::SumDistinct(column)),
         5 => Some(Measure::Avg(column)),
         6 => Some(Measure::AvgDistinct(column)),
-        7 => Some(Measure::Min(column)),
-        8 => Some(Measure::Max(column)),
+        7 => Some(Measure::Min(level)),
+        8 => Some(Measure::Max(level)),
         _ => None,
     }
+}
+
+/// Reads a measure, by three words (see `measure`).
+fn next_measure(words: &mut impl Iterator<Item = u32>) -> Option<Measure> {
+    measure(words.next()?, words.next()?, words.next()?)
 }
 
 /// Reads a comparison: 0 `=`, 1 `<>`, 2 `<`, 3 `<=`, 4 `>`, 5 `>=`. `None` for
@@ -378,7 +388,7 @@ fn filters(words: &[u32]) -> Option<Vec<Filter>> {
                 }
             }
             1 => {
-                let measure = measure(words.next()?, words.next()?)?;
+                let measure = next_measure(&mut words)?;
                 let count = words.next()?;
                 let levels = (0..count)
                     .map(|_| level(words.next()?, words.next()?))
@@ -402,13 +412,13 @@ fn filters(words: &[u32]) -> Option<Vec<Filter>> {
 
 /// Reads a request: the numbers of levels of the rows and of the columns,
 /// the number of measures, the levels of the rows, then of the columns (see
-/// `levels`), then the measures, each by two words (see `measure`), then the
+/// `levels`), then the measures, each by three words (see `measure`), then the
 /// filters (see `filters`). `None` if the words do not match.
 fn request(words: &[u32]) -> Option<Request> {
     let (&rows, &columns, &measures) = (words.first()?, words.get(1)?, words.get(2)?);
     let (rows, columns, measures) = (rows as usize, columns as usize, measures as usize);
     let rest = &words[3..];
-    let fixed = 2 * (rows + columns + measures);
+    let fixed = 2 * (rows + columns) + 3 * measures;
     if rest.len() < fixed {
         return None;
     }
@@ -416,8 +426,8 @@ fn request(words: &[u32]) -> Option<Request> {
     let (row_levels, rest) = rest.split_at(2 * rows);
     let (column_levels, measure_words) = rest.split_at(2 * columns);
     let measures = measure_words
-        .chunks(2)
-        .map(|pair| measure(pair[0], pair[1]))
+        .chunks(3)
+        .map(|triple| measure(triple[0], triple[1], triple[2]))
         .collect::<Option<Vec<_>>>()?;
     Some(Request {
         rows: levels(row_levels)?,
@@ -709,8 +719,8 @@ mod tests {
         assert_eq!(output(length), "{}");
 
         // Rows: column 0; measures: COUNT(*), SUM(column 1).
-        let words = [1u32, 0, 2, 0, 0, 0, 0, 2, 1];
-        // SAFETY: nine words.
+        let words = [1u32, 0, 2, 0, 0, 0, 0, 0, 2, 1, 0];
+        // SAFETY: eleven words.
         let length = unsafe { compute(words.as_ptr(), words.len()) };
         assert_eq!(
             output(length),
@@ -730,12 +740,12 @@ mod tests {
         // SAFETY: one row number.
         let length = unsafe { set_kept(kept.as_ptr(), 1, 0) };
         assert_eq!(output(length), "{}");
-        // SAFETY: nine words.
+        // SAFETY: eleven words.
         let length = unsafe { compute(words.as_ptr(), words.len()) };
         assert!(output(length).ends_with(r#""groups":1,"rows":1}"#));
 
-        let sum_of_text = [0u32, 0, 1, 2, 0];
-        // SAFETY: five words.
+        let sum_of_text = [0u32, 0, 1, 2, 0, 0];
+        // SAFETY: six words.
         let length = unsafe { compute(sum_of_text.as_ptr(), sum_of_text.len()) };
         assert_eq!(
             output(length),
@@ -767,8 +777,8 @@ mod tests {
         assert_eq!(output(length), r#"{"error":{"kind":"no_table"}}"#);
 
         // Rows: column 0; measure: SUM(column 1).
-        let words = [1u32, 0, 1, 0, 0, 2, 1];
-        // SAFETY: seven words.
+        let words = [1u32, 0, 1, 0, 0, 2, 1, 0];
+        // SAFETY: eight words.
         unsafe { compute(words.as_ptr(), words.len()) };
         // Lines by the grand total, measure 0, ascending; columns as they are.
         let by_value = [[1u32, 0, 1, 0, 0, 0, 0, 0].as_slice(), &FIRST_LAYOUT].concat();
@@ -823,8 +833,8 @@ mod tests {
         assert_eq!(output(length), r#"{"error":{"kind":"no_table"}}"#);
 
         // Columns: column 0; measure: SUM(column 1). Columns NULL, a, b, total.
-        let words = [0u32, 1, 1, 0, 0, 2, 1];
-        // SAFETY: seven words.
+        let words = [0u32, 1, 1, 0, 0, 2, 1, 0];
+        // SAFETY: eight words.
         unsafe { compute(words.as_ptr(), words.len()) };
         // b, NULL, the grand total, a column of a measure the table lacks, c.
         let named = [
@@ -932,6 +942,7 @@ mod tests {
             0,
             0,
             0,
+            0,
             2,
             0,
             1,
@@ -940,7 +951,7 @@ mod tests {
             text.len() as u32,
         ];
         words.extend(bytes());
-        words.extend([1, 2, 4, 1, 3, 3, 5, text.len() as u32]);
+        words.extend([1, 2, 4, 0, 1, 3, 3, 5, text.len() as u32]);
         words.extend(bytes());
         words.extend([2, 3, 1, 6, text.len() as u32]);
         words.extend(bytes());
@@ -982,7 +993,7 @@ mod tests {
     #[test]
     fn a_request_reads_each_test() {
         let tested = |words: &[u32]| {
-            let mut all = vec![0u32, 0, 1, 0, 0, 2, 0, 0];
+            let mut all = vec![0u32, 0, 1, 0, 0, 0, 2, 0, 0];
             all.extend_from_slice(words);
             match request(&all).unwrap().filters.remove(0) {
                 Filter::Column { test, .. } => test,
@@ -1000,40 +1011,61 @@ mod tests {
     #[test]
     fn filters_that_do_not_match_their_words_are_refused() {
         // An unknown kind, a missing value, an unknown test, a NULL operand, a
-        // missing bound, an unknown precision.
-        assert!(request(&[0, 0, 1, 0, 0, 7]).is_none());
-        assert!(request(&[0, 0, 1, 0, 0, 0, 2, 0, 0, 1]).is_none());
-        assert!(request(&[0, 0, 1, 0, 0, 1, 0, 0, 0, 10, 0]).is_none());
-        assert!(request(&[0, 0, 1, 0, 0, 1, 0, 0, 0, 0, NULL_STEP]).is_none());
-        assert!(request(&[0, 0, 1, 0, 0, 2, 0, 0, 6, 1, 97]).is_none());
-        assert!(request(&[0, 0, 1, 0, 0, 2, 0, 9, 8]).is_none());
+        // missing bound, an unknown precision, a precision of a sum.
+        assert!(request(&[0, 0, 1, 0, 0, 0, 7]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 0, 2, 0, 0, 1]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 10, 0]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, NULL_STEP]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 2, 0, 0, 6, 1, 97]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 2, 0, 9, 8]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 1, 2, 1, 3, 0, 8]).is_none());
     }
 
     #[test]
     fn requests_that_do_not_match_their_words_are_refused() {
         assert_eq!(
-            request(&[0, 0, 1, 0, 0]).unwrap().measures,
+            request(&[0, 0, 1, 0, 0, 0]).unwrap().measures,
             [Measure::CountStar]
         );
         assert_eq!(
-            request(&[0, 0, 1, 3, 4]).unwrap().measures,
-            [Measure::CountDistinct(4)]
+            request(&[0, 0, 1, 3, 4, 0]).unwrap().measures,
+            [Measure::CountDistinct(4.into())]
         );
         assert_eq!(
-            request(&[0, 0, 5, 4, 1, 5, 2, 6, 3, 7, 4, 8, 5])
+            request(&[0, 0, 5, 4, 1, 0, 5, 2, 0, 6, 3, 0, 7, 4, 0, 8, 5, 0])
                 .unwrap()
                 .measures,
             [
                 Measure::SumDistinct(1),
                 Measure::Avg(2),
                 Measure::AvgDistinct(3),
-                Measure::Min(4),
-                Measure::Max(5),
+                Measure::Min(4.into()),
+                Measure::Max(5.into()),
+            ]
+        );
+        // COUNT(DISTINCT), MIN and MAX read the periods of a precision.
+        let month = |column| Level {
+            column,
+            precision: Some(Precision::Month),
+        };
+        assert_eq!(
+            request(&[0, 0, 3, 3, 1, 3, 7, 2, 3, 8, 4, 3])
+                .unwrap()
+                .measures,
+            [
+                Measure::CountDistinct(month(1)),
+                Measure::Min(month(2)),
+                Measure::Max(month(4)),
             ]
         );
         assert!(request(&[1, 0]).is_none());
         assert!(request(&[1, 0, 0]).is_none());
-        assert!(request(&[0, 0, 1, 9, 0]).is_none());
+        assert!(request(&[0, 0, 1, 9, 0, 0]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0]).is_none());
+        // Only COUNT(DISTINCT), MIN and MAX take a precision.
+        for kind in [0, 1, 2, 4, 5, 6] {
+            assert!(request(&[0, 0, 1, kind, 0, 3]).is_none(), "{kind}");
+        }
         assert!(request(&[1, 0, 0, 0]).is_none());
         assert!(request(&[1, 0, 0, 0, 6]).is_none());
     }

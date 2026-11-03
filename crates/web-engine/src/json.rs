@@ -146,7 +146,7 @@ pub fn window(
         array(json, columns.clone(), |json, column| {
             match table.value(line, column) {
                 Value::Empty => json.push_str("false"),
-                value => cell(json, value.text(engine.store()).as_deref()),
+                value => cell(json, value.text(engine).as_deref()),
             }
         });
     });

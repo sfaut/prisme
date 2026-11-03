@@ -38,6 +38,7 @@ import {
   sameRequest,
   sameTableLayout,
   sameTarget,
+  takesPrecision,
   withAggregate,
   withAllSubtotals,
   withColumnWidth,
@@ -79,6 +80,21 @@ function level(column: number, name = '', precision: DatePrecision = 'none'): Pi
  */
 function measure(aggregate: NamedMeasure['aggregate'], column: number, name = ''): NamedMeasure {
   return { aggregate, column, name }
+}
+
+/**
+ * Measure of the periods of a column of dates.
+ *
+ * @param aggregate Aggregate.
+ * @param column Index of the column.
+ * @param precision What it keeps of the dates.
+ */
+function dated(
+  aggregate: NamedMeasure['aggregate'],
+  column: number,
+  precision: DatePrecision,
+): NamedMeasure {
+  return { ...measure(aggregate, column), precision }
 }
 
 describe('defaultAggregate', () => {
@@ -126,6 +142,26 @@ describe('measureExpression', () => {
     expect(measureExpression(measure('min', 1), NAMES)).toBe('MIN(ville)')
     expect(measureExpression(measure('max', 1), NAMES)).toBe('MAX(ville)')
   })
+
+  it('writes the precision of the dates the measure reads', () => {
+    expect(measureExpression(dated('min', 2, 'month'), NAMES)).toBe('MIN(annee (Mois))')
+    expect(measureExpression(dated('max', 2, 'week'), NAMES)).toBe('MAX(annee (Semaine))')
+    expect(measureExpression(dated('count_distinct', 2, 'quarter'), NAMES)).toBe(
+      'COUNT(DISTINCT annee (Trimestre))',
+    )
+    expect(measureExpression(dated('min', 2, 'none'), NAMES)).toBe('MIN(annee)')
+    // An aggregate that takes no precision reads the values as they are.
+    expect(measureExpression(dated('count', 2, 'month'), NAMES)).toBe('COUNT(annee)')
+  })
+})
+
+describe('takesPrecision', () => {
+  it('lets COUNT(DISTINCT), MIN and MAX read the periods of the dates', () => {
+    const taking = ['count_distinct', 'min', 'max'] as const
+    const others = ['count_star', 'count', 'sum', 'sum_distinct', 'avg', 'avg_distinct'] as const
+    expect(taking.every(takesPrecision)).toBe(true)
+    expect(others.some(takesPrecision)).toBe(false)
+  })
 })
 
 describe('addsNumbers', () => {
@@ -162,6 +198,22 @@ describe('engineRequest', () => {
     const config: PivotConfig = { rows: [level(0)], columns: [], measures: [], filters: [] }
     const changed = withPrecision(config, { zone: 'rows', index: 0 }, 'month')
     expect(engineRequest(changed).rows).toEqual([{ column: 0, precision: 'month' }])
+    expect(sameRequest(engineRequest(config), engineRequest(changed))).toBe(false)
+  })
+
+  it('asks for the precision of a measure that takes one, only', () => {
+    const config: PivotConfig = {
+      rows: [],
+      columns: [],
+      measures: [dated('min', 2, 'month'), dated('min', 2, 'none'), dated('count', 2, 'year')],
+      filters: [],
+    }
+    expect(engineRequest(config).measures).toEqual([
+      { aggregate: 'min', column: 2, precision: 'month' },
+      { aggregate: 'min', column: 2 },
+      { aggregate: 'count', column: 2 },
+    ])
+    const changed = withPrecision(config, { zone: 'measures', index: 0 }, 'quarter')
     expect(sameRequest(engineRequest(config), engineRequest(changed))).toBe(false)
   })
 })
@@ -227,6 +279,16 @@ describe('withPrecision', () => {
     const changed = { ...config, rows: [level(0, '', 'month')] }
     const named = withName(changed, { zone: 'rows', index: 0 }, 'region (Mois)', NAMES)
     expect(named.rows[0]).toEqual(level(0, '', 'month'))
+  })
+
+  it('changes the precision of a measure that takes one, which keeps its name', () => {
+    const measures = [measure('min', 2, 'Début'), measure('sum', 4)]
+    const changed = withPrecision({ ...config, measures }, { zone: 'measures', index: 0 }, 'month')
+    expect(changed.measures).toEqual([{ ...measures[0], precision: 'month' }, measures[1]])
+    expect(changed.rows).toBe(config.rows)
+    expect(zoneLabels(changed, 'measures', NAMES)).toEqual(['Début', 'SUM(montant)'])
+    const summed = withPrecision({ ...config, measures }, { zone: 'measures', index: 1 }, 'month')
+    expect(summed.measures[1]?.precision).toBeUndefined()
   })
 })
 
@@ -486,6 +548,17 @@ describe('fittedConfig', () => {
       }
     })
 
+    it('drops the precision of a measure whose column holds no dates any more', () => {
+      const measured: PivotConfig = {
+        ...emptyConfig(),
+        measures: [{ ...measure('max', 0), precision: 'date' }],
+      }
+      expect(fittedConfig({ fields, config: measured }, fields, typed('datetime'))).toBe(measured)
+      expect(
+        fittedConfig({ fields, config: measured }, fields, typed('text')).measures[0]?.precision,
+      ).toBeUndefined()
+    })
+
     it('follows a column by name with its precision', () => {
       expect(
         fittedConfig(
@@ -513,6 +586,15 @@ describe('withAggregate', () => {
       measure('sum', 4),
       measure('count', 2, 'Années'),
     ])
+  })
+
+  it('keeps the precision of a measure only for an aggregate that takes one', () => {
+    const config: PivotConfig = { ...emptyConfig(), measures: [dated('min', 2, 'month')] }
+    expect(withAggregate(config, 0, 'max').measures).toEqual([dated('max', 2, 'month')])
+    expect(withAggregate(config, 0, 'count_distinct').measures).toEqual([
+      dated('count_distinct', 2, 'month'),
+    ])
+    expect(withAggregate(config, 0, 'count').measures[0]?.precision).toBeUndefined()
   })
 })
 
@@ -991,6 +1073,22 @@ describe('the filters', () => {
       expect(written.endsWith('19, …)')).toBe(true)
     })
 
+    it('writes the periods a measure at a precision compares to', () => {
+      const dates = types('text', 'text', 'date')
+      const last = (changes: Partial<PivotMeasureFilter>) =>
+        expression(above({ aggregate: 'max', column: 2, precision: 'month', ...changes }), dates)
+      expect(last({ condition: 'greater_or_equal', operand: '2026-02' })).toBe(
+        "MAX(annee (Mois)) >= '2026-02'",
+      )
+      expect(last({ precision: 'year', condition: 'equal', operand: '2026' })).toBe(
+        'MAX(annee (Année)) = 2026',
+      )
+      // A count of periods is a number.
+      expect(last({ aggregate: 'count_distinct', operand: '2' })).toBe(
+        'COUNT(DISTINCT annee (Mois)) > 2',
+      )
+    })
+
     it('writes a measure, its comparison and its operand', () => {
       expect(expression(above())).toBe('SUM(montant) > 100')
       expect(expression(above({ operand: '' }))).toBe('SUM(montant) > ?')
@@ -1159,6 +1257,27 @@ describe('the filters', () => {
       expect(moved(2, 0)).toEqual([3, 0, 1])
     })
 
+    it('keeps the precision of a measure moved into the filters, and back', () => {
+      const config = { ...filtered(), measures: [dated('max', 2, 'month')] }
+      const dates = types('text', 'text', 'date')
+      const from = { zone: 'measures', index: 0 } as const
+      const placed = placeColumn(config, 2, 'count', to(0), from, dates)
+      expect(placed.filters).toEqual([
+        above({
+          aggregate: 'max',
+          column: 2,
+          precision: 'month',
+          condition: 'between',
+          operand: '',
+        }),
+      ])
+      const back = (zone: 'measures' | 'rows') =>
+        placeColumn(placed, 2, 'count', { zone, index: 0 }, { zone: 'filters', index: 0 }, dates)
+      expect(back('measures').measures[0]).toEqual(dated('max', 2, 'month'))
+      // A level keeps the periods the measure read.
+      expect(back('rows').rows[0]).toEqual(level(2, '', 'month'))
+    })
+
     it('turns a filter into a level or a measure', () => {
       const config = filtered(above({ name: 'Gros' }), values(3, []))
       const from = (index: number) => ({ zone: 'filters', index }) as const
@@ -1231,6 +1350,18 @@ describe('the filters', () => {
         ).filters
       expect(fit('date')).toEqual([dated])
       expect(fit('text')).toEqual([tested()])
+    })
+
+    it('empties a filter on a measure whose column holds no dates any more', () => {
+      const last = above({ aggregate: 'max', column: 2, precision: 'month', operand: '2026-01' })
+      const fit = (family: ColumnTypeInfo['family']) =>
+        fittedConfig(
+          { fields: NAMES, config: filtered(last) },
+          NAMES,
+          types('text', 'text', family),
+        ).filters
+      expect(fit('date')).toEqual([last])
+      expect(fit('text')).toEqual([above({ aggregate: 'max', column: 2, operand: '' })])
     })
 
     it('fits a configuration of filters alone', () => {
@@ -1329,6 +1460,16 @@ describe('the filters', () => {
       expect(refused('text', 'abc')).toBe(false)
     })
 
+    it('reads an extreme at a precision as the labels of its periods', () => {
+      const dates = types('date')
+      const refusal = (aggregate: 'max' | 'count_distinct', operand: string) =>
+        operandRefusal({ aggregate, column: 0, precision: 'month' }, operand, dates)
+      expect(refusal('max', '2026-01')).toBeNull()
+      expect(refusal('max', '2026-01-15')).toBe('Un mois est attendu, comme 2026-01')
+      expect(refusal('count_distinct', '2')).toBeNull()
+      expect(refusal('count_distinct', '2026-01')).not.toBeNull()
+    })
+
     it('reads a count as a number, whatever its column', () => {
       const count = { aggregate: 'count', column: 0 } as const
       expect(operandRefusal(count, 'abc', types('text'))).not.toBeNull()
@@ -1341,6 +1482,9 @@ describe('the filters', () => {
       const dates = types('text', 'text', 'date')
       expect(operandExample(tested(), dates)).toBe('2026-01-15')
       expect(operandExample(tested({ precision: 'quarter' }), dates)).toBe('2026-T1')
+      expect(
+        operandExample(above({ aggregate: 'min', column: 2, precision: 'quarter' }), dates),
+      ).toBe('2026-T1')
       expect(operandExample(above(), types('text', 'text', 'text', 'text', 'integer'))).toBe('100')
       expect(operandExample(tested({ column: 0 }), dates)).toBe('')
     })

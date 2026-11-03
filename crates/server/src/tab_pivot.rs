@@ -77,6 +77,12 @@ fn is_compact(form: &PivotForm) -> bool {
     *form == PivotForm::Compact
 }
 
+/// Does a measure read the values of its column as they are, without a
+/// precision of their dates?
+fn is_whole(precision: &DatePrecision) -> bool {
+    *precision == DatePrecision::None
+}
+
 /// Level of the rows or of the columns.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
@@ -118,6 +124,11 @@ pub struct NamedMeasure {
     /// Name given to the measure, empty string without one: the measure then
     /// shows its expression.
     pub name: String,
+    /// What `COUNT(DISTINCT col)`, `MIN(col)` and `MAX(col)` keep of the dates
+    /// of their column: they then read its periods.
+    #[serde(default, skip_serializing_if = "is_whole")]
+    #[ts(as = "Option<DatePrecision>", optional)]
+    pub precision: DatePrecision,
 }
 
 /// What a filter on a measure asks of its value.
@@ -225,6 +236,11 @@ pub enum PivotFilter {
         /// Name given to the filter, empty string without one: the filter then
         /// shows its expression.
         name: String,
+        /// What `COUNT(DISTINCT col)`, `MIN(col)` and `MAX(col)` keep of the
+        /// dates of their column.
+        #[serde(default, skip_serializing_if = "is_whole")]
+        #[ts(as = "Option<DatePrecision>", optional)]
+        precision: DatePrecision,
         /// What the value of each group passes.
         #[serde(alias = "comparison")]
         condition: PivotTest,
@@ -506,7 +522,7 @@ mod tests {
 
     #[test]
     fn keeps_the_filters_of_a_configuration() {
-        let saved = r#"{"rows":[],"columns":[],"measures":[],"filters":[{"kind":"column","column":0,"name":"","precision":"month","condition":"not_in_list","values":["Nord",null],"operand":"1","upper":"2"},{"kind":"measure","aggregate":"sum","column":2,"name":"Gros","condition":"between","operand":"100","upper":"400","level":1,"level_precision":"month"},{"kind":"measure","aggregate":"count_star","column":0,"name":"","condition":"not_equal","operand":"","upper":"","level_precision":"none"}]}"#;
+        let saved = r#"{"rows":[],"columns":[],"measures":[],"filters":[{"kind":"column","column":0,"name":"","precision":"month","condition":"not_in_list","values":["Nord",null],"operand":"1","upper":"2"},{"kind":"measure","aggregate":"sum","column":2,"name":"Gros","condition":"between","operand":"100","upper":"400","level":1,"level_precision":"month"},{"kind":"measure","aggregate":"count_star","column":0,"name":"","condition":"not_equal","operand":"","upper":"","level_precision":"none"},{"kind":"measure","aggregate":"max","column":3,"name":"","precision":"quarter","condition":"equal","operand":"2026-T1","upper":"","level_precision":"none"}]}"#;
         let config: PivotConfig = serde_json::from_str(saved).unwrap();
         assert_eq!(
             config.filters[0],
@@ -531,8 +547,16 @@ mod tests {
                 upper: "400".to_string(),
                 level: Some(1),
                 level_precision: DatePrecision::Month,
+                precision: DatePrecision::None,
             }
         );
+        assert!(matches!(
+            config.filters[3],
+            PivotFilter::Measure {
+                precision: DatePrecision::Quarter,
+                ..
+            }
+        ));
         assert_eq!(serde_json::to_string(&config).unwrap(), saved);
     }
 
@@ -563,8 +587,18 @@ mod tests {
                 upper: String::new(),
                 level: Some(1),
                 level_precision: DatePrecision::None,
+                precision: DatePrecision::None,
             }
         );
+    }
+
+    #[test]
+    fn a_measure_keeps_the_precision_of_its_dates() {
+        let saved = r#"{"rows":[],"columns":[],"measures":[{"aggregate":"count","column":0,"name":""},{"aggregate":"min","column":1,"name":"","precision":"month"}],"filters":[]}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        assert_eq!(config.measures[0].precision, DatePrecision::None);
+        assert_eq!(config.measures[1].precision, DatePrecision::Month);
+        assert_eq!(serde_json::to_string(&config).unwrap(), saved);
     }
 
     #[test]

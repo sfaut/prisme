@@ -12,7 +12,9 @@
   (Escape cancels the drag).
   A column dropped into the measures gives its default aggregate
   (`defaultAggregate`, F-15); the menu of a measure changes it. The menu of a
-  level of dates sets its precision, what it keeps of them (`precisionChoices`).
+  level of dates sets its precision, what it keeps of them (`precisionChoices`),
+  and so does that of `COUNT(DISTINCT)`, `MIN` and `MAX` of dates
+  (`takesPrecision`).
   A column can be placed several times, in a zone and on both axes: dropping it
   from the list always adds an element, dragging an element moves it.
   An element takes a name by its menu ("Nommer…") or a double click on its label
@@ -65,10 +67,12 @@ import {
   elementLabel,
   isRefused,
   measureExpression,
+  measurePrecision,
   placeColumn,
   precisionChoices,
   removeElement,
   summable,
+  takesPrecision,
   withAggregate,
   withFilter,
   withName,
@@ -260,19 +264,21 @@ function elementItems(zone: PivotZone, index: number): MenuItem[] {
 }
 
 /**
- * Choices of the precision of a level, none for a column that holds no dates.
+ * Choices of the precision of a level, or of a measure that takes one (`takesPrecision`); none for
+ * a column that holds no dates.
  *
- * @param zone Axis of the level.
- * @param index Position of the level.
+ * @param zone Zone of the element.
+ * @param index Position of the element.
  */
-function precisionItems(zone: 'rows' | 'columns', index: number): MenuItem[] {
-  const level = config.value[zone][index]
-  if (level === undefined) {
+function precisionItems(zone: 'rows' | 'columns' | 'measures', index: number): MenuItem[] {
+  const element = zone === 'measures' ? config.value.measures[index] : config.value[zone][index]
+  if (element === undefined || ('aggregate' in element && !takesPrecision(element.aggregate))) {
     return []
   }
-  return precisionChoices(props.types[level.column]?.family).map(({ precision, label }) => ({
+  const current = 'aggregate' in element ? measurePrecision(element) : element.precision
+  return precisionChoices(props.types[element.column]?.family).map(({ precision, label }) => ({
     label,
-    icon: precision === level.precision ? Check : PRECISION_ICONS[label],
+    icon: precision === current ? Check : PRECISION_ICONS[label],
     onSelect: () => (config.value = withPrecision(config.value, { zone, index }, precision)),
   }))
 }
@@ -290,8 +296,9 @@ function aggregateItems(
   const numbers = summable(props.types[measure.column]?.family)
   return AGGREGATES.map(({ aggregate, icon }) => {
     const refused = addsNumbers(aggregate) && !numbers
+    const { column, precision } = measure
     return {
-      label: measureExpression({ aggregate, column: measure.column }, props.names),
+      label: measureExpression({ aggregate, column, precision }, props.names),
       icon: aggregate === measure.aggregate ? Check : icon,
       disabled: refused,
       hint: refused ? 'Demande une colonne de nombres' : undefined,
@@ -302,8 +309,8 @@ function aggregateItems(
 
 /**
  * Choices of the menu of an element: for a measure, its aggregate, for a
- * level of dates, its precision, then the settings of a filter, its name, its
- * place and its removal.
+ * level or a measure of dates, its precision, then the settings of a filter,
+ * its name, its place and its removal.
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
@@ -320,7 +327,7 @@ function elementGroups(zone: PivotZone, index: number): MenuGroup[] {
       ),
     })
   }
-  if (zone === 'rows' || zone === 'columns') {
+  if (zone !== 'filters') {
     const items = precisionItems(zone, index)
     if (items.length > 0) {
       groups.push({ label: 'Précision', items })

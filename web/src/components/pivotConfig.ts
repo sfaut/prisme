@@ -7,10 +7,12 @@
  * `COUNT(*)` or an aggregate of a column (`measureExpression`); the expressions come with the
  * parser. Each element can take a name, its alias (F-17), shown instead of its expression (F-12):
  * the name of its column for a level. A level of dates takes a precision, what it keeps of them
- * (`precisionChoices`). A column can be placed several times, in a zone and on both axes, each
- * element on its own: `d (Année)` in the columns and `d (Mois)` in the rows. Each change gives a
- * new configuration; the panel computes again only when the request to the engine (`engineRequest`)
- * changes, a name changing only the labels, a sort only their layout (`engineOrder`).
+ * (`precisionChoices`), and so do `COUNT(DISTINCT col)`, `MIN` and `MAX` of dates, which then read
+ * its periods (`takesPrecision`): `MIN(d (Mois))`. A column can be placed several times, in a zone
+ * and on both axes, each element on its own: `d (Année)` in the columns and `d (Mois)` in the rows.
+ * Each change gives a new configuration; the panel computes again only when the request to the
+ * engine (`engineRequest`) changes, a name changing only the labels, a sort only their layout
+ * (`engineOrder`).
  *
  * A level has its direction (C-11), which it keeps wherever it goes; on each axis, the values of a
  * node of the other axis can rank the nodes instead (C-13), named by their values. Such a sort
@@ -161,6 +163,52 @@ export function precisionChoices(family: TypeFamily | undefined): PrecisionChoic
 }
 
 /**
+ * Does an aggregate read the periods of a precision of the dates of its column? `COUNT(DISTINCT)`
+ * counts them, `MIN` and `MAX` give the first or the last one; the others read the cells as they
+ * are.
+ *
+ * @param aggregate Aggregate.
+ */
+export function takesPrecision(aggregate: PivotMeasure['aggregate']): boolean {
+  return aggregate === 'count_distinct' || aggregate === 'min' || aggregate === 'max'
+}
+
+/**
+ * Precision a measure of an aggregate keeps: absent for the values as they are, and for an aggregate
+ * that takes none.
+ *
+ * @param aggregate Aggregate of the measure.
+ * @param precision Precision asked.
+ */
+export function keptPrecision(
+  aggregate: PivotMeasure['aggregate'],
+  precision: DatePrecision | undefined,
+): DatePrecision | undefined {
+  return takesPrecision(aggregate) && precision !== 'none' ? precision : undefined
+}
+
+/**
+ * What a measure keeps of the dates of its column.
+ *
+ * @param measure Measure; none gives the values as they are.
+ */
+export function measurePrecision(measure: PivotMeasure | undefined): DatePrecision {
+  return (measure && keptPrecision(measure.aggregate, measure.precision)) ?? 'none'
+}
+
+/**
+ * Precision of the values of a measure, which a filter on it compares to: the periods `MIN` and
+ * `MAX` give at a precision; `none` for the others, a count of periods being a number.
+ *
+ * @param measure Measure.
+ */
+function valuePrecision(measure: PivotMeasure): DatePrecision {
+  return measure.aggregate === 'min' || measure.aggregate === 'max'
+    ? measurePrecision(measure)
+    : 'none'
+}
+
+/**
  * Configuration without any element.
  */
 export function emptyConfig(): PivotConfig {
@@ -243,14 +291,14 @@ function followedConfig(pivot: TabPivot, columns: string[]): PivotConfig {
 }
 
 /**
- * Configuration whose levels and filters keep only the precisions their columns can take: a column
- * that holds no dates any more gives its values as they are. A filter loses what it compared to,
- * the values of a period having no meaning for the values as they are. A column without a type
- * keeps its precision.
+ * Configuration whose levels, measures and filters keep only the precisions their columns can take:
+ * a column that holds no dates any more gives its values as they are. A filter loses what it
+ * compared to, the values of a period having no meaning for the values as they are. A column
+ * without a type keeps its precision.
  *
  * @param config Configuration.
  * @param types Type of each column of the result.
- * @returns The configuration itself when each level keeps its precision.
+ * @returns The configuration itself when each element keeps its precision.
  */
 function withPossiblePrecisions(config: PivotConfig, types: ColumnTypeInfo[]): PivotConfig {
   const possible = ({ column, precision }: Pick<PivotLevel, 'column' | 'precision'>) => {
@@ -263,23 +311,33 @@ function withPossiblePrecisions(config: PivotConfig, types: ColumnTypeInfo[]): P
   }
   const fit = (levels: PivotLevel[]) =>
     levels.map((level): PivotLevel => (possible(level) ? level : { ...level, precision: 'none' }))
+  const measureFits = (measure: PivotMeasure) =>
+    possible({ column: measure.column, precision: measurePrecision(measure) })
+  const measures = config.measures.map((measure) =>
+    measureFits(measure) ? measure : { ...measure, precision: undefined },
+  )
   const filters = config.filters.map((filter): PivotFilter => {
     if (filter.kind === 'column') {
       return possible(filter)
         ? filter
         : { ...filter, precision: 'none', values: [], operand: '', upper: '' }
     }
+    const values = measureFits(filter)
+      ? filter
+      : { ...filter, precision: undefined, operand: '', upper: '' }
     // A filter goes on reading the level whose precision leaves.
     const fits =
       filter.level === undefined ||
       possible({ column: filter.level, precision: filter.level_precision })
-    return fits ? filter : { ...filter, level_precision: 'none' }
+    return fits ? values : { ...values, level_precision: 'none' }
   })
-  const fitted = filters.every((filter, index) => filter === config.filters[index])
+  const fitted =
+    filters.every((filter, index) => filter === config.filters[index]) &&
+    config.measures.every(measureFits)
   if (fitted && [...config.rows, ...config.columns].every(possible)) {
     return config
   }
-  return { ...config, rows: fit(config.rows), columns: fit(config.columns), filters }
+  return { ...config, rows: fit(config.rows), columns: fit(config.columns), measures, filters }
 }
 
 /**
@@ -415,12 +473,17 @@ export function activeFilterPlace(config: PivotConfig, rank: number): ZonePlace 
 export function engineRequest(config: PivotConfig): PivotRequest {
   const levels = (items: PivotLevel[]) =>
     items.map(({ column, precision }): PivotRequestLevel => ({ column, precision }))
+  const measure = (item: PivotMeasure): PivotMeasure => {
+    const precision = measurePrecision(item)
+    const { aggregate, column } = item
+    return precision === 'none' ? { aggregate, column } : { aggregate, column, precision }
+  }
   const filter = (item: PivotFilter): PivotRequestFilter => {
     const { condition, operand, upper } = item
     if (item.kind === 'measure') {
       return {
         kind: 'measure',
-        measure: { aggregate: item.aggregate, column: item.column },
+        measure: measure(item),
         levels: levels(filterLevels(config, item)),
         test: { condition: item.condition, operand, upper },
       }
@@ -440,7 +503,7 @@ export function engineRequest(config: PivotConfig): PivotRequest {
   return {
     rows: levels(config.rows),
     columns: levels(config.columns),
-    measures: config.measures.map(({ aggregate, column }) => ({ aggregate, column })),
+    measures: config.measures.map(measure),
     filters: activeFilters(config).map(filter),
   }
 }
@@ -702,7 +765,10 @@ function withFollowedTargets(before: PivotConfig, after: PivotConfig): PivotConf
   const followed = (index: number) => {
     const measure = before.measures[index]
     return after.measures.findIndex(
-      ({ aggregate, column }) => aggregate === measure?.aggregate && column === measure?.column,
+      (item) =>
+        item.aggregate === measure?.aggregate &&
+        item.column === measure?.column &&
+        measurePrecision(item) === measurePrecision(measure),
     )
   }
   const columns = sameLevels(before.columns, after.columns)
@@ -807,13 +873,14 @@ export function defaultAggregate(
 }
 
 /**
- * Expression of a measure: `SUM(montant)`, `COUNT(DISTINCT ville)`, `MIN(ville)`, `COUNT(*)`.
+ * Expression of a measure: `SUM(montant)`, `COUNT(DISTINCT ville)`, `MIN(ville)`, `COUNT(*)`, and
+ * at a precision of its dates `MIN(vendue_le (Mois))`.
  *
  * @param measure Measure.
  * @param names Names of the columns of the result.
  */
 export function measureExpression(measure: PivotMeasure, names: string[]): string {
-  const name = names[measure.column] ?? '?'
+  const name = withPrecisionLabel(names[measure.column] ?? '?', measurePrecision(measure))
   switch (measure.aggregate) {
     case 'count_star':
       return 'COUNT(*)'
@@ -959,10 +1026,11 @@ function testExpression(
 function filterExpression(filter: PivotFilter, names: string[], types: ColumnTypeInfo[]): string {
   if (filter.kind === 'measure') {
     const { condition, operand, upper } = filter
+    const precision = valuePrecision(filter)
     return testExpression(
       measureExpression(filter, names),
       { condition, operand, upper },
-      measureFamily(filter, types),
+      precision === 'none' ? measureFamily(filter, types) : PERIOD_FAMILIES[precision],
     )
   }
   const name = withPrecisionLabel(names[filter.column] ?? '?', filter.precision)
@@ -1131,7 +1199,8 @@ function valueForm(
   types: ColumnTypeInfo[],
 ): ValueForm | null {
   if ('aggregate' in filter) {
-    return familyForm(measureFamily(filter, types))
+    const precision = valuePrecision(filter)
+    return precision === 'none' ? familyForm(measureFamily(filter, types)) : periodForm(precision)
   }
   return filter.precision === 'none'
     ? familyForm(types[filter.column]?.family)
@@ -1322,6 +1391,7 @@ function placeFilter(
       aggregate: measure.aggregate,
       column,
       name: '',
+      precision: keptPrecision(measure.aggregate, measure.precision),
       condition: isRanged(measureFamily(measure, types)) ? 'between' : 'equal',
       operand: '',
       upper: '',
@@ -1351,8 +1421,9 @@ function placeFilter(
  *
  * A level moved keeps its name, and a measure moved stays the same measure, with its name; a column
  * that becomes a measure takes the aggregate given, and a measure that becomes a level loses its
- * name. A filter that leaves the filters also loses its name; on a measure, its aggregate stays
- * when it becomes a measure, and on a column, its precision when it becomes a level.
+ * name, but keeps its precision. A filter that leaves the filters also loses its name; on a
+ * measure, its aggregate and its precision stay when it becomes a measure, and its precision or
+ * that of a filter on a column when it becomes a level.
  *
  * @param config Configuration.
  * @param column Index of the column.
@@ -1380,10 +1451,12 @@ export function placeColumn(
   // Removing an element before the target, in the same zone, shifts the target.
   const index = from?.zone === to.zone && from.index < to.index ? to.index - 1 : to.index
   const insert = <T>(items: T[], item: T) => [...items.slice(0, index), item, ...items.slice(index)]
+  const measureFilter = filter?.kind === 'measure' ? filter : undefined
   const newLevel: PivotLevel = level ?? {
     column,
     name: '',
-    precision: filter?.kind === 'column' ? filter.precision : 'none',
+    precision:
+      filter?.kind === 'column' ? filter.precision : measurePrecision(moved ?? measureFilter),
   }
   return withFollowedTargets(config, {
     ...result,
@@ -1394,9 +1467,11 @@ export function placeColumn(
         ? insert(
             result.measures,
             moved ?? {
-              aggregate: filter?.kind === 'measure' ? filter.aggregate : aggregate,
+              aggregate: measureFilter?.aggregate ?? aggregate,
               column,
               name: '',
+              precision:
+                measureFilter && keptPrecision(measureFilter.aggregate, measureFilter.precision),
             },
           )
         : result.measures,
@@ -1404,7 +1479,8 @@ export function placeColumn(
 }
 
 /**
- * Changes the aggregate of a measure, which keeps its name.
+ * Changes the aggregate of a measure, which keeps its name, and its precision if the new aggregate
+ * takes one.
  *
  * @param config Configuration.
  * @param index Position of the measure.
@@ -1418,23 +1494,36 @@ export function withAggregate(
   return {
     ...config,
     measures: config.measures.map((measure, position) =>
-      position === index ? { ...measure, aggregate } : measure,
+      position === index
+        ? { ...measure, aggregate, precision: keptPrecision(aggregate, measure.precision) }
+        : measure,
     ),
   }
 }
 
 /**
- * Changes the precision of a level, which keeps its name and the filters that read it.
+ * Changes the precision of a level, which keeps its name and the filters that read it, or of a
+ * measure, which keeps its name, its sorts and its widths, as with a new aggregate.
  *
  * @param config Configuration.
- * @param place Place of the level.
+ * @param place Place of the level or of the measure.
  * @param precision New precision.
  */
 export function withPrecision(
   config: PivotConfig,
-  place: ZonePlace & { zone: 'rows' | 'columns' },
+  place: ZonePlace & { zone: 'rows' | 'columns' | 'measures' },
   precision: DatePrecision,
 ): PivotConfig {
+  if (place.zone === 'measures') {
+    return {
+      ...config,
+      measures: config.measures.map((measure, index) =>
+        index === place.index
+          ? { ...measure, precision: keptPrecision(measure.aggregate, precision) }
+          : measure,
+      ),
+    }
+  }
   const changed = config[place.zone][place.index]
   return withFollowedTargets(config, {
     ...config,

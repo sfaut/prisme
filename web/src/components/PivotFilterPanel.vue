@@ -4,7 +4,8 @@
   ("Réglages…").
 
   A filter on a column sets its precision, when it holds dates, and its condition;
-  a filter on a measure, its aggregate, its condition and its level. The condition
+  a filter on a measure, its aggregate, its precision for `COUNT(DISTINCT)`, `MIN`
+  and `MAX` of dates, its condition and its level. The condition
   shows what it asks: a value, two bounds, the list of the values of the column
   (`PivotValuesList.vue`) or nothing. A choice or a tick applies at once; a value
   typed applies at Enter or on leaving its field, which refuses a value that cannot
@@ -52,12 +53,15 @@ import {
   chosenLevel,
   elementExpression,
   elementLabel,
+  keptPrecision,
   measureExpression,
+  measurePrecision,
   operandCount,
   operandExample,
   operandRefusal,
   precisionChoices,
   summable,
+  takesPrecision,
 } from './pivotConfig'
 import PivotValuesList from './PivotValuesList.vue'
 import { MENU_PANEL } from './ui/menuItem'
@@ -204,28 +208,59 @@ function chooseCondition(condition: PivotCondition | undefined): void {
 }
 
 /**
- * Precisions the column of the filter offers, none for a column that holds no dates.
+ * What the filter keeps of the dates of its column.
  */
-const precisions = computed(() =>
-  columnFilter.value === null
-    ? []
-    : precisionChoices(props.types[columnFilter.value.column]?.family).map(
-        ({ precision, label }) => ({ value: precision, label, icon: PRECISION_ICONS[label] }),
-      ),
+const filterPrecision = computed(
+  () => columnFilter.value?.precision ?? measurePrecision(measureFilter.value ?? undefined),
 )
 
 /**
- * Takes the precision chosen: what the filter compared to has the form of the former one.
- *
- * @param precision Precision.
+ * Precisions the column of the filter offers: none for a column that holds no dates, nor for a
+ * measure whose aggregate takes none.
  */
-function choosePrecision(precision: DatePrecision | undefined): void {
-  if (precision !== undefined && precision !== columnFilter.value?.precision) {
-    for (const name of VALUE_FIELDS) {
-      drafts[name] = ''
-      confirmed[name] = ''
-    }
-    change({ precision, values: [], operand: '', upper: '' })
+const precisions = computed(() => {
+  const measure = measureFilter.value
+  if (measure !== null && !takesPrecision(measure.aggregate)) {
+    return []
+  }
+  return precisionChoices(props.types[props.filter.column]?.family).map(({ precision, label }) => ({
+    value: precision,
+    label,
+    icon: PRECISION_ICONS[label],
+  }))
+})
+
+/**
+ * Takes the precision chosen: what the filter compared to has the form of the former one, or for a
+ * count, another meaning.
+ *
+ * @param chosen Precision.
+ */
+function choosePrecision(chosen: DatePrecision | undefined): void {
+  if (chosen === undefined || chosen === filterPrecision.value) {
+    return
+  }
+  for (const name of VALUE_FIELDS) {
+    drafts[name] = ''
+    confirmed[name] = ''
+  }
+  const measure = measureFilter.value
+  change(
+    measure === null
+      ? { precision: chosen, values: [], operand: '', upper: '' }
+      : { precision: keptPrecision(measure.aggregate, chosen), operand: '', upper: '' },
+  )
+}
+
+/**
+ * Takes the aggregate chosen, which keeps the precision if it takes one.
+ *
+ * @param aggregate Aggregate.
+ */
+function chooseAggregate(aggregate: PivotMeasureFilter['aggregate'] | undefined): void {
+  const measure = measureFilter.value
+  if (aggregate !== undefined && measure !== null) {
+    change({ aggregate, precision: keptPrecision(aggregate, measure.precision) })
   }
 }
 
@@ -240,9 +275,10 @@ const aggregates = computed(() => {
   const numbers = summable(props.types[filter.column]?.family)
   return AGGREGATES.map(({ aggregate, icon }) => {
     const refused = addsNumbers(aggregate) && !numbers
+    const { column, precision } = filter
     return {
       value: aggregate,
-      label: measureExpression({ aggregate, column: filter.column }, props.names),
+      label: measureExpression({ aggregate, column, precision }, props.names),
       icon,
       disabled: refused,
       hint: refused ? 'Demande une colonne de nombres' : undefined,
@@ -443,13 +479,13 @@ function onEscape(): void {
             :items="aggregates"
             label="Agrégat"
             class="w-full"
-            @update:model-value="$event && change({ aggregate: $event })"
+            @update:model-value="chooseAggregate"
           />
         </div>
-        <div v-if="columnFilter && precisions.length > 0" class="field">
+        <div v-if="precisions.length > 0" class="field">
           <span class="field-label" aria-hidden="true">Précision</span>
           <ui-select
-            :model-value="columnFilter.precision"
+            :model-value="filterPrecision"
             :items="precisions"
             label="Précision"
             class="w-full"

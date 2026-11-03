@@ -276,7 +276,42 @@ describe('PivotZones', () => {
     expect(mounted.find('[data-element]').text()).toContain('region (Mois)')
   })
 
-  it('gives no precision to a level without dates, nor to a measure', async () => {
+  it('gives COUNT(DISTINCT), MIN and MAX of dates the precisions of their menu', async () => {
+    const mounted = mountZones()
+    await mounted.setProps({
+      types: [
+        { family: 'text', name: 'TEXT' },
+        { family: 'text', name: 'TEXT' },
+        { family: 'date', name: 'DATE' },
+      ],
+      config: { ...CONFIG, measures: [{ aggregate: 'min', column: 2, name: '' }] },
+    })
+    const groups = () => elementMenu(mounted, 1).props('groups') as MenuGroup[]
+    const precision = () => groups().find((group) => group.label === 'Précision')
+    expect(precision()?.items.map((item) => item.label)).toEqual([
+      'Année',
+      'Trimestre',
+      'Mois',
+      'Semaine',
+      'Date',
+    ])
+    expect(precision()?.items[4]?.icon).toBe(Check)
+    precision()?.items[2]?.onSelect?.()
+    await nextTick()
+    expect(shownConfig(mounted).measures).toEqual([
+      { aggregate: 'min', column: 2, name: '', precision: 'month' },
+    ])
+    expect(mounted.findAll('[data-element]')[1]!.text()).toContain('MIN(montant (Mois))')
+    // The aggregates show the precision they would keep.
+    const aggregates = groups().find((group) => group.label === 'Agrégat')!.items
+    expect(aggregates.map((item) => item.label)).toContain('MAX(montant (Mois))')
+    expect(aggregates.map((item) => item.label)).toContain('COUNT(montant)')
+    await choose(mounted, 1, 'COUNT(montant)')
+    expect(shownConfig(mounted).measures[0]?.precision).toBeUndefined()
+    expect(groups().map((group) => group.label)).toEqual(['Agrégat', 'Élément'])
+  })
+
+  it('gives no precision to a level without dates, nor to a measure that reads none', async () => {
     const mounted = mountZones()
     await mounted.setProps({
       types: [

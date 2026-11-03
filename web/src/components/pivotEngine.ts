@@ -28,7 +28,8 @@ import { type TransferExports, copyBlock, releaseBlock } from './pivotTransfer'
 
 /**
  * Measure of a table: `COUNT(*)`, `COUNT`, `SUM` and `AVG` of a column or of its distinct values,
- * `MIN` and `MAX` of a column.
+ * `MIN` and `MAX` of a column. `COUNT(DISTINCT col)`, `MIN` and `MAX` can read the periods of a
+ * precision of its dates.
  */
 export interface PivotMeasure {
   /**
@@ -39,6 +40,11 @@ export interface PivotMeasure {
    * Column the measure comes from; `COUNT(*)` keeps it, for its label and its menu.
    */
   column: number
+  /**
+   * What `COUNT(DISTINCT col)`, `MIN` and `MAX` keep of the dates of the column; absent, the values
+   * as they are.
+   */
+  precision?: DatePrecision
 }
 
 /**
@@ -616,7 +622,7 @@ function testWords({ condition, operand, upper }: PivotRequestTest): number[] {
 
 /**
  * Words of a request for the module: numbers of levels and of measures, a column and a precision
- * per level, a kind and a column per measure, then the filters. A filter on a list of values: 0,
+ * per level, a kind, a column and a precision per measure, then the filters. A filter on a list of values: 0,
  * its level, a word for `NOT IN`, the number of its values and each value. A filter on a measure: 1,
  * the measure, the number of its levels and each level, and the test. A filter on a column: 2, its
  * level and the test.
@@ -639,7 +645,11 @@ export function requestWords(request: PivotRequest): Uint32Array {
     min: 7,
     max: 8,
   }
-  const measureWords = ({ aggregate, column }: PivotMeasure) => [kinds[aggregate], column]
+  const measureWords = ({ aggregate, column, precision }: PivotMeasure) => [
+    kinds[aggregate],
+    column,
+    PRECISION_CODES[precision ?? 'none'],
+  ]
   const filterWords = (filter: PivotRequestFilter): number[] => {
     switch (filter.kind) {
       case 'values':

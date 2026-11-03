@@ -107,6 +107,11 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Precision of a column of dates in a filter: the list reads the periods, a level dragged there keeps its precision, a comparison keeps whole periods
 - ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes, reload
 - ✅ "Retirer" comes back to the menu of the elements of each zone, beside the release outside the zones; a filter gets the same menu, whose first entry, "Réglages…", opens its settings
+- ✅ Precision of the dates of a measure: `COUNT(DISTINCT col)`, `MIN(col)` and `MAX(col)` of a `date` or `datetime` column take a precision in their menu, as a level does; `COUNT(DISTINCT vendue_le (Mois))` counts the months, `MIN(vendue_le (Mois))` gives `2026-01`. A date outside of the calendar stops such a measure when a row taken into account holds it; the other aggregates take none, and a change to one of them drops it
+- ✅ A filter on such a measure keeps its precision and compares periods (`MAX(vendue_le (Mois)) >= '2026-03'`); a measure dragged into the filters, and a filter dragged into the measures or onto an axis, keep it
+- ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes and at a real 150%
+- ✅ Documented: `README.md`, `docs/DEVELOPER.md`
+- ✅ Documented in the specification: requirement F-46, after F-43, its lots and its acceptance
 - ⬜ Filters by an expression (F-19), with the dialect: an expression without an aggregate filters the rows, with one the groups; later, a custom expression in a filter on values (F-21), `LIKE` and relative dates
 - ⬜ Lot 1, next slices (ANSI SQL): dialect (parsed by `sqlparser`, typing, ANSI catalog), calendar, editor, nested date levels, computed columns, filters, fold, caches, copy, CSV, conformance
 - ⬜ Lot 2: complements (detail of a cell, measures in rows)

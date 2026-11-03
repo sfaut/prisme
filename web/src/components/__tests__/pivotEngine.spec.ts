@@ -107,7 +107,7 @@ describe('ranksOf', () => {
 })
 
 describe('requestWords', () => {
-  it('writes the levels then a kind and a column per measure', () => {
+  it('writes the levels then a kind, a column and a precision per measure', () => {
     const request: PivotRequest = {
       rows: [level(0), level(1)],
       columns: [level(2)],
@@ -115,10 +115,13 @@ describe('requestWords', () => {
         { aggregate: 'sum', column: 4 },
         { aggregate: 'count_star', column: 1 },
         { aggregate: 'count_distinct', column: 1 },
+        { aggregate: 'min', column: 7, precision: 'month' },
       ],
       filters: [],
     }
-    expect(Array.from(requestWords(request))).toEqual([2, 1, 3, 0, 0, 1, 0, 2, 0, 2, 4, 0, 1, 3, 1])
+    expect(Array.from(requestWords(request))).toEqual([
+      2, 1, 4, 0, 0, 1, 0, 2, 0, 2, 4, 0, 0, 1, 0, 3, 1, 0, 7, 7, 3,
+    ])
   })
 
   it('has a number per precision', () => {
@@ -151,7 +154,9 @@ describe('requestWords', () => {
       ],
       filters: [],
     }
-    expect(Array.from(requestWords(request))).toEqual([0, 0, 5, 4, 0, 5, 0, 6, 0, 7, 0, 8, 0])
+    expect(Array.from(requestWords(request))).toEqual([
+      0, 0, 5, 4, 0, 0, 5, 0, 0, 6, 0, 0, 7, 0, 0, 8, 0, 0,
+    ])
   })
 })
 
@@ -298,6 +303,49 @@ describe('PivotEngine', () => {
       '2026-12-31',
       '2027-01-01',
       '2027-01-04',
+      null,
+    ])
+  })
+
+  it('reads the periods of a precision for COUNT(DISTINCT), MIN and MAX', async () => {
+    const rows: Cell[][] = [
+      ['a', '2026-01-15'],
+      ['a', '2026-01-20'],
+      ['a', '2026-03-02'],
+      ['b', '2025-11-30'],
+    ]
+    const engine = await loaded(rows, ['text', 'date'])
+    const shape = engine.compute({
+      rows: [level(0)],
+      columns: [],
+      measures: [
+        { aggregate: 'count_distinct', column: 1, precision: 'month' },
+        { aggregate: 'min', column: 1, precision: 'quarter' },
+        { aggregate: 'max', column: 1, precision: 'year' },
+      ],
+      filters: [],
+    })
+    expect(engine.window([0, shape.lines], [0, shape.columns]).cells).toEqual([
+      ['2', '2026-T1', '2026'],
+      ['1', '2025-T4', '2025'],
+      ['3', '2025-T4', '2026'],
+    ])
+    // A filter on MAX(d (Mois)) compares months.
+    const kept = engine.compute({
+      rows: [level(0)],
+      columns: [],
+      measures: [{ aggregate: 'count_star', column: 0 }],
+      filters: [
+        {
+          kind: 'measure',
+          measure: { aggregate: 'max', column: 1, precision: 'month' },
+          levels: [level(0)],
+          test: { condition: 'greater_or_equal', operand: '2026-02', upper: '' },
+        },
+      ],
+    })
+    expect(engine.window([0, kept.lines], [0, 1]).lines.map((line) => line.label)).toEqual([
+      'a',
       null,
     ])
   })
@@ -755,6 +803,7 @@ describe('the filters', () => {
       1,
       2,
       4,
+      0,
       1,
       1,
       3,
