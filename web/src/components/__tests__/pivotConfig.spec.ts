@@ -309,6 +309,31 @@ describe('elementLabel', () => {
     expect(zoneLabels(config, 'measures', NAMES)).toEqual(['CA', 'COUNT(*)'])
     expect(elementLabel(config, { zone: 'columns', index: 0 }, NAMES)).toBe('?')
   })
+
+  it('names a precision of the time by its unit', () => {
+    const precisions: DatePrecision[] = [
+      'date',
+      'hour',
+      'minute',
+      'second',
+      'millisecond',
+      'microsecond',
+    ]
+    const config: PivotConfig = {
+      rows: precisions.map((precision) => ({ column: 0, name: '', precision })),
+      columns: [],
+      measures: [],
+      filters: [],
+    }
+    expect(zoneLabels(config, 'rows', NAMES)).toEqual([
+      'region (Date)',
+      'region (Horodatage (h))',
+      'region (Horodatage (min))',
+      'region (Horodatage (s))',
+      'region (Horodatage (ms))',
+      'region (Horodatage (µs))',
+    ])
+  })
 })
 
 describe('withName', () => {
@@ -1176,14 +1201,14 @@ describe('the filters', () => {
     it('writes an instant at a precision of the time as a typed literal', () => {
       const hours = { precision: 'hour', operand: '2026-01-15 10:00:00' } as const
       expect(expression({ ...hours, condition: 'greater_or_equal' }, 'datetime')).toBe(
-        "annee (Horodatage (hh)) >= TIMESTAMP'2026-01-15 10:00:00'",
+        "annee (Horodatage (h)) >= TIMESTAMP'2026-01-15 10:00:00'",
       )
       expect(
         expression(
           { condition: 'in_list', precision: 'millisecond', values: ['2026-01-15 10:30:15.123'] },
           'datetime',
         ),
-      ).toBe("annee (Horodatage (hh:mm:ss.ms)) IN (TIMESTAMP'2026-01-15 10:30:15.123')")
+      ).toBe("annee (Horodatage (ms)) IN (TIMESTAMP'2026-01-15 10:30:15.123')")
     })
   })
 

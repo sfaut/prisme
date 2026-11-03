@@ -282,7 +282,7 @@ describe('PivotZones', () => {
     precision()?.items[6]?.onSelect?.()
     await nextTick()
     expect(shownConfig(mounted).rows).toEqual([{ column: 0, name: '', precision: 'minute' }])
-    expect(mounted.find('[data-element]').text()).toContain('region (Horodatage (hh:mm))')
+    expect(mounted.find('[data-element]').text()).toContain('region (Horodatage (min))')
   })
 
   it('gives COUNT(DISTINCT), MIN and MAX of dates the precisions of their menu', async () => {

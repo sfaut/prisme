@@ -1029,7 +1029,19 @@ function measureFamily(
 }
 
 /**
- * Name of a column with its precision: `vendue_le (Mois)`.
+ * Label of a precision of the time in the name of an element: its unit, by its SI symbol. The
+ * menus write its whole form, `Horodatage (hh:mm:ss.µs)`.
+ */
+const TIME_UNIT_LABELS: Partial<Record<DatePrecision, string>> = {
+  hour: 'Horodatage (h)',
+  minute: 'Horodatage (min)',
+  second: 'Horodatage (s)',
+  millisecond: 'Horodatage (ms)',
+  microsecond: 'Horodatage (µs)',
+}
+
+/**
+ * Name of a column with its precision: `vendue_le (Mois)`, `vue_le (Horodatage (µs))`.
  *
  * @param name Name of the column.
  * @param precision What it keeps of its dates.
@@ -1038,8 +1050,10 @@ function withPrecisionLabel(name: string, precision: DatePrecision): string {
   if (precision === 'none') {
     return name
   }
-  const choice = precisionChoices('datetime').find((item) => item.precision === precision)
-  return `${name} (${choice?.label})`
+  const label =
+    TIME_UNIT_LABELS[precision] ??
+    precisionChoices('datetime').find((item) => item.precision === precision)?.label
+  return `${name} (${label})`
 }
 
 /**
