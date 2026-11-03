@@ -53,6 +53,16 @@ pub enum DatePrecision {
     Week,
     /// Day, without the time: `2026-01-15`.
     Date,
+    /// Hour of an instant, its minutes and seconds at 0: `2026-01-15 10:00:00`.
+    Hour,
+    /// Minute of an instant, its seconds at 0: `2026-01-15 10:30:00`.
+    Minute,
+    /// Second of an instant, without its fraction: `2026-01-15 10:30:15`.
+    Second,
+    /// Millisecond of an instant: `2026-01-15 10:30:15.123`.
+    Millisecond,
+    /// Microsecond of an instant: `2026-01-15 10:30:15.123456`.
+    Microsecond,
 }
 
 /// Form of the lines of the Pivoteur.
@@ -491,6 +501,19 @@ mod tests {
         assert_eq!(saved.config.rows[0].name, "Y");
         assert_eq!(saved.config.rows[0].precision, DatePrecision::None);
         assert_eq!(saved.config.columns[0].precision, DatePrecision::Week);
+        let times = r#"["hour","minute","second","millisecond","microsecond"]"#;
+        let precisions: Vec<DatePrecision> = serde_json::from_str(times).unwrap();
+        assert_eq!(
+            precisions,
+            [
+                DatePrecision::Hour,
+                DatePrecision::Minute,
+                DatePrecision::Second,
+                DatePrecision::Millisecond,
+                DatePrecision::Microsecond,
+            ]
+        );
+        assert_eq!(serde_json::to_string(&precisions).unwrap(), times);
         assert_eq!(
             serde_json::from_str::<TabPivot>("{}").unwrap(),
             TabPivot::default()

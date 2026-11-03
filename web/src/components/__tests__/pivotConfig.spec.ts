@@ -232,9 +232,14 @@ describe('precisionChoices', () => {
     ])
   })
 
-  it('offers the day of a date and time, then its values as they are', () => {
-    expect(choices('datetime').slice(-2)).toEqual([
+  it('offers the day of a date and time, its time to each unit, then its values as they are', () => {
+    expect(choices('datetime').slice(4)).toEqual([
       ['date', 'Date'],
+      ['hour', 'Horodatage (hh)'],
+      ['minute', 'Horodatage (hh:mm)'],
+      ['second', 'Horodatage (hh:mm:ss)'],
+      ['millisecond', 'Horodatage (hh:mm:ss.ms)'],
+      ['microsecond', 'Horodatage (hh:mm:ss.µs)'],
       ['none', 'Date et heure'],
     ])
   })
@@ -1167,6 +1172,19 @@ describe('the filters', () => {
         'annee (Semaine) IS NULL',
       )
     })
+
+    it('writes an instant at a precision of the time as a typed literal', () => {
+      const hours = { precision: 'hour', operand: '2026-01-15 10:00:00' } as const
+      expect(expression({ ...hours, condition: 'greater_or_equal' }, 'datetime')).toBe(
+        "annee (Horodatage (hh)) >= TIMESTAMP'2026-01-15 10:00:00'",
+      )
+      expect(
+        expression(
+          { condition: 'in_list', precision: 'millisecond', values: ['2026-01-15 10:30:15.123'] },
+          'datetime',
+        ),
+      ).toBe("annee (Horodatage (hh:mm:ss.ms)) IN (TIMESTAMP'2026-01-15 10:30:15.123')")
+    })
   })
 
   describe('elementLabel', () => {
@@ -1454,6 +1472,34 @@ describe('the filters', () => {
       expect(refusal('none', '2026-01-15')).toBe(
         'Un instant est attendu, comme 2026-01-15 10:30:00',
       )
+    })
+
+    it('reads a value of a precision of the time as an instant truncated to its unit', () => {
+      const dates = types('text', 'text', 'datetime')
+      const refusal = (precision: DatePrecision, operand: string) =>
+        operandRefusal(tested({ precision }), operand, dates)
+      expect(refusal('hour', '2026-01-15 10:00:00')).toBeNull()
+      expect(refusal('hour', '2026-01-15 10:30:00')).toBe(
+        'Un horodatage à l’heure est attendu, comme 2026-01-15 10:00:00',
+      )
+      expect(refusal('hour', '2026-02-30 10:00:00')).not.toBeNull()
+      expect(refusal('minute', '2026-01-15 10:30:00')).toBeNull()
+      expect(refusal('minute', '2026-01-15 10:30:15')).toBe(
+        'Un horodatage à la minute est attendu, comme 2026-01-15 10:30:00',
+      )
+      expect(refusal('second', '2026-01-15 23:59:59')).toBeNull()
+      expect(refusal('second', '2026-01-15 24:00:00')).toBe(
+        'Un horodatage à la seconde est attendu, comme 2026-01-15 10:30:15',
+      )
+      expect(refusal('millisecond', '2026-01-15 10:30:15.123')).toBeNull()
+      expect(refusal('millisecond', '2026-01-15 10:30:15.12')).toBe(
+        'Un horodatage à la milliseconde est attendu, comme 2026-01-15 10:30:15.123',
+      )
+      expect(refusal('microsecond', '2026-01-15 10:30:15.123456')).toBeNull()
+      expect(refusal('microsecond', '2026-01-15 10:30:15.123')).toBe(
+        'Un horodatage à la microseconde est attendu, comme 2026-01-15 10:30:15.123456',
+      )
+      expect(operandExample(tested({ precision: 'minute' }), dates)).toBe('2026-01-15 10:30:00')
     })
 
     it('takes any text', () => {

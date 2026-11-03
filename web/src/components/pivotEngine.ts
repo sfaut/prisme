@@ -588,6 +588,11 @@ const PRECISION_CODES: Record<DatePrecision, number> = {
   month: 3,
   week: 4,
   date: 5,
+  hour: 6,
+  minute: 7,
+  second: 8,
+  millisecond: 9,
+  microsecond: 10,
 }
 
 /**

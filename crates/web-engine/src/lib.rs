@@ -277,7 +277,8 @@ pub unsafe extern "C" fn set_kept(rows: *const u32, count: usize, all: u32) -> u
 }
 
 /// Reads a level: a column and a precision (0 its values as they are, 1 year,
-/// 2 quarter, 3 month, 4 week, 5 date). `None` for another precision.
+/// 2 quarter, 3 month, 4 week, 5 date, 6 hour, 7 minute, 8 second,
+/// 9 millisecond, 10 microsecond). `None` for another precision.
 fn level(column: u32, precision: u32) -> Option<Level> {
     let precision = match precision {
         0 => None,
@@ -286,6 +287,11 @@ fn level(column: u32, precision: u32) -> Option<Level> {
         3 => Some(Precision::Month),
         4 => Some(Precision::Week),
         5 => Some(Precision::Date),
+        6 => Some(Precision::Hour),
+        7 => Some(Precision::Minute),
+        8 => Some(Precision::Second),
+        9 => Some(Precision::Millisecond),
+        10 => Some(Precision::Microsecond),
         _ => return None,
     };
     Some(Level {
@@ -711,7 +717,7 @@ mod tests {
 
         let length = distinct(0, 0);
         assert_eq!(output(length), r#"["Nord","Sud"]"#);
-        let length = distinct(0, 9);
+        let length = distinct(0, 11);
         assert_eq!(output(length), r#"{"error":{"kind":"request"}}"#);
         let ranks = [1u32, 0];
         // SAFETY: two ranks.
@@ -917,15 +923,29 @@ mod tests {
 
     #[test]
     fn a_level_reads_a_precision_of_its_dates() {
-        let request = request(&[1, 1, 0, 3, 4, 7, 0]).unwrap();
+        let read = request(&[1, 1, 0, 3, 4, 7, 0]).unwrap();
         assert_eq!(
-            request.rows,
+            read.rows,
             [Level {
                 column: 3,
                 precision: Some(Precision::Week),
             }]
         );
-        assert_eq!(request.columns, [Level::from(7)]);
+        assert_eq!(read.columns, [Level::from(7)]);
+        let times: Vec<_> = (6..=10)
+            .map(|code| request(&[1, 0, 0, 2, code]).unwrap().rows[0].precision)
+            .collect();
+        assert_eq!(
+            times,
+            [
+                Some(Precision::Hour),
+                Some(Precision::Minute),
+                Some(Precision::Second),
+                Some(Precision::Millisecond),
+                Some(Precision::Microsecond),
+            ]
+        );
+        assert!(request(&[1, 0, 0, 2, 11]).is_none());
     }
 
     #[test]
@@ -1017,7 +1037,7 @@ mod tests {
         assert!(request(&[0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 10, 0]).is_none());
         assert!(request(&[0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, NULL_STEP]).is_none());
         assert!(request(&[0, 0, 1, 0, 0, 0, 2, 0, 0, 6, 1, 97]).is_none());
-        assert!(request(&[0, 0, 1, 0, 0, 0, 2, 0, 9, 8]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 2, 0, 11, 8]).is_none());
         assert!(request(&[0, 0, 1, 0, 0, 0, 1, 2, 1, 3, 0, 8]).is_none());
     }
 
@@ -1067,6 +1087,6 @@ mod tests {
             assert!(request(&[0, 0, 1, kind, 0, 3]).is_none(), "{kind}");
         }
         assert!(request(&[1, 0, 0, 0]).is_none());
-        assert!(request(&[1, 0, 0, 0, 6]).is_none());
+        assert!(request(&[1, 0, 0, 0, 11]).is_none());
     }
 }

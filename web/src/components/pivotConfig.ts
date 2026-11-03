@@ -115,7 +115,18 @@ const WITHOUT_TOTAL = { rows: 'without_row_total', columns: 'without_column_tota
 /**
  * Label of a precision in the menu of a level.
  */
-export type PrecisionLabel = 'Année' | 'Trimestre' | 'Mois' | 'Semaine' | 'Date' | 'Date et heure'
+export type PrecisionLabel =
+  | 'Année'
+  | 'Trimestre'
+  | 'Mois'
+  | 'Semaine'
+  | 'Date'
+  | 'Horodatage (hh)'
+  | 'Horodatage (hh:mm)'
+  | 'Horodatage (hh:mm:ss)'
+  | 'Horodatage (hh:mm:ss.ms)'
+  | 'Horodatage (hh:mm:ss.µs)'
+  | 'Date et heure'
 
 /**
  * Precision a level can take.
@@ -134,7 +145,9 @@ export interface PrecisionChoice {
 /**
  * Precisions a level of this family can take, from the coarsest to the finest, the values of the
  * column as they are last: a date is its own "Date". The year and the week are those of ISO 8601,
- * so that 2027-01-01 falls in 2026 and in its week 53.
+ * so that 2027-01-01 falls in 2026 and in its week 53. An instant also gives its hour, its minute,
+ * its second, its millisecond and its microsecond, the time truncated to that unit:
+ * `2026-01-15 10:00:00` for its hour.
  *
  * @param family
  *     Family of the type of the column; unknown for a result saved before its columns were
@@ -155,6 +168,11 @@ export function precisionChoices(family: TypeFamily | undefined): PrecisionChoic
       return [
         ...periods,
         { precision: 'date', label: 'Date' },
+        { precision: 'hour', label: 'Horodatage (hh)' },
+        { precision: 'minute', label: 'Horodatage (hh:mm)' },
+        { precision: 'second', label: 'Horodatage (hh:mm:ss)' },
+        { precision: 'millisecond', label: 'Horodatage (hh:mm:ss.ms)' },
+        { precision: 'microsecond', label: 'Horodatage (hh:mm:ss.µs)' },
         { precision: 'none', label: 'Date et heure' },
       ]
     default:
@@ -917,7 +935,8 @@ const COMPARISON_SIGNS = {
 
 /**
  * Family of the values of a filter at a precision, for their literals: a year is a number, a day a
- * date, and the other periods are texts.
+ * date, an hour, a minute, a second, a millisecond or a microsecond an instant, and the other
+ * periods are texts.
  */
 const PERIOD_FAMILIES: Record<Exclude<DatePrecision, 'none'>, TypeFamily> = {
   year: 'integer',
@@ -925,6 +944,42 @@ const PERIOD_FAMILIES: Record<Exclude<DatePrecision, 'none'>, TypeFamily> = {
   month: 'text',
   week: 'text',
   date: 'date',
+  hour: 'datetime',
+  minute: 'datetime',
+  second: 'datetime',
+  millisecond: 'datetime',
+  microsecond: 'datetime',
+}
+
+/**
+ * Form of the time of the label of each precision of the time, after its day and a space: the
+ * fields below its unit at 0, then the digits of the fraction it writes.
+ */
+const INSTANT_FORMS: Record<
+  'hour' | 'minute' | 'second' | 'millisecond' | 'microsecond',
+  { time: RegExp; unit: string; example: string }
+> = {
+  hour: { time: /^([01]\d|2[0-3]):00:00$/, unit: 'à l’heure', example: '2026-01-15 10:00:00' },
+  minute: {
+    time: /^([01]\d|2[0-3]):[0-5]\d:00$/,
+    unit: 'à la minute',
+    example: '2026-01-15 10:30:00',
+  },
+  second: {
+    time: /^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/,
+    unit: 'à la seconde',
+    example: '2026-01-15 10:30:15',
+  },
+  millisecond: {
+    time: /^([01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{3}$/,
+    unit: 'à la milliseconde',
+    example: '2026-01-15 10:30:15.123',
+  },
+  microsecond: {
+    time: /^([01]\d|2[0-3]):[0-5]\d:[0-5]\d\.\d{6}$/,
+    unit: 'à la microseconde',
+    example: '2026-01-15 10:30:15.123456',
+  },
 }
 
 /**
@@ -1185,6 +1240,15 @@ function periodForm(precision: Exclude<DatePrecision, 'none'>): ValueForm {
         refusal: 'Une date est attendue, comme 2026-01-15',
         example: '2026-01-15',
       }
+    default: {
+      const { time, unit, example } = INSTANT_FORMS[precision]
+      return {
+        accepts: (text) =>
+          isCalendarDate(text.slice(0, 10)) && text[10] === ' ' && time.test(text.slice(11)),
+        refusal: `Un horodatage ${unit} est attendu, comme ${example}`,
+        example,
+      }
+    }
   }
 }
 

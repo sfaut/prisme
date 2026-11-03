@@ -319,6 +319,11 @@ describe('PivotFilterPanel', () => {
       'Mois',
       'Semaine',
       'Date',
+      'Horodatage (hh)',
+      'Horodatage (hh:mm)',
+      'Horodatage (hh:mm:ss)',
+      'Horodatage (hh:mm:ss.ms)',
+      'Horodatage (hh:mm:ss.µs)',
       'Date et heure',
     ])
     await choose(mounted, 'Précision', 'none')
@@ -357,6 +362,11 @@ describe('PivotFilterPanel', () => {
       'Mois',
       'Semaine',
       'Date',
+      'Horodatage (hh)',
+      'Horodatage (hh:mm)',
+      'Horodatage (hh:mm:ss)',
+      'Horodatage (hh:mm:ss.ms)',
+      'Horodatage (hh:mm:ss.µs)',
       'Date et heure',
     ])
     expect(selectProps(mounted, 'Précision').modelValue).toBe('none')

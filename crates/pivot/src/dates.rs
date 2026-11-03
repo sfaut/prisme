@@ -1,9 +1,14 @@
 //! Dates of a level of the Pivoteur: what a level keeps of the dates of its
-//! column, its precision (year, quarter, month, week, day), one group per
-//! period, in the order of time.
+//! column, its precision (year, quarter, month, week, day, then an instant to
+//! the hour, the minute, the second, the millisecond or the microsecond), one
+//! group per period, in the order of time.
 //!
-//! A date is read in the text of its cell, by the civil calendar: the time and
-//! the time zone that may follow it are left out, as they are written.
+//! A date is read in the text of its cell, by the civil calendar. A precision of
+//! the day or coarser leaves out the time and the time zone that may follow it.
+//! A precision of the time reads the time as it is written, `HH:MM:SS` and its
+//! fraction, truncated to its unit, as `DATE_TRUNC` does: `10:30:15.9` falls in
+//! the second `10:30:15`. It leaves out the time zone; a cell without a time of
+//! the day has no period at such a precision.
 //!
 //! The calendar holds the years 0001 to 9999, as in ANSI SQL. A cell outside of
 //! it has no period, and stops the computation when a row taken into account
@@ -33,15 +38,49 @@ pub enum Precision {
     Week,
     /// Day, without the time: `2026-01-15`.
     Date,
+    /// Hour of an instant, its minutes and seconds at 0: `2026-01-15 10:00:00`.
+    Hour,
+    /// Minute of an instant, its seconds at 0: `2026-01-15 10:30:00`.
+    Minute,
+    /// Second of an instant, without its fraction: `2026-01-15 10:30:15`.
+    Second,
+    /// Millisecond of an instant, as a `TIMESTAMP(3)`: `2026-01-15 10:30:15.123`.
+    Millisecond,
+    /// Microsecond of an instant, as a `TIMESTAMP(6)`:
+    /// `2026-01-15 10:30:15.123456`.
+    Microsecond,
 }
 
 impl Precision {
     /// Number of precisions.
-    pub const COUNT: usize = 5;
+    pub const COUNT: usize = 10;
+
+    /// Microseconds of the unit of a precision of the time, `None` for a
+    /// precision of the day or coarser.
+    fn unit(self) -> Option<i64> {
+        match self {
+            Precision::Hour => Some(3_600_000_000),
+            Precision::Minute => Some(60_000_000),
+            Precision::Second => Some(1_000_000),
+            Precision::Millisecond => Some(1_000),
+            Precision::Microsecond => Some(1),
+            _ => None,
+        }
+    }
+
+    /// Digits of the fraction of the seconds a label of this precision writes.
+    fn fraction_digits(self) -> usize {
+        match self {
+            Precision::Millisecond => 3,
+            Precision::Microsecond => 6,
+            _ => 0,
+        }
+    }
 }
 
-/// Period of a date: its year, then its rank in the year. Periods sort in the
-/// order of time.
+/// Period of a date: its year, then its rank in the year; for a precision of the
+/// time, its day (`YYYYMMDD`), then its microseconds in the day, truncated to
+/// the unit. Periods sort in the order of time.
 type Period = (i64, i64);
 
 /// Number written by a field of digits.
@@ -74,7 +113,37 @@ fn days_in_month(year: i64, month: i64) -> i64 {
     days_from_civil(next_year, next_month, 1) - days_from_civil(year, month, 1)
 }
 
-/// Date of the calendar written in a cell.
+/// Microseconds in the day of a time written `HH:MM:SS`, then an optional
+/// fraction, then anything, such as a time zone: the fraction is truncated to
+/// the microsecond. `None` without such a time, or for an hour out of the day.
+fn time_of_day(text: &str) -> Option<i64> {
+    let field = |range: std::ops::Range<usize>, largest: i64| {
+        text.get(range)
+            .and_then(digits)
+            .filter(|&value| value <= largest)
+    };
+    let separated = text.get(2..3) == Some(":") && text.get(5..6) == Some(":");
+    let (hour, minute, second) = (field(0..2, 23)?, field(3..5, 59)?, field(6..8, 59)?);
+    if !separated {
+        return None;
+    }
+    let fraction = match text[8..].strip_prefix('.') {
+        Some(rest) => {
+            let digits_end = rest
+                .find(|character: char| !character.is_ascii_digit())
+                .unwrap_or(rest.len());
+            if digits_end == 0 {
+                return None;
+            }
+            let kept = &rest[..digits_end.min(6)];
+            digits(kept)? * 10_i64.pow(6 - kept.len() as u32)
+        }
+        None => 0,
+    };
+    Some(((hour * 60 + minute) * 60 + second) * 1_000_000 + fraction)
+}
+
+/// Date of the calendar written in a cell, with its time when one follows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CellDate {
     /// Year.
@@ -83,6 +152,8 @@ struct CellDate {
     month: i64,
     /// Day.
     day: i64,
+    /// Microseconds in the day, `None` without a time of the day.
+    time: Option<i64>,
 }
 
 impl CellDate {
@@ -102,7 +173,13 @@ impl CellDate {
         let in_calendar = (1..=9999).contains(&year)
             && (1..=12).contains(&month)
             && (1..=days_in_month(year, month)).contains(&day);
-        in_calendar.then_some(CellDate { year, month, day })
+        let time = time.get(1..).and_then(time_of_day);
+        in_calendar.then_some(CellDate {
+            year,
+            month,
+            day,
+            time,
+        })
     }
 
     /// ISO year and ISO week: a week starts on Monday, and belongs to the year
@@ -122,15 +199,20 @@ impl CellDate {
         (year, (thursday - first_day(year)) / 7 + 1)
     }
 
-    /// Period of the date at a precision.
-    fn period(self, precision: Precision) -> Period {
-        match precision {
+    /// Period of the date at a precision; `None` for a precision of the time
+    /// when the cell holds no time of the day.
+    fn period(self, precision: Precision) -> Option<Period> {
+        if let Some(unit) = precision.unit() {
+            let day = (self.year * 100 + self.month) * 100 + self.day;
+            return self.time.map(|time| (day, time - time % unit));
+        }
+        Some(match precision {
             Precision::Year => (self.iso_week().0, 0),
             Precision::Quarter => (self.year, (self.month + 2) / 3),
             Precision::Month => (self.year, self.month),
             Precision::Week => self.iso_week(),
-            Precision::Date => (self.year, self.month * 100 + self.day),
-        }
+            _ => (self.year, self.month * 100 + self.day),
+        })
     }
 }
 
@@ -199,17 +281,65 @@ pub fn is_label(precision: Precision, text: &str) -> bool {
             Precision::Month => in_range(rest.strip_prefix('-'), 2, 12),
             Precision::Week => in_range(rest.strip_prefix("-S"), 2, 53),
             Precision::Date => text.len() == 10 && CellDate::parse(text).is_some(),
+            _ => is_instant_label(precision, text),
         }
+}
+
+/// Is a text the label of an instant at a precision of the time: a day of the
+/// calendar, a space, `HH:MM:SS` with the fields below the unit at 0, then the
+/// digits of the fraction the precision writes?
+fn is_instant_label(precision: Precision, text: &str) -> bool {
+    let (Some(unit), Some(time)) = (precision.unit(), text.get(11..)) else {
+        return false;
+    };
+    let written = match precision.fraction_digits() {
+        0 => time.len() == 8,
+        digits => {
+            time.len() == 9 + digits
+                && time.as_bytes()[8] == b'.'
+                && time.bytes().skip(9).all(|byte| byte.is_ascii_digit())
+        }
+    };
+    text.get(..10)
+        .is_some_and(|date| CellDate::parse(date).is_some())
+        && text.as_bytes()[10] == b' '
+        && written
+        && time_of_day(time).is_some_and(|micros| micros % unit == 0)
 }
 
 /// Label of a period.
 fn label(precision: Precision, (year, rank): Period) -> String {
+    let day = |date: i64| {
+        format!(
+            "{:04}-{:02}-{:02}",
+            date / 10_000,
+            date / 100 % 100,
+            date % 100
+        )
+    };
     match precision {
         Precision::Year => format!("{year:04}"),
         Precision::Quarter => format!("{year:04}-T{rank}"),
         Precision::Month => format!("{year:04}-{rank:02}"),
         Precision::Week => format!("{year:04}-S{rank:02}"),
         Precision::Date => format!("{year:04}-{:02}-{:02}", rank / 100, rank % 100),
+        _ => {
+            let seconds = rank / 1_000_000;
+            let clock = format!(
+                "{} {:02}:{:02}:{:02}",
+                day(year),
+                seconds / 3600,
+                seconds / 60 % 60,
+                seconds % 60
+            );
+            match precision.fraction_digits() {
+                0 => clock,
+                digits => {
+                    let fraction = rank % 1_000_000 / 10_i64.pow(6 - digits as u32);
+                    format!("{clock}.{fraction:0digits$}")
+                }
+            }
+        }
     }
 }
 
@@ -249,7 +379,8 @@ impl DerivedLevel {
         for &row in &values.first_rows {
             let slot = match cells.get(row as usize) {
                 Some(cell) => CellDate::parse(cell)
-                    .map_or(Slot::Outside, |date| Slot::Period(date.period(precision))),
+                    .and_then(|date| date.period(precision))
+                    .map_or(Slot::Outside, Slot::Period),
                 None => Slot::Null,
             };
             code_of_value.push(*index.entry(slot).or_insert_with(|| {
@@ -353,6 +484,135 @@ mod tests {
     }
 
     #[test]
+    fn an_instant_gives_the_label_of_each_precision_of_the_time() {
+        let cell = "2026-05-15 10:30:15.123456";
+        assert_eq!(
+            single(cell, Precision::Hour).unwrap(),
+            "2026-05-15 10:00:00"
+        );
+        assert_eq!(
+            single(cell, Precision::Minute).unwrap(),
+            "2026-05-15 10:30:00"
+        );
+        assert_eq!(
+            single(cell, Precision::Second).unwrap(),
+            "2026-05-15 10:30:15"
+        );
+        assert_eq!(
+            single(cell, Precision::Millisecond).unwrap(),
+            "2026-05-15 10:30:15.123"
+        );
+        assert_eq!(
+            single(cell, Precision::Microsecond).unwrap(),
+            "2026-05-15 10:30:15.123456"
+        );
+        assert_eq!(single(cell, Precision::Date).unwrap(), "2026-05-15");
+    }
+
+    #[test]
+    fn a_precision_of_the_time_truncates_and_writes_its_digits() {
+        for (cell, precision, expected) in [
+            // Truncated, never rounded: the last microsecond of the year stays in it.
+            (
+                "2026-12-31 23:59:59.999999",
+                Precision::Millisecond,
+                "2026-12-31 23:59:59.999",
+            ),
+            (
+                "2026-12-31 23:59:59.9",
+                Precision::Second,
+                "2026-12-31 23:59:59",
+            ),
+            (
+                "2026-12-31 23:59:59",
+                Precision::Hour,
+                "2026-12-31 23:00:00",
+            ),
+            // The digits a precision writes, whatever the cell holds.
+            (
+                "2026-01-15 10:30:15",
+                Precision::Millisecond,
+                "2026-01-15 10:30:15.000",
+            ),
+            (
+                "2026-01-15 10:30:15.5",
+                Precision::Microsecond,
+                "2026-01-15 10:30:15.500000",
+            ),
+            (
+                "2026-01-15 10:30:15.000000",
+                Precision::Second,
+                "2026-01-15 10:30:15",
+            ),
+            // Beyond the microsecond, as DuckDB's TIMESTAMP_NS.
+            (
+                "2026-01-15 10:30:15.123456789",
+                Precision::Microsecond,
+                "2026-01-15 10:30:15.123456",
+            ),
+            // The time as written, its zone left out.
+            (
+                "2026-01-15T10:30:15+02:00",
+                Precision::Minute,
+                "2026-01-15 10:30:00",
+            ),
+            (
+                "2026-01-15 00:00:00",
+                Precision::Hour,
+                "2026-01-15 00:00:00",
+            ),
+        ] {
+            assert_eq!(
+                single(cell, precision).unwrap(),
+                expected,
+                "{cell} {precision:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn instants_group_by_their_unit_in_the_order_of_time() {
+        let cells = [
+            Some("2026-01-15 10:59:59.999999"),
+            Some("2026-01-15 09:00:00"),
+            Some("2026-01-15 10:00:00"),
+            Some("2025-12-31 23:30:00"),
+        ];
+        let level = level(&cells, Precision::Hour);
+        assert_eq!(level.dictionary.codes, [0, 1, 0, 2]);
+        assert_eq!(
+            level.listed(),
+            [
+                Some("2025-12-31 23:00:00"),
+                Some("2026-01-15 09:00:00"),
+                Some("2026-01-15 10:00:00")
+            ]
+        );
+    }
+
+    #[test]
+    fn a_cell_without_a_time_of_the_day_has_no_period_of_the_time() {
+        for cell in [
+            "2026-01-15",
+            "2026-01-15 25:00:00",
+            "2026-01-15 10:60:00",
+            "2026-01-15 10:30",
+            "2026-01-15 10:30:15.",
+            "2026-01-15 10-30-15",
+        ] {
+            let cells = [Some("2026-01-15 10:30:00"), Some(cell)];
+            let seconds = level(&cells, Precision::Second);
+            assert_eq!(seconds.first_outside(&[0, 1]), Some(1), "«{cell}»");
+            // A precision of the day reads its date.
+            assert_eq!(
+                level(&cells, Precision::Date).first_outside(&[0, 1]),
+                None,
+                "«{cell}»"
+            );
+        }
+    }
+
+    #[test]
     fn each_month_falls_in_its_quarter() {
         let quarters: Vec<_> = (1..=12)
             .map(|month| single(&format!("2026-{month:02}-01"), Precision::Quarter).unwrap())
@@ -409,7 +669,12 @@ mod tests {
         for year in 1999..=2031 {
             for month in 1..=12 {
                 for day in 1..=days_in_month(year, month) {
-                    let date = CellDate { year, month, day };
+                    let date = CellDate {
+                        year,
+                        month,
+                        day,
+                        time: None,
+                    };
                     let week = date.iso_week();
                     let monday = (days_from_civil(year, month, day) + 3).rem_euclid(7) == 0;
                     if let Some(previous) = previous {
@@ -478,8 +743,10 @@ mod tests {
                 Precision::Month,
                 Precision::Week,
                 Precision::Date,
+                Precision::Hour,
+                Precision::Microsecond,
             ] {
-                let cells = [Some("2026-01-15"), None, Some(cell)];
+                let cells = [Some("2026-01-15 10:30:00"), None, Some(cell)];
                 let level = level(&cells, precision);
                 assert_eq!(level.first_outside(&[0, 1, 2]), Some(2), "«{cell}»");
             }
@@ -580,6 +847,24 @@ mod tests {
             (Precision::Date, "2026-01-15", true),
             (Precision::Date, "2026-02-30", false),
             (Precision::Date, "2026-01-15 10:00:00", false),
+            (Precision::Hour, "2026-01-15 10:00:00", true),
+            (Precision::Hour, "2026-01-15 10:30:00", false),
+            (Precision::Hour, "2026-01-15 24:00:00", false),
+            (Precision::Hour, "2026-01-15 10", false),
+            (Precision::Hour, "2026-02-30 10:00:00", false),
+            (Precision::Minute, "2026-01-15 10:30:00", true),
+            (Precision::Minute, "2026-01-15 10:30:15", false),
+            (Precision::Second, "2026-01-15 10:30:15", true),
+            (Precision::Second, "2026-01-15 10:30:15.000", false),
+            (Precision::Second, "2026-01-15T10:30:15", false),
+            (Precision::Millisecond, "2026-01-15 10:30:15.123", true),
+            (Precision::Millisecond, "2026-01-15 10:30:15.12", false),
+            (Precision::Millisecond, "2026-01-15 10:30:15.1234", false),
+            (Precision::Millisecond, "2026-01-15 10:30:15", false),
+            (Precision::Millisecond, "2026-01-15 10:30:15.1.3", false),
+            (Precision::Microsecond, "2026-01-15 10:30:15.123456", true),
+            (Precision::Microsecond, "2026-01-15 10:30:15.123", false),
+            (Precision::Microsecond, "2026-01-15 10:30:15.12345x", false),
         ] {
             assert_eq!(
                 is_label(precision, text),

@@ -134,11 +134,18 @@ describe('requestWords', () => {
       columns: [
         { column: 7, precision: 'week' },
         { column: 7, precision: 'date' },
+        { column: 7, precision: 'hour' },
+        { column: 7, precision: 'minute' },
+        { column: 7, precision: 'second' },
+        { column: 7, precision: 'millisecond' },
+        { column: 7, precision: 'microsecond' },
       ],
       measures: [],
       filters: [],
     }
-    expect(Array.from(requestWords(request))).toEqual([3, 2, 0, 7, 1, 7, 2, 7, 3, 7, 4, 7, 5])
+    expect(Array.from(requestWords(request))).toEqual([
+      3, 7, 0, 7, 1, 7, 2, 7, 3, 7, 4, 7, 5, 7, 6, 7, 7, 7, 8, 7, 9, 7, 10,
+    ])
   })
 
   it('has a kind per aggregate', () => {
@@ -305,6 +312,16 @@ describe('PivotEngine', () => {
       '2027-01-04',
       null,
     ])
+    expect(labels('hour')).toEqual([
+      null,
+      '2026-03-15 08:00:00',
+      '2026-12-31 10:00:00',
+      '2027-01-01 12:00:00',
+      '2027-01-04 09:00:00',
+      null,
+    ])
+    expect(labels('minute')[4]).toBe('2027-01-04 09:30:00')
+    expect(labels('millisecond')[1]).toBe('2026-03-15 08:00:00.000')
   })
 
   it('reads the periods of a precision for COUNT(DISTINCT), MIN and MAX', async () => {

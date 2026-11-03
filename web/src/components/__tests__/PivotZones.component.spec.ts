@@ -265,15 +265,24 @@ describe('PivotZones', () => {
       'Mois',
       'Semaine',
       'Date',
+      'Horodatage (hh)',
+      'Horodatage (hh:mm)',
+      'Horodatage (hh:mm:ss)',
+      'Horodatage (hh:mm:ss.ms)',
+      'Horodatage (hh:mm:ss.µs)',
       'Date et heure',
     ])
-    expect(precision()?.items[5]?.icon).toBe(Check)
+    expect(precision()?.items[10]?.icon).toBe(Check)
     precision()?.items[2]?.onSelect?.()
     await nextTick()
     expect(shownConfig(mounted).rows).toEqual([{ column: 0, name: '', precision: 'month' }])
     expect(precision()?.items[2]?.icon).toBe(Check)
-    expect(precision()?.items[5]?.icon).not.toBe(Check)
+    expect(precision()?.items[10]?.icon).not.toBe(Check)
     expect(mounted.find('[data-element]').text()).toContain('region (Mois)')
+    precision()?.items[6]?.onSelect?.()
+    await nextTick()
+    expect(shownConfig(mounted).rows).toEqual([{ column: 0, name: '', precision: 'minute' }])
+    expect(mounted.find('[data-element]').text()).toContain('region (Horodatage (hh:mm))')
   })
 
   it('gives COUNT(DISTINCT), MIN and MAX of dates the precisions of their menu', async () => {

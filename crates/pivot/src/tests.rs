@@ -1936,6 +1936,79 @@ fn a_filter_reads_a_precision_of_the_dates() {
 }
 
 #[test]
+fn a_precision_of_the_time_groups_and_filters_the_instants() {
+    let engine = pairs(
+        &[
+            ("a", Some("2026-01-15 10:59:59.999999")),
+            ("b", Some("2026-01-15 10:00:00.000000")),
+            ("c", Some("2026-01-15 11:30:15.500000")),
+            ("d", Some("2026-01-15 11:30:15.250000")),
+        ],
+        Family::Datetime,
+    );
+    let at = |precision| Level {
+        column: 1,
+        precision: Some(precision),
+    };
+    let request = Request {
+        rows: vec![at(Precision::Hour)],
+        measures: vec![Measure::CountStar, Measure::Max(at(Precision::Millisecond))],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    let lines: Vec<String> = (0..table.line_count())
+        .map(|line| {
+            let label = table.line_path(&engine, line).first().copied().flatten();
+            let values = (0..table.column_count())
+                .map(|column| table.value(line, column).text(&engine).unwrap_or_default());
+            std::iter::once(label.unwrap_or("Total").to_owned())
+                .chain(values)
+                .collect::<Vec<_>>()
+                .join(";")
+        })
+        .collect();
+    // Truncated: 10:59:59.999999 stays in 10 h, and gives 10:59:59.999.
+    assert_eq!(
+        lines,
+        [
+            "2026-01-15 10:00:00;2;2026-01-15 10:59:59.999",
+            "2026-01-15 11:00:00;2;2026-01-15 11:30:15.500",
+            "Total;4;2026-01-15 11:30:15.500",
+        ]
+    );
+    let kept = |filter| {
+        let request = Request {
+            rows: vec![0.into()],
+            filters: vec![filter],
+            ..Request::default()
+        };
+        engine.compute(&request).map(|table| table.selected_rows())
+    };
+    assert_eq!(
+        kept(Filter::Column {
+            level: at(Precision::Minute),
+            test: Test::Compare(Comparison::Equal, text("2026-01-15 11:30:00")),
+        }),
+        Ok(2)
+    );
+    assert_eq!(
+        kept(Filter::Column {
+            level: at(Precision::Second),
+            test: Test::Between(text("2026-01-15 10:00:00"), text("2026-01-15 10:59:59")),
+        }),
+        Ok(2)
+    );
+    // A minute is no hour.
+    assert_eq!(
+        kept(Filter::Column {
+            level: at(Precision::Hour),
+            test: Test::Compare(Comparison::Equal, text("2026-01-15 11:30:00")),
+        }),
+        Err(Error::FilterOperand { filter: 0 })
+    );
+}
+
+#[test]
 fn a_precision_stops_a_filter_on_a_cell_outside_of_the_calendar_unless_a_list_leaves_it_out() {
     let cells = [Some("2026-01-15"), Some("0000-00-00"), None];
     let engine = single(&cells, Family::Date);
