@@ -29,11 +29,35 @@ vi.mock('@/api/connections', () => ({
  */
 let schemaNames = ['a', 'b', 'c']
 
+/**
+ * Messages of the catalog sent after the databases: objects and details.
+ */
+let catalogEvents: unknown[] = []
+
+/**
+ * Reads of the references of a table, answered by the simulated server.
+ */
+const readReferences = vi.hoisted(() =>
+  vi.fn<(id: number, schema: string, table: string) => Promise<unknown[]>>(async () => [
+    {
+      name: 'order_customer',
+      schema: 'a',
+      table: 'orders',
+      columns: ['customer_id'],
+      referenced_columns: ['id'],
+    },
+  ]),
+)
+
 vi.mock('@/api/navigator', () => ({
   streamCatalog: async (_: number, onEvent: (event: unknown) => void) => {
     onEvent({ type: 'schemas', schemas: schemaNames })
+    for (const event of catalogEvents) {
+      onEvent(event)
+    }
     onEvent({ type: 'done' })
   },
+  readReferences,
 }))
 
 /**
@@ -159,6 +183,8 @@ beforeEach(() => {
   setActivePinia(createPinia())
   giveLayout()
   schemaNames = ['a', 'b', 'c']
+  catalogEvents = []
+  readReferences.mockClear()
 })
 
 afterEach(() => {
@@ -234,6 +260,54 @@ describe('ObjectNavigator', () => {
     await row(wrapper, 'a')?.find('[aria-label="Utiliser cette base"]').trigger('click')
     expect(wrapper.emitted('use-database')).toHaveLength(3)
     expect(row(wrapper, 'a')?.attributes('aria-expanded')).toBe('false')
+    wrapper.unmount()
+  })
+
+  it('reads the references of a table when their folder opens', async () => {
+    savedConnections = [connection(1, 'Origen 2')]
+    catalogEvents = [
+      {
+        type: 'objects',
+        schema: 'a',
+        objects: { tables: [{ name: 'customer', kind: 'table' }], routines: [], events: [] },
+      },
+      {
+        type: 'details',
+        schema: 'a',
+        tables: [
+          {
+            table: 'customer',
+            columns: [
+              {
+                name: 'id',
+                column_type: 'int',
+                nullable: false,
+                key: 'PRI',
+                auto_increment: false,
+              },
+            ],
+            indexes: [],
+            foreign_keys: [],
+            triggers: [],
+          },
+        ],
+      },
+    ]
+    const wrapper = mountNavigator({ selectedId: 1, currentDatabase: null })
+    const open = async (label: string, next: string) => {
+      await vi.waitFor(() => expect(row(wrapper, label)).toBeDefined())
+      await click(row(wrapper, label), 1)
+      await vi.waitFor(() => expect(row(wrapper, next)).toBeDefined())
+    }
+    await open('a', 'Tables (1)')
+    await open('Tables (1)', 'customer')
+    await open('customer', 'Références')
+    expect(readReferences).not.toHaveBeenCalled()
+    await open('Références', 'id ← orders.customer_id')
+    expect(readReferences).toHaveBeenCalledTimes(1)
+    expect(readReferences).toHaveBeenCalledWith(1, 'a', 'customer')
+    // The folder counts them now, and stays open.
+    expect(row(wrapper, 'Références (1)')?.attributes('aria-expanded')).toBe('true')
     wrapper.unmount()
   })
 

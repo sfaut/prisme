@@ -10,6 +10,7 @@
  *       ├─ Tables (n)     ── table ─┬─ Colonnes (n)
  *       │                           ├─ Index (n)
  *       │                           ├─ Clefs étrangères (n)
+ *       │                           ├─ Références (n)
  *       │                           └─ Déclencheurs (n)
  *       ├─ Vues (n)       ── vue ─── Colonnes (n)
  *       ├─ Procédures (n)
@@ -22,8 +23,10 @@
  * their connection, to stay unique from one source to the other.
  *
  * The tree is built from the catalog, even incomplete: a part not received
- * yet shows "chargement…" (loading). The functions of this module do not
- * depend on the display.
+ * yet shows "chargement…" (loading). The folder "Références" of a table,
+ * the foreign keys of every database that point to it, shows it too until
+ * it is opened, which reads them (`unreadReferences`). The functions of this
+ * module do not depend on the display.
  */
 
 import type { ColumnInfo } from '@/api/generated/ColumnInfo'
@@ -32,6 +35,7 @@ import type { Flavor } from '@/api/generated/Flavor'
 import { serverName } from '@/api/flavors'
 import type { ForeignKeyInfo } from '@/api/generated/ForeignKeyInfo'
 import type { IndexInfo } from '@/api/generated/IndexInfo'
+import type { ReferenceInfo } from '@/api/generated/ReferenceInfo'
 import type { RoutineInfo } from '@/api/generated/RoutineInfo'
 import type { TableDetails } from '@/api/generated/TableDetails'
 import type { TableKind } from '@/api/generated/TableKind'
@@ -143,6 +147,11 @@ export interface NavigatorNode extends Place {
    * or the button of its line): its table and its name.
    */
   index?: { table: string; name: string }
+  /**
+   * For the folder "Références" of a table whose references are not read
+   * yet: the name of the table. Opening the folder reads them.
+   */
+  unreadReferences?: string
   /**
    * Children.
    */
@@ -400,19 +409,25 @@ function tableNode(place: Place, table: CatalogTable): NavigatorNode {
     children:
       table.details === null
         ? [loadingNode(key, place)]
-        : tableFolders(place, table.kind, table.details),
+        : tableFolders(place, table.kind, table.details, table.references),
   }
 }
 
 /**
- * Detail folders of a table: columns, indexes, foreign keys, triggers. A
- * view only has its columns.
+ * Detail folders of a table: columns, indexes, foreign keys, references,
+ * triggers. A view only has its columns.
  *
  * @param place Connection and database.
  * @param kind Nature of the table.
  * @param details Details received from the server.
+ * @param references Foreign keys that reference the table, `null` as long as they are not read.
  */
-function tableFolders(place: Place, kind: TableKind, details: TableDetails): NavigatorNode[] {
+function tableFolders(
+  place: Place,
+  kind: TableKind,
+  details: TableDetails,
+  references: ReferenceInfo[] | null,
+): NavigatorNode[] {
   const base = `${placeKey(place)}.${details.table}`
   const item = (entry: EntryKind, prefix: string, name: string, label: string): NavigatorNode => ({
     key: `${prefix}:${base}.${name}`,
@@ -466,6 +481,21 @@ function tableFolders(place: Place, kind: TableKind, details: TableDetails): Nav
         item('foreign-key', 'fk', key.name, foreignKeyLabel(place.schema, key)),
       ),
     ),
+    references === null
+      ? unreadReferencesFolder(`references:${base}`, place, details.table)
+      : folder(
+          `references:${base}`,
+          'Références',
+          place,
+          references.map((reference) =>
+            item(
+              'foreign-key',
+              'reference',
+              `${reference.schema}.${reference.table}.${reference.name}`,
+              referenceLabel(place.schema, reference),
+            ),
+          ),
+        ),
     folder(
       `triggers:${base}`,
       'Déclencheurs',
@@ -498,6 +528,27 @@ function folder(
     entry: 'folder',
     ...place,
     children,
+  }
+}
+
+/**
+ * Folder "Références" of a table whose references are not read yet: without
+ * a count, it shows "chargement…" until its opening reads them. Its key is
+ * that of the folder once they are read, which stays open.
+ *
+ * @param key Key of the folder, without its prefix.
+ * @param place Connection and database.
+ * @param table Name of the table.
+ */
+function unreadReferencesFolder(key: string, place: Place, table: string): NavigatorNode {
+  return {
+    key: `folder:${key}`,
+    label: 'Références',
+    isLeaf: false,
+    entry: 'folder',
+    ...place,
+    unreadReferences: table,
+    children: [loadingNode(`folder:${key}`, place)],
   }
 }
 
@@ -597,6 +648,26 @@ export function foreignKeyLabel(schema: string, key: ForeignKeyInfo): string {
       ? key.referenced_table
       : `${key.referenced_schema}.${key.referenced_table}`
   return `${key.name} (${key.columns.join(', ')}) → ${target} (${key.referenced_columns.join(', ')})`
+}
+
+/**
+ * Label of a reference: the columns of the table it references, then the
+ * table that references them and its columns. A single column reads
+ * `id ← orders.customer_id`, a composite key
+ * `(country, code) ← address (country, region_code)`. The database of the
+ * referencing table only appears if it differs from the table's.
+ *
+ * @param schema Name of the table's database.
+ * @param reference Foreign key that references the table.
+ */
+export function referenceLabel(schema: string, reference: ReferenceInfo): string {
+  const source =
+    reference.schema === schema ? reference.table : `${reference.schema}.${reference.table}`
+  const referenced = reference.referenced_columns.join(', ')
+  const columns = reference.columns.join(', ')
+  return reference.columns.length === 1
+    ? `${referenced} ← ${source}.${columns}`
+    : `(${referenced}) ← ${source} (${columns})`
 }
 
 /**

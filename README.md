@@ -136,7 +136,7 @@ Passwords are encrypted on disk and never sent back to the browser.
 The tree shows, for each source:
 
 - its **databases**, then their **tables**, **views**, **procedures**, **functions** and **events** (**Événements** folder; a disabled event is marked **désactivé**);
-- for each table, its **columns**, **indexes**, **foreign keys** and **triggers**.
+- for each table, its **columns**, **indexes**, **foreign keys**, **references** and **triggers**. The **Références** folder (References) lists the foreign keys of every database that point to the table, read when the folder opens: `id ← orders.customer_id`, `(country, code) ← address (country, region_code)` for a composite key, the database named when it is another one.
 
 How it behaves:
 

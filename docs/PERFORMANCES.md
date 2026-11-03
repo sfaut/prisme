@@ -1243,3 +1243,82 @@ for the first build). The command adds the WebAssembly target of the
 toolchain when missing, builds the module in both profiles, checks that each
 one accepts the expressions of the Pivoteur and refuses the wrong texts,
 prints the table and writes the results to `target/parser-bench/results.json`.
+
+## 14. References of a table: foreign keys of every database
+
+Measure of 2026-11-03, ticket [#29](https://github.com/sfaut/prisme/issues/29).
+
+### 14.1 Question
+
+The folder "Références" of a table in the navigator lists the foreign keys of
+every database that point to it. `information_schema.KEY_COLUMN_USAGE` gives
+them with a filter on the referenced table
+(`REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ?`), where the
+catalog reads the foreign keys of a database with a filter on their own
+database (`TABLE_SCHEMA = ?`). Does the read of the references cost the same,
+and can it go with the catalog?
+
+### 14.2 Measurement
+
+- The six development servers of `compose.yaml`, warm, with the databases of
+  the tests: 300 to 342 tables in 5 or 6 databases.
+- `EXPLAIN` of both reads, then the time of each one, 5 runs in a row, given
+  by the client (`mysql` or `mariadb -vvv`): to the millisecond, to the
+  hundredth of a second for the client of MySQL 8.0.11.
+
+| Server | Tables | References of a table | Foreign keys of a database |
+|---|---|---|---|
+| MySQL 8.0.11 | 300 | 20 to 50 ms | 20 to 30 ms |
+| MySQL 9.7.4 | 342 | 7 to 12 ms | 2 to 9 ms |
+| MySQL 26.10.0 | 342 | 9 to 16 ms | 2 to 8 ms |
+| MariaDB 10.6.3 | 300 | 9 to 66 ms | 1 to 4 ms |
+| MariaDB 12.3.3 | 309 | 6 to 32 ms | 1 ms |
+| MariaDB 13.0.2 | 309 | 8 to 66 ms | 1 ms |
+
+The `EXPLAIN` of MariaDB gives "Open_full_table; Scanned all databases" for
+the references, "Open_full_table; Scanned 1 database" for the foreign keys of
+a database. That of MySQL reads its data dictionary through its indexes in
+both cases.
+
+### 14.3 Analysis
+
+- **MariaDB opens every table of the server to find the references of a
+  single one**: the read takes 6 to 66 ms, against 1 ms for the foreign keys
+  of a database, and grows with the tables of all the databases. The first
+  run is the slowest.
+- **MySQL stays in the same range for both reads**, its data dictionary
+  being indexed.
+- With 2,000 tables, opening every table costs MariaDB seconds when they are
+  cold (`docs/IDEAS-VIZ.md`, the estimates of the counts of rows); a server
+  of that size was not measured for this read.
+
+### 14.4 Consequences
+
+- The references are read for one table, when the navigator opens its folder
+  "Références" (`GET /api/connections/{id}/references`), on a connection of
+  their own. Read with the catalog, they would cost a scan of the whole server
+  for each database.
+- The catalog keeps its reads filtered on a database.
+
+### 14.5 Takeaways
+
+- **MariaDB narrows its scan of `KEY_COLUMN_USAGE` by the database and the
+  table of the key**: "Scanned 1 database" with `TABLE_SCHEMA`, "Scanned 0
+  databases" with `TABLE_NAME` as well. A filter on the referenced table
+  leaves "Scanned all databases".
+
+### 14.6 Measuring again
+
+On each server of `compose.yaml` (`mysql` or `mariadb` in its container,
+`docker exec`), the `EXPLAIN` of both reads, then each read 5 times with
+`-vvv`, which prints its time:
+
+```sql
+SELECT TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME
+  FROM information_schema.KEY_COLUMN_USAGE
+ WHERE REFERENCED_TABLE_SCHEMA = 'shop' AND REFERENCED_TABLE_NAME = 'customer';
+
+SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME
+  FROM information_schema.KEY_COLUMN_USAGE
+ WHERE TABLE_SCHEMA = 'shop' AND REFERENCED_TABLE_NAME IS NOT NULL;
+```

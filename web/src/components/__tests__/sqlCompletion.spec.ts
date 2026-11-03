@@ -9,7 +9,7 @@ describe('completionSchema', () => {
     const schemas: CatalogSchema[] = [
       {
         name: 'ma base',
-        tables: [{ name: 'clients', kind: 'table', details: null }],
+        tables: [{ name: 'clients', kind: 'table', details: null, references: null }],
         routines: [],
         events: [],
       },
@@ -45,6 +45,7 @@ describe('completionSchema', () => {
           {
             name: 'order',
             kind: 'table',
+            references: null,
             details: {
               table: 'order',
               columns: ['Select', 'total'].map((name) => ({
@@ -86,6 +87,7 @@ describe('completionSchema', () => {
           {
             name: 'orders',
             kind: 'table',
+            references: null,
             details: {
               table: 'orders',
               columns: [
@@ -102,7 +104,7 @@ describe('completionSchema', () => {
               triggers: [],
             },
           },
-          { name: 'v_orders', kind: 'view', details: null },
+          { name: 'v_orders', kind: 'view', details: null, references: null },
         ],
         routines: [
           { name: 'total_ttc', kind: 'function' },

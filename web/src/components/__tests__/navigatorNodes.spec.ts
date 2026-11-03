@@ -10,6 +10,7 @@ import {
   indexLabel,
   indexNote,
   quoteIfNeeded,
+  referenceLabel,
   selectAllQuery,
   sourceNodes,
   triggerLabel,
@@ -57,9 +58,25 @@ const catalog: CatalogSchema[] = [
           ],
           triggers: [],
         },
+        references: [
+          {
+            name: 'fk_line_order',
+            schema: 'shop',
+            table: 'lines',
+            columns: ['order_id'],
+            referenced_columns: ['id'],
+          },
+          {
+            name: 'fk_ticket_order',
+            schema: 'crm',
+            table: 'tickets',
+            columns: ['order_id'],
+            referenced_columns: ['id'],
+          },
+        ],
       },
-      { name: 'pending', kind: 'table', details: null },
-      { name: 'v_orders', kind: 'view', details: null },
+      { name: 'pending', kind: 'table', details: null, references: null },
+      { name: 'v_orders', kind: 'view', details: null, references: null },
     ],
     routines: [
       { name: 'purge', kind: 'procedure' },
@@ -216,6 +233,7 @@ describe('catalogNodes', () => {
       'Colonnes (3)',
       'Index (2)',
       'Clefs étrangères (1)',
+      'Références (2)',
       'Déclencheurs (0)',
     ])
     expect(labels(orders?.children?.[0])).toEqual([
@@ -223,7 +241,12 @@ describe('catalogNodes', () => {
       'note VARCHAR(20) NULL',
       'client_id INT',
     ])
-    expect(orders?.children?.[3]?.isLeaf).toBe(true)
+    expect(labels(orders?.children?.[3])).toEqual([
+      'id ← lines.order_id',
+      'id ← crm.tickets.order_id',
+    ])
+    expect(orders?.children?.[3]?.unreadReferences).toBeUndefined()
+    expect(orders?.children?.[4]?.isLeaf).toBe(true)
     const columns = orders?.children?.[0]?.children ?? []
     expect(columns.map((node) => node.column?.primaryKey)).toEqual([true, false, false])
     expect(columns.map((node) => node.column?.foreignKey)).toEqual([false, false, true])
@@ -238,6 +261,22 @@ describe('catalogNodes', () => {
     ])
     expect(indexes.map((node) => node.table)).toEqual([undefined, undefined])
     expect(labels(tables?.children?.[1])).toEqual(['chargement…'])
+  })
+
+  it('shows the references of a table as loading until their folder opens', () => {
+    const [shop] = catalog
+    const unread: CatalogSchema = {
+      ...shop!,
+      tables: [{ ...shop!.tables![0]!, references: null }],
+    }
+    const read = catalogNodes(1, catalog)[0]?.children?.[0]?.children?.[0]?.children?.[3]
+    const folder = catalogNodes(1, [unread])[0]?.children?.[0]?.children?.[0]?.children?.[3]
+    expect(folder?.label).toBe('Références')
+    expect(folder?.isLeaf).toBe(false)
+    expect(folder?.unreadReferences).toBe('orders')
+    expect(labels(folder)).toEqual(['chargement…'])
+    // The same key once they are read: the open folder stays open.
+    expect(folder?.key).toBe(read?.key)
   })
 
   it('puts the types in capitals, except the values of an enum', () => {
@@ -272,6 +311,30 @@ describe('catalogNodes', () => {
     expect(triggerLabel({ name: 'orders_bi', timing: 'BEFORE', event: 'INSERT' })).toBe(
       'orders_bi · BEFORE INSERT',
     )
+  })
+
+  it('labels a reference, a composite key and a reference of another database', () => {
+    const reference = {
+      name: 'fk_address_place',
+      schema: 'shop',
+      table: 'address',
+      columns: ['country', 'region_code'],
+      referenced_columns: ['country', 'code'],
+    }
+    expect(referenceLabel('shop', reference)).toBe(
+      '(country, code) ← address (country, region_code)',
+    )
+    expect(referenceLabel('crm', reference)).toBe(
+      '(country, code) ← shop.address (country, region_code)',
+    )
+    const itself = {
+      name: 'fk_referrer',
+      schema: 'shop',
+      table: 'customer',
+      columns: ['referrer_id'],
+      referenced_columns: ['id'],
+    }
+    expect(referenceLabel('shop', itself)).toBe('id ← customer.referrer_id')
   })
 
   it('quotes the names in the content query', () => {

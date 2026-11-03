@@ -8,8 +8,12 @@
 //! 3. `details`: columns, indexes, foreign keys and triggers of each table of
 //!    a database.
 //!
-//! Each read filters on a database, which saves the server from walking all
-//! the tables at once. The queries only ask for dictionary information:
+//! Each of these reads filters on a database, which saves the server from
+//! walking all the tables at once. The foreign keys of every database that
+//! reference a table (`references`) are read apart, for that table alone,
+//! when the navigator opens its folder: their filter on the referenced
+//! database makes MariaDB open every table of the server. The queries only
+//! ask for dictionary information:
 //! asking for the row count as well (`TABLE_ROWS`) would force the server to
 //! open each table, which is very slow on a large server. Database names are
 //! passed as parameters of prepared statements, never concatenated to the
@@ -134,6 +138,22 @@ pub struct ForeignKeyInfo {
     pub referenced_columns: Vec<String>,
 }
 
+/// Foreign key of a table, of any database, that references a given table.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export)]
+pub struct ReferenceInfo {
+    /// Name of the constraint.
+    pub name: String,
+    /// Database of the referencing table.
+    pub schema: String,
+    /// Referencing table.
+    pub table: String,
+    /// Columns of the referencing table, in the order of the key.
+    pub columns: Vec<String>,
+    /// Referenced columns of the given table, in the same order as `columns`.
+    pub referenced_columns: Vec<String>,
+}
+
 /// Trigger of a table.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export)]
@@ -176,22 +196,27 @@ type ForeignKeyRow = (String, String, String, String, String, String);
 /// Row of `information_schema.TRIGGERS`: table, trigger, timing, event.
 type TriggerRow = (String, String, String, String);
 
+/// Row of `information_schema.KEY_COLUMN_USAGE` read from the referenced
+/// table: referencing database, table, constraint and column, referenced
+/// column.
+type ReferenceRow = (String, String, String, String, String);
+
 /// Lists the server's databases, by name.
 pub async fn schemas(connection: &mut Connection) -> Result<Vec<String>, MysqlError> {
     let sql = "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA ORDER BY SCHEMA_NAME";
     Ok(sql_log::traced(sql, connection.query(sql), |rows| Some(rows.len() as u64)).await?)
 }
 
-/// Runs a catalog query on the database `schema`, its only parameter, and
-/// traces it.
+/// Runs a catalog query with its parameters, names of a database or of a
+/// table, and traces it.
 async fn rows_of<T: FromRow + Send + 'static>(
     connection: &mut Connection,
     sql: &str,
-    schema: &str,
+    parameters: &[&str],
 ) -> Result<Vec<T>, MysqlError> {
-    let text = sql_log::bound(sql, &[schema]);
+    let text = sql_log::bound(sql, parameters);
     Ok(
-        sql_log::traced(&text, connection.exec(sql, (schema,)), |rows| {
+        sql_log::traced(&text, connection.exec(sql, parameters.to_vec()), |rows| {
             Some(rows.len() as u64)
         })
         .await?,
@@ -207,21 +232,21 @@ pub async fn objects(
         connection,
         "SELECT TABLE_NAME, TABLE_TYPE FROM information_schema.TABLES
              WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME",
-        schema,
+        &[schema],
     )
     .await?;
     let routines: Vec<(String, String)> = rows_of(
         connection,
         "SELECT ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES
              WHERE ROUTINE_SCHEMA = ? ORDER BY ROUTINE_NAME",
-        schema,
+        &[schema],
     )
     .await?;
     let events: Vec<(String, String)> = rows_of(
         connection,
         "SELECT EVENT_NAME, STATUS FROM information_schema.EVENTS
              WHERE EVENT_SCHEMA = ? ORDER BY EVENT_NAME",
-        schema,
+        &[schema],
     )
     .await?;
     Ok(SchemaObjects {
@@ -263,7 +288,7 @@ pub async fn details(
         "SELECT TABLE_NAME, COLUMN_NAME, COLUMN_TYPE, IS_NULLABLE, COLUMN_KEY, EXTRA
              FROM information_schema.COLUMNS
              WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, ORDINAL_POSITION",
-        schema,
+        &[schema],
     )
     .await?;
     let indexes: Vec<IndexRow> = rows_of(
@@ -271,7 +296,7 @@ pub async fn details(
         "SELECT TABLE_NAME, INDEX_NAME, NON_UNIQUE, COLUMN_NAME
              FROM information_schema.STATISTICS
              WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, INDEX_NAME, SEQ_IN_INDEX",
-        schema,
+        &[schema],
     )
     .await?;
     let foreign_keys: Vec<ForeignKeyRow> = rows_of(
@@ -281,7 +306,7 @@ pub async fn details(
              FROM information_schema.KEY_COLUMN_USAGE
              WHERE TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME IS NOT NULL
              ORDER BY TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION",
-        schema,
+        &[schema],
     )
     .await?;
     let triggers: Vec<TriggerRow> = rows_of(
@@ -290,7 +315,7 @@ pub async fn details(
              FROM information_schema.TRIGGERS
              WHERE TRIGGER_SCHEMA = ?
              ORDER BY EVENT_OBJECT_TABLE, ACTION_TIMING, EVENT_MANIPULATION, ACTION_ORDER",
-        schema,
+        &[schema],
     )
     .await?;
     Ok(assemble_details(columns, indexes, foreign_keys, triggers))
@@ -362,6 +387,63 @@ fn assemble_details(
         details.indexes.sort_by_key(|index| index.name != "PRIMARY");
     }
     tables
+}
+
+/// Reads the foreign keys of every database that reference the table `table`
+/// of the database `schema`.
+///
+/// Read for one table, when the navigator opens its folder: the filter on the
+/// referenced database makes MariaDB open every table of the server
+/// (`EXPLAIN`: "Open_full_table; Scanned all databases"), where MySQL reads
+/// its data dictionary.
+pub async fn references(
+    connection: &mut Connection,
+    schema: &str,
+    table: &str,
+) -> Result<Vec<ReferenceInfo>, MysqlError> {
+    let rows: Vec<ReferenceRow> = rows_of(
+        connection,
+        "SELECT TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME
+             FROM information_schema.KEY_COLUMN_USAGE
+             WHERE REFERENCED_TABLE_SCHEMA = ? AND REFERENCED_TABLE_NAME = ?
+             ORDER BY TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_NAME, ORDINAL_POSITION",
+        &[schema, table],
+    )
+    .await?;
+    Ok(assemble_references(rows))
+}
+
+/// Gathers the rows of each foreign key, which arrive in the order of its
+/// columns, then sorts the keys by the columns they reference, then by
+/// database, table and columns.
+fn assemble_references(rows: Vec<ReferenceRow>) -> Vec<ReferenceInfo> {
+    let mut references: Vec<ReferenceInfo> = Vec::new();
+    for (schema, table, constraint, column, referenced_column) in rows {
+        match references.last_mut() {
+            Some(last)
+                if last.schema == schema && last.table == table && last.name == constraint =>
+            {
+                last.columns.push(column);
+                last.referenced_columns.push(referenced_column);
+            }
+            _ => references.push(ReferenceInfo {
+                name: constraint,
+                schema,
+                table,
+                columns: vec![column],
+                referenced_columns: vec![referenced_column],
+            }),
+        }
+    }
+    references.sort_by(|a, b| {
+        (&a.referenced_columns, &a.schema, &a.table, &a.columns).cmp(&(
+            &b.referenced_columns,
+            &b.schema,
+            &b.table,
+            &b.columns,
+        ))
+    });
+    references
 }
 
 /// Returns the details of the table `name`, created empty if they do not exist yet.
@@ -454,6 +536,61 @@ mod tests {
         assert_eq!(t.foreign_keys[0].referenced_table, "u");
         assert_eq!(t.triggers[0].name, "t_bi");
         assert_eq!(tables[1].indexes[0].columns, ["(expression)"]);
+    }
+
+    #[test]
+    fn gathers_the_references_by_key_and_sorts_them() {
+        let row = |schema, table, constraint, column, referenced| {
+            (
+                text(schema),
+                text(table),
+                text(constraint),
+                text(column),
+                text(referenced),
+            )
+        };
+        // In the order of the query: database, table, constraint, position.
+        let rows = vec![
+            row("crm", "contact", "contact_customer", "customer_id", "id"),
+            row("shop", "address", "address_place", "country", "country"),
+            row("shop", "address", "address_place", "region_code", "code"),
+            row("shop", "customer", "customer_referrer", "referrer_id", "id"),
+            row("shop", "order", "order_customer", "customer_id", "id"),
+        ];
+
+        let references = assemble_references(rows);
+
+        let read: Vec<_> = references
+            .iter()
+            .map(|reference| {
+                (
+                    reference.referenced_columns.join(","),
+                    format!("{}.{}", reference.schema, reference.table),
+                    reference.columns.join(","),
+                    reference.name.as_str(),
+                )
+            })
+            .collect();
+        let expected = [
+            (
+                "country,code",
+                "shop.address",
+                "country,region_code",
+                "address_place",
+            ),
+            ("id", "crm.contact", "customer_id", "contact_customer"),
+            ("id", "shop.customer", "referrer_id", "customer_referrer"),
+            ("id", "shop.order", "customer_id", "order_customer"),
+        ];
+        assert_eq!(
+            read,
+            expected.map(|(referenced, table, columns, name)| (
+                referenced.to_string(),
+                table.to_string(),
+                columns.to_string(),
+                name
+            ))
+        );
     }
 
     #[test]
