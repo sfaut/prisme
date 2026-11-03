@@ -1326,3 +1326,110 @@ SELECT TABLE_NAME, CONSTRAINT_NAME, COLUMN_NAME
   FROM information_schema.KEY_COLUMN_USAGE
  WHERE TABLE_SCHEMA = 'shop' AND REFERENCED_TABLE_NAME IS NOT NULL;
 ```
+
+## 15. Default widths of the Pivoteur: the lengths of the texts of the columns
+
+Benchmark of 2026-11-03, step "Widths of the columns" of
+`docs/TODO-PIVOTER.md`.
+
+### 15.1 Question
+
+A column of values of the Pivoteur takes by default the width of its
+longest text, among its values on every line and its header, as the result
+grid estimates its own columns. Every group shown is therefore read once per
+table, out of sight included, so that the width stays the same while the
+table scrolls. What does this reading add to the computation of the table,
+and to a new layout of it (order, subtotals, form), which computes nothing
+again?
+
+### 15.2 Measurement
+
+- `cargo run --release --manifest-path bench/widths/Cargo.toml --target-dir
+  target/widths-bench -- [rows]` (`docs/DEVELOPER.md`, section "Widths of the
+  Pivoteur"): the engine of Prisme (`prisme-pivot`), native, on one thread.
+  The WebAssembly module of the Worker runs as fast as native on one thread
+  (chapter 9).
+- Intel Core Ultra 7 155H (22 logical cores), 33.8 GB, Windows 11, Rust
+  1.99.1.
+- The rows and the pivots of chapter 9: columns `YEAR(d)`, `MONTH(d)` (42
+  nodes, 504 columns of values), rows on 4 levels, "high" (51,061 lines) and
+  "low" (5,061 lines), 12 measures among which 1 float (`AVG(remise)`) and 6
+  `MIN` or `MAX` of texts, every subtotal and total. Best of 3 passes.
+
+A first version read each group shown, measure by measure, through the
+length of its value, and wrote each float into a string. At 1 million rows:
+
+| Pivot | Table | Reading of the lengths |
+|---|---|---|
+| "high" | 784 ms | 2,090 ms (267 %) |
+| "low" | 321 ms | 746 ms (233 %) |
+
+Measure by measure, alone in the table "high": 620 ms for the float, 49 to
+107 ms for each `MIN` or `MAX` of texts, 19 to 39 ms for each count or exact
+number. Three changes, measured one after the other:
+
+1. Each state read on its own, its counts and exact numbers by their
+   extremes, its floats measured without being written: 826 ms for "high"
+   (107 %), 269 ms for "low" (62 %); the float drops to 173 ms, the texts stay
+   at 76 to 135 ms each.
+2. The texts bounded by the longest text of their level: 168 to 253 ms for
+   "high" (20 to 29 %), 41 to 94 ms for "low" (15 to 25 %); each `MIN` or
+   `MAX` of texts takes 10 to 22 ms, the float 184 to 302 ms alone.
+3. Then a new layout: 6.8 to 11 ms for "high", 0.5 to 1 ms for "low"; the
+   reading again after it cost as much as the first one, 20 times the
+   layout. The lengths are now read once per table, by node of the columns
+   and depth of the rows, and each layout combines those of what it shows.
+
+Final version, over 3 runs at 1 million rows and 2 at 10 million rows (the
+timings vary up to twice from one run to the next on this laptop):
+
+| Rows | Pivot | Groups | Table | First reading | Layout | Next reading |
+|---|---|---|---|---|---|---|
+| 1,000,000 | "high" | 768,617 | 620 to 718 ms | 183 to 224 ms (26 to 36 %) | 6.8 to 7.9 ms | 8 µs |
+| 1,000,000 | "low" | 147,274 | 236 to 265 ms | 41 to 48 ms (15 to 20 %) | 0.46 to 0.5 ms | 8 µs |
+| 10,000,000 | "high" | 1,828,988 | 4.6 to 10.7 s | 481 to 641 ms (6 to 11 %) | 6.7 to 9.7 ms | 9 µs |
+| 10,000,000 | "low" | 151,956 | 1.9 to 2.6 s | 73 to 90 ms (3 to 4 %) | 0.5 to 0.86 ms | 16 µs |
+
+Groups: the finest ones; the reading takes the groups of every set, the
+subtotals and totals included.
+
+### 15.3 Causes
+
+- **Each float is written**, into a counter: the length of its shortest
+  form does not follow its magnitude. The float takes most of the first
+  reading that remains.
+- **A text of a `MIN` or `MAX` is a read at a random place** of the text of
+  its column. The longest text of the level bounds those of its groups: once
+  a column of the table reaches it, its other cells are not read.
+- **The text of a count or of an exact number grows with its magnitude**:
+  the smallest and the largest value of a column give its longest text.
+- **A layout takes a few milliseconds**: any pass over the groups after it
+  would make it 20 times slower.
+
+### 15.4 Decision
+
+- The engine reads the lengths once per table, after its computation, in the
+  Worker, and keeps them with the table, by node of the columns and depth of
+  the rows (`Table::text_lengths`): a layout combines them in a few
+  microseconds.
+- The first reading costs at most a third of the computation at 1 million
+  rows, less at 10 million rows, where the computation grows faster than the
+  reading. The width fits every line, out of sight included, as decided.
+
+### 15.5 Takeaways
+
+- **What a layout reads must not depend on the layout**: the lines it shows
+  are those of some depths, so that the work keyed by depth is done once.
+- **An upper bound saves the reads that cannot change a maximum**: the
+  longest text of a level, read once, stops the reading of a column.
+- **A machine this noisy compares within one run**: each change was measured
+  against the table of the same run, by its share of it.
+
+### 15.6 Measuring again
+
+From the root of the repository, at 1 then 10 million rows, two runs each:
+
+```
+cargo run --release --manifest-path bench/widths/Cargo.toml --target-dir target/widths-bench
+cargo run --release --manifest-path bench/widths/Cargo.toml --target-dir target/widths-bench -- 10000000
+```

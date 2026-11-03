@@ -147,6 +147,58 @@ impl Value {
             Value::Cell(level, row) => engine.level_value(level, row).map(str::to_owned),
         }
     }
+
+    /// Number of characters of the text of the value (`text`), without
+    /// writing it: `None` for an empty cell or NULL.
+    pub fn length(self, engine: &Engine) -> Option<usize> {
+        let digits = |number: u128| {
+            number
+                .checked_ilog10()
+                .map_or(1, |power| power as usize + 1)
+        };
+        match self {
+            Value::Count(count) => Some(digits(u128::from(count))),
+            Value::Exact(value, scale) => {
+                let whole = value.unsigned_abs() / 10u128.pow(scale);
+                let fraction = if scale == 0 { 0 } else { 1 + scale as usize };
+                Some(usize::from(value < 0) + digits(whole) + fraction)
+            }
+            Value::Float(value) => Some(prisme_store::float_length(value)),
+            Value::Cell(level, row) => engine
+                .level_value(level, row)
+                .map(|text| text.chars().count()),
+            Value::Empty | Value::Null => None,
+        }
+    }
+}
+
+/// Longest text of the values of a measure in a set of cells, in characters,
+/// a NULL apart: the page gives it its own text.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Longest {
+    /// Longest text of a value that is not NULL, 0 without any.
+    pub text: usize,
+    /// Is one of the values NULL?
+    pub null: bool,
+}
+
+impl Longest {
+    /// Longest text of two sets of cells together.
+    pub fn max(self, other: Longest) -> Longest {
+        Longest {
+            text: self.text.max(other.text),
+            null: self.null || other.null,
+        }
+    }
+
+    /// Length of the longest text, a NULL counting `null_length` characters.
+    pub fn length(self, null_length: usize) -> usize {
+        if self.null {
+            self.text.max(null_length)
+        } else {
+            self.text
+        }
+    }
 }
 
 /// What a sort compares of a value of a measure.
@@ -553,6 +605,78 @@ impl State {
             },
         }
     }
+
+    /// Longest text of the values of the measure in each of `columns` sets
+    /// of cells: `cells` gives the group and the set of each cell to read.
+    ///
+    /// The text of a count or of an exact number grows with its magnitude
+    /// (`Value::length`): the smallest and the largest values of a set give
+    /// its longest text. Floats are measured one by one, and cells until their
+    /// set reaches the longest text of their level (`Engine::longest_text`):
+    /// no other cell of the set can be longer.
+    pub fn longest(&self, engine: &Engine, cells: &[(u32, u32)], columns: usize) -> Vec<Longest> {
+        let length = |value: Value| value.length(engine).unwrap_or(0);
+        let mut longest = vec![Longest::default(); columns];
+        match self {
+            State::Count(counts) => {
+                let mut largest = vec![None; columns];
+                for &(group, column) in cells {
+                    let count = &mut largest[column as usize];
+                    *count = (*count).max(Some(counts[group as usize]));
+                }
+                for (longest, largest) in longest.iter_mut().zip(largest) {
+                    longest.text = largest.map_or(0, |count| length(Value::Count(count)));
+                }
+            }
+            State::Exact {
+                sums,
+                counts,
+                scale,
+            } => {
+                let mut bounds: Vec<Option<(i128, i128)>> = vec![None; columns];
+                for &(group, column) in cells {
+                    let (group, column) = (group as usize, column as usize);
+                    if counts[group] == 0 {
+                        longest[column].null = true;
+                        continue;
+                    }
+                    let sum = sums[group];
+                    bounds[column] = Some(
+                        bounds[column]
+                            .map_or((sum, sum), |(low, high)| (low.min(sum), high.max(sum))),
+                    );
+                }
+                for (longest, bounds) in longest.iter_mut().zip(bounds) {
+                    longest.text = bounds.map_or(0, |(low, high)| {
+                        length(Value::Exact(low, *scale)).max(length(Value::Exact(high, *scale)))
+                    });
+                }
+            }
+            State::Float { sums, counts } => {
+                for &(group, column) in cells {
+                    let (group, longest) = (group as usize, &mut longest[column as usize]);
+                    match counts[group] {
+                        0 => longest.null = true,
+                        _ => {
+                            longest.text = longest.text.max(prisme_store::float_length(sums[group]))
+                        }
+                    }
+                }
+            }
+            State::Cells { level, rows } => {
+                let bound = engine.longest_text(*level);
+                for &(group, column) in cells {
+                    let longest = &mut longest[column as usize];
+                    match rows[group as usize] {
+                        NO_VALUE => longest.null = true,
+                        _ if longest.text >= bound => {}
+                        row => longest.text = longest.text.max(length(Value::Cell(*level, row))),
+                    }
+                }
+            }
+        }
+        longest
+    }
 }
 
 #[cfg(test)]
@@ -564,6 +688,33 @@ mod tests {
     /// Engine without a column: it writes the numbers of a measure.
     fn no_engine() -> Engine {
         Engine::new(Store::new(0), Vec::new())
+    }
+
+    #[test]
+    fn the_length_of_a_value_is_that_of_its_text() {
+        let engine = no_engine();
+        for value in [
+            Value::Empty,
+            Value::Null,
+            Value::Count(0),
+            Value::Count(9),
+            Value::Count(10),
+            Value::Count(u64::MAX),
+            Value::Exact(0, 0),
+            Value::Exact(-5, 3),
+            Value::Exact(123_456, 2),
+            Value::Exact(i128::MIN, 0),
+            Value::Exact(i128::MAX, 38),
+            Value::Float(-0.5),
+            Value::Float(1e300),
+            Value::Float(f64::NAN),
+        ] {
+            assert_eq!(
+                value.length(&engine),
+                value.text(&engine).map(|text| text.chars().count()),
+                "{value:?}"
+            );
+        }
     }
 
     /// Groups 0 and 1 merge into group 2.

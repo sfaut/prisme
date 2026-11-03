@@ -35,7 +35,7 @@ pub use crate::dates::Precision;
 pub use crate::filters::{Comparison, Filter, Test};
 pub use crate::measures::Value;
 use crate::measures::{Extreme, Input, SortKey};
-pub use crate::table::{Header, Label, Line, Table};
+pub use crate::table::{Header, Label, Line, Table, TextLengths};
 
 /// Family of the type of a column, as far as the measures and the filters need
 /// it.
@@ -360,6 +360,8 @@ pub struct Engine {
     value_ranks: Vec<OnceCell<Vec<u32>>>,
     /// Levels of each column at each precision.
     derived: Vec<[OnceCell<DerivedLevel>; Precision::COUNT]>,
+    /// Longest text of the cells of each column, in characters.
+    longest: Vec<OnceCell<usize>>,
     /// Rows kept by the filter of the grid, in their order; `None` for all.
     kept: Option<Vec<u32>>,
 }
@@ -387,6 +389,7 @@ impl Engine {
             derived: (0..columns)
                 .map(|_| std::array::from_fn(|_| OnceCell::new()))
                 .collect(),
+            longest: (0..columns).map(|_| OnceCell::new()).collect(),
             kept: None,
         }
     }
@@ -556,6 +559,27 @@ impl Engine {
                 .store
                 .column(level.column)
                 .and_then(|cells| cells.get(row as usize)),
+        }
+    }
+
+    /// Longest text of the values of a level, in characters: of the cells of
+    /// its column, or of the labels of its periods. No `MIN` or `MAX` of the
+    /// level is longer; `usize::MAX` for a level that cannot be read.
+    pub(crate) fn longest_text(&self, level: Level) -> usize {
+        match level.precision {
+            Some(precision) => self
+                .derived(level.column, precision)
+                .map_or(usize::MAX, |derived| derived.longest),
+            None => *self.longest[level.column].get_or_init(|| {
+                self.store.column(level.column).map_or(usize::MAX, |cells| {
+                    cells
+                        .cells()
+                        .flatten()
+                        .map(|text| text.chars().count())
+                        .max()
+                        .unwrap_or(0)
+                })
+            }),
         }
     }
 

@@ -15,7 +15,8 @@
 
 /**
  * Value in pixels of a CSS variable of the theme, computed in `px` (registered
- * length) or written in `rem`.
+ * length) or written in `rem`, or in `em`: read on the root, an `em` is one of
+ * its font, a `rem`.
  *
  * @param name Name of the variable (`--row-height`).
  * @param fallback Value returned if the variable is missing or unreadable
@@ -28,7 +29,7 @@ export function cssPixels(name: string, fallback: number): number {
   if (Number.isNaN(number)) {
     return fallback
   }
-  if (value.endsWith('rem')) {
+  if (value.endsWith('em')) {
     return number * (Number.parseFloat(style.fontSize) || 16)
   }
   return value.endsWith('px') ? number : fallback

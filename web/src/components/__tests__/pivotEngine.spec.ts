@@ -26,7 +26,9 @@ import {
   requestWords,
   targetWords,
 } from '../pivotEngine'
+import { TOTAL_TEXT } from '../pivotLayout'
 import { utf8Length } from '../pivotTransfer'
+import { NULL_TEXT } from '../resultGrid'
 
 /**
  * Module of the engine, built by Vite before the tests (`pivotEngine` in `vite.config.ts`).
@@ -276,6 +278,38 @@ describe('PivotEngine', () => {
       [false, '30', '30'],
       ['430', '420', '850'],
     ])
+  })
+
+  it('gives the lengths of the texts of the columns, as the grid writes them', async () => {
+    const rows: Cell[][] = [
+      ['Nord', '2026', '600'],
+      ['Nord', null, null],
+      ['Sud', '2026', '500.5'],
+    ]
+    const engine = await loaded(rows, ['text', 'text', 'decimal'])
+    engine.compute({
+      rows: [level(0)],
+      columns: [level(1)],
+      measures: [{ aggregate: 'sum', column: 2 }],
+      filters: [],
+    })
+    // Columns NULL (NULL on Nord and on the total), 2026 and Total (600.0, 500.5, 1100.5).
+    expect(engine.textLengths()).toEqual({
+      values: [NULL_TEXT.length, 6, 6],
+      labels: [NULL_TEXT.length, 4, TOTAL_TEXT.length],
+    })
+    // A layout without the grand total of the lines leaves out its values.
+    engine.compute(
+      {
+        rows: [level(0)],
+        columns: [level(1)],
+        measures: [{ aggregate: 'sum', column: 2 }],
+        filters: [],
+      },
+      LABEL_ORDER,
+      { ...FIRST_LAYOUT, rows: { grandTotal: false, subtotals: [true] } },
+    )
+    expect(engine.textLengths().values).toEqual([NULL_TEXT.length, 5, 5])
   })
 
   it('groups the dates of a level by their precision, in the order of time', async () => {
@@ -687,6 +721,7 @@ describe('answerMessage', () => {
       id: 2,
       shape: { lines: 1, columns: 1 },
       positions: [0],
+      lengths: { labels: [0] },
     })
     expect(
       answerMessage(state, {

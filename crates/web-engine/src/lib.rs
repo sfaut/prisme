@@ -640,6 +640,22 @@ pub unsafe extern "C" fn columns_at(words: *const u32, length: usize) -> usize {
     })
 }
 
+/// Writes the lengths of the texts of the columns of values of the last table
+/// laid out, in characters (`json::text_lengths`): the page fits their widths
+/// by them. A NULL counts `null_length` characters and a total `total_length`,
+/// as the page writes them.
+#[unsafe(no_mangle)]
+pub extern "C" fn text_lengths(null_length: usize, total_length: usize) -> usize {
+    STATE.with_borrow_mut(|state| {
+        answer(state, |json, state| match (&state.engine, &state.table) {
+            (Some(engine), Some(table)) => {
+                json::text_lengths(json, &table.text_lengths(engine, null_length, total_length))
+            }
+            _ => json::state_error(json, "no_table", None),
+        })
+    })
+}
+
 /// Writes a window of the last table computed: lines `first_line` to
 /// `end_line` (excluded), columns of values `first_column` to `end_column`
 /// (excluded), both bounded by the table (`json::window`).
@@ -741,6 +757,9 @@ mod tests {
                 r#""cells":[["1",null],["2","3.5"],["3","3.5"]]}"#
             )
         );
+        // A NULL counts 4 characters, a total 5; no level of columns, no label.
+        let length = text_lengths(4, 5);
+        assert_eq!(output(length), r#"{"values":[1,4],"labels":[0,0]}"#);
 
         let kept = [1u32];
         // SAFETY: one row number.

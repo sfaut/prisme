@@ -4,7 +4,7 @@
 
 use std::fmt::Write as _;
 
-use prisme_pivot::{Engine, Error, Label, Table, Value};
+use prisme_pivot::{Engine, Error, Label, Table, TextLengths, Value};
 use prisme_store::{BlockError, NumberError};
 
 /// Writes a text as a JSON string.
@@ -69,6 +69,20 @@ pub fn shape(json: &mut String, table: &Table) {
         table.finest_groups(),
         table.selected_rows(),
     );
+}
+
+/// Writes the lengths of the texts of the columns of values, in characters:
+/// `{"values", "labels"}`, one number per column in each.
+pub fn text_lengths(json: &mut String, lengths: &[TextLengths]) {
+    json.push_str(r#"{"values":"#);
+    array(json, lengths, |json, column| {
+        let _ = write!(json, "{}", column.values);
+    });
+    json.push_str(r#","labels":"#);
+    array(json, lengths, |json, column| {
+        let _ = write!(json, "{}", column.label);
+    });
+    json.push('}');
 }
 
 /// Writes positions of columns of values, `null` for a column the table does

@@ -22,6 +22,7 @@ import {
   type PivotRequest,
   type PivotRequestMessage,
   type PivotShape,
+  type PivotTextLengths,
   type PivotValueTarget,
   type PivotWindow,
   FIRST_LAYOUT,
@@ -69,6 +70,10 @@ export interface PivotTable {
    * does not show.
    */
   positions: (number | null)[]
+  /**
+   * Lengths of the texts of its columns of values, which their default widths fit.
+   */
+  lengths: PivotTextLengths
   /**
    * Duration of the computation in the Worker, in milliseconds.
    */
@@ -259,8 +264,8 @@ export class PivotClient {
     if (answer.type !== 'table') {
       throw new Error(`Pivot client: unexpected answer ${answer.type}`)
     }
-    const { shape, positions, durationMs } = answer
-    return { id, shape, positions, durationMs }
+    const { shape, positions, lengths, durationMs } = answer
+    return { id, shape, positions, lengths, durationMs }
   }
 
   /**

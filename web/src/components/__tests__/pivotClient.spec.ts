@@ -122,6 +122,7 @@ describe('PivotClient', () => {
     const first = await client.compute(request)
     expect(first.shape.lines).toBe(3)
     expect(first.positions).toEqual([])
+    expect(first.lengths).toEqual({ values: [1], labels: [0] })
     const table = await client.compute(
       request,
       LABEL_ORDER,

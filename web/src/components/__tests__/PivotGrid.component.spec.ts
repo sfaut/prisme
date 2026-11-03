@@ -45,6 +45,12 @@ const WINDOW: PivotWindow = {
   ],
 }
 
+/**
+ * Lengths of the texts of its columns: the values of 2026 the longest, the total the longest
+ * header.
+ */
+const LENGTHS = { values: [1, 30, 2], labels: [4, 4, 5] }
+
 let wrapper: VueWrapper | null = null
 
 beforeEach(() => {
@@ -74,6 +80,7 @@ async function mountGrid(props: Record<string, unknown> = {}) {
     props: {
       table: 1,
       shape: SHAPE,
+      lengths: LENGTHS,
       measureLabels: ['SUM(montant)'],
       rowNames: ['region'],
       columnNames: ['annee'],
@@ -416,28 +423,33 @@ describe('the widths in PivotGrid', () => {
       columnWidths: [{ ...COLUMN_2026, width: 50 }],
       positions: new Map([[targetKey(COLUMN_2026), 1]]),
     })
+    // Without a stylesheet: characters of 7.2 pixels, 15 beside the text, steps of 3 pixels. The
+    // column of 2025 fits its header and its sort button, (6 × 7.2 + 15) / 3 = 20 steps, that of
+    // the total too, 22 steps; that of 2026 takes 50 steps in place of 77.
     expect(tracks(grid)).toContain(
-      'repeat(1, var(--pivot-column-width)) calc(var(--spacing) * 50) repeat(1, var(--pivot-column-width))',
+      'calc(var(--spacing) * 20) calc(var(--spacing) * 50) calc(var(--spacing) * 22)',
     )
     expect(grid.find<HTMLElement>('.pivot-body').element.style.inlineSize).toContain(
-      'var(--spacing) * 50',
+      'var(--spacing) * 92',
     )
     await grid.setProps({ positions: new Map() })
-    expect(tracks(grid)).not.toContain('var(--spacing) * 50')
+    expect(tracks(grid)).toContain(
+      'calc(var(--spacing) * 20) calc(var(--spacing) * 77) calc(var(--spacing) * 22)',
+    )
   })
 
   it('follows the drag, and gives the width reached at the release', async () => {
     const grid = await mountGrid()
     expect(grid.findAll('.pivot-head .pivot-resizer')).toHaveLength(3)
     await drag(grid, '.pivot-head:nth-of-type(3) .pivot-resizer', 30)
-    // 108 pixels by default, plus 30, in steps of 3 pixels.
-    expect(tracks(grid)).toContain('calc(var(--spacing) * 46)')
+    // 77 steps of 3 pixels by default, 231 pixels, plus 30.
+    expect(tracks(grid)).toContain('calc(var(--spacing) * 87)')
     expect(grid.emitted('resizeColumn')).toBeUndefined()
     await grid.find('.pivot-head:nth-of-type(3) .pivot-resizer').trigger('pointerup')
-    expect(grid.emitted('resizeColumn')).toEqual([[COLUMN_2026, 46]])
+    expect(grid.emitted('resizeColumn')).toEqual([[COLUMN_2026, 87]])
     // The width finds its column before the engine gives its position again.
-    await grid.setProps({ columnWidths: [{ ...COLUMN_2026, width: 46 }] })
-    expect(tracks(grid)).toContain('calc(var(--spacing) * 46)')
+    await grid.setProps({ columnWidths: [{ ...COLUMN_2026, width: 87 }] })
+    expect(tracks(grid)).toContain('calc(var(--spacing) * 87)')
   })
 
   it('gives no width to a click without a move', async () => {
@@ -450,9 +462,9 @@ describe('the widths in PivotGrid', () => {
   it('fits a column with a double click, then gives back its default width', async () => {
     const grid = await mountGrid()
     await grid.find('.pivot-head:nth-of-type(3) .pivot-resizer').trigger('dblclick')
-    // Without a layout, each text takes the width it has: 108 pixels.
-    expect(grid.emitted('resizeColumn')).toEqual([[COLUMN_2026, 36]])
-    await grid.setProps({ columnWidths: [{ ...COLUMN_2026, width: 36 }] })
+    // Without a layout, each text takes the width it has: 77 steps.
+    expect(grid.emitted('resizeColumn')).toEqual([[COLUMN_2026, 77]])
+    await grid.setProps({ columnWidths: [{ ...COLUMN_2026, width: 77 }] })
     await grid.find('.pivot-head:nth-of-type(3) .pivot-resizer').trigger('dblclick')
     expect(grid.emitted('resizeColumn')?.[1]).toEqual([COLUMN_2026, null])
   })
@@ -468,6 +480,7 @@ describe('the widths in PivotGrid', () => {
     }
     const grid = await mountGrid({
       shape: { ...SHAPE, lines: 1, columns: 2 },
+      lengths: { values: [1, 1], labels: [4, 4] },
       measureLabels: ['SUM(montant)', 'COUNT(*)'],
       read: () => Promise.resolve(window),
     })
@@ -475,7 +488,8 @@ describe('the widths in PivotGrid', () => {
     expect(grid.findAll('.pivot-head.measure .pivot-resizer')).toHaveLength(2)
     await drag(grid, '.pivot-head.measure:last-of-type .pivot-resizer', 3)
     await grid.find('.pivot-head.measure:last-of-type .pivot-resizer').trigger('pointerup')
-    expect(grid.emitted('resizeColumn')).toEqual([[{ path: ['2025'], measure: 1 }, 37]])
+    // COUNT(*) heads its column: 10 characters with its sort button, 29 steps, plus 3 pixels.
+    expect(grid.emitted('resizeColumn')).toEqual([[{ path: ['2025'], measure: 1 }, 30]])
   })
 
   it('resizes the labels in a single column, or the column of a level', async () => {

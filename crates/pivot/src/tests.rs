@@ -1427,6 +1427,197 @@ fn a_filter_keeps_the_rows_the_filter_of_the_grid_keeps() {
     assert_eq!(engine.compute(&request).unwrap().selected_rows(), 4);
 }
 
+/// Lengths of the texts of each column of a table, read cell by cell: what
+/// `Table::text_lengths` gives by reading the groups. A NULL counts 4
+/// characters, a total 5.
+fn read_lengths(engine: &Engine, table: &Table) -> Vec<TextLengths> {
+    (0..table.column_count())
+        .map(|column| {
+            let header = table.header(engine, column);
+            let label = match header.path.last() {
+                _ if header.total => 5,
+                Some(&(_, label)) => label.map_or(4, |text| text.chars().count()),
+                None => 0,
+            };
+            let values = (0..table.line_count())
+                .map(|line| match table.value(line, column) {
+                    Value::Null => 4,
+                    value => value.text(engine).map_or(0, |text| text.chars().count()),
+                })
+                .max()
+                .unwrap_or(0);
+            TextLengths { values, label }
+        })
+        .collect()
+}
+
+#[test]
+fn the_lengths_of_the_texts_of_the_columns_are_those_of_their_cells() {
+    let engine = example();
+    let request = Request {
+        rows: vec![0.into(), 1.into()],
+        columns: vec![3.into(), 4.into()],
+        measures: vec![
+            Measure::Sum(5),
+            Measure::Max(2.into()),
+            Measure::Avg(5),
+            Measure::CountStar,
+        ],
+        ..Request::default()
+    };
+    let mut table = engine.compute(&request).unwrap();
+    assert_eq!(
+        table.text_lengths(&engine, 4, 5),
+        read_lengths(&engine, &table)
+    );
+    // A layout hides lines and columns, and another order moves the columns.
+    let hidden = Totals {
+        grand_total: false,
+        subtotals: vec![false, false],
+    };
+    for (form, rows, columns) in [
+        (Form::Tabular, hidden.clone(), Totals::default()),
+        (Form::Outline, Totals::default(), hidden.clone()),
+    ] {
+        let order = Order {
+            columns: AxisOrder {
+                descending: vec![true, true],
+                values: None,
+            },
+            ..Order::default()
+        };
+        let layout = Layout {
+            form,
+            rows,
+            columns,
+        };
+        table.lay_out(&engine, &order, &layout).unwrap();
+        assert_eq!(
+            table.text_lengths(&engine, 4, 5),
+            read_lengths(&engine, &table)
+        );
+    }
+}
+
+#[test]
+fn the_longest_text_of_a_level_bounds_its_cells_but_not_a_null() {
+    let engine = pairs(
+        &[("a", Some("xy")), ("b", Some("longest value")), ("c", None)],
+        Family::Other,
+    );
+    // The column a never reaches the longest text of the level.
+    let by_columns = Request {
+        columns: vec![0.into()],
+        measures: vec![Measure::Min(1.into())],
+        ..Request::default()
+    };
+    let table = engine.compute(&by_columns).unwrap();
+    let lengths = table.text_lengths(&engine, 4, 5);
+    assert_eq!(lengths, read_lengths(&engine, &table));
+    let values: Vec<usize> = lengths.iter().map(|lengths| lengths.values).collect();
+    assert_eq!(values, [2, 13, 4, 13]);
+    // A NULL longer than the longest text counts once the column reaches it.
+    let by_lines = Request {
+        rows: vec![0.into()],
+        measures: vec![Measure::Min(1.into())],
+        ..Request::default()
+    };
+    let table = engine.compute(&by_lines).unwrap();
+    assert_eq!(table.text_lengths(&engine, 20, 5)[0].values, 20);
+}
+
+#[test]
+fn floats_and_periods_give_the_lengths_of_their_cells() {
+    let floats = pairs(
+        &[
+            ("a", Some("0.1")),
+            ("a", Some("0.2")),
+            ("b", Some("-1e300")),
+            ("c", None),
+        ],
+        Family::Float,
+    );
+    let dates = pairs(
+        &[
+            ("a", Some("2026-01-15")),
+            ("b", Some("2025-12-31")),
+            ("b", Some("1999-07-04")),
+            ("c", None),
+        ],
+        Family::Date,
+    );
+    let month = Level {
+        column: 1,
+        precision: Some(Precision::Month),
+    };
+    for (engine, measures) in [
+        (&floats, vec![Measure::Sum(1), Measure::Avg(1)]),
+        (&dates, vec![Measure::Min(month), Measure::Max(1.into())]),
+    ] {
+        for (rows, columns) in [(vec![0.into()], vec![]), (vec![], vec![0.into()])] {
+            let request = Request {
+                rows,
+                columns,
+                measures: measures.clone(),
+                ..Request::default()
+            };
+            let table = engine.compute(&request).unwrap();
+            assert_eq!(
+                table.text_lengths(engine, 4, 5),
+                read_lengths(engine, &table)
+            );
+        }
+    }
+}
+
+#[test]
+fn a_null_and_a_total_count_the_lengths_the_page_gives_them() {
+    let engine = pairs(
+        &[("a", None), ("bb", Some("-12.50")), ("bb", Some("3"))],
+        Family::Exact,
+    );
+    let request = Request {
+        rows: vec![1.into()],
+        columns: vec![0.into()],
+        measures: vec![Measure::Sum(1)],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    // Columns a (NULL on its line and its total), bb (-12.50, 3.00, -9.50),
+    // then the grand total (NULL, -12.50, 3.00, -9.50).
+    assert_eq!(
+        table.text_lengths(&engine, 9, 7),
+        [
+            TextLengths {
+                values: 9,
+                label: 1
+            },
+            TextLengths {
+                values: 6,
+                label: 2
+            },
+            TextLengths {
+                values: 9,
+                label: 7
+            },
+        ]
+    );
+    // Without any level of columns, the header has no label.
+    let request = Request {
+        rows: vec![0.into()],
+        measures: vec![Measure::CountStar],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    assert_eq!(
+        table.text_lengths(&engine, 4, 5),
+        [TextLengths {
+            values: 1,
+            label: 0
+        }]
+    );
+}
+
 /// Engine over two columns: a text, and numbers of a family.
 fn pairs(rows: &[(&str, Option<&str>)], family: Family) -> Engine {
     let mut store = Store::new(2);

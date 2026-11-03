@@ -371,6 +371,8 @@ pub struct DerivedLevel {
     pub ranks: Vec<u32>,
     /// Label of each code, `None` for NULL.
     labels: Vec<Option<String>>,
+    /// Longest label, in characters.
+    pub longest: usize,
     /// Code of the cells outside of the calendar, `None` without any.
     outside: Option<u32>,
 }
@@ -397,6 +399,19 @@ impl DerivedLevel {
         }
         let mut order: Vec<u32> = (0..slots.len() as u32).collect();
         order.sort_unstable_by_key(|&code| slots[code as usize]);
+        let labels: Vec<Option<String>> = slots
+            .iter()
+            .map(|slot| match slot {
+                Slot::Period(period) => Some(label(precision, *period)),
+                _ => None,
+            })
+            .collect();
+        let longest = labels
+            .iter()
+            .flatten()
+            .map(|label| label.chars().count())
+            .max()
+            .unwrap_or(0);
         DerivedLevel {
             dictionary: Dictionary {
                 codes: values
@@ -407,13 +422,8 @@ impl DerivedLevel {
                 first_rows,
             },
             ranks: crate::ranks_of(&order),
-            labels: slots
-                .iter()
-                .map(|slot| match slot {
-                    Slot::Period(period) => Some(label(precision, *period)),
-                    _ => None,
-                })
-                .collect(),
+            labels,
+            longest,
             outside: index.get(&Slot::Outside).copied(),
         }
     }
