@@ -98,6 +98,12 @@ pub struct PivotLevel {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[ts(as = "Option<bool>", optional)]
     pub without_subtotal: bool,
+    /// Width of its column of labels, when the lines give one per level, in
+    /// steps of the spacing scale (`--spacing`); the default width without
+    /// one. The width follows the level wherever it goes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub width: Option<u32>,
 }
 
 /// Measure of the configuration.
@@ -255,8 +261,24 @@ pub struct PivotValueSort {
     pub descending: bool,
 }
 
-/// Elements of each zone, the outermost level first, the sorts by values and
-/// the layout of the table.
+/// Width of a column of values, named by the values of its node and its
+/// measure, as a sort names it: a column the table no longer shows keeps its
+/// width, and finds it again once it comes back.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PivotColumnWidth {
+    /// Values of the levels of the node, the outermost first, `null` for NULL.
+    /// A shorter path reads a subtotal, an empty one the grand total.
+    pub path: Vec<Option<String>>,
+    /// Index of the measure; 0 for the column of a node in a table without
+    /// measures.
+    pub measure: u32,
+    /// Width, in steps of the spacing scale (`--spacing`).
+    pub width: u32,
+}
+
+/// Elements of each zone, the outermost level first, the sorts by values, the
+/// layout of the table and the widths of its columns.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct PivotConfig {
@@ -294,6 +316,16 @@ pub struct PivotConfig {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[ts(as = "Option<bool>", optional)]
     pub without_column_total: bool,
+    /// Width of the labels of the lines when they stand in a single column,
+    /// in steps of the spacing scale (`--spacing`); the default width without
+    /// one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub labels_width: Option<u32>,
+    /// Widths of the columns of values given one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<PivotColumnWidth>>", optional)]
+    pub column_widths: Vec<PivotColumnWidth>,
 }
 
 /// Configuration of the Pivoteur of a result tab.
@@ -463,6 +495,9 @@ mod tests {
         assert!(!config.without_row_total);
         assert!(!config.without_column_total);
         assert!(!config.rows[0].without_subtotal);
+        assert_eq!(config.rows[0].width, None);
+        assert_eq!(config.labels_width, None);
+        assert_eq!(config.column_widths, []);
         assert_eq!(
             serde_json::to_string(&config).unwrap(),
             saved.replace(r#""measures":[]"#, r#""measures":[],"filters":[]"#)
@@ -541,6 +576,23 @@ mod tests {
         assert!(config.without_row_total);
         assert!(config.without_column_total);
         assert!(config.rows[0].without_subtotal);
+        assert_eq!(serde_json::to_string(&config).unwrap(), saved);
+    }
+
+    #[test]
+    fn keeps_the_widths_of_a_configuration() {
+        let saved = r#"{"rows":[{"column":1,"name":"","precision":"none","width":30}],"columns":[],"measures":[],"filters":[],"labels_width":50,"column_widths":[{"path":["2025",null],"measure":1,"width":44}]}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        assert_eq!(config.rows[0].width, Some(30));
+        assert_eq!(config.labels_width, Some(50));
+        assert_eq!(
+            config.column_widths,
+            [PivotColumnWidth {
+                path: vec![Some("2025".to_string()), None],
+                measure: 1,
+                width: 44,
+            }]
+        );
         assert_eq!(serde_json::to_string(&config).unwrap(), saved);
     }
 

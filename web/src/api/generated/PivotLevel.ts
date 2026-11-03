@@ -27,4 +27,10 @@ export type PivotLevel = {
    * wherever it goes; the last level of an axis has no subtotal.
    */
   without_subtotal?: boolean;
+  /**
+   * Width of its column of labels, when the lines give one per level, in
+   * steps of the spacing scale (`--spacing`); the default width without
+   * one. The width follows the level wherever it goes.
+   */
+  width?: number;
 };

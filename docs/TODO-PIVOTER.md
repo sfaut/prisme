@@ -88,6 +88,15 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ⬜ Fold of a group (F-40), copy and CSV in the form of the table (F-41)
 - ⬜ The engine computes only the levels shown (F-42), postponed: a layout stays immediate without it
 
+### Widths of the columns
+
+- ✅ Each column of values takes its own width, named by the values of its node and its measure, as the sorts name a column; it lasts as long as the levels of the columns and follows its measure
+- ✅ The columns of labels take their width: the single column, or each level, whose width follows it
+- ✅ Drag the right edge of a header; a double click fits the column to the texts drawn, a second one gives back its default width
+- ✅ The engine gives the position of the widened columns with each table, so that the page places the columns out of sight; a width draws the table again without computing it
+- ✅ Saved with the tab
+- ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes and at a real 150%, sorts, filter, totals and reload
+
 ### Next slices and lots
 
 - ✅ A date outside of the calendar stops the computation under a precision (A7, D25, D26) when a row taken into account holds it: the table empties, and the message gives the value and the number of its row, as for every error of calculation

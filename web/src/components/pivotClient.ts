@@ -22,6 +22,7 @@ import {
   type PivotRequest,
   type PivotRequestMessage,
   type PivotShape,
+  type PivotValueTarget,
   type PivotWindow,
   FIRST_LAYOUT,
   LABEL_ORDER,
@@ -63,6 +64,11 @@ export interface PivotTable {
    * Shape of the table.
    */
   shape: PivotShape
+  /**
+   * Position in the table of each column named for the computation, `null` for a column it
+   * does not show.
+   */
+  positions: (number | null)[]
   /**
    * Duration of the computation in the Worker, in milliseconds.
    */
@@ -238,20 +244,23 @@ export class PivotClient {
    * @param request Table asked.
    * @param order Order of its lines and of its columns.
    * @param layout Form of its lines and totals shown.
+   * @param targets Columns of values named by their values, whose positions the table gives.
    * @throws {PivotError} If the engine refuses it, or refused the copy.
    */
   async compute(
     request: PivotRequest,
     order: PivotOrder = LABEL_ORDER,
     layout: PivotLayout = FIRST_LAYOUT,
+    targets: PivotValueTarget[] = [],
   ): Promise<PivotTable> {
     await this.loaded
     const id = this.nextId++
-    const answer = await this.ask({ type: 'compute', id, request, order, layout })
+    const answer = await this.ask({ type: 'compute', id, request, order, layout, targets })
     if (answer.type !== 'table') {
       throw new Error(`Pivot client: unexpected answer ${answer.type}`)
     }
-    return { id, shape: answer.shape, durationMs: answer.durationMs }
+    const { shape, positions, durationMs } = answer
+    return { id, shape, positions, durationMs }
   }
 
   /**

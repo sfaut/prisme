@@ -879,6 +879,7 @@ mod tests {
                     precision: DatePrecision::Month,
                     descending: true,
                     without_subtotal: true,
+                    width: Some(30),
                 }],
                 sort_lines: Some(PivotValueSort {
                     path: vec![Some("2026".to_string()), None],

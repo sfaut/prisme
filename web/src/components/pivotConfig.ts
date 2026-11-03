@@ -14,7 +14,10 @@
  *
  * A level has its direction (C-11), which it keeps wherever it goes; on each axis, the values of a
  * node of the other axis can rank the nodes instead (C-13), named by their values. Such a sort
- * lasts as long as the levels of that other axis and its measure (`withFollowedSorts`).
+ * lasts as long as the levels of that other axis and its measure (`withFollowedTargets`). A column
+ * of values keeps the width given to it, named the same way, as long as the levels of the columns
+ * stay, and follows its measure; a level keeps the width of its column of labels wherever it goes
+ * (`withColumnWidth`, `withLabelWidth`).
  *
  * The lines take a form (C-07), and repeat the labels of their groups if asked. Each axis shows its
  * grand total and the subtotal of each level if asked, a setting that follows the level wherever
@@ -35,6 +38,7 @@
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { DatePrecision } from '@/api/generated/DatePrecision'
+import type { PivotColumnWidth } from '@/api/generated/PivotColumnWidth'
 import type { PivotCondition } from '@/api/generated/PivotCondition'
 import type { PivotConfig } from '@/api/generated/PivotConfig'
 import type { PivotForm } from '@/api/generated/PivotForm'
@@ -205,7 +209,7 @@ function movedColumns(fields: string[], columns: string[]): (number | undefined)
  */
 function followedConfig(pivot: TabPivot, columns: string[]): PivotConfig {
   const { fields, config } = pivot
-  const { sort_lines, sort_columns, ...settings } = config
+  const { sort_lines, sort_columns, column_widths, ...settings } = config
   const moved = movedColumns(fields, columns)
   const follow = <T extends { column: number }>(item: T, column: number | undefined) =>
     column === undefined ? [] : [{ ...item, column }]
@@ -235,7 +239,7 @@ function followedConfig(pivot: TabPivot, columns: string[]): PivotConfig {
     followed.rows.length === config.rows.length &&
     followed.columns.length === config.columns.length &&
     followed.measures.length === config.measures.length
-  return whole ? { ...followed, sort_lines, sort_columns } : followed
+  return whole ? { ...followed, sort_lines, sort_columns, column_widths } : followed
 }
 
 /**
@@ -475,6 +479,16 @@ export function engineOrder(config: PivotConfig): PivotOrder {
 }
 
 /**
+ * Columns of values given a width, named by their values, whose positions the engine gives with the
+ * table: copies of those of the configuration, which the Worker can receive.
+ *
+ * @param config Configuration.
+ */
+export function engineTargets(config: PivotConfig): PivotValueTarget[] {
+  return (config.column_widths ?? []).map(({ path, measure }) => ({ path: [...path], measure }))
+}
+
+/**
  * Do two orders ask for the same layout?
  *
  * @param a Order.
@@ -676,29 +690,81 @@ function sameLevels(a: PivotLevel[], b: PivotLevel[]): boolean {
 }
 
 /**
- * Keeps the sorts by values that still read the same values after a change of the zones: a column
- * ranks the lines as long as the levels of the columns stay, and follows its measure; a line ranks
- * the columns as long as the levels of the rows stay, by the first measure.
+ * Keeps the sorts by values and the widths of the columns of values that still read the same
+ * values after a change of the zones: a column ranks the lines and keeps its width as long as the
+ * levels of the columns stay, and follows its measure; a line ranks the columns as long as the
+ * levels of the rows stay, by the first measure.
  *
  * @param before Configuration before the change.
  * @param after Configuration after the change.
  */
-function withFollowedSorts(before: PivotConfig, after: PivotConfig): PivotConfig {
+function withFollowedTargets(before: PivotConfig, after: PivotConfig): PivotConfig {
+  const followed = (index: number) => {
+    const measure = before.measures[index]
+    return after.measures.findIndex(
+      ({ aggregate, column }) => aggregate === measure?.aggregate && column === measure?.column,
+    )
+  }
+  const columns = sameLevels(before.columns, after.columns)
   const lines = before.sort_lines
-  const ranking = lines && before.measures[lines.measure]
-  const measure = after.measures.findIndex(
-    ({ aggregate, column }) => aggregate === ranking?.aggregate && column === ranking?.column,
+  const measure = lines === undefined ? -1 : followed(lines.measure)
+  const widths = (columns ? (before.column_widths ?? []) : []).flatMap(
+    (width): PivotColumnWidth[] => {
+      const moved = followed(width.measure)
+      return moved >= 0 ? [{ ...width, measure: moved }] : []
+    },
   )
   return {
     ...after,
-    sort_lines:
-      lines && measure >= 0 && sameLevels(before.columns, after.columns)
-        ? { ...lines, measure }
-        : undefined,
+    sort_lines: lines && measure >= 0 && columns ? { ...lines, measure } : undefined,
     sort_columns:
       after.measures.length > 0 && sameLevels(before.rows, after.rows)
         ? before.sort_columns
         : undefined,
+    column_widths: widths.length > 0 ? widths : undefined,
+  }
+}
+
+/**
+ * Configuration after a column of values takes a width, or gives it back. Named by its values, the
+ * column keeps it while the table does not show it.
+ *
+ * @param config Configuration.
+ * @param target Values of the node of the column, and its measure (0 without measures).
+ * @param width Width, in steps of the spacing scale; `null` for the default width.
+ */
+export function withColumnWidth(
+  config: PivotConfig,
+  target: PivotValueTarget,
+  width: number | null,
+): PivotConfig {
+  const others = (config.column_widths ?? []).filter((column) => !sameTarget(column, target))
+  const widths =
+    width === null ? others : [...others, { path: target.path, measure: target.measure, width }]
+  return { ...config, column_widths: widths.length > 0 ? widths : undefined }
+}
+
+/**
+ * Configuration after the labels of the lines take a width, or give it back: that of their single
+ * column, or that of the column of a level, which the level keeps wherever it goes.
+ *
+ * @param config Configuration.
+ * @param level Level of the rows whose column it is; `null` for the labels in a single column.
+ * @param width Width, in steps of the spacing scale; `null` for the default width.
+ */
+export function withLabelWidth(
+  config: PivotConfig,
+  level: number | null,
+  width: number | null,
+): PivotConfig {
+  if (level === null) {
+    return { ...config, labels_width: width ?? undefined }
+  }
+  return {
+    ...config,
+    rows: config.rows.map((row, index) =>
+      index === level ? { ...row, width: width ?? undefined } : row,
+    ),
   }
 }
 
@@ -1219,7 +1285,7 @@ function withoutElement(config: PivotConfig, place: ZonePlace): PivotConfig {
  * @param place Place of the element to remove.
  */
 export function removeElement(config: PivotConfig, place: ZonePlace): PivotConfig {
-  return withFollowedSorts(config, withoutElement(config, place))
+  return withFollowedTargets(config, withoutElement(config, place))
 }
 
 /**
@@ -1319,7 +1385,7 @@ export function placeColumn(
     name: '',
     precision: filter?.kind === 'column' ? filter.precision : 'none',
   }
-  return withFollowedSorts(config, {
+  return withFollowedTargets(config, {
     ...result,
     rows: to.zone === 'rows' ? insert(result.rows, newLevel) : result.rows,
     columns: to.zone === 'columns' ? insert(result.columns, newLevel) : result.columns,
@@ -1370,7 +1436,7 @@ export function withPrecision(
   precision: DatePrecision,
 ): PivotConfig {
   const changed = config[place.zone][place.index]
-  return withFollowedSorts(config, {
+  return withFollowedTargets(config, {
     ...config,
     [place.zone]: config[place.zone].map((level, index) =>
       index === place.index ? { ...level, precision } : level,

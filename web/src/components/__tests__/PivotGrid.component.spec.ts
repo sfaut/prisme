@@ -1,5 +1,6 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 
 import PivotGrid from '../PivotGrid.vue'
 import {
@@ -9,6 +10,7 @@ import {
   type PivotShape,
   type PivotWindow,
 } from '../pivotEngine'
+import { targetKey } from '../pivotWidths'
 
 /**
  * Table of two regions by two years, with its totals.
@@ -78,6 +80,9 @@ async function mountGrid(props: Record<string, unknown> = {}) {
       order: LABEL_ORDER,
       layout: FIRST_LAYOUT,
       repeatLabels: false,
+      columnWidths: [],
+      positions: new Map(),
+      levelWidths: [],
       read: () => Promise.resolve(WINDOW),
       ...props,
     },
@@ -360,5 +365,146 @@ describe('the forms of the lines in PivotGrid', () => {
     // The size of the table is not known yet, or too small.
     const outline = await mountTowns({ layout: { ...FIRST_LAYOUT, form: 'outline' } })
     expect(outline.find('.pivot-scroller').classes()).not.toContain('frozen')
+  })
+})
+
+describe('the widths in PivotGrid', () => {
+  // jsdom has no pointer capture, used by a press on a handle.
+  beforeEach(() => {
+    HTMLElement.prototype.setPointerCapture = () => {}
+  })
+
+  /**
+   * Columns of the grid of the first line.
+   *
+   * @param grid Table mounted.
+   */
+  function tracks(grid: VueWrapper): string {
+    return grid.find<HTMLElement>('.pivot-body .pivot-line').element.style.gridTemplateColumns
+  }
+
+  /**
+   * Moves the pointer on a handle: `trigger` of Vue Test Utils cannot give a position to an
+   * event of jsdom.
+   *
+   * @param grid Table mounted.
+   * @param selector Handle.
+   * @param type Event.
+   * @param clientX Position of the pointer, in pixels.
+   */
+  async function pointer(grid: VueWrapper, selector: string, type: string, clientX: number) {
+    grid.find(selector).element.dispatchEvent(new MouseEvent(type, { bubbles: true, clientX }))
+    await nextTick()
+  }
+
+  /**
+   * Drags a handle by a distance, without releasing it.
+   *
+   * @param grid Table mounted.
+   * @param selector Handle.
+   * @param distance Move of the pointer, in pixels.
+   */
+  async function drag(grid: VueWrapper, selector: string, distance: number) {
+    await pointer(grid, selector, 'pointerdown', 100)
+    await pointer(grid, selector, 'pointermove', 100 + distance)
+  }
+
+  const COLUMN_2026 = { path: ['2026'], measure: 0 }
+
+  it('draws a column with the width given to it, found by its values', async () => {
+    const grid = await mountGrid({
+      columnWidths: [{ ...COLUMN_2026, width: 50 }],
+      positions: new Map([[targetKey(COLUMN_2026), 1]]),
+    })
+    expect(tracks(grid)).toContain(
+      'repeat(1, var(--pivot-column-width)) calc(var(--spacing) * 50) repeat(1, var(--pivot-column-width))',
+    )
+    expect(grid.find<HTMLElement>('.pivot-body').element.style.inlineSize).toContain(
+      'var(--spacing) * 50',
+    )
+    await grid.setProps({ positions: new Map() })
+    expect(tracks(grid)).not.toContain('var(--spacing) * 50')
+  })
+
+  it('follows the drag, and gives the width reached at the release', async () => {
+    const grid = await mountGrid()
+    expect(grid.findAll('.pivot-head .pivot-resizer')).toHaveLength(3)
+    await drag(grid, '.pivot-head:nth-of-type(3) .pivot-resizer', 30)
+    // 108 pixels by default, plus 30, in steps of 3 pixels.
+    expect(tracks(grid)).toContain('calc(var(--spacing) * 46)')
+    expect(grid.emitted('resizeColumn')).toBeUndefined()
+    await grid.find('.pivot-head:nth-of-type(3) .pivot-resizer').trigger('pointerup')
+    expect(grid.emitted('resizeColumn')).toEqual([[COLUMN_2026, 46]])
+    // The width finds its column before the engine gives its position again.
+    await grid.setProps({ columnWidths: [{ ...COLUMN_2026, width: 46 }] })
+    expect(tracks(grid)).toContain('calc(var(--spacing) * 46)')
+  })
+
+  it('gives no width to a click without a move', async () => {
+    const grid = await mountGrid()
+    await pointer(grid, '.pivot-head .pivot-resizer', 'pointerdown', 100)
+    await pointer(grid, '.pivot-head .pivot-resizer', 'pointerup', 100)
+    expect(grid.emitted('resizeColumn')).toBeUndefined()
+  })
+
+  it('fits a column with a double click, then gives back its default width', async () => {
+    const grid = await mountGrid()
+    await grid.find('.pivot-head:nth-of-type(3) .pivot-resizer').trigger('dblclick')
+    // Without a layout, each text takes the width it has: 108 pixels.
+    expect(grid.emitted('resizeColumn')).toEqual([[COLUMN_2026, 36]])
+    await grid.setProps({ columnWidths: [{ ...COLUMN_2026, width: 36 }] })
+    await grid.find('.pivot-head:nth-of-type(3) .pivot-resizer').trigger('dblclick')
+    expect(grid.emitted('resizeColumn')?.[1]).toEqual([COLUMN_2026, null])
+  })
+
+  it('resizes the headers of a single column only, a measure included', async () => {
+    const window: PivotWindow = {
+      lines: [{ depth: 0, label: null, path: [], shared: 0 }],
+      columns: [
+        { node: 1, path: [[1, '2025']], total: false, measure: 0 },
+        { node: 1, path: [[1, '2025']], total: false, measure: 1 },
+      ],
+      cells: [['1', '2']],
+    }
+    const grid = await mountGrid({
+      shape: { ...SHAPE, lines: 1, columns: 2 },
+      measureLabels: ['SUM(montant)', 'COUNT(*)'],
+      read: () => Promise.resolve(window),
+    })
+    expect(grid.find('.pivot-head.value .pivot-resizer').exists()).toBe(false)
+    expect(grid.findAll('.pivot-head.measure .pivot-resizer')).toHaveLength(2)
+    await drag(grid, '.pivot-head.measure:last-of-type .pivot-resizer', 3)
+    await grid.find('.pivot-head.measure:last-of-type .pivot-resizer').trigger('pointerup')
+    expect(grid.emitted('resizeColumn')).toEqual([[{ path: ['2025'], measure: 1 }, 37]])
+  })
+
+  it('resizes the labels in a single column, or the column of a level', async () => {
+    const compact = await mountGrid({ labelsWidth: 70 })
+    expect(tracks(compact)).toMatch(/^calc\(var\(--spacing\) \* 70\) /)
+    expect(compact.findAll('.pivot-corner .pivot-resizer')).toHaveLength(1)
+    await drag(compact, '.pivot-corner .pivot-resizer', 30)
+    await compact.find('.pivot-corner .pivot-resizer').trigger('pointerup')
+    expect(compact.emitted('resizeLabels')).toEqual([[null, 80]])
+    compact.unmount()
+
+    const window: PivotWindow = {
+      ...WINDOW,
+      lines: [{ depth: 2, label: 'Arras', path: ['Nord', 'Arras'], shared: 0 }],
+      cells: [['1', '2', '3']],
+    }
+    const outline = await mountGrid({
+      shape: { ...SHAPE, lines: 1, rowLevels: 2 },
+      rowNames: ['region', 'ville'],
+      layout: { ...FIRST_LAYOUT, form: 'outline' },
+      levelWidths: [40],
+      read: () => Promise.resolve(window),
+    })
+    const cells = outline.find<HTMLElement>('.pivot-label-cells').element.style
+    expect(cells.gridTemplateColumns).toBe('calc(var(--spacing) * 40) minmax(0, 1fr)')
+    expect(outline.findAll('.pivot-corner .pivot-resizer')).toHaveLength(2)
+    await drag(outline, '.pivot-corner .pivot-resizer:last-of-type', 30)
+    await outline.find('.pivot-corner .pivot-resizer:last-of-type').trigger('pointerup')
+    // The second level: 120 pixels by default, plus 30.
+    expect(outline.emitted('resizeLabels')).toEqual([[1, 50]])
   })
 })

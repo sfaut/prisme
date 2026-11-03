@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { reactive } from 'vue'
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Cell } from '@/api/querySession'
@@ -21,6 +22,7 @@ import {
   engineLayout,
   engineOrder,
   engineRequest,
+  engineTargets,
   fittedConfig,
   hasGrandTotal,
   hasTable,
@@ -38,9 +40,11 @@ import {
   sameTarget,
   withAggregate,
   withAllSubtotals,
+  withColumnWidth,
   withFilter,
   withForm,
   withGrandTotal,
+  withLabelWidth,
   withLevelSort,
   withName,
   withPrecision,
@@ -1442,5 +1446,113 @@ describe('the layout', () => {
     expect(hasGrandTotal(fitted, 'rows')).toBe(false)
     expect(fitted.rows.map(({ column }) => column)).toEqual([4, 3, 2])
     expect(fitted.columns[0]?.without_subtotal).toBe(true)
+  })
+})
+
+describe('the widths', () => {
+  /**
+   * Lines by region and ville, columns by annee, two measures: the column 2025 of the second
+   * measure and the grand total of the first one have their width.
+   */
+  const WIDENED: PivotConfig = {
+    rows: [level(0), level(1)],
+    columns: [level(2)],
+    measures: [measure('sum', 4), measure('count', 4)],
+    filters: [],
+    column_widths: [
+      { path: ['2025'], measure: 1, width: 50 },
+      { path: [], measure: 0, width: 20 },
+    ],
+  }
+
+  it('gives a column of values its width, named by its values, and gives it back', () => {
+    const wider = withColumnWidth(WIDENED, { path: ['2025'], measure: 1 }, 60)
+    expect(wider.column_widths).toEqual([
+      { path: [], measure: 0, width: 20 },
+      { path: ['2025'], measure: 1, width: 60 },
+    ])
+    expect(withColumnWidth(WIDENED, { path: [null], measure: 0 }, 30).column_widths).toHaveLength(3)
+    const narrower = withColumnWidth(WIDENED, { path: ['2025'], measure: 1 }, null)
+    expect(narrower.column_widths).toEqual([{ path: [], measure: 0, width: 20 }])
+    expect(withColumnWidth(narrower, { path: [], measure: 0 }, null).column_widths).toBeUndefined()
+  })
+
+  it('gives the labels their width, in a single column or per level', () => {
+    const single = withLabelWidth(WIDENED, null, 70)
+    expect(single.labels_width).toBe(70)
+    expect(withLabelWidth(single, null, null).labels_width).toBeUndefined()
+    const second = withLabelWidth(WIDENED, 1, 45)
+    expect(second.rows.map(({ width }) => width)).toEqual([undefined, 45])
+    expect(withLabelWidth(second, 1, null).rows[1]?.width).toBeUndefined()
+  })
+
+  it('names the columns given a width for the engine, in copies the Worker can receive', () => {
+    const targets = engineTargets(reactive(structuredClone(WIDENED)))
+    expect(targets).toEqual([
+      { path: ['2025'], measure: 1 },
+      { path: [], measure: 0 },
+    ])
+    expect(() => structuredClone(targets)).not.toThrow()
+    expect(engineTargets({ ...WIDENED, column_widths: undefined })).toEqual([])
+  })
+
+  it('computes nothing: the request, the order and the layout stay the same', () => {
+    const config = withLabelWidth(
+      withColumnWidth(WIDENED, { path: ['2026'], measure: 0 }, 40),
+      0,
+      30,
+    )
+    expect(sameRequest(engineRequest(config), engineRequest(WIDENED))).toBe(true)
+    expect(sameOrder(engineOrder(config), engineOrder(WIDENED))).toBe(true)
+    expect(sameTableLayout(engineLayout(config), engineLayout(WIDENED))).toBe(true)
+  })
+
+  it('follows the measure of a column, and drops its width without it', () => {
+    const moved = placeColumn(
+      WIDENED,
+      4,
+      'count',
+      { zone: 'measures', index: 0 },
+      { zone: 'measures', index: 1 },
+    )
+    expect(moved.measures).toEqual([measure('count', 4), measure('sum', 4)])
+    expect(moved.column_widths).toEqual([
+      { path: ['2025'], measure: 0, width: 50 },
+      { path: [], measure: 1, width: 20 },
+    ])
+    const removed = removeElement(WIDENED, { zone: 'measures', index: 1 })
+    expect(removed.column_widths).toEqual([{ path: [], measure: 0, width: 20 }])
+  })
+
+  it('drops the widths with a change of the levels of the columns, not of the rows', () => {
+    const added = placeColumn(WIDENED, 3, 'sum', { zone: 'columns', index: 1 }, null)
+    expect(added.column_widths).toBeUndefined()
+    const month = withPrecision(WIDENED, { zone: 'columns', index: 0 }, 'month')
+    expect(month.column_widths).toBeUndefined()
+    const rows = removeElement(WIDENED, { zone: 'rows', index: 1 })
+    expect(rows.column_widths).toEqual(WIDENED.column_widths)
+  })
+
+  it('lets the width of a level follow it to its new place', () => {
+    const config = withLabelWidth(WIDENED, 0, 33)
+    const moved = placeColumn(
+      config,
+      0,
+      'sum',
+      { zone: 'columns', index: 0 },
+      { zone: 'rows', index: 0 },
+    )
+    expect(moved.columns[0]?.width).toBe(33)
+    expect(moved.rows.map(({ width }) => width)).toEqual([undefined])
+  })
+
+  it('keeps the widths when the columns of the result follow their names', () => {
+    const config = withLabelWidth(WIDENED, null, 70)
+    const moved = ['montant', 'region', 'ville', 'annee', 'trimestre']
+    const fitted = fittedConfig({ fields: NAMES, config }, moved, [])
+    expect(fitted.column_widths).toEqual(WIDENED.column_widths)
+    expect(fitted.labels_width).toBe(70)
+    const lost = ['region', 'annee', 'trimestre', 'montant']
+    expect(fittedConfig({ fields: NAMES, config }, lost, []).column_widths).toBeUndefined()
   })
 })

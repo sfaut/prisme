@@ -119,12 +119,20 @@ describe('PivotClient', () => {
       measures: [{ aggregate: 'count_star' as const, column: 0 }],
       filters: [],
     }
-    expect((await client.compute(request)).shape.lines).toBe(3)
-    const table = await client.compute(request, LABEL_ORDER, {
-      ...FIRST_LAYOUT,
-      rows: { grandTotal: false, subtotals: [] },
-    })
+    const first = await client.compute(request)
+    expect(first.shape.lines).toBe(3)
+    expect(first.positions).toEqual([])
+    const table = await client.compute(
+      request,
+      LABEL_ORDER,
+      { ...FIRST_LAYOUT, rows: { grandTotal: false, subtotals: [] } },
+      [
+        { path: [], measure: 0 },
+        { path: [], measure: 1 },
+      ],
+    )
     expect(table.shape.lines).toBe(2)
+    expect(table.positions).toEqual([0, null])
   })
 
   it('copies the rows in blocks, then computes and reads a table', async () => {

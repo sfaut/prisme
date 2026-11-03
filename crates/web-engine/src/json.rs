@@ -1,6 +1,6 @@
 //! JSON answers of the module: the shape of a computed table, a window of
-//! it, the distinct values of a column, the errors. Written by hand: the
-//! module depends on the engine alone.
+//! it, positions of its columns, the distinct values of a column, the
+//! errors. Written by hand: the module depends on the engine alone.
 
 use std::fmt::Write as _;
 
@@ -69,6 +69,24 @@ pub fn shape(json: &mut String, table: &Table) {
         table.finest_groups(),
         table.selected_rows(),
     );
+}
+
+/// Writes positions of columns of values, `null` for a column the table does
+/// not show.
+pub fn positions(json: &mut String, positions: &[Option<usize>]) {
+    json.push('[');
+    for (index, position) in positions.iter().enumerate() {
+        if index > 0 {
+            json.push(',');
+        }
+        match position {
+            Some(position) => {
+                let _ = write!(json, "{position}");
+            }
+            None => json.push_str("null"),
+        }
+    }
+    json.push(']');
 }
 
 /// Writes a window of a table: the lines from `lines.start` to `lines.end`,

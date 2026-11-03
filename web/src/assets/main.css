@@ -154,7 +154,8 @@
      bold capitals of the headers), not registered (`@property`) so that the
      `em` is that of the grid; room beside the text of an estimated or
      fitted width; caps of the estimated width and of the width fitted to
-     the content. */
+     the content. The pivot table reads the smallest width and the cap of a
+     fitted width too (`PivotGrid.vue`). */
   --grid-column-min-width: --spacing(13);
   --grid-char-width: 0.6em;
   --grid-cell-room: --spacing(5);
@@ -162,8 +163,8 @@
   --grid-fitted-max-width: --spacing(240);
 
   /* Pivot table of the Pivoteur (`PivotGrid.vue`), whose widths the code
-     reads to draw only the visible columns: width of the labels of the
-     lines in one column, of a column of labels per level, and of each
+     reads to draw only the visible columns: default width of the labels of
+     the lines in one column, of a column of labels per level, and of each
      column of values. */
   --pivot-label-width: --spacing(60);
   --pivot-level-width: --spacing(40);
@@ -371,6 +372,18 @@
 }
 
 @property --pivot-column-width {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --grid-column-min-width {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --grid-fitted-max-width {
   syntax: '<length>';
   inherits: true;
   initial-value: 0px;

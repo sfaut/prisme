@@ -20,7 +20,8 @@
   waiting for it. Each change of the configuration or of the filter of the grid
   computes the table again; a filter of the panel leaves the grid as it is
   (F-20); a new name only changes its labels, a sort (C-11, C-13) lays the table
-  out again, without computing any aggregate. An error of
+  out again, without computing any aggregate, and a width only draws it again:
+  each table gives the position of the columns given a width. An error of
   calculation empties the table and shows the value in cause with its row; any
   other refusal of the engine shows its message above the table, which keeps its
   last computation (F-22); a Worker that stops is replaced at the next change. A
@@ -57,12 +58,15 @@ import {
   engineLayout,
   engineOrder,
   engineRequest,
+  engineTargets,
   fittedConfig,
   hasTable,
   isEmptyConfig,
   sameOrder,
   sameRequest,
   sameTableLayout,
+  withColumnWidth,
+  withLabelWidth,
   withLevelSort,
   withValueSort,
   zoneLabels,
@@ -76,6 +80,7 @@ import {
   type PivotWindow,
   PivotError,
 } from './pivotEngine'
+import { targetKey } from './pivotWidths'
 import { sameColumns, visibleRows } from './resultGrid'
 import { isForeignKey, useCatalogStore } from '@/stores/catalog'
 import { columnIcon } from './typeIcons'
@@ -235,6 +240,26 @@ function sortValues(axis: PivotAxis, target: PivotValueTarget): void {
 }
 
 /**
+ * Gives a column of values a width, or its default width back.
+ *
+ * @param target Values of the node of the column, and its measure.
+ * @param width Width, in steps of the spacing scale; `null` for the default width.
+ */
+function resizeColumn(target: PivotValueTarget, width: number | null): void {
+  config.value = withColumnWidth(config.value, target, width)
+}
+
+/**
+ * Gives the labels of the lines a width, or their default width back.
+ *
+ * @param level Level of the rows whose column it is; `null` for the labels in a single column.
+ * @param width Width, in steps of the spacing scale; `null` for the default width.
+ */
+function resizeLabels(level: number | null, width: number | null): void {
+  config.value = withLabelWidth(config.value, level, width)
+}
+
+/**
  * Mark of the type of each column, as in the headers of the grid.
  */
 const marks = computed(() => {
@@ -298,13 +323,15 @@ const computing = ref(false)
 
 /**
  * Table shown, with the request, the configuration and the layout it was
- * computed for.
+ * computed for, and the position of each column given a width, by its key
+ * (`targetKey`).
  */
 const shownTable = shallowRef<{
   table: PivotTable
   request: PivotRequest
   config: PivotConfig
   layout: PivotLayout
+  positions: ReadonlyMap<string, number>
 } | null>(null)
 
 /**
@@ -435,11 +462,18 @@ async function compute(current: PivotClient): Promise<void> {
   const asked = request.value
   const named = config.value
   const arranged = layout.value
+  const targets = engineTargets(named)
   computing.value = true
   try {
-    const table = await current.compute(asked, order.value, arranged)
+    const table = await current.compute(asked, order.value, arranged, targets)
     if (computation === computations) {
-      shownTable.value = { table, request: asked, config: named, layout: arranged }
+      const positions = new Map(
+        targets.flatMap((target, index): [string, number][] => {
+          const position = table.positions[index]
+          return position === null || position === undefined ? [] : [[targetKey(target), position]]
+        }),
+      )
+      shownTable.value = { table, request: asked, config: named, layout: arranged, positions }
       failure.value = null
     }
   } catch (error) {
@@ -587,9 +621,15 @@ const groupsText = computed(() => {
           :order="order"
           :layout="shownTable.layout"
           :repeat-labels="config.repeat_labels === true"
+          :column-widths="tableConfig.column_widths ?? []"
+          :positions="shownTable.positions"
+          :labels-width="tableConfig.labels_width"
+          :level-widths="tableConfig.rows.map((level) => level.width)"
           :read="readWindow"
           @sort-level="sortLevel"
           @sort-values="sortValues"
+          @resize-column="resizeColumn"
+          @resize-labels="resizeLabels"
         />
         <p
           v-else-if="!hasTable(config)"

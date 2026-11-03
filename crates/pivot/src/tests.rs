@@ -2219,3 +2219,62 @@ fn a_new_layout_starts_from_the_same_groups() {
         .unwrap();
     assert_eq!(flat(&engine, &table, &["region", "ville"], &["ca"]), before);
 }
+
+/// Column of values named by its labels, as the page names a widened one.
+fn named(path: &[&str]) -> Vec<Option<String>> {
+    path.iter().map(|&label| Some(label.to_owned())).collect()
+}
+
+#[test]
+fn a_column_is_found_by_its_values_and_its_measure() {
+    let engine = example();
+    let request = Request {
+        rows: vec![REGION.into()],
+        columns: vec![YEAR.into(), QUARTER.into()],
+        measures: vec![Measure::Sum(AMOUNT), Measure::CountStar],
+        ..Request::default()
+    };
+    let mut table = engine.compute(&request).unwrap();
+    // 2025: T1, T2, Total; 2026: T1, T2, Total; Total: two measures each.
+    let at =
+        |table: &Table, path: &[&str], measure| table.column_at(&engine, &named(path), measure);
+    assert_eq!(at(&table, &["2025", "T1"], 0), Some(0));
+    assert_eq!(at(&table, &["2025", "T1"], 1), Some(1));
+    assert_eq!(at(&table, &["2025"], 0), Some(4));
+    assert_eq!(at(&table, &["2026", "T2"], 1), Some(9));
+    assert_eq!(at(&table, &[], 1), Some(13));
+    // A node the table does not hold, a measure it does not have.
+    assert_eq!(at(&table, &["2027"], 0), None);
+    assert_eq!(at(&table, &["2025", "T3"], 0), None);
+    assert_eq!(at(&table, &["2025", "T1"], 2), None);
+    assert_eq!(at(&table, &["2025", "T1", "x"], 0), None);
+    // In descending order, without the subtotals of the years.
+    let layout = Layout {
+        columns: Totals {
+            grand_total: true,
+            subtotals: vec![false, true],
+        },
+        ..Layout::default()
+    };
+    let order = Order {
+        columns: AxisOrder {
+            descending: vec![true, false],
+            values: None,
+        },
+        ..Order::default()
+    };
+    table.lay_out(&engine, &order, &layout).unwrap();
+    assert_eq!(at(&table, &["2026", "T1"], 0), Some(0));
+    assert_eq!(at(&table, &["2025", "T2"], 1), Some(7));
+    assert_eq!(at(&table, &["2025"], 0), None);
+    assert_eq!(at(&table, &[], 0), Some(8));
+
+    // Without measures, a column per node.
+    let labels = Request {
+        columns: vec![YEAR.into()],
+        ..Request::default()
+    };
+    let table = engine.compute(&labels).unwrap();
+    assert_eq!(at(&table, &["2026"], 0), Some(1));
+    assert_eq!(at(&table, &["2026"], 1), None);
+}

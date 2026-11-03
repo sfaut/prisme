@@ -444,6 +444,10 @@ export type PivotRequestMessage =
       request: PivotRequest
       order: PivotOrder
       layout: PivotLayout
+      /**
+       * Columns of values named by their values, whose position in the table the answer gives.
+       */
+      targets: PivotValueTarget[]
     }
   | {
       /**
@@ -472,7 +476,13 @@ export type PivotRequestMessage =
  */
 export type PivotAnswer =
   | { type: 'finished'; id: number }
-  | { type: 'table'; id: number; shape: PivotShape; durationMs: number }
+  | {
+      type: 'table'
+      id: number
+      shape: PivotShape
+      positions: (number | null)[]
+      durationMs: number
+    }
   | { type: 'window'; id: number; window: PivotWindow }
   | { type: 'values'; id: number; values: Cell[] }
   | { type: 'failure'; id: number | null; failure: PivotFailure }
@@ -497,6 +507,7 @@ interface EngineExports extends TransferExports {
   set_kept(rows: number, count: number, all: number): number
   compute(words: number, length: number): number
   lay_out(words: number, length: number): number
+  columns_at(words: number, length: number): number
   window(firstLine: number, endLine: number, firstColumn: number, endColumn: number): number
 }
 
@@ -685,6 +696,19 @@ function axisWords({ descending, values }: PivotAxisOrder): number[] {
  */
 export function orderWords(order: PivotOrder): Uint32Array {
   return Uint32Array.from([...axisWords(order.rows), ...axisWords(order.columns)])
+}
+
+/**
+ * Words of columns of values named by their values, for `columns_at` of the module: their number,
+ * then for each one its measure, the number of steps of its path and each step (`valueWords`).
+ *
+ * @param targets Columns named by their values.
+ */
+export function targetWords(targets: PivotValueTarget[]): Uint32Array {
+  return Uint32Array.from([
+    targets.length,
+    ...targets.flatMap(({ path, measure }) => [measure, path.length, ...path.flatMap(valueWords)]),
+  ])
 }
 
 /**
@@ -935,6 +959,22 @@ export class PivotEngine {
   }
 
   /**
+   * Positions of columns of values, named by their values, in the last table laid out: `null`
+   * for a column the table does not show.
+   *
+   * @param targets Columns named by their values; measure 0 names a column without measures.
+   */
+  columnsAt(targets: PivotValueTarget[]): (number | null)[] {
+    if (targets.length === 0) {
+      return []
+    }
+    const words = targetWords(targets)
+    return this.withWords(words, (address) =>
+      this.answer<(number | null)[]>(this.engine.columns_at(address, words.length)),
+    )
+  }
+
+  /**
    * Reads a window of the last table computed.
    *
    * @param lines Lines, start included, end excluded.
@@ -998,8 +1038,10 @@ export function answerMessage(
       case 'compute': {
         const started = performance.now()
         const shape = state.engine.compute(message.request, message.order, message.layout)
+        const positions = state.engine.columnsAt(message.targets)
         state.table = message.id
-        return { type: 'table', id: message.id, shape, durationMs: performance.now() - started }
+        const durationMs = performance.now() - started
+        return { type: 'table', id: message.id, shape, positions, durationMs }
       }
       case 'window':
         if (message.table !== state.table) {

@@ -14,11 +14,20 @@
   The form of the lines (`layout`) gives their labels: in compact form, one
   column, indented by depth; in outline and tabular forms, one column per
   level (`labelCells`). The grand total comes last. Each
-  line has the height of a row of the result grid, each column of values
-  the same width (`--pivot-column-width`): the scroll position gives the
-  lines and the columns to draw (`drawnRange`). A cell without any row
+  line has the height of a row of the result grid, each column its default
+  width (`--pivot-column-width` for the values) or the one given to it: the
+  scroll position gives the lines and the columns to draw (`drawnRange`,
+  `columnRange` in `pivotWidths.ts`). A cell without any row
   stays empty, a measure that is NULL reads NULL, in the style of the grid
   (C-05). The layout of the headers is in `pivotLayout.ts`.
+
+  Resize handles, as in the grid: the right edge of the header of a column
+  of values, on the last row of the headers, and that of each column of
+  labels, in the corner. A drag gives a width, which the panel saves at the
+  release; a double click fits the column to the texts drawn, a second one
+  gives back its default width. A width names its column by its values: the
+  engine gives the position of those known with the table (`positions`),
+  the grid learns that of a column resized since. Nothing is computed again.
 
   Sort buttons, as in the grid: the name of a level inverts its direction
   (C-11), the header of a single column ranks the lines by its values, the
@@ -31,6 +40,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, useTemplateRef, watch } from 'vue'
 
+import type { PivotColumnWidth } from '@/api/generated/PivotColumnWidth'
 import { cssPixels } from '@/cssLength'
 
 import type { PivotAxis } from './pivotConfig'
@@ -44,6 +54,7 @@ import type {
   PivotWindow,
 } from './pivotEngine'
 import {
+  type HeaderCell,
   cornerRows,
   headerCells,
   headerRowCount,
@@ -52,6 +63,19 @@ import {
   sameLayout,
   sortMark,
 } from './pivotLayout'
+import {
+  type ColumnGeometry,
+  type WidthBounds,
+  columnRange,
+  draggedSteps,
+  fittedSteps,
+  roomBefore,
+  roomLength,
+  stepsLength,
+  targetKey,
+  widenedColumns,
+  windowTracks,
+} from './pivotWidths'
 import { NULL_TEXT, drawnRange } from './resultGrid'
 import { vTooltip } from './ui/tooltip'
 
@@ -89,6 +113,25 @@ const props = defineProps<{
    */
   repeatLabels: boolean
   /**
+   * Widths given to columns of values, named by their values.
+   */
+  columnWidths: PivotColumnWidth[]
+  /**
+   * Position in the table of the columns given a width, by their key (`targetKey`), as the
+   * engine gave them with the table.
+   */
+  positions: ReadonlyMap<string, number>
+  /**
+   * Width of the labels in a single column, in steps of the spacing scale; the default width
+   * without one.
+   */
+  labelsWidth?: number | undefined
+  /**
+   * Width of the column of labels of each level of the lines, in steps of the spacing scale;
+   * the default width without one.
+   */
+  levelWidths: (number | undefined)[]
+  /**
    * Reads a window of the table: lines and columns, start included, end
    * excluded.
    */
@@ -104,6 +147,16 @@ const emit = defineEmits<{
    * The user clicks the sort of a node, whose values rank the other axis.
    */
   sortValues: [axis: PivotAxis, target: PivotValueTarget]
+  /**
+   * The user gives a column of values a width, in steps of the spacing scale; `null` for its
+   * default width.
+   */
+  resizeColumn: [target: PivotValueTarget, width: number | null]
+  /**
+   * The user gives the labels a width: those of a level of the lines, or `null` for their
+   * single column.
+   */
+  resizeLabels: [level: number | null, width: number | null]
 }>()
 
 /**
@@ -118,6 +171,26 @@ const LINE_HEIGHT = cssPixels('--grid-row-height', 22)
 const COLUMN_WIDTH = cssPixels('--pivot-column-width', 108)
 const LABEL_WIDTH = cssPixels('--pivot-label-width', 180)
 const LEVEL_WIDTH = cssPixels('--pivot-level-width', 120)
+
+/**
+ * Width of a step of the spacing scale, in pixels, and bounds of a width given to a column, in
+ * steps: the smallest width and the cap of a width fitted to the content, those of the result
+ * grid.
+ *
+ * Fixed sizes: read once (`docs/DEVELOPER.md`, section "Lengths in pixels").
+ */
+const STEP = cssPixels('--spacing', 3)
+const BOUNDS: WidthBounds = {
+  step: STEP,
+  min: Math.ceil(cssPixels('--grid-column-min-width', 39) / STEP),
+  max: Math.floor(cssPixels('--grid-fitted-max-width', 720) / STEP),
+}
+
+/**
+ * Tooltip of a resize handle.
+ */
+const RESIZE_TIP =
+  'Glisser pour changer la largeur, double clic pour l’ajuster au contenu ou revenir à la largeur par défaut'
 
 /**
  * Lines and columns drawn beyond each edge of the visible area.
@@ -176,32 +249,122 @@ const labelled = computed(() => props.shape.rowLevels > 0 || props.shape.columnL
 const labelColumns = computed(() => labelColumnCount(props.layout.form, props.shape.rowLevels))
 
 /**
+ * Column being resized: a column of values, by its position in the table and
+ * by its values, or a column of labels, by its position among them.
+ */
+type Resized =
+  { kind: 'column'; index: number; target: PivotValueTarget } | { kind: 'labels'; column: number }
+
+/**
+ * Drag of the edge of a column: the column, the position of the pointer and
+ * the width of the column at the start, in pixels, and the width reached, in
+ * steps, `null` until the pointer moves; `null` without any drag.
+ */
+const drag = shallowRef<{
+  resized: Resized
+  x: number
+  start: number
+  width: number | null
+} | null>(null)
+
+/**
+ * Positions learned for the table shown: those of the columns resized since
+ * it was computed, which the engine could not give with it.
+ */
+const learned = shallowRef<{ table: number; positions: Map<string, number> }>({
+  table: 0,
+  positions: new Map(),
+})
+
+/**
+ * Position in the table of each column given a width, by its key.
+ */
+const positions = computed<ReadonlyMap<string, number>>(() =>
+  learned.value.table === props.table
+    ? new Map([...props.positions, ...learned.value.positions])
+    : props.positions,
+)
+
+/**
+ * Columns of values of the table, with the widths given to them, that of the
+ * column being dragged included.
+ */
+const geometry = computed<ColumnGeometry>(() => {
+  const widened = widenedColumns(props.columnWidths, positions.value)
+  const dragged = drag.value
+  if (dragged?.resized.kind === 'column' && dragged.width !== null) {
+    const { index } = dragged.resized
+    const others = widened.filter((column) => column.index !== index)
+    widened.splice(0, widened.length, ...others, { index, width: dragged.width })
+    widened.sort((a, b) => a.index - b.index)
+  }
+  return { count: props.shape.columns, standard: COLUMN_WIDTH, step: STEP, widened }
+})
+
+/**
+ * Width given to each column of labels, in steps, that of the column being
+ * dragged included; `undefined` for the default width.
+ */
+const labelWidths = computed(() => {
+  const widths =
+    labelColumns.value > 1
+      ? Array.from({ length: labelColumns.value }, (_, level) => props.levelWidths[level])
+      : [props.labelsWidth]
+  const dragged = drag.value
+  if (dragged?.resized.kind === 'labels' && dragged.width !== null) {
+    widths[dragged.resized.column] = dragged.width
+  }
+  return widths
+})
+
+/**
+ * Width of each column of labels, as a CSS length.
+ */
+const labelLengths = computed(() => {
+  const standard = labelColumns.value > 1 ? 'var(--pivot-level-width)' : 'var(--pivot-label-width)'
+  return labelWidths.value.map((width) => (width === undefined ? standard : stepsLength(width)))
+})
+
+/**
+ * Width of each column of labels, in pixels.
+ */
+const labelPixels = computed(() => {
+  const standard = labelColumns.value > 1 ? LEVEL_WIDTH : LABEL_WIDTH
+  return labelWidths.value.map((width) => (width === undefined ? standard : width * STEP))
+})
+
+/**
  * Width of the labels of a line, as a CSS length.
  */
-const labelsWidth = computed(() =>
-  labelColumns.value > 1
-    ? `calc(var(--pivot-level-width) * ${labelColumns.value})`
-    : 'var(--pivot-label-width)',
+const labelsLength = computed(() =>
+  labelLengths.value.length === 1
+    ? (labelLengths.value[0] ?? '0px')
+    : `calc(${labelLengths.value.join(' + ')})`,
 )
 
 /**
  * Width of the labels of a line in the table, in pixels.
  */
-const labelsPixels = computed(() => {
-  if (!labelled.value) {
-    return 0
-  }
-  return labelColumns.value > 1 ? labelColumns.value * LEVEL_WIDTH : LABEL_WIDTH
-})
+const labelsPixels = computed(() =>
+  labelled.value ? labelPixels.value.reduce((sum, width) => sum + width, 0) : 0,
+)
 
 /**
  * Columns of the labels of a line: the last one takes what the sort button
  * leaves.
  */
-const labelTracks = computed(() =>
-  labelColumns.value > 1
-    ? `repeat(${labelColumns.value - 1}, var(--pivot-level-width)) minmax(0, 1fr)`
-    : 'minmax(0, 1fr)',
+const labelTracks = computed(() => [...labelLengths.value.slice(0, -1), 'minmax(0, 1fr)'].join(' '))
+
+/**
+ * Right edge of each column of labels, as a CSS length from the start of the
+ * labels: the place of its resize handle.
+ */
+const labelEdges = computed(() =>
+  labelLengths.value.map((_, column) =>
+    column === labelLengths.value.length - 1
+      ? labelsLength.value
+      : `calc(${labelLengths.value.slice(0, column + 1).join(' + ')})`,
+  ),
 )
 
 /**
@@ -234,11 +397,10 @@ const drawnLines = computed(() =>
   ),
 )
 const drawnColumns = computed(() =>
-  drawnRange(
+  columnRange(
+    geometry.value,
     frozen.value ? scrollLeft.value : Math.max(0, scrollLeft.value - labelsPixels.value),
     viewportWidth.value - (frozen.value ? labelsPixels.value : 0),
-    COLUMN_WIDTH,
-    props.shape.columns,
     COLUMN_OVERSCAN,
   ),
 )
@@ -335,26 +497,29 @@ const content = computed(() => {
 })
 
 /**
+ * Position in the table of the first column of the window drawn.
+ */
+const firstColumn = computed(() => content.value?.firstColumn ?? 0)
+
+/**
  * Columns of the grid of each line and of the headers: the labels, the room
  * of the columns before the window, then the columns of the window.
  */
 const template = computed(() => {
-  const tracks = labelled.value ? [labelsWidth.value] : []
-  tracks.push(`calc(var(--pivot-column-width) * ${content.value?.firstColumn ?? 0})`)
+  const tracks = labelled.value ? [labelsLength.value] : []
+  tracks.push(roomLength(roomBefore(geometry.value, firstColumn.value)))
   const count = content.value?.content.columns.length ?? 0
-  if (count > 0) {
-    tracks.push(`repeat(${count}, var(--pivot-column-width))`)
-  }
+  tracks.push(...windowTracks(geometry.value.widened, firstColumn.value, count))
   return tracks.join(' ')
 })
 
 /**
  * Width of the whole table.
  */
-const width = computed(
-  () =>
-    `calc(${labelled.value ? `${labelsWidth.value} + ` : ''}var(--pivot-column-width) * ${props.shape.columns})`,
-)
+const width = computed(() => {
+  const columns = roomLength(roomBefore(geometry.value, props.shape.columns))
+  return labelled.value ? `calc(${labelsLength.value} + ${columns})` : columns
+})
 
 /**
  * First grid column of the window, after the labels and the room before
@@ -363,13 +528,27 @@ const width = computed(
 const firstTrack = computed(() => (labelled.value ? 3 : 2))
 
 /**
- * Header cells of the columns of the window.
+ * Header cells of the columns of the window, with the column each one
+ * resizes: that of a cell of a single column on the last row of the headers.
  */
-const headers = computed(() =>
-  content.value === null
-    ? []
-    : headerCells(content.value.content.columns, props.shape.columnLevels, props.measureLabels),
-)
+const headers = computed(() => {
+  const columns = content.value?.content.columns ?? []
+  return headerCells(columns, props.shape.columnLevels, props.measureLabels).map(
+    (cell: HeaderCell) => {
+      const column = columns[cell.column]
+      const resizes = cell.span === 1 && cell.row + cell.rowSpan === headerRows.value
+      const resized: Resized | null =
+        resizes && column !== undefined
+          ? {
+              kind: 'column',
+              index: firstColumn.value + cell.column,
+              target: { path: column.path.map(([, value]) => value), measure: column.measure ?? 0 },
+            }
+          : null
+      return { ...cell, resized }
+    },
+  )
+})
 
 /**
  * Rows of the corner, with the names of the levels.
@@ -432,6 +611,145 @@ function lineTarget(line: PivotLine): PivotValueTarget {
 }
 
 /**
+ * Width of a column, in pixels.
+ *
+ * @param resized Column.
+ */
+function columnPixels(resized: Resized): number {
+  if (resized.kind === 'labels') {
+    return labelPixels.value[resized.column] ?? 0
+  }
+  const widened = geometry.value.widened.find((column) => column.index === resized.index)
+  return widened === undefined ? COLUMN_WIDTH : widened.width * STEP
+}
+
+/**
+ * Width given to a column, in steps; `undefined` for the default width.
+ *
+ * @param resized Column.
+ */
+function givenWidth(resized: Resized): number | undefined {
+  if (resized.kind === 'labels') {
+    return labelColumns.value > 1 ? props.levelWidths[resized.column] : props.labelsWidth
+  }
+  const key = targetKey(resized.target)
+  return props.columnWidths.find((column) => targetKey(column) === key)?.width
+}
+
+/**
+ * Gives a column a width, through the panel, which saves it.
+ *
+ * @param resized Column.
+ * @param width Width, in steps; `null` for the default width.
+ */
+function giveWidth(resized: Resized, width: number | null): void {
+  if (resized.kind === 'labels') {
+    emit('resizeLabels', labelColumns.value > 1 ? resized.column : null, width)
+    return
+  }
+  // The width finds its column before the engine gives its position again.
+  const known = learned.value.table === props.table ? learned.value.positions : []
+  learned.value = {
+    table: props.table,
+    positions: new Map(known).set(targetKey(resized.target), resized.index),
+  }
+  emit('resizeColumn', resized.target, width)
+}
+
+/**
+ * Starts the drag of the edge of a column.
+ *
+ * @param event Press on the handle.
+ * @param resized Column.
+ */
+function onResizeStart(event: PointerEvent, resized: Resized): void {
+  ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  drag.value = { resized, x: event.clientX, start: columnPixels(resized), width: null }
+}
+
+/**
+ * Follows the pointer during the drag: the column takes the width reached.
+ *
+ * @param event Pointer move.
+ */
+function onResizeMove(event: PointerEvent): void {
+  const dragged = drag.value
+  if (dragged !== null) {
+    const width = draggedSteps(dragged.start, event.clientX - dragged.x, BOUNDS)
+    drag.value = { ...dragged, width }
+  }
+}
+
+/**
+ * Ends the drag: the column keeps the width reached, if the pointer moved.
+ */
+function onResizeEnd(): void {
+  const dragged = drag.value
+  if (dragged !== null && dragged.width !== null) {
+    giveWidth(dragged.resized, dragged.width)
+  }
+  drag.value = null
+}
+
+/**
+ * Drops the drag: the column keeps its width.
+ */
+function onResizeCancel(): void {
+  drag.value = null
+}
+
+/**
+ * Width an element of a column takes with its whole content, in pixels: that
+ * of a copy beside it, out of the flow, at its widest.
+ *
+ * @param element Element of the column.
+ */
+function wholeWidth(element: HTMLElement): number {
+  const copy = element.cloneNode(true) as HTMLElement
+  copy.style.position = 'absolute'
+  copy.style.visibility = 'hidden'
+  copy.style.inlineSize = 'max-content'
+  element.after(copy)
+  const width = copy.getBoundingClientRect().width
+  copy.remove()
+  return width
+}
+
+/**
+ * Elements drawn whose width follows that of a column: the cells and the
+ * headers of a single column of values; the labels of a level and its name;
+ * the labels of the lines and the corner when they stand in a single column.
+ *
+ * @param resized Column.
+ */
+function columnElements(resized: Resized): HTMLElement[] {
+  const selector =
+    resized.kind === 'column'
+      ? `[data-column="${resized.index}"]`
+      : labelColumns.value > 1
+        ? `[data-level="${resized.column}"]`
+        : '.pivot-label, .pivot-corner'
+  return [...(scroller.value?.querySelectorAll<HTMLElement>(selector) ?? [])]
+}
+
+/**
+ * Fits a column to the texts drawn, within the bounds; if it already is,
+ * gives back its default width.
+ *
+ * @param resized Column.
+ */
+function fitWidth(resized: Resized): void {
+  // Fixed sizes: the elements give pixels, the width keeps whole steps
+  // (`docs/DEVELOPER.md`, section "Lengths in pixels").
+  const current = columnPixels(resized)
+  const needs = columnElements(resized).map(
+    (element) => current + wholeWidth(element) - element.getBoundingClientRect().width,
+  )
+  const fitted = fittedSteps(needs, BOUNDS)
+  giveWidth(resized, givenWidth(resized) === fitted ? null : fitted)
+}
+
+/**
  * Does a line show values? Not that of a group without its subtotal, whose
  * sort button would rank the columns by values out of sight.
  *
@@ -451,7 +769,7 @@ function showsValues(line: PivotLine): boolean {
     ref="scroller"
     class="pivot-scroller"
     :class="{ frozen }"
-    :style="{ '--labels-width': labelsWidth }"
+    :style="{ '--labels-width': labelsLength }"
     tabindex="0"
     @scroll.passive="onScroll"
   >
@@ -474,7 +792,12 @@ function showsValues(line: PivotLine): boolean {
             :class="{ levels: labelColumns > 1 }"
             :style="labelColumns > 1 ? { gridTemplateColumns: labelTracks } : undefined"
           >
-            <span v-for="{ level, name } in row.rows" :key="level" class="pivot-corner-name">
+            <span
+              v-for="{ level, name } in row.rows"
+              :key="level"
+              class="pivot-corner-name"
+              :data-level="level"
+            >
               <span class="pivot-corner-text">{{ name }}</span>
               <button
                 class="pivot-sort"
@@ -504,12 +827,25 @@ function showsValues(line: PivotLine): boolean {
             </button>
           </span>
         </div>
+        <div
+          v-for="(edge, column) in labelEdges"
+          :key="`resizer ${column}`"
+          class="pivot-resizer"
+          :style="{ insetInlineStart: `calc(${edge} - var(--resize-handle-width) / 2)` }"
+          v-tooltip="RESIZE_TIP"
+          @pointerdown.stop.prevent="onResizeStart($event, { kind: 'labels', column })"
+          @pointermove="onResizeMove"
+          @pointerup="onResizeEnd"
+          @pointercancel="onResizeCancel"
+          @dblclick="fitWidth({ kind: 'labels', column })"
+        />
       </div>
       <div
         v-for="cell in headers"
         :key="`${cell.row}-${cell.column}`"
         class="pivot-head"
         :class="[cell.kind, { null: cell.text === null }]"
+        :data-column="cell.span === 1 ? firstColumn + cell.column : undefined"
         :style="{
           gridRow: `${cell.row + 1} / span ${cell.rowSpan}`,
           gridColumn: `${firstTrack + cell.column} / span ${cell.span}`,
@@ -527,6 +863,16 @@ function showsValues(line: PivotLine): boolean {
         >
           {{ sortMark(valueDirection('rows', cell.target)) }}
         </button>
+        <div
+          v-if="cell.resized"
+          class="pivot-resizer"
+          v-tooltip="RESIZE_TIP"
+          @pointerdown.stop.prevent="onResizeStart($event, cell.resized)"
+          @pointermove="onResizeMove"
+          @pointerup="onResizeEnd"
+          @pointercancel="onResizeCancel"
+          @dblclick="fitWidth(cell.resized)"
+        />
       </div>
     </div>
 
@@ -555,6 +901,7 @@ function showsValues(line: PivotLine): boolean {
               :key="level"
               class="pivot-label-text"
               :class="{ null: text === null }"
+              :data-level="level"
               >{{ text ?? NULL_TEXT }}</span
             >
           </div>
@@ -576,6 +923,7 @@ function showsValues(line: PivotLine): boolean {
           :key="column"
           class="pivot-cell"
           :class="{ null: value === null }"
+          :data-column="firstColumn + column"
         >
           {{ value === false ? '' : (value ?? NULL_TEXT) }}
         </div>
@@ -626,12 +974,14 @@ function showsValues(line: PivotLine): boolean {
   }
 }
 
+/* The handle of the last column stays within the table. */
 .pivot-header {
   position: sticky;
   inset-block-start: 0;
   z-index: 2;
   display: grid;
   min-inline-size: 100%;
+  overflow-x: clip;
   background: var(--color-surface-raised);
 }
 
@@ -644,6 +994,7 @@ function showsValues(line: PivotLine): boolean {
  * inside the cell.
  */
 .pivot-head {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -659,6 +1010,26 @@ function showsValues(line: PivotLine): boolean {
   /* The label above the numbers, its sort button at the other end. */
   &.measure {
     flex-direction: row-reverse;
+  }
+}
+
+/* Resize handle on the right edge of a column, as in the grid, under the
+   corner; those of the columns of labels are placed by their edge. */
+.pivot-resizer {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: calc(var(--resize-handle-width) / -2);
+  z-index: 1;
+  inline-size: var(--resize-handle-width);
+  cursor: col-resize;
+  touch-action: none;
+
+  .pivot-corner > & {
+    inset-inline-end: auto;
+  }
+
+  &:hover {
+    background: var(--resize-hover);
   }
 }
 
@@ -702,9 +1073,10 @@ function showsValues(line: PivotLine): boolean {
 }
 
 /* Corner: a row facing each row of the headers (`subgrid`), with the
-   names of the levels. */
+   names of the levels, above the headers that pass under it. */
 .pivot-corner {
-  z-index: 1;
+  position: relative;
+  z-index: 2;
   display: grid;
   grid-template-rows: subgrid;
   padding-inline: --spacing(1);

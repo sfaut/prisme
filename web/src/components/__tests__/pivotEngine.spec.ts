@@ -24,6 +24,7 @@ import {
   orderWords,
   ranksOf,
   requestWords,
+  targetWords,
 } from '../pivotEngine'
 import { utf8Length } from '../pivotTransfer'
 
@@ -486,6 +487,27 @@ describe('PivotEngine', () => {
       expect(by([null])).toEqual(['a', 'b', undefined])
     })
 
+    it('gives the position of the columns named by their values, in the order of the table', async () => {
+      const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
+      engine.compute(TABLE)
+      const named = [
+        { path: ['2026'], measure: 0 },
+        { path: [], measure: 0 },
+        { path: ['2027'], measure: 0 },
+        { path: ['2025'], measure: 1 },
+      ]
+      expect(engine.columnsAt(named)).toEqual([1, 2, null, null])
+      expect(engine.columnsAt([])).toEqual([])
+      engine.compute(TABLE, {
+        rows: { descending: [], values: null },
+        columns: { descending: [true], values: null },
+      })
+      expect(engine.columnsAt(named.slice(0, 1))).toEqual([0])
+      expect([...targetWords([{ path: ['é', null], measure: 2 }])]).toEqual([
+        1, 2, 2, 2, 0xc3, 0xa9, 0xffff_ffff,
+      ])
+    })
+
     it('lays the table out again without computing it', async () => {
       const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES)
       // The exports of a module are frozen: the engine reads a copy that counts its computations.
@@ -593,8 +615,14 @@ describe('answerMessage', () => {
     }
     const order = LABEL_ORDER
     const layout = FIRST_LAYOUT
-    const table = answerMessage(state, { type: 'compute', id: 2, request, order, layout })
-    expect(table).toMatchObject({ type: 'table', id: 2, shape: { lines: 1, columns: 1 } })
+    const targets = [{ path: [], measure: 0 }]
+    const table = answerMessage(state, { type: 'compute', id: 2, request, order, layout, targets })
+    expect(table).toMatchObject({
+      type: 'table',
+      id: 2,
+      shape: { lines: 1, columns: 1 },
+      positions: [0],
+    })
     expect(
       answerMessage(state, {
         type: 'window',
@@ -618,7 +646,14 @@ describe('answerMessage', () => {
       filters: [],
     }
     expect(
-      answerMessage(state, { type: 'compute', id: 4, request: sumOfText, order, layout }),
+      answerMessage(state, {
+        type: 'compute',
+        id: 4,
+        request: sumOfText,
+        order,
+        layout,
+        targets: [],
+      }),
     ).toEqual({
       type: 'failure',
       id: 4,
@@ -634,7 +669,7 @@ describe('answerMessage', () => {
         columns: [0, 1],
       }),
     ).toMatchObject({ type: 'window', id: 5 })
-    answerMessage(state, { type: 'compute', id: 6, request, order, layout })
+    answerMessage(state, { type: 'compute', id: 6, request, order, layout, targets: [] })
     expect(
       answerMessage(state, {
         type: 'window',

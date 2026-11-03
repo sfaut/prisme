@@ -5,8 +5,9 @@
 //! The rows stay in the page, where the grid holds them: the Worker copies
 //! them once into the memory of the module, block by block and column by
 //! column (UTF-8 bytes, offset and validity of each cell, as in
-//! `bench/pivot/js/transfer.mjs`), then asks for tables, and for the windows
-//! of a table the page shows. A table never leaves the module whole.
+//! `bench/pivot/js/transfer.mjs`), then asks for tables, for the windows
+//! of a table the page shows, and for the positions of the columns it names
+//! by their values. A table never leaves the module whole.
 //!
 //! The functions are exported without `wasm-bindgen`: they take and return
 //! numbers, and addresses in the memory of the module. Those that answer
@@ -570,6 +571,59 @@ pub unsafe extern "C" fn lay_out(words: *const u32, length: usize) -> usize {
     })
 }
 
+/// Reads a column of values named by its values: its measure, the number of
+/// steps of the path of its node, and each step (see `path_step`).
+fn named_column(words: &mut impl Iterator<Item = u32>) -> Option<(Vec<Option<String>>, usize)> {
+    let measure = words.next()? as usize;
+    let steps = words.next()?;
+    let path = (0..steps)
+        .map(|_| path_step(words))
+        .collect::<Option<Vec<_>>>()?;
+    Some((path, measure))
+}
+
+/// Reads columns of values named by their values: their number, then each
+/// one (see `named_column`). `None` if the words do not match.
+fn named_columns(words: &[u32]) -> Option<Vec<(Vec<Option<String>>, usize)>> {
+    let mut words = words.iter().copied();
+    let count = words.next()?;
+    let columns = (0..count)
+        .map(|_| named_column(&mut words))
+        .collect::<Option<Vec<_>>>()?;
+    words.next().is_none().then_some(columns)
+}
+
+/// Writes the position of columns of values in the last table laid out,
+/// named by `length` words (`u32`) at `words` (see `named_columns`):
+/// `null` for a column the table does not show (`json::positions`), or an
+/// error. The page places by them the columns it has widened.
+///
+/// # Safety
+///
+/// `words` holds `length` numbers, untouched during the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn columns_at(words: *const u32, length: usize) -> usize {
+    // SAFETY: given by the caller.
+    let words = unsafe { slice::from_raw_parts(words, length) };
+    let columns = named_columns(words);
+    STATE.with_borrow_mut(|state| {
+        let positions = match (&state.engine, &state.table, columns) {
+            (Some(engine), Some(table), Some(columns)) => Some(
+                columns
+                    .iter()
+                    .map(|(path, measure)| table.column_at(engine, path, *measure))
+                    .collect::<Vec<_>>(),
+            ),
+            _ => None,
+        };
+        answer(state, |json, state| match positions {
+            Some(positions) => json::positions(json, &positions),
+            None if state.table.is_none() => json::state_error(json, "no_table", None),
+            None => json::state_error(json, "request", None),
+        })
+    })
+}
+
 /// Writes a window of the last table computed: lines `first_line` to
 /// `end_line` (excluded), columns of values `first_column` to `end_column`
 /// (excluded), both bounded by the table (`json::window`).
@@ -752,6 +806,45 @@ mod tests {
         let wrong = [1u32, 0, 0, 0, 0, 7];
         // SAFETY: six words.
         let length = unsafe { lay_out(wrong.as_ptr(), wrong.len()) };
+        assert_eq!(output(length), r#"{"error":{"kind":"request"}}"#);
+    }
+
+    #[test]
+    fn the_columns_named_by_their_values_give_their_position() {
+        let families = [0u8, 1];
+        // SAFETY: two families.
+        unsafe { begin(families.as_ptr(), 2) };
+        assert_eq!(append_column(0, &[Some("a"), Some("b"), None]), 0);
+        assert_eq!(append_column(1, &[Some("3"), Some("1"), Some("2")]), 0);
+        assert_eq!(finish(), 0);
+        let named = [1u32, 0, 1, 1, 97];
+        // SAFETY: five words.
+        let length = unsafe { columns_at(named.as_ptr(), named.len()) };
+        assert_eq!(output(length), r#"{"error":{"kind":"no_table"}}"#);
+
+        // Columns: column 0; measure: SUM(column 1). Columns NULL, a, b, total.
+        let words = [0u32, 1, 1, 0, 0, 2, 1];
+        // SAFETY: seven words.
+        unsafe { compute(words.as_ptr(), words.len()) };
+        // b, NULL, the grand total, a column of a measure the table lacks, c.
+        let named = [
+            5u32, 0, 1, 1, 98, 0, 1, NULL_STEP, 0, 0, 1, 1, 1, 97, 0, 1, 1, 99,
+        ];
+        // SAFETY: eighteen words.
+        let length = unsafe { columns_at(named.as_ptr(), named.len()) };
+        assert_eq!(output(length), "[2,0,3,null,null]");
+        let none = [0u32];
+        // SAFETY: one word.
+        let length = unsafe { columns_at(none.as_ptr(), none.len()) };
+        assert_eq!(output(length), "[]");
+
+        let refused = |words: &[u32]| named_columns(words).is_none();
+        assert!(refused(&[]));
+        assert!(refused(&[1, 0]));
+        assert!(refused(&[1, 0, 1, 2, 97]));
+        assert!(refused(&[0, 0]));
+        // SAFETY: two words.
+        let length = unsafe { columns_at([2u32, 0].as_ptr(), 2) };
         assert_eq!(output(length), r#"{"error":{"kind":"request"}}"#);
     }
 

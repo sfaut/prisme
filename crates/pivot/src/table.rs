@@ -363,6 +363,25 @@ impl Table {
             })
     }
 
+    /// Position of a column of values, named by the values of the levels of
+    /// its node and by its measure, in the layout of the table; measure 0 names
+    /// the column of a node in a table without measures. `None` when the table
+    /// does not show it: a node the filter left out, a total not shown, a
+    /// measure it does not have.
+    pub fn column_at(
+        &self,
+        engine: &Engine,
+        path: &[Option<String>],
+        measure: usize,
+    ) -> Option<usize> {
+        if measure >= self.slots {
+            return None;
+        }
+        let node = self.node_at(engine, &self.columns, self.row_levels, path)?;
+        let group = self.column_nodes.iter().position(|&shown| shown == node)?;
+        Some(group * self.slots + measure)
+    }
+
     /// Number of lines.
     pub fn line_count(&self) -> usize {
         self.lines.len()
