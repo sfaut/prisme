@@ -13,7 +13,6 @@
 //! | `POST /api/connections/{id}/probe`  | Connects and returns the server's flavor and version.         |
 //! | `GET /api/connections/{id}/query`   | WebSocket: query session (see `query_session.rs`), closed with it. |
 //! | `GET /api/connections/{id}/catalog` | Databases, tables and columns (see `navigator.rs`).           |
-//! | `GET /api/connections/{id}/references` | Foreign keys that reference a table (`?schema=&table=`, see `navigator.rs`). |
 //! | `GET /api/settings`                 | Settings of the user: row limit (with the allowed choices), read-only sessions, retention of the console. |
 //! | `PUT /api/settings`                 | Changes the settings, returns the updated settings.           |
 //! | `GET /api/profile`                  | Profile of the user: names and email address.                 |

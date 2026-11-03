@@ -37,32 +37,11 @@ vi.mock('@/api/connections', () => ({
   deleteConnection: async () => undefined,
 }))
 
-/**
- * Reads of the references of a table, answered by the simulated server.
- */
-const readReferences = vi.hoisted(() =>
-  vi.fn<(id: number, schema: string, table: string) => Promise<unknown[]>>(async () => [
-    {
-      name: 'order_customer',
-      schema: 'app',
-      table: 'orders',
-      columns: ['customer_id'],
-      referenced_columns: ['id'],
-    },
-  ]),
-)
-
 vi.mock('@/api/navigator', () => ({
   streamCatalog: async (_id: number, onEvent: (event: unknown) => void) => {
     onEvent({ type: 'schemas', schemas: ['app', 'logs'] })
-    onEvent({
-      type: 'objects',
-      schema: 'app',
-      objects: { tables: [{ name: 'customer', kind: 'table' }], routines: [], events: [] },
-    })
     onEvent({ type: 'done' })
   },
-  readReferences,
 }))
 
 vi.mock('@/api/settings', () => ({
@@ -82,7 +61,6 @@ vi.mock('@/api/settings', () => ({
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  readReferences.mockClear()
 })
 
 describe('connections', () => {
@@ -139,31 +117,5 @@ describe('catalog', () => {
     expect(names.value).toEqual(['app', 'logs'])
     expect(store.catalogOf(3)?.done).toBe(true)
     expect(isReactive(store.catalogOf(3))).toBe(false)
-  })
-
-  it('reads the references of a table once, and signals them', async () => {
-    const store = useCatalogStore()
-    await store.load(3)
-    const customer = computed(() => store.catalogOf(3)?.schemas[0]?.tables?.[0])
-    expect(customer.value?.references).toBeNull()
-    await Promise.all([
-      store.loadReferences(3, 'app', 'customer'),
-      store.loadReferences(3, 'app', 'customer'),
-    ])
-    await store.loadReferences(3, 'app', 'customer')
-    expect(readReferences).toHaveBeenCalledTimes(1)
-    expect(readReferences).toHaveBeenCalledWith(3, 'app', 'customer')
-    expect(customer.value?.references?.map((reference) => reference.table)).toEqual(['orders'])
-  })
-
-  it('tells a failed read of the references among the errors of the catalog', async () => {
-    const store = useCatalogStore()
-    await store.load(3)
-    readReferences.mockRejectedValueOnce(new Error('Serveur injoignable.'))
-    await store.loadReferences(3, 'app', 'customer')
-    expect(store.catalogOf(3)?.schemas[0]?.tables?.[0]?.references).toEqual([])
-    expect(store.catalogOf(3)?.errors).toEqual([
-      'Lecture des références impossible (table « app.customer »). Serveur injoignable.',
-    ])
   })
 })

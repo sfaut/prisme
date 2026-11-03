@@ -191,6 +191,8 @@ async fn reads_the_catalog_schema_by_schema() {
                 let indexes: Vec<_> = t.indexes.iter().map(|index| index.name.as_str()).collect();
                 assert_eq!(indexes, ["PRIMARY", "fk_p", "idx_label"]);
                 assert_eq!(t.foreign_keys[0].name, "fk_p");
+                // The navigator finds the references of a table by this database.
+                assert_eq!(t.foreign_keys[0].referenced_schema, target.database_name);
                 assert_eq!(t.foreign_keys[0].referenced_table, "p");
                 assert_eq!(t.foreign_keys[0].referenced_columns, ["id"]);
                 assert_eq!(t.triggers[0].name, "t_bi");
@@ -198,82 +200,6 @@ async fn reads_the_catalog_schema_by_schema() {
                     (t.triggers[0].timing.as_str(), t.triggers[0].event.as_str()),
                     ("BEFORE", "INSERT")
                 );
-            })
-            .await;
-    }
-}
-
-#[tokio::test]
-#[ignore = "requires the development servers (docker compose up --detach --wait)"]
-async fn reads_the_references_of_a_table_from_every_database() {
-    for server in SERVERS {
-        // The referencing database first: a run stopped by a failure leaves
-        // its key, which the next run drops before the referenced database.
-        server
-            .with_database("references_from", async |from| {
-                server
-                    .with_database("references", async |target| {
-                        let mut connection = connect(&target).await.unwrap();
-                        let other = &from.database_name;
-                        let database = &target.database_name;
-                        let contact = format!(
-                            "CREATE TABLE {other}.contact (customer_id INT,
-                                CONSTRAINT contact_customer FOREIGN KEY (customer_id)
-                                    REFERENCES {database}.customer (id))"
-                        );
-                        for sql in [
-                            "CREATE TABLE customer (id INT PRIMARY KEY, country CHAR(2),
-                                code INT, referrer_id INT,
-                                UNIQUE KEY uq_place (country, code),
-                                CONSTRAINT customer_referrer FOREIGN KEY (referrer_id)
-                                    REFERENCES customer (id))",
-                            "CREATE TABLE orders (id INT PRIMARY KEY, customer_id INT,
-                                CONSTRAINT order_customer FOREIGN KEY (customer_id)
-                                    REFERENCES customer (id))",
-                            "CREATE TABLE address (country CHAR(2), region_code INT,
-                                CONSTRAINT address_place FOREIGN KEY (country, region_code)
-                                    REFERENCES customer (country, code))",
-                            contact.as_str(),
-                        ] {
-                            execute(&mut connection, sql).await.unwrap().discard().await;
-                        }
-
-                        let references =
-                            catalog::references(&mut connection, &target.database_name, "customer")
-                                .await
-                                .unwrap();
-                        let read: Vec<_> = references
-                            .iter()
-                            .map(|reference| {
-                                format!(
-                                    "({}) <- {}.{} ({}) {}",
-                                    reference.referenced_columns.join(", "),
-                                    reference.schema,
-                                    reference.table,
-                                    reference.columns.join(", "),
-                                    reference.name
-                                )
-                            })
-                            .collect();
-                        assert_eq!(
-                            read,
-                            [
-                                "(country, code) <- test_references.address (country, region_code) address_place",
-                                "(id) <- test_references.customer (referrer_id) customer_referrer",
-                                "(id) <- test_references.orders (customer_id) order_customer",
-                                "(id) <- test_references_from.contact (customer_id) contact_customer",
-                            ]
-                        );
-                        let none = catalog::references(&mut connection, &target.database_name, "orders")
-                            .await
-                            .unwrap();
-                        assert!(none.is_empty());
-
-                        // The referenced database drops after its references.
-                        let drop = format!("DROP TABLE {other}.contact");
-                        execute(&mut connection, &drop).await.unwrap().discard().await;
-                    })
-                    .await;
             })
             .await;
     }

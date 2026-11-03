@@ -23,10 +23,9 @@
  * their connection, to stay unique from one source to the other.
  *
  * The tree is built from the catalog, even incomplete: a part not received
- * yet shows "chargement…" (loading). The folder "Références" of a table,
- * the foreign keys of every database that point to it, shows it too until
- * it is opened, which reads them (`unreadReferences`). The functions of this
- * module do not depend on the display.
+ * yet shows "chargement…" (loading). The folder "Références" of a table
+ * turns around the foreign keys of the databases received that point to it.
+ * The functions of this module do not depend on the display.
  */
 
 import type { ColumnInfo } from '@/api/generated/ColumnInfo'
@@ -35,7 +34,6 @@ import type { Flavor } from '@/api/generated/Flavor'
 import { serverName } from '@/api/flavors'
 import type { ForeignKeyInfo } from '@/api/generated/ForeignKeyInfo'
 import type { IndexInfo } from '@/api/generated/IndexInfo'
-import type { ReferenceInfo } from '@/api/generated/ReferenceInfo'
 import type { RoutineInfo } from '@/api/generated/RoutineInfo'
 import type { TableDetails } from '@/api/generated/TableDetails'
 import type { TableKind } from '@/api/generated/TableKind'
@@ -148,11 +146,6 @@ export interface NavigatorNode extends Place {
    */
   index?: { table: string; name: string }
   /**
-   * For the folder "Références" of a table whose references are not read
-   * yet: the name of the table. Opening the folder reads them.
-   */
-  unreadReferences?: string
-  /**
    * Children.
    */
   children?: NavigatorNode[]
@@ -209,6 +202,24 @@ export interface NavigatorNode extends Place {
      */
     foreignKey: boolean
   }
+}
+
+/**
+ * Foreign key seen from the table it references.
+ */
+export interface Reference {
+  /**
+   * Database of the referencing table.
+   */
+  schema: string
+  /**
+   * Referencing table.
+   */
+  table: string
+  /**
+   * Foreign key of the referencing table.
+   */
+  key: ForeignKeyInfo
 }
 
 /**
@@ -306,6 +317,7 @@ export function catalogNodes(
   schemas: CatalogSchema[],
   currentDatabase: string | null = null,
 ): NavigatorNode[] {
+  const references = referencesByTable(schemas)
   return schemas.map((schema) => {
     const place = { connectionId, schema: schema.name }
     const key = `schema:${placeKey(place)}`
@@ -319,9 +331,71 @@ export function catalogNodes(
       children:
         schema.tables === null || schema.routines === null || schema.events === null
           ? [loadingNode(key, place)]
-          : schemaFolders(place, schema.tables, schema.routines, schema.events),
+          : schemaFolders(
+              place,
+              schema.tables,
+              schema.routines,
+              schema.events,
+              references.get(schema.name) ?? new Map(),
+            ),
     }
   })
+}
+
+/**
+ * Foreign keys of the databases received, by the table they reference: by
+ * database, then by table. Each list is sorted by the columns referenced,
+ * then by database, table and columns of the referencing table.
+ *
+ * @param schemas Catalog of the server, possibly incomplete.
+ */
+function referencesByTable(schemas: CatalogSchema[]): Map<string, Map<string, Reference[]>> {
+  const references = new Map<string, Map<string, Reference[]>>()
+  for (const schema of schemas) {
+    for (const table of schema.tables ?? []) {
+      for (const key of table.details?.foreign_keys ?? []) {
+        let tables = references.get(key.referenced_schema)
+        if (tables === undefined) {
+          tables = new Map()
+          references.set(key.referenced_schema, tables)
+        }
+        let list = tables.get(key.referenced_table)
+        if (list === undefined) {
+          list = []
+          tables.set(key.referenced_table, list)
+        }
+        list.push({ schema: schema.name, table: table.name, key })
+      }
+    }
+  }
+  for (const tables of references.values()) {
+    for (const list of tables.values()) {
+      list.sort(
+        (a, b) =>
+          compareNames(a.key.referenced_columns, b.key.referenced_columns) ||
+          compareNames([a.schema, a.table], [b.schema, b.table]) ||
+          compareNames(a.key.columns, b.key.columns),
+      )
+    }
+  }
+  return references
+}
+
+/**
+ * Order of two lists of names: name by name, the shorter list first when one
+ * starts the other.
+ *
+ * @param a First list.
+ * @param b Second list.
+ */
+function compareNames(a: string[], b: string[]): number {
+  for (let index = 0; index < Math.min(a.length, b.length); index++) {
+    const [left, right] = [a[index]!, b[index]!]
+    if (left !== right) {
+      return left < right ? -1 : 1
+    }
+  }
+  return a.length - b.length
 }
 
 /**
@@ -340,12 +414,14 @@ function placeKey(place: Place): string {
  * @param tables Tables and views of the database.
  * @param routines Procedures and functions of the database.
  * @param events Scheduled events of the database.
+ * @param references Foreign keys that reference the tables of the database, by table.
  */
 function schemaFolders(
   place: Place,
   tables: CatalogTable[],
   routines: RoutineInfo[],
   events: EventInfo[],
+  references: Map<string, Reference[]>,
 ): NavigatorNode[] {
   const base = placeKey(place)
   const routineNode = (routine: RoutineInfo): NavigatorNode => ({
@@ -367,13 +443,15 @@ function schemaFolders(
       `tables:${base}`,
       'Tables',
       place,
-      tables.filter((table) => table.kind === 'table').map((table) => tableNode(place, table)),
+      tables
+        .filter((table) => table.kind === 'table')
+        .map((table) => tableNode(place, table, references.get(table.name) ?? [])),
     ),
     folder(
       `views:${base}`,
       'Vues',
       place,
-      tables.filter((table) => table.kind !== 'table').map((table) => tableNode(place, table)),
+      tables.filter((table) => table.kind !== 'table').map((table) => tableNode(place, table, [])),
     ),
     folder(
       `procedures:${base}`,
@@ -396,8 +474,9 @@ function schemaFolders(
  *
  * @param place Connection and database.
  * @param table Table or view.
+ * @param references Foreign keys that reference the table.
  */
-function tableNode(place: Place, table: CatalogTable): NavigatorNode {
+function tableNode(place: Place, table: CatalogTable, references: Reference[]): NavigatorNode {
   const key = `table:${placeKey(place)}.${table.name}`
   return {
     key,
@@ -409,7 +488,7 @@ function tableNode(place: Place, table: CatalogTable): NavigatorNode {
     children:
       table.details === null
         ? [loadingNode(key, place)]
-        : tableFolders(place, table.kind, table.details, table.references),
+        : tableFolders(place, table.kind, table.details, references),
   }
 }
 
@@ -420,13 +499,13 @@ function tableNode(place: Place, table: CatalogTable): NavigatorNode {
  * @param place Connection and database.
  * @param kind Nature of the table.
  * @param details Details received from the server.
- * @param references Foreign keys that reference the table, `null` as long as they are not read.
+ * @param references Foreign keys that reference the table.
  */
 function tableFolders(
   place: Place,
   kind: TableKind,
   details: TableDetails,
-  references: ReferenceInfo[] | null,
+  references: Reference[],
 ): NavigatorNode[] {
   const base = `${placeKey(place)}.${details.table}`
   const item = (entry: EntryKind, prefix: string, name: string, label: string): NavigatorNode => ({
@@ -481,21 +560,19 @@ function tableFolders(
         item('foreign-key', 'fk', key.name, foreignKeyLabel(place.schema, key)),
       ),
     ),
-    references === null
-      ? unreadReferencesFolder(`references:${base}`, place, details.table)
-      : folder(
-          `references:${base}`,
-          'Références',
-          place,
-          references.map((reference) =>
-            item(
-              'foreign-key',
-              'reference',
-              `${reference.schema}.${reference.table}.${reference.name}`,
-              referenceLabel(place.schema, reference),
-            ),
-          ),
+    folder(
+      `references:${base}`,
+      'Références',
+      place,
+      references.map((reference) =>
+        item(
+          'foreign-key',
+          'reference',
+          `${reference.schema}.${reference.table}.${reference.key.name}`,
+          referenceLabel(place.schema, reference),
         ),
+      ),
+    ),
     folder(
       `triggers:${base}`,
       'Déclencheurs',
@@ -528,27 +605,6 @@ function folder(
     entry: 'folder',
     ...place,
     children,
-  }
-}
-
-/**
- * Folder "Références" of a table whose references are not read yet: without
- * a count, it shows "chargement…" until its opening reads them. Its key is
- * that of the folder once they are read, which stays open.
- *
- * @param key Key of the folder, without its prefix.
- * @param place Connection and database.
- * @param table Name of the table.
- */
-function unreadReferencesFolder(key: string, place: Place, table: string): NavigatorNode {
-  return {
-    key: `folder:${key}`,
-    label: 'Références',
-    isLeaf: false,
-    entry: 'folder',
-    ...place,
-    unreadReferences: table,
-    children: [loadingNode(`folder:${key}`, place)],
   }
 }
 
@@ -660,12 +716,12 @@ export function foreignKeyLabel(schema: string, key: ForeignKeyInfo): string {
  * @param schema Name of the table's database.
  * @param reference Foreign key that references the table.
  */
-export function referenceLabel(schema: string, reference: ReferenceInfo): string {
+export function referenceLabel(schema: string, reference: Reference): string {
   const source =
     reference.schema === schema ? reference.table : `${reference.schema}.${reference.table}`
-  const referenced = reference.referenced_columns.join(', ')
-  const columns = reference.columns.join(', ')
-  return reference.columns.length === 1
+  const referenced = reference.key.referenced_columns.join(', ')
+  const columns = reference.key.columns.join(', ')
+  return reference.key.columns.length === 1
     ? `${referenced} ← ${source}.${columns}`
     : `(${referenced}) ← ${source} (${columns})`
 }

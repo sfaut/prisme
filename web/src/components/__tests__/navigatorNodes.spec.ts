@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { type CatalogSchema, applyCatalogEvent, emptyCatalog } from '@/stores/catalog'
+import type { ForeignKeyInfo } from '@/api/generated/ForeignKeyInfo'
+import {
+  type CatalogSchema,
+  type CatalogTable,
+  applyCatalogEvent,
+  emptyCatalog,
+} from '@/stores/catalog'
 
 import {
   catalogNodes,
@@ -58,25 +64,9 @@ const catalog: CatalogSchema[] = [
           ],
           triggers: [],
         },
-        references: [
-          {
-            name: 'fk_line_order',
-            schema: 'shop',
-            table: 'lines',
-            columns: ['order_id'],
-            referenced_columns: ['id'],
-          },
-          {
-            name: 'fk_ticket_order',
-            schema: 'crm',
-            table: 'tickets',
-            columns: ['order_id'],
-            referenced_columns: ['id'],
-          },
-        ],
       },
-      { name: 'pending', kind: 'table', details: null, references: null },
-      { name: 'v_orders', kind: 'view', details: null, references: null },
+      { name: 'pending', kind: 'table', details: null },
+      { name: 'v_orders', kind: 'view', details: null },
     ],
     routines: [
       { name: 'purge', kind: 'procedure' },
@@ -233,7 +223,7 @@ describe('catalogNodes', () => {
       'Colonnes (3)',
       'Index (2)',
       'Clefs étrangères (1)',
-      'Références (2)',
+      'Références (0)',
       'Déclencheurs (0)',
     ])
     expect(labels(orders?.children?.[0])).toEqual([
@@ -241,11 +231,6 @@ describe('catalogNodes', () => {
       'note VARCHAR(20) NULL',
       'client_id INT',
     ])
-    expect(labels(orders?.children?.[3])).toEqual([
-      'id ← lines.order_id',
-      'id ← crm.tickets.order_id',
-    ])
-    expect(orders?.children?.[3]?.unreadReferences).toBeUndefined()
     expect(orders?.children?.[4]?.isLeaf).toBe(true)
     const columns = orders?.children?.[0]?.children ?? []
     expect(columns.map((node) => node.column?.primaryKey)).toEqual([true, false, false])
@@ -263,20 +248,56 @@ describe('catalogNodes', () => {
     expect(labels(tables?.children?.[1])).toEqual(['chargement…'])
   })
 
-  it('shows the references of a table as loading until their folder opens', () => {
-    const [shop] = catalog
-    const unread: CatalogSchema = {
-      ...shop!,
-      tables: [{ ...shop!.tables![0]!, references: null }],
-    }
-    const read = catalogNodes(1, catalog)[0]?.children?.[0]?.children?.[0]?.children?.[3]
-    const folder = catalogNodes(1, [unread])[0]?.children?.[0]?.children?.[0]?.children?.[3]
-    expect(folder?.label).toBe('Références')
-    expect(folder?.isLeaf).toBe(false)
-    expect(folder?.unreadReferences).toBe('orders')
-    expect(labels(folder)).toEqual(['chargement…'])
-    // The same key once they are read: the open folder stays open.
-    expect(folder?.key).toBe(read?.key)
+  it('lists the foreign keys of every database that point to a table', () => {
+    const key = (
+      name: string,
+      columns: string[],
+      table: string,
+      referenced: string[],
+    ): ForeignKeyInfo => ({
+      name,
+      columns,
+      referenced_schema: 'shop',
+      referenced_table: table,
+      referenced_columns: referenced,
+    })
+    const table = (name: string, keys: ForeignKeyInfo[]): CatalogTable => ({
+      name,
+      kind: 'table',
+      details: { table: name, columns: [], indexes: [], foreign_keys: keys, triggers: [] },
+    })
+    const schemas: CatalogSchema[] = [
+      {
+        name: 'shop',
+        tables: [
+          table('address', [
+            key('address_place', ['country', 'region_code'], 'customer', ['country', 'code']),
+          ]),
+          table('customer', [key('customer_referrer', ['referrer_id'], 'customer', ['id'])]),
+          table('order', [key('order_customer', ['customer_id'], 'customer', ['id'])]),
+        ],
+        routines: [],
+        events: [],
+      },
+      {
+        name: 'crm',
+        tables: [table('contact', [key('contact_customer', ['customer_id'], 'customer', ['id'])])],
+        routines: [],
+        events: [],
+      },
+      { name: 'pas_encore', tables: null, routines: null, events: null },
+    ]
+    const tables = catalogNodes(1, schemas)[0]?.children?.[0]?.children ?? []
+    const folders = (name: string) => tables.find((node) => node.table === name)?.children ?? []
+    expect(folders('customer')[3]?.label).toBe('Références (4)')
+    expect(labels(folders('customer')[3])).toEqual([
+      '(country, code) ← address (country, region_code)',
+      'id ← crm.contact.customer_id',
+      'id ← customer.referrer_id',
+      'id ← order.customer_id',
+    ])
+    expect(folders('order')[3]?.label).toBe('Références (0)')
+    expect(folders('order')[3]?.isLeaf).toBe(true)
   })
 
   it('puts the types in capitals, except the values of an enum', () => {
@@ -315,11 +336,15 @@ describe('catalogNodes', () => {
 
   it('labels a reference, a composite key and a reference of another database', () => {
     const reference = {
-      name: 'fk_address_place',
       schema: 'shop',
       table: 'address',
-      columns: ['country', 'region_code'],
-      referenced_columns: ['country', 'code'],
+      key: {
+        name: 'fk_address_place',
+        columns: ['country', 'region_code'],
+        referenced_schema: 'shop',
+        referenced_table: 'customer',
+        referenced_columns: ['country', 'code'],
+      },
     }
     expect(referenceLabel('shop', reference)).toBe(
       '(country, code) ← address (country, region_code)',
@@ -328,11 +353,15 @@ describe('catalogNodes', () => {
       '(country, code) ← shop.address (country, region_code)',
     )
     const itself = {
-      name: 'fk_referrer',
       schema: 'shop',
       table: 'customer',
-      columns: ['referrer_id'],
-      referenced_columns: ['id'],
+      key: {
+        name: 'fk_referrer',
+        columns: ['referrer_id'],
+        referenced_schema: 'shop',
+        referenced_table: 'customer',
+        referenced_columns: ['id'],
+      },
     }
     expect(referenceLabel('shop', itself)).toBe('id ← customer.referrer_id')
   })

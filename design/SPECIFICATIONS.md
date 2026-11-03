@@ -156,7 +156,7 @@ Header **Navigateur d’objets** (Object navigator), then a tree with virtual sc
       - database (`Database`); the current database of the active editor in bold;
         - folders (`Folder` / `FolderOpen`) with their count: **Tables (n)**, **Vues (n)** (Views), **Procédures (n)**, **Fonctions (n)** (Functions), **Événements (n)** (Events);
         - table (`Table`), view (`Eye`), procedure (`ScrollText`), function (`SquareFunction`), event (`CalendarClock`);
-          - folders of a table: **Colonnes (n)** (Columns), **Index (n)**, **Clefs étrangères (n)** (Foreign keys), **Références (n)** (References, foreign keys that point to the table, read when the folder opens), **Déclencheurs (n)** (Triggers);
+          - folders of a table: **Colonnes (n)** (Columns), **Index (n)**, **Clefs étrangères (n)** (Foreign keys), **Références (n)** (References, foreign keys of every database that point to the table), **Déclencheurs (n)** (Triggers);
           - column on three aligned parts: icon (`KeyRound` primary key, `Link` foreign key, `Columns3` otherwise), name (bold if indexed, the names of a table aligned on the longest), details `text-sm fg-faint`: type in capitals, `NULL` when nullable, `AUTO_INCREMENT` (`INT UNSIGNED AUTO_INCREMENT`, `VARCHAR(200) NULL`);
           - index (`ListOrdered`, label `name (columns)`, note `PRIMARY KEY` or `UNIQUE`), foreign key (`Link`), reference (`Link`, label `id ← orders.customer_id`), trigger (`Zap`);
   - **Notebooks** (`Notebook`, bold): empty for now; its menu offers **Créer un notebook** (Create a notebook, `NotebookPen`), inactive.

@@ -16,26 +16,19 @@
 //! objects and their details as they arrive. The database chosen in the
 //! connection is read first, the system databases (`information_schema`,
 //! `mysql`...) last.
-//!
-//! Route: `GET /api/connections/{id}/references?schema=…&table=…`. The
-//! foreign keys of every database that reference a table, in JSON, read when
-//! the navigator opens the folder of its references: MariaDB opens every
-//! table of the server to find them (`catalog::references`).
 
 use std::convert::Infallible;
 
-use axum::Json;
 use axum::Router;
 use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::header::CONTENT_TYPE;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use axum_extra::extract::Query;
 use futures_util::stream;
-use prisme_connectors::mysql::catalog::{self, ReferenceInfo, SchemaObjects, TableDetails};
-use prisme_connectors::mysql::{self, Connection, Flavor, MysqlTarget, ServerInfo};
-use serde::{Deserialize, Serialize};
+use prisme_connectors::mysql::catalog::{self, SchemaObjects, TableDetails};
+use prisme_connectors::mysql::{self, Connection, Flavor, ServerInfo};
+use serde::Serialize;
 use tokio::sync::mpsc;
 use tracing::Instrument;
 use ts_rs::TS;
@@ -85,37 +78,9 @@ pub enum CatalogEvent {
     Done,
 }
 
-/// Table whose references are read, in the query string.
-#[derive(Debug, Deserialize)]
-struct ReferencesQuery {
-    /// Database of the table.
-    schema: String,
-    /// Name of the table.
-    table: String,
-}
-
 /// Routes of the navigator, to merge into the API router.
 pub fn routes() -> Router<AppState> {
-    Router::new()
-        .route("/api/connections/{id}/catalog", get(stream_catalog))
-        .route("/api/connections/{id}/references", get(table_references))
-}
-
-/// Settings of the saved connection `id` of the user, with its name, which
-/// the history of the queries shows.
-async fn saved_target(
-    state: &AppState,
-    user_id: i64,
-    id: i64,
-) -> Result<(MysqlTarget, String), ApiError> {
-    state
-        .with_db(move |db, key| {
-            let target = connections::load_target(db, key, user_id, id)?;
-            let name = connections::name_of(db, user_id, id)?;
-            Ok::<_, ConnectionsError>(target.map(|target| (target, name)))
-        })
-        .await?
-        .ok_or(ApiError::NotFound)
+    Router::new().route("/api/connections/{id}/catalog", get(stream_catalog))
 }
 
 /// `GET /api/connections/{id}/catalog`: stream of the server's catalog.
@@ -128,7 +93,14 @@ async fn stream_catalog(
     Path(id): Path<i64>,
 ) -> Result<Response, ApiError> {
     let user_id = user.id;
-    let (target, name) = saved_target(&state, user_id, id).await?;
+    let (target, name) = state
+        .with_db(move |db, key| {
+            let target = connections::load_target(db, key, user_id, id)?;
+            let name = connections::name_of(db, user_id, id)?;
+            Ok::<_, ConnectionsError>(target.map(|target| (target, name)))
+        })
+        .await?
+        .ok_or(ApiError::NotFound)?;
     // The queries of the catalog go to the history of the queries.
     let span = console::sql_span(user_id, &name, Action::Navigator);
     let mut connection = mysql::connect(&target).instrument(span.clone()).await?;
@@ -161,27 +133,6 @@ async fn stream_catalog(
         Body::from_stream(lines),
     )
         .into_response())
-}
-
-/// `GET /api/connections/{id}/references?schema=…&table=…`: foreign keys of
-/// every database that reference a table, on a connection of their own.
-async fn table_references(
-    State(state): State<AppState>,
-    user: CurrentUser,
-    Path(id): Path<i64>,
-    Query(query): Query<ReferencesQuery>,
-) -> Result<Json<Vec<ReferenceInfo>>, ApiError> {
-    let user_id = user.id;
-    let (target, name) = saved_target(&state, user_id, id).await?;
-    let read = async {
-        let mut connection = mysql::connect(&target).await?;
-        let references = catalog::references(&mut connection, &query.schema, &query.table).await;
-        let _ = connection.disconnect().await;
-        references
-    };
-    // Its query goes to the history of the queries, as those of the catalog.
-    let span = console::sql_span(user_id, &name, Action::Navigator);
-    Ok(Json(read.instrument(span).await?))
 }
 
 /// Reads the catalog database by database and sends each part as soon as it is read.
@@ -330,10 +281,6 @@ mod tests {
             status_of("/api/connections/42/catalog").await,
             StatusCode::NOT_FOUND
         );
-        assert_eq!(
-            status_of("/api/connections/42/references?schema=shop&table=customer").await,
-            StatusCode::NOT_FOUND
-        );
     }
 
     #[tokio::test]
@@ -341,18 +288,6 @@ mod tests {
         assert_eq!(
             status_of("/api/connections/1/catalog").await,
             StatusCode::BAD_GATEWAY
-        );
-        assert_eq!(
-            status_of("/api/connections/1/references?schema=shop&table=customer").await,
-            StatusCode::BAD_GATEWAY
-        );
-    }
-
-    #[tokio::test]
-    async fn references_need_their_table() {
-        assert_eq!(
-            status_of("/api/connections/1/references?schema=shop").await,
-            StatusCode::BAD_REQUEST
         );
     }
 }

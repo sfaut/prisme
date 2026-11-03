@@ -6,9 +6,7 @@
  * databases first, then their objects (tables, views, procedures, functions),
  * then the details of the tables. A part not received yet is `null`. Going
  * back to a connection already explored reuses its catalog; "Rafraîchir"
- * (refresh) reads it again. The foreign keys that reference a table, from
- * every database, are read apart, when the navigator opens their folder
- * (`loadReferences`).
+ * (refresh) reads it again.
  *
  * A catalog counts tens of thousands of objects (tables, columns, indexes...):
  * it stays outside Vue's reactivity, which would track each of them. Measured
@@ -22,13 +20,11 @@ import type { BeautifyCatalog } from '@/api/generated/BeautifyCatalog'
 import { defineStore } from 'pinia'
 import { markRaw, ref, shallowRef, triggerRef } from 'vue'
 
-import { errorMessage } from '@/api/errorMessage'
-import { readReferences, streamCatalog } from '@/api/navigator'
+import { streamCatalog } from '@/api/navigator'
 import type { CatalogEvent } from '@/api/generated/CatalogEvent'
 import type { ColumnOrigin } from '@/api/generated/ColumnOrigin'
 import type { Flavor } from '@/api/generated/Flavor'
 import type { EventInfo } from '@/api/generated/EventInfo'
-import type { ReferenceInfo } from '@/api/generated/ReferenceInfo'
 import type { RoutineInfo } from '@/api/generated/RoutineInfo'
 import type { TableDetails } from '@/api/generated/TableDetails'
 import type { TableKind } from '@/api/generated/TableKind'
@@ -44,11 +40,6 @@ export interface CatalogTable {
    * Columns, indexes, foreign keys and triggers, `null` as long as they are not received.
    */
   details: TableDetails | null
-  /**
-   * Foreign keys of every database that reference the table, `null` as long as they are not read:
-   * the folder "Références" of the navigator reads them when it opens.
-   */
-  references: ReferenceInfo[] | null
 }
 
 /**
@@ -151,11 +142,7 @@ export function applyCatalogEvent(catalog: Catalog, event: CatalogEvent): void {
     case 'objects': {
       const schema = catalog.schemas.find((candidate) => candidate.name === event.schema)
       if (schema) {
-        schema.tables = event.objects.tables.map((table) => ({
-          ...table,
-          details: null,
-          references: null,
-        }))
+        schema.tables = event.objects.tables.map((table) => ({ ...table, details: null }))
         schema.routines = event.objects.routines
         schema.events = event.objects.events
       }
@@ -243,48 +230,6 @@ export const useCatalogStore = defineStore('catalog', () => {
   }
 
   /**
-   * Tables whose references are being read.
-   */
-  const readingReferences = new WeakSet<CatalogTable>()
-
-  /**
-   * Reads the foreign keys of every database that reference a table, unless
-   * they are read or being read. A failure adds its message to the errors of
-   * the catalog and leaves the table without references, until the catalog is
-   * read again.
-   *
-   * @param connectionId Id of the connection.
-   * @param schema Database of the table.
-   * @param name Name of the table.
-   */
-  async function loadReferences(connectionId: number, schema: string, name: string): Promise<void> {
-    const catalog = catalogs.value[connectionId]
-    const table = catalog?.schemas
-      .find((item) => item.name === schema)
-      ?.tables?.find((item) => item.name === name)
-    if (
-      catalog === undefined ||
-      table === undefined ||
-      table.references !== null ||
-      readingReferences.has(table)
-    ) {
-      return
-    }
-    readingReferences.add(table)
-    try {
-      table.references = await readReferences(connectionId, schema, name)
-    } catch (failure) {
-      table.references = []
-      catalog.errors.push(
-        `Lecture des références impossible (table « ${schema}.${name} »). ${errorMessage(failure)}`,
-      )
-    } finally {
-      readingReferences.delete(table)
-      revisions.value[connectionId] = (revisions.value[connectionId] ?? 0) + 1
-    }
-  }
-
-  /**
    * Catalog of a connection, `undefined` if it was never read. Calling this
    * function in a `computed` makes it recompute on each revision.
    *
@@ -315,5 +260,5 @@ export const useCatalogStore = defineStore('catalog', () => {
     }
   }
 
-  return { catalogs, revisions, load, loadReferences, catalogOf, catalogNames }
+  return { catalogs, revisions, load, catalogOf, catalogNames }
 })

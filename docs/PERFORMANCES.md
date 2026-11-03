@@ -1294,10 +1294,11 @@ both cases.
 
 ### 14.4 Consequences
 
-- The references are read for one table, when the navigator opens its folder
-  "Références" (`GET /api/connections/{id}/references`), on a connection of
-  their own. Read with the catalog, they would cost a scan of the whole server
-  for each database.
+- The references of a table cost no read of their own. The catalog reads the
+  foreign keys of each database, each one with the table it references
+  (`REFERENCED_TABLE_SCHEMA`, `REFERENCED_TABLE_NAME`): the page turns them
+  around (`referencesByTable`, `web/src/components/navigatorNodes.ts`). The
+  folder "Références" fills as the databases arrive, like the other folders.
 - The catalog keeps its reads filtered on a database.
 
 ### 14.5 Takeaways
@@ -1306,6 +1307,9 @@ both cases.
   table of the key**: "Scanned 1 database" with `TABLE_SCHEMA`, "Scanned 0
   databases" with `TABLE_NAME` as well. A filter on the referenced table
   leaves "Scanned all databases".
+- **The data already received comes first**: the foreign keys read database
+  by database name their target, and give the references of every table
+  without a query.
 
 ### 14.6 Measuring again
 

@@ -10,9 +10,7 @@
   and arrives progressively: the databases first, then their objects (tables,
   views, procedures, functions), then the details of the tables (columns,
   indexes, foreign keys, triggers), each part shown as soon as it arrives.
-  It then stays in memory. The folder "Références" of a table reads, when it
-  opens, the foreign keys of every database that point to the table. A click
-  on a line opens or closes its level.
+  It then stays in memory. A click on a line opens or closes its level.
   Ctrl+click (Cmd+click on macOS), or Enter on the focused line, acts on it
   without opening or closing it: on a source, chooses it as the working
   connection (emits `select`), which stays highlighted; on a database, makes
@@ -224,16 +222,6 @@ const nodes = computed(() =>
  * Rows displayed by the tree, with the rows of each level.
  */
 const visible = computed(() => visibleRows(nodes.value, expandedKeys.value))
-
-// An open folder "Références" reads the references of its table: at its
-// opening, and again once its catalog is read again.
-watch(visible, ({ rows }) => {
-  for (const { node } of rows) {
-    if (node.unreadReferences !== undefined && expandedKeys.value.includes(node.key)) {
-      void catalog.loadReferences(node.connectionId, node.schema, node.unreadReferences)
-    }
-  }
-})
 
 /**
  * Position of the tree's scroll, in pixels.
