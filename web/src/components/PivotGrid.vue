@@ -884,7 +884,7 @@ function showsValues(line: PivotLine): boolean {
         v-for="cell in headers"
         :key="`${cell.row}-${cell.column}`"
         class="pivot-head"
-        :class="[cell.kind, { null: cell.text === null }]"
+        :class="[cell.kind, { null: cell.text === null, first: firstColumn + cell.column === 0 }]"
         :data-column="cell.span === 1 ? firstColumn + cell.column : undefined"
         :style="{
           gridRow: `${cell.row + 1} / span ${cell.rowSpan}`,
@@ -962,7 +962,7 @@ function showsValues(line: PivotLine): boolean {
           v-for="(value, column) in cells"
           :key="column"
           class="pivot-cell"
-          :class="{ null: value === null }"
+          :class="{ null: value === null, first: firstColumn + column === 0 }"
           :data-column="firstColumn + column"
         >
           {{ value === false ? '' : (value ?? NULL_TEXT) }}
@@ -1244,5 +1244,12 @@ function showsValues(line: PivotLine): boolean {
   border-block-end: var(--line-width) solid var(--color-line-faint);
   border-inline-start: var(--line-width) solid var(--color-line-faint);
   text-align: end;
+}
+
+/* The first column of the table is closed on the left by the labels, or by
+   the border of the table: its own left border would double that line. */
+.pivot-head.first,
+.pivot-cell.first {
+  border-inline-start: none;
 }
 </style>

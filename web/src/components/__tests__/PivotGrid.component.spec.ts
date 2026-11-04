@@ -249,6 +249,20 @@ describe('the window of PivotGrid', () => {
   })
 })
 
+describe('the lines of PivotGrid', () => {
+  it('leaves the line on the left of the first column to the labels', async () => {
+    const grid = await mountGrid()
+    const cells = grid.findAll('.pivot-cell')
+    const firsts = cells.filter((cell) => cell.classes('first'))
+    expect(firsts.length).toBeGreaterThan(0)
+    expect(cells.filter((cell) => cell.attributes('data-column') === '0')).toEqual(firsts)
+    const heads = grid.findAll('.pivot-head[data-column="0"]')
+    expect(heads.length).toBeGreaterThan(0)
+    expect(heads.every((head) => head.classes('first'))).toBe(true)
+    expect(grid.findAll('.pivot-head[data-column="1"].first')).toHaveLength(0)
+  })
+})
+
 describe('the forms of the lines in PivotGrid', () => {
   /**
    * Table of two levels of rows, in a form that keeps the group above its members.
