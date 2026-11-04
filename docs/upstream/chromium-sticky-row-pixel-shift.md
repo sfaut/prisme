@@ -1,25 +1,21 @@
-# Chromium: a sticky row keeps the pixel phase of its last paint
+# Chromium: a sticky row draws its lines one pixel off the rows below after a move
 
 Draft of a ticket for [Chromium](https://issues.chromium.org/issues/new) (component to choose
-when posting: Blink>Paint>Invalidation or Blink>Compositing), to post from the maintainer's
-account. Prisme has no workaround: the limit is documented in `docs/DEVELOPER.md`, section "Lines".
-The closest ticket, [401693546](https://issues.chromium.org/issues/401693546) ("position: sticky
-elements are shifted 1px to the left"), was fixed in M135 by
+when posting: Blink>Paint or Blink>Compositing), to post from the maintainer's account, with the
+three images of this folder attached. Prisme has no workaround: the limit is documented in
+`docs/DEVELOPER.md`, section "Lines". The closest ticket,
+[401693546](https://issues.chromium.org/issues/401693546) ("position: sticky elements are shifted
+1px to the left"), was fixed in M135 by
 [Avoid rounding inconsistency between Blink and cc](https://chromium-review.googlesource.com/c/chromium/src/+/6340249),
 a heuristic for values starting at -0.5; the case below remains in Chrome 156.
 
-A row with `will-change: transform` behaves the same way: Chromium may answer that a composited
-layer is moved without being repainted on purpose. The ticket targets the sticky row, which gets
-its layer without asking for one, and whose drawing then depends on the history of the page.
-
 Measured on 2026-11-04 with the page below, in headless Chrome started with
 `--force-device-scale-factor`, each case on a fresh page: a screenshot of the first row and of the
-row below it through the DevTools protocol, the dark pixels read across each row. The three images
-of the ticket, drawn from such screenshots, are to be attached to it when posting.
+row below it through the DevTools protocol, the dark pixels read across each row.
 
 ---
 
-**Title:** `position: sticky row keeps the sub-pixel phase of its last paint when its scroll container moves by a fraction of a pixel: its borders stand 1 device pixel off those of the rows below`
+**Title:** `position: sticky row: after its scroll container moves by a fraction of a pixel, its borders are drawn 1 device pixel off those of the rows below`
 
 ### Chrome version
 
@@ -119,32 +115,28 @@ Chrome 156.0.8078.47, Windows 11 Pro 10.0.26300. Measured in headless Chrome sta
 
 The cells of the sticky row and of the rows below have the same layout positions
 (`getBoundingClientRect().left` is equal for each column, at every offset). Their left borders
-are drawn on the same device pixels, whatever the history of the page: as when the page is loaded
-at the offset, and as when the row is not sticky.
+are drawn on the same device pixels, as when the page is loaded at the offset.
 
 ### Actual result
 
-When the scroll container moves by a fraction of a device pixel after the sticky row was painted,
-the row moves by whole device pixels only: its cells keep the pixel snapping of their last paint,
-while each border of the rows below is snapped again from its new layout position. At a scale of
-150 %, after the move from 20px to 20.05px, the borders are drawn at these device pixels:
+At a scale of 150 %, after the move from 20px to 20.05px, the borders are drawn at these device
+pixels:
 
 | Row | Columns 1 to 6 |
 | --- | --- |
 | sticky | 30, 105, 211, 347, 437, 559 |
 | rows below | 30, 106, 212, 347, 438, 559 |
 
-The sticky row draws its borders as it did at 20px (30, 105, 211, 347, 437, 559); loaded at
-20.05px, it draws them at 30, 106, 212, 347, 438, 559, like the rows below.
+The sticky row draws its borders where it drew them at 20px. Loaded at 20.05px, it draws them at
+30, 106, 212, 347, 438, 559, like the rows below.
 
 As seen in the page, enlarged 3 times, at a scale of 150 % and an offset of 20.05px:
 
 ![Scale 150 %: three of the five column lines jog at the bottom of the sticky row after the move](chromium-sticky-row-pixel-shift-3.png)
 
-The two images below enlarge, around one column line, the bottom of the grey row and the top of
-the row below, one square per device pixel, each panel from a fresh page: loaded at the offset,
-loaded at 20px then moved to the offset, and the same move with the grey row relative. At a scale
-of 150 %, offset 20.05px, second column line:
+Around one column line, the bottom of the grey row and the top of the row below, one square per
+device pixel, each panel from a fresh page. At a scale of 150 %, offset 20.05px, second column
+line:
 
 ![Scale 150 %: the line of the sticky row stands one pixel to the left after the move](chromium-sticky-row-pixel-shift-1.png)
 
@@ -160,24 +152,10 @@ Number of offsets where the lines are apart, out of the 41 offsets of the slider
 | sticky, loaded at the offset (`?left=`) | 0 | 0 | 0 | 0 | 0 |
 | sticky, loaded at 20px, moved to the offset | 36 | 30 | 28 | 26 | 28 |
 | relative, loaded at 20px, moved to the offset | 0 | 0 | 0 | 0 | 0 |
-| relative with `will-change: transform` set after the load, moved | 36 | 30 | 28 | 26 | 28 |
 | sticky, moved, then the border color of its cells changed | 0 | 0 | 0 | 0 | 0 |
-
-At 1.5, at the offsets 20.05px and 20.70px, after the move:
-
-- the lines match again once the cells of the sticky row are repainted (a change of their border
-  color), or once the row is laid out again (`display: none` then back, or the row removed and
-  inserted again);
-- they stay apart after a change of the background of the row itself, a switch of the row to
-  `position: relative`, `will-change: transform` added to it, a scroll of the container by 1px and
-  back, or a switch of the row to `position: static` and back to `sticky`.
-
-The cells look as if their paint were not invalidated when the sub-pixel part of the offset of
-their composited ancestor changes.
 
 ### Impact
 
 Data grids with a sticky header row (spreadsheet-like tables, SQL clients) show a one-pixel jog
 between the column lines of the header and those of the body after the grid moves by a fraction of
-a pixel, for example when a panel beside it is resized; a reload puts them back. Anything centered
-on a column line in the header (resize handles, drop markers) is then off center on that line.
+a pixel, for example when a panel beside it is resized; a reload puts them back.
