@@ -186,7 +186,11 @@
      navigator and of the data explorer, the latter enough for its header
      on one line (title and buttons, with the panel's padding); smallest
      width of the area of the editors, enough for the buttons of the editor
-     on one line; thickness of the rail left by a folded panel (`rail`);
+     on one line; thickness of the rail left by a folded panel (`rail`),
+     8 steps: a whole number of pixels of the screen at a display scaling of
+     100, 125 and 150 % (24, 30 and 36 with the browser's default font
+     size), so that every rail shows the same thickness wherever it stands
+     (9 steps made 40.5 pixels at 150 %, drawn as 40 or 41 by position);
      bar left by a folded result list (`tab-bar`): the gap above its tabs,
      then a tab at its own height, its padding (one step above and below,
      `DocumentTab`) around its small buttons (`h-7`), taller than its text,
@@ -208,7 +212,7 @@
   --explorer-width: --spacing(140);
   --explorer-min-width: --spacing(120);
   --editors-min-width: --spacing(213);
-  --rail-size: --spacing(9);
+  --rail-size: --spacing(8);
   --tab-bar-height: calc(--spacing(5) + --spacing(7) + var(--line-width));
   --editor-folded-height: --spacing(3);
   --editor-height: --spacing(67);

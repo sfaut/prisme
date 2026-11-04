@@ -84,7 +84,7 @@ const EDITORS_MIN_WIDTH = cssPixels('--editors-min-width', 640)
 const EDITORS_MIN_HEIGHT = cssPixels('--editors-min-height', 312)
 const CONSOLE_HEIGHT = cssPixels('--console-height', 220)
 const CONSOLE_MIN_HEIGHT = cssPixels('--console-min-height', 120)
-const RAIL_SIZE = cssPixels('--rail-size', 28)
+const RAIL_SIZE = cssPixels('--rail-size', 24)
 
 /**
  * Foldable panels of the splitters: object navigator, data explorer,

@@ -212,7 +212,7 @@ const RESULTS_HEIGHT = cssPixels('--results-height', 400)
 const RESULTS_MIN_HEIGHT = cssPixels('--results-min-height', 200)
 const RESULTS_FOLDED_HEIGHT = cssPixels('--tab-bar-height', 40)
 const PIVOT_MIN_HEIGHT = cssPixels('--pivot-min-height', 200)
-const RAIL_SIZE = cssPixels('--rail-size', 28)
+const RAIL_SIZE = cssPixels('--rail-size', 24)
 
 /**
  * Panels of the editor, of the results, of the height left and of the
