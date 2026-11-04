@@ -395,13 +395,15 @@ const labelsPixels = computed(() =>
 const labelTracks = computed(() => [...labelLengths.value.slice(0, -1), 'minmax(0, 1fr)'].join(' '))
 
 /**
- * Right edge of each column of labels, as a CSS length from the start of the
- * labels: the place of its resize handle.
+ * Place of the resize handle of each column of labels, from the start of
+ * the labels: where the line that closes the column starts, the left border
+ * of the next column of labels, or, for the last one, the right border of
+ * the corner, at the end of its inner box (`100%`).
  */
 const labelEdges = computed(() =>
   labelLengths.value.map((_, column) =>
     column === labelLengths.value.length - 1
-      ? labelsLength.value
+      ? '100%'
       : `calc(${labelLengths.value.slice(0, column + 1).join(' + ')})`,
   ),
 )
@@ -869,7 +871,7 @@ function showsValues(line: PivotLine): boolean {
           v-for="(edge, column) in labelEdges"
           :key="`resizer ${column}`"
           class="pivot-resizer"
-          :style="{ insetInlineStart: `calc(${edge} - var(--resize-handle-width) / 2)` }"
+          :style="{ insetInlineStart: edge }"
           v-tooltip="RESIZE_TIP"
           @pointerdown.stop.prevent="onResizeStart($event, { kind: 'labels', column })"
           @pointermove="onResizeMove"
@@ -1051,28 +1053,50 @@ function showsValues(line: PivotLine): boolean {
   }
 }
 
-/* Resize handle on the right edge of a column, as in the grid, under the
-   corner; those of the columns of labels are placed by their edge. */
+/* Resize handle of a column, as in the grid: a box of no width against
+   the inner edge of its header, where the line that closes the column
+   starts; those of the columns of labels, under the corner, are placed by
+   their edge (`labelEdges`).
+   As for a splitter (`SplitHandle.vue`), the band of the hover is the
+   outline of a box that covers exactly the line: the browser rounds the
+   width of an outline to whole pixels of the screen and draws it around
+   the pixels of the line, so that the band keeps as many pixels on each
+   side of it wherever the column ends. The handle cuts the outline at the
+   ends of its header. */
 .pivot-resizer {
   position: absolute;
   inset-block: 0;
-  inset-inline-end: calc(var(--resize-handle-width) / -2);
+  inset-inline-start: 100%;
   z-index: 1;
-  inline-size: var(--resize-handle-width);
+  inline-size: 0;
+  overflow-block: clip;
   cursor: col-resize;
   touch-action: none;
 
-  /* Only the middle of the width grabbed lights up, as thick as the band of
-     a splitter (`SplitHandle.vue`). */
-  padding-inline: calc((var(--resize-handle-width) - --spacing(2)) / 2);
-  background-clip: content-box;
-
-  .pivot-corner > & {
-    inset-inline-end: auto;
+  &::before,
+  &::after {
+    position: absolute;
+    inset-block: 0;
+    content: '';
   }
 
-  &:hover {
-    background-color: var(--resize-hover);
+  /* One step on each side of the line: a band of two steps, as thick as
+     that of a splitter. */
+  &::before {
+    inset-inline-start: 0;
+    inline-size: 0;
+    border-inline-start: var(--line-width) solid transparent;
+    outline: --spacing(1) solid transparent;
+  }
+
+  /* The width grabbed by the pointer, on both sides of the line. */
+  &::after {
+    inset-inline: calc(var(--resize-handle-width) / -2);
+  }
+
+  &:hover::before {
+    border-color: var(--resize-hover);
+    outline-color: var(--resize-hover);
   }
 }
 

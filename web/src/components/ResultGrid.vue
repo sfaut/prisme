@@ -1005,22 +1005,49 @@ defineExpose({ keptCount, selectedSize, exportFrame, order })
   }
 }
 
+/* Resize handle of a column: a box of no width against the inner edge of
+   its header, where the line that closes the column starts (the left
+   border of the next header, or the right border of the last one).
+   As for a splitter (`SplitHandle.vue`), the band of the hover is the
+   outline of a box that covers exactly the line: the browser rounds the
+   width of an outline to whole pixels of the screen and draws it around
+   the pixels of the line, so that the band keeps as many pixels on each
+   side of it wherever the column ends. The handle cuts the outline at the
+   ends of its header. */
 .grid-resizer {
   position: absolute;
   inset-block: 0;
-  inset-inline-end: calc(var(--resize-handle-width) / -2);
+  inset-inline-start: 100%;
   z-index: 1;
-  inline-size: var(--resize-handle-width);
+  inline-size: 0;
+  overflow-block: clip;
   cursor: col-resize;
   touch-action: none;
 
-  /* Only the middle of the width grabbed lights up, as thick as the band of
-     a splitter (`SplitHandle.vue`). */
-  padding-inline: calc((var(--resize-handle-width) - --spacing(2)) / 2);
-  background-clip: content-box;
+  &::before,
+  &::after {
+    position: absolute;
+    inset-block: 0;
+    content: '';
+  }
 
-  &:hover {
-    background-color: var(--resize-hover);
+  /* One step on each side of the line: a band of two steps, as thick as
+     that of a splitter. */
+  &::before {
+    inset-inline-start: 0;
+    inline-size: 0;
+    border-inline-start: var(--line-width) solid transparent;
+    outline: --spacing(1) solid transparent;
+  }
+
+  /* The width grabbed by the pointer, on both sides of the line. */
+  &::after {
+    inset-inline: calc(var(--resize-handle-width) / -2);
+  }
+
+  &:hover::before {
+    border-color: var(--resize-hover);
+    outline-color: var(--resize-hover);
   }
 }
 
