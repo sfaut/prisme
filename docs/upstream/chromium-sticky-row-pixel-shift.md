@@ -13,6 +13,23 @@ Measured on 2026-11-04 with the page below, in headless Chrome started with
 `--force-device-scale-factor`, each case on a fresh page: a screenshot of the first row and of the
 row below it through the DevTools protocol, the dark pixels read across each row.
 
+Kept out of the ticket, which states only what was measured:
+
+- At 1.5, at the offsets 20.05px and 20.70px, after the move, the lines match again once the cells
+  of the sticky row are repainted (a change of their border color), or once the row is laid out
+  again (`display: none` then back, or the row removed and inserted again). They stay apart after
+  a change of the background of the row itself, a switch of the row to `position: relative`,
+  `will-change: transform` added to it, a scroll of the container by 1px and back, or a switch of
+  the row to `position: static` and back to `sticky`.
+- A row that is not sticky, given `will-change: transform` after the load, then moved, is apart at
+  as many offsets as the sticky row (36, 30, 28, 26 and 28 of 41 at the five scales). The cause
+  would then be the composited layer of the row, which a sticky row gets without asking for one,
+  rather than the computation of the sticky position. For `will-change`, Chromium may answer that
+  a layer is moved without being repainted on purpose.
+- Hypothesis: the cells keep the pixel snapping of their last paint, because their paint is not
+  invalidated when the sub-pixel part of the offset of their composited ancestor changes; the row
+  is then moved by whole device pixels.
+
 ---
 
 **Title:** `position: sticky row: after its scroll container moves by a fraction of a pixel, its borders are drawn 1 device pixel off those of the rows below`
