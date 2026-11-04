@@ -1,20 +1,24 @@
-# Chromium: a sticky row draws its lines one pixel off the rows below
+# Chromium: a sticky row keeps the pixel phase of its last paint
 
 Draft of a ticket for [Chromium](https://issues.chromium.org/issues/new) (component to choose
-when posting: Blink>Compositing or Blink>Paint), to post from the maintainer's account. Prisme has
-no workaround: the limit is documented in `docs/DEVELOPER.md`, section "Lines". The closest ticket,
-[401693546](https://issues.chromium.org/issues/401693546) ("position: sticky elements are shifted
-1px to the left"), was fixed in M135 by
+when posting: Blink>Paint>Invalidation or Blink>Compositing), to post from the maintainer's
+account. Prisme has no workaround: the limit is documented in `docs/DEVELOPER.md`, section "Lines".
+The closest ticket, [401693546](https://issues.chromium.org/issues/401693546) ("position: sticky
+elements are shifted 1px to the left"), was fixed in M135 by
 [Avoid rounding inconsistency between Blink and cc](https://chromium-review.googlesource.com/c/chromium/src/+/6340249),
 a heuristic for values starting at -0.5; the case below remains in Chrome 156.
 
+A row with `will-change: transform` behaves the same way: Chromium may answer that a composited
+layer is moved without being repainted on purpose. The ticket targets the sticky row, which gets
+its layer without asking for one, and whose drawing then depends on the history of the page.
+
 Measured on 2026-11-04 with the page below, in headless Chrome started with
-`--force-device-scale-factor`: for each left offset of the scroll container, a screenshot of the
-sticky row and of the row below it, the dark pixels read across each row.
+`--force-device-scale-factor`, each case on a fresh page: a screenshot of the first row and of the
+row below it through the DevTools protocol, the dark pixels read across each row.
 
 ---
 
-**Title:** `position: sticky row inside a scroll container: its borders are drawn 1 device pixel off those of the non-sticky rows below, at most fractional offsets`
+**Title:** `position: sticky row keeps the sub-pixel phase of its last paint when its scroll container moves by a fraction of a pixel: its borders stand 1 device pixel off those of the rows below`
 
 ### Chrome version
 
@@ -23,12 +27,13 @@ Chrome 156.0.8078.47, Windows 11 Pro 10.0.26300. Measured in headless Chrome sta
 
 ### Steps to reproduce
 
-1. Open the page below at a display scale of 150 % (or start Chrome with
-   `--force-device-scale-factor=1.5`).
-2. Move the slider: it sets the left offset of the scroll container, from 20px to 22px by steps
-   of 0.05px.
-3. At each offset, take a screenshot and zoom into it: compare the vertical lines of the grey
-   sticky row with those of the white rows below.
+1. Start Chrome with `--force-device-scale-factor=1.5` (or use a display scale of 150 %) and open
+   the page below.
+2. Move the slider from 20px to 20.05px: it moves the scroll container by 0.05px to the right.
+   Zoom into a screenshot: the second vertical line of the grey sticky row stands one device pixel
+   to the left of the same line in the white rows below.
+3. Open the page at that offset directly, with `?left=20.05`: the lines match.
+4. Open the page with `?position=relative`, then move the slider to 20.05px: the lines match.
 
 ```html
 <!doctype html>
@@ -76,11 +81,11 @@ Chrome 156.0.8078.47, Windows 11 Pro 10.0.26300. Measured in headless Chrome sta
   </head>
   <body>
     <p>
-      Display scale 150 % (or <code>--force-device-scale-factor=1.5</code>). Left offset of the
-      scroll container: <input id="left" type="range" min="20" max="22" step="0.05" value="20" />
-      <output id="value">20px</output>. At most offsets, the vertical lines of the grey sticky row
-      stand one device pixel beside those of the rows below, though their layout positions are
-      equal.
+      Left offset of the scroll container:
+      <input id="left" type="range" min="20" max="22" step="0.05" value="20" />
+      <output id="value">20px</output>. Moved by the slider, the vertical lines of the grey sticky
+      row stand one device pixel beside those of the rows below at most offsets. Loaded at the
+      offset (<code>?left=20.05</code>), they match.
     </p>
     <div class="scroller"></div>
     <script>
@@ -92,10 +97,18 @@ Chrome 156.0.8078.47, Windows 11 Pro 10.0.26300. Measured in headless Chrome sta
       }
       const left = document.getElementById('left')
       const value = document.getElementById('value')
-      left.addEventListener('input', () => {
-        document.body.style.setProperty('--left', `${left.value}px`)
-        value.textContent = `${left.value}px`
-      })
+      const place = (offset) => {
+        document.body.style.setProperty('--left', `${offset}px`)
+        value.textContent = `${offset}px`
+      }
+      left.addEventListener('input', () => place(left.value))
+      // ?left=20.05 loads the page at that offset; ?position=relative unsticks the grey row.
+      const query = new URLSearchParams(location.search)
+      if (query.has('left')) {
+        left.value = query.get('left')
+        place(query.get('left'))
+      }
+      if (query.has('position')) scroller.firstElementChild.style.position = query.get('position')
     </script>
   </body>
 </html>
@@ -104,39 +117,51 @@ Chrome 156.0.8078.47, Windows 11 Pro 10.0.26300. Measured in headless Chrome sta
 ### Expected result
 
 The cells of the sticky row and of the rows below have the same layout positions
-(`getBoundingClientRect().left` is equal for each column, at every offset): their left borders are
-drawn on the same device pixels, as they are when the row is not sticky.
+(`getBoundingClientRect().left` is equal for each column, at every offset). Their left borders
+are drawn on the same device pixels, whatever the history of the page: as when the page is loaded
+at the offset, and as when the row is not sticky.
 
 ### Actual result
 
-At most fractional offsets, some borders of the sticky row are drawn one device pixel beside the
-same borders of the rows below. The sticky row moves as a whole, by one device pixel at a time,
-while each border below follows its own rounding. For example, at a scale of 150 % and a left
-offset of 20.05px, the borders are drawn at these device pixels:
+When the scroll container moves by a fraction of a device pixel after the sticky row was painted,
+the row moves by whole device pixels only: its cells keep the pixel snapping of their last paint,
+while each border of the rows below is snapped again from its new layout position. At a scale of
+150 %, after the move from 20px to 20.05px, the borders are drawn at these device pixels:
 
 | Row | Columns 1 to 6 |
 | --- | --- |
 | sticky | 30, 105, 211, 347, 437, 559 |
 | rows below | 30, 106, 212, 347, 438, 559 |
 
-Over the 41 offsets of the slider (20px to 22px by 0.05px):
+The sticky row draws its borders as it did at 20px (30, 105, 211, 347, 437, 559); loaded at
+20.05px, it draws them at 30, 106, 212, 347, 438, 559, like the rows below.
 
-| Device scale factor | Offsets with borders apart |
-| --- | --- |
-| 1 | 36 of 41 |
-| 1.25 | 30 of 41 |
-| 1.5 | 28 of 41 |
-| 1.75 | 26 of 41 |
-| 2 | 28 of 41 |
+Number of offsets where the lines are apart, out of the 41 offsets of the slider (20px to 22px by
+0.05px), each case on a fresh page:
 
-With `position: relative` in place of `position: sticky` on the grey row, the borders match at
-all 41 offsets. In the application where it was found, drawing the lines of the sticky row with
-positioned pseudo-elements, giving them their own stacking context (`z-index`), or removing the
-`transform` that places the rows below did not change the result.
+| Case | 1 | 1.25 | 1.5 | 1.75 | 2 |
+| --- | --- | --- | --- | --- | --- |
+| sticky, loaded at the offset (`?left=`) | 0 | 0 | 0 | 0 | 0 |
+| sticky, loaded at 20px, moved to the offset | 36 | 30 | 28 | 26 | 28 |
+| relative, loaded at 20px, moved to the offset | 0 | 0 | 0 | 0 | 0 |
+| relative with `will-change: transform` set after the load, moved | 36 | 30 | 28 | 26 | 28 |
+| sticky, moved, then the border color of its cells changed | 0 | 0 | 0 | 0 | 0 |
+
+At 1.5, at the offsets 20.05px and 20.70px, after the move:
+
+- the lines match again once the cells of the sticky row are repainted (a change of their border
+  color), or once the row is laid out again (`display: none` then back, or the row removed and
+  inserted again);
+- they stay apart after a change of the background of the row itself, a switch of the row to
+  `position: relative`, `will-change: transform` added to it, a scroll of the container by 1px and
+  back, or a switch of the row to `position: static` and back to `sticky`.
+
+The cells look as if their paint were not invalidated when the sub-pixel part of the offset of
+their composited ancestor changes.
 
 ### Impact
 
 Data grids with a sticky header row (spreadsheet-like tables, SQL clients) show a one-pixel jog
-between the column lines of the header and those of the body, and anything centered on a column
-line in the header (resize handles, drop markers) is off center on that line, according to the
-horizontal position of the grid in the page.
+between the column lines of the header and those of the body after the grid moves by a fraction of
+a pixel, for example when a panel beside it is resized; a reload puts them back. Anything centered
+on a column line in the header (resize handles, drop markers) is then off center on that line.
