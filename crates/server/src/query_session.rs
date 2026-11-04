@@ -39,12 +39,15 @@
 //! server → client  {"type": "error", "query": 0, "message": "..."}     instead of the rest, on failure
 //! server → client  {"type": "batch_done"}                               all the queries have ended
 //! server → client  {"type": "resume", "running": true, "queries": [...]}  on reattaching: the last batch, where it stands
+//! server → client  {"type": "resumed_rows", "query": 0, "rows": [["1"]]}  after resume: the rows received so far, in chunks
 //! ```
 //!
 //! A WebSocket that reattaches to a session receives `ready`, with the
 //! current database, then `resume` for the session of an editor that has
 //! already run a batch: each query of the last batch with its tab, its state
-//! and the rows received so far; the next messages continue this batch.
+//! and the number of rows received so far. These rows follow in
+//! `resumed_rows` messages, a saved chunk each (`recorder.rs`), then the next
+//! messages continue this batch.
 //!
 //! `cancel` interrupts the running queries (`KILL QUERY` on each of their
 //! connections) and prevents those waiting for their turn from starting: each

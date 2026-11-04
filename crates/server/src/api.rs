@@ -703,6 +703,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn sends_the_saved_rows_of_a_tab_chunk_by_chunk() {
+        use crate::editors::{self, NewEditor};
+
+        let db = store::open_in_memory();
+        let user_id = store::ensure_user(&db, "test@example.com").unwrap();
+        let editor = editors::create(&db, user_id, &NewEditor::default()).unwrap();
+        let tab = editors::start_batch(&db, editor.id, &[(0, "SELECT 1".into())]).unwrap()[0].0;
+        editors::save_chunk(&db, tab, 0, 0, r#"[["1",null]]"#).unwrap();
+        let state = AppState::new(db, MasterKey::generate(), user_id, exports::unused_folder());
+        let app = router(state);
+
+        let uri = format!("/api/editors/{}/results", editor.id);
+        let (status, tabs) = send(&app, "GET", &uri, None).await;
+        assert_eq!((status, &tabs[0]["chunks"]), (StatusCode::OK, &json!(1)));
+        assert!(tabs[0].get("rows").is_none());
+        let (status, rows) = send(&app, "GET", &format!("/api/results/{tab}/chunks/0"), None).await;
+        assert_eq!((status, rows), (StatusCode::OK, json!([["1", null]])));
+        let (status, _) = send(&app, "GET", &format!("/api/results/{tab}/chunks/1"), None).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
     async fn gives_the_keywords_of_a_dialect_and_version() {
         let app = test_app();
         let (status, all) = send(&app, "GET", "/api/dialects/mysql/keywords", None).await;

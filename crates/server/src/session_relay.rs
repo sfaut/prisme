@@ -13,7 +13,8 @@
 //!   the session; a stop (`cancel`) is handled at once;
 //! - a new WebSocket replaces the previous one (closed) and first receives
 //!   the state of the session: `ready`, with the current database and the
-//!   open transaction, then `resume`, the last batch where it stands;
+//!   open transaction, then `resume`, the last batch where it stands, and
+//!   `resumed_rows`, the rows its queries received so far;
 //! - without a WebSocket for the keep-alive delay, it stops the session: the
 //!   running queries are interrupted, the connection to the target server is
 //!   closed (an open transaction is then rolled back by the server).
@@ -37,6 +38,7 @@ use tracing::Instrument;
 
 use crate::api_log;
 use crate::error_detail::ErrorDetail;
+use crate::query_session::protocol::resumed_rows_text;
 use crate::query_session::{Cancellation, ClientMessage, ServerMessage, SessionRequest};
 use crate::recorder::Recorder;
 
@@ -199,7 +201,9 @@ impl Relay {
     }
 
     /// Sends a reattaching WebSocket the state of the session: `ready` if it
-    /// is ready, then the editor's last batch if there is one.
+    /// is ready, then the editor's last batch if there is one, without its
+    /// rows, then the rows of each query, a saved chunk per message, sent as
+    /// saved, then those received since its last chunk.
     async fn send_replay(
         &self,
         sink: &mut SplitSink<WebSocket, Message>,
@@ -215,14 +219,42 @@ impl Relay {
             transaction: replay.transaction,
         };
         send(sink, &ready).await?;
-        if let Some(recorder) = &self.recorder {
-            let queries = recorder.snapshot().await;
-            if !queries.is_empty() {
-                let resume = ServerMessage::Resume {
-                    running: replay.running,
-                    queries,
+        let Some(recorder) = &self.recorder else {
+            return Ok(());
+        };
+        let snapshot = recorder.snapshot().await;
+        if snapshot.queries.is_empty() {
+            return Ok(());
+        }
+        let resume = ServerMessage::Resume {
+            running: replay.running,
+            queries: snapshot.queries,
+        };
+        send(sink, &resume).await?;
+        for received in snapshot.rows {
+            let query = received.query;
+            for position in 0..received.chunks {
+                // The page counts the rows announced: a chunk that cannot be
+                // read fails the attachment, and the page reconnects.
+                let Ok(Some(rows)) = recorder
+                    .chunk(received.tab_id, received.run, position)
+                    .await
+                else {
+                    let tab = received.tab_id;
+                    return Err(axum::Error::new(format!(
+                        "chunk {position} of tab {tab} unreadable"
+                    )));
                 };
-                send(sink, &resume).await?;
+                sink.send(Message::Text(resumed_rows_text(query, &rows).into()))
+                    .await?;
+                api_log::sent_chunk(query, position);
+            }
+            if !received.pending.is_empty() {
+                let rows = ServerMessage::ResumedRows {
+                    query,
+                    rows: received.pending,
+                };
+                send(sink, &rows).await?;
             }
         }
         Ok(())

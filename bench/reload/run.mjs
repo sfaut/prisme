@@ -6,10 +6,14 @@
  * LTS of the development servers (`compose.yaml`) and an editor, then, for each number of rows:
  *
  * 1. runs a query of that many rows in the session of the editor, as the page does: the rows
- *    arrive in batches, the server keeps them, then writes the whole result to the internal
- *    database before announcing its end (`done`, see `crates/server/src/recorder.rs`);
- * 2. reads the saved tabs again (`GET /api/editors/{id}/results`), as the page does on opening:
- *    the server reads them from the internal database, the page parses them.
+ *    arrive in batches, the server writes them to the internal database in chunks as they
+ *    arrive, then writes the last chunk and the state of the result before announcing its end
+ *    (`done`, see `crates/server/src/recorder.rs`);
+ * 2. reads the saved tabs again, as the page does on opening: their list
+ *    (`GET /api/editors/{id}/results`), then the chunks of their rows one by one
+ *    (`GET /api/results/{id}/chunks/{position}`), each one parsed;
+ * 3. reattaches a WebSocket to the session, as a page reloaded after the end of the query: the
+ *    last batch (`resume`), then its rows (`resumed_rows`), read again from their chunks.
  *
  * From the root of the repository, the development servers started
  * (`docker compose up --detach --wait`) and the interface built (`npm run build` in `web/`):
@@ -30,7 +34,7 @@ if (counts.length === 0) {
 
 /**
  * Runs a query of `count` rows in the session of the editor, and measures its way: rows
- * received, then the save of the result, which the server ends before sending `done`.
+ * received, then the end of the save of the result, which the server ends before sending `done`.
  *
  * @param {number} editor Id of the editor.
  * @param {number} count Number of rows.
@@ -76,33 +80,87 @@ function runQuery(editor, count) {
 }
 
 /**
- * Reads the saved tabs of the editor again, as the page does on opening: the answer of the
- * server, its download, then its parsing.
+ * Reads the saved tabs of the editor again, as the page does on opening: their list, then the
+ * chunks of their rows, one after the other, each one downloaded then parsed.
  *
  * @param {number} editor Id of the editor.
  */
 async function reload(editor) {
   const started = performance.now()
   const response = await fetch(`http://${ADDRESS}/api/editors/${editor}/results`)
-  const answered = performance.now()
-  const body = await response.arrayBuffer()
-  const downloaded = performance.now()
+  const tabs = await response.json()
+  const listed = performance.now()
   const result = {
     status: response.status,
-    bytes: body.byteLength,
-    answer_s: (answered - started) / 1000,
-    download_s: (downloaded - answered) / 1000,
-    parse_s: null,
-    parse_error: null,
+    list_s: (listed - started) / 1000,
+    chunks: 0,
+    bytes: 0,
+    download_s: 0,
+    parse_s: 0,
+    rows: 0,
+    largest_chunk_bytes: 0,
   }
-  try {
-    const tabs = JSON.parse(new TextDecoder().decode(body))
-    result.parse_s = (performance.now() - downloaded) / 1000
-    result.rows = tabs.reduce((total, tab) => total + tab.rows.length, 0)
-  } catch (error) {
-    result.parse_error = String(error)
+  for (const tab of tabs) {
+    for (let position = 0; position < tab.chunks; position++) {
+      const asked = performance.now()
+      const chunk = await fetch(`http://${ADDRESS}/api/results/${tab.id}/chunks/${position}`)
+      const body = await chunk.arrayBuffer()
+      const downloaded = performance.now()
+      const rows = JSON.parse(new TextDecoder().decode(body))
+      result.parse_s += (performance.now() - downloaded) / 1000
+      result.download_s += (downloaded - asked) / 1000
+      result.chunks++
+      result.bytes += body.byteLength
+      result.largest_chunk_bytes = Math.max(result.largest_chunk_bytes, body.byteLength)
+      result.rows += rows.length
+    }
   }
+  result.total_s = (performance.now() - started) / 1000
   return result
+}
+
+/**
+ * Reattaches a WebSocket to the session of the editor, as a page reloaded after the end of the
+ * query, and measures the reception of the last batch and of its rows.
+ *
+ * @param {number} editor Id of the editor.
+ */
+function resume(editor) {
+  return new Promise((done, fail) => {
+    const started = performance.now()
+    const socket = new WebSocket(`ws://${ADDRESS}/api/editors/${editor}/session`)
+    let expected = null
+    let rows = 0
+    let messages = 0
+    socket.addEventListener('error', () => fail(new Error('WebSocket error')))
+    socket.addEventListener('close', () => {
+      if (expected === null || rows < expected) {
+        fail(new Error(`WebSocket closed after ${rows} of ${expected} rows`))
+      }
+    })
+    const end = () => {
+      socket.close()
+      done({ rows, messages, total_s: (performance.now() - started) / 1000 })
+    }
+    socket.addEventListener('message', (event) => {
+      const message = JSON.parse(event.data)
+      switch (message.type) {
+        case 'resume':
+          expected = message.queries.reduce((total, query) => total + query.resumed_rows, 0)
+          if (expected === 0) {
+            end()
+          }
+          break
+        case 'resumed_rows':
+          rows += message.rows.length
+          messages++
+          if (rows >= expected) {
+            end()
+          }
+          break
+      }
+    })
+  })
 }
 
 build()
@@ -116,14 +174,17 @@ for (const count of counts) {
     console.error(`reload: ${count} rows, query`)
     entry.query = await runQuery(editor.id, count)
     entry.server_peak_gb_after_query = peakMemory(prisme.pid)
-    // A failed save leaves the tab without rows, and only a warning in the log.
-    entry.query.saved = !prisme.log().includes('result not saved')
+    // A failed save leaves the tab without some rows, and only a warning in the log.
+    const log = prisme.log()
+    entry.query.saved = !log.includes('result not saved') && !log.includes('rows not saved')
     console.error(`reload: ${count} rows, reading the saved tabs again`)
     entry.reload = await reload(editor.id)
     const answer = plain(prisme.log()).match(
       new RegExp(`GET /api/editors/${editor.id}/results \\d+ (\\d+) ms`),
     )
-    entry.reload.server_s = answer === null ? null : Number(answer[1]) / 1000
+    entry.reload.list_server_s = answer === null ? null : Number(answer[1]) / 1000
+    console.error(`reload: ${count} rows, reattaching to the session`)
+    entry.resume = await resume(editor.id)
     entry.server_peak_gb = peakMemory(prisme.pid)
   } catch (error) {
     entry.error = String(error)

@@ -484,39 +484,43 @@ describe('a batch', () => {
 
 describe('savedTab', () => {
   it('takes back a saved tab, outside the batches of the session', () => {
-    const tab = savedTab({
-      id: 42,
-      query: 1,
-      sql: 'SELECT x FROM t',
-      name: 'Gardé',
-      pinned: true,
-      pivot: PIVOT,
-      result: {
-        started: true,
-        done: true,
-        error: null,
-        error_detail: null,
-        columns: {
-          columns: ['x'],
-          right_aligned: [true],
-          types: [],
-          sql: 'SELECT x FROM t LIMIT 1001',
-          limit: 'added',
-          expected_rows: 1000,
-          execution_us: 1500,
-          executed_at: 1_792_500_000_000,
+    const tab = savedTab(
+      {
+        id: 42,
+        query: 1,
+        sql: 'SELECT x FROM t',
+        name: 'Gardé',
+        pinned: true,
+        pivot: PIVOT,
+        result: {
+          started: true,
+          done: true,
+          error: null,
+          error_detail: null,
+          columns: {
+            columns: ['x'],
+            right_aligned: [true],
+            types: [],
+            sql: 'SELECT x FROM t LIMIT 1001',
+            limit: 'added',
+            expected_rows: 1000,
+            execution_us: 1500,
+            executed_at: 1_792_500_000_000,
+          },
+          row_count: 2,
+          truncated: false,
+          affected_rows: 0,
+          transfer_us: 4000,
+          bytes: 120,
         },
-        row_count: 2,
-        truncated: false,
-        affected_rows: 0,
-        transfer_us: 4000,
-        bytes: 120,
+        chunks: 1,
       },
-      rows: [['1'], ['2']],
-    })
+      [['1'], ['2']],
+    )
     expect([tab.id, tab.batch, tab.pinned, tab.name]).toEqual([42, 0, true, 'Gardé'])
     expect(tab.pivot).toBe(PIVOT)
     expect(tab.result?.rows).toEqual([['1'], ['2']])
+    expect(tab.result?.rowCount).toBe(2)
     expect(tab.result?.executedAt).toBe(1_792_500_000_000)
     expect(executionDuration(tab, 0)).toBe(1.5)
     expect(transferDuration(tab, 0)).toBe(4)
@@ -528,27 +532,30 @@ describe('resume', () => {
   it('takes back the last batch in its tabs, which the next messages continue', () => {
     const state = readyState()
     state.tabs = [
-      savedTab({
-        id: 7,
-        query: 0,
-        sql: 'SELECT 1',
-        name: 'Mon onglet',
-        pinned: false,
-        pivot: PIVOT,
-        result: {
-          started: false,
-          done: false,
-          error: null,
-          error_detail: null,
-          columns: null,
-          row_count: 0,
-          truncated: false,
-          affected_rows: 0,
-          transfer_us: 0,
-          bytes: 0,
+      savedTab(
+        {
+          id: 7,
+          query: 0,
+          sql: 'SELECT 1',
+          name: 'Mon onglet',
+          pinned: false,
+          pivot: PIVOT,
+          result: {
+            started: false,
+            done: false,
+            error: null,
+            error_detail: null,
+            columns: null,
+            row_count: 0,
+            truncated: false,
+            affected_rows: 0,
+            transfer_us: 0,
+            bytes: 0,
+          },
+          chunks: 0,
         },
-        rows: [],
-      }),
+        [],
+      ),
     ]
     state.tabs[0]!.filter = { text: 'a', column: 0 }
     state.tabs[0]!.filterOpen = true
@@ -584,7 +591,7 @@ describe('resume', () => {
             tab: 7,
             sql: 'SELECT x FROM t',
             result: running,
-            rows: [['1']],
+            resumed_rows: 1,
             started_us_ago: 5_000_000,
             columns_us_ago: 3_000_000,
             refresh: false,
@@ -594,7 +601,7 @@ describe('resume', () => {
             tab: 8,
             sql: 'SELECT 2',
             result: { ...running, columns: null, started: false, row_count: 0 },
-            rows: [],
+            resumed_rows: 0,
             started_us_ago: null,
             columns_us_ago: null,
             refresh: false,
@@ -615,9 +622,61 @@ describe('resume', () => {
     expect([first!.startedAt, first!.columnsAt]).toEqual([5_000, 7_000])
     expect(tabProgress(second!)).toBe('waiting')
 
+    // The rows received so far come first, without counting again in the volume.
+    applyMessage(state, { type: 'resumed_rows', query: 0, rows: [['1']] }, 10_050, 30)
+    expect([first!.result?.rows, first!.bytes]).toEqual([[['1']], 50])
     applyMessage(state, { type: 'rows', query: 0, rows: [['2']] }, 10_100)
     expect(first!.result?.rowCount).toBe(2)
     expect(transferDuration(first!, 10_100)).toBe(3_100)
+  })
+
+  it('waits for the rows of an ended query before it counts as ended', () => {
+    const state = readyState()
+    const ended = {
+      started: true,
+      done: true,
+      error: null,
+      error_detail: null,
+      columns: {
+        columns: ['x'],
+        right_aligned: [true],
+        types: [],
+        sql: 'SELECT x FROM t',
+        limit: 'user_limit' as const,
+        expected_rows: 50_000_000,
+        execution_us: 2000,
+        executed_at: 0,
+      },
+      row_count: 3,
+      truncated: false,
+      affected_rows: 0,
+      transfer_us: 9000,
+      bytes: 90,
+    }
+    applyMessage(state, {
+      type: 'resume',
+      running: false,
+      queries: [
+        {
+          query: 0,
+          tab: 7,
+          sql: 'SELECT x FROM t',
+          result: ended,
+          resumed_rows: 3,
+          started_us_ago: null,
+          columns_us_ago: null,
+          refresh: false,
+        },
+      ],
+    })
+    const tab = state.tabs[0]!
+    expect([tab.done, tabProgress(tab), tabFraction(tab)]).toEqual([false, 'loading', 0])
+
+    applyMessage(state, { type: 'resumed_rows', query: 0, rows: [['1'], ['2']] })
+    expect([tab.done, tabFraction(tab)]).toEqual([false, 2 / 3])
+    applyMessage(state, { type: 'resumed_rows', query: 0, rows: [['3']] })
+    expect([tab.done, tab.awaitedRows, tab.result?.rowCount]).toEqual([true, null, 3])
+    expect(tabProgress(tab)).toBe('done')
   })
 })
 
@@ -771,7 +830,7 @@ describe('refresh', () => {
           tab: 8,
           sql: 'SELECT x FROM t',
           result: running,
-          rows: [],
+          resumed_rows: 0,
           started_us_ago: 1000,
           columns_us_ago: null,
           refresh: true,

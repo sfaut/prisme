@@ -35,7 +35,8 @@ export type ResultTab = {
    */
   result: SavedResult;
   /**
-   * Rows received.
+   * Number of chunks of its saved rows, read one by one
+   * (`GET /api/results/{id}/chunks/{position}`).
    */
-  rows: Array<Array<string | null>>;
+  chunks: number;
 };

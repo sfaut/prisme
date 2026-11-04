@@ -4,6 +4,7 @@
  */
 
 import { type RequestOptions, request } from './http'
+import type { Cell } from './querySession'
 import type { ClosedEditor } from './generated/ClosedEditor'
 import type { Editor } from './generated/Editor'
 import type { EditorUpdate } from './generated/EditorUpdate'
@@ -88,12 +89,23 @@ export async function reopenEditor(id: number): Promise<void> {
 }
 
 /**
- * Saved result tabs of an editor, rows included.
+ * Saved result tabs of an editor, without their rows: each one tells the
+ * number of chunks of its rows, read by `readResultChunk`.
  *
  * @param editorId Id of the editor.
  */
 export async function listResults(editorId: number): Promise<ResultTab[]> {
   return request<ResultTab[]>('GET', `/api/editors/${editorId}/results`)
+}
+
+/**
+ * Chunk of the saved rows of a result tab, its rows in their order.
+ *
+ * @param id Id of the tab.
+ * @param position Rank of the chunk, from 0.
+ */
+export async function readResultChunk(id: number, position: number): Promise<Cell[][]> {
+  return request<Cell[][]>('GET', `/api/results/${id}/chunks/${position}`)
 }
 
 /**

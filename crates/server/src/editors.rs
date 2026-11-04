@@ -5,31 +5,36 @@
 //! Each editor has its text, its connection and its own query session
 //! (`GET /api/editors/{id}/session`). The results are saved by the server
 //! itself as the run goes (`recorder.rs`): the browser never sends them back.
-//! Closing an editor marks it as closed (`closed_at`); it stays reopenable for
-//! 24 hours, then it is purged.
+//! Their rows are saved in chunks (`result_chunks`), which the page reads
+//! one by one: neither a value of the internal database nor an answer holds
+//! the rows of a whole result, whatever its size. Closing an editor marks it
+//! as closed (`closed_at`); it stays reopenable for 24 hours, then it is
+//! purged.
 //!
 //! Routes:
 //!
-//! | Method and path                         | Role                                                    |
-//! |-----------------------------------------|---------------------------------------------------------|
-//! | `GET /api/editors`                      | Open editors, in order.                                 |
-//! | `POST /api/editors`                     | Creates an empty editor, after the others.              |
-//! | `PUT /api/editors/{id}`                 | Changes the name, the text or the connection (204).     |
-//! | `DELETE /api/editors/{id}`              | Closes the editor; reopenable for 24 hours (204).       |
-//! | `PUT /api/editors/order`                | Orders the open editors as given (204).                 |
-//! | `GET /api/editors/closed`               | Editors closed less than 24 hours ago.                  |
-//! | `POST /api/editors/{id}/reopen`         | Reopens a closed editor (204).                          |
-//! | `GET /api/editors/{id}/results`         | Result tabs of the editor, rows included.               |
-//! | `PUT /api/editors/{id}/results/order`   | Orders the result tabs as given (204).                  |
-//! | `PUT /api/results/{id}`                 | Renames or pins a result tab (204).                     |
-//! | `PUT /api/results/{id}/pivot`           | Saves the configuration of the Pivoteur of a tab (204). |
-//! | `DELETE /api/results/{id}`              | Deletes a result tab and its rows (204).                |
+//! | Method and path                          | Role                                                    |
+//! |------------------------------------------|---------------------------------------------------------|
+//! | `GET /api/editors`                       | Open editors, in order.                                 |
+//! | `POST /api/editors`                      | Creates an empty editor, after the others.              |
+//! | `PUT /api/editors/{id}`                  | Changes the name, the text or the connection (204).     |
+//! | `DELETE /api/editors/{id}`               | Closes the editor; reopenable for 24 hours (204).       |
+//! | `PUT /api/editors/order`                 | Orders the open editors as given (204).                 |
+//! | `GET /api/editors/closed`                | Editors closed less than 24 hours ago.                  |
+//! | `POST /api/editors/{id}/reopen`          | Reopens a closed editor (204).                          |
+//! | `GET /api/editors/{id}/results`          | Result tabs of the editor, with their number of chunks. |
+//! | `PUT /api/editors/{id}/results/order`    | Orders the result tabs as given (204).                  |
+//! | `PUT /api/results/{id}`                  | Renames or pins a result tab (204).                     |
+//! | `GET /api/results/{id}/chunks/{position}`| A chunk of the rows of a result tab, as saved.          |
+//! | `PUT /api/results/{id}/pivot`            | Saves the configuration of the Pivoteur of a tab (204). |
+//! | `DELETE /api/results/{id}`               | Deletes a result tab and its rows (204).                |
 
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::{StatusCode, header};
+use axum::response::IntoResponse;
 use axum::routing::{get, post, put};
 use axum::{Json, Router};
-use prisme_connectors::mysql::{Cell, ColumnTypeInfo};
+use prisme_connectors::mysql::ColumnTypeInfo;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -100,8 +105,9 @@ pub struct ResultTab {
     pub pivot: TabPivot,
     /// State of the result.
     pub result: SavedResult,
-    /// Rows received.
-    pub rows: Vec<Vec<Cell>>,
+    /// Number of chunks of its saved rows, read one by one
+    /// (`GET /api/results/{id}/chunks/{position}`).
+    pub chunks: u32,
 }
 
 /// Columns of a result and what comes with them (`columns` message).
@@ -272,10 +278,14 @@ pub fn results_of(
     Ok(Some(result_tabs(db, editor_id)?))
 }
 
-/// Result tabs of an editor, in display order.
+/// Result tabs of an editor, in display order, with the number of chunks of
+/// their saved run.
 fn result_tabs(db: &Connection, editor_id: i64) -> Result<Vec<ResultTab>, EditorsError> {
     let mut statement = db.prepare(
-        "SELECT id, query, sql, name, pinned, pivot, result, rows FROM result_tabs
+        "SELECT id, query, sql, name, pinned, pivot, result,
+             (SELECT COUNT(*) FROM result_chunks
+              WHERE tab_id = result_tabs.id AND run = result_tabs.run)
+         FROM result_tabs
          WHERE editor_id = ?1 ORDER BY position, id",
     )?;
     let rows = statement.query_map(params![editor_id], |row| {
@@ -287,12 +297,12 @@ fn result_tabs(db: &Connection, editor_id: i64) -> Result<Vec<ResultTab>, Editor
             row.get::<_, bool>(4)?,
             row.get::<_, String>(5)?,
             row.get::<_, String>(6)?,
-            row.get::<_, String>(7)?,
+            row.get::<_, u32>(7)?,
         ))
     })?;
     let mut tabs = Vec::new();
     for row in rows {
-        let (id, query, sql, name, pinned, pivot, result, rows) = row?;
+        let (id, query, sql, name, pinned, pivot, result, chunks) = row?;
         tabs.push(ResultTab {
             id,
             query,
@@ -301,10 +311,49 @@ fn result_tabs(db: &Connection, editor_id: i64) -> Result<Vec<ResultTab>, Editor
             pinned,
             pivot: serde_json::from_str(&pivot)?,
             result: serde_json::from_str(&result)?,
-            rows: serde_json::from_str(&rows)?,
+            chunks,
         });
     }
     Ok(tabs)
+}
+
+/// Chunk `position` of the saved rows of the result tab `id`, if it belongs
+/// to an editor of the user: the JSON text of its rows, as saved. `None`
+/// otherwise.
+pub fn saved_chunk(
+    db: &Connection,
+    user_id: i64,
+    id: i64,
+    position: u32,
+) -> Result<Option<String>, EditorsError> {
+    Ok(db
+        .query_row(
+            "SELECT result_chunks.rows FROM result_chunks
+             JOIN result_tabs ON result_tabs.id = result_chunks.tab_id
+                 AND result_tabs.run = result_chunks.run
+             WHERE result_chunks.tab_id = ?1 AND result_chunks.position = ?3
+               AND result_tabs.editor_id IN (SELECT id FROM editors WHERE user_id = ?2)",
+            params![id, user_id, position],
+            |row| row.get(0),
+        )
+        .optional()?)
+}
+
+/// Chunk `position` of the rows of run `run` of the result tab `tab_id`: the
+/// JSON text of its rows, as saved. `None` if it does not exist.
+pub fn chunk(
+    db: &Connection,
+    tab_id: i64,
+    run: i64,
+    position: u32,
+) -> Result<Option<String>, EditorsError> {
+    Ok(db
+        .query_row(
+            "SELECT rows FROM result_chunks WHERE tab_id = ?1 AND run = ?2 AND position = ?3",
+            params![tab_id, run, position],
+            |row| row.get(0),
+        )
+        .optional()?)
 }
 
 /// Connection of the open editor `id`, if it belongs to the user: `None` if
@@ -545,32 +594,90 @@ pub fn start_batch(
     Ok(tabs)
 }
 
-/// Does the result tab `tab_id` belong to editor `editor_id`? A refresh only
-/// runs again a tab of its own editor.
-pub fn has_result_tab(db: &Connection, editor_id: i64, tab_id: i64) -> Result<bool, EditorsError> {
-    let found = db.query_row(
-        "SELECT EXISTS (SELECT 1 FROM result_tabs WHERE id = ?1 AND editor_id = ?2)",
-        params![tab_id, editor_id],
-        |row| row.get(0),
+/// Starts the refresh of the result tab `tab_id`, if it belongs to editor
+/// `editor_id` (a refresh only runs again a tab of its own editor). Returns
+/// the run whose chunks the refresh writes, the one after the saved run;
+/// `None` if the tab is not the editor's. The chunks of a refresh that never
+/// ended, Prisme stopped during it, are deleted.
+pub fn start_refresh(
+    db: &Connection,
+    editor_id: i64,
+    tab_id: i64,
+) -> Result<Option<i64>, EditorsError> {
+    let run: Option<i64> = db
+        .query_row(
+            "SELECT run FROM result_tabs WHERE id = ?1 AND editor_id = ?2",
+            params![tab_id, editor_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(run) = run else {
+        return Ok(None);
+    };
+    db.execute(
+        "DELETE FROM result_chunks WHERE tab_id = ?1 AND run <> ?2",
+        params![tab_id, run],
     )?;
-    Ok(found)
+    Ok(Some(run + 1))
 }
 
-/// Saves the state and the rows of a result tab. Without effect if the tab
-/// was deleted in the meantime (closed by the user).
-pub fn save_result(
+/// Saves the chunk `position` of the rows of run `run` of the result tab
+/// `tab_id`; `rows` is their JSON text. Without effect if the tab was deleted
+/// in the meantime (closed by the user).
+pub fn save_chunk(
     db: &Connection,
     tab_id: i64,
-    result: &SavedResult,
-    rows: &[Vec<Cell>],
+    run: i64,
+    position: u32,
+    rows: &str,
 ) -> Result<(), EditorsError> {
     db.execute(
-        "UPDATE result_tabs SET result = ?2, rows = ?3 WHERE id = ?1",
-        params![
-            tab_id,
-            serde_json::to_string(result)?,
-            serde_json::to_string(rows)?
-        ],
+        "INSERT INTO result_chunks (tab_id, run, position, rows)
+         SELECT id, ?2, ?3, ?4 FROM result_tabs WHERE id = ?1",
+        params![tab_id, run, position, rows],
+    )?;
+    Ok(())
+}
+
+/// Saves the state of a result tab, whose rows are saved in chunks
+/// (`save_chunk`). Without effect if the tab was deleted in the meantime.
+pub fn save_result(db: &Connection, tab_id: i64, result: &SavedResult) -> Result<(), EditorsError> {
+    db.execute(
+        "UPDATE result_tabs SET result = ?2 WHERE id = ?1",
+        params![tab_id, serde_json::to_string(result)?],
+    )?;
+    Ok(())
+}
+
+/// Ends the refresh of the result tab `tab_id`, which succeeded: its state
+/// and the chunks of its run `run` replace the saved result, whose chunks are
+/// deleted. Without effect if the tab was deleted in the meantime.
+pub fn finish_refresh(
+    db: &Connection,
+    tab_id: i64,
+    run: i64,
+    result: &SavedResult,
+) -> Result<(), EditorsError> {
+    let transaction = db.unchecked_transaction()?;
+    transaction.execute(
+        "UPDATE result_tabs SET result = ?2, run = ?3 WHERE id = ?1",
+        params![tab_id, serde_json::to_string(result)?, run],
+    )?;
+    transaction.execute(
+        "DELETE FROM result_chunks WHERE tab_id = ?1 AND run <> ?2",
+        params![tab_id, run],
+    )?;
+    transaction.commit()?;
+    Ok(())
+}
+
+/// Deletes the chunks of run `run` of the result tab `tab_id`: those of a
+/// refresh that failed, or that the end of the session interrupted. The tab
+/// keeps its saved result.
+pub fn discard_run(db: &Connection, tab_id: i64, run: i64) -> Result<(), EditorsError> {
+    db.execute(
+        "DELETE FROM result_chunks WHERE tab_id = ?1 AND run = ?2",
+        params![tab_id, run],
     )?;
     Ok(())
 }
@@ -589,6 +696,7 @@ pub fn routes() -> Router<AppState> {
             "/api/results/{id}",
             put(update_result).delete(delete_result),
         )
+        .route("/api/results/{id}/chunks/{position}", get(read_chunk))
         .route("/api/results/{id}/pivot", put(update_pivot))
 }
 
@@ -721,6 +829,21 @@ async fn update_result(
     no_content_or_not_found(found)
 }
 
+/// `GET /api/results/{id}/chunks/{position}`: a chunk of the saved rows of a
+/// result tab, the JSON text of an array of rows, sent as saved, without
+/// being decoded.
+async fn read_chunk(
+    State(state): State<AppState>,
+    user: CurrentUser,
+    Path((id, position)): Path<(i64, u32)>,
+) -> Result<impl IntoResponse, ApiError> {
+    let rows = state
+        .with_db(move |db, _| saved_chunk(db, user.id, id, position))
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(([(header::CONTENT_TYPE, "application/json")], rows))
+}
+
 /// `PUT /api/results/{id}/pivot`: saves the configuration of the Pivoteur of
 /// a result tab.
 async fn update_pivot(
@@ -834,7 +957,8 @@ mod tests {
             row_count: 1,
             ..SavedResult::default()
         };
-        save_result(&db, first[0], &result, &[vec![Some("1".to_string())]]).unwrap();
+        save_chunk(&db, first[0], 0, 0, r#"[["1"]]"#).unwrap();
+        save_result(&db, first[0], &result).unwrap();
         let pin = ResultTabUpdate {
             name: "Kept".to_string(),
             pinned: true,
@@ -842,28 +966,71 @@ mod tests {
         assert!(update_result_tab(&db, user_id, first[0], &pin).unwrap());
 
         let second = start_batch(&db, editor.id, &[(0, "SELECT 3".into())]).unwrap()[0].0;
-        assert!(has_result_tab(&db, editor.id, second).unwrap());
-        assert!(!has_result_tab(&db, editor.id, second + 1).unwrap());
-        assert!(!has_result_tab(&db, editor.id + 1, second).unwrap());
+        assert_eq!(start_refresh(&db, editor.id, second).unwrap(), Some(1));
+        assert_eq!(start_refresh(&db, editor.id, second + 1).unwrap(), None);
+        assert_eq!(start_refresh(&db, editor.id + 1, second).unwrap(), None);
         let tabs = results_of(&db, user_id, editor.id).unwrap().unwrap();
         assert_eq!(
-            tabs.iter().map(|t| t.id).collect::<Vec<_>>(),
-            [first[0], second]
+            tabs.iter().map(|t| (t.id, t.chunks)).collect::<Vec<_>>(),
+            [(first[0], 1), (second, 0)]
         );
-        assert_eq!(tabs[0].rows, [vec![Some("1".to_string())]]);
         assert!(tabs[0].result.done && tabs[0].pinned);
+        assert_eq!(
+            saved_chunk(&db, user_id, first[0], 0).unwrap().as_deref(),
+            Some(r#"[["1"]]"#)
+        );
+        assert!(saved_chunk(&db, user_id, first[0], 1).unwrap().is_none());
 
         assert!(delete_result_tab(&db, user_id, second).unwrap());
         assert_eq!(
             results_of(&db, user_id, editor.id).unwrap().unwrap().len(),
             1
         );
-        assert_eq!(
-            results_of(&db, user_id, editor.id).unwrap().unwrap().len(),
-            1
-        );
         let other = store::ensure_user(&db, "other@example.com").unwrap();
         assert!(results_of(&db, other, editor.id).unwrap().is_none());
+        assert!(saved_chunk(&db, other, first[0], 0).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_refresh_replaces_the_saved_chunks_only_once_it_succeeds() {
+        let (db, user_id) = setup();
+        let editor = create(&db, user_id, &NewEditor::default()).unwrap();
+        let tab = start_batch(&db, editor.id, &[(0, "SELECT x".into())]).unwrap()[0].0;
+        let result = SavedResult {
+            done: true,
+            ..SavedResult::default()
+        };
+        save_chunk(&db, tab, 0, 0, r#"[["old"]]"#).unwrap();
+        save_result(&db, tab, &result).unwrap();
+        let saved = |db: &Connection| saved_chunk(db, user_id, tab, 0).unwrap();
+
+        // A failed refresh leaves the saved chunks as they were.
+        assert_eq!(start_refresh(&db, editor.id, tab).unwrap(), Some(1));
+        save_chunk(&db, tab, 1, 0, r#"[["new"]]"#).unwrap();
+        assert_eq!(saved(&db).as_deref(), Some(r#"[["old"]]"#));
+        discard_run(&db, tab, 1).unwrap();
+        assert!(chunk(&db, tab, 1, 0).unwrap().is_none());
+        assert_eq!(saved(&db).as_deref(), Some(r#"[["old"]]"#));
+
+        // A complete refresh replaces them.
+        assert_eq!(start_refresh(&db, editor.id, tab).unwrap(), Some(1));
+        save_chunk(&db, tab, 1, 0, r#"[["new"]]"#).unwrap();
+        finish_refresh(&db, tab, 1, &result).unwrap();
+        assert_eq!(saved(&db).as_deref(), Some(r#"[["new"]]"#));
+        assert!(chunk(&db, tab, 0, 0).unwrap().is_none());
+
+        // The chunks of a refresh that never ended go at the next one.
+        save_chunk(&db, tab, 2, 0, r#"[["lost"]]"#).unwrap();
+        assert_eq!(start_refresh(&db, editor.id, tab).unwrap(), Some(2));
+        assert!(chunk(&db, tab, 2, 0).unwrap().is_none());
+
+        // The chunks leave with their tab, and a closed tab receives no more.
+        assert!(delete_result_tab(&db, user_id, tab).unwrap());
+        save_chunk(&db, tab, 1, 1, r#"[["late"]]"#).unwrap();
+        let left: i64 = db
+            .query_row("SELECT COUNT(*) FROM result_chunks", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(left, 0);
     }
 
     #[test]

@@ -675,7 +675,8 @@ writes the results to `target/pivot-bench/results-<rows>.json`.
 
 ## 10. Saved results: their save and their reading again
 
-Benchmark of 2026-10-31, on the real server.
+Benchmark of 2026-10-31, on the real server; measured again on 2026-11-04,
+with the rows saved in chunks (section 10.7).
 
 ### 10.1 Question
 
@@ -729,10 +730,12 @@ twice.
 
 ### 10.4 Decision
 
-Question 32 of `docs/QUESTIONS.md`, to do later (leads: rows saved and read
-again in chunks, a failed save shown to the user). For the Pivoteur, the
-engine runs in the page on the rows it holds (chapter 9): nothing to read
-again as long as the page is open.
+Question 32 of `docs/QUESTIONS.md`, first left for later, settled on
+2026-11-04 after a query of several million rows stopped Prisme (ticket
+[#31](https://github.com/sfaut/prisme/issues/31)): the rows are saved in
+chunks as they arrive, and read again chunk by chunk (section 10.7). For the
+Pivoteur, the engine runs in the page on the rows it holds (chapter 9):
+nothing to read again as long as the page is open.
 
 ### 10.5 Takeaways
 
@@ -747,9 +750,81 @@ again as long as the page is open.
 The development servers started (`docker compose up --detach --wait`) and
 the interface built (`npm run build` in `web/`), from the root of the
 repository: `node bench/reload/run.mjs` (1 then 10 million rows, several
-minutes, up to 11 GB of memory for Prisme) or `node bench/reload/run.mjs
-100000`. The results go to `target/reload-bench/results.json`, with the log
-of each server (`server-<rows>.log`).
+minutes) or `node bench/reload/run.mjs 100000`. The results go to
+`target/reload-bench/results.json`, with the log of each server
+(`server-<rows>.log`).
+
+### 10.7 Rows saved in chunks
+
+On 2026-11-04, a query of several million rows stopped Prisme: "memory
+allocation of 1073741824 bytes failed". `serde_json` writes into a buffer of
+128 bytes that it doubles when full: a JSON of more than 512 MiB, about 5
+million rows of this shape, asks for 1 GiB at once, and Rust stops the
+process when the system refuses it. Three paths built the JSON of all the
+rows of a result in one block: the save of the tab, the answer that read the
+tabs again, and the message of the last batch sent to a WebSocket that
+reattaches.
+
+The rows now go to the internal database in chunks of 10,000 rows (about
+1 MB of JSON for this shape), or 8 MB of messages for wide rows, written as
+they arrive (table `result_chunks`, `crates/server/src/recorder.rs`). The
+page reads the list of the tabs, then their chunks one by one; a WebSocket
+that reattaches receives the rows in `resumed_rows` messages, a chunk each.
+The server keeps in memory only the chunk being filled and the one being
+written.
+
+Measured with Prisme v0.9.0 and its chunks, built in release, otherwise as
+in section 10.2:
+
+| Step | 100,000 rows | 1,000,000 rows | 10,000,000 rows |
+|---|---|---|---|
+| Chunks | 10 | 100 | 1,000 |
+| Rows received (last batch) | 0.68 s | 8.0 s | 82 s |
+| End of the save, before `done` | 0.06 s | 0.09 s | 0.09 s |
+| Reading again: list of the tabs | 0.02 s | 0.01 s | 0.02 s |
+| Reading again: download of the chunks | 0.22 s | 1.8 s | 14.1 s |
+| Reading again: parsing by the client | 0.40 s | 2.4 s | 29.0 s |
+| Reattaching: last batch and its rows | 0.37 s | 3.2 s | 31 s |
+| Peak memory of the server | 0.04 GB | 0.05 GB | 0.06 GB |
+
+The 10 million rows are saved (1.04 GB of chunks, the largest of 1.04 MB)
+and read again whole. The download of the chunks includes the answer of the
+server, one request after the other.
+
+**A chunk written while the next one fills.** A first version waited for
+each write before relaying the next message. Inserting a chunk of 1 MB into
+the internal database (WAL, `synchronous` at FULL, its default) takes 32 ms
+on average on this machine, with peaks beyond 75 ms when the WAL is
+checkpointed; at NORMAL, 23 ms, with the same peaks (200 inserts measured
+with Python's `sqlite3`, SQLite 3.50.4). Each chunk then held the relay
+back, and the rows of the target server waited in the channel behind it.
+The chunk is now written in a task of its own, one at a time: the relay
+waits only if the previous chunk is still being written when the next one is
+full. Rows received, in seconds:
+
+| Prisme | 1,000,000 rows | 10,000,000 rows |
+|---|---|---|
+| Write awaited, with `--verbose` | 8.6 | 89.6 |
+| Write awaited, without `--verbose` | 9.3 | 85.7 |
+| Write in a task, with `--verbose` | 8.0 | 82.4 |
+| Write in a task, without `--verbose` | 8.2 | 72.2 |
+
+With `--verbose`, the console saves each line of the log in the internal
+database (`debug_log`), 20,000 lines "sent rows" for 10 million rows, under
+the same lock as the chunks: the benchmark, which reads the times of the
+server from this log, then slows the reception it measures. Without it, the
+reception of 10 million rows takes as long as before the chunks (68 to 72 s,
+section 10.2). Each figure comes from a single run.
+
+Takeaways:
+
+- **A value written in one block grows with the data**: beyond a few
+  hundred megabytes, its buffer alone can stop the process. A result is
+  written and read in pieces of a fixed size, whatever its size.
+- **A write on the path of the messages delays them all**: it goes to a task
+  of its own, and the path waits only when the writes fall behind.
+- **A benchmark that reads the log of the server pays for that log**:
+  `--verbose` slows the reception by about 15 % at 10 million rows.
 
 ## 11. Reception of a result, and a store of the rows in a Worker
 

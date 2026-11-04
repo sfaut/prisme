@@ -60,6 +60,7 @@ static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
         M::up(include_str!("../migrations/0021_exports.sql")),
         M::up(include_str!("../migrations/0022_query_history_export.sql")),
         M::up(include_str!("../migrations/0023_result_tabs_pivot.sql")),
+        M::up(include_str!("../migrations/0024_result_chunks.sql")),
     ])
 });
 
@@ -214,6 +215,59 @@ mod tests {
                 ("run".to_owned(), "SELECT 1".to_owned())
             ]
         );
+    }
+
+    #[test]
+    fn cuts_the_saved_rows_into_chunks() {
+        // Schema before the chunks of the rows (migration 0024).
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", "ON")
+            .unwrap();
+        MIGRATIONS.to_version(&mut connection, 23).unwrap();
+        let user = ensure_user(&connection, "owner@example.com").unwrap();
+        connection
+            .execute("INSERT INTO editors (user_id) VALUES (?1)", params![user])
+            .unwrap();
+        let editor = connection.last_insert_rowid();
+        let rows: Vec<Vec<Option<String>>> = (0..25_001)
+            .map(|row| vec![Some(row.to_string()), None])
+            .collect();
+        connection
+            .execute(
+                "INSERT INTO result_tabs (editor_id, query, sql, rows) VALUES (?1, 0, 'SELECT 1', ?2)",
+                params![editor, serde_json::to_string(&rows).unwrap()],
+            )
+            .unwrap();
+        let tab = connection.last_insert_rowid();
+
+        MIGRATIONS.to_latest(&mut connection).unwrap();
+        let mut statement = connection
+            .prepare(
+                "SELECT run, position, rows FROM result_chunks WHERE tab_id = ?1 ORDER BY position",
+            )
+            .unwrap();
+        let chunks: Vec<(i64, i64, String)> = statement
+            .query_map(params![tab], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            chunks
+                .iter()
+                .map(|(run, position, _)| (*run, *position))
+                .collect::<Vec<_>>(),
+            [(0, 0), (0, 1), (0, 2)]
+        );
+        let read: Vec<Vec<Option<String>>> = chunks
+            .iter()
+            .flat_map(|(_, _, text)| {
+                serde_json::from_str::<Vec<Vec<Option<String>>>>(text).unwrap()
+            })
+            .collect();
+        assert_eq!(read, rows);
     }
 
     #[test]

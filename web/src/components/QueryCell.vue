@@ -79,6 +79,7 @@ import {
   closeSession,
   deleteResult,
   listResults,
+  readResultChunk,
   reorderResults,
   updateResult,
 } from '@/api/editors'
@@ -88,6 +89,7 @@ import type { TextEnd } from '@/api/generated/TextEnd'
 import {
   type QueryTab,
   type SessionStatus,
+  formatRowCount,
   refreshState,
   useQuerySession,
 } from '@/api/querySession'
@@ -164,6 +166,7 @@ const sql = defineModel<string>('sql', { required: true })
 const session = useQuerySession(
   props.editorId,
   () => listResults(props.editorId),
+  readResultChunk,
   props.openingDatabase,
 )
 const catalog = useCatalogStore()
@@ -987,6 +990,9 @@ defineExpose({
         >
           <LoaderCircle class="size-5 animate-spin" />
           Chargement des résultats…
+          <span v-if="state.savedRows > 0" class="tabular-nums">
+            {{ formatRowCount(state.savedRows, state.readRows) }}
+          </span>
         </div>
 
         <!--

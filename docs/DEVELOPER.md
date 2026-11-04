@@ -402,11 +402,11 @@ The rows and the two pivots are those of `bench/pivot` ("high" and "low", 12 mea
 `bench/reload/run.mjs` measures what a result of many rows costs on its way into a result tab, and when the page reads it again, on the real server: Prisme built in release, started on a throwaway data folder (`target/reload-bench/`), queries on the latest MariaDB LTS of the development servers. From the root of the repository, the development servers started (`docker compose up --detach --wait`) and the interface built (`npm run build` in `web/`):
 
 ```
-node bench/reload/run.mjs            # 1,000,000 then 10,000,000 rows (several minutes, up to 11 GB of memory for Prisme)
+node bench/reload/run.mjs            # 1,000,000 then 10,000,000 rows (several minutes)
 node bench/reload/run.mjs 100000     # fewer rows, for a quick run
 ```
 
-For each number of rows, the command runs a query of that many rows in the session of an editor (`seq_1_to_<rows>` of the sequence engine of MariaDB, columns like those of the benchmark of the Pivoteur, with its own `LIMIT`). It notes the time of the rows received, then that of the save of the result, which the server ends before sending `done`, and whether the save succeeded. It then reads the saved tabs again (`GET /api/editors/{id}/results`), as the page does on opening: answer of the server (also read from its log, `--verbose`), download, parsing. The results go to `target/reload-bench/results.json`, with the log of each server.
+For each number of rows, the command runs a query of that many rows in the session of an editor (`seq_1_to_<rows>` of the sequence engine of MariaDB, columns like those of the benchmark of the Pivoteur, with its own `LIMIT`). It notes the time of the rows received, then that of the end of the save of the result, which the server ends before sending `done`, and whether the save succeeded. It then reads the saved tabs again, as the page does on opening: their list (`GET /api/editors/{id}/results`, its answer also read from the log of the server, `--verbose`), then the chunks of their rows one by one (`GET /api/results/{id}/chunks/{position}`), the download and the parsing of each one added up. Last, it reattaches a WebSocket to the session, as a page reloaded after the end of the query, and notes the time until the last of the rows sent again (`resumed_rows`). The results go to `target/reload-bench/results.json`, with the log of each server. With `--verbose`, the server also saves each line of its log in the internal database, under the lock of the chunks: the rows received come in about 15 % slower at 10 million rows (`docs/PERFORMANCES.md`, section 10.7).
 
 ### Store of the results
 
@@ -537,6 +537,8 @@ Prisme first announces the queries of the batch (`batch`, each one numbered), th
 4. `done`: row count, `truncated` (rows beyond the limit were dropped), affected rows, duration.
 
 On failure or cancellation, an `error` message replaces the rest of that query, and the session goes on. `batch_done` ends the batch. In parallel, messages of different queries interleave.
+
+The session of an editor (`ws://127.0.0.1:8484/api/editors/{id}/session`) outlives its WebSocket, and saves its results in chunks of rows. A WebSocket that reattaches to it receives `ready`, then `resume`: the last batch where it stands, each query with the number of rows it received so far (`resumed_rows`). These rows follow in `resumed_rows` messages, a saved chunk each, then the next messages of the batch.
 
 Only reads pass: `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN` and `USE`. Writes (`UPDATE`, `DELETE`, `DROP`, `CALL`...) are refused until the write switches exist, as are queries Prisme cannot analyse.
 

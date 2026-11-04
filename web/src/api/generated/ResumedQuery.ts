@@ -22,9 +22,11 @@ export type ResumedQuery = {
    */
   result: SavedResult;
   /**
-   * Rows received so far.
+   * Number of rows received so far, sent after `resume` by `resumed_rows`
+   * messages; 0 for a refresh that failed, whose tab keeps its saved
+   * result.
    */
-  rows: Array<Array<string | null>>;
+  resumed_rows: number;
   /**
    * Time elapsed since the query started, in microseconds; absent while
    * it waits for its turn.

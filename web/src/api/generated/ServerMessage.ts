@@ -83,7 +83,13 @@ export type ServerMessage =
      */
     running: boolean;
     /**
-     * Queries of the batch, by number, where they stand.
+     * Queries of the batch, by number, where they stand, without their
+     * rows: `resumed_rows` messages bring them right after.
      */
     queries: Array<ResumedQuery>;
+  }
+  | {
+    "type": "resumed_rows";
+    query: number;
+    rows: Array<Array<string | null>>;
   };

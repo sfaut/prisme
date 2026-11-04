@@ -11,37 +11,40 @@ import { NO_PIVOT, type QueryTab, savedTab } from '@/api/querySession'
  * @param rows Rows of the result.
  */
 export function finishedTab(columns: string[], rows: string[][] = []): QueryTab {
-  return savedTab({
-    id: 1,
-    query: 0,
-    sql: 'SELECT 1',
-    name: '',
-    pinned: false,
-    pivot: NO_PIVOT,
-    result: {
-      started: true,
-      done: true,
-      error: null,
-      error_detail: null,
-      columns:
-        columns.length === 0
-          ? null
-          : {
-              columns,
-              right_aligned: columns.map(() => false),
-              types: [],
-              sql: 'SELECT 1',
-              limit: 'added',
-              expected_rows: 1000,
-              execution_us: 2000,
-              executed_at: 1_792_500_000_000,
-            },
-      row_count: rows.length,
-      truncated: false,
-      affected_rows: 0,
-      transfer_us: 3000,
-      bytes: 120,
+  return savedTab(
+    {
+      id: 1,
+      query: 0,
+      sql: 'SELECT 1',
+      name: '',
+      pinned: false,
+      pivot: NO_PIVOT,
+      result: {
+        started: true,
+        done: true,
+        error: null,
+        error_detail: null,
+        columns:
+          columns.length === 0
+            ? null
+            : {
+                columns,
+                right_aligned: columns.map(() => false),
+                types: [],
+                sql: 'SELECT 1',
+                limit: 'added',
+                expected_rows: 1000,
+                execution_us: 2000,
+                executed_at: 1_792_500_000_000,
+              },
+        row_count: rows.length,
+        truncated: false,
+        affected_rows: 0,
+        transfer_us: 3000,
+        bytes: 120,
+      },
+      chunks: rows.length === 0 ? 0 : 1,
     },
     rows,
-  })
+  )
 }

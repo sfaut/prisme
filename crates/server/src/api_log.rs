@@ -66,6 +66,12 @@ pub fn sent(message: &ServerMessage) {
     tracing::debug!("sent {}", Sent(message));
 }
 
+/// Writes a `resumed_rows` message of the query `query` sent as saved, the
+/// chunk `position` of its rows, without decoding them.
+pub fn sent_chunk(query: u32, position: u32) {
+    tracing::debug!("sent resumed_rows, query {query}, chunk {position}");
+}
+
 /// Summary of a message of the client, for the log.
 struct Received<'a>(Option<&'a ClientMessage>);
 
@@ -164,6 +170,11 @@ impl fmt::Display for Sent<'_> {
                 }
                 Ok(())
             }
+            ServerMessage::ResumedRows { query, rows } => write!(
+                f,
+                "resumed_rows, query {query}, {}",
+                Count(rows.len(), "row", "rows")
+            ),
         }
     }
 }
@@ -327,6 +338,13 @@ mod tests {
                 queries: Vec::new(),
             }),
             "resume, 0 queries, running"
+        );
+        assert_eq!(
+            server(ServerMessage::ResumedRows {
+                query: 2,
+                rows: vec![Vec::new(); 700],
+            }),
+            "resumed_rows, query 2, 700 rows"
         );
     }
 

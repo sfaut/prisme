@@ -186,7 +186,41 @@ pub(crate) enum ServerMessage {
     Resume {
         /// Is the batch still running?
         running: bool,
-        /// Queries of the batch, by number, where they stand.
+        /// Queries of the batch, by number, where they stand, without their
+        /// rows: `resumed_rows` messages bring them right after.
         queries: Vec<ResumedQuery>,
     },
+    /// Rows a query of the resumed batch had received, in their order, sent
+    /// after `resume`; the next `rows` messages of a running query continue
+    /// them.
+    ResumedRows { query: u32, rows: Vec<Vec<Cell>> },
+}
+
+/// Text of the `resumed_rows` message of the query `query`, whose rows are
+/// already the JSON text of an array of rows, as a chunk saved in the internal
+/// database: the text `ServerMessage::ResumedRows` would serialize to, without
+/// decoding the rows.
+pub(crate) fn resumed_rows_text(query: u32, rows: &str) -> String {
+    format!(r#"{{"type":"resumed_rows","query":{query},"rows":{rows}}}"#)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn writes_resumed_rows_already_in_json_as_their_message() {
+        let rows = vec![
+            vec![Some("1".to_string()), None],
+            vec![Some("é \"x\"".to_string()), None],
+        ];
+        let message = ServerMessage::ResumedRows {
+            query: 3,
+            rows: rows.clone(),
+        };
+        assert_eq!(
+            resumed_rows_text(3, &serde_json::to_string(&rows).unwrap()),
+            serde_json::to_string(&message).unwrap()
+        );
+    }
 }
