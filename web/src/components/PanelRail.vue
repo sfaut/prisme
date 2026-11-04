@@ -59,6 +59,17 @@ const ICONS = {
 <style scoped>
 @reference "@/assets/main.css";
 
+/* Workaround (`docs/DEVELOPER.md`, section "Workarounds"): Reka UI gives a
+   panel its size as a share of its group, written with three significant
+   digits (`flex-grow`), from which the handles of the group take their
+   room. A folded panel sized in pixels thus misses the size of its rail
+   by a fraction of a pixel, which the screen draws as one pixel more or
+   less from one rail to the other. The panel that holds a rail takes
+   exactly its size; the other panels of the group share the rest. */
+:global([data-panel]:has(> .panel-rail)) {
+  flex: 0 0 var(--rail-size) !important;
+}
+
 .panel-rail {
   display: flex;
   flex-shrink: 0;
