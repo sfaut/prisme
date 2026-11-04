@@ -2,8 +2,8 @@
  * Benchmark of the Pivoteur's engine (point A1 of its specification), JavaScript side, run by
  * Node (V8, the engine of Chrome): what the TypeScript of the interface becomes once compiled.
  *
- * Generates the rows of a result as the page receives them (batches of 500 rows parsed from
- * JSON, cells `string | null`), prepares typed columns once, then computes the pivot several
+ * Generates the rows of a result as the page receives them (batches parsed from JSON, of 500
+ * rows here, cells `string | null`), prepares typed columns once, then computes the pivot several
  * times: 4 row levels, 2 column levels (`YEAR(d)`, `MONTH(d)`), 12 measures, every subtotal and
  * total. The rows are those of the other sides (`common.mjs`), which must give the same
  * checksums; `../run.mjs` runs them all and compares them. The code follows the same shape as the

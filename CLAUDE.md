@@ -57,7 +57,7 @@ crates/        Cargo workspace
   store/       rows of a result in columns: text of the cells, dictionaries, numbers
   web-engine/  engine of the Pivoteur compiled to WebAssembly, for the Worker of the page
 web/           Vue application
-bench/         benchmarks outside the workspace (pivot/: engine of the Pivoteur; reload/: saved results; store/: store of the results; see docs/DEVELOPER.md)
+bench/         benchmarks outside the workspace (batches/: batches of rows from the server to the page; pivot/: engine of the Pivoteur; reload/: saved results; store/: store of the results; see docs/DEVELOPER.md)
 docs/          decisions and notes
 design/        brief of the interface for Claude Design, its screenshots and their capture
 servers/       data of the development database servers (compose.yaml)

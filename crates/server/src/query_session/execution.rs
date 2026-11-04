@@ -1,10 +1,11 @@
 //! Execution of the queries of a session: one query on the session's
 //! connection, or the queries of a batch in parallel, each on its own
 //! connection, opened on the session's current database, with their rows
-//! streamed to the client: a short first batch, shown without waiting for a
-//! full one, then full batches.
+//! streamed to the client in batches that follow their arrival
+//! (`RowBatches`): a row received does not wait for others to show.
 
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::task::Poll;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use futures_util::future::join_all;
 use prisme_connectors::mysql::sql_log::{self, Sent};
@@ -25,12 +26,19 @@ use crate::analyze::flavor_of;
 use crate::console::{self, Action};
 use crate::error_detail::ErrorDetail;
 
-/// Number of rows of the first `rows` message of a result: the first rows
-/// show quickly, without waiting for a full batch.
-const FIRST_BATCH_SIZE: usize = 50;
+/// Weight of a batch at which it leaves, in bytes of its cells in JSON: the
+/// page parses its message within a frame (about 8 ms for 1 MB of short
+/// cells), whatever the width of the rows. A heavier row leaves alone.
+const BATCH_BYTES: usize = 1_000_000;
 
-/// Number of rows of the next `rows` messages.
-const ROW_BATCH_SIZE: usize = 500;
+/// Longest wait of the first row of the first batch of a result: the first
+/// rows of a result that arrives without a pause show at once.
+const FIRST_BATCH_WAIT: Duration = Duration::from_millis(20);
+
+/// Longest wait of the first row of the next batches: a result that arrives
+/// without a pause updates the page about as often as the page applies its
+/// messages (every 100 ms).
+const BATCH_WAIT: Duration = Duration::from_millis(100);
 
 /// Maximum number of queries run at the same time (one connection each).
 const MAX_PARALLEL: usize = 8;
@@ -282,7 +290,26 @@ impl Session<'_> {
         let mut row_count = 0;
         let mut truncated = false;
         loop {
-            let row = match stream.next_row().await {
+            let read = {
+                let next = stream.next_row();
+                tokio::pin!(next);
+                match futures_util::poll!(next.as_mut()) {
+                    Poll::Ready(read) => read,
+                    Poll::Pending => {
+                        // The source pauses: the rows already read leave
+                        // while the next one is awaited. The read stays the
+                        // same future: interrupting it would cut a packet of
+                        // the protocol.
+                        if let Some(rows) = batches.take() {
+                            self.outbox
+                                .send(ServerMessage::Rows { query, rows })
+                                .await?;
+                        }
+                        next.await
+                    }
+                }
+            };
+            let row = match read {
                 Ok(Some(row)) => row,
                 Ok(None) => break,
                 Err(error) => {
@@ -321,7 +348,7 @@ impl Session<'_> {
                     .await?;
             }
         }
-        if let Some(rows) = batches.rest() {
+        if let Some(rows) = batches.take() {
             self.outbox
                 .send(ServerMessage::Rows { query, rows })
                 .await?;
@@ -388,41 +415,88 @@ pub(super) fn reads_only(statements: &[&Statement], dialect: Dialect) -> bool {
         .all(|statement| classify(&statement.sql, dialect) == StatementKind::Read)
 }
 
-/// Rows of a result gathered into the batches of the `rows` messages: the
-/// first one holds `FIRST_BATCH_SIZE` rows, the next ones `ROW_BATCH_SIZE`.
+/// Rows of a result gathered into the batches of the `rows` messages. A
+/// batch leaves at the first of these moments:
+///
+/// - the source pauses: the next row has not arrived yet (`take`, called by
+///   the reading of the rows), so a result that arrives slowly shows as it
+///   arrives;
+/// - it weighs `BATCH_BYTES`: a message of heavy rows stays small;
+/// - its first row has waited `FIRST_BATCH_WAIT` for the first batch of the
+///   result, `BATCH_WAIT` for the next ones: a result that never pauses
+///   shows its first rows at once, then updates regularly.
+///
+/// The number of rows of a batch thus follows the arrival of the rows: one
+/// packet of the target server for a slow result, more rows when the client
+/// reads slowly, since the rows then wait in the network buffer and the
+/// source no longer pauses.
 pub(super) struct RowBatches {
     /// Batch being filled.
     batch: Vec<Vec<Cell>>,
-    /// Number of rows that fills it.
-    size: usize,
+    /// Weight of the batch, in bytes of its cells in JSON.
+    bytes: usize,
+    /// Instant its first row was added; `None` while it is empty.
+    opened_at: Option<Instant>,
+    /// Has a batch of the result already left?
+    sent: bool,
 }
 
 impl RowBatches {
-    /// Starts the first batch.
+    /// Starts the first batch of a result.
     pub(super) fn new() -> Self {
         Self {
-            batch: Vec::with_capacity(FIRST_BATCH_SIZE),
-            size: FIRST_BATCH_SIZE,
+            batch: Vec::new(),
+            bytes: 0,
+            opened_at: None,
+            sent: false,
         }
     }
 
-    /// Adds a row; returns the batch once it is full, to send.
+    /// Adds a row; returns the batch if it leaves now, by its weight or by
+    /// the wait of its first row.
     pub(super) fn push(&mut self, row: Vec<Cell>) -> Option<Vec<Vec<Cell>>> {
+        self.push_at(row, Instant::now())
+    }
+
+    /// Adds a row at the instant `now`; returns the batch if it leaves now,
+    /// by its weight or by the wait of its first row.
+    pub(super) fn push_at(&mut self, row: Vec<Cell>, now: Instant) -> Option<Vec<Vec<Cell>>> {
+        let opened_at = *self.opened_at.get_or_insert(now);
+        self.bytes += weight(&row);
         self.batch.push(row);
-        if self.batch.len() < self.size {
+        let wait = if self.sent {
+            BATCH_WAIT
+        } else {
+            FIRST_BATCH_WAIT
+        };
+        if self.bytes >= BATCH_BYTES || now.duration_since(opened_at) >= wait {
+            self.take()
+        } else {
+            None
+        }
+    }
+
+    /// Takes the batch, to send it: when the source pauses, or at the end of
+    /// the result. `None` if it is empty.
+    pub(super) fn take(&mut self) -> Option<Vec<Vec<Cell>>> {
+        self.bytes = 0;
+        self.opened_at = None;
+        if self.batch.is_empty() {
             return None;
         }
-        self.size = ROW_BATCH_SIZE;
-        Some(std::mem::replace(
-            &mut self.batch,
-            Vec::with_capacity(ROW_BATCH_SIZE),
-        ))
+        self.sent = true;
+        Some(std::mem::take(&mut self.batch))
     }
+}
 
-    /// Last batch, not full, at the end of the result; `None` if it is empty.
-    pub(super) fn rest(self) -> Option<Vec<Vec<Cell>>> {
-        (!self.batch.is_empty()).then_some(self.batch)
-    }
+/// Weight of a row in its message, in bytes: the text of its cells with the
+/// quotes and separators of their JSON, `null` for NULL; escapes left out.
+fn weight(row: &[Cell]) -> usize {
+    let cells: usize = row
+        .iter()
+        .map(|cell| cell.as_ref().map_or(5, |text| text.len() + 3))
+        .sum();
+    cells + 2
 }
 
 /// Present instant, in milliseconds since the Unix epoch; 0 if the system clock

@@ -1508,3 +1508,168 @@ From the root of the repository, at 1 then 10 million rows, two runs each:
 cargo run --release --manifest-path bench/widths/Cargo.toml --target-dir target/widths-bench
 cargo run --release --manifest-path bench/widths/Cargo.toml --target-dir target/widths-bench -- 10000000
 ```
+
+## 16. Batches of rows: a reception that follows the arrival of the rows
+
+Study of 2026-11-04, on the real server and in Chrome.
+
+### 16.1 Symptom
+
+The server sent the rows of a result by batches of a fixed number of rows:
+50 for the first one, 500 for the next ones, each leaving only once full, or
+at the end of the result. A result that arrives slowly stayed out of sight
+while its rows were already received: a batch waited for its 500th row. Heavy
+rows made heavy messages: 500 rows of 100 KB, 50 MB parsed at once by the
+page.
+
+### 16.2 Measurement
+
+- `node bench/batches/run.mjs [--interface]` (`docs/DEVELOPER.md`, section
+  "Batches of rows"): Prisme built in release, without `--verbose`, on a
+  throwaway data folder; MariaDB 12.3.3 of the development servers; a client
+  under Node 26.7.0, and the interface in Chrome 156 without a window. Five
+  scenarios: `fast` (1 million rows of the query of chapter 10), `slow` (600
+  rows of 1 KB, one every 5 ms), `slow-small` (600 rows of a few bytes, one
+  every 5 ms), `rare` (2,000 rows of 200 bytes along a scan of 50 million
+  rows), `heavy` (2,000 rows of 100 KB).
+- Prototypes: the cutting of the batches set by environment variables (a
+  fixed number of rows; or by weight, by the wait of the first row of the
+  batch, and on a pause of the source), each build copied aside and named by
+  `PRISME_EXECUTABLE`. The interface runs in rounds, the builds in turns,
+  three rounds; the tables give the median, and the spread when it matters.
+- Parsing of a `rows` message by its size: `JSON.parse` in Node 26.7.0 (the
+  V8 of Chrome), median of 15 runs.
+- Same machine as chapter 9. Its speed changes from one run to the next: the
+  `fast` scenario ends between 8.7 and 14.3 s for the same build.
+
+First pass, client under Node, one run each:
+
+| Batches | `fast`: messages, end | `slow`: first message, longest silence | `rare`: longest silence | `heavy`: largest message, longest silence |
+|---|---|---|---|---|
+| 50, then 500 rows | 2,001, 9.3 s | 379 ms, 2,634 ms | 1,029 ms | 50 MB, 3,311 ms |
+| On a pause, 50 ms, 1 MB | 511, 9.4 s | 130 ms, 90 ms | 73 ms | 1 MB, 203 ms |
+| 50 ms, 1 MB, without the pause | 140, 10.4 s | 175 ms, 107 ms | 155 ms | 1 MB, 398 ms |
+| 50 rows | 20,000, 9.0 s | | | |
+| 500 rows | 2,000, 7.9 s | | | |
+| 5,000 rows | 200, 11.1 s | | | |
+
+In `slow-small`, every build receives the 600 rows in a single message,
+after 3.1 s: MariaDB keeps them in its network buffer (16 KB) until the end
+of the result.
+
+Parsing of a message:
+
+| Message | Size | Median | Speed |
+|---|---|---|---|
+| 500 short rows | 0.05 MB | 0.43 ms | 122 MB/s |
+| 10,000 short rows | 1.0 MB | 7.8 ms | 134 MB/s |
+| 40,000 short rows | 4.2 MB | 40 ms | 104 MB/s |
+| 10 rows of 100 KB | 1.0 MB | 0.77 ms | 1,305 MB/s |
+| 500 rows of 100 KB | 50 MB | 151 ms | 331 MB/s |
+
+Interface, prototypes, first row drawn / longest silence between two
+messages / end, median of three rounds (H: 50 then 500 rows; A: on a pause,
+1 MB, 100 ms; B: A with a page that applies at once the first message after
+a silence; C: B with a first batch of 20 ms at most):
+
+| Scenario | H | A | B | C |
+|---|---|---|---|---|
+| `fast` | 205 / 402 / 11.2 s | 338 / 836 / 16.1 s | 353 / 440 / 10.7 s | 180 / 663 / 13.2 s |
+| `slow` | 484 / 2,659 / 3.2 s | 184 / 125 / 3.2 s | 181 / 114 / 3.2 s | 142 / 144 / 3.2 s |
+| `rare` | 169 / 861 / 3.3 s | 292 / 135 / 2.9 s | 256 / 132 / 2.8 s | 178 / 466 / 3.5 s |
+| `heavy` | 325 / 3,096 / 9.4 s | 146 / 548 / 9.7 s | 176 / 607 / 11.0 s | 188 / 598 / 10.4 s |
+
+Times in milliseconds, ends in seconds. B and C differ only by their first
+batch: their ends of `fast` (10.7 and 13.2 s) give the size of the noise.
+
+The build kept (section 16.4) against the batches of 50 then 500 rows
+(commit a319080), interface, median of three rounds:
+
+| Scenario | Measure | 50, then 500 rows | Kept |
+|---|---|---|---|
+| `fast` | messages | 2,001 | 726 |
+| | first row drawn | 198 ms | 183 ms |
+| | longest silence | 318 ms | 317 ms |
+| | end | 10.4 s | 10.9 s |
+| | main thread | 8.8 s | 8.5 s |
+| `slow` | first row drawn | 464 ms | 156 ms |
+| | longest silence | 2,625 ms | 92 ms |
+| `rare` | first row drawn | 269 ms | 150 ms |
+| | longest silence | 822 ms | 155 ms |
+| `heavy` | largest message | 50 MB | 1 MB |
+| | first row drawn | 369 ms | 161 ms |
+| | longest silence | 2,495 ms | 488 ms |
+| | longest task | 754 ms | 486 ms |
+| | main thread | 4.1 s | 6.0 s |
+| | end | 8.2 s | 7.5 s |
+
+Under Node, the first message of `fast` leaves at 97 ms against 35 ms with
+the batches of 50 then 500 rows, without an explanation found; in the
+interface, at 46 ms against 50 ms.
+
+### 16.3 Analysis
+
+- **A fixed number of rows holds back the rows received**: in `slow`, the
+  first 50 rows show after 0.46 s, then nothing for 2.6 s, while MariaDB
+  sends a packet of 16 rows every 80 ms.
+- **Sending on a pause of the source shows the rows as they arrive**: a
+  batch leaves as soon as the next row has not arrived yet. The silences of
+  `slow` and `rare` fall to the rhythm of the packets of MariaDB (90 to
+  155 ms). A wait of the first row alone (50 ms, without the pause) delays
+  the first rows of `slow` by 45 ms more, and the silences of `rare` double.
+- **The number of messages does not set the speed**: 20,000 messages of 50
+  rows end as fast as 2,000 of 500 or 200 of 5,000, within the noise; the
+  server works per row, the page per update (chapters 11 and 12).
+- **A weight bounds the messages**: 1 MB of short cells parses in 7.8 ms,
+  within a frame; 50 MB of long cells, in 151 ms. In `heavy`, the longest
+  silence falls from 2.5 s to 0.5 s, and the end comes sooner.
+- **The first batch needs a short wait**: a result that never pauses sends
+  its first batch only once its first row has waited. At 100 ms (A, B), the
+  first row of `fast` shows after 338 to 353 ms; at 20 ms (C), after 180 ms.
+- **The application at once of the first message after a silence** (B
+  against A) shows no gain beyond the noise: the first drawing of the grid
+  takes about 70 ms by itself, and the message of the columns usually opens
+  the window of 100 ms.
+- **Showing the rows as they arrive costs updates**: in `heavy`, the page
+  applies its messages every 100 ms, where the batches of 500 rows updated
+  it five times; its main thread works 6.0 s instead of 4.1 s.
+- **Rows kept by MariaDB stay out of reach**: the small rows of `slow-small`
+  reach Prisme only at the end of the result.
+
+### 16.4 Decision
+
+The server cuts the batches of a result by the arrival of its rows
+(`RowBatches`, `crates/server/src/query_session/execution.rs`), without a
+number of rows. A batch leaves at the first of these moments:
+
+- the source pauses: the next row has not arrived yet. The read of this row
+  stays the same future, polled once then awaited: interrupting it would cut
+  a packet of the protocol of MariaDB;
+- it weighs 1 MB, counted on the text of its cells in JSON; a heavier row
+  leaves alone;
+- its first row has waited 20 ms for the first batch of the result, 100 ms
+  for the next ones.
+
+The number of rows of a message thus follows the result: a packet of MariaDB
+for a slow one; more rows when the page reads slowly, since the rows then
+wait in the network buffer and the source no longer pauses; few rows when
+they are heavy. The page keeps its application of the messages every
+100 ms.
+
+### 16.5 Takeaways
+
+- **Cut by time and weight, not by count**: the number of rows says nothing
+  of the wait of a row, nor of the weight of a message.
+- **The pause of the source is the signal of a slow result**: no delay to
+  choose, and none added.
+- **A read must not be cancelled to make room for a timer**: it is polled,
+  then awaited, without ever being dropped.
+
+### 16.6 Measuring again
+
+The development servers started (`docker compose up --detach --wait`) and
+the interface built (`npm run build` in `web/`), from the root of the
+repository: `node bench/batches/run.mjs --interface` (a few minutes). To
+compare two builds, name each one by `PRISME_EXECUTABLE` with its own
+`--label`, in turns, over several rounds. The results go to
+`target/batch-bench/<label>.json`.

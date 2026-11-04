@@ -266,20 +266,51 @@ FROM user"
 }
 
 #[test]
-fn sends_a_short_first_batch_of_rows_then_full_ones() {
+fn a_batch_leaves_once_its_first_row_has_waited() {
+    let start = std::time::Instant::now();
+    let at = |ms| start + std::time::Duration::from_millis(ms);
+    let row = || vec![Some("1".to_string())];
     let mut batches = super::execution::RowBatches::new();
-    let sizes: Vec<usize> = (0..1_200)
-        .filter_map(|_| batches.push(Vec::new()))
-        .map(|batch| batch.len())
-        .collect();
-    assert_eq!(sizes, [50, 500, 500]);
-    assert_eq!(batches.rest().map(|batch| batch.len()), Some(150));
+    // The first batch of a result waits 20 ms at most.
+    assert!(batches.push_at(row(), at(0)).is_none());
+    assert!(batches.push_at(row(), at(19)).is_none());
+    assert_eq!(
+        batches.push_at(row(), at(20)).map(|batch| batch.len()),
+        Some(3)
+    );
+    // The next ones, 100 ms, from their own first row.
+    assert!(batches.push_at(row(), at(50)).is_none());
+    assert!(batches.push_at(row(), at(149)).is_none());
+    assert_eq!(
+        batches.push_at(row(), at(150)).map(|batch| batch.len()),
+        Some(3)
+    );
 
-    // A result shorter than the first batch goes in a single message.
+    // What is left leaves at the end of the result, or when the source pauses.
+    assert!(batches.push_at(row(), at(160)).is_none());
+    assert_eq!(batches.take().map(|batch| batch.len()), Some(1));
+    assert!(batches.take().is_none());
+    assert!(super::execution::RowBatches::new().take().is_none());
+}
+
+#[test]
+fn a_heavy_batch_leaves_at_once() {
+    let start = std::time::Instant::now();
+    let heavy = || vec![Some("x".repeat(400_000)), None];
     let mut batches = super::execution::RowBatches::new();
-    assert!(batches.push(Vec::new()).is_none());
-    assert_eq!(batches.rest().map(|batch| batch.len()), Some(1));
-    assert!(super::execution::RowBatches::new().rest().is_none());
+    assert!(batches.push_at(heavy(), start).is_none());
+    assert!(batches.push_at(heavy(), start).is_none());
+    // 1.2 MB of cells: the batch leaves without waiting.
+    assert_eq!(
+        batches.push_at(heavy(), start).map(|batch| batch.len()),
+        Some(3)
+    );
+    // A row heavier than a batch leaves alone.
+    let huge = vec![Some("x".repeat(2_000_000))];
+    assert_eq!(
+        batches.push_at(huge, start).map(|batch| batch.len()),
+        Some(1)
+    );
 }
 
 #[tokio::test]
@@ -523,9 +554,21 @@ async fn streams_results_with_the_default_limit() {
                     "SELECT seq FROM seq_1_to_2500 LIMIT 1001"
                 );
                 assert_eq!(result.rows, 1000);
-                // A short first batch shows quickly, full batches follow.
-                assert_eq!(result.batch_sizes, [50, 500, 450]);
                 assert_eq!(result.end["truncated"], true);
+
+                // Rows produced slowly leave as they arrive, without waiting
+                // for others: 6 rows of 20 KB, one every 100 ms (beyond the
+                // network buffer of MariaDB, 16 KB, which would hold smaller
+                // ones).
+                let result = run_one(
+                    &mut socket,
+                    "SELECT seq, REPEAT('x', 20000) AS filler, SLEEP(0.1) AS pause \
+                     FROM seq_1_to_6 LIMIT 6",
+                    None,
+                )
+                .await;
+                assert_eq!(result.rows, 6);
+                assert!(result.batch_sizes.len() >= 3, "{:?}", result.batch_sizes);
 
                 // Written limit: it applies as is, beyond the default limit.
                 let result = run_one(

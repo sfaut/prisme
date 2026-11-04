@@ -428,6 +428,18 @@ To compare builds of Prisme, each one is copied aside once built (`npm run build
 
 The driving of the interface is shared by the three commands (`bench/store/interface.mjs`).
 
+### Batches of rows
+
+`bench/batches/run.mjs` measures how the rows of a result go from the server to the page, by which messages, and how soon the page shows them, for results that arrive fast, slowly or heavy. It starts Prisme as the benchmark of the saved results does, without its log: `--verbose` saves a line per message in the internal database, which would weigh on the comparison of the batches. From the root of the repository, the development servers started (`docker compose up --detach --wait`) and the interface built (`npm run build` in `web/`):
+
+```
+node bench/batches/run.mjs                    # every scenario, client under Node
+node bench/batches/run.mjs --interface        # also in the interface, in Chrome without a window
+node bench/batches/run.mjs --label=new slow   # one scenario, results under a name
+```
+
+Five scenarios, each a query on MariaDB with its own `LIMIT`: `fast` (1 million rows of 10 short columns, the query of the other benchmarks), `slow` (600 rows of 1 KB, one every 5 ms), `slow-small` (600 rows of a few bytes, one every 5 ms), `rare` (2,000 rows of 200 bytes found along a scan of 50 million rows) and `heavy` (2,000 rows of 100 KB). For each one, a client under Node notes the time, the rows and the bytes of each `rows` message from the sending of the query. With `--interface`, the interface of Prisme runs it too, driven as by `bench/store`, on an editor of its own: it notes the same messages as the page receives them, the first row drawn in the grid, the long tasks and the work of the main thread. The command prints one line per scenario (number of messages, rows and kilobytes per message, first and last message, longest silence between two messages, end) and writes the results to `target/batch-bench/<label>.json` (`release` by default), with the log of the server. Builds compare as for `bench/store`, named by `PRISME_EXECUTABLE`, in rounds.
+
 ## Comparison of the SQL engines
 
 `bench/sql/run.mjs` measures how the SQL engines answer the same expressions, for the reference `docs/SQL-COMPARISON.md`, whose section 2 describes the cases and their results. From the root of the repository, the development servers started (`docker compose up --detach --wait`):
@@ -533,7 +545,7 @@ Prisme first announces the queries of the batch (`batch`, each one numbered), th
 
 1. `started`: the query starts (in parallel, it may wait for its turn).
 2. `columns`: column names and types, columns right-aligned by the grid (numbers, dates and times), the text actually run, how the limit was handled (`added` if Prisme added `LIMIT N + 1`, `user_limit` if the query had one, `not_applicable` for `SHOW` or `EXPLAIN`), the maximum row count (`expected_rows`, `null` if unknown), the execution time measured by the server (`execution_us`, in microseconds) and the end of the execution (`executed_at`, in milliseconds since the Unix epoch).
-3. `rows`: the rows, a first batch of 50 that shows without waiting for a full one, then batches of 500, each cell as text or `null`.
+3. `rows`: the rows, each cell as text or `null`, in batches that follow their arrival (`RowBatches`, `crates/server/src/query_session/execution.rs`). A batch leaves as soon as the target server pauses (the next row has not arrived yet), once it weighs 1 MB, or once its first row has waited 20 ms (first batch of the result) or 100 ms (the next ones). A slow result thus shows as it arrives, a fast one in regular messages, and heavy rows in messages of 1 MB at most; a row heavier than that leaves alone.
 4. `done`: row count, `truncated` (rows beyond the limit were dropped), affected rows, duration.
 
 On failure or cancellation, an `error` message replaces the rest of that query, and the session goes on. `batch_done` ends the batch. In parallel, messages of different queries interleave.
@@ -651,6 +663,7 @@ web/               Vue interface
   src/stores/      shared state (connections, settings)
 bench/             benchmarks, outside the workspace
   prisme.mjs       Prisme on the real server, for the benchmarks that measure it
+  batches/         batches of rows from the server to the page: fast, slow and heavy results (run.mjs)
   parser/          sqlparser compiled to WebAssembly: size of the module, time of a parse (run.mjs)
   pivot/           engine of the Pivoteur: native, WebAssembly, JavaScript (run.mjs)
   reload/          saved results: their save, and their reading again by the page (run.mjs)

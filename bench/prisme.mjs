@@ -118,21 +118,27 @@ async function serverUp() {
 }
 
 /**
- * Starts Prisme (`EXECUTABLE`) on an emptied data folder, with its log (`--verbose`), waits until
- * it answers, then saves a connection to MariaDB. The server is stopped if it fails to start.
+ * Starts Prisme (`EXECUTABLE`) on an emptied data folder, with its log (`--verbose`) unless told
+ * otherwise, waits until it answers, then saves a connection to MariaDB. The server is stopped if
+ * it fails to start.
+ *
+ * With `--verbose`, the server also saves each line of its log in its internal database: one line
+ * per message sent, which slows down the reception of a large result (`docs/PERFORMANCES.md`,
+ * section 10.7).
  *
  * @param {string} dataDir Data folder.
+ * @param {{ verbose?: boolean }} [options] Start with the log of the messages (true by default).
  * @returns {Promise<{ pid: number, connection: number, log: () => string, stop: () => void }>}
  *   Id of the process, id of the connection, log so far, and the stop of the server.
  */
-export async function start(dataDir) {
+export async function start(dataDir, { verbose = true } = {}) {
   rmSync(dataDir, { recursive: true, force: true })
   mkdirSync(dataDir, { recursive: true })
-  const server = spawn(
-    EXECUTABLE,
-    ['--data-dir', dataDir, '--listen', ADDRESS, '--user-email', 'bench@local', '--verbose'],
-    { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] },
-  )
+  const options = ['--data-dir', dataDir, '--listen', ADDRESS, '--user-email', 'bench@local']
+  const server = spawn(EXECUTABLE, verbose ? [...options, '--verbose'] : options, {
+    cwd: ROOT,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
   let log = ''
   server.stdout.on('data', (chunk) => (log += chunk))
   server.stderr.on('data', (chunk) => (log += chunk))
