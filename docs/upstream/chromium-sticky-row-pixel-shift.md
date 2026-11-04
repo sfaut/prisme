@@ -14,7 +14,7 @@ its layer without asking for one, and whose drawing then depends on the history 
 
 Measured on 2026-11-04 with the page below, in headless Chrome started with
 `--force-device-scale-factor`, each case on a fresh page: a screenshot of the first row and of the
-row below it through the DevTools protocol, the dark pixels read across each row. The two images
+row below it through the DevTools protocol, the dark pixels read across each row. The three images
 of the ticket, drawn from such screenshots, are to be attached to it when posting.
 
 ---
@@ -136,6 +136,10 @@ while each border of the rows below is snapped again from its new layout positio
 
 The sticky row draws its borders as it did at 20px (30, 105, 211, 347, 437, 559); loaded at
 20.05px, it draws them at 30, 106, 212, 347, 438, 559, like the rows below.
+
+As seen in the page, enlarged 3 times, at a scale of 150 % and an offset of 20.05px:
+
+![Scale 150 %: three of the five column lines jog at the bottom of the sticky row after the move](chromium-sticky-row-pixel-shift-3.png)
 
 The two images below enlarge, around one column line, the bottom of the grey row and the top of
 the row below, one square per device pixel, each panel from a fresh page: loaded at the offset,
