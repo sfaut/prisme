@@ -572,7 +572,7 @@ GitHub Actions (`.github/workflows/ci.yaml`) checks every push to `master` and e
 - interface: formatting, lint, types and tests;
 - backend: formatting, `clippy` and all tests, those on the development servers included, started by Docker Compose on the runner.
 
-A change that only touches documentation (`*.md`, `docs/`, `.claude/`, `LICENSE`) runs nothing. The Windows, Linux and macOS executables are only built for a release, or when the workflow is run by hand ("Actions" tab, "CI", "Run workflow"): they are then downloadable from the run's artifacts (GitHub sign-in required, kept 90 days).
+A change that only touches documentation (`*.md`, `docs/`, `.claude/`, `LICENSE`) runs nothing, nor does the push of a version: its preparation commit carries `[skip ci]`, as the release runs the same checks on that commit. The Windows, Linux and macOS executables are only built for a release, or when the workflow is run by hand ("Actions" tab, "CI", "Run workflow"): they are then downloadable from the run's artifacts (GitHub sign-in required, kept 90 days).
 
 A version is published through a GitHub release, whose changelog is written by hand (full process in [CLAUDE.md](../CLAUDE.md), section "Publishing a version"). The versions in `Cargo.toml` and `web/package.json` must already match the tag, and the target commit must be on GitHub:
 
@@ -582,7 +582,7 @@ git push origin v0.1.0
 gh release create v0.1.0 --verify-tag --title v0.1.0 --notes-file changelog.md
 ```
 
-The published release runs the CI again on that commit. It checks the versions, then attaches `prisme-v0.1.0-windows-x86_64.exe`, `prisme-v0.1.0-linux-x86_64` and `prisme-v0.1.0-macos-universal` to the release, about twenty minutes after publication. Past changelogs are in [CHANGELOG.md](CHANGELOG.md).
+The published release runs the CI on that commit. It checks the versions, then attaches `prisme-v0.1.0-windows-x86_64.exe`, `prisme-v0.1.0-linux-x86_64` and `prisme-v0.1.0-macos-universal` to the release, about twenty minutes after publication. Past changelogs are in [CHANGELOG.md](CHANGELOG.md).
 
 ## Pinned versions
 
