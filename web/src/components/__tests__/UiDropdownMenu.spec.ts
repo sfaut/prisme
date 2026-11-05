@@ -80,4 +80,38 @@ describe('UiDropdownMenu', () => {
     ])
     wrapper.unmount()
   })
+
+  it('draws exclusive choices as radio choices, the one made checked with its own icon', async () => {
+    const choose = vi.fn<() => void>()
+    const groups: MenuGroup[] = [
+      {
+        label: 'Agrégat',
+        items: [
+          { label: 'SUM(montant)', icon: Download, checked: true },
+          { label: 'MAX(montant)', icon: FileCode, checked: false, onSelect: choose },
+        ],
+      },
+      { label: 'Élément', items: [{ label: 'Retirer', icon: Download }] },
+    ]
+    const wrapper = mount(UiDropdownMenu, {
+      props: { groups },
+      slots: { default: () => h('button', { type: 'button' }, 'Menu') },
+      attachTo: document.body,
+    })
+    press(wrapper.find('button').element, 'Enter')
+    await vi.waitFor(() => expect(shownLabels()).toEqual(['Retirer']))
+
+    const radios = [...document.querySelectorAll('[role="menuitemradio"]')] as HTMLElement[]
+    expect(radios.map((radio) => [radio.textContent?.trim(), radio.dataset.state])).toEqual([
+      ['SUM(montant)', 'checked'],
+      ['MAX(montant)', 'unchecked'],
+    ])
+    expect(radios[0]?.getAttribute('aria-checked')).toBe('true')
+    // The choice made keeps its icon: no other one is drawn.
+    expect(radios[0]?.querySelectorAll('svg')).toHaveLength(1)
+    expect(radios[0]?.querySelector('svg')?.classList).toContain('lucide-download')
+    radios[1]?.click()
+    expect(choose).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
 })

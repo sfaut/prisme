@@ -29,7 +29,6 @@
 <script setup lang="ts">
 import {
   ArrowLeftRight,
-  Check,
   Columns3,
   EllipsisVertical,
   Funnel,
@@ -264,8 +263,8 @@ function elementItems(zone: PivotZone, index: number): MenuItem[] {
 }
 
 /**
- * Choices of the precision of a level, or of a measure that takes one (`takesPrecision`); none for
- * a column that holds no dates.
+ * Choices of the precision of a level, or of a measure that takes one (`takesPrecision`), the
+ * current one checked; none for a column that holds no dates.
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
@@ -278,13 +277,14 @@ function precisionItems(zone: 'rows' | 'columns' | 'measures', index: number): M
   const current = 'aggregate' in element ? measurePrecision(element) : element.precision
   return precisionChoices(props.types[element.column]?.family).map(({ precision, label }) => ({
     label,
-    icon: precision === current ? Check : PRECISION_ICONS[label],
+    icon: PRECISION_ICONS[label],
+    checked: precision === current,
     onSelect: () => (config.value = withPrecision(config.value, { zone, index }, precision)),
   }))
 }
 
 /**
- * Choices of the aggregate of a measure.
+ * Choices of the aggregate of a measure, the current one checked.
  *
  * @param measure Measure.
  * @param choose Takes the aggregate chosen.
@@ -299,7 +299,8 @@ function aggregateItems(
     const { column, precision } = measure
     return {
       label: measureExpression({ aggregate, column, precision }, props.names),
-      icon: aggregate === measure.aggregate ? Check : icon,
+      icon,
+      checked: aggregate === measure.aggregate,
       disabled: refused,
       hint: refused ? 'Demande une colonne de nombres' : undefined,
       onSelect: () => choose(aggregate),

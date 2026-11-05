@@ -27,6 +27,12 @@ export interface MenuItem {
    */
   hint?: string
   /**
+   * Is it the choice made, among the exclusive choices of its group
+   * (`MenuGroup`)? Set on each choice of such a group, which becomes a group
+   * of radio choices: the choice made keeps its icon and is highlighted.
+   */
+  checked?: boolean
+  /**
    * Inactive choice.
    */
   disabled?: boolean
@@ -62,10 +68,12 @@ export const MENU_PANEL =
   'z-50 min-w-53 rounded-xl border border-line bg-surface p-1 text-base shadow-lg'
 
 /**
- * Classes of a choice, or of the choice that opens a submenu.
+ * Classes of a choice, or of the choice that opens a submenu. The choice
+ * made among radio choices is highlighted in the primary color, darker under
+ * the pointer or the keyboard.
  */
 export const MENU_ENTRY =
-  'flex h-8 cursor-pointer items-center gap-3 rounded-lg px-3 select-none data-disabled:cursor-not-allowed data-disabled:opacity-50 data-highlighted:bg-surface-raised'
+  'flex h-8 cursor-pointer items-center gap-3 rounded-lg px-3 select-none data-disabled:cursor-not-allowed data-disabled:opacity-50 data-highlighted:bg-surface-raised data-[state=checked]:bg-primary/15 data-[state=checked]:text-primary data-highlighted:data-[state=checked]:bg-primary/25'
 
 /**
  * Classes of the heading of a group of choices.

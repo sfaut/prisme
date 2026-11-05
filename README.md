@@ -319,8 +319,8 @@ The panel has three columns: the columns of the result, with their type and a se
 | Send a level to the other axis | Drag it, or its menu: **Passer en lignes**, **Passer en colonnes** (Move to rows, Move to columns) |
 | Remove an element | Its menu, **Retirer** (Remove), or drag it and release it outside the zones; Esc cancels the drag |
 | Name an element | Its menu, **Nommer…** (Name), or a double click on its label; Enter confirms, Esc cancels |
-| Change the aggregate of a measure | Its menu, group **Agrégat** (Aggregate) |
-| Keep a part of the dates of a level, or of `COUNT(DISTINCT)`, `MIN` and `MAX` | Its menu, group **Précision** (Precision) |
+| Change the aggregate of a measure | Its menu, group **Agrégat** (Aggregate), the current one highlighted |
+| Keep a part of the dates of a level, or of `COUNT(DISTINCT)`, `MIN` and `MAX` | Its menu, group **Précision** (Precision), the current one highlighted |
 | Filter on a column | Place it in **Filtres**: its settings open beside it, and its menu opens them again, **Réglages…** (Settings). Choose a condition, then check values or type them: Enter or leaving the field applies, Esc closes and forgets what is being typed |
 | Filter on the dates of a column | In the settings of its filter, group **Précision** (Precision) |
 | Keep the groups of a measure | Drag it into **Filtres**, or its menu, **Filtrer sur cette mesure** (Filter on this measure): the settings of the filter set its aggregate, its condition, its values and its level |

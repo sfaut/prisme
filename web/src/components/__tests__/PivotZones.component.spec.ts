@@ -1,4 +1,4 @@
-import { Check } from '@lucide/vue'
+import { ArrowDownToLine, CalendarClock, CalendarDays } from '@lucide/vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { type VueWrapper, mount } from '@vue/test-utils'
@@ -272,12 +272,26 @@ describe('PivotZones', () => {
       'Horodatage (hh:mm:ss.ms)',
       'Horodatage (hh:mm:ss.µs)',
     ])
-    expect(precision()?.items[5]?.icon).toBe(Check)
+    expect(precision()?.items.map((item) => item.checked)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+    ])
+    // The choice made keeps its icon.
+    expect(precision()?.items[5]?.icon).toBe(CalendarClock)
     precision()?.items[2]?.onSelect?.()
     await nextTick()
     expect(shownConfig(mounted).rows).toEqual([{ column: 0, name: '', precision: 'month' }])
-    expect(precision()?.items[2]?.icon).toBe(Check)
-    expect(precision()?.items[5]?.icon).not.toBe(Check)
+    expect(precision()?.items[2]).toMatchObject({ checked: true, icon: CalendarDays })
+    expect(precision()?.items[5]?.checked).toBe(false)
     expect(mounted.find('[data-element]').text()).toContain('region (Mois)')
     precision()?.items[7]?.onSelect?.()
     await nextTick()
@@ -304,7 +318,13 @@ describe('PivotZones', () => {
       'Semaine',
       'Date',
     ])
-    expect(precision()?.items[4]?.icon).toBe(Check)
+    expect(precision()?.items.map((item) => item.checked)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      true,
+    ])
     precision()?.items[2]?.onSelect?.()
     await nextTick()
     expect(shownConfig(mounted).measures).toEqual([
@@ -315,6 +335,11 @@ describe('PivotZones', () => {
     const aggregates = groups().find((group) => group.label === 'Agrégat')!.items
     expect(aggregates.map((item) => item.label)).toContain('MAX(montant (Mois))')
     expect(aggregates.map((item) => item.label)).toContain('COUNT(montant)')
+    // The aggregate chosen is checked and keeps its icon.
+    expect(aggregates.filter((item) => item.checked)).toEqual([
+      expect.objectContaining({ label: 'MIN(montant (Mois))', icon: ArrowDownToLine }),
+    ])
+    expect(aggregates.every((item) => item.checked !== undefined)).toBe(true)
     await choose(mounted, 1, 'COUNT(montant)')
     expect(shownConfig(mounted).measures[0]?.precision).toBeUndefined()
     expect(groups().map((group) => group.label)).toEqual(['Agrégat', 'Élément'])

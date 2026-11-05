@@ -5,7 +5,9 @@
   an action, or is inactive, and possibly an explanation in its tooltip. A
   choice can open a submenu of choices instead (`UiMenuEntries.vue`). The
   choices come as a list, or gathered in groups, each under its heading and
-  apart from the previous one by a line. Closed, the menu gives the focus
+  apart from the previous one by a line. A group of exclusive choices, which
+  tell which one is made (`checked`), is a group of radio choices
+  (`DropdownMenuRadioGroup`). Closed, the menu gives the focus
   back to its trigger, unless the parent prevents it (`closeAutoFocus`), to
   give it to a field opened by a choice.
 -->
@@ -15,6 +17,7 @@ import {
   DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuPortal,
+  DropdownMenuRadioGroup,
   DropdownMenuRoot,
   DropdownMenuTrigger,
 } from 'reka-ui'
@@ -50,6 +53,18 @@ const emit = defineEmits<{
    */
   closeAutoFocus: [event: Event]
 }>()
+
+/**
+ * Value of a group of radio choices: the label of the choice made, `''`
+ * without one; `undefined` for a group of other choices.
+ *
+ * @param group Group of choices.
+ */
+function radioValue(group: MenuGroup): string | undefined {
+  return group.items.some((item) => item.checked !== undefined)
+    ? (group.items.find((item) => item.checked)?.label ?? '')
+    : undefined
+}
 </script>
 
 <template>
@@ -65,14 +80,16 @@ const emit = defineEmits<{
         @close-auto-focus="emit('closeAutoFocus', $event)"
       >
         <ui-menu-entries v-if="items" :items="items" />
-        <dropdown-menu-group
+        <component
+          :is="radioValue(group) === undefined ? DropdownMenuGroup : DropdownMenuRadioGroup"
           v-for="(group, index) in groups"
           :key="group.label"
+          v-bind="radioValue(group) === undefined ? {} : { modelValue: radioValue(group) }"
           :class="{ 'border-t border-line pt-1': index > 0 }"
         >
           <dropdown-menu-label :class="MENU_HEADING">{{ group.label }}</dropdown-menu-label>
           <ui-menu-entries :items="group.items" />
-        </dropdown-menu-group>
+        </component>
       </dropdown-menu-content>
     </dropdown-menu-portal>
   </dropdown-menu-root>
