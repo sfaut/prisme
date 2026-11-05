@@ -2,6 +2,59 @@
 
 Changelogs of the published versions of Prisme, most recent first. Each entry is also the notes of its GitHub release. The interface is in French: its labels are quoted as they appear, with a translation.
 
+## v0.10.0 (2026-11-05)
+
+### 🚀 Launch
+
+We are proud to announce Prisme v0.10.0. The Pivoteur grows into a full pivot table: filters on the values of a column and on the groups of a measure, with the conditions of ANSI SQL, sorts by labels and by values, compact, outline and tabular layouts with their totals, columns that each take their width, and dates down to the microsecond. The object navigator lists the references of a table, a result of several million rows no longer stops Prisme, and a slow result shows its rows as they arrive.
+
+### ✨ New features
+
+- Object navigator: a **Références** folder (References), after the foreign keys of a table, lists the foreign keys of every database that point to it, one line per key: `id ← orders.customer_id`, `(country, code) ← address (country, region_code)` for a composite key, the database named when it is another one ([#29](https://github.com/sfaut/prisme/issues/29)).
+- Pivoteur:
+  - a zone **Filtres** (Filters): a column keeps the rows by its values, a measure keeps the groups of a level of either axis. The settings of a filter open beside it, with twelve conditions read as ANSI SQL reads them (**Dans la liste** `IN`, **Hors de la liste** `NOT IN`, `=`, `<>`, `<`, `<=`, `>`, `>=`, **Entre** `BETWEEN`, **N’est pas entre** `NOT BETWEEN`, **Est NULL**, **N’est pas NULL**), a list of the values with a search, and a precision for the dates. The table is computed from the rows that remain, so its totals add up;
+  - sorts: the ▲▼ button of a level sorts its labels, the ⇅ button of a column header ranks the lines by its values, that of a line label ranks the columns by its own; the hierarchy stays, and a total stays last;
+  - **Disposition** (Layout), in the header of the panel: lines in **Compact**, **Plan** (Outline) or **Tabulaire** (Tabular) form, **Répéter les libellés** (Repeat the labels), and for each axis its grand total and the subtotal of each level;
+  - each column of the table takes its own width: a drag of the right edge of its header, a double click to fit it to its content, a second one to give back its default width. By default, a column of values takes the width of its longest text;
+  - a column can be placed several times, in a zone and on both axes (`d (Année)` in the columns, `d (Mois)` in the lines);
+  - **Retirer** (Remove) in the menu of each element;
+  - a `datetime` column offers, right after **Date**, **Horodatage** (Timestamp, formerly **Date et heure**), then its time truncated to the hour, the minute, the second, the millisecond or the microsecond, as `DATE_TRUNC` does; a date written without a time falls at midnight;
+  - `COUNT(DISTINCT)`, `MIN` and `MAX` of dates take a precision: `COUNT(DISTINCT vendue_le (Mois))` counts the months, `MIN(vendue_le (Mois))` gives the first one;
+  - the sorts, the filters, the layout and the widths are saved with the tab.
+
+### 💥 Breaking changes
+
+- Pivoteur: an error of calculation, such as a sum that overflows, empties the table, and its message gives the value and its row; the table used to keep its last computation. Under a precision, a date outside of the calendar (`0000-00-00`, `2026-03-00`, a year outside of 0001 to 9999) stops the computation when a row taken into account holds it; it used to keep its year, its quarter and its month. The filter of the grid, or a filter of the Pivoteur, leaves its rows out.
+
+### 🐞 Bug fixes
+
+- A query of several million rows no longer stops Prisme with "memory allocation of 1073741824 bytes failed" ([#31](https://github.com/sfaut/prisme/issues/31)). The rows of a result are saved in chunks of 10,000 rows as they arrive, and read back chunk by chunk after a reload, with the progress of the reading. A result is kept whatever its size: at 10 million rows, the server peaks at 0.06 GB instead of 10.8 GB.
+- A result that arrives slowly shows its rows as they arrive. A batch of rows leaves as soon as the database server pauses, once it weighs 1 MB, or after 20 ms for the first one and 100 ms for the next ones; it used to wait for 50, then 500 rows, and heavy rows made messages of 50 MB.
+- Pivoteur: the cursor no longer blinks to "forbidden" while an element is dragged over the zones, and an element released between two zones no longer leaves its zone.
+- The band and the grip of a splitter, and the band of a column resize handle, stay centered on their line at every display scale, during a drag too; the band lit under the pointer is narrower, and the width grabbed stays the same.
+- The rails of the folded panels all have the same thickness, a whole number of screen pixels at 100, 125 and 150 %, and hovering near a splitter no longer darkens the rail beside it nor shows its tooltip.
+- The Pivoteur lines up with the results: the same margin under its status bar, the same gap above it, and a single line on the left of its first column.
+
+### ⚙️ Internal improvements
+
+- Dependencies:
+  - `@lucide/vue` 1.66.0 → 1.69.0, `tailwindcss` and `@tailwindcss/vite` 4.3.3 → 4.3.4, `vite` 8.3.5 → 8.3.6, `vitest` 5.0.5 → 5.1.0;
+  - `rusqlite` stays at 0.40.2: `rusqlite_migration` 2.6.0 does not accept 0.41.1 yet; `typescript` stays at 6.0: `vue-tsc` and `typescript-eslint` do not support TypeScript 7 yet; `oxlint` stays at 1.90: `eslint-plugin-oxlint`, released with it, has no 1.91 yet.
+- The internal database keeps the rows of a result in chunks (migration 0024), and a WebSocket that reattaches receives them a chunk at a time.
+- The engine of the Pivoteur filters, sorts and lays out its table, and gives the lengths of its texts with each table: a sort, a layout or a width draws the table again without computing it.
+- A test fails on any box drawn one line wide: every line of the interface is a border.
+- New benchmarks: the default widths of the Pivoteur (`bench/widths`) and the batches of rows (`bench/batches`); that of the saved results reads the chunks.
+
+### 📝 Documentation
+
+- README: the **Références** folder; the filters, the sorts, the layout, the widths and the precisions of the time of the Pivoteur.
+- Developer guide: the drawing of the lines at a display scale that is not whole, with the limit of the sticky header rows in Chrome; the workarounds of the splitter of Reka UI.
+- `docs/PERFORMANCES.md`: the references of a table, the default widths of the Pivoteur, the batches of rows, the rows saved in chunks.
+- `docs/SQL-COMPARISON.md`: `BETWEEN`, `NOT IN`, `HAVING` on a total and on `NULL`, the lengths of `CAST`, `DATE_ADD` and `STRING_AGG`.
+- `docs/QUESTIONS.md`: a splitter of Prisme's own in place of Reka UI's, postponed.
+- `docs/upstream/`: ticket drafts for Chromium (shifted lines of a sticky row) and Reka UI (size of a panel in pixels).
+- `docs/TODO-PIVOTER.md`: the decisions on the filters, and the review of the Pivoteur against ANSI SQL.
+
 ## v0.9.0 (2026-11-02)
 
 ### 🚀 Launch
