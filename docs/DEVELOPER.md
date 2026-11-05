@@ -582,7 +582,7 @@ git push origin v0.1.0
 gh release create v0.1.0 --verify-tag --title v0.1.0 --notes-file changelog.md
 ```
 
-The published release runs the CI on that commit. It checks the versions, then attaches `prisme-v0.1.0-windows-x86_64.exe`, `prisme-v0.1.0-linux-x86_64` and `prisme-v0.1.0-macos-universal` to the release, about twenty minutes after publication. Past changelogs are in [CHANGELOG.md](CHANGELOG.md).
+The published release runs the CI on that commit. It checks the versions, then attaches `prisme-v0.1.0-windows-x86_64.exe`, `prisme-v0.1.0-linux-x86_64` and `prisme-v0.1.0-macos-universal` to the release, about ten minutes after publication. Past changelogs are in [CHANGELOG.md](CHANGELOG.md).
 
 ## Pinned versions
 
