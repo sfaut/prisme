@@ -113,7 +113,12 @@ jobs:
       # backend compiles; the tests wait until they are ready.
       - name: Database servers (start)
         run: docker compose up --detach
+      # A release restores the cache of master, and saves none: it runs on
+      # its tag, and GitHub only shares across refs the caches of the default
+      # branch, so a cache saved there would never be read.
       - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.event_name != 'release' }}
       - name: Formatting (cargo fmt)
         run: cargo fmt --all --check
       - name: Static analysis (cargo clippy)
@@ -135,6 +140,10 @@ jobs:
 
   # Executables, interface embedded. On Windows, the C runtime is built in
   # (crt-static, in .cargo/config.toml): no VCRUNTIME140.dll to install.
+  #
+  # No Rust cache: these builds run for a release, on its tag, whose caches
+  # no other release can read, or by hand, too rarely to keep one. The caches
+  # saved by the releases up to v0.10.0 were never restored.
   #
   # TODO: sign the Windows (SignPath Foundation) and macOS (Apple Developer
   # account, notarization) executables, see docs/QUESTIONS.md, section 3.
@@ -173,9 +182,6 @@ jobs:
       - name: Built interface present
         run: test -f web/dist/index.html
       - run: rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: release
       - name: Build
         if: runner.os != 'macOS'
         run: cargo build --release --bin prisme
