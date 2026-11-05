@@ -336,6 +336,65 @@ export const CASES = [
     },
   },
   {
+    key: 'agg.group_concat_offset_beyond',
+    forms: {
+      shared:
+        "(SELECT GROUP_CONCAT(k ORDER BY k SEPARATOR ',' LIMIT 2 OFFSET 5) FROM (SELECT 'b' AS k UNION ALL SELECT 'a' UNION ALL SELECT 'c') AS t)",
+    },
+  },
+  {
+    key: 'agg.group_concat_limit_zero',
+    forms: {
+      shared:
+        "(SELECT GROUP_CONCAT(k ORDER BY k SEPARATOR ',' LIMIT 0) FROM (SELECT 'b' AS k UNION ALL SELECT 'a' UNION ALL SELECT 'c') AS t)",
+    },
+  },
+  {
+    key: 'agg.group_concat_null',
+    forms: {
+      shared:
+        "(SELECT STRING_AGG(k, ',' ORDER BY k) FROM (SELECT 'b' AS k UNION ALL SELECT NULL UNION ALL SELECT 'a') AS t)",
+      mysql:
+        "(SELECT GROUP_CONCAT(k ORDER BY k SEPARATOR ',') FROM (SELECT 'b' AS k UNION ALL SELECT NULL UNION ALL SELECT 'a') AS t)",
+    },
+  },
+  {
+    key: 'agg.group_concat_all_null',
+    forms: {
+      shared:
+        "(SELECT STRING_AGG(k, ',') FROM (SELECT CAST(NULL AS VARCHAR(5)) AS k UNION ALL SELECT NULL) AS t)",
+      mysql:
+        "(SELECT GROUP_CONCAT(k SEPARATOR ',') FROM (SELECT CAST(NULL AS CHAR(5)) AS k UNION ALL SELECT NULL) AS t)",
+    },
+  },
+  {
+    key: 'agg.group_concat_desc',
+    forms: {
+      shared:
+        "(SELECT STRING_AGG(k, ',' ORDER BY k DESC) FROM (SELECT 'b' AS k UNION ALL SELECT 'a' UNION ALL SELECT 'c') AS t)",
+      mysql:
+        "(SELECT GROUP_CONCAT(k ORDER BY k DESC SEPARATOR ',') FROM (SELECT 'b' AS k UNION ALL SELECT 'a' UNION ALL SELECT 'c') AS t)",
+    },
+  },
+  {
+    key: 'agg.group_concat_order_null',
+    forms: {
+      shared:
+        "(SELECT STRING_AGG(k, ',' ORDER BY o) FROM (SELECT 'a' AS k, 2 AS o UNION ALL SELECT 'b', NULL UNION ALL SELECT 'c', 1) AS t)",
+      mysql:
+        "(SELECT GROUP_CONCAT(k ORDER BY o SEPARATOR ',') FROM (SELECT 'a' AS k, 2 AS o UNION ALL SELECT 'b', NULL UNION ALL SELECT 'c', 1) AS t)",
+    },
+  },
+  {
+    key: 'agg.group_concat_order_null_desc',
+    forms: {
+      shared:
+        "(SELECT STRING_AGG(k, ',' ORDER BY o DESC) FROM (SELECT 'a' AS k, 2 AS o UNION ALL SELECT 'b', NULL UNION ALL SELECT 'c', 1) AS t)",
+      mysql:
+        "(SELECT GROUP_CONCAT(k ORDER BY o DESC SEPARATOR ',') FROM (SELECT 'a' AS k, 2 AS o UNION ALL SELECT 'b', NULL UNION ALL SELECT 'c', 1) AS t)",
+    },
+  },
+  {
     key: 'agg.cut',
     forms: {
       shared:
@@ -344,6 +403,17 @@ export const CASES = [
         "(SELECT CHAR_LENGTH(GROUP_CONCAT(k)) FROM (SELECT REPEAT('x', 600) AS k UNION ALL SELECT REPEAT('x', 600)) AS t)",
       sqlite:
         "(SELECT LENGTH(STRING_AGG(k, ',')) FROM (SELECT printf('%.600c', 'x') AS k UNION ALL SELECT printf('%.600c', 'x')) AS t)",
+    },
+  },
+  {
+    key: 'agg.cut_bytes',
+    forms: {
+      shared:
+        "(SELECT CHAR_LENGTH(STRING_AGG(k, ',')) FROM (SELECT REPEAT('é', 600) AS k UNION ALL SELECT REPEAT('é', 600)) AS t)",
+      mysql:
+        "(SELECT CHAR_LENGTH(GROUP_CONCAT(k)) FROM (SELECT REPEAT('é', 600) AS k UNION ALL SELECT REPEAT('é', 600)) AS t)",
+      sqlite:
+        "(SELECT LENGTH(STRING_AGG(k, ',')) FROM (SELECT replace(printf('%.600c', 'x'), 'x', 'é') AS k UNION ALL SELECT replace(printf('%.600c', 'x'), 'x', 'é')) AS t)",
     },
   },
   {

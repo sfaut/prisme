@@ -6,7 +6,7 @@ Each value is measured on the engine (`node bench/sql/run.mjs`, section 2) or qu
 
 ## 1. Engines and sources
 
-Measured on 2026-11-02:
+Measured on 2026-11-02, and on 2026-11-05 for the cases of `GROUP_CONCAT` added to section 3.6 (`agg.group_concat_*`, `agg.cut_bytes`):
 
 | Engine | Versions | Where |
 |---|---|---|
@@ -179,7 +179,15 @@ MySQL, MariaDB and SQLite take NULL as the smallest value, PostgreSQL as the lar
 | `agg.group_concat` | `GROUP_CONCAT(k ORDER BY k SEPARATOR ',')` | | `a,b` | `a,b` | error: syntax | `a,b` (`GROUP_CONCAT(k, ',' ORDER BY k)`) | error: syntax | `group_concat`, alias of `groupConcat` |
 | `agg.default_separator` | `GROUP_CONCAT(k)` of 1 and 2 | | `1,2` | `1,2` | error: function `group_concat` does not exist | `1,2` | `1,2` | |
 | `agg.group_concat_limit` | `GROUP_CONCAT(k ORDER BY k SEPARATOR ',' LIMIT 2 OFFSET 1)` of `b`, `a`, `c` | | error 1064 | `b,c` | error: syntax | error: syntax | error: syntax | `limit` argument of `groupConcat`, without offset |
+| `agg.group_concat_offset_beyond` | `GROUP_CONCAT(k ORDER BY k SEPARATOR ',' LIMIT 2 OFFSET 5)` of `b`, `a`, `c` | | error 1064 | empty, not NULL | error: syntax | error: syntax | error: syntax | |
+| `agg.group_concat_limit_zero` | `GROUP_CONCAT(k ORDER BY k SEPARATOR ',' LIMIT 0)` of `b`, `a`, `c` | | error 1064 | empty, not NULL | error: syntax | error: syntax | error: syntax | |
+| `agg.group_concat_null` | `b`, NULL and `a` aggregated in order (`GROUP_CONCAT`, `STRING_AGG`) | `LISTAGG` removes NULL (modern-sql.com) | `a,b` | `a,b` | `a,b` | `a,b` | `a,b` | |
+| `agg.group_concat_all_null` | two NULL aggregated | NULL when no value remains (modern-sql.com) | NULL | NULL | NULL | NULL | NULL | |
+| `agg.group_concat_desc` | `b`, `a` and `c` aggregated in descending order | | `c,b,a` | `c,b,a` | `c,b,a` | `c,b,a` | `c,b,a` | |
+| `agg.group_concat_order_null` | `a`, `b` and `c` aggregated in the order of the keys 2, NULL and 1 | | `b,c,a` | `b,c,a` | `c,a,b` | `b,c,a` | `c,a,b` | |
+| `agg.group_concat_order_null_desc` | the same, in descending order of the keys | | `a,c,b` | `a,c,b` | `b,a,c` | `a,c,b` | `a,c,b` | |
 | `agg.cut` | length of two texts of 600 characters aggregated | `ON OVERFLOW ERROR` by default, exception 22001 | `1024`, warning (`group_concat_max_len`) | `1201` | `1201` | `1201` | `1201` | its `limit` argument drops the values beyond |
+| `agg.cut_bytes` | length of two texts of 600 `é` aggregated (two bytes each) | | `512`, warning (`group_concat_max_len`, in bytes) | `1201` | `1201` | `1201` | `1201` | |
 | `agg.filter` | `SUM(k) FILTER (WHERE k > 1)` | SQL:2003, feature T612 | error 1064 | error 1064 | `5` | `5` | `5` | accepted; `sumIf` |
 | `agg.avg_integers` | `AVG(k)` of 1 and 2 | exact numeric, precision and scale implementation-defined (SQL-92 6.5 GR) | `1.5000` (DECIMAL) | `1.5000` (DECIMAL) | `1.5000000000000000` (numeric) | `1.5` (REAL) | `1.5` (DOUBLE) | |
 | `agg.avg_decimal` | `AVG(k)` of 1.25 and 2.50 | | `1.875000` (DECIMAL) | `1.875000` (DECIMAL) | `1.8750000000000000` (numeric) | `1.875` (REAL) | `1.875` (DOUBLE) | |
@@ -205,6 +213,8 @@ On exact numbers, MySQL and MariaDB give `AVG` at the scale of the column + 4 (`
 `HAVING` reads the groups once `ROLLUP` has computed them: the total keeps the rows of the groups it drops (`850`, the 100 and the 30 included), and no longer adds up. The filters on a measure of the Pivoteur keep rows, and the table is computed from those that remain: the same condition gives a total of `720`. A group whose measure is NULL leaves under any comparison, as under `HAVING` (`agg.having_null`).
 
 The standard `LISTAGG` aggregates a text, takes a literal separator and `WITHIN GROUP`, both required, and ignores NULL; none of the engines measured accepts this form. DuckDB accepts `LISTAGG` with its `ORDER BY` inside the parentheses, as `STRING_AGG`.
+
+`GROUP_CONCAT` (MySQL, MariaDB) and `STRING_AGG` (PostgreSQL, SQLite, DuckDB) skip NULL, and give NULL without any value (`agg.group_concat_null`, `agg.group_concat_all_null`), as `LISTAGG` does. `DISTINCT` tells the texts apart by the collation of the connection: one value of `fr`, `FR` and `Fr` on MySQL and MariaDB, three on PostgreSQL, SQLite and DuckDB (`agg.distinct_case`, section 3.1). A NULL key of the `ORDER BY` follows the order of NULL of each engine (`null.sort_asc_first`, section 3.5): first in ascending order and last in descending order on MySQL, MariaDB and SQLite, last in ascending order and first in descending order on PostgreSQL, last both ways on DuckDB (`NULLS_LAST`, section 1). The separator of `GROUP_CONCAT` is a comma by default (`agg.default_separator`). Only MariaDB takes `LIMIT` and `OFFSET`, after the order (`agg.group_concat_limit`); an offset beyond the values, or `LIMIT 0`, gives an empty text, not NULL. MySQL cuts the result at `group_concat_max_len`, 1024 bytes by default, with a warning: two texts of 600 characters of two bytes keep 512 characters (`agg.cut_bytes`); the limit of MariaDB, 1048576 bytes (section 1), stays above the measures. With `ON OVERFLOW TRUNCATE` (SQL:2016), `LISTAGG` keeps the values the result can hold and adds a filler as its last element, three periods by default; with `WITH COUNT`, "the number of omitted values is put in brackets and appended to the result" (modern-sql.com, section 5). Its default is `ON OVERFLOW ERROR`.
 
 ### 3.7 Lengths
 
