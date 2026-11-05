@@ -62,4 +62,14 @@ export type PivotConfig = {
    * Widths of the columns of values given one.
    */
   column_widths?: Array<PivotColumnWidth>;
+  /**
+   * Width of the section of the columns of the result, in steps of the
+   * spacing scale (`--spacing`); the default width without one.
+   */
+  fields_width?: number;
+  /**
+   * Width of the section of the zones, in steps of the spacing scale; the
+   * default width without one.
+   */
+  zones_width?: number;
 };

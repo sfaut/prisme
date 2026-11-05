@@ -310,11 +310,12 @@ XPath is the version built into browsers, [XPath 1.0](https://www.w3.org/TR/1999
 
 The **Pivoteur** is the pivot table of the result shown, in a panel under the results of the cell. It works in the page, on the rows Prisme has received, after the filter of the grid: no query goes to the server, and a result limited to some rows gives the table of those rows. It computes once the query has ended; folded, as it is at first, it computes nothing. It unfolds and folds by its rail, by the button of its header, by a double click on the line above it, or by a drag. The editor, the results, the Pivoteur and the console can all be folded at once, and folding one leaves the others as they are.
 
-The panel has three columns: the columns of the result, with their type and a search by name; the zones **Lignes**, **Colonnes**, **Mesures** and **Filtres** (Rows, Columns, Measures, Filters), stacked; the table, which takes the remaining width and scrolls on both axes, its headers and its labels staying in sight. The bar under the table shows the rows taken into account, the groups and the duration of the computation.
+The panel has three columns: the columns of the result, with their type and a search by name; the zones **Lignes**, **Colonnes**, **Mesures** and **Filtres** (Rows, Columns, Measures, Filters), stacked; the table, which takes the remaining width and scrolls on both axes, its headers and its labels staying in sight. The line on the right of the first two columns sets their width; each result tab keeps its widths. The bar under the table shows the rows taken into account, the groups and the duration of the computation.
 
 | Action | How |
 |---|---|
 | Place a column in a zone | Drag it there, or the **+** button of its line |
+| Widen or narrow the columns of the result, or the zones | Drag the line on their right, or the arrow keys once it has the focus; a double click gives back the default width |
 | Move an element, in its zone or to another one | Drag it: the zone it passes over is framed in blue |
 | Send a level to the other axis | Drag it, or its menu: **Passer en lignes**, **Passer en colonnes** (Move to rows, Move to columns) |
 | Remove an element | Its menu, **Retirer** (Remove), or drag it and release it outside the zones; Esc cancels the drag |

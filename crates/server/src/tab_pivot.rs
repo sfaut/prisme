@@ -352,6 +352,16 @@ pub struct PivotConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<PivotColumnWidth>>", optional)]
     pub column_widths: Vec<PivotColumnWidth>,
+    /// Width of the section of the columns of the result, in steps of the
+    /// spacing scale (`--spacing`); the default width without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub fields_width: Option<u32>,
+    /// Width of the section of the zones, in steps of the spacing scale; the
+    /// default width without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub zones_width: Option<u32>,
 }
 
 /// Configuration of the Pivoteur of a result tab.
@@ -537,6 +547,8 @@ mod tests {
         assert_eq!(config.rows[0].width, None);
         assert_eq!(config.labels_width, None);
         assert_eq!(config.column_widths, []);
+        assert_eq!(config.fields_width, None);
+        assert_eq!(config.zones_width, None);
         assert_eq!(
             serde_json::to_string(&config).unwrap(),
             saved.replace(r#""measures":[]"#, r#""measures":[],"filters":[]"#)
@@ -638,10 +650,12 @@ mod tests {
 
     #[test]
     fn keeps_the_widths_of_a_configuration() {
-        let saved = r#"{"rows":[{"column":1,"name":"","precision":"none","width":30}],"columns":[],"measures":[],"filters":[],"labels_width":50,"column_widths":[{"path":["2025",null],"measure":1,"width":44}]}"#;
+        let saved = r#"{"rows":[{"column":1,"name":"","precision":"none","width":30}],"columns":[],"measures":[],"filters":[],"labels_width":50,"column_widths":[{"path":["2025",null],"measure":1,"width":44}],"fields_width":70,"zones_width":80}"#;
         let config: PivotConfig = serde_json::from_str(saved).unwrap();
         assert_eq!(config.rows[0].width, Some(30));
         assert_eq!(config.labels_width, Some(50));
+        assert_eq!(config.fields_width, Some(70));
+        assert_eq!(config.zones_width, Some(80));
         assert_eq!(
             config.column_widths,
             [PivotColumnWidth {

@@ -10,7 +10,7 @@
   dates any more. The columns of the result and the zones (`PivotZones.vue`),
   then the table (`PivotGrid.vue`), which takes the remaining width, with its
   status bar: rows taken into account, groups, duration of the computation
-  (F-06).
+  (F-06). The widths of the sections are those of the tab shown.
 
   The engine runs in a Worker of the page (`pivotClient.ts`), one per
   result: the rows are copied once the query has ended (F-07), while the
@@ -600,15 +600,17 @@ const groupsText = computed(() => {
       <LoaderCircle class="size-5 animate-spin" aria-hidden="true" />
       En attente de la fin de la requête…
     </p>
-    <div v-else class="flex min-h-0 flex-1 gap-4">
-      <pivot-zones
-        v-model:config="config"
-        :names="result?.columns ?? []"
-        :types="result?.columnTypes ?? []"
-        :marks="marks"
-        :foreign-keys="foreignKeys"
-        :read-values="readValues"
-      />
+    <!-- Its sections take the widths of each tab as they start. -->
+    <pivot-zones
+      v-else
+      :key="tab?.id"
+      v-model:config="config"
+      :names="result?.columns ?? []"
+      :types="result?.columnTypes ?? []"
+      :marks="marks"
+      :foreign-keys="foreignKeys"
+      :read-values="readValues"
+    >
       <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
         <ui-alert v-if="failure" tone="error" :title="failure" />
         <pivot-grid
@@ -650,6 +652,6 @@ const groupsText = computed(() => {
           </template>
         </ui-status-bar>
       </div>
-    </div>
+    </pivot-zones>
   </section>
 </template>

@@ -113,6 +113,17 @@ const VALUE_SORT = { rows: 'sort_lines', columns: 'sort_columns' } as const
 const WITHOUT_TOTAL = { rows: 'without_row_total', columns: 'without_column_total' } as const
 
 /**
+ * Section of the panel whose width the user sets: the columns of the result, or the zones. The
+ * table takes the rest.
+ */
+export type PivotSection = 'fields' | 'zones'
+
+/**
+ * Field of the configuration that holds the width of each section.
+ */
+const SECTION_WIDTH = { fields: 'fields_width', zones: 'zones_width' } as const
+
+/**
  * Label of a precision in the menu of a level.
  */
 export type PrecisionLabel =
@@ -851,6 +862,31 @@ export function withLabelWidth(
       index === level ? { ...row, width: width ?? undefined } : row,
     ),
   }
+}
+
+/**
+ * Width of a section of the panel, in steps of the spacing scale; none for its default width.
+ *
+ * @param config Configuration.
+ * @param section Section.
+ */
+export function sectionWidth(config: PivotConfig, section: PivotSection): number | undefined {
+  return config[SECTION_WIDTH[section]]
+}
+
+/**
+ * Configuration after a section of the panel takes a width, or gives it back.
+ *
+ * @param config Configuration.
+ * @param section Section.
+ * @param width Width, in steps of the spacing scale; `null` for the default width.
+ */
+export function withSectionWidth(
+  config: PivotConfig,
+  section: PivotSection,
+  width: number | null,
+): PivotConfig {
+  return { ...config, [SECTION_WIDTH[section]]: width ?? undefined }
 }
 
 /**

@@ -1054,6 +1054,8 @@ mod tests {
                     descending: false,
                 }),
                 form: PivotForm::Tabular,
+                fields_width: Some(70),
+                zones_width: Some(80),
                 ..PivotConfig::default()
             },
         };

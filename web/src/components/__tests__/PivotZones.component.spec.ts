@@ -8,6 +8,7 @@ import type { Cell } from '@/api/querySession'
 
 import PivotFilterPanel from '../PivotFilterPanel.vue'
 import PivotZones from '../PivotZones.vue'
+import SplitHandle from '../SplitHandle.vue'
 import type { PivotConfig, PivotFilter } from '../pivotConfig'
 import type { MenuGroup } from '../ui/menuItem'
 import UiDropdownMenu from '../ui/UiDropdownMenu.vue'
@@ -39,8 +40,10 @@ afterEach(() => {
 
 /**
  * Mounts the zones in the page, the configuration following their changes.
+ *
+ * @param config Configuration shown at first.
  */
-function mountZones() {
+function mountZones(config: PivotConfig = CONFIG) {
   const mounted = mount(PivotZones, {
     attachTo: document.body,
     props: {
@@ -49,7 +52,7 @@ function mountZones() {
       marks: [],
       foreignKeys: [],
       readValues: () => Promise.resolve([null, 'Nord', 'Sud']),
-      config: CONFIG,
+      config,
       'onUpdate:config': (config: PivotConfig) => mounted.setProps({ config }),
     },
   })
@@ -551,5 +554,107 @@ describe('PivotZones', () => {
     dropOnPage()
     await nextTick()
     expect(shownConfig(mounted)).toEqual(CONFIG)
+  })
+})
+
+describe('PivotZones, the widths of its sections', () => {
+  /**
+   * Width of the page laid out, in pixels.
+   */
+  const PAGE_WIDTH = 800
+
+  /**
+   * Gives every element a width, as in a page laid out on screen.
+   */
+  function layOutPage(): void {
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(0, 0, PAGE_WIDTH, 300),
+    )
+  }
+
+  /**
+   * Share of the first panel of the zones, in percent of its splitter, as Reka UI writes it.
+   *
+   * @param mounted Mounted zones.
+   */
+  function fieldsShare(mounted: VueWrapper): string | undefined {
+    return mounted.find('[data-panel]').attributes('data-panel-size')
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it('gives a section its default width back on a double click on its line', async () => {
+    layOutPage()
+    const mounted = mountZones({ ...CONFIG, fields_width: 70, zones_width: 80 })
+    await nextTick()
+    // 70 steps of 3 pixels.
+    expect(fieldsShare(mounted)).toBe('26.3')
+    await mounted.findAllComponents(SplitHandle)[0]!.trigger('dblclick')
+    expect(shownConfig(mounted).fields_width).toBeUndefined()
+    expect(shownConfig(mounted).zones_width).toBe(80)
+    // The default width, 174 pixels.
+    expect(fieldsShare(mounted)).toBe('21.8')
+  })
+
+  it('keeps the width given by a key on the line, in whole steps', async () => {
+    layOutPage()
+    const mounted = mountZones()
+    await nextTick()
+    const handle = mounted.findAllComponents(SplitHandle)[0]!
+    // The focus arriving on the line keeps nothing, though the section is not at its width.
+    await mounted.setProps({ config: { ...CONFIG, fields_width: 90 } })
+    await handle.trigger('keyup', { key: 'Tab' })
+    expect(shownConfig(mounted).fields_width).toBe(90)
+    // A key moves the line by a tenth of the splitter: 174 + 80 pixels, 85 steps.
+    await handle.trigger('keydown', { key: 'ArrowRight' })
+    await handle.trigger('keyup', { key: 'ArrowRight' })
+    expect(shownConfig(mounted).fields_width).toBe(85)
+    expect(fieldsShare(mounted)).toBe('31.9')
+  })
+
+  it('starts its splitters again as soon as they get a width, when mounted hidden', async () => {
+    const callbacks: ResizeObserverCallback[] = []
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        /**
+         * @param callback Called on each change of size.
+         */
+        constructor(callback: ResizeObserverCallback) {
+          callbacks.push(callback)
+        }
+
+        /**
+         * Follows nothing: the test calls the callbacks.
+         */
+        observe(): void {}
+
+        /**
+         * Follows nothing.
+         */
+        unobserve(): void {}
+
+        /**
+         * Follows nothing.
+         */
+        disconnect(): void {}
+      },
+    )
+    const mounted = mountZones({ ...CONFIG, fields_width: 70 })
+    await nextTick()
+    const hidden = mounted.find('[data-panel-group]').element
+    // Without a width, Reka UI shares the room in proportion to the default sizes.
+    expect(fieldsShare(mounted)).toBe('210.0')
+    layOutPage()
+    const entry = { contentRect: new DOMRect(0, 0, PAGE_WIDTH, 300) } as ResizeObserverEntry
+    for (const callback of callbacks) {
+      callback([entry], {} as ResizeObserver)
+    }
+    await nextTick()
+    expect(mounted.find('[data-panel-group]').element).not.toBe(hidden)
+    expect(fieldsShare(mounted)).toBe('26.3')
   })
 })

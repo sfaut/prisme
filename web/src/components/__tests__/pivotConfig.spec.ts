@@ -38,6 +38,7 @@ import {
   sameRequest,
   sameTableLayout,
   sameTarget,
+  sectionWidth,
   takesPrecision,
   withAggregate,
   withAllSubtotals,
@@ -50,6 +51,7 @@ import {
   withName,
   withPrecision,
   withRepeatedLabels,
+  withSectionWidth,
   withSubtotal,
   withValueSort,
   zoneLabels,
@@ -601,6 +603,34 @@ describe('fittedConfig', () => {
         ).rows,
       ).toEqual([level(1, 'Jour', 'date')])
     })
+  })
+})
+
+describe('the widths of the sections', () => {
+  it('sets the width of a section, the other one keeping its own', () => {
+    const config = withSectionWidth(emptyConfig(), 'fields', 70)
+    expect(sectionWidth(config, 'fields')).toBe(70)
+    expect(sectionWidth(config, 'zones')).toBeUndefined()
+    const both = withSectionWidth(config, 'zones', 80)
+    expect([sectionWidth(both, 'fields'), sectionWidth(both, 'zones')]).toEqual([70, 80])
+  })
+
+  it('gives a section its default width back, which the saved configuration leaves out', () => {
+    const config = withSectionWidth(withSectionWidth(emptyConfig(), 'fields', 70), 'zones', 80)
+    const reset = withSectionWidth(config, 'fields', null)
+    expect(sectionWidth(reset, 'fields')).toBeUndefined()
+    expect(sectionWidth(reset, 'zones')).toBe(80)
+    expect(JSON.parse(JSON.stringify(reset))).not.toHaveProperty('fields_width')
+  })
+
+  it('keeps the widths when the configuration follows new columns', () => {
+    const config: PivotConfig = {
+      ...withSectionWidth(withSectionWidth(emptyConfig(), 'fields', 70), 'zones', 80),
+      rows: [level(0)],
+    }
+    const fitted = fittedConfig({ fields: NAMES, config }, ['note', ...NAMES], [])
+    expect(fitted.rows).toEqual([level(1)])
+    expect([sectionWidth(fitted, 'fields'), sectionWidth(fitted, 'zones')]).toEqual([70, 80])
   })
 })
 
