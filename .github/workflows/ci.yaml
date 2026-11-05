@@ -7,9 +7,10 @@
 #
 # On publishing a GitHub release (created with gh, changelog written by hand,
 # see CLAUDE.md, "Publishing a version"): the same checks on the tagged
-# commit, then the build of the Windows, Linux and macOS executables, added
-# to this release, downloadable directly from the Releases page. The CI
-# never writes the release notes.
+# commit, and the build of the Windows, Linux and macOS executables, which
+# starts once the interface is built. The executables are added to this
+# release once the backend is checked too, downloadable directly from the
+# Releases page. The CI never writes the release notes.
 #
 # Started by hand (workflow_dispatch): checks and executables, stored in the
 # run's artifacts, to try a build outside a release.
@@ -59,6 +60,24 @@ jobs:
       # Installs the version pinned by rust-toolchain.toml, with its
       # WebAssembly target.
       - run: rustup toolchain install
+      # Release: the versions of Cargo.toml and web/package.json must be those
+      # of the tag (v0.2.0 → 0.2.0), otherwise prisme --version would lie.
+      # Checked in this job, before the long builds, which only wait for it.
+      - name: Versions match the tag
+        if: github.event_name == 'release'
+        working-directory: ${{ github.workspace }}
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          expected="${TAG#v}"
+          cargo_version=$(cargo metadata --no-deps --format-version 1 \
+            | jq --raw-output '.packages[] | select(.name == "prisme-server") | .version')
+          web_version=$(jq --raw-output .version web/package.json)
+          echo "Tag $TAG, Cargo $cargo_version, interface $web_version"
+          if [ "$cargo_version" != "$expected" ] || [ "$web_version" != "$expected" ]; then
+            echo "::error::The versions must be $expected: commit the version bump before the tag."
+            exit 1
+          fi
       - run: npm ci
       # The project's lint and format scripts fix the files (--fix, --write):
       # the CI calls the tools in check mode.
@@ -90,23 +109,6 @@ jobs:
       - uses: actions/checkout@v7
       # Installs the version pinned by rust-toolchain.toml.
       - run: rustup toolchain install
-      # Release: the versions of Cargo.toml and web/package.json must be those
-      # of the tag (v0.2.0 → 0.2.0), otherwise prisme --version would lie.
-      # Checked before the long builds.
-      - name: Versions match the tag
-        if: github.event_name == 'release'
-        env:
-          TAG: ${{ github.event.release.tag_name }}
-        run: |
-          expected="${TAG#v}"
-          cargo_version=$(cargo metadata --no-deps --format-version 1 \
-            | jq --raw-output '.packages[] | select(.name == "prisme-server") | .version')
-          web_version=$(jq --raw-output .version web/package.json)
-          echo "Tag $TAG, Cargo $cargo_version, interface $web_version"
-          if [ "$cargo_version" != "$expected" ] || [ "$web_version" != "$expected" ]; then
-            echo "::error::The versions must be $expected: commit the version bump before the tag."
-            exit 1
-          fi
       # Downloaded and started now, the servers load their data while the
       # backend compiles; the tests wait until they are ready.
       - name: Database servers (start)
@@ -138,9 +140,11 @@ jobs:
   # account, notarization) executables, see docs/QUESTIONS.md, section 3.
   build:
     name: Executable ${{ matrix.name }}
-    # For a release, or on demand; never for a mere push.
+    # For a release, or on demand; never for a mere push. Waits for the
+    # interface alone, whose web/dist it embeds: the backend is checked in the
+    # meantime, and the release job waits for both.
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    needs: [web, rust]
+    needs: [web]
     strategy:
       fail-fast: false
       matrix:
@@ -196,11 +200,12 @@ jobs:
           if-no-files-found: error
 
   # Published release: the executables are added to it, renamed with the
-  # version and the platform. The release notes stay untouched.
+  # version and the platform, once the backend is checked too. The release
+  # notes stay untouched.
   release:
     name: Release
     if: github.event_name == 'release'
-    needs: [build]
+    needs: [build, rust]
     runs-on: ubuntu-latest
     permissions:
       contents: write
