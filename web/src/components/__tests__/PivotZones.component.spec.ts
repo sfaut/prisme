@@ -6,6 +6,7 @@ import { nextTick } from 'vue'
 
 import type { Cell } from '@/api/querySession'
 
+import PivotConcatPanel from '../PivotConcatPanel.vue'
 import PivotFilterPanel from '../PivotFilterPanel.vue'
 import PivotZones from '../PivotZones.vue'
 import SplitHandle from '../SplitHandle.vue'
@@ -554,6 +555,47 @@ describe('PivotZones', () => {
     dropOnPage()
     await nextTick()
     expect(shownConfig(mounted)).toEqual(CONFIG)
+  })
+
+  it('opens the settings of a measure that becomes a GROUP_CONCAT, which gives no filter', async () => {
+    const mounted = mountZones()
+    await choose(mounted, 1, 'GROUP_CONCAT(montant)')
+    expect(shownConfig(mounted).measures).toEqual([
+      { aggregate: 'group_concat', column: 2, name: '', concat: { separator: ', ' } },
+    ])
+    const panel = () => mounted.findComponent(PivotConcatPanel)
+    expect(panel().props('index')).toBe(0)
+    panel().vm.$emit('change', { separator: ' | ', distinct: true })
+    await nextTick()
+    expect(shownConfig(mounted).measures[0]?.concat).toEqual({ separator: ' | ', distinct: true })
+    panel().vm.$emit('close')
+    await nextTick()
+    expect(panel().exists()).toBe(false)
+    // Its menu opens them again, and offers no filter on it.
+    expect(elementEntries(mounted, 1)).toEqual(['Réglages…', 'Nommer…', 'Retirer'])
+    await choose(mounted, 1, 'Réglages…')
+    expect(panel().props('index')).toBe(0)
+    // A measure that already is one opens nothing when it takes it again.
+    panel().vm.$emit('close')
+    await choose(mounted, 1, 'GROUP_CONCAT(montant)')
+    expect(panel().exists()).toBe(false)
+  })
+
+  it('refuses a GROUP_CONCAT dropped into the filters', async () => {
+    const concat = { separator: ', ' }
+    const mounted = mountZones({
+      ...CONFIG,
+      measures: [{ aggregate: 'group_concat', column: 1, name: '', concat }],
+    })
+    await mounted.find('section[aria-label="Mesures"] [data-element]').trigger('dragstart')
+    const filters = mounted.find('section[aria-label="Filtres"]')
+    expect(accepted(filters.element, 'dragover')).toBe(false)
+    expect(accepted(mounted.find('section[aria-label="Lignes"]').element, 'dragover')).toBe(true)
+    await filters.trigger('drop', { clientY: 0 })
+    await nextTick()
+    expect(shownConfig(mounted).filters).toEqual([])
+    expect(shownConfig(mounted).measures).toHaveLength(1)
+    expect(mounted.findComponent(PivotFilterPanel).exists()).toBe(false)
   })
 })
 

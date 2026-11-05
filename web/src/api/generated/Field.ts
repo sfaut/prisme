@@ -15,4 +15,5 @@ export type Field =
   | "last_name"
   | "history_retention_days"
   | "debug_retention_days"
-  | "indent_size";
+  | "indent_size"
+  | "concat_max_bytes";

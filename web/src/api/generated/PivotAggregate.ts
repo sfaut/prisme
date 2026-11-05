@@ -12,4 +12,5 @@ export type PivotAggregate =
   | "avg"
   | "avg_distinct"
   | "min"
-  | "max";
+  | "max"
+  | "group_concat";

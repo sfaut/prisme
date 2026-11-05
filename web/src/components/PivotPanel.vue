@@ -78,11 +78,13 @@ import {
   type PivotRequest,
   type PivotValueTarget,
   type PivotWindow,
+  DEFAULT_CONCAT_MAX_BYTES,
   PivotError,
 } from './pivotEngine'
 import { targetKey } from './pivotWidths'
 import { sameColumns, visibleRows } from './resultGrid'
 import { isForeignKey, useCatalogStore } from '@/stores/catalog'
+import { useSettingsStore } from '@/stores/settings'
 import { columnIcon } from './typeIcons'
 import UiAlert from './ui/UiAlert.vue'
 import UiStatusBar from './ui/UiStatusBar.vue'
@@ -191,11 +193,18 @@ const config = computed<PivotConfig>({
 })
 
 /**
+ * Settings of the user: the longest text of a `GROUP_CONCAT`, which the
+ * request carries.
+ */
+const settings = useSettingsStore()
+
+/**
  * Table to ask the engine for the configuration shown. The same object
  * while only the names change: the table is not computed again.
  */
 const request = computed<PivotRequest>((previous) => {
-  const next = engineRequest(config.value)
+  const maxBytes = settings.settings?.concat_max_bytes ?? DEFAULT_CONCAT_MAX_BYTES
+  const next = engineRequest(config.value, maxBytes)
   return previous !== undefined && sameRequest(previous, next) ? previous : next
 })
 

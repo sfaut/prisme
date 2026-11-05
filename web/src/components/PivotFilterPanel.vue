@@ -53,6 +53,7 @@ import {
   chosenLevel,
   elementExpression,
   elementLabel,
+  filterable,
   keptPrecision,
   measureExpression,
   measurePrecision,
@@ -265,7 +266,8 @@ function chooseAggregate(aggregate: PivotMeasureFilter['aggregate'] | undefined)
 }
 
 /**
- * Aggregates of the filter on a measure; those that add numbers up need a column of numbers.
+ * Aggregates of the filter on a measure, those a filter reads (`filterable`); those that add
+ * numbers up need a column of numbers.
  */
 const aggregates = computed(() => {
   const filter = measureFilter.value
@@ -273,7 +275,7 @@ const aggregates = computed(() => {
     return []
   }
   const numbers = summable(props.types[filter.column]?.family)
-  return AGGREGATES.map(({ aggregate, icon }) => {
+  return AGGREGATES.filter(({ aggregate }) => filterable(aggregate)).map(({ aggregate, icon }) => {
     const refused = addsNumbers(aggregate) && !numbers
     const { column, precision } = filter
     return {

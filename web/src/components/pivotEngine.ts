@@ -19,6 +19,7 @@
 import type { DatePrecision } from '@/api/generated/DatePrecision'
 import type { TypeFamily } from '@/api/generated/TypeFamily'
 import type { PivotAggregate } from '@/api/generated/PivotAggregate'
+import type { PivotConcat } from '@/api/generated/PivotConcat'
 import type { PivotForm } from '@/api/generated/PivotForm'
 import type { PivotTest } from '@/api/generated/PivotTest'
 import type { Cell } from '@/api/querySession'
@@ -29,8 +30,8 @@ import { type TransferExports, copyBlock, releaseBlock } from './pivotTransfer'
 
 /**
  * Measure of a table: `COUNT(*)`, `COUNT`, `SUM` and `AVG` of a column or of its distinct values,
- * `MIN` and `MAX` of a column. `COUNT(DISTINCT col)`, `MIN` and `MAX` can read the periods of a
- * precision of its dates.
+ * `MIN`, `MAX` and `GROUP_CONCAT` of a column. `COUNT(DISTINCT col)`, `MIN`, `MAX` and
+ * `GROUP_CONCAT` can read the periods of a precision of its dates.
  */
 export interface PivotMeasure {
   /**
@@ -42,10 +43,14 @@ export interface PivotMeasure {
    */
   column: number
   /**
-   * What `COUNT(DISTINCT col)`, `MIN` and `MAX` keep of the dates of the column; absent, the values
-   * as they are.
+   * What `COUNT(DISTINCT col)`, `MIN`, `MAX` and `GROUP_CONCAT` keep of the dates of the column;
+   * absent, the values as they are.
    */
   precision?: DatePrecision
+  /**
+   * Settings of a `GROUP_CONCAT`, absent for another aggregate.
+   */
+  concat?: PivotConcat
 }
 
 /**
@@ -155,6 +160,11 @@ export interface PivotRequest {
    * Filters, which combine by `AND`.
    */
   filters: PivotRequestFilter[]
+  /**
+   * Longest text of a `GROUP_CONCAT`, in bytes of UTF-8: a setting of the user, the same for
+   * every measure; `DEFAULT_CONCAT_MAX_BYTES` without one.
+   */
+  concatMaxBytes?: number
 }
 
 /**
@@ -582,6 +592,22 @@ export function ranksOf(values: Cell[]): Uint32Array {
  */
 const NULL_STEP = 0xffff_ffff
 
+/**
+ * Word that stands for a `GROUP_CONCAT` without `LIMIT`.
+ */
+const NO_LIMIT = 0xffff_ffff
+
+/**
+ * Separator of a `GROUP_CONCAT` without settings: a comma and a space.
+ */
+export const DEFAULT_SEPARATOR = ', '
+
+/**
+ * Longest text of a `GROUP_CONCAT` without a setting of the user, in bytes: the server gives the
+ * same.
+ */
+export const DEFAULT_CONCAT_MAX_BYTES = 1000
+
 const encoder = new TextEncoder()
 
 /**
@@ -646,11 +672,34 @@ function testWords({ condition, operand, upper }: PivotRequestTest): number[] {
 }
 
 /**
+ * Words of the settings of a `GROUP_CONCAT`, after its kind, its column and its precision: a word
+ * for `DISTINCT`, the number of keys of its order and each key (its column, a word for
+ * descending), its separator (`valueWords`), its `OFFSET`, its `LIMIT` (`NO_LIMIT` without one),
+ * then its longest text, in bytes.
+ *
+ * @param concat Settings.
+ * @param maxBytes Longest text, in bytes.
+ */
+function concatWords(concat: PivotConcat, maxBytes: number): number[] {
+  const order = concat.order ?? []
+  return [
+    Number(concat.distinct === true),
+    order.length,
+    ...order.flatMap(({ column, descending }) => [column, Number(descending === true)]),
+    ...valueWords(concat.separator),
+    concat.offset ?? 0,
+    concat.limit ?? NO_LIMIT,
+    maxBytes,
+  ]
+}
+
+/**
  * Words of a request for the module: numbers of levels and of measures, a column and a precision
- * per level, a kind, a column and a precision per measure, then the filters. A filter on a list of values: 0,
- * its level, a word for `NOT IN`, the number of its values and each value. A filter on a measure: 1,
- * the measure, the number of its levels and each level, and the test. A filter on a column: 2, its
- * level and the test.
+ * per level, a kind, a column and a precision per measure, then the filters. A `GROUP_CONCAT`
+ * adds its settings (`concatWords`). A filter on a list of values: 0, its level, a word for
+ * `NOT IN`, the number of its values and each value. A filter on a measure: 1, the measure, the
+ * number of its levels and each level, and the test. A filter on a column: 2, its level and the
+ * test.
  *
  * @param request Table asked.
  */
@@ -669,11 +718,18 @@ export function requestWords(request: PivotRequest): Uint32Array {
     avg_distinct: 6,
     min: 7,
     max: 8,
+    group_concat: 9,
   }
-  const measureWords = ({ aggregate, column, precision }: PivotMeasure) => [
+  const measureWords = ({ aggregate, column, precision, concat }: PivotMeasure) => [
     kinds[aggregate],
     column,
     PRECISION_CODES[precision ?? 'none'],
+    ...(aggregate === 'group_concat'
+      ? concatWords(
+          concat ?? { separator: DEFAULT_SEPARATOR },
+          request.concatMaxBytes ?? DEFAULT_CONCAT_MAX_BYTES,
+        )
+      : []),
   ]
   const filterWords = (filter: PivotRequestFilter): number[] => {
     switch (filter.kind) {

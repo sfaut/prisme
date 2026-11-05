@@ -35,4 +35,9 @@ export type Settings = {
    * Spaces of an indentation level in the SQL editor, 4 by default.
    */
   indent_size: number;
+  /**
+   * Longest text of a `GROUP_CONCAT` of the Pivoteur, in bytes of UTF-8,
+   * 1000 by default.
+   */
+  concat_max_bytes: number;
 };

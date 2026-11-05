@@ -1,7 +1,8 @@
 /**
  * Settings of the user: default row limit and allowed choices, read-only
  * mode of the query sessions and the writes they allow, retention of the
- * console, indentation of the SQL editor.
+ * console, indentation of the SQL editor, longest text of a `GROUP_CONCAT`
+ * of the Pivoteur.
  */
 
 import { defineStore } from 'pinia'
@@ -43,6 +44,7 @@ export const useSettingsStore = defineStore('settings', () => {
       history_retention_days: current.history_retention_days,
       debug_retention_days: current.debug_retention_days,
       indent_size: current.indent_size,
+      concat_max_bytes: current.concat_max_bytes,
       ...change,
     })
   }

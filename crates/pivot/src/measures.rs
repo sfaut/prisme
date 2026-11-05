@@ -24,16 +24,26 @@
 //!   precision, the first or the last period, in the order of time, and give
 //!   its label.
 //!
+//! - `GROUP_CONCAT(col)` joins the values of a level that are not NULL, as
+//!   MariaDB does (`Concat`): in the order of its keys, NULL first in
+//!   ascending order, then of the rows; each value once with `DISTINCT`, told
+//!   apart as the levels group them; `OFFSET` and `LIMIT` after the order.
+//!   A group whose values the window leaves out gives an empty text, a group
+//!   without any value NULL. A total joins the values of its whole group.
+//!   Beyond its longest text, in bytes, the text keeps the whole values that
+//!   hold, then `…` and the number of values left out.
+//!
 //! The behaviours of the engines these rules follow are measured in
 //! `docs/SQL-COMPARISON.md`, section 3.6 (cases `agg.*`).
 
 use std::cmp::Ordering;
 use std::hash::Hash;
+use std::iter;
 
-use prisme_store::{Approx, Dictionary, Exact, FxMap};
+use prisme_store::{Approx, Dictionary, Exact, FxMap, FxSet};
 
 use crate::groups::Merge;
-use crate::{Engine, Level};
+use crate::{Concat, Engine, Level};
 
 /// Digits an average of exact numbers adds after the point, as MySQL and
 /// MariaDB do.
@@ -42,6 +52,10 @@ const AVERAGE_DIGITS: u32 = 4;
 /// Code or row of a group without a value (`MIN`, `MAX`). The rows of a
 /// result stay below it.
 const NO_VALUE: u32 = u32::MAX;
+
+/// Mark of a `GROUP_CONCAT` cut at its longest text, followed by the number
+/// of values left out, in parentheses.
+const CUT_MARK: &str = "…";
 
 /// Values a measure reads.
 pub enum Input<'a> {
@@ -66,6 +80,8 @@ pub enum Input<'a> {
     Average(Box<Input<'a>>),
     /// Values `MIN` or `MAX` compares.
     Extreme(Extreme<'a>),
+    /// Values `GROUP_CONCAT` joins.
+    Joined(Joined<'a>),
 }
 
 /// Values `MIN` or `MAX` compares.
@@ -116,11 +132,13 @@ pub enum State {
         /// Row of the cell of each group, `NO_VALUE` without one.
         rows: Vec<u32>,
     },
+    /// Text of each group (`GROUP_CONCAT`), `None` for NULL.
+    Texts(Vec<Option<Box<str>>>),
 }
 
 /// Value of a measure for a cell of the table.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Value {
+pub enum Value<'a> {
     /// No row falls into the cell: it stays empty.
     Empty,
     /// The measure is NULL.
@@ -134,9 +152,11 @@ pub enum Value {
     /// Value of a level at a row of the result: its cell, or the label of its
     /// period.
     Cell(Level, u32),
+    /// Text (`GROUP_CONCAT`).
+    Text(&'a str),
 }
 
-impl Value {
+impl Value<'_> {
     /// Text of the value: `None` for an empty cell or NULL.
     pub fn text(self, engine: &Engine) -> Option<String> {
         match self {
@@ -145,6 +165,7 @@ impl Value {
             Value::Exact(value, scale) => Some(prisme_store::format_exact(value, scale)),
             Value::Float(value) => Some(prisme_store::format_float(value)),
             Value::Cell(level, row) => engine.level_value(level, row).map(str::to_owned),
+            Value::Text(text) => Some(text.to_owned()),
         }
     }
 
@@ -167,6 +188,7 @@ impl Value {
             Value::Cell(level, row) => engine
                 .level_value(level, row)
                 .map(|text| text.chars().count()),
+            Value::Text(text) => Some(text.chars().count()),
             Value::Empty | Value::Null => None,
         }
     }
@@ -203,7 +225,7 @@ impl Longest {
 
 /// What a sort compares of a value of a measure.
 #[derive(Debug, Clone, Copy)]
-pub enum SortKey {
+pub enum SortKey<'a> {
     /// Empty cell or NULL, smaller than any value (D22).
     Missing,
     /// Count, exact number, or rank of a cell: the values of a measure share
@@ -211,9 +233,11 @@ pub enum SortKey {
     Exact(i128),
     /// Float, a `NaN` after the others.
     Float(f64),
+    /// Text, compared by code points: the order of the bytes of UTF-8.
+    Text(&'a str),
 }
 
-impl SortKey {
+impl SortKey<'_> {
     /// Compares two keys of a measure.
     pub fn compare(self, other: Self) -> Ordering {
         match (self, other) {
@@ -222,9 +246,12 @@ impl SortKey {
             (_, SortKey::Missing) => Ordering::Greater,
             (SortKey::Exact(a), SortKey::Exact(b)) => a.cmp(&b),
             (SortKey::Float(a), SortKey::Float(b)) => a.total_cmp(&b),
-            // A measure gives a single kind of number: any order is total.
-            (SortKey::Exact(_), SortKey::Float(_)) => Ordering::Less,
-            (SortKey::Float(_), SortKey::Exact(_)) => Ordering::Greater,
+            (SortKey::Text(a), SortKey::Text(b)) => a.cmp(b),
+            // A measure gives a single kind of value: any order is total.
+            (SortKey::Exact(_), _) => Ordering::Less,
+            (_, SortKey::Exact(_)) => Ordering::Greater,
+            (SortKey::Float(_), _) => Ordering::Less,
+            (_, SortKey::Float(_)) => Ordering::Greater,
         }
     }
 }
@@ -479,6 +506,193 @@ fn extreme_rows(extreme: Extreme, feed: Feed) -> Vec<u32> {
         .collect()
 }
 
+/// Key of the order of the values of a `GROUP_CONCAT`: a column of the result.
+pub struct OrderKey<'a> {
+    /// Code of each row in the dictionary of the column.
+    pub codes: &'a [u32],
+    /// Rank of each code, as `MIN` and `MAX` compare the values.
+    pub ranks: &'a [u32],
+    /// Validity of the cells of the column.
+    pub valid: &'a [bool],
+    /// Is the order descending?
+    pub descending: bool,
+}
+
+impl OrderKey<'_> {
+    /// Compares the keys of two rows: NULL first, then by rank, the whole
+    /// order reversed when descending.
+    fn compare(&self, a: usize, b: usize) -> Ordering {
+        let key = |row: usize| self.valid[row].then(|| self.ranks[self.codes[row] as usize]);
+        let order = key(a).cmp(&key(b));
+        if self.descending {
+            order.reverse()
+        } else {
+            order
+        }
+    }
+}
+
+/// Values a `GROUP_CONCAT` joins.
+pub struct Joined<'a> {
+    /// Engine, which gives the text of each value.
+    pub engine: &'a Engine,
+    /// What the measure asks.
+    pub concat: &'a Concat,
+    /// Code of each row in the dictionary of the level, which tells the values
+    /// apart.
+    pub codes: &'a [u32],
+    /// Validity of the cells of the column of the level.
+    pub valid: &'a [bool],
+    /// Keys of the order of the values, the first one first.
+    pub keys: Vec<OrderKey<'a>>,
+}
+
+/// Group of each finest group in each coarser set, in the order of the
+/// merges: `coarser[set][finest]`. A coarser set is known by its first group,
+/// the parent of the first group it merges, as in `visit_distinct`.
+fn coarser_groups(merges: &[Merge]) -> Vec<Vec<u32>> {
+    let mut sets: FxMap<u32, usize> = FxMap::default();
+    let mut coarser: Vec<Vec<u32>> = Vec::with_capacity(merges.len());
+    for merge in merges {
+        let Some(&first) = merge.parent_of.first() else {
+            continue;
+        };
+        let parent = |child: u32| merge.parent_of[(child - merge.source) as usize];
+        let groups = if merge.source == 0 {
+            (0..merge.parent_of.len() as u32).map(parent).collect()
+        } else if let Some(&source) = sets.get(&merge.source) {
+            coarser[source].iter().map(|&child| parent(child)).collect()
+        } else {
+            continue;
+        };
+        sets.insert(first, coarser.len());
+        coarser.push(groups);
+    }
+    coarser
+}
+
+/// Text of a group of a `GROUP_CONCAT` under way.
+#[derive(Default)]
+struct Joining {
+    /// Values met so far, those `OFFSET` skips included: without any, the
+    /// group is NULL.
+    met: u64,
+    /// Values joined so far, with their separators.
+    text: String,
+    /// End of each value joined in the text, in bytes.
+    ends: Vec<usize>,
+    /// Values left out once the text is full.
+    left_out: u64,
+}
+
+impl Joining {
+    /// Joins a value, unless `OFFSET` skips it, `LIMIT` stops it, or the text
+    /// is full.
+    fn push(&mut self, value: &str, concat: &Concat) {
+        let index = self.met;
+        self.met += 1;
+        if index < concat.offset
+            || concat
+                .limit
+                .is_some_and(|limit| index - concat.offset >= limit)
+        {
+            return;
+        }
+        if self.left_out > 0 {
+            self.left_out += 1;
+            return;
+        }
+        let separator = if self.ends.is_empty() {
+            ""
+        } else {
+            concat.separator.as_str()
+        };
+        if self.text.len() + separator.len() + value.len() > concat.max_bytes {
+            self.left_out = 1;
+            return;
+        }
+        self.text.push_str(separator);
+        self.text.push_str(value);
+        self.ends.push(self.text.len());
+    }
+
+    /// Text of the group, NULL without any value. A text that is full gives
+    /// back the last values until the separator, `…` and the number of values
+    /// left out hold in it; the mark alone when no value holds.
+    fn finish(mut self, concat: &Concat) -> Option<Box<str>> {
+        if self.met == 0 {
+            return None;
+        }
+        if self.left_out > 0 {
+            loop {
+                let mark = format!("{CUT_MARK}({})", self.left_out);
+                let end = self.ends.last().copied();
+                let length =
+                    end.map_or(mark.len(), |end| end + concat.separator.len() + mark.len());
+                if length <= concat.max_bytes || end.is_none() {
+                    self.text.truncate(end.unwrap_or(0));
+                    if end.is_some() {
+                        self.text.push_str(&concat.separator);
+                    }
+                    self.text.push_str(&mark);
+                    break;
+                }
+                self.ends.pop();
+                self.left_out += 1;
+            }
+        }
+        Some(self.text.into_boxed_str())
+    }
+}
+
+/// Joins the values of each group into one text (`GROUP_CONCAT`): its rows
+/// whose value is not NULL, in the order of the keys, then of the rows, each
+/// value once with `DISTINCT`.
+fn join(joined: &Joined, feed: Feed) -> Vec<Option<Box<str>>> {
+    let Joined {
+        engine,
+        concat,
+        codes,
+        valid,
+        ref keys,
+    } = *joined;
+    let mut positions: Vec<u32> = (0..feed.selection.len() as u32)
+        .filter(|&position| valid[feed.selection[position as usize] as usize])
+        .collect();
+    if !keys.is_empty() {
+        // A stable sort: the values the keys tie keep the order of the rows.
+        positions.sort_by(|&a, &b| {
+            let rows = (
+                feed.selection[a as usize] as usize,
+                feed.selection[b as usize] as usize,
+            );
+            keys.iter()
+                .map(|key| key.compare(rows.0, rows.1))
+                .find(|order| order.is_ne())
+                .unwrap_or(Ordering::Equal)
+        });
+    }
+    let coarser = coarser_groups(feed.merges);
+    let mut joinings: Vec<Joining> = (0..feed.groups).map(|_| Joining::default()).collect();
+    let mut seen: FxSet<u64> = FxSet::default();
+    for position in positions {
+        let row = feed.selection[position as usize];
+        let value = engine.level_value(concat.level, row).unwrap_or_default();
+        let finest = feed.finest[position as usize];
+        let groups = coarser.iter().map(|groups| groups[finest as usize]);
+        for group in iter::once(finest).chain(groups) {
+            if concat.distinct && !seen.insert(pair(group, codes[row as usize])) {
+                continue;
+            }
+            joinings[group as usize].push(value, concat);
+        }
+    }
+    joinings
+        .into_iter()
+        .map(|joining| joining.finish(concat))
+        .collect()
+}
+
 /// Computes the states of a measure over the selected rows.
 ///
 /// # Arguments
@@ -545,6 +759,7 @@ pub fn accumulate(
             level: extreme.level,
             rows: extreme_rows(extreme, feed),
         }),
+        Input::Joined(ref joined) => Ok(State::Texts(join(joined, feed))),
     }
 }
 
@@ -590,7 +805,7 @@ impl State {
     }
 
     /// Value of the measure for `group`.
-    pub fn value(&self, group: u32) -> Value {
+    pub fn value(&self, group: u32) -> Value<'_> {
         let group = group as usize;
         match self {
             State::Count(counts) => Value::Count(counts[group]),
@@ -603,6 +818,7 @@ impl State {
                 NO_VALUE => Value::Null,
                 row => Value::Cell(*level, row),
             },
+            State::Texts(texts) => texts[group].as_deref().map_or(Value::Null, Value::Text),
         }
     }
 
@@ -615,7 +831,7 @@ impl State {
     /// set reaches the longest text of their level (`Engine::longest_text`):
     /// no other cell of the set can be longer.
     pub fn longest(&self, engine: &Engine, cells: &[(u32, u32)], columns: usize) -> Vec<Longest> {
-        let length = |value: Value| value.length(engine).unwrap_or(0);
+        let length = |value: Value<'_>| value.length(engine).unwrap_or(0);
         let mut longest = vec![Longest::default(); columns];
         match self {
             State::Count(counts) => {
@@ -671,6 +887,15 @@ impl State {
                         NO_VALUE => longest.null = true,
                         _ if longest.text >= bound => {}
                         row => longest.text = longest.text.max(length(Value::Cell(*level, row))),
+                    }
+                }
+            }
+            State::Texts(texts) => {
+                for &(group, column) in cells {
+                    let longest = &mut longest[column as usize];
+                    match &texts[group as usize] {
+                        None => longest.null = true,
+                        Some(text) => longest.text = longest.text.max(text.chars().count()),
                     }
                 }
             }
@@ -977,13 +1202,15 @@ mod tests {
         };
         let selection = [0, 1, 2, 3, 4];
         let finest = [0, 0, 1, 1, 1];
-        let values = |largest| {
-            let state = accumulate(&extreme(largest), &selection, &finest, 3, &merges()).unwrap();
+        let state =
+            |largest| accumulate(&extreme(largest), &selection, &finest, 3, &merges()).unwrap();
+        /// Values of the three groups.
+        fn values(state: &State) -> [Value<'_>; 3] {
             [0, 1, 2].map(|group| state.value(group))
-        };
+        }
         let cell = |row| Value::Cell(Level::from(7), row);
-        assert_eq!(values(false), [0, 2, 2].map(cell));
-        assert_eq!(values(true), [1, 3, 3].map(cell));
+        assert_eq!(values(&state(false)), [0, 2, 2].map(cell));
+        assert_eq!(values(&state(true)), [1, 3, 3].map(cell));
 
         let state = accumulate(&extreme(false), &[4], &[0], 3, &merges()).unwrap();
         assert_eq!(state.value(2), Value::Null);

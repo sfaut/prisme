@@ -39,6 +39,7 @@ const FIELD_LABELS: Record<Field, string> = {
   history_retention_days: 'Rétention historique',
   debug_retention_days: 'Rétention debug',
   indent_size: 'Indentation',
+  concat_max_bytes: 'GROUP_CONCAT',
 }
 
 /**
@@ -49,6 +50,7 @@ const FIELD_UNITS: Partial<Record<Field, string>> = {
   history_retention_days: ' jours',
   debug_retention_days: ' jours',
   indent_size: ' espaces',
+  concat_max_bytes: ' octets',
 }
 
 /**

@@ -4,11 +4,14 @@
 //! (SipHash) resists collision attacks, which these tables, filled from the
 //! rows of a result, do not need.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{BuildHasherDefault, Hasher};
 
 /// Hash table with the fast hasher.
 pub type FxMap<K, V> = HashMap<K, V, BuildHasherDefault<FxHasher>>;
+
+/// Hash set with the fast hasher.
+pub type FxSet<K> = HashSet<K, BuildHasherDefault<FxHasher>>;
 
 /// Hasher of rustc (FxHash).
 #[derive(Default)]

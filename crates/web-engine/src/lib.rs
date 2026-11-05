@@ -22,8 +22,8 @@ use std::cell::RefCell;
 use std::slice;
 
 use prisme_pivot::{
-    AxisOrder, Comparison, Engine, Family, Filter, Form, Layout, Level, Measure, Order, Precision,
-    Request, Table, Test, Totals, ValueOrder,
+    AxisOrder, Comparison, Concat, ConcatKey, Engine, Family, Filter, Form, Layout, Level, Measure,
+    Order, Precision, Request, Table, Test, Totals, ValueOrder,
 };
 use prisme_store::Store;
 
@@ -33,6 +33,13 @@ const ALIGN: usize = 8;
 
 /// Word that stands for NULL in a path of values (see `order`).
 const NULL_STEP: u32 = u32::MAX;
+
+/// Kind of the measure `GROUP_CONCAT(col)`, whose settings follow its three
+/// words (see `concat`).
+const GROUP_CONCAT: u32 = 9;
+
+/// Word that stands for a `GROUP_CONCAT` without `LIMIT` (see `concat`).
+const NO_LIMIT: u32 = u32::MAX;
 
 /// Copy of a result under way: its rows so far, the family of each column.
 struct Loading {
@@ -300,19 +307,19 @@ fn level(column: u32, precision: u32) -> Option<Level> {
     })
 }
 
-/// Reads levels, each by two words (see `level`).
-fn levels(words: &[u32]) -> Option<Vec<Level>> {
-    words
-        .chunks(2)
-        .map(|pair| level(pair[0], pair[1]))
+/// Reads `count` levels, each by two words (see `level`).
+fn next_levels(words: &mut impl Iterator<Item = u32>, count: u32) -> Option<Vec<Level>> {
+    (0..count)
+        .map(|_| level(words.next()?, words.next()?))
         .collect()
 }
 
-/// Reads a measure: a kind (0 `COUNT(*)`, 1 `COUNT(col)`, 2 `SUM(col)`,
-/// 3 `COUNT(DISTINCT col)`, 4 `SUM(DISTINCT col)`, 5 `AVG(col)`,
+/// Reads a measure of three words: a kind (0 `COUNT(*)`, 1 `COUNT(col)`,
+/// 2 `SUM(col)`, 3 `COUNT(DISTINCT col)`, 4 `SUM(DISTINCT col)`, 5 `AVG(col)`,
 /// 6 `AVG(DISTINCT col)`, 7 `MIN(col)`, 8 `MAX(col)`), a column and a precision
 /// (see `level`), which only kinds 3, 7 and 8 take. `None` for another kind, or
-/// another precision.
+/// another precision. Kind 9, `GROUP_CONCAT(col)`, reads more words (see
+/// `next_measure`).
 fn measure(kind: u32, column: u32, precision: u32) -> Option<Measure> {
     let level = level(column, precision)?;
     let column = level.column;
@@ -333,9 +340,49 @@ fn measure(kind: u32, column: u32, precision: u32) -> Option<Measure> {
     }
 }
 
-/// Reads a measure, by three words (see `measure`).
+/// Reads a measure, by three words (see `measure`); a `GROUP_CONCAT`, kind 9,
+/// with a column and a precision of any kind, then its settings (see `concat`).
 fn next_measure(words: &mut impl Iterator<Item = u32>) -> Option<Measure> {
-    measure(words.next()?, words.next()?, words.next()?)
+    let (kind, column, precision) = (words.next()?, words.next()?, words.next()?);
+    if kind == GROUP_CONCAT {
+        let concat = concat(level(column, precision)?, words)?;
+        return Some(Measure::GroupConcat(Box::new(concat)));
+    }
+    measure(kind, column, precision)
+}
+
+/// Reads the settings of a `GROUP_CONCAT` of level `level`: a word not 0 for
+/// `DISTINCT`, the number of keys of its order and each key (its column, a
+/// word not 0 for descending), its separator (see `path_step`), which NULL
+/// cannot be, its `OFFSET`, its `LIMIT` (`NO_LIMIT` without one), then its
+/// longest text, in bytes.
+fn concat(level: Level, words: &mut impl Iterator<Item = u32>) -> Option<Concat> {
+    let distinct = words.next()? != 0;
+    let keys = words.next()?;
+    let order = (0..keys)
+        .map(|_| {
+            Some(ConcatKey {
+                column: words.next()? as usize,
+                descending: words.next()? != 0,
+            })
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let separator = operand(words)?;
+    let offset = u64::from(words.next()?);
+    let limit = match words.next()? {
+        NO_LIMIT => None,
+        limit => Some(u64::from(limit)),
+    };
+    let max_bytes = words.next()? as usize;
+    Some(Concat {
+        level,
+        distinct,
+        order,
+        separator,
+        offset,
+        limit,
+        max_bytes,
+    })
 }
 
 /// Reads a comparison: 0 `=`, 1 `<>`, 2 `<`, 3 `<=`, 4 `>`, 5 `>=`. `None` for
@@ -375,8 +422,7 @@ fn test(words: &mut impl Iterator<Item = u32>) -> Option<Test> {
 /// value (see `path_step`). A filter on a measure: 1, the measure (see `measure`),
 /// the number of its levels and each level, and the test (see `test`). A filter
 /// on a column: 2, the level and the test.
-fn filters(words: &[u32]) -> Option<Vec<Filter>> {
-    let mut words = words.iter().copied();
+fn filters(mut words: impl Iterator<Item = u32>) -> Option<Vec<Filter>> {
     let mut filters = Vec::new();
     while let Some(kind) = words.next() {
         filters.push(match kind {
@@ -418,28 +464,21 @@ fn filters(words: &[u32]) -> Option<Vec<Filter>> {
 
 /// Reads a request: the numbers of levels of the rows and of the columns,
 /// the number of measures, the levels of the rows, then of the columns (see
-/// `levels`), then the measures, each by three words (see `measure`), then the
-/// filters (see `filters`). `None` if the words do not match.
+/// `next_levels`), then the measures (see `next_measure`), then the filters
+/// (see `filters`). `None` if the words do not match.
 fn request(words: &[u32]) -> Option<Request> {
-    let (&rows, &columns, &measures) = (words.first()?, words.get(1)?, words.get(2)?);
-    let (rows, columns, measures) = (rows as usize, columns as usize, measures as usize);
-    let rest = &words[3..];
-    let fixed = 2 * (rows + columns) + 3 * measures;
-    if rest.len() < fixed {
-        return None;
-    }
-    let (rest, filter_words) = rest.split_at(fixed);
-    let (row_levels, rest) = rest.split_at(2 * rows);
-    let (column_levels, measure_words) = rest.split_at(2 * columns);
-    let measures = measure_words
-        .chunks(3)
-        .map(|triple| measure(triple[0], triple[1], triple[2]))
+    let mut words = words.iter().copied();
+    let (rows, columns, measures) = (words.next()?, words.next()?, words.next()?);
+    let rows = next_levels(&mut words, rows)?;
+    let columns = next_levels(&mut words, columns)?;
+    let measures = (0..measures)
+        .map(|_| next_measure(&mut words))
         .collect::<Option<Vec<_>>>()?;
     Some(Request {
-        rows: levels(row_levels)?,
-        columns: levels(column_levels)?,
+        rows,
+        columns,
         measures,
-        filters: filters(filter_words)?,
+        filters: filters(words)?,
     })
 }
 
@@ -1099,7 +1138,7 @@ mod tests {
         );
         assert!(request(&[1, 0]).is_none());
         assert!(request(&[1, 0, 0]).is_none());
-        assert!(request(&[0, 0, 1, 9, 0, 0]).is_none());
+        assert!(request(&[0, 0, 1, 10, 0, 0]).is_none());
         assert!(request(&[0, 0, 1, 0, 0]).is_none());
         // Only COUNT(DISTINCT), MIN and MAX take a precision.
         for kind in [0, 1, 2, 4, 5, 6] {
@@ -1107,5 +1146,58 @@ mod tests {
         }
         assert!(request(&[1, 0, 0, 0]).is_none());
         assert!(request(&[1, 0, 0, 0, 11]).is_none());
+    }
+
+    #[test]
+    fn a_group_concat_reads_its_settings_after_its_column() {
+        // GROUP_CONCAT(DISTINCT col 2 (month) ORDER BY col 1 DESC, col 3
+        // SEPARATOR '; ' LIMIT 5 OFFSET 1) in 1000 bytes, then COUNT(*).
+        let words = [
+            0, 0, 2, 9, 2, 3, 1, 2, 1, 1, 3, 0, 2, 59, 32, 1, 5, 1000, 0, 0, 0,
+        ];
+        let concat = Concat {
+            level: Level {
+                column: 2,
+                precision: Some(Precision::Month),
+            },
+            distinct: true,
+            order: vec![
+                ConcatKey {
+                    column: 1,
+                    descending: true,
+                },
+                ConcatKey {
+                    column: 3,
+                    descending: false,
+                },
+            ],
+            separator: "; ".to_owned(),
+            offset: 1,
+            limit: Some(5),
+            max_bytes: 1000,
+        };
+        assert_eq!(
+            request(&words).unwrap().measures,
+            [Measure::GroupConcat(Box::new(concat)), Measure::CountStar]
+        );
+        // Without LIMIT, in a filter that tests whether it is NULL.
+        let measure = [9, 0, 0, 0, 0, 1, 44, 0, NO_LIMIT, 50];
+        let words = [&[0, 0, 1][..], &measure, &[1], &measure, &[0, 8]].concat();
+        let read = request(&words).unwrap();
+        let Measure::GroupConcat(concat) = &read.measures[0] else {
+            panic!("{:?}", read.measures);
+        };
+        assert_eq!((concat.limit, concat.separator.as_str()), (None, ","));
+        assert!(matches!(
+            &read.filters[..],
+            [Filter::Measure {
+                measure: Measure::GroupConcat(_),
+                test: Test::IsNull,
+                ..
+            }]
+        ));
+        // A NULL separator, a word missing.
+        assert!(request(&[0, 0, 1, 9, 0, 0, 0, 0, NULL_STEP, 0, NO_LIMIT, 50]).is_none());
+        assert!(request(&[0, 0, 1, 9, 0, 0, 0, 0, 1, 44, 0, NO_LIMIT]).is_none());
     }
 }

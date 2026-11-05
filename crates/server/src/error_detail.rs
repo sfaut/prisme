@@ -44,6 +44,8 @@ pub enum Field {
     DebugRetentionDays,
     /// Spaces of an indentation level in the SQL editor.
     IndentSize,
+    /// Longest text of a `GROUP_CONCAT` of the Pivoteur, in bytes.
+    ConcatMaxBytes,
 }
 
 impl fmt::Display for Field {

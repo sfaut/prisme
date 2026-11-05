@@ -29,4 +29,8 @@ export type SettingsUpdate = {
    * New indentation of the SQL editor, in spaces (`INDENT_SIZE`).
    */
   indent_size: number;
+  /**
+   * New longest text of a `GROUP_CONCAT`, in bytes (`CONCAT_MAX_BYTES`).
+   */
+  concat_max_bytes: number;
 };

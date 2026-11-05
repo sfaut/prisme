@@ -86,7 +86,7 @@ struct Siblings<'a> {
     /// Is each level in descending order? A level left out is ascending.
     descending: &'a [bool],
     /// Key of each node, and is their order descending?
-    keys: Option<(&'a [SortKey], bool)>,
+    keys: Option<(&'a [SortKey<'a>], bool)>,
 }
 
 impl<'a> Siblings<'a> {
@@ -100,7 +100,11 @@ impl<'a> Siblings<'a> {
     }
 
     /// The order asked for an axis, with the keys of its nodes.
-    fn of_axis(ranks: &'a [&'a [u32]], axis: &'a AxisOrder, keys: Option<&'a [SortKey]>) -> Self {
+    fn of_axis(
+        ranks: &'a [&'a [u32]],
+        axis: &'a AxisOrder,
+        keys: Option<&'a [SortKey<'a>]>,
+    ) -> Self {
         let direction = axis.values.as_ref().map(|values| values.descending);
         Siblings {
             ranks,
@@ -330,7 +334,7 @@ impl Table {
         engine: &Engine,
         order: &AxisOrder,
         axis: Axis,
-    ) -> Result<Option<Vec<SortKey>>, Error> {
+    ) -> Result<Option<Vec<SortKey<'_>>>, Error> {
         let Some(values) = &order.values else {
             return Ok(None);
         };
@@ -588,7 +592,7 @@ impl Table {
     /// # Panics
     ///
     /// If the line or the column is not in the table.
-    pub fn value(&self, line: usize, column: usize) -> Value {
+    pub fn value(&self, line: usize, column: usize) -> Value<'_> {
         let row_node = self.lines[line];
         let depth = self.rows.nodes[row_node as usize].depth as usize;
         if !self.layout.rows.show(depth, self.row_levels) {

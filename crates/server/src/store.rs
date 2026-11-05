@@ -61,6 +61,9 @@ static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
         M::up(include_str!("../migrations/0022_query_history_export.sql")),
         M::up(include_str!("../migrations/0023_result_tabs_pivot.sql")),
         M::up(include_str!("../migrations/0024_result_chunks.sql")),
+        M::up(include_str!(
+            "../migrations/0025_users_concat_max_bytes.sql"
+        )),
     ])
 });
 

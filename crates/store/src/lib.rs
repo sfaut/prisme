@@ -15,7 +15,7 @@ mod numbers;
 
 pub use column::{BlockError, TextColumn};
 pub use dictionary::Dictionary;
-pub use hash::FxMap;
+pub use hash::{FxMap, FxSet};
 pub use numbers::{
     Approx, Exact, NumberError, compare_exact, float_length, format_exact, format_float, is_exact,
     parse_exact,

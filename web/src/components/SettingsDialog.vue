@@ -3,8 +3,9 @@
   of the queries, default row limit (shared with the choice in each SQL cell),
   read-only sessions and the writes they allow, by kind (greyed out while the
   sessions are read-only: the database would refuse them), the indentation of
-  the SQL editor, in spaces, then the retention of the console's history and
-  debug log, in days.
+  the SQL editor, in spaces, the longest text of a `GROUP_CONCAT` of the
+  Pivoteur, in bytes, then the retention of the console's history and debug
+  log, in days.
   The language offers French only for now: the interface stays in French
   until it is made multilingual (see `docs/QUESTIONS.md`), and the choice is
   not saved yet. The planned languages (English, Spanish, German, Italian)
@@ -20,6 +21,7 @@ import { WRITE_KIND_GROUPS, WRITE_KIND_STATEMENTS, writeKindTooltip } from '@/ap
 import { useSettingsStore } from '@/stores/settings'
 
 import { DEFAULT_INDENT_SIZE } from './editorIndent'
+import { DEFAULT_CONCAT_MAX_BYTES } from './pivotEngine'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
 import UiDialog from './ui/UiDialog.vue'
@@ -76,6 +78,12 @@ const INDENT_MIN = 1
 const INDENT_MAX = 8
 
 /**
+ * Bounds of the longest text of a `GROUP_CONCAT`, in bytes: the server checks the same.
+ */
+const CONCAT_MIN = 100
+const CONCAT_MAX = 1_048_576
+
+/**
  * Why the writes cannot be chosen while the sessions are read-only.
  */
 const READ_ONLY_WRITES =
@@ -83,13 +91,14 @@ const READ_ONLY_WRITES =
 
 /**
  * Current input: the row limit, the read-only mode, the allowed writes, the
- * indentation and the retentions.
+ * indentation, the longest text of a `GROUP_CONCAT` and the retentions.
  */
 const form = reactive({
   row_limit: DEFAULT_ROW_LIMIT,
   read_only_session: true,
   allowed_writes: [] as WriteKind[],
   indent_size: DEFAULT_INDENT_SIZE,
+  concat_max_bytes: DEFAULT_CONCAT_MAX_BYTES,
   history_retention_days: DEFAULT_RETENTION,
   debug_retention_days: DEFAULT_RETENTION,
 })
@@ -132,6 +141,7 @@ watch(open, async (isOpen) => {
   form.read_only_session = settings.settings?.read_only_session ?? true
   form.allowed_writes = [...(settings.settings?.allowed_writes ?? [])]
   form.indent_size = settings.settings?.indent_size ?? DEFAULT_INDENT_SIZE
+  form.concat_max_bytes = settings.settings?.concat_max_bytes ?? DEFAULT_CONCAT_MAX_BYTES
   form.history_retention_days = settings.settings?.history_retention_days ?? DEFAULT_RETENTION
   form.debug_retention_days = settings.settings?.debug_retention_days ?? DEFAULT_RETENTION
 })
@@ -157,7 +167,7 @@ async function save(): Promise<void> {
   <ui-dialog
     v-model:open="open"
     title="Paramètres"
-    description="Langue de l’interface, requêtes, éditeur et conservation de la console"
+    description="Langue de l’interface, requêtes, éditeur, Pivoteur et conservation de la console"
   >
     <form id="settings-form" class="flex flex-col gap-4" @submit.prevent="save">
       <ui-field label="Langue">
@@ -233,6 +243,23 @@ async function save(): Promise<void> {
             "
           />
           <span class="text-base text-fg-secondary">espaces</span>
+        </div>
+      </ui-field>
+      <ui-field label="GROUP_CONCAT">
+        <div class="flex items-center gap-3">
+          <ui-input
+            v-model="form.concat_max_bytes"
+            type="number"
+            :min="CONCAT_MIN"
+            :max="CONCAT_MAX"
+            required
+            class="w-27"
+            aria-label="Longueur maximale d’un GROUP_CONCAT, en octets"
+            v-tooltip="
+              'Longueur maximale du texte d’un GROUP_CONCAT du Pivoteur : au-delà, il garde les valeurs entières qui tiennent, suivies de « … » et du nombre de valeurs omises'
+            "
+          />
+          <span class="text-base text-fg-secondary">octets</span>
         </div>
       </ui-field>
       <ui-field label="Rétention historique">

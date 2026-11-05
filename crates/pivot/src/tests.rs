@@ -822,7 +822,7 @@ fn a_date_outside_of_the_calendar_stops_a_measure_at_a_precision() {
         Measure::Max(dated(0, Precision::Year)),
     ] {
         let request = Request {
-            measures: vec![measure],
+            measures: vec![measure.clone()],
             ..Request::default()
         };
         assert_eq!(
@@ -862,7 +862,7 @@ fn a_filter_on_an_extreme_at_a_precision_compares_periods() {
         Family::Date,
     );
     let last_month = Measure::Max(dated(1, Precision::Month));
-    let keys = |comparison, operand| kept_keys(&engine, last_month, comparison, operand);
+    let keys = |comparison, operand| kept_keys(&engine, last_month.clone(), comparison, operand);
     assert_eq!(keys(Comparison::GreaterOrEqual, "2026-01").unwrap(), ["a"]);
     assert_eq!(keys(Comparison::Equal, "2025-11").unwrap(), ["b"]);
     // A date is no month.
@@ -2678,4 +2678,235 @@ fn a_column_is_found_by_its_values_and_its_measure() {
     let table = engine.compute(&labels).unwrap();
     assert_eq!(at(&table, &["2026"], 0), Some(1));
     assert_eq!(at(&table, &["2026"], 1), None);
+}
+
+/// `GROUP_CONCAT(col)` of a level, every value in the order of the rows,
+/// separated by `,`, in at most 1000 bytes.
+fn concat(level: impl Into<Level>) -> Concat {
+    Concat {
+        level: level.into(),
+        distinct: false,
+        order: vec![],
+        separator: ",".to_owned(),
+        offset: 0,
+        limit: None,
+        max_bytes: 1000,
+    }
+}
+
+/// Measure `GROUP_CONCAT` of a `Concat`.
+fn group_concat(concat: Concat) -> Measure {
+    Measure::GroupConcat(Box::new(concat))
+}
+
+/// Key of the order of a `GROUP_CONCAT`.
+fn concat_key(column: usize, descending: bool) -> ConcatKey {
+    ConcatKey { column, descending }
+}
+
+/// Engine over rows of a group, of a value and of a key of order, an exact
+/// number: a NULL value, a NULL key, keys that tie, a key whose text ranks
+/// before a smaller one (`10` and `2`), a group without any value.
+fn concat_engine() -> Engine {
+    let rows = [
+        ("x", Some("b"), Some("2")),
+        ("x", None, Some("0")),
+        ("x", Some("a"), None),
+        ("x", Some("c"), Some("10")),
+        ("y", Some("d"), Some("1")),
+        ("x", Some("e"), Some("2")),
+        ("z", None, Some("5")),
+    ];
+    let mut store = Store::new(3);
+    for (group, value, key) in rows {
+        store.push_row(&[Some(group), value, key]);
+    }
+    Engine::new(store, vec![Family::Other, Family::Other, Family::Exact])
+}
+
+#[test]
+fn group_concat_joins_the_values_of_each_group_in_the_order_of_the_rows() {
+    let engine = example();
+    let distinct = Concat {
+        distinct: true,
+        ..concat(CITY)
+    };
+    let request = Request {
+        rows: vec![REGION.into()],
+        columns: vec![YEAR.into()],
+        measures: vec![group_concat(concat(CITY)), group_concat(distinct)],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    // Each total joins the values of its whole group, DISTINCT included.
+    let expected = [
+        "region;2025 / villes;2025 / uniques;2026 / villes;2026 / uniques;Total / villes;Total / uniques",
+        "Nord;Lille,Lille,Arras;Lille,Arras;Lille,Arras;Lille,Arras;Lille,Lille,Lille,Arras,Arras;Lille,Arras",
+        "Sud;Nice,Nice;Nice;Nice,Nice,Toulon;Nice,Toulon;Nice,Nice,Nice,Nice,Toulon;Nice,Toulon",
+        "Total;Lille,Lille,Arras,Nice,Nice;Lille,Arras,Nice;Lille,Arras,Nice,Nice,Toulon;Lille,Arras,Nice,Toulon;Lille,Lille,Lille,Arras,Arras,Nice,Nice,Nice,Nice,Toulon;Lille,Arras,Nice,Toulon",
+    ];
+    assert_eq!(
+        flat(&engine, &table, &["region"], &["villes", "uniques"]),
+        expected.join("\n")
+    );
+}
+
+#[test]
+fn group_concat_ignores_null_and_gives_null_without_a_value() {
+    let engine = concat_engine();
+    let expected = "x;b,a,c,e\ny;d\nz;NULL\nTotal;b,a,c,d,e";
+    assert_eq!(by_level(&engine, &[group_concat(concat(1))]), expected);
+}
+
+#[test]
+fn group_concat_orders_by_its_keys_null_first_and_ties_in_the_order_of_the_rows() {
+    let engine = concat_engine();
+    let ordered = |order: Vec<ConcatKey>| {
+        let measure = group_concat(Concat { order, ..concat(1) });
+        by_level(&engine, &[measure])
+    };
+    // Numbers by value, NULL first in ascending order, last in descending
+    // order; the keys that tie keep the order of the rows.
+    assert_eq!(
+        ordered(vec![concat_key(2, false)]),
+        "x;a,b,e,c\ny;d\nz;NULL\nTotal;a,d,b,e,c"
+    );
+    assert_eq!(
+        ordered(vec![concat_key(2, true)]),
+        "x;c,b,e,a\ny;d\nz;NULL\nTotal;c,b,e,d,a"
+    );
+    // The second key orders the values the first one ties.
+    assert_eq!(
+        ordered(vec![concat_key(0, true), concat_key(2, false)]),
+        "x;a,b,e,c\ny;d\nz;NULL\nTotal;d,a,b,e,c"
+    );
+}
+
+#[test]
+fn group_concat_distinct_keeps_the_first_of_each_value_by_code_points() {
+    let engine = pairs(
+        &[
+            ("x", Some("fr")),
+            ("x", Some("FR")),
+            ("x", Some("fr")),
+            ("x", Some("Fr")),
+        ],
+        Family::Other,
+    );
+    let distinct = |order: Vec<ConcatKey>| {
+        let measure = group_concat(Concat {
+            distinct: true,
+            order,
+            ..concat(1)
+        });
+        by_level(&engine, &[measure])
+    };
+    assert_eq!(distinct(vec![]), "x;fr,FR,Fr\nTotal;fr,FR,Fr");
+    assert_eq!(
+        distinct(vec![concat_key(1, true)]),
+        "x;fr,Fr,FR\nTotal;fr,Fr,FR"
+    );
+}
+
+#[test]
+fn group_concat_skips_and_limits_its_values_after_their_order() {
+    let engine = concat_engine();
+    let window = |offset: u64, limit: Option<u64>| {
+        let measure = group_concat(Concat {
+            order: vec![concat_key(2, false)],
+            separator: " | ".to_owned(),
+            offset,
+            limit,
+            ..concat(1)
+        });
+        by_level(&engine, &[measure])
+    };
+    assert_eq!(window(1, Some(2)), "x;b | e\ny;\nz;NULL\nTotal;d | b");
+    // A group whose values the window leaves out gives an empty text, as in
+    // MariaDB; a group without any value stays NULL.
+    assert_eq!(window(0, Some(0)), "x;\ny;\nz;NULL\nTotal;");
+    assert_eq!(window(4, None), "x;\ny;\nz;NULL\nTotal;c");
+}
+
+#[test]
+fn group_concat_cuts_its_text_between_whole_values_with_their_count() {
+    let engine = single(&[Some("éé"), None, Some("éé"), Some("éé")], Family::Other);
+    let cut = |max_bytes: usize| {
+        let request = Request {
+            measures: vec![group_concat(Concat {
+                max_bytes,
+                ..concat(0)
+            })],
+            ..Request::default()
+        };
+        let table = engine.compute(&request).unwrap();
+        table.value(0, 0).text(&engine).unwrap()
+    };
+    // The limit counts bytes of UTF-8: `é` takes two.
+    assert_eq!(cut(14), "éé,éé,éé");
+    // The mark takes the room of the values it replaces.
+    assert_eq!(cut(13), "éé,…(2)");
+    assert_eq!(cut(11), "éé,…(2)");
+    // Without room for a value, the mark stands alone.
+    assert_eq!(cut(10), "…(3)");
+}
+
+#[test]
+fn group_concat_joins_the_periods_of_a_precision() {
+    let engine = example();
+    let quarters = Concat {
+        distinct: true,
+        order: vec![concat_key(DATE, false)],
+        ..concat(dated(DATE, Precision::Quarter))
+    };
+    let request = Request {
+        rows: vec![REGION.into()],
+        measures: vec![group_concat(quarters)],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    let expected = "\
+region;trimestres
+Nord;2025-T1,2025-T2,2026-T1,2026-T2
+Sud;2025-T1,2025-T2,2026-T1,2026-T2
+Total;2025-T1,2025-T2,2026-T1,2026-T2";
+    assert_eq!(
+        flat(&engine, &table, &["region"], &["trimestres"]),
+        expected
+    );
+}
+
+#[test]
+fn a_sort_on_a_group_concat_compares_its_texts_by_code_points() {
+    let measures = [group_concat(concat(AMOUNT))];
+    let order = lines_by(&[], 0, false);
+    // `100,…` comes before `30`: the texts compare, and not their numbers.
+    let expected = "\
+ville;ca
+Lille;100,120,150
+Toulon;30
+Arras;40,60
+Nice;80,90,110,70
+Total;100,120,150,40,60,80,90,110,70,30";
+    assert_eq!(sorted_example(&[CITY], &[], &measures, &order), expected);
+}
+
+#[test]
+fn a_filter_tests_whether_a_group_concat_is_null_and_compares_none() {
+    let engine = concat_engine();
+    let measure = group_concat(concat(1));
+    assert_eq!(
+        kept_keys(&engine, measure.clone(), Comparison::Equal, "d"),
+        Err(Error::FilterOperand { filter: 0 })
+    );
+    let request = Request {
+        rows: vec![0.into()],
+        filters: vec![Filter::Measure {
+            measure,
+            levels: vec![0.into()],
+            test: Test::IsNull,
+        }],
+        ..Request::default()
+    };
+    assert_eq!(labels_of(&engine, &request), Ok(vec!["z".to_owned()]));
 }

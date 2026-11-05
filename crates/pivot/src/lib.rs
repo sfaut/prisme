@@ -8,7 +8,9 @@
 //! the measures are `COUNT(*)`, `COUNT(col)`, `SUM(col)`, `AVG(col)`,
 //! `MIN(col)` and `MAX(col)`, in ANSI SQL, and `COUNT`, `SUM` and `AVG` of
 //! `DISTINCT col`; `COUNT(DISTINCT col)`, `MIN(col)` and `MAX(col)` read the
-//! values of a level, hence the periods of a precision too. The lines and the
+//! values of a level, hence the periods of a precision too. `GROUP_CONCAT(col)`,
+//! of MariaDB, brought forward from the lot 3, joins the values of a level into
+//! one text (`Concat`). The lines and the
 //! columns follow their labels or the values
 //! of a measure (`Order`), the lines take a form, and each axis shows the totals
 //! it is given (`Layout`). Filters keep rows, by a list of values or a condition
@@ -34,7 +36,7 @@ use crate::dates::DerivedLevel;
 pub use crate::dates::Precision;
 pub use crate::filters::{Comparison, Filter, Test};
 pub use crate::measures::Value;
-use crate::measures::{Extreme, Input, SortKey};
+use crate::measures::{Extreme, Input, Joined, OrderKey, SortKey};
 pub use crate::table::{Header, Label, Line, Table, TextLengths};
 
 /// Family of the type of a column, as far as the measures and the filters need
@@ -64,7 +66,7 @@ impl Family {
 }
 
 /// Measure of a table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Measure {
     /// `COUNT(*)`: number of rows.
     CountStar,
@@ -93,19 +95,62 @@ pub enum Measure {
     /// `MAX(col)`: last value of a level whose cell is not NULL, in the order
     /// of `MIN`; NULL without any.
     Max(Level),
+    /// `GROUP_CONCAT(col)`: values of a level whose cells are not NULL,
+    /// joined into one text (`Concat`); NULL without any.
+    GroupConcat(Box<Concat>),
 }
 
 impl Measure {
     /// Level whose values the measure reads, for `COUNT(DISTINCT col)`,
-    /// `MIN(col)` and `MAX(col)`; the others read the cells of their column.
-    fn level(self) -> Option<Level> {
+    /// `MIN(col)`, `MAX(col)` and `GROUP_CONCAT(col)`; the others read the cells
+    /// of their column.
+    fn level(&self) -> Option<Level> {
         match self {
             Measure::CountDistinct(level) | Measure::Min(level) | Measure::Max(level) => {
-                Some(level)
+                Some(*level)
             }
+            Measure::GroupConcat(concat) => Some(concat.level),
             _ => None,
         }
     }
+}
+
+/// `GROUP_CONCAT` of a level, as MariaDB writes it: its values, joined into
+/// one text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Concat {
+    /// Level of the values: its column, at a precision of its dates or not.
+    pub level: Level,
+    /// Is each value taken once (`DISTINCT`), the first in the order of the
+    /// values? The values are told apart as the levels group them: by their
+    /// text, or by their period.
+    pub distinct: bool,
+    /// Keys of the order of the values (`ORDER BY`), the first one first. The
+    /// values they tie, and all of them without a key, follow the order of the
+    /// rows.
+    pub order: Vec<ConcatKey>,
+    /// Text between two values (`SEPARATOR`).
+    pub separator: String,
+    /// Values skipped first (`OFFSET`).
+    pub offset: u64,
+    /// Values kept at most after them (`LIMIT`), `None` for all of them.
+    pub limit: Option<u64>,
+    /// Longest text, in bytes of UTF-8. Beyond, the text keeps the whole
+    /// values that hold in it, followed by the separator, `…` and the number
+    /// of values left out in parentheses (`a, b, …(3)`), as
+    /// `LISTAGG … ON OVERFLOW TRUNCATE '…' WITH COUNT` of the standard.
+    pub max_bytes: usize,
+}
+
+/// Key of the order of the values of a `GROUP_CONCAT`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConcatKey {
+    /// Column of the result, whose values compare as `MIN` and `MAX` compare
+    /// them: numbers by value, any other value by code points.
+    pub column: usize,
+    /// Is the order descending? NULL comes first in ascending order, as in
+    /// MariaDB, and last in descending order.
+    pub descending: bool,
 }
 
 /// Level of a table: the values of a column, or what a precision keeps of
@@ -654,9 +699,32 @@ impl Engine {
         }))
     }
 
+    /// Values a `GROUP_CONCAT` joins, with the keys of their order.
+    fn joined<'a>(&'a self, index: usize, concat: &'a Concat) -> Result<Input<'a>, Error> {
+        let keys = concat
+            .order
+            .iter()
+            .map(|key| {
+                Ok(OrderKey {
+                    codes: &self.dictionary(key.column)?.codes,
+                    ranks: self.value_ranks(index, key.column)?,
+                    valid: self.validity(key.column)?,
+                    descending: key.descending,
+                })
+            })
+            .collect::<Result<Vec<_>, Error>>()?;
+        Ok(Input::Joined(Joined {
+            engine: self,
+            concat,
+            codes: &self.level_dictionary(concat.level)?.codes,
+            valid: self.validity(concat.level.column)?,
+            keys,
+        }))
+    }
+
     /// Values measure `measure` reads.
-    fn input(&self, index: usize, measure: Measure) -> Result<Input<'_>, Error> {
-        Ok(match measure {
+    fn input<'a>(&'a self, index: usize, measure: &'a Measure) -> Result<Input<'a>, Error> {
+        Ok(match *measure {
             Measure::CountStar => Input::Rows,
             Measure::Count(column) => Input::Cells(self.validity(column)?),
             Measure::CountDistinct(level) => Input::Distinct(
@@ -671,12 +739,17 @@ impl Engine {
             }
             Measure::Min(level) => self.extreme(index, level, false)?,
             Measure::Max(level) => self.extreme(index, level, true)?,
+            Measure::GroupConcat(ref concat) => self.joined(index, concat)?,
         })
     }
 
     /// What a sort compares of a value of measure `measure`: a value of a
-    /// level by its rank, as `MIN` and `MAX` compare it.
-    pub(crate) fn sort_key(&self, measure: usize, value: Value) -> Result<SortKey, Error> {
+    /// level by its rank, as `MIN` and `MAX` compare it, a text by code points.
+    pub(crate) fn sort_key<'v>(
+        &self,
+        measure: usize,
+        value: Value<'v>,
+    ) -> Result<SortKey<'v>, Error> {
         Ok(match value {
             Value::Empty | Value::Null => SortKey::Missing,
             Value::Count(count) => SortKey::Exact(i128::from(count)),
@@ -687,6 +760,7 @@ impl Engine {
                 let ranks = self.extreme_ranks(measure, level)?;
                 SortKey::Exact(i128::from(ranks[code as usize]))
             }
+            Value::Text(text) => SortKey::Text(text),
         })
     }
 
@@ -710,7 +784,7 @@ impl Engine {
             .measures
             .iter()
             .enumerate()
-            .map(|(index, &measure)| self.input(index, measure))
+            .map(|(index, measure)| self.input(index, measure))
             .collect::<Result<Vec<_>, _>>()?;
         let selection = self.keep_by_cells(&request.filters, kept)?;
         self.check_dates(&request.rows, &selection)?;

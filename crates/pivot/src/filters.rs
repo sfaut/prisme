@@ -376,7 +376,7 @@ impl Engine {
             } = filter
             {
                 let (group_of_row, accepted) =
-                    self.accepted_groups(index, *measure, levels, test, &rows)?;
+                    self.accepted_groups(index, measure, levels, test, &rows)?;
                 let keep = keep.get_or_insert_with(|| vec![true; rows.len()]);
                 for (slot, &group) in keep.iter_mut().zip(&group_of_row) {
                     *slot &= accepted[group as usize];
@@ -401,7 +401,7 @@ impl Engine {
     fn accepted_groups(
         &self,
         filter: usize,
-        measure: Measure,
+        measure: &Measure,
         levels: &[Level],
         test: &Test,
         rows: &[u32],
@@ -435,9 +435,10 @@ impl Engine {
 
     /// Reads an operand by the kind of the values of a measure, whose column
     /// exists: a period for `MIN` and `MAX` at a precision. `None` if it cannot
-    /// compare with them.
-    fn operand<'a>(&self, measure: Measure, text: &'a str) -> Option<Read<'a>> {
-        let family = match measure {
+    /// compare with them, as for any operand of a `GROUP_CONCAT`, whose texts
+    /// no filter compares yet.
+    fn operand<'a>(&self, measure: &Measure, text: &'a str) -> Option<Read<'a>> {
+        let family = match *measure {
             Measure::CountStar | Measure::Count(_) | Measure::CountDistinct(_) => Family::Exact,
             Measure::Min(Level {
                 precision: Some(precision),
@@ -454,6 +455,7 @@ impl Engine {
             | Measure::SumDistinct(column)
             | Measure::Avg(column)
             | Measure::AvgDistinct(column) => self.families[column],
+            Measure::GroupConcat(_) => return None,
         };
         read(family, text).ok()
     }
@@ -461,7 +463,7 @@ impl Engine {
     /// Reads a value of a measure that is not NULL, `None` for a cell gone. A
     /// date `MIN` or `MAX` chose outside of the calendar stops the computation;
     /// a period compares as its label.
-    fn read_value(&self, value: Value) -> Result<Option<Read<'_>>, Error> {
+    fn read_value<'a>(&'a self, value: Value<'a>) -> Result<Option<Read<'a>>, Error> {
         Ok(match value {
             Value::Count(count) => Some(Read::Exact((i128::from(count), 0))),
             Value::Exact(number, scale) => Some(Read::Exact((number, scale))),
@@ -474,6 +476,7 @@ impl Engine {
                 ),
                 None => None,
             },
+            Value::Text(text) => Some(Read::Text(text)),
             Value::Empty | Value::Null => None,
         })
     }

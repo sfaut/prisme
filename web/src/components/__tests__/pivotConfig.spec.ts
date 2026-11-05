@@ -8,12 +8,14 @@ import {
   type DatePrecision,
   type NamedMeasure,
   type PivotColumnFilter,
+  type PivotConcat,
   type PivotConfig,
   type PivotFilter,
   type PivotLevel,
   type PivotMeasureFilter,
   activeFilterPlace,
   addsNumbers,
+  aggregateLabel,
   columnAt,
   defaultAggregate,
   elementExpression,
@@ -23,6 +25,7 @@ import {
   engineOrder,
   engineRequest,
   engineTargets,
+  filterable,
   fittedConfig,
   hasGrandTotal,
   hasTable,
@@ -43,6 +46,7 @@ import {
   withAggregate,
   withAllSubtotals,
   withColumnWidth,
+  withConcat,
   withFilter,
   withForm,
   withGrandTotal,
@@ -158,8 +162,8 @@ describe('measureExpression', () => {
 })
 
 describe('takesPrecision', () => {
-  it('lets COUNT(DISTINCT), MIN and MAX read the periods of the dates', () => {
-    const taking = ['count_distinct', 'min', 'max'] as const
+  it('lets COUNT(DISTINCT), MIN, MAX and GROUP_CONCAT read the periods of the dates', () => {
+    const taking = ['count_distinct', 'min', 'max', 'group_concat'] as const
     const others = ['count_star', 'count', 'sum', 'sum_distinct', 'avg', 'avg_distinct'] as const
     expect(taking.every(takesPrecision)).toBe(true)
     expect(others.some(takesPrecision)).toBe(false)
@@ -189,6 +193,7 @@ describe('engineRequest', () => {
       columns: [{ column: 2, precision: 'none' }],
       measures: [{ aggregate: 'sum', column: 4 }],
       filters: [],
+      concatMaxBytes: 1000,
     })
     expect(
       sameRequest(request, engineRequest(withName(config, { zone: 'rows', index: 0 }, 'R', NAMES))),
@@ -655,6 +660,116 @@ describe('withAggregate', () => {
       dated('count_distinct', 2, 'month'),
     ])
     expect(withAggregate(config, 0, 'count').measures[0]?.precision).toBeUndefined()
+  })
+})
+
+describe('GROUP_CONCAT', () => {
+  /**
+   * `GROUP_CONCAT` of a column, with its settings.
+   *
+   * @param column Index of the column.
+   * @param concat Settings.
+   */
+  function joined(column: number, concat: PivotConcat): NamedMeasure {
+    return { ...measure('group_concat', column), concat }
+  }
+
+  it('writes its settings as MariaDB writes them, its separator always', () => {
+    expect(measureExpression(measure('group_concat', 1), NAMES)).toBe(
+      "GROUP_CONCAT(ville SEPARATOR ', ')",
+    )
+    const all = joined(1, {
+      distinct: true,
+      order: [{ column: 4, descending: true }, { column: 0 }],
+      separator: "l'un",
+      offset: 1,
+      limit: 5,
+    })
+    expect(measureExpression(all, NAMES)).toBe(
+      "GROUP_CONCAT(DISTINCT ville ORDER BY montant DESC, region SEPARATOR 'l''un' LIMIT 5 OFFSET 1)",
+    )
+    const months = { ...dated('group_concat', 2, 'month'), concat: { separator: '' } }
+    expect(measureExpression(months, NAMES)).toBe("GROUP_CONCAT(annee (Mois) SEPARATOR '')")
+    // The menu of the aggregates names it without its settings.
+    expect(aggregateLabel(all, NAMES)).toBe('GROUP_CONCAT(ville)')
+    expect(aggregateLabel(months, NAMES)).toBe('GROUP_CONCAT(annee (Mois))')
+    expect(aggregateLabel(measure('sum', 4), NAMES)).toBe('SUM(montant)')
+  })
+
+  it('starts with the default settings, which another aggregate leaves', () => {
+    const config: PivotConfig = { ...emptyConfig(), measures: [dated('min', 2, 'month')] }
+    const concatenated = withAggregate(config, 0, 'group_concat')
+    expect(concatenated.measures).toEqual([
+      { ...dated('group_concat', 2, 'month'), concat: { separator: ', ' } },
+    ])
+    const changed = withConcat(concatenated, 0, { separator: ' | ', distinct: true })
+    expect(changed.measures[0]?.concat).toEqual({ separator: ' | ', distinct: true })
+    expect(withAggregate(changed, 0, 'group_concat').measures[0]?.concat).toEqual({
+      separator: ' | ',
+      distinct: true,
+    })
+    const back = withAggregate(changed, 0, 'max')
+    expect(back.measures).toEqual([dated('max', 2, 'month')])
+    expect(back.measures[0]).not.toHaveProperty('concat')
+    // Another aggregate has no settings to change.
+    expect(withConcat(config, 0, { separator: ';' })).toEqual(config)
+  })
+
+  it('asks the engine for its settings, each one written, and for the longest text', () => {
+    const config: PivotConfig = {
+      ...emptyConfig(),
+      rows: [level(0)],
+      measures: [joined(1, { separator: ', ', order: [{ column: 4 }] })],
+    }
+    const request = engineRequest(config, 2000)
+    expect(request.measures).toEqual([
+      {
+        aggregate: 'group_concat',
+        column: 1,
+        concat: {
+          distinct: false,
+          order: [{ column: 4, descending: false }],
+          separator: ', ',
+          offset: 0,
+        },
+      },
+    ])
+    expect(request.concatMaxBytes).toBe(2000)
+    expect(sameRequest(request, engineRequest(config, 3000))).toBe(false)
+    expect(
+      sameRequest(request, engineRequest(withConcat(config, 0, { separator: ';' }), 2000)),
+    ).toBe(false)
+    // Written in full, the same settings ask for the same table.
+    const written = withConcat(config, 0, {
+      distinct: false,
+      order: [{ column: 4, descending: false }],
+      separator: ', ',
+      offset: 0,
+    })
+    expect(sameRequest(request, engineRequest(written, 2000))).toBe(true)
+    // A reactive configuration gives a request the Worker can take.
+    expect(() => structuredClone(engineRequest(reactive(config)))).not.toThrow()
+  })
+
+  it('follows the columns of its keys in a new result, a key lost leaving', () => {
+    const config: PivotConfig = {
+      ...emptyConfig(),
+      measures: [
+        joined(1, { separator: ', ', order: [{ column: 4, descending: true }, { column: 3 }] }),
+      ],
+    }
+    const fitted = fittedConfig({ fields: NAMES, config }, ['montant', 'ville'], [])
+    expect(fitted.measures).toEqual([
+      joined(1, { separator: ', ', order: [{ column: 0, descending: true }] }),
+    ])
+  })
+
+  it('gives no filter', () => {
+    expect(filterable('group_concat')).toBe(false)
+    expect(filterable('max')).toBe(true)
+    const config: PivotConfig = { ...emptyConfig(), measures: [joined(1, { separator: ', ' })] }
+    const from = { zone: 'measures', index: 0 } as const
+    expect(placeColumn(config, 1, 'count', { zone: 'filters', index: 0 }, from)).toBe(config)
   })
 })
 

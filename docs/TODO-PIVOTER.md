@@ -124,6 +124,12 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Documented: `README.md`, `docs/DEVELOPER.md`
 - ✅ Documented in the specification (F-45 and its acceptance)
 - ✅ The values of a `datetime` column as they are, as the result grid shows them, are named "Horodatage" and come right after "Date", before its precisions of the time; documented in `README.md` and in the specification (F-43, table "Précision")
+- ✅ `GROUP_CONCAT(col)`, brought forward from lot 3 (ticket #34): an aggregate of the menu, on any column, with the precision of its dates; its settings open beside it when it is chosen, and by "Réglages…": `DISTINCT`, keys of the order on any column of the result (`ASC`, `DESC`, `NULL` first in ascending order, as MariaDB), separator (`, ` by default), `LIMIT` and `OFFSET` (after a `LIMIT` only). `NULL` ignored, a group without a value gives `NULL`, a window beyond the values an empty text; a total joins its whole group. Measured: `agg.group_concat_*`, `agg.cut_bytes` (`docs/SQL-COMPARISON.md`, section 3.6)
+- ✅ A text longer than a setting of the user (100 to 1,048,576 bytes, 1,000 by default, in **Paramètres**) is cut between whole values and ends with `…(N)`, N the values left out
+- ✅ A sort by a `GROUP_CONCAT` compares its texts by code points; it gives no filter for now
+- ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes
+- ✅ Documented: `README.md`, `docs/DEVELOPER.md`
+- ⬜ Documented in the specification (lot 3 brought forward)
 - ⬜ Filters by an expression (F-19), with the dialect: an expression without an aggregate filters the rows, with one the groups; later, a custom expression in a filter on values (F-21), `LIKE` and relative dates
 - ⬜ Lot 1, next slices (ANSI SQL): dialect (parsed by `sqlparser`, typing, ANSI catalog), calendar, editor, nested date levels, computed columns, filters, fold, caches, copy, CSV, conformance
 - ⬜ Lot 2: complements (detail of a cell, measures in rows)

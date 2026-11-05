@@ -16,6 +16,7 @@ import {
   CalendarRange,
   Clock,
   Clock3,
+  Combine,
   Divide,
   FingerprintPattern,
   Hash,
@@ -43,6 +44,7 @@ export const AGGREGATES: { aggregate: PivotMeasure['aggregate']; icon: Component
   { aggregate: 'avg_distinct', icon: SquareDivide },
   { aggregate: 'min', icon: ArrowDownToLine },
   { aggregate: 'max', icon: ArrowUpToLine },
+  { aggregate: 'group_concat', icon: Combine },
 ]
 
 /**

@@ -24,8 +24,9 @@
   A column dropped into the measures gives its default aggregate
   (`defaultAggregate`, F-15); the menu of a measure changes it. The menu of a
   level of dates sets its precision, what it keeps of them (`precisionChoices`),
-  and so does that of `COUNT(DISTINCT)`, `MIN` and `MAX` of dates
-  (`takesPrecision`).
+  and so does that of `COUNT(DISTINCT)`, `MIN`, `MAX` and `GROUP_CONCAT` of dates
+  (`takesPrecision`). A measure that becomes a `GROUP_CONCAT` opens its settings
+  beside it (`PivotConcatPanel.vue`); its menu opens them again ("Réglages…").
   A column can be placed several times, in a zone and on both axes: dropping it
   from the list always adds an element, dragging an element moves it.
   An element takes a name by its menu ("Nommer…") or a double click on its label
@@ -35,6 +36,7 @@
   A column or a measure dropped into the filters, or a measure by its menu
   ("Filtrer sur cette mesure"), gives a filter, whose settings open beside it
   (`PivotFilterPanel.vue`, F-21, F-44); its menu opens them again ("Réglages…").
+  A `GROUP_CONCAT` gives no filter (`filterable`): the filters refuse its drop.
   The logic of the zones is in `pivotConfig.ts`.
 -->
 <script setup lang="ts">
@@ -70,17 +72,19 @@ import { cssPixels } from '@/cssLength'
 import { AGGREGATES, PRECISION_ICONS } from './pivotChoices'
 import {
   type DatePrecision,
+  type PivotConcat,
   type PivotConfig,
   type PivotFilter,
   type PivotSection,
   type PivotZone,
   type ZonePlace,
   addsNumbers,
+  aggregateLabel,
   defaultAggregate,
   elementExpression,
   elementLabel,
+  filterable,
   isRefused,
-  measureExpression,
   measurePrecision,
   placeColumn,
   precisionChoices,
@@ -89,12 +93,14 @@ import {
   summable,
   takesPrecision,
   withAggregate,
+  withConcat,
   withFilter,
   withName,
   withPrecision,
   withSectionWidth,
 } from './pivotConfig'
 import type { PivotMeasure } from './pivotEngine'
+import PivotConcatPanel from './PivotConcatPanel.vue'
 import PivotFilterPanel from './PivotFilterPanel.vue'
 import { dropPosition } from './resultGrid'
 import SplitHandle from './SplitHandle.vue'
@@ -321,9 +327,12 @@ const elements = computed<Record<PivotZone, ZoneElement[]>>(() => {
 function place(column: number, to: ZonePlace, from: ZonePlace | null): void {
   const aggregate = defaultAggregate(props.types[column], props.foreignKeys[column] ?? false)
   const placed = placeColumn(config.value, column, aggregate, to, from, props.types)
+  if (placed === config.value) {
+    return
+  }
   config.value = placed
   if (to.zone === 'filters' && from?.zone !== 'filters') {
-    pendingPanel = Math.min(to.index, placed.filters.length - 1)
+    pendingPanel = { zone: 'filters', index: Math.min(to.index, placed.filters.length - 1) }
   }
 }
 
@@ -341,7 +350,8 @@ function addItems(column: number): MenuItem[] {
 }
 
 /**
- * Choices that set, name, move or remove an element, the settings of a filter first.
+ * Choices that set, name, move or remove an element, the settings of a filter or of a
+ * `GROUP_CONCAT` first.
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
@@ -350,12 +360,13 @@ function elementItems(zone: PivotZone, index: number): MenuItem[] {
   const column = elements.value[zone][index]!.column
   const from = { zone, index }
   const items: MenuItem[] = []
-  if (zone === 'filters') {
+  const measure = zone === 'measures' ? config.value.measures[index] : undefined
+  if (zone === 'filters' || measure?.aggregate === 'group_concat') {
     items.push({
       label: 'Réglages…',
       icon: SlidersHorizontal,
       // They open beside the element once the menu has closed (`onMenuClosed`).
-      onSelect: () => (pendingPanel = index),
+      onSelect: () => (pendingPanel = from),
     })
   }
   items.push({
@@ -364,7 +375,7 @@ function elementItems(zone: PivotZone, index: number): MenuItem[] {
     // The field takes the focus once the menu has closed (`onMenuClosed`).
     onSelect: () => startNaming(from),
   })
-  if (zone === 'measures') {
+  if (measure !== undefined && filterable(measure.aggregate)) {
     items.push({
       label: 'Filtrer sur cette mesure',
       icon: Funnel,
@@ -424,7 +435,7 @@ function aggregateItems(
     const refused = addsNumbers(aggregate) && !numbers
     const { column, precision } = measure
     return {
-      label: measureExpression({ aggregate, column, precision }, props.names),
+      label: aggregateLabel({ aggregate, column, precision }, props.names),
       icon,
       checked: aggregate === measure.aggregate,
       disabled: refused,
@@ -448,10 +459,13 @@ function elementGroups(zone: PivotZone, index: number): MenuGroup[] {
   if (measure !== undefined) {
     groups.push({
       label: 'Agrégat',
-      items: aggregateItems(
-        measure,
-        (aggregate) => (config.value = withAggregate(config.value, index, aggregate)),
-      ),
+      items: aggregateItems(measure, (aggregate) => {
+        config.value = withAggregate(config.value, index, aggregate)
+        // A new `GROUP_CONCAT` opens its settings once the menu has closed (`onMenuClosed`).
+        if (aggregate === 'group_concat' && measure.aggregate !== 'group_concat') {
+          pendingPanel = { zone, index }
+        }
+      }),
     })
   }
   if (zone !== 'filters') {
@@ -500,19 +514,30 @@ function startNaming(place: ZonePlace): void {
 }
 
 /**
- * Position of the filter whose settings are to open, `null` without one.
+ * Filter or `GROUP_CONCAT` whose settings are to open, `null` without one.
  */
-let pendingPanel: number | null = null
+let pendingPanel: ZonePlace | null = null
 
 /**
- * Filter whose settings are open, with the element they open beside.
+ * Filter or `GROUP_CONCAT` whose settings are open, with the element they open beside.
  */
-const panel = shallowRef<{ index: number; anchor: HTMLElement } | null>(null)
+const panel = shallowRef<(ZonePlace & { anchor: HTMLElement }) | null>(null)
 
 /**
  * Filter whose settings are open.
  */
-const panelFilter = computed(() => panel.value && config.value.filters[panel.value.index])
+const panelFilter = computed(() =>
+  panel.value?.zone === 'filters' ? config.value.filters[panel.value.index] : undefined,
+)
+
+/**
+ * Is the element whose settings are open a `GROUP_CONCAT`?
+ */
+const panelConcat = computed(
+  () =>
+    panel.value?.zone === 'measures' &&
+    config.value.measures[panel.value.index]?.aggregate === 'group_concat',
+)
 
 /**
  * Changes the filter whose settings are open.
@@ -526,8 +551,19 @@ function changePanelFilter(filter: PivotFilter): void {
 }
 
 /**
+ * Changes the settings of the `GROUP_CONCAT` whose settings are open.
+ *
+ * @param concat New settings.
+ */
+function changePanelConcat(concat: PivotConcat): void {
+  if (panel.value !== null) {
+    config.value = withConcat(config.value, panel.value.index, concat)
+  }
+}
+
+/**
  * Shows what the last action opens, once its element is on the page: the field being named, or the
- * settings of a filter.
+ * settings of a filter or of a `GROUP_CONCAT`.
  */
 async function showPending(): Promise<void> {
   await nextTick()
@@ -535,14 +571,17 @@ async function showPending(): Promise<void> {
     focusName()
     return
   }
-  const index = pendingPanel
+  const pending = pendingPanel
   pendingPanel = null
-  const section = zoneSections.value?.find((zone) => zone.dataset.zone === 'filters')
-  const anchor = index === null ? undefined : section?.querySelectorAll('[data-element]')[index]
-  if (index !== null && anchor instanceof HTMLElement) {
+  if (pending === null) {
+    return
+  }
+  const section = zoneSections.value?.find((zone) => zone.dataset.zone === pending.zone)
+  const anchor = section?.querySelectorAll('[data-element]')[pending.index]
+  if (anchor instanceof HTMLElement) {
     // The zones scroll in their column: the panel opens beside an element in sight.
     anchor.scrollIntoView({ block: 'nearest' })
-    panel.value = { index, anchor }
+    panel.value = { ...pending, anchor }
   }
 }
 
@@ -556,8 +595,8 @@ function focusName(): void {
 }
 
 /**
- * Double click on the label of an element, or the choice of the settings of a
- * filter: names it at once.
+ * Double click on the label of an element, or the choice of the name in the
+ * settings of a filter or of a `GROUP_CONCAT`: names it at once.
  *
  * @param place Place of the element.
  */
@@ -722,6 +761,18 @@ function placeUnder(event: DragEvent, zone: PivotZone): ZonePlace {
 }
 
 /**
+ * Does a zone accept the dragged element? The filters refuse a measure no filter reads
+ * (`filterable`).
+ *
+ * @param zone Zone.
+ */
+function accepts(zone: PivotZone): boolean {
+  const from = dragged.value?.from
+  const measure = from?.zone === 'measures' ? config.value.measures[from.index] : undefined
+  return dragged.value !== null && (zone !== 'filters' || filterable(measure?.aggregate ?? 'count'))
+}
+
+/**
  * Accepts the dragged element over a zone, and follows it with the insertion
  * marker. Both events ask for it: when the pointer changes of element, the
  * browser sends only `dragenter`, and refused, it shows the forbidden cursor
@@ -731,7 +782,7 @@ function placeUnder(event: DragEvent, zone: PivotZone): ZonePlace {
  * @param zone Zone.
  */
 function onDragOver(event: DragEvent, zone: PivotZone): void {
-  if (dragged.value !== null) {
+  if (accepts(zone)) {
     event.preventDefault()
     dropAt.value = placeUnder(event, zone)
   }
@@ -759,7 +810,7 @@ function onDragLeave(event: DragEvent): void {
  * @param zone Zone.
  */
 function onDrop(event: DragEvent, zone: PivotZone): void {
-  if (dragged.value !== null) {
+  if (dragged.value !== null && accepts(zone)) {
     event.preventDefault()
     place(dragged.value.column, placeUnder(event, zone), dragged.value.from)
     void showPending()
@@ -962,7 +1013,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
   </splitter-group>
   <pivot-filter-panel
     v-if="panel && panelFilter"
-    :key="panel.index"
+    :key="`filters-${panel.index}`"
     :anchor="panel.anchor"
     :filter="panelFilter"
     :index="panel.index"
@@ -972,6 +1023,18 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
     :read-values="readValues"
     @change="changePanelFilter"
     @name="nameAtOnce({ zone: 'filters', index: panel?.index ?? 0 })"
+    @close="panel = null"
+  />
+  <pivot-concat-panel
+    v-if="panel && panelConcat"
+    :key="`measures-${panel.index}`"
+    :anchor="panel.anchor"
+    :index="panel.index"
+    :config="config"
+    :names="names"
+    :types="types"
+    @change="changePanelConcat"
+    @name="nameAtOnce({ zone: 'measures', index: panel?.index ?? 0 })"
     @close="panel = null"
   />
 </template>

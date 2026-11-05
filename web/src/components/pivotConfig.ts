@@ -7,9 +7,12 @@
  * `COUNT(*)` or an aggregate of a column (`measureExpression`); the expressions come with the
  * parser. Each element can take a name, its alias (F-17), shown instead of its expression (F-12):
  * the name of its column for a level. A level of dates takes a precision, what it keeps of them
- * (`precisionChoices`), and so do `COUNT(DISTINCT col)`, `MIN` and `MAX` of dates, which then read
- * its periods (`takesPrecision`): `MIN(d (Mois))`. A column can be placed several times, in a zone
- * and on both axes, each element on its own: `d (Année)` in the columns and `d (Mois)` in the rows.
+ * (`precisionChoices`), and so do `COUNT(DISTINCT col)`, `MIN`, `MAX` and `GROUP_CONCAT` of dates,
+ * which then read its periods (`takesPrecision`): `MIN(d (Mois))`. `GROUP_CONCAT`, of MariaDB,
+ * takes its settings too (`withConcat`), written as MariaDB writes them; its longest text is a
+ * setting of the user, which the request carries. No filter reads it (`filterable`). A column can
+ * be placed several times, in a zone and on both axes, each element on its own: `d (Année)` in the
+ * columns and `d (Mois)` in the rows.
  * Each change gives a new configuration; the panel computes again only when the request to the
  * engine (`engineRequest`) changes, a name changing only the labels, a sort only their layout
  * (`engineOrder`).
@@ -40,7 +43,9 @@
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { DatePrecision } from '@/api/generated/DatePrecision'
+import type { NamedMeasure } from '@/api/generated/NamedMeasure'
 import type { PivotColumnWidth } from '@/api/generated/PivotColumnWidth'
+import type { PivotConcat } from '@/api/generated/PivotConcat'
 import type { PivotCondition } from '@/api/generated/PivotCondition'
 import type { PivotConfig } from '@/api/generated/PivotConfig'
 import type { PivotForm } from '@/api/generated/PivotForm'
@@ -62,10 +67,12 @@ import type {
   PivotRequestLevel,
   PivotValueTarget,
 } from './pivotEngine'
+import { DEFAULT_CONCAT_MAX_BYTES, DEFAULT_SEPARATOR } from './pivotEngine'
 import { sameColumns } from './resultGrid'
 
 export type { DatePrecision } from '@/api/generated/DatePrecision'
 export type { NamedMeasure } from '@/api/generated/NamedMeasure'
+export type { PivotConcat } from '@/api/generated/PivotConcat'
 export type { PivotCondition, PivotConfig, PivotFilter, PivotLevel, PivotTest }
 
 /**
@@ -194,13 +201,33 @@ export function precisionChoices(family: TypeFamily | undefined): PrecisionChoic
 
 /**
  * Does an aggregate read the periods of a precision of the dates of its column? `COUNT(DISTINCT)`
- * counts them, `MIN` and `MAX` give the first or the last one; the others read the cells as they
- * are.
+ * counts them, `MIN` and `MAX` give the first or the last one, `GROUP_CONCAT` joins them; the
+ * others read the cells as they are.
  *
  * @param aggregate Aggregate.
  */
 export function takesPrecision(aggregate: PivotMeasure['aggregate']): boolean {
-  return aggregate === 'count_distinct' || aggregate === 'min' || aggregate === 'max'
+  return ['count_distinct', 'min', 'max', 'group_concat'].includes(aggregate)
+}
+
+/**
+ * Can a filter read a measure of an aggregate? All of them but `GROUP_CONCAT`, whose texts no
+ * filter compares yet.
+ *
+ * @param aggregate Aggregate.
+ */
+export function filterable(aggregate: PivotMeasure['aggregate']): boolean {
+  return aggregate !== 'group_concat'
+}
+
+/**
+ * Settings of a `GROUP_CONCAT`: those of the measure, the default ones without any, every value
+ * in the order of the rows, separated by a comma and a space.
+ *
+ * @param measure Measure.
+ */
+export function concatOf(measure: PivotMeasure): PivotConcat {
+  return measure.concat ?? { separator: DEFAULT_SEPARATOR }
 }
 
 /**
@@ -293,13 +320,24 @@ function followedConfig(pivot: TabPivot, columns: string[]): PivotConfig {
     column === undefined ? [] : [{ ...item, column }]
   const levels = (items: PivotConfig['rows']) =>
     items.flatMap((item) => follow(item, moved[item.column]))
+  // The keys of the order of a `GROUP_CONCAT` follow their columns too; a key lost leaves.
+  const concat = (measure: NamedMeasure): NamedMeasure =>
+    measure.concat?.order === undefined
+      ? measure
+      : {
+          ...measure,
+          concat: {
+            ...measure.concat,
+            order: measure.concat.order.flatMap((key) => follow(key, moved[key.column])),
+          },
+        }
   const followed: PivotConfig = {
     ...settings,
     rows: levels(config.rows),
     columns: levels(config.columns),
     measures: config.measures.flatMap((measure) =>
       follow(
-        measure,
+        concat(measure),
         moved[measure.column] ?? (measure.aggregate === 'count_star' ? 0 : undefined),
       ),
     ),
@@ -495,18 +533,43 @@ export function activeFilterPlace(config: PivotConfig, rank: number): ZonePlace 
 }
 
 /**
+ * Settings of a `GROUP_CONCAT` the engine reads, copied, each one written: the same settings give
+ * the same request.
+ *
+ * @param measure Measure.
+ */
+function engineConcat(measure: PivotMeasure): PivotConcat {
+  const { distinct, order, separator, offset, limit } = concatOf(measure)
+  return {
+    distinct: distinct === true,
+    order: (order ?? []).map(({ column, descending }) => ({
+      column,
+      descending: descending === true,
+    })),
+    separator,
+    offset: offset ?? 0,
+    ...(limit === undefined ? {} : { limit }),
+  }
+}
+
+/**
  * Table to ask the engine for a configuration, without the names, which it does not read. It copies
  * what it reads of the configuration, which is reactive and could not go to the Worker.
  *
  * @param config Configuration.
+ * @param concatMaxBytes Longest text of a `GROUP_CONCAT`, in bytes: a setting of the user.
  */
-export function engineRequest(config: PivotConfig): PivotRequest {
+export function engineRequest(
+  config: PivotConfig,
+  concatMaxBytes: number = DEFAULT_CONCAT_MAX_BYTES,
+): PivotRequest {
   const levels = (items: PivotLevel[]) =>
     items.map(({ column, precision }): PivotRequestLevel => ({ column, precision }))
   const measure = (item: PivotMeasure): PivotMeasure => {
     const precision = measurePrecision(item)
     const { aggregate, column } = item
-    return precision === 'none' ? { aggregate, column } : { aggregate, column, precision }
+    const read = precision === 'none' ? { aggregate, column } : { aggregate, column, precision }
+    return aggregate === 'group_concat' ? { ...read, concat: engineConcat(item) } : read
   }
   const filter = (item: PivotFilter): PivotRequestFilter => {
     const { condition, operand, upper } = item
@@ -535,6 +598,7 @@ export function engineRequest(config: PivotConfig): PivotRequest {
     columns: levels(config.columns),
     measures: config.measures.map(measure),
     filters: activeFilters(config).map(filter),
+    concatMaxBytes,
   }
 }
 
@@ -955,7 +1019,47 @@ export function measureExpression(measure: PivotMeasure, names: string[]): strin
       return `MIN(${name})`
     case 'max':
       return `MAX(${name})`
+    case 'group_concat':
+      return concatExpression(name, concatOf(measure), names)
   }
+}
+
+/**
+ * Expression of a `GROUP_CONCAT`, as MariaDB writes it, its separator always written:
+ * `GROUP_CONCAT(DISTINCT ville ORDER BY montant DESC, d SEPARATOR ', ' LIMIT 5 OFFSET 1)`.
+ *
+ * @param name Name of its column, with its precision.
+ * @param concat Settings.
+ * @param names Names of the columns of the result.
+ */
+function concatExpression(name: string, concat: PivotConcat, names: string[]): string {
+  const keys = (concat.order ?? []).map(
+    ({ column, descending }) => `${names[column] ?? '?'}${descending ? ' DESC' : ''}`,
+  )
+  const parts = [
+    concat.distinct ? 'DISTINCT ' : '',
+    name,
+    keys.length > 0 ? ` ORDER BY ${keys.join(', ')}` : '',
+    ` SEPARATOR ${sqlLiteral(concat.separator, 'text')}`,
+    concat.limit === undefined ? '' : ` LIMIT ${concat.limit}`,
+    concat.offset ? ` OFFSET ${concat.offset}` : '',
+  ]
+  return `GROUP_CONCAT(${parts.join('')})`
+}
+
+/**
+ * Label of an aggregate in the menu of a measure: its expression for the column of the measure,
+ * without the settings of a `GROUP_CONCAT`, `GROUP_CONCAT(ville)`.
+ *
+ * @param measure Aggregate, column and precision.
+ * @param names Names of the columns of the result.
+ */
+export function aggregateLabel(measure: PivotMeasure, names: string[]): string {
+  if (measure.aggregate === 'group_concat') {
+    const name = withPrecisionLabel(names[measure.column] ?? '?', measurePrecision(measure))
+    return `GROUP_CONCAT(${name})`
+  }
+  return measureExpression(measure, names)
 }
 
 /**
@@ -1050,8 +1154,8 @@ function sqlLiteral(value: string, family: TypeFamily | undefined): string {
 }
 
 /**
- * Family of the values of a measure: an integer for a count, that of its column otherwise; a sum
- * or an average holds numbers, even of a column without a type.
+ * Family of the values of a measure: an integer for a count, a text for `GROUP_CONCAT`, that of
+ * its column otherwise; a sum or an average holds numbers, even of a column without a type.
  *
  * @param measure Measure.
  * @param types Type of each column of the result.
@@ -1060,6 +1164,9 @@ function measureFamily(
   { aggregate, column }: PivotMeasure,
   types: ColumnTypeInfo[],
 ): TypeFamily | undefined {
+  if (aggregate === 'group_concat') {
+    return 'text'
+  }
   return ['count_star', 'count', 'count_distinct'].includes(aggregate)
     ? 'integer'
     : (types[column]?.family ?? (addsNumbers(aggregate) ? 'decimal' : undefined))
@@ -1476,7 +1583,8 @@ export function removeElement(config: PivotConfig, place: ZonePlace): PivotConfi
  * Places a column in the filters, at a position: a filter moved among the filters, a measure copied
  * into a filter on it, whose values are still to give, or a column, which leaves its axis with its
  * precision if it comes from one, into a new filter. Numbers and dates start on `BETWEEN`, the other
- * columns on the list of their values, and the other measures on `=`.
+ * columns on the list of their values, and the other measures on `=`. A measure no filter reads
+ * (`filterable`) changes nothing.
  *
  * @param config Configuration.
  * @param column Index of the column.
@@ -1500,6 +1608,9 @@ function placeFilter(
     return insert(withoutElement(config, from), moved, from.index < index ? index - 1 : index)
   }
   const measure = from?.zone === 'measures' ? config.measures[from.index] : undefined
+  if (measure !== undefined && !filterable(measure.aggregate)) {
+    return config
+  }
   if (measure !== undefined) {
     const filter: PivotFilter = {
       kind: 'measure',
@@ -1595,7 +1706,7 @@ export function placeColumn(
 
 /**
  * Changes the aggregate of a measure, which keeps its name, and its precision if the new aggregate
- * takes one.
+ * takes one. A `GROUP_CONCAT` starts with the default settings, which another aggregate leaves.
  *
  * @param config Configuration.
  * @param index Position of the measure.
@@ -1608,10 +1719,36 @@ export function withAggregate(
 ): PivotConfig {
   return {
     ...config,
+    measures: config.measures.map((measure, position) => {
+      if (position !== index) {
+        return measure
+      }
+      const changed: NamedMeasure = {
+        ...measure,
+        aggregate,
+        precision: keptPrecision(aggregate, measure.precision),
+      }
+      if (aggregate === 'group_concat') {
+        return { ...changed, concat: concatOf(measure) }
+      }
+      delete changed.concat
+      return changed
+    }),
+  }
+}
+
+/**
+ * Changes the settings of a `GROUP_CONCAT`, which keeps its name, its sorts and its widths.
+ *
+ * @param config Configuration.
+ * @param index Position of the measure.
+ * @param concat New settings.
+ */
+export function withConcat(config: PivotConfig, index: number, concat: PivotConcat): PivotConfig {
+  return {
+    ...config,
     measures: config.measures.map((measure, position) =>
-      position === index
-        ? { ...measure, aggregate, precision: keptPrecision(aggregate, measure.precision) }
-        : measure,
+      position === index && measure.aggregate === 'group_concat' ? { ...measure, concat } : measure,
     ),
   }
 }

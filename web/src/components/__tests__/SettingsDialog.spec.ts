@@ -18,6 +18,7 @@ const SAVED: Settings = {
   history_retention_days: 30,
   debug_retention_days: 30,
   indent_size: 4,
+  concat_max_bytes: 1000,
 }
 
 const api = vi.hoisted(() => ({
@@ -82,6 +83,36 @@ describe('settings of the writes', () => {
         read_only_session: false,
         allowed_writes: ['delete', 'create_table'],
       }),
+    )
+  })
+})
+
+describe('longest text of a GROUP_CONCAT', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    document.body.innerHTML = ''
+    api.getSettings.mockResolvedValue({ ...SAVED, concat_max_bytes: 2000 })
+    api.updateSettings.mockImplementation(async (update) => ({ ...SAVED, ...update }))
+  })
+
+  it('shows the saved length, then saves the one typed', async () => {
+    const wrapper = mount(SettingsDialog, { props: { open: false }, attachTo: document.body })
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+
+    const field = document.querySelector<HTMLInputElement>(
+      'input[aria-label="Longueur maximale d’un GROUP_CONCAT, en octets"]',
+    )
+    expect(field?.value).toBe('2000')
+    expect([field?.min, field?.max]).toEqual(['100', '1048576'])
+
+    field!.value = '4000'
+    field!.dispatchEvent(new Event('input'))
+    document.querySelector<HTMLFormElement>('#settings-form')?.requestSubmit()
+    await flushPromises()
+
+    expect(api.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ concat_max_bytes: 4000 }),
     )
   })
 })

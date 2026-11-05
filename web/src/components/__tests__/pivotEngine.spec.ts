@@ -167,6 +167,35 @@ describe('requestWords', () => {
       0, 0, 5, 4, 0, 0, 5, 0, 0, 6, 0, 0, 7, 0, 0, 8, 0, 0,
     ])
   })
+
+  it('writes the settings of a GROUP_CONCAT after its column, with the longest text', () => {
+    const request: PivotRequest = {
+      rows: [],
+      columns: [],
+      measures: [
+        {
+          aggregate: 'group_concat',
+          column: 1,
+          precision: 'month',
+          concat: {
+            distinct: true,
+            order: [{ column: 4, descending: true }, { column: 0 }],
+            separator: ', ',
+            offset: 1,
+            limit: 5,
+          },
+        },
+        { aggregate: 'group_concat', column: 0 },
+      ],
+      filters: [],
+      concatMaxBytes: 2000,
+    }
+    // Without settings: the default separator, no `LIMIT` (the largest word).
+    expect(Array.from(requestWords(request))).toEqual([
+      0, 0, 2, 9, 1, 3, 1, 2, 4, 1, 0, 0, 2, 44, 32, 1, 5, 2000, 9, 0, 0, 0, 0, 2, 44, 32, 0,
+      0xffff_ffff, 2000,
+    ])
+  })
 })
 
 describe('orderWords', () => {
@@ -398,6 +427,30 @@ describe('PivotEngine', () => {
     expect(engine.window([0, kept.lines], [0, 1]).lines.map((line) => line.label)).toEqual([
       'a',
       null,
+    ])
+  })
+
+  it('joins the values of a GROUP_CONCAT, cut between whole values at its longest text', async () => {
+    const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES, 4)
+    const shape = engine.compute({
+      rows: [level(0)],
+      columns: [],
+      measures: [
+        {
+          aggregate: 'group_concat',
+          column: 1,
+          concat: { distinct: true, order: [{ column: 4, descending: true }], separator: ', ' },
+        },
+        { aggregate: 'group_concat', column: 4, concat: { separator: ' | ', offset: 1, limit: 2 } },
+      ],
+      filters: [],
+      concatMaxBytes: 20,
+    })
+    // The cities by amount, each once; the amounts in the order of the rows, from the second.
+    expect(engine.window([0, shape.lines], [0, shape.columns]).cells).toEqual([
+      ['Lille, Arras', '120 | 150'],
+      ['Nice, Toulon', '90 | 110'],
+      ['Lille, Nice, …(2)', '120 | 150'],
     ])
   })
 

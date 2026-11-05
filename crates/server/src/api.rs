@@ -916,6 +916,7 @@ mod tests {
         assert_eq!(settings["history_retention_days"], 30);
         assert_eq!(settings["debug_retention_days"], 30);
         assert_eq!(settings["indent_size"], 4);
+        assert_eq!(settings["concat_max_bytes"], 1000);
 
         let update = |row_limit: u32, history_retention_days: u16| {
             json!({
@@ -925,6 +926,7 @@ mod tests {
                 "history_retention_days": history_retention_days,
                 "debug_retention_days": 7,
                 "indent_size": 2,
+                "concat_max_bytes": 4000,
             })
         };
         let (status, settings) = send(&app, "PUT", "/api/settings", Some(update(10000, 90))).await;
@@ -935,6 +937,7 @@ mod tests {
         assert_eq!(settings["history_retention_days"], 90);
         assert_eq!(settings["debug_retention_days"], 7);
         assert_eq!(settings["indent_size"], 2);
+        assert_eq!(settings["concat_max_bytes"], 4000);
 
         let (status, _) = send(&app, "PUT", "/api/settings", Some(update(3, 90))).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -943,6 +946,10 @@ mod tests {
         let mut wide = update(1000, 90);
         wide["indent_size"] = json!(9);
         let (status, _) = send(&app, "PUT", "/api/settings", Some(wide)).await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let mut short = update(1000, 90);
+        short["concat_max_bytes"] = json!(99);
+        let (status, _) = send(&app, "PUT", "/api/settings", Some(short)).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         let mut unknown = update(1000, 90);
         unknown["allowed_writes"] = json!(["grant"]);

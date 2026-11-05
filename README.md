@@ -321,7 +321,8 @@ The panel has three columns: the columns of the result, with their type and a se
 | Remove an element | Its menu, **Retirer** (Remove), or drag it and release it outside the zones; Esc cancels the drag |
 | Name an element | Its menu, **Nommer…** (Name), or a double click on its label; Enter confirms, Esc cancels |
 | Change the aggregate of a measure | Its menu, group **Agrégat** (Aggregate), the current one highlighted |
-| Keep a part of the dates of a level, or of `COUNT(DISTINCT)`, `MIN` and `MAX` | Its menu, group **Précision** (Precision), the current one highlighted |
+| Join the values of a measure into one text | Its menu, group **Agrégat**, `GROUP_CONCAT(col)`: its settings open beside it, and its menu opens them again, **Réglages…** (Settings). A box or a key applies at once, a text typed at Enter or on leaving its field; Esc closes and forgets what is being typed |
+| Keep a part of the dates of a level, or of `COUNT(DISTINCT)`, `MIN`, `MAX` and `GROUP_CONCAT` | Its menu, group **Précision** (Precision), the current one highlighted |
 | Filter on a column | Place it in **Filtres**: its settings open beside it, and its menu opens them again, **Réglages…** (Settings). Choose a condition, then check values or type them: Enter or leaving the field applies, Esc closes and forgets what is being typed |
 | Filter on the dates of a column | In the settings of its filter, group **Précision** (Precision) |
 | Keep the groups of a measure | Drag it into **Filtres**, or its menu, **Filtrer sur cette mesure** (Filter on this measure): the settings of the filter set its aggregate, its condition, its values and its level |
@@ -360,6 +361,9 @@ The menu of a measure gives them all. `NULL` values are left out, and a total re
 | `SUM(col)`, `SUM(DISTINCT col)` | Numbers | Exact for integers and decimals, `DOUBLE` for floats; `NULL` without a value; an overflow stops the computation |
 | `AVG(col)`, `AVG(DISTINCT col)` | Numbers | Exact at the scale of the column + 4, rounded away from zero, as MySQL and MariaDB write it (`1.5000` for 1 and 2); `DOUBLE` for floats |
 | `MIN(col)`, `MAX(col)` | Any | Numbers compared by value, texts by code points (`A B a b`); the cell is shown as it is |
+| `GROUP_CONCAT(col)` | Any | The values joined into one text, in the order chosen, as MariaDB writes them |
+
+`GROUP_CONCAT(col)` takes the settings of MariaDB, in a panel beside its measure. **Valeurs distinctes** (`DISTINCT`) keeps each value once, the values compared by code points. **Ordre** (`ORDER BY`) ranks the values by keys, each one a column of the result, ascending (`ASC`) or descending (`DESC`); a `NULL` key comes first in ascending order, as in MariaDB, and a tie keeps the order of the rows. Without a key, the values follow the order of the rows of the result. **Séparateur** (`SEPARATOR`), `, ` by default, is kept as it is typed, its spaces included, and can be empty. **LIMIT** keeps that many values after their order, and **OFFSET** skips the first ones, after a `LIMIT` only, as MariaDB writes it; a window beyond the values gives an empty text. The zones and the table write the measure in full, `GROUP_CONCAT(DISTINCT ville ORDER BY montant DESC SEPARATOR ' | ' LIMIT 5 OFFSET 1)`; the menu names it `GROUP_CONCAT(ville)`. A text longer than its limit, 1,000 bytes by default (**Paramètres** of the [top bar](#top-bar)), is cut between whole values and ends with `…` and the number of values left out, `Lille, Nice, …(2)`: the text, its mark included, stays within the limit, and a first value too long gives the mark alone, `…(3)`. A sort of the table by this measure compares its texts by code points. It gives no filter for now: the filters refuse it, and its menu does not offer **Filtrer sur cette mesure**.
 
 The menu of a level of a `date` or `datetime` column sets its precision, what the level keeps of its dates. The periods rank in the order of time. A precision of the time truncates it to its unit, as `DATE_TRUNC` does: `10:59:59.999999` falls in the hour `10:00:00`, and a date written without a time, at midnight. The name of an element gives only the unit of such a precision: `vue_le (Horodatage (µs))`.
 
@@ -377,7 +381,7 @@ The menu of a level of a `date` or `datetime` column sets its precision, what th
 | **Horodatage (hh:mm:ss.ms)** | The millisecond, three digits, as a `TIMESTAMP(3)` | `2027-01-01 10:30:15.123` |
 | **Horodatage (hh:mm:ss.µs)** | The microsecond, six digits, as a `TIMESTAMP(6)` | `2027-01-01 10:30:15.123456` |
 
-`COUNT(DISTINCT col)`, `MIN(col)` and `MAX(col)` of a `date` or `datetime` column take a precision too, in the group **Précision** of their menu: `COUNT(DISTINCT vendue_le (Mois))` counts the months that hold a row, `MIN(vendue_le (Mois))` gives the first one, `2026-01`. Another aggregate reads the values as they are, and a measure that changes to it leaves its precision.
+`COUNT(DISTINCT col)`, `MIN(col)`, `MAX(col)` and `GROUP_CONCAT(col)` of a `date` or `datetime` column take a precision too, in the group **Précision** of their menu: `COUNT(DISTINCT vendue_le (Mois))` counts the months that hold a row, `MIN(vendue_le (Mois))` gives the first one, `2026-01`, and `GROUP_CONCAT(vendue_le (Mois))` joins the month of each row. Another aggregate reads the values as they are, and a measure that changes to it leaves its precision.
 
 A date outside of the calendar stops the computation under a precision, of a level or of a measure: the table empties, and the message gives the value and its row. MySQL and MariaDB can hold such dates (`0000-00-00`, `2026-03-00`); the calendar holds the years 0001 to 9999. Without a precision, it stays a value of its own. To leave its rows out, use the filter of the grid, or a filter on the values of this column: a row left out stops nothing.
 
@@ -410,7 +414,7 @@ Both tabs are kept in the internal database, 30 days by default: the **Rétentio
 - **Theme**: the **Système / Clair / Sombre** (System / Light / Dark) list sets the theme of the whole interface. **Système** follows your computer's setting.
 - **Account** menu, the round avatar with your initials (those of your first and last names, or the first letter of your email address):
   - **Profil** (Profile): your last and first names, and your email address (read-only);
-  - **Paramètres** (Settings): the language of the interface (French only for now); the default row limit; **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; **Écritures** (Writes), the switches of the writes allowed, greyed out while the sessions are read-only; the **Indentation** of the SQL editor and of **Enjoliver**, from 1 to 8 spaces (4 by default); and how many days the [console](#console) keeps its history and its debug log.
+  - **Paramètres** (Settings): the language of the interface (French only for now); the default row limit; **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; **Écritures** (Writes), the switches of the writes allowed, greyed out while the sessions are read-only; the **Indentation** of the SQL editor and of **Enjoliver**, from 1 to 8 spaces (4 by default); **GROUP_CONCAT**, the longest text of a `GROUP_CONCAT` of the [Pivoteur](#pivoteur), from 100 to 1,048,576 bytes (1,000 by default); and how many days the [console](#console) keeps its history and its debug log.
 
 ## Your data
 

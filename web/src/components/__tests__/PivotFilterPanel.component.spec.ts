@@ -438,6 +438,7 @@ describe('PivotFilterPanel', () => {
   it('offers each aggregate, refusing those that add up a column of no numbers', async () => {
     const { mounted, changes } = await mountPanel({ ...ON_MEASURE, column: 0, aggregate: 'count' })
     const { items } = selectProps(mounted, 'Agrégat')
+    // Without GROUP_CONCAT, whose texts no filter compares yet.
     expect(items.map(({ label }) => label)).toEqual([
       'COUNT(*)',
       'COUNT(region)',

@@ -1,13 +1,14 @@
 //! Settings of the user: the default row limit, added to the queries that do
 //! not write one (see `docs/V1.md`, section 2.3), the read-only mode of the
 //! query sessions and the writes they allow (`docs/V1.md`, section 2.4), the
-//! retention of the console's history and debug log, and the indentation of
-//! the SQL editor.
+//! retention of the console's history and debug log, the indentation of
+//! the SQL editor, and the longest text of a `GROUP_CONCAT` of the Pivoteur.
 //!
 //! The settings are stored in the `users` table (see `migrations/0003_users_row_limit.sql`,
 //! `migrations/0011_users_read_only_session.sql`,
-//! `migrations/0014_users_console_retention.sql` and
-//! `migrations/0016_users_indent_size.sql`), the allowed writes in the
+//! `migrations/0014_users_console_retention.sql`,
+//! `migrations/0016_users_indent_size.sql` and
+//! `migrations/0025_users_concat_max_bytes.sql`), the allowed writes in the
 //! `user_allowed_writes` table (`migrations/0017_user_allowed_writes.sql`).
 //! Synchronous functions (`rusqlite`), called from blocking tasks.
 
@@ -25,6 +26,11 @@ pub const RETENTION_DAYS: std::ops::RangeInclusive<u16> = 1..=3650;
 
 /// Bounds of the indentation of the SQL editor, in spaces: the database checks the same.
 pub const INDENT_SIZE: std::ops::RangeInclusive<u8> = 1..=8;
+
+/// Bounds of the longest text of a `GROUP_CONCAT`, in bytes: from room for a
+/// few values to the default `group_concat_max_len` of MariaDB (1 MiB). The
+/// database checks the same.
+pub const CONCAT_MAX_BYTES: std::ops::RangeInclusive<u32> = 100..=1_048_576;
 
 /// Settings of a user, as returned by the API.
 #[derive(Debug, Serialize, TS)]
@@ -47,6 +53,9 @@ pub struct Settings {
     pub debug_retention_days: u16,
     /// Spaces of an indentation level in the SQL editor, 4 by default.
     pub indent_size: u8,
+    /// Longest text of a `GROUP_CONCAT` of the Pivoteur, in bytes of UTF-8,
+    /// 1000 by default.
+    pub concat_max_bytes: u32,
 }
 
 /// Change of settings requested by the user.
@@ -65,6 +74,8 @@ pub struct SettingsUpdate {
     pub debug_retention_days: u16,
     /// New indentation of the SQL editor, in spaces (`INDENT_SIZE`).
     pub indent_size: u8,
+    /// New longest text of a `GROUP_CONCAT`, in bytes (`CONCAT_MAX_BYTES`).
+    pub concat_max_bytes: u32,
 }
 
 /// Errors of settings management.
@@ -84,6 +95,10 @@ pub enum SettingsError {
     /// Indentation out of its bounds.
     #[error("indent_size: between {min} and {max} spaces", min = INDENT_SIZE.start(), max = INDENT_SIZE.end())]
     IndentSizeOutOfRange,
+
+    /// Longest text of a `GROUP_CONCAT` out of its bounds.
+    #[error("concat_max_bytes: between {min} and {max} bytes", min = CONCAT_MAX_BYTES.start(), max = CONCAT_MAX_BYTES.end())]
+    ConcatMaxBytesOutOfRange,
 
     /// Error of the internal database.
     #[error("internal database: {0}")]
@@ -109,6 +124,11 @@ impl SettingsError {
                 min: (*INDENT_SIZE.start()).into(),
                 max: (*INDENT_SIZE.end()).into(),
             },
+            Self::ConcatMaxBytesOutOfRange => ErrorDetail::FieldRange {
+                field: Field::ConcatMaxBytes,
+                min: *CONCAT_MAX_BYTES.start(),
+                max: *CONCAT_MAX_BYTES.end(),
+            },
             Self::Sqlite(_) => ErrorDetail::Internal,
         }
     }
@@ -123,14 +143,16 @@ pub fn check_row_limit(row_limit: u32) -> Result<u32, SettingsError> {
     }
 }
 
-/// Checks the row limit, the retentions and the indentation of an update.
+/// Checks the row limit, the retentions, the indentation and the longest
+/// text of a `GROUP_CONCAT` of an update.
 ///
 /// # Errors
 ///
 /// Returns `SettingsError::InvalidRowLimit` if the limit is not among
 /// `ROW_LIMIT_CHOICES`, `SettingsError::RetentionOutOfRange` if a retention
 /// is out of `RETENTION_DAYS`, `SettingsError::IndentSizeOutOfRange` if the
-/// indentation is out of `INDENT_SIZE`.
+/// indentation is out of `INDENT_SIZE`, `SettingsError::ConcatMaxBytesOutOfRange`
+/// if the longest text is out of `CONCAT_MAX_BYTES`.
 pub fn check_update(update: &SettingsUpdate) -> Result<(), SettingsError> {
     check_row_limit(update.row_limit)?;
     for (field, days) in [
@@ -144,6 +166,9 @@ pub fn check_update(update: &SettingsUpdate) -> Result<(), SettingsError> {
     if !INDENT_SIZE.contains(&update.indent_size) {
         return Err(SettingsError::IndentSizeOutOfRange);
     }
+    if !CONCAT_MAX_BYTES.contains(&update.concat_max_bytes) {
+        return Err(SettingsError::ConcatMaxBytesOutOfRange);
+    }
     Ok(())
 }
 
@@ -151,7 +176,7 @@ pub fn check_update(update: &SettingsUpdate) -> Result<(), SettingsError> {
 pub fn load(db: &Connection, user_id: i64) -> Result<Settings, SettingsError> {
     let settings = db.query_row(
         "SELECT row_limit, read_only_session, history_retention_days, debug_retention_days,
-                indent_size
+                indent_size, concat_max_bytes
          FROM users WHERE id = ?1",
         params![user_id],
         |row| {
@@ -163,6 +188,7 @@ pub fn load(db: &Connection, user_id: i64) -> Result<Settings, SettingsError> {
                 history_retention_days: row.get(2)?,
                 debug_retention_days: row.get(3)?,
                 indent_size: row.get(4)?,
+                concat_max_bytes: row.get(5)?,
             })
         },
     )?;
@@ -194,14 +220,16 @@ pub fn update(
     let transaction = db.unchecked_transaction()?;
     transaction.execute(
         "UPDATE users SET row_limit = ?1, read_only_session = ?2,
-                history_retention_days = ?3, debug_retention_days = ?4, indent_size = ?5
-         WHERE id = ?6",
+                history_retention_days = ?3, debug_retention_days = ?4, indent_size = ?5,
+                concat_max_bytes = ?6
+         WHERE id = ?7",
         params![
             update.row_limit,
             update.read_only_session,
             update.history_retention_days,
             update.debug_retention_days,
             update.indent_size,
+            update.concat_max_bytes,
             user_id
         ],
     )?;
@@ -233,6 +261,7 @@ mod tests {
             history_retention_days: 30,
             debug_retention_days: 30,
             indent_size: 4,
+            concat_max_bytes: 1000,
         }
     }
 
@@ -350,5 +379,34 @@ mod tests {
             ));
         }
         assert_eq!(load(&db, user_id).unwrap().indent_size, 8);
+    }
+
+    #[test]
+    fn concat_max_bytes_is_1000_by_default_and_stays_in_its_bounds() {
+        let db = store::open_in_memory();
+        let user_id = store::ensure_user(&db, "a@example.com").unwrap();
+        assert_eq!(load(&db, user_id).unwrap().concat_max_bytes, 1000);
+
+        let mut changed = update_of(1_000);
+        for bytes in [100, 4000, 1_048_576] {
+            changed.concat_max_bytes = bytes;
+            assert_eq!(
+                update(&db, user_id, &changed).unwrap().concat_max_bytes,
+                bytes
+            );
+        }
+
+        for bytes in [99, 1_048_577] {
+            changed.concat_max_bytes = bytes;
+            assert!(matches!(
+                update(&db, user_id, &changed),
+                Err(SettingsError::ConcatMaxBytesOutOfRange)
+            ));
+        }
+        assert_eq!(load(&db, user_id).unwrap().concat_max_bytes, 1_048_576);
+
+        // The database refuses the same bounds.
+        let refused = db.execute("UPDATE users SET concat_max_bytes = 99", []);
+        assert!(refused.is_err());
     }
 }

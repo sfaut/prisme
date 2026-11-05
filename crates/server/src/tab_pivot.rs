@@ -33,6 +33,8 @@ pub enum PivotAggregate {
     Min,
     /// `MAX(col)`.
     Max,
+    /// `GROUP_CONCAT(col)`, of MariaDB, with its settings (`PivotConcat`).
+    GroupConcat,
 }
 
 /// What a level of the Pivoteur keeps of the dates of its column.
@@ -134,11 +136,60 @@ pub struct NamedMeasure {
     /// Name given to the measure, empty string without one: the measure then
     /// shows its expression.
     pub name: String,
-    /// What `COUNT(DISTINCT col)`, `MIN(col)` and `MAX(col)` keep of the dates
-    /// of their column: they then read its periods.
+    /// What `COUNT(DISTINCT col)`, `MIN(col)`, `MAX(col)` and
+    /// `GROUP_CONCAT(col)` keep of the dates of their column: they then read
+    /// its periods.
     #[serde(default, skip_serializing_if = "is_whole")]
     #[ts(as = "Option<DatePrecision>", optional)]
     pub precision: DatePrecision,
+    /// Settings of a `GROUP_CONCAT(col)`, none for another aggregate.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub concat: Option<PivotConcat>,
+}
+
+/// Settings of a `GROUP_CONCAT(col)`, as MariaDB writes them. The longest
+/// text is a setting of the user (`concat_max_bytes`), the same for every
+/// measure.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PivotConcat {
+    /// Is each value taken once (`DISTINCT`)?
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub distinct: bool,
+    /// Keys of the order of the values (`ORDER BY`), the first one first;
+    /// without any, the values follow the order of the rows.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[ts(as = "Option<Vec<PivotConcatKey>>", optional)]
+    pub order: Vec<PivotConcatKey>,
+    /// Text between two values (`SEPARATOR`).
+    pub separator: String,
+    /// Values skipped first (`OFFSET`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    #[ts(as = "Option<u32>", optional)]
+    pub offset: u32,
+    /// Values kept at most after them (`LIMIT`), all of them without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub limit: Option<u32>,
+}
+
+/// Key of the order of the values of a `GROUP_CONCAT(col)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PivotConcatKey {
+    /// Index of the column of the result.
+    pub column: u32,
+    /// Is the order descending?
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub descending: bool,
+}
+
+/// Is this the `OFFSET` of a `GROUP_CONCAT` that names none?
+fn is_zero(offset: &u32) -> bool {
+    *offset == 0
 }
 
 /// What a filter on a measure asks of its value.
@@ -633,6 +684,32 @@ mod tests {
         let config: PivotConfig = serde_json::from_str(saved).unwrap();
         assert_eq!(config.measures[0].precision, DatePrecision::None);
         assert_eq!(config.measures[1].precision, DatePrecision::Month);
+        assert_eq!(serde_json::to_string(&config).unwrap(), saved);
+    }
+
+    #[test]
+    fn a_group_concat_keeps_its_settings() {
+        let saved = r#"{"rows":[],"columns":[],"measures":[{"aggregate":"group_concat","column":1,"name":"","precision":"month","concat":{"distinct":true,"order":[{"column":2,"descending":true},{"column":0}],"separator":" | ","offset":1,"limit":5}},{"aggregate":"group_concat","column":0,"name":"","concat":{"separator":", "}}],"filters":[]}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        assert_eq!(
+            config.measures[0].concat,
+            Some(PivotConcat {
+                distinct: true,
+                order: vec![
+                    PivotConcatKey {
+                        column: 2,
+                        descending: true,
+                    },
+                    PivotConcatKey {
+                        column: 0,
+                        descending: false,
+                    },
+                ],
+                separator: " | ".to_string(),
+                offset: 1,
+                limit: Some(5),
+            })
+        );
         assert_eq!(serde_json::to_string(&config).unwrap(), saved);
     }
 
