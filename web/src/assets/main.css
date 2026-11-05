@@ -181,6 +181,21 @@
   --grip-thickness: --spacing(1);
   --grip-color: var(--color-line);
 
+  /* Zone where the pointer grabs a splitter, on each side of its line:
+     with a mouse, then on a touch screen. Reka UI reads them in pixels
+     (`hitAreaMargins`, 5 and 15 by default), and the handle covers the
+     same zone with a transparent box (`SplitHandle.vue`): over the zone,
+     the pointer is on the handle for the browser as for Reka UI, so the
+     panel underneath shows no hover of its own. Reka UI places the mouse
+     by its events `mousemove`, whose coordinates the browser truncates to
+     whole CSS pixels: its zone reaches up to one pixel further on the side
+     where the coordinates grow (below a horizontal line, right of a
+     vertical one), a pixel that the box covers too (`--split-hit-rounding`,
+     a CSS pixel whatever the root, as the coordinates). */
+  --split-hit-margin: --spacing(2);
+  --split-hit-margin-coarse: --spacing(5);
+  --split-hit-rounding: 1px;
+
   /* Splitters of the layout (`SplitterGroup` of Reka UI), whose sizes the
      code reads (`cssPixels`): default and smallest width of the object
      navigator and of the data explorer, the latter enough for its header
@@ -261,6 +276,18 @@
 }
 
 @property --popup-offset {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --split-hit-margin {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+
+@property --split-hit-margin-coarse {
   syntax: '<length>';
   inherits: true;
   initial-value: 0px;
