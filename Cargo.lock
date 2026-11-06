@@ -1638,7 +1638,7 @@ dependencies = [
 
 [[package]]
 name = "prisme-connectors"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "mysql_async",
  "prisme-connectors",
@@ -1653,7 +1653,7 @@ dependencies = [
 
 [[package]]
 name = "prisme-dialects"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "prisme-splitter",
  "rusqlite",
@@ -1666,14 +1666,14 @@ dependencies = [
 
 [[package]]
 name = "prisme-pivot"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "prisme-store",
 ]
 
 [[package]]
 name = "prisme-server"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -1705,15 +1705,15 @@ dependencies = [
 
 [[package]]
 name = "prisme-splitter"
-version = "0.10.0"
+version = "0.11.0"
 
 [[package]]
 name = "prisme-store"
-version = "0.10.0"
+version = "0.11.0"
 
 [[package]]
 name = "prisme-web-engine"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "prisme-pivot",
  "prisme-store",

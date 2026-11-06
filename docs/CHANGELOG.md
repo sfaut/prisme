@@ -2,6 +2,40 @@
 
 Changelogs of the published versions of Prisme, most recent first. Each entry is also the notes of its GitHub release. The interface is in French: its labels are quoted as they appear, with a translation.
 
+## v0.11.0 (2026-11-06)
+
+### 🚀 Launch
+
+We are proud to announce Prisme v0.11.0. The Pivoteur joins the values of each group into one text with `GROUP_CONCAT`, with the settings of MariaDB and a length you set. Its list of columns and its zones take the width you give them, and its menus show the aggregate and the precision chosen.
+
+### ✨ New features
+
+- Pivoteur:
+  - `GROUP_CONCAT(col)` joins the values of a measure into one text, on any column: it is the text aggregate of the group **Agrégat** (Aggregate) of the menu of a measure ([#34](https://github.com/sfaut/prisme/issues/34)). Its settings open in a panel beside the measure, and **Réglages…** (Settings) in its menu opens them again: **Valeurs distinctes** (`DISTINCT`), **Ordre** (`ORDER BY`) by keys on any column of the result, each one `ASC` or `DESC`, a separator, `, ` by default, `LIMIT` and `OFFSET`. The zones and the table write it in full: `GROUP_CONCAT(DISTINCT ville ORDER BY montant DESC SEPARATOR ' | ' LIMIT 5 OFFSET 1)`. A text longer than its limit is cut between whole values and ends with the number of values left out, `Lille, Nice, …(2)`; the limit, 1,000 bytes by default, is a new setting of **Paramètres** (Settings), from 100 to 1,048,576 bytes. Its dates take a precision, as those of `COUNT(DISTINCT)`, `MIN` and `MAX` do. It gives no filter for now;
+  - the list of the columns and the zones each take the width set by the line on their right, the table taking the rest; a double click on the line gives back the default width, and each result tab keeps its widths ([#32](https://github.com/sfaut/prisme/issues/32));
+  - the menu of an element highlights the aggregate and the precision chosen, which keep their icon, and screen readers announce them as checked ([#33](https://github.com/sfaut/prisme/issues/33)).
+
+### 🐞 Bug fixes
+
+- The lists of choices take the width written for them: the theme of the top bar, the row limit of a cell and the lists of **Paramètres** keep one width whatever the choice shown; they used to follow its length.
+
+### ⚙️ Internal improvements
+
+- Dependencies:
+  - `@lucide/vue` 1.69.0 → 1.70.0, `vue` 3.5.44 → 3.5.45, `jsdom` 30.1.3 → 31.0.0;
+  - `rusqlite` stays at 0.40.2: `rusqlite_migration` 2.6.0 does not accept 0.41.1 yet; `typescript` stays at 6.0: `vue-tsc` and `typescript-eslint` do not support TypeScript 7 yet; `oxlint` stays at 1.90: `eslint-plugin-oxlint`, released with it, has no 1.91 yet.
+- The internal database keeps the longest text of a `GROUP_CONCAT` among the settings of a user (migration 0025).
+- The engine of the Pivoteur joins the texts of a `GROUP_CONCAT` in one reading of the rows, its totals included, and stops growing a text once it is full.
+- Releases: the executables are built as soon as the interface is built, without a Rust cache that no run read; the push of a version no longer runs the checks that its release runs; the locks of the benchmarks follow the version.
+
+### 📝 Documentation
+
+- README: `GROUP_CONCAT` and its settings, the widths of the sections of the Pivoteur, the choices highlighted in its menus.
+- Developer guide: the settings of a `GROUP_CONCAT` in the request of the engine and in the settings API; the workaround of a splitter of Reka UI mounted hidden; the measured time of the build of a release.
+- `docs/SQL-COMPARISON.md`: the edge cases of `GROUP_CONCAT`: a window beyond the values, `LIMIT 0`, `NULL` values and keys, the cut of MySQL in bytes.
+- `docs/upstream/`: a ticket draft for Reka UI (a splitter mounted hidden).
+- `docs/TODO-PIVOTER.md`: `GROUP_CONCAT` brought forward from lot 3, as the text aggregate of the menu.
+
 ## v0.10.0 (2026-11-05)
 
 ### 🚀 Launch
