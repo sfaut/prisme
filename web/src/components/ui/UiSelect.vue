@@ -2,7 +2,8 @@
   List of choices, on Reka UI's `Select` (keyboard, positioning of the list,
   accessibility). Each choice has a label, a value and, when needed, a Lucide
   icon, repeated in the button for the current choice; an inactive choice can say
-  why in its tooltip.
+  why in its tooltip. The attributes (`class`...) go to the button: Reka UI's
+  `SelectRoot` draws no element of its own, and would drop them.
 -->
 <script setup lang="ts" generic="T extends string | number">
 import { Check, ChevronDown } from '@lucide/vue'
@@ -22,6 +23,8 @@ import { type Component, computed } from 'vue'
 import { cssPixels } from '@/cssLength'
 
 import { vTooltip } from './tooltip'
+
+defineOptions({ inheritAttrs: false })
 
 /**
  * Gap with the trigger, in pixels (`--popup-offset` of the theme).
@@ -56,6 +59,7 @@ const current = computed(() => props.items.find((item) => item.value === model.v
 <template>
   <select-root v-model="model">
     <select-trigger
+      v-bind="$attrs"
       :aria-label="label"
       class="inline-flex h-8 cursor-pointer items-center gap-3 rounded-lg border border-line bg-surface px-3 text-base text-fg-strong hover:bg-surface-sunken"
     >

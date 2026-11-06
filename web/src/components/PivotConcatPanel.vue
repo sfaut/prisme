@@ -364,15 +364,13 @@ function onEscape(): void {
             Ordre des lignes du résultat
           </p>
           <div v-for="(key, position) in keys" :key="position" class="flex items-center gap-1">
-            <!-- The select draws no element of its own: this column stretches its button. -->
-            <div class="flex min-w-0 flex-1 flex-col">
-              <ui-select
-                :model-value="key.column"
-                :items="columns"
-                :label="`Colonne de la clef ${position + 1}`"
-                @update:model-value="chooseKeyColumn(position, $event)"
-              />
-            </div>
+            <ui-select
+              :model-value="key.column"
+              :items="columns"
+              :label="`Colonne de la clef ${position + 1}`"
+              class="min-w-0 flex-1"
+              @update:model-value="chooseKeyColumn(position, $event)"
+            />
             <ui-button
               :icon="key.descending ? ArrowDownWideNarrow : ArrowUpNarrowWide"
               variant="ghost"

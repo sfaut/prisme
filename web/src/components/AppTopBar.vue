@@ -99,7 +99,7 @@ const menuItems: MenuItem[] = [
     <div class="flex items-center gap-3">
       <export-manager />
       <sync-status />
-      <ui-select v-model="colorMode" :items="COLOR_MODES" label="Thème" class="w-37" />
+      <ui-select v-model="colorMode" :items="COLOR_MODES" label="Thème" class="w-38" />
       <ui-dropdown-menu :items="menuItems">
         <!-- Round avatar with the user's initials, the user icon before they are known. -->
         <button
