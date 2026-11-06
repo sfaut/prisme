@@ -8,9 +8,10 @@
 # On publishing a GitHub release (created with gh, changelog written by hand,
 # see CLAUDE.md, "Publishing a version"): the same checks on the tagged
 # commit, and the build of the Windows, Linux and macOS executables, which
-# starts once the interface is built. The executables are added to this
-# release once the backend is checked too, downloadable directly from the
-# Releases page. The CI never writes the release notes.
+# starts with the run, each one building the interface it embeds. The
+# executables are added to this release once the interface and the backend
+# are checked too, downloadable directly from the Releases page. The CI never
+# writes the release notes.
 #
 # Started by hand (workflow_dispatch): checks and executables, stored in the
 # run's artifacts, to try a build outside a release.
@@ -41,9 +42,9 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Vue interface: formatting, lint, types, tests, then build of web/dist,
-  # passed on to the builds of the executable. Vite builds the engine of the
-  # Pivoteur first (crates/web-engine, compiled to WebAssembly by Cargo).
+  # Vue interface: formatting, lint, types, tests, then build of web/dist, to
+  # check that it builds. Vite builds the engine of the Pivoteur first
+  # (crates/web-engine, compiled to WebAssembly by Cargo).
   web:
     name: Interface
     runs-on: ubuntu-latest
@@ -62,7 +63,7 @@ jobs:
       - run: rustup toolchain install
       # Release: the versions of Cargo.toml and web/package.json must be those
       # of the tag (v0.2.0 → 0.2.0), otherwise prisme --version would lie.
-      # Checked in this job, before the long builds, which only wait for it.
+      # The release job waits for this job: a wrong version attaches nothing.
       - name: Versions match the tag
         if: github.event_name == 'release'
         working-directory: ${{ github.workspace }}
@@ -93,11 +94,6 @@ jobs:
         run: npx vitest --run
       - name: Build of the interface
         run: npm run build-only
-      - uses: actions/upload-artifact@v7
-        with:
-          name: web-dist
-          path: web/dist/
-          if-no-files-found: error
 
   # Rust backend: formatting, static analysis, all the tests. The Ubuntu
   # runners provide Docker: the development servers of compose.yaml start
@@ -141,19 +137,19 @@ jobs:
   # Executables, interface embedded. On Windows, the C runtime is built in
   # (crt-static, in .cargo/config.toml): no VCRUNTIME140.dll to install.
   #
-  # No Rust cache: these builds run for a release, on its tag, whose caches
-  # no other release can read, or by hand, too rarely to keep one. The caches
-  # saved by the releases up to v0.10.0 were never restored.
+  # No Rust or npm cache: these builds run for a release, on its tag, whose
+  # caches no other release can read, or by hand, too rarely to keep one. The
+  # Rust caches saved by the releases up to v0.10.0 were never restored.
   #
   # TODO: sign the Windows (SignPath Foundation) and macOS (Apple Developer
   # account, notarization) executables, see docs/QUESTIONS.md, section 3.
   build:
     name: Executable ${{ matrix.name }}
-    # For a release, or on demand; never for a mere push. Waits for the
-    # interface alone, whose web/dist it embeds: the backend is checked in the
-    # meantime, and the release job waits for both.
+    # For a release, or on demand; never for a mere push. Builds the
+    # interface it embeds (web/dist) itself, so that no artifact of the run
+    # carries it, and starts with the run: the interface and the backend are
+    # checked in the meantime, and the release job waits for all of them.
     if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
-    needs: [web]
     strategy:
       fail-fast: false
       matrix:
@@ -173,15 +169,21 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
+      - uses: actions/setup-node@v7
         with:
-          name: web-dist
-          path: web/dist/
+          node-version: 24
+      # Installs the version pinned by rust-toolchain.toml, with the
+      # WebAssembly target of the engine of the Pivoteur, which Vite builds.
+      - run: rustup toolchain install
+      - run: npm ci
+        working-directory: web
+      - name: Build of the interface
+        run: npm run build-only
+        working-directory: web
       # rust-embed tolerates a missing web/dist (allow_missing): without this
       # check, the executable would ship without an interface.
       - name: Built interface present
         run: test -f web/dist/index.html
-      - run: rustup toolchain install
       - name: Build
         if: runner.os != 'macOS'
         run: cargo build --release --bin prisme
@@ -206,12 +208,12 @@ jobs:
           if-no-files-found: error
 
   # Published release: the executables are added to it, renamed with the
-  # version and the platform, once the backend is checked too. The release
-  # notes stay untouched.
+  # version and the platform, once the interface and the backend are checked
+  # too. The release notes stay untouched.
   release:
     name: Release
     if: github.event_name == 'release'
-    needs: [build, rust]
+    needs: [build, web, rust]
     runs-on: ubuntu-latest
     permissions:
       contents: write
