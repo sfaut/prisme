@@ -129,7 +129,7 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ A sort by a `GROUP_CONCAT` compares its texts by code points; it gives no filter for now
 - ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes
 - ✅ Documented: `README.md`, `docs/DEVELOPER.md`
-- ⬜ Documented in the specification (lot 3 brought forward)
+- ✅ Documented in the specification (lot 3 brought forward): F-47, catalogue, D30, A10, recipe, saved types
 - ⬜ Filters by an expression (F-19), with the dialect: an expression without an aggregate filters the rows, with one the groups; later, a custom expression in a filter on values (F-21), `LIKE` and relative dates
 - ⬜ Lot 1, next slices (ANSI SQL): dialect (parsed by `sqlparser`, typing, ANSI catalog), calendar, editor, nested date levels, computed columns, filters, fold, caches, copy, CSV, conformance
 - ⬜ Lot 2: complements (detail of a cell, measures in rows)
