@@ -16,9 +16,10 @@
     of the SQL editor (code font, size, padding, alignment) and takes the
     width of the largest number.
   - Selection: click on a cell, on a row number or on a column name;
-    Shift+click extends, Ctrl+click adds, dragging extends too (on the row
-    numbers, dragging selects a group of rows). A click on the top left
-    corner selects everything.
+    Shift+click extends, Ctrl+click adds, or unselects when it starts on a
+    selected cell, Alt+click toggles the state of the cells; dragging extends
+    too, with the same effect (on the row numbers, dragging selects a group
+    of rows). A click on the top left corner selects everything.
   - Copy: Ctrl+C copies the selection with the column names on the first
     line (a profile setting may remove them), a single cell as its value
     alone. Ctrl+A selects everything, Escape clears the selection.
@@ -79,6 +80,7 @@ import {
   estimatedWidth,
   fittedWidth,
   moveColumn,
+  hasSelection,
   isFixedLengthText,
   isSelected,
   nextSort,
@@ -509,22 +511,32 @@ watch([() => props.filter, sort], () => {
 })
 
 /**
- * Selection mode after the keys held during the click.
+ * Selection mode after the keys held during the click: Shift extends, Alt
+ * toggles, Ctrl (Cmd on macOS) unselects when the click starts on a selected
+ * cell and adds otherwise, as in a spreadsheet.
  *
  * @param event Click.
+ * @param row View row of the cell where the click starts.
+ * @param column Column of the cell where the click starts.
  */
-function modeOf(event: MouseEvent): SelectMode {
+function modeOf(event: MouseEvent, row: number, column: number): SelectMode {
   if (event.shiftKey) {
     return 'extend'
   }
-  return event.ctrlKey || event.metaKey ? 'add' : 'replace'
+  if (event.altKey) {
+    return 'toggle'
+  }
+  if (event.ctrlKey || event.metaKey) {
+    return isSelected(selection.value, row, column) ? 'remove' : 'add'
+  }
+  return 'replace'
 }
 
 /**
  * Start of a cell selection (and of a possible drag).
  */
 function onCellDown(event: MouseEvent, row: number, column: number): void {
-  selection.value = selectCell(selection.value, row, column, modeOf(event))
+  selection.value = selectCell(selection.value, row, column, modeOf(event, row, column))
   focusGrid()
   startDragging('cells')
 }
@@ -546,7 +558,7 @@ function onCellEnter(row: number, column: number): void {
  * possible drag over other rows.
  */
 function onRowHeader(event: MouseEvent, row: number): void {
-  selection.value = selectRow(selection.value, row, props.columns.length, modeOf(event))
+  selection.value = selectRow(selection.value, row, props.columns.length, modeOf(event, row, 0))
   focusGrid()
   startDragging('rows')
 }
@@ -579,7 +591,12 @@ const dropAt = ref<number | null>(null)
  * @param position Displayed position of the column.
  */
 function onColumnHeader(event: PointerEvent, position: number): void {
-  selection.value = selectColumn(selection.value, position, view.value.length, modeOf(event))
+  selection.value = selectColumn(
+    selection.value,
+    position,
+    view.value.length,
+    modeOf(event, 0, position),
+  )
   focusGrid()
   ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
   moving = { from: position, x: event.clientX, started: false }
@@ -650,7 +667,7 @@ function toggleSort(column: number): void {
  *     (`selectionToText`).
  */
 async function copy(withHeaders: boolean): Promise<void> {
-  if (selection.value.ranges.length === 0) {
+  if (!hasSelection(selection.value)) {
     return
   }
   const text = selectionToText(
@@ -759,7 +776,7 @@ async function exportFrame(): Promise<GridFrame> {
   while (viewMemory.scanned < props.rows.length) {
     await nextFrame()
   }
-  return selection.value.ranges.length > 0
+  return hasSelection(selection.value)
     ? selectionFrame(selection.value, view.value, order.value)
     : viewFrame(view.value, order.value)
 }

@@ -13,6 +13,7 @@ import {
   emptySelection,
   frameCell,
   frameIsFull,
+  hasSelection,
   isFixedLengthText,
   isSelected,
   nextSort,
@@ -106,6 +107,55 @@ describe('selection', () => {
     expect(isSelected(selection, 0, 0)).toBe(true)
     expect(isSelected(selection, 2, 2)).toBe(true)
     expect(isSelected(selection, 1, 1)).toBe(false)
+  })
+
+  it('unselects cells (Ctrl+click on a selected cell), a drag going on unselecting', () => {
+    let selection = selectAll(3, 3)
+    selection = selectCell(selection, 1, 1, 'remove')
+    expect(isSelected(selection, 1, 1)).toBe(false)
+    expect(isSelected(selection, 0, 0)).toBe(true)
+    selection = selectCell(selection, 2, 2, 'extend')
+    expect(selection.ranges[selection.ranges.length - 1]).toEqual({
+      top: 1,
+      bottom: 2,
+      left: 1,
+      right: 2,
+      effect: 'remove',
+    })
+    expect(isSelected(selection, 2, 2)).toBe(false)
+    expect(isSelected(selection, 2, 0)).toBe(true)
+  })
+
+  it('toggles cells from their state before the drag (Alt+click)', () => {
+    // Column 0 selected; the drag covers columns 0 and 1 of rows 0 and 1.
+    let selection = selectColumn(emptySelection(), 0, 3, 'replace')
+    selection = selectCell(selection, 0, 0, 'toggle')
+    expect(isSelected(selection, 0, 0)).toBe(false)
+    selection = selectCell(selection, 1, 1, 'extend')
+    expect(isSelected(selection, 0, 0)).toBe(false)
+    expect(isSelected(selection, 1, 0)).toBe(false)
+    expect(isSelected(selection, 0, 1)).toBe(true)
+    expect(isSelected(selection, 1, 1)).toBe(true)
+    // Outside the drag, nothing changes.
+    expect(isSelected(selection, 2, 0)).toBe(true)
+    expect(isSelected(selection, 2, 1)).toBe(false)
+  })
+
+  it('adds again over an unselected cell', () => {
+    let selection = selectAll(2, 2)
+    selection = selectCell(selection, 0, 0, 'remove')
+    selection = selectCell(selection, 0, 0, 'add')
+    expect(isSelected(selection, 0, 0)).toBe(true)
+  })
+
+  it('has no selection once every cell is unselected', () => {
+    expect(hasSelection(emptySelection())).toBe(false)
+    let selection = selectCell(emptySelection(), 0, 0, 'replace')
+    expect(hasSelection(selection)).toBe(true)
+    selection = selectCell(selection, 0, 0, 'remove')
+    expect(hasSelection(selection)).toBe(false)
+    expect(selectionSize(selection)).toBeNull()
+    expect(selectedColumnCells(selection, [0, 1, 2], rows, [0, 1, 2])).toBeNull()
   })
 
   it('selects whole rows and columns', () => {
@@ -211,6 +261,23 @@ describe('frames', () => {
     selection = selectCell(selection, 9, 1, 'add')
     // Rows 0 to 3, plus 9; columns 0 to 2.
     expect(selectionSize(selection)).toEqual({ rows: 5, columns: 3 })
+  })
+
+  it('leaves out of the frame a row or a column whose cells are all unselected', () => {
+    let selection = selectAll(3, 3)
+    selection = selectRow(selection, 1, 3, 'remove')
+    selection = selectColumn(selection, 2, 3, 'toggle')
+    // Rows 0 and 2, columns 0 and 1, plus row 1 of column 2, toggled back on.
+    expect(selectionSize(selection)).toEqual({ rows: 3, columns: 3 })
+    expect(selectionToText(selection, [0, 1, 2], rows, columns, false)).toBe(
+      '10\tZoé\t\n\t\t\n1\tÉric\t',
+    )
+    selection = selectCell(selection, 1, 2, 'remove')
+    expect(selectionSize(selection)).toEqual({ rows: 2, columns: 2 })
+    expect(selectionToText(selection, [0, 1, 2], rows, columns, false)).toBe('10\tZoé\n1\tÉric')
+    const frame = selectionFrame(selection, [0, 1, 2], [0, 1, 2])
+    expect(frame.rows).toEqual([0, 2])
+    expect(frameIsFull(frame)).toBe(true)
   })
 
   it('gives NULL apart from an unselected cell', () => {

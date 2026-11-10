@@ -229,6 +229,8 @@ Each query gets its own tab:
 | Resize a column | Drag the right edge of its header; double-click the edge to fit the longest value |
 | Select | Click a cell, a row number or a column name; drag for a range; click the top-left corner for everything |
 | Extend / add to the selection | Shift+click / Ctrl+click |
+| Unselect cells | Ctrl+click on a selected cell; drag to unselect a range |
+| Toggle cells | Alt+click; drag to toggle a range: each cell takes the opposite of its state before the drag |
 | Select all / clear | Ctrl+A / Esc |
 | Copy | Ctrl+C |
 | Download as CSV | **Exporter** (Export) button, right of the result tabs, group **Fichier** (File) |

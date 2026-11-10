@@ -43,7 +43,18 @@ export interface CellRange {
   bottom: number
   left: number
   right: number
+  /**
+   * What the range does to its cells, over the ranges before it: absent, it
+   * selects them; `remove` unselects them (Ctrl+click on a selected cell);
+   * `toggle` flips the state the previous ranges left them in (Alt+click).
+   */
+  effect?: RangeEffect
 }
+
+/**
+ * Effect of a range other than selecting its cells (see `CellRange.effect`).
+ */
+export type RangeEffect = 'remove' | 'toggle'
 
 /**
  * Position of a cell: view row and column.
@@ -54,7 +65,8 @@ export interface CellPosition {
 }
 
 /**
- * Selection: one or more ranges, and the starting cell of an extension (Shift+click).
+ * Selection: one or more ranges, applied in their order, and the starting
+ * cell of an extension (Shift+click).
  */
 export interface GridSelection {
   ranges: CellRange[]
@@ -66,9 +78,14 @@ export interface GridSelection {
  *
  * - `replace`: simple click, the selection is replaced;
  * - `extend`: Shift+click, the last range extends up to the click;
- * - `add`: Ctrl+click, a range is added to the previous ones.
+ * - `add`: Ctrl+click on an unselected cell, a range is added to the previous ones;
+ * - `remove`: Ctrl+click on a selected cell, a range unselects its cells;
+ * - `toggle`: Alt+click, a range flips the state of its cells.
+ *
+ * A drag extends the range of its click, with the same effect: a toggle
+ * flips the state the cells had before the drag.
  */
-export type SelectMode = 'replace' | 'extend' | 'add'
+export type SelectMode = 'replace' | 'extend' | 'add' | 'remove' | 'toggle'
 
 /**
  * Text shown for NULL in the grid.
@@ -492,7 +509,7 @@ export function emptySelection(): GridSelection {
  * @param selection Current selection.
  * @param target Range aimed at by the click (a cell, a whole row or a whole column).
  * @param position Clicked cell, new starting point.
- * @param mode Simple click, Shift+click or Ctrl+click.
+ * @param mode Simple click, Shift+click, Ctrl+click or Alt+click.
  * @param stretch Extends the range from the starting point to the target.
  */
 function applySelection(
@@ -504,10 +521,21 @@ function applySelection(
 ): GridSelection {
   if (mode === 'extend' && selection.anchor) {
     const ranges = selection.ranges.slice(0, -1)
-    return { ranges: [...ranges, stretch(selection.anchor)], anchor: selection.anchor }
+    // The extended range keeps the effect of its click: a drag that unselects
+    // or toggles goes on doing so.
+    const effect = selection.ranges[selection.ranges.length - 1]?.effect
+    const extended = effect ? { ...stretch(selection.anchor), effect } : stretch(selection.anchor)
+    return { ranges: [...ranges, extended], anchor: selection.anchor }
   }
-  const ranges = mode === 'add' ? [...selection.ranges, target] : [target]
-  return { ranges, anchor: position }
+  switch (mode) {
+    case 'add':
+      return { ranges: [...selection.ranges, target], anchor: position }
+    case 'remove':
+    case 'toggle':
+      return { ranges: [...selection.ranges, { ...target, effect: mode }], anchor: position }
+    default:
+      return { ranges: [target], anchor: position }
+  }
 }
 
 /**
@@ -516,7 +544,7 @@ function applySelection(
  * @param selection Current selection.
  * @param row View row.
  * @param column Column.
- * @param mode Simple click, Shift+click or Ctrl+click.
+ * @param mode How the click changes the selection (`SelectMode`).
  */
 export function selectCell(
   selection: GridSelection,
@@ -544,7 +572,7 @@ export function selectCell(
  * @param selection Current selection.
  * @param row View row.
  * @param columnCount Number of columns.
- * @param mode Simple click, Shift+click or Ctrl+click.
+ * @param mode How the click changes the selection (`SelectMode`).
  */
 export function selectRow(
   selection: GridSelection,
@@ -573,7 +601,7 @@ export function selectRow(
  * @param selection Current selection.
  * @param column Column.
  * @param rowCount Number of view rows.
- * @param mode Simple click, Shift+click or Ctrl+click.
+ * @param mode How the click changes the selection (`SelectMode`).
  */
 export function selectColumn(
   selection: GridSelection,
@@ -620,10 +648,78 @@ export function selectAll(rowCount: number, columnCount: number): GridSelection 
  * @param column Column.
  */
 export function isSelected(selection: GridSelection, row: number, column: number): boolean {
-  return selection.ranges.some(
-    (range) =>
-      row >= range.top && row <= range.bottom && column >= range.left && column <= range.right,
-  )
+  return stateOf(selection.ranges, row, column)
+}
+
+/**
+ * State of a cell once the ranges are applied in their order.
+ *
+ * @param ranges Ranges of a selection.
+ * @param row View row.
+ * @param column Column.
+ */
+function stateOf(ranges: CellRange[], row: number, column: number): boolean {
+  let selected = false
+  for (const range of ranges) {
+    if (row >= range.top && row <= range.bottom && column >= range.left && column <= range.right) {
+      selected = range.effect === undefined ? true : range.effect === 'toggle' && !selected
+    }
+  }
+  return selected
+}
+
+/**
+ * Tells whether a selection holds at least one cell: ranges that unselect
+ * every cell leave none.
+ *
+ * @param selection Selection.
+ */
+export function hasSelection(selection: GridSelection): boolean {
+  return selectedBlocks(selection.ranges).length > 0
+}
+
+/**
+ * Rectangles whose union is the selected cells. Without a range that
+ * unselects or toggles, these are the ranges themselves, which may overlap.
+ * Otherwise the grid is cut along the bounds of every range: each piece is
+ * selected or not as a whole, and the selected ones are kept, disjoint.
+ *
+ * @param ranges Ranges of a selection.
+ */
+function selectedBlocks(ranges: CellRange[]): CellRange[] {
+  if (ranges.every((range) => range.effect === undefined)) {
+    return ranges
+  }
+  const rows = cuts(ranges, 'top', 'bottom')
+  const columns = cuts(ranges, 'left', 'right')
+  const blocks: CellRange[] = []
+  for (let row = 0; row < rows.length - 1; row++) {
+    for (let column = 0; column < columns.length - 1; column++) {
+      const top = rows[row]!
+      const left = columns[column]!
+      if (stateOf(ranges, top, left)) {
+        blocks.push({ top, bottom: rows[row + 1]! - 1, left, right: columns[column + 1]! - 1 })
+      }
+    }
+  }
+  return blocks
+}
+
+/**
+ * Indexes where the state of the cells may change along an axis: the first
+ * index of each range and the one after its last, sorted.
+ *
+ * @param ranges Ranges.
+ * @param start Start bound (`top` or `left`).
+ * @param end End bound (`bottom` or `right`).
+ */
+function cuts(ranges: CellRange[], start: 'top' | 'left', end: 'bottom' | 'right'): number[] {
+  const indexes = new Set<number>()
+  for (const range of ranges) {
+    indexes.add(range[start])
+    indexes.add(range[end] + 1)
+  }
+  return [...indexes].sort((a, b) => a - b)
 }
 
 /**
@@ -634,12 +730,13 @@ export function isSelected(selection: GridSelection, row: number, column: number
  * @returns `null` without a selection.
  */
 export function selectionSize(selection: GridSelection): { rows: number; columns: number } | null {
-  if (selection.ranges.length === 0) {
+  const blocks = selectedBlocks(selection.ranges)
+  if (blocks.length === 0) {
     return null
   }
   return {
-    rows: coveredCount(selection.ranges, 'top', 'bottom'),
-    columns: coveredCount(selection.ranges, 'left', 'right'),
+    rows: coveredCount(blocks, 'top', 'bottom'),
+    columns: coveredCount(blocks, 'left', 'right'),
   }
 }
 
@@ -702,8 +799,9 @@ export function selectionFrame(
   view: number[],
   order: number[],
 ): GridFrame {
-  const rowIndexes = coveredIndexes(selection.ranges, 'top', 'bottom')
-  const columnIndexes = coveredIndexes(selection.ranges, 'left', 'right')
+  const blocks = selectedBlocks(selection.ranges)
+  const rowIndexes = coveredIndexes(blocks, 'top', 'bottom')
+  const columnIndexes = coveredIndexes(blocks, 'left', 'right')
   return {
     rows: rowIndexes.map((row) => view[row]),
     fields: columnIndexes.map((column) => order[column] ?? column),
@@ -845,7 +943,8 @@ export function selectedColumnCells(
   rows: Cell[][],
   order: number[],
 ): { column: number; cells: DataCell[] } | 'several' | null {
-  const positions = coveredIndexes(selection.ranges, 'left', 'right')
+  const blocks = selectedBlocks(selection.ranges)
+  const positions = coveredIndexes(blocks, 'left', 'right')
   if (positions.length === 0) {
     return null
   }
@@ -853,7 +952,7 @@ export function selectedColumnCells(
     return 'several'
   }
   const column = order[positions[0]!] ?? positions[0]!
-  const cells = coveredIndexes(selection.ranges, 'top', 'bottom').map((row) => {
+  const cells = coveredIndexes(blocks, 'top', 'bottom').map((row) => {
     const source = view[row]
     return { row: row + 1, value: source === undefined ? null : (rows[source]?.[column] ?? null) }
   })

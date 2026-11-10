@@ -65,6 +65,31 @@ describe('ResultGrid', () => {
     expect(headers.map((header) => header.classes('selected'))).toEqual([true, true])
   })
 
+  it('unselects a selected column with Ctrl, toggles columns with Alt', async () => {
+    HTMLElement.prototype.setPointerCapture = () => {}
+    const wrapper = mountGrid(['id', 'name', 'city'], [['1', 'a', 'b']])
+    const selected = () =>
+      wrapper.findAll('.grid-column-header').map((header) => header.classes('selected'))
+    const names = wrapper.findAll('.grid-column-name')
+    // jsdom has no PointerEvent: a mouse event of that name, keys set at its creation.
+    const press = async (column: number, key: 'ctrlKey' | 'altKey') => {
+      names[column]!.element.dispatchEvent(
+        new MouseEvent('pointerdown', { bubbles: true, cancelable: true, [key]: true }),
+      )
+      await nextTick()
+    }
+    await wrapper.find('.grid-corner').trigger('mousedown')
+    await press(1, 'ctrlKey')
+    expect(selected()).toEqual([true, false, true])
+    // Ctrl on an unselected column adds it back.
+    await press(1, 'ctrlKey')
+    expect(selected()).toEqual([true, true, true])
+    await press(0, 'altKey')
+    expect(selected()).toEqual([false, true, true])
+    await press(0, 'altKey')
+    expect(selected()).toEqual([true, true, true])
+  })
+
   it('fits a column to its content, then gives back its estimated width', async () => {
     const wrapper = mountGrid(['texte'], [['x'.repeat(100)]], 'SELECT texte FROM double_clic')
     // The width of the only column: the template after the row numbers.

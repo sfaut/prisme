@@ -29,7 +29,7 @@ Common rules:
 - **Numbers in JSON** **[decided]**: integer, floating and decimal columns are written as JSON numbers, copied as the server sent them (never converted by `Number`, hence without loss on BIGINT and DECIMAL when writing). To adjust if reading them back in JavaScript causes problems.
 - **JSON columns** **[decided]**: a value recognised as JSON (`contentKind.ts`) is inserted as a nested object in JSON and NDJSON.
 - **Duplicate column names** (`SELECT a.id, b.id`) **[decided]**: the export is refused, whatever the format, with an explicit error naming the columns involved. The risk ruled out is one column silently overwriting another.
-- **Non-contiguous selection** (Ctrl+click): grid formats (tabular, Box-Unicode, CSV, TSV, HTML, images) leave the unselected cell empty; object formats (JSON, NDJSON, XML) omit its key. An unselected cell is thus never confused with a NULL.
+- **Non-contiguous selection** (Ctrl+click, Alt+click): grid formats (tabular, Box-Unicode, CSV, TSV, HTML, images) leave the unselected cell empty; object formats (JSON, NDJSON, XML) omit its key. An unselected cell is thus never confused with a NULL.
 
 ### 2.1 Images: PNG, WebP, SVG
 
