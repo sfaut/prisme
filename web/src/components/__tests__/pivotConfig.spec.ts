@@ -43,6 +43,7 @@ import {
   sameTarget,
   sectionWidth,
   takesPrecision,
+  takesShare,
   withAggregate,
   withAllSubtotals,
   withColumnWidth,
@@ -56,6 +57,7 @@ import {
   withPrecision,
   withRepeatedLabels,
   withSectionWidth,
+  withShare,
   withSubtotal,
   withValueSort,
   zoneLabels,
@@ -770,6 +772,64 @@ describe('GROUP_CONCAT', () => {
     const config: PivotConfig = { ...emptyConfig(), measures: [joined(1, { separator: ', ' })] }
     const from = { zone: 'measures', index: 0 } as const
     expect(placeColumn(config, 1, 'count', { zone: 'filters', index: 0 }, from)).toBe(config)
+  })
+})
+
+describe('the shares of a total', () => {
+  const row = { of: 'row', decimals: 1 } as const
+
+  it('go to counts, sums and averages, whose values divide', () => {
+    for (const aggregate of ['count_star', 'count', 'count_distinct', 'sum', 'avg'] as const) {
+      expect(takesShare(aggregate)).toBe(true)
+    }
+    for (const aggregate of ['min', 'max', 'group_concat'] as const) {
+      expect(takesShare(aggregate)).toBe(false)
+    }
+  })
+
+  it('change for one measure, which keeps its name, and leave with an aggregate that takes none', () => {
+    const config: PivotConfig = {
+      ...emptyConfig(),
+      measures: [measure('sum', 4, 'CA'), measure('max', 4)],
+    }
+    const shared = withShare(config, 0, row)
+    expect(shared.measures[0]).toEqual({ ...measure('sum', 4, 'CA'), share: row })
+    // MAX takes none.
+    expect(withShare(config, 1, row)).toEqual(config)
+    expect(withAggregate(shared, 0, 'avg').measures[0]?.share).toEqual(row)
+    expect(withAggregate(shared, 0, 'max').measures[0]).toEqual(measure('max', 4, 'CA'))
+    expect(withShare(shared, 0, undefined)).toEqual(config)
+  })
+
+  it('name the total after the expression of the measure, but not its name', () => {
+    const config: PivotConfig = {
+      ...emptyConfig(),
+      measures: [
+        { ...measure('sum', 4), share: row },
+        { ...measure('count_star', 0), share: { of: 'column', decimals: 0 } },
+        { ...measure('sum', 4, 'CA'), share: row },
+      ],
+    }
+    const label = (index: number) => elementLabel(config, { zone: 'measures', index }, NAMES)
+    expect([0, 1, 2].map(label)).toEqual(['SUM(montant) (% ligne)', 'COUNT(*) (% colonne)', 'CA'])
+  })
+
+  it('reach the engine for the measures, never for a filter on a measure', () => {
+    const config: PivotConfig = {
+      ...emptyConfig(),
+      measures: [{ ...measure('sum', 4), share: row }, measure('count', 1)],
+    }
+    const request = engineRequest(config)
+    expect(request.measures).toEqual([
+      { aggregate: 'sum', column: 4, share: row },
+      { aggregate: 'count', column: 1 },
+    ])
+    expect(sameRequest(request, engineRequest(withShare(config, 0, { ...row, decimals: 2 })))).toBe(
+      false,
+    )
+    const from = { zone: 'measures', index: 0 } as const
+    const filtered = placeColumn(config, 4, 'sum', { zone: 'filters', index: 0 }, from)
+    expect(filtered.filters[0]).not.toHaveProperty('share')
   })
 })
 

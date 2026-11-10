@@ -146,6 +146,33 @@ pub struct NamedMeasure {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub concat: Option<PivotConcat>,
+    /// Share of a total that a count, a sum or an average shows in place of
+    /// its values; none for the values as they are.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub share: Option<PivotShare>,
+}
+
+/// Share of a total that a measure shows: each value as the percentage it
+/// makes of the total of its line or of its column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct PivotShare {
+    /// Total each value is divided by.
+    pub of: PivotShareOf,
+    /// Digits after the point, 0 to 6.
+    pub decimals: u8,
+}
+
+/// Total a share divides by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(export)]
+pub enum PivotShareOf {
+    /// Total of the line: the row total.
+    Row,
+    /// Total of the column: the column total.
+    Column,
 }
 
 /// Settings of a `GROUP_CONCAT(col)`, as MariaDB writes them. The longest
@@ -709,6 +736,32 @@ mod tests {
                 offset: 1,
                 limit: Some(5),
             })
+        );
+        assert_eq!(serde_json::to_string(&config).unwrap(), saved);
+    }
+
+    #[test]
+    fn a_measure_keeps_its_share_of_a_total() {
+        let saved = r#"{"rows":[],"columns":[],"measures":[{"aggregate":"sum","column":1,"name":"","share":{"of":"row","decimals":2}},{"aggregate":"count","column":0,"name":"","share":{"of":"column","decimals":0}},{"aggregate":"avg","column":1,"name":""}],"filters":[]}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        let shares: Vec<_> = config
+            .measures
+            .iter()
+            .map(|measure| measure.share)
+            .collect();
+        assert_eq!(
+            shares,
+            [
+                Some(PivotShare {
+                    of: PivotShareOf::Row,
+                    decimals: 2,
+                }),
+                Some(PivotShare {
+                    of: PivotShareOf::Column,
+                    decimals: 0,
+                }),
+                None,
+            ]
         );
         assert_eq!(serde_json::to_string(&config).unwrap(), saved);
     }

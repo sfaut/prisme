@@ -21,6 +21,7 @@ import type { TypeFamily } from '@/api/generated/TypeFamily'
 import type { PivotAggregate } from '@/api/generated/PivotAggregate'
 import type { PivotConcat } from '@/api/generated/PivotConcat'
 import type { PivotForm } from '@/api/generated/PivotForm'
+import type { PivotShare } from '@/api/generated/PivotShare'
 import type { PivotTest } from '@/api/generated/PivotTest'
 import type { Cell } from '@/api/querySession'
 
@@ -51,6 +52,11 @@ export interface PivotMeasure {
    * Settings of a `GROUP_CONCAT`, absent for another aggregate.
    */
   concat?: PivotConcat
+  /**
+   * Share of a total that a count, a sum or an average shows in place of its values; absent for
+   * the values as they are. A filter on a measure reads its values: it has none.
+   */
+  share?: PivotShare
 }
 
 /**
@@ -395,7 +401,7 @@ export interface PivotTextLengths {
  */
 export interface PivotFailure {
   /**
-   * Kind of the refusal: `invalid_number`, `too_large`, `overflow`, `not_numeric`,
+   * Kind of the refusal: `invalid_number`, `too_large`, `overflow`, `not_numeric`, `share`,
    * `invalid_date`, `filter_not_numeric`, `filter_overflow`, `filter_operand`, `unknown_column`,
    * `unknown_row`, `ranks`, `block`, `not_loading`, `incomplete`, `no_result`, `no_table`,
    * `request`, `stale` (a window of a replaced table).
@@ -695,8 +701,10 @@ function concatWords(concat: PivotConcat, maxBytes: number): number[] {
 
 /**
  * Words of a request for the module: numbers of levels and of measures, a column and a precision
- * per level, a kind, a column and a precision per measure, then the filters. A `GROUP_CONCAT`
- * adds its settings (`concatWords`). A filter on a list of values: 0, its level, a word for
+ * per level, a kind, a column and a precision per measure, two words per measure for its share
+ * (0 for its values as they are, 1 of the row total, 2 of the column total, then its digits after
+ * the point), then the filters. A `GROUP_CONCAT` adds its settings (`concatWords`). A filter on a
+ * list of values: 0, its level, a word for
  * `NOT IN`, the number of its values and each value. A filter on a measure: 1, the measure, the
  * number of its levels and each level, and the test. A filter on a column: 2, its level and the
  * test.
@@ -760,6 +768,9 @@ export function requestWords(request: PivotRequest): Uint32Array {
     ...request.rows.flatMap(levelWords),
     ...request.columns.flatMap(levelWords),
     ...request.measures.flatMap(measureWords),
+    ...request.measures.flatMap(({ share }) =>
+      share === undefined ? [0, 0] : [share.of === 'row' ? 1 : 2, share.decimals],
+    ),
     ...request.filters.flatMap(filterWords),
   ])
 }

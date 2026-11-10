@@ -1300,6 +1300,7 @@ fn filtered(rows: &[usize], columns: &[usize], filters: Vec<Filter>) -> String {
         columns: columns.iter().map(|&column| column.into()).collect(),
         measures: vec![Measure::Sum(AMOUNT)],
         filters,
+        ..Request::default()
     };
     let table = engine.compute(&request).unwrap();
     let levels = vec!["level"; rows.len()];
@@ -2909,4 +2910,203 @@ fn a_filter_tests_whether_a_group_concat_is_null_and_compares_none() {
         ..Request::default()
     };
     assert_eq!(labels_of(&engine, &request), Ok(vec!["z".to_owned()]));
+}
+
+/// Table of the example dataset whose measures show as `show_as`, in an
+/// order, as its copy lays it out; the narrow no-break space of a share is
+/// written as a space.
+fn shared_example(
+    rows: &[usize],
+    columns: &[usize],
+    measures: &[Measure],
+    show_as: &[ShowAs],
+    order: &Order,
+) -> String {
+    let engine = example();
+    let request = Request {
+        rows: rows.iter().map(|&column| column.into()).collect(),
+        columns: columns.iter().map(|&column| column.into()).collect(),
+        measures: measures.to_vec(),
+        show_as: show_as.to_vec(),
+        ..Request::default()
+    };
+    let mut table = engine.compute(&request).unwrap();
+    table.lay_out(&engine, order, &Layout::default()).unwrap();
+    let names: Vec<&str> = rows
+        .iter()
+        .map(|&column| ["region", "ville", "d", "annee", "trimestre", "montant"][column])
+        .collect();
+    flat(&engine, &table, &names, &["ca", "nb"]).replace('\u{202F}', " ")
+}
+
+#[test]
+fn a_share_of_the_row_total_divides_each_value_by_the_total_of_its_line() {
+    let expected = "\
+region;2025 / ca;2025 / nb;2026 / ca;2026 / nb;Total / ca;Total / nb
+Nord;55 %;60.00 %;45 %;40.00 %;100 %;100.00 %
+Sud;45 %;40.00 %;55 %;60.00 %;100 %;100.00 %
+Total;51 %;50.00 %;49 %;50.00 %;100 %;100.00 %";
+    let show_as = [
+        ShowAs::RowShare { decimals: 0 },
+        ShowAs::RowShare { decimals: 2 },
+    ];
+    let measures = [Measure::Sum(AMOUNT), Measure::CountStar];
+    assert_eq!(
+        shared_example(&[REGION], &[YEAR], &measures, &show_as, &Order::default()),
+        expected
+    );
+}
+
+#[test]
+fn a_share_of_the_column_total_divides_each_value_by_the_total_of_its_column() {
+    let expected = "\
+region;ville;2025 / ca;2026 / ca;Total / ca
+Nord;Total;60.5 %;50.0 %;55.3 %
+Nord;Arras;9.3 %;14.3 %;11.8 %
+Nord;Lille;51.2 %;35.7 %;43.5 %
+Sud;Total;39.5 %;50.0 %;44.7 %
+Sud;Nice;39.5 %;42.9 %;41.2 %
+Sud;Toulon;;7.1 %;3.5 %
+Total;;100.0 %;100.0 %;100.0 %";
+    let show_as = [ShowAs::ColumnShare { decimals: 1 }];
+    assert_eq!(
+        shared_example(
+            &[REGION, CITY],
+            &[YEAR],
+            &[Measure::Sum(AMOUNT)],
+            &show_as,
+            &Order::default()
+        ),
+        expected
+    );
+}
+
+#[test]
+fn a_share_of_an_average_divides_it_by_the_average_of_its_total() {
+    // Averages 94 and 76, against 85 for the whole: the shares do not add up
+    // to 100 %.
+    let expected = "\
+region;ca
+Nord;111 %
+Sud;89 %
+Total;100 %";
+    let show_as = [ShowAs::ColumnShare { decimals: 0 }];
+    assert_eq!(
+        shared_example(
+            &[REGION],
+            &[],
+            &[Measure::Avg(AMOUNT)],
+            &show_as,
+            &Order::default()
+        ),
+        expected
+    );
+}
+
+#[test]
+fn a_sort_by_a_share_follows_the_shares_and_not_the_values() {
+    // By the values of 2026, the lines would read Toulon (30), Arras (60),
+    // Lille (150), Nice (180).
+    let expected = "\
+ville;2025 / ca;2026 / ca;Total / ca
+Lille;59 %;41 %;100 %
+Nice;49 %;51 %;100 %
+Arras;40 %;60 %;100 %
+Toulon;;100 %;100 %
+Total;51 %;49 %;100 %";
+    let show_as = [ShowAs::RowShare { decimals: 0 }];
+    assert_eq!(
+        shared_example(
+            &[CITY],
+            &[YEAR],
+            &[Measure::Sum(AMOUNT)],
+            &show_as,
+            &lines_by(&["2026"], 0, false)
+        ),
+        expected
+    );
+}
+
+#[test]
+fn a_total_of_zero_or_null_gives_a_null_share() {
+    let engine = pairs(
+        &[("a", Some("5")), ("b", Some("-5")), ("c", None)],
+        Family::Exact,
+    );
+    let request = Request {
+        columns: vec![0.into()],
+        measures: vec![Measure::Sum(1), Measure::Count(1)],
+        show_as: vec![
+            ShowAs::RowShare { decimals: 0 },
+            ShowAs::RowShare { decimals: 0 },
+        ],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    let values: Vec<Option<String>> = (0..table.column_count())
+        .map(|column| table.value(0, column).text(&engine))
+        .collect();
+    // SUM: a, b and c against a total of 0, c without a number; COUNT: 1 of 2.
+    let share = |text: &str| Some(format!("{text}\u{202F}%"));
+    assert_eq!(
+        values,
+        [
+            None,
+            share("50"),
+            None,
+            share("50"),
+            None,
+            share("0"),
+            None,
+            share("100"),
+        ]
+    );
+}
+
+#[test]
+fn only_counts_sums_and_averages_show_as_a_share_up_to_six_decimals() {
+    let engine = example();
+    let request = |measure: Measure, decimals: u8| Request {
+        rows: vec![REGION.into()],
+        measures: vec![Measure::CountStar, measure],
+        show_as: vec![ShowAs::Value, ShowAs::ColumnShare { decimals }],
+        ..Request::default()
+    };
+    for measure in [
+        Measure::Min(AMOUNT.into()),
+        Measure::Max(AMOUNT.into()),
+        group_concat(concat(AMOUNT)),
+    ] {
+        assert_eq!(
+            engine.compute(&request(measure, 0)).unwrap_err(),
+            Error::Share { measure: 1 }
+        );
+    }
+    assert!(engine.compute(&request(Measure::Sum(AMOUNT), 6)).is_ok());
+    assert_eq!(
+        engine
+            .compute(&request(Measure::Sum(AMOUNT), 7))
+            .unwrap_err(),
+        Error::Share { measure: 1 }
+    );
+}
+
+#[test]
+fn the_lengths_of_the_texts_of_shares_are_those_of_their_cells() {
+    let engine = example();
+    let request = Request {
+        rows: vec![REGION.into(), CITY.into()],
+        columns: vec![YEAR.into()],
+        measures: vec![Measure::Sum(AMOUNT), Measure::Avg(AMOUNT)],
+        show_as: vec![
+            ShowAs::RowShare { decimals: 3 },
+            ShowAs::ColumnShare { decimals: 0 },
+        ],
+        ..Request::default()
+    };
+    let table = engine.compute(&request).unwrap();
+    assert_eq!(
+        table.text_lengths(&engine, 4, 5),
+        read_lengths(&engine, &table)
+    );
 }

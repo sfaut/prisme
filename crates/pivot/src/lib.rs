@@ -10,7 +10,8 @@
 //! `DISTINCT col`; `COUNT(DISTINCT col)`, `MIN(col)` and `MAX(col)` read the
 //! values of a level, hence the periods of a precision too. `GROUP_CONCAT(col)`,
 //! of MariaDB, brought forward from the lot 3, joins the values of a level into
-//! one text (`Concat`). The lines and the
+//! one text (`Concat`). A count, a sum or an average can show the share each
+//! value makes of its row or column total (`ShowAs`). The lines and the
 //! columns follow their labels or the values
 //! of a measure (`Order`), the lines take a form, and each axis shows the totals
 //! it is given (`Layout`). Filters keep rows, by a list of values or a condition
@@ -36,7 +37,7 @@ use crate::dates::DerivedLevel;
 pub use crate::dates::Precision;
 pub use crate::filters::{Comparison, Filter, Test};
 pub use crate::measures::Value;
-use crate::measures::{Extreme, Input, Joined, OrderKey, SortKey};
+use crate::measures::{Extreme, Input, Joined, OrderKey, Overflow, SortKey, State};
 pub use crate::table::{Header, Label, Line, Table, TextLengths};
 
 /// Family of the type of a column, as far as the measures and the filters need
@@ -182,9 +183,42 @@ pub struct Request {
     pub columns: Vec<Level>,
     /// Measures, in the order of their zone.
     pub measures: Vec<Measure>,
+    /// How each measure shows its values, by index; a measure left out shows
+    /// them as they are. A filter on a measure always reads its values.
+    pub show_as: Vec<ShowAs>,
     /// Filters, which combine by `AND`.
     pub filters: Vec<Filter>,
 }
+
+/// How a measure shows its values (F-48): as they are, or as the percentage
+/// each one makes of a total. A share needs numbers that add up: it suits
+/// counts, sums and averages, and divides the value of a cell by that of its
+/// total, rounded away from zero, as `100.0 * value / total` would be. A total
+/// of 0 or NULL gives NULL, as MySQL, MariaDB and SQLite divide by zero
+/// (`div.by_zero`, `docs/SQL-COMPARISON.md`, section 3.4). The text of a share
+/// ends with a narrow no-break space and `%` (`12.5 %`), and a sort compares
+/// the shares as they are written.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ShowAs {
+    /// The values as they are.
+    #[default]
+    Value,
+    /// Share of the total of its line, the row total: the values of the
+    /// columns of a line, the totals of the columns apart, add up to 100 %.
+    RowShare {
+        /// Digits after the point, at most `MAX_SHARE_DECIMALS`.
+        decimals: u8,
+    },
+    /// Share of the total of its column, the column total: the values of the
+    /// lines of a column, the totals of the rows apart, add up to 100 %.
+    ColumnShare {
+        /// Digits after the point, at most `MAX_SHARE_DECIMALS`.
+        decimals: u8,
+    },
+}
+
+/// Most digits after the point of a share.
+pub const MAX_SHARE_DECIMALS: u8 = 6;
 
 /// Order of the lines and of the columns of a table (C-11, C-13). A sort
 /// changes its layout alone, its values staying as they are.
@@ -310,6 +344,13 @@ pub enum Error {
         /// Measure, by its index.
         measure: usize,
     },
+    /// Measure `measure` is shown as a share, which its values cannot be:
+    /// they do not add up (`MIN`, `MAX`, `GROUP_CONCAT`), or have more digits
+    /// after the point than `MAX_SHARE_DECIMALS`.
+    Share {
+        /// Measure, by its index.
+        measure: usize,
+    },
     /// Filter `filter` adds up a column that does not hold numbers.
     FilterNotNumeric {
         /// Filter, by its index.
@@ -348,6 +389,9 @@ impl fmt::Display for Error {
             Error::Overflow { measure } => {
                 write!(formatter, "measure {measure}: value beyond 128 bits")
             }
+            Error::Share { measure } => {
+                write!(formatter, "measure {measure}: no share of its values")
+            }
             Error::FilterNotNumeric { filter } => {
                 write!(formatter, "filter {filter}: column without numbers")
             }
@@ -375,6 +419,35 @@ enum Numbers {
     Exact(Exact),
     /// Floats.
     Float(Approx),
+}
+
+/// Shares of the values of measure `measure` (`ShowAs`): each group divided
+/// by the group of its total, which `total` gives from the nodes of the rows
+/// and of the columns of the group.
+fn shares(
+    state: &State,
+    groups: &groups::Groups,
+    measure: usize,
+    decimals: u8,
+    total: impl Fn(u32, u32) -> (u32, u32),
+) -> Result<State, Error> {
+    if decimals > MAX_SHARE_DECIMALS {
+        return Err(Error::Share { measure });
+    }
+    // Every row of a group falls into its total: the total holds it.
+    let totals: Vec<u32> = groups
+        .pairs()
+        .iter()
+        .map(|&(row, column)| {
+            let (row, column) = total(row, column);
+            groups.find(row, column).expect("group of a total")
+        })
+        .collect();
+    match state.shares(&totals, u32::from(decimals)) {
+        Ok(Some(shares)) => Ok(shares),
+        Ok(None) => Err(Error::Share { measure }),
+        Err(Overflow) => Err(Error::Overflow { measure }),
+    }
 }
 
 /// Rank of each code, from the codes in their order.
@@ -753,7 +826,7 @@ impl Engine {
         Ok(match value {
             Value::Empty | Value::Null => SortKey::Missing,
             Value::Count(count) => SortKey::Exact(i128::from(count)),
-            Value::Exact(number, _) => SortKey::Exact(number),
+            Value::Exact(number, _) | Value::Share(number, _) => SortKey::Exact(number),
             Value::Float(number) => SortKey::Float(number),
             Value::Cell(level, row) => {
                 let code = self.level_dictionary(level)?.codes[row as usize];
@@ -804,8 +877,18 @@ impl Engine {
             .iter()
             .enumerate()
             .map(|(measure, input)| {
-                measures::accumulate(input, selection, &finest, groups.len(), &groups.merges)
-                    .map_err(|_| Error::Overflow { measure })
+                let state =
+                    measures::accumulate(input, selection, &finest, groups.len(), &groups.merges)
+                        .map_err(|_| Error::Overflow { measure })?;
+                match request.show_as.get(measure).copied().unwrap_or_default() {
+                    ShowAs::Value => Ok(state),
+                    ShowAs::RowShare { decimals } => {
+                        shares(&state, &groups, measure, decimals, |row, _| (row, 0))
+                    }
+                    ShowAs::ColumnShare { decimals } => {
+                        shares(&state, &groups, measure, decimals, |_, column| (0, column))
+                    }
+                }
             })
             .collect::<Result<Vec<_>, _>>()?;
         let parts = table::Parts {

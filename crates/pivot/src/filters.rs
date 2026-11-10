@@ -466,7 +466,11 @@ impl Engine {
     fn read_value<'a>(&'a self, value: Value<'a>) -> Result<Option<Read<'a>>, Error> {
         Ok(match value {
             Value::Count(count) => Some(Read::Exact((i128::from(count), 0))),
-            Value::Exact(number, scale) => Some(Read::Exact((number, scale))),
+            // A filter reads the values of its measure: a share does not
+            // reach it, and would compare as its percentage.
+            Value::Exact(number, scale) | Value::Share(number, scale) => {
+                Some(Read::Exact((number, scale)))
+            }
             Value::Float(number) => Some(Read::Float(number)),
             Value::Cell(level, row) => match self.level_value(level, row) {
                 Some(label) if level.precision.is_some() => Some(Read::Text(label)),

@@ -447,6 +447,8 @@ function refusalText(refusal: PivotFailure, refused: PivotConfig): string {
       return `${measure} dépasse 38 chiffres.`
     case 'not_numeric':
       return `${measure} demande une colonne de nombres.`
+    case 'share':
+      return `${measure} ne s’affiche pas en part d’un total.`
     case 'filter_overflow':
       return `Le filtre ${filter} dépasse 38 chiffres.`
     case 'filter_not_numeric':

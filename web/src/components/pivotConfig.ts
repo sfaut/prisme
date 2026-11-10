@@ -51,6 +51,7 @@ import type { PivotConfig } from '@/api/generated/PivotConfig'
 import type { PivotForm } from '@/api/generated/PivotForm'
 import type { PivotFilter } from '@/api/generated/PivotFilter'
 import type { PivotLevel } from '@/api/generated/PivotLevel'
+import type { PivotShare } from '@/api/generated/PivotShare'
 import type { PivotTest } from '@/api/generated/PivotTest'
 import type { PivotValueSort } from '@/api/generated/PivotValueSort'
 import type { TabPivot } from '@/api/generated/TabPivot'
@@ -73,6 +74,7 @@ import { sameColumns } from './resultGrid'
 export type { DatePrecision } from '@/api/generated/DatePrecision'
 export type { NamedMeasure } from '@/api/generated/NamedMeasure'
 export type { PivotConcat } from '@/api/generated/PivotConcat'
+export type { PivotShare } from '@/api/generated/PivotShare'
 export type { PivotCondition, PivotConfig, PivotFilter, PivotLevel, PivotTest }
 
 /**
@@ -218,6 +220,26 @@ export function takesPrecision(aggregate: PivotMeasure['aggregate']): boolean {
  */
 export function filterable(aggregate: PivotMeasure['aggregate']): boolean {
   return aggregate !== 'group_concat'
+}
+
+/**
+ * Can a measure of an aggregate show the share each value makes of a total? Counts, sums and
+ * averages, with or without `DISTINCT`: their values are numbers that divide.
+ *
+ * @param aggregate Aggregate.
+ */
+export function takesShare(aggregate: PivotMeasure['aggregate']): boolean {
+  return aggregate !== 'min' && aggregate !== 'max' && aggregate !== 'group_concat'
+}
+
+/**
+ * Share of a total a measure shows: its own, absent for its values as they are and for an
+ * aggregate that takes none.
+ *
+ * @param measure Measure.
+ */
+export function shareOf(measure: PivotMeasure): PivotShare | undefined {
+  return takesShare(measure.aggregate) ? measure.share : undefined
 }
 
 /**
@@ -593,10 +615,14 @@ export function engineRequest(
         return { kind: 'column', level, test: { condition, operand, upper } }
     }
   }
+  const shown = (item: PivotMeasure): PivotMeasure => {
+    const share = shareOf(item)
+    return share === undefined ? measure(item) : { ...measure(item), share: { ...share } }
+  }
   return {
     rows: levels(config.rows),
     columns: levels(config.columns),
-    measures: config.measures.map(measure),
+    measures: config.measures.map(shown),
     filters: activeFilters(config).map(filter),
     concatMaxBytes,
   }
@@ -1487,8 +1513,18 @@ function isRanged(family: TypeFamily | undefined): boolean {
 }
 
 /**
+ * What the expression of a measure shown as a share ends with, after its total: `SUM(montant)
+ * (% ligne)`.
+ */
+export const SHARE_LABELS: Record<PivotShare['of'], string> = {
+  row: '% ligne',
+  column: '% colonne',
+}
+
+/**
  * Expression of an element: the name of the column of a level, with its precision
- * (`vendue_le (Mois)`), the expression of a measure or of a filter.
+ * (`vendue_le (Mois)`), the expression of a measure, with its share of a total
+ * (`SUM(montant) (% ligne)`), or of a filter.
  *
  * @param config Configuration.
  * @param place Place of the element.
@@ -1503,7 +1539,12 @@ export function elementExpression(
 ): string {
   if (place.zone === 'measures') {
     const measure = config.measures[place.index]
-    return measure === undefined ? '?' : measureExpression(measure, names)
+    if (measure === undefined) {
+      return '?'
+    }
+    const share = shareOf(measure)
+    const expression = measureExpression(measure, names)
+    return share === undefined ? expression : `${expression} (${SHARE_LABELS[share.of]})`
   }
   if (place.zone === 'filters') {
     const filter = config.filters[place.index]
@@ -1728,10 +1769,41 @@ export function withAggregate(
         aggregate,
         precision: keptPrecision(aggregate, measure.precision),
       }
+      if (!takesShare(aggregate)) {
+        delete changed.share
+      }
       if (aggregate === 'group_concat') {
         return { ...changed, concat: concatOf(measure) }
       }
       delete changed.concat
+      return changed
+    }),
+  }
+}
+
+/**
+ * Changes the share of a total a count, a sum or an average shows, which keeps its name, its sorts
+ * and its widths: `undefined` brings its values back as they are.
+ *
+ * @param config Configuration.
+ * @param index Position of the measure.
+ * @param share New share, absent for the values as they are.
+ */
+export function withShare(
+  config: PivotConfig,
+  index: number,
+  share: PivotShare | undefined,
+): PivotConfig {
+  return {
+    ...config,
+    measures: config.measures.map((measure, position) => {
+      if (position !== index || !takesShare(measure.aggregate)) {
+        return measure
+      }
+      const changed: NamedMeasure = { ...measure, share }
+      if (share === undefined) {
+        delete changed.share
+      }
       return changed
     }),
   }

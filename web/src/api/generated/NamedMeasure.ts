@@ -2,6 +2,7 @@
 import type { DatePrecision } from "./DatePrecision";
 import type { PivotAggregate } from "./PivotAggregate";
 import type { PivotConcat } from "./PivotConcat";
+import type { PivotShare } from "./PivotShare";
 
 /**
  * Measure of the configuration.
@@ -31,4 +32,9 @@ export type NamedMeasure = {
    * Settings of a `GROUP_CONCAT(col)`, none for another aggregate.
    */
   concat?: PivotConcat;
+  /**
+   * Share of a total that a count, a sum or an average shows in place of
+   * its values; none for the values as they are.
+   */
+  share?: PivotShare;
 };

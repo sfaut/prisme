@@ -346,7 +346,7 @@ describe('PivotZones', () => {
     expect(aggregates.every((item) => item.checked !== undefined)).toBe(true)
     await choose(mounted, 1, 'COUNT(montant)')
     expect(shownConfig(mounted).measures[0]?.precision).toBeUndefined()
-    expect(groups().map((group) => group.label)).toEqual(['Agrégat', 'Élément'])
+    expect(groups().map((group) => group.label)).toEqual(['Agrégat', 'Affichage', 'Élément'])
   })
 
   it('gives no precision to a level without dates, nor to a measure that reads none', async () => {
@@ -361,7 +361,7 @@ describe('PivotZones', () => {
     const labels = mounted
       .findAllComponents(UiDropdownMenu)
       .flatMap((menu) => (menu.props('groups') ?? []).map((group: MenuGroup) => group.label))
-    expect(labels).toEqual(['Élément', 'Agrégat', 'Élément'])
+    expect(labels).toEqual(['Élément', 'Agrégat', 'Affichage', 'Élément'])
   })
 
   /**
@@ -579,6 +579,43 @@ describe('PivotZones', () => {
     panel().vm.$emit('close')
     await choose(mounted, 1, 'GROUP_CONCAT(montant)')
     expect(panel().exists()).toBe(false)
+  })
+
+  it('shows a sum as a share of a total, with its digits', async () => {
+    const mounted = mountZones()
+    const group = (label: string) =>
+      (elementMenu(mounted, 1).props('groups') as MenuGroup[]).find((item) => item.label === label)
+    const show = () => group('Affichage')?.items.map((item) => [item.label, item.checked])
+    expect(show()).toEqual([
+      ['Valeur', true],
+      ['Part du total de la ligne', false],
+      ['Part du total de la colonne', false],
+    ])
+    expect(group('Décimales')).toBeUndefined()
+    await choose(mounted, 1, 'Part du total de la ligne')
+    expect(shownConfig(mounted).measures[0]?.share).toEqual({ of: 'row', decimals: 0 })
+    expect(mounted.findAll('[data-element]')[1]!.text()).toContain('SUM(montant) (% ligne)')
+    expect(group('Décimales')?.items.map((item) => item.label)).toEqual([
+      '0',
+      '1',
+      '2',
+      '3',
+      '4',
+      '5',
+      '6',
+    ])
+    await choose(mounted, 1, '2')
+    expect(shownConfig(mounted).measures[0]?.share).toEqual({ of: 'row', decimals: 2 })
+    await choose(mounted, 1, 'Valeur')
+    expect(shownConfig(mounted).measures[0]).toEqual(CONFIG.measures[0])
+  })
+
+  it('offers no share to MIN, MAX or GROUP_CONCAT', async () => {
+    const mounted = mountZones({ ...CONFIG, measures: [{ aggregate: 'max', column: 2, name: '' }] })
+    const labels = (elementMenu(mounted, 1).props('groups') as MenuGroup[]).map(
+      (item) => item.label,
+    )
+    expect(labels).not.toContain('Affichage')
   })
 
   it('refuses a GROUP_CONCAT dropped into the filters', async () => {

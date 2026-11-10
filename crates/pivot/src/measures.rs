@@ -134,6 +134,14 @@ pub enum State {
     },
     /// Text of each group (`GROUP_CONCAT`), `None` for NULL.
     Texts(Vec<Option<Box<str>>>),
+    /// Percentage each group makes of its total (`ShowAs`), scaled to
+    /// `decimals`, `None` for NULL.
+    Shares {
+        /// Share of each group.
+        shares: Vec<Option<i128>>,
+        /// Number of digits after the point.
+        decimals: u32,
+    },
 }
 
 /// Value of a measure for a cell of the table.
@@ -154,7 +162,14 @@ pub enum Value<'a> {
     Cell(Level, u32),
     /// Text (`GROUP_CONCAT`).
     Text(&'a str),
+    /// Share of a total, in percent, scaled to the number of digits after the
+    /// point given with it.
+    Share(i128, u32),
 }
+
+/// What follows the number of a share: a narrow no-break space, then `%`, as
+/// French typography writes a percentage.
+const SHARE_SUFFIX: &str = "\u{202F}%";
 
 impl Value<'_> {
     /// Text of the value: `None` for an empty cell or NULL.
@@ -166,6 +181,10 @@ impl Value<'_> {
             Value::Float(value) => Some(prisme_store::format_float(value)),
             Value::Cell(level, row) => engine.level_value(level, row).map(str::to_owned),
             Value::Text(text) => Some(text.to_owned()),
+            Value::Share(value, decimals) => Some(format!(
+                "{}{SHARE_SUFFIX}",
+                prisme_store::format_exact(value, decimals)
+            )),
         }
     }
 
@@ -177,12 +196,16 @@ impl Value<'_> {
                 .checked_ilog10()
                 .map_or(1, |power| power as usize + 1)
         };
+        let exact = |value: i128, scale: u32| {
+            let whole = value.unsigned_abs() / 10u128.pow(scale);
+            let fraction = if scale == 0 { 0 } else { 1 + scale as usize };
+            usize::from(value < 0) + digits(whole) + fraction
+        };
         match self {
             Value::Count(count) => Some(digits(u128::from(count))),
-            Value::Exact(value, scale) => {
-                let whole = value.unsigned_abs() / 10u128.pow(scale);
-                let fraction = if scale == 0 { 0 } else { 1 + scale as usize };
-                Some(usize::from(value < 0) + digits(whole) + fraction)
+            Value::Exact(value, scale) => Some(exact(value, scale)),
+            Value::Share(value, decimals) => {
+                Some(exact(value, decimals) + SHARE_SUFFIX.chars().count())
             }
             Value::Float(value) => Some(prisme_store::float_length(value)),
             Value::Cell(level, row) => engine
@@ -467,6 +490,43 @@ fn average(sum: i128, count: u64) -> Result<i128, Overflow> {
         .checked_mul(factor)
         .and_then(|whole| whole.checked_add(fraction))
         .ok_or(Overflow)
+}
+
+/// Percentage `part` makes of `whole`, two numbers at one scale, with
+/// `decimals` digits after the point, rounded away from zero; `None` for a
+/// whole of 0.
+///
+/// The division comes first, as for `average`: only a remainder that does
+/// not hold once scaled, beyond 10^30, is an error.
+fn exact_share(part: i128, whole: i128, decimals: u32) -> Result<Option<i128>, Overflow> {
+    if whole == 0 {
+        return Ok(None);
+    }
+    let factor = 10i128.checked_pow(decimals + 2).ok_or(Overflow)?;
+    let remainder = (part % whole).checked_mul(factor).ok_or(Overflow)?;
+    let mut fraction = remainder / whole;
+    let rest = (remainder % whole).unsigned_abs();
+    // Half of the whole or more, without doubling the rest beyond 128 bits.
+    if rest != 0 && rest >= whole.unsigned_abs() - rest {
+        fraction += part.signum() * whole.signum();
+    }
+    (part / whole)
+        .checked_mul(factor)
+        .and_then(|whole| whole.checked_add(fraction))
+        .map(Some)
+        .ok_or(Overflow)
+}
+
+/// Percentage float `part` makes of `whole`, with `decimals` digits after the
+/// point, rounded away from zero, as a scaled integer; `None` for a whole of
+/// 0, or a share that is not a finite number (`NaN`, infinite values).
+fn float_share(part: f64, whole: f64, decimals: u32) -> Option<i128> {
+    if whole == 0.0 {
+        return None;
+    }
+    let share = (part / whole * 100.0 * 10f64.powi(decimals as i32)).round();
+    // Beyond 128 bits, the cast would saturate: the share is not written.
+    (share.is_finite() && share.abs() < 2f64.powi(126)).then_some(share as i128)
 }
 
 /// Keeps, in each group, the valid value that comes first in the order of
@@ -819,7 +879,42 @@ impl State {
                 row => Value::Cell(*level, row),
             },
             State::Texts(texts) => texts[group].as_deref().map_or(Value::Null, Value::Text),
+            State::Shares { shares, decimals } => {
+                shares[group].map_or(Value::Null, |share| Value::Share(share, *decimals))
+            }
         }
+    }
+
+    /// Shares of the values of the measure (`ShowAs`), in percent, scaled to
+    /// `decimals` and rounded away from zero: the value of each group divided
+    /// by that of the group `totals` gives for it. A value or a total that is
+    /// NULL, or a total of 0, gives NULL; an average divides by the average of
+    /// its total. `None` for values that do not add up: those of a level and
+    /// texts.
+    pub fn shares(&self, totals: &[u32], decimals: u32) -> Result<Option<State>, Overflow> {
+        let total = |group: usize| totals[group] as usize;
+        let shares = match self {
+            State::Count(counts) => (0..counts.len())
+                .map(|group| {
+                    let whole = i128::from(counts[total(group)]);
+                    exact_share(i128::from(counts[group]), whole, decimals)
+                })
+                .collect::<Result<_, _>>()?,
+            State::Exact { sums, counts, .. } => (0..sums.len())
+                .map(|group| match (counts[group], counts[total(group)]) {
+                    (0, _) | (_, 0) => Ok(None),
+                    _ => exact_share(sums[group], sums[total(group)], decimals),
+                })
+                .collect::<Result<_, _>>()?,
+            State::Float { sums, counts } => (0..sums.len())
+                .map(|group| match (counts[group], counts[total(group)]) {
+                    (0, _) | (_, 0) => None,
+                    _ => float_share(sums[group], sums[total(group)], decimals),
+                })
+                .collect(),
+            State::Cells { .. } | State::Texts(_) | State::Shares { .. } => return Ok(None),
+        };
+        Ok(Some(State::Shares { shares, decimals }))
     }
 
     /// Longest text of the values of the measure in each of `columns` sets
@@ -899,6 +994,27 @@ impl State {
                     }
                 }
             }
+            State::Shares { shares, decimals } => {
+                let mut bounds: Vec<Option<(i128, i128)>> = vec![None; columns];
+                for &(group, column) in cells {
+                    let column = column as usize;
+                    match shares[group as usize] {
+                        None => longest[column].null = true,
+                        Some(share) => {
+                            bounds[column] =
+                                Some(bounds[column].map_or((share, share), |(low, high)| {
+                                    (low.min(share), high.max(share))
+                                }));
+                        }
+                    }
+                }
+                for (longest, bounds) in longest.iter_mut().zip(bounds) {
+                    longest.text = bounds.map_or(0, |(low, high)| {
+                        length(Value::Share(low, *decimals))
+                            .max(length(Value::Share(high, *decimals)))
+                    });
+                }
+            }
         }
         longest
     }
@@ -933,6 +1049,9 @@ mod tests {
             Value::Float(-0.5),
             Value::Float(1e300),
             Value::Float(f64::NAN),
+            Value::Share(0, 0),
+            Value::Share(-1_250, 2),
+            Value::Share(100_000_000, 6),
         ] {
             assert_eq!(
                 value.length(&engine),
@@ -940,6 +1059,86 @@ mod tests {
                 "{value:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_share_ends_with_a_narrow_no_break_space_and_a_percent_sign() {
+        let engine = no_engine();
+        assert_eq!(
+            Value::Share(125, 1).text(&engine).as_deref(),
+            Some("12.5\u{202F}%")
+        );
+        assert_eq!(
+            Value::Share(-3, 0).text(&engine).as_deref(),
+            Some("-3\u{202F}%")
+        );
+    }
+
+    #[test]
+    fn an_exact_share_is_rounded_away_from_zero() {
+        // 1 / 8 = 12.5 %.
+        assert_eq!(exact_share(1, 8, 0), Ok(Some(13)));
+        assert_eq!(exact_share(-1, 8, 0), Ok(Some(-13)));
+        assert_eq!(exact_share(1, -8, 0), Ok(Some(-13)));
+        assert_eq!(exact_share(1, 8, 1), Ok(Some(125)));
+        assert_eq!(exact_share(1, 3, 2), Ok(Some(3_333)));
+        assert_eq!(exact_share(2, 3, 2), Ok(Some(6_667)));
+        assert_eq!(exact_share(3, 2, 0), Ok(Some(150)));
+        assert_eq!(exact_share(0, 5, 0), Ok(Some(0)));
+        assert_eq!(exact_share(5, 0, 0), Ok(None));
+        // Large numbers divide first: only a remainder beyond 10^30 does not
+        // hold once scaled.
+        assert_eq!(exact_share(i128::MAX, i128::MAX, 6), Ok(Some(100_000_000)));
+        assert_eq!(
+            exact_share(10i128.pow(30), 4 * 10i128.pow(30), 0),
+            Ok(Some(25))
+        );
+        assert_eq!(exact_share(i128::MAX / 2, i128::MAX, 0), Err(Overflow));
+    }
+
+    #[test]
+    fn a_float_share_is_rounded_away_from_zero_and_null_when_not_finite() {
+        assert_eq!(float_share(1.0, 8.0, 0), Some(13));
+        assert_eq!(float_share(-1.0, 8.0, 0), Some(-13));
+        assert_eq!(float_share(1.0, 3.0, 2), Some(3_333));
+        assert_eq!(float_share(1.0, 0.0, 0), None);
+        assert_eq!(float_share(f64::NAN, 1.0, 0), None);
+        assert_eq!(float_share(f64::INFINITY, 1.0, 0), None);
+    }
+
+    #[test]
+    fn shares_divide_each_group_by_its_total_and_leave_null_alone() {
+        // Groups 0 and 1, and their total, group 2.
+        let totals = [2, 2, 2];
+        let counts = State::Count(vec![1, 3, 4]);
+        let State::Shares { shares, decimals } = counts.shares(&totals, 0).unwrap().unwrap() else {
+            panic!("shares");
+        };
+        assert_eq!((shares, decimals), (vec![Some(25), Some(75), Some(100)], 0));
+        // A value without any number, or a total without any, gives NULL.
+        let sums = State::Exact {
+            sums: vec![0, 150, 150],
+            counts: vec![0, 1, 1],
+            scale: 2,
+        };
+        let shares = sums.shares(&totals, 1).unwrap().unwrap();
+        assert_eq!(
+            [0, 1, 2].map(|group| shares.value(group)),
+            [Value::Null, Value::Share(1_000, 1), Value::Share(1_000, 1)]
+        );
+        let zero = State::Exact {
+            sums: vec![5, -5, 0],
+            counts: vec![1, 1, 2],
+            scale: 0,
+        };
+        let shares = zero.shares(&totals, 0).unwrap().unwrap();
+        assert_eq!(shares.value(0), Value::Null);
+        // Values of a level do not add up.
+        let cells = State::Cells {
+            level: Level::from(0),
+            rows: vec![0, 1, 0],
+        };
+        assert!(cells.shares(&totals, 0).unwrap().is_none());
     }
 
     /// Groups 0 and 1 merge into group 2.

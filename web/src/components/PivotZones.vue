@@ -69,7 +69,7 @@ import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Cell } from '@/api/querySession'
 import { cssPixels } from '@/cssLength'
 
-import { AGGREGATES, PRECISION_ICONS } from './pivotChoices'
+import { AGGREGATES, DECIMALS_ICON, PRECISION_ICONS, SHARE_DECIMALS, SHOW_AS } from './pivotChoices'
 import {
   type DatePrecision,
   type PivotConcat,
@@ -89,14 +89,17 @@ import {
   placeColumn,
   precisionChoices,
   removeElement,
+  shareOf,
   sectionWidth,
   summable,
   takesPrecision,
+  takesShare,
   withAggregate,
   withConcat,
   withFilter,
   withName,
   withPrecision,
+  withShare,
   withSectionWidth,
 } from './pivotConfig'
 import type { PivotMeasure } from './pivotEngine'
@@ -447,7 +450,8 @@ function aggregateItems(
 
 /**
  * Choices of the menu of an element: for a measure, its aggregate, for a
- * level or a measure of dates, its precision, then the settings of a filter,
+ * level or a measure of dates, its precision, for a count, a sum or an
+ * average, its display as a share of a total, then the settings of a filter,
  * its name, its place and its removal.
  *
  * @param zone Zone of the element.
@@ -474,7 +478,47 @@ function elementGroups(zone: PivotZone, index: number): MenuGroup[] {
       groups.push({ label: 'Précision', items })
     }
   }
+  if (measure !== undefined && takesShare(measure.aggregate)) {
+    groups.push(...shareGroups(measure, index))
+  }
   groups.push({ label: 'Élément', items: elementItems(zone, index) })
+  return groups
+}
+
+/**
+ * Choices of the display of a count, a sum or an average, the current one checked: its values as
+ * they are, or their share of a total; then, for a share, its digits after the point.
+ *
+ * @param measure Measure.
+ * @param index Position of the measure.
+ */
+function shareGroups(measure: PivotMeasure, index: number): MenuGroup[] {
+  const share = shareOf(measure)
+  const groups: MenuGroup[] = [
+    {
+      label: 'Affichage',
+      items: SHOW_AS.map(({ of, label, icon }) => ({
+        label,
+        icon,
+        checked: (share?.of ?? null) === of,
+        onSelect: () => {
+          const decimals = share?.decimals ?? 0
+          config.value = withShare(config.value, index, of === null ? undefined : { of, decimals })
+        },
+      })),
+    },
+  ]
+  if (share !== undefined) {
+    groups.push({
+      label: 'Décimales',
+      items: SHARE_DECIMALS.map((decimals) => ({
+        label: decimals.toLocaleString('fr-FR'),
+        icon: DECIMALS_ICON,
+        checked: decimals === share.decimals,
+        onSelect: () => (config.value = withShare(config.value, index, { ...share, decimals })),
+      })),
+    })
+  }
   return groups
 }
 

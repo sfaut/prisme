@@ -187,6 +187,7 @@ pub fn error(json: &mut String, error: &Error) {
             write!(json, r#"{{"kind":"{kind}","column":{column},"row":{row}}}"#)
         }
         Error::Overflow { measure } => write!(json, r#"{{"kind":"overflow","measure":{measure}}}"#),
+        Error::Share { measure } => write!(json, r#"{{"kind":"share","measure":{measure}}}"#),
         Error::FilterNotNumeric { filter } => {
             write!(json, r#"{{"kind":"filter_not_numeric","filter":{filter}}}"#)
         }

@@ -22,8 +22,9 @@ use std::cell::RefCell;
 use std::slice;
 
 use prisme_pivot::{
-    AxisOrder, Comparison, Concat, ConcatKey, Engine, Family, Filter, Form, Layout, Level, Measure,
-    Order, Precision, Request, Table, Test, Totals, ValueOrder,
+    AxisOrder, Comparison, Concat, ConcatKey, Engine, Family, Filter, Form, Layout, Level,
+    MAX_SHARE_DECIMALS, Measure, Order, Precision, Request, ShowAs, Table, Test, Totals,
+    ValueOrder,
 };
 use prisme_store::Store;
 
@@ -462,10 +463,28 @@ fn filters(mut words: impl Iterator<Item = u32>) -> Option<Vec<Filter>> {
     Some(filters)
 }
 
+/// Reads how a measure shows its values, by two words: 0 as they are, 1 as a
+/// share of the row total, 2 as a share of the column total, then the digits
+/// after the point of a share, at most `MAX_SHARE_DECIMALS` (0 for the values
+/// as they are). `None` for another code or more digits.
+fn next_show_as(words: &mut impl Iterator<Item = u32>) -> Option<ShowAs> {
+    let (code, decimals) = (words.next()?, words.next()?);
+    let decimals = u8::try_from(decimals)
+        .ok()
+        .filter(|&decimals| decimals <= MAX_SHARE_DECIMALS)?;
+    match code {
+        0 if decimals == 0 => Some(ShowAs::Value),
+        1 => Some(ShowAs::RowShare { decimals }),
+        2 => Some(ShowAs::ColumnShare { decimals }),
+        _ => None,
+    }
+}
+
 /// Reads a request: the numbers of levels of the rows and of the columns,
 /// the number of measures, the levels of the rows, then of the columns (see
-/// `next_levels`), then the measures (see `next_measure`), then the filters
-/// (see `filters`). `None` if the words do not match.
+/// `next_levels`), then the measures (see `next_measure`), how each one shows
+/// its values (see `next_show_as`), then the filters (see `filters`). `None`
+/// if the words do not match.
 fn request(words: &[u32]) -> Option<Request> {
     let mut words = words.iter().copied();
     let (rows, columns, measures) = (words.next()?, words.next()?, words.next()?);
@@ -474,10 +493,14 @@ fn request(words: &[u32]) -> Option<Request> {
     let measures = (0..measures)
         .map(|_| next_measure(&mut words))
         .collect::<Option<Vec<_>>>()?;
+    let show_as = (0..measures.len())
+        .map(|_| next_show_as(&mut words))
+        .collect::<Option<Vec<_>>>()?;
     Some(Request {
         rows,
         columns,
         measures,
+        show_as,
         filters: filters(words)?,
     })
 }
@@ -779,9 +802,9 @@ mod tests {
         let length = unsafe { set_ranks(0, ranks.as_ptr(), 2) };
         assert_eq!(output(length), "{}");
 
-        // Rows: column 0; measures: COUNT(*), SUM(column 1).
-        let words = [1u32, 0, 2, 0, 0, 0, 0, 0, 2, 1, 0];
-        // SAFETY: eleven words.
+        // Rows: column 0; measures: COUNT(*), SUM(column 1), as they are.
+        let words = [1u32, 0, 2, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0];
+        // SAFETY: fifteen words.
         let length = unsafe { compute(words.as_ptr(), words.len()) };
         assert_eq!(
             output(length),
@@ -804,12 +827,12 @@ mod tests {
         // SAFETY: one row number.
         let length = unsafe { set_kept(kept.as_ptr(), 1, 0) };
         assert_eq!(output(length), "{}");
-        // SAFETY: eleven words.
+        // SAFETY: fifteen words.
         let length = unsafe { compute(words.as_ptr(), words.len()) };
         assert!(output(length).ends_with(r#""groups":1,"rows":1}"#));
 
-        let sum_of_text = [0u32, 0, 1, 2, 0, 0];
-        // SAFETY: six words.
+        let sum_of_text = [0u32, 0, 1, 2, 0, 0, 0, 0];
+        // SAFETY: eight words.
         let length = unsafe { compute(sum_of_text.as_ptr(), sum_of_text.len()) };
         assert_eq!(
             output(length),
@@ -841,8 +864,8 @@ mod tests {
         assert_eq!(output(length), r#"{"error":{"kind":"no_table"}}"#);
 
         // Rows: column 0; measure: SUM(column 1).
-        let words = [1u32, 0, 1, 0, 0, 2, 1, 0];
-        // SAFETY: eight words.
+        let words = [1u32, 0, 1, 0, 0, 2, 1, 0, 0, 0];
+        // SAFETY: ten words.
         unsafe { compute(words.as_ptr(), words.len()) };
         // Lines by the grand total, measure 0, ascending; columns as they are.
         let by_value = [[1u32, 0, 1, 0, 0, 0, 0, 0].as_slice(), &FIRST_LAYOUT].concat();
@@ -897,8 +920,8 @@ mod tests {
         assert_eq!(output(length), r#"{"error":{"kind":"no_table"}}"#);
 
         // Columns: column 0; measure: SUM(column 1). Columns NULL, a, b, total.
-        let words = [0u32, 1, 1, 0, 0, 2, 1, 0];
-        // SAFETY: eight words.
+        let words = [0u32, 1, 1, 0, 0, 2, 1, 0, 0, 0];
+        // SAFETY: ten words.
         unsafe { compute(words.as_ptr(), words.len()) };
         // b, NULL, the grand total, a column of a measure the table lacks, c.
         let named = [
@@ -1021,6 +1044,8 @@ mod tests {
             0,
             0,
             0,
+            0,
+            0,
             2,
             0,
             1,
@@ -1071,7 +1096,7 @@ mod tests {
     #[test]
     fn a_request_reads_each_test() {
         let tested = |words: &[u32]| {
-            let mut all = vec![0u32, 0, 1, 0, 0, 0, 2, 0, 0];
+            let mut all = vec![0u32, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0];
             all.extend_from_slice(words);
             match request(&all).unwrap().filters.remove(0) {
                 Filter::Column { test, .. } => test,
@@ -1090,29 +1115,31 @@ mod tests {
     fn filters_that_do_not_match_their_words_are_refused() {
         // An unknown kind, a missing value, an unknown test, a NULL operand, a
         // missing bound, an unknown precision, a precision of a sum.
-        assert!(request(&[0, 0, 1, 0, 0, 0, 7]).is_none());
-        assert!(request(&[0, 0, 1, 0, 0, 0, 0, 2, 0, 0, 1]).is_none());
-        assert!(request(&[0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 10, 0]).is_none());
-        assert!(request(&[0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, NULL_STEP]).is_none());
-        assert!(request(&[0, 0, 1, 0, 0, 0, 2, 0, 0, 6, 1, 97]).is_none());
-        assert!(request(&[0, 0, 1, 0, 0, 0, 2, 0, 11, 8]).is_none());
-        assert!(request(&[0, 0, 1, 0, 0, 0, 1, 2, 1, 3, 0, 8]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 0, 0, 7]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 1]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 10, 0]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, NULL_STEP]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 6, 1, 97]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 0, 0, 2, 0, 11, 8]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 0, 0, 1, 2, 1, 3, 0, 8]).is_none());
     }
 
     #[test]
     fn requests_that_do_not_match_their_words_are_refused() {
         assert_eq!(
-            request(&[0, 0, 1, 0, 0, 0]).unwrap().measures,
+            request(&[0, 0, 1, 0, 0, 0, 0, 0]).unwrap().measures,
             [Measure::CountStar]
         );
         assert_eq!(
-            request(&[0, 0, 1, 3, 4, 0]).unwrap().measures,
+            request(&[0, 0, 1, 3, 4, 0, 0, 0]).unwrap().measures,
             [Measure::CountDistinct(4.into())]
         );
         assert_eq!(
-            request(&[0, 0, 5, 4, 1, 0, 5, 2, 0, 6, 3, 0, 7, 4, 0, 8, 5, 0])
-                .unwrap()
-                .measures,
+            request(&[
+                0, 0, 5, 4, 1, 0, 5, 2, 0, 6, 3, 0, 7, 4, 0, 8, 5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            ])
+            .unwrap()
+            .measures,
             [
                 Measure::SumDistinct(1),
                 Measure::Avg(2),
@@ -1127,7 +1154,7 @@ mod tests {
             precision: Some(Precision::Month),
         };
         assert_eq!(
-            request(&[0, 0, 3, 3, 1, 3, 7, 2, 3, 8, 4, 3])
+            request(&[0, 0, 3, 3, 1, 3, 7, 2, 3, 8, 4, 3, 0, 0, 0, 0, 0, 0])
                 .unwrap()
                 .measures,
             [
@@ -1149,11 +1176,59 @@ mod tests {
     }
 
     #[test]
+    fn a_measure_reads_how_it_shows_its_values() {
+        // SUM(column 1) as a share of the row total, 2 digits; COUNT(*) as a
+        // share of the column total, 6 digits; COUNT(column 2) as it is.
+        let words = [0, 0, 3, 2, 1, 0, 0, 0, 0, 1, 2, 0, 1, 2, 2, 6, 0, 0];
+        assert_eq!(
+            request(&words).unwrap().show_as,
+            [
+                ShowAs::RowShare { decimals: 2 },
+                ShowAs::ColumnShare { decimals: 6 },
+                ShowAs::Value,
+            ]
+        );
+        // An unknown code, 7 digits, digits of the values as they are, a word
+        // missing.
+        assert!(request(&[0, 0, 1, 0, 0, 0, 3, 0]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 1, 7]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 0, 1]).is_none());
+        assert!(request(&[0, 0, 1, 0, 0, 0, 0]).is_none());
+    }
+
+    #[test]
+    fn a_share_reaches_the_page_as_its_text() {
+        let families = [0u8, 1];
+        // SAFETY: two families.
+        unsafe { begin(families.as_ptr(), 2) };
+        assert_eq!(append_column(0, &[Some("a"), Some("b"), Some("b")]), 0);
+        assert_eq!(append_column(1, &[Some("1"), Some("1"), Some("2")]), 0);
+        assert_eq!(finish(), 0);
+        // Rows: column 0; measure: SUM(column 1), share of the column total, 1 digit.
+        let words = [1u32, 0, 1, 0, 0, 2, 1, 0, 2, 1];
+        // SAFETY: ten words.
+        unsafe { compute(words.as_ptr(), words.len()) };
+        let length = window(0, 3, 0, 1);
+        assert!(
+            output(length).ends_with(
+                "\"cells\":[[\"25.0\u{202F}%\"],[\"75.0\u{202F}%\"],[\"100.0\u{202F}%\"]]}"
+            ),
+            "{}",
+            output(length)
+        );
+        // MIN(column 1) has no share.
+        let words = [1u32, 0, 1, 0, 0, 7, 1, 0, 1, 0];
+        // SAFETY: ten words.
+        let length = unsafe { compute(words.as_ptr(), words.len()) };
+        assert_eq!(output(length), r#"{"error":{"kind":"share","measure":0}}"#);
+    }
+
+    #[test]
     fn a_group_concat_reads_its_settings_after_its_column() {
         // GROUP_CONCAT(DISTINCT col 2 (month) ORDER BY col 1 DESC, col 3
         // SEPARATOR '; ' LIMIT 5 OFFSET 1) in 1000 bytes, then COUNT(*).
         let words = [
-            0, 0, 2, 9, 2, 3, 1, 2, 1, 1, 3, 0, 2, 59, 32, 1, 5, 1000, 0, 0, 0,
+            0, 0, 2, 9, 2, 3, 1, 2, 1, 1, 3, 0, 2, 59, 32, 1, 5, 1000, 0, 0, 0, 0, 0, 0, 0,
         ];
         let concat = Concat {
             level: Level {
@@ -1182,7 +1257,7 @@ mod tests {
         );
         // Without LIMIT, in a filter that tests whether it is NULL.
         let measure = [9, 0, 0, 0, 0, 1, 44, 0, NO_LIMIT, 50];
-        let words = [&[0, 0, 1][..], &measure, &[1], &measure, &[0, 8]].concat();
+        let words = [&[0, 0, 1][..], &measure, &[0, 0, 1], &measure, &[0, 8]].concat();
         let read = request(&words).unwrap();
         let Measure::GroupConcat(concat) = &read.measures[0] else {
             panic!("{:?}", read.measures);

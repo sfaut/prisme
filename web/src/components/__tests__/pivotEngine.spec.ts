@@ -121,8 +121,25 @@ describe('requestWords', () => {
       ],
       filters: [],
     }
+    // Each measure shows its values as they are: two words 0.
     expect(Array.from(requestWords(request))).toEqual([
-      2, 1, 4, 0, 0, 1, 0, 2, 0, 2, 4, 0, 0, 1, 0, 3, 1, 0, 7, 7, 3,
+      2, 1, 4, 0, 0, 1, 0, 2, 0, 2, 4, 0, 0, 1, 0, 3, 1, 0, 7, 7, 3, 0, 0, 0, 0, 0, 0, 0, 0,
+    ])
+  })
+
+  it('writes the share of each measure after the measures', () => {
+    const request: PivotRequest = {
+      rows: [],
+      columns: [],
+      measures: [
+        { aggregate: 'sum', column: 4, share: { of: 'row', decimals: 2 } },
+        { aggregate: 'count_star', column: 0 },
+        { aggregate: 'avg', column: 4, share: { of: 'column', decimals: 0 } },
+      ],
+      filters: [],
+    }
+    expect(Array.from(requestWords(request))).toEqual([
+      0, 0, 3, 2, 4, 0, 0, 0, 0, 5, 4, 0, 1, 2, 0, 0, 2, 0,
     ])
   })
 
@@ -164,7 +181,7 @@ describe('requestWords', () => {
       filters: [],
     }
     expect(Array.from(requestWords(request))).toEqual([
-      0, 0, 5, 4, 0, 0, 5, 0, 0, 6, 0, 0, 7, 0, 0, 8, 0, 0,
+      0, 0, 5, 4, 0, 0, 5, 0, 0, 6, 0, 0, 7, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     ])
   })
 
@@ -193,7 +210,7 @@ describe('requestWords', () => {
     // Without settings: the default separator, no `LIMIT` (the largest word).
     expect(Array.from(requestWords(request))).toEqual([
       0, 0, 2, 9, 1, 3, 1, 2, 4, 1, 0, 0, 2, 44, 32, 1, 5, 2000, 9, 0, 0, 0, 0, 2, 44, 32, 0,
-      0xffff_ffff, 2000,
+      0xffff_ffff, 2000, 0, 0, 0, 0,
     ])
   })
 })
@@ -265,6 +282,38 @@ describe('PivotEngine', () => {
       ['4051', '76.0000', '2025.5000', 'Nice', '110'],
       ['4051', '85.0000', '2025.5000', 'Arras', '150'],
     ])
+  })
+
+  it('shows a sum as its share of the row total, a count of the column total', async () => {
+    const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES, 4)
+    engine.compute({
+      rows: [level(0)],
+      columns: [level(2)],
+      measures: [
+        { aggregate: 'sum', column: 4, share: { of: 'row', decimals: 0 } },
+        { aggregate: 'count_star', column: 0, share: { of: 'column', decimals: 1 } },
+      ],
+      filters: [],
+    })
+    // Columns 2025, 2026 and the total, each with the sum then the count.
+    const share = (text: string) => `${text} %`
+    expect(engine.window([0, 3], [0, 6]).cells).toEqual([
+      ['55', '60.0', '45', '40.0', '100', '50.0'].map(share),
+      ['45', '40.0', '55', '60.0', '100', '50.0'].map(share),
+      ['51', '100.0', '49', '100.0', '100', '100.0'].map(share),
+    ])
+  })
+
+  it('refuses a share of a measure whose values do not add up', async () => {
+    const engine = await loaded(EXAMPLE, EXAMPLE_FAMILIES, 4)
+    expect(() =>
+      engine.compute({
+        rows: [level(0)],
+        columns: [],
+        measures: [{ aggregate: 'max', column: 4, share: { of: 'row', decimals: 0 } }],
+        filters: [],
+      }),
+    ).toThrowError(expect.objectContaining({ failure: { kind: 'share', measure: 0 } }))
   })
 
   it('computes a table from rows copied block by block', async () => {

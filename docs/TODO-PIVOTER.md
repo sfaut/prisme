@@ -130,6 +130,10 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes
 - ✅ Documented: `README.md`, `docs/DEVELOPER.md`
 - ✅ Documented in the specification (lot 3 brought forward): F-47, catalogue, D30, A10, recipe, saved types
+- ✅ Share of a total (ticket #35, F-48): `COUNT`, `SUM` and `AVG`, with or without `DISTINCT`, show each value as the percentage of the total of its line or of its column, group **Affichage** of their menu, with 0 (by default) to 6 decimals, group **Décimales**; rounded away from zero, written `12.5 %` (narrow no-break space), a total of 0 or NULL giving NULL (`div.by_zero`, `docs/SQL-COMPARISON.md`, section 3.4); a sort follows the shares, a filter the values; the zones write `SUM(montant) (% ligne)`
+- ✅ Checks: `cargo test`, tests of the interface, screen in light mode
+- ✅ Documented: `README.md`, `docs/DEVELOPER.md`
+- ✅ Documented in the specification: F-48, its acceptance
 - ⬜ Filters by an expression (F-19), with the dialect: an expression without an aggregate filters the rows, with one the groups; later, a custom expression in a filter on values (F-21), `LIKE` and relative dates
 - ⬜ Lot 1, next slices (ANSI SQL): dialect (parsed by `sqlparser`, typing, ANSI catalog), calendar, editor, nested date levels, computed columns, filters, fold, caches, copy, CSV, conformance
 - ⬜ Lot 2: complements (detail of a cell, measures in rows)
