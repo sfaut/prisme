@@ -1,4 +1,4 @@
-//! MySQL and MariaDB statements that `sqlparser` (0.63) does not parse:
+//! MySQL and MariaDB statements that `sqlparser` (0.64) does not parse:
 //! stored routines (`CREATE PROCEDURE`, `CREATE FUNCTION`), scheduled events
 //! (`CREATE EVENT`, `ALTER EVENT`, `DROP EVENT`), the operations of
 //! `ALTER TABLE` on an existing index (`ALTER INDEX i VISIBLE`, MariaDB's

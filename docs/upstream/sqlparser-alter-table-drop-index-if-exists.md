@@ -14,7 +14,7 @@ which reads the optional `IF EXISTS` itself.
 MariaDB accepts `IF EXISTS` after `DROP {INDEX | KEY}` in `ALTER TABLE`, as it does after
 `DROP COLUMN`, `DROP CONSTRAINT` and `DROP FOREIGN KEY`; MySQL does not (it is not in its
 `ALTER TABLE` syntax). With no MariaDB dialect, MariaDB statements go through `MySqlDialect` or
-`GenericDialect`. `sqlparser` 0.63.0 reads the `IF` keyword as the name of the index, then stops
+`GenericDialect`. `sqlparser` 0.64.0 reads the `IF` keyword as the name of the index, then stops
 at `EXISTS`:
 
 ```rust
@@ -35,7 +35,7 @@ fn main() {
 }
 ```
 
-With `sqlparser = "=0.63.0"`:
+With `sqlparser = "=0.64.0"`:
 
 ```
 ALTER TABLE t DROP INDEX IF EXISTS i
@@ -85,7 +85,7 @@ and carry it in `DropIndex { if_exists, name }`, displayed back as `DROP INDEX I
 ### Environment
 
 ```
-sqlparser: 0.63.0 (latest release)
+sqlparser: 0.64.0 (latest release)
 Rust: 1.99.1
 MySQL servers: 8.4.11, 9.3.0
 MariaDB servers: 10.5.29, 11.4.2

@@ -4,7 +4,7 @@
 //! Workaround: `sqlparser` does not parse the compound units, and has no
 //! MariaDB dialect (`docs/DEVELOPER.md`, section "Workarounds").
 //!
-//! `sqlparser` (0.63) knows the simple units (`DAY`, `MONTH`...), not the
+//! `sqlparser` (0.64) knows the simple units (`DAY`, `MONTH`...), not the
 //! compound units of MySQL and MariaDB (`YEAR_MONTH`, `DAY_HOUR`...): it
 //! fails on `EXTRACT(YEAR_MONTH FROM d)` and `INTERVAL '1-2' YEAR_MONTH`, and
 //! Prisme then refuses the query, as nothing proves it is a read. This dialect
@@ -13,7 +13,7 @@
 //! with the unit as written (`DateTimeField::Custom`).
 //!
 //! The delegated methods are those `MySqlDialect` overrides in `sqlparser`
-//! 0.63 (`src/dialect/mysql.rs`); the version is pinned in `Cargo.toml`. On
+//! 0.64 (`src/dialect/mysql.rs`); the version is pinned in `Cargo.toml`. On
 //! an upgrade, compare that list, or drop this dialect if `sqlparser` knows
 //! the compound units: reported upstream in
 //! <https://github.com/apache/datafusion-sqlparser-rs/issues/2693>.
@@ -21,7 +21,7 @@
 use std::any::TypeId;
 
 use sqlparser::ast::{DateTimeField, Expr, ExtractSyntax, Ident, Interval, Statement};
-use sqlparser::dialect::{Dialect, MySqlDialect};
+use sqlparser::dialect::{BindPlaceholderStyle, Dialect, MySqlDialect};
 use sqlparser::keywords::Keyword;
 use sqlparser::parser::{Parser, ParserError};
 use sqlparser::tokenizer::Token;
@@ -59,6 +59,10 @@ impl Dialect for MySqlParserDialect {
         }
     }
 
+    fn supports_string_literal_table_alias(&self, explicit: bool) -> bool {
+        self.0.supports_string_literal_table_alias(explicit)
+    }
+
     fn is_identifier_start(&self, ch: char) -> bool {
         self.0.is_identifier_start(ch)
     }
@@ -73,6 +77,10 @@ impl Dialect for MySqlParserDialect {
 
     fn identifier_quote_style(&self, identifier: &str) -> Option<char> {
         self.0.identifier_quote_style(identifier)
+    }
+
+    fn ordered_bind_placeholder_style(&self) -> Option<BindPlaceholderStyle> {
+        self.0.ordered_bind_placeholder_style()
     }
 
     fn supports_string_literal_backslash_escape(&self) -> bool {
@@ -91,8 +99,16 @@ impl Dialect for MySqlParserDialect {
         self.0.supports_numeric_prefix()
     }
 
+    fn supports_literal_prefix_in_qualified_name(&self) -> bool {
+        self.0.supports_literal_prefix_in_qualified_name()
+    }
+
     fn supports_bitwise_shift_operators(&self) -> bool {
         self.0.supports_bitwise_shift_operators()
+    }
+
+    fn supports_singular_value_keyword(&self) -> bool {
+        self.0.supports_singular_value_keyword()
     }
 
     fn supports_multiline_comment_hints(&self) -> bool {
@@ -144,6 +160,10 @@ impl Dialect for MySqlParserDialect {
         self.0.requires_single_line_comment_whitespace()
     }
 
+    fn supports_hash_comment(&self) -> bool {
+        self.0.supports_hash_comment()
+    }
+
     fn supports_match_against(&self) -> bool {
         self.0.supports_match_against()
     }
@@ -160,12 +180,20 @@ impl Dialect for MySqlParserDialect {
         self.0.supports_comma_separated_set_assignments()
     }
 
+    fn supports_alter_column_position(&self) -> bool {
+        self.0.supports_alter_column_position()
+    }
+
     fn supports_update_order_by(&self) -> bool {
         self.0.supports_update_order_by()
     }
 
     fn supports_data_type_signed_suffix(&self) -> bool {
         self.0.supports_data_type_signed_suffix()
+    }
+
+    fn supports_data_type_zerofill_suffix(&self) -> bool {
+        self.0.supports_data_type_zerofill_suffix()
     }
 
     fn supports_cross_join_constraint(&self) -> bool {
@@ -176,8 +204,16 @@ impl Dialect for MySqlParserDialect {
         self.0.supports_double_ampersand_operator()
     }
 
+    fn get_next_precedence(&self, parser: &Parser) -> Option<Result<u8, ParserError>> {
+        self.0.get_next_precedence(parser)
+    }
+
     fn supports_binary_kw_as_cast(&self) -> bool {
         self.0.supports_binary_kw_as_cast()
+    }
+
+    fn supports_table_partitions(&self) -> bool {
+        self.0.supports_table_partitions()
     }
 
     fn supports_comment_optimizer_hint(&self) -> bool {

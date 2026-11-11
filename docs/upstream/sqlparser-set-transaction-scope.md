@@ -13,7 +13,7 @@ itself and keeps its scope.
 
 MySQL and MariaDB accept a scope before `TRANSACTION` in `SET`: `SET GLOBAL TRANSACTION` sets the default
 of the sessions that open later, on the whole server; `SET SESSION TRANSACTION` the default of the current
-session; `SET TRANSACTION`, without a scope, only the next transaction. `sqlparser` 0.63.0 parses the scope,
+session; `SET TRANSACTION`, without a scope, only the next transaction. `sqlparser` 0.64.0 parses the scope,
 then drops it: the three statements give the same tree, displayed back as `SET TRANSACTION`.
 
 ```rust
@@ -36,7 +36,7 @@ fn main() {
 }
 ```
 
-With `sqlparser = "=0.63.0"`:
+With `sqlparser = "=0.64.0"`:
 
 ```
 SET GLOBAL TRANSACTION READ WRITE
@@ -81,7 +81,7 @@ Carry the scope in `Set::SetTransaction` (for example a `scope: Option<ContextMo
 ### Environment
 
 ```
-sqlparser: 0.63.0 (latest release)
+sqlparser: 0.64.0 (latest release)
 Rust: 1.99.1
 MySQL server: 8.4.11
 MariaDB server: 11.4.2
