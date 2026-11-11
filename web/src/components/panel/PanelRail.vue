@@ -82,7 +82,8 @@ const ICONS = {
   &.end {
     flex-direction: column;
     inline-size: var(--rail-size);
-    padding-block-start: --spacing(4);
+    /* The top padding of a side panel, under the editors' tabs (`App.vue`). */
+    padding-block-start: --spacing(3);
   }
 
   /* At the bottom: along the whole width, the title at the left end, the

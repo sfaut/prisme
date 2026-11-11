@@ -1,12 +1,12 @@
 <!--
   Layout of the screen: on top, the application bar (`TopBar`), across the
-  whole width; below, three columns: on the left, the object navigator; in
-  the middle, the SQL editors, one tab each (`EditorTabBar`), each with its
-  view (`EditorView`): its connection, its session and its result tabs; on
-  the right, the data explorer (`ExplorerPanel`). Both side panels go from
-  the top bar down to the bottom of the window. Under the editors, between
-  the side panels, the console (`ConsolePanel`). The columns share the
-  width, and the editors and the console the height, in splitters of Prisme
+  whole width; below, the frame of the editors: their tabs (`EditorTabBar`),
+  across the whole width, then three columns: on the left, the object
+  navigator; in the middle, the view of the active editor (`EditorView`):
+  its connection, its session and its result tabs; on the right, the data
+  explorer (`ExplorerPanel`). Under the frame, across the whole width, the
+  console (`ConsolePanel`), common to all the editors. The columns share the
+  width, and the frame and the console the height, in splitters of Prisme
   (`split/`): dragging the line between two panels moves it, to the pixel,
   within their bounds (the editors keep `--editors-min-width` and
   `--editors-min-height`, where the line stops), and the sizes are kept in
@@ -445,179 +445,179 @@ function selectSource(connectionId: number): void {
       Each panel of the splitters has an id of its own: the line that
       resizes it names it (`controls`, `aria-controls`).
     -->
-    <split-group direction="horizontal" class="min-h-0 flex-1">
-      <split-panel
-        id="navigator-panel"
-        v-model:size="navigatorStore.width"
-        :folded="!navigatorStore.open"
-        default-size="var(--navigator-width)"
-        min-size="var(--navigator-min-width)"
-        folded-size="var(--rail-size)"
-        class="flex"
-        @update:folded="(folded: boolean) => (navigatorStore.open = !folded)"
-      >
-        <!-- Folded, the object navigator stays mounted: its tree keeps its state. -->
-        <aside v-show="navigatorStore.open" class="flex min-w-0 flex-1 flex-col gap-4 p-4">
-          <navigator-panel
-            :selected-id="connections.selectedId"
-            :current-database="activeDatabase"
-            :session-status="activeStatus"
-            @open-table="openTable"
-            @index-operations="writeIndexOperations"
-            @select="selectSource"
-            @use-database="useDatabase"
-            @disconnect="disconnect"
-          />
-        </aside>
-        <panel-rail
-          v-if="!navigatorStore.open"
-          title="Navigateur d’objets"
-          side="start"
-          class="flex-1"
-          @expand="navigatorStore.open = true"
-        />
-      </split-panel>
-      <split-handle
-        controls="navigator-panel"
-        tooltip="Glisser pour redimensionner le navigateur d’objets, double clic pour le replier ou le déplier"
-        @activate="navigatorStore.open = !navigatorStore.open"
-      />
-      <split-panel id="center-panel" fill min-size="var(--editors-min-width)" class="flex">
-        <split-group direction="vertical" class="min-w-0 flex-1">
-          <split-panel id="editors-panel" fill min-size="var(--editors-min-height)" class="flex">
+    <split-group direction="vertical" class="min-h-0 flex-1">
+      <split-panel id="tabs-panel" fill min-size="var(--editors-min-height)" class="flex">
+        <tabs-root
+          v-model="activeTab"
+          :unmount-on-hide="false"
+          as="main"
+          class="flex min-h-0 min-w-0 flex-1 flex-col pt-4"
+        >
+          <div class="flex flex-col gap-3 px-4">
+            <ui-alert
+              v-if="editorsError"
+              tone="error"
+              :title="editorsError"
+              @close="editorsError = null"
+            />
+            <editor-tab-bar @close="closeEditor">
+              <!-- Fold button of the active editor, visible when it is folded. -->
+              <template #actions>
+                <ui-button
+                  v-if="activeCell"
+                  :icon="activeCell.editorFolded ? PanelTopOpen : PanelTopClose"
+                  variant="ghost"
+                  small
+                  :aria-label="editorFoldLabel"
+                  v-tooltip="editorFoldLabel"
+                  @click="activeCell.toggleEditor()"
+                />
+              </template>
+            </editor-tab-bar>
+          </div>
+          <split-group direction="horizontal" class="min-h-0 flex-1">
+            <split-panel
+              id="navigator-panel"
+              v-model:size="navigatorStore.width"
+              :folded="!navigatorStore.open"
+              default-size="var(--navigator-width)"
+              min-size="var(--navigator-min-width)"
+              folded-size="var(--rail-size)"
+              class="flex"
+              @update:folded="(folded: boolean) => (navigatorStore.open = !folded)"
+            >
+              <!-- Folded, the object navigator stays mounted: its tree keeps its state. -->
+              <aside
+                v-show="navigatorStore.open"
+                class="flex min-w-0 flex-1 flex-col gap-4 px-4 pt-3 pb-4"
+              >
+                <navigator-panel
+                  :selected-id="connections.selectedId"
+                  :current-database="activeDatabase"
+                  :session-status="activeStatus"
+                  @open-table="openTable"
+                  @index-operations="writeIndexOperations"
+                  @select="selectSource"
+                  @use-database="useDatabase"
+                  @disconnect="disconnect"
+                />
+              </aside>
+              <panel-rail
+                v-if="!navigatorStore.open"
+                title="Navigateur d’objets"
+                side="start"
+                class="flex-1"
+                @expand="navigatorStore.open = true"
+              />
+            </split-panel>
+            <split-handle
+              controls="navigator-panel"
+              tooltip="Glisser pour redimensionner le navigateur d’objets, double clic pour le replier ou le déplier"
+              @activate="navigatorStore.open = !navigatorStore.open"
+            />
             <!--
               The padding of the sides is inside the panels of the views
-              (`EditorView`), which would cut a border set against their edge;
-              the other elements take it here. The padding of the bottom is
-              that of the last panel of a view, the Pivoteur: open, it ends
-              with its own; folded, its rail closes the area, as the rail of
-              the console closes the window.
+              (`EditorView`), which would cut a border set against their
+              edge, as is the gap under the editors' tabs. The padding of the
+              bottom is that of the last panel of a view, the Pivoteur: open,
+              it ends with its own; folded, its rail closes the area, as the
+              rail of the console closes the window.
             -->
-            <main class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 pt-4">
-              <div v-if="editorsError" class="flex px-4">
-                <ui-alert
-                  tone="error"
-                  :title="editorsError"
-                  class="flex-1"
-                  @close="editorsError = null"
-                />
-              </div>
-              <tabs-root
-                v-model="activeTab"
-                :unmount-on-hide="false"
-                class="flex min-h-0 flex-1 flex-col"
+            <split-panel id="center-panel" fill min-size="var(--editors-min-width)" class="flex">
+              <tabs-content
+                v-for="editor in editors.editors"
+                :key="editor.id"
+                :value="editor.id"
+                class="flex min-h-0 min-w-0 flex-1 flex-col"
+                :class="{ 'items-center justify-center': !connectionOf(editor.connectionId) }"
               >
-                <div class="flex px-4">
-                  <editor-tab-bar class="flex-1" @close="closeEditor">
-                    <!-- Fold button of the active editor, visible when it is folded. -->
-                    <template #actions>
-                      <ui-button
-                        v-if="activeCell"
-                        :icon="activeCell.editorFolded ? PanelTopOpen : PanelTopClose"
-                        variant="ghost"
-                        small
-                        :aria-label="editorFoldLabel"
-                        v-tooltip="editorFoldLabel"
-                        @click="activeCell.toggleEditor()"
-                      />
-                    </template>
-                  </editor-tab-bar>
+                <editor-view
+                  v-if="connectionOf(editor.connectionId)"
+                  :ref="
+                    (view) =>
+                      view
+                        ? views.set(editor.id, view as InstanceType<typeof EditorView>)
+                        : views.delete(editor.id)
+                  "
+                  :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
+                  :editor-id="editor.id"
+                  :active="editor.id === editors.activeId"
+                  :connection="connectionOf(editor.connectionId)!"
+                  :opening-database="openingDatabases[editor.id]"
+                  :sql="editor.sql"
+                  @update:sql="(sql) => editors.setSql(editor.id, sql)"
+                  @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
+                  @database="(database) => (databases[editor.id] = database)"
+                  @status="(status) => followStatus(editor.id, status)"
+                  @transaction="(open) => (editors.transactions[editor.id] = open)"
+                />
+                <div v-else class="flex max-w-xs flex-col items-center gap-3 text-center">
+                  <span class="flex rounded-full bg-surface-raised p-4">
+                    <Database class="size-5 text-fg-secondary" />
+                  </span>
+                  <p class="text-balance text-fg-secondary">
+                    Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données pour la choisir
+                    pour cet éditeur, ou ajoutez une connexion par le menu « ⋮ »
+                  </p>
                 </div>
-                <tabs-content
-                  v-for="editor in editors.editors"
-                  :key="editor.id"
-                  :value="editor.id"
-                  class="flex min-h-0 flex-1 flex-col"
-                  :class="{ 'items-center justify-center': !connectionOf(editor.connectionId) }"
-                >
-                  <editor-view
-                    v-if="connectionOf(editor.connectionId)"
-                    :ref="
-                      (view) =>
-                        view
-                          ? views.set(editor.id, view as InstanceType<typeof EditorView>)
-                          : views.delete(editor.id)
-                    "
-                    :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
-                    :editor-id="editor.id"
-                    :active="editor.id === editors.activeId"
-                    :connection="connectionOf(editor.connectionId)!"
-                    :opening-database="openingDatabases[editor.id]"
-                    :sql="editor.sql"
-                    @update:sql="(sql) => editors.setSql(editor.id, sql)"
-                    @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
-                    @database="(database) => (databases[editor.id] = database)"
-                    @status="(status) => followStatus(editor.id, status)"
-                    @transaction="(open) => (editors.transactions[editor.id] = open)"
-                  />
-                  <div v-else class="flex max-w-xs flex-col items-center gap-3 text-center">
-                    <span class="flex rounded-full bg-surface-raised p-4">
-                      <Database class="size-5 text-fg-secondary" />
-                    </span>
-                    <p class="text-balance text-fg-secondary">
-                      Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données pour la
-                      choisir pour cet éditeur, ou ajoutez une connexion par le menu « ⋮ »
-                    </p>
-                  </div>
-                </tabs-content>
-              </tabs-root>
-            </main>
-          </split-panel>
-          <split-handle
-            controls="console-panel"
-            tooltip="Glisser pour redimensionner la console, double clic pour la replier ou la déplier"
-            @activate="consoleStore.open = !consoleStore.open"
-          />
-          <split-panel
-            id="console-panel"
-            v-model:size="consoleStore.height"
-            :folded="!consoleStore.open"
-            default-size="var(--console-height)"
-            min-size="var(--console-min-height)"
-            folded-size="var(--rail-size)"
-            class="flex"
-            @update:folded="(folded: boolean) => (consoleStore.open = !folded)"
-          >
-            <section
-              v-if="consoleStore.open"
-              class="flex min-h-0 min-w-0 flex-1 flex-col px-4 pt-1 pb-4"
-            >
-              <console-panel />
-            </section>
-            <panel-rail
-              v-else
-              title="Console"
-              side="bottom"
-              class="flex-1"
-              @expand="consoleStore.open = true"
+              </tabs-content>
+            </split-panel>
+            <split-handle
+              controls="explorer-panel"
+              tooltip="Glisser pour redimensionner l’explorateur de données, double clic pour le replier ou le déplier"
+              @activate="explorer.open = !explorer.open"
             />
-          </split-panel>
-        </split-group>
+            <split-panel
+              id="explorer-panel"
+              v-model:size="explorer.width"
+              :folded="!explorer.open"
+              default-size="var(--explorer-width)"
+              min-size="var(--explorer-min-width)"
+              folded-size="var(--rail-size)"
+              class="flex"
+              @update:folded="(folded: boolean) => (explorer.open = !folded)"
+            >
+              <aside v-if="explorer.open" class="flex min-w-0 flex-1 flex-col px-4 pt-3 pb-4">
+                <explorer-panel />
+              </aside>
+              <panel-rail
+                v-else
+                title="Explorateur de données"
+                side="end"
+                class="flex-1"
+                @expand="explorer.open = true"
+              />
+            </split-panel>
+          </split-group>
+        </tabs-root>
       </split-panel>
       <split-handle
-        controls="explorer-panel"
-        tooltip="Glisser pour redimensionner l’explorateur de données, double clic pour le replier ou le déplier"
-        @activate="explorer.open = !explorer.open"
+        controls="console-panel"
+        tooltip="Glisser pour redimensionner la console, double clic pour la replier ou la déplier"
+        @activate="consoleStore.open = !consoleStore.open"
       />
       <split-panel
-        id="explorer-panel"
-        v-model:size="explorer.width"
-        :folded="!explorer.open"
-        default-size="var(--explorer-width)"
-        min-size="var(--explorer-min-width)"
+        id="console-panel"
+        v-model:size="consoleStore.height"
+        :folded="!consoleStore.open"
+        default-size="var(--console-height)"
+        min-size="var(--console-min-height)"
         folded-size="var(--rail-size)"
         class="flex"
-        @update:folded="(folded: boolean) => (explorer.open = !folded)"
+        @update:folded="(folded: boolean) => (consoleStore.open = !folded)"
       >
-        <aside v-if="explorer.open" class="flex min-w-0 flex-1 flex-col p-4">
-          <explorer-panel />
-        </aside>
+        <section
+          v-if="consoleStore.open"
+          class="flex min-h-0 min-w-0 flex-1 flex-col px-4 pt-1 pb-4"
+        >
+          <console-panel />
+        </section>
         <panel-rail
           v-else
-          title="Explorateur de données"
-          side="end"
+          title="Console"
+          side="bottom"
           class="flex-1"
-          @expand="explorer.open = true"
+          @expand="consoleStore.open = true"
         />
       </split-panel>
     </split-group>

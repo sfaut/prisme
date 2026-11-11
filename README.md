@@ -108,14 +108,14 @@ Options given on the command line replace the saved settings for that launch, wi
 The screen has these areas:
 
 - **Top bar**: the name and version of Prisme, the synchronisation state, the theme and your account menu (see [Top bar](#top-bar)).
+- **Editor tabs**: several SQL editors, each one on its own connection, across the width, above the panels of the active editor.
 - **Left panel**: the object navigator, **Navigateur d’objets** (Object navigator), with your connections and their databases.
-- **Editor tabs**: several SQL editors, each one on its own connection.
 - **Editor and results**: the SQL editor, its buttons, and one result tab per query.
 - **Pivoteur**, under the results, folded at first: the pivot table of the result shown (see [Pivoteur](#pivoteur)).
 - **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).
-- **Console**, under the editors: the history of the queries sent to the servers, and the debug log (see [Console](#console)).
+- **Console**, at the bottom, across the whole width: the history of the queries sent to the servers, and the debug log (see [Console](#console)).
 
-The side panels go from the top bar to the bottom of the window. The fold button of a panel's header (left of the title for the data explorer and the console, at the right for the object navigator) folds it towards its edge, where it leaves a narrow rail with its name; a click on the rail opens it again. The object navigator and the console are open by default, the data explorer closed; your choice for the object navigator and the console is remembered.
+The side panels go from the editor tabs down to the console, common to all the editors. The fold button of a panel's header (left of the title for the data explorer and the console, at the right for the object navigator) folds it towards its edge, where it leaves a narrow rail with its name; a click on the rail opens it again. The object navigator and the console are open by default, the data explorer closed; your choice for the object navigator and the console is remembered.
 
 The version of Prisme shows next to its name, at the top left.
 

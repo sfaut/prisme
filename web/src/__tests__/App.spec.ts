@@ -74,6 +74,18 @@ describe('App', () => {
     )
   })
 
+  it('puts the editors’ tabs above the side panels, and the console under them', async () => {
+    const wrapper = mount(App)
+    const frame = wrapper.find('main')
+    const tabs = frame.find('[aria-label="Éditeurs"]').element
+    const navigator = frame.find('#navigator-panel').element
+    expect(tabs.compareDocumentPosition(navigator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(frame.find('#explorer-panel').exists()).toBe(true)
+    expect(frame.find('#console-panel').exists()).toBe(false)
+    expect(wrapper.find('#console-panel').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
   it('folds the side panels on their rail, and opens them again', async () => {
     window.localStorage.clear()
     const wrapper = mount(App)

@@ -81,32 +81,33 @@ Other variables of the theme:
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │ Prisme v0.7.0                                                 (sync)  [Système ▾]  (M) │
+├────────────────────────────────────────────────────────────────────────────────────────┤
+│ [boutique ×] [prod ×]  [+]                                                      [h][^] │
 ├─────────────────┬────────────────────────────────────────────────────────────┬─────────┤
-│ Navigateur  [«] │ [boutique ×] [prod ×]  [+]                          [h][^] │ [»]     │
-│ d’objets        │ [▶ Exécuter] [Exécuter précisément] [Exécuter tout]        │ Explo-  │
-│                 │ [Enjoliver] [1 000 lignes ▾]         (Transaction ouverte) │ rateur  │
-│ ▾ Sources de    │ ┌─ SQL editor ───────────────────────────────────────────┐ │ de      │
-│   données       │ │ 1  SELECT c.id, c.name, c.email …                      │ │ données │
-│   ▾ local       │ └────────────────────────────────────────────────────────┘ │ (rail,  │
-│     ▸ shop      │ ═════════════════════════ handle ═════════════════════════ │ closed  │
-│     ▸ crm       │ [● 1 · SELECT c.id… * ×] [● 2 · SELECT …]        [r][f][v] │ by      │
-│   ▸ prod        │ ┌─ result grid ──────────────────────────────────────────┐ │ default)│
-│ ▸ Notebooks     │ │    123 id   Aa name        {} attributes               │ │         │
-│                 │ │  1   1042   Ada Martin     {"plan":"pro",…}            │ │         │
+│ Navigateur  [«] │ [▶ Exécuter] [Exécuter précisément] [Exécuter tout]        │ [»]     │
+│ d’objets        │ [Enjoliver] [1 000 lignes ▾]         (Transaction ouverte) │ Explo-  │
+│                 │ ┌─ SQL editor ───────────────────────────────────────────┐ │ rateur  │
+│ ▾ Sources de    │ │ 1  SELECT c.id, c.name, c.email …                      │ │ de      │
+│   données       │ └────────────────────────────────────────────────────────┘ │ données │
+│   ▾ local       │ ═════════════════════════ handle ═════════════════════════ │ (rail,  │
+│     ▸ shop      │ [● 1 · SELECT c.id… * ×] [● 2 · SELECT …]        [r][f][v] │ closed  │
+│     ▸ crm       │ ┌─ result grid ──────────────────────────────────────────┐ │ by      │
+│   ▸ prod        │ │    123 id   Aa name        {} attributes               │ │ default)│
+│ ▸ Notebooks     │ │  1   1042   Ada Martin     {"plan":"pro",…}            │ │         │
 │                 │ └────────────────────────────────────────────────────────┘ │         │
 │                 │ 1 000 lignes · exécution 4 ms · transfert 6 ms · …         │         │
-│                 ├────────────────────────────────────────────────────────────┤         │
-│                 │ [Historique] [Debug]                             [f][c][v] │         │
-│                 │ #    Heure     Action          Message           Lignes …  │         │
-└─────────────────┴────────────────────────────────────────────────────────────┴─────────┘
+├─────────────────┴────────────────────────────────────────────────────────────┴─────────┤
+│ [Historique] [Debug]                                                         [f][c][v] │
+│ #    Heure     Action          Message                                      Lignes …   │
+└────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 Legend: `[«]`, `[^]`, `[v]` fold buttons (`PanelLeftClose`, `PanelTopClose`, `PanelBottomClose`); `[»]` icon of the explorer's rail (`PanelRightOpen`); `[+]` new editor; `[h]` reopen a closed editor (`History`); `[r]` refresh (`RefreshCw`); `[f]` filters (`Funnel`); `[c]` clear the console (`MessageCircleOff`); `(sync)` synchronisation icon; `(M)` avatar; `●` progress dot; `*` pin; `×` close. The buttons of the SQL cell stand on a single line; the diagram wraps them.
 
-- **Top bar** across the whole width. Below it, three columns share the width in splitters: the object navigator on the left (default width 100 steps, smallest 67), the editors in the middle (smallest width 213 steps), the data explorer on the right (default width 140 steps, smallest 120, enough for its header on one line; closed by default). Both side panels go from the top bar down to the bottom of the window.
-- **Console** under the editors, between the side panels (default height 73 steps, smallest 40); the editors and the console share the height in a splitter.
+- **Top bar** across the whole width. Below it, the frame of the editors: their tabs across the whole width, then three columns that share the width in splitters: the object navigator on the left (default width 100 steps, smallest 67), the view of the active editor in the middle (smallest width 213 steps), the data explorer on the right (default width 140 steps, smallest 120, enough for its header on one line; closed by default). Both side panels go from the editors' tabs down to the console.
+- **Console** under the frame of the editors, across the whole width, common to all the editors (default height 73 steps, smallest 40); the frame and the console share the height in a splitter.
 - **Inside an editor**: the editor with its buttons on top, the results below, in a splitter of their own; the editor takes a third of the height by default. Either one folds: the folded editor disappears with its buttons, under the editors' tabs; the folded results keep their tab bar. Both are never folded at once.
-- **Padding**: side panels `p-4`; the editors' area `py-4`, with `px-4` inside each part; the console `px-4 pt-1 pb-4`.
+- **Padding**: the editors' tabs `px-4 pt-4`; side panels `px-4 pt-3 pb-4`, their header level with the buttons of the editor (`py-3`, `px-4` inside each part of the view); the console `px-4 pt-1 pb-4`.
 - **Splitter handle**: the line between two panels (1px border, `line`), grabbed over a band 3 steps wide, with a grip in its middle (9 steps long, 1 step thick, rounded, `line` color). On hover or drag, the band takes `primary` at 30% and the grip `primary`. Dragging moves the line within the bounds of the panels; dragged further, the line shrinks the next panel down to folding it. A double click folds or unfolds the panel it serves. The layout is remembered.
 - **Rail of a folded panel**: a strip 9 steps thick along its edge, which is wholly a button: icon (`PanelLeftOpen`, `PanelRightOpen`, `PanelBottomOpen`) and title, `text-base` semibold, `fg-faint`, hovered `fg-strong` on `surface-sunken`. On a side, the icon at the top, at the height of the header's fold button, then the title written downwards; at the bottom, the title at the left end, the icon at the right end.
 - **Panel header**: title (`text-lg` semibold `fg-strong`) on a line of a control's height (`h-8`), an optional line under it (`text-sm fg-secondary`), the actions (small ghost buttons) on the right, and the fold button (`PanelLeftClose`, `PanelRightClose`, `PanelBottomClose`). The fold button stands where the rail shows its icon: at the right end of the header for the navigator and the console, first, left of the title, for the data explorer.
