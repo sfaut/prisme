@@ -1,5 +1,5 @@
 /**
- * Folding of the data explorer (`DataExplorer.vue`) by level: everything at
+ * Folding of the data explorer (`ExplorerPanel.vue`) by level: everything at
  * once, or the level of the cursor.
  *
  * The foldable nodes are those the language marks (`foldNodeProp`): objects

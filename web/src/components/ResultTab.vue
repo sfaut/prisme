@@ -1,12 +1,12 @@
 <!--
-  Tab of a query, in the cell's tab bar (a `DocumentTab`).
+  Tab of a query, in the result tab bar of its editor (a `DocumentTab`).
 
   - Progress dot, then label: the name given by the user, or the number and
-    the start of the query; a double click renames it (`TabLabel`).
+    the start of the query; a double click renames it (`DocumentTabLabel`).
   - Pin: a pinned tab stays when the query is run again. It is always
     visible on a pinned tab; otherwise, like the cross, on hovering the tab
     or on the active tab (the tab carries the `group` class).
-  - Cross (or middle click): closes the tab; the cell stops its query if
+  - Cross (or middle click): closes the tab; the editor view stops its query if
     it is running.
   - Progress bar drawn on the bottom edge of the tab: indeterminate (a
     segment that goes back and forth) when the completed share is unknown,
@@ -25,8 +25,8 @@ import { computed } from 'vue'
 import { type QueryTab, tabFraction, tabProgress } from '@/api/querySession'
 
 import DocumentTab from './DocumentTab.vue'
-import ProgressDot from './ProgressDot.vue'
-import TabLabel from './TabLabel.vue'
+import UiProgressDot from './UiProgressDot.vue'
+import DocumentTabLabel from './DocumentTabLabel.vue'
 import type { TabDrag } from './tabDrag'
 import UiButton from './ui/UiButton.vue'
 import { vTooltip } from './ui/tooltip'
@@ -97,8 +97,12 @@ const barTone = computed(() => {
     close-tooltip="Fermer l’onglet (arrête sa requête si elle tourne)"
     @close="emit('close')"
   >
-    <progress-dot :progress="tabProgress(tab)" />
-    <tab-label :name="tab.name" :default-label="defaultLabel" @rename="emit('rename', $event)" />
+    <ui-progress-dot :progress="tabProgress(tab)" />
+    <document-tab-label
+      :name="tab.name"
+      :default-label="defaultLabel"
+      @rename="emit('rename', $event)"
+    />
     <span v-if="barTone" class="tab-progress" aria-hidden="true">
       <span
         class="tab-progress-bar"

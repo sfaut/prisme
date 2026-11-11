@@ -6,9 +6,9 @@ import { nextTick } from 'vue'
 
 import type { Cell } from '@/api/querySession'
 
-import PivotConcatPanel from '../PivotConcatPanel.vue'
-import PivotFilterPanel from '../PivotFilterPanel.vue'
-import PivotZones from '../PivotZones.vue'
+import PivotConcatPopover from '../PivotConcatPopover.vue'
+import PivotFilterPopover from '../PivotFilterPopover.vue'
+import PivotSections from '../PivotSections.vue'
 import SplitHandle from '../split/SplitHandle.vue'
 import SplitPanel from '../split/SplitPanel.vue'
 import type { PivotConfig, PivotFilter } from '../pivotConfig'
@@ -46,7 +46,7 @@ afterEach(() => {
  * @param config Configuration shown at first.
  */
 function mountZones(config: PivotConfig = CONFIG) {
-  const mounted = mount(PivotZones, {
+  const mounted = mount(PivotSections, {
     attachTo: document.body,
     props: {
       names: NAMES,
@@ -138,7 +138,7 @@ async function choose(mounted: VueWrapper, element: number, label: string): Prom
   await nextTick()
 }
 
-describe('PivotZones', () => {
+describe('PivotSections', () => {
   it('frames the zone under a dragged element, even with elements in it', async () => {
     const mounted = mountZones()
     await mounted.find('[data-element]').trigger('dragstart')
@@ -412,7 +412,7 @@ describe('PivotZones', () => {
         upper: '',
       },
     ])
-    const panel = mounted.findComponent(PivotFilterPanel)
+    const panel = mounted.findComponent(PivotFilterPopover)
     expect(panel.props('index')).toBe(0)
     const filter = shownConfig(mounted).filters[0]!
     panel.vm.$emit('change', { ...filter, values: ['Nord'] })
@@ -423,7 +423,7 @@ describe('PivotZones', () => {
     )
     panel.vm.$emit('close')
     await nextTick()
-    expect(mounted.findComponent(PivotFilterPanel).exists()).toBe(false)
+    expect(mounted.findComponent(PivotFilterPopover).exists()).toBe(false)
   })
 
   it('starts a column of numbers or of dates on its bounds, with its panel', async () => {
@@ -431,7 +431,7 @@ describe('PivotZones', () => {
     await mounted.setProps({ types: [{ family: 'date', name: 'DATE' }] })
     await dropOnFilters(mounted, 'ul[aria-label="Colonnes du résultat"] li')
     expect(shownConfig(mounted).filters[0]).toMatchObject({ condition: 'between' })
-    expect(mounted.findComponent(PivotFilterPanel).exists()).toBe(true)
+    expect(mounted.findComponent(PivotFilterPopover).exists()).toBe(true)
     expect(mounted.find('section[aria-label="Filtres"] [data-element]').text()).toContain(
       'region BETWEEN ? AND ?',
     )
@@ -451,7 +451,7 @@ describe('PivotZones', () => {
     expect(shownConfig(mounted).filters).toMatchObject([
       { kind: 'measure', aggregate: 'sum', column: 2, condition: 'between', operand: '' },
     ])
-    expect(mounted.findComponent(PivotFilterPanel).exists()).toBe(true)
+    expect(mounted.findComponent(PivotFilterPopover).exists()).toBe(true)
   })
 
   it('gives a measure the choice of a filter on it, whose settings open', async () => {
@@ -460,14 +460,14 @@ describe('PivotZones', () => {
     expect(shownConfig(mounted).filters).toMatchObject([
       { kind: 'measure', aggregate: 'sum', column: 2 },
     ])
-    expect(mounted.findComponent(PivotFilterPanel).props('index')).toBe(0)
+    expect(mounted.findComponent(PivotFilterPopover).props('index')).toBe(0)
   })
 
   it('opens the settings of a filter by its menu', async () => {
     const mounted = mountZones()
     await mounted.setProps({ config: { ...CONFIG, filters: [onMeasure(), onMeasure()] } })
     await choose(mounted, 3, 'Réglages…')
-    expect(mounted.findComponent(PivotFilterPanel).props('index')).toBe(1)
+    expect(mounted.findComponent(PivotFilterPopover).props('index')).toBe(1)
   })
 
   it('names a filter from its settings, or with a double click', async () => {
@@ -475,10 +475,10 @@ describe('PivotZones', () => {
     await mounted.setProps({ config: { ...CONFIG, filters: [onMeasure()] } })
     const zone = () => mounted.find('section[aria-label="Filtres"]')
     await choose(mounted, 2, 'Réglages…')
-    mounted.findComponent(PivotFilterPanel).vm.$emit('name')
+    mounted.findComponent(PivotFilterPopover).vm.$emit('name')
     await nextTick()
     await nextTick()
-    expect(mounted.findComponent(PivotFilterPanel).exists()).toBe(false)
+    expect(mounted.findComponent(PivotFilterPopover).exists()).toBe(false)
     const field = zone().find('input')
     expect(document.activeElement).toBe(field.element)
     await field.setValue('Gros')
@@ -492,7 +492,7 @@ describe('PivotZones', () => {
   it('opens the settings of the filter just dropped, among filters on the same column', async () => {
     const mounted = mountZones()
     await dropOnFilters(mounted, 'ul[aria-label="Colonnes du résultat"] li')
-    const panel = () => mounted.findComponent(PivotFilterPanel)
+    const panel = () => mounted.findComponent(PivotFilterPopover)
     const change = (values: string[]) =>
       panel().vm.$emit('change', { ...panel().props('filter'), values })
     change(['Nord'])
@@ -564,7 +564,7 @@ describe('PivotZones', () => {
     expect(shownConfig(mounted).measures).toEqual([
       { aggregate: 'group_concat', column: 2, name: '', concat: { separator: ', ' } },
     ])
-    const panel = () => mounted.findComponent(PivotConcatPanel)
+    const panel = () => mounted.findComponent(PivotConcatPopover)
     expect(panel().props('index')).toBe(0)
     panel().vm.$emit('change', { separator: ' | ', distinct: true })
     await nextTick()
@@ -633,11 +633,11 @@ describe('PivotZones', () => {
     await nextTick()
     expect(shownConfig(mounted).filters).toEqual([])
     expect(shownConfig(mounted).measures).toHaveLength(1)
-    expect(mounted.findComponent(PivotFilterPanel).exists()).toBe(false)
+    expect(mounted.findComponent(PivotFilterPopover).exists()).toBe(false)
   })
 })
 
-describe('PivotZones, the widths of its sections', () => {
+describe('PivotSections, the widths of its sections', () => {
   /**
    * Width of the page laid out, in pixels.
    */

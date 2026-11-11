@@ -22,7 +22,7 @@ import { cssPixels } from '@/cssLength'
 import { useExportsStore } from '@/stores/exports'
 
 import ExportItem from './ExportItem.vue'
-import ProgressDot from './ProgressDot.vue'
+import UiProgressDot from './UiProgressDot.vue'
 import UiAlert from './ui/UiAlert.vue'
 import UiButton from './ui/UiButton.vue'
 import { vTooltip } from './ui/tooltip'
@@ -67,7 +67,7 @@ function formatUsage(usage: FolderUsage): string {
         :aria-label="title"
         v-tooltip="title"
       >
-        <progress-dot v-if="store.runningCount > 0" progress="loading" />
+        <ui-progress-dot v-if="store.runningCount > 0" progress="loading" />
         <file-down class="size-5 shrink-0" aria-hidden="true" />
       </button>
     </popover-trigger>

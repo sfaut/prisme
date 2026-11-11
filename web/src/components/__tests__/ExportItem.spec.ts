@@ -7,7 +7,7 @@ import type { ExportInfo } from '@/api/generated/ExportInfo'
 import type { ExportState } from '@/api/generated/ExportState'
 
 import ExportItem from '../ExportItem.vue'
-import ProgressDot from '../ProgressDot.vue'
+import UiProgressDot from '../UiProgressDot.vue'
 import UiButton from '../ui/UiButton.vue'
 import UiStatusBar from '../ui/UiStatusBar.vue'
 
@@ -124,7 +124,7 @@ describe('ExportItem', () => {
     }
     // While it runs, with a progress dot.
     const running = mountItem(entry({ state: 'running' }))
-    expect(running.findComponent(ProgressDot).exists()).toBe(true)
+    expect(running.findComponent(UiProgressDot).exists()).toBe(true)
   })
 
   it('warns of a missing file, of rows Excel does not open, and of a failure', () => {

@@ -6,7 +6,7 @@ import { mount } from '@vue/test-utils'
 
 import { useDataExplorerStore } from '@/stores/dataExplorer'
 
-import DataExplorer from '../DataExplorer.vue'
+import ExplorerPanel from '../ExplorerPanel.vue'
 
 beforeEach(() => {
   localStorage.clear()
@@ -19,7 +19,7 @@ beforeEach(() => {
 function mountExplorer() {
   const explorer = useDataExplorerStore()
   explorer.open = true
-  const wrapper = mount(DataExplorer, { attachTo: document.body })
+  const wrapper = mount(ExplorerPanel, { attachTo: document.body })
   return { explorer, wrapper }
 }
 
@@ -44,7 +44,7 @@ function cursor(wrapper: ReturnType<typeof mountExplorer>['wrapper']): number {
     .main.head
 }
 
-describe('DataExplorer', () => {
+describe('ExplorerPanel', () => {
   it('asks for a selection, then for a single column', async () => {
     const { explorer, wrapper } = mountExplorer()
     expect(wrapper.find('.data-explorer-message').text()).toContain('Sélectionnez des valeurs')

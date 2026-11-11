@@ -1,5 +1,5 @@
 /**
- * Layout of an editor's cell (`QueryCell`): the heights of its panels, in CSS
+ * Layout of the view of an editor (`EditorView`): the heights of its panels, in CSS
  * pixels, and which ones are folded, kept in the browser's local storage
  * (`split/storedLayout.ts`), one entry per editor, so that folding the editor
  * of one tab leaves the others as they are. Closing an editor forgets its
@@ -8,11 +8,12 @@
 import { forgetStoredLayout } from './split/storedLayout'
 
 /**
- * Key of an editor's layout in the local storage.
+ * Key of an editor's layout in the local storage. It keeps the name the view
+ * had before (a cell), under which the layouts already saved stay.
  *
  * @param editorId Id of the editor.
  */
-export function cellLayoutKey(editorId: number): string {
+export function editorLayoutKey(editorId: number): string {
   return `prisme.cellLayout.${editorId}`
 }
 
@@ -21,6 +22,6 @@ export function cellLayoutKey(editorId: number): string {
  *
  * @param editorId Id of the editor.
  */
-export function forgetCellLayout(editorId: number): void {
-  forgetStoredLayout(cellLayoutKey(editorId))
+export function forgetEditorLayout(editorId: number): void {
+  forgetStoredLayout(editorLayoutKey(editorId))
 }

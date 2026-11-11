@@ -1,6 +1,6 @@
 /**
  * Readable form of the JSON and XML values shown in the data explorer
- * (`DataExplorer.vue`): indented with four spaces, one value alone or several
+ * (`ExplorerPanel.vue`): indented with four spaces, one value alone or several
  * gathered in one document (`[…]` for JSON, `<data>…</data>` for XML).
  *
  * The text is reindented token by token, never parsed then written again: a

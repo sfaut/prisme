@@ -26,7 +26,7 @@ import { formatBytes, formatDuration, formatRowCount } from '@/api/querySession'
 import { EXCEL_MAX_ROWS, useExportsStore } from '@/stores/exports'
 
 import { useClock } from './clock'
-import ProgressDot from './ProgressDot.vue'
+import UiProgressDot from './UiProgressDot.vue'
 import UiButton from './ui/UiButton.vue'
 import UiStatusBar from './ui/UiStatusBar.vue'
 import { vTooltip } from './ui/tooltip'
@@ -156,7 +156,7 @@ const rows = computed(() => {
         :class="badge.tone"
         v-tooltip="badge.title"
       >
-        <progress-dot v-if="badge === STATES.running" progress="loading" />
+        <ui-progress-dot v-if="badge === STATES.running" progress="loading" />
         <span class="text-trim">{{ badge.label }}</span>
       </span>
       <ui-button

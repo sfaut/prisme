@@ -28,7 +28,7 @@
   columns arrive.
 
   The tab gives the menu of its export button (`exportGroups`), which the
-  cell draws right of the result tabs, beside the refresh and filter buttons
+  editor view draws right of the result tabs, beside the refresh and filter buttons
   (`ResultTabActions.vue`), its choices grouped by destination: file,
   clipboard, editor. It downloads the result as CSV for Excel in
   French (`csv.ts`): the selection of the grid, or the whole displayed
@@ -36,7 +36,7 @@
   displayed order. The file is built in the page, by chunks of rows. The
   same rows can become a CTE (`cte.ts`): downloaded or copied, for MySQL or
   MariaDB, or written in the editor in the dialect of its server, which the
-  cell does (`insert-cte`). Columns sharing a name, or a discontinuous
+  editor view does (`insert-cte`). Columns sharing a name, or a discontinuous
   selection, refuse it. The menu also offers the full result: the server
   runs the query again, as it is written, without the limit of Prisme, on
   the current database of the editor, and writes its rows in the displayed
@@ -251,7 +251,7 @@ const readsCte = computed(
 )
 
 /**
- * Choices of the export menu, drawn by the cell right of the result tabs,
+ * Choices of the export menu, drawn by the editor view right of the result tabs,
  * grouped by destination. In a file: the CSV first, whose label says what it
  * holds, so that a forgotten selection shows; it waits for the end of the
  * query. Then the CTE, for each dialect (that of the editor's server first),
@@ -443,8 +443,8 @@ async function copyCte(flavor: Flavor): Promise<void> {
 }
 
 /**
- * Hands the CTE of the selection, or of the displayed result, to the cell,
- * which writes it in the editor, in the dialect of its server.
+ * Hands the CTE of the selection, or of the displayed result, to the editor
+ * view, which writes it in the editor, in the dialect of its server.
  */
 async function insertCte(): Promise<void> {
   if (props.server === null) {

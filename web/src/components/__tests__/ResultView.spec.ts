@@ -9,7 +9,7 @@ import type { ExportRequest } from '@/api/generated/ExportRequest'
 import type { ServerInfo } from '@/api/generated/ServerInfo'
 import { type QueryTab, formatInstant } from '@/api/querySession'
 
-import QueryTabView from '../QueryTabView.vue'
+import ResultView from '../ResultView.vue'
 import ResultFilter from '../ResultFilter.vue'
 import UiStatusBar from '../ui/UiStatusBar.vue'
 import { finishedTab } from './resultTabs'
@@ -52,7 +52,7 @@ const MARIADB: ServerInfo = {
  * @param server Server of the editor.
  */
 function mountTab(tab: QueryTab, server: ServerInfo | null = MARIADB) {
-  return mount(QueryTabView, {
+  return mount(ResultView, {
     props: {
       tab,
       displayed: false,
@@ -104,7 +104,7 @@ function threeRows(): QueryTab {
   )
 }
 
-describe('QueryTabView', () => {
+describe('ResultView', () => {
   it('shows the status of the result in its bar, one item each', async () => {
     const tab = finishedTab(['id'], [['1'], ['2']])
     const wrapper = mountTab(tab)

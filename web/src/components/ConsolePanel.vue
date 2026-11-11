@@ -2,8 +2,8 @@
   Console, at the bottom of the main area, between the side panels: what
   Prisme does besides the results, in tabs. The History tab lists all the
   queries sent to the target servers, by the editors and by Prisme itself
-  (`HistoryTable.vue`); the Debug tab, the lines of the server's log and the
-  notifications of the interface (`DebugTable.vue`). A button, at the right
+  (`ConsoleHistoryTable.vue`); the Debug tab, the lines of the server's log and the
+  notifications of the interface (`ConsoleDebugTable.vue`). A button, at the right
   of the tabs, clears the list of the tab shown, whatever its filter;
   another one, before it, shows or hides the filters of both tabs, and
   takes the primary color while the filter of the tab shown keeps only some
@@ -18,8 +18,8 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 
 import { type ConsoleTab, isFiltering, useConsoleStore } from '@/stores/console'
 
-import DebugTable from './DebugTable.vue'
-import HistoryTable from './HistoryTable.vue'
+import ConsoleDebugTable from './ConsoleDebugTable.vue'
+import ConsoleHistoryTable from './ConsoleHistoryTable.vue'
 import PanelHeader from './PanelHeader.vue'
 import UiButton from './ui/UiButton.vue'
 import { vTooltip } from './ui/tooltip'
@@ -125,10 +125,10 @@ onUnmounted(() => store.dispose())
     </panel-header>
     <!-- The scrolling area of each tab is the content of the tab itself. -->
     <tabs-content value="history" as-child>
-      <history-table />
+      <console-history-table />
     </tabs-content>
     <tabs-content value="debug" as-child>
-      <debug-table />
+      <console-debug-table />
     </tabs-content>
   </tabs-root>
 </template>

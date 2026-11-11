@@ -1,6 +1,6 @@
 /**
  * Configuration of the Pivoteur for a result tab: the columns of the result placed in the zones
- * Lignes, Colonnes, Mesures and Filtres (`PivotZones.vue`), the names given to them, and the labels
+ * Lignes, Colonnes, Mesures and Filtres (`PivotSections.vue`), the names given to them, and the labels
  * of their elements.
  *
  * In this first slice, a level is a column of the result, by its index, and a measure is

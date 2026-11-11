@@ -7,8 +7,8 @@ import { nextTick } from 'vue'
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Cell } from '@/api/querySession'
 
-import PivotFilterPanel from '../PivotFilterPanel.vue'
-import PivotValuesList from '../PivotValuesList.vue'
+import PivotFilterPopover from '../PivotFilterPopover.vue'
+import PivotFilterValues from '../PivotFilterValues.vue'
 import type {
   PivotColumnFilter,
   PivotConfig,
@@ -93,7 +93,7 @@ async function mountPanel(
   const readValues = vi.fn<() => Promise<Cell[]>>(() => Promise.resolve([null, 'Nord', 'Sud']))
   const closed = vi.fn<() => void>()
   const named = vi.fn<() => void>()
-  const mounted = mount(PivotFilterPanel, {
+  const mounted = mount(PivotFilterPopover, {
     attachTo: document.body,
     props: {
       anchor,
@@ -218,7 +218,7 @@ function labels(mounted: VueWrapper, label: string): string[] {
   return selectProps(mounted, label).items.map((item) => item.label)
 }
 
-describe('PivotFilterPanel', () => {
+describe('PivotFilterPopover', () => {
   it('adds no element to its parent, which would shift the layout of its children', async () => {
     const { mounted } = await mountPanel(ON_COLUMN)
     expect(document.body.querySelector('[role="dialog"]')).not.toBeNull()
@@ -233,9 +233,9 @@ describe('PivotFilterPanel', () => {
     expect(fields()).toEqual(['Valeur'])
     await choose(mounted, 'Condition', 'is_null')
     expect(fields()).toEqual([])
-    expect(mounted.findComponent(PivotValuesList).exists()).toBe(false)
+    expect(mounted.findComponent(PivotFilterValues).exists()).toBe(false)
     await choose(mounted, 'Condition', 'in_list')
-    expect(mounted.findComponent(PivotValuesList).exists()).toBe(true)
+    expect(mounted.findComponent(PivotFilterValues).exists()).toBe(true)
   })
 
   it('offers each condition to a filter on a column', async () => {
@@ -407,7 +407,7 @@ describe('PivotFilterPanel', () => {
     const { mounted, changes, readValues } = await mountPanel(filter)
     await flushPromises()
     expect(readValues).toHaveBeenCalledExactlyOnceWith(1, 'month')
-    const list = () => mounted.findComponent(PivotValuesList)
+    const list = () => mounted.findComponent(PivotFilterValues)
     expect(list().props('offersNull')).toBe(true)
     list().vm.$emit('update:kept', ['Nord'])
     await nextTick()

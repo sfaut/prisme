@@ -11,7 +11,7 @@
  * the top only when its last line reaches it.
  *
  * The functions of this module do not depend on the display: the tree shows
- * the result (`ObjectNavigator.vue`).
+ * the result (`NavigatorPanel.vue`).
  */
 
 import type { NavigatorNode } from './navigatorNodes'

@@ -1,9 +1,9 @@
 <!--
-  Layout of the screen: on top, the application bar (`AppTopBar`), across the
+  Layout of the screen: on top, the application bar (`TopBar`), across the
   whole width; below, three columns: on the left, the object navigator; in
   the middle, the SQL editors, one tab each (`EditorTabBar`), each with its
-  cell (`QueryCell`): its connection, its session and its result tabs; on
-  the right, the data explorer (`DataExplorer`). Both side panels go from
+  view (`EditorView`): its connection, its session and its result tabs; on
+  the right, the data explorer (`ExplorerPanel`). Both side panels go from
   the top bar down to the bottom of the window. Under the editors, between
   the side panels, the console (`ConsolePanel`). The columns share the
   width, and the editors and the console the height, in splitters of Prisme
@@ -21,7 +21,7 @@
   The navigator acts on the active editor: the chosen source becomes its
   connection, an opened table or a chosen database (`USE`) runs there, and
   "Déconnecter" closes its session, which any of these actions on its source
-  opens again. The cells of all the editors stay mounted: each one keeps its
+  opens again. The views of all the editors stay mounted: each one keeps its
   session (and its transactions) open, even when another editor is
   displayed. Closing a session rolls its open transaction back: while one
   is open, "Déconnecter", closing the editor and changing its source ask
@@ -45,12 +45,12 @@ import { useDataExplorerStore } from './stores/dataExplorer'
 import { useEditorsStore } from './stores/editors'
 import { useLayoutStore } from './stores/layout'
 
-import AppTopBar from './components/AppTopBar.vue'
+import TopBar from './components/TopBar.vue'
 import ConsolePanel from './components/ConsolePanel.vue'
-import DataExplorer from './components/DataExplorer.vue'
+import ExplorerPanel from './components/ExplorerPanel.vue'
 import EditorTabBar from './components/EditorTabBar.vue'
-import ObjectNavigator from './components/ObjectNavigator.vue'
-import QueryCell from './components/QueryCell.vue'
+import NavigatorPanel from './components/NavigatorPanel.vue'
+import EditorView from './components/EditorView.vue'
 import PanelRail from './components/PanelRail.vue'
 import SplitGroup from './components/split/SplitGroup.vue'
 import SplitHandle from './components/split/SplitHandle.vue'
@@ -187,7 +187,7 @@ const activeDatabase = computed(() => {
 })
 
 /**
- * Number of reconnections requested, by editor: changing the key of its cell
+ * Number of reconnections requested, by editor: changing the key of its view
  * reopens its session. Changing its connection reopens it too.
  */
 const attempts = ref<Record<number, number>>({})
@@ -200,16 +200,16 @@ const attempts = ref<Record<number, number>>({})
 const openingDatabases = ref<Record<number, string>>({})
 
 /**
- * Mounted cells, by editor, to start a query there from the navigator, and
+ * Mounted views of the editors, by editor, to start a query there from the navigator, and
  * to fold the active editor from the editors' bar.
  */
-const cells = shallowReactive(new Map<number, InstanceType<typeof QueryCell>>())
+const views = shallowReactive(new Map<number, InstanceType<typeof EditorView>>())
 
 /**
  * Cell of the active editor, absent without a connection.
  */
 const activeCell = computed(() =>
-  editors.activeId === null ? undefined : cells.get(editors.activeId),
+  editors.activeId === null ? undefined : views.get(editors.activeId),
 )
 
 /**
@@ -334,11 +334,11 @@ function followStatus(editorId: number, status: SessionStatus): void {
 }
 
 /**
- * Gives a connection to the active editor, then waits for its cell (reopened
+ * Gives a connection to the active editor, then waits for its view (reopened
  * on this connection) to be mounted.
  *
  * @param connectionId Id of the connection.
- * @returns The cell of the active editor, absent if there is none.
+ * @returns The view of the active editor, absent if there is none.
  */
 async function activeCellOn(connectionId: number) {
   const editor = editors.active
@@ -349,7 +349,7 @@ async function activeCellOn(connectionId: number) {
     return undefined
   }
   await nextTick()
-  return cells.get(editor.id)
+  return views.get(editor.id)
 }
 
 /**
@@ -408,7 +408,7 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
   }
   try {
     if ((await connectEditor(editor.id, connectionId, schema)) === 'keeps') {
-      cells.get(editor.id)?.changeDatabaseWhenReady(schema)
+      views.get(editor.id)?.changeDatabaseWhenReady(schema)
     }
   } catch (failure) {
     report(failure)
@@ -422,7 +422,7 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
 async function disconnect(): Promise<void> {
   const editorId = editors.activeId
   if (editorId !== null && (await mayEnd(editorId, 'disconnect'))) {
-    await cells.get(editorId)?.disconnect()
+    await views.get(editorId)?.disconnect()
   }
 }
 
@@ -451,7 +451,7 @@ function selectSource(connectionId: number): void {
 
 <template>
   <div class="flex h-full flex-col">
-    <app-top-bar />
+    <top-bar />
     <!--
       Each panel of the splitters has an id of its own: the line that
       resizes it names it (`controls`, `aria-controls`).
@@ -469,7 +469,7 @@ function selectSource(connectionId: number): void {
       >
         <!-- Folded, the object navigator stays mounted: its tree keeps its state. -->
         <aside v-show="layout.objectsOpen" class="flex min-w-0 flex-1 flex-col gap-4 p-4">
-          <object-navigator
+          <navigator-panel
             :selected-id="connections.selectedId"
             :current-database="activeDatabase"
             :session-status="activeStatus"
@@ -497,10 +497,10 @@ function selectSource(connectionId: number): void {
         <split-group direction="vertical" class="min-w-0 flex-1">
           <split-panel id="editors-panel" fill min-size="var(--editors-min-height)" class="flex">
             <!--
-              The padding of the sides is inside the panels of the cells
-              (`QueryCell`), which would cut a border set against their edge;
+              The padding of the sides is inside the panels of the views
+              (`EditorView`), which would cut a border set against their edge;
               the other elements take it here. The padding of the bottom is
-              that of the last panel of a cell, the Pivoteur: open, it ends
+              that of the last panel of a view, the Pivoteur: open, it ends
               with its own; folded, its rail closes the area, as the rail of
               the console closes the window.
             -->
@@ -541,13 +541,13 @@ function selectSource(connectionId: number): void {
                   class="flex min-h-0 flex-1 flex-col"
                   :class="{ 'items-center justify-center': !connectionOf(editor.connectionId) }"
                 >
-                  <query-cell
+                  <editor-view
                     v-if="connectionOf(editor.connectionId)"
                     :ref="
-                      (cell) =>
-                        cell
-                          ? cells.set(editor.id, cell as InstanceType<typeof QueryCell>)
-                          : cells.delete(editor.id)
+                      (view) =>
+                        view
+                          ? views.set(editor.id, view as InstanceType<typeof EditorView>)
+                          : views.delete(editor.id)
                     "
                     :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
                     :editor-id="editor.id"
@@ -621,7 +621,7 @@ function selectSource(connectionId: number): void {
         @update:folded="(folded: boolean) => (explorer.open = !folded)"
       >
         <aside v-if="explorer.open" class="flex min-w-0 flex-1 flex-col p-4">
-          <data-explorer />
+          <explorer-panel />
         </aside>
         <panel-rail
           v-else

@@ -110,7 +110,7 @@ The screen has these areas:
 - **Top bar**: the name and version of Prisme, the synchronisation state, the theme and your account menu (see [Top bar](#top-bar)).
 - **Left panel**: the object navigator, **Navigateur d’objets** (Object navigator), with your connections and their databases.
 - **Editor tabs**: several SQL editors, each one on its own connection.
-- **SQL cell and results**: the editor, its buttons, and one result tab per query.
+- **Editor and results**: the SQL editor, its buttons, and one result tab per query.
 - **Pivoteur**, under the results, folded at first: the pivot table of the result shown (see [Pivoteur](#pivoteur)).
 - **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).
 - **Console**, under the editors: the history of the queries sent to the servers, and the debug log (see [Console](#console)).
@@ -158,7 +158,7 @@ Drag the right edge of the panel to resize it, or use the arrow keys once the ed
 
 ### Editors
 
-The tab bar above the SQL cell holds several editors:
+The tab bar above the SQL editor holds several editors:
 
 - **+** opens an editor on the connection of the active one.
 - **Double-click** a tab to rename it. Drag it to move it.
@@ -310,7 +310,7 @@ XPath is the version built into browsers, [XPath 1.0](https://www.w3.org/TR/1999
 
 ### Pivoteur
 
-The **Pivoteur** is the pivot table of the result shown, in a panel under the results of the cell. It works in the page, on the rows Prisme has received, after the filter of the grid: no query goes to the server, and a result limited to some rows gives the table of those rows. It computes once the query has ended; folded, as it is at first, it computes nothing. It unfolds and folds by its rail, by the button of its header, by a double click on the line above it, or by a drag. The editor, the results, the Pivoteur and the console can all be folded at once, and folding one leaves the others as they are.
+The **Pivoteur** is the pivot table of the result shown, in a panel under the results of the editor. It works in the page, on the rows Prisme has received, after the filter of the grid: no query goes to the server, and a result limited to some rows gives the table of those rows. It computes once the query has ended; folded, as it is at first, it computes nothing. It unfolds and folds by its rail, by the button of its header, by a double click on the line above it, or by a drag. The editor, the results, the Pivoteur and the console can all be folded at once, and folding one leaves the others as they are.
 
 The panel has three columns: the columns of the result, with their type and a search by name; the zones **Lignes**, **Colonnes**, **Mesures** and **Filtres** (Rows, Columns, Measures, Filters), stacked; the table, which takes the remaining width and scrolls on both axes, its headers and its labels staying in sight. The line on the right of the first two columns sets their width; each result tab keeps its widths. The bar under the table shows the rows taken into account, the groups and the duration of the computation.
 

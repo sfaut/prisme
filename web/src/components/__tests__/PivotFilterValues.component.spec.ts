@@ -4,7 +4,7 @@ import { type VueWrapper, flushPromises, mount } from '@vue/test-utils'
 
 import type { Cell } from '@/api/querySession'
 
-import PivotValuesList from '../PivotValuesList.vue'
+import PivotFilterValues from '../PivotFilterValues.vue'
 
 let wrapper: VueWrapper | null = null
 
@@ -22,7 +22,7 @@ afterEach(() => {
  */
 async function mountList(read: () => Promise<Cell[]>, kept: Cell[] = [], offersNull = true) {
   const changes: Cell[][] = []
-  const mounted = mount(PivotValuesList, {
+  const mounted = mount(PivotFilterValues, {
     attachTo: document.body,
     props: {
       label: 'region',
@@ -51,7 +51,7 @@ async function clickButton(label: string): Promise<void> {
   await flushPromises()
 }
 
-describe('PivotValuesList', () => {
+describe('PivotFilterValues', () => {
   it('checks and unchecks the values, in the order of the list', async () => {
     const { changes } = await mountList(() => Promise.resolve([null, 'Nord', 'Sud']), ['Sud'])
     await clickButton('Tout')

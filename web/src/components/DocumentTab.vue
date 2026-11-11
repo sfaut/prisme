@@ -1,6 +1,6 @@
 <!--
   Tab of a document bar: the editor bar (`EditorTabBar.vue`) and the result
-  bar of each editor (`QueryCell.vue`). Both bars look and behave the same:
+  bar of each editor (`EditorView.vue`). Both bars look and behave the same:
 
   - Look: the active tab is filled (`surface-raised`), its text darker;
     the line under the bar is drawn by the bar itself. The bottom edge of a

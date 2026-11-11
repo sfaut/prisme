@@ -6,7 +6,7 @@ import { mount } from '@vue/test-utils'
 
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 
-import ObjectNavigator from '../ObjectNavigator.vue'
+import NavigatorPanel from '../NavigatorPanel.vue'
 
 /**
  * Connections returned by the simulated server.
@@ -105,7 +105,7 @@ function connection(id: number, name: string): ConnectionSummary {
  * @param props Properties of the navigator.
  */
 function mountNavigator(props: { selectedId: number | null; currentDatabase: string | null }) {
-  return mount(ObjectNavigator, {
+  return mount(NavigatorPanel, {
     props: { ...props, sessionStatus: null },
     attachTo: document.body,
   })
@@ -166,7 +166,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('ObjectNavigator', () => {
+describe('NavigatorPanel', () => {
   it('puts the sources under a root and opens that of the chosen connection', async () => {
     savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
     const wrapper = mountNavigator({ selectedId: 1, currentDatabase: null })

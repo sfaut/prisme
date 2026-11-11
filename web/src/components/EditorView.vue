@@ -1,9 +1,10 @@
 <!--
-  SQL cell: editor, run, row limit, state and results.
+  View of an editor, under its tab: the SQL editor, run, row limit, state
+  and results.
 
-  The cell is that of an editor: it opens the editor's query session, on its
+  The view opens the editor's query session, on its
   connection, and keeps it open as long as it exists. The results are saved
-  by the server; the cell starts again from the saved tabs, and also saves
+  by the server; the view starts again from the saved tabs, and also saves
   their name, their pinning, their order and their closing. Ctrl+Enter or
   "Exécuter" runs the query under the cursor; Ctrl+Shift+Enter or "Exécuter
   tout" runs in parallel the queries the selected text touches, all of them
@@ -26,13 +27,13 @@
   While a transaction is open on the session's connection, a status badge
   says so at the end of the buttons, until its COMMIT or ROLLBACK.
   The session can be closed from the object navigator ("Déconnecter",
-  `disconnect`): the cell then shows it closed, with "Reconnecter". A
+  `disconnect`): the view then shows it closed, with "Reconnecter". A
   session opened on a server older than the oldest version Prisme supports
   shows a warning.
   The buttons are above the editor. The editor (with its buttons), the
   results and the panel of the Pivoteur share the height in a splitter of
   Prisme (`split/`), whose heights and folds are kept for this editor
-  (`cellLayout.ts`): the editor and the Pivoteur keep their height, the
+  (`editorLayout.ts`): the editor and the Pivoteur keep their height, the
   results take the height they leave (`fill`); the line under the editor
   sets the height of the editor, the line above the Pivoteur that of the
   Pivoteur. Each panel folds, by its
@@ -40,9 +41,9 @@
   Pivoteur, by a double click on the line next to it. The folded editor
   disappears with its buttons: only the editors' tabs stay above the
   results, with its fold button, which the editors' bar draws for the
-  active cell (`editorFolded`, `toggleEditor`). The folded results leave
+  active view (`editorFolded`, `toggleEditor`). The folded results leave
   their tabs and their unfold button (the buttons of the tab shown hide).
-  The panels of a cell fold independently, all of them at once too: the
+  The panels of the view fold independently, all of them at once too: the
   folded results go down against the Pivoteur, the height they leave
   staying free above their tabs. The
   padding of the sides is inside the panels: a panel clips its content at
@@ -94,8 +95,8 @@ import { useSettingsStore } from '@/stores/settings'
 
 import PanelRail from './PanelRail.vue'
 import PivotPanel from './PivotPanel.vue'
-import QueryTabView from './QueryTabView.vue'
-import { cellLayoutKey } from './cellLayout'
+import ResultView from './ResultView.vue'
+import { editorLayoutKey } from './editorLayout'
 import ResultTab from './ResultTab.vue'
 import ResultTabActions from './ResultTabActions.vue'
 import SplitGroup from './split/SplitGroup.vue'
@@ -117,7 +118,7 @@ import { vTooltip } from './ui/tooltip'
 
 const props = defineProps<{
   /**
-   * Editor of the cell.
+   * Editor of the view.
    */
   editorId: number
   /**
@@ -132,7 +133,7 @@ const props = defineProps<{
   /**
    * Database to open the session on, in place of the connection's: the one
    * chosen in the navigator when its choice opens the session. Read once,
-   * when the cell is mounted.
+   * when the view is mounted.
    */
   openingDatabase?: string
 }>()
@@ -157,7 +158,7 @@ const emit = defineEmits<{
 }>()
 
 /**
- * SQL text of the cell.
+ * SQL text of the editor.
  */
 const sql = defineModel<string>('sql', { required: true })
 
@@ -190,12 +191,12 @@ const limitOptions = computed(() =>
 const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
 
 /**
- * Layout of the cell, kept for this editor (`cellLayout.ts`): the heights the
+ * Layout of the view, kept for this editor (`editorLayout.ts`): the heights the
  * user gave the editor and the Pivoteur, in CSS pixels (`null`: their default
  * height, `main.css`), and the folds of the three panels; the Pivoteur starts
  * folded, as a rail.
  */
-const layout = useStoredLayout(cellLayoutKey(props.editorId), {
+const layout = useStoredLayout(editorLayoutKey(props.editorId), {
   editor: null as number | null,
   pivot: null as number | null,
   editorFolded: false as boolean,
@@ -204,7 +205,7 @@ const layout = useStoredLayout(cellLayoutKey(props.editorId), {
 })
 
 /**
- * Panel of the cell.
+ * Panel of the view.
  */
 type CellPanel = 'editor' | 'results' | 'pivot'
 
@@ -214,7 +215,7 @@ type CellPanel = 'editor' | 'results' | 'pivot'
  * @param panel Panel.
  */
 function panelId(panel: CellPanel): string {
-  return `cell-${props.editorId}-${panel}-panel`
+  return `editor-${props.editorId}-${panel}-panel`
 }
 
 /**
@@ -258,7 +259,7 @@ const shownTab = computed(() => state.tabs.find((tab) => tab.id === selectedTab.
  * Mounted views of the tabs, by tab id: the view of the tab shown gives the
  * choices of its export menu.
  */
-const tabViews = shallowReactive(new Map<number, InstanceType<typeof QueryTabView>>())
+const tabViews = shallowReactive(new Map<number, InstanceType<typeof ResultView>>())
 
 /**
  * Expands or collapses the form of a tab's user filter; collapsed, the filter
@@ -685,7 +686,7 @@ async function changeLimit(rowLimit: number): Promise<void> {
 }
 
 // The settings (row limit choices, default limit) are loaded once, when the
-// first cell opens. The saved result tabs are read by the query session.
+// first editor opens. The saved result tabs are read by the query session.
 onMounted(async () => {
   if (settings.settings === null) {
     try {
@@ -718,7 +719,7 @@ watch(
 /**
  * Closes the session on the server at once ("Déconnecter" of the object
  * navigator): its connection to the target server closes, and the WebSocket
- * with it; the cell then shows the session closed, with "Reconnecter".
+ * with it; the view then shows the session closed, with "Reconnecter".
  */
 async function disconnect(): Promise<void> {
   try {
@@ -938,11 +939,11 @@ defineExpose({
             :value="tab.id"
             class="flex min-h-0 flex-1"
           >
-            <query-tab-view
+            <result-view
               :ref="
                 (view) =>
                   view
-                    ? tabViews.set(tab.id, view as InstanceType<typeof QueryTabView>)
+                    ? tabViews.set(tab.id, view as InstanceType<typeof ResultView>)
                     : tabViews.delete(tab.id)
               "
               v-model:filter="tab.filter"

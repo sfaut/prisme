@@ -87,8 +87,8 @@ Rules:
 |---|---|---|
 | `PanelLeftClose` / `PanelLeftOpen` | Fold / unfold the object navigator | its header / its rail (`PanelHeader`, `PanelRail`) |
 | `PanelRightClose` / `PanelRightOpen` | Fold / unfold the data explorer | its header / its rail |
-| `PanelBottomClose` / `PanelBottomOpen` | Fold / unfold the console; fold / unfold the results | console's header / its rail; bar of the result tabs (`QueryCell`) |
-| `PanelTopClose` / `PanelTopOpen` | Fold / unfold the active editor, with its buttons | editors' bar, right of the reopen button (`EditorTabBar`, drawn by `App` for the active `QueryCell`) |
+| `PanelBottomClose` / `PanelBottomOpen` | Fold / unfold the console; fold / unfold the results | console's header / its rail; bar of the result tabs (`EditorView`) |
+| `PanelTopClose` / `PanelTopOpen` | Fold / unfold the active editor, with its buttons | editors' bar, right of the reopen button (`EditorTabBar`, drawn by `App` for the active `EditorView`) |
 | `ChevronRight` / `ChevronDown` | Open / close a node of the tree | object navigator (`NavigatorLine`) |
 | `ChevronsDownUp` / `ChevronsUpDown` | Fold / unfold the whole document | data explorer |
 | `FoldVertical` / `UnfoldVertical` | Fold / unfold the cursor's level | data explorer |
@@ -187,9 +187,9 @@ The interface is built in lengths relative to the root, `:root` being fixed: ste
 
 | Dependency | API in pixels | Variables | Where |
 |---|---|---|---|
-| `reka-ui` 2.11.0 | `side-offset` of the menus and lists (a number, passed to Floating UI). | `--popup-offset` | `UiSelect.vue`, `UiDropdownMenu.vue`, `PivotFilterPanel.vue`, `PivotLayoutPanel.vue` |
-| `reka-ui` 2.11.0 | `estimate-size` of `TreeVirtualizer` (built on `@tanstack/vue-virtual`): height of a line of the tree, to turn the scroll position (in pixels) into the lines to draw. | `--row-height` | `ObjectNavigator.vue` |
-| `reka-ui` 2.11.0 | `estimate-size` of `ListboxVirtualizer`, on the same library: height of a value of a list. | `--row-height` | `PivotValuesList.vue` |
+| `reka-ui` 2.11.0 | `side-offset` of the menus and lists (a number, passed to Floating UI). | `--popup-offset` | `UiSelect.vue`, `UiDropdownMenu.vue`, `PivotFilterPopover.vue`, `PivotLayoutPopover.vue` |
+| `reka-ui` 2.11.0 | `estimate-size` of `TreeVirtualizer` (built on `@tanstack/vue-virtual`): height of a line of the tree, to turn the scroll position (in pixels) into the lines to draw. | `--row-height` | `NavigatorPanel.vue` |
+| `reka-ui` 2.11.0 | `estimate-size` of `ListboxVirtualizer`, on the same library: height of a value of a list. | `--row-height` | `PivotFilterValues.vue` |
 
 The pointer and the scroll position also give pixels. A column of the grid resized with the mouse converts its width into `rem` once, at the time of the drag (`resizedWidth` in `resultGrid.ts`). The result grid turns its scroll position into the rows to draw with the height of a row, read once (`--grid-row-height`, `drawnRange` in `resultGrid.ts`), and places these rows itself in CSS (`calc(var(--grid-row-height) * n)`). The pivot table of the Pivoteur does the same on both axes, with the height of a row of the grid and the widths of its columns of labels (`--grid-row-height`, `--pivot-label-width`, `--pivot-level-width`, in `PivotGrid.vue`). The default width of each of its columns of values is a number of steps of `--spacing`, computed from the lengths of its texts with the width of a character, the room beside the text and the bounds of the estimate of the result grid (`--grid-char-width`, an `em` of the font of the table, which is that of the root, `--grid-cell-room`, `--grid-column-min-width`, `--grid-estimated-max-width`; `defaultSteps` in `pivotWidths.ts`). A width given to one of its columns is a number of steps of `--spacing`: a drag or a fit converts the pixels into steps with the length of a step and the bounds of the grid, read once (`--spacing`, `--grid-column-min-width`, `--grid-fitted-max-width`), and the table draws them in CSS (`calc(var(--spacing) * n)`).
 
@@ -199,7 +199,7 @@ These are workarounds too (see "Workarounds"). Before each release, after the up
 
 ### Splitters
 
-The panels of the layout (object navigator, editors, console, data explorer), of a cell (editor, results, Pivoteur) and the sections of the Pivoteur (columns of the result, zones, table) stand in splitters of Prisme (`web/src/components/split/`): a group (`SplitGroup`) lays its panels (`SplitPanel`) out as a flexbox, with lines between them (`SplitHandle`). A panel takes its default size, a theme length given as it is (`var(--navigator-width)`), or the size the user gave it, in CSS pixels. One panel of a group fills the room the others leave; a group without one leaves the room free, to an element marked `data-split-room` (the cell, whose results fill it and can fold). The code computes only during a drag or a key on a line (`dragSizes` in `splitLayout.ts`, tested by Vitest), from the lengths it measures then; the browser lays the group out the rest of the time, shown or hidden alike.
+The panels of the layout (object navigator, editors, console, data explorer), of the view of an editor (editor, results, Pivoteur) and the sections of the Pivoteur (columns of the result, zones, table) stand in splitters of Prisme (`web/src/components/split/`): a group (`SplitGroup`) lays its panels (`SplitPanel`) out as a flexbox, with lines between them (`SplitHandle`). A panel takes its default size, a theme length given as it is (`var(--navigator-width)`), or the size the user gave it, in CSS pixels. One panel of a group fills the room the others leave; a group without one leaves the room free, to an element marked `data-split-room` (the view of an editor, whose results fill it and can fold). The code computes only during a drag or a key on a line (`dragSizes` in `splitLayout.ts`, tested by Vitest), from the lengths it measures then; the browser lays the group out the rest of the time, shown or hidden alike.
 
 - **Drag**: the line follows the pointer (pointer events captured by the handle), and its position is kept as it is at the release, in CSS pixels, without rounding. Below its smallest size, a panel folds past half the way to its folded size; it takes its room from the panel that fills, down to that one's smallest size.
 - **Keyboard** (pattern "window splitter" of WAI-ARIA, role `separator` with its `aria-value*` in pixels): the arrows move the line by four steps of `--spacing`, Home and End to the smallest and largest size, Enter does what a double click does (fold or unfold the panel, or give back the default width of a section of the Pivoteur).
@@ -226,7 +226,7 @@ To check a change on screen, the scale must be a real one: `Emulation.setDeviceM
 
 ## Pivoteur
 
-The Pivoteur is the pivot table under the results of a cell. Its specification, in French, is the "Cahier des charges du Pivoteur de Prisme" (<https://claude.ai/artifact/UvfFRfmTaFLZ1d7kDPkDSD>): the code cites its references (F-27, C-11, N-05, D25). Its steps are in [TODO-PIVOTER.md](TODO-PIVOTER.md). The behaviours of the SQL engines it relies on are in [SQL-COMPARISON.md](SQL-COMPARISON.md), its measures in [PERFORMANCES.md](PERFORMANCES.md), chapters 9 to 13.
+The Pivoteur is the pivot table under the results of an editor. Its specification, in French, is the "Cahier des charges du Pivoteur de Prisme" (<https://claude.ai/artifact/UvfFRfmTaFLZ1d7kDPkDSD>): the code cites its references (F-27, C-11, N-05, D25). Its steps are in [TODO-PIVOTER.md](TODO-PIVOTER.md). The behaviours of the SQL engines it relies on are in [SQL-COMPARISON.md](SQL-COMPARISON.md), its measures in [PERFORMANCES.md](PERFORMANCES.md), chapters 9 to 13.
 
 The first slice of its lot 1 works on the columns of the result, without the dialect: a level is a column, by its index, with a precision for its dates; a measure is an aggregate of a column, `COUNT(DISTINCT)`, `MIN`, `MAX` and `GROUP_CONCAT` with a precision for its dates too. The expressions come with the next slices.
 
@@ -244,12 +244,12 @@ The engine runs in the page, in Rust compiled to WebAssembly, in a Worker, on th
 | `web/src/components/pivotClient.ts` | Page side of the Worker: one Worker per result, fed once, then asked for tables and windows. |
 | `web/src/components/pivotConfig.ts` | The configuration, in pure functions: placing, naming, default aggregate (`defaultAggregate`), precisions (`precisionChoices`), sorts (`withLevelSort`, `withValueSort`), request and order to the engine (`engineRequest`, `engineOrder`), fitting to a new result (`fittedConfig`). |
 | `web/src/components/pivotLayout.ts` | Header cells, corner and line labels of a window, in the form of the lines (`labelCells`), marks of the sort buttons. |
-| `web/src/components/PivotPanel.vue` | The panel, under the results of `QueryCell.vue`: follows the tab shown, computes, saves. |
-| `web/src/components/PivotZones.vue` | The columns of the result and the zones, by drag and drop and menus, in two sections whose widths the tab keeps (`fields_width`, `zones_width`, in steps of `--spacing`). |
-| `web/src/components/PivotFilterPanel.vue` | The settings of a filter, in a popover of Reka UI beside its element: precision, aggregate, condition, values, level, name. |
-| `web/src/components/PivotConcatPanel.vue` | The settings of a `GROUP_CONCAT`, in a popover of Reka UI beside its measure: `DISTINCT`, keys of the order, separator, `LIMIT` and `OFFSET`, name. |
-| `web/src/components/PivotLayoutPanel.vue` | The layout of the table, in a popover of Reka UI under its button in the header of the panel: form of the lines, repetition of their labels, totals and subtotals of each axis. |
-| `web/src/components/PivotValuesList.vue` | The list of the values of a column or of the periods of a precision, in the settings of a filter: listbox of Reka UI, drawn in sight (`ListboxVirtualizer`). |
+| `web/src/components/PivotPanel.vue` | The panel, under the results of `EditorView.vue`: follows the tab shown, computes, saves. |
+| `web/src/components/PivotSections.vue` | The columns of the result and the zones, by drag and drop and menus, in two sections whose widths the tab keeps (`fields_width`, `zones_width`, in steps of `--spacing`). |
+| `web/src/components/PivotFilterPopover.vue` | The settings of a filter, in a popover of Reka UI beside its element: precision, aggregate, condition, values, level, name. |
+| `web/src/components/PivotConcatPopover.vue` | The settings of a `GROUP_CONCAT`, in a popover of Reka UI beside its measure: `DISTINCT`, keys of the order, separator, `LIMIT` and `OFFSET`, name. |
+| `web/src/components/PivotLayoutPopover.vue` | The layout of the table, in a popover of Reka UI under its button in the header of the panel: form of the lines, repetition of their labels, totals and subtotals of each axis. |
+| `web/src/components/PivotFilterValues.vue` | The list of the values of a column or of the periods of a precision, in the settings of a filter: listbox of Reka UI, drawn in sight (`ListboxVirtualizer`). |
 | `web/src/components/pivotChoices.ts` | The aggregates and the precisions, with their icon, shared by the menus and the settings of a filter. |
 | `web/src/components/PivotGrid.vue` | The table, windowed on both axes (`drawnRange`, `columnRange`), with the resize handles of its columns. |
 | `web/src/components/pivotWidths.ts` | Widths of the columns of the table: columns given a width, by their position (`widenedColumns`), room before a column, column at a distance, tracks of a window, width of a drag or of a fit. |
@@ -287,7 +287,7 @@ The operand of a filter on a measure is checked twice: by the interface, for the
 
 **Dates.** A date is read in the text of its cell, by the civil calendar (`crates/pivot/src/dates.rs`). A cell outside of the calendar (a date without a day in it, a year outside of 0001 to 9999, any other text) stops the computation when a row taken into account holds it; the page reads the value in its own rows for its message, and empties the table, as for every error of calculation. The servers read such dates each in their own way ([SQL-COMPARISON.md](SQL-COMPARISON.md), section 3.12). A cell that holds no date stops the computation (`invalid_date`).
 
-**Tests.** `cargo test -p prisme-store`, `-p prisme-pivot` (the example of the specification, `crates/pivot/src/tests.rs`) and `-p prisme-web-engine` run natively. In `web/`, the specs `pivotConfig`, `pivotLayout`, `pivotClient`, `pivotEngine`, `PivotZones.component`, `PivotFilterPanel.component`, `PivotLayoutPanel.component` and `PivotValuesList.component` run with the other Vitest tests. `node bench/pivot/run.mjs` measures the engine (see "Benchmarks"). After a change of `crates/store`, `crates/pivot` or `crates/web-engine`, see "Working on the interface" for its rebuild.
+**Tests.** `cargo test -p prisme-store`, `-p prisme-pivot` (the example of the specification, `crates/pivot/src/tests.rs`) and `-p prisme-web-engine` run natively. In `web/`, the specs `pivotConfig`, `pivotLayout`, `pivotClient`, `pivotEngine`, `PivotSections.component`, `PivotFilterPopover.component`, `PivotLayoutPopover.component` and `PivotFilterValues.component` run with the other Vitest tests. `node bench/pivot/run.mjs` measures the engine (see "Benchmarks"). After a change of `crates/store`, `crates/pivot` or `crates/web-engine`, see "Working on the interface" for its rebuild.
 
 ## Building the single executable
 

@@ -25,7 +25,7 @@
   level of dates sets its precision, what it keeps of them (`precisionChoices`),
   and so does that of `COUNT(DISTINCT)`, `MIN`, `MAX` and `GROUP_CONCAT` of dates
   (`takesPrecision`). A measure that becomes a `GROUP_CONCAT` opens its settings
-  beside it (`PivotConcatPanel.vue`); its menu opens them again ("Réglages…").
+  beside it (`PivotConcatPopover.vue`); its menu opens them again ("Réglages…").
   A column can be placed several times, in a zone and on both axes: dropping it
   from the list always adds an element, dragging an element moves it.
   An element takes a name by its menu ("Nommer…") or a double click on its label
@@ -34,7 +34,7 @@
 
   A column or a measure dropped into the filters, or a measure by its menu
   ("Filtrer sur cette mesure"), gives a filter, whose settings open beside it
-  (`PivotFilterPanel.vue`, F-21, F-44); its menu opens them again ("Réglages…").
+  (`PivotFilterPopover.vue`, F-21, F-44); its menu opens them again ("Réglages…").
   A `GROUP_CONCAT` gives no filter (`filterable`): the filters refuse its drop.
   The logic of the zones is in `pivotConfig.ts`.
 -->
@@ -102,8 +102,8 @@ import {
   withSectionWidth,
 } from './pivotConfig'
 import type { PivotMeasure } from './pivotEngine'
-import PivotConcatPanel from './PivotConcatPanel.vue'
-import PivotFilterPanel from './PivotFilterPanel.vue'
+import PivotConcatPopover from './PivotConcatPopover.vue'
+import PivotFilterPopover from './PivotFilterPopover.vue'
 import { dropPosition } from './resultGrid'
 import SplitGroup from './split/SplitGroup.vue'
 import SplitHandle from './split/SplitHandle.vue'
@@ -977,7 +977,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
       </div>
     </split-panel>
   </split-group>
-  <pivot-filter-panel
+  <pivot-filter-popover
     v-if="panel && panelFilter"
     :key="`filters-${panel.index}`"
     :anchor="panel.anchor"
@@ -991,7 +991,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
     @name="nameAtOnce({ zone: 'filters', index: panel?.index ?? 0 })"
     @close="panel = null"
   />
-  <pivot-concat-panel
+  <pivot-concat-popover
     v-if="panel && panelConcat"
     :key="`measures-${panel.index}`"
     :anchor="panel.anchor"

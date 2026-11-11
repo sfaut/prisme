@@ -4,7 +4,7 @@ import { type VueWrapper, flushPromises, mount } from '@vue/test-utils'
 import { PopoverRoot } from 'reka-ui'
 import { nextTick } from 'vue'
 
-import PivotConcatPanel from '../PivotConcatPanel.vue'
+import PivotConcatPopover from '../PivotConcatPopover.vue'
 import type { PivotConcat, PivotConfig } from '../pivotConfig'
 import UiSelect from '../ui/UiSelect.vue'
 
@@ -39,7 +39,7 @@ async function mountPanel(concat: PivotConcat = { separator: ', ' }) {
   })
   const closed = vi.fn<() => void>()
   const named = vi.fn<() => void>()
-  const mounted = mount(PivotConcatPanel, {
+  const mounted = mount(PivotConcatPopover, {
     attachTo: document.body,
     props: {
       anchor,
@@ -107,7 +107,7 @@ function button(label: string): HTMLButtonElement {
   )!
 }
 
-describe('PivotConcatPanel', () => {
+describe('PivotConcatPopover', () => {
   it('names itself by the expression of its measure', async () => {
     await mountPanel()
     const content = document.body.querySelector('[aria-label^="Réglages de"]')

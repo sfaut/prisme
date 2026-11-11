@@ -5,7 +5,7 @@
   button that folds the panel towards its edge. The button stands where
   the folded panel's rail shows its icon: at the right end of the header,
   after the actions, as the fold buttons of the editor and of the results
-  (`QueryCell.vue`); first, left of the title, for the panel on the right,
+  (`EditorView.vue`); first, left of the title, for the panel on the right,
   which folds towards the right edge. The folded panel leaves a rail on its
   edge (`PanelRail.vue`), with the matching icon.
   The button and the title hold a first line of a control's height, at the

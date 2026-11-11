@@ -8,7 +8,7 @@
     expands or collapses the filter's form. Collapsed, the filter stays
     applied; the button shows it in the primary color.
   - Export, when the tab shows a grid: its menu, given by the view of the
-    tab (`QueryTabView.vue`), groups its choices by destination. In a file,
+    tab (`ResultView.vue`), groups its choices by destination. In a file,
     the selection or the displayed result as CSV or as a CTE, or the full
     result; in the clipboard or in the editor, as a CTE.
 -->

@@ -1,6 +1,6 @@
 /**
  * Choices the settings of the Pivoteur share, with their icon: the menu of a measure and of a level
- * (`PivotZones.vue`), and the panel of a filter (`PivotFilterPanel.vue`); the display of a measure
+ * (`PivotSections.vue`), and the panel of a filter (`PivotFilterPopover.vue`); the display of a measure
  * as a share of a total and its digits.
  */
 

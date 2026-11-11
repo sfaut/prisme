@@ -8,7 +8,7 @@
   closes the session of the active editor (emits `disconnect`), enabled once
   that session is ready on this source. Shared by the lines of the
   tree and by the lines pinned at the top of the tree while it scrolls
-  (`ObjectNavigator.vue`), which only differ by their container.
+  (`NavigatorPanel.vue`), which only differ by their container.
 -->
 <script setup lang="ts">
 import {

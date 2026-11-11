@@ -1,5 +1,5 @@
 /**
- * Data explorer: the panel on the right (`DataExplorer.vue`) that shows the
+ * Data explorer: the panel on the right (`ExplorerPanel.vue`) that shows the
  * JSON or XML values selected in a result grid, indented and foldable.
  *
  * The panel follows the grid on screen, that of the active result tab of the

@@ -153,7 +153,7 @@ afterEach(() => {
 describe("App, editors' bar", () => {
   it('folds and unfolds the active editor by its button', async () => {
     const wrapper = mount(App, {
-      global: { stubs: { QueryCell: FoldingCell, ObjectNavigator: Navigator } },
+      global: { stubs: { EditorView: FoldingCell, NavigatorPanel: Navigator } },
     })
     useConnectionsStore().connections = [{ id: 1, name: 'local' } as ConnectionSummary]
     const button = () => wrapper.find('[aria-label$="plier l’éditeur"]')
@@ -169,7 +169,7 @@ describe("App, editors' bar", () => {
 describe('App, closed session', () => {
   it('reopens the closed session when its source is chosen again in the navigator', async () => {
     const wrapper = mount(App, {
-      global: { stubs: { QueryCell: ClosedCell, ObjectNavigator: Navigator } },
+      global: { stubs: { EditorView: ClosedCell, NavigatorPanel: Navigator } },
     })
     useConnectionsStore().connections = [{ id: 1, name: 'local' } as ConnectionSummary]
     await vi.waitFor(() => expect(openings).toEqual([null]))
@@ -181,7 +181,7 @@ describe('App, closed session', () => {
 
   it('opens the session on the chosen database at once, without USE after', async () => {
     const wrapper = mount(App, {
-      global: { stubs: { QueryCell: ClosedCell, ObjectNavigator: Navigator } },
+      global: { stubs: { EditorView: ClosedCell, NavigatorPanel: Navigator } },
     })
     useConnectionsStore().connections = [{ id: 1, name: 'local' } as ConnectionSummary]
     await vi.waitFor(() => expect(openings).toEqual([null]))
@@ -212,7 +212,7 @@ describe('App, open transaction', () => {
   it('asks for a confirmation before disconnecting the session', async () => {
     const wrapper = mount(App, {
       attachTo: document.body,
-      global: { stubs: { QueryCell: TransactionCell, ObjectNavigator: Navigator } },
+      global: { stubs: { EditorView: TransactionCell, NavigatorPanel: Navigator } },
     })
     useConnectionsStore().connections = [{ id: 1, name: 'local' } as ConnectionSummary]
     await vi.waitFor(() => expect(transactionCells).toBe(1))
@@ -233,7 +233,7 @@ describe('App, open transaction', () => {
   it('keeps the source of the editor when the change is not confirmed', async () => {
     const wrapper = mount(App, {
       attachTo: document.body,
-      global: { stubs: { QueryCell: TransactionCell, ObjectNavigator: Navigator } },
+      global: { stubs: { EditorView: TransactionCell, NavigatorPanel: Navigator } },
     })
     useConnectionsStore().connections = [
       { id: 1, name: 'local' } as ConnectionSummary,

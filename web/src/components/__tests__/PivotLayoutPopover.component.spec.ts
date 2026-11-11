@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { type VueWrapper, flushPromises, mount } from '@vue/test-utils'
 
-import PivotLayoutPanel from '../PivotLayoutPanel.vue'
+import PivotLayoutPopover from '../PivotLayoutPopover.vue'
 import { type PivotConfig, type PivotLevel, engineLayout } from '../pivotConfig'
 import UiSelect from '../ui/UiSelect.vue'
 
@@ -35,7 +35,7 @@ afterEach(() => {
  */
 async function openPanel(start: PivotConfig) {
   const state = { config: start }
-  const mounted = mount(PivotLayoutPanel, {
+  const mounted = mount(PivotLayoutPopover, {
     attachTo: document.body,
     props: {
       config: start,
@@ -108,7 +108,7 @@ const LEVELS: PivotConfig = {
   filters: [],
 }
 
-describe('PivotLayoutPanel', () => {
+describe('PivotLayoutPopover', () => {
   it('starts on the compact form, the repetition inactive, every total shown', async () => {
     const { mounted } = await openPanel(LEVELS)
     const select = mounted.findComponent(UiSelect).props() as unknown as { modelValue: string }

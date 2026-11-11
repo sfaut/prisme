@@ -7,7 +7,7 @@
   a filter on a measure, its aggregate, its precision for `COUNT(DISTINCT)`, `MIN`
   and `MAX` of dates, its condition and its level. The condition
   shows what it asks: a value, two bounds, the list of the values of the column
-  (`PivotValuesList.vue`) or nothing. A choice or a tick applies at once; a value
+  (`PivotFilterValues.vue`) or nothing. A choice or a tick applies at once; a value
   typed applies at Enter or on leaving its field, which refuses a value that cannot
   compare, showing why, and changes nothing. Escape closes the panel and forgets
   what is being typed; a click outside applies it. A filter keeps the values typed
@@ -64,7 +64,7 @@ import {
   summable,
   takesPrecision,
 } from './pivotConfig'
-import PivotValuesList from './PivotValuesList.vue'
+import PivotFilterValues from './PivotFilterValues.vue'
 import { MENU_PANEL } from './ui/menuItem'
 import UiButton from './ui/UiButton.vue'
 import UiInput from './ui/UiInput.vue'
@@ -522,7 +522,7 @@ function onEscape(): void {
           "
           class="field"
         >
-          <pivot-values-list
+          <pivot-filter-values
             :key="columnFilter.precision"
             :label="names[columnFilter.column] ?? '?'"
             :read="() => readValues(columnFilter?.column ?? -1, columnFilter?.precision ?? 'none')"

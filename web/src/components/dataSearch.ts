@@ -1,5 +1,5 @@
 /**
- * Search of the data explorer (`DataExplorer.vue`): a JSONPath expression
+ * Search of the data explorer (`ExplorerPanel.vue`): a JSONPath expression
  * (RFC 9535) on a JSON document, an XPath 1.0 expression on an XML document.
  *
  * The search runs on the document shown, the value alone or the values

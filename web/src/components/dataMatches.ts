@@ -1,6 +1,6 @@
 /**
  * Highlight of the search results in the editor of the data explorer
- * (`DataExplorer.vue`): every node found, and the current one more strongly.
+ * (`ExplorerPanel.vue`): every node found, and the current one more strongly.
  * Going to a result unfolds what hides it and scrolls to it.
  *
  * The places come from the search (`dataSearch.ts`), for the document in the

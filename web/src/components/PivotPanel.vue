@@ -1,5 +1,5 @@
 <!--
-  Panel of the Pivoteur, under the results of a cell (`QueryCell.vue`,
+  Panel of the Pivoteur, under the results of an editor (`EditorView.vue`,
   F-01): a pivot table of the result shown (`shownResult`), after the filter
   of its grid (C-01). It follows the result tab shown, each tab keeping its
   own configuration (F-04), saved with the tab: it survives a page reload, a
@@ -7,7 +7,7 @@
   (`tab_pivot.rs`). When the columns of the result change, the configuration
   follows them by name, and the elements of a lost column leave it
   (`fittedConfig`), which also drops the precision of a column that holds no
-  dates any more. The columns of the result and the zones (`PivotZones.vue`),
+  dates any more. The columns of the result and the zones (`PivotSections.vue`),
   then the table (`PivotGrid.vue`), which takes the remaining width, with its
   status bar: rows taken into account, groups, duration of the computation
   (F-06). The widths of the sections are those of the tab shown.
@@ -44,9 +44,9 @@ import {
 
 import { detectContent } from './contentKind'
 import PanelHeader from './PanelHeader.vue'
-import PivotLayoutPanel from './PivotLayoutPanel.vue'
+import PivotLayoutPopover from './PivotLayoutPopover.vue'
 import PivotGrid from './PivotGrid.vue'
-import PivotZones from './PivotZones.vue'
+import PivotSections from './PivotSections.vue'
 import { PivotClient, type PivotTable } from './pivotClient'
 import {
   type DatePrecision,
@@ -99,7 +99,7 @@ const props = defineProps<{
    */
   open: boolean
   /**
-   * Connection of the cell.
+   * Connection of the editor.
    */
   connectionId: number
 }>()
@@ -603,7 +603,7 @@ const groupsText = computed(() => {
   <section class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-4 pt-1 pb-3" aria-label="Pivoteur">
     <panel-header title="Pivoteur" side="bottom" @collapse="emit('collapse')">
       <template v-if="analysable && !receiving" #actions>
-        <pivot-layout-panel v-model:config="config" :names="result?.columns ?? []" />
+        <pivot-layout-popover v-model:config="config" :names="result?.columns ?? []" />
       </template>
     </panel-header>
     <p v-if="!analysable" class="text-fg-secondary">Rien à analyser</p>
@@ -612,7 +612,7 @@ const groupsText = computed(() => {
       En attente de la fin de la requête…
     </p>
     <!-- Its sections take the widths of each tab as they start. -->
-    <pivot-zones
+    <pivot-sections
       v-else
       :key="tab?.id"
       v-model:config="config"
@@ -663,6 +663,6 @@ const groupsText = computed(() => {
           </template>
         </ui-status-bar>
       </div>
-    </pivot-zones>
+    </pivot-sections>
   </section>
 </template>

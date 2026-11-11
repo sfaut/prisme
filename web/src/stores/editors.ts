@@ -3,12 +3,12 @@
  *
  * Everything is saved on the server side: the text as it is typed (with a
  * delay), the name, the connection and the order as soon as they change. When
- * the page opens, the editors come back (each cell reads its saved result
+ * the page opens, the editors come back (each editor view reads its saved result
  * tabs again); the active editor is remembered in the browser. There is
  * always at least one open editor.
  *
  * The store also knows which editors have a transaction open on their
- * session, as their cells tell it: closing such a session rolls the
+ * session, as their views tell it: closing such a session rolls the
  * transaction back, which the interface confirms first.
  */
 
@@ -16,7 +16,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { clearPending, markPending } from '@/api/sync'
-import { forgetCellLayout } from '@/components/cellLayout'
+import { forgetEditorLayout } from '@/components/editorLayout'
 
 import {
   closeEditor,
@@ -114,7 +114,7 @@ export const useEditorsStore = defineStore('editors', () => {
   const closed = ref<ClosedEditor[]>([])
 
   /**
-   * Is a transaction open on each editor's session? Told by its cell.
+   * Is a transaction open on each editor's session? Told by its view.
    */
   const transactions = ref<Record<number, boolean>>({})
 
@@ -280,7 +280,7 @@ export const useEditorsStore = defineStore('editors', () => {
 
   /**
    * Closes an editor (can be reopened for 24 hours) and forgets the layout of
-   * its cell; its neighbour becomes active. The last editor closed is
+   * its view; its neighbour becomes active. The last editor closed is
    * replaced by an empty editor.
    *
    * @param id Id of the editor.
@@ -290,7 +290,7 @@ export const useEditorsStore = defineStore('editors', () => {
       await save(id)
     }
     await closeEditor(id)
-    forgetCellLayout(id)
+    forgetEditorLayout(id)
     const index = editors.value.findIndex((editor) => editor.id === id)
     editors.value = editors.value.filter((editor) => editor.id !== id)
     if (editors.value.length === 0) {
@@ -320,7 +320,7 @@ export const useEditorsStore = defineStore('editors', () => {
   }
 
   /**
-   * Reopens a closed editor and makes it active; its cell will read its result tabs again.
+   * Reopens a closed editor and makes it active; its view will read its result tabs again.
    *
    * @param id Id of the editor.
    */

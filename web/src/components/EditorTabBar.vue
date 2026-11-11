@@ -1,17 +1,17 @@
 <!--
   Bar of the editor tabs, at the very top of the work area: one tab per open
   SQL editor, each with its connection, its session and its result tabs
-  (`QueryCell`).
+  (`EditorView`).
 
   - Label: the name given by the user, otherwise the name of the editor's
-    connection; a double click renames it (`TabLabel`).
+    connection; a double click renames it (`DocumentTabLabel`).
   - Cross (or middle click): asks to close the editor (`close`); it can
     be reopened for 24 hours from the "Rouvrir" menu.
   - Dragging a tab moves it, like a column of the grid.
   - "+" opens a new editor, on the connection of the active editor.
   - At the right end, the button that reopens a closed editor, then the
     actions of the active editor (`actions` slot: its fold button, drawn by
-    `App.vue` for the active cell).
+    `App.vue` for the active view).
 
   To place in the Reka UI `TabsRoot` that holds the editors (`App.vue`).
 -->
@@ -24,7 +24,7 @@ import { useConnectionsStore } from '@/stores/connections'
 import { type EditorEntry, useEditorsStore } from '@/stores/editors'
 
 import DocumentTab from './DocumentTab.vue'
-import TabLabel from './TabLabel.vue'
+import DocumentTabLabel from './DocumentTabLabel.vue'
 import { movedItems, useTabDrag } from './tabDrag'
 import UiButton from './ui/UiButton.vue'
 import UiDropdownMenu from './ui/UiDropdownMenu.vue'
@@ -102,7 +102,7 @@ const reopenItems = computed<MenuItem[]>(() => {
         close-tooltip="Fermer l’éditeur (rouvrable pendant 24 heures)"
         @close="emit('close', editor.id)"
       >
-        <tab-label
+        <document-tab-label
           :name="editor.name === '' ? null : editor.name"
           :default-label="defaultLabel(editor.connectionId)"
           @rename="(name) => rename(editor, name)"
