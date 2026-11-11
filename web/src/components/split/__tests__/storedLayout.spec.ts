@@ -48,4 +48,10 @@ describe('useStoredLayout', () => {
     expect(window.localStorage.getItem('unkept')).toBeNull()
     forgetStoredLayout('started')
   })
+
+  it('keeps a size kept at its default, whatever the default given', () => {
+    window.localStorage.setItem('defaulted', '{"size":null}')
+    expect(useStoredLayout('defaulted', { size: 300 as number | null }).size).toBeNull()
+    forgetStoredLayout('defaulted')
+  })
 })

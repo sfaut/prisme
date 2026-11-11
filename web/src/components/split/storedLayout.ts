@@ -41,8 +41,11 @@ export function useStoredLayout<Layout extends StoredLayout>(
       for (const name of Object.keys(defaults) as (keyof Layout & string)[]) {
         const value = (saved as Record<string, unknown>)[name]
         const fold = typeof defaults[name] === 'boolean'
+        // A size kept as `null` is the default size of the theme, chosen as
+        // such: it stays, whatever the default given here.
         if (
           (fold && typeof value === 'boolean') ||
+          (!fold && value === null) ||
           (!fold && typeof value === 'number' && Number.isFinite(value) && value > 0)
         ) {
           layout[name] = value as Layout[typeof name]
