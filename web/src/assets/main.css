@@ -169,8 +169,8 @@
   --pivot-label-width: --spacing(60);
   --pivot-level-width: --spacing(40);
 
-  /* Sections of the Pivoteur (`PivotSections.vue`), in splitters of Reka UI
-     that read them in pixels: default and smallest width of the columns of
+  /* Sections of the Pivoteur (`PivotSections.vue`), in a splitter of
+     Prisme (`split/`): default and smallest width of the columns of
      the result and of the zones, each with the room between its content and
      the line of a splitter (two steps on each side); the table takes the
      rest. */

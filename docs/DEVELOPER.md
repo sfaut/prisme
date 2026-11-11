@@ -251,7 +251,7 @@ The engine runs in the page, in Rust compiled to WebAssembly, in a Worker, on th
 | `web/src/components/pivot/pivotConfig.ts` | The configuration, in pure functions: placing, naming, default aggregate (`defaultAggregate`), precisions (`precisionChoices`), sorts (`withLevelSort`, `withValueSort`), request and order to the engine (`engineRequest`, `engineOrder`), fitting to a new result (`fittedConfig`). |
 | `web/src/components/pivot/pivotLayout.ts` | Header cells, corner and line labels of a window, in the form of the lines (`labelCells`), marks of the sort buttons. |
 | `web/src/components/pivot/PivotPanel.vue` | The panel, under the results of `EditorView.vue`: follows the tab shown, computes, saves. |
-| `web/src/components/pivot/PivotSections.vue` | The columns of the result and the zones, by drag and drop and menus, in two sections whose widths the tab keeps (`fields_width`, `zones_width`, in steps of `--spacing`). |
+| `web/src/components/pivot/PivotSections.vue` | The columns of the result and the zones, by drag and drop and menus, in two sections whose widths the tab keeps (`fields_px`, `zones_px`, in CSS pixels). |
 | `web/src/components/pivot/PivotFilterPopover.vue` | The settings of a filter, in a popover of Reka UI beside its element: precision, aggregate, condition, values, level, name. |
 | `web/src/components/pivot/PivotConcatPopover.vue` | The settings of a `GROUP_CONCAT`, in a popover of Reka UI beside its measure: `DISTINCT`, keys of the order, separator, `LIMIT` and `OFFSET`, name. |
 | `web/src/components/pivot/PivotLayoutPopover.vue` | The layout of the table, in a popover of Reka UI under its button in the header of the panel: form of the lines, repetition of their labels, totals and subtotals of each axis. |
