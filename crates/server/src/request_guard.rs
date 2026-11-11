@@ -6,18 +6,27 @@
 //! another site can reach it through DNS rebinding, a name that first points
 //! elsewhere and then to `127.0.0.1`: the browser then sends the other site's
 //! name in the `Host` header. The guard therefore accepts a request only if
-//! its `Host` is a loopback name, and, when the browser sends an `Origin`
-//! header, if that origin is the same host (`http://localhost:8484` for
-//! `Host: localhost:8484`). The Vite server of the development interface keeps
-//! the browser's `Host`, so it passes the same check.
+//! its `Host` names this machine, and, when the browser sends an `Origin`
+//! header, if that origin is the same host (`http://prisme.localhost:10000`
+//! for `Host: prisme.localhost:10000`). The Vite server of the development
+//! interface keeps the browser's `Host`, so it passes the same check.
+//!
+//! The names of this machine are its loopback addresses, `localhost` and
+//! every name under `.localhost` (`prisme.localhost`): RFC 6761 reserves them
+//! for the loopback, which Chrome, Edge and Firefox resolve them to without
+//! asking any DNS server. Each tool of the machine can so have its own name,
+//! hence its own origin in the browser (local storage, cookies).
 
 use axum::extract::Request;
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
-/// Loopback names accepted in the `Host` header, without the port.
-const LOCAL_HOSTS: &[&str] = &["localhost", "127.0.0.1", "[::1]"];
+/// Loopback addresses accepted in the `Host` header, without the port.
+const LOOPBACK_ADDRESSES: &[&str] = &["127.0.0.1", "[::1]"];
+
+/// Name reserved for this machine, alone or as the end of a longer name.
+const LOCALHOST: &str = "localhost";
 
 /// Passes the request on if it comes from this machine, refuses it otherwise.
 pub async fn local_only(request: Request, next: Next) -> Response {
@@ -28,8 +37,8 @@ pub async fn local_only(request: Request, next: Next) -> Response {
     }
 }
 
-/// Tells whether the headers come from this machine: the `Host` is a loopback
-/// name, and the `Origin`, if present, is that same host over `http`. A
+/// Tells whether the headers come from this machine: the `Host` names this
+/// machine, and the `Origin`, if present, is that same host over `http`. A
 /// request without `Host` is refused, as HTTP/1.1 requires it.
 fn is_local(headers: &HeaderMap) -> bool {
     let Some(host) = headers
@@ -38,7 +47,7 @@ fn is_local(headers: &HeaderMap) -> bool {
     else {
         return false;
     };
-    if !LOCAL_HOSTS.contains(&host_name(host)) {
+    if !names_this_machine(host_name(host)) {
         return false;
     }
     match headers.get(header::ORIGIN) {
@@ -49,6 +58,16 @@ fn is_local(headers: &HeaderMap) -> bool {
             .and_then(|origin| origin.strip_prefix("http://"))
             .is_some_and(|origin_host| origin_host == host),
     }
+}
+
+/// Tells whether a host name, without its port, names this machine: a
+/// loopback address, `localhost` or a name under `.localhost`, in any case.
+fn names_this_machine(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    LOOPBACK_ADDRESSES.contains(&name.as_str())
+        || name
+            .strip_suffix(LOCALHOST)
+            .is_some_and(|start| start.is_empty() || start.ends_with('.'))
 }
 
 /// Name of a `Host` value without its port: `localhost:8484` gives
@@ -93,12 +112,25 @@ mod tests {
     }
 
     #[test]
+    fn accepts_the_names_under_localhost() {
+        assert!(is_local(&headers(Some("prisme.localhost:10000"), None)));
+        assert!(is_local(&headers(Some("a.b.localhost:5173"), None)));
+        assert!(is_local(&headers(Some("Prisme.LOCALHOST:10000"), None)));
+        assert!(is_local(&headers(
+            Some("prisme.localhost:5173"),
+            Some("http://prisme.localhost:5173")
+        )));
+    }
+
+    #[test]
     fn refuses_other_hosts_and_missing_host() {
         assert!(!is_local(&headers(Some("evil.example:8484"), None)));
         assert!(!is_local(&headers(
             Some("localhost.evil.example:8484"),
             None
         )));
+        assert!(!is_local(&headers(Some("evillocalhost:8484"), None)));
+        assert!(!is_local(&headers(Some("localhost.:8484"), None)));
         assert!(!is_local(&headers(Some("192.168.1.10:8484"), None)));
         assert!(!is_local(&headers(None, None)));
     }
