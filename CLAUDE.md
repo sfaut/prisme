@@ -67,13 +67,14 @@ In development, Vite serves the interface and forwards the API to `axum`. In pro
 
 ## Git
 
-Exception to the general "read-only" directive: in this repository, Claude Code makes the commits.
+Exception to the general "read-only" directive: in this repository, Claude Code makes the commits, and creates and deletes local branches.
 
 - One commit per completed task.
 - **One commit = one reason for change**, that is a single reason to modify the repository. A reason can touch several files. Two distinct reasons make two commits, even in a single file: for example, a new working rule in `CLAUDE.md` and the documentation of the tests are two commits. The kind of file (documentation, code) does not define the reason.
 - Method: make the changes of a single reason, commit, then move on to the next reason. Before each commit, review `git diff --cached`: each line must serve the reason stated by the message.
 - Messages in English, following the Git convention: the subject is in the imperative mood ("Add…", "Fix…", "Document…"), starts with a capital letter, has no trailing period, and says what the change does, without a file, crate or module prefix ("README: …"): the files touched are visible in the commit.
-- Otherwise read-only: no push, no branch creation or deletion, no history rewriting. Only exception: publishing a version, below (push of `master` and of the tag, deletion of the merged branches).
+- Local branches: Claude Code creates and deletes them, with English names. A branch that is not merged into `master` is only deleted with the maintainer's agreement, as its commits would be lost.
+- Otherwise read-only: no push, no remote branch creation or deletion, no history rewriting. Only exception: publishing a version, below (push of `master` and of the tag, deletion of the merged branches, local and remote).
 
 ### Handling GitHub tickets
 
