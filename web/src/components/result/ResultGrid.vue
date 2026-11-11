@@ -7,10 +7,11 @@
     (`ResultFilter.vue`, `ResultTabActions.vue`).
   - Kept rows: the grid exposes how many rows the filter keeps
     (`keptCount`), which the result tab shows in its status bar.
-  - Data explorer: the grid on screen (`displayed`) gives the panel on the
-    right the selected values of a JSON or XML column (`explorer`
-    store): a column of type `JSON`, or a text column that holds JSON or
-    XML. The explorer opens from its rail, on the right edge of the window.
+  - Data explorer: the grid on screen (`displayed`) gives the explorer of
+    its editor (`EDITOR_ID`, given by `EditorView`) the selected values of a
+    JSON or XML column (`explorer` store): a column of type `JSON`, or a
+    text column that holds JSON or XML. The explorer opens from its rail,
+    on the right edge of the editor's tab.
   - Row numbers: they stay visible on the left when the grid scrolls
     sideways, as the header stays on top. Their column looks like the gutter
     of the SQL editor (code font, size, padding, alignment) and takes the
@@ -67,6 +68,7 @@ import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Cell, UserFilter } from '@/api/querySession'
 import { cssPixels } from '@/utils/cssLength'
 import { type ExplorerContent, useExplorerStore } from '@/stores/explorer'
+import { injectEditorId } from '@/components/editor/editorId'
 
 import {
   type GridFrame,
@@ -715,6 +717,11 @@ function onKeydown(event: KeyboardEvent): void {
 const explorer = useExplorerStore()
 
 /**
+ * Id of the grid's editor, whose data explorer it gives its selection to.
+ */
+const editorId = injectEditorId()
+
+/**
  * Identity of the grid with the data explorer.
  */
 const gridId = Symbol('result grid')
@@ -740,21 +747,22 @@ function explorerContent(): ExplorerContent {
     : { state: 'scalar', column }
 }
 
-// The grid on screen keeps the open explorer up to date: selection, new rows
-// (a sorted view moves them), detected content. Off screen, it withdraws.
+// The grid on screen keeps the open explorer of its editor up to date:
+// selection, new rows (a sorted view moves them), detected content. Off
+// screen, it withdraws.
 watch(
-  [() => props.displayed, () => explorer.open, selection, view, contentKinds],
+  [() => props.displayed, () => explorer.layoutOf(editorId).open, selection, view, contentKinds],
   () => {
     if (!props.displayed) {
-      explorer.release(gridId)
-    } else if (explorer.open) {
-      explorer.show(gridId, explorerContent())
+      explorer.release(editorId, gridId)
+    } else if (explorer.layoutOf(editorId).open) {
+      explorer.show(editorId, gridId, explorerContent())
     }
   },
   { immediate: true },
 )
 
-onBeforeUnmount(() => explorer.release(gridId))
+onBeforeUnmount(() => explorer.release(editorId, gridId))
 
 /**
  * Number of rows the user filter keeps, among those examined so far.

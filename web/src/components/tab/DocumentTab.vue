@@ -3,8 +3,9 @@
   bar of each editor (`EditorView.vue`). Both bars look and behave the same:
 
   - Look: the active tab is filled (`surface-raised`), its text darker;
-    the line under the bar is drawn by the bar itself. The bottom edge of a
-    tab stays free for the progress bar of the result tabs.
+    the line under the bar is drawn by the bar itself (by the line of the
+    Pivoteur's handle, against it, under a folded result list). The bottom
+    edge of a tab stays free for the progress bar of the result tabs.
   - Height: its padding around its small buttons, taller than its text. A
     folded result list keeps that height (`--tab-bar-height`, `main.css`),
     which follows any change of the padding or of the buttons.

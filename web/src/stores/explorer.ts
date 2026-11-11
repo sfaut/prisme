@@ -1,23 +1,29 @@
 /**
- * Data explorer: the panel on the right (`ExplorerPanel.vue`) that shows the
- * JSON or XML values selected in a result grid, indented and foldable.
+ * Data explorers: the panels on the right of the editors (`ExplorerPanel.vue`)
+ * that show the JSON or XML values selected in a result grid, indented and
+ * foldable. Each editor has its own.
  *
- * The panel follows the grid on screen, that of the active result tab of the
- * active editor: this grid publishes its selection here (`show`), and
- * withdraws it when it leaves the screen (`release`). The panel is closed
- * when the application starts; while it is closed, the grids publish
+ * The explorer of an editor follows its grid on screen, that of its active
+ * result tab while the editor is active: this grid publishes its selection
+ * here, for its editor (`show`), and withdraws it when it leaves the screen
+ * (`release`). While the explorer of an editor is closed, its grids publish
  * nothing.
  *
- * Its width and the wrapping of long lines (`wrap`) are display preferences
- * specific to this machine, kept in the browser's local storage
- * (`prisme.explorer.width`, `prisme.explorer.wrap`): the default width and no
- * wrapping by default, and when storage is unavailable.
+ * The layout of the explorer of each editor (open or closed, its width) is a
+ * display preference specific to this machine, kept in the browser's local
+ * storage (`prisme.explorer.layout.<editor>`), forgotten when the editor
+ * closes (`forget`): closed by default. The last width given
+ * (`prisme.explorer.width`) starts an editor without a layout of its own; the
+ * wrapping of long lines (`wrap`, `prisme.explorer.wrap`) is common to all
+ * the explorers, off by default. When storage is unavailable, the defaults
+ * apply.
  */
 
 import { defineStore } from 'pinia'
-import { ref, shallowRef, watch } from 'vue'
+import { type EffectScope, effectScope, ref, shallowReactive, watch } from 'vue'
 
 import type { DataCell } from '@/components/explorer/dataFormat'
+import { forgetStoredLayout, useStoredLayout } from '@/components/split/storedLayout'
 import { loadFlag, loadSize, saveFlag, saveSize } from '@/utils/storedValues'
 
 /**
@@ -59,9 +65,38 @@ export function sameContent(a: ExplorerContent, b: ExplorerContent): boolean {
 }
 
 /**
- * Key of the width of the panel in local storage.
+ * Key of the last width given to an explorer in local storage.
  */
 const WIDTH_KEY = 'prisme.explorer.width'
+
+/**
+ * Key of the layout of an editor's explorer in local storage.
+ *
+ * @param editorId Id of the editor.
+ */
+export function explorerLayoutKey(editorId: number): string {
+  return `prisme.explorer.layout.${editorId}`
+}
+
+/**
+ * Layout of an editor's explorer.
+ */
+export type ExplorerLayout = {
+  /**
+   * Is the explorer open?
+   */
+  open: boolean
+  /**
+   * Width given by the user, in CSS pixels; `null`: the default width of the
+   * theme.
+   */
+  width: number | null
+}
+
+/**
+ * Content of an explorer without a grid that publishes.
+ */
+const NOTHING: ExplorerContent = { state: 'none' }
 
 /**
  * Key of the wrapping preference in local storage.
@@ -70,58 +105,106 @@ const WRAP_KEY = 'prisme.explorer.wrap'
 
 export const useExplorerStore = defineStore('explorer', () => {
   /**
-   * Is the panel open?
-   */
-  const open = ref(false)
-
-  /**
-   * Width given by the user, in CSS pixels; `null`: the default width of the
-   * theme.
-   */
-  const width = ref(loadSize(WIDTH_KEY))
-  watch(width, (value) => saveSize(WIDTH_KEY, value))
-
-  /**
    * Are long lines wrapped to the width of the panel?
    */
   const wrap = ref(loadFlag(WRAP_KEY, false))
   watch(wrap, (value) => saveFlag(WRAP_KEY, value))
 
   /**
-   * Content published by the grid on screen.
+   * Layouts read so far, by editor, with the scope of the watchers that save
+   * them.
    */
-  const content = shallowRef<ExplorerContent>({ state: 'none' })
+  const layouts = new Map<number, { layout: ExplorerLayout; scope: EffectScope }>()
 
   /**
-   * Grid that published the content, `null` if none.
-   */
-  let owner: symbol | null = null
-
-  /**
-   * Publishes the content of a grid on screen.
+   * Layout of an editor's explorer, read from local storage the first time.
    *
+   * @param editorId Id of the editor.
+   */
+  function layoutOf(editorId: number): ExplorerLayout {
+    const known = layouts.get(editorId)
+    if (known) {
+      return known.layout
+    }
+    const scope = effectScope(true)
+    const layout = scope.run(() => {
+      // Kept from its first reading: it no longer follows the last width given.
+      const kept = useStoredLayout<ExplorerLayout>(
+        explorerLayoutKey(editorId),
+        { open: false, width: loadSize(WIDTH_KEY) },
+        true,
+      )
+      // The last width given: the start of the next editor without its own.
+      watch(
+        () => kept.width,
+        (width) => saveSize(WIDTH_KEY, width),
+      )
+      return kept
+    })!
+    layouts.set(editorId, { layout, scope })
+    return layout
+  }
+
+  /**
+   * Content published for each editor by its grid on screen.
+   */
+  const contents = shallowReactive(new Map<number, ExplorerContent>())
+
+  /**
+   * Grid that published the content of each editor.
+   */
+  const owners = new Map<number, symbol>()
+
+  /**
+   * Content of an editor's explorer: what its grid on screen published.
+   *
+   * @param editorId Id of the editor.
+   */
+  function contentOf(editorId: number): ExplorerContent {
+    return contents.get(editorId) ?? NOTHING
+  }
+
+  /**
+   * Publishes the content of a grid on screen, for its editor.
+   *
+   * @param editorId Id of the grid's editor.
    * @param grid Identity of the grid.
    * @param next Its content.
    */
-  function show(grid: symbol, next: ExplorerContent): void {
-    owner = grid
-    if (!sameContent(content.value, next)) {
-      content.value = next
+  function show(editorId: number, grid: symbol, next: ExplorerContent): void {
+    owners.set(editorId, grid)
+    if (!sameContent(contentOf(editorId), next)) {
+      contents.set(editorId, next)
     }
   }
 
   /**
    * Withdraws the content of a grid that leaves the screen; no effect if
-   * another grid published since.
+   * another grid of its editor published since.
    *
+   * @param editorId Id of the grid's editor.
    * @param grid Identity of the grid.
    */
-  function release(grid: symbol): void {
-    if (owner === grid) {
-      owner = null
-      content.value = { state: 'none' }
+  function release(editorId: number, grid: symbol): void {
+    if (owners.get(editorId) === grid) {
+      owners.delete(editorId)
+      contents.delete(editorId)
     }
   }
 
-  return { open, width, wrap, content, show, release }
+  /**
+   * Forgets the explorer of a closed editor: a reopened editor starts
+   * closed, at the last width given.
+   *
+   * @param editorId Id of the editor.
+   */
+  function forget(editorId: number): void {
+    layouts.get(editorId)?.scope.stop()
+    layouts.delete(editorId)
+    owners.delete(editorId)
+    contents.delete(editorId)
+    forgetStoredLayout(explorerLayoutKey(editorId))
+  }
+
+  return { wrap, layoutOf, contentOf, show, release, forget }
 })

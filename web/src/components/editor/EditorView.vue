@@ -67,7 +67,7 @@ import {
   WandSparkles,
 } from '@lucide/vue'
 import { TabsContent, TabsList, TabsRoot } from 'reka-ui'
-import { computed, onMounted, ref, shallowReactive, useTemplateRef, watch } from 'vue'
+import { computed, onMounted, provide, ref, shallowReactive, useTemplateRef, watch } from 'vue'
 
 import { analyzeSql } from '@/api/analyze'
 import { beautify } from '@/api/beautify'
@@ -96,6 +96,7 @@ import { useSettingsStore } from '@/stores/settings'
 import PanelRail from '@/components/panel/PanelRail.vue'
 import PivotPanel from '@/components/pivot/PivotPanel.vue'
 import ResultView from '@/components/result/ResultView.vue'
+import { EDITOR_ID } from './editorId'
 import { editorLayoutKey } from './editorLayout'
 import ResultTab from '@/components/result/ResultTab.vue'
 import ResultTabActions from '@/components/result/ResultTabActions.vue'
@@ -196,6 +197,9 @@ const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
  * height, `main.css`), and the folds of the three panels; the Pivoteur starts
  * folded, as a rail.
  */
+// The grids under the view publish to the data explorer of this editor.
+provide(EDITOR_ID, props.editorId)
+
 const layout = useStoredLayout(editorLayoutKey(props.editorId), {
   editor: null as number | null,
   pivot: null as number | null,
@@ -848,7 +852,8 @@ defineExpose({
       Middle panel: the results, in the height the editor and the
       Pivoteur leave, with a padding at the bottom too, above the
       Pivoteur. Folded, it keeps the height of their tabs: the padding of
-      the bottom then falls outside the panel.
+      the bottom then falls outside the panel, and the line under the tabs
+      is that of the Pivoteur's handle, against them.
     -->
     <split-panel
       :id="panelId('results')"
@@ -891,7 +896,11 @@ defineExpose({
           :unmount-on-hide="false"
           class="flex min-h-0 flex-1 flex-col"
         >
-          <div class="flex shrink-0 gap-1 border-b border-line">
+          <!-- Folded, the line under the tabs is the handle's, drawn once. -->
+          <div
+            class="flex shrink-0 gap-1 border-line"
+            :class="{ 'border-b': !layout.resultsFolded }"
+          >
             <tabs-list class="flex min-w-0 flex-1 overflow-x-auto">
               <result-tab
                 v-for="(tab, index) in state.tabs"

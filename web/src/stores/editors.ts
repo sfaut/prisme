@@ -17,6 +17,8 @@ import { computed, ref } from 'vue'
 
 import { clearPending, markPending } from '@/api/sync'
 import { forgetEditorLayout } from '@/components/editor/editorLayout'
+import { useExplorerStore } from '@/stores/explorer'
+import { useNavigatorStore } from '@/stores/navigator'
 
 import {
   closeEditor,
@@ -280,7 +282,7 @@ export const useEditorsStore = defineStore('editors', () => {
 
   /**
    * Closes an editor (can be reopened for 24 hours) and forgets the layout of
-   * its view; its neighbour becomes active. The last editor closed is
+   * its view, its navigator and its explorer; its neighbour becomes active. The last editor closed is
    * replaced by an empty editor.
    *
    * @param id Id of the editor.
@@ -291,6 +293,8 @@ export const useEditorsStore = defineStore('editors', () => {
     }
     await closeEditor(id)
     forgetEditorLayout(id)
+    useNavigatorStore().forget(id)
+    useExplorerStore().forget(id)
     const index = editors.value.findIndex((editor) => editor.id === id)
     editors.value = editors.value.filter((editor) => editor.id !== id)
     if (editors.value.length === 0) {

@@ -76,18 +76,22 @@ Each area has its folder in `web/src/components/` (see "Repository layout"), wit
 
 ### Local storage
 
-The display preferences of a machine stay in the browser's local storage, under keys `prisme.<area>.<setting>`: the area is that of the folders of the components (`navigator`, `editor`, `console`, `explorer`), `app` for the whole application, the setting in camelCase. Each area keeps them in its store, read and written by `web/src/utils/storedValues.ts` (flags, sizes) or `split/storedLayout.ts` (layout of an editor). A missing or unreadable value gives its default.
+The display preferences of a machine stay in the browser's local storage, under keys `prisme.<area>.<setting>`: the area is that of the folders of the components (`navigator`, `editor`, `console`, `explorer`), `app` for the whole application, the setting in camelCase. Each area keeps them in its store, read and written by `web/src/utils/storedValues.ts` (flags, sizes) or `split/storedLayout.ts` (layout of an editor, of its navigator, of its explorer). A missing or unreadable value gives its default.
 
 | Key | Value |
 |---|---|
 | `prisme.app.colorMode` | `system`, `light` or `dark` |
-| `prisme.navigator.open`, `prisme.navigator.width` | the object navigator open, its width in CSS pixels |
+| `prisme.navigator.open`, `prisme.navigator.width` | the last state given to an object navigator, open or folded, and its width in CSS pixels: the start of a new editor |
+| `prisme.navigator.layout.<editor>` | the object navigator of an editor open, its width (JSON), forgotten when it closes |
+| `prisme.navigator.tree.<editor>` | open nodes and scroll of the object navigator of an editor (JSON), forgotten when it closes |
 | `prisme.editor.active` | id of the active editor |
 | `prisme.editor.layout.<editor>` | heights and folds of the panels of an editor (JSON), forgotten when it closes |
 | `prisme.console.open`, `prisme.console.height` | the console open, its height in CSS pixels |
 | `prisme.console.tab` | tab shown: `history` or `debug` |
 | `prisme.console.filtersShown`, `prisme.console.historyFilter`, `prisme.console.debugFilter` | the filters shown, and those of each tab (JSON) |
-| `prisme.explorer.width`, `prisme.explorer.wrap` | width of the data explorer, its long lines wrapped |
+| `prisme.explorer.width` | the last width given to a data explorer, in CSS pixels: the start of a new editor |
+| `prisme.explorer.layout.<editor>` | the data explorer of an editor open, its width (JSON), forgotten when it closes |
+| `prisme.explorer.wrap` | long lines of the data explorers wrapped |
 
 Temporary, added in v0.12.0, to remove in v0.13.0 or later: `web/src/utils/storage.ts` moves once, as the interface starts, the keys of v0.11.0 and earlier (`prisme.objectsOpen`, `prisme.consoleTab`, `prisme-color-mode`...) and of the development builds after it under these names, and removes the layouts of the splitter of Reka UI (`reka:`). Its removal takes the file, its import at the top of `main.ts`, its tests and this paragraph.
 

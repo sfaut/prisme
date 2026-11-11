@@ -20,20 +20,32 @@ export type StoredLayout = Record<string, number | boolean | null>
  * @param defaults
  *     Value of each entry without a saved one: a boolean for a fold, `null`
  *     for a size.
+ * @param keepStart
+ *     Saves the layout at once when nothing was kept under its key: defaults
+ *     that change over time (the last layout given elsewhere) then no longer
+ *     move it.
  */
 export function useStoredLayout<Layout extends StoredLayout>(
   key: string,
   defaults: Layout,
+  keepStart = false,
 ): Layout {
   const layout = reactive({ ...defaults }) as Layout
   try {
-    const saved: unknown = JSON.parse(window.localStorage.getItem(key) ?? '{}')
+    const stored = window.localStorage.getItem(key)
+    if (stored === null && keepStart) {
+      window.localStorage.setItem(key, JSON.stringify(layout))
+    }
+    const saved: unknown = JSON.parse(stored ?? '{}')
     if (typeof saved === 'object' && saved !== null) {
       for (const name of Object.keys(defaults) as (keyof Layout & string)[]) {
         const value = (saved as Record<string, unknown>)[name]
         const fold = typeof defaults[name] === 'boolean'
+        // A size kept as `null` is the default size of the theme, chosen as
+        // such: it stays, whatever the default given here.
         if (
           (fold && typeof value === 'boolean') ||
+          (!fold && value === null) ||
           (!fold && typeof value === 'number' && Number.isFinite(value) && value > 0)
         ) {
           layout[name] = value as Layout[typeof name]
