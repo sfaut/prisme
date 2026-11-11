@@ -1,6 +1,6 @@
 //! CSV for Excel in French, as the export of a full result writes it.
 //!
-//! Same format as the download of the interface (`web/src/components/csv.ts`,
+//! Same format as the download of the interface (`web/src/components/result/csv.ts`,
 //! which details its rules): UTF-8 with a BOM, `;` as separator, CRLF line
 //! endings, the column names on the first line, RFC 4180 quoting. NULL is an
 //! empty field, an empty string `""`; the numbers of the `decimal` and

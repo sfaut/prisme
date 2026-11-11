@@ -32,7 +32,7 @@ vi.mock('@/components/ui/toasts', () => ({
   notify: (title: string, tone?: string, action?: ToastAction) => notify(title, tone, action),
 }))
 
-vi.mock('@/components/download', () => ({
+vi.mock('@/utils/download', () => ({
   saveUrl: (url: string) => saveUrl(url),
 }))
 

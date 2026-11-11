@@ -4,7 +4,7 @@ This document gathers the ideas kept for copying the grid selection in several f
 
 ## 1. Starting point
 
-- Ctrl+C copies the grid selection as raw tab-separated text, with the column names on the first line (`selectionToText()` in `web/src/components/resultGrid.ts`): values as they are, control characters written literally (`\t`, `\n`…), `NULL` as an empty cell.
+- Ctrl+C copies the grid selection as raw tab-separated text, with the column names on the first line (`selectionToText()` in `web/src/components/result/resultGrid.ts`): values as they are, control characters written literally (`\t`, `\n`…), `NULL` as an empty cell.
 - Cells arrive as text (`string | null`), with the type of each column (`family`, native name).
 - The server does not keep the rows: the interface only has the first N (default limit), the rest was never read.
 
@@ -103,7 +103,7 @@ The first format implemented, through the export button ("Exporter") right of th
 - Numbers of the `decimal` and `float` families take the decimal comma: with a dot, Excel in French reads `3.14` as text and `1.5` as the 1st of May. The other values go as the server sent them, dates included (`2026-10-12 09:05:00`, which Excel recognises).
 - Excel's own limits are documented in the `README.md`, without a workaround, which would change the values: 1,048,576 rows at most, integers rounded beyond 15 digits, leading zeros of a code dropped, a value starting with `=`, `+`, `-` or `@` read as a formula (section 7, question 8).
 - The file is built in the page by chunks of 2,000 rows, with a pause between two chunks: a large result of a `LIMIT` written by the user does not freeze the interface.
-- Serialisers: `web/src/components/csv.ts` in the browser, `crates/server/src/exports/csv.rs` for the full export (section 4.2); reference files: `tests/fixtures/export/csv-excel-fr/`, read by both test suites (section 4.3).
+- Serialisers: `web/src/components/result/csv.ts` in the browser, `crates/server/src/exports/csv.rs` for the full export (section 4.2); reference files: `tests/fixtures/export/csv-excel-fr/`, read by both test suites (section 4.3).
 
 ### 4.5 CTE for MySQL and MariaDB **[decided]**
 
@@ -149,7 +149,7 @@ FROM ds
 - **Modes of the session**: a name is quoted only when it is not a plain identifier or is a reserved word of the dialect (the completion's rule), with double quotes under `ANSI_QUOTES`, backticks otherwise. A string doubles its quotes; unless `NO_BACKSLASH_ESCAPES` is active, it also doubles its backslashes and writes NUL `\0`. The modes of the editor's session apply to the three destinations.
 - **Refusals**: columns sharing a name refuse the CTE, as they refuse the CSV; a discontinuous selection too, since an unselected cell has no value to write, and `NULL` would confuse it with a NULL. The choices wait for the end of the query, for the session, and for a row: `VALUES` needs one.
 - **Limits**: bytes that are valid UTF-8 reach the interface as text, the others in hexadecimal (`0x…`): a binary value holding the text `0xAB` is read as the byte AB. A geometry becomes a binary string in the server's internal format (SRID, then WKB). The collation of strings, the display width of a `ZEROFILL` integer and the types `YEAR`, `BIT`, `ENUM` and `SET` are not kept.
-- **Serialiser**: `web/src/components/cte.ts`. The reference files of `tests/fixtures/export/cte/` (an input, then the expected file per dialect, in the default modes and under `ANSI_QUOTES` and `NO_BACKSLASH_ESCAPES`) are written byte for byte by its tests, and run on real servers by `crates/connectors/tests/cte.rs`, which reads back the names, the cells and the expected types. The full export (section 4.2) stays in CSV: there is no Rust serialiser of the CTE.
+- **Serialiser**: `web/src/components/result/cte.ts`. The reference files of `tests/fixtures/export/cte/` (an input, then the expected file per dialect, in the default modes and under `ANSI_QUOTES` and `NO_BACKSLASH_ESCAPES`) are written byte for byte by its tests, and run on real servers by `crates/connectors/tests/cte.rs`, which reads back the names, the cells and the expected types. The full export (section 4.2) stays in CSV: there is no Rust serialiser of the CTE.
 
 ## 5. Planned order
 

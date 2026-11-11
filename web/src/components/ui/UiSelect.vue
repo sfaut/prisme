@@ -20,7 +20,7 @@ import {
 } from 'reka-ui'
 import { type Component, computed } from 'vue'
 
-import { cssPixels } from '@/cssLength'
+import { cssPixels } from '@/utils/cssLength'
 
 import { vTooltip } from './tooltip'
 

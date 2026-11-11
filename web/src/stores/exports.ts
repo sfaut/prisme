@@ -38,7 +38,7 @@ import type { ExportRequest } from '@/api/generated/ExportRequest'
 import type { FolderUsage } from '@/api/generated/FolderUsage'
 import { describe } from '@/api/messages'
 import { formatRowCount } from '@/api/querySession'
-import { saveUrl } from '@/components/download'
+import { saveUrl } from '@/utils/download'
 import { notify } from '@/components/ui/toasts'
 
 /**

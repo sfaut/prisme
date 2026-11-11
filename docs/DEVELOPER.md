@@ -68,6 +68,12 @@ Then open <http://localhost:5173>. The page on port 8484 keeps showing the last 
 
 `npm run dev`, `npm run build` and the Vitest tests first build the engine of the Pivoteur (`crates/web-engine`) with Cargo, for `wasm32-unknown-unknown` (`pivotEngine` in `web/vite.config.ts`): the page imports the module as `@pivot-engine?url`, which the development server serves from Cargo's target folder and the build copies into `web/dist`. After a change of `crates/store`, `crates/pivot` or `crates/web-engine`, restart `npm run dev`.
 
+### Components
+
+A component is named after its area of the interface, as the README calls it, then after its role: `NavigatorPanel`, `EditorView`, `ResultGrid`, `PivotFilterPopover`, `ConsoleHistoryTable`. One suffix per role: `Panel` for a panel of the screen (header, fold, rail), `Popover` for settings floating beside an element, `Dialog` for a modal window, `Bar` for a bar, `Tab` for a tab and `View` for its content, `Grid` for a grid of data, `Table` for a list of the console. A component made for one parent starts with its name (`PivotFilterValues` in `PivotFilterPopover`); the base components start with `Ui`, the splitters with `Split`.
+
+Each area has its folder in `web/src/components/` (see "Repository layout"), with its components, the modules that carry its notions (`pivot/pivotConfig.ts`, `result/csv.ts`) and its tests (`__tests__/`); another area imports them from there (`@/components/result/typeIcons`). Inside a folder, imports are relative. A module of no area goes to `web/src/utils/`.
+
 ### Icons and actions
 
 The icons come from Lucide (`@lucide/vue`). An action keeps the same icon wherever it appears, and an icon keeps the same meaning: before adding a button, look for its action below, and add any new icon to these tables in the same change.
@@ -183,7 +189,7 @@ Rules:
 
 ### Lengths in pixels
 
-The interface is built in lengths relative to the root, `:root` being fixed: steps of Tailwind's `--spacing`, in `rem`, and `ch` or `em` of a font (rule 10 of [CLAUDE.md](../CLAUDE.md)). Only the strokes of `:root` stay in pixels. A few APIs of dependencies accept nothing but a number of pixels, though. They receive a theme variable converted by `cssPixels` (`web/src/cssLength.ts`): the theme stays the only source of the length, read once, on loading. As `:root` is fixed, and the zoom of the browser does not change the ratio of a `rem` to a CSS pixel, the value stays exact for the whole session; only a change of the browser's default font size, with the page open, needs a reload.
+The interface is built in lengths relative to the root, `:root` being fixed: steps of Tailwind's `--spacing`, in `rem`, and `ch` or `em` of a font (rule 10 of [CLAUDE.md](../CLAUDE.md)). Only the strokes of `:root` stay in pixels. A few APIs of dependencies accept nothing but a number of pixels, though. They receive a theme variable converted by `cssPixels` (`web/src/utils/cssLength.ts`): the theme stays the only source of the length, read once, on loading. As `:root` is fixed, and the zoom of the browser does not change the ratio of a `rem` to a CSS pixel, the value stays exact for the whole session; only a change of the browser's default font size, with the page open, needs a reload.
 
 | Dependency | API in pixels | Variables | Where |
 |---|---|---|---|
@@ -238,21 +244,21 @@ The engine runs in the page, in Rust compiled to WebAssembly, in a Worker, on th
 | `crates/pivot` (package `prisme-pivot`) | The engine: groups (`groups.rs`), measures (`measures.rs`), precisions of the dates (`dates.rs`), filters (`filters.rs`), layout of the table (`table.rs`). It does not depend on its target: its tests run natively. |
 | `crates/web-engine` (package `prisme-web-engine`, library `web_engine`, compiled file `web-engine-*.wasm`) | The WebAssembly side, without `wasm-bindgen`: its functions take and return numbers and addresses in the memory of the module. Those that answer with data write JSON (`json.rs`) and return its length; `output_address` gives its address. A refused call answers `{"error": {"kind", …}}`. |
 | `crates/server/src/tab_pivot.rs` | Types of the saved configuration (`TabPivot`, generated for the interface by `ts-rs`) and `carry_over`. |
-| `web/src/components/pivotWorker.ts` | The Worker: loads the module, runs the messages of the page. |
-| `web/src/components/pivotEngine.ts` | The engine as the Worker drives it, and the messages exchanged with the page. |
-| `web/src/components/pivotTransfer.ts` | Copy of a block of rows into the memory of the module. |
-| `web/src/components/pivotClient.ts` | Page side of the Worker: one Worker per result, fed once, then asked for tables and windows. |
-| `web/src/components/pivotConfig.ts` | The configuration, in pure functions: placing, naming, default aggregate (`defaultAggregate`), precisions (`precisionChoices`), sorts (`withLevelSort`, `withValueSort`), request and order to the engine (`engineRequest`, `engineOrder`), fitting to a new result (`fittedConfig`). |
-| `web/src/components/pivotLayout.ts` | Header cells, corner and line labels of a window, in the form of the lines (`labelCells`), marks of the sort buttons. |
-| `web/src/components/PivotPanel.vue` | The panel, under the results of `EditorView.vue`: follows the tab shown, computes, saves. |
-| `web/src/components/PivotSections.vue` | The columns of the result and the zones, by drag and drop and menus, in two sections whose widths the tab keeps (`fields_width`, `zones_width`, in steps of `--spacing`). |
-| `web/src/components/PivotFilterPopover.vue` | The settings of a filter, in a popover of Reka UI beside its element: precision, aggregate, condition, values, level, name. |
-| `web/src/components/PivotConcatPopover.vue` | The settings of a `GROUP_CONCAT`, in a popover of Reka UI beside its measure: `DISTINCT`, keys of the order, separator, `LIMIT` and `OFFSET`, name. |
-| `web/src/components/PivotLayoutPopover.vue` | The layout of the table, in a popover of Reka UI under its button in the header of the panel: form of the lines, repetition of their labels, totals and subtotals of each axis. |
-| `web/src/components/PivotFilterValues.vue` | The list of the values of a column or of the periods of a precision, in the settings of a filter: listbox of Reka UI, drawn in sight (`ListboxVirtualizer`). |
-| `web/src/components/pivotChoices.ts` | The aggregates and the precisions, with their icon, shared by the menus and the settings of a filter. |
-| `web/src/components/PivotGrid.vue` | The table, windowed on both axes (`drawnRange`, `columnRange`), with the resize handles of its columns. |
-| `web/src/components/pivotWidths.ts` | Widths of the columns of the table: columns given a width, by their position (`widenedColumns`), room before a column, column at a distance, tracks of a window, width of a drag or of a fit. |
+| `web/src/components/pivot/pivotWorker.ts` | The Worker: loads the module, runs the messages of the page. |
+| `web/src/components/pivot/pivotEngine.ts` | The engine as the Worker drives it, and the messages exchanged with the page. |
+| `web/src/components/pivot/pivotTransfer.ts` | Copy of a block of rows into the memory of the module. |
+| `web/src/components/pivot/pivotClient.ts` | Page side of the Worker: one Worker per result, fed once, then asked for tables and windows. |
+| `web/src/components/pivot/pivotConfig.ts` | The configuration, in pure functions: placing, naming, default aggregate (`defaultAggregate`), precisions (`precisionChoices`), sorts (`withLevelSort`, `withValueSort`), request and order to the engine (`engineRequest`, `engineOrder`), fitting to a new result (`fittedConfig`). |
+| `web/src/components/pivot/pivotLayout.ts` | Header cells, corner and line labels of a window, in the form of the lines (`labelCells`), marks of the sort buttons. |
+| `web/src/components/pivot/PivotPanel.vue` | The panel, under the results of `EditorView.vue`: follows the tab shown, computes, saves. |
+| `web/src/components/pivot/PivotSections.vue` | The columns of the result and the zones, by drag and drop and menus, in two sections whose widths the tab keeps (`fields_width`, `zones_width`, in steps of `--spacing`). |
+| `web/src/components/pivot/PivotFilterPopover.vue` | The settings of a filter, in a popover of Reka UI beside its element: precision, aggregate, condition, values, level, name. |
+| `web/src/components/pivot/PivotConcatPopover.vue` | The settings of a `GROUP_CONCAT`, in a popover of Reka UI beside its measure: `DISTINCT`, keys of the order, separator, `LIMIT` and `OFFSET`, name. |
+| `web/src/components/pivot/PivotLayoutPopover.vue` | The layout of the table, in a popover of Reka UI under its button in the header of the panel: form of the lines, repetition of their labels, totals and subtotals of each axis. |
+| `web/src/components/pivot/PivotFilterValues.vue` | The list of the values of a column or of the periods of a precision, in the settings of a filter: listbox of Reka UI, drawn in sight (`ListboxVirtualizer`). |
+| `web/src/components/pivot/pivotChoices.ts` | The aggregates and the precisions, with their icon, shared by the menus and the settings of a filter. |
+| `web/src/components/pivot/PivotGrid.vue` | The table, windowed on both axes (`drawnRange`, `columnRange`), with the resize handles of its columns. |
+| `web/src/components/pivot/pivotWidths.ts` | Widths of the columns of the table: columns given a width, by their position (`widenedColumns`), room before a column, column at a distance, tracks of a window, width of a drag or of a fit. |
 
 The stages of a table:
 
@@ -651,9 +657,9 @@ The APIs that only take pixels are workarounds too, listed apart, with their the
 | `sqlparser` 0.63.0 | Missing capability | The MySQL and MariaDB syntax of stored routines (`CREATE PROCEDURE`, `CREATE FUNCTION`), of events (`CREATE`, `ALTER`, `DROP EVENT`) of the operations of `ALTER TABLE` on an existing index (`ALTER INDEX i VISIBLE`, `IGNORED`, `RENAME KEY`), `START TRANSACTION WITH CONSISTENT SNAPSHOT`, and the `[NO] RELEASE` of `COMMIT` and `ROLLBACK`. | `crates/dialects/src/mysql_statements.rs` parses them with the primitives of `sqlparser`, into Prisme's own nodes; `temporary.rs` then only knows the table of such an `ALTER TABLE`. | `sqlparser` gives them nodes of its tree. | None | 2026-10-25 |
 | `sqlparser` 0.63.0 | Missing capability | `ParserError` is a text: the position of the error is only written at its end, in English (` at Line: 1, Column: 29`). | `crates/dialects/src/syntax.rs` (`with_location`) reads it from the text; a change of the wording gives line 0, without error. | `ParserError` carries its position. | None | 2026-10-25 |
 | `sqlparser` 0.63.0 | Missing capability | No MariaDB dialect. `sqlparser` reads a syntax specific to one database in that database's dialect and in `GenericDialect` (rule of its README), and accepts queries the database rejects: `MySqlDialect` serves MySQL and MariaDB, and no ticket asks for a MariaDB dialect. | `crates/dialects/src/lib.rs`: MariaDB is parsed with Prisme's MySQL dialect (`mysql_parser.rs`). Telling MySQL from MariaDB stays with Prisme. | Lasting: no MariaDB dialect is planned. Checked again if one appears. | None | 2026-10-25 |
-| `codemirror` 6.0.2 | Missing capability | `basicSetup` takes no options: its fold gutter cannot be left out. | `web/src/components/sqlSetup.ts`: a copy of `basicSetup` without `foldGutter()`, as CodeMirror's documentation advises; the copy follows `basicSetup` when it changes. | `basicSetup` takes options. | None | 2026-10-25 |
-| `@codemirror/lang-sql` 6.10.0 | Missing capability | `sql()` always adds the completion of the keywords. | `web/src/components/SqlEditor.vue` (`currentLanguage`) builds the language by hand, with the completion of the catalog's names only. | `sql()` can leave the keywords out. | None | 2026-10-25 |
-| `@codemirror/lang-sql` 6.10.0 | Missing capability | `schemaCompletionSource` only quotes the names given as plain strings, not as `Completion` objects (which carry a type and a detail). | `web/src/components/sqlCompletion.ts` (`nameCompletion`) quotes them itself. | `lang-sql` quotes the `Completion` objects too. | None | 2026-10-25 |
+| `codemirror` 6.0.2 | Missing capability | `basicSetup` takes no options: its fold gutter cannot be left out. | `web/src/components/editor/sqlSetup.ts`: a copy of `basicSetup` without `foldGutter()`, as CodeMirror's documentation advises; the copy follows `basicSetup` when it changes. | `basicSetup` takes options. | None | 2026-10-25 |
+| `@codemirror/lang-sql` 6.10.0 | Missing capability | `sql()` always adds the completion of the keywords. | `web/src/components/editor/SqlEditor.vue` (`currentLanguage`) builds the language by hand, with the completion of the catalog's names only. | `sql()` can leave the keywords out. | None | 2026-10-25 |
+| `@codemirror/lang-sql` 6.10.0 | Missing capability | `schemaCompletionSource` only quotes the names given as plain strings, not as `Completion` objects (which carry a type and a detail). | `web/src/components/editor/sqlCompletion.ts` (`nameCompletion`) quotes them itself. | `lang-sql` quotes the `Completion` objects too. | None | 2026-10-25 |
 
 ## Repository layout
 
@@ -671,8 +677,20 @@ crates/
 web/               Vue interface
   src/api/         API calls and query session
     generated/     TypeScript types generated from Rust (do not edit)
-  src/components/  interface components
+  src/components/  interface components, one folder per area (see "Components")
+    navigator/     object navigator, connection dialog
+    editor/        editors' tab bar, view of an editor, SQL editor
+    result/        result tabs, their content, the grid, CSV and CTE
+    pivot/         Pivoteur: panel, sections, table, popovers, client of the engine
+    console/       console: history, debug log
+    explorer/      data explorer
+    top-bar/       top bar: exports, synchronisation, settings, profile
+    panel/         header and rail of the panels of the screen
+    tab/           tab of a document bar, shared by the editors and the results
+    split/         splitters of Prisme
+    ui/            base components (buttons, fields, menus, dialogs, tooltips)
   src/stores/      shared state (connections, settings)
+  src/utils/       utilities of no area: shared clock, downloads, theme lengths, color mode
 bench/             benchmarks, outside the workspace
   prisme.mjs       Prisme on the real server, for the benchmarks that measure it
   batches/         batches of rows from the server to the page: fast, slow and heavy results (run.mjs)

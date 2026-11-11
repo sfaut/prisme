@@ -30,7 +30,7 @@ import {
   listHistory,
 } from '@/api/console'
 import { errorMessage } from '@/api/errorMessage'
-import { ACTION_LABELS, LEVEL_LABELS, SOURCE_LABELS } from '@/components/consoleFormat'
+import { ACTION_LABELS, LEVEL_LABELS, SOURCE_LABELS } from '@/components/console/consoleFormat'
 
 import { loadFlag, saveFlag } from './layout'
 

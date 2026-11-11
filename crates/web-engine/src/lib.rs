@@ -1,6 +1,6 @@
 //! WebAssembly side of the Pivoteur: the engine of `prisme-pivot`, compiled
 //! to `wasm32-unknown-unknown` and run in a Worker of the page
-//! (`web/src/components/pivotWorker.ts`), on one thread.
+//! (`web/src/components/pivot/pivotWorker.ts`), on one thread.
 //!
 //! The rows stay in the page, where the grid holds them: the Worker copies
 //! them once into the memory of the module, block by block and column by

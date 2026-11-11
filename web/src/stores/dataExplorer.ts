@@ -16,7 +16,7 @@
 import { defineStore } from 'pinia'
 import { ref, shallowRef, watch } from 'vue'
 
-import type { DataCell } from '@/components/dataFormat'
+import type { DataCell } from '@/components/explorer/dataFormat'
 
 /**
  * What the grid on screen gives the explorer.

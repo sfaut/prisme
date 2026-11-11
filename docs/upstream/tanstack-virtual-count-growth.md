@@ -5,7 +5,7 @@ template, to post from the maintainer's account. The result grid of Prisme place
 `@tanstack/vue-virtual` until 2026-10-31: during the reception of 1 million rows, by batches every
 100 ms, `getMeasurements` took 7.6 s of the 32 s of work of the main thread (`docs/PERFORMANCES.md`,
 chapter 12). All the rows of the grid have the same height: the grid now computes the rows to draw
-itself (`drawnRange` in `web/src/components/resultGrid.ts`), and needs the virtualizer no more,
+itself (`drawnRange` in `web/src/components/result/resultGrid.ts`), and needs the virtualizer no more,
 whatever the answer to the ticket. The tree of the navigator keeps it, through the `TreeVirtualizer`
 of Reka UI: its count changes when a node opens, not by batches.
 

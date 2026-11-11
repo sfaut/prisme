@@ -1,0 +1,147 @@
+<!--
+  History tab of the console: one line per query sent to a target server,
+  with its number, its time, the action that sent it, its message (its SQL,
+  then its failure if any), its number of rows, its execution time and the
+  transfer time of its rows. Above, on request, the actions kept
+  (`ConsoleFilter.vue`).
+  Scrolling and older pages: `ConsoleList.vue`.
+-->
+<script setup lang="ts">
+import { isFiltering, useConsoleStore } from '@/stores/console'
+
+import ConsoleFilter from './ConsoleFilter.vue'
+import ConsoleList from './ConsoleList.vue'
+import {
+  ACTION_LABELS,
+  dateTimeOf,
+  formatMicros,
+  oneLine,
+  failureOf,
+  rowsOf,
+  rowsTitleOf,
+  timeOf,
+  transferOf,
+} from './consoleFormat'
+import { vTooltip } from '@/components/ui/tooltip'
+
+const store = useConsoleStore()
+const history = store.history
+</script>
+
+<template>
+  <div class="flex min-h-0 flex-1 flex-col gap-1">
+    <div v-if="store.filtersShown" class="flex flex-wrap items-center gap-4">
+      <console-filter v-model="store.historyFilter.action" label="Action" :labels="ACTION_LABELS" />
+    </div>
+    <console-list
+      :list="history"
+      :empty="
+        isFiltering(store.historyFilter)
+          ? 'Aucune requête ne correspond aux filtres'
+          : 'Aucune requête envoyée pour le moment'
+      "
+    >
+      <table class="console-table">
+        <colgroup>
+          <col class="index" />
+          <col class="time" />
+          <col class="action" />
+          <col />
+          <col class="rows" />
+          <col class="duration" />
+          <col class="duration" />
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="end">#</th>
+            <th>Heure</th>
+            <th>Action</th>
+            <th>Message</th>
+            <th class="end">Lignes</th>
+            <th class="end">Exécution</th>
+            <th class="end" v-tooltip="'Délai de transmission des lignes'">Transmission</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="entry in history.entries" :key="entry.id">
+            <td class="end text-fg-faint">{{ entry.id }}</td>
+            <td v-tooltip="dateTimeOf(entry.started_at)">{{ timeOf(entry.started_at) }}</td>
+            <td v-tooltip="entry.connection_name || undefined">
+              {{ ACTION_LABELS[entry.action] }}
+            </td>
+            <td v-tooltip="entry.sql">
+              <div class="message">
+                <span class="sql font-mono text-fg-strong">{{ oneLine(entry.sql) }}</span>
+                <span v-if="entry.error" class="outcome text-error" v-tooltip="entry.error">{{
+                  failureOf(entry)
+                }}</span>
+              </div>
+            </td>
+            <td
+              class="end"
+              :class="{ 'text-fg-faint': rowsOf(entry) === '—' }"
+              v-tooltip="rowsTitleOf(entry)"
+            >
+              {{ rowsOf(entry) }}
+            </td>
+            <td class="end">{{ formatMicros(entry.duration_us) }}</td>
+            <td class="end" :class="{ 'text-fg-faint': entry.transfer_us === 0 }">
+              {{ transferOf(entry) }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </console-list>
+  </div>
+</template>
+
+<style scoped>
+@reference "@/assets/main.css";
+
+/* Columns sized to their content, in characters, plus the padding of the
+   cells; the message takes the rest. */
+col.index {
+  inline-size: calc(6ch + 2 * --spacing(3));
+}
+
+col.time {
+  inline-size: calc(9ch + 2 * --spacing(3));
+}
+
+col.action {
+  inline-size: calc(18ch + 2 * --spacing(3));
+}
+
+col.rows {
+  inline-size: calc(9ch + 2 * --spacing(3));
+}
+
+col.duration {
+  inline-size: calc(13ch + 2 * --spacing(3));
+}
+
+/* Message: the SQL shrinks first, with an ellipsis; the failure keeps its
+   place, up to half of the cell. */
+.message {
+  display: flex;
+  gap: 0.5ch;
+  min-inline-size: 0;
+}
+
+.sql,
+.outcome {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sql {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+}
+
+.outcome {
+  flex: none;
+  max-inline-size: 50%;
+}
+</style>

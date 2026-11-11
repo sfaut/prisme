@@ -23,7 +23,7 @@
   `--alpha()` in the `<style>` blocks. Light and dark: each role gives its
   two values with `light-dark(light, dark)`, chosen according to
   `color-scheme`. By default, that of the system; the `light` or `dark`
-  class on `<html>` forces one or the other (`colorMode.ts`).
+  class on `<html>` forces one or the other (`utils/colorMode.ts`).
 */
 @import 'tailwindcss';
 

@@ -1,4 +1,4 @@
-//! The CTE export of the interface (`web/src/components/cte.ts`) run on real
+//! The CTE export of the interface (`web/src/components/result/cte.ts`) run on real
 //! servers: each reference file of `tests/fixtures/export/cte/` must give back
 //! the names and the cells of its input, with the types expected for its
 //! dialect, on each development server of that dialect (`compose.yaml`). The

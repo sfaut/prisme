@@ -25,7 +25,7 @@ import {
 import { MENU_HEADING, MENU_PANEL, type MenuGroup, type MenuItem } from './menuItem'
 import UiMenuEntries from './UiMenuEntries.vue'
 
-import { cssPixels } from '@/cssLength'
+import { cssPixels } from '@/utils/cssLength'
 
 /**
  * Gap with the trigger, in pixels (`--popup-offset` of the theme).

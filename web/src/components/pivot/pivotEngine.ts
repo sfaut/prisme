@@ -1,0 +1,1193 @@
+/**
+ * Engine of the Pivoteur as its Worker drives it (`pivotWorker.ts`): the module of
+ * `crates/web-engine`, compiled to WebAssembly, and the messages the page exchanges with the
+ * Worker (`pivotClient.ts`).
+ *
+ * The Worker holds one result: the page sends its rows once, block by block, then asks for
+ * tables, and for the windows of the table it shows; the whole table never leaves the module.
+ * A window names its table, by the id of the message that computed it: a window asked for a
+ * table that another one has replaced since is refused (`stale`), and never mixes the shape of
+ * one table with the cells of the next.
+ * The values of each level are ranked in the order of the grid (`compareCells`), once per column;
+ * the module ranks the periods of a level with a precision, in the order of time. A table asked
+ * again in another order or another layout is only laid out again, which makes it a new table for
+ * its windows.
+ * The Worker also gives the distinct values of a column, or the periods of a precision of its
+ * dates, for the list of a filter.
+ */
+
+import type { DatePrecision } from '@/api/generated/DatePrecision'
+import type { TypeFamily } from '@/api/generated/TypeFamily'
+import type { PivotAggregate } from '@/api/generated/PivotAggregate'
+import type { PivotConcat } from '@/api/generated/PivotConcat'
+import type { PivotForm } from '@/api/generated/PivotForm'
+import type { PivotShare } from '@/api/generated/PivotShare'
+import type { PivotTest } from '@/api/generated/PivotTest'
+import type { Cell } from '@/api/querySession'
+
+import { TOTAL_TEXT } from './pivotLayout'
+import { NULL_TEXT, compareCells } from '@/components/result/resultGrid'
+import { type TransferExports, copyBlock, releaseBlock } from './pivotTransfer'
+
+/**
+ * Measure of a table: `COUNT(*)`, `COUNT`, `SUM` and `AVG` of a column or of its distinct values,
+ * `MIN`, `MAX` and `GROUP_CONCAT` of a column. `COUNT(DISTINCT col)`, `MIN`, `MAX` and
+ * `GROUP_CONCAT` can read the periods of a precision of its dates.
+ */
+export interface PivotMeasure {
+  /**
+   * Aggregate.
+   */
+  aggregate: PivotAggregate
+  /**
+   * Column the measure comes from; `COUNT(*)` keeps it, for its label and its menu.
+   */
+  column: number
+  /**
+   * What `COUNT(DISTINCT col)`, `MIN`, `MAX` and `GROUP_CONCAT` keep of the dates of the column;
+   * absent, the values as they are.
+   */
+  precision?: DatePrecision
+  /**
+   * Settings of a `GROUP_CONCAT`, absent for another aggregate.
+   */
+  concat?: PivotConcat
+  /**
+   * Share of a total that a count, a sum or an average shows in place of its values; absent for
+   * the values as they are. A filter on a measure reads its values: it has none.
+   */
+  share?: PivotShare
+}
+
+/**
+ * Level of a table: the values of a column, or what a precision keeps of its dates.
+ */
+export interface PivotRequestLevel {
+  /**
+   * Index of the column.
+   */
+  column: number
+  /**
+   * What the level keeps of the dates of the column.
+   */
+  precision: DatePrecision
+}
+
+/**
+ * Test of a value by a filter.
+ */
+export interface PivotRequestTest {
+  /**
+   * What the value passes.
+   */
+  condition: PivotTest
+  /**
+   * Value compared to, or lower bound; `IS NULL` and `IS NOT NULL` do not read it.
+   */
+  operand: string
+  /**
+   * Upper bound, which only `BETWEEN` and `NOT BETWEEN` read.
+   */
+  upper: string
+}
+
+/**
+ * Filter of a table.
+ */
+export type PivotRequestFilter =
+  | {
+      /**
+       * Keeps the rows whose value is one of some values, or none of them.
+       */
+      kind: 'values'
+      /**
+       * Column of the cells, and what its dates keep.
+       */
+      level: PivotRequestLevel
+      /**
+       * Values listed, `null` for NULL.
+       */
+      values: Cell[]
+      /**
+       * Does the filter keep the values left out of the list (`NOT IN`)?
+       */
+      excluded: boolean
+    }
+  | {
+      /**
+       * Keeps the rows whose value passes a test.
+       */
+      kind: 'column'
+      /**
+       * Column of the cells, and what its dates keep.
+       */
+      level: PivotRequestLevel
+      /**
+       * Test of the value of each row.
+       */
+      test: PivotRequestTest
+    }
+  | {
+      /**
+       * Keeps the rows of the groups whose measure passes a test.
+       */
+      kind: 'measure'
+      /**
+       * Measure compared.
+       */
+      measure: PivotMeasure
+      /**
+       * Levels of its groups, the outermost first; without any, all the rows make one group.
+       */
+      levels: PivotRequestLevel[]
+      /**
+       * Test of the value of each group.
+       */
+      test: PivotRequestTest
+    }
+
+/**
+ * Table asked of the engine.
+ */
+export interface PivotRequest {
+  /**
+   * Levels of the rows, the outermost first.
+   */
+  rows: PivotRequestLevel[]
+  /**
+   * Levels of the columns, the outermost first.
+   */
+  columns: PivotRequestLevel[]
+  /**
+   * Measures, in the order of their zone.
+   */
+  measures: PivotMeasure[]
+  /**
+   * Filters, which combine by `AND`.
+   */
+  filters: PivotRequestFilter[]
+  /**
+   * Longest text of a `GROUP_CONCAT`, in bytes of UTF-8: a setting of the user, the same for
+   * every measure; `DEFAULT_CONCAT_MAX_BYTES` without one.
+   */
+  concatMaxBytes?: number
+}
+
+/**
+ * Node of an axis whose values rank the other axis: a column of values for the lines, a line for
+ * the columns.
+ */
+export interface PivotValueTarget {
+  /**
+   * Values of the levels of the node, the outermost first: a shorter path reads a subtotal, an
+   * empty one the grand total.
+   */
+  path: Cell[]
+  /**
+   * Measure, by its index.
+   */
+  measure: number
+}
+
+/**
+ * Values that rank the nodes of an axis.
+ */
+export interface PivotValueOrder extends PivotValueTarget {
+  /**
+   * Is the order descending?
+   */
+  descending: boolean
+}
+
+/**
+ * Order of the nodes of an axis, among those of one parent.
+ */
+export interface PivotAxisOrder {
+  /**
+   * Is each level in descending order, the outermost first? A level left out is ascending.
+   */
+  descending: boolean[]
+  /**
+   * Values that rank the nodes before their labels, `null` without any.
+   */
+  values: PivotValueOrder | null
+}
+
+/**
+ * Order of the lines and of the columns of a table.
+ */
+export interface PivotOrder {
+  /**
+   * Order of the nodes of the rows, hence of the lines.
+   */
+  rows: PivotAxisOrder
+  /**
+   * Order of the nodes of the columns.
+   */
+  columns: PivotAxisOrder
+}
+
+/**
+ * Order of a table just computed: its labels, ascending.
+ */
+export const LABEL_ORDER: PivotOrder = {
+  rows: { descending: [], values: null },
+  columns: { descending: [], values: null },
+}
+
+/**
+ * Totals shown on an axis.
+ */
+export interface PivotAxisTotals {
+  /**
+   * Is the grand total shown?
+   */
+  grandTotal: boolean
+  /**
+   * Is the subtotal of each level shown, the outermost first? A level left out shows it, and the
+   * last level has none.
+   */
+  subtotals: boolean[]
+}
+
+/**
+ * Layout of a table: the form of its lines and the totals shown on each axis.
+ */
+export interface PivotLayout {
+  /**
+   * Form of the lines.
+   */
+  form: PivotForm
+  /**
+   * Totals of the rows.
+   */
+  rows: PivotAxisTotals
+  /**
+   * Totals of the columns.
+   */
+  columns: PivotAxisTotals
+}
+
+/**
+ * Layout of a table just computed: compact form, every total of both axes.
+ */
+export const FIRST_LAYOUT: PivotLayout = {
+  form: 'compact',
+  rows: { grandTotal: true, subtotals: [] },
+  columns: { grandTotal: true, subtotals: [] },
+}
+
+/**
+ * Shape of a computed table.
+ */
+export interface PivotShape {
+  /**
+   * Number of lines, the grand total included.
+   */
+  lines: number
+  /**
+   * Number of columns of values, the labels of the lines apart.
+   */
+  columns: number
+  /**
+   * Number of levels of the rows.
+   */
+  rowLevels: number
+  /**
+   * Number of levels of the columns.
+   */
+  columnLevels: number
+  /**
+   * Number of groups: the distinct combinations of the values of all the levels.
+   */
+  groups: number
+  /**
+   * Number of rows taken into account.
+   */
+  rows: number
+}
+
+/**
+ * Line of a table.
+ */
+export interface PivotLine {
+  /**
+   * Depth: 0 for the grand total, the number of its level otherwise.
+   */
+  depth: number
+  /**
+   * Value of its level, `null` for NULL or for the grand total.
+   */
+  label: Cell
+  /**
+   * Value of each of its levels, the outermost first: empty for the grand total.
+   */
+  path: Cell[]
+  /**
+   * Number of levels it shares with the previous line: the labels that tabular form does not
+   * repeat.
+   */
+  shared: number
+}
+
+/**
+ * Column of values of a table.
+ */
+export interface PivotColumn {
+  /**
+   * Node of the columns of the column.
+   */
+  node: number
+  /**
+   * Node and value of each level of the column, the outermost first: the columns that share a
+   * node at a level share its header cell there.
+   */
+  path: [number, Cell][]
+  /**
+   * Is the column a subtotal or the grand total? Its header reads `Total` on the level after its
+   * path.
+   */
+  total: boolean
+  /**
+   * Measure of the column, `null` without any measure.
+   */
+  measure: number | null
+}
+
+/**
+ * Value of a cell of a table: its text, `null` for NULL, `false` for an empty cell (no row falls
+ * into it).
+ */
+export type PivotValue = string | null | false
+
+/**
+ * Window of a table: some lines, some columns, and their cells.
+ */
+export interface PivotWindow {
+  /**
+   * Lines of the window.
+   */
+  lines: PivotLine[]
+  /**
+   * Columns of the window.
+   */
+  columns: PivotColumn[]
+  /**
+   * Cells of the window, line by line.
+   */
+  cells: PivotValue[][]
+}
+
+/**
+ * Lengths of the texts of the columns of values of a table, in characters, one number per column
+ * in each list: what their default widths fit (`defaultSteps` in `pivotWidths.ts`).
+ */
+export interface PivotTextLengths {
+  /**
+   * Longest text among the values of each column, on the lines shown; a NULL counts as
+   * `NULL_TEXT`.
+   */
+  values: number[]
+  /**
+   * Text of the header of each column on the last level of the columns: the value of its node,
+   * `TOTAL_TEXT` for a total; 0 without any level of columns.
+   */
+  labels: number[]
+}
+
+/**
+ * Refusal of the engine, as the module writes it: a cell that is not a number, a value beyond
+ * 128 bits, a call out of order...
+ */
+export interface PivotFailure {
+  /**
+   * Kind of the refusal: `invalid_number`, `too_large`, `overflow`, `not_numeric`, `share`,
+   * `invalid_date`, `filter_not_numeric`, `filter_overflow`, `filter_operand`, `unknown_column`,
+   * `unknown_row`, `ranks`, `block`, `not_loading`, `incomplete`, `no_result`, `no_table`,
+   * `request`, `stale` (a window of a replaced table).
+   */
+  kind: string
+  /**
+   * Column concerned.
+   */
+  column?: number
+  /**
+   * Row concerned.
+   */
+  row?: number
+  /**
+   * Measure concerned, by its index.
+   */
+  measure?: number
+  /**
+   * Filter concerned, by its index in the request.
+   */
+  filter?: number
+  /**
+   * Detail, in English.
+   */
+  detail?: string
+}
+
+/**
+ * Refusal of the engine.
+ */
+export class PivotError extends Error {
+  /**
+   * @param failure Refusal, as the module writes it.
+   */
+  constructor(readonly failure: PivotFailure) {
+    super(`Pivot engine: ${failure.kind}`)
+    this.name = 'PivotError'
+  }
+}
+
+/**
+ * Message of the page to the Worker.
+ */
+export type PivotRequestMessage =
+  | {
+      /**
+       * Starts the copy of a result, with the family of each column.
+       */
+      type: 'begin'
+      families: TypeFamily[]
+    }
+  | {
+      /**
+       * Block of rows of the result, in their order.
+       */
+      type: 'rows'
+      rows: Cell[][]
+    }
+  | {
+      /**
+       * End of the copy.
+       */
+      type: 'finish'
+      id: number
+    }
+  | {
+      /**
+       * Rows kept by the filter of the grid, `null` for all.
+       */
+      type: 'kept'
+      rows: Uint32Array | null
+    }
+  | {
+      /**
+       * Computes a table, and lays it out in an order and a layout: the same request only lays it
+       * out again.
+       */
+      type: 'compute'
+      id: number
+      request: PivotRequest
+      order: PivotOrder
+      layout: PivotLayout
+      /**
+       * Columns of values named by their values, whose position in the table the answer gives.
+       */
+      targets: PivotValueTarget[]
+    }
+  | {
+      /**
+       * Asks for a window of a table, by the id of the message that computed it: lines and
+       * columns, start included, end excluded.
+       */
+      type: 'window'
+      id: number
+      table: number
+      lines: [number, number]
+      columns: [number, number]
+    }
+  | {
+      /**
+       * Asks for the distinct values of a column, in the order of the grid, or for the periods of
+       * a precision of its dates, in the order of time.
+       */
+      type: 'values'
+      id: number
+      column: number
+      precision: DatePrecision
+    }
+
+/**
+ * Answer of the Worker to the message of id `id`.
+ */
+export type PivotAnswer =
+  | { type: 'finished'; id: number }
+  | {
+      type: 'table'
+      id: number
+      shape: PivotShape
+      positions: (number | null)[]
+      lengths: PivotTextLengths
+      durationMs: number
+    }
+  | { type: 'window'; id: number; window: PivotWindow }
+  | { type: 'values'; id: number; values: Cell[] }
+  | { type: 'failure'; id: number | null; failure: PivotFailure }
+
+/**
+ * Exports of the module of `crates/web-engine`.
+ */
+interface EngineExports extends TransferExports {
+  output_address(): number
+  begin(families: number, columns: number): void
+  append(
+    column: number,
+    bytes: number,
+    length: number,
+    offsets: number,
+    valid: number,
+    rows: number,
+  ): number
+  finish(): number
+  distinct(column: number, precision: number): number
+  set_ranks(column: number, ranks: number, count: number): number
+  set_kept(rows: number, count: number, all: number): number
+  compute(words: number, length: number): number
+  lay_out(words: number, length: number): number
+  columns_at(words: number, length: number): number
+  text_lengths(nullLength: number, totalLength: number): number
+  window(firstLine: number, endLine: number, firstColumn: number, endColumn: number): number
+}
+
+/**
+ * Code of a family of types for the module: 1 exact numbers, 2 floats, 3 dates, 4 instants,
+ * 5 hours, 0 the others.
+ *
+ * @param family Family of the type of a column.
+ */
+export function familyCode(family: TypeFamily): number {
+  switch (family) {
+    case 'integer':
+    case 'decimal':
+      return 1
+    case 'float':
+      return 2
+    case 'date':
+      return 3
+    case 'datetime':
+      return 4
+    case 'time':
+      return 5
+    default:
+      return 0
+  }
+}
+
+/**
+ * Rank of each value in the order of the grid (`compareCells`: NULL first, numbers by value,
+ * texts by the collator), by index.
+ *
+ * @param values Distinct values of a column.
+ */
+export function ranksOf(values: Cell[]): Uint32Array {
+  const order = values.map((_, index) => index)
+  order.sort((a, b) => compareCells(values[a] ?? null, values[b] ?? null))
+  const ranks = new Uint32Array(values.length)
+  order.forEach((index, rank) => {
+    ranks[index] = rank
+  })
+  return ranks
+}
+
+/**
+ * Word that stands for NULL in a path of values.
+ */
+const NULL_STEP = 0xffff_ffff
+
+/**
+ * Word that stands for a `GROUP_CONCAT` without `LIMIT`.
+ */
+const NO_LIMIT = 0xffff_ffff
+
+/**
+ * Separator of a `GROUP_CONCAT` without settings: a comma and a space.
+ */
+export const DEFAULT_SEPARATOR = ', '
+
+/**
+ * Longest text of a `GROUP_CONCAT` without a setting of the user, in bytes: the server gives the
+ * same.
+ */
+export const DEFAULT_CONCAT_MAX_BYTES = 1000
+
+const encoder = new TextEncoder()
+
+/**
+ * Words of a value: `NULL_STEP` for NULL, or its length in bytes then one word per byte of its
+ * UTF-8 text.
+ *
+ * @param value Value.
+ */
+function valueWords(value: Cell): number[] {
+  if (value === null) {
+    return [NULL_STEP]
+  }
+  const bytes = encoder.encode(value)
+  return [bytes.length, ...bytes]
+}
+
+/**
+ * Code of each precision for the module.
+ */
+const PRECISION_CODES: Record<DatePrecision, number> = {
+  none: 0,
+  year: 1,
+  quarter: 2,
+  month: 3,
+  week: 4,
+  date: 5,
+  hour: 6,
+  minute: 7,
+  second: 8,
+  millisecond: 9,
+  microsecond: 10,
+}
+
+/**
+ * Words of a test: the code of a comparison and its operand; 6 or 7 for `BETWEEN` and `NOT BETWEEN`
+ * and their two bounds; 8 or 9 for `IS NULL` and `IS NOT NULL`.
+ *
+ * @param test Test.
+ */
+function testWords({ condition, operand, upper }: PivotRequestTest): number[] {
+  switch (condition) {
+    case 'between':
+      return [6, ...valueWords(operand), ...valueWords(upper)]
+    case 'not_between':
+      return [7, ...valueWords(operand), ...valueWords(upper)]
+    case 'is_null':
+      return [8]
+    case 'is_not_null':
+      return [9]
+    default: {
+      const comparisons = {
+        equal: 0,
+        not_equal: 1,
+        less: 2,
+        less_or_equal: 3,
+        greater: 4,
+        greater_or_equal: 5,
+      }
+      return [comparisons[condition], ...valueWords(operand)]
+    }
+  }
+}
+
+/**
+ * Words of the settings of a `GROUP_CONCAT`, after its kind, its column and its precision: a word
+ * for `DISTINCT`, the number of keys of its order and each key (its column, a word for
+ * descending), its separator (`valueWords`), its `OFFSET`, its `LIMIT` (`NO_LIMIT` without one),
+ * then its longest text, in bytes.
+ *
+ * @param concat Settings.
+ * @param maxBytes Longest text, in bytes.
+ */
+function concatWords(concat: PivotConcat, maxBytes: number): number[] {
+  const order = concat.order ?? []
+  return [
+    Number(concat.distinct === true),
+    order.length,
+    ...order.flatMap(({ column, descending }) => [column, Number(descending === true)]),
+    ...valueWords(concat.separator),
+    concat.offset ?? 0,
+    concat.limit ?? NO_LIMIT,
+    maxBytes,
+  ]
+}
+
+/**
+ * Words of a request for the module: numbers of levels and of measures, a column and a precision
+ * per level, a kind, a column and a precision per measure, two words per measure for its share
+ * (0 for its values as they are, 1 of the row total, 2 of the column total, then its digits after
+ * the point), then the filters. A `GROUP_CONCAT` adds its settings (`concatWords`). A filter on a
+ * list of values: 0, its level, a word for
+ * `NOT IN`, the number of its values and each value. A filter on a measure: 1, the measure, the
+ * number of its levels and each level, and the test. A filter on a column: 2, its level and the
+ * test.
+ *
+ * @param request Table asked.
+ */
+export function requestWords(request: PivotRequest): Uint32Array {
+  const levelWords = ({ column, precision }: PivotRequestLevel) => [
+    column,
+    PRECISION_CODES[precision],
+  ]
+  const kinds = {
+    count_star: 0,
+    count: 1,
+    sum: 2,
+    count_distinct: 3,
+    sum_distinct: 4,
+    avg: 5,
+    avg_distinct: 6,
+    min: 7,
+    max: 8,
+    group_concat: 9,
+  }
+  const measureWords = ({ aggregate, column, precision, concat }: PivotMeasure) => [
+    kinds[aggregate],
+    column,
+    PRECISION_CODES[precision ?? 'none'],
+    ...(aggregate === 'group_concat'
+      ? concatWords(
+          concat ?? { separator: DEFAULT_SEPARATOR },
+          request.concatMaxBytes ?? DEFAULT_CONCAT_MAX_BYTES,
+        )
+      : []),
+  ]
+  const filterWords = (filter: PivotRequestFilter): number[] => {
+    switch (filter.kind) {
+      case 'values':
+        return [
+          0,
+          ...levelWords(filter.level),
+          Number(filter.excluded),
+          filter.values.length,
+          ...filter.values.flatMap(valueWords),
+        ]
+      case 'measure':
+        return [
+          1,
+          ...measureWords(filter.measure),
+          filter.levels.length,
+          ...filter.levels.flatMap(levelWords),
+          ...testWords(filter.test),
+        ]
+      case 'column':
+        return [2, ...levelWords(filter.level), ...testWords(filter.test)]
+    }
+  }
+  return Uint32Array.from([
+    request.rows.length,
+    request.columns.length,
+    request.measures.length,
+    ...request.rows.flatMap(levelWords),
+    ...request.columns.flatMap(levelWords),
+    ...request.measures.flatMap(measureWords),
+    ...request.measures.flatMap(({ share }) =>
+      share === undefined ? [0, 0] : [share.of === 'row' ? 1 : 2, share.decimals],
+    ),
+    ...request.filters.flatMap(filterWords),
+  ])
+}
+
+/**
+ * Words of the order of an axis: the number of its levels and a word per level, then 0 without
+ * values that rank it; otherwise 1, the measure, a word for the direction, the number of steps of
+ * the path, and each step (`valueWords`).
+ *
+ * @param order Order of the axis.
+ */
+function axisWords({ descending, values }: PivotAxisOrder): number[] {
+  const words = [descending.length, ...descending.map(Number)]
+  if (values === null) {
+    return [...words, 0]
+  }
+  const steps = values.path.flatMap(valueWords)
+  return [...words, 1, values.measure, Number(values.descending), values.path.length, ...steps]
+}
+
+/**
+ * Words of an order for the module: that of the rows, then that of the columns.
+ *
+ * @param order Order of the table.
+ */
+export function orderWords(order: PivotOrder): Uint32Array {
+  return Uint32Array.from([...axisWords(order.rows), ...axisWords(order.columns)])
+}
+
+/**
+ * Words of columns of values named by their values, for `columns_at` of the module: their number,
+ * then for each one its measure, the number of steps of its path and each step (`valueWords`).
+ *
+ * @param targets Columns named by their values.
+ */
+export function targetWords(targets: PivotValueTarget[]): Uint32Array {
+  return Uint32Array.from([
+    targets.length,
+    ...targets.flatMap(({ path, measure }) => [measure, path.length, ...path.flatMap(valueWords)]),
+  ])
+}
+
+/**
+ * Words of the totals of an axis: a word for its grand total, the number of its levels and a word
+ * per level for its subtotal.
+ *
+ * @param totals Totals of the axis.
+ */
+function totalsWords({ grandTotal, subtotals }: PivotAxisTotals): number[] {
+  return [Number(grandTotal), subtotals.length, ...subtotals.map(Number)]
+}
+
+/**
+ * Words of a layout for the module: the form, then the totals of the rows and of the columns.
+ *
+ * @param layout Layout of the table.
+ */
+export function layoutWords({ form, rows, columns }: PivotLayout): Uint32Array {
+  const forms: Record<PivotForm, number> = { compact: 0, outline: 1, tabular: 2 }
+  return Uint32Array.from([forms[form], ...totalsWords(rows), ...totalsWords(columns)])
+}
+
+/**
+ * Words of what lays a table out, for the module: its order, then its layout.
+ *
+ * @param order Order of the table.
+ * @param layout Layout of the table.
+ */
+function arrangementWords(order: PivotOrder, layout: PivotLayout): Uint32Array {
+  return Uint32Array.from([...orderWords(order), ...layoutWords(layout)])
+}
+
+/**
+ * Words of what lays out a table just computed.
+ */
+const FIRST_ARRANGEMENT = arrangementWords(LABEL_ORDER, FIRST_LAYOUT).join()
+
+const decoder = new TextDecoder()
+
+/**
+ * Engine of one result, in the memory of the module.
+ */
+export class PivotEngine {
+  /**
+   * Values of each column already ranked, by column.
+   */
+  private readonly ranked = new Set<number>()
+
+  /**
+   * Words of the request of the table in the module, and its shape: asking for it again only lays
+   * it out again. `null` before any table, or once the rows taken into account have changed.
+   */
+  private computed: { key: string; shape: PivotShape } | null = null
+
+  /**
+   * Words of the order and of the layout the table in the module is laid out in.
+   */
+  private laidOut = FIRST_ARRANGEMENT
+
+  /**
+   * Lengths of the texts of the columns of the table in the module, as it is laid out; `null`
+   * until they are read.
+   */
+  private lengths: PivotTextLengths | null = null
+
+  /**
+   * @param engine Exports of the module.
+   */
+  private constructor(private readonly engine: EngineExports) {
+    //
+  }
+
+  /**
+   * Instantiates the module.
+   *
+   * @param module Compiled module.
+   */
+  static async create(module: WebAssembly.Module): Promise<PivotEngine> {
+    const instance = await WebAssembly.instantiate(module, {})
+    return new PivotEngine(instance.exports as unknown as EngineExports)
+  }
+
+  /**
+   * Reads the answer the module has just written.
+   *
+   * @param length Length of the answer, in bytes.
+   */
+  private answer<T>(length: number): T {
+    const address = this.engine.output_address() >>> 0
+    const text = decoder.decode(new Uint8Array(this.engine.memory.buffer, address, length >>> 0))
+    const value = JSON.parse(text) as T | { error: PivotFailure }
+    if (value !== null && typeof value === 'object' && 'error' in value) {
+      throw new PivotError(value.error)
+    }
+    return value as T
+  }
+
+  /**
+   * Copies numbers (`u32`) into the memory of the module, runs `use` with their address, then
+   * frees them.
+   *
+   * @param words Numbers to copy.
+   * @param use Call that reads them.
+   */
+  private withWords<T>(words: Uint32Array, use: (address: number) => T): T {
+    const size = Math.max(1, words.length * 4)
+    const address = this.engine.reserve(size) >>> 0
+    new Uint32Array(this.engine.memory.buffer, address, words.length).set(words)
+    try {
+      return use(address)
+    } finally {
+      this.engine.release(address, size)
+    }
+  }
+
+  /**
+   * Starts the copy of a result; the previous one is dropped.
+   *
+   * @param families Family of the type of each column.
+   */
+  begin(families: TypeFamily[]): void {
+    const size = Math.max(1, families.length)
+    const address = this.engine.reserve(size) >>> 0
+    new Uint8Array(this.engine.memory.buffer, address, families.length).set(
+      families.map(familyCode),
+    )
+    this.engine.begin(address, families.length)
+    this.engine.release(address, size)
+    this.ranked.clear()
+    this.computed = null
+    this.lengths = null
+  }
+
+  /**
+   * Appends a block of rows to the copy under way, column by column.
+   *
+   * @param rows Rows of the block.
+   * @param columns Number of columns of the result.
+   * @throws {PivotError} If the module refuses the block.
+   */
+  append(rows: Cell[][], columns: number): void {
+    for (let column = 0; column < columns; column++) {
+      const block = copyBlock(rows, column, this.engine)
+      const length = this.engine.append(
+        column,
+        block.bytes,
+        block.length,
+        block.offsets,
+        block.valid,
+        block.rows,
+      )
+      releaseBlock(block, this.engine)
+      if (length !== 0) {
+        this.answer(length)
+      }
+    }
+  }
+
+  /**
+   * Ends the copy under way.
+   *
+   * @throws {PivotError} If no copy is under way, or its columns differ in length.
+   */
+  finish(): void {
+    const length = this.engine.finish()
+    if (length !== 0) {
+      this.answer(length)
+    }
+  }
+
+  /**
+   * Keeps only the rows the filter of the grid keeps.
+   *
+   * @param rows Rows kept, in their order; `null` for all.
+   */
+  setKept(rows: Uint32Array | null): void {
+    this.computed = null
+    this.lengths = null
+    if (rows === null) {
+      this.answer(this.engine.set_kept(0, 0, 1))
+      return
+    }
+    this.withWords(rows, (address) => this.answer(this.engine.set_kept(address, rows.length, 0)))
+  }
+
+  /**
+   * Ranks the values of a column in the order of the grid, once.
+   *
+   * @param column Index of the column.
+   */
+  private rank(column: number): void {
+    if (this.ranked.has(column)) {
+      return
+    }
+    const values = this.answer<Cell[]>(this.engine.distinct(column, PRECISION_CODES.none))
+    const ranks = ranksOf(values)
+    this.withWords(ranks, (address) =>
+      this.answer(this.engine.set_ranks(column, address, ranks.length)),
+    )
+    this.ranked.add(column)
+  }
+
+  /**
+   * Distinct values of a column, in the order of the grid; at a precision, the labels of its
+   * periods in the order of time, without the cells outside of the calendar.
+   *
+   * @param column Index of the column.
+   * @param precision What the column keeps of its dates.
+   */
+  values(column: number, precision: DatePrecision = 'none'): Cell[] {
+    const values = this.answer<Cell[]>(this.engine.distinct(column, PRECISION_CODES[precision]))
+    return precision === 'none' ? values.sort(compareCells) : values
+  }
+
+  /**
+   * Computes a table, and keeps it for the windows in place of the previous one, then lays it out
+   * in an order and a layout. The table in the module, asked again, is only laid out again: a sort
+   * or another layout computes no aggregate. A refused table keeps the previous one: the panel
+   * goes on showing it, with the error.
+   *
+   * @param request Table asked.
+   * @param order Order of its lines and of its columns.
+   * @param layout Form of its lines and totals shown.
+   * @returns Its shape, which its layout changes.
+   * @throws {PivotError}
+   *     If the engine refuses it: a cell that is not a number, a value beyond 128 bits...
+   */
+  compute(
+    request: PivotRequest,
+    order: PivotOrder = LABEL_ORDER,
+    layout: PivotLayout = FIRST_LAYOUT,
+  ): PivotShape {
+    for (const { column, precision } of [...request.rows, ...request.columns]) {
+      if (precision === 'none') {
+        this.rank(column)
+      }
+    }
+    const words = requestWords(request)
+    const key = words.join()
+    if (this.computed?.key !== key) {
+      const shape = this.withWords(words, (address) =>
+        this.answer<PivotShape>(this.engine.compute(address, words.length)),
+      )
+      this.computed = { key, shape }
+      this.laidOut = FIRST_ARRANGEMENT
+      this.lengths = null
+    }
+    const arrangement = arrangementWords(order, layout)
+    const arrangementKey = arrangement.join()
+    if (arrangementKey !== this.laidOut) {
+      this.computed.shape = this.withWords(arrangement, (address) =>
+        this.answer<PivotShape>(this.engine.lay_out(address, arrangement.length)),
+      )
+      this.laidOut = arrangementKey
+      this.lengths = null
+    }
+    return this.computed.shape
+  }
+
+  /**
+   * Lengths of the texts of the columns of values of the last table laid out, asked once for each
+   * table and each layout, its values counted as the grid writes them, NULL and the totals
+   * included: the engine reads each group once per table, and each layout combines what it read.
+   */
+  textLengths(): PivotTextLengths {
+    this.lengths ??= this.answer<PivotTextLengths>(
+      this.engine.text_lengths(NULL_TEXT.length, TOTAL_TEXT.length),
+    )
+    return this.lengths
+  }
+
+  /**
+   * Positions of columns of values, named by their values, in the last table laid out: `null`
+   * for a column the table does not show.
+   *
+   * @param targets Columns named by their values; measure 0 names a column without measures.
+   */
+  columnsAt(targets: PivotValueTarget[]): (number | null)[] {
+    if (targets.length === 0) {
+      return []
+    }
+    const words = targetWords(targets)
+    return this.withWords(words, (address) =>
+      this.answer<(number | null)[]>(this.engine.columns_at(address, words.length)),
+    )
+  }
+
+  /**
+   * Reads a window of the last table computed.
+   *
+   * @param lines Lines, start included, end excluded.
+   * @param columns Columns of values, start included, end excluded.
+   */
+  window(lines: [number, number], columns: [number, number]): PivotWindow {
+    return this.answer<PivotWindow>(this.engine.window(lines[0], lines[1], columns[0], columns[1]))
+  }
+}
+
+/**
+ * State of a Worker between two messages: the engine, and the number of columns of the result
+ * under copy.
+ */
+export interface WorkerState {
+  /**
+   * Engine of the Worker.
+   */
+  engine: PivotEngine
+  /**
+   * Number of columns of the result.
+   */
+  columns: number
+  /**
+   * Id of the message that computed the table of the engine, `null` before any. A refused
+   * table leaves the previous one.
+   */
+  table: number | null
+}
+
+/**
+ * Handles a message of the page.
+ *
+ * @param state State of the Worker.
+ * @param message Message of the page.
+ * @returns
+ *     The answer to send back, `null` for a message without an answer. A refusal is an answer
+ *     too, attached to the id of the message, `null` for a message without an id.
+ */
+export function answerMessage(
+  state: WorkerState,
+  message: PivotRequestMessage,
+): PivotAnswer | null {
+  const id = 'id' in message ? message.id : null
+  try {
+    switch (message.type) {
+      case 'begin':
+        state.engine.begin(message.families)
+        state.columns = message.families.length
+        state.table = null
+        return null
+      case 'rows':
+        state.engine.append(message.rows, state.columns)
+        return null
+      case 'finish':
+        state.engine.finish()
+        return { type: 'finished', id: message.id }
+      case 'kept':
+        state.engine.setKept(message.rows)
+        return null
+      case 'compute': {
+        const started = performance.now()
+        const shape = state.engine.compute(message.request, message.order, message.layout)
+        const positions = state.engine.columnsAt(message.targets)
+        const lengths = state.engine.textLengths()
+        state.table = message.id
+        const durationMs = performance.now() - started
+        return { type: 'table', id: message.id, shape, positions, lengths, durationMs }
+      }
+      case 'window':
+        if (message.table !== state.table) {
+          return { type: 'failure', id, failure: { kind: 'stale' } }
+        }
+        return {
+          type: 'window',
+          id: message.id,
+          window: state.engine.window(message.lines, message.columns),
+        }
+      case 'values':
+        return {
+          type: 'values',
+          id: message.id,
+          values: state.engine.values(message.column, message.precision),
+        }
+    }
+  } catch (failure) {
+    if (failure instanceof PivotError) {
+      return { type: 'failure', id, failure: failure.failure }
+    }
+    throw failure
+  }
+}

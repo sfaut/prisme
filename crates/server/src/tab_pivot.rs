@@ -2,7 +2,7 @@
 //! survives a page reload, a refresh and a new run of the queries.
 //!
 //! The page makes the configuration, computes its table and fits it to the
-//! columns of a new result (`web/src/components/pivotConfig.ts`). The server
+//! columns of a new result (`web/src/components/pivot/pivotConfig.ts`). The server
 //! stores it, and carries it over when a new run replaces the unpinned tabs of
 //! an editor (`carry_over`): it alone sees the tabs that leave and those that
 //! replace them at the same time, whichever queries of the text are run.

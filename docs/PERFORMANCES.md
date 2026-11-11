@@ -53,7 +53,7 @@ contained 20,000 drawn rows, for a result of 20,000 rows.
 
 #### 1.3.1 The principle of virtual scrolling
 
-The result grid (`web/src/components/ResultGrid.vue`) shows tens of thousands
+The result grid (`web/src/components/result/ResultGrid.vue`) shows tens of thousands
 of rows while drawing only a few dozen: those visible in its scroll area, plus
 a margin. The `@tanstack/vue-virtual` library computes these rows from the
 height of the scroll area.
@@ -1372,7 +1372,7 @@ both cases.
 - The references of a table cost no read of their own. The catalog reads the
   foreign keys of each database, each one with the table it references
   (`REFERENCED_TABLE_SCHEMA`, `REFERENCED_TABLE_NAME`): the page turns them
-  around (`referencesByTable`, `web/src/components/navigatorNodes.ts`). The
+  around (`referencesByTable`, `web/src/components/navigator/navigatorNodes.ts`). The
   folder "Références" fills as the databases arrive, like the other folders.
 - The catalog keeps its reads filtered on a database.
 

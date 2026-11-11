@@ -47,7 +47,7 @@ An entry gives, as far as they apply:
   grows with the square of the rows. At 1 million rows, 7.6 s of the 32.3 s of main thread of the
   reception (24 %); at 200,000 rows, 0.40 s: 5 times more rows, 19 times more time
   (`docs/PERFORMANCES.md`, chapter 12). Same code in 3.19.9.
-- **Replaced by**: the windowing of the grid (`drawnRange` in `web/src/components/resultGrid.ts`).
+- **Replaced by**: the windowing of the grid (`drawnRange` in `web/src/components/result/resultGrid.ts`).
   Its rows have a fixed height: the first row drawn is the scroll position divided by the height of
   a row, the last one adds the height of the visible area, with 20 rows of margin on each side. A
   passive scroll listener and a `ResizeObserver` give these positions. The cost is two divisions,

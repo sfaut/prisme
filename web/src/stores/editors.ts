@@ -16,7 +16,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { clearPending, markPending } from '@/api/sync'
-import { forgetEditorLayout } from '@/components/editorLayout'
+import { forgetEditorLayout } from '@/components/editor/editorLayout'
 
 import {
   closeEditor,

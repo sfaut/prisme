@@ -1,7 +1,7 @@
 //! Exports of a full result to a CSV file for Excel in French, written by
 //! the server.
 //!
-//! The interface downloads the rows it holds itself (`web/src/components/csv.ts`).
+//! The interface downloads the rows it holds itself (`web/src/components/result/csv.ts`).
 //! The full result of a query, without the limit of Prisme, can hold
 //! millions of rows: the server runs the query again, on its own connection,
 //! read-only, and writes its rows to a file of the exports folder
