@@ -692,6 +692,8 @@ crates/
   server/          the prisme executable: configuration, master key, internal database, API
     migrations/    numbered SQL migrations of the internal database
 web/               Vue interface
+  index.html       page of entry of Vite, where it starts (it loads src/main.ts), built into dist/index.html
+  public/          files copied as they are into dist/ (icon of the page)
   src/api/         API calls and query session
     generated/     TypeScript types generated from Rust (do not edit)
   src/components/  interface components, one folder per area (see "Components")
