@@ -383,7 +383,7 @@ pub struct PivotColumnWidth {
 
 /// Elements of each zone, the outermost level first, the sorts by values, the
 /// layout of the table and the widths of its columns.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct PivotConfig {
     /// Levels of the rows.
@@ -430,20 +430,31 @@ pub struct PivotConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[ts(as = "Option<Vec<PivotColumnWidth>>", optional)]
     pub column_widths: Vec<PivotColumnWidth>,
-    /// Width of the section of the columns of the result, in steps of the
-    /// spacing scale (`--spacing`); the default width without one.
+    /// Width of the section of the columns of the result, in CSS pixels, as
+    /// its line left it; the default width without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub fields_px: Option<f64>,
+    /// Width of the section of the zones, in CSS pixels, as its line left it;
+    /// the default width without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub zones_px: Option<f64>,
+    /// Width of the section of the columns of the result in a configuration
+    /// saved before `fields_px`, in steps of the spacing scale (`--spacing`):
+    /// the page reads it in pixels, and writes `fields_px` in its place.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub fields_width: Option<u32>,
-    /// Width of the section of the zones, in steps of the spacing scale; the
-    /// default width without one.
+    /// Width of the section of the zones in a configuration saved before
+    /// `zones_px`, in steps of the spacing scale, read as `fields_width`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub zones_width: Option<u32>,
 }
 
 /// Configuration of the Pivoteur of a result tab.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export)]
 pub struct TabPivot {
     /// Names of the columns of the result the configuration was made for: its
@@ -625,6 +636,8 @@ mod tests {
         assert_eq!(config.rows[0].width, None);
         assert_eq!(config.labels_width, None);
         assert_eq!(config.column_widths, []);
+        assert_eq!(config.fields_px, None);
+        assert_eq!(config.zones_px, None);
         assert_eq!(config.fields_width, None);
         assert_eq!(config.zones_width, None);
         assert_eq!(
@@ -775,6 +788,15 @@ mod tests {
         assert!(config.without_row_total);
         assert!(config.without_column_total);
         assert!(config.rows[0].without_subtotal);
+        assert_eq!(serde_json::to_string(&config).unwrap(), saved);
+    }
+
+    #[test]
+    fn keeps_the_widths_of_the_sections_in_pixels() {
+        let saved = r#"{"rows":[],"columns":[],"measures":[],"filters":[],"fields_px":210.4,"zones_px":240.0}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        assert_eq!(config.fields_px, Some(210.4));
+        assert_eq!(config.zones_px, Some(240.0));
         assert_eq!(serde_json::to_string(&config).unwrap(), saved);
     }
 

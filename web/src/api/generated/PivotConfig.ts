@@ -63,13 +63,24 @@ export type PivotConfig = {
    */
   column_widths?: Array<PivotColumnWidth>;
   /**
-   * Width of the section of the columns of the result, in steps of the
-   * spacing scale (`--spacing`); the default width without one.
+   * Width of the section of the columns of the result, in CSS pixels, as
+   * its line left it; the default width without one.
+   */
+  fields_px?: number;
+  /**
+   * Width of the section of the zones, in CSS pixels, as its line left it;
+   * the default width without one.
+   */
+  zones_px?: number;
+  /**
+   * Width of the section of the columns of the result in a configuration
+   * saved before `fields_px`, in steps of the spacing scale (`--spacing`):
+   * the page reads it in pixels, and writes `fields_px` in its place.
    */
   fields_width?: number;
   /**
-   * Width of the section of the zones, in steps of the spacing scale; the
-   * default width without one.
+   * Width of the section of the zones in a configuration saved before
+   * `zones_px`, in steps of the spacing scale, read as `fields_width`.
    */
   zones_width?: number;
 };
