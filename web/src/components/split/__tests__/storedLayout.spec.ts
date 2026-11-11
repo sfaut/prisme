@@ -37,4 +37,15 @@ describe('useStoredLayout', () => {
     forgetStoredLayout('layout')
     expect(window.localStorage.getItem('layout')).toBeNull()
   })
+
+  it('keeps its start at once on request, when nothing was kept', () => {
+    useStoredLayout('started', { size: 120 as number | null }, true)
+    expect(JSON.parse(window.localStorage.getItem('started')!)).toEqual({ size: 120 })
+    // A layout already kept stays as it is.
+    useStoredLayout('started', { size: 300 as number | null }, true)
+    expect(JSON.parse(window.localStorage.getItem('started')!)).toEqual({ size: 120 })
+    useStoredLayout('unkept', { size: null as number | null })
+    expect(window.localStorage.getItem('unkept')).toBeNull()
+    forgetStoredLayout('started')
+  })
 })

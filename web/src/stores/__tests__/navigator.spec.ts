@@ -37,6 +37,17 @@ describe('layout of a navigator', () => {
     setActivePinia(createPinia())
     expect({ ...useNavigatorStore().layoutOf(1) }).toEqual({ open: false, width: 320 })
   })
+
+  it('stays as first read, whatever layout is given later to another editor', async () => {
+    const navigator = useNavigatorStore()
+    expect(navigator.layoutOf(1).open).toBe(true)
+    navigator.layoutOf(2).open = false
+    await nextTick()
+
+    setActivePinia(createPinia())
+    expect(useNavigatorStore().layoutOf(1).open).toBe(true)
+    expect(useNavigatorStore().layoutOf(3).open).toBe(false)
+  })
 })
 
 describe('tree of a navigator', () => {

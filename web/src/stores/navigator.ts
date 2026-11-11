@@ -167,10 +167,12 @@ export const useNavigatorStore = defineStore('navigator', () => {
     const scope = effectScope(true)
     const kept = storedTree(editorId)
     const entry = scope.run(() => {
-      const layout = useStoredLayout<NavigatorLayout>(navigatorLayoutKey(editorId), {
-        open: loadFlag(OPEN_KEY, true),
-        width: loadSize(WIDTH_KEY),
-      })
+      // Kept from its first reading: it no longer follows the last layout given.
+      const layout = useStoredLayout<NavigatorLayout>(
+        navigatorLayoutKey(editorId),
+        { open: loadFlag(OPEN_KEY, true), width: loadSize(WIDTH_KEY) },
+        true,
+      )
       // The last layout given: the start of the next editor without its own.
       watch(
         () => layout.open,
