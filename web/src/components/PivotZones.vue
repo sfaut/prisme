@@ -5,15 +5,14 @@
   (F-10), then the zones Lignes, Colonnes, Mesures and Filtres, stacked,
   which scroll in their section when the panel is low (F-05).
 
-  The sections stand in splitters of Reka UI: the line on the right of a
-  section sets its width, the table taking the rest; a double click on the
-  line gives back its default width (`main.css`). The width is kept in the
-  configuration of the tab, in whole steps of the spacing scale, at the end
-  of a drag or of a key on the line, and only then: a section that the
-  window makes narrower keeps its width for the next tab shown. The panel
-  shows the zones of each tab afresh (`key`): the splitters take the widths
-  of its configuration as they start. Mounted under a folded Pivoteur, they
-  start again once they get a width (`startWhenShown`).
+  The sections stand in a splitter of Prisme (`split/`): the line on the
+  right of a section sets its width, the table taking the rest; a double
+  click on the line, or Enter, gives back its default width (`main.css`).
+  The width is kept in the configuration of the tab, in CSS pixels as the
+  line left it, at the end of a drag or of a key on the line, and only
+  then: a section that the window makes narrower keeps its width for the
+  next tab shown. The browser lays the sections out, shown or hidden under
+  a folded Pivoteur alike.
 
   A column enters a zone by dragging it there, or by the "+" menu of its
   line (F-11); the order in a zone sets the nesting, the first element
@@ -58,12 +57,12 @@ import {
   computed,
   nextTick,
   onBeforeUnmount,
-  onMounted,
   ref,
   shallowRef,
+  useId,
   useTemplateRef,
+  type WritableComputedRef,
 } from 'vue'
-import { SplitterGroup, SplitterPanel } from 'reka-ui'
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Cell } from '@/api/querySession'
@@ -106,7 +105,9 @@ import type { PivotMeasure } from './pivotEngine'
 import PivotConcatPanel from './PivotConcatPanel.vue'
 import PivotFilterPanel from './PivotFilterPanel.vue'
 import { dropPosition } from './resultGrid'
-import SplitHandle from './SplitHandle.vue'
+import SplitGroup from './split/SplitGroup.vue'
+import SplitHandle from './split/SplitHandle.vue'
+import SplitPanel from './split/SplitPanel.vue'
 import type { TypeMark } from './typeIcons'
 import type { MenuGroup, MenuItem } from './ui/menuItem'
 import UiButton from './ui/UiButton.vue'
@@ -155,100 +156,37 @@ const ZONES: { zone: PivotZone; label: string; icon: Component }[] = [
 ]
 
 /**
- * Width of a step of the spacing scale, then the default and the smallest width of each section, in
- * pixels (`main.css`).
- *
- * Fixed sizes: Reka UI's splitter only takes pixels or a percentage of the group, so these theme
- * lengths are read once (`docs/DEVELOPER.md`, section "Lengths in pixels").
+ * Width of a step of the spacing scale, in pixels (`main.css`): that of the widths saved in steps,
+ * before the widths in pixels.
  */
 const STEP = cssPixels('--spacing', 3)
-const SECTION_SIZES: Record<PivotSection, { width: number; min: number }> = {
-  fields: {
-    width: cssPixels('--pivot-fields-width', 174),
-    min: cssPixels('--pivot-fields-min-width', 126),
-  },
-  zones: {
-    width: cssPixels('--pivot-zones-width', 204),
-    min: cssPixels('--pivot-zones-min-width', 156),
-  },
+
+/**
+ * Prefix of the ids of the sections, unique to the page: their lines name them.
+ */
+const sectionsId = useId()
+
+/**
+ * Width of each section, in CSS pixels, read from and written to the configuration; `null` for its
+ * default width.
+ */
+const widths: Record<PivotSection, WritableComputedRef<number | null>> = {
+  fields: sectionModel('fields'),
+  zones: sectionModel('zones'),
 }
 
 /**
- * Panels of the sections whose width the user sets.
+ * Width of a section, as a model of its panel.
+ *
+ * @param section Section.
  */
-const fieldsPanel = useTemplateRef<InstanceType<typeof SplitterPanel>>('fieldsPanel')
-const zonesPanel = useTemplateRef<InstanceType<typeof SplitterPanel>>('zonesPanel')
-
-/**
- * Splitter of the sections, and its generation: raised, it starts the splitters again.
- */
-const sectionsGroup = useTemplateRef<InstanceType<typeof SplitterGroup>>('sectionsGroup')
-const splitters = ref(0)
-
-/**
- * Follows the width of a splitter mounted hidden, until it gets one.
- */
-let hiddenObserver: ResizeObserver | null = null
-
-/**
- * Workaround (`docs/DEVELOPER.md`, section "Workarounds"): starts the splitters again as soon as
- * they get a width, when they were mounted hidden, under a folded Pivoteur. Reka UI lays out a
- * group of panels in pixels when it starts only if the group has a width, and never afterwards:
- * its panels would share the room in proportion to their default sizes.
- */
-function startWhenShown(): void {
-  const element = sectionsGroup.value?.$el as Element | undefined
-  if (element === undefined || element.getBoundingClientRect().width > 0) {
-    return
-  }
-  hiddenObserver = new ResizeObserver(([entry]) => {
-    if (entry !== undefined && entry.contentRect.width > 0) {
-      stopFollowingWidth()
-      splitters.value += 1
-    }
+function sectionModel(section: PivotSection): WritableComputedRef<number | null> {
+  return computed({
+    get: () => sectionWidth(config.value, section, STEP),
+    set: (width) => {
+      config.value = withSectionWidth(config.value, section, width)
+    },
   })
-  hiddenObserver.observe(element)
-}
-
-/**
- * Stops following the width of the splitter.
- */
-function stopFollowingWidth(): void {
-  hiddenObserver?.disconnect()
-  hiddenObserver = null
-}
-
-onMounted(startWhenShown)
-onBeforeUnmount(stopFollowingWidth)
-
-/**
- * Width of a section, in pixels: that of the configuration, its default width without one.
- *
- * @param section Section.
- */
-function widthPixels(section: PivotSection): number {
-  const width = sectionWidth(config.value, section)
-  return width === undefined ? SECTION_SIZES[section].width : width * STEP
-}
-
-/**
- * Keeps the width a section has been given by its line, at the end of a drag or of a key, in whole
- * steps of the spacing scale, which the section then takes exactly.
- *
- * @param section Section.
- */
-function keepWidth(section: PivotSection): void {
-  const panel = section === 'fields' ? fieldsPanel.value : zonesPanel.value
-  const size = panel?.getSize() ?? 0
-  // Folded, the panel of the Pivoteur measures nothing.
-  if (panel === null || !(size > 0)) {
-    return
-  }
-  const steps = Math.round(size / STEP)
-  if (steps * STEP !== widthPixels(section)) {
-    config.value = withSectionWidth(config.value, section, steps)
-  }
-  panel.resize(steps * STEP)
 }
 
 /**
@@ -257,9 +195,7 @@ function keepWidth(section: PivotSection): void {
  * @param section Section.
  */
 function resetWidth(section: PivotSection): void {
-  config.value = withSectionWidth(config.value, section, null)
-  const panel = section === 'fields' ? fieldsPanel.value : zonesPanel.value
-  panel?.resize(SECTION_SIZES[section].width)
+  widths[section].value = null
 }
 
 /**
@@ -879,21 +815,13 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
 </script>
 
 <template>
-  <!--
-    The zones and the table share a splitter of their own, inside the second panel of the first one:
-    either handle moves only the width of the section on its left, the table taking the rest.
-  -->
-  <splitter-group
-    ref="sectionsGroup"
-    :key="splitters"
-    direction="horizontal"
-    class="min-h-0 flex-1"
-  >
-    <splitter-panel
-      ref="fieldsPanel"
-      size-unit="px"
-      :default-size="widthPixels('fields')"
-      :min-size="SECTION_SIZES.fields.min"
+  <!-- Either line moves only the width of the section on its left, the table taking the rest. -->
+  <split-group direction="horizontal" class="min-h-0 flex-1">
+    <split-panel
+      :id="`${sectionsId}-fields`"
+      v-model:size="widths.fields.value"
+      default-size="var(--pivot-fields-width)"
+      min-size="var(--pivot-fields-min-width)"
       class="flex"
     >
       <!--
@@ -942,119 +870,113 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
           </li>
         </ul>
       </div>
-    </splitter-panel>
+    </split-panel>
     <split-handle
+      :controls="`${sectionsId}-fields`"
       tooltip="Glisser pour redimensionner les colonnes du résultat, double clic pour leur rendre leur largeur par défaut"
-      @dragging="(dragging: boolean) => !dragging && keepWidth('fields')"
-      @keyup.left.right.home.end="keepWidth('fields')"
-      @toggle="resetWidth('fields')"
+      @activate="resetWidth('fields')"
     />
-    <splitter-panel class="flex">
-      <splitter-group direction="horizontal" class="min-w-0 flex-1">
-        <splitter-panel
-          ref="zonesPanel"
-          size-unit="px"
-          :default-size="widthPixels('zones')"
-          :min-size="SECTION_SIZES.zones.min"
-          class="flex"
-        >
-          <div class="flex min-w-0 flex-1 px-2">
-            <!-- The room between two zones is the padding of the upper one: a drag never leaves them there. -->
-            <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
-              <section
-                v-for="{ zone, label, icon } in ZONES"
-                ref="zoneSection"
-                :key="zone"
-                class="flex flex-col gap-1 not-last:pb-3"
-                :aria-label="label"
-                :data-zone="zone"
-                @dragenter="onDragOver($event, zone)"
-                @dragover="onDragOver($event, zone)"
-                @dragleave="onDragLeave"
-                @drop="onDrop($event, zone)"
+    <split-panel
+      :id="`${sectionsId}-zones`"
+      v-model:size="widths.zones.value"
+      default-size="var(--pivot-zones-width)"
+      min-size="var(--pivot-zones-min-width)"
+      class="flex"
+    >
+      <div class="flex min-w-0 flex-1 px-2">
+        <!-- The room between two zones is the padding of the upper one: a drag never leaves them there. -->
+        <div class="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+          <section
+            v-for="{ zone, label, icon } in ZONES"
+            ref="zoneSection"
+            :key="zone"
+            class="flex flex-col gap-1 not-last:pb-3"
+            :aria-label="label"
+            :data-zone="zone"
+            @dragenter="onDragOver($event, zone)"
+            @dragover="onDragOver($event, zone)"
+            @dragleave="onDragLeave"
+            @drop="onDrop($event, zone)"
+          >
+            <h3 class="flex items-center gap-2 px-2 text-sm font-medium text-fg-secondary">
+              <component :is="icon" class="size-4" aria-hidden="true" />
+              {{ label }}
+            </h3>
+            <ul class="pivot-zone" :class="{ 'drop-target': dropAt?.zone === zone }">
+              <li
+                v-for="(element, index) in elements[zone]"
+                :key="`${zone}-${index}`"
+                data-element
+                class="pivot-line pivot-element group"
+                :class="[markerClass(zone, index), { invalid: element.invalid }]"
+                :draggable="!isNaming(zone, index)"
+                @dragstart="onDragStart($event, element.column, { zone, index })"
+                @dragend="onDragEnd"
               >
-                <h3 class="flex items-center gap-2 px-2 text-sm font-medium text-fg-secondary">
-                  <component :is="icon" class="size-4" aria-hidden="true" />
-                  {{ label }}
-                </h3>
-                <ul class="pivot-zone" :class="{ 'drop-target': dropAt?.zone === zone }">
-                  <li
-                    v-for="(element, index) in elements[zone]"
-                    :key="`${zone}-${index}`"
-                    data-element
-                    class="pivot-line pivot-element group"
-                    :class="[markerClass(zone, index), { invalid: element.invalid }]"
-                    :draggable="!isNaming(zone, index)"
-                    @dragstart="onDragStart($event, element.column, { zone, index })"
-                    @dragend="onDragEnd"
-                  >
-                    <span class="pivot-mark" aria-hidden="true">
-                      <template v-if="marks[element.column]">
-                        <span v-if="typeof marks[element.column] === 'string'" class="pivot-glyph">
-                          {{ marks[element.column] }}
-                        </span>
-                        <component :is="marks[element.column]" v-else class="size-4" />
-                      </template>
+                <span class="pivot-mark" aria-hidden="true">
+                  <template v-if="marks[element.column]">
+                    <span v-if="typeof marks[element.column] === 'string'" class="pivot-glyph">
+                      {{ marks[element.column] }}
                     </span>
-                    <input
-                      v-if="isNaming(zone, index)"
-                      ref="nameInput"
-                      v-model="draft"
-                      :aria-label="`Nom de ${element.expression}`"
-                      class="h-7 min-w-0 flex-1 rounded-lg border border-line bg-surface px-1 text-base text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary/60"
-                      @blur="commitName"
-                      @keydown.stop
-                      @keydown.enter.prevent="commitName"
-                      @keydown.escape.prevent="cancelName"
-                      @mousedown.stop
-                    />
-                    <span
-                      v-else
-                      class="min-w-0 flex-1 truncate"
-                      v-tooltip="
-                        zone === 'filters' || element.label !== element.expression
-                          ? element.expression
-                          : undefined
-                      "
-                      @dblclick="nameAtOnce({ zone, index })"
-                    >
-                      {{ element.label }}
-                    </span>
-                    <ui-dropdown-menu
-                      :groups="elementGroups(zone, index)"
-                      @close-auto-focus="onMenuClosed"
-                    >
-                      <ui-button
-                        :icon="EllipsisVertical"
-                        variant="ghost"
-                        small
-                        :aria-label="`Actions : ${element.label}`"
-                      />
-                    </ui-dropdown-menu>
-                  </li>
-                  <li v-if="elements[zone].length === 0" class="px-2 py-1 text-sm text-fg-faint">
-                    Glisser une colonne ici
-                  </li>
-                </ul>
-              </section>
-            </div>
-          </div>
-        </splitter-panel>
-        <split-handle
-          tooltip="Glisser pour redimensionner les zones, double clic pour leur rendre leur largeur par défaut"
-          @dragging="(dragging: boolean) => !dragging && keepWidth('zones')"
-          @keyup.left.right.home.end="keepWidth('zones')"
-          @toggle="resetWidth('zones')"
-        />
-        <!-- The table, given by the panel. -->
-        <splitter-panel class="flex">
-          <div class="flex min-w-0 flex-1 ps-2">
-            <slot />
-          </div>
-        </splitter-panel>
-      </splitter-group>
-    </splitter-panel>
-  </splitter-group>
+                    <component :is="marks[element.column]" v-else class="size-4" />
+                  </template>
+                </span>
+                <input
+                  v-if="isNaming(zone, index)"
+                  ref="nameInput"
+                  v-model="draft"
+                  :aria-label="`Nom de ${element.expression}`"
+                  class="h-7 min-w-0 flex-1 rounded-lg border border-line bg-surface px-1 text-base text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary/60"
+                  @blur="commitName"
+                  @keydown.stop
+                  @keydown.enter.prevent="commitName"
+                  @keydown.escape.prevent="cancelName"
+                  @mousedown.stop
+                />
+                <span
+                  v-else
+                  class="min-w-0 flex-1 truncate"
+                  v-tooltip="
+                    zone === 'filters' || element.label !== element.expression
+                      ? element.expression
+                      : undefined
+                  "
+                  @dblclick="nameAtOnce({ zone, index })"
+                >
+                  {{ element.label }}
+                </span>
+                <ui-dropdown-menu
+                  :groups="elementGroups(zone, index)"
+                  @close-auto-focus="onMenuClosed"
+                >
+                  <ui-button
+                    :icon="EllipsisVertical"
+                    variant="ghost"
+                    small
+                    :aria-label="`Actions : ${element.label}`"
+                  />
+                </ui-dropdown-menu>
+              </li>
+              <li v-if="elements[zone].length === 0" class="px-2 py-1 text-sm text-fg-faint">
+                Glisser une colonne ici
+              </li>
+            </ul>
+          </section>
+        </div>
+      </div>
+    </split-panel>
+    <split-handle
+      :controls="`${sectionsId}-zones`"
+      tooltip="Glisser pour redimensionner les zones, double clic pour leur rendre leur largeur par défaut"
+      @activate="resetWidth('zones')"
+    />
+    <!-- The table, given by the panel. -->
+    <split-panel :id="`${sectionsId}-table`" fill class="flex">
+      <div class="flex min-w-0 flex-1 ps-2">
+        <slot />
+      </div>
+    </split-panel>
+  </split-group>
   <pivot-filter-panel
     v-if="panel && panelFilter"
     :key="`filters-${panel.index}`"

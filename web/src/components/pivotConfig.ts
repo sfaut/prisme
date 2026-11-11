@@ -128,9 +128,14 @@ const WITHOUT_TOTAL = { rows: 'without_row_total', columns: 'without_column_tota
 export type PivotSection = 'fields' | 'zones'
 
 /**
- * Field of the configuration that holds the width of each section.
+ * Fields of the configuration that hold the width of each section: in CSS
+ * pixels (`px`), and in steps of the spacing scale in a configuration saved
+ * before (`steps`), read in pixels and replaced by the first width set.
  */
-const SECTION_WIDTH = { fields: 'fields_width', zones: 'zones_width' } as const
+const SECTION_WIDTH = {
+  fields: { px: 'fields_px', steps: 'fields_width' },
+  zones: { px: 'zones_px', steps: 'zones_width' },
+} as const
 
 /**
  * Label of a precision in the menu of a level.
@@ -955,28 +960,39 @@ export function withLabelWidth(
 }
 
 /**
- * Width of a section of the panel, in steps of the spacing scale; none for its default width.
+ * Width of a section of the panel, in CSS pixels; `null` for its default width. A width saved in
+ * steps of the spacing scale, before the widths in pixels, is read in pixels.
  *
  * @param config Configuration.
  * @param section Section.
+ * @param step
+ *     Step of the spacing scale (`--spacing`), in pixels, measured on the page.
  */
-export function sectionWidth(config: PivotConfig, section: PivotSection): number | undefined {
-  return config[SECTION_WIDTH[section]]
+export function sectionWidth(
+  config: PivotConfig,
+  section: PivotSection,
+  step: number,
+): number | null {
+  const fields = SECTION_WIDTH[section]
+  const steps = config[fields.steps]
+  return config[fields.px] ?? (steps === undefined ? null : steps * step)
 }
 
 /**
- * Configuration after a section of the panel takes a width, or gives it back.
+ * Configuration after a section of the panel takes a width, or gives it back; the width saved in
+ * steps, if any, goes.
  *
  * @param config Configuration.
  * @param section Section.
- * @param width Width, in steps of the spacing scale; `null` for the default width.
+ * @param width Width, in CSS pixels; `null` for the default width.
  */
 export function withSectionWidth(
   config: PivotConfig,
   section: PivotSection,
   width: number | null,
 ): PivotConfig {
-  return { ...config, [SECTION_WIDTH[section]]: width ?? undefined }
+  const fields = SECTION_WIDTH[section]
+  return { ...config, [fields.px]: width ?? undefined, [fields.steps]: undefined }
 }
 
 /**

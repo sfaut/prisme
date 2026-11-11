@@ -614,30 +614,52 @@ describe('fittedConfig', () => {
 })
 
 describe('the widths of the sections', () => {
-  it('sets the width of a section, the other one keeping its own', () => {
-    const config = withSectionWidth(emptyConfig(), 'fields', 70)
-    expect(sectionWidth(config, 'fields')).toBe(70)
-    expect(sectionWidth(config, 'zones')).toBeUndefined()
-    const both = withSectionWidth(config, 'zones', 80)
-    expect([sectionWidth(both, 'fields'), sectionWidth(both, 'zones')]).toEqual([70, 80])
+  /**
+   * Step of the spacing scale, in pixels.
+   */
+  const STEP = 3
+
+  it('sets the width of a section in pixels, the other one keeping its own', () => {
+    const config = withSectionWidth(emptyConfig(), 'fields', 210.4)
+    expect(sectionWidth(config, 'fields', STEP)).toBe(210.4)
+    expect(sectionWidth(config, 'zones', STEP)).toBeNull()
+    const both = withSectionWidth(config, 'zones', 240)
+    expect([sectionWidth(both, 'fields', STEP), sectionWidth(both, 'zones', STEP)]).toEqual([
+      210.4, 240,
+    ])
   })
 
   it('gives a section its default width back, which the saved configuration leaves out', () => {
-    const config = withSectionWidth(withSectionWidth(emptyConfig(), 'fields', 70), 'zones', 80)
+    const config = withSectionWidth(withSectionWidth(emptyConfig(), 'fields', 210), 'zones', 240)
     const reset = withSectionWidth(config, 'fields', null)
-    expect(sectionWidth(reset, 'fields')).toBeUndefined()
-    expect(sectionWidth(reset, 'zones')).toBe(80)
-    expect(JSON.parse(JSON.stringify(reset))).not.toHaveProperty('fields_width')
+    expect(sectionWidth(reset, 'fields', STEP)).toBeNull()
+    expect(sectionWidth(reset, 'zones', STEP)).toBe(240)
+    expect(JSON.parse(JSON.stringify(reset))).not.toHaveProperty('fields_px')
+  })
+
+  it('reads a width saved in steps in pixels, and replaces it by the first width set', () => {
+    const saved: PivotConfig = { ...emptyConfig(), fields_width: 70, zones_width: 80 }
+    expect([sectionWidth(saved, 'fields', STEP), sectionWidth(saved, 'zones', STEP)]).toEqual([
+      210, 240,
+    ])
+    const moved = JSON.parse(JSON.stringify(withSectionWidth(saved, 'fields', 200.5)))
+    expect(moved).toMatchObject({ fields_px: 200.5, zones_width: 80 })
+    expect(moved).not.toHaveProperty('fields_width')
+    const reset = JSON.parse(JSON.stringify(withSectionWidth(saved, 'zones', null)))
+    expect(reset).not.toHaveProperty('zones_width')
+    expect(reset).not.toHaveProperty('zones_px')
   })
 
   it('keeps the widths when the configuration follows new columns', () => {
     const config: PivotConfig = {
-      ...withSectionWidth(withSectionWidth(emptyConfig(), 'fields', 70), 'zones', 80),
+      ...withSectionWidth(withSectionWidth(emptyConfig(), 'fields', 210), 'zones', 240),
       rows: [level(0)],
     }
     const fitted = fittedConfig({ fields: NAMES, config }, ['note', ...NAMES], [])
     expect(fitted.rows).toEqual([level(1)])
-    expect([sectionWidth(fitted, 'fields'), sectionWidth(fitted, 'zones')]).toEqual([70, 80])
+    expect([sectionWidth(fitted, 'fields', STEP), sectionWidth(fitted, 'zones', STEP)]).toEqual([
+      210, 240,
+    ])
   })
 })
 

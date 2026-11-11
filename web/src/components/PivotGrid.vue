@@ -1057,7 +1057,7 @@ function showsValues(line: PivotLine): boolean {
    the inner edge of its header, where the line that closes the column
    starts; those of the columns of labels, under the corner, are placed by
    their edge (`labelEdges`).
-   As for a splitter (`SplitHandle.vue`), the band of the hover is the
+   As for a splitter (`split/SplitHandle.vue`), the band of the hover is the
    outline of a box that covers exactly the line: the browser rounds the
    width of an outline to whole pixels of the screen and draws it around
    the pixels of the line, so that the band keeps as many pixels on each

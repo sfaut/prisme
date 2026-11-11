@@ -29,22 +29,25 @@
   `disconnect`): the cell then shows it closed, with "Reconnecter". A
   session opened on a server older than the oldest version Prisme supports
   shows a warning.
-  The buttons are above the editor. The editor (with its buttons) and the
-  results share the height in a splitter of Reka UI (`SplitterGroup`),
-  which remembers it for this editor (`cellLayout.ts`): dragging the line
-  between them moves it within the bounds of both. Either one folds, by its
-  button, by a drag below its smallest height, or, for the editor, by a
-  double click on the line. The folded editor disappears with its buttons:
-  only the editors' tabs stay above the results, with its fold button, which
-  the editors' bar draws for the active cell (`editorFolded`,
-  `toggleEditor`). The
-  folded results leave their tabs and their unfold button (the buttons of
-  the tab shown hide). The panels of a cell fold independently, all of them
-  at once too: an empty panel then takes the height left, between the
-  results and the Pivoteur (`settle`). The padding of the sides is inside
-  the panels: a panel clips its content at its edge, which may fall between
-  two pixels, and would cut the left border of a field or of the grid set
-  against it.
+  The buttons are above the editor. The editor (with its buttons), the
+  results and the panel of the Pivoteur share the height in a splitter of
+  Prisme (`split/`), whose heights and folds are kept for this editor
+  (`cellLayout.ts`): the editor and the Pivoteur keep their height, the
+  results take the height they leave (`fill`); the line under the editor
+  sets the height of the editor, the line above the Pivoteur that of the
+  Pivoteur. Each panel folds, by its
+  button, by a drag below its smallest height, or, for the editor and the
+  Pivoteur, by a double click on the line next to it. The folded editor
+  disappears with its buttons: only the editors' tabs stay above the
+  results, with its fold button, which the editors' bar draws for the
+  active cell (`editorFolded`, `toggleEditor`). The folded results leave
+  their tabs and their unfold button (the buttons of the tab shown hide).
+  The panels of a cell fold independently, all of them at once too: the
+  folded results go down against the Pivoteur, the height they leave
+  staying free above their tabs. The
+  padding of the sides is inside the panels: a panel clips its content at
+  its edge, which may fall between two pixels, and would cut the left
+  border of a field or of the grid set against it.
   Under the results, the panel of the Pivoteur (`PivotPanel.vue`) analyses
   the result of the tab shown. It starts folded, as a rail; it unfolds and
   folds by its rail, by the button of its header, by a double click on the
@@ -62,15 +65,8 @@ import {
   Square,
   WandSparkles,
 } from '@lucide/vue'
-import {
-  SplitterGroup,
-  SplitterPanel,
-  SplitterResizeHandle,
-  TabsContent,
-  TabsList,
-  TabsRoot,
-} from 'reka-ui'
-import { computed, nextTick, onMounted, ref, shallowReactive, useTemplateRef, watch } from 'vue'
+import { TabsContent, TabsList, TabsRoot } from 'reka-ui'
+import { computed, onMounted, ref, shallowReactive, useTemplateRef, watch } from 'vue'
 
 import { analyzeSql } from '@/api/analyze'
 import { beautify } from '@/api/beautify'
@@ -95,15 +91,17 @@ import {
 } from '@/api/querySession'
 import { useCatalogStore } from '@/stores/catalog'
 import { useSettingsStore } from '@/stores/settings'
-import { cssPixels } from '@/cssLength'
 
 import PanelRail from './PanelRail.vue'
 import PivotPanel from './PivotPanel.vue'
 import QueryTabView from './QueryTabView.vue'
-import { cellLayoutId } from './cellLayout'
+import { cellLayoutKey } from './cellLayout'
 import ResultTab from './ResultTab.vue'
 import ResultTabActions from './ResultTabActions.vue'
-import SplitHandle from './SplitHandle.vue'
+import SplitGroup from './split/SplitGroup.vue'
+import SplitHandle from './split/SplitHandle.vue'
+import SplitPanel from './split/SplitPanel.vue'
+import { useStoredLayout } from './split/storedLayout'
 import { DEFAULT_INDENT_SIZE } from './editorIndent'
 import SqlEditor from './SqlEditor.vue'
 import { movedItems, useTabDrag } from './tabDrag'
@@ -192,167 +190,57 @@ const limitOptions = computed(() =>
 const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
 
 /**
- * Heights of the cell's splitter, in pixels (`main.css`): default and
- * smallest editor, folded editor (the gap under the editors' tabs, which
- * leaves room for the grip of the line: the splitter clips what goes past
- * its edge); default and smallest results, folded results (their tabs and
- * the gap above them); smallest panel of the Pivoteur, and its rail, which
- * is also its default height. The panels carry no padding: it would add to
- * the size Reka UI gives them (`flex-basis: 0`); their inner block has it.
- * Reka UI scales both default heights together to the cell's height: they
- * set a share, a third for the editor.
- *
- * Fixed sizes: Reka UI's splitter only takes pixels or a percentage of the
- * group, so these theme lengths are read once, in pixels (`docs/DEVELOPER.md`, section "Lengths in pixels").
+ * Layout of the cell, kept for this editor (`cellLayout.ts`): the heights the
+ * user gave the editor and the Pivoteur, in CSS pixels (`null`: their default
+ * height, `main.css`), and the folds of the three panels; the Pivoteur starts
+ * folded, as a rail.
  */
-const EDITOR_HEIGHT = cssPixels('--editor-height', 200)
-const EDITOR_MIN_HEIGHT = cssPixels('--editor-min-height', 96)
-const EDITOR_FOLDED_HEIGHT = cssPixels('--editor-folded-height', 8)
-const RESULTS_HEIGHT = cssPixels('--results-height', 400)
-const RESULTS_MIN_HEIGHT = cssPixels('--results-min-height', 200)
-const RESULTS_FOLDED_HEIGHT = cssPixels('--tab-bar-height', 40)
-const PIVOT_MIN_HEIGHT = cssPixels('--pivot-min-height', 200)
-const RAIL_SIZE = cssPixels('--rail-size', 24)
+const layout = useStoredLayout(cellLayoutKey(props.editorId), {
+  editor: null as number | null,
+  pivot: null as number | null,
+  editorFolded: false as boolean,
+  resultsFolded: false as boolean,
+  pivotFolded: true as boolean,
+})
 
 /**
- * Panels of the editor, of the results, of the height left and of the
- * Pivoteur in the cell's splitter.
+ * Panel of the cell.
  */
-const editorPanel = useTemplateRef<InstanceType<typeof SplitterPanel>>('editorPanel')
-const resultsPanel = useTemplateRef<InstanceType<typeof SplitterPanel>>('resultsPanel')
-const fillerPanel = useTemplateRef<InstanceType<typeof SplitterPanel>>('fillerPanel')
-const pivotSplit = useTemplateRef<InstanceType<typeof SplitterPanel>>('pivotSplit')
+type CellPanel = 'editor' | 'results' | 'pivot'
 
 /**
- * Gives the height of the empty panel to an open panel. Called on each change
- * of the layout, drags included, once it is applied and before it is painted.
+ * Id of a panel, unique to the editor: the line that resizes it names it.
  *
- * Workaround: a group of Reka UI always fills its height, and a folded panel
- * next to a panel that folds receives its height and unfolds. The empty panel,
- * next to the results and to the Pivoteur, receives it instead, and keeps it
- * only when all the panels are folded (`docs/DEVELOPER.md`, section
- * "Workarounds").
+ * @param panel Panel.
  */
-async function settle(): Promise<void> {
-  await nextTick()
-  const height = fillerPanel.value?.getSize() ?? 0
-  const panels = [resultsPanel.value, pivotSplit.value, editorPanel.value]
-  const open = panels.find((panel) => panel !== null && !panel.isCollapsed)
-  if (height >= 1 && open) {
-    open.resize(open.getSize() + height)
-  }
+function panelId(panel: CellPanel): string {
+  return `cell-${props.editorId}-${panel}-panel`
 }
 
 /**
  * Is the editor folded?
  */
-const editorFolded = computed(() => editorPanel.value?.isCollapsed ?? false)
+const editorFolded = computed(() => layout.editorFolded)
 
 /**
- * Opens the results and, if asked, the Pivoteur below them, at their smallest
- * heights, with the height of the panels around them. Under a folded Pivoteur,
- * the results take half of the editor's height. When the cell is too small for
- * all of them, the Pivoteur stays folded.
- *
- * Workaround: Reka UI refuses a height it could only reach by folding the
- * panel next to it (`docs/DEVELOPER.md`, section "Workarounds"). The height
- * goes through the empty panel: the Pivoteur folds for a moment, the results
- * take what they need, the editor gives what is missing, and the Pivoteur
- * opens again with what is left.
- *
- * @param pivotOpen Should the Pivoteur be open?
- */
-function openResults(pivotOpen: boolean): void {
-  const results = resultsPanel.value
-  const filler = fillerPanel.value
-  const pivot = pivotSplit.value
-  const editor = editorPanel.value
-  if (!results || !filler || !pivot || !editor) {
-    return
-  }
-  if (!pivot.isCollapsed) {
-    pivot.collapse()
-  }
-  results.resize(RESULTS_MIN_HEIGHT)
-  if (results.isCollapsed) {
-    const height = editor.getSize()
-    editor.resize(height - Math.max(RESULTS_MIN_HEIGHT, height / 2))
-  }
-  if (pivotOpen) {
-    results.resize(RESULTS_MIN_HEIGHT)
-    // One pixel more, as the sizes come back from percentages, with their rounding.
-    const missing = PIVOT_MIN_HEIGHT - RAIL_SIZE - filler.getSize() + 1
-    if (missing > 0 && editor.getSize() - missing >= EDITOR_MIN_HEIGHT) {
-      editor.resize(editor.getSize() - missing)
-      results.resize(RESULTS_MIN_HEIGHT)
-    }
-    if (RAIL_SIZE + filler.getSize() >= PIVOT_MIN_HEIGHT) {
-      pivot.resize(RAIL_SIZE + filler.getSize())
-    }
-  }
-}
-
-/**
- * Unfolds a panel. It takes back the height it had when it folded, the whole
- * cell if it was the only one open: the panels open beside it would fold, and
- * open again at their smallest height instead.
- *
- * @param panel Panel to unfold.
- */
-function unfold(panel: InstanceType<typeof SplitterPanel>): void {
-  const editorOpen = editorPanel.value?.isCollapsed === false
-  const resultsOpen = resultsPanel.value?.isCollapsed === false || panel === resultsPanel.value
-  const pivotOpen = pivotSplit.value?.isCollapsed === false || panel === pivotSplit.value
-  panel.expand()
-  if (editorOpen && editorPanel.value?.isCollapsed) {
-    editorPanel.value.resize(EDITOR_MIN_HEIGHT)
-  }
-  if (pivotOpen && pivotSplit.value?.isCollapsed && !resultsOpen) {
-    pivotSplit.value.resize(PIVOT_MIN_HEIGHT)
-  } else if (
-    (resultsOpen && resultsPanel.value?.isCollapsed) ||
-    (pivotOpen && pivotSplit.value?.isCollapsed)
-  ) {
-    openResults(pivotOpen)
-  }
-}
-
-/**
- * Folds or unfolds the editor. Its height goes to the results below it:
- * folded, they pass it on, and stay folded.
+ * Folds or unfolds the editor.
  */
 function toggleEditor(): void {
-  if (editorPanel.value?.isCollapsed) {
-    unfold(editorPanel.value)
-    return
-  }
-  const resultsFolded = resultsPanel.value?.isCollapsed
-  editorPanel.value?.collapse()
-  if (resultsFolded) {
-    resultsPanel.value?.resize(RESULTS_FOLDED_HEIGHT)
-  }
+  layout.editorFolded = !layout.editorFolded
 }
 
 /**
  * Folds or unfolds the results.
  */
 function toggleResults(): void {
-  if (resultsPanel.value?.isCollapsed) {
-    unfold(resultsPanel.value)
-  } else {
-    resultsPanel.value?.collapse()
-  }
+  layout.resultsFolded = !layout.resultsFolded
 }
 
 /**
  * Folds or unfolds the panel of the Pivoteur.
  */
 function togglePivot(): void {
-  if (pivotSplit.value?.isCollapsed) {
-    unfold(pivotSplit.value)
-  } else {
-    pivotSplit.value?.collapse()
-  }
+  layout.pivotFolded = !layout.pivotFolded
 }
 
 /**
@@ -853,29 +741,19 @@ defineExpose({
 </script>
 
 <template>
-  <splitter-group
-    direction="vertical"
-    :auto-save-id="cellLayoutId(editorId)"
-    class="min-h-0 flex-1"
-    @layout="settle"
-  >
+  <split-group direction="vertical" class="min-h-0 flex-1">
     <!--
       Top panel: the gap under the editors' tabs, the buttons, then the
       editor, which takes the remaining room. Folded, the panel keeps only
       the gap: the buttons and the editor, under it, stay mounted.
-      Both panels have ids of their own, unique to the editor, as the
-      panels of the layout (`App.vue`): Reka UI keys the size a folded
-      panel unfolds to by its id.
     -->
-    <splitter-panel
-      :id="`cell-${editorId}-editor-panel`"
-      ref="editorPanel"
-      :order="1"
-      size-unit="px"
-      :default-size="EDITOR_HEIGHT"
-      :min-size="EDITOR_MIN_HEIGHT"
-      collapsible
-      :collapsed-size="EDITOR_FOLDED_HEIGHT"
+    <split-panel
+      :id="panelId('editor')"
+      v-model:size="layout.editor"
+      v-model:folded="layout.editorFolded"
+      default-size="var(--editor-height)"
+      min-size="var(--editor-min-height)"
+      folded-size="var(--editor-folded-height)"
       class="flex"
     >
       <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 py-3">
@@ -953,27 +831,30 @@ defineExpose({
           class="min-h-0 flex-1"
         />
       </div>
-    </splitter-panel>
+    </split-panel>
     <split-handle
+      :controls="panelId('editor')"
       tooltip="Glisser pour partager la hauteur entre l’éditeur et les résultats, double clic pour replier ou déplier l’éditeur"
-      @toggle="toggleEditor"
+      @activate="toggleEditor"
     />
 
     <!--
-      Middle panel: the results, with a padding at the bottom too, above
-      the Pivoteur. Folded, it keeps the height of their tabs: the
-      padding of the bottom then falls outside the panel.
+      Height the folded results leave free, above their tabs: the tabs go
+      down against the Pivoteur.
     -->
-    <splitter-panel
-      :id="`cell-${editorId}-results-panel`"
-      ref="resultsPanel"
-      v-slot="{ isCollapsed }"
-      :order="2"
-      size-unit="px"
-      :default-size="RESULTS_HEIGHT"
-      :min-size="RESULTS_MIN_HEIGHT"
-      collapsible
-      :collapsed-size="RESULTS_FOLDED_HEIGHT"
+    <div v-if="layout.resultsFolded" data-split-room class="flex-1" />
+    <!--
+      Middle panel: the results, in the height the editor and the
+      Pivoteur leave, with a padding at the bottom too, above the
+      Pivoteur. Folded, it keeps the height of their tabs: the padding of
+      the bottom then falls outside the panel.
+    -->
+    <split-panel
+      :id="panelId('results')"
+      v-model:folded="layout.resultsFolded"
+      :fill="!layout.resultsFolded"
+      min-size="var(--results-min-height)"
+      folded-size="var(--tab-bar-height)"
       class="flex"
     >
       <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 py-3">
@@ -1031,7 +912,7 @@ defineExpose({
             -->
             <div class="flex items-center self-center">
               <result-tab-actions
-                v-if="shownTab && !isCollapsed"
+                v-if="shownTab && !layout.resultsFolded"
                 :tab="shownTab"
                 :refresh="refreshState(state, shownTab)"
                 :export-groups="tabViews.get(shownTab.id)?.exportGroups"
@@ -1040,11 +921,13 @@ defineExpose({
                 @toggle-filter="toggleFilter(shownTab)"
               />
               <ui-button
-                :icon="isCollapsed ? PanelBottomOpen : PanelBottomClose"
+                :icon="layout.resultsFolded ? PanelBottomOpen : PanelBottomClose"
                 variant="ghost"
                 small
-                :aria-label="isCollapsed ? 'Déplier les résultats' : 'Replier les résultats'"
-                v-tooltip="isCollapsed ? 'Déplier les résultats' : 'Replier les résultats'"
+                :aria-label="
+                  layout.resultsFolded ? 'Déplier les résultats' : 'Replier les résultats'
+                "
+                v-tooltip="layout.resultsFolded ? 'Déplier les résultats' : 'Replier les résultats'"
                 @click="toggleResults"
               />
             </div>
@@ -1074,25 +957,11 @@ defineExpose({
           </tabs-content>
         </tabs-root>
       </div>
-    </splitter-panel>
-    <!--
-      Workaround: height left when all the panels are folded (`settle`,
-      `docs/DEVELOPER.md`, section "Workarounds"). Reka UI pairs
-      each handle with the two panels around it, by their ranks: the empty
-      panel needs one, which is never used.
-    -->
-    <splitter-resize-handle disabled class="hidden" />
-    <splitter-panel
-      :id="`cell-${editorId}-filler-panel`"
-      ref="fillerPanel"
-      :order="3"
-      size-unit="px"
-      :default-size="0"
-      :min-size="0"
-    />
+    </split-panel>
     <split-handle
+      :controls="panelId('pivot')"
       tooltip="Glisser pour redimensionner le Pivoteur, double clic pour le replier ou le déplier"
-      @toggle="togglePivot"
+      @activate="togglePivot"
     />
 
     <!--
@@ -1100,32 +969,29 @@ defineExpose({
       stays mounted, hidden, and keeps the configuration of each tab; it
       computes nothing and stops its Worker.
     -->
-    <splitter-panel
-      :id="`cell-${editorId}-pivot-panel`"
-      ref="pivotSplit"
-      v-slot="{ isCollapsed }"
-      :order="4"
-      size-unit="px"
-      :default-size="RAIL_SIZE"
-      :min-size="PIVOT_MIN_HEIGHT"
-      collapsible
-      :collapsed-size="RAIL_SIZE"
+    <split-panel
+      :id="panelId('pivot')"
+      v-model:size="layout.pivot"
+      v-model:folded="layout.pivotFolded"
+      default-size="var(--pivot-min-height)"
+      min-size="var(--pivot-min-height)"
+      folded-size="var(--rail-size)"
       class="flex"
     >
       <pivot-panel
-        v-show="!isCollapsed"
+        v-show="!layout.pivotFolded"
         :tab="shownTab"
-        :open="!isCollapsed"
+        :open="!layout.pivotFolded"
         :connection-id="connection.id"
-        @collapse="pivotSplit?.collapse()"
+        @collapse="layout.pivotFolded = true"
       />
       <panel-rail
-        v-if="isCollapsed"
+        v-if="layout.pivotFolded"
         title="Pivoteur"
         side="bottom"
         class="flex-1"
         @expand="togglePivot"
       />
-    </splitter-panel>
-  </splitter-group>
+    </split-panel>
+  </split-group>
 </template>

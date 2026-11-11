@@ -154,7 +154,7 @@ Columns show, on three aligned columns: a symbol, the name, then the type, nulla
 - Indexed columns are in **bold**. Indexes show `PRIMARY KEY` or `UNIQUE`.
 - Long labels are shortened (…); hover to read them in full.
 
-Drag the right edge of the panel to resize it; double-click the edge to restore its default width.
+Drag the right edge of the panel to resize it, or use the arrow keys once the edge has the focus; double-click the edge, or press Enter, to fold or unfold the panel.
 
 ### Editors
 
@@ -207,7 +207,7 @@ A transaction lives on the session of its editor: its queries run on the session
 - To leave the editor with the keyboard: **Esc** then **Tab**, or **Ctrl+M** (Tab then moves the focus again).
 - **Enjoliver** (Beautify) rewrites the query in a consistent style: keywords and function names in capitals, table and column names as written in the catalog, `AS` before aliases, one clause per line, indented by the **Indentation** of the settings, spaces around operators. Stored procedures and `DELIMITER` blocks are supported. Ctrl+Z undoes it. The button is active once the connection's catalog is loaded.
 
-Drag the bar under the editor to share the height between editor and results; double-click it to restore the default.
+Drag the line under the editor to share the height between editor and results, or use the arrow keys once the line has the focus; double-click it, or press Enter, to fold or unfold the editor.
 
 ### Result tabs
 
@@ -257,7 +257,7 @@ Each query gets its own tab:
   The export menu saves it as a `.sql` file (**Fichier**) or copies it (**Presse-papiers**), for MySQL (`ROW (…)`) or for MariaDB (`(…)`, without `ROW`), whatever the server of the editor; or writes it after the last query of the editor (**Éditeur**), in the dialect of its server, without running it. **Minimum versions**: MySQL reads the CTE from 8.0.19 (an older MySQL refuses `VALUES ROW`: its editor does not offer the insertion); MariaDB reads it in every version Prisme supports. Each value keeps its type: dates, date-times and times are typed (`DATE'…'`, `TIMESTAMP'…'`, `TIME'…'`), floating numbers carry an exponent (`1.5E0`), JSON is cast for MySQL, bytes are written in hexadecimal (`X'…'`) or as a binary string (`_binary'…'`). MySQL refuses a typed date whose month or day is zero (`0000-00-00`) under its default modes: such a date is written as a string for MySQL, and its column becomes text. Names are quoted only when needed, with backticks, or double quotes under the `ANSI_QUOTES` mode; backslashes in strings are doubled unless the `NO_BACKSLASH_ESCAPES` mode is active: the CTE follows the modes of the editor's session, even for another server. Not kept: the collation of strings, and the types `YEAR` (integer), `BIT` (binary string), `ENUM` and `SET` (text); a geometry becomes a binary string. Columns sharing a name, or a selection with gaps (Ctrl+click), refuse the CTE.
 - **Full export** (**Résultat complet en CSV (requête relancée)** in the export menu) runs the query again on the server, as written, without Prisme's row limit (a `LIMIT` you wrote still applies), and writes the same CSV file in the `exports` folder of [your data](#your-data), however many rows. Columns keep their displayed order; the sort and the filter of the grid do not apply: write them in SQL (`ORDER BY`, `WHERE`). Only reads can be exported. The export runs on a read-only connection of its own, on the current database of the editor: it sees neither the temporary tables nor the variables of the editor's session, nor its open transaction. The [exports manager](#top-bar) follows it, and a message tells when its file is ready, with a **Télécharger** (Download) button.
 - **Display**: the header shows each column's type (hover for the full name). Numbers and dates are right-aligned, `CHAR` columns use a monospaced font, web addresses are clickable, `NULL` is shown in small grey capitals.
-- **Data explorer**: a panel on the right of the screen shows the values selected in a column of type `JSON`, or in a text column that holds JSON or XML: a cell, the whole column, or ranges of it. The values are indented with 4 spaces and highlighted; numbers and texts stay exactly as stored. Several values are gathered into one document: a `[…]` array for JSON (`NULL` becomes `null`), a `<data>…</data>` element for XML (`NULL` is left out, `<?xml?>` declarations are removed). Each level folds with the arrows in the margin; the buttons fold or unfold everything, or every node at the depth of the cursor. The line wrap button wraps long lines to the width of the panel; it is off by default and your choice is remembered. The search button finds values with JSONPath or XPath (see [Searching the data explorer](#searching-the-data-explorer)). The copy button, or Ctrl+A then Ctrl+C, copies valid JSON or XML, folded parts included. The panel follows the selection, and the grid of the active editor; drag its left edge to resize it (double-click to reset), the width is remembered.
+- **Data explorer**: a panel on the right of the screen shows the values selected in a column of type `JSON`, or in a text column that holds JSON or XML: a cell, the whole column, or ranges of it. The values are indented with 4 spaces and highlighted; numbers and texts stay exactly as stored. Several values are gathered into one document: a `[…]` array for JSON (`NULL` becomes `null`), a `<data>…</data>` element for XML (`NULL` is left out, `<?xml?>` declarations are removed). Each level folds with the arrows in the margin; the buttons fold or unfold everything, or every node at the depth of the cursor. The line wrap button wraps long lines to the width of the panel; it is off by default and your choice is remembered. The search button finds values with JSONPath or XPath (see [Searching the data explorer](#searching-the-data-explorer)). The copy button, or Ctrl+A then Ctrl+C, copies valid JSON or XML, folded parts included. The panel follows the selection, and the grid of the active editor; drag its left edge to resize it (double-click to fold it), the width is remembered.
 
 ### Searching the data explorer
 
@@ -317,7 +317,7 @@ The panel has three columns: the columns of the result, with their type and a se
 | Action | How |
 |---|---|
 | Place a column in a zone | Drag it there, or the **+** button of its line |
-| Widen or narrow the columns of the result, or the zones | Drag the line on their right, or the arrow keys once it has the focus; a double click gives back the default width |
+| Widen or narrow the columns of the result, or the zones | Drag the line on their right, or the arrow keys once it has the focus; a double click, or Enter, gives back the default width |
 | Move an element, in its zone or to another one | Drag it: the zone it passes over is framed in blue |
 | Send a level to the other axis | Drag it, or its menu: **Passer en lignes**, **Passer en colonnes** (Move to rows, Move to columns) |
 | Remove an element | Its menu, **Retirer** (Remove), or drag it and release it outside the zones; Esc cancels the drag |

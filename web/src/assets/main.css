@@ -192,22 +192,14 @@
   --grip-color: var(--color-line);
 
   /* Zone where the pointer grabs a splitter, on each side of its line:
-     with a mouse, then on a touch screen. Reka UI reads them in pixels
-     (`hitAreaMargins`, 5 and 15 by default), and the handle covers the
-     same zone with a transparent box (`SplitHandle.vue`): over the zone,
-     the pointer is on the handle for the browser as for Reka UI, so the
-     panel underneath shows no hover of its own. Reka UI places the mouse
-     by its events `mousemove`, whose coordinates the browser truncates to
-     whole CSS pixels: its zone reaches up to one pixel further on the side
-     where the coordinates grow (below a horizontal line, right of a
-     vertical one), a pixel that the box covers too (`--split-hit-rounding`,
-     a CSS pixel whatever the root, as the coordinates). */
+     with a mouse, then on a touch screen. The handle covers it with a
+     transparent box (`split/SplitHandle.vue`), so the panel underneath
+     shows no hover of its own there. */
   --split-hit-margin: --spacing(2);
   --split-hit-margin-coarse: --spacing(5);
-  --split-hit-rounding: 1px;
 
-  /* Splitters of the layout (`SplitterGroup` of Reka UI), whose sizes the
-     code reads (`cssPixels`): default and smallest width of the object
+  /* Splitters of the layout (`split/`), whose panels take these lengths
+     as they are: default and smallest width of the object
      navigator and of the data explorer, the latter enough for its header
      on one line (title and buttons, with the panel's padding); smallest
      width of the area of the editors, enough for the buttons of the editor
@@ -221,9 +213,8 @@
      `DocumentTab`) around its small buttons (`h-7`), taller than its text,
      and the line under the bar;
      a folded editor leaves the gap under the editors' tabs, where the grip
-     of the line stays whole. Default heights of the editor and of the result list:
-     Reka UI scales them together to the cell's height, so that they set a
-     share, a third for the editor. Smallest editor (buttons and a few lines) and
+     of the line stays whole. Default height of the editor, the result list
+     taking the rest of the cell. Smallest editor (buttons and a few lines) and
      result list (tabs, a few rows and the line under the grid); smallest
      area of the editors: both, plus the tab bar of the editors, the rail
      of the folded Pivoteur, the padding and the gaps. Smallest height of
@@ -241,7 +232,6 @@
   --tab-bar-height: calc(--spacing(5) + --spacing(7) + var(--line-width));
   --editor-folded-height: --spacing(3);
   --editor-height: --spacing(67);
-  --results-height: --spacing(133);
   --editor-min-height: --spacing(32);
   --results-min-height: --spacing(67);
   --editors-min-height: calc(
@@ -291,114 +281,6 @@
   initial-value: 0px;
 }
 
-@property --split-hit-margin {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --split-hit-margin-coarse {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --navigator-width {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --navigator-min-width {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --explorer-width {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --explorer-min-width {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --editors-min-width {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --rail-size {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --editor-folded-height {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --tab-bar-height {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --editor-height {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --results-height {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --editor-min-height {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --results-min-height {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --editors-min-height {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --console-height {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --console-min-height {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --pivot-min-height {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
 @property --pivot-label-width {
   syntax: '<length>';
   inherits: true;
@@ -406,30 +288,6 @@
 }
 
 @property --pivot-level-width {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --pivot-fields-width {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --pivot-fields-min-width {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --pivot-zones-width {
-  syntax: '<length>';
-  inherits: true;
-  initial-value: 0px;
-}
-
-@property --pivot-zones-min-width {
   syntax: '<length>';
   inherits: true;
   initial-value: 0px;

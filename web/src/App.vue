@@ -6,11 +6,11 @@
   the right, the data explorer (`DataExplorer`). Both side panels go from
   the top bar down to the bottom of the window. Under the editors, between
   the side panels, the console (`ConsolePanel`). The columns share the
-  width, and the editors and the console the height, in splitters of Reka
-  UI (`SplitterGroup`): dragging the line between two panels moves it
+  width, and the editors and the console the height, in splitters of Prisme
+  (`split/`): dragging the line between two panels moves it, to the pixel,
   within their bounds (the editors keep `--editors-min-width` and
-  `--editors-min-height`); dragged further, it shrinks the next panel too,
-  down to folding it, and the splitters remember the layout. Each side panel
+  `--editors-min-height`, where the line stops), and the sizes are kept in
+  the browser (`prisme.panelSizes`). Each side panel
   and the console fold with the button of their header (`PanelHeader`), by
   a drag below their smallest size or by a double click on their line, and
   leave a rail on their edge, which opens them again (`PanelRail`). The
@@ -34,8 +34,8 @@
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
 import { Database, PanelTopClose, PanelTopOpen } from '@lucide/vue'
-import { SplitterGroup, SplitterPanel, TabsContent, TabsRoot } from 'reka-ui'
-import { computed, nextTick, onMounted, ref, shallowReactive, useTemplateRef, watch } from 'vue'
+import { TabsContent, TabsRoot } from 'reka-ui'
+import { computed, nextTick, onMounted, ref, shallowReactive, watch } from 'vue'
 
 import type { SessionStatus } from './api/querySession'
 
@@ -52,14 +52,16 @@ import EditorTabBar from './components/EditorTabBar.vue'
 import ObjectNavigator from './components/ObjectNavigator.vue'
 import QueryCell from './components/QueryCell.vue'
 import PanelRail from './components/PanelRail.vue'
-import SplitHandle from './components/SplitHandle.vue'
+import SplitGroup from './components/split/SplitGroup.vue'
+import SplitHandle from './components/split/SplitHandle.vue'
+import SplitPanel from './components/split/SplitPanel.vue'
+import { useStoredLayout } from './components/split/storedLayout'
 import UiAlert from './components/ui/UiAlert.vue'
 import UiButton from './components/ui/UiButton.vue'
 import UiDialog from './components/ui/UiDialog.vue'
 import UiToaster from './components/ui/UiToaster.vue'
 import UiTooltip from './components/ui/UiTooltip.vue'
 import { vTooltip } from './components/ui/tooltip'
-import { cssPixels } from './cssLength'
 
 const connections = useConnectionsStore()
 const editors = useEditorsStore()
@@ -68,104 +70,14 @@ const layout = useLayoutStore()
 const consoleStore = useConsoleStore()
 
 /**
- * Sizes of the splitters, in pixels (`main.css`): default and smallest
- * width of the object navigator and of the data explorer; smallest width
- * and height of the area of the editors; default and smallest height of
- * the console; a folded panel keeps its rail.
- *
- * Fixed sizes: Reka UI's splitter only takes pixels or a percentage of the
- * group, so these theme lengths are read once, in pixels (`docs/DEVELOPER.md`, section "Lengths in pixels").
+ * Sizes of the panels of the layout given by the user, in CSS pixels
+ * (`split/storedLayout.ts`); `null`: the default size of the theme.
  */
-const NAVIGATOR_WIDTH = cssPixels('--navigator-width', 300)
-const NAVIGATOR_MIN_WIDTH = cssPixels('--navigator-min-width', 200)
-const EXPLORER_WIDTH = cssPixels('--explorer-width', 420)
-const EXPLORER_MIN_WIDTH = cssPixels('--explorer-min-width', 360)
-const EDITORS_MIN_WIDTH = cssPixels('--editors-min-width', 640)
-const EDITORS_MIN_HEIGHT = cssPixels('--editors-min-height', 312)
-const CONSOLE_HEIGHT = cssPixels('--console-height', 220)
-const CONSOLE_MIN_HEIGHT = cssPixels('--console-min-height', 120)
-const RAIL_SIZE = cssPixels('--rail-size', 24)
-
-/**
- * Foldable panels of the splitters: object navigator, data explorer,
- * console.
- */
-const navigatorSplit = useTemplateRef<InstanceType<typeof SplitterPanel>>('navigatorSplit')
-const explorerSplit = useTemplateRef<InstanceType<typeof SplitterPanel>>('explorerSplit')
-const consoleSplit = useTemplateRef<InstanceType<typeof SplitterPanel>>('consoleSplit')
-
-/**
- * Folds or unfolds a panel of a splitter as its state says, unless it is
- * so already.
- *
- * Workaround: `collapse` on a panel already folded (a layout saved folded,
- * on loading) replaces the width it unfolds to by its folded width, and
- * the panel would unfold at its smallest width (`docs/DEVELOPER.md`,
- * section "Workarounds").
- *
- * @param panel Panel of the splitter.
- * @param open Is the panel open?
- */
-function showPanel(panel: InstanceType<typeof SplitterPanel> | null, open: boolean): void {
-  if (panel === null || panel.isCollapsed !== open) {
-    return
-  }
-  if (open) {
-    panel.expand()
-  } else {
-    panel.collapse()
-  }
-}
-
-/**
- * Do the foldable panels follow their states yet? Once mounted, each panel
- * takes the state of its store; until then, the resizes of the default or
- * saved layout leave the stores as they are.
- */
-const laidOut = ref(false)
-
-/**
- * After a resize of a foldable panel, gives its state to its store: open
- * unless folded, from Reka UI's `isCollapsed`.
- *
- * Workaround: the `collapse` event of a panel in pixels misses a fold by a
- * drag (`docs/DEVELOPER.md`, section "Workarounds").
- *
- * @param panel Panel of the splitter.
- * @param setOpen Sets the state in the store.
- */
-function follow(
-  panel: InstanceType<typeof SplitterPanel> | null,
-  setOpen: (open: boolean) => void,
-): void {
-  if (laidOut.value && panel !== null) {
-    setOpen(!panel.isCollapsed)
-  }
-}
-
-// The state of each foldable panel (header button, rail, double click)
-// drives the panel; the panel, folded or unfolded by a drag, updates the
-// state in return (`follow`).
-watch(
-  () => layout.objectsOpen,
-  (open) => showPanel(navigatorSplit.value, open),
-)
-watch(
-  () => explorer.open,
-  (open) => showPanel(explorerSplit.value, open),
-)
-watch(
-  () => consoleStore.open,
-  (open) => showPanel(consoleSplit.value, open),
-)
-onMounted(() =>
-  nextTick(() => {
-    showPanel(navigatorSplit.value, layout.objectsOpen)
-    showPanel(explorerSplit.value, explorer.open)
-    showPanel(consoleSplit.value, consoleStore.open)
-    laidOut.value = true
-  }),
-)
+const sizes = useStoredLayout<{
+  navigator: number | null
+  explorer: number | null
+  console: number | null
+}>('prisme.panelSizes', { navigator: null, explorer: null, console: null })
 
 /**
  * Error loading or saving the editors, `null` if none.
@@ -541,23 +453,19 @@ function selectSource(connectionId: number): void {
   <div class="flex h-full flex-col">
     <app-top-bar />
     <!--
-      Each panel of the splitters has an id of its own: Reka UI keys the
-      size a folded panel unfolds to by its id, and the id it generates
-      otherwise follows the order of the components, which changes with
-      what is shown (a folded console renders less).
+      Each panel of the splitters has an id of its own: the line that
+      resizes it names it (`controls`, `aria-controls`).
     -->
-    <splitter-group direction="horizontal" auto-save-id="prisme.layout" class="min-h-0 flex-1">
-      <splitter-panel
+    <split-group direction="horizontal" class="min-h-0 flex-1">
+      <split-panel
         id="navigator-panel"
-        ref="navigatorSplit"
-        :order="1"
-        size-unit="px"
-        :default-size="NAVIGATOR_WIDTH"
-        :min-size="NAVIGATOR_MIN_WIDTH"
-        collapsible
-        :collapsed-size="RAIL_SIZE"
+        v-model:size="sizes.navigator"
+        :folded="!layout.objectsOpen"
+        default-size="var(--navigator-width)"
+        min-size="var(--navigator-min-width)"
+        folded-size="var(--rail-size)"
         class="flex"
-        @resize="follow(navigatorSplit, (open) => (layout.objectsOpen = open))"
+        @update:folded="(folded: boolean) => (layout.objectsOpen = !folded)"
       >
         <!-- Folded, the object navigator stays mounted: its tree keeps its state. -->
         <aside v-show="layout.objectsOpen" class="flex min-w-0 flex-1 flex-col gap-4 p-4">
@@ -579,30 +487,15 @@ function selectSource(connectionId: number): void {
           class="flex-1"
           @expand="layout.objectsOpen = true"
         />
-      </splitter-panel>
+      </split-panel>
       <split-handle
+        controls="navigator-panel"
         tooltip="Glisser pour redimensionner le navigateur d’objets, double clic pour le replier ou le déplier"
-        @toggle="layout.objectsOpen = !layout.objectsOpen"
+        @activate="layout.objectsOpen = !layout.objectsOpen"
       />
-      <splitter-panel
-        id="center-panel"
-        :order="2"
-        size-unit="px"
-        :min-size="EDITORS_MIN_WIDTH"
-        class="flex"
-      >
-        <splitter-group
-          direction="vertical"
-          auto-save-id="prisme.centerLayout"
-          class="min-w-0 flex-1"
-        >
-          <splitter-panel
-            id="editors-panel"
-            :order="1"
-            size-unit="px"
-            :min-size="EDITORS_MIN_HEIGHT"
-            class="flex"
-          >
+      <split-panel id="center-panel" fill min-size="var(--editors-min-width)" class="flex">
+        <split-group direction="vertical" class="min-w-0 flex-1">
+          <split-panel id="editors-panel" fill min-size="var(--editors-min-height)" class="flex">
             <!--
               The padding of the sides is inside the panels of the cells
               (`QueryCell`), which would cut a border set against their edge;
@@ -680,22 +573,21 @@ function selectSource(connectionId: number): void {
                 </tabs-content>
               </tabs-root>
             </main>
-          </splitter-panel>
+          </split-panel>
           <split-handle
+            controls="console-panel"
             tooltip="Glisser pour redimensionner la console, double clic pour la replier ou la déplier"
-            @toggle="consoleStore.open = !consoleStore.open"
+            @activate="consoleStore.open = !consoleStore.open"
           />
-          <splitter-panel
+          <split-panel
             id="console-panel"
-            ref="consoleSplit"
-            :order="2"
-            size-unit="px"
-            :default-size="CONSOLE_HEIGHT"
-            :min-size="CONSOLE_MIN_HEIGHT"
-            collapsible
-            :collapsed-size="RAIL_SIZE"
+            v-model:size="sizes.console"
+            :folded="!consoleStore.open"
+            default-size="var(--console-height)"
+            min-size="var(--console-min-height)"
+            folded-size="var(--rail-size)"
             class="flex"
-            @resize="follow(consoleSplit, (open) => (consoleStore.open = open))"
+            @update:folded="(folded: boolean) => (consoleStore.open = !folded)"
           >
             <section
               v-if="consoleStore.open"
@@ -710,24 +602,23 @@ function selectSource(connectionId: number): void {
               class="flex-1"
               @expand="consoleStore.open = true"
             />
-          </splitter-panel>
-        </splitter-group>
-      </splitter-panel>
+          </split-panel>
+        </split-group>
+      </split-panel>
       <split-handle
+        controls="explorer-panel"
         tooltip="Glisser pour redimensionner l’explorateur de données, double clic pour le replier ou le déplier"
-        @toggle="explorer.open = !explorer.open"
+        @activate="explorer.open = !explorer.open"
       />
-      <splitter-panel
+      <split-panel
         id="explorer-panel"
-        ref="explorerSplit"
-        :order="3"
-        size-unit="px"
-        :default-size="EXPLORER_WIDTH"
-        :min-size="EXPLORER_MIN_WIDTH"
-        collapsible
-        :collapsed-size="RAIL_SIZE"
+        v-model:size="sizes.explorer"
+        :folded="!explorer.open"
+        default-size="var(--explorer-width)"
+        min-size="var(--explorer-min-width)"
+        folded-size="var(--rail-size)"
         class="flex"
-        @resize="follow(explorerSplit, (open) => (explorer.open = open))"
+        @update:folded="(folded: boolean) => (explorer.open = !folded)"
       >
         <aside v-if="explorer.open" class="flex min-w-0 flex-1 flex-col p-4">
           <data-explorer />
@@ -739,8 +630,8 @@ function selectSource(connectionId: number): void {
           class="flex-1"
           @expand="explorer.open = true"
         />
-      </splitter-panel>
-    </splitter-group>
+      </split-panel>
+    </split-group>
   </div>
   <ui-toaster />
   <ui-dialog

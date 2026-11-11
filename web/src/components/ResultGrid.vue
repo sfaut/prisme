@@ -1025,7 +1025,7 @@ defineExpose({ keptCount, selectedSize, exportFrame, order })
 /* Resize handle of a column: a box of no width against the inner edge of
    its header, where the line that closes the column starts (the left
    border of the next header, or the right border of the last one).
-   As for a splitter (`SplitHandle.vue`), the band of the hover is the
+   As for a splitter (`split/SplitHandle.vue`), the band of the hover is the
    outline of a box that covers exactly the line: the browser rounds the
    width of an outline to whole pixels of the screen and draws it around
    the pixels of the line, so that the band keeps as many pixels on each

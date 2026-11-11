@@ -1,35 +1,26 @@
 /**
- * Layout of an editor's cell (`QueryCell`): the heights of its panels, and
- * which ones are folded. The splitter of Reka UI remembers it
- * in the browser's local storage (`autoSaveId`), one entry per editor, so
- * that folding the editor of one tab leaves the others as they are. Closing
- * an editor forgets its entry: a reopened editor starts from the default
- * layout.
+ * Layout of an editor's cell (`QueryCell`): the heights of its panels, in CSS
+ * pixels, and which ones are folded, kept in the browser's local storage
+ * (`split/storedLayout.ts`), one entry per editor, so that folding the editor
+ * of one tab leaves the others as they are. Closing an editor forgets its
+ * entry: a reopened editor starts from the default layout.
  */
+import { forgetStoredLayout } from './split/storedLayout'
 
 /**
- * Name of an editor's layout, the `autoSaveId` of its cell's splitter.
+ * Key of an editor's layout in the local storage.
  *
  * @param editorId Id of the editor.
  */
-export function cellLayoutId(editorId: number): string {
+export function cellLayoutKey(editorId: number): string {
   return `prisme.cellLayout.${editorId}`
 }
 
 /**
- * Forgets the layout of a closed editor. Reka UI keeps it under its
- * `autoSaveId`, prefixed by `reka:`. If storage is unavailable (private
- * browsing, blocked storage), there is nothing to forget.
- *
- * Workaround: Reka UI has no API to forget a saved layout; its prefix is
- * its own (`docs/DEVELOPER.md`, section "Workarounds").
+ * Forgets the layout of a closed editor.
  *
  * @param editorId Id of the editor.
  */
 export function forgetCellLayout(editorId: number): void {
-  try {
-    window.localStorage.removeItem(`reka:${cellLayoutId(editorId)}`)
-  } catch {
-    // Storage unavailable: nothing was saved.
-  }
+  forgetStoredLayout(cellLayoutKey(editorId))
 }
