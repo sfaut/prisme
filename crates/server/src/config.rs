@@ -13,16 +13,19 @@ use clap::Parser;
 /// Name of the data folder created in the user's data folder.
 const DATA_DIR_NAME: &str = "Prisme";
 
-/// How the first launch works, shown at the end of `prisme --help`.
+/// Widest line of `prisme --help`, in columns: the help fits a narrower
+/// terminal, and goes no wider in a wider one.
+const HELP_WIDTH: usize = 120;
+
+/// How the first launch works, shown at the end of `prisme --help`, wrapped
+/// at `HELP_WIDTH` columns.
 const AFTER_HELP: &str = "\
 First launch:
-  When the internal database does not exist yet in the data folder, Prisme
-  asks in the terminal for the listening port (10000 by default, on
-  127.0.0.1) and the user's email address (me@local by default). The
-  answers are saved in the internal database and read again on the next
-  launches; --setup asks the questions again.
-  A --listen or --user-email option replaces its question, without being
-  saved. Without an interactive terminal, the defaults apply.
+  When the internal database does not exist yet in the data folder, Prisme asks in the terminal for the listening port
+  (10000 by default, on 127.0.0.1) and the user's email address (me@local by default). The answers are saved in the
+  internal database and read again on the next launches; --setup asks the questions again.
+  A --listen or --user-email option replaces its question, without being saved. Without an interactive terminal, the
+  defaults apply.
   The interface is then at http://prisme.localhost:<port>.";
 
 /// Launch options of Prisme.
@@ -32,6 +35,7 @@ First launch:
     version,
     about = "Multi-database web client shaped like a notebook",
     after_help = AFTER_HELP,
+    max_term_width = HELP_WIDTH,
     disable_version_flag = true
 )]
 pub struct Config {
@@ -115,6 +119,19 @@ mod tests {
     fn rejects_network_addresses() {
         assert!(config_listening_on("0.0.0.0:8484").validate().is_err());
         assert!(config_listening_on("192.168.1.10:8484").validate().is_err());
+    }
+
+    #[test]
+    fn help_fits_in_its_width() {
+        use clap::CommandFactory;
+
+        let help = Config::command()
+            .term_width(HELP_WIDTH)
+            .render_long_help()
+            .to_string();
+        let widest = help.lines().map(|line| line.chars().count()).max();
+        assert!(widest.is_some_and(|width| width <= HELP_WIDTH), "{help}");
+        assert!(help.contains("http://prisme.localhost:<port>"));
     }
 
     #[test]
