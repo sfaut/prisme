@@ -210,8 +210,10 @@
      (9 steps made 40.5 pixels at 150 %, drawn as 40 or 41 by position);
      bar left by a folded result list (`tab-bar`): the gap above its tabs,
      then a tab at its own height, its padding (one step above and below,
-     `DocumentTab`) around its small buttons (`h-7`), taller than its text,
-     and the line under the bar;
+     `DocumentTab`) around its small buttons (`h-7`), taller than its text;
+     the line under the bar is then the line of the Pivoteur's handle,
+     against it, the bar drawing none of its own (two lines side by side
+     would show as one line twice as thick);
      a folded editor leaves the gap under the editors' tabs, where the grip
      of the line stays whole. Default height of the editor, the result list
      taking the rest of the height. Smallest editor (buttons and a few lines) and
@@ -229,7 +231,7 @@
   --explorer-min-width: --spacing(120);
   --editors-min-width: --spacing(213);
   --rail-size: --spacing(8);
-  --tab-bar-height: calc(--spacing(5) + --spacing(7) + var(--line-width));
+  --tab-bar-height: calc(--spacing(5) + --spacing(7));
   --editor-folded-height: --spacing(3);
   --editor-height: --spacing(67);
   --editor-min-height: --spacing(32);
