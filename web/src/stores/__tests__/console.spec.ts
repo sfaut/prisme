@@ -105,7 +105,7 @@ describe('console store', () => {
     store.history.add(entry(3, 'run'))
     store.history.add(entry(4, 'navigator'))
     expect(store.history.entries.map((e) => e.id)).toEqual([2, 4])
-    expect(JSON.parse(window.localStorage.getItem('prisme.consoleHistoryFilter')!)).toEqual({
+    expect(JSON.parse(window.localStorage.getItem('prisme.console.historyFilter')!)).toEqual({
       action: ['navigator'],
     })
   })
@@ -134,7 +134,7 @@ describe('console store', () => {
 
   it('forgets the remembered actions that no longer exist', () => {
     window.localStorage.setItem(
-      'prisme.consoleHistoryFilter',
+      'prisme.console.historyFilter',
       JSON.stringify({ action: ['run', 'explorer', 3] }),
     )
     expect(useConsoleStore().historyFilter).toEqual({ action: ['run'] })

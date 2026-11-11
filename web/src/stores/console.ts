@@ -4,11 +4,12 @@
  * read from the server then kept up to date as they grow
  * (`api/console.ts`).
  *
- * The console is open on its History tab by default; its state is a
- * display preference specific to this machine, kept in the browser's local
- * storage. The interface keeps the last `MAX_ENTRIES` elements of each
- * list; the older ones are read again on request (`loadOlder`). Each list
- * is cleared on request (`clear`), in every window.
+ * The console is open on its History tab by default; its state and its
+ * height are display preferences specific to this machine, kept in the
+ * browser's local storage (`prisme.console.*`). The interface keeps the last
+ * `MAX_ENTRIES` elements of each list; the older ones are read again on
+ * request (`loadOlder`). Each list is cleared on request (`clear`), in every
+ * window.
  *
  * Each list has its filter (`historyFilter`, `debugFilter`), kept in local
  * storage too: the server reads only the elements it keeps, and the
@@ -32,28 +33,33 @@ import {
 import { errorMessage } from '@/api/errorMessage'
 import { ACTION_LABELS, LEVEL_LABELS, SOURCE_LABELS } from '@/components/console/consoleFormat'
 
-import { loadFlag, saveFlag } from './layout'
+import { loadFlag, loadSize, saveFlag, saveSize } from '@/utils/storedValues'
 
 /**
  * Key of the console's state in local storage.
  */
-const OPEN_KEY = 'prisme.consoleOpen'
+const OPEN_KEY = 'prisme.console.open'
+
+/**
+ * Key of the height of the console in local storage.
+ */
+const HEIGHT_KEY = 'prisme.console.height'
 
 /**
  * Key of the tab shown in local storage.
  */
-const TAB_KEY = 'prisme.consoleTab'
+const TAB_KEY = 'prisme.console.tab'
 
 /**
  * Key of the display of the filters in local storage.
  */
-const FILTERS_SHOWN_KEY = 'prisme.consoleFiltersShown'
+const FILTERS_SHOWN_KEY = 'prisme.console.filtersShown'
 
 /**
  * Keys of the filters of the history and of the debug log in local storage.
  */
-const HISTORY_FILTER_KEY = 'prisme.consoleHistoryFilter'
-const DEBUG_FILTER_KEY = 'prisme.consoleDebugFilter'
+const HISTORY_FILTER_KEY = 'prisme.console.historyFilter'
+const DEBUG_FILTER_KEY = 'prisme.console.debugFilter'
 
 /**
  * Most elements kept by the interface, per list.
@@ -313,6 +319,14 @@ export const useConsoleStore = defineStore('console', () => {
   watch(open, (value) => saveFlag(OPEN_KEY, value))
 
   /**
+   * Height given by the user, in CSS pixels; `null`: the default height of
+   * the theme.
+   */
+  const height = ref(loadSize(HEIGHT_KEY))
+
+  watch(height, (value) => saveSize(HEIGHT_KEY, value))
+
+  /**
    * Tab shown.
    */
   const tab = ref<ConsoleTab>(loadTab())
@@ -419,6 +433,7 @@ export const useConsoleStore = defineStore('console', () => {
 
   return {
     open,
+    height,
     tab,
     filtersShown,
     historyFilter,

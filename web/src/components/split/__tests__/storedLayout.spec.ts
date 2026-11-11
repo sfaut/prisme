@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
 
-import { forgetRekaLayouts, forgetStoredLayout, useStoredLayout } from '../storedLayout'
+import { forgetStoredLayout, useStoredLayout } from '../storedLayout'
 
 afterEach(() => {
   window.localStorage.clear()
@@ -36,15 +36,5 @@ describe('useStoredLayout', () => {
     expect(JSON.parse(window.localStorage.getItem('layout')!)).toEqual({ size: 331.25 })
     forgetStoredLayout('layout')
     expect(window.localStorage.getItem('layout')).toBeNull()
-  })
-})
-
-describe('forgetRekaLayouts', () => {
-  it('forgets the layouts of Reka UI, and only them', () => {
-    window.localStorage.setItem('reka:prisme.layout', '{}')
-    window.localStorage.setItem('reka:prisme.cellLayout.1', '{}')
-    window.localStorage.setItem('prisme.panelSizes', '{}')
-    forgetRekaLayouts()
-    expect(Object.keys(window.localStorage)).toEqual(['prisme.panelSizes'])
   })
 })

@@ -69,7 +69,7 @@ function editorKey(id: number): string {
 /**
  * Key of the active editor in local storage.
  */
-const ACTIVE_KEY = 'prisme.activeEditor'
+const ACTIVE_KEY = 'prisme.editor.active'
 
 /**
  * Interface editor built from the server's.

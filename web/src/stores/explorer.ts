@@ -8,15 +8,17 @@
  * when the application starts; while it is closed, the grids publish
  * nothing.
  *
- * Wrapping of long lines (`wrap`) is a display preference specific to this
- * machine, kept in the browser's local storage: off by default, and when
- * storage is unavailable.
+ * Its width and the wrapping of long lines (`wrap`) are display preferences
+ * specific to this machine, kept in the browser's local storage
+ * (`prisme.explorer.width`, `prisme.explorer.wrap`): the default width and no
+ * wrapping by default, and when storage is unavailable.
  */
 
 import { defineStore } from 'pinia'
 import { ref, shallowRef, watch } from 'vue'
 
 import type { DataCell } from '@/components/explorer/dataFormat'
+import { loadFlag, loadSize, saveFlag, saveSize } from '@/utils/storedValues'
 
 /**
  * What the grid on screen gives the explorer.
@@ -57,45 +59,33 @@ export function sameContent(a: ExplorerContent, b: ExplorerContent): boolean {
 }
 
 /**
+ * Key of the width of the panel in local storage.
+ */
+const WIDTH_KEY = 'prisme.explorer.width'
+
+/**
  * Key of the wrapping preference in local storage.
  */
-const WRAP_KEY = 'prisme.dataExplorerWrap'
+const WRAP_KEY = 'prisme.explorer.wrap'
 
-/**
- * Remembered wrapping, off if none is readable.
- */
-function loadWrap(): boolean {
-  try {
-    return window.localStorage.getItem(WRAP_KEY) === 'true'
-  } catch {
-    return false
-  }
-}
-
-/**
- * Remembers the wrapping; no effect if storage is unavailable.
- *
- * @param wrap Are long lines wrapped?
- */
-function saveWrap(wrap: boolean): void {
-  try {
-    window.localStorage.setItem(WRAP_KEY, String(wrap))
-  } catch {
-    // Display preference only: losing it harms nothing.
-  }
-}
-
-export const useDataExplorerStore = defineStore('dataExplorer', () => {
+export const useExplorerStore = defineStore('explorer', () => {
   /**
    * Is the panel open?
    */
   const open = ref(false)
 
   /**
+   * Width given by the user, in CSS pixels; `null`: the default width of the
+   * theme.
+   */
+  const width = ref(loadSize(WIDTH_KEY))
+  watch(width, (value) => saveSize(WIDTH_KEY, value))
+
+  /**
    * Are long lines wrapped to the width of the panel?
    */
-  const wrap = ref(loadWrap())
-  watch(wrap, saveWrap)
+  const wrap = ref(loadFlag(WRAP_KEY, false))
+  watch(wrap, (value) => saveFlag(WRAP_KEY, value))
 
   /**
    * Content published by the grid on screen.
@@ -133,5 +123,5 @@ export const useDataExplorerStore = defineStore('dataExplorer', () => {
     }
   }
 
-  return { open, wrap, content, show, release }
+  return { open, width, wrap, content, show, release }
 })

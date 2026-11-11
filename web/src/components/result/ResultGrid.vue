@@ -8,7 +8,7 @@
   - Kept rows: the grid exposes how many rows the filter keeps
     (`keptCount`), which the result tab shows in its status bar.
   - Data explorer: the grid on screen (`displayed`) gives the panel on the
-    right the selected values of a JSON or XML column (`dataExplorer`
+    right the selected values of a JSON or XML column (`explorer`
     store): a column of type `JSON`, or a text column that holds JSON or
     XML. The explorer opens from its rail, on the right edge of the window.
   - Row numbers: they stay visible on the left when the grid scrolls
@@ -66,7 +66,7 @@ import {
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Cell, UserFilter } from '@/api/querySession'
 import { cssPixels } from '@/utils/cssLength'
-import { type ExplorerContent, useDataExplorerStore } from '@/stores/dataExplorer'
+import { type ExplorerContent, useExplorerStore } from '@/stores/explorer'
 
 import {
   type GridFrame,
@@ -712,7 +712,7 @@ function onKeydown(event: KeyboardEvent): void {
   }
 }
 
-const explorer = useDataExplorerStore()
+const explorer = useExplorerStore()
 
 /**
  * Identity of the grid with the data explorer.

@@ -8,13 +8,12 @@
 import { forgetStoredLayout } from '@/components/split/storedLayout'
 
 /**
- * Key of an editor's layout in the local storage. It keeps the name the view
- * had before (a cell), under which the layouts already saved stay.
+ * Key of an editor's layout in the local storage.
  *
  * @param editorId Id of the editor.
  */
 export function editorLayoutKey(editorId: number): string {
-  return `prisme.cellLayout.${editorId}`
+  return `prisme.editor.layout.${editorId}`
 }
 
 /**

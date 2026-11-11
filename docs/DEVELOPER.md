@@ -74,6 +74,23 @@ A component is named after its area of the interface, as the README calls it, th
 
 Each area has its folder in `web/src/components/` (see "Repository layout"), with its components, the modules that carry its notions (`pivot/pivotConfig.ts`, `result/csv.ts`) and its tests (`__tests__/`); another area imports them from there (`@/components/result/typeIcons`). Inside a folder, imports are relative. A module of no area goes to `web/src/utils/`.
 
+### Local storage
+
+The display preferences of a machine stay in the browser's local storage, under keys `prisme.<area>.<setting>`: the area is that of the folders of the components (`navigator`, `editor`, `console`, `explorer`), `app` for the whole application, the setting in camelCase. Each area keeps them in its store, read and written by `web/src/utils/storedValues.ts` (flags, sizes) or `split/storedLayout.ts` (layout of an editor). A missing or unreadable value gives its default.
+
+| Key | Value |
+|---|---|
+| `prisme.app.colorMode` | `system`, `light` or `dark` |
+| `prisme.navigator.open`, `prisme.navigator.width` | the object navigator open, its width in CSS pixels |
+| `prisme.editor.active` | id of the active editor |
+| `prisme.editor.layout.<editor>` | heights and folds of the panels of an editor (JSON), forgotten when it closes |
+| `prisme.console.open`, `prisme.console.height` | the console open, its height in CSS pixels |
+| `prisme.console.tab` | tab shown: `history` or `debug` |
+| `prisme.console.filtersShown`, `prisme.console.historyFilter`, `prisme.console.debugFilter` | the filters shown, and those of each tab (JSON) |
+| `prisme.explorer.width`, `prisme.explorer.wrap` | width of the data explorer, its long lines wrapped |
+
+Temporary, added in v0.12.0, to remove in v0.13.0 or later: `web/src/utils/storage.ts` moves once, as the interface starts, the keys of v0.11.0 and earlier (`prisme.objectsOpen`, `prisme.consoleTab`, `prisme-color-mode`...) and of the development builds after it under these names, and removes the layouts of the splitter of Reka UI (`reka:`). Its removal takes the file, its import at the top of `main.ts`, its tests and this paragraph.
+
 ### Icons and actions
 
 The icons come from Lucide (`@lucide/vue`). An action keeps the same icon wherever it appears, and an icon keeps the same meaning: before adding a button, look for its action below, and add any new icon to these tables in the same change.
@@ -209,7 +226,7 @@ The panels of the layout (object navigator, editors, console, data explorer), of
 
 - **Drag**: the line follows the pointer (pointer events captured by the handle), and its position is kept as it is at the release, in CSS pixels, without rounding. Below its smallest size, a panel folds past half the way to its folded size; it takes its room from the panel that fills, down to that one's smallest size.
 - **Keyboard** (pattern "window splitter" of WAI-ARIA, role `separator` with its `aria-value*` in pixels): the arrows move the line by four steps of `--spacing`, Home and End to the smallest and largest size, Enter does what a double click does (fold or unfold the panel, or give back the default width of a section of the Pivoteur).
-- **Saved**: the sizes and folds of the layout in the local storage (`prisme.panelSizes`, `prisme.cellLayout.<editor>`, forgotten when the editor closes), the widths of the sections in the configuration of the Pivoteur of the tab (`fields_px`, `zones_px`; a width saved in steps before, `fields_width`, `zones_width`, is read in pixels and replaced by the next one set). The layouts saved by the splitters of Reka UI (keys `reka:`) are removed as the interface starts (`forgetRekaLayouts`).
+- **Saved**: the sizes and folds of the layout in the local storage (see "Local storage": in the stores of the navigator, the console and the explorer, and `prisme.editor.layout.<editor>`, forgotten when the editor closes), the widths of the sections in the configuration of the Pivoteur of the tab (`fields_px`, `zones_px`; a width saved in steps before, `fields_width`, `zones_width`, is read in pixels and replaced by the next one set). The layouts saved by the splitters of Reka UI (keys `reka:`) are removed as the interface starts (`migrateStorage`, see "Local storage").
 
 Measured on 2026-11-11 in Chrome 156 started with `--force-device-scale-factor` at 1, 1.25 and 1.5 (method at the end of "Lines"), on the lines of the navigator, the console and the explorer: each line one pixel of a single color at rest, after each of 40 steps of a drag by one device pixel, after the release (no jump) and after 12 resizes of the window; the band of the hover and the grip symmetric on the line (3 + 1 + 3 pixels and 2 + 3 + 2 at 1.25, 4 + 1 + 4 and 2 + 5 + 2 at 1.5).
 
@@ -690,7 +707,7 @@ web/               Vue interface
     split/         splitters of Prisme
     ui/            base components (buttons, fields, menus, dialogs, tooltips)
   src/stores/      shared state (connections, settings)
-  src/utils/       utilities of no area: shared clock, downloads, theme lengths, color mode
+  src/utils/       utilities of no area: shared clock, downloads, theme lengths, color mode, stored preferences, migration of the stored keys (temporary)
 bench/             benchmarks, outside the workspace
   prisme.mjs       Prisme on the real server, for the benchmarks that measure it
   batches/         batches of rows from the server to the page: fast, slow and heavy results (run.mjs)

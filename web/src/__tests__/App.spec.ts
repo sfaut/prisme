@@ -84,7 +84,7 @@ describe('App', () => {
 
     await wrapper.find('[aria-label="Replier : Navigateur d’objets"]').trigger('click')
     expect(objects()).toBe(false)
-    expect(window.localStorage.getItem('prisme.objectsOpen')).toBe('false')
+    expect(window.localStorage.getItem('prisme.navigator.open')).toBe('false')
     await wrapper.find('[aria-label="Déplier : Navigateur d’objets"]').trigger('click')
     expect(objects()).toBe(true)
 
@@ -104,7 +104,7 @@ describe('App', () => {
     await toggle().trigger('click')
     expect(toggle().attributes('aria-pressed')).toBe('true')
     expect(wrapper.find('[aria-label="Action"]').exists()).toBe(true)
-    expect(window.localStorage.getItem('prisme.consoleFiltersShown')).toBe('true')
+    expect(window.localStorage.getItem('prisme.console.filtersShown')).toBe('true')
     const debugTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text() === 'Debug')!
     await debugTab.trigger('mousedown', { button: 0 })
     await vi.waitFor(() => expect(wrapper.find('[aria-label="Niveau"]').exists()).toBe(true))
@@ -135,10 +135,10 @@ describe('App', () => {
     await debugTab.trigger('mousedown', { button: 0 })
     await vi.waitFor(() => expect(wrapper.text()).toContain('Aucun message pour le moment'))
     expect(wrapper.find('[aria-label="Effacer le debug"]').exists()).toBe(true)
-    expect(window.localStorage.getItem('prisme.consoleTab')).toBe('debug')
+    expect(window.localStorage.getItem('prisme.console.tab')).toBe('debug')
     await wrapper.find('[aria-label="Replier : Console"]').trigger('click')
     expect(wrapper.text()).not.toContain('Aucune requête envoyée')
-    expect(window.localStorage.getItem('prisme.consoleOpen')).toBe('false')
+    expect(window.localStorage.getItem('prisme.console.open')).toBe('false')
     await wrapper.find('[aria-label="Déplier : Console"]').trigger('click')
     await vi.waitFor(() => expect(wrapper.text()).toContain('Aucun message pour le moment'))
     wrapper.unmount()

@@ -1,6 +1,6 @@
 <!--
   Data explorer: panel on the right of the screen that shows the JSON or XML
-  values selected in the result grid on screen (`dataExplorer` store), in a
+  values selected in the result grid on screen (`explorer` store), in a
   read-only CodeMirror editor.
 
   - Values: one cell, cells of a column, a range or several ranges of one
@@ -12,7 +12,7 @@
     first. Each node folds by its arrow in the gutter; the buttons fold or
     unfold everything, or the level of the cursor (`dataFolding.ts`).
   - Long lines: wrapped to the width of the panel or scrolled sideways, by a
-    button; the choice is remembered (`dataExplorer` store), off by default.
+    button; the choice is remembered (`explorer` store), off by default.
   - Search: a JSONPath (JSON) or XPath (XML) expression, run as it is typed
     on the document shown (`dataSearch.ts`). By default, the results are
     highlighted in the document (`dataMatches.ts`); the funnel button
@@ -53,7 +53,7 @@ import {
   watch,
 } from 'vue'
 
-import { useDataExplorerStore } from '@/stores/dataExplorer'
+import { useExplorerStore } from '@/stores/explorer'
 
 import { dataDocument } from './dataFormat'
 import { cursorLevel, foldableNodes, foldingEffects } from './dataFolding'
@@ -66,7 +66,7 @@ import UiInput from '@/components/ui/UiInput.vue'
 import { notify } from '@/components/ui/toasts'
 import { vTooltip } from '@/components/ui/tooltip'
 
-const explorer = useDataExplorerStore()
+const explorer = useExplorerStore()
 
 const host = useTemplateRef<HTMLDivElement>('host')
 

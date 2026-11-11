@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { mount } from '@vue/test-utils'
 
-import { useDataExplorerStore } from '@/stores/dataExplorer'
+import { useExplorerStore } from '@/stores/explorer'
 
 import ExplorerPanel from '../ExplorerPanel.vue'
 
@@ -17,7 +17,7 @@ beforeEach(() => {
  * Mounts the explorer, open.
  */
 function mountExplorer() {
-  const explorer = useDataExplorerStore()
+  const explorer = useExplorerStore()
   explorer.open = true
   const wrapper = mount(ExplorerPanel, { attachTo: document.body })
   return { explorer, wrapper }
@@ -101,10 +101,10 @@ describe('ExplorerPanel', () => {
     await button.trigger('click')
     expect(editor.classes()).toContain('cm-lineWrapping')
     expect(button.attributes('aria-pressed')).toBe('true')
-    expect(localStorage.getItem('prisme.dataExplorerWrap')).toBe('true')
+    expect(localStorage.getItem('prisme.explorer.wrap')).toBe('true')
     wrapper.unmount()
     setActivePinia(createPinia())
-    expect(useDataExplorerStore().wrap).toBe(true)
+    expect(useExplorerStore().wrap).toBe(true)
   })
 
   it('searches as the expression is typed, highlights then filters the results', async () => {

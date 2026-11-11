@@ -17,7 +17,7 @@ export type ColorMode = 'system' | 'light' | 'dark'
 /**
  * Key of the choice in `localStorage`.
  */
-const STORAGE_KEY = 'prisme-color-mode'
+const STORAGE_KEY = 'prisme.app.colorMode'
 
 /**
  * Reads the remembered choice; "system" if there is none or if it is unreadable.

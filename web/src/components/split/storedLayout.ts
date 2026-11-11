@@ -69,27 +69,3 @@ export function forgetStoredLayout(key: string): void {
     // Storage unavailable: nothing was kept.
   }
 }
-
-/**
- * Prefix of the layouts that the splitter of Reka UI kept, before the splitter of Prisme.
- */
-const REKA_PREFIX = 'reka:'
-
-/**
- * Forgets the layouts the splitter of Reka UI kept (`reka:prisme.layout`,
- * `reka:prisme.cellLayout.1`...), which nothing reads any more: once per
- * page, as the interface starts.
- */
-export function forgetRekaLayouts(): void {
-  try {
-    const storage = window.localStorage
-    const keys = Array.from({ length: storage.length }, (_, index) => storage.key(index))
-    for (const key of keys) {
-      if (key?.startsWith(REKA_PREFIX)) {
-        storage.removeItem(key)
-      }
-    }
-  } catch {
-    // Storage unavailable: nothing was kept.
-  }
-}

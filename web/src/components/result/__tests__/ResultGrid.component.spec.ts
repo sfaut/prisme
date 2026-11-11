@@ -6,7 +6,7 @@ import { nextTick } from 'vue'
 
 import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import { NO_FILTER, type UserFilter } from '@/api/querySession'
-import { useDataExplorerStore } from '@/stores/dataExplorer'
+import { useExplorerStore } from '@/stores/explorer'
 
 import ResultGrid from '../ResultGrid.vue'
 
@@ -209,7 +209,7 @@ describe('ResultGrid and the data explorer', () => {
   ]
 
   it('opens the explorer, and gives it the selected values of a JSON column', async () => {
-    const explorer = useDataExplorerStore()
+    const explorer = useExplorerStore()
     const wrapper = mount(ResultGrid, {
       props: {
         columns,
@@ -243,7 +243,7 @@ describe('ResultGrid and the data explorer', () => {
   })
 
   it('takes a column of type JSON as JSON, scalars included', async () => {
-    const explorer = useDataExplorerStore()
+    const explorer = useExplorerStore()
     explorer.open = true
     const wrapper = mount(ResultGrid, {
       props: {
@@ -268,7 +268,7 @@ describe('ResultGrid and the data explorer', () => {
   })
 
   it('gives nothing while it is off screen', async () => {
-    const explorer = useDataExplorerStore()
+    const explorer = useExplorerStore()
     explorer.open = true
     const wrapper = mount(ResultGrid, {
       props: {

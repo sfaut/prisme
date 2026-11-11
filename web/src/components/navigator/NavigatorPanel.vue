@@ -70,7 +70,7 @@ import { cssPixels } from '@/utils/cssLength'
 import { useCatalogStore } from '@/stores/catalog'
 import { useConnectionsStore } from '@/stores/connections'
 import { useEditorsStore } from '@/stores/editors'
-import { useLayoutStore } from '@/stores/layout'
+import { useNavigatorStore } from '@/stores/navigator'
 
 import ConnectionDialog from './ConnectionDialog.vue'
 import NavigatorLine from './NavigatorLine.vue'
@@ -126,7 +126,7 @@ const emit = defineEmits<{
 const catalog = useCatalogStore()
 const connections = useConnectionsStore()
 const editors = useEditorsStore()
-const layout = useLayoutStore()
+const navigatorStore = useNavigatorStore()
 
 /**
  * Height of a line, in pixels, for virtual scrolling
@@ -556,7 +556,11 @@ watch(
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-3">
-    <panel-header title="Navigateur d’objets" side="start" @collapse="layout.objectsOpen = false" />
+    <panel-header
+      title="Navigateur d’objets"
+      side="start"
+      @collapse="navigatorStore.open = false"
+    />
     <ui-alert v-if="probed" :tone="probed.tone" :title="probed.title" @close="probed = null" />
     <ui-alert v-if="listError" tone="error" :title="listError" />
     <!-- Index as key: the same message can come twice, from two errors of one source. -->

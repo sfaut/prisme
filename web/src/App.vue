@@ -10,11 +10,11 @@
   (`split/`): dragging the line between two panels moves it, to the pixel,
   within their bounds (the editors keep `--editors-min-width` and
   `--editors-min-height`, where the line stops), and the sizes are kept in
-  the browser (`prisme.panelSizes`). Each side panel
+  the browser (`navigator`, `console` and `explorer` stores). Each side panel
   and the console fold with the button of their header (`PanelHeader`), by
   a drag below their smallest size or by a double click on their line, and
   leave a rail on their edge, which opens them again (`PanelRail`). The
-  object navigator and the console are open by default (`layout` and
+  object navigator and the console are open by default (`navigator` and
   `console` stores), the data explorer closed. Layout in Tailwind
   classes.
 
@@ -41,9 +41,9 @@ import type { SessionStatus } from './api/querySession'
 
 import { useConnectionsStore } from './stores/connections'
 import { useConsoleStore } from './stores/console'
-import { useDataExplorerStore } from './stores/dataExplorer'
+import { useExplorerStore } from './stores/explorer'
 import { useEditorsStore } from './stores/editors'
-import { useLayoutStore } from './stores/layout'
+import { useNavigatorStore } from './stores/navigator'
 
 import TopBar from '@/components/top-bar/TopBar.vue'
 import ConsolePanel from '@/components/console/ConsolePanel.vue'
@@ -55,7 +55,6 @@ import PanelRail from '@/components/panel/PanelRail.vue'
 import SplitGroup from './components/split/SplitGroup.vue'
 import SplitHandle from './components/split/SplitHandle.vue'
 import SplitPanel from './components/split/SplitPanel.vue'
-import { useStoredLayout } from './components/split/storedLayout'
 import UiAlert from './components/ui/UiAlert.vue'
 import UiButton from './components/ui/UiButton.vue'
 import UiDialog from './components/ui/UiDialog.vue'
@@ -65,19 +64,9 @@ import { vTooltip } from './components/ui/tooltip'
 
 const connections = useConnectionsStore()
 const editors = useEditorsStore()
-const explorer = useDataExplorerStore()
-const layout = useLayoutStore()
+const explorer = useExplorerStore()
+const navigatorStore = useNavigatorStore()
 const consoleStore = useConsoleStore()
-
-/**
- * Sizes of the panels of the layout given by the user, in CSS pixels
- * (`split/storedLayout.ts`); `null`: the default size of the theme.
- */
-const sizes = useStoredLayout<{
-  navigator: number | null
-  explorer: number | null
-  console: number | null
-}>('prisme.panelSizes', { navigator: null, explorer: null, console: null })
 
 /**
  * Error loading or saving the editors, `null` if none.
@@ -459,16 +448,16 @@ function selectSource(connectionId: number): void {
     <split-group direction="horizontal" class="min-h-0 flex-1">
       <split-panel
         id="navigator-panel"
-        v-model:size="sizes.navigator"
-        :folded="!layout.objectsOpen"
+        v-model:size="navigatorStore.width"
+        :folded="!navigatorStore.open"
         default-size="var(--navigator-width)"
         min-size="var(--navigator-min-width)"
         folded-size="var(--rail-size)"
         class="flex"
-        @update:folded="(folded: boolean) => (layout.objectsOpen = !folded)"
+        @update:folded="(folded: boolean) => (navigatorStore.open = !folded)"
       >
         <!-- Folded, the object navigator stays mounted: its tree keeps its state. -->
-        <aside v-show="layout.objectsOpen" class="flex min-w-0 flex-1 flex-col gap-4 p-4">
+        <aside v-show="navigatorStore.open" class="flex min-w-0 flex-1 flex-col gap-4 p-4">
           <navigator-panel
             :selected-id="connections.selectedId"
             :current-database="activeDatabase"
@@ -481,17 +470,17 @@ function selectSource(connectionId: number): void {
           />
         </aside>
         <panel-rail
-          v-if="!layout.objectsOpen"
+          v-if="!navigatorStore.open"
           title="Navigateur d’objets"
           side="start"
           class="flex-1"
-          @expand="layout.objectsOpen = true"
+          @expand="navigatorStore.open = true"
         />
       </split-panel>
       <split-handle
         controls="navigator-panel"
         tooltip="Glisser pour redimensionner le navigateur d’objets, double clic pour le replier ou le déplier"
-        @activate="layout.objectsOpen = !layout.objectsOpen"
+        @activate="navigatorStore.open = !navigatorStore.open"
       />
       <split-panel id="center-panel" fill min-size="var(--editors-min-width)" class="flex">
         <split-group direction="vertical" class="min-w-0 flex-1">
@@ -581,7 +570,7 @@ function selectSource(connectionId: number): void {
           />
           <split-panel
             id="console-panel"
-            v-model:size="sizes.console"
+            v-model:size="consoleStore.height"
             :folded="!consoleStore.open"
             default-size="var(--console-height)"
             min-size="var(--console-min-height)"
@@ -612,7 +601,7 @@ function selectSource(connectionId: number): void {
       />
       <split-panel
         id="explorer-panel"
-        v-model:size="sizes.explorer"
+        v-model:size="explorer.width"
         :folded="!explorer.open"
         default-size="var(--explorer-width)"
         min-size="var(--explorer-min-width)"

@@ -60,13 +60,13 @@ describe('closing an editor', () => {
   it('forgets the layout of its cell', async () => {
     const editors = useEditorsStore()
     await editors.create(null)
-    window.localStorage.setItem('prisme.cellLayout.1', '{}')
-    window.localStorage.setItem('prisme.cellLayout.2', '{}')
+    window.localStorage.setItem('prisme.editor.layout.1', '{}')
+    window.localStorage.setItem('prisme.editor.layout.2', '{}')
 
     await editors.close(1)
 
-    expect(window.localStorage.getItem('prisme.cellLayout.1')).toBeNull()
-    expect(window.localStorage.getItem('prisme.cellLayout.2')).toBe('{}')
+    expect(window.localStorage.getItem('prisme.editor.layout.1')).toBeNull()
+    expect(window.localStorage.getItem('prisme.editor.layout.2')).toBe('{}')
     window.localStorage.clear()
   })
 })
