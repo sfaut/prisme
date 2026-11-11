@@ -81,7 +81,7 @@ The display preferences of a machine stay in the browser's local storage, under 
 | Key | Value |
 |---|---|
 | `prisme.app.colorMode` | `system`, `light` or `dark` |
-| `prisme.navigator.open`, `prisme.navigator.width` | the last state given to an object navigator, open or folded, and its width in CSS pixels: the start of an editor without a navigator of its own |
+| `prisme.navigator.open`, `prisme.navigator.width` | the last state given to an object navigator, open or folded, and its width in CSS pixels: the start of a new editor |
 | `prisme.navigator.layout.<editor>` | the object navigator of an editor open, its width (JSON), forgotten when it closes |
 | `prisme.navigator.tree.<editor>` | open nodes and scroll of the object navigator of an editor (JSON), forgotten when it closes |
 | `prisme.editor.active` | id of the active editor |
