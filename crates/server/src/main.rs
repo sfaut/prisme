@@ -116,7 +116,12 @@ async fn main() -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(startup.listen)
         .await
         .with_context(|| format!("listening on {}", startup.listen))?;
-    tracing::info!("Prisme listens on http://{}", startup.listen);
+    tracing::info!(
+        "Prisme listens on {}: open http://{}:{}",
+        startup.listen,
+        setup::HOST_NAME,
+        startup.listen.port()
+    );
     axum::serve(listener, app).await?;
 
     Ok(())

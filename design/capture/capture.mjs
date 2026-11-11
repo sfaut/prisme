@@ -39,7 +39,7 @@ const CHROME_BIN =
   (WINDOWS ? 'C:/Program Files/Google/Chrome/Application/chrome.exe' : 'google-chrome')
 
 /**
- * Ports of Prisme and of Chrome's DevTools, away from the usual 8484.
+ * Ports of Prisme and of Chrome's DevTools, away from the usual 10000.
  */
 const PRISME_PORT = 8485
 const DEVTOOLS_PORT = 9333

@@ -42,8 +42,8 @@ Prisme is at the start of its first version (v1). Today it queries **MySQL and M
 
 1. **Download** the executable for your system from the [latest release](https://github.com/sfaut/prisme/releases/latest): Windows (`.exe`), Linux, or macOS (Apple Silicon and Intel). Nothing else to install.
 2. **Run it** from a terminal. On Linux and macOS, first make it executable (see [Installation](#installation)).
-3. **Answer the two setup questions**: listening port and your email address. Press Enter to keep the defaults (`8484`, `me@local`).
-4. **Open** <http://127.0.0.1:8484> in your browser.
+3. **Answer the two setup questions**: listening port and your email address. Press Enter to keep the defaults (`10000`, `me@local`).
+4. **Open** <http://prisme.localhost:10000> in your browser (or <http://127.0.0.1:10000>).
 5. **Add a connection**: in the left panel, open the **⋮** menu of **Sources de données** (Data sources), choose **Ajouter une connexion** (Add a connection), fill in host, port, user and password, click **Tester** (Test), then save.
 6. **Query**: **Ctrl+click** the new source (**Cmd+click** on macOS), type a query in the editor, press **Ctrl+Enter**.
 
@@ -79,7 +79,7 @@ On first launch, Prisme asks two questions in the terminal:
 
 ```
 Prisme setup. Press Enter to keep the value in brackets.
-Listening port [8484]:
+Listening port [10000]:
 Email address [me@local]:
 ```
 

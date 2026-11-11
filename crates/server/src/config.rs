@@ -17,12 +17,13 @@ const DATA_DIR_NAME: &str = "Prisme";
 const AFTER_HELP: &str = "\
 First launch:
   When the internal database does not exist yet in the data folder, Prisme
-  asks in the terminal for the listening port (8484 by default, on
+  asks in the terminal for the listening port (10000 by default, on
   127.0.0.1) and the user's email address (me@local by default). The
   answers are saved in the internal database and read again on the next
   launches; --setup asks the questions again.
   A --listen or --user-email option replaces its question, without being
-  saved. Without an interactive terminal, the defaults apply.";
+  saved. Without an interactive terminal, the defaults apply.
+  The interface is then at http://prisme.localhost:<port>.";
 
 /// Launch options of Prisme.
 #[derive(Debug, Parser)]
@@ -40,8 +41,8 @@ pub struct Config {
     version: (),
 
     /// Listening address of the web server, for this launch. It must be
-    /// local (127.0.0.1 or ::1). Default: 127.0.0.1 and the saved port (8484
-    /// at first).
+    /// local (127.0.0.1 or ::1). Default: 127.0.0.1 and the saved port
+    /// (10000 at first).
     #[arg(long)]
     pub listen: Option<SocketAddr>,
 

@@ -9,7 +9,7 @@ import vueDevTools from 'vite-plugin-vue-devtools'
 
 // Address of the Prisme server (cargo run) to which Vite's development server
 // forwards the API and the WebSockets.
-const PRISME_SERVER = 'http://127.0.0.1:8484'
+const PRISME_SERVER = 'http://127.0.0.1:10000'
 
 /**
  * Local date and time in ISO 8601 format, to the second, with the time zone

@@ -3,7 +3,7 @@
     Stops the running Prisme, compiles the interface and the backend, then starts Prisme again.
 
 .DESCRIPTION
-    Shortcut for checking a change in the compiled application (http://127.0.0.1:8484):
+    Shortcut for checking a change in the compiled application (http://prisme.localhost:10000):
     stops every running prisme.exe (its executable is locked while it runs), runs
     `npm run build` in web/, `cargo build`, then starts the new executable in this
     terminal (Ctrl+C stops it). Stops at the first step that fails.

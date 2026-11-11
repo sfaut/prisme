@@ -125,7 +125,7 @@ The tag and the changelog cover the local `master`: what is already on GitHub (`
 Run from the repository root. The Rust version is pinned by `rust-toolchain.toml`.
 
 ```
-cargo run                         # starts Prisme on http://127.0.0.1:8484
+cargo run                         # starts Prisme on http://prisme.localhost:10000
 cargo run -- --help               # options (--listen, --data-dir, --user-email, --setup, --verbose)
 cargo run -- --data-dir ./tmp     # throwaway data folder, outside %APPDATA%\Prisme
 cargo test                        # tests of all crates, without Docker
@@ -138,7 +138,7 @@ cargo build --release             # single executable, interface embedded (after
 In `web/`:
 
 ```
-npm run dev                       # interface on http://localhost:5173 (with cargo run alongside)
+npm run dev                       # interface on http://prisme.localhost:5173 (with cargo run alongside)
 npm run test:unit -- --run        # Vitest tests
 npm run type-check                # vue-tsc
 npm run lint                      # Oxlint and ESLint

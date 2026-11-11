@@ -36,7 +36,7 @@ From the repository root:
 cargo run
 ```
 
-Prisme then serves the API and the compiled interface on <http://127.0.0.1:8484> (or the port chosen on first launch, see the [README](../README.md#first-launch)). If the interface has never been compiled, the home page explains how to compile it.
+Prisme then serves the API and the compiled interface on <http://prisme.localhost:10000> (or the port chosen on first launch, see the [README](../README.md#first-launch)). If the interface has never been compiled, the home page explains how to compile it.
 
 - Options go after `--`, for example `cargo run -- --data-dir ./tmp` for a throwaway data folder (ignored by Git). `cargo run -- --help` lists them.
 - Use of the API: `cargo run -- --verbose` writes each request (method, path, status, duration) and each message of the query sessions, without their content (`crates/server/src/api_log.rs`).
@@ -49,8 +49,8 @@ There are two ways to see the interface, at two different addresses:
 
 | Address | Serves | Updated |
 |---|---|---|
-| <http://localhost:5173> (`npm run dev`) | the sources, live, through Vite, which forwards the API to Prisme | on every save, without reloading |
-| <http://127.0.0.1:8484> (`cargo run`) | the compiled interface, `web/dist` | only after `npm run build`, then a page reload |
+| <http://prisme.localhost:5173> (`npm run dev`) | the sources, live, through Vite, which forwards the API to Prisme | on every save, without reloading |
+| <http://prisme.localhost:10000> (`cargo run`) | the compiled interface, `web/dist` | only after `npm run build`, then a page reload |
 
 For interface work, use Vite, with two terminals at the repository root:
 
@@ -64,7 +64,7 @@ npm install          # the first time, or after a dependency change
 npm run dev
 ```
 
-Then open <http://localhost:5173>. The page on port 8484 keeps showing the last `npm run build` until the next one.
+Then open <http://prisme.localhost:5173>. Vite announces `localhost:5173`, which serves the same page, but under the origin shared by every tool served on `localhost`: under `prisme.localhost`, the local storage of Prisme stays its own. The page on port 10000 keeps showing the last `npm run build` until the next one.
 
 `npm run dev`, `npm run build` and the Vitest tests first build the engine of the Pivoteur (`crates/web-engine`) with Cargo, for `wasm32-unknown-unknown` (`pivotEngine` in `web/vite.config.ts`): the page imports the module as `@pivot-engine?url`, which the development server serves from Cargo's target folder and the build copies into `web/dist`. After a change of `crates/store`, `crates/pivot` or `crates/web-engine`, restart `npm run dev`.
 
@@ -507,7 +507,7 @@ cargo run -- --data-dir ./tmp
 Then, in a second PowerShell terminal:
 
 ```powershell
-$api = "http://127.0.0.1:8484/api"
+$api = "http://127.0.0.1:10000/api"
 
 # Is the server up?
 Invoke-RestMethod "$api/health"
@@ -559,10 +559,10 @@ On error (status 4xx or 5xx), PowerShell raises an exception, and the JSON body 
 
 ### Running queries over WebSocket
 
-Queries go through a WebSocket, one session per saved connection: `ws://127.0.0.1:8484/api/connections/{id}/query`. The simplest way to try it is `wscat`, through Node.js:
+Queries go through a WebSocket, one session per saved connection: `ws://127.0.0.1:10000/api/connections/{id}/query`. The simplest way to try it is `wscat`, through Node.js:
 
 ```
-npx wscat -c ws://127.0.0.1:8484/api/connections/1/query
+npx wscat -c ws://127.0.0.1:10000/api/connections/1/query
 ```
 
 Prisme answers `{"type":"ready",...}` once connected to the target server. Then each line typed is a JSON message:
@@ -589,7 +589,7 @@ Prisme first announces the queries of the batch (`batch`, each one numbered), th
 
 On failure or cancellation, an `error` message replaces the rest of that query, and the session goes on. `batch_done` ends the batch. In parallel, messages of different queries interleave.
 
-The session of an editor (`ws://127.0.0.1:8484/api/editors/{id}/session`) outlives its WebSocket, and saves its results in chunks of rows. A WebSocket that reattaches to it receives `ready`, then `resume`: the last batch where it stands, each query with the number of rows it received so far (`resumed_rows`). These rows follow in `resumed_rows` messages, a saved chunk each, then the next messages of the batch.
+The session of an editor (`ws://127.0.0.1:10000/api/editors/{id}/session`) outlives its WebSocket, and saves its results in chunks of rows. A WebSocket that reattaches to it receives `ready`, then `resume`: the last batch where it stands, each query with the number of rows it received so far (`resumed_rows`). These rows follow in `resumed_rows` messages, a saved chunk each, then the next messages of the batch.
 
 Only reads pass: `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN` and `USE`. Writes (`UPDATE`, `DELETE`, `DROP`, `CALL`...) are refused until the write switches exist, as are queries Prisme cannot analyse.
 

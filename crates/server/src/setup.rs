@@ -11,8 +11,9 @@
 //!   and is not saved.
 //! - Without an interactive terminal (script, service), the defaults apply
 //!   without any question; `--setup` is refused there.
-//! - A database created before these settings keeps its own: port 8484 and
-//!   the user already saved.
+//! - A new internal database starts on port `DEFAULT_PORT` (10000). A
+//!   database created before these settings keeps its own: port 8484, the
+//!   default of migration 0009, and the user already saved.
 //! - The data folder is not asked: the internal database that keeps the
 //!   answers lives in it. It is chosen with `--data-dir`.
 
@@ -24,6 +25,15 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::config::Config;
 use crate::store;
+
+/// Listening port proposed on first launch, saved as it is without a
+/// terminal.
+pub const DEFAULT_PORT: u16 = 10000;
+
+/// Name of Prisme in the browser: a name under `.localhost`, which browsers
+/// resolve to this machine, gives Prisme an origin of its own, apart from the
+/// other tools served on `localhost` (`request_guard.rs`).
+pub const HOST_NAME: &str = "prisme.localhost";
 
 /// Email address proposed on first launch.
 pub const DEFAULT_EMAIL: &str = "me@local";
@@ -113,6 +123,9 @@ pub fn settle(
         None
     };
 
+    if first_launch {
+        save_port(db, DEFAULT_PORT)?;
+    }
     let listen = match config.listen {
         Some(listen) => listen,
         None => {
@@ -240,9 +253,9 @@ mod tests {
 
     use super::*;
 
-    /// Port proposed on first launch, also that of the databases created
-    /// before this setting: default value of migration 0009.
-    const DEFAULT_PORT: u16 = 8484;
+    /// Port of the databases created before this setting: default value of
+    /// migration 0009.
+    const FORMER_PORT: u16 = 8484;
 
     /// Port always free, so as not to depend on the machine's ports.
     fn always_free(_: u16) -> Result<(), String> {
@@ -279,7 +292,7 @@ mod tests {
         let startup = startup.unwrap();
         assert_eq!(startup.listen, "127.0.0.1:9000".parse().unwrap());
         assert_eq!(startup.email, "bob@example.com");
-        assert!(output.contains("Listening port [8484]: "));
+        assert!(output.contains("Listening port [10000]: "));
         assert!(output.contains("Email address [me@local]: "));
 
         // Next launch: nothing is asked, the answers are read again.
@@ -357,7 +370,7 @@ mod tests {
         let user_id = store::ensure_user(&db, "owner@example.com").unwrap();
         let (startup, output) = run(&db, &[], false, Some(""));
         let startup = startup.unwrap();
-        assert_eq!(port_of(&startup), DEFAULT_PORT);
+        assert_eq!(port_of(&startup), FORMER_PORT);
         assert_eq!(startup.user_id, user_id);
         assert_eq!(startup.email, "owner@example.com");
         assert!(output.is_empty());
