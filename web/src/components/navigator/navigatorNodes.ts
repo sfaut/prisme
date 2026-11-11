@@ -272,6 +272,17 @@ export function sourceKey(connectionId: number): string {
 }
 
 /**
+ * Is a node that of a source, or under it? The keys of the nodes under a
+ * source hold `:<connection>/` (`placeKey`).
+ *
+ * @param key Key of the node.
+ * @param connectionId Id of the source's connection.
+ */
+export function belongsToSource(key: string, connectionId: number): boolean {
+  return key === sourceKey(connectionId) || key.includes(`:${connectionId}/`)
+}
+
+/**
  * Nodes of the sources, their databases below. The catalog of a source
  * never read, or whose databases are not received yet, shows
  * "chargement…": it is read when the source is opened.

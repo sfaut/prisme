@@ -18,15 +18,17 @@
   `console` stores), the data explorer closed. Layout in Tailwind
   classes.
 
-  The navigator acts on the active editor: the chosen source becomes its
-  connection, an opened table or a chosen database (`USE`) runs there, and
-  "Déconnecter" closes its session, which any of these actions on its source
-  opens again. The views of all the editors stay mounted: each one keeps its
-  session (and its transactions) open, even when another editor is
-  displayed. Closing a session rolls its open transaction back: while one
-  is open, "Déconnecter", closing the editor and changing its source ask
-  for a confirmation first (changing or deleting the connection is
-  confirmed in its own window).
+  Each editor has its own object navigator, in its tab, which acts on it:
+  the chosen source becomes its connection, an opened table or a chosen
+  database (`USE`) runs there, and "Déconnecter" closes its session, which
+  any of these actions on its source opens again. The navigator keeps its
+  layout (open or folded, its width) and its tree for its editor (`navigator`
+  store). The tabs of all the editors stay mounted, navigator and view: each
+  view keeps its session (and its transactions) open, even when another
+  editor is displayed. Closing a session rolls its open transaction back:
+  while one is open, "Déconnecter", closing the editor and changing its
+  source ask for a confirmation first (changing or deleting the connection
+  is confirmed in its own window).
 
   Transient messages (`notify`) show at the bottom right (`UiToaster`); the
   tooltips of every element (`v-tooltip`), in a single bubble (`UiTooltip`).
@@ -42,7 +44,7 @@ import type { SessionStatus } from './api/querySession'
 import { useConnectionsStore } from './stores/connections'
 import { useConsoleStore } from './stores/console'
 import { useExplorerStore } from './stores/explorer'
-import { useEditorsStore } from './stores/editors'
+import { type EditorEntry, useEditorsStore } from './stores/editors'
 import { useNavigatorStore } from './stores/navigator'
 
 import TopBar from '@/components/top-bar/TopBar.vue'
@@ -153,27 +155,30 @@ watch(endingOpen, (open) => {
 })
 
 /**
- * Stage of the active editor's session, `null` without a session (no editor,
- * or an editor without a connection).
+ * Stage of an editor's session, `null` without a session (an editor without
+ * a connection).
+ *
+ * @param editor Editor.
  */
-const activeStatus = computed(() => {
-  const editor = editors.active
-  if (!editor || !connectionOf(editor.connectionId)) {
+function statusOf(editor: EditorEntry): SessionStatus | null {
+  if (!connectionOf(editor.connectionId)) {
     return null
   }
   return statuses.value[editor.id] ?? null
-})
+}
 
 /**
- * Current database of the active editor's session, `null` if none or if the
- * session is closed.
+ * Current database of an editor's session, `null` if none or if the session
+ * is closed.
+ *
+ * @param editor Editor.
  */
-const activeDatabase = computed(() => {
-  if (editors.activeId === null || activeStatus.value === 'closed') {
+function databaseOf(editor: EditorEntry): string | null {
+  if (statusOf(editor) === 'closed') {
     return null
   }
-  return databases.value[editors.activeId] ?? null
-})
+  return databases.value[editor.id] ?? null
+}
 
 /**
  * Number of reconnections requested, by editor: changing the key of its view
@@ -189,8 +194,8 @@ const attempts = ref<Record<number, number>>({})
 const openingDatabases = ref<Record<number, string>>({})
 
 /**
- * Mounted views of the editors, by editor, to start a query there from the navigator, and
- * to fold the active editor from the editors' bar.
+ * Mounted views of the editors, by editor, to start a query there from its
+ * navigator, and to fold the active editor from the editors' bar.
  */
 const views = shallowReactive(new Map<number, InstanceType<typeof EditorView>>())
 
@@ -323,81 +328,83 @@ function followStatus(editorId: number, status: SessionStatus): void {
 }
 
 /**
- * Gives a connection to the active editor, then waits for its view (reopened
- * on this connection) to be mounted.
+ * Gives a connection to an editor, then waits for its view (reopened on this
+ * connection) to be mounted.
  *
+ * @param editorId Id of the editor.
  * @param connectionId Id of the connection.
- * @returns The view of the active editor, absent if there is none.
+ * @returns The view of the editor, absent if there is none.
  */
-async function activeCellOn(connectionId: number) {
-  const editor = editors.active
-  if (!editor) {
-    return undefined
-  }
-  if ((await connectEditor(editor.id, connectionId)) === 'cancelled') {
+async function cellOn(editorId: number, connectionId: number) {
+  if ((await connectEditor(editorId, connectionId)) === 'cancelled') {
     return undefined
   }
   await nextTick()
-  return views.get(editor.id)
+  return views.get(editorId)
 }
 
 /**
- * Shows the content of a table chosen in the navigator, in the active editor.
- * A table of another source first gives this connection to the editor: the
- * query starts as soon as its session is open.
+ * Shows the content of a table chosen in the navigator of an editor, in that
+ * editor. A table of another source first gives this connection to the
+ * editor: the query starts as soon as its session is open.
  *
+ * @param editorId Id of the editor.
  * @param connectionId Id of the table's connection.
  * @param schema Name of the database.
  * @param table Name of the table.
  */
-async function openTable(connectionId: number, schema: string, table: string): Promise<void> {
+async function openTable(
+  editorId: number,
+  connectionId: number,
+  schema: string,
+  table: string,
+): Promise<void> {
   try {
-    ;(await activeCellOn(connectionId))?.showTableWhenReady(schema, table)
+    ;(await cellOn(editorId, connectionId))?.showTableWhenReady(schema, table)
   } catch (failure) {
     report(failure)
   }
 }
 
 /**
- * Writes the operations on an index chosen in the navigator, in the active
- * editor, as `openTable` does for a table.
+ * Writes the operations on an index chosen in the navigator of an editor, in
+ * that editor, as `openTable` does for a table.
  *
+ * @param editorId Id of the editor.
  * @param connectionId Id of the index's connection.
  * @param schema Name of the database.
  * @param table Name of the table.
  * @param index Name of the index.
  */
 async function writeIndexOperations(
+  editorId: number,
   connectionId: number,
   schema: string,
   table: string,
   index: string,
 ): Promise<void> {
   try {
-    ;(await activeCellOn(connectionId))?.writeIndexOperationsWhenReady(schema, table, index)
+    ;(await cellOn(editorId, connectionId))?.writeIndexOperationsWhenReady(schema, table, index)
   } catch (failure) {
     report(failure)
   }
 }
 
 /**
- * Makes a database chosen in the navigator the current database of the active
- * editor's session (like `USE`). A database of another source first gives
- * this connection to the editor. A session that opens for it (other source,
- * or closed session) opens on this database at once: the navigator never
- * shows the connection's database in between.
+ * Makes a database chosen in the navigator of an editor the current database
+ * of its session (like `USE`). A database of another source first gives this
+ * connection to the editor. A session that opens for it (other source, or
+ * closed session) opens on this database at once: the navigator never shows
+ * the connection's database in between.
  *
+ * @param editorId Id of the editor.
  * @param connectionId Id of the database's connection.
  * @param schema Name of the database.
  */
-async function useDatabase(connectionId: number, schema: string): Promise<void> {
-  const editor = editors.active
-  if (!editor) {
-    return
-  }
+async function useDatabase(editorId: number, connectionId: number, schema: string): Promise<void> {
   try {
-    if ((await connectEditor(editor.id, connectionId, schema)) === 'keeps') {
-      views.get(editor.id)?.changeDatabaseWhenReady(schema)
+    if ((await connectEditor(editorId, connectionId, schema)) === 'keeps') {
+      views.get(editorId)?.changeDatabaseWhenReady(schema)
     }
   } catch (failure) {
     report(failure)
@@ -405,12 +412,13 @@ async function useDatabase(connectionId: number, schema: string): Promise<void> 
 }
 
 /**
- * Closes the session of the active editor ("Déconnecter" of the navigator),
- * after a confirmation if its transaction is open.
+ * Closes the session of an editor ("Déconnecter" of its navigator), after a
+ * confirmation if its transaction is open.
+ *
+ * @param editorId Id of the editor.
  */
-async function disconnect(): Promise<void> {
-  const editorId = editors.activeId
-  if (editorId !== null && (await mayEnd(editorId, 'disconnect'))) {
+async function disconnect(editorId: number): Promise<void> {
+  if (await mayEnd(editorId, 'disconnect')) {
     await views.get(editorId)?.disconnect()
   }
 }
@@ -427,14 +435,13 @@ async function closeEditor(editorId: number): Promise<void> {
 }
 
 /**
- * Chooses a source as the connection of the active editor.
+ * Chooses a source, in the navigator of an editor, as its connection.
  *
+ * @param editorId Id of the editor.
  * @param connectionId Id of the connection.
  */
-function selectSource(connectionId: number): void {
-  if (editors.active) {
-    connectEditor(editors.active.id, connectionId).catch(report)
-  }
+function selectSource(editorId: number, connectionId: number): void {
+  connectEditor(editorId, connectionId).catch(report)
 }
 </script>
 
@@ -476,90 +483,118 @@ function selectSource(connectionId: number): void {
             </editor-tab-bar>
           </div>
           <split-group direction="horizontal" class="min-h-0 flex-1">
-            <split-panel
-              id="navigator-panel"
-              v-model:size="navigatorStore.width"
-              :folded="!navigatorStore.open"
-              default-size="var(--navigator-width)"
-              min-size="var(--navigator-min-width)"
-              folded-size="var(--rail-size)"
-              class="flex"
-              @update:folded="(folded: boolean) => (navigatorStore.open = !folded)"
-            >
-              <!-- Folded, the object navigator stays mounted: its tree keeps its state. -->
-              <aside
-                v-show="navigatorStore.open"
-                class="flex min-w-0 flex-1 flex-col gap-4 px-4 pt-3 pb-4"
-              >
-                <navigator-panel
-                  :selected-id="connections.selectedId"
-                  :current-database="activeDatabase"
-                  :session-status="activeStatus"
-                  @open-table="openTable"
-                  @index-operations="writeIndexOperations"
-                  @select="selectSource"
-                  @use-database="useDatabase"
-                  @disconnect="disconnect"
-                />
-              </aside>
-              <panel-rail
-                v-if="!navigatorStore.open"
-                title="Navigateur d’objets"
-                side="start"
-                class="flex-1"
-                @expand="navigatorStore.open = true"
-              />
-            </split-panel>
-            <split-handle
-              controls="navigator-panel"
-              tooltip="Glisser pour redimensionner le navigateur d’objets, double clic pour le replier ou le déplier"
-              @activate="navigatorStore.open = !navigatorStore.open"
-            />
-            <!--
-              The padding of the sides is inside the panels of the views
-              (`EditorView`), which would cut a border set against their
-              edge, as is the gap under the editors' tabs. The padding of the
-              bottom is that of the last panel of a view, the Pivoteur: open,
-              it ends with its own; folded, its rail closes the area, as the
-              rail of the console closes the window.
-            -->
-            <split-panel id="center-panel" fill min-size="var(--editors-min-width)" class="flex">
+            <split-panel id="tabs-content-panel" fill class="flex">
               <tabs-content
                 v-for="editor in editors.editors"
                 :key="editor.id"
                 :value="editor.id"
-                class="flex min-h-0 min-w-0 flex-1 flex-col"
-                :class="{ 'items-center justify-center': !connectionOf(editor.connectionId) }"
+                class="flex min-h-0 min-w-0 flex-1"
               >
-                <editor-view
-                  v-if="connectionOf(editor.connectionId)"
-                  :ref="
-                    (view) =>
-                      view
-                        ? views.set(editor.id, view as InstanceType<typeof EditorView>)
-                        : views.delete(editor.id)
-                  "
-                  :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
-                  :editor-id="editor.id"
-                  :active="editor.id === editors.activeId"
-                  :connection="connectionOf(editor.connectionId)!"
-                  :opening-database="openingDatabases[editor.id]"
-                  :sql="editor.sql"
-                  @update:sql="(sql) => editors.setSql(editor.id, sql)"
-                  @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
-                  @database="(database) => (databases[editor.id] = database)"
-                  @status="(status) => followStatus(editor.id, status)"
-                  @transaction="(open) => (editors.transactions[editor.id] = open)"
-                />
-                <div v-else class="flex max-w-xs flex-col items-center gap-3 text-center">
-                  <span class="flex rounded-full bg-surface-raised p-4">
-                    <Database class="size-5 text-fg-secondary" />
-                  </span>
-                  <p class="text-balance text-fg-secondary">
-                    Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données pour la choisir
-                    pour cet éditeur, ou ajoutez une connexion par le menu « ⋮ »
-                  </p>
-                </div>
+                <split-group direction="horizontal" class="min-w-0 flex-1">
+                  <split-panel
+                    :id="`navigator-panel-${editor.id}`"
+                    :size="navigatorStore.layoutOf(editor.id).width"
+                    :folded="!navigatorStore.layoutOf(editor.id).open"
+                    default-size="var(--navigator-width)"
+                    min-size="var(--navigator-min-width)"
+                    folded-size="var(--rail-size)"
+                    class="flex"
+                    @update:size="
+                      (size: number | null) => (navigatorStore.layoutOf(editor.id).width = size)
+                    "
+                    @update:folded="
+                      (folded: boolean) => (navigatorStore.layoutOf(editor.id).open = !folded)
+                    "
+                  >
+                    <!-- Folded, the object navigator stays mounted: its tree keeps its state. -->
+                    <aside
+                      v-show="navigatorStore.layoutOf(editor.id).open"
+                      class="flex min-w-0 flex-1 flex-col gap-4 px-4 pt-3 pb-4"
+                    >
+                      <navigator-panel
+                        :editor-id="editor.id"
+                        :active="editor.id === editors.activeId"
+                        :selected-id="editor.connectionId"
+                        :current-database="databaseOf(editor)"
+                        :session-status="statusOf(editor)"
+                        @open-table="
+                          (connectionId, schema, table) =>
+                            openTable(editor.id, connectionId, schema, table)
+                        "
+                        @index-operations="
+                          (connectionId, schema, table, index) =>
+                            writeIndexOperations(editor.id, connectionId, schema, table, index)
+                        "
+                        @select="(connectionId) => selectSource(editor.id, connectionId)"
+                        @use-database="
+                          (connectionId, schema) => useDatabase(editor.id, connectionId, schema)
+                        "
+                        @disconnect="disconnect(editor.id)"
+                      />
+                    </aside>
+                    <panel-rail
+                      v-if="!navigatorStore.layoutOf(editor.id).open"
+                      title="Navigateur d’objets"
+                      side="start"
+                      class="flex-1"
+                      @expand="navigatorStore.layoutOf(editor.id).open = true"
+                    />
+                  </split-panel>
+                  <split-handle
+                    :controls="`navigator-panel-${editor.id}`"
+                    tooltip="Glisser pour redimensionner le navigateur d’objets, double clic pour le replier ou le déplier"
+                    @activate="
+                      navigatorStore.layoutOf(editor.id).open = !navigatorStore.layoutOf(editor.id)
+                        .open
+                    "
+                  />
+                  <!--
+                    The padding of the sides is inside the panels of the views
+                    (`EditorView`), which would cut a border set against their
+                    edge, as is the gap under the editors' tabs. The padding of
+                    the bottom is that of the last panel of a view, the
+                    Pivoteur: open, it ends with its own; folded, its rail
+                    closes the area, as the rail of the console closes the
+                    window.
+                  -->
+                  <split-panel
+                    :id="`view-panel-${editor.id}`"
+                    fill
+                    min-size="var(--editors-min-width)"
+                    class="flex flex-col"
+                    :class="{ 'items-center justify-center': !connectionOf(editor.connectionId) }"
+                  >
+                    <editor-view
+                      v-if="connectionOf(editor.connectionId)"
+                      :ref="
+                        (view) =>
+                          view
+                            ? views.set(editor.id, view as InstanceType<typeof EditorView>)
+                            : views.delete(editor.id)
+                      "
+                      :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
+                      :editor-id="editor.id"
+                      :active="editor.id === editors.activeId"
+                      :connection="connectionOf(editor.connectionId)!"
+                      :opening-database="openingDatabases[editor.id]"
+                      :sql="editor.sql"
+                      @update:sql="(sql) => editors.setSql(editor.id, sql)"
+                      @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
+                      @database="(database) => (databases[editor.id] = database)"
+                      @status="(status) => followStatus(editor.id, status)"
+                      @transaction="(open) => (editors.transactions[editor.id] = open)"
+                    />
+                    <div v-else class="flex max-w-xs flex-col items-center gap-3 text-center">
+                      <span class="flex rounded-full bg-surface-raised p-4">
+                        <Database class="size-5 text-fg-secondary" />
+                      </span>
+                      <p class="text-balance text-fg-secondary">
+                        Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données pour la
+                        choisir pour cet éditeur, ou ajoutez une connexion par le menu « ⋮ »
+                      </p>
+                    </div>
+                  </split-panel>
+                </split-group>
               </tabs-content>
             </split-panel>
             <split-handle

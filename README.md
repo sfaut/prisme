@@ -115,7 +115,7 @@ The screen has these areas:
 - **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).
 - **Console**, at the bottom, across the whole width: the history of the queries sent to the servers, and the debug log (see [Console](#console)).
 
-The side panels go from the editor tabs down to the console, common to all the editors. The fold button of a panel's header (left of the title for the data explorer and the console, at the right for the object navigator) folds it towards its edge, where it leaves a narrow rail with its name; a click on the rail opens it again. The object navigator and the console are open by default, the data explorer closed; your choice for the object navigator and the console is remembered.
+The side panels go from the editor tabs down to the console, common to all the editors. The fold button of a panel's header (left of the title for the data explorer and the console, at the right for the object navigator) folds it towards its edge, where it leaves a narrow rail with its name; a click on the rail opens it again. The object navigator and the console are open by default, the data explorer closed; your choice is remembered, for each editor for the object navigator.
 
 The version of Prisme shows next to its name, at the top left.
 
@@ -133,6 +133,8 @@ Passwords are encrypted on disk and never sent back to the browser.
 
 ### Object navigator
 
+Each editor has its own navigator, in its tab, which acts on that editor. It keeps, for its editor, the rows you opened, its scroll, whether it is folded and its width: going back to an editor, or reopening Prisme, finds its navigator as you left it. A new editor starts with the last width and fold you gave a navigator. The catalogs read are common to all the navigators.
+
 The tree shows, for each source:
 
 - its **databases**, then their **tables**, **views**, **procedures**, **functions** and **events** (**Événements** folder; a disabled event is marked **désactivé**);
@@ -141,10 +143,10 @@ The tree shows, for each source:
 How it behaves:
 
 - A **click** on a row opens or closes it.
-- A **Ctrl+click** (**Cmd+click** on macOS), or **Enter** on the focused row, acts on it without opening or closing it: on a source, makes it the connection of the active editor; on a database, makes it the current database (like `USE`); on a table or view, shows its content: its `SELECT` goes after the last query of the editor, without overwriting anything, and runs; on an index, writes the operations on it after the last query, commented out: adding a primary key, a unique index or an index, then making the index visible or invisible (ignored in MariaDB), removing or renaming it, as far as the version of the server allows (a primary key can only be removed). Uncomment the line to run and fill in the names left as placeholders (`column_name`, `new_index_name`).
+- A **Ctrl+click** (**Cmd+click** on macOS), or **Enter** on the focused row, acts on it without opening or closing it: on a source, makes it the connection of the editor; on a database, makes it the current database (like `USE`); on a table or view, shows its content: its `SELECT` goes after the last query of the editor, without overwriting anything, and runs; on an index, writes the operations on it after the last query, commented out: adding a primary key, a unique index or an index, then making the index visible or invisible (ignored in MariaDB), removing or renaming it, as far as the version of the server allows (a primary key can only be removed). Uncomment the line to run and fill in the names left as placeholders (`column_name`, `new_index_name`).
 - On hovering a row, a button on its right does the same: the **plug** of a database makes it the current database, the **eye** of a table or view shows its content, the **pencil and ruler** of an index writes the operations on it.
-- **Déconnecter** (Disconnect), the **unplugged plug** on hovering a source or the current database, or the **⋮** menu of the source, closes the session of the active editor at once: its connection to the server closes, and the editor shows **Session fermée** (Session closed) with **Reconnecter** (Reconnect). It is only available on the source of the active editor, once its session is open, and stays disabled while queries run: stop them first. Afterwards, choosing the source again, making one of its databases current or opening one of its tables also opens a new session; a database made current opens it on that database directly.
-- The catalog loads progressively, and the selected connection opens by itself. **Tout rafraîchir** (Refresh all) in the root menu reloads the catalogs already read.
+- **Déconnecter** (Disconnect), the **unplugged plug** on hovering a source or the current database, or the **⋮** menu of the source, closes the session of the editor at once: its connection to the server closes, and the editor shows **Session fermée** (Session closed) with **Reconnecter** (Reconnect). It is only available on the source of the editor, once its session is open, and stays disabled while queries run: stop them first. Afterwards, choosing the source again, making one of its databases current or opening one of its tables also opens a new session; a database made current opens it on that database directly.
+- The catalog loads progressively, and the source of the editor opens by itself, in a new navigator and when the editor changes its connection. **Tout rafraîchir** (Refresh all) in the root menu reloads the catalogs already read.
 - The current database is in **bold**.
 - While the tree scrolls, the source, the database and the table of the rows on screen stay pinned at the top; they open, close and act like the rows of the tree.
 

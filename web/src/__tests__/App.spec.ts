@@ -77,8 +77,9 @@ describe('App', () => {
   it('puts the editors’ tabs above the side panels, and the console under them', async () => {
     const wrapper = mount(App)
     const frame = wrapper.find('main')
+    await vi.waitFor(() => expect(frame.find('[id^="navigator-panel-"]').exists()).toBe(true))
     const tabs = frame.find('[aria-label="Éditeurs"]').element
-    const navigator = frame.find('#navigator-panel').element
+    const navigator = frame.find('[id^="navigator-panel-"]').element
     expect(tabs.compareDocumentPosition(navigator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(frame.find('#explorer-panel').exists()).toBe(true)
     expect(frame.find('#console-panel').exists()).toBe(false)
@@ -90,6 +91,7 @@ describe('App', () => {
     window.localStorage.clear()
     const wrapper = mount(App)
     const objects = () => wrapper.find('aside').element.style.display !== 'none'
+    await vi.waitFor(() => expect(wrapper.find('aside').exists()).toBe(true))
     expect(objects()).toBe(true)
     // The data explorer is closed by default: only its rail shows.
     expect(wrapper.find('[aria-label="Déplier : Explorateur de données"]').exists()).toBe(true)
@@ -97,6 +99,7 @@ describe('App', () => {
     await wrapper.find('[aria-label="Replier : Navigateur d’objets"]').trigger('click')
     expect(objects()).toBe(false)
     expect(window.localStorage.getItem('prisme.navigator.open')).toBe('false')
+    expect(JSON.parse(window.localStorage.getItem('prisme.navigator.layout.1')!).open).toBe(false)
     await wrapper.find('[aria-label="Déplier : Navigateur d’objets"]').trigger('click')
     expect(objects()).toBe(true)
 

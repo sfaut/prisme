@@ -5,9 +5,19 @@
   connection), then its databases, tables and columns; next, the
   "Notebooks" root, empty for now.
 
+  Each editor has its own navigator, in its tab, which acts on it: its
+  connection is the chosen source, its session's database is the current
+  one. Each navigator keeps its open nodes and its scroll, and its layout
+  (open or folded, its width), in the `navigator` store, which keeps them in
+  the browser; the catalogs read, the list of the connections and the
+  windows are common to all. A navigator builds its tree only while its
+  editor is active: the others wait, hidden, without following the catalogs
+  as they arrive.
+
   Several sources sit side by side in the same tree. The catalog of a source
-  is read when it is opened (that of the chosen connection opens by itself)
-  and arrives progressively: the databases first, then their objects (tables,
+  is read when it is opened (the source of the editor opens by itself the
+  first time, and when its connection changes; the sources left open are
+  read again when the editor becomes active) and arrives progressively: the databases first, then their objects (tables,
   views, procedures, functions), then the details of the tables (columns,
   indexes, foreign keys, triggers), each part shown as soon as it arrives.
   It then stays in memory. A click on a line opens or closes its level.
@@ -21,9 +31,9 @@
   a database, a table or an index, a button on the right of its line does
   the same (plug: current database, eye: content, pencil and ruler:
   operations on the index). On hovering a source, and the current database
-  instead of its plug, an unplugged plug closes the session of the active
-  editor (emits `disconnect`): it is enabled on the active editor's source
-  only, once its session is ready, and disabled while queries run.
+  instead of its plug, an unplugged plug closes the session of the editor
+  (emits `disconnect`): it is enabled on the editor's source only, once its
+  session is ready, and disabled while queries run.
 
   Each source carries as a badge the flavor of its server (`mysql`,
   `mariadb`), seen on the last connection or when reading the catalog.
@@ -36,8 +46,8 @@
   again all the catalogs already read; on hovering each source, another one
   changes or tests the connection, reads its catalog again or deletes the
   connection (after confirmation, which warns of the transactions it rolls
-  back); "Déconnecter" there closes the session of the active editor, like
-  the button of the line.
+  back); "Déconnecter" there closes the session of the editor, like the
+  button of the line.
 
   The tree is Reka UI's (`TreeRoot`, `TreeItem`: keyboard, opening of the
   levels, accessibility), with virtual scrolling (`TreeVirtualizer`); the
@@ -50,6 +60,10 @@
   database and the table keep showing over their columns. The pinned lines are
   the lines of the tree (`NavigatorLine.vue`), hidden from assistive
   technologies, which read the tree.
+
+  A hidden tree loses its scroll: the navigator puts it back when its editor
+  becomes active (and when the page opens), as the rows arrive, until the
+  position is reached or the user moves in the tree.
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
@@ -61,7 +75,7 @@ import {
   TreeRoot,
   TreeVirtualizer,
 } from 'reka-ui'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue'
 
 import { probeConnection, probeMessage } from '@/api/connections'
 import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
@@ -75,7 +89,7 @@ import { useNavigatorStore } from '@/stores/navigator'
 import ConnectionDialog from './ConnectionDialog.vue'
 import NavigatorLine from './NavigatorLine.vue'
 import PanelHeader from '@/components/panel/PanelHeader.vue'
-import { type NavigatorNode, SOURCES_KEY, navigatorTree, sourceKey } from './navigatorNodes'
+import { type NavigatorNode, navigatorTree, sourceKey } from './navigatorNodes'
 import { pinnedRows, visibleRows } from './stickyRows'
 import { openTransactionsNotice } from './transactionNotice'
 import UiAlert from '@/components/ui/UiAlert.vue'
@@ -85,17 +99,25 @@ import type { MenuItem } from '@/components/ui/menuItem'
 
 const props = defineProps<{
   /**
-   * Id of the chosen connection, `null` if none.
+   * Id of the editor of the navigator.
+   */
+  editorId: number
+  /**
+   * Is the editor active, its navigator on screen?
+   */
+  active: boolean
+  /**
+   * Id of the editor's connection, the chosen source; `null` if none.
    */
   selectedId: number | null
   /**
-   * Current database of the chosen connection's query session, shown in
-   * bold; `null` if none.
+   * Current database of the editor's session, shown in bold; `null` if
+   * none.
    */
   currentDatabase: string | null
   /**
-   * Stage of the active editor's session, on the chosen connection; `null`
-   * without a session.
+   * Stage of the editor's session, on its connection; `null` without a
+   * session.
    */
   sessionStatus: SessionStatus | null
 }>()
@@ -118,7 +140,7 @@ const emit = defineEmits<{
    */
   'use-database': [connectionId: number, schema: string]
   /**
-   * The user closes the session of the active editor.
+   * The user closes the session of the editor.
    */
   disconnect: []
 }>()
@@ -186,9 +208,24 @@ const removeOpen = computed({
 })
 
 /**
+ * Tree of the editor's navigator: open nodes and scroll.
+ */
+const tree = navigatorStore.treeOf(props.editorId)
+
+/**
+ * Layout of the editor's navigator.
+ */
+const layout = navigatorStore.layoutOf(props.editorId)
+
+/**
  * Keys of the open nodes.
  */
-const expandedKeys = ref<string[]>([SOURCES_KEY])
+const expandedKeys = computed({
+  get: () => tree.expanded,
+  set: (keys: string[]) => {
+    tree.expanded = keys
+  },
+})
 
 /**
  * Is a catalog still being received?
@@ -201,22 +238,31 @@ const receiving = computed(() =>
 )
 
 /**
- * Whole tree, built from the catalogs in memory.
+ * Last tree built, kept while the editor is not active.
  */
-const nodes = computed(() =>
-  navigatorTree(
-    connections.connections.map((connection) => ({
-      connectionId: connection.id,
-      name: connection.name,
-      catalog: catalog.catalogOf(connection.id),
-      currentDatabase: connection.id === props.selectedId ? props.currentDatabase : null,
-      flavor: catalog.catalogOf(connection.id)?.flavor ?? connection.server_flavor,
-      version: catalog.catalogOf(connection.id)?.version ?? connection.server_version,
-      showSystemSchemas: connection.show_system_schemas,
-    })),
-    receiving.value,
-  ),
-)
+let built: NavigatorNode[] = []
+
+/**
+ * Whole tree, built from the catalogs in memory while the editor is active;
+ * hidden, the last one built, which follows nothing.
+ */
+const nodes = computed(() => {
+  if (props.active) {
+    built = navigatorTree(
+      connections.connections.map((connection) => ({
+        connectionId: connection.id,
+        name: connection.name,
+        catalog: catalog.catalogOf(connection.id),
+        currentDatabase: connection.id === props.selectedId ? props.currentDatabase : null,
+        flavor: catalog.catalogOf(connection.id)?.flavor ?? connection.server_flavor,
+        version: catalog.catalogOf(connection.id)?.version ?? connection.server_version,
+        showSystemSchemas: connection.show_system_schemas,
+      })),
+      receiving.value,
+    )
+  }
+  return built
+})
 
 /**
  * Rows displayed by the tree, with the rows of each level.
@@ -312,8 +358,8 @@ function expand(keys: string[]): void {
 }
 
 /**
- * Stage of the active editor's session for a source: that of the chosen
- * connection, `null` for the other sources (no session of the active editor).
+ * Stage of the editor's session for a source: that of the chosen
+ * connection, `null` for the other sources (no session of the editor).
  *
  * @param connectionId Id of the source's connection.
  */
@@ -433,7 +479,7 @@ async function confirmRemove(): Promise<void> {
   }
   try {
     await connections.remove(connection.id)
-    expandedKeys.value = expandedKeys.value.filter((key) => key !== sourceKey(connection.id))
+    navigatorStore.forgetSource(connection.id)
     delete failures.value[connection.id]
   } catch (failure) {
     failures.value[connection.id] = errorMessage(failure)
@@ -519,17 +565,71 @@ function onPinnedClick(event: MouseEvent, clicked: NavigatorNode): void {
 }
 
 /**
- * Follows the scroll of the tree, to pin the rows of its hierarchy.
+ * Box of the tree, which holds its scrolling element.
+ */
+const frame = useTemplateRef<HTMLElement>('frame')
+
+/**
+ * Scroll of the tree still to put back, in pixels; `null` once reached, or
+ * once the user moves in the tree.
+ */
+let pendingScroll: number | null = null
+
+/**
+ * Scrolling element of the tree, absent before mounting.
+ */
+function treeElement(): HTMLElement | null {
+  return frame.value?.querySelector<HTMLElement>('[role="tree"]') ?? null
+}
+
+/**
+ * Puts the kept scroll back, as far as the rows already there allow; once
+ * reached, nothing is left to put back.
+ */
+function restoreScroll(): void {
+  const element = treeElement()
+  if (pendingScroll === null || element === null || !props.active) {
+    return
+  }
+  element.scrollTop = pendingScroll
+  scrollTop.value = element.scrollTop
+  if (Math.abs(element.scrollTop - pendingScroll) < 1) {
+    pendingScroll = null
+  }
+}
+
+/**
+ * Tries again to put the scroll back once the tree has drawn its new rows.
+ */
+function retryScroll(): void {
+  if (pendingScroll !== null) {
+    void nextTick(() => requestAnimationFrame(restoreScroll))
+  }
+}
+
+/**
+ * The user moves in the tree: the scroll is theirs, nothing is put back.
+ */
+function stopRestoring(): void {
+  pendingScroll = null
+}
+
+/**
+ * Follows the scroll of the tree, to pin the rows of its hierarchy, and
+ * keeps it for the editor.
  *
  * @param event Scroll event of the tree.
  */
 function onScroll(event: Event): void {
   scrollTop.value = (event.target as HTMLElement).scrollTop
+  if (props.active && pendingScroll === null) {
+    navigatorStore.scrollTo(props.editorId, scrollTop.value)
+  }
 }
 
 onMounted(async () => {
   try {
-    await connections.load()
+    await connections.ensureLoaded()
   } catch (failure) {
     listError.value = `Connexions illisibles.
 
@@ -537,36 +637,87 @@ ${errorMessage(failure)}`
   }
 })
 
-// The chosen connection opens its source.
-watch(
-  () => props.selectedId,
-  (connectionId) => {
-    if (connectionId === null) {
-      return
-    }
-    if (!expandedKeys.value.includes(sourceKey(connectionId))) {
-      expandedKeys.value = [...expandedKeys.value, sourceKey(connectionId)]
-    }
+/**
+ * Connection of the editor seen while it was last active; `undefined`
+ * before its first activation.
+ */
+let seenConnection: number | null | undefined
+
+/**
+ * Opens the source of the editor, when its tree is new or when its
+ * connection changed, then reads the catalogs of the open sources.
+ *
+ * @param connectionId Id of the editor's connection, `null` if none.
+ */
+function openSources(connectionId: number | null): void {
+  const changed = seenConnection === undefined ? !tree.known : connectionId !== seenConnection
+  seenConnection = connectionId
+  tree.known = true
+  if (changed && connectionId !== null && !expandedKeys.value.includes(sourceKey(connectionId))) {
+    expandedKeys.value = [...expandedKeys.value, sourceKey(connectionId)]
+  }
+  if (connectionId !== null) {
     // Directly: the list of connections may not be received yet.
     void load(connectionId, false)
+  }
+  for (const connection of connections.connections) {
+    if (expandedKeys.value.includes(sourceKey(connection.id))) {
+      void load(connection.id, false)
+    }
+  }
+}
+
+// While the editor is active: its source opens, its open sources are read,
+// and so are they again when the list of connections arrives; its kept
+// scroll comes back.
+watch(
+  () => props.active,
+  (active) => {
+    if (active) {
+      openSources(props.selectedId)
+      pendingScroll = tree.scrollTop
+      retryScroll()
+    }
   },
   { immediate: true },
 )
+
+watch(
+  () => props.selectedId,
+  (connectionId) => {
+    if (props.active) {
+      openSources(connectionId)
+    }
+  },
+)
+
+watch(
+  () => connections.connections,
+  () => {
+    if (props.active) {
+      openSources(props.selectedId)
+    }
+  },
+)
+
+watch(() => visible.value.rows.length, retryScroll)
 </script>
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-3">
-    <panel-header
-      title="Navigateur d’objets"
-      side="start"
-      @collapse="navigatorStore.open = false"
-    />
+    <panel-header title="Navigateur d’objets" side="start" @collapse="layout.open = false" />
     <ui-alert v-if="probed" :tone="probed.tone" :title="probed.title" @close="probed = null" />
     <ui-alert v-if="listError" tone="error" :title="listError" />
     <!-- Index as key: the same message can come twice, from two errors of one source. -->
     <ui-alert v-for="(message, index) in messages" :key="index" tone="warning" :title="message" />
 
-    <div class="relative flex min-h-0 flex-1 flex-col">
+    <div
+      ref="frame"
+      class="relative flex min-h-0 flex-1 flex-col"
+      @wheel.passive="stopRestoring"
+      @pointerdown="stopRestoring"
+      @keydown="stopRestoring"
+    >
       <tree-root
         :items="nodes"
         :get-key="(node: NavigatorNode) => node.key"

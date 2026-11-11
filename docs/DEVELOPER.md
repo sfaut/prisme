@@ -76,12 +76,14 @@ Each area has its folder in `web/src/components/` (see "Repository layout"), wit
 
 ### Local storage
 
-The display preferences of a machine stay in the browser's local storage, under keys `prisme.<area>.<setting>`: the area is that of the folders of the components (`navigator`, `editor`, `console`, `explorer`), `app` for the whole application, the setting in camelCase. Each area keeps them in its store, read and written by `web/src/utils/storedValues.ts` (flags, sizes) or `split/storedLayout.ts` (layout of an editor). A missing or unreadable value gives its default.
+The display preferences of a machine stay in the browser's local storage, under keys `prisme.<area>.<setting>`: the area is that of the folders of the components (`navigator`, `editor`, `console`, `explorer`), `app` for the whole application, the setting in camelCase. Each area keeps them in its store, read and written by `web/src/utils/storedValues.ts` (flags, sizes) or `split/storedLayout.ts` (layout of an editor, of its navigator). A missing or unreadable value gives its default.
 
 | Key | Value |
 |---|---|
 | `prisme.app.colorMode` | `system`, `light` or `dark` |
-| `prisme.navigator.open`, `prisme.navigator.width` | the object navigator open, its width in CSS pixels |
+| `prisme.navigator.open`, `prisme.navigator.width` | the last state given to an object navigator, open or folded, and its width in CSS pixels: the start of an editor without a navigator of its own |
+| `prisme.navigator.layout.<editor>` | the object navigator of an editor open, its width (JSON), forgotten when it closes |
+| `prisme.navigator.tree.<editor>` | open nodes and scroll of the object navigator of an editor (JSON), forgotten when it closes |
 | `prisme.editor.active` | id of the active editor |
 | `prisme.editor.layout.<editor>` | heights and folds of the panels of an editor (JSON), forgotten when it closes |
 | `prisme.console.open`, `prisme.console.height` | the console open, its height in CSS pixels |

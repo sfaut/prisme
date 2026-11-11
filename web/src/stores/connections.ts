@@ -60,6 +60,24 @@ export const useConnectionsStore = defineStore('connections', () => {
   }
 
   /**
+   * First reading of the list, shared by its callers; `null` before it, or
+   * after it failed.
+   */
+  let listed: Promise<void> | null = null
+
+  /**
+   * Reads the list from the server once, for every navigator (one per
+   * editor); a failed reading is tried again by the next call.
+   */
+  function ensureLoaded(): Promise<void> {
+    listed ??= load().catch((failure: unknown) => {
+      listed = null
+      throw failure
+    })
+    return listed
+  }
+
+  /**
    * Tests in the background the connections whose server is unknown, not
    * tested yet, and records the received flavor and version. A connection
    * whose flavor was saved before the version is tested once more.
@@ -132,5 +150,5 @@ export const useConnectionsStore = defineStore('connections', () => {
     await load()
   }
 
-  return { connections, selectedId, versions, selected, load, create, update, remove }
+  return { connections, selectedId, versions, selected, load, ensureLoaded, create, update, remove }
 })

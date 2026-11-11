@@ -29,8 +29,14 @@ vi.mock('@/api/connections', () => ({
  */
 let schemaNames = ['a', 'b', 'c']
 
+/**
+ * Connections whose catalog was read from the simulated server, in order.
+ */
+let streamed: number[] = []
+
 vi.mock('@/api/navigator', () => ({
-  streamCatalog: async (_: number, onEvent: (event: unknown) => void) => {
+  streamCatalog: async (connectionId: number, onEvent: (event: unknown) => void) => {
+    streamed.push(connectionId)
     onEvent({ type: 'schemas', schemas: schemaNames })
     onEvent({ type: 'done' })
   },
@@ -100,13 +106,19 @@ function connection(id: number, name: string): ConnectionSummary {
 }
 
 /**
- * Mounts the navigator, attached to the page (the menus open in `body`).
+ * Mounts the navigator of an editor, attached to the page (the menus open in
+ * `body`): by default, that of the active editor 1.
  *
  * @param props Properties of the navigator.
  */
-function mountNavigator(props: { selectedId: number | null; currentDatabase: string | null }) {
+function mountNavigator(props: {
+  selectedId: number | null
+  currentDatabase: string | null
+  editorId?: number
+  active?: boolean
+}) {
   return mount(NavigatorPanel, {
-    props: { ...props, sessionStatus: null },
+    props: { editorId: 1, active: true, ...props, sessionStatus: null },
     attachTo: document.body,
   })
 }
@@ -157,8 +169,10 @@ async function modifiedClick(
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  window.localStorage.clear()
   giveLayout()
   schemaNames = ['a', 'b', 'c']
+  streamed = []
 })
 
 afterEach(() => {
@@ -301,6 +315,52 @@ describe('NavigatorPanel', () => {
       await wrapper.setProps({ currentDatabase: database })
       await vi.waitFor(() => expect(bold()).toEqual([database]))
     }
+    wrapper.unmount()
+  })
+
+  it('keeps the open nodes of each editor', async () => {
+    savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
+    const first = mountNavigator({ selectedId: 1, currentDatabase: null })
+    await vi.waitFor(() => expect(row(first, 'a')).toBeDefined())
+    // The navigator of another editor, on another source, opens only that one.
+    const second = mountNavigator({ selectedId: 2, currentDatabase: null, editorId: 2 })
+    const texts = () => labels(second)
+    await vi.waitFor(() => expect(texts()[texts().indexOf('Autre') + 1]).toBe('a'))
+    expect(texts()[texts().indexOf('Origen 2') + 1]).toBe('Autre')
+    second.unmount()
+
+    // The source closed by the user stays closed when its editor comes back.
+    await click(row(first, 'Origen 2'), 1)
+    expect(row(first, 'a')).toBeUndefined()
+    first.unmount()
+    const again = mountNavigator({ selectedId: 1, currentDatabase: null })
+    await vi.waitFor(() => expect(row(again, 'Origen 2')).toBeDefined())
+    expect(row(again, 'a')).toBeUndefined()
+    again.unmount()
+  })
+
+  it('opens the source of the editor when its connection changes', async () => {
+    savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
+    const wrapper = mountNavigator({ selectedId: null, currentDatabase: null })
+    await vi.waitFor(() => expect(row(wrapper, 'Autre')).toBeDefined())
+    expect(row(wrapper, 'a')).toBeUndefined()
+    await wrapper.setProps({ selectedId: 2 })
+    const texts = () => labels(wrapper)
+    await vi.waitFor(() => expect(texts()[texts().indexOf('Autre') + 1]).toBe('a'))
+    wrapper.unmount()
+  })
+
+  it('reads no catalog while its editor is not active', async () => {
+    savedConnections = [connection(1, 'Origen 2')]
+    const wrapper = mountNavigator({ selectedId: 1, currentDatabase: null, active: false })
+    await vi.waitFor(() => expect(wrapper.find('h2').exists()).toBe(true))
+    await nextTick()
+    expect(streamed).toEqual([])
+    expect(labels(wrapper)).toEqual([])
+
+    await wrapper.setProps({ active: true })
+    await vi.waitFor(() => expect(row(wrapper, 'a')).toBeDefined())
+    expect(streamed).toEqual([1])
     wrapper.unmount()
   })
 })
