@@ -1,6 +1,6 @@
 <!--
   Data explorer: panel on the right of the screen that shows the JSON or XML
-  values selected in the result grid on screen (`explorer` store), in a
+  values selected in the result grid of its editor (`explorer` store), in a
   read-only CodeMirror editor.
 
   - Values: one cell, cells of a column, a range or several ranges of one
@@ -21,8 +21,9 @@
     results stay.
   - Copy: the text is that of the document shown, without the folding
     marks: Ctrl+A then Ctrl+C, or the copy button, give valid JSON or XML.
-  - The panel follows the selection of the grid on screen, and the grid of
-    the active editor when another editor becomes active.
+  - Each editor has its own explorer, in its tab, which follows the
+    selection of the editor's grid on screen and keeps its own search;
+    its layout (open or closed, its width) is kept for the editor.
 -->
 <script setup lang="ts">
 import { json } from '@codemirror/lang-json'
@@ -66,6 +67,13 @@ import UiInput from '@/components/ui/UiInput.vue'
 import { notify } from '@/components/ui/toasts'
 import { vTooltip } from '@/components/ui/tooltip'
 
+const props = defineProps<{
+  /**
+   * Id of the editor of the explorer, whose grid it follows.
+   */
+  editorId: number
+}>()
+
 const explorer = useExplorerStore()
 
 const host = useTemplateRef<HTMLDivElement>('host')
@@ -98,7 +106,7 @@ function currentWrapping() {
  * Document of the selected values, `null` without values to show.
  */
 const formatted = computed(() => {
-  const content = explorer.content
+  const content = explorer.contentOf(props.editorId)
   return content.state === 'values' ? dataDocument(content.kind, content.cells) : null
 })
 
@@ -113,7 +121,7 @@ const text = computed(() =>
  * Message shown instead of the document.
  */
 const message = computed(() => {
-  const content = explorer.content
+  const content = explorer.contentOf(props.editorId)
   switch (content.state) {
     case 'none':
       return 'Sélectionnez des valeurs JSON ou XML d’une colonne de la grille.'
@@ -130,7 +138,7 @@ const message = computed(() => {
  * Column and number of the shown values, under the title.
  */
 const subtitle = computed(() => {
-  const content = explorer.content
+  const content = explorer.contentOf(props.editorId)
   if (content.state !== 'values') {
     return ''
   }
@@ -162,7 +170,10 @@ const current = ref(0)
 /**
  * Format of the shown values, `null` without values.
  */
-const kind = computed(() => (explorer.content.state === 'values' ? explorer.content.kind : null))
+const kind = computed(() => {
+  const content = explorer.contentOf(props.editorId)
+  return content.state === 'values' ? content.kind : null
+})
 
 /**
  * Result of the expression as typed, on the document.
@@ -369,7 +380,7 @@ async function copy(): Promise<void> {
  * Language of the format of the shown values.
  */
 function currentLanguage() {
-  const content = explorer.content
+  const content = explorer.contentOf(props.editorId)
   return content.state === 'values' && content.kind === 'xml' ? xml() : json()
 }
 
@@ -439,7 +450,11 @@ watch(
 
 <template>
   <div class="data-explorer">
-    <panel-header title="Explorateur de données" side="end" @collapse="explorer.open = false">
+    <panel-header
+      title="Explorateur de données"
+      side="end"
+      @collapse="explorer.layoutOf(props.editorId).open = false"
+    >
       <template #subtitle>
         <span class="truncate text-sm text-fg-secondary" v-tooltip="subtitle">{{
           subtitle || ' '

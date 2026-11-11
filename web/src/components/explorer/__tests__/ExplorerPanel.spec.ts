@@ -1,6 +1,7 @@
 import { EditorView } from '@codemirror/view'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { nextTick } from 'vue'
 
 import { mount } from '@vue/test-utils'
 
@@ -14,12 +15,12 @@ beforeEach(() => {
 })
 
 /**
- * Mounts the explorer, open.
+ * Mounts the explorer of editor 1, open.
  */
 function mountExplorer() {
   const explorer = useExplorerStore()
-  explorer.open = true
-  const wrapper = mount(ExplorerPanel, { attachTo: document.body })
+  explorer.layoutOf(1).open = true
+  const wrapper = mount(ExplorerPanel, { props: { editorId: 1 }, attachTo: document.body })
   return { explorer, wrapper }
 }
 
@@ -45,13 +46,24 @@ function cursor(wrapper: ReturnType<typeof mountExplorer>['wrapper']): number {
 }
 
 describe('ExplorerPanel', () => {
+  it('shows only what the grid of its own editor publishes', async () => {
+    const { explorer, wrapper } = mountExplorer()
+    explorer.show(2, Symbol('grid'), { state: 'several' })
+    await nextTick()
+    expect(wrapper.find('.data-explorer-message').text()).toContain('Sélectionnez des valeurs')
+    explorer.show(1, Symbol('grid'), { state: 'several' })
+    await nextTick()
+    expect(wrapper.find('.data-explorer-message').text()).not.toContain('Sélectionnez des valeurs')
+    wrapper.unmount()
+  })
+
   it('asks for a selection, then for a single column', async () => {
     const { explorer, wrapper } = mountExplorer()
     expect(wrapper.find('.data-explorer-message').text()).toContain('Sélectionnez des valeurs')
-    explorer.show(Symbol('grid'), { state: 'several' })
+    explorer.show(1, Symbol('grid'), { state: 'several' })
     await wrapper.vm.$nextTick()
     expect(wrapper.find('.data-explorer-message').text()).toContain('plusieurs colonnes')
-    explorer.show(Symbol('grid'), { state: 'scalar', column: 'name' })
+    explorer.show(1, Symbol('grid'), { state: 'scalar', column: 'name' })
     await wrapper.vm.$nextTick()
     expect(wrapper.find('.data-explorer-message').text()).toBe(
       'La colonne « name » ne contient ni JSON ni XML.',
@@ -61,7 +73,7 @@ describe('ExplorerPanel', () => {
 
   it('shows the selected values, indented, then the next ones', async () => {
     const { explorer, wrapper } = mountExplorer()
-    explorer.show(Symbol('grid'), {
+    explorer.show(1, Symbol('grid'), {
       state: 'values',
       column: 'doc',
       kind: 'json',
@@ -74,7 +86,7 @@ describe('ExplorerPanel', () => {
     expect(wrapper.find('.data-explorer-message').exists()).toBe(false)
     expect(editorText(wrapper)).toBe('[\n    {\n        "a": 1\n    },\n    null\n]')
     expect(wrapper.text()).toContain('doc · JSON · 2 valeurs')
-    explorer.show(Symbol('grid'), {
+    explorer.show(1, Symbol('grid'), {
       state: 'values',
       column: 'doc',
       kind: 'xml',
@@ -87,7 +99,7 @@ describe('ExplorerPanel', () => {
 
   it('wraps long lines on demand, off by default, and remembers the choice', async () => {
     const { explorer, wrapper } = mountExplorer()
-    explorer.show(Symbol('grid'), {
+    explorer.show(1, Symbol('grid'), {
       state: 'values',
       column: 'doc',
       kind: 'json',
@@ -109,7 +121,7 @@ describe('ExplorerPanel', () => {
 
   it('searches as the expression is typed, highlights then filters the results', async () => {
     const { explorer, wrapper } = mountExplorer()
-    explorer.show(Symbol('grid'), {
+    explorer.show(1, Symbol('grid'), {
       state: 'values',
       column: 'doc',
       kind: 'json',
@@ -156,7 +168,7 @@ describe('ExplorerPanel', () => {
       button.element.compareDocumentPosition(title.element) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy()
     await button.trigger('click')
-    expect(explorer.open).toBe(false)
+    expect(explorer.layoutOf(1).open).toBe(false)
     wrapper.unmount()
   })
 })

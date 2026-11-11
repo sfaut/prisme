@@ -222,11 +222,11 @@ describe('ResultGrid and the data explorer', () => {
         filter: NO_FILTER,
       },
     })
-    explorer.open = true
+    explorer.layoutOf(0).open = true
     await nextTick()
-    expect(explorer.content).toEqual({ state: 'none' })
+    expect(explorer.contentOf(0)).toEqual({ state: 'none' })
     await wrapper.findAll('.grid-column-name')[1]!.trigger('pointerdown')
-    expect(explorer.content).toEqual({
+    expect(explorer.contentOf(0)).toEqual({
       state: 'values',
       column: 'doc',
       kind: 'json',
@@ -236,15 +236,15 @@ describe('ResultGrid and the data explorer', () => {
       ],
     })
     await wrapper.find('.grid-corner').trigger('mousedown')
-    expect(explorer.content).toEqual({ state: 'several' })
+    expect(explorer.contentOf(0)).toEqual({ state: 'several' })
     // Off screen (another tab, another editor): the explorer no longer shows it.
     await wrapper.setProps({ displayed: false })
-    expect(explorer.content).toEqual({ state: 'none' })
+    expect(explorer.contentOf(0)).toEqual({ state: 'none' })
   })
 
   it('takes a column of type JSON as JSON, scalars included', async () => {
     const explorer = useExplorerStore()
-    explorer.open = true
+    explorer.layoutOf(0).open = true
     const wrapper = mount(ResultGrid, {
       props: {
         columns: ['value'],
@@ -259,7 +259,7 @@ describe('ResultGrid and the data explorer', () => {
     })
     // Without layout, jsdom draws no row: the column is selected by its name.
     await wrapper.find('.grid-column-name').trigger('pointerdown')
-    expect(explorer.content).toEqual({
+    expect(explorer.contentOf(0)).toEqual({
       state: 'values',
       column: 'value',
       kind: 'json',
@@ -269,7 +269,7 @@ describe('ResultGrid and the data explorer', () => {
 
   it('gives nothing while it is off screen', async () => {
     const explorer = useExplorerStore()
-    explorer.open = true
+    explorer.layoutOf(0).open = true
     const wrapper = mount(ResultGrid, {
       props: {
         columns,
@@ -282,6 +282,6 @@ describe('ResultGrid and the data explorer', () => {
       },
     })
     await wrapper.findAll('.grid-column-name')[0]!.trigger('pointerdown')
-    expect(explorer.content).toEqual({ state: 'none' })
+    expect(explorer.contentOf(0)).toEqual({ state: 'none' })
   })
 })

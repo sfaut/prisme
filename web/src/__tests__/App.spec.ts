@@ -81,7 +81,7 @@ describe('App', () => {
     const tabs = frame.find('[aria-label="Éditeurs"]').element
     const navigator = frame.find('[id^="navigator-panel-"]').element
     expect(tabs.compareDocumentPosition(navigator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(frame.find('#explorer-panel').exists()).toBe(true)
+    expect(frame.find('[id^="explorer-panel-"]').exists()).toBe(true)
     expect(frame.find('#console-panel').exists()).toBe(false)
     expect(wrapper.find('#console-panel').exists()).toBe(true)
     wrapper.unmount()

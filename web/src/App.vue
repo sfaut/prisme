@@ -18,17 +18,19 @@
   `console` stores), the data explorer closed. Layout in Tailwind
   classes.
 
-  Each editor has its own object navigator, in its tab, which acts on it:
-  the chosen source becomes its connection, an opened table or a chosen
-  database (`USE`) runs there, and "Déconnecter" closes its session, which
-  any of these actions on its source opens again. The navigator keeps its
-  layout (open or folded, its width) and its tree for its editor (`navigator`
-  store). The tabs of all the editors stay mounted, navigator and view: each
-  view keeps its session (and its transactions) open, even when another
-  editor is displayed. Closing a session rolls its open transaction back:
-  while one is open, "Déconnecter", closing the editor and changing its
-  source ask for a confirmation first (changing or deleting the connection
-  is confirmed in its own window).
+  Each editor has its own object navigator and data explorer, in its tab.
+  The navigator acts on its editor: the chosen source becomes its
+  connection, an opened table or a chosen database (`USE`) runs there, and
+  "Déconnecter" closes its session, which any of these actions on its source
+  opens again. The explorer shows the values selected in the grid of its
+  editor. Both keep their layout (open or folded, their width) for their
+  editor, and the navigator its tree (`navigator` and `explorer` stores).
+  The tabs of all the editors stay mounted, navigator, view and explorer:
+  each view keeps its session (and its transactions) open, even when
+  another editor is displayed. Closing a session rolls its open transaction
+  back: while one is open, "Déconnecter", closing the editor and changing
+  its source ask for a confirmation first (changing or deleting the
+  connection is confirmed in its own window).
 
   Transient messages (`notify`) show at the bottom right (`UiToaster`); the
   tooltips of every element (`v-tooltip`), in a single bubble (`UiTooltip`).
@@ -482,73 +484,70 @@ function selectSource(editorId: number, connectionId: number): void {
               </template>
             </editor-tab-bar>
           </div>
-          <split-group direction="horizontal" class="min-h-0 flex-1">
-            <split-panel id="tabs-content-panel" fill class="flex">
-              <tabs-content
-                v-for="editor in editors.editors"
-                :key="editor.id"
-                :value="editor.id"
-                class="flex min-h-0 min-w-0 flex-1"
+          <tabs-content
+            v-for="editor in editors.editors"
+            :key="editor.id"
+            :value="editor.id"
+            class="flex min-h-0 min-w-0 flex-1"
+          >
+            <split-group direction="horizontal" class="min-w-0 flex-1">
+              <split-panel
+                :id="`navigator-panel-${editor.id}`"
+                :size="navigatorStore.layoutOf(editor.id).width"
+                :folded="!navigatorStore.layoutOf(editor.id).open"
+                default-size="var(--navigator-width)"
+                min-size="var(--navigator-min-width)"
+                folded-size="var(--rail-size)"
+                class="flex"
+                @update:size="
+                  (size: number | null) => (navigatorStore.layoutOf(editor.id).width = size)
+                "
+                @update:folded="
+                  (folded: boolean) => (navigatorStore.layoutOf(editor.id).open = !folded)
+                "
               >
-                <split-group direction="horizontal" class="min-w-0 flex-1">
-                  <split-panel
-                    :id="`navigator-panel-${editor.id}`"
-                    :size="navigatorStore.layoutOf(editor.id).width"
-                    :folded="!navigatorStore.layoutOf(editor.id).open"
-                    default-size="var(--navigator-width)"
-                    min-size="var(--navigator-min-width)"
-                    folded-size="var(--rail-size)"
-                    class="flex"
-                    @update:size="
-                      (size: number | null) => (navigatorStore.layoutOf(editor.id).width = size)
+                <!-- Folded, the object navigator stays mounted: its tree keeps its state. -->
+                <aside
+                  v-show="navigatorStore.layoutOf(editor.id).open"
+                  class="flex min-w-0 flex-1 flex-col gap-4 px-4 pt-3 pb-4"
+                >
+                  <navigator-panel
+                    :editor-id="editor.id"
+                    :active="editor.id === editors.activeId"
+                    :selected-id="editor.connectionId"
+                    :current-database="databaseOf(editor)"
+                    :session-status="statusOf(editor)"
+                    @open-table="
+                      (connectionId, schema, table) =>
+                        openTable(editor.id, connectionId, schema, table)
                     "
-                    @update:folded="
-                      (folded: boolean) => (navigatorStore.layoutOf(editor.id).open = !folded)
+                    @index-operations="
+                      (connectionId, schema, table, index) =>
+                        writeIndexOperations(editor.id, connectionId, schema, table, index)
                     "
-                  >
-                    <!-- Folded, the object navigator stays mounted: its tree keeps its state. -->
-                    <aside
-                      v-show="navigatorStore.layoutOf(editor.id).open"
-                      class="flex min-w-0 flex-1 flex-col gap-4 px-4 pt-3 pb-4"
-                    >
-                      <navigator-panel
-                        :editor-id="editor.id"
-                        :active="editor.id === editors.activeId"
-                        :selected-id="editor.connectionId"
-                        :current-database="databaseOf(editor)"
-                        :session-status="statusOf(editor)"
-                        @open-table="
-                          (connectionId, schema, table) =>
-                            openTable(editor.id, connectionId, schema, table)
-                        "
-                        @index-operations="
-                          (connectionId, schema, table, index) =>
-                            writeIndexOperations(editor.id, connectionId, schema, table, index)
-                        "
-                        @select="(connectionId) => selectSource(editor.id, connectionId)"
-                        @use-database="
-                          (connectionId, schema) => useDatabase(editor.id, connectionId, schema)
-                        "
-                        @disconnect="disconnect(editor.id)"
-                      />
-                    </aside>
-                    <panel-rail
-                      v-if="!navigatorStore.layoutOf(editor.id).open"
-                      title="Navigateur d’objets"
-                      side="start"
-                      class="flex-1"
-                      @expand="navigatorStore.layoutOf(editor.id).open = true"
-                    />
-                  </split-panel>
-                  <split-handle
-                    :controls="`navigator-panel-${editor.id}`"
-                    tooltip="Glisser pour redimensionner le navigateur d’objets, double clic pour le replier ou le déplier"
-                    @activate="
-                      navigatorStore.layoutOf(editor.id).open = !navigatorStore.layoutOf(editor.id)
-                        .open
+                    @select="(connectionId) => selectSource(editor.id, connectionId)"
+                    @use-database="
+                      (connectionId, schema) => useDatabase(editor.id, connectionId, schema)
                     "
+                    @disconnect="disconnect(editor.id)"
                   />
-                  <!--
+                </aside>
+                <panel-rail
+                  v-if="!navigatorStore.layoutOf(editor.id).open"
+                  title="Navigateur d’objets"
+                  side="start"
+                  class="flex-1"
+                  @expand="navigatorStore.layoutOf(editor.id).open = true"
+                />
+              </split-panel>
+              <split-handle
+                :controls="`navigator-panel-${editor.id}`"
+                tooltip="Glisser pour redimensionner le navigateur d’objets, double clic pour le replier ou le déplier"
+                @activate="
+                  navigatorStore.layoutOf(editor.id).open = !navigatorStore.layoutOf(editor.id).open
+                "
+              />
+              <!--
                     The padding of the sides is inside the panels of the views
                     (`EditorView`), which would cut a border set against their
                     edge, as is the gap under the editors' tabs. The padding of
@@ -557,73 +556,75 @@ function selectSource(editorId: number, connectionId: number): void {
                     closes the area, as the rail of the console closes the
                     window.
                   -->
-                  <split-panel
-                    :id="`view-panel-${editor.id}`"
-                    fill
-                    min-size="var(--editors-min-width)"
-                    class="flex flex-col"
-                    :class="{ 'items-center justify-center': !connectionOf(editor.connectionId) }"
-                  >
-                    <editor-view
-                      v-if="connectionOf(editor.connectionId)"
-                      :ref="
-                        (view) =>
-                          view
-                            ? views.set(editor.id, view as InstanceType<typeof EditorView>)
-                            : views.delete(editor.id)
-                      "
-                      :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
-                      :editor-id="editor.id"
-                      :active="editor.id === editors.activeId"
-                      :connection="connectionOf(editor.connectionId)!"
-                      :opening-database="openingDatabases[editor.id]"
-                      :sql="editor.sql"
-                      @update:sql="(sql) => editors.setSql(editor.id, sql)"
-                      @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
-                      @database="(database) => (databases[editor.id] = database)"
-                      @status="(status) => followStatus(editor.id, status)"
-                      @transaction="(open) => (editors.transactions[editor.id] = open)"
-                    />
-                    <div v-else class="flex max-w-xs flex-col items-center gap-3 text-center">
-                      <span class="flex rounded-full bg-surface-raised p-4">
-                        <Database class="size-5 text-fg-secondary" />
-                      </span>
-                      <p class="text-balance text-fg-secondary">
-                        Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données pour la
-                        choisir pour cet éditeur, ou ajoutez une connexion par le menu « ⋮ »
-                      </p>
-                    </div>
-                  </split-panel>
-                </split-group>
-              </tabs-content>
-            </split-panel>
-            <split-handle
-              controls="explorer-panel"
-              tooltip="Glisser pour redimensionner l’explorateur de données, double clic pour le replier ou le déplier"
-              @activate="explorer.open = !explorer.open"
-            />
-            <split-panel
-              id="explorer-panel"
-              v-model:size="explorer.width"
-              :folded="!explorer.open"
-              default-size="var(--explorer-width)"
-              min-size="var(--explorer-min-width)"
-              folded-size="var(--rail-size)"
-              class="flex"
-              @update:folded="(folded: boolean) => (explorer.open = !folded)"
-            >
-              <aside v-if="explorer.open" class="flex min-w-0 flex-1 flex-col px-4 pt-3 pb-4">
-                <explorer-panel />
-              </aside>
-              <panel-rail
-                v-else
-                title="Explorateur de données"
-                side="end"
-                class="flex-1"
-                @expand="explorer.open = true"
+              <split-panel
+                :id="`view-panel-${editor.id}`"
+                fill
+                min-size="var(--editors-min-width)"
+                class="flex flex-col"
+                :class="{ 'items-center justify-center': !connectionOf(editor.connectionId) }"
+              >
+                <editor-view
+                  v-if="connectionOf(editor.connectionId)"
+                  :ref="
+                    (view) =>
+                      view
+                        ? views.set(editor.id, view as InstanceType<typeof EditorView>)
+                        : views.delete(editor.id)
+                  "
+                  :key="`${editor.connectionId}-${connections.versions[editor.connectionId!] ?? 0}-${attempts[editor.id] ?? 0}`"
+                  :editor-id="editor.id"
+                  :active="editor.id === editors.activeId"
+                  :connection="connectionOf(editor.connectionId)!"
+                  :opening-database="openingDatabases[editor.id]"
+                  :sql="editor.sql"
+                  @update:sql="(sql) => editors.setSql(editor.id, sql)"
+                  @reconnect="attempts[editor.id] = (attempts[editor.id] ?? 0) + 1"
+                  @database="(database) => (databases[editor.id] = database)"
+                  @status="(status) => followStatus(editor.id, status)"
+                  @transaction="(open) => (editors.transactions[editor.id] = open)"
+                />
+                <div v-else class="flex max-w-xs flex-col items-center gap-3 text-center">
+                  <span class="flex rounded-full bg-surface-raised p-4">
+                    <Database class="size-5 text-fg-secondary" />
+                  </span>
+                  <p class="text-balance text-fg-secondary">
+                    Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données pour la choisir
+                    pour cet éditeur, ou ajoutez une connexion par le menu « ⋮ »
+                  </p>
+                </div>
+              </split-panel>
+              <split-handle
+                :controls="`explorer-panel-${editor.id}`"
+                tooltip="Glisser pour redimensionner l’explorateur de données, double clic pour le replier ou le déplier"
+                @activate="explorer.layoutOf(editor.id).open = !explorer.layoutOf(editor.id).open"
               />
-            </split-panel>
-          </split-group>
+              <split-panel
+                :id="`explorer-panel-${editor.id}`"
+                :size="explorer.layoutOf(editor.id).width"
+                :folded="!explorer.layoutOf(editor.id).open"
+                default-size="var(--explorer-width)"
+                min-size="var(--explorer-min-width)"
+                folded-size="var(--rail-size)"
+                class="flex"
+                @update:size="(size: number | null) => (explorer.layoutOf(editor.id).width = size)"
+                @update:folded="(folded: boolean) => (explorer.layoutOf(editor.id).open = !folded)"
+              >
+                <aside
+                  v-if="explorer.layoutOf(editor.id).open"
+                  class="flex min-w-0 flex-1 flex-col px-4 pt-3 pb-4"
+                >
+                  <explorer-panel :editor-id="editor.id" />
+                </aside>
+                <panel-rail
+                  v-else
+                  title="Explorateur de données"
+                  side="end"
+                  class="flex-1"
+                  @expand="explorer.layoutOf(editor.id).open = true"
+                />
+              </split-panel>
+            </split-group>
+          </tabs-content>
         </tabs-root>
       </split-panel>
       <split-handle

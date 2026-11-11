@@ -67,7 +67,7 @@ import {
   WandSparkles,
 } from '@lucide/vue'
 import { TabsContent, TabsList, TabsRoot } from 'reka-ui'
-import { computed, onMounted, ref, shallowReactive, useTemplateRef, watch } from 'vue'
+import { computed, onMounted, provide, ref, shallowReactive, useTemplateRef, watch } from 'vue'
 
 import { analyzeSql } from '@/api/analyze'
 import { beautify } from '@/api/beautify'
@@ -96,6 +96,7 @@ import { useSettingsStore } from '@/stores/settings'
 import PanelRail from '@/components/panel/PanelRail.vue'
 import PivotPanel from '@/components/pivot/PivotPanel.vue'
 import ResultView from '@/components/result/ResultView.vue'
+import { EDITOR_ID } from './editorId'
 import { editorLayoutKey } from './editorLayout'
 import ResultTab from '@/components/result/ResultTab.vue'
 import ResultTabActions from '@/components/result/ResultTabActions.vue'
@@ -196,6 +197,9 @@ const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
  * height, `main.css`), and the folds of the three panels; the Pivoteur starts
  * folded, as a rail.
  */
+// The grids under the view publish to the data explorer of this editor.
+provide(EDITOR_ID, props.editorId)
+
 const layout = useStoredLayout(editorLayoutKey(props.editorId), {
   editor: null as number | null,
   pivot: null as number | null,

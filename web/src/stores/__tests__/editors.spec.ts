@@ -70,15 +70,17 @@ describe('closing an editor', () => {
     window.localStorage.clear()
   })
 
-  it('forgets its navigator', async () => {
+  it('forgets its navigator and its explorer', async () => {
     const editors = useEditorsStore()
     await editors.create(null)
+    window.localStorage.setItem('prisme.explorer.layout.1', '{}')
     window.localStorage.setItem('prisme.navigator.layout.1', '{}')
     window.localStorage.setItem('prisme.navigator.tree.1', '{}')
     window.localStorage.setItem('prisme.navigator.tree.2', '{}')
 
     await editors.close(1)
 
+    expect(window.localStorage.getItem('prisme.explorer.layout.1')).toBeNull()
     expect(window.localStorage.getItem('prisme.navigator.layout.1')).toBeNull()
     expect(window.localStorage.getItem('prisme.navigator.tree.1')).toBeNull()
     expect(window.localStorage.getItem('prisme.navigator.tree.2')).toBe('{}')
