@@ -2,6 +2,46 @@
 
 Changelogs of the published versions of Prisme, most recent first. Each entry is also the notes of its GitHub release. The interface is in French: its labels are quoted as they appear, with a translation.
 
+## v0.12.0 (2026-11-11)
+
+### 🚀 Launch
+
+We are proud to announce Prisme v0.12.0. The Pivoteur shows a measure as a share of the total of its line or of its column, and the result grid unselects or toggles the cells you click or drag over. The panels now stand in Prisme's own splitters, whose lines stay sharp at every display scale. A new installation answers on <http://prisme.localhost:10000>.
+
+### ✨ New features
+
+- Pivoteur: `COUNT`, `SUM` and `AVG`, with or without `DISTINCT`, show each value as its percentage of the total of its line or of its column, with 0 to 6 decimals, written `12.5 %`. A total of 0 or `NULL` gives `NULL`; a sort follows the shares, a filter the values ([#35](https://github.com/sfaut/prisme/issues/35)).
+- Result grid: a Ctrl+click or a drag started on a selected cell unselects the cells it covers; started on an unselected cell, it still adds them. Alt+click or drag toggles the cells. The frame, the copy, the export and the counts only keep the cells left selected ([#36](https://github.com/sfaut/prisme/issues/36)).
+- Splitters: each line follows the pointer exactly and keeps the size where you leave it; the keyboard moves it too (arrows, Home, End, and Enter to fold or unfold), with the size read out by screen readers. In an editor, folded results go down against the Pivoteur and leave their room to the others.
+- Prisme announces its interface at `http://prisme.localhost:<port>`, an address of its own in the browser, apart from the other tools served on `localhost`; `127.0.0.1` still answers.
+- `prisme --help` fits the terminal, 120 columns at most; its lines used to run up to 205 columns.
+
+### 💥 Breaking changes
+
+- A new installation listens on port 10000, instead of 8484; an existing one keeps its port, which `prisme --setup` changes.
+- The browser keeps the display preferences (sizes, folds, filters, theme) per address: opened at `prisme.localhost`, Prisme starts from the default ones. The sizes of the panels saved by v0.11.0 and earlier, in percent, are not read again: each panel starts once from its default size.
+
+### 🐞 Bug fixes
+
+- The lines between the panels stay one pixel thick at a display scale of 125 % or 150 %, at rest and while dragged; some positions drew them two pixels thick.
+
+### ⚙️ Internal improvements
+
+- The splitter of Reka UI makes way for Prisme's own (`web/src/components/split/`): its six workarounds and four upstream ticket drafts go away. Reka UI stays for its other components.
+- The components of the interface are named and grouped by area (navigator, editor, result, Pivoteur, console, explorer, top bar); the stores and the keys of the local storage follow, as `prisme.<area>.<setting>`. The interface moves the keys of v0.11.0 and earlier once, as it starts.
+- The guard of the requests accepts every name under `.localhost`, which browsers resolve to this machine.
+- Releases: each executable job builds the interface it embeds; the run no longer uploads the interface as an artifact.
+- Dependencies:
+  - `rusqlite` 0.40.2 → 0.41.1, `rusqlite_migration` 2.6.0 → 2.7.0, `sqlparser` 0.63.0 → 0.64.0 (still pinned, every workaround kept), `clap` 4.6.7 gains its `wrap_help` feature;
+  - `@lucide/vue` 1.70.0 → 1.72.0, `@tailwindcss/vite` and `tailwindcss` 4.3.4 → 4.3.5, `json-p3` 3.0.2 → 3.0.3, `vite` 8.3.6 → 8.3.8, `eslint-plugin-vue` 10.12.0 → 10.12.1, `vue-eslint-parser` 10.4.1 → 10.4.2, `oxlint` and `eslint-plugin-oxlint` 1.90 → 1.93;
+  - `rusqlite` stays at 0.41.1: `rusqlite_migration` 2.7.0 does not accept 0.42.0 yet; `typescript` stays at 6.0: `typescript-eslint` still requires a version below 6.1.
+
+### 📝 Documentation
+
+- README: the shares of a total, the cells unselected or toggled, the keyboard on the lines between the panels, "editor" in place of "cell", the address `http://prisme.localhost:10000` and the port 10000.
+- Developer guide: Prisme's splitters, the names and folders of the components, the keys of the local storage, the entry page and the public files of the interface, the development interface at `http://prisme.localhost:5173`.
+- `docs/upstream/`: the four drafts about the splitter of Reka UI removed; the two `sqlparser` drafts checked again on 0.64.0.
+
 ## v0.11.0 (2026-11-06)
 
 ### 🚀 Launch
