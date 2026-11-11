@@ -632,8 +632,8 @@ Most dependencies accept any compatible version (`^` in `web/package.json`, the 
 | `sqlparser` | `=0.64.0` | `crates/dialects/src/mysql_parser.rs` takes over methods of `MySqlDialect` written for this version, to parse the compound time units of MySQL and MariaDB (`YEAR_MONTH`...). An upgrade compares them first (see its module comment and [V1.md](V1.md), section 3.2). |
 | `prettier` | `3.9.10` | Exact version, as Prettier recommends: a new version, even a patch, can format differently, and the CI checks the formatting. |
 | `typescript` | `~6.0.0` | TypeScript does not follow semantic versioning: a minor version can add type errors. `typescript-eslint` also requires a version below 6.1. |
-| `oxlint`, `eslint-plugin-oxlint` | `~1.90.0` | Both are released together and must keep the same version: the plugin turns off in ESLint the rules that Oxlint checks. A minor version adds rules. |
-| `eslint-plugin-vue` | `~10.12.0` | A minor version can report more errors (new rules, rule fixes, as ESLint's versioning policy allows). |
+| `oxlint`, `eslint-plugin-oxlint` | `~1.93.0` | Both are released together and must keep the same version: the plugin turns off in ESLint the rules that Oxlint checks. A minor version adds rules. |
+| `eslint-plugin-vue` | `~10.12.1` | A minor version can report more errors (new rules, rule fixes, as ESLint's versioning policy allows). |
 | `@types/node` | `^24` | The types follow Node 24, the version of the TypeScript configuration (`@tsconfig/node24`) and of `engines` (`web/package.json`): the types of Node 26 would offer APIs that Node 24 lacks. |
 
 The constraints with `~` and the exact Prettier version come from the Vue project template (`create-vue`).
