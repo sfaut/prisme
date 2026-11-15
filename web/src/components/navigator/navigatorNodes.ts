@@ -71,6 +71,10 @@ export interface Source {
    */
   catalog: Catalog | undefined
   /**
+   * Is it the source of the editor, its chosen connection (shown in bold)?
+   */
+  chosen: boolean
+  /**
    * Current database of this source's query session, `null` if none.
    */
   currentDatabase: string | null
@@ -157,6 +161,10 @@ export interface NavigatorNode extends Place {
    * Current database of the query session (shown in bold).
    */
   current?: boolean
+  /**
+   * Source of the editor, its chosen connection (shown in bold).
+   */
+  chosen?: boolean
   /**
    * Badge shown after the label of a source: the flavor of its server
    * (`mysql`, `mariadb`).
@@ -300,6 +308,7 @@ export function sourceNodes(sources: Source[]): NavigatorNode[] {
       isLeaf: false,
       ...place,
       role: 'source' as const,
+      chosen: source.chosen,
       badge: source.flavor ?? undefined,
       badgeTooltip: source.flavor === null ? undefined : serverName(source.flavor, source.version),
       children:

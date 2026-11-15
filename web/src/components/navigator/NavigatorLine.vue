@@ -234,7 +234,9 @@ function iconLabel(node: NavigatorNode): string | undefined {
       class="tree-label flex min-w-0 items-center gap-4"
       :class="{
         'current-database': node.current,
-        'font-bold': node.current || node.role === 'sources' || node.role === 'notebooks',
+        'chosen-source': node.chosen,
+        'font-bold':
+          node.current || node.chosen || node.role === 'sources' || node.role === 'notebooks',
       }"
     >
       <span class="truncate text-trim">{{ node.label }}</span>

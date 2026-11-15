@@ -23,7 +23,7 @@
   It then stays in memory. A click on a line opens or closes its level.
   Ctrl+click (Cmd+click on macOS), or Enter on the focused line, acts on it
   without opening or closing it: on a source, chooses it as the working
-  connection (emits `select`), which stays highlighted; on a database, makes
+  connection (emits `select`), which stays in bold; on a database, makes
   it the current database, like `USE` (emits `use-database`); on a table or a
   view, emits `open-table`, to show its content; on an index, emits
   `index-operations`, to write the operations on it. A double click would open
@@ -253,6 +253,7 @@ const nodes = computed(() => {
         connectionId: connection.id,
         name: connection.name,
         catalog: catalog.catalogOf(connection.id),
+        chosen: connection.id === props.selectedId,
         currentDatabase: connection.id === props.selectedId ? props.currentDatabase : null,
         flavor: catalog.catalogOf(connection.id)?.flavor ?? connection.server_flavor,
         version: catalog.catalogOf(connection.id)?.version ?? connection.server_version,
@@ -284,18 +285,6 @@ const pinned = computed(() => pinnedRows(visible.value, scrollTop.value, ROW_HEI
  */
 const ROW_CLASSES =
   'tree-row group flex h-(--row-height) w-full cursor-pointer items-center gap-1 rounded-lg pe-1 text-start select-none hover:bg-surface-sunken focus-visible:bg-surface-sunken'
-
-/**
- * Classes of the line of a node: the chosen source is highlighted.
- *
- * @param node Node shown on the line.
- */
-function rowClass(node: NavigatorNode): (string | Record<string, boolean>)[] {
-  return [
-    ROW_CLASSES,
-    { 'bg-surface-raised': node.role === 'source' && node.connectionId === props.selectedId },
-  ]
-}
 
 /**
  * Errors to show, preceded by the name of their source: reading failures,
@@ -502,7 +491,7 @@ function asksAction(event: Event): boolean {
 
 /**
  * Follows the selections that the tree requests, on a click, Enter or Space.
- * The tree keeps no selection (the highlighted source is that of the chosen
+ * The tree keeps no selection (the source in bold is that of the chosen
  * connection); a Ctrl+click or Enter acts on the line.
  *
  * @param event Selection requested by the tree, with the original event.
@@ -735,7 +724,7 @@ watch(() => visible.value.rows.length, retryScroll)
             v-slot="{ isExpanded }"
             :value="item.value"
             :level="item.level"
-            :class="rowClass(item.value as NavigatorNode)"
+            :class="ROW_CLASSES"
             :style="{ '--level': item.level }"
             @select="
               onSelect($event as TreeItemSelectEvent<NavigatorNode>, item.value as NavigatorNode)
@@ -763,7 +752,7 @@ watch(() => visible.value.rows.length, retryScroll)
         <div
           v-for="row in pinned"
           :key="row.node.key"
-          :class="rowClass(row.node)"
+          :class="ROW_CLASSES"
           :style="{ '--level': row.level }"
           @click="onPinnedClick($event, row.node)"
         >

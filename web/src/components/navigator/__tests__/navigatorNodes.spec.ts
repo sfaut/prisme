@@ -100,6 +100,7 @@ describe('sourceNodes', () => {
           done: true,
           errors: [],
         },
+        chosen: true,
         currentDatabase: 'shop',
         flavor: 'mariadb',
         version: '10.11.11-MariaDB',
@@ -109,6 +110,7 @@ describe('sourceNodes', () => {
         connectionId: 2,
         name: 'Origen 2',
         catalog: { schemas: catalog, flavor: 'mariadb', version: null, done: true, errors: [] },
+        chosen: false,
         currentDatabase: null,
         flavor: 'mysql',
         version: null,
@@ -118,6 +120,7 @@ describe('sourceNodes', () => {
         connectionId: 3,
         name: 'Jamais lue',
         catalog: undefined,
+        chosen: false,
         currentDatabase: null,
         flavor: null,
         version: null,
@@ -130,6 +133,8 @@ describe('sourceNodes', () => {
       'Jamais lue',
     ])
     expect(labels(first)).toEqual(['shop', 'pas_encore'])
+    // The source of the editor.
+    expect([first?.chosen, second?.chosen, never?.chosen]).toEqual([true, false, false])
     expect(first?.children?.[0]?.current).toBe(true)
     expect(second?.children?.[0]?.current).toBe(false)
     expect(labels(never)).toEqual(['chargement…'])
@@ -159,6 +164,7 @@ describe('system databases', () => {
       connectionId: 1,
       name: 'Origen 2',
       catalog: { schemas, flavor: null, version: null, done: true, errors: [] },
+      chosen: false,
       currentDatabase: null,
       flavor: null,
       version: null,
@@ -180,6 +186,7 @@ describe('navigatorTree', () => {
       connectionId: 1,
       name: 'Origen 2',
       catalog: undefined,
+      chosen: false,
       currentDatabase: null,
       flavor: null,
       version: null,

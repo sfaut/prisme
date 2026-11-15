@@ -318,6 +318,18 @@ describe('NavigatorPanel', () => {
     wrapper.unmount()
   })
 
+  it('shows the source of the editor in bold, and follows it', async () => {
+    savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
+    const wrapper = mountNavigator({ selectedId: 1, currentDatabase: null })
+    const bold = () => wrapper.findAll('.chosen-source').map((node) => node.text())
+    await vi.waitFor(() => expect(bold()).toEqual(['Origen 2']))
+    await wrapper.setProps({ selectedId: 2 })
+    await vi.waitFor(() => expect(bold()).toEqual(['Autre']))
+    await wrapper.setProps({ selectedId: null })
+    await vi.waitFor(() => expect(bold()).toEqual([]))
+    wrapper.unmount()
+  })
+
   it('keeps the open nodes of each editor', async () => {
     savedConnections = [connection(1, 'Origen 2'), connection(2, 'Autre')]
     const first = mountNavigator({ selectedId: 1, currentDatabase: null })
