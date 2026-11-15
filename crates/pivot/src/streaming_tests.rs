@@ -1,6 +1,7 @@
 //! Tests of an engine whose rows arrive while it computes: generated rows are
-//! appended block by block, and every table must be the one an engine created
-//! on the same rows computes.
+//! appended block by block, and every table, computed or updated from the
+//! state of the previous one, must be the one an engine created on the same
+//! rows computes.
 
 use prisme_store::Store;
 
@@ -174,18 +175,27 @@ fn requests() -> Vec<Request> {
     ]
 }
 
-/// Table of a request in the layout of its copy, with its numbers of groups
-/// and of rows.
-fn render(engine: &Engine, request: &Request) -> String {
-    let table = engine.compute(request).unwrap();
-    let levels = vec!["level"; request.rows.len()];
-    let measures = vec!["measure"; request.measures.len()];
+/// Table in the layout of its copy, with its numbers of groups and of rows.
+fn text(engine: &Engine, table: &Table) -> String {
+    let levels = vec!["level"; table.row_levels()];
+    let measures = vec!["measure"; 16];
     format!(
         "{} groups, {} rows\n{}",
         table.finest_groups(),
         table.selected_rows(),
-        flat(engine, &table, &levels, &measures)
+        flat(engine, table, &levels, &measures)
     )
+}
+
+/// Table of a request, computed from all the rows.
+fn render(engine: &Engine, request: &Request) -> String {
+    text(engine, &engine.compute(request).unwrap())
+}
+
+/// Table of a request, updated from the state of the previous one.
+fn update(engine: &mut Engine, request: &Request) -> String {
+    let table = engine.update(request).unwrap();
+    text(engine, &table)
 }
 
 #[test]
@@ -210,6 +220,124 @@ fn an_engine_that_grows_computes_the_tables_of_an_engine_created_on_its_rows() {
             );
         }
     }
+}
+
+#[test]
+fn an_update_adds_the_rows_taken_in_since_and_gives_the_table_of_all_of_them() {
+    let rows = generated(1_000);
+    let requests = requests();
+    let mut engine = engine_of(&rows[..0]);
+    let mut received = 0;
+    // The scale of the amounts grows at rows 150 and 400.
+    for block in [1, 99, 49, 1, 250, 0, 300, 300] {
+        let end = received + block;
+        append(engine.store_mut(), &rows[received..end]);
+        engine.grow();
+        received = end;
+        let whole = engine_of(&rows[..received]);
+        for request in &requests {
+            // Twice: the second update reads no row.
+            for _ in 0..2 {
+                assert_eq!(
+                    update(&mut engine, request),
+                    render(&whole, request),
+                    "{received} rows, {request:?}"
+                );
+            }
+        }
+        // The same table, followed alone from block to block.
+        let first = &requests[0];
+        assert_eq!(update(&mut engine, first), render(&whole, first));
+    }
+}
+
+#[test]
+fn an_update_follows_the_rows_kept_by_the_grid() {
+    let rows = generated(600);
+    let kept =
+        |range: std::ops::Range<u32>| -> Vec<u32> { range.filter(|row| row % 4 != 1).collect() };
+    let request = &requests()[0];
+    let mut engine = engine_of(&rows[..200]);
+    engine.set_kept(Some(kept(0..200))).unwrap();
+    engine.update(request).unwrap();
+    append(engine.store_mut(), &rows[200..]);
+    engine.grow();
+    engine.extend_kept(&kept(200..600)).unwrap();
+    let mut whole = engine_of(&rows);
+    whole.set_kept(Some(kept(0..600))).unwrap();
+    assert_eq!(update(&mut engine, request), render(&whole, request));
+    // A new filter of the grid starts from all its rows.
+    engine
+        .set_kept(Some((0..600).step_by(7).collect()))
+        .unwrap();
+    whole.set_kept(Some((0..600).step_by(7).collect())).unwrap();
+    assert_eq!(update(&mut engine, request), render(&whole, request));
+    engine.set_kept(None).unwrap();
+    whole.set_kept(None).unwrap();
+    assert_eq!(update(&mut engine, request), render(&whole, request));
+}
+
+/// Engine whose last update has been given `extra` selected rows that do not
+/// exist: a next update that keeps its state counts them, one that starts
+/// from all the rows does not.
+fn marked(engine: &mut Engine, request: &Request, extra: usize) {
+    engine.update(request).unwrap();
+    engine.accumulation.as_mut().expect("a kept state").selected += extra;
+}
+
+#[test]
+fn an_update_keeps_the_state_of_the_same_table_only() {
+    let rows = generated(300);
+    let requests = requests();
+    let mut engine = engine_of(&rows[..100]);
+    // The same table goes on from its state.
+    marked(&mut engine, &requests[0], 1_000);
+    append(engine.store_mut(), &rows[100..120]);
+    engine.grow();
+    assert_eq!(engine.update(&requests[0]).unwrap().selected_rows(), 1_120);
+    // Another table starts from all the rows.
+    marked(&mut engine, &requests[0], 1_000);
+    let other = engine.compute(&requests[2]).unwrap().selected_rows();
+    assert_eq!(engine.update(&requests[2]).unwrap().selected_rows(), other);
+    // Amounts of a finer scale start from all the rows: rows 150 and on have
+    // a digit after the point.
+    let sums = Request {
+        measures: vec![Measure::Sum(AMOUNT)],
+        ..Request::default()
+    };
+    marked(&mut engine, &sums, 1_000);
+    append(engine.store_mut(), &rows[120..200]);
+    engine.grow();
+    assert_eq!(engine.update(&sums).unwrap().selected_rows(), 200);
+    // Rows of the same scale go on.
+    marked(&mut engine, &sums, 1_000);
+    append(engine.store_mut(), &rows[200..300]);
+    engine.grow();
+    assert_eq!(engine.update(&sums).unwrap().selected_rows(), 1_300);
+}
+
+#[test]
+fn a_table_whose_measures_do_not_add_up_keeps_no_state() {
+    let rows = generated(100);
+    let requests = requests();
+    let mut engine = engine_of(&rows);
+    // Distinct values and GROUP_CONCAT, then a filter on a measure.
+    for request in [&requests[1], &requests[3]] {
+        engine.update(request).unwrap();
+        assert!(engine.accumulation.is_none(), "{request:?}");
+    }
+    engine.update(&requests[0]).unwrap();
+    assert!(engine.accumulation.is_some());
+    // A refused update keeps none.
+    let wrong = Request {
+        measures: vec![Measure::Sum(CITY)],
+        ..Request::default()
+    };
+    assert_eq!(
+        engine.update(&wrong).unwrap_err(),
+        Error::NotNumeric { measure: 0 }
+    );
+    assert!(engine.accumulation.is_none());
 }
 
 #[test]

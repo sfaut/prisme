@@ -23,7 +23,10 @@
 //! appended to its store (`Engine::store_mut`), then taken into account
 //! (`Engine::grow`). The forms already derived from the columns (dictionaries,
 //! numbers, date levels) then read only the new rows, as a table is to follow
-//! the reception (`docs/PERFORMANCES.md`, chapter 17).
+//! the reception (`docs/PERFORMANCES.md`, chapter 17). The engine keeps the
+//! finest groups and the states of the last table it updates
+//! (`Engine::update`), and its next update of the same table adds only the
+//! rows taken in since.
 //!
 //! The crate does not depend on its target: its tests run natively, and the
 //! Worker of the page runs it compiled to WebAssembly (`crates/web-engine`).
@@ -43,7 +46,7 @@ use crate::dates::DerivedLevel;
 pub use crate::dates::Precision;
 pub use crate::filters::{Comparison, Filter, Test};
 pub use crate::measures::Value;
-use crate::measures::{Extreme, Input, Joined, OrderKey, Overflow, SortKey, State};
+use crate::measures::{Extreme, Input, Joined, OrderKey, Overflow, Partial, SortKey, State};
 pub use crate::table::{Header, Label, Line, Table, TextLengths};
 
 /// Family of the type of a column, as far as the measures and the filters need
@@ -476,6 +479,25 @@ fn ranks_of(order: &[u32]) -> Vec<u32> {
     ranks
 }
 
+/// State of the last table an update computed, kept to add the rows taken in
+/// since to its finest groups and to the states of its measures.
+struct Accumulation {
+    /// Request of the table.
+    request: Request,
+    /// Version of the rows kept by the filter of the grid that the table read.
+    kept_version: u64,
+    /// Rows read: the first ones of the result, or of the rows kept by the
+    /// filter of the grid.
+    read: usize,
+    /// Rows the filters on cells left among them.
+    selected: usize,
+    /// Finest groups of these rows.
+    finest: groups::Finest,
+    /// States of the finest groups of each measure, all of them adding up;
+    /// none for a table that reads all its rows each time.
+    partials: Vec<Partial>,
+}
+
 /// Engine of one result: its rows, and the forms derived from its columns,
 /// built once, the first time a table needs them, then extended to the rows
 /// that arrive.
@@ -505,6 +527,11 @@ pub struct Engine {
     longest: Vec<OnceCell<usize>>,
     /// Rows kept by the filter of the grid, in their order; `None` for all.
     kept: Option<Vec<u32>>,
+    /// Version of the rows kept, which changes when the filter of the grid
+    /// changes, and stays when it extends to the rows taken in.
+    kept_version: u64,
+    /// State of the last table `update` computed.
+    accumulation: Option<Accumulation>,
 }
 
 impl Engine {
@@ -534,6 +561,8 @@ impl Engine {
                 .collect(),
             longest: (0..columns).map(|_| OnceCell::new()).collect(),
             kept: None,
+            kept_version: 0,
+            accumulation: None,
         }
     }
 
@@ -806,6 +835,7 @@ impl Engine {
             return Err(Error::UnknownRow(row));
         }
         self.kept = rows;
+        self.kept_version += 1;
         Ok(())
     }
 
@@ -956,14 +986,39 @@ impl Engine {
     /// a date outside of the calendar in one of them stops a precision of a
     /// level or of a measure.
     pub fn compute(&self, request: &Request) -> Result<Table, Error> {
-        let all: Vec<u32>;
-        let kept: &[u32] = match &self.kept {
-            Some(rows) => rows,
-            None => {
-                all = (0..self.rows as u32).collect();
-                &all
-            }
-        };
+        self.accumulate(request, None, false)
+            .map(|(table, _)| table)
+    }
+
+    /// Computes a table as `compute` does, and keeps its finest groups and the
+    /// states of its measures: the next update of the same request adds only
+    /// the rows taken in since, and those the filter of the grid keeps among
+    /// them (`extend_kept`). The table is the one `compute` gives.
+    ///
+    /// A new request, a new filter of the grid (`set_kept`), or exact numbers
+    /// of a finer scale among the new rows start from all the rows again; so
+    /// does each update of a table whose measures do not add up (distinct
+    /// values, `GROUP_CONCAT`) or that filters on a measure: they read all its
+    /// rows. A refused update keeps no state.
+    pub fn update(&mut self, request: &Request) -> Result<Table, Error> {
+        let previous = self.accumulation.take();
+        let (table, accumulation) = self.accumulate(request, previous, true)?;
+        self.accumulation = accumulation;
+        Ok(table)
+    }
+
+    /// Adds the rows to read to the state of a table, the previous one when
+    /// it holds, and computes the table.
+    ///
+    /// # Returns
+    ///
+    /// The table, and, if `keep` and its measures all add up, its state.
+    fn accumulate(
+        &self,
+        request: &Request,
+        previous: Option<Accumulation>,
+        keep: bool,
+    ) -> Result<(Table, Option<Accumulation>), Error> {
         let (row_levels, row_ranks) = self.levels(&request.rows)?;
         let (column_levels, column_ranks) = self.levels(&request.columns)?;
         let inputs = request
@@ -972,7 +1027,46 @@ impl Engine {
             .enumerate()
             .map(|(index, measure)| self.input(index, measure))
             .collect::<Result<Vec<_>, _>>()?;
-        let selection = self.keep_by_cells(&request.filters, kept)?;
+        let filters_measures = request
+            .filters
+            .iter()
+            .any(|filter| matches!(filter, Filter::Measure { .. }));
+        let partials: Option<Vec<Partial>> = if filters_measures {
+            None
+        } else {
+            inputs.iter().map(Partial::of).collect()
+        };
+        let levels: Vec<&Dictionary> = row_levels.iter().chain(&column_levels).copied().collect();
+        let mut accumulation = previous
+            .filter(|previous| {
+                partials.as_ref().is_some_and(|partials| {
+                    previous.request == *request
+                        && previous.kept_version == self.kept_version
+                        && previous
+                            .partials
+                            .iter()
+                            .map(Partial::scale)
+                            .eq(partials.iter().map(Partial::scale))
+                })
+            })
+            .unwrap_or_else(|| Accumulation {
+                request: request.clone(),
+                kept_version: self.kept_version,
+                read: 0,
+                selected: 0,
+                finest: groups::Finest::new(levels.len()),
+                partials: partials.clone().unwrap_or_default(),
+            });
+
+        let all: Vec<u32>;
+        let (to_read, read) = match &self.kept {
+            Some(rows) => (&rows[accumulation.read..], rows.len()),
+            None => {
+                all = (accumulation.read as u32..self.rows as u32).collect();
+                (all.as_slice(), self.rows)
+            }
+        };
+        let selection = self.keep_by_cells(&request.filters, to_read)?;
         self.check_dates(&request.rows, &selection)?;
         self.check_dates(&request.columns, &selection)?;
         let measure_levels: Vec<Level> =
@@ -981,20 +1075,43 @@ impl Engine {
         let selection = self.keep_by_measures(&request.filters, selection)?;
         let selection = selection.as_ref();
 
-        let levels: Vec<&Dictionary> = row_levels.iter().chain(&column_levels).copied().collect();
-        let mut finest_groups = groups::Finest::new(levels.len());
-        let finest = finest_groups.add(&levels, selection);
-        let first_rows = finest_groups.first_rows;
-        let (rows, row_leaves) = groups::tree(&row_levels, &first_rows);
-        let (columns, column_leaves) = groups::tree(&column_levels, &first_rows);
+        let finest = accumulation.finest.add(&levels, selection);
+        let finest_groups = accumulation.finest.len();
+        for (measure, (partial, input)) in accumulation.partials.iter_mut().zip(&inputs).enumerate()
+        {
+            partial
+                .add(input, selection, &finest, finest_groups)
+                .map_err(|_| Error::Overflow { measure })?;
+        }
+        accumulation.read = read;
+        accumulation.selected += selection.len();
+        let keep = keep && partials.is_some();
+        let partials = if keep {
+            accumulation.partials.clone()
+        } else {
+            std::mem::take(&mut accumulation.partials)
+        };
+
+        let first_rows = &accumulation.finest.first_rows;
+        let (rows, row_leaves) = groups::tree(&row_levels, first_rows);
+        let (columns, column_leaves) = groups::tree(&column_levels, first_rows);
         let groups = groups::Groups::new(&rows, &columns, &row_leaves, &column_leaves);
+        let mut partials = partials.into_iter();
         let states = inputs
             .iter()
             .enumerate()
             .map(|(measure, input)| {
-                let state =
-                    measures::accumulate(input, selection, &finest, groups.len(), &groups.merges)
-                        .map_err(|_| Error::Overflow { measure })?;
+                let state = match partials.next() {
+                    Some(partial) => partial.state(input, groups.len(), &groups.merges),
+                    None => measures::accumulate(
+                        input,
+                        selection,
+                        &finest,
+                        groups.len(),
+                        &groups.merges,
+                    ),
+                }
+                .map_err(|_| Error::Overflow { measure })?;
                 match request.show_as.get(measure).copied().unwrap_or_default() {
                     ShowAs::Value => Ok(state),
                     ShowAs::RowShare { decimals } => {
@@ -1013,10 +1130,11 @@ impl Engine {
             row_levels: request.rows.clone(),
             column_levels: request.columns.clone(),
             states,
-            finest_groups: first_rows.len(),
-            selected_rows: selection.len(),
+            finest_groups,
+            selected_rows: accumulation.selected,
         };
-        Ok(Table::new(parts, &row_ranks, &column_ranks))
+        let table = Table::new(parts, &row_ranks, &column_ranks);
+        Ok((table, keep.then_some(accumulation)))
     }
 }
 

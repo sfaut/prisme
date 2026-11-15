@@ -3,6 +3,12 @@
 //! Subtotals and totals are therefore computed from the rows, never from the
 //! cells of the table.
 //!
+//! The states of the finest groups of a measure that adds up (`COUNT`, `SUM`,
+//! `AVG`, `MIN`, `MAX`) are kept apart (`Partial`): the rows that arrive add
+//! to them, and the coarser sets merge from them again for each table. The
+//! measures of distinct values and `GROUP_CONCAT` read all their rows each
+//! time.
+//!
 //! - `COUNT(*)` counts the rows, `COUNT(col)` the rows where the column is
 //!   not NULL.
 //! - `COUNT(DISTINCT col)` counts the distinct values of the column that are
@@ -301,26 +307,6 @@ fn merge_counts(counts: &mut [u64], merges: &[Merge]) {
     }
 }
 
-/// Counts the selected rows of each group, those whose cell is valid if
-/// `valid` is given.
-fn count(valid: Option<&[bool]>, feed: Feed) -> Vec<u64> {
-    let mut counts = vec![0u64; feed.groups];
-    match valid {
-        Some(valid) => {
-            for (&row, &group) in feed.selection.iter().zip(feed.finest) {
-                counts[group as usize] += u64::from(valid[row as usize]);
-            }
-        }
-        None => {
-            for &group in feed.finest {
-                counts[group as usize] += 1;
-            }
-        }
-    }
-    merge_counts(&mut counts, feed.merges);
-    counts
-}
-
 /// Pair of a group and of the code of a value, in one word, the group in the
 /// high half: sorting the pairs gathers those of each group.
 fn pair(group: u32, code: u32) -> u64 {
@@ -403,23 +389,41 @@ impl Addend for f64 {
     }
 }
 
-/// Adds the valid numbers of each group.
-fn sum<T: Addend>(values: &[T], valid: &[bool], feed: Feed) -> Result<Vec<T>, Overflow> {
-    let mut sums = vec![T::default(); feed.groups];
-    for (&row, &group) in feed.selection.iter().zip(feed.finest) {
+/// Adds the valid numbers of some rows to the sums of their groups, and
+/// counts them.
+fn add_sums<T: Addend>(
+    (sums, counts): (&mut [T], &mut [u64]),
+    values: &[T],
+    valid: &[bool],
+    rows: &[u32],
+    finest: &[u32],
+) -> Result<(), Overflow> {
+    for (&row, &group) in rows.iter().zip(finest) {
         if valid[row as usize] {
             let sum = &mut sums[group as usize];
             *sum = sum.plus(values[row as usize])?;
+            counts[group as usize] += 1;
         }
     }
-    for merge in feed.merges {
+    Ok(())
+}
+
+/// Adds the sums and the counts of each set of groups into those of the
+/// coarser set.
+fn merge_sums<T: Addend>(
+    sums: &mut [T],
+    counts: &mut [u64],
+    merges: &[Merge],
+) -> Result<(), Overflow> {
+    for merge in merges {
         for (offset, &parent) in merge.parent_of.iter().enumerate() {
             let value = sums[merge.source as usize + offset];
             let sum = &mut sums[parent as usize];
             *sum = sum.plus(value)?;
         }
     }
-    Ok(sums)
+    merge_counts(counts, merges);
+    Ok(())
 }
 
 /// Adds each distinct valid number of each group once, and counts them.
@@ -529,41 +533,18 @@ fn float_share(part: f64, whole: f64, decimals: u32) -> Option<i128> {
     (share.is_finite() && share.abs() < 2f64.powi(126)).then_some(share as i128)
 }
 
-/// Keeps, in each group, the valid value that comes first in the order of
-/// `extreme`, or last with `largest`, and gives the row of its cell.
-fn extreme_rows(extreme: Extreme, feed: Feed) -> Vec<u32> {
-    let Extreme {
-        dictionary,
-        ranks,
-        valid,
-        largest,
-        ..
-    } = extreme;
-    let keep = |best: &mut u32, code: u32| {
+impl Extreme<'_> {
+    /// Keeps a code in place of the best one so far, if it comes first in the
+    /// order of the values, or last with `largest`. The ranks of the codes
+    /// already kept keep their order when the dictionary gains values.
+    fn keep(&self, best: &mut u32, code: u32) {
+        let ranks = self.ranks;
         if code != NO_VALUE
-            && (*best == NO_VALUE || (ranks[code as usize] > ranks[*best as usize]) == largest)
+            && (*best == NO_VALUE || (ranks[code as usize] > ranks[*best as usize]) == self.largest)
         {
             *best = code;
         }
-    };
-    let mut best = vec![NO_VALUE; feed.groups];
-    for (&row, &group) in feed.selection.iter().zip(feed.finest) {
-        if valid[row as usize] {
-            keep(&mut best[group as usize], dictionary.codes[row as usize]);
-        }
     }
-    for merge in feed.merges {
-        for (offset, &parent) in merge.parent_of.iter().enumerate() {
-            let code = best[merge.source as usize + offset];
-            keep(&mut best[parent as usize], code);
-        }
-    }
-    best.into_iter()
-        .map(|code| {
-            let first_row = dictionary.first_rows.get(code as usize);
-            first_row.copied().unwrap_or(NO_VALUE)
-        })
-        .collect()
 }
 
 /// Key of the order of the values of a `GROUP_CONCAT`: a column of the result.
@@ -753,6 +734,196 @@ fn join(joined: &Joined, feed: Feed) -> Vec<Option<Box<str>>> {
         .collect()
 }
 
+/// States of the finest groups of a measure that adds up, which the rows
+/// read later add to.
+#[derive(Debug, Clone)]
+pub enum Partial {
+    /// Counts (`COUNT`).
+    Count(Vec<u64>),
+    /// Sums of exact numbers, scaled to `scale`, and number of values added
+    /// (`SUM`, `AVG`).
+    Exact {
+        /// Sum of each group.
+        sums: Vec<i128>,
+        /// Number of values added in each group.
+        counts: Vec<u64>,
+        /// Number of digits after the point.
+        scale: u32,
+    },
+    /// Sums of floats, and number of values added (`SUM`, `AVG`).
+    Float {
+        /// Sum of each group.
+        sums: Vec<f64>,
+        /// Number of values added in each group.
+        counts: Vec<u64>,
+    },
+    /// Code of the value each group keeps (`MIN`, `MAX`), `NO_VALUE` without
+    /// one.
+    Extreme(Vec<u32>),
+}
+
+impl Partial {
+    /// States of no group of the measure that reads `input`; `None` for one
+    /// that does not add up: its distinct values, its texts.
+    pub fn of(input: &Input) -> Option<Self> {
+        match input {
+            Input::Rows | Input::Cells(_) => Some(Partial::Count(Vec::new())),
+            Input::Exact(numbers, _) => Some(Partial::Exact {
+                sums: Vec::new(),
+                counts: Vec::new(),
+                scale: numbers.scale,
+            }),
+            Input::Float(..) => Some(Partial::Float {
+                sums: Vec::new(),
+                counts: Vec::new(),
+            }),
+            Input::Average(input) => Partial::of(input),
+            Input::Extreme(_) => Some(Partial::Extreme(Vec::new())),
+            Input::Distinct(..)
+            | Input::DistinctExact(..)
+            | Input::DistinctFloat(..)
+            | Input::Joined(_) => None,
+        }
+    }
+
+    /// Scale of the sums of exact numbers: rows of a finer scale cannot add
+    /// to them.
+    pub fn scale(&self) -> Option<u32> {
+        match self {
+            Partial::Exact { scale, .. } => Some(*scale),
+            _ => None,
+        }
+    }
+
+    /// Adds rows to the states of the first `groups` groups.
+    ///
+    /// # Arguments
+    ///
+    /// - `input`: values of the measure, that of the states;
+    /// - `rows`: rows added;
+    /// - `finest`: finest group of each row, below `groups`.
+    ///
+    /// # Panics
+    ///
+    /// If the input is not the one of the states.
+    pub fn add(
+        &mut self,
+        input: &Input,
+        rows: &[u32],
+        finest: &[u32],
+        groups: usize,
+    ) -> Result<(), Overflow> {
+        match (self, input) {
+            (partial, Input::Average(input)) => partial.add(input, rows, finest, groups)?,
+            (Partial::Count(counts), Input::Rows) => {
+                counts.resize(groups, 0);
+                for &group in finest {
+                    counts[group as usize] += 1;
+                }
+            }
+            (Partial::Count(counts), Input::Cells(valid)) => {
+                counts.resize(groups, 0);
+                for (&row, &group) in rows.iter().zip(finest) {
+                    counts[group as usize] += u64::from(valid[row as usize]);
+                }
+            }
+            (Partial::Exact { sums, counts, .. }, Input::Exact(numbers, valid)) => {
+                sums.resize(groups, 0);
+                counts.resize(groups, 0);
+                add_sums((sums, counts), &numbers.values, valid, rows, finest)?;
+            }
+            (Partial::Float { sums, counts }, Input::Float(numbers, valid)) => {
+                sums.resize(groups, 0.0);
+                counts.resize(groups, 0);
+                add_sums((sums, counts), &numbers.values, valid, rows, finest)?;
+            }
+            (Partial::Extreme(best), Input::Extreme(extreme)) => {
+                best.resize(groups, NO_VALUE);
+                for (&row, &group) in rows.iter().zip(finest) {
+                    if extreme.valid[row as usize] {
+                        extreme.keep(
+                            &mut best[group as usize],
+                            extreme.dictionary.codes[row as usize],
+                        );
+                    }
+                }
+            }
+            _ => panic!("states of another measure"),
+        }
+        Ok(())
+    }
+
+    /// States of all the groups, those of the finest groups first, the coarser
+    /// sets merged from them; averages divided once merged.
+    ///
+    /// # Arguments
+    ///
+    /// - `input`: values of the measure, that of the states;
+    /// - `groups`: number of groups, all sets included;
+    /// - `merges`: merges of the sets of groups, in their order.
+    ///
+    /// # Panics
+    ///
+    /// If the input is not the one of the states.
+    pub fn state(self, input: &Input, groups: usize, merges: &[Merge]) -> Result<State, Overflow> {
+        let state = match self {
+            Partial::Count(mut counts) => {
+                counts.resize(groups, 0);
+                merge_counts(&mut counts, merges);
+                State::Count(counts)
+            }
+            Partial::Exact {
+                mut sums,
+                mut counts,
+                scale,
+            } => {
+                sums.resize(groups, 0);
+                counts.resize(groups, 0);
+                merge_sums(&mut sums, &mut counts, merges)?;
+                State::Exact {
+                    sums,
+                    counts,
+                    scale,
+                }
+            }
+            Partial::Float {
+                mut sums,
+                mut counts,
+            } => {
+                sums.resize(groups, 0.0);
+                counts.resize(groups, 0);
+                merge_sums(&mut sums, &mut counts, merges)?;
+                State::Float { sums, counts }
+            }
+            Partial::Extreme(mut best) => {
+                let Input::Extreme(extreme) = input else {
+                    panic!("states of another measure");
+                };
+                best.resize(groups, NO_VALUE);
+                for merge in merges {
+                    for (offset, &parent) in merge.parent_of.iter().enumerate() {
+                        let code = best[merge.source as usize + offset];
+                        extreme.keep(&mut best[parent as usize], code);
+                    }
+                }
+                let first_rows = &extreme.dictionary.first_rows;
+                let rows = best
+                    .into_iter()
+                    .map(|code| first_rows.get(code as usize).copied().unwrap_or(NO_VALUE))
+                    .collect();
+                State::Cells {
+                    level: extreme.level,
+                    rows,
+                }
+            }
+        };
+        match input {
+            Input::Average(_) => state.averaged(),
+            _ => Ok(state),
+        }
+    }
+}
+
 /// Computes the states of a measure over the selected rows.
 ///
 /// # Arguments
@@ -768,6 +939,10 @@ pub fn accumulate(
     groups: usize,
     merges: &[Merge],
 ) -> Result<State, Overflow> {
+    if let Some(mut partial) = Partial::of(input) {
+        partial.add(input, selection, finest, groups)?;
+        return partial.state(input, groups, merges);
+    }
     let feed = Feed {
         selection,
         finest,
@@ -775,8 +950,6 @@ pub fn accumulate(
         merges,
     };
     match *input {
-        Input::Rows => Ok(State::Count(count(None, feed))),
-        Input::Cells(valid) => Ok(State::Count(count(Some(valid), feed))),
         Input::Distinct(codes, valid) => {
             let mut counts = vec![0u64; groups];
             visit_distinct(
@@ -790,15 +963,6 @@ pub fn accumulate(
             )?;
             Ok(State::Count(counts))
         }
-        Input::Exact(numbers, valid) => Ok(State::Exact {
-            sums: sum(&numbers.values, valid, feed)?,
-            counts: count(Some(valid), feed),
-            scale: numbers.scale,
-        }),
-        Input::Float(numbers, valid) => Ok(State::Float {
-            sums: sum(&numbers.values, valid, feed)?,
-            counts: count(Some(valid), feed),
-        }),
         Input::DistinctExact(numbers, valid, dictionary) => {
             let (sums, counts) =
                 sum_distinct(&numbers.values, |value| value, valid, dictionary, feed)?;
@@ -815,11 +979,10 @@ pub fn accumulate(
         Input::Average(ref input) => {
             accumulate(input, selection, finest, groups, merges)?.averaged()
         }
-        Input::Extreme(extreme) => Ok(State::Cells {
-            level: extreme.level,
-            rows: extreme_rows(extreme, feed),
-        }),
         Input::Joined(ref joined) => Ok(State::Texts(join(joined, feed))),
+        Input::Rows | Input::Cells(_) | Input::Exact(..) | Input::Float(..) | Input::Extreme(_) => {
+            unreachable!("a measure that adds up keeps its partial states")
+        }
     }
 }
 
