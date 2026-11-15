@@ -629,6 +629,7 @@ function selectSource(editorId: number, connectionId: number): void {
       </split-panel>
       <split-handle
         controls="console-panel"
+        :grip="false"
         tooltip="Glisser pour redimensionner la console, double clic pour la replier ou la déplier"
         @activate="consoleStore.open = !consoleStore.open"
       />

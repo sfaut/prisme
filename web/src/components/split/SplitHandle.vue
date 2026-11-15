@@ -7,6 +7,8 @@
   of WAI-ARIA: the arrows move the line by a `rem`, Home and End give the
   panel its smallest and its largest size, Enter does what the double click
   does (`activate`: fold, unfold, or default width, as the parent decides).
+  A grip marks the middle of the line, unless the parent leaves it out
+  (`grip`).
 -->
 <script setup lang="ts">
 import { computed, nextTick, ref, useTemplateRef } from 'vue'
@@ -23,16 +25,24 @@ import {
   useSplitGroup,
 } from './splitLayout'
 
-const props = defineProps<{
-  /**
-   * Id of the panel the line resizes, next to it.
-   */
-  controls: string
-  /**
-   * Tooltip: what dragging and the double click do.
-   */
-  tooltip: string
-}>()
+const props = withDefaults(
+  defineProps<{
+    /**
+     * Id of the panel the line resizes, next to it.
+     */
+    controls: string
+    /**
+     * Tooltip: what dragging and the double click do.
+     */
+    tooltip: string
+    /**
+     * Does the line show its grip, in its middle? Without it, only the band
+     * of the hover shows where to grab it.
+     */
+    grip?: boolean
+  }>(),
+  { grip: true },
+)
 
 const emit = defineEmits<{
   /**
@@ -313,6 +323,7 @@ function readValues(): void {
     :aria-valuemax="values?.max"
     :data-orientation="group.direction()"
     :data-dragging="dragging || undefined"
+    :data-grip="grip ? undefined : 'none'"
     v-tooltip="tooltip"
     @pointerdown="onPointerDown"
     @pointermove="onPointerMove"
@@ -369,6 +380,11 @@ function readValues(): void {
     border-color: var(--grip-color);
     border-radius: var(--grip-thickness);
     outline: calc(var(--grip-thickness) / 2) solid var(--grip-color);
+  }
+
+  /* A line without a grip (`grip`). */
+  &[data-grip='none']::after {
+    content: none;
   }
 
   /* Box of the zone grabbed, the same margin on each side of the line:
