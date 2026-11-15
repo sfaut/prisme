@@ -13,7 +13,9 @@
   During the query, the number of rows, the durations and the volume change
   once per second (shared clock, `clock.ts`); at the end, they take their
   final value at once. A query without a grid (waiting, failed, or without
-  columns) shows only its durations.
+  columns) shows only its durations. Without a grid, the free room keeps the
+  status bar at the bottom, and shows "Calcul en cours…" with a spinner until
+  the query ends.
 
   The user filter belongs to the tab (`filter`, `v-model:filter`): its form
   (`ResultFilter.vue`) shows above the grid while its button, right of the
@@ -56,6 +58,7 @@ import {
   DatabaseZap,
   FileCode,
   FileSpreadsheet,
+  LoaderCircle,
   TextCursorInput,
 } from '@lucide/vue'
 import { computed, ref, useTemplateRef, watch } from 'vue'
@@ -613,6 +616,20 @@ defineExpose({ exportGroups })
       :sql="tab.sql"
       :displayed="displayed"
     />
+    <!--
+      Without a grid, this block takes its room and keeps the status bar at the
+      bottom; it says the query runs until it ends.
+    -->
+    <div
+      v-else
+      role="status"
+      class="flex flex-1 items-center justify-center gap-3 text-base text-fg-secondary"
+    >
+      <template v-if="!tab.done">
+        <LoaderCircle class="size-5 animate-spin" aria-hidden="true" />
+        Calcul en cours…
+      </template>
+    </div>
     <ui-status-bar v-if="hasStatus">
       <span v-if="showsGrid(tab)">{{ formatRowCount(shownCount, keptCount) }}</span>
       <span v-if="execution !== null">exécution {{ formatDuration(execution) }}</span>

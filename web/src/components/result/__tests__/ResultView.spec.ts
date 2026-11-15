@@ -133,6 +133,19 @@ describe('ResultView', () => {
     expect(items.map((item) => item.text())).toEqual(['exécution 3 ms'])
   })
 
+  it('says the query runs in the room of the grid, above the status bar', () => {
+    const tab = { ...finishedTab([]), done: false, result: null, startedAt: performance.now() }
+    const wrapper = mountTab(tab)
+    const status = wrapper.find('[role=status]')
+    expect(status.text()).toBe('Calcul en cours…')
+    expect(status.element.nextElementSibling).toBe(wrapper.findComponent(UiStatusBar).element)
+  })
+
+  it('no longer says the query runs once it has ended', () => {
+    const wrapper = mountTab(finishedTab([]))
+    expect(wrapper.find('[role=status]').text()).toBe('')
+  })
+
   it('shows the form of the filter while it is expanded, and the grid under it', async () => {
     const tab = finishedTab(['id'], [['1']])
     const wrapper = mountTab(tab)
