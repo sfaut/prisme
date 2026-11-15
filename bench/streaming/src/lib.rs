@@ -201,13 +201,11 @@ fn civil_from_days(days: i64) -> (i64, i64, i64) {
     (year_of_era + era * 400 + i64::from(month <= 2), month, day)
 }
 
-/// ISO year of a number of days since 1970-01-01, that of its ISO week, as
-/// the precision "Année" of the Pivoteur reads it: the year of the Thursday
-/// of its week (`crates/pivot/src/dates.rs`).
-fn iso_year(days: i64) -> i64 {
-    // 1970-01-01 was a Thursday.
-    let thursday = days - (days + 3).rem_euclid(7) + 3;
-    civil_from_days(thursday).0
+/// Year of a number of days since 1970-01-01, as the precision "Année" of
+/// the Pivoteur reads it: the year of its calendar
+/// (`crates/pivot/src/dates.rs`).
+fn calendar_year(days: i64) -> i64 {
+    civil_from_days(days).0
 }
 
 /// Month of a number of days since 1970-01-01, as the precision "Mois" of
@@ -675,7 +673,7 @@ impl Incremental {
             .map(|date| {
                 let days = date.map(|seconds| seconds.div_euclid(86_400));
                 (
-                    small_code(years, days.map(iso_year)),
+                    small_code(years, days.map(calendar_year)),
                     small_code(months, days.map(month_period)),
                 )
             })

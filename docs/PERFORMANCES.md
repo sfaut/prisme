@@ -1703,7 +1703,7 @@ Worker as they arrive?
   26.7.0, Rust 1.99.1. A `prisme.exe` was running beside it.
 - The rows and the tables are those of chapter 15:
   - rows on 4 levels, "high" or "low";
-  - columns by year (the ISO year of the precision "Année") and month of `d`;
+  - columns by year and month of `d`;
   - 12 decomposable measures;
   - every subtotal and total, 15 grouping sets.
 - The rows arrive by slices of 100,000 into a store (`prisme-store`).
@@ -1742,7 +1742,10 @@ The whole reception, native / WebAssembly:
 | 10,000,000 | "low" | 15.8 / 24.3 s | 0.29 / 0.56 s | 5.0 / 3.6 / 0.6 / 6.3 s (native) |
 
 Groups of every set, "high" / "low": 1,012,738 / 207,598 at 1 million rows,
-2,073,550 / 212,518 at 10 million rows.
+2,073,550 / 212,518 at 10 million rows. These runs grouped by the ISO year,
+as "Année" did then. With the year of the calendar, there are 1,009,005 /
+202,290 groups at 1 million rows, and the updates of the whole reception
+take the same time (4.4 s for "high", 2.1 s for "low", natively).
 
 Other measures:
 
@@ -1823,7 +1826,9 @@ Other measures:
 - **Merge by the chain of the grouping sets**: merging every touched group
   into the 15 sets cost up to twice as much as the chain.
 - **Check a prototype against the engine**: comparing the finest groups
-  showed that "Année" is the ISO year and "Mois" a period of a year.
+  showed that "Année" was then the ISO year, which the engine has since
+  replaced by the year of the calendar, and that "Mois" is a period of a
+  year.
 
 ### 17.6 Measuring again
 
