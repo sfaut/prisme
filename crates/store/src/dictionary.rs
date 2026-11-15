@@ -8,7 +8,9 @@
 //! later the codes of their values, new values taking the next codes. The
 //! codes already given never change. The index holds the codes alone, and
 //! reads their texts in the column (`hashbrown::HashTable`): it borrows
-//! nothing, and lives as long as the dictionary.
+//! nothing, and lives as long as the dictionary. The hash of each value is
+//! kept beside it: when the index doubles, it places its codes again without
+//! reading their texts, scattered in the column.
 
 use hashbrown::HashTable;
 use hashbrown::hash_table::Entry;
@@ -65,6 +67,8 @@ pub struct Encoder {
     dictionary: Dictionary,
     /// Code of each text, found by its hash and compared in the column.
     texts: HashTable<u32>,
+    /// Hash of the text of each code, 0 for NULL.
+    hashes: Vec<u64>,
     /// Code of NULL, once met.
     null: Option<u32>,
 }
@@ -84,6 +88,7 @@ impl Encoder {
     /// than 2^32 rows.
     pub fn extend(&mut self, column: &TextColumn, end: usize) {
         let Dictionary { codes, first_rows } = &mut self.dictionary;
+        let hashes = &mut self.hashes;
         let start = codes.len();
         if end <= start {
             return;
@@ -99,22 +104,25 @@ impl Encoder {
             let next = first_rows.len() as u32;
             let code = match cell {
                 Some(text) => {
+                    let hash = fx_hash(text);
                     let found = self.texts.entry(
-                        fx_hash(text),
-                        |&code| text_of(first_rows, code) == text,
-                        |&code| fx_hash(text_of(first_rows, code)),
+                        hash,
+                        |&code| hashes[code as usize] == hash && text_of(first_rows, code) == text,
+                        |&code| hashes[code as usize],
                     );
                     match found {
                         Entry::Occupied(entry) => *entry.get(),
                         Entry::Vacant(entry) => {
                             entry.insert(next);
                             first_rows.push(row);
+                            hashes.push(hash);
                             next
                         }
                     }
                 }
                 None => *self.null.get_or_insert_with(|| {
                     first_rows.push(row);
+                    hashes.push(0);
                     next
                 }),
             };
