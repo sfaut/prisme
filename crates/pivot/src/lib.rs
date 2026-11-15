@@ -982,7 +982,9 @@ impl Engine {
         let selection = selection.as_ref();
 
         let levels: Vec<&Dictionary> = row_levels.iter().chain(&column_levels).copied().collect();
-        let (finest, first_rows) = groups::finest(&levels, selection);
+        let mut finest_groups = groups::Finest::new(levels.len());
+        let finest = finest_groups.add(&levels, selection);
+        let first_rows = finest_groups.first_rows;
         let (rows, row_leaves) = groups::tree(&row_levels, &first_rows);
         let (columns, column_leaves) = groups::tree(&column_levels, &first_rows);
         let groups = groups::Groups::new(&rows, &columns, &row_leaves, &column_leaves);
