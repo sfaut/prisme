@@ -133,3 +133,84 @@ pub fn stream(
         })
         .collect()
 }
+
+/// Memory of the engine streamed at one checkpoint, in bytes: what an
+/// allocator that counts its bytes gives (`src/memory.rs`).
+pub struct Memory {
+    /// Rows received.
+    pub rows: usize,
+    /// Bytes held before the slice: the store, the caches of the columns and
+    /// the state of the last table, the table itself dropped.
+    pub held: usize,
+    /// Most bytes held while `grow` extends the caches to the slice.
+    pub grow_peak: usize,
+    /// Most bytes held while `update` computes the table.
+    pub update_peak: usize,
+    /// Bytes held once the table is computed, the table included.
+    pub with_table: usize,
+}
+
+/// Streams `total` rows by slices of `slice` rows into the engine of each
+/// profile, and gives its memory at each checkpoint, with that of the store
+/// of all the rows alone.
+///
+/// # Arguments
+///
+/// - `live`: bytes held now, and most bytes held since the last call, which
+///   starts the count of the most bytes again.
+pub fn memory(
+    total: usize,
+    slice: usize,
+    live: &dyn Fn() -> (usize, usize),
+) -> (usize, Vec<(&'static str, Vec<Memory>)>) {
+    let points = checkpoints(total, slice);
+    let start = live().0;
+    let mut store = Store::new(COLUMNS);
+    let mut generator = Generator::new();
+    let mut received = 0;
+    while received < total {
+        let count = slice.min(total - received);
+        append(&mut store, &generator.rows(count));
+        received += count;
+    }
+    let store_bytes = live().0 - start;
+    drop(store);
+    let profiles = PROFILES
+        .iter()
+        .map(|&(name, rows)| {
+            let request = request(rows);
+            let start = live().0;
+            let mut engine = Engine::new(Store::new(COLUMNS), families());
+            let mut generator = Generator::new();
+            let mut measures = Vec::new();
+            let mut received = 0;
+            let mut last: Option<Table> = None;
+            while received < total {
+                let count = slice.min(total - received);
+                let rows = generator.rows(count);
+                drop(last.take());
+                received += count;
+                let checkpoint = points.contains(&received);
+                append(engine.store_mut(), &rows);
+                drop(rows);
+                let held = live().0 - start;
+                engine.grow();
+                let grow_peak = live().1 - start;
+                let table = engine.update(&request).expect("the table of the profile");
+                let (with_table, update_peak) = live();
+                if checkpoint {
+                    measures.push(Memory {
+                        rows: received,
+                        held,
+                        grow_peak,
+                        update_peak: update_peak - start,
+                        with_table: with_table - start,
+                    });
+                }
+                last = Some(table);
+            }
+            (name, measures)
+        })
+        .collect();
+    (store_bytes, profiles)
+}

@@ -24,6 +24,10 @@ crate-type = ["cdylib", "rlib"]
 name = "streaming-native"
 path = "src/main.rs"
 
+[[bin]]
+name = "streaming-memory"
+path = "src/memory.rs"
+
 [dependencies]
 prisme-pivot = { path = "../../crates/pivot" }
 prisme-store = { path = "../../crates/store" }

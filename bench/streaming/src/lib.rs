@@ -46,7 +46,7 @@ use std::hash::{BuildHasherDefault, Hasher};
 use prisme_pivot::{Engine, Family, Level, Measure, Precision, Request};
 use prisme_store::Store;
 
-mod engine;
+pub mod engine;
 
 /// Seed of the pseudo-random generator, that of `bench/pivot` and
 /// `bench/widths`.
