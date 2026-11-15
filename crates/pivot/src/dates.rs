@@ -30,7 +30,7 @@ use crate::Family;
 /// What a level keeps of the dates of its column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Precision {
-    /// ISO year, that of the ISO week of the date: `2026` for 2027-01-01.
+    /// Year of the calendar, that of the date: `2027` for 2027-01-01.
     Year,
     /// Quarter of the calendar: `2026-T2`.
     Quarter,
@@ -213,7 +213,7 @@ impl CellDate {
             return self.time.map(|time| (day, time - time % unit));
         }
         Some(match precision {
-            Precision::Year => (self.iso_week().0, 0),
+            Precision::Year => (self.year, 0),
             Precision::Quarter => (self.year, (self.month + 2) / 3),
             Precision::Month => (self.year, self.month),
             Precision::Week => self.iso_week(),
@@ -688,10 +688,13 @@ mod tests {
     }
 
     #[test]
-    fn the_iso_year_is_the_year_of_the_iso_week() {
-        assert_eq!(single("2027-01-01", Precision::Year).unwrap(), "2026");
-        assert_eq!(single("2027-01-04", Precision::Year).unwrap(), "2027");
-        assert_eq!(single("2025-12-29", Precision::Year).unwrap(), "2026");
+    fn the_year_is_that_of_the_calendar_whatever_its_iso_week() {
+        // 2027-01-01 falls in the ISO week 2026-S53, 2025-12-29 in 2026-S01.
+        assert_eq!(single("2027-01-01", Precision::Year).unwrap(), "2027");
+        assert_eq!(single("2027-01-01", Precision::Week).unwrap(), "2026-S53");
+        assert_eq!(single("2025-12-29", Precision::Year).unwrap(), "2025");
+        assert_eq!(single("2025-12-29", Precision::Week).unwrap(), "2026-S01");
+        assert_eq!(single("2026-12-31", Precision::Year).unwrap(), "2026");
     }
 
     #[test]

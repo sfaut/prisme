@@ -45,7 +45,7 @@ pub enum DatePrecision {
     /// The values of the column, as they are.
     #[default]
     None,
-    /// ISO year, that of the ISO week of the date: `2026`.
+    /// Year of the calendar, that of the date: `2026`.
     Year,
     /// Quarter: `2026-T2`.
     Quarter,

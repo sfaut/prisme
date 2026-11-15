@@ -623,7 +623,7 @@ Total;850";
 }
 
 #[test]
-fn the_columns_of_a_table_can_group_dates_by_iso_year() {
+fn the_columns_of_a_table_can_group_dates_by_year() {
     let engine = example();
     let request = Request {
         rows: vec![REGION.into()],
@@ -808,9 +808,10 @@ fn an_extreme_at_a_precision_ranks_its_lines_in_the_order_of_time() {
     );
     let by_month = Measure::Min(dated(1, Precision::Month));
     assert_eq!(keys_by_value(&engine, by_month), "c b a");
-    // 2025-12-31 falls in the ISO year 2026: the tie keeps the order of the labels.
+    // 2025-12-31 falls in the year 2025 of the calendar, though its ISO week is
+    // 2026-S01.
     let by_year = Measure::Max(dated(1, Precision::Year));
-    assert_eq!(keys_by_value(&engine, by_year), "c a b");
+    assert_eq!(keys_by_value(&engine, by_year), "c b a");
 }
 
 #[test]
@@ -2080,13 +2081,13 @@ fn a_filter_reads_a_precision_of_the_dates() {
         }),
         Ok(2)
     );
-    // The ISO year of 2027-01-01 is 2026.
+    // 2027-01-01 falls in the year 2027, though its ISO week is 2026-S53.
     assert_eq!(
         rows_kept(Filter::Column {
             level: at(Precision::Year),
             test: Test::Compare(Comparison::Equal, text("2026")),
         }),
-        Ok(4)
+        Ok(3)
     );
     assert_eq!(
         rows_kept(Filter::Column {
