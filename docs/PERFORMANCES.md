@@ -1673,3 +1673,161 @@ repository: `node bench/batches/run.mjs --interface` (a few minutes). To
 compare two builds, name each one by `PRISME_EXECUTABLE` with its own
 `--label`, in turns, over several rounds. The results go to
 `target/batch-bench/<label>.json`.
+
+## 17. Streaming of the rows to the Pivoteur: incremental aggregates
+
+Benchmark of 2026-11-15, step "Measures" of section 5 of
+`docs/TODO-PIVOTER.md`, on the local branch `pivot-streaming`.
+
+### 17.1 Question
+
+The Pivoteur waits for the end of the query (F-07), then copies the rows into
+its Worker, then computes. To work on it during the reception, its table must
+follow the rows as they arrive. What does it cost to keep a table up to date
+slice by slice:
+
+- by computing it again from all the rows received, as the engine of Prisme
+  does today;
+- by incremental aggregates, which add each slice to the states of the
+  groups kept from the slices before;
+
+and what does it cost the main thread of the page to send the rows to the
+Worker as they arrive?
+
+### 17.2 Measurement
+
+- `node bench/streaming/run.mjs [rows] [slice] [passes]` (`docs/DEVELOPER.md`,
+  section "Streaming of the rows to the Pivoteur"). It runs natively and in
+  WebAssembly under Node (V8), on one thread.
+- Intel Core Ultra 7 155H (22 logical cores), 33.8 GB, Windows 11, Node
+  26.7.0, Rust 1.99.1. A `prisme.exe` was running beside it.
+- The rows and the tables are those of chapter 15:
+  - rows on 4 levels, "high" or "low";
+  - columns by year (the ISO year of the precision "Année") and month of `d`;
+  - 12 decomposable measures;
+  - every subtotal and total, 15 grouping sets.
+- The rows arrive by slices of 100,000 into a store (`prisme-store`).
+- **Full computation**: the engine of Prisme, at a tenth, at half and at the
+  end of the reception. It is measured twice:
+  - a new engine on all the rows received, whose first table builds the
+    caches of its columns;
+  - a second table on the same engine, its caches kept.
+- **Incremental aggregates**: a prototype in the shape of the engine. Each
+  slice is read column by column and aggregated into states of its own, then
+  merged into the states kept, each grouping set from its source in the chain
+  of merges (`Incremental` in `bench/streaming/src/lib.rs`). It checks itself:
+  - the states kept up to date equal those of one pass on all the rows;
+  - it finds as many finest groups as the engine.
+- In WebAssembly at 10 million rows, the second table of that pass does not
+  fit beside the first one in the 4 GB of a module: only the finest groups
+  are compared there.
+- 1 million rows: fastest of 3 runs. 10 million rows: one run.
+
+Full computation against one incremental update, "high" (the same costs,
+"low"), native / WebAssembly:
+
+| Rows received | New engine: caches and table | Table, caches kept | Update by one slice of 100,000 rows |
+|---|---|---|---|
+| 1,000,000 | 3.9 / 5.0 s (0.30 / 0.36 s) | 0.72 / 0.75 s (0.24 / 0.30 s) | 0.36 / 0.41 s (0.16 / 0.22 s) |
+| 5,000,000 (10M run) | 22.3 / 38.5 s (1.0 / 1.6 s) | 2.4 / 3.8 s (0.63 / 1.1 s) | 0.39 / 0.44 s (0.20 / 0.19 s) |
+| 10,000,000 | 58.8 / 85.3 s (2.5 / 3.0 s) | 5.2 / 6.5 s (2.0 / 2.3 s) | 0.31 / 0.35 s (0.16 / 0.19 s) |
+
+The whole reception, native / WebAssembly:
+
+| Rows | Profile | All the updates | Longest update | Reading / groups / states / merge |
+|---|---|---|---|---|
+| 1,000,000 | "high" | 4.2 / 3.5 s | 0.49 / 0.45 s | 0.59 / 1.98 / 0.03 / 1.59 s (native) |
+| 1,000,000 | "low" | 2.1 / 2.0 s | 0.25 / 0.26 s | 0.61 / 0.68 / 0.06 / 0.72 s (native) |
+| 10,000,000 | "high" | 33.4 / 46.9 s | 0.49 / 1.08 s | 5.0 / 8.5 / 0.3 / 19.2 s (native) |
+| 10,000,000 | "low" | 15.8 / 24.3 s | 0.29 / 0.56 s | 5.0 / 3.6 / 0.6 / 6.3 s (native) |
+
+Groups of every set, "high" / "low": 1,012,738 / 207,598 at 1 million rows,
+2,073,550 / 212,518 at 10 million rows.
+
+Other measures:
+
+- **Appending the slices to the store**: 0.24 s per million rows (natively and
+  in WebAssembly). The copy of the cells from JavaScript into the module adds
+  0.63 s at 1 million rows, 11.3 s at 10 million rows, in the Worker
+  (chapter 9).
+- **Sending the rows to a Worker**, on the main thread (structured clone,
+  between `worker_threads`, best of 3):
+
+| Rows | Blocks of 10,000 rows | Blocks of 20,000 rows |
+|---|---|---|
+| 1,000,000 | 0.66 s | 0.87 s |
+| 10,000,000 | 7.7 s | 7.5 s |
+
+- **Memory**: the module of the benchmark reached 4.12 GB at 10 million rows.
+  It holds the store, the two tables, the engine and the rows generated again
+  for its checkpoints.
+
+### 17.3 Analysis
+
+- **Building the caches again is ruled out.** A new engine on 10 million rows
+  takes 59 to 85 s for "high": the dictionary of `d` holds one value per
+  second of three years. Whatever the way, the caches must grow with the rows.
+- **A full table, caches kept, grows with the rows**: 0.7 s at 1 million rows,
+  5 to 6.5 s at 10 million rows ("high"). With a pace of 1 s, the table of a
+  large result would only follow every 5 to 6 s.
+- **An incremental update stays about the same, whatever the rows received**:
+  0.2 to 0.6 s per slice of 100,000 rows. It depends on the slice, and on the
+  groups the slice touches.
+  - At 1 million rows, it costs half a full table for "high", and two
+    thirds of one for "low".
+  - At 10 million rows, it costs 15 to 20 times less for "high", 12 times
+    less for "low".
+- **The end of the query becomes immediate.** Today, after `done`, a result
+  of 10 million rows takes:
+  - its copy into the Worker, 11 s (chapter 9);
+  - its caches and its table, 59 to 85 s here for "high".
+
+  With incremental aggregates, the table is already up to date when `done`
+  arrives: only the last slice remains.
+- **The merge and the groups take most of an update.** They cost 80 % of the
+  updates of "high" at 10 million rows. Every finest group touched merges into
+  its states, and every new group is created in the 15 sets. The states of the
+  slice take 1 %.
+- **The reading of the slice** parses the dates and the numbers again in each
+  table. In the engine, the caches would parse them once for every table and
+  every measure.
+- **Over the whole reception**, the updates take 3.5 to 4.2 s per million rows
+  for "high" (2 s for "low"). A reception of 1 million rows lasts 9 to 14 s
+  (chapter 12), so the Worker computes a third of the time at most. With a
+  pace of 1 s, a slice holds the rows of a second. An update costs by the
+  groups the slice touches more than by its rows, so it costs less per row
+  than here.
+- **The main thread pays 0.7 to 0.8 s per million rows** to send them to the
+  Worker, about 5 to 8 % of a reception. The Worker owning the WebSocket
+  (step 2 of the single store, `docs/QUESTIONS.md`, section 2) would remove
+  this cost.
+- **Memory follows the groups.** The kept state of a table (its index of 15
+  sets, its states, its parents) is to be measured alone, at 2 million groups,
+  before the engine holds it.
+
+### 17.4 Consequences for the design
+
+- The caches of the engine grow with the rows:
+  - the dictionaries keep their codes and give new ones;
+  - the numbers and the date levels read only the new rows.
+- A table keeps its state, and each update adds the new rows to it, by the
+  chain of merges.
+- The kept states also remove the computation that follows `done`.
+- A full table remains for a new request, a new grid filter, and the measures
+  that need all the rows.
+
+### 17.5 Takeaways
+
+- **What grows with the result must not be redone at each update**: caches,
+  groups, states.
+- **Merge by the chain of the grouping sets**: merging every touched group
+  into the 15 sets cost up to twice as much as the chain.
+- **Check a prototype against the engine**: comparing the finest groups
+  showed that "Année" is the ISO year and "Mois" a period of a year.
+
+### 17.6 Measuring again
+
+From the root of the repository: `node bench/streaming/run.mjs` (1 million
+rows, 3 passes, a few minutes), then `node bench/streaming/run.mjs 10000000
+100000 1` (a quarter of an hour). The results go to
+`target/streaming-bench/results-<rows>.json`.

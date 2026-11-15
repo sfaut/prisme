@@ -440,6 +440,17 @@ cargo run --release --manifest-path bench/widths/Cargo.toml --target-dir target/
 
 The rows and the two pivots are those of `bench/pivot` ("high" and "low", 12 measures, every subtotal and total), generated the same way. For each pivot, best of 3 passes: the computation of the table, the first reading of the lengths of its texts, each pass on a table of its own, then a new layout of the table, and the next reading, which reuses what the first one kept. The command prints a Markdown table, each reading with its share of the step it follows.
 
+### Streaming of the rows to the Pivoteur
+
+`bench/streaming/` measures what it costs to keep a table of the Pivoteur up to date while the rows of a result arrive (section 5 of `docs/TODO-PIVOTER.md`). From the root of the repository; the command adds the WebAssembly target to the toolchain when it is missing:
+
+```
+node bench/streaming/run.mjs                     # 1,000,000 rows by slices of 100,000, 3 passes (a few minutes)
+node bench/streaming/run.mjs 10000000 100000 1   # 10,000,000 rows, one pass (a quarter of an hour)
+```
+
+The rows and the two tables are those of `bench/widths`. The rows arrive by slices into a store (`prisme-store`), and each table is kept up to date in two ways, on one thread. The first one is the engine of Prisme as it is (`prisme-pivot`), measured at a tenth, at half and at the end of the reception: a new engine on all the rows received, whose first table builds the caches of its columns, then a second table on the same engine. The second one is a prototype of incremental aggregates (`Incremental` in `bench/streaming/src/lib.rs`), in the shape of the engine: each slice is read column by column, aggregated into states of its own, then merged into the states kept, each grouping set from its source in the chain of merges. The prototype checks itself at the end: the states it kept up to date equal those of one pass on all the rows, and it found as many finest groups as the engine. The same library runs natively (`src/main.rs`) and compiled to WebAssembly, driven by Node (`wasm.mjs`). Then `post.mjs` measures what sending the rows to a Worker by blocks costs the main thread of the page (structured clone, between `worker_threads`). Each side of the engine runs several times, and each duration keeps its fastest run. The command prints a summary and writes the results to `target/streaming-bench/results-<rows>.json`; its exit code is 1 if the prototype does not check itself.
+
 ### Saved results
 
 `bench/reload/run.mjs` measures what a result of many rows costs on its way into a result tab, and when the page reads it again, on the real server: Prisme built in release, started on a throwaway data folder (`target/reload-bench/`), queries on the latest MariaDB LTS of the development servers. From the root of the repository, the development servers started (`docker compose up --detach --wait`) and the interface built (`npm run build` in `web/`):
