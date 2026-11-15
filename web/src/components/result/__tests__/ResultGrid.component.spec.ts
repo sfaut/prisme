@@ -65,6 +65,28 @@ describe('ResultGrid', () => {
     expect(headers.map((header) => header.classes('selected'))).toEqual([true, true])
   })
 
+  it('inverts the selection with Alt+click on the top left corner', async () => {
+    HTMLElement.prototype.setPointerCapture = () => {}
+    const wrapper = mountGrid(['id', 'name', 'city'], [['1', 'a', 'b']])
+    const selected = () =>
+      wrapper.findAll('.grid-column-header').map((header) => header.classes('selected'))
+    const corner = wrapper.find('.grid-corner')
+    // Nothing selected: everything.
+    await corner.trigger('mousedown', { altKey: true })
+    expect(selected()).toEqual([true, true, true])
+    // Everything selected: nothing.
+    await corner.trigger('mousedown', { altKey: true })
+    expect(selected()).toEqual([false, false, false])
+    // One column selected: the two others.
+    await wrapper.findAll('.grid-column-name')[1]!.trigger('pointerdown')
+    expect(selected()).toEqual([false, true, false])
+    await corner.trigger('mousedown', { altKey: true })
+    expect(selected()).toEqual([true, false, true])
+    // Without Alt, the corner selects everything.
+    await corner.trigger('mousedown')
+    expect(selected()).toEqual([true, true, true])
+  })
+
   it('unselects a selected column with Ctrl, toggles columns with Alt', async () => {
     HTMLElement.prototype.setPointerCapture = () => {}
     const wrapper = mountGrid(['id', 'name', 'city'], [['1', 'a', 'b']])

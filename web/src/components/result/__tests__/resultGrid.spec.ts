@@ -14,6 +14,7 @@ import {
   frameCell,
   frameIsFull,
   hasSelection,
+  invertAll,
   isFixedLengthText,
   isSelected,
   nextSort,
@@ -170,6 +171,24 @@ describe('selection', () => {
   it('selects everything, or nothing for an empty grid', () => {
     expect(selectAll(3, 3).ranges).toEqual([{ top: 0, bottom: 2, left: 0, right: 2 }])
     expect(selectAll(0, 3)).toEqual(emptySelection())
+  })
+
+  it('inverts the selection over the whole grid', () => {
+    // Nothing selected: everything.
+    expect(invertAll(emptySelection(), 3, 3)).toEqual(selectAll(3, 3))
+    // Everything selected: nothing.
+    expect(invertAll(selectAll(3, 3), 3, 3)).toEqual(emptySelection())
+    // Otherwise each cell takes the opposite state.
+    const inverted = invertAll(selectColumn(emptySelection(), 1, 3, 'replace'), 3, 3)
+    expect(isSelected(inverted, 0, 1)).toBe(false)
+    expect(isSelected(inverted, 2, 0)).toBe(true)
+    expect(isSelected(inverted, 1, 2)).toBe(true)
+    expect(selectionSize(inverted)).toEqual({ rows: 3, columns: 2 })
+    // Twice: the selection of the start.
+    const back = invertAll(inverted, 3, 3)
+    expect([0, 1, 2].map((column) => isSelected(back, 0, column))).toEqual([false, true, false])
+    // An empty grid stays without a selection.
+    expect(invertAll(emptySelection(), 0, 3)).toEqual(emptySelection())
   })
 })
 

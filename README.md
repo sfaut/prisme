@@ -230,6 +230,7 @@ Each query gets its own tab:
 | Move a column | Drag its name |
 | Resize a column | Drag the right edge of its header; double-click the edge to fit the longest value |
 | Select | Click a cell, a row number or a column name; drag for a range; click the top-left corner for everything |
+| Invert the selection | Alt+click the top-left corner: everything without a selection, nothing when everything is selected |
 | Extend / add to the selection | Shift+click / Ctrl+click |
 | Unselect cells | Ctrl+click on a selected cell; drag to unselect a range |
 | Toggle cells | Alt+click; drag to toggle a range: each cell takes the opposite of its state before the drag |

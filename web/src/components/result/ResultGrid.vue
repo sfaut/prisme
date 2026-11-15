@@ -20,7 +20,9 @@
     Shift+click extends, Ctrl+click adds, or unselects when it starts on a
     selected cell, Alt+click toggles the state of the cells; dragging extends
     too, with the same effect (on the row numbers, dragging selects a group
-    of rows). A click on the top left corner selects everything.
+    of rows). A click on the top left corner selects everything, Alt+click
+    on it inverts the selection (everything without one, nothing when
+    everything is selected).
   - Copy: Ctrl+C copies the selection with the column names on the first
     line (a profile setting may remove them), a single cell as its value
     alone. Ctrl+A selects everything, Escape clears the selection.
@@ -88,6 +90,7 @@ import {
   nextSort,
   resizedWidth,
   selectAll,
+  invertAll,
   selectCell,
   selectColumn,
   selectRow,
@@ -697,6 +700,21 @@ function selectEverything(): void {
 }
 
 /**
+ * Click on the corner: selects everything, or inverts the selection with
+ * Alt.
+ *
+ * @param event Click.
+ */
+function onCornerDown(event: MouseEvent): void {
+  if (event.altKey) {
+    selection.value = invertAll(selection.value, view.value.length, props.columns.length)
+    focusGrid()
+  } else {
+    selectEverything()
+  }
+}
+
+/**
  * Keyboard shortcuts of the grid.
  */
 function onKeydown(event: KeyboardEvent): void {
@@ -805,8 +823,8 @@ defineExpose({ keptCount, selectedSize, exportFrame, order })
     <div class="grid-row grid-header" :style="{ gridTemplateColumns: template }">
       <div
         class="grid-corner"
-        v-tooltip="'Tout sélectionner'"
-        @mousedown.prevent="selectEverything"
+        v-tooltip="'Tout sélectionner, Alt+clic pour inverser la sélection'"
+        @mousedown.prevent="onCornerDown"
       />
       <div
         v-for="(column, position) in order"

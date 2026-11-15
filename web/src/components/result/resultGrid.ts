@@ -641,6 +641,34 @@ export function selectAll(rowCount: number, columnCount: number): GridSelection 
 }
 
 /**
+ * Inverts the selection over the whole grid (Alt+click on the corner): each
+ * selected cell is unselected, each other one selected. Without a selection,
+ * everything is selected; with everything selected, nothing is.
+ *
+ * @param selection Current selection.
+ * @param rowCount Number of view rows.
+ * @param columnCount Number of columns.
+ */
+export function invertAll(
+  selection: GridSelection,
+  rowCount: number,
+  columnCount: number,
+): GridSelection {
+  if (!hasSelection(selection)) {
+    return selectAll(rowCount, columnCount)
+  }
+  const inverted: GridSelection = {
+    ranges: [
+      ...selection.ranges,
+      { top: 0, bottom: rowCount - 1, left: 0, right: columnCount - 1, effect: 'toggle' },
+    ],
+    anchor: selection.anchor,
+  }
+  // Nothing left: an empty selection, without the ranges that cancel out.
+  return hasSelection(inverted) ? inverted : emptySelection()
+}
+
+/**
  * Tells whether a cell is selected.
  *
  * @param selection Selection.
