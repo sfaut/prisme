@@ -734,6 +734,14 @@ fn join(joined: &Joined, feed: Feed) -> Vec<Option<Box<str>>> {
         .collect()
 }
 
+/// Extends the states of the finest groups to all the groups, each new one
+/// set to `value`. Exactly: the states of a table, which may hold millions of
+/// groups, keep no room beyond them (a WebAssembly module holds 4 GB at most).
+fn widen<T: Clone>(states: &mut Vec<T>, groups: usize, value: T) {
+    states.reserve_exact(groups.saturating_sub(states.len()));
+    states.resize(groups, value);
+}
+
 /// States of the finest groups of a measure that adds up, which the rows
 /// read later add to.
 #[derive(Debug, Clone)]
@@ -868,7 +876,7 @@ impl Partial {
     pub fn state(self, input: &Input, groups: usize, merges: &[Merge]) -> Result<State, Overflow> {
         let state = match self {
             Partial::Count(mut counts) => {
-                counts.resize(groups, 0);
+                widen(&mut counts, groups, 0);
                 merge_counts(&mut counts, merges);
                 State::Count(counts)
             }
@@ -877,8 +885,8 @@ impl Partial {
                 mut counts,
                 scale,
             } => {
-                sums.resize(groups, 0);
-                counts.resize(groups, 0);
+                widen(&mut sums, groups, 0);
+                widen(&mut counts, groups, 0);
                 merge_sums(&mut sums, &mut counts, merges)?;
                 State::Exact {
                     sums,
@@ -890,8 +898,8 @@ impl Partial {
                 mut sums,
                 mut counts,
             } => {
-                sums.resize(groups, 0.0);
-                counts.resize(groups, 0);
+                widen(&mut sums, groups, 0.0);
+                widen(&mut counts, groups, 0);
                 merge_sums(&mut sums, &mut counts, merges)?;
                 State::Float { sums, counts }
             }
@@ -899,7 +907,7 @@ impl Partial {
                 let Input::Extreme(extreme) = input else {
                     panic!("states of another measure");
                 };
-                best.resize(groups, NO_VALUE);
+                widen(&mut best, groups, NO_VALUE);
                 for merge in merges {
                     for (offset, &parent) in merge.parent_of.iter().enumerate() {
                         let code = best[merge.source as usize + offset];
