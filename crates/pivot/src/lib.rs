@@ -41,7 +41,7 @@ use std::cell::OnceCell;
 use std::cmp::Ordering;
 use std::fmt;
 
-use prisme_store::{Approx, Dictionary, Encoder, Exact, NumberError, Store, TextColumn};
+use prisme_store::{Approx, Bounds, Dictionary, Encoder, Exact, NumberError, Store, TextColumn};
 
 use crate::dates::DerivedLevel;
 pub use crate::dates::Precision;
@@ -487,61 +487,99 @@ fn ranks_of(order: &[u32]) -> Vec<u32> {
 /// exponential search from that of the previous one: a merge compares
 /// `n log(d / n)` values for `n` new codes among `d`, without reading the
 /// values of all the codes.
-#[derive(Debug, Default)]
-struct Ranking {
+///
+/// Each code keeps, in the same order, the key that reads its value: the
+/// place of its text, or the row of its number. A comparison reads the keys
+/// one after the other, and the values alone in the column, without going
+/// through the first row of each code (`docs/PERFORMANCES.md`, chapter 17).
+#[derive(Debug)]
+struct Ranking<K> {
     /// Codes, in the order of their values.
     order: Vec<u32>,
+    /// Key of each code of `order`, in the same order.
+    keys: Vec<K>,
     /// Rank of each code.
     ranks: Vec<u32>,
 }
 
-impl Ranking {
-    /// Ranks the codes after those already ranked, up to `codes`, excluded,
-    /// by a comparison of the values of two codes.
-    fn extend(&mut self, codes: usize, compare: impl Fn(u32, u32) -> Ordering) {
+impl<K> Default for Ranking<K> {
+    fn default() -> Self {
+        Ranking {
+            order: Vec::new(),
+            keys: Vec::new(),
+            ranks: Vec::new(),
+        }
+    }
+}
+
+impl<K: Copy> Ranking<K> {
+    /// Ranks the codes after those already ranked, up to `codes`, excluded.
+    ///
+    /// # Arguments
+    ///
+    /// - `key`: key of a code;
+    /// - `compare`: comparison of the values of two keys.
+    fn extend(&mut self, codes: usize, key: impl Fn(u32) -> K, compare: impl Fn(K, K) -> Ordering) {
         let start = self.order.len() as u32;
         let end = codes as u32;
         if end <= start {
             return;
         }
-        let mut new: Vec<u32> = (start..end).collect();
-        new.sort_by(|&a, &b| compare(a, b));
-        let old = std::mem::take(&mut self.order);
+        let mut new: Vec<(K, u32)> = (start..end).map(|code| (key(code), code)).collect();
+        new.sort_by(|a, b| compare(a.0, b.0));
+        let (old, old_keys) = (
+            std::mem::take(&mut self.order),
+            std::mem::take(&mut self.keys),
+        );
         let mut order = Vec::with_capacity(codes);
+        let mut keys = Vec::with_capacity(codes);
         let mut from = 0;
-        for &code in &new {
+        for (new_key, code) in new {
             // The first code already ranked after the new one, past the
             // equal values: bounded by doubling steps, then found within.
-            let rest = &old[from..];
-            let before = |&ranked: &u32| compare(ranked, code).is_le();
+            let rest = &old_keys[from..];
+            let before = |&ranked: &K| compare(ranked, new_key).is_le();
             let mut bound = 1;
             while bound < rest.len() && before(&rest[bound - 1]) {
                 bound *= 2;
             }
             let place = from + rest[..bound.min(rest.len())].partition_point(before);
             order.extend_from_slice(&old[from..place]);
+            keys.extend_from_slice(&old_keys[from..place]);
             order.push(code);
+            keys.push(new_key);
             from = place;
         }
         order.extend_from_slice(&old[from..]);
+        keys.extend_from_slice(&old_keys[from..]);
         self.ranks = ranks_of(&order);
         self.order = order;
+        self.keys = keys;
     }
 }
 
-/// Comparison of the values of two codes of a dictionary as `MIN` and `MAX`
-/// compare them: numbers by value, a `NaN` after the others, and any other
-/// value by code points, the order of the bytes of UTF-8, NULL first.
-fn compare_values<'a>(
-    dictionary: &'a Dictionary,
-    cells: &'a TextColumn,
-    numbers: Option<&'a Numbers>,
-) -> impl Fn(u32, u32) -> Ordering + 'a {
-    let row = |code: u32| dictionary.first_rows[code as usize] as usize;
-    move |a, b| match numbers {
-        Some(Numbers::Exact(numbers)) => numbers.values[row(a)].cmp(&numbers.values[row(b)]),
-        Some(Numbers::Float(numbers)) => numbers.values[row(a)].total_cmp(&numbers.values[row(b)]),
-        None => dictionary.value(cells, a).cmp(&dictionary.value(cells, b)),
+/// Ranks the values of a column after those already ranked, in the binary
+/// order of their texts, NULL first.
+fn rank_texts(ranking: &mut Ranking<Bounds>, dictionary: &Dictionary, cells: &TextColumn) {
+    ranking.extend(
+        dictionary.len(),
+        |code| cells.bounds(dictionary.first_rows[code as usize] as usize),
+        |a, b| cells.text_of(a).cmp(&cells.text_of(b)),
+    );
+}
+
+/// Ranks the values of a column of numbers after those already ranked, as
+/// `MIN` and `MAX` compare them: by value, a `NaN` after the others. The key
+/// of a value is the row of its number.
+fn rank_numbers(ranking: &mut Ranking<u32>, dictionary: &Dictionary, numbers: &Numbers) {
+    let key = |code: u32| dictionary.first_rows[code as usize];
+    match numbers {
+        Numbers::Exact(numbers) => ranking.extend(dictionary.len(), key, |a, b| {
+            numbers.values[a as usize].cmp(&numbers.values[b as usize])
+        }),
+        Numbers::Float(numbers) => ranking.extend(dictionary.len(), key, |a, b| {
+            numbers.values[a as usize].total_cmp(&numbers.values[b as usize])
+        }),
     }
 }
 
@@ -580,13 +618,13 @@ pub struct Engine {
     /// Numbers of each column of numbers, or the cell it cannot read.
     numbers: Vec<OnceCell<Result<Numbers, NumberError>>>,
     /// Values of each column in the binary order of their texts, NULL first.
-    text_ranks: Vec<OnceCell<Ranking>>,
+    text_ranks: Vec<OnceCell<Ranking<Bounds>>>,
     /// Rank of each value of each column, by code, in the order of the grid,
     /// when the page gave them.
     page_ranks: Vec<Option<Vec<u32>>>,
     /// Values of each column of numbers by value, as `MIN` and `MAX` compare
     /// them.
-    value_ranks: Vec<OnceCell<Ranking>>,
+    value_ranks: Vec<OnceCell<Ranking<u32>>>,
     /// Levels of each column at each precision.
     derived: Vec<[OnceCell<DerivedLevel>; Precision::COUNT]>,
     /// Longest text of the cells of each column, in characters.
@@ -683,13 +721,15 @@ impl Engine {
                     dropped.push(column);
                 }
                 if let Some(ranking) = self.text_ranks[column].get_mut() {
-                    ranking.extend(dictionary.len(), compare_values(dictionary, cells, None));
+                    rank_texts(ranking, dictionary, cells);
                 }
                 let numbers = self.numbers[column]
                     .get()
                     .and_then(|numbers| numbers.as_ref().ok());
-                if let Some(ranking) = self.value_ranks[column].get_mut() {
-                    ranking.extend(dictionary.len(), compare_values(dictionary, cells, numbers));
+                if let (Some(ranking), Some(numbers)) =
+                    (self.value_ranks[column].get_mut(), numbers)
+                {
+                    rank_numbers(ranking, dictionary, numbers);
                 }
                 for derived in self.derived[column].iter_mut() {
                     if let Some(derived) = derived.get_mut() {
@@ -775,27 +815,25 @@ impl Engine {
         let cells = self.store.column(column).expect("column of the dictionary");
         let ranking = self.text_ranks[column].get_or_init(|| {
             let mut ranking = Ranking::default();
-            ranking.extend(dictionary.len(), compare_values(dictionary, cells, None));
+            rank_texts(&mut ranking, dictionary, cells);
             ranking
         });
         Ok(&ranking.ranks)
     }
 
     /// Ranks of the values of column `column`, as `MIN` and `MAX` compare
-    /// them (`compare_values`). The order of the page only ranks the groups.
+    /// them: numbers by value, a `NaN` after the others, and any other value
+    /// by code points, the order of the bytes of UTF-8, NULL first. The order
+    /// of the page only ranks the groups.
     fn value_ranks(&self, measure: usize, column: usize) -> Result<&[u32], Error> {
         if !self.families[column].is_number() {
             return self.text_ranks(column);
         }
         let dictionary = self.dictionary(column)?;
-        let cells = self.store.column(column).expect("column of the dictionary");
         let numbers = self.numbers(measure, column)?;
         let ranking = self.value_ranks[column].get_or_init(|| {
             let mut ranking = Ranking::default();
-            ranking.extend(
-                dictionary.len(),
-                compare_values(dictionary, cells, Some(numbers)),
-            );
+            rank_numbers(&mut ranking, dictionary, numbers);
             ranking
         });
         Ok(&ranking.ranks)

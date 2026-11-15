@@ -51,6 +51,20 @@ impl fmt::Display for BlockError {
 
 impl std::error::Error for BlockError {}
 
+/// Place of the text of a cell in the text of its column (`TextColumn::bounds`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Bounds {
+    /// Offset of its first byte.
+    start: u32,
+    /// Offset after its last byte.
+    end: u32,
+}
+
+impl Bounds {
+    /// Place of NULL, which has no text: no text ends before it starts.
+    const NULL: Bounds = Bounds { start: 1, end: 0 };
+}
+
 impl TextColumn {
     /// Number of rows.
     pub fn len(&self) -> usize {
@@ -70,6 +84,30 @@ impl TextColumn {
     pub fn get(&self, row: usize) -> Option<&str> {
         self.valid[row]
             .then(|| &self.text[self.offsets[row] as usize..self.offsets[row + 1] as usize])
+    }
+
+    /// Place of the cell of `row` in the text of the column, which rows
+    /// appended later leave as it is: the text of its value, read again by
+    /// `text_of` without going through the offsets and the validity of the
+    /// rows.
+    ///
+    /// # Panics
+    ///
+    /// If `row` is not a row of the column.
+    pub fn bounds(&self, row: usize) -> Bounds {
+        if self.valid[row] {
+            Bounds {
+                start: self.offsets[row],
+                end: self.offsets[row + 1],
+            }
+        } else {
+            Bounds::NULL
+        }
+    }
+
+    /// Text of a cell from its place (`bounds`), `None` for NULL.
+    pub fn text_of(&self, bounds: Bounds) -> Option<&str> {
+        (bounds != Bounds::NULL).then(|| &self.text[bounds.start as usize..bounds.end as usize])
     }
 
     /// Validity of each row: `false` for NULL.
@@ -173,6 +211,20 @@ mod tests {
         let cells: Vec<_> = column.cells_in(1..3).collect();
         assert_eq!(cells, [None, Some("bc")]);
         assert_eq!(column.cells_in(4..4).count(), 0);
+    }
+
+    #[test]
+    fn the_place_of_a_cell_reads_its_text_after_rows_are_appended() {
+        let mut column = TextColumn::default();
+        for cell in [Some("Lille"), None, Some("")] {
+            column.push(cell);
+        }
+        let bounds: Vec<Bounds> = (0..3).map(|row| column.bounds(row)).collect();
+        column.push(Some("Nîmes"));
+        let texts: Vec<_> = bounds.iter().map(|&place| column.text_of(place)).collect();
+        // NULL keeps apart from the empty text.
+        assert_eq!(texts, [Some("Lille"), None, Some("")]);
+        assert_eq!(column.text_of(column.bounds(3)), Some("Nîmes"));
     }
 
     #[test]

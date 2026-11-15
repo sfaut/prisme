@@ -16,7 +16,7 @@ mod dictionary;
 mod hash;
 mod numbers;
 
-pub use column::{BlockError, TextColumn};
+pub use column::{BlockError, Bounds, TextColumn};
 pub use dictionary::{Dictionary, Encoder};
 pub use hash::{FxMap, FxSet, fx_hash};
 pub use numbers::{
