@@ -6,6 +6,10 @@
 //! Exact numbers hold on 128 bits, 38 digits. A text that is not a number,
 //! or a number beyond 38 digits, is an error: a wrong value would lead to a
 //! wrong total.
+//!
+//! The numbers of a column extend to the rows appended to it since they were
+//! read (`extend`). A finer scale among them scales the numbers already read
+//! again, as a reading of the whole column would.
 
 use std::cmp::Ordering;
 use std::fmt;
@@ -46,7 +50,7 @@ impl std::error::Error for NumberError {}
 
 /// Exact numbers of a column, scaled to its largest scale: `12.5` and `3.25`
 /// become 1250 and 325, with a scale of 2.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Exact {
     /// Value of each row, 0 for NULL.
     pub values: Vec<i128>,
@@ -55,7 +59,7 @@ pub struct Exact {
 }
 
 /// Floats of a column.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Approx {
     /// Value of each row, 0 for NULL.
     pub values: Vec<f64>,
@@ -117,35 +121,61 @@ impl Exact {
     /// Reads the exact numbers of a column, scaled to the largest scale of
     /// its cells.
     pub fn of(column: &TextColumn) -> Result<Self, NumberError> {
-        let mut scale = 0;
-        for (row, cell) in column.cells().enumerate() {
+        let mut numbers = Exact::default();
+        numbers.extend(column, column.len())?;
+        Ok(numbers)
+    }
+
+    /// Reads the numbers of the rows of the column after those already read,
+    /// up to `end`, excluded, and scales them all to the largest scale. The
+    /// error is the one a reading of the whole column gives: a text that is
+    /// not a number first, then the first number beyond 38 digits once
+    /// scaled. After an error, the numbers are to be dropped.
+    ///
+    /// # Panics
+    ///
+    /// If `end` goes beyond the rows of the column.
+    pub fn extend(&mut self, column: &TextColumn, end: usize) -> Result<(), NumberError> {
+        let start = self.values.len();
+        if end <= start {
+            return Ok(());
+        }
+        let mut scale = self.scale as usize;
+        for (row, cell) in (start..end).zip(column.cells_in(start..end)) {
             if let Some(text) = cell {
                 let parts = parts(text).ok_or(NumberError::Invalid { row })?;
                 scale = scale.max(parts.fraction.len());
             }
         }
         if scale > MAX_DIGITS {
-            let row = column
-                .cells()
-                .position(|cell| {
+            let row = (start..end)
+                .zip(column.cells_in(start..end))
+                .find(|&(_, cell)| {
                     cell.and_then(parts)
                         .is_some_and(|parts| parts.fraction.len() > MAX_DIGITS)
                 })
-                .unwrap_or(0);
+                .map_or(start, |(row, _)| row);
             return Err(NumberError::TooLarge { row });
         }
-        let mut values = Vec::with_capacity(column.len());
-        for (row, cell) in column.cells().enumerate() {
+        if scale > self.scale as usize {
+            // Below 39 digits, the factor holds on 128 bits.
+            let factor = 10i128.pow((scale - self.scale as usize) as u32);
+            for (row, value) in self.values.iter_mut().enumerate() {
+                *value = value
+                    .checked_mul(factor)
+                    .ok_or(NumberError::TooLarge { row })?;
+            }
+            self.scale = scale as u32;
+        }
+        self.values.reserve(end - start);
+        for (row, cell) in (start..end).zip(column.cells_in(start..end)) {
             let value = match cell.and_then(parts) {
                 Some(parts) => scaled(&parts, scale).ok_or(NumberError::TooLarge { row })?,
                 None => 0,
             };
-            values.push(value);
+            self.values.push(value);
         }
-        Ok(Exact {
-            values,
-            scale: scale as u32,
-        })
+        Ok(())
     }
 }
 
@@ -153,17 +183,33 @@ impl Approx {
     /// Reads the floats of a column. `NaN`, `Infinity` and `-Infinity`, which
     /// PostgreSQL writes, are read too.
     pub fn of(column: &TextColumn) -> Result<Self, NumberError> {
-        let mut values = Vec::with_capacity(column.len());
-        for (row, cell) in column.cells().enumerate() {
+        let mut numbers = Approx::default();
+        numbers.extend(column, column.len())?;
+        Ok(numbers)
+    }
+
+    /// Reads the floats of the rows of the column after those already read,
+    /// up to `end`, excluded. After an error, the numbers are to be dropped.
+    ///
+    /// # Panics
+    ///
+    /// If `end` goes beyond the rows of the column.
+    pub fn extend(&mut self, column: &TextColumn, end: usize) -> Result<(), NumberError> {
+        let start = self.values.len();
+        if end <= start {
+            return Ok(());
+        }
+        self.values.reserve(end - start);
+        for (row, cell) in (start..end).zip(column.cells_in(start..end)) {
             let value = match cell {
                 Some(text) => text
                     .parse::<f64>()
                     .map_err(|_| NumberError::Invalid { row })?,
                 None => 0.0,
             };
-            values.push(value);
+            self.values.push(value);
         }
-        Ok(Approx { values })
+        Ok(())
     }
 }
 
@@ -341,6 +387,52 @@ mod tests {
         assert_eq!(
             Exact::of(&column(&[Some(&whole), Some("0.25")])).unwrap_err(),
             NumberError::TooLarge { row: 0 }
+        );
+    }
+
+    #[test]
+    fn numbers_appended_later_read_as_the_whole_column() {
+        let mut cells = column(&[Some("12.5"), None, Some("7")]);
+        let mut exact = Exact::of(&cells).unwrap();
+        let mut approx = Approx::of(&cells).unwrap();
+        assert_eq!(
+            (exact.values.as_slice(), exact.scale),
+            (&[125, 0, 70][..], 1)
+        );
+        // A finer scale scales the numbers already read again.
+        for cell in [Some("-0.125"), Some("3")] {
+            cells.push(cell);
+        }
+        exact.extend(&cells, cells.len()).unwrap();
+        approx.extend(&cells, cells.len()).unwrap();
+        let whole = Exact::of(&cells).unwrap();
+        assert_eq!((exact.values, exact.scale), (whole.values, whole.scale));
+        assert_eq!(whole.scale, 3);
+        assert_eq!(approx.values, Approx::of(&cells).unwrap().values);
+    }
+
+    #[test]
+    fn numbers_appended_later_give_the_error_of_the_whole_column() {
+        // The finer scale of the last row takes the first number beyond 38
+        // digits: the error names its row, as a whole reading does.
+        let whole = "9".repeat(37);
+        let mut cells = column(&[Some(&whole), Some("1")]);
+        let mut exact = Exact::of(&cells).unwrap();
+        cells.push(Some("0.25"));
+        assert_eq!(
+            exact.extend(&cells, cells.len()).unwrap_err(),
+            Exact::of(&cells).unwrap_err()
+        );
+        assert_eq!(
+            Exact::of(&cells).unwrap_err(),
+            NumberError::TooLarge { row: 0 }
+        );
+        let mut cells = column(&[Some("1")]);
+        let mut approx = Approx::of(&cells).unwrap();
+        cells.push(Some("x"));
+        assert_eq!(
+            approx.extend(&cells, cells.len()).unwrap_err(),
+            NumberError::Invalid { row: 1 }
         );
     }
 

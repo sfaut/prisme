@@ -4,6 +4,7 @@
 //! validity of each cell.
 
 use std::fmt;
+use std::ops::Range;
 
 /// Cells of one column of a result.
 #[derive(Debug)]
@@ -78,9 +79,19 @@ impl TextColumn {
 
     /// Cells, in the order of the rows.
     pub fn cells(&self) -> impl Iterator<Item = Option<&str>> {
-        self.valid
+        self.cells_in(0..self.len())
+    }
+
+    /// Cells of some rows, in their order: those appended since a reader
+    /// last read the column, without going through the others.
+    ///
+    /// # Panics
+    ///
+    /// If the rows go beyond those of the column.
+    pub fn cells_in(&self, rows: Range<usize>) -> impl Iterator<Item = Option<&str>> {
+        self.valid[rows.clone()]
             .iter()
-            .zip(self.offsets.windows(2))
+            .zip(self.offsets[rows.start..rows.end + 1].windows(2))
             .map(|(&valid, bounds)| {
                 valid.then(|| &self.text[bounds[0] as usize..bounds[1] as usize])
             })
@@ -151,6 +162,17 @@ mod tests {
         let cells: Vec<_> = column.cells().collect();
         assert_eq!(cells, [Some("Lille"), None, Some(""), Some("Nîmes")]);
         assert_eq!(column.validity(), [true, false, true, true]);
+    }
+
+    #[test]
+    fn the_cells_of_some_rows_are_read_alone() {
+        let mut column = TextColumn::default();
+        for cell in [Some("a"), None, Some("bc"), Some("")] {
+            column.push(cell);
+        }
+        let cells: Vec<_> = column.cells_in(1..3).collect();
+        assert_eq!(cells, [None, Some("bc")]);
+        assert_eq!(column.cells_in(4..4).count(), 0);
     }
 
     #[test]

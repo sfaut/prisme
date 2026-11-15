@@ -5,13 +5,19 @@
 //! rows of a result, do not need.
 
 use std::collections::{HashMap, HashSet};
-use std::hash::{BuildHasherDefault, Hasher};
+use std::hash::{BuildHasher, BuildHasherDefault, Hash, Hasher};
 
 /// Hash table with the fast hasher.
 pub type FxMap<K, V> = HashMap<K, V, BuildHasherDefault<FxHasher>>;
 
 /// Hash set with the fast hasher.
 pub type FxSet<K> = HashSet<K, BuildHasherDefault<FxHasher>>;
+
+/// Hash of a value by the fast hasher, for the tables that keep their keys
+/// elsewhere (`hashbrown::HashTable`).
+pub fn fx_hash<T: Hash + ?Sized>(value: &T) -> u64 {
+    BuildHasherDefault::<FxHasher>::default().hash_one(value)
+}
 
 /// Hasher of rustc (FxHash).
 #[derive(Default)]
