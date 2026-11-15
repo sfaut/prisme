@@ -72,9 +72,22 @@ pub struct Encoder {
     hashes: Vec<u64>,
     /// Code of NULL, once met.
     null: Option<u32>,
+    /// Has the column received its last row (`seal`)?
+    sealed: bool,
 }
 
 impl Encoder {
+    /// Drops the index of the texts once the column has received its last
+    /// row, and gives back the room reserved for the rows to come: only the
+    /// dictionary stays.
+    pub fn seal(&mut self) {
+        self.texts = HashTable::new();
+        self.hashes = Vec::new();
+        self.dictionary.codes.shrink_to_fit();
+        self.dictionary.first_rows.shrink_to_fit();
+        self.sealed = true;
+    }
+
     /// Codes of the rows encoded so far.
     pub fn dictionary(&self) -> &Dictionary {
         &self.dictionary
@@ -85,8 +98,8 @@ impl Encoder {
     ///
     /// # Panics
     ///
-    /// If `end` goes beyond the rows of the column, or the column has more
-    /// than 2^32 rows.
+    /// If `end` goes beyond the rows of the column, if the column has more
+    /// than 2^32 rows, or if the encoder is sealed.
     pub fn extend(&mut self, column: &TextColumn, end: usize) {
         let Dictionary { codes, first_rows } = &mut self.dictionary;
         let hashes = &mut self.hashes;
@@ -94,6 +107,7 @@ impl Encoder {
         if end <= start {
             return;
         }
+        assert!(!self.sealed, "rows encoded after the last one");
         growth::reserve(codes, end - start);
         let text_of = |first_rows: &[u32], code: u32| {
             column

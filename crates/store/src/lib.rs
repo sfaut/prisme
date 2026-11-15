@@ -56,6 +56,14 @@ impl Store {
         self.columns.get(index)
     }
 
+    /// Gives back the room the columns reserved for the rows to come, once
+    /// the result is complete.
+    pub fn shrink_to_fit(&mut self) {
+        for column in &mut self.columns {
+            column.shrink_to_fit();
+        }
+    }
+
     /// Column `index`, to append cells to it; `None` if there is none.
     pub fn column_mut(&mut self, index: usize) -> Option<&mut TextColumn> {
         self.columns.get_mut(index)

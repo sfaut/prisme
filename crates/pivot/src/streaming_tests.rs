@@ -437,3 +437,47 @@ fn a_ranking_extended_by_parts_ranks_the_codes_as_a_stable_sort_of_all_of_them()
         assert_eq!(ranking.ranks, ranks_of(&sorted), "{parts:?}");
     }
 }
+
+#[test]
+fn a_sealed_engine_computes_the_tables_of_an_engine_created_on_its_rows() {
+    let rows = generated(600);
+    let whole = engine_of(&rows);
+    let requests = requests();
+    // Sealed after a reception whose tables built the caches, then sealed
+    // at once, its caches built after.
+    let mut received = engine_of(&rows[..0]);
+    for block in rows.chunks(250) {
+        append(received.store_mut(), block);
+        received.grow();
+        for request in &requests {
+            received.update(request).unwrap();
+        }
+    }
+    let mut at_once = engine_of(&rows);
+    for engine in [&mut received, &mut at_once] {
+        engine.seal();
+        for request in &requests {
+            assert_eq!(
+                update(engine, request),
+                render(&whole, request),
+                "{request:?}"
+            );
+            assert_eq!(
+                render(engine, request),
+                render(&whole, request),
+                "{request:?}"
+            );
+        }
+        assert!(engine.accumulation.is_none());
+    }
+}
+
+#[test]
+#[should_panic(expected = "rows appended after the last one")]
+fn a_sealed_engine_takes_in_no_more_rows() {
+    let rows = generated(20);
+    let mut engine = engine_of(&rows[..10]);
+    engine.seal();
+    append(engine.store_mut(), &rows[10..]);
+    engine.grow();
+}

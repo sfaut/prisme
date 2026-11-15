@@ -444,6 +444,13 @@ impl DerivedLevel {
         self.ranks = crate::ranks_of(&order);
     }
 
+    /// Drops what only the values to come need, once the column has
+    /// received its last row: the code of each value of the column.
+    pub fn seal(&mut self) {
+        self.code_of_value = Vec::new();
+        self.dictionary.codes.shrink_to_fit();
+    }
+
     /// Code of the cells outside of the calendar, `None` without any.
     fn outside(&self) -> Option<u32> {
         self.index.get(&Slot::Outside).copied()

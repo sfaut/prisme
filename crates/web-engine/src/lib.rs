@@ -204,7 +204,10 @@ pub extern "C" fn finish() -> usize {
                     .is_some_and(|cells| cells.len() == rows)
             });
             if complete {
-                state.engine = Some(Engine::new(loading.store, loading.families));
+                let mut engine = Engine::new(loading.store, loading.families);
+                // The result is complete: its caches keep no room for more rows.
+                engine.seal();
+                state.engine = Some(engine);
                 0
             } else {
                 answer(state, |json, _| json::state_error(json, "incomplete", None))

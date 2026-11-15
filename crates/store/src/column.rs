@@ -137,6 +137,13 @@ impl TextColumn {
             })
     }
 
+    /// Gives back the room reserved for the cells to come.
+    pub fn shrink_to_fit(&mut self) {
+        self.text.shrink_to_fit();
+        self.offsets.shrink_to_fit();
+        self.valid.shrink_to_fit();
+    }
+
     /// Appends a cell, `None` for NULL.
     ///
     /// # Panics

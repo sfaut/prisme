@@ -512,6 +512,15 @@ impl<K> Default for Ranking<K> {
     }
 }
 
+impl<K> Ranking<K> {
+    /// Drops the order and the keys of the codes, which only the values to
+    /// come need, once the column has received its last row.
+    fn seal(&mut self) {
+        self.order = Vec::new();
+        self.keys = Vec::new();
+    }
+}
+
 impl<K: Copy> Ranking<K> {
     /// Ranks the codes after those already ranked, up to `codes`, excluded.
     ///
@@ -636,6 +645,8 @@ pub struct Engine {
     kept_version: u64,
     /// State of the last table `update` computed.
     accumulation: Option<Accumulation>,
+    /// Has the result received its last row (`seal`)?
+    sealed: bool,
 }
 
 impl Engine {
@@ -667,6 +678,7 @@ impl Engine {
             kept: None,
             kept_version: 0,
             accumulation: None,
+            sealed: false,
         }
     }
 
@@ -696,12 +708,17 @@ impl Engine {
     ///
     /// The columns whose ranks given by the page were dropped: the page gives
     /// them again (`set_ranks`), or they follow the binary order of the texts.
+    ///
+    /// # Panics
+    ///
+    /// If the engine is sealed and rows were appended since.
     pub fn grow(&mut self) -> Vec<usize> {
         let (start, end) = (self.rows, self.store.row_count());
         let mut dropped = Vec::new();
         if end <= start {
             return dropped;
         }
+        assert!(!self.sealed, "rows appended after the last one");
         self.rows = end;
         for column in 0..self.families.len() {
             let cells = self.store.column(column).expect("one column per family");
@@ -747,6 +764,45 @@ impl Engine {
         dropped
     }
 
+    /// Takes in the last rows of the result (`grow`), then drops what only
+    /// the rows to come need: the indexes of the dictionaries, the order of
+    /// the ranked values, the state of the last table, and the room the
+    /// arrays reserved. The forms built later from the columns hold no more
+    /// than these. A table is then computed from all the rows.
+    ///
+    /// # Returns
+    ///
+    /// The columns whose ranks given by the page were dropped (`grow`).
+    pub fn seal(&mut self) -> Vec<usize> {
+        let dropped = self.grow();
+        self.sealed = true;
+        self.accumulation = None;
+        self.store.shrink_to_fit();
+        for column in 0..self.families.len() {
+            if let Some(encoder) = self.dictionaries[column].get_mut() {
+                encoder.seal();
+            }
+            if let Some(Ok(numbers)) = self.numbers[column].get_mut() {
+                match numbers {
+                    Numbers::Exact(numbers) => numbers.values.shrink_to_fit(),
+                    Numbers::Float(numbers) => numbers.values.shrink_to_fit(),
+                }
+            }
+            if let Some(ranking) = self.text_ranks[column].get_mut() {
+                ranking.seal();
+            }
+            if let Some(ranking) = self.value_ranks[column].get_mut() {
+                ranking.seal();
+            }
+            for derived in self.derived[column].iter_mut() {
+                if let Some(derived) = derived.get_mut() {
+                    derived.seal();
+                }
+            }
+        }
+        dropped
+    }
+
     /// Dictionary of column `column`.
     fn dictionary(&self, column: usize) -> Result<&Dictionary, Error> {
         let cells = self
@@ -756,6 +812,9 @@ impl Engine {
         let encoder = self.dictionaries[column].get_or_init(|| {
             let mut encoder = Encoder::default();
             encoder.extend(cells, self.rows);
+            if self.sealed {
+                encoder.seal();
+            }
             encoder
         });
         Ok(encoder.dictionary())
@@ -816,6 +875,9 @@ impl Engine {
         let ranking = self.text_ranks[column].get_or_init(|| {
             let mut ranking = Ranking::default();
             rank_texts(&mut ranking, dictionary, cells);
+            if self.sealed {
+                ranking.seal();
+            }
             ranking
         });
         Ok(&ranking.ranks)
@@ -834,6 +896,9 @@ impl Engine {
         let ranking = self.value_ranks[column].get_or_init(|| {
             let mut ranking = Ranking::default();
             rank_numbers(&mut ranking, dictionary, numbers);
+            if self.sealed {
+                ranking.seal();
+            }
             ranking
         });
         Ok(&ranking.ranks)
@@ -843,8 +908,13 @@ impl Engine {
     fn derived(&self, column: usize, precision: Precision) -> Result<&DerivedLevel, Error> {
         let dictionary = self.dictionary(column)?;
         let cells = self.store.column(column).expect("column of the dictionary");
-        Ok(self.derived[column][precision as usize]
-            .get_or_init(|| DerivedLevel::of(cells, dictionary, precision)))
+        Ok(self.derived[column][precision as usize].get_or_init(|| {
+            let mut level = DerivedLevel::of(cells, dictionary, precision);
+            if self.sealed {
+                level.seal();
+            }
+            level
+        }))
     }
 
     /// Code of each row of a level: one per value of its column, or one per
@@ -1110,10 +1180,11 @@ impl Engine {
     /// of a finer scale among the new rows start from all the rows again; so
     /// does each update of a table whose measures do not add up (distinct
     /// values, `GROUP_CONCAT`) or that filters on a measure: they read all its
-    /// rows. A refused update keeps no state.
+    /// rows. A refused update keeps no state, nor does a sealed engine
+    /// (`seal`): no row is to come.
     pub fn update(&mut self, request: &Request) -> Result<Table, Error> {
         let previous = self.accumulation.take();
-        let (table, accumulation) = self.accumulate(request, previous, true)?;
+        let (table, accumulation) = self.accumulate(request, previous, !self.sealed)?;
         self.accumulation = accumulation;
         Ok(table)
     }
