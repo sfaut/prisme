@@ -7,7 +7,8 @@
 //! `cargo run --release --manifest-path bench/streaming/Cargo.toml
 //! --target-dir target/streaming-bench --bin streaming-memory -- [rows]
 //! [slice]`, from the root of the repository: 1,000,000 rows by slices of
-//! 100,000 by default. Prints one line per checkpoint, in MB.
+//! 100,000 by default. Prints one line per checkpoint, then the engine
+//! sealed at the end of the reception, in MB.
 
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -82,10 +83,11 @@ fn main() {
     println!(
         "profile | rows | held before the slice | peak of grow | peak of update | with the table"
     );
-    for (name, measures) in profiles {
-        for memory in measures {
+    for profile in &profiles {
+        for memory in &profile.checkpoints {
             println!(
-                "{name} | {} | {:.0} | {:.0} | {:.0} | {:.0}",
+                "{} | {} | {:.0} | {:.0} | {:.0} | {:.0}",
+                profile.name,
                 memory.rows,
                 mb(memory.held),
                 mb(memory.grow_peak),
@@ -93,5 +95,12 @@ fn main() {
                 mb(memory.with_table)
             );
         }
+    }
+    for profile in &profiles {
+        println!(
+            "{}: sealed at the end, its table dropped: {:.0} MB",
+            profile.name,
+            mb(profile.sealed)
+        );
     }
 }

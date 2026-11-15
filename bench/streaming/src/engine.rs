@@ -150,9 +150,20 @@ pub struct Memory {
     pub with_table: usize,
 }
 
+/// Memory of the engine of one profile.
+pub struct ProfileMemory {
+    /// Name of the profile.
+    pub name: &'static str,
+    /// Memory at each checkpoint of the reception.
+    pub checkpoints: Vec<Memory>,
+    /// Bytes held by the engine sealed at the end, its last table dropped.
+    pub sealed: usize,
+}
+
 /// Streams `total` rows by slices of `slice` rows into the engine of each
-/// profile, and gives its memory at each checkpoint, with that of the store
-/// of all the rows alone.
+/// profile, and gives its memory at each checkpoint and once sealed at the
+/// end (`Engine::seal`), its last table dropped, with that of the store of
+/// all the rows alone.
 ///
 /// # Arguments
 ///
@@ -162,7 +173,7 @@ pub fn memory(
     total: usize,
     slice: usize,
     live: &dyn Fn() -> (usize, usize),
-) -> (usize, Vec<(&'static str, Vec<Memory>)>) {
+) -> (usize, Vec<ProfileMemory>) {
     let points = checkpoints(total, slice);
     let start = live().0;
     let mut store = Store::new(COLUMNS);
@@ -209,7 +220,13 @@ pub fn memory(
                 }
                 last = Some(table);
             }
-            (name, measures)
+            drop(last);
+            engine.seal();
+            ProfileMemory {
+                name,
+                checkpoints: measures,
+                sealed: live().0 - start,
+            }
         })
         .collect();
     (store_bytes, profiles)
