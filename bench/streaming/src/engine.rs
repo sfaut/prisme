@@ -94,11 +94,14 @@ pub fn stream(
                 checked: false,
             };
             let mut received = 0;
-            let mut last = None;
+            let mut last: Option<Table> = None;
             while received < total {
                 let count = slice.min(total - received);
                 append(engine.store_mut(), &generator.rows(count));
                 received += count;
+                // The table before leaves the memory first, as in the Worker,
+                // which answers the page only between two computations.
+                drop(last.take());
                 let started = seconds();
                 engine.grow();
                 let grown = seconds();
