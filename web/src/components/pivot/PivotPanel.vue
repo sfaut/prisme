@@ -606,8 +606,17 @@ const groupsText = computed(() => {
         <pivot-layout-popover v-model:config="config" :names="result?.columns ?? []" />
       </template>
     </panel-header>
-    <p v-if="!analysable" class="text-fg-secondary">Rien à analyser</p>
-    <p v-else-if="receiving" role="status" class="flex items-center gap-2 text-fg-secondary">
+    <p
+      v-if="!analysable"
+      class="flex flex-1 items-center justify-center text-center text-fg-secondary"
+    >
+      Rien à analyser
+    </p>
+    <p
+      v-else-if="receiving"
+      role="status"
+      class="flex flex-1 items-center justify-center gap-3 text-fg-secondary"
+    >
       <LoaderCircle class="size-5 animate-spin" aria-hidden="true" />
       En attente de la fin de la requête…
     </p>
