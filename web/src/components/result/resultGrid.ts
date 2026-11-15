@@ -680,6 +680,65 @@ export function isSelected(selection: GridSelection, row: number, column: number
 }
 
 /**
+ * Is a whole column selected, over every row of the view? Its header then
+ * shows as selected.
+ *
+ * @param selection Selection.
+ * @param column Column.
+ * @param rowCount Number of view rows.
+ * @returns `false` for an empty view.
+ */
+export function isColumnSelected(
+  selection: GridSelection,
+  column: number,
+  rowCount: number,
+): boolean {
+  return spanSelected(selection.ranges, rowCount, 'top', 'bottom', (row) =>
+    stateOf(selection.ranges, row, column),
+  )
+}
+
+/**
+ * Is a whole row selected, over every column? Its number then shows as
+ * selected.
+ *
+ * @param selection Selection.
+ * @param row View row.
+ * @param columnCount Number of columns.
+ * @returns `false` without columns.
+ */
+export function isRowSelected(selection: GridSelection, row: number, columnCount: number): boolean {
+  return spanSelected(selection.ranges, columnCount, 'left', 'right', (column) =>
+    stateOf(selection.ranges, row, column),
+  )
+}
+
+/**
+ * Is every index of a span selected, from 0 to `count` excluded? Measured on
+ * the pieces cut along the bounds of the ranges, each selected or not as a
+ * whole, never index by index: a whole column of a large result stays quick.
+ *
+ * @param ranges Ranges of a selection.
+ * @param count Length of the span.
+ * @param start Start bound of the ranges along the span (`top` or `left`).
+ * @param end End bound of the ranges along the span (`bottom` or `right`).
+ * @param at State of the cell at an index of the span.
+ */
+function spanSelected(
+  ranges: CellRange[],
+  count: number,
+  start: 'top' | 'left',
+  end: 'bottom' | 'right',
+  at: (index: number) => boolean,
+): boolean {
+  if (count === 0 || ranges.length === 0) {
+    return false
+  }
+  const starts = cuts(ranges, start, end).filter((index) => index > 0 && index < count)
+  return [0, ...starts].every(at)
+}
+
+/**
  * State of a cell once the ranges are applied in their order.
  *
  * @param ranges Ranges of a selection.

@@ -22,7 +22,8 @@
     too, with the same effect (on the row numbers, dragging selects a group
     of rows). A click on the top left corner selects everything, Alt+click
     on it inverts the selection (everything without one, nothing when
-    everything is selected).
+    everything is selected). A column header, or a row number, shows as
+    selected when its whole column, or its whole row, is.
   - Copy: Ctrl+C copies the selection with the column names on the first
     line (a profile setting may remove them), a single cell as its value
     alone. Ctrl+A selects everything, Escape clears the selection.
@@ -87,7 +88,9 @@ import {
   fittedWidth,
   moveColumn,
   hasSelection,
+  isColumnSelected,
   isFixedLengthText,
+  isRowSelected,
   isSelected,
   nextSort,
   resizedWidth,
@@ -803,6 +806,14 @@ const selectedSize = computed(() => selectionSize(selection.value))
 const selectedFull = computed(() => selectionIsFull(selection.value))
 
 /**
+ * Is each displayed column selected as a whole, by position? Its header then
+ * shows as selected.
+ */
+const columnHeaderSelected = computed(() =>
+  order.value.map((_, position) => isColumnSelected(selection.value, position, view.value.length)),
+)
+
+/**
  * Part of the grid to download: the selection, or the whole view without
  * one. The view of a large result is computed over several frames
  * (`refreshView`): the frame waits for its end.
@@ -840,7 +851,7 @@ defineExpose({ keptCount, selectedSize, selectedFull, exportFrame, order })
         :key="column"
         class="grid-column-header"
         :class="{
-          selected: view.length > 0 && isSelected(selection, 0, position),
+          selected: columnHeaderSelected[position],
           'drop-before': dropAt === position,
           'drop-after': dropAt === order.length && position === order.length - 1,
         }"
@@ -899,6 +910,7 @@ defineExpose({ keptCount, selectedSize, selectedFull, exportFrame, order })
       >
         <div
           class="grid-row-header"
+          :class="{ selected: isRowSelected(selection, index, order.length) }"
           @mousedown.prevent="onRowHeader($event, index)"
           @mouseenter="onRowEnter(index)"
         >
@@ -1193,6 +1205,12 @@ defineExpose({ keptCount, selectedSize, selectedFull, exportFrame, order })
 
 .selected {
   background: var(--selection);
+}
+
+/* A selected row number keeps its opaque background under the translucent
+   selection: the cells that scroll sideways pass under it. */
+.grid-row-header.selected {
+  background: linear-gradient(var(--selection), var(--selection)) var(--color-surface-raised);
 }
 
 /* Web address of a column of links. */

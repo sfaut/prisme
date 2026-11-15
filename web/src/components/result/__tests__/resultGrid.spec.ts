@@ -15,7 +15,9 @@ import {
   frameIsFull,
   hasSelection,
   invertAll,
+  isColumnSelected,
   isFixedLengthText,
+  isRowSelected,
   isSelected,
   nextSort,
   selectAll,
@@ -214,6 +216,54 @@ describe('selection', () => {
     expect([0, 1, 2].map((column) => isSelected(back, 0, column))).toEqual([false, true, false])
     // An empty grid stays without a selection.
     expect(invertAll(emptySelection(), 0, 3)).toEqual(emptySelection())
+  })
+
+  it('tells whether a whole column is selected', () => {
+    const columnsOf = (selection: ReturnType<typeof emptySelection>, count = 3) =>
+      [0, 1, 2].map((column) => isColumnSelected(selection, column, count))
+    expect(columnsOf(emptySelection())).toEqual([false, false, false])
+    // A cell of the first row only: its column is not.
+    expect(columnsOf(selectCell(emptySelection(), 0, 1, 'replace'))).toEqual([false, false, false])
+    expect(columnsOf(selectColumn(emptySelection(), 1, 3, 'replace'))).toEqual([false, true, false])
+    expect(columnsOf(selectAll(3, 3))).toEqual([true, true, true])
+    // A drag over every row of a column, cell by cell.
+    let selection = selectCell(emptySelection(), 0, 2, 'replace')
+    selection = selectCell(selection, 2, 2, 'extend')
+    expect(columnsOf(selection)).toEqual([false, false, true])
+    // Two ranges that meet: rows 0 and 1, then row 2.
+    selection = selectCell(emptySelection(), 0, 0, 'replace')
+    selection = selectCell(selection, 1, 0, 'extend')
+    selection = selectCell(selection, 2, 0, 'add')
+    expect(columnsOf(selection)).toEqual([true, false, false])
+    // A hole in a selected column.
+    selection = selectCell(selectColumn(emptySelection(), 1, 3, 'replace'), 1, 1, 'remove')
+    expect(columnsOf(selection)).toEqual([false, false, false])
+    // Rows received after the column was selected are not part of it.
+    expect(columnsOf(selectColumn(emptySelection(), 1, 3, 'replace'), 4)).toEqual([
+      false,
+      false,
+      false,
+    ])
+    // An empty view has no selected column.
+    expect(columnsOf(selectAll(3, 3), 0)).toEqual([false, false, false])
+  })
+
+  it('tells whether a whole row is selected', () => {
+    const rowsOf = (selection: ReturnType<typeof emptySelection>) =>
+      [0, 1, 2].map((row) => isRowSelected(selection, row, 3))
+    expect(rowsOf(emptySelection())).toEqual([false, false, false])
+    expect(rowsOf(selectCell(emptySelection(), 1, 0, 'replace'))).toEqual([false, false, false])
+    expect(rowsOf(selectRow(emptySelection(), 1, 3, 'replace'))).toEqual([false, true, false])
+    expect(rowsOf(selectAll(3, 3))).toEqual([true, true, true])
+    // A drag over every column of a row.
+    let selection = selectCell(emptySelection(), 2, 0, 'replace')
+    selection = selectCell(selection, 2, 2, 'extend')
+    expect(rowsOf(selection)).toEqual([false, false, true])
+    // Toggled: the other rows.
+    selection = invertAll(selectRow(emptySelection(), 0, 3, 'replace'), 3, 3)
+    expect(rowsOf(selection)).toEqual([false, true, true])
+    // No columns, no selected row.
+    expect(isRowSelected(selectAll(3, 3), 0, 0)).toBe(false)
   })
 })
 
