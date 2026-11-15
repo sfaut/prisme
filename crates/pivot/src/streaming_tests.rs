@@ -416,3 +416,22 @@ fn a_cell_that_is_no_number_among_the_rows_taken_in_stops_the_sums() {
         }
     );
 }
+
+#[test]
+fn a_ranking_extended_by_parts_ranks_the_codes_as_a_stable_sort_of_all_of_them() {
+    // Values by code, with equal values far apart.
+    let values = [5, 3, 5, 1, 3, 9, 0, 5, 3, 7, 1, 5];
+    let compare = |a: u32, b: u32| values[a as usize].cmp(&values[b as usize]);
+    let mut sorted: Vec<u32> = (0..values.len() as u32).collect();
+    sorted.sort_by(|&a, &b| compare(a, b));
+    for parts in [vec![12], vec![1, 11], vec![3, 0, 5, 4], vec![1; 12]] {
+        let mut ranking = Ranking::default();
+        let mut codes = 0;
+        for part in &parts {
+            codes += part;
+            ranking.extend(codes, compare);
+        }
+        assert_eq!(ranking.order, sorted, "{parts:?}");
+        assert_eq!(ranking.ranks, ranks_of(&sorted), "{parts:?}");
+    }
+}

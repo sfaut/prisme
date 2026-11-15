@@ -38,6 +38,7 @@ mod measures;
 mod table;
 
 use std::cell::OnceCell;
+use std::cmp::Ordering;
 use std::fmt;
 
 use prisme_store::{Approx, Dictionary, Encoder, Exact, NumberError, Store, TextColumn};
@@ -479,6 +480,71 @@ fn ranks_of(order: &[u32]) -> Vec<u32> {
     ranks
 }
 
+/// Codes of a column in the order of their values, and the rank of each code.
+/// The codes a dictionary gains are sorted alone, then merged into the order
+/// of the others: an equal value ranks after those already there, as a stable
+/// sort of all the codes ranks it. Each new code finds its place by an
+/// exponential search from that of the previous one: a merge compares
+/// `n log(d / n)` values for `n` new codes among `d`, without reading the
+/// values of all the codes.
+#[derive(Debug, Default)]
+struct Ranking {
+    /// Codes, in the order of their values.
+    order: Vec<u32>,
+    /// Rank of each code.
+    ranks: Vec<u32>,
+}
+
+impl Ranking {
+    /// Ranks the codes after those already ranked, up to `codes`, excluded,
+    /// by a comparison of the values of two codes.
+    fn extend(&mut self, codes: usize, compare: impl Fn(u32, u32) -> Ordering) {
+        let start = self.order.len() as u32;
+        let end = codes as u32;
+        if end <= start {
+            return;
+        }
+        let mut new: Vec<u32> = (start..end).collect();
+        new.sort_by(|&a, &b| compare(a, b));
+        let old = std::mem::take(&mut self.order);
+        let mut order = Vec::with_capacity(codes);
+        let mut from = 0;
+        for &code in &new {
+            // The first code already ranked after the new one, past the
+            // equal values: bounded by doubling steps, then found within.
+            let rest = &old[from..];
+            let before = |&ranked: &u32| compare(ranked, code).is_le();
+            let mut bound = 1;
+            while bound < rest.len() && before(&rest[bound - 1]) {
+                bound *= 2;
+            }
+            let place = from + rest[..bound.min(rest.len())].partition_point(before);
+            order.extend_from_slice(&old[from..place]);
+            order.push(code);
+            from = place;
+        }
+        order.extend_from_slice(&old[from..]);
+        self.ranks = ranks_of(&order);
+        self.order = order;
+    }
+}
+
+/// Comparison of the values of two codes of a dictionary as `MIN` and `MAX`
+/// compare them: numbers by value, a `NaN` after the others, and any other
+/// value by code points, the order of the bytes of UTF-8, NULL first.
+fn compare_values<'a>(
+    dictionary: &'a Dictionary,
+    cells: &'a TextColumn,
+    numbers: Option<&'a Numbers>,
+) -> impl Fn(u32, u32) -> Ordering + 'a {
+    let row = |code: u32| dictionary.first_rows[code as usize] as usize;
+    move |a, b| match numbers {
+        Some(Numbers::Exact(numbers)) => numbers.values[row(a)].cmp(&numbers.values[row(b)]),
+        Some(Numbers::Float(numbers)) => numbers.values[row(a)].total_cmp(&numbers.values[row(b)]),
+        None => dictionary.value(cells, a).cmp(&dictionary.value(cells, b)),
+    }
+}
+
 /// State of the last table an update computed, kept to add the rows taken in
 /// since to its finest groups and to the states of its measures.
 struct Accumulation {
@@ -513,14 +579,14 @@ pub struct Engine {
     dictionaries: Vec<OnceCell<Encoder>>,
     /// Numbers of each column of numbers, or the cell it cannot read.
     numbers: Vec<OnceCell<Result<Numbers, NumberError>>>,
-    /// Rank of each value of each column, by code: given by the page, in the
-    /// order of the grid, or the binary order of the texts, NULL first.
-    ranks: Vec<OnceCell<Vec<u32>>>,
-    /// Were the ranks of each column given by the page?
-    page_ranks: Vec<bool>,
-    /// Rank of each value of each column, by code, as `MIN` and `MAX` compare
+    /// Values of each column in the binary order of their texts, NULL first.
+    text_ranks: Vec<OnceCell<Ranking>>,
+    /// Rank of each value of each column, by code, in the order of the grid,
+    /// when the page gave them.
+    page_ranks: Vec<Option<Vec<u32>>>,
+    /// Values of each column of numbers by value, as `MIN` and `MAX` compare
     /// them.
-    value_ranks: Vec<OnceCell<Vec<u32>>>,
+    value_ranks: Vec<OnceCell<Ranking>>,
     /// Levels of each column at each precision.
     derived: Vec<[OnceCell<DerivedLevel>; Precision::COUNT]>,
     /// Longest text of the cells of each column, in characters.
@@ -553,8 +619,8 @@ impl Engine {
             families,
             dictionaries: (0..columns).map(|_| OnceCell::new()).collect(),
             numbers: (0..columns).map(|_| OnceCell::new()).collect(),
-            ranks: (0..columns).map(|_| OnceCell::new()).collect(),
-            page_ranks: vec![false; columns],
+            text_ranks: (0..columns).map(|_| OnceCell::new()).collect(),
+            page_ranks: vec![None; columns],
             value_ranks: (0..columns).map(|_| OnceCell::new()).collect(),
             derived: (0..columns)
                 .map(|_| std::array::from_fn(|_| OnceCell::new()))
@@ -585,8 +651,8 @@ impl Engine {
     /// Takes in the rows appended to the store since the engine was created or
     /// last grew: those that every column holds. The forms already built from
     /// the columns read only these rows. A column whose dictionary gains values
-    /// ranks them again; the ranks the page gave it are dropped, as they do not
-    /// rank the new values.
+    /// ranks them among the others; the ranks the page gave it are dropped, as
+    /// they do not rank the new values.
     ///
     /// # Returns
     ///
@@ -601,28 +667,35 @@ impl Engine {
         self.rows = end;
         for column in 0..self.families.len() {
             let cells = self.store.column(column).expect("one column per family");
-            if let Some(encoder) = self.dictionaries[column].get_mut() {
-                let values = encoder.dictionary().len();
-                encoder.extend(cells, end);
-                if encoder.dictionary().len() > values {
-                    self.value_ranks[column].take();
-                    if self.ranks[column].take().is_some() && self.page_ranks[column] {
-                        dropped.push(column);
-                    }
-                    self.page_ranks[column] = false;
-                }
-                for derived in self.derived[column].iter_mut() {
-                    if let Some(derived) = derived.get_mut() {
-                        derived.extend(cells, encoder.dictionary());
-                    }
-                }
-            }
             let failed = match self.numbers[column].get_mut() {
                 Some(Ok(numbers)) => numbers.extend(cells, end).err(),
                 _ => None,
             };
             if let Some(error) = failed {
                 self.numbers[column] = OnceCell::from(Err(error));
+                self.value_ranks[column].take();
+            }
+            if let Some(encoder) = self.dictionaries[column].get_mut() {
+                let values = encoder.dictionary().len();
+                encoder.extend(cells, end);
+                let dictionary = encoder.dictionary();
+                if dictionary.len() > values && self.page_ranks[column].take().is_some() {
+                    dropped.push(column);
+                }
+                if let Some(ranking) = self.text_ranks[column].get_mut() {
+                    ranking.extend(dictionary.len(), compare_values(dictionary, cells, None));
+                }
+                let numbers = self.numbers[column]
+                    .get()
+                    .and_then(|numbers| numbers.as_ref().ok());
+                if let Some(ranking) = self.value_ranks[column].get_mut() {
+                    ranking.extend(dictionary.len(), compare_values(dictionary, cells, numbers));
+                }
+                for derived in self.derived[column].iter_mut() {
+                    if let Some(derived) = derived.get_mut() {
+                        derived.extend(cells, dictionary);
+                    }
+                }
             }
             if let Some(longest) = self.longest[column].get_mut() {
                 let lengths = cells.cells_in(start..end).flatten();
@@ -682,50 +755,50 @@ impl Engine {
         if ranks.len() != values {
             return Err(Error::Ranks(column));
         }
-        self.ranks[column] = OnceCell::from(ranks);
-        self.page_ranks[column] = true;
+        self.page_ranks[column] = Some(ranks);
         Ok(())
     }
 
     /// Ranks of the values of column `column`: those given by the page, or the
     /// binary order of the texts, NULL first.
     fn ranks(&self, column: usize) -> Result<&[u32], Error> {
+        match &self.page_ranks[column] {
+            Some(ranks) => Ok(ranks),
+            None => self.text_ranks(column),
+        }
+    }
+
+    /// Ranks of the values of column `column` in the binary order of their
+    /// texts, NULL first.
+    fn text_ranks(&self, column: usize) -> Result<&[u32], Error> {
         let dictionary = self.dictionary(column)?;
         let cells = self.store.column(column).expect("column of the dictionary");
-        Ok(self.ranks[column].get_or_init(|| {
-            let mut order: Vec<u32> = (0..dictionary.len() as u32).collect();
-            order.sort_unstable_by_key(|&code| dictionary.value(cells, code));
-            ranks_of(&order)
-        }))
+        let ranking = self.text_ranks[column].get_or_init(|| {
+            let mut ranking = Ranking::default();
+            ranking.extend(dictionary.len(), compare_values(dictionary, cells, None));
+            ranking
+        });
+        Ok(&ranking.ranks)
     }
 
     /// Ranks of the values of column `column`, as `MIN` and `MAX` compare
-    /// them: numbers by value, a `NaN` after the others, and any other value
-    /// by code points, the order of the bytes of UTF-8. The order of the page
-    /// only ranks the groups.
+    /// them (`compare_values`). The order of the page only ranks the groups.
     fn value_ranks(&self, measure: usize, column: usize) -> Result<&[u32], Error> {
+        if !self.families[column].is_number() {
+            return self.text_ranks(column);
+        }
         let dictionary = self.dictionary(column)?;
         let cells = self.store.column(column).expect("column of the dictionary");
-        let numbers = if self.families[column].is_number() {
-            Some(self.numbers(measure, column)?)
-        } else {
-            None
-        };
-        Ok(self.value_ranks[column].get_or_init(|| {
-            let row = |code: u32| dictionary.first_rows[code as usize] as usize;
-            let mut order: Vec<u32> = (0..dictionary.len() as u32).collect();
-            match numbers {
-                Some(Numbers::Exact(numbers)) => {
-                    order.sort_by_key(|&code| numbers.values[row(code)]);
-                }
-                Some(Numbers::Float(numbers)) => {
-                    let values = &numbers.values;
-                    order.sort_by(|&a, &b| values[row(a)].total_cmp(&values[row(b)]));
-                }
-                None => order.sort_unstable_by_key(|&code| dictionary.value(cells, code)),
-            }
-            ranks_of(&order)
-        }))
+        let numbers = self.numbers(measure, column)?;
+        let ranking = self.value_ranks[column].get_or_init(|| {
+            let mut ranking = Ranking::default();
+            ranking.extend(
+                dictionary.len(),
+                compare_values(dictionary, cells, Some(numbers)),
+            );
+            ranking
+        });
+        Ok(&ranking.ranks)
     }
 
     /// Level of column `column` at a precision.
