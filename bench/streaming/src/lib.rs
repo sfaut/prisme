@@ -925,6 +925,28 @@ fn checkpoints(total: usize, slice: usize) -> Vec<usize> {
     points
 }
 
+/// Computes the table of each profile from the rows received so far by a new
+/// engine, twice: its first table builds the caches of its columns, the
+/// second one keeps them.
+fn full_tables(store: Store, received: usize, results: &mut [ProfileResults]) {
+    let engine = Engine::new(store, families());
+    for (profile, &(_, rows)) in results.iter_mut().zip(PROFILES.iter()) {
+        let request = request(rows);
+        let started = seconds();
+        engine.compute(&request).expect("the table of the profile");
+        let first_s = seconds() - started;
+        let started = seconds();
+        let table = engine.compute(&request).expect("the table of the profile");
+        let table_s = seconds() - started;
+        profile.full.push(Full {
+            rows: received,
+            first_s,
+            table_s,
+            finest_groups: table.finest_groups(),
+        });
+    }
+}
+
 /// Runs the benchmark on `total` rows received by slices of `slice` rows, and
 /// gives its results as a JSON object.
 ///
@@ -984,41 +1006,22 @@ pub fn run(total: usize, slice: usize, one_pass: bool) -> String {
                 });
             }
         }
-        if checkpoint {
-            // The engine takes the store of the rows: at the end, that of the
-            // reception, before, the same rows generated again.
-            let engine = Engine::new(
-                if received == total {
-                    std::mem::take(&mut store)
-                } else {
-                    store_of(received)
-                },
-                families(),
-            );
-            for (index, &(_, rows)) in PROFILES.iter().enumerate() {
-                let request = request(rows);
-                let started = seconds();
-                engine.compute(&request).expect("the table of the profile");
-                let first_s = seconds() - started;
-                let started = seconds();
-                let table = engine.compute(&request).expect("the table of the profile");
-                let table_s = seconds() - started;
-                results[index].full.push(Full {
-                    rows: received,
-                    first_s,
-                    table_s,
-                    finest_groups: table.finest_groups(),
-                });
-            }
+        // The engine takes the same rows generated again; at the end, the
+        // store of the reception, once the prototype has left the memory.
+        if checkpoint && received < total {
+            full_tables(store_of(received), received, &mut results);
         }
     }
     for (table, profile) in tables.iter().zip(&mut results) {
-        let engine_groups = profile.full.last().map(|full| full.finest_groups);
         profile.finest_groups = table.finest_groups();
-        profile.checked &= engine_groups == Some(table.finest_groups());
         profile.phases = table.phases;
     }
     drop(tables);
+    full_tables(store, total, &mut results);
+    for profile in &mut results {
+        let engine_groups = profile.full.last().map(|full| full.finest_groups);
+        profile.checked &= engine_groups == Some(profile.finest_groups);
+    }
     let finest_groups: Vec<usize> = results
         .iter()
         .map(|profile| profile.finest_groups)
