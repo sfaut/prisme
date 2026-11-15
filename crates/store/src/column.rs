@@ -6,6 +6,8 @@
 use std::fmt;
 use std::ops::Range;
 
+use crate::growth;
+
 /// Cells of one column of a result.
 #[derive(Debug)]
 pub struct TextColumn {
@@ -142,11 +144,12 @@ impl TextColumn {
     /// If the text of the column would exceed 4 GiB.
     pub fn push(&mut self, cell: Option<&str>) {
         if let Some(text) = cell {
+            growth::reserve_text(&mut self.text, text.len());
             self.text.push_str(text);
         }
         let end = u32::try_from(self.text.len()).expect("text of the column below 4 GiB");
-        self.offsets.push(end);
-        self.valid.push(cell.is_some());
+        growth::push(&mut self.offsets, end);
+        growth::push(&mut self.valid, cell.is_some());
     }
 
     /// Appends a block of cells copied by the page: `bytes`, the UTF-8 text
@@ -177,9 +180,12 @@ impl TextColumn {
         start
             .checked_add(u32::try_from(bytes.len()).map_err(|_| BlockError::TooLong)?)
             .ok_or(BlockError::TooLong)?;
+        growth::reserve_text(&mut self.text, text.len());
         self.text.push_str(text);
+        growth::reserve(&mut self.offsets, valid.len());
         self.offsets
             .extend(offsets[1..].iter().map(|&offset| start + offset));
+        growth::reserve(&mut self.valid, valid.len());
         self.valid.extend(valid.iter().map(|&byte| byte != 0));
         Ok(())
     }

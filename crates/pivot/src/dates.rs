@@ -23,7 +23,7 @@
 //! form is checked (`comparable`, `is_label`): that form makes the order of the
 //! text the order of time.
 
-use prisme_store::{Dictionary, FxMap, TextColumn};
+use prisme_store::{Dictionary, FxMap, TextColumn, growth};
 
 use crate::Family;
 
@@ -418,9 +418,10 @@ impl DerivedLevel {
                 self.dictionary.first_rows.push(row);
                 (self.slots.len() - 1) as u32
             });
-            self.code_of_value.push(code);
+            growth::push(&mut self.code_of_value, code);
         }
         let start = self.dictionary.codes.len();
+        growth::reserve(&mut self.dictionary.codes, values.codes.len() - start);
         self.dictionary.codes.extend(
             values.codes[start..]
                 .iter()

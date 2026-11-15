@@ -19,7 +19,7 @@
 use std::hash::Hash;
 use std::ops::{BitOr, Shl};
 
-use prisme_store::{Dictionary, FxMap};
+use prisme_store::{Dictionary, FxMap, growth};
 
 /// Node of the tree of an axis: the rows that share the values of the
 /// levels of the axis down to its depth. Node 0 is the root, all the rows.
@@ -95,7 +95,7 @@ fn find<K: Eq + Hash>(
     for (key, &row) in keys.zip(rows) {
         let next = first_rows.len() as u32;
         groups.push(*index.entry(key).or_insert_with(|| {
-            first_rows.push(row);
+            growth::push(first_rows, row);
             next
         }));
     }

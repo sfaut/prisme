@@ -16,6 +16,7 @@ use hashbrown::HashTable;
 use hashbrown::hash_table::Entry;
 
 use crate::column::TextColumn;
+use crate::growth;
 use crate::hash::fx_hash;
 
 /// Codes of the rows of a column.
@@ -93,7 +94,7 @@ impl Encoder {
         if end <= start {
             return;
         }
-        codes.reserve(end - start);
+        growth::reserve(codes, end - start);
         let text_of = |first_rows: &[u32], code: u32| {
             column
                 .get(first_rows[code as usize] as usize)
@@ -114,15 +115,15 @@ impl Encoder {
                         Entry::Occupied(entry) => *entry.get(),
                         Entry::Vacant(entry) => {
                             entry.insert(next);
-                            first_rows.push(row);
-                            hashes.push(hash);
+                            growth::push(first_rows, row);
+                            growth::push(hashes, hash);
                             next
                         }
                     }
                 }
                 None => *self.null.get_or_insert_with(|| {
-                    first_rows.push(row);
-                    hashes.push(0);
+                    growth::push(first_rows, row);
+                    growth::push(hashes, 0);
                     next
                 }),
             };

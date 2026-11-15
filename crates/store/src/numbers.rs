@@ -15,6 +15,7 @@ use std::cmp::Ordering;
 use std::fmt;
 
 use crate::column::TextColumn;
+use crate::growth;
 
 /// Most digits of an exact number on 128 bits.
 const MAX_DIGITS: usize = 38;
@@ -167,7 +168,7 @@ impl Exact {
             }
             self.scale = scale as u32;
         }
-        self.values.reserve(end - start);
+        growth::reserve(&mut self.values, end - start);
         for (row, cell) in (start..end).zip(column.cells_in(start..end)) {
             let value = match cell.and_then(parts) {
                 Some(parts) => scaled(&parts, scale).ok_or(NumberError::TooLarge { row })?,
@@ -199,7 +200,7 @@ impl Approx {
         if end <= start {
             return Ok(());
         }
-        self.values.reserve(end - start);
+        growth::reserve(&mut self.values, end - start);
         for (row, cell) in (start..end).zip(column.cells_in(start..end)) {
             let value = match cell {
                 Some(text) => text

@@ -46,7 +46,7 @@ use std::cmp::Ordering;
 use std::hash::Hash;
 use std::iter;
 
-use prisme_store::{Approx, Dictionary, Exact, FxMap, FxSet};
+use prisme_store::{Approx, Dictionary, Exact, FxMap, FxSet, growth};
 
 use crate::groups::Merge;
 use crate::{Concat, Engine, Level};
@@ -742,6 +742,14 @@ fn widen<T: Clone>(states: &mut Vec<T>, groups: usize, value: T) {
     states.resize(groups, value);
 }
 
+/// Extends the states of the finest groups to the groups found since, each
+/// new one set to `value`, by the steps of the arrays that follow the rows
+/// (`prisme_store::growth`).
+fn widen_by_steps<T: Clone>(states: &mut Vec<T>, groups: usize, value: T) {
+    growth::reserve(states, groups.saturating_sub(states.len()));
+    states.resize(groups, value);
+}
+
 /// States of the finest groups of a measure that adds up, which the rows
 /// read later add to.
 #[derive(Debug, Clone)]
@@ -824,29 +832,29 @@ impl Partial {
         match (self, input) {
             (partial, Input::Average(input)) => partial.add(input, rows, finest, groups)?,
             (Partial::Count(counts), Input::Rows) => {
-                counts.resize(groups, 0);
+                widen_by_steps(counts, groups, 0);
                 for &group in finest {
                     counts[group as usize] += 1;
                 }
             }
             (Partial::Count(counts), Input::Cells(valid)) => {
-                counts.resize(groups, 0);
+                widen_by_steps(counts, groups, 0);
                 for (&row, &group) in rows.iter().zip(finest) {
                     counts[group as usize] += u64::from(valid[row as usize]);
                 }
             }
             (Partial::Exact { sums, counts, .. }, Input::Exact(numbers, valid)) => {
-                sums.resize(groups, 0);
-                counts.resize(groups, 0);
+                widen_by_steps(sums, groups, 0);
+                widen_by_steps(counts, groups, 0);
                 add_sums((sums, counts), &numbers.values, valid, rows, finest)?;
             }
             (Partial::Float { sums, counts }, Input::Float(numbers, valid)) => {
-                sums.resize(groups, 0.0);
-                counts.resize(groups, 0);
+                widen_by_steps(sums, groups, 0.0);
+                widen_by_steps(counts, groups, 0);
                 add_sums((sums, counts), &numbers.values, valid, rows, finest)?;
             }
             (Partial::Extreme(best), Input::Extreme(extreme)) => {
-                best.resize(groups, NO_VALUE);
+                widen_by_steps(best, groups, NO_VALUE);
                 for (&row, &group) in rows.iter().zip(finest) {
                     if extreme.valid[row as usize] {
                         extreme.keep(

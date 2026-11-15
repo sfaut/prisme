@@ -13,6 +13,7 @@
 
 mod column;
 mod dictionary;
+pub mod growth;
 mod hash;
 mod numbers;
 
