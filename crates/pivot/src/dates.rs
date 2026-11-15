@@ -362,9 +362,13 @@ enum Slot {
 }
 
 /// Level of a column at a precision, built from the dictionary of the column:
-/// one read per distinct value, then one code per row.
+/// one read per distinct value, then one code per row. It extends to the
+/// values and the rows that the dictionary gains (`extend`): the codes already
+/// given never change, as those of the dictionary.
 #[derive(Debug)]
 pub struct DerivedLevel {
+    /// Precision of the level.
+    precision: Precision,
     /// Code of each row, one code per period, NULL included.
     pub dictionary: Dictionary,
     /// Rank of each code in the order of time, NULL first as in the grid.
@@ -373,64 +377,80 @@ pub struct DerivedLevel {
     labels: Vec<Option<String>>,
     /// Longest label, in characters.
     pub longest: usize,
-    /// Code of the cells outside of the calendar, `None` without any.
-    outside: Option<u32>,
+    /// Code of each slot met.
+    index: FxMap<Slot, u32>,
+    /// Slot of each code.
+    slots: Vec<Slot>,
+    /// Code of each value of the dictionary of the column.
+    code_of_value: Vec<u32>,
 }
 
 impl DerivedLevel {
     /// Reads the dates of a column.
     pub fn of(cells: &TextColumn, values: &Dictionary, precision: Precision) -> Self {
-        let mut index: FxMap<Slot, u32> = FxMap::default();
-        let mut slots = Vec::new();
-        let mut first_rows = Vec::new();
-        let mut code_of_value = Vec::with_capacity(values.len());
-        for &row in &values.first_rows {
+        let mut level = DerivedLevel {
+            precision,
+            dictionary: Dictionary::default(),
+            ranks: Vec::new(),
+            labels: Vec::new(),
+            longest: 0,
+            index: FxMap::default(),
+            slots: Vec::new(),
+            code_of_value: Vec::new(),
+        };
+        level.extend(cells, values);
+        level
+    }
+
+    /// Reads the values and the rows that the dictionary of the column has
+    /// gained since the level was built.
+    pub fn extend(&mut self, cells: &TextColumn, values: &Dictionary) {
+        let known = self.slots.len();
+        for &row in &values.first_rows[self.code_of_value.len()..] {
             let slot = match cells.get(row as usize) {
                 Some(cell) => CellDate::parse(cell)
-                    .and_then(|date| date.period(precision))
+                    .and_then(|date| date.period(self.precision))
                     .map_or(Slot::Outside, Slot::Period),
                 None => Slot::Null,
             };
-            code_of_value.push(*index.entry(slot).or_insert_with(|| {
-                slots.push(slot);
-                first_rows.push(row);
-                (slots.len() - 1) as u32
-            }));
+            let code = *self.index.entry(slot).or_insert_with(|| {
+                self.slots.push(slot);
+                self.dictionary.first_rows.push(row);
+                (self.slots.len() - 1) as u32
+            });
+            self.code_of_value.push(code);
         }
-        let mut order: Vec<u32> = (0..slots.len() as u32).collect();
-        order.sort_unstable_by_key(|&code| slots[code as usize]);
-        let labels: Vec<Option<String>> = slots
-            .iter()
-            .map(|slot| match slot {
-                Slot::Period(period) => Some(label(precision, *period)),
+        let start = self.dictionary.codes.len();
+        self.dictionary.codes.extend(
+            values.codes[start..]
+                .iter()
+                .map(|&value| self.code_of_value[value as usize]),
+        );
+        if self.slots.len() == known {
+            return;
+        }
+        for slot in &self.slots[known..] {
+            let label = match slot {
+                Slot::Period(period) => Some(label(self.precision, *period)),
                 _ => None,
-            })
-            .collect();
-        let longest = labels
-            .iter()
-            .flatten()
-            .map(|label| label.chars().count())
-            .max()
-            .unwrap_or(0);
-        DerivedLevel {
-            dictionary: Dictionary {
-                codes: values
-                    .codes
-                    .iter()
-                    .map(|&value| code_of_value[value as usize])
-                    .collect(),
-                first_rows,
-            },
-            ranks: crate::ranks_of(&order),
-            labels,
-            longest,
-            outside: index.get(&Slot::Outside).copied(),
+            };
+            let length = label.as_deref().map_or(0, |label| label.chars().count());
+            self.longest = self.longest.max(length);
+            self.labels.push(label);
         }
+        let mut order: Vec<u32> = (0..self.slots.len() as u32).collect();
+        order.sort_unstable_by_key(|&code| self.slots[code as usize]);
+        self.ranks = crate::ranks_of(&order);
+    }
+
+    /// Code of the cells outside of the calendar, `None` without any.
+    fn outside(&self) -> Option<u32> {
+        self.index.get(&Slot::Outside).copied()
     }
 
     /// First of some rows whose cell is outside of the calendar.
     pub fn first_outside(&self, rows: &[u32]) -> Option<u32> {
-        let code = self.outside?;
+        let code = self.outside()?;
         rows.iter()
             .copied()
             .find(|&row| self.dictionary.codes[row as usize] == code)
@@ -448,7 +468,7 @@ impl DerivedLevel {
 
     /// Is this the code of the cells outside of the calendar?
     pub fn is_outside(&self, code: u32) -> bool {
-        self.outside == Some(code)
+        self.outside() == Some(code)
     }
 
     /// Labels of the periods in the order of time, NULL first, without the cells
@@ -464,6 +484,8 @@ impl DerivedLevel {
 
 #[cfg(test)]
 mod tests {
+    use prisme_store::Encoder;
+
     use super::*;
 
     /// Level of cells at a precision.
@@ -487,6 +509,51 @@ mod tests {
     /// The label of a single date.
     fn single(cell: &str, precision: Precision) -> Option<String> {
         labels(&[cell], precision).remove(0)
+    }
+
+    #[test]
+    fn a_level_extended_to_appended_rows_is_the_level_of_the_whole_column() {
+        let cells = [
+            Some("2026-03-01"),
+            None,
+            Some("2025-12-31"),
+            Some("2026-03-15"),
+            Some("pas une date"),
+            Some("2024-07-01"),
+            None,
+            Some("2025-12-31"),
+        ];
+        let mut column = TextColumn::default();
+        let mut values = Encoder::default();
+        let mut extended: Option<DerivedLevel> = None;
+        for block in cells.chunks(3) {
+            for &cell in block {
+                column.push(cell);
+            }
+            values.extend(&column, column.len());
+            match &mut extended {
+                Some(level) => level.extend(&column, values.dictionary()),
+                None => {
+                    extended = Some(DerivedLevel::of(
+                        &column,
+                        values.dictionary(),
+                        Precision::Month,
+                    ))
+                }
+            }
+        }
+        let extended = extended.unwrap();
+        let whole = level(&cells, Precision::Month);
+        assert_eq!(extended.dictionary.codes, whole.dictionary.codes);
+        assert_eq!(extended.dictionary.first_rows, whole.dictionary.first_rows);
+        assert_eq!(extended.ranks, whole.ranks);
+        assert_eq!(extended.labels, whole.labels);
+        assert_eq!(extended.longest, whole.longest);
+        assert_eq!(extended.outside(), whole.outside());
+        assert_eq!(
+            extended.listed(),
+            [None, Some("2024-07"), Some("2025-12"), Some("2026-03")]
+        );
     }
 
     #[test]

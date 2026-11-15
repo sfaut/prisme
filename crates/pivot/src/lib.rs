@@ -19,6 +19,12 @@
 //! (`filters`). The dialect of the Pivoteur, with its expressions, comes with the
 //! next slices.
 //!
+//! The rows of a result reach the engine as the page receives them: they are
+//! appended to its store (`Engine::store_mut`), then taken into account
+//! (`Engine::grow`). The forms already derived from the columns (dictionaries,
+//! numbers, date levels) then read only the new rows, as a table is to follow
+//! the reception (`docs/PERFORMANCES.md`, chapter 17).
+//!
 //! The crate does not depend on its target: its tests run natively, and the
 //! Worker of the page runs it compiled to WebAssembly (`crates/web-engine`).
 
@@ -31,7 +37,7 @@ mod table;
 use std::cell::OnceCell;
 use std::fmt;
 
-use prisme_store::{Approx, Dictionary, Exact, NumberError, Store};
+use prisme_store::{Approx, Dictionary, Encoder, Exact, NumberError, Store, TextColumn};
 
 use crate::dates::DerivedLevel;
 pub use crate::dates::Precision;
@@ -421,6 +427,17 @@ enum Numbers {
     Float(Approx),
 }
 
+impl Numbers {
+    /// Reads the numbers of the rows of a column after those already read, up
+    /// to `end`, excluded.
+    fn extend(&mut self, cells: &TextColumn, end: usize) -> Result<(), NumberError> {
+        match self {
+            Numbers::Exact(numbers) => numbers.extend(cells, end),
+            Numbers::Float(numbers) => numbers.extend(cells, end),
+        }
+    }
+}
+
 /// Shares of the values of measure `measure` (`ShowAs`): each group divided
 /// by the group of its total, which `total` gives from the nodes of the rows
 /// and of the columns of the group.
@@ -460,19 +477,25 @@ fn ranks_of(order: &[u32]) -> Vec<u32> {
 }
 
 /// Engine of one result: its rows, and the forms derived from its columns,
-/// built once, the first time a table needs them.
+/// built once, the first time a table needs them, then extended to the rows
+/// that arrive.
 pub struct Engine {
     /// Rows of the result.
     store: Store,
+    /// Rows taken into account: the first ones of the store, until `grow`
+    /// takes in those appended since.
+    rows: usize,
     /// Family of each column.
     families: Vec<Family>,
-    /// Dictionary of each column.
-    dictionaries: Vec<OnceCell<Dictionary>>,
+    /// Dictionary of each column, with the index of its texts.
+    dictionaries: Vec<OnceCell<Encoder>>,
     /// Numbers of each column of numbers, or the cell it cannot read.
     numbers: Vec<OnceCell<Result<Numbers, NumberError>>>,
     /// Rank of each value of each column, by code: given by the page, in the
     /// order of the grid, or the binary order of the texts, NULL first.
     ranks: Vec<OnceCell<Vec<u32>>>,
+    /// Were the ranks of each column given by the page?
+    page_ranks: Vec<bool>,
     /// Rank of each value of each column, by code, as `MIN` and `MAX` compare
     /// them.
     value_ranks: Vec<OnceCell<Vec<u32>>>,
@@ -498,11 +521,13 @@ impl Engine {
         );
         let columns = families.len();
         Engine {
+            rows: store.row_count(),
             store,
             families,
             dictionaries: (0..columns).map(|_| OnceCell::new()).collect(),
             numbers: (0..columns).map(|_| OnceCell::new()).collect(),
             ranks: (0..columns).map(|_| OnceCell::new()).collect(),
+            page_ranks: vec![false; columns],
             value_ranks: (0..columns).map(|_| OnceCell::new()).collect(),
             derived: (0..columns)
                 .map(|_| std::array::from_fn(|_| OnceCell::new()))
@@ -517,13 +542,81 @@ impl Engine {
         &self.store
     }
 
+    /// Rows of the result, to append the rows received since: they count once
+    /// `grow` has taken them in.
+    pub fn store_mut(&mut self) -> &mut Store {
+        &mut self.store
+    }
+
+    /// Number of rows taken into account.
+    pub fn rows(&self) -> usize {
+        self.rows
+    }
+
+    /// Takes in the rows appended to the store since the engine was created or
+    /// last grew: those that every column holds. The forms already built from
+    /// the columns read only these rows. A column whose dictionary gains values
+    /// ranks them again; the ranks the page gave it are dropped, as they do not
+    /// rank the new values.
+    ///
+    /// # Returns
+    ///
+    /// The columns whose ranks given by the page were dropped: the page gives
+    /// them again (`set_ranks`), or they follow the binary order of the texts.
+    pub fn grow(&mut self) -> Vec<usize> {
+        let (start, end) = (self.rows, self.store.row_count());
+        let mut dropped = Vec::new();
+        if end <= start {
+            return dropped;
+        }
+        self.rows = end;
+        for column in 0..self.families.len() {
+            let cells = self.store.column(column).expect("one column per family");
+            if let Some(encoder) = self.dictionaries[column].get_mut() {
+                let values = encoder.dictionary().len();
+                encoder.extend(cells, end);
+                if encoder.dictionary().len() > values {
+                    self.value_ranks[column].take();
+                    if self.ranks[column].take().is_some() && self.page_ranks[column] {
+                        dropped.push(column);
+                    }
+                    self.page_ranks[column] = false;
+                }
+                for derived in self.derived[column].iter_mut() {
+                    if let Some(derived) = derived.get_mut() {
+                        derived.extend(cells, encoder.dictionary());
+                    }
+                }
+            }
+            let failed = match self.numbers[column].get_mut() {
+                Some(Ok(numbers)) => numbers.extend(cells, end).err(),
+                _ => None,
+            };
+            if let Some(error) = failed {
+                self.numbers[column] = OnceCell::from(Err(error));
+            }
+            if let Some(longest) = self.longest[column].get_mut() {
+                let lengths = cells.cells_in(start..end).flatten();
+                *longest = lengths
+                    .map(|text| text.chars().count())
+                    .fold(*longest, usize::max);
+            }
+        }
+        dropped
+    }
+
     /// Dictionary of column `column`.
     fn dictionary(&self, column: usize) -> Result<&Dictionary, Error> {
         let cells = self
             .store
             .column(column)
             .ok_or(Error::UnknownColumn(column))?;
-        Ok(self.dictionaries[column].get_or_init(|| Dictionary::of(cells)))
+        let encoder = self.dictionaries[column].get_or_init(|| {
+            let mut encoder = Encoder::default();
+            encoder.extend(cells, self.rows);
+            encoder
+        });
+        Ok(encoder.dictionary())
     }
 
     /// Distinct values of column `column`, by code: their text, `None` for
@@ -561,6 +654,7 @@ impl Engine {
             return Err(Error::Ranks(column));
         }
         self.ranks[column] = OnceCell::from(ranks);
+        self.page_ranks[column] = true;
         Ok(())
     }
 
@@ -691,7 +785,7 @@ impl Engine {
             None => *self.longest[level.column].get_or_init(|| {
                 self.store.column(level.column).map_or(usize::MAX, |cells| {
                     cells
-                        .cells()
+                        .cells_in(0..self.rows)
                         .flatten()
                         .map(|text| text.chars().count())
                         .max()
@@ -704,11 +798,27 @@ impl Engine {
     /// Keeps only some rows, those the filter of the grid keeps; `None` keeps
     /// them all.
     pub fn set_kept(&mut self, rows: Option<Vec<u32>>) -> Result<(), Error> {
-        let count = self.store.row_count();
-        if let Some(&row) = rows.iter().flatten().find(|&&row| row as usize >= count) {
+        if let Some(&row) = rows
+            .iter()
+            .flatten()
+            .find(|&&row| row as usize >= self.rows)
+        {
             return Err(Error::UnknownRow(row));
         }
         self.kept = rows;
+        Ok(())
+    }
+
+    /// Adds rows to those the filter of the grid keeps, after them: those it
+    /// keeps among the rows taken in since. Without a filter, every row is
+    /// kept already.
+    pub fn extend_kept(&mut self, rows: &[u32]) -> Result<(), Error> {
+        if let Some(&row) = rows.iter().find(|&&row| row as usize >= self.rows) {
+            return Err(Error::UnknownRow(row));
+        }
+        if let Some(kept) = &mut self.kept {
+            kept.extend_from_slice(rows);
+        }
         Ok(())
     }
 
@@ -723,9 +833,12 @@ impl Engine {
             return Err(Error::NotNumeric { measure });
         }
         self.numbers[column]
-            .get_or_init(|| match family {
-                Family::Exact => Exact::of(cells).map(Numbers::Exact),
-                _ => Approx::of(cells).map(Numbers::Float),
+            .get_or_init(|| {
+                let mut numbers = match family {
+                    Family::Exact => Numbers::Exact(Exact::default()),
+                    _ => Numbers::Float(Approx::default()),
+                };
+                numbers.extend(cells, self.rows).map(|()| numbers)
             })
             .as_ref()
             .map_err(|error| Error::Number {
@@ -847,7 +960,7 @@ impl Engine {
         let kept: &[u32] = match &self.kept {
             Some(rows) => rows,
             None => {
-                all = (0..self.store.row_count() as u32).collect();
+                all = (0..self.rows as u32).collect();
                 &all
             }
         };
@@ -905,5 +1018,7 @@ impl Engine {
     }
 }
 
+#[cfg(test)]
+mod streaming_tests;
 #[cfg(test)]
 mod tests;
