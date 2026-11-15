@@ -1,14 +1,14 @@
 /**
  * Benchmark of the streaming of the rows to the Pivoteur (see `src/lib.rs`): runs the native side
- * and the WebAssembly side of the engine (full computation against incremental aggregates), then
- * the cost of sending the rows to a Worker on the main thread (`post.mjs`), and prints a summary.
+ * and the WebAssembly side of the engine (full computation against incremental aggregates, then
+ * the engine of Prisme streamed), then the cost of sending the rows to a Worker on the main thread (`post.mjs`), and prints a summary.
  *
  * From the root of the repository: `node bench/streaming/run.mjs [rows] [slice] [passes]`,
  * 1,000,000 rows by slices of 100,000, 3 passes by default: each side of the engine runs that many
  * times, and each duration keeps its fastest run. Requires Cargo (the toolchain of `rust-toolchain.toml`) and
  * Node; the WebAssembly target of the toolchain is added when missing. The full results, with the
  * machine, go to `target/streaming-bench/results-<rows>.json`. The exit code is 1 if the prototype
- * does not check itself on one side.
+ * or the streamed engine does not check itself on one side.
  */
 
 import { execFileSync, spawnSync } from 'node:child_process'
@@ -165,6 +165,44 @@ function engineLines(name, side) {
   return lines
 }
 
+/**
+ * Rows of the summary for the engine of Prisme streamed (`src/engine.rs`), native / WebAssembly:
+ * each checkpoint of the reception, then the whole reception.
+ *
+ * @param {object} native Results of the native side.
+ * @param {object} wasm Results of the WebAssembly side.
+ */
+function streamedLines(native, wasm) {
+  const both = (seconds) => `${ms(seconds(native))} / ${ms(seconds(wasm))}`
+  const lines = [
+    'Engine of Prisme streamed (Engine::update), native / WebAssembly',
+    '',
+    '| Profile | Rows received | grow, by one slice | update, by one slice | Finest groups |',
+    '| --- | ---: | ---: | ---: | ---: |',
+  ]
+  native.engine.forEach((profile, index) => {
+    profile.updates.forEach((update, position) => {
+      const at = (side) => side.engine[index].updates[position]
+      lines.push(
+        `| ${profile.name} | ${update.rows.toLocaleString('en')} | ${both((side) => at(side).grow_s)} | ${both((side) => at(side).update_s)} | ${update.finest_groups.toLocaleString('en')} |`,
+      )
+    })
+  })
+  lines.push(
+    '',
+    '| Profile | All the grow | All the update | Longest slice | Table of all the rows, caches kept | Checked |',
+    '| --- | ---: | ---: | ---: | ---: | --- |',
+  )
+  native.engine.forEach((profile, index) => {
+    const checked = profile.checked && wasm.engine[index].checked
+    const of = (side) => side.engine[index]
+    lines.push(
+      `| ${profile.name} | ${both((side) => of(side).grows_s)} | ${both((side) => of(side).updates_s)} | ${both((side) => of(side).longest_update_s)} | ${both((side) => of(side).full_s)} | ${checked ? 'yes' : 'NO'} |`,
+    )
+  })
+  return lines
+}
+
 const manifest = join(here, 'Cargo.toml')
 const build = ['build', '--release', '--manifest-path', manifest, '--target-dir', targetDir]
 run('cargo', [...build, '--bin', 'streaming-native'])
@@ -193,7 +231,9 @@ const machine = {
   node: process.version,
   rustc: execFileSync('rustc', ['--version'], { cwd: root, encoding: 'utf8' }).trim(),
 }
-const checked = [...native.profiles, ...wasm.profiles].every((profile) => profile.checked)
+const checked = [native, wasm]
+  .flatMap((side) => [...side.profiles, ...side.engine])
+  .every((profile) => profile.checked)
 const results = join('target', 'streaming-bench', `results-${rows}.json`)
 mkdirSync(targetDir, { recursive: true })
 writeFileSync(
@@ -209,6 +249,8 @@ const lines = [
   '',
   ...engineLines('WebAssembly (V8), one thread', wasm),
   '',
+  ...streamedLines(native, wasm),
+  '',
   'Main thread: sending the rows to a Worker (structured clone, best of 3)',
   '',
   '| Rows per block | Calls on the main thread | Until the Worker has every row |',
@@ -219,8 +261,8 @@ const lines = [
   ),
   '',
   checked
-    ? 'The prototype checks itself on both sides: same states slice by slice as in one pass, same finest groups as the engine of Prisme.'
-    : 'The prototype does NOT check itself on one side at least.',
+    ? 'The prototype checks itself on both sides: same states slice by slice as in one pass, same finest groups as the engine of Prisme; the streamed engine gives the table of all the rows.'
+    : 'The prototype or the streamed engine does NOT check itself on one side at least.',
   `Full results: ${results}`,
 ]
 console.log(lines.join('\n'))

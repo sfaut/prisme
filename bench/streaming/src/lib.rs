@@ -14,7 +14,11 @@
 //!   group and of each of its subtotals and totals, whose groups each finest
 //!   group knows from its creation. The cost of an update follows the size
 //!   of the slice, not the number of rows already received, nor the number
-//!   of groups.
+//!   of groups;
+//! - **the engine of Prisme streamed** (`engine.rs`): each slice is appended
+//!   to the store of the engine and added to the state of its last table
+//!   (`Engine::update`), which then builds its grouping sets and its table
+//!   again.
 //!
 //! The appending of each slice to the store of the rows (`prisme-store`) is
 //! measured apart: both ways need it.
@@ -29,7 +33,8 @@
 //!
 //! At the end, the prototype checks itself: the states it kept up to date
 //! slice by slice equal those of one pass on all the rows, and it found as
-//! many finest groups as the engine of Prisme.
+//! many finest groups as the engine of Prisme. The streamed engine checks
+//! its table against the one it computes from all the rows.
 //!
 //! [`run`] gives the results as JSON; `src/main.rs` runs it natively, and
 //! `wasm.mjs` compiled to WebAssembly (see `run.mjs`).
@@ -40,6 +45,8 @@ use std::hash::{BuildHasherDefault, Hasher};
 
 use prisme_pivot::{Engine, Family, Level, Measure, Precision, Request};
 use prisme_store::Store;
+
+mod engine;
 
 /// Seed of the pseudo-random generator, that of `bench/pivot` and
 /// `bench/widths`.
@@ -921,9 +928,10 @@ fn checkpoints(total: usize, slice: usize) -> Vec<usize> {
 /// Runs the benchmark on `total` rows received by slices of `slice` rows, and
 /// gives its results as a JSON object.
 ///
-/// Without `one_pass`, the prototype makes no pass on all the rows: its check
-/// is then only the number of finest groups, and the memory holds one table
-/// less per profile (a WebAssembly module holds 4 GB at most).
+/// Without `one_pass`, the prototype and the streamed engine make no pass on
+/// all the rows: their check is then only the number of finest groups, and
+/// the memory holds one table less per profile (a WebAssembly module holds
+/// 4 GB at most).
 pub fn run(total: usize, slice: usize, one_pass: bool) -> String {
     let points = checkpoints(total, slice);
     let mut store = Store::new(COLUMNS);
@@ -1010,7 +1018,45 @@ pub fn run(total: usize, slice: usize, one_pass: bool) -> String {
         profile.checked &= engine_groups == Some(table.finest_groups());
         profile.phases = table.phases;
     }
-    json(total, slice, appending_s, longest_append_s, &results)
+    drop(tables);
+    let finest_groups: Vec<usize> = results
+        .iter()
+        .map(|profile| profile.finest_groups)
+        .collect();
+    let streamed = engine::stream(total, slice, one_pass, &finest_groups);
+    let mut out = json(total, slice, appending_s, longest_append_s, &results);
+    out.pop();
+    out.push_str(",\"engine\":[");
+    for (index, profile) in streamed.iter().enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        let _ = write!(
+            out,
+            "{{\"name\":\"{}\",\"checked\":{},\"grows_s\":{:.4},\"updates_s\":{:.4},\"longest_update_s\":{:.4},\"full_s\":{},\"updates\":[",
+            profile.name,
+            profile.checked,
+            profile.grows_s,
+            profile.updates_s,
+            profile.longest_update_s,
+            profile
+                .full_s
+                .map_or("null".to_owned(), |full_s| format!("{full_s:.4}"))
+        );
+        for (position, checkpoint) in profile.checkpoints.iter().enumerate() {
+            if position > 0 {
+                out.push(',');
+            }
+            let _ = write!(
+                out,
+                "{{\"rows\":{},\"grow_s\":{:.4},\"update_s\":{:.4},\"finest_groups\":{}}}",
+                checkpoint.rows, checkpoint.grow_s, checkpoint.update_s, checkpoint.finest_groups
+            );
+        }
+        out.push_str("]}");
+    }
+    out.push_str("]}");
+    out
 }
 
 /// Results as a JSON object.

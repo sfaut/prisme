@@ -4,9 +4,9 @@
  * Worker of the page would run it, on one thread. The rows are generated in the module, the way
  * the store of the Worker would receive them.
  *
- * Above 1,000,000 rows, the prototype makes no pass on all the rows: a module holds 4 GB at most,
- * and this second table, which only checks the first one, does not fit beside it at 10,000,000
- * rows. The native side makes it whatever the number of rows.
+ * Above 1,000,000 rows, the prototype and the streamed engine make no pass on all the rows: a
+ * module holds 4 GB at most, and this second table, which only checks the first one, does not fit
+ * beside it at 10,000,000 rows. The native side makes it whatever the number of rows.
  *
  * `node wasm.mjs <module.wasm> [rows] [slice]`. The results go to stdout, as one JSON object.
  */
