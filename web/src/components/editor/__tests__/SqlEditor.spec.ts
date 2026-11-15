@@ -77,6 +77,35 @@ describe('SqlEditor', () => {
     wrapper.unmount()
   })
 
+  it('inserts a text at the cursor, or in place of the selected passage', () => {
+    const wrapper = mount(SqlEditor, {
+      props: {
+        flavor: 'mysql',
+        schemas: [],
+        version: null,
+        ansiQuotes: false,
+        defaultSchema: null,
+        indentSize: 4,
+        modelValue: 'SELECT * FROM t WHERE id ;',
+      },
+      attachTo: document.body,
+    })
+    const view = EditorView.findFromDOM(wrapper.find('.cm-editor').element as HTMLElement)!
+    const last = () => {
+      const updates = wrapper.emitted('update:modelValue') ?? []
+      return updates[updates.length - 1]?.[0]
+    }
+    view.dispatch({ selection: { anchor: 25 } })
+    wrapper.vm.insertText('IN (1, 2)')
+    expect(last()).toBe('SELECT * FROM t WHERE id IN (1, 2);')
+    expect(wrapper.vm.cursor()).toBe(34)
+    // In place of the selected passage: the list written before.
+    view.dispatch({ selection: { anchor: 25, head: 34 } })
+    wrapper.vm.insertText('IN (3)')
+    expect(last()).toBe('SELECT * FROM t WHERE id IN (3);')
+    wrapper.unmount()
+  })
+
   it('tells when text becomes selected, then no longer is', () => {
     const wrapper = mount(SqlEditor, {
       props: {

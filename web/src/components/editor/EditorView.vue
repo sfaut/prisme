@@ -609,6 +609,21 @@ async function insertCte(query: string): Promise<void> {
 }
 
 /**
+ * Writes the `IN` clause of a selection of the grid at the editor's cursor,
+ * in place of the selected text if any; before the editor is mounted, at
+ * the end of the text.
+ *
+ * @param clause `IN` clause (`inClause.ts`).
+ */
+function insertIn(clause: string): void {
+  if (editor.value) {
+    editor.value.insertText(clause)
+  } else {
+    sql.value += clause
+  }
+}
+
+/**
  * Changes the session's current database (like `USE`) as soon as it is ready.
  *
  * @param database Name of the database.
@@ -963,6 +978,7 @@ defineExpose({
               :server="state.server"
               :indent-size="indentSize"
               @insert-cte="insertCte"
+              @insert-in="insertIn"
             />
           </tabs-content>
         </tabs-root>

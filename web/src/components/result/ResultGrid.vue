@@ -26,9 +26,11 @@
   - Copy: Ctrl+C copies the selection with the column names on the first
     line (a profile setting may remove them), a single cell as its value
     alone. Ctrl+A selects everything, Escape clears the selection.
-  - Download: the grid exposes the size of its selection (`selectedSize`)
-    and the part to download (`exportFrame`): the selection, or the whole
-    view without one, in the displayed order.
+  - Download: the grid exposes the size of its selection (`selectedSize`),
+    whether its selected rows are all selected on the same columns
+    (`selectedFull`, for the `IN` clause), and the part to download
+    (`exportFrame`): the selection, or the whole view without one, in the
+    displayed order.
   - Width: dragging the right edge of a header changes the width of the
     column; a double click on this edge fits it to its longest value (with a
     cap), a second one gives back its estimated width. The chosen widths are
@@ -96,6 +98,7 @@ import {
   selectRow,
   selectionFrame,
   selectionSize,
+  selectionIsFull,
   selectionToText,
   selectedColumnCells,
   createViewMemory,
@@ -794,6 +797,12 @@ const keptCount = computed(() => view.value.length)
 const selectedSize = computed(() => selectionSize(selection.value))
 
 /**
+ * Are the selected rows all selected on the same columns? The `IN` clause
+ * of the export menu needs it; `false` without a selection.
+ */
+const selectedFull = computed(() => selectionIsFull(selection.value))
+
+/**
  * Part of the grid to download: the selection, or the whole view without
  * one. The view of a large result is computed over several frames
  * (`refreshView`): the frame waits for its end.
@@ -807,7 +816,7 @@ async function exportFrame(): Promise<GridFrame> {
     : viewFrame(view.value, order.value)
 }
 
-defineExpose({ keptCount, selectedSize, exportFrame, order })
+defineExpose({ keptCount, selectedSize, selectedFull, exportFrame, order })
 </script>
 
 <template>

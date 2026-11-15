@@ -22,7 +22,9 @@
   (`editorIndent.ts`). Ctrl+Up and Ctrl+Down scroll the text by one line
   without moving the cursor (`editorScroll.ts`). The blanks at the end
   of a line go when the cursor leaves it, except inside a string
-  (`editorTrim.ts`). The text binds with `v-model`.
+  (`editorTrim.ts`). The text binds with `v-model`. The editor view writes
+  generated text through `changeText` (queries of the navigator, CTE) and
+  `insertText` (`IN` clause of a selection, at the cursor).
 -->
 <script setup lang="ts">
 import { autocompletion } from '@codemirror/autocomplete'
@@ -362,7 +364,22 @@ function changeText(changes: ChangeSpec, cursor: number): void {
   view.focus()
 }
 
-defineExpose({ cursor, selection, changeText })
+/**
+ * Writes a text in place of each selected passage, or at the cursor, then
+ * gives the focus to the editor, the cursor after the text, scrolled into
+ * view. Ctrl+Z undoes it. No effect before mounting.
+ *
+ * @param text Text written.
+ */
+function insertText(text: string): void {
+  if (!view) {
+    return
+  }
+  view.dispatch(view.state.replaceSelection(text), { scrollIntoView: true })
+  view.focus()
+}
+
+defineExpose({ cursor, selection, changeText, insertText })
 </script>
 
 <template>

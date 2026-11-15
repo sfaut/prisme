@@ -23,6 +23,7 @@ import {
   selectColumn,
   selectRow,
   selectionFrame,
+  selectionIsFull,
   selectionSize,
   selectionToText,
   selectedColumnCells,
@@ -171,6 +172,30 @@ describe('selection', () => {
   it('selects everything, or nothing for an empty grid', () => {
     expect(selectAll(3, 3).ranges).toEqual([{ top: 0, bottom: 2, left: 0, right: 2 }])
     expect(selectAll(0, 3)).toEqual(emptySelection())
+  })
+
+  it('tells whether the selected rows all share the same columns', () => {
+    expect(selectionIsFull(emptySelection())).toBe(false)
+    expect(selectionIsFull(selectAll(3, 3))).toBe(true)
+    // Columns 0 and 2, apart: each row on both.
+    let selection = selectColumn(emptySelection(), 0, 3, 'replace')
+    selection = selectColumn(selection, 2, 3, 'add')
+    expect(selectionIsFull(selection)).toBe(true)
+    // A diagonal: rows on different columns.
+    selection = selectCell(emptySelection(), 0, 0, 'replace')
+    selection = selectCell(selection, 1, 1, 'add')
+    expect(selectionIsFull(selection)).toBe(false)
+    // A whole grid with a hole in it.
+    expect(selectionIsFull(selectCell(selectAll(3, 3), 1, 1, 'remove'))).toBe(false)
+    // Overlapping ranges, covering rows 0 to 2 of column 1.
+    selection = selectCell(emptySelection(), 0, 1, 'replace')
+    selection = selectCell(selection, 1, 1, 'extend')
+    selection = selectColumn(selection, 1, 3, 'add')
+    expect(selectionIsFull(selection)).toBe(true)
+    // Everything unselected again.
+    expect(
+      selectionIsFull(selectCell(selectCell(emptySelection(), 0, 0, 'replace'), 0, 0, 'remove')),
+    ).toBe(false)
   })
 
   it('inverts the selection over the whole grid', () => {

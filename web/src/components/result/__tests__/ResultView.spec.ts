@@ -201,8 +201,8 @@ describe('ResultView', () => {
           'Résultat complet en CSV (requête relancée)',
         ],
       ],
-      ['Presse-papiers', ['Résultat affiché en CTE']],
-      ['Éditeur', ['Résultat affiché en CTE']],
+      ['Presse-papiers', ['Résultat affiché en CTE', 'Sélection en clause IN']],
+      ['Éditeur', ['Résultat affiché en CTE', 'Sélection en clause IN']],
     ])
     const file = menuItem(wrapper, 'Fichier', 'Résultat affiché en CTE')
     expect(file?.disabled).toBe(false)
@@ -252,6 +252,49 @@ describe('ResultView', () => {
         'SELECT ALL id, name',
         'FROM ds',
       ].join('\n'),
+    )
+  })
+
+  it('offers the IN clause for a selection whose rows share their columns', async () => {
+    const wrapper = mountTab(threeRows())
+    await nextTick()
+    const item = () => menuItem(wrapper, 'Presse-papiers', 'Sélection en clause IN')
+    expect(item()?.disabled).toBe(true)
+    expect(item()?.hint).toBe('Sélectionnez une ou plusieurs colonnes.')
+
+    // Cell (1, id), then Ctrl+click on cell (2, name): a diagonal.
+    const cell = (row: number, column: number) =>
+      wrapper.findAll('.grid-row:not(.grid-header)')[row]!.findAll('.grid-cell')[column]!
+    await cell(0, 0).trigger('mousedown')
+    await cell(1, 1).trigger('mousedown', { ctrlKey: true })
+    expect(item()?.disabled).toBe(true)
+    expect(item()?.hint).toMatch(/^Sélection malformée/)
+    expect(menuItem(wrapper, 'Éditeur', 'Sélection en clause IN')?.disabled).toBe(true)
+
+    await cell(1, 0).trigger('mousedown', { ctrlKey: true })
+    await cell(0, 1).trigger('mousedown', { ctrlKey: true })
+    expect(item()?.disabled).toBe(false)
+  })
+
+  it('copies the selection as an IN clause, or hands it to the editor', async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue()
+    vi.stubGlobal('navigator', { clipboard: { writeText } })
+    const wrapper = mountTab(threeRows())
+    await nextTick()
+    const cell = (row: number, column: number) =>
+      wrapper.findAll('.grid-row:not(.grid-header)')[row]!.findAll('.grid-cell')[column]!
+    await cell(0, 1).trigger('mousedown')
+    await cell(2, 1).trigger('mousedown', { shiftKey: true })
+    menuItem(wrapper, 'Presse-papiers', 'Sélection en clause IN')?.onSelect?.()
+    await flushPromises()
+    expect(writeText).toHaveBeenCalledWith("IN ('a', 'b', 'c')")
+    vi.unstubAllGlobals()
+
+    await wrapper.find('.grid-corner').trigger('mousedown')
+    menuItem(wrapper, 'Éditeur', 'Sélection en clause IN')?.onSelect?.()
+    await flushPromises()
+    expect(wrapper.emitted('insert-in')?.[0]?.[0]).toBe(
+      ['IN (', "    ('1', 'a'),", "    ('2', 'b'),", "    ('3', 'c')", ')'].join('\n'),
     )
   })
 

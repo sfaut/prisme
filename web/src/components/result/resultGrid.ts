@@ -751,6 +751,33 @@ function cuts(ranges: CellRange[], start: 'top' | 'left', end: 'bottom' | 'right
 }
 
 /**
+ * Is every cell of a selection's frame selected? The selected rows are then
+ * all selected on the same columns, which an `IN` clause needs. Measured
+ * on the pieces cut along the bounds of the ranges, each selected or not as
+ * a whole, never cell by cell: a whole column of a large result stays
+ * quick.
+ *
+ * @param selection Selection.
+ * @returns `false` without a selection.
+ */
+export function selectionIsFull(selection: GridSelection): boolean {
+  const ranges = selection.ranges
+  const rows = cuts(ranges, 'top', 'bottom')
+  const columns = cuts(ranges, 'left', 'right')
+  const pieces = rows
+    .slice(0, -1)
+    .map((top) => columns.slice(0, -1).map((left) => stateOf(ranges, top, left)))
+  const usedRows = pieces.filter((line) => line.some(Boolean))
+  if (usedRows.length === 0) {
+    return false
+  }
+  const usedColumns = columns.slice(0, -1).map((_, column) => pieces.some((line) => line[column]))
+  return usedRows.every((line) =>
+    line.every((selected, column) => selected || !usedColumns[column]),
+  )
+}
+
+/**
  * Size of a selection's frame: number of rows and of columns it touches,
  * counted without listing them (a whole column of a large result).
  *

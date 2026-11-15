@@ -87,23 +87,30 @@ const ZERO_IN_DATE = /^\d{4}-(00-\d{2}|\d{2}-00)/
 const HEX_BYTES = /^0x((?:[0-9A-F]{2})*)$/
 
 /**
- * How the CTE is written: dialect, modes of the session, layout.
+ * How a literal is written (`cteLiteral`): dialect and mode of the session.
+ * The `IN` clause of a selection writes its values so too (`inClause.ts`).
  */
-export interface CteOptions {
+export interface LiteralOptions {
   /**
-   * Dialect written: MySQL (`ROW (…)`) or MariaDB.
+   * Dialect written: MySQL (`ROW (…)` in a CTE) or MariaDB.
    */
   flavor: Flavor
-  /**
-   * Is the `ANSI_QUOTES` mode active? Names are then quoted with double
-   * quotes, backticks otherwise.
-   */
-  ansiQuotes: boolean
   /**
    * Is the backslash an escape in strings (`NO_BACKSLASH_ESCAPES` mode
    * inactive)?
    */
   backslashEscapes: boolean
+}
+
+/**
+ * How the CTE is written: dialect, modes of the session, layout.
+ */
+export interface CteOptions extends LiteralOptions {
+  /**
+   * Is the `ANSI_QUOTES` mode active? Names are then quoted with double
+   * quotes, backticks otherwise.
+   */
+  ansiQuotes: boolean
   /**
    * Reserved words of the dialect, in capitals: a name that is one is
    * quoted.
@@ -155,9 +162,9 @@ function bitLiteral(cell: string): string {
  *
  * @param keyword Type of the literal: `DATE` or `TIMESTAMP`.
  * @param cell Value of the cell.
- * @param options How the CTE is written.
+ * @param options How the literal is written.
  */
-function dateLiteral(keyword: string, cell: string, options: CteOptions): string {
+function dateLiteral(keyword: string, cell: string, options: LiteralOptions): string {
   const string = cteString(cell, options.backslashEscapes)
   return options.flavor === 'mysql' && ZERO_IN_DATE.test(cell) ? string : `${keyword}${string}`
 }
@@ -167,12 +174,12 @@ function dateLiteral(keyword: string, cell: string, options: CteOptions): string
  *
  * @param cell Value, `null` for NULL.
  * @param family Family of the column's type, absent if unknown.
- * @param options How the CTE is written.
+ * @param options How the literal is written.
  */
 export function cteLiteral(
   cell: Cell,
   family: TypeFamily | undefined,
-  options: CteOptions,
+  options: LiteralOptions,
 ): string {
   if (cell === null) {
     return 'NULL'

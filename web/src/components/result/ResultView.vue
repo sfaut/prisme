@@ -37,8 +37,12 @@
   same rows can become a CTE (`cte.ts`): downloaded or copied, for MySQL or
   MariaDB, or written in the editor in the dialect of its server, which the
   editor view does (`insert-cte`). Columns sharing a name, or a discontinuous
-  selection, refuse it. The menu also offers the full result: the server
-  runs the query again, as it is written, without the limit of Prisme, on
+  selection, refuse it. The selection can also become an `IN` clause
+  (`inClause.ts`), in the dialect of the editor's server: copied, or
+  written at the editor's cursor (`insert-in`). It needs a selection whose
+  rows are all selected on the same columns; otherwise its choices stay
+  inactive, their tooltip saying why. The menu also offers the full result:
+  the server runs the query again, as it is written, without the limit of Prisme, on
   the current database of the editor, and writes its rows in the displayed
   order of the columns, neither sorted nor filtered by the grid; the exports
   manager of the top bar follows it (`stores/exports.ts`). Its total, when
@@ -78,6 +82,7 @@ import { useExportsStore } from '@/stores/exports'
 import { useClock } from '@/utils/clock'
 import { csvBlob, duplicateNames } from './csv'
 import { MYSQL_VALUES_SINCE, SQL_TYPE, cteStatement, cteText } from './cte'
+import { inClause } from './inClause'
 import { downloadName, saveBlob } from '@/utils/download'
 import { versionAtLeast } from '@/components/navigator/indexOperations'
 import { frameIsFull, sameColumns } from './resultGrid'
@@ -123,6 +128,10 @@ const emit = defineEmits<{
    * server.
    */
   'insert-cte': [query: string]
+  /**
+   * The user writes the selection as an `IN` clause at the editor's cursor.
+   */
+  'insert-in': [clause: string]
 }>()
 
 /**
@@ -257,7 +266,9 @@ const readsCte = computed(
  * query. Then the CTE, for each dialect (that of the editor's server first),
  * and the full result. In the clipboard: the CTE, for each dialect. In the
  * editor: the CTE, in the dialect of its server. The CTE needs a row and the
- * session.
+ * session. In the clipboard and in the editor, the selection as an `IN`
+ * clause too, in the dialect of the editor's server, inactive without a
+ * selection or with a malformed one.
  */
 const exportGroups = computed<MenuGroup[]>(() => {
   const size = grid.value?.selectedSize ?? null
@@ -278,6 +289,13 @@ const exportGroups = computed<MenuGroup[]>(() => {
       onSelect: () => void action(flavor),
     }))
   const server = props.server
+  const inReason =
+    size === null
+      ? 'Sélectionnez une ou plusieurs colonnes.'
+      : grid.value?.selectedFull
+        ? null
+        : 'Sélection malformée : chaque ligne sélectionnée doit l’être sur les mêmes colonnes.'
+  const inOff = inReason !== null || server === null
   return [
     {
       label: 'Fichier',
@@ -311,6 +329,15 @@ const exportGroups = computed<MenuGroup[]>(() => {
           disabled: cteOff,
           items: dialects(copyCte),
         },
+        {
+          label: 'Sélection en clause IN',
+          icon: ClipboardCopy,
+          disabled: inOff,
+          hint:
+            inReason ??
+            'Copie les valeurs distinctes de la sélection en clause IN, dans le dialecte du serveur de l’éditeur. Une colonne seule omet NULL, qui ne correspond jamais.',
+          onSelect: () => void copyIn(),
+        },
       ],
     },
     {
@@ -325,6 +352,15 @@ const exportGroups = computed<MenuGroup[]>(() => {
               ? `MySQL ${server.version} ne lit pas VALUES ROW (…) : il faut MySQL 8.0.19 ou suivant.`
               : 'Ajoute la CTE après la dernière requête de l’éditeur, sans l’exécuter, dans le dialecte de son serveur.',
           onSelect: () => void insertCte(),
+        },
+        {
+          label: 'Sélection en clause IN',
+          icon: TextCursorInput,
+          disabled: inOff,
+          hint:
+            inReason ??
+            'Écrit les valeurs distinctes de la sélection en clause IN au curseur de l’éditeur, ou à la place du texte sélectionné.',
+          onSelect: () => void insertIn(),
         },
       ],
     },
@@ -454,6 +490,61 @@ async function insertCte(): Promise<void> {
     const cte = await cteOf(props.server.flavor)
     if (cte !== null) {
       emit('insert-cte', cte.query)
+    }
+  } catch (failure) {
+    notify(errorMessage(failure), 'error')
+  }
+}
+
+/**
+ * Writes the selection as an `IN` clause (`inClause.ts`), in the dialect and
+ * the modes of the editor's session. A selection of NULL values alone
+ * refuses it: an `IN` needs a value.
+ *
+ * @returns The clause; `null` if refused.
+ */
+async function inOf(): Promise<string | null> {
+  const result = shown.value
+  const server = props.server
+  if (result === null || grid.value === null || server === null || !grid.value.selectedFull) {
+    return null
+  }
+  const frame = await grid.value.exportFrame()
+  const clause = await inClause(frame, result.rows, result.columnTypes, {
+    flavor: server.flavor,
+    backslashEscapes: !server.no_backslash_escapes,
+    indentSize: props.indentSize,
+  })
+  if (clause === null) {
+    notify('Clause IN refusée : la sélection ne contient que NULL.', 'error')
+  }
+  return clause
+}
+
+/**
+ * Copies the selection as an `IN` clause to the clipboard.
+ */
+async function copyIn(): Promise<void> {
+  try {
+    const clause = await inOf()
+    if (clause !== null) {
+      await navigator.clipboard.writeText(clause)
+      notify('Clause IN copiée.')
+    }
+  } catch (failure) {
+    notify(errorMessage(failure), 'error')
+  }
+}
+
+/**
+ * Hands the selection as an `IN` clause to the editor view, which writes it
+ * at the editor's cursor.
+ */
+async function insertIn(): Promise<void> {
+  try {
+    const clause = await inOf()
+    if (clause !== null) {
+      emit('insert-in', clause)
     }
   } catch (failure) {
     notify(errorMessage(failure), 'error')

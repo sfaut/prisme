@@ -10,7 +10,8 @@
   - Export, when the tab shows a grid: its menu, given by the view of the
     tab (`ResultView.vue`), groups its choices by destination. In a file,
     the selection or the displayed result as CSV or as a CTE, or the full
-    result; in the clipboard or in the editor, as a CTE.
+    result; in the clipboard or in the editor, as a CTE, or the selection as
+    an `IN` clause.
 -->
 <script setup lang="ts">
 import { Funnel, RefreshCw, RefreshCwOff, Share } from '@lucide/vue'
