@@ -455,21 +455,24 @@ export type PivotRequestMessage =
     }
   | {
       /**
-       * Block of rows of the result, in their order.
+       * Block of rows of the result, in their order, with the rows of the block the filter of the
+       * grid keeps, by their number in the result; none without a filter.
        */
       type: 'rows'
       rows: Cell[][]
+      kept?: Uint32Array
     }
   | {
       /**
-       * End of the copy.
+       * End of the copy: no row comes after.
        */
       type: 'finish'
       id: number
     }
   | {
       /**
-       * Rows kept by the filter of the grid, `null` for all.
+       * Rows kept by the filter of the grid among the rows copied so far, `null` for all; the
+       * blocks that follow give theirs.
        */
       type: 'kept'
       rows: Uint32Array | null
@@ -542,10 +545,12 @@ interface EngineExports extends TransferExports {
     valid: number,
     rows: number,
   ): number
+  grow(): number
   finish(): number
   distinct(column: number, precision: number): number
   set_ranks(column: number, ranks: number, count: number): number
   set_kept(rows: number, count: number, all: number): number
+  extend_kept(rows: number, count: number): number
   compute(words: number, length: number): number
   lay_out(words: number, length: number): number
   columns_at(words: number, length: number): number
@@ -860,6 +865,17 @@ export class PivotEngine {
   private readonly ranked = new Set<number>()
 
   /**
+   * Rows the engine has taken into account.
+   */
+  private rows = 0
+
+  /**
+   * Rows the filter of the grid keeps among the blocks appended since the engine last took rows
+   * in, by their number in the result.
+   */
+  private pendingKept: number[] = []
+
+  /**
    * Words of the request of the table in the module, and its shape: asking for it again only lays
    * it out again. `null` before any table, or once the rows taken into account have changed.
    */
@@ -927,7 +943,8 @@ export class PivotEngine {
   }
 
   /**
-   * Starts the copy of a result; the previous one is dropped.
+   * Starts the copy of a result, which tables can be asked of as its rows arrive; the previous one
+   * is dropped.
    *
    * @param families Family of the type of each column.
    */
@@ -940,18 +957,22 @@ export class PivotEngine {
     this.engine.begin(address, families.length)
     this.engine.release(address, size)
     this.ranked.clear()
+    this.rows = 0
+    this.pendingKept = []
     this.computed = null
     this.lengths = null
   }
 
   /**
-   * Appends a block of rows to the copy under way, column by column.
+   * Appends a block of rows to the copy under way, column by column. The next table, list of
+   * values or end of the copy takes them in.
    *
    * @param rows Rows of the block.
    * @param columns Number of columns of the result.
+   * @param kept Rows of the block the filter of the grid keeps, by their number in the result.
    * @throws {PivotError} If the module refuses the block.
    */
-  append(rows: Cell[][], columns: number): void {
+  append(rows: Cell[][], columns: number, kept?: Uint32Array): void {
     for (let column = 0; column < columns; column++) {
       const block = copyBlock(rows, column, this.engine)
       const length = this.engine.append(
@@ -967,14 +988,40 @@ export class PivotEngine {
         this.answer(length)
       }
     }
+    for (const row of kept ?? []) {
+      this.pendingKept.push(row)
+    }
   }
 
   /**
-   * Ends the copy under way.
+   * Takes in the rows appended since, and the rows the filter of the grid keeps among them. A
+   * column whose values grew is ranked again before the next table, and the table asked again
+   * adds the new rows to its state.
+   */
+  private grow(): void {
+    const { rows, dropped } = this.answer<{ rows: number; dropped: number[] }>(this.engine.grow())
+    for (const column of dropped) {
+      this.ranked.delete(column)
+    }
+    if (this.pendingKept.length > 0) {
+      const kept = Uint32Array.from(this.pendingKept)
+      this.pendingKept = []
+      this.withWords(kept, (address) => this.answer(this.engine.extend_kept(address, kept.length)))
+    }
+    if (rows !== this.rows) {
+      this.rows = rows
+      this.computed = null
+      this.lengths = null
+    }
+  }
+
+  /**
+   * Ends the copy under way: the engine takes in the last rows, then holds no more room for others.
    *
    * @throws {PivotError} If no copy is under way, or its columns differ in length.
    */
   finish(): void {
+    this.grow()
     const length = this.engine.finish()
     if (length !== 0) {
       this.answer(length)
@@ -982,11 +1029,14 @@ export class PivotEngine {
   }
 
   /**
-   * Keeps only the rows the filter of the grid keeps.
+   * Keeps only the rows the filter of the grid keeps, among those appended so far.
    *
    * @param rows Rows kept, in their order; `null` for all.
    */
   setKept(rows: Uint32Array | null): void {
+    // The rows kept by the previous filter among the last blocks are no longer kept.
+    this.pendingKept = []
+    this.grow()
     this.computed = null
     this.lengths = null
     if (rows === null) {
@@ -1021,15 +1071,17 @@ export class PivotEngine {
    * @param precision What the column keeps of its dates.
    */
   values(column: number, precision: DatePrecision = 'none'): Cell[] {
+    this.grow()
     const values = this.answer<Cell[]>(this.engine.distinct(column, PRECISION_CODES[precision]))
     return precision === 'none' ? values.sort(compareCells) : values
   }
 
   /**
-   * Computes a table, and keeps it for the windows in place of the previous one, then lays it out
-   * in an order and a layout. The table in the module, asked again, is only laid out again: a sort
-   * or another layout computes no aggregate. A refused table keeps the previous one: the panel
-   * goes on showing it, with the error.
+   * Computes a table on the rows appended so far, and keeps it for the windows in place of the
+   * previous one, then lays it out in an order and a layout. The table in the module, asked again,
+   * is only laid out again: a sort or another layout computes no aggregate. Asked again after new
+   * rows, it adds them to its state. A refused table keeps the previous one: the panel goes on
+   * showing it, with the error.
    *
    * @param request Table asked.
    * @param order Order of its lines and of its columns.
@@ -1043,6 +1095,7 @@ export class PivotEngine {
     order: PivotOrder = LABEL_ORDER,
     layout: PivotLayout = FIRST_LAYOUT,
   ): PivotShape {
+    this.grow()
     for (const { column, precision } of [...request.rows, ...request.columns]) {
       if (precision === 'none') {
         this.rank(column)
@@ -1151,7 +1204,7 @@ export function answerMessage(
         state.table = null
         return null
       case 'rows':
-        state.engine.append(message.rows, state.columns)
+        state.engine.append(message.rows, state.columns, message.kept)
         return null
       case 'finish':
         state.engine.finish()

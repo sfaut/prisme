@@ -3,11 +3,17 @@
 //! (`web/src/components/pivot/pivotWorker.ts`), on one thread.
 //!
 //! The rows stay in the page, where the grid holds them: the Worker copies
-//! them once into the memory of the module, block by block and column by
-//! column (UTF-8 bytes, offset and validity of each cell, as in
-//! `bench/pivot/js/transfer.mjs`), then asks for tables, for the windows
-//! of a table the page shows, and for the positions of the columns it names
-//! by their values. A table never leaves the module whole.
+//! them into the memory of the module as they arrive, block by block and
+//! column by column (UTF-8 bytes, offset and validity of each cell, as in
+//! `bench/pivot/js/transfer.mjs`), and asks for tables, for the windows of a
+//! table the page shows, and for the positions of the columns it names by
+//! their values. A table never leaves the module whole.
+//!
+//! The engine of the result starts with its columns (`begin`), and takes in
+//! the rows copied since on demand (`grow`): a table asked during the
+//! reception is computed on the rows taken in, and the next one adds only the
+//! rows taken in since to its state (`Engine::update`). The end of the
+//! reception (`finish`) seals the engine: no row comes after.
 //!
 //! The functions are exported without `wasm-bindgen`: they take and return
 //! numbers, and addresses in the memory of the module. Those that answer
@@ -42,21 +48,13 @@ const GROUP_CONCAT: u32 = 9;
 /// Word that stands for a `GROUP_CONCAT` without `LIMIT` (see `concat`).
 const NO_LIMIT: u32 = u32::MAX;
 
-/// Copy of a result under way: its rows so far, the family of each column.
-struct Loading {
-    /// Rows received so far.
-    store: Store,
-    /// Family of each column.
-    families: Vec<Family>,
-}
-
 /// State of the module between two calls.
 #[derive(Default)]
 struct State {
-    /// Copy under way, until `finish`.
-    loading: Option<Loading>,
-    /// Engine of the result, once copied.
+    /// Engine of the result, from `begin`.
     engine: Option<Engine>,
+    /// Has the result been copied whole (`finish`)? No block comes after.
+    finished: bool,
     /// Last table computed.
     table: Option<Table>,
     /// Last answer written, as JSON.
@@ -125,8 +123,8 @@ fn family(code: u8) -> Family {
 }
 
 /// Starts the copy of a result of `columns` columns, the family of each
-/// given by a byte at `families` (see `family`). The previous result and its
-/// table are dropped.
+/// given by a byte at `families` (see `family`), with the engine of its rows.
+/// The previous result and its table are dropped.
 ///
 /// # Safety
 ///
@@ -138,18 +136,18 @@ pub unsafe extern "C" fn begin(families: *const u8, columns: usize) {
     STATE.with_borrow_mut(|state| {
         state.table = None;
         state.engine = None;
-        state.loading = Some(Loading {
-            store: Store::new(columns),
-            families: families.iter().map(|&code| family(code)).collect(),
-        });
+        let families = families.iter().map(|&code| family(code)).collect();
+        state.engine = Some(Engine::new(Store::new(columns), families));
+        state.finished = false;
     });
 }
 
 /// Appends a block of `rows` cells to column `column` of the copy under way:
 /// `length` bytes of UTF-8 text at `bytes`, `rows + 1` offsets at `offsets`
 /// (cell `row` runs from `offsets[row]` to `offsets[row + 1]`), one validity
-/// byte per row at `valid` (0 for NULL). Returns 0, or the length of the
-/// error written.
+/// byte per row at `valid` (0 for NULL). The rows count once every column
+/// holds them and the engine has taken them in (`grow`). Returns 0, or the
+/// length of the error written.
 ///
 /// # Safety
 ///
@@ -174,9 +172,10 @@ pub unsafe extern "C" fn append(
     };
     STATE.with_borrow_mut(|state| {
         let target = state
-            .loading
+            .engine
             .as_mut()
-            .and_then(|loading| loading.store.column_mut(column));
+            .filter(|_| !state.finished)
+            .and_then(|engine| engine.store_mut().column_mut(column));
         match target.map(|target| target.append(bytes, offsets, valid)) {
             Some(Ok(())) => 0,
             Some(Err(error)) => answer(state, |json, _| {
@@ -189,31 +188,49 @@ pub unsafe extern "C" fn append(
     })
 }
 
-/// Ends the copy under way: the engine of the result starts from its rows.
-/// Returns 0, or the length of the error written if no copy is under way or
-/// its columns do not have the same number of rows.
+/// Takes in the rows copied since the last call (`Engine::grow`). Writes
+/// `{"rows", "dropped"}`: the rows taken into account, and the columns whose
+/// ranks given by the page were dropped, as they do not rank the new values
+/// (`set_ranks`); or an error.
+#[unsafe(no_mangle)]
+pub extern "C" fn grow() -> usize {
+    STATE.with_borrow_mut(|state| {
+        let grown = state
+            .engine
+            .as_mut()
+            .map(|engine| (engine.grow(), engine.rows()));
+        answer(state, |json, _| match grown {
+            Some((dropped, rows)) => json::grown(json, rows, &dropped),
+            None => json::state_error(json, "no_result", None),
+        })
+    })
+}
+
+/// Ends the copy under way: the engine takes in its last rows, then is
+/// sealed, as no row comes after (`Engine::seal`). Returns 0, or the length
+/// of the error written if no copy is under way or its columns do not have
+/// the same number of rows.
 #[unsafe(no_mangle)]
 pub extern "C" fn finish() -> usize {
-    STATE.with_borrow_mut(|state| match state.loading.take() {
-        Some(loading) => {
-            let rows = loading.store.row_count();
-            let complete = (0..loading.store.column_count()).all(|column| {
-                loading
-                    .store
+    STATE.with_borrow_mut(|state| match state.engine.as_mut() {
+        Some(engine) if !state.finished => {
+            let store = engine.store();
+            let rows = store.row_count();
+            let complete = (0..store.column_count()).all(|column| {
+                store
                     .column(column)
                     .is_some_and(|cells| cells.len() == rows)
             });
             if complete {
-                let mut engine = Engine::new(loading.store, loading.families);
                 // The result is complete: its caches keep no room for more rows.
                 engine.seal();
-                state.engine = Some(engine);
+                state.finished = true;
                 0
             } else {
                 answer(state, |json, _| json::state_error(json, "incomplete", None))
             }
         }
-        None => answer(state, |json, _| {
+        _ => answer(state, |json, _| {
             json::state_error(json, "not_loading", None)
         }),
     })
@@ -261,9 +278,9 @@ pub unsafe extern "C" fn set_ranks(column: usize, ranks: *const u32, count: usiz
     })
 }
 
-/// Keeps only the rows the filter of the grid keeps: `count` row numbers
-/// (`u32`) at `rows`, in their order; all the rows if `all` is not 0. Writes
-/// `{}` or an error.
+/// Keeps only the rows the filter of the grid keeps, among those taken in:
+/// `count` row numbers (`u32`) at `rows`, in their order; all the rows if
+/// `all` is not 0. Writes `{}` or an error.
 ///
 /// # Safety
 ///
@@ -279,6 +296,27 @@ pub unsafe extern "C" fn set_kept(rows: *const u32, count: usize, all: u32) -> u
     };
     STATE.with_borrow_mut(|state| {
         let result = state.engine.as_mut().map(|engine| engine.set_kept(kept));
+        answer(state, |json, _| match result {
+            Some(Ok(())) => json.push_str("{}"),
+            Some(Err(error)) => json::error(json, &error),
+            None => json::state_error(json, "no_result", None),
+        })
+    })
+}
+
+/// Adds rows to those the filter of the grid keeps, after them: `count` row
+/// numbers (`u32`) at `rows`, among the rows taken in since the filter was
+/// set (`Engine::extend_kept`). Writes `{}` or an error.
+///
+/// # Safety
+///
+/// `rows` holds `count` numbers, untouched during the call.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn extend_kept(rows: *const u32, count: usize) -> usize {
+    // SAFETY: given by the caller.
+    let rows = unsafe { slice::from_raw_parts(rows, count) };
+    STATE.with_borrow_mut(|state| {
+        let result = state.engine.as_mut().map(|engine| engine.extend_kept(rows));
         answer(state, |json, _| match result {
             Some(Ok(())) => json.push_str("{}"),
             Some(Err(error)) => json::error(json, &error),
@@ -509,9 +547,11 @@ fn request(words: &[u32]) -> Option<Request> {
 }
 
 /// Computes the table of a request of `length` words (`u32`) at `words` (see
-/// `request`), keeps it in place of the previous one, and writes its shape
-/// (`json::shape`) or an error. A refused request keeps the previous table:
-/// the page goes on showing it, with the error.
+/// `request`) on the rows taken in, keeps it in place of the previous one,
+/// and writes its shape (`json::shape`) or an error. The same request asked
+/// again adds only the rows taken in since to the state of the previous table
+/// (`Engine::update`). A refused request keeps the previous table: the page
+/// goes on showing it, with the error.
 ///
 /// # Safety
 ///
@@ -522,8 +562,8 @@ pub unsafe extern "C" fn compute(words: *const u32, length: usize) -> usize {
     let words = unsafe { slice::from_raw_parts(words, length) };
     let request = request(words);
     STATE.with_borrow_mut(|state| {
-        let result = match (&state.engine, request) {
-            (Some(engine), Some(request)) => Some(engine.compute(&request)),
+        let result = match (&mut state.engine, request) {
+            (Some(engine), Some(request)) => Some(engine.update(&request)),
             _ => None,
         };
         match result {
@@ -782,6 +822,49 @@ mod tests {
                 cells.len(),
             )
         }
+    }
+
+    #[test]
+    fn a_table_asked_during_the_copy_follows_the_rows_taken_in() {
+        let families = [0u8, 1];
+        // SAFETY: two families.
+        unsafe { begin(families.as_ptr(), 2) };
+        assert_eq!(append_column(0, &[Some("Nord"), Some("Sud")]), 0);
+        assert_eq!(append_column(1, &[Some("1.5"), None]), 0);
+        assert_eq!(output(grow()), r#"{"rows":2,"dropped":[]}"#);
+        // Rows: column 0; measures: COUNT(*), SUM(column 1), as they are.
+        let words = [1u32, 0, 2, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0];
+        // SAFETY: fifteen words.
+        let length = unsafe { compute(words.as_ptr(), words.len()) };
+        assert!(output(length).ends_with(r#""groups":2,"rows":2}"#));
+
+        // A row that every column does not hold yet is not taken in.
+        assert_eq!(append_column(0, &[Some("Nord"), Some("Est")]), 0);
+        assert_eq!(append_column(1, &[Some("2")]), 0);
+        assert_eq!(output(grow()), r#"{"rows":3,"dropped":[]}"#);
+        let kept = [0u32, 2];
+        // SAFETY: two row numbers.
+        let length = unsafe { set_kept(kept.as_ptr(), kept.len(), 0) };
+        assert_eq!(output(length), "{}");
+        assert_eq!(append_column(1, &[Some("4")]), 0);
+        assert_eq!(output(grow()), r#"{"rows":4,"dropped":[]}"#);
+        let kept = [3u32];
+        // SAFETY: one row number.
+        let length = unsafe { extend_kept(kept.as_ptr(), kept.len()) };
+        assert_eq!(output(length), "{}");
+        // SAFETY: fifteen words.
+        let length = unsafe { compute(words.as_ptr(), words.len()) };
+        assert!(output(length).ends_with(r#""groups":2,"rows":3}"#));
+        let length = window(0, 10, 0, 10);
+        assert!(
+            output(length).ends_with(r#""cells":[["1","4.0"],["2","3.5"],["3","7.5"]]}"#),
+            "Est, Nord, total, on the scale of the column"
+        );
+
+        assert_eq!(finish(), 0);
+        let length = append_column(0, &[Some("Ouest")]);
+        assert_eq!(output(length), r#"{"error":{"kind":"not_loading"}}"#);
+        assert_eq!(output(finish()), r#"{"error":{"kind":"not_loading"}}"#);
     }
 
     #[test]

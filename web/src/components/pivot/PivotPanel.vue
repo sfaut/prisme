@@ -82,7 +82,7 @@ import {
   PivotError,
 } from './pivotEngine'
 import { targetKey } from './pivotWidths'
-import { sameColumns, visibleRows } from '@/components/result/resultGrid'
+import { rowTest, sameColumns } from '@/components/result/resultGrid'
 import { isForeignKey, useCatalogStore } from '@/stores/catalog'
 import { useSettingsStore } from '@/stores/settings'
 import { columnIcon } from '@/components/result/typeIcons'
@@ -368,7 +368,7 @@ function closeClient(): void {
 onBeforeUnmount(closeClient)
 
 /**
- * Starts a Worker for a result, and copies its rows.
+ * Starts a Worker for a complete result, and copies its rows.
  *
  * @param shown Result to copy.
  */
@@ -382,23 +382,22 @@ function startClient(shown: QueryResult): PivotClient {
       copying.value = false
     }
   }
-  started.loaded.then(copied, copied)
+  started.end().then(copied, copied)
   return started
 }
 
 /**
- * Sends the rows the filter of the grid keeps, when it has changed.
+ * Sends the filter of the grid, when it has changed.
  *
  * @param current Client of the Worker.
- * @param shown Result of the Worker.
  */
-function sendKept(current: PivotClient, shown: QueryResult): void {
+function sendKept(current: PivotClient): void {
   const filter = props.tab?.filter
   const text = filter?.text.trim() ?? ''
   const key = text === '' ? '' : `${filter?.column ?? ''} ${filter?.text}`
   if (key !== sentFilter) {
     sentFilter = key
-    current.setKept(filter && key !== '' ? visibleRows(toRaw(shown.rows), filter, null) : null)
+    current.setKept(filter ? rowTest(filter) : null)
   }
 }
 
@@ -529,7 +528,7 @@ function update(): void {
     failure.value = null
     return
   }
-  sendKept(client, shown)
+  sendKept(client)
   void compute(client)
 }
 

@@ -148,7 +148,7 @@ describe('PivotClient', () => {
     ]
     const worker = new PageWorker()
     const client = new PivotClient(worker, result(rows, ['parite', 'n'], types))
-    await client.loaded
+    await client.end()
     expect(worker.received).toEqual(['begin', 'rows', 'rows', 'rows', 'finish'])
     const table = await client.compute({
       rows: [level(0)],
@@ -177,6 +177,67 @@ describe('PivotClient', () => {
     expect(table.shape.rows).toBe(BLOCK_ROWS * 3)
   })
 
+  it('follows the rows received after its start', async () => {
+    const types = [
+      { family: 'text' as const, name: 'VARCHAR(10)' },
+      { family: 'integer' as const, name: 'INT' },
+    ]
+    const received = result([['b', '1']], ['x', 'n'], types)
+    const worker = new PageWorker()
+    const client = new PivotClient(worker, received)
+    const request = {
+      rows: [level(0)],
+      columns: [],
+      measures: [{ aggregate: 'sum' as const, column: 1 }],
+      filters: [],
+    }
+    const first = await client.compute(request)
+    expect(first.shape).toMatchObject({ groups: 1, rows: 1 })
+    received.rows.push(['a', '2'], ['c', '3'], ['b', '4'])
+    client.follow()
+    const second = await client.compute(request)
+    expect(second.shape).toMatchObject({ groups: 3, rows: 4 })
+    // The new values take their place in the order of the grid.
+    const window = await client.window(second.id, [0, 4], [0, 1])
+    expect(window.lines.map((line) => line.label)).toEqual(['a', 'b', 'c', null])
+    expect(window.cells).toEqual([['2'], ['5'], ['3'], ['10']])
+    await client.end()
+    client.follow()
+    expect(worker.received).toEqual([
+      'begin',
+      'rows',
+      'compute',
+      'rows',
+      'compute',
+      'window',
+      'finish',
+    ])
+    await expect(client.values(0)).resolves.toEqual(['a', 'b', 'c'])
+  })
+
+  it('keeps the rows of the filter of the grid among the rows received after it', async () => {
+    const received = result([['a'], ['b']], ['x'])
+    const client = new PivotClient(new PageWorker(), received)
+    client.setKept((row) => row[0] === 'a')
+    received.rows.push(['b'], ['a'], ['a'])
+    client.follow()
+    const table = await client.compute({
+      rows: [],
+      columns: [],
+      measures: [{ aggregate: 'count_star', column: 0 }],
+      filters: [],
+    })
+    expect(table.shape.rows).toBe(3)
+    client.setKept(null)
+    const all = await client.compute({
+      rows: [],
+      columns: [],
+      measures: [{ aggregate: 'count_star', column: 0 }],
+      filters: [],
+    })
+    expect(all.shape.rows).toBe(5)
+  })
+
   it('refuses a window of a table replaced since', async () => {
     const client = new PivotClient(new PageWorker(), result([['a'], ['b']], ['x']))
     const first = await client.compute({ rows: [level(0)], columns: [], measures: [], filters: [] })
@@ -194,7 +255,7 @@ describe('PivotClient', () => {
 
   it('takes the families missing from a saved result as other families', async () => {
     const client = new PivotClient(new PageWorker(), result([['1'], ['2']], ['n']))
-    await client.loaded
+    await client.end()
     await expect(
       client.compute({
         rows: [],
@@ -207,8 +268,8 @@ describe('PivotClient', () => {
 
   it('measures the rows kept by the filter of the grid', async () => {
     const client = new PivotClient(new PageWorker(), result([['a'], ['b'], ['a']], ['x']))
-    await client.loaded
-    client.setKept([0, 2])
+    await client.end()
+    client.setKept((row) => row[0] === 'a')
     const table = await client.compute({
       rows: [level(0)],
       columns: [],
@@ -218,7 +279,7 @@ describe('PivotClient', () => {
     expect(table.shape.rows).toBe(2)
   })
 
-  it('reads the distinct values of a column, once the copy is over', async () => {
+  it('reads the distinct values of a column, once the rows received are copied', async () => {
     const client = new PivotClient(new PageWorker(), result([['b'], [null], ['a']], ['x']))
     await expect(client.values(0)).resolves.toEqual([null, 'a', 'b'])
   })
@@ -226,7 +287,7 @@ describe('PivotClient', () => {
   it('refuses the answers still awaited once closed', async () => {
     const worker = new PageWorker()
     const client = new PivotClient(worker, result([['a']], ['x']))
-    await client.loaded
+    await client.end()
     const computing = client.compute({ rows: [], columns: [], measures: [], filters: [] })
     client.close()
     expect(worker.terminated).toBe(true)

@@ -33,6 +33,7 @@ import {
   drawnRange,
   sameColumns,
   type SortState,
+  rowTest,
   updateView,
   viewFrame,
   visibleRows,
@@ -82,6 +83,19 @@ describe('sort', () => {
 })
 
 describe('user filter', () => {
+  it('keeps one by one the rows the view keeps', () => {
+    for (const filter of [
+      { text: 'PAR', column: null },
+      { text: '1', column: 0 },
+      { text: 'null', column: 2 },
+    ]) {
+      const test = rowTest(filter)
+      const kept = rows.flatMap((row, index) => (test?.(row) ? [index] : []))
+      expect(kept).toEqual(visibleRows(rows, filter, null))
+    }
+    expect(rowTest({ text: '  ', column: 1 })).toBeNull()
+  })
+
   it('searches in all the columns, case-insensitive', () => {
     expect(visibleRows(rows, { text: 'PAR', column: null }, null)).toEqual([2])
   })

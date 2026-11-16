@@ -284,6 +284,17 @@ export function visibleRows(
 }
 
 /**
+ * Test of the rows a user filter keeps, as `visibleRows` applies it, for rows taken one by one.
+ *
+ * @param userFilter User filter.
+ * @returns The test; `null` when the filter keeps every row.
+ */
+export function rowTest(userFilter: UserFilter): ((row: Cell[]) => boolean) | null {
+  const needle = userFilter.text.trim().toLowerCase()
+  return needle === '' ? null : (row) => matches(row, needle, userFilter.column)
+}
+
+/**
  * View kept from one update to the next, so that the rows received since are
  * added to it instead of sorting all the rows again (see `updateView`).
  */
