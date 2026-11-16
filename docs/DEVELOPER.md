@@ -93,8 +93,6 @@ The display preferences of a machine stay in the browser's local storage, under 
 | `prisme.explorer.layout.<editor>` | the data explorer of an editor open, its width (JSON), forgotten when it closes |
 | `prisme.explorer.wrap` | long lines of the data explorers wrapped |
 
-Temporary, added in v0.12.0, to remove in v0.13.0 or later: `web/src/utils/storage.ts` moves once, as the interface starts, the keys of v0.11.0 and earlier (`prisme.objectsOpen`, `prisme.consoleTab`, `prisme-color-mode`...) and of the development builds after it under these names, and removes the layouts of the splitter of Reka UI (`reka:`). Its removal takes the file, its import at the top of `main.ts`, its tests and this paragraph.
-
 ### Icons and actions
 
 The icons come from Lucide (`@lucide/vue`). An action keeps the same icon wherever it appears, and an icon keeps the same meaning: before adding a button, look for its action below, and add any new icon to these tables in the same change.
@@ -730,7 +728,7 @@ web/               Vue interface
     split/         splitters of Prisme
     ui/            base components (buttons, fields, menus, dialogs, tooltips)
   src/stores/      shared state (connections, settings)
-  src/utils/       utilities of no area: shared clock, downloads, theme lengths, color mode, stored preferences, migration of the stored keys (temporary)
+  src/utils/       utilities of no area: shared clock, downloads, theme lengths, color mode, stored preferences
 bench/             benchmarks, outside the workspace
   prisme.mjs       Prisme on the real server, for the benchmarks that measure it
   batches/         batches of rows from the server to the page: fast, slow and heavy results (run.mjs)
