@@ -1939,7 +1939,33 @@ each, are within their noise: the narrow types do not change the speed.
 - **The adaptive pace bounds both costs**: an update starts once the previous
   one is done, so the slices grow with the time an update takes.
 
-### 17.7 Measuring again
+### 17.7 A real reception, the Pivoteur open
+
+Measure of 2026-11-16, steps "Client and Worker" and "Panel" of section 5 of
+`docs/TODO-PIVOTER.md`: the effect of sending the rows to the Worker during
+the reception, announced in section 17.2.
+
+**Measurement.** Prisme in development (`cargo run`, Vite), Chrome, the latest
+MariaDB LTS of the development servers (`compose.yaml`), same machine. The
+query `SELECT CONCAT('G', seq % 7) AS g, seq % 100 AS h, seq AS n FROM
+shop.seq_1_to_1000000 LIMIT 1000000` gives 1 million rows, 20.8 MB. Its
+duration is the "transfert" of the status bar of the result, the panel of the
+Pivoteur open (a table by `g`, `COUNT(*)`, computed again at most once per
+second during the reception) or folded (no Worker). Two runs each.
+
+| Panel | Transfer of 1 million rows |
+|---|---|
+| Open, the table following the reception | 13.9 s, 14.0 s |
+| Folded | 14.1 s, 14.4 s |
+
+**Analysis.** No effect can be seen: the difference stays within the spread of
+the runs. The reception is bound by the server and the network (1.5 MB/s
+here); the main thread sends a block of 20,000 rows to the Worker between two
+messages of rows, 0.7 to 0.8 s per million rows (section 17.2), spread over
+the 14 s of the reception. The table of 7 groups is computed in 3 to 11 ms per
+update, and ends with the reception: 1,000,000 rows, 5 to 10 ms after `done`.
+
+### 17.8 Measuring again
 
 From the root of the repository: `node bench/streaming/run.mjs` (1 million
 rows, 3 passes, a few minutes), then `node bench/streaming/run.mjs 10000000
