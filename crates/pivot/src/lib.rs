@@ -1156,7 +1156,7 @@ impl Engine {
             Value::Exact(number, _) | Value::Share(number, _) => SortKey::Exact(number),
             Value::Float(number) => SortKey::Float(number),
             Value::Cell(level, row) => {
-                let code = self.level_dictionary(level)?.codes[row as usize];
+                let code = self.level_dictionary(level)?.codes.get(row as usize);
                 let ranks = self.extreme_ranks(measure, level)?;
                 SortKey::Exact(i128::from(ranks[code as usize]))
             }

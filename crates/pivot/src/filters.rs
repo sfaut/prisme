@@ -352,7 +352,7 @@ impl Engine {
         };
         let mut kept = Vec::new();
         for &row in rows {
-            match decisions[codes[row as usize] as usize] {
+            match decisions[codes.get(row as usize) as usize] {
                 Ok(true) => kept.push(row),
                 Ok(false) => {}
                 Err(unreadable) => return Err(unreadable.error(column, row)),

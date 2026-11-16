@@ -46,7 +46,7 @@ use std::cmp::Ordering;
 use std::hash::Hash;
 use std::iter;
 
-use prisme_store::{Approx, Dictionary, Exact, ExactValues, FxMap, FxSet, growth};
+use prisme_store::{Approx, Codes, Dictionary, Exact, ExactValues, FxMap, FxSet, growth};
 
 use crate::groups::Merge;
 use crate::{Concat, Engine, Level};
@@ -71,7 +71,7 @@ pub enum Input<'a> {
     Cells(&'a [bool]),
     /// Codes of the values of a level, by row, and the validity of the cells
     /// of its column (`COUNT(DISTINCT col)`).
-    Distinct(&'a [u32], &'a [bool]),
+    Distinct(&'a Codes, &'a [bool]),
     /// Exact numbers of a column and their validity.
     Exact(&'a Exact, &'a [bool]),
     /// Floats of a column and their validity.
@@ -467,7 +467,7 @@ fn sum_distinct<T: Addend, K: Eq + Hash>(
     let mut sums = vec![T::default(); feed.groups];
     let mut counts = vec![0u64; feed.groups];
     visit_distinct(
-        |row| number_of_text[dictionary.codes[row] as usize],
+        |row| number_of_text[dictionary.codes.get(row) as usize],
         valid,
         feed,
         |group, number| {
@@ -564,7 +564,7 @@ impl Extreme<'_> {
 /// Key of the order of the values of a `GROUP_CONCAT`: a column of the result.
 pub struct OrderKey<'a> {
     /// Code of each row in the dictionary of the column.
-    pub codes: &'a [u32],
+    pub codes: &'a Codes,
     /// Rank of each code, as `MIN` and `MAX` compare the values.
     pub ranks: &'a [u32],
     /// Validity of the cells of the column.
@@ -577,7 +577,7 @@ impl OrderKey<'_> {
     /// Compares the keys of two rows: NULL first, then by rank, the whole
     /// order reversed when descending.
     fn compare(&self, a: usize, b: usize) -> Ordering {
-        let key = |row: usize| self.valid[row].then(|| self.ranks[self.codes[row] as usize]);
+        let key = |row: usize| self.valid[row].then(|| self.ranks[self.codes.get(row) as usize]);
         let order = key(a).cmp(&key(b));
         if self.descending {
             order.reverse()
@@ -595,7 +595,7 @@ pub struct Joined<'a> {
     pub concat: &'a Concat,
     /// Code of each row in the dictionary of the level, which tells the values
     /// apart.
-    pub codes: &'a [u32],
+    pub codes: &'a Codes,
     /// Validity of the cells of the column of the level.
     pub valid: &'a [bool],
     /// Keys of the order of the values, the first one first.
@@ -736,7 +736,7 @@ fn join(joined: &Joined, feed: Feed) -> Vec<Option<Box<str>>> {
         let finest = feed.finest[position as usize];
         let groups = coarser.iter().map(|groups| groups[finest as usize]);
         for group in iter::once(finest).chain(groups) {
-            if concat.distinct && !seen.insert(pair(group, codes[row as usize])) {
+            if concat.distinct && !seen.insert(pair(group, codes.get(row as usize))) {
                 continue;
             }
             joinings[group as usize].push(value, concat);
@@ -874,7 +874,7 @@ impl Partial {
                     if extreme.valid[row as usize] {
                         extreme.keep(
                             &mut best[group as usize],
-                            extreme.dictionary.codes[row as usize],
+                            extreme.dictionary.codes.get(row as usize),
                         );
                     }
                 }
@@ -984,7 +984,7 @@ pub fn accumulate(
         Input::Distinct(codes, valid) => {
             let mut counts = vec![0u64; groups];
             visit_distinct(
-                |row| codes[row],
+                |row| codes.get(row),
                 valid,
                 feed,
                 |group, _| {
@@ -1369,7 +1369,7 @@ mod tests {
     fn distinct_values_are_counted_again_in_the_coarser_groups() {
         // Codes 0, 1, 0 and a NULL (code 2, not valid): group 0 holds 0,
         // group 1 holds 1, 0 and NULL; group 2 merges them.
-        let codes = [0, 1, 0, 2];
+        let codes = Codes::from(vec![0, 1, 0, 2]);
         let valid = [true, true, true, false];
         let state = accumulate(
             &Input::Distinct(&codes, &valid),
@@ -1397,7 +1397,7 @@ mod tests {
                 parent_of: vec![4, 4],
             },
         ];
-        let codes = [7, 7, 8];
+        let codes = Codes::from(vec![7, 7, 8]);
         let valid = [true; 3];
         let state = accumulate(
             &Input::Distinct(&codes, &valid),
@@ -1483,7 +1483,7 @@ mod tests {
         };
         let valid = [true, true, true, false];
         let dictionary = Dictionary {
-            codes: vec![0, 1, 2, 3],
+            codes: Codes::from(vec![0, 1, 2, 3]),
             first_rows: vec![0, 1, 2, 3],
         };
         let input = Input::DistinctExact(&numbers, &valid, &dictionary);
@@ -1502,7 +1502,7 @@ mod tests {
         };
         let valid = [true; 5];
         let dictionary = Dictionary {
-            codes: vec![0, 1, 2, 3, 3],
+            codes: Codes::from(vec![0, 1, 2, 3, 3]),
             first_rows: vec![0, 1, 2, 3],
         };
         let input = Input::DistinctFloat(&numbers, &valid, &dictionary);
@@ -1590,7 +1590,7 @@ mod tests {
         // Ranks by code: 1, 3, 0, 2; the NULL (code 4, not valid) is left out,
         // although its rank comes first.
         let dictionary = Dictionary {
-            codes: vec![0, 1, 2, 3, 4],
+            codes: Codes::from(vec![0, 1, 2, 3, 4]),
             first_rows: vec![0, 1, 2, 3, 4],
         };
         let ranks = [2, 3, 1, 4, 0];

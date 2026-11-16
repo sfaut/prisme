@@ -421,12 +421,13 @@ impl DerivedLevel {
             growth::push(&mut self.code_of_value, code);
         }
         let start = self.dictionary.codes.len();
-        growth::reserve(&mut self.dictionary.codes, values.codes.len() - start);
-        self.dictionary.codes.extend(
-            values.codes[start..]
-                .iter()
-                .map(|&value| self.code_of_value[value as usize]),
-        );
+        self.dictionary.codes.reserve(values.codes.len() - start);
+        for row in start..values.codes.len() {
+            let value = values.codes.get(row);
+            self.dictionary
+                .codes
+                .push(self.code_of_value[value as usize]);
+        }
         if self.slots.len() == known {
             return;
         }
@@ -461,12 +462,12 @@ impl DerivedLevel {
         let code = self.outside()?;
         rows.iter()
             .copied()
-            .find(|&row| self.dictionary.codes[row as usize] == code)
+            .find(|&row| self.dictionary.codes.get(row as usize) == code)
     }
 
     /// Label of the period of a row, `None` for NULL.
     pub fn label(&self, row: u32) -> Option<&str> {
-        self.code_label(self.dictionary.codes[row as usize])
+        self.code_label(self.dictionary.codes.get(row as usize))
     }
 
     /// Label of a code, `None` for NULL or for the cells outside of the calendar.
@@ -670,7 +671,7 @@ mod tests {
             Some("2025-12-31 23:30:00"),
         ];
         let level = level(&cells, Precision::Hour);
-        assert_eq!(level.dictionary.codes, [0, 1, 0, 2]);
+        assert_eq!(level.dictionary.codes.to_vec(), [0, 1, 0, 2]);
         assert_eq!(
             level.listed(),
             [
@@ -693,7 +694,7 @@ mod tests {
         );
         let cells = [Some("2026-01-15 00:59:59"), Some("2026-01-15")];
         let level = level(&cells, Precision::Hour);
-        assert_eq!(level.dictionary.codes, [0, 0]);
+        assert_eq!(level.dictionary.codes.to_vec(), [0, 0]);
         assert_eq!(level.first_outside(&[0, 1]), None);
     }
 
@@ -805,7 +806,7 @@ mod tests {
             Some("2026-01-15"),
         ];
         let level = level(&cells, Precision::Month);
-        assert_eq!(level.dictionary.codes, [0, 1, 2, 0, 3]);
+        assert_eq!(level.dictionary.codes.to_vec(), [0, 1, 2, 0, 3]);
         assert_eq!(level.dictionary.first_rows, [0, 1, 2, 4]);
         // NULL, 2025-12, 2026-01, 2026-03.
         assert_eq!(level.ranks, [3, 1, 0, 2]);
@@ -874,7 +875,7 @@ mod tests {
     fn a_cell_outside_of_the_calendar_groups_apart_from_null() {
         let cells = [Some("2026-01-15"), Some("0000-00-00"), None, Some("x")];
         let level = level(&cells, Precision::Month);
-        assert_eq!(level.dictionary.codes, [0, 1, 2, 1]);
+        assert_eq!(level.dictionary.codes.to_vec(), [0, 1, 2, 1]);
         // NULL, outside of the calendar, 2026-01.
         assert_eq!(level.ranks, [2, 1, 0]);
     }

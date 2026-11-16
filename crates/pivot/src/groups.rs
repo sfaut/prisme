@@ -19,7 +19,7 @@
 use std::hash::Hash;
 use std::ops::{BitOr, Shl};
 
-use prisme_store::{Dictionary, FxMap, growth};
+use prisme_store::{Codes, Dictionary, FxMap, growth};
 
 /// Node of the tree of an axis: the rows that share the values of the
 /// levels of the axis down to its depth. Node 0 is the root, all the rows.
@@ -68,18 +68,28 @@ impl Packed for u128 {
 fn packed_keys<K: Packed>(levels: &[&Dictionary], widths: &[u32], rows: &[u32]) -> Vec<K> {
     let mut keys = vec![K::ZERO; rows.len()];
     for (level, &width) in levels.iter().zip(widths) {
-        for (key, &row) in keys.iter_mut().zip(rows) {
-            *key = (*key << width) | K::from(level.codes[row as usize]);
+        match &level.codes {
+            Codes::U8(codes) => pack(&mut keys, codes, width, rows),
+            Codes::U16(codes) => pack(&mut keys, codes, width, rows),
+            Codes::U32(codes) => pack(&mut keys, codes, width, rows),
         }
     }
     keys
+}
+
+/// Shifts the key of each row by `width` bits, and puts the code of the row
+/// on the level below them.
+fn pack<K: Packed, C: Copy + Into<u32>>(keys: &mut [K], codes: &[C], width: u32, rows: &[u32]) {
+    for (key, &row) in keys.iter_mut().zip(rows) {
+        *key = (*key << width) | K::from(codes[row as usize].into());
+    }
 }
 
 /// Codes of the levels of a row, the first level first.
 fn row_codes(levels: &[&Dictionary], row: u32) -> Vec<u32> {
     levels
         .iter()
-        .map(|level| level.codes[row as usize])
+        .map(|level| level.codes.get(row as usize))
         .collect()
 }
 
@@ -219,7 +229,7 @@ pub fn tree(levels: &[&Dictionary], first_rows: &[u32]) -> (Tree, Vec<u32>) {
     for &row in first_rows {
         let mut node = 0u32;
         for (depth, level) in (1..).zip(levels) {
-            let code = level.codes[row as usize];
+            let code = level.codes.get(row as usize);
             let parent = node;
             let next = nodes.len() as u32;
             node = *index
@@ -401,7 +411,7 @@ mod tests {
         // 2^22 codes per level over six levels: 132 bits. Only the number of
         // codes and the codes of the rows matter.
         let level = |codes: [u32; 3]| Dictionary {
-            codes: codes.to_vec(),
+            codes: Codes::from(codes.to_vec()),
             first_rows: vec![0; 1 << 22],
         };
         let levels = [

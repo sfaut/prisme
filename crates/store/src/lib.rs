@@ -11,12 +11,14 @@
 //! crate does not depend on its target: its tests run natively, and the
 //! Worker runs it compiled to WebAssembly (`crates/web-engine`).
 
+mod codes;
 mod column;
 mod dictionary;
 pub mod growth;
 mod hash;
 mod numbers;
 
+pub use codes::Codes;
 pub use column::{BlockError, Bounds, TextColumn};
 pub use dictionary::{Dictionary, Encoder};
 pub use hash::{FxMap, FxSet, fx_hash};

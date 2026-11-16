@@ -15,6 +15,7 @@
 use hashbrown::HashTable;
 use hashbrown::hash_table::Entry;
 
+use crate::codes::Codes;
 use crate::column::TextColumn;
 use crate::growth;
 use crate::hash::fx_hash;
@@ -22,8 +23,8 @@ use crate::hash::fx_hash;
 /// Codes of the rows of a column.
 #[derive(Debug, Default)]
 pub struct Dictionary {
-    /// Code of each row.
-    pub codes: Vec<u32>,
+    /// Code of each row, on the fewest bytes that hold them.
+    pub codes: Codes,
     /// First row of each code, in the order of their first appearance: the
     /// value of the code is the cell of that row.
     pub first_rows: Vec<u32>,
@@ -108,7 +109,7 @@ impl Encoder {
             return;
         }
         assert!(!self.sealed, "rows encoded after the last one");
-        growth::reserve(codes, end - start);
+        codes.reserve(end - start);
         let text_of = |first_rows: &[u32], code: u32| {
             column
                 .get(first_rows[code as usize] as usize)
@@ -169,7 +170,7 @@ mod tests {
             None,
         ]);
         let dictionary = Dictionary::of(&column);
-        assert_eq!(dictionary.codes, [0, 1, 2, 3, 0, 1]);
+        assert_eq!(dictionary.codes.to_vec(), [0, 1, 2, 3, 0, 1]);
         assert_eq!(dictionary.len(), 4);
         let values: Vec<_> = (0..4).map(|code| dictionary.value(&column, code)).collect();
         assert_eq!(values, [Some("Nord"), None, Some("NULL"), Some("")]);
@@ -178,7 +179,7 @@ mod tests {
     #[test]
     fn texts_differing_by_case_or_spaces_have_their_own_codes() {
         let column = column(&[Some("fr"), Some("FR"), Some("fr ")]);
-        assert_eq!(Dictionary::of(&column).codes, [0, 1, 2]);
+        assert_eq!(Dictionary::of(&column).codes.to_vec(), [0, 1, 2]);
     }
 
     #[test]
@@ -186,7 +187,7 @@ mod tests {
         let mut cells = column(&[Some("Nord"), None, Some("Sud")]);
         let mut encoder = Encoder::default();
         encoder.extend(&cells, 2);
-        assert_eq!(encoder.dictionary().codes, [0, 1]);
+        assert_eq!(encoder.dictionary().codes.to_vec(), [0, 1]);
         for cell in [Some("Est"), Some("Nord"), None] {
             cells.push(cell);
         }
@@ -194,7 +195,7 @@ mod tests {
         let whole = Dictionary::of(&cells);
         assert_eq!(encoder.dictionary().codes, whole.codes);
         assert_eq!(encoder.dictionary().first_rows, whole.first_rows);
-        assert_eq!(whole.codes, [0, 1, 2, 3, 0, 1]);
+        assert_eq!(whole.codes.to_vec(), [0, 1, 2, 3, 0, 1]);
     }
 
     #[test]
