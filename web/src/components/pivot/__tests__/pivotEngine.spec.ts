@@ -411,7 +411,8 @@ describe('PivotEngine', () => {
     const labels = (precision: PivotRequestLevel['precision']) =>
       table(precision).lines.map((line) => line.label)
     expect(labels('year')).toEqual([null, '2026', '2027', null])
-    expect(table('year').cells).toEqual([['4'], ['19'], ['8'], ['31']])
+    // The year of the calendar: 2027-01-01 falls in 2027, though in the ISO week 2026-S53.
+    expect(table('year').cells).toEqual([['4'], ['18'], ['9'], ['31']])
     expect(labels('quarter')).toEqual([null, '2026-T1', '2026-T4', '2027-T1', null])
     expect(labels('month')).toEqual([null, '2026-03', '2026-12', '2027-01', null])
     expect(labels('week')).toEqual([null, '2026-S11', '2026-S53', '2027-S01', null])
