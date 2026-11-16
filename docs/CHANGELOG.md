@@ -2,6 +2,51 @@
 
 Changelogs of the published versions of Prisme, most recent first. Each entry is also the notes of its GitHub release. The interface is in French: its labels are quoted as they appear, with a translation.
 
+## v0.13.0 (2026-11-16)
+
+### 🚀 Launch
+
+We are proud to announce Prisme v0.13.0. The Pivoteur no longer waits for the end of the query: its table follows the rows as they arrive, at a pace you set. Each editor now has its own object navigator and data explorer, under tabs that span the whole width, with the console below them. The result grid copies its selection as an `IN` clause, and Alt+click on its corner inverts the selection.
+
+### ✨ New features
+
+- Pivoteur: the table is computed from the first rows received, then follows the reception, computed again at most once per delay, and a last time at the end of the query. Until then, its status bar reads `Calcul partiel : 334 894 lignes reçues` (Partial computation: rows received), and the list of the values of a filter says that it holds the values of the rows received when it opened. The zones stay editable during the reception, and a reception of 1 million rows takes as long with the Pivoteur open as folded.
+- **Paramètres** (Settings): **Mise à jour du Pivoteur** (Update of the Pivoteur), the shortest delay between two computations of its table during the reception, from 0.2 to 60 seconds, 1 by default.
+- Editors: each editor has its own object navigator and data explorer. The navigator keeps, for its editor, the rows you opened, its scroll, whether it is folded and its width; the explorer follows the grid of its editor, with its own search. A new editor starts from the last layout you gave. The source of the editor shows in bold in its navigator.
+- Layout: the editors' tabs span the whole width, above the navigator, the editor and the explorer; the console sits under them, across the whole width, and its line goes without a grip.
+- Result grid: Alt+click on the top left corner inverts the selection, selecting everything without a selection and nothing when everything is selected; a plain click still selects everything ([#37](https://github.com/sfaut/prisme/issues/37)).
+- Result grid: the export menu offers **Sélection en clause IN** (Selection as an IN clause), copied or written at the editor's cursor. One column gives its values on one line, several columns one row constructor per line, as literals of the server's dialect; a repeated value is written once, and `NULL` is left out of a single column ([#38](https://github.com/sfaut/prisme/issues/38)).
+- Results: while a query runs, the result space shows **Calcul en cours…** (Computing) with a spinner, its status bar kept at the bottom; the messages of the Pivoteur are centered in its space.
+
+### 💥 Breaking changes
+
+- Prisme no longer moves the display preferences saved by v0.11.0 and earlier: an installation updated from v0.11.0 or earlier straight to v0.13.0 starts from the default sizes, folds, filters and theme. An installation started once with v0.12.0 keeps its preferences.
+
+### 🐞 Bug fixes
+
+- Pivoteur: the precision **Année** (Year) takes the year of the date. It took the year of the ISO week: under year > month, part of December fell under the next year, and 2027-01-01 under 2026. The week keeps its ISO year (2026-S53 for 2027-01-01).
+- Result grid: a column header shows as selected only when its whole column is, and a row number when its whole row is; a header used to show as selected as soon as its cell of the first row was.
+- Folded results draw one line under their tab bar; two lines side by side showed as one line twice as thick.
+- A number field emptied, or holding a number still being typed (`2.` on the way to `2.5`), keeps what is typed; it used to show `0` at once.
+
+### 🔒 Security
+
+- Development tools: `eslint` 10.15.0 takes `minimatch` 11.0.8, patched for [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249). The advisory remains for the other development tools that require `minimatch` 10, as does [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4) of `glob`; nothing reaches the executable.
+
+### ⚙️ Internal improvements
+
+- Engine of the Pivoteur: its store and its derived forms (dictionaries, exact numbers, date levels, ranks) grow with the rows appended, and the engine keeps the state of its last table, to which an update adds only the new rows. Exact numbers stay on 64 bits while they fit, and the codes of a dictionary on 1, 2 or 4 bytes: at 10 million rows, the peak of memory of the engine goes from 4.16 to 3.67 GB.
+- Benchmark `bench/streaming`: the engine following the reception, its speed and its memory (`streaming-memory`).
+- Dependencies:
+  - `@codemirror/lint` 6.9.7 → 6.9.8, `@lucide/vue` 1.72.0 → 1.73.0, `@tsconfig/node24` 24.0.5 → 24.0.6, `@vitejs/plugin-vue` 6.0.10 → 6.0.11, `@vue/test-utils` 2.5.1 → 2.6.0, `eslint` 10.14.0 → 10.15.0, `jsdom` 31.0.0 → 31.0.1, `prettier` 3.9.10 → 3.10.1;
+  - `rusqlite` stays at 0.41.1: `rusqlite_migration` 2.7.0 does not accept 0.43.0 yet; `typescript` stays at 6.0: `typescript-eslint` still requires a version below 6.1.
+
+### 📝 Documentation
+
+- README: the Pivoteur following the reception and its setting, the navigator and the explorer of each editor, the layout of the tabs and of the console, the inverted selection and the `IN` clause, the year of the precision **Année**.
+- Developer guide: the stages of a table during the reception, the setting in the API, the measure of the memory of the engine.
+- Performances: chapter 17, the streaming of the rows to the Pivoteur, with the measures of the engine and of a real reception.
+
 ## v0.12.0 (2026-11-11)
 
 ### 🚀 Launch
