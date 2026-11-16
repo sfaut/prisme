@@ -51,7 +51,7 @@ fn single(cells: &[Option<&str>], family: Family) -> Engine {
 /// Table in the layout of its copy, fields separated by `;`.
 ///
 /// `levels` names the levels of the rows, `measures` the measures.
-fn flat(engine: &Engine, table: &Table, levels: &[&str], measures: &[&str]) -> String {
+pub(crate) fn flat(engine: &Engine, table: &Table, levels: &[&str], measures: &[&str]) -> String {
     let mut header: Vec<String> = levels.iter().map(|&level| level.to_owned()).collect();
     for column in 0..table.column_count() {
         let column = table.header(engine, column);

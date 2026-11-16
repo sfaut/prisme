@@ -138,3 +138,18 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ⬜ Lot 1, next slices (ANSI SQL): dialect (parsed by `sqlparser`, typing, ANSI catalog), calendar, editor, nested date levels, computed columns, filters, fold, caches, copy, CSV, conformance
 - ⬜ Lot 2: complements (detail of a cell, measures in rows)
 - ⬜ Lot 3: extensions (overflow syntax and functions of MySQL, MariaDB, PostgreSQL, DuckDB and ClickHouse, functions of Prisme's own, then a "global" Prisme dialect)
+
+## 5. Streaming: the table follows the reception of the rows
+
+Today the Pivoteur waits for the end of the query (F-07), then copies all the rows into its Worker before its first computation. Here, the rows go to the Worker as they arrive, and the table is updated during the reception: the new rows are added to the states of the groups (incremental aggregates), a computation starting as soon as the previous one has ended, at most once per delay, set by the user (1 s by default, window of the settings), then a last one at the end of the query. Work on the local branch `pivot-streaming`, merged into `master` only with the maintainer's agreement.
+
+- ✅ Branch `pivot-streaming`, this section
+- ✅ Measures, 1 and 10 million rows, natively and in WebAssembly, with a prototype of incremental aggregates (`bench/streaming`, chapter 17 of `docs/PERFORMANCES.md`): cost of sending the blocks to the Worker on the main thread; cost of adding a slice to the store; full computation, new engine or caches kept, against an incremental update per slice of 100,000 rows, profiles "high" and "low". The effect of the sending on the duration of a real reception is measured with the client (step "Client and Worker")
+- ✅ Results submitted to the maintainer: incremental aggregates kept, delay in the window of the settings (2026-11-15)
+- ✅ Specification: F-07 (the table is computed on the rows received and follows the reception, at the set delay, from 0.2 to 60 s, 1 s by default), C-01 (rows kept among the new rows), N-03 (the rows grow during the reception, then never change; the caches grow with them), N-01 / N-02 (target of an update, kept state, full computation of the measures that need all the rows), section "Architecture" and the measures of chapter 17
+- ✅ Engine: store and caches that grow (dictionaries, exact numbers rescaled, derived date levels, ranks), kept state of the last computation (finest groups, `COUNT`, `SUM`, `AVG` as sum and count, `MIN` / `MAX`), incremental update; full computation for a new request, a new grid filter, `DISTINCT`, `GROUP_CONCAT` and filters on measures; Rust tests, incremental equal to full
+- ⬜ Engine, later: `Engine::grow` takes 0.7 to 1 s per slice at 10 million rows (section 17.6 of `docs/PERFORMANCES.md`); measure where this time goes, then reduce it
+- ✅ Client and Worker: `begin` at the columns, then only the new rows at each flush, `update` message, rows kept by the grid filter among the new rows only, ranks sent again when a dictionary grows; tests
+- ✅ Setting of the delay: migration, `settings.rs`, generated types, window of the settings; tests of the server and of the interface
+- ✅ Panel: adaptive pace, partial table shown in the status bar, values of a filter read on the rows received, scroll position kept; tests, screen in light and dark modes on 1 million rows
+- ✅ Documented: `README.md`, `docs/DEVELOPER.md`, module comments, `docs/QUESTIONS.md`

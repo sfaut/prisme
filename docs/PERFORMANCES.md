@@ -1673,3 +1673,301 @@ repository: `node bench/batches/run.mjs --interface` (a few minutes). To
 compare two builds, name each one by `PRISME_EXECUTABLE` with its own
 `--label`, in turns, over several rounds. The results go to
 `target/batch-bench/<label>.json`.
+
+## 17. Streaming of the rows to the Pivoteur: incremental aggregates
+
+Benchmark of 2026-11-15, step "Measures" of section 5 of
+`docs/TODO-PIVOTER.md`, on the local branch `pivot-streaming`; the engine
+streamed, 2026-11-16 (section 17.6).
+
+### 17.1 Question
+
+The Pivoteur waits for the end of the query (F-07), then copies the rows into
+its Worker, then computes. To work on it during the reception, its table must
+follow the rows as they arrive. What does it cost to keep a table up to date
+slice by slice:
+
+- by computing it again from all the rows received, as the engine of Prisme
+  does today;
+- by incremental aggregates, which add each slice to the states of the
+  groups kept from the slices before;
+
+and what does it cost the main thread of the page to send the rows to the
+Worker as they arrive?
+
+### 17.2 Measurement
+
+- `node bench/streaming/run.mjs [rows] [slice] [passes]` (`docs/DEVELOPER.md`,
+  section "Streaming of the rows to the Pivoteur"). It runs natively and in
+  WebAssembly under Node (V8), on one thread.
+- Intel Core Ultra 7 155H (22 logical cores), 33.8 GB, Windows 11, Node
+  26.7.0, Rust 1.99.1. A `prisme.exe` was running beside it.
+- The rows and the tables are those of chapter 15:
+  - rows on 4 levels, "high" or "low";
+  - columns by year and month of `d`;
+  - 12 decomposable measures;
+  - every subtotal and total, 15 grouping sets.
+- The rows arrive by slices of 100,000 into a store (`prisme-store`).
+- **Full computation**: the engine of Prisme, at a tenth, at half and at the
+  end of the reception. It is measured twice:
+  - a new engine on all the rows received, whose first table builds the
+    caches of its columns;
+  - a second table on the same engine, its caches kept.
+- **Incremental aggregates**: a prototype in the shape of the engine. Each
+  slice is read column by column and aggregated into states of its own, then
+  merged into the states kept, each grouping set from its source in the chain
+  of merges (`Incremental` in `bench/streaming/src/lib.rs`). It checks itself:
+  - the states kept up to date equal those of one pass on all the rows;
+  - it finds as many finest groups as the engine.
+- In WebAssembly at 10 million rows, the second table of that pass does not
+  fit beside the first one in the 4 GB of a module: only the finest groups
+  are compared there.
+- 1 million rows: fastest of 3 runs. 10 million rows: one run.
+
+Full computation against one incremental update, "high" (the same costs,
+"low"), native / WebAssembly:
+
+| Rows received | New engine: caches and table | Table, caches kept | Update by one slice of 100,000 rows |
+|---|---|---|---|
+| 1,000,000 | 3.9 / 5.0 s (0.30 / 0.36 s) | 0.72 / 0.75 s (0.24 / 0.30 s) | 0.36 / 0.41 s (0.16 / 0.22 s) |
+| 5,000,000 (10M run) | 22.3 / 38.5 s (1.0 / 1.6 s) | 2.4 / 3.8 s (0.63 / 1.1 s) | 0.39 / 0.44 s (0.20 / 0.19 s) |
+| 10,000,000 | 58.8 / 85.3 s (2.5 / 3.0 s) | 5.2 / 6.5 s (2.0 / 2.3 s) | 0.31 / 0.35 s (0.16 / 0.19 s) |
+
+The whole reception, native / WebAssembly:
+
+| Rows | Profile | All the updates | Longest update | Reading / groups / states / merge |
+|---|---|---|---|---|
+| 1,000,000 | "high" | 4.2 / 3.5 s | 0.49 / 0.45 s | 0.59 / 1.98 / 0.03 / 1.59 s (native) |
+| 1,000,000 | "low" | 2.1 / 2.0 s | 0.25 / 0.26 s | 0.61 / 0.68 / 0.06 / 0.72 s (native) |
+| 10,000,000 | "high" | 33.4 / 46.9 s | 0.49 / 1.08 s | 5.0 / 8.5 / 0.3 / 19.2 s (native) |
+| 10,000,000 | "low" | 15.8 / 24.3 s | 0.29 / 0.56 s | 5.0 / 3.6 / 0.6 / 6.3 s (native) |
+
+Groups of every set, "high" / "low": 1,012,738 / 207,598 at 1 million rows,
+2,073,550 / 212,518 at 10 million rows. These runs grouped by the ISO year,
+as "Année" did then. With the year of the calendar, there are 1,009,005 /
+202,290 groups at 1 million rows, and the updates of the whole reception
+take the same time (4.4 s for "high", 2.1 s for "low", natively).
+
+Other measures:
+
+- **Appending the slices to the store**: 0.24 s per million rows (natively and
+  in WebAssembly). The copy of the cells from JavaScript into the module adds
+  0.63 s at 1 million rows, 11.3 s at 10 million rows, in the Worker
+  (chapter 9).
+- **Sending the rows to a Worker**, on the main thread (structured clone,
+  between `worker_threads`, best of 3):
+
+| Rows | Blocks of 10,000 rows | Blocks of 20,000 rows |
+|---|---|---|
+| 1,000,000 | 0.66 s | 0.87 s |
+| 10,000,000 | 7.7 s | 7.5 s |
+
+- **Memory**: the module of the benchmark reached 4.12 GB at 10 million rows.
+  It holds the store, the two tables, the engine and the rows generated again
+  for its checkpoints.
+
+### 17.3 Analysis
+
+- **Building the caches again is ruled out.** A new engine on 10 million rows
+  takes 59 to 85 s for "high": the dictionary of `d` holds one value per
+  second of three years. Whatever the way, the caches must grow with the rows.
+- **A full table, caches kept, grows with the rows**: 0.7 s at 1 million rows,
+  5 to 6.5 s at 10 million rows ("high"). With a pace of 1 s, the table of a
+  large result would only follow every 5 to 6 s.
+- **An incremental update stays about the same, whatever the rows received**:
+  0.2 to 0.6 s per slice of 100,000 rows. It depends on the slice, and on the
+  groups the slice touches.
+  - At 1 million rows, it costs half a full table for "high", and two
+    thirds of one for "low".
+  - At 10 million rows, it costs 15 to 20 times less for "high", 12 times
+    less for "low".
+- **The end of the query becomes immediate.** Today, after `done`, a result
+  of 10 million rows takes:
+  - its copy into the Worker, 11 s (chapter 9);
+  - its caches and its table, 59 to 85 s here for "high".
+
+  With incremental aggregates, the table is already up to date when `done`
+  arrives: only the last slice remains.
+- **The merge and the groups take most of an update.** They cost 80 % of the
+  updates of "high" at 10 million rows. Every finest group touched merges into
+  its states, and every new group is created in the 15 sets. The states of the
+  slice take 1 %.
+- **The reading of the slice** parses the dates and the numbers again in each
+  table. In the engine, the caches would parse them once for every table and
+  every measure.
+- **Over the whole reception**, the updates take 3.5 to 4.2 s per million rows
+  for "high" (2 s for "low"). A reception of 1 million rows lasts 9 to 14 s
+  (chapter 12), so the Worker computes a third of the time at most. With a
+  pace of 1 s, a slice holds the rows of a second. An update costs by the
+  groups the slice touches more than by its rows, so it costs less per row
+  than here.
+- **The main thread pays 0.7 to 0.8 s per million rows** to send them to the
+  Worker, about 5 to 8 % of a reception. The Worker owning the WebSocket
+  (step 2 of the single store, `docs/QUESTIONS.md`, section 2) would remove
+  this cost.
+- **Memory follows the groups.** The kept state of a table (its index of 15
+  sets, its states, its parents) is to be measured alone, at 2 million groups,
+  before the engine holds it.
+
+### 17.4 Consequences for the design
+
+- The caches of the engine grow with the rows:
+  - the dictionaries keep their codes and give new ones;
+  - the numbers and the date levels read only the new rows.
+- A table keeps its state, and each update adds the new rows to it, by the
+  chain of merges.
+- The kept states also remove the computation that follows `done`.
+- A full table remains for a new request, a new grid filter, and the measures
+  that need all the rows.
+
+### 17.5 Takeaways
+
+- **What grows with the result must not be redone at each update**: caches,
+  groups, states.
+- **Merge by the chain of the grouping sets**: merging every touched group
+  into the 15 sets cost up to twice as much as the chain.
+- **Check a prototype against the engine**: comparing the finest groups
+  showed that "Année" was then the ISO year, which the engine has since
+  replaced by the year of the calendar, and that "Mois" is a period of a
+  year.
+
+### 17.6 The engine streamed
+
+Benchmark of 2026-11-16, step "Engine" of section 5 of `docs/TODO-PIVOTER.md`.
+
+**Measurement.** The engine of Prisme follows the reception itself
+(`bench/streaming/src/engine.rs`, `docs/DEVELOPER.md`, section "Streaming of
+the rows to the Pivoteur"):
+
+- each slice of 100,000 rows is appended to its store;
+- `Engine::grow` takes it in, extending the caches of the columns;
+- `Engine::update` adds it to the state of the last table.
+
+The two calls are timed apart. At the end, the table updated slice by slice
+equals, cell by cell, the table of all the rows, natively and in
+WebAssembly. The rows and the tables are those of section 17.2: about 766,769
+finest groups for "high" at 1 million rows, almost one row per group, and
+144,000 for "low", saturated. Same machine; 1 million rows: fastest of 3 runs.
+
+The memory is measured natively by `streaming-memory`, an allocator that
+counts the bytes held and their peak. The structures take the same bytes in
+WebAssembly, but for their pointers and lengths.
+
+**Speed at 1 million rows**, native / WebAssembly, by successive versions of
+the engine:
+
+| Version | Profile | All the `grow` | All the `update` | Longest slice | Table of all the rows, caches kept |
+|---|---|---|---|---|---|
+| First (0869cb3) | "high" | 3.0 / 3.8 s | 2.8 / 2.9 s | 0.99 / 1.35 s | 0.47 / 0.52 s |
+| First (0869cb3) | "low" | 2.8 / 3.6 s | 0.95 / 0.97 s | 0.76 / 1.00 s | 0.16 / 0.20 s |
+| Hashes kept, rankings by keys (75aa105, 0b40559) | "high" | 2.05 / 2.31 s | 2.92 / 3.13 s | 0.70 / 0.83 s | 0.54 / 0.61 s |
+| Hashes kept, rankings by keys (75aa105, 0b40559) | "low" | 1.70 / 1.99 s | 0.85 / 0.92 s | 0.35 / 0.46 s | 0.19 / 0.18 s |
+| Narrow types (240a7a1, 7dcaf8e) | "high" | 2.03 / 2.12 s | 3.09 / 2.94 s | 0.73 / 0.81 s | 0.55 / 0.58 s |
+| Narrow types (240a7a1, 7dcaf8e) | "low" | 1.86 / 1.88 s | 0.91 / 0.92 s | 0.40 / 0.41 s | 0.19 / 0.20 s |
+
+Where `grow` goes at 1 million rows ("low", native), first version then
+hashes kept and rankings by keys:
+
+- dictionary of `d`: 0.19 s, then 0.04 to 0.06 s. Each doubling of its index
+  read every text again to hash it; the hash of each value is now kept.
+- ranks of the texts of `d`: 0.24 s (sort 0.087 s, merge 0.18 s), then 0.10
+  to 0.14 s. The new codes are sorted, then merged into the keys kept in their
+  order by a galloping search.
+- dictionary of the amount: 0.10 s, then 0.03 to 0.04 s; its ranks 0.09 s,
+  then 0.03 to 0.05 s.
+
+Comparing the values themselves in the merge, without keys kept, was tried:
+`update` went to 1.34 s for "low". It was dropped.
+
+**Memory at 2 million rows**, native, in MB:
+
+| Version | Store alone | "high": held / peak of `update` | "low": held / peak of `update` |
+|---|---|---|---|
+| Arrays grown by doubling | 276 | 916 / 1,221 | 696 / 739 |
+| Arrays grown by a quarter (905a4d4) | 266 | 799 / 1,110 | 615 / 663 |
+| Narrow types (240a7a1, 7dcaf8e) | 266 | 725 / 1,036 | 538 / 586 |
+
+Of the 631 MB of caches and state of "high", before the growth by a quarter:
+
+- codes of the dictionaries, 91 MB (13 MB per column, part of it room never
+  used);
+- numbers, 128 MB;
+- `d`, 120 MB: index and hashes 38 MB, ranking 32 MB, levels by year and month
+  42 MB, first rows 8 MB;
+- amount, 57 MB;
+- state of the table, 231 MB: partial states 199 MB, index of the finest
+  groups 32 MB. It is 22 MB for "low".
+
+Sealed at the end of the reception (`Engine::seal`, 2d58468), its table
+dropped, the engine gives back the room of the arrays and the structures that
+only serve new rows (index of the dictionaries, keys of the rankings, state
+of the table): 427 MB at 2 million rows, for both profiles. At 4 million rows,
+the store alone holding 528 MB, the sealed engine holds 850 MB, then 718 MB
+("high") and 714 MB ("low") with narrow types.
+
+**10 million rows**, one run each, native / WebAssembly:
+
+| Version | Profile | `grow` / `update` of the last slice | All the `grow` | All the `update` | Longest slice | Peak of the module |
+|---|---|---|---|---|---|---|
+| Grown by a quarter, sealed | "high" | 0.66 / 0.85 s, 1.32 / 2.36 s | 49.4 / 65.9 s | 89.6 / 123.7 s | 2.06 / 3.20 s | 4.16 GB |
+| Grown by a quarter, sealed | "low" | 1.04 / 0.83 s, 0.17 / 0.17 s | 53.6 / 64.2 s | 12.6 / 16.5 s | 2.73 / 1.19 s | |
+| Narrow types | "high" | 0.94 / 0.74 s, 1.68 / 1.51 s | 57.0 / 64.7 s | 99.0 / 131.5 s | 5.23 / 3.29 s | 3.67 GB |
+| Narrow types | "low" | 0.80 / 0.82 s, 0.23 / 0.19 s | 63.8 / 66.5 s | 15.5 / 18.0 s | 1.39 / 1.81 s | |
+
+The peak of the module holds the store, the engine of each profile in turn,
+and the rows generated again for the checkpoints. Before the growth by a
+quarter and the seal, the engine of "high" alone was estimated at 4.6 GB at
+10 million rows, beyond the 4 GB of a module, and the run failed for lack of
+memory. The differences between the two runs at 10 million rows, one run
+each, are within their noise: the narrow types do not change the speed.
+
+**Analysis.**
+
+- **The engine now holds 10 million rows in a module.** The growth by a
+  quarter, the seal and the narrow types take the peak of the benchmark from
+  beyond 4 GB to 3.67 GB.
+- **The sealed engine weighs 1.35 times its store**: what follows the rows
+  (codes, numbers, ranks) stays, what only serves new rows goes.
+- **An update of "high" grows with its finest groups**: 0.46 to 0.71 s at
+  767,000 groups, 1.3 to 2.4 s at 1.8 million. The prototype of section 17.2,
+  which keeps the states of every grouping set, takes 0.26 to 0.34 s at 10
+  million rows. The engine keeps the states of the finest groups only, and
+  merges all of them into the coarser sets at each update.
+- **`grow` grows with the rows**: 0.3 to 0.6 s per slice at 1 million rows, 0.7 to
+  1 s at 10 million, 49 to 66 s over the whole reception. Its breakdown at 10
+  million rows is to be measured.
+- **The adaptive pace bounds both costs**: an update starts once the previous
+  one is done, so the slices grow with the time an update takes.
+
+### 17.7 A real reception, the Pivoteur open
+
+Measure of 2026-11-16, steps "Client and Worker" and "Panel" of section 5 of
+`docs/TODO-PIVOTER.md`: the effect of sending the rows to the Worker during
+the reception, announced in section 17.2.
+
+**Measurement.** Prisme in development (`cargo run`, Vite), Chrome, the latest
+MariaDB LTS of the development servers (`compose.yaml`), same machine. The
+query `SELECT CONCAT('G', seq % 7) AS g, seq % 100 AS h, seq AS n FROM
+shop.seq_1_to_1000000 LIMIT 1000000` gives 1 million rows, 20.8 MB. Its
+duration is the "transfert" of the status bar of the result, the panel of the
+Pivoteur open (a table by `g`, `COUNT(*)`, computed again at most once per
+second during the reception) or folded (no Worker). Two runs each.
+
+| Panel | Transfer of 1 million rows |
+|---|---|
+| Open, the table following the reception | 13.9 s, 14.0 s |
+| Folded | 14.1 s, 14.4 s |
+
+**Analysis.** No effect can be seen: the difference stays within the spread of
+the runs. The reception is bound by the server and the network (1.5 MB/s
+here); the main thread sends a block of 20,000 rows to the Worker between two
+messages of rows, 0.7 to 0.8 s per million rows (section 17.2), spread over
+the 14 s of the reception. The table of 7 groups is computed in 3 to 11 ms per
+update, and ends with the reception: 1,000,000 rows, 5 to 10 ms after `done`.
+
+### 17.8 Measuring again
+
+From the root of the repository: `node bench/streaming/run.mjs` (1 million
+rows, 3 passes, a few minutes), then `node bench/streaming/run.mjs 10000000
+100000 1` (a quarter of an hour). The results go to
+`target/streaming-bench/results-<rows>.json`.

@@ -46,6 +46,9 @@ pub enum Field {
     IndentSize,
     /// Longest text of a `GROUP_CONCAT` of the Pivoteur, in bytes.
     ConcatMaxBytes,
+    /// Shortest delay between two computations of the Pivoteur during the
+    /// reception of the rows, in milliseconds.
+    PivotRefreshMs,
 }
 
 impl fmt::Display for Field {

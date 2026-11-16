@@ -2,23 +2,29 @@
 //! server sent it, then the forms derived from it, built once when a reader
 //! needs them (dictionary of the distinct values, exact numbers, floats).
 //!
-//! The rows of a result never change once received: the Pivoteur's Worker
-//! copies them once into the store (`docs/QUESTIONS.md`, section 2, single
-//! store of the results), then reads them as often as its tables need. The
+//! The rows of a result never change once received, and arrive block after
+//! block: the Pivoteur's Worker copies them into the store as the page
+//! receives them (`docs/QUESTIONS.md`, section 2, single store of the
+//! results), then reads them as often as its tables need. The derived forms
+//! extend to the rows appended since they were built (`Encoder`,
+//! `Exact::extend`, `Approx::extend`), without reading the others again. The
 //! crate does not depend on its target: its tests run natively, and the
 //! Worker runs it compiled to WebAssembly (`crates/web-engine`).
 
+mod codes;
 mod column;
 mod dictionary;
+pub mod growth;
 mod hash;
 mod numbers;
 
-pub use column::{BlockError, TextColumn};
-pub use dictionary::Dictionary;
-pub use hash::{FxMap, FxSet};
+pub use codes::Codes;
+pub use column::{BlockError, Bounds, TextColumn};
+pub use dictionary::{Dictionary, Encoder};
+pub use hash::{FxMap, FxSet, fx_hash};
 pub use numbers::{
-    Approx, Exact, NumberError, compare_exact, float_length, format_exact, format_float, is_exact,
-    parse_exact,
+    Approx, Exact, ExactValues, NumberError, compare_exact, float_length, format_exact,
+    format_float, is_exact, parse_exact,
 };
 
 /// Rows of a result, one text column per column of the result.
@@ -50,6 +56,14 @@ impl Store {
     /// Column `index`, `None` if there is none.
     pub fn column(&self, index: usize) -> Option<&TextColumn> {
         self.columns.get(index)
+    }
+
+    /// Gives back the room the columns reserved for the rows to come, once
+    /// the result is complete.
+    pub fn shrink_to_fit(&mut self) {
+        for column in &mut self.columns {
+            column.shrink_to_fit();
+        }
     }
 
     /// Column `index`, to append cells to it; `None` if there is none.

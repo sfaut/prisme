@@ -1702,6 +1702,9 @@ version = "0.12.0"
 [[package]]
 name = "prisme-store"
 version = "0.12.0"
+dependencies = [
+ "hashbrown 0.17.1",
+]
 
 [[package]]
 name = "prisme-web-engine"

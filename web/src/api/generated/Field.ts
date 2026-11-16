@@ -16,4 +16,5 @@ export type Field =
   | "history_retention_days"
   | "debug_retention_days"
   | "indent_size"
-  | "concat_max_bytes";
+  | "concat_max_bytes"
+  | "pivot_refresh_ms";

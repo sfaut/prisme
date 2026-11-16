@@ -53,6 +53,7 @@ vi.mock('@/api/settings', () => ({
     debug_retention_days: 30,
     indent_size: 4,
     concat_max_bytes: 1000,
+    pivot_refresh_ms: 1000,
   }),
   updateSettings: async (update: SettingsUpdate) => ({
     ...update,

@@ -352,7 +352,7 @@ impl Engine {
         };
         let mut kept = Vec::new();
         for &row in rows {
-            match decisions[codes[row as usize] as usize] {
+            match decisions[codes.get(row as usize) as usize] {
                 Ok(true) => kept.push(row),
                 Ok(false) => {}
                 Err(unreadable) => return Err(unreadable.error(column, row)),
@@ -416,10 +416,11 @@ impl Engine {
         self.check_dates(levels, rows)?;
         self.check_dates(measure.level().as_slice(), rows)?;
         let (dictionaries, _) = self.levels(levels)?;
-        let (group_of_row, first_rows) = groups::finest(&dictionaries, rows);
-        let state = measures::accumulate(&input, rows, &group_of_row, first_rows.len(), &[])
+        let mut finest = groups::Finest::new(levels.len());
+        let group_of_row = finest.add(&dictionaries, rows);
+        let state = measures::accumulate(&input, rows, &group_of_row, finest.len(), &[])
             .map_err(|_| Error::FilterOverflow { filter })?;
-        let accepted = (0..first_rows.len() as u32)
+        let accepted = (0..finest.len() as u32)
             .map(|group| {
                 let value = state.value(group);
                 let null = matches!(value, Value::Empty | Value::Null);

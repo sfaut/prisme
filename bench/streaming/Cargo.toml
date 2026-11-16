@@ -1,0 +1,33 @@
+# Benchmark of the streaming of the rows to the Pivoteur (see src/lib.rs):
+# the engine of Prisme, which computes a table from all the rows, against a
+# prototype of incremental aggregates, which adds each slice of rows to the
+# states of the groups as it arrives. Native (src/main.rs) and WebAssembly
+# (the library, driven by wasm.mjs). Workspace of its own, outside the one of
+# Prisme, with the release profile of Prisme (Cargo's default).
+
+[workspace]
+resolver = "3"
+
+[package]
+name = "streaming-bench"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+name = "streaming_bench"
+crate-type = ["cdylib", "rlib"]
+
+# Named apart from the library, whose files would share its name.
+[[bin]]
+name = "streaming-native"
+path = "src/main.rs"
+
+[[bin]]
+name = "streaming-memory"
+path = "src/memory.rs"
+
+[dependencies]
+prisme-pivot = { path = "../../crates/pivot" }
+prisme-store = { path = "../../crates/store" }

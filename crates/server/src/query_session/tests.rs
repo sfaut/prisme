@@ -46,6 +46,7 @@ async fn start_writing(target: &MysqlTarget, writes: Option<&[WriteKind]>) -> (S
             debug_retention_days: current.debug_retention_days,
             indent_size: current.indent_size,
             concat_max_bytes: current.concat_max_bytes,
+            pivot_refresh_ms: current.pivot_refresh_ms,
         };
         settings::update(&db, user_id, &update).unwrap();
     }

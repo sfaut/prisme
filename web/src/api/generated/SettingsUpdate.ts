@@ -33,4 +33,9 @@ export type SettingsUpdate = {
    * New longest text of a `GROUP_CONCAT`, in bytes (`CONCAT_MAX_BYTES`).
    */
   concat_max_bytes: number;
+  /**
+   * New shortest delay between two computations of the Pivoteur during the
+   * reception, in milliseconds (`PIVOT_REFRESH_MS`).
+   */
+  pivot_refresh_ms: number;
 };

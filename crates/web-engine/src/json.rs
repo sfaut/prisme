@@ -55,6 +55,16 @@ pub fn distinct(json: &mut String, values: &[Option<&str>]) {
     array(json, values, |json, &value| cell(json, value));
 }
 
+/// Writes what `grow` took in: the rows taken into account, and the columns
+/// whose ranks given by the page were dropped.
+pub fn grown(json: &mut String, rows: usize, dropped: &[usize]) {
+    let _ = write!(json, r#"{{"rows":{rows},"dropped":"#);
+    array(json, dropped, |json, &column| {
+        let _ = write!(json, "{column}");
+    });
+    json.push('}');
+}
+
 /// Writes the shape of a computed table: its numbers of lines, of columns of
 /// values, of levels on each axis, of finest groups and of rows taken into
 /// account.

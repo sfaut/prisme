@@ -3,6 +3,12 @@
 //! Subtotals and totals are therefore computed from the rows, never from the
 //! cells of the table.
 //!
+//! The states of the finest groups of a measure that adds up (`COUNT`, `SUM`,
+//! `AVG`, `MIN`, `MAX`) are kept apart (`Partial`): the rows that arrive add
+//! to them, and the coarser sets merge from them again for each table. The
+//! measures of distinct values and `GROUP_CONCAT` read all their rows each
+//! time.
+//!
 //! - `COUNT(*)` counts the rows, `COUNT(col)` the rows where the column is
 //!   not NULL.
 //! - `COUNT(DISTINCT col)` counts the distinct values of the column that are
@@ -40,7 +46,7 @@ use std::cmp::Ordering;
 use std::hash::Hash;
 use std::iter;
 
-use prisme_store::{Approx, Dictionary, Exact, FxMap, FxSet};
+use prisme_store::{Approx, Codes, Dictionary, Exact, ExactValues, FxMap, FxSet, growth};
 
 use crate::groups::Merge;
 use crate::{Concat, Engine, Level};
@@ -65,7 +71,7 @@ pub enum Input<'a> {
     Cells(&'a [bool]),
     /// Codes of the values of a level, by row, and the validity of the cells
     /// of its column (`COUNT(DISTINCT col)`).
-    Distinct(&'a [u32], &'a [bool]),
+    Distinct(&'a Codes, &'a [bool]),
     /// Exact numbers of a column and their validity.
     Exact(&'a Exact, &'a [bool]),
     /// Floats of a column and their validity.
@@ -301,26 +307,6 @@ fn merge_counts(counts: &mut [u64], merges: &[Merge]) {
     }
 }
 
-/// Counts the selected rows of each group, those whose cell is valid if
-/// `valid` is given.
-fn count(valid: Option<&[bool]>, feed: Feed) -> Vec<u64> {
-    let mut counts = vec![0u64; feed.groups];
-    match valid {
-        Some(valid) => {
-            for (&row, &group) in feed.selection.iter().zip(feed.finest) {
-                counts[group as usize] += u64::from(valid[row as usize]);
-            }
-        }
-        None => {
-            for &group in feed.finest {
-                counts[group as usize] += 1;
-            }
-        }
-    }
-    merge_counts(&mut counts, feed.merges);
-    counts
-}
-
 /// Pair of a group and of the code of a value, in one word, the group in the
 /// high half: sorting the pairs gathers those of each group.
 fn pair(group: u32, code: u32) -> u64 {
@@ -403,23 +389,55 @@ impl Addend for f64 {
     }
 }
 
-/// Adds the valid numbers of each group.
-fn sum<T: Addend>(values: &[T], valid: &[bool], feed: Feed) -> Result<Vec<T>, Overflow> {
-    let mut sums = vec![T::default(); feed.groups];
-    for (&row, &group) in feed.selection.iter().zip(feed.finest) {
+/// Adds the valid numbers of some rows to the sums of their groups, and
+/// counts them; `addend` gives the number of a value as the sums add it.
+fn add_sums<V: Copy, T: Addend>(
+    (sums, counts): (&mut [T], &mut [u64]),
+    (values, addend): (&[V], impl Fn(V) -> T),
+    valid: &[bool],
+    rows: &[u32],
+    finest: &[u32],
+) -> Result<(), Overflow> {
+    for (&row, &group) in rows.iter().zip(finest) {
         if valid[row as usize] {
             let sum = &mut sums[group as usize];
-            *sum = sum.plus(values[row as usize])?;
+            *sum = sum.plus(addend(values[row as usize]))?;
+            counts[group as usize] += 1;
         }
     }
-    for merge in feed.merges {
+    Ok(())
+}
+
+/// Adds the valid exact numbers of some rows to the sums of their groups,
+/// and counts them.
+fn add_exact_sums(
+    sums: (&mut [i128], &mut [u64]),
+    values: &ExactValues,
+    valid: &[bool],
+    (rows, finest): (&[u32], &[u32]),
+) -> Result<(), Overflow> {
+    match values {
+        ExactValues::Narrow(values) => add_sums(sums, (values, i128::from), valid, rows, finest),
+        ExactValues::Wide(values) => add_sums(sums, (values, |value| value), valid, rows, finest),
+    }
+}
+
+/// Adds the sums and the counts of each set of groups into those of the
+/// coarser set.
+fn merge_sums<T: Addend>(
+    sums: &mut [T],
+    counts: &mut [u64],
+    merges: &[Merge],
+) -> Result<(), Overflow> {
+    for merge in merges {
         for (offset, &parent) in merge.parent_of.iter().enumerate() {
             let value = sums[merge.source as usize + offset];
             let sum = &mut sums[parent as usize];
             *sum = sum.plus(value)?;
         }
     }
-    Ok(sums)
+    merge_counts(counts, merges);
+    Ok(())
 }
 
 /// Adds each distinct valid number of each group once, and counts them.
@@ -427,7 +445,7 @@ fn sum<T: Addend>(values: &[T], valid: &[bool], feed: Feed) -> Result<Vec<T>, Ov
 /// Two texts of the dictionary can write one number (`1.0` and `1.00`):
 /// `key` tells the numbers apart, and the pairs read a code per number.
 fn sum_distinct<T: Addend, K: Eq + Hash>(
-    values: &[T],
+    value_of: impl Fn(usize) -> T,
     key: impl Fn(T) -> K,
     valid: &[bool],
     dictionary: &Dictionary,
@@ -439,7 +457,7 @@ fn sum_distinct<T: Addend, K: Eq + Hash>(
         .first_rows
         .iter()
         .map(|&row| {
-            let value = values[row as usize];
+            let value = value_of(row as usize);
             *index.entry(key(value)).or_insert_with(|| {
                 numbers.push(value);
                 (numbers.len() - 1) as u32
@@ -449,7 +467,7 @@ fn sum_distinct<T: Addend, K: Eq + Hash>(
     let mut sums = vec![T::default(); feed.groups];
     let mut counts = vec![0u64; feed.groups];
     visit_distinct(
-        |row| number_of_text[dictionary.codes[row] as usize],
+        |row| number_of_text[dictionary.codes.get(row) as usize],
         valid,
         feed,
         |group, number| {
@@ -529,47 +547,24 @@ fn float_share(part: f64, whole: f64, decimals: u32) -> Option<i128> {
     (share.is_finite() && share.abs() < 2f64.powi(126)).then_some(share as i128)
 }
 
-/// Keeps, in each group, the valid value that comes first in the order of
-/// `extreme`, or last with `largest`, and gives the row of its cell.
-fn extreme_rows(extreme: Extreme, feed: Feed) -> Vec<u32> {
-    let Extreme {
-        dictionary,
-        ranks,
-        valid,
-        largest,
-        ..
-    } = extreme;
-    let keep = |best: &mut u32, code: u32| {
+impl Extreme<'_> {
+    /// Keeps a code in place of the best one so far, if it comes first in the
+    /// order of the values, or last with `largest`. The ranks of the codes
+    /// already kept keep their order when the dictionary gains values.
+    fn keep(&self, best: &mut u32, code: u32) {
+        let ranks = self.ranks;
         if code != NO_VALUE
-            && (*best == NO_VALUE || (ranks[code as usize] > ranks[*best as usize]) == largest)
+            && (*best == NO_VALUE || (ranks[code as usize] > ranks[*best as usize]) == self.largest)
         {
             *best = code;
         }
-    };
-    let mut best = vec![NO_VALUE; feed.groups];
-    for (&row, &group) in feed.selection.iter().zip(feed.finest) {
-        if valid[row as usize] {
-            keep(&mut best[group as usize], dictionary.codes[row as usize]);
-        }
     }
-    for merge in feed.merges {
-        for (offset, &parent) in merge.parent_of.iter().enumerate() {
-            let code = best[merge.source as usize + offset];
-            keep(&mut best[parent as usize], code);
-        }
-    }
-    best.into_iter()
-        .map(|code| {
-            let first_row = dictionary.first_rows.get(code as usize);
-            first_row.copied().unwrap_or(NO_VALUE)
-        })
-        .collect()
 }
 
 /// Key of the order of the values of a `GROUP_CONCAT`: a column of the result.
 pub struct OrderKey<'a> {
     /// Code of each row in the dictionary of the column.
-    pub codes: &'a [u32],
+    pub codes: &'a Codes,
     /// Rank of each code, as `MIN` and `MAX` compare the values.
     pub ranks: &'a [u32],
     /// Validity of the cells of the column.
@@ -582,7 +577,7 @@ impl OrderKey<'_> {
     /// Compares the keys of two rows: NULL first, then by rank, the whole
     /// order reversed when descending.
     fn compare(&self, a: usize, b: usize) -> Ordering {
-        let key = |row: usize| self.valid[row].then(|| self.ranks[self.codes[row] as usize]);
+        let key = |row: usize| self.valid[row].then(|| self.ranks[self.codes.get(row) as usize]);
         let order = key(a).cmp(&key(b));
         if self.descending {
             order.reverse()
@@ -600,7 +595,7 @@ pub struct Joined<'a> {
     pub concat: &'a Concat,
     /// Code of each row in the dictionary of the level, which tells the values
     /// apart.
-    pub codes: &'a [u32],
+    pub codes: &'a Codes,
     /// Validity of the cells of the column of the level.
     pub valid: &'a [bool],
     /// Keys of the order of the values, the first one first.
@@ -741,7 +736,7 @@ fn join(joined: &Joined, feed: Feed) -> Vec<Option<Box<str>>> {
         let finest = feed.finest[position as usize];
         let groups = coarser.iter().map(|groups| groups[finest as usize]);
         for group in iter::once(finest).chain(groups) {
-            if concat.distinct && !seen.insert(pair(group, codes[row as usize])) {
+            if concat.distinct && !seen.insert(pair(group, codes.get(row as usize))) {
                 continue;
             }
             joinings[group as usize].push(value, concat);
@@ -751,6 +746,213 @@ fn join(joined: &Joined, feed: Feed) -> Vec<Option<Box<str>>> {
         .into_iter()
         .map(|joining| joining.finish(concat))
         .collect()
+}
+
+/// Extends the states of the finest groups to all the groups, each new one
+/// set to `value`. Exactly: the states of a table, which may hold millions of
+/// groups, keep no room beyond them (a WebAssembly module holds 4 GB at most).
+fn widen<T: Clone>(states: &mut Vec<T>, groups: usize, value: T) {
+    states.reserve_exact(groups.saturating_sub(states.len()));
+    states.resize(groups, value);
+}
+
+/// Extends the states of the finest groups to the groups found since, each
+/// new one set to `value`, by the steps of the arrays that follow the rows
+/// (`prisme_store::growth`).
+fn widen_by_steps<T: Clone>(states: &mut Vec<T>, groups: usize, value: T) {
+    growth::reserve(states, groups.saturating_sub(states.len()));
+    states.resize(groups, value);
+}
+
+/// States of the finest groups of a measure that adds up, which the rows
+/// read later add to.
+#[derive(Debug, Clone)]
+pub enum Partial {
+    /// Counts (`COUNT`).
+    Count(Vec<u64>),
+    /// Sums of exact numbers, scaled to `scale`, and number of values added
+    /// (`SUM`, `AVG`).
+    Exact {
+        /// Sum of each group.
+        sums: Vec<i128>,
+        /// Number of values added in each group.
+        counts: Vec<u64>,
+        /// Number of digits after the point.
+        scale: u32,
+    },
+    /// Sums of floats, and number of values added (`SUM`, `AVG`).
+    Float {
+        /// Sum of each group.
+        sums: Vec<f64>,
+        /// Number of values added in each group.
+        counts: Vec<u64>,
+    },
+    /// Code of the value each group keeps (`MIN`, `MAX`), `NO_VALUE` without
+    /// one.
+    Extreme(Vec<u32>),
+}
+
+impl Partial {
+    /// States of no group of the measure that reads `input`; `None` for one
+    /// that does not add up: its distinct values, its texts.
+    pub fn of(input: &Input) -> Option<Self> {
+        match input {
+            Input::Rows | Input::Cells(_) => Some(Partial::Count(Vec::new())),
+            Input::Exact(numbers, _) => Some(Partial::Exact {
+                sums: Vec::new(),
+                counts: Vec::new(),
+                scale: numbers.scale,
+            }),
+            Input::Float(..) => Some(Partial::Float {
+                sums: Vec::new(),
+                counts: Vec::new(),
+            }),
+            Input::Average(input) => Partial::of(input),
+            Input::Extreme(_) => Some(Partial::Extreme(Vec::new())),
+            Input::Distinct(..)
+            | Input::DistinctExact(..)
+            | Input::DistinctFloat(..)
+            | Input::Joined(_) => None,
+        }
+    }
+
+    /// Scale of the sums of exact numbers: rows of a finer scale cannot add
+    /// to them.
+    pub fn scale(&self) -> Option<u32> {
+        match self {
+            Partial::Exact { scale, .. } => Some(*scale),
+            _ => None,
+        }
+    }
+
+    /// Adds rows to the states of the first `groups` groups.
+    ///
+    /// # Arguments
+    ///
+    /// - `input`: values of the measure, that of the states;
+    /// - `rows`: rows added;
+    /// - `finest`: finest group of each row, below `groups`.
+    ///
+    /// # Panics
+    ///
+    /// If the input is not the one of the states.
+    pub fn add(
+        &mut self,
+        input: &Input,
+        rows: &[u32],
+        finest: &[u32],
+        groups: usize,
+    ) -> Result<(), Overflow> {
+        match (self, input) {
+            (partial, Input::Average(input)) => partial.add(input, rows, finest, groups)?,
+            (Partial::Count(counts), Input::Rows) => {
+                widen_by_steps(counts, groups, 0);
+                for &group in finest {
+                    counts[group as usize] += 1;
+                }
+            }
+            (Partial::Count(counts), Input::Cells(valid)) => {
+                widen_by_steps(counts, groups, 0);
+                for (&row, &group) in rows.iter().zip(finest) {
+                    counts[group as usize] += u64::from(valid[row as usize]);
+                }
+            }
+            (Partial::Exact { sums, counts, .. }, Input::Exact(numbers, valid)) => {
+                widen_by_steps(sums, groups, 0);
+                widen_by_steps(counts, groups, 0);
+                add_exact_sums((sums, counts), &numbers.values, valid, (rows, finest))?;
+            }
+            (Partial::Float { sums, counts }, Input::Float(numbers, valid)) => {
+                widen_by_steps(sums, groups, 0.0);
+                widen_by_steps(counts, groups, 0);
+                let values = (numbers.values.as_slice(), |value| value);
+                add_sums((sums, counts), values, valid, rows, finest)?;
+            }
+            (Partial::Extreme(best), Input::Extreme(extreme)) => {
+                widen_by_steps(best, groups, NO_VALUE);
+                for (&row, &group) in rows.iter().zip(finest) {
+                    if extreme.valid[row as usize] {
+                        extreme.keep(
+                            &mut best[group as usize],
+                            extreme.dictionary.codes.get(row as usize),
+                        );
+                    }
+                }
+            }
+            _ => panic!("states of another measure"),
+        }
+        Ok(())
+    }
+
+    /// States of all the groups, those of the finest groups first, the coarser
+    /// sets merged from them; averages divided once merged.
+    ///
+    /// # Arguments
+    ///
+    /// - `input`: values of the measure, that of the states;
+    /// - `groups`: number of groups, all sets included;
+    /// - `merges`: merges of the sets of groups, in their order.
+    ///
+    /// # Panics
+    ///
+    /// If the input is not the one of the states.
+    pub fn state(self, input: &Input, groups: usize, merges: &[Merge]) -> Result<State, Overflow> {
+        let state = match self {
+            Partial::Count(mut counts) => {
+                widen(&mut counts, groups, 0);
+                merge_counts(&mut counts, merges);
+                State::Count(counts)
+            }
+            Partial::Exact {
+                mut sums,
+                mut counts,
+                scale,
+            } => {
+                widen(&mut sums, groups, 0);
+                widen(&mut counts, groups, 0);
+                merge_sums(&mut sums, &mut counts, merges)?;
+                State::Exact {
+                    sums,
+                    counts,
+                    scale,
+                }
+            }
+            Partial::Float {
+                mut sums,
+                mut counts,
+            } => {
+                widen(&mut sums, groups, 0.0);
+                widen(&mut counts, groups, 0);
+                merge_sums(&mut sums, &mut counts, merges)?;
+                State::Float { sums, counts }
+            }
+            Partial::Extreme(mut best) => {
+                let Input::Extreme(extreme) = input else {
+                    panic!("states of another measure");
+                };
+                widen(&mut best, groups, NO_VALUE);
+                for merge in merges {
+                    for (offset, &parent) in merge.parent_of.iter().enumerate() {
+                        let code = best[merge.source as usize + offset];
+                        extreme.keep(&mut best[parent as usize], code);
+                    }
+                }
+                let first_rows = &extreme.dictionary.first_rows;
+                let rows = best
+                    .into_iter()
+                    .map(|code| first_rows.get(code as usize).copied().unwrap_or(NO_VALUE))
+                    .collect();
+                State::Cells {
+                    level: extreme.level,
+                    rows,
+                }
+            }
+        };
+        match input {
+            Input::Average(_) => state.averaged(),
+            _ => Ok(state),
+        }
+    }
 }
 
 /// Computes the states of a measure over the selected rows.
@@ -768,6 +970,10 @@ pub fn accumulate(
     groups: usize,
     merges: &[Merge],
 ) -> Result<State, Overflow> {
+    if let Some(mut partial) = Partial::of(input) {
+        partial.add(input, selection, finest, groups)?;
+        return partial.state(input, groups, merges);
+    }
     let feed = Feed {
         selection,
         finest,
@@ -775,12 +981,10 @@ pub fn accumulate(
         merges,
     };
     match *input {
-        Input::Rows => Ok(State::Count(count(None, feed))),
-        Input::Cells(valid) => Ok(State::Count(count(Some(valid), feed))),
         Input::Distinct(codes, valid) => {
             let mut counts = vec![0u64; groups];
             visit_distinct(
-                |row| codes[row],
+                |row| codes.get(row),
                 valid,
                 feed,
                 |group, _| {
@@ -790,18 +994,14 @@ pub fn accumulate(
             )?;
             Ok(State::Count(counts))
         }
-        Input::Exact(numbers, valid) => Ok(State::Exact {
-            sums: sum(&numbers.values, valid, feed)?,
-            counts: count(Some(valid), feed),
-            scale: numbers.scale,
-        }),
-        Input::Float(numbers, valid) => Ok(State::Float {
-            sums: sum(&numbers.values, valid, feed)?,
-            counts: count(Some(valid), feed),
-        }),
         Input::DistinctExact(numbers, valid, dictionary) => {
-            let (sums, counts) =
-                sum_distinct(&numbers.values, |value| value, valid, dictionary, feed)?;
+            let (sums, counts) = sum_distinct(
+                |row| numbers.values.get(row),
+                |value| value,
+                valid,
+                dictionary,
+                feed,
+            )?;
             Ok(State::Exact {
                 sums,
                 counts,
@@ -809,17 +1009,22 @@ pub fn accumulate(
             })
         }
         Input::DistinctFloat(numbers, valid, dictionary) => {
-            let (sums, counts) = sum_distinct(&numbers.values, float_key, valid, dictionary, feed)?;
+            let (sums, counts) = sum_distinct(
+                |row| numbers.values[row],
+                float_key,
+                valid,
+                dictionary,
+                feed,
+            )?;
             Ok(State::Float { sums, counts })
         }
         Input::Average(ref input) => {
             accumulate(input, selection, finest, groups, merges)?.averaged()
         }
-        Input::Extreme(extreme) => Ok(State::Cells {
-            level: extreme.level,
-            rows: extreme_rows(extreme, feed),
-        }),
         Input::Joined(ref joined) => Ok(State::Texts(join(joined, feed))),
+        Input::Rows | Input::Cells(_) | Input::Exact(..) | Input::Float(..) | Input::Extreme(_) => {
+            unreachable!("a measure that adds up keeps its partial states")
+        }
     }
 }
 
@@ -1164,7 +1369,7 @@ mod tests {
     fn distinct_values_are_counted_again_in_the_coarser_groups() {
         // Codes 0, 1, 0 and a NULL (code 2, not valid): group 0 holds 0,
         // group 1 holds 1, 0 and NULL; group 2 merges them.
-        let codes = [0, 1, 0, 2];
+        let codes = Codes::from(vec![0, 1, 0, 2]);
         let valid = [true, true, true, false];
         let state = accumulate(
             &Input::Distinct(&codes, &valid),
@@ -1192,7 +1397,7 @@ mod tests {
                 parent_of: vec![4, 4],
             },
         ];
-        let codes = [7, 7, 8];
+        let codes = Codes::from(vec![7, 7, 8]);
         let valid = [true; 3];
         let state = accumulate(
             &Input::Distinct(&codes, &valid),
@@ -1209,7 +1414,7 @@ mod tests {
     #[test]
     fn a_sum_without_a_value_is_null() {
         let numbers = Exact {
-            values: vec![1250, 0, 325],
+            values: ExactValues::from(vec![1250, 0, 325]),
             scale: 2,
         };
         let valid = [true, false, true];
@@ -1230,7 +1435,7 @@ mod tests {
     #[test]
     fn an_exact_sum_beyond_128_bits_is_an_error() {
         let numbers = Exact {
-            values: vec![i128::MAX, 1],
+            values: ExactValues::from(vec![i128::MAX, 1]),
             scale: 0,
         };
         let valid = [true, true];
@@ -1273,12 +1478,12 @@ mod tests {
         // 1.0 and 1.00 are one number, in one group as across two groups;
         // the NULL (code 3, not valid) is left out.
         let numbers = Exact {
-            values: vec![100, 100, 200, 0],
+            values: ExactValues::from(vec![100, 100, 200, 0]),
             scale: 2,
         };
         let valid = [true, true, true, false];
         let dictionary = Dictionary {
-            codes: vec![0, 1, 2, 3],
+            codes: Codes::from(vec![0, 1, 2, 3]),
             first_rows: vec![0, 1, 2, 3],
         };
         let input = Input::DistinctExact(&numbers, &valid, &dictionary);
@@ -1297,7 +1502,7 @@ mod tests {
         };
         let valid = [true; 5];
         let dictionary = Dictionary {
-            codes: vec![0, 1, 2, 3, 3],
+            codes: Codes::from(vec![0, 1, 2, 3, 3]),
             first_rows: vec![0, 1, 2, 3],
         };
         let input = Input::DistinctFloat(&numbers, &valid, &dictionary);
@@ -1331,7 +1536,7 @@ mod tests {
     #[test]
     fn a_total_averages_the_values_of_its_group_and_not_the_averages() {
         let numbers = Exact {
-            values: vec![1, 2, 6],
+            values: ExactValues::from(vec![1, 2, 6]),
             scale: 0,
         };
         let valid = [true; 3];
@@ -1354,7 +1559,7 @@ mod tests {
     #[test]
     fn an_average_without_a_value_is_null() {
         let exact = Exact {
-            values: vec![0],
+            values: ExactValues::from(vec![0]),
             scale: 2,
         };
         let float = Approx { values: vec![0.0] };
@@ -1371,7 +1576,7 @@ mod tests {
         let valid = [true];
         for (scale, result) in [(34, true), (35, false)] {
             let numbers = Exact {
-                values: vec![1],
+                values: ExactValues::from(vec![1]),
                 scale,
             };
             let input = Input::Average(Box::new(Input::Exact(&numbers, &valid)));
@@ -1385,7 +1590,7 @@ mod tests {
         // Ranks by code: 1, 3, 0, 2; the NULL (code 4, not valid) is left out,
         // although its rank comes first.
         let dictionary = Dictionary {
-            codes: vec![0, 1, 2, 3, 4],
+            codes: Codes::from(vec![0, 1, 2, 3, 4]),
             first_rows: vec![0, 1, 2, 3, 4],
         };
         let ranks = [2, 3, 1, 4, 0];

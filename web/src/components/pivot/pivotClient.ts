@@ -1,11 +1,14 @@
 /**
- * Page side of the Pivoteur's Worker (`pivotWorker.ts`): one Worker per result, fed once with a
- * copy of its rows, then asked for tables and for the windows of the table shown.
+ * Page side of the Pivoteur's Worker (`pivotWorker.ts`): one Worker per result, fed with a copy of
+ * its rows as they arrive, and asked for tables and for the windows of the table shown.
  *
- * The rows go to the Worker in blocks, with a pause between two blocks so that the page keeps
- * answering. The other messages wait for the end of the copy: a table asked during it is
- * computed on all the rows. Closing the client stops the Worker, and with it the memory of its
- * module.
+ * The client starts with the columns of the result. Each call of `follow` copies the rows
+ * received since the last one, in blocks, with a pause between two blocks so that the page keeps
+ * answering; `end` copies the last ones, once the result is complete. A table, a list of values or
+ * a window waits for the copy of the rows the result held when it was asked, and is computed on
+ * them: a table asked again after new rows adds them to its state. The filter of the grid is
+ * applied in the page, to the rows copied so far, then to each block. Closing the client stops the
+ * Worker, and with it the memory of its module.
  */
 
 import { toRaw } from 'vue'
@@ -34,6 +37,17 @@ import {
  * Rows per block sent to the Worker.
  */
 export const BLOCK_ROWS = 20_000
+
+/**
+ * Shortest delay between the starts of two computations of the table during the reception of the
+ * rows, in milliseconds, without a setting of the user.
+ */
+export const DEFAULT_REFRESH_MS = 1000
+
+/**
+ * Test of the rows the filter of the grid keeps.
+ */
+export type RowTest = (row: Cell[]) => boolean
 
 /**
  * What the client needs of a Worker: the tests give it one that runs the engine in the page.
@@ -78,6 +92,11 @@ export interface PivotTable {
    * Duration of the computation in the Worker, in milliseconds.
    */
   durationMs: number
+  /**
+   * Rows of the result the table is computed on, before the filter of the grid: all of them, or
+   * those received when it was asked.
+   */
+  received: number
 }
 
 /**
@@ -126,7 +145,8 @@ export class PivotClient {
   private readonly pending = new Map<number, Pending>()
 
   /**
-   * Refusal of a block of rows, given with the end of the copy.
+   * Refusal of a block of rows, given to every answer that follows: the rows of the Worker are no
+   * longer those of the result.
    */
   private blockFailure: PivotFailure | null = null
 
@@ -136,31 +156,50 @@ export class PivotClient {
   private closed = false
 
   /**
-   * Copy of the rows of the result into the Worker: resolved once the Worker holds them all,
-   * refused with the refusal of a block.
+   * Rows of the result, which grow during the reception.
    */
-  readonly loaded: Promise<void>
+  private readonly rows: Cell[][]
 
   /**
-   * Starts the copy of the rows of a result into a Worker.
+   * Rows sent to the Worker so far.
+   */
+  private sent = 0
+
+  /**
+   * Test of the filter of the grid applied to the blocks sent, `null` without a filter.
+   */
+  private keep: RowTest | null = null
+
+  /**
+   * Copies asked so far, each after the previous one; refused with the end of the copy refused.
+   */
+  private copy: Promise<void> = Promise.resolve()
+
+  /**
+   * End of the copy, once asked (`end`).
+   */
+  private ending: Promise<void> | null = null
+
+  /**
+   * Starts the copy of the rows of a result into a Worker, with the rows it holds already.
    *
    * @param worker Worker of the engine.
-   * @param result Result to copy, received in full.
+   * @param result Result to copy, complete or still being received.
    */
   constructor(
     private readonly worker: PivotWorkerPort,
     result: QueryResult,
   ) {
     worker.onmessage = (event) => this.receive(event.data)
-    this.loaded = this.load(result)
-    // A refused copy is given to the calls that wait for it.
-    this.loaded.catch(() => undefined)
+    this.rows = toRaw(result.rows)
+    worker.postMessage({ type: 'begin', families: families(result) })
+    this.follow()
   }
 
   /**
    * Creates the client of a result, with a Worker of its own.
    *
-   * @param result Result to copy, received in full.
+   * @param result Result to copy, complete or still being received.
    */
   static start(result: QueryResult): PivotClient {
     const worker = new Worker(new URL('./pivotWorker.ts', import.meta.url), { type: 'module' })
@@ -181,8 +220,10 @@ export class PivotClient {
     }
     const pending = this.pending.get(answer.id)
     this.pending.delete(answer.id)
-    if (answer.type === 'failure') {
-      pending?.reject(new PivotError(this.blockFailure ?? answer.failure))
+    if (this.blockFailure !== null) {
+      pending?.reject(new PivotError(this.blockFailure))
+    } else if (answer.type === 'failure') {
+      pending?.reject(new PivotError(answer.failure))
     } else {
       pending?.resolve(answer)
     }
@@ -204,53 +245,107 @@ export class PivotClient {
   }
 
   /**
-   * Copies the rows of a result into the Worker, block by block.
+   * Runs a step of the copy after the steps asked before it.
    *
-   * @param result Result to copy.
+   * @param step Step of the copy.
    */
-  private async load(result: QueryResult): Promise<void> {
-    const rows = toRaw(result.rows)
-    this.worker.postMessage({ type: 'begin', families: families(result) })
-    for (let start = 0; start < rows.length; start += BLOCK_ROWS) {
-      if (start > 0) {
+  private chain(step: () => Promise<void> | void): Promise<void> {
+    this.copy = this.copy.then(step)
+    // A refused copy is given to the calls that wait for it.
+    this.copy.catch(() => undefined)
+    return this.copy
+  }
+
+  /**
+   * Rows the filter of the grid keeps, from `start` included to `end` excluded.
+   *
+   * @param keep Test of the filter.
+   * @param start First row.
+   * @param end End of the rows.
+   */
+  private keptRows(keep: RowTest, start: number, end: number): Uint32Array {
+    const kept: number[] = []
+    for (let row = start; row < end; row++) {
+      if (keep(this.rows[row]!)) {
+        kept.push(row)
+      }
+    }
+    return Uint32Array.from(kept)
+  }
+
+  /**
+   * Sends the rows of the result after those sent, up to `end`, block by block.
+   *
+   * @param end End of the rows to send.
+   */
+  private async send(end: number): Promise<void> {
+    const first = this.sent
+    for (let start = first; start < end; start += BLOCK_ROWS) {
+      if (start > first) {
         await pause()
       }
       if (this.closed) {
         return
       }
-      this.worker.postMessage({ type: 'rows', rows: rows.slice(start, start + BLOCK_ROWS) })
+      const stop = Math.min(end, start + BLOCK_ROWS)
+      const rows = this.rows.slice(start, stop)
+      const keep = this.keep
+      if (keep === null) {
+        this.worker.postMessage({ type: 'rows', rows })
+      } else {
+        this.worker.postMessage({ type: 'rows', rows, kept: this.keptRows(keep, start, stop) })
+      }
+      this.sent = stop
     }
-    await this.ask({ type: 'finish', id: this.nextId++ })
   }
 
   /**
-   * Keeps only the rows the filter of the grid keeps, for the next tables, once the copy is
-   * over.
-   *
-   * @param rows Rows kept, in their order; `null` for all.
+   * Copies the rows the result has received since the last copy, after the copies asked before.
    */
-  setKept(rows: number[] | null): void {
-    const kept = rows === null ? null : Uint32Array.from(rows)
-    this.loaded.then(
-      () => {
-        if (!this.closed) {
-          this.worker.postMessage({ type: 'kept', rows: kept })
-        }
-      },
-      // The tables refuse the copy.
-      () => undefined,
-    )
+  follow(): void {
+    if (this.ending === null) {
+      void this.chain(() => this.send(this.rows.length))
+    }
   }
 
   /**
-   * Computes a table, once the copy is over, or lays it out again when only its order or its layout
-   * changes.
+   * Copies the last rows of the complete result, then ends the copy: no row comes after.
+   *
+   * @returns The end of the copy, refused with the refusal of a block or of the end.
+   */
+  end(): Promise<void> {
+    this.ending ??= this.chain(async () => {
+      await this.send(this.rows.length)
+      await this.ask({ type: 'finish', id: this.nextId++ })
+    })
+    return this.ending
+  }
+
+  /**
+   * Keeps only the rows the filter of the grid keeps, for the next tables: among the rows copied
+   * so far, then in each block copied after.
+   *
+   * @param keep Test of the filter; `null` for all the rows.
+   */
+  setKept(keep: RowTest | null): void {
+    void this.chain(() => {
+      if (!this.closed) {
+        this.keep = keep
+        const kept = keep === null ? null : this.keptRows(keep, 0, this.sent)
+        this.worker.postMessage({ type: 'kept', rows: kept })
+      }
+    })
+  }
+
+  /**
+   * Computes a table on the rows copied so far, once their copy is over, or lays it out again when
+   * only its order or its layout changes. Asked again after new rows, it adds them to its state.
    *
    * @param request Table asked.
    * @param order Order of its lines and of its columns.
    * @param layout Form of its lines and totals shown.
    * @param targets Columns of values named by their values, whose positions the table gives.
-   * @throws {PivotError} If the engine refuses it, or refused the copy.
+   * @throws {PivotError} If the engine refuses it, or refused a block.
    */
   async compute(
     request: PivotRequest,
@@ -258,14 +353,16 @@ export class PivotClient {
     layout: PivotLayout = FIRST_LAYOUT,
     targets: PivotValueTarget[] = [],
   ): Promise<PivotTable> {
-    await this.loaded
+    await this.copy
+    // The Worker takes in every row sent before the table.
+    const received = this.sent
     const id = this.nextId++
     const answer = await this.ask({ type: 'compute', id, request, order, layout, targets })
     if (answer.type !== 'table') {
       throw new Error(`Pivot client: unexpected answer ${answer.type}`)
     }
     const { shape, positions, lengths, durationMs } = answer
-    return { id, shape, positions, lengths, durationMs }
+    return { id, shape, positions, lengths, durationMs, received }
   }
 
   /**
@@ -281,7 +378,7 @@ export class PivotClient {
     lines: [number, number],
     columns: [number, number],
   ): Promise<PivotWindow> {
-    await this.loaded
+    await this.copy
     const answer = await this.ask({ type: 'window', id: this.nextId++, table, lines, columns })
     if (answer.type !== 'window') {
       throw new Error(`Pivot client: unexpected answer ${answer.type}`)
@@ -290,15 +387,15 @@ export class PivotClient {
   }
 
   /**
-   * Reads the distinct values of a column, in the order of the grid, or the periods of a precision
-   * of its dates, in the order of time.
+   * Reads the distinct values of a column among the rows copied so far, in the order of the grid,
+   * or the periods of a precision of its dates, in the order of time.
    *
    * @param column Index of the column.
    * @param precision What the column keeps of its dates.
-   * @throws {PivotError} If the engine refuses it, or refused the copy.
+   * @throws {PivotError} If the engine refuses it, or refused a block.
    */
   async values(column: number, precision: DatePrecision = 'none'): Promise<Cell[]> {
-    await this.loaded
+    await this.copy
     const answer = await this.ask({ type: 'values', id: this.nextId++, column, precision })
     if (answer.type !== 'values') {
       throw new Error(`Pivot client: unexpected answer ${answer.type}`)

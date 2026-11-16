@@ -19,6 +19,7 @@ const SAVED: Settings = {
   debug_retention_days: 30,
   indent_size: 4,
   concat_max_bytes: 1000,
+  pivot_refresh_ms: 1000,
 }
 
 const api = vi.hoisted(() => ({
@@ -113,6 +114,36 @@ describe('longest text of a GROUP_CONCAT', () => {
 
     expect(api.updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({ concat_max_bytes: 4000 }),
+    )
+  })
+})
+
+describe('delay between two computations of the Pivoteur', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    document.body.innerHTML = ''
+    api.getSettings.mockResolvedValue({ ...SAVED, pivot_refresh_ms: 2500 })
+    api.updateSettings.mockImplementation(async (update) => ({ ...SAVED, ...update }))
+  })
+
+  it('shows the saved delay in seconds, then saves the one typed in milliseconds', async () => {
+    const wrapper = mount(SettingsDialog, { props: { open: false }, attachTo: document.body })
+    await wrapper.setProps({ open: true })
+    await flushPromises()
+
+    const field = document.querySelector<HTMLInputElement>(
+      'input[aria-label="Délai entre deux calculs du Pivoteur, en secondes"]',
+    )
+    expect(field?.value).toBe('2.5')
+    expect([field?.min, field?.max, field?.step]).toEqual(['0.2', '60', '0.1'])
+
+    field!.value = '0.3'
+    field!.dispatchEvent(new Event('input'))
+    document.querySelector<HTMLFormElement>('#settings-form')?.requestSubmit()
+    await flushPromises()
+
+    expect(api.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ pivot_refresh_ms: 300 }),
     )
   })
 })

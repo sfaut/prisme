@@ -40,6 +40,7 @@ const FIELD_LABELS: Record<Field, string> = {
   debug_retention_days: 'Rétention debug',
   indent_size: 'Indentation',
   concat_max_bytes: 'GROUP_CONCAT',
+  pivot_refresh_ms: 'Mise à jour du Pivoteur',
 }
 
 /**
@@ -51,6 +52,7 @@ const FIELD_UNITS: Partial<Record<Field, string>> = {
   debug_retention_days: ' jours',
   indent_size: ' espaces',
   concat_max_bytes: ' octets',
+  pivot_refresh_ms: ' millisecondes',
 }
 
 /**

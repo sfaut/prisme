@@ -101,7 +101,8 @@ impl From<SettingsError> for ApiError {
             SettingsError::InvalidRowLimit(_)
             | SettingsError::RetentionOutOfRange { .. }
             | SettingsError::IndentSizeOutOfRange
-            | SettingsError::ConcatMaxBytesOutOfRange => Self::BadRequest(error.detail()),
+            | SettingsError::ConcatMaxBytesOutOfRange
+            | SettingsError::PivotRefreshMsOutOfRange => Self::BadRequest(error.detail()),
             SettingsError::Sqlite(_) => {
                 tracing::error!("{error}");
                 Self::Internal
