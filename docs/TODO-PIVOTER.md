@@ -150,6 +150,6 @@ Today the Pivoteur waits for the end of the query (F-07), then copies all the ro
 - ✅ Engine: store and caches that grow (dictionaries, exact numbers rescaled, derived date levels, ranks), kept state of the last computation (finest groups, `COUNT`, `SUM`, `AVG` as sum and count, `MIN` / `MAX`), incremental update; full computation for a new request, a new grid filter, `DISTINCT`, `GROUP_CONCAT` and filters on measures; Rust tests, incremental equal to full
 - ⬜ Engine, later: `Engine::grow` takes 0.7 to 1 s per slice at 10 million rows (section 17.6 of `docs/PERFORMANCES.md`); measure where this time goes, then reduce it
 - ✅ Client and Worker: `begin` at the columns, then only the new rows at each flush, `update` message, rows kept by the grid filter among the new rows only, ranks sent again when a dictionary grows; tests
-- ⬜ Setting of the delay: migration, `settings.rs`, generated types, window of the settings; tests of the server and of the interface
+- ✅ Setting of the delay: migration, `settings.rs`, generated types, window of the settings; tests of the server and of the interface
 - ✅ Panel: adaptive pace, partial table shown in the status bar, values of a filter read on the rows received, scroll position kept; tests, screen in light and dark modes on 1 million rows
 - ⬜ Documented: `README.md`, `docs/DEVELOPER.md`, module comments, `docs/QUESTIONS.md`
