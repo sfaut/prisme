@@ -286,7 +286,7 @@ async function save(): Promise<void> {
           <span class="text-base text-fg-secondary">octets</span>
         </div>
       </ui-field>
-      <ui-field label="Mise à jour">
+      <ui-field label="Mise à jour du Pivoteur">
         <div class="flex items-center gap-3">
           <ui-input
             v-model="refreshSeconds"
