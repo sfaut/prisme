@@ -52,7 +52,7 @@ import PanelHeader from '@/components/panel/PanelHeader.vue'
 import PivotLayoutPopover from './PivotLayoutPopover.vue'
 import PivotGrid from './PivotGrid.vue'
 import PivotSections from './PivotSections.vue'
-import { PivotClient, type PivotTable } from './pivotClient'
+import { DEFAULT_REFRESH_MS, PivotClient, type PivotTable } from './pivotClient'
 import {
   type DatePrecision,
   type PivotAxis,
@@ -142,12 +142,6 @@ const receiving = computed(() => props.tab?.result === result.value && !props.ta
 const source = computed(() => (props.open && analysable.value ? result.value : null))
 
 /**
- * Shortest delay between the starts of two computations of the table during
- * the reception, in milliseconds.
- */
-const REFRESH_MS = 1000
-
-/**
  * Keeps a configuration in its tab, and saves it with the tab. A refused save
  * shows in the top bar (`sync.ts`); the tab keeps its configuration on the
  * page.
@@ -203,9 +197,16 @@ const config = computed<PivotConfig>({
 
 /**
  * Settings of the user: the longest text of a `GROUP_CONCAT`, which the
- * request carries.
+ * request carries, and the delay between two computations during the
+ * reception.
  */
 const settings = useSettingsStore()
+
+/**
+ * Shortest delay between the starts of two computations of the table during
+ * the reception, in milliseconds.
+ */
+const refreshMs = computed(() => settings.settings?.pivot_refresh_ms ?? DEFAULT_REFRESH_MS)
 
 /**
  * Table to ask the engine for the configuration shown. The same object
@@ -554,7 +555,7 @@ function planRefresh(): void {
   if (!refreshAsked || refreshTimer !== null || computing.value) {
     return
   }
-  const wait = Math.max(0, lastStart + REFRESH_MS - performance.now())
+  const wait = Math.max(0, lastStart + refreshMs.value - performance.now())
   refreshTimer = setTimeout(() => {
     refreshTimer = null
     // A computation asked meanwhile plans this one again once it has ended.

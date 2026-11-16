@@ -4,8 +4,10 @@
   read-only sessions and the writes they allow, by kind (greyed out while the
   sessions are read-only: the database would refuse them), the indentation of
   the SQL editor, in spaces, the longest text of a `GROUP_CONCAT` of the
-  Pivoteur, in bytes, then the retention of the console's history and debug
-  log, in days.
+  Pivoteur, in bytes, the shortest delay between two computations of the
+  Pivoteur during the reception of the rows, in seconds (saved in
+  milliseconds), then the retention of the console's history and debug log, in
+  days.
   The language offers French only for now: the interface stays in French
   until it is made multilingual (see `docs/QUESTIONS.md`), and the choice is
   not saved yet. The planned languages (English, Spanish, German, Italian)
@@ -21,6 +23,7 @@ import { WRITE_KIND_GROUPS, WRITE_KIND_STATEMENTS, writeKindTooltip } from '@/ap
 import { useSettingsStore } from '@/stores/settings'
 
 import { DEFAULT_INDENT_SIZE } from '@/components/editor/editorIndent'
+import { DEFAULT_REFRESH_MS } from '@/components/pivot/pivotClient'
 import { DEFAULT_CONCAT_MAX_BYTES } from '@/components/pivot/pivotEngine'
 import UiAlert from '@/components/ui/UiAlert.vue'
 import UiButton from '@/components/ui/UiButton.vue'
@@ -84,6 +87,15 @@ const CONCAT_MIN = 100
 const CONCAT_MAX = 1_048_576
 
 /**
+ * Bounds of the delay between two computations of the Pivoteur, in seconds,
+ * and the step of its input: the server checks the same bounds, in
+ * milliseconds.
+ */
+const REFRESH_MIN_SECONDS = 0.2
+const REFRESH_MAX_SECONDS = 60
+const REFRESH_STEP_SECONDS = 0.1
+
+/**
  * Why the writes cannot be chosen while the sessions are read-only.
  */
 const READ_ONLY_WRITES =
@@ -91,7 +103,8 @@ const READ_ONLY_WRITES =
 
 /**
  * Current input: the row limit, the read-only mode, the allowed writes, the
- * indentation, the longest text of a `GROUP_CONCAT` and the retentions.
+ * indentation, the longest text of a `GROUP_CONCAT` and the retentions; the
+ * delay of the Pivoteur is typed in seconds (`refreshSeconds`).
  */
 const form = reactive({
   row_limit: DEFAULT_ROW_LIMIT,
@@ -102,6 +115,12 @@ const form = reactive({
   history_retention_days: DEFAULT_RETENTION,
   debug_retention_days: DEFAULT_RETENTION,
 })
+
+/**
+ * Shortest delay between two computations of the Pivoteur during the
+ * reception, as typed, in seconds.
+ */
+const refreshSeconds = ref(DEFAULT_REFRESH_MS / 1000)
 
 /**
  * Error of the last load or save, `null` if none.
@@ -144,6 +163,7 @@ watch(open, async (isOpen) => {
   form.concat_max_bytes = settings.settings?.concat_max_bytes ?? DEFAULT_CONCAT_MAX_BYTES
   form.history_retention_days = settings.settings?.history_retention_days ?? DEFAULT_RETENTION
   form.debug_retention_days = settings.settings?.debug_retention_days ?? DEFAULT_RETENTION
+  refreshSeconds.value = (settings.settings?.pivot_refresh_ms ?? DEFAULT_REFRESH_MS) / 1000
 })
 
 /**
@@ -153,7 +173,11 @@ async function save(): Promise<void> {
   saving.value = true
   error.value = null
   try {
-    await settings.update({ ...form, allowed_writes: [...form.allowed_writes] })
+    await settings.update({
+      ...form,
+      allowed_writes: [...form.allowed_writes],
+      pivot_refresh_ms: Math.round(refreshSeconds.value * 1000),
+    })
     open.value = false
   } catch (failure) {
     error.value = errorMessage(failure)
@@ -260,6 +284,24 @@ async function save(): Promise<void> {
             "
           />
           <span class="text-base text-fg-secondary">octets</span>
+        </div>
+      </ui-field>
+      <ui-field label="Mise à jour">
+        <div class="flex items-center gap-3">
+          <ui-input
+            v-model="refreshSeconds"
+            type="number"
+            :min="REFRESH_MIN_SECONDS"
+            :max="REFRESH_MAX_SECONDS"
+            :step="REFRESH_STEP_SECONDS"
+            required
+            class="w-27"
+            aria-label="Délai entre deux calculs du Pivoteur, en secondes"
+            v-tooltip="
+              'Pendant la réception des lignes, délai le plus court entre deux calculs du tableau du Pivoteur'
+            "
+          />
+          <span class="text-base text-fg-secondary">secondes</span>
         </div>
       </ui-field>
       <ui-field label="Rétention historique">

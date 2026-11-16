@@ -40,4 +40,10 @@ export type Settings = {
    * 1000 by default.
    */
   concat_max_bytes: number;
+  /**
+   * Shortest delay between the starts of two computations of the table of
+   * the Pivoteur while the rows of a result are being received, in
+   * milliseconds, 1000 by default.
+   */
+  pivot_refresh_ms: number;
 };

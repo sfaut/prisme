@@ -546,9 +546,9 @@ Invoke-RestMethod "$api/connections"
 # Connect: returns the flavor (mysql or mariadb) and the server version
 Invoke-RestMethod "$api/connections/1/probe" -Method Post
 
-# Settings: read, then change (row limit 1000, 2000, 5000, 10000 or 50000; retentions 1 to 3650 days; indentation 1 to 8 spaces; longest GROUP_CONCAT 100 to 1048576 bytes)
+# Settings: read, then change (row limit 1000, 2000, 5000, 10000 or 50000; retentions 1 to 3650 days; indentation 1 to 8 spaces; longest GROUP_CONCAT 100 to 1048576 bytes; delay of the Pivoteur 200 to 60000 milliseconds)
 Invoke-RestMethod "$api/settings"
-Invoke-RestMethod "$api/settings" -Method Put -ContentType "application/json" -Body '{"row_limit": 5000, "read_only_session": false, "allowed_writes": ["insert", "update"], "history_retention_days": 30, "debug_retention_days": 30, "indent_size": 4, "concat_max_bytes": 1000}'
+Invoke-RestMethod "$api/settings" -Method Put -ContentType "application/json" -Body '{"row_limit": 5000, "read_only_session": false, "allowed_writes": ["insert", "update"], "history_retention_days": 30, "debug_retention_days": 30, "indent_size": 4, "concat_max_bytes": 1000, "pivot_refresh_ms": 1000}'
 ```
 
 On error (status 4xx or 5xx), PowerShell raises an exception, and the JSON body holds Prisme's message in English and its detail: `{"error": "...", "detail": {"code": "...", ...}}`. The interface writes its own message from the detail (`web/src/api/messages.ts`); the texts written outside Prisme (the target server's answer, the driver's message) stay in their own fields, quoted as they are.
@@ -560,8 +560,8 @@ On error (status 4xx or 5xx), PowerShell raises an exception, and the JSON body 
 | `GET /api/connections` | Lists the connections, without passwords. | — |
 | `POST /api/connections` | Saves a connection, returns `{"id": ...}` (201). | 400 invalid input, 409 name already taken |
 | `POST /api/connections/{id}/probe` | Connects, returns `{"flavor": ..., "version": ...}`. | 404 unknown connection, 502 server unreachable or access denied, 504 no answer within 10 s |
-| `GET /api/settings` | Settings: `{"row_limit": 1000, "row_limit_choices": [...], "read_only_session": true, "allowed_writes": [], "history_retention_days": 30, "debug_retention_days": 30, "indent_size": 4, "concat_max_bytes": 1000}`. `allowed_writes`: the kinds of write allowed (`insert`, `create_table`...), in the order of `WriteKind::ALL`. | — |
-| `PUT /api/settings` | Changes the default limit, the read-only sessions, the allowed writes, the retention of the console (1 to 3,650 days), the indentation of the SQL editor (1 to 8 spaces) and the longest text of a `GROUP_CONCAT` of the Pivoteur (100 to 1,048,576 bytes), returns the updated settings. | 400 limit not among the choices, retention, indentation or longest text out of bounds; 422 unknown kind of write |
+| `GET /api/settings` | Settings: `{"row_limit": 1000, "row_limit_choices": [...], "read_only_session": true, "allowed_writes": [], "history_retention_days": 30, "debug_retention_days": 30, "indent_size": 4, "concat_max_bytes": 1000, "pivot_refresh_ms": 1000}`. `allowed_writes`: the kinds of write allowed (`insert`, `create_table`...), in the order of `WriteKind::ALL`. | — |
+| `PUT /api/settings` | Changes the default limit, the read-only sessions, the allowed writes, the retention of the console (1 to 3,650 days), the indentation of the SQL editor (1 to 8 spaces), the longest text of a `GROUP_CONCAT` of the Pivoteur (100 to 1,048,576 bytes) and the shortest delay between two computations of the Pivoteur during the reception of the rows (200 to 60,000 milliseconds), returns the updated settings. | 400 limit not among the choices, retention, indentation, longest text or delay out of bounds; 422 unknown kind of write |
 | `GET /api/profile` | Profile: `{"email": "...", "first_name": "", "last_name": ""}`. | — |
 | `PUT /api/profile` | Changes the names (trimmed, 100 characters at most), returns the profile. | 400 name too long |
 | `GET /api/console/history` | Page of the history of the queries, in chronological order: `?before=` (id of the oldest query already read), `?limit=` (500 by default, 2,000 at most), `?action=` (an action kept, the key repeated for several: `?action=run&action=run_all`; all when absent). | 400 unknown action |

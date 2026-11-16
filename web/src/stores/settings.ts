@@ -45,6 +45,7 @@ export const useSettingsStore = defineStore('settings', () => {
       debug_retention_days: current.debug_retention_days,
       indent_size: current.indent_size,
       concat_max_bytes: current.concat_max_bytes,
+      pivot_refresh_ms: current.pivot_refresh_ms,
       ...change,
     })
   }

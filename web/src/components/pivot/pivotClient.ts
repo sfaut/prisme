@@ -39,6 +39,12 @@ import {
 export const BLOCK_ROWS = 20_000
 
 /**
+ * Shortest delay between the starts of two computations of the table during the reception of the
+ * rows, in milliseconds, without a setting of the user.
+ */
+export const DEFAULT_REFRESH_MS = 1000
+
+/**
  * Test of the rows the filter of the grid keeps.
  */
 export type RowTest = (row: Cell[]) => boolean
