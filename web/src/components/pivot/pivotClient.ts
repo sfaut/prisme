@@ -86,6 +86,11 @@ export interface PivotTable {
    * Duration of the computation in the Worker, in milliseconds.
    */
   durationMs: number
+  /**
+   * Rows of the result the table is computed on, before the filter of the grid: all of them, or
+   * those received when it was asked.
+   */
+  received: number
 }
 
 /**
@@ -343,13 +348,15 @@ export class PivotClient {
     targets: PivotValueTarget[] = [],
   ): Promise<PivotTable> {
     await this.copy
+    // The Worker takes in every row sent before the table.
+    const received = this.sent
     const id = this.nextId++
     const answer = await this.ask({ type: 'compute', id, request, order, layout, targets })
     if (answer.type !== 'table') {
       throw new Error(`Pivot client: unexpected answer ${answer.type}`)
     }
     const { shape, positions, lengths, durationMs } = answer
-    return { id, shape, positions, lengths, durationMs }
+    return { id, shape, positions, lengths, durationMs, received }
   }
 
   /**

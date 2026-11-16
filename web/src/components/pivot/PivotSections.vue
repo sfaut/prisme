@@ -138,6 +138,11 @@ const props = defineProps<{
    * list of a filter.
    */
   readValues: (column: number, precision: DatePrecision) => Promise<Cell[]>
+  /**
+   * Are the rows of the result still being received? The list of a filter then offers the values
+   * of the rows received so far.
+   */
+  receiving?: boolean
 }>()
 
 /**
@@ -987,6 +992,7 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
     :names="names"
     :types="types"
     :read-values="readValues"
+    :receiving="receiving"
     @change="changePanelFilter"
     @name="nameAtOnce({ zone: 'filters', index: panel?.index ?? 0 })"
     @close="panel = null"

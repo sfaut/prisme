@@ -13,11 +13,17 @@
   (F-06). The widths of the sections are those of the tab shown.
 
   The engine runs in a Worker of the page (`pivotClient.ts`), one per
-  result: the rows are copied once the query has ended (F-07), while the
-  panel is open; folded, the panel computes nothing and stops its Worker
-  (F-02). The foreign keys of the columns, for their default measure, come
-  from the catalog of the connection, read while the panel is open, without
-  waiting for it. Each change of the configuration or of the filter of the grid
+  result, while the panel is open; folded, the panel computes nothing and
+  stops its Worker (F-02). During the reception, the rows are copied as they
+  arrive, and the table follows them (F-07): a computation starts once the
+  previous one has ended, at most once per delay, then a last one at the end
+  of the query, before the Worker is told that no row comes after. The status
+  bar then says that the table is partial, and the list of a filter that it
+  holds the values of the rows received.
+
+  The foreign keys of the columns, for their default measure, come from the
+  catalog of the connection, read while the panel is open, without waiting
+  for it. Each change of the configuration or of the filter of the grid
   computes the table again; a filter of the panel leaves the grid as it is
   (F-20); a new name only changes its labels, a sort (C-11, C-13) lays the table
   out again, without computing any aggregate, and a width only draws it again:
@@ -28,7 +34,6 @@
   result without columns, or in error, has nothing to analyse (F-08).
 -->
 <script setup lang="ts">
-import { LoaderCircle } from '@lucide/vue'
 import { computed, onBeforeUnmount, ref, shallowRef, toRaw, watch } from 'vue'
 
 import { updateResultPivot } from '@/api/editors'
@@ -125,18 +130,22 @@ const analysable = computed(
 )
 
 /**
- * Are the rows of the result still being received? The panel waits for
- * the end of the query (F-07); the result kept during a refresh is whole.
+ * Are the rows of the result still being received? The table follows them
+ * (F-07); the result kept during a refresh is whole.
  */
 const receiving = computed(() => props.tab?.result === result.value && !props.tab?.done)
 
 /**
- * Result the Worker works on: that of the tab shown, whole, while the
- * panel is open; `null` otherwise.
+ * Result the Worker works on: that of the tab shown, whole or being
+ * received, while the panel is open; `null` otherwise.
  */
-const source = computed(() =>
-  props.open && analysable.value && !receiving.value ? result.value : null,
-)
+const source = computed(() => (props.open && analysable.value ? result.value : null))
+
+/**
+ * Shortest delay between the starts of two computations of the table during
+ * the reception, in milliseconds.
+ */
+const REFRESH_MS = 1000
 
 /**
  * Keeps a configuration in its tab, and saves it with the tab. A refused save
@@ -355,9 +364,36 @@ const failure = ref<string | null>(null)
 let computations = 0
 
 /**
+ * Start of the last computation, by `performance.now()`.
+ */
+let lastStart = -Infinity
+
+/**
+ * Does the table wait for a computation on the rows received since?
+ */
+let refreshAsked = false
+
+/**
+ * Timer of the computation planned for the rows received, `null` without one.
+ */
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
+
+/**
+ * Forgets the computation planned for the rows received.
+ */
+function cancelRefresh(): void {
+  if (refreshTimer !== null) {
+    clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
+  refreshAsked = false
+}
+
+/**
  * Stops the Worker and forgets its table.
  */
 function closeClient(): void {
+  cancelRefresh()
   client?.close()
   client = null
   clientResult = null
@@ -368,7 +404,8 @@ function closeClient(): void {
 onBeforeUnmount(closeClient)
 
 /**
- * Starts a Worker for a complete result, and copies its rows.
+ * Starts a Worker for a result, and copies its rows: all of them for a
+ * complete result, those received so far otherwise.
  *
  * @param shown Result to copy.
  */
@@ -376,13 +413,15 @@ function startClient(shown: QueryResult): PivotClient {
   const started = PivotClient.start(shown)
   client = started
   clientResult = shown
-  copying.value = true
-  const copied = () => {
-    if (client === started) {
-      copying.value = false
+  if (!receiving.value) {
+    copying.value = true
+    const copied = () => {
+      if (client === started) {
+        copying.value = false
+      }
     }
+    started.end().then(copied, copied)
   }
-  started.end().then(copied, copied)
   return started
 }
 
@@ -474,6 +513,7 @@ async function compute(current: PivotClient): Promise<void> {
   const arranged = layout.value
   const targets = engineTargets(named)
   computing.value = true
+  lastStart = performance.now()
   try {
     const table = await current.compute(asked, order.value, arranged, targets)
     if (computation === computations) {
@@ -500,8 +540,56 @@ async function compute(current: PivotClient): Promise<void> {
   } finally {
     if (computation === computations) {
       computing.value = false
+      planRefresh()
     }
   }
+}
+
+/**
+ * Plans the computation the rows received since ask for: once the
+ * computation under way has ended, and not before the delay since the start
+ * of the previous one.
+ */
+function planRefresh(): void {
+  if (!refreshAsked || refreshTimer !== null || computing.value) {
+    return
+  }
+  const wait = Math.max(0, lastStart + REFRESH_MS - performance.now())
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null
+    // A computation asked meanwhile plans this one again once it has ended.
+    if (refreshAsked && !computing.value && client !== null) {
+      refreshAsked = false
+      if (hasTable(config.value)) {
+        void compute(client)
+      }
+    }
+  }, wait)
+}
+
+/**
+ * Copies the rows received since the last copy, and asks for the table to
+ * follow them.
+ *
+ * @param current Client of the Worker.
+ */
+function followRows(current: PivotClient): void {
+  current.follow()
+  refreshAsked = true
+  planRefresh()
+}
+
+/**
+ * Ends the reception: copies the last rows, computes the table a last time,
+ * then tells the Worker that no row comes after.
+ *
+ * @param current Client of the Worker.
+ */
+function endReception(current: PivotClient): void {
+  cancelRefresh()
+  current.follow()
+  const last = hasTable(config.value) ? compute(current) : Promise.resolve()
+  void last.then(() => current.end()).catch(() => undefined)
 }
 
 /**
@@ -533,6 +621,21 @@ function update(): void {
 }
 
 watch([source, request, order, layout, () => props.tab?.filter], update, { immediate: true })
+
+watch(
+  () => result.value?.rowCount,
+  () => {
+    if (client !== null && clientResult === result.value && receiving.value) {
+      followRows(client)
+    }
+  },
+)
+
+watch(receiving, (now, before) => {
+  if (before && !now && client !== null && clientResult === result.value) {
+    endReception(client)
+  }
+})
 
 /**
  * Reads the distinct values of a column of the result shown, or the periods of a precision of its
@@ -580,13 +683,19 @@ const tableLabels = computed(() => {
 })
 
 /**
- * Rows taken into account, out of those of the result when the filter of
- * the grid keeps only some of them.
+ * Rows taken into account, out of those the table is computed on when the
+ * filter of the grid keeps only some of them; partial while rows are still
+ * to come.
  */
 const rowsText = computed(() => {
-  const shape = shownTable.value?.table.shape
-  const total = result.value?.rowCount ?? 0
-  return shape ? formatRowCount(total, shape.rows === total ? null : shape.rows) : ''
+  const table = shownTable.value?.table
+  if (!table) {
+    return ''
+  }
+  const total = table.received
+  const text = formatRowCount(total, table.shape.rows === total ? null : table.shape.rows)
+  const partial = receiving.value || total < (result.value?.rowCount ?? 0)
+  return partial ? `Calcul partiel : ${text} ${total > 1 ? 'reçues' : 'reçue'}` : text
 })
 
 /**
@@ -601,7 +710,7 @@ const groupsText = computed(() => {
 <template>
   <section class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-4 pt-1 pb-3" aria-label="Pivoteur">
     <panel-header title="Pivoteur" side="bottom" @collapse="emit('collapse')">
-      <template v-if="analysable && !receiving" #actions>
+      <template v-if="analysable" #actions>
         <pivot-layout-popover v-model:config="config" :names="result?.columns ?? []" />
       </template>
     </panel-header>
@@ -610,14 +719,6 @@ const groupsText = computed(() => {
       class="flex flex-1 items-center justify-center text-center text-fg-secondary"
     >
       Rien à analyser
-    </p>
-    <p
-      v-else-if="receiving"
-      role="status"
-      class="flex flex-1 items-center justify-center gap-3 text-fg-secondary"
-    >
-      <LoaderCircle class="size-5 animate-spin" aria-hidden="true" />
-      En attente de la fin de la requête…
     </p>
     <!-- Its sections take the widths of each tab as they start. -->
     <pivot-sections
@@ -629,6 +730,7 @@ const groupsText = computed(() => {
       :marks="marks"
       :foreign-keys="foreignKeys"
       :read-values="readValues"
+      :receiving="receiving"
     >
       <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
         <ui-alert v-if="failure" tone="error" :title="failure" />

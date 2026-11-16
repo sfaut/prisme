@@ -3,7 +3,9 @@
   periods of a precision of its dates, in a filter of the Pivoteur (F-21): a
   search, the values to check, and "Tout" and "Aucun" on the values shown. Each
   tick applies at once; a value of the filter the column no longer holds leaves
-  at the next tick. The values can be many: the list draws those in sight
+  at the next tick. Read during the reception of the rows, the list says that it
+  holds the values of the rows received so far (rule 2 of `CLAUDE.md`: no
+  silent approximation). The values can be many: the list draws those in sight
   (`ListboxVirtualizer`).
 -->
 <script setup lang="ts">
@@ -50,7 +52,16 @@ const props = defineProps<{
    * list would keep no row.
    */
   offersNull: boolean
+  /**
+   * Are the rows of the result still being received?
+   */
+  partial?: boolean
 }>()
+
+/**
+ * Were the values read before the end of the reception of the rows?
+ */
+const partialRead = props.partial === true
 
 /**
  * Values the filter lists.
@@ -184,6 +195,9 @@ function checkShown(check: boolean): void {
         </listbox-virtualizer>
       </listbox-content>
       <p v-if="shown.length === 0" class="py-1 text-fg-secondary">Aucune valeur</p>
+      <p v-if="partialRead" class="text-sm text-fg-secondary">
+        Valeurs des lignes reçues à l’ouverture de la liste, la requête étant en cours
+      </p>
     </listbox-root>
     <div class="flex justify-end gap-2">
       <ui-button label="Tout" variant="ghost" small @click="checkShown(true)" />

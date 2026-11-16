@@ -52,6 +52,29 @@ async function clickButton(label: string): Promise<void> {
 }
 
 describe('PivotFilterValues', () => {
+  it('says when it holds the values of the rows received so far', async () => {
+    const note = 'Valeurs des lignes reçues à l’ouverture de la liste, la requête étant en cours'
+    const { mounted } = await mountList(() => Promise.resolve(['Nord']))
+    expect(mounted.text()).not.toContain(note)
+    mounted.unmount()
+    const partial = mount(PivotFilterValues, {
+      attachTo: document.body,
+      props: {
+        label: 'region',
+        read: () => Promise.resolve(['Nord']),
+        offersNull: true,
+        kept: [],
+        partial: true,
+      },
+    })
+    wrapper = partial
+    await flushPromises()
+    expect(partial.text()).toContain(note)
+    // The end of the reception leaves the values read as they are.
+    await partial.setProps({ partial: false })
+    expect(partial.text()).toContain(note)
+  })
+
   it('checks and unchecks the values, in the order of the list', async () => {
     const { changes } = await mountList(() => Promise.resolve([null, 'Nord', 'Sud']), ['Sud'])
     await clickButton('Tout')

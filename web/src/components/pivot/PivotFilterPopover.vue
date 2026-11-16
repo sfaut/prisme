@@ -135,6 +135,10 @@ const props = defineProps<{
    * Reads the distinct values of a column, or the periods of a precision of its dates.
    */
   readValues: (column: number, precision: DatePrecision) => Promise<Cell[]>
+  /**
+   * Are the rows of the result still being received?
+   */
+  receiving?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -527,6 +531,7 @@ function onEscape(): void {
             :label="names[columnFilter.column] ?? '?'"
             :read="() => readValues(columnFilter?.column ?? -1, columnFilter?.precision ?? 'none')"
             :offers-null="filter.condition === 'in_list'"
+            :partial="receiving"
             :kept="columnFilter.values"
             @update:kept="change({ values: $event })"
           />
