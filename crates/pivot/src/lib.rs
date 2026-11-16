@@ -584,7 +584,10 @@ fn rank_numbers(ranking: &mut Ranking<u32>, dictionary: &Dictionary, numbers: &N
     let key = |code: u32| dictionary.first_rows[code as usize];
     match numbers {
         Numbers::Exact(numbers) => ranking.extend(dictionary.len(), key, |a, b| {
-            numbers.values[a as usize].cmp(&numbers.values[b as usize])
+            numbers
+                .values
+                .get(a as usize)
+                .cmp(&numbers.values.get(b as usize))
         }),
         Numbers::Float(numbers) => ranking.extend(dictionary.len(), key, |a, b| {
             numbers.values[a as usize].total_cmp(&numbers.values[b as usize])

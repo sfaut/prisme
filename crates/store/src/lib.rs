@@ -21,8 +21,8 @@ pub use column::{BlockError, Bounds, TextColumn};
 pub use dictionary::{Dictionary, Encoder};
 pub use hash::{FxMap, FxSet, fx_hash};
 pub use numbers::{
-    Approx, Exact, NumberError, compare_exact, float_length, format_exact, format_float, is_exact,
-    parse_exact,
+    Approx, Exact, ExactValues, NumberError, compare_exact, float_length, format_exact,
+    format_float, is_exact, parse_exact,
 };
 
 /// Rows of a result, one text column per column of the result.

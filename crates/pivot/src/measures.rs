@@ -46,7 +46,7 @@ use std::cmp::Ordering;
 use std::hash::Hash;
 use std::iter;
 
-use prisme_store::{Approx, Dictionary, Exact, FxMap, FxSet, growth};
+use prisme_store::{Approx, Dictionary, Exact, ExactValues, FxMap, FxSet, growth};
 
 use crate::groups::Merge;
 use crate::{Concat, Engine, Level};
@@ -390,10 +390,10 @@ impl Addend for f64 {
 }
 
 /// Adds the valid numbers of some rows to the sums of their groups, and
-/// counts them.
-fn add_sums<T: Addend>(
+/// counts them; `addend` gives the number of a value as the sums add it.
+fn add_sums<V: Copy, T: Addend>(
     (sums, counts): (&mut [T], &mut [u64]),
-    values: &[T],
+    (values, addend): (&[V], impl Fn(V) -> T),
     valid: &[bool],
     rows: &[u32],
     finest: &[u32],
@@ -401,11 +401,25 @@ fn add_sums<T: Addend>(
     for (&row, &group) in rows.iter().zip(finest) {
         if valid[row as usize] {
             let sum = &mut sums[group as usize];
-            *sum = sum.plus(values[row as usize])?;
+            *sum = sum.plus(addend(values[row as usize]))?;
             counts[group as usize] += 1;
         }
     }
     Ok(())
+}
+
+/// Adds the valid exact numbers of some rows to the sums of their groups,
+/// and counts them.
+fn add_exact_sums(
+    sums: (&mut [i128], &mut [u64]),
+    values: &ExactValues,
+    valid: &[bool],
+    (rows, finest): (&[u32], &[u32]),
+) -> Result<(), Overflow> {
+    match values {
+        ExactValues::Narrow(values) => add_sums(sums, (values, i128::from), valid, rows, finest),
+        ExactValues::Wide(values) => add_sums(sums, (values, |value| value), valid, rows, finest),
+    }
 }
 
 /// Adds the sums and the counts of each set of groups into those of the
@@ -431,7 +445,7 @@ fn merge_sums<T: Addend>(
 /// Two texts of the dictionary can write one number (`1.0` and `1.00`):
 /// `key` tells the numbers apart, and the pairs read a code per number.
 fn sum_distinct<T: Addend, K: Eq + Hash>(
-    values: &[T],
+    value_of: impl Fn(usize) -> T,
     key: impl Fn(T) -> K,
     valid: &[bool],
     dictionary: &Dictionary,
@@ -443,7 +457,7 @@ fn sum_distinct<T: Addend, K: Eq + Hash>(
         .first_rows
         .iter()
         .map(|&row| {
-            let value = values[row as usize];
+            let value = value_of(row as usize);
             *index.entry(key(value)).or_insert_with(|| {
                 numbers.push(value);
                 (numbers.len() - 1) as u32
@@ -846,12 +860,13 @@ impl Partial {
             (Partial::Exact { sums, counts, .. }, Input::Exact(numbers, valid)) => {
                 widen_by_steps(sums, groups, 0);
                 widen_by_steps(counts, groups, 0);
-                add_sums((sums, counts), &numbers.values, valid, rows, finest)?;
+                add_exact_sums((sums, counts), &numbers.values, valid, (rows, finest))?;
             }
             (Partial::Float { sums, counts }, Input::Float(numbers, valid)) => {
                 widen_by_steps(sums, groups, 0.0);
                 widen_by_steps(counts, groups, 0);
-                add_sums((sums, counts), &numbers.values, valid, rows, finest)?;
+                let values = (numbers.values.as_slice(), |value| value);
+                add_sums((sums, counts), values, valid, rows, finest)?;
             }
             (Partial::Extreme(best), Input::Extreme(extreme)) => {
                 widen_by_steps(best, groups, NO_VALUE);
@@ -980,8 +995,13 @@ pub fn accumulate(
             Ok(State::Count(counts))
         }
         Input::DistinctExact(numbers, valid, dictionary) => {
-            let (sums, counts) =
-                sum_distinct(&numbers.values, |value| value, valid, dictionary, feed)?;
+            let (sums, counts) = sum_distinct(
+                |row| numbers.values.get(row),
+                |value| value,
+                valid,
+                dictionary,
+                feed,
+            )?;
             Ok(State::Exact {
                 sums,
                 counts,
@@ -989,7 +1009,13 @@ pub fn accumulate(
             })
         }
         Input::DistinctFloat(numbers, valid, dictionary) => {
-            let (sums, counts) = sum_distinct(&numbers.values, float_key, valid, dictionary, feed)?;
+            let (sums, counts) = sum_distinct(
+                |row| numbers.values[row],
+                float_key,
+                valid,
+                dictionary,
+                feed,
+            )?;
             Ok(State::Float { sums, counts })
         }
         Input::Average(ref input) => {
@@ -1388,7 +1414,7 @@ mod tests {
     #[test]
     fn a_sum_without_a_value_is_null() {
         let numbers = Exact {
-            values: vec![1250, 0, 325],
+            values: ExactValues::from(vec![1250, 0, 325]),
             scale: 2,
         };
         let valid = [true, false, true];
@@ -1409,7 +1435,7 @@ mod tests {
     #[test]
     fn an_exact_sum_beyond_128_bits_is_an_error() {
         let numbers = Exact {
-            values: vec![i128::MAX, 1],
+            values: ExactValues::from(vec![i128::MAX, 1]),
             scale: 0,
         };
         let valid = [true, true];
@@ -1452,7 +1478,7 @@ mod tests {
         // 1.0 and 1.00 are one number, in one group as across two groups;
         // the NULL (code 3, not valid) is left out.
         let numbers = Exact {
-            values: vec![100, 100, 200, 0],
+            values: ExactValues::from(vec![100, 100, 200, 0]),
             scale: 2,
         };
         let valid = [true, true, true, false];
@@ -1510,7 +1536,7 @@ mod tests {
     #[test]
     fn a_total_averages_the_values_of_its_group_and_not_the_averages() {
         let numbers = Exact {
-            values: vec![1, 2, 6],
+            values: ExactValues::from(vec![1, 2, 6]),
             scale: 0,
         };
         let valid = [true; 3];
@@ -1533,7 +1559,7 @@ mod tests {
     #[test]
     fn an_average_without_a_value_is_null() {
         let exact = Exact {
-            values: vec![0],
+            values: ExactValues::from(vec![0]),
             scale: 2,
         };
         let float = Approx { values: vec![0.0] };
@@ -1550,7 +1576,7 @@ mod tests {
         let valid = [true];
         for (scale, result) in [(34, true), (35, false)] {
             let numbers = Exact {
-                values: vec![1],
+                values: ExactValues::from(vec![1]),
                 scale,
             };
             let input = Input::Average(Box::new(Input::Exact(&numbers, &valid)));
