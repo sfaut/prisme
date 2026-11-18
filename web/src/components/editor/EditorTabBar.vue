@@ -3,6 +3,8 @@
   SQL editor, each with its connection, its session and its result tabs
   (`EditorView`).
 
+  - Progress dot and bar of the editor's last batch of queries, as those
+    of a result tab, from its first run on.
   - Label: the name given by the user, otherwise the name of the editor's
     connection; a double click renames it (`DocumentTabLabel`).
   - Cross (or middle click): asks to close the editor (`close`); it can
@@ -98,6 +100,8 @@ const reopenItems = computed<MenuItem[]>(() => {
         :index="index"
         :count="editors.editors.length"
         :drag="tabDrag"
+        :progress="editors.progress[editor.id]?.progress"
+        :fraction="editors.progress[editor.id]?.fraction"
         close-label="Fermer l’éditeur"
         close-tooltip="Fermer l’éditeur (rouvrable pendant 24 heures)"
         @close="emit('close', editor.id)"

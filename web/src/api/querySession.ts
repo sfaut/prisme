@@ -750,6 +750,52 @@ export function stoppable(state: SessionState, tab: QueryTab): boolean {
 }
 
 /**
+ * Progress of a batch of queries, for the tab of its editor.
+ */
+export interface BatchProgress {
+  /**
+   * Stage of the batch, as that of a query: running while one of its queries
+   * runs, then ended in error if one failed, stopped if the user stopped
+   * one, done otherwise.
+   */
+  progress: TabProgress
+  /**
+   * Completed share of the batch, from 0 to 1, `null` when unknown.
+   */
+  fraction: number | null
+}
+
+/**
+ * Progress of the last batch of a session, from the tabs of its queries:
+ * while one runs, the most advanced stage among those still running
+ * (receiving, then executing, then waiting), and the mean of their completed
+ * shares, an unknown share counting as nothing; unknown when no share is
+ * known. Once all have ended: `error` if one failed, otherwise `stopped` if
+ * the user stopped one, `done` otherwise. `null`
+ * without any query in the batch.
+ *
+ * @param state Tabs of the session and number of its last batch.
+ */
+export function batchProgress(state: Pick<SessionState, 'tabs' | 'batch'>): BatchProgress | null {
+  const tabs = state.tabs.filter((tab) => tab.batch === state.batch)
+  if (tabs.length === 0) {
+    return null
+  }
+  const stages = tabs.map(tabProgress)
+  const running = (['loading', 'executing', 'waiting'] as const).find((stage) =>
+    stages.includes(stage),
+  )
+  if (running === undefined) {
+    const ended = (['error', 'stopped'] as const).find((stage) => stages.includes(stage))
+    return { progress: ended ?? 'done', fraction: 1 }
+  }
+  const known = tabs.map(tabFraction).filter((fraction) => fraction !== null)
+  const fraction =
+    known.length === 0 ? null : known.reduce((sum, value) => sum + value, 0) / tabs.length
+  return { progress: running, fraction }
+}
+
+/**
  * Parses a message received from the server.
  *
  * A message that is not JSON returns `null` instead of throwing: thrown in the

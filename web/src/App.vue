@@ -582,6 +582,7 @@ function selectSource(editorId: number, connectionId: number): void {
                   @database="(database) => (databases[editor.id] = database)"
                   @status="(status) => followStatus(editor.id, status)"
                   @transaction="(open) => (editors.transactions[editor.id] = open)"
+                  @progress="(progress) => (editors.progress[editor.id] = progress)"
                 />
                 <div v-else class="flex max-w-xs flex-col items-center gap-3 text-center">
                   <span class="flex rounded-full bg-surface-raised p-4">

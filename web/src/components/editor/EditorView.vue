@@ -84,8 +84,10 @@ import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { SelectionRange } from '@/api/generated/SelectionRange'
 import type { TextEnd } from '@/api/generated/TextEnd'
 import {
+  type BatchProgress,
   type QueryTab,
   type SessionStatus,
+  batchProgress,
   formatRowCount,
   stoppable,
   refreshState,
@@ -157,6 +159,10 @@ const emit = defineEmits<{
    * A transaction opened (`true`) or ended on the session.
    */
   transaction: [open: boolean]
+  /**
+   * The progress of the last batch has changed (`null` before the first one).
+   */
+  progress: [progress: BatchProgress | null]
 }>()
 
 /**
@@ -733,6 +739,16 @@ watch(
 watch(
   () => state.transaction,
   (open) => emit('transaction', open),
+  { immediate: true },
+)
+
+watch(
+  () => batchProgress(state),
+  (progress, before) => {
+    if (progress?.progress !== before?.progress || progress?.fraction !== before?.fraction) {
+      emit('progress', progress)
+    }
+  },
   { immediate: true },
 )
 

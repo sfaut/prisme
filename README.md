@@ -163,6 +163,7 @@ Drag the right edge of the panel to resize it, or use the arrow keys once the ed
 The tab bar above the SQL editor holds several editors:
 
 - **+** opens an editor on the connection of the active one.
+- A **dot** and a **progress bar**, as on the [result tabs](#result-tabs), follow the last run of the editor's queries: pulsing while they run, then green once all are done, red if one failed.
 - **Double-click** a tab to rename it. Drag it to move it.
 - The **cross** (or a middle click) closes it. A closed editor can be reopened for 24 hours from the **Rouvrir** (Reopen) button, the clock icon.
 
