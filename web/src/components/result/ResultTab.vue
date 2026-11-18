@@ -10,31 +10,21 @@
     or on the active tab (the tab carries the `group` class).
   - Cross (or middle click): closes the tab; the editor view stops its query if
     it is running.
-  - Progress bar drawn on the bottom edge of the tab: indeterminate (a
-    segment that goes back and forth) when the completed share is unknown,
-    green once the query has ended, orange once stopped by the user, red on
-    failure (`tabFraction`). It grows by a transform, which the compositor of
-    the browser animates alone: a transition of its width, started again by
-    each batch of rows, made the page compute its layout and paint at every
-    frame of a reception. Measured
-    on 2026-10-31 for 1 million rows: received in 17 to 20 s with the
-    transform, 22 to 23 s with the width (`docs/PERFORMANCES.md`,
-    chapter 12).
+  - Progress bar on the bottom edge of the tab (`DocumentTab`), following
+    the completed share of the query (`tabFraction`).
 -->
 <script setup lang="ts">
 import { Pin, Square } from '@lucide/vue'
-import { computed } from 'vue'
 
 import { type QueryTab, tabFraction, tabProgress } from '@/api/querySession'
 
 import DocumentTab from '@/components/tab/DocumentTab.vue'
-import UiProgressDot from '@/components/ui/UiProgressDot.vue'
 import DocumentTabLabel from '@/components/tab/DocumentTabLabel.vue'
 import type { TabDrag } from '@/components/tab/tabDrag'
 import UiButton from '@/components/ui/UiButton.vue'
 import { vTooltip } from '@/components/ui/tooltip'
 
-const props = defineProps<{
+defineProps<{
   /**
    * Query of the tab.
    */
@@ -79,27 +69,6 @@ const emit = defineEmits<{
    */
   rename: [name: string | null]
 }>()
-
-/**
- * Completed share of the query, `null` if unknown.
- */
-const fraction = computed(() => tabFraction(props.tab))
-
-/**
- * Color of the bar: red on failure, orange once stopped by the user,
- * green once ended, otherwise that of the action. No bar while the query
- * waits for its turn.
- */
-const barTone = computed(() => {
-  const progress = tabProgress(props.tab)
-  if (progress === 'waiting') {
-    return null
-  }
-  if (progress === 'stopped') {
-    return 'warning'
-  }
-  return progress === 'error' ? 'error' : progress === 'done' ? 'success' : 'primary'
-})
 </script>
 
 <template>
@@ -108,23 +77,17 @@ const barTone = computed(() => {
     :index="index"
     :count="count"
     :drag="drag"
+    :progress="tabProgress(tab)"
+    :fraction="tabFraction(tab)"
     close-label="Fermer l’onglet"
     close-tooltip="Fermer l’onglet (arrête sa requête si elle tourne)"
     @close="emit('close')"
   >
-    <ui-progress-dot :progress="tabProgress(tab)" />
     <document-tab-label
       :name="tab.name"
       :default-label="defaultLabel"
       @rename="emit('rename', $event)"
     />
-    <span v-if="barTone" class="tab-progress" aria-hidden="true">
-      <span
-        class="tab-progress-bar"
-        :class="[barTone, { indeterminate: fraction === null }]"
-        :style="fraction === null ? undefined : { transform: `scaleX(${fraction})` }"
-      />
-    </span>
     <template #actions>
       <ui-button
         v-if="stoppable"
@@ -158,58 +121,3 @@ const barTone = computed(() => {
     </template>
   </document-tab>
 </template>
-
-<style scoped>
-/* Progress bar, over the whole width of the tab's bottom edge. */
-.tab-progress {
-  position: absolute;
-  inset-inline: 0;
-  inset-block-end: 0;
-  block-size: var(--tab-progress-height);
-  overflow: hidden;
-}
-
-/* The completed share scales the bar from its left edge (`scaleX`). A
-   transition of its width would make the page draw at every frame of a
-   reception (see the comment at the top). */
-.tab-progress-bar {
-  display: block;
-  block-size: 100%;
-  transform-origin: left;
-  transition: transform 0.3s ease-out;
-
-  &.primary {
-    background: var(--color-primary);
-  }
-
-  &.success {
-    background: var(--color-success);
-  }
-
-  &.warning {
-    background: var(--color-warning);
-  }
-
-  &.error {
-    background: var(--color-error);
-  }
-
-  /* Unknown share: a segment goes back and forth from one edge to the other. */
-  &.indeterminate {
-    inline-size: 30%;
-    animation: sweep 1.2s ease-in-out infinite alternate;
-  }
-}
-
-/* The segment takes 30 % of the tab: shifted by 70 / 30 of its width,
-   it touches the right edge. */
-@keyframes sweep {
-  from {
-    transform: translateX(0);
-  }
-
-  to {
-    transform: translateX(calc(70% / 0.3));
-  }
-}
-</style>
