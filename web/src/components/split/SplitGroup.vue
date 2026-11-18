@@ -7,10 +7,14 @@
 
   A group whose panels are all folded, or that has no panel to fill it,
   leaves room free: an element marked `data-split-room` among the panels
-  takes it where it stands (`flex-1`), and a line takes its room from it.
+  takes it where it stands (`grow`), and a line takes its room from it. Its
+  growth follows the transition of the panels (`SplitPanel.vue`), so that
+  the room and the last panel share the height continuously while it folds.
+  During the drag of a line, the group is marked `data-resizing`: the
+  panels and the room change size without a transition.
 -->
 <script setup lang="ts">
-import { provide, useTemplateRef } from 'vue'
+import { provide, ref, useTemplateRef } from 'vue'
 
 import { SPLIT_GROUP, type SplitDirection, type SplitPanelEntry } from './splitLayout'
 
@@ -30,6 +34,11 @@ const root = useTemplateRef<HTMLElement>('root')
  * Box that measures a CSS length: given as its width, read back in pixels.
  */
 const probe = useTemplateRef<HTMLElement>('probe')
+
+/**
+ * Is a line of the group being dragged?
+ */
+const dragging = ref(false)
 
 /**
  * Panels of the group, in the order they were mounted; sorted in the order of
@@ -85,11 +94,14 @@ provide(SPLIT_GROUP, {
     }
     return Math.max(0, length(element) - used)
   },
+  resizing: (value) => {
+    dragging.value = value
+  },
 })
 </script>
 
 <template>
-  <div ref="root" class="split-group" :class="direction">
+  <div ref="root" class="split-group" :class="direction" :data-resizing="dragging || undefined">
     <slot />
     <div ref="probe" class="split-probe" aria-hidden="true" />
   </div>
@@ -107,6 +119,23 @@ provide(SPLIT_GROUP, {
 
   &.vertical {
     flex-direction: column;
+  }
+}
+
+/* The free room grows and shrinks with the panels (`SplitPanel.vue`). */
+:slotted([data-split-room]) {
+  transition-property: flex-grow;
+  transition-duration: var(--default-transition-duration);
+  transition-timing-function: var(--default-transition-timing-function);
+}
+
+[data-resizing] > :slotted([data-split-room]) {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :slotted([data-split-room]) {
+    transition: none;
   }
 }
 

@@ -229,6 +229,7 @@ function onPointerDown(event: PointerEvent): void {
   event.preventDefault()
   handle.value?.setPointerCapture(event.pointerId)
   dragging.value = true
+  group.resizing(true)
 }
 
 /**
@@ -252,6 +253,7 @@ function onPointerEnd(): void {
     return
   }
   dragging.value = false
+  group.resizing(false)
   keep(move)
   move = null
 }

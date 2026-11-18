@@ -10,6 +10,11 @@
  * group out on its own, shown or hidden: the code only computes during a drag
  * or a key on a line, from the lengths it measures then. This module holds
  * that computation, without the page.
+ *
+ * A panel that folds or unfolds, and the panels that take or give its room,
+ * change size in a short transition (`SplitPanel.vue`), except during the
+ * drag of a line, which they follow without delay (`resizing`), and when
+ * the user asks for reduced motion.
  */
 import { type InjectionKey, inject } from 'vue'
 
@@ -92,6 +97,11 @@ export interface SplitGroupContext {
    * call: what a line takes from when no panel fills the group.
    */
   freeRoom: () => number
+  /**
+   * Starts or ends the drag of a line: during it, the panels change size
+   * without a transition (`data-resizing` on the group).
+   */
+  resizing: (value: boolean) => void
 }
 
 /**
