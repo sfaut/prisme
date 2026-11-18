@@ -102,7 +102,14 @@ describe('App', () => {
     // The data explorer is closed by default: only its rail shows.
     expect(wrapper.find('[aria-label="Déplier : Explorateur de données"]').exists()).toBe(true)
 
-    await wrapper.find('[aria-label="Replier : Navigateur d’objets"]').trigger('click')
+    // The navigator's fold button comes first, left of its title: on the outer edge.
+    const fold = wrapper.find('[aria-label="Replier : Navigateur d’objets"]')
+    const title = wrapper.find('aside h2')
+    expect(title.text()).toBe('Navigateur d’objets')
+    expect(
+      fold.element.compareDocumentPosition(title.element) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
+    await fold.trigger('click')
     expect(objects()).toBe(false)
     expect(window.localStorage.getItem('prisme.navigator.open')).toBe('false')
     expect(JSON.parse(window.localStorage.getItem('prisme.navigator.layout.1')!).open).toBe(false)

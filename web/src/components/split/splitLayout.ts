@@ -44,6 +44,11 @@ export interface SplitPanelEntry {
    */
   isFolded: () => boolean
   /**
+   * Does the open panel share the room of the panel that fills, without a
+   * size of its own (no default size, none kept)?
+   */
+  isShared: () => boolean
+  /**
    * Smallest size open (CSS length), absent for none; read from the panel,
    * as a folded panel drops it from its style.
    */

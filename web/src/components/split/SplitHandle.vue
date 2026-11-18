@@ -8,7 +8,9 @@
   panel its smallest and its largest size, Enter does what the double click
   does (`activate`: fold, unfold, or default width, as the parent decides).
   A grip marks the middle of the line, unless the parent leaves it out
-  (`grip`).
+  (`grip`). The panels that share the room of the panel that fills keep the
+  size they show as the line starts moving: only the panel of the line and
+  the panel that fills change, and the line follows the pointer.
 -->
 <script setup lang="ts">
 import { computed, nextTick, ref, useTemplateRef } from 'vue'
@@ -86,6 +88,10 @@ interface Move {
   targetBefore: boolean
   pointer: number
   result: DragResult | null
+  /**
+   * Have the panels sharing the room kept their size?
+   */
+  frozen: boolean
 }
 
 let move: Move | null = null
@@ -164,6 +170,21 @@ function begin(pointer: number): Move | null {
     targetBefore,
     pointer,
     result: null,
+    frozen: false,
+  }
+}
+
+/**
+ * Keeps the size each panel sharing the room of the panel that fills shows
+ * now, the panel of the line included: the move then changes only that
+ * panel and the panel that fills.
+ */
+function freezeShared(): void {
+  for (const panel of group.panels()) {
+    const element = panel.element()
+    if (panel.isShared() && element !== null) {
+      panel.keepSize(length(element))
+    }
   }
 }
 
@@ -174,6 +195,10 @@ function begin(pointer: number): Move | null {
  * @param delta Move of the line towards the room of the panel that fills.
  */
 function show(current: Move, delta: number): void {
+  if (!current.frozen) {
+    current.frozen = true
+    freezeShared()
+  }
   const result = dragSizes(current.start, delta)
   current.result = result
   if (result.folded !== current.target.isFolded()) {

@@ -85,7 +85,7 @@ The display preferences of a machine stay in the browser's local storage, under 
 | `prisme.navigator.layout.<editor>` | the object navigator of an editor open, its width (JSON), forgotten when it closes |
 | `prisme.navigator.tree.<editor>` | open nodes and scroll of the object navigator of an editor (JSON), forgotten when it closes |
 | `prisme.editor.active` | id of the active editor |
-| `prisme.editor.layout.<editor>` | heights and folds of the panels of an editor (JSON), forgotten when it closes |
+| `prisme.editor.layout.<editor>` | heights of the results and of the Pivoteur of an editor, and folds of its three panels (JSON), forgotten when it closes |
 | `prisme.console.open`, `prisme.console.height` | the console open, its height in CSS pixels |
 | `prisme.console.tab` | tab shown: `history` or `debug` |
 | `prisme.console.filtersShown`, `prisme.console.historyFilter`, `prisme.console.debugFilter` | the filters shown, and those of each tab (JSON) |
@@ -102,9 +102,10 @@ Rules:
 - **Size**: one size, `size-5`, small buttons included: an icon keeps the same size wherever it appears (the fold and unfold icons of a panel, in its header and on its rail), and icons side by side have the same size. Only the marks that go with a text keep their own size: `size-4` for the chevrons of the tree and the marks of the grid (type of a column, link). The icons of the theme switch (`UiChoiceSwitch`) take `size-4` as well, so that its round thumb (`size-6`) shows around them.
 - **Icon-only button**: `UiButton` with `variant="ghost"` and `small` in a bar, an `aria-label` and a `v-tooltip`. The tooltip says the action, and may add what it does after a colon ("Rafraîchir : relance la requête").
 - **Toggle button**: `aria-pressed`. The primary color (`tone="primary"`) means the state is in effect: a filter keeps only some elements, a tab is pinned. The raised background (`bg-surface-raised`) means the button shows its panel or form (the console's filters, the grid's filter).
-- **Place**: the actions of a bar stand at its right end, side by side, then the fold button, last; for the panel on the right, the fold button comes first, left of the title. The rail of a folded panel shows its unfold icon at the same place.
-- **Folded panel**: it keeps only its tabs, if any, and its unfold button; its other actions hide.
+- **Place**: the actions of a bar stand at its right end, side by side, then the fold button, last. A side panel has its fold button on its outer edge, above the rail the folded panel leaves: a second click opens the panel again without moving the pointer. The fold button of the panel on the left comes first, left of its title; that of the panel on the right, last.
+- **Folded panel**: every panel (side panels, console, editor, results, Pivoteur) leaves a rail on its edge (`PanelRail`), of one thickness (`--rail-size`, 8 steps): its title, smaller than the open panel's and greyed, and its unfold icon. On a side, the icon and the title stand on the axis of the rail, the icon at the height of the open panel's fold button; at the top or at the bottom, the icon stands where the open panel shows its fold button. The content of a panel of an editor's view stays mounted under its rail, out of reach (`inert`).
 - **Running action**: the button that starts a long action turns into its stop button while it runs, with the stop icon and the error color for queries.
+- **Tabs**: the editor, result and console tabs share one look, that of `DocumentTab`: medium regular text, top corners rounded, the active one on the raised background, standing on the line under their bar, of the same height. A tab that follows a work (query, last run of an editor) shows its dot and its progress bar (`progress`, `fraction`); the console's tabs have neither, nor cross, renaming or dragging.
 
 #### Panels and folding
 
@@ -112,8 +113,8 @@ Rules:
 |---|---|---|
 | `PanelLeftClose` / `PanelLeftOpen` | Fold / unfold the object navigator | its header / its rail (`PanelHeader`, `PanelRail`) |
 | `PanelRightClose` / `PanelRightOpen` | Fold / unfold the data explorer | its header / its rail |
-| `PanelBottomClose` / `PanelBottomOpen` | Fold / unfold the console; fold / unfold the results | console's header / its rail; bar of the result tabs (`EditorView`) |
-| `PanelTopClose` / `PanelTopOpen` | Fold / unfold the active editor, with its buttons | editors' bar, right of the reopen button (`EditorTabBar`, drawn by `App` for the active `EditorView`) |
+| `PanelBottomClose` / `PanelBottomOpen` | Fold / unfold the console | its header / its rail (`ConsolePanel`, `App`) |
+| `PanelTopClose` / `PanelTopOpen` | Fold / unfold the editor, the results, the Pivoteur: each folds up into the rail at its top, and unfolds downwards | their header / their rail (`EditorView`, `PivotPanel`) |
 | `ChevronRight` / `ChevronDown` | Open / close a node of the tree | object navigator (`NavigatorLine`) |
 | `ChevronsDownUp` / `ChevronsUpDown` | Fold / unfold the whole document | data explorer |
 | `FoldVertical` / `UnfoldVertical` | Fold / unfold the cursor's level | data explorer |
@@ -224,7 +225,7 @@ These are workarounds too (see "Workarounds"). Before each release, after the up
 
 ### Splitters
 
-The panels of the layout (object navigator, editors, console, data explorer), of the view of an editor (editor, results, Pivoteur) and the sections of the Pivoteur (columns of the result, zones, table) stand in splitters of Prisme (`web/src/components/split/`): a group (`SplitGroup`) lays its panels (`SplitPanel`) out as a flexbox, with lines between them (`SplitHandle`). A panel takes its default size, a theme length given as it is (`var(--navigator-width)`), or the size the user gave it, in CSS pixels. One panel of a group fills the room the others leave; a group without one leaves the room free, to an element marked `data-split-room` (the view of an editor, whose results fill it and can fold). The code computes only during a drag or a key on a line (`dragSizes` in `splitLayout.ts`, tested by Vitest), from the lengths it measures then; the browser lays the group out the rest of the time, shown or hidden alike.
+The panels of the layout (object navigator, editors, console, data explorer), of the view of an editor (editor, results, Pivoteur) and the sections of the Pivoteur (columns of the result, zones, table) stand in splitters of Prisme (`web/src/components/split/`): a group (`SplitGroup`) lays its panels (`SplitPanel`) out as a flexbox, with lines between them (`SplitHandle`). A panel takes its default size, a theme length given as it is (`var(--navigator-width)`), or the size the user gave it, in CSS pixels. One panel of a group fills the room the others leave; a panel without a default size nor a size kept shares that room with it in equal parts, and keeps the size it shows once a line moves; a group without a panel that fills leaves the room free, to an element marked `data-split-room` (the view of an editor, whose three panels can all fold). In the view of an editor (`editorLayout.ts`), the highest open panel fills, so that the folded ones stay against it, and each line resizes the panel under it, or the folded one above the panel that fills. The code computes only during a drag or a key on a line (`dragSizes` in `splitLayout.ts`, tested by Vitest), from the lengths it measures then; the browser lays the group out the rest of the time, shown or hidden alike.
 
 - **Drag**: the line follows the pointer (pointer events captured by the handle), and its position is kept as it is at the release, in CSS pixels, without rounding. Below its smallest size, a panel folds past half the way to its folded size; it takes its room from the panel that fills, down to that one's smallest size.
 - **Keyboard** (pattern "window splitter" of WAI-ARIA, role `separator` with its `aria-value*` in pixels): the arrows move the line by four steps of `--spacing`, Home and End to the smallest and largest size, Enter does what a double click does (fold or unfold the panel, or give back the default width of a section of the Pivoteur).

@@ -10,9 +10,7 @@
   - Cross (or middle click): asks to close the editor (`close`); it can
     be reopened for 24 hours from the "Rouvrir" menu.
   - Dragging a tab moves it, like a column of the grid.
-  - At the right end, the button that reopens a closed editor, then the
-    actions of the active editor (`actions` slot: its fold button, drawn by
-    `App.vue` for the active view).
+  - At the right end, the button that reopens a closed editor.
 
   To place in the Reka UI `TabsRoot` that holds the editors (`App.vue`).
 -->
@@ -123,7 +121,6 @@ const reopenItems = computed<MenuItem[]>(() => {
           @click="editors.loadClosed()"
         />
       </ui-dropdown-menu>
-      <slot name="actions" />
     </div>
   </div>
 </template>

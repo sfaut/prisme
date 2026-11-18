@@ -38,6 +38,12 @@ describe('SplitPanel', () => {
     expect(panelStyle({ id: 'panel', size: null, defaultSize: '10rem' }).flex).toBe('0 1 10rem')
   })
 
+  it('shares the room in equal parts without a default size nor a kept size', () => {
+    expect(panelStyle({ id: 'panel', size: null }).flex).toBe('1 1 0px')
+    wrapper?.unmount()
+    expect(panelStyle({ id: 'panel', size: 120 }).flex).toBe('0 1 120px')
+  })
+
   it('takes its folded size exactly when folded', () => {
     const style = panelStyle({ id: 'panel', size: null, folded: true, foldedSize: '3rem' })
     expect(style.flex).toBe('0 0 3rem')

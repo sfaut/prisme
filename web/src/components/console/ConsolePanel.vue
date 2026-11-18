@@ -1,6 +1,6 @@
 <!--
   Console, at the bottom of the main area, between the side panels: what
-  Prisme does besides the results, in tabs. The History tab lists all the
+  Prisme does besides the results, in tabs, right of its title. The History tab lists all the
   queries sent to the target servers, by the editors and by Prisme itself
   (`ConsoleHistoryTable.vue`); the Debug tab, the lines of the server's log and the
   notifications of the interface (`ConsoleDebugTable.vue`). A button, at the right
@@ -88,17 +88,26 @@ onUnmounted(() => store.dispose())
 
 <template>
   <tabs-root v-model="store.tab" class="flex h-full min-h-0 flex-col gap-1" aria-label="Console">
-    <panel-header title="Console" side="bottom" @collapse="store.open = false">
-      <tabs-list class="flex items-center gap-1" aria-label="Console">
-        <tabs-trigger
-          v-for="tab in TABS"
-          :key="tab.value"
-          :value="tab.value"
-          class="flex h-7 items-center rounded-lg px-1 text-sm font-medium text-fg-secondary select-none hover:text-fg-strong data-[state=active]:bg-surface-raised data-[state=active]:text-fg-strong"
-        >
-          {{ tab.label }}
-        </tabs-trigger>
-      </tabs-list>
+    <panel-header
+      title="Console"
+      side="bottom"
+      class="border-b border-line"
+      @collapse="store.open = false"
+    >
+      <template #inline>
+        <!-- Tabs of the look of the editor and result tabs (`DocumentTab`),
+             standing on the line under the header. -->
+        <tabs-list class="flex self-end" aria-label="Console">
+          <tabs-trigger
+            v-for="tab in TABS"
+            :key="tab.value"
+            :value="tab.value"
+            class="flex h-9 cursor-pointer items-center rounded-t-lg px-3 text-base font-medium text-fg-secondary select-none hover:text-fg-strong data-[state=active]:bg-surface-raised data-[state=active]:text-fg-strong"
+          >
+            {{ tab.label }}
+          </tabs-trigger>
+        </tabs-list>
+      </template>
       <template #actions>
         <ui-button
           :icon="Funnel"

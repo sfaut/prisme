@@ -37,7 +37,7 @@
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import { Database, PanelTopClose, PanelTopOpen } from '@lucide/vue'
+import { Database } from '@lucide/vue'
 import { TabsContent, TabsRoot } from 'reka-ui'
 import { computed, nextTick, onMounted, ref, shallowReactive, watch } from 'vue'
 
@@ -64,7 +64,6 @@ import UiButton from './components/ui/UiButton.vue'
 import UiDialog from './components/ui/UiDialog.vue'
 import UiToaster from './components/ui/UiToaster.vue'
 import UiTooltip from './components/ui/UiTooltip.vue'
-import { vTooltip } from './components/ui/tooltip'
 
 const connections = useConnectionsStore()
 const editors = useEditorsStore()
@@ -197,23 +196,9 @@ const openingDatabases = ref<Record<number, string>>({})
 
 /**
  * Mounted views of the editors, by editor, to start a query there from its
- * navigator, and to fold the active editor from the editors' bar.
+ * navigator.
  */
 const views = shallowReactive(new Map<number, InstanceType<typeof EditorView>>())
-
-/**
- * Cell of the active editor, absent without a connection.
- */
-const activeCell = computed(() =>
-  editors.activeId === null ? undefined : views.get(editors.activeId),
-)
-
-/**
- * Label of the fold button of the active editor.
- */
-const editorFoldLabel = computed(() =>
-  activeCell.value?.editorFolded ? 'Déplier l’éditeur' : 'Replier l’éditeur',
-)
 
 /**
  * Active editor, in the form expected by Reka UI's tabs.
@@ -469,20 +454,7 @@ function selectSource(editorId: number, connectionId: number): void {
               :title="editorsError"
               @close="editorsError = null"
             />
-            <editor-tab-bar @close="closeEditor">
-              <!-- Fold button of the active editor, visible when it is folded. -->
-              <template #actions>
-                <ui-button
-                  v-if="activeCell"
-                  :icon="activeCell.editorFolded ? PanelTopOpen : PanelTopClose"
-                  variant="ghost"
-                  small
-                  :aria-label="editorFoldLabel"
-                  v-tooltip="editorFoldLabel"
-                  @click="activeCell.toggleEditor()"
-                />
-              </template>
-            </editor-tab-bar>
+            <editor-tab-bar @close="closeEditor" />
           </div>
           <tabs-content
             v-for="editor in editors.editors"
@@ -553,8 +525,7 @@ function selectSource(editorId: number, connectionId: number): void {
                     edge, as is the gap under the editors' tabs. The padding of
                     the bottom is that of the last panel of a view, the
                     Pivoteur: open, it ends with its own; folded, its rail
-                    closes the area, as the rail of the console closes the
-                    window.
+                    closes the area.
                   -->
               <split-panel
                 :id="`view-panel-${editor.id}`"
