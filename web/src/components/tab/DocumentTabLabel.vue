@@ -1,7 +1,9 @@
 <!--
   Label of a tab, which can be renamed: a double click makes it editable,
   Enter confirms, Escape cancels, an empty name (or the default label) gives
-  back the default label. Used by the editor and result tabs.
+  back the default label. Used by the editor and result tabs. The field
+  keeps the size of the label's text, and its width follows the name typed,
+  within the tab: renaming moves neither the text nor the tab's height.
 -->
 <script setup lang="ts">
 import { nextTick, ref, useTemplateRef } from 'vue'
@@ -65,7 +67,7 @@ function commit(): void {
     ref="input"
     v-model="draft"
     aria-label="Nom de l'onglet"
-    class="h-7 w-53 min-w-0 rounded-lg border border-line bg-surface px-1 text-sm text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary/60"
+    class="field-sizing-content h-7 max-w-full min-w-24 rounded-lg border border-line bg-surface px-1 text-base text-fg-strong focus-visible:outline-(length:--focus-width) focus-visible:outline-offset-(--focus-offset) focus-visible:outline-primary/60"
     @blur="commit"
     @keydown.stop
     @keydown.enter.prevent="commit"
