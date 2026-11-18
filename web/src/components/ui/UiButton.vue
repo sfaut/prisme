@@ -40,6 +40,14 @@ const props = withDefaults(
      */
     small?: boolean
     /**
+     * Wider padding on the sides of the label, and the icon closer to it,
+     * for a main action standing alone in its bar (the "Nouveau" button of
+     * the top bar). One step less before an icon, whose drawing leaves room
+     * inside its box: the icon and the end of the label show the same
+     * margin. The height stays that of the controls.
+     */
+    wide?: boolean
+    /**
      * Action in progress: spinner instead of the icon, inactive button.
      */
     loading?: boolean
@@ -79,8 +87,18 @@ const LOOKS = {
 
 const classes = computed(() => [
   LOOKS[props.variant][props.tone],
-  props.small ? 'h-7 gap-1 text-sm' : 'h-8 gap-3 text-base',
-  props.label ? (props.small ? 'px-1' : 'px-3') : props.small ? 'w-7' : 'w-8',
+  props.small ? 'h-7 gap-1 text-sm' : props.wide ? 'h-8 gap-2 text-base' : 'h-8 gap-3 text-base',
+  props.label
+    ? props.small
+      ? 'px-1'
+      : props.wide
+        ? props.icon || props.loading
+          ? 'ps-4 pe-5'
+          : 'px-5'
+        : 'px-3'
+    : props.small
+      ? 'w-7'
+      : 'w-8',
 ])
 </script>
 

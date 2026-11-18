@@ -107,7 +107,7 @@ Options given on the command line replace the saved settings for that launch, wi
 
 The screen has these areas:
 
-- **Top bar**: the name and version of Prisme, the synchronisation state, the theme and your account menu (see [Top bar](#top-bar)).
+- **Top bar**: the name and version of Prisme on the left; on the right, the **Nouveau** (New) button, the exports, the synchronisation state, the theme and your account menu (see [Top bar](#top-bar)).
 - **Editor tabs**: several SQL editors, each one on its own connection, across the width, above the panels of the active editor.
 - **Left panel**: the object navigator, **Navigateur d’objets** (Object navigator), with your connections and their databases.
 - **Editor and results**: the SQL editor, its buttons, and one result tab per query.
@@ -162,7 +162,7 @@ Drag the right edge of the panel to resize it, or use the arrow keys once the ed
 
 The tab bar above the SQL editor holds several editors:
 
-- **+** opens an editor on the connection of the active one.
+- **Nouveau** (New), the blue button at the right of the top bar, opens an editor on the connection of the active one.
 - A **dot** and a **progress bar**, as on the [result tabs](#result-tabs), follow the last run of the editor's queries: pulsing while they run, then green once all are done, red if one failed.
 - **Double-click** a tab to rename it. Drag it to move it.
 - The **cross** (or a middle click) closes it. A closed editor can be reopened for 24 hours from the **Rouvrir** (Reopen) button, the clock icon.
@@ -430,6 +430,7 @@ Both tabs are kept in the internal database, 30 days by default: the **Rétentio
 
 ### Top bar
 
+- **Nouveau** (New): opens a new SQL editor, on the connection of the active editor (see [Editors](#editors)).
 - **Exports**: the file icon opens the exports manager, the list of your [full exports](#result-grid), the most recent first; a blue dot pulses beside the icon while an export runs. Each export shows its file name (the query in its tooltip), its state in a colored badge (**en cours**, **prêt**, **échoué**, **arrêté**, **interrompu**: running, ready, failed, stopped, interrupted), a **fichier manquant** (missing file) badge when its file was deleted outside Prisme, its connection, the rows written, the size of its file, its duration and its throughput; while it runs, the completed share too, when the total is known in advance: that of a displayed result that Prisme's limit did not cut. Its buttons stop a running export (its partial file stays), download the file of an ended export, partial for a stopped, failed or interrupted one, and **Retirer** (Remove) an export with its file. The folder is never cleaned automatically: the head of the manager shows the room the files take. Warnings tell of more rows than Excel opens, or of the cause of a failure. Files of the folder that no export lists (copied there, internal database replaced) are counted apart, with a **Retirer** button that deletes them. An export running when Prisme stops shows as **interrompu** (interrupted) at the next start, its partial file kept, with the rows it holds.
 - **Synchronisation**: Prisme saves every change as you go in its local database, and reads it back from there. A database icon shows the state, explained by its tooltip: a check mark when everything is saved, a down arrow while reading, an up arrow while saving, a cross when the last save was refused (plain database icon: nothing exchanged yet).
 - **Theme**: the **Système / Clair / Sombre** (System / Light / Dark) list sets the theme of the whole interface. **Système** follows your computer's setting.

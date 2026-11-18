@@ -10,7 +10,6 @@
   - Cross (or middle click): asks to close the editor (`close`); it can
     be reopened for 24 hours from the "Rouvrir" menu.
   - Dragging a tab moves it, like a column of the grid.
-  - "+" opens a new editor, on the connection of the active editor.
   - At the right end, the button that reopens a closed editor, then the
     actions of the active editor (`actions` slot: its fold button, drawn by
     `App.vue` for the active view).
@@ -18,7 +17,7 @@
   To place in the Reka UI `TabsRoot` that holds the editors (`App.vue`).
 -->
 <script setup lang="ts">
-import { History, Plus } from '@lucide/vue'
+import { History } from '@lucide/vue'
 import { TabsList } from 'reka-ui'
 import { computed } from 'vue'
 
@@ -113,28 +112,18 @@ const reopenItems = computed<MenuItem[]>(() => {
         />
       </document-tab>
     </tabs-list>
-    <div class="flex flex-1 items-center justify-between gap-1 ps-1">
-      <ui-button
-        :icon="Plus"
-        variant="ghost"
-        small
-        aria-label="Nouvel éditeur"
-        v-tooltip="'Nouvel éditeur, sur la connexion de l’éditeur actif'"
-        @click="editors.create(editors.active?.connectionId ?? null)"
-      />
-      <div class="flex items-center">
-        <ui-dropdown-menu :items="reopenItems">
-          <ui-button
-            :icon="History"
-            variant="ghost"
-            small
-            aria-label="Rouvrir un éditeur fermé"
-            v-tooltip="'Rouvrir un éditeur fermé depuis moins de 24 heures'"
-            @click="editors.loadClosed()"
-          />
-        </ui-dropdown-menu>
-        <slot name="actions" />
-      </div>
+    <div class="flex flex-1 items-center justify-end ps-1">
+      <ui-dropdown-menu :items="reopenItems">
+        <ui-button
+          :icon="History"
+          variant="ghost"
+          small
+          aria-label="Rouvrir un éditeur fermé"
+          v-tooltip="'Rouvrir un éditeur fermé depuis moins de 24 heures'"
+          @click="editors.loadClosed()"
+        />
+      </ui-dropdown-menu>
+      <slot name="actions" />
     </div>
   </div>
 </template>

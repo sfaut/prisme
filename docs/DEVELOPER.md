@@ -141,7 +141,7 @@ Rules:
 
 | Icon | Action | Where |
 |---|---|---|
-| `Plus` | New editor; add a connection | editors' bar (`EditorTabBar`); navigator's menu |
+| `Plus` | New editor; add a connection | top bar, first of its right group, filled in the primary color (`TopBar`); navigator's menu |
 | `History` | Reopen a closed editor | editors' bar |
 | `X` | Close a tab, a dialog or a message; empty a field | tabs (`DocumentTab`), `UiDialog`, `UiAlert`, result's filter field (`ResultFilter`) |
 

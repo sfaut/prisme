@@ -1,18 +1,22 @@
 <!--
   Top bar of the application, across the whole width of the screen: name of
   the application with its version next to it (that of the executable, read
-  from the server), exports manager (`ExportManager`), synchronisation state
+  from the server), on the left; on the right, the "Nouveau" button, the
+  main action, filled in the primary color, which opens an editor on the
+  connection of the active one (later, a menu: editor or notebook), exports
+  manager (`ExportManager`), synchronisation state
   (`SyncStatus`), theme choice, and the "Options" menu, which opens the
   settings (row limit, language) and the user's profile.
 
   The windows it opens are its own: the menu only chooses which one shows.
 -->
 <script setup lang="ts">
-import { Monitor, Moon, Settings, Sun, User } from '@lucide/vue'
+import { Monitor, Moon, Plus, Settings, Sun, User } from '@lucide/vue'
 import { computed, onMounted, ref } from 'vue'
 
 import { getVersion } from '@/api/version'
 import { type ColorMode, colorMode } from '@/utils/colorMode'
+import { useEditorsStore } from '@/stores/editors'
 import { useProfileStore } from '@/stores/profile'
 
 import ExportManager from './ExportManager.vue'
@@ -20,6 +24,7 @@ import ProfileDialog from './ProfileDialog.vue'
 import SyncStatus from './SyncStatus.vue'
 import SettingsDialog from './SettingsDialog.vue'
 import UiDropdownMenu from '@/components/ui/UiDropdownMenu.vue'
+import UiButton from '@/components/ui/UiButton.vue'
 import UiSelect from '@/components/ui/UiSelect.vue'
 import type { MenuItem } from '@/components/ui/menuItem'
 import { vTooltip } from '@/components/ui/tooltip'
@@ -31,6 +36,7 @@ import { vTooltip } from '@/components/ui/tooltip'
 const version = ref<string | null>(null)
 
 const profile = useProfileStore()
+const editors = useEditorsStore()
 
 onMounted(async () => {
   try {
@@ -84,7 +90,7 @@ const menuItems: MenuItem[] = [
 </script>
 
 <template>
-  <header class="flex items-center justify-between gap-3 border-b border-line px-4 py-2">
+  <header class="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
     <!-- Name, then version in smaller type, on the same baseline. -->
     <div class="flex items-baseline gap-3">
       <h1 class="text-2xl leading-none font-semibold text-fg-strong">Prisme</h1>
@@ -97,6 +103,15 @@ const menuItems: MenuItem[] = [
       </span>
     </div>
     <div class="flex items-center gap-3">
+      <ui-button
+        :icon="Plus"
+        label="Nouveau"
+        variant="solid"
+        tone="primary"
+        wide
+        v-tooltip="'Nouvel éditeur, sur la connexion de l’éditeur actif'"
+        @click="editors.create(editors.active?.connectionId ?? null)"
+      />
       <export-manager />
       <sync-status />
       <ui-select v-model="colorMode" :items="COLOR_MODES" label="Thème" class="w-38" />

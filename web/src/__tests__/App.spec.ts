@@ -35,13 +35,19 @@ vi.mock('@/api/exports', () => ({
   followExports: () => () => {},
 }))
 
+/**
+ * Id of the next editor created.
+ */
+const editorIds = vi.hoisted(() => ({ next: 1 }))
+
 // No saved editor: the interface creates one, without a connection.
 vi.mock('@/api/editors', () => ({
   listEditors: async () => [],
-  createEditor: async () => ({ id: 1, name: '', connection_id: null, sql: '' }),
+  createEditor: async () => ({ id: editorIds.next++, name: '', connection_id: null, sql: '' }),
 }))
 
 beforeEach(() => {
+  editorIds.next = 1
   setActivePinia(createPinia())
   // The navigator's tree (virtual scrolling) queries the media queries, missing
   // from jsdom. Without layout, it shows no node anyway.
@@ -167,5 +173,18 @@ describe('App', () => {
       'Compte : Ada Lovelace',
     )
     expect(bar.find('[aria-label="Thème"]').exists()).toBe(true)
+  })
+
+  it('opens a new editor by the "Nouveau" button of the top bar', async () => {
+    const wrapper = mount(App, { attachTo: document.body })
+    const tabs = () => wrapper.findAll('[aria-label="Éditeurs"] [role="tab"]')
+    await vi.waitFor(() => expect(tabs()).toHaveLength(1))
+    const button = wrapper.findAll('header button').find((item) => item.text() === 'Nouveau')
+    // At the right of the bar, before the exports.
+    expect(button!.element.parentElement).toBe(wrapper.find('header').element.lastElementChild)
+    expect(button!.classes()).toContain('bg-primary')
+    await button!.trigger('click')
+    await vi.waitFor(() => expect(tabs()).toHaveLength(2))
+    wrapper.unmount()
   })
 })
