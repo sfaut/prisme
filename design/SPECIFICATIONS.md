@@ -4,7 +4,7 @@ This document is the prompt given to Claude Design. It describes the interface o
 
 - `main-light.png`, `main-dark.png`: the main screen, data explorer folded;
 - `explorer-light.png`, `explorer-dark.png`: the same screen, data explorer open on the `attributes` of the first four rows of the grid;
-- `menu-*-light.png`, `menu-*-dark.png`: each menu and list of choices of the main screen open, cut around it and its trigger, the pointer on its first item: `menu-theme` (theme list of the top bar), `menu-account` (account menu), `menu-sources`, `menu-source` and `menu-notebooks` ("⋮" menus of **Sources de données**, of the source **local** and of **Notebooks**, with their row), `menu-reopen` (editors closed less than 24 hours ago), `menu-limit` (row limit of the SQL cell), `menu-filter` (column of the result filter, beside its field).
+- `menu-*-light.png`, `menu-*-dark.png`: each menu and list of choices of the main screen open, cut around it and its trigger, the pointer on its first item: `menu-account` (account menu), `menu-sources`, `menu-source` and `menu-notebooks` ("⋮" menus of **Sources de données**, of the source **local** and of **Notebooks**, with their row), `menu-reopen` (editors closed less than 24 hours ago), `menu-limit` (row limit of the SQL cell), `menu-filter` (column of the result filter, beside its field).
 
 ## 1. The product
 

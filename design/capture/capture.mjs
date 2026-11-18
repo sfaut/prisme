@@ -362,15 +362,14 @@ async function menuShots(page, name, trigger, context = trigger) {
 }
 
 /**
- * Takes each menu and list of choices of the main screen open: theme and
- * account of the top bar; "⋮" menus of the root, of a source and of the
+ * Takes each menu and list of choices of the main screen open: account
+ * menu of the top bar; "⋮" menus of the root, of a source and of the
  * notebooks, with their row; editors to reopen; row limit of the SQL cell;
  * column of the result filter, with the filter's field.
  *
  * @param {Awaited<ReturnType<typeof connect>>} page Page of Prisme.
  */
 async function menusScreen(page) {
-  await menuShots(page, 'menu-theme', visible('button[aria-label="Thème"]'))
   await menuShots(page, 'menu-account', visible('button[aria-label="Compte"]'))
   for (const [name, label] of [
     ['menu-sources', 'Sources de données'],

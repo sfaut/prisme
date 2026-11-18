@@ -25,7 +25,7 @@ import SyncStatus from './SyncStatus.vue'
 import SettingsDialog from './SettingsDialog.vue'
 import UiDropdownMenu from '@/components/ui/UiDropdownMenu.vue'
 import UiButton from '@/components/ui/UiButton.vue'
-import UiSelect from '@/components/ui/UiSelect.vue'
+import UiChoiceSwitch from '@/components/ui/UiChoiceSwitch.vue'
 import type { MenuItem } from '@/components/ui/menuItem'
 import { vTooltip } from '@/components/ui/tooltip'
 
@@ -62,11 +62,11 @@ const accountTitle = computed(() =>
 )
 
 /**
- * Choice of the theme.
+ * Choice of the theme, "system" between the two forced ones.
  */
 const COLOR_MODES: { label: string; value: ColorMode; icon: typeof Monitor }[] = [
-  { label: 'Système', value: 'system', icon: Monitor },
   { label: 'Clair', value: 'light', icon: Sun },
+  { label: 'Système', value: 'system', icon: Monitor },
   { label: 'Sombre', value: 'dark', icon: Moon },
 ]
 
@@ -114,7 +114,7 @@ const menuItems: MenuItem[] = [
       />
       <export-manager />
       <sync-status />
-      <ui-select v-model="colorMode" :items="COLOR_MODES" label="Thème" class="w-38" />
+      <ui-choice-switch v-model="colorMode" :items="COLOR_MODES" label="Thème" />
       <ui-dropdown-menu :items="menuItems">
         <!-- Round avatar with the user's initials, the user icon before they are known. -->
         <button
