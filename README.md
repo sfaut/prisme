@@ -215,8 +215,9 @@ Drag the line under the editor to share the height between editor and results, o
 
 Each query gets its own tab:
 
-- A **dot** shows its progress: grey while waiting its turn, blue and pulsing while running and receiving rows, green when done, red on failure.
+- A **dot** shows its progress: grey while waiting its turn, blue and pulsing while running and receiving rows, green when done, orange when you stopped it, red on failure.
 - A **progress bar** on its bottom edge fills while rows arrive.
+- The **stop** button (red square), while the query runs or waits its turn, stops this query alone; the other queries of a read run go on. Stopped during the reception, the result keeps the rows received: a **Résultat tronqué** (Cut result) badge opens the bar under the grid, its tooltip giving the rows received, and the grid, the exports and the Pivoteur work on these rows. Stopped before its first row, the tab says **Requête arrêtée.** (Query stopped).
 - **Double-click** the label to rename the tab. The **pin** keeps the tab when queries are run again. The **cross** (or a middle click) closes it and stops its query. Drag a tab to move it.
 - The bar under the grid shows the number of rows, the execution time, the transfer time, the data received, the throughput, and the date and time (to the second) the execution ended: the instant the result reflects.
 

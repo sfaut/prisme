@@ -42,6 +42,7 @@ import {
   type Cell,
   type QueryResult,
   type QueryTab,
+  failed,
   formatDuration,
   formatRowCount,
   shownResult,
@@ -123,10 +124,10 @@ const result = computed(() => (props.tab ? shownResult(props.tab) : null))
 
 /**
  * Has the result columns to analyse? Not without columns, nor in error
- * (F-08).
+ * (F-08); a query stopped by the user gives the rows it received.
  */
 const analysable = computed(
-  () => props.tab?.error === null && (result.value?.columns.length ?? 0) > 0,
+  () => props.tab !== undefined && !failed(props.tab) && (result.value?.columns.length ?? 0) > 0,
 )
 
 /**

@@ -14,8 +14,9 @@ import { finishedTab } from './resultTabs'
  * Mounts a result tab in its bar.
  *
  * @param tab Query of the tab.
+ * @param stoppable Can its query be stopped?
  */
-function mountTab(tab: QueryTab) {
+function mountTab(tab: QueryTab, stoppable = false) {
   return mount(
     defineComponent({
       setup() {
@@ -23,7 +24,7 @@ function mountTab(tab: QueryTab) {
         return () =>
           h(TabsRoot, { modelValue: tab.id }, () =>
             h(TabsList, null, () =>
-              h(ResultTab, { tab, defaultLabel: '1', index: 0, count: 1, drag }),
+              h(ResultTab, { tab, defaultLabel: '1', index: 0, count: 1, drag, stoppable }),
             ),
           )
       },
@@ -39,5 +40,21 @@ describe('ResultTab', () => {
     const style = mountTab(tab).find('.tab-progress-bar').attributes('style')
     expect(style).toContain('scaleX(0.25)')
     expect(style).not.toMatch(/inline-size|width/)
+  })
+
+  it('offers to stop its query while it can be stopped', async () => {
+    const tab = { ...finishedTab(['id']), done: false }
+    expect(mountTab(tab).find('[aria-label="Arrêter la requête"]').exists()).toBe(false)
+
+    const wrapper = mountTab(tab, true)
+    await wrapper.find('[aria-label="Arrêter la requête"]').trigger('click')
+    expect(wrapper.findComponent(ResultTab).emitted('stop')).toHaveLength(1)
+  })
+
+  it('shows a stopped query in the warning color', () => {
+    const tab = { ...finishedTab(['id']), error: 'Requête interrompue.', interrupted: true }
+    const wrapper = mountTab(tab)
+    expect(wrapper.find('.progress-dot').classes()).toContain('stopped')
+    expect(wrapper.find('.tab-progress-bar').classes()).toContain('warning')
   })
 })

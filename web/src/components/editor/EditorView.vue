@@ -87,6 +87,7 @@ import {
   type QueryTab,
   type SessionStatus,
   formatRowCount,
+  stoppable,
   refreshState,
   useQuerySession,
 } from '@/api/querySession'
@@ -925,7 +926,9 @@ defineExpose({
                 :index="index"
                 :count="state.tabs.length"
                 :drag="tabDrag"
+                :stoppable="stoppable(state, tab)"
                 @close="closeTab(tab)"
+                @stop="session.stopQuery(tab)"
                 @toggle-pin="togglePin(tab)"
                 @rename="(name) => renameTab(tab, name)"
               />

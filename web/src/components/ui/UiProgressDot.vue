@@ -3,7 +3,8 @@
 
   Grey and pulsing very slowly while the query waits for its turn, blue and
   pulsing while running (slowly) then while receiving the rows (fast), green
-  when the result is complete, red on failure.
+  when the result is complete, orange when the user stopped it, red on
+  failure.
 -->
 <script setup lang="ts">
 import type { TabProgress } from '@/api/querySession'
@@ -23,8 +24,9 @@ const LABELS = {
   executing: 'Exécution',
   loading: 'Chargement des lignes',
   done: 'Terminé',
+  stopped: 'Arrêté',
   error: 'Échec',
-} as const
+} as const satisfies Record<TabProgress, string>
 </script>
 
 <template>
@@ -58,6 +60,10 @@ const LABELS = {
 
 .done {
   background: var(--color-success);
+}
+
+.stopped {
+  background: var(--color-warning);
 }
 
 .error {

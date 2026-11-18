@@ -125,7 +125,7 @@ Rules:
 | `Play` | Run the query under the cursor ("Exécuter") | editor's buttons |
 | `ScanText` | Run the selected text only ("Exécuter précisément") | editor's buttons |
 | `FastForward` | Run all the queries ("Exécuter tout") | editor's buttons |
-| `Square` | Stop the running queries (the run button, while they run) | editor's buttons |
+| `Square` | Stop the running queries (the run button, while they run); stop the query of a result tab | editor's buttons; result tab, while its query can be stopped (`ResultTab`) |
 | `WandSparkles` | Rewrite as "beautiful SQL" ("Enjoliver") | editor's buttons |
 | `RefreshCw` / `RefreshCwOff` | Run the result's query again / stop that refresh | bar of the result tabs (`ResultTabActions`) |
 | `Funnel` | Show / hide the filter of a list; in the data explorer, keep only the search results | bar of the result tabs (`ResultTabActions`), console's header, data explorer's search |

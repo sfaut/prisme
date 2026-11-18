@@ -3,6 +3,8 @@
 
   - Progress dot, then label: the name given by the user, or the number and
     the start of the query; a double click renames it (`DocumentTabLabel`).
+  - Stop, while the query runs or waits for its turn (`stoppable`): it
+    stops this query alone, the rows received kept. Always visible then.
   - Pin: a pinned tab stays when the query is run again. It is always
     visible on a pinned tab; otherwise, like the cross, on hovering the tab
     or on the active tab (the tab carries the `group` class).
@@ -10,16 +12,17 @@
     it is running.
   - Progress bar drawn on the bottom edge of the tab: indeterminate (a
     segment that goes back and forth) when the completed share is unknown,
-    green once the query has ended, red on failure (`tabFraction`). It grows
-    by a transform, which the compositor of the browser animates alone: a
-    transition of its width, started again by each batch of rows, made the
-    page compute its layout and paint at every frame of a reception. Measured
+    green once the query has ended, orange once stopped by the user, red on
+    failure (`tabFraction`). It grows by a transform, which the compositor of
+    the browser animates alone: a transition of its width, started again by
+    each batch of rows, made the page compute its layout and paint at every
+    frame of a reception. Measured
     on 2026-10-31 for 1 million rows: received in 17 to 20 s with the
     transform, 22 to 23 s with the width (`docs/PERFORMANCES.md`,
     chapter 12).
 -->
 <script setup lang="ts">
-import { Pin } from '@lucide/vue'
+import { Pin, Square } from '@lucide/vue'
 import { computed } from 'vue'
 
 import { type QueryTab, tabFraction, tabProgress } from '@/api/querySession'
@@ -52,6 +55,10 @@ const props = defineProps<{
    * Dragging of the bar's tabs.
    */
   drag: TabDrag
+  /**
+   * Can the query be stopped (`stoppable`)? The stop button then shows.
+   */
+  stoppable: boolean
 }>()
 
 const emit = defineEmits<{
@@ -59,6 +66,10 @@ const emit = defineEmits<{
    * The user closes the tab.
    */
   close: []
+  /**
+   * The user stops the query of the tab.
+   */
+  stop: []
   /**
    * The user pins or unpins the tab.
    */
@@ -75,13 +86,17 @@ const emit = defineEmits<{
 const fraction = computed(() => tabFraction(props.tab))
 
 /**
- * Color of the bar: red on failure, green once ended, otherwise that of
- * the action. No bar while the query waits for its turn.
+ * Color of the bar: red on failure, orange once stopped by the user,
+ * green once ended, otherwise that of the action. No bar while the query
+ * waits for its turn.
  */
 const barTone = computed(() => {
   const progress = tabProgress(props.tab)
   if (progress === 'waiting') {
     return null
+  }
+  if (progress === 'stopped') {
+    return 'warning'
   }
   return progress === 'error' ? 'error' : progress === 'done' ? 'success' : 'primary'
 })
@@ -111,6 +126,17 @@ const barTone = computed(() => {
       />
     </span>
     <template #actions>
+      <ui-button
+        v-if="stoppable"
+        :icon="Square"
+        variant="ghost"
+        tone="error"
+        small
+        aria-label="Arrêter la requête"
+        v-tooltip="'Arrêter la requête : les lignes reçues restent'"
+        @mousedown.stop
+        @click.stop="emit('stop')"
+      />
       <ui-button
         :icon="Pin"
         variant="ghost"
@@ -158,6 +184,10 @@ const barTone = computed(() => {
 
   &.success {
     background: var(--color-success);
+  }
+
+  &.warning {
+    background: var(--color-warning);
   }
 
   &.error {

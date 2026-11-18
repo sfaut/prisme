@@ -141,6 +141,31 @@ describe('ResultView', () => {
     expect(status.element.nextElementSibling).toBe(wrapper.findComponent(UiStatusBar).element)
   })
 
+  it('keeps the rows of a query stopped during the reception, marked as cut', () => {
+    const tab = {
+      ...finishedTab(['id'], [['1'], ['2']]),
+      error: 'Requête interrompue par l’utilisateur.',
+      interrupted: true,
+    }
+    const wrapper = mountTab(tab)
+    expect(wrapper.find('[role=alert]').exists()).toBe(false)
+    expect(wrapper.find('.grid-scroller').classes()).toContain('attached')
+    const badge = wrapper.findComponent(UiStatusBar).findAll('span')[0]!
+    expect(badge.text()).toBe('Résultat tronqué')
+  })
+
+  it('says a query stopped before its columns was stopped, without an error', () => {
+    const tab = {
+      ...finishedTab([]),
+      error: 'Requête interrompue par l’utilisateur.',
+      interrupted: true,
+    }
+    const wrapper = mountTab(tab)
+    expect(wrapper.text()).toContain('Requête arrêtée.')
+    expect(wrapper.text()).not.toContain('interrompue')
+    expect(wrapper.text()).not.toContain('Résultat tronqué')
+  })
+
   it('no longer says the query runs once it has ended', () => {
     const wrapper = mountTab(finishedTab([]))
     expect(wrapper.find('[role=status]').text()).toBe('')
