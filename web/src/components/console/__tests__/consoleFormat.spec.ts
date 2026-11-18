@@ -21,6 +21,7 @@ function entry(changes: Partial<QueryEntry> = {}): QueryEntry {
     affected_rows: 0,
     truncated: false,
     error: '',
+    interrupted: false,
     ...changes,
   }
 }
@@ -31,6 +32,11 @@ describe('console formats', () => {
     expect(messageOf(entry({ error: 'Unknown table' }))).toBe(
       'SELECT * FROM video — erreur : Unknown table',
     )
+  })
+
+  it('tells a query stopped by the user from a failure', () => {
+    const stopped = entry({ error: 'query interrupted by the user', interrupted: true })
+    expect(messageOf(stopped)).toBe('SELECT * FROM video — arrêtée par l’utilisateur')
   })
 
   it('counts the rows read or changed', () => {

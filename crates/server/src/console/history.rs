@@ -121,6 +121,9 @@ pub struct QueryEntry {
     pub truncated: bool,
     /// Failure message, empty on success.
     pub error: String,
+    /// Did the user stop the query? Its failure is then a stop, shown as a
+    /// warning.
+    pub interrupted: bool,
 }
 
 /// Queries kept by a page of the history, read from the query string
@@ -166,6 +169,8 @@ pub struct QueryFields {
     pub truncated: bool,
     /// Failure message, empty on success.
     pub error: String,
+    /// Did the user stop the query?
+    pub interrupted: bool,
 }
 
 impl Visit for QueryFields {
@@ -191,6 +196,7 @@ impl Visit for QueryFields {
         match field.name() {
             "returns_rows" => self.returns_rows = value,
             "truncated" => self.truncated = value,
+            "interrupted" => self.interrupted = value,
             _ => {}
         }
     }
@@ -305,7 +311,7 @@ where
 
 /// Columns of `query_history` read into a `QueryEntry`, in order.
 const COLUMNS: &str = "id, started_at, action, connection_name, sql, duration_us, transfer_us,
-     returns_rows, row_count, affected_rows, truncated, error";
+     returns_rows, row_count, affected_rows, truncated, error, interrupted";
 
 /// Saves a traced query in the history of `user_id` (that of the query when
 /// it carries one), and returns it as the interface receives it. A query
@@ -319,9 +325,10 @@ pub fn insert(
     db.query_row(
         &format!(
             "INSERT INTO query_history (user_id, started_at, action, connection_name, sql,
-                 duration_us, transfer_us, returns_rows, row_count, affected_rows, truncated, error)
+                 duration_us, transfer_us, returns_rows, row_count, affected_rows, truncated, error,
+                 interrupted)
              VALUES (?1, strftime('%Y-%m-%dT%H:%M:%fZ', ?2 / 1000.0, 'unixepoch'), ?3, ?4, ?5,
-                 ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+                 ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              RETURNING {COLUMNS}"
         ),
         params![
@@ -337,6 +344,7 @@ pub fn insert(
             stored(fields.affected_rows),
             fields.truncated,
             fields.error,
+            fields.interrupted,
         ],
         entry_of,
     )
@@ -400,6 +408,7 @@ fn entry_of(row: &rusqlite::Row<'_>) -> Result<QueryEntry, rusqlite::Error> {
         affected_rows: row.get::<_, i64>(9)?.unsigned_abs(),
         truncated: row.get(10)?,
         error: row.get(11)?,
+        interrupted: row.get(12)?,
     })
 }
 
@@ -492,6 +501,25 @@ mod tests {
         assert_eq!(sqls(vec![Action::Run], Some(4), 1), ["SELECT 1"]);
         assert!(sqls(vec![Action::Probe], None, 10).is_empty());
         assert_eq!(sqls(Vec::new(), None, 10).len(), 4);
+    }
+
+    #[test]
+    fn keeps_a_query_stopped_by_the_user_apart_from_a_failure() {
+        let db = store::open_in_memory();
+        let user_id = store::ensure_user(&db, "a@example.com").unwrap();
+        let mut stopped = traced("SELECT SLEEP(20)", 1_792_500_000_000);
+        stopped.fields.error = "query interrupted by the user".to_string();
+        stopped.fields.interrupted = true;
+        let mut failed = traced("SELECT * FROM missing", 1_792_500_000_000);
+        failed.fields.error = "Table 'shop.missing' doesn't exist".to_string();
+
+        assert!(insert(&db, user_id, &stopped).unwrap().interrupted);
+        assert!(!insert(&db, user_id, &failed).unwrap().interrupted);
+        let listed = list(&db, user_id, &HistoryFilter::default(), None, 10).unwrap();
+        assert_eq!(
+            listed.iter().map(|e| e.interrupted).collect::<Vec<_>>(),
+            [true, false]
+        );
     }
 
     #[test]

@@ -67,6 +67,9 @@ static MIGRATIONS: LazyLock<Migrations<'static>> = LazyLock::new(|| {
         M::up(include_str!(
             "../migrations/0026_users_pivot_refresh_ms.sql"
         )),
+        M::up(include_str!(
+            "../migrations/0027_query_history_interrupted.sql"
+        )),
     ])
 });
 
@@ -274,6 +277,34 @@ mod tests {
             })
             .collect();
         assert_eq!(read, rows);
+    }
+
+    #[test]
+    fn marks_the_queries_stopped_before_as_interrupted() {
+        // Schema before the stops of the history (migration 0027).
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection
+            .pragma_update(None, "foreign_keys", "ON")
+            .unwrap();
+        MIGRATIONS.to_version(&mut connection, 26).unwrap();
+        let user = ensure_user(&connection, "owner@example.com").unwrap();
+        connection
+            .execute(
+                "INSERT INTO query_history (user_id, started_at, action, sql, error) VALUES                  (?1, '2026-11-16T22:44:54Z', 'run_all', 'SELECT SLEEP(20)', 'query interrupted by the user'),                  (?1, '2026-11-16T22:44:55Z', 'run', 'SELECT * FROM missing', 'Unknown table'),                  (?1, '2026-11-16T22:44:56Z', 'run', 'SELECT 1', '')",
+                params![user],
+            )
+            .unwrap();
+
+        MIGRATIONS.to_latest(&mut connection).unwrap();
+        let mut statement = connection
+            .prepare("SELECT interrupted FROM query_history ORDER BY id")
+            .unwrap();
+        let interrupted: Vec<bool> = statement
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(interrupted, [true, false, false]);
     }
 
     #[test]

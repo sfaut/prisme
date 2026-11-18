@@ -39,6 +39,9 @@ pub struct Sent<'a> {
     pub truncated: bool,
     /// Failure message, `None` on success.
     pub error: Option<&'a str>,
+    /// Did the user stop the statement? Its failure is then a stop, which
+    /// the history shows as a warning.
+    pub interrupted: bool,
 }
 
 /// Traces a statement sent to a server, its secrets masked.
@@ -53,6 +56,7 @@ pub fn record(sent: &Sent<'_>) {
         affected_rows = sent.affected_rows,
         truncated = sent.truncated,
         error = sent.error.unwrap_or(""),
+        interrupted = sent.interrupted,
     );
 }
 

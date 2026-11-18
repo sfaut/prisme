@@ -128,11 +128,15 @@ export function rowsTitleOf(entry: QueryEntry): string | undefined {
 }
 
 /**
- * Failure of a query, after its SQL in the message; empty on success.
+ * Failure of a query, after its SQL in the message; empty on success. A
+ * query stopped by the user says so, without the server's message.
  *
  * @param entry Query of the history.
  */
 export function failureOf(entry: QueryEntry): string {
+  if (entry.interrupted) {
+    return '— arrêtée par l’utilisateur'
+  }
   return entry.error === '' ? '' : `— erreur : ${entry.error}`
 }
 

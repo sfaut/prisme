@@ -417,7 +417,7 @@ The **Historique** (History) tab lists every query sent to your servers, the old
 | **#** | Number of the query in the history |
 | **Heure** (Time) | Time it was sent; the date shows in its tooltip |
 | **Action** | What sent it: **Session**, **Exécuter** (Run), **Exécuter tout** (Run all), **Exécuter précisément** (Run exactly), **Rafraîchir** (Refresh), **Base courante** (Current database), **Interruption**, **Navigateur** (Navigator), **Test de connexion** (Connection test), **Export** (full export); the connection shows in its tooltip |
-| **Message** | The query on one line, then its error if it failed; the full query shows in its tooltip |
+| **Message** | The query on one line, then its error in red if it failed, or **arrêtée par l’utilisateur** (stopped by the user) in orange if you stopped it; the full query shows in its tooltip |
 | **Lignes** (Rows) | Rows read, preceded by "+" when the result was truncated ("+1 000"), or rows changed by a write; "—" otherwise |
 | **Exécution** (Execution) | Execution time, until the result, or until the columns for a result read row by row |
 | **Transmission** | Transfer time of the rows of a result read row by row; "—" when not measured |

@@ -55,4 +55,9 @@ export type QueryEntry = {
    * Failure message, empty on success.
    */
   error: string;
+  /**
+   * Did the user stop the query? Its failure is then a stop, shown as a
+   * warning.
+   */
+  interrupted: boolean;
 };

@@ -38,6 +38,7 @@ function entry(id: number, action: Action = 'run'): QueryEntry {
     affected_rows: 0,
     truncated: false,
     error: '',
+    interrupted: false,
   }
 }
 
