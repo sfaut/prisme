@@ -10,10 +10,12 @@
   A grip marks the middle of the line, unless the parent leaves it out
   (`grip`). The panels that share the room of the panel that fills keep the
   size they show as the line starts moving: only the panel of the line and
-  the panel that fills change, and the line follows the pointer.
+  the panel that fills change, and the line follows the pointer. A line
+  removed during its drag (the line under the folded Pivoteur, which goes
+  once the Pivoteur unfolds and fills) ends the drag as a release would.
 -->
 <script setup lang="ts">
-import { computed, nextTick, ref, useTemplateRef } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef } from 'vue'
 
 import { vTooltip } from '../ui/tooltip'
 import {
@@ -282,6 +284,10 @@ function onPointerEnd(): void {
   keep(move)
   move = null
 }
+
+// Removed during its drag, the line ends it: the group no longer marked
+// `data-resizing`, its panels animate again.
+onBeforeUnmount(onPointerEnd)
 
 /**
  * Moves the line by a key.

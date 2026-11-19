@@ -46,8 +46,9 @@
   height the others leave, so that the folded panels under it stay against
   it; an open panel takes the height it had when it folded, or, without
   one, shares the room in equal parts with the panel that fills. All three
-  folded, the room under them shows the sunken background, under a line. A run unfolds
-  the results, which show its tabs. The heights and folds are kept for
+  folded, the room under them shows the sunken background, and each line
+  unfolds the panel above it, a line under the Pivoteur's rail included. A
+  run unfolds the results, which show its tabs. The heights and folds are kept for
   this editor (`editorLayout.ts`). The
   padding of the sides is inside the panels: a panel clips its content at
   its edge, which may fall between two pixels, and would cut the left
@@ -1052,16 +1053,27 @@ defineExpose({
       />
     </split-panel>
     <!--
+      All the panels folded: the line under the rail of the Pivoteur, which
+      unfolds it into the free room, as each line above unfolds the panel
+      above it. Unfolded, the Pivoteur fills: the line goes, its drag ended.
+    -->
+    <split-handle
+      v-if="fillPanel === null"
+      :controls="panelId('pivot')"
+      tooltip="Glisser pour déplier le Pivoteur, double clic pour le déplier"
+      @activate="layout.pivotFolded = false"
+    />
+    <!--
       All the panels folded: the height they leave stays free under them, on
-      the sunken background, which tells it from a panel, under a line that
-      closes the rail of the Pivoteur. Always there, without any height while
-      a panel fills: its growth follows the folding of the last panel
-      (`SplitGroup.vue`), which the room would otherwise halve at once.
+      the sunken background, which tells it from a panel, under the line of
+      the Pivoteur. Always there, without any height while a panel fills: its
+      growth follows the folding of the last panel (`SplitGroup.vue`), which
+      the room would otherwise halve at once.
     -->
     <div
       data-split-room
       class="basis-0 bg-surface-sunken"
-      :class="fillPanel === null ? 'grow border-t border-line' : 'grow-0'"
+      :class="fillPanel === null ? 'grow' : 'grow-0'"
     />
   </split-group>
 </template>

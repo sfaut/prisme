@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { defineComponent, h, nextTick } from 'vue'
+import { defineComponent, h, nextTick, ref } from 'vue'
 
 import { type VueWrapper, mount } from '@vue/test-utils'
 
@@ -81,5 +81,34 @@ describe('SplitPanel', () => {
     element.dispatchEvent(pointer('pointerup'))
     await nextTick()
     expect(group.attributes('data-resizing')).toBeUndefined()
+  })
+
+  it('ends the drag of a line removed while it is dragged', async () => {
+    const shown = ref(true)
+    const Group = defineComponent({
+      setup: () => () =>
+        h(SplitGroup, { direction: 'vertical' }, () => [
+          h(SplitPanel, { id: 'fill', fill: true }),
+          h(SplitPanel, { id: 'panel', size: 120 }),
+          shown.value ? h(SplitHandle, { controls: 'panel', tooltip: 'Ligne' }) : null,
+        ]),
+    })
+    wrapper = mount(Group, { attachTo: document.body })
+    const element = wrapper.find('[role="separator"]').element as HTMLElement
+    // jsdom has neither the capture of the pointer nor its events.
+    element.setPointerCapture = () => {}
+    element.dispatchEvent(
+      Object.assign(new MouseEvent('pointerdown', { button: 0, clientY: 100 }), {
+        isPrimary: true,
+        pointerId: 1,
+      }),
+    )
+    await nextTick()
+    expect(wrapper.find('.split-group').attributes('data-resizing')).toBe('true')
+
+    shown.value = false
+    await nextTick()
+    expect(wrapper.find('[role="separator"]').exists()).toBe(false)
+    expect(wrapper.find('.split-group').attributes('data-resizing')).toBeUndefined()
   })
 })
