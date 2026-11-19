@@ -117,6 +117,7 @@ Rules:
 | `TableProperties` | Open / close the Pivoteur | activity bar |
 | `Braces` | Open / close the data explorer | activity bar |
 | `SquareTerminal` | Open / close the console | activity bar |
+| `LayoutDashboard` | Share the room again: equal heights for the open panels of the view, default sizes for the side panels and the console | activity bar, at its bottom |
 | `ChevronRight` / `ChevronDown` | Open / close a node of the tree | object navigator (`NavigatorLine`) |
 | `ChevronsDownUp` / `ChevronsUpDown` | Fold / unfold the whole document | data explorer |
 | `FoldVertical` / `UnfoldVertical` | Fold / unfold the cursor's level | data explorer |

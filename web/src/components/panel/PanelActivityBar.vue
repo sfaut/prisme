@@ -6,13 +6,24 @@
   closed panel leaves no trace in the tab: its button, released, is the way
   back. A pressed button is lit, with a mark of the primary color on the
   bar's edge. The tooltip says what the click does, with the panel's name.
+  At the bottom of the bar, a button shares the room again: the open panels
+  of the view take equal heights, the side panels and the console their
+  default size.
 
   The layouts come from the stores of the panels: `navigator`,
   `editorLayouts` (the view's panels, kept for this editor even while it
   has no connection), `explorer` and `console`.
 -->
 <script setup lang="ts">
-import { Braces, Code, ListTree, SquareTerminal, Table, TableProperties } from '@lucide/vue'
+import {
+  Braces,
+  Code,
+  LayoutDashboard,
+  ListTree,
+  SquareTerminal,
+  Table,
+  TableProperties,
+} from '@lucide/vue'
 import { type Component, computed } from 'vue'
 
 import { useConsoleStore } from '@/stores/console'
@@ -126,27 +137,63 @@ const groups = computed<PanelButton[][]>(() => {
 function tooltip(button: PanelButton): string {
   return `${button.open ? 'Fermer' : 'Ouvrir'} ${button.named}`
 }
+
+/**
+ * Shares the room again: the results and the Pivoteur share the height
+ * with the panel that fills, in equal parts (a height `null`), and the side
+ * panels and the console take their default size.
+ */
+function distribute(): void {
+  const view = layouts.layoutOf(props.editorId)
+  view.results = null
+  view.pivot = null
+  navigator.layoutOf(props.editorId).width = null
+  explorer.layoutOf(props.editorId).width = null
+  consoleStore.height = null
+}
+
+/**
+ * Classes of a button of the bar.
+ */
+const BUTTON =
+  'activity-button relative inline-flex size-8 cursor-pointer items-center justify-center rounded-lg text-on-activity hover:text-on-activity-strong aria-pressed:bg-on-activity-strong/10 aria-pressed:text-on-activity-strong'
 </script>
 
 <template>
-  <nav class="flex w-12 shrink-0 flex-col items-center gap-2 bg-activity py-2" aria-label="Volets">
-    <template v-for="(group, index) in groups" :key="index">
-      <span v-if="index > 0" class="w-5 border-t border-activity-line" aria-hidden="true" />
-      <div class="flex flex-col gap-1">
-        <button
-          v-for="button in group"
-          :key="button.label"
-          type="button"
-          class="activity-button relative inline-flex size-8 cursor-pointer items-center justify-center rounded-lg text-on-activity hover:text-on-activity-strong aria-pressed:bg-on-activity-strong/10 aria-pressed:text-on-activity-strong"
-          :aria-label="button.label"
-          :aria-pressed="button.open"
-          v-tooltip="tooltip(button)"
-          @click="button.toggle()"
-        >
-          <component :is="button.icon" class="size-5" aria-hidden="true" />
-        </button>
-      </div>
-    </template>
+  <nav
+    class="flex w-12 shrink-0 flex-col items-center justify-between bg-activity py-2"
+    aria-label="Volets"
+  >
+    <div class="flex flex-col items-center gap-2">
+      <template v-for="(group, index) in groups" :key="index">
+        <span v-if="index > 0" class="w-5 border-t border-activity-line" aria-hidden="true" />
+        <div class="flex flex-col gap-1">
+          <button
+            v-for="button in group"
+            :key="button.label"
+            type="button"
+            :class="BUTTON"
+            :aria-label="button.label"
+            :aria-pressed="button.open"
+            v-tooltip="tooltip(button)"
+            @click="button.toggle()"
+          >
+            <component :is="button.icon" class="size-5" aria-hidden="true" />
+          </button>
+        </div>
+      </template>
+    </div>
+    <button
+      type="button"
+      :class="BUTTON"
+      aria-label="Répartir les volets"
+      v-tooltip="
+        'Répartir les volets ouverts : hauteurs égales, largeur par défaut des volets latéraux'
+      "
+      @click="distribute"
+    >
+      <LayoutDashboard class="size-5" aria-hidden="true" />
+    </button>
   </nav>
 </template>
 
