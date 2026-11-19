@@ -49,8 +49,8 @@ Colors by role, drawn from Tailwind's palette, declared in `@theme` (Tailwind tu
 |---|---|---|---|
 | `surface` | page, panels, fields | white | zinc-900 |
 | `surface-sunken` | hover of rows and outline buttons, gutter of the editors | zinc-100 | zinc-800 |
-| `surface-raised` | active tab, grid header, selected source, highlighted menu item | zinc-100 | zinc-800 |
-| `surface-strong` | strong hover | zinc-200 | zinc-700 |
+| `surface-raised` | grid header, selected source, highlighted menu item | zinc-100 | zinc-800 |
+| `surface-strong` | active tab, strong hover | zinc-200 | zinc-700 |
 | `fg` | regular text | zinc-700 | zinc-200 |
 | `fg-secondary` | secondary text, labels of fields, inactive tabs, status bars | zinc-500 | zinc-400 |
 | `fg-faint` | placeholders, chevrons, gutters, `NULL`, ghost buttons at rest | zinc-400 | zinc-500 |
@@ -127,7 +127,7 @@ Legend: `[«]`, `[^]`, `[v]` fold buttons (`PanelLeftClose`, `PanelTopClose`, `P
 - **Toast**: bottom right, stacked, 96 steps wide, `rounded-xl border-line bg-surface px-4 py-3 shadow-lg`, success or error icon, text `fg-strong`; it fades after a few seconds, paused on hover.
 - **Tooltip**: a single bubble for the page, after a short hover or on keyboard focus: `text-sm`, `px-3 py-1`, `rounded-lg`, dark in both modes, at most 96 steps wide and 12 lines; above its element, centered, below when there is no room; no arrow; the pointer passes through it. Almost every element has one: it explains the action and its shortcut.
 - **Status bar**: a line of `text-sm fg-secondary` items, separated by a middle dot `·` with one step of room on each side; items wrap whole.
-- **Document tab** (editors' bar and results' bar, same look): `rounded-t-lg py-1 ps-3 pe-1 gap-3`, `text-base` medium `fg-secondary`, hover `fg-strong`; active: `bg-surface-raised text-fg-strong`. At most 107 steps wide, label truncated. Its small ghost buttons (pin, close `X`) show on hovering the tab or on the active tab. The bar draws the line under the tabs. A double click on the label renames it (small field `h-7`, 53 steps wide, `text-sm`, with the focus ring); dragging a tab moves it, with a 2px `primary` insertion marker; a middle click closes it.
+- **Document tab** (editors' bar, results' bar and console, same look, utility `tab-pill`): a pill `rounded-lg h-8 ps-3 pe-1 gap-3`, `text-base` medium `fg-secondary`, hover `fg-strong`; active: `bg-surface-strong text-fg-strong`. A `line` stroke, inset by 2 steps top and bottom, stands between two inactive tabs, in the `gap-2` of their bar. At most 107 steps wide, label truncated. Its small ghost buttons (pin, close `X`) show on hovering the tab or on the active tab. The editors' bar is padded `px-4 py-2`, with the line under it. A double click on the label renames it (small field `h-7`, 53 steps wide, `text-sm`, with the focus ring); dragging a tab moves it, with a 2px `primary` insertion marker; a middle click closes it.
 - **Small tabs** (console): `h-7 rounded-lg px-1 text-sm` medium `fg-secondary`, active `bg-surface-raised text-fg-strong`.
 - **Toggle group** (console filters): small buttons `h-7 rounded-lg border-line px-1 text-sm` medium `fg-secondary`, hover `bg-surface-sunken`; pressed: `border-primary/50 bg-primary/15 text-primary`. Several can be pressed; none pressed shows everything.
 - **Progress dot** of a query, 3 steps wide: waiting, `fg-faint` pulsing very slowly (3 s); running, `primary` pulsing (1.4 s); receiving rows, `primary` pulsing fast (0.6 s); done, `success`; failed, `error`. The pulse goes from full opacity and size to 35% and 70%.

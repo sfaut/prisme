@@ -395,3 +395,42 @@
   text-box: trim-both cap alphabetic;
   padding-block: 0.25em;
 }
+
+/*
+  Look of every tab (editors, results, console): a pill, filled when active,
+  and a line between two inactive tabs, as in VS Code. The bar spaces its
+  tabs by `gap-2`: the line stands in that gap, against the next tab, and
+  leaves out the active tab, which its fill sets apart.
+*/
+@utility tab-pill {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-lg);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-secondary);
+  cursor: pointer;
+  user-select: none;
+
+  &:hover {
+    color: var(--color-fg-strong);
+  }
+
+  &[data-state='active'] {
+    background: var(--color-surface-strong);
+    color: var(--color-fg-strong);
+  }
+
+  & + &::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: calc(var(--spacing) * -1);
+    inset-block: calc(var(--spacing) * 2);
+    border-inline-start: var(--line-width) solid var(--color-line);
+  }
+
+  &[data-state='active']::before,
+  &[data-state='active'] + &::before {
+    content: none;
+  }
+}

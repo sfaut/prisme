@@ -2,10 +2,11 @@
   Tab of a document bar: the editor bar (`EditorTabBar.vue`) and the result
   bar of each editor (`EditorView.vue`). Both bars look and behave the same:
 
-  - Look: the active tab is filled (`surface-raised`), its text darker;
-    the line under the bar is drawn by the bar itself. The bottom edge
-    of a tab stays free for the progress bar of the result tabs.
-  - Height: its padding around its small buttons, taller than its text.
+  - Look: a pill (`tab-pill` in `main.css`, shared with the tabs of the
+    console): the active tab is filled (`surface-strong`), its text darker;
+    a line sets two inactive tabs apart. The bottom edge of a tab stays free
+    for the progress bar of the result tabs.
+  - Height: that of a button, its small buttons inside.
   - Focus: no outline. The tabs activate as they get the focus (arrow keys),
     so the focused tab is the active, filled one.
   - Progress, when the tab follows a work (`progress`: the query of a
@@ -113,7 +114,7 @@ const shownFraction = computed(() => props.fraction ?? null)
   <tabs-trigger
     :value="value"
     as="div"
-    class="group relative flex max-w-107 min-w-0 shrink-0 cursor-pointer items-center gap-3 rounded-t-lg py-1 ps-3 pe-1 text-base font-medium text-fg-secondary select-none hover:text-fg-strong data-[state=active]:bg-surface-raised data-[state=active]:text-fg-strong"
+    class="group tab-pill h-8 max-w-107 min-w-0 shrink-0 gap-3 ps-3 pe-1 text-base"
     :class="{
       'drop-before': drag.dropAt.value === index,
       'drop-after': drag.dropAt.value === count && index === count - 1,
@@ -160,10 +161,10 @@ const shownFraction = computed(() => props.fraction ?? null)
   box-shadow: inset calc(-1 * var(--marker-width)) 0 0 var(--color-primary);
 }
 
-/* Progress bar, over the whole width of the tab's bottom edge. */
+/* Progress bar, along the tab's bottom edge, between its rounded corners. */
 .tab-progress {
   position: absolute;
-  inset-inline: 0;
+  inset-inline: var(--radius-lg);
   inset-block-end: 0;
   block-size: var(--tab-progress-height);
   overflow: hidden;

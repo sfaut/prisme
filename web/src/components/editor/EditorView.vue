@@ -929,12 +929,13 @@ defineExpose({
         class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pt-3 pb-3"
         :inert="layout.resultsFolded"
       >
-        <div class="flex min-h-9 shrink-0 gap-3 border-b border-line">
-          <h2 class="shrink-0 self-center text-lg leading-none font-semibold text-fg-strong">
-            Résultat
-          </h2>
+        <div class="flex shrink-0 items-center gap-3">
+          <h2 class="shrink-0 text-lg leading-none font-semibold text-fg-strong">Résultat</h2>
           <div class="flex min-w-0 flex-1">
-            <tabs-list v-if="state.tabs.length > 0" class="flex min-w-0 overflow-x-auto">
+            <tabs-list
+              v-if="state.tabs.length > 0"
+              class="flex min-w-0 items-center gap-2 overflow-x-auto"
+            >
               <result-tab
                 v-for="(tab, index) in state.tabs"
                 :key="tab.id"
@@ -955,7 +956,7 @@ defineExpose({
             Buttons of the tab shown (refresh, filter, export), then the
             fold button, side by side as in the other headers.
           -->
-          <div class="flex items-center self-center">
+          <div class="flex items-center">
             <result-tab-actions
               v-if="shownTab"
               :tab="shownTab"

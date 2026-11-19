@@ -445,17 +445,12 @@ function selectSource(editorId: number, connectionId: number): void {
           v-model="activeTab"
           :unmount-on-hide="false"
           as="main"
-          class="flex min-h-0 min-w-0 flex-1 flex-col pt-4"
+          class="flex min-h-0 min-w-0 flex-1 flex-col"
         >
-          <div class="flex flex-col gap-3 px-4">
-            <ui-alert
-              v-if="editorsError"
-              tone="error"
-              :title="editorsError"
-              @close="editorsError = null"
-            />
-            <editor-tab-bar @close="closeEditor" />
+          <div v-if="editorsError" class="flex flex-col px-4 pt-3">
+            <ui-alert tone="error" :title="editorsError" @close="editorsError = null" />
           </div>
+          <editor-tab-bar @close="closeEditor" />
           <tabs-content
             v-for="editor in editors.editors"
             :key="editor.id"

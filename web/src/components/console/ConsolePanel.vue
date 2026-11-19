@@ -88,21 +88,15 @@ onUnmounted(() => store.dispose())
 
 <template>
   <tabs-root v-model="store.tab" class="flex h-full min-h-0 flex-col gap-1" aria-label="Console">
-    <panel-header
-      title="Console"
-      side="bottom"
-      class="border-b border-line"
-      @collapse="store.open = false"
-    >
+    <panel-header title="Console" side="bottom" @collapse="store.open = false">
       <template #inline>
-        <!-- Tabs of the look of the editor and result tabs (`DocumentTab`),
-             standing on the line under the header. -->
-        <tabs-list class="flex self-end" aria-label="Console">
+        <!-- Tabs of the look of the editor and result tabs (`tab-pill`). -->
+        <tabs-list class="flex items-center gap-2" aria-label="Console">
           <tabs-trigger
             v-for="tab in TABS"
             :key="tab.value"
             :value="tab.value"
-            class="flex h-9 cursor-pointer items-center rounded-t-lg px-3 text-base font-medium text-fg-secondary select-none hover:text-fg-strong data-[state=active]:bg-surface-raised data-[state=active]:text-fg-strong"
+            class="tab-pill h-8 px-3 text-base"
           >
             {{ tab.label }}
           </tabs-trigger>

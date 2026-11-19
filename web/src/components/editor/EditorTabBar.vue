@@ -88,8 +88,8 @@ const reopenItems = computed<MenuItem[]>(() => {
 </script>
 
 <template>
-  <div class="flex border-b border-line">
-    <tabs-list class="flex min-w-0 overflow-x-auto" aria-label="Éditeurs">
+  <div class="flex items-center gap-3 border-b border-line px-4 py-2">
+    <tabs-list class="flex min-w-0 items-center gap-2 overflow-x-auto" aria-label="Éditeurs">
       <document-tab
         v-for="(editor, index) in editors.editors"
         :key="editor.id"
@@ -110,7 +110,7 @@ const reopenItems = computed<MenuItem[]>(() => {
         />
       </document-tab>
     </tabs-list>
-    <div class="flex flex-1 items-center justify-end ps-1">
+    <div class="flex flex-1 items-center justify-end">
       <ui-dropdown-menu :items="reopenItems">
         <ui-button
           :icon="History"
