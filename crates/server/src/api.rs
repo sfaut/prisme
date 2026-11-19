@@ -327,7 +327,7 @@ async fn editor_session(
     let keep_alive = Duration::from_secs(u64::from(minutes) * 60);
     Ok(upgrade.on_upgrade(move |socket| {
         let span = api_log::editor_span(id);
-        let history = span.in_scope(|| console::connection_span(user_id, &name));
+        let history = span.in_scope(|| console::editor_span(user_id, &name, id));
         async move {
             let sessions = Arc::clone(&state.sessions);
             sessions.attach(id, connection_id, socket, |socket, on_end| {

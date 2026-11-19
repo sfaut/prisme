@@ -10,6 +10,7 @@ import { messageOf, rowsOf, rowsTitleOf, transferOf } from '../consoleFormat'
 function entry(changes: Partial<QueryEntry> = {}): QueryEntry {
   return {
     id: 1,
+    editor_id: 0,
     started_at: '2026-10-20T12:40:00.123Z',
     action: 'run',
     connection_name: 'Local',

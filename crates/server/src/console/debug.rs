@@ -9,7 +9,8 @@
 //! own tab.
 //!
 //! The log is that of the server: in workstation mode, its single user sees
-//! all of it.
+//! all of it. A line written under the span of an editor's session
+//! (`console::editor_span`) carries that editor, whose console shows it.
 
 use std::fmt::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -19,9 +20,11 @@ use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::field::{Field, Visit};
+use tracing::span::{Attributes, Id};
 use tracing::{Event, Level, Subscriber};
 use tracing_subscriber::Layer;
 use tracing_subscriber::layer::Context;
+use tracing_subscriber::registry::LookupSpan;
 use ts_rs::TS;
 
 use super::Traced;
@@ -118,6 +121,8 @@ pub struct DebugFilter {
     /// Sources kept; all of them when empty.
     #[serde(default, rename = "source")]
     pub sources: Vec<DebugSource>,
+    /// Editor whose lines are kept; all of them when absent.
+    pub editor: Option<i64>,
 }
 
 /// Line of the debug log, as the interface receives it.
@@ -126,6 +131,8 @@ pub struct DebugFilter {
 pub struct DebugEntry {
     /// Number of the line in the log.
     pub id: i64,
+    /// Editor whose session wrote the line, 0 outside an editor.
+    pub editor_id: i64,
     /// Instant of the line, in UTC, in ISO 8601 format.
     pub logged_at: String,
     /// Level of the line.
@@ -151,10 +158,12 @@ pub struct TracedLine {
     pub target: String,
     /// Text of the line.
     pub message: String,
+    /// Editor whose session wrote it, 0 outside an editor.
+    pub editor_id: i64,
 }
 
 impl TracedLine {
-    /// Line written now.
+    /// Line written now, outside an editor.
     pub fn now(level: DebugLevel, source: DebugSource, target: &str, message: &str) -> Self {
         Self {
             logged_at_ms: SystemTime::now()
@@ -164,7 +173,28 @@ impl TracedLine {
             source,
             target: target.chars().take(MAX_TARGET).collect(),
             message: message.chars().take(MAX_MESSAGE).collect(),
+            editor_id: 0,
         }
+    }
+}
+
+/// Editor of a span (`console::editor_span`), kept in its extensions for the
+/// lines written under it.
+struct SpanEditor(i64);
+
+/// Field `editor_id` of a span, when it carries one.
+#[derive(Default)]
+struct EditorField(Option<i64>);
+
+impl Visit for EditorField {
+    fn record_i64(&mut self, field: &Field, value: i64) {
+        if field.name() == "editor_id" {
+            self.0 = Some(value);
+        }
+    }
+
+    fn record_debug(&mut self, _field: &Field, _value: &dyn std::fmt::Debug) {
+        // Only the editor is read.
     }
 }
 
@@ -196,15 +226,27 @@ impl Visit for Message {
 }
 
 /// Layer of `tracing` that hands the lines of the log to the console's
-/// writer. It sees what the terminal shows (per-layer filter set in
-/// `console::debug_layer`), except the queries of the history.
+/// writer. It sees what the terminal shows, plus the spans of the history,
+/// whose editor it gives to the lines written under them (per-layer filter
+/// set in `console::debug_layer`); it leaves out the queries of the history.
 pub struct DebugLayer {
     /// To the console's writer.
     pub(super) sender: mpsc::UnboundedSender<Traced>,
 }
 
-impl<S: Subscriber> Layer<S> for DebugLayer {
-    fn on_event(&self, event: &Event<'_>, _context: Context<'_, S>) {
+impl<S> Layer<S> for DebugLayer
+where
+    S: Subscriber + for<'lookup> LookupSpan<'lookup>,
+{
+    fn on_new_span(&self, attributes: &Attributes<'_>, id: &Id, context: Context<'_, S>) {
+        let mut editor = EditorField::default();
+        attributes.record(&mut editor);
+        if let (Some(editor_id), Some(span)) = (editor.0, context.span(id)) {
+            span.extensions_mut().insert(SpanEditor(editor_id));
+        }
+    }
+
+    fn on_event(&self, event: &Event<'_>, context: Context<'_, S>) {
         let metadata = event.metadata();
         if metadata.target() == TARGET {
             return;
@@ -212,24 +254,31 @@ impl<S: Subscriber> Layer<S> for DebugLayer {
         let mut message = Message::default();
         event.record(&mut message);
         message.text.push_str(&message.fields);
-        let _ = self.sender.send(Traced::Line(TracedLine::now(
+        let mut line = TracedLine::now(
             (*metadata.level()).into(),
             DebugSource::Server,
             metadata.target(),
             &message.text,
-        )));
+        );
+        line.editor_id = context
+            .event_scope(event)
+            .into_iter()
+            .flatten()
+            .find_map(|span| span.extensions().get::<SpanEditor>().map(|editor| editor.0))
+            .unwrap_or(0);
+        let _ = self.sender.send(Traced::Line(line));
     }
 }
 
 /// Columns of `debug_log` read into a `DebugEntry`, in order.
-const COLUMNS: &str = "id, logged_at, level, source, target, message";
+const COLUMNS: &str = "id, logged_at, level, source, target, message, editor_id";
 
 /// Saves a line in the debug log, and returns it as the interface receives it.
 pub fn insert(db: &Connection, line: &TracedLine) -> Result<DebugEntry, rusqlite::Error> {
     db.query_row(
         &format!(
-            "INSERT INTO debug_log (logged_at, level, source, target, message)
-             VALUES (strftime('%Y-%m-%dT%H:%M:%fZ', ?1 / 1000.0, 'unixepoch'), ?2, ?3, ?4, ?5)
+            "INSERT INTO debug_log (logged_at, level, source, target, message, editor_id)
+             VALUES (strftime('%Y-%m-%dT%H:%M:%fZ', ?1 / 1000.0, 'unixepoch'), ?2, ?3, ?4, ?5, ?6)
              RETURNING {COLUMNS}"
         ),
         params![
@@ -238,6 +287,7 @@ pub fn insert(db: &Connection, line: &TracedLine) -> Result<DebugEntry, rusqlite
             line.source.as_str(),
             line.target,
             line.message,
+            line.editor_id,
         ],
         entry_of,
     )
@@ -257,13 +307,15 @@ pub fn list(
          WHERE id < ?1
              AND (?2 = '[]' OR level IN (SELECT value FROM json_each(?2)))
              AND (?3 = '[]' OR source IN (SELECT value FROM json_each(?3)))
-         ORDER BY id DESC LIMIT ?4"
+             AND (?4 IS NULL OR editor_id = ?4)
+         ORDER BY id DESC LIMIT ?5"
     ))?;
     let rows = statement.query_map(
         params![
             before.unwrap_or(i64::MAX),
             super::json_array(&filter.levels)?,
             super::json_array(&filter.sources)?,
+            filter.editor,
             limit
         ],
         entry_of,
@@ -273,9 +325,13 @@ pub fn list(
     Ok(entries)
 }
 
-/// Deletes the whole debug log. Returns the number of lines deleted.
-pub fn clear(db: &Connection) -> Result<usize, rusqlite::Error> {
-    db.execute("DELETE FROM debug_log", [])
+/// Deletes the lines of editor `editor` from the debug log, all of them when
+/// `None`. Returns the number of lines deleted.
+pub fn clear(db: &Connection, editor: Option<i64>) -> Result<usize, rusqlite::Error> {
+    db.execute(
+        "DELETE FROM debug_log WHERE ?1 IS NULL OR editor_id = ?1",
+        [editor],
+    )
 }
 
 /// Reads a row of `debug_log` (columns `COLUMNS`).
@@ -291,6 +347,7 @@ fn entry_of(row: &rusqlite::Row<'_>) -> Result<DebugEntry, rusqlite::Error> {
         },
         target: row.get(4)?,
         message: row.get(5)?,
+        editor_id: row.get(6)?,
     })
 }
 
@@ -314,8 +371,10 @@ mod tests {
         assert_eq!(first.level, DebugLevel::Warn);
         assert_eq!(first.target, "prisme::api");
         let second = insert(&db, &line("second")).unwrap();
-        let notification = TracedLine::now(DebugLevel::Error, DebugSource::Interface, "", "Échec");
-        insert(&db, &notification).unwrap();
+        let mut notification =
+            TracedLine::now(DebugLevel::Error, DebugSource::Interface, "", "Échec");
+        notification.editor_id = 3;
+        assert_eq!(insert(&db, &notification).unwrap().editor_id, 3);
 
         let messages =
             |entries: Vec<DebugEntry>| entries.into_iter().map(|e| e.message).collect::<Vec<_>>();
@@ -330,6 +389,18 @@ mod tests {
         assert_eq!(
             list(&db, &DebugFilter::default(), None, 1).unwrap()[0].source,
             DebugSource::Interface
+        );
+
+        // The lines of an editor, read and cleared apart.
+        let editor = DebugFilter {
+            editor: Some(3),
+            ..DebugFilter::default()
+        };
+        assert_eq!(messages(list(&db, &editor, None, 10).unwrap()), ["Échec"]);
+        assert_eq!(clear(&db, Some(3)).unwrap(), 1);
+        assert_eq!(
+            messages(list(&db, &DebugFilter::default(), None, 10).unwrap()),
+            ["first", "second"]
         );
     }
 
@@ -349,11 +420,20 @@ mod tests {
             insert(&db, &TracedLine::now(level, source, "", message)).unwrap();
         }
         let messages = |levels: Vec<DebugLevel>, sources: Vec<DebugSource>| {
-            list(&db, &DebugFilter { levels, sources }, None, 10)
-                .unwrap()
-                .into_iter()
-                .map(|e| e.message)
-                .collect::<Vec<_>>()
+            list(
+                &db,
+                &DebugFilter {
+                    levels,
+                    sources,
+                    editor: None,
+                },
+                None,
+                10,
+            )
+            .unwrap()
+            .into_iter()
+            .map(|e| e.message)
+            .collect::<Vec<_>>()
         };
 
         assert_eq!(

@@ -27,6 +27,7 @@ vi.mock('@/api/console', () => ({
 function entry(id: number, action: Action = 'run'): QueryEntry {
   return {
     id,
+    editor_id: 0,
     started_at: '2026-10-20T12:40:00.000Z',
     action,
     connection_name: '',

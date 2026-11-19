@@ -11,22 +11,28 @@
 //!
 //! The elements older than the retention set in the profile are purged at
 //! startup, then every hour (`purge_regularly`). The user clears either list
-//! from the console: their own history, or the whole debug log.
+//! from the console: their own history, or the whole debug log, or the
+//! elements of an editor only.
+//!
+//! Each element knows the editor whose session wrote it (`editor_id`, 0
+//! outside an editor): the span of the history of an editor's session
+//! (`editor_span`) carries it, and both layers read it, so that the console
+//! of an editor shows its own elements.
 //!
 //! | Route                             | Role                                                    |
 //! |-----------------------------------|---------------------------------------------------------|
-//! | `GET /api/console/history`        | Page of the history: `before` (id), `limit` (500 by default), `action` (an action kept, repeated: `action=run&action=run_all`; all when absent). |
-//! | `DELETE /api/console/history`     | Clears the user's history (204).                        |
-//! | `GET /api/console/debug`          | Page of the debug log: `before`, `limit`, `level` and `source` (a level or a source kept, repeated: `level=error&level=warn`; all when absent). |
-//! | `DELETE /api/console/debug`       | Clears the debug log (204).                             |
+//! | `GET /api/console/history`        | Page of the history: `before` (id), `limit` (500 by default), `action` (an action kept, repeated: `action=run&action=run_all`; all when absent), `editor` (the queries of an editor; all when absent). |
+//! | `DELETE /api/console/history`     | Clears the user's history, that of an editor with `editor` (204). |
+//! | `GET /api/console/debug`          | Page of the debug log: `before`, `limit`, `level` and `source` (a level or a source kept, repeated: `level=error&level=warn`; all when absent), `editor`. |
+//! | `DELETE /api/console/debug`       | Clears the debug log, the lines of an editor with `editor` (204). |
 //! | `POST /api/console/notifications` | Notification shown by the interface, for the debug log (204). |
-//! | `GET /api/console/stream`         | Server-sent events: `history` for each new query, `debug` for each new line, `history-cleared` / `debug-cleared` when a list is cleared, `lagged` when events were missed. |
+//! | `GET /api/console/stream`         | Server-sent events: `history` for each new query, `debug` for each new line, `history-cleared` / `debug-cleared` when a list is cleared (`ConsoleCleared`), `lagged` when events were missed. |
 
 mod debug;
 mod history;
 
 pub use debug::{DebugEntry, DebugLevel};
-pub use history::{Action, QueryEntry, action_span, connection_span, sql_span};
+pub use history::{Action, QueryEntry, action_span, connection_span, editor_span, sql_span};
 
 use std::convert::Infallible;
 use std::time::Duration;
@@ -47,7 +53,7 @@ use tokio::sync::mpsc;
 use tracing::{Level, Subscriber};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::Layer;
-use tracing_subscriber::filter::Targets;
+use tracing_subscriber::filter::{FilterExt, Targets};
 use tracing_subscriber::registry::LookupSpan;
 use ts_rs::TS;
 
@@ -96,9 +102,23 @@ pub enum ConsoleEvent {
     HistoryCleared {
         /// Owner of the history.
         user_id: i64,
+        /// Editor whose queries were cleared; all of them when `None`.
+        editor_id: Option<i64>,
     },
     /// Debug log cleared, for all.
-    DebugCleared,
+    DebugCleared {
+        /// Editor whose lines were cleared; all of them when `None`.
+        editor_id: Option<i64>,
+    },
+}
+
+/// Elements cleared from a list of the console, as the interface receives
+/// them (`history-cleared`, `debug-cleared`).
+#[derive(Debug, Clone, Copy, Serialize, TS)]
+#[ts(export)]
+pub struct ConsoleCleared {
+    /// Editor whose elements were cleared; all of them when `None`.
+    pub editor_id: Option<i64>,
 }
 
 impl ConsoleEvent {
@@ -111,11 +131,22 @@ impl ConsoleEvent {
             } if *owner == user_id => Event::default().event("history").json_data(entry).ok(),
             Self::Query { .. } => None,
             Self::Line(entry) => Event::default().event("debug").json_data(entry).ok(),
-            Self::HistoryCleared { user_id: owner } if *owner == user_id => {
-                Some(Event::default().event("history-cleared").data(""))
-            }
+            Self::HistoryCleared {
+                user_id: owner,
+                editor_id,
+            } if *owner == user_id => Event::default()
+                .event("history-cleared")
+                .json_data(ConsoleCleared {
+                    editor_id: *editor_id,
+                })
+                .ok(),
             Self::HistoryCleared { .. } => None,
-            Self::DebugCleared => Some(Event::default().event("debug-cleared").data("")),
+            Self::DebugCleared { editor_id } => Event::default()
+                .event("debug-cleared")
+                .json_data(ConsoleCleared {
+                    editor_id: *editor_id,
+                })
+                .ok(),
         }
     }
 }
@@ -154,12 +185,13 @@ where
 }
 
 /// Layer of the log that feeds the debug log: the lines that `filter` lets
-/// through, that of the terminal.
+/// through, that of the terminal, and the spans of the history, which give
+/// their editor to the lines written under them.
 pub fn debug_layer<S>(sender: mpsc::UnboundedSender<Traced>, filter: EnvFilter) -> impl Layer<S>
 where
     S: Subscriber + for<'lookup> LookupSpan<'lookup>,
 {
-    DebugLayer { sender }.with_filter(filter)
+    DebugLayer { sender }.with_filter(filter.or(Targets::new().with_target(TARGET, Level::TRACE)))
 }
 
 /// Saves the traced elements, by batches, then announces them to the
@@ -274,6 +306,14 @@ struct Page {
     limit: Option<u32>,
 }
 
+/// Editor whose elements a request clears, read from the query string
+/// (`editor=3`); all of them when absent.
+#[derive(Debug, Default, Deserialize)]
+struct Scope {
+    /// Id of the editor.
+    editor: Option<i64>,
+}
+
 /// Values kept by a filter, as a JSON array (`["run","run_all"]`) that the
 /// queries read with `json_each`.
 fn json_array<T: Serialize>(values: &[T]) -> Result<String, rusqlite::Error> {
@@ -297,30 +337,39 @@ async fn list_history(
     Ok(Json(entries))
 }
 
-/// `DELETE /api/console/history`: clears the user's history (204).
+/// `DELETE /api/console/history`: clears the user's history, that of an
+/// editor with `editor` (204).
 async fn clear_history(
     State(state): State<AppState>,
     user: CurrentUser,
+    Query(scope): Query<Scope>,
 ) -> Result<StatusCode, ApiError> {
+    let editor = scope.editor;
     state
-        .with_db(move |db, _| history::clear(db, user.id).map_err(ConsoleError::from))
+        .with_db(move |db, _| history::clear(db, user.id, editor).map_err(ConsoleError::from))
         .await?;
     // Without a subscriber, the history is only cleared.
-    let _ = state
-        .console
-        .send(ConsoleEvent::HistoryCleared { user_id: user.id });
+    let _ = state.console.send(ConsoleEvent::HistoryCleared {
+        user_id: user.id,
+        editor_id: editor,
+    });
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// `DELETE /api/console/debug`: clears the debug log (204).
+/// `DELETE /api/console/debug`: clears the debug log, the lines of an editor
+/// with `editor` (204).
 async fn clear_debug(
     State(state): State<AppState>,
     _user: CurrentUser,
+    Query(scope): Query<Scope>,
 ) -> Result<StatusCode, ApiError> {
+    let editor = scope.editor;
     state
-        .with_db(move |db, _| debug::clear(db).map_err(ConsoleError::from))
+        .with_db(move |db, _| debug::clear(db, editor).map_err(ConsoleError::from))
         .await?;
-    let _ = state.console.send(ConsoleEvent::DebugCleared);
+    let _ = state
+        .console
+        .send(ConsoleEvent::DebugCleared { editor_id: editor });
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -426,7 +475,7 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(history::clear(&db, ada).unwrap(), 1);
+        assert_eq!(history::clear(&db, ada, None).unwrap(), 1);
         assert!(
             history::list(&db, ada, &HistoryFilter::default(), None, 10)
                 .unwrap()
@@ -438,7 +487,7 @@ mod tests {
                 .len(),
             1
         );
-        assert_eq!(debug::clear(&db).unwrap(), 1);
+        assert_eq!(debug::clear(&db, None).unwrap(), 1);
         assert!(
             debug::list(&db, &DebugFilter::default(), None, 10)
                 .unwrap()
@@ -453,22 +502,32 @@ mod tests {
             Query::<HistoryFilter>::try_from_uri(&read("/h?before=9&action=run&action=run_all"))
                 .unwrap();
         assert_eq!(history.actions, [Action::Run, Action::RunAll]);
+        assert_eq!(history.editor, None);
         let Query(debug) =
-            Query::<DebugFilter>::try_from_uri(&read("/d?level=error&source=interface")).unwrap();
+            Query::<DebugFilter>::try_from_uri(&read("/d?level=error&source=interface&editor=3"))
+                .unwrap();
         assert_eq!(debug.levels, [DebugLevel::Error]);
         assert_eq!(debug.sources, [DebugSource::Interface]);
+        assert_eq!(debug.editor, Some(3));
         let Query(all) = Query::<DebugFilter>::try_from_uri(&read("/d?before=9")).unwrap();
-        assert!(all.levels.is_empty() && all.sources.is_empty());
+        assert!(all.levels.is_empty() && all.sources.is_empty() && all.editor.is_none());
         // An unknown name refuses the request.
         assert!(Query::<HistoryFilter>::try_from_uri(&read("/h?action=explorer")).is_err());
     }
 
     #[test]
     fn announces_a_cleared_history_to_its_owner_only() {
-        let cleared = ConsoleEvent::HistoryCleared { user_id: 1 };
+        let cleared = ConsoleEvent::HistoryCleared {
+            user_id: 1,
+            editor_id: Some(3),
+        };
         assert!(cleared.to_sse(1).is_some());
         assert!(cleared.to_sse(2).is_none());
-        assert!(ConsoleEvent::DebugCleared.to_sse(2).is_some());
+        assert!(
+            ConsoleEvent::DebugCleared { editor_id: None }
+                .to_sse(2)
+                .is_some()
+        );
     }
 
     #[test]
@@ -534,13 +593,21 @@ mod tests {
             tracing::info!(port = 8484, "listening");
             // Under the level of the debug log: ignored.
             tracing::debug!("detail");
+            drop(_run);
+            // The session of an editor gives it its queries and its lines.
+            let _editor = editor_span(owner, "Local", 7).entered();
+            sql_log::record(&Sent {
+                sql: "SELECT 7",
+                ..Sent::default()
+            });
+            tracing::warn!("slow");
         });
 
         let mut batch = Vec::new();
         while let Ok(traced) = receiver.try_recv() {
             batch.push(traced);
         }
-        assert_eq!(batch.len(), 3);
+        assert_eq!(batch.len(), 5);
         let events = save(&db, local, &batch).unwrap();
         let entries: Vec<&QueryEntry> = events
             .iter()
@@ -559,17 +626,21 @@ mod tests {
         assert_eq!((run.duration_us, run.transfer_us), (1500, 300));
         assert!(run.returns_rows && run.truncated && run.row_count == 2);
         assert_eq!(run.error, "lost");
+        assert_eq!((run.editor_id, entries[2].editor_id), (0, 7));
+        assert_eq!(entries[2].sql, "SELECT 7");
         // The user of the span owns the queries, not the local user.
         assert!(matches!(events[0], ConsoleEvent::Query { user_id, .. } if user_id == owner));
         assert_eq!(
             history::list(&db, owner, &HistoryFilter::default(), None, 10)
                 .unwrap()
                 .len(),
-            2
+            3
         );
         let lines = debug::list(&db, &DebugFilter::default(), None, 10).unwrap();
-        assert_eq!(lines.len(), 1);
+        assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].message, "listening port=8484");
         assert_eq!(lines[0].level, DebugLevel::Info);
+        assert_eq!((lines[0].editor_id, lines[1].editor_id), (0, 7));
+        assert_eq!(lines[1].message, "slow");
     }
 }

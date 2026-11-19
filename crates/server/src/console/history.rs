@@ -97,6 +97,9 @@ impl Action {
 pub struct QueryEntry {
     /// Number of the query in the history.
     pub id: i64,
+    /// Editor whose session sent the query, 0 outside an editor (navigator,
+    /// export, connection test).
+    pub editor_id: i64,
     /// Instant the query was sent, in UTC, in ISO 8601 format.
     pub started_at: String,
     /// What sent the query.
@@ -133,6 +136,8 @@ pub struct HistoryFilter {
     /// Actions kept; all of them when empty.
     #[serde(default, rename = "action")]
     pub actions: Vec<Action>,
+    /// Editor whose queries are kept; all of them when absent.
+    pub editor: Option<i64>,
 }
 
 /// Query traced by the connector, with its context, before it is saved.
@@ -140,6 +145,8 @@ pub struct HistoryFilter {
 pub struct TracedQuery {
     /// User who sent it, `None` outside a user's span.
     pub user_id: Option<i64>,
+    /// Editor whose session sent it, 0 outside an editor's span.
+    pub editor_id: i64,
     /// Instant it was sent, in milliseconds since the Unix epoch.
     pub started_at_ms: u64,
     /// What sent it, `None` outside an action's span.
@@ -206,11 +213,14 @@ impl Visit for QueryFields {
     }
 }
 
-/// Context carried by a span of the history: user, connection, action.
+/// Context carried by a span of the history: user, editor, connection,
+/// action.
 #[derive(Debug, Default, Clone)]
 struct SpanContext {
     /// User of the queries.
     user_id: Option<i64>,
+    /// Editor whose session sends them.
+    editor_id: Option<i64>,
     /// Name of their connection.
     connection_name: Option<String>,
     /// What sends them.
@@ -221,6 +231,7 @@ impl SpanContext {
     /// Completes this context with what it lacks, from an enclosing span.
     fn inherit(&mut self, outer: &Self) {
         self.user_id = self.user_id.or(outer.user_id);
+        self.editor_id = self.editor_id.or(outer.editor_id);
         self.action = self.action.or(outer.action);
         if self.connection_name.is_none() {
             self.connection_name.clone_from(&outer.connection_name);
@@ -238,8 +249,10 @@ impl Visit for SpanContext {
     }
 
     fn record_i64(&mut self, field: &Field, value: i64) {
-        if field.name() == "user_id" {
-            self.user_id = Some(value);
+        match field.name() {
+            "user_id" => self.user_id = Some(value),
+            "editor_id" => self.editor_id = Some(value),
+            _ => {}
         }
     }
 
@@ -252,6 +265,20 @@ impl Visit for SpanContext {
 /// `connection_name`.
 pub fn connection_span(user_id: i64, connection_name: &str) -> Span {
     tracing::debug_span!(target: TARGET, "sql", user_id, connection = connection_name)
+}
+
+/// Span of the queries sent for user `user_id` by the session of editor
+/// `editor_id`, on the connection named `connection_name`: the console of
+/// the editor shows them, with the lines of the log written under it
+/// (`debug.rs`).
+pub fn editor_span(user_id: i64, connection_name: &str, editor_id: i64) -> Span {
+    tracing::debug_span!(
+        target: TARGET,
+        "sql",
+        user_id,
+        connection = connection_name,
+        editor_id
+    )
 }
 
 /// Span of the queries sent by `action`, within a connection's span.
@@ -301,6 +328,7 @@ where
             .map_or(0, |since| u64::try_from(since.as_millis()).unwrap_or(0));
         let _ = self.sender.send(Traced::Query(TracedQuery {
             user_id: span_context.user_id,
+            editor_id: span_context.editor_id.unwrap_or(0),
             started_at_ms: started,
             action: span_context.action,
             connection_name: span_context.connection_name.unwrap_or_default(),
@@ -311,7 +339,7 @@ where
 
 /// Columns of `query_history` read into a `QueryEntry`, in order.
 const COLUMNS: &str = "id, started_at, action, connection_name, sql, duration_us, transfer_us,
-     returns_rows, row_count, affected_rows, truncated, error, interrupted";
+     returns_rows, row_count, affected_rows, truncated, error, interrupted, editor_id";
 
 /// Saves a traced query in the history of `user_id` (that of the query when
 /// it carries one), and returns it as the interface receives it. A query
@@ -326,9 +354,9 @@ pub fn insert(
         &format!(
             "INSERT INTO query_history (user_id, started_at, action, connection_name, sql,
                  duration_us, transfer_us, returns_rows, row_count, affected_rows, truncated, error,
-                 interrupted)
+                 interrupted, editor_id)
              VALUES (?1, strftime('%Y-%m-%dT%H:%M:%fZ', ?2 / 1000.0, 'unixepoch'), ?3, ?4, ?5,
-                 ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+                 ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
              RETURNING {COLUMNS}"
         ),
         params![
@@ -345,6 +373,7 @@ pub fn insert(
             fields.truncated,
             fields.error,
             fields.interrupted,
+            query.editor_id,
         ],
         entry_of,
     )
@@ -364,13 +393,15 @@ pub fn list(
         "SELECT {COLUMNS} FROM query_history
          WHERE user_id = ?1 AND id < ?2
              AND (?3 = '[]' OR action IN (SELECT value FROM json_each(?3)))
-         ORDER BY id DESC LIMIT ?4"
+             AND (?4 IS NULL OR editor_id = ?4)
+         ORDER BY id DESC LIMIT ?5"
     ))?;
     let rows = statement.query_map(
         params![
             user_id,
             before.unwrap_or(i64::MAX),
             super::json_array(&filter.actions)?,
+            filter.editor,
             limit
         ],
         entry_of,
@@ -380,10 +411,13 @@ pub fn list(
     Ok(entries)
 }
 
-/// Deletes the whole history of `user_id`. Returns the number of queries
-/// deleted.
-pub fn clear(db: &Connection, user_id: i64) -> Result<usize, rusqlite::Error> {
-    db.execute("DELETE FROM query_history WHERE user_id = ?1", [user_id])
+/// Deletes the history of `user_id`: the queries of editor `editor`, all of
+/// them when `None`. Returns the number of queries deleted.
+pub fn clear(db: &Connection, user_id: i64, editor: Option<i64>) -> Result<usize, rusqlite::Error> {
+    db.execute(
+        "DELETE FROM query_history WHERE user_id = ?1 AND (?2 IS NULL OR editor_id = ?2)",
+        params![user_id, editor],
+    )
 }
 
 /// Counter as stored by SQLite, whose integers are signed: saturated at
@@ -409,6 +443,7 @@ fn entry_of(row: &rusqlite::Row<'_>) -> Result<QueryEntry, rusqlite::Error> {
         truncated: row.get(10)?,
         error: row.get(11)?,
         interrupted: row.get(12)?,
+        editor_id: row.get(13)?,
     })
 }
 
@@ -484,7 +519,11 @@ mod tests {
             insert(&db, user_id, &query).unwrap();
         }
         let sqls = |actions: Vec<Action>, before: Option<i64>, limit: u32| {
-            list(&db, user_id, &HistoryFilter { actions }, before, limit)
+            let filter = HistoryFilter {
+                actions,
+                ..HistoryFilter::default()
+            };
+            list(&db, user_id, &filter, before, limit)
                 .unwrap()
                 .into_iter()
                 .map(|e| e.sql)
@@ -501,6 +540,33 @@ mod tests {
         assert_eq!(sqls(vec![Action::Run], Some(4), 1), ["SELECT 1"]);
         assert!(sqls(vec![Action::Probe], None, 10).is_empty());
         assert_eq!(sqls(Vec::new(), None, 10).len(), 4);
+    }
+
+    #[test]
+    fn lists_and_clears_the_queries_of_an_editor() {
+        let db = store::open_in_memory();
+        let user_id = store::ensure_user(&db, "a@example.com").unwrap();
+        for (sql, editor_id) in [("SELECT 1", 3), ("SHOW TABLES", 0), ("SELECT 2", 4)] {
+            let mut query = traced(sql, 1_792_500_000_000);
+            query.editor_id = editor_id;
+            assert_eq!(insert(&db, user_id, &query).unwrap().editor_id, editor_id);
+        }
+        let sqls = |editor: Option<i64>| {
+            let filter = HistoryFilter {
+                editor,
+                ..HistoryFilter::default()
+            };
+            list(&db, user_id, &filter, None, 10)
+                .unwrap()
+                .into_iter()
+                .map(|e| e.sql)
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(sqls(Some(3)), ["SELECT 1"]);
+        assert_eq!(sqls(None).len(), 3);
+        assert_eq!(clear(&db, user_id, Some(3)).unwrap(), 1);
+        assert_eq!(sqls(None), ["SHOW TABLES", "SELECT 2"]);
     }
 
     #[test]
