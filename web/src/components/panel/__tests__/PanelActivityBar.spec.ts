@@ -2,7 +2,6 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { useConsoleStore } from '@/stores/console'
 import { useEditorLayoutsStore } from '@/stores/editorLayouts'
 import { useExplorerStore } from '@/stores/explorer'
 import { useNavigatorStore } from '@/stores/navigator'
@@ -56,7 +55,7 @@ describe('PanelActivityBar', () => {
     await wrapper.find('button[aria-label="Explorateur de données"]').trigger('click')
     expect(useExplorerStore().layoutOf(1).open).toBe(true)
     await wrapper.find('button[aria-label="Console"]').trigger('click')
-    expect(useConsoleStore().open).toBe(false)
+    expect(useEditorLayoutsStore().layoutOf(1).consoleFolded).toBe(true)
     wrapper.unmount()
   })
 
@@ -69,11 +68,11 @@ describe('PanelActivityBar', () => {
     chord('p')
     expect(useEditorLayoutsStore().layoutOf(1).pivotFolded).toBe(false)
     chord('c')
-    expect(useConsoleStore().open).toBe(false)
+    expect(useEditorLayoutsStore().layoutOf(1).consoleFolded).toBe(true)
 
     await wrapper.setProps({ active: false })
     chord('c')
-    expect(useConsoleStore().open).toBe(false)
+    expect(useEditorLayoutsStore().layoutOf(1).consoleFolded).toBe(true)
     wrapper.unmount()
   })
 
@@ -82,16 +81,16 @@ describe('PanelActivityBar', () => {
     const view = useEditorLayoutsStore().layoutOf(1)
     view.results = 300
     view.pivot = 200
+    view.console = 400
     useNavigatorStore().layoutOf(1).width = 500
     useExplorerStore().layoutOf(1).width = 600
-    useConsoleStore().height = 400
 
     await wrapper.find('button[aria-label="Répartir les volets"]').trigger('click')
     expect(view.results).toBeNull()
     expect(view.pivot).toBeNull()
     expect(useNavigatorStore().layoutOf(1).width).toBeNull()
     expect(useExplorerStore().layoutOf(1).width).toBeNull()
-    expect(useConsoleStore().height).toBeNull()
+    expect(view.console).toBeNull()
     wrapper.unmount()
   })
 })

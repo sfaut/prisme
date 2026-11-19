@@ -13,8 +13,8 @@
   in its tooltip; the bar of the active editor alone follows them.
 
   The layouts come from the stores of the panels: `navigator`,
-  `editorLayouts` (the view's panels, kept for this editor even while it
-  has no connection), `explorer` and `console`.
+  `editorLayouts` (the view's panels and the console, kept for this editor
+  even while it has no connection) and `explorer`.
 -->
 <script setup lang="ts">
 import {
@@ -28,7 +28,6 @@ import {
 } from '@lucide/vue'
 import { type Component, computed, watchEffect } from 'vue'
 
-import { useConsoleStore } from '@/stores/console'
 import { useEditorLayoutsStore } from '@/stores/editorLayouts'
 import { useExplorerStore } from '@/stores/explorer'
 import { useNavigatorStore } from '@/stores/navigator'
@@ -50,7 +49,6 @@ const props = defineProps<{
 const navigator = useNavigatorStore()
 const layouts = useEditorLayoutsStore()
 const explorer = useExplorerStore()
-const consoleStore = useConsoleStore()
 
 /**
  * Button of a panel.
@@ -140,8 +138,8 @@ const groups = computed<PanelButton[][]>(() => {
         named: 'la console',
         icon: SquareTerminal,
         key: 'c',
-        open: consoleStore.open,
-        toggle: () => (consoleStore.open = !consoleStore.open),
+        open: !view.consoleFolded,
+        toggle: () => (view.consoleFolded = !view.consoleFolded),
       },
     ],
   ]
@@ -165,9 +163,9 @@ function distribute(): void {
   const view = layouts.layoutOf(props.editorId)
   view.results = null
   view.pivot = null
+  view.console = null
   navigator.layoutOf(props.editorId).width = null
   explorer.layoutOf(props.editorId).width = null
-  consoleStore.height = null
 }
 
 /**

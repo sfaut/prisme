@@ -11,6 +11,10 @@
  * they start closed. The highest open panel fills the height the others
  * leave; the others keep the height they were given, or share the room with
  * it.
+ *
+ * The console of the editor, at the bottom of its tab under the side panels
+ * and the view, keeps its height and its state here too: open by default,
+ * at the height of the theme.
  */
 import { forgetStoredLayout } from '@/components/split/storedLayout'
 
@@ -27,6 +31,8 @@ export const VIEW_PANELS: readonly ViewPanel[] = ['editor', 'results', 'pivot']
 /**
  * Layout of the view: heights in CSS pixels (`null`: a share of the room),
  * and closed panels. The editor has no height of its own: open, it fills.
+ * Then the console: its height in CSS pixels (`null`: that of the theme),
+ * and whether it is closed.
  */
 export interface EditorLayout {
   [name: string]: number | boolean | null
@@ -35,11 +41,13 @@ export interface EditorLayout {
   editorFolded: boolean
   resultsFolded: boolean
   pivotFolded: boolean
+  console: number | null
+  consoleFolded: boolean
 }
 
 /**
  * Layout of a new editor: the editor alone, the results and the Pivoteur
- * closed.
+ * closed; the console open, at the height of the theme.
  */
 export function defaultEditorLayout(): EditorLayout {
   return {
@@ -48,6 +56,8 @@ export function defaultEditorLayout(): EditorLayout {
     editorFolded: false,
     resultsFolded: true,
     pivotFolded: true,
+    console: null,
+    consoleFolded: false,
   }
 }
 

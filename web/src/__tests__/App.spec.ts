@@ -80,7 +80,7 @@ describe('App', () => {
     )
   })
 
-  it('puts the editors’ tabs above the side panels, and the console under them', async () => {
+  it('puts the editors’ tabs above the side panels, and the editor’s console under them', async () => {
     const wrapper = mount(App)
     const frame = wrapper.find('main')
     await vi.waitFor(() => expect(frame.find('[id^="navigator-panel-"]').exists()).toBe(true))
@@ -88,8 +88,10 @@ describe('App', () => {
     const navigator = frame.find('[id^="navigator-panel-"]').element
     expect(tabs.compareDocumentPosition(navigator) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(frame.find('[id^="explorer-panel-"]').exists()).toBe(true)
-    expect(frame.find('#console-panel').exists()).toBe(false)
-    expect(wrapper.find('#console-panel').exists()).toBe(true)
+    const consolePanel = frame.find('[id^="console-panel-"]').element
+    expect(
+      navigator.compareDocumentPosition(consolePanel) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy()
     wrapper.unmount()
   })
 
@@ -128,7 +130,7 @@ describe('App', () => {
     const wrapper = mount(App)
     await vi.waitFor(() => expect(wrapper.text()).toContain('Aucune requête envoyée'))
     // The button of the filters: the only one pressed or released in the console.
-    const toggle = () => wrapper.find('#console-panel [aria-pressed]')
+    const toggle = () => wrapper.find('[id^="console-panel-"] [aria-pressed]')
     expect(toggle().attributes('aria-label')).toBe('Filtrer')
     expect(wrapper.find('[aria-label="Action"]').exists()).toBe(false)
 
@@ -154,18 +156,22 @@ describe('App', () => {
     const wrapper = mount(App)
     await vi.waitFor(() => expect(wrapper.text()).toContain('Aucune requête envoyée'))
     // The button that clears the tab shown: nothing to clear in an empty list.
-    expect(wrapper.find('[aria-label="Effacer l’historique"]').attributes('disabled')).toBeDefined()
+    expect(
+      wrapper.find('[aria-label="Effacer l’historique de l’éditeur"]').attributes('disabled'),
+    ).toBeDefined()
     const debugTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text() === 'Debug')!
     await debugTab.trigger('mousedown', { button: 0 })
     await vi.waitFor(() => expect(wrapper.text()).toContain('Aucun message pour le moment'))
-    expect(wrapper.find('[aria-label="Effacer le debug"]').exists()).toBe(true)
+    expect(wrapper.find('[aria-label="Effacer le debug de l’éditeur"]').exists()).toBe(true)
     expect(window.localStorage.getItem('prisme.console.tab')).toBe('debug')
     const button = wrapper.find('nav button[aria-label="Console"]')
     expect(button.attributes('aria-pressed')).toBe('true')
     await button.trigger('click')
     expect(wrapper.text()).not.toContain('Aucune requête envoyée')
-    expect(wrapper.find('[aria-controls="console-panel"]').exists()).toBe(false)
-    expect(window.localStorage.getItem('prisme.console.open')).toBe('false')
+    expect(wrapper.find('[aria-controls^="console-panel-"]').exists()).toBe(false)
+    expect(JSON.parse(window.localStorage.getItem('prisme.editor.layout.1')!).consoleFolded).toBe(
+      true,
+    )
     await wrapper.find('nav button[aria-label="Console"]').trigger('click')
     await vi.waitFor(() => expect(wrapper.text()).toContain('Aucun message pour le moment'))
     wrapper.unmount()

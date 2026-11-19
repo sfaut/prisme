@@ -114,7 +114,7 @@ The screen has these areas:
 - **Résultat** (Result), under the editor, closed at first: one result tab per query.
 - **Pivoteur**, under the results, closed at first: the pivot table of the result shown (see [Pivoteur](#pivoteur)).
 - **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).
-- **Console**, at the bottom, across the whole width: the history of the queries sent to the servers, and the debug log (see [Console](#console)).
+- **Console**, at the bottom of the tab, under the side panels: the history of the queries sent to the servers by the editor, and its debug log (see [Console](#console)).
 
 On the left of each editor's tab, a dark **activity bar** opens and closes its panels, one button each: the object navigator; the editor, the results and the Pivoteur; the data explorer and the console. A lit button, marked in blue on the edge of the bar, is an open panel; its tooltip says what a click does. A closed panel leaves no trace: its button is the way back. Dragging the line of a panel below its smallest size closes it too. At the bottom of the bar, **Répartir les volets** (Share the panels) gives the open panels of the editor equal heights, and the side panels and the console their default size.
 
@@ -130,7 +130,7 @@ Each button has its shortcut: **Ctrl+K** (**Cmd+K** on macOS), then a key, as in
 | Console | Ctrl+K then C |
 | Share the panels again | Ctrl+K then = |
 
-The side panels go from the editor tabs down to the console, common to all the editors. The object navigator and the console are open by default, the data explorer closed; your choice is remembered, for each editor for the object navigator and the data explorer.
+The side panels go from the editor tabs down to the console, and the activity bar down to the bottom of the tab. The object navigator and the console are open by default, the data explorer closed; your choice is remembered for each editor, and a new editor starts from these defaults.
 
 The version of Prisme shows next to its name, at the top left.
 
@@ -425,7 +425,7 @@ The configuration belongs to its result tab, and is saved with it: a page reload
 
 ### Console
 
-The console, under the editors, shows what Prisme does besides the results. It opens and closes from the activity bar. Drag its top edge to change its height; dragged below its smallest height, it closes.
+The console, at the bottom of each editor's tab, shows what Prisme does besides the results, for this editor: the queries its session sends, and the messages written for it. Tick **Tous les éditeurs** (All the editors) to see those of every editor instead, with the queries Prisme sends outside the editors (object navigator, connection test, full export) and the rest of its messages; the choice holds for every console. The console opens and closes from the activity bar. Drag its top edge to change its height; dragged below its smallest height, it closes. Whether it is open and its height are remembered for each editor; a new editor opens it at its default height.
 
 The **Historique** (History) tab lists every query sent to your servers, the oldest at the top: those of your editors, and those Prisme sends itself (opening of a session, object navigator, connection test, interruption). New queries show as they are sent. Passwords of the server's own syntaxes are masked (`'***'`): `IDENTIFIED BY`, `PASSWORD('…')`, `SET PASSWORD`, `MASTER_PASSWORD`, `OPTIONS (PASSWORD …)` of `CREATE SERVER`…; the data of your databases stay as written, and the text of your editors keeps everything as typed. Each line gives:
 
@@ -441,7 +441,7 @@ The **Historique** (History) tab lists every query sent to your servers, the old
 
 The **Debug** tab lists the messages of Prisme: those its terminal shows (the same level, see [Command-line options](#command-line-options)), and the notifications of the interface, such as **Sélection copiée** (Selection copied). Each line gives its number, time, level (**Erreur**, **Avertissement**, **Info**, **Debug**, **Trace**), source (**Serveur** or **Interface**; the module of the server shows in its tooltip) and message.
 
-Both tabs are kept in the internal database, 30 days by default: the **Rétention historique** and **Rétention debug** fields of the settings change it, from 1 to 3,650 days. Older lines are deleted when Prisme starts, then every hour. The interface shows their last 2,000 lines; scrolling up to the top of the list reads the older ones. The button at the right of the tabs clears the list of the tab shown: **Effacer l’historique** (Clear the history) deletes your history, **Effacer le debug** (Clear the debug log) the whole debug log.
+Both tabs are kept in the internal database, 30 days by default: the **Rétention historique** and **Rétention debug** fields of the settings change it, from 1 to 3,650 days. Older lines are deleted when Prisme starts, then every hour. The interface shows their last 2,000 lines; scrolling up to the top of the list reads the older ones. The button at the right of the tabs clears the list of the tab shown, as it is shown: **Effacer l’historique de l’éditeur** (Clear the history of the editor) and **Effacer le debug de l’éditeur** (Clear the debug log of the editor) delete the lines of the editor; with **Tous les éditeurs** ticked, **Effacer l’historique de tous les éditeurs** deletes your whole history, **Effacer le debug de tous les éditeurs** the whole debug log.
 
 ### Top bar
 

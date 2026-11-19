@@ -4,30 +4,33 @@
   across the whole width, then three columns: on the left, the object
   navigator; in the middle, the view of the active editor (`EditorView`):
   its connection, its session and its result tabs; on the right, the data
-  explorer (`ExplorerPanel`). Under the frame, across the whole width, the
-  console (`ConsolePanel`), common to all the editors. The columns share the
-  width, and the frame and the console the height, in splitters of Prisme
+  explorer (`ExplorerPanel`). Under the three columns, as wide as them, the
+  console of the editor (`ConsolePanel`). The columns share the width, and
+  the columns and the console the height, in splitters of Prisme
   (`split/`): dragging the line between two panels moves it, to the pixel,
   within their bounds (the editors keep `--editors-min-width` and
   `--editors-min-height`, where the line stops), and the sizes are kept in
-  the browser (`navigator`, `console` and `explorer` stores). On the left of
-  each editor's tab, its activity bar (`PanelActivityBar`) opens and closes
+  the browser (`navigator`, `editorLayouts` and `explorer` stores). On the
+  left of each editor's tab, down to its bottom, its activity bar (`PanelActivityBar`) opens and closes
   the panels: a closed panel takes no room, and its line goes with it; a
   drag of a line below the smallest size of its panel closes it too. The
   object navigator and the console are open by default (`navigator` and
-  `console` stores), the data explorer closed. Layout in Tailwind
+  `editorLayouts` stores), the data explorer closed. Layout in Tailwind
   classes.
 
-  Each editor has its own object navigator and data explorer, in its tab.
+  Each editor has its own object navigator, data explorer and console, in
+  its tab.
   The navigator acts on its editor: the chosen source becomes its
   connection, an opened table or a chosen database (`USE`) runs there, and
   "Déconnecter" closes its session, which any of these actions on its source
   opens again. The explorer shows the values selected in the grid of its
-  editor. Both keep their layout (open or folded, their width) for their
+  editor. Both keep their layout (open or closed, their width) for their
   editor, and the navigator its tree (`navigator` and `explorer` stores).
   The tabs of all the editors stay mounted, navigator, view and explorer:
   each view keeps its session (and its transactions) open, even when
-  another editor is displayed. Closing a session rolls its open transaction
+  another editor is displayed. The console of the active editor alone is
+  mounted: the lists of the console are those of the editor on screen
+  (`console` store). Closing a session rolls its open transaction
   back: while one is open, "Déconnecter", closing the editor and changing
   its source ask for a confirmation first (changing or deleting the
   connection is confirmed in its own window).
@@ -39,12 +42,13 @@
 import { errorMessage } from '@/api/errorMessage'
 import { Database } from '@lucide/vue'
 import { TabsContent, TabsRoot } from 'reka-ui'
-import { computed, nextTick, onMounted, ref, shallowReactive, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, shallowReactive, watch } from 'vue'
 
 import type { SessionStatus } from './api/querySession'
 
 import { useConnectionsStore } from './stores/connections'
 import { useConsoleStore } from './stores/console'
+import { useEditorLayoutsStore } from './stores/editorLayouts'
 import { useExplorerStore } from './stores/explorer'
 import { type EditorEntry, useEditorsStore } from './stores/editors'
 import { useNavigatorStore } from './stores/navigator'
@@ -69,7 +73,20 @@ const connections = useConnectionsStore()
 const editors = useEditorsStore()
 const explorer = useExplorerStore()
 const navigatorStore = useNavigatorStore()
+const layouts = useEditorLayoutsStore()
 const consoleStore = useConsoleStore()
+
+// The lists of the console are those of the active editor, followed while
+// its console is open, the only one mounted.
+watch(
+  () => {
+    const id = editors.activeId
+    return id !== null && !layouts.layoutOf(id).consoleFolded ? id : null
+  },
+  (id) => consoleStore.follow(id),
+  { immediate: true },
+)
+onUnmounted(() => consoleStore.follow(null))
 
 /**
  * Error loading or saving the editors, `null` if none.
@@ -439,25 +456,30 @@ function selectSource(editorId: number, connectionId: number): void {
       Each panel of the splitters has an id of its own: the line that
       resizes it names it (`controls`, `aria-controls`).
     -->
-    <split-group direction="vertical" class="min-h-0 flex-1">
-      <split-panel id="tabs-panel" fill min-size="var(--editors-min-height)" class="flex">
-        <tabs-root
-          v-model="activeTab"
-          :unmount-on-hide="false"
-          as="main"
-          class="flex min-h-0 min-w-0 flex-1 flex-col"
-        >
-          <div v-if="editorsError" class="flex flex-col px-4 pt-3">
-            <ui-alert tone="error" :title="editorsError" @close="editorsError = null" />
-          </div>
-          <editor-tab-bar @close="closeEditor" />
-          <tabs-content
-            v-for="editor in editors.editors"
-            :key="editor.id"
-            :value="editor.id"
-            class="flex min-h-0 min-w-0 flex-1"
+    <tabs-root
+      v-model="activeTab"
+      :unmount-on-hide="false"
+      as="main"
+      class="flex min-h-0 min-w-0 flex-1 flex-col"
+    >
+      <div v-if="editorsError" class="flex flex-col px-4 pt-3">
+        <ui-alert tone="error" :title="editorsError" @close="editorsError = null" />
+      </div>
+      <editor-tab-bar @close="closeEditor" />
+      <tabs-content
+        v-for="editor in editors.editors"
+        :key="editor.id"
+        :value="editor.id"
+        class="flex min-h-0 min-w-0 flex-1"
+      >
+        <panel-activity-bar :editor-id="editor.id" :active="editor.id === editors.activeId" />
+        <split-group direction="vertical" class="min-w-0 flex-1">
+          <split-panel
+            :id="`columns-panel-${editor.id}`"
+            fill
+            min-size="var(--editors-min-height)"
+            class="flex"
           >
-            <panel-activity-bar :editor-id="editor.id" :active="editor.id === editors.activeId" />
             <split-group direction="horizontal" class="min-w-0 flex-1">
               <split-panel
                 :id="`navigator-panel-${editor.id}`"
@@ -574,33 +596,36 @@ function selectSource(editorId: number, connectionId: number): void {
                 </aside>
               </split-panel>
             </split-group>
-          </tabs-content>
-        </tabs-root>
-      </split-panel>
-      <split-handle
-        v-if="consoleStore.open"
-        controls="console-panel"
-        :grip="false"
-        tooltip="Glisser pour redimensionner la console, en deçà de sa hauteur minimale pour la fermer"
-      />
-      <split-panel
-        id="console-panel"
-        v-model:size="consoleStore.height"
-        :folded="!consoleStore.open"
-        default-size="var(--console-height)"
-        min-size="var(--console-min-height)"
-        folded-size="0px"
-        class="flex"
-        @update:folded="(folded: boolean) => (consoleStore.open = !folded)"
-      >
-        <section
-          v-if="consoleStore.open"
-          class="flex min-h-0 min-w-0 flex-1 flex-col px-4 pt-1 pb-4"
-        >
-          <console-panel />
-        </section>
-      </split-panel>
-    </split-group>
+          </split-panel>
+          <split-handle
+            v-if="!layouts.layoutOf(editor.id).consoleFolded"
+            :controls="`console-panel-${editor.id}`"
+            :grip="false"
+            tooltip="Glisser pour redimensionner la console, en deçà de sa hauteur minimale pour la fermer"
+          />
+          <split-panel
+            :id="`console-panel-${editor.id}`"
+            :size="layouts.layoutOf(editor.id).console"
+            :folded="layouts.layoutOf(editor.id).consoleFolded"
+            default-size="var(--console-height)"
+            min-size="var(--console-min-height)"
+            folded-size="0px"
+            class="flex"
+            @update:size="(size: number | null) => (layouts.layoutOf(editor.id).console = size)"
+            @update:folded="
+              (folded: boolean) => (layouts.layoutOf(editor.id).consoleFolded = folded)
+            "
+          >
+            <section
+              v-if="!layouts.layoutOf(editor.id).consoleFolded && editor.id === editors.activeId"
+              class="flex min-h-0 min-w-0 flex-1 flex-col px-4 pt-1 pb-4"
+            >
+              <console-panel />
+            </section>
+          </split-panel>
+        </split-group>
+      </tabs-content>
+    </tabs-root>
   </div>
   <ui-toaster />
   <ui-dialog

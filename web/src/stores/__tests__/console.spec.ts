@@ -2,32 +2,48 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
-import type { HistoryFilter } from '@/api/console'
+import type { ConsoleHandlers, HistoryFilter } from '@/api/console'
 import type { Action } from '@/api/generated/Action'
 import type { QueryEntry } from '@/api/generated/QueryEntry'
 
 import { MAX_ENTRIES, matches, useConsoleStore } from '../console'
 
 const listHistory =
-  vi.fn<(filter: HistoryFilter, before?: number, limit?: number) => Promise<QueryEntry[]>>()
-const clearHistory = vi.fn<() => Promise<void>>()
+  vi.fn<
+    (
+      filter: HistoryFilter,
+      editor: number | null,
+      before?: number,
+      limit?: number,
+    ) => Promise<QueryEntry[]>
+  >()
+const clearHistory = vi.fn<(editor: number | null) => Promise<void>>()
+
+/**
+ * Receivers of the console's events, while the store follows them.
+ */
+let handlers: ConsoleHandlers | null = null
 
 vi.mock('@/api/console', () => ({
-  listHistory: (filter: HistoryFilter, before?: number, limit?: number) =>
-    listHistory({ action: [...filter.action] }, before, limit),
+  listHistory: (filter: HistoryFilter, editor: number | null, before?: number, limit?: number) =>
+    listHistory({ action: [...filter.action] }, editor, before, limit),
   listDebug: async () => [],
-  clearHistory: () => clearHistory(),
+  clearHistory: (editor: number | null) => clearHistory(editor),
   clearDebug: async () => {},
-  followConsole: () => () => {},
+  followConsole: (given: ConsoleHandlers) => {
+    handlers = given
+    return () => (handlers = null)
+  },
 }))
 
 /**
- * Query of the history numbered `id`, sent by `action`.
+ * Query of the history numbered `id`, sent by `action` from editor
+ * `editorId`.
  */
-function entry(id: number, action: Action = 'run'): QueryEntry {
+function entry(id: number, action: Action = 'run', editorId = 0): QueryEntry {
   return {
     id,
-    editor_id: 0,
+    editor_id: editorId,
     started_at: '2026-10-20T12:40:00.000Z',
     action,
     connection_name: '',
@@ -65,7 +81,7 @@ describe('console store', () => {
     store.add(entry(10))
     listHistory.mockResolvedValueOnce([entry(8), entry(9)])
     await store.loadOlder()
-    expect(listHistory).toHaveBeenCalledWith({ action: [] }, 10, 500)
+    expect(listHistory).toHaveBeenCalledWith({ action: [] }, null, 10, 500)
     expect(store.entries.map((e) => e.id)).toEqual([8, 9, 10])
   })
 
@@ -101,7 +117,7 @@ describe('console store', () => {
     store.historyFilter.action = ['navigator']
     await nextTick()
     await vi.waitFor(() => expect(store.history.entries.map((e) => e.id)).toEqual([2]))
-    expect(listHistory).toHaveBeenCalledWith({ action: ['navigator'] }, undefined, 500)
+    expect(listHistory).toHaveBeenCalledWith({ action: ['navigator'] }, null, undefined, 500)
     expect(store.history.refilters).toBe(1)
 
     store.history.add(entry(3, 'run'))
@@ -132,6 +148,50 @@ describe('console store', () => {
     answer([entry(2, 'probe')])
     await vi.waitFor(() => expect(listHistory).toHaveBeenCalledTimes(2))
     expect(store.history.entries.map((e) => e.id)).toEqual([2])
+  })
+
+  it('reads the lists of the editor on screen, or those of all the editors', async () => {
+    const store = useConsoleStore()
+    listHistory.mockResolvedValue([])
+    store.follow(3)
+    expect(listHistory).toHaveBeenLastCalledWith({ action: [] }, 3, undefined, 500)
+    store.history.add(entry(1, 'run', 4))
+    store.history.add(entry(2, 'run', 3))
+    expect(store.history.entries.map((e) => e.id)).toEqual([2])
+
+    store.allEditors = true
+    await nextTick()
+    expect(listHistory).toHaveBeenLastCalledWith({ action: [] }, null, undefined, 500)
+    expect(window.localStorage.getItem('prisme.console.allEditors')).toBe('true')
+    store.history.add(entry(3, 'run', 4))
+    expect(store.history.entries.map((e) => e.id)).toEqual([2, 3])
+    // Another editor on screen: the lists of all the editors stay as they are.
+    const reads = listHistory.mock.calls.length
+    store.follow(4)
+    expect(listHistory).toHaveBeenCalledTimes(reads)
+    store.follow(null)
+    expect(handlers).toBeNull()
+  })
+
+  it('clears the queries of the editor, and forgets those cleared elsewhere', async () => {
+    const store = useConsoleStore()
+    listHistory.mockResolvedValue([])
+    store.allEditors = true
+    store.follow(3)
+    store.history.add(entry(1, 'run', 3))
+    store.history.add(entry(2, 'run', 4))
+    handlers!.onHistoryCleared(4)
+    expect(store.history.entries.map((e) => e.id)).toEqual([1])
+
+    store.allEditors = false
+    await nextTick()
+    clearHistory.mockResolvedValueOnce()
+    await store.history.clear()
+    expect(clearHistory).toHaveBeenCalledWith(3)
+    store.history.add(entry(3, 'run', 3))
+    handlers!.onHistoryCleared(3)
+    expect(store.history.entries).toHaveLength(0)
+    store.follow(null)
   })
 
   it('forgets the remembered actions that no longer exist', () => {

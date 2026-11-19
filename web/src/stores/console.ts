@@ -1,12 +1,20 @@
 /**
- * Console, at the bottom of the screen: its state (open, tab shown), the
- * history of the queries sent to the target servers and the debug log,
- * read from the server then kept up to date as they grow
+ * Console, at the bottom of each editor's tab: its state (tab shown,
+ * filters), the history of the queries sent to the target servers and the
+ * debug log, read from the server then kept up to date as they grow
  * (`api/console.ts`).
  *
- * The console is open on its History tab by default; its state and its
- * height are display preferences specific to this machine, kept in the
- * browser's local storage (`prisme.console.*`). The interface keeps the last
+ * Each editor's tab has its console, open by default: whether it is open
+ * and its height belong to the layout of the editor (`editorLayouts`). The
+ * lists are those of the editor on screen (`follow`): the elements its
+ * session wrote, or, on request, those of all the editors and of Prisme
+ * itself (`allEditors`, off by default). They are followed while a console
+ * is on screen only.
+ *
+ * The console opens on its History tab by default; the tab shown, the
+ * filters and `allEditors` are common to all the consoles, display
+ * preferences specific to this machine, kept in the browser's local storage
+ * (`prisme.console.*`). The interface keeps the last
  * `MAX_ENTRIES` elements of each list; the older ones are read again on
  * request (`loadOlder`). Each list is cleared on request (`clear`), in every
  * window.
@@ -19,7 +27,7 @@
  */
 
 import { defineStore } from 'pinia'
-import { reactive, ref, shallowRef, watch } from 'vue'
+import { computed, reactive, ref, shallowRef, watch } from 'vue'
 
 import {
   type DebugFilter,
@@ -33,17 +41,12 @@ import {
 import { errorMessage } from '@/api/errorMessage'
 import { ACTION_LABELS, LEVEL_LABELS, SOURCE_LABELS } from '@/components/console/consoleFormat'
 
-import { loadFlag, loadSize, saveFlag, saveSize } from '@/utils/storedValues'
+import { loadFlag, saveFlag } from '@/utils/storedValues'
 
 /**
- * Key of the console's state in local storage.
+ * Key of the choice of all the editors' elements in local storage.
  */
-const OPEN_KEY = 'prisme.console.open'
-
-/**
- * Key of the height of the console in local storage.
- */
-const HEIGHT_KEY = 'prisme.console.height'
+const ALL_EDITORS_KEY = 'prisme.console.allEditors'
 
 /**
  * Key of the tab shown in local storage.
@@ -197,13 +200,14 @@ export interface PagedList<T> {
    */
   add: (entry: T) => void
   /**
-   * Deletes all the elements on the server, then empties the list.
+   * Deletes the elements of the list on the server, then empties it.
    */
   clear: () => Promise<void>
   /**
-   * Empties the list, whose elements were deleted on the server.
+   * Empties the list, whose elements were deleted on the server, or removes
+   * those that `deleted` keeps.
    */
-  empty: () => void
+  empty: (deleted?: (entry: T) => boolean) => void
   /**
    * Hides the failure of the last read.
    */
@@ -215,7 +219,7 @@ export interface PagedList<T> {
  *
  * @param readPage Reads a page of the elements the filter keeps: those
  *     before `before`, `limit` at most.
- * @param deleteAll Deletes all the elements on the server.
+ * @param deleteAll Deletes the elements of the list on the server.
  * @param accepts Does the filter keep this element? All of them by default.
  */
 export function pagedList<T extends { id: number }>(
@@ -276,9 +280,13 @@ export function pagedList<T extends { id: number }>(
     entries.value = next
   }
 
-  function empty(): void {
-    entries.value = []
-    hasOlder.value = false
+  function empty(deleted?: (entry: T) => boolean): void {
+    if (deleted === undefined) {
+      entries.value = []
+      hasOlder.value = false
+    } else {
+      entries.value = entries.value.filter((entry) => !deleted(entry))
+    }
   }
 
   async function clear(): Promise<void> {
@@ -312,19 +320,29 @@ export function pagedList<T extends { id: number }>(
 
 export const useConsoleStore = defineStore('console', () => {
   /**
-   * Is the console open?
+   * Editor whose console is on screen, the last one while none is.
    */
-  const open = ref(loadFlag(OPEN_KEY, true))
-
-  watch(open, (value) => saveFlag(OPEN_KEY, value))
+  const editorId = ref<number | null>(null)
 
   /**
-   * Height given by the user, in CSS pixels; `null`: the default height of
-   * the theme.
+   * Do the lists show the elements of all the editors, and those written
+   * outside an editor?
    */
-  const height = ref(loadSize(HEIGHT_KEY))
+  const allEditors = ref(loadFlag(ALL_EDITORS_KEY, false))
 
-  watch(height, (value) => saveSize(HEIGHT_KEY, value))
+  /**
+   * Editor whose elements the lists show; `null`, all of them.
+   */
+  const scope = computed(() => (allEditors.value ? null : editorId.value))
+
+  /**
+   * Is an element one of those the lists show?
+   *
+   * @param entry Element of a list.
+   */
+  function inScope(entry: { editor_id: number }): boolean {
+    return scope.value === null || entry.editor_id === scope.value
+  }
 
   /**
    * Tab shown.
@@ -364,18 +382,18 @@ export const useConsoleStore = defineStore('console', () => {
    * History of the queries.
    */
   const history = pagedList(
-    (before, limit) => listHistory(historyFilter.value, before, limit),
-    clearHistory,
-    (entry) => matches(historyFilter.value, entry),
+    (before, limit) => listHistory(historyFilter.value, scope.value, before, limit),
+    () => clearHistory(scope.value),
+    (entry) => inScope(entry) && matches(historyFilter.value, entry),
   )
 
   /**
    * Debug log.
    */
   const debug = pagedList(
-    (before, limit) => listDebug(debugFilter.value, before, limit),
-    clearDebug,
-    (entry) => matches(debugFilter.value, entry),
+    (before, limit) => listDebug(debugFilter.value, scope.value, before, limit),
+    () => clearDebug(scope.value),
+    (entry) => inScope(entry) && matches(debugFilter.value, entry),
   )
 
   watch(
@@ -397,50 +415,85 @@ export const useConsoleStore = defineStore('console', () => {
   )
 
   /**
-   * Stops following the events, `null` when not following.
+   * Stops following the console's events, `null` while they are not.
    */
   let stop: (() => void) | null = null
 
   /**
-   * Starts following the console: reads both lists, then follows their
-   * growth. No effect if already following.
+   * Shows the elements read again in both lists, those of the scope.
    */
-  function start(): void {
+  function refilterAll(): void {
+    void history.refilter()
+    void debug.refilter()
+  }
+
+  watch(allEditors, (value) => {
+    saveFlag(ALL_EDITORS_KEY, value)
     if (stop !== null) {
-      return
+      refilterAll()
     }
-    stop = followConsole({
-      onQuery: history.add,
-      onLine: debug.add,
-      onHistoryCleared: history.empty,
-      onDebugCleared: debug.empty,
-      onGap: () => {
-        void history.reload()
-        void debug.reload()
-      },
-    })
-    void history.reload()
-    void debug.reload()
+  })
+
+  /**
+   * Takes into account elements cleared on the server: all of them, or
+   * those of an editor.
+   *
+   * @param list List cleared.
+   * @param cleared Id of the editor whose elements were cleared; `null`, all
+   *     of them.
+   */
+  function forget<T extends { id: number; editor_id: number }>(
+    list: PagedList<T>,
+    cleared: number | null,
+  ): void {
+    if (cleared === null || cleared === scope.value) {
+      list.empty()
+    } else if (scope.value === null) {
+      list.empty((entry) => entry.editor_id === cleared)
+    }
   }
 
   /**
-   * Stops following the console.
+   * Shows the console of an editor: its lists are read then followed, those
+   * of this editor unless `allEditors`. `null`: no console on screen, the
+   * lists are no longer followed.
+   *
+   * @param id Id of the editor whose console is on screen, `null` if none.
    */
-  function dispose(): void {
-    stop?.()
-    stop = null
+  function follow(id: number | null): void {
+    if (id === null) {
+      stop?.()
+      stop = null
+      return
+    }
+    const moved = id !== editorId.value
+    editorId.value = id
+    if (stop === null) {
+      stop = followConsole({
+        onQuery: history.add,
+        onLine: debug.add,
+        onHistoryCleared: (cleared) => forget(history, cleared),
+        onDebugCleared: (cleared) => forget(debug, cleared),
+        onGap: () => {
+          void history.reload()
+          void debug.reload()
+        },
+      })
+      refilterAll()
+    } else if (moved && !allEditors.value) {
+      refilterAll()
+    }
   }
 
   return {
-    open,
-    height,
+    allEditors,
+    scope,
     tab,
     filtersShown,
     historyFilter,
     debugFilter,
     history,
     debug,
-    start,
-    dispose,
+    follow,
   }
 })
