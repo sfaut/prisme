@@ -7,9 +7,9 @@
   of the tabs, clears the list of the tab shown, whatever its filter;
   another one, before it, shows or hides the filters of both tabs, and
   takes the primary color while the filter of the tab shown keeps only some
-  elements, hidden or not. The console folds towards the bottom edge, where
-  it leaves a rail (`PanelRail.vue`); its height is set by dragging the line
-  above it (the splitter of `App.vue`).
+  elements, hidden or not. The console opens and closes from the activity
+  bar of the editor's tab (`PanelActivityBar.vue`); its height is set by
+  dragging the line above it (the splitter of `App.vue`).
 -->
 <script setup lang="ts">
 import { Funnel, MessageCircleOff } from '@lucide/vue'
@@ -88,7 +88,7 @@ onUnmounted(() => store.dispose())
 
 <template>
   <tabs-root v-model="store.tab" class="flex h-full min-h-0 flex-col gap-1" aria-label="Console">
-    <panel-header title="Console" side="bottom" @collapse="store.open = false">
+    <panel-header title="Console">
       <template #inline>
         <!-- Tabs of the look of the editor and result tabs (`tab-pill`). -->
         <tabs-list class="flex items-center gap-2" aria-label="Console">

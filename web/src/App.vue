@@ -10,10 +10,10 @@
   (`split/`): dragging the line between two panels moves it, to the pixel,
   within their bounds (the editors keep `--editors-min-width` and
   `--editors-min-height`, where the line stops), and the sizes are kept in
-  the browser (`navigator`, `console` and `explorer` stores). Each side panel
-  and the console fold with the button of their header (`PanelHeader`), by
-  a drag below their smallest size or by a double click on their line, and
-  leave a rail on their edge, which opens them again (`PanelRail`). The
+  the browser (`navigator`, `console` and `explorer` stores). On the left of
+  each editor's tab, its activity bar (`PanelActivityBar`) opens and closes
+  the panels: a closed panel takes no room, and its line goes with it; a
+  drag of a line below the smallest size of its panel closes it too. The
   object navigator and the console are open by default (`navigator` and
   `console` stores), the data explorer closed. Layout in Tailwind
   classes.
@@ -55,7 +55,7 @@ import ExplorerPanel from '@/components/explorer/ExplorerPanel.vue'
 import EditorTabBar from '@/components/editor/EditorTabBar.vue'
 import NavigatorPanel from '@/components/navigator/NavigatorPanel.vue'
 import EditorView from '@/components/editor/EditorView.vue'
-import PanelRail from '@/components/panel/PanelRail.vue'
+import PanelActivityBar from '@/components/panel/PanelActivityBar.vue'
 import SplitGroup from './components/split/SplitGroup.vue'
 import SplitHandle from './components/split/SplitHandle.vue'
 import SplitPanel from './components/split/SplitPanel.vue'
@@ -457,6 +457,7 @@ function selectSource(editorId: number, connectionId: number): void {
             :value="editor.id"
             class="flex min-h-0 min-w-0 flex-1"
           >
+            <panel-activity-bar :editor-id="editor.id" />
             <split-group direction="horizontal" class="min-w-0 flex-1">
               <split-panel
                 :id="`navigator-panel-${editor.id}`"
@@ -464,7 +465,7 @@ function selectSource(editorId: number, connectionId: number): void {
                 :folded="!navigatorStore.layoutOf(editor.id).open"
                 default-size="var(--navigator-width)"
                 min-size="var(--navigator-min-width)"
-                folded-size="var(--rail-size)"
+                folded-size="0px"
                 class="flex"
                 @update:size="
                   (size: number | null) => (navigatorStore.layoutOf(editor.id).width = size)
@@ -473,7 +474,7 @@ function selectSource(editorId: number, connectionId: number): void {
                   (folded: boolean) => (navigatorStore.layoutOf(editor.id).open = !folded)
                 "
               >
-                <!-- Folded, the object navigator stays mounted: its tree keeps its state. -->
+                <!-- Closed, the object navigator stays mounted: its tree keeps its state. -->
                 <aside
                   v-show="navigatorStore.layoutOf(editor.id).open"
                   class="flex min-w-0 flex-1 flex-col gap-4 px-4 pt-3 pb-4"
@@ -499,28 +500,17 @@ function selectSource(editorId: number, connectionId: number): void {
                     @disconnect="disconnect(editor.id)"
                   />
                 </aside>
-                <panel-rail
-                  v-if="!navigatorStore.layoutOf(editor.id).open"
-                  title="Navigateur d’objets"
-                  side="start"
-                  class="flex-1"
-                  @expand="navigatorStore.layoutOf(editor.id).open = true"
-                />
               </split-panel>
               <split-handle
+                v-if="navigatorStore.layoutOf(editor.id).open"
                 :controls="`navigator-panel-${editor.id}`"
-                tooltip="Glisser pour redimensionner le navigateur d’objets, double clic pour le replier ou le déplier"
-                @activate="
-                  navigatorStore.layoutOf(editor.id).open = !navigatorStore.layoutOf(editor.id).open
-                "
+                tooltip="Glisser pour redimensionner le navigateur d’objets, en deçà de sa largeur minimale pour le fermer"
               />
               <!--
                     The padding of the sides is inside the panels of the views
                     (`EditorView`), which would cut a border set against their
                     edge, as is the gap under the editors' tabs. The padding of
-                    the bottom is that of the last panel of a view, the
-                    Pivoteur: open, it ends with its own; folded, its rail
-                    closes the area.
+                    the bottom is that of the last open panel of a view.
                   -->
               <split-panel
                 :id="`view-panel-${editor.id}`"
@@ -561,9 +551,9 @@ function selectSource(editorId: number, connectionId: number): void {
                 </div>
               </split-panel>
               <split-handle
+                v-if="explorer.layoutOf(editor.id).open"
                 :controls="`explorer-panel-${editor.id}`"
-                tooltip="Glisser pour redimensionner l’explorateur de données, double clic pour le replier ou le déplier"
-                @activate="explorer.layoutOf(editor.id).open = !explorer.layoutOf(editor.id).open"
+                tooltip="Glisser pour redimensionner l’explorateur de données, en deçà de sa largeur minimale pour le fermer"
               />
               <split-panel
                 :id="`explorer-panel-${editor.id}`"
@@ -571,7 +561,7 @@ function selectSource(editorId: number, connectionId: number): void {
                 :folded="!explorer.layoutOf(editor.id).open"
                 default-size="var(--explorer-width)"
                 min-size="var(--explorer-min-width)"
-                folded-size="var(--rail-size)"
+                folded-size="0px"
                 class="flex"
                 @update:size="(size: number | null) => (explorer.layoutOf(editor.id).width = size)"
                 @update:folded="(folded: boolean) => (explorer.layoutOf(editor.id).open = !folded)"
@@ -582,23 +572,16 @@ function selectSource(editorId: number, connectionId: number): void {
                 >
                   <explorer-panel :editor-id="editor.id" />
                 </aside>
-                <panel-rail
-                  v-else
-                  title="Explorateur de données"
-                  side="end"
-                  class="flex-1"
-                  @expand="explorer.layoutOf(editor.id).open = true"
-                />
               </split-panel>
             </split-group>
           </tabs-content>
         </tabs-root>
       </split-panel>
       <split-handle
+        v-if="consoleStore.open"
         controls="console-panel"
         :grip="false"
-        tooltip="Glisser pour redimensionner la console, double clic pour la replier ou la déplier"
-        @activate="consoleStore.open = !consoleStore.open"
+        tooltip="Glisser pour redimensionner la console, en deçà de sa hauteur minimale pour la fermer"
       />
       <split-panel
         id="console-panel"
@@ -606,7 +589,7 @@ function selectSource(editorId: number, connectionId: number): void {
         :folded="!consoleStore.open"
         default-size="var(--console-height)"
         min-size="var(--console-min-height)"
-        folded-size="var(--rail-size)"
+        folded-size="0px"
         class="flex"
         @update:folded="(folded: boolean) => (consoleStore.open = !folded)"
       >
@@ -616,13 +599,6 @@ function selectSource(editorId: number, connectionId: number): void {
         >
           <console-panel />
         </section>
-        <panel-rail
-          v-else
-          title="Console"
-          side="bottom"
-          class="flex-1"
-          @expand="consoleStore.open = true"
-        />
       </split-panel>
     </split-group>
   </div>

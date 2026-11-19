@@ -111,12 +111,12 @@ The screen has these areas:
 - **Editor tabs**: several SQL editors, each one on its own connection, across the width, above the panels of the active editor.
 - **Left panel**: the object navigator, **Navigateur d’objets** (Object navigator), with your connections and their databases.
 - **Éditeur** (Editor): the SQL editor and its buttons, under its title.
-- **Résultat** (Result), under the editor, folded at first: one result tab per query.
-- **Pivoteur**, under the results, folded at first: the pivot table of the result shown (see [Pivoteur](#pivoteur)).
+- **Résultat** (Result), under the editor, closed at first: one result tab per query.
+- **Pivoteur**, under the results, closed at first: the pivot table of the result shown (see [Pivoteur](#pivoteur)).
 - **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).
 - **Console**, at the bottom, across the whole width: the history of the queries sent to the servers, and the debug log (see [Console](#console)).
 
-The side panels go from the editor tabs down to the console, common to all the editors. The fold button of a panel's header folds it towards its edge, where it leaves a narrow rail with its name, smaller and greyed; a click on the rail opens it again. On the side panels, the button stands on the outer edge, left of the title for the object navigator, at the right end for the data explorer, above the rail the folded panel leaves: a second click opens it again without moving the mouse. The console's button stands at the right end of its header. The object navigator and the console are open by default, the data explorer closed; your choice is remembered, for each editor for the object navigator and the data explorer.
+On the left of each editor's tab, a dark **activity bar** opens and closes its panels, one button each: the object navigator; the editor, the results and the Pivoteur; the data explorer and the console. A lit button, marked in blue on the edge of the bar, is an open panel; its tooltip says what a click does. A closed panel leaves no trace: its button is the way back. Dragging the line of a panel below its smallest size closes it too. The side panels go from the editor tabs down to the console, common to all the editors. The object navigator and the console are open by default, the data explorer closed; your choice is remembered, for each editor for the object navigator and the data explorer.
 
 The version of Prisme shows next to its name, at the top left.
 
@@ -157,7 +157,7 @@ Columns show, on three aligned columns: a symbol, the name, then the type, nulla
 - Indexed columns are in **bold**. Indexes show `PRIMARY KEY` or `UNIQUE`.
 - Long labels are shortened (…); hover to read them in full.
 
-Drag the right edge of the panel to resize it, or use the arrow keys once the edge has the focus; double-click the edge, or press Enter, to fold or unfold the panel.
+Drag the right edge of the panel to resize it, or use the arrow keys once the edge has the focus; dragged below its smallest width, the panel closes.
 
 ### Editors
 
@@ -211,7 +211,7 @@ A transaction lives on the session of its editor: its queries run on the session
 - To leave the editor with the keyboard: **Esc** then **Tab**, or **Ctrl+M** (Tab then moves the focus again).
 - **Enjoliver** (Beautify) rewrites the query in a consistent style: keywords and function names in capitals, table and column names as written in the catalog, `AS` before aliases, one clause per line, indented by the **Indentation** of the settings, spaces around operators. Stored procedures and `DELIMITER` blocks are supported. Ctrl+Z undoes it. The button is active once the connection's catalog is loaded.
 
-The editor, the results and the Pivoteur each stand under a header, its title on the left, its fold button on the right. At first, the editor takes the whole height, and the results and the Pivoteur are folded under it. A folded panel leaves a rail, like the console, with its name and its unfold icon at the right end; the editor's rail keeps the badge of an open transaction. When all three are folded, the room left under them is grey, under a line; an unfolded panel takes back the height it had when it was folded, or else shares the height with the panels already open. Running queries unfolds the results, which show their tabs. Drag the line between two panels to share the height between them, or use the arrow keys once the line has the focus; double-click it, or press Enter, to fold or unfold the panel under it (the editor, when it is folded above). When all three are folded, each line unfolds the panel above it, the line under the Pivoteur included. Your layout is remembered for each editor.
+The editor, the results and the Pivoteur each stand under a header, its title on the left, and open and close from the activity bar. At first, the editor takes the whole height, and the results and the Pivoteur are closed. When all three are closed, the room left is grey; a panel opened again takes back the height it had when it was closed, or else shares the height with the panels already open. Running queries opens the results, which show their tabs. Drag the line between two panels to share the height between them, or use the arrow keys once the line has the focus; dragged below its smallest height, the panel under the line closes. Your layout is remembered for each editor.
 
 ### Result tabs
 
@@ -243,7 +243,7 @@ Each query gets its own tab:
 | Rows as a CTE, for MySQL or MariaDB | **Exporter** button: groups **Fichier** (as a `.sql` file), **Presse-papiers** (Clipboard) or **Éditeur** (Editor) |
 | Selection as an `IN` clause | **Exporter** button, **Sélection en clause IN**: groups **Presse-papiers** or **Éditeur** (at the cursor) |
 | Export the full result as CSV | **Exporter** button, then **Résultat complet en CSV (requête relancée)**; followed in the exports manager of the top bar |
-| Explore JSON or XML values | Rail of the data explorer, on the right edge of the editor's tab |
+| Explore JSON or XML values | Button of the data explorer, in the activity bar of the editor's tab |
 
 - **Refresh** keeps the tab, its name and its pin, and, while the columns stay the same, the sort and the filter. The current result stays displayed until the new one starts to arrive. While other queries run, the refresh waits for their end. During the refresh, or while it waits, the same button (crossed out) stops it: the result stays as it was. If the query fails, the result stays too, with the error above it.
 - **Copy** is a raw copy: values as they are, separated by tabs, with column names on the first line, ready to paste into a spreadsheet. A single cell is copied as its value alone, without its column name. `NULL` is copied as an empty cell. Control characters are written literally (`\t`, `\n`, `\r`, `\0`, `\b`, `\f`…, or `\xHH`), so each value stays in one cell.
@@ -411,7 +411,7 @@ The configuration belongs to its result tab, and is saved with it: a page reload
 
 ### Console
 
-The console, under the editors, shows what Prisme does besides the results. Drag its top edge to change its height; double-click the edge to restore its default height.
+The console, under the editors, shows what Prisme does besides the results. It opens and closes from the activity bar. Drag its top edge to change its height; dragged below its smallest height, it closes.
 
 The **Historique** (History) tab lists every query sent to your servers, the oldest at the top: those of your editors, and those Prisme sends itself (opening of a session, object navigator, connection test, interruption). New queries show as they are sent. Passwords of the server's own syntaxes are masked (`'***'`): `IDENTIFIED BY`, `PASSWORD('…')`, `SET PASSWORD`, `MASTER_PASSWORD`, `OPTIONS (PASSWORD …)` of `CREATE SERVER`…; the data of your databases stay as written, and the text of your editors keeps everything as typed. Each line gives:
 

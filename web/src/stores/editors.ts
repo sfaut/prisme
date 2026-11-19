@@ -17,8 +17,8 @@ import { computed, ref } from 'vue'
 
 import { clearPending, markPending } from '@/api/sync'
 import type { BatchProgress } from '@/api/querySession'
-import { forgetEditorLayout } from '@/components/editor/editorLayout'
 import { useExplorerStore } from '@/stores/explorer'
+import { useEditorLayoutsStore } from '@/stores/editorLayouts'
 import { useNavigatorStore } from '@/stores/navigator'
 
 import {
@@ -299,7 +299,7 @@ export const useEditorsStore = defineStore('editors', () => {
       await save(id)
     }
     await closeEditor(id)
-    forgetEditorLayout(id)
+    useEditorLayoutsStore().forget(id)
     delete progress.value[id]
     useNavigatorStore().forget(id)
     useExplorerStore().forget(id)

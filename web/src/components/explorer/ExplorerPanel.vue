@@ -450,11 +450,7 @@ watch(
 
 <template>
   <div class="data-explorer">
-    <panel-header
-      title="Explorateur de données"
-      side="end"
-      @collapse="explorer.layoutOf(props.editorId).open = false"
-    >
+    <panel-header title="Explorateur de données">
       <template #subtitle>
         <span class="truncate text-sm text-fg-secondary" v-tooltip="subtitle">{{
           subtitle || ' '

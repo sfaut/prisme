@@ -19,13 +19,12 @@
   tab can be renamed, pinned (it stays when the query is run again), closed
   (its query is stopped if it is running) or moved by dragging it, like a
   column of the grid. Its result can be refreshed (button right of the
-  tabs, with the grid's filter and export buttons, side by side with the
-  fold button of the results, as in the other headers): the query runs
+  tabs, with the grid's filter and export buttons): the query runs
   again in the tab, after the running batch if any. Its rows can also be
   written as a CTE after the last query of the editor, without running it.
   The row limit chosen here becomes the user's default limit.
   While a transaction is open on the session's connection, a status badge
-  says so at the right end of the editor's header, or of its rail, until
+  says so at the right end of the editor's header, until
   its COMMIT or ROLLBACK. The banners of the session (closed, server too old,
   error) stand under that header.
   The session can be closed from the object navigator ("Déconnecter",
@@ -36,35 +35,25 @@
   under its header, in the style of the Pivoteur's: the editor ("Éditeur",
   with its buttons), the results ("Résultat", with the bar of their tabs)
   and the Pivoteur (`PivotPanel.vue`, which analyses the result of the tab
-  shown). Each one folds to a rail (`PanelRail.vue`), like the console, with
-  its title and its unfold icon: by its fold button, by a double click on
-  the line next to it, or by a drag below its smallest height. Folded, its
-  content stays mounted under the rail, out of reach (`inert`): the editor,
-  the grids and their scroll, the configuration of the Pivoteur. The results and the Pivoteur
-  depend on the editor: they start folded, against the bottom of the
-  editor, which takes the whole height. The highest open panel fills the
-  height the others leave, so that the folded panels under it stay against
-  it; an open panel takes the height it had when it folded, or, without
-  one, shares the room in equal parts with the panel that fills. All three
-  folded, the room under them shows the sunken background, and each line
-  unfolds the panel above it, a line under the Pivoteur's rail included. A
-  run unfolds the results, which show its tabs. The heights and folds are kept for
-  this editor (`editorLayout.ts`). The
+  shown). Each one opens and closes from the activity bar of the editor's
+  tab (`PanelActivityBar.vue`), or closes by a drag of the line above it
+  below its smallest height. Closed, it takes no room, and its content stays
+  mounted, out of reach (`inert`): the editor, the grids and their scroll,
+  the configuration of the Pivoteur. The results and the Pivoteur depend on
+  the editor: they start closed, and the editor takes the whole height. The
+  highest open panel fills the height the others leave; an open panel takes
+  the height it had when it closed, or, without one, shares the room in
+  equal parts with the panel that fills. All three closed, the room shows
+  the sunken background. A run opens the results, which show its tabs. The
+  heights and the closed panels are kept for this editor (`editorLayouts`
+  store). The
   padding of the sides is inside the panels: a panel clips its content at
   its edge, which may fall between two pixels, and would cut the left
   border of a field or of the grid set against it.
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import {
-  FastForward,
-  LoaderCircle,
-  PanelTopClose,
-  Play,
-  ScanText,
-  Square,
-  WandSparkles,
-} from '@lucide/vue'
+import { FastForward, LoaderCircle, Play, ScanText, Square, WandSparkles } from '@lucide/vue'
 import { TabsContent, TabsList, TabsRoot } from 'reka-ui'
 import { computed, onMounted, provide, ref, shallowReactive, useTemplateRef, watch } from 'vue'
 
@@ -98,24 +87,16 @@ import { useSettingsStore } from '@/stores/settings'
 
 import EditorTransactionBadge from '@/components/editor/EditorTransactionBadge.vue'
 import PanelHeader from '@/components/panel/PanelHeader.vue'
-import PanelRail from '@/components/panel/PanelRail.vue'
 import PivotPanel from '@/components/pivot/PivotPanel.vue'
 import ResultView from '@/components/result/ResultView.vue'
 import { EDITOR_ID } from './editorId'
-import {
-  type ViewPanel,
-  defaultEditorLayout,
-  editorLayoutKey,
-  fillingPanel,
-  isFolded,
-  lineTarget,
-} from './editorLayout'
+import { useEditorLayoutsStore } from '@/stores/editorLayouts'
+import { type ViewPanel, fillingPanel } from './editorLayout'
 import ResultTab from '@/components/result/ResultTab.vue'
 import ResultTabActions from '@/components/result/ResultTabActions.vue'
 import SplitGroup from '@/components/split/SplitGroup.vue'
 import SplitHandle from '@/components/split/SplitHandle.vue'
 import SplitPanel from '@/components/split/SplitPanel.vue'
-import { useStoredLayout } from '@/components/split/storedLayout'
 import { DEFAULT_INDENT_SIZE } from './editorIndent'
 import SqlEditor from './SqlEditor.vue'
 import { movedItems, useTabDrag } from '@/components/tab/tabDrag'
@@ -211,12 +192,13 @@ const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
 provide(EDITOR_ID, props.editorId)
 
 /**
- * Layout of the view, kept for this editor (`editorLayout.ts`): the heights the
- * user gave the results and the Pivoteur, in CSS pixels (`null`: a share of the
- * room), and the folds of the three panels. The editor fills the height when it
- * is open, the highest panel open; the results and the Pivoteur start folded.
+ * Layout of the view, kept for this editor (`editorLayouts` store): the
+ * heights the user gave the results and the Pivoteur, in CSS pixels (`null`:
+ * a share of the room), and the closed panels. The editor fills the height
+ * when it is open, the highest panel open; the results and the Pivoteur
+ * start closed.
  */
-const layout = useStoredLayout(editorLayoutKey(props.editorId), defaultEditorLayout())
+const layout = useEditorLayoutsStore().layoutOf(props.editorId)
 
 /**
  * Id of a panel, unique to the editor: the line that resizes it names it.
@@ -228,27 +210,9 @@ function panelId(panel: ViewPanel): string {
 }
 
 /**
- * Folds or unfolds a panel.
- *
- * @param panel Panel.
- */
-function toggle(panel: ViewPanel): void {
-  layout[`${panel}Folded`] = !isFolded(layout, panel)
-}
-
-/**
  * Panel that fills the height the others leave.
  */
 const fillPanel = computed(() => fillingPanel(layout))
-
-/**
- * Panel the line under a panel resizes.
- *
- * @param above Panel above the line.
- */
-function lineUnder(above: 'editor' | 'results'): ViewPanel {
-  return lineTarget(layout, above, above === 'editor' ? 'results' : 'pivot')
-}
 
 /**
  * Displayed tab: its id.
@@ -779,30 +743,21 @@ defineExpose({
     <!--
       Top panel: the header (title, buttons, state of the transaction), the
       banners of the session, then the editor, which takes the remaining
-      room. Folded, the panel shows its rail, with the state of the
-      transaction: the editor, under it, stays mounted.
+      room. Closed, the editor stays mounted, out of reach.
     -->
     <split-panel
       :id="panelId('editor')"
       v-model:folded="layout.editorFolded"
       :fill="fillPanel === 'editor'"
       min-size="var(--editor-min-height)"
-      folded-size="var(--rail-size)"
+      folded-size="0px"
       class="flex flex-col"
     >
-      <panel-rail
-        v-if="layout.editorFolded"
-        title="Éditeur"
-        side="top"
-        @expand="layout.editorFolded = false"
-      >
-        <editor-transaction-badge v-if="state.transaction" small />
-      </panel-rail>
       <div
         class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pt-2 pb-3"
         :inert="layout.editorFolded"
       >
-        <panel-header title="Éditeur" side="top" @collapse="layout.editorFolded = true">
+        <panel-header title="Éditeur">
           <template #inline>
             <div class="flex min-w-0 items-center gap-3">
               <ui-button
@@ -884,21 +839,19 @@ defineExpose({
         />
       </div>
     </split-panel>
+    <!--
+      Line between the editor and the results, both open: it resizes the
+      results; below their smallest height, they close.
+    -->
     <split-handle
-      :controls="panelId(lineUnder('editor'))"
-      :tooltip="
-        lineUnder('editor') === 'editor'
-          ? 'Glisser pour déplier l’éditeur, double clic pour le replier ou le déplier'
-          : 'Glisser pour partager la hauteur entre l’éditeur et le résultat, double clic pour replier ou déplier le résultat'
-      "
-      @activate="toggle(lineUnder('editor'))"
+      v-if="!layout.editorFolded && !layout.resultsFolded"
+      :controls="panelId('results')"
+      tooltip="Glisser pour redimensionner le résultat, en deçà de sa hauteur minimale pour le fermer"
     />
 
     <!--
       Middle panel: the results. Its first line is its header, the bar of
-      its tabs, between its title and its buttons. Folded, the panel shows
-      its rail; the line under it is the line of the next handle, against
-      it.
+      its tabs, between its title and its buttons.
     -->
     <split-panel
       :id="panelId('results')"
@@ -906,15 +859,9 @@ defineExpose({
       v-model:folded="layout.resultsFolded"
       :fill="fillPanel === 'results'"
       min-size="var(--results-min-height)"
-      folded-size="var(--rail-size)"
+      folded-size="0px"
       class="flex flex-col"
     >
-      <panel-rail
-        v-if="layout.resultsFolded"
-        title="Résultat"
-        side="top"
-        @expand="layout.resultsFolded = false"
-      />
       <!--
         The result grid must have a bounded height: otherwise its scroll area
         grows with the result, all the rows are drawn and the interface
@@ -930,7 +877,7 @@ defineExpose({
         :inert="layout.resultsFolded"
       >
         <div class="flex shrink-0 items-center gap-3">
-          <h2 class="shrink-0 text-lg leading-none font-semibold text-fg-strong">Résultat</h2>
+          <h2 class="shrink-0 text-base font-semibold text-fg-strong">Résultat</h2>
           <div class="flex min-w-0 flex-1">
             <tabs-list
               v-if="state.tabs.length > 0"
@@ -952,10 +899,7 @@ defineExpose({
               />
             </tabs-list>
           </div>
-          <!--
-            Buttons of the tab shown (refresh, filter, export), then the
-            fold button, side by side as in the other headers.
-          -->
+          <!-- Buttons of the tab shown: refresh, filter, export. -->
           <div class="flex items-center">
             <result-tab-actions
               v-if="shownTab"
@@ -965,14 +909,6 @@ defineExpose({
               @refresh="refresh(shownTab)"
               @stop-refresh="session.stopRefresh(shownTab)"
               @toggle-filter="toggleFilter(shownTab)"
-            />
-            <ui-button
-              :icon="PanelTopClose"
-              variant="ghost"
-              small
-              aria-label="Replier : Résultat"
-              v-tooltip="'Replier : Résultat'"
-              @click="layout.resultsFolded = true"
             />
           </div>
         </div>
@@ -1021,20 +957,20 @@ defineExpose({
         </tabs-content>
       </tabs-root>
     </split-panel>
+    <!--
+      Line above the Pivoteur, open under another open panel: it resizes the
+      Pivoteur; below its smallest height, it closes.
+    -->
     <split-handle
-      :controls="panelId(lineUnder('results'))"
-      :tooltip="
-        lineUnder('results') === 'results'
-          ? 'Glisser pour déplier le résultat, double clic pour le replier ou le déplier'
-          : 'Glisser pour redimensionner le Pivoteur, double clic pour le replier ou le déplier'
-      "
-      @activate="toggle(lineUnder('results'))"
+      v-if="!layout.pivotFolded && fillPanel !== 'pivot'"
+      :controls="panelId('pivot')"
+      tooltip="Glisser pour redimensionner le Pivoteur, en deçà de sa hauteur minimale pour le fermer"
     />
 
     <!--
-      Panel of the Pivoteur, folded by default: its rail. Folded, the panel
-      stays mounted, under its rail, and keeps the configuration of each
-      tab; it computes nothing and stops its Worker.
+      Panel of the Pivoteur, closed by default. Closed, the panel stays
+      mounted and keeps the configuration of each tab; it computes nothing
+      and stops its Worker.
     -->
     <split-panel
       :id="panelId('pivot')"
@@ -1042,34 +978,16 @@ defineExpose({
       v-model:folded="layout.pivotFolded"
       :fill="fillPanel === 'pivot'"
       min-size="var(--pivot-min-height)"
-      folded-size="var(--rail-size)"
+      folded-size="0px"
       class="flex flex-col"
     >
-      <pivot-panel
-        :tab="shownTab"
-        :open="!layout.pivotFolded"
-        :connection-id="connection.id"
-        @collapse="layout.pivotFolded = true"
-        @expand="layout.pivotFolded = false"
-      />
+      <pivot-panel :tab="shownTab" :open="!layout.pivotFolded" :connection-id="connection.id" />
     </split-panel>
     <!--
-      All the panels folded: the line under the rail of the Pivoteur, which
-      unfolds it into the free room, as each line above unfolds the panel
-      above it. Unfolded, the Pivoteur fills: the line goes, its drag ended.
-    -->
-    <split-handle
-      v-if="fillPanel === null"
-      :controls="panelId('pivot')"
-      tooltip="Glisser pour déplier le Pivoteur, double clic pour le déplier"
-      @activate="layout.pivotFolded = false"
-    />
-    <!--
-      All the panels folded: the height they leave stays free under them, on
-      the sunken background, which tells it from a panel, under the line of
-      the Pivoteur. Always there, without any height while a panel fills: its
-      growth follows the folding of the last panel (`SplitGroup.vue`), which
-      the room would otherwise halve at once.
+      All the panels closed: the height they leave stays free, on the sunken
+      background, which tells it from a panel. Always there, without any
+      height while a panel fills: its growth follows the closing of the last
+      panel (`SplitGroup.vue`), which the room would otherwise halve at once.
     -->
     <div
       data-split-room
