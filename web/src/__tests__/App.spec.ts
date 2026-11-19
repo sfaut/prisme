@@ -102,7 +102,7 @@ describe('App', () => {
     expect(objects()).toBe(true)
     expect(button('Navigateur d’objets').attributes('aria-pressed')).toBe('true')
     expect(button('Navigateur d’objets').attributes('data-tooltip')).toBe(
-      'Fermer le navigateur d’objets',
+      'Fermer le navigateur d’objets (Ctrl-K puis N)',
     )
     // The data explorer is closed by default: no trace of it but its button.
     expect(button('Explorateur de données').attributes('aria-pressed')).toBe('false')

@@ -22,7 +22,7 @@ afterEach(() => {
  * Activity bar of the editor 1.
  */
 function mountBar() {
-  return mount(PanelActivityBar, { props: { editorId: 1 } })
+  return mount(PanelActivityBar, { props: { editorId: 1, active: true } })
 }
 
 describe('PanelActivityBar', () => {
@@ -45,17 +45,34 @@ describe('PanelActivityBar', () => {
   it('opens and closes a panel, its tooltip saying what the click does', async () => {
     const wrapper = mountBar()
     const results = () => wrapper.find('button[aria-label="Résultat"]')
-    expect(results().attributes('data-tooltip')).toBe('Ouvrir le résultat')
+    expect(results().attributes('data-tooltip')).toBe('Ouvrir le résultat (Ctrl-K puis R)')
     await results().trigger('click')
     expect(useEditorLayoutsStore().layoutOf(1).resultsFolded).toBe(false)
     expect(results().attributes('aria-pressed')).toBe('true')
-    expect(results().attributes('data-tooltip')).toBe('Fermer le résultat')
+    expect(results().attributes('data-tooltip')).toBe('Fermer le résultat (Ctrl-K puis R)')
 
     await wrapper.find('button[aria-label="Navigateur d’objets"]').trigger('click')
     expect(useNavigatorStore().layoutOf(1).open).toBe(false)
     await wrapper.find('button[aria-label="Explorateur de données"]').trigger('click')
     expect(useExplorerStore().layoutOf(1).open).toBe(true)
     await wrapper.find('button[aria-label="Console"]').trigger('click')
+    expect(useConsoleStore().open).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('follows the shortcuts while its editor is active', async () => {
+    const wrapper = mountBar()
+    const chord = (key: string) => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true }))
+      window.dispatchEvent(new KeyboardEvent('keydown', { key }))
+    }
+    chord('p')
+    expect(useEditorLayoutsStore().layoutOf(1).pivotFolded).toBe(false)
+    chord('c')
+    expect(useConsoleStore().open).toBe(false)
+
+    await wrapper.setProps({ active: false })
+    chord('c')
     expect(useConsoleStore().open).toBe(false)
     wrapper.unmount()
   })

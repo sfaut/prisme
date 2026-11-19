@@ -457,7 +457,7 @@ function selectSource(editorId: number, connectionId: number): void {
             :value="editor.id"
             class="flex min-h-0 min-w-0 flex-1"
           >
-            <panel-activity-bar :editor-id="editor.id" />
+            <panel-activity-bar :editor-id="editor.id" :active="editor.id === editors.activeId" />
             <split-group direction="horizontal" class="min-w-0 flex-1">
               <split-panel
                 :id="`navigator-panel-${editor.id}`"

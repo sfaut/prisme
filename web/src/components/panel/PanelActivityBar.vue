@@ -9,6 +9,8 @@
   At the bottom of the bar, a button shares the room again: the open panels
   of the view take equal heights, the side panels and the console their
   default size.
+  Each button has its shortcut, Ctrl-K then a key (`panelChord.ts`), given
+  in its tooltip; the bar of the active editor alone follows them.
 
   The layouts come from the stores of the panels: `navigator`,
   `editorLayouts` (the view's panels, kept for this editor even while it
@@ -24,7 +26,7 @@ import {
   Table,
   TableProperties,
 } from '@lucide/vue'
-import { type Component, computed } from 'vue'
+import { type Component, computed, watchEffect } from 'vue'
 
 import { useConsoleStore } from '@/stores/console'
 import { useEditorLayoutsStore } from '@/stores/editorLayouts'
@@ -32,11 +34,17 @@ import { useExplorerStore } from '@/stores/explorer'
 import { useNavigatorStore } from '@/stores/navigator'
 import { vTooltip } from '@/components/ui/tooltip'
 
+import { chordLabel, followChords } from './panelChord'
+
 const props = defineProps<{
   /**
    * Id of the editor of the tab.
    */
   editorId: number
+  /**
+   * Is the editor the active one? Its bar follows the shortcuts.
+   */
+  active: boolean
 }>()
 
 const navigator = useNavigatorStore()
@@ -61,6 +69,10 @@ interface PanelButton {
    */
   icon: Component
   /**
+   * Second key of its shortcut, after Ctrl-K.
+   */
+  key: string
+  /**
    * Is the panel open?
    */
   open: boolean
@@ -83,6 +95,7 @@ const groups = computed<PanelButton[][]>(() => {
         label: 'Navigateur d’objets',
         named: 'le navigateur d’objets',
         icon: ListTree,
+        key: 'n',
         open: objects.open,
         toggle: () => (objects.open = !objects.open),
       },
@@ -92,6 +105,7 @@ const groups = computed<PanelButton[][]>(() => {
         label: 'Éditeur',
         named: 'l’éditeur',
         icon: Code,
+        key: 'e',
         open: !view.editorFolded,
         toggle: () => (view.editorFolded = !view.editorFolded),
       },
@@ -99,6 +113,7 @@ const groups = computed<PanelButton[][]>(() => {
         label: 'Résultat',
         named: 'le résultat',
         icon: Table,
+        key: 'r',
         open: !view.resultsFolded,
         toggle: () => (view.resultsFolded = !view.resultsFolded),
       },
@@ -106,6 +121,7 @@ const groups = computed<PanelButton[][]>(() => {
         label: 'Pivoteur',
         named: 'le Pivoteur',
         icon: TableProperties,
+        key: 'p',
         open: !view.pivotFolded,
         toggle: () => (view.pivotFolded = !view.pivotFolded),
       },
@@ -115,6 +131,7 @@ const groups = computed<PanelButton[][]>(() => {
         label: 'Explorateur de données',
         named: 'l’explorateur de données',
         icon: Braces,
+        key: 'x',
         open: data.open,
         toggle: () => (data.open = !data.open),
       },
@@ -122,6 +139,7 @@ const groups = computed<PanelButton[][]>(() => {
         label: 'Console',
         named: 'la console',
         icon: SquareTerminal,
+        key: 'c',
         open: consoleStore.open,
         toggle: () => (consoleStore.open = !consoleStore.open),
       },
@@ -135,7 +153,7 @@ const groups = computed<PanelButton[][]>(() => {
  * @param button Button of a panel.
  */
 function tooltip(button: PanelButton): string {
-  return `${button.open ? 'Fermer' : 'Ouvrir'} ${button.named}`
+  return `${button.open ? 'Fermer' : 'Ouvrir'} ${button.named} (${chordLabel(button.key)})`
 }
 
 /**
@@ -151,6 +169,34 @@ function distribute(): void {
   explorer.layoutOf(props.editorId).width = null
   consoleStore.height = null
 }
+
+/**
+ * Second key of the shortcut that shares the room.
+ */
+const DISTRIBUTE_KEY = '='
+
+/**
+ * Runs the action of the second key of a shortcut.
+ *
+ * @param key Second key, lowercased.
+ * @returns Is the key one of the bar's?
+ */
+function runChord(key: string): boolean {
+  if (key === DISTRIBUTE_KEY) {
+    distribute()
+    return true
+  }
+  const button = groups.value.flat().find((candidate) => candidate.key === key)
+  button?.toggle()
+  return button !== undefined
+}
+
+// The bar of the active editor follows the shortcuts, while it is active.
+watchEffect((onCleanup) => {
+  if (props.active) {
+    onCleanup(followChords(runChord))
+  }
+})
 
 /**
  * Classes of a button of the bar.
@@ -188,7 +234,7 @@ const BUTTON =
       :class="BUTTON"
       aria-label="Répartir les volets"
       v-tooltip="
-        'Répartir les volets ouverts : hauteurs égales, largeur par défaut des volets latéraux'
+        `Répartir les volets ouverts : hauteurs égales, largeur par défaut des volets latéraux (${chordLabel(DISTRIBUTE_KEY)})`
       "
       @click="distribute"
     >
