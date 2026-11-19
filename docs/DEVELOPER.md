@@ -81,7 +81,6 @@ The display preferences of a machine stay in the browser's local storage, under 
 | Key | Value |
 |---|---|
 | `prisme.app.colorMode` | `system`, `light` or `dark` |
-| `prisme.navigator.open`, `prisme.navigator.width` | the last state given to an object navigator, open or closed, and its width in CSS pixels: the start of a new editor |
 | `prisme.navigator.layout.<editor>` | the object navigator of an editor open, its width (JSON), forgotten when it closes |
 | `prisme.navigator.tree.<editor>` | open nodes and scroll of the object navigator of an editor (JSON), forgotten when it closes |
 | `prisme.editor.active` | id of the active editor |
@@ -89,7 +88,6 @@ The display preferences of a machine stay in the browser's local storage, under 
 | `prisme.console.open`, `prisme.console.height` | the console open, its height in CSS pixels |
 | `prisme.console.tab` | tab shown: `history` or `debug` |
 | `prisme.console.filtersShown`, `prisme.console.historyFilter`, `prisme.console.debugFilter` | the filters shown, and those of each tab (JSON) |
-| `prisme.explorer.width` | the last width given to a data explorer, in CSS pixels: the start of a new editor |
 | `prisme.explorer.layout.<editor>` | the data explorer of an editor open, its width (JSON), forgotten when it closes |
 | `prisme.explorer.wrap` | long lines of the data explorers wrapped |
 

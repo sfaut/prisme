@@ -1,18 +1,16 @@
 /**
  * Object navigators, the panels on the left of the editors
  * (`NavigatorPanel.vue`): each editor has its own, with its layout (open or
- * folded, its width) and its tree (open nodes, scroll), so that going from
- * one editor to another finds each navigator as it was left. Folded, a
- * navigator leaves a rail on its edge, which opens it again (`PanelRail.vue`).
+ * closed, its width) and its tree (open nodes, scroll), so that going from
+ * one editor to another finds each navigator as it was left.
  *
  * These are display preferences specific to this machine, kept in the
  * browser's local storage, one entry per editor
  * (`prisme.navigator.layout.<editor>`, `prisme.navigator.tree.<editor>`),
- * forgotten when the editor closes (`forget`). The last layout given is kept
- * too (`prisme.navigator.open`, `prisme.navigator.width`): an editor without
- * an entry of its own, a new one for example, starts from it. When storage
- * is unavailable, the defaults apply: open, at the width of the theme, the
- * root of the sources open.
+ * forgotten when the editor closes (`forget`). An editor without an entry of
+ * its own, a new one for example, starts from the defaults, as when storage
+ * is unavailable: open, at the width of the theme, the root of the sources
+ * open.
  */
 
 import { defineStore } from 'pinia'
@@ -20,18 +18,6 @@ import { type EffectScope, effectScope, reactive, watch } from 'vue'
 
 import { SOURCES_KEY, belongsToSource } from '@/components/navigator/navigatorNodes'
 import { forgetStoredLayout, useStoredLayout } from '@/components/split/storedLayout'
-import { loadFlag, loadSize, saveFlag, saveSize } from '@/utils/storedValues'
-
-/**
- * Key of the last state given to a navigator, open or folded, in local
- * storage.
- */
-const OPEN_KEY = 'prisme.navigator.open'
-
-/**
- * Key of the last width given to a navigator in local storage.
- */
-const WIDTH_KEY = 'prisme.navigator.width'
 
 /**
  * Delay between the last scroll of a tree and its save, in milliseconds:
@@ -167,21 +153,10 @@ export const useNavigatorStore = defineStore('navigator', () => {
     const scope = effectScope(true)
     const kept = storedTree(editorId)
     const entry = scope.run(() => {
-      // Kept from its first reading: it no longer follows the last layout given.
-      const layout = useStoredLayout<NavigatorLayout>(
-        navigatorLayoutKey(editorId),
-        { open: loadFlag(OPEN_KEY, true), width: loadSize(WIDTH_KEY) },
-        true,
-      )
-      // The last layout given: the start of the next editor without its own.
-      watch(
-        () => layout.open,
-        (open) => saveFlag(OPEN_KEY, open),
-      )
-      watch(
-        () => layout.width,
-        (width) => saveSize(WIDTH_KEY, width),
-      )
+      const layout = useStoredLayout<NavigatorLayout>(navigatorLayoutKey(editorId), {
+        open: true,
+        width: null,
+      })
       const tree = reactive<NavigatorTree>({
         expanded: kept?.expanded ?? [SOURCES_KEY],
         scrollTop: kept?.scrollTop ?? 0,
@@ -231,7 +206,7 @@ export const useNavigatorStore = defineStore('navigator', () => {
 
   /**
    * Forgets the navigator of a closed editor: a reopened editor starts from
-   * the last layout given, with a new tree.
+   * the defaults, with a new tree.
    *
    * @param editorId Id of the editor.
    */

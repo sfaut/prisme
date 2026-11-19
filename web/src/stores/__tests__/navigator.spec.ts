@@ -19,7 +19,7 @@ describe('layout of a navigator', () => {
     expect({ ...useNavigatorStore().layoutOf(1) }).toEqual({ open: true, width: null })
   })
 
-  it('is kept per editor, and the last one given starts a new editor', async () => {
+  it('is kept per editor, and a new editor starts from the defaults', async () => {
     const navigator = useNavigatorStore()
     navigator.layoutOf(1).open = false
     navigator.layoutOf(1).width = 320
@@ -29,11 +29,7 @@ describe('layout of a navigator', () => {
       open: false,
       width: 320,
     })
-    expect({ ...navigator.layoutOf(2) }).toEqual({ open: false, width: 320 })
-
-    // An editor with a layout of its own keeps it.
-    navigator.layoutOf(2).open = true
-    await nextTick()
+    expect({ ...navigator.layoutOf(2) }).toEqual({ open: true, width: null })
     setActivePinia(createPinia())
     expect({ ...useNavigatorStore().layoutOf(1) }).toEqual({ open: false, width: 320 })
   })
@@ -46,7 +42,7 @@ describe('layout of a navigator', () => {
 
     setActivePinia(createPinia())
     expect(useNavigatorStore().layoutOf(1).open).toBe(true)
-    expect(useNavigatorStore().layoutOf(3).open).toBe(false)
+    expect(useNavigatorStore().layoutOf(3).open).toBe(true)
   })
 })
 

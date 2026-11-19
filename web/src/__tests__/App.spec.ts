@@ -111,7 +111,6 @@ describe('App', () => {
     await button('Navigateur d’objets').trigger('click')
     expect(objects()).toBe(false)
     expect(wrapper.find('[aria-controls^="navigator-panel-"]').exists()).toBe(false)
-    expect(window.localStorage.getItem('prisme.navigator.open')).toBe('false')
     expect(JSON.parse(window.localStorage.getItem('prisme.navigator.layout.1')!).open).toBe(false)
     await button('Navigateur d’objets').trigger('click')
     expect(objects()).toBe(true)
