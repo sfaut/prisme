@@ -2,6 +2,24 @@
 
 Changelogs of the published versions of Prisme, most recent first. Each entry is also the notes of its GitHub release. The interface is in French: its labels are quoted as they appear, with a translation.
 
+## v0.14.1 (2026-11-20)
+
+### 🚀 Launch
+
+We are proud to announce Prisme v0.14.1. On a large result, the Pivoteur no longer blinks while its figures update: the table changes in place, without emptying between two computations, and the status bar no longer flashes at each update.
+
+### 🐞 Bug fixes
+
+- Pivoteur: on a large result, the table emptied for a moment at each update of its figures, during the reception of the rows as after a change of the configuration or a sort. Its new values now replace the previous ones at once.
+- Pivoteur: the status bar showed **Calcul…** (Computing…) at each update, moving its other texts. It now shows it only once a computation has lasted half a second.
+
+### ⚙️ Internal improvements
+
+- Worker of the Pivoteur: a computation carries the area the table draws, and its answer gives the values of that area with the new table.
+- Dependencies:
+  - `@lucide/vue` 1.76.0 → 1.77.0, `clap` 4.6.8 → 4.6.9, `vue` 3.5.45 → 3.5.46;
+  - `rusqlite` stays at 0.41.1: `rusqlite_migration` 2.7.0 does not accept 0.43.0 yet; `typescript` stays at 6.0: `typescript-eslint` still requires a version below 6.1.
+
 ## v0.14.0 (2026-11-20)
 
 ### 🚀 Launch
