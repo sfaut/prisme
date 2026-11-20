@@ -10,8 +10,8 @@ export type QueryEntry = {
    */
   id: number;
   /**
-   * Editor whose session sent the query, 0 outside an editor (navigator,
-   * export, connection test).
+   * Editor whose session, navigator or export sent the query, 0 outside
+   * an editor (connection test).
    */
   editor_id: number;
   /**
