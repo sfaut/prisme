@@ -160,3 +160,18 @@ Today the Pivoteur waits for the end of the query (F-07), then copies all the ro
 - ✅ Documented: `README.md`, `docs/DEVELOPER.md`, module comments, `docs/QUESTIONS.md`
 - ✅ The table no longer blinks at each update: the answer of a computation carries the window of the area drawn, and the table and its values are drawn at once
 - ✅ The status bar no longer blinks at each update: "Calcul…" shows only once a computation has lasted 500 ms (`delayedFlag`)
+
+## 6. Settings of an element in its menu ⋮
+
+Today the settings of a `GROUP_CONCAT` and of a filter open in a panel beside the element, once its menu has closed (`PivotConcatPopover.vue`, `PivotFilterPopover.vue`). Here, every setting of an element lives in its menu ⋮: a list of exclusive choices stays a group of radio choices, a yes / no setting is a checkbox, and a setting to type is a line that shows its current value and opens a submenu. A choice that brings new settings keeps the menu open. Mockup: https://claude.ai/artifact/6H1Pcu61piLXcxQdha4nsf. Work on the local branch `pivot-settings-in-menu`, merged into `master` only with the maintainer's agreement.
+
+- ✅ Branch `pivot-settings-in-menu`, this section
+- ✅ Trial: fields (`UiInput`, `UiSelect`, `PivotFilterValues.vue`) in a Reka UI submenu, against its typeahead, the focus taken by the pointer over the choices, Escape and Tab; results submitted to the maintainer before going further. Typing, the pointer over the choices, a list, the values of a filter, a checkbox that keeps the menu open and a menu opened by the code work as they are; in a field, ← closes the submenu, Home and ↓ go to the choices, Escape closes the whole menu and Reka UI keeps Tab: the submenu keeps the keys of its fields, Escape closes it alone, Tab and Shift+Tab go round its fields, and what is typed applies when the pointer closes it (2026-11-20)
+- ✅ Menu of the interface (`menuItem.ts`, `UiMenuEntries.vue`, `UiDropdownMenu.vue`): current value on the right of a choice, checkbox, choice that keeps the menu open, groups of radio choices in a submenu, submenu with free content, menu opened by the code; tests
+- ✅ Measures: group **Concaténation** of a `GROUP_CONCAT`, after **Agrégat**, or after **Précision** for a column of dates: **Valeurs distinctes (DISTINCT)** as a checkbox, **Ordre (ORDER BY)** (keys: column, `ASC` / `DESC`, removal, addition), **Séparateur (SEPARATOR)** (Virgule `', '`, Point-virgule `'; '`, Barre `' | '`, Retour à la ligne (CRLF) `'\r\n'`, Retour à la ligne (LF) `'\n'`, Tabulation `'\t'`, then a free field), **Limite (LIMIT / OFFSET)**; choosing `GROUP_CONCAT` keeps the menu open; tests
+- ✅ Share of a total: **Décimales** becomes a line of the group **Affichage**, which opens its radio choices; choosing a share keeps the menu open, the line appearing at once; tests
+- ✅ Filters: group **Condition** as radio choices; lines **Agrégat** and **Niveau** of a filter on a measure (group **Filtre**), group **Précision** of a column of dates, and the value, the bounds or the list of the values, each opening its submenu; the drop of a filter opens its menu, the submenu of its value open and its first field ready to type; "Réglages…" and both panels leave; tests
+- ✅ A text typed applies at Enter or on leaving its field, a refused value showing why and changing nothing; Escape closes the submenu and forgets what is being typed
+- ✅ Checks: tests of the interface, screen in light and dark modes and at a real 150%, keyboard alone and pointer
+- ✅ Documented: `README.md`, `docs/DEVELOPER.md` (components of the Pivoteur, lengths in pixels, tests), module comments
+- ✅ Documented in the specification: F-21, F-44, F-47, F-48

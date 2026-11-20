@@ -2,27 +2,26 @@
   Dropdown menu, on Reka UI's `DropdownMenu` (keyboard, positioning, closing
   with Escape or a click outside, accessibility). The trigger is the content
   of the default slot (a button); each choice has a label, a Lucide icon and
-  an action, or is inactive, and possibly an explanation in its tooltip. A
-  choice can open a submenu of choices instead (`UiMenuEntries.vue`). The
-  choices come as a list, or gathered in groups, each under its heading and
-  apart from the previous one by a line. A group of exclusive choices, which
-  tell which one is made (`checked`), is a group of radio choices
-  (`DropdownMenuRadioGroup`). Closed, the menu gives the focus
-  back to its trigger, unless the parent prevents it (`closeAutoFocus`), to
-  give it to a field opened by a choice.
+  an action, or is inactive, and possibly an explanation in its tooltip. The
+  choices come as a list, or gathered in groups (`UiMenuEntries.vue`, which
+  also draws the radio choices, the checkboxes, the values of the settings
+  and the submenus). The menu opens by its trigger, or by the code
+  (`v-model:open`), possibly with the submenu of a choice open (`openSub`).
+  Closed, the menu gives the focus back to its trigger, unless the parent
+  prevents it (`closeAutoFocus`), to give it to a field opened by a choice.
+  Removed while open, with the element of its trigger, it tells its parent
+  that it is closed, which it could not do once removed.
 -->
 <script setup lang="ts">
 import {
   DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
   DropdownMenuPortal,
-  DropdownMenuRadioGroup,
   DropdownMenuRoot,
   DropdownMenuTrigger,
 } from 'reka-ui'
+import { onBeforeUnmount } from 'vue'
 
-import { MENU_HEADING, MENU_PANEL, type MenuGroup, type MenuItem } from './menuItem'
+import { MENU_PANEL, type MenuGroup, type MenuItem } from './menuItem'
 import UiMenuEntries from './UiMenuEntries.vue'
 
 import { cssPixels } from '@/utils/cssLength'
@@ -44,7 +43,16 @@ defineProps<{
    * Choices of the menu, gathered in groups, instead of `items`.
    */
   groups?: MenuGroup[]
+  /**
+   * Label of the choice whose submenu is open when the menu opens.
+   */
+  openSub?: string
 }>()
+
+/**
+ * Is the menu open?
+ */
+const open = defineModel<boolean>('open', { default: false })
 
 const emit = defineEmits<{
   /**
@@ -54,21 +62,11 @@ const emit = defineEmits<{
   closeAutoFocus: [event: Event]
 }>()
 
-/**
- * Value of a group of radio choices: the label of the choice made, `''`
- * without one; `undefined` for a group of other choices.
- *
- * @param group Group of choices.
- */
-function radioValue(group: MenuGroup): string | undefined {
-  return group.items.some((item) => item.checked !== undefined)
-    ? (group.items.find((item) => item.checked)?.label ?? '')
-    : undefined
-}
+onBeforeUnmount(() => (open.value = false))
 </script>
 
 <template>
-  <dropdown-menu-root>
+  <dropdown-menu-root v-model:open="open">
     <dropdown-menu-trigger as-child>
       <slot />
     </dropdown-menu-trigger>
@@ -79,17 +77,7 @@ function radioValue(group: MenuGroup): string | undefined {
         :class="[MENU_PANEL, { 'flex flex-col gap-1': groups }]"
         @close-auto-focus="emit('closeAutoFocus', $event)"
       >
-        <ui-menu-entries v-if="items" :items="items" />
-        <component
-          :is="radioValue(group) === undefined ? DropdownMenuGroup : DropdownMenuRadioGroup"
-          v-for="(group, index) in groups"
-          :key="group.label"
-          v-bind="radioValue(group) === undefined ? {} : { modelValue: radioValue(group) }"
-          :class="{ 'border-t border-line pt-1': index > 0 }"
-        >
-          <dropdown-menu-label :class="MENU_HEADING">{{ group.label }}</dropdown-menu-label>
-          <ui-menu-entries :items="group.items" />
-        </component>
+        <ui-menu-entries :items="items" :groups="groups" :open-sub="openSub" />
       </dropdown-menu-content>
     </dropdown-menu-portal>
   </dropdown-menu-root>

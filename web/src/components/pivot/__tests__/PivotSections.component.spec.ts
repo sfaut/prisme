@@ -6,13 +6,11 @@ import { nextTick } from 'vue'
 
 import type { Cell } from '@/api/querySession'
 
-import PivotConcatPopover from '../PivotConcatPopover.vue'
-import PivotFilterPopover from '../PivotFilterPopover.vue'
 import PivotSections from '../PivotSections.vue'
 import SplitHandle from '@/components/split/SplitHandle.vue'
 import SplitPanel from '@/components/split/SplitPanel.vue'
 import type { PivotConfig, PivotFilter } from '../pivotConfig'
-import type { MenuGroup } from '@/components/ui/menuItem'
+import type { MenuGroup, MenuItem } from '@/components/ui/menuItem'
 import UiDropdownMenu from '@/components/ui/UiDropdownMenu.vue'
 
 /**
@@ -109,6 +107,30 @@ function firstElementGroups(mounted: VueWrapper): MenuGroup[] {
  */
 function elementMenu(mounted: VueWrapper, element: number) {
   return mounted.findAllComponents(UiDropdownMenu).filter((item) => item.props('groups'))[element]!
+}
+
+/**
+ * Menu of the zones that is open, by the position of its element, with the label of the choice
+ * whose submenu it opens; `null` without one.
+ *
+ * @param mounted Mounted zones.
+ */
+function openMenu(mounted: VueWrapper): { element: number; openSub?: string } | null {
+  const menus = mounted.findAllComponents(UiDropdownMenu).filter((item) => item.props('groups'))
+  const element = menus.findIndex((item) => item.props('open'))
+  return element < 0 ? null : { element, openSub: menus[element]!.props('openSub') }
+}
+
+/**
+ * Choice of the menu of an element, by its label.
+ *
+ * @param mounted Mounted zones.
+ * @param element Position of the element among those of the zones, in their order on screen.
+ * @param label Label of the choice.
+ */
+function menuItem(mounted: VueWrapper, element: number, label: string): MenuItem {
+  const groups = elementMenu(mounted, element).props('groups') ?? []
+  return groups.flatMap((group) => group.items).find((item) => item.label === label)!
 }
 
 /**
@@ -210,7 +232,7 @@ describe('PivotSections', () => {
       'Masquer',
       'Retirer',
     ])
-    expect(elementEntries(mounted, 3)).toEqual(['Réglages…', 'Nommer…', 'Masquer', 'Retirer'])
+    expect(elementEntries(mounted, 3)).toEqual(['Nommer…', 'Masquer', 'Retirer'])
     await choose(mounted, 1, 'Retirer')
     expect(shownConfig(mounted).columns).toEqual([])
     expect(shownConfig(mounted).rows).toEqual(CONFIG.rows)
@@ -430,7 +452,7 @@ describe('PivotSections', () => {
     } as PivotFilter
   }
 
-  it('opens the settings of a column dropped into the filters', async () => {
+  it('opens the menu of a column dropped into the filters, its values open', async () => {
     const mounted = mountZones()
     await dropOnFilters(mounted, 'ul[aria-label="Colonnes du résultat"] li')
     expect(shownConfig(mounted).filters).toEqual([
@@ -445,32 +467,37 @@ describe('PivotSections', () => {
         upper: '',
       },
     ])
-    const panel = mounted.findComponent(PivotFilterPopover)
-    expect(panel.props('index')).toBe(0)
-    const filter = shownConfig(mounted).filters[0]!
-    panel.vm.$emit('change', { ...filter, values: ['Nord'] })
+    // Its menu opens, with the list of its values.
+    expect(openMenu(mounted)).toEqual({ element: 2, openSub: 'Valeurs cochées' })
+    const values = menuItem(mounted, 2, 'Valeurs cochées').panel!.props
+    ;(values.onChange as (values: Cell[]) => void)(['Nord'])
     await nextTick()
     expect(shownConfig(mounted).filters[0]).toMatchObject({ values: ['Nord'] })
     expect(mounted.find('section[aria-label="Filtres"] [data-element]').text()).toContain(
       "region IN ('Nord')",
     )
-    panel.vm.$emit('close')
+    expect(menuItem(mounted, 2, 'Valeurs cochées').value).toBe('1')
+    elementMenu(mounted, 2).vm.$emit('update:open', false)
     await nextTick()
-    expect(mounted.findComponent(PivotFilterPopover).exists()).toBe(false)
+    expect(openMenu(mounted)).toBeNull()
+    // Opened again by its button, its menu opens no submenu.
+    elementMenu(mounted, 2).vm.$emit('update:open', true)
+    await nextTick()
+    expect(openMenu(mounted)).toEqual({ element: 2, openSub: undefined })
   })
 
-  it('starts a column of numbers or of dates on its bounds, with its panel', async () => {
+  it('starts a column of numbers or of dates on its bounds, their submenu open', async () => {
     const mounted = mountZones()
     await mounted.setProps({ types: [{ family: 'date', name: 'DATE' }] })
     await dropOnFilters(mounted, 'ul[aria-label="Colonnes du résultat"] li')
     expect(shownConfig(mounted).filters[0]).toMatchObject({ condition: 'between' })
-    expect(mounted.findComponent(PivotFilterPopover).exists()).toBe(true)
+    expect(openMenu(mounted)).toEqual({ element: 2, openSub: 'Bornes' })
     expect(mounted.find('section[aria-label="Filtres"] [data-element]').text()).toContain(
       'region BETWEEN ? AND ?',
     )
   })
 
-  it('opens the settings of a measure dropped into the filters', async () => {
+  it('opens the menu of a measure dropped into the filters', async () => {
     const mounted = mountZones()
     await mounted.setProps({
       types: [
@@ -484,57 +511,59 @@ describe('PivotSections', () => {
     expect(shownConfig(mounted).filters).toMatchObject([
       { kind: 'measure', aggregate: 'sum', column: 2, condition: 'between', operand: '' },
     ])
-    expect(mounted.findComponent(PivotFilterPopover).exists()).toBe(true)
+    expect(openMenu(mounted)).toEqual({ element: 2, openSub: 'Bornes' })
+    expect(
+      (elementMenu(mounted, 2).props('groups') as MenuGroup[]).map(({ label }) => label),
+    ).toEqual(['Filtre', 'Condition', 'Bornes', 'Élément'])
   })
 
-  it('gives a measure the choice of a filter on it, whose settings open', async () => {
+  it('gives a measure the choice of a filter on it, whose menu opens', async () => {
     const mounted = mountZones()
     await choose(mounted, 1, 'Filtrer sur cette mesure')
     expect(shownConfig(mounted).filters).toMatchObject([
       { kind: 'measure', aggregate: 'sum', column: 2 },
     ])
-    expect(mounted.findComponent(PivotFilterPopover).props('index')).toBe(0)
+    expect(openMenu(mounted)?.element).toBe(2)
   })
 
-  it('opens the settings of a filter by its menu', async () => {
+  it('changes a filter by its menu, the filter as it stands when a submenu closes', async () => {
     const mounted = mountZones()
     await mounted.setProps({ config: { ...CONFIG, filters: [onMeasure(), onMeasure()] } })
-    await choose(mounted, 3, 'Réglages…')
-    expect(mounted.findComponent(PivotFilterPopover).props('index')).toBe(1)
+    const operand = menuItem(mounted, 3, 'Valeur').panel!.props.onChange as (
+      changes: Partial<PivotFilter>,
+    ) => void
+    menuItem(mounted, 3, 'Égal à').onSelect!()
+    await nextTick()
+    // The submenu built before the change of the condition keeps it.
+    operand({ operand: '5' })
+    await nextTick()
+    expect(shownConfig(mounted).filters).toEqual([
+      onMeasure(),
+      onMeasure({ condition: 'equal', operand: '5' }),
+    ])
   })
 
-  it('names a filter from its settings, or with a double click', async () => {
+  it('names a filter with a double click', async () => {
     const mounted = mountZones()
     await mounted.setProps({ config: { ...CONFIG, filters: [onMeasure()] } })
     const zone = () => mounted.find('section[aria-label="Filtres"]')
-    await choose(mounted, 2, 'Réglages…')
-    mounted.findComponent(PivotFilterPopover).vm.$emit('name')
+    await zone().find('[data-element] span.truncate').trigger('dblclick')
     await nextTick()
-    await nextTick()
-    expect(mounted.findComponent(PivotFilterPopover).exists()).toBe(false)
     const field = zone().find('input')
     expect(document.activeElement).toBe(field.element)
     await field.setValue('Gros')
     await field.trigger('keydown', { key: 'Enter' })
     expect(shownConfig(mounted).filters[0]).toMatchObject({ name: 'Gros' })
-    await zone().find('[data-element] span.truncate').trigger('dblclick')
-    await nextTick()
-    expect(zone().find('input').exists()).toBe(true)
   })
 
-  it('opens the settings of the filter just dropped, among filters on the same column', async () => {
+  it('opens the menu of the filter just dropped, among filters on the same column', async () => {
     const mounted = mountZones()
     await dropOnFilters(mounted, 'ul[aria-label="Colonnes du résultat"] li')
-    const panel = () => mounted.findComponent(PivotFilterPopover)
-    const change = (values: string[]) =>
-      panel().vm.$emit('change', { ...panel().props('filter'), values })
-    change(['Nord'])
-    panel().vm.$emit('close')
+    expect(openMenu(mounted)?.element).toBe(2)
+    elementMenu(mounted, 2).vm.$emit('update:open', false)
     await nextTick()
     await dropOnFilters(mounted, 'ul[aria-label="Colonnes du résultat"] li')
-    change(['Sud'])
-    await nextTick()
-    expect(shownConfig(mounted).filters).toMatchObject([{ values: ['Nord'] }, { values: ['Sud'] }])
+    expect(openMenu(mounted)?.element).toBe(3)
   })
 
   it('reads the values of a list at the precision of its filter', async () => {
@@ -551,7 +580,7 @@ describe('PivotSections', () => {
       upper: '',
     }
     await mounted.setProps({ readValues, config: { ...CONFIG, filters: [filter] } })
-    await choose(mounted, 2, 'Réglages…')
+    await (menuItem(mounted, 2, 'Valeurs cochées').panel!.props.read as () => Promise<Cell[]>)()
     expect(readValues).toHaveBeenCalledWith(2, 'month')
   })
 
@@ -591,28 +620,32 @@ describe('PivotSections', () => {
     expect(shownConfig(mounted)).toEqual(CONFIG)
   })
 
-  it('opens the settings of a measure that becomes a GROUP_CONCAT, which gives no filter', async () => {
+  it('shows the settings of a measure that becomes a GROUP_CONCAT, which gives no filter', async () => {
     const mounted = mountZones()
+    const group = (label: string) =>
+      (elementMenu(mounted, 1).props('groups') as MenuGroup[]).find((item) => item.label === label)
+    // The choice keeps the menu open, which shows the new settings at once.
+    const concat = group('Agrégat')!.items.find((item) => item.label === 'GROUP_CONCAT(montant)')!
+    expect(concat.keepOpen).toBe(true)
+    expect(group('Agrégat')!.items.find((item) => item.label === 'MAX(montant)')!.keepOpen).toBe(
+      false,
+    )
     await choose(mounted, 1, 'GROUP_CONCAT(montant)')
     expect(shownConfig(mounted).measures).toEqual([
       { aggregate: 'group_concat', column: 2, name: '', concat: { separator: ', ' } },
     ])
-    const panel = () => mounted.findComponent(PivotConcatPopover)
-    expect(panel().props('index')).toBe(0)
-    panel().vm.$emit('change', { separator: ' | ', distinct: true })
+    expect(
+      (elementMenu(mounted, 1).props('groups') as MenuGroup[]).map((item) => item.label),
+    ).toEqual(['Agrégat', 'Concaténation', 'Élément'])
+    await choose(mounted, 1, 'Valeurs distinctes (DISTINCT)')
+    const separator = group('Concaténation')!.items[2]!
+    expect(separator.value).toBe("', '")
+    ;(separator.panel!.props.onChange as (separator: string) => void)(' | ')
     await nextTick()
     expect(shownConfig(mounted).measures[0]?.concat).toEqual({ separator: ' | ', distinct: true })
-    panel().vm.$emit('close')
-    await nextTick()
-    expect(panel().exists()).toBe(false)
-    // Its menu opens them again, and offers no filter on it.
-    expect(elementEntries(mounted, 1)).toEqual(['Réglages…', 'Nommer…', 'Masquer', 'Retirer'])
-    await choose(mounted, 1, 'Réglages…')
-    expect(panel().props('index')).toBe(0)
-    // A measure that already is one opens nothing when it takes it again.
-    panel().vm.$emit('close')
-    await choose(mounted, 1, 'GROUP_CONCAT(montant)')
-    expect(panel().exists()).toBe(false)
+    expect(group('Concaténation')!.items[2]!.value).toBe("' | '")
+    // Its menu offers no filter on it, nor settings in a panel.
+    expect(elementEntries(mounted, 1)).toEqual(['Nommer…', 'Masquer', 'Retirer'])
   })
 
   it('shows a sum as a share of a total, with its digits', async () => {
@@ -625,21 +658,15 @@ describe('PivotSections', () => {
       ['Part du total de la ligne', false],
       ['Part du total de la colonne', false],
     ])
-    expect(group('Décimales')).toBeUndefined()
     await choose(mounted, 1, 'Part du total de la ligne')
     expect(shownConfig(mounted).measures[0]?.share).toEqual({ of: 'row', decimals: 0 })
     expect(mounted.findAll('[data-element]')[1]!.text()).toContain('SUM(montant) (% ligne)')
-    expect(group('Décimales')?.items.map((item) => item.label)).toEqual([
-      '0',
-      '1',
-      '2',
-      '3',
-      '4',
-      '5',
-      '6',
-    ])
-    await choose(mounted, 1, '2')
+    const digits = () => group('Affichage')!.items[3]!
+    expect([digits().label, digits().value]).toEqual(['Décimales', '0'])
+    digits().groups![0]!.items.find((item) => item.label === '2')!.onSelect!()
+    await nextTick()
     expect(shownConfig(mounted).measures[0]?.share).toEqual({ of: 'row', decimals: 2 })
+    expect(digits().value).toBe('2')
     await choose(mounted, 1, 'Valeur')
     expect(shownConfig(mounted).measures[0]).toEqual(CONFIG.measures[0])
   })
@@ -666,7 +693,7 @@ describe('PivotSections', () => {
     await nextTick()
     expect(shownConfig(mounted).filters).toEqual([])
     expect(shownConfig(mounted).measures).toHaveLength(1)
-    expect(mounted.findComponent(PivotFilterPopover).exists()).toBe(false)
+    expect(openMenu(mounted)).toBeNull()
   })
 })
 

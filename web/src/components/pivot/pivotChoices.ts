@@ -1,11 +1,12 @@
 /**
- * Choices the settings of the Pivoteur share, with their icon: the menu of a measure and of a level
- * (`PivotSections.vue`), and the panel of a filter (`PivotFilterPopover.vue`); the display of a measure
- * as a share of a total and its digits.
+ * Choices the menus of the elements of the Pivoteur share, with their icon (`PivotSections.vue`,
+ * `pivotMenus.ts`, `pivotFilterMenu.ts`): aggregates, precisions, conditions of a filter, display of
+ * a measure as a share of a total and its digits, usual separators of a `GROUP_CONCAT`.
  */
 
 import {
   ArrowDownToLine,
+  ArrowRightToLine,
   ArrowUpToLine,
   Asterisk,
   Atom,
@@ -15,27 +16,40 @@ import {
   CalendarDays,
   CalendarFold,
   CalendarRange,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Circle,
+  CircleDot,
   Clock,
   Clock3,
   Columns3,
   Combine,
+  CornerDownLeft,
   DecimalsArrowRight,
   Divide,
   Equal,
+  EqualNot,
   FingerprintPattern,
+  FoldHorizontal,
   Hash,
   Hourglass,
+  ListChecks,
+  ListX,
   Rows3,
   Sigma,
   SquareDivide,
   SquareSigma,
+  TextCursorInput,
   Timer,
+  UnfoldHorizontal,
 } from '@lucide/vue'
 import type { Component } from 'vue'
 
 import type { PivotShare } from '@/api/generated/PivotShare'
 
-import type { PrecisionLabel } from './pivotConfig'
+import type { PivotCondition, PrecisionLabel } from './pivotConfig'
 import type { PivotMeasure } from './pivotEngine'
 
 /**
@@ -72,6 +86,24 @@ export const PRECISION_ICONS: Record<PrecisionLabel, Component> = {
 }
 
 /**
+ * Conditions of a filter, with their icon. A filter on a measure has no list.
+ */
+export const CONDITIONS: { condition: PivotCondition; label: string; icon: Component }[] = [
+  { condition: 'in_list', label: 'Dans la liste', icon: ListChecks },
+  { condition: 'not_in_list', label: 'Hors de la liste', icon: ListX },
+  { condition: 'equal', label: 'Égal à', icon: Equal },
+  { condition: 'not_equal', label: 'Différent de', icon: EqualNot },
+  { condition: 'less', label: 'Inférieur à', icon: ChevronLeft },
+  { condition: 'less_or_equal', label: 'Inférieur ou égal à', icon: ChevronsLeft },
+  { condition: 'greater', label: 'Supérieur à', icon: ChevronRight },
+  { condition: 'greater_or_equal', label: 'Supérieur ou égal à', icon: ChevronsRight },
+  { condition: 'between', label: 'Entre', icon: FoldHorizontal },
+  { condition: 'not_between', label: 'N’est pas entre', icon: UnfoldHorizontal },
+  { condition: 'is_null', label: 'Est NULL', icon: Circle },
+  { condition: 'is_not_null', label: 'N’est pas NULL', icon: CircleDot },
+]
+
+/**
  * How a count, a sum or an average shows its values, with their icon: as they are (`null`), or as
  * the share of the total of their line or of their column.
  */
@@ -90,3 +122,15 @@ export const SHARE_DECIMALS = [0, 1, 2, 3, 4, 5, 6]
  * Icon of the choices of the digits of a share.
  */
 export const DECIMALS_ICON: Component = DecimalsArrowRight
+
+/**
+ * Usual separators of a `GROUP_CONCAT`, offered beside its field, with their icon.
+ */
+export const SEPARATORS: { separator: string; label: string; icon: Component }[] = [
+  { separator: ', ', label: 'Virgule', icon: TextCursorInput },
+  { separator: '; ', label: 'Point-virgule', icon: TextCursorInput },
+  { separator: ' | ', label: 'Barre', icon: TextCursorInput },
+  { separator: '\r\n', label: 'Retour à la ligne (CRLF)', icon: CornerDownLeft },
+  { separator: '\n', label: 'Retour à la ligne (LF)', icon: CornerDownLeft },
+  { separator: '\t', label: 'Tabulation', icon: ArrowRightToLine },
+]

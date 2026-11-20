@@ -70,7 +70,7 @@ Then open <http://prisme.localhost:5173>. Vite announces `localhost:5173`, which
 
 ### Components
 
-A component is named after its area of the interface, as the README calls it, then after its role: `NavigatorPanel`, `EditorView`, `ResultGrid`, `PivotFilterPopover`, `ConsoleHistoryTable`. One suffix per role: `Panel` for a panel of the screen (header, activity bar), `Popover` for settings floating beside an element, `Dialog` for a modal window, `Bar` for a bar, `Tab` for a tab and `View` for its content, `Grid` for a grid of data, `Table` for a list of the console. A component made for one parent starts with its name (`PivotFilterValues` in `PivotFilterPopover`); the base components start with `Ui`, the splitters with `Split`.
+A component is named after its area of the interface, as the README calls it, then after its role: `NavigatorPanel`, `EditorView`, `ResultGrid`, `PivotLayoutPopover`, `ConsoleHistoryTable`. One suffix per role: `Panel` for a panel of the screen (header, activity bar), `Popover` for settings floating beside an element, `Submenu` for the fields of a setting in a submenu of a menu, `Dialog` for a modal window, `Bar` for a bar, `Tab` for a tab and `View` for its content, `Grid` for a grid of data, `Table` for a list of the console. A component made for one parent starts with its name (`PivotFilterValues` in `PivotFilterListSubmenu`); the base components start with `Ui`, the splitters with `Split`.
 
 Each area has its folder in `web/src/components/` (see "Repository layout"), with its components, the modules that carry its notions (`pivot/pivotConfig.ts`, `result/csv.ts`) and its tests (`__tests__/`); another area imports them from there (`@/components/result/typeIcons`). Inside a folder, imports are relative. A module of no area goes to `web/src/utils/`.
 
@@ -214,7 +214,7 @@ The interface is built in lengths relative to the root, `:root` being fixed: ste
 
 | Dependency | API in pixels | Variables | Where |
 |---|---|---|---|
-| `reka-ui` 2.11.0 | `side-offset` of the menus and lists (a number, passed to Floating UI). | `--popup-offset` | `UiSelect.vue`, `UiDropdownMenu.vue`, `PivotFilterPopover.vue`, `PivotLayoutPopover.vue` |
+| `reka-ui` 2.11.0 | `side-offset` of the menus and lists (a number, passed to Floating UI). | `--popup-offset` | `UiSelect.vue`, `UiDropdownMenu.vue`, `PivotLayoutPopover.vue` |
 | `reka-ui` 2.11.0 | `estimate-size` of `TreeVirtualizer` (built on `@tanstack/vue-virtual`): height of a line of the tree, to turn the scroll position (in pixels) into the lines to draw. | `--row-height` | `NavigatorPanel.vue` |
 | `reka-ui` 2.11.0 | `estimate-size` of `ListboxVirtualizer`, on the same library: height of a value of a list. | `--row-height` | `PivotFilterValues.vue` |
 
@@ -274,11 +274,13 @@ The engine runs in the page, in Rust compiled to WebAssembly, in a Worker, on th
 | `web/src/components/pivot/pivotLayout.ts` | Header cells, corner and line labels of a window, in the form of the lines (`labelCells`), marks of the sort buttons. |
 | `web/src/components/pivot/PivotPanel.vue` | The panel, under the results of `EditorView.vue`: follows the tab shown, computes, saves. |
 | `web/src/components/pivot/PivotSections.vue` | The columns of the result and the zones, by drag and drop and menus, in two sections whose widths the tab keeps (`fields_px`, `zones_px`, in CSS pixels). |
-| `web/src/components/pivot/PivotFilterPopover.vue` | The settings of a filter, in a popover of Reka UI beside its element: precision, aggregate, condition, values, level, name. |
-| `web/src/components/pivot/PivotConcatPopover.vue` | The settings of a `GROUP_CONCAT`, in a popover of Reka UI beside its measure: `DISTINCT`, keys of the order, separator, `LIMIT` and `OFFSET`, name. |
+| `web/src/components/pivot/pivotFilterMenu.ts` | Groups of the menu of a filter: aggregate and level of a filter on a measure, precision, condition, and the line of what the condition compares to; the line whose submenu the drop of a filter opens (`operandLine`). |
+| `web/src/components/pivot/PivotFilterOperandSubmenu.vue`, `PivotFilterListSubmenu.vue` | The value or the bounds of a filter, refused when they cannot compare, and the list of the values of its column (`PivotFilterValues.vue`), each in its submenu of the menu of the filter. |
+| `web/src/components/pivot/pivotMenus.ts` | Groups of the menu of an element that hold values and submenus: settings of a `GROUP_CONCAT` (`concatGroup`), display of a share of a total and its digits (`shareGroup`). |
+| `web/src/components/pivot/PivotConcatOrderSubmenu.vue`, `PivotConcatSeparatorSubmenu.vue`, `PivotConcatWindowSubmenu.vue` | The fields of the settings of a `GROUP_CONCAT`, each in its submenu of the menu of the measure: keys of the order, separator with the usual ones, `LIMIT` and `OFFSET`. What is typed applies at Enter, on leaving the field or when the submenu closes, except by Escape (`useSubmenuDrafts`, `web/src/components/ui/submenuDrafts.ts`). |
 | `web/src/components/pivot/PivotLayoutPopover.vue` | The layout of the table, in a popover of Reka UI under its button in the header of the panel: form of the lines, repetition of their labels, totals and subtotals of each axis. |
-| `web/src/components/pivot/PivotFilterValues.vue` | The list of the values of a column or of the periods of a precision, in the settings of a filter: listbox of Reka UI, drawn in sight (`ListboxVirtualizer`). |
-| `web/src/components/pivot/pivotChoices.ts` | The aggregates and the precisions, with their icon, shared by the menus and the settings of a filter. |
+| `web/src/components/pivot/PivotFilterValues.vue` | The list of the values of a column or of the periods of a precision, in the submenu of a filter: listbox of Reka UI, drawn in sight (`ListboxVirtualizer`). |
+| `web/src/components/pivot/pivotChoices.ts` | The aggregates, the precisions, the conditions of a filter, the displays of a measure and the usual separators, with their icon, shared by the menus of the elements. |
 | `web/src/components/pivot/PivotGrid.vue` | The table, windowed on both axes (`drawnRange`, `columnRange`), with the resize handles of its columns. |
 | `web/src/components/pivot/pivotWidths.ts` | Widths of the columns of the table: columns given a width, by their position (`widenedColumns`), room before a column, column at a distance, tracks of a window, width of a drag or of a fit. |
 
@@ -317,7 +319,7 @@ The operand of a filter on a measure is checked twice: by the interface, for the
 
 **Dates.** A date is read in the text of its cell, by the civil calendar (`crates/pivot/src/dates.rs`). A cell outside of the calendar (a date without a day in it, a year outside of 0001 to 9999, any other text) stops the computation when a row taken into account holds it; the page reads the value in its own rows for its message, and empties the table, as for every error of calculation. The servers read such dates each in their own way ([SQL-COMPARISON.md](SQL-COMPARISON.md), section 3.12). A cell that holds no date stops the computation (`invalid_date`).
 
-**Tests.** `cargo test -p prisme-store`, `-p prisme-pivot` (the example of the specification, `crates/pivot/src/tests.rs`) and `-p prisme-web-engine` run natively. In `web/`, the specs `pivotConfig`, `pivotLayout`, `pivotClient`, `pivotEngine`, `PivotSections.component`, `PivotFilterPopover.component`, `PivotLayoutPopover.component` and `PivotFilterValues.component` run with the other Vitest tests. `node bench/pivot/run.mjs` measures the engine (see "Benchmarks"). After a change of `crates/store`, `crates/pivot` or `crates/web-engine`, see "Working on the interface" for its rebuild.
+**Tests.** `cargo test -p prisme-store`, `-p prisme-pivot` (the example of the specification, `crates/pivot/src/tests.rs`) and `-p prisme-web-engine` run natively. In `web/`, the specs `pivotConfig`, `pivotLayout`, `pivotClient`, `pivotEngine`, `pivotMenus`, `pivotFilterMenu`, `PivotSections.component`, `PivotConcatSubmenus.component`, `PivotFilterSubmenus.component`, `PivotLayoutPopover.component` and `PivotFilterValues.component` run with the other Vitest tests. `node bench/pivot/run.mjs` measures the engine (see "Benchmarks"). After a change of `crates/store`, `crates/pivot` or `crates/web-engine`, see "Working on the interface" for its rebuild.
 
 ## Building the single executable
 

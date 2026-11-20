@@ -262,6 +262,52 @@ export function concatOf(measure: PivotMeasure): PivotConcat {
 }
 
 /**
+ * Characters a separator writes with a backslash, as MariaDB's literals do: a field of one line
+ * cannot hold a line break.
+ */
+const SEPARATOR_ESCAPES: [string, string][] = [
+  ['\\', '\\\\'],
+  ['\n', '\\n'],
+  ['\r', '\\r'],
+  ['\t', '\\t'],
+]
+
+/**
+ * Separator as its field writes it: a backslash, a line break, a carriage return and a tab written
+ * with a backslash (`\\`, `\n`, `\r`, `\t`), the other characters as they are.
+ *
+ * @param separator Separator.
+ */
+export function escapeSeparator(separator: string): string {
+  return SEPARATOR_ESCAPES.reduce(
+    (text, [character, escape]) => text.split(character).join(escape),
+    separator,
+  )
+}
+
+/**
+ * Separator typed in its field (`escapeSeparator`): `\\`, `\n`, `\r` and `\t` give their
+ * character, another backslash stays as it is.
+ *
+ * @param text Text typed.
+ */
+export function unescapeSeparator(text: string): string {
+  return text.replace(
+    /\\([\\nrt])/g,
+    (_, letter: string) => SEPARATOR_ESCAPES.find(([, escape]) => escape === `\\${letter}`)![0],
+  )
+}
+
+/**
+ * Separator as MariaDB writes it, between quotes: `', '`, `'\n'`, `'l''un'`.
+ *
+ * @param separator Separator.
+ */
+export function separatorLiteral(separator: string): string {
+  return `'${escapeSeparator(separator).replace(/'/g, "''")}'`
+}
+
+/**
  * Precision a measure of an aggregate keeps: absent for the values as they are, and for an aggregate
  * that takes none.
  *
@@ -1195,7 +1241,7 @@ function concatExpression(name: string, concat: PivotConcat, names: string[]): s
     concat.distinct ? 'DISTINCT ' : '',
     name,
     keys.length > 0 ? ` ORDER BY ${keys.join(', ')}` : '',
-    ` SEPARATOR ${sqlLiteral(concat.separator, 'text')}`,
+    ` SEPARATOR ${separatorLiteral(concat.separator)}`,
     concat.limit === undefined ? '' : ` LIMIT ${concat.limit}`,
     concat.offset ? ` OFFSET ${concat.offset}` : '',
   ]
