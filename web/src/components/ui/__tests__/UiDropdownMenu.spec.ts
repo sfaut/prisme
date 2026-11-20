@@ -269,4 +269,16 @@ describe('UiDropdownMenu', () => {
     )
     wrapper.unmount()
   })
+
+  it('tells its parent that it is closed when it leaves open, with its element', async () => {
+    const closed = vi.fn<(open: boolean) => void>()
+    const wrapper = mount(UiDropdownMenu, {
+      props: { items: [{ label: 'Retirer', icon: Download }], open: true, 'onUpdate:open': closed },
+      slots: { default: () => h('button', { type: 'button' }, 'Menu') },
+      attachTo: document.body,
+    })
+    await nextTick()
+    wrapper.unmount()
+    expect(closed).toHaveBeenCalledExactlyOnceWith(false)
+  })
 })

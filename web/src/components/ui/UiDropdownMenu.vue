@@ -9,6 +9,8 @@
   (`v-model:open`), possibly with the submenu of a choice open (`openSub`).
   Closed, the menu gives the focus back to its trigger, unless the parent
   prevents it (`closeAutoFocus`), to give it to a field opened by a choice.
+  Removed while open, with the element of its trigger, it tells its parent
+  that it is closed, which it could not do once removed.
 -->
 <script setup lang="ts">
 import {
@@ -17,6 +19,7 @@ import {
   DropdownMenuRoot,
   DropdownMenuTrigger,
 } from 'reka-ui'
+import { onBeforeUnmount } from 'vue'
 
 import { MENU_PANEL, type MenuGroup, type MenuItem } from './menuItem'
 import UiMenuEntries from './UiMenuEntries.vue'
@@ -58,6 +61,8 @@ const emit = defineEmits<{
    */
   closeAutoFocus: [event: Event]
 }>()
+
+onBeforeUnmount(() => (open.value = false))
 </script>
 
 <template>
