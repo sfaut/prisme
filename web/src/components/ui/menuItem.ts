@@ -1,7 +1,7 @@
 /**
  * Choice of a dropdown menu (`UiDropdownMenu.vue`), group of choices under a
- * heading, and the looks shared by the menu and its submenus
- * (`UiMenuEntries.vue`).
+ * heading, content of a submenu that holds fields, and the looks shared by the
+ * menu and its submenus (`UiMenuEntries.vue`).
  */
 
 import type { Component } from 'vue'
@@ -33,17 +33,55 @@ export interface MenuItem {
    */
   checked?: boolean
   /**
+   * Is the box of a checkbox ticked? Set on a choice that is ticked or not, which shows its box in
+   * place of its icon, and keeps the menu open when it changes.
+   */
+  ticked?: boolean
+  /**
    * Inactive choice.
    */
   disabled?: boolean
+  /**
+   * Does the choice keep the menu open? A choice that brings new settings into the menu keeps it
+   * open, so that they show at once.
+   */
+  keepOpen?: boolean
   /**
    * Action started on choosing.
    */
   onSelect?: () => void
   /**
+   * Current value of the setting that the submenu of this choice sets, on the right of its label.
+   */
+  value?: string
+  /**
    * Choices of a submenu, opened by this choice instead of an action.
    */
   items?: MenuItem[]
+  /**
+   * Choices of a submenu gathered in groups, instead of `items`.
+   */
+  groups?: MenuGroup[]
+  /**
+   * Content of a submenu that holds fields, instead of choices (`MenuPanel`).
+   */
+  panel?: MenuPanel
+}
+
+/**
+ * Content of a submenu that holds fields: a component, and its props and listeners (`onChange`).
+ * The submenu keeps the keys of its fields from the menu: Escape closes it alone, and Tab and
+ * Shift+Tab go round its fields.
+ */
+export interface MenuPanel {
+  /**
+   * Component drawn in the submenu.
+   */
+  component: Component
+  /**
+   * Props and listeners of the component.
+   */
+  props: Record<string, unknown>
 }
 
 /**
