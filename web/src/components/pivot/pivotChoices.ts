@@ -6,6 +6,7 @@
 
 import {
   ArrowDownToLine,
+  ArrowRightToLine,
   ArrowUpToLine,
   Asterisk,
   Atom,
@@ -129,6 +130,7 @@ export const SEPARATORS: { separator: string; label: string; icon: Component }[]
   { separator: ', ', label: 'Virgule', icon: TextCursorInput },
   { separator: '; ', label: 'Point-virgule', icon: TextCursorInput },
   { separator: ' | ', label: 'Barre', icon: TextCursorInput },
+  { separator: '\r\n', label: 'Retour à la ligne (CRLF)', icon: CornerDownLeft },
   { separator: '\n', label: 'Retour à la ligne (LF)', icon: CornerDownLeft },
-  { separator: '\r\n', label: 'Retour à la ligne (CR LF)', icon: CornerDownLeft },
+  { separator: '\t', label: 'Tabulation', icon: ArrowRightToLine },
 ]

@@ -164,10 +164,11 @@ describe('PivotConcatSeparatorSubmenu', () => {
       ["Virgule', '", 'true'],
       ["Point-virgule'; '", 'false'],
       ["Barre' | '", 'false'],
+      ["Retour à la ligne (CRLF)'\\r\\n'", 'false'],
       ["Retour à la ligne (LF)'\\n'", 'false'],
-      ["Retour à la ligne (CR LF)'\\r\\n'", 'false'],
+      ["Tabulation'\\t'", 'false'],
     ])
-    button('Retour à la ligne (CR LF)').click()
+    button('Retour à la ligne (CRLF)').click()
     await nextTick()
     expect(changes).toEqual(['\r\n'])
     expect(field('Séparateur').value).toBe('\\r\\n')
