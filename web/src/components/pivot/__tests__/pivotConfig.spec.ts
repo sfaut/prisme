@@ -25,6 +25,7 @@ import {
   engineOrder,
   engineRequest,
   engineTargets,
+  escapeSeparator,
   filterable,
   fittedConfig,
   hasGrandTotal,
@@ -42,10 +43,12 @@ import {
   sameTableLayout,
   sameTarget,
   sectionWidth,
+  separatorLiteral,
   shownConfig,
   storedIndex,
   takesPrecision,
   takesShare,
+  unescapeSeparator,
   withAggregate,
   withAllSubtotals,
   withColumnWidth,
@@ -721,6 +724,21 @@ describe('GROUP_CONCAT', () => {
     expect(aggregateLabel(all, NAMES)).toBe('GROUP_CONCAT(ville)')
     expect(aggregateLabel(months, NAMES)).toBe('GROUP_CONCAT(annee (Mois))')
     expect(aggregateLabel(measure('sum', 4), NAMES)).toBe('SUM(montant)')
+  })
+
+  it('writes a line break of its separator with a backslash, and reads it back', () => {
+    const lines = joined(1, { separator: '\r\n' })
+    expect(measureExpression(lines, NAMES)).toBe("GROUP_CONCAT(ville SEPARATOR '\\r\\n')")
+    expect(separatorLiteral('\n')).toBe("'\\n'")
+    expect(separatorLiteral("a\\b'\t")).toBe("'a\\\\b''\\t'")
+    expect(escapeSeparator('\r\n')).toBe('\\r\\n')
+    expect(unescapeSeparator('\\r\\n')).toBe('\r\n')
+    expect(unescapeSeparator('a\\\\n')).toBe('a\\n')
+    // Another backslash stays as it is typed.
+    expect(unescapeSeparator('a\\b')).toBe('a\\b')
+    for (const separator of [', ', '\r\n', 'a\\nb', '\\', '\t|\t']) {
+      expect(unescapeSeparator(escapeSeparator(separator))).toBe(separator)
+    }
   })
 
   it('starts with the default settings, which another aggregate leaves', () => {
