@@ -397,6 +397,11 @@ pub struct Notification {
     pub level: DebugLevel,
     /// Text of the notification, cut beyond 2,000 characters.
     pub message: String,
+    /// Editor on screen when it showed, whose console shows it; absent,
+    /// outside the editors.
+    #[serde(default)]
+    #[ts(optional)]
+    pub editor_id: Option<i64>,
 }
 
 /// `POST /api/console/notifications`: adds a notification of the interface
@@ -406,12 +411,13 @@ async fn notify(
     _user: CurrentUser,
     Json(notification): Json<Notification>,
 ) -> Result<StatusCode, ApiError> {
-    let line = TracedLine::now(
+    let mut line = TracedLine::now(
         notification.level,
         DebugSource::Interface,
         "",
         &notification.message,
     );
+    line.editor_id = notification.editor_id.unwrap_or(0);
     let entry = state
         .with_db(move |db, _| debug::insert(db, &line).map_err(ConsoleError::from))
         .await?;

@@ -4,7 +4,7 @@ import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 
 import UiToaster from '../UiToaster.vue'
-import { notify, toasts } from '../toasts'
+import { notify, showEditor, toasts } from '../toasts'
 
 const logNotification = vi.fn<(notification: unknown) => void>()
 
@@ -15,14 +15,17 @@ vi.mock('@/api/console', () => ({
 describe('transient messages', () => {
   it('go to the debug log of the console too', () => {
     notify('Sélection copiée')
+    showEditor(4)
     notify('Échec de la copie', 'error')
+    showEditor(null)
     expect(toasts.value.map((toast) => toast.title)).toEqual([
       'Sélection copiée',
       'Échec de la copie',
     ])
+    // Under the editor on screen, whose console shows them.
     expect(logNotification.mock.calls).toEqual([
-      [{ level: 'info', message: 'Sélection copiée' }],
-      [{ level: 'error', message: 'Échec de la copie' }],
+      [{ level: 'info', message: 'Sélection copiée', editor_id: undefined }],
+      [{ level: 'error', message: 'Échec de la copie', editor_id: 4 }],
     ])
   })
 

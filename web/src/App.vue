@@ -52,6 +52,7 @@ import { useEditorLayoutsStore } from './stores/editorLayouts'
 import { useExplorerStore } from './stores/explorer'
 import { type EditorEntry, useEditorsStore } from './stores/editors'
 import { useNavigatorStore } from './stores/navigator'
+import { showEditor } from './components/ui/toasts'
 
 import TopBar from '@/components/top-bar/TopBar.vue'
 import ConsolePanel from '@/components/console/ConsolePanel.vue'
@@ -87,6 +88,9 @@ watch(
   { immediate: true },
 )
 onUnmounted(() => consoleStore.follow(null))
+
+// The notifications go to the debug log of the editor on screen.
+watch(() => editors.activeId, showEditor, { immediate: true })
 
 /**
  * Error loading or saving the editors, `null` if none.
