@@ -174,4 +174,4 @@ Today the settings of a `GROUP_CONCAT` and of a filter open in a panel beside th
 - ✅ A text typed applies at Enter or on leaving its field, a refused value showing why and changing nothing; Escape closes the submenu and forgets what is being typed
 - ⬜ Checks: tests of the interface, screen in light and dark modes and at a real 150%, keyboard alone and pointer
 - ⬜ Documented: `README.md`, `docs/DEVELOPER.md` (components of the Pivoteur, lengths in pixels, tests), module comments
-- ⬜ Documented in the specification: F-21, F-44, F-47, F-48
+- ✅ Documented in the specification: F-21, F-44, F-47, F-48
