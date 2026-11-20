@@ -154,3 +154,4 @@ Today the Pivoteur waits for the end of the query (F-07), then copies all the ro
 - ✅ Panel: adaptive pace, partial table shown in the status bar, values of a filter read on the rows received, scroll position kept; tests, screen in light and dark modes on 1 million rows
 - ✅ Documented: `README.md`, `docs/DEVELOPER.md`, module comments, `docs/QUESTIONS.md`
 - ✅ The table no longer blinks at each update: the answer of a computation carries the window of the area drawn, and the table and its values are drawn at once
+- ✅ The status bar no longer blinks at each update: "Calcul…" shows only once a computation has lasted 500 ms (`delayedFlag`)

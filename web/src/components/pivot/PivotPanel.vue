@@ -10,7 +10,8 @@
   dates any more. The columns of the result and the zones (`PivotSections.vue`),
   then the table (`PivotGrid.vue`), which takes the remaining width, with its
   status bar: rows taken into account, groups, duration of the computation
-  (F-06). The widths of the sections are those of the tab shown.
+  (F-06), and a computation under way once it has lasted half a second. The
+  widths of the sections are those of the tab shown.
 
   The engine runs in a Worker of the page (`pivotClient.ts`), one per
   result, while the panel is open; closed, the panel computes nothing and
@@ -94,6 +95,7 @@ import { targetKey } from './pivotWidths'
 import { rowTest, sameColumns } from '@/components/result/resultGrid'
 import { isForeignKey, useCatalogStore } from '@/stores/catalog'
 import { useSettingsStore } from '@/stores/settings'
+import { delayedFlag } from '@/utils/delayedFlag'
 import { columnIcon } from '@/components/result/typeIcons'
 import UiAlert from '@/components/ui/UiAlert.vue'
 import UiStatusBar from '@/components/ui/UiStatusBar.vue'
@@ -340,6 +342,19 @@ const copying = ref(false)
  * Is a table being computed?
  */
 const computing = ref(false)
+
+/**
+ * Delay after which the status bar says that a table is being computed, in
+ * milliseconds: a shorter computation shows nothing, so that the updates of
+ * the reception do not blink.
+ */
+const COMPUTING_NOTICE_MS = 500
+
+/**
+ * Does the status bar say that a table is being computed? Once a computation
+ * has lasted the delay.
+ */
+const computingShown = delayedFlag(computing, COMPUTING_NOTICE_MS)
 
 /**
  * Table shown, with the request, the configuration and the layout it was
@@ -794,7 +809,7 @@ const groupsText = computed(() => {
         <div v-else class="flex-1" />
         <ui-status-bar role="status">
           <span v-if="copying">Copie des lignes…</span>
-          <span v-else-if="computing">Calcul…</span>
+          <span v-else-if="computingShown">Calcul…</span>
           <template v-if="shownTable">
             <span>{{ rowsText }}</span>
             <span>{{ groupsText }}</span>

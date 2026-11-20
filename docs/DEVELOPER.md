@@ -731,7 +731,7 @@ web/               Vue interface
     split/         splitters of Prisme
     ui/            base components (buttons, fields, menus, dialogs, tooltips)
   src/stores/      shared state (connections, settings)
-  src/utils/       utilities of no area: shared clock, downloads, theme lengths, color mode, stored preferences
+  src/utils/       utilities of no area: shared clock, delayed flag, downloads, theme lengths, color mode, stored preferences
 bench/             benchmarks, outside the workspace
   prisme.mjs       Prisme on the real server, for the benchmarks that measure it
   batches/         batches of rows from the server to the page: fast, slow and heavy results (run.mjs)
