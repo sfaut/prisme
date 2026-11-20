@@ -24,8 +24,10 @@
   (`defaultAggregate`, F-15); the menu of a measure changes it. The menu of a
   level of dates sets its precision, what it keeps of them (`precisionChoices`),
   and so does that of `COUNT(DISTINCT)`, `MIN`, `MAX` and `GROUP_CONCAT` of dates
-  (`takesPrecision`). A measure that becomes a `GROUP_CONCAT` opens its settings
-  beside it (`PivotConcatPopover.vue`); its menu opens them again ("Réglages…").
+  (`takesPrecision`). The menu of a `GROUP_CONCAT` holds its settings (group
+  "Concaténation"), that of a count, a sum or an average its display as a share of
+  a total (group "Affichage", `pivotMenus.ts`). An aggregate or a share that brings
+  new settings keeps the menu open, which shows them at once.
   A column can be placed several times, in a zone and on both axes: dropping it
   from the list always adds an element, dragging an element moves it.
   An element takes a name by its menu ("Nommer…") or a double click on its label
@@ -73,10 +75,9 @@ import type { ColumnTypeInfo } from '@/api/generated/ColumnTypeInfo'
 import type { Cell } from '@/api/querySession'
 import { cssPixels } from '@/utils/cssLength'
 
-import { AGGREGATES, DECIMALS_ICON, PRECISION_ICONS, SHARE_DECIMALS, SHOW_AS } from './pivotChoices'
+import { AGGREGATES, PRECISION_ICONS } from './pivotChoices'
 import {
   type DatePrecision,
-  type PivotConcat,
   type PivotConfig,
   type PivotFilter,
   type PivotSection,
@@ -84,6 +85,7 @@ import {
   type ZonePlace,
   addsNumbers,
   aggregateLabel,
+  concatOf,
   defaultAggregate,
   elementExpression,
   elementLabel,
@@ -109,8 +111,8 @@ import {
   withSectionWidth,
 } from './pivotConfig'
 import type { PivotMeasure } from './pivotEngine'
-import PivotConcatPopover from './PivotConcatPopover.vue'
 import PivotFilterPopover from './PivotFilterPopover.vue'
+import { concatGroup, shareGroup } from './pivotMenus'
 import { dropPosition } from '@/components/result/resultGrid'
 import SplitGroup from '@/components/split/SplitGroup.vue'
 import SplitHandle from '@/components/split/SplitHandle.vue'
@@ -306,8 +308,7 @@ function addItems(column: number): MenuItem[] {
 }
 
 /**
- * Choices that set, name, move, hide or remove an element, the settings of a filter or of a
- * `GROUP_CONCAT` first.
+ * Choices that set, name, move, hide or remove an element, the settings of a filter first.
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
@@ -317,7 +318,7 @@ function elementItems(zone: PivotZone, index: number): MenuItem[] {
   const from = { zone, index }
   const items: MenuItem[] = []
   const measure = zone === 'measures' ? config.value.measures[index] : undefined
-  if (zone === 'filters' || measure?.aggregate === 'group_concat') {
+  if (zone === 'filters') {
     items.push({
       label: 'Réglages…',
       icon: SlidersHorizontal,
@@ -402,7 +403,9 @@ function aggregateItems(
   measure: PivotMeasure,
   choose: (aggregate: PivotMeasure['aggregate']) => void,
 ): MenuItem[] {
-  const numbers = summable(props.types[measure.column]?.family)
+  const family = props.types[measure.column]?.family
+  const numbers = summable(family)
+  const current = settingsOf(measure.aggregate, family)
   return AGGREGATES.map(({ aggregate, icon }) => {
     const refused = addsNumbers(aggregate) && !numbers
     const { column, precision } = measure
@@ -412,16 +415,35 @@ function aggregateItems(
       checked: aggregate === measure.aggregate,
       disabled: refused,
       hint: refused ? 'Demande une colonne de nombres' : undefined,
+      keepOpen: settingsOf(aggregate, family).some((group) => !current.includes(group)),
       onSelect: () => choose(aggregate),
     }
   })
 }
 
 /**
+ * Groups of settings the menu of a measure shows for an aggregate, besides the aggregate and the
+ * element: an aggregate that brings new ones keeps the menu open.
+ *
+ * @param aggregate Aggregate.
+ * @param family Family of the type of the column of the measure.
+ */
+function settingsOf(
+  aggregate: PivotMeasure['aggregate'],
+  family: ColumnTypeInfo['family'] | undefined,
+): string[] {
+  return [
+    takesPrecision(aggregate) && precisionChoices(family).length > 0 ? 'Précision' : '',
+    aggregate === 'group_concat' ? 'Concaténation' : '',
+    takesShare(aggregate) ? 'Affichage' : '',
+  ].filter((group) => group !== '')
+}
+
+/**
  * Choices of the menu of an element: for a measure, its aggregate, for a
- * level or a measure of dates, its precision, for a count, a sum or an
- * average, its display as a share of a total, then the settings of a filter,
- * its name, its place and its removal.
+ * level or a measure of dates, its precision, for a `GROUP_CONCAT`, its
+ * settings, for a count, a sum or an average, its display as a share of a
+ * total, then the settings of a filter, its name, its place and its removal.
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
@@ -434,10 +456,6 @@ function elementGroups(zone: PivotZone, index: number): MenuGroup[] {
       label: 'Agrégat',
       items: aggregateItems(measure, (aggregate) => {
         config.value = withAggregate(config.value, index, aggregate)
-        // A new `GROUP_CONCAT` opens its settings once the menu has closed (`onMenuClosed`).
-        if (aggregate === 'group_concat' && measure.aggregate !== 'group_concat') {
-          pendingPanel = { zone, index }
-        }
       }),
     })
   }
@@ -447,47 +465,22 @@ function elementGroups(zone: PivotZone, index: number): MenuGroup[] {
       groups.push({ label: 'Précision', items })
     }
   }
+  if (measure?.aggregate === 'group_concat') {
+    groups.push(
+      concatGroup(concatOf(measure), measure.column, props.names, (changes) => {
+        const settings = concatOf(config.value.measures[index] ?? measure)
+        config.value = withConcat(config.value, index, { ...settings, ...changes })
+      }),
+    )
+  }
   if (measure !== undefined && takesShare(measure.aggregate)) {
-    groups.push(...shareGroups(measure, index))
+    groups.push(
+      shareGroup(shareOf(measure), (share) => {
+        config.value = withShare(config.value, index, share)
+      }),
+    )
   }
   groups.push({ label: 'Élément', items: elementItems(zone, index) })
-  return groups
-}
-
-/**
- * Choices of the display of a count, a sum or an average, the current one checked: its values as
- * they are, or their share of a total; then, for a share, its digits after the point.
- *
- * @param measure Measure.
- * @param index Position of the measure.
- */
-function shareGroups(measure: PivotMeasure, index: number): MenuGroup[] {
-  const share = shareOf(measure)
-  const groups: MenuGroup[] = [
-    {
-      label: 'Affichage',
-      items: SHOW_AS.map(({ of, label, icon }) => ({
-        label,
-        icon,
-        checked: (share?.of ?? null) === of,
-        onSelect: () => {
-          const decimals = share?.decimals ?? 0
-          config.value = withShare(config.value, index, of === null ? undefined : { of, decimals })
-        },
-      })),
-    },
-  ]
-  if (share !== undefined) {
-    groups.push({
-      label: 'Décimales',
-      items: SHARE_DECIMALS.map((decimals) => ({
-        label: decimals.toLocaleString('fr-FR'),
-        icon: DECIMALS_ICON,
-        checked: decimals === share.decimals,
-        onSelect: () => (config.value = withShare(config.value, index, { ...share, decimals })),
-      })),
-    })
-  }
   return groups
 }
 
@@ -527,12 +520,12 @@ function startNaming(place: ZonePlace): void {
 }
 
 /**
- * Filter or `GROUP_CONCAT` whose settings are to open, `null` without one.
+ * Filter whose settings are to open, `null` without one.
  */
 let pendingPanel: ZonePlace | null = null
 
 /**
- * Filter or `GROUP_CONCAT` whose settings are open, with the element they open beside.
+ * Filter whose settings are open, with the element they open beside.
  */
 const panel = shallowRef<(ZonePlace & { anchor: HTMLElement }) | null>(null)
 
@@ -541,15 +534,6 @@ const panel = shallowRef<(ZonePlace & { anchor: HTMLElement }) | null>(null)
  */
 const panelFilter = computed(() =>
   panel.value?.zone === 'filters' ? config.value.filters[panel.value.index] : undefined,
-)
-
-/**
- * Is the element whose settings are open a `GROUP_CONCAT`?
- */
-const panelConcat = computed(
-  () =>
-    panel.value?.zone === 'measures' &&
-    config.value.measures[panel.value.index]?.aggregate === 'group_concat',
 )
 
 /**
@@ -564,19 +548,8 @@ function changePanelFilter(filter: PivotFilter): void {
 }
 
 /**
- * Changes the settings of the `GROUP_CONCAT` whose settings are open.
- *
- * @param concat New settings.
- */
-function changePanelConcat(concat: PivotConcat): void {
-  if (panel.value !== null) {
-    config.value = withConcat(config.value, panel.value.index, concat)
-  }
-}
-
-/**
  * Shows what the last action opens, once its element is on the page: the field being named, or the
- * settings of a filter or of a `GROUP_CONCAT`.
+ * settings of a filter.
  */
 async function showPending(): Promise<void> {
   await nextTick()
@@ -609,7 +582,7 @@ function focusName(): void {
 
 /**
  * Double click on the label of an element, or the choice of the name in the
- * settings of a filter or of a `GROUP_CONCAT`: names it at once.
+ * settings of a filter: names it at once.
  *
  * @param place Place of the element.
  */
@@ -1043,18 +1016,6 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
     :receiving="receiving"
     @change="changePanelFilter"
     @name="nameAtOnce({ zone: 'filters', index: panel?.index ?? 0 })"
-    @close="panel = null"
-  />
-  <pivot-concat-popover
-    v-if="panel && panelConcat"
-    :key="`measures-${panel.index}`"
-    :anchor="panel.anchor"
-    :index="panel.index"
-    :config="config"
-    :names="names"
-    :types="types"
-    @change="changePanelConcat"
-    @name="nameAtOnce({ zone: 'measures', index: panel?.index ?? 0 })"
     @close="panel = null"
   />
 </template>

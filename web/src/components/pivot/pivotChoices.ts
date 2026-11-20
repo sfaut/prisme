@@ -1,7 +1,7 @@
 /**
  * Choices the settings of the Pivoteur share, with their icon: the menu of a measure and of a level
  * (`PivotSections.vue`), and the panel of a filter (`PivotFilterPopover.vue`); the display of a measure
- * as a share of a total and its digits.
+ * as a share of a total and its digits; the usual separators of a `GROUP_CONCAT`.
  */
 
 import {
@@ -19,6 +19,7 @@ import {
   Clock3,
   Columns3,
   Combine,
+  CornerDownLeft,
   DecimalsArrowRight,
   Divide,
   Equal,
@@ -29,6 +30,7 @@ import {
   Sigma,
   SquareDivide,
   SquareSigma,
+  TextCursorInput,
   Timer,
 } from '@lucide/vue'
 import type { Component } from 'vue'
@@ -90,3 +92,14 @@ export const SHARE_DECIMALS = [0, 1, 2, 3, 4, 5, 6]
  * Icon of the choices of the digits of a share.
  */
 export const DECIMALS_ICON: Component = DecimalsArrowRight
+
+/**
+ * Usual separators of a `GROUP_CONCAT`, offered beside its field, with their icon.
+ */
+export const SEPARATORS: { separator: string; label: string; icon: Component }[] = [
+  { separator: ', ', label: 'Virgule', icon: TextCursorInput },
+  { separator: '; ', label: 'Point-virgule', icon: TextCursorInput },
+  { separator: ' | ', label: 'Barre', icon: TextCursorInput },
+  { separator: '\n', label: 'Retour à la ligne (LF)', icon: CornerDownLeft },
+  { separator: '\r\n', label: 'Retour à la ligne (CR LF)', icon: CornerDownLeft },
+]

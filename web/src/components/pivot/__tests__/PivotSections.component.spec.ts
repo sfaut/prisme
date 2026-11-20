@@ -6,7 +6,6 @@ import { nextTick } from 'vue'
 
 import type { Cell } from '@/api/querySession'
 
-import PivotConcatPopover from '../PivotConcatPopover.vue'
 import PivotFilterPopover from '../PivotFilterPopover.vue'
 import PivotSections from '../PivotSections.vue'
 import SplitHandle from '@/components/split/SplitHandle.vue'
@@ -591,28 +590,32 @@ describe('PivotSections', () => {
     expect(shownConfig(mounted)).toEqual(CONFIG)
   })
 
-  it('opens the settings of a measure that becomes a GROUP_CONCAT, which gives no filter', async () => {
+  it('shows the settings of a measure that becomes a GROUP_CONCAT, which gives no filter', async () => {
     const mounted = mountZones()
+    const group = (label: string) =>
+      (elementMenu(mounted, 1).props('groups') as MenuGroup[]).find((item) => item.label === label)
+    // The choice keeps the menu open, which shows the new settings at once.
+    const concat = group('Agrégat')!.items.find((item) => item.label === 'GROUP_CONCAT(montant)')!
+    expect(concat.keepOpen).toBe(true)
+    expect(group('Agrégat')!.items.find((item) => item.label === 'MAX(montant)')!.keepOpen).toBe(
+      false,
+    )
     await choose(mounted, 1, 'GROUP_CONCAT(montant)')
     expect(shownConfig(mounted).measures).toEqual([
       { aggregate: 'group_concat', column: 2, name: '', concat: { separator: ', ' } },
     ])
-    const panel = () => mounted.findComponent(PivotConcatPopover)
-    expect(panel().props('index')).toBe(0)
-    panel().vm.$emit('change', { separator: ' | ', distinct: true })
+    expect(
+      (elementMenu(mounted, 1).props('groups') as MenuGroup[]).map((item) => item.label),
+    ).toEqual(['Agrégat', 'Concaténation', 'Élément'])
+    await choose(mounted, 1, 'Valeurs distinctes (DISTINCT)')
+    const separator = group('Concaténation')!.items[2]!
+    expect(separator.value).toBe("', '")
+    ;(separator.panel!.props.onChange as (separator: string) => void)(' | ')
     await nextTick()
     expect(shownConfig(mounted).measures[0]?.concat).toEqual({ separator: ' | ', distinct: true })
-    panel().vm.$emit('close')
-    await nextTick()
-    expect(panel().exists()).toBe(false)
-    // Its menu opens them again, and offers no filter on it.
-    expect(elementEntries(mounted, 1)).toEqual(['Réglages…', 'Nommer…', 'Masquer', 'Retirer'])
-    await choose(mounted, 1, 'Réglages…')
-    expect(panel().props('index')).toBe(0)
-    // A measure that already is one opens nothing when it takes it again.
-    panel().vm.$emit('close')
-    await choose(mounted, 1, 'GROUP_CONCAT(montant)')
-    expect(panel().exists()).toBe(false)
+    expect(group('Concaténation')!.items[2]!.value).toBe("' | '")
+    // Its menu offers no filter on it, nor settings in a panel.
+    expect(elementEntries(mounted, 1)).toEqual(['Nommer…', 'Masquer', 'Retirer'])
   })
 
   it('shows a sum as a share of a total, with its digits', async () => {
@@ -625,21 +628,15 @@ describe('PivotSections', () => {
       ['Part du total de la ligne', false],
       ['Part du total de la colonne', false],
     ])
-    expect(group('Décimales')).toBeUndefined()
     await choose(mounted, 1, 'Part du total de la ligne')
     expect(shownConfig(mounted).measures[0]?.share).toEqual({ of: 'row', decimals: 0 })
     expect(mounted.findAll('[data-element]')[1]!.text()).toContain('SUM(montant) (% ligne)')
-    expect(group('Décimales')?.items.map((item) => item.label)).toEqual([
-      '0',
-      '1',
-      '2',
-      '3',
-      '4',
-      '5',
-      '6',
-    ])
-    await choose(mounted, 1, '2')
+    const digits = () => group('Affichage')!.items[3]!
+    expect([digits().label, digits().value]).toEqual(['Décimales', '0'])
+    digits().groups![0]!.items.find((item) => item.label === '2')!.onSelect!()
+    await nextTick()
     expect(shownConfig(mounted).measures[0]?.share).toEqual({ of: 'row', decimals: 2 })
+    expect(digits().value).toBe('2')
     await choose(mounted, 1, 'Valeur')
     expect(shownConfig(mounted).measures[0]).toEqual(CONFIG.measures[0])
   })
