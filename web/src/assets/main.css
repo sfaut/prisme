@@ -99,9 +99,11 @@
   --resize-hover: --alpha(var(--color-primary) / 30%);
   --selection: --alpha(var(--color-primary) / 18%);
 
-  /* Tooltips (`UiTooltip.vue`): dark in both modes, light text. */
+  /* Tooltips (`UiTooltip.vue`): dark in both modes, light text; subtle, the
+     keyboard shortcut after the text. */
   --tooltip-bg: light-dark(var(--color-zinc-800), var(--color-zinc-700));
   --tooltip-fg: light-dark(var(--color-zinc-100), var(--color-zinc-100));
+  --tooltip-fg-subtle: light-dark(var(--color-zinc-400), var(--color-zinc-400));
 
   /* Badge of a source's server flavor, in the navigator: text in the engine's
      color (MySQL blue, MariaDB brown) on a background tinted with the same

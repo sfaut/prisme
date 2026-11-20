@@ -103,9 +103,8 @@ describe('App', () => {
     await vi.waitFor(() => expect(wrapper.find('aside').exists()).toBe(true))
     expect(objects()).toBe(true)
     expect(button('Navigateur d’objets').attributes('aria-pressed')).toBe('true')
-    expect(button('Navigateur d’objets').attributes('data-tooltip')).toBe(
-      'Fermer le navigateur d’objets (Ctrl-K puis N)',
-    )
+    expect(button('Navigateur d’objets').attributes('data-tooltip')).toBe('Navigateur d’objets')
+    expect(button('Navigateur d’objets').attributes('data-tooltip-shortcut')).toBe('Ctrl-K puis N')
     // The data explorer is closed by default: no trace of it but its button.
     expect(button('Explorateur de données').attributes('aria-pressed')).toBe('false')
     expect(wrapper.find('[aria-controls^="explorer-panel-"]').exists()).toBe(false)

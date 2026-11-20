@@ -6,7 +6,8 @@
   background, above its element, so that the pointer does not hide it;
   under it when there is no room above. On the right of its element for a
   tooltip given on that side (`v-tooltip:right`, `data-tooltip-side`), on
-  its left when there is no room on the right.
+  its left when there is no room on the right. A keyboard shortcut follows
+  the text, smaller, in the subtle color (`data-tooltip-shortcut`).
 
   Built on the browser's own tools: the `popover` attribute (`hint`: shows in
   the top layer, over the windows, and closes with Escape) and the anchor
@@ -16,7 +17,12 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, useTemplateRef, watch } from 'vue'
 
-import { TOOLTIP_ATTRIBUTE, shownTooltip, tooltipSideOf } from './tooltip'
+import {
+  TOOLTIP_ATTRIBUTE,
+  TOOLTIP_SHORTCUT_ATTRIBUTE,
+  shownTooltip,
+  tooltipSideOf,
+} from './tooltip'
 
 /**
  * Delay of the hover before the tooltip shows, in milliseconds.
@@ -66,6 +72,7 @@ function schedule(element: HTMLElement | null, delay: number): void {
   timer = setTimeout(
     () => {
       shownTooltip.text = element.getAttribute(TOOLTIP_ATTRIBUTE) ?? ''
+      shownTooltip.shortcut = element.getAttribute(TOOLTIP_SHORTCUT_ATTRIBUTE) ?? ''
       shownTooltip.side = tooltipSideOf(element)
       shownTooltip.element = element
     },
@@ -198,10 +205,15 @@ onBeforeUnmount(() => {
     popover="hint"
     role="tooltip"
     class="ui-tooltip"
+    :class="{ shortcut: shownTooltip.shortcut !== '' }"
     :data-side="shownTooltip.side"
     @toggle="onToggle"
   >
-    {{ shownTooltip.text }}
+    <template v-if="shownTooltip.shortcut === ''">{{ shownTooltip.text }}</template>
+    <template v-else>
+      <span>{{ shownTooltip.text }}</span>
+      <kbd class="font-sans text-xs">{{ shownTooltip.shortcut }}</kbd>
+    </template>
   </div>
 </template>
 
@@ -244,6 +256,19 @@ onBeforeUnmount(() => {
 
   &:popover-open {
     display: -webkit-box;
+  }
+
+  /* With a shortcut: the text then the shortcut, on one line, the shortcut
+     subtle. */
+  &.shortcut:popover-open {
+    display: flex;
+    gap: --spacing(2);
+    align-items: baseline;
+    white-space: nowrap;
+
+    & kbd {
+      color: var(--tooltip-fg-subtle);
+    }
   }
 
   /* On the right of its element, centered on it; on its left when there is

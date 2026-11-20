@@ -10,7 +10,9 @@
  *
  * The bubble shows above its element; `v-tooltip:right` puts it on the
  * right, for an element on the left edge of the window (activity bar), whose
- * neighbours above and below share the same kind of tooltip.
+ * neighbours above and below share the same kind of tooltip. A tooltip may
+ * carry a keyboard shortcut (`{ text, shortcut }`), written after the text,
+ * smaller.
  */
 
 import { type Directive, reactive } from 'vue'
@@ -19,6 +21,17 @@ import { type Directive, reactive } from 'vue'
  * Attribute that holds the text of an element's tooltip.
  */
 export const TOOLTIP_ATTRIBUTE = 'data-tooltip'
+
+/**
+ * Attribute that holds the keyboard shortcut of an element's tooltip.
+ */
+export const TOOLTIP_SHORTCUT_ATTRIBUTE = 'data-tooltip-shortcut'
+
+/**
+ * Value of `v-tooltip`: its text, or its text with a keyboard shortcut;
+ * empty or absent, no tooltip.
+ */
+export type TooltipValue = string | null | undefined | { text: string; shortcut: string }
 
 /**
  * Attribute that holds the side of an element's tooltip, when it is not the
@@ -47,16 +60,18 @@ export function tooltipSideOf(element: HTMLElement): TooltipSide {
 const MAX_LENGTH = 1000
 
 /**
- * Element whose tooltip is shown, `null` when none is, its text and its
- * side.
+ * Element whose tooltip is shown, `null` when none is, its text, its
+ * keyboard shortcut (empty when none) and its side.
  */
 export const shownTooltip = reactive<{
   element: HTMLElement | null
   text: string
+  shortcut: string
   side: TooltipSide
 }>({
   element: null,
   text: '',
+  shortcut: '',
   side: 'top',
 })
 
@@ -64,11 +79,19 @@ export const shownTooltip = reactive<{
  * Gives an element the text of its tooltip, or takes it away.
  *
  * @param element Element of the tooltip.
- * @param text Text of the tooltip; empty or absent, no tooltip.
+ * @param value Text of the tooltip, with its shortcut if any; empty or
+ *     absent, no tooltip.
  * @param side Side of the bubble, `right` or the top when absent.
  */
-function mark(element: HTMLElement, text: string | null | undefined, side?: string): void {
+function mark(element: HTMLElement, value: TooltipValue, side?: string): void {
+  const text = typeof value === 'object' && value !== null ? value.text : value
+  const shortcut = typeof value === 'object' && value !== null ? value.shortcut : ''
   const shown = text ? (text.length > MAX_LENGTH ? `${text.slice(0, MAX_LENGTH)}…` : text) : ''
+  if (shown !== '' && shortcut !== '') {
+    element.setAttribute(TOOLTIP_SHORTCUT_ATTRIBUTE, shortcut)
+  } else {
+    element.removeAttribute(TOOLTIP_SHORTCUT_ATTRIBUTE)
+  }
   if (shown === '') {
     element.removeAttribute(TOOLTIP_ATTRIBUTE)
   } else {
@@ -81,6 +104,7 @@ function mark(element: HTMLElement, text: string | null | undefined, side?: stri
   }
   if (shownTooltip.element === element) {
     shownTooltip.text = shown
+    shownTooltip.shortcut = shown === '' ? '' : shortcut
     if (shown === '') {
       shownTooltip.element = null
     }
@@ -89,10 +113,11 @@ function mark(element: HTMLElement, text: string | null | undefined, side?: stri
 
 /**
  * `v-tooltip="text"`: tooltip of the element, empty or absent for none, above
- * it; `v-tooltip:right="text"`, on its right. A text that changes while it
- * shows (a button that turns into a stop button) changes in the bubble too.
+ * it; `v-tooltip:right="text"`, on its right; `{ text, shortcut }` adds a
+ * keyboard shortcut. A text that changes while it shows (a button that turns
+ * into a stop button) changes in the bubble too.
  */
-export const vTooltip: Directive<HTMLElement, string | null | undefined> = {
+export const vTooltip: Directive<HTMLElement, TooltipValue> = {
   mounted: (element, { value, arg }) => mark(element, value, arg),
   updated: (element, { value, arg }) => mark(element, value, arg),
   beforeUnmount: (element) => {

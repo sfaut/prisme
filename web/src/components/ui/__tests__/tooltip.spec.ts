@@ -44,6 +44,16 @@ describe('v-tooltip', () => {
     expect(tooltipSideOf(wrapper.find('a').element as HTMLElement)).toBe('top')
   })
 
+  it('keeps the shortcut of a tooltip apart from its text', () => {
+    const Shortcut = defineComponent({
+      directives: { tooltip: vTooltip },
+      template: "<button v-tooltip=\"{ text: 'Console', shortcut: 'Ctrl-K puis C' }\">C</button>",
+    })
+    const button = mount(Shortcut).find('button')
+    expect(button.attributes('data-tooltip')).toBe('Console')
+    expect(button.attributes('data-tooltip-shortcut')).toBe('Ctrl-K puis C')
+  })
+
   it('cuts a long text', () => {
     text.value = 'x'.repeat(5000)
     const wrapper = mount(Host)

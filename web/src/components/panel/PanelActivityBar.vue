@@ -5,8 +5,9 @@
   (editor, results, Pivoteur); then the data explorer and the console. A
   closed panel leaves no trace in the tab: its button, released, is the way
   back. A pressed button is lit, with a mark of the primary color on the
-  bar's edge. The tooltip, on the right of the button, says what the click
-  does, with the panel's name.
+  bar's edge. The tooltip, on the right of the button, names the panel,
+  then its shortcut, smaller: the state of the button says what the click
+  does.
   At the bottom of the bar, a button shares the room again: the open panels
   of the view take equal heights, the side panels and the console their
   default size.
@@ -56,13 +57,9 @@ const explorer = useExplorerStore()
  */
 interface PanelButton {
   /**
-   * Name of the panel, its accessible label.
+   * Name of the panel, its accessible label and its tooltip.
    */
   label: string
-  /**
-   * Name of the panel in a sentence, with its article.
-   */
-  named: string
   /**
    * Icon of the panel.
    */
@@ -92,7 +89,6 @@ const groups = computed<PanelButton[][]>(() => {
     [
       {
         label: 'Navigateur d’objets',
-        named: 'le navigateur d’objets',
         icon: ListTree,
         key: 'n',
         open: objects.open,
@@ -102,7 +98,6 @@ const groups = computed<PanelButton[][]>(() => {
     [
       {
         label: 'Éditeur',
-        named: 'l’éditeur',
         icon: Code,
         key: 'e',
         open: !view.editorFolded,
@@ -110,7 +105,6 @@ const groups = computed<PanelButton[][]>(() => {
       },
       {
         label: 'Résultat',
-        named: 'le résultat',
         icon: Table,
         key: 'r',
         open: !view.resultsFolded,
@@ -118,7 +112,6 @@ const groups = computed<PanelButton[][]>(() => {
       },
       {
         label: 'Pivoteur',
-        named: 'le Pivoteur',
         icon: TableProperties,
         key: 'p',
         open: !view.pivotFolded,
@@ -128,7 +121,6 @@ const groups = computed<PanelButton[][]>(() => {
     [
       {
         label: 'Explorateur de données',
-        named: 'l’explorateur de données',
         icon: Braces,
         key: 'x',
         open: data.open,
@@ -136,7 +128,6 @@ const groups = computed<PanelButton[][]>(() => {
       },
       {
         label: 'Console',
-        named: 'la console',
         icon: SquareTerminal,
         key: 'c',
         open: !view.consoleFolded,
@@ -147,12 +138,12 @@ const groups = computed<PanelButton[][]>(() => {
 })
 
 /**
- * Tooltip of a button: what its click does.
+ * Tooltip of a button: the name of its panel, and its shortcut.
  *
  * @param button Button of a panel.
  */
-function tooltip(button: PanelButton): string {
-  return `${button.open ? 'Fermer' : 'Ouvrir'} ${button.named} (${chordLabel(button.key)})`
+function tooltip(button: PanelButton): { text: string; shortcut: string } {
+  return { text: button.label, shortcut: chordLabel(button.key) }
 }
 
 /**
@@ -232,9 +223,7 @@ const BUTTON =
       type="button"
       :class="BUTTON"
       aria-label="Répartir les volets"
-      v-tooltip:right="
-        `Répartir les volets ouverts : hauteurs égales, largeur par défaut des volets latéraux (${chordLabel(DISTRIBUTE_KEY)})`
-      "
+      v-tooltip:right="{ text: 'Répartir les volets', shortcut: chordLabel(DISTRIBUTE_KEY) }"
       @click="distribute"
     >
       <LayoutDashboard class="size-5" aria-hidden="true" />

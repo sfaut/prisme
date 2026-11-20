@@ -41,14 +41,15 @@ describe('PanelActivityBar', () => {
     wrapper.unmount()
   })
 
-  it('opens and closes a panel, its tooltip saying what the click does', async () => {
+  it('opens and closes a panel, its tooltip naming it with its shortcut', async () => {
     const wrapper = mountBar()
     const results = () => wrapper.find('button[aria-label="Résultat"]')
-    expect(results().attributes('data-tooltip')).toBe('Ouvrir le résultat (Ctrl-K puis R)')
+    expect(results().attributes('data-tooltip')).toBe('Résultat')
+    expect(results().attributes('data-tooltip-shortcut')).toBe('Ctrl-K puis R')
     await results().trigger('click')
     expect(useEditorLayoutsStore().layoutOf(1).resultsFolded).toBe(false)
     expect(results().attributes('aria-pressed')).toBe('true')
-    expect(results().attributes('data-tooltip')).toBe('Fermer le résultat (Ctrl-K puis R)')
+    expect(results().attributes('data-tooltip')).toBe('Résultat')
 
     await wrapper.find('button[aria-label="Navigateur d’objets"]').trigger('click')
     expect(useNavigatorStore().layoutOf(1).open).toBe(false)
