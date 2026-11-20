@@ -29,4 +29,9 @@ export type ExportRequest = {
    * Rows the result should have, when known in advance, for a percentage.
    */
   expected_rows?: number;
+  /**
+   * Editor that starts the export: its queries go to the console of that
+   * editor.
+   */
+  editor_id?: number;
 };

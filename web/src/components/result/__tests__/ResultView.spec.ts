@@ -58,6 +58,7 @@ function mountTab(tab: QueryTab, server: ServerInfo | null = MARIADB) {
       displayed: false,
       filter: tab.filter,
       connectionId: 7,
+      editorId: 2,
       database: 'shop',
       server,
       indentSize: 4,
@@ -212,6 +213,7 @@ describe('ResultView', () => {
       columns: [0, 1],
       name: expect.stringMatching(/^requête-1-\d{8}-\d{6}\.csv$/),
       expected_rows: 3,
+      editor_id: 2,
     })
 
     const truncated = threeRows()

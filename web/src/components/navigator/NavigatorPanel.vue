@@ -308,7 +308,7 @@ async function load(connectionId: number, refresh: boolean): Promise<void> {
   loadingIds.value.push(connectionId)
   delete failures.value[connectionId]
   try {
-    await catalog.load(connectionId, refresh)
+    await catalog.load(connectionId, refresh, props.editorId)
   } catch (failure) {
     failures.value[connectionId] = errorMessage(failure)
   } finally {

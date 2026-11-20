@@ -97,8 +97,8 @@ impl Action {
 pub struct QueryEntry {
     /// Number of the query in the history.
     pub id: i64,
-    /// Editor whose session sent the query, 0 outside an editor (navigator,
-    /// export, connection test).
+    /// Editor whose session, navigator or export sent the query, 0 outside
+    /// an editor (connection test).
     pub editor_id: i64,
     /// Instant the query was sent, in UTC, in ISO 8601 format.
     pub started_at: String,
@@ -287,9 +287,15 @@ pub fn action_span(action: Action) -> Span {
 }
 
 /// Span of the queries sent by `action`, for user `user_id` on the
-/// connection named `connection_name`, out of any session.
-pub fn sql_span(user_id: i64, connection_name: &str, action: Action) -> Span {
-    connection_span(user_id, connection_name).in_scope(|| action_span(action))
+/// connection named `connection_name`, out of any session: for editor
+/// `editor` (its navigator, its exports), in its console, or outside the
+/// editors when `None`.
+pub fn sql_span(user_id: i64, connection_name: &str, editor: Option<i64>, action: Action) -> Span {
+    let outer = match editor {
+        Some(editor_id) => editor_span(user_id, connection_name, editor_id),
+        None => connection_span(user_id, connection_name),
+    };
+    outer.in_scope(|| action_span(action))
 }
 
 /// Layer of `tracing` that turns the trace events of the connector into

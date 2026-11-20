@@ -117,6 +117,11 @@ const props = defineProps<{
    */
   connectionId: number
   /**
+   * Id of the editor, whose console receives the queries of the full
+   * export.
+   */
+  editorId: number
+  /**
    * Current database of the editor, `null` if none.
    */
   database: string | null
@@ -598,6 +603,7 @@ async function exportFull(): Promise<void> {
       columns,
       name,
       expected_rows: complete ? result.rowCount : undefined,
+      editor_id: props.editorId,
     })
     notify(`Export lancé : ${name}. Suivi dans le gestionnaire d’exports, en haut à droite.`)
   } catch (failure) {

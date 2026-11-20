@@ -948,6 +948,7 @@ defineExpose({
             :tab="tab"
             :displayed="active && selectedTab === tab.id"
             :connection-id="connection.id"
+            :editor-id="editorId"
             :database="state.database"
             :server="state.server"
             :indent-size="indentSize"
@@ -981,7 +982,12 @@ defineExpose({
       folded-size="0px"
       class="flex flex-col"
     >
-      <pivot-panel :tab="shownTab" :open="!layout.pivotFolded" :connection-id="connection.id" />
+      <pivot-panel
+        :tab="shownTab"
+        :open="!layout.pivotFolded"
+        :connection-id="connection.id"
+        :editor-id="editorId"
+      />
     </split-panel>
     <!--
       All the panels closed: the height they leave stays free, on the sunken

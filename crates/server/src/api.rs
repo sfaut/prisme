@@ -569,7 +569,7 @@ async fn probe_settings(
         .await?
         .ok_or(ApiError::NotFound)?;
 
-    let span = console::sql_span(user_id, &name, Action::Probe);
+    let span = console::sql_span(user_id, &name, None, Action::Probe);
     Ok(Json(mysql::probe(&target).instrument(span).await?))
 }
 
@@ -589,7 +589,7 @@ async fn probe_connection(
         .await?
         .ok_or(ApiError::NotFound)?;
 
-    let span = console::sql_span(user_id, &name, Action::Probe);
+    let span = console::sql_span(user_id, &name, None, Action::Probe);
     let info = mysql::probe(&target).instrument(span).await?;
     let server = info.clone();
     state

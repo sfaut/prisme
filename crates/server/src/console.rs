@@ -643,4 +643,28 @@ mod tests {
         assert_eq!((lines[0].editor_id, lines[1].editor_id), (0, 7));
         assert_eq!(lines[1].message, "slow");
     }
+
+    #[test]
+    fn gives_the_queries_out_of_a_session_to_their_editor() {
+        let (sender, mut receiver) = channel();
+        let subscriber = tracing_subscriber::registry().with(layer(sender));
+        tracing::subscriber::with_default(subscriber, || {
+            for editor in [Some(5), None] {
+                let _navigator = sql_span(1, "Local", editor, Action::Navigator).entered();
+                sql_log::record(&Sent {
+                    sql: "SHOW DATABASES",
+                    ..Sent::default()
+                });
+            }
+        });
+
+        let mut traced = Vec::new();
+        while let Ok(Traced::Query(query)) = receiver.try_recv() {
+            traced.push((query.editor_id, query.action));
+        }
+        assert_eq!(
+            traced,
+            [(5, Some(Action::Navigator)), (0, Some(Action::Navigator))]
+        );
+    }
 }

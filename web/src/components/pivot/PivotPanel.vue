@@ -108,6 +108,10 @@ const props = defineProps<{
    * Connection of the editor.
    */
   connectionId: number
+  /**
+   * Id of the editor, whose console receives the queries of the catalog.
+   */
+  editorId: number
 }>()
 
 /**
@@ -299,7 +303,7 @@ watch(
   source,
   (shown) => {
     if (shown !== null) {
-      catalog.load(props.connectionId).catch(() => {})
+      catalog.load(props.connectionId, false, props.editorId).catch(() => {})
     }
   },
   { immediate: true },
