@@ -38,8 +38,9 @@
   table is computed without it, a hidden filter having no effect.
 
   A column or a measure dropped into the filters, or a measure by its menu
-  ("Filtrer sur cette mesure"), gives a filter, whose settings open beside it
-  (`PivotFilterPopover.vue`, F-21, F-44); its menu opens them again ("Réglages…").
+  ("Filtrer sur cette mesure"), gives a filter, whose menu holds its settings
+  (`pivotFilterMenu.ts`, F-21, F-44): the drop opens it, with the submenu of
+  what the condition compares to open and its first field ready to type.
   A `GROUP_CONCAT` gives no filter (`filterable`): the filters refuse its drop.
   The logic of the zones is in `pivotConfig.ts`.
 -->
@@ -56,7 +57,6 @@ import {
   Rows3,
   Search,
   Sigma,
-  SlidersHorizontal,
   X,
 } from '@lucide/vue'
 import {
@@ -65,7 +65,6 @@ import {
   nextTick,
   onBeforeUnmount,
   ref,
-  shallowRef,
   useId,
   useTemplateRef,
   type WritableComputedRef,
@@ -111,7 +110,7 @@ import {
   withSectionWidth,
 } from './pivotConfig'
 import type { PivotMeasure } from './pivotEngine'
-import PivotFilterPopover from './PivotFilterPopover.vue'
+import { filterGroups, operandLine } from './pivotFilterMenu'
 import { concatGroup, shareGroup } from './pivotMenus'
 import { dropPosition } from '@/components/result/resultGrid'
 import SplitGroup from '@/components/split/SplitGroup.vue'
@@ -290,7 +289,7 @@ function place(column: number, to: ZonePlace, from: ZonePlace | null): void {
   }
   config.value = placed
   if (to.zone === 'filters' && from?.zone !== 'filters') {
-    pendingPanel = { zone: 'filters', index: Math.min(to.index, placed.filters.length - 1) }
+    pendingMenu = { zone: 'filters', index: Math.min(to.index, placed.filters.length - 1) }
   }
 }
 
@@ -308,7 +307,7 @@ function addItems(column: number): MenuItem[] {
 }
 
 /**
- * Choices that set, name, move, hide or remove an element, the settings of a filter first.
+ * Choices that name, move, hide or remove an element.
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
@@ -318,14 +317,6 @@ function elementItems(zone: PivotZone, index: number): MenuItem[] {
   const from = { zone, index }
   const items: MenuItem[] = []
   const measure = zone === 'measures' ? config.value.measures[index] : undefined
-  if (zone === 'filters') {
-    items.push({
-      label: 'Réglages…',
-      icon: SlidersHorizontal,
-      // They open beside the element once the menu has closed (`onMenuClosed`).
-      onSelect: () => (pendingPanel = from),
-    })
-  }
   items.push({
     label: 'Nommer…',
     icon: PenLine,
@@ -443,7 +434,7 @@ function settingsOf(
  * Choices of the menu of an element: for a measure, its aggregate, for a
  * level or a measure of dates, its precision, for a `GROUP_CONCAT`, its
  * settings, for a count, a sum or an average, its display as a share of a
- * total, then the settings of a filter, its name, its place and its removal.
+ * total, for a filter, its settings, then its name, its place and its removal.
  *
  * @param zone Zone of the element.
  * @param index Position of the element.
@@ -477,6 +468,22 @@ function elementGroups(zone: PivotZone, index: number): MenuGroup[] {
     groups.push(
       shareGroup(shareOf(measure), (share) => {
         config.value = withShare(config.value, index, share)
+      }),
+    )
+  }
+  const filter = zone === 'filters' ? config.value.filters[index] : undefined
+  if (filter !== undefined) {
+    const context = {
+      config: config.value,
+      names: props.names,
+      types: props.types,
+      readValues: props.readValues,
+      receiving: props.receiving === true,
+    }
+    groups.push(
+      ...filterGroups(filter, context, (changes) => {
+        const current = config.value.filters[index] ?? filter
+        config.value = withFilter(config.value, index, { ...current, ...changes } as PivotFilter)
       }),
     )
   }
@@ -520,36 +527,49 @@ function startNaming(place: ZonePlace): void {
 }
 
 /**
- * Filter whose settings are to open, `null` without one.
+ * Filter whose menu is to open, `null` without one.
  */
-let pendingPanel: ZonePlace | null = null
+let pendingMenu: ZonePlace | null = null
 
 /**
- * Filter whose settings are open, with the element they open beside.
+ * Element whose menu is open, `null` without one.
  */
-const panel = shallowRef<(ZonePlace & { anchor: HTMLElement }) | null>(null)
+const openMenu = ref<ZonePlace | null>(null)
 
 /**
- * Filter whose settings are open.
+ * Label of the choice whose submenu is open when the menu opens by the code.
  */
-const panelFilter = computed(() =>
-  panel.value?.zone === 'filters' ? config.value.filters[panel.value.index] : undefined,
-)
+const openSub = ref<string | undefined>(undefined)
 
 /**
- * Changes the filter whose settings are open.
+ * Is the menu of this element open?
  *
- * @param filter New filter.
+ * @param zone Zone of the element.
+ * @param index Position of the element.
  */
-function changePanelFilter(filter: PivotFilter): void {
-  if (panel.value !== null) {
-    config.value = withFilter(config.value, panel.value.index, filter)
+function isMenuOpen(zone: PivotZone, index: number): boolean {
+  return openMenu.value?.zone === zone && openMenu.value.index === index
+}
+
+/**
+ * Opens or closes the menu of an element. The menu of another element may have opened meanwhile:
+ * closing this one leaves it open.
+ *
+ * @param place Place of the element.
+ * @param open Is the menu open?
+ */
+function setMenuOpen(place: ZonePlace, open: boolean): void {
+  if (open) {
+    openMenu.value = place
+  } else if (isMenuOpen(place.zone, place.index)) {
+    openMenu.value = null
+    openSub.value = undefined
   }
 }
 
 /**
  * Shows what the last action opens, once its element is on the page: the field being named, or the
- * settings of a filter.
+ * menu of a new filter, the submenu of what its condition compares to open.
  */
 async function showPending(): Promise<void> {
   await nextTick()
@@ -557,18 +577,17 @@ async function showPending(): Promise<void> {
     focusName()
     return
   }
-  const pending = pendingPanel
-  pendingPanel = null
-  if (pending === null) {
+  const pending = pendingMenu
+  pendingMenu = null
+  const filter = pending === null ? undefined : config.value.filters[pending.index]
+  if (pending === null || filter === undefined) {
     return
   }
   const section = zoneSections.value?.find((zone) => zone.dataset.zone === pending.zone)
-  const anchor = section?.querySelectorAll('[data-element]')[pending.index]
-  if (anchor instanceof HTMLElement) {
-    // The zones scroll in their column: the panel opens beside an element in sight.
-    anchor.scrollIntoView({ block: 'nearest' })
-    panel.value = { ...pending, anchor }
-  }
+  // The zones scroll in their column: the menu opens beside an element in sight.
+  section?.querySelectorAll('[data-element]')[pending.index]?.scrollIntoView({ block: 'nearest' })
+  openSub.value = operandLine(filter)
+  openMenu.value = pending
 }
 
 /**
@@ -581,28 +600,26 @@ function focusName(): void {
 }
 
 /**
- * Double click on the label of an element, or the choice of the name in the
- * settings of a filter: names it at once.
+ * Double click on the label of an element: names it at once.
  *
  * @param place Place of the element.
  */
 async function nameAtOnce(place: ZonePlace): Promise<void> {
-  panel.value = null
   startNaming(place)
   await nextTick()
   focusName()
 }
 
 /**
- * Closing of a menu: when a choice opens a field or settings, it takes the focus,
- * which the menu would give back to its button. The menu sends the event while
+ * Closing of a menu: when a choice opens a field or the menu of a new filter, it
+ * takes the focus, which the menu would give back to its button. The menu sends the event while
  * it is removed, before the field is reachable: the focus waits for the end of
  * the update.
  *
  * @param event Return of the focus to the button.
  */
 async function onMenuClosed(event: Event): Promise<void> {
-  if (naming.value !== null || pendingPanel !== null) {
+  if (naming.value !== null || pendingMenu !== null) {
     event.preventDefault()
     await showPending()
   }
@@ -972,6 +989,9 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
                   />
                   <ui-dropdown-menu
                     :groups="elementGroups(zone, index)"
+                    :open="isMenuOpen(zone, index)"
+                    :open-sub="isMenuOpen(zone, index) ? openSub : undefined"
+                    @update:open="setMenuOpen({ zone, index }, $event)"
                     @close-auto-focus="onMenuClosed"
                   >
                     <ui-button
@@ -1003,21 +1023,6 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
       </div>
     </split-panel>
   </split-group>
-  <pivot-filter-popover
-    v-if="panel && panelFilter"
-    :key="`filters-${panel.index}`"
-    :anchor="panel.anchor"
-    :filter="panelFilter"
-    :index="panel.index"
-    :config="config"
-    :names="names"
-    :types="types"
-    :read-values="readValues"
-    :receiving="receiving"
-    @change="changePanelFilter"
-    @name="nameAtOnce({ zone: 'filters', index: panel?.index ?? 0 })"
-    @close="panel = null"
-  />
 </template>
 
 <style scoped>
