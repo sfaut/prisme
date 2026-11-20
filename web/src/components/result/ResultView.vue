@@ -3,7 +3,10 @@
   grid, then the status bar, one item each:
 
   - number of rows, with a grid: those received, preceded by those the user
-    filter keeps ("120 / 5 000 lignes");
+    filter keeps ("120 / 5 000 lignes"); while the rows of an ended query
+    are still arriving (saved rows read again, or taken back by the session),
+    those received out of those awaited ("Chargement : 120 000 / 1 000 000
+    lignes"), followed by those the user filter keeps;
   - execution time of the query by the server (until the columns arrive);
   - transfer and display time of the rows, then the received volume and the
     throughput;
@@ -663,7 +666,14 @@ defineExpose({ exportGroups })
       >
         Résultat tronqué
       </span>
-      <span v-if="showsGrid(tab)">{{ formatRowCount(shownCount, keptCount) }}</span>
+      <template v-if="showsGrid(tab)">
+        <span v-if="tab.awaitedRows !== null" class="tabular-nums">
+          Chargement : {{ formatRowCount(tab.awaitedRows, shownCount) }}
+        </span>
+        <span v-if="tab.awaitedRows === null || keptCount !== null">
+          {{ formatRowCount(shownCount, keptCount) }}
+        </span>
+      </template>
       <span v-if="execution !== null">exécution {{ formatDuration(execution) }}</span>
       <template v-if="transfer !== null">
         <span>transfert {{ formatDuration(transfer) }}</span>

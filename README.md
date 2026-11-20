@@ -182,7 +182,7 @@ The tab bar above the SQL editor holds several editors:
 - **Double-click** a tab to rename it. Drag it to move it.
 - The **cross** (or a middle click) closes it. A closed editor can be reopened for 24 hours from the **Rouvrir** (Reopen) button, the clock icon.
 
-Each editor has its own connection, its own session (and therefore its own transactions, see [Transactions](#transactions)) and its own results. Everything is saved as you type: texts, editors, result tabs and rows. A page reload or a browser restart brings everything back.
+Each editor has its own connection, its own session (and therefore its own transactions, see [Transactions](#transactions)) and its own results. Everything is saved as you type: texts, editors, result tabs and rows. A page reload or a browser restart brings everything back. The result tabs show at once, and their rows arrive in the background, the tab shown first, the status bar counting them ("Chargement : 120 000 / 1 000 000 lignes"): the grid and the Pivoteur follow them as during a run, and the editor can run queries meanwhile.
 
 ### Running queries
 

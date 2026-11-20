@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { effectScope, nextTick, reactive } from 'vue'
 
 import {
   NO_PIVOT,
   applyMessage,
+  awaitingTab,
   batchProgress,
   executionDuration,
   failed as hasFailed,
@@ -15,6 +17,7 @@ import {
   formatInstant,
   formatRowCount,
   initialState,
+  nextReading,
   removeTab,
   savedTab,
   sessionUrl,
@@ -22,8 +25,10 @@ import {
   tabFraction,
   tabProgress,
   transferDuration,
+  useQuerySession,
   utf8Length,
 } from '../querySession'
+import type { ResultTab } from '../generated/ResultTab'
 import type { ErrorDetail } from '../generated/ErrorDetail'
 import type { ServerMessage } from '../generated/ServerMessage'
 import type { TabPivot } from '../generated/TabPivot'
@@ -1061,5 +1066,207 @@ describe('parseMessage', () => {
   it('returns null for a text that is not JSON, instead of throwing', () => {
     expect(parseMessage('{"type":')).toBeNull()
     expect(parseMessage('')).toBeNull()
+  })
+})
+
+/**
+ * Saved tab of an ended query of `rows` rows, in `chunks` chunks.
+ */
+function saved(id: number, rows: number, chunks: number): ResultTab {
+  return {
+    id,
+    query: 0,
+    sql: `SELECT ${id}`,
+    name: '',
+    pinned: false,
+    pivot: NO_PIVOT,
+    result: {
+      started: true,
+      done: true,
+      error: null,
+      error_detail: null,
+      columns: {
+        columns: ['x'],
+        right_aligned: [true],
+        types: [],
+        sql: `SELECT ${id}`,
+        limit: 'user_limit',
+        expected_rows: rows,
+        execution_us: 2000,
+        executed_at: 0,
+      },
+      row_count: rows,
+      truncated: false,
+      affected_rows: 0,
+      transfer_us: 9000,
+      bytes: 90,
+    },
+    chunks,
+  }
+}
+
+describe('saved tabs read in the background', () => {
+  it('shows a saved tab at once, running until its rows are read', () => {
+    const tab = awaitingTab(saved(4, 3, 2))
+    expect([tab.done, tab.awaitedRows, tab.result?.rowCount]).toEqual([false, 3, 0])
+    expect([tabProgress(tab), tabFraction(tab)]).toEqual(['loading', 0])
+    // The durations stay those measured by the server.
+    expect(transferDuration(tab, 1_000_000)).toBe(9)
+  })
+
+  it('leaves a tab without rows to read as it was saved', () => {
+    expect(awaitingTab(saved(4, 0, 0)).done).toBe(true)
+  })
+
+  it('receives the rows of the chunks, then ends the tab with its last chunk', () => {
+    const state = readyState()
+    state.tabs = [awaitingTab(saved(4, 3, 2))]
+    const tab = state.tabs[0]!
+    applyMessage(state, { type: 'saved_rows', tab, rows: [['1'], ['2']], last: false, cut: false })
+    expect([tab.done, tabFraction(tab)]).toEqual([false, 2 / 3])
+    applyMessage(state, { type: 'saved_rows', tab, rows: [['3']], last: true, cut: false })
+    expect([tab.done, tab.awaitedRows, tab.result?.rows]).toEqual([
+      true,
+      null,
+      [['1'], ['2'], ['3']],
+    ])
+  })
+
+  it('ends a tab at its last chunk, even with fewer rows than announced', () => {
+    const state = readyState()
+    state.tabs = [awaitingTab(saved(4, 3, 1))]
+    const tab = state.tabs[0]!
+    applyMessage(state, { type: 'saved_rows', tab, rows: [['1']], last: true, cut: false })
+    expect([tab.done, tab.awaitedRows]).toEqual([true, null])
+  })
+
+  it('keeps the rows read before a failure, as a result cut short', () => {
+    const state = readyState()
+    state.tabs = [awaitingTab(saved(4, 3, 2))]
+    const tab = state.tabs[0]!
+    applyMessage(state, { type: 'saved_rows', tab, rows: [['1']], last: false, cut: false })
+    applyMessage(state, { type: 'saved_rows', tab, rows: [], last: true, cut: true })
+    expect([tab.done, tab.interrupted, tab.result?.rowCount]).toEqual([true, true, 1])
+    expect(tabProgress(tab)).toBe('stopped')
+    expect(hasFailed(tab)).toBe(false)
+  })
+
+  it('drops the rows of a tab taken back by resume, whose rows come again', () => {
+    const state = readyState()
+    state.tabs = [awaitingTab(saved(4, 3, 2))]
+    const read = state.tabs[0]!
+    applyMessage(state, {
+      type: 'resume',
+      running: false,
+      queries: [
+        {
+          query: 0,
+          tab: 4,
+          sql: 'SELECT 4',
+          result: saved(4, 3, 2).result,
+          resumed_rows: 3,
+          started_us_ago: null,
+          columns_us_ago: null,
+          refresh: false,
+        },
+      ],
+    })
+    applyMessage(state, { type: 'saved_rows', tab: read, rows: [['1']], last: false, cut: false })
+    const resumed = state.tabs[0]!
+    expect(resumed).not.toBe(read)
+    expect([resumed.result?.rowCount, resumed.awaitedRows]).toEqual([0, 3])
+  })
+
+  it('reads the tab shown first, then the others in the order of the tabs', () => {
+    const tabs = [saved(1, 1, 1), saved(2, 1, 2), saved(3, 1, 1)].map(awaitingTab)
+    const readings = tabs.map((tab) => ({ tab, chunks: tab.id === 2 ? 2 : 1, next: 0 }))
+    expect(nextReading(tabs, readings, 3)?.tab.id).toBe(3)
+    readings[2]!.next = 1
+    expect(nextReading(tabs, readings, 3)?.tab.id).toBe(1)
+    // A tab moved first comes first; a closed tab is no longer read.
+    expect(nextReading([tabs[1]!, tabs[0]!], readings, undefined)?.tab.id).toBe(2)
+    expect(nextReading([tabs[2]!], readings, undefined)).toBeUndefined()
+  })
+})
+
+/**
+ * WebSocket of the tests: it keeps the sessions opened, without a network.
+ */
+class FakeSocket {
+  static opened: FakeSocket[] = []
+
+  constructor(public url: string) {
+    FakeSocket.opened.push(this)
+  }
+
+  addEventListener(): void {
+    //
+  }
+
+  send(): void {
+    //
+  }
+
+  close(): void {
+    //
+  }
+}
+
+describe('useQuerySession', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+    FakeSocket.opened = []
+  })
+
+  it('opens the WebSocket at once, then reads the rows, the tab shown first', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('WebSocket', FakeSocket)
+    const asked: [number, number][] = []
+    /**
+     * Chunks asked, answered only once the test lets them go.
+     */
+    const answers: (() => void)[] = []
+    const shown = reactive({ id: 2 })
+    const scope = effectScope()
+    const session = scope.run(() =>
+      useQuerySession(
+        1,
+        () => Promise.resolve([saved(1, 2, 2), saved(2, 1, 1)]),
+        (tab, position) => {
+          asked.push([tab, position])
+          return new Promise((resolve) => answers.push(() => resolve([[`${tab}.${position}`]])))
+        },
+        () => shown.id,
+      ),
+    )!
+    await vi.waitFor(() => expect(asked).toHaveLength(1))
+    expect(FakeSocket.opened).toHaveLength(1)
+    expect(session.state.loading).toBe(false)
+    expect(session.state.tabs.map((tab) => [tab.id, tab.done])).toEqual([
+      [1, false],
+      [2, false],
+    ])
+    expect(asked).toEqual([[2, 0]])
+
+    answers.shift()!()
+    await vi.waitFor(() => expect(asked).toHaveLength(2))
+    vi.advanceTimersByTime(100)
+    await nextTick()
+    expect(session.state.tabs[1]!.done).toBe(true)
+    expect(asked).toEqual([
+      [2, 0],
+      [1, 0],
+    ])
+
+    answers.shift()!()
+    await vi.waitFor(() => expect(asked).toHaveLength(3))
+    answers.shift()!()
+    await vi.waitFor(() => {
+      vi.advanceTimersByTime(100)
+      expect(session.state.tabs[0]!.result?.rows).toEqual([['1.0'], ['1.1']])
+    })
+    expect(session.state.tabs[0]!.done).toBe(true)
+    scope.stop()
   })
 })

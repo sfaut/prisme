@@ -16,7 +16,8 @@
   The engine runs in a Worker of the page (`pivotClient.ts`), one per
   result, while the panel is open; closed, the panel computes nothing and
   stops its Worker (F-02). During the reception, the rows are copied as they
-  arrive, and the table follows them (F-07): a computation starts once the
+  arrive, and the table follows them (F-07), as it does while the saved rows
+  of a tab are read again after a reload: a computation starts once the
   previous one has ended, at most once per delay, then a last one at the end
   of the query, before the Worker is told that no row comes after. The status
   bar then says that the table is partial, and the list of a filter that it
@@ -723,7 +724,8 @@ const tableLabels = computed(() => {
 /**
  * Rows taken into account, out of those the table is computed on when the
  * filter of the grid keeps only some of them; partial while rows are still
- * to come.
+ * to come, out of those awaited when their number is known (rows of an
+ * ended query still arriving).
  */
 const rowsText = computed(() => {
   const table = shownTable.value?.table
@@ -733,7 +735,12 @@ const rowsText = computed(() => {
   const total = table.received
   const text = formatRowCount(total, table.shape.rows === total ? null : table.shape.rows)
   const partial = receiving.value || total < (result.value?.rowCount ?? 0)
-  return partial ? `Calcul partiel : ${text} ${total > 1 ? 'reçues' : 'reçue'}` : text
+  if (!partial) {
+    return text
+  }
+  const awaited = receiving.value ? (props.tab?.awaitedRows ?? null) : null
+  const out = awaited === null ? '' : ` sur ${awaited.toLocaleString('fr-FR')}`
+  return `Calcul partiel : ${text} ${total > 1 ? 'reçues' : 'reçue'}${out}`
 })
 
 /**

@@ -77,7 +77,6 @@ import {
   type RunTarget,
   type SessionStatus,
   batchProgress,
-  formatRowCount,
   stoppable,
   refreshState,
   useQuerySession,
@@ -160,10 +159,16 @@ const emit = defineEmits<{
  */
 const sql = defineModel<string>('sql', { required: true })
 
+/**
+ * Displayed tab: its id.
+ */
+const selectedTab = ref<string | number>(0)
+
 const session = useQuerySession(
   props.editorId,
   () => listResults(props.editorId),
   readResultChunk,
+  () => (typeof selectedTab.value === 'number' ? selectedTab.value : undefined),
   props.openingDatabase,
 )
 const catalog = useCatalogStore()
@@ -213,11 +218,6 @@ function panelId(panel: ViewPanel): string {
  * Panel that fills the height the others leave.
  */
 const fillPanel = computed(() => fillingPanel(layout))
-
-/**
- * Displayed tab: its id.
- */
-const selectedTab = ref<string | number>(0)
 
 /**
  * Tab shown, whose buttons (refresh, filter, export) stand right of the
@@ -920,9 +920,6 @@ defineExpose({
         >
           <LoaderCircle class="size-5 animate-spin" />
           Chargement des résultats…
-          <span v-if="state.savedRows > 0" class="tabular-nums">
-            {{ formatRowCount(state.savedRows, state.readRows) }}
-          </span>
         </div>
         <p
           v-else-if="state.tabs.length === 0"

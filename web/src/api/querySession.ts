@@ -27,12 +27,18 @@
  *
  * The session is that of an editor: the server saves its results as they
  * run, and gives each tab the id of its record. On opening, the session
- * takes back the saved tabs (`savedTab`), their rows read chunk by chunk,
- * then opens the WebSocket. On the server side, the session outlives the page
- * for the delay set on its connection: the WebSocket reattaches to it, and
- * then receives its last batch where it stands (`resume`, `resumedTab`), the
- * rows received so far (`resumed_rows`), then the next messages, which
- * continue it.
+ * reads the list of the saved tabs and shows them at once, with their
+ * columns (`awaitingTab`), then opens the WebSocket without waiting for their
+ * rows. These are read in the background, chunk by chunk, the tab shown
+ * first (`nextReading`), and received as those of a query: through the same
+ * grouping of the messages (`saved_rows`), the tab counting as running until
+ * its last row (`awaitedRows`), so that the grid and the Pivoteur follow
+ * them, and the editor stays usable. On the server side, the session outlives
+ * the page for the delay set on its connection: the WebSocket reattaches to
+ * it, and then receives its last batch where it stands (`resume`,
+ * `resumedTab`), the rows received so far (`resumed_rows`), then the next
+ * messages, which continue it. A tab taken back this way is no longer read
+ * from its chunks.
  *
  * `applyMessage` updates the state message by message; it depends neither on
  * Vue nor on the WebSocket, which makes it simple to test. `useQuerySession`
@@ -231,7 +237,8 @@ export interface QueryTab {
    */
   done: boolean
   /**
-   * Did the user stop the query (error `query_interrupted`)? The rows
+   * Did the user stop the query (error `query_interrupted`), or did the
+   * reading of its saved rows fail (`saved_rows`)? The rows
    * received before the stop stay a result, cut short: no error banner, a
    * "Résultat tronqué" badge instead, and the Pivoteur and the exports take
    * them.
@@ -284,9 +291,11 @@ export interface QueryTab {
    */
   pivot: TabPivot
   /**
-   * Rows of an ended query still to receive after `resume` (`resumed_rows`),
-   * `null` otherwise. Until they are all there, the query counts as running:
-   * the Pivoteur and the exports wait for them.
+   * Rows of an ended query still to receive: after `resume`
+   * (`resumed_rows`), or to read from the chunks of a saved tab
+   * (`saved_rows`); `null` otherwise. Until they are all there, the query
+   * counts as running: the grid and the Pivoteur follow them, the exports
+   * wait for them.
    */
   awaitedRows: number | null
 }
@@ -349,25 +358,49 @@ export interface SessionState {
    */
   error: string | null
   /**
-   * Are the editor's saved tabs being read? The interface then shows a
-   * loading indicator in their place.
+   * Is the list of the editor's saved tabs being read? The interface then
+   * shows a loading indicator in their place; their rows are read after,
+   * in the background.
    */
   loading: boolean
-  /**
-   * Rows of the saved tabs to read while `loading`; 0 until their list
-   * arrives.
-   */
-  savedRows: number
-  /**
-   * Rows of the saved tabs read so far, out of `savedRows`.
-   */
-  readRows: number
   /**
    * Ids of the tabs whose refresh waits for the end of the running batch, in
    * the order they were asked for.
    */
   refreshQueue: number[]
 }
+
+/**
+ * Rows of a saved tab, read from one of its chunks: received as those of a
+ * query, through the same grouping as the server's messages.
+ */
+export interface SavedRows {
+  type: 'saved_rows'
+  /**
+   * Tab read. A tab taken back by `resume` meanwhile is another object, with
+   * the same id: these rows no longer find it.
+   */
+  tab: QueryTab
+  /**
+   * Rows of the chunk, in their order.
+   */
+  rows: Cell[][]
+  /**
+   * Is it the last chunk of the tab? Its rows are then all there.
+   */
+  last: boolean
+  /**
+   * Did the reading fail? The rows read so far stay, as a result cut short
+   * (`interrupted`).
+   */
+  cut: boolean
+}
+
+/**
+ * Message the state of a session receives: from the server, or rows of a
+ * saved tab.
+ */
+export type SessionMessage = ServerMessage | SavedRows
 
 /**
  * Creates the state of a session that is opening.
@@ -383,20 +416,19 @@ export function initialState(): SessionState {
     nextTabId: 1,
     error: null,
     loading: false,
-    savedRows: 0,
-    readRows: 0,
     refreshQueue: [],
   }
 }
 
 /**
- * Updates the state with a message of the server.
+ * Updates the state with a message of the server, or with rows of a saved
+ * tab.
  *
  * Changes `state` in place: the rows are added to the existing array, without
  * copying a result that can count thousands of rows.
  *
  * @param state State of the session.
- * @param message Message received from the server.
+ * @param message Message received from the server, or rows read from a chunk.
  * @param now Instant of reception, to measure the duration of the queries.
  * @param bytes
  *     Size of the message in bytes, counted in the volume received by its
@@ -404,7 +436,7 @@ export function initialState(): SessionState {
  */
 export function applyMessage(
   state: SessionState,
-  message: ServerMessage,
+  message: SessionMessage,
   now: number = performance.now(),
   bytes: number = 0,
 ): void {
@@ -545,17 +577,40 @@ export function applyMessage(
       break
     case 'resumed_rows': {
       const tab = tabOf(state, message.query)
-      const result = tab?.result
-      if (tab && result) {
-        result.rows.push(...message.rows)
-        result.rowCount = result.rows.length
-        if (tab.awaitedRows !== null && result.rowCount >= tab.awaitedRows) {
-          tab.awaitedRows = null
-          tab.done = true
-        }
+      if (tab) {
+        receiveRows(tab, message.rows, false)
       }
       break
     }
+    case 'saved_rows':
+      if (state.tabs.includes(message.tab)) {
+        // Cut short, the rows read stay a result, as those of a query stopped.
+        message.tab.interrupted ||= message.cut
+        receiveRows(message.tab, message.rows, message.last)
+      }
+      break
+  }
+}
+
+/**
+ * Adds rows to the result of an ended query whose rows are still arriving
+ * (`awaitedRows`): taken back by `resume`, or read from its chunks. Once they
+ * are all there, the query counts as ended.
+ *
+ * @param tab Tab of the query.
+ * @param rows Rows received, in their order.
+ * @param last Are they the last ones, whatever their number?
+ */
+function receiveRows(tab: QueryTab, rows: Cell[][], last: boolean): void {
+  const result = tab.result
+  if (!result) {
+    return
+  }
+  result.rows.push(...rows)
+  result.rowCount = result.rows.length
+  if (tab.awaitedRows !== null && (last || result.rowCount >= tab.awaitedRows)) {
+    tab.awaitedRows = null
+    tab.done = true
   }
 }
 
@@ -1081,6 +1136,61 @@ export function savedTab(saved: ResultTab, rows: Cell[][]): QueryTab {
 }
 
 /**
+ * Interface tab of a saved tab whose rows are still to read from its chunks:
+ * shown at once, with its columns. An ended query counts as running until
+ * its last row (`awaitedRows`), as a query being received.
+ *
+ * @param saved Saved tab.
+ */
+export function awaitingTab(saved: ResultTab): QueryTab {
+  const tab = savedTab(saved, [])
+  if (tab.done && tab.result !== null && saved.chunks > 0) {
+    tab.done = false
+    tab.awaitedRows = saved.result.row_count
+  }
+  return tab
+}
+
+/**
+ * Reading of the chunks of a saved tab.
+ */
+export interface ChunkReading {
+  /**
+   * Tab read, as it stands in the state of the session.
+   */
+  tab: QueryTab
+  /**
+   * Number of its chunks.
+   */
+  chunks: number
+  /**
+   * Rank of the next chunk to read.
+   */
+  next: number
+}
+
+/**
+ * Next reading to advance by a chunk: that of the tab shown, if it still
+ * has some, otherwise the first in the order of the tabs. A tab closed, or
+ * taken back by `resume` (another object), is no longer read. `undefined`
+ * once there is nothing left to read.
+ *
+ * @param tabs Tabs of the session.
+ * @param readings Readings of the saved tabs.
+ * @param shown Id of the tab shown, if any.
+ */
+export function nextReading(
+  tabs: QueryTab[],
+  readings: ChunkReading[],
+  shown: number | undefined,
+): ChunkReading | undefined {
+  const open = readings.filter((reading) => reading.next < reading.chunks)
+  const first = tabs.find((tab) => tab.id === shown && open.some((reading) => reading.tab === tab))
+  const chosen = first ?? tabs.find((tab) => open.some((reading) => reading.tab === tab))
+  return open.find((reading) => reading.tab === chosen)
+}
+
+/**
  * Interface tab of a query of the batch taken back when reattaching to the
  * session. It belongs to the current batch: the next messages complete it,
  * starting with the rows received so far (`resumed_rows`); an ended query
@@ -1158,9 +1268,10 @@ export function sessionUrl(editorId: number, location: Location, database?: stri
 }
 
 /**
- * Opens the query session of an editor, on its connection: the saved tabs
- * first, their rows read chunk by chunk, then the WebSocket, which reattaches
- * to the server's session if it is still open.
+ * Opens the query session of an editor, on its connection: the list of the
+ * saved tabs first, then the WebSocket, which reattaches to the server's
+ * session if it is still open, while the rows of the saved tabs are read in
+ * the background, chunk by chunk.
  *
  * The WebSocket closes when the component that opened it disappears; the
  * server's session stays open for the delay set on the connection.
@@ -1168,6 +1279,7 @@ export function sessionUrl(editorId: number, location: Location, database?: stri
  * @param editorId Id of the editor.
  * @param loadSaved Reading of the editor's saved result tabs, without their rows.
  * @param loadChunk Reading of a chunk of the saved rows of a tab, by its id and its rank.
+ * @param shownTab Id of the tab shown, whose rows are read first.
  * @param database
  *     Database to open a new session on, in place of the connection's (see
  *     `sessionUrl`).
@@ -1177,6 +1289,7 @@ export function useQuerySession(
   editorId: number,
   loadSaved: () => Promise<ResultTab[]>,
   loadChunk: (tab: number, position: number) => Promise<Cell[][]>,
+  shownTab: () => number | undefined,
   database?: string,
 ) {
   const state = reactive(initialState())
@@ -1195,7 +1308,7 @@ export function useQuerySession(
    * Messages received, not applied yet, with their instant of reception and
    * their size in bytes.
    */
-  let pending: [ServerMessage, number, number][] = []
+  let pending: [SessionMessage, number, number][] = []
 
   /**
    * Deferred application of the pending messages, absent if nothing waits.
@@ -1224,6 +1337,17 @@ export function useQuerySession(
   }
 
   /**
+   * Keeps a message for the next application of the pending messages.
+   *
+   * @param message Message received.
+   * @param bytes Its size in bytes, counted in the volume of its query.
+   */
+  function receive(message: SessionMessage, bytes: number): void {
+    pending.push([message, performance.now(), bytes])
+    flushTimer ??= setTimeout(flush, FLUSH_DELAY)
+  }
+
+  /**
    * Opens the WebSocket of the session.
    */
   function connect(): void {
@@ -1237,8 +1361,7 @@ export function useQuerySession(
         state.error = 'Message illisible reçu du serveur.'
         return
       }
-      pending.push([message, performance.now(), utf8Length(event.data)])
-      flushTimer ??= setTimeout(flush, FLUSH_DELAY)
+      receive(message, utf8Length(event.data))
     })
     socket.addEventListener('close', () => {
       clearTimeout(flushTimer)
@@ -1254,42 +1377,66 @@ export function useQuerySession(
   }
 
   /**
-   * Reads the saved tabs, then their rows, chunk by chunk, in the order of
-   * the tabs; stops once the session is closed.
+   * Reads the list of the saved tabs, and shows them, without their rows.
+   *
+   * @returns The readings of their chunks, in the order of the tabs.
    */
-  async function readSaved(): Promise<QueryTab[]> {
+  async function readSaved(): Promise<ChunkReading[]> {
     const saved = await loadSaved()
-    state.savedRows = saved.reduce(
-      (total, tab) => total + (tab.chunks > 0 ? tab.result.row_count : 0),
-      0,
-    )
-    const tabs: QueryTab[] = []
-    for (const tab of saved) {
-      const rows: Cell[][] = []
-      for (let position = 0; position < tab.chunks && !closed; position++) {
-        const chunk = await loadChunk(tab.id, position)
-        rows.push(...chunk)
-        state.readRows += chunk.length
-      }
-      tabs.push(savedTab(tab, rows))
+    if (closed) {
+      return []
     }
-    return tabs
+    state.tabs = saved.map(awaitingTab)
+    // The tabs as the state holds them: the rows read find them there.
+    return saved.flatMap((tab, index) =>
+      tab.chunks > 0 ? [{ tab: state.tabs[index]!, chunks: tab.chunks, next: 0 }] : [],
+    )
   }
 
-  // The saved tabs first: the batch resumed by the WebSocket finds its tabs among them.
+  /**
+   * Reads the rows of the saved tabs, a chunk at a time, the tab shown first
+   * (`nextReading`), until they are all read or the session is closed. A
+   * failure ends the reading of its tab, cut short; the others go on.
+   *
+   * @param readings Readings of the saved tabs.
+   */
+  async function readChunks(readings: ChunkReading[]): Promise<void> {
+    for (
+      let reading = nextReading(state.tabs, readings, shownTab());
+      reading !== undefined && !closed;
+      reading = nextReading(state.tabs, readings, shownTab())
+    ) {
+      const { tab } = reading
+      const position = reading.next++
+      try {
+        const rows = await loadChunk(tab.id, position)
+        receive(
+          { type: 'saved_rows', tab, rows, last: reading.next === reading.chunks, cut: false },
+          0,
+        )
+      } catch (failure) {
+        reading.next = reading.chunks
+        // A tab closed meanwhile may no longer exist on the server.
+        if (state.tabs.includes(tab)) {
+          state.error = errorMessage(failure)
+          receive({ type: 'saved_rows', tab, rows: [], last: true, cut: true }, 0)
+        }
+      }
+    }
+  }
+
+  // The list of the saved tabs first: the batch resumed by the WebSocket
+  // finds its tabs among them. Their rows follow, while the session opens.
   state.loading = true
   readSaved()
-    .then((tabs) => {
-      state.tabs = tabs
-    })
     .catch((failure: unknown) => {
       state.error = errorMessage(failure)
+      return []
     })
-    .finally(() => {
+    .then((readings) => {
       state.loading = false
-      state.savedRows = 0
-      state.readRows = 0
       connect()
+      return readChunks(readings)
     })
 
   /**

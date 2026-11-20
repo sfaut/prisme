@@ -613,6 +613,8 @@ On failure or cancellation, an `error` message replaces the rest of that query, 
 
 The session of an editor (`ws://127.0.0.1:10000/api/editors/{id}/session`) outlives its WebSocket, and saves its results in chunks of rows. A WebSocket that reattaches to it receives `ready`, then `resume`: the last batch where it stands, each query with the number of rows it received so far (`resumed_rows`). These rows follow in `resumed_rows` messages, a saved chunk each, then the next messages of the batch.
 
+On opening, the page reads the list of the saved tabs (`GET /api/editors/{id}/results`) and shows them at once, then opens the WebSocket without waiting for their rows. These are read in the background, a chunk at a time (`GET /api/results/{id}/chunks/{position}`), the tab shown first, and go through the same grouping as the messages of the WebSocket (`saved_rows`, `web/src/api/querySession.ts`): an ended query counts as running until its last row (`awaitedRows`), as after `resume`, so that the grid and the Pivoteur follow them. A tab taken back by `resume` is no longer read from its chunks: its rows come by `resumed_rows`.
+
 Only reads pass: `SELECT`, `SHOW`, `DESCRIBE`, `EXPLAIN` and `USE`. Writes (`UPDATE`, `DELETE`, `DROP`, `CALL`...) are refused until the write switches exist, as are queries Prisme cannot analyse.
 
 ### Database servers
