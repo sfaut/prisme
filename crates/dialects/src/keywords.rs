@@ -267,6 +267,26 @@ mod tests {
     }
 
     #[test]
+    fn knows_every_word_of_show_columns() {
+        // Syntax of SHOW COLUMNS, without its names and values. MariaDB
+        // refuses EXTENDED there (measured on 10.6.3, 12.3.3 and 13.0.2).
+        for (dialect, statement) in [
+            (
+                Dialect::MySql,
+                "SHOW EXTENDED FULL COLUMNS FIELDS FROM IN LIKE WHERE",
+            ),
+            (
+                Dialect::MariaDb,
+                "SHOW FULL COLUMNS FIELDS FROM IN LIKE WHERE",
+            ),
+        ] {
+            for word in statement.split(' ') {
+                assert!(is_keyword(word, dialect, None), "{word} in {dialect:?}");
+            }
+        }
+    }
+
+    #[test]
     fn keeps_only_the_words_of_the_server_version() {
         let reserved = |version| keywords(Dialect::MySql, version).reserved;
         assert!(reserved(Some("8.0.36")).contains(&"WINDOW".to_string()));

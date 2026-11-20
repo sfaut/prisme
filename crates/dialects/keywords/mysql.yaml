@@ -269,6 +269,9 @@ keywords:
   - COMMITTED
   - CONSISTENT
   - END
+  - EXTENDED
+  - FIELDS
+  - FULL
   - GLOBAL
   - ISOLATION
   - LEVEL

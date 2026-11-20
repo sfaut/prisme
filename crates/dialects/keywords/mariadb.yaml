@@ -249,7 +249,9 @@ keywords:
   - COMMITTED
   - CONSISTENT
   - END
+  - FIELDS
   - FORMAT
+  - FULL
   - GLOBAL
   - ISOLATION
   - LEVEL
