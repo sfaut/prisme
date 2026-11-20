@@ -70,7 +70,7 @@ Then open <http://prisme.localhost:5173>. Vite announces `localhost:5173`, which
 
 ### Components
 
-A component is named after its area of the interface, as the README calls it, then after its role: `NavigatorPanel`, `EditorView`, `ResultGrid`, `PivotFilterPopover`, `ConsoleHistoryTable`. One suffix per role: `Panel` for a panel of the screen (header, fold, rail), `Popover` for settings floating beside an element, `Dialog` for a modal window, `Bar` for a bar, `Tab` for a tab and `View` for its content, `Grid` for a grid of data, `Table` for a list of the console. A component made for one parent starts with its name (`PivotFilterValues` in `PivotFilterPopover`); the base components start with `Ui`, the splitters with `Split`.
+A component is named after its area of the interface, as the README calls it, then after its role: `NavigatorPanel`, `EditorView`, `ResultGrid`, `PivotFilterPopover`, `ConsoleHistoryTable`. One suffix per role: `Panel` for a panel of the screen (header, activity bar), `Popover` for settings floating beside an element, `Dialog` for a modal window, `Bar` for a bar, `Tab` for a tab and `View` for its content, `Grid` for a grid of data, `Table` for a list of the console. A component made for one parent starts with its name (`PivotFilterValues` in `PivotFilterPopover`); the base components start with `Ui`, the splitters with `Split`.
 
 Each area has its folder in `web/src/components/` (see "Repository layout"), with its components, the modules that carry its notions (`pivot/pivotConfig.ts`, `result/csv.ts`) and its tests (`__tests__/`); another area imports them from there (`@/components/result/typeIcons`). Inside a folder, imports are relative. A module of no area goes to `web/src/utils/`.
 
@@ -81,15 +81,13 @@ The display preferences of a machine stay in the browser's local storage, under 
 | Key | Value |
 |---|---|
 | `prisme.app.colorMode` | `system`, `light` or `dark` |
-| `prisme.navigator.open`, `prisme.navigator.width` | the last state given to an object navigator, open or folded, and its width in CSS pixels: the start of a new editor |
 | `prisme.navigator.layout.<editor>` | the object navigator of an editor open, its width (JSON), forgotten when it closes |
 | `prisme.navigator.tree.<editor>` | open nodes and scroll of the object navigator of an editor (JSON), forgotten when it closes |
 | `prisme.editor.active` | id of the active editor |
-| `prisme.editor.layout.<editor>` | heights and folds of the panels of an editor (JSON), forgotten when it closes |
-| `prisme.console.open`, `prisme.console.height` | the console open, its height in CSS pixels |
+| `prisme.editor.layout.<editor>` | heights of the results and of the Pivoteur of an editor, and which of its three panels are closed (`…Folded`), then the height of its console and whether it is closed (`console`, `consoleFolded`), JSON, forgotten when it closes |
+| `prisme.console.allEditors` | the consoles show the elements of all the editors (`true`), or those of their editor |
 | `prisme.console.tab` | tab shown: `history` or `debug` |
 | `prisme.console.filtersShown`, `prisme.console.historyFilter`, `prisme.console.debugFilter` | the filters shown, and those of each tab (JSON) |
-| `prisme.explorer.width` | the last width given to a data explorer, in CSS pixels: the start of a new editor |
 | `prisme.explorer.layout.<editor>` | the data explorer of an editor open, its width (JSON), forgotten when it closes |
 | `prisme.explorer.wrap` | long lines of the data explorers wrapped |
 
@@ -99,21 +97,25 @@ The icons come from Lucide (`@lucide/vue`). An action keeps the same icon wherev
 
 Rules:
 
-- **Size**: one size, `size-5`, small buttons included: an icon keeps the same size wherever it appears (the fold and unfold icons of a panel, in its header and on its rail), and icons side by side have the same size. Only the marks that go with a text keep their own size: `size-4` for the chevrons of the tree and the marks of the grid (type of a column, link).
+- **Size**: one size, `size-5`, small buttons included: an icon keeps the same size wherever it appears, and icons side by side have the same size. Only the marks that go with a text keep their own size: `size-4` for the chevrons of the tree and the marks of the grid (type of a column, link). The icons of the theme switch (`UiChoiceSwitch`) take `size-4` as well, so that its round thumb (`size-6`) shows around them.
 - **Icon-only button**: `UiButton` with `variant="ghost"` and `small` in a bar, an `aria-label` and a `v-tooltip`. The tooltip says the action, and may add what it does after a colon ("Rafraîchir : relance la requête").
 - **Toggle button**: `aria-pressed`. The primary color (`tone="primary"`) means the state is in effect: a filter keeps only some elements, a tab is pinned. The raised background (`bg-surface-raised`) means the button shows its panel or form (the console's filters, the grid's filter).
-- **Place**: the actions of a bar stand at its right end, side by side, then the fold button, last; for the panel on the right, the fold button comes first, left of the title. The rail of a folded panel shows its unfold icon at the same place.
-- **Folded panel**: it keeps only its tabs, if any, and its unfold button; its other actions hide.
+- **Place**: the actions of a bar stand at its right end, side by side.
+- **Open and closed panels**: every panel of an editor's tab (object navigator, editor, results, Pivoteur, data explorer, console) opens and closes from the activity bar of the tab (`PanelActivityBar`), on its left edge, under the editors' tabs: one button per panel, lit and marked in the primary color on the bar's edge while the panel is open (`aria-pressed`), its tooltip, on its right, naming the panel, then its shortcut, smaller ("Navigateur d’objets Ctrl-K puis N", `v-tooltip:right="{ text, shortcut }"`): the state of the button says what the click does. The shortcuts are chords of two keys, as in VS Code (`panelChord.ts`): Ctrl-K (Cmd-K), then a key without modifier, within two seconds; the bar of the active editor alone follows them, on the window in the capture phase, so that the second key reaches neither CodeMirror nor the browser. Ctrl with a digit (tabs of the browser) and Ctrl+Alt (AltGr of a French keyboard) are left alone; CodeMirror binds Ctrl-Shift-K, not Ctrl-K. A closed panel takes no room (folded size `0px`), nor does its line; its content stays mounted, out of reach (`inert`). The bar is near black in both modes (roles `activity`, `activity-line`, `on-activity`, `on-activity-strong`).
 - **Running action**: the button that starts a long action turns into its stop button while it runs, with the stop icon and the error color for queries.
+- **Tabs**: the editor, result and console tabs share one look, the utility `tab-pill` of `main.css`: pills of a button's height, medium regular text, the active one on the raised background, a line between two inactive tabs (as in VS Code), their bar spacing them by `gap-2`. A tab that follows a work (query, last run of an editor) shows its dot and its progress bar (`progress`, `fraction`); the console's tabs have neither, nor cross, renaming or dragging.
 
 #### Panels and folding
 
 | Icon | Action | Where |
 |---|---|---|
-| `PanelLeftClose` / `PanelLeftOpen` | Fold / unfold the object navigator | its header / its rail (`PanelHeader`, `PanelRail`) |
-| `PanelRightClose` / `PanelRightOpen` | Fold / unfold the data explorer | its header / its rail |
-| `PanelBottomClose` / `PanelBottomOpen` | Fold / unfold the console; fold / unfold the results | console's header / its rail; bar of the result tabs (`EditorView`) |
-| `PanelTopClose` / `PanelTopOpen` | Fold / unfold the active editor, with its buttons | editors' bar, right of the reopen button (`EditorTabBar`, drawn by `App` for the active `EditorView`) |
+| `ListTree` | Open / close the object navigator | activity bar (`PanelActivityBar`) |
+| `Code` | Open / close the editor | activity bar |
+| `Table` | Open / close the results | activity bar |
+| `TableProperties` | Open / close the Pivoteur | activity bar |
+| `Braces` | Open / close the data explorer | activity bar |
+| `SquareTerminal` | Open / close the console | activity bar |
+| `LayoutDashboard` | Share the room again: equal heights for the open panels of the view, default sizes for the side panels and the console | activity bar, at its bottom |
 | `ChevronRight` / `ChevronDown` | Open / close a node of the tree | object navigator (`NavigatorLine`) |
 | `ChevronsDownUp` / `ChevronsUpDown` | Fold / unfold the whole document | data explorer |
 | `FoldVertical` / `UnfoldVertical` | Fold / unfold the cursor's level | data explorer |
@@ -125,7 +127,7 @@ Rules:
 | `Play` | Run the query under the cursor ("Exécuter") | editor's buttons |
 | `ScanText` | Run the selected text only ("Exécuter précisément") | editor's buttons |
 | `FastForward` | Run all the queries ("Exécuter tout") | editor's buttons |
-| `Square` | Stop the running queries (the run button, while they run) | editor's buttons |
+| `Square` | Stop the running queries (the run button, while they run); stop the query of a result tab | editor's buttons; result tab, while its query can be stopped (`ResultTab`) |
 | `WandSparkles` | Rewrite as "beautiful SQL" ("Enjoliver") | editor's buttons |
 | `RefreshCw` / `RefreshCwOff` | Run the result's query again / stop that refresh | bar of the result tabs (`ResultTabActions`) |
 | `Funnel` | Show / hide the filter of a list; in the data explorer, keep only the search results | bar of the result tabs (`ResultTabActions`), console's header, data explorer's search |
@@ -141,7 +143,7 @@ Rules:
 
 | Icon | Action | Where |
 |---|---|---|
-| `Plus` | New editor; add a connection | editors' bar (`EditorTabBar`); navigator's menu |
+| `Plus` | New editor; add a connection | top bar, first of its right group, filled in the primary color (`TopBar`); navigator's menu |
 | `History` | Reopen a closed editor | editors' bar |
 | `X` | Close a tab, a dialog or a message; empty a field | tabs (`DocumentTab`), `UiDialog`, `UiAlert`, result's filter field (`ResultFilter`) |
 
@@ -203,7 +205,7 @@ Rules:
 | `CircleCheckBig`, `CircleX` | Transient message: success, error, as in `UiAlert` | `UiToaster` |
 | `Eye` / `EyeOff` | Show / hide the password | connection dialog |
 | `ChevronDown`, `Check` | Open a list; chosen item | `UiSelect` |
-| `Monitor`, `Sun`, `Moon` | Color mode: system, light, dark | top bar |
+| `Sun`, `Monitor`, `Moon` | Color mode: light, system, dark | top bar (`UiChoiceSwitch`) |
 | `User`, `Settings` | Profile, settings | account menu |
 
 ### Lengths in pixels
@@ -224,11 +226,12 @@ These are workarounds too (see "Workarounds"). Before each release, after the up
 
 ### Splitters
 
-The panels of the layout (object navigator, editors, console, data explorer), of the view of an editor (editor, results, Pivoteur) and the sections of the Pivoteur (columns of the result, zones, table) stand in splitters of Prisme (`web/src/components/split/`): a group (`SplitGroup`) lays its panels (`SplitPanel`) out as a flexbox, with lines between them (`SplitHandle`). A panel takes its default size, a theme length given as it is (`var(--navigator-width)`), or the size the user gave it, in CSS pixels. One panel of a group fills the room the others leave; a group without one leaves the room free, to an element marked `data-split-room` (the view of an editor, whose results fill it and can fold). The code computes only during a drag or a key on a line (`dragSizes` in `splitLayout.ts`, tested by Vitest), from the lengths it measures then; the browser lays the group out the rest of the time, shown or hidden alike.
+The panels of the layout (object navigator, editors, console, data explorer), of the view of an editor (editor, results, Pivoteur) and the sections of the Pivoteur (columns of the result, zones, table) stand in splitters of Prisme (`web/src/components/split/`): a group (`SplitGroup`) lays its panels (`SplitPanel`) out as a flexbox, with lines between them (`SplitHandle`). A panel takes its default size, a theme length given as it is (`var(--navigator-width)`), or the size the user gave it, in CSS pixels. One panel of a group fills the room the others leave; a panel without a default size nor a size kept shares that room with it in equal parts, and keeps the size it shows once a line moves; a group without a panel that fills leaves the room free, to an element marked `data-split-room` (the view of an editor, whose three panels can all fold). In the view of an editor (`editorLayout.ts`), the highest open panel fills, so that the folded ones stay against it, and each line resizes the panel under it, or the folded one above the panel that fills; all three folded, each line unfolds the panel above it, and a line drawn under the Pivoteur's rail, in place of the room's border, unfolds the Pivoteur (it goes once a panel fills, its drag ended). The code computes only during a drag or a key on a line (`dragSizes` in `splitLayout.ts`, tested by Vitest), from the lengths it measures then; the browser lays the group out the rest of the time, shown or hidden alike.
 
-- **Drag**: the line follows the pointer (pointer events captured by the handle), and its position is kept as it is at the release, in CSS pixels, without rounding. Below its smallest size, a panel folds past half the way to its folded size; it takes its room from the panel that fills, down to that one's smallest size.
-- **Keyboard** (pattern "window splitter" of WAI-ARIA, role `separator` with its `aria-value*` in pixels): the arrows move the line by four steps of `--spacing`, Home and End to the smallest and largest size, Enter does what a double click does (fold or unfold the panel, or give back the default width of a section of the Pivoteur).
-- **Saved**: the sizes and folds of the layout in the local storage (see "Local storage": in the stores of the navigator, the console and the explorer, and `prisme.editor.layout.<editor>`, forgotten when the editor closes), the widths of the sections in the configuration of the Pivoteur of the tab (`fields_px`, `zones_px`; a width saved in steps before, `fields_width`, `zones_width`, is read in pixels and replaced by the next one set). The layouts saved by the splitters of Reka UI (keys `reka:`) are removed as the interface starts (`migrateStorage`, see "Local storage").
+- **Drag**: the line follows the pointer (pointer events captured by the handle), and its position is kept as it is at the release, in CSS pixels, without rounding. Below its smallest size, a panel folds past half the way to its folded size (a panel of the layout then closes, its folded size being `0px`); it takes its room from the panel that fills, down to that one's smallest size.
+- **Keyboard** (pattern "window splitter" of WAI-ARIA, role `separator` with its `aria-value*` in pixels): the arrows move the line by four steps of `--spacing`, Home and End to the smallest and largest size, Enter does what a double click does (give back the default width of a section of the Pivoteur; the lines of the panels have no action of their own).
+- **Animation**: a panel that folds or unfolds, and those that take or give its room, change size in a transition of the three parts of `flex`, with Tailwind's default duration and curve (`--default-transition-duration`, `--default-transition-timing-function`); the room marked `data-split-room` follows it, always mounted, its growth going from 0 to 1 while the last panel's goes from 1 to 0. The content shows or hides at once. During the drag of a line, the group is marked `data-resizing` and nothing animates, so that the line stays under the pointer; with reduced motion asked (`prefers-reduced-motion`), nothing animates either.
+- **Saved**: the sizes and folds of the layout in the local storage (see "Local storage": in the stores of the navigator and the explorer, and `prisme.editor.layout.<editor>` for the view and the console, forgotten when the editor closes), the widths of the sections in the configuration of the Pivoteur of the tab (`fields_px`, `zones_px`; a width saved in steps before, `fields_width`, `zones_width`, is read in pixels and replaced by the next one set). The layouts saved by the splitters of Reka UI (keys `reka:`) are removed as the interface starts (`migrateStorage`, see "Local storage").
 
 Measured on 2026-11-11 in Chrome 156 started with `--force-device-scale-factor` at 1, 1.25 and 1.5 (method at the end of "Lines"), on the lines of the navigator, the console and the explorer: each line one pixel of a single color at rest, after each of 40 steps of a drag by one device pixel, after the release (no jump) and after 12 resizes of the window; the band of the hover and the grip symmetric on the line (3 + 1 + 3 pixels and 2 + 3 + 2 at 1.25, 4 + 1 + 4 and 2 + 5 + 2 at 1.5).
 
@@ -562,13 +565,13 @@ On error (status 4xx or 5xx), PowerShell raises an exception, and the JSON body 
 | `PUT /api/settings` | Changes the default limit, the read-only sessions, the allowed writes, the retention of the console (1 to 3,650 days), the indentation of the SQL editor (1 to 8 spaces), the longest text of a `GROUP_CONCAT` of the Pivoteur (100 to 1,048,576 bytes) and the shortest delay between two computations of the Pivoteur during the reception of the rows (200 to 60,000 milliseconds), returns the updated settings. | 400 limit not among the choices, retention, indentation, longest text or delay out of bounds; 422 unknown kind of write |
 | `GET /api/profile` | Profile: `{"email": "...", "first_name": "", "last_name": ""}`. | — |
 | `PUT /api/profile` | Changes the names (trimmed, 100 characters at most), returns the profile. | 400 name too long |
-| `GET /api/console/history` | Page of the history of the queries, in chronological order: `?before=` (id of the oldest query already read), `?limit=` (500 by default, 2,000 at most), `?action=` (an action kept, the key repeated for several: `?action=run&action=run_all`; all when absent). | 400 unknown action |
-| `DELETE /api/console/history` | Clears the history of the user (204). | — |
-| `GET /api/console/debug` | Page of the debug log (lines of the server's log, notifications of the interface): `?before=` and `?limit=` as for the history, `?level=` and `?source=` (a level or a source kept, the key repeated for several: `?level=error&level=warn&source=interface`; all when absent). | 400 unknown level or source |
-| `DELETE /api/console/debug` | Clears the debug log (204). | — |
-| `POST /api/console/notifications` | Adds a notification of the interface to the debug log: `{"level": "info", "message": "..."}` (204). | 400 invalid level |
-| `GET /api/console/stream` | Server-sent events: `history` with each new query, `debug` with each new line of the debug log, `history-cleared` / `debug-cleared` when a list is cleared, `lagged` when events were dropped for a slow client. | — |
-| `POST /api/exports` | Starts the export of a full result to a CSV file for Excel in French: `{"connection_id": 1, "database": "shop", "sql": "SELECT ...", "columns": [2, 0, 1], "name": "ventes-20261029-101500.csv", "expected_rows": 1000}`. The query is run as it is written, without the limit of Prisme, on a connection of its own, read-only. `columns`: index of each exported column in the result, in the displayed order (empty: all, in order); `database` and `expected_rows` are optional. Returns the export (202), whose rows are written to `<data-dir>/exports/<id>-<instant in ms>.csv`. | 400 name empty or over 200 characters, query not a read, several queries, query not parsed; 404 unknown connection; 502 / 504 as for `probe` |
+| `GET /api/console/history` | Page of the history of the queries, in chronological order: `?before=` (id of the oldest query already read), `?limit=` (500 by default, 2,000 at most), `?action=` (an action kept, the key repeated for several: `?action=run&action=run_all`; all when absent), `?editor=` (the queries of an editor, `editor_id`: those of its session, of its object navigator and of its exports; 0 for those sent outside an editor, a connection test; all when absent). | 400 unknown action |
+| `DELETE /api/console/history` | Clears the history of the user, that of an editor with `?editor=` (204). | — |
+| `GET /api/console/debug` | Page of the debug log (lines of the server's log, notifications of the interface): `?before=` and `?limit=` as for the history, `?level=` and `?source=` (a level or a source kept, the key repeated for several: `?level=error&level=warn&source=interface`; all when absent), `?editor=` as for the history (the lines written under the session of an editor). | 400 unknown level or source |
+| `DELETE /api/console/debug` | Clears the debug log, the lines of an editor with `?editor=` (204). | — |
+| `POST /api/console/notifications` | Adds a notification of the interface to the debug log: `{"level": "info", "message": "...", "editor_id": 3}`, `editor_id` the editor on screen, whose console shows it (optional) (204). | 400 invalid level |
+| `GET /api/console/stream` | Server-sent events: `history` with each new query, `debug` with each new line of the debug log, `history-cleared` / `debug-cleared` when a list is cleared (`{"editor_id": 3}`, `null` when all of it), `lagged` when events were dropped for a slow client. | — |
+| `POST /api/exports` | Starts the export of a full result to a CSV file for Excel in French: `{"connection_id": 1, "database": "shop", "sql": "SELECT ...", "columns": [2, 0, 1], "name": "ventes-20261029-101500.csv", "expected_rows": 1000, "editor_id": 3}`, `editor_id` the editor whose console receives the queries of the export (optional). The query is run as it is written, without the limit of Prisme, on a connection of its own, read-only. `columns`: index of each exported column in the result, in the displayed order (empty: all, in order); `database` and `expected_rows` are optional. Returns the export (202), whose rows are written to `<data-dir>/exports/<id>-<instant in ms>.csv`. | 400 name empty or over 200 characters, query not a read, several queries, query not parsed; 404 unknown connection; 502 / 504 as for `probe` |
 | `GET /api/exports` | Exports of the user, the most recent first, with their state (`running`, `ready`, `failed`, `cancelled`, `interrupted` by a stop of Prisme), their rows and bytes written (for an ended export, the size of its file) and `file_missing` when their file left the folder; `orphans` (number and size of the files of Prisme in the folder that no export references). | — |
 | `GET /api/exports/stream` | Server-sent events: `export` with `{"type": "changed", "export": {...}}` when an export starts, progresses (every half second at most) or ends, `{"type": "removed", "id": 1}` when it is removed; `lagged` when events were dropped for a slow client. | — |
 | `GET /api/exports/{id}/file` | File of the export, with its length and the name to save it under (`Content-Disposition`). | 404 unknown export, 410 file gone from the folder |
@@ -723,7 +726,7 @@ web/               Vue interface
     console/       console: history, debug log
     explorer/      data explorer
     top-bar/       top bar: exports, synchronisation, settings, profile
-    panel/         header and rail of the panels of the screen
+    panel/         header of the panels of the screen and activity bar of an editor's tab
     tab/           tab of a document bar, shared by the editors and the results
     split/         splitters of Prisme
     ui/            base components (buttons, fields, menus, dialogs, tooltips)

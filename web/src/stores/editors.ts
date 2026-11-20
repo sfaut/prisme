@@ -16,8 +16,9 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { clearPending, markPending } from '@/api/sync'
-import { forgetEditorLayout } from '@/components/editor/editorLayout'
+import type { BatchProgress } from '@/api/querySession'
 import { useExplorerStore } from '@/stores/explorer'
+import { useEditorLayoutsStore } from '@/stores/editorLayouts'
 import { useNavigatorStore } from '@/stores/navigator'
 
 import {
@@ -119,6 +120,12 @@ export const useEditorsStore = defineStore('editors', () => {
    * Is a transaction open on each editor's session? Told by its view.
    */
   const transactions = ref<Record<number, boolean>>({})
+
+  /**
+   * Progress of the last batch of each editor's session, `null` before its
+   * first query. Told by its view, shown by its tab.
+   */
+  const progress = ref<Record<number, BatchProgress | null>>({})
 
   /**
    * Open editors on a connection whose session has a transaction open.
@@ -292,7 +299,8 @@ export const useEditorsStore = defineStore('editors', () => {
       await save(id)
     }
     await closeEditor(id)
-    forgetEditorLayout(id)
+    useEditorLayoutsStore().forget(id)
+    delete progress.value[id]
     useNavigatorStore().forget(id)
     useExplorerStore().forget(id)
     const index = editors.value.findIndex((editor) => editor.id === id)
@@ -352,6 +360,7 @@ export const useEditorsStore = defineStore('editors', () => {
     active,
     closed,
     transactions,
+    progress,
     inTransaction,
     activate,
     load,

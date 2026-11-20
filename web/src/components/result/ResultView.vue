@@ -22,6 +22,10 @@
   result tabs, keeps it expanded. New columns make it global, its text kept:
   the index of a targeted column would point to another column.
 
+  A query stopped by the user (`interrupted`) shows no error: its grid holds
+  the rows received, the status bar starts with a "Résultat tronqué" badge;
+  stopped before its columns, it says "Requête arrêtée.".
+
   The grid comes right under the line of the result tabs, which takes the
   place of its frame's top border; the error, the filter's form or the
   durations, when they come first, keep a little room under that line.
@@ -72,6 +76,7 @@ import {
   type QueryTab,
   type UserFilter,
   executionDuration,
+  failed,
   formatBytes,
   formatDuration,
   formatInstant,
@@ -95,6 +100,7 @@ import type { MenuGroup, MenuItem } from '@/components/ui/menuItem'
 import { notify } from '@/components/ui/toasts'
 import UiAlert from '@/components/ui/UiAlert.vue'
 import UiStatusBar from '@/components/ui/UiStatusBar.vue'
+import { vTooltip } from '@/components/ui/tooltip'
 
 const props = defineProps<{
   /**
@@ -110,6 +116,11 @@ const props = defineProps<{
    * Connection of the editor, on which the full export runs.
    */
   connectionId: number
+  /**
+   * Id of the editor, whose console receives the queries of the full
+   * export.
+   */
+  editorId: number
   /**
    * Current database of the editor, `null` if none.
    */
@@ -150,10 +161,22 @@ const clock = useClock()
 const shown = computed(() => shownResult(props.tab))
 
 /**
+ * Error shown in a banner: none for a query stopped by the user, whose rows
+ * stay a result.
+ */
+const shownError = computed(() => (failed(props.tab) ? props.tab.error : null))
+
+/**
+ * Was the reception of the rows stopped by the user? The grid then holds
+ * those received before the stop.
+ */
+const cut = computed(() => props.tab.interrupted && showsGrid(props.tab))
+
+/**
  * Does the grid come first, right under the result tabs (no error nor
  * filter form above it)?
  */
-const attached = computed(() => !props.tab.error && !props.tab.filterOpen && showsGrid(props.tab))
+const attached = computed(() => !shownError.value && !props.tab.filterOpen && showsGrid(props.tab))
 
 // New columns: a targeted filter becomes global, its text kept. The same
 // columns again (a session resumed after a reconnection) keep it.
@@ -580,6 +603,7 @@ async function exportFull(): Promise<void> {
       columns,
       name,
       expected_rows: complete ? result.rowCount : undefined,
+      editor_id: props.editorId,
     })
     notify(`Export lancé : ${name}. Suivi dans le gestionnaire d’exports, en haut à droite.`)
   } catch (failure) {
@@ -597,7 +621,8 @@ defineExpose({ exportGroups })
     instead of scrolling in its own area.
   -->
   <div class="flex h-full min-h-0 min-w-0 flex-1 flex-col gap-3" :class="{ 'pt-1': !attached }">
-    <ui-alert v-if="tab.error" tone="error" :title="tab.error" />
+    <ui-alert v-if="shownError" tone="error" :title="shownError" />
+    <ui-alert v-else-if="tab.interrupted && !showsGrid(tab)" tone="info" title="Requête arrêtée." />
     <result-filter
       v-if="shown && showsGrid(tab) && tab.filterOpen"
       v-model="filter"
@@ -631,6 +656,13 @@ defineExpose({ exportGroups })
       </template>
     </div>
     <ui-status-bar v-if="hasStatus">
+      <span
+        v-if="cut"
+        class="rounded-full bg-warning/14 px-2 font-medium text-warning"
+        v-tooltip="`Réception arrêtée : ${formatRowCount(shown?.rowCount ?? 0, null)} reçues`"
+      >
+        Résultat tronqué
+      </span>
       <span v-if="showsGrid(tab)">{{ formatRowCount(shownCount, keptCount) }}</span>
       <span v-if="execution !== null">exécution {{ formatDuration(execution) }}</span>
       <template v-if="transfer !== null">

@@ -10,6 +10,11 @@ export type QueryEntry = {
    */
   id: number;
   /**
+   * Editor whose session sent the query, 0 outside an editor (navigator,
+   * export, connection test).
+   */
+  editor_id: number;
+  /**
    * Instant the query was sent, in UTC, in ISO 8601 format.
    */
   started_at: string;
@@ -55,4 +60,9 @@ export type QueryEntry = {
    * Failure message, empty on success.
    */
   error: string;
+  /**
+   * Did the user stop the query? Its failure is then a stop, shown as a
+   * warning.
+   */
+  interrupted: boolean;
 };

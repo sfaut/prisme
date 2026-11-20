@@ -231,6 +231,13 @@ export interface QueryTab {
    */
   done: boolean
   /**
+   * Did the user stop the query (error `query_interrupted`)? The rows
+   * received before the stop stay a result, cut short: no error banner, a
+   * "Résultat tronqué" badge instead, and the Pivoteur and the exports take
+   * them.
+   */
+  interrupted: boolean
+  /**
    * Instant the query started (`performance.now()`), `null` as long as it waits for its turn.
    */
   startedAt: number | null
@@ -289,7 +296,7 @@ export interface QueryTab {
  */
 export type TabRun = Pick<
   QueryTab,
-  'result' | 'error' | 'done' | 'startedAt' | 'columnsAt' | 'endedAt' | 'bytes'
+  'result' | 'error' | 'done' | 'interrupted' | 'startedAt' | 'columnsAt' | 'endedAt' | 'bytes'
 >
 
 /**
@@ -429,6 +436,7 @@ export function applyMessage(
             result: null,
             error: null,
             done: false,
+            interrupted: false,
             startedAt: null,
             columnsAt: null,
             endedAt: null,
@@ -506,6 +514,7 @@ export function applyMessage(
         } else if (tab) {
           tab.error = text
           tab.done = true
+          tab.interrupted = message.detail.code === 'query_interrupted'
           tab.endedAt = now
         }
         break
@@ -607,8 +616,8 @@ function endRefresh(tab: QueryTab, error: string | null): void {
  * @param tab Tab of the query.
  */
 function runOf(tab: QueryTab): TabRun {
-  const { result, error, done, startedAt, columnsAt, endedAt, bytes } = tab
-  return { result, error, done, startedAt, columnsAt, endedAt, bytes }
+  const { result, error, done, interrupted, startedAt, columnsAt, endedAt, bytes } = tab
+  return { result, error, done, interrupted, startedAt, columnsAt, endedAt, bytes }
 }
 
 /**
@@ -628,9 +637,10 @@ function tabOf(state: SessionState, query: number): QueryTab | undefined {
  * - `executing`: started, no result received;
  * - `loading`: columns received, rows being received;
  * - `done`: complete result;
+ * - `stopped`: stopped by the user, the rows received kept;
  * - `error`: failure.
  */
-export type TabProgress = 'waiting' | 'executing' | 'loading' | 'done' | 'error'
+export type TabProgress = 'waiting' | 'executing' | 'loading' | 'done' | 'stopped' | 'error'
 
 /**
  * Progress of the query of a tab.
@@ -638,6 +648,9 @@ export type TabProgress = 'waiting' | 'executing' | 'loading' | 'done' | 'error'
  * @param tab Tab of the query.
  */
 export function tabProgress(tab: QueryTab): TabProgress {
+  if (tab.interrupted) {
+    return 'stopped'
+  }
   if (tab.error !== null) {
     return 'error'
   }
@@ -690,7 +703,7 @@ export function transferDuration(tab: QueryTab, now: number): number | null {
  * - receiving: rows received out of the maximum number of rows announced by
  *   the server (Prisme's limit or the user's); unknown without this number.
  *   After `resume`, the rows of an ended query out of those it received;
- * - ended, successfully or in error: 1.
+ * - ended, successfully, stopped or in error: 1.
  *
  * @param tab Tab of the query.
  */
@@ -699,6 +712,7 @@ export function tabFraction(tab: QueryTab): number | null {
     case 'waiting':
       return 0
     case 'done':
+    case 'stopped':
     case 'error':
       return 1
     case 'loading': {
@@ -708,6 +722,77 @@ export function tabFraction(tab: QueryTab): number | null {
     default:
       return null
   }
+}
+
+/**
+ * Has the query of a tab failed? A query stopped by the user has not: the rows
+ * it received stay a result, which the grid, the Pivoteur and the exports
+ * take.
+ *
+ * @param tab Tab of the query.
+ */
+export function failed(tab: QueryTab): boolean {
+  return tab.error !== null && !tab.interrupted
+}
+
+/**
+ * Can the query of a tab be stopped? It belongs to the batch running, and has
+ * not ended: running, or waiting for its turn. A query taken back ended, whose
+ * rows are still arriving (`awaitedRows`), has nothing left to stop.
+ *
+ * @param state State of the session.
+ * @param tab Tab of the query.
+ */
+export function stoppable(state: SessionState, tab: QueryTab): boolean {
+  return (
+    !tab.done && tab.awaitedRows === null && tab.batch === state.batch && state.status === 'running'
+  )
+}
+
+/**
+ * Progress of a batch of queries, for the tab of its editor.
+ */
+export interface BatchProgress {
+  /**
+   * Stage of the batch, as that of a query: running while one of its queries
+   * runs, then ended in error if one failed, stopped if the user stopped
+   * one, done otherwise.
+   */
+  progress: TabProgress
+  /**
+   * Completed share of the batch, from 0 to 1, `null` when unknown.
+   */
+  fraction: number | null
+}
+
+/**
+ * Progress of the last batch of a session, from the tabs of its queries:
+ * while one runs, the most advanced stage among those still running
+ * (receiving, then executing, then waiting), and the mean of their completed
+ * shares, an unknown share counting as nothing; unknown when no share is
+ * known. Once all have ended: `error` if one failed, otherwise `stopped` if
+ * the user stopped one, `done` otherwise. `null`
+ * without any query in the batch.
+ *
+ * @param state Tabs of the session and number of its last batch.
+ */
+export function batchProgress(state: Pick<SessionState, 'tabs' | 'batch'>): BatchProgress | null {
+  const tabs = state.tabs.filter((tab) => tab.batch === state.batch)
+  if (tabs.length === 0) {
+    return null
+  }
+  const stages = tabs.map(tabProgress)
+  const running = (['loading', 'executing', 'waiting'] as const).find((stage) =>
+    stages.includes(stage),
+  )
+  if (running === undefined) {
+    const ended = (['error', 'stopped'] as const).find((stage) => stages.includes(stage))
+    return { progress: ended ?? 'done', fraction: 1 }
+  }
+  const known = tabs.map(tabFraction).filter((fraction) => fraction !== null)
+  const fraction =
+    known.length === 0 ? null : known.reduce((sum, value) => sum + value, 0) / tabs.length
+  return { progress: running, fraction }
 }
 
 /**
@@ -873,6 +958,7 @@ export function startRefresh(state: SessionState, tab: QueryTab): void {
     result: null,
     error: null,
     done: false,
+    interrupted: false,
     startedAt: null,
     columnsAt: null,
     endedAt: null,
@@ -979,6 +1065,7 @@ export function savedTab(saved: ResultTab, rows: Cell[][]): QueryTab {
     // A result saved before the details existed shows its English text.
     error: result.error_detail === null ? result.error : describe(result.error_detail),
     done: result.done,
+    interrupted: result.error_detail?.code === 'query_interrupted',
     startedAt: result.started ? 0 : null,
     columnsAt: columns === null ? null : 0,
     endedAt: result.done ? result.transfer_us / 1000 : null,
@@ -1314,6 +1401,22 @@ export function useQuerySession(
   }
 
   /**
+   * Stops the query of a tab, while it runs or waits for its turn: it ends
+   * stopped (`interrupted`), with the rows received so far; the other
+   * queries of a read batch go on. A refreshed tab takes back its result,
+   * as `stopRefresh` does.
+   *
+   * @param tab Tab of the query.
+   */
+  function stopQuery(tab: QueryTab): void {
+    if (tab.previous) {
+      stopRefresh(tab)
+    } else if (stoppable(state, tab)) {
+      send({ type: 'cancel_query', query: tab.query })
+    }
+  }
+
+  /**
    * Closes a tab. If its query is still running (current batch), it is
    * stopped; its last messages no longer find a tab and are ignored.
    *
@@ -1321,7 +1424,7 @@ export function useQuerySession(
    */
   function closeTab(id: number): void {
     const tab = removeTab(state, id)
-    if (tab && !tab.done && tab.batch === state.batch && state.status === 'running') {
+    if (tab && stoppable(state, tab)) {
       send({ type: 'cancel_query', query: tab.query })
     }
   }
@@ -1345,5 +1448,15 @@ export function useQuerySession(
 
   onScopeDispose(close)
 
-  return { state, run, changeDatabase, cancel, refresh, stopRefresh, closeTab, close }
+  return {
+    state,
+    run,
+    changeDatabase,
+    cancel,
+    refresh,
+    stopRefresh,
+    stopQuery,
+    closeTab,
+    close,
+  }
 }

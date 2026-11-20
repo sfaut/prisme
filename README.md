@@ -107,15 +107,30 @@ Options given on the command line replace the saved settings for that launch, wi
 
 The screen has these areas:
 
-- **Top bar**: the name and version of Prisme, the synchronisation state, the theme and your account menu (see [Top bar](#top-bar)).
+- **Top bar**: the name and version of Prisme on the left; on the right, the **Nouveau** (New) button, the exports, the synchronisation state, the theme and your account menu (see [Top bar](#top-bar)).
 - **Editor tabs**: several SQL editors, each one on its own connection, across the width, above the panels of the active editor.
 - **Left panel**: the object navigator, **Navigateur d’objets** (Object navigator), with your connections and their databases.
-- **Editor and results**: the SQL editor, its buttons, and one result tab per query.
-- **Pivoteur**, under the results, folded at first: the pivot table of the result shown (see [Pivoteur](#pivoteur)).
+- **Éditeur** (Editor): the SQL editor and its buttons, under its title.
+- **Résultat** (Result), under the editor, closed at first: one result tab per query.
+- **Pivoteur**, under the results, closed at first: the pivot table of the result shown (see [Pivoteur](#pivoteur)).
 - **Data explorer**, on the right when it is open: the JSON or XML values selected in the grid (see [Result grid](#result-grid)).
-- **Console**, at the bottom, across the whole width: the history of the queries sent to the servers, and the debug log (see [Console](#console)).
+- **Console**, at the bottom of the tab, under the side panels: the history of the queries sent to the servers by the editor, and its debug log (see [Console](#console)).
 
-The side panels go from the editor tabs down to the console, common to all the editors. The fold button of a panel's header (left of the title for the data explorer and the console, at the right for the object navigator) folds it towards its edge, where it leaves a narrow rail with its name; a click on the rail opens it again. The object navigator and the console are open by default, the data explorer closed; your choice is remembered, for each editor for the object navigator and the data explorer.
+On the left of each editor's tab, a dark **activity bar** opens and closes its panels, one button each: the object navigator; the editor, the results and the Pivoteur; the data explorer and the console. A lit button, marked in blue on the edge of the bar, is an open panel; its tooltip says what a click does. A closed panel leaves no trace: its button is the way back. Dragging the line of a panel below its smallest size closes it too. At the bottom of the bar, **Répartir les volets** (Share the panels) gives the open panels of the editor equal heights, and the side panels and the console their default size.
+
+Each button has its shortcut: **Ctrl+K** (**Cmd+K** on macOS), then a key, as in VS Code. The tooltips recall them.
+
+| Panel | Shortcut |
+|---|---|
+| Object navigator | Ctrl+K then N |
+| Editor | Ctrl+K then E |
+| Results | Ctrl+K then R |
+| Pivoteur | Ctrl+K then P |
+| Data explorer | Ctrl+K then X |
+| Console | Ctrl+K then C |
+| Share the panels again | Ctrl+K then = |
+
+The side panels go from the editor tabs down to the console, and the activity bar down to the bottom of the tab. The object navigator and the console are open by default, the data explorer closed; your choice is remembered for each editor, and a new editor starts from these defaults.
 
 The version of Prisme shows next to its name, at the top left.
 
@@ -133,7 +148,7 @@ Passwords are encrypted on disk and never sent back to the browser.
 
 ### Object navigator
 
-Each editor has its own navigator, in its tab, which acts on that editor. It keeps, for its editor, the rows you opened, its scroll, whether it is folded and its width: going back to an editor, or reopening Prisme, finds its navigator as you left it. A new editor starts with the last width and fold you gave a navigator. The catalogs read are common to all the navigators.
+Each editor has its own navigator, in its tab, which acts on that editor. It keeps, for its editor, the rows you opened, its scroll, whether it is folded and its width: going back to an editor, or reopening Prisme, finds its navigator as you left it. A new editor starts with its navigator open, at the default width. The catalogs read are common to all the navigators.
 
 The tree shows, for each source:
 
@@ -156,13 +171,14 @@ Columns show, on three aligned columns: a symbol, the name, then the type, nulla
 - Indexed columns are in **bold**. Indexes show `PRIMARY KEY` or `UNIQUE`.
 - Long labels are shortened (…); hover to read them in full.
 
-Drag the right edge of the panel to resize it, or use the arrow keys once the edge has the focus; double-click the edge, or press Enter, to fold or unfold the panel.
+Drag the right edge of the panel to resize it, or use the arrow keys once the edge has the focus; dragged below its smallest width, the panel closes.
 
 ### Editors
 
 The tab bar above the SQL editor holds several editors:
 
-- **+** opens an editor on the connection of the active one.
+- **Nouveau** (New), the blue button at the right of the top bar, opens an editor on the connection of the active one.
+- A **dot** and a **progress bar**, as on the [result tabs](#result-tabs), follow the last run of the editor's queries: pulsing while they run, then green once all are done, red if one failed.
 - **Double-click** a tab to rename it. Drag it to move it.
 - The **cross** (or a middle click) closes it. A closed editor can be reopened for 24 hours from the **Rouvrir** (Reopen) button, the clock icon.
 
@@ -209,14 +225,15 @@ A transaction lives on the session of its editor: its queries run on the session
 - To leave the editor with the keyboard: **Esc** then **Tab**, or **Ctrl+M** (Tab then moves the focus again).
 - **Enjoliver** (Beautify) rewrites the query in a consistent style: keywords and function names in capitals, table and column names as written in the catalog, `AS` before aliases, one clause per line, indented by the **Indentation** of the settings, spaces around operators. Stored procedures and `DELIMITER` blocks are supported. Ctrl+Z undoes it. The button is active once the connection's catalog is loaded.
 
-Drag the line under the editor to share the height between editor and results, or use the arrow keys once the line has the focus; double-click it, or press Enter, to fold or unfold the editor.
+The editor, the results and the Pivoteur each stand under a header, its title on the left, and open and close from the activity bar. At first, the editor takes the whole height, and the results and the Pivoteur are closed. When all three are closed, the room left is grey; a panel opened again takes back the height it had when it was closed, or else shares the height with the panels already open. Running queries opens the results, which show their tabs. Drag the line between two panels to share the height between them, or use the arrow keys once the line has the focus; dragged below its smallest height, the panel under the line closes. Your layout is remembered for each editor.
 
 ### Result tabs
 
 Each query gets its own tab:
 
-- A **dot** shows its progress: grey while waiting its turn, blue and pulsing while running and receiving rows, green when done, red on failure.
+- A **dot** shows its progress: grey while waiting its turn, blue and pulsing while running and receiving rows, green when done, orange when you stopped it, red on failure.
 - A **progress bar** on its bottom edge fills while rows arrive.
+- The **stop** button (red square), while the query runs or waits its turn, stops this query alone; the other queries of a read run go on. Stopped during the reception, the result keeps the rows received: a **Résultat tronqué** (Cut result) badge opens the bar under the grid, its tooltip giving the rows received, and the grid, the exports and the Pivoteur work on these rows. Stopped before its first row, the tab says **Requête arrêtée.** (Query stopped).
 - **Double-click** the label to rename the tab. The **pin** keeps the tab when queries are run again. The **cross** (or a middle click) closes it and stops its query. Drag a tab to move it.
 - The bar under the grid shows the number of rows, the execution time, the transfer time, the data received, the throughput, and the date and time (to the second) the execution ended: the instant the result reflects.
 
@@ -240,7 +257,7 @@ Each query gets its own tab:
 | Rows as a CTE, for MySQL or MariaDB | **Exporter** button: groups **Fichier** (as a `.sql` file), **Presse-papiers** (Clipboard) or **Éditeur** (Editor) |
 | Selection as an `IN` clause | **Exporter** button, **Sélection en clause IN**: groups **Presse-papiers** or **Éditeur** (at the cursor) |
 | Export the full result as CSV | **Exporter** button, then **Résultat complet en CSV (requête relancée)**; followed in the exports manager of the top bar |
-| Explore JSON or XML values | Rail of the data explorer, on the right edge of the editor's tab |
+| Explore JSON or XML values | Button of the data explorer, in the activity bar of the editor's tab |
 
 - **Refresh** keeps the tab, its name and its pin, and, while the columns stay the same, the sort and the filter. The current result stays displayed until the new one starts to arrive. While other queries run, the refresh waits for their end. During the refresh, or while it waits, the same button (crossed out) stops it: the result stays as it was. If the query fails, the result stays too, with the error above it.
 - **Copy** is a raw copy: values as they are, separated by tabs, with column names on the first line, ready to paste into a spreadsheet. A single cell is copied as its value alone, without its column name. `NULL` is copied as an empty cell. Control characters are written literally (`\t`, `\n`, `\r`, `\0`, `\b`, `\f`…, or `\xHH`), so each value stays in one cell.
@@ -271,7 +288,7 @@ Each query gets its own tab:
   The export menu copies it (**Presse-papiers**) or writes it at the cursor of the editor (**Éditeur**), in place of the selected text if any. The values are those of the CTE, in the dialect and the modes of the editor's server: numbers bare, strings quoted, dates typed. A value, or a row of values, met several times is written once. `NULL` never matches in an `IN`: it is left out of a single column (a selection of `NULL` alone is refused), and a row of several columns that holds it is kept as it is. The selected rows must all be selected on the same columns, which need not be side by side: otherwise the choice stays inactive (**Sélection malformée**).
 - **Full export** (**Résultat complet en CSV (requête relancée)** in the export menu) runs the query again on the server, as written, without Prisme's row limit (a `LIMIT` you wrote still applies), and writes the same CSV file in the `exports` folder of [your data](#your-data), however many rows. Columns keep their displayed order; the sort and the filter of the grid do not apply: write them in SQL (`ORDER BY`, `WHERE`). Only reads can be exported. The export runs on a read-only connection of its own, on the current database of the editor: it sees neither the temporary tables nor the variables of the editor's session, nor its open transaction. The [exports manager](#top-bar) follows it, and a message tells when its file is ready, with a **Télécharger** (Download) button.
 - **Display**: the header shows each column's type (hover for the full name). Numbers and dates are right-aligned, `CHAR` columns use a monospaced font, web addresses are clickable, `NULL` is shown in small grey capitals.
-- **Data explorer**: a panel on the right of each editor shows the values selected in a column of type `JSON`, or in a text column that holds JSON or XML: a cell, the whole column, or ranges of it. The values are indented with 4 spaces and highlighted; numbers and texts stay exactly as stored. Several values are gathered into one document: a `[…]` array for JSON (`NULL` becomes `null`), a `<data>…</data>` element for XML (`NULL` is left out, `<?xml?>` declarations are removed). Each level folds with the arrows in the margin; the buttons fold or unfold everything, or every node at the depth of the cursor. The line wrap button wraps long lines to the width of the panel; it is off by default and your choice is remembered. The search button finds values with JSONPath or XPath (see [Searching the data explorer](#searching-the-data-explorer)). The copy button, or Ctrl+A then Ctrl+C, copies valid JSON or XML, folded parts included. Each editor has its own explorer, which follows the selection of its grid and keeps its own search; drag its left edge to resize it (double-click to fold it): whether it is open and its width are remembered for the editor, and a new editor starts closed, at the last width you gave an explorer.
+- **Data explorer**: a panel on the right of each editor shows the values selected in a column of type `JSON`, or in a text column that holds JSON or XML: a cell, the whole column, or ranges of it. The values are indented with 4 spaces and highlighted; numbers and texts stay exactly as stored. Several values are gathered into one document: a `[…]` array for JSON (`NULL` becomes `null`), a `<data>…</data>` element for XML (`NULL` is left out, `<?xml?>` declarations are removed). Each level folds with the arrows in the margin; the buttons fold or unfold everything, or every node at the depth of the cursor. The line wrap button wraps long lines to the width of the panel; it is off by default and your choice is remembered. The search button finds values with JSONPath or XPath (see [Searching the data explorer](#searching-the-data-explorer)). The copy button, or Ctrl+A then Ctrl+C, copies valid JSON or XML, folded parts included. Each editor has its own explorer, which follows the selection of its grid and keeps its own search; drag its left edge to resize it, below its smallest width to close it: whether it is open and its width are remembered for the editor, and a new editor starts closed, at the default width.
 
 ### Searching the data explorer
 
@@ -324,7 +341,7 @@ XPath is the version built into browsers, [XPath 1.0](https://www.w3.org/TR/1999
 
 ### Pivoteur
 
-The **Pivoteur** is the pivot table of the result shown, in a panel under the results of the editor. It works in the page, on the rows Prisme has received, after the filter of the grid: no query goes to the server, and a result limited to some rows gives the table of those rows. It computes from the first rows received: during the reception, the table follows the rows as they arrive, computed again at most once per delay (1 second by default, **Mise à jour du Pivoteur** in the **Paramètres** of the [top bar](#top-bar)), then a last time at the end of the query. Until then, the bar under the table says that it is partial, `Calcul partiel : 334 894 lignes reçues`, and the list of the values of a filter says that it holds the values of the rows received when it opened. Folded, as it is at first, it computes nothing. It unfolds and folds by its rail, by the button of its header, by a double click on the line above it, or by a drag. The editor, the results, the Pivoteur and the console can all be folded at once, and folding one leaves the others as they are.
+The **Pivoteur** is the pivot table of the result shown, in a panel under the results of the editor. It works in the page, on the rows Prisme has received, after the filter of the grid: no query goes to the server, and a result limited to some rows gives the table of those rows. It computes from the first rows received: during the reception, the table follows the rows as they arrive, computed again at most once per delay (1 second by default, **Mise à jour du Pivoteur** in the **Paramètres** of the [top bar](#top-bar)), then a last time at the end of the query. Until then, the bar under the table says that it is partial, `Calcul partiel : 334 894 lignes reçues`, and the list of the values of a filter says that it holds the values of the rows received when it opened. Folded, as it is at first, it computes nothing. It unfolds and folds by the button of its header, by a double click on the line above it, or by a drag. The editor, the results, the Pivoteur and the console can all be folded at once, and folding one leaves the others as they are.
 
 The panel has three columns: the columns of the result, with their type and a search by name; the zones **Lignes**, **Colonnes**, **Mesures** and **Filtres** (Rows, Columns, Measures, Filters), stacked; the table, which takes the remaining width and scrolls on both axes, its headers and its labels staying in sight. The line on the right of the first two columns sets their width; each result tab keeps its widths. The bar under the table shows the rows taken into account, the groups and the duration of the computation.
 
@@ -408,7 +425,7 @@ The configuration belongs to its result tab, and is saved with it: a page reload
 
 ### Console
 
-The console, under the editors, shows what Prisme does besides the results. Drag its top edge to change its height; double-click the edge to restore its default height.
+The console, at the bottom of each editor's tab, shows what Prisme does besides the results, for this editor: the queries its session, its object navigator and its full exports send, the messages written for it, and the notifications shown while it was on screen. Tick **Tous les éditeurs** (All the editors) to see those of every editor instead, with the queries Prisme sends outside the editors (connection test) and the rest of its messages; the choice holds for every console. The console opens and closes from the activity bar. Drag its top edge to change its height; dragged below its smallest height, it closes. Whether it is open and its height are remembered for each editor; a new editor opens it at its default height.
 
 The **Historique** (History) tab lists every query sent to your servers, the oldest at the top: those of your editors, and those Prisme sends itself (opening of a session, object navigator, connection test, interruption). New queries show as they are sent. Passwords of the server's own syntaxes are masked (`'***'`): `IDENTIFIED BY`, `PASSWORD('…')`, `SET PASSWORD`, `MASTER_PASSWORD`, `OPTIONS (PASSWORD …)` of `CREATE SERVER`…; the data of your databases stay as written, and the text of your editors keeps everything as typed. Each line gives:
 
@@ -417,20 +434,21 @@ The **Historique** (History) tab lists every query sent to your servers, the old
 | **#** | Number of the query in the history |
 | **Heure** (Time) | Time it was sent; the date shows in its tooltip |
 | **Action** | What sent it: **Session**, **Exécuter** (Run), **Exécuter tout** (Run all), **Exécuter précisément** (Run exactly), **Rafraîchir** (Refresh), **Base courante** (Current database), **Interruption**, **Navigateur** (Navigator), **Test de connexion** (Connection test), **Export** (full export); the connection shows in its tooltip |
-| **Message** | The query on one line, then its error if it failed; the full query shows in its tooltip |
+| **Message** | The query on one line, then its error in red if it failed, or **arrêtée par l’utilisateur** (stopped by the user) in orange if you stopped it; the full query shows in its tooltip |
 | **Lignes** (Rows) | Rows read, preceded by "+" when the result was truncated ("+1 000"), or rows changed by a write; "—" otherwise |
 | **Exécution** (Execution) | Execution time, until the result, or until the columns for a result read row by row |
 | **Transmission** | Transfer time of the rows of a result read row by row; "—" when not measured |
 
 The **Debug** tab lists the messages of Prisme: those its terminal shows (the same level, see [Command-line options](#command-line-options)), and the notifications of the interface, such as **Sélection copiée** (Selection copied). Each line gives its number, time, level (**Erreur**, **Avertissement**, **Info**, **Debug**, **Trace**), source (**Serveur** or **Interface**; the module of the server shows in its tooltip) and message.
 
-Both tabs are kept in the internal database, 30 days by default: the **Rétention historique** and **Rétention debug** fields of the settings change it, from 1 to 3,650 days. Older lines are deleted when Prisme starts, then every hour. The interface shows their last 2,000 lines; scrolling up to the top of the list reads the older ones. The button at the right of the tabs clears the list of the tab shown: **Effacer l’historique** (Clear the history) deletes your history, **Effacer le debug** (Clear the debug log) the whole debug log.
+Both tabs are kept in the internal database, 30 days by default: the **Rétention historique** and **Rétention debug** fields of the settings change it, from 1 to 3,650 days. Older lines are deleted when Prisme starts, then every hour. The interface shows their last 2,000 lines; scrolling up to the top of the list reads the older ones. The button at the right of the tabs clears the list of the tab shown, as it is shown: **Effacer l’historique de l’éditeur** (Clear the history of the editor) and **Effacer le debug de l’éditeur** (Clear the debug log of the editor) delete the lines of the editor; with **Tous les éditeurs** ticked, **Effacer l’historique de tous les éditeurs** deletes your whole history, **Effacer le debug de tous les éditeurs** the whole debug log.
 
 ### Top bar
 
+- **Nouveau** (New): opens a new SQL editor, on the connection of the active editor (see [Editors](#editors)).
 - **Exports**: the file icon opens the exports manager, the list of your [full exports](#result-grid), the most recent first; a blue dot pulses beside the icon while an export runs. Each export shows its file name (the query in its tooltip), its state in a colored badge (**en cours**, **prêt**, **échoué**, **arrêté**, **interrompu**: running, ready, failed, stopped, interrupted), a **fichier manquant** (missing file) badge when its file was deleted outside Prisme, its connection, the rows written, the size of its file, its duration and its throughput; while it runs, the completed share too, when the total is known in advance: that of a displayed result that Prisme's limit did not cut. Its buttons stop a running export (its partial file stays), download the file of an ended export, partial for a stopped, failed or interrupted one, and **Retirer** (Remove) an export with its file. The folder is never cleaned automatically: the head of the manager shows the room the files take. Warnings tell of more rows than Excel opens, or of the cause of a failure. Files of the folder that no export lists (copied there, internal database replaced) are counted apart, with a **Retirer** button that deletes them. An export running when Prisme stops shows as **interrompu** (interrupted) at the next start, its partial file kept, with the rows it holds.
 - **Synchronisation**: Prisme saves every change as you go in its local database, and reads it back from there. A database icon shows the state, explained by its tooltip: a check mark when everything is saved, a down arrow while reading, an up arrow while saving, a cross when the last save was refused (plain database icon: nothing exchanged yet).
-- **Theme**: the **Système / Clair / Sombre** (System / Light / Dark) list sets the theme of the whole interface. **Système** follows your computer's setting.
+- **Theme**: the switch of the top bar, **Clair / Système / Sombre** (Light / System / Dark), sets the theme of the whole interface. **Système** follows your computer's setting.
 - **Account** menu, the round avatar with your initials (those of your first and last names, or the first letter of your email address):
   - **Profil** (Profile): your last and first names, and your email address (read-only);
   - **Paramètres** (Settings): the language of the interface (French only for now); the default row limit; **Sessions en lecture seule** (Read-only sessions), on by default: each query session asks the database to refuse its writes, on top of Prisme's own check; **Écritures** (Writes), the switches of the writes allowed, greyed out while the sessions are read-only; the **Indentation** of the SQL editor and of **Enjoliver**, from 1 to 8 spaces (4 by default); **GROUP_CONCAT**, the longest text of a `GROUP_CONCAT` of the [Pivoteur](#pivoteur), from 100 to 1,048,576 bytes (1,000 by default); **Mise à jour du Pivoteur** (Update of the Pivoteur), the shortest delay between two computations of its table during the reception of the rows, from 0.2 to 60 seconds (1 by default); and how many days the [console](#console) keeps its history and its debug log.

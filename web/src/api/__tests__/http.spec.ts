@@ -98,9 +98,10 @@ describe('streamCatalog', () => {
     vi.stubGlobal('fetch', fake)
 
     const events: CatalogEvent[] = []
-    await streamCatalog(3, (event) => events.push(event))
+    await streamCatalog(3, (event) => events.push(event), 5)
 
-    expect(fake.mock.calls[0]?.[0]).toBe('/api/connections/3/catalog')
+    // Read for editor 5, whose console receives the queries.
+    expect(fake.mock.calls[0]?.[0]).toBe('/api/connections/3/catalog?editor=5')
     expect(events.map((event) => event.type)).toEqual(['schemas', 'tables', 'done'])
   })
 

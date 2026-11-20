@@ -13,4 +13,9 @@ export type Notification = {
    * Text of the notification, cut beyond 2,000 characters.
    */
   message: string;
+  /**
+   * Editor on screen when it showed, whose console shows it; absent,
+   * outside the editors.
+   */
+  editor_id?: number;
 };

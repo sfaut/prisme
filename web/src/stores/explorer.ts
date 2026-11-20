@@ -12,8 +12,8 @@
  * The layout of the explorer of each editor (open or closed, its width) is a
  * display preference specific to this machine, kept in the browser's local
  * storage (`prisme.explorer.layout.<editor>`), forgotten when the editor
- * closes (`forget`): closed by default. The last width given
- * (`prisme.explorer.width`) starts an editor without a layout of its own; the
+ * closes (`forget`): closed by default, at the width of the theme, which an
+ * editor without a layout of its own, a new one for example, takes; the
  * wrapping of long lines (`wrap`, `prisme.explorer.wrap`) is common to all
  * the explorers, off by default. When storage is unavailable, the defaults
  * apply.
@@ -24,7 +24,7 @@ import { type EffectScope, effectScope, ref, shallowReactive, watch } from 'vue'
 
 import type { DataCell } from '@/components/explorer/dataFormat'
 import { forgetStoredLayout, useStoredLayout } from '@/components/split/storedLayout'
-import { loadFlag, loadSize, saveFlag, saveSize } from '@/utils/storedValues'
+import { loadFlag, saveFlag } from '@/utils/storedValues'
 
 /**
  * What the grid on screen gives the explorer.
@@ -63,11 +63,6 @@ export function sameContent(a: ExplorerContent, b: ExplorerContent): boolean {
   }
   return a.state === b.state && a.state !== 'values' && a.state !== 'scalar'
 }
-
-/**
- * Key of the last width given to an explorer in local storage.
- */
-const WIDTH_KEY = 'prisme.explorer.width'
 
 /**
  * Key of the layout of an editor's explorer in local storage.
@@ -127,20 +122,9 @@ export const useExplorerStore = defineStore('explorer', () => {
       return known.layout
     }
     const scope = effectScope(true)
-    const layout = scope.run(() => {
-      // Kept from its first reading: it no longer follows the last width given.
-      const kept = useStoredLayout<ExplorerLayout>(
-        explorerLayoutKey(editorId),
-        { open: false, width: loadSize(WIDTH_KEY) },
-        true,
-      )
-      // The last width given: the start of the next editor without its own.
-      watch(
-        () => kept.width,
-        (width) => saveSize(WIDTH_KEY, width),
-      )
-      return kept
-    })!
+    const layout = scope.run(() =>
+      useStoredLayout<ExplorerLayout>(explorerLayoutKey(editorId), { open: false, width: null }),
+    )!
     layouts.set(editorId, { layout, scope })
     return layout
   }

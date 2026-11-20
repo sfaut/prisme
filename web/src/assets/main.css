@@ -61,6 +61,14 @@
   --color-error: light-dark(var(--color-red-600), var(--color-red-400));
   --color-error-hover: light-dark(var(--color-red-700), var(--color-red-300));
 
+  /* Activity bar of an editor's tab (`PanelActivityBar.vue`): near black in
+     both modes, its icons grey, white once lit, its groups set apart by a
+     line. */
+  --color-activity: light-dark(var(--color-zinc-900), var(--color-zinc-950));
+  --color-activity-line: var(--color-zinc-700);
+  --color-on-activity: var(--color-zinc-500);
+  --color-on-activity-strong: var(--color-white);
+
   /* Veil behind the windows. */
   --color-overlay: light-dark(
     --alpha(var(--color-zinc-900) / 40%),
@@ -91,9 +99,11 @@
   --resize-hover: --alpha(var(--color-primary) / 30%);
   --selection: --alpha(var(--color-primary) / 18%);
 
-  /* Tooltips (`UiTooltip.vue`): dark in both modes, light text. */
+  /* Tooltips (`UiTooltip.vue`): dark in both modes, light text; subtle, the
+     keyboard shortcut after the text. */
   --tooltip-bg: light-dark(var(--color-zinc-800), var(--color-zinc-700));
   --tooltip-fg: light-dark(var(--color-zinc-100), var(--color-zinc-100));
+  --tooltip-fg-subtle: light-dark(var(--color-zinc-400), var(--color-zinc-400));
 
   /* Badge of a source's server flavor, in the navigator: text in the engine's
      color (MySQL blue, MariaDB brown) on a background tinted with the same
@@ -202,43 +212,23 @@
      as they are: default and smallest width of the object
      navigator and of the data explorer, the latter enough for its header
      on one line (title and buttons, with the panel's padding); smallest
-     width of the area of the editors, enough for the buttons of the editor
-     on one line; thickness of the rail left by a folded panel (`rail`),
-     8 steps: a whole number of pixels of the screen at a display scaling of
-     100, 125 and 150 % (24, 30 and 36 with the browser's default font
-     size), so that every rail shows the same thickness wherever it stands
-     (9 steps made 40.5 pixels at 150 %, drawn as 40 or 41 by position);
-     bar left by a folded result list (`tab-bar`): the gap above its tabs,
-     then a tab at its own height, its padding (one step above and below,
-     `DocumentTab`) around its small buttons (`h-7`), taller than its text;
-     the line under the bar is then the line of the Pivoteur's handle,
-     against it, the bar drawing none of its own (two lines side by side
-     would show as one line twice as thick);
-     a folded editor leaves the gap under the editors' tabs, where the grip
-     of the line stays whole. Default height of the editor, the result list
-     taking the rest of the height. Smallest editor (buttons and a few lines) and
-     result list (tabs, a few rows and the line under the grid); smallest
-     area of the editors: both, plus the tab bar of the editors, the rail
-     of the folded Pivoteur, the padding and the gaps. Smallest height of
-     the panel of the Pivoteur, which starts folded and unfolds first at
-     this height: that of the result list, so that unfolding it in a low
-     window takes the room of the results down to their smallest height,
-     where a taller one would fold them. Its zones and its table scroll.
-     Default and smallest height of the console. */
+     width of the area of the editors, enough for the header of the editor
+     on one line (title and buttons). A closed panel takes no room. Smallest
+     editor
+     (header and a few lines) and result list (tabs, a few rows and the line
+     under the grid); smallest area of the editors: both, plus the tab bar
+     of the editors, the padding and the gaps.
+     Smallest height of the panel of the Pivoteur: that of the result list.
+     Its zones and its table scroll. Default and smallest height of the
+     console. */
   --navigator-width: --spacing(100);
   --navigator-min-width: --spacing(67);
   --explorer-width: --spacing(140);
   --explorer-min-width: --spacing(120);
-  --editors-min-width: --spacing(213);
-  --rail-size: --spacing(8);
-  --tab-bar-height: calc(--spacing(5) + --spacing(7));
-  --editor-folded-height: --spacing(3);
-  --editor-height: --spacing(67);
+  --editors-min-width: --spacing(244);
   --editor-min-height: --spacing(32);
   --results-min-height: --spacing(67);
-  --editors-min-height: calc(
-    var(--editor-min-height) + var(--results-min-height) + var(--rail-size) + --spacing(24)
-  );
+  --editors-min-height: calc(var(--editor-min-height) + var(--results-min-height) + --spacing(24));
   --pivot-min-height: var(--results-min-height);
   --console-height: --spacing(73);
   --console-min-height: --spacing(40);
@@ -402,4 +392,43 @@
 @utility text-trim {
   text-box: trim-both cap alphabetic;
   padding-block: 0.25em;
+}
+
+/*
+  Look of every tab (editors, results, console): a pill, filled when active,
+  and a line between two inactive tabs, as in VS Code. The bar spaces its
+  tabs by `gap-2`: the line stands in that gap, against the next tab, and
+  leaves out the active tab, which its fill sets apart.
+*/
+@utility tab-pill {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-fg-secondary);
+  cursor: pointer;
+  user-select: none;
+
+  &:hover {
+    color: var(--color-fg-strong);
+  }
+
+  &[data-state='active'] {
+    background: var(--color-surface-raised);
+    color: var(--color-fg-strong);
+  }
+
+  & + &::before {
+    content: '';
+    position: absolute;
+    inset-inline-start: calc(var(--spacing) * -1);
+    inset-block: calc(var(--spacing) * 2);
+    border-inline-start: var(--line-width) solid var(--color-line);
+  }
+
+  &[data-state='active']::before,
+  &[data-state='active'] + &::before {
+    content: none;
+  }
 }

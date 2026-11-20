@@ -248,6 +248,7 @@ impl Session<'_> {
                     sql: &limited.sql,
                     duration: executing.elapsed(),
                     error: Some(&detail.to_string()),
+                    interrupted: matches!(detail, ErrorDetail::QueryInterrupted),
                     ..Sent::default()
                 });
                 self.outbox.error(Some(query), detail).await?;
@@ -257,17 +258,20 @@ impl Session<'_> {
         let execution = executing.elapsed();
         let transferring = Instant::now();
         let returns_rows = !stream.column_names().is_empty();
-        let trace = |rows: usize, truncated: bool, affected_rows: u64, error: Option<&str>| {
-            sql_log::record(&Sent {
-                sql: &limited.sql,
-                duration: execution,
-                transfer: transferring.elapsed(),
-                rows: returns_rows.then_some(rows as u64),
-                affected_rows,
-                truncated,
-                error,
-            });
-        };
+        let trace =
+            |rows: usize, truncated: bool, affected_rows: u64, error: Option<&ErrorDetail>| {
+                let text = error.map(ToString::to_string);
+                sql_log::record(&Sent {
+                    sql: &limited.sql,
+                    duration: execution,
+                    transfer: transferring.elapsed(),
+                    rows: returns_rows.then_some(rows as u64),
+                    affected_rows,
+                    truncated,
+                    error: text.as_deref(),
+                    interrupted: matches!(error, Some(ErrorDetail::QueryInterrupted)),
+                });
+            };
         self.outbox
             .send(ServerMessage::Columns {
                 query,
@@ -315,7 +319,7 @@ impl Session<'_> {
                 Err(error) => {
                     stream.discard().await;
                     let detail = self.failure(query, dialect, &error);
-                    trace(row_count, false, 0, Some(&detail.to_string()));
+                    trace(row_count, false, 0, Some(&detail));
                     self.outbox.error(Some(query), detail).await?;
                     return Ok(None);
                 }
@@ -324,7 +328,7 @@ impl Session<'_> {
                 // The server has already received KILL QUERY: reading stops.
                 stream.discard().await;
                 let detail = ErrorDetail::QueryInterrupted;
-                trace(row_count, false, 0, Some(&detail.to_string()));
+                trace(row_count, false, 0, Some(&detail));
                 self.outbox.error(Some(query), detail).await?;
                 return Ok(None);
             }

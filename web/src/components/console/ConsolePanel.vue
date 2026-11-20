@@ -1,20 +1,25 @@
 <!--
-  Console, at the bottom of the main area, between the side panels: what
-  Prisme does besides the results, in tabs. The History tab lists all the
-  queries sent to the target servers, by the editors and by Prisme itself
-  (`ConsoleHistoryTable.vue`); the Debug tab, the lines of the server's log and the
-  notifications of the interface (`ConsoleDebugTable.vue`). A button, at the right
-  of the tabs, clears the list of the tab shown, whatever its filter;
+  Console, at the bottom of an editor's tab, under its side panels: what
+  Prisme does besides the results, in tabs, right of its title. The History
+  tab lists the queries sent to the target servers by the session of the
+  editor (`ConsoleHistoryTable.vue`); the Debug tab, the lines of the
+  server's log written for it (`ConsoleDebugTable.vue`). "Tous les éditeurs"
+  shows those of all the editors instead, with the queries Prisme sends
+  itself, the rest of the server's log and the notifications of the
+  interface (`console` store). A button, at the right of the tabs, clears
+  the list of the tab shown, whatever its filter: the elements of the editor,
+  or all of them with "Tous les éditeurs";
   another one, before it, shows or hides the filters of both tabs, and
   takes the primary color while the filter of the tab shown keeps only some
-  elements, hidden or not. The console folds towards the bottom edge, where
-  it leaves a rail (`PanelRail.vue`); its height is set by dragging the line
-  above it (the splitter of `App.vue`).
+  elements, hidden or not. The console opens and closes from the activity
+  bar of the editor's tab (`PanelActivityBar.vue`); its height is set by
+  dragging the line above it (the splitter of `App.vue`). The console of the
+  active editor alone is mounted, which shows its lists (`follow`).
 -->
 <script setup lang="ts">
 import { Funnel, MessageCircleOff } from '@lucide/vue'
 import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import { type ConsoleTab, isFiltering, useConsoleStore } from '@/stores/console'
 
@@ -38,11 +43,16 @@ const TABS: { value: ConsoleTab; label: string }[] = [
  * List of the tab shown, its filter, and the label of the button that
  * clears it.
  */
-const shown = computed(() =>
-  store.tab === 'history'
-    ? { list: store.history, filter: store.historyFilter, clearLabel: 'Effacer l’historique' }
-    : { list: store.debug, filter: store.debugFilter, clearLabel: 'Effacer le debug' },
-)
+const shown = computed(() => {
+  const whose = store.scope === null ? 'de tous les éditeurs' : 'de l’éditeur'
+  return store.tab === 'history'
+    ? {
+        list: store.history,
+        filter: store.historyFilter,
+        clearLabel: `Effacer l’historique ${whose}`,
+      }
+    : { list: store.debug, filter: store.debugFilter, clearLabel: `Effacer le debug ${whose}` }
+})
 
 /**
  * Does the filter of the tab shown keep only some elements?
@@ -81,25 +91,34 @@ async function clearShown(): Promise<void> {
     clearing.value = false
   }
 }
-
-onMounted(() => store.start())
-onUnmounted(() => store.dispose())
 </script>
 
 <template>
   <tabs-root v-model="store.tab" class="flex h-full min-h-0 flex-col gap-1" aria-label="Console">
-    <panel-header title="Console" side="bottom" @collapse="store.open = false">
-      <tabs-list class="flex items-center gap-1" aria-label="Console">
-        <tabs-trigger
-          v-for="tab in TABS"
-          :key="tab.value"
-          :value="tab.value"
-          class="flex h-7 items-center rounded-lg px-1 text-sm font-medium text-fg-secondary select-none hover:text-fg-strong data-[state=active]:bg-surface-raised data-[state=active]:text-fg-strong"
-        >
-          {{ tab.label }}
-        </tabs-trigger>
-      </tabs-list>
+    <panel-header title="Console">
+      <template #inline>
+        <!-- Tabs of the look of the editor and result tabs (`tab-pill`). -->
+        <tabs-list class="flex items-center gap-2" aria-label="Console">
+          <tabs-trigger
+            v-for="tab in TABS"
+            :key="tab.value"
+            :value="tab.value"
+            class="tab-pill h-8 px-3 text-base"
+          >
+            {{ tab.label }}
+          </tabs-trigger>
+        </tabs-list>
+      </template>
       <template #actions>
+        <label
+          class="flex items-center gap-2 text-base text-fg-secondary"
+          v-tooltip="
+            'Montrer les éléments de tous les éditeurs, et ceux de Prisme hors des éditeurs'
+          "
+        >
+          <input v-model="store.allEditors" type="checkbox" class="size-5 accent-primary" />
+          Tous les éditeurs
+        </label>
         <ui-button
           :icon="Funnel"
           variant="ghost"

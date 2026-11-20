@@ -4,7 +4,7 @@ This document is the prompt given to Claude Design. It describes the interface o
 
 - `main-light.png`, `main-dark.png`: the main screen, data explorer folded;
 - `explorer-light.png`, `explorer-dark.png`: the same screen, data explorer open on the `attributes` of the first four rows of the grid;
-- `menu-*-light.png`, `menu-*-dark.png`: each menu and list of choices of the main screen open, cut around it and its trigger, the pointer on its first item: `menu-theme` (theme list of the top bar), `menu-account` (account menu), `menu-sources`, `menu-source` and `menu-notebooks` ("⋮" menus of **Sources de données**, of the source **local** and of **Notebooks**, with their row), `menu-reopen` (editors closed less than 24 hours ago), `menu-limit` (row limit of the SQL cell), `menu-filter` (column of the result filter, beside its field).
+- `menu-*-light.png`, `menu-*-dark.png`: each menu and list of choices of the main screen open, cut around it and its trigger, the pointer on its first item: `menu-account` (account menu), `menu-sources`, `menu-source` and `menu-notebooks` ("⋮" menus of **Sources de données**, of the source **local** and of **Notebooks**, with their row), `menu-reopen` (editors closed less than 24 hours ago), `menu-limit` (row limit of the SQL cell), `menu-filter` (column of the result filter, beside its field).
 
 ## 1. The product
 
@@ -38,7 +38,7 @@ These rules are those of the code: a design that breaks one cannot be ported as 
 - **Text centered on its capitals**: the label of a button, a badge or a tree line uses a `text-trim` utility (`text-box: trim-both cap alphabetic; padding-block: 0.25em`), which puts the text in the middle of its box, level with its icon.
 - **Fonts**: Tailwind's `font-sans` (the system font, Segoe UI on Windows) for the interface; `font-mono` (`ui-monospace, 'Cascadia Code', Consolas, monospace`) for the SQL editor, the gutters, `CHAR` columns, the data explorer and the SQL of the console.
 - **Text sizes in use**: `text-2xl` the name of the application; `text-lg` titles of panels and windows, text of the code editors; `text-base` regular text, regular controls, grid cells; `text-sm` small controls, status bars, console tables, gutters, notes; `text-xs` version number, badges.
-- **Radii and shadows**: `rounded-lg` controls, top corners of tabs, code editors, banners, tooltips; `rounded-xl` menus, lists, windows, toasts; `rounded-full` avatar and badges. `shadow-lg` menus, lists, toasts; `shadow-xl` windows. No other shadow.
+- **Radii and shadows**: `rounded-lg` controls, code editors, banners, tooltips; `rounded-md` tabs; `rounded-xl` menus, lists, windows, toasts; `rounded-full` avatar and badges. `shadow-lg` menus, lists, toasts; `shadow-xl` windows. No other shadow.
 - **Light and dark**: every screen exists in both modes. The mode follows the system, or the choice of the top bar.
 
 ## 4. Theme
@@ -49,7 +49,7 @@ Colors by role, drawn from Tailwind's palette, declared in `@theme` (Tailwind tu
 |---|---|---|---|
 | `surface` | page, panels, fields | white | zinc-900 |
 | `surface-sunken` | hover of rows and outline buttons, gutter of the editors | zinc-100 | zinc-800 |
-| `surface-raised` | active tab, grid header, selected source, highlighted menu item | zinc-100 | zinc-800 |
+| `surface-raised` | grid header, selected source, highlighted menu item, active tab | zinc-100 | zinc-800 |
 | `surface-strong` | strong hover | zinc-200 | zinc-700 |
 | `fg` | regular text | zinc-700 | zinc-200 |
 | `fg-secondary` | secondary text, labels of fields, inactive tabs, status bars | zinc-500 | zinc-400 |
@@ -104,13 +104,13 @@ Other variables of the theme:
 
 Legend: `[«]`, `[^]`, `[v]` fold buttons (`PanelLeftClose`, `PanelTopClose`, `PanelBottomClose`); `[»]` icon of the explorer's rail (`PanelRightOpen`); `[+]` new editor; `[h]` reopen a closed editor (`History`); `[r]` refresh (`RefreshCw`); `[f]` filters (`Funnel`); `[c]` clear the console (`MessageCircleOff`); `(sync)` synchronisation icon; `(M)` avatar; `●` progress dot; `*` pin; `×` close. The buttons of the SQL cell stand on a single line; the diagram wraps them.
 
-- **Top bar** across the whole width. Below it, the frame of the editors: their tabs across the whole width, then three columns that share the width in splitters: the object navigator on the left (default width 100 steps, smallest 67), the view of the active editor in the middle (smallest width 213 steps), the data explorer on the right (default width 140 steps, smallest 120, enough for its header on one line; closed by default). Both side panels go from the editors' tabs down to the console.
-- **Console** under the frame of the editors, across the whole width, common to all the editors (default height 73 steps, smallest 40); the frame and the console share the height in a splitter.
+- **Top bar** across the whole width. Below it, the frame of the editors: their tabs across the whole width, then three columns that share the width in splitters: the object navigator on the left (default width 100 steps, smallest 67), the view of the active editor in the middle (smallest width 213 steps), the data explorer on the right (default width 140 steps, smallest 120, enough for its header on one line; closed by default). Both side panels go from the editors' tabs down to the console, the activity bar down to the bottom of the tab.
+- **Console** at the bottom of each editor's tab, under the three columns and as wide as them, right of the activity bar (default height 73 steps, smallest 40); the columns and the console share the height in a splitter. It shows the elements of its editor; **Tous les éditeurs**, a checkbox in its header before the filter button, shows those of all the editors.
 - **Inside an editor**: the editor with its buttons on top, the results below, in a splitter of their own; the editor takes a third of the height by default. Either one folds: the folded editor disappears with its buttons, under the editors' tabs; the folded results keep their tab bar. Both are never folded at once.
 - **Padding**: the editors' tabs `px-4 pt-4`; side panels `px-4 pt-3 pb-4`, their header level with the buttons of the editor (`py-3`, `px-4` inside each part of the view); the console `px-4 pt-1 pb-4`.
-- **Splitter handle**: the line between two panels (1px border, `line`), grabbed over a band 3 steps wide, with a grip in its middle (9 steps long, 1 step thick, rounded, `line` color). On hover or drag, the band takes `primary` at 30% and the grip `primary`. Dragging moves the line within the bounds of the panels; dragged further, the line shrinks the next panel down to folding it. A double click folds or unfolds the panel it serves. The layout is remembered.
-- **Rail of a folded panel**: a strip 9 steps thick along its edge, which is wholly a button: icon (`PanelLeftOpen`, `PanelRightOpen`, `PanelBottomOpen`) and title, `text-base` semibold, `fg-faint`, hovered `fg-strong` on `surface-sunken`. On a side, the icon at the top, at the height of the header's fold button, then the title written downwards; at the bottom, the title at the left end, the icon at the right end.
-- **Panel header**: title (`text-lg` semibold `fg-strong`) on a line of a control's height (`h-8`), an optional line under it (`text-sm fg-secondary`), the actions (small ghost buttons) on the right, and the fold button (`PanelLeftClose`, `PanelRightClose`, `PanelBottomClose`). The fold button stands where the rail shows its icon: at the right end of the header for the navigator and the console, first, left of the title, for the data explorer.
+- **Splitter handle**: the line between two panels (1px border, `line`), grabbed over a band 3 steps wide, with a grip in its middle (9 steps long, 1 step thick, rounded, `line` color). On hover or drag, the band takes `primary` at 30% and the grip `primary`. Dragging moves the line within the bounds of the panels; dragged further, the line shrinks the next panel down to closing it. The layout is remembered.
+- **Activity bar**: on the left edge of an editor's tab, under the editors' tabs, a column 12 steps wide on `activity` (zinc-900, zinc-950 in dark mode), `py-2`, which opens and closes the panels of the tab: one button `size-8 rounded-lg` per panel, icon `size-5` in `on-activity` (zinc-500), hovered `on-activity-strong` (white); pressed (open panel), `bg-on-activity-strong/10`, icon `on-activity-strong`, and a 2px `primary` mark on the bar's edge, inset by 2 steps. Groups set apart by a 5-step `activity-line` stroke: navigator (`ListTree`); editor (`Code`), results (`Table`), Pivoteur (`TableProperties`); data explorer (`Braces`), console (`SquareTerminal`). A closed panel takes no room and leaves no trace. At the bottom of the bar, **Répartir les volets** (`LayoutDashboard`, no pressed state): equal heights for the open panels of the view, default sizes for the side panels and the console. Each button's tooltip names its panel, without a verb, then its shortcut in `text-xs`, `tooltip-fg-subtle`: Ctrl-K then a key, N, E, R, P, X, C, and `=` to share the room.
+- **Panel header**: title (`text-base` semibold `fg-strong`) on a line of a control's height (`h-8`), an optional line under it (`text-sm fg-secondary`), the actions (small ghost buttons) on the right.
 
 ## 6. Building blocks
 
@@ -125,10 +125,9 @@ Legend: `[«]`, `[^]`, `[v]` fold buttons (`PanelLeftClose`, `PanelTopClose`, `P
 - **Form field**: label in a column 37 steps wide (`fg-secondary`), control over the remaining width, `gap-3`; for a multi-line control, the label aligns with its top.
 - **Banner** (`UiAlert`): `rounded-lg px-3 py-3`, icon, message (line breaks kept), optional actions, then a small ghost close button in the current color. Tones: info `bg-primary/15 text-primary` (`Info`), success `bg-success/12 text-success` (`CircleCheckBig`), warning `bg-warning/12 text-warning` (`CircleAlert`), error `bg-error/12 text-error` (`CircleX`).
 - **Toast**: bottom right, stacked, 96 steps wide, `rounded-xl border-line bg-surface px-4 py-3 shadow-lg`, success or error icon, text `fg-strong`; it fades after a few seconds, paused on hover.
-- **Tooltip**: a single bubble for the page, after a short hover or on keyboard focus: `text-sm`, `px-3 py-1`, `rounded-lg`, dark in both modes, at most 96 steps wide and 12 lines; above its element, centered, below when there is no room; no arrow; the pointer passes through it. Almost every element has one: it explains the action and its shortcut.
+- **Tooltip**: a single bubble for the page, after a short hover or on keyboard focus: `text-sm`, `px-3 py-1`, `rounded-lg`, dark in both modes, at most 96 steps wide and 12 lines; above its element, centered, below when there is no room; on the right of the buttons of the activity bar, centered, on the left when there is no room; no arrow; the pointer passes through it. Almost every element has one: it explains the action and its shortcut.
 - **Status bar**: a line of `text-sm fg-secondary` items, separated by a middle dot `·` with one step of room on each side; items wrap whole.
-- **Document tab** (editors' bar and results' bar, same look): `rounded-t-lg py-1 ps-3 pe-1 gap-3`, `text-base` medium `fg-secondary`, hover `fg-strong`; active: `bg-surface-raised text-fg-strong`. At most 107 steps wide, label truncated. Its small ghost buttons (pin, close `X`) show on hovering the tab or on the active tab. The bar draws the line under the tabs. A double click on the label renames it (small field `h-7`, 53 steps wide, `text-sm`, with the focus ring); dragging a tab moves it, with a 2px `primary` insertion marker; a middle click closes it.
-- **Small tabs** (console): `h-7 rounded-lg px-1 text-sm` medium `fg-secondary`, active `bg-surface-raised text-fg-strong`.
+- **Document tab** (editors' bar, results' bar and console, same look, utility `tab-pill`): a pill `rounded-md h-8 ps-3 pe-1 gap-3`, `text-base` medium `fg-secondary`, hover `fg-strong`; active: `bg-surface-raised text-fg-strong`. A `line` stroke, inset by 2 steps top and bottom, stands between two inactive tabs, in the `gap-2` of their bar. At most 107 steps wide, label truncated. Its small ghost buttons (pin, close `X`) show on hovering the tab or on the active tab. The editors' bar is padded `px-4 py-2`, with the line under it. A double click on the label renames it (field `h-6 rounded-md`, the radius of the tabs, one step under each edge of the tab so that its focus ring stays visible, `text-base`, at least 24 steps wide and as wide as the name typed); dragging a tab moves it, with a 2px `primary` insertion marker; a middle click closes it.
 - **Toggle group** (console filters): small buttons `h-7 rounded-lg border-line px-1 text-sm` medium `fg-secondary`, hover `bg-surface-sunken`; pressed: `border-primary/50 bg-primary/15 text-primary`. Several can be pressed; none pressed shows everything.
 - **Progress dot** of a query, 3 steps wide: waiting, `fg-faint` pulsing very slowly (3 s); running, `primary` pulsing (1.4 s); receiving rows, `primary` pulsing fast (0.6 s); done, `success`; failed, `error`. The pulse goes from full opacity and size to 35% and 70%.
 - **Progress bar** on the bottom edge of a result tab, 2px: `primary` while rows arrive, its width following the share received, or a segment of 30% going back and forth when the share is unknown; `success` at the end, `error` on failure.
@@ -174,7 +173,7 @@ Header **Navigateur d’objets** (Object navigator), then a tree with virtual sc
 
 ### 7.3 Editors' bar
 
-Document tabs, one per SQL editor; label: the name given by the user, else the name of the connection. After the tabs: `+` (`Plus`, **Nouvel éditeur**, New editor). At the right end: `History` (**Rouvrir un éditeur fermé**, Reopen a closed editor: a menu of the editors closed less than 24 hours ago), then the fold button of the active editor (`PanelTopClose` / `PanelTopOpen`).
+Document tabs, one per SQL editor; label: the name given by the user, else the name of the connection. After the tabs: `+` (`Plus`, **Nouvel éditeur**, New editor). At the right end: `History` (**Rouvrir un éditeur fermé**, Reopen a closed editor: a menu of the editors closed less than 24 hours ago).
 
 An editor without a connection shows, centered: a round `bg-surface-raised p-4` disc with a `Database` icon in `fg-secondary`, and the text "Faites Ctrl+clic (Cmd+clic sous macOS) sur une source de données pour la choisir pour cet éditeur, ou ajoutez une connexion par le menu « ⋮ »" (Ctrl+click a data source to choose it for this editor, or add a connection from the "⋮" menu), `fg-secondary`, balanced, at most `max-w-xs`.
 
@@ -213,7 +212,7 @@ Own component with virtual scrolling (tens of thousands of rows). Frame: 1px `li
 
 Shows the JSON or XML values selected in a column of the grid, in a read-only code editor.
 
-- Header **Explorateur de données** (Data explorer), its fold button first (`PanelRightClose`), and under the title the subtitle `attributes · JSON · 3 valeurs` (column · format · count), `text-sm fg-secondary`.
+- Header **Explorateur de données** (Data explorer), and under the title the subtitle `attributes · JSON · 3 valeurs` (column · format · count), `text-sm fg-secondary`.
 - Actions (small ghost buttons): **Tout replier** (Fold all, `ChevronsDownUp`), **Tout déplier** (Unfold all, `ChevronsUpDown`), **Replier le niveau du curseur** (Fold the cursor's level, `FoldVertical`), **Déplier le niveau du curseur** (`UnfoldVertical`), **Rechercher** (Search, `Search`, toggle), **Retour à la ligne** (Line wrap, `TextWrap`, toggle), **Copier le document** (Copy the document, `Copy`).
 - Search bar, when open: a field (placeholder of a JSONPath expression for JSON, XPath for XML; red border while the expression is invalid), the counter **2 / 7** (`text-sm fg-secondary`), previous and next result (`ChevronUp`, `ChevronDown`), filter mode (`Funnel`, toggle: shows only the results); the error of the expression under it, `text-sm text-error`.
 - Document: `rounded-lg border-line`, `font-mono`, `text-lg`, indented by 4 spaces, highlighted, fold arrows in the gutter; several values are gathered into a `[…]` array (JSON) or a `<data>…</data>` element (XML).
@@ -221,7 +220,7 @@ Shows the JSON or XML values selected in a column of the grid, in a read-only co
 
 ### 7.8 Console (bottom panel)
 
-- Header: the small tabs **Historique** (History) and **Debug** in place of the title; actions: filters toggle (`Funnel`), clear the list shown (`MessageCircleOff`: **Effacer l’historique**, Clear the history, or **Effacer le debug**, Clear the debug log); fold button (`PanelBottomClose`) at the right end.
+- Header: the small tabs **Historique** (History) and **Debug** in place of the title; actions: filters toggle (`Funnel`), clear the list shown (`MessageCircleOff`: **Effacer l’historique**, Clear the history, or **Effacer le debug**, Clear the debug log).
 - Filters, when shown: **Action** (Session, Exécuter, Exécuter tout, Exécuter précisément, Rafraîchir, Base courante, Interruption, Navigateur, Test de connexion) for the history; **Niveau** (Level: Erreur, Avertissement, Info, Debug, Trace) and **Source** (Serveur, Interface) for the debug log; label `text-sm fg-secondary`, then a toggle group.
 - Tables: `text-sm`, tabular figures, fixed layout, rows at their natural height (`py-1 px-3`), `line-faint` lines between rows, hover `bg-surface-sunken`; sticky header on `bg-surface`, `fg-secondary`, medium, with a `line` border under it. Numbers and durations right-aligned; long texts truncated, full text in the tooltip. Oldest rows at the top; the list stays scrolled to the bottom while new rows arrive.
   - History: **#** (`fg-faint`), **Heure** (Time, `14:32:05`), **Action**, **Message** (the SQL on one line, `font-mono fg-strong`, then its error in `error`), **Lignes** (Rows: `+1 000` when truncated, `—` in `fg-faint` without rows), **Exécution** (Execution), **Transmission**.
@@ -246,7 +245,7 @@ Shows the JSON or XML values selected in a column of the grid, in a read-only co
 7. Data explorer open on three JSON values, search in filter mode with its counter.
 8. Grid with the filter's form open on one column, a range of cells selected, a column being moved (insertion marker), a `NULL`, a link, a `CHAR` column.
 9. Navigator scrolled in a table's columns, with the sticky source, database and table, a "⋮" menu open on a source.
-10. Folded panels: navigator and console folded into their rails, editor folded under the editors' bar.
+10. Closed panels: navigator, editor and console closed, their buttons released in the activity bar.
 11. Empty states: editor without a connection, empty console, data explorer without a selection, first launch without any connection.
 12. Windows: connection (editing, after a successful test), settings (read-only sessions on, writes greyed out).
 

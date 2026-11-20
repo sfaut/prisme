@@ -194,9 +194,15 @@ export const useCatalogStore = defineStore('catalog', () => {
    *
    * @param connectionId Id of the connection.
    * @param refresh Reads the catalog again even if it is in memory.
+   * @param editorId Editor that asks for it, whose console receives the
+   *     queries; `null`, outside the editors.
    * @throws {ApiError} If the target server is unreachable.
    */
-  async function load(connectionId: number, refresh = false): Promise<void> {
+  async function load(
+    connectionId: number,
+    refresh = false,
+    editorId: number | null = null,
+  ): Promise<void> {
     if (!refresh && catalogs.value[connectionId] !== undefined) {
       return
     }
@@ -214,10 +220,14 @@ export const useCatalogStore = defineStore('catalog', () => {
       revisions.value[connectionId] = (revisions.value[connectionId] ?? 0) + 1
     }
     try {
-      await streamCatalog(connectionId, (event) => {
-        applyCatalogEvent(catalog, event)
-        timer ??= setTimeout(signal, REVISION_DELAY)
-      })
+      await streamCatalog(
+        connectionId,
+        (event) => {
+          applyCatalogEvent(catalog, event)
+          timer ??= setTimeout(signal, REVISION_DELAY)
+        },
+        editorId,
+      )
     } catch (failure) {
       // Nothing readable: the next opening of the navigator will try again.
       delete catalogs.value[connectionId]

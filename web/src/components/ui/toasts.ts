@@ -5,7 +5,9 @@
  * and its "Télécharger" button): it then stays until the user closes it or
  * runs the action.
  *
- * Any module adds one with `notify`, without a component to mount.
+ * Any module adds one with `notify`, without a component to mount. The
+ * debug log files it under the editor on screen (`showEditor`), whose
+ * console shows it.
  */
 
 import { ref } from 'vue'
@@ -65,6 +67,21 @@ export const toasts = ref<Toast[]>([])
 let nextId = 1
 
 /**
+ * Editor on screen, `null` when none.
+ */
+let editorOnScreen: number | null = null
+
+/**
+ * Sets the editor on screen, under which the notifications go to the debug
+ * log.
+ *
+ * @param editorId Id of the editor on screen, `null` when none.
+ */
+export function showEditor(editorId: number | null): void {
+  editorOnScreen = editorId
+}
+
+/**
  * Shows a transient message.
  *
  * @param title Text of the message.
@@ -73,7 +90,11 @@ let nextId = 1
  */
 export function notify(title: string, tone: Toast['tone'] = 'success', action?: ToastAction): void {
   toasts.value = [...toasts.value, { id: nextId++, title, tone, action }]
-  logNotification({ level: tone === 'error' ? 'error' : 'info', message: title })
+  logNotification({
+    level: tone === 'error' ? 'error' : 'info',
+    message: title,
+    editor_id: editorOnScreen ?? undefined,
+  })
 }
 
 /**

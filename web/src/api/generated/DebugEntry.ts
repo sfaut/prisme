@@ -11,6 +11,10 @@ export type DebugEntry = {
    */
   id: number;
   /**
+   * Editor whose session wrote the line, 0 outside an editor.
+   */
+  editor_id: number;
+  /**
    * Instant of the line, in UTC, in ISO 8601 format.
    */
   logged_at: string;

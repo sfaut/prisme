@@ -2,7 +2,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { defineComponent, nextTick, ref } from 'vue'
 
-import { shownTooltip, vTooltip } from '../tooltip'
+import { shownTooltip, tooltipSideOf, vTooltip } from '../tooltip'
 
 /**
  * Button whose tooltip is `text`, shown while `visible`.
@@ -29,6 +29,29 @@ describe('v-tooltip', () => {
     text.value = undefined
     await nextTick()
     expect(button.attributes('data-tooltip')).toBeUndefined()
+  })
+
+  it('puts the tooltip on the right on request', () => {
+    const Right = defineComponent({
+      directives: { tooltip: vTooltip },
+      template:
+        '<div><button v-tooltip:right="\'Ouvrir\'">A</button><a v-tooltip="\'B\'">B</a></div>',
+    })
+    const wrapper = mount(Right)
+    const button = wrapper.find('button')
+    expect(button.attributes('data-tooltip-side')).toBe('right')
+    expect(tooltipSideOf(button.element as HTMLElement)).toBe('right')
+    expect(tooltipSideOf(wrapper.find('a').element as HTMLElement)).toBe('top')
+  })
+
+  it('keeps the shortcut of a tooltip apart from its text', () => {
+    const Shortcut = defineComponent({
+      directives: { tooltip: vTooltip },
+      template: "<button v-tooltip=\"{ text: 'Console', shortcut: 'Ctrl-K puis C' }\">C</button>",
+    })
+    const button = mount(Shortcut).find('button')
+    expect(button.attributes('data-tooltip')).toBe('Console')
+    expect(button.attributes('data-tooltip-shortcut')).toBe('Ctrl-K puis C')
   })
 
   it('cuts a long text', () => {

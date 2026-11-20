@@ -327,7 +327,7 @@ async fn editor_session(
     let keep_alive = Duration::from_secs(u64::from(minutes) * 60);
     Ok(upgrade.on_upgrade(move |socket| {
         let span = api_log::editor_span(id);
-        let history = span.in_scope(|| console::connection_span(user_id, &name));
+        let history = span.in_scope(|| console::editor_span(user_id, &name, id));
         async move {
             let sessions = Arc::clone(&state.sessions);
             sessions.attach(id, connection_id, socket, |socket, on_end| {
@@ -569,7 +569,7 @@ async fn probe_settings(
         .await?
         .ok_or(ApiError::NotFound)?;
 
-    let span = console::sql_span(user_id, &name, Action::Probe);
+    let span = console::sql_span(user_id, &name, None, Action::Probe);
     Ok(Json(mysql::probe(&target).instrument(span).await?))
 }
 
@@ -589,7 +589,7 @@ async fn probe_connection(
         .await?
         .ok_or(ApiError::NotFound)?;
 
-    let span = console::sql_span(user_id, &name, Action::Probe);
+    let span = console::sql_span(user_id, &name, None, Action::Probe);
     let info = mysql::probe(&target).instrument(span).await?;
     let server = info.clone();
     state

@@ -58,6 +58,7 @@ function mountTab(tab: QueryTab, server: ServerInfo | null = MARIADB) {
       displayed: false,
       filter: tab.filter,
       connectionId: 7,
+      editorId: 2,
       database: 'shop',
       server,
       indentSize: 4,
@@ -141,6 +142,31 @@ describe('ResultView', () => {
     expect(status.element.nextElementSibling).toBe(wrapper.findComponent(UiStatusBar).element)
   })
 
+  it('keeps the rows of a query stopped during the reception, marked as cut', () => {
+    const tab = {
+      ...finishedTab(['id'], [['1'], ['2']]),
+      error: 'Requête interrompue par l’utilisateur.',
+      interrupted: true,
+    }
+    const wrapper = mountTab(tab)
+    expect(wrapper.find('[role=alert]').exists()).toBe(false)
+    expect(wrapper.find('.grid-scroller').classes()).toContain('attached')
+    const badge = wrapper.findComponent(UiStatusBar).findAll('span')[0]!
+    expect(badge.text()).toBe('Résultat tronqué')
+  })
+
+  it('says a query stopped before its columns was stopped, without an error', () => {
+    const tab = {
+      ...finishedTab([]),
+      error: 'Requête interrompue par l’utilisateur.',
+      interrupted: true,
+    }
+    const wrapper = mountTab(tab)
+    expect(wrapper.text()).toContain('Requête arrêtée.')
+    expect(wrapper.text()).not.toContain('interrompue')
+    expect(wrapper.text()).not.toContain('Résultat tronqué')
+  })
+
   it('no longer says the query runs once it has ended', () => {
     const wrapper = mountTab(finishedTab([]))
     expect(wrapper.find('[role=status]').text()).toBe('')
@@ -187,6 +213,7 @@ describe('ResultView', () => {
       columns: [0, 1],
       name: expect.stringMatching(/^requête-1-\d{8}-\d{6}\.csv$/),
       expected_rows: 3,
+      editor_id: 2,
     })
 
     const truncated = threeRows()

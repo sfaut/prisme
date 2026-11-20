@@ -1,6 +1,6 @@
 <!--
-  Object navigator: under its title, "Navigateur d’objets", with the button
-  that folds the panel to the left (`PanelHeader`), the collapsible
+  Object navigator: under its title, "Navigateur d’objets" (`PanelHeader`),
+  the collapsible
   "Sources de données" root, one branch per source (saved
   connection), then its databases, tables and columns; next, the
   "Notebooks" root, empty for now.
@@ -8,7 +8,7 @@
   Each editor has its own navigator, in its tab, which acts on it: its
   connection is the chosen source, its session's database is the current
   one. Each navigator keeps its open nodes and its scroll, and its layout
-  (open or folded, its width), in the `navigator` store, which keeps them in
+  (open or closed, its width), in the `navigator` store, which keeps them in
   the browser; the catalogs read, the list of the connections and the
   windows are common to all. A navigator builds its tree only while its
   editor is active: the others wait, hidden, without following the catalogs
@@ -213,11 +213,6 @@ const removeOpen = computed({
 const tree = navigatorStore.treeOf(props.editorId)
 
 /**
- * Layout of the editor's navigator.
- */
-const layout = navigatorStore.layoutOf(props.editorId)
-
-/**
  * Keys of the open nodes.
  */
 const expandedKeys = computed({
@@ -313,7 +308,7 @@ async function load(connectionId: number, refresh: boolean): Promise<void> {
   loadingIds.value.push(connectionId)
   delete failures.value[connectionId]
   try {
-    await catalog.load(connectionId, refresh)
+    await catalog.load(connectionId, refresh, props.editorId)
   } catch (failure) {
     failures.value[connectionId] = errorMessage(failure)
   } finally {
@@ -694,7 +689,7 @@ watch(() => visible.value.rows.length, retryScroll)
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col gap-3">
-    <panel-header title="Navigateur d’objets" side="start" @collapse="layout.open = false" />
+    <panel-header title="Navigateur d’objets" />
     <ui-alert v-if="probed" :tone="probed.tone" :title="probed.title" @close="probed = null" />
     <ui-alert v-if="listError" tone="error" :title="listError" />
     <!-- Index as key: the same message can come twice, from two errors of one source. -->

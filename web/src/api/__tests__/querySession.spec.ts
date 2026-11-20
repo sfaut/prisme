@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest'
 import {
   NO_PIVOT,
   applyMessage,
+  batchProgress,
   executionDuration,
+  failed as hasFailed,
+  stoppable,
   parseMessage,
   refreshState,
   startRefresh,
@@ -284,6 +287,192 @@ describe('tabProgress', () => {
 
     applyMessage(state, failed(1, { code: 'write_read_only' }))
     expect(tabProgress(second!)).toBe('error')
+  })
+})
+
+describe('batchProgress', () => {
+  /**
+   * Columns of the query `query`, `expected` rows announced.
+   */
+  function columns(query: number, expected: number | null): ServerMessage {
+    return {
+      type: 'columns',
+      query,
+      columns: ['x'],
+      right_aligned: [false],
+      types: [],
+      sql: 'a',
+      limit: 'added',
+      expected_rows: expected,
+      execution_us: 0,
+      executed_at: 0,
+    }
+  }
+
+  /**
+   * End of the query `query`.
+   */
+  function done(query: number): ServerMessage {
+    return {
+      type: 'done',
+      query,
+      row_count: 0,
+      truncated: false,
+      affected_rows: 0,
+      elapsed_ms: 1,
+      database: null,
+    }
+  }
+
+  it('has no progress before the first batch', () => {
+    expect(batchProgress(readyState())).toBeNull()
+  })
+
+  it('follows the most advanced stage running, and the mean of the shares known', () => {
+    const state = readyState()
+    startBatch(state)
+    applyMessage(state, {
+      type: 'batch',
+      queries: [
+        { query: 0, tab: 0, sql: 'a', start: 0, end: 1 },
+        { query: 1, tab: 0, sql: 'b', start: 2, end: 3 },
+      ],
+    })
+    // Both wait: a share of 0 each.
+    expect(batchProgress(state)).toEqual({ progress: 'waiting', fraction: 0 })
+
+    applyMessage(state, { type: 'started', query: 0 }, 1000)
+    expect(batchProgress(state)).toEqual({ progress: 'executing', fraction: 0 })
+
+    applyMessage(state, columns(0, 4))
+    applyMessage(state, { type: 'rows', query: 0, rows: [['1'], ['2']] })
+    expect(batchProgress(state)).toEqual({ progress: 'loading', fraction: 0.25 })
+
+    applyMessage(state, done(0))
+    expect(batchProgress(state)).toEqual({ progress: 'waiting', fraction: 0.5 })
+  })
+
+  it('has an unknown share when no query running knows its own', () => {
+    const state = readyState()
+    startBatch(state)
+    applyMessage(state, {
+      type: 'batch',
+      queries: [{ query: 0, tab: 0, sql: 'a', start: 0, end: 1 }],
+    })
+    applyMessage(state, { type: 'started', query: 0 }, 1000)
+    expect(batchProgress(state)).toEqual({ progress: 'executing', fraction: null })
+  })
+
+  it('ends in error when a query failed, done otherwise', () => {
+    const state = readyState()
+    startBatch(state)
+    applyMessage(state, {
+      type: 'batch',
+      queries: [
+        { query: 0, tab: 0, sql: 'a', start: 0, end: 1 },
+        { query: 1, tab: 0, sql: 'b', start: 2, end: 3 },
+      ],
+    })
+    applyMessage(state, done(0))
+    applyMessage(state, failed(1, LOST))
+    expect(batchProgress(state)).toEqual({ progress: 'error', fraction: 1 })
+
+    startBatch(state)
+    applyMessage(state, {
+      type: 'batch',
+      queries: [{ query: 0, tab: 0, sql: 'a', start: 0, end: 1 }],
+    })
+    applyMessage(state, done(0))
+    // Only the last batch counts.
+    expect(batchProgress(state)).toEqual({ progress: 'done', fraction: 1 })
+  })
+})
+
+describe('stop of a query', () => {
+  /**
+   * Session running a batch of one query, which has received two rows.
+   */
+  function receiving() {
+    const state = readyState()
+    startBatch(state)
+    applyMessage(state, {
+      type: 'batch',
+      queries: [{ query: 0, tab: 0, sql: 'a', start: 0, end: 1 }],
+    })
+    applyMessage(state, { type: 'started', query: 0 }, 1000)
+    applyMessage(state, {
+      type: 'columns',
+      query: 0,
+      columns: ['x'],
+      right_aligned: [false],
+      types: [],
+      sql: 'a',
+      limit: 'added',
+      expected_rows: 10,
+      execution_us: 0,
+      executed_at: 0,
+    })
+    applyMessage(state, { type: 'rows', query: 0, rows: [['1'], ['2']] })
+    return state
+  }
+
+  it('can be stopped while it runs in the current batch, not once ended', () => {
+    const state = receiving()
+    const tab = state.tabs[0]!
+    expect(stoppable(state, tab)).toBe(true)
+
+    applyMessage(state, failed(0, { code: 'query_interrupted' }))
+    expect(stoppable(state, tab)).toBe(false)
+  })
+
+  it('keeps the rows received, stopped and not failed', () => {
+    const state = receiving()
+    applyMessage(state, failed(0, { code: 'query_interrupted' }))
+    const tab = state.tabs[0]!
+    expect(tab.interrupted).toBe(true)
+    expect(hasFailed(tab)).toBe(false)
+    expect(tab.result?.rowCount).toBe(2)
+    expect(tabProgress(tab)).toBe('stopped')
+    expect(tabFraction(tab)).toBe(1)
+    expect(batchProgress(state)).toEqual({ progress: 'stopped', fraction: 1 })
+  })
+
+  it('tells a failure from a stop', () => {
+    const state = receiving()
+    applyMessage(state, failed(0, LOST))
+    const tab = state.tabs[0]!
+    expect(tab.interrupted).toBe(false)
+    expect(hasFailed(tab)).toBe(true)
+    expect(tabProgress(tab)).toBe('error')
+  })
+
+  it('takes back a saved stopped result as stopped', () => {
+    const tab = savedTab(
+      {
+        id: 3,
+        query: 0,
+        sql: 'a',
+        name: '',
+        pinned: false,
+        pivot: NO_PIVOT,
+        result: {
+          started: true,
+          done: true,
+          error: 'query interrupted',
+          error_detail: { code: 'query_interrupted' },
+          columns: null,
+          row_count: 0,
+          truncated: false,
+          affected_rows: 0,
+          transfer_us: 0,
+          bytes: 0,
+        },
+        chunks: 0,
+      },
+      [],
+    )
+    expect(tab.interrupted).toBe(true)
+    expect(tabProgress(tab)).toBe('stopped')
   })
 })
 

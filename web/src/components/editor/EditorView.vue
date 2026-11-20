@@ -19,53 +19,41 @@
   tab can be renamed, pinned (it stays when the query is run again), closed
   (its query is stopped if it is running) or moved by dragging it, like a
   column of the grid. Its result can be refreshed (button right of the
-  tabs, with the grid's filter and export buttons, side by side with the
-  fold button of the results, as in the console's header): the query runs
+  tabs, with the grid's filter and export buttons): the query runs
   again in the tab, after the running batch if any. Its rows can also be
   written as a CTE after the last query of the editor, without running it.
   The row limit chosen here becomes the user's default limit.
   While a transaction is open on the session's connection, a status badge
-  says so at the end of the buttons, until its COMMIT or ROLLBACK.
+  says so at the right end of the editor's header, until
+  its COMMIT or ROLLBACK. The banners of the session (closed, server too old,
+  error) stand under that header.
   The session can be closed from the object navigator ("Déconnecter",
   `disconnect`): the view then shows it closed, with "Reconnecter". A
   session opened on a server older than the oldest version Prisme supports
   shows a warning.
-  The buttons are above the editor. The editor (with its buttons), the
-  results and the panel of the Pivoteur share the height in a splitter of
-  Prisme (`split/`), whose heights and folds are kept for this editor
-  (`editorLayout.ts`): the editor and the Pivoteur keep their height, the
-  results take the height they leave (`fill`); the line under the editor
-  sets the height of the editor, the line above the Pivoteur that of the
-  Pivoteur. Each panel folds, by its
-  button, by a drag below its smallest height, or, for the editor and the
-  Pivoteur, by a double click on the line next to it. The folded editor
-  disappears with its buttons: only the editors' tabs stay above the
-  results, with its fold button, which the editors' bar draws for the
-  active view (`editorFolded`, `toggleEditor`). The folded results leave
-  their tabs and their unfold button (the buttons of the tab shown hide).
-  The panels of the view fold independently, all of them at once too: the
-  folded results go down against the Pivoteur, the height they leave
-  staying free above their tabs. The
+  Three panels share the height, in a splitter of Prisme (`split/`), each
+  under its header, in the style of the Pivoteur's: the editor ("Éditeur",
+  with its buttons), the results ("Résultat", with the bar of their tabs)
+  and the Pivoteur (`PivotPanel.vue`, which analyses the result of the tab
+  shown). Each one opens and closes from the activity bar of the editor's
+  tab (`PanelActivityBar.vue`), or closes by a drag of the line above it
+  below its smallest height. Closed, it takes no room, and its content stays
+  mounted, out of reach (`inert`): the editor, the grids and their scroll,
+  the configuration of the Pivoteur. The results and the Pivoteur depend on
+  the editor: they start closed, and the editor takes the whole height. The
+  highest open panel fills the height the others leave; an open panel takes
+  the height it had when it closed, or, without one, shares the room in
+  equal parts with the panel that fills. All three closed, the room shows
+  the sunken background. A run opens the results, which show its tabs. The
+  heights and the closed panels are kept for this editor (`editorLayouts`
+  store). The
   padding of the sides is inside the panels: a panel clips its content at
   its edge, which may fall between two pixels, and would cut the left
   border of a field or of the grid set against it.
-  Under the results, the panel of the Pivoteur (`PivotPanel.vue`) analyses
-  the result of the tab shown. It starts folded, as a rail; it unfolds and
-  folds by its rail, by the button of its header, by a double click on the
-  line above it, or by a drag, as the other panels.
 -->
 <script setup lang="ts">
 import { errorMessage } from '@/api/errorMessage'
-import {
-  FastForward,
-  LoaderCircle,
-  PanelBottomClose,
-  PanelBottomOpen,
-  Play,
-  ScanText,
-  Square,
-  WandSparkles,
-} from '@lucide/vue'
+import { FastForward, LoaderCircle, Play, ScanText, Square, WandSparkles } from '@lucide/vue'
 import { TabsContent, TabsList, TabsRoot } from 'reka-ui'
 import { computed, onMounted, provide, ref, shallowReactive, useTemplateRef, watch } from 'vue'
 
@@ -84,26 +72,31 @@ import type { ConnectionSummary } from '@/api/generated/ConnectionSummary'
 import type { SelectionRange } from '@/api/generated/SelectionRange'
 import type { TextEnd } from '@/api/generated/TextEnd'
 import {
+  type BatchProgress,
   type QueryTab,
+  type RunTarget,
   type SessionStatus,
+  batchProgress,
   formatRowCount,
+  stoppable,
   refreshState,
   useQuerySession,
 } from '@/api/querySession'
 import { useCatalogStore } from '@/stores/catalog'
 import { useSettingsStore } from '@/stores/settings'
 
-import PanelRail from '@/components/panel/PanelRail.vue'
+import EditorTransactionBadge from '@/components/editor/EditorTransactionBadge.vue'
+import PanelHeader from '@/components/panel/PanelHeader.vue'
 import PivotPanel from '@/components/pivot/PivotPanel.vue'
 import ResultView from '@/components/result/ResultView.vue'
 import { EDITOR_ID } from './editorId'
-import { editorLayoutKey } from './editorLayout'
+import { useEditorLayoutsStore } from '@/stores/editorLayouts'
+import { type ViewPanel, fillingPanel } from './editorLayout'
 import ResultTab from '@/components/result/ResultTab.vue'
 import ResultTabActions from '@/components/result/ResultTabActions.vue'
 import SplitGroup from '@/components/split/SplitGroup.vue'
 import SplitHandle from '@/components/split/SplitHandle.vue'
 import SplitPanel from '@/components/split/SplitPanel.vue'
-import { useStoredLayout } from '@/components/split/storedLayout'
 import { DEFAULT_INDENT_SIZE } from './editorIndent'
 import SqlEditor from './SqlEditor.vue'
 import { movedItems, useTabDrag } from '@/components/tab/tabDrag'
@@ -156,6 +149,10 @@ const emit = defineEmits<{
    * A transaction opened (`true`) or ended on the session.
    */
   transaction: [open: boolean]
+  /**
+   * The progress of the last batch has changed (`null` before the first one).
+   */
+  progress: [progress: BatchProgress | null]
 }>()
 
 /**
@@ -191,62 +188,31 @@ const limitOptions = computed(() =>
 
 const editor = useTemplateRef<InstanceType<typeof SqlEditor>>('editor')
 
-/**
- * Layout of the view, kept for this editor (`editorLayout.ts`): the heights the
- * user gave the editor and the Pivoteur, in CSS pixels (`null`: their default
- * height, `main.css`), and the folds of the three panels; the Pivoteur starts
- * folded, as a rail.
- */
 // The grids under the view publish to the data explorer of this editor.
 provide(EDITOR_ID, props.editorId)
 
-const layout = useStoredLayout(editorLayoutKey(props.editorId), {
-  editor: null as number | null,
-  pivot: null as number | null,
-  editorFolded: false as boolean,
-  resultsFolded: false as boolean,
-  pivotFolded: true as boolean,
-})
-
 /**
- * Panel of the view.
+ * Layout of the view, kept for this editor (`editorLayouts` store): the
+ * heights the user gave the results and the Pivoteur, in CSS pixels (`null`:
+ * a share of the room), and the closed panels. The editor fills the height
+ * when it is open, the highest panel open; the results and the Pivoteur
+ * start closed.
  */
-type CellPanel = 'editor' | 'results' | 'pivot'
+const layout = useEditorLayoutsStore().layoutOf(props.editorId)
 
 /**
  * Id of a panel, unique to the editor: the line that resizes it names it.
  *
  * @param panel Panel.
  */
-function panelId(panel: CellPanel): string {
+function panelId(panel: ViewPanel): string {
   return `editor-${props.editorId}-${panel}-panel`
 }
 
 /**
- * Is the editor folded?
+ * Panel that fills the height the others leave.
  */
-const editorFolded = computed(() => layout.editorFolded)
-
-/**
- * Folds or unfolds the editor.
- */
-function toggleEditor(): void {
-  layout.editorFolded = !layout.editorFolded
-}
-
-/**
- * Folds or unfolds the results.
- */
-function toggleResults(): void {
-  layout.resultsFolded = !layout.resultsFolded
-}
-
-/**
- * Folds or unfolds the panel of the Pivoteur.
- */
-function togglePivot(): void {
-  layout.pivotFolded = !layout.pivotFolded
-}
+const fillPanel = computed(() => fillingPanel(layout))
 
 /**
  * Displayed tab: its id.
@@ -373,12 +339,6 @@ function closeTab(tab: QueryTab): void {
 }
 
 /**
- * Tooltip of the badge of the open transaction.
- */
-const TRANSACTION_TIP =
-  'Une transaction est ouverte sur la session : COMMIT la valide, ROLLBACK l’annule. Fermer la session l’annule.'
-
-/**
  * Tooltip of the run buttons while queries run: a click stops them.
  */
 const STOP_TIP = 'Arrête toutes les requêtes et tous les chargements en cours'
@@ -440,14 +400,27 @@ const exactTip = computed(() => {
 })
 
 /**
+ * Starts a run: notes the button that launched it, unfolds the results,
+ * which show its tabs, and sends it.
+ *
+ * @param kind Button that launches the run.
+ * @param text Text of the editor.
+ * @param options Cursor or selection of the run.
+ */
+function launch(kind: typeof launcher.value, text: string, options: RunTarget): void {
+  launcher.value = kind
+  layout.resultsFolded = false
+  session.run(text, options)
+}
+
+/**
  * Runs the query under the cursor.
  *
  * @param cursor Position of the cursor; when absent, that of the editor.
  */
 function run(cursor?: number): void {
   if (sql.value.trim() !== '' && state.status === 'ready') {
-    launcher.value = 'one'
-    session.run(sql.value, { cursor: cursor ?? editor.value?.cursor() ?? 0 })
+    launch('one', sql.value, { cursor: cursor ?? editor.value?.cursor() ?? 0 })
   }
 }
 
@@ -550,8 +523,7 @@ async function showTable(schema: string, table: string): Promise<void> {
   try {
     const appending = await appendToEditor((text, end) => appendQuery(text, query, end))
     if (state.status === 'ready') {
-      launcher.value = 'one'
-      session.run(appending.text, { cursor: appending.start })
+      launch('one', appending.text, { cursor: appending.start })
     }
   } catch (failure) {
     state.error = errorMessage(failure)
@@ -673,8 +645,7 @@ async function prettify(): Promise<void> {
  */
 function runAll(selection: SelectionRange[] = []): void {
   if (sql.value.trim() !== '' && state.status === 'ready') {
-    launcher.value = 'all'
-    session.run(sql.value, selection.length > 0 ? { selection } : {})
+    launch('all', sql.value, selection.length > 0 ? { selection } : {})
   }
 }
 
@@ -686,8 +657,7 @@ function runAll(selection: SelectionRange[] = []): void {
  */
 function runExact(selection: SelectionRange[] = []): void {
   if (selection.length > 0 && state.status === 'ready') {
-    launcher.value = 'exact'
-    session.run(sql.value, { selection, exact: true })
+    launch('exact', sql.value, { selection, exact: true })
   }
 }
 
@@ -735,6 +705,16 @@ watch(
   { immediate: true },
 )
 
+watch(
+  () => batchProgress(state),
+  (progress, before) => {
+    if (progress?.progress !== before?.progress || progress?.fraction !== before?.fraction) {
+      emit('progress', progress)
+    }
+  },
+  { immediate: true },
+)
+
 /**
  * Closes the session on the server at once ("Déconnecter" of the object
  * navigator): its connection to the target server closes, and the WebSocket
@@ -749,8 +729,6 @@ async function disconnect(): Promise<void> {
 }
 
 defineExpose({
-  editorFolded,
-  toggleEditor,
   run,
   runWhenReady,
   showTableWhenReady,
@@ -763,78 +741,87 @@ defineExpose({
 <template>
   <split-group direction="vertical" class="min-h-0 flex-1">
     <!--
-      Top panel: the gap under the editors' tabs, the buttons, then the
-      editor, which takes the remaining room. Folded, the panel keeps only
-      the gap: the buttons and the editor, under it, stay mounted.
+      Top panel: the header (title, buttons, state of the transaction), the
+      banners of the session, then the editor, which takes the remaining
+      room. Closed, the editor stays mounted, out of reach.
     -->
     <split-panel
       :id="panelId('editor')"
-      v-model:size="layout.editor"
       v-model:folded="layout.editorFolded"
-      default-size="var(--editor-height)"
+      :fill="fillPanel === 'editor'"
       min-size="var(--editor-min-height)"
-      folded-size="var(--editor-folded-height)"
-      class="flex"
+      folded-size="0px"
+      class="flex flex-col"
     >
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 py-3">
-        <div class="flex shrink-0 items-center gap-3">
-          <ui-button
-            v-tooltip="stopsOne ? STOP_TIP : 'La requête sous le curseur (Ctrl-Entrée)'"
-            label="Exécuter"
-            :icon="stopsOne ? Square : Play"
-            variant="solid"
-            :tone="stopsOne ? 'error' : 'primary'"
-            :disabled="!stopsOne && state.status !== 'ready'"
-            @click="stopsOne ? session.cancel() : run()"
-          />
-          <ui-button
-            v-tooltip="exactTip"
-            label="Exécuter précisément"
-            :icon="stopsExact ? Square : ScanText"
-            :tone="stopsExact ? 'error' : 'neutral'"
-            :disabled="!stopsExact && (state.status !== 'ready' || !textSelected)"
-            @click="stopsExact ? session.cancel() : runExact(editor?.selection())"
-          />
-          <ui-button
-            v-tooltip="
-              stopsAll
-                ? STOP_TIP
-                : 'Toutes les requêtes, ou celles que touche le texte sélectionné (Ctrl-Maj-Entrée) : en parallèle si elles ne font que lire, l’une après l’autre dès qu’une écrit (INSERT, UPDATE, DELETE…) ou qu’une transaction est ouverte'
-            "
-            label="Exécuter tout"
-            :icon="stopsAll ? Square : FastForward"
-            :tone="stopsAll ? 'error' : 'neutral'"
-            :disabled="!stopsAll && state.status !== 'ready'"
-            @click="stopsAll ? session.cancel() : runAll(editor?.selection())"
-          />
-          <ui-button
-            label="Enjoliver"
-            :icon="WandSparkles"
-            :disabled="sql.trim() === '' || !catalogReady"
-            v-tooltip="
-              catalogReady
-                ? 'Réécrit les requêtes en « beau SQL » : mots-clefs en capitales (Ctrl-Z annule)'
-                : 'Disponible une fois le catalogue de la connexion chargé'
-            "
-            @click="prettify"
-          />
-          <ui-select
-            :model-value="settings.settings?.row_limit"
-            :items="limitOptions"
-            label="Limite de lignes"
-            class="w-43"
-            @update:model-value="(limit) => limit !== undefined && changeLimit(limit)"
-          />
-          <!-- Status of the session, stretched to the height of the buttons. -->
-          <span
-            v-if="state.transaction"
-            v-tooltip="TRANSACTION_TIP"
-            role="status"
-            class="ms-auto inline-flex shrink-0 self-stretch items-center rounded-full bg-info/14 px-4 text-base font-medium whitespace-nowrap text-info"
-          >
-            <span class="text-trim">Transaction ouverte</span>
-          </span>
-        </div>
+      <div
+        class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pt-2 pb-3"
+        :inert="layout.editorFolded"
+      >
+        <panel-header title="Éditeur">
+          <template #inline>
+            <div class="flex min-w-0 items-center gap-3">
+              <ui-button
+                v-tooltip="stopsOne ? STOP_TIP : 'La requête sous le curseur (Ctrl-Entrée)'"
+                label="Exécuter"
+                :icon="stopsOne ? Square : Play"
+                variant="solid"
+                :tone="stopsOne ? 'error' : 'primary'"
+                :disabled="!stopsOne && state.status !== 'ready'"
+                @click="stopsOne ? session.cancel() : run()"
+              />
+              <ui-button
+                v-tooltip="exactTip"
+                label="Exécuter précisément"
+                :icon="stopsExact ? Square : ScanText"
+                :tone="stopsExact ? 'error' : 'neutral'"
+                :disabled="!stopsExact && (state.status !== 'ready' || !textSelected)"
+                @click="stopsExact ? session.cancel() : runExact(editor?.selection())"
+              />
+              <ui-button
+                v-tooltip="
+                  stopsAll
+                    ? STOP_TIP
+                    : 'Toutes les requêtes, ou celles que touche le texte sélectionné (Ctrl-Maj-Entrée) : en parallèle si elles ne font que lire, l’une après l’autre dès qu’une écrit (INSERT, UPDATE, DELETE…) ou qu’une transaction est ouverte'
+                "
+                label="Exécuter tout"
+                :icon="stopsAll ? Square : FastForward"
+                :tone="stopsAll ? 'error' : 'neutral'"
+                :disabled="!stopsAll && state.status !== 'ready'"
+                @click="stopsAll ? session.cancel() : runAll(editor?.selection())"
+              />
+              <ui-button
+                label="Enjoliver"
+                :icon="WandSparkles"
+                :disabled="sql.trim() === '' || !catalogReady"
+                v-tooltip="
+                  catalogReady
+                    ? 'Réécrit les requêtes en « beau SQL » : mots-clefs en capitales (Ctrl-Z annule)'
+                    : 'Disponible une fois le catalogue de la connexion chargé'
+                "
+                @click="prettify"
+              />
+              <ui-select
+                :model-value="settings.settings?.row_limit"
+                :items="limitOptions"
+                label="Limite de lignes"
+                class="w-43"
+                @update:model-value="(limit) => limit !== undefined && changeLimit(limit)"
+              />
+            </div>
+          </template>
+          <!-- State of the session, at the height of the buttons. -->
+          <template v-if="state.transaction" #actions>
+            <span class="flex items-center pe-3">
+              <editor-transaction-badge />
+            </span>
+          </template>
+        </panel-header>
+
+        <ui-alert v-if="state.status === 'closed'" tone="warning" title="Session fermée.">
+          <ui-button label="Reconnecter" @click="emit('reconnect')" />
+        </ui-alert>
+        <ui-alert v-if="versionNotice" tone="warning" :title="versionNotice" />
+        <ui-alert v-if="state.error" tone="error" :title="state.error" />
 
         <sql-editor
           ref="editor"
@@ -852,38 +839,79 @@ defineExpose({
         />
       </div>
     </split-panel>
+    <!--
+      Line between the editor and the results, both open: it resizes the
+      results; below their smallest height, they close.
+    -->
     <split-handle
-      :controls="panelId('editor')"
-      tooltip="Glisser pour partager la hauteur entre l’éditeur et les résultats, double clic pour replier ou déplier l’éditeur"
-      @activate="toggleEditor"
+      v-if="!layout.editorFolded && !layout.resultsFolded"
+      :controls="panelId('results')"
+      tooltip="Glisser pour redimensionner le résultat, en deçà de sa hauteur minimale pour le fermer"
     />
 
     <!--
-      Height the folded results leave free, above their tabs: the tabs go
-      down against the Pivoteur.
-    -->
-    <div v-if="layout.resultsFolded" data-split-room class="flex-1" />
-    <!--
-      Middle panel: the results, in the height the editor and the
-      Pivoteur leave, with a padding at the bottom too, above the
-      Pivoteur. Folded, it keeps the height of their tabs: the padding of
-      the bottom then falls outside the panel, and the line under the tabs
-      is that of the Pivoteur's handle, against them.
+      Middle panel: the results. Its first line is its header, the bar of
+      its tabs, between its title and its buttons.
     -->
     <split-panel
       :id="panelId('results')"
+      v-model:size="layout.results"
       v-model:folded="layout.resultsFolded"
-      :fill="!layout.resultsFolded"
+      :fill="fillPanel === 'results'"
       min-size="var(--results-min-height)"
-      folded-size="var(--tab-bar-height)"
-      class="flex"
+      folded-size="0px"
+      class="flex flex-col"
     >
-      <div class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 py-3">
-        <ui-alert v-if="state.status === 'closed'" tone="warning" title="Session fermée.">
-          <ui-button label="Reconnecter" @click="emit('reconnect')" />
-        </ui-alert>
-        <ui-alert v-if="versionNotice" tone="warning" :title="versionNotice" />
-        <ui-alert v-if="state.error" tone="error" :title="state.error" />
+      <!--
+        The result grid must have a bounded height: otherwise its scroll area
+        grows with the result, all the rows are drawn and the interface
+        freezes. Each level, down to the grid, therefore takes the remaining
+        room without being able to exceed it (flex-1 and min-h-0). The hidden
+        tabs stay mounted (`unmount-on-hide` set to false): the grid keeps its
+        scroll position.
+      -->
+      <tabs-root
+        v-model="selectedTab"
+        :unmount-on-hide="false"
+        class="flex min-h-0 min-w-0 flex-1 flex-col gap-3 px-4 pt-3 pb-3"
+        :inert="layout.resultsFolded"
+      >
+        <div class="flex shrink-0 items-center gap-3">
+          <h2 class="shrink-0 text-base font-semibold text-fg-strong">Résultat</h2>
+          <div class="flex min-w-0 flex-1">
+            <tabs-list
+              v-if="state.tabs.length > 0"
+              class="flex min-w-0 items-center gap-2 overflow-x-auto"
+            >
+              <result-tab
+                v-for="(tab, index) in state.tabs"
+                :key="tab.id"
+                :tab="tab"
+                :default-label="tabLabel(tab)"
+                :index="index"
+                :count="state.tabs.length"
+                :drag="tabDrag"
+                :stoppable="stoppable(state, tab)"
+                @close="closeTab(tab)"
+                @stop="session.stopQuery(tab)"
+                @toggle-pin="togglePin(tab)"
+                @rename="(name) => renameTab(tab, name)"
+              />
+            </tabs-list>
+          </div>
+          <!-- Buttons of the tab shown: refresh, filter, export. -->
+          <div class="flex items-center">
+            <result-tab-actions
+              v-if="shownTab"
+              :tab="shownTab"
+              :refresh="refreshState(state, shownTab)"
+              :export-groups="tabViews.get(shownTab.id)?.exportGroups"
+              @refresh="refresh(shownTab)"
+              @stop-refresh="session.stopRefresh(shownTab)"
+              @toggle-filter="toggleFilter(shownTab)"
+            />
+          </div>
+        </div>
 
         <div
           v-if="state.loading"
@@ -896,128 +924,81 @@ defineExpose({
             {{ formatRowCount(state.savedRows, state.readRows) }}
           </span>
         </div>
-
-        <!--
-          The result grid must have a bounded height: otherwise its scroll area
-          grows with the result, all the rows are drawn and the interface
-          freezes. Each level, down to the grid, therefore takes the remaining
-          room without being able to exceed it (flex-1 and min-h-0). The hidden
-          tabs stay mounted (`unmount-on-hide` set to false): the grid keeps its
-          scroll position.
-        -->
-        <tabs-root
-          v-if="state.tabs.length > 0"
-          v-model="selectedTab"
-          :unmount-on-hide="false"
-          class="flex min-h-0 flex-1 flex-col"
+        <p
+          v-else-if="state.tabs.length === 0"
+          class="flex flex-1 items-center justify-center text-center text-fg-secondary"
         >
-          <!-- Folded, the line under the tabs is the handle's, drawn once. -->
-          <div
-            class="flex shrink-0 gap-1 border-line"
-            :class="{ 'border-b': !layout.resultsFolded }"
-          >
-            <tabs-list class="flex min-w-0 flex-1 overflow-x-auto">
-              <result-tab
-                v-for="(tab, index) in state.tabs"
-                :key="tab.id"
-                :tab="tab"
-                :default-label="tabLabel(tab)"
-                :index="index"
-                :count="state.tabs.length"
-                :drag="tabDrag"
-                @close="closeTab(tab)"
-                @toggle-pin="togglePin(tab)"
-                @rename="(name) => renameTab(tab, name)"
-              />
-            </tabs-list>
-            <!--
-              Buttons of the tab shown (refresh, filter, export), then the
-              fold button, side by side as in the console's header; folded,
-              the results keep only the fold button.
-            -->
-            <div class="flex items-center self-center">
-              <result-tab-actions
-                v-if="shownTab && !layout.resultsFolded"
-                :tab="shownTab"
-                :refresh="refreshState(state, shownTab)"
-                :export-groups="tabViews.get(shownTab.id)?.exportGroups"
-                @refresh="refresh(shownTab)"
-                @stop-refresh="session.stopRefresh(shownTab)"
-                @toggle-filter="toggleFilter(shownTab)"
-              />
-              <ui-button
-                :icon="layout.resultsFolded ? PanelBottomOpen : PanelBottomClose"
-                variant="ghost"
-                small
-                :aria-label="
-                  layout.resultsFolded ? 'Déplier les résultats' : 'Replier les résultats'
-                "
-                v-tooltip="layout.resultsFolded ? 'Déplier les résultats' : 'Replier les résultats'"
-                @click="toggleResults"
-              />
-            </div>
-          </div>
-          <tabs-content
-            v-for="tab in state.tabs"
-            :key="tab.id"
-            :value="tab.id"
-            class="flex min-h-0 flex-1"
-          >
-            <result-view
-              :ref="
-                (view) =>
-                  view
-                    ? tabViews.set(tab.id, view as InstanceType<typeof ResultView>)
-                    : tabViews.delete(tab.id)
-              "
-              v-model:filter="tab.filter"
-              :tab="tab"
-              :displayed="active && selectedTab === tab.id"
-              :connection-id="connection.id"
-              :database="state.database"
-              :server="state.server"
-              :indent-size="indentSize"
-              @insert-cte="insertCte"
-              @insert-in="insertIn"
-            />
-          </tabs-content>
-        </tabs-root>
-      </div>
+          Pas de résultat
+        </p>
+
+        <tabs-content
+          v-for="tab in state.tabs"
+          :key="tab.id"
+          :value="tab.id"
+          class="flex min-h-0 flex-1"
+        >
+          <result-view
+            :ref="
+              (view) =>
+                view
+                  ? tabViews.set(tab.id, view as InstanceType<typeof ResultView>)
+                  : tabViews.delete(tab.id)
+            "
+            v-model:filter="tab.filter"
+            :tab="tab"
+            :displayed="active && selectedTab === tab.id"
+            :connection-id="connection.id"
+            :editor-id="editorId"
+            :database="state.database"
+            :server="state.server"
+            :indent-size="indentSize"
+            @insert-cte="insertCte"
+            @insert-in="insertIn"
+          />
+        </tabs-content>
+      </tabs-root>
     </split-panel>
+    <!--
+      Line above the Pivoteur, open under another open panel: it resizes the
+      Pivoteur; below its smallest height, it closes.
+    -->
     <split-handle
+      v-if="!layout.pivotFolded && fillPanel !== 'pivot'"
       :controls="panelId('pivot')"
-      tooltip="Glisser pour redimensionner le Pivoteur, double clic pour le replier ou le déplier"
-      @activate="togglePivot"
+      tooltip="Glisser pour redimensionner le Pivoteur, en deçà de sa hauteur minimale pour le fermer"
     />
 
     <!--
-      Panel of the Pivoteur, folded by default: its rail. Folded, the panel
-      stays mounted, hidden, and keeps the configuration of each tab; it
-      computes nothing and stops its Worker.
+      Panel of the Pivoteur, closed by default. Closed, the panel stays
+      mounted and keeps the configuration of each tab; it computes nothing
+      and stops its Worker.
     -->
     <split-panel
       :id="panelId('pivot')"
       v-model:size="layout.pivot"
       v-model:folded="layout.pivotFolded"
-      default-size="var(--pivot-min-height)"
+      :fill="fillPanel === 'pivot'"
       min-size="var(--pivot-min-height)"
-      folded-size="var(--rail-size)"
-      class="flex"
+      folded-size="0px"
+      class="flex flex-col"
     >
       <pivot-panel
-        v-show="!layout.pivotFolded"
         :tab="shownTab"
         :open="!layout.pivotFolded"
         :connection-id="connection.id"
-        @collapse="layout.pivotFolded = true"
-      />
-      <panel-rail
-        v-if="layout.pivotFolded"
-        title="Pivoteur"
-        side="bottom"
-        class="flex-1"
-        @expand="togglePivot"
+        :editor-id="editorId"
       />
     </split-panel>
+    <!--
+      All the panels closed: the height they leave stays free, on the sunken
+      background, which tells it from a panel. Always there, without any
+      height while a panel fills: its growth follows the closing of the last
+      panel (`SplitGroup.vue`), which the room would otherwise halve at once.
+    -->
+    <div
+      data-split-room
+      class="basis-0 bg-surface-sunken"
+      :class="fillPanel === null ? 'grow' : 'grow-0'"
+    />
   </split-group>
 </template>

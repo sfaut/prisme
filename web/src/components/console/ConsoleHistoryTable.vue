@@ -1,8 +1,8 @@
 <!--
   History tab of the console: one line per query sent to a target server,
   with its number, its time, the action that sent it, its message (its SQL,
-  then its failure if any), its number of rows, its execution time and the
-  transfer time of its rows. Above, on request, the actions kept
+  then its failure if any, in red, or its stop by the user, in orange), its
+  number of rows, its execution time and the transfer time of its rows. Above, on request, the actions kept
   (`ConsoleFilter.vue`).
   Scrolling and older pages: `ConsoleList.vue`.
 -->
@@ -72,9 +72,13 @@ const history = store.history
             <td v-tooltip="entry.sql">
               <div class="message">
                 <span class="sql font-mono text-fg-strong">{{ oneLine(entry.sql) }}</span>
-                <span v-if="entry.error" class="outcome text-error" v-tooltip="entry.error">{{
-                  failureOf(entry)
-                }}</span>
+                <span
+                  v-if="entry.error"
+                  class="outcome"
+                  :class="entry.interrupted ? 'text-warning' : 'text-error'"
+                  v-tooltip="entry.error"
+                  >{{ failureOf(entry) }}</span
+                >
               </div>
             </td>
             <td

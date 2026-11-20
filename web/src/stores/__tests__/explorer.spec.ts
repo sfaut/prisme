@@ -18,7 +18,7 @@ describe('layout of an explorer', () => {
     expect({ ...useExplorerStore().layoutOf(1) }).toEqual({ open: false, width: null })
   })
 
-  it('is kept per editor, and the last width given starts a new editor, closed', async () => {
+  it('is kept per editor, and a new editor starts from the defaults', async () => {
     const explorer = useExplorerStore()
     explorer.layoutOf(1).open = true
     explorer.layoutOf(1).width = 480
@@ -28,20 +28,9 @@ describe('layout of an explorer', () => {
       open: true,
       width: 480,
     })
-    expect({ ...explorer.layoutOf(2) }).toEqual({ open: false, width: 480 })
+    expect({ ...explorer.layoutOf(2) }).toEqual({ open: false, width: null })
     setActivePinia(createPinia())
     expect({ ...useExplorerStore().layoutOf(1) }).toEqual({ open: true, width: 480 })
-  })
-
-  it('stays as first read, whatever width is given later to another editor', async () => {
-    const explorer = useExplorerStore()
-    expect(explorer.layoutOf(1).width).toBeNull()
-    explorer.layoutOf(2).width = 480
-    await nextTick()
-
-    setActivePinia(createPinia())
-    expect(useExplorerStore().layoutOf(1).width).toBeNull()
-    expect(useExplorerStore().layoutOf(3).width).toBe(480)
   })
 
   it('forgets the explorer of a closed editor', async () => {

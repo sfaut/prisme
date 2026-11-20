@@ -10,11 +10,14 @@
  * slow, which then reads them again.
  *
  * A page holds only the elements its filter keeps (`HistoryFilter`,
- * `DebugFilter`): the server skips the others.
+ * `DebugFilter`), and those of an editor when one is given: the server
+ * skips the others. Each element knows the editor whose session wrote it
+ * (`editor_id`, 0 outside an editor).
  */
 
 import { request } from './http'
 import type { Action } from './generated/Action'
+import type { ConsoleCleared } from './generated/ConsoleCleared'
 import type { DebugEntry } from './generated/DebugEntry'
 import type { DebugLevel } from './generated/DebugLevel'
 import type { DebugSource } from './generated/DebugSource'
@@ -46,11 +49,13 @@ export interface DebugFilter {
 }
 
 /**
- * Path of a page: the elements that `filter` keeps, before `before`,
- * `limit` at most.
+ * Path of a page: the elements of `editor` that `filter` keeps, before
+ * `before`, `limit` at most.
  *
  * @param path Path of the route.
  * @param filter Values kept, per field of the elements.
+ * @param editor Id of the editor whose elements are read; `null`, those of
+ *     all the editors and of Prisme itself.
  * @param before Id of the oldest element already read; absent, the most
  *     recent elements.
  * @param limit Number of elements, 500 by default on the server's side.
@@ -58,6 +63,7 @@ export interface DebugFilter {
 function pagePath(
   path: string,
   filter: HistoryFilter | DebugFilter,
+  editor: number | null,
   before?: number,
   limit?: number,
 ): string {
@@ -67,6 +73,9 @@ function pagePath(
     for (const value of values) {
       parameters.append(field, value)
     }
+  }
+  if (editor !== null) {
+    parameters.set('editor', String(editor))
   }
   if (before !== undefined) {
     parameters.set('before', String(before))
@@ -82,46 +91,66 @@ function pagePath(
  * Reads a page of the history, in chronological order.
  *
  * @param filter Queries kept.
+ * @param editor Id of the editor whose queries are read; `null`, all of
+ *     them.
  * @param before Id of the oldest query already read; absent, the most
  *     recent queries.
  * @param limit Number of queries, 500 by default on the server's side.
  */
 export function listHistory(
   filter: HistoryFilter,
+  editor: number | null,
   before?: number,
   limit?: number,
 ): Promise<QueryEntry[]> {
-  return request('GET', pagePath('/api/console/history', filter, before, limit))
+  return request('GET', pagePath('/api/console/history', filter, editor, before, limit))
 }
 
 /**
  * Reads a page of the debug log, in chronological order.
  *
  * @param filter Lines kept.
+ * @param editor Id of the editor whose lines are read; `null`, all of them.
  * @param before Id of the oldest line already read; absent, the most
  *     recent lines.
  * @param limit Number of lines, 500 by default on the server's side.
  */
 export function listDebug(
   filter: DebugFilter,
+  editor: number | null,
   before?: number,
   limit?: number,
 ): Promise<DebugEntry[]> {
-  return request('GET', pagePath('/api/console/debug', filter, before, limit))
+  return request('GET', pagePath('/api/console/debug', filter, editor, before, limit))
 }
 
 /**
- * Clears the user's history.
+ * Path of a list to clear: the elements of `editor`, all of them when
+ * `null`.
+ *
+ * @param path Path of the route.
+ * @param editor Id of the editor.
  */
-export function clearHistory(): Promise<void> {
-  return request('DELETE', '/api/console/history')
+function clearPath(path: string, editor: number | null): string {
+  return editor === null ? path : `${path}?editor=${editor}`
 }
 
 /**
- * Clears the debug log.
+ * Clears the user's history: the queries of an editor, or all of them.
+ *
+ * @param editor Id of the editor; `null`, the whole history.
  */
-export function clearDebug(): Promise<void> {
-  return request('DELETE', '/api/console/debug')
+export function clearHistory(editor: number | null): Promise<void> {
+  return request('DELETE', clearPath('/api/console/history', editor))
+}
+
+/**
+ * Clears the debug log: the lines of an editor, or all of them.
+ *
+ * @param editor Id of the editor; `null`, the whole debug log.
+ */
+export function clearDebug(editor: number | null): Promise<void> {
+  return request('DELETE', clearPath('/api/console/debug', editor))
 }
 
 /**
@@ -154,18 +183,29 @@ export interface ConsoleHandlers {
    */
   onLine: (entry: DebugEntry) => void
   /**
-   * History cleared, from this window or another one.
+   * History cleared, from this window or another one: the queries of an
+   * editor, or all of them (`null`).
    */
-  onHistoryCleared: () => void
+  onHistoryCleared: (editorId: number | null) => void
   /**
-   * Debug log cleared, from this window or another one.
+   * Debug log cleared, from this window or another one: the lines of an
+   * editor, or all of them (`null`).
    */
-  onDebugCleared: () => void
+  onDebugCleared: (editorId: number | null) => void
   /**
    * Events were lost, or the stream reopened after a break: what was
    * received may be incomplete.
    */
   onGap: () => void
+}
+
+/**
+ * Elements cleared, read from their event.
+ *
+ * @param event Event `history-cleared` or `debug-cleared`.
+ */
+function clearedOf(event: Event): ConsoleCleared {
+  return JSON.parse((event as MessageEvent<string>).data) as ConsoleCleared
 }
 
 /**
@@ -191,8 +231,12 @@ export function followConsole(handlers: ConsoleHandlers): () => void {
   source.addEventListener('debug', (event) => {
     handlers.onLine(JSON.parse((event as MessageEvent<string>).data) as DebugEntry)
   })
-  source.addEventListener('history-cleared', () => handlers.onHistoryCleared())
-  source.addEventListener('debug-cleared', () => handlers.onDebugCleared())
+  source.addEventListener('history-cleared', (event) => {
+    handlers.onHistoryCleared(clearedOf(event).editor_id)
+  })
+  source.addEventListener('debug-cleared', (event) => {
+    handlers.onDebugCleared(clearedOf(event).editor_id)
+  })
   source.addEventListener('lagged', () => handlers.onGap())
   return () => source.close()
 }

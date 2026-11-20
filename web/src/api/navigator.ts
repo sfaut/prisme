@@ -15,13 +15,17 @@ import type { CatalogEvent } from './generated/CatalogEvent'
  *
  * @param connectionId Id of the connection.
  * @param onEvent Called for each message received.
+ * @param editorId Editor that reads the catalog, whose console receives its
+ *     queries; `null`, outside the editors.
  * @throws {ApiError} If the connection to the target server fails.
  */
 export async function streamCatalog(
   connectionId: number,
   onEvent: (event: CatalogEvent) => void,
+  editorId: number | null = null,
 ): Promise<void> {
-  const response = await fetchApi(`/api/connections/${connectionId}/catalog`)
+  const editor = editorId === null ? '' : `?editor=${editorId}`
+  const response = await fetchApi(`/api/connections/${connectionId}/catalog${editor}`)
   if (!response.ok || response.body === null) {
     throw await toApiError(response)
   }

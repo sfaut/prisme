@@ -13,7 +13,7 @@
   (F-06). The widths of the sections are those of the tab shown.
 
   The engine runs in a Worker of the page (`pivotClient.ts`), one per
-  result, while the panel is open; folded, the panel computes nothing and
+  result, while the panel is open; closed, the panel computes nothing and
   stops its Worker (F-02). During the reception, the rows are copied as they
   arrive, and the table follows them (F-07): a computation starts once the
   previous one has ended, at most once per delay, then a last one at the end
@@ -42,6 +42,7 @@ import {
   type Cell,
   type QueryResult,
   type QueryTab,
+  failed,
   formatDuration,
   formatRowCount,
   shownResult,
@@ -100,20 +101,17 @@ const props = defineProps<{
    */
   tab: QueryTab | undefined
   /**
-   * Is the panel unfolded?
+   * Is the panel open?
    */
   open: boolean
   /**
    * Connection of the editor.
    */
   connectionId: number
-}>()
-
-const emit = defineEmits<{
   /**
-   * The user folds the panel.
+   * Id of the editor, whose console receives the queries of the catalog.
    */
-  collapse: []
+  editorId: number
 }>()
 
 /**
@@ -123,10 +121,10 @@ const result = computed(() => (props.tab ? shownResult(props.tab) : null))
 
 /**
  * Has the result columns to analyse? Not without columns, nor in error
- * (F-08).
+ * (F-08); a query stopped by the user gives the rows it received.
  */
 const analysable = computed(
-  () => props.tab?.error === null && (result.value?.columns.length ?? 0) > 0,
+  () => props.tab !== undefined && !failed(props.tab) && (result.value?.columns.length ?? 0) > 0,
 )
 
 /**
@@ -305,7 +303,7 @@ watch(
   source,
   (shown) => {
     if (shown !== null) {
-      catalog.load(props.connectionId).catch(() => {})
+      catalog.load(props.connectionId, false, props.editorId).catch(() => {})
     }
   },
   { immediate: true },
@@ -709,9 +707,13 @@ const groupsText = computed(() => {
 </script>
 
 <template>
-  <section class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-4 pt-1 pb-3" aria-label="Pivoteur">
-    <panel-header title="Pivoteur" side="bottom" @collapse="emit('collapse')">
-      <template v-if="analysable" #actions>
+  <section
+    class="flex min-h-0 min-w-0 flex-1 flex-col gap-2 px-4 pt-2 pb-3"
+    aria-label="Pivoteur"
+    :inert="!open"
+  >
+    <panel-header title="Pivoteur">
+      <template v-if="open && analysable" #actions>
         <pivot-layout-popover v-model:config="config" :names="result?.columns ?? []" />
       </template>
     </panel-header>
@@ -719,7 +721,7 @@ const groupsText = computed(() => {
       v-if="!analysable"
       class="flex flex-1 items-center justify-center text-center text-fg-secondary"
     >
-      Rien à analyser
+      Pas de données
     </p>
     <!-- Its sections take the widths of each tab as they start. -->
     <pivot-sections

@@ -13,7 +13,9 @@
 //! 4. `done`, or `error` if a read fails.
 //!
 //! The interface therefore shows the databases almost at once, then the
-//! objects and their details as they arrive. The database chosen in the
+//! objects and their details as they arrive. `?editor=` names the editor
+//! whose navigator reads the catalog: its queries go to the console of that
+//! editor. The database chosen in the
 //! connection is read first, the system databases (`information_schema`,
 //! `mysql`...) last.
 
@@ -21,14 +23,14 @@ use std::convert::Infallible;
 
 use axum::Router;
 use axum::body::Body;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::header::CONTENT_TYPE;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use futures_util::stream;
 use prisme_connectors::mysql::catalog::{self, SchemaObjects, TableDetails};
 use prisme_connectors::mysql::{self, Connection, Flavor, ServerInfo};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 use tracing::Instrument;
 use ts_rs::TS;
@@ -78,6 +80,14 @@ pub enum CatalogEvent {
     Done,
 }
 
+/// Editor whose navigator reads a catalog, read from the query string
+/// (`editor=3`).
+#[derive(Debug, Default, Deserialize)]
+struct CatalogQuery {
+    /// Id of the editor; absent, the queries go outside the editors.
+    editor: Option<i64>,
+}
+
 /// Routes of the navigator, to merge into the API router.
 pub fn routes() -> Router<AppState> {
     Router::new().route("/api/connections/{id}/catalog", get(stream_catalog))
@@ -91,6 +101,7 @@ async fn stream_catalog(
     State(state): State<AppState>,
     user: CurrentUser,
     Path(id): Path<i64>,
+    Query(query): Query<CatalogQuery>,
 ) -> Result<Response, ApiError> {
     let user_id = user.id;
     let (target, name) = state
@@ -102,7 +113,7 @@ async fn stream_catalog(
         .await?
         .ok_or(ApiError::NotFound)?;
     // The queries of the catalog go to the history of the queries.
-    let span = console::sql_span(user_id, &name, Action::Navigator);
+    let span = console::sql_span(user_id, &name, query.editor, Action::Navigator);
     let mut connection = mysql::connect(&target).instrument(span.clone()).await?;
     let server = mysql::server_info(&mut connection)
         .instrument(span.clone())

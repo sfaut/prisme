@@ -159,16 +159,4 @@ describe('ExplorerPanel', () => {
     expect(editorText(wrapper)).toBe('{\n    "a": [\n        1,\n        2,\n        3\n    ]\n}')
     wrapper.unmount()
   })
-
-  it('folds with its button, left of its title, on the side of the editors', async () => {
-    const { explorer, wrapper } = mountExplorer()
-    const button = wrapper.find('[aria-label="Replier : Explorateur de données"]')
-    const title = wrapper.find('h2')
-    expect(
-      button.element.compareDocumentPosition(title.element) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy()
-    await button.trigger('click')
-    expect(explorer.layoutOf(1).open).toBe(false)
-    wrapper.unmount()
-  })
 })

@@ -118,6 +118,11 @@ pub struct ExportRequest {
     #[serde(default)]
     #[ts(optional)]
     pub expected_rows: Option<u64>,
+    /// Editor that starts the export: its queries go to the console of that
+    /// editor.
+    #[serde(default)]
+    #[ts(optional)]
+    pub editor_id: Option<i64>,
 }
 
 /// State of an export.
@@ -258,6 +263,8 @@ pub(crate) struct Running {
     info: ExportInfo,
     /// User of the export.
     user_id: i64,
+    /// Editor that started it, `None` outside an editor.
+    editor_id: Option<i64>,
     /// Rows written.
     rows: AtomicU64,
     /// Bytes written.
@@ -297,7 +304,12 @@ impl Running {
     /// Closes the export's connection on the server (`KILL CONNECTION`),
     /// which stops its query, even when the order arrives before the query.
     async fn interrupt(&self) {
-        let span = console::sql_span(self.user_id, &self.info.connection_name, Action::Cancel);
+        let span = console::sql_span(
+            self.user_id,
+            &self.info.connection_name,
+            self.editor_id,
+            Action::Cancel,
+        );
         let killing = mysql::kill_connection(&self.target, self.connection_id).instrument(span);
         if let Err(error) = killing.await {
             tracing::warn!(
@@ -477,7 +489,8 @@ async fn start_export(
         target.database_name.clone_from(database);
     }
 
-    let span = console::sql_span(user_id, &connection_name, Action::Export);
+    let editor_id = request.editor_id;
+    let span = console::sql_span(user_id, &connection_name, editor_id, Action::Export);
     let mut connection = mysql::connect(&target).instrument(span.clone()).await?;
     let server = match mysql::server_info(&mut connection)
         .instrument(span.clone())
@@ -523,6 +536,7 @@ async fn start_export(
     let running = Arc::new(Running {
         info: export.clone(),
         user_id,
+        editor_id,
         rows: AtomicU64::new(0),
         bytes: AtomicU64::new(0),
         cancelled: AtomicBool::new(false),
