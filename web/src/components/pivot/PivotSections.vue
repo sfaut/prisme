@@ -981,31 +981,34 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
                 >
                   {{ element.label }}
                 </span>
-                <ui-button
-                  :icon="element.hidden ? EyeOff : Eye"
-                  variant="ghost"
-                  :tone="element.hidden ? 'primary' : 'neutral'"
-                  small
-                  :aria-pressed="element.hidden"
-                  :aria-label="`${element.hidden ? 'Afficher' : 'Masquer'} : ${element.label}`"
-                  v-tooltip="
-                    element.hidden
-                      ? 'Afficher : l’élément revient dans le calcul'
-                      : 'Masquer : l’élément sort du calcul et garde ses réglages'
-                  "
-                  @click="toggleHidden({ zone, index })"
-                />
-                <ui-dropdown-menu
-                  :groups="elementGroups(zone, index)"
-                  @close-auto-focus="onMenuClosed"
-                >
+                <!-- The buttons side by side, without the gap that sets the name apart. -->
+                <span class="flex items-center">
                   <ui-button
-                    :icon="EllipsisVertical"
+                    :icon="element.hidden ? EyeOff : Eye"
                     variant="ghost"
+                    :tone="element.hidden ? 'primary' : 'neutral'"
                     small
-                    :aria-label="`Actions : ${element.label}`"
+                    :aria-pressed="element.hidden"
+                    :aria-label="`${element.hidden ? 'Afficher' : 'Masquer'} : ${element.label}`"
+                    v-tooltip="
+                      element.hidden
+                        ? 'Afficher : l’élément revient dans le calcul'
+                        : 'Masquer : l’élément sort du calcul et garde ses réglages'
+                    "
+                    @click="toggleHidden({ zone, index })"
                   />
-                </ui-dropdown-menu>
+                  <ui-dropdown-menu
+                    :groups="elementGroups(zone, index)"
+                    @close-auto-focus="onMenuClosed"
+                  >
+                    <ui-button
+                      :icon="EllipsisVertical"
+                      variant="ghost"
+                      small
+                      :aria-label="`Actions : ${element.label}`"
+                    />
+                  </ui-dropdown-menu>
+                </span>
               </li>
               <li v-if="elements[zone].length === 0" class="px-2 py-1 text-sm text-fg-faint">
                 Glisser une colonne ici
