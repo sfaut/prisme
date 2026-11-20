@@ -404,7 +404,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   font-weight: var(--font-weight-medium);
   color: var(--color-fg-secondary);
   cursor: pointer;
