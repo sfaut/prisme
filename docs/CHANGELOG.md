@@ -2,6 +2,49 @@
 
 Changelogs of the published versions of Prisme, most recent first. Each entry is also the notes of its GitHub release. The interface is in French: its labels are quoted as they appear, with a translation.
 
+## v0.14.0 (2026-11-20)
+
+### 🚀 Launch
+
+We are proud to announce Prisme v0.14.0. Each editor's tab now has an activity bar, which opens and closes its panels with a click or a Ctrl-K chord, and its own console, which shows only what this editor does. A single query stops from its result tab, keeping the rows already received, and the editor's tab shows the progress of its last run. Tabs, the top bar and the panels get a lighter look.
+
+### ✨ New features
+
+- Activity bar: on the left edge of each editor's tab, one button per panel, **Navigateur d’objets** (Object navigator), **Éditeur** (Editor), **Résultat** (Result), **Pivoteur**, **Explorateur de données** (Data explorer) and **Console**, opens or closes it; a closed panel takes no room. Ctrl-K (Cmd-K), then N, E, R, P, X or C, does the same from the keyboard. **Répartir les volets** (Share the panels), at the bottom of the bar or Ctrl-K then =, gives the open panels equal heights, and the side panels and the console their default size. The tooltips of the bar name the panel and give its shortcut, on the right of the button.
+- Panels: the editor, the results and the Pivoteur each stand under a header with their title, like the other panels. They open and close with a short animation, unless reduced motion is asked. Dragging a line below the smallest size of its panel closes it.
+- Console: each editor has its own console, at the bottom of its tab. It shows the queries of its session, of its object navigator and of its full exports, the messages written for it, and the notifications shown while it was on screen. **Tous les éditeurs** (All the editors) shows those of every editor, with the queries sent outside the editors (connection test). **Effacer** (Clear) clears what the console shows.
+- Results: while a query runs or waits for its turn, its result tab shows a stop button. The query stops alone, and the other queries of the run go on. Stopped during the reception, the result keeps the rows received, marked **Résultat tronqué** (Truncated result), for the grid, the exports and the Pivoteur; stopped before its first row, the tab reads **Requête arrêtée.** (Query stopped.).
+- Console: the history shows a query stopped by the user as **arrêtée par l’utilisateur** (stopped by the user), in the warning color, apart from the failures.
+- Editors: the tab of an editor shows the progress of its last run, with a dot and a bar, as a result tab does: running, done, stopped or failed.
+- A new editor starts its object navigator and its data explorer from their default sizes.
+- Top bar: **Nouveau** (New), which opens an editor, moves to its right, in the primary color, and the theme is chosen with a switch of three icons: light, system and dark.
+- Tabs: the editor, result and console tabs share one look, a lightly rounded pill, the active one on a light background, with a line between two inactive tabs. Renaming a tab keeps the size of its label, and the field follows the name typed.
+
+### 🗑️ Removed features
+
+- The fold buttons of the panels' headers, the rails of the closed panels and the double click on the lines between panels: the activity bar opens and closes the panels.
+
+### 🐞 Bug fixes
+
+- The focus ring of the field that renames a tab showed cut at the top and bottom, at a 100 % display scale.
+
+### 🔒 Security
+
+- Development tools: `typescript-eslint` 8.73.0 takes `minimatch` 11, patched for [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249). The advisory remains for `js-beautify`, a dependency of the test tools that requires `minimatch` 10, as does [GHSA-3g3m-2fjr-6pw4](https://github.com/advisories/GHSA-3g3m-2fjr-6pw4) of `glob`; nothing reaches the executable.
+
+### ⚙️ Internal improvements
+
+- Internal database: each query of the history and each line of the debug log records its editor (migration 0028), and a query stopped by the user is marked as such (migration 0027, which also marks the stops already saved).
+- API: the catalog of a connection (`?editor=`), a full export and a notification of the interface (`editor_id`) name the editor whose console receives them; the history and the debug log are read and cleared per editor (`?editor=`).
+- Dependencies:
+  - `@lucide/vue` 1.73.0 → 1.76.0, `clap` 4.6.7 → 4.6.8, `eslint-plugin-oxlint` 1.93.0 → 1.94.0, `oxlint` 1.93.0 → 1.94.0, `vitest` 5.1.0 → 5.1.1;
+  - `rusqlite` stays at 0.41.1: `rusqlite_migration` 2.7.0 does not accept 0.43.0 yet; `typescript` stays at 6.0: `typescript-eslint` still requires a version below 6.1.
+
+### 📝 Documentation
+
+- README: the activity bar and its shortcuts, the console of each editor, the stop of a single query, the progress on the editor's tab, the new top bar.
+- Developer guide: the layout of the view of an editor, the chords, the console per editor in the API, the tabs and the tooltips with a shortcut.
+
 ## v0.13.0 (2026-11-16)
 
 ### 🚀 Launch
