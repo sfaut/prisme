@@ -134,6 +134,11 @@ Steps of the work on the Pivoteur, the local pivot table under the result grid. 
 - ✅ Checks: `cargo test`, tests of the interface, screen in light mode
 - ✅ Documented: `README.md`, `docs/DEVELOPER.md`
 - ✅ Documented in the specification: F-48, its acceptance
+- ✅ Hidden elements (ticket #39, F-49): an element of the rows, the columns, the measures or the filters is hidden and shown again by its eye or by its menu ⋮ (**Masquer**, **Afficher**, group **Élément**); the engine computes as if it were removed, the element keeping its place, its name, its settings, its sorts and its widths; a hidden filter has no effect, and with every measure hidden the table shows as without measures
+- ✅ Saved with the tab (`tab_pivot.rs`, generated types): a configuration saved before reads with every element shown
+- ✅ Checks: `cargo test`, tests of the interface, screen in light and dark modes, reload
+- ✅ Documented: `README.md`, `docs/DEVELOPER.md`
+- ✅ Documented in the specification: F-49, its acceptance, A12
 - ⬜ Filters by an expression (F-19), with the dialect: an expression without an aggregate filters the rows, with one the groups; later, a custom expression in a filter on values (F-21), `LIKE` and relative dates
 - ⬜ Lot 1, next slices (ANSI SQL): dialect (parsed by `sqlparser`, typing, ANSI catalog), calendar, editor, nested date levels, computed columns, filters, fold, caches, copy, CSV, conformance
 - ⬜ Lot 2: complements (detail of a cell, measures in rows)

@@ -122,6 +122,11 @@ pub struct PivotLevel {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub width: Option<u32>,
+    /// Is the level hidden? It keeps its place and its settings, and the
+    /// table is computed without it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub hidden: bool,
 }
 
 /// Measure of the configuration.
@@ -151,6 +156,11 @@ pub struct NamedMeasure {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub share: Option<PivotShare>,
+    /// Is the measure hidden? It keeps its place and its settings, and the
+    /// table is computed without it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[ts(as = "Option<bool>", optional)]
+    pub hidden: bool,
 }
 
 /// Share of a total that a measure shows: each value as the percentage it
@@ -313,6 +323,11 @@ pub enum PivotFilter {
         /// row.
         #[serde(default)]
         upper: String,
+        /// Is the filter hidden? It keeps its place and its settings, and has
+        /// no effect.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[ts(as = "Option<bool>", optional)]
+        hidden: bool,
     },
     /// Keeps the rows of the groups whose measure passes a test.
     Measure {
@@ -347,6 +362,11 @@ pub enum PivotFilter {
         /// Precision of that level: a column can be a level several times.
         #[serde(default)]
         level_precision: DatePrecision,
+        /// Is the filter hidden? It keeps its place and its settings, and has
+        /// no effect.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[ts(as = "Option<bool>", optional)]
+        hidden: bool,
     },
 }
 
@@ -660,6 +680,7 @@ mod tests {
                 values: vec![Some("Nord".to_string()), None],
                 operand: "1".to_string(),
                 upper: "2".to_string(),
+                hidden: false,
             }
         );
         assert_eq!(
@@ -674,6 +695,7 @@ mod tests {
                 level: Some(1),
                 level_precision: DatePrecision::Month,
                 precision: DatePrecision::None,
+                hidden: false,
             }
         );
         assert!(matches!(
@@ -700,6 +722,7 @@ mod tests {
                 values: vec![Some("Nord".to_string()), None],
                 operand: String::new(),
                 upper: String::new(),
+                hidden: false,
             }
         );
         assert_eq!(
@@ -714,6 +737,7 @@ mod tests {
                 level: Some(1),
                 level_precision: DatePrecision::None,
                 precision: DatePrecision::None,
+                hidden: false,
             }
         );
     }
@@ -776,6 +800,23 @@ mod tests {
                 None,
             ]
         );
+        assert_eq!(serde_json::to_string(&config).unwrap(), saved);
+    }
+
+    #[test]
+    fn keeps_the_hidden_elements_of_a_configuration() {
+        let saved = r#"{"rows":[{"column":1,"name":"","precision":"none","hidden":true}],"columns":[{"column":2,"name":"","precision":"none"}],"measures":[{"aggregate":"sum","column":3,"name":"","hidden":true}],"filters":[{"kind":"column","column":0,"name":"","precision":"none","condition":"in_list","values":["Nord"],"operand":"","upper":"","hidden":true},{"kind":"measure","aggregate":"count_star","column":0,"name":"","condition":"greater","operand":"1","upper":"","level_precision":"none","hidden":true}]}"#;
+        let config: PivotConfig = serde_json::from_str(saved).unwrap();
+        assert!(config.rows[0].hidden);
+        assert!(!config.columns[0].hidden);
+        assert!(config.measures[0].hidden);
+        assert!(config.filters.iter().all(|filter| matches!(
+            filter,
+            PivotFilter::Column { hidden: true, .. }
+        ) || matches!(
+            filter,
+            PivotFilter::Measure { hidden: true, .. }
+        )));
         assert_eq!(serde_json::to_string(&config).unwrap(), saved);
     }
 

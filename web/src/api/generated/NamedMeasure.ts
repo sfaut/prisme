@@ -37,4 +37,9 @@ export type NamedMeasure = {
    * its values; none for the values as they are.
    */
   share?: PivotShare;
+  /**
+   * Is the measure hidden? It keeps its place and its settings, and the
+   * table is computed without it.
+   */
+  hidden?: boolean;
 };

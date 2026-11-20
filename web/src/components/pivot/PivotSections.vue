@@ -31,6 +31,9 @@
   An element takes a name by its menu ("Nommer…") or a double click on its label
   (F-17): Enter confirms, Escape cancels, an empty name gives back its
   expression, which the tooltip of a named element recalls.
+  An element is hidden, and shown again, by its eye or by its menu
+  ("Masquer", "Afficher"): greyed, it keeps its place and its settings, and the
+  table is computed without it, a hidden filter having no effect.
 
   A column or a measure dropped into the filters, or a measure by its menu
   ("Filtrer sur cette mesure"), gives a filter, whose settings open beside it
@@ -43,6 +46,8 @@ import {
   ArrowLeftRight,
   Columns3,
   EllipsisVertical,
+  Eye,
+  EyeOff,
   Funnel,
   PenLine,
   Plus,
@@ -83,6 +88,7 @@ import {
   elementExpression,
   elementLabel,
   filterable,
+  isHidden,
   isRefused,
   measurePrecision,
   placeColumn,
@@ -96,6 +102,7 @@ import {
   withAggregate,
   withConcat,
   withFilter,
+  withHidden,
   withName,
   withPrecision,
   withShare,
@@ -240,6 +247,10 @@ interface ZoneElement {
    * a change of its aggregate or of the type of its column.
    */
   invalid: boolean
+  /**
+   * Is the element hidden? Greyed, it stays in its zone, and the table is computed without it.
+   */
+  hidden: boolean
 }
 
 /**
@@ -252,6 +263,7 @@ const elements = computed<Record<PivotZone, ZoneElement[]>>(() => {
       label: elementLabel(config.value, { zone, index }, props.names, props.types),
       expression: elementExpression(config.value, { zone, index }, props.names, props.types),
       invalid: 'condition' in element && isRefused(element, props.types),
+      hidden: isHidden(element),
     }))
   return {
     rows: shown('rows'),
@@ -294,7 +306,7 @@ function addItems(column: number): MenuItem[] {
 }
 
 /**
- * Choices that set, name, move or remove an element, the settings of a filter or of a
+ * Choices that set, name, move, hide or remove an element, the settings of a filter or of a
  * `GROUP_CONCAT` first.
  *
  * @param zone Zone of the element.
@@ -335,12 +347,28 @@ function elementItems(zone: PivotZone, index: number): MenuItem[] {
       onSelect: () => place(column, { zone: other, index: elements.value[other].length }, from),
     })
   }
+  const hidden = isHidden(config.value[zone][index])
+  items.push({
+    label: hidden ? 'Afficher' : 'Masquer',
+    icon: hidden ? Eye : EyeOff,
+    onSelect: () => toggleHidden(from),
+  })
   items.push({
     label: 'Retirer',
     icon: X,
     onSelect: () => (config.value = removeElement(config.value, from)),
   })
   return items
+}
+
+/**
+ * Hides an element, or shows it again.
+ *
+ * @param place Place of the element.
+ */
+function toggleHidden(place: ZonePlace): void {
+  const hidden = isHidden(config.value[place.zone][place.index])
+  config.value = withHidden(config.value, place, !hidden)
 }
 
 /**
@@ -913,7 +941,10 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
                 :key="`${zone}-${index}`"
                 data-element
                 class="pivot-line pivot-element group"
-                :class="[markerClass(zone, index), { invalid: element.invalid }]"
+                :class="[
+                  markerClass(zone, index),
+                  { invalid: element.invalid, masked: element.hidden },
+                ]"
                 :draggable="!isNaming(zone, index)"
                 @dragstart="onDragStart($event, element.column, { zone, index })"
                 @dragend="onDragEnd"
@@ -950,6 +981,20 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
                 >
                   {{ element.label }}
                 </span>
+                <ui-button
+                  :icon="element.hidden ? EyeOff : Eye"
+                  variant="ghost"
+                  :tone="element.hidden ? 'primary' : 'neutral'"
+                  small
+                  :aria-pressed="element.hidden"
+                  :aria-label="`${element.hidden ? 'Afficher' : 'Masquer'} : ${element.label}`"
+                  v-tooltip="
+                    element.hidden
+                      ? 'Afficher : l’élément revient dans le calcul'
+                      : 'Masquer : l’élément sort du calcul et garde ses réglages'
+                  "
+                  @click="toggleHidden({ zone, index })"
+                />
                 <ui-dropdown-menu
                   :groups="elementGroups(zone, index)"
                   @close-auto-focus="onMenuClosed"
@@ -1059,6 +1104,11 @@ function markerClass(zone: PivotZone, index: number): Record<string, boolean> {
 
   &.invalid {
     border-color: var(--color-error);
+  }
+
+  /* A hidden element, greyed: its name takes the color of its mark. */
+  &.masked {
+    color: var(--color-fg-faint);
   }
 }
 

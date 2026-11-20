@@ -33,4 +33,9 @@ export type PivotLevel = {
    * one. The width follows the level wherever it goes.
    */
   width?: number;
+  /**
+   * Is the level hidden? It keeps its place and its settings, and the
+   * table is computed without it.
+   */
+  hidden?: boolean;
 };

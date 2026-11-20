@@ -1047,6 +1047,7 @@ mod tests {
                     descending: true,
                     without_subtotal: true,
                     width: Some(30),
+                    hidden: true,
                 }],
                 sort_lines: Some(PivotValueSort {
                     path: vec![Some("2026".to_string()), None],

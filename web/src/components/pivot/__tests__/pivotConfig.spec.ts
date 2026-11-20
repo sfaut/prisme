@@ -42,6 +42,8 @@ import {
   sameTableLayout,
   sameTarget,
   sectionWidth,
+  shownConfig,
+  storedIndex,
   takesPrecision,
   takesShare,
   withAggregate,
@@ -51,6 +53,7 @@ import {
   withFilter,
   withForm,
   withGrandTotal,
+  withHidden,
   withLabelWidth,
   withLevelSort,
   withName,
@@ -1996,5 +1999,111 @@ describe('the widths', () => {
     expect(fitted.labels_width).toBe(70)
     const lost = ['region', 'annee', 'trimestre', 'montant']
     expect(fittedConfig({ fields: NAMES, config }, lost, []).column_widths).toBeUndefined()
+  })
+})
+
+describe('the hidden elements', () => {
+  /**
+   * Filter of the regions on Nord.
+   */
+  const NORD: PivotColumnFilter = {
+    kind: 'column',
+    column: 0,
+    name: '',
+    precision: 'none',
+    condition: 'in_list',
+    values: ['Nord'],
+    operand: '',
+    upper: '',
+  }
+
+  /**
+   * Lines by region and ville, columns by annee then trimestre, two measures, a filter: the lines
+   * rank by the column 2025 T1 of the second measure, the columns by the line Nord, and the column
+   * 2025 T1 of each measure has its width.
+   */
+  const SET: PivotConfig = {
+    rows: [level(0), level(1)],
+    columns: [level(2), level(3)],
+    measures: [measure('sum', 4), measure('count', 4)],
+    filters: [NORD],
+    sort_lines: { path: ['2025', 'T1'], measure: 1, descending: true },
+    sort_columns: { path: ['Nord'], measure: 0, descending: false },
+    column_widths: [
+      { path: ['2025', 'T1'], measure: 0, width: 30 },
+      { path: ['2025', 'T1'], measure: 1, width: 40 },
+    ],
+  }
+
+  it('gives the configuration itself while no element is hidden', () => {
+    expect(shownConfig(SET)).toBe(SET)
+  })
+
+  it('computes the table without them, a hidden filter having no effect', () => {
+    const hidden = withHidden(
+      withHidden(
+        withHidden(SET, { zone: 'rows', index: 1 }, true),
+        { zone: 'measures', index: 0 },
+        true,
+      ),
+      { zone: 'filters', index: 0 },
+      true,
+    )
+    const shown = shownConfig(hidden)
+    expect(shown.rows).toEqual([level(0)])
+    expect(shown.measures).toEqual([measure('count', 4)])
+    expect(shown.filters).toEqual([])
+    expect(engineRequest(shown).measures).toEqual([{ aggregate: 'count', column: 4 }])
+  })
+
+  it('keeps their place, their settings, their sorts and their widths', () => {
+    const hidden = withHidden(SET, { zone: 'columns', index: 1 }, true)
+    expect(hidden.columns).toEqual([level(2), { ...level(3), hidden: true }])
+    expect(hidden.sort_lines).toEqual(SET.sort_lines)
+    expect(hidden.column_widths).toEqual(SET.column_widths)
+    expect(withHidden(hidden, { zone: 'columns', index: 1 }, false)).toEqual(SET)
+  })
+
+  it('names the measures of the sorts and the widths among those shown', () => {
+    const shown = shownConfig(withHidden(SET, { zone: 'measures', index: 0 }, true))
+    expect(shown.sort_lines).toEqual({ path: ['2025', 'T1'], measure: 0, descending: true })
+    expect(shown.sort_columns).toEqual(SET.sort_columns)
+    expect(shown.column_widths).toEqual([{ path: ['2025', 'T1'], measure: 0, width: 40 }])
+    const second = shownConfig(withHidden(SET, { zone: 'measures', index: 1 }, true))
+    expect(second.sort_lines).toBeUndefined()
+    expect(second.column_widths).toEqual([{ path: ['2025', 'T1'], measure: 0, width: 30 }])
+  })
+
+  it('ranks the columns by no line once every measure is hidden', () => {
+    const none = withHidden(
+      withHidden(SET, { zone: 'measures', index: 0 }, true),
+      { zone: 'measures', index: 1 },
+      true,
+    )
+    const shown = shownConfig(none)
+    expect(shown.measures).toEqual([])
+    expect(shown.sort_columns).toBeUndefined()
+    expect(hasTable(shown)).toBe(true)
+  })
+
+  it('finds the place of an element the table names among those shown', () => {
+    const hidden = withHidden(SET, { zone: 'measures', index: 0 }, true)
+    expect(storedIndex(hidden, 'measures', 0)).toBe(1)
+    expect(storedIndex(hidden, 'rows', 1)).toBe(1)
+    expect(storedIndex(SET, 'measures', 1)).toBe(1)
+  })
+
+  it('stays hidden when it moves, and leaves with its column', () => {
+    const hidden = withHidden(SET, { zone: 'rows', index: 1 }, true)
+    const moved = placeColumn(
+      hidden,
+      1,
+      'sum',
+      { zone: 'columns', index: 0 },
+      { zone: 'rows', index: 1 },
+    )
+    expect(moved.columns[0]).toEqual({ ...level(1), hidden: true })
+    const lost = ['region', 'annee', 'trimestre', 'montant']
+    expect(fittedConfig({ fields: NAMES, config: hidden }, lost, []).rows).toEqual([level(0)])
   })
 })

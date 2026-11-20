@@ -44,6 +44,11 @@ export type PivotFilter = {
    * row.
    */
   upper: string;
+  /**
+   * Is the filter hidden? It keeps its place and its settings, and has
+   * no effect.
+   */
+  hidden?: boolean;
 } | {
   "kind": "measure";
   /**
@@ -88,4 +93,9 @@ export type PivotFilter = {
    * Precision of that level: a column can be a level several times.
    */
   level_precision: DatePrecision;
+  /**
+   * Is the filter hidden? It keeps its place and its settings, and has
+   * no effect.
+   */
+  hidden?: boolean;
 };

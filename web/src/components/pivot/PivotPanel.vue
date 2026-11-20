@@ -36,6 +36,10 @@
   other refusal of the engine shows its message above the table, which keeps its
   last computation (F-22); a Worker that stops is replaced at the next change. A
   result without columns, or in error, has nothing to analyse (F-08).
+
+  The table reads the configuration without its hidden elements
+  (`shownConfig`), and names them by their position among those shown: a sort
+  or a width set on the table goes back to its element (`storedIndex`).
 -->
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, shallowRef, toRaw, watch } from 'vue'
@@ -75,6 +79,8 @@ import {
   sameOrder,
   sameRequest,
   sameTableLayout,
+  shownConfig,
+  storedIndex,
   withColumnWidth,
   withLabelWidth,
   withLevelSort,
@@ -200,6 +206,12 @@ const config = computed<PivotConfig>({
 })
 
 /**
+ * Configuration the table reads: that of the tab shown, without its hidden
+ * elements.
+ */
+const visibleConfig = computed(() => shownConfig(config.value))
+
+/**
  * Settings of the user: the longest text of a `GROUP_CONCAT`, which the
  * request carries, and the delay between two computations during the
  * reception.
@@ -218,7 +230,7 @@ const refreshMs = computed(() => settings.settings?.pivot_refresh_ms ?? DEFAULT_
  */
 const request = computed<PivotRequest>((previous) => {
   const maxBytes = settings.settings?.concat_max_bytes ?? DEFAULT_CONCAT_MAX_BYTES
-  const next = engineRequest(config.value, maxBytes)
+  const next = engineRequest(visibleConfig.value, maxBytes)
   return previous !== undefined && sameRequest(previous, next) ? previous : next
 })
 
@@ -228,7 +240,7 @@ const request = computed<PivotRequest>((previous) => {
  * it.
  */
 const order = computed<PivotOrder>((previous) => {
-  const next = engineOrder(config.value)
+  const next = engineOrder(visibleConfig.value)
   return previous !== undefined && sameOrder(previous, next) ? previous : next
 })
 
@@ -238,7 +250,7 @@ const order = computed<PivotOrder>((previous) => {
  * it.
  */
 const layout = computed<PivotLayout>((previous) => {
-  const next = engineLayout(config.value)
+  const next = engineLayout(visibleConfig.value)
   return previous !== undefined && sameTableLayout(previous, next) ? previous : next
 })
 
@@ -246,40 +258,54 @@ const layout = computed<PivotLayout>((previous) => {
  * Inverts the direction of a level.
  *
  * @param axis Axis of the level.
- * @param level Position of the level.
+ * @param level Position of the level among those shown.
  */
 function sortLevel(axis: PivotAxis, level: number): void {
-  config.value = withLevelSort(config.value, axis, level)
+  config.value = withLevelSort(config.value, axis, storedIndex(config.value, axis, level))
+}
+
+/**
+ * Names the measure of a node by its position in its zone.
+ *
+ * @param target Node and measure, by its position among those shown.
+ */
+function storedTarget(target: PivotValueTarget): PivotValueTarget {
+  return { ...target, measure: storedIndex(config.value, 'measures', target.measure) }
 }
 
 /**
  * Changes the sort of an axis by the values of a node of the other axis.
  *
  * @param axis Axis the values rank.
- * @param target Node and measure of the values.
+ * @param target
+ *     Node and measure of the values, by its position among those shown; the columns rank by the
+ *     first measure shown.
  */
 function sortValues(axis: PivotAxis, target: PivotValueTarget): void {
-  config.value = withValueSort(config.value, axis, target)
+  config.value = withValueSort(config.value, axis, axis === 'rows' ? storedTarget(target) : target)
 }
 
 /**
  * Gives a column of values a width, or its default width back.
  *
- * @param target Values of the node of the column, and its measure.
+ * @param target Values of the node of the column, and its measure among those shown.
  * @param width Width, in steps of the spacing scale; `null` for the default width.
  */
 function resizeColumn(target: PivotValueTarget, width: number | null): void {
-  config.value = withColumnWidth(config.value, target, width)
+  config.value = withColumnWidth(config.value, storedTarget(target), width)
 }
 
 /**
  * Gives the labels of the lines a width, or their default width back.
  *
- * @param level Level of the rows whose column it is; `null` for the labels in a single column.
+ * @param level
+ *     Level of the rows whose column it is, by its position among those shown; `null` for the
+ *     labels in a single column.
  * @param width Width, in steps of the spacing scale; `null` for the default width.
  */
 function resizeLabels(level: number | null, width: number | null): void {
-  config.value = withLabelWidth(config.value, level, width)
+  const stored = level === null ? null : storedIndex(config.value, 'rows', level)
+  config.value = withLabelWidth(config.value, stored, width)
 }
 
 /**
@@ -548,7 +574,7 @@ function refusalText(refusal: PivotFailure, refused: PivotConfig): string {
 async function compute(current: PivotClient): Promise<void> {
   const computation = ++computations
   const asked = request.value
-  const named = config.value
+  const named = visibleConfig.value
   const arranged = layout.value
   const targets = engineTargets(named)
   computing.value = true
@@ -599,7 +625,7 @@ function planRefresh(): void {
     // A computation asked meanwhile plans this one again once it has ended.
     if (refreshAsked && !computing.value && client !== null) {
       refreshAsked = false
-      if (hasTable(config.value)) {
+      if (hasTable(visibleConfig.value)) {
         void compute(client)
       }
     }
@@ -627,7 +653,7 @@ function followRows(current: PivotClient): void {
 function endReception(current: PivotClient): void {
   cancelRefresh()
   current.follow()
-  const last = hasTable(config.value) ? compute(current) : Promise.resolve()
+  const last = hasTable(visibleConfig.value) ? compute(current) : Promise.resolve()
   void last.then(() => current.end()).catch(() => undefined)
 }
 
@@ -648,7 +674,7 @@ function update(): void {
   if (client === null || shown === null) {
     return
   }
-  if (!hasTable(config.value)) {
+  if (!hasTable(visibleConfig.value)) {
     computations++
     computing.value = false
     shownTable.value = null
@@ -706,7 +732,7 @@ function readWindow(lines: [number, number], columns: [number, number]): Promise
  */
 const tableConfig = computed(() => {
   const shown = shownTable.value
-  return shown === null || shown.request === request.value ? config.value : shown.config
+  return shown === null || shown.request === request.value ? visibleConfig.value : shown.config
 })
 
 /**
@@ -812,6 +838,12 @@ const groupsText = computed(() => {
         >
           Glissez des colonnes dans les zones Lignes, Colonnes et Mesures, ou ajoutez-les par leur
           menu « + »
+        </p>
+        <p
+          v-else-if="!hasTable(visibleConfig)"
+          class="flex flex-1 items-center justify-center text-center text-balance text-fg-secondary"
+        >
+          Les éléments des zones Lignes, Colonnes et Mesures sont masqués
         </p>
         <div v-else class="flex-1" />
         <ui-status-bar role="status">

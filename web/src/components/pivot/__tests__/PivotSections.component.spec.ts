@@ -198,9 +198,19 @@ describe('PivotSections', () => {
       upper: '',
     }
     await mounted.setProps({ config: { ...CONFIG, columns: CONFIG.rows, filters: [filter] } })
-    expect(elementEntries(mounted, 0)).toEqual(['Nommer…', 'Passer en colonnes', 'Retirer'])
-    expect(elementEntries(mounted, 2)).toEqual(['Nommer…', 'Filtrer sur cette mesure', 'Retirer'])
-    expect(elementEntries(mounted, 3)).toEqual(['Réglages…', 'Nommer…', 'Retirer'])
+    expect(elementEntries(mounted, 0)).toEqual([
+      'Nommer…',
+      'Passer en colonnes',
+      'Masquer',
+      'Retirer',
+    ])
+    expect(elementEntries(mounted, 2)).toEqual([
+      'Nommer…',
+      'Filtrer sur cette mesure',
+      'Masquer',
+      'Retirer',
+    ])
+    expect(elementEntries(mounted, 3)).toEqual(['Réglages…', 'Nommer…', 'Masquer', 'Retirer'])
     await choose(mounted, 1, 'Retirer')
     expect(shownConfig(mounted).columns).toEqual([])
     expect(shownConfig(mounted).rows).toEqual(CONFIG.rows)
@@ -208,6 +218,29 @@ describe('PivotSections', () => {
       await choose(mounted, element, 'Retirer')
     }
     expect(shownConfig(mounted)).toEqual({ rows: [], columns: [], measures: [], filters: [] })
+  })
+
+  it('hides an element by its eye or its menu, and shows it again', async () => {
+    const mounted = mountZones()
+    const eye = () =>
+      mounted.find('[aria-label="Masquer : region"], [aria-label="Afficher : region"]')
+    expect(eye().attributes('aria-pressed')).toBe('false')
+    await eye().trigger('click')
+    expect(shownConfig(mounted).rows).toEqual([{ ...CONFIG.rows[0], hidden: true }])
+    expect(eye().attributes('aria-label')).toBe('Afficher : region')
+    expect(eye().attributes('aria-pressed')).toBe('true')
+    expect(mounted.find('[data-element]').classes()).toContain('masked')
+    expect(elementEntries(mounted, 0)).toEqual([
+      'Nommer…',
+      'Passer en colonnes',
+      'Afficher',
+      'Retirer',
+    ])
+    await choose(mounted, 0, 'Afficher')
+    expect(shownConfig(mounted)).toEqual(CONFIG)
+    expect(mounted.find('[data-element]').classes()).not.toContain('masked')
+    await choose(mounted, 1, 'Masquer')
+    expect(shownConfig(mounted).measures).toEqual([{ ...CONFIG.measures[0], hidden: true }])
   })
 
   it('keeps an element when the drag ends without a drop', async () => {
@@ -573,7 +606,7 @@ describe('PivotSections', () => {
     await nextTick()
     expect(panel().exists()).toBe(false)
     // Its menu opens them again, and offers no filter on it.
-    expect(elementEntries(mounted, 1)).toEqual(['Réglages…', 'Nommer…', 'Retirer'])
+    expect(elementEntries(mounted, 1)).toEqual(['Réglages…', 'Nommer…', 'Masquer', 'Retirer'])
     await choose(mounted, 1, 'Réglages…')
     expect(panel().props('index')).toBe(0)
     // A measure that already is one opens nothing when it takes it again.

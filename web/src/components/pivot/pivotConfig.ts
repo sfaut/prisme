@@ -36,6 +36,10 @@
  * measure dragged there is copied, and a column of the list gives a new filter each time; numbers
  * and dates start on `BETWEEN`, the other columns on the list (`placeFilter`).
  *
+ * An element can be hidden for a while (`withHidden`): it keeps its place, its settings, its sorts
+ * and its widths, and the table reads the configuration without it (`shownConfig`), whose elements
+ * it names by their position among those shown (`storedIndex`).
+ *
  * The configuration is saved with its tab, whose query can change: it keeps the names of the
  * columns it was made for, and follows them in the columns of a new result (`fittedConfig`). Its
  * types are those of the server (`crates/server/src/tab_pivot.rs`).
@@ -315,6 +319,115 @@ export function isEmptyConfig(config: PivotConfig): boolean {
  */
 export function hasTable(config: PivotConfig): boolean {
   return config.rows.length > 0 || config.columns.length > 0 || config.measures.length > 0
+}
+
+/**
+ * Element of a zone, which can be hidden.
+ */
+type PivotElement = PivotLevel | NamedMeasure | PivotFilter
+
+/**
+ * Is an element hidden?
+ *
+ * @param element Element.
+ */
+export function isHidden(element: PivotElement | undefined): boolean {
+  return element?.hidden === true
+}
+
+/**
+ * Position of each element of a zone among those shown.
+ *
+ * @param elements Elements of the zone.
+ * @returns For each element, its position among those shown, -1 when it is hidden.
+ */
+function shownPositions(elements: PivotElement[]): number[] {
+  let shown = 0
+  return elements.map((element) => (isHidden(element) ? -1 : shown++))
+}
+
+/**
+ * Configuration the table reads: the one given, without its hidden elements, whose sorts and
+ * widths stay. These name the measures by their position among the measures shown; those of a
+ * hidden measure wait for it. The values of the nodes they name stay as they are: under a hidden
+ * level, a node the table no longer holds ranks nothing and takes no width, until the level comes
+ * back. The columns rank by the first measure shown.
+ *
+ * @param config Configuration.
+ * @returns The configuration itself when no element is hidden.
+ */
+export function shownConfig(config: PivotConfig): PivotConfig {
+  const zones = [config.rows, config.columns, config.measures, config.filters]
+  if (!zones.some((elements) => elements.some(isHidden))) {
+    return config
+  }
+  const shown = <T extends PivotElement>(elements: T[]) =>
+    elements.filter((element) => !isHidden(element))
+  const positions = shownPositions(config.measures)
+  const position = (measure: number) => positions[measure] ?? -1
+  const lines = config.sort_lines
+  const measures = shown(config.measures)
+  const widths = (config.column_widths ?? []).flatMap((width): PivotColumnWidth[] =>
+    position(width.measure) >= 0 ? [{ ...width, measure: position(width.measure) }] : [],
+  )
+  return {
+    ...config,
+    rows: shown(config.rows),
+    columns: shown(config.columns),
+    measures,
+    filters: shown(config.filters),
+    sort_lines:
+      lines === undefined || position(lines.measure) < 0
+        ? undefined
+        : { ...lines, measure: position(lines.measure) },
+    sort_columns: measures.length > 0 ? config.sort_columns : undefined,
+    column_widths: widths.length > 0 ? widths : undefined,
+  }
+}
+
+/**
+ * Position in its zone of an element the table names by its position among those shown
+ * (`shownConfig`).
+ *
+ * @param config Configuration.
+ * @param zone Zone.
+ * @param index Position among the elements shown.
+ * @returns The position in the zone; the one given when the zone shows no element.
+ */
+export function storedIndex(config: PivotConfig, zone: PivotZone, index: number): number {
+  const position = shownPositions(config[zone]).indexOf(index)
+  return position < 0 ? index : position
+}
+
+/**
+ * Configuration after an element is hidden, or shown again. It keeps its place, its settings, its
+ * sorts and its widths, which come back with it.
+ *
+ * @param config Configuration.
+ * @param place Place of the element.
+ * @param hidden Is the element hidden?
+ */
+export function withHidden(config: PivotConfig, place: ZonePlace, hidden: boolean): PivotConfig {
+  const set = <T extends PivotElement>(elements: T[]) =>
+    elements.map((element, index): T => {
+      if (index !== place.index) {
+        return element
+      }
+      const changed: T = { ...element }
+      if (hidden) {
+        changed.hidden = true
+      } else {
+        delete changed.hidden
+      }
+      return changed
+    })
+  return {
+    ...config,
+    rows: place.zone === 'rows' ? set(config.rows) : config.rows,
+    columns: place.zone === 'columns' ? set(config.columns) : config.columns,
+    measures: place.zone === 'measures' ? set(config.measures) : config.measures,
+    filters: place.zone === 'filters' ? set(config.filters) : config.filters,
+  }
 }
 
 /**
